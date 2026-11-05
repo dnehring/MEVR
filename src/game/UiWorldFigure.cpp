@@ -2,15 +2,20 @@
 // The squad member on the equipment, XMods and squad screens: the game's side (game/UiWorldFigure.hpp, research/56 section 7).
 #include "game/UiWorldFigure.hpp"
 
+#include "core/Exe.hpp"
 #include "core/Log.hpp"
+#include "engine/Addresses.hpp"
 #include "engine/Engine.hpp"
 #include "game/Player.hpp"
 #include "game/SceneCaptureRig.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <format>
 #include <mutex>
 #include <optional>
@@ -33,9 +38,69 @@ ue3::FieldRef gUiWorldPointer{"SFXGame.BioUIWorld", "m_pWorld"};        // FPoin
 ue3::FieldRef gUiCamera{"SFXGame.BioUIWorld", "m_pCameraActor"};
 ue3::FieldRef gUiChain{"SFXGame.BioUIWorld", "m_PostProcessChain"};
 ue3::FieldRef gUiLoaded{"SFXGame.BioUIWorld", "m_bLoaded"};
+ue3::FieldRef gUiEnabled{"SFXGame.BioUIWorld", "m_bEnabled"};
 ue3::ClassRef gCameraActorClass{"Engine.CameraActor"};
 ue3::FieldRef gCameraFov{"Engine.CameraActor", "FOVAngle"};
 ue3::FieldRef gCameraAspect{"Engine.CameraActor", "AspectRatio"};
+ue3::FieldRef gTimeSeconds{"Engine.WorldInfo", "TimeSeconds"};
+
+// The UI world runs only while the game shows it (a full-screen panel up): its native command queue (the screen's SpawnPawn,
+// TriggerEvent, UpdateAppearance... are queued, 0xB3B500), its Kismet (the camera's moves between the squad members' stands) and
+// its actors' animation. With the panel no longer full screen the game stops ticking it, so the squad member was never spawned
+// and the camera stayed where the last screen left it (2026-11-05). We tick it ourselves, with its own native Tick (the object's
+// vtable slot 104, checked to hold 0xB3B810: the queue, then UWorld::Tick of the UI world with GWorld swapped), unless its clock
+// moved without us (the game ticks it itself).
+constexpr int kUiWorldTickSlot = 104;
+using tUiWorldTick = void(__fastcall*)(void* self, float deltaSeconds);
+struct UiTick {
+    std::optional<std::chrono::steady_clock::time_point> last;
+    std::optional<float> expected;  // the UI world's clock as we left it
+    std::uint64_t ours = 0;         // ticks we gave it
+    std::uint64_t games = 0;        // ticks the game gave it (its clock moved without us)
+    bool checked = false;
+    tUiWorldTick fn = nullptr;
+};
+UiTick gTick;
+
+// The UI world's own Tick, if its vtable's slot is the function we know; else null (logged once).
+tUiWorldTick UiWorldTickFn(ue3::Object* uiWorld) {
+    void* const known = exe::Resolve(engine::addresses::kUiWorldTick);
+    void* const* const vtable = uiWorld != nullptr ? *reinterpret_cast<void* const* const*>(uiWorld) : nullptr;
+    void* const slot = vtable != nullptr ? vtable[kUiWorldTickSlot] : nullptr;
+    if (!gTick.checked) {
+        gTick.checked = true;
+        if (known == nullptr || slot != known) {
+            log::Warn("ui world figure: the UI world's vtable slot {} ({}) isn't its Tick ({}): it isn't ticked, the squad member may be "
+                      "missing", kUiWorldTickSlot, slot, known);
+        }
+    }
+    return known != nullptr && slot == known ? reinterpret_cast<tUiWorldTick>(known) : nullptr;
+}
+
+// One tick of the UI world while a screen of ours shows its squad member.
+void TickUiWorld(ue3::Object* uiWorld, ue3::Object* camera) {
+    auto const now = std::chrono::steady_clock::now();
+    float const dt = gTick.last ? std::clamp(std::chrono::duration<float>(now - *gTick.last).count(), 1.0f / 240.0f, 0.1f) : 1.0f / 90.0f;
+    gTick.last = now;
+    ue3::Object* const info = gWorldInfo.Read<ue3::Object*>(camera).value_or(nullptr);  // the UI world's own WorldInfo
+    std::optional<float> const clock = info != nullptr ? gTimeSeconds.Read<float>(info) : std::nullopt;
+    if (gTick.expected && clock && *clock != *gTick.expected) {
+        if (gTick.games++ == 0) {
+            log::Info("ui world figure: the game ticks the UI world itself (its clock moved without us): ours stands down");
+        }
+        gTick.expected = clock;
+        return;
+    }
+    tUiWorldTick const fn = UiWorldTickFn(uiWorld);
+    if (fn == nullptr) {
+        return;
+    }
+    fn(uiWorld, dt);
+    if (gTick.ours++ == 0) {
+        log::Info("ui world figure: we tick the UI world (its command queue, Kismet and animation) while our screen keeps the level");
+    }
+    gTick.expected = info != nullptr ? gTimeSeconds.Read<float>(info) : std::nullopt;
+}
 
 // The stage's shape (the UI world renders letterboxed to the movies' 16:9 stage, research/53 section 1), wide enough for the
 // wrist screen's 1172-pixel panel image.
@@ -63,6 +128,8 @@ struct Status {
     std::string failure;       // why the figure isn't there (empty: it is)
     std::string loggedFailure; // the last one logged
     std::uint64_t ticks = 0;   // ticks the capture looked through the UI world's camera
+    std::uint64_t uiTicks = 0;      // ticks we gave the UI world
+    std::uint64_t gameUiTicks = 0;  // ticks the game gave it meanwhile (ours stood down)
     Camera camera;
     bool loggedUp = false;
 };
@@ -77,10 +144,10 @@ std::string gStatusJson = "{\"wanted\": false}";
 void Publish() {
     std::string json = std::format(
         "{{\"wanted\": {}, \"screen\": \"{}\", \"failure\": \"{}\", \"ticks\": {}, \"uiWorld\": \"{:#x}\", \"camera\": [{:.1f}, {:.1f}, {:.1f}], "
-        "\"rotation\": [{}, {}, {}], \"fov\": {:.2f}, \"aspect\": {:.3f}, \"loaded\": {}, \"chain\": {}}}",
+        "\"rotation\": [{}, {}, {}], \"fov\": {:.2f}, \"aspect\": {:.3f}, \"loaded\": {}, \"chain\": {}, \"uiTicks\": {}, \"gameUiTicks\": {}}}",
         gS.wanted ? "true" : "false", gS.screen, gS.failure, gS.ticks, gS.camera.world, gS.camera.location.x, gS.camera.location.y,
         gS.camera.location.z, gS.camera.rotation.pitch, gS.camera.rotation.yaw, gS.camera.rotation.roll, gS.camera.fov, gS.camera.aspect,
-        gS.camera.loaded ? "true" : "false", gS.camera.chain != nullptr ? "true" : "false");
+        gS.camera.loaded ? "true" : "false", gS.camera.chain != nullptr ? "true" : "false", gS.uiTicks, gS.gameUiTicks);
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     gStatusJson = std::move(json);
 }
@@ -173,7 +240,13 @@ void Tick(wu::Settings const& settings, wu::Screen screen, wu::State& state) {
     gS.wanted = true;
 #if defined(MEVR_GAME_LE1)
     std::string why;
-    std::optional<Camera> const camera = ReadCamera(why);
+    std::optional<Camera> camera = ReadCamera(why);
+    if (camera) {
+        TickUiWorld(camera->uiWorld, camera->actor);  // the game doesn't while the screen isn't full screen
+        gS.uiTicks = gTick.ours;
+        gS.gameUiTicks = gTick.games;
+        camera = ReadCamera(why);                     // its Kismet may have moved the camera
+    }
     if (!camera) {
         Fail(why);
         if (gRig.Enabled() && gRig.Alive()) {
@@ -216,17 +289,17 @@ void Tick(wu::Settings const& settings, wu::Screen screen, wu::State& state) {
             camera->loaded ? "" : " (not marked loaded)",
             camera->chain != nullptr ? ue3::runtime::FullName(camera->chain) : std::string("the player's"));
     }
-    if (gRig.EnabledTicks() >= 2) {  // pointed and sent before a Draw at least once
-        state.figure = 1;
-        state.figureWidth = static_cast<std::uint16_t>(gRig.Width());
-        state.figureHeight = static_cast<std::uint16_t>(gRig.Height());
-        state.figureFormat = gRig.PixelFormat() != 0 ? gRig.PixelFormat() : kPixelFormatA8R8G8B8;
-        state.figureOpacity = settings.figureOpacity;
-        state.figureResource = gRig.Resource();
-        state.figureTarget = gRig.Target();
-        state.levelWorld = reinterpret_cast<std::uint64_t>(engine::World());
-        state.uiWorld = camera->world;
-    }
+    // Which capture is ours from its first tick (the host keeps Umbra's camera query off it and renders it with the UI world's
+    // scene); shown once it has been pointed and sent before a Draw at least once.
+    state.figure = gRig.EnabledTicks() >= 2 ? 1 : 0;
+    state.figureWidth = static_cast<std::uint16_t>(gRig.Width());
+    state.figureHeight = static_cast<std::uint16_t>(gRig.Height());
+    state.figureFormat = gRig.PixelFormat() != 0 ? gRig.PixelFormat() : kPixelFormatA8R8G8B8;
+    state.figureOpacity = settings.figureOpacity;
+    state.figureResource = gRig.Resource();
+    state.figureTarget = gRig.Target();
+    state.levelWorld = reinterpret_cast<std::uint64_t>(engine::World());
+    state.uiWorld = camera->world;
     Publish();
 #else
     (void)state;
@@ -250,9 +323,18 @@ std::string Command(std::string_view args) {
     if (!camera) {
         return std::format("ui world: {}", why);
     }
-    return std::format("ui world {} (loaded {}, world {:#x}): camera {} at ({:.1f}, {:.1f}, {:.1f}), rotation ({}, {}, {}), FOV {:.2f}, "
+    // Diagnostics for the native side: the object, its vtable, the native command queue's size (TArray at +0x140) and m_bEnabled.
+    auto const* const raw = reinterpret_cast<std::uint8_t const*>(camera->uiWorld);
+    std::uint64_t vtable = 0;
+    std::int32_t queued = 0;
+    std::memcpy(&vtable, raw, sizeof vtable);
+    std::memcpy(&queued, raw + 0x148, sizeof queued);
+    return std::format("ui world {} at {:#x} (vtable {:#x}, {} queued native commands, enabled {}, loaded {}, world {:#x}): camera {} at "
+                       "({:.1f}, {:.1f}, {:.1f}), rotation ({}, {}, {}), FOV {:.2f}, "
                        "aspect {:.3f}; post-process chain {}; our capture {} ({} ticks looking, {}x{}, target {:#x}, resource {:#x}){}",
-        ue3::runtime::FullName(camera->uiWorld), camera->loaded ? "yes" : "no", camera->world, ue3::runtime::FullName(camera->actor),
+        ue3::runtime::FullName(camera->uiWorld), reinterpret_cast<std::uint64_t>(camera->uiWorld), vtable, queued,
+        gUiEnabled.ReadBool(camera->uiWorld).value_or(false) ? "yes" : "no", camera->loaded ? "yes" : "no", camera->world,
+        ue3::runtime::FullName(camera->actor),
         camera->location.x, camera->location.y, camera->location.z, camera->rotation.pitch, camera->rotation.yaw, camera->rotation.roll,
         camera->fov, camera->aspect, camera->chain != nullptr ? ue3::runtime::FullName(camera->chain) : std::string("none"),
         gRig.Alive() ? (gRig.Enabled() ? "on" : "off") : "not made", gS.ticks, gRig.Width(), gRig.Height(), gRig.Target(), gRig.Resource(),

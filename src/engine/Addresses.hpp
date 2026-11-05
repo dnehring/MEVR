@@ -65,6 +65,9 @@ inline constexpr std::uint32_t kTryAcquireCover = 0xAB1430;
 inline constexpr std::uint32_t kCoverTrace = 0xAA92F0;
 // BioPlayerSelection's native UpdateSelection body (engine/SelectionGaze; research/40).
 inline constexpr std::uint32_t kUpdateSelection = 0xC79D70;
+// UBioUIWorld's native Tick (its vtable's slot 104): the command queue, then UWorld::Tick of the UI world with GWorld swapped
+// (game/UiWorldFigure, research/56 section 7; called through the object's vtable after checking the slot holds it).
+inline constexpr std::uint32_t kUiWorldTick = 0xB3B810;
 // Our reflection layer's globals (ue3/Runtime, engine/GameAdapter; research/34 section 2.3).
 inline constexpr std::uint32_t kGObjects = 0x1770670;
 inline constexpr std::uint32_t kNamePools = 0x16A2090;
@@ -97,6 +100,8 @@ inline constexpr Entry kTable[] = {
         "mod (cover)"},
     {"UBioPlayerSelection::UpdateSelection", kUpdateSelection, Kind::Function, "40 55 53 57 41 54 41 55 41 57 48 8D AC 24 78 FF",
         0, 0, "mod (interaction)"},
+    {"UBioUIWorld::Tick", kUiWorldTick, Kind::Function,
+        "40 53 48 83 EC 40 48 C7 44 24 20 FE FF FF FF 0F 29 74 24 30 0F 28 F1 8B 81 18 02 00 00 A8 01", 0, 0, "mod (ui world figure)"},
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
     {"GObjects", kGObjects, Kind::Data, "48 63 4B 08 48 8B 05 ?? ?? ?? ?? 48 C7 04 C8 00 00 00 00 48 8D 53 08 48 8D 0D", 7,
         0x15C1AF, "mod (reflection), host (crash breadcrumbs)"},
@@ -146,6 +151,8 @@ inline constexpr Entry kTable[] = {
     {"scene render finish", 0x76DD10, Kind::Function, "40 56 57 48 83 EC 48 33 F6 48 89 5C 24 60 48 89", 0, 0, "render levers"},
     {"scene capture's CaptureScene thunk", 0x742C80, Kind::Leaf, "48 8B 09 48 85 C9 74 07 48 8B 01 48 FF 60 08 C3", 0, 0,
         "render levers"},
+    {"scene capture's Umbra camera thunk", 0x7526C0, Kind::Leaf, "4C 8B D2 48 8B D1 48 8B 09 48 85 C9 74 18 48 8B 52 08 4D 8B C8", 0,
+        0, "ui world figure"},
     {"FSceneRenderTargets::BeginRenderingBackBuffer", 0x773D30, Kind::Function,
         "40 53 48 83 EC 50 48 C7 44 24 40 FE FF FF FF 48 8B D9 48 8B", 0, 0, "render levers"},
     {"UmbraCommander::IssueOcclusionQueries", 0x8B6550, Kind::Function,

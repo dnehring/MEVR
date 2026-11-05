@@ -8,8 +8,10 @@
 
 // The squad member on the equipment, XMods and squad screens (research/56 section 7). The game draws them in its UI world
 // (BioWorldInfo.m_UIWorld: a BioUIWorld, a world of its own with its camera actor, its lights and the pawns it spawns from the
-// party), and renders that world instead of the level only while a screen is full screen, which the world UI clears to keep the
-// level around the player. So a scene capture of ours (game/SceneCaptureRig, in the level) looks through the UI world's camera
+// party), and renders and ticks that world instead of the level only while a screen is full screen, which the world UI clears to
+// keep the level around the player. So the mod ticks the UI world itself (its native Tick, vtable slot 104: the command queue
+// the screen's SpawnPawn and TriggerEvent fill, its Kismet moving the camera to the screen's stand, the pawn's animation), and a
+// scene capture of ours (game/SceneCaptureRig, in the level) looks through the UI world's camera
 // (its place, rotation and field of view, each tick) into a 16:9 render target, with the UI world's own post-process chain; the
 // state tells the host which render target is ours and where both worlds are, the host renders that one capture with the UI
 // world's scene instead of the level's (plugin/UiWorldFigure, in the capture loop's hook) and draws its picture behind the game's

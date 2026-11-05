@@ -73,6 +73,8 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   doesn't yet (no state is published without a screen). [open]
 - The tap's distances on a real wrist; whether the HUD's wrist point is where the player sees the display.
 - The rail's size and legibility at 0.42 m (entries 112 dp of a 1000 dp canvas: about 3 cm tall on a 0.31 m rail).
+- **The squad member behind the equipment and squad screens: done 2026-11-05 (section 7)**, the game's own figure through a capture
+  of its UI world. Below, the earlier hologram idea.
 - **The squad as holograms** (the concept art's disc): the equipment and character record's figure lives in the game's UI world
   (research/53 section 1). A scene capture inside that world, shown on a disc beside the wrist screen, is the route
   (`game/SceneCaptureRig`, as the galaxy map's window does); not built.
@@ -307,3 +309,67 @@ rail's art in place of the movie, over this model through a new HostServices ver
 
 **Still open from the Flash screens:** whether a wheel notch (the stick, or a drag) scrolls the game's own lists (the codex, the
 journal): this save's lists were empty; the equipment list (filled after `GiveAll`) is the first to try.
+
+## 7. The squad member behind the equipment and squad screens (2026-11-05)
+
+The user asked for "the previews working for the player avatar for each squad member": the equipment (and XMods) screen's
+squadmate and the character record's Shepard, which stood in a gap of the wrist screen since the world UI cleared `bFullScreen`
+(research/53 section 1). Not section 4's hologram of our own: the game's own figure on its own stage, as the flat game shows it,
+behind the game's own screen.
+
+**Why it was missing: two things.** The game draws the figure in its UI world (`BioWorldInfo.m_UIWorld`, a `BioUIWorld`: a `UWorld`
+of its own, `m_pWorld`, with its camera actor `m_pCameraActor`, the post-process chain `m_PostProcessChain`, spot lights, three
+stands with a camera each and the pawns it spawns from the party), and only while a screen is full screen does the game
+- **render it** (instead of the level), and
+- **tick it** (`BioUIWorld`'s vtable slot 104, `0xB3B810`: if `m_bEnabled` and `m_bLoaded`, `0xB33EE0` drains the native command
+  queue, then `UWorld::Tick(m_pWorld, LEVELTICK_All, dt)` with `GWorld` swapped). Every script native of the UI world (`SpawnPawn`
+  `0xB3B500`, `TriggerEvent`, `UpdateAppearance`, `UpdateHeadGearVisibility`, `AttachOmnitool`...) only queues a command
+  (`m_aCommandQueue` +0x140 under the critical section at +0x178); the spawn command (`0xB32880`) swaps `GWorld` to the UI world and
+  spawns the pawn at the named stand. With the screen not full screen nothing drained the queue: `BioSFHandler_Inventory.
+  Update3DCharacter` called `SpawnPawn` (call trace) but no pawn existed in `BIOG_UIWorld`, and the Kismet that moves
+  `CameraActor_3` to the screen's stand never ran (the camera stayed at the last screen's stand, (-1336, -1680, 82), looking at
+  nobody; the equipment's is (-1674, -45, 27)).
+
+**How a scene capture picks its scene, and Umbra** (Ghidra on a copy of the project, 2026-11-05):
+- The capture loop at the top of `0x76EE20` calls `0x742C80` per capture with the eye renderer; the 2D probe's `CaptureScene`
+  (vtable slot 1, `0x4EE4B0`) reads its render target from the probe's `+0x1C` (`mov rcx, [rcx+0x1C]` at `0x4EE513`; the probe is
+  packed on 4 bytes) and builds its view family on the eye renderer's **first field, the FScene** (`0x73B1C0(&family, target,
+  *renderer, ...)`). So a capture renders whatever scene that field holds. `UWorld::Scene` is `+0x70` (`FViewportClient::Draw`
+  reads `GWorld + 0x70`; found the same at run time).
+- The renderer's `+0x5C` (its family's `+0x54`) is the Umbra flag: `InitViews` (`0x768090`) takes Umbra's path when it's set. On
+  the game thread `BeginRenderingViewFamily` (`0x7655A0`) calls `0x7526C0` for each of the scene's captures while the eye family
+  uses Umbra: the probe's slot 8 (`0x4FD550`) sets the capture's Umbra camera, kicks its query and counts it in the probe's `+0x6C`
+  (on the render thread); `CaptureScene` then renders the capture through Umbra (consuming it) while that count is above 0, and
+  without Umbra (`0x76BC00`) when it's 0.
+- **Two failures on the way, each a hang of the game:** with only the scene swapped, Umbra's visible instances (the level's
+  database) indexed the UI world's views out of range (render thread fault at `0x76A5FB` in `0x76A570`, called from Umbra's
+  visible-instance callback `0x8BE0B0`); with the eye renderer's Umbra flag also cleared for the call, the capture's already-kicked
+  Umbra query was never consumed and the eye's own resolve waited for ever (`0x8BFE64` in `UmbraResolveViews`, a kernel wait in
+  Umbra's code; render thread stack from `mevr-stack-sampler`).
+
+**Built** (`game/UiWorldFigure`, host `plugin/UiWorldFigure`, `[WorldUi] figure`, `figureOpacity`; `vr::world_ui::State` grew: host
+and mod deploy together):
+- While the equipment, XMods or squad screen is up in the world UI, the mod **ticks the UI world** with its own Tick (the object's
+  vtable slot 104, checked to hold `0xB3B810`, the address table's `UBioUIWorld::Tick`), unless the UI world's clock moved without
+  us (then the game ticks it and ours stands down).
+- A scene capture of ours (`game/SceneCaptureRig`, in the level, 1280x720 A8R8G8B8, the UI world's `UIWorld_PostProcess` chain) is
+  pointed each tick with `CameraActor_3`'s place, rotation and `FOVAngle` (30; 29 on the squad screen).
+- The host hooks `0x7526C0` (`plugin/UiWorldFigure::Install`, the address table's `scene capture's Umbra camera thunk`) and skips it
+  for the capture whose probe holds our render target, so no Umbra query is ever kicked for it; in the capture loop's hook
+  (`plugin/RenderLevers`) the same capture gets the UI world's scene in the eye renderer's first field for its call (put back after),
+  while its probe has no Umbra query pending (else it renders once as the level, consuming it). The UI world's scene must be another
+  FScene (the same vtable) or the capture is skipped.
+- The world UI panel's blit (`HalcyonOverlays`, `PSMain`) draws its picture under the game's UI over the 16:9 stage at
+  `figureOpacity` (0: the backdrop's 0.8). The texture is found as the scope capture's is (`NoteDevice` first: it sits behind an
+  unaligned pointer), A8R8G8B8 read as `R8G8B8A8_UNORM_SRGB`.
+
+**In the game** (fake headset, BIOA_UNC20, the replayed wrist, 2026-11-05 07:48-07:51): the equipment screen on the wrist shows
+Shepard in his armour holding the assault rifle where the flat game shows him (the same place against the title and the name tabs
+as the game's own full-screen render of the same moment), on the UI world's blue backdrop; a fingertip tap on Ashley's tab put Ashley
+there in her armour with her Lancer I; the squad screen shows Shepard's head and shoulders, the game's close framing, and turns his
+head between snapshots (the UI world animates). Its Toggle Helmet tap runs the game's chain (`ToggleHelmet` ->
+`SetHeadGearVisiblePreference` -> `BioUIWorld.UpdateHeadGearVisibility`, queued and drained by our tick), yet the helmet stayed on
+both ways [verify: whether the game keeps helmets on there, against the flat screen]. Logs `ui world figure:`; snapshots `"figure"`
+(host) and the world UI's `"figure"` (mod); `mevr uiworld` prints the UI world, its vtable, its queue, its camera and our capture.
+Not covered: the XMods screen, a squad of three, the cost in a heavy level (the UI world is a small scene of its own, rendered once a
+frame at 1280x720 while one of these screens is up).

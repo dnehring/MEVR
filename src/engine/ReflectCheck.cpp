@@ -678,6 +678,7 @@ void CheckFields() {
     CheckField("SFXGame.BioUIWorld", "m_pCameraActor", SDK_FIELD(UBioUIWorld, m_pCameraActor));
     CheckField("SFXGame.BioUIWorld", "m_PostProcessChain", SDK_FIELD(UBioUIWorld, m_PostProcessChain));
     CheckField("SFXGame.BioUIWorld", "m_bLoaded", SDK_BOOL(UBioUIWorld, m_bLoaded));
+    CheckField("SFXGame.BioUIWorld", "m_bEnabled", SDK_BOOL(UBioUIWorld, m_bEnabled));
     CheckField("Engine.CameraActor", "FOVAngle", SDK_FIELD(ACameraActor, FOVAngle));
     CheckField("Engine.CameraActor", "AspectRatio", SDK_FIELD(ACameraActor, AspectRatio));
     CheckField("Engine.PrimitiveComponent", "bOwnerNoSee", SDK_BOOL(UPrimitiveComponent, bOwnerNoSee));

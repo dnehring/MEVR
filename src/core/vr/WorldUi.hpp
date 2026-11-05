@@ -56,7 +56,7 @@ struct Settings {
     float belowM = 0.50f;      // belowM: its centre below the eyes (a counter's height: the vendor's face stays clear above it)
     float backdrop = 0.80f;    // backdrop: its dark parts' opacity (the room shows through the rest); 1 opaque
     // screens: which ones (bits of Screen; the ini lists their tags), all by default (the user, 2026-11-04: every flat screen in
-    // the room). The equipment, XMods and character record lose their 3D model there (it lives in the game's UI world).
+    // the room). The equipment, XMods and character record's squad member lives in the game's UI world: `figure` below.
     std::uint32_t screens = 0xFFFFFFFFu;
     // wrist: the screens projected from the left wrist instead, Shepard's omni-tool (the bypass minigame by default; the user,
     // 2026-11-04; Fallout 4 VR's Pip-Boy, wrist or projected, and Half-Life: Alyx's multitool holograms set the pattern:
@@ -138,7 +138,7 @@ struct State {
     // world, which the game renders only while a screen is full screen. A scene capture of ours (game/UiWorldFigure) looks through
     // the UI world's camera; the host renders that one capture with the UI world's scene (plugin/UiWorldFigure, in the capture
     // loop's hook) and draws its picture behind the game's UI, over the 16:9 stage, at figureOpacity.
-    std::uint8_t figure = 0;          // the capture is pointed at the UI world's camera and enabled
+    std::uint8_t figure = 0;          // its picture is ready to show (the fields below are sent from the capture's first tick)
     std::uint8_t figurePad[3] = {};
     std::uint16_t figureWidth = 0;    // its render target, pixels
     std::uint16_t figureHeight = 0;

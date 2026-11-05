@@ -424,8 +424,14 @@ switching frameworks.
   library, `BioSFManager.HandlerLibrary`). **Every flat screen goes in the room** (the user, 2026-11-04; `screens = all`; the front
   end stays flat). In game modes 7 and 10 (the bypass minigame) the mod reads the GUI manager's panels (`m_oCachedScaleFormManager`,
   `m_lstPanels`, each `nmTag` a library tag, only `IsVisible` ones); the first one of ours places the screen; any visible one not in
-  `screens` leaves the stack on Halcyon's panel. The equipment and character record lose their 3D models in the room (they live in
-  the game's **UI world**) [open]. A `bFullScreen` panel makes the game render that UI world (a blurred
+  `screens` leaves the stack on Halcyon's panel. **The equipment, XMods and squad screens' squad member** lives in the game's **UI
+  world**, which the game renders and ticks only while a screen is full screen (research/56 section 7, `game/UiWorldFigure`, host
+  `plugin/UiWorldFigure`, `[WorldUi] figure`, `figureOpacity`): the mod ticks it itself (its native Tick, vtable slot 104 =
+  `0xB3B810`: the command queue the screen's `SpawnPawn`/`TriggerEvent` fill, then `UWorld::Tick` of it) and points a scene capture
+  of ours with its `CameraActor_3`; the host skips that capture's Umbra camera query (a hook on `0x7526C0`) and gives it the UI
+  world's FScene in the eye renderer's first field for its call (the capture loop's hook in `RenderLevers`), and the world UI panel
+  draws its picture under the game's UI over the 16:9 stage. Shepard and Ashley switch with the screen's tabs (checked in the game).
+  A `bFullScreen` panel makes the game render that UI world (a blurred
   backdrop stage, its own camera) instead of the level: cleared on our screens while they stand in the room (journalled, put back
   if ours goes down). Shepard's view on foot is held at render time through the galaxy map's `CalcSceneView` seam; one `[MEVR]` seam
   in xr_session.cpp sets Halcyon's `liveWorldGui` while `MevrBridge::WorldUiActive()`. The game's UI goes to the HUD panel, shown as
