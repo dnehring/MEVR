@@ -556,4 +556,96 @@ Event Step(Machine& m, MachineInput const& in, std::vector<float> const& angles,
     return Event::None;
 }
 
+SelfGesture SelfGestureFor(char const* label) {
+    if (label == nullptr) {
+        return SelfGesture::None;
+    }
+    static constexpr struct {
+        char const* label;
+        SelfGesture gesture;
+    } kSelf[] = {
+        {"KF_Barrier", SelfGesture::Chest},      {"AR_ShieldBoost", SelfGesture::Chest}, {"AT_Immunity", SelfGesture::Chest},
+        {"FT_Adrenaline", SelfGesture::Chest},   {"LW_Marksman", SelfGesture::Gun},      {"AW_Suppression", SelfGesture::Gun},
+        {"BW_CarnageSetup", SelfGesture::Gun},   {"SW_Critical", SelfGesture::Gun},      {"TC_TakeDown", SelfGesture::Raise},
+    };
+    for (auto const& s : kSelf) {
+        if (std::strcmp(s.label, label) == 0) {
+            return s.gesture;
+        }
+    }
+    return SelfGesture::None;
+}
+
+char const* Name(SelfGesture gesture) {
+    switch (gesture) {
+    case SelfGesture::Chest: return "the open hand on the chest";
+    case SelfGesture::Gun: return "the open hand slapped onto the gun";
+    case SelfGesture::Raise: return "the open hand raised above the head";
+    case SelfGesture::None: break;
+    }
+    return "none";
+}
+
+SelfCastStep StepSelfCast(SelfCastState& s, SelfGesture gesture, SelfCastInput const& in, SelfCastSettings const& settings) {
+    SelfCastStep step;
+    auto const leave = [&s]() {
+        s.inZone = false;
+        s.spent = false;
+    };
+    if (gesture == SelfGesture::None || !in.tracked) {
+        leave();
+        s.hasLast = false;
+        return step;
+    }
+    // Where the zone is, and whether the hand is in it.
+    bool inside = false;
+    XrVector3f point{};
+    if (gesture == SelfGesture::Chest) {
+        XrVector3f f = Rotate(in.head.orientation, {0.0f, 0.0f, -1.0f});
+        f.y = 0.0f;
+        f = Normalized(f, {0.0f, 0.0f, -1.0f});
+        point = {in.head.position.x + f.x * settings.chestAheadM, in.head.position.y - settings.chestBelowM,
+            in.head.position.z + f.z * settings.chestAheadM};
+        inside = Length(Sub(in.hand, point)) <= settings.chestRadiusM;
+    } else if (gesture == SelfGesture::Raise) {
+        inside = in.hand.y >= in.head.position.y + settings.raiseAboveM;
+    } else if (in.gunValid) {
+        XrVector3f const up = Rotate(in.gun.orientation, {0.0f, 1.0f, 0.0f});
+        XrVector3f const ahead = Rotate(in.gun.orientation, {0.0f, 0.0f, -1.0f});
+        point = {in.gun.position.x + up.x * settings.gunUpM + ahead.x * settings.gunAheadM,
+            in.gun.position.y + up.y * settings.gunUpM + ahead.y * settings.gunAheadM,
+            in.gun.position.z + up.z * settings.gunUpM + ahead.z * settings.gunAheadM};
+        inside = Length(Sub(in.hand, point)) <= settings.gunRadiusM;
+    }
+    // The hand's speed toward the gun's top as it came in (a slap).
+    float approach = 0.0f;
+    if (gesture == SelfGesture::Gun && s.hasLast && in.time > s.lastTime) {
+        XrVector3f const to = Normalized(Sub(point, s.last), {0.0f, 0.0f, 0.0f});
+        XrVector3f const moved = Sub(in.hand, s.last);
+        float const dt = static_cast<float>(in.time - s.lastTime);
+        approach = (moved.x * to.x + moved.y * to.y + moved.z * to.z) / dt;
+    }
+    s.last = in.hand;
+    s.lastTime = in.time;
+    s.hasLast = true;
+    if (!inside || !in.open) {
+        leave();
+        return step;
+    }
+    if (!s.inZone) {
+        s.inZone = true;
+        s.since = in.time;
+        step.entered = true;
+    }
+    float const held = static_cast<float>(in.time - s.since);
+    step.progress = settings.dwellS > 0.0f ? std::min(1.0f, held / settings.dwellS) : 1.0f;
+    bool const slap = gesture == SelfGesture::Gun && step.entered && approach >= settings.slapSpeedMS;
+    if (!s.spent && (slap || held >= settings.dwellS)) {
+        s.spent = true;
+        step.cast = true;
+        step.progress = 1.0f;
+    }
+    return step;
+}
+
 }  // namespace mevr::vr::power_wheel

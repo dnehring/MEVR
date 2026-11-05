@@ -11,6 +11,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
+#include "game/SquadAck.hpp"
 #include "game/SquadContext.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/Throwables.hpp"
@@ -51,6 +52,12 @@ ue3::FieldRef gSquadOf{"SFXGame.BioEpicPawnBehavior", "Squad"};
 ue3::FunctionRef gSetFormationFn{"SFXGame.BioBaseSquad.SetSquadFollowFormation"};
 ue3::FunctionRef gSetHoldPositionFn{"SFXGame.BioBaseSquad.SetMemberHoldPosition"};
 ue3::FunctionRef gGetFormationFn{"SFXGame.BioBaseSquad.GetMemberFormation"};
+// Power orders (research/54's table, both [verify]): the game's tactical order (recorded, applied by ApplyTacticalOrders after
+// m_fTacticalDelayTime) or the member's AI told directly.
+ue3::FunctionRef gOrderPowerFn{"SFXGame.BioPlayerController.SquadOrderUsePower"};
+ue3::FunctionRef gApplyTacticalFn{"SFXGame.BioPlayerController.ApplyTacticalOrders"};
+ue3::FunctionRef gAiUsePowerFn{"SFXGame.BioAiController.AddUsePower"};
+ue3::FieldRef gPawnController{"Engine.Pawn", "Controller"};
 // The level's cover for a retreat (research/54 "Retreat to cover"): CoverLink slots, each at the link's place plus its offset
 // in the link's axes.
 ue3::ClassRef gCoverLink{"Engine.CoverLink"};
@@ -278,6 +285,39 @@ std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector co
     return CallResult(parms, called);
 }
 
+// A squad power order. tactical: SquadOrderUsePower(nmPower, pPawn) records it on the player controller and ApplyTacticalOrders
+// applies it (the weapon order's path, research/19); ai: the member's own controller takes AddUsePower(nmPower, oTarget,
+// bOrderedByPlayer, fTimeOut, vTarget). The target: the group's nearest living member, or none (a self-buff, a place power
+// at the target's feet).
+std::string CallUsePower(ue3::Object* controller, Recipient const& rc, ue3::Name power, ue3::Object* target, std::string const& route) {
+    if (route == "ai") {
+        ue3::Function* const fn = gAiUsePowerFn.Get();
+        if (fn == nullptr) return "BioAiController.AddUsePower wasn't found";
+        auto const ai = gPawnController.Read<ue3::Object*>(rc.pawn);
+        if (!ai || *ai == nullptr) return "no AI controller on the squadmate";
+        ue3::Params parms(ue3::runtime::Get(), fn);
+        parms.Set("nmPower", power);
+        parms.Set("oTarget", target);
+        parms.SetBool("bOrderedByPlayer", true);
+        parms.Set("fTimeOut", 10.0f);
+        if (target != nullptr) {
+            if (std::optional<ue3::Vector> const at = player::Location(target)) parms.Set("vTarget", *at);
+        }
+        bool const called = ue3::runtime::Call(*ai, fn, parms);
+        return std::format("AddUsePower {}", called ? "called" : "not called");
+    }
+    ue3::Function* const order = gOrderPowerFn.Get();
+    ue3::Function* const apply = gApplyTacticalFn.Get();
+    if (order == nullptr || apply == nullptr) return "SquadOrderUsePower or ApplyTacticalOrders wasn't found";
+    ue3::Params parms(ue3::runtime::Get(), order);
+    parms.Set("nmPower", power);
+    parms.Set("pPawn", rc.pawn);
+    bool const ordered = ue3::runtime::Call(controller, order, parms);
+    ue3::Params none(ue3::runtime::Get(), apply);
+    bool const applied = ordered && ue3::runtime::Call(controller, apply, none);
+    return std::format("SquadOrderUsePower {}, ApplyTacticalOrders {}", ordered ? "called" : "not called", applied ? "called" : "not called");
+}
+
 // The player's BioBaseSquad (through Shepard's behaviour), or null.
 ue3::Object* Squad() {
     ue3::Object* const pawn = player::BioPawn(player::Controller());
@@ -498,6 +538,8 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
         constexpr float kDirectionM = 8.0f;
         point = Units(sc::DirectionPoint(squad_context::Scene(), static_cast<sc::Sector>(action.target.index), kDirectionM), gUpm);
     }
+    // The squad's answer (game/SquadAck): expected after each order, the game's line or ours.
+    auto const expect = [&](Recipient const& rc, sc::Order order) { squad_ack::Expect(rc.pawn, rc.letter, rc.name, order, gClock); };
     std::string what;
     switch (r.order) {
     case sc::Order::Follow:
@@ -505,6 +547,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
         for (Recipient const& rc : to) {
             DropStanding(rc.letter, "called back");
             note(CallFollow(controller, rc.index));
+            expect(rc, sc::Order::Follow);
         }
         what = std::format("follow: QuickCommandFollowPlayer for {} -> {}", names, returns);
         break;
@@ -530,6 +573,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
             } else if (!distant) {
                 note("holds here");
             }
+            expect(rc, sc::Order::Hold);
             if (s.standing) {
                 ss::Intent intent;
                 intent.who = rc.letter;
@@ -550,6 +594,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
         if (target == nullptr) return std::format("attack: no living member of E{} to target", r.group);
         for (Recipient const& rc : to) {
             note(CallAttack(controller, rc.index, target));
+            expect(rc, sc::Order::Attack);
             if (s.standing) {
                 ss::Intent intent;
                 intent.who = rc.letter;
@@ -571,6 +616,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
         if (!point) return "move: no point to move to";
         for (Recipient const& rc : to) {
             note(CallMove(controller, rc.index, *point));
+            expect(rc, sc::Order::Move);
             // "Move there and stay" / "until ...": a move becomes a hold there.
             bool const keep = s.standing && (hint.stay || hint.until != sp::StandingHint::Until::Default || hint.noRetreat);
             if (keep) {
@@ -589,8 +635,19 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
         what = std::format("move to ({:.0f}, {:.0f}, {:.0f}): QuickCommandMoveTo for {} -> {}", point->x, point->y, point->z, names, returns);
         break;
     }
-    case sc::Order::Use:
-        return std::format("use {}: squad power orders aren't dispatched yet (SquadOrderUsePower is unproven)", r.power);
+    case sc::Order::Use: {
+        std::optional<ue3::Name> const power = squad_context::PowerName(r.power);
+        if (!power) return std::format("use {}: the game's name for the power isn't known yet", r.power);
+        ue3::Object* const target = r.group != 0 ? NearestOfGroup(r.group) : nullptr;
+        if (r.group != 0 && target == nullptr) return std::format("use {}: no living member of E{} to target", r.power, r.group);
+        for (Recipient const& rc : to) {
+            note(CallUsePower(controller, rc, *power, target, s.powerRoute));
+            expect(rc, sc::Order::Use);
+        }
+        what = std::format("use {} ({}){}: the {} route for {} -> {}", r.power, ue3::runtime::NameText(*power),
+            target != nullptr ? std::format(" on E{} ({})", r.group, ue3::runtime::FullName(target)) : std::string(), s.powerRoute, names, returns);
+        break;
+    }
     case sc::Order::None:
         if (r.weapon < 0) return "nothing to dispatch";
         for (Recipient const& rc : to) note(squad_weapons::GiveWeapon(rc.pawn, r.weapon));
@@ -713,6 +770,15 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (s.enabled && onFoot) {
         TickStandings(deltaSeconds, s);
+    }
+    if (ue3::runtime::Ready()) {
+        squad_ack::Settings ack;
+        ack.fallback = s.ackFallback;
+        ack.fallbackS = s.ackFallbackS;
+        ack.moveSet = s.ackMoveSet;
+        ack.holdSet = s.ackHoldSet;
+        ack.attackSet = s.ackAttackSet;
+        squad_ack::Tick(gClock, ack);
     }
 }
 

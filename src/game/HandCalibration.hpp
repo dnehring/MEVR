@@ -365,6 +365,16 @@ struct SquadOrders {
     double retreatM = 8.0;       // how far back the retreat point lies
     double coverSearchM = 10.0;  // a CoverLink slot within this of it is taken
     double retreatCooldownS = 10.0;
+    // The acknowledgement (game/SquadAck): the game's own line is expected after every order; none within ackFallbackS,
+    // the order's sound set is played on the squadmate (0: no line for that order).
+    bool ackFallback = true;
+    double ackFallbackS = 1.0;
+    int ackMoveSet = 70;    // StartMoveToConfirmation
+    int ackHoldSet = 59;    // HoldingPosition
+    int ackAttackSet = 61;  // LOSestablished [verify]
+    // Power orders: "tactical" = BioPlayerController.SquadOrderUsePower then ApplyTacticalOrders (the game's own order path,
+    // after its m_fTacticalDelayTime); "ai" = the member's BioAiController.AddUsePower as ordered by the player. Both [verify].
+    std::string powerRoute = "tactical";
 };
 SquadOrders GetSquadOrders();
 // [Vent] (appended to an older file that lacks it; research/45, game/vent): the physical vent of a hot gun, a
