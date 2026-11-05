@@ -24,6 +24,8 @@
 #include <fstream>
 #include <optional>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 namespace mevr::game::vr_cover {
 namespace {
@@ -50,6 +52,17 @@ ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList"};
 ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn"};
 ue3::FieldRef gHidden{"Engine.Actor", "bHidden"};
 ue3::ClassRef gPawnClass{"Engine.Pawn"};
+// `mevr cover hit`: the game's own damage path, from a pawn's place, with a weapon's damage object.
+ue3::FunctionRef gTakeDamageFn{"SFXGame.BioActorBehavior.TakeDamage"};
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
+ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon"};
+ue3::FieldRef gWeaponDamage{"SFXGame.BioWeapon", "m_pDamage"};
+ue3::ClassRef gBioWeaponClass{"SFXGame.BioWeapon"};
+ue3::FieldRef gPawnAttributes{"SFXGame.BioEpicPawnBehavior", "m_PawnAttributes"};
+ue3::FieldRef gHealthCurrent{"SFXGame.BioAttributesEpicPawn", "m_HealthCurrent"};
+ue3::FieldRef gShield{"SFXGame.BioActorBehavior", "m_oShield"};
+ue3::FieldRef gShieldAttributes{"SFXGame.BioShield", "m_pAttributes"};
+ue3::FieldRef gShieldCapacity{"SFXGame.BioAttributesShield", "m_DamageCapacity"};
 #endif
 
 // ---- Settings: [Cover] in the mod's settings file, read once a second, its defaults appended when it's missing --------
@@ -68,6 +81,7 @@ constexpr char kBlock[] =
 
 #if defined(MEVR_GAME_LE1)
 vc::Settings gSettings;
+std::optional<bool> gOverride;  // `mevr cover on|off`
 bool gLogHits = false;
 std::uint64_t gSettingsAtMs = 0;
 bool gTriedAppend = false;
@@ -106,6 +120,9 @@ void RefreshSettings() {
     bool logHits = false;
     if (auto const v = ini::GetNumber(loaded.file, "Cover", "log")) {
         logHits = *v != 0.0;
+    }
+    if (gOverride) {
+        s.on = *gOverride;  // `mevr cover on|off` (tests), until the mod reloads
     }
     std::string const text = s.on ? std::format("on: a hit counts as taken in cover with the head hidden from the shooter by a surface "
                                                 "within {:.2f} m of the eyes{}", s.reachM, logHits ? "; every judged hit logged" : "")
@@ -439,6 +456,87 @@ void LogStats() {
     gLoggedCounts = gCounts;
 }
 
+#if defined(MEVR_GAME_LE1)
+namespace {
+
+// The awake pawns other than Shepard, nearest first (`mevr cover pawns`, the shooters `hit` can use).
+std::vector<ue3::Object*> Pawns(ue3::Object* self) {
+    std::vector<std::pair<double, ue3::Object*>> found;
+    std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(self);
+    ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(self).value_or(nullptr);
+    int guard = 0;
+    for (ue3::Object* p = world != nullptr ? gPawnList.Read<ue3::Object*>(world).value_or(nullptr) : nullptr; p != nullptr && guard < 512;
+         p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
+        if (p == self || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(false) || CallBool(p, gIsDeadFn)) {
+            continue;
+        }
+        std::optional<ue3::Vector> const there = gLocation.Read<ue3::Vector>(p);
+        double const d = at && there ? std::hypot(static_cast<double>(there->x - at->x), static_cast<double>(there->y - at->y),
+                                           static_cast<double>(there->z - at->z))
+                                     : 1e12;
+        found.emplace_back(d, p);
+    }
+    std::sort(found.begin(), found.end(), [](auto const& a, auto const& b) { return a.first < b.first; });
+    std::vector<ue3::Object*> out;
+    for (auto const& entry : found) {
+        out.push_back(entry.second);
+    }
+    return out;
+}
+
+bool Hostile(ue3::Object* self, ue3::Object* other) {
+    ue3::Params hostile(ue3::runtime::Get(), gIsHostileFn.Get());
+    hostile.Set("Other", other);
+    ue3::runtime::Call(self, gIsHostileFn.Get(), hostile);
+    return hostile.ReturnBool().value_or(false);
+}
+
+// A weapon's damage object: the shooter's own weapon's, else any live weapon's.
+ue3::Object* WeaponDamage(ue3::Object* shooter) {
+    if (ue3::Object* const weapon = gPawnWeapon.Read<ue3::Object*>(shooter).value_or(nullptr)) {
+        if (ue3::IsA(weapon, gBioWeaponClass)) {
+            if (ue3::Object* const damage = gWeaponDamage.Read<ue3::Object*>(weapon).value_or(nullptr)) {
+                return damage;
+            }
+        }
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.IsAlive(o) && ue3::IsA(o, gBioWeaponClass)) {
+            if (ue3::Object* const damage = gWeaponDamage.Read<ue3::Object*>(o).value_or(nullptr)) {
+                return damage;
+            }
+        }
+    }
+    return nullptr;
+}
+
+// Shepard's health and shields.
+std::pair<float, float> HealthAndShields(ue3::Object* pawn) {
+    ue3::Object* const behavior = gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+    ue3::Object* const attributes = behavior != nullptr ? gPawnAttributes.Read<ue3::Object*>(behavior).value_or(nullptr) : nullptr;
+    ue3::Object* const shield = behavior != nullptr ? gShield.Read<ue3::Object*>(behavior).value_or(nullptr) : nullptr;
+    ue3::Object* const shieldAttributes = shield != nullptr ? gShieldAttributes.Read<ue3::Object*>(shield).value_or(nullptr) : nullptr;
+    return {attributes != nullptr ? gHealthCurrent.Read<float>(attributes).value_or(-1.0f) : -1.0f,
+        shieldAttributes != nullptr ? gShieldCapacity.Read<float>(shieldAttributes).value_or(-1.0f) : -1.0f};
+}
+
+std::string Judged(ue3::Object* self, vc::Vec3 const& eyes, std::optional<vc::Vec3> const& selfAt, Shooter const& shooter,
+    vc::Settings const& settings) {
+    std::string surface;
+    std::optional<vc::Block> const block = shooter.eyes ? FirstSurface(self, eyes, *shooter.eyes, &surface) : std::nullopt;
+    vc::Verdict const verdict = vc::Judge(eyes, shooter.eyes, block, settings);
+    std::optional<bool> cone;
+    if (verdict.Covered() && shooter.gameLocation && selfAt) {
+        cone = vc::GameCone(verdict.coverNormal, *selfAt, *shooter.gameLocation);
+    }
+    return Describe(verdict, shooter, eyes, surface, cone);
+}
+
+} // namespace
+#endif
+
 std::string Console(std::string_view args) {
 #if defined(MEVR_GAME_LE1)
     std::istringstream words{std::string(args)};
@@ -447,53 +545,88 @@ std::string Console(std::string_view args) {
     if (sub.empty()) {
         return StatusJson();
     }
-    if (sub != "test") {
-        return "usage: mevr cover [test]";
+    if (sub == "on" || sub == "off") {
+        gOverride = sub == "on";
+        gSettingsAtMs = 0;
+        RefreshSettings();
+        return std::format("vr cover: {} until the mod reloads ([Cover] protect stays as it is)", sub);
     }
-    // Every awake hostile judged now, as a hit on Shepard's location from it would be.
+    if (sub != "test" && sub != "pawns" && sub != "hit") {
+        return "usage: mevr cover [on|off | test | pawns | hit <damage> <n>]";
+    }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
     auto const frame = view_anchor::Current();
     if (pawn == nullptr || !frame) {
-        return "mevr cover test: needs the player on foot with a head-tracked view";
+        return "mevr cover " + sub + ": needs the player on foot with a head-tracked view";
     }
     if (gIsHostileFn.Get() == nullptr || gIsDeadFn.Get() == nullptr || gTraceFn.Get() == nullptr) {
-        return "mevr cover test: BioPawn.IsHostile, IsDead or Actor.Trace wasn't found";
+        return "mevr cover " + sub + ": BioPawn.IsHostile, IsDead or Actor.Trace wasn't found";
     }
     RefreshSettings();
     vc::Vec3 const eyes = ToVec(frame->headWorld);
     vc::Settings settings = gSettings;
     settings.on = true;
     settings.unitsPerMeter = frame->unitsPerMeter;
-    std::optional<vc::Vec3> const self = [&]() -> std::optional<vc::Vec3> {
-        if (auto const at = gLocation.Read<ue3::Vector>(pawn)) {
-            return ToVec(*at);
+    std::optional<vc::Vec3> selfAt;
+    if (auto const at = gLocation.Read<ue3::Vector>(pawn)) {
+        selfAt = ToVec(*at);
+    }
+    std::vector<ue3::Object*> const pawns = Pawns(pawn);
+    if (sub == "pawns") {
+        // Each awake pawn as a shooter would be judged from its location (`hit` has no instigator, so the game and VR cover
+        // both take the damage causer's place).
+        std::string out = std::format("vr cover ({}): the eyes at ({:.0f}, {:.0f}, {:.0f}); {} pawns", gWhyNot, eyes.x, eyes.y, eyes.z,
+            pawns.size());
+        for (std::size_t i = 0; i < pawns.size() && i < 24; ++i) {
+            Shooter shooter = FromPawn(pawns[i]);
+            shooter.eyes = shooter.gameLocation;
+            out += std::format("\n    [{}] {}{}", i, Hostile(pawn, pawns[i]) ? "hostile " : "", Judged(pawn, eyes, selfAt, shooter, settings));
         }
-        return std::nullopt;
-    }();
+        return out;
+    }
+    if (sub == "hit") {
+        // The game's own damage path (BioActorBehavior.TakeDamage on Shepard's behaviour) from pawn n's place, no instigator
+        // (no friendly-fire refusal; the game then takes the causer's location, as VR cover does), with a weapon's damage
+        // object. Health and shields before and after, and what VR cover judged.
+        float damage = 0.0f;
+        std::size_t index = 0;
+        words >> damage >> index;
+        if (damage <= 0.0f || index >= pawns.size()) {
+            return std::format("usage: mevr cover hit <damage> <n> (n of the {} pawns `mevr cover pawns` lists)", pawns.size());
+        }
+        ue3::Function* const take = gTakeDamageFn.Get();
+        ue3::Object* const behavior = gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+        ue3::Object* const kind = WeaponDamage(pawns[index]);
+        if (take == nullptr || behavior == nullptr || kind == nullptr || !selfAt) {
+            return std::format("mevr cover hit: missing {}", take == nullptr ? "BioActorBehavior.TakeDamage"
+                                                              : behavior == nullptr ? "Shepard's behaviour"
+                                                              : kind == nullptr ? "a weapon's damage object" : "Shepard's location");
+        }
+        auto const before = HealthAndShields(pawn);
+        Counts const countsBefore = gCounts;
+        ue3::Params parms(ue3::runtime::Get(), take);
+        parms.Set("Damage", damage);
+        parms.Set("HitLocation", ToUe(*selfAt));
+        parms.Set("DamageType", reinterpret_cast<ue3::Object*>(ue3::runtime::Get().ClassOf(kind)));
+        parms.Set("pDamageCausingActor", pawns[index]);
+        parms.Set("pDamage", kind);
+        ue3::runtime::Call(behavior, take, parms);
+        auto const after = HealthAndShields(pawn);
+        return std::format("vr cover hit: {:.0f} damage from [{}] {} ({}): health {:.1f} -> {:.1f}, shields {:.1f} -> {:.1f}; judged {}, "
+                           "covered {}, the cone cut {}; {}",
+            damage, index, NameOf(pawns[index]), NameOf(kind), before.first, after.first, before.second, after.second,
+            gCounts.judged - countsBefore.judged, gCounts.covered - countsBefore.covered, gCounts.coneCut - countsBefore.coneCut,
+            gCounts.judged > countsBefore.judged ? gLast : std::string("VR cover wasn't asked (") + gWhyNot + ")");
+    }
+    // `test`: every awake hostile judged now, as a hit on Shepard's location from it would be.
     std::string out = std::format("vr cover ({}): the eyes at ({:.0f}, {:.0f}, {:.0f})", gWhyNot, eyes.x, eyes.y, eyes.z);
-    ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(pawn).value_or(nullptr);
-    int guard = 0, judged = 0;
-    for (ue3::Object* p = world != nullptr ? gPawnList.Read<ue3::Object*>(world).value_or(nullptr) : nullptr; p != nullptr && guard < 512;
-         p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
-        if (p == pawn || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(false) || CallBool(p, gIsDeadFn)) {
+    int judged = 0;
+    for (ue3::Object* p : pawns) {
+        if (!Hostile(pawn, p)) {
             continue;
         }
-        ue3::Params hostile(ue3::runtime::Get(), gIsHostileFn.Get());
-        hostile.Set("Other", p);
-        ue3::runtime::Call(pawn, gIsHostileFn.Get(), hostile);
-        if (!hostile.ReturnBool().value_or(false)) {
-            continue;
-        }
-        Shooter const shooter = FromPawn(p);
-        std::string surface;
-        std::optional<vc::Block> const block = shooter.eyes ? FirstSurface(pawn, eyes, *shooter.eyes, &surface) : std::nullopt;
-        vc::Verdict const verdict = vc::Judge(eyes, shooter.eyes, block, settings);
-        std::optional<bool> cone;
-        if (verdict.Covered() && shooter.gameLocation && self) {
-            cone = vc::GameCone(verdict.coverNormal, *self, *shooter.gameLocation);
-        }
-        out += "\n    " + Describe(verdict, shooter, eyes, surface, cone);
+        out += "\n    " + Judged(pawn, eyes, selfAt, FromPawn(p), settings);
         if (++judged >= 24) {
             break;
         }

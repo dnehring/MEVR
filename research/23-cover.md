@@ -222,8 +222,12 @@ shield regeneration's wait in cover (`PlayerCoverRegenTimerMultiplier` 1.5) **[v
   animation. Both natives have no opcode of their own (`NativeIndex` 0, flags `0x20401`) and `ProxyTakeDamage` is called
   from `BioActorBehavior.TakeDamage`'s script, so both calls pass through `UObject::CallFunction`.
 - **Logs** `vr cover:` (a covered hit every 2 s at most, every judged hit with `log = 1`; the heartbeat's counts);
-  snapshot `"mod"."vrCover"`. **Console** `mevr cover` (status) and `mevr cover test` (every awake hostile judged now: the
-  head hidden or not, by what, how far, and whether the game's cone would cut a hit on Shepard from it).
+  snapshot `"mod"."vrCover"`. **Console** `mevr cover` (status), `mevr cover test` (every awake hostile judged now: the
+  head hidden or not, by what, how far, and whether the game's cone would cut a hit on Shepard from it), `mevr cover pawns`
+  (every awake pawn, nearest first, judged from its location) and `mevr cover hit <damage> <n>` (the game's own
+  `BioActorBehavior.TakeDamage` on Shepard's behaviour from pawn n's place, without an instigator so no friendly-fire
+  refusal, the damage object of pawn n's weapon or any live weapon's; Shepard's health and shields before and after, and
+  what VR cover judged), `mevr cover on|off` (an A/B override until the mod reloads).
 - **No menu row yet** (file only): it restores the game's own rule and is on by default.
 
 ### 6.3 LE2 and LE3

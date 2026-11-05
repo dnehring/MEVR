@@ -215,7 +215,8 @@ switching frameworks.
   the eyes (traced from the eyes): inside that damage call only, `engine/call_function`'s answer handlers (a call without
   parameters answered, with the calling frame's Locals) say `IsInCover` true and `IsInCoverLeaning` false for the player
   and `BioPawn.CoverNormal` holds the surface's facing until the call returns; the game's own code does the rest. The head
-  raised over the cover is the game's "leaning out". Logs `vr cover:`; snapshot `"mod"."vrCover"`; `mevr cover [test]`.
+  raised over the cover is the game's "leaning out". Logs `vr cover:`; snapshot `"mod"."vrCover"`; `mevr cover [on|off | test | pawns | hit <damage> <n>]` (`hit`: the game's
+  own `BioActorBehavior.TakeDamage` on Shepard from pawn n's place with a weapon's damage object, health and shields before and after).
   LE2/LE3's damage rules and the plan: research/23 section 6.3.
 - LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
   each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch

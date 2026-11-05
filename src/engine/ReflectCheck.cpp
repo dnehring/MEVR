@@ -867,6 +867,11 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "CoverType", SDK_FIELD(ABioPawn, CoverType));
     CheckField("SFXGame.BioPawn", "CoverNormal", SDK_FIELD(ABioPawn, CoverNormal));  // VR cover: the facing for the damage cone
     CheckField("Engine.Pawn", "EyeHeight", SDK_FIELD(APawn, EyeHeight));  // VR cover: the shooter's eyes
+    // `mevr cover hit`: a weapon's damage object, Shepard's shields.
+    CheckField("SFXGame.BioWeapon", "m_pDamage", SDK_FIELD(ABioWeapon, m_pDamage));
+    CheckField("SFXGame.BioActorBehavior", "m_oShield", SDK_FIELD(UBioActorBehavior, m_oShield));
+    CheckField("SFXGame.BioShield", "m_pAttributes", SDK_FIELD(UBioShield, m_pAttributes));
+    CheckField("SFXGame.BioAttributesShield", "m_DamageCapacity", SDK_FIELD(UBioAttributesShield, m_DamageCapacity));
     CheckField("SFXGame.BioPawn", "CoverAction", SDK_FIELD(ABioPawn, CoverAction));
     CheckField("SFXGame.BioPawn", "CoverTestAngle", SDK_FIELD(ABioPawn, CoverTestAngle));
     CheckField("SFXGame.BioPawn", "m_oBehavior", SDK_FIELD(ABioPawn, m_oBehavior));
@@ -1225,6 +1230,7 @@ void CheckFunctions() {
         "SFXGame.BioPawn.IsInCover",
         "SFXGame.BioPawn.IsInCoverLeaning",  // VR cover (research/23 section 6): answered in the damage call
         "SFXGame.BioPawnBehavior.ProxyTakeDamage",
+        "SFXGame.BioActorBehavior.TakeDamage",  // `mevr cover hit`
         "SFXGame.BioPawn.LeaveCover",
         "SFXGame.SFXInventoryManager.SetWeaponRecoil",
         "SFXGame.SFXModule_AimAssist.ViewFriction",
@@ -1570,6 +1576,11 @@ void CheckParams() {
     PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", InstigatedBy);
     PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", HitLocation);
     PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", pDamageCausingActor);
+    PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", Damage);
+    PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", HitLocation);
+    PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", DamageType);
+    PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", pDamageCausingActor);
+    PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", pDamage);
     // The modules' hand-built blocks: a bool return value at 0.
     CheckParam("SFXGame.BioPawn.IsInCombatActionState", "ReturnValue", SDK_AT(0, 4));
     CheckParam("SFXGame.BioPawn.IsSwitchingWeapons", "ReturnValue", SDK_AT(0, 4));
