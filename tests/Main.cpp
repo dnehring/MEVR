@@ -48,6 +48,7 @@
 #include "core/vr/Recenter.hpp"
 #include "core/vr/SceneCaptureScope.hpp"
 #include "core/vr/CineScreen.hpp"
+#include "core/vr/PresentationHold.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
 #include "core/vr/WorldUi.hpp"
@@ -6665,6 +6666,79 @@ void TestDevChannelsAndDiskBudget() {
     CHECK(PlanPrune(files, 150, 100000).empty());  // nothing old enough
 }
 
+void TestPresentationHold() {
+    namespace pr = mevr::vr::presentation;
+    {   // The front end: start-up's unreadable byte, the title, its camera flight, the menu's load, gameplay, an in-game load.
+        pr::FrontEnd f;
+        CHECK(f.Update(-1));    // start-up: no mode read yet
+        CHECK(f.Update(8));     // the logos' movie mode (its video not always seen decoding)
+        CHECK(f.Update(-1));
+        CHECK(f.Update(7));     // the title
+        CHECK(f.Update(6));     // a key pressed: the camera flight to the main menu is the front end's menu, not a cutscene
+        CHECK(!f.Update(0));    // a frame of mode 0 in the middle of it (seen 6, 0, 7)
+        CHECK(!f.Update(0));
+        CHECK(f.Starting());    // not gameplay yet
+        CHECK(f.Update(6));
+        CHECK(f.Update(7));     // the main menu
+        CHECK(f.Starting());
+        CHECK(f.Update(-1));    // a load from the main menu
+        CHECK(!f.Starting());   // its cinematics are the game's
+        CHECK(f.Update(8));     // the load's movie mode, still after the menus
+        CHECK(f.Update(-1));
+        CHECK(!f.Update(6));    // a new game's opening cutscene: the game's
+        CHECK(!f.Update(8));    // a movie inside it: Halcyon's
+        CHECK(!f.Update(0));    // gameplay
+        CHECK(!f.Update(-1));   // an unreadable byte after gameplay is not the front end
+        CHECK(!f.Update(6));
+        CHECK(!f.Update(-1));   // nor after a cutscene
+        CHECK(f.LastReadable() == 6);
+        CHECK(!f.Update(9));
+        CHECK(!f.Update(-1));   // nor after the galaxy map
+    }
+    {   // A conversation or cutscene after gameplay is the game's, even before any load (a map opened from the command line).
+        pr::FrontEnd f;
+        CHECK(f.Update(-1));
+        for (int i = 0; i < pr::FrontEnd::kGameplayFrames; ++i) {
+            CHECK(!f.Update(0));
+        }
+        CHECK(!f.Starting());
+        CHECK(!f.Update(5));
+    }
+    {   // Plain VR from the start: shown at once.
+        pr::VrEntry v;
+        CHECK(!v.Hold(true, 1000));
+        CHECK(!v.Hold(true, 1010));
+        CHECK(!v.Hold(false, 1020));   // any other view: at once
+        CHECK(v.Covered() == 0);
+    }
+    {   // The title's 6 -> 0 -> 7: the 40 ms of mode 0 shows the cinematic's view, then the menu's panel; never the world.
+        pr::VrEntry v;
+        CHECK(!v.Hold(false, 0));     // the cinematic on the 3D screen
+        CHECK(v.Hold(true, 16));      // mode 0: held
+        CHECK(v.Hold(true, 40));
+        CHECK(!v.Hold(false, 56));    // the main menu's panel
+        CHECK(v.Covered() == 1);
+    }
+    {   // A cutscene's end into gameplay: the world after the hold, and it stays.
+        pr::VrEntry v;
+        CHECK(!v.Hold(false, 0));
+        CHECK(v.Hold(true, 10));
+        CHECK(v.Hold(true, 109));
+        CHECK(!v.Hold(true, 110));    // 100 ms after the first plain VR frame
+        CHECK(!v.Hold(true, 120));
+        CHECK(!v.Hold(false, 130));   // a menu: at once
+        CHECK(v.Hold(true, 140));     // and back: held again
+        CHECK(v.Covered() == 0);
+        CHECK(!v.Hold(true, 240, 100));
+    }
+    {   // A clock that went back while holding ends the hold rather than holding forever.
+        pr::VrEntry v;
+        CHECK(!v.Hold(false, 500));
+        CHECK(v.Hold(true, 510));
+        CHECK(!v.Hold(true, 400));
+    }
+}
+
 void TestCineScreen() {
     namespace cs = mevr::vr::cine_screen;
     // The crop: the two shown parts are c apart and (1 - c) wide, so infinity's disparity is depth of the shown width.
@@ -10673,6 +10747,7 @@ int main() {
     TestGalaxyHologram();
     TestWorldUi();
     TestCineScreen();
+    TestPresentationHold();
     TestDevChannelsAndDiskBudget();
     TestBoneNames();
     TestIk();

@@ -142,13 +142,20 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Calibration on each controller type: the rifle step finishes, the far orb is in reach, the cyan ring sits where
   your hand feels it. PS VR2 and a Quest over Steam Link get different calibrations. (research/25 sections 4, 8-9)
 
+### The game's start on one panel (session: Weapon-specific scope models)
+- [ ] Launch the game with the headset on: from the first frame the logos, the title, the camera flight after a key, the
+  main menu and the load's movie all show on one flat panel that stays where it appeared; no moment of the title's
+  planet painting filling the view, no 3D cinema screen in between, no flash of the world after the key. The level then
+  comes in as VR. (research/56, built 2026-11-05)
+
 ## 3. Aiming, sights and scopes (session: Weapon-specific scope models)
 - [ ] Raise the sniper rifle: the picture only at the eye (never at a casual hold), no on/off flicker, the eye reaches
   the eyepiece; lowered, the gun eases back. (research/21 section 15)
 - [ ] Under the scope, flick the right stick forward and back: the zoom steps 3.5x / 7x with a tick; the reticle reads.
   (research/21 section 16)
 - [ ] The scope's real zoomed render: sharp, upright, not mirrored, the reticle on target; the world stays put when only
-  your head moves and follows the gun without lag. (research/39 section 10)
+  your head moves and follows the gun without lag. A black speckle in dark areas is known and kept for now
+  (`[Sights] scopeCapturePost = 0` removes it and the grade); say if it bothers you. (research/39 sections 10, 12)
 - [ ] The assault rifle's red dot at the cheek: shows without hunting, lines up. Close each eye in turn: the dot and the
   scope show in the aiming eye only, on SteamVR and on the Oculus runtime. (research/21 sections 7, 11)
 - [ ] Shot groups: the pistol at 10-20 m on the dot, the sniper at 5 m and 20-40 m on the crosshair, no drift to the

@@ -3528,10 +3528,12 @@ static CineDecision DecideCine(const CineInputs& in,
     // to remove. The video itself is handled by [DEADVETO] in CineFinishDecision and by the
     // inMovie flat-force, so holding the CONTEXT costs nothing.
     static bool s_convo = false, s_cutscene = false;
-    if (in.gameMode == 5)                          { s_convo = true;  s_cutscene = false; }
-    else if (in.gameMode == 6)                     { s_convo = false; s_cutscene = true;  }
+    // [MEVR] research/56: a 5 or 6 the front end shows as its menu (the title's camera flight, inMenuMode) never latches.
+    if (in.gameMode == 5 && !in.inMenuMode)        { s_convo = true;  s_cutscene = false; }
+    else if (in.gameMode == 6 && !in.inMenuMode)   { s_convo = false; s_cutscene = true;  }
     else if (in.gameMode >= 0 && in.gameMode <= 4) { s_convo = false; s_cutscene = false; }
-    else if (in.haveCineMode && !s_convo && !s_cutscene)
+    else if (in.haveCineMode && !s_convo && !s_cutscene &&
+             in.gameMode < 0 && !in.inMenuMode)   // [MEVR] only an unreadable byte, as said below, outside the front end (research/56)
     {
         // Mode byte unreadable and nothing latched: fall back to ME1's second signal, the camera
         // class name. Only a DEFINITE name may open the latch here - Interpolate/Transition and
@@ -3654,7 +3656,11 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // the residual cutscene judder that survived every tag fix. The publish now happens after
     // DecideCine with the LATCHED context folded in, so the replay gate and the presentation can
     // never disagree mid-scene again.
-    const bool inMenuMode   = (gameMode == 7);                      // 7 = GUI (full-screen front-end menu)
+    // [MEVR] research/56: an unreadable byte at start-up or after the GUI or a movie (a load from the menus) is the menu it
+    // follows, not plain VR (the title's 3D backdrop filled the view for 2 s at every launch); so are the front end's
+    // cinematics before the first load or gameplay (the title's camera flight). Called every frame.
+    const bool frontEndHold = MELEVR::MevrBridge::FrontEndHold(gameMode);
+    const bool inMenuMode   = (gameMode == 7) || frontEndHold;      // 7 = GUI (full-screen front-end menu)
     const bool inGalaxyMode = (gameMode == 9);                      // 9 = Galaxy map (flat mono, or VR w/ zoom)
     // PRERENDERED MOVIE / 2D-only detection (2026-07-07: movies are too zoomed in). A prerendered
     // movie (and loading / main-menu screens) renders NO 3D perspective view, so the "presents since the last
@@ -3745,7 +3751,13 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     cineIn.liveWorldGui = liveWorldGui;
     cineIn.manualFlat   = g_flatCineCopyActive.load(std::memory_order_acquire);
     cineIn.sfr2CfgOn    = cfg.sfr2Enabled && !cfg.stereoEnabled && !cfg.aerEnabled && !cfg.dibrEnabled;
-    const CineDecision cine = DecideCine(cineIn, cfg);
+    CineDecision cine = DecideCine(cineIn, cfg);
+    {   // [MEVR] research/56: plain VR after another view waits 100 ms with that view kept: pressing a key at the title went
+        // 6 -> 0 -> 7 within 40 ms, one frame of the world between the cinematic's screen and the main menu's panel.
+        static CineDecision s_shownCine;
+        if (MELEVR::MevrBridge::HoldPlainVr(!cine.forceFlatCine && !cine.vrCineActive, gameMode)) cine = s_shownCine;
+        else s_shownCine = cine;
+    }
     const bool inConversationMode = cine.inConversation;
     const bool inCutsceneMode     = cine.inCutscene;
     const bool vrCineActive       = cine.vrCineActive;
@@ -3763,7 +3775,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // moment video is involved; the latch fold is for camera-mode blips inside REAL 3D scenes only.
     {
         int effectiveGm = gameMode;
-        if (!binkActiveNow && !inMovie)
+        if (frontEndHold) effectiveGm = 7;   // [MEVR] research/56: the front end's menu renders no second eye (as 7)
+        else if (!binkActiveNow && !inMovie)
         {
             if (inConversationMode)  effectiveGm = 5;
             else if (inCutsceneMode) effectiveGm = 6;

@@ -470,6 +470,16 @@ struct CineScreenQuads
 };
 // Present thread, each frame a VR cine is decided: whether this one goes on the 3D screen ([Cinematics]).
 bool CineScreenWanted(bool conversation) noexcept;
+
+// ---- Holds on the presentation decision (src/plugin/PresentationHold.cpp, core/vr/PresentationHold, research/56) ------
+// Present thread, each frame with the mode byte as read (-1 unreadable), before the decision: true while the frame is the
+// front end's menu: an unreadable stretch at start-up or after the GUI or a movie, or a cinematic (5, 6) before the first load
+// or gameplay. RunFrame then treats it as the menu (the flat panel, no second eye) instead of plain VR or a cine, and neither
+// the mode nor the camera's name latches a cine there.
+bool FrontEndHold(int gameMode) noexcept;
+// Present thread, each frame after the decision: true to show the previous frame's presentation instead of this one's plain
+// VR (plain VR after another view waits 100 ms, so a one-frame mode 0 between two other views never shows the world).
+bool HoldPlainVr(bool plainVr, int gameMode) noexcept;
 // Present thread, at submit: the screen, the last plan's crop and each eye's shown part of an image `eyeWidth` x `eyeHeight`.
 // False before any plan (then nothing is cropped).
 bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept;

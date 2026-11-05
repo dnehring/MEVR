@@ -309,6 +309,13 @@ switching frameworks.
   the eye distance (`core/vr/CineScreen`, unit-tested). `[MEVR]` seams in xr_session.cpp (decision, park, projection, lean, plan,
   submit, and the conversation movie at its authored size instead of Halcyon's half-size VR layout: the wheel 1.75x larger); host
   `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE] ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
+- LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
+  `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
+  or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start
+  (Halcyon showed the title's 3D backdrop as plain VR for 1.5-2 s), the logos' movie mode, the title and its camera flight (6,
+  which latched a cutscene: the 3D screen came and went); after the menus a load's -1 and 8 too. The camera's name latches a
+  cine only when the byte is unreadable (Halcyon's own comment). Plain VR after another view waits 100 ms (the title's 6, 0, 7
+  flashed the world for a frame). Log `presentation:`.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,
