@@ -61,7 +61,7 @@ All 35 templates of the GUI library, in its order. "Room" = the world UI below. 
 | **shop** | GUI_SF_Shop.PCShop | a vendor's conversation, `BioSeqAct_OpenShop` (its `m_shop` is a BioShop actor placed at the vendor) | Flash, the item's picture (a render target in the movie) | **room: at counter height in front of the vendor** | done (section 4) |
 | ReplayCharacterSelect | GUI_SF_ReplayCharacterSelect.PC_ReplayCharacterSelect | new game+ | front end | flat | keep |
 | GalaxyMap | GUI_SF_GalaxyMap.GalaxyMap | the CIC console (mode 9) | its own 3D map level + Flash | ours: hologram, then the game's map on the projector's disc | done (research/51) |
-| PartySelect | GUI_SF_PartySelect.PartySelect | `BioSeqAct_ShowPartySelectionGUI` before missions | Flash (+ UI world? [verify]) | **room**, toward what was used | listed [verify] |
+| PartySelect | GUI_SF_PartySelect.PartySelect | `BioSeqAct_ShowPartySelectionGUI` before missions | Flash (the squad as pictures in the movie: no UI world) | **room**, toward what was used | done, seen on UNC20 (section 5.1) |
 | NewCharacter | GUI_SF_MainMenu.CharacterCreation | character creation | the UI world's Shepard (`BioUIWorld.m_oNCHandler`) | flat | keep (front end); later a mirror |
 | AdditionalContent | GUI_SF_AdditionalContent.AdditionalContent | DLC list | Flash | **room** | listed [verify] |
 | **MenuBrowser** | GUI_SF_InGameGui.PC_MainWheel | Start / our menu's Game menu (`ShowMenuGui`); the hub for the screens below | Flash | **room, straight ahead** | done |
@@ -75,7 +75,7 @@ All 35 templates of the GUI library, in its order. "Room" = the world UI below. 
 | GameOver | GUI_SF_GameOver.GameOver | death | Flash | **room** | listed [verify] |
 | CharacterRecord | GUI_SF_CharacterRecord.PC_CharacterRecord | the wheel, `ShowSquadGui` | Flash + Shepard in the UI world | **room**, the 3D model missing | with Inventory |
 | Credits | GUI_SF_Utility.Credits | the end | text | flat | keep |
-| DesignerUI | GUI_SF_HUD.DesignerUI | designer minigames and timers (layouts: Quasar, Mira's Hanoi, the laser, the toxin cure; the bomb disarm's timer); always open, hidden until used | an overlay over the live world | **room** in mode 7 while visible, toward what was used | listed [verify] |
+| DesignerUI | GUI_SF_HUD.DesignerUI | designer minigames and timers (layouts: Quasar, Mira's Hanoi, the laser, the toxin cure; the bomb disarm's timer): Kismet's `BioSeqAct_MiniGame` (mode 10, `SFXGameModeMinigame`) with `BioSeqAct_DUISet<Layout>Layout`; always open, hidden until used | an overlay over the live world | **room** in mode 7 or 10 while visible, toward what was used | listed; not reached on the test rig (section 5.1) |
 | Specialization | GUI_SF_CharacterRecord.Specialization | `BioSeqAct_ShowSpecialization` | Flash | **room** | listed [verify] |
 | Save | GUI_SF_SaveLoad.PCLoadSave | the wheel | Flash | **room** | listed [verify] |
 | Load | GUI_SF_SaveLoad.PCLoadSave | the wheel, the title (the title stays flat: no level) | Flash | **room** in a level | listed [verify] |
@@ -172,7 +172,18 @@ The galaxy map's pieces made generic (core/vr/WorldUi, game/WorldUi, plugin/Worl
   opening under it (snapshot 14:28:10). Its frame filled only stage x 0.317..0.683, y 0.064..0.922 of a 1.20 x 0.67 m panel, the
   rest an empty 0.8 backdrop over the crate; cropped to its frame at the whole stage's scale (`DefaultCrop`, `RoomWidth`) it
   is 0.48 x 0.61 m with the list the same size (14:31:38). `mevr call <n> HideLootGui` on the `MassEffectGuiManager` closes it
-  (the first call was followed by a fresh opening, the second closed it [verify why]). `BioWorldInfo.BioLoadGame(96)` (a load by slot) loaded nothing from the title's
+  (the first call was followed by a fresh opening, the second closed it [verify why]).
+- **The squad selection** (`BioSeqAct_ShowPartySelectionGUI` of UNC20's own sequence, fired with `mevr activate`): the room
+  placement straight ahead (nothing used), 1.20 x 0.67 m at 0.95 m, its `bFullScreen` cleared so the level stands behind it
+  (snapshot 17:13:58): "Current Squad", the strength bars, Examine Squad / Accept Squad, the squad as the movie's own pictures
+  (the chosen one a blue hologram on an orange ring). Before a mission it has no way back: the handler has only `ConfirmParty`
+  and `FinalizeParty`, its movie no cancel, and B (`mevr panel PartySelect input 13`: the panel's handler takes a BioGuiEvent,
+  12 A, 13 B, 14 X) does nothing; accepting would run the level's squad sequence, so the test closed the game instead.
+- **The designer minigames** (Quasar, Mira's Hanoi, the laser, the toxin cure) aren't loaded on UNC20 (no `BioSeqAct_MiniGame`,
+  no layout actions). Flux's Quasar machines need the Citadel: `open BIOA_STA00` from this save started the post-Eden Prime
+  medbay conversation, and its dialogue wheel takes the choice only through the game's own input (the handler's A did nothing),
+  which the unfocused test rig can't give. To do in the headset, or from a save standing in Flux [verify]. The saves stayed
+  unchanged. `BioWorldInfo.BioLoadGame(96)` (a load by slot) loaded nothing from the title's
   Normandy: the user's Citadel save is another career's, so a real crate still means the menus.
 
 ## 6. The bypass minigame: reached on the Normandy, projected from the wrist (2026-11-04)

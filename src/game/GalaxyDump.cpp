@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
@@ -886,6 +887,18 @@ std::string Panel(ue3::Object* controller, std::string const& tag, std::string c
         bool const called = CallOn(chosen, "GetVariableString", [&](ue3::Params& p) { p.Set("sPath", name.Get()); },
             [&](ue3::Params& p) { value = TakeString(p.Return<ue3::FString>().value_or(ue3::FString{})); });
         return std::format("panel: {} var {}: called {}, '{}'", tag, arg, called, value);
+    }
+    if (verb == "input") {
+        // `mevr panel <tag> input <event>`: the panel's handler takes a BioGuiEvent as the game's input would hand it over
+        // (HandleInputEvent(Event, 1): 12 A, 13 B, 14 X; research/53): B backs out of a screen that has no close function.
+        ue3::Object* const handler = ReadObject(r, chosen, "m_DefaultHandler");
+        int const event = std::atoi(arg.c_str());
+        bool const called = handler != nullptr && CallOn(handler, "HandleInputEvent", [&](ue3::Params& p) {
+            p.Set("Event", static_cast<std::uint8_t>(event));
+            p.Set("fValue", 1.0f);
+        }, nullptr);
+        return std::format("panel: {} handler {}.HandleInputEvent({}, 1) called {}", tag, handler != nullptr ? r.FullName(handler) : "none",
+            event, called);
     }
     if (verb == "invoke") {
         mem::OwnedString name(mem::Widen(arg));
