@@ -42,9 +42,11 @@ std::optional<Entry> FromId(std::string_view id);
 std::optional<Entry> ForScreen(world_ui::Screen screen);
 
 // ---- Where it stands ----
-inline constexpr float kRailAspect = 0.36f;    // width over height (its canvas: 360 x 1000)
+// Sized for a fingertip (the user, 2026-11-04: "too small for VR finger interaction"): the game's frame fills a 360 x 640 canvas,
+// so beside a 0.31 m screen each tab is about 3 x 14.5 cm (it was 1.85 x 9.3 on 360 x 1000, the frame filling 62% of it).
+inline constexpr float kRailAspect = 0.5625f;  // width over height (its canvas: 360 x 640)
 inline constexpr float kGapM = 0.015f;         // between the rail and the screen beside it
-inline constexpr float kAloneHeightM = 0.26f;  // alone on the wrist: its height
+inline constexpr float kAloneHeightM = 0.32f;  // alone on the wrist: its height (tabs about 3 cm)
 struct Rail {
     XrPosef pose{};  // its centre; it faces +Z (toward the eyes), like the screen
     float widthM = 0.0f;

@@ -28,6 +28,10 @@ Output Pointer::Release() {
     latched_[0] = latched_[1] = false;
     touchArmed_[0] = touchArmed_[1] = false;
     touchLatched_[0] = touchLatched_[1] = false;
+    touchWaiting_ = false;  // a touch not yet decided is dropped (no click); a tap's down already sent gets its up above
+    dragging_ = false;
+    clickUpNext_ = false;
+    dragAccum_ = 0.0f;
     wasHit_ = false;
     reported_ = false;
     wheelAccum_ = 0.0f;
@@ -152,15 +156,61 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
     // A press starts only on the quad; once started it lasts until the trigger lets go (or the fingertip pulls back), even if
     // the point slides off (dragging a slider or a map past the edge), so the button up always follows the button down.
     bool const wasPressing = pressing_;
-    if (wasPressing) {
+    float dragNotches = 0.0f;
+    if (clickUpNext_) {
+        pressing_ = false;  // a tap: its button up, one step after the down
+        clickUpNext_ = false;
+    } else if (wasPressing) {
         pressing_ = pressByTouch_ ? touchLatched_[hand_] : triggers[hand_];
+    } else if (touchWaiting_ || dragging_) {
+        Touch const& t = touches[touchHand_];
+        bool const held = touchLatched_[touchHand_];
+        if (dragging_) {
+            if (held) {
+                dragNotches = (t.v - dragV_) * quad.height / std::max(settings_.touchScrollNotchM, 1e-3f);  // down: scroll up
+                dragV_ = t.v;
+            } else {
+                dragging_ = false;
+                dragAccum_ = 0.0f;
+            }
+        } else {
+            waitS_ += std::max(input.dt, 0.0f);
+            float const du = (t.u - waitU_) * quad.width;
+            float const dv = (t.v - waitV_) * quad.height;
+            if (!held) {
+                touchWaiting_ = false;  // let go before deciding: a tap
+                pressing_ = true;
+                pressByTouch_ = true;
+                clickUpNext_ = true;
+            } else if (std::sqrt(du * du + dv * dv) > settings_.touchDragM) {
+                touchWaiting_ = false;
+                dragging_ = true;
+                dragV_ = t.v;
+                dragAccum_ = 0.0f;
+            } else if (waitS_ >= settings_.touchHoldS) {
+                touchWaiting_ = false;  // held still: a press, as without scrolling
+                pressing_ = true;
+                pressByTouch_ = true;
+            }
+        }
     } else if (touchHand >= 0) {
-        pressing_ = touchLatched_[hand_];
-        pressByTouch_ = pressing_;
+        if (touchLatched_[hand_] && settings_.touchScroll) {
+            touchWaiting_ = true;
+            touchHand_ = hand_;
+            waitS_ = 0.0f;
+            waitU_ = touches[hand_].u;
+            waitV_ = touches[hand_].v;
+            pressing_ = false;
+        } else {
+            pressing_ = touchLatched_[hand_];
+            pressByTouch_ = pressing_;
+        }
     } else {
         pressing_ = pointing && triggers[hand_];
         pressByTouch_ = false;
     }
+    out.touchWaiting = touchWaiting_;
+    out.dragging = dragging_;
     out.hand = hand_;
     out.onQuad = pointing;
     out.hit = pointing || pressing_;
@@ -194,7 +244,7 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
         out.x = static_cast<int>(reportedX_);
         out.y = static_cast<int>(reportedY_);
     }
-    // The wheel: whole notches as they accumulate.
+    // The wheel: whole notches as they accumulate (the stick, and a fingertip's drag).
     float const stick = input.rightStickY;
     if (std::fabs(stick) > settings_.stickDeadZone && input.dt > 0.0f) {
         wheelAccum_ += stick * settings_.wheelPerSecond * std::min(input.dt, 0.1f);
@@ -203,7 +253,10 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
     }
     float whole = 0.0f;
     wheelAccum_ = std::modf(wheelAccum_, &whole);
-    out.wheelNotches = static_cast<int>(whole);
+    dragAccum_ += dragNotches;
+    float dragWhole = 0.0f;
+    dragAccum_ = std::modf(dragAccum_, &dragWhole);
+    out.wheelNotches = static_cast<int>(whole) + static_cast<int>(dragWhole);
     return out;
 }
 

@@ -12,7 +12,7 @@ body, div { display: block; }
 
 body {
 	width: 360dp;
-	height: 1000dp;
+	height: 640dp;  /* plugin/OmniToolRail's canvas, vr::omni_rail::kRailAspect */
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -24,7 +24,7 @@ body {
 .panel {
 	display: flex;
 	flex-direction: column;
-	gap: 10dp;
+	gap: 8dp;
 	padding: 26dp 18dp 28dp 18dp;
 	decorator: bevel(30dp rgba(16,34,58,92%) rgba(8,17,32,92%) #4F82B2 2dp rgba(120,175,220,42%) 8dp);
 }
@@ -38,9 +38,9 @@ body {
 .kicker {
 	font-family: Rajdhani;
 	font-weight: 700;
-	font-size: 38dp;
+	font-size: 32dp;
 	letter-spacing: 0.08em;
-	line-height: 40dp;
+	line-height: 34dp;
 	color: #B9F3F6;
 	font-effect: glow(1dp 5dp 0dp 0dp rgba(110,220,240,45%));
 }
@@ -52,13 +52,13 @@ body {
 }
 
 .entry {
-	height: 92dp;
+	height: 64dp;
 	flex: 0 0 auto;
 	display: flex;
 	align-items: center;
 	gap: 16dp;
 	padding: 0dp 22dp 0dp 26dp;
-	font-size: 30dp;
+	font-size: 26dp;
 	color: #CBEBF5;
 	decorator: slant(16dp rgba(30,78,108,94%) rgba(17,46,72,94%) #5C93BE #2E5E86 2dp transparent 0dp);
 }
@@ -77,8 +77,8 @@ body {
 
 /* The icon in its rounded square, as the game's weapon tabs. */
 .box {
-	width: 54dp;
-	height: 54dp;
+	width: 44dp;
+	height: 44dp;
 	flex: 0 0 auto;
 	display: flex;
 	align-items: center;
@@ -86,13 +86,13 @@ body {
 	decorator: chamfer(7dp rgba(10,32,52,85%) rgba(6,20,36,85%) rgba(126,190,230,75%) rgba(70,130,180,60%) 1.5dp);
 }
 .entry.on .box { decorator: chamfer(7dp rgba(255,255,255,22%) rgba(255,255,255,8%) #E8FDFF #BDEFFA 1.5dp); }
-.ico { width: 34dp; height: 34dp; color: #8FD0EA; }
+.ico { width: 28dp; height: 28dp; color: #8FD0EA; }
 .entry:hover .ico { color: #BDEBFA; }
 .entry.on .ico { color: #FFFFFF; }
 .label { flex: 1 1 auto; }
 
 .entry.close {
-	height: 70dp;
+	height: 56dp;
 	margin-top: 8dp;
 	font-size: 25dp;
 	color: #8FB9CC;
@@ -121,8 +121,8 @@ body.art .panel {
 	position: relative;     /* the title's place is the frame's notch */
 	box-sizing: border-box; /* the texture is exactly this size, padding included */
 	width: 360dp;
-	height: 620dp;
-	gap: 8dp;
+	height: 640dp;
+	gap: 10dp;
 	padding: 62dp 20dp 48dp 40dp;
 	decorator: image(mevr:me1-panel);
 }
@@ -146,12 +146,12 @@ body.art .sub, body.art .rule, body.art .box { display: none; }
 body.art .entry, body.art .entry.close {
 	box-sizing: border-box;
 	width: 300dp;
-	height: 60dp;
+	height: 64dp;
 	margin-top: 0dp;
 	padding: 0dp 0dp 0dp 52dp;
 	font-family: "ME1 Tigensu";
 	font-weight: normal;
-	font-size: 26dp;
+	font-size: 28dp;
 	letter-spacing: 0em;
 	color: #D2F1F8;
 	font-effect: none;

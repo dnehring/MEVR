@@ -53,7 +53,7 @@ namespace gp = vr::game_pointer;
 namespace wu = vr::world_ui;
 
 constexpr int kWidth = 360;    // the document's size (dp = pixels), rail::kRailAspect
-constexpr int kHeight = 1000;
+constexpr int kHeight = 640;
 constexpr std::int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // our bytes are sRGB already
 constexpr std::uint64_t kSettingsEveryMs = 2000;
 constexpr float kTipAheadM = 0.035f;  // the index fingertip ahead of the aim pose (plugin/GamePointer's touchTipM)

@@ -697,7 +697,7 @@ int main(int argc, char** argv) {
     // with --gameart in the game's own art.
     {
         constexpr int rw = 360;
-        constexpr int rh = 1000;
+        constexpr int rh = 640;
         mevr::menu::Ui railUi;
         mevr::menu::UiSetup railSetup = setup;
         railSetup.document = L"omnitool.rml";

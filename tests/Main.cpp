@@ -2261,7 +2261,9 @@ void TestGamePointer() {
     touch.height = 750;
     touch.dt = 1.0f / 90.0f;
     touch.hands[1].tipValid = true;
-    Pointer finger;
+    Settings pressAtOnce;
+    pressAtOnce.touchScroll = false;  // these checks: a press at the surface at once (scrolling's tap, hold and drag below)
+    Pointer finger(pressAtOnce);
     auto tipAt = [&](float x, float y, float depth) {  // depth: in front of the panel, meters
         touch.hands[1].tip = {x, 1.6f + y, -0.5f + depth};
         return finger.Step(panel, touch);
@@ -2278,6 +2280,56 @@ void TestGamePointer() {
     CHECK(out.pressed);
     out = tipAt(0.05f, 0.0f, 0.03f);  // pulled back: let go
     CHECK(!out.pressed && out.pressEdge && out.hit);
+    // Scrolling by touch (the default): a tap clicks on letting go, a hold presses, a drag scrolls and never clicks.
+    {
+        Pointer tap;
+        auto at = [&](Pointer& p, float x, float y, float depth) {
+            touch.hands[1].tip = {x, 1.6f + y, -0.5f + depth};
+            return p.Step(panel, touch);
+        };
+        out = at(tap, 0.05f, 0.0f, 0.03f);   // hovering
+        out = at(tap, 0.05f, 0.0f, 0.002f);  // at the surface: waiting, nothing pressed yet
+        CHECK(out.touchWaiting && !out.pressed && !out.pressEdge);
+        out = at(tap, 0.05f, 0.0f, 0.03f);   // let go at once: the button down...
+        CHECK(out.pressed && out.pressEdge && !out.touchWaiting);
+        out = at(tap, 0.05f, 0.0f, 0.03f);   // ...and up on the next step
+        CHECK(!out.pressed && out.pressEdge);
+        Pointer hold;
+        out = at(hold, 0.05f, 0.0f, 0.03f);
+        out = at(hold, 0.05f, 0.0f, 0.002f);
+        CHECK(out.touchWaiting && !out.pressed);
+        bool pressedByHold = false;
+        for (int i = 0; i < 20 && !pressedByHold; ++i) {  // 20 steps of 1/90 s: past touchHoldS (0.15 s) held still
+            out = at(hold, 0.05f, 0.0f, 0.0f);
+            pressedByHold = out.pressed && out.pressEdge;
+        }
+        CHECK(pressedByHold);
+        out = at(hold, 0.05f, 0.0f, 0.03f);  // pulled back: let go
+        CHECK(!out.pressed && out.pressEdge);
+        Pointer drag;
+        out = at(drag, 0.05f, 0.05f, 0.03f);
+        out = at(drag, 0.05f, 0.05f, 0.002f);  // at the surface, 5 cm above the centre
+        int dragged = 0;
+        bool everPressed = false;
+        for (int i = 1; i <= 10; ++i) {  // drags 6.5 cm down along the surface: a notch per 1.3 cm, scrolling up
+            out = at(drag, 0.05f, 0.05f - 0.0065f * static_cast<float>(i), 0.0f);
+            dragged += out.wheelNotches;
+            everPressed = everPressed || out.pressed;
+        }
+        CHECK(out.dragging && !everPressed);
+        CHECK(dragged >= 4 && dragged <= 5);  // the first 1.2 cm decide it's a drag
+        out = at(drag, 0.05f, -0.015f, 0.03f);  // let go: no click
+        CHECK(!out.pressed && !out.pressEdge && !out.dragging);
+        // A drag up scrolls down.
+        Pointer up;
+        out = at(up, 0.0f, -0.05f, 0.03f);
+        out = at(up, 0.0f, -0.05f, 0.002f);
+        int upNotches = 0;
+        for (int i = 1; i <= 10; ++i) {
+            upNotches += at(up, 0.0f, -0.05f + 0.0065f * static_cast<float>(i), 0.0f).wheelNotches;
+        }
+        CHECK(upNotches <= -4);
+    }
     // From behind: a hand coming through the panel never presses.
     Pointer behind;
     touch.hands[1].tip = {0.0f, 1.6f, -0.52f};

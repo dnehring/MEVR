@@ -60,6 +60,15 @@ struct Settings {
     float touchBehindM = 0.06f;   // how far behind the surface a pressing tip still holds the press
     float touchMarginM = 0.01f;
     float touchSmoothing = 0.8f;  // a lighter smoothing than the ray's: the fingertip is steady
+    // Scrolling by touch (research/56, the user 2026-11-04: "we'd need scrolling support when we're going through inventory"):
+    // a fingertip at the surface waits before it presses. Let go within touchHoldS without moving: a click (the button down,
+    // and up on the next step). Held still past touchHoldS: a press as before (holding, dragging a slider). Moved more than
+    // touchDragM along the surface first: a drag that scrolls (a wheel notch per touchScrollNotchM, the content following the
+    // finger) and never clicks. touchScroll = false presses at once, as before.
+    bool touchScroll = true;
+    float touchHoldS = 0.15f;
+    float touchDragM = 0.012f;
+    float touchScrollNotchM = 0.013f;
 };
 
 struct Output {
@@ -79,6 +88,8 @@ struct Output {
     XrVector3f point{};        // the hit in the tracking space (the dot)
     bool touch = false;        // the point is a fingertip's (near the quad), not a ray's
     float touchDistance = 0.0f;  // the fingertip in front of the surface, meters (< 0 behind it)
+    bool touchWaiting = false;   // a fingertip is at the surface, not yet a click, a press or a drag
+    bool dragging = false;       // a fingertip drags along the surface: it scrolls (wheelNotches), nothing pressed
 };
 
 class Pointer {
@@ -100,6 +111,15 @@ private:
     bool touchArmed_[2] = {false, false};    // the tip was in front of the surface, in reach, since it last left
     bool touchLatched_[2] = {false, false};  // the tip pressed and hasn't pulled back past touchReleaseM
     bool pressByTouch_ = false;              // the open press is a touch's (else a trigger's)
+    bool touchWaiting_ = false;              // a touch reached the surface: click, press or drag not decided yet
+    bool dragging_ = false;                  // the touch is a drag: it scrolls
+    bool clickUpNext_ = false;               // a tap's button down was sent: its up goes on the next step
+    int touchHand_ = 1;                      // the hand of the waiting or dragging touch
+    float waitS_ = 0.0f;
+    float waitU_ = 0.0f;                     // where the touch reached the surface (quad UV)
+    float waitV_ = 0.0f;
+    float dragV_ = 0.0f;                     // the drag's last V
+    float dragAccum_ = 0.0f;                 // notches not yet whole
     bool lastTouch_ = false;                 // the last step's point was a fingertip's
     int hand_ = 1;
     bool latched_[2] = {false, false};

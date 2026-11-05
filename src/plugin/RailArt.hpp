@@ -31,9 +31,9 @@ struct Status {
 
 struct Sizes {
     int tabWidth = 300;
-    int tabHeight = 60;
+    int tabHeight = 64;
     int panelWidth = 360;
-    int panelHeight = 620;
+    int panelHeight = 640;
 };
 
 // The cache folder (%LOCALAPPDATA%\MEVR\gameart).
