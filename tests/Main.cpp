@@ -11233,6 +11233,7 @@ int RunExeTests();
 int RunGfxTests();
 int RunPowerWheelTests();
 int RunGuiEventsTests();
+int RunSquadPhrasingTests();
 int RunCockpitPanelTests();
 
 // core/vr/PowerWheel: the hand's power wheel (research/55, the concept of 2026-11-04).
@@ -11370,6 +11371,7 @@ int main() {
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
     gFailures += RunGuiEventsTests();
+    gFailures += RunSquadPhrasingTests();
     gFailures += RunCockpitPanelTests();
     TestUpscale();
     TestMakoGunner();

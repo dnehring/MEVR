@@ -199,9 +199,13 @@ struct Who {
     char letter = 0;  // Member
 };
 struct Target {
-    enum Kind : std::uint8_t { None, Group, Pointed, Aim, Gaze, Last, Other, Self } kind = None;
-    int index = 0;  // Group: the id; Pointed: the deictic's index
+    // Direction: "go left", "move up", "flank right": a point `directionM` from the player that way (index: the Sector);
+    // an attack that way is the nearest group in that sector.
+    enum Kind : std::uint8_t { None, Group, Pointed, Aim, Gaze, Last, Other, Self, Direction } kind = None;
+    int index = 0;  // Group: the id; Pointed: the deictic's index; Direction: the Sector
 };
+// The point `distanceM` from the player's feet in a direction relative to where they face (Behind: back the way they came).
+Vec3 DirectionPoint(Scene const& scene, Sector sector, float distanceM);
 struct Action {
     Who who;
     int weapon = -1;     // squad_menu's type, or -1

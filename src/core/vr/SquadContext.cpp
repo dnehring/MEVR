@@ -380,9 +380,22 @@ std::string Line(Action const& a) {
     case Target::Last: target = "LAST"; break;
     case Target::Other: target = "OTHER"; break;
     case Target::Self: target = "SELF"; break;
+    case Target::Direction: target = Upper(Name(static_cast<Sector>(a.target.index))); break;
     case Target::None: break;
     }
     return std::format("{}|{}|{}|{}|{}", who, WeaponCode(a.weapon), a.power.empty() ? "-" : a.power, Name(a.order), target);
+}
+
+Vec3 DirectionPoint(Scene const& scene, Sector sector, float distanceM) {
+    float yaw = scene.headYawDeg;
+    switch (sector) {
+    case Sector::Left: yaw -= 90.0f; break;
+    case Sector::Right: yaw += 90.0f; break;
+    case Sector::Behind: yaw += 180.0f; break;
+    case Sector::Ahead: break;
+    }
+    float const r = yaw * 3.14159265f / 180.0f;
+    return {scene.player.x + std::cos(r) * distanceM, scene.player.y + std::sin(r) * distanceM, scene.player.z};
 }
 
 std::optional<Action> ParseLine(std::string_view line) {
@@ -436,6 +449,10 @@ std::optional<Action> ParseLine(std::string_view line) {
     else if (target == "LAST") a.target.kind = Target::Last;
     else if (target == "OTHER") a.target.kind = Target::Other;
     else if (target == "SELF") a.target.kind = Target::Self;
+    else if (target == "AHEAD") a.target = {Target::Direction, static_cast<int>(Sector::Ahead)};
+    else if (target == "LEFT") a.target = {Target::Direction, static_cast<int>(Sector::Left)};
+    else if (target == "RIGHT") a.target = {Target::Direction, static_cast<int>(Sector::Right)};
+    else if (target == "BEHIND") a.target = {Target::Direction, static_cast<int>(Sector::Behind)};
     else if (target.size() >= 2 && target[0] == 'E') {
         auto const v = number(std::string_view(target).substr(1));
         if (!v || *v <= 0) return std::nullopt;
@@ -600,6 +617,25 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
     }
     case Target::Self:
         break;
+    case Target::Direction: {
+        // A move or hold that way needs no group (the dispatcher makes the point); an attack that way is the nearest group there.
+        if (a.target.index < 0 || a.target.index > static_cast<int>(Sector::Behind)) {
+            r.problem = "no such direction";
+            return r;
+        }
+        if (r.order == Order::Attack || r.order == Order::Use) {
+            Group const* best = nullptr;
+            for (Group const& g : groups) {
+                if (g.sector == static_cast<Sector>(a.target.index) && (best == nullptr || g.distanceM < best->distanceM)) best = &g;
+            }
+            if (best == nullptr) {
+                r.problem = std::format("nothing {}", Name(static_cast<Sector>(a.target.index)));
+                return r;
+            }
+            r.group = best->id;
+        }
+        break;
+    }
     }
     if (r.group != 0 && Find(groups, r.group) == nullptr) {
         r.problem = std::format("group E{} is gone", r.group);

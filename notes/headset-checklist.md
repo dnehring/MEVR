@@ -212,7 +212,9 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
   index 0?), `QuickCommandAttackTarget` honouring its target, the move point dropped along the swapped Rotation, HOLD
   keeping them put and `GetMemberFormation` reading HOLD back, retreat to cover (does the AI take the slot or stand beside
   it), the AI accepting re-orders every `reassertS`, `mevr context`'s type words, power names and cooldowns, `mevr say` on
-  the compound sentence, and the trace cost while a hold is kept. (research/54, every `[verify]` after the trace section)
+  the compound sentence, a direction order's point (`mevr say "Garrus, go left"`: 8 m to the player's left), whether
+  `BioPawn.PlaySoundSet(59)` (HoldingPosition) has a line for a squadmate, and the trace cost while a hold is kept.
+  (research/54, every `[verify]` after the trace section)
 - Galaxy map: the top level in the window, going back out a level. (research/51 section 8.1)
 - Screens: the omni-gel override at an encrypted crate (`mevr skillgame`). (research/53 section 6)
 - Omni-tool screens: fingertip replays on Squad, Map, Journal, Codex and Computer; the squad member on the XMods screen

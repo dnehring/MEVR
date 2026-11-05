@@ -891,6 +891,7 @@ if (MEVR_BUILD_TESTS)
         tests/PowerWheelTests.cpp
         tests/GuiEventsTests.cpp
         src/core/vr/GuiEvents.cpp
+        tests/SquadPhrasings.cpp
         tests/CockpitPanelTests.cpp
         src/core/Exe.cpp
         src/core/ExeCheck.cpp

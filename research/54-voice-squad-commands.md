@@ -444,3 +444,58 @@ the history, else X's own position, else the gun's target. The sentence parses t
 its type word), `A|SR|-|-|-` (an equip, now dispatched through the squad menu's own switch, `squad_weapons::GiveWeapon`) and
 `A|-|-|attack|-` supporting L, at confidence 1, and the three are given in order, so Ashley's support finds Liara's attack
 standing from the first clause. Short vocabulary words match exactly now ("there" is one letter from "these").
+
+### The corpus: what a player says, and how much of it the rules take (2026-11-05)
+
+Research/54's plan, step 5: the share of a corpus the rule tier parses completely decides whether the model tier is a
+necessity or a nicety. With the game unavailable, the corpus is written, not recorded: [tests/SquadPhrasings.cpp](../tests/SquadPhrasings.cpp)
+holds 196 lines a player would say over the radio in one fight (Garrus and Wrex along, three geth groups: E1 troopers on a
+bridge left and above, E2 a destroyer ahead, E3 troopers right), each with the line it must become at a confidence the
+dispatcher acts on (0.6), or the reason it must be refused, or the shortfall it records. It runs with `mevr-tests` and prints
+the figure. **First run: 164 of 173 orders, 18 of 18 non-orders refused.** The nine misses were vocabulary collisions, not
+grammar: a weapon named with a target ("sniper, those on the bridge") was an equip without the attack; "hit him with" ate the
+"him"; "pull out" meant retreat and equip at once; "get back here" followed to a place; and a target named without a verb
+("Wrex, the destroyer") didn't count as an order, so the clause after it wasn't split off. **After them: 173 of 173, 18 of 18, 5
+known gaps open.** What the parser learned on the way (all in `core/vr/SquadParser`, unit-tested):
+
+- **Phrasal verbs split around their object**: "take them out", "light those guys up", "pick the troopers off", "finish him off",
+  "wipe them out", "put them down" (a table of verb + particle with up to three words between).
+- **Directions** are a target kind of their own, `Target::Direction` (`core/vr/SquadContext`; the line form `LEFT` / `RIGHT` /
+  `AHEAD` / `BEHIND`): "go left", "flank right", "move back", "cover the left" are a point 8 m that way from the player's feet
+  (`DirectionPoint`, the dispatcher's `kDirectionM`), never the group that happens to be on that side; "move up", "push",
+  "go go go" with nothing else are forward; an attack that way ("hit the left") is the nearest group in that sector.
+- **The owner of a power is implied**: "throw them", "overload", "hit the big group with warp" go to the one present squadmate
+  who has that power (the roster's codes against the party); with two owners or none the clause still asks "who".
+- **A power with an attack verb is its use**: "hit him with an overload", "overload the destroyer's shields".
+- **"Stay on him" attacks, "stay on the bridge" holds**: a hold verb on a thing (a type word, a pointed thing, AIM/LAST) keeps
+  attacking it until the group is gone; on a place (a surface, a direction, "here") it holds there.
+- **"Cover" without a squadmate after it is a hold**: "cover the door", "watch the left", "guard the bridge", bare "take cover" /
+  "get to cover" (the game has no cover order; its AI takes cover around a held point by itself); "cover me" / "watch my back"
+  / "help" are follows; "cover Garrus" stays a support.
+- **Two named squadmates are both** ("Garrus, Wrex, on me"; "Garrus and Wrex, attack": a conjunction splits a clause only after
+  an order), "everyone" after an order is a vocative like a name.
+- **"Go sniper" is an equip**, "long range" a sniper, "the three on the bridge" counts nothing.
+- **Talk is refused by name, not guessed at**: "I'm hit", "they're flanking us", "nice shot", "watch out", "what the hell was that"
+  (a deictic in talk with no verb is weighted down to 0.33) come back below the threshold; "Garrus, I'm hit, cover me" splits the
+  talk into its own clause and keeps the order for Garrus. Orders the game has no call for ("hold fire", "cease fire",
+  "medi-gel", "reload", "grenade", "heal me") are refused with "the game has no such order" so the player can be told why.
+- **The noun after a deictic is pointed at, not unknown**: "that krogan" with no krogan group here is `PT1` at full confidence.
+
+The five gaps on record, for a model or a surface lexicon: "snipe them **from** the bridge" (the description wins over the
+pointer); praise before a verbless order ("nice shot, now the destroyer"); "behind the crates" where the level has no word for
+the crates; "the big guy" being Wrex's own alias; a report's noun landing in the order that follows it ("I'm hit by the
+destroyer, get him"). The figure is for a written corpus in one scene, by one author who also wrote the parser, so it is an
+upper bound; the recorded corpus (plan step 2, the headset checklist's voice line) is what replaces it. It still says what step
+5 asked: the common command language is covered by rules, and the model tier's job is the residue and the recognizer's
+mistakes, not the grammar.
+
+**The acknowledgement, from the sound sets.** `BioPawn.EBioSoundSetType` names the lines a pawn can play: `GiveCommandFollow`
+(48) is in use and is what the follow trace heard (`SquadHandleChatterEvent`), `HoldingPosition` (59) exists, and
+`GiveCommandAttack` / `GiveCommandMove` / `AcceptedAttack` / `AcceptedMove` / `CompletedMove` are all `UNUSED`: LE1's squadmates
+voice a regroup, and nothing else the d-pad gives. So a spoken follow is answered by the game for free, a spoken attack or move
+by nothing, and the standing engine's re-asserted moves and attacks can never make them chatter (its retreat is a hold, so the
+only bark it can cause is the follow it falls back to with `retreatToCover = 0`). A hold could play `HoldingPosition` through
+`BioPawn.PlaySoundSet(59)` if the set has lines for the squadmates **[verify]**; `BioChatterSystem.CanPlayLine` rate-limits each
+set by its `m_MinTime`. For attack and move the acknowledgement has to be non-verbal: a haptic tick in the left hand when the
+order is dispatched, and a brief marker on the target group (the host already draws the power lock's brackets at a pawn,
+`powerlock`): the next piece of the feel.

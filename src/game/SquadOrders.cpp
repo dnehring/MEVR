@@ -493,6 +493,11 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
         }
         return byDefault;
     };
+    // "Go left", "move up", "cover the right": a point that way from the player's feet (an attack that way was resolved to a group).
+    if (!point && action.target.kind == sc::Target::Direction && (r.order == sc::Order::Move || r.order == sc::Order::Hold)) {
+        constexpr float kDirectionM = 8.0f;
+        point = Units(sc::DirectionPoint(squad_context::Scene(), static_cast<sc::Sector>(action.target.index), kDirectionM), gUpm);
+    }
     std::string what;
     switch (r.order) {
     case sc::Order::Follow:
