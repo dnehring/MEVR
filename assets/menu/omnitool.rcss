@@ -1,9 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * The omni-tool's rail (research/54): the column of the game's screens to the left of the screen projected from the left wrist,
- * or alone on the wrist. A hologram of the omni-tool's orange: the active screen lit orange, the others dim glass with orange
- * edges. Edit while the game runs: it reloads within a second of a save (plugin/OmniToolRail, a second context of the menu's).
- * The decorators are the main menu's (plugin/menu/MenuDecorators): chamfer(...) and icon(<name>).
+ * The omni-tool's rail (research/54) in ME1's own UI language, so it sits beside the game's screens as one of them (the owner,
+ * 2026-11-04: "those left menu items don't really look like they are in mass-effect"). Read from the game's equipment screen:
+ * octagonal panels with a slate-blue edge and a thin inner line over a dark navy gradient; slanted tabs, dark teal, the
+ * selected one bright cyan with white text and a glow (its squad list); light-blue line icons in rounded squares (its weapon
+ * tabs); pale cyan titles with a glow. Our own shapes and colours: no game art. Edit while the game runs: it reloads within a
+ * second of a save (plugin/OmniToolRail). Decorators (plugin/menu/MenuDecorators): bevel(...), slant(...), chamfer(...), icon(...).
  */
 
 body, div { display: block; }
@@ -14,59 +16,94 @@ body {
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-	gap: 14dp;
-	padding: 0dp 6dp;
-	font-family: Rajdhani;
-	font-weight: 700;
-	color: #FFE4CC;
+	font-family: "Titillium Web";
+	font-weight: 600;
+	color: #CBEBF5;
+}
+
+.panel {
+	display: flex;
+	flex-direction: column;
+	gap: 10dp;
+	padding: 26dp 18dp 28dp 18dp;
+	decorator: bevel(30dp rgba(16,34,58,92%) rgba(8,17,32,92%) #4F82B2 2dp rgba(120,175,220,42%) 8dp);
 }
 
 .head {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	margin-bottom: 6dp;
+	padding-bottom: 6dp;
 }
-.kicker { font-size: 34dp; letter-spacing: 0.22em; color: #FF9A4D; line-height: 36dp; }
-.sub { font-family: "Titillium Web"; font-weight: 600; font-size: 20dp; color: rgba(255,214,180,70%); line-height: 24dp; }
+.kicker {
+	font-family: Rajdhani;
+	font-weight: 700;
+	font-size: 38dp;
+	letter-spacing: 0.08em;
+	line-height: 40dp;
+	color: #B9F3F6;
+	font-effect: glow(1dp 5dp 0dp 0dp rgba(110,220,240,45%));
+}
+.sub { font-size: 19dp; line-height: 22dp; color: #7FA9BD; }
+.rule {
+	height: 2dp;
+	margin: 10dp 10dp 4dp 10dp;
+	background-color: rgba(120,175,220,38%);
+}
 
 .entry {
-	height: 112dp;
+	height: 92dp;
 	flex: 0 0 auto;
 	display: flex;
 	align-items: center;
-	gap: 18dp;
-	padding: 0dp 22dp;
-	font-size: 34dp;
-	letter-spacing: 0.08em;
-	color: #FFD9B8;
-	decorator: chamfer(18dp rgba(70,32,10,62%) rgba(30,14,6,62%) rgba(255,154,77,70%) rgba(255,143,63,30%) 2dp rgba(255,200,150,18%));
+	gap: 16dp;
+	padding: 0dp 22dp 0dp 26dp;
+	font-size: 30dp;
+	color: #CBEBF5;
+	decorator: slant(16dp rgba(30,78,108,94%) rgba(17,46,72,94%) #5C93BE #2E5E86 2dp transparent 0dp);
 }
 .entry:hover {
-	color: #FFF1E4;
-	decorator: chamfer(18dp rgba(120,56,16,78%) rgba(52,24,8,72%) rgba(255,190,130,95%) rgba(255,143,63,50%) 2dp rgba(255,220,180,30%));
+	color: #EAFBFF;
+	decorator: slant(16dp rgba(44,110,150,96%) rgba(24,66,100,96%) #92CCEC #3F7FAE 2dp rgba(110,200,240,25%) 6dp);
 }
 .entry:active {
-	decorator: chamfer(18dp rgba(170,80,22,88%) rgba(80,36,10,82%) #FFE1C2 rgba(255,154,77,70%) 2dp rgba(255,230,200,40%));
+	decorator: slant(16dp #4A9EC4 #22688E #D6F8FF #66B6DC 2dp rgba(130,220,250,40%) 8dp);
 }
 .entry.on {
-	color: #2A1406;
-	decorator: chamfer(18dp #FFB070 #E8691C #FFE1C2 #FF9A4D 2dp rgba(255,255,255,40%));
+	color: #FFFFFF;
+	font-effect: glow(1dp 4dp 0dp 0dp rgba(200,245,255,55%));
+	decorator: slant(16dp #6ACBE0 #2A8AAE #DDFBFF #86D6EC 2dp rgba(110,220,240,45%) 9dp);
 }
-.entry.close {
-	height: 84dp;
-	margin-top: 10dp;
-	font-size: 28dp;
-	color: rgba(255,214,180,80%);
-	decorator: chamfer(14dp rgba(40,18,8,55%) rgba(20,10,4,55%) rgba(255,154,77,40%) rgba(255,143,63,18%) 1dp);
-}
-.entry.close:hover { color: #FFF1E4; decorator: chamfer(14dp rgba(90,40,12,70%) rgba(40,18,6,65%) rgba(255,190,130,80%) rgba(255,143,63,35%) 1dp); }
 
-.ico { width: 48dp; height: 48dp; flex: 0 0 auto; }
-.entry.close .ico { width: 36dp; height: 36dp; }
+/* The icon in its rounded square, as the game's weapon tabs. */
+.box {
+	width: 54dp;
+	height: 54dp;
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	decorator: chamfer(7dp rgba(10,32,52,85%) rgba(6,20,36,85%) rgba(126,190,230,75%) rgba(70,130,180,60%) 1.5dp);
+}
+.entry.on .box { decorator: chamfer(7dp rgba(255,255,255,22%) rgba(255,255,255,8%) #E8FDFF #BDEFFA 1.5dp); }
+.ico { width: 34dp; height: 34dp; color: #8FD0EA; }
+.entry:hover .ico { color: #BDEBFA; }
+.entry.on .ico { color: #FFFFFF; }
 .label { flex: 1 1 auto; }
-.chev { width: 22dp; height: 22dp; flex: 0 0 auto; display: none; decorator: icon(play); }
-.entry.on .chev { display: block; }
+
+.entry.close {
+	height: 70dp;
+	margin-top: 8dp;
+	font-size: 25dp;
+	color: #8FB9CC;
+	decorator: slant(12dp rgba(12,28,48,90%) rgba(8,18,34,90%) #3A6690 #22466A 1.5dp transparent 0dp);
+}
+.entry.close:hover {
+	color: #DDF5FF;
+	decorator: slant(12dp rgba(28,64,96,94%) rgba(14,36,60,94%) #6FA8D0 #34668E 1.5dp transparent 0dp);
+}
+.entry.close .box { width: 40dp; height: 40dp; decorator: none; }
+.entry.close .ico { width: 26dp; height: 26dp; color: #7FA9BD; }
 
 .i-squad { decorator: icon(squad); }
 .i-equipment { decorator: icon(equipment); }

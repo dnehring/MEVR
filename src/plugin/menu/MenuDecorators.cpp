@@ -234,6 +234,226 @@ private:
     ChamferIds ids_{};
 };
 
+// ---- ME1's own shapes (research/54: the omni-tool's rail in the game's UI language) ----------------------------
+// A convex polygon with every edge moved `d` inward (negative: outward), adjacent edges intersected.
+std::vector<Vector2f> InsetPolygon(std::vector<Vector2f> const& p, float d) {
+    int const n = static_cast<int>(p.size());
+    if (n < 3 || d == 0.0f) {
+        return p;
+    }
+    Vector2f centre(0.0f, 0.0f);
+    for (Vector2f const& v : p) {
+        centre = centre + v;
+    }
+    centre = centre / static_cast<float>(n);
+    std::vector<Vector2f> a(n), dir(n);
+    for (int i = 0; i < n; ++i) {
+        Vector2f const e = p[(i + 1) % n] - p[i];
+        float const length = std::sqrt(e.x * e.x + e.y * e.y);
+        dir[i] = length > 1e-6f ? e / length : Vector2f(1.0f, 0.0f);
+        Vector2f normal(-dir[i].y, dir[i].x);
+        Vector2f const toCentre = centre - p[i];
+        if (normal.x * toCentre.x + normal.y * toCentre.y < 0.0f) {
+            normal = -normal;
+        }
+        a[i] = p[i] + normal * d;
+    }
+    std::vector<Vector2f> out(n);
+    for (int i = 0; i < n; ++i) {
+        int const prev = (i - 1 + n) % n;
+        float const cross = dir[prev].x * dir[i].y - dir[prev].y * dir[i].x;
+        if (std::fabs(cross) < 1e-6f) {
+            out[i] = a[i];
+            continue;
+        }
+        Vector2f const delta = a[i] - a[prev];
+        float const t = (delta.x * dir[i].y - delta.y * dir[i].x) / cross;
+        out[i] = a[prev] + dir[prev] * t;
+    }
+    return out;
+}
+
+// ME1's panels: every corner cut at 45 degrees.
+std::vector<Vector2f> OctagonPolygon(Vector2f o, Vector2f size, float cut) {
+    float const c = std::clamp(cut, 0.0f, std::min(size.x, size.y) * 0.5f);
+    float const w = size.x;
+    float const h = size.y;
+    return {o + Vector2f(c, 0), o + Vector2f(w - c, 0), o + Vector2f(w, c), o + Vector2f(w, h - c), o + Vector2f(w - c, h),
+        o + Vector2f(c, h), o + Vector2f(0, h - c), o + Vector2f(0, c)};
+}
+
+// ME1's tabs (the equipment screen's squad list): a parallelogram, its top `lean` to the right of its bottom.
+std::vector<Vector2f> SlantPolygon(Vector2f o, Vector2f size, float lean) {
+    float const l = std::clamp(lean, 0.0f, size.x * 0.4f);
+    return {o + Vector2f(l, 0), o + Vector2f(size.x, 0), o + Vector2f(size.x - l, size.y), o + Vector2f(0, size.y)};
+}
+
+// A ring whose inner edge has `colour` and outer edge none: a soft glow around a shape.
+void FadeRing(Builder& b, std::vector<Vector2f> const& outer, std::vector<Vector2f> const& inner, ColourbPremultiplied colour) {
+    if (outer.size() != inner.size() || outer.size() < 3) {
+        return;
+    }
+    int const n = static_cast<int>(outer.size());
+    int const first = static_cast<int>(b.mesh.vertices.size());
+    for (int i = 0; i < n; ++i) {
+        b.Vertex(outer[i], ColourbPremultiplied(0, 0, 0, 0));
+        b.Vertex(inner[i], colour);
+    }
+    for (int i = 0; i < n; ++i) {
+        int const j = (i + 1) % n;
+        int const o0 = first + 2 * i, i0 = o0 + 1, o1 = first + 2 * j, i1 = o1 + 1;
+        b.Triangle(o0, o1, i1);
+        b.Triangle(o0, i1, i0);
+    }
+}
+
+// bevel(<cut> <fill-top> <fill-bottom> <edge> <edge-width> <line> <line-inset>): an octagon with a vertical gradient fill, an
+// outer edge and, `line-inset` inside it, a 1 px line: ME1's double-outlined panel.
+class BevelDecorator final : public Rml::Decorator {
+public:
+    Rml::NumericValue cut, edgeWidth, lineInset;
+    Colourb fillTop, fillBottom, edge, line;
+
+    Rml::DecoratorDataHandle GenerateElementData(Rml::Element* element, Rml::BoxArea area) const override {
+        Rml::RenderBox const box = element->GetRenderBox(area);
+        Vector2f const o = box.GetFillOffset();
+        Vector2f const size = box.GetFillSize();
+        if (size.x <= 0.0f || size.y <= 0.0f) {
+            return Rml::Decorator::INVALID_DECORATORDATAHANDLE;
+        }
+        float const opacity = element->GetComputedValues().opacity();
+        float const e = std::max(0.0f, element->ResolveLength(edgeWidth));
+        float const inset = std::max(0.0f, element->ResolveLength(lineInset));
+        std::vector<Vector2f> const outer = OctagonPolygon(o, size, element->ResolveLength(cut));
+        std::vector<Vector2f> const inner = e > 0.0f ? InsetPolygon(outer, e) : outer;
+        Builder b;
+        if (fillTop.alpha > 0 || fillBottom.alpha > 0) {
+            b.Fan(inner, Premultiply(fillTop, opacity), Premultiply(fillBottom, opacity), o.y, o.y + size.y);
+        }
+        if (e > 0.0f && edge.alpha > 0) {
+            ColourbPremultiplied const c = Premultiply(edge, opacity);
+            b.Ring(outer, inner, c, c, o.y, o.y + size.y);
+        }
+        if (inset > e && line.alpha > 0) {
+            ColourbPremultiplied const c = Premultiply(line, opacity);
+            b.Ring(InsetPolygon(outer, inset), InsetPolygon(outer, inset + 1.0f), c, c, o.y, o.y + size.y);
+        }
+        if (b.mesh.indices.empty()) {
+            return Rml::Decorator::INVALID_DECORATORDATAHANDLE;
+        }
+        return reinterpret_cast<Rml::DecoratorDataHandle>(new Rml::Geometry(element->GetRenderManager()->MakeGeometry(std::move(b.mesh))));
+    }
+    void ReleaseElementData(Rml::DecoratorDataHandle data) const override {
+        delete reinterpret_cast<Rml::Geometry*>(data);
+    }
+    void RenderElement(Rml::Element* element, Rml::DecoratorDataHandle data) const override {
+        reinterpret_cast<Rml::Geometry*>(data)->Render(element->GetAbsoluteOffset(Rml::BoxArea::Border));
+    }
+};
+
+class BevelInstancer final : public Rml::DecoratorInstancer {
+public:
+    BevelInstancer() {
+        cut_ = RegisterProperty("cut", "0px").AddParser("length").GetId();
+        fillTop_ = RegisterProperty("fill-top", "transparent").AddParser("color").GetId();
+        fillBottom_ = RegisterProperty("fill-bottom", "transparent").AddParser("color").GetId();
+        edge_ = RegisterProperty("edge", "transparent").AddParser("color").GetId();
+        edgeWidth_ = RegisterProperty("edge-width", "1px").AddParser("length").GetId();
+        line_ = RegisterProperty("line", "transparent").AddParser("color").GetId();
+        lineInset_ = RegisterProperty("line-inset", "0px").AddParser("length").GetId();
+        RegisterShorthand("decorator", "cut, fill-top, fill-bottom, edge, edge-width, line, line-inset", Rml::ShorthandType::FallThrough);
+    }
+    Rml::SharedPtr<Rml::Decorator> InstanceDecorator(Rml::String const&, Rml::PropertyDictionary const& p,
+        Rml::DecoratorInstancerInterface const&) override {
+        auto d = Rml::MakeShared<BevelDecorator>();
+        d->cut = p.GetProperty(cut_)->GetNumericValue();
+        d->fillTop = p.GetProperty(fillTop_)->Get<Colourb>();
+        d->fillBottom = p.GetProperty(fillBottom_)->Get<Colourb>();
+        d->edge = p.GetProperty(edge_)->Get<Colourb>();
+        d->edgeWidth = p.GetProperty(edgeWidth_)->GetNumericValue();
+        d->line = p.GetProperty(line_)->Get<Colourb>();
+        d->lineInset = p.GetProperty(lineInset_)->GetNumericValue();
+        return d;
+    }
+
+private:
+    Rml::PropertyId cut_{}, fillTop_{}, fillBottom_{}, edge_{}, edgeWidth_{}, line_{}, lineInset_{};
+};
+
+// slant(<lean> <fill-top> <fill-bottom> <edge-top> <edge-bottom> <edge-width> <glow> <glow-width>): a parallelogram tab with a
+// vertical gradient fill, an edge and a soft glow around it (ME1's selected squad row).
+class SlantDecorator final : public Rml::Decorator {
+public:
+    Rml::NumericValue lean, edgeWidth, glowWidth;
+    Colourb fillTop, fillBottom, edgeTop, edgeBottom, glow;
+
+    Rml::DecoratorDataHandle GenerateElementData(Rml::Element* element, Rml::BoxArea area) const override {
+        Rml::RenderBox const box = element->GetRenderBox(area);
+        Vector2f const o = box.GetFillOffset();
+        Vector2f const size = box.GetFillSize();
+        if (size.x <= 0.0f || size.y <= 0.0f) {
+            return Rml::Decorator::INVALID_DECORATORDATAHANDLE;
+        }
+        float const opacity = element->GetComputedValues().opacity();
+        float const e = std::max(0.0f, element->ResolveLength(edgeWidth));
+        float const g = std::max(0.0f, element->ResolveLength(glowWidth));
+        std::vector<Vector2f> const outer = SlantPolygon(o, size, element->ResolveLength(lean));
+        std::vector<Vector2f> const inner = e > 0.0f ? InsetPolygon(outer, e) : outer;
+        Builder b;
+        if (g > 0.0f && glow.alpha > 0) {
+            FadeRing(b, InsetPolygon(outer, -g), outer, Premultiply(glow, opacity));
+        }
+        if (fillTop.alpha > 0 || fillBottom.alpha > 0) {
+            b.Fan(inner, Premultiply(fillTop, opacity), Premultiply(fillBottom, opacity), o.y, o.y + size.y);
+        }
+        if (e > 0.0f && (edgeTop.alpha > 0 || edgeBottom.alpha > 0)) {
+            b.Ring(outer, inner, Premultiply(edgeTop, opacity), Premultiply(edgeBottom, opacity), o.y, o.y + size.y);
+        }
+        if (b.mesh.indices.empty()) {
+            return Rml::Decorator::INVALID_DECORATORDATAHANDLE;
+        }
+        return reinterpret_cast<Rml::DecoratorDataHandle>(new Rml::Geometry(element->GetRenderManager()->MakeGeometry(std::move(b.mesh))));
+    }
+    void ReleaseElementData(Rml::DecoratorDataHandle data) const override {
+        delete reinterpret_cast<Rml::Geometry*>(data);
+    }
+    void RenderElement(Rml::Element* element, Rml::DecoratorDataHandle data) const override {
+        reinterpret_cast<Rml::Geometry*>(data)->Render(element->GetAbsoluteOffset(Rml::BoxArea::Border));
+    }
+};
+
+class SlantInstancer final : public Rml::DecoratorInstancer {
+public:
+    SlantInstancer() {
+        lean_ = RegisterProperty("lean", "0px").AddParser("length").GetId();
+        fillTop_ = RegisterProperty("fill-top", "transparent").AddParser("color").GetId();
+        fillBottom_ = RegisterProperty("fill-bottom", "transparent").AddParser("color").GetId();
+        edgeTop_ = RegisterProperty("edge-top", "transparent").AddParser("color").GetId();
+        edgeBottom_ = RegisterProperty("edge-bottom", "transparent").AddParser("color").GetId();
+        edgeWidth_ = RegisterProperty("edge-width", "1px").AddParser("length").GetId();
+        glow_ = RegisterProperty("glow", "transparent").AddParser("color").GetId();
+        glowWidth_ = RegisterProperty("glow-width", "0px").AddParser("length").GetId();
+        RegisterShorthand("decorator", "lean, fill-top, fill-bottom, edge-top, edge-bottom, edge-width, glow, glow-width",
+            Rml::ShorthandType::FallThrough);
+    }
+    Rml::SharedPtr<Rml::Decorator> InstanceDecorator(Rml::String const&, Rml::PropertyDictionary const& p,
+        Rml::DecoratorInstancerInterface const&) override {
+        auto d = Rml::MakeShared<SlantDecorator>();
+        d->lean = p.GetProperty(lean_)->GetNumericValue();
+        d->fillTop = p.GetProperty(fillTop_)->Get<Colourb>();
+        d->fillBottom = p.GetProperty(fillBottom_)->Get<Colourb>();
+        d->edgeTop = p.GetProperty(edgeTop_)->Get<Colourb>();
+        d->edgeBottom = p.GetProperty(edgeBottom_)->Get<Colourb>();
+        d->edgeWidth = p.GetProperty(edgeWidth_)->GetNumericValue();
+        d->glow = p.GetProperty(glow_)->Get<Colourb>();
+        d->glowWidth = p.GetProperty(glowWidth_)->GetNumericValue();
+        return d;
+    }
+
+private:
+    Rml::PropertyId lean_{}, fillTop_{}, fillBottom_{}, edgeTop_{}, edgeBottom_{}, edgeWidth_{}, glow_{}, glowWidth_{};
+};
+
 // ---- backdrop(...) ----------------------------------------------------------------------------------------
 struct BackdropData {
     Rml::Geometry picture;   // textured
@@ -603,6 +823,8 @@ void RegisterDecorators() {
     static ChamferInstancer chamfer;
     static BackdropInstancer backdrop;
     static IconInstancer icon;
+    static BevelInstancer bevel;
+    static SlantInstancer slant;
     static bool done = false;
     if (done) {
         return;
@@ -611,6 +833,8 @@ void RegisterDecorators() {
     Rml::Factory::RegisterDecoratorInstancer("chamfer", &chamfer);
     Rml::Factory::RegisterDecoratorInstancer("backdrop", &backdrop);
     Rml::Factory::RegisterDecoratorInstancer("icon", &icon);
+    Rml::Factory::RegisterDecoratorInstancer("bevel", &bevel);
+    Rml::Factory::RegisterDecoratorInstancer("slant", &slant);
 }
 
 char const* const* IconNames(int& count) {

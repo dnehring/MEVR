@@ -15,6 +15,10 @@
 //       top and bottom edges for `accent-length`, and faint `scanline` rows every 3 px.
 //   decorator: icon(<name>);
 //       One of the mockup's line icons (MenuIcons below) in the element's `color`, fit to its box.
+//   decorator: bevel(<cut> <fill-top> <fill-bottom> <edge> <edge-width> <line> <line-inset>);
+//       ME1's panel (research/54): every corner cut at 45 degrees, a gradient fill, an edge and a 1 px line `line-inset` inside it.
+//   decorator: slant(<lean> <fill-top> <fill-bottom> <edge-top> <edge-bottom> <edge-width> <glow> <glow-width>);
+//       ME1's tab: a parallelogram, its top `lean` right of its bottom, with a soft glow `glow-width` around it.
 namespace mevr::menu {
 
 void RegisterDecorators();

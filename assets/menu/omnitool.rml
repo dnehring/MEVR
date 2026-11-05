@@ -1,23 +1,26 @@
 <!-- SPDX-License-Identifier: MIT -->
-<!-- The omni-tool's rail (research/54): the game's own screens, opened from the left wrist. Bound to the host's "omnitool"
-     model (plugin/OmniToolRail): `active` is the entry of the screen up, `alone` is true while no screen stands beside it, and
-     pick('<id>') asks for an entry (the ids are core/vr/OmniRail's). -->
+<!-- The omni-tool's rail (research/54): the game's own screens, opened from the left wrist, in ME1's UI language. Bound to the
+     host's "omnitool" model (plugin/OmniToolRail): `active` is the entry of the screen up, `alone` is true while no screen
+     stands beside it, and pick('<id>') asks for an entry (the ids are core/vr/OmniRail's). -->
 <rml>
 <head>
 	<title>MEVR omni-tool</title>
 	<link type="text/rcss" href="omnitool.rcss"/>
 </head>
 <body data-model="omnitool">
-	<div class="head" data-if="alone">
-		<div class="kicker">OMNI-TOOL</div>
-		<div class="sub">Touch to open</div>
+	<div class="panel">
+		<div class="head" data-if="alone">
+			<div class="kicker">Omni-Tool</div>
+			<div class="sub">Touch a screen to open it</div>
+			<div class="rule"/>
+		</div>
+		<div class="entry" data-class-on="active == 'squad'" data-event-click="pick('squad')"><div class="box"><div class="ico i-squad"/></div><div class="label">Squad</div></div>
+		<div class="entry" data-class-on="active == 'equipment'" data-event-click="pick('equipment')"><div class="box"><div class="ico i-equipment"/></div><div class="label">Equipment</div></div>
+		<div class="entry" data-class-on="active == 'map'" data-event-click="pick('map')"><div class="box"><div class="ico i-map"/></div><div class="label">Map</div></div>
+		<div class="entry" data-class-on="active == 'journal'" data-event-click="pick('journal')"><div class="box"><div class="ico i-journal"/></div><div class="label">Journal</div></div>
+		<div class="entry" data-class-on="active == 'codex'" data-event-click="pick('codex')"><div class="box"><div class="ico i-codex"/></div><div class="label">Codex</div></div>
+		<div class="entry" data-class-on="active == 'computer'" data-event-click="pick('computer')"><div class="box"><div class="ico i-computer"/></div><div class="label">Computer</div></div>
+		<div class="entry close" data-event-click="pick('close')"><div class="box"><div class="ico i-close"/></div><div class="label">Close</div></div>
 	</div>
-	<div class="entry" data-class-on="active == 'squad'" data-event-click="pick('squad')"><div class="ico i-squad"/><div class="label">Squad</div><div class="chev"/></div>
-	<div class="entry" data-class-on="active == 'equipment'" data-event-click="pick('equipment')"><div class="ico i-equipment"/><div class="label">Equipment</div><div class="chev"/></div>
-	<div class="entry" data-class-on="active == 'map'" data-event-click="pick('map')"><div class="ico i-map"/><div class="label">Map</div><div class="chev"/></div>
-	<div class="entry" data-class-on="active == 'journal'" data-event-click="pick('journal')"><div class="ico i-journal"/><div class="label">Journal</div><div class="chev"/></div>
-	<div class="entry" data-class-on="active == 'codex'" data-event-click="pick('codex')"><div class="ico i-codex"/><div class="label">Codex</div><div class="chev"/></div>
-	<div class="entry" data-class-on="active == 'computer'" data-event-click="pick('computer')"><div class="ico i-computer"/><div class="label">Computer</div><div class="chev"/></div>
-	<div class="entry close" data-event-click="pick('close')"><div class="ico i-close"/><div class="label">Close</div></div>
 </body>
 </rml>
