@@ -398,6 +398,8 @@ set(MEVR_MOD_SOURCES
     src/game/GameMenuRequest.hpp
     src/game/GameArt.cpp
     src/game/GameArt.hpp
+    src/game/HoloProbe.cpp
+    src/game/HoloProbe.hpp
     src/game/Fingers.cpp
     src/game/Fingers.hpp
     src/game/GunKick.cpp

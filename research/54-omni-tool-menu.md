@@ -66,3 +66,22 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   (research/53 section 1). A scene capture inside that world, shown on a disc beside the wrist screen, is the route
   (`game/SceneCaptureRig`, as the galaxy map's window does); not built.
 - Party selection (choosing the squad) exists only on the Normandy and at missions' starts (`PartySelect`, in the room).
+
+## 4. The squad holograms (the concept art's disc): the approach (2026-11-04)
+
+- **Why not a capture of the UI world.** `BioUIWorld` (SFXGame) is a separate engine world: a native `m_pWorld` pointer, its own
+  camera actor (`m_pCameraActor`), the pawns it spawned from the party (`m_mSpawnedPawnMap`), its own post-process chain. A scene
+  capture renders with its scene's main render, and the game renders the UI world only while a `bFullScreen` panel is up, which the
+  world UI clears to keep the level. Drawing the UI world into a texture of ours would need native calls not mapped yet (Ghidra was
+  locked by another session).
+- **The game's own hologram effect.** Every character material has a `CombinedEffect_EMT_HoloWipe` variant (e.g.
+  `EffectsMaterials.Users.HMM_ARM_MASTER_MAT_USER.CombinedEffect_EMT_HoloWipe` in every armour and head package), the
+  `EEffectsMaterialType` value 30 (`Engine.BioEffectsMaterials`), switched on a pawn by `BioPawn.SetEffectsMaterialType` and
+  `SetFractionOfEffectsMaterialEnabled` (and on `SkeletalMeshActor`): how ME1 turns characters into holograms (comm calls, VIs).
+- **The plan:** a miniature copy of the party member the screen shows (Actor.Spawn with the real pawn as its `ActorTemplate`, so its
+  armour and headgear come along; collision and physics off; `SetDrawScale` about 0.12, ~20 cm), switched to EMT_HoloWipe, standing
+  on a disc beside the wrist screen, rendered by the game in the level in both eyes. Open: whether a template spawn of a BioPawn
+  brings its appearance and stays inert (no AI, no squad), its pose while the GUI modes freeze non-player actors (`bPlayersOnly`, the
+  omni-tool's lesson: its components may have to ride on Shepard's pawn), and following the wrist each tick.
+- **The experiment's verbs** (`game/HoloProbe`, a dev tool): `mevr holo spawn [self|n] [scale]`, `mevr holo effect <type>
+  [fraction]`, `mevr holo scale|move|info|clear`.

@@ -43,6 +43,7 @@
 #include "game/ConsoleRequest.hpp"
 #include "game/SystemSettings.hpp"
 #include "game/GameArt.hpp"
+#include "game/HoloProbe.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/Fingers.hpp"
 #include "game/GamepadBridge.hpp"
@@ -1350,6 +1351,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::focus_pause::Shutdown();
     game::game_menu_request::Shutdown();
     game::game_art::Shutdown();
+    game::holo_probe::Shutdown();  // the experiment's copy destroyed
     write_journal::Connect(nullptr);
     engine::call_function::SetBreadcrumbs(nullptr, nullptr);
     gHost = nullptr;

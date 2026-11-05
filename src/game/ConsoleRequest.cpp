@@ -9,6 +9,7 @@
 #include "game/CallTrace.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/GalaxyDump.hpp"
+#include "game/HoloProbe.hpp"
 #include "game/GalaxyMap.hpp"
 #include "game/GunKick.hpp"
 #include "game/Holsters.hpp"
@@ -509,6 +510,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string which;
         words >> which;
         return galaxy_dump::ShowGui(pc, which);
+    }
+    if (verb == "holo") {
+        // `mevr holo spawn|effect|scale|move|info|clear` (research/54 section 4: the squad holograms' experiment).
+        std::string rest;
+        std::getline(words, rest);
+        return holo_probe::Command(rest);
     }
     if (verb == "panel") {
         // `mevr panel list` | `mevr panel <tag> show|hide|var <path>|invoke <method>|movie` (research/53).
