@@ -191,3 +191,47 @@ half; gradient end colours; the clip layer hides what it should and never paints
 unscaled (and at `cornerScale` 2); a 2 px stroke; a morph at ratio 0.5; the import counted; the TTF's checksums and
 directory; FreeType: family, metrics, advances, the kerning pair, an 'O' with ink on the ring and none in the hole; every
 truncation of the movie and 400 random byte flips parse, render and convert without crashing.
+
+## 6. Our own touch inventory (2026-11-04)
+
+**Why.** Measured from the in-game snapshots: on a wrist screen 0.55 m wide at 0.48 m, the equipment screen's buttons are
+0.8 cm tall, its weapon-type icons and squad tabs 1.2-1.4 cm, its list rows about 1.3 cm; fingertip targets want 2-3 cm and
+more. A screen big enough for that (rows 2.5 cm: about 1 m wide) would stand 0.9 m away at the 60-degree limit, out of reach.
+The user's choice between the laser on the game's screens and a touch UI of our own: **"Own touch UI"**. Prior art: Titanfall 2
+VR is closed (all rights reserved) and has no inventory; Overlord (MW2CR VR, GPL-3.0, research/03) shows the game's native menus
+on cylinder layers with a laser (no fingertip, wrist or touch-scroll UI in its code at 11f3005). The design references stay
+Half-Life: Alyx and Fallout 4 VR's Pip-Boy (research/53 section 6).
+
+**The game's model, verified** (`mevr inv`, game/InventoryProbe, 2026-11-04 23:52 on the fake headset, BIOA_UNC20, after the
+cheat manager's `GiveAll`): the equipment screen's handler (`BioSFHandler_PCInventory`) holds `m_oInvInterface`, a
+`BioInventoryGuiInterface`: the layer between the game's items and its Flash screen. Read and called through our reflection
+layer on the game thread:
+- the target: `BioSFHandler_Inventory.m_nCurrentSquadMember` (0 Shepard); the slot: `m_eCurrentSlot` on both (3, the assault
+  rifle); the slots in order: `lstEquipSlotOrder` = 3, 2, 1, 4, 15, 7, 5, 6 (assault rifle, shotgun, pistol, sniper rifle, ?,
+  armour, grenades?, ?: names from `lstSlotDetails[].srSlotName` [verify]);
+- `SelectItemSlot(slot)` then `BuildEquippableItemList()` fill `EquippableItemsList` (TArray<FItemInfo>): 77 assault rifles, 73
+  shotguns, 73 pistols, 73 sniper rifles, 48 and 48 in slots 7 and 5, none in 15 and 6 (Shepard, after GiveAll);
+- each `FItemInfo`: `ItemName` ("Tsunami IV"), `sophistication` (the level), `ItemCategoryName` and `ManufacturerName` (text
+  references: "Assault Rifle", "Ariake Technologies" through `BioSPGame.GetSimpleString`), `m_price`, `InvIndex`, `m_bIsNew`,
+  `m_bIsEquippable`, `m_rawStats.lstStats[3]` (type, 0..1 bar, absolute value: Lancer I damage 1 = 0.30 (120), heat 15 = 0.31
+  (38), accuracy 3 = 0.23 (23)), `m_lstXMods`, icon numbers `nItemCategoryGuiIcon` and `nManufacturerIcon`;
+- `GetEquippedItem(out FItemInfo)`: the item worn (Lancer I; HMWA X after GiveAll equipped it); `Equip(filteredIndex,
+  bXferXMods)`, `Unequip`, `ConvertItemIntoResource(index, resource, sellAllJunked)` (omni-gel), `SortEquippableItems(mode)`,
+  `BuildEquippableXModList(type)` exist with the parameters LExSDKv2 declares [verify each].
+- The handler adds the squad (`ChangeTargetCharacter(n)`, `GetSquadMemberNames`), junk (`MarkItemAsJunk`), the mods-transfer
+  question (`EquipItemProcessDoubleCheck`) and `EquipSelectedItem(index, xferXMods)`.
+
+**The design** (to build):
+- The game's equipment screen still opens (mode 7: the game paused, the handler and its interface set up, its rules); its Flash
+  movie isn't shown: our touch inventory stands on the wrist in its place (the world UI's placement, the rail beside it).
+- The mod reads the model above on the game thread and publishes a compact snapshot (squad members, slots, the equipped item,
+  the slot's items with their texts and stats) to the host; the host's actions (member, slot, equip, omni-gel, junk, sort) come
+  back through a request slot, as the rail's do. A new HostServices version (after the power wheel's v28).
+- The view: an RmlUi document in the rail's art (the game's fonts and frames through plugin/RailArt and core/gfx), sized for a
+  fingertip: slot tabs and squad tabs at least 3 cm, item cards about 3 cm tall in a list that scrolls by dragging (game_pointer's
+  drag), the selected item's stats against the equipped one's (the game's 0..1 bars), and Equip / Omni-gel / Junk as large
+  buttons. The item icons are the movie's (`nItemCategoryGuiIcon`, `nManufacturerIcon`) [verify which characters].
+- First version: browse (member, slot, list), select, compare, equip. Then omni-gel, junk, sort, mods.
+
+**Still open from the Flash screens:** whether a wheel notch (the stick, or a drag) scrolls the game's own lists (the codex, the
+journal): this save's lists were empty, and the equipment list (now filled) won't be used.

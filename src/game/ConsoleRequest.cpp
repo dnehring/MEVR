@@ -14,6 +14,7 @@
 #include "game/MakoGunner.hpp"
 #include "game/GalaxyDump.hpp"
 #include "game/HoloProbe.hpp"
+#include "game/InventoryProbe.hpp"
 #include "game/GalaxyMap.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
@@ -581,6 +582,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         words >> which;
         return game_menu_request::Inject(which);
     }
+    if (verb == "inv") {
+        // `mevr inv [list] | slot <n> | slots | equip <i>` (research/56 section 6: the touch inventory's data path).
+        std::string rest;
+        std::getline(words, rest);
+        return inventory_probe::Command(rest);
+    }
     if (verb == "holo") {
         // `mevr holo spawn|effect|scale|move|info|clear` (research/56 section 4: the squad holograms' experiment).
         std::string rest;
@@ -922,7 +929,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ...");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ... | mevr inv ...");
 }
 
 ue3::Function* FindConsoleCommand() {

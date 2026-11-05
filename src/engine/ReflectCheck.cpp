@@ -891,6 +891,24 @@ void CheckFields() {
     CheckField("SFXGame.BioWeaponRanged", "Stats", SDK_FIELD(ABioWeaponRanged, Stats));
     CheckField("SFXGame.SFXWeaponStatsBase", "AimModes", SDK_FIELD(USFXWeaponStatsBase, AimModes));
     CheckElement("SFXGame.SFXWeaponStatsBase", "AimModes", static_cast<long long>(sizeof(FWeaponAimMode)));
+    // game/InventoryProbe (research/56 section 6): the inventory screen's model, for our own touch inventory.
+    CheckField("SFXGame.BioSFHandler_Inventory", "m_oInvInterface", SDK_FIELD(UBioSFHandler_Inventory, m_oInvInterface));
+    CheckField("SFXGame.BioSFHandler_Inventory", "m_nCurrentSquadMember", SDK_FIELD(UBioSFHandler_Inventory, m_nCurrentSquadMember));
+    CheckField("SFXGame.BioSFHandler_Inventory", "m_eCurrentSlot", SDK_FIELD(UBioSFHandler_Inventory, m_eCurrentSlot));
+    CheckField("SFXGame.BioInventoryGuiInterface", "m_eCurrentSlot", SDK_FIELD(UBioInventoryGuiInterface, m_eCurrentSlot));
+    CheckField("SFXGame.BioInventoryGuiInterface", "lstEquipSlotOrder", SDK_FIELD(UBioInventoryGuiInterface, lstEquipSlotOrder));
+    CheckField("SFXGame.BioInventoryGuiInterface", "EquippableItemsList", SDK_FIELD(UBioInventoryGuiInterface, EquippableItemsList));
+    CheckElement("SFXGame.BioInventoryGuiInterface", "EquippableItemsList", static_cast<long long>(sizeof(FItemInfo)));
+    CheckPath("SFXGame.BioInventoryGuiInterface", {"EquippableItemsList", "ItemName"}, SDK_AT(offsetof(FItemInfo, ItemName), 16));
+    CheckPath("SFXGame.BioInventoryGuiInterface", {"EquippableItemsList", "sophistication"}, SDK_AT(offsetof(FItemInfo, sophistication), 4));
+    CheckPath("SFXGame.BioInventoryGuiInterface", {"EquippableItemsList", "ManufacturerName"}, SDK_AT(offsetof(FItemInfo, ManufacturerName), 4));
+    CheckPath("SFXGame.BioInventoryGuiInterface", {"EquippableItemsList", "ItemCategoryName"}, SDK_AT(offsetof(FItemInfo, ItemCategoryName), 4));
+    CheckPath("SFXGame.BioInventoryGuiInterface", {"EquippableItemsList", "m_price"}, SDK_AT(offsetof(FItemInfo, m_price), 4));
+    CheckPath("SFXGame.BioInventoryGuiInterface", {"EquippableItemsList", "InvIndex"}, SDK_AT(offsetof(FItemInfo, InvIndex), 4));
+    CheckPath("SFXGame.BioInventoryGuiInterface", {"EquippableItemsList", "m_rawStats"},
+        SDK_AT(offsetof(FItemInfo, m_rawStats), static_cast<long long>(sizeof(FBioInventoryGuiInterfaceItemStats))));
+    CheckPath("SFXGame.BioInventoryGuiInterface", {"EquippableItemsList", "m_rawStats", "lstStats"},
+        SDK_AT(offsetof(FBioInventoryGuiInterfaceItemStats, lstStats), static_cast<long long>(sizeof(FBioInventoryGuiInterfaceItemStat) * 3)));
     CheckPath("SFXGame.SFXWeaponStatsBase", {"AimModes", "ZoomFOV"}, SDK_AT(offsetof(FWeaponAimMode, ZoomFOV), 4));
     CheckPath("SFXGame.SFXWeaponStatsBase", {"AimModes", "bScoped"}, SDK_BOOL(FWeaponAimMode, bScoped));
     // Vent (research/45)
@@ -1175,6 +1193,11 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeBase.ShowMapGui",
         "Engine.BioSFHandler.HandleInputEvent",
         "SFXGame.SFXGameModeBase.GuiKey",
+        // game/InventoryProbe (research/56 section 6)
+        "SFXGame.BioInventoryGuiInterface.SelectItemSlot",
+        "SFXGame.BioInventoryGuiInterface.BuildEquippableItemList",
+        "SFXGame.BioInventoryGuiInterface.Equip",
+        "SFXGame.BioInventoryGuiInterface.GetEquippedItem",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
         // Mako (research/44): the game's own turret aim, the vehicle's Tick and its shot start
         "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",

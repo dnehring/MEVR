@@ -412,6 +412,8 @@ set(MEVR_MOD_SOURCES
     src/game/GameArt.hpp
     src/game/HoloProbe.cpp
     src/game/HoloProbe.hpp
+    src/game/InventoryProbe.cpp
+    src/game/InventoryProbe.hpp
     src/game/Fingers.cpp
     src/game/Fingers.hpp
     src/game/GunKick.cpp
