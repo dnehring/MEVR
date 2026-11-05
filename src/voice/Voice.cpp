@@ -66,6 +66,8 @@ std::atomic<bool> gFromFile{false};
 std::atomic<std::uint32_t> gListens{0};
 std::atomic<std::uint32_t> gFinalLines{0};
 std::atomic<std::uint32_t> gTranscribeMs{0};
+unsigned gPartials = 0;  // the worker's own: this listen's partial calls, their costliest and their sum (ms)
+std::uint32_t gPartialMaxMs = 0, gPartialSumMs = 0;
 std::atomic<std::uint32_t> gLoadMs{0};
 std::atomic<float> gLevel{0.0f};
 std::atomic<bool> gKeyHeldUnused{false};
@@ -288,7 +290,19 @@ void WorkerMain() {
                 gLines.push_back(end);
             }
         }
-        gTranscribeMs.store(static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count()));
+        std::uint32_t const ms = static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
+        gTranscribeMs.store(ms);
+        if (finalCall) {
+            Log(0, std::format("voice: the listen's final transcript took {} ms after the stop; {} partials, the costliest {} ms, {} ms together", ms, gPartials, gPartialMaxMs,
+                gPartialSumMs));
+            gPartials = 0;
+            gPartialMaxMs = 0;
+            gPartialSumMs = 0;
+        } else {
+            ++gPartials;
+            gPartialMaxMs = std::max(gPartialMaxMs, ms);
+            gPartialSumMs += ms;
+        }
         if (err != MOONSHINE_ERROR_NONE && err != MOONSHINE_ERROR_BUSY) {
             Log(1, std::format("voice: transcribe_stream failed: {}", moonshine_error_to_string(err)));
         }
@@ -455,11 +469,16 @@ void CaptureMain() {
             gLevel.store(mono.empty() ? 0.0f : static_cast<float>(std::sqrt(energy / static_cast<double>(mono.size()))));
             int const phase = gPhase.load();
             if ((phase == 1 || phase == 2) && !gFromFile.load()) {
-                std::lock_guard<std::mutex> lock(gMoonshine);
-                if (gStream >= 0 && (gPhase.load() == 1 || gPhase.load() == 2)) {
-                    moonshine_transcribe_add_audio_to_stream(gTranscriber.load(), gStream, mono.data(), mono.size(), static_cast<std::int32_t>(format->nSamplesPerSec), 0);
+                // Added without gMoonshine: the library's calls are thread-safe, and the worker's transcribe (100 ms and more)
+                // must not stall the capture (the first build held the lock here: a file fed in real time arrived 1-2 s late).
+                std::int32_t const stream = gStream;
+                if (stream >= 0) {
+                    moonshine_transcribe_add_audio_to_stream(gTranscriber.load(), stream, mono.data(), mono.size(), static_cast<std::int32_t>(format->nSamplesPerSec), 0);
                 }
-                if (gPhase.load() == 2 && GetTickCount64() >= gTailUntilMs.load()) StopStream();
+                if (gPhase.load() == 2 && GetTickCount64() >= gTailUntilMs.load()) {
+                    std::lock_guard<std::mutex> lock(gMoonshine);
+                    if (gPhase.load() == 2) StopStream();
+                }
             }
         }
     }
@@ -644,11 +663,9 @@ int MevrVoiceFeedFile(wchar_t const* path) {
         std::size_t const chunk = static_cast<std::size_t>(a.sampleRate / 10);
         for (std::size_t at = 0; at < a.mono.size() && gRunning.load(); at += chunk) {
             std::size_t const n = std::min(chunk, a.mono.size() - at);
-            {
-                std::lock_guard<std::mutex> lock(gMoonshine);
-                if (gStream >= 0 && gPhase.load() == 1) {
-                    moonshine_transcribe_add_audio_to_stream(gTranscriber.load(), gStream, a.mono.data() + at, n, a.sampleRate, 0);
-                }
+            std::int32_t const stream = gStream;  // no lock (see the capture thread)
+            if (stream >= 0 && gPhase.load() == 1) {
+                moonshine_transcribe_add_audio_to_stream(gTranscriber.load(), stream, a.mono.data() + at, n, a.sampleRate, 0);
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }

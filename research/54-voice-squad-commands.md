@@ -571,8 +571,8 @@ is what matters, and medium's 130-220 ms under load means the text is at most th
 names are the whole error**: every miss is "Rex", "Gurus", "Caress" for Wrex and Garrus (the synthesizer's own pronunciation
 is part of it), which the parser's fuzzy names absorb at a confidence cost ("rex" to Wrex at 0.75, "gurus" to Garrus at
 0.67) and which the key-term boost at its default didn't fix (`--boost` is there to A/B; the library's own advice is that a
-higher boost puts the terms where they weren't said). The default is `model = small`; the real microphone decides
-(the checklist).
+higher boost puts the terms where they weren't said). The default is `model = tiny` (below: beside the running game its
+partials cost a third of small's); the real microphone decides (the checklist).
 
 **The model tier** is built as a runtime and a pipeline, not yet as a trained model. [core/voice/Grammar](../src/core/voice/Grammar.hpp)
 writes the per-scene GBNF (the squadmates present and ALL, the weapon codes, the party's power codes, the eight orders, the
@@ -605,3 +605,48 @@ file, a shorter block (the roster's power names already sit in the cached prefix
 smaller model (Granite 4.0 350M), and threads pinned off the game's cores (research/54 "Three to six threads"); measured
 again once the machine is free and the fine-tune exists. Until then the model tier stays what the plan said it would be
 if the rules take nine orders in ten: a nicety for the tenth, off by default where the files aren't deployed.
+
+**In the game, the same afternoon** (the fake headset, the UNC20 drop-zone save with Ashley, no enemy; host and mod from
+49acde0 and the fixes after it):
+
+- The path is whole: `MEVR-Voice.dll` loaded in 55 ms, the capture found "Headset Microphone (Oculus Virtual Audio
+  Device)" at 48 kHz float, the small models loaded in 1.7 s on the worker; a synthesized "Ashley, move up" fed by
+  `mevr voice wav` came back as `Ashley Move up.`, parsed to `A|-|-|move|AHEAD` and sent `QuickCommandMoveTo` (true);
+  "everyone on me" and "Ashley, fall back" to follows. Two fixes it took: the game names the squadmates in capitals
+  ("ASHLEY") and the parser compared them case-sensitively, so "Ashley" parsed to ALL at 0.85 with "ashley" unresolved
+  (the roster's names are tokenized lower-case now, 1.00); and the key terms came out "ASHLEY", so they're title-cased
+  for the recognizer.
+- **The acknowledgement, traced** (`mevr calltrace 10 chatter soundset playsound` with the script-call hook in): a follow
+  runs `BioSquadPlayer.OnSetSquadFollowFormation` -> `BioBaseSquad.SquadHandleChatterEvent` as a SCRIPT call (not an
+  event: the ProcessEvent hook on it never fires) -> `BioPawn.HandleChatterEvent` on Shepard's pawn and the squadmate's ->
+  `BioChatterSystem.CanPlayLine` -> `BioPawn.OnChatterLinePlayed` (an event native raises when the line starts), and the
+  line that played was on `SFXPawn_Player`: **the follow's bark is Shepard's own** ("regroup!"), 0.03 s after the order.
+  A hold through the HOLD formation makes the squadmate answer herself, 0.03 s after the order (the same formation
+  path). A `QuickCommandMoveTo` plays nothing within a second, and nothing later either (checked with the fallback off),
+  so the fallback line (`PlaySoundSet` 70) is right for moves; after it `OnChatterLinePlayed` fires on her pawn, so the
+  line really plays. The module now hears `OnChatterLinePlayed` (the definitive answer, by pawn) and `HandleChatterEvent`
+  (CallFunction) besides the two it started with; a line on the player's pawn is logged as Shepard's bark, not an answer.
+  The game's chatter suppression after a line (`m_fChatterSuppressionDuration`) explains a hold's missing answer right
+  after a move's fallback line. Attack: untested (no enemy in the save), the UI's own d-pad sound: untraced.
+- **The frame cost at this spot** (`tools/perf-probe.ps1`, 10 s each): idle, frame interval 32.2 ms (the null driver
+  paces at 31 fps here), the render thread's "both eyes + UI" median 2.17 ms, p90 2.66; while a file was recognized,
+  32.35 ms, 2.93 median, p90 8.25, max 12.2 ms: the recognizer's threads do take a few milliseconds from the render
+  thread's worst frames (ONNX Runtime's pool is at the library's default thread count, which the C API doesn't expose;
+  the next lever is lowering those threads' priority from our side). xrWaitFrame was 27-29 ms either way.
+- **The final's delay was mine, not the recognizer's**: a 2.3 s file came back 2.3 s after its end, because the capture
+  (and the file feeder) added audio under the same lock the worker holds through a transcribe call, so each add waited
+  out a partial. The library's calls are thread-safe; the add runs without the lock now, and the DLL logs each listen's
+  final cost and its partials' count, costliest and sum (`voice: the listen's final transcript took ...`).
+- **The recognizer beside the running game, measured** (the DLL's new log line, a 2.3 s and a 3.5 s file): the small
+  model's partials cost 200-950 ms each (8 partials 1.9 s together, 10 partials 3.1 s), five times the bench's figure on
+  the quiet CPU, and the last one in flight is what delays the final (308 ms once); the tiny model's cost 300 ms at worst
+  (10 partials 0.76 s, 15 partials 1.16 s) with the final at 0 ms. So `model = tiny` and `intervalMs = 250` are the
+  defaults now; the text came out the same ("Ashley. Move up."). The thread priority of ONNX Runtime's pool is the next
+  lever (the C API doesn't set its thread count).
+- **The model tier in the game**: llama.cpp and the stock Qwen3-0.6B Q8_0 deployed to `ASI\voice\llm` (deploy-asi copies
+  them now), loaded in 1.6 s on the host's worker; "Ashley, you know what to do with the big one" was refused by the rules
+  (0.37: "know what do" unresolved), asked of the model, and answered 1.98 s after the ask (158 prompt tokens in 434 ms,
+  14 answer tokens in 466 ms, on 4 threads beside the game): `ALL|SR|ARS|attack|BEHIND`, legal by the grammar, refused by
+  the validator ("a weapon or a power needs one squadmate"). The untrained model's answer is nonsense, as expected; the
+  loop (the mod's ask, the host's worker, the grammar, the validator, the dispatcher) is proven, and the budget for a
+  trained one is about a second at these settings.

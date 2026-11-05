@@ -5,6 +5,7 @@
 #include "core/vr/TestRequest.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/ProcessEvent.hpp"
+#include "game/Player.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
 
@@ -102,26 +103,56 @@ void OnPlaySoundSetCall(ue3::Object* pawn, ue3::Function* /*function*/, void* /*
     Answered(pawn, -1, "the pawn's PlaySoundSet (from script)");
 }
 
-void Install() {
-    if (gInstalled || !ue3::runtime::Ready()) return;
-    ue3::Function* const chatter = gChatterFn.Get();
-    ue3::Function* const play = gPlaySoundSetFn.Get();
-    if (chatter == nullptr && play == nullptr) {
-        if (!gToldMissing) {
-            gToldMissing = true;
-            log::Warn("squad orders: neither BioBaseSquad.SquadHandleChatterEvent nor BioPawn.PlaySoundSet was found: acknowledgements aren't heard");
-        }
-        gInstalled = true;
+// The definitive one: a chatter line played on a pawn (native raises BioPawn.OnChatterLinePlayed after the sound starts;
+// the trace of 2026-11-05 12:30: a follow made SquadHandleChatterEvent a SCRIPT call, so only this and HandleChatterEvent's
+// CallFunction see it). On the player's own pawn it's Shepard's bark ("regroup!"), logged, not an answer.
+void OnChatterLinePlayed(ue3::Object* pawn, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    if (gCalling) return;
+    if (pawn != nullptr && pawn == player::BioPawn(player::Controller())) {
+        if (!gExpected.empty()) log::Info("squad orders: Shepard's own line played ({:.2f} s after the order)", gClock - gExpected.front().given);
         return;
     }
-    if (chatter != nullptr) engine::process_event::AddPostHandler(chatter, &OnChatter);
-    if (play != nullptr) {
-        engine::process_event::AddPostHandler(play, &OnPlaySoundSetEvent);
-        engine::call_function::AddPostHandler(play, &OnPlaySoundSetCall);
+    Answered(pawn, -1, "a chatter line played on the pawn");
+}
+
+void OnHandleChatterCall(ue3::Object* pawn, ue3::Function* /*function*/, void* /*result*/) {
+    if (gCalling || pawn == nullptr || pawn == player::BioPawn(player::Controller())) return;
+    for (Expectation const& e : gExpected) {
+        if (e.pawn == pawn) log::Info("squad orders: the chatter event reached {} ({:.2f} s after the {})", e.name, gClock - e.given, OrderName(e.order));
     }
+}
+
+// Every function of the name: the player's squad is a BioSquadPlayer and the squadmates SFXPawn_* subclasses, and an
+// override (or a state's version) is another UFunction than BioBaseSquad's or BioPawn's (the first build hooked only those
+// and heard nothing in the game, 2026-11-05).
+std::string HookAll(char const* name, engine::process_event::Handler onEvent, engine::call_function::Handler onCall) {
+    std::string names;
+    ue3::Reflection& reflection = ue3::runtime::Get();
+    for (ue3::Function* function : reflection.FindFunctionsNamed(name)) {
+        std::string const full = reflection.FullName(function);
+        if (!full.starts_with("Function ")) continue;
+        if (onEvent != nullptr) engine::process_event::AddPostHandler(function, onEvent);
+        if (onCall != nullptr) engine::call_function::AddPostHandler(function, onCall);
+        names += std::format("{}{}", names.empty() ? "" : ", ", full.substr(9));
+    }
+    return names;
+}
+
+void Install() {
+    if (gInstalled || !ue3::runtime::Ready()) return;
+    std::string const chatter = HookAll("SquadHandleChatterEvent", &OnChatter, nullptr);
+    std::string const play = HookAll("PlaySoundSet", &OnPlaySoundSetEvent, &OnPlaySoundSetCall);
+    std::string const played = HookAll("OnChatterLinePlayed", &OnChatterLinePlayed, nullptr);
+    HookAll("HandleChatterEvent", nullptr, &OnHandleChatterCall);
     gInstalled = true;
-    log::Info("squad orders: acknowledgements heard from {}{}{}", chatter != nullptr ? "BioBaseSquad.SquadHandleChatterEvent" : "",
-        chatter != nullptr && play != nullptr ? " and " : "", play != nullptr ? "BioPawn.PlaySoundSet" : "");
+    if (chatter.empty() && play.empty() && played.empty()) {
+        if (!gToldMissing) {
+            gToldMissing = true;
+            log::Warn("squad orders: no SquadHandleChatterEvent or PlaySoundSet function was found: acknowledgements aren't heard");
+        }
+        return;
+    }
+    log::Info("squad orders: acknowledgements heard from {}; {}; {}", chatter.empty() ? "-" : chatter, play.empty() ? "-" : play, played.empty() ? "-" : played);
 }
 
 int FallbackSet(sc::Order order, Settings const& s) {

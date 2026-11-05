@@ -733,9 +733,10 @@ switching frameworks.
   log line), listens on the mod's request or `[Voice] key`, reads `%LOCALAPPDATA%\MEVR\voice.request` (`wav <path>`, `listen <s>`,
   `keyterms`, `stop`). The mod (`game/Voice`, rules `core/vr/VoiceGesture`, unit-tested) claims the squeeze before the flat orders, joins a
   listen's lines and gives them to `squad_orders::Say`; a settled partial that parses whole is given early (`earlyDispatch`, `settleMs`);
-  a refusal is two buzzes. **The squad's answer is the game's own line** (`game/SquadAck`: `SquadHandleChatterEvent` / `PlaySoundSet`
-  heard after every order, the order's sound set played by us after `ackFallbackS` if none came; `[SquadOrders] ack*`); power orders
-  through `powerRoute = tactical | ai` [verify]. **The model tier**: `core/voice/Grammar` (per-scene GBNF, unit-tested), `core/voice/Llm`
+  a refusal is two buzzes. **The squad's answer is the game's own line** (`game/SquadAck`: `BioPawn.OnChatterLinePlayed` on the squadmate's pawn is the
+  answer, `SquadHandleChatterEvent` / `HandleChatterEvent` / `PlaySoundSet` heard too; traced 2026-11-05: a follow's bark is Shepard's own, a
+  hold is answered by the squadmate through the HOLD formation, a `QuickCommandMoveTo` by nothing, so the order's sound set is played by us
+  after `ackFallbackS` when no line came; `[SquadOrders] ack*`); power orders through `powerRoute = tactical | ai` [verify]. **The model tier**: `core/voice/Grammar` (per-scene GBNF, unit-tested), `core/voice/Llm`
   (llama.cpp's shared build loaded by name, the prefix cached, greedy under the grammar; compiled only with `external/llama-cpp`),
   `plugin/VoiceModel` (`[Voice] llm`, a GGUF in `ASI\voice\llm`), asked by the mod when the rules say "not sure"; data and fine-tune in
   `tools/voice-model` (not trained yet). Benches: `mevr-voice-bench` + `tools/voice-bench.py` over `tools/voice-tts-corpus.ps1`'s WAVs,

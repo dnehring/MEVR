@@ -30,14 +30,14 @@ namespace {
 
 struct Settings {
     bool enabled = true;
-    std::string model = "small";
+    std::string model = "tiny";  // its partials cost the least beside the running game (research/54 "In the game": 300 ms at worst against small's 950)
     std::wstring modelDir;  // empty: ASI\voice\models\<model>-streaming-en
     std::wstring dll;       // empty: ASI\voice\MEVR-Voice.dll
     std::string device;
     int key = 0;  // a virtual key held to talk (0: none)
     int tailMs = 200;
     double duckDb = 12.0;
-    int intervalMs = 150;
+    int intervalMs = 250;  // fewer partials: each costs 100-300 ms of a worker beside the game
     bool wordTimestamps = true;
     std::string keyterms = "Garrus,Wrex,Liara,Tali,Ashley,Kaidan,Shepard,Overload,Sabotage,Damping,Lift,Throw,Singularity,Warp,Stasis,Barrier,Neural Shock,"
                            "Marksman,Carnage,Adrenaline Burst,Immunity,Assassination,Shield Boost,First Aid,Unity";
@@ -101,10 +101,10 @@ double ReadNumber(wchar_t const* key, double fallback) {
 
 void ReadSettings() {
     gSettings.enabled = ReadNumber(L"enabled", 1.0) != 0.0;
-    gSettings.model = ReadText(L"model", "small");
+    gSettings.model = ReadText(L"model", "tiny");
     if (gSettings.model != "tiny" && gSettings.model != "small" && gSettings.model != "medium") {
-        log::Warn("voice: [Voice] model = {} isn't tiny, small or medium: small", gSettings.model);
-        gSettings.model = "small";
+        log::Warn("voice: [Voice] model = {} isn't tiny, small or medium: tiny", gSettings.model);
+        gSettings.model = "tiny";
     }
     wchar_t text[1024]{};
     GetPrivateProfileStringW(L"Voice", L"modelDir", L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
@@ -115,7 +115,7 @@ void ReadSettings() {
     gSettings.key = static_cast<int>(ReadNumber(L"key", 0.0));
     gSettings.tailMs = static_cast<int>(ReadNumber(L"tailMs", 200.0));
     gSettings.duckDb = ReadNumber(L"duckDb", 12.0);
-    gSettings.intervalMs = static_cast<int>(ReadNumber(L"intervalMs", 150.0));
+    gSettings.intervalMs = static_cast<int>(ReadNumber(L"intervalMs", 250.0));
     gSettings.wordTimestamps = ReadNumber(L"wordTimestamps", 1.0) != 0.0;
     gSettings.keyterms = ReadText(L"keyterms", gSettings.keyterms.c_str());
 }

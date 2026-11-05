@@ -254,7 +254,15 @@ void UpdateKeyterms(double dt) {
     if (gSinceKeyterms < 2.0 || gLink.setKeyterms == nullptr) return;
     gSinceKeyterms = 0.0;
     std::string terms = "Shepard";
-    auto add = [&](std::string const& t) {
+    // Title case: the game names them "ASHLEY", and the recognizer writes a key term as it's spelled.
+    auto add = [&](std::string const& raw) {
+        std::string t;
+        bool start = true;
+        for (char c : raw) {
+            unsigned char const u = static_cast<unsigned char>(c);
+            t += static_cast<char>(start ? std::toupper(u) : std::tolower(u));
+            start = c == ' ' || c == '\'' || c == '-';
+        }
         if (t.empty() || terms.find("," + t + ",") != std::string::npos || terms == t || terms.ends_with("," + t)) return;
         terms += "," + t;
     };
