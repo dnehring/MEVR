@@ -4,10 +4,12 @@ left wrist in front of the chest as if reading a watch, looks down at it, and ta
 given times (research/56, the omni-tool: the tap opens the rail and the game's omni-tool, a second tap closes them). Between
 taps the right hand rests low beside the body. For checking the omni-tool's wrist screens and rail on the fake headset.
 
-Usage: python tools/make-wrist-recording.py out.mevrrec [seconds 60] [taps 4] [eye height 0] [pitch -30]
+Usage: python tools/make-wrist-recording.py out.mevrrec [seconds 60] [taps 4] [eye height 0] [look wrist] [B presses]
   taps:       the tap times in seconds, comma-separated ("4" opens once; "4,40" opens, then closes)
   eye height: the head's height in tracking space (0 on the fake headset, whose null driver puts the head at the origin)
-  pitch:      the head's pitch while looking at the wrist, degrees (negative is down)
+  look:       "wrist" turns the head to look at the raised wrist (yaw and pitch); a number only pitches it that many
+              degrees (negative is down)
+  B presses:  times (comma-separated) the right controller's B is held 0.2 s; replay with -Inputs for the game to see it
 The tap (core/vr/OmniRail's Tap): the fingertip, 0.035 m along the right aim ray, comes from farther than 0.07 m to within
 0.035 m of the wrist point (the left grip pose plus [Hud] wristOffset, -0.03 0.06 0.05 in its axes by default).
 Then: tools/replay.ps1 -Path out.mevrrec -Loop (poses only; no -Inputs: no buttons), with [Pointer] setCursor = 0 so the
@@ -36,9 +38,11 @@ def smooth(f):
     return f * f * (3.0 - 2.0 * f)
 
 
-def pitch_quat(deg):
-    half = math.radians(deg) / 2.0
-    return (math.sin(half), 0.0, 0.0, math.cos(half))
+def head_quat(yaw_deg, pitch_deg):
+    """Yaw about +Y (positive turns left), then pitch about the head's own X (negative looks down); (x, y, z, w)."""
+    sy, cy = math.sin(math.radians(yaw_deg) / 2.0), math.cos(math.radians(yaw_deg) / 2.0)
+    sp, cp = math.sin(math.radians(pitch_deg) / 2.0), math.cos(math.radians(pitch_deg) / 2.0)
+    return (cy * sp, sy * cp, -sy * sp, cy * cp)
 
 
 def main():
@@ -46,7 +50,8 @@ def main():
     seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 60.0
     taps = [float(t) for t in (sys.argv[3] if len(sys.argv) > 3 else "4").split(",") if t.strip()]
     eye_h = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
-    pitch = float(sys.argv[5]) if len(sys.argv) > 5 else -30.0
+    look = sys.argv[5] if len(sys.argv) > 5 else "wrist"
+    presses = [float(x) for x in (sys.argv[6] if len(sys.argv) > 6 else "").split(",") if x.strip()]
     hz = 90.0
     ipd = 0.064
     fov = (-0.785, 0.785, 0.785, -0.785)  # left, right, up, down (radians)
@@ -59,13 +64,20 @@ def main():
     right_rest = (0.22, eye_h - 0.60, -0.15)
     right_on = (wrist_up[0], wrist_up[1], wrist_up[2] + TIP_AHEAD)
     right_near = (right_on[0] + 0.15, right_on[1] - 0.03, right_on[2])
+    # The head: turned to look at the raised wrist (as a person reading a watch does), or only pitched by `look` degrees.
+    if look == "wrist":
+        flat = math.hypot(wrist_up[0], wrist_up[2])
+        yaw = math.degrees(math.atan2(-wrist_up[0], -wrist_up[2]))
+        pitch = math.degrees(math.atan2(wrist_up[1] - eye_h, flat))
+    else:
+        yaw, pitch = 0.0, float(look)
     frames = []
     n = int(seconds * hz)
     for i in range(n):
         t = i / hz
         raise_f = smooth((t - 1.0) / 1.5)  # the wrist comes up over 1-2.5 s and stays
         left = lerp(left_rest, left_up, raise_f)
-        head = pitch_quat(pitch * raise_f)
+        head = head_quat(yaw * raise_f, pitch * raise_f)
         right = right_rest
         for tap in taps:
             # 1.0 s before the tap: over to near the wrist; 0.25 s in; 0.2 s on it; 0.25 s out; back to rest by +1.2 s.
@@ -86,10 +98,11 @@ def main():
         right_grip = (*IDENTITY, right[0], right[1] - 0.05, right[2] + 0.02)
         right_aim = (*IDENTITY, *right)
         buttons = (1 << 4) | (1 << 5)  # gripValid, aimValid
+        b_down = any(0.0 <= t - p < 0.2 for p in presses)  # the right controller's B (secondary), with replay -Inputs
         frame = FRAME.pack(int(t * 1e9), 3,
                            *eyes[0], *fov, *eyes[1], *fov,
                            buttons, 0.0, 0.0, 0.0, 0.0, *left_grip, *left_aim,
-                           buttons, 0.0, 0.0, 0.0, 0.0, *right_grip, *right_aim)
+                           buttons | ((1 << 2) if b_down else 0), 0.0, 0.0, 0.0, 0.0, *right_grip, *right_aim)
         frames.append(frame)
     header = HEADER.pack(MAGIC, 1, HEADER.size, FRAME.size, 0, int(time.time() * 1000))
     with open(out, "wb") as f:
@@ -97,7 +110,7 @@ def main():
         for fr in frames:
             f.write(fr)
     print(f"{out}: {n} frames, {seconds} s at {hz} Hz; the left wrist up from 2.5 s at ({wrist_up[0]:.2f}, {wrist_up[1]:.2f}, "
-          f"{wrist_up[2]:.2f}) m, the head pitched {pitch:.0f} degrees; taps at {', '.join(f'{t:g}' for t in taps)} s")
+          f"{wrist_up[2]:.2f}) m, the head turned {yaw:.0f} and pitched {pitch:.0f} degrees; taps at {', '.join(f'{t:g}' for t in taps)} s")
 
 
 if __name__ == "__main__":

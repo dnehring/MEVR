@@ -7002,12 +7002,25 @@ void TestWorldUi() {
         }
         CHECK(!wu::BeamTo(bottom(*held), *held));  // the emitter on the edge: no fan
     }
-    // Never in the face: a wrist at the eyes puts it kWristNearestM away.
+    // Never in the face: a wrist at the eyes puts it WristNearest away (the minigame's 0.30 m: just past kWristNearestM, as wide
+    // as kWristMaxWidthDeg there).
+    CHECK(NearD(wu::WristNearest(0.10f), wu::kWristNearestM, 1e-6));
+    CHECK(NearD(wu::WristNearest(0.30f), 0.15 / std::tan(30.0 * 3.14159265 / 180.0), 1e-4));
     auto const close2 = wu::WristPlace(eyes, {0.2f, 1.55f, -0.05f}, 0.30f, 0.06f, 0.05f, 0.75f);
     CHECK(close2.has_value());
     if (close2) {
         float const dx = close2->pose.position.x - eyes.x, dy = close2->pose.position.y - eyes.y, dz = close2->pose.position.z - eyes.z;
-        CHECK(NearD(std::sqrt(dx * dx + dy * dy + dz * dz), wu::kWristNearestM, 1e-4));
+        CHECK(NearD(std::sqrt(dx * dx + dy * dy + dz * dz), wu::WristNearest(0.30f), 1e-4));
+    }
+    // A whole screen (the equipment's 0.55 m) from a wrist raised close: pushed out until it looks 60 degrees wide, along the
+    // line of sight (the snapshot of 2026-11-04 23:05:10 had it 0.34 m away, 77 degrees).
+    auto const menu = wu::WristPlace(eyes, {-0.10f, 1.30f, -0.18f}, 0.55f, 0.10f, 0.0f, 0.5625f);
+    CHECK(menu.has_value());
+    if (menu) {
+        float const dx = menu->pose.position.x - eyes.x, dy = menu->pose.position.y - eyes.y, dz = menu->pose.position.z - eyes.z;
+        float const reach = std::sqrt(dx * dx + dy * dy + dz * dz);
+        CHECK(reach >= wu::WristNearest(0.55f) - 1e-4f);
+        CHECK(2.0 * std::atan(0.275 / reach) * 180.0 / 3.14159265 <= wu::kWristMaxWidthDeg + 0.01);
     }
     CHECK(!wu::WristPlace(eyes, wrist, 0.0f, 0.06f, 0.05f, 0.75f));
     // On the wrist the minigame shows its frame only; in the room its whole stage.

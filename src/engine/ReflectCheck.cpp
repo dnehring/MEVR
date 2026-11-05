@@ -1169,6 +1169,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeBase.ShowCodexGui",
         "SFXGame.SFXGameModeBase.ShowMapGui",
         "Engine.BioSFHandler.HandleInputEvent",
+        "SFXGame.SFXGameModeBase.GuiKey",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
         // Mako (research/44): the game's own turret aim, the vehicle's Tick and its shot start
         "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",

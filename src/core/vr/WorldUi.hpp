@@ -185,8 +185,12 @@ Panel WholeWindow(Panel const& shown, Rect const& part);
 // Facing the eyes (its X level), its bottom edge's middle `aboveM` above the wrist (moved `towardM` toward the eyes, level) along
 // its own up: across the line of sight, so the eyes see the gap between the wrist and the screen, never the wrist through the
 // screen (a gap straight up hid the wrist behind a screen tilted to face eyes above it: snapshot 2026-11-04 11:00:52). Never
-// nearer the eyes than kWristNearestM. nullopt for a width that can't be.
+// nearer the eyes than WristNearest(widthM): kWristNearestM, and far enough that it looks at most kWristMaxWidthDeg wide (the
+// equipment screen, 0.55 m, stood 0.34 m from the eyes from a raised wrist, 77 degrees, its left edge outside the view:
+// snapshot 2026-11-04 23:05:10); pushed out along the line of sight. nullopt for a width that can't be.
 inline constexpr float kWristNearestM = 0.25f;
+inline constexpr float kWristMaxWidthDeg = 60.0f;
+float WristNearest(float widthM);
 std::optional<Panel> WristPlace(XrVector3f const& eyes, XrVector3f const& wrist, float widthM, float aboveM, float towardM,
     float heightOverWidth);
 // It unfolds out of the wrist when it opens: over kUnfoldS its height grows from nothing and its width from kUnfoldWidth, eased

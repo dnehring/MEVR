@@ -175,6 +175,11 @@ std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward
     return panel;
 }
 
+float WristNearest(float widthM) {
+    float const halfAngle = 0.5f * kWristMaxWidthDeg * 3.14159265f / 180.0f;
+    return std::max(kWristNearestM, std::isfinite(widthM) ? 0.5f * widthM / std::tan(halfAngle) : 0.0f);
+}
+
 std::optional<Panel> WristPlace(XrVector3f const& eyes, XrVector3f const& wrist, float widthM, float aboveM, float towardM,
     float heightOverWidth) {
     if (!(widthM > 0.05f) || !(heightOverWidth > 0.01f) || !std::isfinite(widthM) || !std::isfinite(heightOverWidth) ||
@@ -195,8 +200,9 @@ std::optional<Panel> WristPlace(XrVector3f const& eyes, XrVector3f const& wrist,
     }
     XrVector3f const fromEyes = gh::Sub(centre, eyes);
     float const reach = gh::Length(fromEyes);
-    if (reach < kWristNearestM) {  // never in the face
-        centre = reach > 1e-4f ? gh::Add(eyes, gh::Mul(fromEyes, kWristNearestM / reach)) : gh::Add(eyes, {0.0f, 0.0f, -kWristNearestM});
+    float const nearest = WristNearest(widthM);
+    if (reach < nearest) {  // never in the face, never wider than the eyes take in at once
+        centre = reach > 1e-4f ? gh::Add(eyes, gh::Mul(fromEyes, nearest / reach)) : gh::Add(eyes, {0.0f, 0.0f, -nearest});
     }
     Panel panel;
     panel.pose = gh::DiscPose(centre, gh::Sub(eyes, centre), eyes);  // facing the eyes, its X level

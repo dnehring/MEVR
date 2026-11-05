@@ -40,14 +40,17 @@ ue3::FunctionRef gShowMenuGuiBase{"SFXGame.SFXGameModeBase.ShowMenuGui"};
 ue3::FunctionRef gTryHolster{"SFXGame.SFXGameModeDefault.TryHolster"};
 ue3::FunctionRef gIsInCombatActionState{"SFXGame.BioPawn.IsInCombatActionState"};
 // The omni-tool's rail (research/56): the screens' own functions (declared on SFXGameModeBase only: no mode overrides them, so
-// in game mode 7 the screens open only from the game's Flash wheel), and the GUI manager's focused panel, whose handler takes
-// B as the player's back-out.
+// in game mode 7 the screens open only from the game's Flash wheel), and the player's B as the game hears it: GuiKey on the
+// active mode, which hands it to the GUI manager (BioSFManager.HandleInputEvent), which offers it to every handler on the
+// stack and closes the screen through MassEffectGuiManager.HidePauseMenu / HideBrowserWheel (traced 2026-11-04 23:20 with a
+// replayed B). The focused panel's handler alone (BioSFHandler.HandleInputEvent(13)) never closed the equipment screen.
 ue3::FunctionRef gShowEquipmentGui{"SFXGame.SFXGameModeBase.ShowEquipmentGui"};
 ue3::FunctionRef gShowSquadGui{"SFXGame.SFXGameModeBase.ShowSquadGui"};
 ue3::FunctionRef gShowJournalGui{"SFXGame.SFXGameModeBase.ShowJournalGui"};
 ue3::FunctionRef gShowCodexGui{"SFXGame.SFXGameModeBase.ShowCodexGui"};
 ue3::FunctionRef gShowMapGui{"SFXGame.SFXGameModeBase.ShowMapGui"};
 ue3::FunctionRef gHandleInputEvent{"Engine.BioSFHandler.HandleInputEvent"};
+ue3::FunctionRef gGuiKey{"SFXGame.SFXGameModeBase.GuiKey"};
 ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
 ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
 ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag"};
@@ -325,21 +328,34 @@ void StepSwitch() {
             --gSwitch.wait;
             return;
         }
-        if (gSwitch.backOuts >= kMaxBackOuts || focus.handler == nullptr || gHandleInputEvent.Get() == nullptr) {
+        // The player's B as the game hears it: GuiKey on the active mode (the GUI mode's), looked up on its class.
+        std::string how;
+        ue3::Object* const mode = ActiveMode(*modes, how);
+        ue3::Reflection& r = ue3::runtime::Get();
+        ue3::Function* const guiKey = mode != nullptr && gGuiKey.Get() != nullptr ? r.FindFunction(r.ClassOf(mode), "GuiKey") : nullptr;
+        if (gSwitch.backOuts >= kMaxBackOuts || (guiKey == nullptr && (focus.handler == nullptr || gHandleInputEvent.Get() == nullptr))) {
             gLast = std::format("{}: the game's screen didn't close", gm::Name(gSwitch.action));
             log::Warn("omni-tool: {} not done: the game stayed in its GUI mode after {} backs out (the focused panel '{}'{})",
-                gm::Name(gSwitch.action), gSwitch.backOuts, focus.tag, focus.handler == nullptr ? ", without a handler" : "");
+                gm::Name(gSwitch.action), gSwitch.backOuts, focus.tag,
+                guiKey == nullptr ? ", no GuiKey on the active mode and no handler" : "");
             gSwitch = {};
             return;
         }
-        ue3::Params parms(ue3::runtime::Get(), gHandleInputEvent.Get());
-        parms.Set("Event", kGuiEventB);
-        parms.Set("fValue", 1.0f);
-        ue3::runtime::Call(focus.handler, gHandleInputEvent.Get(), parms);  // the player's B on the screen in focus
+        if (guiKey != nullptr) {
+            ue3::Params parms(r, guiKey);
+            parms.Set("Event", kGuiEventB);
+            ue3::runtime::Call(mode, guiKey, parms);  // the player's B: the GUI manager offers it to the whole stack
+        } else {
+            ue3::Params parms(r, gHandleInputEvent.Get());
+            parms.Set("Event", kGuiEventB);
+            parms.Set("fValue", 1.0f);
+            ue3::runtime::Call(focus.handler, gHandleInputEvent.Get(), parms);  // older route: the focused screen's handler only
+        }
         ++gSwitch.backOuts;
         gSwitch.wait = kBackOutWaitTicks;
-        log::Info("omni-tool: backing out of '{}' (B, {} of at most {}) for {}", focus.tag, gSwitch.backOuts, kMaxBackOuts,
-            gm::Name(gSwitch.action));
+        log::Info("omni-tool: backing out of '{}' (B through {}, {} of at most {}) for {}", focus.tag,
+            guiKey != nullptr ? std::format("{}.GuiKey", ClassName(mode)) : std::string("the focused handler"), gSwitch.backOuts,
+            kMaxBackOuts, gm::Name(gSwitch.action));
         return;
     }
     gm::Action const action = gSwitch.action;

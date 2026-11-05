@@ -102,8 +102,9 @@ void RestoreFullScreen() {
 
 struct Status {
     bool published = false;
-    // Screens opened (a new mode-7 stretch with one of ours); starts from the clock, so a reloaded mod never repeats a number the
-    // host has placed.
+    // Screens opened (a new mode-7 stretch with one of ours, or another of ours taking over inside it: the omni-tool's rail
+    // switching from the equipment to the journal); starts from the clock, so a reloaded mod never repeats a number the host has
+    // placed. The host places and labels a screen once per opening (plugin/WorldUi).
     std::uint32_t opening = static_cast<std::uint32_t>(GetTickCount64());
     bool open = false;                 // one of ours is up now
     std::string stack;                 // the open screens' tags, as last read
@@ -397,7 +398,11 @@ void Tick(Link const& link) {
             log::Info("world ui: the {} screen isn't full screen any more: the level renders behind it, not the game's UI world", o.tag);
         }
     }
-    if (!gS.open) {
+    if (!gS.open || gS.screen != wu::Name(screen)) {
+        if (gS.open) {
+            log::Info("world ui: {} takes over from {} (a new opening: placed and unfolded again)", wu::Name(screen), gS.screen);
+            gS.published = false;  // logged as up again below
+        }
         gS.open = true;
         ++gS.opening;
         gS.screen = wu::Name(screen);
