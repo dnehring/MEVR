@@ -148,6 +148,9 @@ switching frameworks.
   date and the new wording there.** New ones follow `docs/knowledge/how-to-write.md`; `python tools/check-okf.py
   docs/knowledge` (ctest `mevr-okf`) checks the bundle.
 - `reference/`: read-only third-party clones (gitignored). Recreate with `tools/fetch-references.ps1`.
+- `notes/headset-checklist.md`: everything that still needs the user in the headset, by area and owning session, plus
+  what Claude can check alone on the fake headset. Add a line when you build something that needs the headset; delete it
+  (and write the result in its research note) once it's checked.
 - `notes/game-inventory.md`: exe versions and hashes from `tools/inventory-game.ps1`. Re-run after
   game updates. All three exes are 2.0.0.48602 (the build LExSDKv2's RVAs target).
 - `mods/`: raw mod downloads (gitignored). Unpack `.m3m` merge mods with `tools/extract-m3m.ps1`.

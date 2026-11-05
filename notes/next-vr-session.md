@@ -1,5 +1,8 @@
 # Next test session
 
+**What still needs testing, all in one list: [headset-checklist.md](headset-checklist.md)** (since 2026-11-05). The
+numbered steps below are the detailed instructions for the features built up to 2026-11-03.
+
 LE1 now renders VR with Halcyon's renderer (since 2026-10-08), with our motion controllers, hand
 aim and arm IK on top. Logs, both read by Claude after each step (just note what you saw and
 roughly when):
