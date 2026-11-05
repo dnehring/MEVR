@@ -181,7 +181,7 @@ our deploy has first person on from launch.
 ## 6. VR cover: the game's cover protection, taken with the body (2026-11-05)
 
 The user asked whether crouching behind cover protects a VR player: with `noCover` it didn't, beyond the wall itself
-stopping shots (section 5). Built the same day; checked offline, not yet in the game **[verify]**.
+stopping shots (section 5). Built the same day and measured in the game on the fake headset (section 6.2's last bullet).
 
 ### 6.1 What each game gives a player in cover
 
@@ -229,6 +229,17 @@ shield regeneration's wait in cover (`PlayerCoverRegenTimerMultiplier` 1.5) **[v
   refusal, the damage object of pawn n's weapon or any live weapon's; Shepard's health and shields before and after, and
   what VR cover judged), `mevr cover on|off` (an A/B override until the mod reloads).
 - **No menu row yet** (file only): it restores the game's own rule and is on by default.
+- **The script hook goes in for it** (`Mod.cpp`): while posture refuses the game's cover the CallFunction hook is put in,
+  controllers or not (it used to wait for hand aim, which the fake headset's untracked controllers never turn on).
+- **Measured 2026-11-05** (fake headset, the VR career's save on UNC20, a Casual or Normal difficulty since the covered cut
+  was whole; the squadmate frozen with the game's `DisableAi` and used as the shooter by `mevr cover hit 30 0`; Shepard
+  moved with `mevr setloc`; `mevr cover probe` found the prefab module's walls): Shepard's eyes 0.70 m behind the module's
+  far wall (`StaticMeshActor_76`, facing him), the squadmate 32.7 m away beyond the module: judged covered, the game's cone
+  cuts it, and two hits of 30 left health 105 and shields 63 as they were. The same spot with `mevr cover off`: shields 63 to
+  40.3 (the game's `PlayerDamageTaken` scales 30 to 22.7). 5.1 m from the wall: cover too far, 63 to 40.3. In the open, the
+  squadmate 4.3 m away: exposed, 40.3 to 17.7. No `call function:` warning; posture refused no cover entry (the game's
+  cover was never taken). Not measured: a hostile's own shot (the instigator branch: its controller's pawn and eye height),
+  and the head raised over low cover (the fake headset's head is fixed at standing height) **[verify]** in combat.
 
 ### 6.3 LE2 and LE3
 

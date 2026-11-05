@@ -1274,6 +1274,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         EnsureCoverHook();
         game::posture::Tick(deltaSeconds, game::posture::Link{HostFloor()});
         game::vr_cover::Tick();  // after posture: whether the game's cover is refused this tick
+        if (game::posture::RefusingCover()) {
+            EnsureCallFunctionHook();  // VR cover answers the damage call's IsInCover in the script hook, controllers or not
+        }
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
         game::camera_probe::Tick();

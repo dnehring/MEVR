@@ -551,8 +551,8 @@ std::string Console(std::string_view args) {
         RefreshSettings();
         return std::format("vr cover: {} until the mod reloads ([Cover] protect stays as it is)", sub);
     }
-    if (sub != "test" && sub != "pawns" && sub != "hit") {
-        return "usage: mevr cover [on|off | test | pawns | hit <damage> <n>]";
+    if (sub != "test" && sub != "pawns" && sub != "hit" && sub != "probe") {
+        return "usage: mevr cover [on|off | test | pawns | hit <damage> <n> | probe <yawDeg> [rangeM]]";
     }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
@@ -571,6 +571,24 @@ std::string Console(std::string_view args) {
     std::optional<vc::Vec3> selfAt;
     if (auto const at = gLocation.Read<ue3::Vector>(pawn)) {
         selfAt = ToVec(*at);
+    }
+    if (sub == "probe") {
+        // `mevr cover probe <yawDeg> [rangeM]`: the first surface level from the eyes along a world yaw (0 = +X, 90 = +Y), for
+        // finding cover to test against.
+        double yaw = 0.0, range = 20.0;
+        words >> yaw >> range;
+        double const r = yaw * 3.14159265358979 / 180.0;
+        double const units = range * frame->unitsPerMeter;
+        vc::Vec3 const end{eyes.x + std::cos(r) * units, eyes.y + std::sin(r) * units, eyes.z};
+        std::string surface;
+        std::optional<vc::Block> const block = FirstSurface(pawn, eyes, end, &surface);
+        if (!block) {
+            return std::format("mevr cover probe: nothing within {:.1f} m along yaw {:.0f} from ({:.0f}, {:.0f}, {:.0f})", range, yaw, eyes.x,
+                eyes.y, eyes.z);
+        }
+        double const d = std::hypot(block->point.x - eyes.x, block->point.y - eyes.y, block->point.z - eyes.z) / frame->unitsPerMeter;
+        return std::format("mevr cover probe: {} at {:.2f} m along yaw {:.0f}: ({:.0f}, {:.0f}, {:.0f}), normal ({:.2f}, {:.2f}, {:.2f})", surface,
+            d, yaw, block->point.x, block->point.y, block->point.z, block->normal.x, block->normal.y, block->normal.z);
     }
     std::vector<ue3::Object*> const pawns = Pawns(pawn);
     if (sub == "pawns") {
