@@ -286,6 +286,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
 }
 
 bool gRailOmniTool = false;  // Tick: the host's rail is open alone on foot (Down keeps the omni-tool for it)
+bool gEmitterOnly = false;   // an inactive state with only the omni-tool's display is published (the rail alone stands there)
 
 void SetStatus(std::string json) {
     std::lock_guard<std::mutex> const lock(gStatusMutex);
@@ -299,6 +300,22 @@ void Down(Link const& link, char const* why) {
     }
     RestoreFullScreen();
     omni_tool::Tick(gRailOmniTool);  // the rail alone on the wrist still wears it
+    // ... and stands at its display, as the screens are projected from it (the rendered arm can fall short of the controller):
+    // an inactive state carrying only the emitter (the host shows no screen for it).
+    std::optional<ue3::Vector> const display = gRailOmniTool && link.setState != nullptr ? omni_tool::DisplayWorld() : std::nullopt;
+    if (display && gHold.footFrame) {
+        wu::State state;
+        XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{display->x, display->y, display->z});
+        state.emitter[0] = p.x;
+        state.emitter[1] = p.y;
+        state.emitter[2] = p.z;
+        state.emitterValid = 1;
+        link.setState(&state);
+        gEmitterOnly = true;
+    } else if (gEmitterOnly && link.setState != nullptr) {
+        link.setState(nullptr);
+        gEmitterOnly = false;
+    }
     if (gWristUp) {
         gWristUp = false;
         view_anchor::Hold(std::nullopt);
@@ -473,6 +490,7 @@ void Tick(Link const& link) {
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gHold.povFov);
     }
     link.setState(&state);
+    gEmitterOnly = false;  // the screen's state took its place
     gS.published = true;
     gScreenUp = true;
     ++gS.ticks;

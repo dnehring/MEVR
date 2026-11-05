@@ -27,7 +27,9 @@ struct Frame {
     XrVector3f eyes{};                          // app space
     std::optional<world_ui::Shown> screen;      // the game's screen this frame (on the wrist or in the room), if any
     bool wristValid = false;
-    XrVector3f wrist{};                         // the left wrist's point (the HUD's wrist piece), app space
+    XrVector3f wrist{};                         // the left wrist's point (the HUD's wrist piece), app space: the tap's target
+    std::optional<XrVector3f> display;          // the omni-tool's display on Shepard's arm (the mod's), app space: the rail
+                                                // alone stands there when known
     bool gunDrawn = false;                      // the mod's gun panel shows: no tap
     int gameMode = -1;                          // the game mode Halcyon last read (0 on foot, 7 the game's screens)
     bool othersOwnInput = false;                // our main menu, Halcyon's menu or the calibration is up

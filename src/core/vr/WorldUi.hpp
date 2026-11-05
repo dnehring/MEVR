@@ -135,6 +135,10 @@ inline constexpr std::uint8_t kMinigameMode = 10; // GameMode_Minigame (the bypa
 inline constexpr bool ScreenMode(int mode) { return mode == kGuiMode || mode == kMinigameMode; }
 // The latest state if published within maxAgeMs and active; else nullopt.
 std::optional<State> Latest(std::uint64_t maxAgeMs);
+// The omni-tool's display (State::emitter) if published within maxAgeMs, active or not: with no screen up the mod publishes an
+// inactive state carrying only it while the omni-tool's rail stands alone on the wrist (research/56; an older host's Latest
+// ignores such a state).
+std::optional<XrVector3f> LatestEmitter(std::uint64_t maxAgeMs);
 
 // ---- The math ---------------------------------------------------------------------------------------------------------
 struct Rect {

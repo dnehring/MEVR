@@ -2289,6 +2289,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         rail.headValid = frame.headValid;
         rail.eyes = ToVec(frame.headPosition);
         rail.screen = worldShown;
+        rail.display = mevr::vr::world_ui::LatestEmitter(400);  // the mod sends it every tick while the rail stands alone
         if (pieceControllers.active && pieceControllers.left.gripValid) {
             rail.wristValid = true;
             rail.wrist = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);

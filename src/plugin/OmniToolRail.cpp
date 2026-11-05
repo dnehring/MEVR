@@ -431,8 +431,9 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (frame.screen) {
         at = rail::Beside(frame.screen->panel);
     } else if (frame.wristValid && frame.headValid) {
-        at = rail::Alone(frame.eyes, frame.wrist, g.settings.aloneHeightM, 0.10f, 0.0f);
-        place = "on the wrist";
+        // At the omni-tool's display as Shepard's arm shows it (where the screens are projected from), else the controller's wrist.
+        at = rail::Alone(frame.eyes, frame.display.value_or(frame.wrist), g.settings.aloneHeightM, 0.10f, 0.0f);
+        place = frame.display ? "on the omni-tool's display" : "on the wrist";
     }
     if (!at) {
         Hide("nowhere to stand (no screen, the left controller not tracked)");

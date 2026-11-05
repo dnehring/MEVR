@@ -73,6 +73,14 @@ std::optional<State> Latest(std::uint64_t maxAgeMs) {
     return gLatest;
 }
 
+std::optional<XrVector3f> LatestEmitter(std::uint64_t maxAgeMs) {
+    std::lock_guard<std::mutex> const lock(gMutex);
+    if (!gHave || gLatest.emitterValid == 0 || GetTickCount64() - gLatest.timeMs > maxAgeMs) {
+        return std::nullopt;
+    }
+    return XrVector3f{gLatest.emitter[0], gLatest.emitter[1], gLatest.emitter[2]};
+}
+
 Rect Stage(float windowWidth, float windowHeight, float aspect) {
     if (!(windowWidth > 0.0f) || !(windowHeight > 0.0f) || !(aspect > 0.0f)) {
         return {};
