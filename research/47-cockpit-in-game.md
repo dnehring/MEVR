@@ -1308,5 +1308,5 @@ noticed any real behavioral change".
   unfocused nothing else does (the pad's input runs only with focus), so the jets fired again every time their fuel came back
   (every 3.74 s, until cleared by hand). Fixed (cleared when the hold ends, and at a reload). The two bursts of "The stick tilts"
   (244 + 366 ticks for one `jets 3`) were probably this.
-- **Next:** whether the angles or the curve should be steeper in the air, the user's call: a full tilt is strong, a small one
-  weak.
+- **Kept as it is** (the user, 2026-11-04: "good enough"): the angles (20 forward/back, 15 sideways) and the stick's curve stay;
+  a full tilt is strong, a small one gentle.
