@@ -499,3 +499,109 @@ only bark it can cause is the follow it falls back to with `retreatToCover = 0`)
 set by its `m_MinTime`. For attack and move the acknowledgement has to be non-verbal: a haptic tick in the left hand when the
 order is dispatched, and a brief marker on the target group (the host already draws the power lock's brackets at a pawn,
 `powerlock`): the next piece of the feel.
+
+### The voice path built: the acknowledgement, the microphone, the recognizer, the model tier (2026-11-05)
+
+The user's direction, the same day: "there's a sound effect when moving squad mates, but they usually respond with a voice
+note", and "build out everything". So the acknowledgement is the game's, and the rest of the plan was built offline in one
+pass (the game machine was another session's all day: nothing here has run in the game yet, [notes/headset-checklist.md]
+(../notes/headset-checklist.md) sections 1 and 7).
+
+**The acknowledgement is the game's own line** (`game/SquadAck`). The sound-set enum (`BioPawn.EBioSoundSetType`) has the
+lines the user hears: `StartMoveToConfirmation` 70 ("moving"), `MoveToSuccess` 64, `MoveToFailure` 63, `HoldingPosition` 59,
+`LOSestablished` 61, `TargetDown` 2, `Allclear` 77; the `GiveCommandAttack` / `GiveCommandMove` sets marked UNUSED were a red
+herring. The follow's trace showed the native raising `BioBaseSquad.SquadHandleChatterEvent`, so the move and attack natives
+most likely do the same **[verify]**. The module expects an answer after every order the dispatcher gives (not the standing
+re-asserts, silent on purpose), hears `SquadHandleChatterEvent` (ProcessEvent) and `BioPawn.PlaySoundSet` (both hooks), logs
+which set answered and after how long (`squad orders: Ashley answered the move with sound set 70 (StartMoveToConfirmation)
+after 0.31 s`), and when nothing answers within `[SquadOrders] ackFallbackS` (1 s) plays the order's own set on the squadmate
+through `PlaySoundSet` (`ackMoveSet` 70, `ackHoldSet` 59, `ackAttackSet` 61 **[verify which set fits an attack]**; 0 = none;
+the follow's is always the game's). The UI's own sound for a d-pad order wasn't traced: if the natives play it, our orders
+have it too **[verify]**. Power orders dispatch now (`Order::Use`): `[SquadOrders] powerRoute = tactical`
+(`SquadOrderUsePower` then `ApplyTacticalOrders`, the weapon order's path, applied after the game's 1 s tactical delay) or
+`ai` (the member's `BioAiController.AddUsePower` as ordered by the player), the group's nearest living member as the target,
+the power's game name kept by the squad context from `BioPower.m_nmPower`. Both routes [verify] in a fight.
+
+**The microphone and the recognizer** are Moonshine Voice's own C library, not a hand-built ONNX pipeline: the research
+agent found that Moonshine AI ships a prebuilt Windows library (`moonshine-voice-windows-x86_64.tar.gz`, v0.1.5, MIT: four
+static libraries built /MD with MSVC 14.40, ONNX Runtime 1.23 beside them) with a streaming C API (`moonshine-c-api.h`
+version 30000: load the models from a folder, `create_stream`, `add_audio_to_stream` from the capture thread,
+`transcribe_stream` for a partial, `stop_stream` then one more call for the final), a built-in VAD that splits lines,
+**key-term biasing** (`keyterms`, a comma-separated list compiled into a subword trie that nudges the decoder: the squadmates'
+and powers' names), and **word timestamps** (`word_timestamps`: a time and a confidence per word, which is what "those" at
+its word's time needs). The models are the v2 streaming ones as `.ort` files (int8, MIT: tiny 44 MB, small 136 MB, medium
+257 MB on disk), mirrored on Hugging Face; `tools/fetch-voice.ps1` fetches the library into `external/moonshine-voice` and
+the models into `models/voice`, both gitignored, and `tools/deploy-asi.ps1` puts them in `ASI\voice`.
+
+The code: `MEVR-Voice.dll` ([src/voice/Voice.cpp](../src/voice/Voice.cpp), our C interface [VoiceApi.h](../src/voice/VoiceApi.h))
+links the library and owns WASAPI shared-mode capture of the headset's microphone (the device whose name holds `[Voice]
+device`, else the default communications device; MMCSS "Audio"; the level always measured, the audio dropped unless a
+listen is on), the stream's life (`listen on`: start; `off`: `tailMs` more audio, then stop; a worker asks for a partial
+every `intervalMs` and the final after the stop, then pushes an end marker), the game's own audio session ducked by `duckDb`
+through `ISimpleAudioVolume` while listening **[verify that LE's audio engine honours it]**, and a file feed for the test
+loop. The host ([plugin/Voice.cpp](../src/plugin/Voice.cpp)) loads the DLL from `ASI\voice` at attach on a worker
+(`LoadLibraryExW` with the DLL's own folder in the search path for `onnxruntime.dll`; without the DLL or the models the game
+runs without voice, one log line), listens on the mod's request or while `[Voice] key` is held, reads
+`%LOCALAPPDATA%\MEVR\voice.request` ("wav <path>", "listen <s>", "keyterms", "stop"), and hands the mod the lines through
+HostServices v31 (`setVoiceListen`, `takeVoiceLine`, `voiceState`, `setVoiceKeyterms`, `voiceCommand`; the structs in
+[core/vr/Voice.hpp](../src/core/vr/Voice.hpp)). The mod ([game/Voice.cpp](../src/game/Voice.cpp)) owns the radio gesture
+([core/vr/VoiceGesture](../src/core/vr/VoiceGesture.hpp), unit-tested: a new left squeeze with the grip within `radioRadiusM`
+0.20 of the ear point, the head's left side `earSideM` 0.08 out and `earDownM` 0.03 down, that throwables and the vent didn't
+claim, starts a listen; it claims the squeeze before the flat orders see it; letting go ends it; shorter than `minHoldS` a
+blip, longer than `maxHoldS` ended by itself), sets the key terms from the roster every 2 s, joins a listen's lines (the
+library's VAD splits "Garrus." from the order) and gives the joined text to `squad_orders::Say` at the end marker, with
+"those" resolved `deicticLagS` (0.3 s) before the line's end on the host clock. **The semantic endpoint** from the plan is in:
+a partial that hasn't changed for `settleMs` (250) and parses whole, confidently, with no power in it is given before the
+release (`earlyDispatch`), and the final is parsed only past the words already given. A refusal is two short buzzes ("say
+again?"), an order one tick. `mevr voice wav <file> | listen <s> | keyterms <a,b> | stop | status`.
+
+**Measured on synthesized speech** (`tools/voice-tts-corpus.ps1`: Windows' two desktop voices reading 30 lines of the
+parser's corpus, 60 WAVs at 16 kHz; `tools/voice-bench.py` over `mevr-voice-bench`, the audio fed 100 ms at a time; the
+CPU shared with another session's running game, so the costs are pessimistic):
+
+| Model | Load | WER | Exact lines | Names | A partial's cost (mean) | The final after the audio's end (real-time feed) |
+|---|---|---|---|---|---|---|
+| tiny (34 M) | 0.26 s | 9.0% | 40/60 | 64% | 38-52 ms | median 3 ms, p95 4 ms |
+| small (123 M) | 0.75 s | 10.5% | 34/60 | 41% | 84-124 ms | median 1 ms, p95 521 ms (a partial in flight) |
+| medium (245 M) | 0.84 s | 5.1% | 47/60 | 70% | 131-216 ms | median 3 ms, p95 6 ms |
+
+Two things the numbers settle. The final transcript costs nothing after the release: the stream is already caught up by
+the partials, so the budget after the release is the parser's millisecond and the game's own order delay; a partial's cost
+is what matters, and medium's 130-220 ms under load means the text is at most that stale when the player lets go. And **the
+names are the whole error**: every miss is "Rex", "Gurus", "Caress" for Wrex and Garrus (the synthesizer's own pronunciation
+is part of it), which the parser's fuzzy names absorb at a confidence cost ("rex" to Wrex at 0.75, "gurus" to Garrus at
+0.67) and which the key-term boost at its default didn't fix (`--boost` is there to A/B; the library's own advice is that a
+higher boost puts the terms where they weren't said). The default is `model = small`; the real microphone decides
+(the checklist).
+
+**The model tier** is built as a runtime and a pipeline, not yet as a trained model. [core/voice/Grammar](../src/core/voice/Grammar.hpp)
+writes the per-scene GBNF (the squadmates present and ALL, the weapon codes, the party's power codes, the eight orders, the
+live groups' ids, PT1..n for the deictics said, AIM/GAZE/LAST/OTHER/SELF and the four directions, up to three clauses or
+`none`; unit-tested, with a reader that rebuilds it from a text block for the bench). [core/voice/Llm](../src/core/voice/Llm.hpp)
+loads llama.cpp's shared CPU build (b12128, MIT; `tools/fetch-voice.ps1 -Llm` into `external/llama-cpp`) by name at run
+time (its CPU backend DLLs through `ggml_backend_load_all_from_path`), a GGUF on the CPU only, decodes the prompt's prefix
+(the rules and the roster) once into the KV cache and each request's scene block after it (`llama_memory_seq_rm` back to
+the prefix), and samples greedily under the grammar (`llama_sampler_init_grammar`): an invented name can't come out. The
+host's [plugin/VoiceModel](../src/plugin/VoiceModel.cpp) runs it on a worker (`[Voice] llm`, `llmModel`, `llmThreads`; off
+without `ASI\voice\llm\llama.dll` and a `.gguf`, and compiled out of a build without the header); the mod asks it
+(HostServices v31 `askVoiceModel` / `takeVoiceModelAnswer`) whenever the rules answer "not sure", with the block, the first
+deictic resolved at its time and the grammar, and dispatches each line of the answer through `squad_orders::Give`. The data
+writes itself from the grammar, as planned: [tools/voice-model/make_dataset.py](../tools/voice-model/make_dataset.py)
+samples scenes, draws gold lines and phrasings (fillers, restarts, compounds, deictics, talk as `none`) and injects the
+recognizer's slips on names and powers, in the mod's own prompt format; [train_lora.py](../tools/voice-model/train_lora.py)
+is the LoRA on Qwen3-0.6B with the GGUF export (not run: the GPU was the game's; an hour on the 4090 is the estimate).
+`mevr-llm-bench` answers a dataset under the grammars with the same runtime; llama.cpp's own `llama-bench` wasn't run here
+(a downloaded executable), so the raw token rates are still the research's extrapolations.
+
+**The zero-shot baseline, measured** (`mevr-llm-bench`, Qwen3-0.6B Q8_0, 6 threads, 40 sampled prompts, the game running
+in another session): the runtime works end to end (the library and its CPU backend load, the grammar holds every answer
+to legal lines), and the untuned model answers 0 of 40: it fills all three clauses with the same nonsense (`ALL|SR|IMM|
+attack|SELF ; ...`), 40-48 tokens each, because nothing in the grammar let it stop after one (fixed: the root ends with a
+newline; with it one clause of 14 tokens, still wrong: 0 of 10). The times are the finding: the scene block's prefill
+(the prefix cached) median 331-367 ms, p95 434-555 ms, and the decode about 25 tokens a second (14 tokens in 0.55-0.69
+s), so a fine-tuned answer costs roughly 0.3 + 0.6 s: above the research's 60-110 ms extrapolation and the 300 ms budget,
+on a CPU the game was using. The levers, in order: a Q4_K_M
+file, a shorter block (the roster's power names already sit in the cached prefix; the E lines can drop their flags), a
+smaller model (Granite 4.0 350M), and threads pinned off the game's cores (research/54 "Three to six threads"); measured
+again once the machine is free and the fine-tune exists. Until then the model tier stays what the plan said it would be
+if the rules take nine orders in ten: a nicety for the tenth, off by default where the files aren't deployed.

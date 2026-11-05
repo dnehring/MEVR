@@ -17,6 +17,7 @@
 #include "game/Throwables.hpp"
 #include "game/Vent.hpp"
 #include "game/ViewAnchor.hpp"
+#include "game/Voice.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
 
@@ -707,7 +708,7 @@ void Tick(double deltaSeconds, Link const& link) {
                       "reading of the grip; close the game and redeploy the host");
         }
     }
-    bool const unclaimed = fresh && !throwables::ClaimedLeft() && !vent::ClaimedLeft();
+    bool const unclaimed = fresh && !throwables::ClaimedLeft() && !vent::ClaimedLeft() && !voice::ClaimedLeft();
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
     std::optional<std::uint8_t> const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;

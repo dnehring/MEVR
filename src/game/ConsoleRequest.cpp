@@ -3,6 +3,7 @@
 
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
+#include "game/Voice.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -532,6 +533,14 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             return std::string("usage: mevr say <words> (e.g. mevr say Garrus, take out those troops on the bridge)");
         }
         return squad_orders::Say(rest);
+    }
+    if (verb == "voice") {
+        // `mevr voice wav <path> | listen <seconds> | keyterms <a,b> | stop | status`: the host's recognizer (research/54) fed a
+        // WAV as one listen (its lines come back through the same path as the microphone's), told to listen from the
+        // microphone, given key terms, or asked how it is.
+        std::string rest;
+        std::getline(words, rest);
+        return voice::Console(rest);
     }
     if (verb == "order") {
         // `mevr order WHO|WEAPON|POWER|ORDER|TARGET`: an action line (research/54) validated against the squad context and

@@ -422,6 +422,13 @@ set(MEVR_MOD_SOURCES
     src/game/GuiCursor.hpp
     src/core/vr/GuiEvents.cpp
     src/core/vr/GuiEvents.hpp
+    src/game/Voice.cpp
+    src/game/Voice.hpp
+    src/core/voice/Grammar.cpp
+    src/core/voice/Grammar.hpp
+    src/core/vr/VoiceGesture.cpp
+    src/core/vr/VoiceGesture.hpp
+    src/core/vr/Voice.hpp
     src/game/Fingers.cpp
     src/game/Fingers.hpp
     src/game/GunKick.cpp
@@ -571,6 +578,12 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/GamePointer.hpp
     src/core/vr/GuiEvents.cpp
     src/core/vr/GuiEvents.hpp
+    src/plugin/Voice.cpp
+    src/plugin/Voice.hpp
+    src/plugin/VoiceModel.cpp
+    src/plugin/VoiceModel.hpp
+    src/core/vr/Voice.hpp
+    src/voice/VoiceApi.h
     src/core/vr/Upscale.cpp
     src/core/vr/Upscale.hpp
     src/core/Embedded.hpp
@@ -813,6 +826,13 @@ foreach (game LE1 LE2 LE3)
         mevr_add_plugin(${game})
     endif ()
 endforeach ()
+# The model tier's runtime (research/54; core/voice/Llm) needs llama.cpp's header (external/llama-cpp, tools/fetch-voice.ps1
+# -Llm; gitignored): with it the LE1 host carries the runtime, without it plugin/VoiceModel says the model tier is off.
+if (MEVR_BUILD_LE1 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include/llama.h")
+    target_sources(MEVR-LE1 PRIVATE src/core/voice/Llm.cpp src/core/voice/Llm.hpp)
+    target_include_directories(MEVR-LE1 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include)
+    target_compile_definitions(MEVR-LE1 PRIVATE MEVR_HAVE_LLAMA)
+endif ()
 
 # The installer's logic (research/33): game and VR detection, the manifest with backups, INI edits that never reset a
 # profile, the VR game settings, the launch arguments, optional content (texture packs through Mass Effect Modder),
@@ -894,6 +914,10 @@ if (MEVR_BUILD_TESTS)
         tests/GuiEventsTests.cpp
         src/core/vr/GuiEvents.cpp
         tests/SquadPhrasings.cpp
+        tests/VoiceTests.cpp
+        src/core/voice/Wav.cpp
+        src/core/voice/Grammar.cpp
+        src/core/vr/VoiceGesture.cpp
         tests/CockpitPanelTests.cpp
         src/core/Exe.cpp
         src/core/ExeCheck.cpp
@@ -1129,6 +1153,57 @@ if (MEVR_BUILD_TESTS)
     target_compile_definitions(mevr-upscale-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-upscale-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_test(NAME mevr-upscale-shader COMMAND mevr-upscale-preview --check)
+
+    # The voice orders' recognizer (research/54): MEVR-Voice.dll, our C interface (src/voice/VoiceApi.h) over Moonshine
+    # Voice's prebuilt static libraries (MIT; external/moonshine-voice, fetched by tools/fetch-voice.ps1; /MD release, MSVC
+    # 14.40) and ONNX Runtime (MIT, its DLL copied next to ours). The host loads the DLL from ASIoice at run time, so a
+    # build without the library is still complete: the game then has no voice. mevr-voice-bench times the models over WAV
+    # files (step 2 of the research's plan).
+    set(MEVR_VOICE_SDK "${CMAKE_CURRENT_SOURCE_DIR}/external/moonshine-voice")
+    option(MEVR_VOICE "Build MEVR-Voice.dll and mevr-voice-bench (needs external/moonshine-voice)" ON)
+    if (MEVR_VOICE AND EXISTS "${MEVR_VOICE_SDK}/lib/moonshine.lib")
+        set(MEVR_VOICE_LIBS ${MEVR_VOICE_SDK}/lib/moonshine.lib ${MEVR_VOICE_SDK}/lib/bin-tokenizer.lib ${MEVR_VOICE_SDK}/lib/moonshine-utils.lib
+            ${MEVR_VOICE_SDK}/lib/ort-utils.lib ${MEVR_VOICE_SDK}/lib/onnxruntime.lib)
+        add_library(MEVR-Voice SHARED
+            src/voice/Voice.cpp
+            src/voice/VoiceApi.h
+            src/core/voice/Wav.cpp
+            src/core/voice/Wav.hpp
+            src/core/vr/Voice.hpp
+        )
+        target_include_directories(MEVR-Voice PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_VOICE_SDK}/include)
+        target_link_libraries(MEVR-Voice PRIVATE ${MEVR_VOICE_LIBS} ole32 avrt)
+        target_compile_definitions(MEVR-Voice PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_compile_options(MEVR-Voice PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+        mevr_pdb_name_only(MEVR-Voice)
+        add_custom_command(TARGET MEVR-Voice POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MEVR_VOICE_SDK}/lib/onnxruntime.dll $<TARGET_FILE_DIR:MEVR-Voice>)
+        add_executable(mevr-voice-bench
+            tools/voice-bench/Main.cpp
+            src/core/voice/Wav.cpp
+        )
+        target_include_directories(mevr-voice-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_VOICE_SDK}/include)
+        target_link_libraries(mevr-voice-bench PRIVATE ${MEVR_VOICE_LIBS})
+        target_compile_definitions(mevr-voice-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_compile_options(mevr-voice-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+        add_dependencies(mevr-voice-bench MEVR-Voice)  # for onnxruntime.dll next to it
+    endif ()
+
+    # The model tier offline (research/54 step 6): core/voice/Llm loads llama.cpp's shared build (MIT; external/llama-cpp,
+    # tools/fetch-voice.ps1 -Llm) by name at run time, so only its header is needed to build; the bench answers a dataset's
+    # prompts under their grammars.
+    set(MEVR_LLAMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp")
+    if (EXISTS "${MEVR_LLAMA_DIR}/include/llama.h")
+        add_executable(mevr-llm-bench
+            tools/llm-bench/Main.cpp
+            src/core/voice/Grammar.cpp
+            src/core/voice/Llm.cpp
+            src/core/vr/SquadContext.cpp
+        )
+        target_include_directories(mevr-llm-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_LLAMA_DIR}/include)
+        target_compile_definitions(mevr-llm-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_compile_options(mevr-llm-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    endif ()
 
     # Every program ctest runs, as one target: CI (.github/workflows) and tools/package-release.ps1 build it before ctest.
     # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.

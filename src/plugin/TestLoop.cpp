@@ -9,6 +9,7 @@
 #include "plugin/DrawReplay.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/GamePointer.hpp"
+#include "plugin/Voice.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #endif
@@ -809,7 +810,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"aimRay\": {{\"valid\": {}, \"origin\": {}, \"direction\": {}, \"ageMs\": {}}},\n"
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
-        "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n"
+        "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n  \"voice\": {},\n"
         "  \"spectator\": {},\n  \"figure\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
@@ -824,7 +825,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
 #else
         std::string("null"),
 #endif
-        game_pointer::StatusJson(), galaxy_hologram::StatusJson(), spectator::StatusJson(), ui_world_figure::StatusJson(), mod,
+        game_pointer::StatusJson(), galaxy_hologram::StatusJson(), voice::StatusJson(), spectator::StatusJson(), ui_world_figure::StatusJson(), mod,
         LayersJson(layers));
 }
 

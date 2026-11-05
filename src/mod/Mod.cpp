@@ -75,6 +75,8 @@
 #include "game/SquadAck.hpp"
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
+#include "game/Voice.hpp"
+#include "core/vr/Voice.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
@@ -724,6 +726,34 @@ mevr::game::throwables::Link ThrowablesLink() {
 }
 
 // Host renderer: the flat squad orders' gesture (research/54): the left grip's report (v11) and the controller pulses (v9).
+mevr::game::voice::Link VoiceLink() {
+    using namespace mevr;
+    game::voice::Link link;
+    if (!gHostOwnsVr) {
+        return link;
+    }
+    if (gHost->version >= 9) {
+        link.haptic = gHost->hapticPulse;
+    }
+    if (MEVR_HOST_HAS(leftGripAway) && gHost->leftGripAway != nullptr) {
+        link.leftGrip = gHost->leftGripAway();
+    }
+    if (MEVR_HOST_HAS(voiceCommand) && gHost->setVoiceListen != nullptr && gHost->takeVoiceLine != nullptr && gHost->voiceState != nullptr &&
+        gHost->voiceLineSize == sizeof(vr::voice::Line) && gHost->voiceStateSize == sizeof(vr::voice::State)) {
+        link.has = true;
+        link.setListen = gHost->setVoiceListen;
+        link.takeLine = gHost->takeVoiceLine;
+        link.state = gHost->voiceState;
+        link.setKeyterms = gHost->setVoiceKeyterms;
+        link.command = gHost->voiceCommand;
+        if (MEVR_HOST_HAS(takeVoiceModelAnswer) && gHost->askVoiceModel != nullptr && gHost->takeVoiceModelAnswer != nullptr) {
+            link.askModel = gHost->askVoiceModel;
+            link.takeModelAnswer = gHost->takeVoiceModelAnswer;
+        }
+    }
+    return link;
+}
+
 mevr::game::squad_orders::Link SquadOrdersLink() {
     using namespace mevr;
     game::squad_orders::Link link;
@@ -903,7 +933,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"powerWheel\": {}, \"guiCursor\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -915,7 +945,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1064,6 +1094,7 @@ void Heartbeat() {
         game::squad_context::LogStats();
         game::squad_orders::LogStats();
         game::squad_ack::LogStats();
+        game::voice::LogStats();
         game::mako::LogStats();
         game::mako_gunner::LogStats();
         game::mako_controls::LogStats();
@@ -1256,6 +1287,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // The squad's world for squad orders (research/54): the scene every refreshS, a pose sample every tick.
         game::squad_context::Tick(deltaSeconds);
         // The flat squad orders by gesture (research/54), on this tick's scene: after the grenades' and the vent's claims.
+        game::voice::Tick(deltaSeconds, VoiceLink());  // before the flat orders: the radio claims its squeeze
         game::squad_orders::Tick(deltaSeconds, SquadOrdersLink());
         {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
@@ -1392,6 +1424,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::squad_context::Shutdown();
     game::squad_orders::Shutdown();
     game::squad_ack::Shutdown();
+    game::voice::Shutdown();
     game::vent::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
