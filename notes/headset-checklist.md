@@ -86,6 +86,16 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] A conversation and a cutscene on the 3D screen: depth comfort, the dialogue wheel readable, the pointer picks a
   wheel option. (research/52 "Limits")
 
+### The omni-tool menu on the wrist (session: VR performance optimization; on the release-blockers branch, not on main yet)
+- [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
+  Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
+  screen's lower buttons must not close it. (research/56 sections 2-3 and 6, built 2026-11-04/05)
+- [ ] On the wrist's equipment screen with your real fingertip: the weapon tabs, Shepard's and the squadmates' tabs, a list
+  row, Equip, a swipe to scroll. Does each land on the first tap (the targets are 0.8-1.4 cm)? (research/56 section 6,
+  built 2026-11-05)
+- [ ] The squad member behind the equipment and squad screens: there, switching with the tabs, comfortable at the
+  backdrop's opacity (`[WorldUi] figureOpacity`, 0 = the backdrop's 0.8)? (research/56 section 7, built 2026-11-05)
+
 ### Squad orders by gesture (session: Low-latency voice squad commands)
 - [ ] Squeeze the left grip with the hand away from the gun's foregrip zone, the grenade slot and a hot receiver, and
   point with it: let go on an enemy group (attack), on the ground past 2 m (move there), near you, on a squadmate or on
@@ -192,6 +202,9 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
   the compound sentence, and the trace cost while a hold is kept. (research/54, every `[verify]` after the trace section)
 - Galaxy map: the top level in the window, going back out a level. (research/51 section 8.1)
 - Screens: the omni-gel override at an encrypted crate (`mevr skillgame`). (research/53 section 6)
+- Omni-tool screens: fingertip replays on Squad, Map, Journal, Codex and Computer; the squad member on the XMods screen
+  and with a squad of three; Toggle Helmet where helmets come off (the Normandy) against the flat screen; the UI world
+  capture's cost at a heavy spot. (research/56 sections 6-7)
 - Spectator camera: head camera with `viewActor = 1`, the cost off / 1080p / 4K. (research/49)
 - Citadel: a crowd spot with `sharePass = 0`. (research/50)
 - Gun: the muzzle through a wall doesn't shoot through it; camera modes' hook-bone gap near 0. (research/14, 18)
