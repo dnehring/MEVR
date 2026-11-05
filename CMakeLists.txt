@@ -571,6 +571,12 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/WorldUi.hpp
     src/core/vr/OmniRail.cpp
     src/core/vr/OmniRail.hpp
+    src/core/gfx/Raster.cpp
+    src/core/gfx/Raster.hpp
+    src/core/gfx/Swf.cpp
+    src/core/gfx/Swf.hpp
+    src/core/gfx/SwfFont.cpp
+    src/core/gfx/SwfFont.hpp
     src/core/vr/Spectator.cpp
     src/core/vr/Spectator.hpp
     src/core/vr/ScopeCapture.hpp
@@ -874,6 +880,10 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/GalaxyMap.cpp
         src/core/vr/WorldUi.cpp
         src/core/vr/OmniRail.cpp
+        src/core/gfx/Raster.cpp
+        src/core/gfx/Swf.cpp
+        src/core/gfx/SwfFont.cpp
+        tests/GfxTests.cpp
         src/core/vr/Spectator.cpp
         src/core/vr/Sights.cpp
         src/core/vr/SquadMenu.cpp
@@ -890,6 +900,11 @@ if (MEVR_BUILD_TESTS)
     target_link_libraries(mevr-tests PRIVATE mevr-install mevr-minhook OpenXR::headers windowscodecs ole32)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    # core/gfx's TrueType fonts are checked by loading them with FreeType (the menu's font engine), when it's built.
+    if (TARGET freetype)
+        target_link_libraries(mevr-tests PRIVATE freetype)
+        target_compile_definitions(mevr-tests PRIVATE MEVR_TEST_FREETYPE)
+    endif ()
     add_test(NAME mevr-tests COMMAND mevr-tests)
     # Every `k...Rva = 0x...` constant in src/ is in our RVA table (engine/Addresses.hpp, research/34 stage 4).
     find_package(Python3 COMPONENTS Interpreter)
@@ -1071,6 +1086,23 @@ if (MEVR_BUILD_TESTS)
         target_compile_definitions(mevr-calibration-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
         target_compile_options(mevr-calibration-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     endif ()
+endif ()
+
+# The game's own UI art, locally (tools/gfx-dump, research/54): a GFx movie's exports, sprites, shapes and fonts; a
+# character drawn to PNG (core/gfx/Raster), a nine-slice fit, a font rebuilt as TrueType (core/gfx/SwfFont) and a text
+# sample FreeType renders from it. Reads the player's own files; never commit what it writes.
+if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
+    add_executable(mevr-gfx-dump
+        tools/gfx-dump/Main.cpp
+        src/core/PngFile.cpp
+        src/core/gfx/Raster.cpp
+        src/core/gfx/Swf.cpp
+        src/core/gfx/SwfFont.cpp
+    )
+    target_include_directories(mevr-gfx-dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-gfx-dump PRIVATE freetype windowscodecs ole32)
+    target_compile_definitions(mevr-gfx-dump PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    target_compile_options(mevr-gfx-dump PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 endif ()
 
 # The VR main menu's look, offline (tools/menu-preview, research/28): every section and state as PNGs, drawn with the
