@@ -1038,6 +1038,14 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   grabbed in a drive, the left hand's X and Y reach the game as nothing (the game side, 2026-11-05). [verify] in the game:
   what RepairVehicle does with no omni-gel or at full health, and whether LeaveWorld raises a confirm box (on the HUD
   panel in the cockpit).
+- **The turret stays in auto mode while they're worked** (the user, 2026-11-05: "If I'm repairing it pulling extraction handle
+  the aim should remain in auto mode"): while a hand presses the cap or holds the handle, or the right hand is within the
+  handle's 10 cm, the Mako's gunner (research/47 "The gunner") has the turret, at once and whatever the hands do
+  (`mako_gunner::Hands::busy`, unit-tested). Reaching up for the handle, the right hand's ray points out through the
+  windshield, often with a finger resting on the trigger: by the gunner's own rules that took the gun. Had the player the
+  gun before, the gunner takes it at the press, not after the 3 s handback; afterwards the next aim by hand or thumbstick
+  takes it again. With `[Mako] gunner = 0` there is no auto mode and nothing changes. Log `mako gunner: the gunner aims the
+  turret (a hand works the cockpit's panel)`.
 
 ## 5. Not done
 

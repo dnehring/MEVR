@@ -15,7 +15,8 @@ struct Object;
 // The Mako's gunner (research/47 "The gunner"; rules in core/vr/MakoGunner): riding in the cockpit, a squadmate aims the
 // turret at the nearest hostile it can see and fires: the machine gun in bursts (RT's FireWeapon on the vehicle's game mode),
 // the cannon at big targets (RB's FireCannon). The player's thumbstick on the stick, or the free right hand aiming (finger on or
-// pulling the trigger, pointing out the front), takes the gun at once; the gunner's again [Mako] gunnerHandbackS later.
+// pulling the trigger, pointing out the front), takes the gun at once; the gunner's again [Mako] gunnerHandbackS later. While a
+// hand works the cockpit's repair button or extraction handle the gunner has it, at once (research/48 section 27).
 // Candidates: WorldInfo.PawnList's BioPawns the driver's IsHostile names, not dead, within gunnerRangeM and seen from the
 // muzzle (Actor.FastTrace), re-read 4 times a second.
 // Game thread; every call through our reflection layer. Logs `mako gunner:`; snapshot "mod"."makoGunner".
@@ -28,6 +29,7 @@ struct Inputs {
     bool riding = false;                 // the cockpit rides (the gunner works only there)
     vr::controllers::State const* controllers = nullptr;
     bool stickHeld = false;              // the right hand holds the cockpit's stick
+    bool panelBusy = false;              // a hand presses the repair button or holds the extraction handle (or the right hand is at it)
     std::optional<engine::TrackingFrame> frame;  // to tell where the free hand points
 };
 

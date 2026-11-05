@@ -1229,8 +1229,9 @@ rocket launcher for heavier/crowded targets".
 - **Who aims** (`core/vr/MakoGunner`, unit-tested; `game/MakoGunner`): riding in the cockpit, the gunner by default. The stick's
   thumbstick past 0.25 (the stick held) takes the turret at once, as before. So does the free right hand aiming: tracked, off the
   stick, the index on the trigger (the touch sensor) or pulling it, its ray out through the front (not at the floor or the seat).
-  The gunner takes it back `gunnerHandbackS` (3 s) after the last of either; the hand's last aim is held until then. Not riding,
-  or `[Mako] gunner = 0`: the old rules (the stick's aim while held, else the hand's).
+  The gunner takes it back `gunnerHandbackS` (3 s) after the last of either; the hand's last aim is held until then. While a hand
+  works the repair button or the extraction handle (research/48 section 27, 2026-11-05) the gunner has it at once, whatever the
+  hands do. Not riding, or `[Mako] gunner = 0`: the old rules (the stick's aim while held, else the hand's).
 - **Targets:** `WorldInfo.PawnList`'s BioPawns that the driver's `BioPawn.IsHostile(Other)` names, not `IsDead`, within
   `gunnerRangeM` (120 m) and seen from the muzzle (`Actor.FastTrace` from `BioWeaponRanged.GetMuzzleLoc`), re-read 4 times a
   second. The nearest wins; the current one is kept unless another is nearer than 0.7 of its distance. The aim point is the

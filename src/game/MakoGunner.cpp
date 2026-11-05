@@ -305,6 +305,7 @@ Result Tick(double deltaSeconds, Inputs const& in) {
         hands.handIntent = (right.triggerTouchKnown && right.triggerTouch) || right.trigger > 0.05f;
         hands.handPointsOut = active && PointsOut(in);
     }
+    hands.busy = in.panelBusy;
     mg::Settings rules = settings;
     rules.on = active;  // off: the old rules (the stick while held, else the hand)
     if (active && !gState.wasActive) {
@@ -320,7 +321,7 @@ Result Tick(double deltaSeconds, Inputs const& in) {
         }
         gState.loggedControlSet = true;
         gState.loggedControl = control;
-        log::Info("mako gunner: {} aims the turret", mg::Name(control));
+        log::Info("mako gunner: {} aims the turret{}", mg::Name(control), hands.busy ? " (a hand works the cockpit's panel)" : "");
     }
     if (!active) {
         ReleaseTriggers(in.controller);

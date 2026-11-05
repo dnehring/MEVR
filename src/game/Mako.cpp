@@ -761,6 +761,12 @@ void Tick(double deltaSeconds, Link const& link) {
     gunnerIn.riding = cockpit_probe::Riding() && gSettings.handAim && link.headTrackedView && !link.mainMenuOpen;
     gunnerIn.controllers = &controllers;
     gunnerIn.stickHeld = stickAim.valid;
+    {
+        // Repairing or pulling the extraction handle, the gunner keeps the gun (the user, 2026-11-05); the right hand at the handle
+        // counts already, since reaching up its ray points out through the windshield.
+        vr::cockpit_panel::Output const& panel = cockpit_panel::Current();
+        gunnerIn.panelBusy = panel.pressHand >= 0 || panel.held || panel.inReach[1];
+    }
     gunnerIn.frame = view_anchor::Current();
     mako_gunner::Result const gunner = mako_gunner::Tick(deltaSeconds, gunnerIn);
     gGunnerAims = gunner.gunner;

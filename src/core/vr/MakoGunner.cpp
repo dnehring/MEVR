@@ -31,6 +31,10 @@ Control Step(ControlState& state, Hands const& hands, double now, Settings const
         state.lastManual = now;
         return state.control;
     }
+    if (hands.busy) {
+        state.control = Control::Gunner;  // the hand on the panel isn't aiming, and its grip or trigger isn't a takeover
+        return state.control;
+    }
     if (StickAims(hands, settings)) {
         state.control = Control::Stick;
         state.lastManual = now;

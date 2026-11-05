@@ -39,6 +39,7 @@ struct Hands {
     bool handFree = false;      // the right controller tracked and not on the stick
     bool handIntent = false;    // its index finger on the trigger (the touch sensor) or pulling it
     bool handPointsOut = false;  // its ray leaves through the front (not at the floor or the seat)
+    bool busy = false;          // a hand works the cockpit's panel (the repair button, the extraction handle): the gunner keeps the gun
 };
 
 struct ControlState {
@@ -46,7 +47,9 @@ struct ControlState {
     double lastManual = -1e9;  // when the player last aimed
 };
 
-// Who aims this tick (`now` in seconds). Manual input wins at once; the gunner's again after `handbackS` without any.
+// Who aims this tick (`now` in seconds). Manual input wins at once; the gunner's again after `handbackS` without any. While the
+// hands are `busy` the gunner has it at once, whatever they do (the user, 2026-11-05: repairing or pulling the extraction handle,
+// "the aim should remain in auto mode"); afterwards the next manual input takes it again.
 Control Step(ControlState& state, Hands const& hands, double now, Settings const& settings);
 // The hand aims: free, intent, out through the front. The thumbstick aims: held and past the dead zone.
 bool HandAims(Hands const& hands);

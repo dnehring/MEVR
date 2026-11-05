@@ -3,6 +3,7 @@
 // by a fingertip and held, the extraction lever grabbed and pulled, and the lamps' counts and colours.
 
 #include "core/vr/CockpitPanel.hpp"
+#include "core/vr/MakoGunner.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -182,12 +183,47 @@ void TestLamps() {
     CHECK(cp::ProgressLamps(1.0f, 8) == 8);
 }
 
+// Working the panel, the gunner keeps the turret (core/vr/MakoGunner's `busy`; the user, 2026-11-05: "the aim should remain in
+// auto mode"): the hand at the handle points out through the windshield with a finger on the trigger, which would take the gun.
+void TestGunnerWhileBusy() {
+    namespace mg = mevr::vr::mako_gunner;
+    mg::Settings s;
+    mg::ControlState state;
+    mg::Hands reaching;
+    reaching.handFree = true;
+    reaching.handIntent = true;
+    reaching.handPointsOut = true;
+    reaching.busy = true;
+    CHECK(mg::Step(state, reaching, 0.0, s) == mg::Control::Gunner);
+    mg::Hands thumb = reaching;  // the other hand on the stick, its thumbstick pushed: still the gunner's
+    thumb.stickHeld = true;
+    thumb.thumbX = 0.9f;
+    CHECK(mg::Step(state, thumb, 0.5, s) == mg::Control::Gunner);
+    // the player had the gun and reaches for the button: the gunner's at once, not after the handback
+    mg::ControlState had;
+    mg::Hands aiming = reaching;
+    aiming.busy = false;
+    CHECK(mg::Step(had, aiming, 0.0, s) == mg::Control::Hand);
+    mg::Hands pressing;
+    pressing.busy = true;
+    CHECK(mg::Step(had, pressing, 0.1, s) == mg::Control::Gunner);
+    // let go, the hand down: the gunner keeps it; the next aim takes it again
+    CHECK(mg::Step(had, mg::Hands{}, 0.2, s) == mg::Control::Gunner);
+    CHECK(mg::Step(had, aiming, 0.3, s) == mg::Control::Hand);
+    // the gunner off ([Mako] gunner = 0): the old rules, no auto mode to keep
+    mg::Settings off = s;
+    off.on = false;
+    mg::ControlState old;
+    CHECK(mg::Step(old, pressing, 0.0, off) == mg::Control::Hand);
+}
+
 }  // namespace
 
 int RunCockpitPanelTests() {
     TestButton();
     TestLever();
     TestLamps();
+    TestGunnerWhileBusy();
     std::printf("cockpit panel tests: %d failure(s)\n", gFailures);
     return gFailures;
 }
