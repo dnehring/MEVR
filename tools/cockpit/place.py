@@ -25,14 +25,18 @@ import struct
 
 PACKAGE = "BIOG_MEVR_Cockpit"
 UNITS_PER_MODEL_UNIT = 100.0  # the packager's glTF import
-HULL_MESHES = ["Hull_Shell", "Hull_Console", "Hull_Side_Left", "Hull_Side_Right", "Hull_Glass"]  # the glass from 66d3a38 on
+HULL_MESHES = ["Hull_Shell", "Hull_Console", "Hull_Side_Left", "Hull_Side_Right", "Hull_Glass",  # the glass from 66d3a38 on
+               "Repair_Base", "Extraction_Base"]  # the controls' fixed parts (the manifest's "panels")
 FURNITURE = {  # manifest name: package mesh
     "chair": "Chair",
     "throtle-control-base": "Throttle_Base",
     "throtle-control-handle": "Throttle_Handle",
     "joystick-base": "Joystick_Base",
     "joystick-grip": "Joystick_Grip",
+    "repair-cap": "Repair_Cap",
+    "extraction-handle": "Extraction_Handle",
 }
+ON_HULL = {"repair-cap", "extraction-handle"}  # moving parts set into the hull: they move with it (--seat-back)
 
 
 def Lines(manifest, metres, yaw_sign, seat_back=0.0):
@@ -55,7 +59,8 @@ def Lines(manifest, metres, yaw_sign, seat_back=0.0):
         if motion.get("kind") == "slide":  # at its neutral place
             for i in range(3):
                 origin[i] += motion["axis"][i] * motion["neutral"] * f["hullUnitsPerModelUnit"]
-        Part(mesh, origin, 90.0 - yaw_sign * f["turnDeg"], f["hullUnitsPerModelUnit"] * metres / UNITS_PER_MODEL_UNIT)
+        Part(mesh, origin, 90.0 - yaw_sign * f["turnDeg"], f["hullUnitsPerModelUnit"] * metres / UNITS_PER_MODEL_UNIT,
+             seat_back if name in ON_HULL else 0.0)
     out.append("mevr cockpit parts")
     return out
 
@@ -200,14 +205,37 @@ def SeatLine(manifest, handles=None):
             f"axes {Three(handles['lever'][1])} {Three(handles['stick'][1])}")
 
 
+def PanelLine(manifest, metres, seat_back=0.0):
+    """`panel ...`: the repair button's cap and press, the extraction handle's hinge, axis and grip, and which of Repair_Base's
+    elements are lamps (the manifest's panels, research/48 section 27): points from the eye in metres, right, forward, up, the
+    controls moving with the hull (--seat-back). None without panels in the manifest."""
+    panels = manifest.get("panels")
+    if not panels:
+        return None
+    eye = manifest["eye"]["hull"]
+
+    def At(p):
+        return f"{(p[0] - eye[0]) * metres:.4f} {(p[1] - eye[1]) * metres + seat_back:.4f} {(p[2] - eye[2]) * metres:.4f}"
+
+    def Unit(v):
+        return f"{v[0]:.5f} {v[1]:.5f} {v[2]:.5f}"
+
+    repair, extraction = panels["repair"], panels["extraction"]
+    health, progress = repair["health"]["elements"], repair["progress"]["elements"]
+    return (f"panel button {At(repair['pressPoint'])} in {Unit(repair['pressAxis'])} travel {repair['travelMetres']:.4f} "
+            f"lever {At(extraction['hingePoint'])} axis {Unit(extraction['hingeAxis'])} grip {At(extraction['gripPoint'])} "
+            f"pull {extraction['pullDeg']:g} lamps {health[0]} {len(health)} {progress[0]} {len(progress)}")
+
+
 def Script(manifest, metres, yaw_sign, eye, seat_back=0.0, handles=None):
     """The cockpit's script: what the mod runs on entering the Mako (`mevr cockpit` lines without those words)."""
     parts = [line[len("mevr cockpit "):] for line in Lines(manifest, metres, yaw_sign, seat_back) if line.startswith("mevr cockpit part ")]
     return (["; The Mako's cockpit (research/47): written by tools/cockpit/place.py --script; run by the mod on entering the Mako.",
              "parts sweep"] + parts +
             ["screenpart BIOG_MEVR_Cockpit.Hull_Console", "element 1", "post 0", "screen 768 343 float",
-             "aimscreen 768 306", "aimreticle 6", HudLine(manifest, metres, seat_back), SeatLine(manifest, handles),
-             f"ride {eye[0]:.3f} {eye[1]:.3f} {eye[2]:.3f}"])
+             "aimscreen 768 306", "aimreticle 6", HudLine(manifest, metres, seat_back), SeatLine(manifest, handles)] +
+            ([PanelLine(manifest, metres, seat_back)] if PanelLine(manifest, metres, seat_back) else []) +
+            [f"ride {eye[0]:.3f} {eye[1]:.3f} {eye[2]:.3f}"])
 
 
 def main():
@@ -221,8 +249,10 @@ def main():
     # show at the top of the windshield (research/47 "The cannon over the cabin", 2026-11-04).
     parser.add_argument("--eye", type=float, nargs=3, default=(0.0, 1.0, 0.25),
                         help="the cockpit's eye from the Mako's origin, metres: right forward up (default 0 1.0 0.25)")
-    parser.add_argument("--seat-back", type=float, default=0.15,
-                        help="the pilot this many metres further back in the hull than the manifest's eye (default 0.15)")
+    # 0 since 2026-11-04: the hull build seats the pilot 0.15 m further back itself (hull_assemble.CHAIR_AT), the place this
+    # default gave them in the game from 2026-11-03
+    parser.add_argument("--seat-back", type=float, default=0.0,
+                        help="the pilot this many metres further back in the hull than the manifest's eye (default 0)")
     args = parser.parse_args()
     path = os.path.join(args.assets, "hull reconstruction", "assembled", "manifest.json")
     with open(path, encoding="utf-8") as f:

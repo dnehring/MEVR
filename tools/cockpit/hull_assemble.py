@@ -43,6 +43,7 @@ from mathutils.geometry import barycentric_transform, intersect_ray_tri
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hull_shapes import (GLOW, QUAD, Bake, Builder, Chamfered, Clip, Corners, Cross, Display, Grille, Inset, Keypad, Local, Newell,  # noqa: E402
                          Offset, Pipe, Plate, Png, RETICLE, Relight, Rings, ScreenGlow, Slab, Sweep, Visible)
+from panel_controls import LEVER_FRONT, Extraction, Place, Repair  # noqa: E402
 
 TEMPLATE = "hull full -bad.glb"
 PANE = "side pane.glb"
@@ -197,7 +198,7 @@ TRIMS = {"PLATE": PLATE, "DARK": DARK, "LIGHT": LIGHT, "RED": RED, "SEAM": DARK,
          "METAL": LIGHT, "DECAL": (0.0, 0.0, 1.0, 1.0)}  # DECAL: the decal atlas's own UVs (Decal)
 # The lit concept's lamps (mako-interior-plain-front-2.png), each a glowing panel in the shell and an area light for
 # the bake, by kind: its class and power (W, in hull units). The world adds a dim warm fill.
-LAMP_POWER = {"ceiling": 1.2, "midCeiling": 0.8, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0}
+LAMP_POWER = {"ceiling": 1.2, "midCeiling": 0.8, "rearCeiling": 0.8, "wall": 0.35, "floor": 0.15, "door": 0.4, "foot": 0.05, "spine": 0.0, "pod": 0.25}
 FILL = ((0.05, 0.044, 0.04), 0.6)  # the world's colour and strength: what the room's dark corners keep
 SCREEN_GLOW = 5.0  # the console's screens' emission while baking: their orange on the desk and the frames
 AMBIENT = 0.32  # what every baked surface keeps without a lamp facing it (times its albedo): the concept's dark ceiling still reads
@@ -216,7 +217,10 @@ SEAM = 0.012  # how deep the floor's seams go: the base under the plates, where 
 # 0.58 m out, beyond the armrests, at the end of an outstretched arm), each dropped onto the armrest's top (Furnish). Offsets
 # in metres from the chair's origin, each turned about z as Codex turned it (research/48 section 22).
 METRES_PER_UNIT = 3.0
-CHAIR_AT = (0.0, -0.19, 0.0)
+# 0.05 further back (0.15 m) since 2026-11-04: the game had seated the pilot that much further back in the hull since
+# the user's headset drive of 2026-11-03 (place.py's --seat-back: the side displays were too close to read); the build
+# seats them there itself now, so its reach and views are the game's (research/48 section 27)
+CHAIR_AT = (0.0, -0.24, 0.0)
 FURNITURE = (  # name, game_ready.py's files, metres per model unit, offset from the chair's origin (metres), turn about z
     ("chair", ("chair",), 1.2206, (0.0, 0.0, 0.0), 90.0),
     ("throttle", ("throtle-control-base", "throtle-control-handle"), 0.29, (-0.363, 0.27, 0.645), -90.0),
@@ -231,6 +235,26 @@ EYE_FROM_CHAIR = (0.0, -0.03, 1.21)
 # the pilot's eye: the previews and the enclosure rays look from it
 EYE = tuple(round(c + e / METRES_PER_UNIT, 4) for c, e in zip(CHAIR_AT, EYE_FROM_CHAIR))
 VIEW = ((0.0, -0.52, 0.25), 13.0)  # the concept image's viewpoint (eye, lens mm), matched by eye
+# The two controls set into the cabin (panel_controls.py; research/48 section 27), placed for the seated pilot's reach
+# (each shoulder PILOT_SHOULDER from the eye, metres across, forward and up; a seated arm reaches about 0.65 m) and in their
+# view. The extraction lever in a pod under the spine ahead of the head, its face toward the pilot, two lamps either
+# side (the concept's overhead panel): POD is the face's lower front edge from the chair's origin (metres), its tilt from
+# level (degrees: vertical, since the model's label leans down in its recess and reads from below, as on a wall above
+# the head; sloped, the box's top bar hid it), the face's length and the flat under it (hull units), the lever's face
+# proud of the pod's; POD_LAMPS the lamps' x either side, their centres up and down the face from its middle, half
+# across, half along. The repair button in place of the keypad on the right desk shelf, low in front of the console
+# (the user, 2026-11-05: it "should replace one of the keyboard banks, likely on the right side", the shelf's; beside the
+# left armrest it hid behind the throttle, and on the console's top it stood in the view out): turned to face the eye,
+# REPAIR_ON is its tilt toward the pilot (degrees) and how high its near edge stands on a riser over the shelf (hull
+# units); RISER the margin round the module and the chamfer. The shelf is about 1.1 m from the right shoulder, so the
+# pilot leans forward and down to press it (Panels reports the reach). A model unit is EXTRACTION_METRES and
+# REPAIR_METRES.
+PILOT_SHOULDER = (0.19, -0.02, -0.24)  # not SHOULDER: the A-pillar's shoulder (above)
+EXTRACTION_METRES, REPAIR_METRES = 0.17, 0.14  # the lever's handle 11 cm across; the button 4.3 cm, the module 11 by 13 cm
+POD = (0.29, 90.0, 0.062, 0.02, 0.0015)
+POD_LAMPS = (0.06, 0.0115, 0.012, 0.0075)
+REPAIR_ON = (20.0, 0.004)
+RISER = (0.004, 0.003)
 
 
 def Import(path):
@@ -878,6 +902,64 @@ def Pilot(parts, placed):
     return out
 
 
+def Panels(assets, out, places):
+    """The repair button and the extraction lever (panel_controls.py) placed (PanelPlaces): the objects (the fixed parts
+    in hull coordinates, the moving ones on their pivots), the moving parts' furniture entries and the manifest's
+    `panels`: what the game side needs to light the lamps, press the button and pull the handle, with each control's
+    reach from the shoulders and where it is from the eye."""
+    M = METRES_PER_UNIT
+    base, cap, rinfo = Repair(assets, out)
+    lever, handle, linfo = Extraction(assets)
+    m_r, m_e = places["repair"], places["extraction"]
+    sr, se = REPAIR_METRES / M, EXTRACTION_METRES / M
+    Place(base, m_r)
+    cap_at = Place(cap, m_r, rinfo["pivot"])
+    Place(lever, m_e)
+    handle_at = Place(handle, m_e, linfo["pivot"])
+    press = (m_r.to_3x3().normalized() @ Vector(rinfo["pressAxis"])).normalized()
+    hinge = (m_e.to_3x3().normalized() @ Vector(linfo["hingeAxis"])).normalized()
+    grip = m_e @ Vector(linfo["grip"])
+    eye = Vector(EYE)
+    shoulders = {side: eye + Vector((sign * PILOT_SHOULDER[0], PILOT_SHOULDER[1], PILOT_SHOULDER[2])) / M for side, sign in (("left", -1), ("right", 1))}
+
+    def Where(p):
+        d = (p - eye) * M
+        return {"reachMetres": {k: round((p - s).length * M, 3) for k, s in shoulders.items()},
+                "fromEyeMetres": [round(d.x, 3), round(d.z, 3), round(d.y, 3)],
+                "leftDeg": round(math.degrees(math.atan2(-d.x, d.y)), 1), "upDeg": round(math.degrees(math.atan2(d.z, math.hypot(d.x, d.y))), 1)}
+
+    radius = (grip - handle_at - hinge * (grip - handle_at).dot(hinge)).length
+    entries = {
+        "repair-cap": {"origin": [round(c, 5) for c in cap_at], "turnDeg": 0.0, "hullUnitsPerModelUnit": 1.0,
+                       "motion": {"kind": "press", "axis": [round(c, 5) for c in press], "travel": round(rinfo["travel"] * sr, 6),
+                                  "travelMetres": round(rinfo["travel"] * sr * M, 4), "unitsAreModel": True}},
+        "extraction-handle": {"origin": [round(c, 5) for c in handle_at], "turnDeg": 0.0, "hullUnitsPerModelUnit": 1.0,
+                              "motion": {"kind": "hinge", "axis": [round(c, 5) for c in hinge], "pullDeg": linfo["pullDeg"],
+                                         "gripTravelMetres": round(radius * math.radians(linfo["pullDeg"]) * M, 4), "unitsAreModel": True}},
+    }
+    count = len(rinfo["health"])
+    manifest = {
+        "note": "the cockpit's two controls (research/48 section 27). Repair_Base and Extraction_Base sit on the hull's origin as "
+                "the Hull_* meshes do; Repair_Cap and Extraction_Handle are furniture entries (origin = pivot, hull axes, scale 1). "
+                "Repair_Base's elements after its texture's are lamps: each starts on Light_Off_MIC, and each colour has a "
+                "glowing instance (Light_<Colour>_Glow_MIC, the package's json lists them as the element's variants) to swap onto it",
+        "hullMeshes": ["Repair_Base", "Extraction_Base"],
+        "moving": {"Repair_Cap": "repair-cap", "Extraction_Handle": "extraction-handle"},
+        "repair": {"pressPoint": [round(c, 5) for c in cap_at], "pressAxis": entries["repair-cap"]["motion"]["axis"],
+                   "travelMetres": entries["repair-cap"]["motion"]["travelMetres"], "elements": rinfo["elements"],
+                   "health": {"elements": list(range(1, 1 + count)), "order": "clockwise seen from above the button, from the segment by the plate"},
+                   "progress": {"elements": list(range(1 + count, len(rinfo["elements"]))), "order": "left to right as the plate reads (an arrow after the last)"},
+                   **Where(cap_at)},
+        "extraction": {"gripPoint": [round(c, 5) for c in grip], "hingePoint": [round(c, 5) for c in handle_at],
+                       "hingeAxis": entries["extraction-handle"]["motion"]["axis"], "pullDeg": linfo["pullDeg"],
+                       "gripTravelMetres": entries["extraction-handle"]["motion"]["gripTravelMetres"], **Where(grip)},
+        "shoulderFromEyeMetres": list(PILOT_SHOULDER),
+        "triangles": {"repair": rinfo["triangles"], "extraction": linfo["triangles"]},
+    }
+    named = {"repair-base": base, "repair-cap": cap, "extraction-base": lever, "extraction-handle": handle}
+    return named, entries, manifest
+
+
 def Hull2(points):
     """Convex hull of 2D points, counter-clockwise (monotone chain)."""
     pts = sorted(set(points))
@@ -1166,6 +1248,84 @@ def Drop(b, front):
     return Vector((0, y0 + face * (top - mid) / (top - low), mid)), up, Vector((0, -(top - low), -face)).normalized()
 
 
+def PanelPlaces(console, desk):
+    """Where the two controls go (POD, REPAIR_ON): each model's matrix into the hull (its own units to hull units), the
+    pod's section and face, and where the repair button's riser starts (the shelf's top under the module, from rays
+    straight down). The repair button takes the right desk shelf's keypad's place (`desk`: DeskShelf; Details leaves the
+    keypad out), its plate's side turned to the eye. The lever's model faces -y with z up its face; on the pod its face
+    turns toward the pilot and z runs up it."""
+    M = METRES_PER_UNIT
+    chair = Vector(CHAIR_AT)
+    ahead, tilt, length, flat, proud = POD
+    t = math.radians(tilt)
+    top = ZR - SPINE_DEPTH + 0.008  # into the spine, as the drop panel
+    low_y, low_z = chair.y + ahead / M, top - length * math.sin(t)
+    up = Vector((0, -math.cos(t), math.sin(t)))  # up the face, toward its top edge (back, toward the pilot)
+    n = Vector((0, -math.sin(t), -math.cos(t)))  # out of it: down and back
+    X = Vector((1, 0, 0))
+    mid_z = (ZR - SPINE_DEPTH + low_z) / 2  # the middle of what shows below the spine
+    face = Vector((0, low_y, low_z)) + up * ((mid_z - low_z) / math.sin(t))
+    rotation = Matrix((X, -n, up)).transposed().to_4x4()  # the model's x, y, z go to X, -n, up
+    s = EXTRACTION_METRES / M
+    front = Vector((0, *LEVER_FRONT)) * s  # the box's face's middle
+    lever = Matrix.Translation(face + n * proud - rotation.to_3x3() @ front) @ rotation @ Matrix.Scale(s, 4)
+    section = [(low_y - length * math.cos(t), top), (low_y, low_z), (low_y + flat, low_z), (low_y + flat + (top - low_z), top)]
+    tilt_back, riser = REPAIR_ON
+    x, y = (desk[0] + desk[2]) / 2 - 0.01, desk[1] + 0.035  # the keypad's middle (Details)
+    turn = math.degrees(math.atan2(EYE[0] - x, -(EYE[1] - y)))  # the model's -y (the plate's side) toward the eye
+    s = REPAIR_METRES / M
+    turned = Matrix.Rotation(math.radians(turn), 4, "Z")
+    # the shelf under the module's footprint, from rays starting just over it (the console's hood overhangs it: rays from
+    # high up landed on the hood), and the room over it for the module with its cover open
+    tree = Tree([console])
+    hits, room = [], []
+    for a in np.linspace(-0.38, 0.38, 7):
+        for c in np.linspace(-0.5, 0.444, 9):
+            p = Vector((x, y, 0.0)) + turned.to_3x3() @ Vector((a, c, 0.0)) * s
+            hit = tree.ray_cast(Vector((p.x, p.y, desk[4] + 0.02)), Vector((0, 0, -1)), 0.05)
+            if hit[0] is not None:
+                hits.append(hit[0].z)
+            over = tree.ray_cast(Vector((p.x, p.y, desk[4] + 0.001)), Vector((0, 0, 1)))
+            room.append(over[0].z - desk[4] if over[0] is not None else 1.0)
+    if not hits:
+        raise SystemExit(f"the repair button: no shelf under ({x:.3f}, {y:.3f})")
+    top = max(hits)
+    if min(room) < 0.8 * s + riser:
+        raise SystemExit(f"the repair button: {min(room):.3f} over the shelf, the module with its cover open needs {0.8 * s + riser:.3f}")
+    # the foot's middle (the model's origin) so the near edge, which the tilt drops 0.5 of a unit's sine, stands `riser` up
+    foot = Vector((x, y, top + riser + 0.5 * s * math.sin(math.radians(tilt_back))))
+    repair = Matrix.Translation(foot) @ turned @ Matrix.Rotation(math.radians(tilt_back), 4, "X") @ Matrix.Scale(s, 4)
+    return {"extraction": lever, "repair": repair, "riser": top - 0.003, "shelfTop": top, "repairTurnDeg": turn,
+            "pod": {"section": section, "face": face, "up": up, "normal": n}}
+
+
+def Mounts(b, lights, places):
+    """The controls' mounts (PanelPlaces): the pod under the spine for the extraction lever, across the spine's lower
+    tier with its rear face sloped toward the pilot and two lamps either side of the lever (the concept's overhead
+    panel), and the repair button's riser: a chamfered block on the console's top, sunk into it, its top cut on the
+    module's tilted foot."""
+    pod = places["pod"]
+    Sweep(b, [Vector((-0.085, 0, 0)), Vector((0.085, 0, 0))], Vector((0, 0, 1)), pod["section"] + pod["section"][:1],
+          ["DARK", "PLATE", "DARK", "DARK"])
+    X = Vector((1, 0, 0))
+    across, along, half_u, half_v = POD_LAMPS
+    for sx in (-1, 1):
+        for sv in (-1, 1):
+            Lamp(b, lights, "pod", "LAMP", pod["face"] + X * sx * across + pod["up"] * sv * along, X, pod["up"], pod["normal"],
+                 half_u, half_v, proud=0.002)
+    m = places["repair"]
+    rotation = m.to_3x3().normalized()
+    s = REPAIR_METRES / METRES_PER_UNIT
+    normal = rotation @ Vector((0, 0, 1))
+    foot = m @ Vector((0, -0.028, 0))  # the module's footprint's middle (x 0.38 either side, y -0.5 to 0.444)
+    margin, chamfer = RISER
+    heading = Vector((rotation[0][1], rotation[1][1], 0)).normalized()  # the module's y, level
+    hx = 0.38 * s + margin
+    hy = 0.472 * s * math.cos(math.radians(REPAIR_ON[0])) + margin
+    Sweep(b, [Vector((foot.x, foot.y, places["riser"])), Vector((foot.x, foot.y, foot.z + 0.02))], heading, Chamfered(-hx, hx, -hy, hy, chamfer),
+          "DARK", ends=(None, (m.translation - normal * 0.0003, normal)))
+
+
 def Lamps(b, wall, corner, drop):
     """The lit concept's lamps, mirrored in x: a lamp on each corner plate over the front side windows (`corner`: the
     right plate's corners, Shell), lamps in wedge housings over the cabin and the rear section, an orange strip in each
@@ -1238,11 +1398,11 @@ def Conduits(b, y0, y1, rise):
             Sweep(b, [Vector((x, y, z - r - 0.003)), Vector((x, y, ZR))], Vector((0, 1, 0)), Chamfered(-0.003, 0.003, -0.006, 0.006, 0.001), "DARK")
 
 
-def Details(b, edge, desk, screen, bezel, column, spine_end):
+def Details(b, edge, desk, screen, bezel, column, spine_end, right_keypad=True):
     """The lit concept's smaller parts: the conduits either side of the spine (Conduits), behind the portal from the rear
     wall and in front of it up into the ceiling short of the windshield; louvred vents beside the door, on the spine's
     sides and under its upper tier behind its lamps; a keypad on each desk shelf (`desk`: the right shelf's top,
-    DeskShelf); a lit keypad over a vent on each column beside the centre screen (`column`: the right one's face,
+    DeskShelf; not the right one's with `right_keypad` False: the repair button takes its place); a lit keypad over a vent on each column beside the centre screen (`column`: the right one's face,
     Column); lit bars on the centre screen's bezel above and below it (`screen`: its corners; `bezel`: how far the
     bezel's face stands in front of the screen, Bezel). (The rear section's side walls carry their own vents, SideWall.)"""
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
@@ -1260,7 +1420,8 @@ def Details(b, edge, desk, screen, bezel, column, spine_end):
         Grille(b, (0.085, spine_end - 0.3, ZR - 0.038), Y, Z, X, 0.03, 0.008, 3, proud=0.003)
         Grille(b, (0.0995, spine_end - 0.2, ZR - 0.028), X, Y, -Z, 0.011, 0.035, 7, proud=0.004)
         x0, y0, x1, y1, z = desk
-        Keypad(b, ((x0 + x1) / 2 - 0.01, y0 + 0.035, z), X, Y, Z, 4, 3, 0.011, 0.004)
+        if mirror or right_keypad:
+            Keypad(b, ((x0 + x1) / 2 - 0.01, y0 + 0.035, z), X, Y, Z, 4, 3, 0.011, 0.004)
         # the column beside the centre screen: a 3 x 3 keypad near its top, a vent below it
         top = at + v * (half_z - pad - 0.008)
         Keypad(b, top, u, v, facing, 3, 3, key, gap)
@@ -1389,7 +1550,7 @@ def Area(polygon):
     return 0.5 * abs(sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(polygon, polygon[1:] + polygon[:1])))
 
 
-def Shell(pillar, opening, pane_face=None, console=None, decals=None):
+def Shell(pillar, opening, pane_face=None, console=None, decals=None, panels=None):
     """The template's shell, clean: from the measured constants above and the panes' own frame, symmetric about x = 0.
 
     The frame line (ZH, the panes' top rail) runs along the side walls: the panes' rails, then the shell's own rail with
@@ -1403,7 +1564,7 @@ def Shell(pillar, opening, pane_face=None, console=None, decals=None):
     side walls behind the panes are cut where the panes' windows are (`opening`: the right one and how far out its frame
     reaches) and lined in light. Only those walls go through the boolean: the shell's pieces overlap, and the exact
     solver drops faces it finds inside another piece. With `pane_face` (the panes' face, PaneFace) the lamps go in too (Lamps); their area lights come back
-    with the shell."""
+    with the shell. With `panels` (PanelPlaces) the controls' mounts go in too (Mounts)."""
     b, walls = Builder(TRIMS), Builder(TRIMS)
     X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
     low, high, pane_rear, cap_front = pillar
@@ -1537,8 +1698,10 @@ def Shell(pillar, opening, pane_face=None, console=None, decals=None):
     windows += [right, left]
     RearWall(b)
     lights = Lamps(b, pane_face, corner, drop) if pane_face else []
+    if panels:
+        Mounts(b, lights, panels)
     if console:
-        Details(b, edge, console["desk"], console["screen"], console["bezel"], console["column"], spine_end)
+        Details(b, edge, console["desk"], console["screen"], console["bezel"], console["column"], spine_end, right_keypad=not panels)
     Decor(b, decals)
     bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts, dist=1e-6)
     me = bpy.data.meshes.new("shell")
@@ -1768,6 +1931,11 @@ def Run(folder):
               "console": Placed("console", console_src, cbm, console_m)}
     screens = Screens(pieces["console"], out)
     furniture, placed, pilot = Furnish(os.path.dirname(folder))
+    # the repair button and the extraction lever, and their mounts in the shell
+    places = PanelPlaces(pieces["console"], DeskShelf(pieces["console"]))
+    panels, panel_entries, panel_manifest = Panels(os.path.dirname(folder), out, places)
+    furniture += list(panels.values())
+    placed.update(panel_entries)
     # the panes' windows are open (their back skin is culled from inside): where, to cut the shell's walls behind them
     right, rim, area = PaneOpening(pieces["side-right"])
     wall = {"floor": [PaneFace(pieces["side-right"], y, 0.012) for y in FLOOR_STRIPS]}
@@ -1778,7 +1946,7 @@ def Run(folder):
     shell, windows, lights, dims = Shell(pillar, (right, rim), wall,
                                          {"desk": DeskShelf(pieces["console"]), "screen": screens["centre"],
                                           "bezel": Bezel(pieces["console"], screens["centre"]),
-                                          "column": Column(pieces["console"], screens["centre"])}, decals)
+                                          "column": Column(pieces["console"], screens["centre"])}, decals, panels=places)
     # the light baked in: the shell's own texture (its classes' trims), then the console's and the panes' textures, lit
     # by the lamps and the screens' glow (the parts and the furniture cast shadows and bounce light)
     template.hide_render = True
@@ -1841,6 +2009,8 @@ def Run(folder):
     for name, o in pieces.items():
         Export([o], os.path.join(out, name + ".glb"))
     Export(list(pieces.values()) + furniture, os.path.join(out, "hull.glb"))
+    for name, o in panels.items():
+        Export([o], os.path.join(out, name + ".glb"))
     reticle = AimReticle(out)
     Export([reticle], os.path.join(out, "aim-reticle.glb"))
     bpy.data.objects.remove(reticle)
@@ -1876,6 +2046,7 @@ def Run(folder):
                             "colour": [round(c, 3) for c in colour], "power": power} for centre, n, u, (su, sv), colour, power in lights]},
         "furniture": {"note": "each file's origin (a moving part's pivot) in hull coordinates, turned about z, scaled by "
                               "hullUnitsPerModelUnit; motion values in model units", **placed},
+        "panels": panel_manifest,
         "bake": bake,
         "screens": {"convention": "u to the pilot's right, v up; the glTF's v runs down (its texture's rows), so a render "
                                   "target shows upright and unmirrored", "corners": "bottom left, bottom right, top right, "

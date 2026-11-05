@@ -11,6 +11,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/BodyCalibration.hpp"
+#include "game/CockpitPanel.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/MakoGunner.hpp"
 #include "game/HandCalibration.hpp"
@@ -691,6 +692,7 @@ void Tick(double deltaSeconds, Link const& link) {
         }
         gAim.valid = false;
         mako_controls::Tick(deltaSeconds, link.controls, nullptr, controller, nullptr);  // throttle and steering to zero, the pad back
+        cockpit_panel::Tick(deltaSeconds, {link.controls.mainMenuOpen, link.controls.hapticPulse});  // the button and handle let go
         LogWhy(Why::NotInMako, now);
         return;
     }
@@ -746,6 +748,8 @@ void Tick(double deltaSeconds, Link const& link) {
     // thumbstick's ray for the turret instead of the hand's.
     mako_controls::StickAim const stickAim =
         mako_controls::Tick(deltaSeconds, link.controls, pawn, controller, gAim.valid ? &gAim.direction : nullptr);
+    // The cockpit's repair button and extraction lever (research/48 section 27): worked by the hands while riding.
+    cockpit_panel::Tick(deltaSeconds, {link.controls.mainMenuOpen, link.controls.hapticPulse});
     vr::controllers::State const controllers = vr::controllers::Latest();
 
     // The gunner (research/47 "The gunner"): riding in the cockpit, a squadmate aims and fires until the player's thumbstick or

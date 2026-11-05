@@ -1295,7 +1295,7 @@
   },
   "hull-console": {
    "source": "hull reconstruction/assembled/console.glb",
-   "sourceSha256": "4de38b521b346f531a153831463bb0457fab57fba3ff754fddef49c08c3eea00",
+   "sourceSha256": "3712ef4460fe3cd9cfa51a57e9bded21ba5cdfc1fdacf9b3022ed330dda5c9a9",
    "diagonal": 1.1080541224260232,
    "edges": {
     "source": {
@@ -1308,8 +1308,8 @@
     }
    },
    "texel": {
-    "source": 1996.9671867454306,
-    "result": 1986.0124873643092
+    "source": 1996.9671814113892,
+    "result": 1986.0124819840707
    },
    "front": {
     "triangles": [
@@ -1411,13 +1411,13 @@
        "material": "tripo_90be3d2d_fcf4_47a1_87de_1fa1b5282c79",
        "triangles": 27316,
        "welded": 37079,
-       "baseColor": "ae14024e997d8f36d2e6a7026614123c99fd2e0eb1aaefb7243e07e5fe29f135"
+       "baseColor": "9daba7c660c4f79d367cad29c1bcb819e6d1bf6b091dc34e51c87eae57e267c8"
       },
       {
        "material": "Screen",
        "triangles": 8,
        "welded": 10,
-       "baseColor": "2fd4e6e29a27759ab6b9835fb7aa4a4bd3f5778cce8b86fa5da9b6ae0644e28b"
+       "baseColor": "414adaa103f710f315eeb439ea6bb44755ef8064d1429bd3a17fb0cc0862757f"
       },
       {
        "material": "Display",
@@ -1440,13 +1440,13 @@
        "material": "tripo_90be3d2d_fcf4_47a1_87de_1fa1b5282c79",
        "triangles": 13296,
        "welded": 22402,
-       "baseColor": "ae14024e997d8f36d2e6a7026614123c99fd2e0eb1aaefb7243e07e5fe29f135"
+       "baseColor": "9daba7c660c4f79d367cad29c1bcb819e6d1bf6b091dc34e51c87eae57e267c8"
       },
       {
        "material": "Screen",
        "triangles": 8,
        "welded": 10,
-       "baseColor": "2fd4e6e29a27759ab6b9835fb7aa4a4bd3f5778cce8b86fa5da9b6ae0644e28b"
+       "baseColor": "414adaa103f710f315eeb439ea6bb44755ef8064d1429bd3a17fb0cc0862757f"
       },
       {
        "material": "Display",
@@ -1469,57 +1469,57 @@
    "renders": {
     "front": {
      "silhouetteIoU": 0.9998279684991207,
-     "colourDiffMean": 0.7659586668014526,
-     "colourDiffP99": 9.000006675720215,
-     "pixelsOver16": 0.0029632745139273903
+     "colourDiffMean": 0.7962796688079834,
+     "colourDiffP99": 9.999999046325684,
+     "pixelsOver16": 0.0031162177146462234
     },
     "back": {
      "silhouetteIoU": 0.9997707386037981,
-     "colourDiffMean": 0.7321039438247681,
+     "colourDiffMean": 0.732065737247467,
      "colourDiffP99": 6.999999523162842,
-     "pixelsOver16": 0.0012230078348939423
+     "pixelsOver16": 0.0012038983374737244
     },
     "left": {
      "silhouetteIoU": 0.9991872121376321,
-     "colourDiffMean": 0.5829718708992004,
-     "colourDiffP99": 7.000001907348633,
-     "pixelsOver16": 0.0019251626898047723
+     "colourDiffMean": 0.5866594314575195,
+     "colourDiffP99": 7.000003337860107,
+     "pixelsOver16": 0.0020065075921908895
     },
     "right": {
      "silhouetteIoU": 0.9993225666594407,
-     "colourDiffMean": 0.4367797374725342,
+     "colourDiffMean": 0.4416605532169342,
      "colourDiffP99": 5.999999523162842,
-     "pixelsOver16": 0.00037961983784809785
+     "pixelsOver16": 0.0004067355405515334
     },
     "top": {
      "silhouetteIoU": 0.999562800574605,
-     "colourDiffMean": 0.9978755116462708,
+     "colourDiffMean": 1.0246188640594482,
      "colourDiffP99": 8.999999046325684,
-     "pixelsOver16": 0.0029211447138215445
+     "pixelsOver16": 0.0029992501874531365
     },
     "bottom": {
      "silhouetteIoU": 0.9989875858744124,
-     "colourDiffMean": 0.7110006809234619,
+     "colourDiffMean": 0.7233308553695679,
      "colourDiffP99": 7.999999523162842,
-     "pixelsOver16": 0.0009893106194049659
+     "pixelsOver16": 0.0012547354197331275
     },
     "front-right": {
      "silhouetteIoU": 0.9994846357018617,
-     "colourDiffMean": 0.7546728849411011,
-     "colourDiffP99": 7.999999523162842,
-     "pixelsOver16": 0.0019013857557202707
+     "colourDiffMean": 0.7799549102783203,
+     "colourDiffP99": 8.000006675720215,
+     "pixelsOver16": 0.002046406703190461
     },
     "back-left": {
      "silhouetteIoU": 0.9992191857222532,
-     "colourDiffMean": 0.7502152919769287,
-     "colourDiffP99": 7.949219226837158,
-     "pixelsOver16": 0.0018339552833859598
+     "colourDiffMean": 0.758045494556427,
+     "colourDiffP99": 7.999999523162842,
+     "pixelsOver16": 0.0017701655343986221
     }
    }
   },
   "hull-side-left": {
    "source": "hull reconstruction/assembled/side-left.glb",
-   "sourceSha256": "18c3abfceeaed60d14ae7a2a3a6adbde358a898703031dd749f344108d94e4a0",
+   "sourceSha256": "5e59ba89815b229b89d6807d40c34fec9c6e3e695fa55451c300b34de7db45dc",
    "diagonal": 0.8510456978800914,
    "edges": {
     "source": {
@@ -1635,7 +1635,7 @@
        "material": "tripo_3d029b3f_89cb_476d_bb19_d870746d248b",
        "triangles": 24508,
        "welded": 31598,
-       "baseColor": "6e3dc66f9d82545895a732f73bd2f25141e9169dfab6d878fb021b1fea864317"
+       "baseColor": "8066eaf2177988f7386b8c47bb6f3ef7181bf4edc182bc0cc7e90d9e18ea2201"
       }
      ],
      "welded": 31598
@@ -1646,7 +1646,7 @@
        "material": "tripo_3d029b3f_89cb_476d_bb19_d870746d248b",
        "triangles": 4482,
        "welded": 8087,
-       "baseColor": "6e3dc66f9d82545895a732f73bd2f25141e9169dfab6d878fb021b1fea864317"
+       "baseColor": "8066eaf2177988f7386b8c47bb6f3ef7181bf4edc182bc0cc7e90d9e18ea2201"
       }
      ],
      "welded": 8087
@@ -1657,57 +1657,57 @@
    "renders": {
     "front": {
      "silhouetteIoU": 0.9973949287947204,
-     "colourDiffMean": 0.9009664058685303,
+     "colourDiffMean": 0.929914653301239,
      "colourDiffP99": 13.00000286102295,
-     "pixelsOver16": 0.007617969702246213
+     "pixelsOver16": 0.007748563468570433
     },
     "back": {
      "silhouetteIoU": 0.9967627063774684,
-     "colourDiffMean": 0.6575728058815002,
+     "colourDiffMean": 0.6683988571166992,
      "colourDiffP99": 6.999999523162842,
-     "pixelsOver16": 0.000974342318934719
+     "pixelsOver16": 0.0010284724477644257
     },
     "left": {
      "silhouetteIoU": 0.9977132486388385,
-     "colourDiffMean": 0.4778258800506592,
+     "colourDiffMean": 0.4790264368057251,
      "colourDiffP99": 4.999999523162842,
      "pixelsOver16": 0.0006184741877978681
     },
     "right": {
      "silhouetteIoU": 0.9995459511613718,
-     "colourDiffMean": 1.1185321807861328,
-     "colourDiffP99": 11.00000286102295,
-     "pixelsOver16": 0.004911633189012705
+     "colourDiffMean": 1.1838597059249878,
+     "colourDiffP99": 11.999999046325684,
+     "pixelsOver16": 0.005039392433813614
     },
     "top": {
      "silhouetteIoU": 0.9972726077812829,
-     "colourDiffMean": 0.7562687993049622,
+     "colourDiffMean": 0.7578174471855164,
      "colourDiffP99": 7.999999523162842,
      "pixelsOver16": 0.0003954001779300801
     },
     "bottom": {
      "silhouetteIoU": 0.9998748004632383,
-     "colourDiffMean": 0.5962435603141785,
+     "colourDiffMean": 0.6098920106887817,
      "colourDiffP99": 7.999999523162842,
-     "pixelsOver16": 0.0018782282047268744
+     "pixelsOver16": 0.0018469244013147596
     },
     "front-right": {
      "silhouetteIoU": 0.9987468279081425,
-     "colourDiffMean": 1.0888515710830688,
+     "colourDiffMean": 1.1448289155960083,
      "colourDiffP99": 11.999999046325684,
-     "pixelsOver16": 0.004422974371843533
+     "pixelsOver16": 0.004564133128391731
     },
     "back-left": {
      "silhouetteIoU": 0.9951680210849989,
-     "colourDiffMean": 0.7352068424224854,
+     "colourDiffMean": 0.7382476329803467,
      "colourDiffP99": 8.999999046325684,
-     "pixelsOver16": 0.0018391819318767013
+     "pixelsOver16": 0.0018882267833934133
     }
    }
   },
   "hull-side-right": {
    "source": "hull reconstruction/assembled/side-right.glb",
-   "sourceSha256": "53f22e6b4dabd8f5842abb888800ad42da0e68e17f552411969db7160f89182f",
+   "sourceSha256": "a5cb681136cb488afa6507b3e8a54f6e62f532b9dac93d8cf67ccc43c4f39102",
    "diagonal": 0.8510456978800914,
    "edges": {
     "source": {
@@ -1823,7 +1823,7 @@
        "material": "tripo_3d029b3f_89cb_476d_bb19_d870746d248b",
        "triangles": 24508,
        "welded": 31598,
-       "baseColor": "6e3dc66f9d82545895a732f73bd2f25141e9169dfab6d878fb021b1fea864317"
+       "baseColor": "8066eaf2177988f7386b8c47bb6f3ef7181bf4edc182bc0cc7e90d9e18ea2201"
       }
      ],
      "welded": 31598
@@ -1834,7 +1834,7 @@
        "material": "tripo_3d029b3f_89cb_476d_bb19_d870746d248b",
        "triangles": 4422,
        "welded": 8005,
-       "baseColor": "6e3dc66f9d82545895a732f73bd2f25141e9169dfab6d878fb021b1fea864317"
+       "baseColor": "8066eaf2177988f7386b8c47bb6f3ef7181bf4edc182bc0cc7e90d9e18ea2201"
       }
      ],
      "welded": 8005
@@ -1845,50 +1845,50 @@
    "renders": {
     "front": {
      "silhouetteIoU": 0.9975692334404028,
-     "colourDiffMean": 0.8605865240097046,
-     "colourDiffP99": 10.999999046325684,
-     "pixelsOver16": 0.005090940736228353
+     "colourDiffMean": 0.890131413936615,
+     "colourDiffP99": 11.00000286102295,
+     "pixelsOver16": 0.005221477678182926
     },
     "back": {
      "silhouetteIoU": 0.9964917962003454,
-     "colourDiffMean": 0.6685262322425842,
+     "colourDiffMean": 0.6738341450691223,
      "colourDiffP99": 7.000003337860107,
-     "pixelsOver16": 0.0008665980609868385
+     "pixelsOver16": 0.0010290851974218708
     },
     "left": {
      "silhouetteIoU": 0.9994325677726866,
-     "colourDiffMean": 1.1213290691375732,
+     "colourDiffMean": 1.180673599243164,
      "colourDiffP99": 11.999999046325684,
-     "pixelsOver16": 0.004442678097455041
+     "pixelsOver16": 0.0048401061700708275
     },
     "right": {
      "silhouetteIoU": 0.9963075586446568,
-     "colourDiffMean": 0.4700239896774292,
+     "colourDiffMean": 0.4701693058013916,
      "colourDiffP99": 4.999999523162842,
      "pixelsOver16": 0.0004360148245040331
     },
     "top": {
      "silhouetteIoU": 0.9972718906126742,
-     "colourDiffMean": 0.7897564172744751,
+     "colourDiffMean": 0.7932831048965454,
      "colourDiffP99": 8.0,
-     "pixelsOver16": 0.000560297946672819
+     "pixelsOver16": 0.0006262153521637389
     },
     "bottom": {
      "silhouetteIoU": 0.9998748004632383,
-     "colourDiffMean": 0.5829394459724426,
+     "colourDiffMean": 0.5948975086212158,
      "colourDiffP99": 6.999999523162842,
-     "pixelsOver16": 0.0021599624354359053
+     "pixelsOver16": 0.0020973548286116763
     },
     "front-right": {
      "silhouetteIoU": 0.9913235713606542,
-     "colourDiffMean": 0.6952497959136963,
+     "colourDiffMean": 0.7019879221916199,
      "colourDiffP99": 8.00000286102295,
-     "pixelsOver16": 0.0010071217897992951
+     "pixelsOver16": 0.0011030381507325612
     },
     "back-left": {
      "silhouetteIoU": 0.9983070626715537,
-     "colourDiffMean": 1.076377272605896,
-     "colourDiffP99": 10.999999046325684,
+     "colourDiffMean": 1.1276795864105225,
+     "colourDiffP99": 11.000000953674316,
      "pixelsOver16": 0.003259903190753729
     }
    }
@@ -1926,5 +1926,5 @@
    }
   }
  },
- "seconds": 25.1
+ "seconds": 27.9
 }

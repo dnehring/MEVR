@@ -437,7 +437,7 @@ switching frameworks.
   before the drop. The controls haven't been grabbed in the game yet (the fake headset's controllers aren't tracked).
 - LE1 cockpit, in progress ([research/47](research/47-cockpit-in-game.md); `game/CockpitProbe`, `mevr cockpit ...`, `mevr vehicle ...`, inert until called): `tools/cockpit`
   splits, decimates (`game_ready.py`: the packager prefers `concept/assets/game-ready/` made from the current models, `--raw` skips it) and packages our models
-  (`concept/`, gitignored except `assets/game-ready/` and the packager's eleven source models, in git on Git LFS since 2026-11-03: MIT, generated on the owner's paid Tripo plan, `NOTICE.md`; the whole procedure is the `tripo-game-ready` skill; `hull_assemble.py` builds the hull: a clean shell modelled to the messy
+  (`concept/`, gitignored except `assets/game-ready/` and the packager's source models, in git on Git LFS since 2026-11-03: MIT, generated on the owner's paid Tripo plan, `NOTICE.md`; the whole procedure is the `tripo-game-ready` skill; `hull_assemble.py` builds the hull: a clean shell modelled to the messy
   Tripo template's shape and the side panes' frame, open framed windows, the roof on the panes' caps, swept profiles from
   `hull_shapes.py` and a baked texture of its own, the Tripo parts placed in it and made game-ready, packaged as four `Hull_*`
   meshes on the hull's origin, [research/48](research/48-hull-assembly.md)) with the Legendary Explorer nightly in `mod-manager/`; the package goes in `CookedPCConsole` with
@@ -458,6 +458,12 @@ switching frameworks.
   control's hand closed on the handle's axis, `seat ... axes` from `place.py`'s measure of the models, the fist's middle on the grip:
   research/47 "The hands on the handles"). With the cockpit up the controls grab at the models (`cockpit_probe::ControlSeat`) and
   stage 1's flat lever and dial are hidden.
+  **The repair button and the extraction lever** (research/48 section 27; `tools/cockpit/panel_controls.py`, `game/CockpitPanel`,
+  rules in `core/vr/CockpitPanel`, unit-tested): the script's `panel` line (place.py from the manifest's `panels`); a fingertip
+  pushes the button on the right desk shelf, held 2 s it calls `SFXGameModeVehicle.RepairVehicle`; a grip pulls the overhead handle
+  out, held at the end it calls `LeaveWorld` (the game's own functions on the game thread, never the pad); the ring's nine lamps
+  show the hull's health (`Light_*_MIC` swapped onto `Repair_Base`'s elements). `mevr cockpit panel [repair|extract]`; log
+  `cockpit panel:`; snapshot `"cockpitProbe"."panel"`.
   **Hazard lights** (research/47 "Hazard lights", 2026-11-04; `[Cockpit] hazard`, `hazardBelow` 0.30, `hazardPeriodS`, `hazardWash`):
   with the hull's health (the vehicle behavior's `GetHealthAndShieldsScaled`) low, every cockpit element showing a package instance
   (not glass or screens) gets ours over `ProcBuildingSimpleMaterial` with a red render target as `LightTexture` and a beacon's

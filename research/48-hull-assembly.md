@@ -975,13 +975,79 @@ No decimation or packaging until the user approves the modelling.
   have to stay unlit on materials of their own while the others glow. The lit instances stay in the package unused: lit shading needs lights inside the cabin (`lamps`), a
   question of their stereo cost that the game side takes up once the Mako drives.
 
+## 27. The repair button and the extraction lever (the user, 2026-11-04: "One is a button for repairing the mako, the lights on the button will indicate the health of the mako, the hold button indicates time to repair ... the cap has bad text on it ... you'll need to add lighting to it. The second is the extraction lever which will go on overhead")
+
+Two new Tripo models (`concept/assets/repair-button.glb`, `extraction-lever.glb`, 4,069 and 4,503 triangles, one 4096
+base colour each, about 230 open edges each on faces the cabin never shows). `tools/cockpit/panel_controls.py` makes them
+ready, `hull_assemble.py` places them and builds their mounts, the package carries them as four meshes, and
+`game/CockpitPanel` (rules in `core/vr/CockpitPanel`, unit-tested) works them in the game.
+
+- **The cover's text.** Tripo lettered the flip cover "FEGAIP" (upside down in the texture: the cover's UVs turn it half a
+  turn). `tools/cockpit/panel_textures.py` (PIL, run by panel_controls) patches the cover's plate clean from its own plate
+  beside the wrench, just above the old word and clear of the wrench and the plate's border, with feathered edges, and
+  sets "REPAIR" there in Rajdhani Bold in the old letters' grey, turned the same way. Two other garbled strips in the
+  texture (the label's bracket, a face behind the lever's label) were painted magenta and rendered: neither shows.
+- **The lamps.** The ring's segments and the plate's progress squares are paint. Measured with dense rays straight down and
+  the texture under each hit: **nine** segments (not ten), not evenly spaced (29 to 34 degrees wide, 9 to 12 apart), about
+  the cap's centre (its top face's bounds), between radii 0.211 and 0.263 of the model's units; eight squares in a row on
+  the plate, an arrow after them. Each gets a face of its own 0.4 mm over the paint (rays along the surface's normal), on
+  a material of its own (`light-health-0..8`, clockwise seen from above from the segment by the plate; `light-progress-0..7`,
+  left to right as the plate reads). With 15.5-degree half-widths about an assumed 40-degree pitch, slivers of paint
+  showed at the segments' ends; the measured runs, plus 0.75 degrees each end, cover them (two 2 mm specks remain where
+  the separators' sides are painted).
+- **The moving parts.** The button's cap (its top, rounded edge and side down to the groove's floor, the faces facing up
+  or out) presses 2.8 mm. The lever's handle and its two arms swing about the axle across the recess (the long thin
+  island); their knuckles cross the axle and its brackets as modelled at every angle, so the clearance is the arms beyond
+  8 cm of the axle and the handle against everything fixed: clear to **30 degrees** out (an arm meets its bracket at 35),
+  the handle meets the box folding in at 20. Rest is 0, the pull 0 to 30 (the grip travels 4 cm).
+- **Where.** A seated arm reaches about 0.65 m from the shoulder (taken 0.19 m either side of the eye's line, 0.24 m below
+  it). The extraction lever goes in a **pod under the spine** ahead of the head, its face sloped toward the pilot with two
+  lamps either side (the concept's overhead panel): the drop panel above the windshield is 1.2 m away, out of reach. The
+  model's label reads "EXTRACTION" above the handle, so on a level ceiling it would read upside down. Sloped toward the
+  pilot (50, then 62 degrees from level), the box's top bar still hid the label's top half from the eye: the label plate
+  leans 22 degrees down inside its recess (its top 4 cm deep), so the model reads from below, as on a wall above the head.
+  The pod's face is **vertical**, facing the pilot, 0.32 m ahead of the eye; the lever at **0.17 m a unit** (the handle 11
+  cm across, 0.2 made the pod hang below the windshield's top edge from the eye) keeps the pod's lower edge above that edge
+  in the view out (17.5 degrees up). The repair button stood first on a pedestal outboard of the left armrest (0.62 m
+  from the shoulder), where the throttle's handle hid its plate from the eye. **The user moved it to the front section**
+  (2026-11-05): on the console's top (the hood over the main screen, 1.13 m from the shoulders) it stood in the view out,
+  and the user placed it: it "should replace one of the keyboard banks, likely on the right side", the right desk shelf's
+  4 x 3 keypad, low in front of the console. It stands there on a riser, turned to face the eye and tilted 20 degrees
+  toward the pilot; the keypad is gone (the left shelf keeps its own). Its reach and place from the eye are in the
+  manifest's `panels.repair`: the pilot leans forward and down to press it.
+- **The seat 0.15 m back in the build.** The game had seated the pilot 0.15 m further back in the hull since the user's
+  headset drive (place.py's `--seat-back`, 2026-11-03); the build now does it (`CHAIR_AT` y -0.24), so its reach and views
+  are the game's, and `--seat-back` defaults to 0.
+- **In the package** (Build.cs): `Repair_Base`, `Repair_Cap`, `Extraction_Base`, `Extraction_Handle` (group textures capped
+  at 1024). Every element on a `light-` material takes `Light_Off_MIC` (an unlit dark lens); `Light_Green_Glow_MIC`,
+  `_Amber_`, `_Red_`, `_White_`, `_Blue_` are the glow parent at brightness 2.5 over a solid colour with one strong channel,
+  so they keep their colour where the screen clips; the json lists them as those elements' variants and gives each mesh's
+  `elementMaterials`.
+- **In the manifest**: `panels` (the meshes on the hull's origin, the moving parts' furniture entries, the press point and
+  axis, the hinge point, axis and pull, the grip, the lamps' element numbers, each control's reach and place from the eye)
+  and furniture entries `repair-cap` (`press`) and `extraction-handle` (`hinge`, + about the axis swings it out), both on the
+  hull (scale 1, no turn). place.py adds the four meshes and writes a `panel` line into the cockpit's script.
+- **In the game** (`game/CockpitPanel`, `mevr cockpit panel [repair|extract]`): a fingertip (4 cm ahead of the aim pose, as
+  the game pointer's touch) coming from in front pushes the cap with it; past 60% of the travel it is pressed, and held for
+  2 s, as the plate's squares fill (blue), it calls the game's `SFXGameModeVehicle.RepairVehicle` (Y's command in the Mako)
+  once. A new grip squeeze within 10 cm of the handle takes it; the hand's travel about the hinge swings it, and held at
+  the end (85% of the pull) for 0.4 s it calls `SFXGameModeVehicle.LeaveWorld` (X's) once, armed again below half the pull;
+  let go, it swings back. The ring shows the hull's health (the hazard alarm's `GetHealthAndShieldsScaled`): a share of the
+  nine lit, green over 60%, amber over 30%, red below. A squeeze at the handle is never the cannon's RB or the boost's LB.
+  Calls go straight to the game's functions on the game thread, never through the pad: after a cockpit control is
+  grabbed in a drive, the left hand's X and Y reach the game as nothing (the game side, 2026-11-05). [verify] in the game:
+  what RepairVehicle does with no omni-gel or at full health, and whether LeaveWorld raises a confirm box (on the HUD
+  panel in the cockpit).
+
 ## 5. Not done
 
 (Brought up to date 2026-11-02, after section 21.)
 
 - **What the game side relies on** (keep it, or change both sides together):
   - the package `BIOG_MEVR_Cockpit` and its mesh names: `Hull_Shell`, `Hull_Console`, `Hull_Side_Left`, `Hull_Side_Right`,
-    `Chair`, `Joystick_Base`, `Joystick_Grip`, `Throttle_Base`, `Throttle_Handle` (`Front_Cockpit` is gone, section 22);
+    `Chair`, `Joystick_Base`, `Joystick_Grip`, `Throttle_Base`, `Throttle_Handle` (`Front_Cockpit` is gone, section 22),
+    `Hull_Glass`, `Aim_Reticle`, and the controls' `Repair_Base`, `Repair_Cap`, `Extraction_Base`, `Extraction_Handle` with
+    `Repair_Base`'s lamp elements and the `Light_*_MIC` instances (section 27);
   - the frame: hull units times 100, forward on -Y, so a hull mesh takes yaw 90 (`tools/cockpit/place.py`);
   - `Hull_Console`'s material slots: 1 the live third-person screen (`Screen`, UVs 0 to 1, v = 0 at the top), 2 the left
     idle screen (`Display`), 3 the right, aiming screen (`Aim`, UVs 0 to 1, section 23). The probe's `element 1` puts the

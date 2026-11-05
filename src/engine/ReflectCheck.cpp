@@ -1168,6 +1168,9 @@ void CheckFunctions() {
         // GameMenuRequest (research/28): Start's Console_Menu on each mode that declares it
         "SFXGame.SFXGameModeBase.ShowMenuGui",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
+        // CockpitPanel (research/48 section 27): the repair button's and the extraction lever's calls, as Y and X in the Mako
+        "SFXGame.SFXGameModeVehicle.RepairVehicle",
+        "SFXGame.SFXGameModeVehicle.LeaveWorld",
         // Mako (research/44): the game's own turret aim, the vehicle's Tick and its shot start
         "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
         "SFXGame.BioVehicleWheeled.Tick",
@@ -1509,6 +1512,8 @@ void CheckParams() {
     PARMS(UBioPawnBehavior_execGetClass_Parms, "SFXGame.BioPawnBehavior.GetClass");
     PARMS(AWorldInfo_execPauseGame_Parms, "Engine.WorldInfo.PauseGame");
     PARMS(USFXGameModeDefault_execTryHolster_Parms, "SFXGame.SFXGameModeDefault.TryHolster");
+    PARMS(USFXGameModeVehicle_execRepairVehicle_Parms, "SFXGame.SFXGameModeVehicle.RepairVehicle");  // game/CockpitPanel
+    PARMS(USFXGameModeVehicle_execLeaveWorld_Parms, "SFXGame.SFXGameModeVehicle.LeaveWorld");
     PARMS(APlayerController_execGetScaleFormManager_Parms, "Engine.PlayerController.GetScaleFormManager");
     PARMS(USFXGameModeDefault_execSwitchToWeapon_Parms, "SFXGame.SFXGameModeDefault.SwitchToWeapon");
     PARMS(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor");

@@ -61,8 +61,8 @@ perf/
 local-tools/
 
 # Cockpit concept art, raw Tripo outputs and Blender working files stay local. In git (Git LFS for the glb and png,
-# .gitattributes): the game-ready models and the eleven source models tools/cockpit/package/Build.cs reads and hashes
-# against game-ready/manifest.json. Their licence is settled (concept/assets/game-ready/README.md, NOTICE.md).
+# .gitattributes): the game-ready models and the source models tools/cockpit/package/Build.cs reads (and hashes
+# against game-ready/manifest.json where it has one). Their licence is settled (concept/assets/game-ready/README.md, NOTICE.md).
 concept/*
 !concept/assets/
 concept/assets/*
@@ -94,3 +94,7 @@ concept/assets/hull reconstruction/assembled/*
 !concept/assets/hull reconstruction/assembled/side-right.glb
 !concept/assets/hull reconstruction/assembled/aim-reticle.glb
 !concept/assets/hull reconstruction/assembled/glass.glb
+!concept/assets/hull reconstruction/assembled/repair-base.glb
+!concept/assets/hull reconstruction/assembled/repair-cap.glb
+!concept/assets/hull reconstruction/assembled/extraction-base.glb
+!concept/assets/hull reconstruction/assembled/extraction-handle.glb

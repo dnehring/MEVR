@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/ik/Rigid.hpp"
+#include "core/vr/CockpitPanel.hpp"
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/MakoControls.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -58,6 +59,14 @@ std::optional<Seat> CurrentSeat();
 // forward, in tracking space this tick: where game/MakoControls lets the hands grab (the models are the controls). Nullopt: no
 // cockpit, no view.
 std::optional<vr::mako_controls::Seat> ControlSeat();
+// While riding with a `panel` layout: the repair button and the extraction handle in tracking space this tick (game/CockpitPanel
+// works them). Nullopt: no cockpit, no view, no layout.
+std::optional<vr::cockpit_panel::Layout> PanelLayout();
+// While riding: the Mako's hull health (0..1), as the hazard alarm reads it every 0.1 s.
+std::optional<float> HullHealth();
+// The repair button's lamps (the ring's health lamps, then the plate's squares, as `panel ... lamps` numbers them) shown in
+// these colours: only what changed is swapped on Repair_Base. False: no Repair_Base part, no layout, or an instance missing.
+bool ShowPanelLamps(vr::cockpit_panel::Colour const* colours, int count);
 // game/arm_ik: the hips' midpoint in the driver mesh's component space (as animated), which the placement puts on the H-point.
 // `head`: the head bone there too, if the skeleton has one: the placement slides the body back until it is behind the
 // cockpit's eye as a head is behind its eyes (the eye was inside the back of Shepard's head, research/47).
