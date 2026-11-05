@@ -87,7 +87,8 @@ thread through `ue3::runtime::Call`, with no hook. What it would be built from:
   RmlUi in the main menu's style), its entries placed up, down, left, right (more on a ring), cooldown as a ring per
   entry. Picking by the hand's travel from where the menu opened (Blade & Sorcery's way: a wheel around the hand, move
   the hand onto the orb) or by the stick's direction. The game's own wheel pauses the world; ours would not have to (a
-  mechanic choice: no pause, a pause, or slow time).
+  mechanic choice: no pause, a pause, or slow time). **Decided (the user, 2026-11-05): no pause, no slow time:** the
+  wheel only equips and the cast is a gesture (the push, section 7), so the world keeps running.
 - **The lock:** candidates are hostile pawns rendered within the last second (the selection's own rule), scored by the
   angle from the casting hand's ray (the aim pose we already publish) and the distance; within the power's range and
   only if the game's own `CheckLOSToActor` sees them from the hand; kept with hysteresis (a wider cone to lose the lock
