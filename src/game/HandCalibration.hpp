@@ -10,6 +10,7 @@
 #include "core/vr/Comfort.hpp"
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/MakoControls.hpp"
+#include "core/vr/MakoGunner.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
@@ -373,6 +374,8 @@ struct Mako {
     // the tank simulation's own turn in place drove both tracks forward and pivoted); 0: the game's pivot.
     float spinRateDeg = 60.0f;
     vr::mako_controls::Settings controlSettings;  // the physical lever and stick (research/46)
+    // The gunner (research/47 "The gunner"): gunner, gunnerRangeM, gunnerHandbackS, gunnerCannon.
+    vr::mako_gunner::Settings gunner;
 };
 Mako GetMako();
 

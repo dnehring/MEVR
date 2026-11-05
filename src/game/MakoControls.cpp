@@ -474,6 +474,16 @@ void SeedAim(ue3::Object* vehicle, engine::UnrealVector const* currentAim) {
         static_cast<float>(std::atan2(local.z, std::hypot(local.x, local.y)) * kDegrees));
 }
 
+} // namespace
+
+void FollowAim(ue3::Object* vehicle, engine::UnrealVector const& direction) {
+    if (vehicle != nullptr) {
+        SeedAim(vehicle, &direction);
+    }
+}
+
+namespace {
+
 void PublishView(Link const& link, bool visible) {
     if (link.publish == nullptr || (!visible && !gViewShown)) {
         return;

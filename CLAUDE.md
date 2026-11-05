@@ -464,6 +464,11 @@ switching frameworks.
   (`place.py`'s ride `0 1.0 0.25`; at 0.8 it was inside it), the turret's five meshes (hung on `Turret_Mount_*`) stay in view while
   riding, and the shots start at the firing gun's `GetMuzzleLoc` (`Mako.cpp`'s start-trace handler; the game's start was the camera's,
   in front of the face). `mevr vehicle guns` and `fire [cannon|mg] [s]` measure it.
+  **The gunner** (research/47 "The gunner", 2026-11-04; `core/vr/MakoGunner`, `game/MakoGunner`; `[Mako] gunner*`): riding, a
+  squadmate aims the turret at the nearest visible hostile (the driver's `IsHostile`, `FastTrace` from the muzzle, dormant pawns
+  skipped) and fires the machine gun in bursts and the cannon at heavy targets or crowds (`gunnerCrowd` 3 within
+  `gunnerCrowdRadiusM` 6); the stick's thumbstick or the free right hand aiming (finger on the trigger, ray out the front) takes it
+  at once, back after `gunnerHandbackS` 3. `mevr gunner [wake <n>]`; log `mako gunner:`; snapshot `"mod"."makoGunner"`.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD

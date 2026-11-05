@@ -29,6 +29,7 @@
 #include "core/vr/Upscale.hpp"
 #include "core/vr/CombatStance.hpp"
 #include "core/vr/CockpitHazard.hpp"
+#include "core/vr/MakoGunner.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/GameMenuRequest.hpp"
 #include "core/vr/GamePointer.hpp"
@@ -8542,6 +8543,109 @@ void TestMetricStereo() {
 // Comfort (research/31): the snap's state machine, the smooth turn, yaw units, the camera guessed through a turn (and
 // body follow across a snap), the vignette's fade and picture, walking toward the left hand, the pad flag, the menu.
 // The Mako cockpit's hazard lights (core/vr/CockpitHazard, research/47 "Hazard lights").
+// The Mako's gunner (core/vr/MakoGunner, research/47 "The gunner").
+void TestMakoGunner() {
+    namespace mg = mevr::vr::mako_gunner;
+    mg::Settings s;  // handback 3 s, dead zone 0.25
+    // Who aims: the gunner until a manual input, the manual one at once, the gunner again handbackS after the last.
+    mg::ControlState state;
+    mg::Hands idle;
+    CHECK(mg::Step(state, idle, 0.0, s) == mg::Control::Gunner);
+    mg::Hands thumb;
+    thumb.stickHeld = true;
+    thumb.thumbX = 0.6f;
+    CHECK(mg::Step(state, thumb, 1.0, s) == mg::Control::Stick);
+    mg::Hands holding;
+    holding.stickHeld = true;  // the stick held, the thumb at rest
+    CHECK(mg::Step(state, holding, 3.5, s) == mg::Control::Stick);   // 2.5 s after: still the player's
+    CHECK(mg::Step(state, holding, 4.01, s) == mg::Control::Gunner);  // 3 s after: the gunner's
+    mg::Hands tiny = thumb;
+    tiny.thumbX = 0.1f;  // inside the dead zone: no takeover
+    CHECK(mg::Step(state, tiny, 5.0, s) == mg::Control::Gunner);
+    // The free hand aims only with intent and pointing out the front.
+    mg::Hands hand;
+    hand.handFree = true;
+    hand.handIntent = true;
+    hand.handPointsOut = true;
+    CHECK(mg::HandAims(hand) && mg::Step(state, hand, 6.0, s) == mg::Control::Hand);
+    mg::Hands lap = hand;
+    lap.handPointsOut = false;  // resting in the lap, the finger on the trigger: not aiming
+    CHECK(!mg::HandAims(lap));
+    mg::Hands relaxed = hand;
+    relaxed.handIntent = false;  // pointing out, the finger off the trigger: not aiming
+    CHECK(!mg::HandAims(relaxed));
+    CHECK(mg::Step(state, lap, 8.0, s) == mg::Control::Hand);      // within the handback
+    CHECK(mg::Step(state, lap, 9.01, s) == mg::Control::Gunner);
+    // The thumbstick wins over the hand when both aim; the setting off keeps the old rules (stick while held, else the hand).
+    mg::Hands both = hand;
+    both.stickHeld = true;
+    both.thumbY = -0.9f;
+    CHECK(mg::Step(state, both, 10.0, s) == mg::Control::Stick);
+    mg::Settings off = s;
+    off.on = false;
+    mg::ControlState old;
+    CHECK(mg::Step(old, idle, 0.0, off) == mg::Control::Hand && mg::Step(old, holding, 0.1, off) == mg::Control::Stick);
+
+    // The target: the nearest valid one; the current one kept unless another is under 0.7 of its distance; -1 without one.
+    std::vector<mg::Candidate> candidates(4);
+    candidates[0] = {0, 50.0, true, true, 0.4};
+    candidates[1] = {1, 40.0, true, true, 0.4};
+    candidates[2] = {2, 10.0, false, true, 0.4};   // hidden
+    candidates[3] = {3, 20.0, true, false, 0.4};   // out of the turret's reach
+    CHECK(mg::Choose(candidates, -1, s) == 1);
+    CHECK(mg::Choose(candidates, 0, s) == 0);      // 40 isn't under 0.7 x 50
+    candidates[1].distanceM = 30.0;
+    CHECK(mg::Choose(candidates, 0, s) == 1);      // 30 is
+    std::vector<mg::Candidate> distant{{0, 150.0, true, true, 0.4}};
+    CHECK(mg::Choose(distant, -1, s) == -1);           // beyond the range
+    CHECK(mg::Choose(std::span<mg::Candidate const>{}, 3, s) == -1);
+    CHECK(mg::IsBig({0, 10.0, true, true, 2.0}, s) && !mg::IsBig({0, 10.0, true, true, 0.4}, s));
+    // The cannon (the "rocket launcher", the user): heavy targets, and crowds (3 or more hostiles within 6 m).
+    std::vector<mg::Candidate> group(4);
+    for (int i = 0; i < 4; ++i) {
+        group[static_cast<std::size_t>(i)] = {i, 30.0, true, true, 0.4};
+    }
+    std::vector<double> const where{0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 4.0, 0.0, 40.0, 0.0, 0.0};  // three together, one 40 m off
+    mg::CountNeighbours(group, where, s.crowdRadiusM);
+    CHECK(group[0].neighbours == 2 && group[1].neighbours == 2 && group[2].neighbours == 2 && group[3].neighbours == 0);
+    CHECK(mg::IsCrowd(group[0], s) && mg::UseCannon(group[0], s));
+    CHECK(!mg::IsCrowd(group[3], s) && !mg::UseCannon(group[3], s));
+    CHECK(mg::UseCannon({0, 30.0, true, true, 2.0}, s));      // heavy, alone
+    std::vector<mg::Candidate> pair(2);
+    pair[0] = {0, 30.0, true, true, 0.4};
+    pair[1] = {1, 31.0, true, true, 0.4};
+    std::vector<double> const two{0.0, 0.0, 0.0, 2.0, 0.0, 0.0};
+    mg::CountNeighbours(pair, two, s.crowdRadiusM);
+    CHECK(pair[0].neighbours == 1 && !mg::UseCannon(pair[0], s));  // two together isn't a crowd
+    mg::Settings noCannon2 = s;
+    noCannon2.cannon = false;
+    CHECK(!mg::UseCannon(group[0], noCannon2) && !mg::UseCannon({0, 30.0, true, true, 2.0}, noCannon2));
+
+    // Firing: nothing while settling, bursts and pauses, the cannon at a big target every cannonEveryS, nothing without a target.
+    mg::FireState fire;
+    CHECK(!mg::Fire(fire, 0.0, 7, true, s).mg);              // just taken
+    mg::Orders o = mg::Fire(fire, 0.4, 7, true, s);           // settled
+    CHECK(o.mg && o.cannon);
+    CHECK(mg::Fire(fire, 1.0, 7, true, s).mg);
+    CHECK(!mg::Fire(fire, 1.0, 7, true, s).cannon);           // the cannon's cadence
+    CHECK(!mg::Fire(fire, 1.65, 7, true, s).mg);              // the burst ended (0.4 + 1.2)
+    CHECK(!mg::Fire(fire, 2.0, 7, true, s).mg);               // the pause
+    CHECK(mg::Fire(fire, 2.2, 7, true, s).mg);                // the next burst
+    CHECK(mg::Fire(fire, 3.45, 7, true, s).cannon);           // 3 s after the first cannon shot
+    CHECK(!mg::Fire(fire, 3.5, -1, true, s).mg);              // no target: the trigger let go
+    mg::FireState small2;
+    mg::Fire(small2, 0.0, 1, false, s);
+    CHECK(!mg::Fire(small2, 0.5, 1, false, s).cannon);        // a tiny target: no cannon
+    mg::Settings noCannon = s;
+    noCannon.cannon = false;
+    mg::FireState big2;
+    mg::Fire(big2, 0.0, 1, true, noCannon);
+    CHECK(!mg::Fire(big2, 0.5, 1, true, noCannon).cannon);
+    // A new target restarts the settle.
+    CHECK(!mg::Fire(fire, 4.0, 8, false, s).mg && mg::Fire(fire, 4.4, 8, false, s).mg);
+    CHECK(mg::Describe(s).find("120 m") != std::string::npos && mg::Describe(off).find("no gunner") != std::string::npos);
+}
+
 void TestCockpitHazard() {
     namespace hz = mevr::vr::cockpit_hazard;
     hz::Settings s;  // under 30%, clear over 40%
@@ -9620,6 +9724,7 @@ int main() {
     gFailures += RunBreadcrumbTests();
     gFailures += RunExeTests();
     TestUpscale();
+    TestMakoGunner();
     TestCockpitHazard();
     TestComfort();
     TestCombatStance();

@@ -275,7 +275,7 @@ void Apply(ue3::Object* context, ue3::Rotator* result, char const* tag) {
         write_journal::Wrote(tag, result);
         gLastPath = Path::Barrel;
         gBarrelAims.fetch_add(1, std::memory_order_relaxed);
-    } else if (gEnabled && mako::ShotRotation(*result, rotation)) {
+    } else if ((gEnabled || mako::GunnerAiming()) && mako::ShotRotation(*result, rotation)) {
         // The Mako (research/44): the vehicle's cannon and machine gun ask this function too; game/mako aims them from the
         // gun's start toward what the right controller's ray hits. Not a ray of ours for the shot-start diagnostics.
         *result = rotation;

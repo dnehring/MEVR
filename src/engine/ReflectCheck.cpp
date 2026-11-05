@@ -649,6 +649,7 @@ void CheckFields() {
     CheckField("Engine.Actor", "bDeleteMe", SDK_BOOL(AActor, bDeleteMe));
     CheckField("Engine.Vehicle", "Driver", SDK_FIELD(AVehicle, Driver));  // `mevr vehicle why`
     CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
+    CheckField("Engine.Actor", "bCollideActors", SDK_BOOL(AActor, bCollideActors));  // the Mako's gunner skips dormant pawns
     CheckField("Engine.Actor", "LastRenderTime", SDK_FIELD(AActor, LastRenderTime));  // mevr crowd
     CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));
     CheckField("Engine.PrimitiveComponent", "bOnlyOwnerSee", SDK_BOOL(UPrimitiveComponent, bOnlyOwnerSee));  // the seated driver
@@ -710,6 +711,8 @@ void CheckFields() {
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("Engine.Camera", "PCOwner", SDK_FIELD(ACamera, PCOwner));
     CheckField("Engine.WorldInfo", "PawnList", SDK_FIELD(AWorldInfo, PawnList));
+    CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));  // the Mako's gunner: a target's size
+    CheckField("Engine.CylinderComponent", "CollisionRadius", SDK_FIELD(UCylinderComponent, CollisionRadius));
     CheckField("Engine.WorldInfo", "TimeSeconds", SDK_FIELD(AWorldInfo, TimeSeconds));  // mevr crowd
     CheckField("SFXGame.BioTriggerStream", "StreamingStates", SDK_FIELD(ABioTriggerStream, StreamingStates));  // mevr stream
     // `mevr vehicle levels` and `event` (the cockpit probe, research/47)
