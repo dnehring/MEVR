@@ -60,8 +60,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   repairs. (research/48 section 27, red built 2026-11-05)
 - [ ] Extraction handle overhead: grab it with a new squeeze (never fires the cannon or boosts), pull it toward you, hold
   at the end: the "Return to Normandy?" box shows at the windshield with the cockpit still around you, and takes a
-  click, a touch, A and B. Say whether the handle swings the right way and its label reads from the seat.
-  (research/48 section 27)
+  click, a touch, A and B. Say whether the handle swings the right way and its label reads from the seat. Shepard's hand
+  closes on the bar and follows its swing; pressing the button his index points. (research/48 section 27, hands built
+  2026-11-05)
+- [ ] Shepard's right arm reaching up to the handle shows black and folded at the shoulder (research/48 section 27,
+  2026-11-05 snapshot 07-57-00): not fixed yet; say whether it bothers you in the headset.
 - [ ] The ceiling lamps' glow spills a haze over the windshield's top (kept for now as the cabin's light on the glass):
   keep it, or leave the lamps right above the windshield (the spine's drop panel) unlit? (research/48 section 26)
 - [ ] Frame rate on the PS VR2 while driving with the cockpit up (more pixels than the fake headset). (research/47
@@ -194,7 +197,9 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
   and the box at the windshield were checked 2026-11-05, research/48 section 27): the red refusals in a snapshot (press
   during the 30 s cooldown), the handle model's swing seen in a snapshot, the gunner's `(a hand works the cockpit's panel)`
   line (only logged when the gun was the player's before the press); the repair button's place on the desk shelf in a seat
-  snapshot; the seat sampled too early (`seated with the head 0.00 ...`, 1 entry in 3). (research/48 section 27)
+  snapshot; the seat sampled too early (`seated with the head 0.00 ...`, 1 entry in 3; fixed in c330d4e: the line now ends
+  `(N of M samples with a head offset)`); the fist on the handle's bar through the swing and the index pointing at the cap
+  (2cac56e). (research/48 section 27)
 - Squad orders: `mevr order` / `mevr say` / `mevr context` against woken mercenaries: the squad index base (is Shepard
   index 0?), `QuickCommandAttackTarget` honouring its target, the move point dropped along the swapped Rotation, HOLD
   keeping them put and `GetMemberFormation` reading HOLD back, retreat to cover (does the AI take the slot or stand beside
