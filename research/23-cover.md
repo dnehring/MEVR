@@ -157,9 +157,22 @@ our deploy has first person on from launch.
 - **What the player loses with cover:** `SFXGame`'s script uses of the player's cover state are all
   gameplay: the camera, input (`BioPlayerInput.PostProcessInput`), movement, sprint, the wheels'
   move delay, aim snapping, and `BioPawnBehavior.ProxyTakeDamage`'s protected cone
-  (`SFXGameConfig.bCoverProtectedCone`, for some pawn classifications) next to the difficulty's
-  `CoverDamageReduction` (0.9 on the upper difficulties, 1.0 below). Physical cover still blocks shots
-  (they're traces against the level), but that bonus is gone. Level scripts (tutorial hints) weren't
-  searched **[verify]**: none should wait for the player to take cover.
+  (`SFXGameConfig.bCoverProtectedCone`, true in `BIOGame.ini`). Read again 2026-11-05 (the script
+  decompiled locally with Legendary Explorer's core, the difficulty table from `Coalesced_INT.bin`):
+  for the player and the squad (classifications 5 and 6), **in cover and not leaning out**
+  (`IsInCover() && !IsInCoverLeaning()`), a hit whose shot comes from the cover's far side (its direction
+  against the wall's normal: `dot(shot, -CoverNormal) < -0.3`, within about 72 degrees of the normal)
+  and from more than 300 units (3 m) away has its damage multiplied by `1 - CoverDamageReduction`. The
+  difficulty handler's `CoverDamageReduction` (`SFXDifficultyHandler`, `Level<N>DifficultyData`) is 1.0
+  on Casual and Normal and 0.9 from Veteran up: **no damage at all from the front on the two lower
+  difficulties, a tenth of it above.** With `noCover` the player is never in cover, so a VR player has
+  none of it (the squad keeps it). What still protects is the level's geometry: an enemy's shot is a
+  trace from its muzzle toward a bone of the target (`BioAiController.GetAimLocation`: the target's
+  `GetTargetZoneLocation`, native, its zones the appearance's `m_aTargetZone`; or the target's location
+  plus a step-out offset when the native `GetStepOutRelativeLocationToTarget` gives one **[verify]**) plus a random error of the weapon's drift angle (doubled in a
+  combat action state), so a wall between the muzzle and a lowered Shepard stops it. The physical crouch
+  is the game's own `ShouldCrouch`, which lowers the skeleton and the collision as low cover's crouch
+  does, and halves the noise Shepard makes (`BioPawn.m_fCrouchNoiseModifier` 0.5). Level scripts
+  (tutorial hints) weren't searched **[verify]**: none should wait for the player to take cover.
 - **[verify]** Whether the explore-mode stand on move input feels wrong in VR (crouch, then step: the
   game stands Shepard; the physical posture acts again only on the next stand and crouch).
