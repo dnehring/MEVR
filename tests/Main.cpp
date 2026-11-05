@@ -7331,7 +7331,7 @@ void TestOmniRail() {
     wu::Settings const s;
     CHECK(wu::OnWrist(s, wu::Screen::Journal, false) && !wu::OnWrist(s, wu::Screen::Inventory, true) && wu::OnWrist(s, wu::Screen::SkillGame, true));
     CHECK(!wu::OnWrist(s, wu::Screen::Shop, false) && !wu::OnWrist(s, wu::Screen::Loot, false));
-    CHECK(NearD(wu::WristWidth(s, wu::Screen::SkillGame), 0.30, 1e-6) && NearD(wu::WristWidth(s, wu::Screen::Map), 0.55, 1e-6));
+    CHECK(NearD(wu::WristWidth(s, wu::Screen::SkillGame), 0.30, 1e-6) && NearD(wu::WristWidth(s, wu::Screen::Map), 0.70, 1e-6));
     CHECK(wu::ScreenList(0) == "none" && wu::ScreenList(wu::Bit(wu::Screen::SkillGame) | wu::Bit(wu::Screen::Map)) == "Map, SkillGame");
 }
 

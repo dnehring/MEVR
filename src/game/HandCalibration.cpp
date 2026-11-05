@@ -727,7 +727,7 @@ constexpr char const* kWorldUiBlock =
     "screens = all\n"
     "wrist = SkillGame, Inventory, XMods, CharacterRecord, Specialization, Journal, Codex, Map, MenuBrowser, Options, Save, Load\n"
     "wristWidthM = 0.30\n"
-    "wristMenuWidthM = 0.55\n"
+    "wristMenuWidthM = 0.70\n"
     "wristAboveM = 0.10\n"
     "wristTowardM = 0.00\n"
     "wristFollow = 1\n"
@@ -2772,6 +2772,20 @@ void Refresh() {
             }
         }
     }
+    // [WorldUi] since 2026-11-05: the omni-tool's screens are larger on the wrist (the user asked; 0.55 -> 0.70 m wide). A file
+    // without the marker figure (added below, after this) whose wristMenuWidthM still holds the old default gets the new one;
+    // any other value is the player's and kept.
+    if (auto const s = ini.find("WorldUi"); s != ini.end() && s->second.find("figure") == s->second.end()) {
+        if (auto const k = s->second.find("wristMenuWidthM"); k != s->second.end()) {
+            if (k->second == "0.55" && WritePrivateProfileStringW(L"WorldUi", L"wristMenuWidthM", L"0.70", path.wstring().c_str()) != 0) {
+                log::Info("hands: [WorldUi] wristMenuWidthM 0.55 -> 0.70: the omni-tool's screens larger on the wrist in {}", ini::Utf8(path));
+                ini = ReadIni(path);
+                stamp = fs::last_write_time(path, ec);
+            } else if (k->second != "0.55") {
+                log::Info("hands: [WorldUi] wristMenuWidthM = {} kept (your choice; the default is 0.70)", k->second);
+            }
+        }
+    }
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
     // value is the player's and kept.
@@ -2911,7 +2925,7 @@ void Refresh() {
         {L"WorldUi", "WorldUi", L"wrist", "wrist", L"SkillGame"},
         {L"WorldUi", "WorldUi", L"wristWidthM", "wristWidthM", L"0.30"},
         // The omni-tool's screens (2026-11-04, research/56). The marker wristMenuWidthM comes after the wrist list's migration above.
-        {L"WorldUi", "WorldUi", L"wristMenuWidthM", "wristMenuWidthM", L"0.55"},
+        {L"WorldUi", "WorldUi", L"wristMenuWidthM", "wristMenuWidthM", L"0.70"},
         {L"WorldUi", "WorldUi", L"wristAboveM", "wristAboveM", L"0.10"},
         {L"WorldUi", "WorldUi", L"wristTowardM", "wristTowardM", L"0.00"},
         {L"WorldUi", "WorldUi", L"wristFollow", "wristFollow", L"1"},

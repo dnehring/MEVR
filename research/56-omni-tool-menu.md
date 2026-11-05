@@ -29,9 +29,17 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   CharacterRecord, Specialization, Journal, Codex, Map, MenuBrowser, Options, Save, Load` (an old file's `SkillGame` alone, the
   old default, moves once; the marker is `wristMenuWidthM`). **A screen a use opened** (a locker's equipment: the world UI's
   anchor, research/53) **still stands by what was used**; the bypass minigame always goes on the wrist (`world_ui::OnWrist`). The
-  shop, loot, party selection, message boxes and the rest stay in the room. `wristMenuWidthM` (0.55) is the width of a whole
-  16:9 stage there; `wristWidthM` (0.30) stays the minigame's frame. Our menu's Comfort > Game screens row "Omni-tool screens"
-  (On my wrist / In the room) writes the list or `none`.
+  shop, loot, party selection, message boxes and the rest stay in the room. `wristMenuWidthM` (0.70; 0.55 until 2026-11-05) is
+  the width of a whole 16:9 stage there; `wristWidthM` (0.30) stays the minigame's frame. Our menu's Comfort > Game screens row
+  "Omni-tool screens" (On my wrist / In the room) writes the list or `none`.
+- **Larger on the wrist (2026-11-05, the user: "can we make them larger on the wrist display?").** `wristMenuWidthM` 0.55 -> 0.70
+  (an old file's 0.55 moves once, marker `figure`; any other value is kept), and our menu's Comfort > Game screens > **Wrist
+  screen size** slider (0.40-1.00 m, live: the host places the wrist screen every frame from the mod's state). At the replayed
+  wrist's pose (the screen's centre 0.48 m from the eyes, snapshot 2026-11-05 07:48:36): 0.55 m was 60 x 36 degrees, 76 with the
+  rail, a list row's text 0.56 degrees tall; 0.70 m is 72 x 45 degrees, 89 with the rail (it grows with the screen's height), the
+  text 0.72 degrees (+29%); 0.80 would be 79 x 50, 96 with the rail. Its bottom edge stays `wristAboveM` over the wrist, so it grows
+  upward and sideways. [verify in the headset: which size reads best without turning the head; a real arm holds the wrist
+  farther than the replay, which makes all of these a little smaller]
 - **The rail** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml` + `.rcss`): a column to the left of
   the wrist screen, in its plane, as tall as it (`kRailAspect` 0.36: its 360 x 1000 canvas), `kGapM` from it; entries Squad,
   Equipment, Map, Journal, Codex, Computer (the main wheel: options, save, load, quit), Close. The screen up lights its entry

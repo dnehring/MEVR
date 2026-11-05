@@ -171,6 +171,7 @@
 				<button class="tog" data-class-on="world_ui" data-event-click="toggle('world_ui')"><div class="knob"/></button></div>
 			<div class="row" data-class-disabled="!world_ui"><div class="rl"><div class="rlab">Omni-tool screens</div><div class="rdesc">Your equipment, squad, journal, codex, map, the game menu and the hacking screen: projected from your left wrist, with a menu beside them to switch (tap your left wrist to open it), or standing in the room</div></div>
 				<div class="seg"><button class="segb" data-class-on="wrist_screen == 'wrist'" data-event-click="pick('wrist_screen','wrist')">On my wrist</button><button class="segb" data-class-on="wrist_screen == 'room'" data-event-click="pick('wrist_screen','room')">In the room</button></div></div>
+			<div class="srow" data-class-disabled="!world_ui || wrist_screen != 'wrist'"><div class="slab">Wrist screen size</div><input type="range" min="0.4" max="1" step="0.05" data-value="wrist_width"/><div class="sval">{{wrist_width_text}}</div></div>
 			<div class="row"><div class="rl"><div class="rlab">Galaxy map hologram</div><div class="rdesc">On the Normandy the galaxy map stands as a hologram over the CIC's projector: walk up and point to pick a destination. Off: the game's flat map.</div></div>
 				<button class="tog" data-class-on="galaxy_holo" data-event-click="toggle('galaxy_holo')"><div class="knob"/></button></div>
 		</div>

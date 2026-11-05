@@ -68,7 +68,9 @@ struct Settings {
         Bit(Screen::Specialization) | Bit(Screen::Journal) | Bit(Screen::Codex) | Bit(Screen::Map) | Bit(Screen::MenuBrowser) |
         Bit(Screen::Options) | Bit(Screen::Save) | Bit(Screen::Load);
     float wristWidthM = 0.30f;   // wristWidthM: the bypass minigame's width (its frame alone)
-    float wristMenuWidthM = 0.55f;  // wristMenuWidthM: every other screen's on the wrist (the whole 16:9 stage)
+    // wristMenuWidthM: every other screen's on the wrist (the whole 16:9 stage). 0.70 since 2026-11-05 (the user: "can we make
+    // them larger on the wrist display?"; it was 0.55); our menu's Comfort > Game screens > Omni-tool screen size.
+    float wristMenuWidthM = 0.70f;
     float wristAboveM = 0.10f;   // wristAboveM: its bottom edge above the wrist as the eyes see it (the fan of light in the gap;
                                  // 0.10 clears the omni-tool's gauntlet, measured 2026-11-04, 0.06 covered its top)
     float wristTowardM = 0.0f;   // wristTowardM: moved that far from the wrist toward the eyes (level; < 0 away)

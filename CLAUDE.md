@@ -460,8 +460,9 @@ switching frameworks.
   omni-tool", "a menu on the left side to allow selecting all of the different menus"): **every personal screen is projected from
   the left wrist by default** (`[WorldUi] wrist` lists SkillGame, Inventory, XMods, CharacterRecord, Specialization, Journal, Codex,
   Map, MenuBrowser, Options, Save, Load; an old file's `SkillGame` alone moves once, marker `wristMenuWidthM`; a screen a use opened,
-  a locker's equipment, still stands by what was used: `world_ui::OnWrist`; `wristMenuWidthM` 0.55 for a whole stage, `wristWidthM`
-  0.30 the minigame's frame; the menu's row is Comfort > Game screens > Omni-tool screens). **A rail of the game's screens stands to its
+  a locker's equipment, still stands by what was used: `world_ui::OnWrist`; `wristMenuWidthM` 0.70 for a whole stage (0.55 until
+  2026-11-05, the user wanted them larger; an old file's 0.55 moves once, marker `figure`; the menu's Wrist screen size slider),
+  `wristWidthM` 0.30 the minigame's frame; the menu's row is Comfort > Game screens > Omni-tool screens). **A rail of the game's screens stands to its
   left** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`, `[OmniTool]` enabled/tap/aloneHeightM):
   Squad, Equipment, Map, Journal, Codex, Computer, Close; a second RmlUi context of the main menu's library (`menu::Ui` allows one
   per document now), `vr::game_pointer::Pointer` on its quad (ray and trigger, or the fingertip), its trigger kept from the game

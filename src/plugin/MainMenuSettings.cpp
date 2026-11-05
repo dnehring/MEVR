@@ -297,6 +297,8 @@ void Settings::Read(menu::Values& v) {
         // The omni-tool's screens (research/53 section 6, research/56): projected from the wrist unless [WorldUi] wrist is none.
         std::string const wrist = Lower(ini.Text("WorldUi", "wrist", "all"));
         v.texts["wrist_screen"] = wrist.empty() || wrist == "none" ? "room" : "wrist";
+        v.numbers["wrist_width"] =
+            std::clamp(ini.Num("WorldUi", "wristMenuWidthM", vr::world_ui::Settings{}.wristMenuWidthM), 0.4f, 1.0f);
     }
     // The game's screens in the room (research/53) and the galaxy map's hologram (research/51): the mod's defaults are on.
     flag("world_ui", ini.Num("WorldUi", "on", 1.0f) != 0.0f);
@@ -583,6 +585,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "wrist_screen") {
         Put("WorldUi", "wrist", v.Text("wrist_screen") == "room" ? std::string("none")
             : vr::world_ui::ScreenList(vr::world_ui::Settings{}.wristScreens), true);  // the omni-tool's screens (research/56)
+    } else if (key == "wrist_width") {
+        Put("WorldUi", "wristMenuWidthM", fixed(v.Number("wrist_width"), 2), final);  // their size on the wrist (research/56)
     } else if (key == "world_ui") {
         Put("WorldUi", "on", onOff("world_ui"), true);
     } else if (key == "galaxy_holo") {

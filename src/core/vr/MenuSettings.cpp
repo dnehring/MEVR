@@ -108,6 +108,7 @@ std::vector<Field> const& Schema() {
         {"cine_distance", Type::Number, 2.6f, "", 1, 6, F::Meters1},
         {"cine_depth", Type::Number, 100, "", 0, 150, F::Percent},
         {"wrist_screen", Type::Choice, 0, "wrist"},  // the hacking screen: "wrist" (projected from it) or "room" (research/53)
+        {"wrist_width", Type::Number, 0.7f, "", 0.4f, 1.0f, F::Meters2},  // [WorldUi] wristMenuWidthM (research/56)
         {"world_ui", Type::Flag, 1},     // [WorldUi] on: the game's screens in the room (research/53)
         {"galaxy_holo", Type::Flag, 1},  // [Galaxy] hologram: the galaxy map as a hologram over the CIC's table (research/51)
         // Controls.
