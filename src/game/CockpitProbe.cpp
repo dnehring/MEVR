@@ -4814,6 +4814,31 @@ std::optional<Seat> CurrentSeat() {
         seat.grip[side] = at(grip);
         seat.axis[side] = engine::Apply(gRide.frame, {axis.y, axis.x, axis.z});
     }
+    // The cockpit's panel (game/CockpitPanel, research/48 section 27). The extraction handle held: that hand closes on its bar
+    // (the U's middle, where the grab is measured), swung out as far as the handle is, the knuckles along the bar (it runs along
+    // the hinge's axis). The handle takes a new squeeze at itself overhead, so it never shares a hand with the lever or the stick.
+    vr::cockpit_panel::Output const& panel = cockpit_panel::Current();
+    if (gPanelLayout.set && panel.held && (panel.holdHand == 0 || panel.holdHand == 1)) {
+        engine::UnrealVector const& h = gPanelLayout.hingeM;  // right, forward, up from the eye (metres)
+        engine::UnrealVector const& a = gPanelLayout.hingeAxisM;  // unit (the `panel` line's parse)
+        engine::UnrealVector const v{gPanelLayout.gripM.x - h.x, gPanelLayout.gripM.y - h.y, gPanelLayout.gripM.z - h.z};
+        // v turned about a by the swing, right-handed as the panel's rule in tracking space (the eye's right, forward, up are a
+        // right-handed frame there too): + swings the bar out, toward the pilot and up.
+        double const t = static_cast<double>(panel.pullDeg) * 3.14159265358979323846 / 180.0;
+        double const c = std::cos(t);
+        double const s = std::sin(t);
+        double const dot = a.x * v.x + a.y * v.y + a.z * v.z;
+        engine::UnrealVector const cross{a.y * v.z - a.z * v.y, a.z * v.x - a.x * v.z, a.x * v.y - a.y * v.x};
+        engine::UnrealVector const swung{v.x * c + cross.x * s + a.x * dot * (1.0 - c), v.y * c + cross.y * s + a.y * dot * (1.0 - c),
+            v.z * c + cross.z * s + a.z * dot * (1.0 - c)};
+        int const side = panel.holdHand;
+        seat.held[side] = true;
+        seat.grip[side] = at({h.x + swung.x, h.y + swung.y, h.z + swung.z});
+        seat.axis[side] = engine::Apply(gRide.frame, {a.y, a.x, a.z});
+    }
+    if (panel.pressHand == 0 || panel.pressHand == 1) {
+        seat.pointing[panel.pressHand] = !seat.held[panel.pressHand];
+    }
     return seat;
 }
 

@@ -896,6 +896,13 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
             if (seat.held[side]) {
                 h.trigger = std::max(h.trigger, kHeldIndexCurl);
                 h.triggerTouch = true;  // round the handle, never lifted off it to point
+            } else if (seat.pointing[side]) {
+                // Pressing the repair button: the index straight out to the cap, the others closed, on any controller (one
+                // without a touch sensor never lifts the index by itself; research/48 section 27).
+                h.trigger = 0.0f;
+                h.triggerTouch = false;
+                h.triggerTouchKnown = true;
+                h.squeeze = 1.0f;
             }
         }
         fingers::Fill(request, fingerSkeleton, pose, fingerState, fingerInputs);

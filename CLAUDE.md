@@ -474,7 +474,8 @@ switching frameworks.
   show the hull's health (`Light_*_MIC` swapped onto `Repair_Base`'s elements). While a hand works them (or the right hand is at the
   handle) the gunner keeps the turret, at once (`mako_gunner::Hands::busy`; the user: "the aim should remain in auto mode").
   Pressed while the repair can't run (the vehicle's `VehicleRepair` power: `IsRequiredResourceAvailable`, `m_fCooldownRemaining`)
-  the plate's squares are solid red with no omni-gel and flash red every 1.2 s while it cools down; no hold, no call.
+  the plate's squares are solid red with no omni-gel and flash red every 1.2 s while it cools down; no hold, no call. Shepard's
+  hand closes on the held handle's bar as it swings (`CurrentSeat`'s held control) and points its index at the cap it presses.
   `mevr cockpit panel [repair|extract|ask]`; log `cockpit panel:`; snapshot `"cockpitProbe"."panel"`.
   **Hazard lights** (research/47 "Hazard lights", 2026-11-04; `[Cockpit] hazard`, `hazardBelow` 0.30, `hazardPeriodS`, `hazardWash`):
   with the hull's health (the vehicle behavior's `GetHealthAndShieldsScaled`) low, every cockpit element showing a package instance

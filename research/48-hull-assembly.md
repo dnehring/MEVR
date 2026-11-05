@@ -1101,6 +1101,14 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   - Untested: the press direction, the swing's sign and the gunner's hold, for want of tracked controllers. The panel's
     layout in tracking space is in its status (`"cockpitProbe"."panel"."layout"`) for a replay that reaches to it.
   - Landing on UNC20 autosaves (`VR00_AutoSave` and the GamerProfile): back the saves up before a Mako run.
+- **Shepard's hand on them** (the user asked, 2026-11-05: is the handle's touch point right, and does the hand grip it; built,
+  not yet seen in the game). The grab point was right (the U's middle against the controller's grip pose), but the seated
+  arm IK (`arm_ik::DriveSeated`) closed a hand only on the lever and the stick, so a hand on the handle stayed at its
+  controller, up to 10 cm off the bar, and didn't follow the swing. Now the held handle is a held control in
+  `cockpit_probe::CurrentSeat`: that hand's fist goes on the bar's middle swung by the handle's current pull about the hinge
+  (the panel's rule, right-handed in the eye's right/forward/up), the knuckles along the bar (its axis is the hinge's), the
+  index curled round it. A hand pushing the repair button's cap points: the index straight out, the other fingers closed,
+  on any controller (`Seat::pointing`; before, only a Touch or Index finger lifted off the trigger pointed).
 - **The turret stays in auto mode while they're worked** (the user, 2026-11-05: "If I'm repairing it pulling extraction handle
   the aim should remain in auto mode"): while a hand presses the cap or holds the handle, or the right hand is within the
   handle's 10 cm, the Mako's gunner (research/47 "The gunner") has the turret, at once and whatever the hands do
