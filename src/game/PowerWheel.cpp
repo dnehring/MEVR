@@ -317,7 +317,7 @@ ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
 ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList"};
 ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn"};
 ue3::FieldRef gHidden{"Engine.Actor", "bHidden"};
-ue3::FieldRef gCollideActors{"Engine.Actor", "bCollideActors"};
+ue3::FieldRef gBehaviorActive{"SFXGame.BioActorBehavior", "bActive"};  // the encounter's switch (dormant: false)
 ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile"};
 ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
 ue3::FunctionRef gFastTraceFn{"Engine.Actor.FastTrace"};
@@ -443,9 +443,13 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
     for (ue3::Object* p = gPawnList.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
          p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
         ++gScanPawns;
-        if (p == pawn || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(false) || !gCollideActors.ReadBool(p).value_or(true) ||
-            CallBool(p, gIsDeadFn)) {
-            continue;  // dead, or dormant (hidden, without collision: a base's crew before its encounter)
+        ue3::Object* const behavior = player::IsBioPawn(p) ? gBehavior.Read<ue3::Object*>(p).value_or(nullptr) : nullptr;
+        if (p == pawn || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(false) ||
+            (behavior != nullptr && !gBehaviorActive.ReadBool(behavior).value_or(true)) || CallBool(p, gIsDeadFn)) {
+            // Dead, or dormant: hidden, or its behaviour switched off (bActive false: a base's crew before its encounter's
+            // script runs BioSeqAct_ModifyPropertyPawn's SetActive, measured 2026-11-05). Not the collision: a thrown,
+            // ragdolled hostile has none for a moment and would lose the lock.
+            continue;
         }
         ++gScanAwake;
         std::optional<ue3::Vector> const at = player::Location(p);

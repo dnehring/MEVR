@@ -52,7 +52,8 @@ internal static class Build
     private const int MaxIndexableVertices = 65535;             // the index buffer is 16-bit, and elements have no base vertex
     // A texture size cap per group, below --max-texture: the controls are small, and at 4096 they had 6,800 to 9,300 texels a
     // metre where a hand on them sees about 3,000 (research/48 section 24); 2048 keeps 3,400 to 4,600 and frees 16 MB.
-    private static readonly Dictionary<string, int> GroupMaxTexture = new() { ["Joystick"] = 2048, ["Throttle"] = 2048 };
+    // The cockpit's two controls are smaller still (11 and 20 cm): 1024 keeps 7,000 and 5,000 texels a metre.
+    private static readonly Dictionary<string, int> GroupMaxTexture = new() { ["Joystick"] = 2048, ["Throttle"] = 2048, ["Repair"] = 1024, ["Extraction"] = 1024 };
 
     // Optional instances over two more of the game's own materials, both in Startup_INT (always loaded; their shaders are in
     // Engine.pcc's always-loaded cache; research/48 section 25). Nothing points at them: the game side swaps one onto an
@@ -99,6 +100,18 @@ internal static class Build
     // Which elements get a glow variant: the shell's lamps (hull_shapes.Bake puts them on materials of their own) and the
     // console's idle screens.
     private static bool Glows(string material) => material.StartsWith("lamp", StringComparison.Ordinal) || material is "Display" or "Aim";
+    // The controls' lamps (tools/cockpit/panel_controls.py, research/48 section 27): every element on a "light-" material
+    // starts on Light_Off_MIC, an unlit lens; each colour has a glowing instance (Light_<Colour>_Glow_MIC, listed as the
+    // element's variants) the game swaps onto an element to light it. The colours are linear and kept to one strong
+    // channel, so times the brightness they stay their colour where the screen clips.
+    private const string LightPrefix = "light-";
+    private const float GlowIndicators = 2.5f;
+    private static readonly Vector3 LightOff = new(0.045f, 0.047f, 0.052f);
+    private static readonly (string Name, Vector3 Linear)[] LightColours =
+    {
+        ("Green", new(0.02f, 0.6f, 0.06f)), ("Amber", new(0.8f, 0.3f, 0.02f)), ("Red", new(0.8f, 0.03f, 0.02f)),
+        ("White", new(0.5f, 0.5f, 0.55f)), ("Blue", new(0.05f, 0.3f, 0.8f)),
+    };
 
     // The object names, the file names they come from, which texture they share, and where the file is: "detached"
     // (detached/<file>.glb), "repair" (Newest below) or a path under the assets folder. The hull's pieces share its origin
@@ -116,8 +129,13 @@ internal static class Build
         ("hull-console", "Hull_Console", "Hull_Console", Hull + "console.glb"),
         ("hull-side-left", "Hull_Side_Left", "Hull_Side", Hull + "side-left.glb"),
         ("hull-side-right", "Hull_Side_Right", "Hull_Side", Hull + "side-right.glb"),
-        ("aim-reticle", "Aim_Reticle", "Aim_Reticle", Hull + "aim-reticle.glb"),
-        ("hull-glass", "Hull_Glass", "Hull_Glass", Hull + "glass.glb"),  // the windows' panes over the game's glass (GlassParent)  // the game's aiming capture's reticle (research/48 section 24)
+        ("aim-reticle", "Aim_Reticle", "Aim_Reticle", Hull + "aim-reticle.glb"),  // the game's aiming capture's reticle (research/48 section 24)
+        ("hull-glass", "Hull_Glass", "Hull_Glass", Hull + "glass.glb"),  // the windows' panes over the game's glass (GlassParent)
+        // the cockpit's two controls (research/48 section 27): the fixed parts on the hull's origin, the moving ones on their pivots
+        ("repair-base", "Repair_Base", "Repair", Hull + "repair-base.glb"),
+        ("repair-cap", "Repair_Cap", "Repair", Hull + "repair-cap.glb"),
+        ("extraction-base", "Extraction_Base", "Extraction", Hull + "extraction-base.glb"),
+        ("extraction-handle", "Extraction_Handle", "Extraction", Hull + "extraction-handle.glb"),
     };
 
     // The rule of tools/cockpit/detach_controls.py: the highest vNNN under repairs/<date>/<name>/, else the file beside repairs/.
@@ -430,6 +448,27 @@ internal static class Build
         ExportEntry litDiffuse = Constant("Lit_Diffuse", new Vector3(0.3f, 0.3f, 0.31f));  // the baked light is the emissive
         ExportEntry litSpecular = Constant("Lit_Spec", new Vector3(0.6f, 0.6f, 0.62f));
         ExportEntry white = Constant("Glow_Light", new Vector3(1f, 1f, 1f));
+        ExportEntry lightOff = null;
+        ExportEntry Lights()
+        {
+            if (lightOff == null)
+            {
+                lightOff = AddInstance(pcc, "Light_Off_MIC", parent, Constant("Light_Off", LightOff), expressionGuid, parentLightingGuid);
+                float[] one = { 1f, 1f, 1f, 1f };
+                var lit = new List<string>();
+                foreach ((string colour, Vector3 linear) in LightColours)
+                {
+                    string name = $"Light_{colour}_Glow_MIC";
+                    instances[name] = AddInstance(pcc, name, glowParent, Guid.Empty,
+                        new[] { ("DiffuseTexture", Constant($"Light_{colour}", linear), GlowGuids["DiffuseTexture"]), ("LightTexture", white, GlowGuids["LightTexture"]) },
+                        new[] { ("LightmapBrightness", GlowIndicators, GlowGuids["LightmapBrightness"]) },
+                        new[] { ("WallSpecColor", one, GlowGuids["WallSpecColor"]), ("WindowSpecColor", one, GlowGuids["WindowSpecColor"]) });
+                    lit.Add(name);
+                }
+                variants["Light_Off_MIC"] = lit;
+            }
+            return lightOff;
+        }
         ExportEntry glassInstance = null;
         ExportEntry Glass()
         {
@@ -518,6 +557,10 @@ internal static class Build
                 {
                     return Glass();
                 }
+                if (primitive.MaterialName.StartsWith(LightPrefix, StringComparison.Ordinal))
+                {
+                    return Lights();
+                }
                 bool screen = primitive.MaterialName == ScreenMaterial;
                 if (!primitive.BaseColorImage.HasValue && !screen)
                 {
@@ -583,6 +626,7 @@ internal static class Build
                     ["weldedVertices"] = primitives.Sum(p => p.Positions.Count),
                     ["meshVertices"] = (int)lod.NumVertices,
                     ["materialSlots"] = lod.Elements.Select(e => pcc.GetEntry(e.Material).ObjectName.Instanced).ToArray(),
+                    ["elementMaterials"] = primitives.Select(p => p.MaterialName).ToArray(),  // the glTF's: which lamp each element is
                     ["slotVariants"] = lod.Elements.Select(e => variants.TryGetValue(pcc.GetEntry(e.Material).ObjectName.Instanced, out var v) ? v.ToArray() : Array.Empty<string>()).ToArray(),
                     ["texture"] = main.Texture.ObjectName.Instanced,
                     ["textureSize"] = new[] { main.Width, main.Height },

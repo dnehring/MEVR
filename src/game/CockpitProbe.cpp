@@ -16,6 +16,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Mako.hpp"
+#include "game/CockpitPanel.hpp"
 #include "game/MakoControls.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
@@ -398,6 +399,35 @@ struct SeatLayout {
     std::array<engine::UnrealVector, 2> axisM{};
 };
 SeatLayout gSeatLayout;
+
+// `panel button R F U in R F U travel M lever R F U axis R F U grip R F U pull DEG lamps FIRST COUNT FIRST COUNT`: the repair
+// button's cap top and its press (a unit direction into it), the cap's travel; the extraction lever's hinge, its axis (unit; a
+// turn by + swings the handle out), the handle's grip at rest and how far it swings; which of Repair_Base's elements are the
+// ring's health lamps and the plate's progress squares. Points from the cockpit's eye, metres (right, forward, up); place.py
+// --script writes it from the hull manifest's panels (research/48 section 27, game/CockpitPanel).
+struct PanelLayout {
+    bool set = false;
+    engine::UnrealVector buttonM{};
+    engine::UnrealVector buttonInM{};
+    float travelM = 0.0f;
+    engine::UnrealVector hingeM{};
+    engine::UnrealVector hingeAxisM{};
+    engine::UnrealVector gripM{};
+    float pullDeg = 0.0f;
+    int healthFirst = 1;
+    int healthCount = 0;
+    int progressFirst = 0;
+    int progressCount = 0;
+};
+PanelLayout gPanelLayout;
+// The lamps' instances as last set on Repair_Base: its component, each element's colour (-1: not set by us), the instances.
+struct PanelLamps {
+    ue3::Object* component = nullptr;
+    std::array<int, 32> shown{};
+    std::array<ue3::Object*, 6> instances{};  // by vr::cockpit_panel::Colour
+    bool toldMissing = false;
+};
+PanelLamps gPanelLamps;
 
 // Shepard in the seat (docs/mako-cockpit-goal.md item 7, research/47 "Shepard in the seat"). In the Mako the game keeps the
 // driver hidden at the vehicle's origin, based on it, PHYS_None (`mevr vehicle why`). While riding with [Cockpit] seated and a
@@ -1060,7 +1090,9 @@ struct Part {
     // Riding, the controls' models follow game/MakoControls (research/47): the throttle's handle slides along the seat's
     // forward by the lever's travel, the stick's grip tilts about its pivot (the part's origin) as the hand tilts it, or turns
     // about its own vertical by the steering with [Mako] stickTwist. From the mesh's name.
-    enum class Motion { None, Lever, Stick } motion = Motion::None;
+    // The repair button's cap goes in along its press, the extraction handle swings about its hinge (game/CockpitPanel,
+    // research/48 section 27).
+    enum class Motion { None, Lever, Stick, Press, Hinge } motion = Motion::None;
 };
 std::vector<Part> gParts;
 
@@ -1167,7 +1199,8 @@ std::string DoPart(std::istringstream& words) {
     Call(part.component, gSetStaticMesh, set);
     part.mesh = mesh;
     std::string const meshName = Lower(R().NameText(mesh));
-    part.motion = meshName == "throttle_handle" ? Part::Motion::Lever : meshName == "joystick_grip" ? Part::Motion::Stick : Part::Motion::None;
+    part.motion = meshName == "throttle_handle" ? Part::Motion::Lever : meshName == "joystick_grip" ? Part::Motion::Stick
+        : meshName == "repair_cap" ? Part::Motion::Press : meshName == "extraction_handle" ? Part::Motion::Hinge : Part::Motion::None;
     PlacePart(part);
     gParts.push_back(part);
     HideFromCaptures();
@@ -2236,6 +2269,72 @@ std::string DoSeat(std::istringstream& words) {
     return report;
 }
 
+// `panel button ...` (the layout above), or `panel [repair|extract]` (game/CockpitPanel's state, or one of its calls for tests).
+std::string DoPanel(std::istringstream& words) {
+    std::string first;
+    std::streampos const start = words.tellg();
+    if (!(words >> first) || first != "button") {
+        std::string rest;
+        std::getline(words, rest);
+        return cockpit_panel::Command(first + rest);
+    }
+    words.seekg(start);
+    PanelLayout layout;
+    auto const read = [&](engine::UnrealVector& v) { return static_cast<bool>(words >> v.x >> v.y >> v.z); };
+    auto const unit = [](engine::UnrealVector& v) {
+        double const length = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+        if (!(length > 0.1)) {
+            return false;
+        }
+        v = {v.x / length, v.y / length, v.z / length};
+        return true;
+    };
+    std::string name;
+    int found = 0;
+    while (words >> name) {
+        bool ok = false;
+        if (name == "button") {
+            ok = read(layout.buttonM);
+        } else if (name == "in") {
+            ok = read(layout.buttonInM) && unit(layout.buttonInM);
+        } else if (name == "travel") {
+            ok = static_cast<bool>(words >> layout.travelM) && layout.travelM > 0.0f;
+        } else if (name == "lever") {
+            ok = read(layout.hingeM);
+        } else if (name == "axis") {
+            ok = read(layout.hingeAxisM) && unit(layout.hingeAxisM);
+        } else if (name == "grip") {
+            ok = read(layout.gripM);
+        } else if (name == "pull") {
+            ok = static_cast<bool>(words >> layout.pullDeg) && layout.pullDeg > 0.0f;
+        } else if (name == "lamps") {
+            ok = static_cast<bool>(words >> layout.healthFirst >> layout.healthCount >> layout.progressFirst >> layout.progressCount) &&
+                 layout.healthFirst >= 0 && layout.progressFirst >= 0 && layout.healthCount >= 0 && layout.progressCount >= 0 &&
+                 layout.healthFirst + layout.healthCount <= 32 && layout.progressFirst + layout.progressCount <= 32;
+        }
+        if (!ok) {
+            return "usage: mevr cockpit panel button R F U in R F U travel M lever R F U axis R F U grip R F U pull DEG lamps FIRST COUNT FIRST COUNT "
+                   "(metres from the cockpit's eye: right, forward, up), or mevr cockpit panel [repair|extract]";
+        }
+        ++found;
+    }
+    if (found != 8) {
+        return Refuse("panel: button, in, travel, lever, axis, grip, pull and lamps are all needed");
+    }
+    if (std::abs(layout.hingeAxisM.x) < 0.9) {
+        return Refuse("panel: the handle's hinge must run along the seat's right (its model swings about it)");
+    }
+    layout.set = true;
+    gPanelLayout = layout;
+    gPanelLamps.component = nullptr;  // the lamps are set afresh
+    std::string const report = std::format("panel: the repair button {:.2f} {:.2f} {:.2f} and the extraction handle {:.2f} {:.2f} {:.2f} m from the eye "
+                                           "(right, forward, up), a {:.1f} mm press and a {:.0f}-degree pull; {} lamps from element {}, {} squares from {}",
+        layout.buttonM.x, layout.buttonM.y, layout.buttonM.z, layout.gripM.x, layout.gripM.y, layout.gripM.z, layout.travelM * 1000.0f, layout.pullDeg,
+        layout.healthCount, layout.healthFirst, layout.progressCount, layout.progressFirst);
+    log::Info("cockpit probe: {}", report);
+    return report;
+}
+
 // The stick's tilt as a rotation in the vehicle's frame: its top to the right (roll) and away from the player (pitch down).
 engine::Basis StickTilt(mako_controls::Pose const& pose) {
     auto const units = [](float degrees) { return static_cast<int>(std::lround(degrees * 65536.0 / 360.0)); };
@@ -2245,11 +2344,23 @@ engine::Basis StickTilt(mako_controls::Pose const& pose) {
 // A part in the vehicle's frame: its offset from the eye along the vehicle's axes, its yaw on top of the vehicle's rotation.
 void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVector const& eye, double upm) {
     mako_controls::Pose const pose = part.motion != Part::Motion::None ? mako_controls::CurrentPose() : mako_controls::Pose{};
-    double const forwardM = part.offsetM.y + (part.motion == Part::Motion::Lever ? static_cast<double>(pose.lever * pose.travelM) : 0.0);
+    vr::cockpit_panel::Output const& panel = cockpit_panel::Current();
+    engine::UnrealVector offsetM = part.offsetM;
+    if (part.motion == Part::Motion::Press && gPanelLayout.set) {  // the cap in by the press
+        double const in = panel.pressM;
+        offsetM = {offsetM.x + gPanelLayout.buttonInM.x * in, offsetM.y + gPanelLayout.buttonInM.y * in, offsetM.z + gPanelLayout.buttonInM.z * in};
+    }
+    double const forwardM = offsetM.y + (part.motion == Part::Motion::Lever ? static_cast<double>(pose.lever * pose.travelM) : 0.0);
     bool const stick = part.motion == Part::Motion::Stick;
     double const yawDeg = part.yawDeg + (stick && !pose.tilt ? static_cast<double>(pose.steer * pose.lockDeg) : 0.0);
-    engine::UnrealVector const offset = engine::Apply(frame, {forwardM * upm, part.offsetM.x * upm, part.offsetM.z * upm});
-    engine::Basis const tilted = stick && pose.tilt ? engine::Compose(frame, StickTilt(pose)) : frame;
+    engine::UnrealVector const offset = engine::Apply(frame, {forwardM * upm, offsetM.x * upm, offsetM.z * upm});
+    engine::Basis tilted = stick && pose.tilt ? engine::Compose(frame, StickTilt(pose)) : frame;
+    if (part.motion == Part::Motion::Hinge && gPanelLayout.set && panel.pullDeg != 0.0f) {
+        // The hinge runs along the seat's right (the hull's x): a turn about it is a pitch in the vehicle's frame, forward tipping
+        // up for + about +x as in the hull's right-handed axes.
+        double const degrees = panel.pullDeg * (gPanelLayout.hingeAxisM.x >= 0.0 ? 1.0 : -1.0);
+        tilted = engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{static_cast<int>(std::lround(degrees * 65536.0 / 360.0)), 0, 0}));
+    }
     engine::UnrealRotation const turned = engine::BasisRotation(engine::Compose(tilted, engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(yawDeg * 65536.0 / 360.0)), 0})));
     if (ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(part.actor)) {
         *atField = {static_cast<float>(eye.x + offset.x), static_cast<float>(eye.y + offset.y), static_cast<float>(eye.z + offset.z)};
@@ -4054,7 +4165,7 @@ bool HazardApply(vr::cockpit_hazard::Settings const& settings) {
             ue3::Object* const material = get.Return<ue3::Object*>().value_or(nullptr);
             std::string const path = Lower(R().PathName(material));
             if (!path.starts_with("biog_mevr_cockpit.") || !ue3::IsA(material, gMic) || PathHas(path, "glass", false) || PathHas(path, "screen", false) ||
-                PathHas(path, "display", false) || PathHas(path, "aim", false)) {
+                PathHas(path, "display", false) || PathHas(path, "aim", false) || PathHas(path, "light", false)) {
                 ++gHazard.skipped;  // our own screens' instances, the glass and the console's displays keep theirs
                 continue;
             }
@@ -4488,6 +4599,9 @@ std::string Command(std::string const& line) {
     if (verb == "seat") {
         return DoSeat(words);
     }
+    if (verb == "panel") {
+        return DoPanel(words);
+    }
     if (verb == "clear") {
         ClearAll("mevr cockpit clear");
         ClearParts("mevr cockpit clear");
@@ -4711,6 +4825,92 @@ std::optional<vr::mako_controls::Seat> ControlSeat() {
     return seat;
 }
 
+std::optional<vr::cockpit_panel::Layout> PanelLayout() {
+    if (!Riding() || !gRide.haveEye || !gPanelLayout.set) {
+        return std::nullopt;
+    }
+    auto const anchor = view_anchor::Current();
+    if (!anchor) {
+        return std::nullopt;
+    }
+    auto const at = [&](engine::UnrealVector const& m) {
+        engine::UnrealVector const off = engine::Apply(gRide.frame, {m.y * gRide.upm, m.x * gRide.upm, m.z * gRide.upm});
+        return engine::ToTracking(*anchor, {gRide.eyeWorld.x + off.x, gRide.eyeWorld.y + off.y, gRide.eyeWorld.z + off.z});
+    };
+    auto const direction = [&](engine::UnrealVector const& m) {
+        XrVector3f const d = engine::DirectionToTracking(*anchor, engine::Apply(gRide.frame, {m.y, m.x, m.z}));
+        float const length = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+        return length > 1e-6f ? XrVector3f{d.x / length, d.y / length, d.z / length} : d;
+    };
+    vr::cockpit_panel::Layout layout;
+    layout.buttonTop = at(gPanelLayout.buttonM);
+    layout.buttonIn = direction(gPanelLayout.buttonInM);
+    layout.travelM = gPanelLayout.travelM;
+    layout.hinge = at(gPanelLayout.hingeM);
+    layout.hingeAxis = direction(gPanelLayout.hingeAxisM);
+    layout.grip = at(gPanelLayout.gripM);
+    layout.pullDeg = gPanelLayout.pullDeg;
+    return layout;
+}
+
+std::optional<float> HullHealth() {
+    return Riding() ? gHazard.health : std::nullopt;
+}
+
+bool ShowPanelLamps(vr::cockpit_panel::Colour const* colours, int count) {
+    if (!gPanelLayout.set || gSetMaterial.Get() == nullptr || gMic.Get() == nullptr) {
+        return false;
+    }
+    Part const* base = nullptr;
+    for (Part const& part : gParts) {
+        if (PartAlive(part) && part.mesh != nullptr && Lower(R().NameText(part.mesh)) == "repair_base") {
+            base = &part;
+            break;
+        }
+    }
+    if (base == nullptr) {
+        return false;
+    }
+    if (gPanelLamps.component != base->component) {
+        gPanelLamps.component = base->component;
+        gPanelLamps.shown.fill(-1);
+    }
+    bool changed = false;
+    int const lamps = std::min(count, gPanelLayout.healthCount + gPanelLayout.progressCount);
+    for (int i = 0; i < lamps; ++i) {
+        int const element = i < gPanelLayout.healthCount ? gPanelLayout.healthFirst + i : gPanelLayout.progressFirst + i - gPanelLayout.healthCount;
+        int const colour = static_cast<int>(colours[i]);
+        if (element < 0 || element >= static_cast<int>(gPanelLamps.shown.size()) || colour < 0 || colour >= static_cast<int>(gPanelLamps.instances.size()) ||
+            gPanelLamps.shown[static_cast<std::size_t>(element)] == colour) {
+            continue;
+        }
+        ue3::Object*& instance = gPanelLamps.instances[static_cast<std::size_t>(colour)];
+        if (instance == nullptr || !ue3::runtime::IsAlive(instance)) {
+            vr::cockpit_panel::Colour const c = colours[i];
+            std::string const path = c == vr::cockpit_panel::Colour::Off ? std::string("BIOG_MEVR_Cockpit.Light_Off_MIC")
+                                                                        : std::format("BIOG_MEVR_Cockpit.Light_{}_Glow_MIC", vr::cockpit_panel::Name(c));
+            instance = LoadObject(path, gMic.Get());
+            if (instance == nullptr) {
+                if (!gPanelLamps.toldMissing) {
+                    gPanelLamps.toldMissing = true;
+                    log::Warn("cockpit panel: no {} in the cockpit's package (is it current?): the lamps stay as they are", path);
+                }
+                return false;
+            }
+        }
+        ue3::Params set = ParamsOf(gSetMaterial);
+        set.Set("ElementIndex", element);
+        set.Set("Material", instance);
+        Call(base->component, gSetMaterial, set);
+        gPanelLamps.shown[static_cast<std::size_t>(element)] = colour;
+        changed = true;
+    }
+    if (changed) {
+        FlushActor(base->actor, false);
+    }
+    return true;
+}
+
 void FillHud(vr::hud_pieces::Pieces& pieces) {
     if (!Riding() || !gRide.haveEye || !gHudLayout.set) {
         return;
@@ -4809,12 +5009,12 @@ void Tick(std::optional<std::uint32_t> recenters) {
 std::string StatusJson() {
     namespace json = vr::test_request;
     return std::format("{{\"up\": {}, \"actor\": {}, \"kind\": {}, \"mesh\": {}, \"mic\": {}, \"parent\": {}, \"parameter\": {}, \"size\": [{}, {}], \"capture\": {}, "
-                       "\"attached\": {}, \"placedTicks\": {}, \"pointedTicks\": {}, \"hazard\": {}, \"lastError\": {}}}",
+                       "\"attached\": {}, \"placedTicks\": {}, \"pointedTicks\": {}, \"hazard\": {}, \"panel\": {}, \"lastError\": {}}}",
         gState.actor != nullptr || gState.captureActor != nullptr ? "true" : "false", json::JsonString(ue3::runtime::FullName(gState.actor)), json::JsonString(gState.kind),
         json::JsonString(ue3::runtime::FullName(gState.mesh)), json::JsonString(ue3::runtime::FullName(gState.mic)), json::JsonString(ue3::runtime::FullName(gState.parent)),
         json::JsonString(gState.parameterSet ? ue3::runtime::NameText(gState.parameter) : std::string()), gState.target != nullptr ? gState.targetWidth : 0,
         gState.target != nullptr ? gState.targetHeight : 0, json::JsonString(ue3::runtime::FullName(gState.captureActor)), gState.attached ? "true" : "false",
-        gState.placedTicks, gState.pointedTicks, HazardJson(), json::JsonString(gLastError));
+        gState.placedTicks, gState.pointedTicks, HazardJson(), cockpit_panel::StatusJson(), json::JsonString(gLastError));
 }
 
 void LogStats() {
@@ -4905,6 +5105,18 @@ std::optional<Seat> CurrentSeat() {
 
 std::optional<vr::mako_controls::Seat> ControlSeat() {
     return std::nullopt;
+}
+
+std::optional<vr::cockpit_panel::Layout> PanelLayout() {
+    return std::nullopt;
+}
+
+std::optional<float> HullHealth() {
+    return std::nullopt;
+}
+
+bool ShowPanelLamps(vr::cockpit_panel::Colour const* /*colours*/, int /*count*/) {
+    return false;
 }
 
 void NoteSeatHips(ue3::Object const* /*mesh*/, ik::Vec3 const& /*hips*/, std::optional<ik::Vec3> const& /*head*/) {}

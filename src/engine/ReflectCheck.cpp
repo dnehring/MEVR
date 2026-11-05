@@ -964,6 +964,7 @@ void CheckFields() {
     CheckField("SFXGame.BioEpicPawnBehavior", "Squad", SDK_FIELD(UBioEpicPawnBehavior, Squad));
     CheckField("SFXGame.BioActorBehavior", "ActorGameName", SDK_FIELD(UBioActorBehavior, ActorGameName));
     CheckField("SFXGame.BioActorBehavior", "m_oActorType", SDK_FIELD(UBioActorBehavior, m_oActorType));
+    CheckField("SFXGame.BioActorBehavior", "bActive", SDK_BOOL(UBioActorBehavior, bActive));  // the power lock skips dormant pawns
     CheckField("SFXGame.BioActorType", "ActorGameName", SDK_FIELD(UBioActorType, ActorGameName));
     CheckField("SFXGame.BioEquipment", "m_QuickSlotArray", SDK_FIELD(UBioEquipment, m_QuickSlotArray));
     CheckField("SFXGame.BioEquipment", "m_eQuickSlotCurrent", SDK_FIELD(UBioEquipment, m_eQuickSlotCurrent));
@@ -1210,6 +1211,9 @@ void CheckFunctions() {
         // game/GuiCursor (research/56 section 6)
         "Engine.BioSFPanel.GetVariableFloat",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
+        // CockpitPanel (research/48 section 27): the repair button's and the extraction lever's calls, as Y and X in the Mako
+        "SFXGame.SFXGameModeVehicle.RepairVehicle",
+        "SFXGame.SFXGameModeVehicle.LeaveWorld",
         // Mako (research/44): the game's own turret aim, the vehicle's Tick and its shot start
         "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
         "SFXGame.BioVehicleWheeled.Tick",
@@ -1554,6 +1558,8 @@ void CheckParams() {
     PARMS(UBioPawnBehavior_execGetClass_Parms, "SFXGame.BioPawnBehavior.GetClass");
     PARMS(AWorldInfo_execPauseGame_Parms, "Engine.WorldInfo.PauseGame");
     PARMS(USFXGameModeDefault_execTryHolster_Parms, "SFXGame.SFXGameModeDefault.TryHolster");
+    PARMS(USFXGameModeVehicle_execRepairVehicle_Parms, "SFXGame.SFXGameModeVehicle.RepairVehicle");  // game/CockpitPanel
+    PARMS(USFXGameModeVehicle_execLeaveWorld_Parms, "SFXGame.SFXGameModeVehicle.LeaveWorld");
     PARMS(APlayerController_execGetScaleFormManager_Parms, "Engine.PlayerController.GetScaleFormManager");
     PARMS(USFXGameModeDefault_execSwitchToWeapon_Parms, "SFXGame.SFXGameModeDefault.SwitchToWeapon");
     PARMS(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor");

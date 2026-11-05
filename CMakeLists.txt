@@ -312,6 +312,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/MakoControls.hpp
     src/core/vr/CockpitHazard.cpp
     src/core/vr/CockpitHazard.hpp
+    src/core/vr/CockpitPanel.cpp
+    src/core/vr/CockpitPanel.hpp
     src/core/vr/MakoGunner.cpp
     src/core/vr/MakoGunner.hpp
     src/core/vr/InteractLabel.cpp
@@ -444,6 +446,8 @@ set(MEVR_MOD_SOURCES
     src/game/SquadOrders.hpp
     src/game/CockpitProbe.cpp
     src/game/CockpitProbe.hpp
+    src/game/CockpitPanel.cpp
+    src/game/CockpitPanel.hpp
     src/game/Mako.cpp
     src/game/MakoControls.cpp
     src/game/MakoControls.hpp
@@ -874,6 +878,7 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/CockpitPanelTests.cpp
         src/core/Exe.cpp
         src/core/ExeCheck.cpp
         src/core/Hook.cpp
@@ -912,6 +917,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/HudPieces.cpp
         src/core/vr/MakoControls.cpp
         src/core/vr/CockpitHazard.cpp
+        src/core/vr/CockpitPanel.cpp
         src/core/vr/MakoGunner.cpp
         src/core/vr/InteractLabel.cpp
         src/core/vr/Colour.cpp

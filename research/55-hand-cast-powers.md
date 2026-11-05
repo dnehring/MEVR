@@ -246,6 +246,27 @@ left hand aims and casts. Code: `core/vr/PowerWheel` (`UpdateLock`, `StepPush`, 
   stasis or the release coming later than 3.8 s [verify on an awake encounter].
 - **The marker shows "ready" between the push and the release** (the cooldown starts at the release): a cast in progress
   could dim it too [open].
-- **Still to check** [verify]: an awake encounter (the power's effect on the target), a cast with the weapon away
-  (question 2), the casting animation with arm IK (question 4), the push's thresholds with tracked hands in the headset, the
-  marker's size at 5-35 m in the headset.
+
+### An awake encounter (2026-11-05, later)
+
+- **Waking UNC20's mercenaries the level's way:** dormant means their behaviour is switched off (`BioActorBehavior.bActive`
+  false, `m_nALLEnabled` 0), not only hidden. The level's own `BIOA_UNC20_00_DSG` `Main_Sequence.BioSeqAct_ModifyPropertyPawn_1`
+  (its "Active" row is `BioPawnBehavior.SetActive`) wakes all five: `mevr instances BioSeqAct_ModifyPropertyPawn
+  00_DSG.TheWorld.PersistentLevel.Main_Sequence.BioSeq`, then `mevr activate 1 0` (`ModifyPropertyPawn_0` does something else).
+  Then they're hostile, armed and fought by the squad. `EnableAi <tag> None` didn't wake them, and `DebugSpawnActor
+  BIOA_UNC_C.Mercenary.MIN_MercenaryHumanMaleRocketSoldier 1200` spawned nothing. Their type is that
+  `BioPawnChallengeScaledType`.
+- **Throw lands on the locked hostile:** the automatic lock took BioPawn_3 at 18 m; at the push the world's `TimeSeconds` was
+  233.31, and the mercenary's `m_fRagdollStartTime` went from 181.20 (an earlier cast) to **234.94**, 1.6 s later (the cast
+  animation, then about 1.4 s of flight at 1300 units/s), and it was thrown 3.3 m straight away from Shepard and 1 m up
+  ((64853, -39474, -26736) to (65177, -39555, -26642)). The first Throw at it did the same (3.3 m away, 1 m up within 2 s),
+  while the other mercenaries stood where they were. **Singularity** at it: the mercenary rose about 1 m over 3 s, then dropped
+  at 4 s (the vortex's lift and release; not separated from its own movement by a clock).
+- **The lock let go of the thrown hostile while it was ragdolled** ("target nothing" 3 s after the push): the scan skipped
+  pawns without actor collision as dormant, and a ragdoll drops its cylinder's. Since this test the dormant test is the
+  behaviour's `bActive` (and hidden), not the collision. **Checked the same night (f1cf826):** Throw at the locked BioPawn_3
+  ragdolled it again (its ragdoll start matched the push) and threw it 2.5 m; polled every 0.5 s for 9 s, the lock stayed on it
+  ("BioPawn_3 (automatic) ... in sight") through the ragdoll and its recovery.
+- **Still to check** [verify]: a cast with the weapon away (question 2), the casting animation
+  with arm IK (question 4), the push's thresholds with tracked hands in the headset, the marker's size at 5-35 m in the
+  headset.

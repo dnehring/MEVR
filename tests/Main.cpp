@@ -11100,6 +11100,7 @@ int RunExeTests();
 // tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/56 section 5).
 int RunGfxTests();
 int RunPowerWheelTests();
+int RunCockpitPanelTests();
 
 // core/vr/PowerWheel: the hand's power wheel (research/55, the concept of 2026-11-04).
 void TestPowerWheel() {
@@ -11235,6 +11236,7 @@ int main() {
     gFailures += RunExeTests();
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
+    gFailures += RunCockpitPanelTests();
     TestUpscale();
     TestMakoGunner();
     TestCockpitHazard();
