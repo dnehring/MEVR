@@ -174,6 +174,8 @@ ue3::FieldRef gTargetFormat{"Engine.TextureRenderTarget2D", "Format"};
 // What `info` reads.
 ue3::FieldRef gMeshMaterials{"Engine.MeshComponent", "Materials"};
 ue3::FieldRef gPrimitiveLightEnvironment{"Engine.PrimitiveComponent", "LightEnvironment"};
+ue3::ClassRef gDynamicLightEnvironmentClass{"Engine.DynamicLightEnvironmentComponent"};
+ue3::FieldRef gAmbientGlow{"Engine.DynamicLightEnvironmentComponent", "AmbientGlow"};  // FLinearColor: R, G, B, A
 ue3::FieldRef gLightEnvironmentEnabled{"Engine.LightEnvironmentComponent", "bEnabled"};
 ue3::FieldRef gTextureResource{"Engine.Texture", "Resource"};
 ue3::FieldRef gTextureSrgb{"Engine.Texture", "SRGB"};
@@ -450,6 +452,8 @@ struct SeatedDriver {
     std::vector<std::pair<ue3::Object*, bool>> onlyOwner;  // each primitive and its bOnlyOwnerSee before
     std::vector<std::pair<ue3::Object*, bool>> head;       // the head's meshes and their HiddenGame before
     std::vector<std::pair<ue3::Object*, ue3::Object*>> lit;  // each primitive lit by the vehicle's light environment, and its own
+    ue3::Object* glowEnvironment = nullptr;  // the vehicle's light environment, its AmbientGlow raised while Shepard is seated...
+    float glowBefore[4]{};                   // ...from this
     bool haveHips = false;
     ik::Vec3 hips{};  // the hips' midpoint in the mesh's component space (game/arm_ik)
     bool haveHeadBone = false;
@@ -2043,6 +2047,61 @@ void SetLightEnvironmentOf(ue3::Object* component, ue3::Object* environment) {
     Call(component, gSetLightEnvironment, p);
 }
 
+// The seated driver's shadowed side. The vehicle's light environment lights Shepard from the sky outside the cabin, so what
+// faces down or away drew near black: the right arm raised to the overhead handle, seen from below, 14/255 against the cabin's
+// ceiling at 140, the rest of the driver about 22 (snapshots 2026-11-05 07:56-07:57). While seated, that environment's
+// AmbientGlow is raised by gDriverGlow on each colour channel, and put back after (research/48 section 27). It lights the
+// Mako's turret (in view while riding) as much; the hull's own meshes are out of the eyes. `mevr cockpit glow <value>` tunes it.
+constexpr float kDriverGlow = 0.25f;
+float gDriverGlow = kDriverGlow;
+
+void RaiseDriverGlow(ue3::Object* environment) {
+    if (environment == nullptr || !ue3::IsA(environment, gDynamicLightEnvironmentClass)) {
+        return;
+    }
+    float* const glow = gAmbientGlow.In<float>(environment);
+    if (glow == nullptr) {
+        return;
+    }
+    if (gSeated.glowEnvironment != environment) {
+        std::copy(glow, glow + 4, gSeated.glowBefore);
+        gSeated.glowEnvironment = environment;
+    }
+    for (int i = 0; i < 3; ++i) {
+        glow[i] = gSeated.glowBefore[i] + gDriverGlow;
+    }
+    write_journal::Wrote("CockpitProbe.driverGlow", glow, 4 * sizeof(float));
+}
+
+void RestoreDriverGlow() {
+    ue3::Object* const environment = gSeated.glowEnvironment;
+    gSeated.glowEnvironment = nullptr;
+    if (environment == nullptr || !ue3::runtime::IsAlive(environment)) {
+        return;
+    }
+    if (float* const glow = gAmbientGlow.In<float>(environment)) {
+        std::copy(gSeated.glowBefore, gSeated.glowBefore + 4, glow);
+        write_journal::Wrote("CockpitProbe.driverGlow", glow, 4 * sizeof(float));
+    }
+}
+
+// `glow [value]`: the seated driver's added ambient (0 none), or what it is.
+std::string DoGlow(std::string const& rest) {
+    std::istringstream words(rest);
+    float value = 0.0f;
+    if (words >> value) {
+        if (!(value >= 0.0f && value <= 4.0f)) {
+            return "usage: mevr cockpit glow <0..4> (the seated driver's added ambient)";
+        }
+        gDriverGlow = value;
+        if (gSeated.glowEnvironment != nullptr) {
+            RaiseDriverGlow(gSeated.glowEnvironment);
+        }
+    }
+    return std::format("glow: the seated driver's added ambient {:.3f} (default {:.2f}){}", gDriverGlow, kDriverGlow,
+        gSeated.glowEnvironment != nullptr ? std::format(" on {}", ue3::runtime::FullName(gSeated.glowEnvironment)) : std::string(", not seated"));
+}
+
 void ShowDriver(ue3::Object* vehicle) {
     ue3::Object* const driver = gVehicleDriver.Read<ue3::Object*>(vehicle).value_or(nullptr);
     if (driver == nullptr || !ue3::runtime::IsAlive(driver)) {
@@ -2088,6 +2147,9 @@ void ShowDriver(ue3::Object* vehicle) {
                 SetLightEnvironmentOf(component, vehicleLight);
             }
         }
+        if (!gSeated.lit.empty()) {
+            RaiseDriverGlow(vehicleLight);
+        }
     }
     FlushActor(driver, false);  // the actor stays hidden until arm IK poses it (SeatTick)
     ++gSeated.shown;
@@ -2122,6 +2184,7 @@ void HideDriver() {
                 SetLightEnvironmentOf(component, own);
             }
         }
+        RestoreDriverGlow();
         ue3::Object* const vehicle = gSeated.vehicle;
         bool const driving = vehicle != nullptr && ue3::runtime::IsAlive(vehicle) && gVehicleDriver.Read<ue3::Object*>(vehicle).value_or(nullptr) == driver;
         if (gSeated.ownerSet && gOwnerField.Read<ue3::Object*>(driver).value_or(nullptr) == vehicle) {
@@ -4446,6 +4509,9 @@ std::string Command(std::string const& line) {
     }
     if (verb == "hazard") {
         return DoHazard(Rest(words));
+    }
+    if (verb == "glow") {
+        return DoGlow(Rest(words));
     }
     if (verb == "loaded") {
         return DoLoaded(words);

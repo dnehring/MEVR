@@ -707,6 +707,11 @@ std::uint64_t gSeatReachLogMs = 0;
 constexpr double kFistAlongKnuckle = 0.8;
 constexpr double kFistPalmward = 0.35;
 constexpr float kHeldIndexCurl = 0.5f;  // a held handle's index: at least this much of the trigger's curl
+// Seated, the clavicle shrugs toward a far reach (BonePose's collars-only torso): as on foot (half the turn, at most 15 degrees),
+// up to 30 for a target straight above the shoulder (the overhead extraction handle: an arm raised from a shoulder the seated
+// animation left down folded at the joint, research/48 section 27).
+constexpr double kSeatedCollarLevelDeg = 15.0;
+constexpr double kSeatedCollarUpDeg = 30.0;
 
 void DriveSeated(cockpit_probe::Seat const& seat) {
     ue3::Object* const mesh = seat.mesh;
@@ -756,6 +761,18 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
         request.keepKeys.push_back(info->bones.keys[bone]);
     }
     request.maxStretch = hand_calibration::ArmStretch();
+    if (info->torso) {
+        // The spine keeps the seated animation; only the clavicles shrug toward the hands' far reaches (the caps set below).
+        engine::bone_pose::Torso& t = request.torso;
+        t.collarsOnly = true;
+        t.chain = *info->torso;
+        for (int bone : t.chain.spine) {
+            t.keys.push_back(info->bones.keys[bone]);
+        }
+        for (int bone : t.chain.collars) {
+            t.keys.push_back(bone >= 0 ? info->bones.keys[bone] : 0);
+        }
+    }
     std::string driven;
     ik::Vec3 const up = frame->up;
     for (int side : {kLeft, kRight}) {
@@ -814,6 +831,15 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
                 wrist = {seat.grip[side].x + offset.x, seat.grip[side].y + offset.y, seat.grip[side].z + offset.z};
             }
             arm.wrist = toComponent(wrist);
+            {
+                // How far above the shoulder the target is sets how far the clavicle may shrug toward it.
+                ik::Vec3 const shoulder = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(chain->upper)]).translation;
+                ik::Vec3 const toward = arm.wrist - shoulder;
+                double const length = ik::Length(toward);
+                double const rise = length > 1e-6 ? std::clamp(ik::Dot(toward, up) / length, 0.0, 1.0) : 0.0;
+                request.torso.collarMaxDegrees[static_cast<std::size_t>(side)] =
+                    kSeatedCollarLevelDeg + (kSeatedCollarUpDeg - kSeatedCollarLevelDeg) * rise;
+            }
             if (std::uint64_t const nowMs = GetTickCount64(); side == kRight && nowMs - gSeatReachLogMs > 10000) {
                 // Whether each hand can reach its target from the animated shoulder (the seated pose's reach; research/47).
                 gSeatReachLogMs = nowMs;
@@ -829,8 +855,9 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
                     ik::Vec3 const hand2 = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(c.hand)]).translation;
                     double const reach = ik::Length(elbow - shoulder) + ik::Length(hand2 - elbow);
                     double const want = ik::Length(a2.wrist - shoulder);
-                    line += std::format("{}{}: target {:.2f} m from the shoulder, reach {:.2f}{}", line.empty() ? "" : "; ", kSideNames[s2],
-                        want / engine::kUnitsPerMeter, reach / engine::kUnitsPerMeter, seat.held[s2] ? " (held)" : "");
+                    line += std::format("{}{}: target {:.2f} m from the shoulder, reach {:.2f}{}, clavicle up to {:.0f} deg", line.empty() ? "" : "; ",
+                        kSideNames[s2], want / engine::kUnitsPerMeter, reach / engine::kUnitsPerMeter, seat.held[s2] ? " (held)" : "",
+                        request.torso.collarMaxDegrees[static_cast<std::size_t>(s2)]);
                     // As drawn last frame: the palm's centre (the hand bone and the middle finger's base) from the handle's grip,
                     // and where the fingers and the thumb side point, along the body's forward, right, up (cm; unit).
                     int const middle = info->fingers[s2][0];

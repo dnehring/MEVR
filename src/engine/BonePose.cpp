@@ -333,6 +333,9 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         copy.torso.keys.assign(gRequest.torso.keys.begin(), gRequest.torso.keys.end());
         copy.torso.goal = gRequest.torso.goal;
         copy.torso.collars = gRequest.torso.collars;
+        copy.torso.collarsOnly = gRequest.torso.collarsOnly;
+        copy.torso.collarFraction = gRequest.torso.collarFraction;
+        copy.torso.collarMaxDegrees = gRequest.torso.collarMaxDegrees;
         copy.maxStretch = gRequest.maxStretch;
         copy.head = gRequest.head;
         copy.support = gRequest.support;
@@ -438,7 +441,8 @@ void Write(Mesh* self, float deltaTime) {
     ik::BodyFrame body = request.body;
     TorsoSample torso;
     Torso const& t = request.torso;
-    if (t.enabled) {
+    bool collarsOnly = false;  // the clavicles may shrug without the spine (Torso::collarsOnly, its names checked)
+    if (t.enabled || t.collarsOnly) {
         // The same skeleton: the spine and clavicle names as when the request was made.
         bool same = t.keys.size() == t.chain.spine.size() + 2;
         for (std::size_t k = 0; same && k < t.chain.spine.size(); ++k) {
@@ -451,6 +455,8 @@ void Write(Mesh* self, float deltaTime) {
         }
         if (!same) {
             Reject("skeleton changed (spine bone names)");
+        } else if (!t.enabled) {
+            collarsOnly = true;
         } else {
             torso.valid = true;
             torso.result = ik::PoseTorso(pose, request.parents, t.chain, request.arms[0].chain, request.arms[1].chain, body, t.goal);
@@ -476,8 +482,9 @@ void Write(Mesh* self, float deltaTime) {
             Reject("target not finite");
             continue;
         }
-        if (arm.target == Target::Component && t.enabled && t.collars && t.chain.collars[side] >= 0) {
-            torso.collars[side] = ik::PoseCollar(pose, request.parents, t.chain.collars[side], arm.chain, goal.wrist);
+        if (arm.target == Target::Component && (t.enabled || collarsOnly) && t.collars && t.chain.collars[side] >= 0) {
+            torso.collars[side] = ik::PoseCollar(pose, request.parents, t.chain.collars[side], arm.chain, goal.wrist, 0.85,
+                t.collarFraction, t.collarMaxDegrees[static_cast<std::size_t>(side)]);
             if (torso.collars[side] > 0.0) {
                 first = (std::min)(first, t.chain.collars[side]);
             }

@@ -63,8 +63,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   click, a touch, A and B. Say whether the handle swings the right way and its label reads from the seat. Shepard's hand
   closes on the bar and follows its swing; pressing the button, Shepard's index points. (research/48 section 27, hands built
   2026-11-05)
-- [ ] Shepard's right arm reaching up to the handle shows black and folded at the shoulder (research/48 section 27,
-  2026-11-05 snapshot 07-57-00): not fixed yet; say whether it bothers you in the headset.
+- [ ] Reach up to the extraction handle: Shepard's arm should look like an arm (the shoulder shrugs with it, no spikes)
+  and not black; Shepard in the seat a little brighter overall. Say if the shoulder looks hunched or the turret too bright.
+  (research/48 section 27 "The arm raised to the handle", built 2026-11-05)
 - [ ] The ceiling lamps' glow spills a haze over the windshield's top (kept for now as the cabin's light on the glass):
   keep it, or leave the lamps right above the windshield (the spine's drop panel) unlit? (research/48 section 26)
 - [ ] Frame rate on the PS VR2 while driving with the cockpit up (more pixels than the fake headset). (research/47
