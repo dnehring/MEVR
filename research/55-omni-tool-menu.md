@@ -85,3 +85,74 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   omni-tool's lesson: its components may have to ride on Shepard's pawn), and following the wrist each tick.
 - **The experiment's verbs** (`game/HoloProbe`, a dev tool): `mevr holo spawn [self|n] [scale]`, `mevr holo effect <type>
   [fraction]`, `mevr holo scale|move|info|clear`.
+
+## 5. The game's own art: the GFx reader, rasterizer and fonts (2026-11-04)
+
+The owner rejected hand-drawn imitations of ME1's look for the rail (geometry, fonts, bulk, icons, colours all off) and chose
+the game's own Scaleform art, read from the player's install at run time. Nothing from the game is committed or shipped: the
+library only reads bytes it's handed, the tool's PNGs and TTFs stay in a scratch folder, and the tests build their movies
+byte by byte.
+
+**What exists** (game-independent, `src/core/gfx`, in the host's source list and the tests'):
+- `Swf`: `Movie::Parse` over an uncompressed `GFX`/`FWS` byte span (a compressed `CFX`/`CWS`/`ZWS` fails with a message: no
+  zlib in the project). Shapes (DefineShape 1-4: solid, linear, radial and focal gradients, bitmap fills recorded, LINESTYLE2,
+  new style tables), **morph shapes** (DefineMorphShape/2, `MorphAt(ratio)`), sprites played into per-frame display lists
+  (PlaceObject 1-3 move/replace/matrix/colour transform/ratio/name/clipDepth/visible, filters and blend modes parsed past,
+  RemoveObject/2, FrameLabel), DefineScalingGrid, ExportAssets, **ImportAssets/2**, DefineEditText bounds, DefineFont2/3.
+  `FrameOf(sprite, label)` (0-based), `Exported(name)`. Bounds-checked reads; a bad tag is counted and skipped.
+- `Raster`: exact-area coverage (signed-area accumulation, written from the math), nonzero per fill style from the
+  fill0/fill1-oriented edges, curves flattened to 0.05 px. One style table's fills are added up before they meet the
+  canvas, so two fills sharing an edge leave no see-through seam. Strokes (round/bevel/miter joins, round/square/no caps,
+  at least 1 px). Clip layers mask the depths above them (fills only, as Flash) and never paint; nested clips intersect.
+  `Render(movie, id, frame, scale)` (tight bounds + 2 px), `RenderFit(movie, id, frame, w, h, insets)` (a nine-slice from
+  DefineScalingGrid, else the insets; `FitOptions::cornerScale` scales the corners), `Bounds`, an outer
+  `ColorTransform` in the options. Images are premultiplied RGBA8, R in the low byte.
+- `SwfFont`: `FontAsTtf(movie, fontId, family)` builds a TrueType file (cmap 4, glyf/loca long, head, hhea, hmtx, maxp, name,
+  post 3, OS/2 v4, kern format 0) from the glyphs U+0020..U+007E plus what the font has of U+00A0..U+017F (`everyGlyph` for
+  all); quadratic edges map straight to on/off-curve points; outer contours clockwise, decided once per font from the
+  fill1 convention; checksums right. `Fonts(movie)` lists them.
+- `tools/gfx-dump` (`mevr-gfx-dump`): `list`, `render`, `frames` (every labelled frame stacked), `fit`, `shape`, `uses`
+  (where a character is placed, with its colour transform), `font`, `sample` (FreeType draws text from the TTF);
+  `--bg=RRGGBB`, `--alpha=N`.
+
+**Verified on the player's movies** (copies in a local scratch folder; PNGs looked at, not kept):
+- All four movies parse with 0 bad and 0 unknown tags: GFx version 8, stage 1280 x 720, 30 fps. The mix: DefineShape 1-4,
+  many DefineMorphShape/2 (101 + 42 in PCInventory), DefineEditText, ImportAssets2 (`$AeroLight`/`$BioMass` from
+  `gfxfontlib.swf`, the Xbox button icons from `Xbox_ControllerIcons.swf`, `MainController` from `mainController.swf`),
+  CSMTextSettings, DoAction/DoInitAction, and Scaleform's DefineExternalGradient (1003; ignored: every gradient fill still
+  carries its own stops) and one DefineExternalImage2 (PC_Journal's only bitmap fill, shape #106).
+- **PC_Journal's `leftTab` (sprite 59, 260.9 x 41.1 px, no scaling grid)**: 45 frames, labels (0-based) primaryNormal@0,
+  grow@1, primaryMouseOn@9, shrink@10, primaryMouseOff@19, selected@20, deselectShrink@21, deselected@24, selectedNormal@25,
+  selectedGrow@26, selectedMouseOn@34, selectedShrink@35, selectedMouseOff@44. Normal is shape #42 (dark teal gradient, a
+  light blue accent stripe on the bevel), mouse-on #48 (orange gradient) with morph #49 (the yellow accent), selected
+  #51/#52, selectedNormal #54/#55, selectedMouseOn #56/#57 and the tweens are **morph shapes**: without DefineMorphShape
+  half the states drew nothing. All 13 render as the game's (teal, orange on mouse-on, lighter teal when selected,
+  gradients included). Fitting it to the rail's 324 x 64 keeps the bevel's angle with insets left 50, right 15, top and
+  bottom 0 and `cornerScale` 64 / 41.1 (only the straight middle stretches); vertical insets bend the diagonal (any
+  nine-slice does), a plain stretch skews it.
+- **PCInventory**: #324 (DefineShape4, 576.5 x 282.3) is the item list's frame with its double blue outline and gradient
+  well. Sprite 517, the whole equipment screen (90 frames, four clip layers, `detailmaskleft` among them), renders with its
+  panels and icons, the clip layers' red and green rectangles never painted, its details frames clipped. **#510 (306.4 x
+  324.3) has alpha 0 in every colour** (gradient stops and lines) and is placed once (sprite 517 frame 76) with no colour
+  transform: it is invisible in the game. `--alpha=255` (`RenderOptions::color.aa`) shows its geometry; the earlier Python
+  sheet showed it only because it dropped alpha.
+- PC_MainWheel #29 is the squad figures icon.
+- **Fonts.gfx**: three DefineFont3 (flags 0x8c: layout, wide offsets, wide codes; EM 1024 x 20): 1 `Biomass_jpn` (7255
+  glyphs, ascent 1024, descent 205, leading 205, 6690 kerning pairs), 3 `Tigensu_jpn` (7345, 1040 / 188 / 204, 1040 pairs), 5
+  `Myriad Pro+DFGGothicP-W5` (7840, 900 / 256 / 132, 1959 pairs), all with full ASCII. The Latin TTFs have 319 glyphs, 39-53
+  KB, built in 2-4 ms; FreeType loads them (family, kerning flag, metrics) and draws "Equipment" in Biomass and "Damage Per
+  Second" in Tigensu as the game does; FreeType applies the font's kerning (Myriad's AV -50 and space-T -38 of 1024 units,
+  through `FT_Get_Kerning`). Parsing all 22,000 glyphs of the 7 MB file takes 100-150 ms (once, when the cache is built).
+- Timing (Release, one thread): the tab 1.5-2 ms at 2x, #324 9 ms, the whole equipment screen about 30 ms at 1x.
+
+**Not drawn** (counted in `RenderNotes` for the log): bitmap fills (transparent), edit texts and static texts (DefineText;
+none in these movies), buttons, imported characters (resolve them from the named movie's exports), filters (glow, drop
+shadow, blur) and blend modes other than normal (drawn as normal; layer groups aren't composited as a group). Nested sprites
+show their frame 0 unless `playNested`; ActionScript doesn't run, so states a script sets (text, `gotoAndStop` on children,
+visibility) aren't applied. Stroke scaling flags and pixel hinting are ignored.
+
+Tests (`tests/GfxTests.cpp`, synthetic movies only): parsing and labels; a hole stays empty and a half-covered edge pixel is
+half; gradient end colours; the clip layer hides what it should and never paints; a colour transform; the nine-slice's corner
+unscaled (and at `cornerScale` 2); a 2 px stroke; a morph at ratio 0.5; the import counted; the TTF's checksums and
+directory; FreeType: family, metrics, advances, the kerning pair, an 'O' with ink on the ring and none in the hole; every
+truncation of the movie and 400 random byte flips parse, render and convert without crashing.

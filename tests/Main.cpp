@@ -10234,6 +10234,8 @@ void RunReportTests(int& failures);
 int RunReflectTests();
 int RunBreadcrumbTests();
 int RunExeTests();
+// tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/54).
+int RunGfxTests();
 
 // core/Ini: the one reader of our settings file, as Win32's profile API reads it.
 void TestIni() {
@@ -10280,6 +10282,7 @@ int main() {
     gFailures += RunReflectTests();
     gFailures += RunBreadcrumbTests();
     gFailures += RunExeTests();
+    gFailures += RunGfxTests();
     TestUpscale();
     TestMakoGunner();
     TestCockpitHazard();
