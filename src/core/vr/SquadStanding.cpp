@@ -38,17 +38,36 @@ Issue Standing::Advance(Observation const& seen, Settings const& s) {
     }
     ageS += seen.dt;
     sinceIssueS += seen.dt;
+    sinceRetreatS += seen.dt;
     if (!seen.alive) {
         phase = Phase::Done;
         issue.why = "down";
         return issue;
     }
-    // Giving up: hurt or overwhelmed, they fall back to Shepard and the order ends.
-    if (phase == Phase::Active && intent.mayRetreat && (seen.health < s.retreatHealth || seen.hostilesNearMember >= s.overwhelmCount)) {
-        phase = Phase::Retreating;
-        issue.kind = Issue::Follow;
+    // Giving up: hurt or overwhelmed. To cover between them and the threat, holding there until it's calm (the order
+    // becomes that hold; a second retreat only after the cooldown); or, without that, back to Shepard and the order ends.
+    if (phase == Phase::Active && intent.mayRetreat && sinceRetreatS >= s.retreatCooldownS &&
+        (seen.health < s.retreatHealth || seen.hostilesNearMember >= s.overwhelmCount)) {
         issue.why = seen.health < s.retreatHealth ? "hurt" : "overwhelmed";
-        phase = Phase::Done;
+        if (!s.retreatToCover) {
+            phase = Phase::Done;
+            issue.kind = Issue::Follow;
+            return issue;
+        }
+        squad_retreat::Choice const choice = squad_retreat::Pick(seen.position, seen.shepard, seen.threats, seen.cover, s.retreat);
+        intent.kind = Kind::HoldAt;
+        intent.point = choice.point;
+        intent.until = Until::Calm;
+        intent.group = 0;
+        phase = Phase::Active;
+        sinceIssueS = 0.0;
+        sinceRetreatS = 0.0;
+        calmForS = 0.0;
+        engaged = true;
+        ++retreats;
+        issue.kind = Issue::Retreat;
+        issue.point = choice.point;
+        issue.cover = choice.cover;
         return issue;
     }
     if (phase == Phase::Active) {

@@ -418,3 +418,29 @@ hold through the follow order, which sets FOLLOW again. `[SquadOrders] holdForma
 Whether the HOLD formation makes the AI stay put against its own follow logic, and whether a hold position far from the
 squadmate makes them walk to it or needs the move first, are the next in-game checks **[verify]**. Also fixed:
 `squad_weapons::WeaponTypeOf` is LE1-only (LE2/LE3 return -1), which had broken the trilogy build since b7c7e56.
+
+### Retreat to cover, and a compound order (2026-11-05)
+
+**Retreat to cover** (the user's pick over the squad's own perception): a squadmate who gives up a standing order no longer
+runs to Shepard's heels. [src/core/vr/SquadRetreat.hpp](../src/core/vr/SquadRetreat.hpp) (`Pick`, unit-tested) finds the point:
+`retreatM` 8 back along the pull toward Shepard and away from the hostiles' centre (flat; the floor decides heights), never
+closer to Shepard than `stopShortM` 2.5, then the nearest cover candidate within `coverSearchM` 10 of it that is farther from
+the threat than the squadmate is (behind them, as the threat sees it); without one, the open point. The standing engine turns
+the retreat into a new hold at that point (until calm, then back; a second retreat only after `retreatCooldownS` 10), so
+"hurt" or "overwhelmed" reads `retreat to cover (x, y)` in the log and the hold's rules carry on from there; `retreatToCover =
+0` keeps the old follow. The candidates come from the level's own cover: `Engine.CoverLink` actors (not `bDisabled`), each
+slot at the link's place plus its `LocationOffset` in the link's axes, gathered by a walk over the live objects only on the
+tick a retreat is possible (new ReflectCheck rows: the class, `Slots`, `bDisabled`, the slot's `LocationOffset`). The retreat
+is a `QuickCommandMoveTo` toward the point plus the HOLD formation there. Open: whether the AI's own cover logic takes the
+slot or stands beside it, and a slot's facing (we ignore `RotationOffset`) **[verify]**.
+
+**"Liara, target that krogan, Ashley, switch to your sniper and support Liara"** (the user's question): until tonight the
+parser split clauses only at "and"/"then" before a verb it knew, had no "target" or "support", and let the last name win, so
+it would have given Liara everything at low confidence. Now a squadmate's name after an order starts a new clause (a
+vocative), except as the object of a support verb ("support / cover / back up / help / protect / stay with Liara") or right
+after "you too" / "same"; "target" is an attack verb; "support X" is its own intent (`Clause::supportOf`), which the dispatcher
+resolves at the time of the order: X's standing attack group, else X's held point (a move there), else X's last target in
+the history, else X's own position, else the gun's target. The sentence parses to `L|-|-|attack|E4` (the krogan group by
+its type word), `A|SR|-|-|-` (an equip, now dispatched through the squad menu's own switch, `squad_weapons::GiveWeapon`) and
+`A|-|-|attack|-` supporting L, at confidence 1, and the three are given in order, so Ashley's support finds Liara's attack
+standing from the first clause. Short vocabulary words match exactly now ("there" is one letter from "these").

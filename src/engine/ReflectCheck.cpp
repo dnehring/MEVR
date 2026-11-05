@@ -762,6 +762,9 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshSocket", "RelativeRotation", SDK_FIELD(USkeletalMeshSocket, RelativeRotation));
     CheckField("Engine.SkeletalMeshSocket", "RelativeScale", SDK_FIELD(USkeletalMeshSocket, RelativeScale));
     CheckField("Engine.AnimTree", "SkelControlLists", SDK_FIELD(UAnimTree, SkelControlLists));
+    CheckClass<ACoverLink>("Engine.CoverLink");  // the squad orders' retreat to cover (research/54)
+    CheckField("Engine.CoverLink", "Slots", SDK_FIELD(ACoverLink, Slots));
+    CheckField("Engine.CoverLink", "bDisabled", SDK_BOOL(ACoverLink, bDisabled));
     CheckField("Engine.SkelControlBase", "NextControl", SDK_FIELD(USkelControlBase, NextControl));
     CheckField("Engine.SkelControlBase", "ControlName", SDK_FIELD(USkelControlBase, ControlName));
     CheckField("Engine.SkelControlBase", "ControlStrength", SDK_FIELD(USkelControlBase, ControlStrength));
@@ -1000,6 +1003,7 @@ void CheckPaths() {
     CheckPath("Engine.SkeletalMesh", {"Bounds", "BoxExtent"},
         SDK_AT(offsetof(USkeletalMesh, Bounds) + offsetof(FBoxSphereBounds, BoxExtent), sizeof(FVector)));
     CheckElement("Engine.AnimTree", "SkelControlLists", sizeof(FSkelControlListHead));
+    CheckElement("Engine.CoverLink", "Slots", sizeof(FCoverSlot));
     // game/mako (research/44): the turret each vehicle weapon sits on.
     CheckElement("SFXGame.BioVehicleBehaviorBase", "m_aVehicleWeaponInfo", sizeof(FBioVehicleWeaponInfo));
     CheckPath("SFXGame.BioVehicleBehaviorBase", {"m_aVehicleWeaponInfo", "oVehicleWeaponPtr"},
@@ -1007,6 +1011,7 @@ void CheckPaths() {
     CheckPath("SFXGame.BioVehicleBehaviorBase", {"m_aVehicleWeaponInfo", "nTurretIndex"}, SDK_AT(offsetof(FBioVehicleWeaponInfo, nTurretIndex), 4));
     CheckPath("Engine.AnimTree", {"SkelControlLists", "BoneName"}, SDK_AT(offsetof(FSkelControlListHead, BoneName), 8));
     CheckPath("Engine.AnimTree", {"SkelControlLists", "ControlHead"}, SDK_AT(offsetof(FSkelControlListHead, ControlHead), 8));
+    CheckPath("Engine.CoverLink", {"Slots", "LocationOffset"}, SDK_AT(offsetof(FCoverSlot, LocationOffset), 12));
     CheckElement("Engine.SkeletalMeshComponent", "Attachments", sizeof(FAttachment));
     CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "Component"}, SDK_AT(offsetof(FAttachment, Component), 8));
     CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "BoneName"}, SDK_AT(offsetof(FAttachment, BoneName), 8));

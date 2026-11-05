@@ -104,5 +104,7 @@ struct MemberView {
 std::vector<MemberView> Members();
 // A weapon object's quick-slot type (0 pistol .. 3 sniper rifle; -1 not a ranged weapon).
 int WeaponTypeOf(ue3::Object* weapon);
+// A squadmate's weapon switched by the menu's own path (the squad orders' "switch to your sniper"): the outcome in words.
+std::string GiveWeapon(ue3::Object* pawn, int weapon);
 
 } // namespace mevr::game::squad_weapons

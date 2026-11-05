@@ -340,6 +340,10 @@ struct SquadOrders {
     double calmS = 8.0;          // a hold ends this long after the last hostile near it and the last combat
     double retreatHealth = 0.3;  // below this a squadmate gives up a standing order and falls back...
     int overwhelmCount = 3;      // ...or with this many hostiles within 8 m
+    bool retreatToCover = true;  // a retreat is a hold at cover between them and the threat (0: a follow)
+    double retreatM = 8.0;       // how far back the retreat point lies
+    double coverSearchM = 10.0;  // a CoverLink slot within this of it is taken
+    double retreatCooldownS = 10.0;
 };
 SquadOrders GetSquadOrders();
 // [Vent] (appended to an older file that lacks it; research/45, game/vent): the physical vent of a hot gun, a

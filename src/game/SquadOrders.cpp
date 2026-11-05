@@ -51,6 +51,12 @@ ue3::FieldRef gSquadOf{"SFXGame.BioEpicPawnBehavior", "Squad"};
 ue3::FunctionRef gSetFormationFn{"SFXGame.BioBaseSquad.SetSquadFollowFormation"};
 ue3::FunctionRef gSetHoldPositionFn{"SFXGame.BioBaseSquad.SetMemberHoldPosition"};
 ue3::FunctionRef gGetFormationFn{"SFXGame.BioBaseSquad.GetMemberFormation"};
+// The level's cover for a retreat (research/54 "Retreat to cover"): CoverLink slots, each at the link's place plus its offset
+// in the link's axes.
+ue3::ClassRef gCoverLink{"Engine.CoverLink"};
+ue3::FieldRef gCoverSlots{"Engine.CoverLink", "Slots"};
+ue3::FieldRef gCoverSlotOffset{gCoverSlots, "LocationOffset"};
+ue3::FieldRef gCoverDisabled{"Engine.CoverLink", "bDisabled"};
 constexpr std::uint8_t kFormationFollow = 1;  // BioBaseSquad.EFollowFormation
 constexpr std::uint8_t kFormationHold = 2;
 
@@ -312,6 +318,32 @@ std::string CallHold(int index, engine::UnrealVector const& point) {
     return std::format("hold position {}, formation {} (now {})", placed ? "set" : "not set", formed ? "set" : "not set", now);
 }
 
+// The cover slots within radiusM of a point (metres): a walk over the live objects, so only when a retreat is possible.
+std::vector<sc::Vec3> CoverNear(sc::Vec3 const& at, float radiusM) {
+    std::vector<sc::Vec3> out;
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::int32_t const n = r.ObjectCount();
+    for (std::int32_t i = 0; i < n && out.size() < 64; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !ue3::IsA(o, gCoverLink) || gCoverDisabled.ReadBool(o).value_or(false)) continue;
+        std::optional<ue3::Vector> const loc = player::Location(o);
+        std::optional<ue3::Rotator> const rot = player::Rotation(o);
+        if (!loc || !rot) continue;
+        sc::Vec3 const link = Metres({loc->x, loc->y, loc->z}, gUpm);
+        if (sc::Distance(link, at) > radiusM + 10.0f) continue;
+        engine::Basis const axes = engine::ToBasis(engine::UnrealRotation{rot->pitch, rot->yaw, rot->roll});
+        auto const slots = gCoverSlots.ElementsOf(o);
+        if (!slots) continue;
+        for (std::int32_t k = 0; k < slots->count && k < 32; ++k) {
+            ue3::Vector const offset = gCoverSlotOffset.Read<ue3::Vector>(slots->At(k)).value_or(ue3::Vector{});
+            engine::UnrealVector const world = Add({loc->x, loc->y, loc->z}, engine::Apply(axes, {offset.x, offset.y, offset.z}));
+            sc::Vec3 const point = Metres(world, gUpm);
+            if (sc::Distance(point, at) <= radiusM) out.push_back(point);
+        }
+    }
+    return out;
+}
+
 // ---- Standing orders --------------------------------------------------------------------------------------------------
 
 ss::Settings StandingSettings(hand_calibration::SquadOrders const& s) {
@@ -321,6 +353,10 @@ ss::Settings StandingSettings(hand_calibration::SquadOrders const& s) {
     out.calmS = static_cast<float>(s.calmS);
     out.retreatHealth = static_cast<float>(s.retreatHealth);
     out.overwhelmCount = s.overwhelmCount;
+    out.retreatToCover = s.retreatToCover;
+    out.retreatCooldownS = static_cast<float>(s.retreatCooldownS);
+    out.retreat.retreatM = static_cast<float>(s.retreatM);
+    out.retreat.coverSearchM = static_cast<float>(s.coverSearchM);
     return out;
 }
 
@@ -350,6 +386,7 @@ std::string IssueText(ss::Issue const& issue) {
     case ss::Issue::MoveTo: return "move";
     case ss::Issue::Follow: return "follow";
     case ss::Issue::Attack: return std::format("attack E{}", issue.group);
+    case ss::Issue::Retreat: return std::format("retreat to {} ({:.1f}, {:.1f})", issue.cover ? "cover" : "open ground", issue.point.x, issue.point.y);
     case ss::Issue::None: break;
     }
     return "nothing";
@@ -393,6 +430,15 @@ void TickStandings(double dt, hand_calibration::SquadOrders const& s) {
         }
         seen.groupAlive = sc::Find(groups, st.intent.group) != nullptr;
         seen.combat = scene.combat;
+        seen.shepard = scene.player;
+        if (who != nullptr) {
+            for (sc::Hostile const& h : scene.hostiles) {
+                if (h.health > 0.0f && sc::Distance(h.position, seen.position) <= settings.calmRadiusM) seen.threats.push_back(h.position);
+            }
+            bool const mayRetreatNow = st.intent.mayRetreat && settings.retreatToCover && st.sinceRetreatS >= settings.retreatCooldownS &&
+                (seen.health < settings.retreatHealth || seen.hostilesNearMember >= settings.overwhelmCount);
+            if (mayRetreatNow) seen.cover = CoverNear(seen.position, settings.retreat.retreatM + settings.retreat.coverSearchM + 2.0f);
+        }
         ss::Issue const issue = st.Advance(seen, settings);
         if (issue.kind == ss::Issue::None && !st.Done()) continue;
         std::string result = "no squadmate";
@@ -400,6 +446,12 @@ void TickStandings(double dt, hand_calibration::SquadOrders const& s) {
             switch (issue.kind) {
             case ss::Issue::MoveTo: result = CallMove(controller, who->index, Units(issue.point, gUpm)); break;
             case ss::Issue::Follow: result = CallFollow(controller, who->index); break;
+            case ss::Issue::Retreat: {
+                engine::UnrealVector const where = Units(issue.point, gUpm);
+                result = CallMove(controller, who->index, where);
+                if (s.holdFormation) result += "; " + CallHold(who->index, where);
+                break;
+            }
             case ss::Issue::Attack: {
                 ue3::Object* const target = NearestOfGroup(issue.group);
                 result = target != nullptr ? CallAttack(controller, who->index, target) : "no living member of the group";
@@ -534,9 +586,13 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
     }
     case sc::Order::Use:
         return std::format("use {}: squad power orders aren't dispatched yet (SquadOrderUsePower is unproven)", r.power);
+    case sc::Order::None:
+        if (r.weapon < 0) return "nothing to dispatch";
+        for (Recipient const& rc : to) note(squad_weapons::GiveWeapon(rc.pawn, r.weapon));
+        what = std::format("equip {}: the squad menu's switch for {} -> {}", sc::WeaponCode(r.weapon), names, returns);
+        break;
     case sc::Order::Cancel:
     case sc::Order::Repeat:
-    case sc::Order::None:
         return "nothing to dispatch";
     }
     sc::Command record;
@@ -698,15 +754,53 @@ std::string Say(std::string_view transcript, double secondsAgo) {
             for (Recipient const& rc : Recipients(true, 0)) DropStanding(rc.letter, "belayed");
             outcome = "belayed: the standing orders are dropped (the game's own order can't be undone; a follow calls them back)";
         } else {
-            sc::Resolved const r = sc::Validate(c.action, scene, groups, deictics, gHistory);
+            sc::Action action = c.action;
             std::optional<engine::UnrealVector> point;
-            if (r.ok && (r.order == sc::Order::Move || r.order == sc::Order::Hold) && c.action.target.kind == sc::Target::Pointed) {
+            std::string supporting;
+            if (c.supportOf != 0) {
+                // Support X: what X is attacking (her standing, else her last order), else where X is.
+                for (ss::Standing const& st : gStandings) {
+                    if (st.intent.who != c.supportOf) continue;
+                    if (st.intent.kind == ss::Kind::AttackGroup && sc::Find(groups, st.intent.group) != nullptr) {
+                        action.target = {sc::Target::Group, st.intent.group};
+                        supporting = std::format("{}'s target E{}", c.supportOf, st.intent.group);
+                    } else {
+                        action.order = sc::Order::Move;
+                        action.target = {};
+                        point = Units(st.intent.point, gUpm);
+                        supporting = std::format("{}'s held point", c.supportOf);
+                    }
+                }
+                if (supporting.empty()) {
+                    for (auto it = gHistory.rbegin(); it != gHistory.rend() && supporting.empty(); ++it) {
+                        if (it->who == c.supportOf && it->group != 0 && sc::Find(groups, it->group) != nullptr) {
+                            action.target = {sc::Target::Group, it->group};
+                            supporting = std::format("{}'s last target E{}", c.supportOf, it->group);
+                        }
+                    }
+                }
+                if (supporting.empty()) {
+                    for (Recipient const& rc : Recipients(true, 0)) {
+                        if (rc.letter != c.supportOf) continue;
+                        if (std::optional<ue3::Vector> const at = player::Location(rc.pawn)) {
+                            action.order = sc::Order::Move;
+                            action.target = {};
+                            point = engine::UnrealVector{at->x, at->y, at->z};
+                            supporting = std::format("{}'s side", c.supportOf);
+                        }
+                    }
+                }
+                if (supporting.empty()) supporting = std::format("{} isn't here: the gun's target", c.supportOf);
+            }
+            sc::Resolved const r = sc::Validate(action, scene, groups, deictics, gHistory);
+            if (r.ok && (r.order == sc::Order::Move || r.order == sc::Order::Hold) && action.target.kind == sc::Target::Pointed) {
                 point = place;
             }
             outcome = !r.ok ? std::format("refused: {}", r.problem)
                 : r.notReady ? std::format("not ready: {} in {:.0f} s", r.power, r.readyInS)
-                             : Dispatch(r, c.action, point, c.standing);
-            gLast = std::format("{} -> {}", sc::Line(c.action), outcome);
+                             : Dispatch(r, action, point, c.standing);
+            if (!supporting.empty()) outcome = std::format("supporting {}: {}", supporting, outcome);
+            gLast = std::format("{} -> {}", sc::Line(action), outcome);
             log::Info("squad orders: {}", gLast);
         }
         outcomes += std::format("{}{}: {}", outcomes.empty() ? "" : "\n", sc::Line(c.action), outcome);

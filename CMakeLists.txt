@@ -340,6 +340,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/SquadGesture.hpp
     src/core/vr/SquadParser.cpp
     src/core/vr/SquadParser.hpp
+    src/core/vr/SquadRetreat.cpp
+    src/core/vr/SquadRetreat.hpp
     src/core/vr/SquadStanding.cpp
     src/core/vr/SquadStanding.hpp
     src/core/vr/SquadMenu.cpp
@@ -598,6 +600,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/SquadGesture.hpp
     src/core/vr/SquadParser.cpp
     src/core/vr/SquadParser.hpp
+    src/core/vr/SquadRetreat.cpp
+    src/core/vr/SquadRetreat.hpp
     src/core/vr/SquadStanding.cpp
     src/core/vr/SquadStanding.hpp
     src/core/vr/SquadMenu.cpp
@@ -912,6 +916,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/SquadContext.cpp
         src/core/vr/SquadGesture.cpp
         src/core/vr/SquadParser.cpp
+        src/core/vr/SquadRetreat.cpp
         src/core/vr/SquadStanding.cpp
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp

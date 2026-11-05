@@ -495,7 +495,13 @@ constexpr char const* kSquadOrdersBlock =
     "holdRadiusM = 4\n"
     "calmS = 8\n"
     "retreatHealth = 0.3\n"
-    "overwhelmCount = 3\n";
+    "overwhelmCount = 3\n"
+    "; A retreat goes to cover between them and the threat (a CoverLink slot within coverSearchM of a point retreatM back\n"
+    "; toward you), held until it's calm; retreatToCover = 0: back to you instead. retreatCooldownS between retreats.\n"
+    "retreatToCover = 1\n"
+    "retreatM = 8\n"
+    "coverSearchM = 10\n"
+    "retreatCooldownS = 10\n";
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -1374,6 +1380,18 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
     }
     if (Number(ini, "SquadOrders", "overwhelmCount", value)) {
         s.overwhelmCount = static_cast<int>(std::clamp(value, 1.0, 20.0));
+    }
+    if (Number(ini, "SquadOrders", "retreatToCover", value)) {
+        s.retreatToCover = value != 0.0;
+    }
+    if (Number(ini, "SquadOrders", "retreatM", value)) {
+        s.retreatM = std::clamp(value, 1.0, 50.0);
+    }
+    if (Number(ini, "SquadOrders", "coverSearchM", value)) {
+        s.coverSearchM = std::clamp(value, 0.0, 50.0);
+    }
+    if (Number(ini, "SquadOrders", "retreatCooldownS", value)) {
+        s.retreatCooldownS = std::clamp(value, 1.0, 120.0);
     }
     return s;
 }
