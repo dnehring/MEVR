@@ -10,6 +10,7 @@
 #include "game/CockpitProbe.hpp"
 #include "game/GalaxyDump.hpp"
 #include "game/GalaxyMap.hpp"
+#include "game/GunKick.hpp"
 #include "game/Holsters.hpp"
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
@@ -819,6 +820,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return std::string("mevr weapon: LE1 only (the body holsters)");
 #endif
     }
+    if (verb == "kick") {
+        std::string rest;
+        std::getline(words, rest);
+        return gun_kick::Command(rest);  // synthetic shots for the gun kick (research/24 section 8)
+    }
     if (verb == "cockpit") {
         std::string rest;
         std::getline(words, rest);
@@ -839,7 +845,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ...");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ...");
 }
 
 ue3::Function* FindConsoleCommand() {

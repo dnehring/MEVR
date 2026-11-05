@@ -1076,6 +1076,7 @@ void CheckFunctions() {
         "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation",
         "SFXGame.BioWeaponRanged.GetRangedWeaponType",
         "SFXGame.BioWeaponRanged.GetPlayerAimError",
+        "SFXGame.BioWeaponRanged.GetRecoil",  // game/gun_kick (research/24 section 8)
         "SFXGame.BioWeaponRanged.TickFire",
         "SFXGame.BioWeaponRanged.GetAdjustedAim",
         "Engine.BioSFPanel.SetMovieVisibility",
@@ -1250,6 +1251,7 @@ void CheckParams() {
     PARAM(ABioWeaponRanged_execGetRangedWeaponType_Parms, "SFXGame.BioWeaponRanged.GetRangedWeaponType", ReturnValue);
     PARAM(ABioWeaponRanged_execGetPlayerAimError_Parms, "SFXGame.BioWeaponRanged.GetPlayerAimError", Accuracy);
     PARAM(ABioWeaponRanged_execGetPlayerAimError_Parms, "SFXGame.BioWeaponRanged.GetPlayerAimError", ReturnValue);
+    PARAM(ABioWeaponRanged_execGetRecoil_Parms, "SFXGame.BioWeaponRanged.GetRecoil", ReturnValue);
     PARAM(ABioGrenadeProjectile_execSetVelocity_Parms, "SFXGame.BioGrenadeProjectile.SetVelocity", vVelocity);
     PARAM(ABioGrenade_eventLaunchGrenadeAtPoint_Parms, "SFXGame.BioGrenade.LaunchGrenadeAtPoint", vTarget);
     PARAM(ABioGrenade_eventLaunchGrenadeAtPoint_Parms, "SFXGame.BioGrenade.LaunchGrenadeAtPoint", ReturnValue);
@@ -1437,6 +1439,7 @@ void CheckParams() {
     PARMS(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
     PARMS(ABioWeaponRanged_execGetRangedWeaponType_Parms, "SFXGame.BioWeaponRanged.GetRangedWeaponType");
     PARMS(ABioWeaponRanged_execGetPlayerAimError_Parms, "SFXGame.BioWeaponRanged.GetPlayerAimError");
+    PARMS(ABioWeaponRanged_execGetRecoil_Parms, "SFXGame.BioWeaponRanged.GetRecoil");
     PARMS(USFXGameModeDefault_execUseGrenade_Parms, "SFXGame.SFXGameModeDefault.UseGrenade");
     PARMS(USFXGameModeDefault_execTryMelee_Parms, "SFXGame.SFXGameModeDefault.TryMelee");
     PARMS(ABioGrenadeProjectile_execSetVelocity_Parms, "SFXGame.BioGrenadeProjectile.SetVelocity");

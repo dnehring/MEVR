@@ -45,6 +45,9 @@ std::optional<XrVector3f> GunTop(vr::aim_ray::Ray const& ray);
 // none). The sight it then draws includes the move; Current takes it out again (two ticks later, when the
 // engine has posed the gun with it) before measuring the eye against the line.
 XrVector3f TakeGunShift();
+// How far the held gun is raised to the eye this tick, 0..1 (vr::ads::Approach times vr::ads::DistanceWeight, measured on the gun
+// as the controller holds it: no assist's move, no kick); 0 without a sight. game/gun_kick fades the kick's back motion with it.
+float RaisedWeight();
 // Where the held gun's sight centre sits in the right hand bone's axes (component units) for a gun held with its
 // top along `upInHand`: its [Sights] place, or the weapon type's typical one (whatever the sight's kind, so the
 // guided calibration's sight line has a place on every gun). Nullopt without a held ranged weapon of known type.

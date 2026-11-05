@@ -215,6 +215,8 @@
 			<div class="row"><div class="rl"><div class="rlab">Steady view</div><div class="rdesc">Drawing, holstering, aiming and sprinting leave your eyes where they are</div></div>
 				<button class="tog" data-class-on="constant_eye" data-event-click="toggle('constant_eye')"><div class="knob"/></button></div>
 			<div class="srow"><div class="slab">Draw speed</div><input type="range" min="1" max="10" step="0.5" data-value="draw_rate"/><div class="sval">{{draw_rate_text}}</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Gun kicks when you fire</div><div class="rdesc">The gun jumps up and back in your hand on each shot, harder for a shotgun or a sniper rifle, less with both hands on it. Your aim and the shots stay where you point.</div></div>
+				<button class="tog" data-class-on="gun_kick" data-event-click="toggle('gun_kick')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Mako</span><div class="gline"/></div>

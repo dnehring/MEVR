@@ -59,8 +59,17 @@ bool TryStartup();
 // the weapon and does nothing.
 void Tick(bool wanted);
 // The verified weapon's muzzle now, read live (also from inside a shot's aim queries). Nullopt
-// unless a verified ranged weapon hangs in the player's right hand.
+// unless a verified ranged weapon hangs in the player's right hand. Where the controller holds it: a
+// shot's visual kick in the drawn pose (game/gun_kick, engine::bone_pose::WrittenGunKicks, research/24
+// section 8) is taken back out, here and in ModelInGunFrame and BoneWorld, so the aim ray, the shots
+// and the sights never follow the kick.
 std::optional<Muzzle> Current();
+// The same muzzle as drawn, the kick in it (diagnostics).
+std::optional<Muzzle> CurrentAsDrawn();
+// A world point given where the controller holds the gun (as Current, ModelInGunFrame and BoneWorld
+// give them) where the drawn, kicked model shows it now; nullopt when the drawn gun has no kick (the
+// point is where it is). For what sits on the model (game/sights' window and eyepiece).
+std::optional<engine::UnrealVector> ToDrawn(engine::UnrealVector const& world);
 // The grip, once measured for the weapon held in the right hand.
 std::optional<Grip> RightHandGrip();
 // The verified weapon in the right hand, as an identity to compare (0: none).

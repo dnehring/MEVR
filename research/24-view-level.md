@@ -3,7 +3,8 @@
 Bug (user, 2026-10-22, PSVR 2 on SteamVR): over a play session the world tilted more and more in
 pitch, while SteamVR's own view stayed level. This note finds the cause and records the fix
 (`game/view_level`, `core/vr/ViewLevel`, `[Hands] levelCamera`). Section 7: aim assist's friction and
-adhesion, turned off while the hand aims (`[Hands] aimAssist`).
+adhesion, turned off while the hand aims (`[Hands] aimAssist`). Section 8: the gun model kicks in the hand
+(`[Hands] gunKick`) while the view, the aim ray and the shots don't.
 
 Sources, all read-only and local: the session's logs (ours from 19:52:38, Halcyon's
 `MELEVR_Log.txt`) and its two test-loop snapshots; `SFXGame.pcc`, `Engine.pcc` decompressed with the
@@ -110,10 +111,9 @@ ControlRotation's pitch climbs shot by shot and the head-tracked world pitches w
   the gun: a 30 ms tap for a rifle's 0.1-degree kick, up to 70 ms for a shotgun's or sniper's
   (`vr::view_level::RecoilPulse`; `[Hands] recoilHaptic`, 0..1, default 0.5). The game's own pad
   rumble never reaches the Touch controllers (no XInput vibration path).
-- **Visual kick of the gun model (proposed, not built):** arm IK could add a short decaying pitch
-  and pull-back to the right hand's target in the gun's own frame (2-4 degrees and 1-2 cm, about
-  80 ms back), so the gun kicks in the hand while the view stays still. The aim ray follows the
-  barrel, so the reticle would kick with it; the shot itself is already fired.
+- **Visual kick of the gun model (built 2026-11-04, section 8):** the gun kicks in the hand while
+  the view stays still; unlike this first proposal, the aim ray, the reticle and the shots don't
+  kick with it.
 
 ## 5. The logs (ours)
 
@@ -215,3 +215,109 @@ dropped by the level camera (section 4).
   ... deg, pitch ... deg in all); removed in B; F ViewFriction and G ViewAdhesion calls in all`.
 - Snapshots: `"viewLevel": {..., "aimAssist": {"keep", "why", "frictionCalls", "adhesionCalls",
   "lastMinute": {...}}}`.
+
+## 8. The gun kicks, the view doesn't (2026-11-04)
+
+Firing felt dead: the view never kicks (section 4, which is right) and the gun model didn't move either. The owner chose a
+visible kick of the gun in the hand for the first release. Mod only (hot-reloads; no HostServices or shared-struct change):
+`game/gun_kick`, the math in `core/ik/GunKick` (unit-tested, `TestGunKick`), `[Hands] gunKick` (1) and `gunKickScale` (1.0,
+0..2) in `ASI\LE1MEVR.ini`, and a row in our menu's Controls > Weapon drawn (the row is the host's: it needs a host build to
+show, the setting works without it).
+
+### What a shot does
+
+- **The event:** view level's `SFXInventoryManager.SetWeaponRecoil` post-handler (section 4, one call per shot of the
+  player's) passes the kick the game queued for the view (the rise of `WeaponRecoilOffset.Pitch`, `GetRecoil() * 182.044`
+  units) to `gun_kick::NoteShot`. Unmeasured (0: the shot hit `RecoilCap`, or no PlayerTick had read the offset yet), the next
+  mod tick asks the weapon itself: `BioWeaponRanged.GetRecoil` through ProcessEvent (a native, `0xC59F90`, no parameters, a
+  float return), else the last value this weapon had; with none of these the shot doesn't kick (`gun kick: a shot without a
+  recoil value`, once). Only while arm IK aims the gun in the right hand (`arm_ik::RightHandAimsGun`: on foot, VR, a verified
+  weapon); other shots are counted as "not aimed".
+- **The size** (`ShotKick`): strength = recoil / 3 degrees (0..1); the muzzle turns up 0.8 + 3.2 x strength degrees and the
+  gun moves back 0.4 + 1.8 x strength cm, times `gunKickScale`. So the Avenger (0.1, section 2) about 0.9 degrees and 0.5 cm, a
+  1-degree pistol about 1.9 degrees and 1 cm, a shotgun or sniper rifle (2-5) up to 4 degrees and 2.2 cm. **[verify]** the
+  pistols', shotguns' and sniper rifles' real `GetRecoil` (the `gun kick:` heartbeat prints each window's range; only the
+  Avenger's 0.1-0.2 is measured, section 2).
+- **The motion** (`Spring`): each shot pushes a critically damped spring (omega 45/s) with the velocity that peaks it at the
+  shot's size: it rises from zero (no one-frame teleport), peaks 22 ms after the shot and is back to a tenth after about
+  120 ms (the exact solution, stable at any step). Shots add up (automatic fire: the Avenger at 10 shots a second sits about
+  7% over one shot's peak); the output is soft-capped (linear to 60% of the cap, then easing into it): at most 6 degrees and
+  3 cm, whatever the scale.
+- **Shaped** for the hold (`Shaped`): with both hands on the gun (the support grip's blend 1) half of it; the back motion
+  fades out with the sights' approach weight (`sights::RaisedWeight`: Overlord's approach x distance weight, section 15 of
+  [21](21-sights-and-scopes.md), on the gun as the controller holds it), so a gun raised to the eye only turns: a scope pulled
+  to 12 cm from the eye with the near plane at 10 cm (21 section 14) is never pushed into it, and a dot at the cheek doesn't
+  hit the face.
+
+### Where it goes in the pose
+
+Arm IK publishes it as `Request::gunKick` (the gun's barrel and top in the right hand bone's axes, the angle, the back
+distance in component units at the view's units per metre); `BonePose::TakeRequest` copies it (24fed58's lesson). The writer
+applies it **after the support grip** (`ApplySupport`) and before the arms are solved: the right hand's goal turns by the kick
+about the hand bone (the axis barrel x top, so the muzzle rises toward the gun's top whatever its roll) and moves back along the
+un-kicked barrel; a left hand holding the gun moves with it (all of it while held, the blend while it lets go, like the sight
+assist's shift). So the support grip's grab zone and distance, its two-hand aim, the span it captured at the grab and the vent's
+receiver zone ([45](45-vent.md), from the same `SupportSample`) all see the gun where the controller holds it; the fingers and
+the gun on Prop01 ride along with the hand.
+
+### Visual only: every reading takes it back out
+
+The aim ray, the shots, the sights and the scope capture all read the drawn gun (`weapon::Current`: the muzzle socket of the
+weapon mesh, which hangs on the written hand). Each `UpdateSkelPose` call of the published mesh records what it left in the
+pose (`bone_pose::WrittenGunKicks`): whether it wrote the right hand, its written rotation, and the kick as a rotation about
+the written hand position plus the move (`gun_kick::Written`); the last two calls are kept, because a component whose transform
+the engine updates late (a deferred attachment update, research/14's table) still shows the call before's. `game/weapon`
+picks the sample whose written hand turns the measured grip's barrel onto the drawn barrel (the follow check's question, per
+reading) and takes its kick out of `Current`, `BoneWorld` and `ModelInGunFrame`:
+`x = W - t + q^-1 (x' - W)` for points, `q^-1 d'` for directions (W the written hand, q the turn, t the move). Exact for the
+direction; a hand written short of its kicked goal (the arm at full stretch) keeps part of the move, which only slides the
+un-kicked reading along the barrel's own line, so the ray's line is exact either way. The grip measurement and the follow check
+keep the raw drawn gun (the hand and the gun move together, so the grip in the hand's axes is the same).
+
+So, by what reads it:
+
+| Reader | Sees |
+|--------|------|
+| The aim ray (`hand_aim::AimRay`), the host's hand reticle, the HUD's gun panel anchor | the controller's gun: none of them kick |
+| The shots (`GetAdjustedAimFor`'s barrel path, the start trace at the muzzle, `ShotAlongSight`) | the controller's gun |
+| ADS entry and exit, the sight assist and its pull, the convergence trace, the model's sight bone and top (`MeasureModel`) | the controller's gun: a kick never flips ADS or moves the assist |
+| The published sight (`sights::Current`'s return): its centre | **the kicked model** (`weapon::ToDrawn`): a dot's frame ring and a scope's eyepiece stay on the gun as it kicks |
+| ...its axis (where the dot is, where the scope's picture and its capture look) | the controller's line |
+| The scope capture (`game/scope_capture`) | the published sight: pointed along the controller's line, its camera at the kicked eyepiece (a cm off, nothing at scene depth) |
+
+**Why the dot doesn't kick with the model.** On a real gun it would, because the shot follows the gun. Here the shots follow
+the controller, so a dot that kicked would sit a degree or two above where the shots land during automatic fire, and a
+player who pulled it back down would shoot low. A scope's picture that followed the model would jump by zoom x kick (7x x 3
+degrees, about 20 degrees) inside a disc at the eye 50 ms at a time. So the dot and the picture stay honest and still; the
+window around them moves with the gun, which reads as recoil (an eyepiece leaving the eye's line for a moment may show the
+host's shadow crescent, as a real scope does).
+
+### Logs and the snapshot
+
+- Settings: `hands: gun kick on ([Hands] gunKick = 1, gunKickScale 1.00; ...)`.
+- `gun kick: first kick: the assault rifle's recoil 0.10 degrees (the kick the game queued for the view (SetWeaponRecoil)) ->
+  0.91 degrees muzzle up and 0.5 cm back at its peak (22 ms after the shot), back to a tenth in about 118 ms`.
+- The heartbeat: `gun kick: on (scale 1.00); N shots: K kicked (q queued, g getRecoil, r remembered, s synthetic), D not aimed
+  by arm IK, M without a recoil value; recoil a..b degrees a shot; peak as drawn X degrees muzzle up and Y cm back (both hands
+  on the gun Z% at most); the writer drew W kicked poses`, or `gun kick: on (scale 1.00), no shots`, or `gun kick: off (...)`.
+- The weapon's heartbeat line: `...; the gun kick taken out of N readings (P by the pose before: an attachment updated late),
+  the drawn barrel within R degrees of the written hand's`. P > 0 means the late update happens (and is handled); R is the
+  grip's agreement with the drawn gun and should stay near the grip measurement's own accuracy (under a degree).
+- Snapshots: `"mod"."gunKick"`: `on`, `scale`, `active`, `angleDeg`/`backM` (this tick's, as drawn), `rawAngleDeg`/`rawBackM`
+  (before the cap and the shaping), `twoHandBlend`, `raisedWeight`, `shots`, `kicked`, `lastRecoilDeg`, `lastSource`, and
+  `drawn` (the writer's latest sample: `kicked`, `angleDeg`, `moveUnits`, `kickedWrites`).
+- `mevr kick [recoilDeg] [shots] [ms]` (`tools/console.ps1`): synthetic shots through the same path (default one of 1 degree),
+  for a test without enemies, ammunition or heat.
+
+### [verify] in the game
+
+- With a gun drawn on the fake headset (`tools/console.ps1 "mevr weapon assault"`, then `"mevr kick 3 1"` or `"mevr kick 0.1 20
+  100"`), snapshots in the first 30 ms show the gun model up and back against one taken before; the aim ray in the snapshot
+  JSON (and the reticle in the PNGs) doesn't move; `"mod"."gunKick"."drawn"."kicked"` is true while `angleDeg` is up.
+- The weapon line's `R` stays small while kicking and `P` says whether the attachment updates late.
+- ADS with the sniper rifle (`tools/make-ads-recording.py`): firing doesn't flip `sights: ADS off`, and the scope's picture
+  stays on target.
+- Real shots (a replay with `-Inputs` that pulls the trigger: `make-ads-recording.py`'s sixth and seventh arguments): the
+  source is `queued`, and the `hand aim: shot N:` lines' angles to the sight line don't grow while kicking.
+- The sizes feel right in the headset (the user): `gunKickScale` tunes all of it; the tuning's numbers are in
+  `ik::gun_kick::Tuning`.

@@ -3,6 +3,7 @@
 
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/Fingers.hpp"
+#include "core/ik/GunKick.hpp"
 #include "core/ik/TorsoPose.hpp"
 
 #include <array>
@@ -119,6 +120,19 @@ struct Fingers {
     double fullCurlDegrees = 70.0;
 };
 
+// A shot's visual kick of the held gun (game/gun_kick, research/24 section 8). Applied to the right hand's goal after the
+// support grip tied the hands (its grab zone, its two-hand aim and the vent's receiver zone see the gun where the controller
+// holds it) and before the arms are solved: the hand, and the gun on it, turns muzzle up by `angleRadians` toward the gun's top
+// (about the hand bone) and moves `backUnits` back along the barrel (ik::gun_kick::HandMotion); a left hand on the gun moves with
+// it as far as the support grip holds. What was written goes to WrittenGunKicks, for readers of the drawn gun (game/weapon).
+struct GunKick {
+    bool enabled = false;
+    ik::Vec3 barrel;  // the gun's barrel in the right hand bone's axes (game/weapon's grip)
+    ik::Vec3 up;      // its top in the same axes (ik::GunUpInHand)
+    double angleRadians = 0.0;
+    double backUnits = 0.0;  // component units
+};
+
 // A leg (ik::FindLegChain: hip, knee, ankle) posed by the same two-bone solve as an arm: the ankle to `ankle`, the knee
 // bending toward `knee` (component space). The Mako's seated driver (research/47 "Shepard in the seat").
 struct Leg {
@@ -144,6 +158,7 @@ struct Request {
     // support grip holds (fading with its blend after a release): a hand on the gun moves with it, so the
     // two-hand line doesn't turn; a free left hand stays. Zero: none.
     ik::Vec3 gunShift;
+    GunKick gunKick;
     Fingers fingers;
     std::array<Leg, 2> legs;  // 0 left, 1 right
 
@@ -379,6 +394,23 @@ std::optional<ik::TorsoResult> LatestTorso();
 // The last write's support grip result (Request::support enabled, both arm goals there), within
 // half a second.
 std::optional<SupportSample> LatestSupport();
+
+// What one UpdateSkelPose call of the published mesh left of Request::gunKick in its pose.
+struct KickSample {
+    bool posed = false;          // our writer wrote the right hand in this call (`hand` is its rotation)
+    ik::Quat hand;               // the right hand bone's written rotation, component space (the kick in it)
+    bool kicked = false;         // ...turned and moved by a kick
+    ik::gun_kick::Written kick;  // identity unless kicked
+};
+// The last two calls' samples, for the mesh they were for (any thread; normally read on the game thread). The pose is the latest
+// call's; a component whose transform the engine updated late (an attachment's deferred update) still shows the previous one's.
+struct KickSamples {
+    ue3::Object const* mesh = nullptr;  // compared by address only
+    KickSample latest;
+    KickSample previous;
+    std::uint64_t kickedWrites = 0;  // writes with a kick in them since the hook went in (never reset)
+};
+KickSamples WrittenGunKicks();
 
 // What the writer did with Request::fingers on its last write (any hand enabled), within half a second.
 struct FingersSample {
