@@ -200,3 +200,79 @@ Step 1 comes first because it is cheap, needs no new code and decides whether vo
 The model is the smallest part of this problem. Every published system that answers in tens of milliseconds constrains rather than generates, and every hard case in the example ("those", "on the bridge", "equip your sniper" while Shepard's weapon is holstered) is solved by game state the mod reads and code it runs, not by a cleverer network. The context block is the main investment, and it pays three times: its names bias the recognizer, its legal values constrain the parser, and its id-tagged groups resolve references. It also serves the pointing-based squad orders already on the roadmap, so it remains useful even if voice stalls on microphone or accent problems.
 
 Push-to-talk, a streaming CPU recognizer and the parser acting as its own endpointer put voice orders under 300 ms without touching a GPU that VR has already spent, which makes the feature viable on the mid-range rigs most Quest 3 players own rather than only on the dev machine's RTX 4090. The open questions have changed character: they are now the microphone's lag over Link, the game's own order delays and how often players say something the rules can't parse, and each is a measurement the project's test loop can take, not a research question.
+
+## 2026-11-04, 21:58-22:04: the squad orders traced in the game
+
+The step-1 trace, on the fake headset (`tools/launch-game.ps1 -Steam`, the VR00 quicksave: on foot at the UNC20 drop
+zone beside the Mako, Ashley the one squadmate, no enemy in the level's loaded part), console only (`tools/console.ps1`,
+`mevr calltrace`, `mevr call`, `mevr near`, `mevr props`). The call-trace hook goes in with hand aim, so a short replay with
+tracked controllers (`tools/replay.ps1 -Path <any recording>`) was needed before the first trace.
+
+- **The d-pad's execs are one-line script wrappers over the natives:** `SFXGameModeBase.SquadCommand_Follow` calls
+  `BioPlayerController.QuickCommandFollowPlayer`; `SquadCommand_Move1` and `SquadCommand_Move2` both call
+  `QuickCommandMoveTo` (so they differ only in the member index they pass, 0 and 1 by every sign: with one squadmate
+  Move2 moved nobody); `SquadCommand_Attack` calls `QuickCommandAttackTarget`. All four run through `mevr call` (ProcessEvent)
+  and return true.
+- **Follow** (22:02:21): the native set the squad's follow formation (`BioSquadPlayer.OnSetSquadFollowFormation` fired from
+  native code) and **the game's own acknowledgement bark path ran** (`BioBaseSquad.SquadHandleChatterEvent`): the squadmate's
+  reply to a voice order is the game's, for free. Ashley started back within about a second (8 m covered by 22:02:23) and
+  stopped 3.5 m from Shepard at 22:02:28.
+- **Move** takes its point from the player controller's facing: the first `SquadCommand_Move1` (facing +X) sent Ashley 31 m
+  along +X (`m_fMoveToDropDistance` is 4000 units: the point is dropped up to 40 m along the facing where the trace hits
+  nothing); with `set BioPlayerController Rotation (Pitch=0,Yaw=16384,Roll=0)` (facing +Y, toward the Mako) in the same
+  console batch as the call, she went 2.2 m along +Y, to the Mako's side: the trace stopped at it. So a pointed "move
+  there" can set the controller's rotation (or the camera POV, as `engine/SelectionGaze` does) for the call **[verify in
+  VR, where Halcyon's camera drives the view]**. A third Move1, back to +X with her still at the Mako, moved her nowhere
+  within 8 s: whether a second move order while one is assigned is ignored, or the point was unreachable, is open
+  **[verify]**.
+- **Attack** with no enemy did nothing visible (the henchman AI's `GetNextPredictedMoveLocation` events ran), and the
+  controller's `m_oCommandTarget` was Shepard's own pawn: the attack order's target comes from the selection or that field,
+  to be traced with an enemy present **[verify]**.
+- **The order settings, live** (`mevr props` on `BioPlayerController_1`): `m_fMoveToDelayTime` 1.5, `m_fTacticalDelayTime`
+  1.0 (the game's own delay before a tactical order is applied: a third of the 500 ms budget is already spent by the game
+  itself if it applies to spoken power orders **[verify]**), `m_fMoveToDropDistance` 4000, cover search radii 350 / 800 /
+  1600 and ranges 1200 / 2400, `m_fAttackOrderFarAngle` 5, `m_fAttackOrderCloseAngle` 14, `m_fAttackOrderCloseDistance` 500,
+  `m_aActionMap` empty.
+- **Not traced:** power and weapon orders (`SquadOrderUsePower`, `SquadOrderShootTarget`) and the attack with a target need
+  a save with enemies (Eden Prime's Save 7 or the tower autosave, research/50). Ghidra's project was locked by another
+  session, so the natives' bodies weren't read.
+
+**The user's requirement, the same day:** "independent of voice mode, we will need to support the previous system (flat)
+of squad commands, though it may require a new gesture system." So every order path, a gesture, an ME3-style spoken "name,
+power" or a model's line, ends in one struct and one dispatcher.
+
+## The representation: `core/vr/SquadContext` (2026-11-04)
+
+The user asked for the world and state representation before more in-game calls. [src/core/vr/SquadContext.hpp](../src/core/vr/SquadContext.hpp)
+(unit-tested in `tests/Main.cpp`, `TestSquadContext`) is the game-independent model behind every squad order:
+
+- **`Scene`:** what the mod snapshots on the game thread when speech starts (or a gesture begins): the player's pawn and
+  eyes, the facing yaw, combat and Shepard's weapon, the party (letter, present, alive, weapons carried and in hand, powers
+  with the seconds left), the hostiles (a stable `PawnId`, position in metres, a type word, health, rendered recently, an
+  optional surface word), the gun's hit and the gaze selection. The game's left-handed frame: X forward at yaw 0, Y right,
+  Z up, so bearings are + to the right.
+- **`Grouper`:** single-linkage clusters (`joinM` 6, split across `splitAboveM` 2.5 of height: the bridge is its own
+  group), the nearest `maxGroups` 6, ordered left to right, **ids kept across updates** by member overlap (a group keeps
+  its E-number while any member lives; a wiped group's number is never reused in the encounter; `Reset` on a new level);
+  per group the type word (the members' most common), count, sector (ahead within 30 degrees, behind past 120),
+  band (near < 10 m, far > 30), elevation (level within 1.5 m of the player's height), surface, visibility, and the ordinal
+  flags against the other groups (nearest, farthest, leftmost, rightmost, highest, biggest when strictly largest).
+- **`PoseHistory` + `Resolve`:** a 4 s buffer of the head's and both hands' world rays; for a deictic word at time t, each
+  source's temporal kernel (head: rises from t-1.3 to a peak at t-0.4, gone by t+0.4; hand: t-1.2 to a peak at t, gone by
+  t+0.5) weights its samples, the angular kernel is a Gaussian in the angle to the group's nearest member (head sigma 11
+  degrees with a 6-degree upward bias, hand 3 degrees), the group's score is the best source's (a hand held on it all along
+  scores 1; a hand outweighs a head 1.5:1), the top three above 0.05 are the candidates. The kernels are research/54's
+  starting values, to fit on recordings.
+- **`Action`:** who (a letter, ALL, LAST), a weapon, a power code, the order (attack, move, follow, hold, regroup, use,
+  cancel, repeat) and the target (E id, PT n, AIM, GAZE, LAST, OTHER, SELF), with the one-line form `G|SR|-|attack|PT1`
+  both ways (`Line`, `ParseLine`: a model's answer, a rule parser's result and a gesture's order all become this).
+- **`Validate`:** the action against the scene: the member present and alive, the weapon carried, the power owned (a
+  cooldown is the one soft refusal: `notReady`, `readyInS`), the target resolved to a group (PT n to its best candidate with
+  the runner-up kept for "no, the other ones"; none to the gun's target, then the gaze; LAST and OTHER from the command
+  history, OTHER preferring the same enemy type; "repeat" the last command over, for another member if named).
+- **`Block` and `Prefix`:** the dynamic text block exactly as research/54's schema (NOW, PARTY, SHEP, one line per group,
+  AIM | GAZE, each PT with its candidates, LAST with ages, SAY) and the cached prefix from a roster.
+
+Not yet built: the mod's snapshot (`game/` reads of the party's powers through `BioEpicPawnBehavior.m_powers`, the hostiles'
+type words from their archetypes, a surface lexicon), the pose history fed from the host's controller frames, the rule
+parser, the gesture system for the flat orders, and the dispatcher that turns a `Resolved` into the game calls above.

@@ -332,6 +332,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/ScopeCapture.hpp
     src/core/vr/Sights.cpp
     src/core/vr/Sights.hpp
+    src/core/vr/SquadContext.cpp
+    src/core/vr/SquadContext.hpp
     src/core/vr/SquadMenu.cpp
     src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
@@ -574,6 +576,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/ScopeCapture.hpp
     src/core/vr/Sights.cpp
     src/core/vr/Sights.hpp
+    src/core/vr/SquadContext.cpp
+    src/core/vr/SquadContext.hpp
     src/core/vr/SquadMenu.cpp
     src/core/vr/SquadMenu.hpp
     src/core/vr/TestRequest.cpp
@@ -873,6 +877,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/WorldUi.cpp
         src/core/vr/Spectator.cpp
         src/core/vr/Sights.cpp
+        src/core/vr/SquadContext.cpp
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp
         src/core/vr/Upscale.cpp

@@ -55,6 +55,7 @@
 #include "core/vr/Ads.hpp"
 #include "core/vr/ScopeArt.hpp"
 #include "core/vr/Sights.hpp"
+#include "core/vr/SquadContext.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -4313,6 +4314,332 @@ void TestStickChord() {
     CHECK(!s.tap && !s.hold);
 }
 
+void TestSquadContext() {
+    using namespace mevr::vr::squad_context;
+    // ---- The scene: Shepard at the origin facing +X, Garrus and Wrex along, three enemy groups.
+    Scene scene;
+    scene.time = 100.0;
+    scene.player = {0.0f, 0.0f, 0.0f};
+    scene.head = {0.0f, 0.0f, 1.6f};
+    scene.headYawDeg = 0.0f;
+    scene.combat = true;
+    scene.shepardWeapon = 2;
+    Member garrus;
+    garrus.letter = 'G';
+    garrus.present = true;
+    garrus.carried = (1u << 3) | (1u << 2);
+    garrus.inHand = 3;
+    garrus.powers = {{"OVR", 0.0f}, {"DMP", 9.0f}};
+    Member wrex;
+    wrex.letter = 'W';
+    wrex.present = true;
+    wrex.carried = 1u << 1;
+    wrex.inHand = 1;
+    wrex.powers = {{"THR", 0.0f}};
+    Member tali;
+    tali.letter = 'T';
+    scene.party = {garrus, wrex, tali};
+    auto const hostile = [](PawnId id, float x, float y, float z, char const* type, char const* surface = "") {
+        Hostile h;
+        h.id = id;
+        h.position = {x, y, z};
+        h.type = type;
+        h.surface = surface;
+        return h;
+    };
+    // Left, far, above, on the bridge: three troopers. Ahead near level: a destroyer. Right, mid, level: two troopers.
+    scene.hostiles = {hostile(11, 25.0f, -20.0f, 4.0f, "geth trooper", "bridge"), hostile(12, 26.0f, -21.0f, 4.0f, "geth trooper", "bridge"),
+        hostile(13, 24.0f, -19.0f, 4.2f, "geth trooper", "bridge"), hostile(21, 8.0f, 1.0f, 0.0f, "geth destroyer"),
+        hostile(31, 18.0f, 14.0f, 0.0f, "geth trooper"), hostile(32, 19.0f, 15.0f, 0.0f, "geth trooper")};
+    scene.aimTarget = 21;
+    scene.gazeTarget = 12;
+    // Geometry helpers.
+    CHECK(std::abs(BearingDeg({0, 0, 0}, 0.0f, {10.0f, 10.0f, 0.0f}) - 45.0f) < 0.01f);
+    CHECK(std::abs(BearingDeg({0, 0, 0}, 90.0f, {10.0f, 10.0f, 0.0f}) + 45.0f) < 0.01f);
+    CHECK(std::abs(BearingDeg({0, 0, 0}, 170.0f, {-10.0f, -1.0f, 0.0f}) - 15.71f) < 0.1f);  // wraps
+    CHECK(AngleTo({{0, 0, 0}, {1, 0, 0}}, {5, 0, 0}) < 0.01f && std::abs(AngleTo({{0, 0, 0}, {1, 0, 0}}, {0, 5, 0}) - 90.0f) < 0.01f);
+    CHECK(AngleTo({{0, 0, 0}, {0, 0, 0}}, {5, 0, 0}) == 180.0f && AngleTo({{1, 1, 1}, {1, 0, 0}}, {1, 1, 1}) == 180.0f);
+    CHECK(WeaponFromCode("SR") == 3 && WeaponFromCode("PI") == 0 && !WeaponFromCode("XX") && std::string(WeaponCode(7)) == "-");
+    // ---- Groups: three, left to right, with the words and the flags.
+    GroupSettings gs;
+    Grouper grouper;
+    auto const& groups = grouper.Update(scene, gs);
+    CHECK(groups.size() == 3);
+    CHECK(groups[0].id == 1 && groups[1].id == 2 && groups[2].id == 3);
+    CHECK(Count(groups[0]) == 3 && Count(groups[1]) == 1 && Count(groups[2]) == 2);
+    CHECK(groups[0].type == "geth trooper" && groups[1].type == "geth destroyer" && groups[0].surface == "bridge" && groups[1].surface.empty());
+    CHECK(groups[0].sector == Sector::Left && groups[0].band == Band::Far && groups[0].elevation == Elevation::Above);
+    CHECK(groups[1].sector == Sector::Ahead && groups[1].band == Band::Near && groups[1].elevation == Elevation::Level);
+    CHECK(groups[2].sector == Sector::Right && groups[2].band == Band::Mid && groups[2].elevation == Elevation::Level);
+    CHECK(groups[0].farthest && groups[0].leftmost && groups[0].highest && groups[0].biggest && !groups[0].nearest);
+    CHECK(groups[1].nearest && !groups[1].biggest && groups[2].rightmost && !groups[2].highest);
+    CHECK(GroupOf(groups, 12) == 1 && GroupOf(groups, 21) == 2 && GroupOf(groups, 32) == 3 && GroupOf(groups, 99) == 0 && GroupOf(groups, 0) == 0);
+    CHECK(Find(groups, 2) != nullptr && Find(groups, 4) == nullptr);
+    // A trooper of E1 dies, the destroyer steps aside, a new enemy appears far right: ids stay, the newcomer is E4.
+    scene.hostiles[0].health = 0.0f;
+    scene.hostiles[3].position = {9.0f, -1.0f, 0.0f};
+    scene.hostiles.push_back(hostile(41, 40.0f, 40.0f, 0.0f, "krogan"));
+    grouper.Update(scene, gs);
+    CHECK(groups.size() == 4 && groups[0].id == 1 && Count(groups[0]) == 2 && groups[1].id == 2 && groups[2].id == 3 && groups[3].id == 4);
+    CHECK(!groups[0].biggest && groups[0].members.size() == 2 && groups[3].farthest && groups[3].rightmost);
+    // E2 wiped out: its id isn't reused; a later cluster is E5.
+    scene.hostiles[3].health = 0.0f;
+    grouper.Update(scene, gs);
+    CHECK(groups.size() == 3 && Find(groups, 2) == nullptr);
+    scene.hostiles.push_back(hostile(51, 6.0f, 0.0f, 0.0f, "geth destroyer"));
+    grouper.Update(scene, gs);
+    CHECK(groups.size() == 4 && Find(groups, 5) != nullptr && Find(groups, 5)->nearest);
+    // Another level keeps a cluster apart: the same spot 4 m up is its own group.
+    scene.hostiles.push_back(hostile(61, 6.5f, 0.5f, 4.0f, "geth hopper"));
+    grouper.Update(scene, gs);
+    CHECK(groups.size() == 5 && GroupOf(groups, 61) != GroupOf(groups, 51));
+    // Reset: ids from 1 again, in the left-to-right order.
+    grouper.Reset();
+    grouper.Update(scene, gs);
+    CHECK(groups[0].id == 1 && groups.back().id == static_cast<int>(groups.size()));
+    // maxGroups keeps the nearest.
+    GroupSettings two = gs;
+    two.maxGroups = 2;
+    Grouper g2;
+    auto const& near2 = g2.Update(scene, two);
+    CHECK(near2.size() == 2 && (GroupOf(near2, 51) != 0) && (GroupOf(near2, 61) != 0));
+    // Nothing alive: no groups.
+    Scene empty = scene;
+    for (Hostile& h : empty.hostiles) h.health = 0.0f;
+    Grouper g3;
+    CHECK(g3.Update(empty, gs).empty());
+    // ---- Deixis: the original three groups again.
+    scene.hostiles = {hostile(11, 25.0f, -20.0f, 4.0f, "geth trooper", "bridge"), hostile(12, 26.0f, -21.0f, 4.0f, "geth trooper", "bridge"),
+        hostile(13, 24.0f, -19.0f, 4.2f, "geth trooper", "bridge"), hostile(21, 8.0f, 1.0f, 0.0f, "geth destroyer"),
+        hostile(31, 18.0f, 14.0f, 0.0f, "geth trooper"), hostile(32, 19.0f, 15.0f, 0.0f, "geth trooper")};
+    grouper.Reset();
+    grouper.Update(scene, gs);
+    CHECK(groups.size() == 3 && groups[0].id == 1);
+    auto const rayAt = [&](Vec3 const& from, Vec3 const& to) {
+        return Ray{from, {to.x - from.x, to.y - from.y, to.z - from.z}};
+    };
+    Vec3 const e1 = groups[0].centre, e2 = groups[1].centre, e3 = groups[2].centre;
+    DeixisSettings ds;
+    PoseHistory poses;
+    // The head looks at E3 until 0.3 s before the word, then at E1; the right hand points at E1 around the word.
+    for (double t = 98.0; t <= 100.5; t += 1.0 / 90.0) {
+        PoseSample s;
+        s.time = t;
+        s.head = rayAt(scene.head, t < 99.7 ? e3 : e1);
+        s.rightValid = t >= 99.8 && t <= 100.3;
+        s.rightAim = rayAt({0.3f, 0.3f, 1.2f}, e1);
+        poses.Push(s);
+    }
+    CHECK(poses.Size() > 200);
+    auto cands = Resolve(poses, 100.0, groups, scene, ds);
+    CHECK(cands.size() >= 2 && cands[0].group == 1 && cands[0].score > 0.5f && cands[1].group == 3 && cands[1].score < cands[0].score);
+    // Head only: looking at E1 the whole second before the word.
+    PoseHistory headOnly;
+    for (double t = 98.0; t <= 100.5; t += 1.0 / 90.0) {
+        PoseSample s;
+        s.time = t;
+        s.head = rayAt(scene.head, e1);
+        headOnly.Push(s);
+    }
+    cands = Resolve(headOnly, 100.0, groups, scene, ds);
+    CHECK(!cands.empty() && cands[0].group == 1 && cands[0].score > 0.5f && cands[0].score <= 1.0f);
+    // A hand held on a group all along scores 1; a head is worth less than a hand.
+    PoseHistory handOnly;
+    for (double t = 98.0; t <= 100.5; t += 1.0 / 90.0) {
+        PoseSample s;
+        s.time = t;
+        s.leftValid = true;
+        s.leftAim = rayAt({-0.3f, 0.3f, 1.2f}, e2);
+        handOnly.Push(s);
+    }
+    cands = Resolve(handOnly, 100.0, groups, scene, ds);
+    CHECK(cands.size() == 1 && cands[0].group == 2 && cands[0].score > 0.99f);
+    auto const headScore = Resolve(headOnly, 100.0, groups, scene, ds)[0].score;
+    CHECK(headScore < cands[0].score);
+    // Nobody looked anywhere near: no candidates. No history: none. No groups: none.
+    PoseHistory away;
+    for (double t = 98.0; t <= 100.5; t += 1.0 / 90.0) {
+        PoseSample s;
+        s.time = t;
+        s.head = Ray{scene.head, {-1.0f, 0.0f, 0.0f}};
+        away.Push(s);
+    }
+    CHECK(Resolve(away, 100.0, groups, scene, ds).empty());
+    CHECK(Resolve(PoseHistory(), 100.0, groups, scene, ds).empty());
+    CHECK(Resolve(poses, 100.0, {}, scene, ds).empty());
+    // The history keeps 4 s.
+    PoseHistory keep(4.0);
+    for (double t = 0.0; t <= 10.0; t += 0.5) {
+        PoseSample s;
+        s.time = t;
+        keep.Push(s);
+    }
+    std::vector<PoseSample> got;
+    keep.Between(0.0, 10.0, got);
+    CHECK(got.size() == 9 && got.front().time == 6.0 && got.back().time == 10.0);
+    // The up bias: a head aimed 5 degrees under a target still scores it well; the hand has no bias.
+    PoseHistory low;
+    for (double t = 99.0; t <= 100.2; t += 1.0 / 90.0) {
+        PoseSample s;
+        s.time = t;
+        Ray r = rayAt(scene.head, e2);
+        float const flat = std::sqrt(r.direction.x * r.direction.x + r.direction.y * r.direction.y);
+        r.direction.z -= flat * std::tan(5.0f * 3.14159265f / 180.0f);
+        s.head = r;
+        low.Push(s);
+    }
+    cands = Resolve(low, 100.0, groups, scene, ds);
+    CHECK(!cands.empty() && cands[0].group == 2 && cands[0].score > 0.4f);
+    // ---- Actions: the line both ways.
+    Action a;
+    a.who = {Who::Member, 'G'};
+    a.weapon = 3;
+    a.order = Order::Attack;
+    a.target = {Target::Pointed, 1};
+    CHECK(Line(a) == "G|SR|-|attack|PT1");
+    auto p = ParseLine("G|SR|-|attack|PT1");
+    CHECK(p && p->who.kind == Who::Member && p->who.letter == 'G' && p->weapon == 3 && p->power.empty() && p->order == Order::Attack &&
+        p->target.kind == Target::Pointed && p->target.index == 1);
+    p = ParseLine(" all | - | - | regroup | - ");
+    CHECK(p && p->who.kind == Who::All && p->weapon == -1 && p->order == Order::Regroup && p->target.kind == Target::None);
+    CHECK(Line(*p) == "ALL|-|-|regroup|-");
+    p = ParseLine("LAST|-|-|attack|OTHER");
+    CHECK(p && p->who.kind == Who::Last && p->target.kind == Target::Other && Line(*p) == "LAST|-|-|attack|OTHER");
+    p = ParseLine("W|-|thr|use|E12");
+    CHECK(p && p->power == "THR" && p->order == Order::Use && p->target.kind == Target::Group && p->target.index == 12);
+    p = ParseLine("L|-|-|follow|SELF");
+    CHECK(p && p->target.kind == Target::Self && Line(*p) == "L|-|-|follow|SELF");
+    p = ParseLine("G|-|-|move|AIM");
+    CHECK(p && p->target.kind == Target::Aim);
+    p = ParseLine("G|-|-|repeat|GAZE");
+    CHECK(p && p->order == Order::Repeat && p->target.kind == Target::Gaze);
+    CHECK(!ParseLine("G|SR|-|attack") && !ParseLine("") && !ParseLine("GW|-|-|attack|E1") && !ParseLine("G|XX|-|attack|E1"));
+    CHECK(!ParseLine("G|-|ov3|attack|E1") && !ParseLine("G|-|-|dance|E1") && !ParseLine("G|-|-|attack|E0") && !ParseLine("G|-|-|attack|PTx"));
+    CHECK(!ParseLine("G|-|-|attack|Q1") && !ParseLine("G|-|-|attack|E99999"));
+    CHECK(ParseOrder("Attack") == Order::Attack && ParseOrder("-") == Order::None && !ParseOrder("charge"));
+    // ---- Validation and resolution.
+    std::vector<Deictic> deictics = {{1, "those", {{1, 0.81f}, {3, 0.12f}}}};
+    std::vector<Command> history;
+    Resolved r = Validate(*ParseLine("G|SR|-|attack|PT1"), scene, groups, deictics, history);
+    CHECK(r.ok && r.who == 'G' && !r.all && r.weapon == 3 && r.power.empty() && r.order == Order::Attack && r.group == 1 && r.runnerUp == 3);
+    CHECK(r.problem.empty() && !r.notReady);
+    // A power not ready: the soft refusal, with the seconds.
+    r = Validate(*ParseLine("G|-|DMP|use|E2"), scene, groups, deictics, history);
+    CHECK(r.ok && r.notReady && std::abs(r.readyInS - 9.0f) < 0.01f && r.group == 2 && r.order == Order::Use);
+    // A power alone is a use.
+    r = Validate(*ParseLine("G|-|OVR|-|E2"), scene, groups, deictics, history);
+    CHECK(r.ok && r.order == Order::Use && r.power == "OVR" && !r.notReady);
+    // Not with you, down, no such weapon, no such power, no such group, PT with nothing.
+    CHECK(!Validate(*ParseLine("T|-|-|attack|E1"), scene, groups, deictics, history).ok);
+    CHECK(!Validate(*ParseLine("W|SR|-|attack|E1"), scene, groups, deictics, history).ok);
+    CHECK(!Validate(*ParseLine("W|-|OVR|use|E1"), scene, groups, deictics, history).ok);
+    CHECK(!Validate(*ParseLine("W|-|-|attack|E7"), scene, groups, deictics, history).ok);
+    CHECK(!Validate(*ParseLine("W|-|-|attack|PT2"), scene, groups, deictics, history).ok);
+    Scene down = scene;
+    down.party[1].alive = false;
+    r = Validate(*ParseLine("W|-|-|attack|E1"), down, groups, deictics, history);
+    CHECK(!r.ok && r.problem == "W is down");
+    // Everyone: no weapon or power; a target by the gun or the look when none is given.
+    r = Validate(*ParseLine("ALL|-|-|regroup|-"), scene, groups, deictics, history);
+    CHECK(r.ok && r.all && r.who == 0 && r.group == 0 && r.order == Order::Regroup);
+    CHECK(!Validate(*ParseLine("ALL|SR|-|attack|E1"), scene, groups, deictics, history).ok);
+    r = Validate(*ParseLine("ALL|-|-|attack|-"), scene, groups, deictics, history);
+    CHECK(r.ok && r.group == 2);  // the gun's target (the destroyer) first
+    Scene noAim = scene;
+    noAim.aimTarget = 0;
+    r = Validate(*ParseLine("ALL|-|-|attack|-"), noAim, groups, deictics, history);
+    CHECK(r.ok && r.group == 1);  // then the look (trooper 12 is in E1)
+    noAim.gazeTarget = 0;
+    CHECK(!Validate(*ParseLine("ALL|-|-|attack|-"), noAim, groups, deictics, history).ok);
+    r = Validate(*ParseLine("W|-|-|attack|AIM"), scene, groups, deictics, history);
+    CHECK(r.ok && r.group == 2 && r.runnerUp == 0);  // no other destroyer group
+    r = Validate(*ParseLine("W|-|-|attack|GAZE"), scene, groups, deictics, history);
+    CHECK(r.ok && r.group == 1 && r.runnerUp == 3);  // the other trooper group
+    // A move needs no target; "move there" takes the point.
+    r = Validate(*ParseLine("W|-|-|move|-"), scene, groups, deictics, history);
+    CHECK(r.ok && r.group == 0);
+    r = Validate(*ParseLine("W|-|-|move|PT1"), scene, groups, deictics, history);
+    CHECK(r.ok && r.group == 1);
+    // Nothing at all.
+    CHECK(!Validate(*ParseLine("W|-|-|-|-"), scene, groups, deictics, history).ok);
+    // LAST and OTHER need a history; "you too" copies the order to another member; OTHER prefers the same type.
+    CHECK(!Validate(*ParseLine("LAST|-|-|attack|E1"), scene, groups, deictics, history).ok);
+    CHECK(!Validate(*ParseLine("W|-|-|attack|LAST"), scene, groups, deictics, history).ok);
+    CHECK(!Validate(*ParseLine("W|-|-|repeat|-"), scene, groups, deictics, history).ok);
+    Command done;
+    done.who = 'G';
+    done.action = *ParseLine("G|-|OVR|use|E1");
+    done.group = 1;
+    done.time = 86.0;
+    history.push_back(done);
+    r = Validate(*ParseLine("W|-|-|attack|LAST"), scene, groups, deictics, history);
+    CHECK(r.ok && r.who == 'W' && r.group == 1);
+    r = Validate(*ParseLine("LAST|-|-|attack|OTHER"), scene, groups, deictics, history);
+    CHECK(r.ok && r.who == 'G' && r.group == 3);  // the other troopers, not the destroyer
+    r = Validate(*ParseLine("G|-|-|repeat|-"), scene, groups, deictics, history);
+    CHECK(r.ok && r.who == 'G' && r.power == "OVR" && r.order == Order::Use && r.group == 1);
+    r = Validate(*ParseLine("W|-|-|repeat|-"), scene, groups, deictics, history);
+    CHECK(!r.ok);  // Wrex has no Overload
+    // ---- The block, line by line.
+    std::string const block = Block(scene, groups, deictics, history, "Garrus, equip your sniper and take out those troops on the bridge");
+    CHECK(block ==
+        "NOW combat\n"
+        "PARTY G:AR,SR* | OVR ok, DMP 9s\n"
+        "PARTY W:SG* | THR ok\n"
+        "SHEP AR*\n"
+        "E1 geth trooper x3 | left far above | bridge | farthest leftmost highest biggest\n"
+        "E2 geth destroyer x1 | ahead near level | nearest\n"
+        "E3 geth trooper x2 | right mid level | rightmost\n"
+        "AIM E2 | GAZE E1\n"
+        "PT1 \"those\" = E1 .81, E3 .12\n"
+        "LAST G use E1 OVR 14s\n"
+        "SAY Garrus, equip your sniper and take out those troops on the bridge\n");
+    // Explore, holstered, a squadmate down, no powers, nothing pointed at, no history, nothing said.
+    Scene quiet = scene;
+    quiet.combat = false;
+    quiet.shepardWeapon = -1;
+    quiet.party[1].alive = false;
+    quiet.party[1].powers.clear();
+    quiet.aimTarget = 0;
+    quiet.gazeTarget = 0;
+    quiet.hostiles[0].visible = quiet.hostiles[1].visible = quiet.hostiles[2].visible = false;
+    Grouper gq;
+    std::string const quietBlock = Block(quiet, gq.Update(quiet, gs), {{2, "there", {}}}, {}, "");
+    CHECK(quietBlock ==
+        "NOW explore\n"
+        "PARTY G:AR,SR* | OVR ok, DMP 9s\n"
+        "PARTY W:SG* | - | down\n"
+        "SHEP holstered\n"
+        "E1 geth trooper x3 | left far above | bridge | farthest leftmost highest biggest | hidden\n"
+        "E2 geth destroyer x1 | ahead near level | nearest\n"
+        "E3 geth trooper x2 | right mid level | rightmost\n"
+        "PT2 \"there\" = nothing\n");
+    // Two commands in the history: the newest first.
+    Command older = done;
+    older.who = 0;
+    older.action = *ParseLine("ALL|-|-|follow|-");
+    older.group = 0;
+    older.time = 70.0;
+    std::vector<Command> three = {older, done, done};
+    three[2].time = 95.0;
+    std::string const hist = Block(scene, groups, {}, three, "");
+    CHECK(hist.find("LAST G use E1 OVR 5s; G use E1 OVR 14s\n") != std::string::npos && hist.find("follow") == std::string::npos);
+    // ---- The prefix from a roster.
+    RosterEntry ge;
+    ge.letter = 'G';
+    ge.name = "Garrus Vakarian";
+    ge.aliases = {"Garrus", "Vakarian", "the turian"};
+    ge.weapons = (1u << 3) | (1u << 2) | (1u << 0);
+    ge.powers = {{"OVR", "overload"}, {"DMP", "damping"}};
+    RosterEntry le;
+    le.letter = 'L';
+    le.name = "Liara T'Soni";
+    std::string const prefix = Prefix({ge, le});
+    CHECK(prefix.find("WHO|WEAPON|POWER|ORDER|TARGET") != std::string::npos);
+    CHECK(prefix.find("G Garrus Vakarian: Garrus, Vakarian, the turian. Weapons PI, AR, SR. Powers OVR overload, DMP damping.\n") != std::string::npos);
+    CHECK(prefix.find("L Liara T'Soni. Weapons -. Powers -.\n") != std::string::npos);
+}
+
 void TestGameMenuRequest() {
     using namespace mevr::vr::game_menu;
     // The values cross the host/mod boundary: unknown ones are None.
@@ -7190,6 +7517,8 @@ void TestMakoControls() {
         }
         // Full tilt steers tiltSteerMax (half lock); the twist adds to it, and alone it is the spin.
         CHECK(close(out.tiltRightDeg, 20.0) && close(out.steer, 0.5) && close(out.pitch, 0.0) && close(out.spin, 0.0));
+        // On the jets a full right tilt drops the right side (research/47 "Flying on the jets", 2026-11-04).
+        CHECK(close(out.roll, 1.0) && close(mc::JetTarget(out, 20.0f, 15.0f).rollDeg, 15.0) && close(mc::JetTarget(out, 20.0f, 15.0f).pitchDeg, 0.0));
         for (int i = 0; i < 5; ++i) {
             out = c.Step(input(0.0f, 0.0f, about(up, -42.0f), 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // and twisted right to full
         }
@@ -7202,18 +7531,21 @@ void TestMakoControls() {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {-0.0182f, 0.0f, 0.0f}), tilting);  // about 10 degrees left, no twist
         }
         CHECK(out.steer < -0.15f && out.steer > -0.25f && close(out.spin, 0.0));
+        CHECK(out.roll < 0.0f && out.roll > -0.3f);  // just past the jets' dead zone (the pitch's, 8 degrees)
         // Pushed away from the player (the seat's forward, -Z): the pitch is + (the nose down), steering back to centre.
         for (int i = 0; i < 10; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, -0.05f}), tilting);
         }
-        CHECK(close(out.pitch, 1.0) && close(out.tiltForwardDeg, 20.0) && close(out.steer, 0.0));
+        CHECK(close(out.pitch, 1.0) && close(out.tiltForwardDeg, 20.0) && close(out.steer, 0.0) && close(out.roll, 0.0));
+        CHECK(close(mc::JetTarget(out, 20.0f, 15.0f).pitchDeg, -20.0) && close(mc::JetTarget(out, 20.0f, 15.0f).rollDeg, 0.0));  // the nose down
         out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.0f, 0.0f, 0.05f}), tilting);
-        CHECK(close(out.pitch, -1.0));
+        CHECK(close(out.pitch, -1.0) && close(mc::JetTarget(out, 20.0f, 15.0f).pitchDeg, 20.0));
         // Let go: it springs back to centre.
         for (int i = 0; i < 20; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 0.0f, {0.0f, 0.0f, 0.05f}), tilting);
         }
-        CHECK(!out.stickHeld && close(out.pitch, 0.0) && close(out.tiltForwardDeg, 0.0) && close(out.steer, 0.0));
+        CHECK(!out.stickHeld && close(out.pitch, 0.0) && close(out.tiltForwardDeg, 0.0) && close(out.steer, 0.0) && close(out.roll, 0.0));
+        CHECK(close(mc::JetTarget(out, 20.0f, 15.0f).pitchDeg, 0.0) && close(mc::JetTarget(out, 20.0f, 15.0f).rollDeg, 0.0));  // let go: level
         // A small forward tilt (a hand drifting while it steers) pitches nothing: inside stickPitchDeadZoneDeg.
         for (int i = 0; i < 5; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);  // grabbed again, and settled
@@ -9789,6 +10121,7 @@ int main() {
     TestRbFromStickClick();
     TestStickChord();
     TestGameMenuRequest();
+    TestSquadContext();
     TestCloseLatch();
     TestClickGate();
     TestSquadPad();
