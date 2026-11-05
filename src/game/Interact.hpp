@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/vr/InteractLabel.hpp"
+#include "ue3/Types.hpp"
 
 #include <string>
 
@@ -24,6 +25,9 @@ bool WantsHook();
 // After the view anchor's tick (arm IK), once a tick. `hooked`: engine/SelectionGaze is in.
 void Tick(float deltaSeconds, bool hooked, Link const& link);
 // Snapshot JSON ("interact").
+// What A would use now (the game's selection from the gaze; null for nothing), and whether it's a combat target.
+ue3::Object const* Target(bool& combat);
+
 std::string StatusJson();
 // Heartbeat line.
 void LogStats();

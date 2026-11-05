@@ -2,10 +2,12 @@
 #pragma once
 
 #include "game/GamepadMapping.hpp"
+#include "ue3/Types.hpp"
 
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace mevr::vr::squad_menu {
 struct View;
@@ -87,5 +89,19 @@ std::string StatusJson();
 void LogStats();
 // Closes the menu (unpausing the game if it paused it) and forgets everything.
 void Shutdown(bool processExiting);
+
+// For other modules (the squad context, research/54): this tick's squadmates as the menu last read them (names, classes,
+// quick slots, health; -1 health unknown), at most kMaxMembers. None while the menu can't read the squad.
+struct MemberView {
+    ue3::Object* pawn = nullptr;
+    int classId = -1;
+    std::uint8_t carried = 0;
+    int current = -1;
+    float health = -1.0f;
+    std::string name;
+};
+std::vector<MemberView> Members();
+// A weapon object's quick-slot type (0 pistol .. 3 sniper rifle; -1 not a ranged weapon).
+int WeaponTypeOf(ue3::Object* weapon);
 
 } // namespace mevr::game::squad_weapons

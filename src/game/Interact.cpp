@@ -215,6 +215,11 @@ void Tick(float /*deltaSeconds*/, bool hooked, Link const& link) {
     Publish(link, label);
 }
 
+ue3::Object const* Target(bool& combat) {
+    combat = gCombat;
+    return gTarget;
+}
+
 std::string StatusJson() {
     il::Label const& l = gLastLabel;
     return std::format("{{\"gaze\": {}, \"label\": {}, \"target\": {}, \"combat\": {}, \"meters\": {}, \"labelVisible\": {}, "

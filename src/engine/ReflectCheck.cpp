@@ -714,6 +714,9 @@ void CheckFields() {
     CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));  // the Mako's gunner: a target's size
     CheckField("Engine.CylinderComponent", "CollisionRadius", SDK_FIELD(UCylinderComponent, CollisionRadius));
     CheckField("Engine.WorldInfo", "TimeSeconds", SDK_FIELD(AWorldInfo, TimeSeconds));  // mevr crowd
+    CheckField("SFXGame.BioEpicPawnBehavior", "m_powers", SDK_FIELD(UBioEpicPawnBehavior, m_powers));  // the squad context (research/54)
+    CheckField("SFXGame.BioPower", "m_nmPower", SDK_FIELD(UBioPower, m_nmPower));
+    CheckField("SFXGame.BioPower", "m_fCooldownRemaining", SDK_FIELD(UBioPower, m_fCooldownRemaining));
     CheckField("SFXGame.BioTriggerStream", "StreamingStates", SDK_FIELD(ABioTriggerStream, StreamingStates));  // mevr stream
     // `mevr vehicle levels` and `event` (the cockpit probe, research/47)
     CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));

@@ -276,3 +276,28 @@ The user asked for the world and state representation before more in-game calls.
 Not yet built: the mod's snapshot (`game/` reads of the party's powers through `BioEpicPawnBehavior.m_powers`, the hostiles'
 type words from their archetypes, a surface lexicon), the pose history fed from the host's controller frames, the rule
 parser, the gesture system for the flat orders, and the dispatcher that turns a `Resolved` into the game calls above.
+
+### Fed from the game: `game/SquadContext` (2026-11-04, later)
+
+The user chose feeding the scene before the gesture system. [src/game/SquadContext.cpp](../src/game/SquadContext.cpp) (mod,
+hot-reloaded; `[SquadContext]` in `ASI\LE1MEVR.ini`: `enabled`, `refreshS` 0.25, `joinM`, `splitAboveM`, `maxGroups`, `nearM`,
+`farM`) runs in the mod's tick after `interact`: on foot with a tracking frame it pushes a pose sample every tick (the head's
+line of sight from the frame, both controllers' aim rays through `vr::controllers::Latest()` and the frame, all in the world,
+in metres) and every `refreshS` reads the Scene: the player's pawn and the eyes, the facing from the head's forward, combat
+from `BioPawn.IsInCombatActionState`, Shepard's weapon from `weapon::HeldObject()` typed by the squad module's `RangedType`
+(`squad_weapons::WeaponTypeOf`), the party as the squad menu last read it (`squad_weapons::Members()`: class id to the letter,
+quick slots, the weapon in hand, health) with each member's powers from `BioEpicPawnBehavior.m_powers` (`UBioPower.m_nmPower`
+as the name, `m_fCooldownRemaining` as the seconds left **[verify the field is the live cooldown; `GetCooldownRemaining` is
+the alternative]**), the hostiles from `WorldInfo.PawnList` (`BioPawn.IsHostile` on Shepard's pawn, `IsDead`,
+`GetPercentHealth`, `LastRenderTime` within 1 s of `TimeSeconds` for visibility) with the type word from the actor type's
+`ActorGameName` (else the behaviour's; logged once per word: `squad context: a hostile of type "..."`), the gun's target
+from the sight line's trace (`sights::ConvergeActor`, the hit actor kept in `WorldSight`) and the gaze target from the game's
+selection (`interact::Target`). Power codes are made from the internal names (the first letters, unique per session:
+`CodeOf`), the spoken names by splitting the CamelCase (`Spoken`); a table of LE1's real power names replaces both once a
+session has logged them. The roster of squadmates seen this session feeds `Prefix()`. `mevr context [word [secondsAgo]]`
+prints the block with `PT1 "<word>"` resolved from the pose history that many seconds ago (0.5 by default); `mevr context
+prefix` the prefix. Log `squad context:` (the settings, the type words, the status block), snapshot `"mod"."squadContext"`
+(party with powers, hostiles, groups with words, the aim and gaze groups, the pose samples kept). New ReflectCheck rows:
+`m_powers`, `m_nmPower`, `m_fCooldownRemaining`. Built (`build-ctx`, the mod and the tests, no warnings) but **not yet run in
+the game**: the first session should check the type words and the power names in the log, `mevr context those 0.5` while
+pointing at a group, and the cost of the read (a `PawnList` walk with two ProcessEvents per hostile every 0.25 s).

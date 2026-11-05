@@ -70,6 +70,8 @@ std::optional<ShotAim> ShotAlongSight(weapon::Muzzle const& muzzle);
 void SetHostView(std::uint32_t view);
 // The host's haptic pulse (HostServices v9), or null: the detent of a magnification step (research/21 section 16).
 void SetHaptic(void (*pulse)(int hand, float seconds, float amplitude));
+// What the sight line's trace hit this tick (the gun's target, for the squad context); null when nothing or no trace.
+ue3::Object* ConvergeActor();
 // For snapshots and the heartbeat.
 std::string StatusJson();
 void LogStats();

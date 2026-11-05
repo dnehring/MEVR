@@ -307,6 +307,19 @@ vr::comfort::Settings GetComfort();
 // [Interact] (research/40): A uses what the head looks at (gaze), the game's prompt big at the object (label,
 // labelHeightDeg, combatLabel), the prompt's part of the HUD by hand (crop = x y width height).
 vr::interact::Settings GetInteract();
+// [SquadContext] (research/54, game/SquadContext): the squad's world read for squad orders. enabled; refreshS: how often
+// the scene is read; joinM / splitAboveM: hostiles within joinM of a group's member join it unless they stand splitAboveM
+// higher or lower; maxGroups: the nearest groups kept; nearM / farM: the distance bands.
+struct SquadContext {
+    bool enabled = true;
+    double refreshS = 0.25;
+    double joinM = 6.0;
+    double splitAboveM = 2.5;
+    int maxGroups = 6;
+    double nearM = 10.0;
+    double farM = 30.0;
+};
+SquadContext GetSquadContext();
 // [Vent] (appended to an older file that lacks it; research/45, game/vent): the physical vent of a hot gun, a
 // mechanic change (docs/trilogy-design.md "Ammo").
 //   enabled          1: with a weapon drawn, squeeze the left grip on the gun's receiver (over and just ahead of

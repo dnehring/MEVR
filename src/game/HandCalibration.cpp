@@ -452,6 +452,22 @@ constexpr char const* kInteractBlock =
     "labelHeightDeg = 6\n"
     "combatLabel = 0\n"
     "crop =\n";
+// Appended to a settings file that has no [SquadContext] yet (and part of a new file).
+constexpr char const* kSquadContextBlock =
+    "\n"
+    "[SquadContext]\n"
+    "; The squad's world as squad orders see it (research/54): the party with its powers, the enemies in groups with words\n"
+    "; like left/far/above, what the gun and your look point at, and a 4 s history of where you pointed and looked.\n"
+    "; `mevr context [word]` in the console prints it. refreshS: how often it's read. joinM: enemies within this of a\n"
+    "; group join it, unless they stand splitAboveM higher or lower. maxGroups: the nearest groups kept. nearM / farM: the\n"
+    "; distance bands.\n"
+    "enabled = 1\n"
+    "refreshS = 0.25\n"
+    "joinM = 6\n"
+    "splitAboveM = 2.5\n"
+    "maxGroups = 6\n"
+    "nearM = 10\n"
+    "farM = 30\n";
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -1246,6 +1262,42 @@ std::string Describe(vr::comfort::Settings const& c) {
 
 vr::comfort::Settings gComfort;
 std::string gComfortText;
+
+SquadContext ReadSquadContext(Ini const& ini) {
+    SquadContext s;
+    double value = 0.0;
+    if (Number(ini, "SquadContext", "enabled", value)) {
+        s.enabled = value != 0.0;
+    }
+    if (Number(ini, "SquadContext", "refreshS", value)) {
+        s.refreshS = std::clamp(value, 0.05, 5.0);
+    }
+    if (Number(ini, "SquadContext", "joinM", value)) {
+        s.joinM = std::clamp(value, 0.5, 50.0);
+    }
+    if (Number(ini, "SquadContext", "splitAboveM", value)) {
+        s.splitAboveM = std::clamp(value, 0.5, 50.0);
+    }
+    if (Number(ini, "SquadContext", "maxGroups", value)) {
+        s.maxGroups = static_cast<int>(std::clamp(value, 1.0, 12.0));
+    }
+    if (Number(ini, "SquadContext", "nearM", value)) {
+        s.nearM = std::clamp(value, 1.0, 200.0);
+    }
+    if (Number(ini, "SquadContext", "farM", value)) {
+        s.farM = std::clamp(value, s.nearM, 500.0);
+    }
+    return s;
+}
+
+std::string Describe(SquadContext const& s) {
+    return s.enabled ? std::format("on, read every {:.2f} s; groups join within {:.1f} m, split across {:.1f} m of height, at most {}; near under "
+                                   "{:.0f} m, far past {:.0f} m", s.refreshS, s.joinM, s.splitAboveM, s.maxGroups, s.nearM, s.farM)
+                     : std::string("off");
+}
+
+SquadContext gSquadContext;
+std::string gSquadContextText;
 
 vr::interact::Settings ReadInteract(Ini const& ini) {
     vr::interact::Settings i;
@@ -2193,6 +2245,10 @@ vr::interact::Settings GetInteract() {
     return gInteract;
 }
 
+SquadContext GetSquadContext() {
+    return gSquadContext;
+}
+
 Vent GetVent() {
     return gVent;
 }
@@ -2315,7 +2371,7 @@ void Refresh() {
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
              std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock},
-             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}}) {
+             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -2679,6 +2735,11 @@ void Refresh() {
     if (std::string const text = Describe(gInteract); text != gInteractText) {
         gInteractText = text;
         log::Info("interact: settings: {}", text);
+    }
+    gSquadContext = ReadSquadContext(ini);
+    if (std::string const text = Describe(gSquadContext); text != gSquadContextText) {
+        gSquadContextText = text;
+        log::Info("squad context: settings: {}", text);
     }
     gVent = ReadVent(ini);
     if (std::string const text = Describe(gVent); text != gVentText) {
