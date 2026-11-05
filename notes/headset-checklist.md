@@ -77,11 +77,18 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   wheel option. (research/52 "Limits")
 
 ### Squad orders by gesture (session: Low-latency voice squad commands)
-- [ ] Squeeze the left grip away from the gun and point: let go on an enemy group (attack), on the ground (move there),
-  near you (follow). How it feels, the haptics, no clash with the two-handed grip, grenades or the vent.
-  (research/54 "The flat orders")
-- [ ] For the voice step (not built yet): record your own spoken orders over Link / Steam Link, and measure the mic's lag
-  by tapping a controller on the headset. (research/54 plan steps 2-3)
+- [ ] Squeeze the left grip with the hand away from the gun's foregrip zone, the grenade slot and a hot receiver, and
+  point with it: let go on an enemy group (attack), on the ground past 2 m (move there), near you, on a squadmate or on
+  nothing (follow). Pointing at a squadmate as you squeeze gives the order to them alone; otherwise both get it. Judge
+  the feel: the cones (8 degrees on an enemy, 12 on a squadmate), the haptic ticks, whether a squeeze meant as the
+  support grip or a grenade ever becomes an order, and how long the AI takes to react (the game's own 1-1.5 s order
+  delays). Built 2026-11-04. (research/54 "The flat orders", `[SquadOrders]`)
+- [ ] In a fight, `mevr say "<name>, hold here"` typed by Claude while you watch: does a held squadmate stay put under
+  the HOLD formation, does a hurt or crowded one visibly fall back to cover and come back when it's calm, and does being
+  re-ordered every few seconds make them twitch. Claude can read the logs; only you can see whether it looks right.
+  Built 2026-11-04/05. (research/54 "Standing orders", "A real hold", "Retreat to cover")
+- [ ] For the voice step (not built yet: no microphone capture, no recognizer): record your own spoken orders over Link /
+  Steam Link, and measure the mic's lag by tapping a controller on the headset. (research/54 plan steps 2-3)
 
 ## 2. Hands, body and the gun (session: VR mod for Mass Effect Legendary Edition)
 - [ ] Arms fully out, then the gun at the cheek: the hands stay on the controllers, the elbows bend naturally, the arm
@@ -164,8 +171,11 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Right stick hold: the game's power wheel opens and closes from an input replay. (research/19 "Hold only")
 - Mako: the cannon and the gunner against several woken enemies; `mevr cockpit panel ask` (no gel / gel / cooldown);
   `turretSeam` 1, 2, 4 one at a time; the extraction box's placement. (research/47, 48 section 27, 44)
-- Squad orders: `mevr order` / `mevr say` / `mevr context` against woken mercenaries: the squad index base, HOLD keeping
-  them put, retreat to cover, the compound sentence. (research/54)
+- Squad orders: `mevr order` / `mevr say` / `mevr context` against woken mercenaries: the squad index base (is Shepard
+  index 0?), `QuickCommandAttackTarget` honouring its target, the move point dropped along the swapped Rotation, HOLD
+  keeping them put and `GetMemberFormation` reading HOLD back, retreat to cover (does the AI take the slot or stand beside
+  it), the AI accepting re-orders every `reassertS`, `mevr context`'s type words, power names and cooldowns, `mevr say` on
+  the compound sentence, and the trace cost while a hold is kept. (research/54, every `[verify]` after the trace section)
 - Galaxy map: the top level in the window, going back out a level. (research/51 section 8.1)
 - Screens: the omni-gel override at an encrypted crate (`mevr skillgame`). (research/53 section 6)
 - Spectator camera: head camera with `viewActor = 1`, the cost off / 1080p / 4K. (research/49)
