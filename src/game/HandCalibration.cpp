@@ -581,7 +581,10 @@ constexpr char const* kCockpitBlock =
     "hazard = 1\n"
     "hazardBelow = 0.30\n"
     "hazardPeriodS = 1.1\n"
-    "hazardWash = 1\n";
+    "hazardWash = 1\n"
+    "; showTurret: 1 = the Mako's own turret stays in view over the cabin and its shots come from the gun's muzzle; 0 = hidden,\n"
+    "; the game's shot start (in front of your face).\n"
+    "showTurret = 1\n";
 
 // Appended to a settings file that has no [Game] yet (and part of a new file).
 constexpr char const* kGalaxyBlock =
@@ -1510,12 +1513,16 @@ Cockpit ReadCockpit(Ini const& ini) {
         c.hazard.wash = value != 0.0;
     }
     c.hazard = vr::cockpit_hazard::Sanitized(c.hazard);
+    if (Number(ini, "Cockpit", "showTurret", value)) {
+        c.turret = value != 0.0;
+    }
     return c;
 }
 
 std::string Describe(Cockpit const& c) {
-    return std::format("{}, script {}, the chase camera {}{}; {}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's",
-        c.seated ? ", Shepard seated" : "", vr::cockpit_hazard::Describe(c.hazard));
+    return std::format("{}, script {}, the chase camera {}{}; {}; {}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's",
+        c.seated ? ", Shepard seated" : "", vr::cockpit_hazard::Describe(c.hazard),
+        c.turret ? std::string("the Mako's turret over the cabin, shots from its muzzle") : std::string("the turret hidden, the game's shot start"));
 }
 
 Cockpit gCockpit;
@@ -2569,6 +2576,7 @@ void Refresh() {
         {L"Cockpit", "Cockpit", L"hazardBelow", "hazardBelow", L"0.30"},
         {L"Cockpit", "Cockpit", L"hazardPeriodS", "hazardPeriodS", L"1.1"},
         {L"Cockpit", "Cockpit", L"hazardWash", "hazardWash", L"1"},
+        {L"Cockpit", "Cockpit", L"showTurret", "showTurret", L"1"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},

@@ -460,6 +460,10 @@ switching frameworks.
   (not glass or screens) gets ours over `ProcBuildingSimpleMaterial` with a red render target as `LightTexture` and a beacon's
   `LightmapBrightness` each tick (rules `core/vr/CockpitHazard`, unit-tested); own materials back when repaired. `mevr cockpit hazard
   [on|off|auto|health <f>]`; log `cockpit hazard:`.
+  **The cannon over the cabin** (research/47, 2026-11-04; `[Cockpit] showTurret`): the cockpit's eye sits under the Mako's turret
+  (`place.py`'s ride `0 1.0 0.25`; at 0.8 it was inside it), the turret's five meshes (hung on `Turret_Mount_*`) stay in view while
+  riding, and the shots start at the firing gun's `GetMuzzleLoc` (`Mako.cpp`'s start-trace handler; the game's start was the camera's,
+  in front of the face). `mevr vehicle guns` and `fire [cannon|mg] [s]` measure it.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD

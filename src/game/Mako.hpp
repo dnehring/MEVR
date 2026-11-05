@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/vr/AimRay.hpp"
+#include "engine/XrToUnreal.hpp"
 #include "game/MakoControls.hpp"
 #include "ue3/Types.hpp"
 
@@ -63,6 +64,10 @@ struct TurretAim {
     bool hit = false;
 };
 std::optional<TurretAim> CurrentTurretAim();
+
+// The vehicle's last answer to GetWeaponStartTraceLocation (where its shots start, world units), if within `maxAgeMs`: for
+// `mevr vehicle guns`.
+std::optional<engine::UnrealVector> LastShotStart(std::uint64_t maxAgeMs = 5000);
 
 std::string StatusJson();
 void LogStats();

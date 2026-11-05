@@ -1128,6 +1128,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryUseMappedPower",
         "SFXGame.SFXGameModeDefault.EnterPowerWheel",
         "SFXGame.SFXGameModeBase.FireWeapon",  // ...and the trigger's, refused without a buzz (2026-11-04)
+        "SFXGame.SFXGameModeBase.StopFiringWeapon",  // `mevr vehicle fire mg` (2026-11-04)
         "Engine.PlayerController.GetScaleFormManager",
         // Posture, ViewLevel, Comfort, MenuPause (migrated in stage 1)
         "SFXGame.BioPawn.ShouldCrouch",
@@ -1316,6 +1317,7 @@ void CheckParams() {
     PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation", ReturnValue);
     // Mako (research/44)
     PARAM(APawn_eventGetWeaponStartTraceLocation_Parms, "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation", ReturnValue);
+    PARAM(ABioVehicleWheeled_execGetWeaponStartTraceLocation_Parms, "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation", CurrentWeapon);
     PARAM(UBioVehicleBehaviorBase_execSetDesiredTurretAimPoint_Parms, "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint", nTurretIndex);
     PARAM(UBioVehicleBehaviorBase_execSetDesiredTurretAimPoint_Parms, "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
         vTargetLocation);

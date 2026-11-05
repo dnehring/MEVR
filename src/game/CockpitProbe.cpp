@@ -210,6 +210,10 @@ ue3::FunctionRef gFireCannon{"SFXGame.SFXGameModeVehicle.FireCannon"};
 ue3::FunctionRef gStopFiringCannon{"SFXGame.SFXGameModeVehicle.StopFiringCannon"};
 ue3::Object* gFiringMode = nullptr;
 double gFireReleaseAt = -1.0;
+// `mevr vehicle fire mg`: the machine gun, RT's FireWeapon (SFXGameModeBase's exec, the vehicle mode's), released by StopFiringWeapon.
+ue3::FunctionRef gFireWeapon{"SFXGame.SFXGameModeBase.FireWeapon"};
+ue3::FunctionRef gStopFiringWeapon{"SFXGame.SFXGameModeBase.StopFiringWeapon"};
+bool gFiringMg = false;
 // `mevr vehicle angvel X Y Z`: SetRBAngularVelocity with that raw vector (replacing the body's), and 0.25 s later the
 // vehicle's pitch, yaw and roll change logged: which way each world axis turns it, in which units (research/47).
 ue3::FunctionRef gSetAngVel{"Engine.PrimitiveComponent.SetRBAngularVelocity"};
@@ -1918,15 +1922,38 @@ void HideFromCaptures() {
 
 // The vehicle's own primitives out of the eyes (the eyes' view actor is the pawn, the vehicle: bOwnerNoSee), still in the
 // captures' pictures (a capture's view actor is neither): the chase screen shows the Mako, the eyes see the cockpit.
+// A component hung on one of the vehicle mesh's Turret_Mount bones: the turret's base, the cannon, the machine gun.
+bool OnTurretMount(ue3::Object* mesh, ue3::Object* component) {
+    if (mesh == nullptr || component == mesh) {
+        return false;
+    }
+    std::optional<engine::skeleton::Attachment> const attachment = engine::skeleton::FindAttachment(mesh, component);
+    if (!attachment || attachment->bone < 0) {
+        return false;
+    }
+    std::optional<engine::skeleton::RefSkeleton> const skeleton = engine::skeleton::ReadRefSkeleton(mesh);
+    return skeleton && static_cast<std::size_t>(attachment->bone) < skeleton->names.size() &&
+        skeleton->names[static_cast<std::size_t>(attachment->bone)].starts_with("Turret_Mount");
+}
+
 void HideVehicle(ue3::Object* vehicle) {
     auto const components = gAllComponents.ElementsOf(vehicle);
     if (!components) {
         return;
     }
     gRide.vehicle = vehicle;
+    // The turret stays in view over the cabin ([Cockpit] showTurret; research/47 "The cannon over the cabin"): the cockpit's eye sits
+    // under it, so its barrels show at the top of the windshield and the shots come from there.
+    bool const keepTurret = hand_calibration::GetCockpit().turret;
+    ue3::Object* const mesh = gPawnMesh.Read<ue3::Object*>(vehicle).value_or(nullptr);
+    int kept = 0;
     for (std::int32_t i = 0; i < components->count; ++i) {
         ue3::Object* const component = *static_cast<ue3::Object**>(components->At(i));
         if (!ue3::IsA(component, gPrimitiveComponent)) {
+            continue;
+        }
+        if (keepTurret && OnTurretMount(mesh, component)) {
+            ++kept;
             continue;
         }
         gRide.hidden.emplace_back(component, gOwnerNoSee.ReadBool(component).value_or(false));
@@ -1934,7 +1961,8 @@ void HideVehicle(ue3::Object* vehicle) {
         noSee.SetBool("bNewOwnerNoSee", true);
         Call(component, gSetOwnerNoSee, noSee);
     }
-    log::Info("cockpit probe: ride: {} of {}'s components hidden from the eyes", gRide.hidden.size(), ue3::runtime::FullName(vehicle));
+    log::Info("cockpit probe: ride: {} of {}'s components hidden from the eyes{}", gRide.hidden.size(), ue3::runtime::FullName(vehicle),
+        kept > 0 ? std::format(", its turret's {} kept in view over the cabin", kept) : std::string());
 }
 
 void ShowVehicle() {
@@ -3049,6 +3077,167 @@ std::string MapName(ue3::Object* controller) {
 
 std::vector<ue3::Object*> gFoundPawns;  // `mevr vehicle pawns`' list, for `hit`
 
+// `mevr vehicle guns` (measuring for research/47 "The cannon over the cabin"): the ridden Mako's weapons (its behavior's
+// m_aVehicleWeaponInfo), each with its turret index, its actor's place and each primitive component's from the cockpit's eye
+// (right, forward, up in metres along the vehicle's axes), whether the eyes can see it (HiddenGame, bOwnerNoSee,
+// bOnlyOwnerSee, its owner), and the shots' last start from the eye.
+ue3::FieldRef gGunsInfo{"SFXGame.BioVehicleBehaviorBase", "m_aVehicleWeaponInfo"};
+ue3::FieldRef gGunsInfoWeapon{gGunsInfo, "oVehicleWeaponPtr"};
+ue3::FieldRef gGunsInfoTurret{gGunsInfo, "nTurretIndex"};
+ue3::FieldRef gGunsLocalToWorld{"Engine.PrimitiveComponent", "LocalToWorld"};
+ue3::FunctionRef gGunsMuzzle{"SFXGame.BioWeaponRanged.GetMuzzleLoc"};
+
+engine::UnrealVector ToUnreal(ue3::Vector const& v) {
+    return {v.x, v.y, v.z};
+}
+
+std::string FromEye(engine::UnrealVector const& at) {
+    if (!gRide.haveEye) {
+        return std::format("({:.0f}, {:.0f}, {:.0f}) in the world (no cockpit eye)", at.x, at.y, at.z);
+    }
+    engine::UnrealVector const d{at.x - gRide.eyeWorld.x, at.y - gRide.eyeWorld.y, at.z - gRide.eyeWorld.z};
+    auto const along = [&](engine::UnrealVector const& axis) { return (d.x * axis.x + d.y * axis.y + d.z * axis.z) / gRide.upm; };
+    return std::format("right {:+.2f} forward {:+.2f} up {:+.2f} m from the eye", along(gRide.frame.right), along(gRide.frame.forward),
+        along(gRide.frame.up));
+}
+
+std::string Guns() {
+    ue3::Object* const vehicle = gRide.vehicle != nullptr && ue3::runtime::IsAlive(gRide.vehicle) ? gRide.vehicle : nullptr;
+    if (vehicle == nullptr) {
+        return "mevr vehicle guns: not riding in a vehicle (the cockpit's ride)";
+    }
+    ue3::Object* const behavior = gVehicleBehavior.Read<ue3::Object*>(vehicle).value_or(nullptr);
+    auto const infos = behavior != nullptr ? gGunsInfo.ElementsOf(behavior) : std::nullopt;
+    if (!infos) {
+        return "mevr vehicle guns: the vehicle's behavior or its weapons' info can't be read";
+    }
+    std::string out = std::format("{}: {} weapon{}; the vehicle's origin {}", ue3::runtime::FullName(vehicle), infos->count, infos->count == 1 ? "" : "s",
+        player::Location(vehicle) ? FromEye(ToUnreal(*player::Location(vehicle))) : std::string("?"));
+    for (std::int32_t i = 0; i < infos->count; ++i) {
+        ue3::Object* const weapon = gGunsInfoWeapon.Read<ue3::Object*>(infos->At(i)).value_or(nullptr);
+        int const turret = gGunsInfoTurret.Read<std::int32_t>(infos->At(i)).value_or(-1);
+        out += std::format("\n[{}] turret {} {}", i, turret, ue3::runtime::FullName(weapon));
+        if (weapon == nullptr || !ue3::runtime::IsAlive(weapon)) {
+            continue;
+        }
+        if (auto const at = player::Location(weapon)) {
+            out += std::format(": actor at {}", FromEye(ToUnreal(*at)));
+        }
+        if (gGunsMuzzle.Get() != nullptr) {
+            ue3::Params p = ParamsOf(gGunsMuzzle);
+            Call(weapon, gGunsMuzzle, p);
+            if (auto const muzzle = p.Return<ue3::Vector>()) {
+                out += std::format("; GetMuzzleLoc {}", FromEye(ToUnreal(*muzzle)));
+            }
+        }
+        auto const components = gAllComponents.ElementsOf(weapon);
+        for (std::int32_t c = 0; components && c < components->count; ++c) {
+            ue3::Object* const component = *static_cast<ue3::Object**>(components->At(c));
+            if (!ue3::IsA(component, gPrimitiveComponent)) {
+                continue;
+            }
+            std::string where = "?";
+            if (float const* const m = gGunsLocalToWorld.In<float>(component)) {
+                where = FromEye({m[12], m[13], m[14]});
+            }
+            out += std::format("\n    {} at {}; HiddenGame {}, bOwnerNoSee {}, bOnlyOwnerSee {}, owner {}", R().ClassOf(component) != nullptr
+                    ? R().NameText(R().ClassOf(component)) : std::string("?"), where, gHiddenGame.ReadBool(component).value_or(false) ? 1 : 0,
+                gOwnerNoSee.ReadBool(component).value_or(false) ? 1 : 0, gOnlyOwnerSee.ReadBool(component).value_or(false) ? 1 : 0,
+                ue3::runtime::FullName(gOwnerField.Read<ue3::Object*>(weapon).value_or(nullptr)));
+        }
+    }
+    // The vehicle mesh's turret: every bone and socket whose name holds turret, cannon, gun, barrel or muzzle, with its parent.
+    if (ue3::Object* const mesh = gPawnMesh.Read<ue3::Object*>(vehicle).value_or(nullptr)) {
+        auto const lower = [](std::string text) {
+            std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return text;
+        };
+        auto const wanted = [&](std::string const& name) {
+            std::string const l = lower(name);
+            return l.find("turret") != std::string::npos || l.find("cannon") != std::string::npos || l.find("gun") != std::string::npos ||
+                l.find("barrel") != std::string::npos || l.find("muzzle") != std::string::npos;
+        };
+        std::optional<engine::skeleton::RefSkeleton> const skeleton = engine::skeleton::ReadRefSkeleton(mesh);
+        std::span<engine::skeleton::BoneAtom> const pose = engine::skeleton::SpaceBases(mesh);
+        ik::Affine const toWorld = engine::skeleton::LocalToWorld(mesh);
+        {
+            ue3::Params count = ParamsOf(gGetNumElements);
+            Call(mesh, gGetNumElements, count);
+            int const elements = count.Return<std::int32_t>().value_or(0);
+            out += std::format("\nthe vehicle mesh's {} material element{}:", elements, elements == 1 ? "" : "s");
+            for (int i = 0; i < elements; ++i) {
+                ue3::Params get = ParamsOf(gGetMaterial);
+                get.Set("ElementIndex", i);
+                Call(mesh, gGetMaterial, get);
+                out += std::format(" [{}] {}", i, R().PathName(get.Return<ue3::Object*>().value_or(nullptr)));
+            }
+        }
+        if (skeleton && pose.size() == skeleton->names.size()) {
+            out += std::format("\nthe vehicle mesh {}: {} bones", ue3::runtime::FullName(mesh), skeleton->names.size());
+            for (std::size_t b = 0; b < skeleton->names.size(); ++b) {
+                if (!wanted(skeleton->names[b])) {
+                    continue;
+                }
+                ik::Transform const local = engine::skeleton::ToTransform(pose[b]);
+                ik::Vec3 const world = ik::TransformPoint(toWorld, local.translation);
+                int const parent = skeleton->parents[b];
+                out += std::format("\n  bone {} ({}, parent {}) at {}", skeleton->names[b], b,
+                    parent >= 0 ? skeleton->names[static_cast<std::size_t>(parent)] : std::string("none"), FromEye({world.x, world.y, world.z}));
+            }
+            for (engine::skeleton::NamedSocket const& socket : engine::skeleton::Sockets(mesh)) {
+                std::string const name = ue3::runtime::NameText(socket.name);
+                if (!wanted(name) || socket.socket.bone < 0 || static_cast<std::size_t>(socket.socket.bone) >= pose.size()) {
+                    continue;
+                }
+                ik::Transform const bone = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(socket.socket.bone)]);
+                ik::Vec3 const inComponent = ik::Apply(bone, socket.socket.relative.translation);
+                ik::Vec3 const world = ik::TransformPoint(toWorld, inComponent);
+                out += std::format("\n  socket {} on {} at {}", name, skeleton->names[static_cast<std::size_t>(socket.socket.bone)],
+                    FromEye({world.x, world.y, world.z}));
+            }
+        } else {
+            out += "\nthe vehicle mesh's skeleton or pose can't be read";
+        }
+    }
+    // Every component of the vehicle (the muzzle flashes, the lights...): its class, where it is, and how it hangs on the mesh.
+    if (auto const components = gAllComponents.ElementsOf(vehicle)) {
+        ue3::Object* const mesh = gPawnMesh.Read<ue3::Object*>(vehicle).value_or(nullptr);
+        std::optional<engine::skeleton::RefSkeleton> const skeleton = mesh != nullptr ? engine::skeleton::ReadRefSkeleton(mesh) : std::nullopt;
+        out += std::format("\nthe vehicle's {} components:", components->count);
+        for (std::int32_t c = 0; c < components->count; ++c) {
+            ue3::Object* const component = *static_cast<ue3::Object**>(components->At(c));
+            if (component == nullptr || !ue3::runtime::IsAlive(component)) {
+                continue;
+            }
+            std::string line = std::format("\n  {} {}", R().ClassOf(component) != nullptr ? R().NameText(R().ClassOf(component)) : std::string("?"),
+                R().NameText(component));
+            if (ue3::IsA(component, gPrimitiveComponent)) {
+                if (float const* const m = gGunsLocalToWorld.In<float>(component)) {
+                    line += " at " + FromEye({m[12], m[13], m[14]});
+                }
+                line += std::format(", hidden {} ownerNoSee {}", gHiddenGame.ReadBool(component).value_or(false) ? 1 : 0,
+                    gOwnerNoSee.ReadBool(component).value_or(false) ? 1 : 0);
+            }
+            if (mesh != nullptr && component != mesh) {
+                if (auto const attachment = engine::skeleton::FindAttachment(mesh, component)) {
+                    std::string const bone = skeleton && attachment->bone >= 0 && static_cast<std::size_t>(attachment->bone) < skeleton->names.size()
+                        ? skeleton->names[static_cast<std::size_t>(attachment->bone)] : std::string("?");
+                    line += std::format(", on bone {} at ({:.1f}, {:.1f}, {:.1f})", bone, attachment->relative.translation.x,
+                        attachment->relative.translation.y, attachment->relative.translation.z);
+                }
+            }
+            out += line;
+        }
+    }
+    if (auto const start = mako::LastShotStart()) {
+        out += std::format("\nthe shots' last start: {}", FromEye(*start));
+    } else {
+        out += "\nno shot start in the last 5 s (`mevr vehicle fire` first)";
+    }
+    log::Info("mevr vehicle guns: {}", out);
+    return out;
+}
+
 std::string VehicleCommand(std::string const& line) {
     if (!ue3::runtime::Ready()) {
         return "mevr vehicle: our reflection layer is off (see the 'reflect:' lines)";
@@ -3527,8 +3716,18 @@ std::string VehicleCommand(std::string const& line) {
         words >> seconds;
         return mako_controls::TestJets(seconds);
     }
+    if (verb == "guns") {
+        return Guns();
+    }
+
     if (verb == "fire") {
-        if (auto const missing = MissingFunction({&gFireCannon, &gStopFiringCannon})) {
+        // `mevr vehicle fire [cannon|mg] [seconds]`: RB's FireCannon or RT's FireWeapon (the machine gun), released after the time.
+        std::string which;
+        double hold = kFireHoldS;
+        words >> which >> hold;
+        bool const mg = which == "mg";
+        hold = std::clamp(hold > 0.0 ? hold : kFireHoldS, 0.05, 10.0);
+        if (auto const missing = mg ? MissingFunction({&gFireWeapon, &gStopFiringWeapon}) : MissingFunction({&gFireCannon, &gStopFiringCannon})) {
             return Refuse(*missing);
         }
         ue3::Object* mode = nullptr;
@@ -3540,11 +3739,13 @@ std::string VehicleCommand(std::string const& line) {
         if (mode == nullptr) {
             return Refuse("no vehicle game mode of the player's controller");
         }
-        ue3::Params p = ParamsOf(gFireCannon);
-        Call(mode, gFireCannon, p);
+        ue3::Params p = ParamsOf(mg ? gFireWeapon : gFireCannon);
+        Call(mode, mg ? gFireWeapon : gFireCannon, p);
         gFiringMode = mode;
-        gFireReleaseAt = Now() + kFireHoldS;
-        std::string const report = std::format("FireCannon called (as RB), released in {:.1f} s: the `mako: shot` lines say where it went", kFireHoldS);
+        gFiringMg = mg;
+        gFireReleaseAt = Now() + hold;
+        std::string const report = std::format("{} called (as {}), released in {:.1f} s: the `mako: shot` lines say where it went",
+            mg ? "FireWeapon" : "FireCannon", mg ? "RT" : "RB", hold);
         log::Info("mevr vehicle: {}", report);
         return report;
     }
@@ -4430,6 +4631,7 @@ bool Riding() {
     return gRide.on && gRide.riding;
 }
 
+
 std::optional<Seat> CurrentSeat() {
     if (gSeated.pawn == nullptr || gSeated.mesh == nullptr || !Riding() || !gRide.haveEye || !gSeatLayout.set || gSeated.world != engine::World()) {
         return std::nullopt;
@@ -4572,10 +4774,11 @@ void Tick(std::optional<std::uint32_t> recenters) {
     }
     if (gFiringMode != nullptr && Now() >= gFireReleaseAt) {
         if (ue3::runtime::IsAlive(gFiringMode)) {
-            ue3::Params p = ParamsOf(gStopFiringCannon);
-            Call(gFiringMode, gStopFiringCannon, p);
+            ue3::Params p = ParamsOf(gFiringMg ? gStopFiringWeapon : gStopFiringCannon);
+            Call(gFiringMode, gFiringMg ? gStopFiringWeapon : gStopFiringCannon, p);
         }
         gFiringMode = nullptr;
+        gFiringMg = false;
     }
     static std::optional<std::uint32_t> seenRecenters;
     if (recenters && seenRecenters && *recenters != *seenRecenters && gRide.on) {
