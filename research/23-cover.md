@@ -172,7 +172,68 @@ our deploy has first person on from launch.
   plus a step-out offset when the native `GetStepOutRelativeLocationToTarget` gives one **[verify]**) plus a random error of the weapon's drift angle (doubled in a
   combat action state), so a wall between the muzzle and a lowered Shepard stops it. The physical crouch
   is the game's own `ShouldCrouch`, which lowers the skeleton and the collision as low cover's crouch
-  does, and halves the noise Shepard makes (`BioPawn.m_fCrouchNoiseModifier` 0.5). Level scripts
+  does, and halves the noise Shepard makes (`BioPawn.m_fCrouchNoiseModifier` 0.5). Since 2026-11-05 VR cover gives the
+  cut back with the head as the game's "leaning out" (section 6). Level scripts
   (tutorial hints) weren't searched **[verify]**: none should wait for the player to take cover.
 - **[verify]** Whether the explore-mode stand on move input feels wrong in VR (crouch, then step: the
   game stands Shepard; the physical posture acts again only on the next stand and crouch).
+
+## 6. VR cover: the game's cover protection, taken with the body (2026-11-05)
+
+The user asked whether crouching behind cover protects a VR player: with `noCover` it didn't, beyond the wall itself
+stopping shots (section 5). Built the same day; checked offline, not yet in the game **[verify]**.
+
+### 6.1 What each game gives a player in cover
+
+Read from each game's script (decompiled locally with Legendary Explorer's core) and its config (unpacked from the
+game's coalesced file); the player's game data, none of it in the repository.
+
+| | LE1 (`BioPawnBehavior.ProxyTakeDamage`) | LE2 (`SFXGame.ModifyDamage`) | LE3 (`SFXPawn_PlayerParty.ModifyDamage`) |
+|---|---|---|---|
+| Who | player, squad | player, squad | player's party |
+| When | `IsInCover() && !IsInCoverLeaning()` | `IsInCover()`, not leaning | `IsInCover()`, not leaning, the slot not `bUnsafeCover` |
+| Cone | the shot's direction (instigator to hit) against `-CoverNormal` below -0.3, more than 300 units | the same against the cover slot's rotation (`CurrentLink.GetSlotRotation`) | the same, unless the damage type `bIgnoresCoverDirection` |
+| In the cone | damage x (1 - `CoverDamageReduction`): 1.0 on Casual and Normal (none), 0.9 above | zero | `Global_CoverMultiplier = -CoverDamageReduction` (1.0 on the two easiest levels, 0.9 above); a projectile is stopped |
+| Otherwise in cover | whole | x `PlayerCoverDamageMultiplier` 0.75 | whole |
+| Leaning out | whole | x `PlayerCoverLeanDamageMultiplier` 0.75 | whole |
+| Out of cover | whole | whole | `Global_OutOfCoverMultiplier = NoCoverDamageBonus`: +0.4 from Normal up |
+
+The cone is the same in all three: within about 72 degrees of the cover's normal, from beyond 3 m. LE2 also shortens the
+shield regeneration's wait in cover (`PlayerCoverRegenTimerMultiplier` 1.5) **[verify]** what it multiplies.
+
+### 6.2 The VR rule (all three games) and LE1's module
+
+- **The rule** (`core/vr/VrCover`, unit-tested in `tests/VrCoverTests.cpp`): for one hit, trace from the headset's eyes
+  toward the shooter's eyes; if a surface stands within `reachM` (1.2 m) of the eyes, the head is hidden behind cover from
+  that shooter: in cover, not leaning. Traced from the eyes so the surface found is the player's own cover, not one near
+  the shooter. The cover's facing for the game's cone is the surface's flattened normal, turned toward the player; a top
+  or an overhang (normal steeper than 0.7) takes the shot's flattened direction; a shooter straight above gives none. The
+  head is the game's "leaning out": raised over the cover to shoot, the eyes are in the open and the hit is whole.
+- **LE1** (`game/VrCover`, mod side; `[Cover] protect`, `reachM`, `log` in `ASI\LE1MEVR.ini`, appended by the module):
+  `engine/call_function` has answer handlers now (a call without parameters, script or native, skipped and its return
+  value written, with the calling frame's Locals: `adapter::kFrame.locals`, 0x2C in LE1 and LE2, 0x30 in LE3). While
+  `posture::RefusingCover()` (VR on foot with `noCover`) the module answers the damage call's `IsInCover` for the player's
+  pawn: its frame gives the shot (`InstigatedBy`, `HitLocation`, `pDamageCausingActor`), `Actor.Trace` with actors (a
+  pawn in the line is looked past, at most twice) finds the first surface, and when covered `IsInCover` answers true,
+  `IsInCoverLeaning` false (that frame only) and `BioPawn.CoverNormal` holds the facing until the call returns (a post
+  handler on `ProxyTakeDamage`, journalled; also put back each tick). The game's own code then applies its cone, distance
+  and `CoverDamageReduction`. The shooter's eyes are its pawn's location plus `Pawn.EyeHeight`; with no instigator, the
+  damage causer's location (the game's own fallback). Nothing changes outside the damage call: no cover state, camera or
+  animation. Both natives have no opcode of their own (`NativeIndex` 0, flags `0x20401`) and `ProxyTakeDamage` is called
+  from `BioActorBehavior.TakeDamage`'s script, so both calls pass through `UObject::CallFunction`.
+- **Logs** `vr cover:` (a covered hit every 2 s at most, every judged hit with `log = 1`; the heartbeat's counts);
+  snapshot `"mod"."vrCover"`. **Console** `mevr cover` (status) and `mevr cover test` (every awake hostile judged now: the
+  head hidden or not, by what, how far, and whether the game's cone would cut a hit on Shepard from it).
+- **No menu row yet** (file only): it restores the game's own rule and is on by default.
+
+### 6.3 LE2 and LE3
+
+The same rule serves both; each needs its own hook into its damage code, and neither game's reflection layout is
+measured yet (research/34: our layer stands down there), so neither is built. The plan:
+- **LE2**: in `SFXGame.ModifyDamage`'s frame, answer `IsInCover` true and `IsInCoverLeaning` false for the player as
+  LE1 does; its cone reads `TargetBP.CurrentLink.GetSlotRotation(TargetBP.CurrentSlotIdx)`, which has no link for a VR
+  player, so either answer `GetSlotRotation` too (it has a parameter: the answer handler would need to consume it) or
+  apply the cone ourselves and set the out parameter `Damage` after the call (a ProcessEvent or CallFunction post-handler
+  that sees the parameters). Whether LE2's cover snapping is a problem in VR at all (it's a button there) **[verify]**.
+- **LE3**: as LE2, plus the out-of-cover bonus (+40% from Normal up) must not hit a VR player who is behind cover:
+  `Global_OutOfCoverMultiplier` is set in the `else` of `IsInCover()`, so answering it true also removes the bonus.

@@ -187,6 +187,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 ## 4. Moving and comfort (session: VR mod for Mass Effect Legendary Edition)
 - [ ] Crouch for real in combat: does the view drop below your own eyes (the floor seems to jump up)? Walk into walls:
   no cover snap. (research/23, research/38 B)
+- [ ] VR cover: crouched behind a crate with enemies in front on Normal, do their hits stop hurting, and do they hurt again
+  as soon as you raise your head over it to shoot? A flanker's hits always hurt. `mevr cover test` and the `vr cover:` log
+  say what each shooter sees. Is 1.2 m (`[Cover] reachM`) right for tall cover you stand beside? Built 2026-11-05; the
+  in-game damage path not yet seen run. (research/23 section 6)
 - [ ] Snap turn at 30, 45, 60 degrees, standing and walking, drawn and holstered: no hand or shoulder lag; nothing turns
   in the Mako, wheels, scope, cover, conversations or menus. (research/31 section 8)
 - [ ] The vignette: shape and strength comfortable, the HUD and sights above it. Walking toward the left hand goes where

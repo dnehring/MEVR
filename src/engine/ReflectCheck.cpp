@@ -865,6 +865,8 @@ void CheckFields() {
     CheckField("Engine.BioSFPanel", "bUsingGamepad", SDK_BOOL(UBioSFPanel, bUsingGamepad));
     // SFXGame
     CheckField("SFXGame.BioPawn", "CoverType", SDK_FIELD(ABioPawn, CoverType));
+    CheckField("SFXGame.BioPawn", "CoverNormal", SDK_FIELD(ABioPawn, CoverNormal));  // VR cover: the facing for the damage cone
+    CheckField("Engine.Pawn", "EyeHeight", SDK_FIELD(APawn, EyeHeight));  // VR cover: the shooter's eyes
     CheckField("SFXGame.BioPawn", "CoverAction", SDK_FIELD(ABioPawn, CoverAction));
     CheckField("SFXGame.BioPawn", "CoverTestAngle", SDK_FIELD(ABioPawn, CoverTestAngle));
     CheckField("SFXGame.BioPawn", "m_oBehavior", SDK_FIELD(ABioPawn, m_oBehavior));
@@ -1221,6 +1223,8 @@ void CheckFunctions() {
         "SFXGame.BioPawn.ShouldCrouch",
         "SFXGame.SFXGameModeDefault.TryExitCover",
         "SFXGame.BioPawn.IsInCover",
+        "SFXGame.BioPawn.IsInCoverLeaning",  // VR cover (research/23 section 6): answered in the damage call
+        "SFXGame.BioPawnBehavior.ProxyTakeDamage",
         "SFXGame.BioPawn.LeaveCover",
         "SFXGame.SFXInventoryManager.SetWeaponRecoil",
         "SFXGame.SFXModule_AimAssist.ViewFriction",
@@ -1355,6 +1359,7 @@ void CheckParams() {
     PARAM(ABioGrenade_eventLaunchGrenadeAtPoint_Parms, "SFXGame.BioGrenade.LaunchGrenadeAtPoint", vTarget);
     PARAM(ABioGrenade_eventLaunchGrenadeAtPoint_Parms, "SFXGame.BioGrenade.LaunchGrenadeAtPoint", ReturnValue);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", HitLocation);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", HitNormal);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceEnd);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceStart);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", bTraceActors);
@@ -1560,6 +1565,11 @@ void CheckParams() {
     PARAM(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames", BoneNames);
     PARAM(ABioPawn_execShouldCrouch_Parms, "SFXGame.BioPawn.ShouldCrouch", bCrouch);
     PARAM(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover", ReturnValue);
+    PARAM(ABioPawn_execIsInCoverLeaning_Parms, "SFXGame.BioPawn.IsInCoverLeaning", ReturnValue);
+    // VR cover reads these in the damage call's frame while it asks IsInCover.
+    PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", InstigatedBy);
+    PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", HitLocation);
+    PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", pDamageCausingActor);
     // The modules' hand-built blocks: a bool return value at 0.
     CheckParam("SFXGame.BioPawn.IsInCombatActionState", "ReturnValue", SDK_AT(0, 4));
     CheckParam("SFXGame.BioPawn.IsSwitchingWeapons", "ReturnValue", SDK_AT(0, 4));
@@ -1658,6 +1668,7 @@ void CheckParams() {
     PARMS(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames");
     PARMS(ABioPawn_execShouldCrouch_Parms, "SFXGame.BioPawn.ShouldCrouch");
     PARMS(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover");
+    PARMS(ABioPawn_execIsInCoverLeaning_Parms, "SFXGame.BioPawn.IsInCoverLeaning");
     PARMS(USFXGameModeDefault_execTryExitCover_Parms, "SFXGame.SFXGameModeDefault.TryExitCover");
     // Stage 2: the squad wheel's calls (a 64-byte zeroed block before; the function's own block now).
     PARMS(USFXGameModeDefault_execEnterWeaponWheel_Parms, "SFXGame.SFXGameModeDefault.EnterWeaponWheel");

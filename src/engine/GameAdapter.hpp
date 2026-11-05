@@ -59,11 +59,12 @@ struct FrameOffsets {
     std::uint32_t object;
     std::uint32_t code;
     std::uint32_t previous;
+    std::uint32_t locals;  // between Code and PreviousFrame: the running function's parameters and locals
 };
 #if defined(MEVR_GAME_LE3)
-inline constexpr FrameOffsets kFrame{0x18, 0x20, 0x28, 0x38};
+inline constexpr FrameOffsets kFrame{0x18, 0x20, 0x28, 0x38, 0x30};
 #else
-inline constexpr FrameOffsets kFrame{0x14, 0x1C, 0x24, 0x34};
+inline constexpr FrameOffsets kFrame{0x14, 0x1C, 0x24, 0x34, 0x2C};
 #endif
 
 // ---- our reflection layer (ue3/, research/34) ----------------------------------------------------

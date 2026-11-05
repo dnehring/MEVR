@@ -72,6 +72,9 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 ### Your body
 - A guided calibration (about a minute) measures your height, arms and how you aim, and is saved per controller type.
 - Crouch for real to crouch in the game; no automatic cover snapping.
+- Cover protects you as it does in the game: with your head down behind cover, hits from enemies in front of it are cut
+  as the game cuts them for Shepard in cover (all of the damage on Casual and Normal, 90% above). Raise your head over it
+  to shoot and you're in the open again.
 - Shepard's body stays under you as you turn and lean.
 - Shepard's legs run where he runs: when you strafe, only his upper body turns toward you, so his feet no longer
   skate sideways (backing up, his legs still turn part of the way).

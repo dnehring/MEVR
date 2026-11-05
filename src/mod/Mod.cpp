@@ -63,6 +63,7 @@
 #include "game/FocusPause.hpp"
 #include "game/MenuPause.hpp"
 #include "game/Posture.hpp"
+#include "game/VrCover.hpp"
 #include "game/Reflections.hpp"
 #include "game/ScopeCapture.hpp"
 #include "game/Sights.hpp"
@@ -302,6 +303,7 @@ void TryInstallScriptHooks() {
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     game::vent::TryStartup();  // and the physical vent of a hot gun (research/45)
     game::posture::TryStartup();  // and physical cover and crouch
+    game::vr_cover::TryStartup();  // the game's cover protection for a VR player (research/23 section 6: answer handlers, before the hook)
     gHandAimAvailable = game::hand_aim::TryStartup();
     game::mako::TryStartup();  // the Mako's turret aimed by the controller (research/44: the vehicle's Tick and shot-start handlers)
     game::mako_controls::TryStartup();  // the Mako's physical lever and stick (research/46: the SetInputs handlers)
@@ -933,7 +935,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -945,7 +947,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1085,6 +1087,7 @@ void Heartbeat() {
         game::throwables::LogStats();
         game::vent::LogStats();
         game::posture::LogStats();
+        game::vr_cover::LogStats();
         game::view_level::LogStats();
         game::gun_kick::LogStats();
         game::combat_stance::LogStats();
@@ -1270,6 +1273,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // Physical cover and crouch (research/23): the cover test's hook goes in once noCover is wanted.
         EnsureCoverHook();
         game::posture::Tick(deltaSeconds, game::posture::Link{HostFloor()});
+        game::vr_cover::Tick();  // after posture: whether the game's cover is refused this tick
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
         game::camera_probe::Tick();
@@ -1355,6 +1359,7 @@ MEVR_MOD_API void MevrModShutdown() {
         removed(engine::bone_pose::Uninstall(*gInit, !exiting),
             "the UpdateSkelPose hook couldn't be removed, or a call was still inside it");
     }
+    game::vr_cover::Shutdown();  // a cover normal still held, back
     game::posture::Shutdown(exiting);  // stands Shepard up from a crouch of ours; stops refusing cover
     if (gInit && gCoverHooked) {
         removed(engine::cover_acquire::Uninstall(*gInit, !exiting),

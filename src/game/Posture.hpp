@@ -49,6 +49,9 @@ void Tick(double deltaSeconds, Link const& link);
 // The player is physically crouched now (the detector, while physical crouch is active: VR on foot). Whatever the game's
 // crouch is: an L3 crouch while standing is false, a real crouch is true even if Shepard stood up by L3.
 bool PhysicallyCrouched();
+// The game's cover is refused for the player this tick (VR on foot with [Hands] noCover): game/vr_cover then judges the
+// player's cover itself. Game thread.
+bool RefusingCover();
 std::string StatusJson();
 void LogStats();
 // Releases a crouch we made (unless the process is exiting) and stops refusing cover.

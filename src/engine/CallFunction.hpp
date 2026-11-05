@@ -24,8 +24,18 @@ using Handler = void (*)(ue3::Object* context, ue3::Function* function, void* re
 // Runs before the original call; true skips it. `caller` is the calling script function (the frame's Node), or null.
 using SkipHandler = bool (*)(ue3::Object* context, ue3::Function* function, ue3::Function* caller);
 
+// Runs before the original call of a function without parameters (script or native: a native's exec reads none and
+// consumes the same EX_EndFunctionParms token): true skips the call, the handler having written its return value into
+// `result` (when not null; a bool is 4 bytes). `callerLocals` is the calling frame's Locals, the running function's
+// parameters and locals at their properties' offsets (null if the frame can't be read): how a handler sees the arguments
+// of the function that asks (e.g. who shot, inside the damage code that asks IsInCover).
+using AnswerHandler = bool (*)(ue3::Object* context, ue3::Function* function, ue3::Function* caller, std::uint8_t* callerLocals,
+    void* result);
+
 // Register before Install; the table is read without locking while hooked.
 void AddPostHandler(ue3::Function* function, Handler handler);
+// Only for a function without parameters (the caller checks with our reflection layer), as AddSkipHandler.
+void AddAnswerHandler(ue3::Function* function, AnswerHandler handler);
 // Only for a script function without parameters (not native; the caller checks with our reflection layer): a skip
 // consumes the call's EX_EndFunctionParms token, as the engine's own parameter loop would, and runs nothing else. If
 // that token isn't the next bytecode byte the call runs as normal (logged once).

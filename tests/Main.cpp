@@ -11234,6 +11234,7 @@ int RunGfxTests();
 int RunPowerWheelTests();
 int RunGuiEventsTests();
 int RunOmniPadTests();
+int RunVrCoverTests();
 int RunSquadPhrasingTests();
 int RunVoiceTests();
 int RunCockpitPanelTests();
@@ -11374,6 +11375,7 @@ int main() {
     gFailures += RunPowerWheelTests();
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();
+    gFailures += RunVrCoverTests();
     gFailures += RunSquadPhrasingTests();
     gFailures += RunVoiceTests();
     gFailures += RunCockpitPanelTests();

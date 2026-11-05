@@ -41,6 +41,7 @@ constexpr double kViewProbeSeconds = 0.75;
 constexpr double kStandingLogStep = 0.02;
 
 bool gStarted = false;
+bool gRefusingCover = false;  // VR on foot with noCover: the player is kept out of the game's cover (game/vr_cover)
 bool gActive = false;          // VR on foot with a player BioPawn, this tick
 std::string gWhy = "not started";
 std::string gLoggedWhy;
@@ -244,6 +245,7 @@ void FollowProbe(ue3::Object* pawn, double deltaSeconds) {
 
 // The cover side, each tick with a game.
 void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds) {
+    gRefusingCover = active && noCover;  // kept out of cover either way: refused, or left at once without the hook
     bool const refuse = active && noCover && engine::cover_acquire::Installed();
     engine::cover_acquire::Refuse(refuse ? game.pawn : nullptr);
     if (!refuse) {
@@ -501,6 +503,10 @@ bool PhysicallyCrouched() {
     return gCrouchActive && gDetector.Crouched();
 }
 
+bool RefusingCover() {
+    return gRefusingCover;
+}
+
 bool WantsCoverHook() {
     return gStarted && hand_calibration::GetPosture().noCover;
 }
@@ -508,6 +514,7 @@ bool WantsCoverHook() {
 void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::Refresh();  // at most once a second
     hand_calibration::Posture const settings = hand_calibration::GetPosture();
+    gRefusingCover = false;  // until TickCover says so this tick
 #if defined(MEVR_GAME_LE1)
     if (!gStarted) {
         engine::cover_acquire::Refuse(nullptr);

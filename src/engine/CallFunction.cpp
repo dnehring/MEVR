@@ -30,6 +30,12 @@ struct SkipEntry {
     SkipHandler handler;
 };
 std::vector<SkipEntry> gSkips;
+struct AnswerEntry {
+    void const* function;
+    AnswerHandler handler;
+};
+std::vector<AnswerEntry> gAnswers;
+constexpr std::size_t kFrameLocals = adapter::kFrame.locals;
 std::atomic<bool> gToldNoEndToken{false};
 
 // UObject::CallFunction(Stack, Result, Function), as the engine calls it.
@@ -96,12 +102,56 @@ bool TrySkip(ue3::Object* context, FFrame* stack, ue3::Function* function, SkipH
     return true;
 }
 
+// The frame's Locals, or null.
+std::uint8_t* ReadLocals(FFrame const* stack) {
+    __try {
+        return *reinterpret_cast<std::uint8_t* const*>(reinterpret_cast<std::uint8_t const*>(stack) + kFrameLocals);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+// True: the handler answered the call (its EX_EndFunctionParms consumed, the result written by the handler).
+bool TryAnswer(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function, AnswerHandler handler) {
+    ue3::Function* caller = nullptr;
+    std::uint8_t const* code = nullptr;
+    std::uint8_t next = 0;
+    if (stack == nullptr || !ReadFrame(stack, &caller, &code, &next)) {
+        return false;
+    }
+    if (next != kEndFunctionParms) {
+        if (!gToldNoEndToken.exchange(true)) {
+            log::Warn("call function: a call to answer wasn't followed by EX_EndFunctionParms (0x{:02X}): it runs as normal", next);
+        }
+        return false;
+    }
+    BeginCrumb const begin = gBeginCrumb.load(std::memory_order_relaxed);
+    EndCrumb const end = gEndCrumb.load(std::memory_order_relaxed);
+    std::uint64_t const crumb = begin != nullptr ? begin(function, context) : 0;
+    bool const answered = handler(context, function, caller, ReadLocals(stack), result);
+    if (begin != nullptr && end != nullptr) {
+        end(crumb);
+    }
+    if (!answered) {
+        return false;
+    }
+    auto** const codeSlot = reinterpret_cast<std::uint8_t const**>(reinterpret_cast<std::uint8_t*>(stack) + kFrameCode);
+    *codeSlot = code + 1;
+    write_journal::Wrote("CallFunction.answer", codeSlot, sizeof(*codeSlot));
+    return true;
+}
+
 void CallFunctionHook(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function) {
     if (Observer const observer = gObserver.load(std::memory_order_relaxed)) {
         observer(context, function, stack != nullptr ? ReadNode(stack) : nullptr);
     }
     for (SkipEntry const& entry : gSkips) {
         if (entry.function == function && TrySkip(context, stack, function, entry.handler)) {
+            return;
+        }
+    }
+    for (AnswerEntry const& entry : gAnswers) {
+        if (entry.function == function && TryAnswer(context, stack, result, function, entry.handler)) {
             return;
         }
     }
@@ -129,9 +179,14 @@ void AddSkipHandler(ue3::Function* function, SkipHandler handler) {
     gSkips.push_back({function, handler});
 }
 
+void AddAnswerHandler(ue3::Function* function, AnswerHandler handler) {
+    gAnswers.push_back({function, handler});
+}
+
 void ClearHandlers() {
     gHandlers.clear();
     gSkips.clear();
+    gAnswers.clear();
 }
 
 void SetObserver(Observer observer) {

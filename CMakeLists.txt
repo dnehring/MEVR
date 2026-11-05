@@ -348,6 +348,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/SquadParser.hpp
     src/core/vr/SquadRetreat.cpp
     src/core/vr/SquadRetreat.hpp
+    src/core/vr/VrCover.cpp
+    src/core/vr/VrCover.hpp
     src/core/vr/SquadStanding.cpp
     src/core/vr/SquadStanding.hpp
     src/core/vr/SquadMenu.cpp
@@ -473,6 +475,8 @@ set(MEVR_MOD_SOURCES
     src/game/Player.hpp
     src/game/Posture.cpp
     src/game/Posture.hpp
+    src/game/VrCover.cpp
+    src/game/VrCover.hpp
     src/game/Reflections.cpp
     src/game/Reflections.hpp
     src/game/ScopeParts.cpp
@@ -915,6 +919,7 @@ if (MEVR_BUILD_TESTS)
         tests/PowerWheelTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
+        tests/VrCoverTests.cpp
         src/core/vr/GuiEvents.cpp
         tests/SquadPhrasings.cpp
         tests/VoiceTests.cpp
@@ -997,6 +1002,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/SquadGesture.cpp
         src/core/vr/SquadParser.cpp
         src/core/vr/SquadRetreat.cpp
+        src/core/vr/VrCover.cpp
         src/core/vr/SquadStanding.cpp
         src/core/vr/SquadMenu.cpp
         src/core/vr/TestRequest.cpp

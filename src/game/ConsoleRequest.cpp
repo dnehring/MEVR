@@ -4,6 +4,7 @@
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
 #include "game/Voice.hpp"
+#include "game/VrCover.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -506,6 +507,13 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             return mako_gunner::Wake(gFound[index]);
         }
         return mako_gunner::StatusJson();
+    }
+    if (verb == "cover") {
+        // `mevr cover [test]`: VR cover (research/23 section 6): its status, or every awake hostile judged now, as a hit from
+        // it would be (the head hidden from it by cover within reach, and whether the game's own cone would cut it).
+        std::string rest;
+        std::getline(words, rest);
+        return vr_cover::Console(rest);
     }
     if (verb == "powerwheel") {
         // `mevr powerwheel [open|hand x y|pick n|equip|close|roster]`: the power wheel at the left hand (research/55) without

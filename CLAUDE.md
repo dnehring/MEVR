@@ -209,6 +209,14 @@ switching frameworks.
   test (`0xAB1430`, mod side) and skips it for the player's pawn; a cover already taken is left with
   `TryExitCover`. A real crouch below 0.75 of the standing eye height (hysteresis 0.85, 0.2 s) is
   `BioPawn.ShouldCrouch` (ProcessEvent), on physical changes only: L3 still toggles in between.
+  **VR cover** (research/23 section 6, 2026-11-05; `core/vr/VrCover` for all three games, `game/VrCover` LE1; `[Cover]
+  protect`, `reachM` 1.2): the game's cover cut (LE1 `ProxyTakeDamage`'s cone: all of a hit from the cover's front beyond
+  3 m on Casual and Normal, 90% above) for a VR player whose head is hidden from the shooter by a surface within reachM of
+  the eyes (traced from the eyes): inside that damage call only, `engine/call_function`'s answer handlers (a call without
+  parameters answered, with the calling frame's Locals) say `IsInCover` true and `IsInCoverLeaning` false for the player
+  and `BioPawn.CoverNormal` holds the surface's facing until the call returns; the game's own code does the rest. The head
+  raised over the cover is the game's "leaning out". Logs `vr cover:`; snapshot `"mod"."vrCover"`; `mevr cover [test]`.
+  LE2/LE3's damage rules and the plan: research/23 section 6.3.
 - LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
   each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
   kick never fades (`RecoilFadeSpeed=0`); with the stick's pitch off (`decoupledPitch`) the world tilted
