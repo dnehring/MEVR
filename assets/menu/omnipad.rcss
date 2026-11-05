@@ -1,0 +1,89 @@
+/* SPDX-License-Identifier: MIT */
+/*
+ * The bypass puzzle's d-pad (research/53 section 6.3), beside the game's own puzzle screen and in that screen's colours: the
+ * slate-blue edge and navy panels of its frame, the cyan of its "DECRYPTING", the orange of its ring, and the game's orange for the
+ * arm held. Our own shapes: no game art. The arms cover vr::omni_pad::ArmAt's sectors on this 480 x 480 canvas (the hub, where no
+ * arm is, 0.13 of its size from the centre). Edit while the game runs: it reloads within a second of a save (plugin/OmniPad).
+ * Decorators (plugin/menu/MenuDecorators): chamfer(...), icon(...).
+ */
+
+body, div { display: block; }
+
+body {
+	width: 480dp;
+	height: 480dp;
+	position: relative;
+	font-family: Rajdhani;
+	font-weight: 700;
+	color: #BFEFF8;
+}
+
+/* The puzzle's ring around the pad. */
+.ring {
+	position: absolute;
+	left: 2dp;
+	top: 2dp;
+	width: 476dp;
+	height: 476dp;
+	color: rgba(236,138,52,72%);
+	decorator: icon(pad-ring);
+}
+
+.arm {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 4dp;
+	decorator: chamfer(22dp rgba(40,62,104,94%) rgba(20,33,64,94%) #8AA4D2 #4A6494 3dp);
+}
+.arm:hover {
+	decorator: chamfer(22dp rgba(58,88,140,96%) rgba(28,46,86,96%) #B8D2F4 #6684B8 3dp rgba(150,210,240,30%));
+}
+.arm.held {
+	decorator: chamfer(22dp #F7A04A #C9601C #FFE2BC #F09A4C 3dp rgba(255,200,140,45%));
+}
+
+.up    { left: 160dp; top: 22dp;  width: 160dp; height: 150dp; }
+.down  { left: 160dp; top: 308dp; width: 160dp; height: 150dp; }
+.left  { left: 22dp;  top: 160dp; width: 150dp; height: 160dp; }
+.right { left: 308dp; top: 160dp; width: 150dp; height: 160dp; }
+
+.arrow {
+	width: 92dp;
+	height: 92dp;
+	color: #8FD8EA;
+}
+.arm:hover .arrow { color: #D2F6FF; }
+.arm.held .arrow { color: #FFFFFF; }
+.a-up { decorator: icon(pad-up); }
+.a-down { decorator: icon(pad-down); }
+.a-left { decorator: icon(pad-left); }
+.a-right { decorator: icon(pad-right); }
+
+.cap {
+	font-size: 30dp;
+	line-height: 30dp;
+	letter-spacing: 0.1em;
+	color: #7FBFD4;
+}
+.arm.held .cap { color: #FFF4E4; }
+
+/* The centre: the puzzle's goal, where no arm is. */
+.hub {
+	position: absolute;
+	left: 184dp;
+	top: 184dp;
+	width: 112dp;
+	height: 112dp;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.dot {
+	width: 104dp;
+	height: 104dp;
+	color: rgba(236,138,52,85%);
+	decorator: icon(pad-hub);
+}

@@ -81,6 +81,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] The wrist projector: placement above the omni-tool's display, the fan of light, the unfold. Tap it with your right
   index: tune `[Pointer] touchTipM` until the press matches your fingertip; the hover and press ticks.
   (research/53 sections 6.1-6.2)
+- [ ] Play the bypass puzzle with the d-pad to the right of it: can you reach and hold its arms with your right index while the
+  left wrist holds the screen up, does sliding between arms feel right, is 0.17 m (`[OmniTool] padSizeM`) the right size, and
+  do In/Out and the arrows read as the puzzle's moves? (research/53 section 6.3, built 2026-11-05)
 - [ ] Screens not yet seen in the room: Options, Save, Load, Specialization, Achievements, Additional content, Game
   over; tutorial pop-ups. (research/53 section 3)
 

@@ -1,0 +1,19 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The bypass puzzle's d-pad (research/53 section 6.3): four arms beside the puzzle's screen, pressed with the right index
+     fingertip (or a ray and its trigger). The host (plugin/OmniPad) decides which arm a touch is on from its place on this
+     480 x 480 canvas (vr::omni_pad::ArmAt: the 45-degree sectors around the centre, outside the hub), so the arms below cover those
+     sectors; `held` in the "omnipad" model names the arm the game has pressed ("up", "down", "left", "right" or ""). -->
+<rml>
+<head>
+	<title>MEVR omni-tool d-pad</title>
+	<link type="text/rcss" href="omnipad.rcss"/>
+</head>
+<body data-model="omnipad">
+	<div class="ring"/>
+	<div class="arm up" data-class-held="held == 'up'"><div class="arrow a-up"/><div class="cap">In</div></div>
+	<div class="arm down" data-class-held="held == 'down'"><div class="cap">Out</div><div class="arrow a-down"/></div>
+	<div class="arm left" data-class-held="held == 'left'"><div class="arrow a-left"/></div>
+	<div class="arm right" data-class-held="held == 'right'"><div class="arrow a-right"/></div>
+	<div class="hub"><div class="dot"/></div>
+</body>
+</rml>

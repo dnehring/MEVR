@@ -77,7 +77,7 @@ Game-mechanic rows marked **[verify]** come from memory and should be checked in
 | Squad orders | Button plus reticle | same | same | **Point with the controller** and press to order | Input only |
 | Dialogue | Wheel | Wheel plus **interrupts** | Wheel plus interrupts | Wheel on a world-anchored panel; interrupts pop up beside the matching hand (pull its trigger) | No |
 | Conversations / cutscenes | Cinematic cameras | same | same | Cinema screen by default; in-world for static shots (stretch) | No |
-| Bypass / hacking | Bypass minigame **[verify LE version]** | Circuit and code minigames | Minimal | Panel plus laser pointer | No |
+| Bypass / hacking | Bypass minigame (LE1 on PC: a ring puzzle, `GUI_SF_SkillGame.PCMiniGame`, research/53 section 6.3) | Circuit and code minigames | Minimal | The game's own screen projected from the left wrist (the omni-tool); its buttons by touch, the LE1 puzzle with a touch d-pad beside it sending the game's own d-pad events | No |
 | Galaxy map / scanning | Cursor map | Ship steering, fuel, probing | Map, scanning, Reaper chase | Panel to start; holographic tabletop is a stretch | No |
 | Vehicles | Mako (core) | Hammerhead (DLC) | none **[verify]** | Cinema screen to start; cockpit view is a stretch | No |
 | Menus / inventory | Heavy inventory | Lockers, research | Weapon bench | Cylinder layer plus pointer | No |

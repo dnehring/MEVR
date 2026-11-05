@@ -102,7 +102,10 @@ struct State {
     std::uint8_t active = 0;      // a screen of ours is up: the host shows it in the room
     std::uint8_t screen = 0;      // Screen
     std::uint8_t anchored = 0;    // anchor holds the place of what it belongs to
-    std::uint8_t pad = 0;
+    // The bypass puzzle is being played (its handler's m_bGameActive, from the manual override on; 2026-11-05, in what was a pad
+    // byte: the size is unchanged): the host keeps the game pointer off its screen (any mouse motion turns its marker without
+    // end) and shows the omni-tool's d-pad beside it (research/53 section 6.3). An older host ignores it.
+    std::uint8_t puzzle = 0;
     std::uint32_t opening = 0;    // counts the screens opened: a new one is placed again
     float anchor[3] = {};         // tracking space, metres (OpenXR axes)
     float widthM = 0.0f;

@@ -11233,6 +11233,7 @@ int RunExeTests();
 int RunGfxTests();
 int RunPowerWheelTests();
 int RunGuiEventsTests();
+int RunOmniPadTests();
 int RunSquadPhrasingTests();
 int RunCockpitPanelTests();
 
@@ -11371,6 +11372,7 @@ int main() {
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
     gFailures += RunGuiEventsTests();
+    gFailures += RunOmniPadTests();
     gFailures += RunSquadPhrasingTests();
     gFailures += RunCockpitPanelTests();
     TestUpscale();

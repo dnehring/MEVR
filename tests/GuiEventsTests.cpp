@@ -83,11 +83,42 @@ void TestScheduler() {
     CHECK(notches == 3);
 }
 
+// The bypass puzzle's d-pad (research/53 section 6.3): pad directions are never dropped and go alone, one a tick, with no mouse
+// motion before them (a motion puts the puzzle in its mouse mode).
+void TestControls() {
+    CHECK(ge::IsControl(ge::kControlUp) && ge::IsControl(ge::kControlDownRelease) && ge::IsControl(ge::kControlRight));
+    CHECK(!ge::IsControl(ge::kMouseMove) && !ge::IsControl(ge::kLeftDown) && !ge::IsControl(12) && !ge::IsControl(29));
+    ge::Queue q;
+    q.Control(ge::kControlLeft);
+    q.Control(12);  // not a pad direction: ignored
+    q.Control(ge::kControlLeftRelease);
+    CHECK((TakeAll(q) == std::vector<std::uint8_t>{ge::kControlLeft, ge::kControlLeftRelease}));
+    // Full: notches go, the pad's press and release stay.
+    q.Control(ge::kControlRight);
+    q.Wheel(-200);
+    q.Control(ge::kControlRightRelease);
+    std::vector<std::uint8_t> const full = TakeAll(q);
+    CHECK(full.size() == ge::Queue::kCapacity && full.front() == ge::kControlRight && full.back() == ge::kControlRightRelease);
+
+    ge::Scheduler s;
+    std::uint8_t const press[] = {ge::kControlUp, ge::kControlUpRelease};
+    s.Add(press, 2);
+    CHECK((s.Tick() == std::vector<std::uint8_t>{ge::kControlUp}));
+    CHECK((s.Tick() == std::vector<std::uint8_t>{ge::kControlUpRelease}));
+    CHECK(s.Tick().empty());
+    // After a hover's motion the direction waits for the next tick, alone.
+    std::uint8_t const mixed[] = {ge::kMouseMove, ge::kControlLeft};
+    s.Add(mixed, 2);
+    CHECK((s.Tick() == std::vector<std::uint8_t>{ge::kMouseMove}));
+    CHECK((s.Tick() == std::vector<std::uint8_t>{ge::kControlLeft}));
+}
+
 } // namespace
 
 int RunGuiEventsTests() {
     gFailures = 0;
     TestQueue();
     TestScheduler();
+    TestControls();
     return gFailures;
 }

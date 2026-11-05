@@ -617,8 +617,7 @@ void CheckClasses() {
     CheckClass<UBioSFHandler_GalaxyMap>("SFXGame.BioSFHandler_GalaxyMap");
     CheckClass<UBioSFHandler_Shop>("SFXGame.BioSFHandler_Shop");  // game/WorldUi: the shop's vendor
     CheckClass<UBioSFHandler_Loot>("SFXGame.BioSFHandler_Loot");  // game/WorldUi: the loot's container
-    CheckClass<UBioSkillGame_Handler>("SFXGame.BioSkillGame_Handler");  // game/WorldUi: the minigame's placeable
-    CheckClass<UBioVFXTemplate>("SFXGame.BioVFXTemplate");  // game/OmniTool: the game's omni-tool effect
+    CheckClass<UBioSkillGame_Handler>("SFXGame.BioSkillGame_Handler");  // game/WorldUi: the minigame's placeable    CheckClass<UBioVFXTemplate>("SFXGame.BioVFXTemplate");  // game/OmniTool: the game's omni-tool effect
     CheckClass<ABioVisualEffect>("SFXGame.BioVisualEffect");  // game/OmniTool
     CheckClass<UBioSeqEvt_ArtPlaceableUsed>("SFXGame.BioSeqEvt_ArtPlaceableUsed");
     CheckClass<UBioArtPlaceableBehavior>("SFXGame.BioArtPlaceableBehavior");
@@ -707,6 +706,7 @@ void CheckFields() {
     CheckField("Engine.BioSFPanel", "IsVisible", SDK_BOOL(UBioSFPanel, IsVisible));
     CheckField("SFXGame.BioSFHandler_Loot", "m_oLootInventory", SDK_FIELD(UBioSFHandler_Loot, m_oLootInventory));
     CheckField("SFXGame.BioSkillGame_Handler", "m_oDependent", SDK_FIELD(UBioSkillGame_Handler, m_oDependent));
+    CheckField("SFXGame.BioSkillGame_Handler", "m_bGameActive", SDK_BOOL(UBioSkillGame_Handler, m_bGameActive));  // the puzzle played: its d-pad
     CheckField("SFXGame.BioSFHandler_Shop", "m_shop", SDK_FIELD(UBioSFHandler_Shop, m_shop));
     CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
     CheckField("Engine.SequenceEvent", "Originator", SDK_FIELD(USequenceEvent, Originator));

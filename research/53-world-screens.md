@@ -56,7 +56,7 @@ All 35 templates of the GUI library, in its order. "Room" = the world UI below. 
 | DeviceSelection | GUI_SF_Tutorial.Tutorials | console storage | - | n/a on PC | none |
 | Conversation | GUI_SF_Conversation.Conversation | conversations (mode 5) | the dialogue wheel | Halcyon's VR cine; 3D screen (research/52) | done (separately) |
 | BlackScreen | GUI_SF_Utility.BlackScreen | fades | black | fine | none |
-| SkillGame | GUI_SF_SkillGame.PCMiniGame | the bypass minigame on encrypted consoles, crates and doors (mode 10; the level's `BioSkillGame` with the placeable as `oDependent`) | Flash minigame | **wrist** (section 6): projected from the left wrist; in the room at the placeable (`BioSkillGame_Handler.m_oDependent`) without a tracked left controller or with `wrist = none` | done, reached on the Normandy (section 6) and at a real encrypted locker on UNC20 (section 5.1); tapping it: next |
+| SkillGame | GUI_SF_SkillGame.PCMiniGame | the bypass minigame on encrypted consoles, crates and doors (mode 10; the level's `BioSkillGame` with the placeable as `oDependent`) | Flash minigame | **wrist** (section 6): projected from the left wrist; in the room at the placeable (`BioSkillGame_Handler.m_oDependent`) without a tracked left controller or with `wrist = none` | done, reached on the Normandy (section 6) and at a real encrypted locker on UNC20 (section 5.1); played by touch with the omni-tool's d-pad (section 6.3) |
 | IntroText | GUI_SF_Utility.IntroText | the opening text | text | flat | keep |
 | MainMenu | GUI_SF_MainMenu.MainMenu | the title | Flash over its flyby | flat | keep (front end) |
 | **shop** | GUI_SF_Shop.PCShop | a vendor's conversation, `BioSeqAct_OpenShop` (its `m_shop` is a BioShop actor placed at the vendor) | Flash, the item's picture (a render target in the movie) | **room: at counter height in front of the vendor** | done (section 4) |
@@ -242,8 +242,9 @@ projector though".
   game pointer's dot on "Begin manual override", window pixel (1175, 1171), UV (0.50, 0.49) of the whole-window quad (0.52 x 0.53 m),
   the same transform as the screen's pixels. The first placement (11:00:52: 0.32 m away, lifted straight up) hid the fan; the
   first fan (11:09:53) needed an 8x brightened difference image to be seen. Without a tracked left controller: the room (11:02:18).
-- **Next: tapping it.** The right index finger on the wrist screen as a touch: the fingertip's contact with the panel's plane as the
-  game pointer's press (research/42's click, at the touch point), released when it leaves; haptics on both hands at contact.
+- **Tapping it** (done in section 6.2 for its buttons; the puzzle itself is played with the omni-tool's d-pad, section 6.3). The right
+  index finger on the wrist screen as a touch: the fingertip's contact with the panel's plane as the game pointer's press (research/42's
+  click, at the touch point), released when it leaves; haptics on both hands at contact.
 
 ### 6.1 The game's omni-tool, and Half-Life: Alyx's way (2026-11-04)
 
@@ -322,3 +323,60 @@ clicked by touching them with the index fingertip; the laser stays for anything 
   press reached the game: the puzzle started (snapshot 16:56:32: the rings and the timer, the dot under the fingertip). On the
   test rig the rendered right hand sits ~0.1 m below the controller (as the left did, section 6.1), so the drawn finger and the
   touch point don't meet there; in the headset `touchTipM` sets where the fingertip is [verify the value in the headset].
+
+### 6.3 Playing the puzzle: the omni-tool's d-pad (2026-11-05)
+
+The user: "I think the hacking mini game may need some work. Or we are comfortable with using the analog stick/face buttons", then
+"Yes, proceed with touch for the puzzle. We may need a large d-pad asset to control its movement".
+
+- **What the puzzle is.** Read from its own movie (`mevr panel SkillGame movie GUI_SF_SkillGame.PCMiniGame` writes its RawData to
+  `%LOCALAPPDATA%\MEVR\galaxy\SkillGame.gfx`; its ActionScript 2 listed with a small bytecode lister kept locally: the player's game
+  data, never committed) and measured through `mevr panel SkillGame var <name>`: a marker starts outside three turning rings at the
+  bottom (`nCurrentDistanceIndex` 5, `nCurrentPlayerAngle` pi/2) and has to reach their centre (index 0 wins) before the clock runs
+  out (about 14 s at the custom start's difficulty 0). Its key listener: up (38), `DPadUp`, A and X take it a ring in
+  (`MovePlayerRing(-1)`), down (40), `DPadDown` and B a ring out; left (37) and right (39) set its turning speed to +1 / -1 while
+  held and the key's release stops it (left turns it clockwise on screen: from the bottom toward the left). The orange segments are
+  fixed walls (`HitAStaticBlocker` puts the marker back where it was), the red ones turn and send it back to the start (measured:
+  index 4 to 5 and the angle back to pi/2). The mouse plays it too: the left button a ring in, the right one out, and the handler
+  (`BioSkillGame_PCHandler.Update`, `ResetMousePos` every tick) turns the cursor's offset into a turning speed
+  (`MouseMovePlayerDelta`, `MAX_MOUSE_DIFF` 4, `MOUSE_SPEED_MOD` 0.5); any mouse motion (`onMouseMove`) puts it in its mouse mode
+  (`bUsingMouse`), where that speed isn't reset each tick.
+- **The game's d-pad events drive it exactly.** `mevr guikey 9 w ... 31` (`BIOGUI_EVENT_CONTROL_LEFT`, then its release) through
+  `SFXGameModeBase.GuiKey` (here `SFXGameModeGUI`) turned the marker 0.37 rad in 8 ticks, `10 ... 32` (right) 0.51 rad the other
+  way, `11 w 33` (up) took it from index 5 to 4 where no wall stood above it; straight above the start an orange wall kept it at 5.
+- **The pointer on the puzzle can't play it.** With the controller's ray anywhere on the window (even outside the puzzle's frame,
+  at (1934, 2376) px) the puzzle went into its mouse mode and the marker spun at 2.9 rad/s without end (-0.47 to -18.2 rad in 7 s:
+  the handler re-centres the cursor every tick and our `GetCursorPos` answer stays off-centre); a fingertip tap on its centre didn't
+  take it a ring in. On the wrist, where the right hand naturally points, that loses the puzzle.
+- **So, while it's played** (its handler's `BioSkillGame_Handler.m_bGameActive`: false on the opening screen, true from the manual
+  override on; the mod sends it as `world_ui::State::puzzle`, a byte that was padding, so the State's size is unchanged): the host
+  stops noting the screen to the game pointer, forgets it at once on the first frame of play (the quad, the cursor answer, the events
+  not yet taken; five moves of the last 0.1 s otherwise reached it), and until a second after the last frame of play notes no quad
+  of the game's at all and doesn't answer `GetCursorPos` (`game_pointer::HoldOffForPuzzle`): in one run a hitch let the mod's state go
+  stale for a frame, Halcyon's flat panel came back for it, the live controller's ray landed on it, and the handler, which reads the
+  cursor itself, turned the marker 0.37 rad. The mod's `game/GuiCursor` sends the puzzle nothing but pad events
+  (`droppedForPuzzle` in its status). The opening screen's buttons keep the pointer and touch (section 6.2). Tried and dropped: the
+  game's own switch to the pad (`BioSkillGame_PCHandler.HandleButtonRefresh(true)`, which clears `bUsingMouse`) at the start. The
+  movie applies the mouse moves already queued after it, and in its pad mode the turning speed isn't reset each tick, so the last
+  mouse speed stayed and turned the marker 1.3 rad. Left in its mouse mode with no more mouse input, the speed is reset to the
+  cursor's (now nil) offset every tick: one small step of 0.09 rad at the start, then still.
+- **The d-pad** (host `plugin/OmniPad`, rules `core/vr/OmniPad`, unit-tested in `tests/OmniPadTests.cpp`; `assets/menu/omnipad.rml`
+  and `.rcss`, RmlUi in a context of its own as the rail is; `[OmniTool] pad = 1`, `padSizeM` 0.17): while the puzzle is played a
+  0.17 m square stands 2 cm to the right of its screen in the screen's plane (toward the right hand; each arm about 5.7 cm across),
+  four arms around a hub, in the puzzle's own colours (its frame's slate blue and navy, its cyan, its ring's orange; the arm held in
+  the game's orange; "In" and "Out" on up and down). The right fingertip (or a ray and its trigger; not the hand the screen is
+  projected from) pressing it holds the arm whose 45-degree sector around the centre it's in, outside the hub (0.13 of the size),
+  and the game hears that arm's `CONTROL_*` press, then its release when the finger lets go; sliding to another arm lets the first
+  go and presses the next, as a thumb on a pad does; a hitch that drops the screen for up to 0.3 s keeps the pad and the arm held.
+  The events go through the pointer's queue to the mod (HostServices v30's
+  `takeGuiEvents`), never dropped and sent alone, one a tick, with no mouse motion before them (`core/vr/GuiEvents`). Its trigger
+  is kept from the game while pointed at. A haptic tick on each press. Logs `omni-tool pad:`, `world ui: the bypass puzzle started`;
+  snapshot `"omniPad"` and layer `omnipad`; offline look `mevr-menu-preview`'s `pad-idle.png`, `pad-hover.png`, `pad-held-*.png`.
+- **Measured** (fake headset, UNC20, the wrist-look recording's head and left hand with a right fingertip that comes along the pad's
+  normal, presses 1 cm through and holds; `tools/console.ps1` reading the movie's variables about once a second): right held 3.3 s
+  turned the marker steadily from pi/2 to -3.06 rad (snapshot 12:05:36: the right arm orange, the marker gone round to the top, the
+  clock at 10.70, no pointer dot); left held 1.1 s turned it about +1.3 rad; presses on up took it from index 5 to 4 where no wall
+  stood above (twice in one run, a red block sending it back to the start each time) and left it at 5 under a wall (another run). The
+  pointer's last moves on the opening screen still leave one step of 0.09 rad at the start (`bUsingMouse` true until the first left
+  or right press), then the marker stays still. [verify] with a person: reaching and holding the arms with the left wrist up, sliding
+  between them, the size, whether In/Out and the arrows read as the puzzle's moves.

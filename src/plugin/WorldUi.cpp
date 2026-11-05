@@ -89,6 +89,7 @@ std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, 
     if (gPlaced.valid && gPlaced.opening == state->opening && gPlaced.width == windowWidth && gPlaced.height == windowHeight &&
         now - gPlaced.lastMs < 1000) {
         gPlaced.shown.backdrop = std::clamp(state->backdrop, 0.0f, 1.0f);
+        gPlaced.shown.puzzle = state->puzzle != 0;
         gPlaced.lastMs = now;
         if (gPlaced.shown.onWrist) {
             float const dt = gPlaced.lastCounter.QuadPart != 0 ? static_cast<float>(Seconds(counter) - Seconds(gPlaced.lastCounter)) : 0.0f;
@@ -145,6 +146,7 @@ std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, 
         shown.backdrop = std::clamp(state->backdrop, 0.0f, 1.0f);
         shown.screen = static_cast<wu::Screen>(state->screen);
         shown.onWrist = true;
+        shown.puzzle = state->puzzle != 0;
         Project(shown, *panel, *wrist, 0.0f, state->beam != 0);
         gPlaced = {true, state->opening, windowWidth, windowHeight, now, shown};
         gPlaced.openedMs = now;
@@ -179,6 +181,7 @@ std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, 
     shown.part = part;
     shown.backdrop = std::clamp(state->backdrop, 0.0f, 1.0f);
     shown.screen = static_cast<wu::Screen>(state->screen);
+    shown.puzzle = state->puzzle != 0;
     gPlaced = {true, state->opening, windowWidth, windowHeight, now, shown};
     log::Info("world ui: the game's '{}' screen stands in the room: {:.2f} x {:.2f} m at ({:.2f}, {:.2f}, {:.2f}) m, {:.2f} m from the eyes{}; "
               "window UV ({:.3f}, {:.3f})..({:.3f}, {:.3f}) of {}x{}, backdrop {:.2f}",

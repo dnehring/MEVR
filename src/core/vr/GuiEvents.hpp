@@ -21,6 +21,19 @@ inline constexpr std::uint8_t kWheelUp = 28;        // BIOGUI_EVENT_KEY_WHEEL_UP
 inline constexpr std::uint8_t kWheelDown = 29;      // BIOGUI_EVENT_KEY_WHEEL_DOWN
 inline constexpr std::uint8_t kLeftDown = 50;       // BIOGUI_EVENT_MOUSE_BUTTON_LEFT
 inline constexpr std::uint8_t kLeftUp = 52;         // BIOGUI_EVENT_MOUSE_BUTTON_LEFT_RELEASE
+// The pad's directions (the bypass puzzle's d-pad, research/53 section 6.3): pressed 8..11, let go 30..33.
+inline constexpr std::uint8_t kControlDown = 8;     // BIOGUI_EVENT_CONTROL_DOWN
+inline constexpr std::uint8_t kControlLeft = 9;     // BIOGUI_EVENT_CONTROL_LEFT
+inline constexpr std::uint8_t kControlRight = 10;   // BIOGUI_EVENT_CONTROL_RIGHT
+inline constexpr std::uint8_t kControlUp = 11;      // BIOGUI_EVENT_CONTROL_UP
+inline constexpr std::uint8_t kControlDownRelease = 30;
+inline constexpr std::uint8_t kControlLeftRelease = 31;
+inline constexpr std::uint8_t kControlRightRelease = 32;
+inline constexpr std::uint8_t kControlUpRelease = 33;
+// A pad direction's event (pressed or let go): never dropped, and sent without a mouse motion before it.
+inline constexpr bool IsControl(std::uint8_t event) {
+    return (event >= kControlDown && event <= kControlUp) || (event >= kControlDownRelease && event <= kControlUpRelease);
+}
 
 // The host's side: what the pointer did, in order. Moves are coalesced (one in a row); at most kCapacity wait (the oldest
 // motion or wheel notches go first when full; a button is never dropped).
@@ -30,6 +43,7 @@ public:
     void Move();
     void Button(bool down);
     void Wheel(int notches);  // + away from the player: scroll up
+    void Control(std::uint8_t event);  // a pad direction pressed or let go (IsControl; others are ignored)
     // Up to `capacity` events into `out`, oldest first; the number taken.
     std::uint32_t Take(std::uint8_t* out, std::uint32_t capacity);
     std::size_t Size() const;
@@ -42,7 +56,8 @@ private:
 };
 
 // The mod's side: this tick's GuiKey calls from what is waiting. A run of moves becomes one; a button or a wheel notch goes one
-// per tick, with a move just before it so the screen reads the place the event is for.
+// per tick, with a move just before it so the screen reads the place the event is for; a pad direction goes alone, one per tick
+// (a mouse motion would put the bypass puzzle in its mouse mode).
 class Scheduler {
 public:
     void Add(std::uint8_t const* events, std::uint32_t count);

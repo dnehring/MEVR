@@ -6,6 +6,7 @@
 #include "core/vr/GuiEvents.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/Player.hpp"
+#include "game/WorldUi.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Params.hpp"
@@ -32,6 +33,7 @@ vr::gui_events::Scheduler gScheduler;  // the game pointer's events (HostService
 std::uint64_t gTaken = 0;
 std::uint64_t gSent = 0;
 std::uint64_t gFailed = 0;
+std::uint64_t gDroppedForPuzzle = 0;  // the pointer's events while the bypass puzzle was played
 bool gLoggedFirst = false;
 bool gLoggedFailure = false;
 
@@ -123,7 +125,13 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
         gScheduler.Add(events, n);
         gTaken += n;
     }
+    bool const puzzle = world_ui::PuzzlePlaying();
     for (std::uint8_t const event : gScheduler.Tick()) {
+        if (puzzle && !vr::gui_events::IsControl(event)) {
+            // The bypass puzzle takes only the d-pad: a mouse motion turns its marker without end (research/53 section 6.3).
+            ++gDroppedForPuzzle;
+            continue;
+        }
         std::string why;
         if (game_menu_request::GuiKey(event, why)) {
             ++gSent;
@@ -154,8 +162,8 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
 }
 
 std::string StatusJson() {
-    return std::format("{{\"taken\": {}, \"sent\": {}, \"failed\": {}, \"waiting\": {}}}", gTaken, gSent, gFailed,
-        gScheduler.Waiting());
+    return std::format("{{\"taken\": {}, \"sent\": {}, \"failed\": {}, \"waiting\": {}, \"droppedForPuzzle\": {}}}", gTaken, gSent, gFailed,
+        gScheduler.Waiting(), gDroppedForPuzzle);
 }
 
 } // namespace mevr::game::gui_cursor

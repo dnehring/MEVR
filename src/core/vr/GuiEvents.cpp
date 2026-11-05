@@ -12,12 +12,18 @@ bool IsButton(std::uint8_t event) {
     return event == kLeftDown || event == kLeftUp;
 }
 
+// Never dropped from a full queue: a down without its up holds the screen's button, a pad direction without its release keeps the
+// puzzle's marker turning.
+bool Kept(std::uint8_t event) {
+    return IsButton(event) || IsControl(event);
+}
+
 } // namespace
 
 void Queue::Push(std::uint8_t event) {
     if (events_.size() >= kCapacity) {
         // Full: drop the oldest move or wheel notch; buttons stay (a down without its up would hold the screen's button).
-        auto const droppable = std::find_if(events_.begin(), events_.end(), [](std::uint8_t e) { return !IsButton(e); });
+        auto const droppable = std::find_if(events_.begin(), events_.end(), [](std::uint8_t e) { return !Kept(e); });
         if (droppable == events_.end()) {
             return;
         }
@@ -44,6 +50,14 @@ void Queue::Wheel(int notches) {
     for (int i = 0; i < std::abs(notches) && i < static_cast<int>(kCapacity); ++i) {
         Push(notches > 0 ? kWheelUp : kWheelDown);
     }
+}
+
+void Queue::Control(std::uint8_t event) {
+    if (!IsControl(event)) {
+        return;
+    }
+    std::lock_guard lock(mutex_);
+    Push(event);
 }
 
 std::uint32_t Queue::Take(std::uint8_t* out, std::uint32_t capacity) {
@@ -83,6 +97,13 @@ std::vector<std::uint8_t> Scheduler::Tick() {
         out.push_back(kMouseMove);
     }
     if (!pending_.empty()) {
+        if (IsControl(pending_.front())) {
+            if (!moved) {
+                out.push_back(pending_.front());  // a pad direction goes alone (no mouse motion with it)
+                pending_.pop_front();
+            }
+            return out;  // after a motion: next tick
+        }
         if (!moved) {
             out.push_back(kMouseMove);  // the place the button or notch is for
         }

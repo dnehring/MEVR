@@ -470,7 +470,19 @@ switching frameworks.
   `bPlayersOnly` ticks only the player's actors); arm IK runs while a wrist screen is up (`view_anchor::Hold`, the on-foot frame);
   the screen and its now orange fan project from the display's rendered place (`State::emitter`, grew again), `wristAboveM` 0.10.
   Half-Life: Alyx's way is the model for working it by hand. `mevr skillgame start [type] [difficulty] [n]` opens the minigame on any placeable without a save
-  (the level's `BioSkillGame.InitializeSkillGame`); `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it. Next: tapping it.
+  (the level's `BioSkillGame.InitializeSkillGame`); `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it. **The puzzle is played with a touch d-pad**
+  (research/53 section 6.3; the user, 2026-11-05: "We may need a large d-pad asset"): the game's own puzzle (`GUI_SF_SkillGame.PCMiniGame`:
+  a marker from outside three turning rings to their centre; up/A/X a ring in, down/B out, left/right turn it while held; red blocks
+  send it back to the start, orange ones are walls) takes the game's d-pad GUI events (`CONTROL_UP` 11 ... and their releases 30-33
+  through `SFXGameModeBase.GuiKey`), and any mouse motion on it turns the marker without end (a ray anywhere on the window spun it
+  2.9 rad/s). So while the handler's `m_bGameActive` is set (the manual override; `world_ui::State::puzzle`, a former pad byte, same
+  size) the host keeps the game pointer off every quad of the game's and doesn't answer `GetCursorPos` until a second after the last
+  frame of play (`game_pointer::HoldOffForPuzzle`; a hitch once brought Halcyon's flat panel back for a frame), the mod sends it only
+  pad events (`game/GuiCursor`), and a 0.17 m d-pad stands to the right of the screen (host `plugin/OmniPad`, rules `core/vr/OmniPad`,
+  `assets/menu/omnipad.rml`/`.rcss`, the puzzle's own colours): the right fingertip or a ray and trigger holds an arm (the 45-degree
+  sector around the centre), sliding to the next arm changes direction; `[OmniTool] pad`, `padSizeM`. Checked on the fake headset:
+  replayed fingertip presses turned the marker (right held 3.3 s: pi/2 to -3.06 rad) and moved it a ring in. Logs `omni-tool pad:`, `world ui: the bypass puzzle started`;
+  snapshot `"omniPad"`, layer `omnipad`; offline `mevr-menu-preview`'s `pad-*.png`.
   The skill `game-screen-to-hologram` is the recipe for the next screens.
 - LE1 omni-tool menu ([research/57](research/57-omni-tool-menu.md), 2026-11-04, the user: "the entire menu system available via
   omni-tool", "a menu on the left side to allow selecting all of the different menus"): **every personal screen is projected from

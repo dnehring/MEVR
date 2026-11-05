@@ -759,6 +759,61 @@ int main(int argc, char** argv) {
         railShot("rail-equipment");
         railUi.Shutdown();
     }
+
+    // The bypass puzzle's d-pad (research/53 section 6.3): omnipad.rml in a context of its own as the host makes it
+    // (plugin/OmniPad). pad-idle.png; pad-hover.png: a fingertip over the right arm; pad-held-up.png and pad-held-left.png: the
+    // arm the game has pressed.
+    {
+        constexpr int ps = 480;
+        mevr::menu::Ui padUi;
+        mevr::menu::UiSetup padSetup = setup;
+        padSetup.document = L"omnipad.rml";
+        padSetup.width = ps;
+        padSetup.height = ps;
+        Rml::String held;
+        Rml::DataModelHandle handle;
+        Target padTarget;
+        bool ok = padUi.Init(padSetup) && MakeTarget(device.Get(), ps, ps, padTarget);
+        if (ok) {
+            Rml::DataModelConstructor ctor = padUi.Context()->CreateDataModel("omnipad");
+            ok = static_cast<bool>(ctor);
+            if (ok) {
+                ctor.Bind("held", &held);
+                handle = ctor.GetModelHandle();
+                ok = padUi.LoadDocument();
+            }
+        }
+        if (!ok) {
+            std::fprintf(stderr, "the d-pad's document didn't load\n");
+            return 1;
+        }
+        std::vector<std::uint32_t> const dark(static_cast<std::size_t>(ps) * ps, 0xFF1A1612u);
+        auto padShot = [&](std::string const& name) {
+            for (int i = 0; i < 20; ++i) {
+                gClock += 1.0 / 72.0;
+                padUi.Render(context.Get(), padTarget.rtv.Get());
+            }
+            std::vector<std::uint32_t> const pixels = ReadBack(context.Get(), padTarget, ps, ps);
+            std::string error;
+            if (!mevr::png::Write(output / (name + ".png"), ps, ps, Over(pixels, dark).data(), &error)) {
+                std::fprintf(stderr, "%s: %s\n", name.c_str(), error.c_str());
+            } else {
+                std::printf("wrote %s\n", (output / (name + ".png")).string().c_str());
+            }
+        };
+        padUi.Context()->ProcessMouseMove(-50, -50, 0);
+        padShot("pad-idle");
+        padUi.Context()->ProcessMouseMove(ps - 80, ps / 2, 0);
+        padShot("pad-hover");
+        padUi.Context()->ProcessMouseMove(-50, -50, 0);
+        held = "up";
+        handle.DirtyVariable("held");
+        padShot("pad-held-up");
+        held = "left";
+        handle.DirtyVariable("held");
+        padShot("pad-held-left");
+        padUi.Shutdown();
+    }
     ui.Shutdown();
     return 0;
 }

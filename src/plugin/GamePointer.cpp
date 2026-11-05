@@ -121,13 +121,18 @@ std::atomic<std::uint64_t> gCursorUntilMs{0};
 std::atomic<std::uint64_t> gCursorAnswers{0};
 std::atomic<std::uint64_t> gCursorNudges{0};
 std::atomic<bool> gLoggedNudgeForeground{false};
+// The bypass puzzle is played (HoldOffForPuzzle, every frame of it): until then no quad of the game's is noted and GetCursorPos
+// isn't answered, so a frame without the world UI's screen (a hitch: Halcyon's flat panel for one frame) can't steer it either.
+constexpr std::uint64_t kPuzzleHoldMs = 1000;
+std::atomic<std::uint64_t> gPuzzleUntilMs{0};
 
 std::uint64_t Pack(POINT p) {
     return static_cast<std::uint64_t>(static_cast<std::uint32_t>(p.x)) | (static_cast<std::uint64_t>(static_cast<std::uint32_t>(p.y)) << 32);
 }
 
 BOOL WINAPI GetCursorPosHook(LPPOINT point) {
-    if (point != nullptr && GetTickCount64() < gCursorUntilMs.load(std::memory_order_acquire)) {
+    std::uint64_t const now = GetTickCount64();
+    if (point != nullptr && now < gCursorUntilMs.load(std::memory_order_acquire) && now >= gPuzzleUntilMs.load(std::memory_order_acquire)) {
         std::uint64_t const packed = gCursorPoint.load(std::memory_order_relaxed);
         point->x = static_cast<LONG>(static_cast<std::int32_t>(packed & 0xFFFFFFFFu));
         point->y = static_cast<LONG>(static_cast<std::int32_t>(packed >> 32));
@@ -581,6 +586,11 @@ std::uint32_t TakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     return gGuiEvents.Take(events, capacity);
 }
 
+void QueueGuiControl(std::uint8_t event) {
+    gGuiEvents.Control(event);
+    gGuiEventsQueued.fetch_add(1, std::memory_order_relaxed);
+}
+
 void InstallCursorHook(mevr::hook::Context& init) {
     HMODULE const user32 = GetModuleHandleW(L"user32.dll");
     auto* const target = user32 != nullptr ? reinterpret_cast<tGetCursorPos*>(GetProcAddress(user32, "GetCursorPos")) : nullptr;
@@ -764,6 +774,9 @@ std::string StatusJson() {
 // The seam's record (MevrBridge::OnFlatQuad below): the quad brought into the app space.
 void NoteFlatQuad(MELEVR::MevrBridge::PanelKind kind, XrPosef const& space, XrPosef const& local, float width, float height,
     bool headLocked) {
+    if (GetTickCount64() < gPuzzleUntilMs.load(std::memory_order_acquire)) {
+        return;  // the bypass puzzle is played: no quad of the game's is a pointer target (HoldOffForPuzzle)
+    }
     gQuad = menu_pointer::InTracking(space, local, width, height);
     gTouchArea[0] = gTouchArea[1] = 0.0f;  // the whole quad unless the caller says (NoteGameUiQuad)
     gTouchArea[2] = gTouchArea[3] = 1.0f;
@@ -771,6 +784,20 @@ void NoteFlatQuad(MELEVR::MevrBridge::PanelKind kind, XrPosef const& space, XrPo
     gQuadHeadLocked = headLocked;
     gKind = kind;
     gQuadMs = GetTickCount64();
+}
+
+void ForgetGameUiQuad() {
+    gQuadMs = 0;  // gone at once, not after kQuadFreshMs (the next Step releases what it held)
+    gCursorUntilMs.store(0, std::memory_order_release);  // GetCursorPos answers the real cursor again
+    gGuiEvents.Clear();  // motions and clicks not yet taken: never sent to the puzzle
+}
+
+void HoldOffForPuzzle() {
+    std::uint64_t const now = GetTickCount64();
+    if (now >= gPuzzleUntilMs.load(std::memory_order_acquire)) {
+        ForgetGameUiQuad();  // the puzzle's first frame: its last moves would put it in its mouse mode
+    }
+    gPuzzleUntilMs.store(now + kPuzzleHoldMs, std::memory_order_release);
 }
 
 void NoteGameUiQuad(XrPosef const& pose, float width, float height, MELEVR::MevrBridge::PanelKind kind, float const* touchArea,

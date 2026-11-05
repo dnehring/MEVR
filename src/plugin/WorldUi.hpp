@@ -26,6 +26,7 @@ struct Shown {
     float backdrop = 0.0f;
     vr::world_ui::Screen screen = vr::world_ui::Screen::None;
     bool onWrist = false;                     // projected from the wrist
+    bool puzzle = false;                      // the bypass puzzle is being played (State::puzzle): no game pointer on it, the d-pad
     std::optional<vr::world_ui::Beam> beam;   // its fan of light, when shown
 };
 

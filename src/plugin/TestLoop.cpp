@@ -11,6 +11,7 @@
 #include "plugin/GamePointer.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
+#include "plugin/OmniPad.hpp"
 #endif
 #include "plugin/MetricStereo.hpp"
 #include "plugin/CineScreen.hpp"
@@ -810,7 +811,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
         "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n"
-        "  \"spectator\": {},\n  \"figure\": {},\n  \"mod\": {},\n"
+        "  \"spectator\": {},\n  \"figure\": {},\n  \"omniPad\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
@@ -824,8 +825,13 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
 #else
         std::string("null"),
 #endif
-        game_pointer::StatusJson(), galaxy_hologram::StatusJson(), spectator::StatusJson(), ui_world_figure::StatusJson(), mod,
-        LayersJson(layers));
+        game_pointer::StatusJson(), galaxy_hologram::StatusJson(), spectator::StatusJson(), ui_world_figure::StatusJson(),
+#if defined(MEVR_WITH_MAIN_MENU)
+        omni_pad::StatusJson(),
+#else
+        std::string("null"),
+#endif
+        mod, LayersJson(layers));
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);

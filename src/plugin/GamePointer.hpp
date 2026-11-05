@@ -53,12 +53,22 @@ void InstallCursorHook(mevr::hook::Context& init);
 // HostServices v30: the GUI events the pointer queued for the game's menus (core/vr/GuiEvents), up to `capacity`, oldest first;
 // the number taken. Calling it tells the pointer the mod sends them (else it gives the game real input). Any thread.
 std::uint32_t TakeGuiEvents(std::uint8_t* events, std::uint32_t capacity);
+// A pad direction pressed or let go (vr::gui_events::IsControl: the bypass puzzle's d-pad, plugin/OmniPad, research/53 section
+// 6.3), queued for the mod with the pointer's own GUI events and sent through GuiKey on the game thread. Any thread.
+void QueueGuiControl(std::uint8_t event);
 
 // The game's UI on a quad of ours (app space; the whole UI frame edge to edge, as the window's client area), pointed at this
 // frame: the galaxy map's travel question over the hologram's table (research/51 section 8). Present thread, before Step.
 // `touchArea`: the part of the quad a fingertip can touch (quad UV, u0 v0 u1 v1): the visible crop of a world UI screen.
 // `projectingHand`: the hand a wrist screen is projected from (0 left), whose fingertip doesn't touch it (it sits 10 cm under the
 // screen's edge and pressed and scrolled it in a replay, research/57 section 6); -1 none.
+// The world UI's screen stops being a pointer target at once (the bypass puzzle began: research/53 section 6.3): the quad is
+// forgotten, GetCursorPos answers the real cursor again and the GUI events not yet taken are dropped. Present thread, before Step.
+void ForgetGameUiQuad();
+// Every frame the bypass puzzle is played (research/53 section 6.3): its first forgets the quad (ForgetGameUiQuad), and for a
+// second after the last no quad of the game's is a pointer target (the world UI's or Halcyon's flat panel, which a hitch can bring
+// back for a frame) and GetCursorPos isn't answered: any cursor off its centre turns the puzzle's marker. Present thread.
+void HoldOffForPuzzle();
 void NoteGameUiQuad(XrPosef const& pose, float width, float height,
     MELEVR::MevrBridge::PanelKind kind = MELEVR::MevrBridge::PanelKind::GalaxyMap, float const* touchArea = nullptr,
     int projectingHand = -1);

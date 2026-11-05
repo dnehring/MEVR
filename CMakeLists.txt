@@ -617,6 +617,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/WorldUi.hpp
     src/core/vr/OmniRail.cpp
     src/core/vr/OmniRail.hpp
+    src/core/vr/OmniPad.cpp
+    src/core/vr/OmniPad.hpp
     src/core/gfx/Raster.cpp
     src/core/gfx/Raster.hpp
     src/core/gfx/Swf.cpp
@@ -757,7 +759,7 @@ function(mevr_add_plugin game)
         if (MEVR_MAIN_MENU)
             # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
             set(with_main_menu ON)
-            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
+            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/OmniPad.cpp src/plugin/OmniPad.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
                 src/plugin/MainMenuSettings.cpp
                 src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/plugin/ReportRequest.cpp
                 src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
@@ -890,6 +892,7 @@ if (MEVR_BUILD_TESTS)
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
         tests/GuiEventsTests.cpp
+        tests/OmniPadTests.cpp
         src/core/vr/GuiEvents.cpp
         tests/SquadPhrasings.cpp
         tests/CockpitPanelTests.cpp
@@ -957,6 +960,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/GalaxyMap.cpp
         src/core/vr/WorldUi.cpp
         src/core/vr/OmniRail.cpp
+        src/core/vr/OmniPad.cpp
         src/core/gfx/Raster.cpp
         src/core/gfx/Swf.cpp
         src/core/gfx/SwfFont.cpp

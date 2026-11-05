@@ -47,6 +47,7 @@
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
+#include "plugin/OmniPad.hpp"
 #include "plugin/OmniToolRail.hpp"
 #endif
 #include "plugin/MevrMenu.hpp"
@@ -1821,9 +1822,15 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                         std::max<int32_t>(1, static_cast<int32_t>((worldShown->part.v1 - worldShown->part.v0) * sh))}};
                 gPanelQuad.pose = worldShown->panel.pose;
                 gPanelQuad.size = {worldShown->panel.widthM, worldShown->panel.heightM};
-                float const touchArea[4] = {worldShown->part.u0, worldShown->part.v0, worldShown->part.u1, worldShown->part.v1};
-                mevr::host::game_pointer::NoteGameUiQuad(worldShown->whole.pose, worldShown->whole.widthM, worldShown->whole.heightM,
-                    MELEVR::MevrBridge::PanelKind::GameMenu, touchArea, worldShown->onWrist ? 0 : -1);
+                // Not while the bypass puzzle is played: any mouse motion on its screen turns its marker without end (a ray
+                // anywhere on the window spun it, research/53 section 6.3); the omni-tool's d-pad plays it (plugin/OmniPad).
+                if (!worldShown->puzzle) {
+                    float const touchArea[4] = {worldShown->part.u0, worldShown->part.v0, worldShown->part.u1, worldShown->part.v1};
+                    mevr::host::game_pointer::NoteGameUiQuad(worldShown->whole.pose, worldShown->whole.widthM, worldShown->whole.heightM,
+                        MELEVR::MevrBridge::PanelKind::GameMenu, touchArea, worldShown->onWrist ? 0 : -1);
+                } else {
+                    mevr::host::game_pointer::HoldOffForPuzzle();  // its first frame forgets the quad at once
+                }
             }
             if (galaxyUi) {
                 float const uiWidth = mevr::host::galaxy_hologram::UiPanelWidthM(kGalaxyUiWidthM);
@@ -2375,6 +2382,19 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         rail.gameMode = gLastGameMode;
         rail.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();
         if (XrCompositionLayerQuad const* layer = mevr::host::omni_rail::Layer(rail); layer != nullptr && count < capacity) {
+            layersOut[count++] = layer;
+        }
+    }
+    // ---- The bypass puzzle's d-pad (plugin/OmniPad, research/53 section 6.3): to the right of its screen while it's played ----
+    {
+        mevr::host::omni_pad::Frame padFrame;
+        padFrame.session = session;
+        padFrame.appSpace = static_cast<XrSpace>(frame.appSpace);
+        padFrame.device = device.Get();
+        padFrame.context = context;
+        padFrame.screen = worldShown;
+        padFrame.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();
+        if (XrCompositionLayerQuad const* layer = mevr::host::omni_pad::Layer(padFrame); layer != nullptr && count < capacity) {
             layersOut[count++] = layer;
         }
     }

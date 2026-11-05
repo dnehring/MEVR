@@ -27,6 +27,9 @@ void Tick(Link const& link);
 // A screen is up and projected from the wrist ([WorldUi] wrist): arm IK drives Shepard's arms then as on foot (the omni-tool
 // on the left forearm meets the controller that projects it), in the held on-foot frame (view_anchor::Hold). Game thread.
 bool WristScreenUp();
+// The bypass puzzle is being played (its handler's m_bGameActive, read each tick): only the d-pad's events reach it then
+// (game/GuiCursor drops the pointer's mouse events: any motion turns its marker without end, research/53 section 6.3). Game thread.
+bool PuzzlePlaying();
 // Snapshot JSON ("worldUi").
 std::string StatusJson();
 // Mod shutdown: the host forgets the screen.

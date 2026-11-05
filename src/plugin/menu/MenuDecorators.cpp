@@ -660,6 +660,17 @@ std::vector<Icon> const& Icons() {
             {Rounded(2, 7, 20, 10, 5), Line({{7, 10}, {7, 14}}), Line({{5, 12}, {9, 12}}), Circle(16, 11, 1), Circle(18, 13, 1)}});
         v.push_back({"check", 24.0f, 2.0f, {Line({{5, 12}, {9, 16}, {19, 6}})}});
         v.push_back({"play", 24.0f, 0.0f, {Filled({{7, 4.5f}, {19, 12}, {7, 19.5f}})}});
+        // The bypass puzzle's d-pad (assets/menu/omnipad.rml): its arms' arrows.
+        v.push_back({"pad-up", 24.0f, 0.0f, {Filled({{12, 4.5f}, {20.5f, 16}, {3.5f, 16}})}});
+        v.push_back({"pad-down", 24.0f, 0.0f, {Filled({{3.5f, 8}, {20.5f, 8}, {12, 19.5f}})}});
+        v.push_back({"pad-left", 24.0f, 0.0f, {Filled({{4.5f, 12}, {16, 3.5f}, {16, 20.5f}})}});
+        v.push_back({"pad-right", 24.0f, 0.0f, {Filled({{19.5f, 12}, {8, 3.5f}, {8, 20.5f}})}});
+        v.push_back({"pad-ring", 24.0f, 0.22f, {Circle(12, 12, 11.6f), Circle(12, 12, 10.9f, 0.45f)}});
+        {
+            Shape dot = Circle(12, 12, 3.2f);
+            dot.fill = true;
+            v.push_back({"pad-hub", 24.0f, 1.4f, {Circle(12, 12, 8.5f), dot}});
+        }
         {
             Shape arc = Arc(12, 12, 8, 0, 315, 32);
             v.push_back({"turn", 24.0f, 1.8f, {arc, Line({{20, 4}, {20, 8}, {16, 8}})}});

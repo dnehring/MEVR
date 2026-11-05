@@ -49,6 +49,9 @@ ue3::ClassRef gActorClass{"Engine.Actor"};
 // The bypass minigame's handler names the placeable it's played on.
 ue3::ClassRef gSkillGameHandlerClass{"SFXGame.BioSkillGame_Handler"};
 ue3::FieldRef gSkillGameDependent{"SFXGame.BioSkillGame_Handler", "m_oDependent"};
+// Its puzzle is being played (set by the manual override; research/53 section 6.3).
+ue3::FieldRef gSkillGameActive{"SFXGame.BioSkillGame_Handler", "m_bGameActive"};
+bool gPuzzleLogged = false;
 // What A would use (research/40's BioPlayerSelection): the thing a screen opened by a use belongs to.
 ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection"};
 ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget"};
@@ -320,6 +323,7 @@ void SetStatus(std::string json) {
 
 void Down(Link const& link, char const* why) {
     ui_world_figure::Off(why);
+    gPuzzleLogged = false;
     if (gS.published && link.setState != nullptr) {
         link.setState(nullptr);
         log::Info("world ui: {} down ({})", gS.screen.empty() ? "the screen" : gS.screen, why);
@@ -505,6 +509,15 @@ void Tick(Link const& link) {
     state.wristWidthM = wu::WristWidth(settings, screen);
     state.wristAboveM = settings.wristAboveM;
     state.wristTowardM = settings.wristTowardM;
+    // The bypass puzzle being played: the host keeps the game pointer off its screen and shows the d-pad (research/53 section 6.3).
+    bool const puzzle = screen == wu::Screen::SkillGame && base->handler != nullptr && ue3::IsA(base->handler, gSkillGameHandlerClass) &&
+                        ue3::runtime::IsAlive(base->handler) && gSkillGameActive.ReadBool(base->handler).value_or(false);
+    state.puzzle = puzzle ? 1 : 0;
+    if (puzzle != gPuzzleLogged) {
+        gPuzzleLogged = puzzle;
+        log::Info("world ui: the bypass puzzle {}", puzzle ? "started (m_bGameActive): the omni-tool's d-pad plays it, the pointer stays off it"
+                                                          : "isn't being played");
+    }
     // The projector: the omni-tool's display as Shepard's arm shows it (last tick's pose), in the room's frame on foot.
     if (auto const display = onWrist ? omni_tool::DisplayWorld() : std::nullopt; display && gHold.footFrame) {
         XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{display->x, display->y, display->z});
@@ -560,6 +573,10 @@ void Tick(Link const& link) {
 
 bool WristScreenUp() {
     return gWristUp;
+}
+
+bool PuzzlePlaying() {
+    return gPuzzleLogged;  // set each tick from the handler while the minigame's screen is up, cleared when it goes down
 }
 
 std::string StatusJson() {

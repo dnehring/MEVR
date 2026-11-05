@@ -31,6 +31,7 @@
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
+#include "plugin/OmniPad.hpp"
 #include "plugin/OmniToolRail.hpp"
 #endif
 #include "plugin/MevrMenu.hpp"
@@ -665,8 +666,8 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         pad.bRightTrigger = 0;
     }
 #if defined(MEVR_WITH_MAIN_MENU)
-    if (mevr::host::omni_rail::OwnsTriggers()) {
-        pad.bLeftTrigger = 0;  // the omni-tool's rail is pointed at: the trigger is its click there
+    if (mevr::host::omni_rail::OwnsTriggers() || mevr::host::omni_pad::OwnsTriggers()) {
+        pad.bLeftTrigger = 0;  // the omni-tool's rail or the puzzle's d-pad is pointed at: the trigger is its click there
         pad.bRightTrigger = 0;
     }
 #endif
