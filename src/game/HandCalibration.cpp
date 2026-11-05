@@ -601,11 +601,17 @@ constexpr char const* kCockpitBlock =
     "; The Mako's cockpit (research/47). enabled: 1 = in the Mako you sit in the cockpit, the Mako's third-person view on its\n"
     "; centre screen (needs the cockpit's package installed); 0 = the game's chase camera as before. script: the cockpit's\n"
     "; layout, from this folder. followCamera: 1 = the screen's chase camera turns with the Mako. seated: 1 = Shepard sits in\n"
-    "; the chair under you, the hands on the lever and stick while you hold them.\n"
+    "; the chair under you, the hands on the lever and stick while you hold them. hazard: 1 = with the hull's health under\n"
+    "; hazardBelow (a fraction) the cabin's lights turn red and flash every hazardPeriodS seconds (off again once repaired\n"
+    "; past it by 0.10); hazardWash: 1 = the whole cabin goes red with the lamps, 0 = only the lamps.\n"
     "enabled = 1\n"
     "script = cockpit\\cockpit.txt\n"
     "followCamera = 1\n"
-    "seated = 1\n";
+    "seated = 1\n"
+    "hazard = 1\n"
+    "hazardBelow = 0.30\n"
+    "hazardPeriodS = 1.1\n"
+    "hazardWash = 1\n";
 
 // Appended to a settings file that has no [Game] yet (and part of a new file).
 constexpr char const* kGalaxyBlock =
@@ -1553,12 +1559,26 @@ Cockpit ReadCockpit(Ini const& ini) {
     if (Number(ini, "Cockpit", "seated", value)) {
         c.seated = value != 0.0;
     }
+    if (Number(ini, "Cockpit", "hazard", value)) {
+        c.hazard.on = value != 0.0;
+    }
+    if (Number(ini, "Cockpit", "hazardBelow", value)) {
+        c.hazard.below = static_cast<float>(value);
+        c.hazard.clearAbove = c.hazard.below + 0.10f;
+    }
+    if (Number(ini, "Cockpit", "hazardPeriodS", value)) {
+        c.hazard.periodS = static_cast<float>(value);
+    }
+    if (Number(ini, "Cockpit", "hazardWash", value)) {
+        c.hazard.wash = value != 0.0;
+    }
+    c.hazard = vr::cockpit_hazard::Sanitized(c.hazard);
     return c;
 }
 
 std::string Describe(Cockpit const& c) {
-    return std::format("{}, script {}, the chase camera {}{}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's",
-        c.seated ? ", Shepard seated" : "");
+    return std::format("{}, script {}, the chase camera {}{}; {}", c.enabled ? "on" : "off", c.script, c.followCamera ? "follows the Mako" : "the game's",
+        c.seated ? ", Shepard seated" : "", vr::cockpit_hazard::Describe(c.hazard));
 }
 
 Cockpit gCockpit;
@@ -2646,6 +2666,11 @@ void Refresh() {
         {L"Hands", "Hands", L"fingers", "fingers", L"1"},
         {L"Hands", "Hands", L"fingerCurlDeg", "fingerCurlDeg", L"70"},
         {L"Hands", "Hands", L"fingerTouch", "fingerTouch", L"1"},
+        // The Mako cockpit's hazard lights (research/47 "Hazard lights", 2026-11-04).
+        {L"Cockpit", "Cockpit", L"hazard", "hazard", L"1"},
+        {L"Cockpit", "Cockpit", L"hazardBelow", "hazardBelow", L"0.30"},
+        {L"Cockpit", "Cockpit", L"hazardPeriodS", "hazardPeriodS", L"1.1"},
+        {L"Cockpit", "Cockpit", L"hazardWash", "hazardWash", L"1"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},

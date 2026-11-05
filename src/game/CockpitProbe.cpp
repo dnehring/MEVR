@@ -1679,7 +1679,7 @@ ue3::Object* PlayerPostProcessChain(ue3::Object* controller) {
 }
 
 // A clear colour no scene has: the mesh in this colour means the material took the texture and no capture has landed yet.
-ue3::Object* CreateTarget(int width, int height, bool floatTarget) {
+ue3::Object* CreateTarget(int width, int height, bool floatTarget, LinearColor clear = LinearColor{0.5f, 0.0f, 0.5f, 1.0f}) {
     ue3::Class* const cls = gTargetClass.Get();
     ue3::Object* const defaults = cls != nullptr ? DefaultObject(cls) : nullptr;
     if (defaults == nullptr) {
@@ -1690,7 +1690,7 @@ ue3::Object* CreateTarget(int width, int height, bool floatTarget) {
     p.Set("InSizeX", static_cast<std::int32_t>(width));
     p.Set("InSizeY", static_cast<std::int32_t>(height));
     p.Set("InFormat", format);
-    p.Set("InClearColor", LinearColor{0.5f, 0.0f, 0.5f, 1.0f});
+    p.Set("InClearColor", clear);
     p.SetBool("bOnlyRenderOnce", false);
     Call(defaults, gCreateTarget, p);
     ue3::Object* const target = p.Return<ue3::Object*>().value_or(nullptr);
@@ -3658,6 +3658,425 @@ std::string VehicleCommand(std::string const& line) {
         find.engineAsked ? "FindClosestDrivableVehicle's answer" : "not asked: no live SFXSaveGame or not on foot", ue3::runtime::FullName(find.nearest), find.nearestM);
 }
 
+// ---- The hazard lights (research/47 "Hazard lights", 2026-11-04) ------------------------------------------------------
+// With the Mako's hull health low (vr::cockpit_hazard), every element of the cockpit's parts that shows one of the package's
+// own instances (not the glass, not a screen) gets an instance of ours over the package's glow parent,
+// EngineBuildings.ProcBuildingSimpleMaterial (unlit: DiffuseTexture x LightTexture x LightmapBrightness): the element's own
+// image as DiffuseTexture, a 4x4 render target cleared red as LightTexture (a render target nothing draws into shows its clear
+// colour), and the beacon's brightness each tick. The lamps flash bright red, the rest of the cabin washes red with them. When
+// the alarm ends, each element gets its own material back.
+ue3::FunctionRef gSetScalarParameter{"Engine.MaterialInstanceConstant.SetScalarParameterValue"};
+ue3::FunctionRef gHealthAndShields{"SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled"};
+ue3::FieldRef gPawnAttributes{"SFXGame.BioEpicPawnBehavior", "m_PawnAttributes"};
+ue3::FieldRef gHealthCurrent{"SFXGame.BioAttributesEpicPawn", "m_HealthCurrent"};
+ue3::FieldRef gScalarValues{"Engine.MaterialInstanceConstant", "ScalarParameterValues"};
+ue3::FieldRef gScalarValueName{gScalarValues, "ParameterName"};
+constexpr char const* kGlowParentPath = "EngineBuildings.ProcBuildingSimpleMaterial";
+
+struct HazardElement {
+    ue3::Object* actor = nullptr;
+    ue3::Object* component = nullptr;
+    int index = 0;
+    ue3::Object* original = nullptr;  // the element's material before
+    ue3::Object* mic = nullptr;       // ours on it
+    bool lamp = false;
+};
+
+struct Hazard {
+    enum class Force { Auto, On, Off } force = Force::Auto;
+    bool alarm = false;
+    bool applied = false;
+    void const* world = nullptr;  // a new level: the old elements are gone with it, never touched
+    std::vector<HazardElement> elements;
+    ue3::Object* red = nullptr;
+    // The glow parent's parameter names, learnt from the package's own lamp instances (there is no name-from-text lookup).
+    bool namesKnown = false;
+    ue3::Name diffuseName{};
+    ue3::Name lightName{};
+    ue3::Name brightnessName{};
+    double since = 0.0;      // when this alarm began
+    double lastRead = -1e9;  // the hull's health, read every 0.1 s while riding
+    double retryAt = 0.0;    // an apply that failed tries again from here
+    std::optional<float> health;
+    std::optional<float> shields;
+    unsigned episodes = 0;
+    int lamps = 0;
+    int washed = 0;
+    int skipped = 0;
+    std::string why = "off";
+};
+Hazard gHazard;
+
+char const* ForceName(Hazard::Force force) {
+    return force == Hazard::Force::On ? "on" : force == Hazard::Force::Off ? "off" : "auto";
+}
+
+// The hull's health and shields (0..1) through the vehicle's behavior's own GetHealthAndShieldsScaled.
+std::optional<std::pair<float, float>> ReadHull(ue3::Object* vehicle) {
+    if (vehicle == nullptr || !ue3::runtime::IsAlive(vehicle) || gHealthAndShields.Get() == nullptr) {
+        return std::nullopt;
+    }
+    ue3::Object* const behavior = gVehicleBehavior.Read<ue3::Object*>(vehicle).value_or(nullptr);
+    if (behavior == nullptr || !ue3::runtime::IsAlive(behavior)) {
+        return std::nullopt;
+    }
+    ue3::Params p = ParamsOf(gHealthAndShields);
+    if (!Call(behavior, gHealthAndShields, p)) {
+        return std::nullopt;
+    }
+    std::optional<float> const health = p.Get<float>("fHealth");
+    if (!health) {
+        return std::nullopt;
+    }
+    return std::pair{*health, p.Get<float>("fShields").value_or(0.0f)};
+}
+
+// The words of an instance's path ("biog_mevr_cockpit.hull_shell_lamp2_glow_mic" -> biog, mevr, cockpit, hull, shell, lamp2...).
+bool PathHas(std::string const& lowerPath, std::string_view word, bool prefix) {
+    std::size_t start = 0;
+    while (start <= lowerPath.size()) {
+        std::size_t const end = lowerPath.find_first_of("._", start);
+        std::string_view const token(lowerPath.data() + start, (end == std::string::npos ? lowerPath.size() : end) - start);
+        if (prefix ? token.starts_with(word) : token == word) {
+            return true;
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return false;
+}
+
+// The glow parent's parameter names, from a lamp instance of the package (its texture and scalar arrays hold them).
+bool LearnNames(ue3::Object* lampInstance) {
+    if (gHazard.namesKnown) {
+        return true;
+    }
+    bool diffuse = false;
+    bool light = false;
+    bool brightness = false;
+    if (auto const values = gTextureValues.ElementsOf(lampInstance)) {
+        for (std::int32_t i = 0; i < values->count; ++i) {
+            std::optional<ue3::Name> const name = gTextureValueName.Read<ue3::Name>(values->At(i));
+            if (!name) {
+                continue;
+            }
+            std::string const text = ue3::runtime::NameText(*name);
+            if (text == "DiffuseTexture") {
+                gHazard.diffuseName = *name;
+                diffuse = true;
+            } else if (text == "LightTexture") {
+                gHazard.lightName = *name;
+                light = true;
+            }
+        }
+    }
+    if (auto const values = gScalarValues.ElementsOf(lampInstance)) {
+        for (std::int32_t i = 0; i < values->count; ++i) {
+            std::optional<ue3::Name> const name = gScalarValueName.Read<ue3::Name>(values->At(i));
+            if (name && ue3::runtime::NameText(*name) == "LightmapBrightness") {
+                gHazard.brightnessName = *name;
+                brightness = true;
+            }
+        }
+    }
+    gHazard.namesKnown = diffuse && light && brightness;
+    return gHazard.namesKnown;
+}
+
+// The texture an element's instance shows: the base's `Texture`, the glow's `DiffuseTexture` or the lit's `Emissive`.
+ue3::Object* ElementTexture(ue3::Object* material) {
+    if (auto const values = gTextureValues.ElementsOf(material)) {
+        for (std::int32_t i = 0; i < values->count; ++i) {
+            std::optional<ue3::Name> const name = gTextureValueName.Read<ue3::Name>(values->At(i));
+            if (!name) {
+                continue;
+            }
+            std::string const text = ue3::runtime::NameText(*name);
+            if (text == "Texture" || text == "DiffuseTexture" || text == "Emissive") {
+                if (ue3::Object* const texture = gTextureValueObject.Read<ue3::Object*>(values->At(i)).value_or(nullptr)) {
+                    return texture;
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
+void SetBrightness(ue3::Object* mic, float value) {
+    ue3::Params p = ParamsOf(gSetScalarParameter);
+    p.Set("ParameterName", gHazard.brightnessName);
+    p.Set("Value", value);
+    Call(mic, gSetScalarParameter, p);
+}
+
+void SetTextureParameter(ue3::Object* mic, ue3::Name name, ue3::Object* texture) {
+    ue3::Params p = ParamsOf(gSetTextureParameter);
+    p.Set("ParameterName", name);
+    p.Set("Value", texture);
+    Call(mic, gSetTextureParameter, p);
+}
+
+// Our instance on every eligible element; false (with gHazard.why) if nothing could be lit.
+bool HazardApply(vr::cockpit_hazard::Settings const& settings) {
+    if (auto const missing = MissingFunction({&gGetMaterial, &gSetMaterial, &gGetNumElements, &gCreateMic, &gSetParent, &gSetTextureParameter,
+            &gSetScalarParameter})) {
+        gHazard.why = *missing;
+        return false;
+    }
+    ue3::Object* const glowParent = LoadObject(kGlowParentPath, gMaterial.Get());
+    if (glowParent == nullptr) {
+        gHazard.why = std::format("{} isn't loaded", kGlowParentPath);
+        return false;
+    }
+    // Which elements, first: the names come from a lamp's own instance before anything is swapped.
+    struct Pick {
+        Part const* part;
+        int index;
+        ue3::Object* material;
+        bool lamp;
+    };
+    std::vector<Pick> picks;
+    gHazard.skipped = 0;
+    for (Part const& part : gParts) {
+        if (!PartAlive(part)) {
+            continue;
+        }
+        ue3::Params count = ParamsOf(gGetNumElements);
+        Call(part.component, gGetNumElements, count);
+        int const elements = count.Return<std::int32_t>().value_or(0);
+        for (int i = 0; i < elements; ++i) {
+            ue3::Params get = ParamsOf(gGetMaterial);
+            get.Set("ElementIndex", i);
+            Call(part.component, gGetMaterial, get);
+            ue3::Object* const material = get.Return<ue3::Object*>().value_or(nullptr);
+            std::string const path = Lower(R().PathName(material));
+            if (!path.starts_with("biog_mevr_cockpit.") || !ue3::IsA(material, gMic) || PathHas(path, "glass", false) || PathHas(path, "screen", false) ||
+                PathHas(path, "display", false) || PathHas(path, "aim", false)) {
+                ++gHazard.skipped;  // our own screens' instances, the glass and the console's displays keep theirs
+                continue;
+            }
+            bool const lamp = PathHas(path, "lamp", true);
+            if (lamp && PathHas(path, "glow", false)) {
+                LearnNames(material);
+            }
+            if (!lamp && !settings.wash) {
+                continue;
+            }
+            picks.push_back({&part, i, material, lamp});
+        }
+    }
+    if (!gHazard.namesKnown) {
+        gHazard.why = "no lamp instance of the package to learn the glow parent's parameter names from (is the cockpit's package current?)";
+        return false;
+    }
+    if (picks.empty()) {
+        gHazard.why = "no element of the cockpit shows one of the package's instances";
+        return false;
+    }
+    float const* const red = vr::cockpit_hazard::kRed;
+    gHazard.red = CreateTarget(4, 4, false, LinearColor{red[0], red[1], red[2], red[3]});
+    if (gHazard.red == nullptr) {
+        gHazard.why = "TextureRenderTarget2D.Create returned no render target";
+        return false;
+    }
+    vr::cockpit_hazard::Levels const levels = vr::cockpit_hazard::LevelsAt(1.0f);
+    gHazard.lamps = 0;
+    gHazard.washed = 0;
+    std::vector<ue3::Object*> touched;
+    for (Pick const& pick : picks) {
+        ue3::Object* const texture = ElementTexture(pick.material);
+        if (texture == nullptr) {
+            ++gHazard.skipped;
+            continue;
+        }
+        ue3::Params create = ParamsOf(gCreateMic);
+        create.Set("ElementIndex", pick.index);
+        Call(pick.part->component, gCreateMic, create);
+        ue3::Object* const mic = create.Return<ue3::Object*>().value_or(nullptr);
+        if (!ue3::IsA(mic, gMic)) {
+            ++gHazard.skipped;
+            continue;
+        }
+        ue3::Params parent = ParamsOf(gSetParent);
+        parent.Set("NewParent", glowParent);
+        Call(mic, gSetParent, parent);
+        SetTextureParameter(mic, gHazard.diffuseName, texture);
+        SetTextureParameter(mic, gHazard.lightName, gHazard.red);
+        SetBrightness(mic, pick.lamp ? levels.lamp : levels.wash);
+        gHazard.elements.push_back({pick.part->actor, pick.part->component, pick.index, pick.material, mic, pick.lamp});
+        ++(pick.lamp ? gHazard.lamps : gHazard.washed);
+        if (std::find(touched.begin(), touched.end(), pick.part->actor) == touched.end()) {
+            touched.push_back(pick.part->actor);
+        }
+    }
+    for (ue3::Object* const actor : touched) {
+        FlushActor(actor, false);
+    }
+    if (gHazard.elements.empty()) {
+        gHazard.why = "no element took our instance";
+        return false;
+    }
+    gHazard.why = std::format("red: {} lamp{}, {} element{} washed, {} kept", gHazard.lamps, gHazard.lamps == 1 ? "" : "s", gHazard.washed,
+        gHazard.washed == 1 ? "" : "s", gHazard.skipped);
+    log::Info("cockpit hazard: the cabin's lights turn red ({}; over {})", gHazard.why, kGlowParentPath);
+    return true;
+}
+
+// Each element its own material back (those still in this world).
+void HazardRestore(char const* why) {
+    std::vector<ue3::Object*> touched;
+    int restored = 0;
+    bool const sameWorld = gHazard.world == engine::World();
+    for (HazardElement const& element : gHazard.elements) {
+        if (!sameWorld || !ue3::runtime::IsAlive(element.component) || element.original == nullptr || !ue3::runtime::IsAlive(element.original)) {
+            continue;
+        }
+        ue3::Params set = ParamsOf(gSetMaterial);
+        set.Set("ElementIndex", element.index);
+        set.Set("Material", element.original);
+        Call(element.component, gSetMaterial, set);
+        ++restored;
+        if (std::find(touched.begin(), touched.end(), element.actor) == touched.end()) {
+            touched.push_back(element.actor);
+        }
+    }
+    for (ue3::Object* const actor : touched) {
+        if (ue3::runtime::IsAlive(actor)) {
+            FlushActor(actor, false);
+        }
+    }
+    if (gHazard.applied) {
+        log::Info("cockpit hazard: the cabin's own lights back ({}; {} of {} elements restored)", why, restored, gHazard.elements.size());
+    }
+    gHazard.elements.clear();
+    gHazard.red = nullptr;  // nothing holds it now: the next garbage collection takes it
+    gHazard.applied = false;
+}
+
+void HazardTick() {
+    vr::cockpit_hazard::Settings const settings = hand_calibration::GetCockpit().hazard;
+    if (gHazard.world != engine::World()) {
+        gHazard.elements.clear();  // the old level's objects are gone: nothing to put back
+        gHazard.red = nullptr;
+        gHazard.applied = false;
+        gHazard.alarm = false;
+        gHazard.health.reset();
+        gHazard.world = engine::World();
+    }
+    bool const cockpit = std::any_of(gParts.begin(), gParts.end(), [](Part const& part) { return PartAlive(part); });
+    ue3::Object* const vehicle = Riding() && gRide.vehicle != nullptr && ue3::runtime::IsAlive(gRide.vehicle) ? gRide.vehicle : nullptr;
+    if (vehicle != nullptr && Now() - gHazard.lastRead >= 0.1) {
+        gHazard.lastRead = Now();
+        if (auto const hull = ReadHull(vehicle)) {
+            gHazard.health = hull->first;
+            gHazard.shields = hull->second;
+        } else {
+            gHazard.health.reset();
+        }
+    } else if (vehicle == nullptr) {
+        gHazard.health.reset();
+        gHazard.shields.reset();
+    }
+    bool want = false;
+    switch (gHazard.force) {
+    case Hazard::Force::On: want = cockpit; break;
+    case Hazard::Force::Off: want = false; break;
+    case Hazard::Force::Auto: want = cockpit && vr::cockpit_hazard::Alarm(gHazard.alarm, gHazard.health, vehicle != nullptr, settings); break;
+    }
+    if (want != gHazard.alarm) {
+        gHazard.alarm = want;
+        if (want) {
+            gHazard.since = Now();
+            ++gHazard.episodes;
+            log::Info("cockpit hazard: alarm on ({}; hull {}, shields {})", gHazard.force == Hazard::Force::On ? "forced" : "low hull",
+                gHazard.health ? std::format("{:.0f}%", *gHazard.health * 100.0f) : std::string("?"),
+                gHazard.shields ? std::format("{:.0f}%", *gHazard.shields * 100.0f) : std::string("?"));
+        } else {
+            log::Info("cockpit hazard: alarm off (hull {})", gHazard.health ? std::format("{:.0f}%", *gHazard.health * 100.0f) : std::string("unknown"));
+        }
+    }
+    if (gHazard.alarm && !gHazard.applied && Now() >= gHazard.retryAt) {
+        gHazard.applied = HazardApply(settings);
+        if (!gHazard.applied) {
+            HazardRestore("the apply failed part way");
+            gHazard.retryAt = Now() + 2.0;
+            log::Warn("cockpit hazard: no red lights: {} (tries again in 2 s)", gHazard.why);
+        }
+    }
+    if (!gHazard.alarm && gHazard.applied) {
+        HazardRestore(cockpit ? "the alarm is over" : "the cockpit is gone");
+        gHazard.why = "off";
+    }
+    if (!gHazard.applied) {
+        return;
+    }
+    // A part rebuilt under us (a new seat, the script ran again): put back what's left and apply afresh next tick.
+    for (HazardElement const& element : gHazard.elements) {
+        if (!ue3::runtime::IsAlive(element.component) || !ue3::runtime::IsAlive(element.mic)) {
+            HazardRestore("the cockpit's parts changed");
+            return;
+        }
+    }
+    vr::cockpit_hazard::Levels const levels =
+        vr::cockpit_hazard::LevelsAt(vr::cockpit_hazard::Flash(Now() - gHazard.since, settings.periodS));
+    for (HazardElement const& element : gHazard.elements) {
+        SetBrightness(element.mic, element.lamp ? levels.lamp : levels.wash);
+    }
+}
+
+std::string HazardJson() {
+    namespace json = vr::test_request;
+    return std::format("{{\"force\": {}, \"alarm\": {}, \"applied\": {}, \"health\": {}, \"shields\": {}, \"lamps\": {}, \"washed\": {}, "
+                       "\"elements\": {}, \"episodes\": {}, \"why\": {}}}",
+        json::JsonString(ForceName(gHazard.force)), gHazard.alarm ? "true" : "false", gHazard.applied ? "true" : "false",
+        gHazard.health ? json::JsonNumber(*gHazard.health) : std::string("null"), gHazard.shields ? json::JsonNumber(*gHazard.shields) : std::string("null"),
+        gHazard.lamps, gHazard.washed, gHazard.elements.size(), gHazard.episodes, json::JsonString(gHazard.why));
+}
+
+std::string HazardLine() {
+    return std::format("hazard {} ({}): alarm {}, {}; hull {}, shields {}; {} episode{}", ForceName(gHazard.force),
+        vr::cockpit_hazard::Describe(hand_calibration::GetCockpit().hazard), gHazard.alarm ? "on" : "off", gHazard.why,
+        gHazard.health ? std::format("{:.0f}%", *gHazard.health * 100.0f) : std::string("?"),
+        gHazard.shields ? std::format("{:.0f}%", *gHazard.shields * 100.0f) : std::string("?"), gHazard.episodes, gHazard.episodes == 1 ? "" : "s");
+}
+
+// `mevr cockpit hazard [on|off|auto|state|health <fraction>]`: force the red lights on or off, back to the hull's health, or
+// (for tests) set the ridden Mako's hull health to a fraction of its maximum (journalled).
+std::string DoHazard(std::string const& rest) {
+    std::istringstream words(rest);
+    std::string sub;
+    words >> sub;
+    if (sub == "on" || sub == "off" || sub == "auto") {
+        gHazard.force = sub == "on" ? Hazard::Force::On : sub == "off" ? Hazard::Force::Off : Hazard::Force::Auto;
+        gHazard.retryAt = 0.0;
+        return std::format("cockpit hazard: {} (it takes effect this tick)", ForceName(gHazard.force));
+    }
+    if (sub == "health") {
+        double fraction = -1.0;
+        words >> fraction;
+        ue3::Object* const vehicle = gRide.vehicle != nullptr && ue3::runtime::IsAlive(gRide.vehicle) ? gRide.vehicle : nullptr;
+        if (vehicle == nullptr || !(fraction >= 0.0 && fraction <= 1.0)) {
+            return "usage: mevr cockpit hazard health <0..1> (while riding in the Mako)";
+        }
+        auto const hull = ReadHull(vehicle);
+        ue3::Object* const behavior = gVehicleBehavior.Read<ue3::Object*>(vehicle).value_or(nullptr);
+        ue3::Object* const attributes = behavior != nullptr ? gPawnAttributes.Read<ue3::Object*>(behavior).value_or(nullptr) : nullptr;
+        float* const current = attributes != nullptr ? gHealthCurrent.In<float>(attributes) : nullptr;
+        if (!hull || current == nullptr || !(hull->first > 0.0f)) {
+            return "cockpit hazard: the Mako's health can't be read (or is 0)";
+        }
+        float const max = *current / hull->first;
+        float const before = *current;
+        *current = static_cast<float>(fraction) * max;
+        write_journal::Wrote("CockpitProbe.hazardHealth", current, sizeof(float));
+        gHazard.lastRead = -1e9;  // read again at once
+        return std::format("cockpit hazard: the Mako's hull {:.0f} -> {:.0f} of {:.0f} ({:.0f}%)", before, *current, max, fraction * 100.0);
+    }
+    return HazardLine();
+}
+
 std::string Command(std::string const& line) {
     if (!ue3::runtime::Ready()) {
         return "cockpit probe: our reflection layer is off (see the 'reflect:' lines)";
@@ -3683,6 +4102,9 @@ std::string Command(std::string const& line) {
     }
     if (verb == "variant") {
         return DoVariant(Rest(words));
+    }
+    if (verb == "hazard") {
+        return DoHazard(Rest(words));
     }
     if (verb == "loaded") {
         return DoLoaded(words);
@@ -4135,6 +4557,7 @@ void ZoomTick() {
 void Tick(std::optional<std::uint32_t> recenters) {
     AutoTick();
     RideTick();
+    HazardTick();
     ZoomTick();
     if (gAngVelVehicle != nullptr && Now() >= gAngVelAt) {
         if (ue3::runtime::IsAlive(gAngVelVehicle)) {
@@ -4183,22 +4606,29 @@ void Tick(std::optional<std::uint32_t> recenters) {
 std::string StatusJson() {
     namespace json = vr::test_request;
     return std::format("{{\"up\": {}, \"actor\": {}, \"kind\": {}, \"mesh\": {}, \"mic\": {}, \"parent\": {}, \"parameter\": {}, \"size\": [{}, {}], \"capture\": {}, "
-                       "\"attached\": {}, \"placedTicks\": {}, \"pointedTicks\": {}, \"lastError\": {}}}",
+                       "\"attached\": {}, \"placedTicks\": {}, \"pointedTicks\": {}, \"hazard\": {}, \"lastError\": {}}}",
         gState.actor != nullptr || gState.captureActor != nullptr ? "true" : "false", json::JsonString(ue3::runtime::FullName(gState.actor)), json::JsonString(gState.kind),
         json::JsonString(ue3::runtime::FullName(gState.mesh)), json::JsonString(ue3::runtime::FullName(gState.mic)), json::JsonString(ue3::runtime::FullName(gState.parent)),
         json::JsonString(gState.parameterSet ? ue3::runtime::NameText(gState.parameter) : std::string()), gState.target != nullptr ? gState.targetWidth : 0,
         gState.target != nullptr ? gState.targetHeight : 0, json::JsonString(ue3::runtime::FullName(gState.captureActor)), gState.attached ? "true" : "false",
-        gState.placedTicks, gState.pointedTicks, json::JsonString(gLastError));
+        gState.placedTicks, gState.pointedTicks, HazardJson(), json::JsonString(gLastError));
 }
 
 void LogStats() {
     if (gState.actor != nullptr || gState.captureActor != nullptr) {
         log::Info("    cockpit probe: {}", StatusLine());
     }
+    if (gHazard.alarm || gHazard.applied || gHazard.health) {
+        log::Info("    cockpit: {}", HazardLine());
+    }
 }
 
 void Shutdown(bool exiting) {
     gRide.on = false;
+    if (!exiting && ue3::runtime::Ready()) {
+        HazardRestore("the mod shuts down");  // the cabin's own materials back before the parts go
+    }
+    gHazard = Hazard{};
     if (!exiting && ue3::runtime::Ready()) {
         ShowVehicle();
         if (gSeated.world == engine::World()) {

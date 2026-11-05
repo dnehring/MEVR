@@ -6,6 +6,7 @@
 #include "core/ik/Posture.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/ik/Vent.hpp"
+#include "core/vr/CockpitHazard.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/MakoControls.hpp"
@@ -414,6 +415,7 @@ struct Cockpit {
     std::string script = "cockpit\\cockpit.txt";
     bool followCamera = true;
     bool seated = true;
+    vr::cockpit_hazard::Settings hazard;  // hazard, hazardBelow, hazardPeriodS, hazardWash (the red alarm lights)
 };
 Cockpit GetCockpit();
 

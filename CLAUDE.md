@@ -500,6 +500,11 @@ switching frameworks.
   control's hand closed on the handle's axis, `seat ... axes` from `place.py`'s measure of the models, the fist's middle on the grip:
   research/47 "The hands on the handles"). With the cockpit up the controls grab at the models (`cockpit_probe::ControlSeat`) and
   stage 1's flat lever and dial are hidden.
+  **Hazard lights** (research/47 "Hazard lights", 2026-11-04; `[Cockpit] hazard`, `hazardBelow` 0.30, `hazardPeriodS`, `hazardWash`):
+  with the hull's health (the vehicle behavior's `GetHealthAndShieldsScaled`) low, every cockpit element showing a package instance
+  (not glass or screens) gets ours over `ProcBuildingSimpleMaterial` with a red render target as `LightTexture` and a beacon's
+  `LightmapBrightness` each tick (rules `core/vr/CockpitHazard`, unit-tested); own materials back when repaired. `mevr cockpit hazard
+  [on|off|auto|health <f>]`; log `cockpit hazard:`.
 - LE1 life-size stereo ([research/30](research/30-metric-stereo.md), `MELEVR.ini sfr2Metric`, on in our deploy):
   each Stereo 2 pass renders from its eye's real place (`xrLocateViews`, at the view's units per metre: Halcyon's
   50 x lean gain, life-size at 100), no convergence shift, swap ignored (pass 0 = left). In gameplay with the HUD

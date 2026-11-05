@@ -801,6 +801,9 @@ void CheckFields() {
     CheckField("Engine.Material", "EmissiveColor", SDK_FIELD(UMaterial, EmissiveColor));
     CheckField("Engine.Material", "BlendMode", SDK_FIELD(UMaterial, BlendMode));
     CheckField("Engine.Material", "LightingModel", SDK_FIELD(UMaterial, LightingModel));
+    // The cockpit's hazard lights: the Mako's hull health (2026-11-04; BioVehicleBase.m_oBehavior has its row below).
+    CheckField("SFXGame.BioEpicPawnBehavior", "m_PawnAttributes", SDK_FIELD(UBioEpicPawnBehavior, m_PawnAttributes));
+    CheckField("SFXGame.BioAttributesEpicPawn", "m_HealthCurrent", SDK_FIELD(UBioAttributesEpicPawn, m_HealthCurrent));
     CheckField("Engine.Material", "bUsedWithStaticLighting", SDK_BOOL(UMaterial, bUsedWithStaticLighting));
     CheckField("Engine.Material", "bUsedWithLightEnvironments", SDK_BOOL(UMaterial, bUsedWithLightEnvironments));
     CheckField("Engine.MaterialExpressionTextureSampleParameter", "ParameterName", SDK_FIELD(UMaterialExpressionTextureSampleParameter, ParameterName));
@@ -1201,6 +1204,8 @@ void CheckFunctions() {
         "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant",
         "Engine.MaterialInstanceConstant.SetParent",
         "Engine.MaterialInstanceConstant.SetTextureParameterValue",
+        "Engine.MaterialInstanceConstant.SetScalarParameterValue",  // the cockpit's hazard lights (2026-11-04)
+        "SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled",
         "Engine.MaterialInterface.GetTextureParameterValue",
         "Engine.LightEnvironmentComponent.SetEnabled",
         "Engine.Actor.SetOwner",
