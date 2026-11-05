@@ -66,7 +66,7 @@ inline constexpr std::uint32_t kCoverTrace = 0xAA92F0;
 // BioPlayerSelection's native UpdateSelection body (engine/SelectionGaze; research/40).
 inline constexpr std::uint32_t kUpdateSelection = 0xC79D70;
 // UBioUIWorld's native Tick (its vtable's slot 104): the command queue, then UWorld::Tick of the UI world with GWorld swapped
-// (game/UiWorldFigure, research/56 section 7; called through the object's vtable after checking the slot holds it).
+// (game/UiWorldFigure, research/57 section 7; called through the object's vtable after checking the slot holds it).
 inline constexpr std::uint32_t kUiWorldTick = 0xB3B810;
 // Our reflection layer's globals (ue3/Runtime, engine/GameAdapter; research/34 section 2.3).
 inline constexpr std::uint32_t kGObjects = 0x1770670;

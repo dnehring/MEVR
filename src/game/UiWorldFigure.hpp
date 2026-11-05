@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-// The squad member on the equipment, XMods and squad screens (research/56 section 7). The game draws them in its UI world
+// The squad member on the equipment, XMods and squad screens (research/57 section 7). The game draws them in its UI world
 // (BioWorldInfo.m_UIWorld: a BioUIWorld, a world of its own with its camera actor, its lights and the pawns it spawns from the
 // party), and renders and ticks that world instead of the level only while a screen is full screen, which the world UI clears to
 // keep the level around the player. So the mod ticks the UI world itself (its native Tick, vtable slot 104: the command queue

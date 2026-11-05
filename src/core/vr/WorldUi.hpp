@@ -61,7 +61,7 @@ struct Settings {
     // wrist: the screens projected from the left wrist instead, Shepard's omni-tool (the bypass minigame by default; the user,
     // 2026-11-04; Fallout 4 VR's Pip-Boy, wrist or projected, and Half-Life: Alyx's multitool holograms set the pattern:
     // research/53 section 6). Without a tracked left controller when it opens, the screen stands in the room.
-    // Since 2026-11-04 (research/56, the user: "the entire menu system available via omni-tool"): every personal screen too,
+    // Since 2026-11-04 (research/57, the user: "the entire menu system available via omni-tool"): every personal screen too,
     // the ones the omni-tool's rail opens and the main wheel's (options, save, load); a screen a use opened (a locker's
     // equipment) still stands by what was used (OnWrist). The shop, loot and the rest stay in the room.
     std::uint32_t wristScreens = Bit(Screen::SkillGame) | Bit(Screen::Inventory) | Bit(Screen::XMods) | Bit(Screen::CharacterRecord) |
@@ -80,7 +80,7 @@ struct Settings {
     // gauntlet and the hand's display, BIOG_V_T_Omni_Tool_Z; the user, 2026-11-04: "core Mass Effect with the omni-tool").
     // Mod only (game/OmniTool).
     bool omniTool = true;
-    // figure: the equipment, XMods and squad screens' squad member (the game's UI world through its own camera, research/56
+    // figure: the equipment, XMods and squad screens' squad member (the game's UI world through its own camera, research/57
     // section 7) behind the screen, as the flat game shows it; figureOpacity its opacity (0: the backdrop's). Mod and host.
     bool figure = true;
     float figureOpacity = 0.0f;
@@ -136,7 +136,7 @@ struct State {
     float emitter[3] = {};
     std::uint8_t emitterValid = 0;
     std::uint8_t emitterPad[3] = {};
-    // The figure (grew 2026-11-05, research/56 section 7): the equipment and squad screens' squad member stands in the game's UI
+    // The figure (grew 2026-11-05, research/57 section 7): the equipment and squad screens' squad member stands in the game's UI
     // world, which the game renders only while a screen is full screen. A scene capture of ours (game/UiWorldFigure) looks through
     // the UI world's camera; the host renders that one capture with the UI world's scene (plugin/UiWorldFigure, in the capture
     // loop's hook) and draws its picture behind the game's UI, over the 16:9 stage, at figureOpacity.
@@ -160,7 +160,7 @@ inline constexpr bool ScreenMode(int mode) { return mode == kGuiMode || mode == 
 // The latest state if published within maxAgeMs and active; else nullopt.
 std::optional<State> Latest(std::uint64_t maxAgeMs);
 // The omni-tool's display (State::emitter) if published within maxAgeMs, active or not: with no screen up the mod publishes an
-// inactive state carrying only it while the omni-tool's rail stands alone on the wrist (research/56; an older host's Latest
+// inactive state carrying only it while the omni-tool's rail stands alone on the wrist (research/57; an older host's Latest
 // ignores such a state).
 std::optional<XrVector3f> LatestEmitter(std::uint64_t maxAgeMs);
 
@@ -182,7 +182,7 @@ Rect DefaultCrop(Screen screen);
 // The part shown when it's projected from the wrist: tighter where the screen is a small box on its stage (the minigame). The host
 // picks it when the screen goes on the wrist; the mod's stageCrop is the room's.
 Rect WristCrop(Screen screen);
-// Whether a screen goes on the wrist (research/56): listed in wristScreens, and not one a use opened (`anchored`: it belongs to
+// Whether a screen goes on the wrist (research/57): listed in wristScreens, and not one a use opened (`anchored`: it belongs to
 // something in the world, a locker's equipment, which keeps standing by it); the bypass minigame (the omni-tool's own) always.
 bool OnWrist(Settings const& settings, Screen screen, bool anchored);
 // Its width there: the bypass minigame's frame (wristWidthM) or a whole 16:9 stage (wristMenuWidthM).

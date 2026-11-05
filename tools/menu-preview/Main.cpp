@@ -691,7 +691,7 @@ int main(int argc, char** argv) {
     timing << line;
     std::printf("%s", line);
 
-    // The omni-tool's rail (research/56): a second document, omnitool.rml, in a context of its own as the host makes it
+    // The omni-tool's rail (research/57): a second document, omnitool.rml, in a context of its own as the host makes it
     // (plugin/OmniToolRail). rail-alone.png: tapped open on the wrist; rail-squad.png: beside the squad screen;
     // rail-hover.png: the pointer on Map; rail-equipment.png: beside the equipment screen. Over a dark stand-in for the room;
     // with --gameart in the game's own art.

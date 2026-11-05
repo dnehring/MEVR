@@ -597,7 +597,7 @@ mevr::game::world_ui::Link WorldUiLink() {
         link.setState = gHost->setWorldUi;
     }
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
-        link.railOpen = (gHost->mainMenu() & kOmniRailOpen) != 0;  // the host's omni-tool rail (research/56)
+        link.railOpen = (gHost->mainMenu() & kOmniRailOpen) != 0;  // the host's omni-tool rail (research/57)
     }
     return link;
 }
@@ -1173,8 +1173,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // Its Game menu and Holster buttons, after the unpause above (research/28, HostServices v19).
         if (gHostOwnsVr) {
             game::game_menu_request::Tick(GameMenuRequestLink());
-            game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/56)
-            // The game pointer's input as the game's own GUI events (research/56 section 6, HostServices v30), and mevr guikey's.
+            game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/57)
+            // The game pointer's input as the game's own GUI events (research/57 section 6, HostServices v30), and mevr guikey's.
             game::gui_cursor::Tick(MEVR_HOST_HAS(takeGuiEvents) ? gHost->takeGuiEvents : nullptr);
         }
     }

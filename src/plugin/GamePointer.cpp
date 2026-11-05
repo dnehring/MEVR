@@ -70,7 +70,7 @@ struct Settings {
     float touchHoverM = 0.06f;
     float touchPressM = 0.005f;
     float touchReleaseM = 0.015f;
-    // The game's Flash cursor steered onto the pointer's point (research/56 section 6, measured 2026-11-05): LE1's screens put
+    // The game's Flash cursor steered onto the pointer's point (research/57 section 6, measured 2026-11-05): LE1's screens put
     // their mouse where GetCursorPos says the Windows cursor is (client area, scaled to the stage) and read it only when real
     // mouse input arrives; posted moves never moved it, and the Windows cursor can't leave the monitor (the game's window is
     // taller). So while the pointer is on one of the game's menus (not the galaxy map) GetCursorPos answers the pointer's point
@@ -443,7 +443,7 @@ void SendButton(HWND window, int x, int y, bool down, Settings const& s) {
     }
     if (Steering(s) || (!down && gSteeredDown.load())) {
         // LE1's screens take a posted button down but not every up (a squad tab lit and stayed lit): real input, in order after the
-        // cursor's placement (research/56 section 6).
+        // cursor's placement (research/57 section 6).
         Post p;
         p.window = window;
         p.steered = down ? 1 : 2;
@@ -648,7 +648,7 @@ static bool StepInner(Frame const& frame, Dot& dot) {
     for (int i = 0; i < 2; ++i) {
         controllers::Hand const& hand = i == 0 ? state.left : state.right;
         // The hand a wrist screen is projected from neither points at it nor touches it: it sits under the screen, its ray
-        // through it, and moved the game's cursor all the time (research/56 section 6).
+        // through it, and moved the game's cursor all the time (research/57 section 6).
         input.hands[i].aimValid = hand.aimValid && i != gProjectingHand;
         input.hands[i].aim = hand.aim;
         input.hands[i].trigger = hand.trigger;

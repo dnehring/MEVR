@@ -7,7 +7,7 @@
 #include <mutex>
 #include <vector>
 
-// The game pointer's input as the game's own GUI events (research/56 section 6, measured 2026-11-05). LE1's screens take the
+// The game pointer's input as the game's own GUI events (research/57 section 6, measured 2026-11-05). LE1's screens take the
 // mouse through SFXGameModeBase.GuiKey(Event) -> BioSFManager.HandleInputEvent -> BioSFHandler.SendMouseToScaleForm, which reads
 // the cursor's place (GetCursorPos, answered by the host with the pointer's point). Called by the mod on the game thread, these
 // click, scroll and move the cursor exactly and at once: no real input, no window focus, no race with the game's ticks (real

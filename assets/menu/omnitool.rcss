@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * The omni-tool's rail (research/56) in ME1's own UI language, so it sits beside the game's screens as one of them (the owner,
+ * The omni-tool's rail (research/57) in ME1's own UI language, so it sits beside the game's screens as one of them (the owner,
  * 2026-11-04: "those left menu items don't really look like they are in mass-effect"). Read from the game's equipment screen:
  * octagonal panels with a slate-blue edge and a thin inner line over a dark navy gradient; slanted tabs, dark teal, the
  * selected one bright cyan with white text and a glow (its squad list); light-blue line icons in rounded squares (its weapon
@@ -113,7 +113,7 @@ body {
 .i-computer { decorator: icon(gamemenu); }
 .i-close { decorator: icon(close); }
 
-/* ---- The game's own art (plugin/RailArt, research/56): used once the mod has cached the game's movies; `art` on the body.
+/* ---- The game's own art (plugin/RailArt, research/57): used once the mod has cached the game's movies; `art` on the body.
  * The frame is the inventory's item-list panel (its title notch takes the title), the buttons the journal's tab in its states
  * (normal, the game's orange mouse-on, selected), the type the game's own: Biomass for the title, Tigensu on the tabs. Sizes
  * match rail_art::Sizes (the textures are made at exactly these pixels). */

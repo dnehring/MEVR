@@ -579,37 +579,37 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
     }
     if (verb == "omni") {
         // `mevr omni <equipment|squad|map|journal|codex|computer|close|holster>`: what the omni-tool rail's entries ask
-        // (research/56), without a hand on the rail.
+        // (research/57), without a hand on the rail.
         std::string which;
         words >> which;
         return game_menu_request::Inject(which);
     }
     if (verb == "guimouse") {
-        // `mevr guimouse`: where the game's Flash cursor is (research/56 section 6).
+        // `mevr guimouse`: where the game's Flash cursor is (research/57 section 6).
         std::string rest;
         std::getline(words, rest);
         return gui_cursor::Command(rest);
     }
     if (verb == "uiworld") {
-        // `mevr uiworld`: the game's UI world, its camera and our capture of it (research/56 section 7).
+        // `mevr uiworld`: the game's UI world, its camera and our capture of it (research/57 section 7).
         std::string rest;
         std::getline(words, rest);
         return ui_world_figure::Command(rest);
     }
     if (verb == "guikey") {
-        // `mevr guikey <event|w> ...` (research/56 section 6): GUI events through GuiKey, one per tick.
+        // `mevr guikey <event|w> ...` (research/57 section 6): GUI events through GuiKey, one per tick.
         std::string rest;
         std::getline(words, rest);
         return gui_cursor::KeyCommand(rest);
     }
     if (verb == "inv") {
-        // `mevr inv [list] | slot <n> | slots | equip <i>` (research/56 section 6: the touch inventory's data path).
+        // `mevr inv [list] | slot <n> | slots | equip <i>` (research/57 section 6: the touch inventory's data path).
         std::string rest;
         std::getline(words, rest);
         return inventory_probe::Command(rest);
     }
     if (verb == "holo") {
-        // `mevr holo spawn|effect|scale|move|info|clear` (research/56 section 4: the squad holograms' experiment).
+        // `mevr holo spawn|effect|scale|move|info|clear` (research/57 section 4: the squad holograms' experiment).
         std::string rest;
         std::getline(words, rest);
         return holo_probe::Command(rest);

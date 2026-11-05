@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// A dev probe of the equipment screen's model (game/InventoryProbe.hpp, research/56 section 6).
+// A dev probe of the equipment screen's model (game/InventoryProbe.hpp, research/57 section 6).
 #include "game/InventoryProbe.hpp"
 
 #include "core/Log.hpp"

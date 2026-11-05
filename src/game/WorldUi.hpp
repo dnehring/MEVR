@@ -16,7 +16,7 @@ namespace mevr::game::world_ui {
 struct Link {
     // HostServices v27; null: an older host (the screens stay on Halcyon's panel).
     void (*setState)(vr::world_ui::State const* state) = nullptr;
-    // The host's omni-tool rail is shown (HostServices::mainMenu's kOmniRailOpen, research/56): with no screen of ours up, on
+    // The host's omni-tool rail is shown (HostServices::mainMenu's kOmniRailOpen, research/57): with no screen of ours up, on
     // foot, the game's omni-tool goes on Shepard's arm for it too ([WorldUi] omniTool), so the tap opens the omni-tool.
     bool railOpen = false;
 };

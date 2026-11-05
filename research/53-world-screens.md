@@ -29,7 +29,7 @@ EGameModes, `BioUIWorld`, `BioSFManager.SFHandlerTemplate`), snapshots named bel
   behind the screen** (`mevr setprop` on BioSFPanel_11, snapshot 08:36:09: the cargo hold, Shepard and the officer behind the
   shop's UI). The flag stayed cleared; the screen worked on.
 - **The equipment and character record screens show a 3D model in the UI world** (since 2026-11-05 drawn behind our screen from a
-  capture of the UI world, which the mod ticks itself: research/56 section 7) (the squadmate; Shepard, with the record's
+  capture of the UI world, which the mod ticks itself: research/57 section 7) (the squadmate; Shepard, with the record's
   Toggle Helmet button). With the flag cleared they leave a gap where the model stood (snapshots 08:44:41, 08:47:36).
 - **Opening the on-foot screens.** `SFXGameModeBase.ShowEquipmentGui`, `ShowSquadGui`, `ShowCodexGui`, `ShowJournalGui`,
   `ShowMapGui` (each `bShow`) and `ShowMenuGui`, what the keys call; `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>` calls
@@ -69,12 +69,12 @@ All 35 templates of the GUI library, in its order. "Room" = the world UI below. 
 | Options | GUI_SF_Options.PCOptions | the wheel | Flash | **room** | listed [verify] |
 | **Journal** | GUI_SF_Journal.PC_Journal | the wheel, `ShowJournalGui` | Flash | **room** | done |
 | **Codex** | GUI_SF_Journal.PC_Codex | the wheel, `ShowCodexGui` | Flash, pictures, narration | **room** | done |
-| Inventory | GUI_SF_Inventory.PCInventory | the wheel, `ShowEquipmentGui`; Normandy lockers (`BioSeqAct_ShowInventory`) | Flash + the squadmate in the UI world | **room** (straight ahead; a locker's toward the locker), the squadmate behind it (research/56 section 7) | done |
+| Inventory | GUI_SF_Inventory.PCInventory | the wheel, `ShowEquipmentGui`; Normandy lockers (`BioSeqAct_ShowInventory`) | Flash + the squadmate in the UI world | **room** (straight ahead; a locker's toward the locker), the squadmate behind it (research/57 section 7) | done |
 | XMods | GUI_SF_Inventory.PCInventory | upgrades, from the equipment | as Inventory | **room** | with Inventory |
 | Loot | GUI_SF_Loot.PC_Loot | containers and bodies with items (`MassEffectGuiManager.ShowLootGui(oLootInv)`) | Flash | **room**, at the container or body (the inventory's owning actor), its frame only (stage x 0.30..0.70, y 0.04..0.95) at the whole stage's scale | done, seen at a real container (section 5.1) |
 | Achievement | GUI_SF_Achievement.PC_Achievement | achievement list | Flash | **room** | listed [verify] |
 | GameOver | GUI_SF_GameOver.GameOver | death | Flash | **room** | listed [verify] |
-| CharacterRecord | GUI_SF_CharacterRecord.PC_CharacterRecord | the wheel, `ShowSquadGui` | Flash + Shepard in the UI world | **room**, Shepard behind it (research/56 section 7) | done |
+| CharacterRecord | GUI_SF_CharacterRecord.PC_CharacterRecord | the wheel, `ShowSquadGui` | Flash + Shepard in the UI world | **room**, Shepard behind it (research/57 section 7) | done |
 | Credits | GUI_SF_Utility.Credits | the end | text | flat | keep |
 | DesignerUI | GUI_SF_HUD.DesignerUI | designer minigames and timers (layouts: Quasar, Mira's Hanoi, the laser, the toxin cure; the bomb disarm's timer): Kismet's `BioSeqAct_MiniGame` (mode 10, `SFXGameModeMinigame`) with `BioSeqAct_DUISet<Layout>Layout`; always open, hidden until used | an overlay over the live world | **room** in mode 7 or 10 while visible, toward what was used | listed; not reached on the test rig (section 5.1) |
 | Specialization | GUI_SF_CharacterRecord.Specialization | `BioSeqAct_ShowSpecialization` | Flash | **room** | listed [verify] |

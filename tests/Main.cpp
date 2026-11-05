@@ -2297,7 +2297,7 @@ void TestGamePointer() {
         out = at(tap, 0.05f, 0.0f, 0.03f);   // ...and up on the next step
         CHECK(!out.pressed && out.pressEdge);
         // A tap clicks where the fingertip reached the surface (x 0.05 m: 625 px), though it slid 8 mm while touching and
-        // pulled out further aside (research/56 section 6: the game's targets on a wrist screen are 0.8-1.4 cm).
+        // pulled out further aside (research/57 section 6: the game's targets on a wrist screen are 0.8-1.4 cm).
         Pointer pin;
         auto atContact = [](Output const& o) { return std::abs(o.x - 625) <= 1 && std::abs(o.y - 375) <= 1; };
         out = at(pin, 0.05f, 0.0f, 0.03f);
@@ -5303,7 +5303,7 @@ void TestGameMenuRequest() {
     // The values cross the host/mod boundary: unknown ones are None.
     CHECK(FromValue(0) == Action::None && FromValue(1) == Action::PauseMenu && FromValue(2) == Action::Holster);
     CHECK(FromValue(9) == Action::None && FromValue(0xFFFFFFFFu) == Action::None);
-    // The omni-tool's rail (research/56): the five screens by their game functions, and closing them.
+    // The omni-tool's rail (research/57): the five screens by their game functions, and closing them.
     CHECK(FromValue(3) == Action::Equipment && FromValue(7) == Action::Map && FromValue(8) == Action::CloseScreens);
     CHECK(IsScreen(Action::Squad) && IsScreen(Action::Codex) && !IsScreen(Action::PauseMenu) && !IsScreen(Action::CloseScreens));
     CHECK(std::string(ShowFunction(Action::Equipment)) == "ShowEquipmentGui" && std::string(ShowFunction(Action::Journal)) == "ShowJournalGui");
@@ -7309,7 +7309,7 @@ void TestOmniRail() {
     CHECK(!tap.Step(false, away, wrist, true, 0.01f));  // tracking lost: disarmed
     CHECK(!tap.Step(true, touching, wrist, true, 0.01f));
     CHECK(!tap.Step(true, away, wrist, true, 0.01f) && tap.Step(true, touching, wrist, true, 0.01f));
-    // Going for a wrist screen (research/56 section 6): a fingertip in front of its face, inside it, isn't tapping the wrist; one at
+    // Going for a wrist screen (research/57 section 6): a fingertip in front of its face, inside it, isn't tapping the wrist; one at
     // the wrist below its bottom edge is. The screen faces +Z at (0, -0.20, -0.30), 0.55 x 0.31 m; the wrist 10 cm under its edge.
     wu::Panel face;
     face.pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -7326,7 +7326,7 @@ void TestOmniRail() {
     CHECK(!held.Step(true, away, wrist, true, 0.01f) && held.Armed());
     CHECK(!held.Step(true, touching, wrist, false, 0.01f) && !held.Armed());
     CHECK(!held.Step(true, touching, wrist, true, 0.01f));
-    // The world UI's wrist rule (research/56): a listed screen nothing owns; a locker's equipment stands by the locker; the
+    // The world UI's wrist rule (research/57): a listed screen nothing owns; a locker's equipment stands by the locker; the
     // minigame always; the minigame's own width, the others' 16:9 width.
     wu::Settings const s;
     CHECK(wu::OnWrist(s, wu::Screen::Journal, false) && !wu::OnWrist(s, wu::Screen::Inventory, true) && wu::OnWrist(s, wu::Screen::SkillGame, true));
@@ -11114,7 +11114,7 @@ void RunReportTests(int& failures);
 int RunReflectTests();
 int RunBreadcrumbTests();
 int RunExeTests();
-// tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/56 section 5).
+// tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/57 section 5).
 int RunGfxTests();
 int RunPowerWheelTests();
 int RunGuiEventsTests();

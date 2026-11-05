@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Offline tests for the game pointer's input as the game's GUI events (core/vr/GuiEvents, research/56 section 6): the host's
+// Offline tests for the game pointer's input as the game's GUI events (core/vr/GuiEvents, research/57 section 6): the host's
 // queue (moves coalesced, buttons never dropped) and the mod's per-tick schedule (a move before each button or notch, one of
 // those per tick).
 

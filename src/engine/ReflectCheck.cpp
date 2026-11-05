@@ -594,7 +594,7 @@ void CheckClasses() {
     CheckClass<USFXGameModePowerWheel>("SFXGame.SFXGameModePowerWheel");
     CheckClass<USFXGameModeCommand>("SFXGame.SFXGameModeCommand");
     CheckClass<USFXGameModePhoto>("SFXGame.SFXGameModePhoto");
-    CheckClass<UGFxMovieInfo>("GFxUI.GFxMovieInfo");  // game/GameArt (research/56): the movies' bytes
+    CheckClass<UGFxMovieInfo>("GFxUI.GFxMovieInfo");  // game/GameArt (research/57): the movies' bytes
     CheckClass<UBioPawnBehavior>("SFXGame.BioPawnBehavior");
     CheckClass<UBioEpicPawnBehavior>("SFXGame.BioEpicPawnBehavior");
     CheckClass<UBioActorBehavior>("SFXGame.BioActorBehavior");
@@ -671,7 +671,7 @@ void CheckFields() {
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
     CheckField("Engine.WorldInfo", "bPlayersOnlyPending", SDK_BOOL(AWorldInfo, bPlayersOnlyPending));
     CheckField("SFXGame.BioWorldInfo", "m_bPausedByFocusLoss", SDK_BOOL(ABioWorldInfo, m_bPausedByFocusLoss));  // game/FocusPause
-    // The UI world's squad member behind the equipment and squad screens (game/UiWorldFigure, research/56 section 7).
+    // The UI world's squad member behind the equipment and squad screens (game/UiWorldFigure, research/57 section 7).
     CheckClass<ACameraActor>("Engine.CameraActor");
     CheckField("SFXGame.BioWorldInfo", "m_UIWorld", SDK_FIELD(ABioWorldInfo, m_UIWorld));
     CheckField("SFXGame.BioUIWorld", "m_pWorld", SDK_FIELD(UBioUIWorld, m_pWorld));
@@ -904,7 +904,7 @@ void CheckFields() {
     CheckField("SFXGame.BioWeaponRanged", "Stats", SDK_FIELD(ABioWeaponRanged, Stats));
     CheckField("SFXGame.SFXWeaponStatsBase", "AimModes", SDK_FIELD(USFXWeaponStatsBase, AimModes));
     CheckElement("SFXGame.SFXWeaponStatsBase", "AimModes", static_cast<long long>(sizeof(FWeaponAimMode)));
-    // game/InventoryProbe (research/56 section 6): the inventory screen's model, for our own touch inventory.
+    // game/InventoryProbe (research/57 section 6): the inventory screen's model, for our own touch inventory.
     CheckField("SFXGame.BioSFHandler_Inventory", "m_oInvInterface", SDK_FIELD(UBioSFHandler_Inventory, m_oInvInterface));
     CheckField("SFXGame.BioSFHandler_Inventory", "m_nCurrentSquadMember", SDK_FIELD(UBioSFHandler_Inventory, m_nCurrentSquadMember));
     CheckField("SFXGame.BioSFHandler_Inventory", "m_eCurrentSlot", SDK_FIELD(UBioSFHandler_Inventory, m_eCurrentSlot));
@@ -1205,7 +1205,7 @@ void CheckFunctions() {
         "Engine.WorldInfo.PauseGame",
         // GameMenuRequest (research/28): Start's Console_Menu on each mode that declares it
         "SFXGame.SFXGameModeBase.ShowMenuGui",
-        // GameMenuRequest, the omni-tool's rail (research/56): the screens' own functions and the screens' B
+        // GameMenuRequest, the omni-tool's rail (research/57): the screens' own functions and the screens' B
         "SFXGame.SFXGameModeBase.ShowEquipmentGui",
         "SFXGame.SFXGameModeBase.ShowSquadGui",
         "SFXGame.SFXGameModeBase.ShowJournalGui",
@@ -1213,12 +1213,12 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeBase.ShowMapGui",
         "Engine.BioSFHandler.HandleInputEvent",
         "SFXGame.SFXGameModeBase.GuiKey",
-        // game/InventoryProbe (research/56 section 6)
+        // game/InventoryProbe (research/57 section 6)
         "SFXGame.BioInventoryGuiInterface.SelectItemSlot",
         "SFXGame.BioInventoryGuiInterface.BuildEquippableItemList",
         "SFXGame.BioInventoryGuiInterface.Equip",
         "SFXGame.BioInventoryGuiInterface.GetEquippedItem",
-        // game/GuiCursor (research/56 section 6)
+        // game/GuiCursor (research/57 section 6)
         "Engine.BioSFPanel.GetVariableFloat",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
         // CockpitPanel (research/48 section 27): the repair button's and the extraction lever's calls, as Y and X in the Mako

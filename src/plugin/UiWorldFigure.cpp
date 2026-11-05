@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The squad member behind the equipment, XMods and squad screens: the host's side (plugin/UiWorldFigure.hpp, research/56 section 7).
+// The squad member behind the equipment, XMods and squad screens: the host's side (plugin/UiWorldFigure.hpp, research/57 section 7).
 #include "plugin/UiWorldFigure.hpp"
 
 #include "core/Hook.hpp"

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The omni-tool's rail in the host (plugin/OmniToolRail.hpp, research/56).
+// The omni-tool's rail in the host (plugin/OmniToolRail.hpp, research/57).
 #include "plugin/OmniToolRail.hpp"
 
 #include "plugin/MainMenu.hpp"
@@ -202,7 +202,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
         }
     });
     g.model = ctor.GetModelHandle();
-    // The game's own art (research/56 section 5), before the document loads so its fonts resolve; without it the rail keeps
+    // The game's own art (research/57 section 5), before the document loads so its fonts resolve; without it the rail keeps
     // its own drawn look.
     rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {});
     g.art = art.fonts && art.tabs && art.panel;
@@ -404,7 +404,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
                               live.right.aim.position.z + d.z / n * kTipAheadM}
                         : live.right.aim.position;
     }
-    // Not while the fingertip goes for the wrist screen or the rail (the wrist sits in front of their lower part, research/56
+    // Not while the fingertip goes for the wrist screen or the rail (the wrist sits in front of their lower part, research/57
     // section 6).
     bool const goingForPanel = handsTracked && ((frame.screen && frame.screen->onWrist && rail::GoingForPanel(tip, frame.screen->panel)) ||
                                                    (g.lastPanel && rail::GoingForPanel(tip, *g.lastPanel)));

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Where the game's Flash cursor is (game/GuiCursor.hpp, research/56 section 6).
+// Where the game's Flash cursor is (game/GuiCursor.hpp, research/57 section 6).
 #include "game/GuiCursor.hpp"
 
 #include "core/Log.hpp"
@@ -129,7 +129,7 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
             ++gSent;
             if (!gLoggedFirst && event != vr::gui_events::kMouseMove) {
                 gLoggedFirst = true;
-                log::Info("gui cursor: the game pointer's input goes to the game's screens as their own GUI events ({}; research/56 "
+                log::Info("gui cursor: the game pointer's input goes to the game's screens as their own GUI events ({}; research/57 "
                           "section 6)", why);
             }
         } else {

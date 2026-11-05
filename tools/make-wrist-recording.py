@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, see tools/mevrrec.py): a standing player who raises the
 left wrist in front of the chest as if reading a watch, looks down at it, and taps it with the right index fingertip at the
-given times (research/56, the omni-tool: the tap opens the rail and the game's omni-tool, a second tap closes them). Between
+given times (research/57, the omni-tool: the tap opens the rail and the game's omni-tool, a second tap closes them). Between
 taps the right hand rests low beside the body. For checking the omni-tool's wrist screens and rail on the fake headset.
 
 Usage: python tools/make-wrist-recording.py out.mevrrec [seconds 60] [taps 4] [eye height 0] [look wrist] [B presses]

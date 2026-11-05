@@ -8,10 +8,10 @@
 struct ID3D11Device;
 struct ID3D11ShaderResourceView;
 
-// The squad member behind the equipment, XMods and squad screens: the host's side (research/56 section 7; the mod's side:
+// The squad member behind the equipment, XMods and squad screens: the host's side (research/57 section 7; the mod's side:
 // game/UiWorldFigure). The mod's scene capture looks through the game's UI world's camera, but it lives in the level, whose
 // scene the capture loop hands it. A capture's probe builds its view family from the eye renderer's first field, the FScene
-// (0x4EE4B0, research/56 section 7): for our capture alone, recognised by its render target (the probe's +0x1C), that field holds
+// (0x4EE4B0, research/57 section 7): for our capture alone, recognised by its render target (the probe's +0x1C), that field holds
 // the UI world's scene for the call, so the capture renders the UI world. It must render without Umbra (Umbra knows only the
 // level: its visible instances indexed the UI world's views out of range, the render thread's fault at 0x76A5FB, 2026-11-05), so
 // it gets no Umbra camera query (Install below); a render while one is still pending for it renders the level, consuming it. Its

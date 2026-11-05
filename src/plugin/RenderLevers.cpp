@@ -1589,7 +1589,7 @@ void CaptureSceneHook(void* captureInfo, void* mainRenderer) {
     t_captureRenderer = nullptr;
     ++t_captureDepth;
     std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
-    // The UI world's squad member (research/56 section 7): our capture of it renders the UI world's scene, not the eye's.
+    // The UI world's squad member (research/57 section 7): our capture of it renders the UI world's scene, not the eye's.
     ui_world_figure::CaptureSwap const figure = ui_world_figure::BeginCapture(captureInfo, mainRenderer);
     if (!figure.skip) {
         gCaptureSceneOrig(captureInfo, mainRenderer);

@@ -47,7 +47,7 @@ std::string StatusJson();
 bool OwnsTriggers();
 
 // At attach (plugin/Entry): user32's GetCursorPos hooked, so that the game's Flash cursor can be put on the pointer's point
-// (`[Pointer] gameCursor`, research/56 section 6). Never removed.
+// (`[Pointer] gameCursor`, research/57 section 6). Never removed.
 void InstallCursorHook(mevr::hook::Context& init);
 
 // HostServices v30: the GUI events the pointer queued for the game's menus (core/vr/GuiEvents), up to `capacity`, oldest first;
@@ -58,7 +58,7 @@ std::uint32_t TakeGuiEvents(std::uint8_t* events, std::uint32_t capacity);
 // frame: the galaxy map's travel question over the hologram's table (research/51 section 8). Present thread, before Step.
 // `touchArea`: the part of the quad a fingertip can touch (quad UV, u0 v0 u1 v1): the visible crop of a world UI screen.
 // `projectingHand`: the hand a wrist screen is projected from (0 left), whose fingertip doesn't touch it (it sits 10 cm under the
-// screen's edge and pressed and scrolled it in a replay, research/56 section 6); -1 none.
+// screen's edge and pressed and scrolled it in a replay, research/57 section 6); -1 none.
 void NoteGameUiQuad(XrPosef const& pose, float width, float height,
     MELEVR::MevrBridge::PanelKind kind = MELEVR::MevrBridge::PanelKind::GalaxyMap, float const* touchArea = nullptr,
     int projectingHand = -1);

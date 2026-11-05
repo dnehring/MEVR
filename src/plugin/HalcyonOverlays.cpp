@@ -96,7 +96,7 @@ constexpr float kDegToRad = kPi / 180.0f;
 constexpr int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // the menu's family: every runtime has it
 constexpr UINT kReticleSize = 128;
 float gPanelBackdrop = 0.0f;  // the world UI's backdrop for this frame's panel blit (research/53; 0: the HUD as it is)
-// The UI world's squad member behind the world UI's panel this frame (research/56 section 7; nullopt: none).
+// The UI world's squad member behind the world UI's panel this frame (research/57 section 7; nullopt: none).
 std::optional<mevr::host::ui_world_figure::Picture> gPanelFigure;
 constexpr float kGalaxyUiWidthM = 1.50f;  // the game's UI frame over the galaxy hologram's table (its travel box ~1 m of it)
 
@@ -258,7 +258,7 @@ float4 PSMain(VSOut i) : SV_Target {
             a *= lerp(params.z, 1.0, saturate(max(c.r, max(c.g, c.b)) * 4.0));
         }
     }
-    // The UI world's picture behind the game's UI over the 16:9 stage (research/56 section 7: the equipment and squad screens'
+    // The UI world's picture behind the game's UI over the 16:9 stage (research/57 section 7: the equipment and squad screens'
     // squad member): figureRect its origin and inverse size in source pixels, figureParams its opacity and decode gamma.
     float4 under = 0;
     if (figureParams.x > 0.0) {
@@ -291,7 +291,7 @@ struct PanelParams {
     float params[4];        // linear source (1/0), white scale, the world UI's backdrop (0: none), 0
     std::int32_t window[4]; // blit: the window's origin (source pixels), 0, 0; grid: 0, 0, cell width, cell height
     std::int32_t masks[3][4];  // each x0, y0, x1, y1 (source pixels); x1 <= x0: none
-    float figureRect[4];       // the UI world's picture (research/56 section 7): the stage's origin (source pixels), 1/width, 1/height
+    float figureRect[4];       // the UI world's picture (research/57 section 7): the stage's origin (source pixels), 1/width, 1/height
     float figureParams[4];     // its opacity (0: none), decode gamma, 0, 0
 };
 static_assert(sizeof(PanelParams) == 128);
@@ -330,7 +330,7 @@ struct Pipeline {
     ComPtr<ID3D11BlendState> opaque;
     ComPtr<ID3D11DepthStencilState> noDepth;
     ComPtr<ID3D11RasterizerState> raster;
-    ComPtr<ID3D11SamplerState> linearClamp;  // the UI world's picture (research/56 section 7)
+    ComPtr<ID3D11SamplerState> linearClamp;  // the UI world's picture (research/57 section 7)
     bool tried = false;
     bool ready = false;
 };
@@ -742,7 +742,7 @@ ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSw
             params.masks[m][2] = masks.rects[m].x1;
             params.masks[m][3] = masks.rects[m].y1;
         }
-        // The world UI's panel: the UI world's squad member behind the game's UI, over the 16:9 stage (research/56 section 7).
+        // The world UI's panel: the UI world's squad member behind the game's UI, over the 16:9 stage (research/57 section 7).
         ID3D11ShaderResourceView* figure = nullptr;
         if (&swapchain == &gPanelSwapchain && gPanelFigure && gPanelFigure->srv != nullptr && gPanelFigure->opacity > 0.0f) {
             mevr::vr::world_ui::Rect const stage = mevr::vr::world_ui::Stage(static_cast<float>(gPanel.width), static_cast<float>(gPanel.height));
@@ -2355,7 +2355,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         }
     }
 #if defined(MEVR_WITH_MAIN_MENU)
-    // ---- The omni-tool's rail (plugin/OmniToolRail, research/56): beside the game's screen on the wrist, or alone on the wrist
+    // ---- The omni-tool's rail (plugin/OmniToolRail, research/57): beside the game's screen on the wrist, or alone on the wrist
     // when the player taps it open ----
     {
         mevr::host::omni_rail::Frame rail;

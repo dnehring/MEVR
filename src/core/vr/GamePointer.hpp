@@ -60,7 +60,7 @@ struct Settings {
     float touchBehindM = 0.06f;   // how far behind the surface a pressing tip still holds the press
     float touchMarginM = 0.01f;
     float touchSmoothing = 0.8f;  // a lighter smoothing than the ray's: the fingertip is steady
-    // Scrolling by touch (research/56, the user 2026-11-04: "we'd need scrolling support when we're going through inventory"):
+    // Scrolling by touch (research/57, the user 2026-11-04: "we'd need scrolling support when we're going through inventory"):
     // a fingertip at the surface waits before it presses. Let go within touchHoldS without moving: a click (the button down,
     // and up on the next step). Held still past touchHoldS: a press as before (holding, dragging a slider). Moved more than
     // touchDragM along the surface first: a drag that scrolls (a wheel notch per touchScrollNotchM, the content following the

@@ -1181,7 +1181,7 @@ if (MEVR_BUILD_TESTS)
     endif ()
 endif ()
 
-# The game's own UI art, locally (tools/gfx-dump, research/56 section 5): a GFx movie's exports, sprites, shapes and fonts; a
+# The game's own UI art, locally (tools/gfx-dump, research/57 section 5): a GFx movie's exports, sprites, shapes and fonts; a
 # character drawn to PNG (core/gfx/Raster), a nine-slice fit, a font rebuilt as TrueType (core/gfx/SwfFont) and a text
 # sample FreeType renders from it. Reads the player's own files; never commit what it writes.
 if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)

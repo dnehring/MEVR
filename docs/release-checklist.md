@@ -119,7 +119,7 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
 - [ ] **[D] Equipment and character record lose their 3D models in the room**: exclude them from `screens = all` until
   fixed.
   **Open:** the owner saw both screens flat and in the room (snapshots 2026-11-04 20:30-20:31) and chose the omni-tool instead:
-  every personal screen projected from the left wrist with a rail of the screens beside it (research/56, 7d727b2; built,
+  every personal screen projected from the left wrist with a rail of the screens beside it (research/57, 7d727b2; built,
   [verify] in the game). The figure itself (the concept art's squad holograms on a disc) is still to come: a scene capture in
   the game's UI world.
 - [x] **[D] Cockpit on by default with no opt-out**: the setup always installs its package (and edits `PCConsoleTOC.bin`);

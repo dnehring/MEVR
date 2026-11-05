@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: MIT -->
-# 56. The omni-tool menu: every game screen from the left wrist (2026-11-04)
+# 57. The omni-tool menu: every game screen from the left wrist (2026-11-04)
 
 The user, after seeing the equipment and squad screens lose their 3D figure in the room (research/53 section 1): "I actually
 want to see if we can make the entire menu system available via omni-tool menu like what the VR mod session was able to

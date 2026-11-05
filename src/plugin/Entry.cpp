@@ -207,8 +207,8 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     HookExitProcess(init);
 #if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
-    mevr::host::game_pointer::InstallCursorHook(init);  // research/56 section 6: the game's cursor onto the pointer
-    mevr::host::ui_world_figure::Install(init);  // research/56 section 7: no Umbra query for the UI world's capture
+    mevr::host::game_pointer::InstallCursorHook(init);  // research/57 section 6: the game's cursor onto the pointer
+    mevr::host::ui_world_figure::Install(init);  // research/57 section 7: no Umbra query for the UI world's capture
 #endif
     mevr::log::Info("host attached");
     return true;

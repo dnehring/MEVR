@@ -2756,14 +2756,14 @@ void Refresh() {
             }
         }
     }
-    // [WorldUi] since 2026-11-04 (research/56): the omni-tool takes every personal screen. A file without the marker
+    // [WorldUi] since 2026-11-04 (research/57): the omni-tool takes every personal screen. A file without the marker
     // wristMenuWidthM whose wrist still holds the old default (the bypass minigame alone) gets the new list; any other is kept.
     if (auto const s = ini.find("WorldUi"); s != ini.end() && s->second.find("wristMenuWidthM") == s->second.end()) {
         if (auto const k = s->second.find("wrist"); k != s->second.end()) {
             std::string const listText = vr::world_ui::ScreenList(vr::world_ui::Settings{}.wristScreens);
             std::wstring const list(listText.begin(), listText.end());  // the screens' tags are ASCII
             if (_stricmp(k->second.c_str(), "SkillGame") == 0 && WritePrivateProfileStringW(L"WorldUi", L"wrist", list.c_str(), path.wstring().c_str()) != 0) {
-                log::Info("hands: [WorldUi] wrist SkillGame -> {}: the omni-tool's screens (research/56) in {}", listText,
+                log::Info("hands: [WorldUi] wrist SkillGame -> {}: the omni-tool's screens (research/57) in {}", listText,
                     ini::Utf8(path));
                 ini = ReadIni(path);
                 stamp = fs::last_write_time(path, ec);
@@ -2924,14 +2924,14 @@ void Refresh() {
         // Screens projected from the wrist (2026-11-04, research/53 section 6).
         {L"WorldUi", "WorldUi", L"wrist", "wrist", L"SkillGame"},
         {L"WorldUi", "WorldUi", L"wristWidthM", "wristWidthM", L"0.30"},
-        // The omni-tool's screens (2026-11-04, research/56). The marker wristMenuWidthM comes after the wrist list's migration above.
+        // The omni-tool's screens (2026-11-04, research/57). The marker wristMenuWidthM comes after the wrist list's migration above.
         {L"WorldUi", "WorldUi", L"wristMenuWidthM", "wristMenuWidthM", L"0.70"},
         {L"WorldUi", "WorldUi", L"wristAboveM", "wristAboveM", L"0.10"},
         {L"WorldUi", "WorldUi", L"wristTowardM", "wristTowardM", L"0.00"},
         {L"WorldUi", "WorldUi", L"wristFollow", "wristFollow", L"1"},
         {L"WorldUi", "WorldUi", L"wristBeam", "wristBeam", L"1"},
         {L"WorldUi", "WorldUi", L"omniTool", "omniTool", L"1"},
-        // The squad member behind the equipment and squad screens (2026-11-05, research/56 section 7).
+        // The squad member behind the equipment and squad screens (2026-11-05, research/57 section 7).
         {L"WorldUi", "WorldUi", L"figure", "figure", L"1"},
         {L"WorldUi", "WorldUi", L"figureOpacity", "figureOpacity", L"0"},
         // The vent's visible rack (2026-11-04, research/45 section 6).

@@ -389,7 +389,7 @@ switching frameworks.
   (`touchTipM` 0.04 ahead of the aim pose) within `touchHoverM` (0.06) of a screen's visible part takes over from the rays, pressing
   at `touchPressM` (0.005) from the front, letting go past `touchReleaseM` (0.015); haptic tick on arrival, click on press; the
   world UI passes its crop as the touchable part (`NoteGameUiQuad`'s `touchArea`); `touch = 0` off. Rules unit-tested.
-  **The pointer works the game's menus through their own GUI events** (2026-11-05, research/56 section 6, `[Pointer]
+  **The pointer works the game's menus through their own GUI events** (2026-11-05, research/57 section 6, `[Pointer]
   gameCursor`): LE1's Flash screens put their mouse where `GetCursorPos` says (the client area scaled to the stage) and read it
   only on mouse input, posted messages never moved it and the Windows cursor can't leave the monitor (the game's window is
   taller), so until then the pointer's clicks landed wherever the game's cursor was. The host hooks `GetCursorPos` at attach and
@@ -425,7 +425,7 @@ switching frameworks.
   end stays flat). In game modes 7 and 10 (the bypass minigame) the mod reads the GUI manager's panels (`m_oCachedScaleFormManager`,
   `m_lstPanels`, each `nmTag` a library tag, only `IsVisible` ones); the first one of ours places the screen; any visible one not in
   `screens` leaves the stack on Halcyon's panel. **The equipment, XMods and squad screens' squad member** lives in the game's **UI
-  world**, which the game renders and ticks only while a screen is full screen (research/56 section 7, `game/UiWorldFigure`, host
+  world**, which the game renders and ticks only while a screen is full screen (research/57 section 7, `game/UiWorldFigure`, host
   `plugin/UiWorldFigure`, `[WorldUi] figure`, `figureOpacity`): the mod ticks it itself (its native Tick, vtable slot 104 =
   `0xB3B810`: the command queue the screen's `SpawnPawn`/`TriggerEvent` fill, then `UWorld::Tick` of it) and points a scene capture
   of ours with its `CameraActor_3`; the host skips that capture's Umbra camera query (a hook on `0x7526C0`) and gives it the UI
@@ -443,7 +443,7 @@ switching frameworks.
   `mevr classes <text>`, `mevr instances <Class> [text]`, `mevr loot <n>`, `mevr lootcorpse <n>`. Eden Prime's real loot and minigame
   cases: research/53 section 5. Logs `world ui:`; snapshot `"mod"."worldUi"`.
   **The bypass minigame is projected from the left wrist** (research/53 section 6, the omni-tool; Fallout 4 VR's Pip-Boy and
-  Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist` (since research/56 every personal screen too), `wristWidthM`
+  Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist` (since research/57 every personal screen too), `wristWidthM`
   0.30, `wristAboveM` 0.06, `wristTowardM`, `wristFollow`, `wristBeam`; the menu's Comfort > Game screens > Omni-tool screens): the host places it each frame from
   the HUD's left wrist point (`WristPlace`: facing the eyes, its bottom edge 10 cm above the wrist across the line of sight), its
   frame only (`WristCrop`), unfolding over 0.18 s, a faint fan of light from the wrist (plugin/WristBeam, a `beam` snapshot layer;
@@ -456,7 +456,7 @@ switching frameworks.
   Half-Life: Alyx's way is the model for working it by hand. `mevr skillgame start [type] [difficulty] [n]` opens the minigame on any placeable without a save
   (the level's `BioSkillGame.InitializeSkillGame`); `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it. Next: tapping it.
   The skill `game-screen-to-hologram` is the recipe for the next screens.
-- LE1 omni-tool menu ([research/56](research/56-omni-tool-menu.md), 2026-11-04, the user: "the entire menu system available via
+- LE1 omni-tool menu ([research/57](research/57-omni-tool-menu.md), 2026-11-04, the user: "the entire menu system available via
   omni-tool", "a menu on the left side to allow selecting all of the different menus"): **every personal screen is projected from
   the left wrist by default** (`[WorldUi] wrist` lists SkillGame, Inventory, XMods, CharacterRecord, Specialization, Journal, Codex,
   Map, MenuBrowser, Options, Save, Load; an old file's `SkillGame` alone moves once, marker `wristMenuWidthM`; a screen a use opened,
@@ -471,7 +471,7 @@ switching frameworks.
   screens. Its entries go to the mod through the main menu's request slot (`main_menu::PutGameRequest`, `game_menu::Action` 3..8):
   `game/GameMenuRequest` backs out of the screen up with the player's B as the game hears it, **`SFXGameModeBase.GuiKey(13)` on the
   active mode** (it hands B to the GUI manager, which offers it to every handler on the stack and closes through
-  `MassEffectGuiManager.HidePauseMenu`/`HideBrowserWheel`; B to the focused panel's handler alone never closed anything: research/56
+  `MassEffectGuiManager.HidePauseMenu`/`HideBrowserWheel`; B to the focused panel's handler alone never closed anything: research/57
   section 3), 4 ticks apart, at most 6, until the game leaves mode 7, then calls `SFXGameModeBase.Show<Screen>Gui(true)` on the mode
   that has the input (no mode overrides them; in mode 7 only the Flash wheel opens screens); Computer (the pause menu, which the game
   won't open over its screens) the same way. A screen taking over inside mode 7 is a new world-UI opening (placed, labelled, unfolded
@@ -484,7 +484,7 @@ switching frameworks.
   (2026-11-04, the user): while the rail is shown the host sets `kOmniRailOpen` (4) in `HostServices::mainMenu`'s bits (no version
   change), and on foot with no screen up the mod's `world_ui` keeps `omni_tool::Tick` on (`[WorldUi] omniTool`); log `world ui: the
   omni-tool's rail is open on foot`. The rail alone is still placed from the controller's wrist, not the display [verify].
-  **The rail is drawn with ME1's own art** (research/56 section 5; the user, 2026-11-04: "ME1's screens, exactly"; hand-drawn
+  **The rail is drawn with ME1's own art** (research/57 section 5; the user, 2026-11-04: "ME1's screens, exactly"; hand-drawn
   imitations were rejected twice): the mod (`game/GameArt`) copies six of the game's Scaleform movies' `RawData` to
   `%LOCALAPPDATA%\MEVR\gameart` once per level (the player's own data: **never commit or ship game art**); the host
   (`plugin/RailArt`, `core/gfx`: a GFx reader, a CPU rasterizer with morph shapes and nine-slices, DefineFont3 to TrueType)

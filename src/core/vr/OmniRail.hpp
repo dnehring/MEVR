@@ -10,7 +10,7 @@
 #include <optional>
 #include <string_view>
 
-// The omni-tool's rail (research/56; the user, 2026-11-04: "the entire menu system available via omni-tool", "we do need a
+// The omni-tool's rail (research/57; the user, 2026-11-04: "the entire menu system available via omni-tool", "we do need a
 // menu on the left side to allow selecting all of the different menus"): a column of the game's screens to the left of the
 // screen projected from the left wrist, or alone on the wrist when none is up; tapping the left wrist with the right index
 // fingertip opens and closes it. This is the game-independent part (unit-tested in tests/Main.cpp): the entries, where the
@@ -82,7 +82,7 @@ private:
 // The fingertip going for a panel on the wrist (a game screen or the rail): within depthM in front of its face (or a little
 // behind it, pressing), its place across the face inside the panel and marginM around it. No wrist tap then: seen from the eyes
 // the wrist sits in front of the screen's lower part, and a replayed reach for the equipment screen's Equip button passed 3.2 cm
-// from the wrist point and closed everything (research/56 section 6). A tap on the wrist itself is below the panel's bottom edge
+// from the wrist point and closed everything (research/57 section 6). A tap on the wrist itself is below the panel's bottom edge
 // (10 cm above the wrist), outside it.
 inline constexpr float kTapPanelDepthM = 0.15f;
 inline constexpr float kTapPanelBehindM = 0.03f;

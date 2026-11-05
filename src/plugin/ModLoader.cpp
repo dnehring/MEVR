@@ -304,7 +304,7 @@ HostServices WithPowerWheel(HostServices services) {
     services.setPowerWheel = &HostSetPowerWheel;
     services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));  // v29
     services.setPowerLock = &HostSetPowerLock;
-    services.takeGuiEvents = &HostTakeGuiEvents;  // v30: the game pointer's input as GuiKey events (research/56 section 6)
+    services.takeGuiEvents = &HostTakeGuiEvents;  // v30: the game pointer's input as GuiKey events (research/57 section 6)
     return services;
 }
 HostServices const gServices = WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,

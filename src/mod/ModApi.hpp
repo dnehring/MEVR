@@ -86,7 +86,7 @@ inline constexpr int kHostServicesVersion = 30;
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
 inline constexpr std::uint32_t kMainMenuPause = 2u;  // and the player wants the game paused while it is
-// The omni-tool's rail is shown (research/56, 2026-11-04; no version change: an older mod ignores the bit, an older host never
+// The omni-tool's rail is shown (research/57, 2026-11-04; no version change: an older mod ignores the bit, an older host never
 // sets it). Set whether or not the main menu is open; the mod puts the game's omni-tool on Shepard's arm for it.
 inline constexpr std::uint32_t kOmniRailOpen = 4u;
 
@@ -349,7 +349,7 @@ struct HostServices {
     std::uint32_t powerLockSize = 0;
     void (*setPowerLock)(vr::power_wheel::LockView const* view) = nullptr;
 
-    // Version 30: the game pointer's input as the game's own GUI events (research/56 section 6, core/vr/GuiEvents). While the
+    // Version 30: the game pointer's input as the game's own GUI events (research/57 section 6, core/vr/GuiEvents). While the
     // pointer (a fingertip or a ray) is on one of the game's menus (a flat menu or a game screen in the room or on the wrist; not
     // the galaxy map) the host answers GetCursorPos with its point and queues BIOGUI events (6 the mouse's motion, 50/52 the left
     // button and its release, 28/29 the wheel); the mod takes up to `capacity` each tick (the number taken, oldest first) and

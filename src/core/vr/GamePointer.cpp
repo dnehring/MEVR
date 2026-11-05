@@ -158,7 +158,7 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
     bool const wasPressing = pressing_;
     float dragNotches = 0.0f;
     // A touch's click goes where the fingertip reached the surface, not where it slid to while waiting or pulling back out (the
-    // game's targets on a wrist screen are 0.8-1.4 cm: research/56 section 6). The point stays pinned from the contact through
+    // game's targets on a wrist screen are 0.8-1.4 cm: research/57 section 6). The point stays pinned from the contact through
     // the tap's button up, or through a hold's button down; a drag follows the finger.
     bool pinned = false;
     if (clickUpNext_) {

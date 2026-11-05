@@ -234,7 +234,7 @@ private:
     ChamferIds ids_{};
 };
 
-// ---- ME1's own shapes (research/56: the omni-tool's rail in the game's UI language) ----------------------------
+// ---- ME1's own shapes (research/57: the omni-tool's rail in the game's UI language) ----------------------------
 // A convex polygon with every edge moved `d` inward (negative: outward), adjacent edges intersected.
 std::vector<Vector2f> InsetPolygon(std::vector<Vector2f> const& p, float d) {
     int const n = static_cast<int>(p.size());
@@ -715,7 +715,7 @@ std::vector<Icon> const& Icons() {
             hook.points.push_back({12, 15});
             v.push_back({"guide", 24.0f, 1.8f, {Circle(12, 12, 9.5f), hook, Line({{12, 17.5f}, {12, 18.5f}})}});
         }
-        // The omni-tool's rail (research/56): the game's own screens.
+        // The omni-tool's rail (research/57): the game's own screens.
         v.push_back({"squad", 24.0f, 1.8f,  // two figures, the second behind
             {Circle(9, 8, 3.5f), Arc(9, 21, 6.5f, 180, 360, 16), Circle(17, 7, 2.8f, 0.7f), Arc(17, 17.5f, 5, 215, 360, 12)}});
         v.push_back({"equipment", 24.0f, 1.8f,  // a crate

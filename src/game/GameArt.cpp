@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The game's own UI art cached for the host (game/GameArt.hpp, research/56).
+// The game's own UI art cached for the host (game/GameArt.hpp, research/57).
 #include "game/GameArt.hpp"
 
 #include "core/Ini.hpp"
@@ -27,7 +27,7 @@ namespace fs = std::filesystem;
 std::string gStatus = "{\"state\": \"waiting\"}";
 
 #if defined(MEVR_GAME_LE1)
-// The movies (research/53's audit, research/56): GUI_SF_Fonts and the main wheel live in Startup_INT (always loaded); the rest
+// The movies (research/53's audit, research/57): GUI_SF_Fonts and the main wheel live in Startup_INT (always loaded); the rest
 // come with their screens' packages, loaded here.
 constexpr std::array<char const*, 6> kMovies = {
     "GUI_SF_Fonts.Fonts",

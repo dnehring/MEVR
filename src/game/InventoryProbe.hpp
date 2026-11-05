@@ -3,7 +3,7 @@
 
 #include <string>
 
-// A dev probe of the equipment screen's model (research/56 section 6; written for a touch inventory of our own, dropped
+// A dev probe of the equipment screen's model (research/57 section 6; written for a touch inventory of our own, dropped
 // 2026-11-05 for touch on the game's own screens): reads the game's inventory model through the open equipment screen's
 // handler (BioSFHandler_Inventory.m_oInvInterface, a BioInventoryGuiInterface: the layer between the game's items and its
 // Flash screen) and calls its functions.
