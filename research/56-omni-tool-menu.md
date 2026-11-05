@@ -57,9 +57,20 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
 
 ## 3. Open, [verify] in the game
 
-- Whether the backing out leaves mode 7 cleanly from each screen (a screen over the main wheel takes two Bs) and whether the
-  screens then open without stacking. Log lines: `omni-tool: backing out of '<tag>' (B, n of at most 6) for <screen>`,
-  `omni-tool: opened <screen> (<mode>.<function>(true); ...)`, `omni-tool: ... the game stayed in its GUI mode after N backs out`.
+- ~~Whether the backing out leaves mode 7 cleanly~~ **Checked 2026-11-04 on the fake headset** (BIOA_UNC20, replayed wrist poses):
+  B sent to the focused panel's handler (`BioSFHandler.HandleInputEvent(13)`) never closed the equipment screen (six tries). A call
+  trace of the game's own B (a replayed press, `mevr calltrace 15 handleinput inventory close back exit pop remove leave -update
+  ...`): `SFXGameModeBase.GuiKey` -> `BioSFManager.HandleInputEvent` on `MassEffectGuiManager_0` -> `HandleInputEvent` on every
+  handler on the stack (`BioSFHandler_SharedIGG` twice, `XMods`, `PCInventory`) -> `BioSFManager.RemovePanel` from
+  `MassEffectGuiManager.HidePauseMenu` and `HideBrowserWheel` -> `OnPanelRemoved`. The back-out now calls `GuiKey(13)` on the active
+  mode (`SFXGameModeGUI`): equipment -> journal -> map -> squad -> codex -> pause menu -> closed, one B each, the next screen 10-25 ms
+  later; the pause menu needed the same back-out (`ShowMenuGui` returns 0 over a game screen). A fingertip press on the rail's Map
+  (a replay) went rail -> host request -> mod -> map. The world UI counts a screen taking over inside mode 7 as a new opening (the host
+  had kept the first screen's label, so the rail highlighted it). Log lines: `omni-tool: backing out of '<tag>' (B through
+  <mode>.GuiKey, n of at most 6) for <screen>`, `world ui: <screen> takes over from <screen>`.
+- **The rail alone sits at the controller's wrist, the gauntlet where Shepard's arm puts it** (about 11 cm lower and nearer on the
+  fake headset's poses, the arm-length scaling): screens project from the omni-tool's display (`State::emitter`), the rail alone
+  doesn't yet (no state is published without a screen). [open]
 - The tap's distances on a real wrist; whether the HUD's wrist point is where the player sees the display.
 - The rail's size and legibility at 0.42 m (entries 112 dp of a 1000 dp canvas: about 3 cm tall on a 0.31 m rail).
 - **The squad as holograms** (the concept art's disc): the equipment and character record's figure lives in the game's UI world

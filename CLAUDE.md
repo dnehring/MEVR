@@ -450,10 +450,15 @@ switching frameworks.
   (`omni_rail::OwnsTriggers`). **Tap the left wrist with the right index fingertip** to open it alone on the wrist (3.5 cm from
   7 cm, not with a gun drawn; `omni_rail::Tap`); it shows by itself beside a screen of its own; a tap or Close shuts it and the
   screens. Its entries go to the mod through the main menu's request slot (`main_menu::PutGameRequest`, `game_menu::Action` 3..8):
-  `game/GameMenuRequest` backs out of the screen up with B to the focused panel's handler (`BioSFHandler.HandleInputEvent(13)`, 4
-  ticks apart, at most 6) until the game leaves mode 7, then calls `SFXGameModeBase.Show<Screen>Gui(true)` on the mode that has the
-  input (no mode overrides them; in mode 7 only the Flash wheel opens screens). [verify] in the game: the backing out, the tap's
-  distances, legibility. Logs `omni-tool:`, `omni-tool rail:`; snapshot layer `omnirail`; offline look `mevr-menu-preview`'s
+  `game/GameMenuRequest` backs out of the screen up with the player's B as the game hears it, **`SFXGameModeBase.GuiKey(13)` on the
+  active mode** (it hands B to the GUI manager, which offers it to every handler on the stack and closes through
+  `MassEffectGuiManager.HidePauseMenu`/`HideBrowserWheel`; B to the focused panel's handler alone never closed anything: research/56
+  section 3), 4 ticks apart, at most 6, until the game leaves mode 7, then calls `SFXGameModeBase.Show<Screen>Gui(true)` on the mode
+  that has the input (no mode overrides them; in mode 7 only the Flash wheel opens screens); Computer (the pause menu, which the game
+  won't open over its screens) the same way. A screen taking over inside mode 7 is a new world-UI opening (placed, labelled, unfolded
+  again). Wrist screens never look wider than 60 degrees (`world_ui::WristNearest`). **Checked on the fake headset 2026-11-04** (a
+  replayed wrist tap and a fingertip press on the rail, `tools/make-wrist-recording.py`): all six entries and Close, one B each.
+  [verify] with a person: the tap's distances, legibility. Logs `omni-tool:`, `omni-tool rail:`; snapshot layer `omnirail`; offline look `mevr-menu-preview`'s
   `rail-*.png`. **Replays with controller poses move the real cursor** when a screen falls back to the flat panel (the game
   pointer's `SetCursorPos`): `[Pointer] setCursor = 0` for such tests. `mevr omni <equipment|squad|map|journal|codex|computer|
   close|holster>` hands the mod the request an entry gives (no hand on the rail). **The tap shows the game's omni-tool too**
