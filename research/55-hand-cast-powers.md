@@ -116,3 +116,38 @@ thread through `ue3::runtime::Call`, with no hook. What it would be built from:
 3. Whether the projectile leaves from the hand our arm IK places (`BioPower.GetProjectileAttachPoint`) and whether it
    follows `m_oTarget`.
 4. How the casting animation looks in first person with arm IK on (the power's `Anim`/`CoverAnim` drive the upper body).
+
+## 5. The wheel's look (2026-11-04)
+
+The user's concept (`concept/power-wheel.png`, local) is the model: glass tiles in a ring around the left palm, an icon
+over each power's name, the chosen tile orange, grown and pulled out with a double chevron beyond it and a beam from the
+palm, spokes to the others, thin rings, a gap where the forearm comes in. Then two of the user's corrections: the
+concept's palm glyph was generic (our N7 mark, or nothing: `power_wheel_draw::Emblem`), and the wheel should speak the
+**game's own menus'** language, with tiles whose fill brightens toward their edges as the game's buttons do.
+
+**The game's language**, read from its own UI art (Startup_INT.pcc: the HUD movie `GUI_SF_HUD.PC_ME_HUD` and the
+pause wheel `GUI_SF_InGameGui.PC_MainWheel`, their Texture2Ds exported with Legendary Explorer Core and sampled; nothing
+extracted is kept):
+
+| Element | The game's | Sampled from |
+|---|---|---|
+| Lines | cyan (125, 211, 232), thin, 45-degree cut corners | HUD gradients `G0`, `G16`, `G20`; frames `I192`, `I123` |
+| A wheel button | a radial fill, brightest at its edge: blue (40, 133, 172) to (23, 72, 104) inside | main wheel `G2A` (and `GB`, lighter) |
+| The chosen button | the same in orange: (220, 103, 27) to (117, 48, 2) | main wheel `G29` |
+| Frames, highlights | orange (255, 157, 90); green (79, 227, 129) for ready | HUD `I213`, `I215` (the power slots' shield-shaped frames) |
+| Panels | deep indigo (3, 19, 96) with fine horizontal scanlines | HUD `I192` |
+| The HUD's own wheel | ring segments split by thin gaps, a bright cyan circle at the hub, indigo highlight segments | HUD `I1EA` |
+| Fonts | BioMass (BioWare's display face), Aero Light, Myriad Pro (body) | the font movie `GUI_SF_Fonts.Fonts` |
+
+None of the fonts can be bundled; Rajdhani Bold (already in `third_party/fonts`, SIL OFL) is the nearest of ours to
+BioMass's squared forms, in the game's title case (`WheelView::upperCase` gives the concept's capitals). Using the
+game's own BioMass at run time from the player's install is possible later (its glyphs are in the font movie).
+
+**What is built** (offline look only, nothing in the game yet): `core/vr/PowerWheel` (the layout: six tiles over 253
+degrees with the gap toward the forearm, each tile's outline, the hand's pick with a dead zone and hysteresis;
+unit-tested), `plugin/PowerWheelDraw` (ImGui draw lists: the edge-lit fill as rings of the outline shrunk about the tile's
+middle, scanlines, the cyan and orange lines, the indigo band and hub circle, spokes and beam, chevrons, the N7 mark,
+names wrapped onto two lines on narrow tiles, cooldown and disabled states, the hint card), `plugin/PowerIcons` (all
+nineteen player powers' icons painted from signed distance fields in each discipline's colours, plus a generic one),
+`plugin/Glow` (a two-level bloom added as light in the premultiplied layer, its own device context state) and
+`tools/power-wheel-preview` (`mevr-power-wheel-preview <folder>`: every state, the hint, the icon sheet).

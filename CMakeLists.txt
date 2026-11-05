@@ -1087,6 +1087,22 @@ if (MEVR_BUILD_TESTS)
         target_link_libraries(mevr-calibration-preview PRIVATE halcyon-le1 OpenXR::headers windowscodecs ole32 d3d11)
         target_compile_definitions(mevr-calibration-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
         target_compile_options(mevr-calibration-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+        # The power wheel's look, offline (tools/power-wheel-preview, research/55): the wheel in its states, the hint card
+        # and every icon as PNGs, drawn with the host's own code and glow, to set against the concept.
+        add_executable(mevr-power-wheel-preview
+            tools/power-wheel-preview/Main.cpp
+            src/core/PngFile.cpp
+            src/core/vr/ImageConvert.cpp
+            src/core/vr/PowerWheel.cpp
+            src/plugin/Glow.cpp
+            src/plugin/PowerIcons.cpp
+            src/plugin/PowerWheelDraw.cpp
+        )
+        target_include_directories(mevr-power-wheel-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(mevr-power-wheel-preview PRIVATE halcyon-le1 OpenXR::headers windowscodecs ole32 d3d11 d3dcompiler)
+        target_compile_definitions(mevr-power-wheel-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_compile_options(mevr-power-wheel-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     endif ()
 endif ()
 
