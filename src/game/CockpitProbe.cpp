@@ -355,6 +355,11 @@ struct Ride {
     // vehicle, or at `ride seat`: where the head was then is the cockpit's eye; leaning moves it from there.
     bool seated = false;
     engine::UnrealVector seat{};
+    // Until it's kept, the seat follows the head (seatWaiting): the host's samples counted, those carrying a head offset too.
+    bool seatWaiting = false;
+    std::uint64_t seatSequence = 0;
+    int seatSamples = 0;
+    int seatPlaced = 0;
     ue3::Object* vehicle = nullptr;            // the vehicle whose components are hidden from the eyes
     std::vector<std::pair<ue3::Object*, bool>> hidden;  // each primitive component and its bOwnerNoSee before
     bool chaseValid = false;
@@ -2415,13 +2420,30 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         PlaceDriver(frame, eye, upm, *turn);
     }
     if (!gRide.seated) {
-        // Until the host has a view (the first frames after a load, VR off), no seat: the head counts from the tracking centre.
+        // Until the seat is kept it follows the head, so the eye stays on the cockpit's. It's kept once the host's view has
+        // published kSeatSamples samples carrying a head offset, or kSeatGiveUp samples in all (a head right at the centre).
+        // The first sample after an entry can carry no offset yet: kept at once, it sat the eye 0.34 m forward, inside the
+        // console (the game side, 2026-11-05 08:06). Without a view (the first frames after a load, VR off), no seat.
+        constexpr int kSeatSamples = 5;
+        constexpr int kSeatGiveUp = 90;
+        if (!gRide.seatWaiting) {
+            gRide.seatWaiting = true;
+            gRide.seatSamples = 0;
+            gRide.seatPlaced = 0;
+        }
         vr::host_view::State const view = vr::host_view::Latest();
         gRide.seat = view.valid ? engine::UnrealVector{view.offsetForward, view.offsetRight, view.offsetUp} : engine::UnrealVector{};
-        gRide.seated = view.valid;
-        if (view.valid) {
-            log::Info("cockpit probe: ride: seated with the head {:.2f} m forward, {:.2f} m right, {:.2f} m up of the tracking centre", gRide.seat.x / upm,
-                gRide.seat.y / upm, gRide.seat.z / upm);
+        if (view.valid && view.sequence != gRide.seatSequence) {
+            gRide.seatSequence = view.sequence;
+            ++gRide.seatSamples;
+            gRide.seatPlaced += view.offsetForward != 0.0f || view.offsetRight != 0.0f || view.offsetUp != 0.0f ? 1 : 0;
+        }
+        if (view.valid && (gRide.seatPlaced >= kSeatSamples || gRide.seatSamples >= kSeatGiveUp)) {
+            gRide.seated = true;
+            gRide.seatWaiting = false;
+            log::Info("cockpit probe: ride: seated with the head {:.2f} m forward, {:.2f} m right, {:.2f} m up of the tracking centre ({} of {} "
+                      "samples with a head offset)",
+                gRide.seat.x / upm, gRide.seat.y / upm, gRide.seat.z / upm, gRide.seatPlaced, gRide.seatSamples);
         }
     }
     // The renderer puts the head at the camera plus its offset: the camera goes where that lands the seated head on the eye.

@@ -741,7 +741,10 @@ moving along them. So while the Mako is the pawn (game mode 1), in that handler:
 - the camera goes to the eye with the vehicle's rotation, minus the **seat**: the head's offset from the game camera (the host view's
   forward, right, up) when the ride began in this vehicle, or at `ride seat`. Wherever the head was when the player got in becomes the
   cockpit's eye; leaning moves it from there. The fake headset's head sits 0.34 m behind its tracking centre: without the seat the eye
-  was inside the seat's back;
+  was inside the seat's back. The host view's first sample after an entry can carry no head offset yet: kept at once (one entry of
+  three, 2026-11-05 08:06, the game side), the seat was 0, 0, 0 and the eye sat 0.34 m forward inside the console. So the seat follows
+  the head until five samples carried an offset (or 90 in all, for a head right at the centre), then is kept; the log line says how
+  many of how many;
 - the vehicle's own primitives (`Actor.AllComponents`, 14 on the Mako) get `bOwnerNoSee`: out of the eyes (their view actor is the
   pawn, the vehicle), still in the captures. The parts are owned by the vehicle with `bOnlyOwnerSee` (capturehide 2, rerun on entry): in the
   eyes, out of the screens. All put back on `ride off`, leaving the vehicle, a level change, the mod's unload.
