@@ -166,8 +166,15 @@ std::optional<Panel> Place(XrVector3f const& eyes, XrVector3f const& headForward
 // How far from the eyes Place stands it (the same rule).
 float PlaceDistance(XrVector3f const& eyes, std::optional<XrVector3f> anchor, float distanceM);
 // In the Mako's cockpit (research/47 "The cockpit by itself"; the extraction's "Return to Normandy?", research/48 section 27):
-// a screen goes toward the cockpit's HUD anchor at the windshield (`panelAnchor`, the anchor Place is given), centred at its
-// height, and keeps the angular size it has on foot (`widthM` at `distanceM`) at the distance Place gives it there.
+// a screen goes toward the cockpit's HUD anchor (`panelAnchor`, the anchor Place is given: straight out of the cockpit), its
+// centre kCockpitUpDeg above the eyes' level, at kCockpitScale of the angular size it has on foot (`widthM` at `distanceM`) at
+// the distance Place gives it there. Our quads draw over the world, so the dialog must stay inside the windshield's clear
+// glass: +10 degrees from the eyes in its middle (the light hanging under the extraction pod) to -6 (the bar over the console),
+// measured in the snapshot of 2026-11-05 08:04:03 (the eye is the cockpit's, whoever sits in it). The message box's dialog is
+// 18.1 degrees tall at the on-foot size (+8.9 to -9.2 about the stage's centre), 15.4 at 0.85, so it fits centred at +2. At the
+// HUD anchor's own height (0.30 m up at 1.60 m, so 0.30 m up at 0.95 m: 17.5 degrees) it covered the pod (07:57:03).
+inline constexpr float kCockpitUpDeg = 2.0f;
+inline constexpr float kCockpitScale = 0.85f;
 struct CockpitPlacement {
     float belowM = 0.0f;
     float widthM = 0.0f;

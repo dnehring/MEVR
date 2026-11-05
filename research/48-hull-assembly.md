@@ -1072,16 +1072,32 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
     vanishes while it is up: mode 7 counts as out of the Mako for game/Mako ("mako: left", out of the seat), so the eyes
     see bare terrain. OK and Cancel by a real pointer or touch are untested (a posted click on Cancel did nothing, the
     window likely not in front).
-    **Fixed the same day (the game side, built, not yet seen in the game):** the bare terrain was two things. The cockpit's
-    ride (`OnUpdateCamera`) and seat (`RideTick`) held only in game mode 1, and the world UI swapped Shepard's last view on
-    foot in at render time (the hold every on-foot screen uses), a view from wherever Shepard stood before the Mako. Now
-    the ride and the seat hold in modes 1 and 7 with the Mako the pawn (game/CockpitProbe `RideMode`), and with the cockpit
-    riding the world UI holds no view and stands the screen toward the cockpit's HUD anchor at the windshield (the
-    `hud ... panel` point, where the HUD panel stands while driving), at its height, as wide to the eye as on foot
-    (`vr::world_ui::InCockpit`, unit-tested: 0.55 m out, 0.69 m wide for the 1.20 m at 0.95 m). The panel's hands are the
+    **Fixed the same day (the game side; seen in the game on the fake headset, 08:04 and 08:06):** the bare terrain was two
+    things. The cockpit's ride (`OnUpdateCamera`) and seat (`RideTick`) held only in game mode 1, and the world UI swapped
+    Shepard's last view on foot in at render time (the hold every on-foot screen uses), a view from wherever Shepard stood
+    before the Mako. Now the ride and the seat hold in modes 1 and 7 with the Mako the pawn (game/CockpitProbe `RideMode`),
+    and with the cockpit riding the world UI holds no view and stands the screen out through the windshield, toward the
+    cockpit's HUD anchor (the `hud ... panel` point) at the usual 0.95 m, its centre 2 degrees above the eyes and 0.85 of its
+    on-foot size (`vr::world_ui::InCockpit`, `kCockpitUpDeg`, `kCockpitScale`, unit-tested). Our quads draw over the world, so
+    the dialog has to stay in the clear glass: +10 degrees (the light under the extraction pod) to -6 (the bar over the
+    console) from the cockpit's eye, measured; the message box's dialog is 18.1 degrees tall at full size. At the anchor's
+    own height (17.5 degrees up) it covered the pod (snapshot 07:57:03). The anchor is the last one a head-tracked frame gave
+    (`NoteCockpit`): in mode 7 Halcyon shows its flat menu screen until our screen is up, and the view anchor goes with it,
+    so a screen that waited for it never came (08:01, the game's frame on Halcyon's flat panel). The panel's hands are the
     box's then (game/Mako ticks it as under a menu). game/Mako itself still counts mode 7 as out of the Mako (the gunner
     stops, the pad goes back to the game, so A and B should answer the box [verify]). Log `world ui: MessageBox up
     (opening N): in the Mako's cockpit, at its windshield ...`; the world UI's status has `inCockpit` and `heldView`.
+  - **The replayed hand works both controls** (`panel.mevrrec`, made from the status's `layout`; 07:56, the package of
+    1290230): a fingertip pushed 2.5 mm into the cap from 4 cm in front along `buttonIn` pressed it, the plate's eight squares
+    went blue and the repair ran 2 s later; a grip squeezed at the handle's `grip` and swung +34 degrees about `hingeAxis` (the
+    grip moves back toward the pilot and up) ran LeaveWorld at 85% held 0.4 s, and the box came up. A replay needs `-Inputs`
+    for the squeeze (without it the buttons are live). The answers before a press: a fresh UNC20 `no omni-gel`, after
+    `InitSalvage 500` `none`, after a repair `cooling down`, its cooldown counting from 27 s down (about 30 s).
+  - **The seat's sample can come too early**: on one of three entries (08:06:37) the ride logged `seated with the head 0.00
+    m forward, 0.00 m right, 0.00 m up` 3 ms after the script ran (the others -0.34 forward, 0.04 right, -0.04 up), and the eye
+    sat 0.34 m forward, inside the console's shell. The host's view was valid but its offset not yet the head's [open].
+  - The seated Shepard's right arm reaching for the handle 1.05 m from the shoulder (past the 0.55 m reach) renders black
+    (unlit) in the snapshots of 07:57:00 and 07:57:03 [open].
   - Untested: the press direction, the swing's sign and the gunner's hold, for want of tracked controllers. The panel's
     layout in tracking space is in its status (`"cockpitProbe"."panel"."layout"`) for a replay that reaches to it.
   - Landing on UNC20 autosaves (`VR00_AutoSave` and the GamerProfile): back the saves up before a Mako run.

@@ -70,6 +70,28 @@ struct Hold {
 };
 Hold gHold;
 bool gScreenUp = false;  // a screen of ours was published last tick (game thread)
+
+// The Mako's cockpit as the last frame with a head-tracked view saw it (tracking space; the cockpit stands still in the room
+// while it rides): its HUD anchor at the windshield and the eyes. Kept through the game's GUI mode, where the view anchor is gone
+// as soon as Halcyon shows its flat menu screen, which it does until our screen is up (2026-11-05 08:01: the box went flat).
+struct Cockpit {
+    bool valid = false;
+    XrVector3f anchor{};
+    XrVector3f eyes{};
+};
+Cockpit gCockpit;
+
+void NoteCockpit() {
+    if (!cockpit_probe::Riding()) {
+        gCockpit = {};
+        return;
+    }
+    vr::hud_pieces::Pieces pieces;
+    cockpit_probe::FillHud(pieces);
+    if (auto const frame = view_anchor::Current(); pieces.cockpit && frame) {
+        gCockpit = {true, pieces.panelAnchor, frame->head.position};
+    }
+}
 bool gWristUp = false;   // ... and it's projected from the wrist (arm IK runs, the view anchor held)
 
 // The last thing A would have used on foot, and when: a screen that opens within kUsedWithinMs of it (the minigame at a crate, a
@@ -325,6 +347,7 @@ void Tick(Link const& link) {
     wu::Settings const settings = hand_calibration::GetWorldUi();
     ue3::Object* const controller = player::Controller();
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
+    NoteCockpit();
     if (mode && *mode == 0) {
         if (auto const frame = view_anchor::Current()) {
             gHold.footFrame = frame;  // the room as Shepard's view maps it (the held view's)
@@ -378,18 +401,14 @@ void Tick(Link const& link) {
         }
     }
     // In the Mako's cockpit (the extraction's "Return to Normandy?", the pause menu): the cockpit stays around the eyes through the
-    // GUI mode (game/CockpitProbe), so the screen goes to its windshield, where the HUD panel stands while driving, and Shepard's
-    // view on foot (from wherever Shepard last stood, long before the Mako) is never held: that showed bare terrain under the
-    // question with no cockpit (2026-11-05, research/48 section 27).
+    // GUI mode (game/CockpitProbe), so the screen goes out through its windshield (NoteCockpit's anchor), and Shepard's view on
+    // foot (from wherever Shepard last stood, long before the Mako) is never held: that showed bare terrain under the question
+    // with no cockpit (2026-11-05, research/48 section 27).
     std::optional<XrVector3f> cockpitAnchor;
     XrVector3f eyesNow{};
-    if (cockpit_probe::Riding()) {
-        vr::hud_pieces::Pieces pieces;
-        cockpit_probe::FillHud(pieces);
-        if (auto const frame = view_anchor::Current(); pieces.cockpit && frame) {
-            cockpitAnchor = pieces.panelAnchor;
-            eyesNow = frame->head.position;
-        }
+    if (gCockpit.valid) {
+        cockpitAnchor = gCockpit.anchor;
+        eyesNow = gCockpit.eyes;
     }
     bool const inCockpit = cockpitAnchor.has_value();
     if (!inCockpit && (!gHold.haveView || !gHold.footFrame)) {

@@ -166,7 +166,8 @@ float PlaceDistance(XrVector3f const& eyes, std::optional<XrVector3f> anchor, fl
 CockpitPlacement InCockpit(XrVector3f const& eyes, XrVector3f const& panelAnchor, float widthM, float distanceM) {
     float const placed = PlaceDistance(eyes, panelAnchor, distanceM);
     float const onFoot = std::max(distanceM, kNearestM);
-    return {eyes.y - panelAnchor.y, widthM * placed / onFoot};
+    float const up = placed * std::tan(kCockpitUpDeg * 3.14159265f / 180.0f);
+    return {-up, widthM * kCockpitScale * placed / onFoot};
 }
 
 std::optional<Panel> WristPlace(XrVector3f const& eyes, XrVector3f const& wrist, float widthM, float aboveM, float towardM,
