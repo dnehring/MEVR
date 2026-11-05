@@ -668,6 +668,7 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "m_oVisorMesh", SDK_FIELD(ABioPawn, m_oVisorMesh));
     CheckField("SFXGame.BioPawn", "m_oFacePlateMesh", SDK_FIELD(ABioPawn, m_oFacePlateMesh));
     CheckField("Engine.Pawn", "Health", SDK_FIELD(APawn, Health));
+    CheckField("Engine.Pawn", "Controller", SDK_FIELD(APawn, Controller));  // a squadmate's AI for a power order (research/54)
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
     CheckField("Engine.WorldInfo", "bPlayersOnlyPending", SDK_BOOL(AWorldInfo, bPlayersOnlyPending));
     CheckField("SFXGame.BioWorldInfo", "m_bPausedByFocusLoss", SDK_BOOL(ABioWorldInfo, m_bPausedByFocusLoss));  // game/FocusPause
@@ -1200,6 +1201,10 @@ void CheckFunctions() {
         "SFXGame.BioBaseSquad.SetSquadFollowFormation",
         "SFXGame.BioBaseSquad.SetMemberHoldPosition",
         "SFXGame.BioBaseSquad.GetMemberFormation",
+        "SFXGame.BioPlayerController.SquadOrderUsePower",  // power orders and the acknowledgement (research/54, 2026-11-05)
+        "SFXGame.BioAiController.AddUsePower",
+        "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
+        "SFXGame.BioPawn.PlaySoundSet",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
         "SFXGame.SFXGameModeDefault.TryHolster",
         "SFXGame.SFXGameModeDefault.SwitchToWeapon",
@@ -1428,6 +1433,17 @@ void CheckParams() {
     PARAM(ABioBaseSquad_execSetSquadFollowFormation_Parms, "SFXGame.BioBaseSquad.SetSquadFollowFormation", iSquadMember);
     PARAM(ABioBaseSquad_execSetMemberHoldPosition_Parms, "SFXGame.BioBaseSquad.SetMemberHoldPosition", nIndex);
     PARAM(ABioBaseSquad_execSetMemberHoldPosition_Parms, "SFXGame.BioBaseSquad.SetMemberHoldPosition", vPosition);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", nmPower);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", pPawn);
+    PARAM(ABioAiController_execAddUsePower_Parms, "SFXGame.BioAiController.AddUsePower", nmPower);
+    PARAM(ABioAiController_execAddUsePower_Parms, "SFXGame.BioAiController.AddUsePower", oTarget);
+    PARAM(ABioAiController_execAddUsePower_Parms, "SFXGame.BioAiController.AddUsePower", bOrderedByPlayer);
+    PARAM(ABioAiController_execAddUsePower_Parms, "SFXGame.BioAiController.AddUsePower", fTimeOut);
+    PARAM(ABioAiController_execAddUsePower_Parms, "SFXGame.BioAiController.AddUsePower", vTarget);
+    PARAM(ABioBaseSquad_eventSquadHandleChatterEvent_Parms, "SFXGame.BioBaseSquad.SquadHandleChatterEvent", eSoundSet);
+    PARAM(ABioBaseSquad_eventSquadHandleChatterEvent_Parms, "SFXGame.BioBaseSquad.SquadHandleChatterEvent", nFlags);
+    PARAM(ABioPawn_execPlaySoundSet_Parms, "SFXGame.BioPawn.PlaySoundSet", eType);
+    PARAM(ABioPawn_execPlaySoundSet_Parms, "SFXGame.BioPawn.PlaySoundSet", ReturnValue);
     PARAM(ABioBaseSquad_execGetMemberFormation_Parms, "SFXGame.BioBaseSquad.GetMemberFormation", nIndex);
     PARAM(ABioBaseSquad_execGetMemberFormation_Parms, "SFXGame.BioBaseSquad.GetMemberFormation", ReturnValue);
     PARAM(UBioEquipment_execChangeToQuickSlot_Parms, "SFXGame.BioEquipment.ChangeToQuickSlot", Slot);

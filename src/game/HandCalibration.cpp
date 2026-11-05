@@ -521,7 +521,18 @@ constexpr char const* kSquadOrdersBlock =
     "retreatToCover = 1\n"
     "retreatM = 8\n"
     "coverSearchM = 10\n"
-    "retreatCooldownS = 10\n";
+    "retreatCooldownS = 10\n"
+    "; The acknowledgement: the game's own line is expected after every order (its squad chatter: \"moving\", \"holding\");\n"
+    "; none within ackFallbackS, the order's sound set is played on the squadmate (BioPawn.EBioSoundSetType: 70 start of\n"
+    "; a move, 59 holding position, 61 line of sight established; 0 = no line). ackFallback = 0: the game's lines only.\n"
+    "ackFallback = 1\n"
+    "ackFallbackS = 1\n"
+    "ackMoveSet = 70\n"
+    "ackHoldSet = 59\n"
+    "ackAttackSet = 61\n"
+    "; Power orders (\"Liara, lift that one\"): tactical = the game's own order path (SquadOrderUsePower, applied after its\n"
+    "; tactical delay); ai = the squadmate's AI told directly (AddUsePower as ordered by the player).\n"
+    "powerRoute = tactical\n";
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -1445,6 +1456,30 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
     }
     if (Number(ini, "SquadOrders", "retreatCooldownS", value)) {
         s.retreatCooldownS = std::clamp(value, 1.0, 120.0);
+    }
+    if (Number(ini, "SquadOrders", "ackFallback", value)) {
+        s.ackFallback = value != 0.0;
+    }
+    if (Number(ini, "SquadOrders", "ackFallbackS", value)) {
+        s.ackFallbackS = std::clamp(value, 0.2, 10.0);
+    }
+    if (Number(ini, "SquadOrders", "ackMoveSet", value)) {
+        s.ackMoveSet = std::clamp(static_cast<int>(value), 0, 79);
+    }
+    if (Number(ini, "SquadOrders", "ackHoldSet", value)) {
+        s.ackHoldSet = std::clamp(static_cast<int>(value), 0, 79);
+    }
+    if (Number(ini, "SquadOrders", "ackAttackSet", value)) {
+        s.ackAttackSet = std::clamp(static_cast<int>(value), 0, 79);
+    }
+    if (auto const sec = ini.find("SquadOrders"); sec != ini.end()) {
+        if (auto const k = sec->second.find("powerRoute"); k != sec->second.end()) {
+            if (k->second == "tactical" || k->second == "ai") {
+                s.powerRoute = k->second;
+            } else if (!k->second.empty()) {
+                log::Warn("squad orders: can't read powerRoute = {} (tactical or ai); {} kept", k->second, s.powerRoute);
+            }
+        }
     }
     return s;
 }

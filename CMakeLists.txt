@@ -446,6 +446,8 @@ set(MEVR_MOD_SOURCES
     src/game/SquadContext.hpp
     src/game/SquadOrders.cpp
     src/game/SquadOrders.hpp
+    src/game/SquadAck.cpp
+    src/game/SquadAck.hpp
     src/game/CockpitProbe.cpp
     src/game/CockpitProbe.hpp
     src/game/CockpitPanel.cpp

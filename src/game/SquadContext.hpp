@@ -2,7 +2,9 @@
 #pragma once
 
 #include "core/vr/SquadContext.hpp"
+#include "ue3/Types.hpp"
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,6 +29,9 @@ std::vector<vr::squad_context::Candidate> ResolveAgo(double secondsAgo);
 std::string Block(std::string_view said, std::string_view word = {}, double secondsAgo = 0.0);
 // The roster the game gave so far: the squadmates seen this session with their names, weapons and powers as named.
 std::vector<vr::squad_context::RosterEntry> Roster();
+// The game's own name for a power code the scene listed (BioPower.m_nmPower), for a squad power order; nullopt until
+// a squadmate with it has been read.
+std::optional<ue3::Name> PowerName(std::string_view code);
 // The prefix from that roster.
 std::string Prefix();
 

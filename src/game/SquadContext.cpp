@@ -65,6 +65,7 @@ bool gOnFoot = false;
 std::string gWhyNot;
 std::map<char, Known> gRoster;
 std::map<std::string, std::string> gPowerCodes;  // internal power name -> code
+std::map<std::string, ue3::Name> gPowerNames;    // code -> the game's own name (BioPower.m_nmPower), for a power order
 std::map<std::string, int> gLoggedTypes;        // type words seen (for the log)
 unsigned gReads = 0, gSamples = 0;
 bool gToldNoLayer = false;
@@ -155,10 +156,12 @@ void ReadPowers(ue3::Object* behavior, sc::Member& member, Known& known) {
         void* const slot = list->At(i);
         ue3::Object* const power = slot != nullptr ? *static_cast<ue3::Object**>(slot) : nullptr;
         if (power == nullptr || !ue3::runtime::IsAlive(power)) continue;
-        std::string const internal = ue3::runtime::NameText(gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{}));
+        ue3::Name const gameName = gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{});
+        std::string const internal = ue3::runtime::NameText(gameName);
         if (internal.empty() || internal == "None") continue;
         sc::Power p;
         p.code = CodeOf(internal);
+        gPowerNames[p.code] = gameName;
         p.readyInS = std::max(0.0f, gCooldownRemaining.Read<float>(power).value_or(0.0f));
         member.powers.push_back(p);
         bool listed = false;
@@ -328,6 +331,11 @@ std::string Block(std::string_view said, std::string_view word, double secondsAg
         deictics.push_back({1, std::string(word), ResolveAgo(secondsAgo)});
     }
     return sc::Block(gScene, gGrouper.Groups(), deictics, {}, said);
+}
+
+std::optional<ue3::Name> PowerName(std::string_view code) {
+    auto const it = gPowerNames.find(std::string(code));
+    return it != gPowerNames.end() ? std::optional<ue3::Name>(it->second) : std::nullopt;
 }
 
 std::vector<sc::RosterEntry> Roster() {
