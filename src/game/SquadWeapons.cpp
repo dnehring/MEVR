@@ -13,6 +13,7 @@
 #include "game/HeadTracking.hpp"
 #include "game/Holsters.hpp"
 #include "game/Player.hpp"
+#include "game/PowerWheel.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
 #include "game/ViewAnchor.hpp"
@@ -1358,7 +1359,8 @@ void Tick(double deltaSeconds, Link const& link) {
         log::Info("squad: the left trigger {}", gTriggerOwned ? "opens the squad's weapon wheel (no LB to the game)"
                                                               : "is the game's LB again (not on foot, or the squad wheel is off)");
     }
-    bool const newPull = gTrigger && !wasDown && gTriggerOwned;
+    // A pull while the power wheel has the left hand (research/55: its pinch equips a power) is never the squad's.
+    bool const newPull = gTrigger && !wasDown && gTriggerOwned && !power_wheel::OwnsLeftHand();
     PublishWheelPanel(link, settings);  // the game's wheels at the hand, whichever way they open
 
     if (!settings.enabled) {

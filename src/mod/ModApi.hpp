@@ -63,6 +63,9 @@ struct Scene;
 namespace vr::world_ui {
 struct State;
 }
+namespace vr::power_wheel {
+struct View;
+}
 namespace vr::squad_menu {
 struct View;
 namespace wheel {
@@ -77,7 +80,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 27;
+inline constexpr int kHostServicesVersion = 28;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -324,6 +327,15 @@ struct HostServices {
     // Null forgets it. The mod sends only if worldUiSize matches its sizeof(State). Any thread.
     std::uint32_t worldUiSize = 0;
     void (*setWorldUi)(vr::world_ui::State const* state) = nullptr;
+
+    // Version 28: the power wheel at the left hand (game/PowerWheel, plugin/PowerWheel, research/55; core/vr/PowerWheel). While
+    // it's open the mod sends what to draw each tick (the player's powers, the pick, where it stands in tracking space, the
+    // hand's offset) and once with open = 0 when it closes; the host draws it while it's open and fresh (250 ms). Null forgets
+    // it. setSupportGrip's flags also take gamepad::kFlagPowerWheel (the left hand's controls kept from the game while it's
+    // open); a v27 or older host ignores it, and the mod then keeps the wheel closed. The mod sends only if powerWheelSize
+    // matches its sizeof(View). Any thread.
+    std::uint32_t powerWheelSize = 0;
+    void (*setPowerWheel)(vr::power_wheel::View const* view) = nullptr;
 };
 
 } // namespace mevr

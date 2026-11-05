@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: MIT
+#pragma once
+
+#include "core/vr/PowerWheel.hpp"
+#include "game/GamepadMapping.hpp"
+
+#include <string>
+#include <string_view>
+
+// The power wheel at the left hand (research/55; LE1, on foot in VR; [PowerWheel] in ASI\LE1MEVR.ini). X held opens it
+// at the left palm, fixed in the room, facing the eyes, with the player's own powers (their behaviour's m_powers, the
+// mappable ones, biotics first); the left hand's travel toward a tile, or the left stick's direction, picks one; letting go
+// of X equips it. X tapped keeps it open until a pinch of the left trigger, a squeeze of the left grip or X again
+// (core/vr/PowerWheel's Machine). Equipping makes it the game's mapped power (BioPlayerInput.MappedPower, which the right
+// stick click's tap casts: SFXGameModeDefault.TryUseMappedPower) until the lock and fire of research/55 section 4 come.
+// While it's on, X never throws a grenade on foot (the pad's grenadeButton off), and while it's open the left stick, L3,
+// X, the left trigger and grip are its own (gamepad::Options::powerWheel). The host draws it (HostServices v28,
+// setPowerWheel; plugin/PowerWheel). Game thread.
+namespace mevr::game::power_wheel {
+
+struct Link {
+    void (*publish)(vr::power_wheel::View const* view) = nullptr;  // v28 setPowerWheel; null: an older host (no wheel)
+    void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
+};
+
+void Tick(double deltaSeconds, Link const& link);
+// The pad options (before the support grip publishes them): X off on foot while it's on; the left hand its own while open.
+void AdjustPad(gamepad::Options& options);
+bool IsOpen();
+// Open, or a left trigger or grip used in it still held: the squad's trigger and the left hand's other uses stand down.
+bool OwnsLeftHand();
+// `mevr powerwheel [open|close|pick <n>|hand <x> <y>|equip|roster]`: the wheel without tracked controllers (tests).
+std::string Console(std::string_view args);
+// Snapshot JSON ("powerWheel"), heartbeat line.
+std::string StatusJson();
+void LogStats();
+// Mod shutdown: the host's wheel closed.
+void Shutdown(Link const& link);
+
+}  // namespace mevr::game::power_wheel

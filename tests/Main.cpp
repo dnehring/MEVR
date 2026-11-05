@@ -10377,6 +10377,7 @@ void RunReportTests(int& failures);
 int RunReflectTests();
 int RunBreadcrumbTests();
 int RunExeTests();
+int RunPowerWheelTests();
 
 // core/vr/PowerWheel: the hand's power wheel (research/55, the concept of 2026-11-04).
 void TestPowerWheel() {
@@ -10510,6 +10511,7 @@ int main() {
     gFailures += RunReflectTests();
     gFailures += RunBreadcrumbTests();
     gFailures += RunExeTests();
+    gFailures += RunPowerWheelTests();
     TestUpscale();
     TestMakoGunner();
     TestCockpitHazard();

@@ -4,11 +4,14 @@
 
 #include "plugin/PowerIcons.hpp"
 
+#include "core/vr/PowerWheel.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <numbers>
 #include <span>
+#include <string>
 
 namespace mevr::host::power_icons {
 namespace {
@@ -735,39 +738,13 @@ char const* Name(Icon icon) {
 }
 
 Icon ForPower(std::string_view label) {
-    struct Row {
-        std::string_view label;
-        Icon icon;
-    };
-    // BIOG_2DA_Talents_X.Powers_Powers (research/55 section 3).
-    static constexpr Row kRows[] = {
-        {"TK_Throw", Icon::Throw},
-        {"TK_Lift", Icon::Lift},
-        {"SD_Warp", Icon::Warp},
-        {"SD_Singularity", Icon::Singularity},
-        {"KF_Stasis", Icon::Stasis},
-        {"KF_Barrier", Icon::Barrier},
-        {"EL_EMP_Delivery", Icon::Overload},
-        {"EL_Damping_Delivery", Icon::Damping},
-        {"DC_Sabotage_Delivery", Icon::Sabotage},
-        {"DC_Hacking", Icon::Hacking},
-        {"MD_Shock", Icon::NeuralShock},
-        {"AR_ShieldBoost", Icon::ShieldBoost},
-        {"FT_Adrenaline", Icon::Adrenaline},
-        {"AT_Immunity", Icon::Immunity},
-        {"TC_TakeDown", Icon::Unity},
-        {"LW_Marksman", Icon::Marksman},
-        {"AW_Suppression", Icon::Overkill},
-        {"BW_CarnageSetup", Icon::Carnage},
-        {"SW_Critical", Icon::Assassination},
-    };
-    for (Row const& row : kRows) {
-        if (row.label == label) {
-            return row.icon;
-        }
-    }
-    return Icon::Generic;
+    // The shared table (core/vr/PowerWheel, research/55 section 3) numbers the icons in Icon's order.
+    vr::power_wheel::PowerInfo const* const info = vr::power_wheel::FindPower(std::string(label).c_str());
+    return info != nullptr && info->icon > 0 && info->icon < static_cast<int>(Icon::Count) ? static_cast<Icon>(info->icon) : Icon::Generic;
 }
+static_assert(static_cast<int>(Icon::Throw) == 1 && static_cast<int>(Icon::Barrier) == 6 && static_cast<int>(Icon::Overload) == 7 &&
+                  static_cast<int>(Icon::ShieldBoost) == 12 && static_cast<int>(Icon::Assassination) == 19,
+    "core/vr/PowerWheel's FindPower numbers the icons in this order");
 
 std::vector<std::uint32_t> Picture(Icon icon) {
     Painter paint;

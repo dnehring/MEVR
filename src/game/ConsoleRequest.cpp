@@ -17,6 +17,7 @@
 #include "game/Holsters.hpp"
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
+#include "game/PowerWheel.hpp"
 #include "game/Spectator.hpp"
 #include "core/WriteJournal.hpp"
 
@@ -496,6 +497,13 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             return mako_gunner::Wake(gFound[index]);
         }
         return mako_gunner::StatusJson();
+    }
+    if (verb == "powerwheel") {
+        // `mevr powerwheel [open|hand x y|pick n|equip|close|roster]`: the power wheel at the left hand (research/55) without
+        // tracked controllers: X held, the hand's offset from its centre (metres), a tile picked, X let go (equips), closed.
+        std::string rest;
+        std::getline(words, rest);
+        return power_wheel::Console(rest);
     }
     if (verb == "say") {
         // `mevr say <words>`: the words as a recognizer would give them (research/54), through the rule parser, the squad

@@ -304,6 +304,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/HostView.cpp
     src/core/vr/HudPieces.cpp
     src/core/vr/HudPieces.hpp
+    src/core/vr/PowerWheel.cpp
+    src/core/vr/PowerWheel.hpp
     src/core/vr/MakoControls.cpp
     src/core/vr/MakoControls.hpp
     src/core/vr/CockpitHazard.cpp
@@ -416,6 +418,8 @@ set(MEVR_MOD_SOURCES
     src/game/HeadTracking.hpp
     src/game/HudPieces.cpp
     src/game/HudPieces.hpp
+    src/game/PowerWheel.cpp
+    src/game/PowerWheel.hpp
     src/game/Interact.cpp
     src/game/Interact.hpp
     src/game/SquadContext.cpp
@@ -547,6 +551,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/HostView.cpp
     src/core/vr/HudPieces.cpp
     src/core/vr/HudPieces.hpp
+    src/core/vr/PowerWheel.cpp
+    src/core/vr/PowerWheel.hpp
     src/core/vr/MakoControls.cpp
     src/core/vr/MakoControls.hpp
     src/core/vr/CockpitHazard.cpp
@@ -661,6 +667,14 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/Upscale.hpp
     src/plugin/SquadPanelDraw.cpp
     src/plugin/SquadPanelDraw.hpp
+    src/plugin/Glow.cpp
+    src/plugin/Glow.hpp
+    src/plugin/PowerIcons.cpp
+    src/plugin/PowerIcons.hpp
+    src/plugin/PowerWheel.cpp
+    src/plugin/PowerWheel.hpp
+    src/plugin/PowerWheelDraw.cpp
+    src/plugin/PowerWheelDraw.hpp
     src/plugin/TestLoop.cpp
     src/plugin/TestLoop.hpp
     src/plugin/Vignette.cpp
@@ -832,6 +846,7 @@ if (MEVR_BUILD_TESTS)
         tests/ReflectTests.cpp
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
+        tests/PowerWheelTests.cpp
         src/core/Exe.cpp
         src/core/ExeCheck.cpp
         src/core/Hook.cpp

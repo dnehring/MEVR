@@ -2,11 +2,72 @@
 #include "core/vr/PowerWheel.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstring>
+#include <mutex>
 #include <numbers>
 
 namespace mevr::vr::power_wheel {
 namespace {
+
+// ---- 3D helpers --------------------------------------------------------------------------------------------------------
+XrVector3f Sub(XrVector3f a, XrVector3f b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+XrVector3f Cross(XrVector3f a, XrVector3f b) {
+    return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+}
+float Length(XrVector3f a) {
+    return std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+}
+XrVector3f Normalized(XrVector3f a, XrVector3f fallback) {
+    float const l = Length(a);
+    return l > 1e-6f ? XrVector3f{a.x / l, a.y / l, a.z / l} : fallback;
+}
+// q v q*.
+XrVector3f Rotate(XrQuaternionf q, XrVector3f v) {
+    XrVector3f const u{q.x, q.y, q.z};
+    XrVector3f const t = Cross(u, v);
+    XrVector3f const t2{2.0f * t.x, 2.0f * t.y, 2.0f * t.z};
+    XrVector3f const c = Cross(u, t2);
+    return {v.x + q.w * t2.x + c.x, v.y + q.w * t2.y + c.y, v.z + q.w * t2.z + c.z};
+}
+// The rotation whose columns are the axes x, y, z.
+XrQuaternionf FromAxes(XrVector3f x, XrVector3f y, XrVector3f z) {
+    float const trace = x.x + y.y + z.z;
+    XrQuaternionf q{};
+    if (trace > 0.0f) {
+        float const s = std::sqrt(trace + 1.0f) * 2.0f;
+        q.w = 0.25f * s;
+        q.x = (y.z - z.y) / s;
+        q.y = (z.x - x.z) / s;
+        q.z = (x.y - y.x) / s;
+    } else if (x.x > y.y && x.x > z.z) {
+        float const s = std::sqrt(1.0f + x.x - y.y - z.z) * 2.0f;
+        q.w = (y.z - z.y) / s;
+        q.x = 0.25f * s;
+        q.y = (y.x + x.y) / s;
+        q.z = (z.x + x.z) / s;
+    } else if (y.y > z.z) {
+        float const s = std::sqrt(1.0f + y.y - x.x - z.z) * 2.0f;
+        q.w = (z.x - x.z) / s;
+        q.x = (y.x + x.y) / s;
+        q.y = 0.25f * s;
+        q.z = (z.y + y.z) / s;
+    } else {
+        float const s = std::sqrt(1.0f + z.z - x.x - y.y) * 2.0f;
+        q.w = (x.y - y.x) / s;
+        q.x = (z.x + x.z) / s;
+        q.y = (z.y + y.z) / s;
+        q.z = 0.25f * s;
+    }
+    return q;
+}
+
+std::mutex gLatestMutex;
+View gLatest;
+std::chrono::steady_clock::time_point gLatestAt{};
 
 constexpr float kRadPerDeg = std::numbers::pi_v<float> / 180.0f;
 
@@ -182,6 +243,176 @@ int Pick(Vec2 offset, std::vector<float> const& angles, int current, PickSetting
         }
     }
     return best;
+}
+
+// ---- In the game -------------------------------------------------------------------------------------------------------
+
+PowerInfo const* FindPower(char const* label) {
+    // The icons' order is plugin/PowerIcons' Icon: 1 Throw .. 19 Assassination (0 the generic one).
+    static constexpr PowerInfo kPowers[] = {
+        {"TK_Throw", "Throw", 0, 1},
+        {"TK_Lift", "Lift", 0, 2},
+        {"SD_Warp", "Warp", 0, 3},
+        {"SD_Singularity", "Singularity", 0, 4},
+        {"KF_Stasis", "Stasis", 0, 5},
+        {"KF_Barrier", "Barrier", 0, 6},
+        {"EL_EMP_Delivery", "Overload", 1, 7},
+        {"EL_Damping_Delivery", "Damping", 1, 8},
+        {"DC_Sabotage_Delivery", "Sabotage", 1, 9},
+        {"DC_Hacking", "AI Hacking", 1, 10},
+        {"MD_Shock", "Neural Shock", 1, 11},
+        {"AR_ShieldBoost", "Shield Boost", 1, 12},
+        {"FT_Adrenaline", "Adrenaline Burst", 2, 13},
+        {"AT_Immunity", "Immunity", 2, 14},
+        {"TC_TakeDown", "Unity", 2, 15},
+        {"LW_Marksman", "Marksman", 2, 16},
+        {"AW_Suppression", "Overkill", 2, 17},
+        {"BW_CarnageSetup", "Carnage", 2, 18},
+        {"SW_Critical", "Assassination", 2, 19},
+    };
+    if (label == nullptr) {
+        return nullptr;
+    }
+    for (PowerInfo const& power : kPowers) {
+        if (std::strcmp(power.label, label) == 0) {
+            return &power;
+        }
+    }
+    return nullptr;
+}
+
+void Publish(View const& view) {
+    std::lock_guard lock(gLatestMutex);
+    gLatest = view;
+    gLatestAt = std::chrono::steady_clock::now();
+}
+
+View Latest(std::uint64_t maxAgeMs) {
+    std::lock_guard lock(gLatestMutex);
+    View out = gLatest;
+    auto const age = std::chrono::steady_clock::now() - gLatestAt;
+    if (gLatestAt == std::chrono::steady_clock::time_point{} || age > std::chrono::milliseconds(maxAgeMs)) {
+        out.open = 0;
+    }
+    return out;
+}
+
+XrPosef Place(XrVector3f palm, XrVector3f eye, float towardM) {
+    XrVector3f const z = Normalized(Sub(eye, palm), {0.0f, 0.0f, 1.0f});  // toward the eye
+    XrVector3f x = Cross({0.0f, 1.0f, 0.0f}, z);                         // right, level
+    if (Length(x) < 1e-3f) {
+        x = {1.0f, 0.0f, 0.0f};  // looking straight down or up at it
+    }
+    x = Normalized(x, {1.0f, 0.0f, 0.0f});
+    XrVector3f const y = Cross(z, x);
+    XrPosef pose;
+    pose.orientation = FromAxes(x, y, z);
+    pose.position = {palm.x + z.x * towardM, palm.y + z.y * towardM, palm.z + z.z * towardM};
+    return pose;
+}
+
+Vec2 InPlane(XrPosef const& wheel, XrVector3f point) {
+    XrQuaternionf const inverse{-wheel.orientation.x, -wheel.orientation.y, -wheel.orientation.z, wheel.orientation.w};
+    XrVector3f const local = Rotate(inverse, Sub(point, wheel.position));
+    return {local.x, local.y};
+}
+
+char const* Name(Event event) {
+    switch (event) {
+    case Event::None: return "none";
+    case Event::Opened: return "opened";
+    case Event::Equipped: return "equipped";
+    case Event::Cancelled: return "cancelled";
+    }
+    return "?";
+}
+
+Event Step(Machine& m, MachineInput const& in, std::vector<float> const& angles, Settings const& settings) {
+    bool const pressed = in.button && !m.buttonWas;
+    bool const released = !in.button && m.buttonWas;
+    m.buttonWas = in.button;
+    // The left trigger's pinch and the grip's squeeze, latched (a half-pressed one doesn't chatter).
+    bool const triggerWas = m.triggerDown;
+    bool const gripWas = m.gripDown;
+    m.triggerDown = m.triggerDown ? in.trigger > 0.35f : in.trigger > 0.6f;
+    m.gripDown = m.gripDown ? in.grip > 0.35f : in.grip > 0.6f;
+    bool const pinch = m.triggerDown && !triggerWas && m.triggerArmed;
+    bool const squeeze = m.gripDown && !gripWas && m.gripArmed;
+    if (!m.triggerDown) {
+        m.triggerArmed = true;
+    }
+    if (!m.gripDown) {
+        m.gripArmed = true;
+    }
+    auto close = [&m](Event event) {
+        m.open = false;
+        m.toggled = false;
+        return event;
+    };
+
+    if (!m.open) {
+        if (pressed && in.allowed && !angles.empty()) {
+            m.open = true;
+            m.toggled = false;
+            m.openedAt = in.time;
+            m.selected = -1;
+            m.selectedAt = in.time;
+            m.stickPicked = false;
+            m.triggerArmed = !m.triggerDown;  // one already held when it opened confirms nothing
+            m.gripArmed = !m.gripDown;
+            ++m.serial;
+            return Event::Opened;
+        }
+        return Event::None;
+    }
+    if (!in.allowed || angles.empty()) {
+        return close(Event::Cancelled);
+    }
+    if (m.selected >= static_cast<int>(angles.size())) {
+        m.selected = -1;
+    }
+
+    // The pick: the stick's direction while it's pushed, else the hand's (once it moves on from where the stick left it).
+    int pick = m.selected;
+    PickSettings const byStick{0.0f, settings.keepDeg};
+    PickSettings const byHand{settings.deadZoneM, settings.keepDeg};
+    if (std::hypot(in.stickX, in.stickY) > settings.stickPick) {
+        pick = Pick({in.stickX, in.stickY}, angles, m.selected, byStick);
+        m.stickPicked = true;
+        m.stickHand = in.hand;
+    } else if (in.handValid) {
+        bool const moved = std::hypot(in.hand.x - m.stickHand.x, in.hand.y - m.stickHand.y) > settings.deadZoneM;
+        if (!m.stickPicked || moved) {
+            m.stickPicked = false;
+            pick = Pick(in.hand, angles, m.selected, byHand);
+        }
+    }
+    if (pick != m.selected) {
+        m.selected = pick;
+        m.selectedAt = in.time;
+    }
+
+    auto equip = [&]() {
+        if (m.selected >= 0) {
+            m.equipped = m.selected;
+            return close(Event::Equipped);
+        }
+        return close(Event::Cancelled);
+    };
+    if ((pinch || squeeze) && m.selected >= 0) {
+        return equip();
+    }
+    if (released && !m.toggled) {
+        if (in.time - m.openedAt < settings.tapS) {
+            m.toggled = true;  // a tap: it stays open
+            return Event::None;
+        }
+        return equip();
+    }
+    if (pressed && m.toggled) {
+        return equip();
+    }
+    return Event::None;
 }
 
 }  // namespace mevr::vr::power_wheel
