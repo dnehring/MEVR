@@ -523,6 +523,42 @@ a short buzz in the right hand. The three callers are resolved by name at start 
 SDK lists all three on `SFXGameModeDefault` only, LE1) and logged. "The gun came out without a holster grab" now
 compares only consecutive active ticks (it read a stale drawn state after an inactive stretch).
 
+**The trigger's draw, and why no draw was ever refused (2026-11-04):** pulling the right trigger with the weapon away
+drew the pistol (`holsters: the pistol came out without a holster grab (right trigger 1.00 ...): not through
+DrawPrimaryWeapon, so it wasn't refused`), found while testing the finger gestures (research/43 "Touch sensors": a fist
+pulls the trigger).
+- **The route.** The pad's RT is bound to `Console_Shoot`, whose command is `FireWeapon | OnRelease StopFiringWeapon`
+  (`Coalesced_INT.bin`). `SFXGameModeBase.FireWeapon` (an exec, run through ProcessEvent by the input system) does nothing
+  unless `BioPlayerInput.IsCombatEnabled()`; with an `SFXPawn_Player` not in a combat action state it calls
+  `ChkPawn.DrawPrimaryWeapon()` from script, then sets `Outer.bFire = 1` (its bytecode, decompiled read-only from
+  `SFXGame.pcc` with Legendary Explorer's library). So the draw goes through `UObject::CallFunction` and the skip handler.
+- **Why the skip never ran.** A new development trace (`mevr calltrace <seconds> <word> [-word...]`, `game/call_trace`:
+  every script call and ProcessEvent whose path holds a word, with the frame's caller) showed the call `SFXPawn_Player.
+  DrawPrimaryWeapon` from FireWeapon going through untouched, and every caller as `<not a listed object:
+  0x3A321B800000011B>`. `engine/call_function` read FFrame's `Node` and `Code` at 0x18 and 0x28 in every game, but FFrame is
+  packed on 4 bytes (LExSDKv2's `Frame.hpp`: `#pragma pack(push, 4)`), so in LE1 and LE2 `Node` is at 0x14 and `Code` at 0x24
+  (0x18/0x28 only on LE3, which has a fourth DWORD). The read at 0x28 was `Code`'s high half joined to `Locals`' low half, its
+  dereference faulted (handled), and `TrySkip` let the call run. **So `onlyHolstersDraw` never refused a draw in LE1** from
+  2026-10-25 until this fix: no log of any session has the `refused` line. The crash report (`plugin/CrashBreadcrumbs`) read
+  the same wrong offsets, which is why its "script frames" were always "none found". The offsets are now per game
+  (`engine::adapter::kFrame`; gotcha `fframe-packed-on-four-bytes`).
+- **Measured after the fix** (the fake headset, UNC20 on foot, a replayed recording pulling the trigger 3 s in every 9 s):
+  every pull logs `holsters: the game wanted to draw your weapon (Function SFXGame.SFXGameModeBase.FireWeapon): refused`
+  and the pistol stays away (no `came out` line in 10 pulls); the trace names the callers. Before the fix a second draw
+  followed the first, `SFXPawn_Player.DrawPrimaryWeapon` through ProcessEvent from native code; with the first refused it
+  doesn't come. The holster draw still works (`mevr weapon pistol`: `the pistol is in hand after 0.02 s`, through
+  `SwitchToWeapon`, which never calls DrawPrimaryWeapon). The holster key's toggle (`TryHolster` with the weapon away) and
+  melee (`TryMelee`) are now refused too, with the buzz; TryMelee still returned true (the rest of its script ran after the
+  skipped call). The reflect check: 956 of 974 (the new FireWeapon row agrees; the 18 mismatches are the Mako's, as before).
+- **The trigger's refusal has no buzz** (`holsters: ... refused ...; the trigger's, so no buzz`): with the fingers following
+  the trigger, a pull with an empty hand is also a fist or a thumbs-up, not an attempt to draw. The other refusals buzz.
+- **What remains of a pull:** FireWeapon still sets `bFire`, so the player's `BioActiveShoot` checks `ValidSuperMode` every
+  frame while the trigger is held (harmless, nothing to shoot), and at the first pull a squadmate (`BioPawn_4`) drew her own
+  weapon, the squad's answer to Shepard shooting. Keeping RT from the game while the weapon is away would remove both; not
+  done.
+- **Not felt yet:** melee, grenades, the weapon wheel and the holster key refusing to draw were the design since 2026-10-25
+  but never ran until now; how they feel in the headset is [verify].
+
 **Why a grace, and why never mid-burst [inference]:** a hand relaxes for an instant while
 aiming, and holstering on every slip would be the error-prone release research/19 section 1
 warns about (Boneworks drops guns). A player firing one-handed with a loose grip expects the gun to

@@ -610,12 +610,12 @@ void Install() {
         gMemory.poolCount = globals->namePoolCount;
         gMemory.objects = gExeBase + globals->objectsRva;
         gMemory.read = &SafeRead;
-        // FFrame (FOutputDevice's vtable, three DWORDs (four on LE3, still ending at 0x18), then Node, Object, Code,
-        // Locals, PreviousFrame): the same offsets in all three games. UStruct's Script (TArray<BYTE>) at 0x7C [verify].
-        gFrameLayout.node = 0x18;
-        gFrameLayout.object = 0x20;
-        gFrameLayout.code = 0x28;
-        gFrameLayout.previous = 0x38;
+        // FFrame's fields per game (engine/GameAdapter: packed on 4 bytes, Node at 0x14 in LE1 and LE2, 0x18 in LE3).
+        // UStruct's Script (TArray<BYTE>) at 0x7C [verify].
+        gFrameLayout.node = engine::adapter::kFrame.node;
+        gFrameLayout.object = engine::adapter::kFrame.object;
+        gFrameLayout.code = engine::adapter::kFrame.code;
+        gFrameLayout.previous = engine::adapter::kFrame.previous;
         gFrameLayout.structScript = 0x7C;
         gFrameLayout.vtableLo = rdataLo;
         gFrameLayout.vtableHi = rdataHi;

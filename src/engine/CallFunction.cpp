@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "engine/Addresses.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -18,10 +19,9 @@ namespace {
 
 constexpr char const* kHookName = "UObject::CallFunction";
 
-// FFrame (FOutputDevice's vtable, three DWORDs (four on LE3, still ending at 0x18), then Node, Object, Code): the same
-// offsets in all three games (plugin/CrashBreadcrumbs uses them too).
-constexpr std::size_t kFrameNode = 0x18;
-constexpr std::size_t kFrameCode = 0x28;
+// FFrame's Node and Code, per game (engine/GameAdapter: packed on 4 bytes, Node at 0x14 in LE1 and LE2, 0x18 in LE3).
+constexpr std::size_t kFrameNode = adapter::kFrame.node;
+constexpr std::size_t kFrameCode = adapter::kFrame.code;
 // UE3's token after a call's last parameter.
 constexpr std::uint8_t kEndFunctionParms = 0x16;
 
@@ -48,6 +48,7 @@ tCallFunction* gCallFunctionOrig = nullptr;
 
 std::atomic<BeginCrumb> gBeginCrumb{nullptr};
 std::atomic<EndCrumb> gEndCrumb{nullptr};
+std::atomic<Observer> gObserver{nullptr};
 
 // The frame's caller and the next bytecode byte; false if the frame can't be read.
 bool ReadFrame(FFrame const* stack, ue3::Function** caller, std::uint8_t const** code, std::uint8_t* next) {
@@ -59,6 +60,16 @@ bool ReadFrame(FFrame const* stack, ue3::Function** caller, std::uint8_t const**
         return *code != nullptr;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
+    }
+}
+
+// Only the frame's Node (the trace's caller): no bytecode read, since some calls' frames hold no code position (their Code
+// is -1) and a fault per call is slow. The caller checks that what comes back is a listed object.
+ue3::Function* ReadNode(FFrame const* stack) {
+    __try {
+        return *reinterpret_cast<ue3::Function* const*>(reinterpret_cast<std::uint8_t const*>(stack) + kFrameNode);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
     }
 }
 
@@ -86,6 +97,9 @@ bool TrySkip(ue3::Object* context, FFrame* stack, ue3::Function* function, SkipH
 }
 
 void CallFunctionHook(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function) {
+    if (Observer const observer = gObserver.load(std::memory_order_relaxed)) {
+        observer(context, function, stack != nullptr ? ReadNode(stack) : nullptr);
+    }
     for (SkipEntry const& entry : gSkips) {
         if (entry.function == function && TrySkip(context, stack, function, entry.handler)) {
             return;
@@ -118,6 +132,10 @@ void AddSkipHandler(ue3::Function* function, SkipHandler handler) {
 void ClearHandlers() {
     gHandlers.clear();
     gSkips.clear();
+}
+
+void SetObserver(Observer observer) {
+    gObserver.store(observer);
 }
 
 void SetBreadcrumbs(BeginCrumb begin, EndCrumb end) {

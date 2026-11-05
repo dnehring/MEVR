@@ -50,6 +50,22 @@ inline constexpr char const* kGameModeManager = "GameModeManager";
 inline constexpr char const* kGameModeManager = "GameModeManager2";
 #endif
 
+// FFrame, the script VM's frame: FOutputDevice's vtable pointer and three DWORDs (four on LE3), then Node, Object, Code,
+// Locals, PreviousFrame, packed on 4 bytes (LExSDKv2's Frame.hpp, `#pragma pack(push, 4)`), so Node is at 0x14 in LE1 and
+// LE2 and at 0x18 in LE3. Measured 2026-11-04 (research/19 "The trigger's draw"): at 0x18, LE1's frames hold Node's high
+// half and Object's low half; until then the skip handlers and the crash report read LE3's offsets in every game.
+struct FrameOffsets {
+    std::uint32_t node;
+    std::uint32_t object;
+    std::uint32_t code;
+    std::uint32_t previous;
+};
+#if defined(MEVR_GAME_LE3)
+inline constexpr FrameOffsets kFrame{0x18, 0x20, 0x28, 0x38};
+#else
+inline constexpr FrameOffsets kFrame{0x14, 0x1C, 0x24, 0x34};
+#endif
+
 // ---- our reflection layer (ue3/, research/34) ----------------------------------------------------
 
 // Where the reflection fields are. LE1's come from our Ghidra reading of 2.0.0.48602 (research/34

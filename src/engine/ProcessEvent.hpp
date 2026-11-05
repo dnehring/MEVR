@@ -20,6 +20,11 @@ using Handler = void (*)(ue3::Object* context, ue3::Function* function, void* pa
 void AddPostHandler(ue3::Function* function, Handler handler);
 void ClearHandlers();
 
+// A development trace (game/call_trace): sees every ProcessEvent (native code calling script) after it ran, before the
+// handlers. Null: off.
+using Observer = void (*)(ue3::Object* context, ue3::Function* function);
+void SetObserver(Observer observer);
+
 // The host's ProcessEvent hook (HostServices::setProcessEventCallback). With it, Install/Uninstall
 // just set and clear the host's callback; without, the mod hooks ProcessEvent itself.
 using SetHostCallback = void (*)(Handler callback);

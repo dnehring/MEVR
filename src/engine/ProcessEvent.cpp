@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "engine/Addresses.hpp"
 
+#include <atomic>
 #include <vector>
 
 namespace mevr::engine::process_event {
@@ -25,8 +26,12 @@ bool gViaHost = false;
 
 using tProcessEvent = void(ue3::Object* context, ue3::Function* function, void* parms, void* result);
 tProcessEvent* gProcessEventOrig = nullptr;
+std::atomic<Observer> gObserver{nullptr};
 
 void Dispatch(ue3::Object* context, ue3::Function* function, void* parms, void* result) {
+    if (Observer const observer = gObserver.load(std::memory_order_relaxed)) {
+        observer(context, function);
+    }
     for (Entry const& entry : gHandlers) {
         if (entry.function == function) {
             entry.handler(context, function, parms, result);
@@ -36,6 +41,9 @@ void Dispatch(ue3::Object* context, ue3::Function* function, void* parms, void* 
 
 void ProcessEventHook(ue3::Object* context, ue3::Function* function, void* parms, void* result) {
     gProcessEventOrig(context, function, parms, result);
+    if (Observer const observer = gObserver.load(std::memory_order_relaxed)) {
+        observer(context, function);
+    }
     for (Entry const& entry : gHandlers) {
         if (entry.function == function) {
             entry.handler(context, function, parms, result);
@@ -51,6 +59,10 @@ void AddPostHandler(ue3::Function* function, Handler handler) {
 
 void ClearHandlers() {
     gHandlers.clear();
+}
+
+void SetObserver(Observer observer) {
+    gObserver.store(observer);
 }
 
 void UseHost(SetHostCallback set) {
