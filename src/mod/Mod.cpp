@@ -46,6 +46,7 @@
 #include "game/GameArt.hpp"
 #include "game/HoloProbe.hpp"
 #include "game/GameMenuRequest.hpp"
+#include "game/GuiCursor.hpp"
 #include "game/Fingers.hpp"
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
@@ -1170,6 +1171,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         if (gHostOwnsVr) {
             game::game_menu_request::Tick(GameMenuRequestLink());
             game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/56)
+            game::gui_cursor::Tick(std::nullopt);  // the game's GUI cursor onto the pointer's point (research/56 section 6)
         }
     }
     if (gHostOwnsVr) {

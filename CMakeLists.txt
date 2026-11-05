@@ -414,6 +414,10 @@ set(MEVR_MOD_SOURCES
     src/game/HoloProbe.hpp
     src/game/InventoryProbe.cpp
     src/game/InventoryProbe.hpp
+    src/game/GuiCursor.cpp
+    src/game/GuiCursor.hpp
+    src/core/vr/GuiCursor.cpp
+    src/core/vr/GuiCursor.hpp
     src/game/Fingers.cpp
     src/game/Fingers.hpp
     src/game/GunKick.cpp
@@ -868,6 +872,8 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/GuiCursorTests.cpp
+        src/core/vr/GuiCursor.cpp
         src/core/Exe.cpp
         src/core/ExeCheck.cpp
         src/core/Hook.cpp

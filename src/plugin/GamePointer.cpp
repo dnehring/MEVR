@@ -79,6 +79,7 @@ bool gSettingsLogged = false;
 // The flat quad as submitted this frame (OnFlatQuad), in the app space (the controllers' space).
 pointer::Quad gQuad;
 float gTouchArea[4] = {0.0f, 0.0f, 1.0f, 1.0f};  // the touchable part (quad UV): the world UI's visible crop
+int gProjectingHand = -1;                        // the hand a wrist screen is projected from: its fingertip doesn't touch it
 bool gWasTouching = false;                       // the last step's point was a fingertip's (haptic tick on arrival)
 std::uint64_t gQuadMs = 0;
 MELEVR::MevrBridge::PanelKind gKind = MELEVR::MevrBridge::PanelKind::GameMenu;
@@ -445,10 +446,12 @@ static bool StepInner(Frame const& frame, Dot& dot) {
     input.active = state.active;
     for (int i = 0; i < 2; ++i) {
         controllers::Hand const& hand = i == 0 ? state.left : state.right;
-        input.hands[i].aimValid = hand.aimValid;
+        // The hand a wrist screen is projected from neither points at it nor touches it: it sits under the screen, its ray
+        // through it, and moved the game's cursor all the time (research/56 section 6).
+        input.hands[i].aimValid = hand.aimValid && i != gProjectingHand;
         input.hands[i].aim = hand.aim;
         input.hands[i].trigger = hand.trigger;
-        if (hand.aimValid) {
+        if (hand.aimValid && i != gProjectingHand) {
             // The index fingertip: a little ahead of the aim pose along it (the pointing finger over a Touch controller's ring).
             XrVector3f d = menu_pointer::AimDirection(hand.aim);
             float const n = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
@@ -560,17 +563,20 @@ void NoteFlatQuad(MELEVR::MevrBridge::PanelKind kind, XrPosef const& space, XrPo
     gQuad = menu_pointer::InTracking(space, local, width, height);
     gTouchArea[0] = gTouchArea[1] = 0.0f;  // the whole quad unless the caller says (NoteGameUiQuad)
     gTouchArea[2] = gTouchArea[3] = 1.0f;
+    gProjectingHand = -1;
     gQuadHeadLocked = headLocked;
     gKind = kind;
     gQuadMs = GetTickCount64();
 }
 
-void NoteGameUiQuad(XrPosef const& pose, float width, float height, MELEVR::MevrBridge::PanelKind kind, float const* touchArea) {
+void NoteGameUiQuad(XrPosef const& pose, float width, float height, MELEVR::MevrBridge::PanelKind kind, float const* touchArea,
+    int projectingHand) {
     XrPosef const space{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
     NoteFlatQuad(kind, space, pose, width, height, false);
     if (touchArea != nullptr) {
         std::copy(touchArea, touchArea + 4, gTouchArea);
     }
+    gProjectingHand = projectingHand;
 }
 
 } // namespace mevr::host::game_pointer

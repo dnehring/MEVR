@@ -289,10 +289,10 @@ void PointerStep(rail::Rail const& at, float dt) {
     input.active = state.active;
     for (int i = 0; i < 2; ++i) {
         vr::controllers::Hand const& hand = i == 0 ? state.left : state.right;
-        input.hands[i].aimValid = hand.aimValid;
+        input.hands[i].aimValid = hand.aimValid && i != 0;  // the left hand wears the omni-tool: no ray or fingertip on its rail
         input.hands[i].aim = hand.aim;
         input.hands[i].trigger = hand.trigger;
-        if (hand.aimValid) {
+        if (hand.aimValid && i != 0) {
             XrVector3f d = vr::menu_pointer::AimDirection(hand.aim);
             float const n = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
             if (n > 1e-6f) {

@@ -192,15 +192,52 @@ unscaled (and at `cornerScale` 2); a 2 px stroke; a morph at ratio 0.5; the impo
 directory; FreeType: family, metrics, advances, the kerning pair, an 'O' with ink on the ring and none in the hole; every
 truncation of the movie and 400 random byte flips parse, render and convert without crashing.
 
-## 6. Our own touch inventory (2026-11-04)
+## 6. Touch on the game's own screens (2026-11-05)
 
-**Why.** Measured from the in-game snapshots: on a wrist screen 0.55 m wide at 0.48 m, the equipment screen's buttons are
-0.8 cm tall, its weapon-type icons and squad tabs 1.2-1.4 cm, its list rows about 1.3 cm; fingertip targets want 2-3 cm and
-more. A screen big enough for that (rows 2.5 cm: about 1 m wide) would stand 0.9 m away at the 60-degree limit, out of reach.
-The user's choice between the laser on the game's screens and a touch UI of our own: **"Own touch UI"**. Prior art: Titanfall 2
-VR is closed (all rights reserved) and has no inventory; Overlord (MW2CR VR, GPL-3.0, research/03) shows the game's native menus
-on cylinder layers with a laser (no fingertip, wrist or touch-scroll UI in its code at 11f3005). The design references stay
+**Decision (the user, 2026-11-05), replacing a touch inventory of our own:** "The UX of the wrist mounted menu would remain, all
+of the visual states would exist as well. The desired approach is that the holographic display would likely still use the
+existing menu/sub-menu that's being rendered. The only change is that I would do a touch interaction. The idea is that this is
+a wrist projected computer that I can interact with via touch." So: the wrist tap, the omni-tool, the rail and the game's own
+screens projected from the display stay as they are, for all six entries; what's new is that the fingertip works them.
+
+**The problem to solve is the targets' size, not the input.** Measured from the in-game snapshots: on a wrist screen 0.55 m
+wide at 0.48 m, the equipment screen's buttons are 0.8 cm tall, its weapon-type icons and squad tabs 1.2-1.4 cm, its list rows
+about 1.3 cm; fingertip targets want 2 cm and more. A screen big enough for that (rows 2.5 cm: about 1 m wide) would stand 0.9
+m away at the 60-degree limit, out of reach. The equipment screen's handler is `BioSFHandler_PCInventory` (below): the PC layout,
+made for a mouse, with mouse-over states, which the fingertip's hover drives before it presses. Prior art: Titanfall 2 VR is
+closed (all rights reserved) and has no inventory; Overlord (MW2CR VR, GPL-3.0, research/03) shows the game's native menus on
+cylinder layers with a laser (no fingertip, wrist or touch-scroll UI in its code at 11f3005). The design references stay
 Half-Life: Alyx and Fallout 4 VR's Pip-Boy (research/53 section 6).
+
+**The plan:** check in the game what the fingertip already does on each screen (a tap on a row, a tab, an icon, a button; a drag
+on a list), then help where it misses: the hover's cursor held steady while the finger pushes in (the press lands where the
+hover showed), and, if needed, the screen's own controller actions as large buttons on the rail (through `GuiKey`, as the
+back-out's B goes).
+
+**The first tap in the game (2026-11-05 00:08-00:20, fake headset, BIOA_UNC20, the equipment screen on the wrist after
+`GiveAll`):** a replayed fingertip (`make_screen_touches.py`, a scratch generator: the wrist pose of `make-wrist-recording.py`, the
+right index fingertip from 10 cm in front along the screen's normal to 1 cm through) pressed list row 3 (Breaker X) at (1365, 1418)
+px of the 2344 x 2392 window, 5 mm from the aimed point; the game didn't select it. Why:
+- **LE1's Flash screens move their mouse by raw relative mouse motion only.** The equipment movie's `_root._xmouse`/`_ymouse` (read
+  with `mevr panel Inventory var`) stayed at (418.3, 265.5) stage units after a posted `WM_MOUSEMOVE`, after `SetCursorPos` (the
+  game window in front) and after `BioPlayerInput.SmoothGuiMouse`'s result was replaced for 10 ticks (a CallFunction post-handler,
+  `game/GuiCursor`'s first form: one X and one Y call per `PlayerInput`, confirmed); four `SendInput` relative moves of 10 counts
+  moved it to (451.0, 265.5): **0.82 stage units per count** (1.5 window pixels at this window; the stage is 1280 x 1306 here,
+  `Stage.width`/`height`, the window's aspect).
+- **Clicks do arrive as posted messages:** a posted `WM_LBUTTONDOWN`/`UP` ran `BioSFHandler.SendMouseToScaleForm` on every handler
+  on the stack (a call trace), at wherever that cursor was. So the pointer's clicks (ray or fingertip) have always gone to the
+  game's own cursor, not to the pointer's point: research/42's "which of the two mouse paths" is neither.
+- **The left hand pointed at its own screen:** the projecting hand's fingertip touched the wrist screen (4 mm away in a replay; it
+  scrolled the list twice) and its ray moved the game's cursor. The host now leaves the projecting hand's fingertip out on a wrist
+  screen and the rail (`NoteGameUiQuad`'s `projectingHand`); its ray too (next deploy).
+- **A tap clicks where the finger touched:** the touch's point is pinned from contact through the tap's button up (or a hold's
+  button down), so sliding while pressing or pulling out aside doesn't move the click (`core/vr/GamePointer`, unit-tested).
+
+**Next:** steer the game's cursor onto the pointer's point: the host publishes the pointer's window point (HostServices v30), the mod
+reads the focused movie's `_xmouse`/`_ymouse` each tick and injects the relative motion that closes the gap (`SendInput`, only
+while the game's window is in front; the gain adapted from what each move did), so hover, clicks and the wheel land where the
+finger or the ray is. Better, if Ghidra shows it: the native place the raw deltas accumulate into, written directly (no
+foreground need, the Windows cursor untouched).
 
 **The game's model, verified** (`mevr inv`, game/InventoryProbe, 2026-11-04 23:52 on the fake headset, BIOA_UNC20, after the
 cheat manager's `GiveAll`): the equipment screen's handler (`BioSFHandler_PCInventory`) holds `m_oInvInterface`, a
@@ -221,17 +258,8 @@ layer on the game thread:
 - The handler adds the squad (`ChangeTargetCharacter(n)`, `GetSquadMemberNames`), junk (`MarkItemAsJunk`), the mods-transfer
   question (`EquipItemProcessDoubleCheck`) and `EquipSelectedItem(index, xferXMods)`.
 
-**The design** (to build):
-- The game's equipment screen still opens (mode 7: the game paused, the handler and its interface set up, its rules); its Flash
-  movie isn't shown: our touch inventory stands on the wrist in its place (the world UI's placement, the rail beside it).
-- The mod reads the model above on the game thread and publishes a compact snapshot (squad members, slots, the equipped item,
-  the slot's items with their texts and stats) to the host; the host's actions (member, slot, equip, omni-gel, junk, sort) come
-  back through a request slot, as the rail's do. A new HostServices version (after the power wheel's v28).
-- The view: an RmlUi document in the rail's art (the game's fonts and frames through plugin/RailArt and core/gfx), sized for a
-  fingertip: slot tabs and squad tabs at least 3 cm, item cards about 3 cm tall in a list that scrolls by dragging (game_pointer's
-  drag), the selected item's stats against the equipped one's (the game's 0..1 bars), and Equip / Omni-gel / Junk as large
-  buttons. The item icons are the movie's (`nItemCategoryGuiIcon`, `nManufacturerIcon`) [verify which characters].
-- First version: browse (member, slot, list), select, compare, equip. Then omni-gel, junk, sort, mods.
+**The touch inventory of our own** (designed 2026-11-04, dropped 2026-11-05 for the decision above): an RmlUi document in the
+rail's art in place of the movie, over this model through a new HostServices version. `mevr inv` stays as a dev probe.
 
 **Still open from the Flash screens:** whether a wheel notch (the stick, or a drag) scrolls the game's own lists (the codex, the
-journal): this save's lists were empty, and the equipment list (now filled) won't be used.
+journal): this save's lists were empty; the equipment list (filled after `GiveAll`) is the first to try.

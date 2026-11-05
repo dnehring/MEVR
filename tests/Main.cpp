@@ -2295,6 +2295,22 @@ void TestGamePointer() {
         CHECK(out.pressed && out.pressEdge && !out.touchWaiting);
         out = at(tap, 0.05f, 0.0f, 0.03f);   // ...and up on the next step
         CHECK(!out.pressed && out.pressEdge);
+        // A tap clicks where the fingertip reached the surface (x 0.05 m: 625 px), though it slid 8 mm while touching and
+        // pulled out further aside (research/56 section 6: the game's targets on a wrist screen are 0.8-1.4 cm).
+        Pointer pin;
+        auto atContact = [](Output const& o) { return std::abs(o.x - 625) <= 1 && std::abs(o.y - 375) <= 1; };
+        out = at(pin, 0.05f, 0.0f, 0.03f);
+        out = at(pin, 0.05f, 0.0f, 0.002f);
+        CHECK(out.touchWaiting && atContact(out));
+        out = at(pin, 0.054f, 0.0f, 0.0f);
+        out = at(pin, 0.058f, 0.0f, 0.0f);  // slid 8 mm (20 px), under the drag's 1.2 cm
+        CHECK(out.touchWaiting && atContact(out));
+        out = at(pin, 0.065f, 0.0f, 0.03f);  // pulled out further aside: the button down at the contact
+        CHECK(out.pressed && out.pressEdge && atContact(out));
+        out = at(pin, 0.07f, 0.0f, 0.03f);   // the button up there too
+        CHECK(!out.pressed && out.pressEdge && atContact(out));
+        out = at(pin, 0.07f, 0.0f, 0.03f);   // then the pointer follows the hovering finger again
+        CHECK(out.x > 640);
         Pointer hold;
         out = at(hold, 0.05f, 0.0f, 0.03f);
         out = at(hold, 0.05f, 0.0f, 0.002f);
@@ -11002,6 +11018,7 @@ int RunExeTests();
 // tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/56 section 5).
 int RunGfxTests();
 int RunPowerWheelTests();
+int RunGuiCursorTests();
 
 // core/vr/PowerWheel: the hand's power wheel (research/55, the concept of 2026-11-04).
 void TestPowerWheel() {
@@ -11137,6 +11154,7 @@ int main() {
     gFailures += RunExeTests();
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
+    gFailures += RunGuiCursorTests();
     TestUpscale();
     TestMakoGunner();
     TestCockpitHazard();

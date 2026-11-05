@@ -1198,6 +1198,8 @@ void CheckFunctions() {
         "SFXGame.BioInventoryGuiInterface.BuildEquippableItemList",
         "SFXGame.BioInventoryGuiInterface.Equip",
         "SFXGame.BioInventoryGuiInterface.GetEquippedItem",
+        // game/GuiCursor (research/56 section 6)
+        "Engine.BioSFPanel.GetVariableFloat",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
         // Mako (research/44): the game's own turret aim, the vehicle's Tick and its shot start
         "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",

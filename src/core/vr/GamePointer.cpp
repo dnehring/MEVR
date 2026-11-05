@@ -157,9 +157,14 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
     // the point slides off (dragging a slider or a map past the edge), so the button up always follows the button down.
     bool const wasPressing = pressing_;
     float dragNotches = 0.0f;
+    // A touch's click goes where the fingertip reached the surface, not where it slid to while waiting or pulling back out (the
+    // game's targets on a wrist screen are 0.8-1.4 cm: research/56 section 6). The point stays pinned from the contact through
+    // the tap's button up, or through a hold's button down; a drag follows the finger.
+    bool pinned = false;
     if (clickUpNext_) {
         pressing_ = false;  // a tap: its button up, one step after the down
         clickUpNext_ = false;
+        pinned = pressByTouch_;
     } else if (wasPressing) {
         pressing_ = pressByTouch_ ? touchLatched_[hand_] : triggers[hand_];
     } else if (touchWaiting_ || dragging_) {
@@ -182,6 +187,7 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
                 pressing_ = true;
                 pressByTouch_ = true;
                 clickUpNext_ = true;
+                pinned = true;
             } else if (std::sqrt(du * du + dv * dv) > settings_.touchDragM) {
                 touchWaiting_ = false;
                 dragging_ = true;
@@ -191,6 +197,9 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
                 touchWaiting_ = false;  // held still: a press, as without scrolling
                 pressing_ = true;
                 pressByTouch_ = true;
+                pinned = true;
+            } else {
+                pinned = true;
             }
         }
     } else if (touchHand >= 0) {
@@ -198,9 +207,10 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
             touchWaiting_ = true;
             touchHand_ = hand_;
             waitS_ = 0.0f;
-            waitU_ = touches[hand_].u;
-            waitV_ = touches[hand_].v;
+            waitU_ = std::clamp(touches[hand_].u, 0.0f, 1.0f);
+            waitV_ = std::clamp(touches[hand_].v, 0.0f, 1.0f);
             pressing_ = false;
+            pinned = true;
         } else {
             pressing_ = touchLatched_[hand_];
             pressByTouch_ = pressing_;
@@ -208,6 +218,10 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
     } else {
         pressing_ = pointing && triggers[hand_];
         pressByTouch_ = false;
+    }
+    if (pinned) {
+        smoothU_ = waitU_;
+        smoothV_ = waitV_;
     }
     out.touchWaiting = touchWaiting_;
     out.dragging = dragging_;

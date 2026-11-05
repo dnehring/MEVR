@@ -59,6 +59,13 @@ gone, as the menu pointer's does.
 
 ## 3. How the mouse reaches the game
 
+**Answered 2026-11-05 (research/56 section 6): neither path moves LE1's Flash cursor.** The screens' mouse follows raw relative
+motion only (`SendInput` moved the equipment movie's `_xmouse` 0.82 stage units per count; `SetCursorPos` and posted
+`WM_MOUSEMOVE` left it where it was, the game window in front), while posted button messages do reach the movie, at that cursor
+(`BioSFHandler.SendMouseToScaleForm`). Until the cursor is steered onto the pointer's point, the pointer's clicks land wherever the
+game's cursor happens to be.
+
+
 UE3 on Windows takes the mouse two ways, and which one each screen listens to isn't known until the headset says
 (section 5): the window procedure's `WM_MOUSEMOVE` / `WM_LBUTTONDOWN` / `WM_LBUTTONUP` / `WM_MOUSEWHEEL`, and a per-
 tick `GetCursorPos` poll of the OS cursor (which the Scaleform GFx movies' cursor follows). Each is a setting and

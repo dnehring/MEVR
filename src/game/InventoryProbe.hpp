@@ -3,10 +3,10 @@
 
 #include <string>
 
-// A dev probe for our own touch inventory (research/56 section 6; the user, 2026-11-04: "Own touch UI"): reads the game's
-// inventory model through the open equipment screen's handler (BioSFHandler_Inventory.m_oInvInterface, a
-// BioInventoryGuiInterface: the layer between the game's items and its Flash screen) and calls its functions, so the touch UI
-// can be a new view over the game's own rules.
+// A dev probe of the equipment screen's model (research/56 section 6; written for a touch inventory of our own, dropped
+// 2026-11-05 for touch on the game's own screens): reads the game's inventory model through the open equipment screen's
+// handler (BioSFHandler_Inventory.m_oInvInterface, a BioInventoryGuiInterface: the layer between the game's items and its
+// Flash screen) and calls its functions.
 //   mevr inv              the handler's squad member and slot, the equipped item, and the slot's items (name, level, stats,
 //                         category and manufacturer texts, new, equippable)
 //   mevr inv slot <n>     SelectItemSlot(n), BuildEquippableItemList, then the list
