@@ -73,6 +73,10 @@ namespace wheel {
 struct Panel;
 }
 }
+namespace vr::voice {
+struct Line;
+struct State;
+}
 
 // Fields are only ever appended: a mod reads the fields of every version up to the host's (and
 // its own), so a newer mod still runs on an older host, without what the older host lacks.
@@ -81,7 +85,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 30;
+inline constexpr int kHostServicesVersion = 31;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -356,6 +360,28 @@ struct HostServices {
     // calls SFXGameModeBase.GuiKey for them on the active game mode: exact, at once, no real input. A host whose events nobody
     // took for a second gives the game real input instead (SendInput). Any thread.
     std::uint32_t (*takeGuiEvents)(std::uint8_t* events, std::uint32_t capacity) = nullptr;
+
+    // Version 31: voice orders (research/54; plugin/Voice over MEVR-Voice.dll, game/Voice; core/vr/Voice.hpp). The host owns
+    // the microphone and the recognizer; the mod's radio gesture tells it to listen (setVoiceListen; the host also listens
+    // while [Voice] key is held), takes the transcript's lines as they update (takeVoiceLine: partials while the player speaks,
+    // the final one after the release) and parses and dispatches them; voiceState says whether the recognizer is loaded,
+    // listening, the microphone's level and the device; setVoiceKeyterms biases the recognizer toward the squadmates' and
+    // powers' names; voiceCommand is the developer channel ("wav <path>", "listen <s>", "keyterms <a,b>", "stop"). The mod
+    // uses them only if the sizes match its sizeof(Line) / sizeof(State). Any thread.
+    std::uint32_t voiceLineSize = 0;
+    std::uint32_t voiceStateSize = 0;
+    void (*setVoiceListen)(int on) = nullptr;
+    bool (*takeVoiceLine)(vr::voice::Line* out) = nullptr;
+    void (*voiceState)(vr::voice::State* out) = nullptr;
+    void (*setVoiceKeyterms)(char const* terms) = nullptr;
+    void (*voiceCommand)(char const* line) = nullptr;
+    // The model tier (plugin/VoiceModel, core/voice/Llm; still v31): what the rules leave open goes to a small language model
+    // under a per-scene grammar. The mod asks with the prompt's prefix (the rules and the roster, cached by the host), the
+    // scene block ending in the answer's cue, and the GBNF grammar (core/voice/Grammar); the id comes back (0: no model), a
+    // newer request replaces one not yet answered; the answer (action lines, "none", or empty on an error) is taken once, with
+    // the time it took. Any thread.
+    std::uint32_t (*askVoiceModel)(char const* prefix, char const* rest, char const* gbnf) = nullptr;
+    bool (*takeVoiceModelAnswer)(std::uint32_t* id, char* text, std::uint32_t capacity, std::uint32_t* ms) = nullptr;
 };
 
 } // namespace mevr

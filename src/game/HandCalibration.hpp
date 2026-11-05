@@ -377,6 +377,23 @@ struct SquadOrders {
     std::string powerRoute = "tactical";
 };
 SquadOrders GetSquadOrders();
+// [Voice] (research/54, game/Voice; the host reads its own keys of the section: enabled, model, device, key, tailMs, duckDb...):
+// the radio gesture and what the mod does with the transcript. gesture: a left grip squeeze with the hand at the left ear
+// starts a listen; radioRadiusM: how near; earSideM / earDownM: the ear from the eyes; minHoldS: a shorter squeeze is a blip;
+// maxHoldS: ended by itself; earlyDispatch: a partial that settled settleMs and parses whole is given before the release;
+// deicticLagS: "those" is resolved this long before the line's end.
+struct Voice {
+    bool gesture = true;
+    double radioRadiusM = 0.20;
+    double earSideM = 0.08;
+    double earDownM = 0.03;
+    double minHoldS = 0.15;
+    double maxHoldS = 15.0;
+    bool earlyDispatch = true;
+    double settleMs = 250.0;
+    double deicticLagS = 0.3;
+};
+Voice GetVoice();
 // [Vent] (appended to an older file that lacks it; research/45, game/vent): the physical vent of a hot gun, a
 // mechanic change (docs/trilogy-design.md "Ammo").
 //   enabled          1: with a weapon drawn, squeeze the left grip on the gun's receiver (over and just ahead of

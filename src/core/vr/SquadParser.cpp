@@ -281,7 +281,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         if (!m.present) continue;
         for (sc::RosterEntry const& e : roster) {
             if (e.letter != m.letter) continue;
-            for (std::string const& w : Split(e.name)) aliases.push_back({{w}, e.letter});
+            for (std::string const& w : Tokens(e.name)) aliases.push_back({{w}, e.letter});  // lower-cased: the game names them "ASHLEY"
             for (std::string const& a : e.aliases) aliases.push_back({Tokens(a), e.letter});
         }
         if (aliases.empty() || aliases.back().letter != m.letter) aliases.push_back({{std::string(1, static_cast<char>(std::tolower(m.letter)))}, m.letter});

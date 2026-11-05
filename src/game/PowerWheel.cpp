@@ -322,8 +322,9 @@ void Equip(ue3::Object* controller, Power const& power) {
     *slot = power.name;
     write_journal::Wrote("PowerWheel.mappedPower", slot);
     gEquipped = power.label;
-    log::Info("power wheel: equipped {} ({}): the game's mapped power was {}; a push of the left hand casts it", power.info->name,
-        power.label, before.empty() ? "none" : before);
+    pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(power.label.c_str()) : pw::SelfGesture::None;
+    log::Info("power wheel: equipped {} ({}): the game's mapped power was {}; {} casts it", power.info->name, power.label,
+        before.empty() ? "none" : before, gesture != pw::SelfGesture::None ? pw::Name(gesture) : "a push of the left hand");
 }
 
 // ---- The lock and the push (research/55 section 4) ----------------------------------------------------------------------

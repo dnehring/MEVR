@@ -25,6 +25,15 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
   sized to your headset: when MEVR Setup can't tell your headset's size yet, the first VR start sets it for the
   launches after it.
 
+### Your squad
+- Point and order: squeeze the left grip away from the gun, point at an enemy, a spot or a squadmate, let go: attack, move
+  there, or regroup. Pointing at a squadmate as you squeeze orders them alone. Your squad answers with the game's own
+  lines.
+- Say it: hold the left grip at your left ear, speak ("Garrus, take out those troopers on the bridge", "Wrex, hold the
+  line", "Liara, lift the big one", "everyone on me"), let go. Recognized on your own machine, nothing leaves it; no
+  microphone, no voice, the rest of the mod is unchanged. Needs the voice files from the setup's optional content (or
+  `tools/fetch-voice.ps1`).
+
 ### Your hands
 - You aim with the controller, not your head. Your arms, hands and fingers follow the controllers; the gun is in
   your hand.

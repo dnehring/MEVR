@@ -98,3 +98,8 @@ concept/assets/hull reconstruction/assembled/*
 !concept/assets/hull reconstruction/assembled/repair-cap.glb
 !concept/assets/hull reconstruction/assembled/extraction-base.glb
 !concept/assets/hull reconstruction/assembled/extraction-handle.glb
+
+# The voice orders' prebuilt library and models (tools/fetch-voice.ps1; research/54): never in the repository.
+external/moonshine-voice/
+external/llama-cpp/
+models/

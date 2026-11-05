@@ -389,6 +389,22 @@ Immunity, Adrenaline Burst, from section 9's map): while it's aimed with the arm
 2.5 s after its cast. The game itself plays its omni-tool crust at the right wrist for most of these (`RightWrist`), which in VR is
 the gun hand: [verify] whether both show, and whether the game's should be hidden.
 
-**Not yet run in the game** (the game machine was in use): the casts through `selfcast` with a Soldier's self-cast power enabled
-(the save's Immunity, Adrenaline Burst, Marksman... are rank 0; Overkill needs the assault rifle), the gauntlet on a tech cast. In the
-headset: the zones' sizes and the dwell, false casts (a hand resting on the chest, reaching for the foregrip past the gun's top).
+### In the game (2026-11-05, the fake headset, VR00's Soldier save on UNC20, main 2e8f28d)
+
+- **Switching powers on for a test:** the Soldier's own talents don't rise by cheat: `ScaleTalentByIncrement 35 3` (Assault
+  Training; Adrenaline Burst comes at rank 3) and `ScaleTalentByIncrement 42 4` (Fitness; Immunity at rank 4) changed nothing.
+  Bonus talents do: `GiveBonusTalent 63` then `ScaleTalentByIncrement 63 1` gives Barrier, `84` the same way Electronics
+  (Overload) (`Talent_BonusTalents`' BonusIDs).
+- **Barrier, the chest gesture:** the push refused it ("Barrier isn't pushed: the open hand on the chest casts it");
+  `mevr powerwheel selfcast` cast it. With the weapon away the mod released it 0.56 s after the cast (section 9); with the weapon
+  drawn the game released it itself, 0.48 s after. Its cooldown ran (99% to go just after), and the player's `BioActivePower`
+  held Barrier's `BioShieldEntrenchScript`.
+- **The gauntlet:** Overload (tech), aimed at an automatic lock (`aimhead on`, a mercenary 18 m away), kept the omni-tool on
+  after the wheel closed (the open wheel shows it anyway). The push cast Overload at that mercenary (the game released it 0.26 s
+  later). Equipping Barrier more than 2.5 s after that cast turned the omni-tool off. It's on Shepard's mesh at
+  `LeftElbowTwist2` and `LeftWrist` (4 particle systems); the fake headset's level view doesn't show the forearm, so its look
+  is a headset check.
+- **Fixed on the way:** the equip line told self-cast powers "a push of the left hand casts it"; it names the gesture now.
+- **Not checked:** a self-cast power that uses the omni-tool (Shield Boost, Immunity, Adrenaline Burst and Unity can't be switched
+  on on this save), the 2.5 s after a cast once nothing is aimed, and the game's own omni-tool effect at the right wrist. In the
+  headset: the zones' sizes and the dwell, false casts (a hand resting on the chest, reaching for the foregrip past the gun's top).

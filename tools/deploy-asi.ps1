@@ -87,6 +87,59 @@ $menuDir = Join-Path $asiDir 'menu'
 New-Item -ItemType Directory -Force $menuDir | Out-Null
 Copy-Item (Join-Path $PSScriptRoot '..\assets\menu\*') $menuDir -Force
 Write-Output "Menu: $menuDir"
+# The voice orders (research/54): MEVR-Voice.dll with ONNX Runtime next to it in ASI\voice, and the recognizer's models
+# (models/voice/<size>-streaming-en, from tools/fetch-voice.ps1) in ASI\voice\models. The host loads the DLL at attach,
+# so this part needs the game closed too. Skipped when the DLL wasn't built (no external/moonshine-voice).
+$voiceDll = Join-Path $out 'MEVR-Voice.dll'
+if (Test-Path $voiceDll) {
+    $voiceDir = Join-Path $asiDir 'voice'
+    New-Item -ItemType Directory -Force $voiceDir | Out-Null
+    try {
+        Copy-Item $voiceDll $voiceDir -Force
+        Copy-Item (Join-Path $out 'onnxruntime.dll') $voiceDir -Force
+        $voicePdb = Join-Path $out 'MEVR-Voice.pdb'
+        if (Test-Path $voicePdb) { Copy-Item $voicePdb $voiceDir -Force }
+        Write-Output "Voice: $voiceDir"
+    } catch {
+        Write-Warning "Couldn't copy MEVR-Voice.dll into ASI\voice (is the game running?): the loaded one stays"
+    }
+    $modelsSrc = Join-Path $PSScriptRoot '..\models\voice'
+    if (Test-Path $modelsSrc) {
+        $modelsDir = Join-Path $voiceDir 'models'
+        foreach ($size in Get-ChildItem $modelsSrc -Directory | Where-Object { $_.Name -ne 'llm' }) {
+            $dst = Join-Path $modelsDir $size.Name
+            New-Item -ItemType Directory -Force $dst | Out-Null
+            foreach ($f in Get-ChildItem $size.FullName -File) {
+                $to = Join-Path $dst $f.Name
+                if (-not (Test-Path $to) -or (Get-Item $to).Length -ne $f.Length) { Copy-Item $f.FullName $to -Force }
+            }
+        }
+        Write-Output "Voice models: $modelsDir ($((Get-ChildItem $modelsSrc -Directory).Name -join ', '))"
+    } else {
+        Write-Output "Voice models: none in $modelsSrc (tools/fetch-voice.ps1 fetches them); voice stays off"
+    }
+    # The model tier (research/54): llama.cpp's shared build (external/llama-cpp, tools/fetch-voice.ps1 -Llm) and the GGUF
+    # (models/voice/llm) into ASI\voice\llm, where plugin/VoiceModel looks. Skipped without them (the model tier stays off).
+    $llamaSrc = Join-Path $PSScriptRoot '..\external\llama-cpp'
+    $ggufSrc = Join-Path $PSScriptRoot '..\models\voice\llm'
+    if ((Test-Path (Join-Path $llamaSrc 'llama.dll')) -and (Test-Path $ggufSrc)) {
+        $llmDir = Join-Path $voiceDir 'llm'
+        New-Item -ItemType Directory -Force $llmDir | Out-Null
+        try {
+            foreach ($f in Get-ChildItem $llamaSrc -File -Filter '*.dll') {
+                $to = Join-Path $llmDir $f.Name
+                if (-not (Test-Path $to) -or (Get-Item $to).Length -ne $f.Length) { Copy-Item $f.FullName $to -Force }
+            }
+            foreach ($f in Get-ChildItem $ggufSrc -File -Filter '*.gguf') {
+                $to = Join-Path $llmDir $f.Name
+                if (-not (Test-Path $to) -or (Get-Item $to).Length -ne $f.Length) { Copy-Item $f.FullName $to -Force }
+            }
+            Write-Output "Voice model tier: $llmDir ($((Get-ChildItem $ggufSrc -Filter '*.gguf').Name -join ', '))"
+        } catch {
+            Write-Warning "Couldn't copy the model tier into ASI\voice\llm (is the game running?): the loaded one stays"
+        }
+    }
+}
 # MEVR Setup next to the ASI, as the players' install puts it: the in-game Diagnostics > Report a problem (and the
 # menu's Optional content) start ASI\MEVR-Setup.exe. Skipped while it runs (it holds its own exe open).
 $setupExe = Join-Path $out 'MEVR-Setup.exe'

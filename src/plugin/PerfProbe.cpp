@@ -10,6 +10,7 @@
 #include "plugin/MainMenu.hpp"
 #endif
 #include "plugin/Upscale.hpp"
+#include "plugin/Voice.hpp"
 
 #include "core/Log.hpp"
 #include "core/vr/FrameProbe.hpp"
@@ -759,6 +760,7 @@ void PerfPresentEnd(ID3D11DeviceContext* context) noexcept {
 #if defined(MEVR_WITH_MAIN_MENU)
     mevr::host::main_menu::OnPresent();  // every Present, VR frame or not: an open menu nobody can see is closed
 #endif
+    mevr::host::voice::OnPresent();  // the push-to-talk key, the voice.request channel, the listen state
 }
 
 void PerfPass0Captured(ID3D11DeviceContext* context) noexcept {

@@ -4,6 +4,8 @@
 #include "core/Log.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Voice.hpp"
+#include "plugin/VoiceModel.hpp"
 
 #include "halcyon/le1/d3d_capture.h"
 #include "halcyon/le1/dxgi_proxy.h"
@@ -56,6 +58,8 @@ void Attach() {
         factory->Release();
     }
     log::Info("halcyon: renderer attached (its log: %LOCALAPPDATA%\\MELEVR\\MELEVR_Log.txt)");
+    voice::Init();  // the recognizer (research/54): MEVR-Voice.dll and the models, loaded on a worker
+    voice_model::Init();  // the model tier: llama.cpp and a GGUF, on a worker of its own
 }
 
 void Tick(float deltaSeconds) {

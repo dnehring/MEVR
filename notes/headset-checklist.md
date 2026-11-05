@@ -124,8 +124,20 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   the HOLD formation, does a hurt or crowded one visibly fall back to cover and come back when it's calm, and does being
   re-ordered every few seconds make them twitch. Claude can read the logs; only you can see whether it looks right.
   Built 2026-11-04/05. (research/54 "Standing orders", "A real hold", "Retreat to cover")
-- [ ] For the voice step (not built yet: no microphone capture, no recognizer): record your own spoken orders over Link /
-  Steam Link, and measure the mic's lag by tapping a controller on the headset. (research/54 plan steps 2-3)
+- [ ] Voice orders (built 2026-11-05, never heard a real microphone yet): hold the LEFT grip with the hand at your left ear
+  (the radio), say "Garrus, take out those troopers on the bridge", let go. Judge: does the squeeze at the ear ever
+  become a grenade, a support grip or a flat order (and the other way round); the haptic ticks (start, release, one for
+  an order given, two short for "say again?"); whether the order lands before you've lowered your hand (the release to
+  the squadmate's move or line); whether the game's own line comes after a move or attack, and whether our fallback line
+  (`PlaySoundSet` 70 / 61) fits when it doesn't; names over Link / Steam Link ("Rex", "Gurus" on synthesized speech: the
+  parser absorbs those; a name the rules can't place goes to the model); the ducked game audio. Set `[Voice] model`
+  (tiny / small / medium) if the partials lag. (research/54 "The voice path built", `[Voice]`)
+- [ ] The microphone's lag over your link: tap a controller on the headset while a recording runs with `mevr voice listen 5`;
+  the tap's jolt in the poses against the click in the transcript's word times says how much tail `[Voice] tailMs` needs.
+  (research/54 step 3)
+- [ ] The model tier in play (`[Voice] llm`, llama.cpp and a GGUF in `ASI\voice\llm`): say something the rules refuse
+  ("Garrus, you know what to do with the big one") and watch the log for the model's answer and its time; the frame cost
+  while it decodes (a perf probe during a few asks). (research/54 "The voice path built", step 4)
 
 ## 2. Hands, body and the gun (session: VR mod for Mass Effect Legendary Edition)
 - [ ] Arms fully out, then the gun at the cheek: the hands stay on the controllers, the elbows bend naturally, the arm
@@ -230,6 +242,12 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
   (research/54, every `[verify]` after the trace section)
 - Galaxy map: the top level in the window, going back out a level. (research/51 section 8.1)
 - Screens: the omni-gel override at an encrypted crate (`mevr skillgame`). (research/53 section 6)
+- Voice (checked 2026-11-05 afternoon, research/54 "In the game"): the file feed through host, parser and dispatcher, the
+  key terms, the acknowledgement's trace (a follow's bark is Shepard's own; a hold is answered by the squadmate; a move
+  by our fallback line), the frame probe at the drop zone. Left: an attack's acknowledgement with an enemy present
+  (Eden Prime's Save 7), the early dispatch of a settled partial (needs a long enough line), the model's answer in the
+  game (llama.cpp isn't deployed to `ASI\voice\llm` yet), a probe at a heavy spot with the recognizer's thread priority
+  lowered.
 - Omni-tool screens: fingertip replays on Squad, Map, Journal, Codex and Computer; the squad member on the XMods screen
   and with a squad of three; Toggle Helmet where helmets come off (the Normandy) against the flat screen; the UI world
   capture's cost at a heavy spot. (research/57 sections 6-7)

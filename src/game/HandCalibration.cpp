@@ -533,6 +533,38 @@ constexpr char const* kSquadOrdersBlock =
     "; Power orders (\"Liara, lift that one\"): tactical = the game's own order path (SquadOrderUsePower, applied after its\n"
     "; tactical delay); ai = the squadmate's AI told directly (AddUsePower as ordered by the player).\n"
     "powerRoute = tactical\n";
+// Appended to a settings file that has no [Voice] yet (and part of a new file). The host reads its own keys of the section.
+constexpr char const* kVoiceBlock =
+    "\n"
+    "[Voice]\n"
+    "; Voice orders (research/54): hold the LEFT grip with the hand at your left ear (the radio), say the order (\"Garrus,\n"
+    "; take out those troopers on the bridge\"), let go. The host: enabled; model = tiny | small | medium (Moonshine's\n"
+    "; streaming English models in ASI\\voice\\models; tiny is the default: beside the running game its partial\n"
+    "; transcripts cost 300 ms at worst, small's 950, medium's more); device = part of the microphone's name (empty:\n"
+    "; the default communications device); key = a virtual key code held to talk at the desk (0: none; 86 is V); tailMs:\n"
+    "; audio kept after the release; duckDb: the game's audio turned down while listening; intervalMs: how often a\n"
+    "; partial transcript is asked for; keyterms: words the recognizer is biased toward until the mod sets the roster's.\n"
+    "enabled = 1\n"
+    "model = tiny\n"
+    "device = \n"
+    "key = 0\n"
+    "tailMs = 200\n"
+    "duckDb = 12\n"
+    "intervalMs = 250\n"
+    "wordTimestamps = 1\n"
+    "; The mod: the gesture (gesture = 0: the key and the console only), the ear point from the eyes (earSideM, earDownM),\n"
+    "; how near the hand must be (radioRadiusM), a squeeze shorter than minHoldS is a blip, longer than maxHoldS ends by\n"
+    "; itself; earlyDispatch: a partial transcript that settled settleMs and parses whole is given before you let go;\n"
+    "; deicticLagS: \"those\" is resolved this long before the line's end.\n"
+    "gesture = 1\n"
+    "radioRadiusM = 0.2\n"
+    "earSideM = 0.08\n"
+    "earDownM = 0.03\n"
+    "minHoldS = 0.15\n"
+    "maxHoldS = 15\n"
+    "earlyDispatch = 1\n"
+    "settleMs = 250\n"
+    "deicticLagS = 0.3\n";
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -1491,6 +1523,40 @@ std::string Describe(SquadOrders const& s) {
 }
 
 SquadOrders gSquadOrders;
+Voice gVoice;
+
+Voice ReadVoice(Ini const& ini) {
+    Voice v;
+    double value = 0.0;
+    if (Number(ini, "Voice", "gesture", value)) {
+        v.gesture = value != 0.0;
+    }
+    if (Number(ini, "Voice", "radioRadiusM", value)) {
+        v.radioRadiusM = std::clamp(value, 0.05, 0.6);
+    }
+    if (Number(ini, "Voice", "earSideM", value)) {
+        v.earSideM = std::clamp(value, 0.0, 0.3);
+    }
+    if (Number(ini, "Voice", "earDownM", value)) {
+        v.earDownM = std::clamp(value, -0.2, 0.3);
+    }
+    if (Number(ini, "Voice", "minHoldS", value)) {
+        v.minHoldS = std::clamp(value, 0.0, 2.0);
+    }
+    if (Number(ini, "Voice", "maxHoldS", value)) {
+        v.maxHoldS = std::clamp(value, 1.0, 60.0);
+    }
+    if (Number(ini, "Voice", "earlyDispatch", value)) {
+        v.earlyDispatch = value != 0.0;
+    }
+    if (Number(ini, "Voice", "settleMs", value)) {
+        v.settleMs = std::clamp(value, 50.0, 2000.0);
+    }
+    if (Number(ini, "Voice", "deicticLagS", value)) {
+        v.deicticLagS = std::clamp(value, 0.0, 3.0);
+    }
+    return v;
+}
 std::string gSquadOrdersText;
 
 vr::interact::Settings ReadInteract(Ini const& ini) {
@@ -2481,6 +2547,10 @@ SquadOrders GetSquadOrders() {
     return gSquadOrders;
 }
 
+Voice GetVoice() {
+    return gVoice;
+}
+
 Vent GetVent() {
     return gVent;
 }
@@ -2613,7 +2683,7 @@ void Refresh() {
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
              std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock},
-             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}, std::pair{"SquadOrders", kSquadOrdersBlock}}) {
+             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}, std::pair{"SquadOrders", kSquadOrdersBlock}, std::pair{"Voice", kVoiceBlock}}) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -3050,6 +3120,7 @@ void Refresh() {
         gSquadContextText = text;
         log::Info("squad context: settings: {}", text);
     }
+    gVoice = ReadVoice(ini);
     gSquadOrders = ReadSquadOrders(ini);
     if (std::string const text = Describe(gSquadOrders); text != gSquadOrdersText) {
         gSquadOrdersText = text;

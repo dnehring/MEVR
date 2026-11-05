@@ -31,6 +31,9 @@
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
+#include "plugin/Voice.hpp"
+#include "plugin/VoiceModel.hpp"
+#include "core/vr/Voice.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #endif
@@ -299,6 +302,39 @@ void HostSetPowerLock(vr::power_wheel::LockView const* view) {
 std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     return host::game_pointer::TakeGuiEvents(events, capacity);
 }
+void HostSetVoiceListen(int on) {
+    host::voice::SetListen(on);
+}
+bool HostTakeVoiceLine(vr::voice::Line* out) {
+    return host::voice::TakeLine(out);
+}
+void HostVoiceState(vr::voice::State* out) {
+    host::voice::GetState(out);
+}
+void HostSetVoiceKeyterms(char const* terms) {
+    host::voice::SetKeyterms(terms);
+}
+void HostVoiceCommand(char const* line) {
+    host::voice::Command(line);
+}
+std::uint32_t HostAskVoiceModel(char const* prefix, char const* rest, char const* gbnf) {
+    return host::voice_model::Ask(prefix, rest, gbnf);
+}
+bool HostTakeVoiceModelAnswer(std::uint32_t* id, char* text, std::uint32_t capacity, std::uint32_t* ms) {
+    return host::voice_model::TakeAnswer(id, text, capacity, ms);
+}
+HostServices WithVoice(HostServices services) {
+    services.voiceLineSize = static_cast<std::uint32_t>(sizeof(vr::voice::Line));  // v31: voice orders (research/54)
+    services.voiceStateSize = static_cast<std::uint32_t>(sizeof(vr::voice::State));
+    services.setVoiceListen = &HostSetVoiceListen;
+    services.takeVoiceLine = &HostTakeVoiceLine;
+    services.voiceState = &HostVoiceState;
+    services.setVoiceKeyterms = &HostSetVoiceKeyterms;
+    services.voiceCommand = &HostVoiceCommand;
+    services.askVoiceModel = &HostAskVoiceModel;
+    services.takeVoiceModelAnswer = &HostTakeVoiceModelAnswer;
+    return services;
+}
 HostServices WithPowerWheel(HostServices services) {
     services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
     services.setPowerWheel = &HostSetPowerWheel;
@@ -307,7 +343,7 @@ HostServices WithPowerWheel(HostServices services) {
     services.takeGuiEvents = &HostTakeGuiEvents;  // v30: the game pointer's input as GuiKey events (research/57 section 6)
     return services;
 }
-HostServices const gServices = WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
+HostServices const gServices = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
     static_cast<std::uint32_t>(sizeof(vr::controllers::State)), static_cast<std::uint32_t>(sizeof(vr::host_view::State)),
     &HostSetProcessEventCallback, &HostProcessExiting, &HostKeepLoaded,
     static_cast<std::uint32_t>(sizeof(vr::aim_ray::Ray)), &HostSetAimRay, &HostSetSupportGrip, &HostSupportGripHeld,
@@ -317,7 +353,7 @@ HostServices const gServices = WithPowerWheel(WithWorldUi(WithGalaxyHologram(Wit
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::View)), &HostSetSquadMenu, &HostLeftGripAway,
     static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel)), &HostSetWheelPanel,
     static_cast<std::uint32_t>(sizeof(vr::sights::Sight)), &HostSetSight, &HostSightView,
-    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette})))))))))));
+    static_cast<std::uint32_t>(sizeof(vr::calibration::HostState)), &HostCalibration, &HostMainMenu, &HostSetVignette}))))))))))));
 // A mod that's gone can't aim: Halcyon's head aim must come back, the reticle go, the pad mapping
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.
@@ -349,6 +385,8 @@ loader::spi::Interface* gSpi = nullptr;
 
 void SetProcessExiting() {
     gProcessExiting.store(true);
+    host::voice::Shutdown();  // its capture and worker threads, before the DLLs unload
+    host::voice_model::Shutdown();
 }
 
 bool ProcessExiting() {
