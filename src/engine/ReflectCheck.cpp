@@ -1152,6 +1152,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryUseMappedPower",
         "SFXGame.BioPlayerInput.ActivatePower",  // the power wheel's push (research/55 section 4)
         "SFXGame.SFXGameModeDefault.EnterPowerWheel",
+        "SFXGame.SFXGameModePowerWheel.ExitPowerWheel",  // holsters: the right stick click's hold (2026-11-05)
         "SFXGame.SFXGameModeBase.FireWeapon",  // ...and the trigger's, refused without a buzz (2026-11-04)
         "SFXGame.SFXGameModeBase.StopFiringWeapon",  // `mevr vehicle fire mg` (2026-11-04)
         "Engine.PlayerController.GetScaleFormManager",

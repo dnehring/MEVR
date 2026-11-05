@@ -39,13 +39,15 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 - Use doors, lockers and people by looking at them and pressing A; the prompt appears at the object.
 - Your powers on a wheel at your left hand: hold X and it opens around your palm with your biotic, tech and combat
   powers; move your hand toward one (or push the left stick toward it) and let go of X to equip it. Tap X instead and
-  it stays open until you pinch the left trigger. The equipped power is the one a tap of the right stick click casts.
+  it stays open until you pinch the left trigger.
   X no longer throws a grenade the game's way on foot (throw real ones from your chest).
 - Cast with your hand: with the wheel closed, raise your left arm and point it at an enemy; orange brackets lock onto the
   one nearest your hand's line (they stay on it while you sway, and through a moment behind cover). Point roughly and the
   lock finds the enemy your hand and your eyes agree on. Push your open left
   hand toward it to cast the equipped power at it. Singularity and the other placed powers land where your hand points
   when no enemy is locked.
+- The game's own power wheel: hold the right stick click and steer with the same stick, let go to close it. A quick
+  click no longer casts a power by accident; a double-click still recenters the view.
 
 ### Your body
 - A guided calibration (about a minute) measures your height, arms and how you aim, and is saved per controller type.

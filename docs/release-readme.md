@@ -120,7 +120,7 @@ below are in `Game\ME1\Binaries\Win64\ASI\LE1MEVR.ini`; most also have a row in 
 | Right grip at a holster | Draw that weapon. Keep the grip squeezed to hold the gun. Let go at its holster to put it away; let go anywhere else and it goes back after 0.3 s unless you squeeze again |
 | Left grip on the gun | Hold it with both hands (anywhere along the gun). With the gun raised to your cheek the game gives you its aimed fire |
 | Left trigger | The weapon wheel, at your left hand. Point your left hand at a squadmate as you pull to start on their weapon; the right stick highlights a weapon; let go of the trigger to give it. B closes the wheel without a change |
-| Right stick click | A tap casts your equipped (mapped) power. Hold it and steer with the right stick for the game's own power wheel; let go to use the highlighted power |
+| Right stick click | Hold it and steer with the right stick for the game's own power wheel; let go to close it. A quick click does nothing (cast your equipped power with a push of your left hand) |
 | Right stick, double-click | Recenter the view |
 | Left stick click | Crouch on or off |
 | A | Use what you look at (talk, open, pick up). Hold to sprint |

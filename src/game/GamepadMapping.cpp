@@ -133,6 +133,58 @@ bool RbFromStickClick(RbClick& s, RbClickInput const& in) {
     return s.phase == Phase::Held || s.phase == Phase::Tap;
 }
 
+PowerHoldStep PowerHoldFromStickClick(PowerHold& s, RbClickInput const& in) {
+    using Phase = PowerHold::Phase;
+    PowerHoldStep step;
+    bool const pressed = in.click && !s.down;
+    s.down = in.click;
+    if (pressed) {
+        // Counted like RbFromStickClick counts them for Halcyon's double-click recenter.
+        bool const counted = !in.reserved && !in.otherClick;
+        bool const second = in.nowMs != 0 && counted && s.lastPressMs != 0 && in.nowMs - s.lastPressMs <= kRbDoubleClickMs;
+        if (counted && in.nowMs != 0) {
+            s.lastPressMs = second ? 0 : in.nowMs;
+        }
+        bool const deflected = std::abs(in.stickX) > kRbStickCentered || std::abs(in.stickY) > kRbStickCentered;
+        if (s.phase == Phase::Open) {
+            // A release this step never saw: close first, and this press opens nothing.
+            step.close = true;
+            s.phase = Phase::Ignored;
+        } else if (!in.enabled || in.nowMs == 0 || second || in.reserved || in.otherClick || deflected) {
+            s.phase = Phase::Ignored;
+        } else {
+            s.phase = Phase::Pending;
+            s.pressMs = in.nowMs;
+        }
+    }
+    switch (s.phase) {
+    case Phase::Pending:
+        if (in.otherClick || in.reserved || in.nowMs == 0) {
+            s.phase = Phase::Ignored;
+        } else if (!in.click) {
+            s.phase = Phase::Idle;  // a tap: nothing
+        } else if (in.nowMs - s.pressMs >= kPowerHoldMs) {
+            s.phase = Phase::Open;
+            step.open = true;
+        }
+        break;
+    case Phase::Open:
+        if (!in.click) {
+            s.phase = Phase::Idle;
+            step.close = true;
+        }
+        break;
+    case Phase::Ignored:
+        if (!in.click) {
+            s.phase = Phase::Idle;
+        }
+        break;
+    case Phase::Idle:
+        break;
+    }
+    return step;
+}
+
 StickChordStep UpdateStickChord(StickChord& c, bool leftClick, bool rightClick, std::uint64_t nowMs) {
     StickChordStep step;
     bool const anyBefore = c.left || c.right;
@@ -251,7 +303,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.modTurns ? kFlagModTurns : 0u) | (options.handWalk ? kFlagHandWalk : 0u) |
            (options.makoDrive ? kFlagMakoDrive : 0u) | (options.makoLever ? kFlagMakoLever : 0u) | (options.makoStick ? kFlagMakoStick : 0u) |
            (options.cockpitLook ? kFlagCockpitLook : 0u) | (options.physicalCrouch ? kFlagPhysicalCrouch : 0u) |
-           (options.powerWheel ? kFlagPowerWheel : 0u) |
+           (options.powerWheel ? kFlagPowerWheel : 0u) | (options.modPowerHold ? kFlagModPowerHold : 0u) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -277,6 +329,7 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.cockpitLook = (flags & kFlagCockpitLook) != 0;
     options.physicalCrouch = (flags & kFlagPhysicalCrouch) != 0;
     options.powerWheel = (flags & kFlagPowerWheel) != 0;
+    options.modPowerHold = (flags & kFlagModPowerHold) != 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
     options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
@@ -454,13 +507,14 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     }
     // The right stick click stays R3 either way: Halcyon's double-click recenter reads it, and the
     // game's R3 (ChangeMagnification, a scoped weapon's zoom step) does nothing in Halcyon's view.
+    // With Options::modPowerHold the mod opens the power wheel from its hold, and it's never RB.
     RbClickInput click;
     click.click = r.stickClick;
     click.stickX = r.stickX;
     click.stickY = r.stickY;
     click.otherClick = l.stickClick;
     click.reserved = options.stickClicksReserved;
-    click.enabled = source == RbSource::RightStickClick;
+    click.enabled = source == RbSource::RightStickClick && !options.modPowerHold;
     click.nowMs = state.timeMs;
     if (RbFromStickClick(latches.rbClick, click)) {
         rb = true;

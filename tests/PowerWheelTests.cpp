@@ -198,6 +198,121 @@ void TestPad() {
     CHECK(!pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(pad::Options{})).powerWheel);
 }
 
+// The right stick click held opens the game's power wheel, let go closes it; a tap, a chord, a press while turning and
+// the second click of the double-click recenter open nothing (gamepad::PowerHoldFromStickClick).
+void TestPowerHold() {
+    using Phase = pad::PowerHold::Phase;
+    pad::PowerHold s;
+    pad::RbClickInput in;
+    in.enabled = true;
+    std::uint64_t now = 10000;
+    auto const step = [&](bool click, std::uint64_t after) {
+        now += after;
+        in.click = click;
+        in.nowMs = now;
+        return pad::PowerHoldFromStickClick(s, in);
+    };
+    // A hold: nothing until kPowerHoldMs, then open once; the release closes it.
+    CHECK(!step(true, 0).open && s.phase == Phase::Pending);
+    CHECK(!step(true, pad::kPowerHoldMs - 1).open);
+    pad::PowerHoldStep const opened = step(true, 1);
+    CHECK(opened.open && !opened.close && s.phase == Phase::Open);
+    CHECK(!step(true, 2000).open);  // held on: no second open
+    pad::PowerHoldStep const closed = step(false, 10);
+    CHECK(closed.close && !closed.open && s.phase == Phase::Idle);
+    // A tap: nothing at all, ever.
+    now += 1000;
+    pad::PowerHoldStep const tapDown = step(true, 0);
+    pad::PowerHoldStep const tapUp = step(false, 80);
+    pad::PowerHoldStep const tapLater = step(false, 1000);
+    CHECK(!tapDown.open && !tapUp.open && !tapUp.close && !tapLater.open && s.phase == Phase::Idle);
+    // A double-click (the recenter), the second click held: neither opens.
+    now += 1000;
+    step(true, 0);
+    step(false, 60);
+    CHECK(!step(true, 100).open && s.phase == Phase::Ignored);
+    CHECK(!step(true, 1000).open);
+    CHECK(!step(false, 10).close && s.phase == Phase::Idle);
+    // With the left stick click (the both-sticks chord), before or during the hold: nothing.
+    now += 1000;
+    in.otherClick = true;
+    CHECK(!step(true, 0).open && s.phase == Phase::Ignored);
+    CHECK(!step(true, 1000).open);
+    in.otherClick = false;
+    step(false, 10);
+    now += 1000;
+    step(true, 0);
+    in.otherClick = true;
+    CHECK(!step(true, 50).open && s.phase == Phase::Ignored);
+    in.otherClick = false;
+    CHECK(!step(true, 1000).open);
+    step(false, 10);
+    // Pressed while turning: nothing; tilting after the press steers the wheel and keeps it.
+    now += 1000;
+    in.stickX = 0.9f;
+    CHECK(!step(true, 0).open && s.phase == Phase::Ignored);
+    CHECK(!step(true, 1000).open);
+    step(false, 10);
+    in.stickX = 0.0f;
+    now += 1000;
+    step(true, 0);
+    in.stickX = 0.9f;
+    CHECK(step(true, pad::kPowerHoldMs).open);
+    CHECK(step(false, 500).close);
+    in.stickX = 0.0f;
+    // Not the source (or no clock): nothing opens; a wheel already open still closes at the release.
+    now += 1000;
+    in.enabled = false;
+    CHECK(!step(true, 0).open && !step(true, 1000).open);
+    step(false, 10);
+    in.enabled = true;
+    now += 1000;
+    step(true, 0);
+    CHECK(step(true, pad::kPowerHoldMs).open);
+    in.enabled = false;
+    CHECK(step(false, 10).close);
+    in.enabled = true;
+    pad::PowerHold noClock;
+    pad::RbClickInput none;
+    none.enabled = true;
+    none.click = true;
+    CHECK(!pad::PowerHoldFromStickClick(noClock, none).open && !pad::PowerHoldFromStickClick(noClock, none).open);
+
+    // The host: with modPowerHold the click is never RB (a long hold neither), still R3 for Halcyon's recenter.
+    mevr::vr::controllers::State c;
+    c.active = true;
+    c.right.stickClick = true;
+    pad::Latches latches;
+    pad::Options options;
+    options.rightGripHolds = true;
+    options.rbSource = pad::RbSource::RightStickClick;
+    options.modPowerHold = true;
+    WORD seen = 0;
+    for (std::uint64_t t = 1000; t <= 2000; t += 50) {
+        c.timeMs = t;
+        seen = static_cast<WORD>(seen | pad::FromControllers(c, latches, options).wButtons);
+    }
+    CHECK((seen & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0 && (seen & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+    // Without it the same hold is RB, as before.
+    pad::Latches before;
+    options.modPowerHold = false;
+    c.right.stickClick = false;
+    c.timeMs = 3000;
+    pad::FromControllers(c, before, options);
+    c.right.stickClick = true;
+    WORD rb = 0;
+    for (std::uint64_t t = 3050; t <= 4000; t += 50) {
+        c.timeMs = t;
+        rb = static_cast<WORD>(rb | pad::FromControllers(c, before, options).wButtons);
+    }
+    CHECK((rb & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+    // The flag across the boundary.
+    pad::Options flagged;
+    flagged.modPowerHold = true;
+    CHECK(pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(flagged)).modPowerHold);
+    CHECK(!pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(pad::Options{})).modPowerHold);
+}
+
 }  // namespace
 
 // The lock (research/55 section 4): taken within acquireDeg, the nearest angle winning, kept to keepDeg, held through a
@@ -366,6 +481,7 @@ int RunPowerWheelTests() {
     TestPlacement();
     TestTableAndView();
     TestPad();
+    TestPowerHold();
     TestLock();
     TestAutoLock();
     TestPush();

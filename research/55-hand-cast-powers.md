@@ -13,8 +13,9 @@ is kept in the repository.
 
 ## 1. What we do with powers today
 
-- **Right stick click** (`[Holsters] powerWheel = r3`): a tap is RB tapped, the game's mapped power
-  (`SFXGameModeDefault.TryUseMappedPower`); held, RB held opens the game's power wheel (`EnterPowerWheel`, game mode 2),
+- **Right stick click** (`[Holsters] powerWheel = r3`): a tap was RB tapped, the game's mapped power
+  (`SFXGameModeDefault.TryUseMappedPower`; since 2026-11-05 a tap casts nothing: research/19 "Hold only"); held, it opens
+  the game's power wheel (`EnterPowerWheel`, game mode 2),
   paused, steered by the right stick, on the HUD panel by default (`[Squad] powerWheelAt = hud`: the user, 2026-10-22,
   the right hand is busy with the gun; `left`, `right` or `front` put it on a panel of its own; research/19).
 - Holsters let the game draw for powers (`TryUseMappedPower`, `EnterPowerWheel` are allowed callers, research/19).
@@ -170,7 +171,8 @@ with the left stick (which then doesn't walk); X freed from the game's grenade f
 - **The roster**: the pawn behaviour's `m_powers`, those in the shared table (`FindPower`, the 19 player powers of section 3),
   biotics first; cooldown as `m_fCooldownRemaining / m_fTotalCooldownTime`; `BioPower.IsEnabled` dims a tile.
 - **Equipping** writes the power's name into `BioPlayerInput.MappedPower` (journalled): the game's own mapped power, which the
-  right stick click's tap casts through `SFXGameModeDefault.TryUseMappedPower`. It's the stand-in for section 4's lock and fire.
+  push casts (section 7). Until 2026-11-05 the right stick click's tap cast it through `SFXGameModeDefault.TryUseMappedPower`
+  too; the click is hold-only since (research/19 "Hold only").
 - **The pad** (`gamepad::Options::powerWheel`, flag bit 24, host v28): while open the motion controllers' left stick, L3, X, left
   trigger and grip reach the game as nothing, each kept until released after it closes; the right hand stays the game's (turning,
   firing). On foot with the wheel on, X never reaches the game (`grenadeButton` off): the physical throw stays.

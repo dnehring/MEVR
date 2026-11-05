@@ -234,8 +234,11 @@ switching frameworks.
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`; while the draw still
   animates, `IsSwitchingWeapons`, the game ignores it, so the holster waits for the switch's end unless the grip
-  closes again), elsewhere it goes back after `releaseGrace`; the grip is never RB, RB (power wheel / mapped
-  power) is the right stick click (`powerWheel`). Contact haptics while the hand is in a slot
+  closes again), elsewhere it goes back after `releaseGrace`; the grip is never RB. **The right stick click held 0.3 s opens
+  the game's power wheel, let go closes it, a tap casts nothing** (the user, 2026-11-05; research/19 "Hold only"): the mod calls
+  `EnterPowerWheel`/`ExitPowerWheel` itself (`gamepad::PowerHoldFromStickClick`) and the click is never RB (`kFlagModPowerHold`),
+  because the game's RB casts the mapped power for any press under its 0.3 s; `powerWheel = y/x/b` are still RB.
+  Contact haptics while the hand is in a slot
   (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
   `core/xr/Floor`, STAGE). Squad weapons: below. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
   **Only holsters draw** (`onlyHolstersDraw = 1`, 2026-10-25): on foot in VR with tracked controllers, once the
@@ -627,7 +630,7 @@ switching frameworks.
   the module itself): on foot in VR, X held opens it at the left palm, fixed in the room, facing the eyes, with the player's mappable
   powers (the behaviour's `m_powers` through the shared table `FindPower`: the 2DA label, the shown name, discipline, icon); the left
   hand's travel toward a tile or the left stick picks; letting go of X equips (X tapped: a left trigger pinch, a left grip squeeze or X
-  again). Equip = `BioPlayerInput.MappedPower` (journalled), which the right stick click's tap casts (`TryUseMappedPower`, the game's aim).
+  again). Equip = `BioPlayerInput.MappedPower` (journalled), which the push casts (the right stick click's tap no longer does, 2026-11-05).
   **The lock and the push** (research/55 section 7, `[PowerWheel] lock*`/`push*`): wheel closed, the left arm raised (`lockReachM` ahead of
   the eyes), the hostile nearest the left aim ray (`IsHostile`, not dead or dormant, `FastTrace` from the hand; 9 degrees to take, 16 to
   keep, 35 m, 0.35 s of blocked sight; nothing pointed at: the automatic resolver, the best within 30 degrees of the hand or 20 of the
@@ -750,8 +753,8 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **Player triggers:** End = snapshot, Home = recording on/off (game focused); a quick tap of both
   stick clicks = snapshot (both down within 100 ms of each other and up within 300 ms of the first
   press; held 400 ms they open our main menu instead, never both: `gamepad::UpdateStickChord` in
-  `HalcyonBridge`; L3 is held back 100 ms so the tap is never a crouch, and RB from R3 starts only
-  after 100 ms alone); our menu's Advanced > Diagnostics (Snapshot, Record) and the classic menu's VR
+  `HalcyonBridge`; L3 is held back 100 ms so the tap is never a crouch, and R3 opens the power wheel only
+  after 300 ms alone); our menu's Advanced > Diagnostics (Snapshot, Record) and the classic menu's VR
   hands tab ("Test loop": snapshot in 3 s, record, replay the last recording). There's no controller
   chord for recording (both grips are the gun and the squad menu since 2026-10-22).
 - **Frame timing** ([research/22](research/22-performance-levers.md)): `tools/perf-probe.ps1 [-Seconds 20

@@ -560,7 +560,8 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     }
     std::string const turnHow = in.turn == "snap" ? "Turn in steps (Comfort > Turn style)." : "Turn (Comfort > Turn style).";
     if (power == "r3") {
-        put("rstick", "Turn, click: powers", turnHow + " Click: " + powersHow + ". Double-click: recenter the view.");
+        put("rstick", "Turn, hold: powers", turnHow + " Hold the click: the game's power wheel, steered with this stick; "
+                                            "let go to close it. Double-click: recenter the view.");
     } else {
         put("rstick", "Turn", turnHow + " Double-click the stick to recenter the view.");
     }

@@ -50,7 +50,8 @@ ue3::FieldRef gMappedPower{"SFXGame.BioPlayerInput", "MappedPower"};
 ue3::FunctionRef gIsEnabledFn{"SFXGame.BioPower.IsEnabled"};
 ue3::FunctionRef gIsCombatEnabledFn{"SFXGame.BioPlayerInput.IsCombatEnabled"};
 ue3::FunctionRef gIsRequiredWeaponFn{"SFXGame.BioPower.IsRequiredWeaponEquipped"};
-// `mevr powerwheel cast` (tests): what the right stick click's tap does, SFXGameModeDefault.TryUseMappedPower.
+// `mevr powerwheel cast` (tests): SFXGameModeDefault.TryUseMappedPower, what the game's RB tap does (the right stick click's
+// tap until 2026-11-05).
 ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
 ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
 ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
@@ -64,7 +65,7 @@ constexpr char kBlock[] =
     "; The power wheel at your left hand (research/55): hold X on foot and it opens around your left palm with your powers;\n"
     "; move your left hand toward one (or push the left stick toward it: you don't walk while it's open) and let go of X to\n"
     "; equip it. Tap X instead and it stays open: a pinch of the left trigger, a squeeze of the left grip or X again equips.\n"
-    "; The equipped power is the one the right stick click's tap casts. While on = 1, X never throws a grenade on foot (the\n"
+    "; Push your left hand to cast the equipped power (lock, below). While on = 1, X never throws a grenade on foot (the\n"
     "; physical throw stays). widthM the wheel's width; towardM its centre from your palm toward your eyes; deadZoneM how far\n"
     "; the hand moves before it picks; keepDeg how much nearer another tile must be to take over; stickPick how far the left\n"
     "; stick must be pushed to pick; tapS how short a tap is; emblem 1: our N7 mark on the palm, 0: nothing; upperCase 1: the\n"
@@ -86,7 +87,7 @@ constexpr char kBlock[] =
     "; The lock and the push: with the wheel closed, raise your left arm (lockReachM ahead of your eyes) and point your hand: the\n"
     "; enemy nearest its ray (within lockAcquireDeg, kept until lockKeepDeg, in sight, within lockRangeM; lockGraceS of blocked\n"
     "; sight allowed) is locked and marked; push your left hand along its ray (pushSpeedMS fast, pushTravelM far) to cast the\n"
-    "; equipped power at it, no sooner than pushCooldownS apart. lock 0: off (the right stick click's tap still casts the game's way).\n"
+    "; equipped power at it, no sooner than pushCooldownS apart. lock 0: off (then only the game's power wheel casts).\n"
     "lock = 1\n"
     "lockAcquireDeg = 9\n"
     "lockKeepDeg = 16\n"
@@ -308,7 +309,7 @@ void Equip(ue3::Object* controller, Power const& power) {
     *slot = power.name;
     write_journal::Wrote("PowerWheel.mappedPower", slot);
     gEquipped = power.label;
-    log::Info("power wheel: equipped {} ({}): the game's mapped power was {}; the right stick click's tap casts it", power.info->name,
+    log::Info("power wheel: equipped {} ({}): the game's mapped power was {}; a push of the left hand casts it", power.info->name,
         power.label, before.empty() ? "none" : before);
 }
 

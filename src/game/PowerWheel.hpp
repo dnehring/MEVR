@@ -11,8 +11,8 @@
 // at the left palm, fixed in the room, facing the eyes, with the player's own powers (their behaviour's m_powers, the
 // mappable ones, biotics first); the left hand's travel toward a tile, or the left stick's direction, picks one; letting go
 // of X equips it. X tapped keeps it open until a pinch of the left trigger, a squeeze of the left grip or X again
-// (core/vr/PowerWheel's Machine). Equipping makes it the game's mapped power (BioPlayerInput.MappedPower, which the right
-// stick click's tap casts: SFXGameModeDefault.TryUseMappedPower, the game's own aim). The lock and the push (research/55
+// (core/vr/PowerWheel's Machine). Equipping makes it the game's mapped power (BioPlayerInput.MappedPower; the right stick click's
+// tap cast it until 2026-11-05, now only the push does: research/19 "Hold only"). The lock and the push (research/55
 // section 4): with the wheel closed and the left arm raised, the hostile nearest the left hand's ray (in sight from the hand,
 // in range) is locked, sticky, and marked (HostServices v29, setPowerLock); a push of the left hand along its ray casts the
 // equipped power through BioPlayerInput.ActivatePower at the locked hostile (a place power with none: where the ray meets

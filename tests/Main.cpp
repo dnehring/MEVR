@@ -9114,7 +9114,7 @@ void TestMenuSettings() {
             CHECK(ms::Find(k) != nullptr && ms::Find(k)->type == ms::Type::Text);  // the page binds every one
         }
         CHECK(text(shipped, "guide_lt") == "Weapon wheel" && text(shipped, "guide_rt") == "Fire");
-        CHECK(text(shipped, "guide_rstick") == "Turn, click: powers");
+        CHECK(text(shipped, "guide_rstick") == "Turn, hold: powers");
         CHECK(text(shipped, "guide_rstick_how").find("recenter") != std::string::npos);
         CHECK(text(shipped, "guide_rgrip") == "Draw and holster");
         CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Melee");
