@@ -21,6 +21,7 @@ namespace cp = vr::cockpit_panel;
 
 cp::Panel gPanel;
 cp::Output gOut;
+std::optional<cp::Layout> gLayout;  // the last tick's, in tracking space (the snapshot's, for replays that reach to it)
 cp::Settings const gSettings;
 unsigned gRepairs = 0;
 unsigned gExtractions = 0;
@@ -137,6 +138,7 @@ void Tick(double deltaSeconds, Link const& link) {
     cp::Input in;
     in.deltaSeconds = deltaSeconds;
     std::optional<cp::Layout> const layout = link.mainMenuOpen ? std::nullopt : cockpit_probe::PanelLayout();
+    gLayout = layout;
     vr::controllers::State const controllers = vr::controllers::Latest();
     in.active = layout.has_value() && controllers.active;
     if (layout) {
@@ -189,10 +191,22 @@ std::string StatusJson() {
     for (cp::Colour const colour : gLamps) {
         lamps += std::format("{}{}", lamps.empty() ? "" : ", ", json::JsonString(cp::Name(colour)));
     }
+    // Where the controls are, in tracking space (metres; null when not riding): a recording that reaches for them is a few
+    // lines from these (the fake headset's head sits at the tracking origin).
+    std::string layout = "null";
+    if (gLayout) {
+        auto const v = [&](XrVector3f const& p) {
+            return std::format("[{}, {}, {}]", json::JsonNumber(p.x), json::JsonNumber(p.y), json::JsonNumber(p.z));
+        };
+        layout = std::format("{{\"buttonTop\": {}, \"buttonIn\": {}, \"travelM\": {}, \"hinge\": {}, \"hingeAxis\": {}, \"grip\": {}, "
+                             "\"pullDeg\": {}}}",
+            v(gLayout->buttonTop), v(gLayout->buttonIn), json::JsonNumber(gLayout->travelM), v(gLayout->hinge), v(gLayout->hingeAxis),
+            v(gLayout->grip), json::JsonNumber(gLayout->pullDeg));
+    }
     return std::format("{{\"active\": {}, \"pressM\": {}, \"pressed\": {}, \"progress\": {}, \"pullDeg\": {}, \"held\": {}, \"repairs\": {}, "
-                       "\"extractions\": {}, \"lamps\": [{}], \"last\": {}}}",
+                       "\"extractions\": {}, \"lamps\": [{}], \"last\": {}, \"layout\": {}}}",
         gWasActive ? "true" : "false", json::JsonNumber(gOut.pressM), gOut.pressed ? "true" : "false", json::JsonNumber(gOut.progress),
-        json::JsonNumber(gOut.pullDeg), gOut.held ? "true" : "false", gRepairs, gExtractions, lamps, json::JsonString(gLast));
+        json::JsonNumber(gOut.pullDeg), gOut.held ? "true" : "false", gRepairs, gExtractions, lamps, json::JsonString(gLast), layout);
 }
 
 std::string Command(std::string const& rest) {

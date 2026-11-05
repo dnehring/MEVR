@@ -1012,9 +1012,17 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   from the shoulder), where the throttle's handle hid its plate from the eye. **The user moved it to the front section**
   (2026-11-05): on the console's top (the hood over the main screen, 1.13 m from the shoulders) it stood in the view out,
   and the user placed it: it "should replace one of the keyboard banks, likely on the right side", the right desk shelf's
-  4 x 3 keypad, low in front of the console. It stands there on a riser, turned to face the eye and tilted 20 degrees
-  toward the pilot; the keypad is gone (the left shelf keeps its own). Its reach and place from the eye are in the
-  manifest's `panels.repair`: the pilot leans forward and down to press it.
+  4 x 3 keypad, low in front of the console; the keypad is gone (the left shelf keeps its own). Turned to face the eye
+  and centred where the keypad was, it hung over the shelf's slanted side lip and sat askew to every edge: "it looks like
+  you just randomly placed it ... It should be aligned to the bottom edge" (the user, 2026-11-05). The shelf's flat top
+  (its dark field) ends at a straight front edge along x (y 0.0194) where a rounded light lip begins, and a slanted lip
+  runs up its left side (the flat 0.075 hull units wide at the front, widening toward the back); its right end is the
+  seam with the next plate. The module now stands **squared to the shelf**, its plate toward the pilot, tilted 20 degrees
+  back, on a riser whose front is 0.004 (1.2 cm) behind the front edge and which is centred on the edge's run (4.9 cm
+  of flat either side there; `ShelfTop`, `ShelfSpan`, and the build stops if the riser leaves the flat at its front or
+  back). A 4.7 cm inset, equal to the side gaps, floated in the middle of the shelf. Its reach and place from the eye are
+  in the manifest's `panels.repair` (1.14 m from the right shoulder, 27 degrees right of the eye's line and 41 down): the
+  pilot leans forward and down to press it.
 - **The seat 0.15 m back in the build.** The game had seated the pilot 0.15 m further back in the hull since the user's
   headset drive (place.py's `--seat-back`, 2026-11-03); the build now does it (`CHAIR_AT` y -0.24), so its reach and views
   are the game's, and `--seat-back` defaults to 0.
@@ -1035,9 +1043,26 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   let go, it swings back. The ring shows the hull's health (the hazard alarm's `GetHealthAndShieldsScaled`): a share of the
   nine lit, green over 60%, amber over 30%, red below. A squeeze at the handle is never the cannon's RB or the boost's LB.
   Calls go straight to the game's functions on the game thread, never through the pad: after a cockpit control is
-  grabbed in a drive, the left hand's X and Y reach the game as nothing (the game side, 2026-11-05). [verify] in the game:
-  what RepairVehicle does with no omni-gel or at full health, and whether LeaveWorld raises a confirm box (on the HUD
-  panel in the cockpit).
+  grabbed in a drive, the left hand's X and Y reach the game as nothing (the game side, 2026-11-05).
+- **In the game, 2026-11-05** (the game side, fake headset, main 0982900, the package of e4e2c61 installed; `mevr cockpit
+  panel repair|extract` and `mevr setprop`, since the fake headset's controllers aren't tracked and the panel stayed
+  inactive):
+  - **The lamps follow the hull**: at 2000/2000 all nine green; with the vehicle's `m_HealthCurrent` set to 1000, five
+    amber (the panel's state; the snapshot's forward view didn't show the button, so the swap on the model is unseen).
+  - **RepairVehicle is a power that spends omni-gel**: `IsCombatEnabled`, then the behaviour's
+    `SetCurrentPower('VehicleRepair', cooldown)`, then `AcquireActive(BioActivePower)`. With no omni-gel (a fresh UNC20),
+    at full hull or at half: nothing, and nothing shows it. With 500 (`InitSalvage 500`): 1000 to 1500 within 3 s; again
+    at once: nothing (the power's cooldown); after another 500: 1500 to 1630. So the button fills its squares for 2 s
+    and then may do nothing; `SetCurrentPower`'s out `fCooldownRemaining` and the gel count are readable for a refusal
+    the lamps could show [open].
+  - **LeaveWorld raises the game's own "Return to Normandy?" box** (OK, Cancel; `Pawn.TriggerGlobalEventClass(
+    BioSeqEvt_VehicleLeaveWorld)`, game mode 7). The world UI stands it 0.95 m ahead and 0.5 m down, and the cockpit
+    vanishes while it is up: mode 7 counts as out of the Mako for game/Mako ("mako: left", out of the seat), so the eyes
+    see bare terrain. Keeping the ride through the box is the game side's (game/Mako) [open]. OK and Cancel by a real
+    pointer or touch are untested (a posted click on Cancel did nothing, the window likely not in front).
+  - Untested: the press direction, the swing's sign and the gunner's hold, for want of tracked controllers. The panel's
+    layout in tracking space is in its status (`"cockpitProbe"."panel"."layout"`) for a replay that reaches to it.
+  - Landing on UNC20 autosaves (`VR00_AutoSave` and the GamerProfile): back the saves up before a Mako run.
 - **The turret stays in auto mode while they're worked** (the user, 2026-11-05: "If I'm repairing it pulling extraction handle
   the aim should remain in auto mode"): while a hand presses the cap or holds the handle, or the right hand is within the
   handle's 10 cm, the Mako's gunner (research/47 "The gunner") has the turret, at once and whatever the hands do
