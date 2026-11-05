@@ -61,6 +61,7 @@ constexpr float kTipAheadM = 0.035f;  // the index fingertip ahead of the aim po
 // ---- Any thread ----
 std::atomic<bool> gOpen{false};         // the player opened it (the tap, the main menu)
 std::atomic<bool> gOwnsTriggers{false};
+std::atomic<bool> gShown{false};         // g.shown for other threads (the mod's flags)
 std::mutex gStatusMutex;
 std::string gStatus = "{\"shown\": false}";
 
@@ -339,6 +340,7 @@ void Hide(char const* why) {
         }
     }
     g.shown = false;
+    gShown.store(false, std::memory_order_relaxed);
     gOwnsTriggers.store(false, std::memory_order_relaxed);
     Publish(false, "none");
 }
@@ -442,6 +444,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (!g.shown) {
         log::Info("omni-tool rail: shown {} ({:.2f} x {:.2f} m){}", place, at->widthM, at->heightM, open ? "" : ": a screen of its own is up");
         g.shown = true;
+        gShown.store(true, std::memory_order_relaxed);
         g.needRender = true;
     }
     // The document's state: the screen up, and whether it stands alone.
@@ -500,6 +503,10 @@ void Toggle(char const* why) {
 
 bool OwnsTriggers() {
     return gOwnsTriggers.load(std::memory_order_relaxed);
+}
+
+bool Shown() {
+    return gShown.load(std::memory_order_relaxed);
 }
 
 std::string StatusJson() {

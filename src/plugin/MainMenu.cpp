@@ -23,6 +23,7 @@
 #include "plugin/Colour.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/OmniToolRail.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
 #include "mod/ModApi.hpp"
@@ -780,10 +781,11 @@ bool IsOpen() {
 }
 
 std::uint32_t ModFlags() {
+    std::uint32_t const rail = omni_rail::Shown() ? kOmniRailOpen : 0u;  // the omni-tool's rail: the game's omni-tool on the arm
     if (!gOpen.load(std::memory_order_relaxed)) {
-        return 0;
+        return rail;
     }
-    return kMainMenuOpen | (gPauseWanted.load(std::memory_order_relaxed) ? kMainMenuPause : 0u);
+    return kMainMenuOpen | (gPauseWanted.load(std::memory_order_relaxed) ? kMainMenuPause : 0u) | rail;
 }
 
 void SetOpen(bool open, char const* why) {

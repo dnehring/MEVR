@@ -284,6 +284,8 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     }
 }
 
+bool gRailOmniTool = false;  // Tick: the host's rail is open alone on foot (Down keeps the omni-tool for it)
+
 void SetStatus(std::string json) {
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     gStatusJson = std::move(json);
@@ -295,7 +297,7 @@ void Down(Link const& link, char const* why) {
         log::Info("world ui: {} down ({})", gS.screen.empty() ? "the screen" : gS.screen, why);
     }
     RestoreFullScreen();
-    omni_tool::Tick(false);
+    omni_tool::Tick(gRailOmniTool);  // the rail alone on the wrist still wears it
     if (gWristUp) {
         gWristUp = false;
         view_anchor::Hold(std::nullopt);
@@ -323,6 +325,13 @@ void Tick(Link const& link) {
     wu::Settings const settings = hand_calibration::GetWorldUi();
     ue3::Object* const controller = player::Controller();
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
+    // The host's rail alone on the wrist (a tap, no screen yet): the game's omni-tool on Shepard's arm, on foot only.
+    bool const railOmniTool = link.railOpen && settings.omniTool && mode && *mode == 0;
+    if (railOmniTool != gRailOmniTool) {
+        log::Info("world ui: {}", railOmniTool ? "the omni-tool's rail is open on foot: Shepard's arm wears the omni-tool"
+                                               : "the omni-tool's rail closed (or a screen took over)");
+    }
+    gRailOmniTool = railOmniTool;
     if (mode && *mode == 0) {
         if (auto const frame = view_anchor::Current()) {
             gHold.footFrame = frame;  // the room as Shepard's view maps it (the held view's)

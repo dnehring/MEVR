@@ -579,6 +579,9 @@ mevr::game::world_ui::Link WorldUiLink() {
     if (gHostOwnsVr && MEVR_HOST_HAS(setWorldUi) && gHost->setWorldUi != nullptr && gHost->worldUiSize == sizeof(vr::world_ui::State)) {
         link.setState = gHost->setWorldUi;
     }
+    if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.railOpen = (gHost->mainMenu() & kOmniRailOpen) != 0;  // the host's omni-tool rail (research/56)
+    }
     return link;
 }
 

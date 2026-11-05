@@ -456,7 +456,10 @@ switching frameworks.
   distances, legibility. Logs `omni-tool:`, `omni-tool rail:`; snapshot layer `omnirail`; offline look `mevr-menu-preview`'s
   `rail-*.png`. **Replays with controller poses move the real cursor** when a screen falls back to the flat panel (the game
   pointer's `SetCursorPos`): `[Pointer] setCursor = 0` for such tests. `mevr omni <equipment|squad|map|journal|codex|computer|
-  close|holster>` hands the mod the request an entry gives (no hand on the rail).
+  close|holster>` hands the mod the request an entry gives (no hand on the rail). **The tap shows the game's omni-tool too**
+  (2026-11-04, the user): while the rail is shown the host sets `kOmniRailOpen` (4) in `HostServices::mainMenu`'s bits (no version
+  change), and on foot with no screen up the mod's `world_ui` keeps `omni_tool::Tick` on (`[WorldUi] omniTool`); log `world ui: the
+  omni-tool's rail is open on foot`. The rail alone is still placed from the controller's wrist, not the display [verify].
   **The rail is drawn with ME1's own art** (research/56 section 5; the user, 2026-11-04: "ME1's screens, exactly"; hand-drawn
   imitations were rejected twice): the mod (`game/GameArt`) copies six of the game's Scaleform movies' `RawData` to
   `%LOCALAPPDATA%\MEVR\gameart` once per level (the player's own data: **never commit or ship game art**); the host

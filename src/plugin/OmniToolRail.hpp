@@ -39,6 +39,9 @@ XrCompositionLayerQuad const* Layer(Frame const& frame);
 void Toggle(char const* why);
 // A controller's ray is on the rail or a press on it is held: its trigger is ours, kept from the game. Any thread.
 bool OwnsTriggers();
+// The rail is shown (alone on the wrist or beside a screen): the mod puts the game's omni-tool on Shepard's arm for it
+// (HostServices::mainMenu's kOmniRailOpen). Any thread.
+bool Shown();
 // For snapshots. Any thread.
 std::string StatusJson();
 

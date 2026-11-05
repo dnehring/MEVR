@@ -82,6 +82,9 @@ inline constexpr int kHostServicesVersion = 27;
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
 inline constexpr std::uint32_t kMainMenuPause = 2u;  // and the player wants the game paused while it is
+// The omni-tool's rail is shown (research/56, 2026-11-04; no version change: an older mod ignores the bit, an older host never
+// sets it). Set whether or not the main menu is open; the mod puts the game's omni-tool on Shepard's arm for it.
+inline constexpr std::uint32_t kOmniRailOpen = 4u;
 
 using ProcessEventCallback = void (*)(ue3::Object* context, ue3::Function* function, void* parms, void* result);
 
