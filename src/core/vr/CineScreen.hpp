@@ -41,6 +41,9 @@ struct Settings {
                                  // display rate, chosen for full-VR cutscenes on a 120 Hz headset, where half is the 60 the
                                  // cutscenes were made for; at 90 Hz it is 45, every picture shown twice, and the hold read as
                                  // ~30 ms of CPU frame time: the owner, 2026-11-06, "the cpu timing explodes")
+    bool backdrop = true;        // backdrop: a floor and a horizon around the screen (plugin/CinemaBackdrop; the owner: "a better
+                                 // sense of location so I don't get tunnel visioned and partially motion sick"); 0: the dark
+    float backdropBrightness = 1.0f;  // backdropBrightness: 1 the default dimness, 0..3
 };
 
 inline constexpr float kMinDistanceM = 1.0f;

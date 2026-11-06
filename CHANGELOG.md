@@ -14,6 +14,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - Conversations and cutscenes on the screen run at your headset's full frame rate instead of half of it.
 - No more burst of depth at the start of a conversation.
 - Motion blur stays off after cutscenes and conversations (it could come back after one and make surfaces flicker).
+- The cinema screen stays where a scene began when you lean or look around, and stands over a dim floor with a horizon
+  behind it, so you keep a sense of place (Comfort > Conversations and cutscenes, or `[Cinematics] backdrop`).
 
 ### The Mako
 - Repair the Mako from the throttle: while your left hand holds the throttle lever, click the left thumbstick. The button on

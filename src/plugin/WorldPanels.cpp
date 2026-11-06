@@ -93,8 +93,14 @@ PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpac
         slot.appSpace = appSpace;
     }
 
-    overlay::WorldPanelSettings settings;
-    settings.followAfter = cfg.panelFollowDeg > 0.0f ? std::clamp(cfg.panelFollowDeg, 10.0f, 170.0f) * kDegToRad : 0.0f;
+    // Conversations and cutscenes are one showing on the cinema screen (and the flat panel's movies inside them): ME1 flips
+    // between the two modes mid-scene, and each flip was a kind change that re-placed the screen at the head.
+    bool const cinema = kind == PanelKind::Conversation || kind == PanelKind::Cutscene;
+    int const kindId = cinema ? static_cast<int>(PanelKind::Cutscene) : static_cast<int>(kind);
+    overlay::WorldPanelSettings settings = cinema ? overlay::ScreenPanelSettings() : overlay::WorldPanelSettings{};
+    if (!cinema) {
+        settings.followAfter = cfg.panelFollowDeg > 0.0f ? std::clamp(cfg.panelFollowDeg, 10.0f, 170.0f) * kDegToRad : 0.0f;
+    }
     XrPosef head{};
     head.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
     if (headValid) {
@@ -109,7 +115,7 @@ PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpac
     float const dt = slot.lastMs == 0 ? 0.0f : static_cast<float>(now - slot.lastMs) / 1000.0f;
     slot.lastMs = now;
 
-    overlay::Placement const why = slot.panel.Update(static_cast<int>(kind), gFrame, head, headValid, settings, dt);
+    overlay::Placement const why = slot.panel.Update(kindId, gFrame, head, headValid, settings, dt);
     XrPosef pose = slot.panel.PoseOf({viewPosition[0], viewPosition[1], viewPosition[2]});
     if (kind == PanelKind::GalaxyMap && mevr::host::galaxy_hologram::Active()) {
         // The galaxy hologram is up (research/51 section 8): the game's own map moves back and up, a screen behind the table.

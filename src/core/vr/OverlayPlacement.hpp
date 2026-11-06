@@ -70,6 +70,13 @@ struct WorldPanelSettings {
     float keepDistance = 0.05f;                           // meters
 };
 
+// The cinema screen's (research/52): it stays where the sequence began. It never follows the head, and a gap of up to
+// three seconds (a movie segment on the flat panel, a frame of gameplay between shots) is the same showing. The owner in
+// the PS VR2, 2026-11-06: "if I'd move, the screen would move with me in some capacity": with the menus' 5 degrees and
+// 5 cm, a lean during a scene that flips between conversation and cutscene put the screen in front of the head again.
+// The caller also gives a conversation and a cutscene one kind. Recenter still places it afresh.
+WorldPanelSettings ScreenPanelSettings();
+
 enum class Placement {
     Kept,         // stays where it was
     Appeared,     // shown afresh (or for the first time): placed in front of the head

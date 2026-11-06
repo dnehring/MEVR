@@ -20,6 +20,7 @@ Settings Clamped(Settings const& s) {
     out.widthM = Within(s.widthM, kMinWidthM, kMaxWidthM, d.widthM);
     out.depth = Within(s.depth, 0.0f, kMaxDepth, d.depth);
     out.convergeM = Within(s.convergeM, kMinConvergeM, kMaxConvergeM, d.convergeM);
+    out.backdropBrightness = Within(s.backdropBrightness, 0.0f, 3.0f, d.backdropBrightness);
     if (!std::isfinite(s.aspect) || s.aspect < 0.0f) {
         out.aspect = d.aspect;
     } else if (s.aspect > 0.0f) {

@@ -131,9 +131,43 @@ Because the characters look physically large, but they don't look human or lifel
   (judder in a world around you) is gone: `[Cinematics] fullRate` (default 1) leaves the screen at the headset's rate (`[MEVR]`
   seam on `cinePace60`, `MevrBridge::CineScreenFullRate`); 0 brings the cap back. **Not yet measured in the game** (the machine
   was busy); `tools/perf-probe.py --per-second` is ready for a capture across a scene and its end.
+- **The screen moved with the player** ("if I'd move, the screen would move with me in some capacity"): it was placed by
+  Halcyon's world-locked panel rules for menus (`plugin/WorldPanels`, `core/vr/OverlayPlacement`): re-placed at the head on
+  a kind change (ME1 flips conversation and cutscene mid-scene) when the head had moved 5 cm or turned 5 degrees, on any
+  gap of 5 frames, and following past 70 degrees after a second. Now `ScreenPanelSettings`: a conversation and a cutscene
+  are one kind, a gap of up to 3 s is the same showing, no follow; a new sequence after gameplay or a recenter places it
+  afresh (unit-tested).
 - **After a scene** the rate climbed back over ~6 s (`[PRESENTHZ]` 52.5, 70.5, 87.5, 90 after the 10:08:26 cutscene, which
   ended into combat: `StartCombat`); the render cost the same before and after (4.8-5.9 ms); GPU memory fell 2748 -> 2089 MB
   over 20 s. Which thread pays in those seconds is open: a per-second probe across a scene's end.
+
+## A floor and a horizon (2026-11-06)
+
+The owner: "we may need a background of some type to add a better sense of location so I don't get tunnel visioned and
+partially motion sick"; of a frozen game view or a floor and horizon, the floor and horizon, "ideally using in-game assets".
+A stable floor and horizon are the classic independent visual background against motion sickness: the eyes keep a frame of
+reference that moves only with the head.
+
+- **Built** (`plugin/CinemaBackdrop` + `CinemaBackdropDraw`, a `[MEVR]` seam in xr_session.cpp's screen branch,
+  `MevrBridge::CinemaBackdropLayer`): a projection layer of our own under the screen's quads, one full-screen pass per eye in
+  which every pixel's ray from that eye meets the floor plane or the sky, so the floor has true stereo depth with no geometry.
+  The floor at the player's real floor (the host's STAGE floor, else 1.6 m under the eyes, latched per sequence); a dark deck, a
+  faint metre grid, the screen's light pooled at its foot, fog into a horizon glow, a sparse starfield; fades in over 0.6 s.
+  Both eyes side by side in one swapchain (`plugin/Swapchains`' budget). `[Cinematics] backdrop` (1), `backdropBrightness` (1).
+  Offline: `mevr-cinema-preview`.
+- **Checked on the fake headset** (11:56-11:59, the title and `open BIOA_STA00`'s arrival cutscene): the 16:9 screen over the
+  floor grid, the horizon behind; 0.04 ms of CPU a frame for both eyes; no swapchain refusal.
+- **The game's own textures** (`mevr instances Texture2D <text>`, case-sensitive, in the Citadel arrival's level): the Normandy's
+  deck is loaded there (`BIOA_NOR10_T.NOR10_WALL06_FloorCarpetVar`, the `NOR10_WALL0n_DIFF` set, `NOR10_CEILING_Diff`); no sky or
+  star texture came up (`Sky` only `EngineDebugMaterials.Testing.Sky`; `Star`, `Nebula`, `Skybox` none). A level's textures are
+  loaded only in that level, so the next step is a cache: the first time one is seen the host copies it from its D3D texture into
+  `%LOCALAPPDATA%\MEVR\gameart` (the player's own data, like the UI art; never in the repository) and the backdrop loads it from
+  there anywhere. The renderer's texture slots (`SetTextures`: the floor tiled, the sky equirectangular) are ready.
+- **At full rate on the fake headset** the null driver lets light frames through every 7.2 ms (138 a second against its declared
+  90 Hz), so the title and cutscenes presented at 139; the real headset's runtime holds the game to its display rate (gameplay on
+  the PS VR2 ran at exactly 90). The cutscene's render work 2.5-4 ms, GPU ~3 ms, no hold.
+- **A conversation costs the engine's game thread 6.9 ms a tick** against 1.9 in the cutscene before it (Ashley's, gm 5, waiting
+  at the dialogue wheel; ours 0.09 ms in both). It fits 90 Hz (11.1 ms) but is most of it; what the engine spends it on is open.
 
 ## The dialogue wheel at its authored size (2026-11-04)
 

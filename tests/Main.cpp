@@ -2478,6 +2478,26 @@ void TestWorldPanel() {
         CHECK(blind.Update(0, f, head, true, never, step) == Placement::Kept);
     }
     CHECK(NearD(blind.Yaw(), 22.0 * pi / 180.0));
+    // The cinema screen (ScreenPanelSettings): placed once for the sequence. A lean, a turn past 70 degrees held for
+    // seconds and a 2 s gap (a movie on the flat panel) leave it where it is; only Recenter moves it.
+    {
+        WorldPanelSettings const screen = ScreenPanelSettings();
+        WorldPanel cinema;
+        std::uint64_t f = 1000;
+        CHECK(cinema.Update(4, f, HeadAt(0, {0.0f, 1.6f, 0.0f}), true, screen, step) == Placement::Appeared);
+        XrVector3f const at = cinema.PoseOf({0.0f, 0.0f, -3.5f}).position;
+        for (int i = 0; i < 600; ++i) {   // 10 s: leaning 0.4 m and looking 120 degrees away
+            XrPosef const h = HeadAt(i < 300 ? 25.0 * std::sin(i * 0.05) : 120.0, {0.4f * static_cast<float>(std::sin(i * 0.02)), 1.6f, 0.2f});
+            CHECK(cinema.Update(4, ++f, h, true, screen, step) == Placement::Kept);
+        }
+        f += 180;   // 2 s on the flat panel at 90 Hz
+        CHECK(cinema.Update(4, f, HeadAt(40, {0.5f, 1.5f, 0.3f}), true, screen, step) == Placement::Kept);
+        CHECK(NearXr(cinema.PoseOf({0.0f, 0.0f, -3.5f}).position, at) && NearD(cinema.Yaw(), 0.0));
+        f += 400;   // a new sequence after gameplay: placed where the head is now
+        CHECK(cinema.Update(4, f, HeadAt(40, {0.5f, 1.5f, 0.3f}), true, screen, step) == Placement::Appeared);
+        cinema.Recenter();
+        CHECK(cinema.Update(4, ++f, HeadAt(10, {0.5f, 1.5f, 0.3f}), true, screen, step) == Placement::Recentered);
+    }
     // Offsets in the panel's frame (Halcyon's menu offsets): right is the panel's right.
     WorldPanel facingX;
     facingX.Update(0, 1, HeadAt(-90, {0.0f, 1.6f, 0.0f}), true, settings, step);

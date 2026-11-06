@@ -23,4 +23,11 @@ std::string StatusJson();
 // MevrBridge::FrontEndOnScreen asks).
 bool FrontEndWanted() noexcept;
 
+// [Cinematics] backdrop and backdropBrightness, for plugin/CinemaBackdrop.
+struct Backdrop {
+    bool on = true;
+    float brightness = 1.0f;
+};
+Backdrop BackdropWanted() noexcept;
+
 } // namespace mevr::host::cine_screen

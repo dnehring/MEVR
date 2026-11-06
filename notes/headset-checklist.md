@@ -109,7 +109,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   headset's full rate; research/52 "In the headset"): no cross-eyed strain (also at a conversation's first second), subtitles
   inside the 16:9 frame (if cut: `[Cinematics] aspect = 0`, live), camera pans smooth at 90 (if they stutter: `fullRate = 0`,
   live), the dialogue wheel readable, the pointer picks a line. The 1.5% / 3 m at 2.6 m first default was "a little
-  cross-eyed" (2026-11-06).
+  cross-eyed" (2026-11-06). The screen stays put when you lean or look away mid-scene. The floor and horizon around it give a
+  sense of place without competing with it (too bright or too dark: `[Cinematics] backdropBrightness`, live; off: `backdrop = 0`).
 - [ ] **Conversations in the world** (built 2026-11-06, off by default; session: conversations in the world): set
   `[Cinematics] conversations = world` in `ASI\LE1MEVR.ini` and talk to someone on the Normandy (Pressly, Joker, Chakwas). You
   stay where Shepard stands, head tracked, at real scale: do the people look human-sized and lifelike? Is the subtitle under

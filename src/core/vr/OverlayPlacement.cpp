@@ -173,6 +173,13 @@ void WorldPanel::PlaceAt(XrPosef const& head, bool headValid) {
     }
 }
 
+WorldPanelSettings ScreenPanelSettings() {
+    WorldPanelSettings s;
+    s.followAfter = 0.0f;  // never follows
+    s.gapFrames = 270;     // 3 s at 90 Hz (6 s at a 45 fps cap)
+    return s;
+}
+
 Placement WorldPanel::Update(int kind, std::uint64_t frame, XrPosef const& head, bool headValid,
     WorldPanelSettings const& settings, float dt) {
     bool const appeared = !placed_ || frame < lastFrame_ || frame - lastFrame_ > settings.gapFrames;

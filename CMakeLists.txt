@@ -766,6 +766,10 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/WorldPanels.hpp
     src/plugin/SquadPlaceDraw.cpp
     src/plugin/SquadPlaceDraw.hpp
+    src/plugin/CinemaBackdropDraw.cpp
+    src/plugin/CinemaBackdropDraw.hpp
+    src/plugin/CinemaBackdrop.cpp
+    src/plugin/CinemaBackdrop.hpp
     src/plugin/WristBeam.cpp
     src/plugin/WristBeam.hpp
 )
@@ -1151,6 +1155,17 @@ if (MEVR_BUILD_TESTS)
     target_link_libraries(mevr-galaxy-preview PRIVATE OpenXR::headers windowscodecs ole32 d3d11 d3dcompiler)
     target_compile_definitions(mevr-galaxy-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-galaxy-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+    # The cinema screen's floor and horizon, offline (tools/cinema-preview, research/52): both eyes as PNGs with the host's shader.
+    add_executable(mevr-cinema-preview
+        tools/cinema-preview/Main.cpp
+        src/core/PngFile.cpp
+        src/plugin/CinemaBackdropDraw.cpp
+    )
+    target_include_directories(mevr-cinema-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-cinema-preview PRIVATE OpenXR::headers windowscodecs ole32 d3d11 d3dcompiler)
+    target_compile_definitions(mevr-cinema-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-cinema-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
     # The Mako's lever and stick, offline (tools/mako-preview, research/46): PNGs with the host's own pixels.
     add_executable(mevr-mako-preview
