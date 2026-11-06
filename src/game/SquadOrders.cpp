@@ -510,13 +510,17 @@ void TickStandings(double dt, hand_calibration::SquadOrders const& s) {
             case ss::Issue::MoveTo:
                 // A drifted hold under the HOLD formation: its hold position again, never QuickCommandMoveTo, whose point comes
                 // from the camera's view in VR (2026-11-05: it dragged a held squadmate 30 m ahead every reassertS).
-                result = s.holdFormation && st.intent.kind == ss::Kind::HoldAt ? CallHold(who->index, Units(issue.point, gUpm))
-                                                                                : CallMove(controller, who->index, Units(issue.point, gUpm));
+                // The hold position alone never walks them (the placement's finding), so their AI is pushed to the point too.
+                if (s.holdFormation && st.intent.kind == ss::Kind::HoldAt) {
+                    result = CallHold(who->index, Units(issue.point, gUpm)) + "; " + PushMove(who->pawn, Units(issue.point, gUpm));
+                } else {
+                    result = CallMove(controller, who->index, Units(issue.point, gUpm));
+                }
                 break;
             case ss::Issue::Follow: result = CallFollow(controller, who->index); break;
             case ss::Issue::Retreat: {
                 engine::UnrealVector const where = Units(issue.point, gUpm);
-                result = s.holdFormation ? CallHold(who->index, where) : CallMove(controller, who->index, where);
+                result = s.holdFormation ? CallHold(who->index, where) + "; " + PushMove(who->pawn, where) : CallMove(controller, who->index, where);
                 break;
             }
             case ss::Issue::Attack: {
@@ -599,6 +603,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
             if (distant && !s.holdFormation) note(CallMove(controller, rc.index, where));
             if (s.holdFormation) {
                 note(CallHold(rc.index, where));
+                if (distant) note(PushMove(rc.pawn, where));  // the hold position alone never walks them there (2026-11-05)
             } else if (!distant) {
                 note("holds here");
             }
