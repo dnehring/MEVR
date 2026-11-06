@@ -6,7 +6,6 @@
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/SquadContext.hpp"
-#include "core/vr/SquadMenu.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
@@ -21,7 +20,6 @@
 #include "ue3/Runtime.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <charconv>
 #include <cstdio>
 #include <cmath>
@@ -61,8 +59,7 @@ struct Simulated {
     bool releasing = false;  // let go: the next tick still aims from the head, so the release is judged where it was held
     float pitchDeg = -10.0f;
     float yawDeg = 0.0f;  // relative to where the head looks
-    float flick = 0.0f;   // `select left|right`: the stick pushed sideways for one tick
-    float flickY = 0.0f;  // `select down|up`
+    float flick = 0.0f;   // `select left|right`: the stick pushed for one tick
     std::vector<bool> script;  // `double`: B down, up, down, up, one tick each
 };
 Simulated gSim;
@@ -83,7 +80,7 @@ Arc gArc;
 double gClock = 0.0;
 double gSecondPulseAt = -1.0;  // the second squadmate's tile: a second pulse this long after the first
 
-unsigned gStarted = 0, gGiven = 0, gCancelled = 0, gTraces = 0, gTicksTraced = 0, gSelections = 0, gRegroups = 0, gEquips = 0;
+unsigned gStarted = 0, gGiven = 0, gCancelled = 0, gTraces = 0, gTicksTraced = 0, gSelections = 0, gRegroups = 0;
 std::string gLast;
 
 sp::ArcSettings ArcSettingsFrom(hand_calibration::SquadOrders const& s) {
@@ -210,24 +207,11 @@ void PublishView(Link const& link, engine::TrackingFrame const* frame, sp::ArcSe
             std::snprintf(view.names[t], sizeof(view.names[t]), "%s", name.c_str());
         }
         view.hand = hand;
-        bool const weaponRow = gMachine.CurrentRow() == sp::Row::Weapon;
         std::vector<sp::Vec3> const points = sp::ArcSamples(gArc.originM, gArc.direction, gArc.untilS, kDrawPoints, settings);
-        int const count = weaponRow ? 0 : std::min<int>(static_cast<int>(points.size()), sp::kMaxPoints);
+        int const count = std::min<int>(static_cast<int>(points.size()), sp::kMaxPoints);
         for (int i = 0; i < count; ++i) view.points[i] = engine::ToTracking(*frame, Units(points[static_cast<std::size_t>(i)], gUpm));
         view.count = static_cast<std::uint8_t>(count);
-        if (weaponRow) {
-            view.row = 1;
-            std::vector<int> const& weapons = gMachine.Weapons();
-            view.weaponTiles = static_cast<std::uint8_t>(std::min<std::size_t>(weapons.size(), 4));
-            view.weaponTile = static_cast<std::uint8_t>(std::max(gMachine.WeaponTile(), 0));
-            for (int w = 0; w < view.weaponTiles; ++w) {
-                std::string name = vr::squad_menu::WeaponName(weapons[static_cast<std::size_t>(w)]);
-                if (!name.empty()) name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
-                std::snprintf(view.weaponNames[w], sizeof(view.weaponNames[w]), "%s", name.c_str());
-            }
-            int const member = gMachine.Member();
-            view.weaponInHand = static_cast<std::int8_t>(member >= 0 && member < static_cast<int>(members.size()) ? members[static_cast<std::size_t>(member)].current : -1);
-        } else if (count > 0 && gArc.landing == sp::Landing::None) {
+        if (gArc.landing == sp::Landing::None) {
             view.landingPoint = view.points[count - 1];
         } else {
             view.landingPoint = engine::ToTracking(*frame, gArc.point);
@@ -270,9 +254,7 @@ void Tick(double deltaSeconds, Link const& link) {
         gSim.script.erase(gSim.script.begin());
     }
     float const stickX = gSim.flick != 0.0f ? gSim.flick : simulated ? 0.0f : tracked ? controllers.right.stickX : 0.0f;
-    float const stickY = gSim.flickY != 0.0f ? gSim.flickY : simulated ? 0.0f : tracked ? controllers.right.stickY : 0.0f;
     gSim.flick = 0.0f;
-    gSim.flickY = 0.0f;
     bool const usable = s.enabled && s.place && !melee && onFoot && frame.has_value() && (tracked || simulated) &&
         !squad_weapons::Members().empty() && !squad_weapons::IsOpen() && !power_wheel::IsOpen();
 
@@ -310,23 +292,12 @@ void Tick(double deltaSeconds, Link const& link) {
     settings.enabled = s.enabled && s.place;
     settings.minHoldS = static_cast<float>(s.placeMinHoldS);
     settings.followWithinM = static_cast<float>(s.followWithinM);
-    settings.weapons = s.placeWeapons;
     sp::Input in;
     in.dt = static_cast<float>(deltaSeconds);
     in.usable = usable;
     in.button = button;
     in.stickX = stickX;
-    in.stickY = stickY;
     in.members = static_cast<int>(members.size());
-    // The lit tile's weapons: a squadmate's own, or any the squad carries (each one equips it if they have it).
-    {
-        int const lit = gMachine.Holding() ? gMachine.Member() : sp::kSquadTile;
-        for (int i = 0; i < static_cast<int>(members.size()); ++i) {
-            if (lit != sp::kSquadTile && lit != i) continue;
-            in.weaponMask = static_cast<std::uint8_t>(in.weaponMask | members[static_cast<std::size_t>(i)].carried);
-            if (lit == i) in.currentWeapon = members[static_cast<std::size_t>(i)].current;
-        }
-    }
     in.landing = gArc.landing;
     in.landingFromPlayerM = gArc.fromPlayerM;
     sp::Step const step = gMachine.Advance(in, settings);
@@ -352,26 +323,6 @@ void Tick(double deltaSeconds, Link const& link) {
             }
         }
         log::Info("squad place: the selector is on {}", whoName(member));
-    }
-    if (step.rowChanged) {
-        if (link.haptic != nullptr) link.haptic(kRight, 0.05f, 0.5f);
-        log::Info("squad place: {}", gMachine.CurrentRow() == sp::Row::Weapon ? std::format("the weapon row for {}", whoName(gMachine.Member()))
-                                                                              : std::string("back to the names"));
-    }
-    if (step.weaponChanged && link.haptic != nullptr) link.haptic(kRight, 0.02f, 0.35f);
-    if (step.equip) {
-        ++gEquips;
-        std::string outcome;
-        for (int i = 0; i < static_cast<int>(members.size()); ++i) {
-            squad_weapons::MemberView const& m = members[static_cast<std::size_t>(i)];
-            if (step.member != sp::kSquadTile && step.member != i) continue;
-            std::string const one = (m.carried & (1u << step.weapon)) != 0 ? squad_weapons::GiveWeapon(m.pawn, step.weapon)
-                                                                            : std::string("doesn't carry one");
-            outcome += std::format("{}{}: {}", outcome.empty() ? "" : "; ", m.name, one);
-        }
-        gLast = std::format("{} for {}: {}", vr::squad_menu::WeaponName(step.weapon), whoName(step.member), outcome);
-        log::Info("squad place: {}", gLast);
-        if (link.haptic != nullptr) link.haptic(kRight, 0.08f, 0.8f);
     }
     if (gSecondPulseAt >= 0.0 && gClock >= gSecondPulseAt) {
         gSecondPulseAt = -1.0;
@@ -441,11 +392,7 @@ std::string Console(std::string_view args) {
     if (verb == "select") {
         std::string side;
         words >> side;
-        if (side == "down" || side == "up") {
-            gSim.flickY = side == "down" ? -1.0f : 1.0f;
-            return std::format("the stick flicked {} (the {} row was lit)", side, gMachine.CurrentRow() == sp::Row::Weapon ? "weapon" : "names");
-        }
-        if (side != "left" && side != "right") return std::string("usage: mevr place select left|right|down|up (one flick of the stick)");
+        if (side != "left" && side != "right") return std::string("usage: mevr place select left|right (one flick of the stick)");
         gSim.flick = side == "left" ? -1.0f : 1.0f;
         return std::format("the stick flicked {} (the selector was on tile {})", side, gMachine.Tile());
     }
@@ -460,7 +407,7 @@ std::string Console(std::string_view args) {
         return std::string("B let go: the order follows on the next tick (see the log's `squad place:` line)");
     }
     if (verb.empty() || verb == "status") return StatusJson();
-    return std::string("usage: mevr place [aim <pitchDeg> [yawDeg] | select left|right|down|up | release | double | status]");
+    return std::string("usage: mevr place [aim <pitchDeg> [yawDeg] | select left|right | release | double | status]");
 }
 
 bool Holding() {
@@ -477,11 +424,10 @@ std::string StatusJson() {
     return std::format(
         "{{\"holding\": {}, \"member\": {}, \"tile\": {}, \"members\": {}, \"heldS\": {:.2f}, \"landing\": {}, \"fromPlayerM\": {:.2f}, "
         "\"point\": [{:.0f}, {:.0f}, {:.0f}], \"traces\": {}, \"simulated\": {}, \"started\": {}, \"given\": {}, \"cancelled\": {}, "
-        "\"selections\": {}, \"regroups\": {}, \"row\": {}, \"weapon\": {}, \"equips\": {}, \"last\": {}}}",
+        "\"selections\": {}, \"regroups\": {}, \"last\": {}}}",
         gMachine.Holding() ? "true" : "false", gMachine.Member(), gMachine.Tile(), gMachine.Members(), gMachine.HeldS(),
         json::JsonString(sp::Name(gArc.landing)), gArc.fromPlayerM, gArc.point.x, gArc.point.y, gArc.point.z, gArc.traces,
-        gSim.held ? "true" : "false", gStarted, gGiven, gCancelled, gSelections, gRegroups,
-        gMachine.CurrentRow() == sp::Row::Weapon ? "\"weapon\"" : "\"who\"", gMachine.Weapon(), gEquips, json::JsonString(gLast));
+        gSim.held ? "true" : "false", gStarted, gGiven, gCancelled, gSelections, gRegroups, json::JsonString(gLast));
 }
 
 void LogStats() {

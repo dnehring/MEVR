@@ -308,7 +308,7 @@ void Settings::Read(menu::Values& v) {
     flag("holsters", ini.Num("Holsters", "enabled", 1.0f) != 0.0f);
     v.numbers["holster_buzz"] = std::round(std::clamp(ini.Num("Holsters", "hapticAmplitude", 0.5f), 0.0f, 1.0f) * 100.0f);
     {
-        std::string const lt = Lower(ini.Text("Controls", "leftTrigger", "none"));
+        std::string const lt = Lower(ini.Text("Controls", "leftTrigger", "lb"));
         v.texts["left_trigger"] = lt == "lt" ? "lt" : lt == "lb" ? "lb" : "none";
     }
     {

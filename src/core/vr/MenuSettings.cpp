@@ -115,7 +115,7 @@ std::vector<Field> const& Schema() {
         {"grip_holds", Type::Flag, 1},
         {"holsters", Type::Flag, 1},
         {"holster_buzz", Type::Number, 50, "", 0, 100, F::Percent},
-        {"left_trigger", Type::Choice, 0, "none"},
+        {"left_trigger", Type::Choice, 0, "lb"},
         {"throwables", Type::Flag, 1},
         {"recoil_buzz", Type::Number, 50, "", 0, 100, F::Percent},
         {"aim_assist", Type::Flag, 0},
@@ -584,9 +584,7 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     } else if (in.meleeButton) {
         put("b", "Melee", "Strike with your weapon.");
     } else {
-        put("b", "Place the squad", "Hold: an arc from your hand shows where they'll go and name tiles above it; flick the right "
-                                    "stick left or right to pick who, down for their weapons (let go to equip). Let go to send "
-                                    "them. Double-tap: everyone back to you. In menus it backs out.");
+        put("b", "Back (menus)", "Nothing on foot: melee is a real strike (below). In menus it backs out.");
     }
 
     // ---- Gestures ----

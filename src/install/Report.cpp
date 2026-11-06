@@ -841,7 +841,7 @@ std::vector<IniDefault> const& ModIniDefaults() {
         {"Hands", "constantEye", "1"}, {"Hands", "drawRate", "6"}, {"Hands", "handPitch", "0"}, {"Hands", "handYaw", "0"},
         {"Hands", "handRoll", "0"},
         {"Holsters", "enabled", "1"}, {"Holsters", "gripHolds", "1"}, {"Holsters", "hapticAmplitude", "0.5"},
-        {"Controls", "leftTrigger", "none"},
+        {"Controls", "leftTrigger", "lb"},
         {"Throwables", "enabled", "1"}, {"Throwables", "melee", "1"},
         {"Sights", "pistol", "dot"}, {"Sights", "assaultRifle", "dot"}, {"Sights", "sniperRifle", "scope auto"}, {"Sights", "assist", "1"},
         {"Sights", "converge", "1"},
