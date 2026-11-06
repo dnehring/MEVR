@@ -356,7 +356,11 @@ switching frameworks.
   square image) and runs at the headset's rate (`fullRate`; 0 = Halcyon's `cineFpsCap`, half the display rate). `[MEVR]` seams
   in xr_session.cpp (decision, park, projection, lean, plan, submit, the pace, and the conversation movie at its authored size
   instead of Halcyon's half-size VR layout: the wheel 1.75x larger); host `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE]
-  ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
+  ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`. It stays where the sequence began (`overlay::ScreenPanelSettings`: one kind for
+  conversations and cutscenes, 3 s gaps, no follow). **A floor and a horizon around it** (`backdrop`, `backdropBrightness`;
+  research/52 "A floor and a horizon"): `plugin/CinemaBackdrop` + `CinemaBackdropDraw`, a projection layer under the screen, every
+  pixel's ray meeting the floor at the player's real floor or the sky; procedural until the game's textures are cached; offline
+  `mevr-cinema-preview`; log `cinema backdrop:`, swapchain `backdrop`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start
