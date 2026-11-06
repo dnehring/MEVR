@@ -375,6 +375,12 @@ struct SquadOrders {
     // Power orders: "tactical" = BioPlayerController.SquadOrderUsePower then ApplyTacticalOrders (the game's own order path,
     // after its m_fTacticalDelayTime); "ai" = the member's BioAiController.AddUsePower as ordered by the player. Both [verify].
     std::string powerRoute = "tactical";
+    // Placement by an arc (game/SquadPlace, 2026-11-05): hold the right B on foot, an arc from the right hand, let go: they move
+    // where it lands. placeSpeedMS: the arc's launch speed (14: about 20 m at 45 degrees); placeRangeM: no farther than this.
+    bool place = true;
+    double placeSpeedMS = 14.0;
+    double placeRangeM = 30.0;
+    double placeMinHoldS = 0.15;  // a shorter press of B is a blip
 };
 SquadOrders GetSquadOrders();
 // [Voice] (research/54, game/Voice; the host reads its own keys of the section: enabled, model, device, key, tailMs, duckDb...):

@@ -787,6 +787,10 @@ std::string Give(sc::Action const& action) {
     return GiveResolved(action, std::nullopt, {});
 }
 
+std::string GiveAt(sc::Action const& action, engine::UnrealVector const& point) {
+    return GiveResolved(action, point, {});
+}
+
 std::string Say(std::string_view transcript, double secondsAgo) {
     hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
     sc::Scene const& scene = squad_context::Scene();

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/vr/SquadContext.hpp"
+#include "engine/XrToUnreal.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -31,6 +32,8 @@ void Tick(double deltaSeconds, Link const& link);
 
 // Any order: validated against the squad context's scene, resolved, called. The outcome in words (the log's).
 std::string Give(vr::squad_context::Action const& action);
+// A move or a hold to a place in the world (game units): what the left-grip gesture's ground and game/SquadPlace's arc give.
+std::string GiveAt(vr::squad_context::Action const& action, engine::UnrealVector const& point);
 // Spoken words (typed, until a recognizer feeds them): the rule parser against the scene, each clause's deictics resolved
 // from the pose history `secondsAgo`, each action given as above; below [SquadOrders] minConfidence nothing is given and the
 // unresolved words are the answer (where a model would take over). The outcomes, one line per clause.

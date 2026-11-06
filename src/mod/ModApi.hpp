@@ -73,6 +73,9 @@ namespace wheel {
 struct Panel;
 }
 }
+namespace vr::squad_place {
+struct View;
+}
 namespace vr::voice {
 struct Line;
 struct State;
@@ -85,7 +88,7 @@ struct State;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 31;
+inline constexpr int kHostServicesVersion = 32;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -382,6 +385,14 @@ struct HostServices {
     // the time it took. Any thread.
     std::uint32_t (*askVoiceModel)(char const* prefix, char const* rest, char const* gbnf) = nullptr;
     bool (*takeVoiceModelAnswer)(std::uint32_t* id, char* text, std::uint32_t capacity, std::uint32_t* ms) = nullptr;
+
+    // Version 32: squad placement by an arc (game/SquadPlace, core/vr/SquadPlace's View; 2026-11-05). While the right B is held on
+    // foot the mod sends the arc from the right hand each tick (its points in tracking space, where it lands, on floor or not,
+    // "on me", who it's for) and once with active = 0 when it ends; the host draws it in a projection layer of its own while
+    // active and fresh (250 ms; plugin/SquadPlaceDraw). Null forgets it. The order itself is the mod's; without a v32 host it
+    // still works, undrawn. The mod sends only if squadPlaceSize matches its sizeof(View). Any thread.
+    std::uint32_t squadPlaceSize = 0;
+    void (*setSquadPlace)(vr::squad_place::View const* view) = nullptr;
 };
 
 } // namespace mevr

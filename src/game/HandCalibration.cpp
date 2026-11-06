@@ -532,7 +532,15 @@ constexpr char const* kSquadOrdersBlock =
     "ackAttackSet = 61\n"
     "; Power orders (\"Liara, lift that one\"): tactical = the game's own order path (SquadOrderUsePower, applied after its\n"
     "; tactical delay); ai = the squadmate's AI told directly (AddUsePower as ordered by the player).\n"
-    "powerRoute = tactical\n";
+    "powerRoute = tactical\n"
+    "; Placement by an arc, like a teleport: hold the right B on foot, an arc leaves the right hand and a ring shows where it\n"
+    "; lands; let go and the squad moves there (on a squadmate as B goes down: that one alone; near you: they regroup; on a\n"
+    "; wall or nothing: called off). placeSpeedMS: the arc's launch speed (14: about 20 m aimed at 45 degrees); placeRangeM:\n"
+    "; never farther than this; placeMinHoldS: a shorter press is a blip. place = 0: off.\n"
+    "place = 1\n"
+    "placeSpeedMS = 14\n"
+    "placeRangeM = 30\n"
+    "placeMinHoldS = 0.15\n";
 // Appended to a settings file that has no [Voice] yet (and part of a new file). The host reads its own keys of the section.
 constexpr char const* kVoiceBlock =
     "\n"
@@ -1512,6 +1520,18 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
                 log::Warn("squad orders: can't read powerRoute = {} (tactical or ai); {} kept", k->second, s.powerRoute);
             }
         }
+    }
+    if (Number(ini, "SquadOrders", "place", value)) {
+        s.place = value != 0.0;
+    }
+    if (Number(ini, "SquadOrders", "placeSpeedMS", value)) {
+        s.placeSpeedMS = std::clamp(value, 4.0, 40.0);
+    }
+    if (Number(ini, "SquadOrders", "placeRangeM", value)) {
+        s.placeRangeM = std::clamp(value, 3.0, 100.0);
+    }
+    if (Number(ini, "SquadOrders", "placeMinHoldS", value)) {
+        s.placeMinHoldS = std::clamp(value, 0.0, 2.0);
     }
     return s;
 }

@@ -3,6 +3,7 @@
 
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
+#include "game/SquadPlace.hpp"
 #include "game/Voice.hpp"
 #include "game/VrCover.hpp"
 
@@ -550,6 +551,13 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string rest;
         std::getline(words, rest);
         return voice::Console(rest);
+    }
+    if (verb == "place") {
+        // `mevr place aim <pitchDeg> [yawDeg] | release | status`: squad placement's right B held from the head (no tracked
+        // controllers needed), the arc at that pitch and that yaw from the look; release lets go (the order is the log's line).
+        std::string rest;
+        std::getline(words, rest);
+        return squad_place::Console(rest);
     }
     if (verb == "order") {
         // `mevr order WHO|WEAPON|POWER|ORDER|TARGET`: an action line (research/54) validated against the squad context and

@@ -76,6 +76,7 @@
 #include "game/SquadAck.hpp"
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
+#include "game/SquadPlace.hpp"
 #include "game/Voice.hpp"
 #include "core/vr/Voice.hpp"
 #include "game/SquadWeapons.hpp"
@@ -771,6 +772,22 @@ mevr::game::squad_orders::Link SquadOrdersLink() {
     return link;
 }
 
+// Squad placement by an arc (game/SquadPlace): the right hand's pulses (v9) and the arc's drawing (v32).
+mevr::game::squad_place::Link SquadPlaceLink() {
+    using namespace mevr;
+    game::squad_place::Link link;
+    if (!gHostOwnsVr) {
+        return link;
+    }
+    if (gHost->version >= 9) {
+        link.haptic = gHost->hapticPulse;
+    }
+    if (MEVR_HOST_HAS(setSquadPlace) && gHost->setSquadPlace != nullptr && gHost->squadPlaceSize == sizeof(vr::squad_place::View)) {
+        link.publish = gHost->setSquadPlace;
+    }
+    return link;
+}
+
 // Host renderer: the physical vent (research/45): the left grip's report (v11) and the controller pulses (v9/v10).
 mevr::game::vent::Link VentLink() {
     using namespace mevr;
@@ -935,7 +952,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -947,7 +964,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1096,6 +1113,7 @@ void Heartbeat() {
         game::interact::LogStats();
         game::squad_context::LogStats();
         game::squad_orders::LogStats();
+        game::squad_place::LogStats();
         game::squad_ack::LogStats();
         game::voice::LogStats();
         game::mako::LogStats();
@@ -1296,6 +1314,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // The flat squad orders by gesture (research/54), on this tick's scene: after the grenades' and the vent's claims.
         game::voice::Tick(deltaSeconds, VoiceLink());  // before the flat orders: the radio claims its squeeze
         game::squad_orders::Tick(deltaSeconds, SquadOrdersLink());
+        game::squad_place::Tick(deltaSeconds, SquadPlaceLink());  // the right B's arc: a move through the same dispatcher
         {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
             game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);
@@ -1431,6 +1450,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::throwables::Shutdown();
     game::squad_context::Shutdown();
     game::squad_orders::Shutdown();
+    game::squad_place::Shutdown();
     game::squad_ack::Shutdown();
     game::voice::Shutdown();
     game::vent::Shutdown();

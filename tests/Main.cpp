@@ -11232,6 +11232,7 @@ int RunExeTests();
 // tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/57 section 5).
 int RunGfxTests();
 int RunPowerWheelTests();
+int RunSquadPlaceTests();
 int RunGuiEventsTests();
 int RunOmniPadTests();
 int RunVrCoverTests();
@@ -11373,6 +11374,7 @@ int main() {
     gFailures += RunExeTests();
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
+    gFailures += RunSquadPlaceTests();
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();
     gFailures += RunVrCoverTests();

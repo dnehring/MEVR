@@ -344,6 +344,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/SquadContext.hpp
     src/core/vr/SquadGesture.cpp
     src/core/vr/SquadGesture.hpp
+    src/core/vr/SquadPlace.cpp
+    src/core/vr/SquadPlace.hpp
     src/core/vr/SquadParser.cpp
     src/core/vr/SquadParser.hpp
     src/core/vr/SquadRetreat.cpp
@@ -455,6 +457,8 @@ set(MEVR_MOD_SOURCES
     src/game/SquadContext.hpp
     src/game/SquadOrders.cpp
     src/game/SquadOrders.hpp
+    src/game/SquadPlace.cpp
+    src/game/SquadPlace.hpp
     src/game/SquadAck.cpp
     src/game/SquadAck.hpp
     src/game/CockpitProbe.cpp
@@ -653,6 +657,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/SquadContext.hpp
     src/core/vr/SquadGesture.cpp
     src/core/vr/SquadGesture.hpp
+    src/core/vr/SquadPlace.cpp
+    src/core/vr/SquadPlace.hpp
     src/core/vr/SquadParser.cpp
     src/core/vr/SquadParser.hpp
     src/core/vr/SquadRetreat.cpp
@@ -743,6 +749,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/Vignette.hpp
     src/plugin/WorldPanels.cpp
     src/plugin/WorldPanels.hpp
+    src/plugin/SquadPlaceDraw.cpp
+    src/plugin/SquadPlaceDraw.hpp
     src/plugin/WristBeam.cpp
     src/plugin/WristBeam.hpp
 )
@@ -917,6 +925,7 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/SquadPlaceTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
         tests/VrCoverTests.cpp
@@ -1000,6 +1009,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Sights.cpp
         src/core/vr/SquadContext.cpp
         src/core/vr/SquadGesture.cpp
+        src/core/vr/SquadPlace.cpp
         src/core/vr/SquadParser.cpp
         src/core/vr/SquadRetreat.cpp
         src/core/vr/VrCover.cpp

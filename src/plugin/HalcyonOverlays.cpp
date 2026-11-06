@@ -41,6 +41,7 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/GalaxyHologram.hpp"
+#include "plugin/SquadPlaceDraw.hpp"
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/WorldUi.hpp"
 #include "plugin/GamePointer.hpp"
@@ -2217,6 +2218,25 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         galaxy.eyeHeight = frame.projectionRect[0][3];
         if (XrCompositionLayerBaseHeader const* layer = mevr::host::galaxy_hologram::Layer(galaxy); layer != nullptr && count < capacity) {
             layersOut[count++] = layer;
+        }
+        // Squad placement's arc and ring while the right B is held (game/SquadPlace, HostServices v32).
+        {
+            mevr::host::squad_place_draw::Frame place;
+            place.session = galaxy.session;
+            place.appSpace = galaxy.appSpace;
+            place.context = galaxy.context;
+            place.device = galaxy.device;
+            place.headValid = galaxy.headValid;
+            place.head = galaxy.head;
+            for (int e = 0; e < 2; ++e) {
+                place.eyes[e] = galaxy.eyes[e];
+                place.fov[e] = galaxy.fov[e];
+            }
+            place.eyeWidth = galaxy.eyeWidth;
+            place.eyeHeight = galaxy.eyeHeight;
+            if (XrCompositionLayerBaseHeader const* layer = mevr::host::squad_place_draw::Layer(place); layer != nullptr && count < capacity) {
+                layersOut[count++] = layer;
+            }
         }
         // The game's own map as a stereo window over the table (the mod's captures), under the game's UI.
         XrCompositionLayerBaseHeader const* window[2] = {};
