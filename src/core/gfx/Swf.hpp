@@ -144,7 +144,7 @@ struct EditText {
 
 struct Glyph {
     std::uint16_t code = 0;           // UCS-2 (wide codes) or the font's 8-bit code
-    std::int16_t advance = 0;         // font units x emScale (0 without a layout)
+    std::int32_t advance = 0;         // font units x emScale (0 without a layout); read unsigned: the widest overflow SI16
     Rect bounds;                      // from the font's bounds table (may be zero)
     std::vector<Edge> edges;          // fill style 1 is the glyph; table 0
 };

@@ -786,8 +786,10 @@ struct MovieParser {
                 f.ascent = c.U16();
                 f.descent = c.U16();
                 f.leading = c.S16();
+                // The spec says SI16, but no advance is negative and DefineFont3's 20x units overflow it for the widest
+                // glyphs (Biomass's W: 35,000 > 32,767, read as negative, so the next letter was drawn over it): unsigned.
                 for (std::size_t i = 0; i < count; ++i) {
-                    f.glyphs[i].advance = c.S16();
+                    f.glyphs[i].advance = c.U16();
                 }
                 for (std::size_t i = 0; i < count; ++i) {
                     f.glyphs[i].bounds = c.ReadRect();
