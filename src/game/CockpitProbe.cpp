@@ -2329,6 +2329,17 @@ std::string DoPanel(std::istringstream& words) {
     if (std::abs(layout.hingeAxisM.x) < 0.9) {
         return Refuse("panel: the handle's hinge must run along the seat's right (its model swings about it)");
     }
+    // The handle is pulled down (its arrows; the user, 2026-11-05): a swing that lifts its grip is the old script's, made before
+    // tools/cockpit/panel_controls.py swung it down. The grip's way for + about the axis is axis x (grip - hinge); its up part:
+    {
+        engine::UnrealVector const& a = layout.hingeAxisM;
+        engine::UnrealVector const v{layout.gripM.x - layout.hingeM.x, layout.gripM.y - layout.hingeM.y, layout.gripM.z - layout.hingeM.z};
+        double const up = a.x * v.y - a.y * v.x;
+        if (up > 0.0) {
+            log::Warn("cockpit probe: panel: the handle's swing lifts its grip while the hand pulls it down: an old cockpit.txt "
+                      "(tools/cockpit/place.py --script after panel_controls.py's 2026-11-05 swing)");
+        }
+    }
     layout.set = true;
     gPanelLayout = layout;
     gPanelLamps.component = nullptr;  // the lamps are set afresh
@@ -4825,7 +4836,7 @@ std::optional<Seat> CurrentSeat() {
         engine::UnrealVector const& a = gPanelLayout.hingeAxisM;  // unit (the `panel` line's parse)
         engine::UnrealVector const v{gPanelLayout.gripM.x - h.x, gPanelLayout.gripM.y - h.y, gPanelLayout.gripM.z - h.z};
         // v turned about a by the swing, right-handed as the panel's rule in tracking space (the eye's right, forward, up are a
-        // right-handed frame there too): + swings the bar out, toward the pilot and up.
+        // right-handed frame there too): + swings the bar the way it's pulled (down, as its arrows point).
         double const t = static_cast<double>(panel.pullDeg) * 3.14159265358979323846 / 180.0;
         double const c = std::cos(t);
         double const s = std::sin(t);
@@ -4906,6 +4917,7 @@ std::optional<vr::cockpit_panel::Layout> PanelLayout() {
     layout.hingeAxis = direction(gPanelLayout.hingeAxisM);
     layout.grip = at(gPanelLayout.gripM);
     layout.pullDeg = gPanelLayout.pullDeg;
+    layout.pullDir = direction({0.0, 0.0, -1.0});  // the cabin's down: the handle's arrows (the user, 2026-11-05: pulled, not pushed)
     return layout;
 }
 

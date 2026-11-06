@@ -1143,6 +1143,25 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   panel throttle` clicks the held lever without controllers; log `cockpit panel: the repair (the throttle's click): ...
   called`, `cockpit panel: the throttle's click: the repair can't run: ...`; status `"throttleClick"`. Not done: a button
   drawn on the handle's model (its orange lamp at the tip could light with the repair), and Shepard's thumb on it.
+- **The extraction handle is pulled down** (the user, 2026-11-05, the same QA pass: "the text actually says pull on it, but you
+  were actually requiring it to push"). The model's bar reads "↓ PULL ↓" (and "EXTRACTION / PULL TO CALL" above it), its arrows
+  down. `panel_controls.Extraction` had swung it out of the box's face, which with the axle above the bar lifts it up and toward
+  the pilot: a pull down turned it the other way, clamped at rest, and only a push up worked. Measured at 1-degree steps
+  (2026-11-05): down (the pull) the arms clear the box to 10 degrees, the bar 1.1 cm down and in at the cabin's scale; up and
+  out to 31. Now the tool takes the sign that moves the bar down and its clearance (`pullDeg` 10), and the rule counts the
+  hand's travel along the cabin's down since the grab (`Layout::pullDir`, game/CockpitProbe from the vehicle's frame, so a Mako
+  on a slope pulls along its own down), a share of the swing per share of `pullTravelM` (0.05 m): a pull down and toward the
+  pilot counts by its down part, up or sideways nothing (unit-tested, `TestLever`). The bar's 1 cm is small against the hand's
+  5 cm; Shepard's hand stays closed on the bar. A `panel` line whose swing lifts the grip (a cockpit.txt from before) logs
+  `cockpit probe: panel: the handle's swing lifts its grip ...`: regenerate it (`hull_assemble.py`, then `place.py --script`).
+- **The handle vanishes for a moment when looked at** (the user, the same pass: "when I would look at it, it would momentarily
+  disappear. So I don't know if that's an issue with the game or with the modeling itself") [open]. Not the model's bounds: the
+  packager's check holds every mesh's vertices inside its stored bounds. Nothing of ours hides it on gaze. The release ran
+  `sharePass = 5` (one scene render for both eyes, visibility from one frustum; research/37) and `minScreenRadiusPx = 8`, the
+  first suspects research/47 section 2 names for a moving spawned part that drops out frame to frame, with Umbra's and the
+  engine's occlusion of a small part tucked against the cabin's ceiling and its box. To measure on the fake headset: a head
+  recording turning up to the handle, snapshots in a burst, against `sharePass = 0` and `minScreenRadiusPx = 0`, parked and
+  driving.
 
 ## 5. Not done
 

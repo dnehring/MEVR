@@ -13,8 +13,9 @@ the package gives them a dark instance and a glowing one per colour (tools/cockp
 split off to be pressed.
 
 The extraction lever (`extraction-lever.glb`): a box with a red label and a red pull handle on two arms, hinged on an
-axle across the recess. The handle and its arms are split off to swing about the axle; how far out it swings is fitted
-so it clears the box.
+axle across the recess. The handle and its arms are split off to swing about the axle the way they're pulled: down, as
+the bar's "PULL" arrows point (the user, 2026-11-05: swung out of the face, up and back, it took a push); how far is
+fitted so it clears the box.
 
 Both are left as Tripo made them otherwise: low-poly (4,000 to 4,500 triangles), and their open edges (230 each) are
 on faces the cabin never shows (the base's underside, the box's back inside the pod).
@@ -52,10 +53,10 @@ PLATE_NORMAL = (0.0, -0.291, 0.957)
 PROUD = 0.003  # the lamp faces over the paint (0.4 mm at 0.14 m a unit)
 PRESS = 0.02  # the cap's travel (2.8 mm at 0.14 m a unit)
 # The extraction lever: the parts that reach out of the box's face (the handle, its arms) swing; the axle is the long
-# thin island across the recess; the pull is tried out to PULL_TRY degrees in steps of 5. The arms' knuckles ride on
+# thin island across the recess; the pull is tried out to PULL_TRY degrees in steps of 1. The arms' knuckles ride on
 # the axle and its brackets (they cross them as modelled, at every angle): the clearance is the arms beyond KNUCKLE from
-# the axle and the handle against everything fixed. Measured 2026-11-04: clear to 30 degrees out (an arm meets its
-# bracket at 35); folding in, the handle meets the box at 20.
+# the axle and the handle against everything fixed. Measured 2026-11-05: down (the pull) clear to 10 degrees, the bar
+# 1.1 cm down and in at the cabin's scale; up and out of the face (the swing until then) clear to 31.
 REACH_OUT = -0.13
 PULL_TRY = 70
 KNUCKLE = 0.08
@@ -252,8 +253,8 @@ def Repair(assets, folder):
 
 
 def Extraction(assets):
-    """The extraction lever in its own units: (base, handle, info). The handle swings about the axle (model +x) out of
-    the box's face (-y); `pullDeg` is how far before it would meet the box."""
+    """The extraction lever in its own units: (base, handle, info). The handle swings about the axle (model +x) the way
+    it's pulled, its bar down (-z, the arrows); `pullDeg` is how far before it would meet the box."""
     o = Import(os.path.join(assets, EXTRACTION))
     o.name = "extraction-base"
     OneMaterial(o, "extraction", BaseImage(o))
@@ -297,22 +298,21 @@ def Extraction(assets):
         b.free()
         return len(base_tree.overlap(t))
 
-    mid = sum((Vector(v.co) for v in handle.data.vertices), Vector()) / len(handle.data.vertices)
-    sign = -1 if (Swung(-10) @ mid).y < mid.y else 1  # the sign that moves it out of the face (-y)
-    baseline = Clash(0)
-    pull = 0
-    for deg in range(5, PULL_TRY + 1, 5):
-        if Clash(sign * deg):
-            break
-        pull = deg
-    swinging.free()
-    if baseline or not pull:
-        raise SystemExit(f"extraction lever: the handle clashes at rest ({baseline}) or can't swing out ({pull} degrees)")
     # the grip: the middle of the handle's bar (the U's lowest 0.06, inside its bends)
     vs = [v.co for v in handle.data.vertices]
     floor = min(v.z for v in vs)
     bar = [v for v in vs if v.z < floor + 0.06 and abs(v.x) < 0.25]
     grip = sum(bar, Vector()) / len(bar)
+    sign = 1 if (Swung(10) @ grip).z < grip.z else -1  # the sign that moves the bar down (its arrows: pulled)
+    baseline = Clash(0)
+    pull = 0
+    for deg in range(1, PULL_TRY + 1):
+        if Clash(sign * deg):
+            break
+        pull = deg
+    swinging.free()
+    if baseline or not pull:
+        raise SystemExit(f"extraction lever: the handle clashes at rest ({baseline}) or can't be pulled ({pull} degrees)")
     info = {"pivot": list(pivot), "hingeAxis": [float(sign), 0.0, 0.0], "pullDeg": pull, "grip": list(grip),
             "front": [0.0, LEVER_FRONT[0], LEVER_FRONT[1]],
             "elements": ["extraction"], "triangles": {"base": Tris(o), "handle": Tris(handle), "source": tris}}

@@ -931,7 +931,24 @@ actually see through the weapon with my right eye."
    eye (never the other eye) until 120 ms have passed, so a one-tick jump or the eye a moment past the box's edge doesn't
    blink the dot and its window; the other eye still takes over at once when it's chosen.
 
+### In the game, on the fake headset (2026-11-05 22:24, f2a9f47)
+
+BIOA_UNC20 at (-10610, 13868, -28450) facing the Mako 10 m off, the assault rifle (`WPN_ASLa_MDL`) drawn, a synthetic ADS replay
+(`tools/make-ads-recording.py out 30 90 0 0.133`: the aim pose 13.3 cm under the eye puts the sight line at the eyes' height;
+0.20 left it 6.7 cm under them, outside the eye box). The snapshot's `sights.window`: `flag true, drawn true`, 184 frames in a
+row; log `[MEVR-SIGHT] first window through the assault rifle's sight housing: the left eye (0.217 m behind it, 0.0038 m off the
+line) sees the right eye's image at 1x on a 0.060 m disc`. In the replay the left eye sat nearer the line (2.2 cm against 4.7),
+so it was the left eye's window from the right eye's image: the same code either way. **Seen:** the world layer alone shows the
+model's sight as a tube end with a black inside covering the Mako's rear; the composited eye shows the Mako, the hills and the
+dot through the window, the ring around it, no visible seam at 10 m. The window's lower edge reaches about a unit past the tube
+onto the receiver's top (the window radius 3 units against the tube's ~2.9). Not reproduced: the tick aimed fire switches. On
+the fake headset the game sees the controllers' pad only while its window has focus, so the support grip's LT never reached it
+(the camera stayed `SFXCameraMode_Combat`).
+
+**Also learned:** with another process training on the GPU (24 GB used, 100%) the game ran at 2.5 fps and the host's view went
+stale before the mod read it, so the mod reported `no head-tracked world view` everywhere and published no sight. A test of
+anything VR-side needs the GPU to itself.
+
 **[verify] in the headset (notes/headset-checklist.md section 3):** the rifle's sight seen through with the right eye, the
 target and the dot in the window, the housing around it, no seam that bothers; the gun stays put in the hand at the face; the
-dot doesn't blink. **On the fake headset:** the window under an ADS replay with the rifle (snapshots of the right eye), and
-what moves in the tick aimed fire switches.
+dot doesn't blink, also when the support grip's aimed fire comes on (with focus, the game's TightAim camera).

@@ -15,9 +15,10 @@
 // tip that came from in front of the cap (one resting beside it, or coming through it from below, doesn't). While the game's
 // repair can't run (the user, 2026-11-05) the press fills nothing and runs nothing: with no omni-gel the plate's squares show
 // solid red, while the repair cools down they flash red every refusalFlashS (lit its first half).
-// The lever: a new grip squeeze within grabRadiusM of the handle's grip takes it, and the hand's travel about the hinge swings
-// the handle out, from 0 to the model's pull. Held at the end (pullShare of it) for pullHoldS, the extraction runs once. Let go,
-// it swings back. Each fires once per press or pull: the button must be let go, the handle brought back below half its pull.
+// The lever: a new grip squeeze within grabRadiusM of the handle's grip takes it, and the hand pulling it down (its travel along
+// pullDir, the way the handle's arrows point; the user, 2026-11-05: it took a push) swings the handle down about its hinge, a
+// share of its pull for each share of pullTravelM. Held at the end (pullShare of it) for pullHoldS, the extraction runs once.
+// Let go, it swings back. Each fires once per press or pull: the button must be let go, the handle brought back below half its pull.
 namespace mevr::vr::cockpit_panel {
 
 // [Cockpit] in ASI\LE1MEVR.ini (game/HandCalibration reads them; game/CockpitPanel the rest).
@@ -30,6 +31,7 @@ struct Settings {
     float pressShare = 0.6f;       // pushed in this share of the travel: pressed
     float releaseShare = 0.3f;     // back out past this share: let go
     float grabRadiusM = 0.1f;      // a hand's grip this close to the handle's grip takes it with a new squeeze
+    float pullTravelM = 0.05f;     // the hand's travel along the pull (down) for the handle's whole swing
     float pullShare = 0.85f;       // the handle out this share of its pull: at the end
     float pullHoldS = 0.4f;        // held at the end this long: the extraction
     float returnDegPerS = 240.0f;  // a handle let go swings back this fast
@@ -54,9 +56,10 @@ struct Layout {
     XrVector3f buttonIn{0.0f, -1.0f, 0.0f};  // unit: the press, into the button
     float travelM = 0.0028f;              // how far the cap goes in
     XrVector3f hinge{};                   // a point on the handle's hinge
-    XrVector3f hingeAxis{1.0f, 0.0f, 0.0f};  // unit: a turn about it by + (the right-hand rule) swings the handle out
+    XrVector3f hingeAxis{1.0f, 0.0f, 0.0f};  // unit: a turn about it by + (the right-hand rule) swings the handle as it's pulled
     XrVector3f grip{};                    // the handle's grip at rest
-    float pullDeg = 30.0f;                // how far the handle swings out
+    float pullDeg = 10.0f;                // how far the handle swings when pulled (to where it meets its box)
+    XrVector3f pullDir{0.0f, -1.0f, 0.0f};   // unit: the way the hand pulls it (the cabin's down: the handle's arrows)
 };
 
 struct Hand {
@@ -117,8 +120,8 @@ private:
     // the lever
     bool down_[2]{};         // each hand's grip latch
     int holdHand_ = -1;
-    XrVector3f grabFrom_{};  // the hand's grip at the grab, square to the hinge
-    float grabDeg_ = 0.0f;   // the handle's swing at the grab
+    XrVector3f grabHand_{};  // the hand's grip at the grab
+    float grabShare_ = 0.0f; // the handle's swing at the grab, a share of its pull
     float pull_ = 0.0f;
     double atEnd_ = 0.0;
     bool armed_ = true;      // the extraction may run (back below half the pull since it last did)

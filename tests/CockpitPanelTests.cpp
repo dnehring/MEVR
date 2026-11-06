@@ -200,12 +200,18 @@ void TestLever() {
     hand.squeeze = 1.0f;
     out = Grip(panel, s, hand);
     CHECK(out.held && out.holdHand == 0 && Close(out.pullDeg, 0.0f, 0.5f));
-    // the hand swings the handle out about the hinge; it stops at its pull
-    float const a = 20.0f * 0.017453293f;
-    hand.grip = {0.0f, 1.0f - 0.06f * std::cos(a), -0.06f * std::sin(a)};
+    // pulled down (the layout's pullDir; the user, 2026-11-05: it took a push): 2 of the 5 cm swing it 0.4 of its pull
+    hand.grip = {0.0f, 0.92f, 0.0f};
     out = Grip(panel, s, hand);
-    CHECK(out.held && Close(out.pullDeg, 20.0f, 0.05f));
-    hand.grip = {0.0f, 1.0f, -0.06f};  // 90 degrees out: held at the pull
+    CHECK(out.held && Close(out.pullDeg, 12.0f, 0.01f));
+    // down and toward the pilot counts by its down part; sideways or away, nothing
+    hand.grip = {0.0f, 0.91f, 0.03f};
+    out = Grip(panel, s, hand);
+    CHECK(Close(out.pullDeg, 18.0f, 0.01f));
+    hand.grip = {0.05f, 0.91f, -0.05f};
+    out = Grip(panel, s, hand);
+    CHECK(Close(out.pullDeg, 18.0f, 0.01f));
+    hand.grip = {0.0f, 0.80f, 0.0f};  // past the travel: held at the pull
     out = Grip(panel, s, hand);
     CHECK(Close(out.pullDeg, 30.0f, 0.01f) && !out.extract);
     // held at the end for pullHoldS: the extraction runs once
@@ -223,15 +229,28 @@ void TestLever() {
         out = Grip(panel, s, hand);
     }
     CHECK(Close(out.pullDeg, 0.0f));
-    // pulled the other way (into the box): it stays at 0
+    // pushed up (the old way): it stays at 0
     hand.grip = {0.0f, 0.94f, 0.0f};
     Grip(panel, s, hand);
     hand.squeeze = 1.0f;
     out = Grip(panel, s, hand);
     CHECK(out.held);
-    hand.grip = {0.0f, 1.0f - 0.06f * std::cos(a), 0.06f * std::sin(a)};
+    hand.grip = {0.0f, 0.99f, 0.0f};
     out = Grip(panel, s, hand);
     CHECK(Close(out.pullDeg, 0.0f));
+    // the pull follows any pullDir the cabin gives (a Mako on a slope: the cabin's down in tracking space)
+    cp::Panel tilted;
+    cp::Input in = Base();
+    in.layout.pullDir = {0.0f, -0.8f, 0.6f};
+    in.hands[0] = hand;
+    in.hands[0].squeeze = 0.0f;
+    in.hands[0].grip = {0.0f, 0.94f, 0.0f};
+    tilted.Step(in, s);
+    in.hands[0].squeeze = 1.0f;
+    tilted.Step(in, s);
+    in.hands[0].grip = {0.0f, 0.94f - 0.016f, 0.012f};  // 2 cm along it
+    out = tilted.Step(in, s);
+    CHECK(out.held && Close(out.pullDeg, 12.0f, 0.01f));
 }
 
 void TestLamps() {

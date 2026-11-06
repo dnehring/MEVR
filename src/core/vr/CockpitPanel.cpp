@@ -37,10 +37,6 @@ XrVector3f Turn(XrVector3f v, XrVector3f axis, float degrees) {
     float const s = std::sin(a);
     return Add(Add(Scale(v, c), Scale(Cross(axis, v), s)), Scale(axis, Dot(axis, v) * (1.0f - c)));
 }
-// The angle from `u` to `v` about the unit `axis` (both square to it), degrees in (-180, 180].
-float Angle(XrVector3f u, XrVector3f v, XrVector3f axis) {
-    return std::atan2(Dot(axis, Cross(u, v)), Dot(u, v)) * 57.29578f;
-}
 
 }  // namespace
 
@@ -168,18 +164,19 @@ Output Panel::Step(Input const& in, Settings const& s) {
         for (int h = 0; h < 2; ++h) {
             if (squeezed[h] && inReach[h] && h != pressHand_) {
                 holdHand_ = h;
-                grabFrom_ = Square(Sub(in.hands[h].grip, layout.hinge), layout.hingeAxis);
-                grabDeg_ = pull_;
+                grabHand_ = in.hands[h].grip;
+                grabShare_ = pull_ / pull;
                 Haptic(out, h, 0.03f, 0.5f);
                 break;
             }
         }
     }
     if (holdHand_ >= 0) {
-        XrVector3f const now = Square(Sub(in.hands[holdHand_].grip, layout.hinge), layout.hingeAxis);
-        if (Length(now) > 0.01f && Length(grabFrom_) > 0.01f) {
-            pull_ = std::clamp(grabDeg_ + Angle(grabFrom_, now, layout.hingeAxis), 0.0f, pull);
-        }
+        // The hand's travel along the pull since the grab, as a share of the whole swing (a pull down and toward the pilot counts
+        // by its downward part; up or away, nothing).
+        float const pulled = Dot(Sub(in.hands[holdHand_].grip, grabHand_), layout.pullDir);
+        float const share = grabShare_ + pulled / std::max(s.pullTravelM, 0.005f);
+        pull_ = std::clamp(share, 0.0f, 1.0f) * pull;
     } else {
         pull_ = std::max(0.0f, pull_ - s.returnDegPerS * static_cast<float>(dt));
     }

@@ -15,6 +15,7 @@ import json
 import os
 import pathlib
 import random
+import shutil
 import subprocess
 import sys
 
@@ -133,17 +134,25 @@ def main():
     micro = max(1, min(args.micro_batch, args.batch))
     accumulate = max(1, args.batch // micro)
     steps = (len(texts) + args.batch - 1) // args.batch * max(int(args.epochs), 1)
+    # A checkpoint every 250 steps (the LoRA and the optimizer, ~120 MB each, the last two kept) and a resume from the newest: the
+    # 4090 is shared with the game sessions, and a run stopped for one of them lost its whole hour before (run3, 2026-11-05).
     training = TrainingArguments(output_dir=args.out, num_train_epochs=args.epochs, per_device_train_batch_size=micro, gradient_accumulation_steps=accumulate,
                                  learning_rate=args.lr, lr_scheduler_type="cosine", warmup_steps=int(steps * args.warmup),  # transformers 5 has no warmup_ratio
-                                 weight_decay=args.weight_decay, logging_steps=20, save_strategy="no", bf16=True, report_to=[], dataloader_num_workers=0, seed=args.seed,
-                                 gradient_checkpointing=not args.no_grad_checkpoint)
+                                 weight_decay=args.weight_decay, logging_steps=20, save_strategy="steps", save_steps=250, save_total_limit=2, bf16=True,
+                                 report_to=[], dataloader_num_workers=0, seed=args.seed, gradient_checkpointing=not args.no_grad_checkpoint)
     if args.loss == "answer":
         from transformers import DataCollatorForSeq2Seq
         collator = DataCollatorForSeq2Seq(tokenizer, padding=True, label_pad_token_id=-100)  # pads the labels with -100 too
     else:
         collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
     trainer = Trainer(model=model, args=training, train_dataset=train, data_collator=collator)
-    trainer.train()
+    checkpoints = sorted(pathlib.Path(args.out).glob("checkpoint-*"), key=lambda p: int(p.name.split("-")[-1]) if p.name.split("-")[-1].isdigit() else -1)
+    resume = str(checkpoints[-1]) if checkpoints and (checkpoints[-1] / "trainer_state.json").exists() else None
+    if resume:
+        print(f"resuming from {resume}", flush=True)
+    trainer.train(resume_from_checkpoint=resume)
+    for c in pathlib.Path(args.out).glob("checkpoint-*"):  # done: the checkpoints have served
+        shutil.rmtree(c, ignore_errors=True)
     # The whole loss curve (the `{'loss': ...}` lines the progress callback prints every 20 steps reach a piped train.log
     # late: the pipeline runs this unbuffered for that).
     pathlib.Path(args.out, "log_history.json").write_text(json.dumps(trainer.state.log_history, indent=1), encoding="utf-8")
