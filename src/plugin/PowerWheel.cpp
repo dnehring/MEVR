@@ -7,6 +7,7 @@
 #include "core/Log.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/PowerWheel.hpp"
+#include "core/vr/SquadPlace.hpp"
 #include "plugin/Glow.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PowerIcons.hpp"
@@ -76,6 +77,9 @@ Gpu gGpu;
 Canvas gWheel{draw::kCanvas, draw::kCanvas};
 Canvas gHint{draw::kHintWidth, draw::kHintHeight};
 Canvas gLock{draw::kLockCanvas, draw::kLockCanvas};
+Canvas gSquad{draw::kCanvas, draw::kCanvas};  // squad placement's wheel at the right hand (game/SquadPlace, 2026-11-05)
+std::uint64_t gSquadDrawMs = 0;
+bool gSquadLogged = false;
 std::uint8_t gLockCasts = 0;    // the casts counter last seen
 std::uint64_t gLockCastMs = 0;  // when it last went up
 bool gLockShown = false;        // the marker was up last frame (logs each showing's first)
@@ -112,7 +116,7 @@ bool EnsureGpu(ID3D11Device* device, ID3D11DeviceContext* context) {
     if (gGpu.imgui != nullptr) {
         return gGpu.device.Get() == device;
     }
-    if (!MakeCanvas(device, gWheel) || !MakeCanvas(device, gHint) || !MakeCanvas(device, gLock)) {
+    if (!MakeCanvas(device, gWheel) || !MakeCanvas(device, gHint) || !MakeCanvas(device, gLock) || !MakeCanvas(device, gSquad)) {
         log::Error("power wheel: canvas textures failed; no power wheel in the headset");
         gGpu.failed = true;
         return false;
@@ -373,9 +377,71 @@ int LockLayer(Frame const& frame, XrCompositionLayerQuad const** out, int capaci
     return 1;
 }
 
+// Squad placement's wheel (core/vr/SquadPlace's View while picking, HostServices v32): the power wheel's look at the right hand,
+// [first squadmate] left, [Squad] up, [second] right, the lit one pulled out; 0 or 1 quads.
+int SquadLayer(Frame const& frame, XrCompositionLayerQuad const** out, int capacity) {
+    vr::squad_place::View const view = vr::squad_place::Latest();
+    if (capacity <= 0 || view.active == 0 || view.wheel == 0 || view.size != sizeof(vr::squad_place::View) || view.tiles == 0) {
+        gSquadLogged = view.active != 0 && view.wheel != 0 && gSquadLogged;
+        return 0;
+    }
+    if (!frame.worldFrame || frame.menuOpen || frame.session == XR_NULL_HANDLE || frame.context == nullptr || frame.device == nullptr) {
+        return 0;
+    }
+    gSquad.name = "squadwheel";
+    if (!EnsureGpu(frame.device, frame.context) || !EnsureSwapchain(frame.session, gSquad)) {
+        return 0;
+    }
+    std::uint64_t const now = GetTickCount64();
+    float const dt = gSquadDrawMs == 0 ? 1.0f / 72.0f : static_cast<float>(now - gSquadDrawMs) / 1000.0f;
+    gSquadDrawMs = now;
+    float const widthM = std::clamp(view.wheelWidthM, 0.15f, 1.0f);
+    float const pixelsPerM = static_cast<float>(draw::kCanvas) / widthM;
+    draw::WheelView wheel;
+    int const count = std::min<int>(view.tiles, 3);
+    for (int i = 0; i < count; ++i) {
+        draw::Entry entry;
+        entry.label.assign(view.names[i], strnlen(view.names[i], sizeof(view.names[i])));
+        entry.discipline = draw::Discipline::Combat;
+        wheel.entries.push_back(std::move(entry));
+    }
+    // Left, up, right: the arc opposite a gap straight down, 90 degrees apart (vr::squad_place::WheelAngles).
+    wheel.layout.gapCentreDeg = -90.0f;
+    wheel.layout.gapDeg = 180.0f;
+    wheel.layout.maxStepDeg = 90.0f;
+    wheel.selected = view.tile;
+    wheel.selectedFor = view.litFor;
+    wheel.open = std::clamp(view.openFor / 0.18f, 0.0f, 1.0f);
+    wheel.time = view.openFor;
+    wheel.emblem = draw::Emblem::N7;
+    wheel.hand = {};
+    Render(frame.context, gSquad, dt, [&](ImDrawList* dl) { draw::DrawWheel(dl, gGpu.fonts, wheel); });
+    if (!Submit(frame.context, gSquad)) {
+        return 0;
+    }
+    float const up = (draw::kCentreY - static_cast<float>(draw::kCanvas) * 0.5f) / pixelsPerM;
+    gSquad.quad = Quad(frame, gSquad, view.wheelPose, 0.0f, up, widthM);
+    out[0] = &gSquad.quad;
+    if (!gSquadLogged) {
+        gSquadLogged = true;
+        log::Info("squad place: the squad wheel drawn, {} tiles, {:.2f} m wide at ({:.2f}, {:.2f}, {:.2f}) m", count, widthM,
+            view.wheelPose.position.x, view.wheelPose.position.y, view.wheelPose.position.z);
+    }
+    return 1;
+}
+
+int PowerLayers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity);
+
 }  // namespace
 
 int Layers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity) {
+    int const n = PowerLayers(frame, out, capacity);
+    return n + SquadLayer(frame, out + n, capacity - n);
+}
+
+namespace {
+
+int PowerLayers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity) {
     if (frame.session != gSession) {
         gWheel.swapchain = XR_NULL_HANDLE;  // the old session's swapchains died with it
         gWheel.images.clear();
@@ -383,6 +449,8 @@ int Layers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity)
         gHint.images.clear();
         gLock.swapchain = XR_NULL_HANDLE;
         gLock.images.clear();
+        gSquad.swapchain = XR_NULL_HANDLE;
+        gSquad.images.clear();
         gSession = frame.session;
     }
     gWheel.name = "powerwheel";
@@ -464,5 +532,7 @@ int Layers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity)
     }
     return n;
 }
+
+}  // namespace
 
 }  // namespace mevr::host::power_wheel

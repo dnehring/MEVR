@@ -5,6 +5,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/PowerWheel.hpp"
 #include "core/vr/SquadContext.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -32,6 +33,7 @@ namespace mevr::game::squad_place {
 
 namespace sc = vr::squad_context;
 namespace sp = vr::squad_place;
+namespace pw = vr::power_wheel;
 namespace json = vr::test_request;
 
 namespace {
@@ -59,7 +61,8 @@ struct Simulated {
     bool releasing = false;  // let go: the next tick still aims from the head, so the release is judged where it was held
     float pitchDeg = -10.0f;
     float yawDeg = 0.0f;  // relative to where the head looks
-    float flick = 0.0f;   // `select left|right`: the stick pushed for one tick
+    sp::Vec2 hand;        // `hand x y`: the simulated hand's offset in the squad wheel's plane (metres)
+    bool two = false;     // `two on`: the wheel as with two squadmates whatever the party (a stand-in second; for looking only)
     std::vector<bool> script;  // `double`: B down, up, down, up, one tick each
 };
 Simulated gSim;
@@ -79,6 +82,13 @@ struct Arc {
 Arc gArc;
 double gClock = 0.0;
 double gSecondPulseAt = -1.0;  // the second squadmate's tile: a second pulse this long after the first
+// The squad wheel at the right hand: where it stands (tracking space, power_wheel::Place's way), when it opened, when its lit
+// tile changed.
+XrPosef gWheelPose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+double gWheelOpenedAt = 0.0;
+double gLitAt = 0.0;
+constexpr float kWheelWidthM = 0.30f;
+constexpr float kWheelTowardM = 0.04f;
 
 unsigned gStarted = 0, gGiven = 0, gCancelled = 0, gTraces = 0, gTicksTraced = 0, gSelections = 0, gRegroups = 0;
 std::string gLast;
@@ -188,10 +198,10 @@ std::string TitleCase(std::string const& name) {
 }
 
 void PublishView(Link const& link, engine::TrackingFrame const* frame, sp::ArcSettings const& settings, bool follow,
-    std::vector<squad_weapons::MemberView> const& members, XrPosef const& hand) {
+    std::vector<squad_weapons::MemberView> const& members, sp::Vec2 const& hand) {
     if (link.publish == nullptr) return;
     sp::View view;
-    if (frame != nullptr && gMachine.Holding() && gArc.valid) {
+    if (frame != nullptr && gMachine.Holding() && (gArc.valid || gMachine.Picking())) {
         view.active = 1;
         view.landing = static_cast<std::uint8_t>(gArc.landing);
         view.follow = follow ? 1 : 0;
@@ -199,19 +209,34 @@ void PublishView(Link const& link, engine::TrackingFrame const* frame, sp::ArcSe
         view.heldS = gMachine.HeldS();
         int const tiles = sp::TileCount(gMachine.Members());
         view.tiles = static_cast<std::uint8_t>(tiles);
-        view.tile = static_cast<std::uint8_t>(std::clamp(gMachine.Tile(), 0, std::max(tiles - 1, 0)));
+        view.tile = static_cast<std::int8_t>(gMachine.Tile());
         for (int t = 0; t < tiles && t < 3; ++t) {
             int const m = sp::MemberOfTile(t, gMachine.Members());
             std::string const name = m >= 0 && m < static_cast<int>(members.size()) ? TitleCase(members[static_cast<std::size_t>(m)].name)
-                                                                                    : std::string("Squad");
+                                     : m >= 0 ? std::string("Stand-in")
+                                              : std::string("Squad");
             std::snprintf(view.names[t], sizeof(view.names[t]), "%s", name.c_str());
         }
+        if (tiles == 0) {  // one squadmate: the ring names them
+            std::string const name = members.empty() ? std::string("Squad") : TitleCase(members.front().name);
+            std::snprintf(view.names[0], sizeof(view.names[0]), "%s", name.c_str());
+            view.tile = 0;
+        }
+        bool const picking = gMachine.Picking();
+        view.wheel = picking ? 1 : 0;
+        view.wheelPose = gWheelPose;
+        view.wheelWidthM = kWheelWidthM;
         view.hand = hand;
-        std::vector<sp::Vec3> const points = sp::ArcSamples(gArc.originM, gArc.direction, gArc.untilS, kDrawPoints, settings);
-        int const count = std::min<int>(static_cast<int>(points.size()), sp::kMaxPoints);
+        view.openFor = static_cast<float>(gClock - gWheelOpenedAt);
+        view.litFor = static_cast<float>(gClock - gLitAt);
+        std::vector<sp::Vec3> const points =
+            gArc.valid ? sp::ArcSamples(gArc.originM, gArc.direction, gArc.untilS, kDrawPoints, settings) : std::vector<sp::Vec3>{};
+        int const count = picking ? 0 : std::min<int>(static_cast<int>(points.size()), sp::kMaxPoints);
         for (int i = 0; i < count; ++i) view.points[i] = engine::ToTracking(*frame, Units(points[static_cast<std::size_t>(i)], gUpm));
         view.count = static_cast<std::uint8_t>(count);
-        if (gArc.landing == sp::Landing::None) {
+        if (count == 0) {
+            // the squad wheel: no arc yet
+        } else if (gArc.landing == sp::Landing::None) {
             view.landingPoint = view.points[count - 1];
         } else {
             view.landingPoint = engine::ToTracking(*frame, gArc.point);
@@ -253,13 +278,12 @@ void Tick(double deltaSeconds, Link const& link) {
         button = gSim.script.front();
         gSim.script.erase(gSim.script.begin());
     }
-    float const stickX = gSim.flick != 0.0f ? gSim.flick : simulated ? 0.0f : tracked ? controllers.right.stickX : 0.0f;
-    gSim.flick = 0.0f;
+    // The right hand where the squad wheel reads it: the grip (the palm), else the aim pose; tracking space.
+    XrVector3f const palm = controllers.right.gripValid ? controllers.right.grip.position : controllers.right.aim.position;
     bool const usable = s.enabled && s.place && !melee && onFoot && frame.has_value() && (tracked || simulated) &&
         !squad_weapons::Members().empty() && !squad_weapons::IsOpen() && !power_wheel::IsOpen();
 
     gArc = {};
-    XrPosef hand{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
     if (usable && (button || gMachine.Holding())) {
         sp::Vec3 originM{};
         sp::Vec3 direction{};
@@ -281,10 +305,23 @@ void Tick(double deltaSeconds, Link const& link) {
             engine::Basis const aim = engine::OrientationToWorld(*frame, controllers.right.aim.orientation);
             direction = {static_cast<float>(aim.forward.x), static_cast<float>(aim.forward.y), static_cast<float>(aim.forward.z)};
         }
-        gArc = TraceArc(pawn, originM, direction, arcSettings, gUpm);
-        gTraces += static_cast<unsigned>(gArc.traces);
-        ++gTicksTraced;
-        hand = simulated ? XrPosef{frame->head.orientation, engine::ToTracking(*frame, Units(originM, gUpm))} : controllers.right.aim;
+        if (!gMachine.Picking()) {  // no arc while the squad wheel is up
+            gArc = TraceArc(pawn, originM, direction, arcSettings, gUpm);
+            gTraces += static_cast<unsigned>(gArc.traces);
+            ++gTicksTraced;
+        }
+    }
+    sp::Vec2 hand;
+    bool handValid = false;
+    if (gMachine.Picking()) {
+        if (simulated) {
+            hand = gSim.hand;
+            handValid = true;
+        } else if (tracked) {
+            pw::Vec2 const at = pw::InPlane(gWheelPose, palm);
+            hand = {at.x, at.y};
+            handValid = true;
+        }
     }
     std::vector<squad_weapons::MemberView> const members = squad_weapons::Members();
 
@@ -296,8 +333,9 @@ void Tick(double deltaSeconds, Link const& link) {
     in.dt = static_cast<float>(deltaSeconds);
     in.usable = usable;
     in.button = button;
-    in.stickX = stickX;
-    in.members = static_cast<int>(members.size());
+    in.members = gSim.two ? std::max(static_cast<int>(members.size()), 2) : static_cast<int>(members.size());
+    in.handValid = handValid;
+    in.hand = hand;
     in.landing = gArc.landing;
     in.landingFromPlayerM = gArc.fromPlayerM;
     sp::Step const step = gMachine.Advance(in, settings);
@@ -308,10 +346,33 @@ void Tick(double deltaSeconds, Link const& link) {
     if (step.started) {
         ++gStarted;
         if (link.haptic != nullptr) link.haptic(kRight, 0.04f, 0.4f);
-        log::Info("squad place: aiming a place for {}", whoName(step.member));
+        if (gMachine.Picking() && frame) {
+            // The squad wheel where the hand is, facing the eyes, upright (the power wheel's placement at the left palm).
+            XrVector3f const at = simulated ? engine::ToTracking(*frame, frame->headWorld) : palm;
+            XrVector3f start = at;
+            if (simulated) {  // the console's hand for the wheel: 0.40 m ahead of the eyes, 0.15 m below (in view for snapshots)
+                engine::Basis const look = engine::OrientationToWorld(*frame, frame->head.orientation);
+                double const flat = std::hypot(look.forward.x, look.forward.y);
+                engine::UnrealVector const ahead = flat > 1e-6 ? engine::UnrealVector{look.forward.x / flat, look.forward.y / flat, 0.0}
+                                                               : engine::UnrealVector{1.0, 0.0, 0.0};
+                engine::UnrealVector const w{frame->headWorld.x + ahead.x * 0.40 * gUpm, frame->headWorld.y + ahead.y * 0.40 * gUpm,
+                    frame->headWorld.z - 0.15 * gUpm};
+                start = engine::ToTracking(*frame, w);
+            }
+            gWheelPose = pw::Place(start, frame->head.position, kWheelTowardM);
+            gWheelOpenedAt = gClock;
+            gLitAt = gClock;
+            log::Info("squad place: the squad wheel at the right hand: move it toward a squadmate (left, right) or up for the squad");
+        } else {
+            log::Info("squad place: aiming a place for {}", whoName(step.member));
+        }
     }
-    // Who's selected, felt without looking: one pulse for the left squadmate, two for the right, a longer one for the squad.
-    if (step.selectionChanged) {
+    if (step.highlightChanged) {
+        gLitAt = gClock;
+        if (link.haptic != nullptr) link.haptic(kRight, 0.02f, 0.3f);
+    }
+    // Who's picked, felt without looking: one pulse for the left squadmate, two for the right, a longer one for the squad.
+    if (step.picked) {
         ++gSelections;
         int const member = gMachine.Member();
         if (link.haptic != nullptr) {
@@ -322,7 +383,7 @@ void Tick(double deltaSeconds, Link const& link) {
                 if (member == 1) gSecondPulseAt = gClock + 0.09;
             }
         }
-        log::Info("squad place: the selector is on {}", whoName(member));
+        log::Info("squad place: {} picked on the squad wheel: now aim the arc", whoName(member));
     }
     if (gSecondPulseAt >= 0.0 && gClock >= gSecondPulseAt) {
         gSecondPulseAt = -1.0;
@@ -373,6 +434,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     bool const follow = gArc.landing == sp::Landing::Floor && gArc.fromPlayerM <= settings.followWithinM;
     PublishView(link, frame ? &*frame : nullptr, arcSettings, follow, members, hand);
+    (void)palm;
 }
 
 std::string Console(std::string_view args) {
@@ -386,15 +448,27 @@ std::string Console(std::string_view args) {
         if (!pitch.empty() && std::from_chars(pitch.data(), pitch.data() + pitch.size(), value).ec == std::errc{}) gSim.pitchDeg = value;
         if (!yaw.empty() && std::from_chars(yaw.data(), yaw.data() + yaw.size(), value).ec == std::errc{}) gSim.yawDeg = value;
         gSim.held = true;
+        gSim.hand = {};
         return std::format("B held from the head at pitch {:.0f} deg, yaw {:.0f} deg from the look; `mevr place release` lets go "
                            "(last arc: {}, {:.1f} m from Shepard)", gSim.pitchDeg, gSim.yawDeg, sp::Name(gArc.landing), gArc.fromPlayerM);
     }
-    if (verb == "select") {
-        std::string side;
-        words >> side;
-        if (side != "left" && side != "right") return std::string("usage: mevr place select left|right (one flick of the stick)");
-        gSim.flick = side == "left" ? -1.0f : 1.0f;
-        return std::format("the stick flicked {} (the selector was on tile {})", side, gMachine.Tile());
+    if (verb == "two") {
+        std::string on;
+        words >> on;
+        gSim.two = on != "off";
+        return std::format("the squad wheel {} a stand-in second squadmate (for looking at it with one; an order to the stand-in "
+                           "goes to nobody)", gSim.two ? "now shows" : "no longer shows");
+    }
+    if (verb == "hand") {
+        std::string x, y;
+        words >> x >> y;
+        float fx = 0.0f, fy = 0.0f;
+        if (std::from_chars(x.data(), x.data() + x.size(), fx).ec != std::errc{} || std::from_chars(y.data(), y.data() + y.size(), fy).ec != std::errc{}) {
+            return std::string("usage: mevr place hand <x> <y> (metres in the squad wheel's plane, x right, y up)");
+        }
+        gSim.hand = {fx, fy};
+        return std::format("the console's hand at ({:.3f}, {:.3f}) m in the squad wheel (lit tile {}, {})", fx, fy, gMachine.Tile(),
+            gMachine.Picking() ? "picking" : "picked");
     }
     if (verb == "double") {
         gSim.held = false;
@@ -407,7 +481,7 @@ std::string Console(std::string_view args) {
         return std::string("B let go: the order follows on the next tick (see the log's `squad place:` line)");
     }
     if (verb.empty() || verb == "status") return StatusJson();
-    return std::string("usage: mevr place [aim <pitchDeg> [yawDeg] | select left|right | release | double | status]");
+    return std::string("usage: mevr place [aim <pitchDeg> [yawDeg] | hand <x> <y> | two on|off | release | double | status]");
 }
 
 bool Holding() {

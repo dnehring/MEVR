@@ -753,10 +753,11 @@ switching frameworks.
   relieved, plus each one's AI `BioAiController.PushMoveToPoint`: **`QuickCommandMoveTo` ignores the point in VR**, it lands along the
   head's facing; `CallHold` sets the HOLD formation before the point, a drifted hold re-asserts the point, never a move; measured 0.6 m
   from the ring; the
-  one dispatcher). **Who goes: a selector above the hand** (5ff56ac; [first squadmate | Squad | second], ME1's d-pad order, starting on
-  the squad), stepped by a sideways flick of the right stick (one pulse for the first, two for the second, a long one for the squad; the
-  stick reaches neither the game, `gamepad::kFlagSquadPlace`, nor the comfort turn while B is held); the ring names them (amber for
-  one, blue for the squad). **B double-tapped: the whole squad back to Shepard.** Within `followWithinM` of Shepard: a follow
+  one dispatcher). **Who goes: the squad wheel at the right hand** (2026-11-05; B and the stick share the thumb): with two squadmates B
+  first opens the power wheel's look at the right hand (`plugin/PowerWheel`'s second canvas, `squadwheel` layer; first squadmate left,
+  Squad up, second right); the hand's travel lights a tile at 2.5 cm and picks it at 7 cm (one pulse for the first, two for the second,
+  a long one for the squad), the wheel closes and the arc comes up; one squadmate: the arc at once. The ring names them (amber for one,
+  blue for the squad). **B double-tapped: the whole squad back to Shepard.** Within `followWithinM` of Shepard: a follow
   (green); a wall, a steep slope or nothing in reach: called off (red). Off while `meleeButton = 1`, in the squad's or the power wheel,
   anywhere but on foot (`place = 0` off). The host draws it in a projection layer of its own (galaxy_draw's renderer, over the world).
   `mevr place aim <pitchDeg> [yawDeg] | release` without controllers. Logs `squad place:`; snapshot `"mod"."squadPlace"`, layers

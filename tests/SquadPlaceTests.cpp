@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 namespace {
 
@@ -66,14 +67,16 @@ void TestArc() {
     CHECK(sp::IsFloor({0.0f, 0.0f, 5.0f}, s));  // not unit: still floor
 }
 
-sp::Step Tick(sp::Machine& m, bool button, sp::Landing landing = sp::Landing::Floor, float fromPlayerM = 8.0f, float stickX = 0.0f,
-    bool usable = true, float dt = 0.05f, int members = 2) {
+// One squadmate by default: no wheel, the arc at once (the wheel's tests pass two and a hand offset).
+sp::Step Tick(sp::Machine& m, bool button, sp::Landing landing = sp::Landing::Floor, float fromPlayerM = 8.0f, float handX = 0.0f,
+    bool usable = true, float dt = 0.05f, int members = 1, float handY = 0.0f) {
     sp::Input in;
     in.dt = dt;
     in.usable = usable;
     in.button = button;
-    in.stickX = stickX;
     in.members = members;
+    in.handValid = true;
+    in.hand = {handX, handY};
     in.landing = landing;
     in.landingFromPlayerM = fromPlayerM;
     return m.Advance(in, sp::Settings{});
@@ -89,43 +92,52 @@ void TestHold() {
         s = Tick(m, false);
         CHECK(s.given && s.order == sp::Order::Move && s.member == -1 && !m.Holding());
     }
-    {  // The selector: starts on the squad; a flick left is the first squadmate, held over (no repeat) and centred it stays;
-       // right twice from there is the second; past the end it stays.
+    {  // The squad wheel with two squadmates: nothing lit at first; the hand's travel lights the tile it moves toward (left the
+       // first squadmate, up the squad, right the second) and, past commitM, picks it: the wheel closes, the arc takes over and
+       // the hand moves freely after; let go places the picked one.
+        auto wheel = [](sp::Machine& m, bool button, float x, float y) {
+            return Tick(m, button, sp::Landing::Floor, 8.0f, x, true, 0.05f, 2, y);
+        };
         sp::Machine m;
-        sp::Step s = Tick(m, true);
-        CHECK(s.started && m.Tile() == 1 && m.Member() == sp::kSquadTile);
-        s = Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f);
-        CHECK(s.selectionChanged && m.Tile() == 0 && m.Member() == 0);
-        for (int i = 0; i < 5; ++i) CHECK(!Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f).selectionChanged);  // held: no repeat
-        Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f);
-        CHECK(m.Member() == 0);
-        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, 0.8f).selectionChanged && m.Member() == sp::kSquadTile);
-        Tick(m, true, sp::Landing::Floor, 8.0f, 0.1f);
-        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, 0.8f).selectionChanged && m.Member() == 1);
-        Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f);
-        CHECK(!Tick(m, true, sp::Landing::Floor, 8.0f, 0.8f).selectionChanged && m.Member() == 1);  // the last tile
-        Tick(m, true, sp::Landing::Floor, 8.0f, 0.45f);  // between the thresholds: not re-armed, not a flick
-        s = Tick(m, false);
+        sp::Step s = wheel(m, true, 0.0f, 0.0f);
+        CHECK(s.started && m.Picking() && m.Tile() == -1);
+        CHECK(!wheel(m, true, -0.01f, 0.0f).highlightChanged);           // inside the dead zone: nothing
+        s = wheel(m, true, -0.04f, 0.005f);
+        CHECK(s.highlightChanged && m.Tile() == 0 && m.Picking());       // lit, not picked
+        s = wheel(m, true, 0.0f, 0.04f);
+        CHECK(s.highlightChanged && m.Tile() == 1);                      // up: the squad
+        s = wheel(m, true, 0.08f, 0.0f);
+        CHECK(s.picked && m.Tile() == 2 && m.Member() == 1 && !m.Picking());  // far right: the second, picked
+        CHECK(!wheel(m, true, -0.3f, 0.2f).highlightChanged && m.Member() == 1);  // the arm free after the pick
+        s = wheel(m, false, 0.0f, 0.0f);
         CHECK(s.given && s.member == 1);
-        // The next hold starts on the squad again.
-        CHECK(Tick(m, true).started && m.Member() == sp::kSquadTile);
     }
-    {  // A stick already pushed when B goes down doesn't step until it comes back.
+    {  // Straight down lights nothing; let go while still picking calls it off; a border doesn't flicker.
+        auto wheel = [](sp::Machine& m, bool button, float x, float y) {
+            return Tick(m, button, sp::Landing::Floor, 8.0f, x, true, 0.05f, 2, y);
+        };
         sp::Machine m;
-        Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f);
-        CHECK(m.Member() == sp::kSquadTile);
-        CHECK(!Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f).selectionChanged);
-        Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f);
-        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f).selectionChanged && m.Member() == 0);
+        wheel(m, true, 0.0f, 0.0f);
+        CHECK(!wheel(m, true, 0.0f, -0.09f).picked && m.Tile() == -1 && m.Picking());
+        for (int i = 0; i < 5; ++i) wheel(m, true, 0.0f, -0.09f);
+        sp::Step s = wheel(m, false, 0.0f, -0.09f);
+        CHECK(s.cancelled && !s.given);
+        sp::Machine n;
+        wheel(n, true, 0.0f, 0.0f);
+        wheel(n, true, -0.03f, 0.03f);  // 135 degrees: between the first (180) and the squad (90), 45 from each
+        int const lit = n.Tile();
+        CHECK(lit == 0 || lit == 1);
+        float const a = (lit == 0 ? 133.5f : 136.5f) * 3.14159265f / 180.0f;  // 1.5 degrees past the middle: kept
+        CHECK(!wheel(n, true, 0.03f * std::cos(a) * 1.414f, 0.03f * std::sin(a) * 1.414f).highlightChanged && n.Tile() == lit);
     }
-    {  // One squadmate: one tile, the squad; flicks change nothing.
+    {  // One squadmate: no wheel, the arc at once for the squad.
         sp::Machine m;
-        Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f, true, 0.05f, 1);
-        CHECK(!Tick(m, true, sp::Landing::Floor, 8.0f, 0.9f, true, 0.05f, 1).selectionChanged);
-        CHECK(m.Member() == sp::kSquadTile);
-        CHECK(sp::TileCount(1) == 1 && sp::TileCount(2) == 3 && sp::TileCount(0) == 0);
+        sp::Step const s = Tick(m, true);
+        CHECK(s.started && !m.Picking() && m.Member() == sp::kSquadTile);
+        CHECK(sp::TileCount(1) == 0 && sp::TileCount(2) == 3 && sp::TileCount(0) == 0);
         CHECK(sp::MemberOfTile(0, 2) == 0 && sp::MemberOfTile(1, 2) == sp::kSquadTile && sp::MemberOfTile(2, 2) == 1);
         CHECK(sp::MemberOfTile(0, 1) == sp::kSquadTile);
+        CHECK(sp::WheelAngles() == (std::vector<float>{180.0f, 90.0f, 0.0f}));
     }
     {  // Double tap: two quick presses bring the whole squad back; a slow second press is a new hold instead.
         sp::Machine m;

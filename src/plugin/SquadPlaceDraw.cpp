@@ -185,37 +185,6 @@ gh::Colour Scaled(gh::Colour c, float a) {
     return c;
 }
 
-// The selector above the hand: its tiles side by side across the line of sight, the lit one larger, in its colour, underlined.
-void AddSelector(gh::DrawList& list, sp::View const& view, XrPosef const& head) {
-    int const tiles = std::min<int>(view.tiles, 3);
-    if (tiles <= 0) return;
-    XrVector3f const right = vr::overlay::Rotate(head.orientation, {1.0f, 0.0f, 0.0f});
-    XrVector3f const flatRight = gh::Normalize({right.x, 0.0f, right.z});
-    XrVector3f const centre = gh::Add(view.hand.position, {0.0f, 0.09f, 0.0f});
-    float const distance = std::max(gh::Length(gh::Sub(centre, head.position)), 0.2f);
-    float const scale = std::clamp(distance / 0.5f, 0.6f, 2.0f);  // about the same angular size wherever the hand is
-    float const spacing = 0.075f * scale;
-    for (int t = 0; t < tiles; ++t) {
-        bool const lit = t == view.tile;
-        int const member = sp::MemberOfTile(t, tiles == 3 ? 2 : 1);
-        gh::Colour const colour = member == sp::kSquadTile ? kSquad : kMember;
-        XrVector3f const at = gh::Add(centre, gh::Mul(flatRight, (static_cast<float>(t) - static_cast<float>(tiles - 1) * 0.5f) * spacing));
-        gh::Label label;
-        label.anchor = at;
-        label.heightM = (lit ? 0.020f : 0.015f) * scale;
-        label.colour = lit ? Scaled(colour, 1.0f) : gh::Colour{0.55f, 0.6f, 0.65f, 0.8f};
-        label.text = view.names[t][0] != 0 ? std::string(view.names[t], strnlen(view.names[t], sizeof(view.names[t]))) : "?";
-        label.plate = true;
-        list.labels.push_back(label);
-        if (lit) {
-            XrVector3f const under = gh::Add(at, {0.0f, -0.006f * scale, 0.0f});
-            float const half = 0.026f * scale;
-            list.lines.push_back({gh::Sub(under, gh::Mul(flatRight, half)), gh::Add(under, gh::Mul(flatRight, half)), 0.0022f * scale,
-                Scaled(colour, 0.95f)});
-        }
-    }
-}
-
 // The arc and its end, in the app space.
 gh::DrawList Build(sp::View const& view, XrPosef const& headPose, float timeS) {
     XrVector3f const head = headPose.position;
@@ -251,7 +220,7 @@ gh::DrawList Build(sp::View const& view, XrPosef const& headPose, float timeS) {
         list.rings.push_back({centre, normal, radius * 0.35f, width * 0.7f, Scaled(colour, 0.6f)});
         list.sprites.push_back({centre, std::max(0.03f, distance * 0.004f), Scaled(colour, 0.7f), gh::SpriteStyle::Halo, {}});
         // Who goes there, over the ring: about 1.6 degrees tall at any distance.
-        if (view.tiles > 0 && view.tile < 3 && view.names[view.tile][0] != 0) {
+        if (view.tile >= 0 && view.tile < 3 && view.names[view.tile][0] != 0) {
             gh::Label name;
             name.anchor = gh::Add(centre, gh::Mul(normal, std::max(0.25f, distance * 0.02f)));
             name.heightM = std::max(0.03f, distance * 0.028f);
@@ -265,7 +234,6 @@ gh::DrawList Build(sp::View const& view, XrPosef const& headPose, float timeS) {
         // Refused: a red spark where the flight ends.
         list.sprites.push_back({view.landingPoint, std::max(0.04f, distance * 0.006f), Scaled(colour, 0.9f), gh::SpriteStyle::Star, {}});
     }
-    AddSelector(list, view, headPose);
     return list;
 }
 
@@ -335,9 +303,9 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         gDrawMsSum = 0.0;
     }
     SetStatus(std::format("{{\"shown\": true, \"landing\": \"{}\", \"follow\": {}, \"member\": {}, \"points\": {}, "
-                          "\"landingPoint\": [{:.3f}, {:.3f}, {:.3f}], \"tiles\": {}, \"tile\": {}, \"target\": [{}, {}]}}",
+                          "\"landingPoint\": [{:.3f}, {:.3f}, {:.3f}], \"tile\": {}, \"target\": [{}, {}]}}",
         sp::Name(static_cast<sp::Landing>(view.landing)), view.follow != 0 ? "true" : "false", view.member, view.count,
-        view.landingPoint.x, view.landingPoint.y, view.landingPoint.z, view.tiles, view.tile, width, height));
+        view.landingPoint.x, view.landingPoint.y, view.landingPoint.z, view.tile, width, height));
     gLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
     gLayer.space = frame.appSpace;
     gLayer.viewCount = 2;

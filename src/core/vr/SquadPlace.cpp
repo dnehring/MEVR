@@ -64,11 +64,7 @@ char const* Name(Order order) {
 }
 
 int TileCount(int members) {
-    return members >= 2 ? 3 : members == 1 ? 1 : 0;
-}
-
-int SquadTileIndex(int members) {
-    return members >= 2 ? 1 : 0;
+    return members >= 2 ? 3 : 0;
 }
 
 int MemberOfTile(int tile, int members) {
@@ -76,11 +72,15 @@ int MemberOfTile(int tile, int members) {
     return tile == 0 ? 0 : tile == 2 ? 1 : kSquadTile;
 }
 
+std::vector<float> WheelAngles() {
+    return {180.0f, 90.0f, 0.0f};
+}
+
 void Machine::Reset() {
     holding_ = false;
+    picking_ = false;
     heldS_ = 0.0f;
-    tile_ = SquadTileIndex(members_);
-    armed_ = true;
+    tile_ = -1;
     landing_ = Landing::None;
 }
 
@@ -102,25 +102,50 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
             return step;
         }
         if (in.landing != landing_) {
-            step.landingChanged = true;
+            if (!picking_) step.landingChanged = true;
             landing_ = in.landing;
         }
-        // The squad shrank or grew under the hold: the selector starts over on the squad.
-        if (in.members != members_) {
+        // The squad shrank under the wheel (a squadmate down): nothing left to pick, the arc for the squad.
+        if (picking_ && in.members != members_) {
             members_ = in.members;
-            tile_ = SquadTileIndex(members_);
-            step.selectionChanged = true;
-        }
-        // A sideways flick of the right stick steps the selector one tile, re-armed near the centre.
-        if (armed_ && std::abs(in.stickX) >= settings.flickOn) {
-            armed_ = false;
-            int const next = std::clamp(tile_ + (in.stickX > 0.0f ? 1 : -1), 0, std::max(TileCount(members_) - 1, 0));
-            if (next != tile_) {
-                tile_ = next;
-                step.selectionChanged = true;
+            if (TileCount(members_) == 0) {
+                picking_ = false;
+                tile_ = -1;
             }
-        } else if (!armed_ && std::abs(in.stickX) <= settings.flickOff) {
-            armed_ = true;
+        }
+        // The squad wheel: the hand's travel from where B went down lights the tile it moves toward, and picks it further out.
+        if (picking_ && in.handValid) {
+            float const reach = std::hypot(in.hand.x, in.hand.y);
+            if (reach >= settings.highlightM) {
+                std::vector<float> const angles = WheelAngles();
+                float const direction = std::atan2(in.hand.y, in.hand.x) * 57.2957795f;
+                int best = -1;
+                float bestDiff = 1e9f;
+                for (std::size_t i = 0; i < angles.size(); ++i) {
+                    float d = std::fmod(std::abs(direction - angles[i]), 360.0f);
+                    d = d > 180.0f ? 360.0f - d : d;
+                    if (d < bestDiff) {
+                        bestDiff = d;
+                        best = static_cast<int>(i);
+                    }
+                }
+                // Straight down (toward the forearm) is no tile's: nothing lights or picks there.
+                if (bestDiff > 60.0f) best = tile_ >= 0 ? tile_ : -1;
+                // A lit tile keeps the light unless another is clearly nearer (no flicker on a border).
+                if (tile_ >= 0 && best >= 0 && best != tile_) {
+                    float d = std::fmod(std::abs(direction - angles[static_cast<std::size_t>(tile_)]), 360.0f);
+                    d = d > 180.0f ? 360.0f - d : d;
+                    if (d - bestDiff < settings.keepDeg) best = tile_;
+                }
+                if (best != tile_) {
+                    tile_ = best;
+                    step.highlightChanged = true;
+                }
+                if (reach >= settings.commitM && tile_ >= 0 && bestDiff <= 60.0f) {
+                    picking_ = false;
+                    step.picked = true;
+                }
+            }
         }
         if (in.button && heldS_ > settings.maxHoldS) {
             step.cancelled = true;
@@ -136,6 +161,9 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
                 step.cancelled = true;
                 step.why = "a blip";
                 sinceBlipS_ = 0.0f;
+            } else if (picking_) {
+                step.cancelled = true;
+                step.why = "let go before picking who";
             } else if (in.landing != Landing::Floor) {
                 step.cancelled = true;
                 step.why = Name(in.landing);
@@ -160,8 +188,8 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
         holding_ = true;
         heldS_ = 0.0f;
         members_ = in.members;
-        tile_ = SquadTileIndex(members_);
-        armed_ = std::abs(in.stickX) <= settings.flickOff;  // a stick already pushed doesn't step until it comes back
+        picking_ = TileCount(members_) > 0;
+        tile_ = -1;
         landing_ = in.landing;
         step.started = true;
         step.member = Member();
