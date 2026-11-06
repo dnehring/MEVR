@@ -2406,6 +2406,11 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         }
         if (XrCompositionLayerQuad const* target = mevr::host::omni_rail::TargetLayer(); target != nullptr && count < capacity) {
             layersOut[count++] = target;  // the wrist tap's target, over the wrist readout's layer
+            static bool logged = false;
+            if (!logged) {
+                logged = true;
+                mevr::log::Info("omni-tool rail: the wrist tap's target goes in as our quad {} of {}", count, capacity);
+            }
         }
     }
     // ---- The bypass puzzle's d-pad (plugin/OmniPad, research/53 section 6.3): to the right of its screen while it's played ----

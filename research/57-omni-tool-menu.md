@@ -92,6 +92,13 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   hidden whenever the tap isn't allowed. The tap counts within 4 cm from farther than 8 cm (was 3.5 and 7). Each reach logs its
   closest approach and why it didn't tap (`omni-tool rail: a reach for the wrist target (#n): closest x cm ...`), so the next
   headset session gives the distances. [verify] in the headset.
+  **On the fake headset (2026-11-05 22:37, BIOA_UNC20, `tools/make-wrist-recording.py ... 0 wrist , 6,24`: taps at 16 and 32 s,
+  hovers at 6 and 24 s):** the faint look with the wrist raised, the armed look 6 cm beside it (reach logged "closest 6.0 cm ...
+  no tap"), the taps opened and closed the rail. **But the target floats about 15 cm above Shepard's drawn left hand** on those
+  poses: it is placed at the controller's wrist, and the arm IK draws Shepard's arm lower and nearer (the reach scaling; the
+  same gap as the rail's, below). The player aims at the hand they see, so the target (and the tap's two points) belong on
+  Shepard's drawn left wrist and right index fingertip, from the mod's bones [open]. Snapshots carry `"omniRail"."target"` (its
+  inputs each frame) and layers `omnitarget-*`.
 - The rail's size and legibility at 0.42 m (entries 112 dp of a 1000 dp canvas: about 3 cm tall on a 0.31 m rail).
 - **The squad member behind the equipment and squad screens: done 2026-11-05 (section 7)**, the game's own figure through a capture
   of its UI world. Below, the earlier hologram idea.

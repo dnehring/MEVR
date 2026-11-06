@@ -65,6 +65,23 @@ std::atomic<bool> gOwnsTriggers{false};
 std::atomic<bool> gShown{false};         // g.shown for other threads (the mod's flags)
 std::mutex gStatusMutex;
 std::string gStatus = "{\"shown\": false}";
+// The tap target's inputs and result, the last frame (for snapshots: why it shows or not).
+struct TargetStatus {
+    bool stepped = false;
+    bool wristValid = false;
+    bool headValid = false;
+    bool handsTracked = false;
+    bool allowed = false;
+    char const* refused = nullptr;
+    int look = 0;
+    bool shown = false;
+    float distanceM = -1.0f;
+    float belowEyesM = 0.0f;
+    float acrossM = 0.0f;
+    XrVector3f target{};
+    XrVector3f eyes{};
+};
+TargetStatus gTargetStatus;
 
 // ---- Render thread ----
 struct Swapchain {
@@ -453,6 +470,12 @@ void StepTarget(Frame const& frame, bool handsTracked, XrVector3f const& tip, Xr
                 g.reachTapped ? ": tapped" : g.reachRefused != nullptr ? std::format(": no tap, {}", g.reachRefused).c_str() : ": no tap");
         }
     }
+    {
+        std::lock_guard lock(gStatusMutex);
+        gTargetStatus = {true, frame.wristValid, frame.headValid, handsTracked, allowed, refused, static_cast<int>(look), false,
+            handsTracked ? d : -1.0f, frame.eyes.y - target.y, std::hypot(target.x - frame.eyes.x, target.z - frame.eyes.z), target,
+            frame.eyes};
+    }
     rail::TargetLook const shown = g.pressedS > 0.0f ? rail::TargetLook::Armed : look;  // the pressed picture below
     if (shown == rail::TargetLook::Hidden && g.pressedS <= 0.0f) {
         return;
@@ -477,6 +500,8 @@ void StepTarget(Frame const& frame, bool handsTracked, XrVector3f const& tip, Xr
     g.targetQuad.pose.position = target;
     g.targetQuad.size = {rail::kTargetSizeM, rail::kTargetSizeM};
     g.targetShown = true;
+    std::lock_guard lock(gStatusMutex);
+    gTargetStatus.shown = true;
 }
 
 void Publish(bool shown, char const* place) {
@@ -722,8 +747,16 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     return &g.quad;
 }
 
+std::atomic<std::uint64_t> gTargetCalls{0};
+std::atomic<std::uint64_t> gTargetGiven{0};
+
 XrCompositionLayerQuad const* TargetLayer() {
-    return g.targetShown ? &g.targetQuad : nullptr;
+    gTargetCalls.fetch_add(1, std::memory_order_relaxed);
+    if (!g.targetShown) {
+        return nullptr;
+    }
+    gTargetGiven.fetch_add(1, std::memory_order_relaxed);
+    return &g.targetQuad;
 }
 
 void Toggle(char const* why) {
@@ -742,7 +775,15 @@ bool Shown() {
 
 std::string StatusJson() {
     std::lock_guard lock(gStatusMutex);
-    return gStatus;
+    TargetStatus const& t = gTargetStatus;
+    return std::format("{{\"rail\": {}, \"target\": {{\"stepped\": {}, \"wristValid\": {}, \"headValid\": {}, \"handsTracked\": {}, "
+                       "\"allowed\": {}, \"refused\": \"{}\", \"look\": \"{}\", \"shown\": {}, \"fingertipM\": {:.3f}, "
+                       "\"belowEyesM\": {:.3f}, \"acrossM\": {:.3f}, \"at\": [{:.3f}, {:.3f}, {:.3f}], \"eyes\": [{:.3f}, {:.3f}, {:.3f}], "
+                       "\"layerCalls\": {}, \"layerGiven\": {}, \"swapchain\": \"{:#x}\"}}}}",
+        gStatus, t.stepped, t.wristValid, t.headValid, t.handsTracked, t.allowed, t.refused != nullptr ? t.refused : "",
+        LookName(static_cast<rail::TargetLook>(t.look)), t.shown, t.distanceM, t.belowEyesM, t.acrossM, t.target.x, t.target.y,
+        t.target.z, t.eyes.x, t.eyes.y, t.eyes.z, gTargetCalls.load(std::memory_order_relaxed),
+        gTargetGiven.load(std::memory_order_relaxed), reinterpret_cast<std::uintptr_t>(g.targetQuad.subImage.swapchain));
 }
 
 } // namespace mevr::host::omni_rail

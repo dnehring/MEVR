@@ -13,6 +13,7 @@
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #include "plugin/OmniPad.hpp"
+#include "plugin/OmniToolRail.hpp"
 #endif
 #include "plugin/MetricStereo.hpp"
 #include "plugin/CineScreen.hpp"
@@ -812,7 +813,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
         "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n  \"voice\": {},\n"
-        "  \"spectator\": {},\n  \"figure\": {},\n  \"omniPad\": {},\n  \"mod\": {},\n"
+        "  \"spectator\": {},\n  \"figure\": {},\n  \"omniPad\": {},\n  \"omniRail\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
@@ -829,9 +830,9 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         game_pointer::StatusJson(), galaxy_hologram::StatusJson(), voice::StatusJson(), spectator::StatusJson(),
         ui_world_figure::StatusJson(),
 #if defined(MEVR_WITH_MAIN_MENU)
-        omni_pad::StatusJson(),
+        omni_pad::StatusJson(), omni_rail::StatusJson(),
 #else
-        std::string("null"),
+        std::string("null"), std::string("null"),
 #endif
         mod, LayersJson(layers));
 }
