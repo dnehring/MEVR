@@ -305,6 +305,7 @@ struct Swapchain {
     unsigned width = 0;
     unsigned height = 0;
     bool failed = false;
+    std::uint64_t failedMs = 0;  // when it failed: tried again 2 s later (another layer may have let one go)
     bool filled = false;  // a static picture, already in every image
 };
 enum SwapchainId { kPanelChain = 0, kBoardChain, kOrbActiveChain, kOrbHeldChain, kDotChain, kMarkerChain, kChains };
@@ -427,7 +428,7 @@ bool EnsureChain(int id, unsigned width, unsigned height) {
     if (chain.handle != XR_NULL_HANDLE) {
         return true;
     }
-    if (chain.failed) {
+    if (chain.failed && GetTickCount64() - chain.failedMs < 2000) {
         return false;
     }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
@@ -449,12 +450,16 @@ bool EnsureChain(int id, unsigned width, unsigned height) {
         r = xrEnumerateSwapchainImages(chain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
     }
     if (XR_FAILED(r) || count == 0) {
-        log::Error("calibration: {} swapchain {}x{} failed (XrResult {})", ChainName(id), width, height, static_cast<int>(r));
+        if (!chain.failed) {  // logged once; retried quietly every 2 s
+            log::Error("calibration: {} swapchain {}x{} failed (XrResult {}{})", ChainName(id), width, height, static_cast<int>(r),
+                r == XR_ERROR_LIMIT_REACHED ? ": the runtime's limit on layers' swapchains" : "");
+        }
         if (chain.handle != XR_NULL_HANDLE) {
             xrDestroySwapchain(chain.handle);
         }
         chain = {};
         chain.failed = true;
+        chain.failedMs = GetTickCount64();
         return false;
     }
     for (auto const& image : images) {
@@ -581,10 +586,11 @@ void Note(std::string text, std::uint64_t ms = kNoteMs) {
     gRun.noteUntil = Now() + ms;
 }
 
-// The hands' neutral trims (research/25 section 10, the user's idea, 2026-11-06): both arms straight ahead, thumbs up, wrists
-// straight: each relaxed hand's fingers along its arm, from its shoulder (the T pose's grip height, half the measured shoulder
-// width to the side) to its grip, the thumb side up. The T pose checks it: there the same trim should point the fingers out
-// along the arm (a twisted wrist or a hand not straight shows as a large angle; over 35 degrees the hand isn't kept).
+// The hands' neutral trims (research/25 section 10, the user's idea, 2026-11-06): an arm held straight with the wrist straight
+// points the relaxed hand's fingers along it, from the shoulder (the T pose's grip height, half the measured shoulder width to the
+// side) to the grip. Both arm poses measure where the fingers point in each grip's frame (the T pose outward, this step ahead);
+// they must agree (over 35 degrees apart a wrist wasn't straight in one of them and that hand isn't kept), and their mean turns the
+// default hand frame the least way (the roll stays the default hand angle's: the poses can't tell it, research/25 section 10).
 void SolveHandTrims(XrVector3f const& head, XrPosef const& left, XrPosef const& right, float shoulderWidth) {
     constexpr float kMaxCheckDeg = 35.0f;
     XrVector3f const across = cal::AnchorRight(gRun.anchor);
@@ -595,27 +601,31 @@ void SolveHandTrims(XrVector3f const& head, XrPosef const& left, XrPosef const& 
         gRun.handCheckDeg[side].reset();
         XrVector3f const shoulder = cal::ShoulderPoint(head, across, shoulderWidth, shoulderHeight, side);
         XrVector3f const p = grips[side].position;
-        auto const trim = cal::NeutralHandTrim(grips[side].orientation, {p.x - shoulder.x, p.y - shoulder.y, p.z - shoulder.z});
-        if (!trim) {
-            log::Info("calibration: {} hand: no neutral trim (the arm points straight up or down)", side == 0 ? "left" : "right");
+        auto const ahead = cal::FingersInGrip(grips[side].orientation, {p.x - shoulder.x, p.y - shoulder.y, p.z - shoulder.z});
+        if (!ahead) {
             continue;
         }
+        XrVector3f fingers = *ahead;
         if (gRun.haveT) {
             XrVector3f const t = side == 0 ? gRun.tLeft : gRun.tRight;
             XrVector3f const tShoulder = cal::ShoulderPoint(gRun.tHead, across, shoulderWidth, shoulderHeight, side);
-            gRun.handCheckDeg[side] = cal::FingerAngleDeg(gRun.tGrip[side], *trim, {t.x - tShoulder.x, t.y - tShoulder.y, t.z - tShoulder.z});
+            if (auto const out = cal::FingersInGrip(gRun.tGrip[side], {t.x - tShoulder.x, t.y - tShoulder.y, t.z - tShoulder.z})) {
+                gRun.handCheckDeg[side] = cal::DirectionAngleDeg(*ahead, *out);
+                fingers = {ahead->x + out->x, ahead->y + out->y, ahead->z + out->z};
+            }
         }
         bool const kept = !gRun.handCheckDeg[side] || *gRun.handCheckDeg[side] <= kMaxCheckDeg;
+        XrQuaternionf const trim = cal::NeutralHandTrim(fingers, cal::DefaultHandFrame());
         if (kept) {
             gRun.handTrim[side] = trim;
         }
-        log::Info("calibration: {} hand: neutral trim ({}){}{}", side == 0 ? "left" : "right", cal::FormatRotation(*trim),
-            gRun.handCheckDeg[side] ? std::format("; the T pose's fingers {:.1f} deg from the arm", *gRun.handCheckDeg[side])
-                                    : std::string("; no T pose to check it"),
-            kept ? "" : ": not kept (the hand wasn't neutral in one of the poses)");
+        log::Info("calibration: {} hand: neutral trim ({}), {:.1f} deg from the default hand angle; {}{}", side == 0 ? "left" : "right",
+            cal::FormatRotation(trim), cal::AngleDeg(trim, cal::DefaultHandFrame()),
+            gRun.handCheckDeg[side] ? std::format("the arms-ahead and T poses' fingers {:.1f} deg apart", *gRun.handCheckDeg[side])
+                                    : std::string("no T pose to check it"),
+            kept ? "" : ": not kept (a wrist wasn't straight in one of the poses)");
     }
 }
-
 void Captured(std::initializer_list<int> hands) {
     for (int hand : hands) {
         Tick(hand);
@@ -1214,6 +1224,20 @@ void Save() {
     }
     std::string const section = Section(gKey);
     std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
+    // What this run didn't measure keeps the last calibration's (2026-11-06: a run whose aiming board couldn't be shown saved
+    // without the gun stances and erased the player's): its lines, read before the section is cleared, by group.
+    std::vector<std::pair<std::wstring, std::wstring>> previous;
+    if (!path.empty()) {
+        std::wstring buffer(32768, L'\0');
+        DWORD const n = GetPrivateProfileSectionW(Wide(section).c_str(), buffer.data(), static_cast<DWORD>(buffer.size()), path.c_str());
+        for (std::size_t at = 0; at < n;) {
+            std::wstring const line(buffer.c_str() + at);
+            at += line.size() + 1;
+            if (auto const eq = line.find(L'='); eq != std::wstring::npos && !line.empty()) {
+                previous.emplace_back(line.substr(0, eq), line.substr(eq + 1));
+            }
+        }
+    }
     if (!path.empty()) {
         WritePrivateProfileStringW(Wide(section).c_str(), nullptr, nullptr, path.c_str());  // a calibration is a whole
     }
@@ -1259,7 +1283,29 @@ void Save() {
     if (gRun.rifle.valid) {
         WriteStance(section, "rifle", gRun.rifle, gRun.rifleNote);
     }
-    // The time last: the mod reads a section with a time as a calibration.
+    {
+        auto const starts = [](std::wstring const& key, wchar_t const* prefix) { return key.rfind(prefix, 0) == 0; };
+        bool const keepPistol = !gRun.pistol.valid;
+        bool const keepRifle = !gRun.rifle.valid;
+        bool const keepEye = !any.valid;
+        std::string kept;
+        for (auto const& [key, value] : previous) {
+            bool const pistol = keepPistol && starts(key, L"pistol");
+            bool const rifle = keepRifle && starts(key, L"rifle");
+            bool const eye = keepEye && (key == L"eye" || key == L"eyeMeasured");
+            bool const hand = (key == L"handTrimLeft" && !gRun.handTrim[0]) || (key == L"handTrimRight" && !gRun.handTrim[1]);
+            if (pistol || rifle || eye || hand) {
+                WritePrivateProfileStringW(Wide(section).c_str(), key.c_str(), value.c_str(), path.c_str());
+                std::string const group = pistol ? "pistol" : rifle ? "rifle" : eye ? "eye" : "neutral hands";
+                if (kept.find(group) == std::string::npos) {
+                    kept += (kept.empty() ? "" : ", ") + group;
+                }
+            }
+        }
+        if (!kept.empty()) {
+            log::Info("calibration: kept from the last calibration (not measured this time): {}", kept);
+        }
+    }    // The time last: the mod reads a section with a time as a calibration.
     WriteIni(section, "time", std::format("{:04}-{:02}-{:02} {:02}:{:02}", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute));
     WriteIni("Calibration", "last", gKey);
     if (ReadIni("Calibration", "use").empty()) {
@@ -1790,6 +1836,9 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
         Render(frame.context, gGpu.board, dt, [&](ImDrawList* dl) { draw::DrawBoard(dl, gGpu.fonts, board); });
         if (Submit(frame.context, kBoardChain, gGpu.board)) {
             add(Quad(frame.appSpace, kBoardChain, cal::BoardPose(gRun.anchor), cal::kBoardSize, cal::kBoardSize));
+        } else if (aimingNow && gChains[kBoardChain].failed && now >= gRun.noteUntil) {
+            // No board: the aims can't be taken. Say so (Skip keeps the last calibration's aims, Save keeps them too).
+            Say("The targets can't be shown (the headset's runtime has no room for another layer). Skip: your last aims are kept.", true);
         }
     }
     // The orbs: waiting at their rest (orange), or in the hand that holds them (pale), at its grab point. A hand without

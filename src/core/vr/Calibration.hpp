@@ -170,13 +170,17 @@ float ShoulderWidth(XrVector3f const& left, XrVector3f const& right, XrVector3f 
 std::optional<float> ArmLength(float tPoseSpan, float shoulderWidth);
 
 // The hand's neutral trim (the user, 2026-11-06: "when the person has their arms out we would assume the hand would be in the
-// neutral position"): with the arms straight ahead, thumbs up, wrists straight, the relaxed hand's fingers point along the arm
-// (from the shoulder to the grip) and its thumb side is up. The trim takes the grip's orientation to that hand frame (OpenXR
-// axes: -Z the fingers, +Y the thumb side): grip * trim. Nullopt for a degenerate arm (zero, or pointing straight up or down).
-std::optional<XrQuaternionf> NeutralHandTrim(XrQuaternionf const& grip, XrVector3f const& shoulderToGrip,
-    XrVector3f const& up = {0.0f, 1.0f, 0.0f});
-// How far (degrees) the fingers of grip * trim are from `along` (the T pose's cross-check: they should point down the arm).
-float FingerAngleDeg(XrQuaternionf const& grip, XrQuaternionf const& trim, XrVector3f const& along);
+// neutral position"): with an arm straight and the wrist straight, the relaxed hand's fingers point along the arm (from the
+// shoulder to the grip). That fixes where the fingers point in the grip's frame, not the hand's roll about them (a first
+// version also assumed thumbs up, and a player holding palms down got Shepard's palms up), so the roll stays the default hand
+// angle's: the trim is the default hand frame turned the least way that puts its fingers where they were measured. Hand frames
+// in OpenXR grip axes: -Z the fingers, +Y the thumb side; grip * trim is the hand's.
+// The default hand frame: the [Hands] hand angle's 90 / 0 / 0 (ik::GripTrim(90, 0, 0) in these axes: -90 degrees about +X).
+XrQuaternionf DefaultHandFrame();
+// The arm's direction in the grip's own axes (unit); nullopt for a zero arm.
+std::optional<XrVector3f> FingersInGrip(XrQuaternionf const& grip, XrVector3f const& shoulderToGrip);
+// `base` turned the least way so its fingers point along `fingersInGrip`.
+XrQuaternionf NeutralHandTrim(XrVector3f const& fingersInGrip, XrQuaternionf const& base);
 // A shoulder for the neutral trim: the T pose's grip height (the arms along the shoulder line), above the head's floor
 // position, half the shoulder width to the side (`right` horizontal, unit; `side` 0 left, 1 right).
 XrVector3f ShoulderPoint(XrVector3f const& head, XrVector3f const& right, float shoulderWidth, float shoulderHeight, int side);
