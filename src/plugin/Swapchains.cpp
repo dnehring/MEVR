@@ -5,6 +5,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/SwapchainBudget.hpp"
+#include "plugin/MevrMenu.hpp"
 #include "plugin/TestLoop.hpp"
 
 #include <Windows.h>
@@ -96,6 +97,25 @@ void Note(XrSwapchain swapchain, std::uint64_t now) {
     }
 }
 
+// [Debug] swapchainCap in ASI\LE1MEVR.ini (0 off, the default): refuse ours past this many as the runtime would
+// (XR_ERROR_LIMIT_REACHED), so freeing can be tested without filling the runtime. Read every 2 s.
+std::uint32_t TestCap() {
+    static std::uint64_t readMs = 0;
+    static std::uint32_t cap = 0;
+    std::uint64_t const now = GetTickCount64();
+    if (readMs != 0 && now - readMs < 2000) {
+        return cap;
+    }
+    readMs = now;
+    std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
+    std::uint32_t const value = path.empty() ? 0u : GetPrivateProfileIntW(L"Debug", L"swapchainCap", 0, path.c_str());
+    if (value != cap) {
+        log::Info("swapchains: [Debug] swapchainCap = {}{}", value, value != 0 ? ": ours past it are refused as the runtime would" : " (off)");
+        cap = value;
+    }
+    return cap;
+}
+
 struct Victim {
     XrSwapchain handle = XR_NULL_HANDLE;
     std::string name;
@@ -116,14 +136,17 @@ XrResult Create(XrSession session, XrSwapchainCreateInfo const& info, char const
     if (session != gSession) {
         OnSessionCreated(session);
     }
+    std::uint32_t const cap = TestCap();
+    bool capped = false;
     {
         std::lock_guard lock(gMutex);
         auto it = gRefused.find(key);
         if (it != gRefused.end() && !budget::RetryDue(it->second, gFreedMs, GetTickCount64())) {
             return XR_ERROR_LIMIT_REACHED;  // refused just now and nothing freed since: don't ask the runtime every frame
         }
+        capped = cap != 0 && gEntries.size() >= cap;
     }
-    XrResult r = xrCreateSwapchain(session, &info, &handle);
+    XrResult r = capped ? XR_ERROR_LIMIT_REACHED : xrCreateSwapchain(session, &info, &handle);
     std::uint32_t count = 0;
     if (XR_SUCCEEDED(r)) {
         r = xrEnumerateSwapchainImages(handle, 0, &count, nullptr);
@@ -151,7 +174,9 @@ XrResult Create(XrSession session, XrSwapchainCreateInfo const& info, char const
         if (first) {
             log::Error("swapchains: {} {}x{} refused (XrResult {}{}); {} of ours live, {} of Halcyon's seen; ours: {}", key, info.width,
                 info.height, static_cast<int>(r),
-                r == XR_ERROR_LIMIT_REACHED ? ", XR_ERROR_LIMIT_REACHED: the runtime's limit; idle ones are freed at the frame's end" : "",
+                capped                          ? ", by [Debug] swapchainCap; idle ones are freed at the frame's end"
+                : r == XR_ERROR_LIMIT_REACHED   ? ", XR_ERROR_LIMIT_REACHED: the runtime's limit; idle ones are freed at the frame's end"
+                                                : "",
                 gEntries.size(), gForeign.size(), LiveList(now));
         }
         return r;

@@ -4,7 +4,7 @@
 * [BIOEngine.ini's SystemSettings win, the game rewrites them, and a level load re-arms them](system-settings-precedence.md) - DynamicShadows and MotionBlur in GamerSettings.ini are overridden; a loaded level renders with the old values; `scale set` to the stored value changes nothing.
 * [The engine's dynamic vertex and index rings wrap inside a recorded frame](dynamic-ring-wraps-inside-the-recorded-tail.md) - A DISCARD map inside the recorded tail makes the replay draw from garbage: the strobing right eye.
 * [d3d11 swaps per-context vtable entries, so a vtable or single-body hook misses calls](d3d11-per-context-vtable.md) - Draw, clear, copy and dispatch entries move between variants as the context's state changes.
-* [The OpenXR runtime limits a session's swapchains, and ours used to give up on the first refusal](openxr-swapchain-limit.md) - SteamVR's XR_ERROR_LIMIT_REACHED at about 16; one refusal and a dozen quads (the omni-tool's rail, the sights, the calibration's targets) went missing in turn; bitten 2026-11-06.
+* [The OpenXR runtime limits a session's swapchains, and ours used to give up on the first refusal](openxr-swapchain-limit.md) - SteamVR's XR_ERROR_LIMIT_REACHED past 16 a session (12 ours); one refusal and a dozen quads (the omni-tool's rail, the sights, the calibration's targets) went missing in turn; bitten 2026-11-06.
 
 # Engine and threading
 

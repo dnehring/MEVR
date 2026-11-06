@@ -1,7 +1,7 @@
 ---
 type: Gotcha
 title: The OpenXR runtime limits a session's swapchains, and ours used to give up on the first refusal
-description: SteamVR answers xrCreateSwapchain with XR_ERROR_LIMIT_REACHED (-10) at about 16 in a session; each quad of ours made its own, never freed it and stopped trying, so one refusal knocked out a dozen features in turn.
+description: SteamVR answers xrCreateSwapchain with XR_ERROR_LIMIT_REACHED (-10) past 16 in a session, whatever their size; each quad of ours made its own, never freed it and stopped trying, so one refusal knocked out a dozen features in turn.
 tags: [openxr, steamvr, overlays, host]
 status: stable
 timestamp: 2026-11-06T18:30:00Z
@@ -21,9 +21,10 @@ status, the wrist's fan of light and the game pointer's dot were gone too. Each 
 # Cause
 
 xrCreateSwapchain returns XR_ERROR_LIMIT_REACHED when the runtime's own limit is reached; the spec leaves the number to
-the runtime. On SteamVR it was reached with about 16 live in the session (Halcyon's 4: two eyes, its menu, its black
-scene; then ours: the HUD panel, label, wrist status, reticle, power wheel, its hint, the main menu, the calibration's
-panel, orb and hand, and the tap target's first looks) [verify: `tools/swapchain-probe`]. Every owner of ours made its
+the runtime. SteamVR's is 16 a session, a count whatever the size (`tools/swapchain-probe` on SteamVR 2.18.4 with a PS
+VR2: 16 at 64x64, 256x256, 1024x1024 and 2048x2048; a destroyed one is given back at once). Halcyon holds 4 (two eyes,
+its menu, its black scene), so 12 are ours; on 2026-11-06 they were the HUD panel, label, wrist status, reticle, power
+wheel, its hint, the main menu, the calibration's panel, orb and hand, and the tap target's first looks. Every owner of ours made its
 swapchain the first time it showed, kept it for the session, and on a refusal latched `failed` for the session: nothing
 was ever freed, and nothing refused ever asked again.
 
@@ -50,3 +51,4 @@ still better: the tap target's four looks share one (d375fdc); a static picture 
 [2] [core/vr/SwapchainBudget.hpp](../../../src/core/vr/SwapchainBudget.hpp) and its tests (tests/SwapchainBudgetTests.cpp).
 [3] [research/25 section 10](../../../research/25-calibration.md): the calibration's board refused (2026-11-06).
 [4] The OpenXR 1.1 reference page for xrCreateSwapchain: XR_ERROR_LIMIT_REACHED is a listed failure, the limit the runtime's.
+[5] [tools/swapchain-probe](../../../tools/swapchain-probe): the measurement.

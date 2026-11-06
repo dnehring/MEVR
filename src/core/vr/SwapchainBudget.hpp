@@ -9,7 +9,7 @@
 #include <vector>
 
 // The rules plugin/Swapchains follows when the OpenXR runtime refuses a swapchain (XR_ERROR_LIMIT_REACHED; SteamVR's limit is
-// about 16 a session, Halcyon holds 4): which of ours to free for room, and when a refused owner may ask again. Unit-tested
+// 16 a session whatever their size, Halcyon holds 4): which of ours to free for room, and when a refused owner may ask again. Unit-tested
 // (tests/SwapchainBudgetTests.cpp).
 namespace mevr::vr::swapchain_budget {
 

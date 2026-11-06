@@ -1124,7 +1124,7 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **The long forms live in [docs/knowledge/gotchas](docs/knowledge/gotchas/index.md)** (OKF, since 2026-10-30, after
   motion blur bit a third time under a third name): symptom, cause, check, fix in place, the dates each bit. Read it
   when something looks familiar; add the date when it bites again. The bullets below are the short forms.
-- **The runtime limits swapchains** (XR_ERROR_LIMIT_REACHED, -10, about 16 a session on SteamVR, Halcyon holds 4; 2026-11-06:
+- **The runtime limits swapchains** (XR_ERROR_LIMIT_REACHED, -10, past 16 a session on SteamVR whatever their size, `tools/swapchain-probe`; Halcyon holds 4; 2026-11-06:
   the calibration's targets, then the omni-tool's rail, the sights, the galaxy map and eight more went missing one after
   another, each owner having given up for the session): **make every swapchain through `plugin/Swapchains`** (`swapchains::
   Create` with an `evict` that lets go and redraws when made again; rules `core/vr/SwapchainBudget`, unit-tested): a refusal

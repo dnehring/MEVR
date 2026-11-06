@@ -11,8 +11,9 @@
 struct ID3D11Texture2D;
 
 // Every swapchain our quads make (LE1, Halcyon's session), through one place, because the runtime limits them: SteamVR
-// answered XR_ERROR_LIMIT_REACHED with about 16 live in the session (2026-11-06, the user's log; Halcyon holds 4: two
-// eyes, its menu, its black scene), and each owner made its own lazily, never freed it, and gave up for the session on
+// answers XR_ERROR_LIMIT_REACHED past 16 live in a session, whatever their size (tools/swapchain-probe, SteamVR 2.18.4,
+// 2026-11-06; a freed one is given back at once). Halcyon holds 4 (two eyes, its menu, its black scene): 12 are ours.
+// Each owner made its own lazily, never freed it, and gave up for the session on
 // a refusal: after the first refusal (the calibration's board) a dozen features failed one after another (the
 // omni-tool's rail, so the wrist tap "did nothing"; the sights; the galaxy map's eyes; the squad arc...). Here:
 //   - a refused create asks for room: at the end of that frame (the test loop's xrEndFrame, after the runtime's, when no
