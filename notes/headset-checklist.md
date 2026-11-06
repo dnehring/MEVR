@@ -75,7 +75,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   pulse in the left hand. With no omni-gel or cooling down, two buzzes and the shelf's squares red; a click begun off the
   lever does nothing. Is the click easy to find while driving, and never pressed by accident? (research/48 section 27 "The
   repair on the throttle", built 2026-11-05)
-- [ ] Extraction handle overhead: grab it with a new squeeze (never fires the cannon or boosts), pull it toward you, hold
+- [ ] Extraction handle overhead: grab it with a new squeeze (never fires the cannon or boosts), pull it down about 5 cm
+  (as its arrows point; pushing up does nothing since 2026-11-05: the model swings 10 degrees down, the bar about 1 cm), hold
   at the end: the "Return to Normandy?" box shows at the windshield with the cockpit still around you, and takes a
   click, a touch, A and B. Say whether the handle swings the right way and its label reads from the seat. Shepard's hand
   closes on the bar and follows its swing; pressing the button, Shepard's index points. (research/48 section 27, hands built
@@ -301,8 +302,8 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Gun: the muzzle through a wall doesn't shoot through it; camera modes' hook-bone gap near 0. (research/14, 18)
 - Wheels: the weapon and power wheels' crops in snapshots. (research/15)
 - Sights: a snapshot per gun model under an ADS replay (window ring, scope picture, the sniper's lens glow); the near
-  plane's log line. (research/21 sections 13-16) The assault rifle's window under that replay (the right eye's snapshot shows
-  the target through the housing), and what moves in the tick the support grip's aimed fire switches. (research/21 section 17)
+  plane's log line. (research/21 sections 13-16) What moves in the tick the support grip's aimed fire switches (needs the
+  game window focused, or the pad never reaches it). (research/21 section 17; the window itself checked 2026-11-05)
 - Scope capture: picture checks against `scopeCapture = 0`, the frame checks under two Draws and `sharePass 5`, the cost
   and the dark speckle at the heavy cell. (research/39)
 - Level camera under a firing replay; the logs of comfort, colour, the main menu and life-size stereo. (research/24, 27,
