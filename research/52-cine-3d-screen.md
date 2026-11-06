@@ -189,6 +189,14 @@ Two things the game turned up: SteamVR refuses a swapchain of plain `R8G8B8A8_UN
 snapshots 0.95 s and 1.27 s into it show the fade quad among the submitted layers and the whole view (screen, floor, sky)
 dimmed evenly, the left eye's mean brightness 8.6 then 22.4.
 
+**The settle after a scene, measured** (the same run, 15:10:34-15:12:34, `perf-probe.py --per-second`, the Normandy approach
+conversation stepped to its end with `mevr convo pick 0` / `skip`; the other session's compilers had finished): the switch to
+the world at 15:12:28 cost one dip (118-119 frames in the two seconds around it against 139: about 0.15 s, which the fade's 40 ms
+hold and 0.35 s ease now cover), and from the next second on the frames ran at full rate, the game thread down at once from
+6.9 ms (the conversation) to 2.2 ms (gameplay), render 3 ms, GPU 2 ms. No several-second recovery: the climb the owner saw
+(52, 70, 87, 90 fps over ~6 s after the 10:08 cutscene) came with Halcyon's 45 fps cap letting go (gone with `fullRate`) and a
+combat starting (`StartCombat`). [verify] in the headset after a cutscene that starts a fight.
+
 ## The dialogue wheel at its authored size (2026-11-04)
 
 A `[MEVR]` seam in `xr_session.cpp` gives the conversation movie the identity transform (`Pchud::SetConvoTransform(true, 1,
