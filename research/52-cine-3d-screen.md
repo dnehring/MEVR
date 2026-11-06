@@ -180,7 +180,14 @@ into the new view (smoothstep) over `[Cinematics] fadeS` (0.35 s; 0 off, read li
 and a cinematic's flat movie, any direction; menus and the other flat panels keep their cut (`core/vr/TransitionFade`,
 unit-tested). The host draws it as the frame's last layer, a 16 x 16 black swapchain cleared to the opacity on a quad 8 m
 across 0.5 m in front of the eyes in VIEW space (`plugin/TransitionFade`, the `[MEVR]` seam just before `xrEndFrame` in
-xr_session.cpp; `kMaxLayers` 17). Log `transition fade:`. Built, not yet seen in the game.
+xr_session.cpp; `kMaxLayers` 17). Log `transition fade:`.
+
+Checked on the fake headset (2026-11-06 15:03-15:10): it fires at the start-up's flat boot to the title on the screen, at the
+screen to a load's flat panel and back, and at a conversation's end to the world (15:06:50.80, the frame of the switch).
+Two things the game turned up: SteamVR refuses a swapchain of plain `R8G8B8A8_UNORM` (XrResult -26, format unsupported; the
+`_SRGB` one is made), and its images are then typeless, so the render target view names the format. With a 2 s test fade the
+snapshots 0.95 s and 1.27 s into it show the fade quad among the submitted layers and the whole view (screen, floor, sky)
+dimmed evenly, the left eye's mean brightness 8.6 then 22.4.
 
 ## The dialogue wheel at its authored size (2026-11-04)
 

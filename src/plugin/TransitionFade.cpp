@@ -77,7 +77,7 @@ bool Ensure(ID3D11Device* device, XrSession session) {
     if (gFailed && !mevr::host::swapchains::RetryDue(gFailedMs)) return false;
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-    info.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    info.format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;   // SteamVR refuses the plain UNORM format for swapchains (XrResult -26)
     info.sampleCount = 1;
     info.width = kSize;
     info.height = kSize;
@@ -91,8 +91,11 @@ bool Ensure(ID3D11Device* device, XrSession session) {
     }
     gFailed = false;
     gTargets.resize(gImages.size());
+    D3D11_RENDER_TARGET_VIEW_DESC rd{};
+    rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;   // the runtime's images are typeless: the view names the format
+    rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
     for (size_t i = 0; i < gImages.size(); ++i) {
-        if (FAILED(device->CreateRenderTargetView(gImages[i], nullptr, gTargets[i].GetAddressOf()))) {
+        if (FAILED(device->CreateRenderTargetView(gImages[i], &rd, gTargets[i].GetAddressOf()))) {
             mevr::log::Error("transition fade: no render target on the swapchain's image {}; no fades", i);
             Destroy();
             gFailed = true;
