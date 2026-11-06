@@ -645,15 +645,61 @@ Built from section 11's finding (the user: "Yes, please proceed").
   numbers), `mevr-loader` (the stand-in Bink with `BinkOpenMiles`: all 80 names resolve), and the fake game
   (`tools/setup/test-fake-game.ps1`, with a `Game\Launcher` of a stand-in launcher and LE2's RAD Bink: install, status,
   "verify files" then Repair, uninstall byte for byte: every check passes).
-- **Not yet in the game:** Steam's arguments dialog from section 11 was still waiting for a click, so no launch through
-  Steam could run. Next: the release zip again on the vanilla game, Launch, the two loader logs and the game's own.
+- **In the game:** section 13 (Launch through Steam to gameplay, the same day).
+
+## 13. Launch on the real game: one click into gameplay (2026-11-05)
+
+The user cleared Steam's waiting dialog (section 11) and said to run it. The release zip of `be5144f` (`0.1.0+be5144ff21`,
+packaged with `-SkipTests` after a ctest failure in the packaging run that didn't come back: all 7 suites passed on the same
+`build-mono` right after; the failing test's name fell outside the captured output) on the Steam game made vanilla by
+Steam's "verify files" (3 files back: the launcher's and the game's Bink, the TOC; identical to section 11's vanilla). The
+dev deploy's logs folders (`Win64\Logs`, `Game\Launcher\Logs`, LEBinkProxy's) were moved aside too, so the install met the
+folders a new player has.
+
+- **Install** (`MEVR-Setup.exe --install`, 1.1 s): as section 11, plus `Game/Launcher/bink2w64.dll` renamed to
+  `bink2w64_original.dll` with ours in its place and `Game/Launcher/Logs/MEVRLoader.log` recorded. `--status`: `launcher:
+  our loader starts Mass Effect 1 for Launch`.
+- **Launch** (`MEVR-Setup.exe --launch` from a scheduled task; the fake headset on, SteamVR stopped first so Setup had to
+  start it): SteamVR up at once (`vrserver` 0.7 s after the start), then Steam asked for `-applaunch 1328670 -game 1
+  -autoterminate`. No dialog. At 7.8 s `MassEffectLauncher.exe -locale {locale}  -game 1 -autoterminate` (child of
+  `EASteamLauncher.exe`), at 8.6 s `MassEffect1.exe -NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 20
+  -OVERRIDELANGUAGE=INT` as the launcher's child, and the launcher gone. `{locale}` is literal, as the real launcher and
+  LEBinkProxy pass it (`launcher_args.h`). The launcher's log, whole:
+
+      19:36:05.938 MEVR ASI loader (bink2w64.dll proxy, SPI 3) in MassEffectLauncher.exe
+      19:36:05.948 -game 1: started Mass Effect 1 (pid 69132) with -NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 20 -OVERRIDELANGUAGE=INT
+      19:36:05.948 -autoterminate: the launcher ends
+
+  The game's `MEVRLoader.log`: the ASI loaded after the DRM (`256 of 256 samples differ from the file; 1 polls, 0 ms`), every
+  host hook in place by 19:36:10; `LE1MEVR.log`: `MEVR 0.1.0 (monolithic, commit be5144ff21)`, `47 of 47 addresses at their
+  RVAs`, `no LExSDKv2 cross-check in this build`. `tools/launch-game.ps1 -Attach` pressed Enter at the title (6 times) and the
+  save was in gameplay at 19:37:48, 1 min 43 s after Setup's start; a snapshot showed the world in stereo on the headset.
+  The saves were unchanged afterwards (the 24 files' hashes).
+- **Uninstall** after the session: everything recorded removed or renamed back, `Game\Launcher\Logs` and `Win64\Logs` (made
+  by our loader) removed, and the game byte for byte the vanilla one **except `BIOEngine.ini`**: the game wrote Setup's
+  resolution into its `[SystemSettings]` during play (`ResX=2344`, `ResY=2392` before, `3072`/`3188` after: the
+  Performance size Setup put in GamerSettings.ini). Setup edits only `SmoothFrameRate` there, so nothing recorded it. The
+  game keeps that section as its own copy of the system settings (floats as `0.500000`; `UseVsync` there stays `True`
+  while GamerSettings says `False`, so not every key is copied); the mod's `scale set` values (`DynamicShadows`, `MotionBlur`,
+  `FoliageDrawRadiusMultiplier`) land there the same way (CLAUDE.md: the game rewrites the file after every `scale set`).
+  This dev machine's file already held those three, so only the resolution showed; a new player's would keep all of them.
+  The fix (not built yet): Setup sets the same keys in `BIOEngine.ini`'s `[SystemSettings]` as recorded edits, as
+  `tools/vr-game-settings.ps1` already does for three of them, in the game's own spelling (`0.500000`), so Uninstall's
+  `ini::Revert` puts back what the game copied.
+- **Smaller findings.** Our loader opens `MEVRLoader.log` with `_wfopen_s` (no sharing): nothing can read it while the game
+  runs (fix: `_wfsopen` with `_SH_DENYWR`). `--launch` on the Steam path prints `started (pid 0)` (Steam starts the game,
+  so there is no pid). `LE1MEVR.log` has six first-chance access violations before the session started (three each at
+  `LE1MEVR.asi+0x7F6DC6` and `+0x77EB0D`, handled), not looked into.
+- **The dev setup** went back byte for byte (the record of 9,311 files, hashes of everything Setup can touch).
 
 ## Open
 
-- **[verify]** In the game: our loader in place of LEBinkProxy (attach timing, Halcyon's DXGI hook, the log); the
-  launcher autoboot of section 12 (built, checked on the fake game); the EA app build; "Install after I quit" end to end; "Start the game once"
-  (section 9). Settled in section 11: a direct start of the Steam build hands back to Steam's arguments prompt; Launch's
-  SteamVR start works; install, verify then Repair, and uninstall on the real game.
+- **[verify]** In the game: the EA app build; "Install after I quit" end to end; "Start the game once" (section 9).
+  Settled in sections 11 and 13: a direct start of the Steam build hands back to Steam's arguments prompt; install, verify
+  then Repair, and uninstall on the real game; Launch through Steam (SteamVR, the launcher's autoboot, our loader in the
+  game, gameplay on the fake headset).
+- **To fix** (section 13): `BIOEngine.ini`'s `[SystemSettings]`, which the game fills from the VR settings during play, isn't
+  restored by Uninstall; the loader's log can't be read while the game runs.
 - **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,
   MEM's download, unpacking and a real pack install on a real game.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).
