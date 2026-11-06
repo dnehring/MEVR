@@ -81,6 +81,10 @@ bool CockpitLook() noexcept;
 // after a head-tracked world frame, while the panel is on.
 bool HudPanelArmed() noexcept;
 
+// Present thread, when the XR session stops, is lost or exits (Halcyon's event poll; RunFrame no longer runs):
+// the HUD panel disarmed, so the game's UI draws go back to the frame for the monitor.
+void OnSessionStopped() noexcept;
+
 // Render thread, for one UI draw into a `width` x `height` target whose render target view has
 // DXGI format `format`: the panel texture's render target (made or remade on demand), or nullptr if
 // it can't take the draw (the draw then goes to the frame as before).

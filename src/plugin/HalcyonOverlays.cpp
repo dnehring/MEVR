@@ -1403,6 +1403,10 @@ bool HudPanelArmed() noexcept {
     return gArmed.load(std::memory_order_acquire);
 }
 
+void OnSessionStopped() noexcept {
+    gArmed.store(false, std::memory_order_release);  // no OverlayLayers runs now to disarm it: the UI back to the frame
+}
+
 ID3D11RenderTargetView* HudPanelTarget(ID3D11DeviceContext* context, unsigned width, unsigned height, int format) noexcept {
     DXGI_FORMAT const fmt = static_cast<DXGI_FORMAT>(format);
     if (gPanel.texture != nullptr && gPanel.width == width && gPanel.height == height && gPanel.format == fmt) {

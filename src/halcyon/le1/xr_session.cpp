@@ -748,6 +748,16 @@ bool CreateSessionAndSwapchains()
     return true;
 }
 
+// [MEVR] The session stopped, was lost or is exiting: RunFrame (the only caller of SetSfrEnabled and of the
+// overlays that arm the HUD panel) no longer runs, so stereo and the HUD redirect stayed on for the monitor
+// (Codex review 2026-11-06, halcyon#4).
+void MevrStandDown() noexcept
+{
+    MELEVR::RenderHook::SetSfrEnabled(false, 0.0f);
+    MELEVR::MevrBridge::OnSessionStopped();
+    LogLine("[XR] [MEVR] session stood down: stereo off, HUD panel disarmed");
+}
+
 void PollEvents()
 {
     for (;;)
@@ -779,11 +789,13 @@ void PollEvents()
                 g_fn.endSession(g_session);
                 g_sessionRunning = false;
                 g_mevrEarlyFsPending = false;   // [MEVR] the waited frame dies with the session
+                MevrStandDown();                // [MEVR] RunFrame stops: nothing else would disarm these
             }
             else if (g_sessionState == XR_SESSION_STATE_EXITING_VALUE ||
                      g_sessionState == XR_SESSION_STATE_LOSS_PENDING_VALUE)
             {
                 g_shutdown.store(true);
+                MevrStandDown();                // [MEVR]
             }
         }
     }

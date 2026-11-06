@@ -1694,7 +1694,9 @@ void FirstPersonTick(bool ctrlLive, bool ctrlStable, int gameMode) noexcept
         if (g_fpOwnedCount > 0) FpRestoreAll();
         if (g_fpHidesDirty && ctrlLive)
         {
-            if (FpApplyHides(false, false)) { g_fpHidesDirty = false; LogLine(inSaveMenu ? "[FPHIDE] cleared (save menu - FP stood down)" : "[FPHIDE] cleared (fp disabled)"); }
+            // [MEVR] Reset the signature as the other clear branches do: else returning with the same pawn and
+            // equipment matched the old signature and the hides were never put back (Codex review, halcyon#6).
+            if (FpApplyHides(false, false)) { g_fpHidesDirty = false; g_fpHideSig = 0; g_fpActiveFrames = 0; LogLine(inSaveMenu ? "[FPHIDE] cleared (save menu - FP stood down)" : "[FPHIDE] cleared (fp disabled)"); }
         }
         g_fpHideGrace = 0;
         return;

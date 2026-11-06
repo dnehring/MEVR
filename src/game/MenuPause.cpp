@@ -70,12 +70,17 @@ void Tick(Link const& link) {
         gPaused = false;
     } else if (wanted && !gPaused && !gWasOpen) {
         // Once each time it's wanted (the menu opens, or the toggle goes on), and only where the player is in control.
+        // In any other mode it waits for one: the menu opened over a weapon or power wheel closes the wheel (the
+        // controllers go to the menu) and the game comes back to mode 0, which tried nothing until 2026-11-06 and left
+        // the game running behind the menu (Codex review, gameM#3).
         std::optional<unsigned char> const mode = head_tracking::GameMode();
         if (mode && (*mode == 0 || *mode == 1)) {
             gPaused = Pause(true, "the main menu is open");
+            gWasOpen = true;  // tried: a failed call isn't repeated every tick
         } else {
-            gLast = std::format("not paused: game mode {}", mode ? static_cast<int>(*mode) : -1);
+            gLast = std::format("not paused yet: game mode {}", mode ? static_cast<int>(*mode) : -1);
         }
+        return;
     }
     gWasOpen = wanted;  // "wanted last tick": a new opening or the toggle turned on tries again
 }

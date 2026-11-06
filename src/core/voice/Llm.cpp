@@ -70,6 +70,21 @@ void CaptureLog(ggml_log_level level, char const* text, void*) {
     }
 }
 
+// A path as UTF-8 (what llama.cpp and ggml take), never path::string(): that throws for a character outside the ANSI code
+// page, and here on the model's worker thread it ended the game (Codex review 2026-11-06, core#1).
+std::string Utf8(std::filesystem::path const& path) {
+    std::wstring const& wide = path.native();
+    if (wide.empty()) {
+        return {};
+    }
+    int const n = WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+    std::string out(static_cast<std::size_t>(n > 0 ? n : 0), '\0');
+    if (n > 0) {
+        WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), out.data(), n, nullptr, nullptr);
+    }
+    return out;
+}
+
 }  // namespace
 
 struct Runner::Impl {
@@ -165,13 +180,13 @@ bool Runner::Load(std::filesystem::path const& libraryDir, std::filesystem::path
     // from a folder; without this call no backend exists and no model loads.
     if (HMODULE const ggml = GetModuleHandleW(L"ggml.dll")) {
         auto const loadAll = reinterpret_cast<void (*)(char const*)>(GetProcAddress(ggml, "ggml_backend_load_all_from_path"));
-        std::string const dir = std::filesystem::absolute(libraryDir, ec).string();
+        std::string const dir = Utf8(std::filesystem::absolute(libraryDir, ec));
         if (loadAll != nullptr) loadAll(dir.c_str());
     }
     a.backend_init();
     llama_model_params mp = a.model_default_params();
     mp.n_gpu_layers = 0;  // the GPU is the VR frame's (research/54)
-    std::string const path = std::filesystem::absolute(model, ec).string();
+    std::string const path = Utf8(std::filesystem::absolute(model, ec));  // llama.cpp takes UTF-8 paths
     gLastLogError.clear();
     impl_->model = a.model_load_from_file(path.c_str(), mp);
     if (impl_->model == nullptr) return fail("the model didn't load from " + path + (gLastLogError.empty() ? "" : ": " + gLastLogError));
