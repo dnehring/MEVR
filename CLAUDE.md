@@ -251,9 +251,11 @@ switching frameworks.
   and after two tries the agreeing pair is kept (`vr::calibration::AimSet`; rifle 4.5 degrees, pistol 3; research/25
   section 9); a cyan ring marks each hand's grab point (`[Calibration] grabOffset`). Solved in `core/vr/Calibration` (unit-tested): the gun frame (eye-to-target line, level) in
   the right GRIP frame, the line's offset from the grip, the eye, the rifle's foregrip, left trim and stock; **each empty
-  hand's neutral trim** (research/25 section 10, 2026-11-06: arms ahead, thumbs up, wrists straight, the fingers along shoulder
-  to grip, the thumb side up, checked against the T pose; `handTrimLeft`/`handTrimRight`; arm IK's empty hand is grip * trim,
-  the `[Hands]` hand angle a fine trim around its 90/0/0 default, `hand_calibration::FineTrim`).
+  hand's neutral trim** (research/25 section 10, 2026-11-06: the T pose and arms ahead, wrists straight, put the fingers along
+  shoulder to grip; the two must agree within 35 degrees; the default hand frame turned the least way onto them, the roll the
+  default's (a thumbs-up rule rolled hands palm up); `handTrimLeft`/`handTrimRight`; arm IK's empty hand is grip * trim, the
+  `[Hands]` hand angle a fine trim around its 90/0/0 default, `hand_calibration::FineTrim`). A save keeps the last calibration's
+  groups this run didn't measure (gun stances, eye, hands).
   Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` in `ASI\LE1MEVR.ini`;
   `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
   moved onto the calibrated line (`gunShift`, the assist on top), the foregrip point takes the left grip,
@@ -1122,6 +1124,9 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **The long forms live in [docs/knowledge/gotchas](docs/knowledge/gotchas/index.md)** (OKF, since 2026-10-30, after
   motion blur bit a third time under a third name): symptom, cause, check, fix in place, the dates each bit. Read it
   when something looks familiar; add the date when it bites again. The bullets below are the short forms.
+- **The runtime limits swapchains** (XR_ERROR_LIMIT_REACHED, -10; SteamVR, 2026-11-06: the calibration's target board failed,
+  no targets, its aims lost): ours are made lazily and never freed, so share one swapchain between a quad's looks and log a
+  failed create (research/25 section 10).
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
 - An inline `python - <<'EOF'` loses one backslash of every pair (the Bash tool); write scripts with backslashes to a file.
 - `Windows.h` macros eat ordinary names (`SetProp`, `far`, `near`, `min`, `max`): don't name ours after them; build `build-mono/` too.

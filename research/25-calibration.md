@@ -291,23 +291,40 @@ when the person has their arms out we would assume the hand would be in the neut
 for both hands (mirrored), tuned by eye; the calibration never measured it, and the grip pose's axes differ between controllers
 and runtimes.
 
-**The rule.** With both arms straight ahead, level, a shoulder-width apart, thumbs up and wrists straight (the step's text now
-asks for that), each relaxed hand's fingers point along its arm and its thumb side is up. The arm runs from the shoulder (at the
-T pose's grip height, the arms then lying along the shoulder line, half the measured shoulder width to the side) to the grip.
-The trim is `conj(grip) * LookRotation(shoulder to grip, up)`: the hand frame in OpenXR axes, -Z the fingers, +Y the thumb
-side (`vr::calibration::NeutralHandTrim`, `ShoulderPoint`, unit-tested in `TestCalibration`). Thumb up is the forearm's
-anatomical neutral and how controllers are held with the arms ahead; the fingers' direction alone can't give the roll.
+**The first rule (3b5bc93) assumed thumbs up, and was wrong.** It took the hand frame from the arms-ahead pose: fingers along
+the arm, thumb side up ("thumbs up, wrists straight" on the panel). The user's run (09:49, PS VR2 as Touch over SteamVR): the
+fingers' direction checked out (the T pose's within 5.5 and 6.3 degrees of the arm), but the hands came out palm up when held
+neutral: the solved trims were handPitch 55-56, handYaw -22 / -7, **handRoll 99 / 71**, against the working 0. The arms' poses
+fix where the fingers point in the grip's frame, never the hand's roll about them, and nobody reliably holds a roll on request
+(palms down there turns everything 90 degrees).
 
-**The check.** The T pose shows the same hand pointing out along the arm: the same trim must point the fingers there
-(`FingerAngleDeg`). Over 35 degrees the hand wasn't neutral in one of the poses (a bent or twisted wrist) and that hand's trim
-isn't kept. Logs `calibration: <left|right> hand: neutral trim (...); the T pose's fingers N deg from the arm`.
+**The rule now.** Each arm pose (the T pose outward, the arms-ahead step forward), held straight with the wrist straight, puts
+the relaxed hand's fingers along the arm, from the shoulder (the T pose's grip height, half the measured shoulder width to the
+side) to the grip; in the grip's own axes that is a direction (`vr::calibration::FingersInGrip`). The two must agree (over 35
+degrees apart a wrist wasn't straight in one of them: that hand isn't kept); their mean turns the default hand frame (the hand
+angle's 90 / 0 / 0, `DefaultHandFrame`: -90 degrees about the grip's +X) the least way (`NeutralHandTrim`, unit-tested), so the
+roll stays the default's. The panel asks only for straight wrists. On the 09:49 data this gives handPitch 55-56, handYaw -22 /
+-7, handRoll 22 / 7 (the minimal turn's roll with the yaw): 34 degrees from 90 / 0 / 0, the roll near the default's. Logs
+`calibration: <left|right> hand: neutral trim (...), N deg from the default hand angle; the arms-ahead and T poses' fingers M deg
+apart`.
 
-**Kept and used.** `handTrimLeft` / `handTrimRight` (x, y, z, w) in `[Calibration.<key>]`, per controller type like
-the rest. `game/BodyCalibration` reads them (`HandTrim`), and arm IK's empty hand is `grip * handTrim` turned into the hand
-bone as before (`ik::HandFromGrip`), with the `[Hands]` hand angle as a fine trim around its default
-(`hand_calibration::FineTrim`: identity at 90 / 0 / 0, so the menu's hand angle still nudges it). A hand holding a gun keeps
-its stance's trim (section 3). No calibration, or one from before this: the hand angle alone, as before.
+**Kept and used.** `handTrimLeft` / `handTrimRight` (x, y, z, w; the hand frame in the grip's OpenXR axes, -Z the fingers, +Y the
+thumb side) in `[Calibration.<key>]`, per controller type. `game/BodyCalibration` reads them (`HandTrim`); arm IK's empty hand is
+`grip * handTrim` turned into the hand bone as before (`ik::HandFromGrip`), with the `[Hands]` hand angle as a fine trim around
+its default (`hand_calibration::FineTrim`: identity at 90 / 0 / 0). A hand holding a gun keeps its stance's trim (section 3).
 
-**Unchecked.** The user's recordings hold one incidental frame with both arms ahead (its solve was 35-52 degrees from 90 / 0 / 0:
-one unposed frame says nothing). [verify] in the headset: calibrate again, read the two log lines (the T pose's angle), and
-see whether the empty hands sit naturally on the controllers without touching the hand angle.
+**What a run doesn't measure is kept** (2026-11-06, `Save`). The same 09:49 run's aiming board couldn't be shown (below), so no
+aim was taken, and the save (which clears the section: "a calibration is a whole") erased the player's pistol and rifle stances.
+Now the section's previous lines are read first and the groups this run didn't measure are written back (`pistol*`, `rifle*`,
+`eye`/`eyeMeasured`, `handTrimLeft`/`Right`); log `calibration: kept from the last calibration (not measured this time): ...`.
+
+**The board that wasn't there.** `calibration: calibration-board swapchain 1024x1024 failed (XrResult -10)`: XR_ERROR_LIMIT_REACHED,
+the runtime (SteamVR) refusing one more swapchain; the held orb's failed too, and the galaxy hologram's eye 90 s later. Our
+overlays create their swapchains lazily and never free them, and the session had made at least ten of ours (HUD, label, wrist,
+reticle, power wheel and hint, main menu, calibration panel, orb, hand ring) plus the omni-tool tap target's four (one per look,
+2026-11-05) and Halcyon's own. The target now shares one swapchain between its looks; the calibration's images retry every 2 s
+after a failure (logged once, naming the limit) and the aiming steps say on the panel that the targets can't be shown (Skip keeps
+the last aims). The runtime's limit itself is [verify]; a budget for our swapchains (or freeing idle ones) is open.
+
+[verify] in the headset: calibrate again (wrists straight), read the two hand lines, and see whether the empty hands sit
+naturally on the controllers without touching the hand angle.

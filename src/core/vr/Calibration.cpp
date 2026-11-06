@@ -504,17 +504,36 @@ float ShoulderWidth(XrVector3f const& left, XrVector3f const& right, XrVector3f 
     return static_cast<float>(std::abs(Dot(From(right) - From(left), across)));
 }
 
-std::optional<XrQuaternionf> NeutralHandTrim(XrQuaternionf const& grip, XrVector3f const& shoulderToGrip, XrVector3f const& up) {
-    auto const hand = LookRotation(shoulderToGrip, up);
-    if (!hand) {
-        return std::nullopt;
-    }
-    return Normalize(Multiply(Conjugate(Normalize(grip)), *hand));
+XrQuaternionf DefaultHandFrame() {
+    float const half = -0.25f * 3.14159265f;  // -90 degrees about +X
+    return {std::sin(half), 0.0f, 0.0f, std::cos(half)};
 }
 
-float FingerAngleDeg(XrQuaternionf const& grip, XrQuaternionf const& trim, XrVector3f const& along) {
-    XrVector3f const fingers = Rotate(Normalize(Multiply(Normalize(grip), trim)), {0.0f, 0.0f, -1.0f});
-    return DirectionAngleDeg(fingers, along);
+std::optional<XrVector3f> FingersInGrip(XrQuaternionf const& grip, XrVector3f const& shoulderToGrip) {
+    auto const along = Unit(From(shoulderToGrip));
+    if (!along) {
+        return std::nullopt;
+    }
+    return Rotate(Conjugate(Normalize(grip)), To(*along));
+}
+
+XrQuaternionf NeutralHandTrim(XrVector3f const& fingersInGrip, XrQuaternionf const& base) {
+    V const from = From(Rotate(Normalize(base), {0.0f, 0.0f, -1.0f}));
+    auto const to = Unit(From(fingersInGrip));
+    if (!to) {
+        return Normalize(base);
+    }
+    // The shortest arc from `from` to `to` (both unit); opposite directions turn about any perpendicular.
+    double const d = Dot(from, *to);
+    XrQuaternionf turn;
+    if (d < -0.999999) {
+        V const axis = Unit(Cross(from, {1.0, 0.0, 0.0})).value_or(Unit(Cross(from, {0.0, 1.0, 0.0})).value_or(V{0.0, 0.0, 1.0}));
+        turn = {static_cast<float>(axis.x), static_cast<float>(axis.y), static_cast<float>(axis.z), 0.0f};
+    } else {
+        V const c = Cross(from, *to);
+        turn = Normalize({static_cast<float>(c.x), static_cast<float>(c.y), static_cast<float>(c.z), static_cast<float>(1.0 + d)});
+    }
+    return Normalize(Multiply(turn, Normalize(base)));
 }
 
 XrVector3f ShoulderPoint(XrVector3f const& head, XrVector3f const& right, float shoulderWidth, float shoulderHeight, int side) {

@@ -122,7 +122,9 @@ struct State {
     Settings settings;
     std::uint64_t settingsMs = 0;
     // The tap's target (rail::TargetLookFor): one small static swapchain per look, faint / near / armed / pressed.
-    Swapchain target[4];
+    Swapchain target;                         // one for all four looks (EnsureTarget)
+    ComPtr<ID3D11Texture2D> targetSource[4];  // each look's picture
+    int targetDrawn = -1;                     // the look the swapchain holds
     XrCompositionLayerQuad targetQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
     bool targetShown = false;
     bool onBody = false;  // the tap on Shepard's drawn arm this frame
@@ -357,73 +359,86 @@ std::vector<std::uint32_t> TargetPixels(int look) {
     return pixels;
 }
 
+// One swapchain for all four looks (the runtime's swapchains are limited: on 2026-11-06 the calibration's board failed with
+// XR_ERROR_LIMIT_REACHED and showed no targets, when this target had taken up to four, one per look). Each look's picture is a
+// small immutable texture; a change of look copies it into the swapchain once.
 bool EnsureTarget(XrSession session, ID3D11Device* device, ID3D11DeviceContext* context, int look) {
-    Swapchain& chain = g.target[look];
-    if (chain.handle != XR_NULL_HANDLE) {
-        return true;
-    }
+    Swapchain& chain = g.target;
     if (chain.failed) {
         return false;
     }
-    XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-    info.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
-    info.format = kSwapchainFormat;
-    info.sampleCount = 1;
-    info.width = kTargetPixels;
-    info.height = kTargetPixels;
-    info.faceCount = 1;
-    info.arraySize = 1;
-    info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &chain.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(chain.handle, 0, &count, nullptr);
+    if (chain.handle == XR_NULL_HANDLE) {
+        XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+        info.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+        info.format = kSwapchainFormat;
+        info.sampleCount = 1;
+        info.width = kTargetPixels;
+        info.height = kTargetPixels;
+        info.faceCount = 1;
+        info.arraySize = 1;
+        info.mipCount = 1;
+        XrResult r = xrCreateSwapchain(session, &info, &chain.handle);
+        std::uint32_t count = 0;
+        if (XR_SUCCEEDED(r)) {
+            r = xrEnumerateSwapchainImages(chain.handle, 0, &count, nullptr);
+        }
+        std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
+        if (XR_SUCCEEDED(r) && count > 0) {
+            r = xrEnumerateSwapchainImages(chain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+        }
+        if (XR_FAILED(r) || count == 0) {
+            log::Error("omni-tool rail: the tap target's swapchain failed (XrResult {}); no target", static_cast<int>(r));
+            if (chain.handle != XR_NULL_HANDLE) {
+                xrDestroySwapchain(chain.handle);
+            }
+            chain = {};
+            chain.failed = true;
+            return false;
+        }
+        for (auto const& image : images) {
+            chain.images.push_back(image.texture);
+        }
+        testloop::NameSwapchain(chain.handle, "omnitarget");
+        g.targetDrawn = -1;
     }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(chain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+    if (look == g.targetDrawn) {
+        return true;
     }
     std::vector<std::uint32_t> const pixels = TargetPixels(look);
-    D3D11_TEXTURE2D_DESC td{};
-    td.Width = kTargetPixels;
-    td.Height = kTargetPixels;
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_IMMUTABLE;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA data{pixels.data(), kTargetPixels * 4, 0};
-    ComPtr<ID3D11Texture2D> source;
-    bool ok = XR_SUCCEEDED(r) && count > 0 && SUCCEEDED(device->CreateTexture2D(&td, &data, source.GetAddressOf()));
-    for (std::uint32_t i = 0; ok && i < count; ++i) {
-        XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-        std::uint32_t index = 0;
-        XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
-        wait.timeout = XR_INFINITE_DURATION;
-        ok = XR_SUCCEEDED(xrAcquireSwapchainImage(chain.handle, &acquire, &index)) &&
-             XR_SUCCEEDED(xrWaitSwapchainImage(chain.handle, &wait)) && index < count;
-        if (ok) {
-            context->CopyResource(images[index].texture, source.Get());
+    if (!g.targetSource[look]) {
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = kTargetPixels;
+        td.Height = kTargetPixels;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_IMMUTABLE;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA data{pixels.data(), kTargetPixels * 4, 0};
+        if (FAILED(device->CreateTexture2D(&td, &data, g.targetSource[look].GetAddressOf()))) {
+            return false;
         }
-        XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-        xrReleaseSwapchainImage(chain.handle, &release);
     }
-    if (!ok) {
-        log::Error("omni-tool rail: the tap target's image {} failed (XrResult {}); no target", look, static_cast<int>(r));
-        if (chain.handle != XR_NULL_HANDLE) {
-            xrDestroySwapchain(chain.handle);
-        }
-        chain = {};
-        chain.failed = true;
+    XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    std::uint32_t index = 0;
+    if (XR_FAILED(xrAcquireSwapchainImage(chain.handle, &acquire, &index))) {
         return false;
     }
-    static char const* const kNames[4] = {"omnitarget-faint", "omnitarget-near", "omnitarget-armed", "omnitarget-pressed"};
-    testloop::NameSwapchain(chain.handle, kNames[look]);
-    testloop::SetStaticImage(chain.handle, kTargetPixels, kTargetPixels, pixels);
-    return true;
+    XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+    wait.timeout = XR_INFINITE_DURATION;
+    bool const ok = XR_SUCCEEDED(xrWaitSwapchainImage(chain.handle, &wait)) && index < chain.images.size();
+    if (ok) {
+        context->CopyResource(chain.images[index], g.targetSource[look].Get());
+    }
+    XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    xrReleaseSwapchainImage(chain.handle, &release);
+    if (ok) {
+        g.targetDrawn = look;
+        testloop::SetStaticImage(chain.handle, kTargetPixels, kTargetPixels, pixels);  // snapshots draw the look shown
+    }
+    return ok;
 }
-
 char const* LookName(rail::TargetLook look) {
     switch (look) {
     case rail::TargetLook::Faint: return "faint";
@@ -499,7 +514,7 @@ void StepTarget(Frame const& frame, bool handsTracked, XrVector3f const& tip, Xr
     g.targetQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
     g.targetQuad.space = frame.appSpace;
     g.targetQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-    g.targetQuad.subImage.swapchain = g.target[index].handle;
+    g.targetQuad.subImage.swapchain = g.target.handle;
     g.targetQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(kTargetPixels), static_cast<int32_t>(kTargetPixels)}};
     g.targetQuad.pose.orientation = vr::overlay::Facing(toward);
     g.targetQuad.pose.position = target;

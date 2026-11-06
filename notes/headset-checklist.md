@@ -112,10 +112,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
   screen's lower buttons must not close it. (research/57 sections 2-3 and 6, built 2026-11-04/05)
-- [ ] The hands' neutral trim (squad-placement session, research/25 section 10, built 2026-11-06): calibrate again (Body &
-  calibration > Start calibration); at "both arms straight ahead" hold thumbs up, wrists straight. The log's `calibration: left
-  hand: neutral trim (...); the T pose's fingers N deg from the arm` (and right): how many degrees? Then, without touching the
-  hand angle, do Shepard's empty hands sit naturally on your hands (fingers along, thumbs where yours are)?
+- [ ] The hands' neutral trim (squad-placement session, research/25 section 10; second rule 2026-11-06 after the first rolled the
+  hands palm up): calibrate again (Body & calibration > Start calibration), arms straight with wrists straight in the T pose and
+  ahead. The log's `calibration: left hand: neutral trim (...), N deg from the default hand angle; the arms-ahead and T poses'
+  fingers M deg apart` (and right). Without touching the hand angle, do the empty hands sit naturally on yours? Do the pistol and
+  rifle targets show (the board failed for lack of swapchains on 2026-11-06)?
 - [ ] The body at your size (squad-placement session, research/58, built 2026-11-06): on foot in first person Shepard's
   body, hands and gun are scaled so his eyes are at the view (`[Body] scale = auto`; the heartbeat's `body scale:` line says
   the factor). Your `Custom 1` profile lowers the view 8.2 cm (`cameraOffsetUp = -0.082` in MELEVR.ini): try it near 0 so the

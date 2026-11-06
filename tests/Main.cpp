@@ -9728,22 +9728,31 @@ void TestCalibration() {
     CHECK(cal::DirectionAngleDeg(cal::Rotate(look, {0, 0, -1}), {1, 0, -1}) < 0.01f);
     CHECK(cal::Rotate(look, {0, 1, 0}).y > 0.999f);  // level: no cant
     CHECK(!cal::LookRotation({0.0f, 1.0f, 0.0f}).has_value());
-    // The neutral hand trim (2026-11-06): any grip orientation, the arm ahead and a little down and inward: grip * trim puts the
-    // fingers (-Z) along the arm and the thumb side (+Y) up; the T pose's cross-check measures the fingers' angle from an arm.
+    // The neutral hand trim (2026-11-06): the default hand frame is the [Hands] angle's 90/0/0 (fingers down the grip's -Y, the
+    // thumb side its -Z); the measured fingers (the arm in the grip's axes) turn it the least way, keeping its roll as near the
+    // default's as the turn allows; the arm's direction in the grip's axes from any grip.
     {
+        XrQuaternionf const base = cal::DefaultHandFrame();
+        CHECK(cal::DirectionAngleDeg(cal::Rotate(base, {0, 0, -1}), {0, -1, 0}) < 0.01f);
+        CHECK(cal::DirectionAngleDeg(cal::Rotate(base, {0, 1, 0}), {0, 0, -1}) < 0.01f);
         XrQuaternionf const grip = cal::Normalize(cal::Multiply(AxisAngle(1, 0, 0, -40), AxisAngle(0, 0, 1, 25)));
         XrVector3f const arm{0.15f, -0.10f, -0.60f};
-        auto const neutral = cal::NeutralHandTrim(grip, arm);
-        CHECK(neutral.has_value());
-        if (neutral) {
-            XrQuaternionf const hand = cal::Normalize(cal::Multiply(grip, *neutral));
-            CHECK(cal::DirectionAngleDeg(cal::Rotate(hand, {0, 0, -1}), arm) < 0.01f);
-            XrVector3f const thumb = cal::Rotate(hand, {0, 1, 0});
-            CHECK(thumb.y > 0.98f && std::abs(thumb.x * arm.x + thumb.y * arm.y + thumb.z * arm.z) < 1e-4f);
-            CHECK(cal::FingerAngleDeg(grip, *neutral, arm) < 0.01f);
-            CHECK(std::abs(cal::FingerAngleDeg(grip, *neutral, {1.0f, 0.0f, 0.0f}) - cal::DirectionAngleDeg(arm, {1.0f, 0.0f, 0.0f})) < 0.01f);
+        auto const fingers = cal::FingersInGrip(grip, arm);
+        CHECK(fingers.has_value());
+        if (fingers) {
+            CHECK(cal::DirectionAngleDeg(cal::Rotate(grip, *fingers), arm) < 0.01f);
+            XrQuaternionf const neutral = cal::NeutralHandTrim(*fingers, base);
+            XrQuaternionf const hand = cal::Normalize(cal::Multiply(grip, neutral));
+            CHECK(cal::DirectionAngleDeg(cal::Rotate(hand, {0, 0, -1}), arm) < 0.01f);  // the fingers along the arm
         }
-        CHECK(!cal::NeutralHandTrim(grip, {0.0f, 1.0f, 0.0f}).has_value());  // straight up: no roll to give
+        // Fingers measured 30 degrees from the default's, tilted forward: the trim turns 30 degrees, the thumb side tilts with
+        // the fingers in their common plane and gains no roll.
+        XrVector3f const tilted{0.0f, -std::cos(0.5235988f), -std::sin(0.5235988f)};
+        XrQuaternionf const t = cal::NeutralHandTrim(tilted, base);
+        CHECK(std::abs(cal::AngleDeg(t, base) - 30.0f) < 0.05f);
+        CHECK(std::abs(cal::Rotate(t, {0, 1, 0}).x) < 1e-5f);  // no roll: the thumb side stays in the y-z plane
+        CHECK(cal::AngleDeg(cal::NeutralHandTrim({0.0f, -1.0f, 0.0f}, base), base) < 0.1f);  // as the default: unchanged
+        CHECK(!cal::FingersInGrip(grip, {0.0f, 0.0f, 0.0f}).has_value());
         XrVector3f const shoulder = cal::ShoulderPoint({0.1f, 1.7f, 0.2f}, {1.0f, 0.0f, 0.0f}, 0.40f, 1.45f, 0);
         CHECK(std::abs(shoulder.x - (0.1f - 0.20f)) < 1e-6f && shoulder.y == 1.45f && std::abs(shoulder.z - 0.2f) < 1e-6f);
     }

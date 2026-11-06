@@ -153,7 +153,7 @@ ScreenText TextFor(Screen screen) {
             0};
     case Screen::Stand: return {"STAND TALL, LOOK AHEAD", "Stand straight where you can stretch your arms, and look at this panel.", 1};
     case Screen::TPose: return {"ARMS OUT TO THE SIDES", "Straight out, level with your shoulders, like a T.", 2};
-    case Screen::Forward: return {"BOTH ARMS STRAIGHT AHEAD", "Level with your shoulders, a shoulder-width apart, thumbs up, wrists straight.", 2};
+    case Screen::Forward: return {"BOTH ARMS STRAIGHT AHEAD", "Level with your shoulders, a shoulder-width apart, wrists straight.", 2};
     case Screen::Crouch: return {"CROUCH DOWN", "As low as you would go to hide behind cover, and hold it.", 3};
     case Screen::PistolGrab:
         return {"TAKE THE PISTOL", "Squeeze the right grip at the orange orb (the ring is your hand), and keep it squeezed.", 4};
