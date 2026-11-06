@@ -5867,7 +5867,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     proj.views = projViews;
 
     // [MEVR] room for the world, our HUD panel, reticle, sight and hand quads, the menu and SteamVR's placeholder
-    constexpr uint32_t kMaxLayers = 16;   // [MEVR] 10 until the wrist and gun HUD pieces (research/41), 12 until the Mako's lever and stick (research/46), 14 until the cockpit's radar (research/47)
+    constexpr uint32_t kMaxLayers = 17;   // [MEVR] 16 until the transition fade (the last, on top)   // [MEVR] 10 until the wrist and gun HUD pieces (research/41), 12 until the Mako's lever and stick (research/46), 14 until the cockpit's radar (research/47)
     const XrCompositionLayerBaseHeader* layers[kMaxLayers] = {};
     uint32_t layerCount = 0;
     XrCompositionLayerQuad flatCineQuad = {};
@@ -6061,7 +6061,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         mevrFrame.pairArm = g_sfrPairArmThisFrame;   // [MEVR] research/39: which Draw the submitted pair (and the scope capture) came from
         const void* mevrQuads[12] = {};   // [MEVR] HUD panel, reticle, sight (two), squad menu, wheel, label, wrist and gun pieces, the Mako's lever and stick, the cockpit's radar
         const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 12);
-        for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 2; ++i)
+        for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 3; ++i)   // [MEVR] room for the menu, the placeholder, the fade
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
         if (mevrQuadCount > 0 && cfg.hudPanelDistanceM < mevrNearestQuadM) mevrNearestQuadM = cfg.hudPanelDistanceM;
     }
@@ -6203,6 +6203,12 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
     }
 
+    {   // [MEVR] a dip from black when the view changes between the world and a cinematic (src/plugin/TransitionFade.cpp): last
+        const int mevrView = !submitted ? -1 : mevrCineScreen ? 1 : (forceFlatCine && cinematicContext) ? 2 : forceFlatCine ? 3 : 0;
+        if (layerCount < kMaxLayers)
+            if (const void* fade = MELEVR::MevrBridge::TransitionFadeLayer(g_session, g_viewSpace, g_context, mevrView))
+                layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
+    }
     XrFrameEndInfo fei = {};
     fei.type = XR_TYPE_FRAME_END_INFO_VALUE;
     fei.displayTime = fs.predictedDisplayTime;

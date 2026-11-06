@@ -169,6 +169,19 @@ reference that moves only with the head.
 - **A conversation costs the engine's game thread 6.9 ms a tick** against 1.9 in the cutscene before it (Ashley's, gm 5, waiting
   at the dialogue wheel; ours 0.09 ms in both). It fits 90 Hz (11.1 ms) but is most of it; what the engine spends it on is open.
 
+## A dip from black at the switch (2026-11-06)
+
+The owner: "In regard to the cinematic transition I'm curious if there's anything we can do to make it smoother". The switch
+was a hard cut both ways: the world vanished and the screen popped in (only the backdrop faded, 0.6 s), and back.
+
+The game cuts its camera at once, so there's no fading the old view out in advance (its frames already show the new
+camera). What's left is the VR scene change's other half: the first frame after the switch is black, held 40 ms, then eased
+into the new view (smoothstep) over `[Cinematics] fadeS` (0.35 s; 0 off, read live). Between the world, the 3D cinema screen
+and a cinematic's flat movie, any direction; menus and the other flat panels keep their cut (`core/vr/TransitionFade`,
+unit-tested). The host draws it as the frame's last layer, a 16 x 16 black swapchain cleared to the opacity on a quad 8 m
+across 0.5 m in front of the eyes in VIEW space (`plugin/TransitionFade`, the `[MEVR]` seam just before `xrEndFrame` in
+xr_session.cpp; `kMaxLayers` 17). Log `transition fade:`. Built, not yet seen in the game.
+
 ## The dialogue wheel at its authored size (2026-11-04)
 
 A `[MEVR]` seam in `xr_session.cpp` gives the conversation movie the identity transform (`Pchud::SetConvoTransform(true, 1,

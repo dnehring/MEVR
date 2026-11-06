@@ -360,7 +360,9 @@ switching frameworks.
   conversations and cutscenes, 3 s gaps, no follow). **A floor and a horizon around it** (`backdrop`, `backdropBrightness`;
   research/52 "A floor and a horizon"): `plugin/CinemaBackdrop` + `CinemaBackdropDraw`, a projection layer under the screen, every
   pixel's ray meeting the floor at the player's real floor or the sky; procedural until the game's textures are cached; offline
-  `mevr-cinema-preview`; log `cinema backdrop:`, swapchain `backdrop`.
+  `mevr-cinema-preview`; log `cinema backdrop:`, swapchain `backdrop`. **A dip from black** when the view changes between the world,
+  the screen and a cinematic's flat movie (`fadeS` 0.35 s, 0 off; `core/vr/TransitionFade`, host `plugin/TransitionFade`: the frame's
+  last layer, a head-locked black quad; log `transition fade:`).
 - LE1 conversations in the world, first person ([research/59](research/59-conversations-in-world.md), HostServices v33
   `setConversationWorld`; `core/vr/ConversationWorld`, `game/ConversationWorld`, host `plugin/ConversationWorld`; **off by default**,
   `[Cinematics] conversations = world`, live): in game mode 5 the player stands at Shepard's place (the view on foot if fresh, else

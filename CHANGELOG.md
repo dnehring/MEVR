@@ -16,6 +16,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - Motion blur stays off after cutscenes and conversations (it could come back after one and make surfaces flicker).
 - The cinema screen stays where a scene began when you lean or look around, and stands over a dim floor with a horizon
   behind it, so you keep a sense of place (Comfort > Conversations and cutscenes, or `[Cinematics] backdrop`).
+- Entering and leaving a cutscene or conversation dips from black instead of cutting hard (`[Cinematics] fadeS`).
 
 ### The Mako
 - Repair the Mako from the throttle: while your left hand holds the throttle lever, click the left thumbstick. The button on

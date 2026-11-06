@@ -30,4 +30,7 @@ struct Backdrop {
 };
 Backdrop BackdropWanted() noexcept;
 
+// [Cinematics] fadeS, for plugin/TransitionFade (0: no fades).
+float FadeSeconds() noexcept;
+
 } // namespace mevr::host::cine_screen

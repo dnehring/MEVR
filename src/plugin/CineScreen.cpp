@@ -60,7 +60,7 @@ bool Same(cs::Settings const& a, cs::Settings const& b) {
     return a.conversations == b.conversations && a.cutscenes == b.cutscenes && a.frontEnd == b.frontEnd && a.distanceM == b.distanceM &&
            a.widthM == b.widthM &&
            a.depth == b.depth && a.convergeM == b.convergeM && a.aspect == b.aspect && a.fullRate == b.fullRate &&
-           a.backdrop == b.backdrop && a.backdropBrightness == b.backdropBrightness;
+           a.backdrop == b.backdrop && a.backdropBrightness == b.backdropBrightness && a.fadeS == b.fadeS;
 }
 
 // Under gMutex.
@@ -93,6 +93,7 @@ void RefreshSettings(std::uint64_t now) {
         s.fullRate = GetPrivateProfileIntW(L"Cinematics", L"fullRate", s.fullRate ? 1 : 0, path.c_str()) != 0;
         s.backdrop = GetPrivateProfileIntW(L"Cinematics", L"backdrop", s.backdrop ? 1 : 0, path.c_str()) != 0;
         s.backdropBrightness = ReadFloat(L"backdropBrightness", s.backdropBrightness, path);
+        s.fadeS = ReadFloat(L"fadeS", s.fadeS, path);
     }
     s = cs::Clamped(s);
     if (!gSettingsLogged || !Same(s, gSettings)) {
@@ -151,6 +152,12 @@ bool FrontEndWanted() noexcept {
     std::lock_guard lock(gMutex);
     RefreshSettings(GetTickCount64());
     return gSettings.frontEnd;
+}
+
+float FadeSeconds() noexcept {
+    std::lock_guard lock(gMutex);
+    RefreshSettings(GetTickCount64());
+    return gSettings.fadeS;
 }
 
 Backdrop BackdropWanted() noexcept {

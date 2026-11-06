@@ -50,6 +50,7 @@
 #include "core/vr/SceneCaptureScope.hpp"
 #include "core/vr/CineScreen.hpp"
 #include "core/vr/PresentationHold.hpp"
+#include "core/vr/TransitionFade.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
 #include "core/vr/OmniRail.hpp"
@@ -7293,6 +7294,36 @@ void TestDevChannelsAndDiskBudget() {
     CHECK(PlanPrune(files, 150, 100000).empty());  // nothing old enough
 }
 
+void TestTransitionFade() {
+    namespace tf = mevr::vr::transition_fade;
+    using V = tf::View;
+    // Which changes dip from black: between the world, the 3D screen and a cinematic's flat movie; never to or from menus.
+    CHECK(tf::Fades(V::World, V::Screen) && tf::Fades(V::Screen, V::World) && tf::Fades(V::Screen, V::CinemaFlat) &&
+          tf::Fades(V::CinemaFlat, V::World) && tf::Fades(V::World, V::CinemaFlat));
+    CHECK(!tf::Fades(V::World, V::World) && !tf::Fades(V::World, V::Other) && !tf::Fades(V::Other, V::Screen) &&
+          !tf::Fades(V::Unknown, V::Screen) && !tf::Fades(V::Unknown, V::World));
+    tf::Fade f;
+    CHECK(f.Update(V::World, 0.0, 0.35f) == 0.0f && !f.Fading());   // the first view: no fade
+    CHECK(f.Update(V::World, 1.0, 0.35f) == 0.0f);
+    // A cutscene starts: black at once and for the hold, then easing out, gone after the hold plus 0.35 s.
+    CHECK(f.Update(V::Screen, 2.0, 0.35f) == 1.0f && f.Fading() && f.Count() == 1);
+    CHECK(f.Update(V::Screen, 2.0 + tf::kHoldS * 0.5, 0.35f) == 1.0f);
+    float const mid = f.Update(V::Screen, 2.0 + tf::kHoldS + 0.175, 0.35f);
+    CHECK(NearD(mid, 0.5, 1e-4));
+    float const late = f.Update(V::Screen, 2.0 + tf::kHoldS + 0.30, 0.35f);
+    CHECK(late > 0.0f && late < 0.1f);
+    CHECK(f.Update(V::Screen, 2.0 + tf::kHoldS + 0.36, 0.35f) == 0.0f && !f.Fading());
+    // A menu over the screen and back: no fade either way.
+    CHECK(f.Update(V::Other, 5.0, 0.35f) == 0.0f && f.Update(V::Screen, 6.0, 0.35f) == 0.0f && f.Count() == 1);
+    // Back to the world: another fade; a change during a fade starts it again.
+    CHECK(f.Update(V::World, 8.0, 0.35f) == 1.0f && f.Count() == 2);
+    CHECK(f.Update(V::Screen, 8.2, 0.35f) == 1.0f && f.Count() == 3);
+    // Off (0): never fades.
+    tf::Fade off;
+    off.Update(V::World, 0.0, 0.0f);
+    CHECK(off.Update(V::Screen, 1.0, 0.0f) == 0.0f && !off.Fading() && off.Count() == 0);
+}
+
 void TestPresentationHold() {
     namespace pr = mevr::vr::presentation;
     {   // The front end: start-up's unreadable byte, the title, its camera flight, the menu's load, gameplay, an in-game load.
@@ -11618,6 +11649,7 @@ int main() {
     TestWorldUi();
     TestCineScreen();
     TestPresentationHold();
+    TestTransitionFade();
     TestDevChannelsAndDiskBudget();
     TestBoneNames();
     TestIk();

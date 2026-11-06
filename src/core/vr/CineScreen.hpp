@@ -44,6 +44,8 @@ struct Settings {
     bool backdrop = true;        // backdrop: a floor and a horizon around the screen (plugin/CinemaBackdrop; the owner: "a better
                                  // sense of location so I don't get tunnel visioned and partially motion sick"); 0: the dark
     float backdropBrightness = 1.0f;  // backdropBrightness: 1 the default dimness, 0..3
+    float fadeS = 0.35f;              // fadeS: the dip from black when the view changes between the world and a cinematic
+                                      // (core/vr/TransitionFade; 0 off, at most 2 s)
 };
 
 inline constexpr float kMinDistanceM = 1.0f;

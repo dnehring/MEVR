@@ -630,6 +630,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/CineScreen.hpp
     src/core/vr/PresentationHold.cpp
     src/core/vr/PresentationHold.hpp
+    src/core/vr/TransitionFade.cpp
+    src/core/vr/TransitionFade.hpp
     src/core/vr/MetricStereo.cpp
     src/core/vr/MetricStereo.hpp
     src/core/vr/OverlayPlacement.cpp
@@ -770,6 +772,7 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/CinemaBackdropDraw.hpp
     src/plugin/CinemaBackdrop.cpp
     src/plugin/CinemaBackdrop.hpp
+    src/plugin/TransitionFade.cpp
     src/plugin/WristBeam.cpp
     src/plugin/WristBeam.hpp
 )
@@ -1018,6 +1021,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/MenuSettings.cpp
         src/core/vr/CineScreen.cpp
         src/core/vr/PresentationHold.cpp
+        src/core/vr/TransitionFade.cpp
         src/core/vr/MetricStereo.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/PoseRecording.cpp

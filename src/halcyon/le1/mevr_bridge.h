@@ -493,6 +493,10 @@ struct BackdropFrame
     int eyeHeight = 0;
 };
 const void* CinemaBackdropLayer(const BackdropFrame& frame) noexcept;
+// The dip from black when the view changes between the world and a cinematic (src/plugin/TransitionFade.cpp,
+// core/vr/TransitionFade): this frame's view (0 the world, 1 the 3D cinema screen, 2 a cinematic on the flat panel, 3 another
+// flat panel, -1 none submitted); a head-locked black quad (an XrCompositionLayerQuad*) to submit LAST, or null.
+const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept;
 
 // ---- Holds on the presentation decision (src/plugin/PresentationHold.cpp, core/vr/PresentationHold, research/56) ------
 // Present thread, each frame with the mode byte as read (-1 unreadable), before the decision: true while the frame is the
