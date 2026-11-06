@@ -4,6 +4,13 @@
 # players' zip with its checksums and release notes, and the symbols zip (the PDBs) on its own. It publishes nothing:
 # the owner reviews the artifacts and publishes the GitHub release by hand.
 #
+# Code signing (docs/code-signing.md): SignPath Foundation's free signing for open-source projects. Once the repository
+# has the variables SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG and SIGNPATH_SIGNING_POLICY_SLUG and the secret
+# SIGNPATH_API_TOKEN (the project's default artifact configuration is used), the three binaries built here (MEVR-Setup.exe,
+# LE1MEVR.asi, bink2w64.dll) go to SignPath, the run waits for the owner to approve the request there (up to three hours),
+# and the zip, the checksums and the symbols are made from the signed files. Without those settings the release is
+# built unsigned, as before. SignPath's side is set up from .signpath/artifact-configuration.xml.
+#
 # The zip here has no Mako cockpit (-NoCockpit): its package needs Legendary Explorer and the models on Git LFS, which CI
 # doesn't have. Package the release with the cockpit locally (tools/package-release.ps1 -Zip), or add a reviewed package
 # to this zip; either way the checksums and notes here are then those of the zip without it.
@@ -15,12 +22,15 @@ on:
 
 permissions:
   contents: read
+  actions: read  # SignPath's connector fetches the unsigned artifact through the API with this run's token
 
 jobs:
   package:
     name: Package ${{ github.ref_name }}
     runs-on: windows-2022  # Visual Studio 2022 (build.yml says why not windows-latest)
-    timeout-minutes: 90
+    timeout-minutes: 300   # the build, then up to three hours for the signing approval
+    env:
+      SIGN: ${{ vars.SIGNPATH_PROJECT_SLUG != '' }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -45,11 +55,79 @@ jobs:
           if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+)$') { throw "The tag $env:TAG isn't v<major>.<minor>.<patch>" }
           "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
 
-      - name: Check, build and package (no cockpit)
+      - name: Check, build and test (no cockpit)
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
-        run: ./tools/package-release.ps1 -Tag $env:TAG -NoCockpit -Zip
+        run: ./tools/package-release.ps1 -Tag $env:TAG -NoCockpit
+
+      # ---- Code signing (only with the SignPath settings) --------------------------------------------------------------
+      - name: The binaries to sign
+        id: unsigned
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          $out = 'build-mono/Release'
+          $stage = Join-Path $env:RUNNER_TEMP 'unsigned'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "$out/MEVR-Setup.exe", "$out/bink2w64.dll" $stage
+          # SignPath's list of PE extensions has no .asi: the same file goes under a .dll name and comes back renamed.
+          Copy-Item "$out/LE1MEVR.asi" (Join-Path $stage 'LE1MEVR.asi.dll')
+          # Every binary carries the same ProductVersion (<version>+<commit>); the artifact configuration checks it.
+          "productVersion=$((Get-Item "$out/MEVR-Setup.exe").VersionInfo.ProductVersion)" >> $env:GITHUB_OUTPUT
+          "stage=$stage" >> $env:GITHUB_OUTPUT
+
+      - name: Upload the unsigned binaries for SignPath
+        id: upload-unsigned
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-binaries
+          path: ${{ steps.unsigned.outputs.stage }}
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign (approve the request in SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 10800
+          output-artifact-directory: ${{ runner.temp }}/signed
+          parameters: |
+            version: ${{ toJSON(steps.unsigned.outputs.productVersion) }}
+
+      - name: Put the signed binaries in place
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          $out = 'build-mono/Release'
+          $signed = Join-Path $env:RUNNER_TEMP 'signed'
+          $map = [ordered]@{ 'MEVR-Setup.exe' = 'MEVR-Setup.exe'; 'bink2w64.dll' = 'bink2w64.dll'; 'LE1MEVR.asi.dll' = 'LE1MEVR.asi' }
+          foreach ($from in $map.Keys) {
+            $file = Join-Path $signed $from
+            $sig = Get-AuthenticodeSignature $file
+            if ($sig.Status -ne 'Valid') { throw "$from came back without a valid signature: $($sig.Status) $($sig.StatusMessage)" }
+            Copy-Item $file (Join-Path $out $map[$from]) -Force
+            "$($map[$from]): signed by $($sig.SignerCertificate.Subject)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Unsigned release
+        if: env.SIGN != 'true'
+        shell: pwsh
+        run: '"Unsigned: no SignPath settings in this repository (docs/code-signing.md)." >> $env:GITHUB_STEP_SUMMARY'
+
+      # ---- The package, from the binaries above ------------------------------------------------------------------------
+      - name: Package (no cockpit)
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: ./tools/package-release.ps1 -Tag $env:TAG -NoCockpit -NoBuild -SkipTests -Zip  # tested in the build step
 
       - name: Keep the release
         uses: actions/upload-artifact@v4

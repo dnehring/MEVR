@@ -237,6 +237,23 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
 - [x] **[D] Code signing.** The setup, the ASI and a `bink2w64.dll` proxy are unsigned: expect SmartScreen and antivirus
   warnings. Sign (an open-source signing programme) or document it in the release README.
   **Decided by the owner 2026-11-04: document it only** (no signing plans); `docs/release-readme.md` already explains it.
+  **Changed 2026-11-05 (the owner: "Yes, prepare it"): SignPath Foundation's free open-source signing**, prepared:
+  `.github/workflows/release.yml` signs `MEVR-Setup.exe`, `LE1MEVR.asi` and `bink2w64.dll` once the SignPath settings
+  exist (unsigned without them), `.signpath/artifact-configuration.xml`, the policy `docs/code-signing.md` (linked from
+  the README and the release README, as SignPath requires), and one product name, "MEVR", in every binary (the loader
+  said "MEVR ASI loader"; Setup matches "MEVR" in it, so old installs are still recognised). The owner's steps:
+  - [ ] [D] Publish a release first: SignPath signs only projects "already released in the form that should be signed".
+  - [ ] [D] Apply at https://signpath.org/apply (GitHub and SignPath with two-factor sign-in).
+  - [ ] [D] Once accepted, in SignPath: the project, its default artifact configuration pasted from
+    `.signpath/artifact-configuration.xml`, the release-signing policy with approval, origin verification allowing the
+    `v*` tags, a CI user and its API token.
+  - [ ] [D] In the repository's Settings > Secrets and variables > Actions: the secret `SIGNPATH_API_TOKEN` and the
+    variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG`.
+  - [ ] [C] The first signed run: `.asi` goes as `LE1MEVR.asi.dll` (SignPath's PE list has no `.asi`), and the
+    product-version check against `<version>+<commit>` is unproven; try the test-signing policy first.
+  - [ ] [C] Every release, signed or not: submit the zip's three binaries to Microsoft
+    (https://www.microsoft.com/wdsi/filesubmission, as the software developer, "incorrectly detected") and check the
+    zip on VirusTotal; report false positives to the vendors that flag it.
 - [x] **[C] Binary metadata**: an icon and VERSIONINFO for MEVR-Setup.exe and the ASI; no absolute build paths in the PDBs
   (`/PDBALTPATH`); archive each release's PDBs so crash-report stacks can be symbolised.
   **Done 2026-11-04 (16fc28e):** version resources on the ASI, loader and setup, the setup's icon, PDBs referenced by name only, a separate symbols zip.

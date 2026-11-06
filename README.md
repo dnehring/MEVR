@@ -191,6 +191,9 @@ In the game, `\` or both thumbsticks clicked in and held open the VR menu ([Cont
 - **Much of it is new:** the project started in October 2026; many features have been tried in the headset only
   a few times, some not yet (see [notes/next-vr-session.md](notes/next-vr-session.md) and
   [docs/release-checklist.md](docs/release-checklist.md) section 2).
+- **Windows SmartScreen or an antivirus may warn** about `MEVR-Setup.exe` or the loader: releases aren't code-signed
+  yet. Click **More info > Run anyway**, or unblock the zip in its Properties before unzipping. The
+  [code signing policy](docs/code-signing.md) says how releases will be signed and what the programs do.
 - **Steam's "verify files"** (or a game update) can put back the game's own `bink2w64.dll` and `PCConsoleTOC.bin`,
   which removes the ASI loader and the Mako cockpit's table entry: run **Repair** in the `MEVR-Setup.exe` from the
   downloaded zip (the copy in the game's `ASI` folder has no payload and can't repair).
@@ -290,6 +293,12 @@ Windows user name in file paths: replace it if you prefer.
   [Dear ImGui](https://github.com/ocornut/imgui), [MinHook](https://github.com/TsudaKageyu/minhook),
   [AMD FidelityFX FSR 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR), the
   [Khronos OpenXR SDK](https://github.com/KhronosGroup/OpenXR-SDK).
+
+## Code signing policy
+
+Releases will be signed through SignPath Foundation's free open-source programme. Until then they are unsigned. See
+[docs/code-signing.md](docs/code-signing.md) for what is signed, who approves it, and the privacy policy: the mod makes
+no network connections, and MEVR Setup goes online only when you ask it to.
 
 ## Licensing
 

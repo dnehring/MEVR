@@ -868,7 +868,10 @@ switching frameworks.
   version or tag other than CMake's, binaries not built from HEAD, check-spdx or ctest failures (`-SkipTests`), and puts the
   PDBs in `dist\MEVR-<version>-symbols` (the binaries name theirs without a path: `/PDBALTPATH`). CI:
   `.github/workflows/build.yml` (windows-2022 for VS 2022; the players' build without LExSDKv2, ctest, check-spdx, check-okf)
-  and `release.yml` (a `v*` tag: the package without the cockpit, as artifacts; nothing published). Setup's icon:
+  and `release.yml` (a `v*` tag: the package without the cockpit, as artifacts; nothing published; it signs the three
+  binaries through SignPath Foundation once the repository has the SignPath variables and token, docs/code-signing.md,
+  `.signpath/artifact-configuration.xml`). Every binary's ProductName is "MEVR" (SignPath's rule; Setup finds our loader
+  by "MEVR" in it). Setup's icon:
   `assets/icon/mevr.ico` from `tools/make-icon.py`. Player-facing changes go in `CHANGELOG.md`.
 - Trilogy check: `build-trilogy/` (configured with `-DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`) must
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;

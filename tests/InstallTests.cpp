@@ -439,13 +439,15 @@ void TestDetect() {
     // The loader in front of the game.
     d::DllIdentity rad{true, "RAD Game Tools, Inc.", "Bink and Smacker", "RAD Video Tools"};
     d::DllIdentity lebp{true, "ME3Tweaks", "LEBinkProxy (RELEASE)", "A multifunctional proxy DLL"};
-    d::DllIdentity ours{true, "MEVR", "MEVR ASI loader", "bink2w64.dll proxy"};
+    d::DllIdentity ours{true, "MEVR", "MEVR ASI loader", "bink2w64.dll proxy"};  // up to 2026-11-05
+    d::DllIdentity oursSigned{true, "MEVR", "MEVR", "MEVR ASI loader (bink2w64.dll proxy)"};  // one product name (code signing)
     d::DllIdentity other{true, "Someone", "Some proxy", ""};
     ICHECK(d::ClassifyBink(rad, false) == d::BinkState::Original);
     ICHECK(d::ClassifyBink(rad, true) == d::BinkState::Original);
     ICHECK(d::ClassifyBink(lebp, true) == d::BinkState::LEBinkProxy);
     ICHECK(d::ClassifyBink(lebp, false) == d::BinkState::Broken);
     ICHECK(d::ClassifyBink(ours, true) == d::BinkState::Ours);
+    ICHECK(d::ClassifyBink(oursSigned, true) == d::BinkState::Ours);
     ICHECK(d::ClassifyBink(other, true) == d::BinkState::OtherProxy);
     ICHECK(d::ClassifyBink(d::DllIdentity{}, true) == d::BinkState::Missing);
     // OpenXR runtimes.

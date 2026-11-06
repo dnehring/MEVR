@@ -103,7 +103,7 @@ autoboot (`-game N -autoterminate`) and its launcher working-directory fix.
 | State | How it's recognised | What the setup does |
 |-------|--------------------|---------------------|
 | Original | CompanyName "RAD Game Tools, Inc." (the user's: product "Bink and Smacker", 2022.05) | renames it to `bink2w64_original.dll`, installs ours |
-| Ours | ProductName "MEVR ASI loader" (`src/loader/Loader.rc`) | updates it |
+| Ours | "MEVR" in ProductName (`src/loader/Loader.rc`: "MEVR" since 2026-11-05, one product name for code signing; "MEVR ASI loader" before) | updates it |
 | LEBinkProxy | CompanyName "ME3Tweaks" / ProductName "LEBinkProxy (RELEASE)" (the user's 2.0.0.14) | uses it, installs only the ASI |
 | Another proxy | anything else with `bink2w64_original.dll` behind it | uses it, with a note |
 | Missing / Broken | no DLL, or a proxy with no original | refuses; says to verify the game's files |

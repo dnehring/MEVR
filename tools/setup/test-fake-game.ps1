@@ -115,10 +115,10 @@ $ErrorActionPreference = 'Continue'  # from here on a failed check is reported, 
 Check ((Run-Setup @('--status')) -eq 0) 'status'
 Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'performance')) -eq 0) 'install'
 $bink = (Get-Item (Join-Path $win64 'bink2w64.dll')).VersionInfo
-Check ($bink.ProductName -eq 'MEVR ASI loader') 'bink2w64.dll is our loader'
+Check ($bink.FileDescription -like 'MEVR ASI loader*') 'bink2w64.dll is our loader'
 Check ((Get-FileHash (Join-Path $win64 'bink2w64_original.dll')).Hash -eq (Get-FileHash $BinkDll).Hash) 'RAD''s DLL kept as bink2w64_original.dll'
 Check (Test-Path (Join-Path $win64 'ASI\LE1MEVR.asi')) 'the ASI'
-Check ((Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.ProductName -eq 'MEVR ASI loader') 'Game\Launcher\bink2w64.dll is our loader (its autoboot)'
+Check ((Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*') 'Game\Launcher\bink2w64.dll is our loader (its autoboot)'
 Check ((Get-FileHash (Join-Path $launcher 'bink2w64_original.dll')).Hash -eq (Get-FileHash $LauncherBinkDll).Hash) 'the launcher''s own Bink kept as bink2w64_original.dll'
 Check ((Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')) -match '(?m)^launcher: our loader starts Mass Effect 1') 'status: the launcher boots the game'
 Check (Test-Path (Join-Path $win64 'ASI\menu\main.rml')) 'the menu'
@@ -159,8 +159,8 @@ Check ((Run-Setup @('--repair')) -eq 0) 'repair'
 Run-Setup @('--status') | Out-Null
 Check ((Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')) -match '(?m)^needs repair: nothing') 'status after repair: nothing to repair'
 if ($withCockpit) { Check ((Get-FileHash $toc).Hash -eq $tocInstalled) 'repair: the cockpit''s TOC entry back' }
-Check ((Get-Item (Join-Path $win64 'bink2w64.dll')).VersionInfo.ProductName -eq 'MEVR ASI loader') 'repair: our loader back'
-Check ((Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.ProductName -eq 'MEVR ASI loader') 'repair: the launcher''s loader back'
+Check ((Get-Item (Join-Path $win64 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*') 'repair: our loader back'
+Check ((Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*') 'repair: the launcher''s loader back'
 Check ((Get-FileHash (Join-Path $launcher 'bink2w64_original.dll')).Hash -eq (Get-FileHash $LauncherBinkDll).Hash) 'repair: the launcher''s own Bink still behind it'
 Check (Test-Path (Join-Path $win64 'ASI\menu\main.rcss')) 'repair: the menu file back'
 Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match 'sfr2HalfEyeUU = 2\.9') 'repair: the player''s Halcyon value kept'

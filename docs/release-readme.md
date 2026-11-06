@@ -53,12 +53,17 @@ The log names the profile the runtime chose and what's missing on it (`halcyon b
 - **Start SteamVR** (or Quest Link, or Virtual Desktop) **and wake the headset before you start the game.** The game
   connects to VR once, when it starts. If the runtime isn't ready then, the game runs flat on the monitor for that
   run: quit and start it again.
-- **Windows SmartScreen and antivirus.** `MEVR-Setup.exe`, the mod (`LE1MEVR.asi`) and its loader (`bink2w64.dll`)
-  are not code-signed, and the loader takes the place of one of the game's DLLs (the game's own is kept as
-  `bink2w64_original.dll`). SmartScreen may say "Windows protected your PC" (**More info > Run anyway**), and some
-  antivirus programs flag DLLs that do this. To check that your download is the published one, compare its SHA-256
-  with the one on the release page. In PowerShell: `Get-FileHash MEVR-<version>.zip -Algorithm SHA256`. The source
-  code is public, so you can also build it yourself.
+- **If Windows or your antivirus warns you.** Releases aren't code-signed yet, so new downloads have no reputation with
+  Windows. The loader also takes the place of one of the game's DLLs (the game's own is kept as
+  `bink2w64_original.dll`), which some antivirus programs flag.
+  - If SmartScreen says "Windows protected your PC", click **More info**, then **Run anyway**.
+  - Or, before unzipping: right-click the zip, choose **Properties**, tick **Unblock**, click **OK**. Windows then
+    won't ask.
+  - To check that your download is the published one, compare its SHA-256 with the release's `SHA256SUMS` file. In
+    PowerShell: `Get-FileHash MEVR-<version>.zip -Algorithm SHA256`.
+  - The source code is public, so you can also build it yourself.
+  - [Code signing policy](https://github.com/dnehring/MEVR/blob/main/docs/code-signing.md): how releases will be
+    signed, and what the programs do and don't do.
 
 ## Install
 
