@@ -11,6 +11,11 @@ grammar. This folder makes that model.
 | 3 | `build/Release/mevr-llm-bench.exe --lib external/llama-cpp --model <gguf> --data scratch/voice-model/eval.jsonl` | accuracy and times on the CPU under the grammar (`core/voice/Llm`, the same runtime the host uses); run it on the stock Qwen3-0.6B-Q8_0 first for the zero-shot baseline. |
 | 4 | `tools/deploy-asi.ps1 -Game LE1` with the GGUF at `models/voice/llm/model.gguf` | the host loads it from `ASI\voice\llm` (`[Voice] llm = 1`, `llmModel`, `llmThreads`). |
 
+**Train only with the game closed.** The game holds 5-8 GB of the 4090 even idle on the fake headset and the trainer
+11-16 GB; together they pass 24 GB and PyTorch spills into system memory, from 1.4 s a step to 30-120 s (run3's three
+false starts, 2026-11-05). The trainer checkpoints every 250 steps and resumes, so a run can be stopped for a game
+session and taken up again, but it can't run beside one.
+
 ## The pipeline (repeatable runs, sweeps)
 
 `setup-env.ps1` makes the venv (`.venv-voice`, Python 3.12, torch CUDA 12.4, transformers, peft, datasets, accelerate,
