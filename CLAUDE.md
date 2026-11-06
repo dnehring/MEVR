@@ -824,10 +824,17 @@ switching frameworks.
   upstream MELE-VR (`dxgi.dll` marked "MELEVR", `openxr_loader.dll`) is renamed to `*.mevr-off` and put back on
   uninstall; a `bink2w64.dll` another tool put over ours is never touched; the mod's run-time files (`LE1MEVR.ini`, its
   logs) are recorded as user data, so a full uninstall deletes them (and `%LOCALAPPDATA%\MEVR` only when its box is
-  ticked); "installed" means the manifest has the mod; a read-only `GamerSettings.ini` is a warning, not a failure. The ASI loader is our own `bink2w64.dll` (`src/loader`, `MEVR-Loader`: 79
-  forwarded Bink exports, the SPI interface, the DRM wait by sampling `.text`; ctest `mevr-loader`), unless
-  LEBinkProxy is there. Launch starts SteamVR first when it is the active runtime (waits up to 60 s; other runtimes get
-  a line saying what to start), then `MassEffect1.exe` with the launcher's arguments. A game never started (no
+  ticked); "installed" means the manifest has the mod; a read-only `GamerSettings.ini` is a warning, not a failure. The ASI loader is our own `bink2w64.dll` (`src/loader`, `MEVR-Loader`: 80
+  forwarded Bink exports, ME1's 79 and the launcher's `BinkOpenMiles`, the SPI interface, the DRM wait by sampling `.text`;
+  ctest `mevr-loader`), unless LEBinkProxy is there; **it goes into `Game\Launcher` too** (research/33 section 12), where
+  with `-game 1` it starts Mass Effect 1 with the launcher's arguments and with `-autoterminate` ends the launcher.
+  **One click** (the user, 2026-11-05): the Welcome page's Install installs at once with the defaults (Options opens the
+  Install page), then the same button is Launch. Launch starts SteamVR first when it is the active runtime (waits up to 60
+  s; other runtimes get a line saying what to start), then, on Steam, asks Steam for `-applaunch 1328670 -game 1
+  -autoterminate` (`MassEffect1.exe` started directly hands its start back to Steam, which then waits on its "launch with
+  these arguments?" dialog: research/33 section 11); the EA app build still starts `MassEffect1.exe` directly [verify].
+  `MEVR-Setup.exe --launch` does the same from the command line. Tested on the real game (section 11): install, verify
+  then Repair, uninstall byte for byte. A game never started (no
   GamerSettings.ini) keeps the chosen settings as `pendingSettings` in the manifest and offers "Start the game once";
   the resolution's default without a known headset size is **Automatic** (`auto`, 2026-11-04, the owner): Performance now,
   the manifest's `eyeSizeAtFirstStart`, and the host's `main_menu::FirstStartEyeSize` sets the headset's own eye size at the

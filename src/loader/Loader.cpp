@@ -12,14 +12,17 @@
 //   4. attaches the rest, each on a thread of its own when it asks for one.
 // Plugins hook through us (InstallHook / UninstallHook: MinHook) and find byte patterns in the exe (FindPattern).
 // Plain ASIs without SPI exports are only loaded (their DllMain does the rest). The log is
-// Binaries\Win64\Logs\MEVRLoader.log.
+// Binaries\Win64\Logs\MEVRLoader.log. In the Legendary Edition launcher (Game\Launcher) it loads no ASIs: it starts
+// Mass Effect 1 when the launcher is given -game 1 (BootFromLauncher; its log is Game\Launcher\Logs\MEVRLoader.log).
 
+#include "install/LaunchArgs.hpp"
 #include "loader/Forwarders.hpp"
 #include "loader/LoaderCore.hpp"
 #include "loader/SpiAbi.hpp"
 
 #include <MinHook.h>
 #include <Windows.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <cstdarg>
@@ -330,6 +333,64 @@ bool WaitForDecryption(DWORD timeoutMs) {
     }
 }
 
+// ---- The launcher's autoboot (research/33 section 12) --------------------------------------------------------------
+// In Game\Launcher our DLL stands in front of the launcher's own Bink (the installer puts it there too). Started with
+// `-game 1` (MEVR Setup's Launch asks Steam for `-applaunch 1328670 -game 1 -autoterminate`), the launcher hands over:
+// Mass Effect 1 starts from its Binaries\Win64 with the launcher's own arguments (LauncherConfig.cfg: language,
+// subtitles), as a child of the launcher (so it keeps what Steam and the EA app gave the launcher), and with
+// `-autoterminate` the launcher ends. Without `-game` the launcher is left alone (its own picker). LE2 and LE3 aren't
+// booted (their arguments differ): the picker shows. The behaviour of LEBinkProxy's launcher module, written anew.
+void BootFromLauncher(fs::path const& launcherDir) {
+    std::vector<std::wstring> args;
+    int count = 0;
+    if (LPWSTR* const argv = CommandLineToArgvW(GetCommandLineW(), &count)) {
+        for (int i = 1; i < count; ++i) {
+            args.emplace_back(argv[i]);
+        }
+        LocalFree(argv);
+    }
+    namespace launch = mevr::install::launch;
+    launch::LauncherBoot const boot = launch::ParseLauncherArgs(args);
+    if (!boot.game) {
+        Log("the launcher, without -game: its own menu");
+        return;
+    }
+    if (*boot.game != 1) {
+        Log("the launcher was asked for game %d: only Mass Effect 1 is started from here; its own menu", *boot.game);
+        return;
+    }
+    std::error_code ec;
+    fs::path const win64 = fs::weakly_canonical(launcherDir / L".." / L"ME1" / L"Binaries" / L"Win64", ec);
+    fs::path const exe = win64 / L"MassEffect1.exe";
+    if (!fs::exists(exe, ec)) {
+        Log("-game 1, but there's no %s: its own menu", Narrow(exe.wstring()).c_str());
+        return;
+    }
+    std::wstring const arguments = launch::Le1Arguments(launch::ReadLauncherConfig());
+    std::wstring commandLine = L"\"" + exe.wstring() + L"\" " + arguments;
+    STARTUPINFOW startup{};
+    startup.cb = sizeof startup;
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, win64.c_str(), &startup, &process)) {
+        Log("-game 1: couldn't start %s (error %lu): its own menu", Narrow(exe.wstring()).c_str(), GetLastError());
+        return;
+    }
+    Log("-game 1: started Mass Effect 1 (pid %lu) with %s", process.dwProcessId, Narrow(arguments).c_str());
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    if (boot.autoTerminate) {
+        Log("-autoterminate: the launcher ends");
+        std::lock_guard const lock(gLogMutex);
+        if (gLog != nullptr) {
+            std::fclose(gLog);
+            gLog = nullptr;
+        }
+        // At once and without the launcher's own shutdown (nothing of it needs saving): ExitProcess from this thread
+        // would run every DLL's detach while the launcher's threads still run.
+        TerminateProcess(GetCurrentProcess(), 0);
+    }
+}
+
 DWORD WINAPI Run(void*) {
     fs::path const exeDir = ExeDir();
     std::optional<spi::Game> const host = HostFromExeName(ExeName());
@@ -345,7 +406,7 @@ DWORD WINAPI Run(void*) {
     }
     Log("MEVR ASI loader (bink2w64.dll proxy, SPI %lu) in %s", spi::kVersion, Narrow(ExeName()).c_str());
     if (host == spi::Game::Launcher) {
-        Log("the launcher: no ASIs here");
+        BootFromLauncher(exeDir);
         return 0;
     }
     MH_STATUS const mh = MH_Initialize();

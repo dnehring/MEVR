@@ -19,17 +19,6 @@ namespace {
 
 namespace fs = std::filesystem;
 
-std::string Trim(std::string s) {
-    while (!s.empty() && (s.back() == '\r' || s.back() == ' ' || s.back() == '\t')) {
-        s.pop_back();
-    }
-    std::size_t start = 0;
-    while (start < s.size() && (s[start] == ' ' || s[start] == '\t')) {
-        ++start;
-    }
-    return s.substr(start);
-}
-
 bool SteamRunning() {
     DWORD pid = 0;
     DWORD size = sizeof pid;
@@ -54,60 +43,25 @@ bool SteamUserLoggedIn() {
         user != 0;
 }
 
+fs::path SteamExe() {
+    wchar_t buffer[MAX_PATH]{};
+    DWORD size = sizeof buffer;
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Valve\\Steam", L"SteamExe", RRF_RT_REG_SZ, nullptr, buffer, &size) != ERROR_SUCCESS) {
+        return {};
+    }
+    fs::path path(buffer);
+    std::error_code ec;
+    return fs::exists(path, ec) ? path : fs::path();
+}
+
 } // namespace
 
-LauncherConfig ParseLauncherConfig(std::string_view text) {
-    LauncherConfig c;
-    std::istringstream in{std::string(text)};
-    std::string line;
-    while (std::getline(in, line)) {
-        line = Trim(line);
-        std::size_t const eq = line.find('=');
-        if (eq == std::string::npos) {
-            continue;
-        }
-        std::string const key = Trim(line.substr(0, eq));
-        std::string const value = Trim(line.substr(eq + 1));
-        if (key == "Language" && !value.empty()) {
-            c.language = value;
-        } else if (key == "EnglishVOEnabled") {
-            c.englishVoices = value == "true";
-        } else if (key == "SubtitleSize") {
-            int const n = std::atoi(value.c_str());
-            if (n > 0 && n < 100) {
-                c.subtitleSize = n;
-            }
-        }
-    }
-    return c;
-}
-
-fs::path LauncherConfigPath() {
-    PWSTR documents = nullptr;
-    fs::path path;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documents))) {
-        path = fs::path(documents) / L"BioWare" / L"Mass Effect Legendary Edition" / L"LauncherConfig.cfg";
-    }
-    CoTaskMemFree(documents);
-    return path;
-}
-
-std::string Le1Language(LauncherConfig const& c) {
-    // {local voices, English voices}.
-    static std::map<std::string, std::pair<char const*, char const*>> const kCodes = {
-        {"en_US", {"INT", "INT"}}, {"fr_FR", {"FR", "FE"}}, {"de_DE", {"DE", "GE"}}, {"it_IT", {"IT", "IE"}},
-        {"ja_JP", {"JA", "JA"}}, {"es_ES", {"ES", "ES"}}, {"ru_RU", {"RA", "RU"}}, {"pl_PL", {"PLPC", "PL"}},
-    };
-    auto const it = kCodes.find(c.language);
-    if (it == kCodes.end()) {
-        return "INT";
-    }
-    return c.englishVoices ? it->second.second : it->second.first;
-}
-
-std::wstring Le1Arguments(LauncherConfig const& c) {
-    return L"-NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles " + std::to_wstring(c.subtitleSize) + L" -OVERRIDELANGUAGE=" +
-        detect::Wide(Le1Language(c));
+bool LauncherBoots(fs::path const& gameRoot) {
+    fs::path const dir = gameRoot / L"Game" / L"Launcher";
+    std::error_code ec;
+    detect::BinkState const state =
+        detect::ClassifyBink(detect::ReadIdentity(dir / L"bink2w64.dll"), fs::exists(dir / L"bink2w64_original.dll", ec));
+    return state == detect::BinkState::Ours || state == detect::BinkState::LEBinkProxy;
 }
 
 Result StartLe1(fs::path const& gameRoot, bool steam) {
@@ -119,10 +73,7 @@ Result StartLe1(fs::path const& gameRoot, bool steam) {
         r.message = "MassEffect1.exe not found";
         return r;
     }
-    LauncherConfig config;
-    if (auto const text = ReadFile(LauncherConfigPath())) {
-        config = ParseLauncherConfig(*text);
-    }
+    LauncherConfig const config = ReadLauncherConfig();
     if (steam) {
         if (!SteamRunning()) {
             ShellExecuteW(nullptr, L"open", L"steam://open/main", nullptr, nullptr, SW_SHOWMINNOACTIVE);
@@ -134,9 +85,32 @@ Result StartLe1(fs::path const& gameRoot, bool steam) {
             r.message = "Steam isn't running with a logged-in user; start Steam and try again";
             return r;
         }
-        SetEnvironmentVariableW(L"SteamAppId", L"1328670");
-        SetEnvironmentVariableW(L"SteamGameId", L"1328670");
-        SetEnvironmentVariableW(L"SteamOverlayGameId", L"1328670");
+        // Through Steam: started directly, the exe hands its start back to Steam, which then asks the player to confirm
+        // the arguments (research/33 section 11).
+        fs::path const steamExe = SteamExe();
+        if (steamExe.empty()) {
+            r.message = "Steam's program wasn't found (HKCU\\Software\\Valve\\Steam SteamExe)";
+            return r;
+        }
+        bool const boots = LauncherBoots(gameRoot);
+        std::wstring commandLine =
+            L"\"" + steamExe.wstring() + L"\" " + (boots ? std::wstring(kSteamBootLe1Args) : std::wstring(L"-applaunch ") + kSteamAppIdW);
+        STARTUPINFOW startup{};
+        startup.cb = sizeof startup;
+        PROCESS_INFORMATION process{};
+        if (!CreateProcessW(steamExe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, steamExe.parent_path().c_str(), &startup,
+                &process)) {
+            r.message = "couldn't ask Steam to start the game (error " + std::to_string(GetLastError()) + ")";
+            return r;
+        }
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        r.started = true;
+        r.message = boots ? "Asked Steam to start Mass Effect 1: the launcher hands over to it (your launcher settings: " +
+                                detect::Utf8(Le1Arguments(config)) + ")"
+                          : "Asked Steam to start Mass Effect Legendary Edition: pick Mass Effect 1 in its launcher (Repair puts back what lets "
+                            "Launch skip that step)";
+        return r;
     }
     std::wstring commandLine = L"\"" + exe.wstring() + L"\" " + Le1Arguments(config);
     STARTUPINFOW startup{};

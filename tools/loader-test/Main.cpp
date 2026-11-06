@@ -57,7 +57,7 @@ char const* const kBinkNames[] = {"BinkAllocateFrameBuffers", "BinkClose", "Bink
     "BinkSetSoundSystem", "BinkSetSoundSystem2", "BinkSetSoundTrack", "BinkSetSpeakerVolumes", "BinkSetVideoOnOff", "BinkSetVolume",
     "BinkSetWillLoop", "BinkShouldSkip", "BinkStartAsyncThread", "BinkUtilCPUs", "BinkUtilFree", "BinkUtilMalloc", "BinkUtilMutexCreate",
     "BinkUtilMutexDestroy", "BinkUtilMutexLock", "BinkUtilMutexLockTimeOut", "BinkUtilMutexUnlock", "BinkUtilSoundGlobalLock",
-    "BinkUtilSoundGlobalUnlock", "BinkWait", "BinkWaitStopAsyncThread", "BinkWaitStopAsyncThreadsMulti", "RADTimerRead"};
+    "BinkUtilSoundGlobalUnlock", "BinkWait", "BinkWaitStopAsyncThread", "BinkWaitStopAsyncThreadsMulti", "RADTimerRead", "BinkOpenMiles"};
 
 } // namespace
 

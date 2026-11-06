@@ -7,11 +7,16 @@
 # game's), and small GamerSettings.ini / BIOEngine.ini files; then runs status, install, a tamper + repair,
 # restore and apply of the game settings, and uninstall, and checks the folder is byte for byte what it was.
 #
-#   tools\setup\test-fake-game.ps1 [-Build build] [-Payload <folder>] [-BinkDll <path>]
+#   tools\setup\test-fake-game.ps1 [-Build build] [-Payload <folder>] [-BinkDll <path>] [-LauncherBinkDll <path>]
+#
+# The fake game also has Game\Launcher (research/33 section 12): a stand-in MassEffectLauncher.exe and a RAD Bink DLL of
+# the launcher's build (LE2's own bink2w64.dll, read only: the same 2.7s build, or -LauncherBinkDll), where Install puts
+# our loader too (it boots Mass Effect 1 for Launch's -game 1).
 param(
     [string]$Build = (Join-Path $PSScriptRoot '..\..\build'),
     [string]$Payload,
-    [string]$BinkDll
+    [string]$BinkDll,
+    [string]$LauncherBinkDll
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +26,7 @@ $scratch = Join-Path $repo 'scratch'
 $root = Join-Path $scratch 'fakegame\Mass Effect Legendary Edition'
 $win64 = Join-Path $root 'Game\ME1\Binaries\Win64'
 $config = Join-Path $root 'Game\ME1\BioGame\Config'
+$launcher = Join-Path $root 'Game\Launcher'
 $setup = Join-Path $Build 'Release\MEVR-Setup.exe'
 $failures = 0
 
@@ -50,6 +56,10 @@ if (-not (Test-Path $fakeExe)) { throw "Not built: $fakeExe" }
 if (-not $BinkDll) {
     . (Join-Path $repo 'tools\common.ps1')
     $BinkDll = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root 'LE1') 'bink2w64_original.dll'
+}
+if (-not $LauncherBinkDll) {
+    . (Join-Path $repo 'tools\common.ps1')
+    $LauncherBinkDll = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root 'LE2') 'bink2w64.dll'
 }
 if (-not $Payload) {
     $Payload = Join-Path $scratch 'payload'
@@ -82,9 +92,11 @@ $withCockpit = Test-Path (Join-Path $Payload 'cockpit\BIOG_MEVR_Cockpit.pcc')
 
 # The fake game.
 Remove-Item -Recurse -Force (Join-Path $scratch 'fakegame') -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force $win64, $config | Out-Null
+New-Item -ItemType Directory -Force $win64, $config, $launcher | Out-Null
 Copy-Item $fakeExe $win64
 Copy-Item $BinkDll (Join-Path $win64 'bink2w64.dll')
+Copy-Item $fakeExe (Join-Path $launcher 'MassEffectLauncher.exe')
+Copy-Item $LauncherBinkDll (Join-Path $launcher 'bink2w64.dll')
 $gameToc = Join-Path $env:LOCALAPPDATA 'MEVR\cockpit-install\PCConsoleTOC.bin.original'
 if (-not (Test-Path $gameToc)) { $gameToc = Join-Path (Split-Path (Split-Path $BinkDll)) '..\BioGame\PCConsoleTOC.bin' }
 $toc = Join-Path $root 'Game\ME1\BioGame\PCConsoleTOC.bin'
@@ -101,6 +113,9 @@ $bink = (Get-Item (Join-Path $win64 'bink2w64.dll')).VersionInfo
 Check ($bink.ProductName -eq 'MEVR ASI loader') 'bink2w64.dll is our loader'
 Check ((Get-FileHash (Join-Path $win64 'bink2w64_original.dll')).Hash -eq (Get-FileHash $BinkDll).Hash) 'RAD''s DLL kept as bink2w64_original.dll'
 Check (Test-Path (Join-Path $win64 'ASI\LE1MEVR.asi')) 'the ASI'
+Check ((Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.ProductName -eq 'MEVR ASI loader') 'Game\Launcher\bink2w64.dll is our loader (its autoboot)'
+Check ((Get-FileHash (Join-Path $launcher 'bink2w64_original.dll')).Hash -eq (Get-FileHash $LauncherBinkDll).Hash) 'the launcher''s own Bink kept as bink2w64_original.dll'
+Check ((Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')) -match '(?m)^launcher: our loader starts Mass Effect 1') 'status: the launcher boots the game'
 Check (Test-Path (Join-Path $win64 'ASI\menu\main.rml')) 'the menu'
 Check (Test-Path (Join-Path $win64 'ASI\fonts\Rajdhani-Bold.ttf')) 'the fonts'
 Check (Test-Path (Join-Path $win64 'ASI\MEVR-Setup.exe')) 'the setup copy (for uninstall and optional content)'
@@ -125,16 +140,20 @@ if ($melevr -notmatch 'sfr2HalfEyeUU') { $melevr = $melevr -replace '\[profile:D
 
 # Steam's "verify files" puts RAD's DLL back (and the game's own TOC), and a menu file goes missing: Repair.
 Copy-Item $BinkDll (Join-Path $win64 'bink2w64.dll') -Force
+Copy-Item $LauncherBinkDll (Join-Path $launcher 'bink2w64.dll') -Force
 Remove-Item (Join-Path $win64 'ASI\menu\main.rcss')
 if ($withCockpit) { Copy-Item $gameToc $toc -Force }
 Run-Setup @('--status') | Out-Null
 $st = Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')
+Check ($st -match '(?m)^needs repair: .*Game/Launcher/bink2w64\.dll') 'status after "verify files": the launcher''s loader needs repair'
 Check ($st -match '(?m)^needs repair: .*bink2w64\.dll' -and $st -match '(?m)^needs repair: .*main\.rcss' -and (-not $withCockpit -or $st -match '(?m)^needs repair: .*PCConsoleTOC\.bin')) 'status after "verify files": the loader, the menu file and the TOC need repair'
 Check ((Run-Setup @('--repair')) -eq 0) 'repair'
 Run-Setup @('--status') | Out-Null
 Check ((Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')) -match '(?m)^needs repair: nothing') 'status after repair: nothing to repair'
 if ($withCockpit) { Check ((Get-FileHash $toc).Hash -eq $tocInstalled) 'repair: the cockpit''s TOC entry back' }
 Check ((Get-Item (Join-Path $win64 'bink2w64.dll')).VersionInfo.ProductName -eq 'MEVR ASI loader') 'repair: our loader back'
+Check ((Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.ProductName -eq 'MEVR ASI loader') 'repair: the launcher''s loader back'
+Check ((Get-FileHash (Join-Path $launcher 'bink2w64_original.dll')).Hash -eq (Get-FileHash $LauncherBinkDll).Hash) 'repair: the launcher''s own Bink still behind it'
 Check (Test-Path (Join-Path $win64 'ASI\menu\main.rcss')) 'repair: the menu file back'
 Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match 'sfr2HalfEyeUU = 2\.9') 'repair: the player''s Halcyon value kept'
 

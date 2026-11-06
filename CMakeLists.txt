@@ -868,6 +868,8 @@ add_library(mevr-install STATIC
     src/install/Installer.hpp
     src/install/Launch.cpp
     src/install/Launch.hpp
+    src/install/LaunchArgs.cpp
+    src/install/LaunchArgs.hpp
     src/install/Manifest.cpp
     src/install/Manifest.hpp
     src/install/Packs.cpp
@@ -897,6 +899,8 @@ target_compile_options(mevr-install PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cp
 add_library(MEVR-Loader SHARED
     src/loader/Loader.cpp
     src/loader/Loader.rc
+    src/install/LaunchArgs.cpp
+    src/install/LaunchArgs.hpp
     src/loader/LoaderCore.cpp
     src/loader/LoaderCore.hpp
     src/loader/Forwarders.hpp

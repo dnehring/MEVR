@@ -106,6 +106,12 @@ inline constexpr char kWin64[] = "Game/ME1/Binaries/Win64";
 inline constexpr char kAsi[] = "Game/ME1/Binaries/Win64/ASI";
 inline constexpr char kBink[] = "Game/ME1/Binaries/Win64/bink2w64.dll";
 inline constexpr char kBinkOriginal[] = "Game/ME1/Binaries/Win64/bink2w64_original.dll";
+// Our loader in front of the launcher's own Bink too (research/33 section 12): it boots Mass Effect 1 for -game 1.
+inline constexpr char kLauncherExe[] = "Game/Launcher/MassEffectLauncher.exe";
+inline constexpr char kLauncherBink[] = "Game/Launcher/bink2w64.dll";
+inline constexpr char kLauncherBinkOriginal[] = "Game/Launcher/bink2w64_original.dll";
+inline constexpr char kLauncherLogs[] = "Game/Launcher/Logs";
+inline constexpr char kLauncherLoaderLog[] = "Game/Launcher/Logs/MEVRLoader.log";
 inline constexpr char kModAsi[] = "Game/ME1/Binaries/Win64/ASI/LE1MEVR.asi";
 inline constexpr char kModIni[] = "Game/ME1/Binaries/Win64/ASI/LE1MEVR.ini";
 inline constexpr char kHalcyonIni[] = "Game/ME1/Binaries/Win64/ASI/MELEVR.ini";

@@ -87,13 +87,13 @@ enum class LoaderNow {
     Foreign,     // something else replaced our loader since (ME3Tweaks Mod Manager, another tool): never touched
 };
 
-LoaderNow CheckLoader(Layout const& layout, Manifest const& m) {
-    fs::path const file = layout.Full(paths::kBink);
+LoaderNow CheckLoader(Layout const& layout, Manifest const& m, char const* bink = paths::kBink) {
+    fs::path const file = layout.Full(bink);
     std::error_code ec;
     if (!fs::exists(file, ec)) {
         return LoaderNow::Missing;
     }
-    FileEntry const* entry = m.Find(paths::kBink);
+    FileEntry const* entry = m.Find(bink);
     if (entry != nullptr && !entry->sha256.empty() && Sha256File(file) == entry->sha256) {
         return LoaderNow::Ours;
     }
@@ -105,8 +105,8 @@ LoaderNow CheckLoader(Layout const& layout, Manifest const& m) {
     return entry == nullptr ? LoaderNow::Unrecorded : LoaderNow::Foreign;
 }
 
-std::string LoaderName(Layout const& layout) {
-    detect::DllIdentity const id = detect::ReadIdentity(layout.Full(paths::kBink));
+std::string LoaderName(Layout const& layout, char const* bink = paths::kBink) {
+    detect::DllIdentity const id = detect::ReadIdentity(layout.Full(bink));
     std::string const name = !id.product.empty() ? id.product : !id.description.empty() ? id.description : id.company;
     return name.empty() ? std::string("a DLL without a name") : name;
 }
@@ -138,6 +138,52 @@ bool InstallLoader(Transaction& tx, Payload const& payload, detect::BinkState st
         break;
     }
     return false;
+}
+
+bool OursOrMissing(Layout const& layout, std::string_view relative);
+
+// Our loader in front of the launcher's own Bink too (research/33 section 12): the launcher started with -game 1 then
+// boots Mass Effect 1, so Launch needs no picker. Optional: whatever stands there that isn't RAD's or ours is left as it
+// is, with a note (LEBinkProxy boots the game itself; anything else means the picker shows).
+bool InstallLauncherLoader(Transaction& tx, Layout const& layout, Payload const& payload) {
+    std::error_code ec;
+    if (!fs::exists(layout.Full(paths::kLauncherExe), ec)) {
+        return true;  // no Legendary Edition launcher in this install
+    }
+    detect::BinkState const state =
+        detect::ClassifyBink(detect::ReadIdentity(layout.Full(paths::kLauncherBink)), fs::exists(layout.Full(paths::kLauncherBinkOriginal), ec));
+    bool ok = true;
+    switch (state) {
+    case detect::BinkState::Original:
+        ok = tx.Rename(paths::kLauncherBink, paths::kLauncherBinkOriginal) && tx.CopyIn(payload.Loader(), paths::kLauncherBink);
+        break;
+    case detect::BinkState::Ours:
+        if (tx.Data().Find(paths::kLauncherBinkOriginal) == nullptr && !tx.AdoptRenamed(paths::kLauncherBink, paths::kLauncherBinkOriginal)) {
+            return false;
+        }
+        if (tx.Data().Find(paths::kLauncherBink) == nullptr && !tx.AdoptAdded(paths::kLauncherBink)) {
+            return false;
+        }
+        ok = tx.CopyIn(payload.Loader(), paths::kLauncherBink);
+        break;
+    case detect::BinkState::LEBinkProxy:
+        tx.Note("Game\\Launcher has ME3Tweaks' LEBinkProxy: it starts Mass Effect 1 for Launch itself; left as it is");
+        return true;
+    case detect::BinkState::OtherProxy:
+        tx.Note("Game\\Launcher has another ASI loader (" + LoaderName(layout, paths::kLauncherBink) +
+                "): left as it is; Launch may show the launcher's game picker");
+        return true;
+    case detect::BinkState::Missing:
+    case detect::BinkState::Broken:
+        tx.Note("Game\\Launcher has no usable bink2w64.dll: left as it is; Launch shows the launcher's game picker (verify the game's files, "
+                "then Repair)");
+        return true;
+    }
+    // Its log, the mod's own data (and its folder, when it's ours to make).
+    if (ok && OursOrMissing(layout, paths::kLauncherLogs)) {
+        tx.RecordDir(paths::kLauncherLogs);
+    }
+    return ok && tx.RecordRuntimeFile(paths::kLauncherLoaderLog);
 }
 
 // Halcyon's upstream MELE-VR: its dxgi.dll (and the openxr_loader.dll it ships) renamed aside, on record.
@@ -339,6 +385,8 @@ Status ReadStatus(fs::path const& root, std::string const& source) {
     s.versionCheck = detect::CheckVersion(s.version);
     std::error_code ec;
     s.bink = detect::ClassifyBink(detect::ReadIdentity(layout.Win64() / L"bink2w64.dll"), fs::exists(layout.Win64() / L"bink2w64_original.dll", ec));
+    s.launcherBink = detect::ClassifyBink(detect::ReadIdentity(layout.Full(paths::kLauncherBink)),
+        fs::exists(layout.Full(paths::kLauncherBinkOriginal), ec));
     s.canWrite = detect::CanWrite(layout.Win64());
     s.hasGamerSettings = fs::exists(layout.Full(paths::kGamerSettings), ec);
     s.gamerSettingsReadOnly = s.hasGamerSettings && detect::ReadOnlyFile(layout.Full(paths::kGamerSettings));
@@ -359,6 +407,9 @@ Status ReadStatus(fs::path const& root, std::string const& source) {
             s.needsRepair = tx.Verify();
             if (CheckLoader(layout, tx.Data()) == LoaderNow::Foreign) {
                 std::erase(s.needsRepair, std::string(paths::kBink));
+            }
+            if (CheckLoader(layout, tx.Data(), paths::kLauncherBink) == LoaderNow::Foreign) {
+                std::erase(s.needsRepair, std::string(paths::kLauncherBink));
             }
         }
     }
@@ -417,6 +468,7 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
         AdoptOurFiles(tx, payload, options.setupExe);
     }
     bool ok = InstallLoader(tx, payload, bink);
+    ok = ok && InstallLauncherLoader(tx, layout, payload);
     ok = ok && MoveUpstreamAside(tx, upstream);
     ok = ok && tx.CopyIn(payload.Asi(), paths::kModAsi);
     ok = ok && CopyTree(tx, payload.Fonts(), std::string(paths::kAsi) + "/fonts");
@@ -439,7 +491,9 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
     ok = ok && EditUnlessReadOnly(tx, paths::kHalcyonIni, "MELEVR.ini",
                    [](std::string_view text, std::vector<ini::Edit>* edits) { return ini::FixHalcyonIni(text, edits); }, nullptr);
     if (ok && options.source == "Steam") {
-        // The Launch button starts the exe directly, which needs Steam's app id next to it (as Mod Manager does).
+        // Steam's app id next to the exe, as Mod Manager writes it, for a direct start of the exe. Launch goes through Steam
+        // since research/33 section 12 (a direct start of the Steam build hands back to Steam's arguments prompt); kept
+        // for the EA app build's direct start [verify] and recorded, so an uninstall takes it out.
         if (!fs::exists(layout.Full(paths::kSteamAppId), ec)) {
             ok = tx.WriteIn(paths::kSteamAppId, detect::kSteamAppId);
         }
@@ -474,6 +528,19 @@ Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runni
         tx.Note("bink2w64.dll is RAD's own again: left as it is");
         tx.Forget(paths::kBink);
         tx.Forget(paths::kBinkOriginal);
+    }
+    if (tx.Data().Find(paths::kLauncherBink) != nullptr) {
+        LoaderNow const launcher = CheckLoader(layout, tx.Data(), paths::kLauncherBink);
+        if (launcher == LoaderNow::Foreign) {
+            tx.Note("left Game\\Launcher's bink2w64.dll as it is: another ASI loader (" + LoaderName(layout, paths::kLauncherBink) +
+                    ") replaced ours since");
+            tx.Forget(paths::kLauncherBink);
+            tx.Forget(paths::kLauncherBinkOriginal);
+        } else if (launcher == LoaderNow::Rad && !fs::exists(layout.Full(paths::kLauncherBinkOriginal), ec)) {
+            tx.Note("Game\\Launcher's bink2w64.dll is RAD's own again: left as it is");
+            tx.Forget(paths::kLauncherBink);
+            tx.Forget(paths::kLauncherBinkOriginal);
+        }
     }
     bool const asiOurs = std::any_of(tx.Data().dirs.begin(), tx.Data().dirs.end(),
         [](std::string const& d) { return _stricmp(d.c_str(), paths::kAsi) == 0; });
@@ -567,7 +634,31 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
             tx.Note("left bink2w64.dll as it is: another ASI loader (" + LoaderName(layout) + ") replaced ours since");
         }
     }
+    // The launcher's loader (research/33 section 12): put back like the game's; an install from before it gets it now.
+    if (tx.Data().loader == "mevr") {
+        if (tx.Data().Find(paths::kLauncherBink) == nullptr) {
+            ok = InstallLauncherLoader(tx, layout, payload) && ok;
+        } else {
+            bool const launcherOriginal = fs::exists(layout.Full(paths::kLauncherBinkOriginal), ec);
+            LoaderNow const launcher = CheckLoader(layout, tx.Data(), paths::kLauncherBink);
+            if (launcher == LoaderNow::Rad) {
+                bool const put = launcherOriginal ? tx.CopyIn(payload.Loader(), paths::kLauncherBink)
+                                                  : tx.Rename(paths::kLauncherBink, paths::kLauncherBinkOriginal) &&
+                        tx.CopyIn(payload.Loader(), paths::kLauncherBink);
+                ok = put && ok;
+            } else if (launcher == LoaderNow::Missing && launcherOriginal) {
+                ok = tx.CopyIn(payload.Loader(), paths::kLauncherBink) && ok;
+            } else if (launcher == LoaderNow::Missing) {
+                tx.Note("Game\\Launcher's bink2w64.dll is missing: Launch shows the launcher's game picker until Steam or the EA app verifies the "
+                        "game's files");
+            } else if (launcher == LoaderNow::Foreign) {
+                tx.Note("left Game\\Launcher's bink2w64.dll as it is: another ASI loader (" + LoaderName(layout, paths::kLauncherBink) +
+                        ") replaced ours since");
+            }
+        }
+    }
     bool const loaderOurs = CheckLoader(layout, tx.Data()) == LoaderNow::Ours;
+    bool const launcherLoaderOurs = CheckLoader(layout, tx.Data(), paths::kLauncherBink) == LoaderNow::Ours;
     if (detect::UpstreamHalcyon const upstream = detect::FindUpstreamHalcyon(layout.Win64()); upstream.Found()) {
         ok = MoveUpstreamAside(tx, upstream) && ok;
     }
@@ -577,6 +668,10 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
             source = payload.Asi();
         } else if (path == paths::kBink) {
             if (loaderOurs) {  // an older or changed build of ours: the payload's
+                source = payload.Loader();
+            }
+        } else if (path == paths::kLauncherBink) {
+            if (launcherLoaderOurs) {
                 source = payload.Loader();
             }
         } else if (path.rfind(std::string(paths::kAsi) + "/fonts/", 0) == 0) {
@@ -738,7 +833,7 @@ std::optional<SetupRequest> ParseSetupRequest(std::string_view text) {
 
 std::vector<std::string> RuntimeFiles() {
     std::string const logs = std::string(kLogsDir) + "/";
-    return {paths::kModIni, logs + "LE1MEVR.log", logs + "LE1MEVR.prev.log", logs + "MEVRLoader.log"};
+    return {paths::kModIni, logs + "LE1MEVR.log", logs + "LE1MEVR.prev.log", logs + "MEVRLoader.log", paths::kLauncherLoaderLog};
 }
 
 } // namespace mevr::install

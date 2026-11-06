@@ -402,6 +402,20 @@ void TestLaunch() {
     ICHECK(l::Le1Language(l::ParseLauncherConfig("")) == "INT");
     ICHECK(l::Le1Language(l::ParseLauncherConfig("Language=xx_XX")) == "INT");
     ICHECK(l::Le1Arguments(l::LauncherConfig{}) == L"-NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 20 -OVERRIDELANGUAGE=INT");
+    ICHECK(l::Le1Arguments(c) == L"-NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 26 -OVERRIDELANGUAGE=GE");
+    // The launcher's command line as our loader's autoboot reads it (research/33 section 12): what Steam passes for
+    // `-applaunch 1328670 -game 1 -autoterminate`, and what the EA app or a player's shortcut might add around it.
+    l::LauncherBoot const boot = l::ParseLauncherArgs({L"-game", L"1", L"-autoterminate"});
+    ICHECK(boot.game == 1 && boot.autoTerminate);
+    ICHECK(l::ParseLauncherArgs({L"-GAME", L"1"}).game == 1 && !l::ParseLauncherArgs({L"-GAME", L"1"}).autoTerminate);
+    ICHECK(l::ParseLauncherArgs({L"-game=2"}).game == 2);
+    ICHECK(l::ParseLauncherArgs({L"-x", L"-game", L"3", L"-y"}).game == 3);
+    ICHECK(!l::ParseLauncherArgs({}).game && !l::ParseLauncherArgs({}).autoTerminate);   // the player's own start: the picker
+    ICHECK(!l::ParseLauncherArgs({L"-game"}).game);                                       // no number
+    ICHECK(!l::ParseLauncherArgs({L"-game", L"4"}).game);                                 // not a Legendary Edition game
+    ICHECK(!l::ParseLauncherArgs({L"-game", L"12"}).game && !l::ParseLauncherArgs({L"-game", L"x"}).game);
+    ICHECK(l::ParseLauncherArgs({L"-autoterminate"}).autoTerminate && !l::ParseLauncherArgs({L"-autoterminate"}).game);
+    ICHECK(std::wstring(l::kSteamBootLe1Args) == L"-applaunch 1328670 -game 1 -autoterminate");
 }
 
 void TestPacksAndUpdates() {

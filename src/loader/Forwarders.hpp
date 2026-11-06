@@ -83,3 +83,7 @@
 #pragma comment(linker, "/EXPORT:BinkWaitStopAsyncThread=bink2w64_original.BinkWaitStopAsyncThread,@77")
 #pragma comment(linker, "/EXPORT:BinkWaitStopAsyncThreadsMulti=bink2w64_original.BinkWaitStopAsyncThreadsMulti,@78")
 #pragma comment(linker, "/EXPORT:RADTimerRead=bink2w64_original.RADTimerRead,@79")
+// The launcher's own Bink (Game\Launcher, version 2.7s, the same build as LE2's and LE3's: 76 names) also has BinkOpenMiles,
+// which ME1's lacks; our loader stands in front of it too since research/33 section 12. A forwarder to a name the
+// original doesn't have only fails if something asks for that name, so the union is safe in both folders.
+#pragma comment(linker, "/EXPORT:BinkOpenMiles=bink2w64_original.BinkOpenMiles,@80")

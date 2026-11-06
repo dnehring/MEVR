@@ -1,5 +1,5 @@
 ; SPDX-License-Identifier: MIT
-; The test stand-in for bink2w64_original.dll (tools/loader-test): the same 79 names as the game's Bink DLL;
+; The test stand-in for bink2w64_original.dll (tools/loader-test): the 79 names of ME1's Bink DLL and BinkOpenMiles (the launcher's);
 ; RADTimerRead returns a known value, the rest return 0.
 LIBRARY bink2w64_original
 EXPORTS
@@ -82,3 +82,4 @@ EXPORTS
     BinkWaitStopAsyncThread=StubZero @77
     BinkWaitStopAsyncThreadsMulti=StubZero @78
     RADTimerRead=StubTimer @79
+    BinkOpenMiles=StubZero @80

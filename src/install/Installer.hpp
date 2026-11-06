@@ -44,6 +44,8 @@ struct Status {
     std::optional<ModuleVersion> version;
     detect::VersionCheck versionCheck = detect::VersionCheck::Missing;
     detect::BinkState bink = detect::BinkState::Missing;
+    // Game\Launcher's bink2w64.dll: our loader or LEBinkProxy there boots Mass Effect 1 for Launch (-game 1).
+    detect::BinkState launcherBink = detect::BinkState::Missing;
     bool installed = false;      // the mod is: the manifest has a mod version or the ASI (not only settings or a pack)
     bool hasRecord = false;      // a manifest exists (perhaps only for the game settings or a pack)
     std::string installedVersion;

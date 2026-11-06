@@ -600,7 +600,7 @@ the state a new player has, without a person in the headset.
   `MEVRLoader.log`). Every later launch of the game through Steam (`steam://rungameid`, `-applaunch`) queued behind that
   dialog. Answer to section 2's [verify]: **a direct start of the Steam build doesn't work**; ME3Tweaks' autoboot works
   only because LEBinkProxy sits in the launcher.
-- **The way to one click** (not built): Launch asks Steam with `-applaunch 1328670 -game 1 -autoterminate` (no arguments
+- **The way to one click** (built the same day: section 12): Launch asks Steam with `-applaunch 1328670 -game 1 -autoterminate` (no arguments
   dialog: the dev setup's `tools/launch-game.ps1 -Steam` has launched that way for weeks), and our own loader also goes into
   `Game\Launcher` as its `bink2w64.dll` and, loaded into `MassEffectLauncher.exe` with `-game 1`, starts
   `..\ME1\Binaries\Win64\MassEffect1.exe` with the launcher's arguments and ends the launcher with `-autoterminate` (the
@@ -611,10 +611,47 @@ the state a new player has, without a person in the headset.
   the command line runs the same code), the EA app build. The dev install was put back afterwards and compared against its
   record: the same, file for file (the two logs aside), the saves unchanged.
 
+## 12. One click into Mass Effect 1: the launcher's autoboot (2026-11-05)
+
+Built from section 11's finding (the user: "Yes, please proceed").
+
+- **Our loader in the launcher.** The installer puts `bink2w64.dll` (the same file) in `Game\Launcher` too: the
+  launcher's own Bink renamed `bink2w64_original.dll` and recorded, like the game's (`paths::kLauncherBink`,
+  `InstallLauncherLoader`). Loaded into `MassEffectLauncher.exe` (the launcher's exe is DRM-packed, its only static import
+  EA's `Core\Activation64.dll`, so Bink is loaded at run time, as LEBinkProxy there shows), it loads no ASIs; with `-game 1`
+  on the launcher's command line it starts `..\ME1\Binaries\Win64\MassEffect1.exe` from that folder with the launcher's
+  own arguments (`LauncherConfig.cfg`: `install::launch::Le1Arguments`, now in `src/install/LaunchArgs` so the loader links
+  it without the installer), as the launcher's child (it keeps what Steam and the EA app gave the launcher); with
+  `-autoterminate` the launcher then ends (`TerminateProcess`: ExitProcess from a worker thread would run every DLL's
+  detach while the launcher's threads still run). Without `-game` the launcher is left alone; `-game 2` or `3` aren't ours
+  (their arguments differ): the picker. The behaviour of LEBinkProxy's launcher module (section 2), written anew. Its log
+  is `Game\Launcher\Logs\MEVRLoader.log`, recorded as the mod's own (and its folder, when the install makes it).
+- **The launcher's Bink is another build.** It is RAD's 2.7s (391,360 bytes; LE2's and LE3's `bink2w64.dll` are the same
+  size and build, 76 exports), not ME1's (79): it has `BinkOpenMiles`, which ME1's lacks, and lacks `BinkCurrentSubtitle`,
+  `BinkGetSubtitleByIndex`, `BinkLoadSubtitles` and `BinkOpenXAudio29` (dumpbin `/exports`). The forwarders now export
+  the union (80, `BinkOpenMiles` @80): a forwarder to a name the original lacks only fails if something asks for that name.
+  (Section 1's note that the launcher holds the same file as ME1 was LEBinkProxy's `bink2w64_original.dll` there, a copy of
+  ME1's.)
+- **Launch through Steam.** `install::launch::StartLe1` on the Steam build starts nothing directly any more: it asks
+  `steam.exe` (`HKCU\Software\Valve\Steam` `SteamExe`) for `-applaunch 1328670 -game 1 -autoterminate` when the launcher
+  boots the game itself (`LauncherBoots`: our loader or LEBinkProxy in `Game\Launcher`), else for `-applaunch 1328670` (the
+  picker, with a line saying so). SteamVR first as before (`StartLe1WithVr`). The EA app build still starts the exe
+  directly **[verify]**. `--status` says what the launcher does (`launcher: our loader starts Mass Effect 1 for Launch`).
+- **Repair and Uninstall.** Steam's "verify files" puts the launcher's own Bink back over ours (it did in section 11):
+  status lists `Game/Launcher/bink2w64.dll` under "needs repair" and Repair puts ours back; an install from before this
+  gets the launcher's loader at its next Repair. A loader another tool put there since stays (as in the game's folder);
+  LEBinkProxy found there at install is left (it boots the game itself) and noted.
+- **Checked offline:** `install` tests (the launcher's arguments as Steam passes them, `-game=N`, other games, missing
+  numbers), `mevr-loader` (the stand-in Bink with `BinkOpenMiles`: all 80 names resolve), and the fake game
+  (`tools/setup/test-fake-game.ps1`, with a `Game\Launcher` of a stand-in launcher and LE2's RAD Bink: install, status,
+  "verify files" then Repair, uninstall byte for byte: every check passes).
+- **Not yet in the game:** Steam's arguments dialog from section 11 was still waiting for a click, so no launch through
+  Steam could run. Next: the release zip again on the vanilla game, Launch, the two loader logs and the game's own.
+
 ## Open
 
 - **[verify]** In the game: our loader in place of LEBinkProxy (attach timing, Halcyon's DXGI hook, the log); the
-  launcher autoboot of section 11 (to build); the EA app build; "Install after I quit" end to end; "Start the game once"
+  launcher autoboot of section 12 (built, checked on the fake game); the EA app build; "Install after I quit" end to end; "Start the game once"
   (section 9). Settled in section 11: a direct start of the Steam build hands back to Steam's arguments prompt; Launch's
   SteamVR start works; install, verify then Repair, and uninstall on the real game.
 - **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,

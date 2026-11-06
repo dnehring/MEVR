@@ -636,6 +636,11 @@ int RunCli(Cli const& cli) {
         say("version: " + (s.version ? s.version->ToString() : std::string("unknown")) +
             (s.versionCheck == detect::VersionCheck::Supported ? " (supported)" : " (NOT supported)"));
         say(std::string("loader: ") + detect::BinkStateText(s.bink));
+        // The launcher's (research/33 section 12): what lets Launch start Mass Effect 1 without the launcher's picker.
+        say(std::string("launcher: ") + (s.launcherBink == detect::BinkState::Ours            ? "our loader starts Mass Effect 1 for Launch"
+                                         : s.launcherBink == detect::BinkState::LEBinkProxy ? "ME3Tweaks' LEBinkProxy starts Mass Effect 1 for Launch"
+                                         : s.launcherBink == detect::BinkState::Original    ? "the launcher's own Bink: Launch shows its game picker"
+                                                                                            : "no loader of ours: Launch shows the launcher's game picker"));
         say("installed: " + (s.installed ? "yes, " + s.installedVersion + ", loader " + s.loader : std::string("no")));
         say(std::string("game settings applied: ") + (s.gameSettings ? "yes" : "no"));
         say(std::string("game started once (GamerSettings.ini): ") + (s.hasGamerSettings ? "yes" : "no"));
