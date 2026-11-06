@@ -127,9 +127,7 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   calls off. Judge: the tiles' size and legibility at the hand, whether one / two / long pulses tell who without looking,
   whether a flick ever misfires while aiming, the double tap's timing (0.35 s), the arc's reach (14 m/s: 20 m at 45 degrees),
   and whether the arc drawn over walls (no depth test) confuses. With two squadmates, both sent to one ring: do they crowd?
-  Weapons: while holding B, flick the stick down: the lit squadmate's weapons appear under the names (the arc fades);
-  sideways picks, let go equips (up goes back to placing). Is down-then-sideways easy mid-fight, and is the left trigger
-  missed now that its wheel is off? (research/54 "Placement by an arc", "The selector", "The weapon row")
+  (research/54 "Placement by an arc", "The selector")
 - [ ] In a fight, `mevr say "<name>, hold here"` typed by Claude while you watch: does a held squadmate stay put under
   the HOLD formation, does a hurt or crowded one visibly fall back to cover and come back when it's calm, and does being
   re-ordered every few seconds make them twitch. Claude can read the logs; only you can see whether it looks right.
@@ -150,8 +148,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   `PushMoveToPoint`, the placement's road, since `QuickCommandMoveTo` ignores the point in VR): "Ashley, move up" with the
   left hand on a spot 5 m off, or the left grip let go on the floor there; she should walk to it and hold until it's calm,
   then come back. (`mevr voice say Ashley, move up`, log `squad orders: move to`)
-- [ ] Landmarks (2026-11-05 evening, research/54 "Landmarks"): on a level with cover (Eden Prime's crates, the UNC20 drop zone's
-  rocks), `mevr context` lists `L1 cover | left near level` lines (the game's own cover links within 25 m); "Ashley, get behind
+- [ ] Landmarks (2026-11-05 evening, research/54 "Landmarks"): on a level with cover (Eden Prime's crates; the UNC20 drop zone
+  has NO placed cover links, checked 19:50, and `open BIOA_PRO10` from its save did nothing: load an Eden Prime save),
+  `mevr context` lists `L1 cover | left near level` lines (the game's own cover links within 25 m); "Ashley, get behind
   that crate" with the left hand on it, or "take cover behind the cover on the left", sends her to the slot on its far side
   from the enemies (log `squad orders: ... cover L1`). Every piece is called "cover" until the mesh words are learned; the
   objects walk every 2 s is a cost to read in the heartbeat. (`[SquadContext] landmarkRangeM`, `maxLandmarks`)

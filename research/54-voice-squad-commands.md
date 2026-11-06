@@ -421,18 +421,14 @@ arc on the hand denotes placement", and "double b will have the squad all return
   v32 (size-checked).
 Pointing to pick is gone. Not yet seen in the game (the game folder went to the install test, then the user's playtest).
 
-#### The weapon row (2026-11-05, night)
+#### The weapon row: built, then paused (2026-11-05, night)
 
-The user: fold the squad's weapons into the same flow, "ideally we wouldn't need those older menus"; asked how, they chose stick
-down for a weapon row and the left trigger's wheel off by default. Built in 63abe6c ([core/vr/SquadPlace](../src/core/vr/SquadPlace.hpp),
-`Row`, unit-tested): while B is held a flick down opens a row of the lit tile's weapons under the names (a squadmate's carried ones,
-`MemberView::carried`; for the squad tile any one of them carries), starting on the one in hand; the arc and ring fade out (the
-View's `count` 0). Sideways now steps weapons, up goes back to the names and the arc; the stronger axis decides a diagonal. Letting
-go in the row equips the lit weapon for each recipient that carries it (`squad_weapons::GiveWeapon`, the squad weapon menu's own
-path) and moves no one. Haptics: a 50 ms pulse at the row change, a tick per weapon. The host draws the row 4.5 cm under the names in
-pale gold, the one in hand dotted. The left trigger's squad wheel is off by default (`[Controls] leftTrigger = none`; a file without
-the marker `placeWeapons` that still holds `lb` moves once), the menu's default and the controller guide's B text with it;
-`leftTrigger = lb` brings the wheel back. Not yet seen in the game.
+The user asked to fold the squad's weapons into this hold; a row of the lit squadmate's weapons opened by a flick of the stick
+down was built (63abe6c: the arc faded, sideways picked, letting go equipped through `squad_weapons::GiveWeapon`; the left
+trigger's wheel off by default) and drew as meant in the game (19:42, the four weapons under "Squad"). The user then paused it
+("we'll keep the previous trigger action ... remove the weapon selection from this stage"): reverted, the left trigger's squad
+weapon wheel is the default again (`[Controls] leftTrigger = lb`). A radial at the hand like the power wheel's was the shape
+discussed for when it comes back.
 
 ## Landmarks: "get behind that crate" (2026-11-05, evening)
 
@@ -469,6 +465,17 @@ the enemy groups:
 - **The generator** (`make_dataset.py`, generator 3): scenes carry 0-3 landmarks (mostly "cover", some typed), a "cover"
   kind of order (8%) says "get behind the crate", "take cover behind the wall on the left", "Ashley, behind that one" (a
   PT line whose candidates are L ids), gold `A|-|-|hold|L2` or `PT1`; run3's config takes it.
+
+**In the game, 19:43-19:52** (the fake headset, the UNC20 drop-zone save): the walk runs every 2 s as meant (29 walks
+in 56 s of reads) and found two "cover links" at 338 m, both the classes' default objects (`Default__CoverLink`,
+`Default__SFXDynamicCoverLink`, one slot each): **the drop zone has no placed cover at all**, so the walk skips default
+objects now (the retreat's `CoverNear` in game/SquadOrders should too; its distance check hides them today) and the
+level shows 0 landmarks, rightly. The heartbeat carries the counts (`N landmark(s) of M cover links in K walks`) and the
+first walk logs each link by name and distance, which is where the mesh words will come from. Eden Prime for a check
+with real cover: `open BIOA_PRO10` through the console returned nothing and the map stayed (the Mako helper's `open
+BIOA_UNC20` works), and `launch-game.ps1 -Map` still resumed the save at the title, so the check with cover is the
+checklist's (a save on Eden Prime, or the reason `open` refuses that map, [verify]). `[SquadContext] landmarkRangeM` isn't
+re-read live, either: the key is read with the file at start.
 
 **What the game hasn't said yet** [verify]: the type words. The mod says "cover" for every piece until it learns which mesh
 a cover link stands against (the level's static mesh names, `Crate_01`, `Pillar`...: a map from mesh names to words, and

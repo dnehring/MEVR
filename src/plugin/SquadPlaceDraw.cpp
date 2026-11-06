@@ -49,9 +49,6 @@ constexpr gh::Colour kSquad{0.30f, 0.70f, 1.00f, 1.0f};
 constexpr gh::Colour kMember{1.00f, 0.62f, 0.22f, 1.0f};
 constexpr gh::Colour kFollow{0.35f, 1.00f, 0.55f, 1.0f};
 constexpr gh::Colour kRefused{1.00f, 0.25f, 0.18f, 1.0f};
-constexpr gh::Colour kWeapon{0.95f, 0.85f, 0.45f, 1.0f};  // the weapon row: a pale gold, apart from who
-// The weapon row's names as the mod sends them (squad_menu's WeaponName, capitalised), to mark the one in hand.
-constexpr char const* kWeaponNames[4] = {"Pistol", "Shotgun", "Assault rifle", "Sniper rifle"};
 
 struct EyeChain {
     XrSwapchain handle = XR_NULL_HANDLE;
@@ -217,34 +214,6 @@ void AddSelector(gh::DrawList& list, sp::View const& view, XrPosef const& head) 
                 Scaled(colour, 0.95f)});
         }
     }
-    // The weapon row (stick down): the lit squadmate's weapons under the names, the lit one in the weapon colour and underlined,
-    // the one in hand marked by a dot. The names above stay, their lit tile showing whose weapons these are.
-    int const weapons = std::min<int>(view.weaponTiles, 4);
-    if (view.row != 1 || weapons <= 0) return;
-    XrVector3f const rowCentre = gh::Add(centre, {0.0f, -0.045f * scale, 0.0f});
-    float const weaponSpacing = 0.085f * scale;
-    for (int w = 0; w < weapons; ++w) {
-        bool const lit = w == view.weaponTile;
-        XrVector3f const at =
-            gh::Add(rowCentre, gh::Mul(flatRight, (static_cast<float>(w) - static_cast<float>(weapons - 1) * 0.5f) * weaponSpacing));
-        gh::Label label;
-        label.anchor = at;
-        label.heightM = (lit ? 0.018f : 0.013f) * scale;
-        label.colour = lit ? kWeapon : gh::Colour{0.55f, 0.6f, 0.65f, 0.8f};
-        label.text = view.weaponNames[w][0] != 0 ? std::string(view.weaponNames[w], strnlen(view.weaponNames[w], sizeof(view.weaponNames[w])))
-                                                : "?";
-        label.plate = true;
-        list.labels.push_back(label);
-        if (lit) {
-            XrVector3f const under = gh::Add(at, {0.0f, -0.006f * scale, 0.0f});
-            float const half = 0.03f * scale;
-            list.lines.push_back({gh::Sub(under, gh::Mul(flatRight, half)), gh::Add(under, gh::Mul(flatRight, half)), 0.0022f * scale, kWeapon});
-        }
-        std::string const name(view.weaponNames[w], strnlen(view.weaponNames[w], sizeof(view.weaponNames[w])));
-        if (view.weaponInHand >= 0 && view.weaponInHand < 4 && name == kWeaponNames[view.weaponInHand]) {
-            list.sprites.push_back({gh::Add(at, {0.0f, 0.03f * scale, 0.0f}), 0.004f * scale, kWeapon, gh::SpriteStyle::Star, {}});
-        }
-    }
 }
 
 // The arc and its end, in the app space.
@@ -254,10 +223,6 @@ gh::DrawList Build(sp::View const& view, XrPosef const& headPose, float timeS) {
     sp::Landing const landing = static_cast<sp::Landing>(view.landing);
     gh::Colour const colour = landing != sp::Landing::Floor ? kRefused : view.follow != 0 ? kFollow : view.member >= 0 ? kMember : kSquad;
     int const count = std::min<int>(view.count, sp::kMaxPoints);
-    if (count < 2) {  // the weapon row: no arc, no ring, only the selector
-        AddSelector(list, view, headPose);
-        return list;
-    }
     // The ribbon: about 0.15 degrees wide at any distance (never under 4 mm), dim at the hand, bright toward the end; a bead of
     // light runs along it so it reads as a throw.
     float const run = std::fmod(timeS * 1.6f, 1.0f);
@@ -313,7 +278,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     }
     sp::View const view = sp::Latest();
     std::uint64_t const now = GetTickCount64();
-    if (view.active == 0 || view.size != sizeof(sp::View) || (view.count < 2 && view.tiles == 0)) {
+    if (view.active == 0 || view.size != sizeof(sp::View) || view.count < 2) {
         if (gStartMs != 0) SetStatus("{\"shown\": false}");
         gStartMs = 0;
         return nullptr;
