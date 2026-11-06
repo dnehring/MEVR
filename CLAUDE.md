@@ -742,7 +742,9 @@ switching frameworks.
   (`sv::WindowView`, the scope shader's window style, the eye copy; not the capture: its grade would show). Dots no longer slide
   toward the eye (`assistDotMaxM` 0; 0.03 migrated once, marker `dotWindow`: the slide toggled at the corridor's edge while the
   eye already sat on the line), and the dot's eye survives a 120 ms dropout (`sv::EyeHold`). Log `[MEVR-SIGHT] first window`,
-  `sights: the dot's window was up`; snapshot `sights.window`.
+  `sights: the dot's window was up`; snapshot `sights.window`. **The sight takes one swapchain** (research/21 section 18; SteamVR
+  holds 16 a session, `mevr-swapchain-probe`): the picture at the image's origin, the reticle and ring beside it, each quad by
+  `imageRect` (the three of them refused on 2026-11-06 left the player with no dot or scope all session).
 - LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **on by default since 2026-11-04**,
   `[Sights] scopeCapture = 1`, an old file's 0 moved once (marker `scopeCapturePost`); measured in research/39 section 12: the
   render thread +0.5 ms in a light scene, no GPU cost visible, the picture as sharp as the display instead of 2.2x below it;
@@ -1124,9 +1126,13 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **The long forms live in [docs/knowledge/gotchas](docs/knowledge/gotchas/index.md)** (OKF, since 2026-10-30, after
   motion blur bit a third time under a third name): symptom, cause, check, fix in place, the dates each bit. Read it
   when something looks familiar; add the date when it bites again. The bullets below are the short forms.
-- **The runtime limits swapchains** (XR_ERROR_LIMIT_REACHED, -10; SteamVR, 2026-11-06: the calibration's target board failed,
-  no targets, its aims lost): ours are made lazily and never freed, so share one swapchain between a quad's looks and log a
-  failed create (research/25 section 10).
+- **The runtime limits swapchains** (XR_ERROR_LIMIT_REACHED, -10, past 16 a session on SteamVR whatever their size, `tools/swapchain-probe`; Halcyon holds 4; 2026-11-06:
+  the calibration's targets, then the omni-tool's rail, the sights, the galaxy map and eight more went missing one after
+  another, each owner having given up for the session): **make every swapchain through `plugin/Swapchains`** (`swapchains::
+  Create` with an `evict` that lets go and redraws when made again; rules `core/vr/SwapchainBudget`, unit-tested): a refusal
+  frees ours not shown for a second at that frame's end and the owner asks again next frame (else every 2 s; the calibration's
+  are Essential); never latch a refusal for the session; share one swapchain between a quad's looks. Log `swapchains:`
+  (every live one at a refusal), snapshot `"swapchains"` (gotchas/openxr-swapchain-limit).
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
 - An inline `python - <<'EOF'` loses one backslash of every pair (the Bash tool); write scripts with backslashes to a file.
 - `Windows.h` macros eat ordinary names (`SetProp`, `far`, `near`, `min`, `max`): don't name ours after them; build `build-mono/` too.

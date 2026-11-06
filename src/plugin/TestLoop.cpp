@@ -21,6 +21,7 @@
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
 #include "plugin/Spectator.hpp"
+#include "plugin/Swapchains.hpp"
 #include "plugin/UiWorldFigure.hpp"
 
 #include "halcyon/le1/mevr_bridge.h"
@@ -813,7 +814,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
         "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n  \"voice\": {},\n"
-        "  \"spectator\": {},\n  \"figure\": {},\n  \"omniPad\": {},\n  \"omniRail\": {},\n  \"mod\": {},\n"
+        "  \"spectator\": {},\n  \"figure\": {},\n  \"omniPad\": {},\n  \"omniRail\": {},\n  \"swapchains\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
@@ -834,7 +835,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
 #else
         std::string("null"), std::string("null"),
 #endif
-        mod, LayersJson(layers));
+        swapchains::StatusJson(), mod, LayersJson(layers));
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);
@@ -1321,7 +1322,11 @@ XrResult XRAPI_CALL WrappedEndFrame(XrSession session, XrFrameEndInfo const* inf
     if (gArmed.load(std::memory_order_relaxed) && info != nullptr && OnPresentThread()) {
         OnEndFrameArmed(*info);
     }
-    return gRealEndFrame(session, info);
+    XrResult const result = gRealEndFrame(session, info);
+    if (info != nullptr && OnPresentThread()) {
+        swapchains::AfterEndFrame(*info);  // which of ours were shown; room for refused creates (plugin/Swapchains)
+    }
+    return result;
 }
 
 XrResult XRAPI_CALL WrappedLocateViews(XrSession session, XrViewLocateInfo const* info, XrViewState* viewState,

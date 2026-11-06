@@ -11407,6 +11407,8 @@ int RunVrCoverTests();
 int RunSquadPhrasingTests();
 int RunVoiceTests();
 int RunCockpitPanelTests();
+// tests/SwapchainBudgetTests.cpp: which swapchains are freed when the runtime refuses one (core/vr/SwapchainBudget).
+int RunSwapchainBudgetTests();
 
 // core/vr/PowerWheel: the hand's power wheel (research/55, the concept of 2026-11-04).
 void TestPowerWheel() {
@@ -11551,6 +11553,7 @@ int main() {
     gFailures += RunSquadPhrasingTests();
     gFailures += RunVoiceTests();
     gFailures += RunCockpitPanelTests();
+    gFailures += RunSwapchainBudgetTests();
     TestUpscale();
     TestMakoGunner();
     TestCockpitHazard();

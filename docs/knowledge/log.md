@@ -15,3 +15,7 @@
 * **Create**: [Windows.h defines macros that eat ordinary identifiers](gotchas/windows-h-macros.md), after `SetProp` broke the monolithic build and `far` broke core/vr/WorldUi.cpp the same day.
 * **Create**: [The Bash tool collapses doubled backslashes in a heredoc](gotchas/bash-heredoc-backslashes.md), after two inline edit scripts lost their `\n`.
 * **Update**: [a `cd` in a Bash tool call moves the session](gotchas/bash-cd-moves-the-session.md) bit again (a `cd` into the SDK headers).
+
+## 2026-11-06
+* **Create**: [The OpenXR runtime limits a session's swapchains](gotchas/openxr-swapchain-limit.md), after the calibration's targets and then the omni-tool's rail went missing in the same session, with ten other quads.
+* **Update**: [a `cd` in a Bash tool call moves the session](gotchas/bash-cd-moves-the-session.md) and [the Bash tool collapses doubled backslashes](gotchas/bash-heredoc-backslashes.md) bit again.

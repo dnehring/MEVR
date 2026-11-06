@@ -6,14 +6,15 @@ tags: [tooling, claude-code]
 status: stable
 timestamp: 2026-10-30T19:53:43Z
 generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
-bitten: [2026-10-30, 2026-10-31, 2026-11-04]
+bitten: [2026-10-30, 2026-10-31, 2026-11-04, 2026-11-06]
 ---
 
 # Symptom
 
 An environment note "Primary working directory: ... (was H:\ME VR Attempt)"; later commands and file tools resolve
 relative paths in the wrong folder; files land in a subdirectory. 2026-11-04: a `cd` into `external/LExSDKv2/...` to grep
-the SDK headers (use the Grep tool with an absolute path instead).
+the SDK headers (use the Grep tool with an absolute path instead). 2026-11-06: `cd src/plugin && for f in ...; do sed ...` to
+show several files' code; the next command ran from there.
 
 # Cause
 
