@@ -4,7 +4,7 @@ left wrist in front of the chest as if reading a watch, looks down at it, and ta
 given times (research/57, the omni-tool: the tap opens the rail and the game's omni-tool, a second tap closes them). Between
 taps the right hand rests low beside the body. For checking the omni-tool's wrist screens and rail on the fake headset.
 
-Usage: python tools/make-wrist-recording.py out.mevrrec [seconds 60] [taps 4] [eye height 0] [look wrist] [B presses] [hovers]
+Usage: python tools/make-wrist-recording.py out.mevrrec [seconds 60] [taps 4] [eye height 0] [look wrist] [B presses] [hovers] [beside]
   taps:       the tap times in seconds, comma-separated ("4" opens once; "4,40" opens, then closes)
   eye height: the head's height in tracking space (0 on the fake headset, whose null driver puts the head at the origin)
   look:       "wrist" turns the head to look at the raised wrist (yaw and pitch); a number only pitches it that many
@@ -12,6 +12,7 @@ Usage: python tools/make-wrist-recording.py out.mevrrec [seconds 60] [taps 4] [e
   B presses:  times (comma-separated) the right controller's B is held 0.2 s; replay with -Inputs for the game to see it
   hovers:     times (comma-separated) the fingertip comes to 0.06 m beside the target and stays 3 s without tapping (the
               target's armed look, for a snapshot)
+  beside:     how far beside the target a hover stays (0.06 m; 0 rests on it: a tap, then held there)
 The tap (core/vr/OmniRail's Tap): the fingertip, 0.035 m along the right aim ray, comes from farther than 0.08 m to within
 0.04 m of the tap's target (OmniRail's TargetPoint: 0.035 m below the wrist point, the left grip pose plus [Hud]
 wristOffset, -0.03 0.06 0.05 in its axes by default).
@@ -57,6 +58,7 @@ def main():
     look = sys.argv[5] if len(sys.argv) > 5 else "wrist"
     presses = [float(x) for x in (sys.argv[6] if len(sys.argv) > 6 else "").split(",") if x.strip()]
     hovers = [float(x) for x in (sys.argv[7] if len(sys.argv) > 7 else "").split(",") if x.strip()]
+    beside = float(sys.argv[8]) if len(sys.argv) > 8 else 0.06
     hz = 90.0
     ipd = 0.064
     fov = (-0.785, 0.785, 0.785, -0.785)  # left, right, up, down (radians)
@@ -69,7 +71,7 @@ def main():
     right_rest = (0.22, eye_h - 0.60, -0.15)
     target_up = (wrist_up[0], wrist_up[1] - TARGET_BELOW, wrist_up[2])
     right_on = (target_up[0], target_up[1], target_up[2] + TIP_AHEAD)
-    right_hover = (right_on[0] + 0.06, right_on[1], right_on[2])
+    right_hover = (right_on[0] + beside, right_on[1], right_on[2])
     right_near = (right_on[0] + 0.15, right_on[1] - 0.03, right_on[2])
     # The head: turned to look at the raised wrist (as a person reading a watch does), or only pitched by `look` degrees.
     if look == "wrist":
@@ -100,7 +102,7 @@ def main():
             elif 0.45 <= d < 1.2:
                 right = lerp(right_near, right_rest, smooth((d - 0.45) / 0.75))
         for hover in hovers:
-            # 1.0 s over to near, 0.5 s to 6 cm beside the target, held 3 s, then back to rest over 1 s.
+            # 1.0 s over to near, 0.5 s to eside the target, held 3 s, then back to rest over 1 s.
             d = t - hover
             if 0.0 <= d < 1.0:
                 right = lerp(right_rest, right_near, smooth(d))

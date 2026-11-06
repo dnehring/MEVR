@@ -507,9 +507,13 @@ switching frameworks.
   Squad, Equipment, Map, Journal, Codex, Computer, Close; a second RmlUi context of the main menu's library (`menu::Ui` allows one
   per document now), `vr::game_pointer::Pointer` on its quad (ray and trigger, or the fingertip), its trigger kept from the game
   (`omni_rail::OwnsTriggers`). **Tap the left wrist with the right index fingertip** to open it alone on the wrist (4 cm from
-  8 cm, not with a gun drawn; `omni_rail::Tap`), **at a target button 3.5 cm below the wrist readout** (2026-11-05: the first
-  headset try found nothing to aim at): faint orange with the wrist raised, brighter with the right hand near, cyan and a tick
-  in tap range (`omni_rail::TargetLookFor`; log `omni-tool rail: a reach for the wrist target`, each try's closest approach); it shows by itself beside a screen of its own; a tap or Close shuts it and the
+  8 cm, not with a gun drawn; `omni_rail::Tap`), **at a target button on Shepard's drawn left forearm, measured from his drawn
+  right index fingertip** (2026-11-05: the first headset try found nothing to aim at; the user: "I want it to be the wrist
+  target"): the mod sends the arm bones each tick in `hud_pieces::Pieces` (size-checked: host and mod deploy together), the
+  target 30% from the wrist to the elbow lifted 3.5 cm toward the eyes (`omni_rail::BodyTarget`/`BodyFingertip`); the
+  controllers when the arms aren't drawn first person (`[OmniTool] tapOnBody = 0`: always); faint orange with the wrist raised,
+  brighter with the right hand near, cyan and a tick in tap range (`omni_rail::TargetLookFor`; log `omni-tool rail: a reach for
+  the wrist target`, each try's closest approach; snapshot `"omniRail"."target"`); it shows by itself beside a screen of its own; a tap or Close shuts it and the
   screens. Its entries go to the mod through the main menu's request slot (`main_menu::PutGameRequest`, `game_menu::Action` 3..8):
   `game/GameMenuRequest` backs out of the screen up with the player's B as the game hears it, **`SFXGameModeBase.GuiKey(13)` on the
   active mode** (it hands B to the GUI manager, which offers it to every handler on the stack and closes through

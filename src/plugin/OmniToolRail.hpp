@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/vr/OmniRail.hpp"
 #include "plugin/WorldUi.hpp"
 
 #include <openxr/openxr.h>
@@ -30,6 +31,7 @@ struct Frame {
     XrVector3f wrist{};                         // the left wrist's point (the HUD's wrist piece), app space: the tap's target
     std::optional<XrVector3f> display;          // the omni-tool's display on Shepard's arm (the mod's), app space: the rail
                                                 // alone stands there when known
+    std::optional<vr::omni_rail::Body> body;    // Shepard's drawn arms (the mod's, HudPieces): the tap's target and fingertip
     bool gunDrawn = false;                      // the mod's gun panel shows: no tap
     int gameMode = -1;                          // the game mode Halcyon last read (0 on foot, 7 the game's screens)
     bool othersOwnInput = false;                // our main menu, Halcyon's menu or the calibration is up

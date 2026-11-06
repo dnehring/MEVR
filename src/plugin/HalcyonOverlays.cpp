@@ -2398,6 +2398,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             rail.wristValid = true;
             rail.wrist = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
         }
+        if (pieces.bodyValid) {
+            rail.body = mevr::vr::omni_rail::Body{pieces.leftWrist, pieces.leftElbow, pieces.rightIndex1, pieces.rightIndex2};
+        }
         rail.gunDrawn = pieces.gunVisible;
         rail.gameMode = gLastGameMode;
         rail.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();

@@ -7486,6 +7486,27 @@ void TestOmniRail() {
     CHECK(rail::TargetLookFor(true, eyes, target, true, closeTip, false, release) == rail::TargetLook::Near);  // not armed: resting
     CHECK(rail::TargetLookFor(false, eyes, target, true, closeTip, true, release) == rail::TargetLook::Hidden);  // a gun drawn
     CHECK(rail::TargetLookFor(true, eyes, target, false, closeTip, true, release) == rail::TargetLook::Faint);   // no right hand
+    // On Shepard's drawn arm: 30% from the wrist to the elbow, lifted 3.5 cm toward the eyes; the index tip one first-bone
+    // length past its second joint; nothing for a degenerate arm.
+    rail::Body body;
+    body.leftWrist = {-0.10f, -0.40f, -0.40f};
+    body.leftElbow = {-0.30f, -0.40f, -0.40f};  // 0.20 m along -X
+    body.rightIndex1 = {0.05f, -0.40f, -0.30f};
+    body.rightIndex2 = {0.05f, -0.40f, -0.33f};
+    auto const onArm = rail::BodyTarget(body, eyes);
+    CHECK(onArm.has_value());
+    if (onArm) {
+        XrVector3f const along{-0.10f - 0.20f * rail::kForearmAlong, -0.40f, -0.40f};
+        float const toEyes = std::sqrt(along.x * along.x + along.y * along.y + along.z * along.z);
+        CHECK(NearD(onArm->x, along.x * (1.0f - rail::kForearmLiftM / toEyes), 1e-5));
+        CHECK(NearD(onArm->y, along.y * (1.0f - rail::kForearmLiftM / toEyes), 1e-5));
+    }
+    auto const tipOf = rail::BodyFingertip(body);
+    CHECK(tipOf && NearD(tipOf->z, -0.33 - 0.03 * rail::kFingertipRatio, 1e-5) && NearD(tipOf->x, 0.05, 1e-6));
+    rail::Body flat = body;
+    flat.leftElbow = flat.leftWrist;
+    flat.rightIndex2 = flat.rightIndex1;
+    CHECK(!rail::BodyTarget(flat, eyes) && !rail::BodyFingertip(flat));
     // The world UI's wrist rule (research/57): a listed screen nothing owns; a locker's equipment stands by the locker; the
     // minigame always; the minigame's own width, the others' 16:9 width.
     wu::Settings const s;

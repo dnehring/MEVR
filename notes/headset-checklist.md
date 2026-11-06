@@ -113,9 +113,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
   screen's lower buttons must not close it. (research/57 sections 2-3 and 6, built 2026-11-04/05)
 - [ ] The wrist tap's target (squad-placement session; built 2026-11-05 evening after the first try found nothing to aim at):
-  weapon holstered, raise the left wrist: a faint orange button just below the health readout? Bring the right controller's
-  tip to it: brighter, then cyan with a light tick, and the tap opens the rail. Is it easy to find, is 4 cm right? The log's
-  `omni-tool rail: a reach for the wrist target` lines give the closest approach of each try. (research/57 section 3)
+  weapon holstered, raise the left wrist: a faint orange button on the back of Shepard's forearm, just behind the wrist?
+  Touch it with Shepard's right index fingertip (the hand you see, pointing): brighter, then cyan with a light tick, and the
+  tap opens the rail. Does the drawn finger reach it comfortably, is 4 cm right? The log's `omni-tool rail: a reach for the
+  wrist target` lines give the closest approach of each try. (research/57 section 3)
 - [ ] On the wrist's equipment screen with your real fingertip: the weapon tabs, Shepard's and the squadmates' tabs, a list
   row, Equip, a swipe to scroll. Does each land on the first tap (the targets are 0.8-1.4 cm)? (research/57 section 6,
   built 2026-11-05)

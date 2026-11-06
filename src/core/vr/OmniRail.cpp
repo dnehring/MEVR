@@ -114,6 +114,36 @@ XrVector3f TargetPoint(XrVector3f const& wrist) {
     return {wrist.x, wrist.y - kTargetBelowM, wrist.z};
 }
 
+namespace {
+bool Finite(XrVector3f const& v) {
+    return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+} // namespace
+
+std::optional<XrVector3f> BodyTarget(Body const& body, XrVector3f const& eyes) {
+    if (!Finite(body.leftWrist) || !Finite(body.leftElbow) || !Finite(eyes) || Distance(body.leftWrist, body.leftElbow) < 0.05f) {
+        return std::nullopt;
+    }
+    XrVector3f const on{body.leftWrist.x + (body.leftElbow.x - body.leftWrist.x) * kForearmAlong,
+        body.leftWrist.y + (body.leftElbow.y - body.leftWrist.y) * kForearmAlong,
+        body.leftWrist.z + (body.leftElbow.z - body.leftWrist.z) * kForearmAlong};
+    float const toEyes = Distance(on, eyes);
+    if (!(toEyes > kForearmLiftM * 2.0f)) {
+        return std::nullopt;
+    }
+    float const k = kForearmLiftM / toEyes;
+    return XrVector3f{on.x + (eyes.x - on.x) * k, on.y + (eyes.y - on.y) * k, on.z + (eyes.z - on.z) * k};
+}
+
+std::optional<XrVector3f> BodyFingertip(Body const& body) {
+    if (!Finite(body.rightIndex1) || !Finite(body.rightIndex2) || Distance(body.rightIndex1, body.rightIndex2) < 0.005f) {
+        return std::nullopt;
+    }
+    return XrVector3f{body.rightIndex2.x + (body.rightIndex2.x - body.rightIndex1.x) * kFingertipRatio,
+        body.rightIndex2.y + (body.rightIndex2.y - body.rightIndex1.y) * kFingertipRatio,
+        body.rightIndex2.z + (body.rightIndex2.z - body.rightIndex1.z) * kFingertipRatio};
+}
+
 TargetLook TargetLookFor(bool allowed, XrVector3f const& eyes, XrVector3f const& target, bool tipTracked, XrVector3f const& tip,
     bool armed, float releaseM) {
     if (!allowed) {
