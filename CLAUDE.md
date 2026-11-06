@@ -814,8 +814,10 @@ switching frameworks.
   `mevr powerwheel selfcast`); powers that use the omni-tool (tech, or the omni-tool in their own effects) wear the gauntlet
   while aimed, gestured and 2.5 s after the cast. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
   left trigger and grip are its own (`gamepad::kFlagPowerWheel`, `Latches::powerHeld` until released) and the squad's trigger stands down
-  (`power_wheel::OwnsLeftHand`). The look is the user's concept in the game's own UI language (research/55 section 5: colours and
-  edge-lit fills sampled from `GUI_SF_HUD`/`GUI_SF_InGameGui`, our N7 mark, Rajdhani); a two-level bloom (`plugin/Glow`, its own device
+  (`power_wheel::OwnsLeftHand`). **The look is the omni-tool's projection** (research/55 section 5 "The omni-tool's projection", 03a6a08;
+  the squad wheel shares it): orange light over see-through tiles, the chosen tile ME1 cyan, light from an emitter in the wheel's gap
+  (no rings, spokes or N7 mark), the game's own Biomass from the game-art cache (Rajdhani without it), icons through
+  `power_icons::Hologram`; a two-level bloom (`plugin/Glow`, its own device
   context state) adds light in the premultiplied quad. Offline look: `mevr-power-wheel-preview`. Tests: `tests/PowerWheelTests.cpp`
   (`RunPowerWheelTests`). Console: `mevr powerwheel [open|hand x y|pick n|equip|close|roster]` (no tracked controllers needed). Logs
   `power wheel:`; snapshot `"mod"."powerWheel"`, layers `powerwheel`, `powerhint`, `powerlock`.

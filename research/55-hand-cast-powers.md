@@ -155,6 +155,31 @@ nineteen player powers' icons painted from signed distance fields in each discip
 `plugin/Glow` (a two-level bloom added as light in the premultiplied layer, its own device context state) and
 `tools/power-wheel-preview` (`mevr-power-wheel-preview <folder>`: every state, the hint, the icon sheet).
 
+### The omni-tool's projection (2026-11-05, evening; 03a6a08)
+
+The user, seeing the squad wheel (game/SquadPlace, drawn by the same code) in the game: "it looks very flat and cheesy, it doesn't
+look like something that would be in mass effect". Mock-ups were made first, offline, from the game's own art (its main wheel,
+`GUI_SF_InGameGui.PC_MainWheel`, rendered by `mevr-gfx-dump`; the player's own cache, never committed). The user's answers, in
+order: the power wheel's radial tiles stay (deliberately unlike the game's horizontal bars: room for the hand to travel into a tile,
+and an icon); "use the games own font"; icons "not too cartoony"; "like it could be projected from the omni tool"; no centre ring;
+the selected tile must "change color"; the icons holographic too; and the projector not "a flat line going through the middle".
+The look now (plugin/PowerWheelDraw, both wheels):
+- **Tiles** are thin orange light over see-through glass, the omni-tool gauntlet's hologram colours (game/OmniTool's, measured from
+  the eye image: mid (233, 147, 81), core (255, 205, 103)); **the chosen tile turns ME1's cyan** (the game's UI lines (125, 211, 232)
+  family), with white text and icon. Disabled tiles dim, a cooling tile keeps its veil and its partly lit border.
+- **No rings, spokes, N7 mark or chevrons.** The light comes from an **emitter in the wheel's gap** (where the forearm and the gauntlet
+  are: lower left on the power wheel, straight down on the squad wheel): a soft cone to each tile's inner edge, brightest at the
+  source, thin rays along its sides, dust drifting outward with time.
+- **The names are the game's own Biomass**, built from the player's game-art cache (`GUI_SF_Fonts`, copied by game/GameArt) through
+  core/gfx, in capitals; Rajdhani when the cache is missing. Biomass's W had drawn as "\\A" since the rail used it: its advance,
+  35,000 in DefineFont3's 20x units, overflows the spec's SI16 and was read negative (core/gfx reads it unsigned now, 0454c48).
+- **The icons are holograms** (`power_icons::Hologram`): the painted picture's bright core strokes only, as white light the tile
+  tints (orange, cyan when chosen): bright edges over a see-through body fading downward, a halo, a faint ghost a few pixels up,
+  scanlines. The pictures behind them are still ours; the game's own power icons live in `GUI_SF_HUD`, not cached yet.
+- The hint card and the lock marker take the palette (the marker cyan when ready, orange while cooling); the hint keeps its panel.
+Checked offline in `mevr-power-wheel-preview` (every state); in the game the drawing is the same code that drew the squad wheel at
+20:18 (positions and pick checked then).
+
 ## 6. In the game: X opens it at the left hand (2026-11-04)
 
 The user's controls: everything on the left hand, no right-hand pinch; picking either by moving the left hand into place or
