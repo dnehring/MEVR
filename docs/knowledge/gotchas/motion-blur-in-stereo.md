@@ -51,7 +51,19 @@ The blur is meant to be off, and three mechanisms turned it back on (details in
    ```
 
    If the smear stops, the apply did not reach this level. If it does not, it is something else.
-3. Snapshots: smeared frames among sharp ones, one eye more than the other.
+3. Snapshots: smeared frames among sharp ones, one eye more than the other. Measure it on the part of the scene both eyes
+   see, aligned: `tools/snapshot.ps1 -Count 8 -Interval 0.5`, then `python tools/eye-sharpness.py <snapshots> <stamps>`
+   (each frame's L/R on the shared region; the blur's signature is frames far from 1.00). Don't compare the eyes' whole
+   images: with the PS VR2's offset eye views their middles hold different content, and a darker patch in one eye read
+   as 0.59 that the aligned check put at 0.99.
+
+**Not every report is the blur** (2026-11-06, the owner in the PS VR2 on Eden Prime: "the motion blur may be enabled
+again"): the log had five applies in the level (the last 15 s after it rendered), and the aligned check found both eyes
+equally sharp in 12 frames with the head turning 20-40 degrees (L/R 0.99-1.00, before and after a manual True/False).
+What was there: Halcyon's 45 fps cap in cutscenes and conversations (`cineFpsCap`; 449 frames per 10 s on the screen,
+88-90 per 10 s x 10 in gameplay), which shows each picture twice on a 90 Hz display, so moving content (a pan, someone walking)
+doubles and smears. Check the frame rate (`render levers: last 10 s: N frames`) and the view (`[VRSTATE]`) at the moment
+of the report before chasing the setting.
 
 Ruled out on 2026-10-28, by the same replayed pan at the same phase, before the blur was found: our D3D11 hooks (none
 installed, same flicker), Halcyon's FOV match, FSR, kept shader states, mesh LOD, texture streaming, dynamic
