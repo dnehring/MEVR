@@ -100,6 +100,22 @@ int main() {
     auto const attachThread = reinterpret_cast<DWORD (*)()>(GetProcAddress(asi, "MevrTestAttachThread"));
     CHECK(attachThread != nullptr && attachThread() != 0 && attachThread() != GetCurrentThreadId());
 
+    // The loader's log can be read while the loader holds it open (research/33 section 13: it couldn't, in the game).
+    {
+        wchar_t exe[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        std::wstring log(exe);
+        log = log.substr(0, log.find_last_of(L'\\') + 1) + L"Logs\\MEVRLoader.log";
+        HANDLE const reader = CreateFileW(log.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        CHECK(reader != INVALID_HANDLE_VALUE);
+        if (reader != INVALID_HANDLE_VALUE) {
+            char head[16] = {};
+            DWORD got = 0;
+            CHECK(ReadFile(reader, head, sizeof head - 1, &got, nullptr) && got > 0);
+            CloseHandle(reader);
+        }
+    }
+
     unsigned long version = 0;
     CHECK(spi->GetVersion(&version) == SPIReturn::Success && version == 3);
     bool release = false;

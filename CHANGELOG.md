@@ -100,8 +100,9 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
   HUD & sights, and Advanced settings, with the game's pause menu and holster one click away. It pauses the game
   while it's open.
 - **MEVR Setup** installs everything in one click, without ME3Tweaks Mod Manager, sets the game up for VR, and
-  uninstalls exactly (the game's files and your settings are put back). Its Optional content page installs texture
-  packs (ALOT and others) that you download from their own pages.
+  uninstalls exactly (the game's files and your settings are put back, including the copy the game keeps in its engine
+  settings). Its Launch button starts SteamVR, then Mass Effect 1 straight past the game's launcher. Its Optional content
+  page installs texture packs (ALOT and others) that you download from their own pages.
 - **Report a problem** (in the setup, or the VR menu's Advanced > Diagnostics) saves a zip with the logs and a summary
   on your Desktop, with your user and computer names taken out. Nothing is uploaded.
 

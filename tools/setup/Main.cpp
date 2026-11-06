@@ -608,7 +608,8 @@ int RunCli(Cli const& cli) {
                 };
                 hooks.post = [&](std::string const& line, bool warning) { say(std::string(warning ? "  ! " : "  ") + line); };
                 mevr::install::launch::Result const r = mevr::install::launch::StartLe1WithVr(*root, steam, xr.kind, xr.manifest, hooks);
-                say(r.started ? std::format("started (pid {})", r.pid) : std::string("FAILED"));
+                // Through Steam there's no pid of ours: Steam starts the launcher, which starts the game.
+                say(!r.started ? std::string("FAILED") : r.pid != 0 ? std::format("started (pid {})", r.pid) : std::string("started (through Steam)"));
                 code = r.started ? 0 : 1;
             }
         } else if (cli.command == "apply-settings") {

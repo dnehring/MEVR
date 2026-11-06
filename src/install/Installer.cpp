@@ -237,8 +237,8 @@ bool ApplySettingsIn(Transaction& tx, settings::Choices const& choices, bool* ga
         return settings::ApplyGamerSettings(text, choices, edits);
     }, &gamerLocked);
     if (fs::exists(layout.Full(paths::kEngineIni), ec)) {
-        ok = EditUnlessReadOnly(tx, paths::kEngineIni, "BIOEngine.ini", [](std::string_view text, std::vector<ini::Edit>* edits) {
-            return settings::ApplyEngineSettings(text, edits);
+        ok = EditUnlessReadOnly(tx, paths::kEngineIni, "BIOEngine.ini", [&](std::string_view text, std::vector<ini::Edit>* edits) {
+            return settings::ApplyEngineSettings(text, choices, edits);
         }, nullptr) && ok;
     }
     if (choices.target.width > 0 && fs::exists(layout.Full(paths::kHalcyonIni), ec)) {

@@ -339,10 +339,41 @@ void TestGameSettings() {
     ICHECK(st::Read(st::ApplyGamerSettings(original, keep, nullptr)).resX == 2560);
     std::string const engine = "[Engine.Engine]\r\nbSmoothFrameRate=TRUE\r\n[Engine.GameEngine]\r\nSmoothFrameRate=TRUE\r\nMaxSmoothedFrameRate=62\r\n";
     std::vector<ini::Edit> engineEdits;
-    std::string const e2 = st::ApplyEngineSettings(engine, &engineEdits);
+    std::string const e2 = st::ApplyEngineSettings(engine, choices, &engineEdits);
     ICHECK(ini::Get(e2, "Engine.GameEngine", "SmoothFrameRate") == std::optional<std::string>("FALSE"));
     ICHECK(ini::Get(e2, "Engine.Engine", "bSmoothFrameRate") == std::optional<std::string>("TRUE"));
+    ICHECK(ini::Sections(e2).size() == 2);  // no [SystemSettings] of ours in a file that has none
     ICHECK(ini::Revert(e2, engineEdits) == engine);
+    // BIOEngine.ini's [SystemSettings]: the game's copy of its live settings, which it rewrites during play with the VR values
+    // (research/33 section 13: Uninstall left ResX/ResY there). Setup records those keys in the game's spelling, so after the
+    // game's rewrite (the same text) Revert gives the player's file back; UseVsync and [HDR], which the game doesn't copy, stay.
+    std::string const bioEngine =
+        "[Engine.GameEngine]\r\nSmoothFrameRate=TRUE\r\n\r\n[SystemSettings]\r\nDynamicShadows=True\r\nMotionBlur=True\r\nUseVsync=True\r\n"
+        "Fullscreen=False\r\nMaxAnisotropy=4\r\nResX=2118\r\nResY=2160\r\nFoliageDrawRadiusMultiplier=1.000000\r\n\r\n[HDR]\r\n"
+        "DesiredRange=DynamicRange_Auto\r\n";
+    std::vector<ini::Edit> bioEdits;
+    std::string const played = st::ApplyEngineSettings(bioEngine, choices, &bioEdits);
+    ICHECK(ini::Get(played, "SystemSettings", "ResX") == std::optional<std::string>("3072"));
+    ICHECK(ini::Get(played, "SystemSettings", "ResY") == std::optional<std::string>("3188"));
+    ICHECK(ini::Get(played, "SystemSettings", "DynamicShadows") == std::optional<std::string>("False"));
+    ICHECK(ini::Get(played, "SystemSettings", "MotionBlur") == std::optional<std::string>("False"));
+    ICHECK(ini::Get(played, "SystemSettings", "MaxAnisotropy") == std::optional<std::string>("16"));
+    ICHECK(ini::Get(played, "SystemSettings", "FoliageDrawRadiusMultiplier") == std::optional<std::string>("0.500000"));
+    ICHECK(ini::Get(played, "SystemSettings", "UseVsync") == std::optional<std::string>("True"));
+    ICHECK(ini::Get(played, "HDR", "DesiredRange") == std::optional<std::string>("DynamicRange_Auto"));
+    ICHECK(ini::Get(played, "Engine.GameEngine", "SmoothFrameRate") == std::optional<std::string>("FALSE"));
+    ICHECK(ini::Revert(played, bioEdits) == bioEngine);
+    // Motion blur stays recorded when the player keeps it in GamerSettings: the mod's `scale set` turns it off anyway, and the
+    // game copies that. "keep" leaves the resolution alone; the player changing a value since keeps theirs.
+    st::Choices keepBlur;
+    keepBlur.motionBlurOff = false;
+    std::vector<ini::Edit> keepEdits;
+    std::string const kept = st::ApplyEngineSettings(bioEngine, keepBlur, &keepEdits);
+    ICHECK(ini::Get(kept, "SystemSettings", "MotionBlur") == std::optional<std::string>("False"));
+    ICHECK(ini::Get(kept, "SystemSettings", "ResX") == std::optional<std::string>("2118"));
+    std::string const changed = ini::Set(kept, "SystemSettings", "FoliageDrawRadiusMultiplier", "0.750000");
+    ICHECK(ini::Get(ini::Revert(changed, keepEdits), "SystemSettings", "FoliageDrawRadiusMultiplier") == std::optional<std::string>("0.750000"));
+    ICHECK(ini::Get(ini::Revert(changed, keepEdits), "SystemSettings", "DynamicShadows") == std::optional<std::string>("True"));
 }
 
 void TestDetect() {
@@ -643,7 +674,7 @@ void TestTransaction() {
             c.target = settings::TargetFor("low", 0, 0);
             return settings::ApplyGamerSettings(t, c, e);
         }));
-        ICHECK(tx.EditIni(paths::kEngineIni, [](std::string_view t, std::vector<ini::Edit>* e) { return settings::ApplyEngineSettings(t, e); }));
+        ICHECK(tx.EditIni(paths::kEngineIni, [](std::string_view t, std::vector<ini::Edit>* e) { return settings::ApplyEngineSettings(t, {}, e); }));
         ICHECK(tx.Errors().empty());
     }
     ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "our loader");

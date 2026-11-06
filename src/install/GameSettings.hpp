@@ -40,8 +40,13 @@ struct Choices {
 
 // GamerSettings.ini with the choices applied.
 std::string ApplyGamerSettings(std::string_view text, Choices const& choices, std::vector<ini::Edit>* edits);
-// BIOEngine.ini: SmoothFrameRate=FALSE wherever a section sets it TRUE (the game's 60 fps cap).
-std::string ApplyEngineSettings(std::string_view text, std::vector<ini::Edit>* edits);
+// BIOEngine.ini: SmoothFrameRate=FALSE wherever a section sets it TRUE (the game's 60 fps cap). And in its [SystemSettings]
+// (only where the file has that section), the values the game copies there from its live settings during play
+// (research/33 section 13): the target's ResX/ResY, Fullscreen=False, MaxAnisotropy=16 (anisotropy16), and what the mod
+// sets with `scale set` whatever the choices (game/SystemSettings): DynamicShadows=False, MotionBlur=False,
+// FoliageDrawRadiusMultiplier=0.500000. In the game's own spelling, so ini::Revert finds them unchanged after the game
+// rewrote the section, and Uninstall puts back the player's values. UseVsync and [HDR] aren't copied by the game: left alone.
+std::string ApplyEngineSettings(std::string_view text, Choices const& choices, std::vector<ini::Edit>* edits);
 
 // What a GamerSettings.ini holds now, for the Settings page: "2824 × 2880", "On"/"Off"...
 struct Current {

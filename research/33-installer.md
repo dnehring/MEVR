@@ -683,12 +683,20 @@ folders a new player has.
   while GamerSettings says `False`, so not every key is copied); the mod's `scale set` values (`DynamicShadows`, `MotionBlur`,
   `FoliageDrawRadiusMultiplier`) land there the same way (CLAUDE.md: the game rewrites the file after every `scale set`).
   This dev machine's file already held those three, so only the resolution showed; a new player's would keep all of them.
-  The fix (not built yet): Setup sets the same keys in `BIOEngine.ini`'s `[SystemSettings]` as recorded edits, as
-  `tools/vr-game-settings.ps1` already does for three of them, in the game's own spelling (`0.500000`), so Uninstall's
-  `ini::Revert` puts back what the game copied.
-- **Smaller findings.** Our loader opens `MEVRLoader.log` with `_wfopen_s` (no sharing): nothing can read it while the game
-  runs (fix: `_wfsopen` with `_SH_DENYWR`). `--launch` on the Steam path prints `started (pid 0)` (Steam starts the game,
-  so there is no pid). `LE1MEVR.log` has six first-chance access violations before the session started (three each at
+  **Fixed the same day:** `settings::ApplyEngineSettings` now sets those keys in `BIOEngine.ini`'s `[SystemSettings]` as
+  recorded edits (as `tools/vr-game-settings.ps1` already did for three of them), in the game's own spelling: the target's
+  `ResX`/`ResY`, `Fullscreen=False`, `MaxAnisotropy=16`, and the mod's three whatever the choices (`DynamicShadows=False`,
+  `MotionBlur=False`, `FoliageDrawRadiusMultiplier=0.500000`). The game's rewrite then leaves the same text, and Uninstall's
+  `ini::Revert` puts the player's values back; a value the player changed since stays theirs. Only where the file has a
+  `[SystemSettings]` section; `UseVsync` and `[HDR]` are left (the game doesn't copy them: `UseVsync=True` and
+  `DesiredRange=DynamicRange_Auto` there while GamerSettings says `False` and SDR). The evidence for the list: this PC's
+  `BIOEngine.ini.mevr_backup` (the PS tool's copy from before its first apply) against the dev file differs in exactly the
+  resolution, `DynamicShadows`, `MotionBlur` and `FoliageDrawRadiusMultiplier`. Checked by the `install` tests (the
+  section applied, reverted to the byte; a file without the section gets none; a player's change kept) and the fake game
+  (its `BIOEngine.ini` now has the game's `[SystemSettings]`; 83 of 83 checks).
+- **Smaller findings.** Our loader opened `MEVRLoader.log` with `_wfopen_s` (no sharing): nothing could read it while the
+  game ran. Fixed: `_wfsopen` with `_SH_DENYWR`, and `mevr-loader` now reads the log while the loader holds it. `--launch` on
+  the Steam path printed `started (pid 0)`; now `started (through Steam)`. `LE1MEVR.log` has six first-chance access violations before the session started (three each at
   `LE1MEVR.asi+0x7F6DC6` and `+0x77EB0D`, handled), not looked into.
 - **The dev setup** went back byte for byte (the record of 9,311 files, hashes of everything Setup can touch).
 
@@ -698,8 +706,9 @@ folders a new player has.
   Settled in sections 11 and 13: a direct start of the Steam build hands back to Steam's arguments prompt; install, verify
   then Repair, and uninstall on the real game; Launch through Steam (SteamVR, the launcher's autoboot, our loader in the
   game, gameplay on the fake headset).
-- **To fix** (section 13): `BIOEngine.ini`'s `[SystemSettings]`, which the game fills from the VR settings during play, isn't
-  restored by Uninstall; the loader's log can't be read while the game runs.
+- Uninstall after the "auto" resolution's first VR start: the host writes the headset's eye size into GamerSettings.ini
+  (`main_menu::FirstStartEyeSize`), and the game copies it into `BIOEngine.ini`; `ini::Revert` sees a value changed since
+  Setup's and keeps it in both. Not seen on the real game yet (section 13's install chose Performance on a started game).
 - **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,
   MEM's download, unpacking and a real pack install on a real game.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).

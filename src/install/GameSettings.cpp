@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <string.h>
 
 namespace mevr::install::settings {
 namespace {
@@ -82,14 +83,34 @@ std::string ApplyGamerSettings(std::string_view text, Choices const& c, std::vec
     return out;
 }
 
-std::string ApplyEngineSettings(std::string_view text, std::vector<ini::Edit>* edits) {
+std::string ApplyEngineSettings(std::string_view text, Choices const& c, std::vector<ini::Edit>* edits) {
     std::string out(text);
+    bool systemSettings = false;
     for (std::string const& section : ini::Sections(text)) {
         auto const v = ini::Get(out, section, "SmoothFrameRate");
         if (v && IsTrue(v, false)) {
             out = ini::Set(out, section, "SmoothFrameRate", "FALSE", edits);
         }
+        systemSettings = systemSettings || _stricmp(section.c_str(), "SystemSettings") == 0;
     }
+    if (!systemSettings) {
+        return out;  // not the game's own file layout: nothing of the game's copy to record
+    }
+    // The game's copy of its live settings (what it rewrites the section with: booleans as True/False, floats with six
+    // decimals). Measured: a session left ResX/ResY there (research/33 section 13); the dev file against the pre-VR backup of
+    // tools/vr-game-settings.ps1 differs in exactly the resolution, DynamicShadows, MotionBlur and FoliageDrawRadiusMultiplier.
+    auto set = [&](char const* key, std::string const& value) { out = ini::Set(out, "SystemSettings", key, value, edits); };
+    if (c.target.width > 0 && c.target.height > 0) {
+        set("ResX", std::to_string(c.target.width));
+        set("ResY", std::to_string(c.target.height));
+    }
+    set("Fullscreen", "False");
+    if (c.anisotropy16) {
+        set("MaxAnisotropy", "16");
+    }
+    set("DynamicShadows", "False");
+    set("MotionBlur", "False");
+    set("FoliageDrawRadiusMultiplier", "0.500000");
     return out;
 }
 

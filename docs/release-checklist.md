@@ -66,8 +66,8 @@ The two facts behind most of this list:
   Launch through `-applaunch 1328670 -game 1 -autoterminate`), then the launch part again; the EA app build.
   **Pass 2, 2026-11-05 (research/33 section 13):** with the autoboot, Launch on the Steam build goes Setup, SteamVR, Steam,
   the launcher, our loader, the game in 8.6 s with no dialog, and reached gameplay on the fake headset. Uninstall left one
-  file: `BIOEngine.ini`, where the game copied Setup's resolution during play (to fix: Setup records those keys there).
-  Left: the EA app build, and the real headset.
+  file: `BIOEngine.ini`, where the game copied Setup's resolution during play; fixed the same day (Setup records those keys
+  there; the fake game checks it). Left: the EA app build, and the real headset.
 - [ ] **[H] The headset pass over everything on by default and never seen by a person** (section 2). Record the session
   (`tools/record.ps1`) so problems can be replayed offline.
 - [ ] **[H+C] Real-headset frame times.** The last fpsVR numbers on the PS VR2 (CPU p90 16.4-22.1 ms, GPU p90 13.5 against

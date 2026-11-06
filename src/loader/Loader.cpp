@@ -30,6 +30,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <share.h>
 #include <map>
 #include <mutex>
 #include <span>
@@ -402,7 +403,9 @@ DWORD WINAPI Run(void*) {
             logDir = exeDir;
         }
         std::lock_guard const lock(gLogMutex);
-        _wfopen_s(&gLog, (logDir / L"MEVRLoader.log").c_str(), L"w");
+        // Readable while the game runs (research/33 section 13: _wfopen_s shares nothing, so no reader could open it);
+        // writers are still kept out.
+        gLog = _wfsopen((logDir / L"MEVRLoader.log").c_str(), L"w", _SH_DENYWR);
     }
     Log("MEVR ASI loader (bink2w64.dll proxy, SPI %lu) in %s", spi::kVersion, Narrow(ExeName()).c_str());
     if (host == spi::Game::Launcher) {

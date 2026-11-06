@@ -103,7 +103,12 @@ $toc = Join-Path $root 'Game\ME1\BioGame\PCConsoleTOC.bin'
 Copy-Item $gameToc $toc
 $gamer = "[SystemSettings]`r`nFullscreen=True`r`nResX=2560`r`nResY=1440`r`nUseVSync=True`r`nMotionBlur=True`r`nFilmGrain=True`r`nDynamicShadows=True`r`n`r`n[HDR]`r`nDesiredRange=DynamicRange_HDR`r`n"
 [IO.File]::WriteAllText((Join-Path $config 'GamerSettings.ini'), $gamer)
-[IO.File]::WriteAllText((Join-Path $config 'BIOEngine.ini'), "[Engine.GameEngine]`r`nSmoothFrameRate=TRUE`r`nMaxSmoothedFrameRate=62`r`n")
+# BIOEngine.ini's [SystemSettings] as the game writes it (its copy of the live settings, which it rewrites during play:
+# research/33 section 13).
+$engineText = "[Engine.GameEngine]`r`nSmoothFrameRate=TRUE`r`nMaxSmoothedFrameRate=62`r`n`r`n" +
+    "[SystemSettings]`r`nDynamicShadows=True`r`nMotionBlur=True`r`nUseVsync=True`r`nFullscreen=False`r`nMaxAnisotropy=16`r`nResX=2560`r`nResY=1440`r`n" +
+    "FoliageDrawRadiusMultiplier=1.000000`r`n`r`n[HDR]`r`nDesiredRange=DynamicRange_Auto`r`n"
+[IO.File]::WriteAllText((Join-Path $config 'BIOEngine.ini'), $engineText)
 $before = Snapshot
 $ErrorActionPreference = 'Continue'  # from here on a failed check is reported, not thrown
 
@@ -126,6 +131,9 @@ Check ($melevr -match '(?m)^menuKey = 220' -and $melevr -match '(?m)^sfr2ResX = 
 $g = Get-Content -Raw (Join-Path $config 'GamerSettings.ini')
 Check ($g -match '(?m)^ResX=3072' -and $g -match '(?m)^ResY=3188' -and $g -match '(?m)^BorderlessWindow=True' -and $g -match '(?m)^UseVSync=False' -and $g -match 'DynamicRange_SDR') 'GamerSettings.ini: the VR values'
 Check ((Get-Content -Raw (Join-Path $config 'BIOEngine.ini')) -match 'SmoothFrameRate=FALSE') 'BIOEngine.ini: no 60 fps cap'
+$e = Get-Content -Raw (Join-Path $config 'BIOEngine.ini')
+Check ($e -match '(?m)^ResX=3072\r?$' -and $e -match '(?m)^ResY=3188\r?$' -and $e -match '(?m)^DynamicShadows=False' -and $e -match '(?m)^MotionBlur=False' -and
+    $e -match '(?m)^FoliageDrawRadiusMultiplier=0\.500000' -and $e -match '(?m)^UseVsync=True' -and $e -match 'DynamicRange_Auto') 'BIOEngine.ini: the values the game copies there recorded, UseVsync and [HDR] left'
 if ($withCockpit) {
     Check (Test-Path (Join-Path $root 'Game\ME1\BioGame\CookedPCConsole\BIOG_MEVR_Cockpit.pcc')) 'the cockpit''s package'
     Check (Test-Path (Join-Path $win64 'ASI\cockpit\cockpit.txt')) 'the cockpit''s script'
@@ -278,7 +286,7 @@ $diff = Compare-Object $beforeFirstStart (Snapshot)
 if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
 Check (-not $diff) 'the never-started game folder is byte for byte what it was'
 [IO.File]::WriteAllText($gamerFile, $gamer)
-[IO.File]::WriteAllText($engineFile, "[Engine.GameEngine]`r`nSmoothFrameRate=TRUE`r`nMaxSmoothedFrameRate=62`r`n")
+[IO.File]::WriteAllText($engineFile, $engineText)
 
 # Upgrading from Halcyon's upstream MELE-VR, its MELEVR.ini in the ASI folder (AER, third person, its welcome, Insert, the
 # mirror every frame): every slot normalised, the player's other values kept; "keep my settings" puts it back exactly.

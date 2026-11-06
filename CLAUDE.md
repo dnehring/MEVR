@@ -842,8 +842,8 @@ switching frameworks.
   -autoterminate` (`MassEffect1.exe` started directly hands its start back to Steam, which then waits on its "launch with
   these arguments?" dialog: research/33 section 11); the EA app build still starts `MassEffect1.exe` directly [verify].
   `MEVR-Setup.exe --launch` does the same from the command line. Tested on the real game (sections 11, 13): install, verify
-  then Repair, uninstall byte for byte except `BIOEngine.ini` (the game copies the VR settings into its `[SystemSettings]`
-  during play; not restored yet), Launch through Steam to gameplay in one click. A game never started (no
+  then Repair, uninstall byte for byte, Launch through Steam to gameplay in one click. The game copies its live settings into
+  `BIOEngine.ini`'s `[SystemSettings]` during play, so Setup records the VR keys there too (`settings::ApplyEngineSettings`). A game never started (no
   GamerSettings.ini) keeps the chosen settings as `pendingSettings` in the manifest and offers "Start the game once";
   the resolution's default without a known headset size is **Automatic** (`auto`, 2026-11-04, the owner): Performance now,
   the manifest's `eyeSizeAtFirstStart`, and the host's `main_menu::FirstStartEyeSize` sets the headset's own eye size at the
