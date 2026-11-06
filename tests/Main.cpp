@@ -8705,10 +8705,12 @@ void TestMakoControls() {
             out = c.Step(input(0.0f, 0.0f, about(up, 60.0f), 1.0f), tilting);
         }
         CHECK(close(out.steer, -1.0) && close(out.tiltRightDeg, 0.0));
+        // The model turns with the hand, stopped at full lock (the user, 2026-11-05: the twist steered, the model never turned).
+        CHECK(close(out.twistDeg, 60.0, 0.05) && close(out.twistShownDeg, 42.0));
         for (int i = 0; i < 4; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);  // turned back
         }
-        CHECK(close(out.steer, 0.0));
+        CHECK(close(out.steer, 0.0) && close(out.twistShownDeg, 0.0, 0.05));
         for (int i = 0; i < 10; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // 27 degrees right: past full lock
         }
@@ -8735,7 +8737,7 @@ void TestMakoControls() {
         for (int i = 0; i < 5; ++i) {
             out = c.Step(input(0.0f, 0.0f, about(up, 23.0f), 1.0f, {0.05f, 0.0f, 0.0f}), tilting);  // twisted half left: against the tilt
         }
-        CHECK(close(out.steer, 0.0) && close(out.spin, -0.5));
+        CHECK(close(out.steer, 0.0) && close(out.spin, -0.5) && close(out.twistShownDeg, 23.0, 0.05));
         for (int i = 0; i < 5; ++i) {
             out = c.Step(input(0.0f, 0.0f, identity, 1.0f, {-0.0182f, 0.0f, 0.0f}), tilting);  // about 10 degrees left, no twist
         }
@@ -8772,6 +8774,28 @@ void TestMakoControls() {
             out = c.Step(input(0.03f, 1.0f, about(up, -42.0f), 1.0f, {0.05f, 0.0f, 0.0f}), tilting);
         }
         CHECK(close(out.spin, 1.0) && out.throttle == 0.0f);
+    }
+    {
+        // The tilting stick's model turns with the twist and springs back to straight when let go (the user, 2026-11-05).
+        mc::Controls c;
+        mc::Output out;
+        for (int i = 0; i < 6; ++i) {
+            out = c.Step(input(0.0f, 0.0f, identity, 1.0f), tilting);  // grabbed, and settled
+        }
+        for (int i = 0; i < 3; ++i) {
+            out = c.Step(input(0.0f, 0.0f, about(up, -30.0f), 1.0f), tilting);  // clockwise from above: right
+        }
+        CHECK(out.stickHeld && close(out.twistShownDeg, -30.0, 0.05) && out.steer > 0.5f);
+        out = c.Step(input(0.0f, 0.0f, about(up, -30.0f), 0.0f), tilting);  // let go
+        CHECK(!out.stickHeld && out.twistShownDeg < -10.0f && out.twistShownDeg > -30.0f);  // 6 locks a second: 12.6 degrees a tick
+        for (int i = 0; i < 3; ++i) {
+            out = c.Step(input(0.0f, 0.0f, about(up, -30.0f), 0.0f), tilting);
+        }
+        CHECK(close(out.twistShownDeg, 0.0));
+        for (int i = 0; i < 6; ++i) {
+            out = c.Step(input(0.0f, 0.0f, about(up, -30.0f), 1.0f), tilting);  // grabbed again as it was: the model stays straight
+        }
+        CHECK(out.stickHeld && close(out.twistShownDeg, 0.0, 0.05));
     }
     {
         mc::Controls c;

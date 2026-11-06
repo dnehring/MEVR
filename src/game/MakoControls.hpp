@@ -75,6 +75,7 @@ struct Pose {
     bool tilt = false;          // the stick tilts (else it twists by `steer` x `lockDeg`)
     float tiltRightDeg = 0.0f;  // its tilt: the top to the right, and away from the player
     float tiltForwardDeg = 0.0f;
+    float twistDeg = 0.0f;      // tilting, its turn about its own (tilted) axis: + counter-clockwise from above (the hand's twist)
     bool leverHeld = false;  // the left hand holds the lever (Shepard's left hand goes on it)
     bool stickHeld = false;  // the right hand holds the stick
 };

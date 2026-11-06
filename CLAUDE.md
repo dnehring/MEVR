@@ -549,7 +549,7 @@ switching frameworks.
   sideways tilt doesn't steer then, or the driven track turns the Mako 90 degrees; the booster is the game's own; each burst logged
   with the speed it gained, research/47 "Flying on the jets"); their fuel is partly given back while they fire
   (`thrusterBurnScale` 0.4: 2.5x as long; LE1's jets have 0.7 s); `stickTwist = 1` is stage 1's twist. The tilt steers up to `tiltSteerMax` (0.5), the twist adds to it and alone spins the Mako on the spot at
-  zero throttle (`spinRateDeg`; the body's turn axes measured: research/47 "Which way the body turns"); the jump is only the lever's X. `mevr vehicle jets <s>`
+  zero throttle, and the cockpit's grip model turns with it about its tilted axis (`Output::twistShownDeg`, 2026-11-05) (`spinRateDeg`; the body's turn axes measured: research/47 "Which way the body turns"); the jump is only the lever's X. `mevr vehicle jets <s>`
   fires them for tests, `mevr vehicle angvel [body] X Y Z` measures the body's turn.
   **Reaching the Mako without a save** (research/47 "Reaching the Mako"): `tools/mako-start.ps1` (`open BIOA_UNC20`, then `mevr vehicle party`:
   the squad screen's own `FinalizeParty`, after which the level's rover drop makes the Mako the pawn, game mode 1). Never `mevr vehicle enter`

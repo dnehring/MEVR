@@ -10,6 +10,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 ### The Mako
 - Repair the Mako from the throttle: while your left hand holds the throttle lever, click the left thumbstick. The button on
   the desk still works too.
+- The cockpit's joystick turns in your hand when you twist it (the twist always steered; now the stick shows it).
 
 ## 0.1.0 (2026-11-05)
 

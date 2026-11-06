@@ -68,6 +68,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Repair button: press it with a fingertip from the front, hold 2 s while the squares fill blue, the repair runs.
   With no omni-gel the squares are solid red; right after a repair (cooling down) they flash red every 1.2 s; neither
   repairs. (research/48 section 27, red built 2026-11-05)
+- [ ] Cockpit joystick: twist it about its axis while holding it: the grip model turns with your hand (up to the 42-degree
+  lock), on top of its tilt, and springs back straight when let go. Does it turn the same way as your hand? (research/47 "The
+  stick tilts", the model's twist built 2026-11-05)
 - [ ] Repair on the throttle: holding the throttle lever, click the left thumbstick: the repair runs at once, a strong
   pulse in the left hand. With no omni-gel or cooling down, two buzzes and the shelf's squares red; a click begun off the
   lever does nothing. Is the click easy to find while driving, and never pressed by accident? (research/48 section 27 "The
