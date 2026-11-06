@@ -59,6 +59,11 @@ The two facts behind most of this list:
 - [ ] **[H] Our own loader in the real game, installed by MEVR-Setup on a clean install**, Steam and EA app builds: first
   launch, Repair after Steam's "verify files", Uninstall restoring the game exactly. The dev install still runs
   LEBinkProxy (research/33:401-402).
+  **Pass 1, 2026-11-05 (research/33 section 11):** the release zip on the Steam game made vanilla by Steam's verify:
+  install (1.1 s), verify then Repair, Uninstall back to the vanilla game byte for byte: all pass. **Launch fails on the
+  Steam build**: a direct `MassEffect1.exe` hands its start back to Steam, which waits on its "launch with these
+  arguments?" dialog, so the game never reached our loader. Next: the launcher autoboot (our loader in `Game\Launcher`,
+  Launch through `-applaunch 1328670 -game 1 -autoterminate`), then the launch part again; the EA app build.
 - [ ] **[H] The headset pass over everything on by default and never seen by a person** (section 2). Record the session
   (`tools/record.ps1`) so problems can be replayed offline.
 - [ ] **[H+C] Real-headset frame times.** The last fpsVR numbers on the PS VR2 (CPU p90 16.4-22.1 ms, GPU p90 13.5 against
@@ -269,6 +274,8 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
   Flat screen choice and stays 0.)
 - [ ] [C] **The cockpit package** in `build\cockpit-hull` predates commit 891ba5e (`tools/cockpit`): rebuild it before packaging.
 - [ ] [H] **The setup's "Start the game once" and its SteamVR start** never ran for real (only their decisions, unit-tested).
+  The SteamVR start ran on 2026-11-05 (research/33 section 11: SteamVR closed, started, waited for, then the game);
+  "Start the game once" still hasn't.
 
 ## 6. Delivery channels (owner, 2026-11-04: consider more than GitHub)
 

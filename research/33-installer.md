@@ -562,11 +562,61 @@ player's `%LOCALAPPDATA%\MEVR`.
 - Windows 10's and Server 2022's tar.exe (the CI runner shows which branch it takes); headset Detect (it may start
   SteamVR); `tools/setup/test-fake-game.ps1` wasn't re-run (it reads RAD's DLL from the real game install).
 
+## 11. The release zip on the real game: install, verify, Repair, uninstall (2026-11-05)
+
+The user: "we want something like a 1 click installer from the launcher app we built". Pass 1 of the release validation
+(docs/release-checklist.md section 1, "Must run once before tagging"): the release zip on this PC's real Steam game, from
+the state a new player has, without a person in the headset.
+
+- **One click.** The Welcome page's button said Install but only opened the Install page; it now installs at once with
+  the Install page's defaults (the mod, our loader, the recommended VR game settings), Options beside it opens the Install
+  page first, and after the install the same button is Launch (or Start the game once). `--launch` on the command line
+  runs the Launch button's own start (`install::launch::StartLe1WithVr`, shared by both: SteamVR first when it's the
+  runtime, then the game): for a desktop shortcut, and for tests.
+- **The vanilla game.** The dev install recorded (a hash list of every file of `Game\ME1` and `Game\Launcher`, the
+  setup-touched ones hashed, the player's documents and saves), its files moved aside, then Steam's "verify files": it
+  restored `Game\ME1\Binaries\Win64\bink2w64.dll` and `Game\Launcher\bink2w64.dll` (**LEBinkProxy also sits in the
+  launcher's folder**, byte for byte the same proxy) and the TOC; 4 files in all. Steam leaves extra files (LEBinkProxy's
+  `bink2w64_original.dll` in the launcher folder) in place.
+- **The zip** (`tools/package-release.ps1 -Zip -AllowDirty`, 39 MB; `-AllowDirty` only because a worktree's submodules are
+  links whose metadata git can't read; the binaries say `0.1.0+7050bc75ed`), unzipped to a fresh folder and run from there.
+  Setup's status saw the vanilla game right ("No ASI loader yet: ours will be installed", SteamVR the runtime).
+- **Install** (`--install`, the same `install::Install` the button calls with the same defaults): **1.1 s**; LE1's own
+  `bink2w64.dll` renamed `bink2w64_original.dll` and ours put in, the ASI, fonts, menu, the cockpit package and its TOC
+  entry, `steam_appid.txt`, two game-setting values; status "installed: yes, 0.1.0, loader mevr", nothing to repair.
+- **Steam's "verify files" after the install** (what a game update does): 2 of 36,562 files replaced (our loader by
+  LE1's `bink2w64.dll`, the TOC without the cockpit's entry), 233 s for all three games. Setup's status named both under
+  "needs repair"; **Repair** put them back, and the game then matched the first install file for file.
+- **Uninstall**, twice (after the first install, and after the verify and Repair): the game matched the vanilla record
+  byte for byte, except `GamerSettings.ini` and the TOC (same content, newer dates) and two LE1MEVR logs that were the dev
+  build's (Setup records the mod's logs as its own user data and a full uninstall deletes them; a player only has the
+  mod's own there). The empty ASI folder goes too.
+- **Launch on the Steam build fails.** Setup's Launch started SteamVR (closed beforehand), waited until it was up, then
+  `MassEffect1.exe` directly with the launcher's arguments (`StartLe1`): the exe hands its start back to Steam, as
+  `steam://run/1328670// -NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 20 -OVERRIDELANGUAGE=INT`
+  (Steam's console_log: `ExecuteSteamURL`), and **Steam then waits for the player to confirm the arguments**
+  (`GameAction ... LaunchApp waiting for user response to ShowGameArgs`): its "launch with these arguments?" dialog. The
+  EA app was asked too (its log: the game's exe path, then `isGameRunning: false`). The game never reached our loader (no
+  `MEVRLoader.log`). Every later launch of the game through Steam (`steam://rungameid`, `-applaunch`) queued behind that
+  dialog. Answer to section 2's [verify]: **a direct start of the Steam build doesn't work**; ME3Tweaks' autoboot works
+  only because LEBinkProxy sits in the launcher.
+- **The way to one click** (not built): Launch asks Steam with `-applaunch 1328670 -game 1 -autoterminate` (no arguments
+  dialog: the dev setup's `tools/launch-game.ps1 -Steam` has launched that way for weeks), and our own loader also goes into
+  `Game\Launcher` as its `bink2w64.dll` and, loaded into `MassEffectLauncher.exe` with `-game 1`, starts
+  `..\ME1\Binaries\Win64\MassEffect1.exe` with the launcher's arguments and ends the launcher with `-autoterminate` (the
+  behaviour of LEBinkProxy's launcher module, section 2: read for behaviour only, never copied). Setup records it,
+  Uninstall removes it, Repair restores it after a verify; a desktop shortcut can run `MEVR-Setup.exe --launch`.
+- **Not run yet:** our loader loading the ASI in the real game (every launch was blocked), Steam's Play with the
+  launcher's picker, "Start the game once", the window's own clicks (desktop control of File Explorer and Steam declined:
+  the command line runs the same code), the EA app build. The dev install was put back afterwards and compared against its
+  record: the same, file for file (the two logs aside), the saves unchanged.
+
 ## Open
 
-- **[verify]** In the game: our loader in place of LEBinkProxy (attach timing, Halcyon's DXGI hook, the log);
-  Launch on the Steam build (and whether `link2ea` is needed); the EA app build; "Install after I quit" end to end;
-  "Start the game once" and Launch's SteamVR start (section 9).
+- **[verify]** In the game: our loader in place of LEBinkProxy (attach timing, Halcyon's DXGI hook, the log); the
+  launcher autoboot of section 11 (to build); the EA app build; "Install after I quit" end to end; "Start the game once"
+  (section 9). Settled in section 11: a direct start of the Steam build hands back to Steam's arguments prompt; Launch's
+  SteamVR start works; install, verify then Repair, and uninstall on the real game.
 - **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,
   MEM's download, unpacking and a real pack install on a real game.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).

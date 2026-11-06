@@ -2,6 +2,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -106,5 +107,16 @@ bool SteamVrRunning();
 // Starts SteamVR: the plan's vrstartup.exe if it exists, else steam://rungameid/250820. False if neither could start.
 bool StartSteamVr(Plan const& plan);
 } // namespace runtime_start
+
+// The Launch button's whole start, shared by the window and `MEVR-Setup.exe --launch`: SteamVR first when it is the active
+// runtime and not running yet (Halcyon's renderer looks for the headset once, when the game starts), waiting for it at most
+// runtime_start::kSteamVrWaitS (the game starts anyway after that, or when `cancelled` says so), then StartLe1.
+struct LaunchHooks {
+    std::function<void(std::string const& step, int percent)> progress;  // optional
+    std::function<void(std::string const& line, bool warning)> post;     // optional
+    std::function<bool()> cancelled;                                     // optional: the wait for SteamVR cut short
+};
+Result StartLe1WithVr(std::filesystem::path const& gameRoot, bool steam, std::string_view runtimeKind, std::string_view runtimeManifest,
+    LaunchHooks const& hooks);
 
 } // namespace mevr::install::launch

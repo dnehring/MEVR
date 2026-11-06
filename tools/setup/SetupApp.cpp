@@ -927,37 +927,14 @@ void App::Act(std::string const& name, std::string const& arg) {
         namespace rs = install::launch::runtime_start;
         rs::Plan const plan = rs::PlanFor(xr_.kind, xr_.manifest);
         canCancel_ = plan.action == rs::Action::StartSteamVr;  // the wait for SteamVR can be cut short
-        RunJob("Starting Mass Effect", [this, root, steam, plan] {
-            // SteamVR first: Halcyon's renderer looks for the headset once, when the game starts.
-            if (plan.action == rs::Action::StartSteamVr && !rs::SteamVrRunning()) {
-                Progress("Starting SteamVR", 0);
-                if (!rs::StartSteamVr(plan)) {
-                    Post("Couldn't start SteamVR: starting the game anyway. If VR stays off, start SteamVR yourself, quit the game and Launch again.", true);
-                } else {
-                    Post("Started SteamVR; waiting for it (at most " + std::to_string(static_cast<int>(rs::kSteamVrWaitS)) + " s).");
-                    auto const t0 = std::chrono::steady_clock::now();
-                    for (;;) {
-                        double const waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-                        rs::Gate const gate = rs::Step(rs::SteamVrRunning(), waited);
-                        if (gate == rs::Gate::Go) {
-                            Post("SteamVR is up.");
-                            break;
-                        }
-                        if (gate == rs::Gate::GoTimedOut || cancel_) {
-                            Post(cancel_ ? "Stopped waiting for SteamVR: starting the game now. If VR stays off, quit the game once SteamVR is up and "
-                                           "Launch again."
-                                         : "SteamVR isn't up after a minute (is the headset on and connected?): starting the game anyway. If VR stays "
-                                           "off, quit the game once SteamVR shows the headset and Launch again.",
-                                true);
-                            break;
-                        }
-                        Progress("Waiting for SteamVR (turn the headset on)", static_cast<int>(100.0 * waited / rs::kSteamVrWaitS));
-                        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-                    }
-                }
-            }
-            install::launch::Result const r = install::launch::StartLe1(root, steam);
-            Post(r.message, !r.started);
+        std::string const kind = xr_.kind;
+        std::string const manifest = xr_.manifest;
+        RunJob("Starting Mass Effect", [this, root, steam, kind, manifest] {
+            install::launch::LaunchHooks hooks;
+            hooks.progress = [this](std::string const& step, int percent) { Progress(step, percent); };
+            hooks.post = [this](std::string const& line, bool warning) { Post(line, warning); };
+            hooks.cancelled = [this] { return cancel_.load(); };
+            install::launch::Result const r = install::launch::StartLe1WithVr(root, steam, kind, manifest, hooks);
             std::lock_guard const lock(jobMutex_);
             jobProgress_ = r.message;
         });

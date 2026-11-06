@@ -12,7 +12,8 @@
 //   Command line (no window; --out <file> also writes the output there):
 //     --status | --install [--quality headset|auto|performance|balanced|sharp|max|keep] [--no-settings] [--ignore-version]
 //     [--source Steam] [--keep-upstream (refuse instead of moving Halcyon's MELE-VR aside)] | --uninstall [--keep-settings]
-//     [--remove-local-data] | --repair | --apply-settings [--quality q] | --restore-settings
+//     [--remove-local-data] | --repair | --launch (the Launch button: SteamVR first when it's the runtime, then the game; for a
+//     desktop shortcut) | --apply-settings [--quality q] | --restore-settings
 //     | --report [--snapshot] [--perf] [--report-dir <folder>] [--local <folder>] [--from-game]  (the problem report's zip:
 //       on the Desktop unless --report-dir; --local reads another %LOCALAPPDATA%\MEVR, for tests; --from-game: started by
 //       the in-game menu, at background priority, its report.request's choices)
@@ -588,6 +589,28 @@ int RunCli(Cli const& cli) {
             } else {
                 report(mevr::install::Repair(layout, *payload));
             }
+        } else if (cli.command == "launch") {
+            // The Launch button's start (SteamVR first when it's the runtime, then the game): for a desktop shortcut, and to test it.
+            if (detect::GameRunningIn(*root)) {
+                say("Mass Effect is already running.");
+            } else {
+                std::wstring lower = root->wstring();
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
+                bool const steam = source == "Steam" || lower.find(L"\\steamapps\\common\\") != std::wstring::npos;
+                detect::XrRuntime const xr = detect::ActiveRuntime();
+                mevr::install::launch::LaunchHooks hooks;
+                std::string lastStep;
+                hooks.progress = [&](std::string const& step, int) {
+                    if (step != lastStep) {
+                        lastStep = step;
+                        say("  " + step);
+                    }
+                };
+                hooks.post = [&](std::string const& line, bool warning) { say(std::string(warning ? "  ! " : "  ") + line); };
+                mevr::install::launch::Result const r = mevr::install::launch::StartLe1WithVr(*root, steam, xr.kind, xr.manifest, hooks);
+                say(r.started ? std::format("started (pid {})", r.pid) : std::string("FAILED"));
+                code = r.started ? 0 : 1;
+            }
         } else if (cli.command == "apply-settings") {
             report(mevr::install::ApplySettings(layout, choices));
         } else if (cli.command == "restore-settings") {
@@ -1026,7 +1049,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             }
         } else if (a.rfind(L"--", 0) == 0) {
             std::wstring const name = a.substr(2);
-            if (name == L"status" || name == L"install" || name == L"uninstall" || name == L"repair" || name == L"apply-settings" ||
+            if (name == L"status" || name == L"install" || name == L"uninstall" || name == L"repair" || name == L"launch" || name == L"apply-settings" ||
                 name == L"restore-settings" || name == L"report" || name == L"check-update" || name == L"get-mem") {
                 cli.command = detect::Utf8(name);
             }

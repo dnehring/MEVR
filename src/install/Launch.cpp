@@ -8,9 +8,11 @@
 #include <ShlObj.h>
 #include <shellapi.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <map>
 #include <sstream>
+#include <thread>
 
 namespace mevr::install::launch {
 namespace {
@@ -279,5 +281,56 @@ bool StartSteamVr(Plan const& plan) {
 }
 
 } // namespace runtime_start
+
+} // namespace mevr::install::launch
+
+namespace mevr::install::launch {
+
+Result StartLe1WithVr(std::filesystem::path const& gameRoot, bool steam, std::string_view runtimeKind, std::string_view runtimeManifest,
+    LaunchHooks const& hooks) {
+    namespace rs = runtime_start;
+    auto progress = [&](std::string const& step, int percent) {
+        if (hooks.progress) {
+            hooks.progress(step, percent);
+        }
+    };
+    auto post = [&](std::string const& line, bool warning) {
+        if (hooks.post) {
+            hooks.post(line, warning);
+        }
+    };
+    auto cancelled = [&] { return hooks.cancelled && hooks.cancelled(); };
+    rs::Plan const plan = rs::PlanFor(runtimeKind, runtimeManifest);
+    if (plan.action == rs::Action::StartSteamVr && !rs::SteamVrRunning()) {
+        progress("Starting SteamVR", 0);
+        if (!rs::StartSteamVr(plan)) {
+            post("Couldn't start SteamVR: starting the game anyway. If VR stays off, start SteamVR yourself, quit the game and Launch again.", true);
+        } else {
+            post("Started SteamVR; waiting for it (at most " + std::to_string(static_cast<int>(rs::kSteamVrWaitS)) + " s).", false);
+            auto const t0 = std::chrono::steady_clock::now();
+            for (;;) {
+                double const waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+                rs::Gate const gate = rs::Step(rs::SteamVrRunning(), waited);
+                if (gate == rs::Gate::Go) {
+                    post("SteamVR is up.", false);
+                    break;
+                }
+                bool const stop = cancelled();
+                if (gate == rs::Gate::GoTimedOut || stop) {
+                    post(stop ? "Stopped waiting for SteamVR: starting the game now. If VR stays off, quit the game once SteamVR is up and Launch again."
+                              : "SteamVR isn't up after a minute (is the headset on and connected?): starting the game anyway. If VR stays off, quit the "
+                                "game once SteamVR shows the headset and Launch again.",
+                        true);
+                    break;
+                }
+                progress("Waiting for SteamVR (turn the headset on)", static_cast<int>(100.0 * waited / rs::kSteamVrWaitS));
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            }
+        }
+    }
+    Result const r = StartLe1(gameRoot, steam);
+    post(r.message, !r.started);
+    return r;
+}
 
 } // namespace mevr::install::launch
