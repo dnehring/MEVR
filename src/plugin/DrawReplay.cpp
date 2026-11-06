@@ -2198,6 +2198,13 @@ bool Attach(ID3D11DeviceContext* context, hook::Context* hooks) {
                 continue;
             }
             inlineFailures += std::format("{} ", e.slot);
+            if (variant != nullptr) {
+                // The vtable fallback below puts the variant's detour 0 in the slot, which forwards through gNextV, not
+                // gNext: without this it forwarded to null, and VariantSweep took our own detour for a d3d11 variant
+                // and hooked it with itself (Codex review 2026-11-06, plugin#2).
+                gNextV[e.slot][0] = vtable[e.slot];
+                gVariantTarget[e.slot][0] = e.function;
+            }
         }
         vtable[e.slot] = e.function;
         ++hooked;

@@ -31,7 +31,16 @@ namespace
 {
 bool g_open = false;
 // [MEVR] Our main menu (src/plugin/MainMenu.cpp) keeps the game's mouse and keyboard from it as this menu does.
-bool InputBlocked() noexcept { return g_open || MELEVR::MevrBridge::MainMenuOpen(); }
+// [MEVR] And only while a window of the game is in front: these are global low-level hooks, so with another
+// program in front they swallowed its clicks, Alt+Tab and keys (Codex review 2026-11-06, halcyon#3).
+bool GameInFront() noexcept
+{
+    HWND const foreground = GetForegroundWindow();
+    DWORD process = 0;
+    if (foreground != nullptr) GetWindowThreadProcessId(foreground, &process);
+    return process == GetCurrentProcessId();
+}
+bool InputBlocked() noexcept { return (g_open || MELEVR::MevrBridge::MainMenuOpen()) && GameInFront(); }
 bool g_ready = false;
 ID3D11Device* g_dev = nullptr;
 ID3D11DeviceContext* g_ctx = nullptr;

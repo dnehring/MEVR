@@ -713,6 +713,27 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
             ok = tx.CopyIn(source, path) && ok;
         }
     }
+    // The core payload that isn't on record at all: an install that failed before copying it (its version was already
+    // saved, so it counts as installed), which the loop above never sees (Codex review 2026-11-06, install#11).
+    if (tx.Data().Find(paths::kModAsi) == nullptr) {
+        tx.Note("the mod's ASI isn't on record (an install that didn't finish): installing it");
+        ok = tx.CopyIn(payload.Asi(), paths::kModAsi) && ok;
+    }
+    auto const missingFromTree = [&](fs::path const& from, std::string const& relativeDir) {
+        bool done = true;
+        for (auto const& entry : fs::recursive_directory_iterator(from, ec)) {
+            if (!entry.is_regular_file(ec)) {
+                continue;
+            }
+            std::string const rel = relativeDir + "/" + detect::Utf8(entry.path().lexically_relative(from).generic_wstring());
+            if (tx.Data().Find(rel) == nullptr) {
+                done = tx.CopyIn(entry.path(), rel) && done;
+            }
+        }
+        return done;
+    };
+    ok = missingFromTree(payload.Fonts(), std::string(paths::kAsi) + "/fonts") && ok;
+    ok = missingFromTree(payload.Menu(), std::string(paths::kAsi) + "/menu") && ok;
     ok = InstallCockpit(tx, payload) && ok;
     // An install from before the voice orders gets their DLL now (their downloads stay optional content).
     if (payload.HasVoice() && tx.Data().Find(voice::kDll) == nullptr) {

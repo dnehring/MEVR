@@ -1562,7 +1562,10 @@ std::vector<MemberView> Members() {
     std::vector<MemberView> out;
     for (int i = 0; i < gCount; ++i) {
         MemberInfo const& m = gMembers[i];
-        if (m.key == 0) {
+        // The roster is refreshed only while the squad features run; on its early returns (not on foot, controllers
+        // asleep, [Squad] off) it kept the last level's pawns, which squad context, orders and placement read after a
+        // level change (Codex review 2026-11-06, gameM#1). A pawn that is no longer a live object isn't handed out.
+        if (m.key == 0 || !ue3::runtime::IsAlive(reinterpret_cast<ue3::Object*>(m.key))) {
             continue;
         }
         MemberView view;
