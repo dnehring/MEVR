@@ -400,6 +400,8 @@ set(MEVR_MOD_SOURCES
     src/game/BodyFollow.hpp
     src/game/BodyCalibration.cpp
     src/game/BodyCalibration.hpp
+    src/game/BodyProbe.cpp
+    src/game/BodyProbe.hpp
     src/game/Comfort.cpp
     src/game/Comfort.hpp
     src/game/CameraProbe.cpp

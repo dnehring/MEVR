@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/ConsoleRequest.hpp"
+#include "game/BodyProbe.hpp"
 
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
@@ -617,6 +618,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string which;
         words >> which;
         return game_menu_request::Inject(which);
+    }
+    if (verb == "body") {
+        // `mevr body`: Shepard's drawn dimensions against the player's (research/58, the body's scale).
+        std::string rest;
+        std::getline(words, rest);
+        return body_probe::Command(rest);
     }
     if (verb == "guimouse") {
         // `mevr guimouse`: where the game's Flash cursor is (research/57 section 6).

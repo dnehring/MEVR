@@ -411,6 +411,10 @@ struct KickSamples {
     std::uint64_t kickedWrites = 0;  // writes with a kick in them since the hook went in (never reset)
 };
 KickSamples WrittenGunKicks();
+// research/58's experiment: every bone but the kept ones scaled by scale about the floor under Shepard's Root, written after
+// the solves (1 = off; 0.5..2). Any thread.
+void SetBodyScale(double scale);
+double BodyScale();
 
 // What the writer did with Request::fingers on its last write (any hand enabled), within half a second.
 struct FingersSample {

@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -69,6 +70,7 @@ std::atomic<bool> gBroken{false};  // an access violation in the writer: writes 
 std::atomic<unsigned> gCalls{0};
 std::atomic<unsigned> gPlayerCalls{0};
 std::atomic<unsigned> gWrites{0};
+std::atomic<double> gBodyScale{1.0};  // research/58's experiment (SetBodyScale)
 std::atomic<std::uint64_t> gTotalWrites{0};
 std::atomic<unsigned> gRejects{0};
 // Writes in which a solve moved a kept bone (Request::keep), which then kept its animated entry.
@@ -634,6 +636,34 @@ void Write(Mesh* self, float deltaTime) {
         gFingers = fingersSample;
         gFingersTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
+    }
+    // The body's scale (research/58, an experiment: `mevr body scale <s>`): every bone but the kept ones (Camera and God) scaled
+    // by s about the floor under the Root bone, its own scale too, so the skinned mesh grows; 1 = off.
+    if (double const s = gBodyScale.load(std::memory_order_relaxed); s != 1.0 && std::isfinite(s) && s > 0.5 && s < 2.0) {
+        double floorZ = std::numeric_limits<double>::infinity();
+        for (int i = 0; i < count; ++i) {
+            if (std::find(request.keep.begin(), request.keep.end(), i) == request.keep.end()) {
+                floorZ = (std::min)(floorZ, pose[static_cast<std::size_t>(i)].translation.z);
+            }
+        }
+        int root = -1;
+        for (int i = 0; i < count && root < 0; ++i) {
+            if (std::find(request.keep.begin(), request.keep.end(), i) == request.keep.end()) {
+                root = i;
+            }
+        }
+        if (root >= 0 && std::isfinite(floorZ)) {
+            ik::Vec3 const pivot{pose[static_cast<std::size_t>(root)].translation.x, pose[static_cast<std::size_t>(root)].translation.y, floorZ};
+            for (int i = 0; i < count; ++i) {
+                if (std::find(request.keep.begin(), request.keep.end(), i) != request.keep.end()) {
+                    continue;
+                }
+                ik::Transform& scaled = pose[static_cast<std::size_t>(i)];
+                scaled.translation = pivot + (scaled.translation - pivot) * s;
+                scaled.scale *= s;
+            }
+            first = (std::min)(first, root);
+        }
     }
     if (first >= count) {
         return;
@@ -1440,6 +1470,14 @@ std::optional<FingersSample> LatestFingers() {
     FingersSample const sample = gFingers;
     ReleaseSRWLockShared(&gSampleLock);
     return fresh ? std::optional<FingersSample>(sample) : std::nullopt;
+}
+
+void SetBodyScale(double scale) {
+    gBodyScale.store(scale, std::memory_order_relaxed);
+}
+
+double BodyScale() {
+    return gBodyScale.load(std::memory_order_relaxed);
 }
 
 KickSamples WrittenGunKicks() {
