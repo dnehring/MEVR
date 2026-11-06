@@ -37,6 +37,8 @@ struct Frame {
 
 // Every frame from the overlays (render thread). nullptr while the rail isn't shown.
 XrCompositionLayerQuad const* Layer(Frame const& frame);
+// The wrist tap's target (vr::omni_rail::TargetLookFor), as this frame's Layer call left it: nullptr while hidden.
+XrCompositionLayerQuad const* TargetLayer();
 // The rail opened or closed from elsewhere (the main menu's button, a test). Any thread.
 void Toggle(char const* why);
 // A controller's ray is on the rail or a press on it is held: its trigger is ours, kept from the game. Any thread.

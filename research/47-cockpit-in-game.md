@@ -931,6 +931,12 @@ the vessel; and the thrusters should last longer.
   right and forward, as an angle over the grip's height above the pivot (`[Mako] stickHeightM` 0.10 m): full lock at `stickTiltDeg` (20),
   the dead zone `stickDeadZoneDeg`; it stops at full tilt and springs back on release. The forward tilt is `Output::pitch` (+ pushed).
   `stickTwist = 1` keeps stage 1's twist. The stick's model tilts about its pivot the same way, and Shepard's right hand follows its grip.
+  **The model turns with the twist too** (the user, 2026-11-05, the first QA pass of release 0.1.0: "the joystick doesn't have the
+  radial twist supported, even though it registered the movement"; built, not yet seen in the game). The twist that steers and spins
+  on top of the tilt (the release's log: "spun on the spot 3 times; the last yaw rate +49 deg/s for +41 asked") never reached the model:
+  in tilt mode game/CockpitProbe turned the grip only by its tilt. Now `Output::twistShownDeg` (the hand's twist while held, stopped at
+  `stickTwistDeg`, 42, springing back at the steering's return rate when let go; unit-tested) is the grip's turn about its own tilted
+  axis (`mako_controls::Pose::twistDeg`, composed after the tilt in `PlacePartIn`; counter-clockwise from above is a negative UE yaw).
 - **What fires the thrusters** (BioVehicleWheeled's script, read with Legendary Explorer's library; prose only): its Tick fires the jump
   jets while `BioPlayerController.bJumpJetsOn` (X) is on and `CanJump` (not out of fuel, the vehicle's functions on, not cinematic, not
   healing), pushing along the vehicle's up by `ThrusterForce`; the booster while `bBoostersOn` (Y) and `CanBoost`, with the boost torque

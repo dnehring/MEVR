@@ -420,13 +420,16 @@ constexpr char const* kSightsBlock =
     "; aimedFire: 1 = looking through a scope gives the shots the game's aimed-fire accuracy (no scope camera).\n"
     "aimedFire = 1\n"
     "; assist: 1 = as you raise the gun to your face and look along it, it slides so the sight line runs through your\n"
-    "; aiming eye, more the more it's raised (at most assistMaxM meters for a scope, assistDotMaxM for a red dot or holo),\n"
-    "; and lets go as you lower it; also the pull above. assistStrength: how much of the way (0..1).\n"
-    "; assistConeDeg and assistRangeM are no longer used (since 2026-10-27 the ADS approach decides how raised the gun is).\n"
+    "; aiming eye, more the more it's raised (at most assistMaxM meters for a scope, assistDotMaxM for a red dot or holo:\n"
+    "; 0, the gun stays in your hand), and lets go as you lower it; also the pull above. assistStrength: how much of the\n"
+    "; way (0..1). assistConeDeg and assistRangeM are no longer used (since 2026-10-27 the ADS approach decides).\n"
     "assist = 1\n"
     "assistStrength = 1\n"
     "assistMaxM = 0.10\n"
-    "assistDotMaxM = 0.03\n"
+    "assistDotMaxM = 0\n"
+    "; dotWindow: 1 = a red dot on the game's solid sight housing (the assault rifles') is seen through: the eye looking\n"
+    "; through it sees the world in its window (research/21 section 17).\n"
+    "dotWindow = 1\n"
     "; scopeCapture: 1 = the scope shows a real zoomed render of the world (the engine's scene capture, only while your eye\n"
     "; is behind the scope; research/39) instead of the other eye's picture enlarged (about 0.5 ms of render thread a frame\n"
     "; while you look through it). scopeCaptureSize: its pixels across. scopeCaptureRate: renders a second at most (150:\n"
@@ -2288,6 +2291,9 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     if (Number(ini, "Sights", "frame", value)) {
         out.frame = value != 0.0;
     }
+    if (Number(ini, "Sights", "dotWindow", value)) {
+        out.dotWindow = value != 0.0;
+    }
     if (Number(ini, "Sights", "replaceRing", value)) {
         out.replaceRing = value != 0.0;
     }
@@ -2906,6 +2912,21 @@ void Refresh() {
             }
         }
     }
+    // [Sights] since 2026-11-05 (research/21 section 17): red dots don't slide toward the eye. A file without the marker
+    // dotWindow that still holds the old default assistDotMaxM = 0.03 gets 0; any other value is the player's and kept.
+    if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("dotWindow") == s->second.end()) {
+        if (auto const k = s->second.find("assistDotMaxM"); k != s->second.end()) {
+            if ((k->second == "0.03" || k->second == "0.030") &&
+                WritePrivateProfileStringW(L"Sights", L"assistDotMaxM", L"0", path.wstring().c_str()) != 0) {
+                log::Info("hands: [Sights] assistDotMaxM 0.03 -> 0: a red dot stays in your hand, no slide toward the eye "
+                          "(research/21 section 17) in {}", ini::Utf8(path));
+                ini = ReadIni(path);
+                stamp = fs::last_write_time(path, ec);
+            } else if (k->second != "0.03" && k->second != "0.030") {
+                log::Info("hands: [Sights] assistDotMaxM = {} kept (your choice; the default is 0)", k->second);
+            }
+        }
+    }
     // [WorldUi] since 2026-11-04 (research/57): the omni-tool takes every personal screen. A file without the marker
     // wristMenuWidthM whose wrist still holds the old default (the bypass minigame alone) gets the new list; any other is kept.
     if (auto const s = ini.find("WorldUi"); s != ini.end() && s->second.find("wristMenuWidthM") == s->second.end()) {
@@ -3011,7 +3032,7 @@ void Refresh() {
         {L"Sights", "Sights", L"ads", "ads", L"1"},
         {L"Sights", "Sights", L"adsReachM", "adsReachM", L"0.40"},
         {L"Sights", "Sights", L"scopeAdsPullMaxM", "scopeAdsPullMaxM", L"0.35"},
-        {L"Sights", "Sights", L"assistDotMaxM", "assistDotMaxM", L"0.03"},
+        {L"Sights", "Sights", L"assistDotMaxM", "assistDotMaxM", L"0"},
         {L"Sights", "Sights", L"assaultRifleLens", "assaultRifleLens", L"auto"},
         {L"Sights", "Sights", L"sniperRifleLens", "sniperRifleLens", L"auto"},
         {L"Sights", "Sights", L"sniperRifleHide", "sniperRifleHide", L"auto"},
@@ -3023,6 +3044,9 @@ void Refresh() {
         {L"Sights", "Sights", L"scopeCaptureSize", "scopeCaptureSize", L"1024"},
         {L"Sights", "Sights", L"scopeCaptureRate", "scopeCaptureRate", L"150"},
         {L"Sights", "Sights", L"scopeCapturePost", "scopeCapturePost", L"1"},
+        // A red dot seen through the game's solid housing (2026-11-05, research/21 section 17). The marker dotWindow comes
+        // after assistDotMaxM's migration above.
+        {L"Sights", "Sights", L"dotWindow", "dotWindow", L"1"},
         // The spectator camera (2026-11-03, research/49), off by default: the rest of [Spectator] is file-only.
         {L"Spectator", "Spectator", L"enabled", "enabled", L"0"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},

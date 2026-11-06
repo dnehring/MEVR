@@ -68,6 +68,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Repair button: press it with a fingertip from the front, hold 2 s while the squares fill blue, the repair runs.
   With no omni-gel the squares are solid red; right after a repair (cooling down) they flash red every 1.2 s; neither
   repairs. (research/48 section 27, red built 2026-11-05)
+- [ ] Cockpit joystick: twist it about its axis while holding it: the grip model turns with your hand (up to the 42-degree
+  lock), on top of its tilt, and springs back straight when let go. Does it turn the same way as your hand? (research/47 "The
+  stick tilts", the model's twist built 2026-11-05)
 - [ ] Repair on the throttle: holding the throttle lever, click the left thumbstick: the repair runs at once, a strong
   pulse in the left hand. With no omni-gel or cooling down, two buzzes and the shelf's squares red; a click begun off the
   lever does nothing. Is the click easy to find while driving, and never pressed by accident? (research/48 section 27 "The
@@ -108,6 +111,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
   screen's lower buttons must not close it. (research/57 sections 2-3 and 6, built 2026-11-04/05)
+- [ ] The wrist tap's target (squad-placement session; built 2026-11-05 evening after the first try found nothing to aim at):
+  weapon holstered, raise the left wrist: a faint orange button just below the health readout? Bring the right controller's
+  tip to it: brighter, then cyan with a light tick, and the tap opens the rail. Is it easy to find, is 4 cm right? The log's
+  `omni-tool rail: a reach for the wrist target` lines give the closest approach of each try. (research/57 section 3)
 - [ ] On the wrist's equipment screen with your real fingertip: the weapon tabs, Shepard's and the squadmates' tabs, a list
   row, Equip, a swipe to scroll. Does each land on the first tap (the targets are 0.8-1.4 cm)? (research/57 section 6,
   built 2026-11-05)
@@ -210,6 +217,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   (`[Sights] scopeCapturePost = 0` removes it and the grade); say if it bothers you. (research/39 sections 10, 12)
 - [ ] The assault rifle's red dot at the cheek: shows without hunting, lines up. Close each eye in turn: the dot and the
   scope show in the aiming eye only, on SteamVR and on the Oculus runtime. (research/21 sections 7, 11)
+- [ ] The assault rifle raised to the right eye: you see through its sight housing (the target and the dot in a round
+  window, the box around it; with the left eye closed too); the gun stays where your hand puts it (no sliding by itself);
+  the dot doesn't blink, also when the support hand's aimed fire comes on. Say if the window's edge or a near object in it
+  looks shifted. (research/21 section 17, built 2026-11-05)
 - [ ] Shot groups: the pistol at 10-20 m on the dot, the sniper at 5 m and 20-40 m on the crosshair, no drift to the
   right. (research/21 sections 9-10)
 
@@ -290,7 +301,8 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Gun: the muzzle through a wall doesn't shoot through it; camera modes' hook-bone gap near 0. (research/14, 18)
 - Wheels: the weapon and power wheels' crops in snapshots. (research/15)
 - Sights: a snapshot per gun model under an ADS replay (window ring, scope picture, the sniper's lens glow); the near
-  plane's log line. (research/21 sections 13-16)
+  plane's log line. (research/21 sections 13-16) The assault rifle's window under that replay (the right eye's snapshot shows
+  the target through the housing), and what moves in the tick the support grip's aimed fire switches. (research/21 section 17)
 - Scope capture: picture checks against `scopeCapture = 0`, the frame checks under two Draws and `sharePass 5`, the cost
   and the dark speckle at the heavy cell. (research/39)
 - Level camera under a firing replay; the logs of comfort, colour, the main menu and life-size stereo. (research/24, 27,

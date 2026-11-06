@@ -74,6 +74,14 @@ ScopeParams MakeScopeParams(vr::sights::Sight const& sight, vr::sights::Lens con
     XrVector3f const& eye, XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth,
     unsigned textureHeight, unsigned size, float decodeGamma = 1.0f, bool gameArt = false);
 
+// A dot's window (vr::sights::kWindow, research/21 section 17): the same picture at 1x with no reticle (the dot is its own
+// quad), no tube rim or shadow, and an edge that fades into the housing behind it over the outer kWindowFade of its radius.
+inline constexpr float kWindowStyle = 4.0f;  // the shader's style (row1.w) for a window
+inline constexpr float kWindowFade = 0.15f;
+ScopeParams MakeWindowParams(vr::sights::Sight const& sight, vr::sights::Lens const& lens, vr::sights::ScopeView const& view,
+    XrVector3f const& eye, XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth,
+    unsigned textureHeight, unsigned size);
+
 // ---- The game's scope view, composed (research/21 section 16, vr::scope_art) ---------------------------------------
 // Once per set of textures the host draws each layer (the reticle, the tube) into a square float texture of its own,
 // kArtLayerSize across with mips, from the game's three textures (t0 the atlas, t1 the mask, t2 the rings: vr::scope_art's

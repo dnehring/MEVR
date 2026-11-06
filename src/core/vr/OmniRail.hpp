@@ -63,10 +63,25 @@ std::optional<Rail> Alone(XrVector3f const& eyes, XrVector3f const& wrist, float
 // hand that starts there, doesn't tap), at most once every cooldownS, and only while `allowed` (the host: no weapon drawn, no
 // menu of ours up, both hands tracked).
 struct TapSettings {
-    float pressM = 0.035f;
-    float releaseM = 0.07f;
+    float pressM = 0.04f;    // 0.035 until 2026-11-05 (the user's first try found nothing to aim at; with the target, a little wider)
+    float releaseM = 0.08f;  // 0.07 until then
     float cooldownS = 0.6f;
 };
+
+// ---- The tap's target (the user, 2026-11-05: "we most certainly need that visible target"; nothing showed where to tap) ----
+// A button kTargetBelowM below the wrist point (the HUD's wrist readout sits there; the button mustn't cover it), facing the
+// eyes. The tap aims at its centre. It shows faintly while the left wrist is raised in front of the face, brighter while the
+// right fingertip comes near, cyan once the tap is armed within releaseM; never while the tap isn't allowed.
+inline constexpr float kTargetBelowM = 0.035f;
+inline constexpr float kTargetSizeM = 0.04f;        // the quad's side
+inline constexpr float kTargetNearM = 0.30f;        // the right fingertip this near: the target brightens
+inline constexpr float kRaisedBelowEyesM = 0.45f;   // the wrist raised: the target within this below the eyes...
+inline constexpr float kRaisedAcrossM = 0.60f;      // ...and this near them across the floor
+XrVector3f TargetPoint(XrVector3f const& wrist);
+enum class TargetLook : std::uint8_t { Hidden, Faint, Near, Armed };
+// `tipTracked` false: only the raised wrist counts. `armed`: Tap::Armed() (the fingertip has been away since the last tap).
+TargetLook TargetLookFor(bool allowed, XrVector3f const& eyes, XrVector3f const& target, bool tipTracked, XrVector3f const& tip,
+    bool armed, float releaseM);
 class Tap {
 public:
     explicit Tap(TapSettings const& settings = TapSettings{}) : settings_(settings) {}

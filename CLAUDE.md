@@ -506,8 +506,10 @@ switching frameworks.
   left** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`, `[OmniTool]` enabled/tap/aloneHeightM):
   Squad, Equipment, Map, Journal, Codex, Computer, Close; a second RmlUi context of the main menu's library (`menu::Ui` allows one
   per document now), `vr::game_pointer::Pointer` on its quad (ray and trigger, or the fingertip), its trigger kept from the game
-  (`omni_rail::OwnsTriggers`). **Tap the left wrist with the right index fingertip** to open it alone on the wrist (3.5 cm from
-  7 cm, not with a gun drawn; `omni_rail::Tap`); it shows by itself beside a screen of its own; a tap or Close shuts it and the
+  (`omni_rail::OwnsTriggers`). **Tap the left wrist with the right index fingertip** to open it alone on the wrist (4 cm from
+  8 cm, not with a gun drawn; `omni_rail::Tap`), **at a target button 3.5 cm below the wrist readout** (2026-11-05: the first
+  headset try found nothing to aim at): faint orange with the wrist raised, brighter with the right hand near, cyan and a tick
+  in tap range (`omni_rail::TargetLookFor`; log `omni-tool rail: a reach for the wrist target`, each try's closest approach); it shows by itself beside a screen of its own; a tap or Close shuts it and the
   screens. Its entries go to the mod through the main menu's request slot (`main_menu::PutGameRequest`, `game_menu::Action` 3..8):
   `game/GameMenuRequest` backs out of the screen up with the player's B as the game hears it, **`SFXGameModeBase.GuiKey(13)` on the
   active mode** (it hands B to the GUI manager, which offers it to every handler on the stack and closes through
@@ -551,7 +553,7 @@ switching frameworks.
   sideways tilt doesn't steer then, or the driven track turns the Mako 90 degrees; the booster is the game's own; each burst logged
   with the speed it gained, research/47 "Flying on the jets"); their fuel is partly given back while they fire
   (`thrusterBurnScale` 0.4: 2.5x as long; LE1's jets have 0.7 s); `stickTwist = 1` is stage 1's twist. The tilt steers up to `tiltSteerMax` (0.5), the twist adds to it and alone spins the Mako on the spot at
-  zero throttle (`spinRateDeg`; the body's turn axes measured: research/47 "Which way the body turns"); the jump is only the lever's X. `mevr vehicle jets <s>`
+  zero throttle, and the cockpit's grip model turns with it about its tilted axis (`Output::twistShownDeg`, 2026-11-05) (`spinRateDeg`; the body's turn axes measured: research/47 "Which way the body turns"); the jump is only the lever's X. `mevr vehicle jets <s>`
   fires them for tests, `mevr vehicle angvel [body] X Y Z` measures the body's turn.
   **Reaching the Mako without a save** (research/47 "Reaching the Mako"): `tools/mako-start.ps1` (`open BIOA_UNC20`, then `mevr vehicle party`:
   the squad screen's own `FinalizeParty`, after which the level's rover drop makes the Mako the pawn, game mode 1). Never `mevr vehicle enter`
@@ -710,7 +712,13 @@ switching frameworks.
   resources in the sight; the host composes two layers once, `SightLayers` PrepareArt, layout `vr::scope_art` from
   `tools/scope-art.py`; the duplex if not found). **It can't load** (the game frees those textures, research/21 section 16),
   so **`reticle = duplex` is the default** since 2026-11-04 (the owner; an old file's `game` is kept and falls back to it).
-  The sight struct grew: host and mod deploy together.
+  The sight struct grew: host and mod deploy together. **A red dot on the game's solid housing is seen through** (research/21
+  section 17, 2026-11-05; the assault rifles' boxes, `[Sights] dotWindow`): the mod sets `kWindow` (a `flags` bit, no size change)
+  and the host draws, for the dot's eye and behind its ring and dot, the other eye's image at 1x on a disc at the window
+  (`sv::WindowView`, the scope shader's window style, the eye copy; not the capture: its grade would show). Dots no longer slide
+  toward the eye (`assistDotMaxM` 0; 0.03 migrated once, marker `dotWindow`: the slide toggled at the corridor's edge while the
+  eye already sat on the line), and the dot's eye survives a 120 ms dropout (`sv::EyeHold`). Log `[MEVR-SIGHT] first window`,
+  `sights: the dot's window was up`; snapshot `sights.window`.
 - LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **on by default since 2026-11-04**,
   `[Sights] scopeCapture = 1`, an old file's 0 moved once (marker `scopeCapturePost`); measured in research/39 section 12: the
   render thread +0.5 ms in a light scene, no GPU cost visible, the picture as sharp as the display instead of 2.2x below it;

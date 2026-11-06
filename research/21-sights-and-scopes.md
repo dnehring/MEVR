@@ -885,3 +885,53 @@ height 0; the aim pose 15 cm under the eye, since this rifle's bore runs about 1
    running game's memory (the host already finds a `UTexture`'s D3D11 texture for the scope capture, research/39) and composed
    in `SightPictures`' shader as the movie composes them; nothing from the game in the repository; our duplex when they aren't
    found. Not the movie itself: its `SniperMode` follows the camera's zoom (`bIsZoomed`), which must stay off (section 4).
+
+## 17. The assault rifle's red dot: seen through its housing, and steadier (headset session 2026-11-05, built the same evening)
+
+**Report (user, 2026-11-05, PS VR2 on SteamVR, the players' build 1ce16cf):** holding the assault rifle up to the eye "seems to
+be a little finicky, like it's not very stable. But more importantly, the asset for the scope is completely solid, so I can't
+actually see through the weapon with my right eye."
+
+### What the session shows (`LE1MEVR.log`, 21:44:55-21:45:14, the rifle `WPN_ASLa_MDL`, held two-handed)
+
+- **The housing:** ASLa's sight is a closed box (section 16: 12.8 units long, 4.3 wide, 4.4 tall, one material, no lens). Since
+  section 16 the dot's window sits on its rear face, and the dot is a quad composited over the eye with no depth, so the aiming
+  eye sees the red dot on the box's back face: about 8 degrees of solid metal in the middle of the view at a 0.3 m hold.
+- **The gun slid on its own:** `alignment assist on` 10 times and `off` 8 times in 18 s, on and off again within 10 ms at
+  21:45:08 (`on ... 59% weight` then `off ... the centre eye 12.9 cm beside the bore`): the hold sat at the corridor's
+  lateral edge (entry 9 cm, exit 13 cm), where the approach weight runs from 1 to 0, and each time the dot's 3 cm slide
+  (`assistDotMaxM`, section 15) moved the gun toward the eye and back. Meanwhile the heartbeat says **the aiming eye sat on
+  average 0.1 cm left of and 1.0 cm above the unassisted sight line**: the player's own hold was already on the line.
+- **The dot blinked:** `the right eye through the red dot sight` / `no eye through the sight` 9 and 7 times; once (21:44:58.53,
+  the moment the support grip's aimed fire turned the game's LT on and the camera went Combat, Interpolate, TightAim) one
+  tick's sample put the gun 0.58 m from the eye and the dot went to the LEFT eye for 70 ms. Which part of that tick moved (the
+  drawn gun or only our reading of it) isn't settled **[verify]** on the fake headset (aimed fire on and off under a replay).
+- Not the cause: the calibration (rifle step done at 21:20, spread 4.0 degrees), the constant eye (`SFXCameraMode_TightAim
+  ... the eye (50.1, 0.0, 94.9) from the hook bone, as exploring`).
+
+### Built (host `plugin/SightLayers`, `SightPictures`; mod `game/Sights`; `core/vr/Sights`, unit-tested `TestSightWindow`)
+
+1. **The window** (`[Sights] dotWindow = 1`; flag `vr::sights::kWindow`, a new bit in the shared struct's `flags`: no size
+   change, an older host ignores it): the mod sets it for a dot or holo on a model whose optic table entry applies (ASLa,
+   ASLb: the housing's rear opening, auto placement). The host then draws, for the eye the dot shows to and behind its ring and
+   dot, a disc of the window's radius (3 units: it covers ASLa's 4.3-unit face to its corners) showing **the other eye's image
+   at 1x**: the scope picture's shader and eye copy (section 4) with `sv::WindowView` (each window point shows its true
+   direction from the eye, wherever the eye is behind it; no exit pupil, no shadow) and a window style (no reticle, no tube rim;
+   the outer 15% of the radius fades into the housing). The other eye still sees the housing: both eyes open, like a real red
+   dot. Parallax: the source is 6.3 cm to the side, so a thing at distance D shows up to 6.3 x (1 - D / 40 m) cm off in the
+   window (0.6 degrees at 5 m, 0.3 at 10 m; at the 40 m focus none); the dot itself is drawn true. The scope capture
+   (research/39) isn't used for it: its grade (or, without post, its lack of one) would show as a disc on the most-used gun.
+   Logs `[MEVR-SIGHT] first window through the assault rifle's sight housing ...`, `sights: the dot's window was up N frames
+   ...`; snapshot `sights.window` (`flag`, `drawn`, `frames`, `bridged`). Offline: `mevr-sight-preview`'s
+   `eye-right-dot-housing.png` (before), `eye-right-dot-window.png`, `eye-right-dot-window-off-1.5cm.png`, `window.png`.
+2. **Dots don't slide:** `assistDotMaxM` default 0 (was 0.03); a file without the new key `dotWindow` that still holds exactly
+   `0.03` gets 0 once (`hands: [Sights] assistDotMaxM 0.03 -> 0`); any other value is kept. A sight the assist can't move no
+   longer logs `alignment assist on/off` (its statistics stay in the heartbeat). Scopes keep their slide and pull.
+3. **The dot's eye through a dropout** (`vr::sights::EyeHold`, 120 ms): a tick with no eye through the window keeps the last
+   eye (never the other eye) until 120 ms have passed, so a one-tick jump or the eye a moment past the box's edge doesn't
+   blink the dot and its window; the other eye still takes over at once when it's chosen.
+
+**[verify] in the headset (notes/headset-checklist.md section 3):** the rifle's sight seen through with the right eye, the
+target and the dot in the window, the housing around it, no seam that bothers; the gun stays put in the hand at the face; the
+dot doesn't blink. **On the fake headset:** the window under an ADS replay with the rifle (snapshots of the right eye), and
+what moves in the tick aimed fire switches.

@@ -81,7 +81,10 @@ struct Assist {
     bool enabled = true;
     float strength = 1.0f;       // 0..1: how much of the way to the line
     float maxShiftM = 0.10f;     // the gun moves sideways at most this far (tracking meters): scopes
-    float dotMaxShiftM = 0.03f;  // ...and red dots and holos (gentle: their eye box already forgives)
+    // ...and red dots and holos: none since 2026-11-05 (research/21 section 17). At 0.03 the rifle slid 3 cm toward the
+    // eye and back each time the hold crossed the corridor's edge (10 times in 18 s of the user's session), while the eye
+    // already sat on the unassisted line (0.1 cm off on average): a dot's eye box forgives, the gun stays in the hand.
+    float dotMaxShiftM = 0.0f;
 };
 
 // The pull to the eye (research/21 sections 14-15; Overlord's ADS eye-distance assistance): the assist also slides the
@@ -110,6 +113,7 @@ struct Settings {
                                         // within this of the window's centre (gun units; at least windowUnits): a
                                         // gun raised to the face shows its dot without hunting for a 3 cm window
     bool frame = true;                  // a faint ring at the window, so the sight can be found
+    bool dotWindow = true;              // see through a solid sight housing (kWindow; research/21 section 17)
     float zeroM = 0.0f;                 // where the sight line meets the shot (game meters); 0: parallel
     bool converge = true;               // shots leave the muzzle toward the point the sight line hits (a world
                                         // trace along it), so they land on the dot at any distance
@@ -237,6 +241,10 @@ enum Flags : std::uint32_t {
     kFrame = 1u,        // draw the window's ring
     kReplaceRing = 2u,  // hide the floating ring reticle while an eye looks through the sight
     kOtherEye = 4u,     // a scope magnifies the other eye's image
+    // A dot or holo on a model whose sight housing is solid (the assault rifles' boxes: Optic, research/21 section 17):
+    // the eye looking through sees the world through the window (the other eye's image at 1x on a disc there), not the
+    // housing's back face. A host from before ignores it.
+    kWindow = 8u,
 };
 
 struct Sight {
@@ -436,6 +444,28 @@ struct ScopeView {
 };
 // Nullopt when the eye isn't behind the lens (closer than 1 cm) or more than 6 eye reliefs back.
 std::optional<ScopeView> View(Lens const& lens, XrVector3f const& eye, float eyeRelief);
+
+// A dot's window (kWindow, research/21 section 17): the world through it at 1x, from wherever the eye is behind it (the
+// picture shows each window point's true direction from the eye), with no exit pupil or shadow (a red dot has none).
+// Nullopt when the eye isn't between `minAlong` and `maxAlong` behind the window.
+std::optional<ScopeView> WindowView(Lens const& lens, XrVector3f const& eye, float minAlong, float maxAlong);
+
+// The eye a dot shows to, kept through a brief dropout (research/21 section 17): a tick where the drawn gun jumps, or the
+// eye a moment past the box's edge, mustn't make the dot (and its window) blink. `chosen` is AimingEye's answer (-1:
+// none); a -1 within `holdMs` of the last eye keeps that eye.
+class EyeHold {
+public:
+    static constexpr std::uint64_t kHoldMs = 120;
+    int Update(int chosen, std::uint64_t nowMs, std::uint64_t holdMs = kHoldMs);
+    void Reset() { eye_ = -1; }
+    unsigned Bridged() const { return bridged_; }  // dropouts that ended inside the hold (for the log)
+
+private:
+    int eye_ = -1;
+    std::uint64_t seenMs_ = 0;
+    bool holding_ = false;
+    unsigned bridged_ = 0;
+};
 
 // The virtual eyepiece (Settings::scopeFieldDeg; with the pull, PulledFieldDeg). The picture's radius on the lens plane
 // for an eye `along` behind it: the radius that looks `fieldDeg` across from there, never smaller than the lens's own.

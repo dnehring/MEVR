@@ -13,6 +13,7 @@
 #include "core/vr/GamePointer.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/OmniRail.hpp"
+#include "core/vr/OverlayPlacement.hpp"
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/RailArt.hpp"
@@ -102,6 +103,19 @@ struct State {
     LARGE_INTEGER lastCounter{};
     Settings settings;
     std::uint64_t settingsMs = 0;
+    // The tap's target (rail::TargetLookFor): one small static swapchain per look, faint / near / armed / pressed.
+    Swapchain target[4];
+    XrCompositionLayerQuad targetQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    bool targetShown = false;
+    rail::TargetLook targetLook = rail::TargetLook::Hidden;
+    float pressedS = 0.0f;       // the pressed look's time left after a tap
+    // A reach for the target (the right fingertip within kTargetNearM): its closest approach, logged when it ends.
+    bool reaching = false;
+    float closestM = 0.0f;
+    bool reachTapped = false;
+    char const* reachRefused = nullptr;  // why the tap wasn't allowed during it, if it wasn't
+    int reaches = 0;
+    std::uint64_t reachLogMs = 0;
     int taps = 0;
     int picks = 0;
     std::string last = "none";
@@ -276,6 +290,195 @@ bool Submit() {
     return ok;
 }
 
+// ---- The tap's target ----
+constexpr std::uint32_t kTargetPixels = 128;
+
+// One look's picture, premultiplied in linear light, sRGB-encoded (0xAABBGGRR): a soft disc, a ring and a centre dot, the
+// omni-tool's orange (faint, near) or ME1's cyan (armed, pressed).
+std::vector<std::uint32_t> TargetPixels(int look) {
+    struct Style {
+        float r, g, b;
+        float strength;
+        float ring;  // ring thickness (of the half-size)
+        float fill;
+    };
+    static constexpr Style kStyles[4] = {
+        {1.0f, 0.36f, 0.08f, 0.45f, 0.05f, 0.08f},  // faint: the wrist raised
+        {1.0f, 0.40f, 0.10f, 0.85f, 0.07f, 0.14f},  // near: the right hand coming
+        {0.22f, 0.66f, 1.0f, 1.0f, 0.08f, 0.22f},   // armed: in tap range
+        {0.75f, 0.93f, 1.0f, 1.0f, 0.10f, 0.70f},   // pressed
+    };
+    Style const& s = kStyles[std::clamp(look, 0, 3)];
+    auto encode = [](float linear) {
+        float const c = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
+        return static_cast<std::uint32_t>(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f);
+    };
+    float const px = 2.0f / static_cast<float>(kTargetPixels);
+    auto band = [px](float d, float lo, float hi) {
+        return std::clamp((d - lo) / px + 0.5f, 0.0f, 1.0f) * std::clamp((hi - d) / px + 0.5f, 0.0f, 1.0f);
+    };
+    std::vector<std::uint32_t> pixels(static_cast<std::size_t>(kTargetPixels) * kTargetPixels);
+    for (std::uint32_t y = 0; y < kTargetPixels; ++y) {
+        for (std::uint32_t x = 0; x < kTargetPixels; ++x) {
+            float const u = (static_cast<float>(x) + 0.5f) * px - 1.0f;
+            float const v = (static_cast<float>(y) + 0.5f) * px - 1.0f;
+            float const d = std::sqrt(u * u + v * v);
+            float const ring = band(d, 0.74f - s.ring, 0.74f);
+            float const glow = 0.35f * std::exp(-((d - 0.70f) / 0.13f) * ((d - 0.70f) / 0.13f));
+            float const dot = band(d, -1.0f, 0.20f);
+            float const fill = s.fill * band(d, -1.0f, 0.70f);
+            float const a = std::clamp(s.strength * (ring + glow + 0.9f * dot + fill), 0.0f, 1.0f);
+            pixels[static_cast<std::size_t>(y) * kTargetPixels + x] = encode(s.r * a) | (encode(s.g * a) << 8) | (encode(s.b * a) << 16) |
+                                                                       (static_cast<std::uint32_t>(a * 255.0f + 0.5f) << 24);
+        }
+    }
+    return pixels;
+}
+
+bool EnsureTarget(XrSession session, ID3D11Device* device, ID3D11DeviceContext* context, int look) {
+    Swapchain& chain = g.target[look];
+    if (chain.handle != XR_NULL_HANDLE) {
+        return true;
+    }
+    if (chain.failed) {
+        return false;
+    }
+    XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+    info.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+    info.format = kSwapchainFormat;
+    info.sampleCount = 1;
+    info.width = kTargetPixels;
+    info.height = kTargetPixels;
+    info.faceCount = 1;
+    info.arraySize = 1;
+    info.mipCount = 1;
+    XrResult r = xrCreateSwapchain(session, &info, &chain.handle);
+    std::uint32_t count = 0;
+    if (XR_SUCCEEDED(r)) {
+        r = xrEnumerateSwapchainImages(chain.handle, 0, &count, nullptr);
+    }
+    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
+    if (XR_SUCCEEDED(r) && count > 0) {
+        r = xrEnumerateSwapchainImages(chain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+    }
+    std::vector<std::uint32_t> const pixels = TargetPixels(look);
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = kTargetPixels;
+    td.Height = kTargetPixels;
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA data{pixels.data(), kTargetPixels * 4, 0};
+    ComPtr<ID3D11Texture2D> source;
+    bool ok = XR_SUCCEEDED(r) && count > 0 && SUCCEEDED(device->CreateTexture2D(&td, &data, source.GetAddressOf()));
+    for (std::uint32_t i = 0; ok && i < count; ++i) {
+        XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+        std::uint32_t index = 0;
+        XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+        wait.timeout = XR_INFINITE_DURATION;
+        ok = XR_SUCCEEDED(xrAcquireSwapchainImage(chain.handle, &acquire, &index)) &&
+             XR_SUCCEEDED(xrWaitSwapchainImage(chain.handle, &wait)) && index < count;
+        if (ok) {
+            context->CopyResource(images[index].texture, source.Get());
+        }
+        XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+        xrReleaseSwapchainImage(chain.handle, &release);
+    }
+    if (!ok) {
+        log::Error("omni-tool rail: the tap target's image {} failed (XrResult {}); no target", look, static_cast<int>(r));
+        if (chain.handle != XR_NULL_HANDLE) {
+            xrDestroySwapchain(chain.handle);
+        }
+        chain = {};
+        chain.failed = true;
+        return false;
+    }
+    static char const* const kNames[4] = {"omnitarget-faint", "omnitarget-near", "omnitarget-armed", "omnitarget-pressed"};
+    testloop::NameSwapchain(chain.handle, kNames[look]);
+    testloop::SetStaticImage(chain.handle, kTargetPixels, kTargetPixels, pixels);
+    return true;
+}
+
+char const* LookName(rail::TargetLook look) {
+    switch (look) {
+    case rail::TargetLook::Faint: return "faint";
+    case rail::TargetLook::Near: return "near";
+    case rail::TargetLook::Armed: return "armed";
+    default: return "hidden";
+    }
+}
+
+// The target's look and quad this frame, the approach's haptic tick and the reach's log line. `tip` is valid with handsTracked.
+void StepTarget(Frame const& frame, bool handsTracked, XrVector3f const& tip, XrVector3f const& target, bool allowed,
+    char const* refused, bool tapped, float dt) {
+    g.targetShown = false;
+    if (tapped) {
+        g.pressedS = 0.25f;
+    }
+    g.pressedS = std::max(0.0f, g.pressedS - dt);
+    rail::TargetLook const look = frame.wristValid && frame.headValid
+        ? rail::TargetLookFor(allowed, frame.eyes, target, handsTracked, tip, g.tap.Armed(), rail::TapSettings{}.releaseM)
+        : rail::TargetLook::Hidden;
+    if (look == rail::TargetLook::Armed && g.targetLook != rail::TargetLook::Armed) {
+        halcyon::RequestHaptic(1, 0.012f, 0.2f, 0.0f);  // in tap range: a light tick in the right hand
+    }
+    g.targetLook = look;
+    // The reach: begins with the fingertip within kTargetNearM, ends 5 cm past it or with the tap.
+    float const d = handsTracked ? std::sqrt((tip.x - target.x) * (tip.x - target.x) + (tip.y - target.y) * (tip.y - target.y) +
+                                             (tip.z - target.z) * (tip.z - target.z))
+                                 : 1e9f;
+    if (frame.wristValid && d <= rail::kTargetNearM) {
+        if (!g.reaching) {
+            g.reaching = true;
+            g.closestM = d;
+            g.reachTapped = false;
+            g.reachRefused = nullptr;
+        }
+        g.closestM = std::min(g.closestM, d);
+        if (!allowed && refused != nullptr) {
+            g.reachRefused = refused;
+        }
+        g.reachTapped = g.reachTapped || tapped;
+    } else if (g.reaching && (!frame.wristValid || d > rail::kTargetNearM + 0.05f)) {
+        g.reaching = false;
+        ++g.reaches;
+        std::uint64_t const now = GetTickCount64();
+        if (g.reachTapped || g.closestM < 0.15f || now - g.reachLogMs > 10000) {  // every near miss; far ones every 10 s
+            g.reachLogMs = now;
+            log::Info("omni-tool rail: a reach for the wrist target (#{}): closest {:.1f} cm (a tap counts within {:.1f} cm){}", g.reaches,
+                g.closestM * 100.0f, rail::TapSettings{}.pressM * 100.0f,
+                g.reachTapped ? ": tapped" : g.reachRefused != nullptr ? std::format(": no tap, {}", g.reachRefused).c_str() : ": no tap");
+        }
+    }
+    rail::TargetLook const shown = g.pressedS > 0.0f ? rail::TargetLook::Armed : look;  // the pressed picture below
+    if (shown == rail::TargetLook::Hidden && g.pressedS <= 0.0f) {
+        return;
+    }
+    int const index = g.pressedS > 0.0f ? 3 : static_cast<int>(shown) - 1;
+    if (frame.device == nullptr || frame.context == nullptr || !EnsureTarget(frame.session, frame.device, frame.context, index)) {
+        return;
+    }
+    XrVector3f toward{frame.eyes.x - target.x, frame.eyes.y - target.y, frame.eyes.z - target.z};
+    float const n = std::sqrt(toward.x * toward.x + toward.y * toward.y + toward.z * toward.z);
+    if (!(n > 1e-4f)) {
+        return;
+    }
+    toward = {toward.x / n, toward.y / n, toward.z / n};
+    g.targetQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+    g.targetQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+    g.targetQuad.space = frame.appSpace;
+    g.targetQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    g.targetQuad.subImage.swapchain = g.target[index].handle;
+    g.targetQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(kTargetPixels), static_cast<int32_t>(kTargetPixels)}};
+    g.targetQuad.pose.orientation = vr::overlay::Facing(toward);
+    g.targetQuad.pose.position = target;
+    g.targetQuad.size = {rail::kTargetSizeM, rail::kTargetSizeM};
+    g.targetShown = true;
+}
+
 void Publish(bool shown, char const* place) {
     std::lock_guard lock(gStatusMutex);
     gStatus = std::format("{{\"shown\": {}, \"open\": {}, \"place\": \"{}\", \"active\": \"{}\", \"taps\": {}, \"picks\": {}, \"last\": \"{}\", "
@@ -389,6 +592,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     float const dt = g.lastCounter.QuadPart != 0 ? std::clamp(static_cast<float>(Seconds(counter) - Seconds(g.lastCounter)), 0.0f, 0.1f) : 0.0f;
     g.lastCounter = counter;
     if (!g.settings.enabled || frame.othersOwnInput || frame.session == XR_NULL_HANDLE || frame.device == nullptr) {
+        g.targetShown = false;
         Hide(!g.settings.enabled ? "[OmniTool] enabled = 0" : "a menu of ours or the calibration is up");
         return nullptr;
     }
@@ -412,8 +616,17 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         ++g.tapsHeld;
     }
     bool const tapAllowed = g.settings.tap && !frame.gunDrawn && (frame.gameMode == 0 || frame.gameMode == 7) && !goingForPanel;
+    char const* const refused = !g.settings.tap                                ? "[OmniTool] tap = 0"
+                                : frame.gunDrawn                               ? "a weapon is drawn (holster it first)"
+                                : frame.gameMode != 0 && frame.gameMode != 7   ? "not on foot"
+                                : goingForPanel                                ? "the fingertip was going for a screen"
+                                                                               : nullptr;
+    // The tap aims at its target, a button just below the wrist readout (rail::TargetPoint).
+    XrVector3f const target = rail::TargetPoint(frame.wrist);
     bool const visibleBefore = g.shown;
-    if (g.tap.Step(handsTracked, tip, frame.wrist, tapAllowed, dt)) {
+    bool const tapped = g.tap.Step(handsTracked, tip, target, tapAllowed, dt);
+    StepTarget(frame, handsTracked, tip, target, tapAllowed && g.settings.tap, refused, tapped, dt);
+    if (tapped) {
         ++g.taps;
         halcyon::RequestHaptic(0, 0.03f, 0.5f, 0.0f);
         halcyon::RequestHaptic(1, 0.03f, 0.5f, 0.0f);
@@ -507,6 +720,10 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     g.quad.size = {at->widthM, at->heightM};
     Publish(true, place);
     return &g.quad;
+}
+
+XrCompositionLayerQuad const* TargetLayer() {
+    return g.targetShown ? &g.targetQuad : nullptr;
 }
 
 void Toggle(char const* why) {

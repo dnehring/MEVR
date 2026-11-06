@@ -2357,7 +2357,9 @@ void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVec
     }
     double const forwardM = offsetM.y + (part.motion == Part::Motion::Lever ? static_cast<double>(pose.lever * pose.travelM) : 0.0);
     bool const stick = part.motion == Part::Motion::Stick;
-    double const yawDeg = part.yawDeg + (stick && !pose.tilt ? static_cast<double>(pose.steer * pose.lockDeg) : 0.0);
+    // Twisting, the stick turns by its steering; tilting, it turns about its tilted axis by the hand's twist (the user, 2026-11-05:
+    // the twist steered, the model never turned). A twist counter-clockwise from above is a negative UE yaw.
+    double const yawDeg = part.yawDeg + (!stick ? 0.0 : pose.tilt ? -static_cast<double>(pose.twistDeg) : static_cast<double>(pose.steer * pose.lockDeg));
     engine::UnrealVector const offset = engine::Apply(frame, {forwardM * upm, offsetM.x * upm, offsetM.z * upm});
     engine::Basis tilted = stick && pose.tilt ? engine::Compose(frame, StickTilt(pose)) : frame;
     if (part.motion == Part::Motion::Hinge && gPanelLayout.set && panel.pullDeg != 0.0f) {

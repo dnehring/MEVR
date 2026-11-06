@@ -822,6 +822,7 @@ Pose CurrentPose() {
         pose.steer = gOut.steer;
         pose.tiltRightDeg = gOut.tiltRightDeg;
         pose.tiltForwardDeg = gOut.tiltForwardDeg;
+        pose.twistDeg = gOut.twistShownDeg;
         pose.leverHeld = gOut.leverHeld;
         pose.stickHeld = gOut.stickHeld;
     }

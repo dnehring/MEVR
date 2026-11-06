@@ -120,6 +120,10 @@ struct Output {
     float lever = 0.0f;      // where the lever physically is, -1..1 (before the detent)
     float steer = 0.0f;      // -1 (full left) .. 1 (full right), + turns to the player's right
     float twistDeg = 0.0f;   // the stick's twist from the grab, unwrapped (+: the right-hand rule about the stick's axis)
+    // The stick model's turn about its own axis (tilt mode; the user, 2026-11-05: the twist steered but the model never turned):
+    // the hand's twist while held, held at stickTwistDeg (its full lock), springing back to 0 when let go. + counter-clockwise
+    // from above, as twistDeg.
+    float twistShownDeg = 0.0f;
     float tiltRightDeg = 0.0f;    // the stick's tilt (tilt mode): its top to the player's right
     float tiltForwardDeg = 0.0f;  // ... and away from the player
     float pitch = 0.0f;           // -1..1 from the forward tilt (+: pushed, the nose down), past the dead zone; 0 in twist mode
@@ -200,6 +204,7 @@ private:
     float spin_ = 0.0f;
     float twist_ = 0.0f;
     float twistRaw_ = 0.0f;
+    float twistShown_ = 0.0f;
     XrQuaternionf grabOrientation_{0.0f, 0.0f, 0.0f, 1.0f};
     XrVector3f axis_{0.0f, 1.0f, 0.0f};
     XrVector3f stickGrab_{};

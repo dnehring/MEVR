@@ -81,6 +81,7 @@ Swapchain gScope;
 XrCompositionLayerQuad gDotQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 XrCompositionLayerQuad gFrameQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 XrCompositionLayerQuad gScopeQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+XrCompositionLayerQuad gWindowQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};  // a dot's window (kWindow): in gScope's swapchain
 
 bool Create(XrSession session, std::uint32_t width, std::uint32_t height, Swapchain& out, char const* what, char const* name) {
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
@@ -643,6 +644,13 @@ void PrepareArt(Frame const& frame, sv::Sight const& sight) {
 
 // ---- State ------------------------------------------------------------------------------------------------
 int gDotEye = -1;          // the eye looking through a dot or holo sight
+sv::EyeHold gDotHold;      // ...kept through a brief dropout (research/21 section 17)
+bool gWindowDrawn = false; // this frame: a dot's window (kWindow)
+// While a dot's window is up: how the eye looked through it, for one line when it goes.
+int gWindowFrames = 0;
+double gWindowAlongSum = 0.0;
+double gWindowLateralSum = 0.0;
+bool gLoggedWindow = false;
 int gAiming = -1;          // the eye aiming through a scope
 int gSource = -1;          // whose image it magnifies
 bool gScopeDrawn = false;  // this frame
@@ -707,8 +715,19 @@ void FlushScopeStats() {
     gScopeAlongSum = gScopeLateralSum = gScopeShadowSum = gScopeFadeSum = gScopeDegSum = 0.0;
 }
 
+// One line per look through a dot's window, when it goes.
+void FlushWindowStats() {
+    double const n = static_cast<double>(gWindowFrames);
+    log::Info("sights: the dot's window was up {} frames: the eye {:.2f} m behind it and {:.1f} cm off its line on average; {} "
+              "dropouts bridged so far (research/21 section 17)",
+        gWindowFrames, gWindowAlongSum / n, gWindowLateralSum / n * 100.0, gDotHold.Bridged());
+    gWindowFrames = 0;
+    gWindowAlongSum = gWindowLateralSum = 0.0;
+}
+
 void Off() {
     gDotEye = -1;
+    gDotHold.Reset();
     gAiming = -1;
     gSource = -1;
     testloop::SetReleaseTap(XR_NULL_HANDLE, nullptr);
@@ -786,21 +805,49 @@ PictureSource CaptureSource(scope_capture_source::Source const& capture) {
         XrRect2Di{{0, 0}, {static_cast<std::int32_t>(capture.width), static_cast<std::int32_t>(capture.height)}}, capture.decodeGamma};
 }
 
-// Draws the scope's picture into its swapchain; false if anything is missing.
-bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
-    PictureSource const& source) {
+// The picture's swapchain (the scope's, also a dot's window), sized for this sight; 0 if it can't be had.
+std::uint32_t EnsurePicture(Frame const& frame, sv::Sight const& sight) {
     std::uint32_t const size = static_cast<std::uint32_t>(std::clamp(sight.resolution, 128, 2048));
     if (gScope.handle != XR_NULL_HANDLE && gScope.width != size) {
         gScope.Destroy();
     }
     if (gScope.handle == XR_NULL_HANDLE && (gScope.failed || !Create(frame.session, size, size, gScope, "scope picture", "scope"))) {
+        return 0;
+    }
+    if (!EnsurePipeline(frame.device)) {
+        return 0;
+    }
+    return size;
+}
+
+bool RenderPicture(Frame const& frame, ScopeParams const& params, std::uint32_t size, PictureSource const& source);
+
+// Draws the scope's picture into its swapchain; false if anything is missing.
+bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
+    PictureSource const& source) {
+    std::uint32_t const size = EnsurePicture(frame, sight);
+    if (size == 0 || source.srv == nullptr) {
         return false;
     }
-    if (!EnsurePipeline(frame.device) || source.srv == nullptr) {
+    return RenderPicture(frame,
+        MakeScopeParams(sight, lens, view, eye, source.pose, source.fov, source.rect, source.width, source.height, size, source.decodeGamma,
+            gArt.ready),
+        size, source);
+}
+
+// Draws a dot's window (kWindow) into the same swapchain: the source at 1x, no reticle.
+bool RenderWindow(Frame const& frame, sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
+    PictureSource const& source) {
+    std::uint32_t const size = EnsurePicture(frame, sight);
+    if (size == 0 || source.srv == nullptr) {
         return false;
     }
-    ScopeParams const params = MakeScopeParams(sight, lens, view, eye, source.pose, source.fov, source.rect, source.width, source.height,
-        size, source.decodeGamma, gArt.ready);
+    return RenderPicture(frame,
+        sight_pictures::MakeWindowParams(sight, lens, view, eye, source.pose, source.fov, source.rect, source.width, source.height, size),
+        size, source);
+}
+
+bool RenderPicture(Frame const& frame, ScopeParams const& params, std::uint32_t size, PictureSource const& source) {
     std::uint32_t index = 0;
     if (!Acquire(gScope, index)) {
         return false;
@@ -863,7 +910,11 @@ Output Layers(Frame const& frame) {
     if (!gScopeDrawn && gScopeFrames > 0) {
         FlushScopeStats();
     }
+    if (!gWindowDrawn && gWindowFrames > 0) {
+        FlushWindowStats();
+    }
     gScopeDrawn = false;
+    gWindowDrawn = false;
     gFromCapture = false;
     if (frame.session != gSession) {
         gDot.Forget();
@@ -896,15 +947,42 @@ Output Layers(Frame const& frame) {
         }
         if (kind == sv::Kind::Dot || kind == sv::Kind::Holo) {
             gAiming = -1;
-            gSource = -1;
-            testloop::SetReleaseTap(XR_NULL_HANDLE, nullptr);
             // The eye looking through: the one whose line along the sight passes nearest the window's centre, within
             // the eye box (more forgiving than the drawn window: a gun raised to the face shows its dot), kept with
-            // hysteresis. One eye only, like a real red dot seen with both eyes open (the other eye looks past it).
+            // hysteresis and through a brief dropout. One eye only, like a real red dot seen with both eyes open (the
+            // other eye looks past it).
             float const box = std::max(sight.eyeBox, sight.radius);
-            gDotEye = sv::AimingEye(gLines, box, kMinAlong, kMaxAlong, gDotEye);
+            gDotEye = gDotHold.Update(sv::AimingEye(gLines, box, kMinAlong, kMaxAlong, gDotEye), GetTickCount64());
             bool const on[2] = {gDotEye == 0, gDotEye == 1};
-            if ((sight.flags & sv::kFrame) != 0 && out.count < 2 && EnsureFrame(frame)) {
+            // A solid housing (kWindow, research/21 section 17): that eye sees the world through the window, the other eye's
+            // image at 1x (the same copy as the scope's, taken as that image is released), drawn behind the ring and the dot.
+            bool const window = (sight.flags & sv::kWindow) != 0 && gDotEye >= 0 && frame.projectionValid;
+            gSource = window ? 1 - gDotEye : -1;
+            XrSwapchain const windowSwapchain = window ? frame.projectionSwapchain[gSource] : XR_NULL_HANDLE;
+            testloop::SetReleaseTap(windowSwapchain, window ? &OnEyeReleased : nullptr);
+            if (window && out.count < kMaxLayers) {
+                bool const fresh = gCopy.srv != nullptr && gCopy.swapchain == windowSwapchain && gCopy.frame + 2 >= gFrameCount;
+                auto const lens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
+                XrVector3f const eye = frame.eyes[gDotEye].position;
+                auto const windowView = lens ? sv::WindowView(*lens, eye, kMinAlong, 1.2f * kMaxAlong) : std::nullopt;
+                if (fresh && windowView && RenderWindow(frame, sight, *lens, *windowView, eye, EyeCopySource(frame, gSource))) {
+                    gWindowQuad = MakeQuad(frame.appSpace, gScope, sv::Disc(sight.center, sight.axis, sight.up, lens->radius),
+                        VisibilityOf(gDotEye));
+                    out.layers[out.count++] = &gWindowQuad;
+                    gWindowDrawn = true;
+                    ++gWindowFrames;
+                    gWindowAlongSum += windowView->along;
+                    gWindowLateralSum += gLines[gDotEye].lateral;
+                    if (!gLoggedWindow) {
+                        gLoggedWindow = true;
+                        log::Info("[MEVR-SIGHT] first window through the {}'s sight housing: the {} eye ({:.3f} m behind it, {:.4f} m off "
+                                  "the line) sees the {} eye's image at 1x on a {:.3f} m disc (research/21 section 17)",
+                            sv::WeaponName(sight.weapon), EyeName(gDotEye), windowView->along, gLines[gDotEye].lateral, EyeName(gSource),
+                            2.0f * lens->radius);
+                    }
+                }
+            }
+            if ((sight.flags & sv::kFrame) != 0 && out.count < kMaxLayers && EnsureFrame(frame)) {
                 gFrameQuad = MakeQuad(frame.appSpace, gFrame, sv::Disc(sight.center, sight.axis, sight.up, sight.radius * kFrameScale),
                     XR_EYE_VISIBILITY_BOTH);
                 out.layers[out.count++] = &gFrameQuad;
@@ -915,7 +993,7 @@ Output Layers(Frame const& frame) {
                 }
             }
             DotLayout const layout = LayoutFor(sight);
-            if ((on[0] || on[1]) && out.count < 2 && EnsureDot(frame, sight, layout)) {
+            if ((on[0] || on[1]) && out.count < kMaxLayers && EnsureDot(frame, sight, layout)) {
                 sv::Quad const quad = sv::Reticle(sight.center, sight.axis, sight.up, kDotDistance, layout.quadDeg * kPi / 180.0f);
                 gDotQuad = MakeQuad(frame.appSpace, gDot, quad, VisibilityOf(gDotEye));
                 out.layers[out.count++] = &gDotQuad;
@@ -931,6 +1009,7 @@ Output Layers(Frame const& frame) {
             }
         } else if (kind == sv::Kind::Scope) {
             gDotEye = -1;
+            gDotHold.Reset();
             float const relief = std::max(sight.eyeReliefM, 0.01f);
             auto const lens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
             // The virtual eyepiece (research/21 section 13): a picture of a set apparent size wherever the eye is
@@ -965,7 +1044,7 @@ Output Layers(Frame const& frame) {
                 bool const fresh =
                     capture.has_value() || (gCopy.srv != nullptr && gCopy.swapchain == swapchain && gCopy.frame + 2 >= gFrameCount);
                 PictureSource const source = capture ? CaptureSource(*capture) : EyeCopySource(frame, gSource);
-                if (fresh && out.count < 2 &&
+                if (fresh && out.count < kMaxLayers &&
                     RenderScope(frame, sight, picture, *scopeView, frame.eyes[gAiming].position, source)) {
                     if (gFromCapture) {
                         ++gCaptureFrames;
@@ -1019,7 +1098,7 @@ std::string StatusJson() {
                        "\"eyeBox\": {:.4f}, \"dotEye\": \"{}\", \"scope\": {{\"fieldDeg\": {:.1f}, \"eyeBoxM\": {:.3f}, \"maxM\": {:.2f}, "
                        "\"along\": {:.4f}, \"pictureRadiusM\": {:.4f}, \"pictureDeg\": {:.2f}, \"pupilCentre\": [{:.3f}, {:.3f}], "
                        "\"fade\": {:.3f}}}, \"pictureSource\": \"{}\", \"capture\": {}, \"gameArt\": {{\"ready\": {}, \"state\": \"{}\", "
-                       "\"reticle\": \"{}\"}}}}",
+                       "\"reticle\": \"{}\"}}, \"window\": {{\"flag\": {}, \"drawn\": {}, \"frames\": {}, \"bridged\": {}}}}}",
         sv::Name(static_cast<sv::Kind>(gSight.kind)), sv::WeaponName(gSight.weapon), gSight.center.x, gSight.center.y, gSight.center.z,
         gSight.axis.x, gSight.axis.y, gSight.axis.z, gSight.radius, gSight.zoom, line(gLines[0]), line(gLines[1]),
         gDotEye == 0 ? "true" : "false", gDotEye == 1 ? "true" : "false", EyeName(gAiming), EyeName(gSource),
@@ -1027,7 +1106,8 @@ std::string StatusJson() {
         gSight.scopeFieldDeg, gSight.scopeEyeBox, gSight.scopeMaxM, gScopeView.along, gPictureRadius,
         gScopeView.along > 0.0f ? 2.0f * std::atan(gPictureRadius / gScopeView.along) * 180.0f / kPi : 0.0f, gScopeView.px, gScopeView.py,
         gScopeView.fade, !gScopeDrawn ? "none" : gFromCapture ? "capture" : "eye copy", scope_capture_source::StatusJson(),
-        gArt.ready ? "true" : "false", gArt.text, sv::Name(static_cast<sv::ScopeReticle>(gSight.scopeReticle)));
+        gArt.ready ? "true" : "false", gArt.text, sv::Name(static_cast<sv::ScopeReticle>(gSight.scopeReticle)),
+        (gSight.flags & sv::kWindow) != 0 ? "true" : "false", gWindowDrawn ? "true" : "false", gWindowFrames, gDotHold.Bridged());
 }
 
 } // namespace mevr::host::sight_layers

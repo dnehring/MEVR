@@ -110,6 +110,34 @@ bool Tap::Step(bool tracked, XrVector3f const& tip, XrVector3f const& wrist, boo
     return false;
 }
 
+XrVector3f TargetPoint(XrVector3f const& wrist) {
+    return {wrist.x, wrist.y - kTargetBelowM, wrist.z};
+}
+
+TargetLook TargetLookFor(bool allowed, XrVector3f const& eyes, XrVector3f const& target, bool tipTracked, XrVector3f const& tip,
+    bool armed, float releaseM) {
+    if (!allowed) {
+        return TargetLook::Hidden;
+    }
+    if (tipTracked) {
+        float const d = Distance(tip, target);
+        if (std::isfinite(d)) {
+            if (armed && d <= releaseM) {
+                return TargetLook::Armed;
+            }
+            if (d <= kTargetNearM) {
+                return TargetLook::Near;
+            }
+        }
+    }
+    float const below = eyes.y - target.y;
+    float const across = std::hypot(target.x - eyes.x, target.z - eyes.z);
+    if (std::isfinite(below) && std::isfinite(across) && below <= kRaisedBelowEyesM && across <= kRaisedAcrossM) {
+        return TargetLook::Faint;
+    }
+    return TargetLook::Hidden;
+}
+
 bool GoingForPanel(XrVector3f const& tip, world_ui::Panel const& panel, float depthM, float marginM) {
     if (!(panel.widthM > 0.0f) || !(panel.heightM > 0.0f)) {
         return false;

@@ -243,6 +243,7 @@ void Controls::StopAll(Stop stop, Output& out) {
     lever_ = 0.0f;
     steer_ = 0.0f;
     twist_ = 0.0f;
+    twistShown_ = 0.0f;
     tiltRight_ = tiltForward_ = pitch_ = roll_ = 0.0f;
     spin_ = 0.0f;
     leverHeld_ = false;
@@ -388,6 +389,12 @@ Output Controls::Step(Input const& in, Settings const& settings) {
                 tiltRight_ = Approach(tiltRight_, 0.0f, back);
                 tiltForward_ = Approach(tiltForward_, 0.0f, back);
             }
+            // The model's turn about its axis: the hand's twist, stopped at full lock, springing back the same way when let go.
+            {
+                float const twistLimit = std::max(settings.stickTwistDeg, 1.0f);
+                twistShown_ = stickHeld_ ? std::clamp(twist_, -twistLimit, twistLimit)
+                                         : Approach(twistShown_, 0.0f, kSteerRateReturn * twistLimit * dt);
+            }
             // The tilt steers up to tiltSteerMax; the twist adds to it (to full lock, or against it), and alone it spins.
             float const twistPart = stickHeld_ ? SteerFromTwist(twist_, settings) : 0.0f;
             float const tiltPart = stickHeld_ && !settings.stickTwist && !in.jets
@@ -430,6 +437,7 @@ Output Controls::Step(Input const& in, Settings const& settings) {
     out.spin = spin_;
     out.steer = steer_;
     out.twistDeg = twist_;
+    out.twistShownDeg = twistShown_;
     out.tiltRightDeg = tiltRight_;
     out.tiltForwardDeg = tiltForward_;
     out.pitch = pitch_;
