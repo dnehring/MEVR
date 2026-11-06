@@ -268,7 +268,14 @@ void WorkerMain() {
         DWORD const wait = phase == 1 || phase == 2 ? static_cast<DWORD>(std::max(gConfig.intervalMs, 30)) : INFINITE;
         WaitForSingleObject(gWake, wait);
         if (!gRunning.load()) break;
-        int const now = gPhase.load();
+        int now = gPhase.load();
+        // The tail also ends here, not only in the capture loop: with no microphone, or one unplugged mid-listen, no
+        // packet ever arrived to end it, and a released listen stayed in its tail (and the game ducked) for good.
+        if (now == 2 && GetTickCount64() >= gTailUntilMs.load()) {
+            std::lock_guard<std::mutex> lock(gMoonshine);
+            if (gPhase.load() == 2) StopStream();
+            now = gPhase.load();
+        }
         if (now != 1 && now != 2 && now != 3) continue;
         bool const finalCall = now == 3;
         transcript_t* transcript = nullptr;

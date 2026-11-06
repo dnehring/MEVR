@@ -745,13 +745,19 @@ void DofBack() {
     if (!gDofOff) {
         return;
     }
-    gDofOff = false;
     if (gDofWas) {
+        // Kept owed until both commands ran: StopWorld comes every tick outside a conversation, so a restore that
+        // found no console (no local controller in a transition) is tried again, instead of DOF staying off for good
+        // (the game writes the live value back into BIOEngine.ini; Codex review 2026-11-06, gameA#7).
         std::string ignored;
-        console_request::RunCommand("scale set DepthOfField False", &ignored);
-        console_request::RunCommand("scale set DepthOfField True", &ignored);
+        bool const ok = console_request::RunCommand("scale set DepthOfField False", &ignored) &&
+                        console_request::RunCommand("scale set DepthOfField True", &ignored);
+        if (!ok) {
+            return;
+        }
         log::Info("convo: depth of field on again (BIOEngine.ini's [SystemSettings])");
     }
+    gDofOff = false;
 }
 
 void StopWorld(Link const& link, char const* why) {

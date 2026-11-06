@@ -1220,6 +1220,13 @@ void NoteOneDrawMatch(bool matched) {
     }
 }
 void OneDrawSecondEye(std::uint8_t* renderer);
+// A fault in the one-Draw path stops its replays for the session: Halcyon's second Draw has to come back with it, or
+// the right eye kept the last image for the rest of the session (Codex review 2026-11-06, plugin#6).
+void OneDrawGiveUp() {
+    gOneDrawFallback.store(true, std::memory_order_relaxed);
+    MELEVR::MevrBridge::g_oneDrawStereo.store(false, std::memory_order_relaxed);
+    gOneDrawFallbacks.fetch_add(1, std::memory_order_relaxed);
+}
 // In the fallback: would a record match this render's view? (The views alive: the finish hook.)
 void OneDrawCheck(std::uint8_t* renderer) {
     auto const* const vo0 = reinterpret_cast<float const*>(View(renderer, 0) + 0x320);
@@ -1237,7 +1244,8 @@ int OneDrawCheckGuarded(std::uint8_t* renderer) noexcept {
         return 0;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         gOneDrawFaulted.store(true, std::memory_order_relaxed);
-        log::Warn("render levers: one Draw: the health check faulted; no more replays this session");
+        OneDrawGiveUp();
+        log::Warn("render levers: one Draw: the health check faulted; no more replays this session: Halcyon's second Draw resumes");
         return 1;
     }
 }
@@ -1252,7 +1260,8 @@ int OneDrawSecondEyeGuarded(std::uint8_t* renderer) noexcept {
         // A fault on the render thread inside a hook ends the thread behind the engine's own handler and the game
         // thread then waits forever (research/37): never let one out.
         gOneDrawFaulted.store(true, std::memory_order_relaxed);
-        log::Warn("render levers: one Draw: the second eye faulted; no more replays this session");
+        OneDrawGiveUp();
+        log::Warn("render levers: one Draw: the second eye faulted; no more replays this session: Halcyon's second Draw resumes");
         return 1;
     }
 }
@@ -1268,8 +1277,8 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
         return;
     }
     bool const synthesised = SynthesiseSecondView(renderer, first, second);
-    NoteOneDrawMatch(synthesised);
     if (!synthesised) {
+        NoteOneDrawMatch(false);
         gMode5NoRecord.fetch_add(1, std::memory_order_relaxed);
         static std::uint64_t nextLog = 0;
         std::uint64_t const now = GetTickCount64();
@@ -1315,6 +1324,7 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
         gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
         gMode5LastBlocker = std::format("replay returned {}", rc);
     }
+    NoteOneDrawMatch(rc == 0);  // after the replay: a replay that failed is no second eye either (it counted as one)
 }
 
 std::atomic<std::uint64_t> gSecondRenderSkipped{0};
@@ -2419,7 +2429,8 @@ void Tick() {
             gSharePass.store(share, std::memory_order_relaxed);
             gOneDrawWanted.store(share == 5 && gReplayHooked, std::memory_order_relaxed);
             gOneDrawFallback.store(false, std::memory_order_relaxed);   // a fresh start for the health check
-            MELEVR::MevrBridge::g_oneDrawStereo.store(share == 5 && gReplayHooked, std::memory_order_relaxed);
+            MELEVR::MevrBridge::g_oneDrawStereo.store(share == 5 && gReplayHooked && !gOneDrawFaulted.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);   // a faulted session keeps Halcyon's second Draw
             log::Info("render levers: {} ([Performance] sharePass = {}){}",
                 share == 2 ? "a frame's second scene render replays the first one's draw calls on its renderer (no second "
                              "visibility, no second engine pass; research/32 lever 4)"

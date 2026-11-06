@@ -25,6 +25,7 @@ std::string StatusJson() { return "{\"loaded\": false, \"whyOff\": \"built witho
 
 #include <atomic>
 #include <condition_variable>
+#include <exception>
 #include <filesystem>
 #include <format>
 #include <mutex>
@@ -84,7 +85,13 @@ void WorkerMain(fs::path libraryDir, fs::path model, int threads) {
     settings.threads = threads;
     settings.chatTemplate = gChat;
     std::string error;
-    if (!gRunner.Load(libraryDir, model, settings, &error)) {
+    bool loaded = false;
+    try {  // a thread's escaping exception is std::terminate: the game gone
+        loaded = gRunner.Load(libraryDir, model, settings, &error);
+    } catch (std::exception const& e) {
+        error = std::string("loading threw: ") + e.what();
+    }
+    if (!loaded) {
         std::lock_guard<std::mutex> lock(gMutex);
         gWhyOff = error;
         log::Warn("voice model: off: {}", error);

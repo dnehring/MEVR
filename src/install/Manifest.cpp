@@ -864,6 +864,9 @@ bool Transaction::Uninstall(bool keepUserData) {
     // What has been undone: dropped from the record if something else fails, so another try never undoes it twice
     // (removing bink2w64.dll a second time would delete RAD's DLL, renamed back by the first try).
     std::vector<bool> undone(manifest_.files.size(), false);
+    // Files of ours this run couldn't remove: a rename back onto one of their names hasn't happened, whatever is there
+    // (the walk is in reverse, so an added file comes before the rename it replaced).
+    std::vector<std::string> stillOurs;
     for (std::size_t n = manifest_.files.size(); n-- > 0;) {
         FileEntry const& f = manifest_.files[n];
         fs::path const target = layout_.Full(f.path);
@@ -888,6 +891,7 @@ bool Transaction::Uninstall(bool keepUserData) {
             if (fs::exists(target, ec) && !fs::remove(target, ec)) {
                 Fail("couldn't remove " + f.path + ": " + ec.message());
                 ok = false;
+                stillOurs.push_back(f.path);
                 continue;
             }
             Note("removed " + f.path);
@@ -905,6 +909,15 @@ bool Transaction::Uninstall(bool keepUserData) {
             Note("restored " + f.path);
         } else if (f.action == "renamed") {
             fs::path const original = layout_.Full(f.from);
+            bool const ourFileThere = std::any_of(stillOurs.begin(), stillOurs.end(),
+                [&](std::string const& p) { return _stricmp(p.c_str(), f.from.c_str()) == 0; });
+            if (ourFileThere) {
+                // Our loader is still in RAD's place: "already back" would drop this record, and the retry would then
+                // remove the loader and never rename RAD's DLL back (Codex review 2026-11-06, install#3).
+                Fail("left " + f.path + " for another try: our " + f.from + " is still in its place");
+                ok = false;
+                continue;
+            }
             if (fs::exists(original, ec)) {
                 Note(f.from + " is already back; left " + f.path);
             } else if (f.path != paths::kBinkOriginal && !fs::exists(target, ec)) {

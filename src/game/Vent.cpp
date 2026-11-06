@@ -249,10 +249,9 @@ void DoVent(Link const& link, ue3::Object* weapon, hand_calibration::Vent const&
         write_journal::Wrote("Vent.heat", heat);
         wrote = true;
     }
-    if (void* const word = gOverheatedField.Address(weapon)) {
-        gOverheatedField.WriteBool(weapon, false);
-        write_journal::Wrote("Vent.overheated", word, sizeof(std::uint32_t));
-    }
+    // WriteBool journals its own write. (Gated on Address() until 2026-11-06, which is null for a bool field, so the
+    // overheat latch was never cleared: Codex review, gameM#2.)
+    bool const clearedLatch = gOverheatedField.WriteBool(weapon, false);
     bool const effect = settings.effect && gCoolDownEffect != nullptr;
     ue3::Object** const slot = gVisualEffects.At<ue3::Object*>(weapon, kCoolDownEffect);
     ue3::Object* const effectBefore = slot != nullptr ? *slot : nullptr;
@@ -290,7 +289,8 @@ void DoVent(Link const& link, ue3::Object* weapon, hand_calibration::Vent const&
         before, wasOverheated ? " (overheated)" : "");
     log::Info("vent: VENTED the {}: heat {:.3f} ({} of the overheat{}) -> 0{} with a {:.1f} m/s stroke ({:.1f} m/s back along the gun, "
               "{:.2f} m pulled, fastest {:.0f} ms before the release); both hands pulse{}; next in {:.1f} s",
-        ue3::runtime::FullName(weapon), before, Percent(gHeat), wasOverheated ? ", overheated" : "", wrote ? "" : " (the heat field didn't resolve: NOT written)",
+        ue3::runtime::FullName(weapon), before, Percent(gHeat), wasOverheated ? (clearedLatch ? ", overheated: latch cleared" : ", overheated: the latch NOT cleared") : "",
+        wrote ? "" : " (the heat field didn't resolve: NOT written)",
         step.release.speed, step.back, step.travel, step.release.peakAgo * 1000.0, effect ? "; the game's cool-down effect" : "",
         settings.cooldownS);
     gHeatRaw = 0.0;
