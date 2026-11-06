@@ -1275,6 +1275,8 @@ if (MEVR_BUILD_TESTS)
         add_executable(mevr-power-wheel-preview
             tools/power-wheel-preview/Main.cpp
             src/core/PngFile.cpp
+            src/core/gfx/Swf.cpp
+            src/core/gfx/SwfFont.cpp
             src/core/vr/ImageConvert.cpp
             src/core/vr/PowerWheel.cpp
             src/plugin/Glow.cpp

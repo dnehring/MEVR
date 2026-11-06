@@ -774,4 +774,96 @@ std::vector<std::uint32_t> Picture(Icon icon) {
     return paint.Result();
 }
 
+namespace {
+
+// A square kPixels map's separable box blur of `radius`, twice (close to a Gaussian).
+std::vector<float> Blur(std::vector<float> const& in, int radius) {
+    int const n = static_cast<int>(kPixels);
+    std::vector<float> a = in;
+    std::vector<float> b(in.size(), 0.0f);
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int y = 0; y < n; ++y) {
+            for (int x = 0; x < n; ++x) {
+                float sum = 0.0f;
+                for (int k = -radius; k <= radius; ++k) {
+                    sum += a[static_cast<std::size_t>(y * n + std::clamp(x + k, 0, n - 1))];
+                }
+                b[static_cast<std::size_t>(y * n + x)] = sum / static_cast<float>(2 * radius + 1);
+            }
+        }
+        for (int y = 0; y < n; ++y) {
+            for (int x = 0; x < n; ++x) {
+                float sum = 0.0f;
+                for (int k = -radius; k <= radius; ++k) {
+                    sum += b[static_cast<std::size_t>(std::clamp(y + k, 0, n - 1) * n + x)];
+                }
+                a[static_cast<std::size_t>(y * n + x)] = sum / static_cast<float>(2 * radius + 1);
+            }
+        }
+    }
+    return a;
+}
+
+// The smallest (shrink) or largest (grow) value within `radius` (a square), per pixel.
+std::vector<float> Extreme(std::vector<float> const& in, int radius, bool grow) {
+    int const n = static_cast<int>(kPixels);
+    std::vector<float> out(in.size(), 0.0f);
+    for (int y = 0; y < n; ++y) {
+        for (int x = 0; x < n; ++x) {
+            float v = grow ? 0.0f : 1.0f;
+            for (int dy = -radius; dy <= radius; ++dy) {
+                for (int dx = -radius; dx <= radius; ++dx) {
+                    float const s = in[static_cast<std::size_t>(std::clamp(y + dy, 0, n - 1) * n + std::clamp(x + dx, 0, n - 1))];
+                    v = grow ? std::max(v, s) : std::min(v, s);
+                }
+            }
+            out[static_cast<std::size_t>(y * n + x)] = v;
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+std::vector<std::uint32_t> Hologram(std::vector<std::uint32_t> const& picture) {
+    int const n = static_cast<int>(kPixels);
+    std::size_t const count = static_cast<std::size_t>(n) * static_cast<std::size_t>(n);
+    if (picture.size() != count) {
+        return picture;
+    }
+    // The core strokes: where the painted light is bright (its glow left out), softened a little.
+    std::vector<float> core(count, 0.0f);
+    for (std::size_t i = 0; i < count; ++i) {
+        std::uint32_t const p = picture[i];
+        float const r = static_cast<float>(p & 0xFF);
+        float const g = static_cast<float>((p >> 8) & 0xFF);
+        float const b = static_cast<float>((p >> 16) & 0xFF);
+        float const a = static_cast<float>((p >> 24) & 0xFF) / 255.0f;
+        float const lum = (0.299f * r + 0.587f * g + 0.114f * b) * a;
+        core[i] = std::clamp((lum - 150.0f) / 50.0f, 0.0f, 1.0f);
+    }
+    core = Extreme(core, 1, true);
+    std::vector<float> const inner = Extreme(core, 3, false);
+    std::vector<float> const halo = Blur(core, 6);
+    std::vector<std::uint32_t> out(count, 0);
+    for (int y = 0; y < n; ++y) {
+        float const fade = 1.0f - 0.55f * static_cast<float>(y) / static_cast<float>(n);
+        bool const scan = y % 3 == 0;
+        for (int x = 0; x < n; ++x) {
+            std::size_t const i = static_cast<std::size_t>(y * n + x);
+            float const edge = std::max(core[i] - inner[i], 0.0f);
+            float const body = core[i] * 0.42f * fade;
+            float const ghost = 0.16f * core[static_cast<std::size_t>(std::min(y + 5, n - 1) * n + x)];  // the image a few pixels up
+            float const glow = 0.55f * halo[i];
+            float alpha = 1.0f - (1.0f - std::max(edge, body)) * (1.0f - glow) * (1.0f - ghost);
+            if (scan) {
+                alpha *= 0.6f;
+            }
+            auto const a = static_cast<std::uint32_t>(std::lround(std::clamp(alpha, 0.0f, 1.0f) * 255.0f));
+            out[i] = (a << 24) | 0x00FFFFFFu;  // white light: the wheel tints it
+        }
+    }
+    return out;
+}
+
 }  // namespace mevr::host::power_icons

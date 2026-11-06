@@ -191,7 +191,7 @@ ComPtr<ID3D11ShaderResourceView> Texture(Gpu& gpu, std::vector<std::uint32_t> co
 ImTextureID IconId(Gpu& gpu, icons::Icon icon) {
     auto it = gpu.icons.find(icon);
     if (it == gpu.icons.end()) {
-        it = gpu.icons.emplace(icon, Texture(gpu, icons::Picture(icon), icons::kPixels)).first;
+        it = gpu.icons.emplace(icon, Texture(gpu, icons::Hologram(icons::Picture(icon)), icons::kPixels)).first;
     }
     return static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(it->second.Get()));
 }
