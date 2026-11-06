@@ -3,8 +3,10 @@
 eye's (the best horizontal and vertical offset of a downsampled copy), and the sharpness (mean |Laplacian| over the local
 contrast) is taken on that shared region only, so content and brightness differences between the eyes don't count.
 Motion blur under Halcyon's stereo smears one eye and not the other (docs/knowledge/gotchas/motion-blur-in-stereo.md): an
-L/R far from 1.00 in some frames is its signature. Comparing the eyes' whole images misleads: with the PS VR2's offset eye
-views the two middles hold different content (2026-11-06: 0.59 from a darker patch in one eye, 0.99 aligned).
+L/R far from 1.00 in some frames is its signature, but ONLY with two engine renders (`[Performance] sharePass` 0-3): under
+one-Draw stereo (sharePass 5, the default) the second eye replays the first's render, blur included, and both smear alike
+(2026-11-06: 0.99-1.00 in 12 frames while the owner saw the flicker; use tools/flicker-grab.py). Comparing the eyes' whole
+images misleads too: with the PS VR2's offset eye views the two middles hold different content.
 
     python tools/eye-sharpness.py %LOCALAPPDATA%/MEVR/snapshots <stamp> [<stamp> ...]   (snapshots with -left/-right-world.png)"""
 import sys

@@ -6,7 +6,7 @@ tags: [le1, rendering, stereo, system-settings, recurring]
 status: stable
 timestamp: 2026-10-30T19:53:43Z
 generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
-bitten: [2026-10-07, 2026-10-23, 2026-10-28, 2026-11-02]
+bitten: [2026-10-07, 2026-10-23, 2026-10-28, 2026-11-02, 2026-11-06]
 ---
 
 # Symptom
@@ -53,17 +53,24 @@ The blur is meant to be off, and three mechanisms turned it back on (details in
    If the smear stops, the apply did not reach this level. If it does not, it is something else.
 3. Snapshots: smeared frames among sharp ones, one eye more than the other. Measure it on the part of the scene both eyes
    see, aligned: `tools/snapshot.ps1 -Count 8 -Interval 0.5`, then `python tools/eye-sharpness.py <snapshots> <stamps>`
-   (each frame's L/R on the shared region; the blur's signature is frames far from 1.00). Don't compare the eyes' whole
-   images: with the PS VR2's offset eye views their middles hold different content, and a darker patch in one eye read
-   as 0.59 that the aligned check put at 0.99.
+   (each frame's L/R on the shared region; the blur's signature is frames far from 1.00), **only with two engine renders**
+   (`sharePass` 0-3): under one-Draw stereo both eyes smear alike and it reads 1.00 (below). Don't compare the eyes' whole
+   images: with the PS VR2's offset eye views their middles hold different content.
 
-**Not every report is the blur** (2026-11-06, the owner in the PS VR2 on Eden Prime: "the motion blur may be enabled
-again"): the log had five applies in the level (the last 15 s after it rendered), and the aligned check found both eyes
-equally sharp in 12 frames with the head turning 20-40 degrees (L/R 0.99-1.00, before and after a manual True/False).
-What was there: Halcyon's 45 fps cap in cutscenes and conversations (`cineFpsCap`; 449 frames per 10 s on the screen,
-880-900 in gameplay), which shows each picture twice on a 90 Hz display, so moving content (a pan, someone walking)
-doubles and smears. Check the frame rate (`render levers: last 10 s: N frames`) and the view (`[VRSTATE]`) at the moment
-of the report before chasing the setting.
+**2026-11-06, a fifth time, after cinematics** (the owner in the PS VR2 on Eden Prime: "it looks like the motion blur may be
+enabled again", "what looks to be the assets flickering", in gameplay; "this is the exact same behavior"): the level's
+five applies were in the log (10:06:12-10:06:38), a manual True/False at 10:12:58 helped, then a cutscene (10:13:10) and a
+conversation (10:16:11) played and the flicker was back by 10:18 with no level change. The game window's frames
+(`tools/flicker-grab.py`, PrintWindow) showed the near railing streaked diagonally and doubled, the far scene sharp. So a
+cinematic re-arms it [verify which: the conversation camera's post-process chain, or the game restoring its own setting
+after a scene]. Fix: `game/SystemSettings` applies again on every return to gameplay (modes 0-4) from any other mode, log
+`(back to gameplay after mode N: applied again)`.
+
+**The two-eye check is blind under one-Draw stereo.** With `sharePass = 5` (the default since 2026-11-05) the second eye is
+a replay of the first eye's render, blur pass included, so both eyes smear alike: `tools/eye-sharpness.py` read L/R
+0.99-1.00 in all 12 frames while the owner saw the flicker. That check only works with two engine renders (`sharePass` 0-3).
+Trust the player's report, check the log for the applies since the last cinematic, and count the flips over time
+(`tools/flicker-grab.py`, or research/35 attempt 49's mirror grab).
 
 Ruled out on 2026-10-28, by the same replayed pan at the same phase, before the blur was found: our D3D11 hooks (none
 installed, same flicker), Halcyon's FOV match, FSR, kept shader states, mesh LOD, texture streaming, dynamic
