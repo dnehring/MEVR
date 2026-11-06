@@ -293,7 +293,9 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
   clicked there.
   **Decided by the owner 2026-11-04: stick only.** (The pointer never reached the 3D screen at all; `flatCine` covers only the
   Flat screen choice and stays 0.)
-- [ ] [C] **The cockpit package** in `build\cockpit-hull` predates commit 891ba5e (`tools/cockpit`): rebuild it before packaging.
+- [x] [C] **The cockpit package** in `build\cockpit-hull` predates commit 891ba5e (`tools/cockpit`): rebuild it before packaging.
+  **Current (checked 2026-11-05):** rebuilt at 07:30:07 from the models and manifest written at 07:29 that commit 1290230
+  (07:32) recorded, the last change to its sources; nothing under them uncommitted.
 - [ ] [H] **The setup's "Start the game once" and its SteamVR start** never ran for real (only their decisions, unit-tested).
   The SteamVR start ran on 2026-11-05 (research/33 section 11: SteamVR closed, started, waited for, then the game);
   "Start the game once" still hasn't.

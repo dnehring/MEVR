@@ -5,10 +5,11 @@ What changes for players from one release to the next. Newest first; each releas
 `tools/package-release.ps1` copies its entry into the release notes (`.github/release-notes-template.md`). The version
 itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.txt`.
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-05)
 
-The first public release: **Mass Effect 1 (Legendary Edition) in VR**, played with motion controllers. Built on
-Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 only; Mass Effect 2 and 3 come later.
+The first public release, a **development preview**: **Mass Effect 1 (Legendary Edition) in VR**, played with motion
+controllers. Built on Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 only; Mass Effect 2
+and 3 come later. Much of it has been tried in a headset only a few times so far: reports are very welcome.
 
 ### Seeing the game
 - Stereo 3D and head tracking (6DOF) in first person, at life size: each eye is rendered from where it really is.
@@ -29,8 +30,11 @@ Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 on
 - Point and order: squeeze the left grip away from the gun, point at an enemy, a spot or a squadmate, let go: attack, move
   there, or regroup. Pointing at a squadmate as you squeeze orders them alone. Your squad answers with the game's own
   lines.
+- Send them somewhere: hold B and an arc leaves your right hand like a thrown ball; let go and your squad goes where
+  it lands and holds that spot. With two squadmates, a small wheel at your right hand picks who goes (move your hand
+  toward one, or up for both). Double-tap B to call everyone back.
 - Say it: hold the left grip at your left ear, speak ("Garrus, take out those troopers on the bridge", "Wrex, hold the
-  line", "Liara, lift the big one", "everyone on me"), let go. Recognized on your own machine, nothing leaves it; no
+  line", "Liara, lift the big one", "everyone on me", "get behind that crate"), let go. Recognized on your own machine, nothing leaves it; no
   microphone, no voice, the rest of the mod is unchanged. Needs the voice files from the setup's optional content (or
   `tools/fetch-voice.ps1`). A line the rules can't place ("Ash, the thresher maw is yours") goes to a small language model
   trained for the squad (also on your machine, under a second), when its file is installed with the voice files.

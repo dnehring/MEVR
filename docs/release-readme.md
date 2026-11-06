@@ -72,7 +72,8 @@ The log names the profile the runtime chose and what's missing on it (`halcyon b
 2. Start the game once and quit, so it creates its settings file.
 3. Run **MEVR-Setup.exe**. It finds the game, checks its version and your VR runtime, and tells you what it will do.
 4. Press **Install**.
-5. Press **Launch**. It starts Mass Effect 1 directly, past the launcher's game picker.
+5. Put the headset on and press **Launch**. With SteamVR as your VR runtime it starts SteamVR first, then Mass
+   Effect 1 straight past the launcher's game picker.
 
 In the game, both thumbsticks clicked in and held (or `\` on the keyboard) open the VR menu. With new controllers,
 the game first offers a calibration of about a minute in the headset, so the guns line up with your hands and the
@@ -89,7 +90,9 @@ with a backup, so **Uninstall puts the game back exactly**:
   and a copy of the setup (to uninstall or add optional content later).
 - `bink2w64.dll`: the ASI loader that loads the mod. The game's own file is kept as `bink2w64_original.dll`. This is
   skipped if ME3Tweaks' loader is already installed. If another tool replaces our loader later, Uninstall and Repair
-  leave that tool's loader alone.
+  leave that tool's loader alone. The same loader also goes into `Game\Launcher` (that folder's own Bink DLL is kept as
+  `bink2w64_original.dll` there too): when **Launch** asks Steam for Mass Effect 1, it starts the game from the launcher
+  without its game picker.
 - **The Mako's cockpit:** its 3D model package, `BioGame\CookedPCConsole\BIOG_MEVR_Cockpit.pcc`, and one entry for it
   in the game's file table, `BioGame\PCConsoleTOC.bin` (the game loads only the packages that table lists). Install
   adds just that entry, and Uninstall takes just that entry out again, so other mods' entries stay. The cockpit is
@@ -97,11 +100,12 @@ with a backup, so **Uninstall puts the game back exactly**:
 - Halcyon's own **MELE-VR** (its `dxgi.dll` and `openxr_loader.dll` in `Binaries\Win64`), if you had it: this mod has
   Halcyon's renderer built in, so Install renames those two files to `*.mevr-off` and Uninstall puts them back. Your
   `MELEVR.ini` stays.
-- With a Steam copy of the game: `steam_appid.txt` next to `MassEffect1.exe`, so **Launch** can start the game
-  directly.
+- With a Steam copy of the game: `steam_appid.txt` next to `MassEffect1.exe`.
 - The VR game settings (if you leave them on): in `GamerSettings.ini` a borderless window at the VR resolution, VSync,
   motion blur, film grain, dynamic shadows and HDR off, and 16x texture filtering; in `BIOEngine.ini` frame smoothing
-  off (the game's 60 fps cap). Your own values are kept, and **Settings > Restore mine** puts them back.
+  off (the game's 60 fps cap) and the same VR values in the game's own copy of its settings there. Your own values are
+  kept, and **Settings > Restore mine** (or Uninstall) puts them back, including what the mod changes later (the
+  render resolution, depth of field).
 
 **Steam's "verify files"**, the EA app's repair or a game update can put the game's own `bink2w64.dll` and
 `PCConsoleTOC.bin` back: that removes the loader (no VR at all) and the cockpit's table entry (no cockpit in the
