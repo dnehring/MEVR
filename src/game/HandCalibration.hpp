@@ -387,9 +387,12 @@ SquadOrders GetSquadOrders();
 // the radio gesture and what the mod does with the transcript. gesture: a left grip squeeze with the hand at the left ear
 // starts a listen; radioRadiusM: how near; earSideM / earDownM: the ear from the eyes; minHoldS: a shorter squeeze is a blip;
 // maxHoldS: ended by itself; earlyDispatch: a partial that settled settleMs and parses whole is given before the release;
-// deicticLagS: "those" is resolved this long before the line's end.
+// deicticLagS: "those" is resolved this long before the line's end; earCue: the left hand buzzes while it is open in the
+// radio zone (the holsters' contact buzz: where to squeeze), earCueStrength its amplitude at the ear.
 struct Voice {
     bool gesture = true;
+    bool earCue = true;
+    double earCueStrength = 0.4;
     double radioRadiusM = 0.20;
     double earSideM = 0.08;
     double earDownM = 0.03;

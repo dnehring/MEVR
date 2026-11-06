@@ -738,6 +738,9 @@ mevr::game::voice::Link VoiceLink() {
     if (gHost->version >= 9) {
         link.haptic = gHost->hapticPulse;
     }
+    if (MEVR_HOST_HAS(hapticContinuous)) {
+        link.hapticContinuous = gHost->hapticContinuous;
+    }
     if (MEVR_HOST_HAS(leftGripAway) && gHost->leftGripAway != nullptr) {
         link.leftGrip = gHost->leftGripAway();
     }

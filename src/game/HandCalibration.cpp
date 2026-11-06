@@ -563,8 +563,11 @@ constexpr char const* kVoiceBlock =
     "; The mod: the gesture (gesture = 0: the key and the console only), the ear point from the eyes (earSideM, earDownM),\n"
     "; how near the hand must be (radioRadiusM), a squeeze shorter than minHoldS is a blip, longer than maxHoldS ends by\n"
     "; itself; earlyDispatch: a partial transcript that settled settleMs and parses whole is given before you let go;\n"
-    "; deicticLagS: \"those\" is resolved this long before the line's end.\n"
+    "; deicticLagS: \"those\" is resolved this long before the line's end; earCue: the open left hand buzzes while it is in\n"
+    "; the radio zone, stronger nearer the ear (where to squeeze), earCueStrength its amplitude at the ear (0..1).\n"
     "gesture = 1\n"
+    "earCue = 1\n"
+    "earCueStrength = 0.4\n"
     "radioRadiusM = 0.2\n"
     "earSideM = 0.08\n"
     "earDownM = 0.03\n"
@@ -1550,6 +1553,12 @@ Voice ReadVoice(Ini const& ini) {
     double value = 0.0;
     if (Number(ini, "Voice", "gesture", value)) {
         v.gesture = value != 0.0;
+    }
+    if (Number(ini, "Voice", "earCue", value)) {
+        v.earCue = value != 0.0;
+    }
+    if (Number(ini, "Voice", "earCueStrength", value)) {
+        v.earCueStrength = std::clamp(value, 0.0, 1.0);
     }
     if (Number(ini, "Voice", "radioRadiusM", value)) {
         v.radioRadiusM = std::clamp(value, 0.05, 0.6);

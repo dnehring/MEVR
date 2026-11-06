@@ -67,6 +67,35 @@ void Pulse(float seconds, float amplitude) {
     if (gLink.haptic != nullptr) gLink.haptic(0, seconds, amplitude);
 }
 
+// The ear's contact buzz (the holsters' pattern, research/19 "Haptics as contact"): while the OPEN left hand is in the radio
+// zone the left controller hums, stronger nearer the ear, so the player knows where the squeeze will be heard; asked for
+// again each tick and lasting kCueSeconds unasked (a stalled mod goes quiet), told to stop once when the hand leaves. A
+// host without continuous vibration (older than v10) gets one tick when the hand enters.
+constexpr float kCueSeconds = 0.15f;
+float gCueAmplitude = 0.0f;
+bool gCueWasIn = false;
+unsigned gCueEntries = 0;
+
+void EarCue(bool inZone, float handToEarM, float radiusM, float strength) {
+    float amplitude = 0.0f;
+    if (inZone && radiusM > 0.0f) {
+        float const closeness = std::clamp(1.0f - handToEarM / radiusM, 0.0f, 1.0f);
+        amplitude = strength * (0.3f + 0.7f * closeness);
+    }
+    if (inZone && !gCueWasIn) {
+        ++gCueEntries;
+        if (gLink.hapticContinuous == nullptr) Pulse(0.04f, strength);
+    }
+    gCueWasIn = inZone;
+    if (gLink.hapticContinuous == nullptr) {
+        gCueAmplitude = 0.0f;
+        return;
+    }
+    if (amplitude <= 0.0f && gCueAmplitude <= 0.0f) return;  // already quiet
+    gLink.hapticContinuous(0, amplitude, 0.0f, amplitude > 0.0f ? kCueSeconds : 0.0f);
+    gCueAmplitude = amplitude;
+}
+
 // Tokens of `text` after `prefix`'s tokens (the early dispatch's words), or the whole text when they don't match.
 std::string Remainder(std::string const& text, std::string const& prefix) {
     if (prefix.empty()) return text;
@@ -335,6 +364,9 @@ void Tick(double deltaSeconds, Link const& link) {
     in.squeezed = squeezed;
     in.handToEarM = gHandToEarM;
     vg::Step const step = gMachine.Advance(in, gs);
+    // The cue: the open hand in the zone, not while a listen runs (its own ticks mark the start and the end).
+    EarCue(s.earCue && in.usable && !squeezed && !gMachine.listening && gHandToEarM <= gs.radioRadiusM, gHandToEarM, gs.radioRadiusM,
+        static_cast<float>(s.earCueStrength));
     if (step.started) {
         gClaimed = true;
         ++gListens;
@@ -379,10 +411,10 @@ std::string Console(std::string_view rest) {
 }
 
 std::string StatusJson() {
-    return std::format("{{\"listening\": {}, \"heldS\": {}, \"handToEarM\": {}, \"hostStatus\": {}, \"hostListening\": {}, \"level\": {}, \"listens\": {}, \"blips\": {}, "
+    return std::format("{{\"listening\": {}, \"heldS\": {}, \"handToEarM\": {}, \"earCue\": {}, \"earCueEntries\": {}, \"hostStatus\": {}, \"hostListening\": {}, \"level\": {}, \"listens\": {}, \"blips\": {}, "
                        "\"lines\": {}, \"early\": {}, \"orders\": {}, \"refusals\": {}, \"partial\": {}, \"lastText\": {}, \"lastOutcome\": {}, \"keyterms\": {}, "
                        "\"model\": {{\"has\": {}, \"asked\": {}, \"answered\": {}, \"given\": {}, \"pending\": {}, \"lastAnswer\": {}}}}}",
-        gMachine.listening ? "true" : "false", json::JsonNumber(gMachine.heldS), json::JsonNumber(gHandToEarM), gState.status, gState.listening != 0 ? "true" : "false",
+        gMachine.listening ? "true" : "false", json::JsonNumber(gMachine.heldS), json::JsonNumber(gHandToEarM), json::JsonNumber(gCueAmplitude), gCueEntries, gState.status, gState.listening != 0 ? "true" : "false",
         json::JsonNumber(gState.level), gListens, gBlips, gLines, gEarly, gOrders, gRefusals, json::JsonString(gPartial), json::JsonString(gLastText),
         json::JsonString(gLastOutcome), json::JsonString(gKeyterms), gLink.askModel != nullptr ? "true" : "false", gModelAsked, gModelAnswered, gModelGiven, gModelRequest,
         json::JsonString(gLastModelAnswer));
@@ -396,6 +428,9 @@ void LogStats() {
 }
 
 void Shutdown() {
+    if (gCueAmplitude > 0.0f && gLink.hapticContinuous != nullptr) gLink.hapticContinuous(0, 0.0f, 0.0f, 0.0f);
+    gCueAmplitude = 0.0f;
+    gCueWasIn = false;
     if (gMachine.listening && gLink.setListen != nullptr) gLink.setListen(0);
     gMachine.Reset();
     gCurrent.clear();

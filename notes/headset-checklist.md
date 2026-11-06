@@ -132,6 +132,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   (`PlaySoundSet` 70 / 61) fits when it doesn't; names over Link / Steam Link ("Rex", "Gurus" on synthesized speech: the
   parser absorbs those; a name the rules can't place goes to the model); the ducked game audio. Set `[Voice] model`
   (tiny / small / medium) if the partials lag. (research/54 "The voice path built", `[Voice]`)
+- [ ] The ear's contact buzz (2026-11-05 evening, `[Voice] earCue`, `earCueStrength` 0.4): the open left hand hums in the
+  left controller as it comes within `radioRadiusM` (0.20 m) of the ear point (8 cm left and 3 cm below the eyes), stronger
+  nearer it, and stops when you squeeze (the listen's own tick) or leave. Does it find the spot without looking, and is 0.4
+  felt but not annoying while the hand passes the head (reloads, the wrist tap)? (`game/Voice`, `EarCue`)
 - [ ] The microphone's lag over your link: tap a controller on the headset while a recording runs with `mevr voice listen 5`;
   the tap's jolt in the poses against the click in the transcript's word times says how much tail `[Voice] tailMs` needs.
   (research/54 step 3)

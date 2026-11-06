@@ -29,6 +29,7 @@ struct Link {
     bool (*takeModelAnswer)(std::uint32_t* id, char* text, std::uint32_t capacity, std::uint32_t* ms) = nullptr;
     std::optional<std::uint32_t> leftGrip;  // HostServices::leftGripAway (v11)
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
+    void (*hapticContinuous)(int hand, float amplitude, float frequencyHz, float seconds) = nullptr;  // v10: the ear's contact buzz
 };
 
 // Game thread, each tick, before the flat orders' gesture (which must not see the squeeze this claimed).
