@@ -421,6 +421,21 @@ arc on the hand denotes placement", and "double b will have the squad all return
   v32 (size-checked).
 Pointing to pick is gone. Not yet seen in the game (the game folder went to the install test, then the user's playtest).
 
+#### The squad wheel (2026-11-05, night)
+
+The user, after the stick selector: "it's impossible to simultaneously hold b and interact with the analog stick" (B and the stick
+share the right thumb), then "the radial selector ... where we physically move the right hand to target one of the players, left
+or right, once selected we are then free to move our arm to do the drop location", reusing the power wheel. Built: with two
+squadmates B opens a wheel at the right hand (`vr::power_wheel::Place` at the right grip, facing the eyes, 0.30 m), drawn by the
+power wheel's own code (`plugin/PowerWheel`'s second canvas `gSquad`, layer `squadwheel`; layout: the gap straight down, 90
+degrees apart: first squadmate left, Squad up, second right). The hand's offset in its plane (`InPlane`) lights the nearest tile
+past 2.5 cm (straight down lights nothing; a lit tile keeps the light within 6 degrees of a border) and picks it past 7 cm: the
+wheel closes, the arc is traced from then on, and the arm is free. Letting go while still on the wheel calls it off. One squadmate:
+no wheel, the arc at once. In the game (20:18, the fake headset, `mevr place two on` for a stand-in second squadmate, `mevr place
+hand x y`): the wheel drew at the hand with Ashley lit after 4 cm left; 9 cm left picked her, the arc came up with an amber ring
+named "Ashley", and the release sent her ("ASHLEY: walking"). The stick selector of 5ff56ac is gone (the right stick is still kept
+from the game while B is held).
+
 #### The weapon row: built, then paused (2026-11-05, night)
 
 The user asked to fold the squad's weapons into this hold; a row of the lit squadmate's weapons opened by a flick of the stick

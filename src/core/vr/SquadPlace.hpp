@@ -45,27 +45,37 @@ struct Settings {
     float maxHoldS = 15.0f;      // held longer: called off
     float followWithinM = 2.0f;  // a landing this close to Shepard means "on me"
     float doubleTapS = 0.35f;    // a second press this soon after a blip's release: the whole squad back to Shepard
-    float flickOn = 0.6f;        // the right stick past this, sideways, steps the selector...
-    float flickOff = 0.3f;       // ...once; it re-arms back inside this
+    float highlightM = 0.025f;   // the squad wheel: the hand this far from where B went down lights the tile it moves toward...
+    float commitM = 0.07f;       // ...and this far picks it: the wheel closes and the arc comes up
+    float keepDeg = 6.0f;        // a lit tile changes only when another is nearer by this
 };
 
 enum class Landing : std::uint8_t { None, Floor, Wall };
 char const* Name(Landing landing);
 
-// The selector above the hand (the user, 2026-11-05: "hold b, choose between squad mates, and the arc on the hand denotes
-// placement"): tiles left to right, ME1's d-pad order, the squad in the middle. With two squadmates: [first | Squad | second];
-// with one: [Squad] alone (they're the squad). Who a tile orders: -1 the squad, else the squadmate's index in the party.
+// The squad wheel at the right hand (the user, 2026-11-05: "the radial selector ... where we physically move the right hand to
+// target one of the players, left or right, once selected we are then free to move our arm to do the drop location"; B and the
+// stick share the thumb, so the stick can't pick). With two squadmates B opens it where the hand is, like the power wheel at the
+// left palm: [first squadmate] to the left, [Squad] above, [second] to the right (ME1's d-pad order); the hand's travel toward a
+// tile lights it and, past commitM, picks it, and the arc takes over. With one squadmate there's nothing to pick: the arc comes
+// up at once, for the squad. Who a tile orders: kSquadTile (-1) the squad, else the squadmate's index in the party.
 inline constexpr int kSquadTile = -1;
-int TileCount(int members);
-int SquadTileIndex(int members);          // where the selector starts
+int TileCount(int members);               // 3 with two squadmates; 0 (no wheel) otherwise
 int MemberOfTile(int tile, int members);  // kSquadTile or the squadmate's index
+std::vector<float> WheelAngles();         // the tiles' directions in the wheel's plane: 180 (left), 90 (up), 0 (right)
+// A point in the wheel's plane (x right, y up as the eye sees it), metres.
+struct Vec2 {
+    float x = 0.0f;
+    float y = 0.0f;
+};
 
 struct Input {
     float dt = 0.0f;
     bool usable = false;       // on foot in VR, the right controller tracked, a squad present, nothing else holds B
     bool button = false;       // B is down
-    float stickX = 0.0f;       // the right stick, -1 left .. 1 right (only read while holding)
     int members = 0;           // squadmates present
+    bool handValid = false;    // the right hand tracked...
+    Vec2 hand;                 // ...its offset from where B went down, in the wheel's plane (metres)
     Landing landing = Landing::None;
     float landingFromPlayerM = 0.0f;  // Floor: how far from Shepard
 };
@@ -79,7 +89,8 @@ struct Step {
     bool cancelled = false;    // let go elsewhere, held too long, or no longer usable
     bool regroup = false;      // B double-tapped: the whole squad back to Shepard
     bool landingChanged = false;  // the landing's kind changed while holding (a haptic tick)
-    bool selectionChanged = false;  // the stick moved the selector (a haptic tick per squadmate)
+    bool highlightChanged = false;  // the squad wheel's lit tile changed (a tick)
+    bool picked = false;            // the hand picked a tile: the wheel closes, the arc comes up (a pulse per squadmate)
     Order order = Order::None;
     int member = kSquadTile;   // kSquadTile: everyone
     char const* why = "";
@@ -89,8 +100,9 @@ class Machine {
 public:
     Step Advance(Input const& in, Settings const& settings);
     bool Holding() const { return holding_; }
-    int Tile() const { return tile_; }
-    int Member() const { return MemberOfTile(tile_, members_); }
+    bool Picking() const { return holding_ && picking_; }  // the squad wheel is up (no arc yet)
+    int Tile() const { return tile_; }                      // the lit (picking) or picked tile; -1 none yet
+    int Member() const { return tile_ < 0 ? kSquadTile : MemberOfTile(tile_, members_); }
     int Members() const { return members_; }
     float HeldS() const { return heldS_; }
     void Reset();
@@ -99,10 +111,10 @@ private:
     bool holding_ = false;
     bool wasDown_ = false;
     bool blocked_ = false;  // B was down before it could start (held through a menu): wait for its release
-    bool armed_ = true;     // the stick is back near the centre: the next flick steps
+    bool picking_ = false;
     float heldS_ = 0.0f;
     float sinceBlipS_ = 1e9f;  // since the last blip's release (the double tap)
-    int tile_ = 0;
+    int tile_ = -1;
     int members_ = 0;
     Landing landing_ = Landing::None;
 };
@@ -121,12 +133,19 @@ struct View {
     XrVector3f landingNormal{0.0f, 1.0f, 0.0f};
     float ringRadiusM = 0.45f;
     float heldS = 0.0f;                 // seconds held (the ring pulses in)
-    // The selector: its tiles' names (left to right), which one is lit, and the hand it stands over (tracking space).
+    // The squad wheel (picking: no arc, count 0): its tiles' names (left, top, right), the lit one (-1 none), where it stands
+    // (tracking space, +Z toward the eyes, as power_wheel::Place), how far the hand is from its centre in its plane, and the
+    // seconds since it opened and since the lit tile changed. After the pick, `tile` is who goes (the ring's label).
+    std::uint8_t wheel = 0;
     std::uint8_t tiles = 0;
-    std::uint8_t tile = 0;
-    std::uint8_t padding[2] = {};
+    std::int8_t tile = -1;
+    std::uint8_t padding = 0;
     char names[3][24] = {};
-    XrPosef hand{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    XrPosef wheelPose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    float wheelWidthM = 0.30f;
+    Vec2 hand;
+    float openFor = 0.0f;
+    float litFor = 0.0f;
 };
 void Publish(View const& view);
 View Latest(std::uint64_t maxAgeMs = 250);
