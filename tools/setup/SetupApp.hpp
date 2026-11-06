@@ -96,6 +96,9 @@ private:
     bool SteamGame() const;
     install::settings::Choices ChoicesFromModel() const;
     void UpdatePacks();
+    // The Optional content page's voice orders card (install/Voice, research/33 section 14): what's installed, the sizes,
+    // what Install would do, from the manifest (no network).
+    void UpdateVoice();
     // The Repair page's status (and repairNeeded_) from status_.needsRepair, which `reread` reads again from the files as
     // they are now (whenever the page is shown; Refresh has just read it).
     void UpdateRepairStatus(bool reread = false);
@@ -153,6 +156,11 @@ private:
     // What to start before the game (install/Launch runtime_start), and the in-game menu key's name on this keyboard.
     std::string launchAdvice_, menuKey_;
     std::vector<PackView> packs_;
+    // ---- Voice orders (install/Voice): the card's choices (from what's installed when the game is first read) and texts.
+    bool voiceInstalled_ = false, voiceSmall_ = false, voiceMedium_ = false, voiceLlm_ = true, voiceReady_ = false, voiceWarn_ = false;
+    bool voiceUpToDate_ = false, voiceChoicesRead_ = false;
+    std::string voiceState_, voiceSize_, voiceSources_, voiceLicences_, voiceButton_ = "Install", voiceModelText_, voiceParts_;
+    std::string cancelText_ = "Stop waiting";  // the progress row's stop button
     std::vector<LogLine> log_;
     std::string progressText_;
     int progress_ = 0;

@@ -7,7 +7,12 @@
 # game's), and small GamerSettings.ini / BIOEngine.ini files; then runs status, install, a tamper + repair,
 # restore and apply of the game settings, and uninstall, and checks the folder is byte for byte what it was.
 #
-#   tools\setup\test-fake-game.ps1 [-Build build] [-Payload <folder>] [-BinkDll <path>] [-LauncherBinkDll <path>]
+#   tools\setup\test-fake-game.ps1 [-Build build] [-Payload <folder>] [-BinkDll <path>] [-LauncherBinkDll <path>] [-Voice]
+#
+# The payload carries MEVR-Voice.dll when it's built (the voice orders, install/Voice): Install puts it in ASI\voice.
+# -Voice also runs the voice orders' downloads for real (research/33 section 14: Moonshine Voice's release and the tiny
+# models from GitHub and Hugging Face, about 71 MB, and GitHub's answer for the order model's release), checks them by
+# SHA-256, and leaves them for the uninstall's byte-for-byte check. Needs the internet; nothing else here does.
 #
 # The fake game also has Game\Launcher (research/33 section 12): a stand-in MassEffectLauncher.exe and a RAD Bink DLL of
 # the launcher's build (LE2's own bink2w64.dll, read only: the same 2.7s build, or -LauncherBinkDll), where Install puts
@@ -16,7 +21,8 @@ param(
     [string]$Build = (Join-Path $PSScriptRoot '..\..\build'),
     [string]$Payload,
     [string]$BinkDll,
-    [string]$LauncherBinkDll
+    [string]$LauncherBinkDll,
+    [switch]$Voice
 )
 
 $ErrorActionPreference = 'Stop'
@@ -76,6 +82,11 @@ if (-not $Payload) {
     Copy-Item (Join-Path $Build 'Release\bink2w64.dll') $Payload
     Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $Payload 'fonts')
     Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $Payload 'menu')
+    $voiceDll = Join-Path $Build 'Release\MEVR-Voice.dll'
+    if (Test-Path $voiceDll) {
+        New-Item -ItemType Directory -Force (Join-Path $Payload 'voice') | Out-Null
+        Copy-Item $voiceDll (Join-Path $Payload 'voice')
+    }
     # The Mako's cockpit (research/47), when its package is built: into CookedPCConsole with a TOC entry. Without a built
     # package a stand-in of a few KB (the setup only needs its size for the TOC entry), so Repair's TOC entry is always tested.
     $cockpitPackage = Join-Path $repo 'build\cockpit-hull\BIOG_MEVR_Cockpit.pcc'
@@ -89,6 +100,8 @@ if (-not $Payload) {
     }
 }
 $withCockpit = Test-Path (Join-Path $Payload 'cockpit\BIOG_MEVR_Cockpit.pcc')
+$withVoice = Test-Path (Join-Path $Payload 'voice\MEVR-Voice.dll')
+if ($Voice -and -not $withVoice) { throw "-Voice needs MEVR-Voice.dll in the payload (build the MEVR-Voice target: tools/fetch-voice.ps1 first)" }
 
 # The fake game.
 Remove-Item -Recurse -Force (Join-Path $scratch 'fakegame') -ErrorAction SilentlyContinue
@@ -125,6 +138,7 @@ Check (Test-Path (Join-Path $win64 'ASI\menu\main.rml')) 'the menu'
 Check (Test-Path (Join-Path $win64 'ASI\fonts\Rajdhani-Bold.ttf')) 'the fonts'
 Check (Test-Path (Join-Path $win64 'ASI\MEVR-Setup.exe')) 'the setup copy (for uninstall and optional content)'
 Check (Test-Path (Join-Path $win64 'ASI\MEVR-install.json')) 'the manifest'
+if ($withVoice) { Check (Test-Path (Join-Path $win64 'ASI\voice\MEVR-Voice.dll')) 'the voice orders'' MEVR-Voice.dll' }
 Check ((Get-Content -Raw (Join-Path $win64 'steam_appid.txt')) -eq '1328670') 'steam_appid.txt'
 $melevr = Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')
 Check ($melevr -match '(?m)^menuKey = 220' -and $melevr -match '(?m)^sfr2ResX = 3072' -and $melevr -match '(?m)^combatHeadAim = 0') 'MELEVR.ini: release file, menu key, no head aim, the target'
@@ -173,6 +187,19 @@ Check ((Get-Content -Raw (Join-Path $config 'GamerSettings.ini')) -match '(?m)^R
 # Install over the top (an update): nothing is backed up twice, the player's MELEVR.ini stays.
 Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'keep')) -eq 0) 'install again (update)'
 Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match 'sfr2HalfEyeUU = 2\.9') 'update: the player''s Halcyon value kept'
+if ($Voice) {
+    # The real downloads (the internet): the order model's release isn't published until the owner uploads it, so GitHub's
+    # 404 is the "not published yet" path and the recognizer goes in alone; with the release up, the model tier comes too.
+    Check ((Run-Setup @('--install-voice')) -eq 0) 'voice: --install-voice (the real downloads)'
+    $vout = Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')
+    $voiceDir = Join-Path $win64 'ASI\voice'
+    Check ((Get-FileHash (Join-Path $voiceDir 'onnxruntime.dll')).Hash -eq 'DEC964AB1EE36CC9B0AE247D13B376627992FC57DEC0454354017AB8FD84F1EA') 'voice: onnxruntime.dll from Moonshine''s release'
+    Check (Test-Path (Join-Path $voiceDir 'models\tiny-streaming-en\streaming_config.json')) 'voice: the tiny models'
+    Check ($vout -match "isn't published yet" -or (Test-Path (Join-Path $voiceDir 'llm\model.gguf'))) 'voice: the order model, or why not'
+    Check ($vout -match '(?m)^voice orders: recognizer, models-tiny') 'voice: status'
+    Check ((Run-Setup @('--check-voice', '--deep')) -eq 0) 'voice: every file''s SHA-256 as installed'
+    # Left installed: the uninstall below has to take the downloads out too (the byte-for-byte check).
+}
 
 # Report a problem (research/33 section 8): fake logs that name this PC's user and computer and an e-mail address, a
 # crash and a snapshot in a fake %LOCALAPPDATA%\MEVR. The zip lands in scratch; the game folder isn't touched.

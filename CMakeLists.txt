@@ -881,6 +881,8 @@ add_library(mevr-install STATIC
     src/install/Toc.hpp
     src/install/Updates.cpp
     src/install/Updates.hpp
+    src/install/Voice.cpp
+    src/install/Voice.hpp
     src/install/Zip.cpp
     src/install/Zip.hpp
 )
@@ -1093,7 +1095,7 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-setup-network COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/setup/test-network.py
             --setup $<TARGET_FILE:MEVR-Setup> --fake-game $<TARGET_FILE:mevr-fake-game> --fake-mem $<TARGET_FILE:mevr-fake-mem>
             --repo ${CMAKE_CURRENT_SOURCE_DIR})
-        set_tests_properties(mevr-setup-network PROPERTIES TIMEOUT 600)
+        set_tests_properties(mevr-setup-network PROPERTIES TIMEOUT 900)  # section 5 (the voice files) moves ~250 MB locally
     endif ()
 
     # The gun sights' look, offline (tools/sight-preview): the scope's picture with the host's own shader, the
@@ -1191,15 +1193,19 @@ if (MEVR_BUILD_TESTS)
             ${MEVR_VOICE_SDK}/lib/ort-utils.lib ${MEVR_VOICE_SDK}/lib/onnxruntime.lib)
         add_library(MEVR-Voice SHARED
             src/voice/Voice.cpp
+            src/voice/Voice.rc
             src/voice/VoiceApi.h
             src/core/voice/Wav.cpp
             src/core/voice/Wav.hpp
             src/core/vr/Voice.hpp
         )
-        target_include_directories(MEVR-Voice PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_VOICE_SDK}/include)
+        # The generated headers: Voice.rc's version and commit (the release ships the DLL: tools/package-release.ps1).
+        target_include_directories(MEVR-Voice PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_VOICE_SDK}/include ${MEVR_GENERATED_DIR})
+        add_dependencies(MEVR-Voice mevr-build-info)
         target_link_libraries(MEVR-Voice PRIVATE ${MEVR_VOICE_LIBS} ole32 avrt)
         target_compile_definitions(MEVR-Voice PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-        target_compile_options(MEVR-Voice PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+        target_compile_options(MEVR-Voice PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
+        target_link_options(MEVR-Voice PRIVATE /DEBUG)  # its PDB goes in the release's symbols (tools/package-release.ps1)
         mevr_pdb_name_only(MEVR-Voice)
         add_custom_command(TARGET MEVR-Voice POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different ${MEVR_VOICE_SDK}/lib/onnxruntime.dll $<TARGET_FILE_DIR:MEVR-Voice>)

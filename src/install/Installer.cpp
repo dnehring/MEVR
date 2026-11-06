@@ -3,6 +3,7 @@
 
 #include "install/Ini.hpp"
 #include "install/Packs.hpp"
+#include "install/Voice.hpp"
 #include "install/Updates.hpp"
 
 #include <Windows.h>
@@ -310,6 +311,11 @@ void AdoptOurFiles(Transaction& tx, Payload const& payload, fs::path const& setu
         }
     }
     tx.AdoptTocEntry(paths::kToc, paths::kCockpitTocName);
+    // The voice orders' DLL, the release's own (the downloaded voice files are adopted by nothing: Install fetches them again).
+    if (payload.HasVoice() && fs::exists(layout.Full(voice::kDll), ec) && tx.Data().Find(voice::kDll) == nullptr) {
+        tx.RecordDir(voice::kDir);
+        tx.AdoptAdded(voice::kDll);
+    }
 }
 
 bool Installed(Transaction const& tx) {
@@ -349,7 +355,21 @@ bool InstallCockpit(Transaction& tx, Payload const& payload) {
         tx.SetTocEntry(paths::kToc, paths::kCockpitTocName, static_cast<std::uint32_t>(size));
 }
 
+// The voice orders' recognizer interface (research/54) next to the mod; its runtime and models are optional content.
+bool InstallVoiceDll(Transaction& tx, Payload const& payload) {
+    if (!payload.HasVoice()) {
+        tx.Note("this release has no MEVR-Voice.dll: no voice orders");
+        return true;
+    }
+    return tx.CopyIn(payload.VoiceDll(), voice::kDll);
+}
+
 } // namespace
+
+bool Payload::HasVoice() const {
+    std::error_code ec;
+    return fs::exists(VoiceDll(), ec);
+}
 
 bool Payload::HasCockpit() const {
     std::error_code ec;
@@ -474,6 +494,7 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
     ok = ok && CopyTree(tx, payload.Fonts(), std::string(paths::kAsi) + "/fonts");
     ok = ok && CopyTree(tx, payload.Menu(), std::string(paths::kAsi) + "/menu");
     ok = ok && InstallCockpit(tx, payload);
+    ok = ok && InstallVoiceDll(tx, payload);
     if (ok && !options.setupExe.empty() && fs::exists(options.setupExe, ec) &&
         !fs::equivalent(options.setupExe, layout.Full(paths::kSetupExe), ec)) {
         ok = tx.CopyIn(options.setupExe, paths::kSetupExe);
@@ -558,12 +579,15 @@ Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runni
             moved.clear();
         }
     }
-    // Texture packs aren't ours to undo: MEM rewrote the game's packages (research/33 section 3).
-    if (!tx.Data().packs.empty() || packs::TexturesMarked(layout.root)) {
-        std::string names;
-        for (PackRecord const& p : tx.Data().packs) {
+    // Texture packs aren't ours to undo: MEM rewrote the game's packages (research/33 section 3). The voice orders' files
+    // (a "download" record) are files on record like the rest: removed below.
+    std::string names;
+    for (PackRecord const& p : tx.Data().packs) {
+        if (p.method == "mem") {
             names += (names.empty() ? "" : ", ") + p.name;
         }
+    }
+    if (!names.empty() || packs::TexturesMarked(layout.root)) {
         tx.Note("texture packs stay" + (names.empty() ? std::string() : " (" + names + ")") +
                 ": Mass Effect Modder changed the game's files for good; only a full restore (or reinstall) of the game takes them out");
     }
@@ -681,6 +705,8 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
             source = payload.Fonts() / fs::path(detect::Wide(path.substr(std::string(paths::kAsi).size() + 7)));
         } else if (path.rfind(std::string(paths::kAsi) + "/menu/", 0) == 0) {
             source = payload.Menu() / fs::path(detect::Wide(path.substr(std::string(paths::kAsi).size() + 6)));
+        } else if (path == voice::kDll) {
+            source = payload.VoiceDll();
         }
         // A file the payload doesn't have (the setup's copy, steam_appid.txt) is left as it is.
         if (!source.empty() && fs::exists(source, ec)) {
@@ -688,6 +714,10 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
         }
     }
     ok = InstallCockpit(tx, payload) && ok;
+    // An install from before the voice orders gets their DLL now (their downloads stay optional content).
+    if (payload.HasVoice() && tx.Data().Find(voice::kDll) == nullptr) {
+        ok = InstallVoiceDll(tx, payload) && ok;
+    }
     if (fs::exists(layout.Full(paths::kHalcyonIni), ec)) {
         ok = EditUnlessReadOnly(tx, paths::kHalcyonIni, "MELEVR.ini",
                  [](std::string_view text, std::vector<ini::Edit>* edits) { return ini::FixHalcyonIni(text, edits); }, nullptr) && ok;
@@ -825,7 +855,7 @@ std::optional<SetupRequest> ParseSetupRequest(std::string_view text) {
         r.page = "content";  // the only page the game asks for
     }
     for (json::Value const& id : v->Get("packs").Items()) {
-        if (id.IsString() && packs::Find(id.AsString()) != nullptr &&
+        if (id.IsString() && (packs::Find(id.AsString()) != nullptr || id.AsString() == voice::kContent) &&
             std::find(r.packs.begin(), r.packs.end(), id.AsString()) == r.packs.end()) {
             r.packs.push_back(id.AsString());
         }

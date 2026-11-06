@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: MIT
+// MEVR-Voice.dll's version resource: the release ships it (payload\voice, install/Voice), so tools/package-release.ps1
+// checks its version and commit like the other binaries', and its product name is the project's (SignPath's rule,
+// docs/code-signing.md). The version is CMake's project(VERSION) (mevr/Version.hpp, generated); ProductVersion adds the
+// build's commit (mevr/BuildInfo.hpp) as <version>+<commit>.
+#include <winres.h>
+#include "mevr/Version.hpp"
+#include "mevr/BuildInfo.hpp"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION MEVR_VERSION_RC
+ PRODUCTVERSION MEVR_VERSION_RC
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DLL
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "MEVR"
+            VALUE "FileDescription", "MEVR voice orders: the recognizer's interface (Moonshine Voice)"
+            VALUE "FileVersion", MEVR_VERSION
+            VALUE "InternalName", "MEVR-Voice.dll"
+            VALUE "LegalCopyright", "ME VR Attempt contributors, MIT; Moonshine Voice MIT"
+            VALUE "OriginalFilename", "MEVR-Voice.dll"
+            VALUE "ProductName", "MEVR"
+            VALUE "ProductVersion", MEVR_VERSION "+" MEVR_GIT_COMMIT
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

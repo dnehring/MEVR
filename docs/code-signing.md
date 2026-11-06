@@ -8,11 +8,15 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 
 ## What is signed
 
-For each release, the three programs in `MEVR-<version>.zip`:
+For each release, the four programs in `MEVR-<version>.zip`:
 
 - `MEVR-Setup.exe`, the installer;
 - `payload\LE1MEVR.asi`, the mod;
-- `payload\bink2w64.dll`, its ASI loader.
+- `payload\bink2w64.dll`, its ASI loader;
+- `payload\voice\MEVR-Voice.dll`, the voice orders' speech recognizer interface.
+
+The voice orders' other files (ONNX Runtime, llama.cpp's DLLs and the models) are not ours to sign: MEVR Setup downloads
+them from their authors' own releases when you ask for them and checks each against the SHA-256 it expects.
 
 They are built by this repository's release workflow ([.github/workflows/release.yml](../.github/workflows/release.yml))
 on GitHub's own runners, from a `v<version>` tag of this repository, and nowhere else. The workflow sends them to
@@ -43,7 +47,10 @@ In detail:
 - **MEVR Setup** connects only when you click for it:
   - **Check for updates** asks GitHub (`api.github.com`) for the newest release of this repository;
   - **Optional content** downloads Mass Effect Modder from its GitHub releases, and opens the texture packs' own pages
-    in your browser.
+    in your browser;
+  - **Optional content > Voice orders** downloads the speech recognizer and its models from Moonshine AI's GitHub release
+    and Hugging Face, llama.cpp from its GitHub release, and the order model from this repository's release
+    (`api.github.com` first, to find it).
 - **Report a problem** saves a zip of logs to your Desktop, with your user and computer names removed. Nothing is
   uploaded: you decide whether to attach it to a bug report.
 

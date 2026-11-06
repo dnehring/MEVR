@@ -15,6 +15,9 @@ melee, gun sights and scopes, a VR main menu and a guided calibration.
 **Status: development preview, LE1 only.** LE2 and LE3 build (on our own early renderer) for development,
 but they aren't playable in VR. **Downloads:** players' builds (MEVR-Setup, a one-click installer) go on the
 [Releases page](https://github.com/dnehring/MEVR/releases); until the first one is published, build from source. The
+voice orders' recognizer and models aren't in the download: the setup's **Optional content** page fetches them from
+their authors' releases ([research/33](research/33-installer.md) section 14; on a development machine
+`tools/fetch-voice.ps1`). The
 players' build runs entirely on our own reflection layer (`src/ue3`, [research/34](research/34-reflection.md)): it
 contains none of [LExSDKv2](https://github.com/llamathings/LExSDKv2), which development builds still use for a
 cross-check.

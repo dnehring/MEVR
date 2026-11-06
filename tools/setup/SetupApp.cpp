@@ -9,6 +9,7 @@
 #include "install/Packs.hpp"
 #include "install/ReportMarks.hpp"
 #include "install/Updates.hpp"
+#include "install/Voice.hpp"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/DataModelHandle.h>
@@ -141,7 +142,10 @@ bool App::Bind(Rml::Context* context) {
              Flag{"upstream_found", &upstreamFound_}, Flag{"gamer_read_only", &gamerReadOnly_}, Flag{"remove_local", &removeLocal_},
              Flag{"report_snapshot", &reportSnapshot_}, Flag{"report_perf", &reportPerf_}, Flag{"report_ready", &reportReady_},
              Flag{"crash_offer", &crashOffer_}, Flag{"report_has_zip", &reportHasZip_}, Flag{"settings_pending", &settingsPending_},
-             Flag{"repair_needed", &repairNeeded_}, Flag{"can_cancel", &canCancel_}, Flag{"hero_enabled", &heroEnabled_}}) {
+             Flag{"repair_needed", &repairNeeded_}, Flag{"can_cancel", &canCancel_}, Flag{"hero_enabled", &heroEnabled_},
+             Flag{"voice_installed", &voiceInstalled_}, Flag{"voice_small", &voiceSmall_}, Flag{"voice_medium", &voiceMedium_},
+             Flag{"voice_llm", &voiceLlm_}, Flag{"voice_ready", &voiceReady_}, Flag{"voice_warn", &voiceWarn_},
+             Flag{"voice_up_to_date", &voiceUpToDate_}}) {
         c.Bind(f.name, f.value);
     }
     struct Text {
@@ -163,7 +167,10 @@ bool App::Bind(Rml::Context* context) {
              Text{"upstream_text", &upstreamText_}, Text{"local_text", &localText_}, Text{"report_text", &reportText_},
              Text{"report_redactions", &reportRedactions_}, Text{"report_headline", &reportHeadline_}, Text{"report_zip", &reportZip_},
              Text{"report_request", &reportRequest_}, Text{"hero_action", &heroAction_}, Text{"hero_button", &heroButton_},
-             Text{"launch_advice", &launchAdvice_}, Text{"menu_key", &menuKey_}, Text{"first_start_text", &firstStartText_}}) {
+             Text{"launch_advice", &launchAdvice_}, Text{"menu_key", &menuKey_}, Text{"first_start_text", &firstStartText_},
+             Text{"voice_state", &voiceState_}, Text{"voice_size", &voiceSize_}, Text{"voice_sources", &voiceSources_},
+             Text{"voice_licences", &voiceLicences_}, Text{"voice_button", &voiceButton_}, Text{"voice_model_text", &voiceModelText_},
+             Text{"voice_parts", &voiceParts_}, Text{"cancel_text", &cancelText_}}) {
         c.Bind(t.name, t.value);
     }
     c.Bind("progress", &progress_);
@@ -193,9 +200,10 @@ std::string App::StateText() const {
     for (PackView const& p : packs_) {
         packs += std::format("pack {}: {}{}\n", p.id, p.state, p.installed ? " (installed)" : "");
     }
-    return std::format("page: {}\ngame: {}\ngame ok: {}\ninstalled: {}\nrequest text: {}\nwaiting: {}\nwait text: {}\nmem ready: {}\n{}", page_,
+    return std::format("page: {}\ngame: {}\ngame ok: {}\ninstalled: {}\nrequest text: {}\nwaiting: {}\nwait text: {}\nmem ready: {}\n{}"
+                       "voice: {}{}\nvoice size: {}\n", page_,
         gameOk_ ? detect::Utf8(status_.root.wstring()) : std::string("none"), gameOk_ ? 1 : 0, installed_ ? 1 : 0, requestText_, waiting_ ? 1 : 0,
-        waitText_, memReady_ ? 1 : 0, packs);
+        waitText_, memReady_ ? 1 : 0, packs, voiceState_, voiceInstalled_ ? " (installed)" : "", voiceSize_);
 }
 
 bool App::SteamGame() const {
@@ -207,6 +215,7 @@ bool App::SteamGame() const {
 
 void App::SetGame(fs::path const& root, std::string const& source) {
     status_ = install::ReadStatus(root, source);
+    voiceChoicesRead_ = false;  // another game: its voice files decide the card's choices again
 }
 
 void App::Start() {
@@ -242,13 +251,15 @@ void App::Start() {
     if (options_.request) {
         // "Install after I quit" (plugin/SetupRequest): the game wrote the request and started us as it exited.
         page_ = "content";
-        requestText_ = "Choose a pack below.";
+        requestText_ = "Choose what to add below: the voice orders' files, or a texture pack.";
         if (auto const text = install::ReadFile(install::RequestFile())) {
             if (auto const request = install::ParseSetupRequest(*text)) {
                 std::string names;
                 for (std::string const& id : request->packs) {
                     if (packs::Pack const* p = packs::Find(id)) {
                         names += names.empty() ? p->name : std::string(", ") + p->name;
+                    } else if (id == install::voice::kContent) {
+                        names += names.empty() ? install::voice::kName : std::string(", ") + install::voice::kName;
                     }
                 }
                 if (!names.empty()) {
@@ -470,6 +481,7 @@ void App::Refresh() {
     memText_ = memReady_ ? "Ready: it installs the texture packs below (GPL, from its own GitHub releases)."
                          : "Installs texture packs (GPL, by the ALOT team). Downloaded from its own GitHub releases when you press Download.";
     UpdatePacks();
+    UpdateVoice();
     Dirty();
 }
 
@@ -647,6 +659,78 @@ void App::StartFirstRun() {
     });
 }
 
+void App::UpdateVoice() {
+    namespace voice = install::voice;
+    voiceSources_ = "GitHub: moonshine-ai/moonshine (v0.1.5), ggml-org/llama.cpp (b12128) and this mod's release " + std::string(voice::kModelTag) +
+        "; Hugging Face: moonshine-ai/moonshine-voice-assets";
+    voiceLicences_ = "MIT (Moonshine Voice and its models, ONNX Runtime, llama.cpp); Apache-2.0 (the order model, fine-tuned from Qwen3-0.6B)";
+    voice::Part const* modelPart = voice::Find("llm-model");
+    voiceModelText_ = std::format("Reads the loose wordings the rules aren't sure of: llama.cpp ({}) and our fine-tuned model ({}, this mod's GitHub "
+                                  "release {}). Until that's published the rest installs and the rules read the orders alone.",
+        install::http::SizeText(voice::SizesFor({"llm-runtime"}).download), install::http::SizeText(modelPart != nullptr ? modelPart->modelSize : 0),
+        voice::kModelTag);
+    if (sample_) {
+        return;  // the preview's sample states set the rest
+    }
+    bool const haveGame = gameOk_ && !status_.root.empty();
+    voice::State state;
+    if (haveGame) {
+        state = voice::ReadState(install::Layout{status_.root});
+        if (!voiceChoicesRead_) {
+            // What's installed decides the choices the first time; the player's ticks after that.
+            voiceChoicesRead_ = true;
+            if (!state.parts.empty()) {
+                voiceSmall_ = state.Has("models-small");
+                voiceMedium_ = state.Has("models-medium");
+                voiceLlm_ = state.Has("llm-runtime") || state.Has("llm-model");
+            }
+        }
+    }
+    voice::Choices const choices{voiceSmall_, voiceMedium_, voiceLlm_};
+    std::vector<std::string> const wanted = voice::PartsFor(choices);
+    std::vector<std::string> missing;
+    for (std::string const& id : wanted) {
+        if (!state.Has(id)) {
+            missing.push_back(id);
+        }
+    }
+    bool const extra = std::any_of(state.parts.begin(), state.parts.end(),
+        [&](std::string const& id) { return std::find(wanted.begin(), wanted.end(), id) == wanted.end(); });
+    voice::Sizes const fetch = voice::SizesFor(missing);
+    voice::Sizes const disk = voice::SizesFor(wanted);
+    voiceInstalled_ = state.Has("recognizer") && state.Has("models-tiny");
+    bool const dllOk = state.dll || (payload_ && payload_->HasVoice());
+    voiceReady_ = haveGame && dllOk && !waiting_;
+    voiceUpToDate_ = voiceInstalled_ && missing.empty() && !extra && state.damaged.empty();
+    voiceWarn_ = !state.damaged.empty() || (haveGame && !dllOk);
+    voiceSize_ = std::format("{} to download, {} in the game folder", fetch.download == 0 ? std::string("nothing") : install::http::SizeText(fetch.download),
+        install::http::SizeText(disk.disk));
+    voiceParts_.clear();
+    for (std::string const& id : state.parts) {
+        if (voice::Part const* p = voice::Find(id)) {
+            voiceParts_ += (voiceParts_.empty() ? "" : ", ") + p->name;
+        }
+    }
+    voiceButton_ = !voiceInstalled_ ? "Install" : !state.damaged.empty() ? "Fetch again" : "Apply";
+    if (!haveGame) {
+        voiceState_ = "Find the game first (the Welcome page).";
+    } else if (!dllOk) {
+        voiceState_ = "This install has no MEVR-Voice.dll: install or Repair this release of the mod with the MEVR-Setup.exe from its download "
+                      "first, then add the voice files here.";
+    } else if (!state.damaged.empty()) {
+        voiceState_ = std::format("{} voice file{} missing or changed: {} downloads {} again.", state.damaged.size(),
+            state.damaged.size() == 1 ? " is" : "s are", voiceButton_, state.damaged.size() == 1 ? "it" : "them");
+    } else if (voiceUpToDate_) {
+        voiceState_ = "Installed: " + voiceParts_ + ". In game, hold the left grip at your left ear, speak, let go.";
+    } else if (voiceInstalled_ && voiceLlm_ && !state.Has("llm-model") && !extra && missing.size() <= 2) {
+        voiceState_ = "Installed without the fine-tuned model (it wasn't published yet when you installed): Apply looks for it again.";
+    } else if (voiceInstalled_) {
+        voiceState_ = "Installed: " + voiceParts_ + ". Apply makes it match the choices below.";
+    } else {
+        voiceState_ = "Not installed.";
+    }
+}
+
 void App::UpdatePacks() {
     packs_.clear();
     for (packs::Pack const& p : packs::Catalogue()) {
@@ -766,6 +850,7 @@ void App::Tick() {
         worker_.join();
         busy_ = false;
         canCancel_ = false;
+        cancelText_ = "Stop waiting";
         {
             std::lock_guard const lock(jobMutex_);
             log_ = jobLog_;
@@ -826,7 +911,8 @@ void App::Act(std::string const& name, std::string const& arg) {
         return;
     }
     if (name == "stop_waiting") {
-        // The one job that can be stopped: "Start the game once" waiting for the game (or Launch waiting for SteamVR).
+        // The jobs that can be stopped: "Start the game once" waiting for the game, Launch waiting for SteamVR, the voice
+        // orders' download.
         if (busy_ && canCancel_) {
             cancel_ = true;
         }
@@ -988,6 +1074,70 @@ void App::Act(std::string const& name, std::string const& arg) {
         if (host_.openUrl && !updateUrl_.empty()) {
             host_.openUrl(updateUrl_);
         }
+    } else if (name == "voice_toggle") {
+        if (arg == "small") {
+            voiceSmall_ = !voiceSmall_;
+        } else if (arg == "medium") {
+            voiceMedium_ = !voiceMedium_;
+        } else if (arg == "llm") {
+            voiceLlm_ = !voiceLlm_;
+        }
+        UpdateVoice();
+        Dirty();
+    } else if (name == "voice_install") {
+        if (!voiceReady_ || !gameOk_ || waiting_) {
+            return;
+        }
+        namespace voice = install::voice;
+        install::Layout const voiceLayout{status_.root};
+        voice::Choices const choices{voiceSmall_, voiceMedium_, voiceLlm_};
+        voice::ModelSource const model = voice::ReadModelSource(options_.exe.parent_path() / L"MEVR-Setup.ini");
+        std::optional<install::Payload> const payload = payload_;
+        voice::State const state = voice::ReadState(voiceLayout);
+        std::vector<std::string> fetch;
+        for (std::string const& id : voice::PartsFor(choices)) {
+            if (!state.Has(id)) {
+                fetch.push_back(id);
+            }
+        }
+        auto run = [this, voiceLayout, payload, choices, model] {
+            canCancel_ = true;
+            cancelText_ = "Stop the download";
+            RunJob("Installing the voice orders", [this, voiceLayout, payload, choices, model] {
+                Apply(voice::Install(voiceLayout, payload, choices, model, [this](voice::Step const& step) { Progress(step.text, step.percent); },
+                    &cancel_));
+            });
+        };
+        voice::Sizes const sizes = voice::SizesFor(fetch);
+        if (sizes.download == 0 && state.damaged.empty()) {
+            run();  // only taking parts out, or nothing to fetch: no download to confirm
+            return;
+        }
+        Confirm("Download the voice orders?",
+            std::format("About {} ({} on a 50 Mbit/s line) from the official releases of Moonshine Voice and llama.cpp on GitHub, Moonshine's "
+                        "models on Hugging Face and this mod's own GitHub release for the order model. Each file is checked against its "
+                        "SHA-256 and goes in the game's ASI\\voice folder, on record so Remove here or Uninstall takes it out. Everything runs "
+                        "on your PC: the microphone is only heard while you hold the radio gesture, and nothing is sent anywhere. Close the "
+                        "game first.",
+                install::http::SizeText(sizes.download), install::http::TimeText(sizes.download, 6.25e6)),
+            "Download and install", false, run);
+    } else if (name == "voice_remove") {
+        if (!gameOk_ || waiting_) {
+            return;
+        }
+        install::Layout const voiceLayout{status_.root};
+        Confirm("Remove the voice orders?",
+            "Takes the downloaded voice files out of the game's ASI\\voice folder (the recognizer, its models, the model tier). The mod "
+            "keeps working without them: it logs \"voice off\" and the squad takes gesture orders as before. Install puts them back.",
+            "Remove", true, [this, voiceLayout] {
+                RunJob("Removing the voice orders", [this, voiceLayout] { Apply(install::voice::Remove(voiceLayout)); });
+            });
+    } else if (name == "voice_check") {
+        if (!gameOk_) {
+            return;
+        }
+        install::Layout const voiceLayout{status_.root};
+        RunJob("Checking the voice files", [this, voiceLayout] { Apply(install::voice::Check(voiceLayout, true)); });
     } else if (name == "mem_page") {
         if (host_.openUrl) {
             host_.openUrl(packs::kMemPage);
@@ -1222,6 +1372,18 @@ void App::Sample(std::string const& state) {
             v.file = v.id == "isl-le1" ? "Improved Static Lighting for ME1-363-1-0.7z" : "";
         }
         requestText_ = "You asked for: Improved Static Lighting for ME1.";
+        voiceInstalled_ = true;
+        voiceReady_ = true;
+        voiceSmall_ = false;
+        voiceMedium_ = false;
+        voiceLlm_ = true;
+        voiceUpToDate_ = false;
+        voiceWarn_ = false;
+        voiceButton_ = "Apply";
+        voiceParts_ = "Speech recognizer runtime, Recognizer model (tiny)";
+        voiceSize_ = std::format("{} to download, {} in the game folder", install::http::SizeText(install::voice::SizesFor({"llm-runtime", "llm-model"}).download),
+            install::http::SizeText(install::voice::SizesFor(install::voice::PartsFor({})).disk));
+        voiceState_ = "Installed without the fine-tuned model (it wasn't published yet when you installed): Apply looks for it again.";
     } else {
         for (PackView& v : packs_) {
             v.installed = false;
@@ -1229,6 +1391,15 @@ void App::Sample(std::string const& state) {
             v.state = "Not downloaded: open its page, download the MEM version, then choose the file.";
         }
         requestText_.clear();
+        voiceInstalled_ = false;
+        voiceReady_ = gameOk_;
+        voiceUpToDate_ = false;
+        voiceWarn_ = false;
+        voiceButton_ = "Install";
+        voiceParts_.clear();
+        voiceSize_ = std::format("{} to download, {} in the game folder", install::http::SizeText(install::voice::SizesFor(install::voice::PartsFor({})).download),
+            install::http::SizeText(install::voice::SizesFor(install::voice::PartsFor({})).disk));
+        voiceState_ = gameOk_ ? "Not installed." : "Find the game first (the Welcome page).";
     }
     if (state == "busy") {
         busy_ = true;

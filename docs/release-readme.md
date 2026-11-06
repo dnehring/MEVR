@@ -202,9 +202,28 @@ held, and A only on the stick. The game's own controls come back when you get ou
 `[Cockpit] enabled = 0` keeps the game's chase camera (the lever and stick then show as two flat markers at your knees);
 `[Mako] controls = 0` keeps the game's own controls.
 
+## Optional content: voice orders
+
+Ordering your squad by voice (hold the left grip at your left ear, speak, let go) needs a speech recognizer and its
+models, which aren't in this download. On the setup's **Optional content** page, **Voice orders > Install** fetches them
+from their authors' own releases and puts them in `Game\ME1\Binaries\Win64\ASI\voice`:
+
+- the speech recognizer's runtime (ONNX Runtime, from Moonshine Voice's GitHub release) and its tiny English model
+  (Hugging Face), about 70 MB to download;
+- **the model tier** (on by default): llama.cpp (GitHub) and our order model, fine-tuned from Qwen3-0.6B (this mod's
+  GitHub release), about 665 MB more. It reads the wordings the built-in rules aren't sure of. Until its release is
+  published, the setup installs the rest and says so; **Apply** looks for it again later;
+- optionally the **small** or **medium** recognizer (about 140 or 270 MB), more accurate and slower; set
+  `[Voice] model = small` (or `medium`) in `ASI\LE1MEVR.ini` to use one.
+
+Every file is checked against its SHA-256 before it goes in, and recorded, so **Remove** takes them out again and
+**Uninstall** with the mod. **Check** compares them with what was installed. Everything runs on your PC: the microphone
+is heard only while you hold the gesture, and nothing is sent anywhere. Without these files the mod works as before,
+with gesture orders.
+
 ## Optional content: texture packs
 
-The **Optional content** page lists texture packs made by others, such as ALOT for ME1, Improved Static Lighting
+The page also lists texture packs made by others, such as ALOT for ME1, Improved Static Lighting
 and LEUITM. They're never included in this download:
 
 - Their authors' terms don't allow re-uploads.
@@ -220,7 +239,7 @@ Texture packs change the game's files **for good**:
 - Uninstalling the VR mod leaves them in place.
 
 From inside the game, **Display > Optional content > Install after I quit** opens the setup on that page once you
-quit.
+quit, for the voice orders as for texture packs.
 
 ## Uninstall
 

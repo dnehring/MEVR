@@ -717,6 +717,92 @@ folders a new player has.
   in `BIOEngine.ini` ([ENGSMOOTH]), which the game's own save at exit puts back to its loaded values, so only a crash
   leaves them.
 
+## 14. The voice orders as optional content (2026-11-05)
+
+The voice orders (research/54 "The voice path built") need files the release didn't carry: Moonshine Voice's recognizer
+runtime and models, and for the model tier llama.cpp and our fine-tuned GGUF. On the dev machine `tools/fetch-voice.ps1`
+fetches them and `tools/deploy-asi.ps1` copies them into `ASI\voice`; a player had no way to get them. The user asked for
+the setup's optional content to download them, beside the texture packs. Unlike those (section 3: Nexus terms, re-uploads
+forbidden), nothing stops the setup fetching them itself: Moonshine Voice and its models are MIT, ONNX Runtime MIT,
+llama.cpp MIT (its OpenMP runtime Apache-2.0 with LLVM exceptions), our model Apache-2.0 (Qwen3-0.6B's terms); all in
+NOTICE.md. So the setup downloads each from its own release, never from a mirror of ours (except our own model).
+
+**What goes where** (`install/Voice`, the catalogue; paths as plugin/Voice and plugin/VoiceModel look for them):
+
+| Part | From | Into `ASI\voice` | Download | On disk |
+|---|---|---|---|---|
+| recognizer (always) | Moonshine Voice v0.1.5's Windows release (GitHub), its `lib/onnxruntime.dll` only | `onnxruntime.dll` | 26 MB | 14 MB |
+| models-tiny (always) | Hugging Face `moonshine-ai/moonshine-voice-assets`, `tiny-streaming-en/quantized_26_08_21`, 8 files | `models\tiny-streaming-en\` | 45 MB | 45 MB |
+| models-small, models-medium (ticked) | the same, `small`/`medium` | `models\<size>-streaming-en\` | 142 / 269 MB | the same |
+| llm-runtime (the model tier, on by default) | llama.cpp b12128's `bin-win-cpu-x64.zip` (GitHub): `llama.dll`, `ggml.dll`, `ggml-base.dll`, `libomp.dll`, the 14 `ggml-cpu-*.dll`, `LICENSE-LLVM-OpenMP` | `llm\` | 25 MB | 26 MB |
+| llm-model (with the runtime) | this mod's GitHub release `voice-model-1`, asset `mevr-voice-qwen3-0.6b-q8_0.gguf` | `llm\model.gguf` | 639 MB | 639 MB |
+
+llama.cpp's files are what `llama.dll` needs (its imports: ggml, ggml-base; ggml-base imports libomp; read from the PE
+import tables) and the CPU backends `ggml_backend_load_all_from_path` chooses from; not its tools, `mtmd.dll` or the RPC
+backend, which `deploy-asi.ps1` copies as "every DLL". Every fixed download is pinned by size and SHA-256 (the hashes of
+the files `fetch-voice.ps1` fetched, and of Moonshine's archive, fetched again for this); so is `onnxruntime.dll` inside
+it. A pinned file that changes upstream (Hugging Face's `main` can) is refused with "another SHA-256", not installed: the
+pins then need updating here. Our own `MEVR-Voice.dll` is in the release (`payload\voice`, `tools/package-release.ps1`):
+Install puts it in `ASI\voice` with the mod, Repair puts it back, Uninstall removes it. It links Moonshine's static
+library, so Moonshine's LICENSE goes in the release's `licenses\` (`MoonshineVoice-MIT.txt`); it has a version resource
+(`src/voice/Voice.rc`, product name "MEVR") and goes through code signing with the other three binaries
+(`release.yml`, `.signpath/artifact-configuration.xml`, `docs/code-signing.md`). Without the downloads the host finds no
+models and logs "voice off" before it ever loads the DLL (plugin/Voice checks the models first).
+
+**The model's release.** The fine-tuned GGUF is ours, so it comes from a release of this repository, which the user
+uploads: tag `voice-model-1` (not `v*`: that would start the release workflow), asset `mevr-voice-qwen3-0.6b-q8_0.gguf`,
+placed as `model.gguf`. The setup asks GitHub's API for the release by tag (`/repos/<owner>/<repo>/releases/tags/<tag>`)
+and takes the asset's `browser_download_url` (github.com only), `size` and `digest` (`sha256:...`, which GitHub lists for
+every asset), so the file isn't pinned in the code (it was retrained the day it was written). All of it is in
+`MEVR-Setup.ini` `[Voice]` (the package writes the defaults as comments): `modelRepo` (default `[Update] repo`), `modelTag`,
+`modelAsset`, or `modelUrl` (any https download) with `modelSha256` and `modelSize`. **Not published yet** (a 404 for the
+tag, or the release without that asset): the rest installs, the log says why the model tier is missing, and llama.cpp
+isn't fetched either; the card then says "Installed without the fine-tuned model ... Apply looks for it again". Any other
+failure (offline, the API quota, a foreign URL) stops the install before anything is downloaded.
+
+**The record.** Each placed file is an ordinary `added` (or `replaced`) entry in `MEVR-install.json` with two new fields:
+`content` (`voice/<part>`) and `size`. `Transaction::PlaceIn` moves the checked download into place (copying across drives;
+never read into memory: the model is 600 MB) with the SHA-256 the download was checked against; `RemoveContent("voice")`
+takes them out (a replaced file's backup put back) and the folders it made once empty; `VerifyContent` checks them by size
+or by SHA-256. `Transaction::Verify` (Repair's list, `needsRepair`) leaves content files out, because Repair can't put a
+download back; the Optional content card shows them instead ("N voice files are missing or changed: Fetch again"). The
+manifest's `packs` gets `{"id": "voice", "name": "Voice orders", "method": "download"}`, which the in-game Display >
+Optional content row lists (its label is now "Voice orders and texture packs"); the uninstall's "texture packs stay" note
+counts only `method: mem` records. Uninstall needs nothing new: content files are files on record.
+
+**The flow** (`voice::Install`, shared by the card's Install/Apply and `--install-voice`): refused while the game runs (it
+holds the DLLs open), or without `MEVR-Voice.dll` in the game and no payload to take it from (the setup copy in the ASI
+folder has none: "install or Repair this release first"). Then every file on record is checked against its SHA-256 (a
+few seconds), the model is looked up if it's wanted and not intact, and every source of a wanted part with a file
+missing, of another size or another SHA-256 is downloaded into `%LOCALAPPDATA%\MEVR\downloads\voice` (`http::Download`
+with the expected size and sum; a finished download from a stopped run is reused), an archive's files taken out with
+Windows' `tar.exe` (bsdtar reads gzip and zip; Windows 10 1803 and later) and checked, then placed. Parts installed but no
+longer ticked are taken out. The download folder is emptied. The card's Install asks first, naming the size, the hosts
+and the time on a 50 Mbit/s line; its progress row's button stops a download (what's placed stays; Install again fetches
+the rest). Check runs the SHA-256 check, Remove takes everything but `MEVR-Voice.dll` out. The in-game "Install after I
+quit" request (plugin/SetupRequest) opens on this page as before; a request naming `voice` says "You asked for: Voice
+orders.". Command line: `--install-voice [--voice-small] [--voice-medium] [--no-voice-llm]`, `--remove-voice`,
+`--check-voice [--deep]`; `--status` prints a `voice orders:` line.
+
+**Tested** (fake games only):
+
+- `mevr-tests` (`TestVoice`): the catalogue's layout against what the plugins look for, the pins, the choices and sizes,
+  the release-by-tag URL and asset parsing, `MEVR-Setup.ini`'s keys, the content entries (placed, JSON round trip, the size
+  and SHA-256 checks, left out of `Verify`, `RemoveContent` restoring a replaced file and keeping `ASI\voice` for the DLL),
+  Install's refusals, the payload's DLL through Install, Repair and Uninstall.
+- `tools/setup/test-network.py` section 5 (ctest `mevr-setup-network`): the real archives and models served by the local
+  server from the dev machine's own copies (`fetch-voice.ps1`'s in `%TEMP%`, or `--voice-cache`; skipped without them),
+  so the pins are exercised: the model not published (looked up first, llama.cpp not fetched), a model file with another
+  SHA-256 refused and fetched on the retry, a model release whose digest doesn't match refused, the model tier installed
+  and the small models taken out when unticked, a same-size change found only by the deep check and then fetched again
+  alone, the game's request naming the voice orders, Remove, `--no-voice-llm`, Uninstall removing `ASI\voice`. All passed.
+- `tools/setup/test-fake-game.ps1 -Voice`: the real downloads from GitHub and Hugging Face onto `scratch\fakegame`: every
+  pin matched, GitHub's 404 for `voice-model-1` took the "not published yet" path, `--check-voice --deep` passed, and the
+  uninstall left the folder byte for byte what it was (110 of 110 checks).
+
+Not yet: the model tier from the real release (the user uploads the asset); the files loaded by the game from a Setup
+install (the same files `deploy-asi.ps1` deploys, which the game loads: research/54 "In the game").
+
 ## Open
 
 - **[verify]** In the game: the EA app build; "Install after I quit" end to end; "Start the game once" (section 9).
@@ -725,4 +811,8 @@ folders a new player has.
   game, gameplay on the fake headset).
 - **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,
   MEM's download, unpacking and a real pack install on a real game.
+- **The voice orders' model release** (section 14): upload the fine-tuned GGUF as the asset
+  `mevr-voice-qwen3-0.6b-q8_0.gguf` of a release tagged `voice-model-1` (not `v*`); the setup then installs the model tier.
+  Another tag or name: `MEVR-Setup.ini` `[Voice] modelTag` / `modelAsset` in the release package
+  (`tools/package-release.ps1` writes the file). **[verify]** the game loading a Setup-installed `ASI\voice`.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).

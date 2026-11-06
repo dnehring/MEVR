@@ -229,6 +229,10 @@ json::Value Manifest::ToJson() const {
         if (f.userData) {
             e["userData"] = true;
         }
+        if (!f.content.empty()) {
+            e["content"] = f.content;
+            e["size"] = static_cast<double>(f.size);
+        }
         if (!f.edits.empty()) {
             e["edits"] = EditsToJson(f.edits);
         }
@@ -298,6 +302,8 @@ std::optional<Manifest> Manifest::FromJson(json::Value const& v) {
         f.from = e.String("from");
         f.sha256 = e.String("sha256");
         f.userData = e.Bool("userData");
+        f.content = e.String("content");
+        f.size = static_cast<std::uint64_t>(e.Number("size", 0));
         for (json::Value const& ed : e.Get("edits").Items()) {
             ini::Edit edit;
             edit.section = ed.String("section");
@@ -479,6 +485,120 @@ bool Transaction::CopyIn(fs::path const& source, std::string_view relative, bool
         return false;
     }
     return WriteIn(relative, *bytes, userData);
+}
+
+bool Transaction::PlaceIn(fs::path const& source, std::string_view relative, std::string const& sha256, std::string_view content) {
+    fs::path const target = layout_.Full(relative);
+    std::error_code ec;
+    std::uintmax_t const size = fs::file_size(source, ec);
+    if (ec) {
+        Fail("missing from the download: " + ToUtf8(source.wstring()));
+        return false;
+    }
+    FileEntry* entry = manifest_.Find(relative);
+    FileEntry fresh;
+    if (entry == nullptr) {
+        fresh.path = std::string(relative);
+        if (fs::exists(target, ec)) {
+            fresh.action = "replaced";
+            if (!Backup(relative, fresh.backup)) {
+                return false;
+            }
+        } else {
+            fresh.action = "added";
+            if (!EnsureParent(target)) {
+                return false;
+            }
+        }
+    }
+    if (!MoveFileExW(source.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH)) {
+        DWORD const error = GetLastError();
+        Fail("couldn't put " + std::string(relative) + " in place (error " + std::to_string(error) + ")" + WriteFailureHint(target));
+        if (entry == nullptr && !fresh.backup.empty()) {
+            fs::remove(layout_.BackupDir() / fs::path(FromUtf8(fresh.backup)), ec);
+        }
+        return false;
+    }
+    if (entry == nullptr) {
+        manifest_.files.push_back(fresh);
+        entry = &manifest_.files.back();
+        Note(fresh.action + " " + std::string(relative));
+    } else {
+        Note("updated " + std::string(relative));
+        entry->edits.clear();
+    }
+    entry->sha256 = sha256;
+    entry->content = std::string(content);
+    entry->size = size;
+    return Save();
+}
+
+namespace {
+bool ContentMatches(std::string_view entry, std::string_view content) {
+    return !entry.empty() && !content.empty() &&
+        (entry == content || (entry.size() > content.size() && entry.substr(0, content.size()) == content && entry[content.size()] == '/'));
+}
+
+bool Under(std::string_view path, std::string_view dir) {
+    return path.size() > dir.size() && _strnicmp(path.data(), dir.data(), dir.size()) == 0 && path[dir.size()] == '/';
+}
+} // namespace
+
+bool Transaction::RemoveContent(std::string_view content) {
+    std::error_code ec;
+    bool ok = true;
+    for (std::size_t n = manifest_.files.size(); n-- > 0;) {
+        FileEntry const f = manifest_.files[n];
+        if (!ContentMatches(f.content, content)) {
+            continue;
+        }
+        fs::path const target = layout_.Full(f.path);
+        if (f.action == "replaced") {
+            fs::path const backup = layout_.BackupDir() / fs::path(FromUtf8(f.backup));
+            if (!CopyFileW(backup.c_str(), target.c_str(), FALSE)) {
+                Fail("couldn't restore " + f.path + " (error " + std::to_string(GetLastError()) + ")");
+                ok = false;
+                continue;
+            }
+            fs::remove(backup, ec);
+            Note("restored " + f.path);
+        } else {
+            if (fs::exists(target, ec) && !fs::remove(target, ec)) {
+                Fail("couldn't remove " + f.path + ": " + ec.message());
+                ok = false;
+                continue;
+            }
+            Note("removed " + f.path);
+        }
+        manifest_.files.erase(manifest_.files.begin() + static_cast<std::ptrdiff_t>(n));
+    }
+    // The folders we created that held only those files (ASI\voice\models\tiny-streaming-en, ...): gone once empty, and off
+    // the record. One with a recorded file still under it (ASI\voice, with MEVR-Voice.dll) stays.
+    for (std::size_t n = manifest_.dirs.size(); n-- > 0;) {
+        std::string const dir = manifest_.dirs[n];
+        bool const used = std::any_of(manifest_.files.begin(), manifest_.files.end(), [&](FileEntry const& f) { return Under(f.path, dir); });
+        fs::path const full = layout_.Full(dir);
+        if (!used && fs::is_directory(full, ec) && fs::is_empty(full, ec) && fs::remove(full, ec)) {
+            manifest_.dirs.erase(manifest_.dirs.begin() + static_cast<std::ptrdiff_t>(n));
+        }
+    }
+    return Save() && ok;
+}
+
+std::vector<std::string> Transaction::VerifyContent(std::string_view content, bool deep) const {
+    std::vector<std::string> bad;
+    for (FileEntry const& f : manifest_.files) {
+        if (!ContentMatches(f.content, content)) {
+            continue;
+        }
+        std::error_code ec;
+        fs::path const target = layout_.Full(f.path);
+        std::uintmax_t const size = fs::file_size(target, ec);
+        if (ec || (f.size != 0 && size != f.size) || (deep && !f.sha256.empty() && Sha256File(target) != f.sha256)) {
+            bad.push_back(f.path);
+        }
+    }
+    return bad;
 }
 
 bool Transaction::WriteIfMissing(std::string_view relative, std::string_view bytes, bool userData) {
@@ -882,7 +1002,7 @@ std::vector<std::string> Transaction::Verify() const {
                     break;
                 }
             }
-        } else if ((f.action == "added" || f.action == "replaced") && !f.userData && !f.sha256.empty()) {
+        } else if ((f.action == "added" || f.action == "replaced") && !f.userData && !f.sha256.empty() && f.content.empty()) {
             if (Sha256File(target) != f.sha256) {
                 bad.push_back(f.path);
             }

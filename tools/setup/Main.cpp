@@ -21,6 +21,9 @@
 //     | --get-mem  (Mass Effect Modder's latest CLI build from its GitHub releases into %LOCALAPPDATA%\MEVR\tools, unpacked)
 //     | --install-pack <id> --file <download>  (a texture pack through MEM, recorded, our recorded VR game settings again where
 //       MEM wrote over them)
+//     | --install-voice [--voice-small] [--voice-medium] [--no-voice-llm]  (the voice orders' files, install/Voice: downloaded,
+//       checked, put in ASI\voice, recorded; the model's release from MEVR-Setup.ini's [Voice] keys, or --repo) | --remove-voice
+//       | --check-voice [--deep]  (their sizes, or with --deep their SHA-256 sums)
 //   with --game <folder> and --payload <folder> (default: payload\ next to the exe).
 //   --preview <folder> --request [--wait-pid N] [--game <folder>] [--out <file>]: the window's real start for "Install after I
 //     quit" (the request file read and removed, the page, the wait for the game's exit) as PNGs and its state as text.
@@ -29,6 +32,7 @@
 //     https:// is refused. Never on by default.
 
 #include "SetupApp.hpp"
+#include "install/Voice.hpp"
 
 #include "core/PngFile.hpp"
 #include "install/Detect.hpp"
@@ -420,8 +424,12 @@ struct Cli {
     std::optional<fs::path> localData;
     // --check-update, --get-mem, --install-pack
     std::string repo;
+    bool repoGiven = false;  // --repo: also where the voice model's release is looked up
     std::string packId;
     std::optional<fs::path> packFile;
+    // --install-voice, --check-voice
+    mevr::install::voice::Choices voice;
+    bool deep = false;
 };
 
 // --check-update: the update check the Settings page's Check button runs (install/Updates), its answer as text.
@@ -616,6 +624,29 @@ int RunCli(Cli const& cli) {
             report(mevr::install::ApplySettings(layout, choices));
         } else if (cli.command == "restore-settings") {
             report(mevr::install::RestoreSettings(layout));
+        } else if (cli.command == "install-voice") {
+            namespace voice = mevr::install::voice;
+            auto const payload = cli.payload ? std::optional<mevr::install::Payload>(mevr::install::Payload{*cli.payload})
+                                             : mevr::install::FindPayload(ExePath().parent_path());
+            voice::ModelSource model = voice::ReadModelSource(ExePath().parent_path() / L"MEVR-Setup.ini");
+            if (cli.repoGiven) {
+                model.repo = cli.repo;
+            }
+            std::string lastText;
+            int lastPercent = -1;
+            report(voice::Install(layout, payload, cli.voice, model, [&](voice::Step const& step) {
+                // One line per file and per quarter of the whole.
+                std::string const head = step.text.substr(0, step.text.find(':'));
+                if (head != lastText || step.percent / 25 != lastPercent / 25) {
+                    lastText = head;
+                    lastPercent = step.percent;
+                    say(std::format("  [{}] {}", step.percent, step.text));
+                }
+            }, nullptr));
+        } else if (cli.command == "remove-voice") {
+            report(mevr::install::voice::Remove(layout));
+        } else if (cli.command == "check-voice") {
+            report(mevr::install::voice::Check(layout, cli.deep));
         } else if (cli.command == "install-pack") {
             if (cli.packId.empty() || !cli.packFile) {
                 say("--install-pack <id> needs --file <the downloaded pack>");
@@ -658,9 +689,22 @@ int RunCli(Cli const& cli) {
         say(std::string("textures marked by MEM: ") + (s.texturesMarked ? "yes" : "no"));
         std::string packList;
         for (mevr::install::PackRecord const& p : s.packs) {
-            packList += (packList.empty() ? "" : ", ") + p.name + " (" + p.id + ", " + p.method + ", " + p.installedAt + ")";
+            if (p.method == "mem") {
+                packList += (packList.empty() ? "" : ", ") + p.name + " (" + p.id + ", " + p.method + ", " + p.installedAt + ")";
+            }
         }
         say("texture packs installed: " + (packList.empty() ? std::string("none") : packList));
+        {
+            namespace voice = mevr::install::voice;
+            voice::State const v = voice::ReadState(layout);
+            std::string parts;
+            for (std::string const& id : v.parts) {
+                parts += (parts.empty() ? "" : ", ") + id;
+            }
+            say(std::string("voice orders: ") + (v.parts.empty() ? "not installed" : parts) + (v.recorded ? "" : v.parts.empty() ? "" : " (not recorded as complete)") +
+                (v.damaged.empty() ? "" : std::format(", {} files missing or changed", v.damaged.size())) +
+                (v.dll ? "; MEVR-Voice.dll present" : "; no MEVR-Voice.dll"));
+        }
         std::error_code memEc;
         say(std::string("Mass Effect Modder: ") + (fs::exists(mevr::install::packs::MemExe(), memEc) ? "downloaded" : "not downloaded"));
         detect::XrRuntime const xr = detect::ActiveRuntime();
@@ -1037,6 +1081,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             cli.localData = fs::path(next());
         } else if (a == L"--repo") {
             cli.repo = detect::Utf8(next());
+            cli.repoGiven = true;
+        } else if (a == L"--voice-small") {
+            cli.voice.smallModels = true;
+        } else if (a == L"--voice-medium") {
+            cli.voice.mediumModels = true;
+        } else if (a == L"--no-voice-llm") {
+            cli.voice.llm = false;
+        } else if (a == L"--deep") {
+            cli.deep = true;
         } else if (a == L"--install-pack") {
             cli.command = "install-pack";
             cli.packId = detect::Utf8(next());
@@ -1056,7 +1109,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         } else if (a.rfind(L"--", 0) == 0) {
             std::wstring const name = a.substr(2);
             if (name == L"status" || name == L"install" || name == L"uninstall" || name == L"repair" || name == L"launch" || name == L"apply-settings" ||
-                name == L"restore-settings" || name == L"report" || name == L"check-update" || name == L"get-mem") {
+                name == L"restore-settings" || name == L"report" || name == L"check-update" || name == L"get-mem" || name == L"install-voice" ||
+                name == L"remove-voice" || name == L"check-voice") {
                 cli.command = detect::Utf8(name);
             }
         }

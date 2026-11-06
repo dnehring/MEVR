@@ -15,6 +15,7 @@
 #include "install/Packs.hpp"
 #include "install/Toc.hpp"
 #include "install/Updates.hpp"
+#include "install/Voice.hpp"
 #include "loader/LoaderCore.hpp"
 
 #include <Windows.h>
@@ -1317,6 +1318,259 @@ void TestLoaderCore() {
     ICHECK(sorted.size() == 3 && sorted[0] == L"A.asi" && sorted[2] == L"LE1MEVR.asi");
 }
 
+// The voice orders as optional content (research/33 section 14, install/Voice): the catalogue's layout matches what
+// plugin/Voice and plugin/VoiceModel look for, the model's release lookup, and the manifest's content entries (placed,
+// checked by size or SHA-256, left out of Repair's check, removed alone or with the uninstall). No network: Install is
+// only run up to its refusals.
+void TestVoice() {
+    using namespace mevr::install;
+    namespace voice = mevr::install::voice;
+    auto under = [](std::string_view path, std::string_view dir) { return path.size() > dir.size() + 1 && path.substr(0, dir.size()) == dir && path[dir.size()] == '/'; };
+    auto hex64 = [](std::string const& s) { return s.size() == 64 && s.find_first_not_of("0123456789abcdef") == std::string::npos; };
+
+    // ---- The catalogue: tools/fetch-voice.ps1's files, where tools/deploy-asi.ps1 puts them.
+    std::vector<voice::Part> const& parts = voice::Catalogue();
+    ICHECK(parts.size() == 6 && parts.front().id == "recognizer" && parts.back().id == "llm-model");
+    ICHECK(std::string(voice::kDir) == std::string(paths::kAsi) + "/voice");
+    ICHECK(std::string(voice::kDll) == std::string(voice::kDir) + "/MEVR-Voice.dll");
+    ICHECK(std::string(voice::kLlmModel) == std::string(voice::kLlmDir) + "/model.gguf");  // plugin/VoiceModel's default
+    std::vector<std::string> targets;
+    for (voice::Part const& p : parts) {
+        ICHECK(!p.name.empty() && !p.licence.empty() && !p.origin.empty());
+        ICHECK(voice::Find(p.id) == &p);
+        ICHECK(voice::ContentTag(p.id) == "voice/" + p.id);
+        for (voice::Source const& s : p.sources) {
+            ICHECK(s.url.rfind("https://github.com/", 0) == 0 || s.url.rfind("https://huggingface.co/", 0) == 0);
+            ICHECK(s.size > 0 && hex64(s.sha256));  // every fixed download pinned
+            ICHECK(!s.files.empty());
+            ICHECK((s.archive == voice::Archive::None) == (s.files.size() == 1 && s.files[0].member.empty()));
+            for (voice::FileSpec const& f : s.files) {
+                ICHECK(under(f.target, voice::kDir));
+                ICHECK(f.size > 0);
+                ICHECK(f.sha256.empty() || hex64(f.sha256));
+                ICHECK(std::find(targets.begin(), targets.end(), f.target) == targets.end());  // one part per file
+                targets.push_back(f.target);
+            }
+        }
+    }
+    ICHECK(voice::Find("llm-model")->sources.empty() && voice::Find("llm-model")->modelSize > 600'000'000ull);
+    ICHECK(voice::Find("nope") == nullptr);
+    auto has = [&](std::string const& t) { return std::find(targets.begin(), targets.end(), t) != targets.end(); };
+    ICHECK(has(voice::kOnnxRuntime));
+    for (char const* size : {"tiny", "small", "medium"}) {
+        // plugin/Voice: ASI\voice\models\<model>-streaming-en with its streaming_config.json; Moonshine's eight files.
+        std::string const dir = std::string(voice::kModelsDir) + "/" + size + "-streaming-en/";
+        for (char const* f : {"streaming_config.json", "frontend.model.ort", "frontend.weights.ort", "encoder.ort", "adapter.ort", "cross_kv.ort",
+                 "decoder_kv.ort", "tokenizer.bin"}) {
+            ICHECK(has(dir + f));
+        }
+        voice::Part const* p = voice::Find(std::string("models-") + size);
+        ICHECK(p != nullptr && p->sources.size() == 8);
+    }
+    // plugin/VoiceModel loads llama.dll from ASI\voice\llm; it imports ggml and ggml-base, which imports libomp; ggml loads a CPU backend.
+    for (char const* f : {"llama.dll", "ggml.dll", "ggml-base.dll", "libomp.dll", "ggml-cpu-x64.dll", "ggml-cpu-haswell.dll"}) {
+        ICHECK(has(std::string(voice::kLlmDir) + "/" + f));
+    }
+    ICHECK(!has(voice::kDll));  // ours ships in the release, never downloaded
+
+    // ---- The choices.
+    ICHECK((voice::PartsFor({}) == std::vector<std::string>{"recognizer", "models-tiny", "llm-runtime", "llm-model"}));
+    voice::Choices bare;
+    bare.llm = false;
+    ICHECK((voice::PartsFor(bare) == std::vector<std::string>{"recognizer", "models-tiny"}));
+    voice::Choices all{true, true, true};
+    ICHECK(voice::PartsFor(all).size() == 6);
+    voice::Sizes const small = voice::SizesFor(voice::PartsFor(bare));
+    ICHECK(small.download > 60'000'000ull && small.download < 80'000'000ull);  // Moonshine's release (26 MB) and the tiny models (45 MB)
+    ICHECK(small.disk > 55'000'000ull && small.disk < 65'000'000ull);         // onnxruntime.dll (14 MB) and the models
+    ICHECK(voice::SizesFor({"llm-model"}).download == voice::Find("llm-model")->modelSize);
+    ICHECK(voice::SizesFor({"llm-model"}, 1234).download == 1234);
+    ICHECK(voice::SizesFor({"nope"}).download == 0);
+
+    // ---- The model's release.
+    ICHECK(voice::ReleaseByTagApi(updates::kDefaultRepo, voice::kModelTag) ==
+        "https://api.github.com/repos/dnehring/MEVR/releases/tags/voice-model-1");
+    ICHECK(voice::ReleaseByTagApi("https://github.com/someone/fork.git/", "v1.2") == "https://api.github.com/repos/someone/fork/releases/tags/v1.2");
+    ICHECK(voice::ReleaseByTagApi(updates::kDefaultRepo, "a/b").empty());
+    ICHECK(voice::ReleaseByTagApi(updates::kDefaultRepo, "").empty());
+    ICHECK(voice::ReleaseByTagApi(updates::kPlaceholderRepo, voice::kModelTag).empty());
+    ICHECK(voice::ReleaseByTagApi("https://example.com/a/b", voice::kModelTag).empty());
+    std::string const sha(64, 'a');
+    std::string const release = R"({"tag_name": "voice-model-1", "assets": [
+        {"name": "notes.txt", "browser_download_url": "https://github.com/dnehring/MEVR/releases/download/voice-model-1/notes.txt", "size": 5},
+        {"name": "mevr-voice-qwen3-0.6b-q8_0.gguf", "size": 639446880, "digest": "sha256:)" + std::string(64, 'A') + R"(",
+         "browser_download_url": "https://github.com/dnehring/MEVR/releases/download/voice-model-1/mevr-voice-qwen3-0.6b-q8_0.gguf"}]})";
+    std::string why;
+    auto const model = voice::ModelFromRelease(release, voice::kModelAsset, &why);
+    ICHECK(model.has_value());
+    if (model) {
+        ICHECK(model->size == 639446880ull && model->sha256 == sha && model->archive == voice::Archive::None);
+        ICHECK(model->files.size() == 1 && model->files[0].target == voice::kLlmModel && model->files[0].sha256 == sha);
+    }
+    ICHECK(!voice::ModelFromRelease(release, "other.gguf", &why) && why.find("has no file called other.gguf") != std::string::npos);
+    ICHECK(!voice::ModelFromRelease(R"({"assets": [{"name": "m.gguf", "browser_download_url": "https://evil.example/m.gguf", "size": 1}]})", "m.gguf", &why) &&
+        why.find("github.com") != std::string::npos);
+    ICHECK(!voice::ModelFromRelease("[]", "m.gguf", &why));
+    auto const noDigest = voice::ModelFromRelease(R"({"assets": [{"name": "m.gguf", "browser_download_url": "https://github.com/a/b/m.gguf", "size": 7,
+        "digest": "md5:abc"}]})", "m.gguf");
+    ICHECK(noDigest && noDigest->sha256.empty() && noDigest->size == 7);
+
+    wchar_t temp[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, temp);
+    fs::path const base = fs::path(temp) / L"mevr-install-voice";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    {
+        voice::ModelSource const none = voice::ReadModelSource(base / L"missing.ini");
+        ICHECK(none.repo == updates::kDefaultRepo && none.tag == voice::kModelTag && none.asset == voice::kModelAsset && none.url.empty());
+        Write(base / L"MEVR-Setup.ini", "[Update]\r\nrepo = https://github.com/someone/fork\r\n[Voice]\r\nmodelTag = voice-model-2 \r\n"
+                                         "modelSha256 = not-a-sum\r\nmodelSize = 12x\r\n");
+        voice::ModelSource const set = voice::ReadModelSource(base / L"MEVR-Setup.ini");
+        ICHECK(set.repo == "https://github.com/someone/fork" && set.tag == "voice-model-2" && set.sha256.empty() && set.size == 0);
+        Write(base / L"MEVR-Setup.ini", "[Voice]\r\nmodelRepo = https://github.com/a/b\r\nmodelUrl = https://example.org/m.gguf\r\nmodelSha256 = " +
+            std::string(64, 'B') + "\r\nmodelSize = 99\r\n");
+        voice::ModelSource const direct = voice::ReadModelSource(base / L"MEVR-Setup.ini");
+        ICHECK(direct.repo == "https://github.com/a/b" && direct.url == "https://example.org/m.gguf" && direct.sha256 == std::string(64, 'b') &&
+            direct.size == 99);
+        voice::ModelSource plain = direct;
+        plain.url = "http://example.org/m.gguf";
+        ICHECK(!voice::FindModel(plain).source);  // only https (no request made)
+        voice::ModelLookup const fromUrl = voice::FindModel(direct);
+        ICHECK(fromUrl.source && fromUrl.source->files.size() == 1 && fromUrl.source->files[0].target == voice::kLlmModel && fromUrl.source->size == 99);
+    }
+    {
+        auto const req = ParseSetupRequest(R"({"page": "content", "packs": ["voice", "nope", "alot-le1"], "pid": 1})");
+        ICHECK(req && (req->packs == std::vector<std::string>{"voice", "alot-le1"}));
+    }
+
+    // ---- The manifest's content entries on a fake game.
+    fs::path const root = base / L"Mass Effect Legendary Edition";
+    if (detect::GameRunningIn(root)) {
+        std::printf("  (a game runs from the test folder: TestVoice's file part is skipped)\n");
+        return;
+    }
+    Layout const layout{root};
+    Write(layout.Win64() / L"MassEffect1.exe", "exe");
+    Write(layout.Win64() / L"bink2w64.dll", "RAD original");
+    fs::path const downloads = base / L"downloads";
+    std::string const tiny = std::string(voice::kModelsDir) + "/tiny-streaming-en/encoder.ort";
+    std::string const config = std::string(voice::kModelsDir) + "/tiny-streaming-en/streaming_config.json";
+    std::string const gguf = voice::kLlmModel;
+    Write(layout.Full(gguf), "a model the player put there");  // replaced, put back by Remove
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load() && !tx.Exists());
+        ICHECK(!voice::ReadState(layout).dll);
+        Write(base / L"MEVR-Voice.dll", "our recognizer interface");
+        ICHECK(tx.CopyIn(base / L"MEVR-Voice.dll", voice::kDll));  // the mod's own
+        Write(downloads / L"encoder.ort", "encoder bytes");
+        Write(downloads / L"streaming_config.json", "{}");
+        Write(downloads / L"model.gguf", "fine-tuned");
+        ICHECK(tx.PlaceIn(downloads / L"encoder.ort", tiny, Sha256("encoder bytes"), voice::ContentTag("models-tiny")));
+        ICHECK(tx.PlaceIn(downloads / L"streaming_config.json", config, Sha256("{}"), voice::ContentTag("models-tiny")));
+        ICHECK(tx.PlaceIn(downloads / L"model.gguf", gguf, Sha256("fine-tuned"), voice::ContentTag("llm-model")));
+        ICHECK(!fs::exists(downloads / L"encoder.ort"));  // moved, not copied
+        ICHECK(!tx.PlaceIn(downloads / L"gone.bin", config, "", voice::ContentTag("models-tiny")));  // a missing download
+        ICHECK(tx.Errors().size() == 1);
+    }
+    ICHECK(Read(layout.Full(tiny)) == "encoder bytes" && Read(layout.Full(gguf)) == "fine-tuned");
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load() && tx.Exists());
+        FileEntry const* e = tx.Data().Find(tiny);
+        ICHECK(e != nullptr && e->action == "added" && e->content == "voice/models-tiny" && e->size == 13 && e->sha256 == Sha256("encoder bytes"));
+        FileEntry const* m = tx.Data().Find(gguf);
+        ICHECK(m != nullptr && m->action == "replaced" && !m->backup.empty() && m->content == "voice/llm-model");
+        FileEntry const* dll = tx.Data().Find(voice::kDll);
+        ICHECK(dll != nullptr && dll->content.empty());
+        // The manifest's JSON keeps them.
+        auto const again = Manifest::FromJson(tx.Data().ToJson());
+        ICHECK(again && again->Find(tiny) && again->Find(tiny)->content == "voice/models-tiny" && again->Find(tiny)->size == 13);
+        ICHECK(again && again->Find(voice::kDll) && again->Find(voice::kDll)->content.empty());
+        ICHECK(tx.VerifyContent("voice", false).empty() && tx.VerifyContent("voice", true).empty());
+        ICHECK(tx.VerifyContent("voice/models-tiny", true).empty() && tx.VerifyContent("voi", false).empty());
+    }
+    voice::State st = voice::ReadState(layout);
+    ICHECK(st.dll && st.Has("models-tiny") && st.Has("llm-model") && !st.Has("recognizer") && st.damaged.empty() && !st.recorded);
+    // Changed files: Repair's check never lists downloads (it can't put them back); the content check does, by size quickly and
+    // by SHA-256 when asked.
+    Write(layout.Full(tiny), "encoder BYTES");  // the same size
+    Write(layout.Full(config), "{ }");          // another size
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load());
+        ICHECK(tx.Verify().empty());
+        ICHECK((tx.VerifyContent("voice", false) == std::vector<std::string>{config}));
+        auto const deep = tx.VerifyContent("voice", true);
+        ICHECK(deep.size() == 2);
+    }
+    ICHECK(voice::ReadState(layout).damaged.size() == 1);
+    Outcome const checked = voice::Check(layout, true);
+    ICHECK(!checked.ok && checked.errors.size() == 2);
+    Write(layout.Full(voice::kDll), "tampered");
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load() && (tx.Verify() == std::vector<std::string>{voice::kDll}));  // the mod's own file: Repair's
+    }
+    // Remove: the downloads go (the player's own model back), MEVR-Voice.dll and ASI\voice stay, the folders we made go.
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load());
+        tx.Data().packs.push_back({voice::kContent, voice::kName, "download", "2026-11-05T12:00:00"});
+        ICHECK(tx.Save());
+    }
+    ICHECK(voice::ReadState(layout).recorded);
+    Outcome const removed = voice::Remove(layout);
+    ICHECK(removed.ok);
+    ICHECK(!fs::exists(layout.Full(tiny)) && !fs::exists(layout.Full(std::string(voice::kModelsDir))));
+    ICHECK(Read(layout.Full(gguf)) == "a model the player put there");
+    ICHECK(fs::exists(layout.Full(voice::kDll)) && fs::is_directory(layout.Full(voice::kDir)));
+    st = voice::ReadState(layout);
+    ICHECK(st.parts.empty() && !st.recorded && st.dll);
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load() && tx.Data().Find(voice::kDll) != nullptr && tx.Data().Find(tiny) == nullptr && tx.Data().Find(gguf) == nullptr);
+        // Placed again, then the whole uninstall takes the downloads, the DLL and the folders.
+        Write(downloads / L"encoder.ort", "encoder bytes");
+        ICHECK(tx.PlaceIn(downloads / L"encoder.ort", tiny, Sha256("encoder bytes"), voice::ContentTag("models-tiny")));
+        ICHECK(tx.Uninstall(false));
+    }
+    ICHECK(!fs::exists(layout.Full(tiny)) && !fs::exists(layout.Full(voice::kDll)) && !fs::exists(layout.Full(std::string(voice::kModelsDir))));
+    ICHECK(Read(layout.Full(gguf)) == "a model the player put there");  // never ours: it and its folders stay
+
+    // Install's refusals before any download: no MEVR-Voice.dll and no payload to take it from.
+    Outcome const noDll = voice::Install(layout, std::nullopt, bare, voice::ModelSource{}, {}, nullptr);
+    ICHECK(!noDll.ok && !noDll.errors.empty() && noDll.errors[0].find("MEVR-Voice.dll") != std::string::npos);
+    Outcome const noGame = voice::Install(Layout{base / L"nowhere"}, std::nullopt, bare, voice::ModelSource{}, {}, nullptr);
+    ICHECK(!noGame.ok);
+    ICHECK(!voice::Remove(Layout{base / L"nowhere"}).ok);
+
+    // The release's MEVR-Voice.dll goes in with the mod, comes back with Repair, goes with Uninstall.
+    fs::path const payloadDir = base / L"payload";
+    Write(payloadDir / L"LE1MEVR.asi", "new ASI");
+    Write(payloadDir / L"bink2w64.dll", "our loader");
+    Write(payloadDir / L"fonts" / L"A.ttf", "font");
+    Write(payloadDir / L"menu" / L"main.rml", "<rml/>");
+    Write(payloadDir / L"voice" / L"MEVR-Voice.dll", "release recognizer interface");
+    Payload const payload{payloadDir};
+    ICHECK(payload.Valid() && payload.HasVoice());
+    fs::remove_all(root, ec);
+    Write(layout.Win64() / L"MassEffect1.exe", "exe");
+    Write(layout.Win64() / L"bink2w64.dll", "a proxy");
+    Write(layout.Win64() / L"bink2w64_original.dll", "RAD original");
+    InstallOptions options;
+    options.ignoreVersion = true;
+    options.gameSettings = false;
+    Outcome const in = Install(layout, payload, options);
+    ICHECK(in.ok);
+    ICHECK(Read(layout.Full(voice::kDll)) == "release recognizer interface");
+    fs::remove(layout.Full(voice::kDll), ec);
+    ICHECK((ReadStatus(root, "Folder").needsRepair == std::vector<std::string>{voice::kDll}));
+    ICHECK(Repair(layout, payload).ok && Read(layout.Full(voice::kDll)) == "release recognizer interface");
+    ICHECK(Uninstall(layout, false, {}).ok && !fs::exists(layout.Full(voice::kDir)));
+    fs::remove_all(base, ec);
+}
+
 } // namespace
 
 void RunInstallTests(int& failures) {
@@ -1336,4 +1590,5 @@ void RunInstallTests(int& failures) {
     TestLoaderCore();
     TestToc();
     TestFirstRunInstall();
+    TestVoice();
 }

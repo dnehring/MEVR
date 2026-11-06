@@ -251,7 +251,7 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
     variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG`.
   - [ ] [C] The first signed run: `.asi` goes as `LE1MEVR.asi.dll` (SignPath's PE list has no `.asi`), and the
     product-version check against `<version>+<commit>` is unproven; try the test-signing policy first.
-  - [ ] [C] Every release, signed or not: submit the zip's three binaries to Microsoft
+  - [ ] [C] Every release, signed or not: submit the zip's four binaries to Microsoft
     (https://www.microsoft.com/wdsi/filesubmission, as the software developer, "incorrectly detected") and check the
     zip on VirusTotal; report false positives to the vendors that flag it.
 - [x] **[C] Binary metadata**: an icon and VERSIONINFO for MEVR-Setup.exe and the ASI; no absolute build paths in the PDBs

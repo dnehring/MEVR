@@ -28,7 +28,7 @@
 	<div class="rail">
 		<button class="navb" data-class-on="page == 'welcome'" data-event-click="page = 'welcome'"><div class="nico i-home"/><div><div class="navl">Welcome</div><div class="navs">Status</div></div></button>
 		<button class="navb" data-class-on="page == 'install'" data-event-click="page = 'install'"><div class="nico i-download"/><div><div class="navl">Install</div><div class="navs">The mod and its loader</div></div></button>
-		<button class="navb" data-class-on="page == 'content'" data-event-click="page = 'content'"><div class="nico i-layers"/><div><div class="navl">Optional content</div><div class="navs">Texture packs</div></div></button>
+		<button class="navb" data-class-on="page == 'content'" data-event-click="page = 'content'"><div class="nico i-layers"/><div><div class="navl">Optional content</div><div class="navs">Voice orders, texture packs</div></div></button>
 		<button class="navb" data-class-on="page == 'settings'" data-event-click="page = 'settings'"><div class="nico i-sliders"/><div><div class="navl">Settings</div><div class="navs">VR game settings</div></div></button>
 		<button class="navb" data-class-on="page == 'repair'" data-event-click="page = 'repair'"><div class="nico i-wrench"/><div><div class="navl">Repair</div><div class="navs">Check the files</div></div></button>
 		<button class="navb" data-class-on="page == 'uninstall'" data-event-click="page = 'uninstall'"><div class="nico i-trash"/><div><div class="navl">Uninstall</div><div class="navs">Put the game back</div></div></button>
@@ -41,7 +41,7 @@
 	<!-- Shared: a job's progress and the log, on every page while something runs or after it ran. -->
 	<div data-if="busy" class="row"><div class="lead i-timer"/><div class="rl"><div class="rlab">{{progress_text}}</div>
 		<div class="progress"><div class="fill" data-style-width="progress + '%'"/></div></div>
-		<button class="btn" data-if="can_cancel" data-event-click="act('stop_waiting')"><div class="sweep"/><span>Stop waiting</span><div class="tick"/></button></div>
+		<button class="btn" data-if="can_cancel" data-event-click="act('stop_waiting')"><div class="sweep"/><span>{{cancel_text}}</span><div class="tick"/></button></div>
 	<div data-if="waiting" class="row warnrow"><div class="lead i-timer"/><div class="rl"><div class="rlab">Waiting for Mass Effect to close</div><div class="rdesc">{{wait_text}}</div></div></div>
 
 	<!-- ===================================================================================== Welcome -->
@@ -123,8 +123,32 @@
 	<!-- ===================================================================================== Optional content -->
 	<div data-if="page == 'content'">
 		<div class="stitle">Optional content</div>
-		<div class="sdesc">Texture packs made by others. Never bundled: each comes from its own page, under its author's terms.</div>
+		<div class="sdesc">Extras that aren't in the download: the voice orders' recognizer and models, and texture packs made by others, each from where it officially lives, under its own terms.</div>
 		<div class="row" data-if="request_text != ''"><div class="lead i-info"/><div class="rl"><div class="rlab">Asked for from the game</div><div class="rdesc">{{request_text}}</div></div></div>
+		<div class="group">
+			<div class="gtitle"><span>Voice orders</span><div class="gline"/></div>
+			<div class="card" data-class-installed="voice_installed">
+				<div class="ch"><div class="cn">Voice orders</div><span class="badge cyan" data-if="voice_installed">Installed</span></div>
+				<div class="ca">Moonshine Voice, llama.cpp and our fine-tuned order model</div>
+				<div class="cd">Give the squad orders by voice: hold the left grip at your left ear (the radio), speak, let go. The speech recognizer and the model run on your PC; nothing is sent anywhere.</div>
+				<div class="cm"><span><span class="k">Size</span>{{voice_size}}</span></div>
+				<div class="cm"><span><span class="k">From</span>{{voice_sources}}</span></div>
+				<div class="cm"><span><span class="k">Terms</span>{{voice_licences}}</span></div>
+				<div class="cs" data-class-warn="voice_warn">{{voice_state}}</div>
+				<div class="cb">
+					<button class="btn small" data-class-disabled="busy || waiting || !voice_ready || voice_up_to_date" data-event-click="act('voice_install')"><div class="sweep"/><div class="bi i-download"/><span>{{voice_button}}</span></button>
+					<button class="btn small" data-if="voice_installed" data-class-disabled="busy" data-event-click="act('voice_check')"><div class="sweep"/><div class="bi i-check"/><span>Check</span></button>
+					<button class="btn small" data-if="voice_installed" data-class-disabled="busy || waiting" data-event-click="act('voice_remove')"><div class="sweep"/><span>Remove</span></button>
+				</div>
+			</div>
+			<div class="row"><div class="rl"><div class="rlab">The model tier</div><div class="rdesc">{{voice_model_text}}</div></div>
+				<button class="tog" data-class-disabled="busy" data-class-on="voice_llm" data-event-click="act('voice_toggle','llm')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Small recognizer too</div><div class="rdesc">More accurate, slower beside the game (about 140 MB). Used with [Voice] model = small in LE1MEVR.ini.</div></div>
+				<button class="tog" data-class-disabled="busy" data-class-on="voice_small" data-event-click="act('voice_toggle','small')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Medium recognizer too</div><div class="rdesc">The most accurate and the slowest (about 270 MB). Used with [Voice] model = medium.</div></div>
+				<button class="tog" data-class-disabled="busy" data-class-on="voice_medium" data-event-click="act('voice_toggle','medium')"><div class="knob"/></button></div>
+		</div>
+		<div class="gtitle"><span>Texture packs</span><div class="gline"/></div>
 		<div class="info"><div class="ico i-info"/><div>Texture packs change the game's files for good: they go on after every other content mod, and only a full restore of the game (or a reinstall) takes them out. Uninstalling the VR mod leaves them in place. Your VR game settings are applied again afterwards.</div></div>
 		<div class="row"><div class="lead i-wrench" data-class-off="!mem_ready"/><div class="rl"><div class="rlab">Mass Effect Modder</div><div class="rdesc">{{mem_text}}</div></div>
 			<div class="actions">

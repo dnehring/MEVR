@@ -21,7 +21,9 @@ namespace mevr::install {
 // What the release ships next to MEVR-Setup.exe (tools/package-release.ps1): payload\LE1MEVR.asi (the monolithic
 // build), payload\bink2w64.dll (our loader, src/loader), payload\fonts\*, payload\menu\* (the in-game menu's
 // documents and the setup's own), and optionally payload\cockpit\ (the Mako's cockpit: BIOG_MEVR_Cockpit.pcc and cockpit.txt;
-// research/47): the package goes in CookedPCConsole with its entry in PCConsoleTOC.bin, the script in ASI\cockpit.
+// research/47): the package goes in CookedPCConsole with its entry in PCConsoleTOC.bin, the script in ASI\cockpit; and
+// optionally payload\voice\MEVR-Voice.dll (the voice orders' recognizer interface, research/54), which goes in ASI\voice with
+// the mod; what it needs besides is optional content the setup downloads (install/Voice, research/33 section 14).
 struct Payload {
     std::filesystem::path dir;
     bool Valid() const;
@@ -32,6 +34,8 @@ struct Payload {
     std::filesystem::path CockpitPackage() const { return dir / L"cockpit" / L"BIOG_MEVR_Cockpit.pcc"; }
     std::filesystem::path CockpitScript() const { return dir / L"cockpit" / L"cockpit.txt"; }
     bool HasCockpit() const;
+    std::filesystem::path VoiceDll() const { return dir / L"voice" / L"MEVR-Voice.dll"; }
+    bool HasVoice() const;
 };
 // `exeDir`\payload, or `exeDir` itself if it holds the files. nullopt when neither does (the copy installed in the
 // game's ASI folder has no payload: it can uninstall and add packs, not install or repair).
@@ -116,7 +120,7 @@ std::filesystem::path RequestFile();
 // ASI\MEVR-Setup.exe --request --wait-pid <pid> as it exits. `packs` keeps only ids the catalogue knows.
 struct SetupRequest {
     std::string page = "content";
-    std::vector<std::string> packs;
+    std::vector<std::string> packs;  // texture pack ids, or "voice" (install/Voice)
     unsigned long pid = 0;
 };
 // nullopt for text that isn't a request (the setup then opens on Optional content anyway).

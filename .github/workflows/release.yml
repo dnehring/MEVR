@@ -6,8 +6,8 @@
 #
 # Code signing (docs/code-signing.md): SignPath Foundation's free signing for open-source projects. Once the repository
 # has the variables SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG and SIGNPATH_SIGNING_POLICY_SLUG and the secret
-# SIGNPATH_API_TOKEN (the project's default artifact configuration is used), the three binaries built here (MEVR-Setup.exe,
-# LE1MEVR.asi, bink2w64.dll) go to SignPath, the run waits for the owner to approve the request there (up to three hours),
+# SIGNPATH_API_TOKEN (the project's default artifact configuration is used), the four binaries built here (MEVR-Setup.exe,
+# LE1MEVR.asi, bink2w64.dll, MEVR-Voice.dll) go to SignPath, the run waits for the owner to approve the request there (up to three hours),
 # and the zip, the checksums and the symbols are made from the signed files. Without those settings the release is
 # built unsigned, as before. SignPath's side is set up from .signpath/artifact-configuration.xml.
 #
@@ -70,7 +70,7 @@ jobs:
           $out = 'build-mono/Release'
           $stage = Join-Path $env:RUNNER_TEMP 'unsigned'
           New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item "$out/MEVR-Setup.exe", "$out/bink2w64.dll" $stage
+          Copy-Item "$out/MEVR-Setup.exe", "$out/bink2w64.dll", "$out/MEVR-Voice.dll" $stage
           # SignPath's list of PE extensions has no .asi: the same file goes under a .dll name and comes back renamed.
           Copy-Item "$out/LE1MEVR.asi" (Join-Path $stage 'LE1MEVR.asi.dll')
           # Every binary carries the same ProductVersion (<version>+<commit>); the artifact configuration checks it.
@@ -108,7 +108,7 @@ jobs:
         run: |
           $out = 'build-mono/Release'
           $signed = Join-Path $env:RUNNER_TEMP 'signed'
-          $map = [ordered]@{ 'MEVR-Setup.exe' = 'MEVR-Setup.exe'; 'bink2w64.dll' = 'bink2w64.dll'; 'LE1MEVR.asi.dll' = 'LE1MEVR.asi' }
+          $map = [ordered]@{ 'MEVR-Setup.exe' = 'MEVR-Setup.exe'; 'bink2w64.dll' = 'bink2w64.dll'; 'LE1MEVR.asi.dll' = 'LE1MEVR.asi'; 'MEVR-Voice.dll' = 'MEVR-Voice.dll' }
           foreach ($from in $map.Keys) {
             $file = Join-Path $signed $from
             $sig = Get-AuthenticodeSignature $file

@@ -93,6 +93,10 @@ int Run(std::wstring commandLine, fs::path const& workDir, std::function<void(st
 
 } // namespace
 
+int RunHidden(std::wstring commandLine, fs::path const& workDir, std::function<void(std::string_view)> const& line, std::atomic<bool> const* cancel) {
+    return Run(std::move(commandLine), workDir, line, cancel);
+}
+
 std::vector<Pack> const& Catalogue() {
     static std::vector<Pack> const kPacks = {
         {

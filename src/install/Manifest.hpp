@@ -40,6 +40,11 @@ struct FileEntry {
     std::string from;    // renamed
     std::string sha256;  // added, replaced: what we wrote (Repair compares against it)
     bool userData = false;
+    // Optional content the setup downloaded (research/33 section 14: "voice/recognizer", "voice/llm-model", ...): "" for the
+    // mod's own files. Verify() leaves these out (Repair can't put a download back; Transaction::VerifyContent checks them),
+    // RemoveContent takes them out, Uninstall like any other file.
+    std::string content;
+    std::uint64_t size = 0;  // content files: their size, for the quick check (a full SHA-256 of 600 MB takes seconds)
     std::vector<ini::Edit> edits;  // edited
     std::vector<TocEdit> toc;      // toc
 };
@@ -156,6 +161,16 @@ public:
     bool CopyIn(std::filesystem::path const& source, std::string_view relative, bool userData = false);
     // Writes `bytes` to `relative`, the same way.
     bool WriteIn(std::string_view relative, std::string_view bytes, bool userData = false);
+    // Moves the downloaded `source` (any drive; copied if it must be) to `relative`, recorded as `content`'s with the SHA-256
+    // and size the caller already checked. An occupant we didn't put there is backed up first (replaced). Never reads it
+    // into memory (the voice model is 600 MB).
+    bool PlaceIn(std::filesystem::path const& source, std::string_view relative, std::string const& sha256, std::string_view content);
+    // Takes out every file recorded as `content`'s (or whose content starts with `content` + "/": "voice" takes all of
+    // voice/*): added ones deleted, replaced ones put back from the backup; then the folders we created that are empty now.
+    // Forgotten as it goes; saved. False if one couldn't be removed (it stays on record).
+    bool RemoveContent(std::string_view content);
+    // `content`'s files (prefix as RemoveContent) that are missing or changed: by size (`deep` false), or by SHA-256.
+    std::vector<std::string> VerifyContent(std::string_view content, bool deep) const;
     // Writes `bytes` only if `relative` doesn't exist (Halcyon's MELEVR.ini: never overwritten). True if it exists now.
     bool WriteIfMissing(std::string_view relative, std::string_view bytes, bool userData = false);
     // Renames `from` to `to` (both relative). An occupant of `to` is moved to the backup folder first.
@@ -199,7 +214,7 @@ public:
     // the manifest. `keepUserData`: files marked userData stay.
     bool Uninstall(bool keepUserData);
 
-    // Files whose content isn't what we wrote (missing or changed), for Repair.
+    // Files whose content isn't what we wrote (missing or changed), for Repair. Not the downloaded optional content's.
     std::vector<std::string> Verify() const;
 
     std::vector<std::string> const& Errors() const { return errors_; }

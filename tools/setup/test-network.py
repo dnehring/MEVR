@@ -16,10 +16,15 @@ https://api.github.com/x -> http://127.0.0.1:<port>/api.github.com/x). On a fake
      a .mem as it is, a failing MEM, the manifest's record, the VR game settings applied again over MEM's, then
      --uninstall --remove-local-data (the mod gone, the textures kept and said so, the scratch %LOCALAPPDATA%\\MEVR gone);
   4. "Install after I quit" (--request --wait-pid, through --preview's real start): the request file the in-game menu
-     writes, read and removed, the page, the wait for the game's exit.
+     writes, read and removed, the page, the wait for the game's exit;
+  5. the voice orders' files (--install-voice, research/33 section 14): the real downloads served from the dev machine's
+     own copies (tools/fetch-voice.ps1's archives in %TEMP% or --voice-cache, models/voice), so the pinned sizes and
+     SHA-256 sums are checked for real; the model not published yet, a wrong file, a wrong digest, the model tier, a
+     larger recognizer added and dropped, a same-size change fetched again, the game's request, Remove, Uninstall.
+     Skipped (not failed) when those copies aren't there.
 
   python -I tools/setup/test-network.py --setup build/Release/MEVR-Setup.exe --fake-game build/fake-game/Release/MassEffect1.exe
-      --fake-mem build/fake-mem/Release/MassEffectModderNoGui.exe --repo . [--quick] [--keep]
+      --fake-mem build/fake-mem/Release/MassEffectModderNoGui.exe --repo . [--quick] [--keep] [--voice-cache <folder>]
 
 ctest runs it as mevr-setup-network. Exit 0 when every check passed.
 """
@@ -571,7 +576,7 @@ def test_request(setup, root, payload, local):
     waiting = next((p for p in parts if p.startswith("while waiting")), "")
     after = next((p for p in parts if p.startswith("after the game exited")), "")
     check(rc == 0, "request: the setup's copy started as the game starts it (exit 0)")
-    check("page: content" in first and "request text: Choose a pack below." in first, "request: opens on Optional content, 'Choose a pack below.'")
+    check("page: content" in first and "request text: Choose what to add below" in first, "request: opens on Optional content, 'Choose what to add below'")
     check(f"game: {root}" in first and "game ok: 1" in first and "installed: 1" in first, "request: found its own game from the ASI folder")
     check("waiting: 1" in first and "waiting: 1" in waiting and "Changes start once the game has exited." in waiting,
           "request: waits while the game still runs (installs disabled)")
@@ -586,10 +591,156 @@ def test_request(setup, root, payload, local):
     check(rc == 0 and "request text: You asked for: ALOT for ME1." in out and not request.exists(), "request: named packs shown (unknown ids dropped)")
     request.write_text("{ not json", encoding="utf-8")
     rc, out = setup.run(["--preview", shots / "broken", "--warp", "--request"], exe=asi_setup, timeout=240)
-    check(rc == 0 and "page: content" in out and "request text: Choose a pack below." in out and not request.exists(),
+    check(rc == 0 and "page: content" in out and "request text: Choose what to add below" in out and not request.exists(),
           "request: a broken request file: Optional content anyway, the file removed")
     rc, out = setup.run(["--uninstall", "--game", root])
     check(rc == 0, "uninstall after the request tests")
+
+
+VOICE_TAG_API = "/api.github.com/repos/dnehring/MEVR/releases/tags/voice-model-1"
+VOICE_MODEL_ASSET = "mevr-voice-qwen3-0.6b-q8_0.gguf"
+VOICE_MODEL_URL = "/github.com/dnehring/MEVR/releases/download/voice-model-1/" + VOICE_MODEL_ASSET
+VOICE_MOONSHINE = "/github.com/moonshine-ai/moonshine/releases/download/v0.1.5/moonshine-voice-windows-x86_64.tar.gz"
+VOICE_LLAMA = "/github.com/ggml-org/llama.cpp/releases/download/b12128/llama-b12128-bin-win-cpu-x64.zip"
+VOICE_MODELS = "/huggingface.co/moonshine-ai/moonshine-voice-assets/resolve/main/model/{size}-streaming-en/quantized_26_08_21/{name}"
+VOICE_FILES = ["streaming_config.json", "frontend.model.ort", "frontend.weights.ort", "encoder.ort", "adapter.ort", "cross_kv.ort",
+               "decoder_kv.ort", "tokenizer.bin"]
+
+
+def file_answer(path):
+    """The file's bytes, read when asked (the archives are tens of MB)."""
+    def respond(h):
+        send(h, 200, Path(path).read_bytes(), {"Content-Type": "application/octet-stream"})
+    return respond
+
+
+def find_voice_sources(repo, cache):
+    """The real downloads, from where tools/fetch-voice.ps1 leaves them on the dev machine: Moonshine's and llama.cpp's
+    archives in %TEMP% (or --voice-cache), the models in models/voice. None for what's missing."""
+    places = [Path(cache)] if cache else []
+    places.append(Path(tempfile.gettempdir()))
+    def first(name):
+        return next((p / name for p in places if (p / name).is_file()), None)
+    models = {}
+    for size in ("tiny", "small"):
+        d = Path(repo) / "models" / "voice" / f"{size}-streaming-en"
+        if all((d / f).is_file() for f in VOICE_FILES):
+            models[size] = d
+    return first("moonshine-voice-windows-x86_64-v0.1.5.tar.gz"), first("llama-b12128-bin-win-cpu-x64.zip"), models
+
+
+def test_voice(setup, base, root, payload, local, repo, cache):
+    print("\n== 5. The voice orders' files (--install-voice, --check-voice, --remove-voice; install/Voice)")
+    moonshine, llama, models = find_voice_sources(repo, cache)
+    if moonshine is None or llama is None or "tiny" not in models or "small" not in models:
+        print("  (skipped: the real downloads aren't on this PC: run tools/fetch-voice.ps1 -Llm, or pass --voice-cache "
+              "with moonshine-voice-windows-x86_64-v0.1.5.tar.gz and llama-b12128-bin-win-cpu-x64.zip)")
+        return
+    asi = root / "Game" / "ME1" / "Binaries" / "Win64" / "ASI"
+    voice = asi / "voice"
+    for size, d in models.items():
+        for name in VOICE_FILES:
+            STATE.set(VOICE_MODELS.format(size=size, name=name), file_answer(d / name))
+    # GitHub's release downloads redirect to its CDN, as the real ones do.
+    STATE.set(VOICE_MOONSHINE, redirect("/objects.githubusercontent.com/voice/moonshine.tar.gz"))
+    STATE.set("/objects.githubusercontent.com/voice/moonshine.tar.gz", file_answer(moonshine))
+    STATE.set(VOICE_LLAMA, file_answer(llama))
+    gguf = b"GGUF a stand-in for the fine-tuned model (test-network.py)" + bytes(4000)
+    gguf_sha = hashlib.sha256(gguf).hexdigest()
+    STATE.set(VOICE_MODEL_URL, redirect("/objects.githubusercontent.com/voice/model.gguf"))
+    STATE.set("/objects.githubusercontent.com/voice/model.gguf", lambda h: send(h, 200, gguf))
+    def release(digest):
+        return {"tag_name": "voice-model-1", "assets": [{"name": VOICE_MODEL_ASSET, "size": len(gguf), "digest": "sha256:" + digest,
+                                                          "browser_download_url": "https://github.com" + VOICE_MODEL_URL.removeprefix("/github.com")}]}
+    voice_args = ["--game", root, "--test-server", base, "--repo", "https://github.com/dnehring/MEVR"]
+
+    # The release carries MEVR-Voice.dll: Install puts it in ASI\voice with the mod.
+    (payload / "voice").mkdir(exist_ok=True)
+    (payload / "voice" / "MEVR-Voice.dll").write_bytes(b"stand-in MEVR-Voice.dll (test-network.py)")
+    rc, out = setup.run(["--install", "--game", root, "--payload", payload, "--no-settings", "--ignore-version"])
+    check(rc == 0 and (voice / "MEVR-Voice.dll").exists(), "voice: Install puts the release's MEVR-Voice.dll in ASI\\voice")
+    check("voice orders: not installed" in out and "MEVR-Voice.dll present" in out, "voice: the status says not installed, the DLL there")
+
+    # 1. The model isn't published yet (no such release: 404): the rest installs, said so.
+    STATE.take_requests()
+    rc, out = setup.run(["--install-voice"] + voice_args, timeout=600)
+    reqs = [r[0] for r in STATE.take_requests()]
+    check(rc == 0 and "isn't published yet" in out, "voice: model not published: the rest installs, said so")
+    check(VOICE_TAG_API in reqs and VOICE_LLAMA not in reqs, "voice: the model looked up first; llama.cpp not fetched without it")
+    check((voice / "onnxruntime.dll").exists() and hashlib.sha256((voice / "onnxruntime.dll").read_bytes()).hexdigest() ==
+          "dec964ab1ee36cc9b0ae247d13b376627992fc57dec0454354017ab8fd84f1ea", "voice: onnxruntime.dll out of Moonshine's release, checked")
+    tiny = voice / "models" / "tiny-streaming-en"
+    check(all((tiny / f).read_bytes() == (models["tiny"] / f).read_bytes() for f in VOICE_FILES), "voice: the tiny models in place")
+    check(not (voice / "llm").exists() and not (voice / "models" / "small-streaming-en").exists(), "voice: nothing else")
+    m = read_manifest(root)
+    tags = sorted({f.get("content", "") for f in m["files"] if f.get("content")})
+    check(tags == ["voice/models-tiny", "voice/recognizer"], f"voice: recorded as content ({tags})")
+    check(any(p["id"] == "voice" and p["method"] == "download" for p in m["packs"]), "voice: 'Voice orders' on record in packs")
+    check("voice orders: recognizer, models-tiny" in out and "texture packs installed: none" in out, "voice: status lines (not a texture pack)")
+    leftovers = list((local / "MEVR" / "downloads" / "voice").glob("*")) if (local / "MEVR" / "downloads" / "voice").exists() else []
+    check(not leftovers, f"voice: the download folder emptied ({[p.name for p in leftovers]})")
+
+    # 2. A model file that isn't what Hugging Face serves (another SHA-256): refused, nothing of it placed; then right.
+    bad = VOICE_MODELS.format(size="small", name="tokenizer.bin")
+    STATE.set(bad, lambda h: send(h, 200, b"x" * 249974))
+    rc, out = setup.run(["--install-voice", "--voice-small"] + voice_args, timeout=600)
+    check(rc != 0 and "SHA-256" in out, "voice: a file with another SHA-256 is refused")
+    check(not (voice / "models" / "small-streaming-en" / "tokenizer.bin").exists(), "voice: the bad file isn't placed")
+    STATE.set(bad, file_answer(models["small"] / "tokenizer.bin"))
+    rc, out = setup.run(["--install-voice", "--voice-small"] + voice_args, timeout=600)
+    check(rc == 0 and all((voice / "models" / "small-streaming-en" / f).exists() for f in VOICE_FILES), "voice: the small models after a retry")
+
+    # 3. The model published with another digest than its file's: refused; then right: llama.cpp and the model, the
+    #    small models taken out (not chosen now).
+    STATE.set(VOICE_TAG_API, json_answer(200, release("0" * 64)))
+    rc, out = setup.run(["--install-voice"] + voice_args, timeout=600)
+    check(rc != 0 and not (voice / "llm" / "model.gguf").exists(), "voice: the model with another digest is refused")
+    STATE.set(VOICE_TAG_API, json_answer(200, release(gguf_sha)))
+    rc, out = setup.run(["--install-voice"] + voice_args, timeout=600)
+    llm = voice / "llm"
+    check(rc == 0 and (llm / "model.gguf").read_bytes() == gguf, "voice: the published model as ASI\\voice\\llm\\model.gguf")
+    check(all((llm / f).exists() for f in ("llama.dll", "ggml.dll", "ggml-base.dll", "libomp.dll", "ggml-cpu-x64.dll")) and
+          not (llm / "llama-server.exe").exists() and not (llm / "mtmd.dll").exists(), "voice: llama.cpp's DLLs, not its tools")
+    check(not (voice / "models" / "small-streaming-en").exists() and "taking out Recognizer model (small)" in out,
+          "voice: the small models taken out when no longer chosen")
+
+    # 4. Checks: by size, by SHA-256; a file changed without changing its size is fetched again.
+    rc, out = setup.run(["--check-voice", "--deep", "--game", root])
+    check(rc == 0 and "voice files are as installed" in out, "voice: --check-voice --deep passes")
+    enc = tiny / "encoder.ort"
+    data = bytearray(enc.read_bytes())
+    data[100] ^= 0xFF
+    enc.write_bytes(bytes(data))
+    rc, quick = setup.run(["--check-voice", "--game", root])
+    rc2, deep = setup.run(["--check-voice", "--deep", "--game", root])
+    check(rc == 0 and rc2 != 0 and "encoder.ort" in deep, "voice: a same-size change: the quick check passes, the deep one finds it")
+    STATE.take_requests()
+    rc, out = setup.run(["--install-voice"] + voice_args, timeout=600)
+    reqs = [r[0] for r in STATE.take_requests()]
+    check(rc == 0 and enc.read_bytes() == (models["tiny"] / "encoder.ort").read_bytes(), "voice: Install fetches the changed file again")
+    check(VOICE_MODELS.format(size="tiny", name="encoder.ort") in reqs and VOICE_LLAMA not in reqs and VOICE_MODEL_URL not in reqs,
+          "voice: only that file is downloaded again")
+
+    # 5. The request from the game names the voice orders; Remove; Uninstall takes the rest.
+    request = local / "MEVR" / "setup.request"
+    request.parent.mkdir(parents=True, exist_ok=True)
+    request.write_text(json.dumps({"page": "content", "packs": ["voice"], "pid": 1}), encoding="utf-8")
+    shots = setup.scratch / "voice-shots"
+    rc, out = setup.run(["--preview", shots, "--warp", "--request", "--game", root], timeout=240)
+    check(rc == 0 and "request text: You asked for: Voice orders." in out and "(installed)" in out.split("voice:")[-1].splitlines()[0],
+          "voice: the game's request names the voice orders; the card says installed")
+    rc, out = setup.run(["--remove-voice", "--game", root])
+    check(rc == 0 and not (voice / "onnxruntime.dll").exists() and not llm.exists() and not (voice / "models").exists(),
+          "voice: Remove takes the downloads out")
+    check((voice / "MEVR-Voice.dll").exists() and "voice orders: not installed" in out, "voice: MEVR-Voice.dll stays with the mod")
+    m = read_manifest(root)
+    check(not any(p["id"] == "voice" for p in m["packs"]) and not any(f.get("content") for f in m["files"]), "voice: off the record")
+    rc, out = setup.run(["--install-voice", "--no-voice-llm"] + voice_args, timeout=600)
+    check(rc == 0 and (voice / "onnxruntime.dll").exists() and not llm.exists(), "voice: --no-voice-llm: the recognizer only")
+    rc, out = setup.run(["--uninstall", "--game", root])
+    check(rc == 0 and not voice.exists(), "voice: Uninstall takes ASI\\voice out with the mod")
+    (payload / "voice" / "MEVR-Voice.dll").unlink()
+    (payload / "voice").rmdir()
 
 
 def main():
@@ -600,6 +751,7 @@ def main():
     parser.add_argument("--repo", required=True)
     parser.add_argument("--quick", action="store_true", help="skip the 30 s timeout case")
     parser.add_argument("--keep", action="store_true", help="keep the scratch folder")
+    parser.add_argument("--voice-cache", help="a folder with Moonshine's and llama.cpp's release archives (default: %%TEMP%%)")
     args = parser.parse_args()
     for f in (args.setup, args.fake_game, args.fake_mem):
         if not Path(f).exists():
@@ -624,6 +776,7 @@ def main():
         root, payload = make_fake_game(scratch, Path(args.fake_game), Path(args.repo))
         test_packs(setup, root, payload, local)
         test_request(setup, root, payload, local)
+        test_voice(setup, base, root, payload, local, Path(args.repo), args.voice_cache)
     finally:
         server.shutdown()
         if not args.keep:

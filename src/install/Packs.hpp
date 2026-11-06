@@ -124,6 +124,11 @@ std::vector<Unpacker> Unpackers();
 std::string UnpackMem(std::filesystem::path const& archive);
 std::string UnpackMem(std::filesystem::path const& archive, std::vector<Unpacker> const& tools);
 
+// Runs `commandLine` hidden (no window), calling `line` for each line of its output; `cancel` ends it. Its exit code, or -1
+// if it couldn't start. The voice content unpacks its archives with tar.exe through it (install/Voice).
+int RunHidden(std::wstring commandLine, std::filesystem::path const& workDir, std::function<void(std::string_view)> const& line,
+    std::atomic<bool> const* cancel);
+
 // One argument for a Windows command line (CommandLineToArgvW's rules: a trailing backslash is doubled before the
 // closing quote, so "D:\Games\" doesn't swallow it).
 std::wstring QuoteArg(std::wstring_view arg);

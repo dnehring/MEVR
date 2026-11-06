@@ -16,15 +16,20 @@
 #     payload\cockpit\*     the Mako's cockpit (research/47): BIOG_MEVR_Cockpit.pcc (-CockpitPackage, default the hull
 #                           packaging's build\cockpit-hull) and cockpit.txt (tools/cockpit/place.py --script); MEVR Setup
 #                           puts the package in CookedPCConsole with its PCConsoleTOC.bin entry. -NoCockpit leaves it out.
+#     payload\voice\MEVR-Voice.dll  the voice orders' recognizer interface (research/54; statically linked with Moonshine
+#                           Voice's library, MIT: its licence goes in licenses\). MEVR Setup puts it in ASI\voice with the
+#                           mod; the runtime and models it needs are optional content the setup downloads (install/Voice,
+#                           research/33 section 14). Moonshine's SDK is fetched first if external\moonshine-voice is missing
+#                           (tools/fetch-voice.ps1 -Models @(), 26 MB). -NoVoice leaves it out.
 #   dist\MEVR-<version>-symbols\
-#     *.pdb and the binaries they match (LE1MEVR.asi, bink2w64.dll, MEVR-Setup.exe), to symbolise the stacks in players'
+#     *.pdb and the binaries they match (LE1MEVR.asi, bink2w64.dll, MEVR-Setup.exe, MEVR-Voice.dll), to symbolise the stacks in players'
 #     crash reports. Kept next to the players' folder, never inside it (the binaries name their PDB without a path:
 #     /PDBALTPATH, CMakeLists.txt).
 #   with -Zip: dist\MEVR-<version>.zip, dist\MEVR-<version>-symbols.zip, dist\MEVR-<version>-SHA256SUMS.txt and
 #     dist\MEVR-<version>-release-notes.md (.github/release-notes-template.md with this version's CHANGELOG.md entry).
 #
 #   tools\package-release.ps1 [-Version 0.1.0] [-Tag v0.1.0] [-NoBuild] [-Zip] [-AllowDirty] [-SkipTests]
-#                             [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit]
+#                             [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit] [-NoVoice]
 #
 # The version is CMake's: project(MEVR VERSION x.y.z) in CMakeLists.txt is the only place it is written. -Version only
 # confirms it. It refuses to package (docs/release-checklist.md section 5):
@@ -35,7 +40,7 @@
 #   - a source file without its SPDX line (python tools/check-spdx.py);
 #   - a failing ctest in build-mono, unless -SkipTests;
 #   - an ASI that links LExSDKv2 (no licence), unless -LexSdkPermission says its author agreed;
-#   - a missing licence text, or a missing cockpit package (unless -NoCockpit).
+#   - a missing licence text, a missing cockpit package (unless -NoCockpit), or no MEVR-Voice.dll (unless -NoVoice).
 # It warns when HEAD has no tag v<version> and when the cockpit package is older than its sources (tools/cockpit,
 # concept/assets/game-ready: rebuild it with tools/cockpit/package). Texture packs are never bundled.
 #
@@ -49,7 +54,8 @@ param(
     [switch]$SkipTests,
     [switch]$LexSdkPermission,
     [string]$CockpitPackage = '',
-    [switch]$NoCockpit
+    [switch]$NoCockpit,
+    [switch]$NoVoice
 )
 
 $ErrorActionPreference = 'Stop'
@@ -124,14 +130,28 @@ if (-not $NoBuild) {
     if (-not (Select-String -Path (Join-Path $buildDir 'CMakeCache.txt') -Pattern '^MEVR_HOT_RELOAD:BOOL=OFF' -Quiet)) {
         throw "$buildDir isn't a monolithic build (MEVR_HOT_RELOAD must be OFF)"
     }
+    # The voice orders' DLL needs Moonshine Voice's prebuilt library (gitignored): fetched once, then CMake configured again
+    # so it sees it (CMakeLists.txt builds MEVR-Voice only when external\moonshine-voice is there).
+    if (-not $NoVoice -and -not (Test-Path (Join-Path $repo 'external\moonshine-voice\lib\moonshine.lib'))) {
+        Invoke-Native { & (Join-Path $repo 'tools\fetch-voice.ps1') -Models @() }
+        if ($LASTEXITCODE -ne 0 -and -not (Test-Path (Join-Path $repo 'external\moonshine-voice\lib\moonshine.lib'))) {
+            throw 'tools/fetch-voice.ps1 failed: no Moonshine Voice SDK for MEVR-Voice.dll (or pass -NoVoice)'
+        }
+    }
+    if (-not $NoVoice -and -not (Test-Path (Join-Path $buildDir 'MEVR-Voice.vcxproj'))) {
+        Invoke-Native { cmake -S $repo -B $buildDir }
+        if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
+    }
     $targets = @('MEVR-LE1', 'MEVR-Loader', 'MEVR-Setup')
+    if (-not $NoVoice) { $targets += 'MEVR-Voice' }
     if (-not $SkipTests) { $targets += 'mevr-test-programs' }  # everything ctest runs (CMakeLists.txt)
     Invoke-Native { cmake --build $buildDir --config Release --parallel --target $targets }
     if ($LASTEXITCODE -ne 0) { throw 'build failed' }
 }
 
 $out = Join-Path $buildDir 'Release'
-$binaries = 'LE1MEVR.asi', 'bink2w64.dll', 'MEVR-Setup.exe'
+$binaries = @('LE1MEVR.asi', 'bink2w64.dll', 'MEVR-Setup.exe')
+if (-not $NoVoice) { $binaries += 'MEVR-Voice.dll' }
 foreach ($f in $binaries) {
     if (-not (Test-Path (Join-Path $out $f))) { throw "Not built: $(Join-Path $out $f)" }
 }
@@ -187,10 +207,13 @@ $licences = [ordered]@{
     'TitilliumWeb-OFL.txt'           = 'third_party\fonts\TitilliumWeb-OFL.txt'
     'Lucide-ISC.txt'                 = 'third_party\lucide\LICENSE.txt'
 }
+# MEVR-Voice.dll carries Moonshine Voice's static library (MIT, its LICENSE with its own third-party notices).
+if (-not $NoVoice) { $licences['MoonshineVoice-MIT.txt'] = 'external\moonshine-voice\LICENSE' }
 foreach ($source in $licences.Values) {
     if (-not (Test-Path (Join-Path $repo $source))) { throw "Licence text missing: $source (fill external\ and third_party\ first)" }
 }
-$pdbs = 'LE1MEVR.pdb', 'bink2w64.pdb', 'MEVR-Setup.pdb'
+$pdbs = @('LE1MEVR.pdb', 'bink2w64.pdb', 'MEVR-Setup.pdb')
+if (-not $NoVoice) { $pdbs += 'MEVR-Voice.pdb' }
 foreach ($f in $pdbs) {
     if (-not (Test-Path (Join-Path $out $f))) { throw "No $f in $out (the release binaries link with /DEBUG): rebuild" }
 }
@@ -205,6 +228,13 @@ Copy-Item (Join-Path $out 'LE1MEVR.asi') $payload
 Copy-Item (Join-Path $out 'bink2w64.dll') $payload
 Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $payload 'fonts')
 Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $payload 'menu')
+if ($NoVoice) {
+    Write-Warning 'No MEVR-Voice.dll (-NoVoice): players of this package get no voice orders, even with the downloads.'
+} else {
+    $voiceDir = Join-Path $payload 'voice'
+    New-Item -ItemType Directory -Force $voiceDir | Out-Null
+    Copy-Item (Join-Path $out 'MEVR-Voice.dll') $voiceDir  # not onnxruntime.dll: the setup downloads it (install/Voice)
+}
 if (-not $NoCockpit) {
     if (-not $CockpitPackage) { $CockpitPackage = Join-Path $repo 'build\cockpit-hull\BIOG_MEVR_Cockpit.pcc' }
     if (-not (Test-Path $CockpitPackage)) {
@@ -245,7 +275,11 @@ New-Item -ItemType Directory -Force $licenceDir | Out-Null
 foreach ($name in $licences.Keys) {
     Copy-Item (Join-Path $repo $licences[$name]) (Join-Path $licenceDir $name)
 }
-$ini = "; MEVR Setup's settings.`r`n[Update]`r`n; The GitHub repository whose Releases the setup checks (https://github.com/OWNER/REPO turns the check off).`r`nrepo = https://github.com/dnehring/MEVR`r`n"
+$ini = "; MEVR Setup's settings.`r`n[Update]`r`n; The GitHub repository whose Releases the setup checks (https://github.com/OWNER/REPO turns the check off).`r`nrepo = https://github.com/dnehring/MEVR`r`n" +
+    "`r`n[Voice]`r`n; The voice orders' fine-tuned model (Optional content, research/33 section 14): the asset modelAsset of the release`r`n" +
+    "; modelTag in [Update] repo (or modelRepo). modelUrl = https://... downloads that instead (checked against modelSha256 and`r`n" +
+    "; modelSize when given). Until the release exists the setup installs the rest and says the model isn't published yet.`r`n" +
+    ";modelTag = voice-model-1`r`n;modelAsset = mevr-voice-qwen3-0.6b-q8_0.gguf`r`n"
 [IO.File]::WriteAllText((Join-Path $dist 'MEVR-Setup.ini'), $ini)
 
 # The symbols: the PDBs and the exact binaries they belong to, next to the players' folder.
@@ -255,7 +289,7 @@ New-Item -ItemType Directory -Force $symbols | Out-Null
 foreach ($f in $pdbs + $binaries) {
     Copy-Item (Join-Path $out $f) $symbols
 }
-$symbolsNote = "MEVR $Version (commit $head): the PDBs of the release's three binaries, and the binaries they match.`r`n" +
+$symbolsNote = "MEVR $Version (commit $head): the PDBs of the release's binaries, and the binaries they match.`r`n" +
     "For symbolising the stacks in players' crash reports (crash-breadcrumbs.txt, minidumps): point the debugger's symbol`r`n" +
     "path here. Not for players; never put these in the players' zip.`r`n"
 [IO.File]::WriteAllText((Join-Path $symbols 'README.txt'), $symbolsNote)
