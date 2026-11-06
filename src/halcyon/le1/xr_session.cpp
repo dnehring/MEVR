@@ -3944,7 +3944,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         // the reason ME2 (pacing always-on) never shows it. vrCineActive is bit-identical to the
         // old inCutsceneMode gate for cutscenes (a flat cine already forces forceFlatCine) and
         // simply adds the convo lane; flat-presented cine and gameplay are untouched.
-        const bool cinePace60 = paceCfg.cineFpsCap && vrCineActive && !forceFlatCine;
+        const bool cinePace60 = paceCfg.cineFpsCap && vrCineActive && !forceFlatCine &&
+                                !(mevrCineScreen && MELEVR::MevrBridge::CineScreenFullRate());   // [MEVR] the screen: the headset's rate
         // [CINEPACE-ADAPT 2026-08-12] The fixed 60fps cap has no answer for shots the GPU cannot
         // hold at 60: the comm-room screen segment measured avgMs=16.67 maxMs=17.32 headroom=-0%
         // (pinned exactly at the budget; ordinary cutscene shots run 8-12ms) - frames landing a

@@ -33,6 +33,10 @@ struct Settings {
     float aspect = 16.0f / 9.0f; // aspect: the screen's shape (width / height): the eye image's middle band of that shape, the
                                  // director's 16:9 frame (UE3's lens is horizontal: a taller render only adds sky and floor);
                                  // 0 = the whole, nearly square image (the owner in the PS VR2, 2026-11-06: "more cinematic")
+    bool fullRate = true;        // fullRate: the screen at the headset's own rate; 0: Halcyon's cinematic cap (cineFpsCap: half the
+                                 // display rate, chosen for full-VR cutscenes on a 120 Hz headset, where half is the 60 the
+                                 // cutscenes were made for; at 90 Hz it is 45, every picture shown twice, and the hold read as
+                                 // ~30 ms of CPU frame time: the owner, 2026-11-06, "the cpu timing explodes")
 };
 
 inline constexpr float kMinDistanceM = 1.0f;

@@ -482,6 +482,9 @@ bool FrontEndHold(int gameMode) noexcept;
 // "within the bounding box of like a visual monitor, but it was still 3D"), false for the flat panel. Only before the first
 // load from the menus: the load itself is the flat panel. Prerendered movies go to the flat panel either way, at once.
 bool FrontEndOnScreen() noexcept;
+// Present thread: [Cinematics] fullRate (default 1): the 3D cinema screen runs at the headset's rate instead of Halcyon's
+// cinematic cap (cineFpsCap, half the display rate: 45 on a 90 Hz headset).
+bool CineScreenFullRate() noexcept;
 // Present thread, after FrontEndHold: the start-up's boot before the title (its unreadable byte, the logos' movie). With the
 // front end on the 3D screen it shows flat as a movie would (the cutscene latched: head look parked), so the screen comes up
 // once, with the title.
