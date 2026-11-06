@@ -306,10 +306,12 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
   press about it, not ours. Done in the repository: the README opens with "MEVR: Mass Effect Legendary Edition in VR"
   and a plain description; `site/` is a landing page (title, description, structured data, FAQ, sitemap, not-affiliated
   note) that `.github/workflows/pages.yml` publishes at https://dnehring.github.io/MEVR/. The owner's steps:
-  - [ ] Settings > Pages > Source: GitHub Actions, then push (the Pages run deploys `site/`).
-  - [ ] The repository's About: website https://dnehring.github.io/MEVR/, topics (mass-effect,
-    mass-effect-legendary-edition, vr, virtual-reality, vr-mod, openxr, steamvr, game-mod), and a description that
-    starts with the words people search ("Mass Effect Legendary Edition VR mod: ...").
+  - [x] Settings > Pages > Source: GitHub Actions (switched on 2026-11-05 at the owner's word, through the API). Left:
+    the push that brings `pages.yml` and `site/`; its Pages run deploys the site.
+  - [x] The repository's About (set 2026-11-05 at the owner's word): website https://dnehring.github.io/MEVR/, topics
+    (mass-effect, mass-effect-legendary-edition, vr, virtual-reality, vr-mod, openxr, steamvr, game-mod), and the
+    description "Mass Effect Legendary Edition VR mod: play Mass Effect 1 in VR with motion controllers, body holsters
+    and squad orders. Free and open source."
   - [ ] Google Search Console: add https://dnehring.github.io/MEVR/ (an HTML-file or meta-tag check, added to `site/`),
     submit `sitemap.xml`, request indexing.
   - [ ] Publish v0.1.0 (a release page), the Nexus Mods page (dist/MEVR-mod-page.md), and posts where VR and Mass
