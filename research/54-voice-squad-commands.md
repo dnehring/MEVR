@@ -400,6 +400,27 @@ until it's calm (then they follow), relieved, or "stay there"; `holdFormation = 
 "Ashley, move up" (`QuickCommandMoveTo` true) therefore sent her up the head's line, not the hand's: not re-checked yet, the
 game folder was the install test's.
 
+#### The selector and the double tap (2026-11-05, late evening)
+
+The user, after the first build: picking a squadmate by pointing fails exactly when it matters, out of sight, behind cover ("we
+can't rely on sight alone"; there's no d-pad), and asked for "a mini selector menu ... hold b, choose between squad mates, and the
+arc on the hand denotes placement", and "double b will have the squad all return to shepherd". Built in 5ff56ac:
+- **The selector** ([core/vr/SquadPlace](../src/core/vr/SquadPlace.hpp), unit-tested): tiles in ME1's d-pad order, [first squadmate
+  | Squad | second] with two (`MemberOfTile`; the first is `squad_weapons::Members()[0]`), [Squad] alone with one; each hold starts on
+  the squad. A sideways flick of the right stick past 0.6 steps one tile, re-armed inside 0.3 (a stick already pushed at the press
+  waits for the centre); holding it over never repeats. The pick is felt: one 30 ms pulse for the first squadmate, two for the second
+  (90 ms apart), a 90 ms one for the squad. Choosing and aiming are one gesture: hold, flick, aim, let go.
+- **The stick is the selector's while B is held:** `gamepad::Options::squadPlace` (`kFlagSquadPlace`, bit 26; an older host ignores
+  it and the game's own turn still sees the stick) keeps the right stick centred for the game, and game/comfort's snap or smooth turn
+  reads nothing from it.
+- **The double tap:** a blip (shorter than `placeMinHoldS`) and a second press within 0.35 s of its release is a follow for everyone
+  at once (`squad_orders::Give`), never a hold. A placement let go and a quick press after it isn't one (only a blip arms it).
+- **The drawing** (host, `plugin/SquadPlaceDraw`): the tiles stand 9 cm above the hand across the line of sight, about the same
+  angular size at any reach, the lit one larger, in its colour and underlined, the others grey; the ring's label names who goes
+  (or "Regroup"). The names are the menus' Rajdhani from `ASI\fonts`. The View grew (tiles, the lit tile, names, the hand), still
+  v32 (size-checked).
+Pointing to pick is gone. Not yet seen in the game (the game folder went to the install test, then the user's playtest).
+
 ## The rule parser (2026-11-04, later)
 
 Tier 1 of research/54's parser design, [src/core/vr/SquadParser.hpp](../src/core/vr/SquadParser.hpp) (pure, unit-tested,

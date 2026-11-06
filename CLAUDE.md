@@ -753,7 +753,10 @@ switching frameworks.
   relieved, plus each one's AI `BioAiController.PushMoveToPoint`: **`QuickCommandMoveTo` ignores the point in VR**, it lands along the
   head's facing; `CallHold` sets the HOLD formation before the point, a drifted hold re-asserts the point, never a move; measured 0.6 m
   from the ring; the
-  one dispatcher). The right ray on a squadmate as B goes down: that one alone (amber ring); within `followWithinM` of Shepard: a follow
+  one dispatcher). **Who goes: a selector above the hand** (5ff56ac; [first squadmate | Squad | second], ME1's d-pad order, starting on
+  the squad), stepped by a sideways flick of the right stick (one pulse for the first, two for the second, a long one for the squad; the
+  stick reaches neither the game, `gamepad::kFlagSquadPlace`, nor the comfort turn while B is held); the ring names them (amber for
+  one, blue for the squad). **B double-tapped: the whole squad back to Shepard.** Within `followWithinM` of Shepard: a follow
   (green); a wall, a steep slope or nothing in reach: called off (red). Off while `meleeButton = 1`, in the squad's or the power wheel,
   anywhere but on foot (`place = 0` off). The host draws it in a projection layer of its own (galaxy_draw's renderer, over the world).
   `mevr place aim <pitchDeg> [yawDeg] | release` without controllers. Logs `squad place:`; snapshot `"mod"."squadPlace"`, layers

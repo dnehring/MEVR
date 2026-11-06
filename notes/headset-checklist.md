@@ -121,10 +121,13 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   support grip or a grenade ever becomes an order, and how long the AI takes to react (the game's own 1-1.5 s order
   delays). Built 2026-11-04. (research/54 "The flat orders", `[SquadOrders]`)
 - [ ] Squad placement (session: VR mod for Mass Effect Legendary Edition, built 2026-11-05): hold the right B on foot, an arc
-  leaves your right hand and a ring lies where it lands; let go and the squad walks there. Point at a squadmate as you press
-  B to send only them (amber ring); drop it at your feet for a regroup (green); on a wall or out of reach it's red and calls
-  off. Judge: the arc's reach (14 m/s: 20 m at 45 degrees), its thickness and brightness, whether the ring reads as "they'll
-  go here", the haptic ticks, and whether the arc drawn over walls (no depth test) confuses. (research/54 "Placement by an arc")
+  leaves your right hand, a ring lies where it lands, and three name tiles stand above your hand: flick the right stick left
+  or right (while still holding B) to pick the first squadmate, the squad or the second; let go and they walk there and hold
+  it. Double-tap B: everyone back to you. Drop it at your feet for a regroup (green); on a wall or out of reach it's red and
+  calls off. Judge: the tiles' size and legibility at the hand, whether one / two / long pulses tell who without looking,
+  whether a flick ever misfires while aiming, the double tap's timing (0.35 s), the arc's reach (14 m/s: 20 m at 45 degrees),
+  and whether the arc drawn over walls (no depth test) confuses. With two squadmates, both sent to one ring: do they crowd?
+  (research/54 "Placement by an arc", "The selector")
 - [ ] In a fight, `mevr say "<name>, hold here"` typed by Claude while you watch: does a held squadmate stay put under
   the HOLD formation, does a hurt or crowded one visibly fall back to cover and come back when it's calm, and does being
   re-ordered every few seconds make them twitch. Claude can read the logs; only you can see whether it looks right.
