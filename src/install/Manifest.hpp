@@ -164,6 +164,10 @@ public:
     bool EditIni(std::string_view relative, std::function<std::string(std::string_view, std::vector<ini::Edit>*)> const& edit);
     // Reverts the recorded edits of one ini file (Restore for the game settings) and forgets them.
     bool RevertIni(std::string_view relative);
+    // Which values in the edited ini files the mod wrote after the install (settings::ModWrites: the game's resolution
+    // from Halcyon's profiles, its depth of field): RevertIni and Uninstall put the player's values back over those too.
+    // Set before either; read before Uninstall removes the mod's own files.
+    void ModWrites(ini::Ours ours) { modWrites_ = std::move(ours); }
     // After another program wrote the ini file (Mass Effect Modder writes the game's graphics settings: research/33 section
     // 3): each key this install edited that held our value in `before` (the file's text before that program ran) and holds
     // another now gets ours back. A key the player had changed already stays theirs. The record keeps each key's first
@@ -212,6 +216,7 @@ private:
     bool exists_ = false;
     std::vector<std::string> errors_;
     std::vector<std::string> log_;
+    ini::Ours modWrites_;
 };
 
 } // namespace mevr::install

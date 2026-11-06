@@ -374,6 +374,46 @@ void TestGameSettings() {
     std::string const changed = ini::Set(kept, "SystemSettings", "FoliageDrawRadiusMultiplier", "0.750000");
     ICHECK(ini::Get(ini::Revert(changed, keepEdits), "SystemSettings", "FoliageDrawRadiusMultiplier") == std::optional<std::string>("0.750000"));
     ICHECK(ini::Get(ini::Revert(changed, keepEdits), "SystemSettings", "DynamicShadows") == std::optional<std::string>("True"));
+
+    // What the mod writes after the install (research/33 section 13): the first VR start's eye size and our menu's resolution
+    // go through Halcyon's profile into GamerSettings.ini (the game copies them into BIOEngine.ini), Halcyon's depth of field
+    // at every launch. Uninstall puts the player's values back over those (ModWrites), never over the player's own.
+    std::string const halcyon = "[profile:Default]\nsfr2ResX = 2824\nsfr2ResY = 2880\nmonoResX = 3840\nmonoResY = 2160\nexpectedResX = 0\n";
+    ini::Ours const mod = st::ModWrites(halcyon);
+    st::Choices autoChoice;
+    autoChoice.target = st::TargetFor("auto", 0, 0);
+    autoChoice.eyeSizeAtFirstStart = true;
+    std::vector<ini::Edit> autoEdits;
+    std::string const installed = st::ApplyGamerSettings(original, autoChoice, &autoEdits);
+    std::string afterPlay = ini::Set(ini::Set(installed, "SystemSettings", "ResX", "2824"), "SystemSettings", "ResY", "2880");
+    afterPlay = ini::Set(afterPlay, "SystemSettings", "DepthOfField", "True");  // Halcyon adds the line when it's missing
+    ICHECK(ini::Revert(afterPlay, autoEdits) != original);  // the gap: the eye size and the line stayed
+    ICHECK(ini::Revert(afterPlay, autoEdits, mod) == original);
+    // A resolution the player chose in the game's own options (none of Halcyon's) stays theirs.
+    std::string const own = ini::Set(installed, "SystemSettings", "ResX", "1920");
+    ICHECK(ini::Get(ini::Revert(own, autoEdits, mod), "SystemSettings", "ResX") == std::optional<std::string>("1920"));
+    // "keep": ResX/ResY and DepthOfField recorded as they are, nothing changed for them; the mod's later values put back.
+    std::string const withDof = "[SystemSettings]\r\nResX=2560\r\nResY=1440\r\nDepthOfField=False\r\n\r\n[HDR]\r\nDesiredRange=DynamicRange_SDR\r\n";
+    std::vector<ini::Edit> keepResEdits;
+    std::string const keptInstall = st::ApplyGamerSettings(withDof, keep, &keepResEdits);
+    ICHECK(ini::Get(keptInstall, "SystemSettings", "ResX") == std::optional<std::string>("2560"));
+    ICHECK(ini::Get(keptInstall, "SystemSettings", "DepthOfField") == std::optional<std::string>("False"));
+    std::string modded = ini::Set(ini::Set(keptInstall, "SystemSettings", "ResX", "3840"), "SystemSettings", "ResY", "2160");
+    modded = ini::Set(modded, "SystemSettings", "DepthOfField", "True");
+    ICHECK(ini::Revert(modded, keepResEdits, mod) == withDof);
+    ICHECK(ini::Revert(keptInstall, keepResEdits, mod) == withDof);  // nothing written since: the same file
+    // Only [SystemSettings]; a value never in Halcyon's profiles isn't the mod's; "0" (expectedResX unset) never is.
+    ICHECK(!mod(ini::Edit{"Other", "ResX", std::string("1"), "1", 0}, "2824"));
+    ICHECK(!mod(ini::Edit{"SystemSettings", "ResX", std::string("1"), "1", 0}, "0"));
+    ICHECK(mod(ini::Edit{"SystemSettings", "resy", std::string("1"), "1", 0}, "2160"));
+    ICHECK(!st::ModWrites("")(ini::Edit{"SystemSettings", "ResX", std::string("1"), "1", 0}, "2824"));
+    // ini::Record: once per key, an earlier edit wins.
+    std::vector<ini::Edit> recorded;
+    ini::Record(withDof, "SystemSettings", "ResX", &recorded);
+    ini::Record(withDof, "SystemSettings", "ResX", &recorded);
+    ini::Record(withDof, "SystemSettings", "Missing", &recorded);
+    ICHECK(recorded.size() == 2 && recorded[0].before == std::optional<std::string>("2560") && recorded[0].after == "2560" &&
+           !recorded[1].before && recorded[1].after.empty());
 }
 
 void TestDetect() {

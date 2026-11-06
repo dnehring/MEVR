@@ -38,7 +38,9 @@ struct Choices {
     // DynamicShadows=False (Halcyon's default; the scene renders twice a frame).
 };
 
-// GamerSettings.ini with the choices applied.
+// GamerSettings.ini with the choices applied. ResX/ResY (when the target is "keep") and DepthOfField are recorded as they
+// are (ini::Record): the mod writes them later (our menu's resolution and the first VR start's eye size through
+// Halcyon's profile; Halcyon's depth of field at every launch), and ModWrites lets Uninstall put the player's back.
 std::string ApplyGamerSettings(std::string_view text, Choices const& choices, std::vector<ini::Edit>* edits);
 // BIOEngine.ini: SmoothFrameRate=FALSE wherever a section sets it TRUE (the game's 60 fps cap). And in its [SystemSettings]
 // (only where the file has that section), the values the game copies there from its live settings during play
@@ -47,6 +49,12 @@ std::string ApplyGamerSettings(std::string_view text, Choices const& choices, st
 // FoliageDrawRadiusMultiplier=0.500000. In the game's own spelling, so ini::Revert finds them unchanged after the game
 // rewrote the section, and Uninstall puts back the player's values. UseVsync and [HDR] aren't copied by the game: left alone.
 std::string ApplyEngineSettings(std::string_view text, Choices const& choices, std::vector<ini::Edit>* edits);
+
+// The values in GamerSettings.ini's and BIOEngine.ini's [SystemSettings] that the mod wrote after the install, for
+// Uninstall and Restore (Transaction::ModWrites), from Halcyon's MELEVR.ini as it is then (`halcyonIni`, "" if gone):
+// a ResX/ResY equal to any of its profiles' resolutions (Halcyon writes the active mode's into GamerSettings.ini, and the
+// game copies it into BIOEngine.ini), and DepthOfField whatever it holds (Halcyon writes it at every launch).
+ini::Ours ModWrites(std::string_view halcyonIni);
 
 // What a GamerSettings.ini holds now, for the Settings page: "2824 × 2880", "On"/"Off"...
 struct Current {

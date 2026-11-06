@@ -286,12 +286,28 @@ std::string DropIfEmpty(std::string_view text, std::string_view section) {
 
 } // namespace
 
-std::string Revert(std::string_view text, std::vector<Edit> const& edits) {
+void Record(std::string_view text, std::string_view section, std::string_view key, std::vector<Edit>* edits) {
+    if (edits == nullptr) {
+        return;
+    }
+    for (Edit const& e : *edits) {
+        if (EqualNoCase(e.section, section) && EqualNoCase(e.key, key) && e.occurrence == 0) {
+            return;
+        }
+    }
+    std::optional<std::string> const now = Get(text, section, key);
+    edits->push_back(Edit{std::string(section), std::string(key), now, now.value_or(std::string()), 0});
+}
+
+std::string Revert(std::string_view text, std::vector<Edit> const& edits, Ours const& ours) {
     std::string out(text);
     for (auto it = edits.rbegin(); it != edits.rend(); ++it) {
         auto const now = GetNth(out, it->section, it->key, it->occurrence);
-        if (!now || *now != it->after) {
+        if (!now || (*now != it->after && !(ours && ours(*it, *now)))) {
             continue;  // the player's own value since: theirs
+        }
+        if (it->before && *now == *it->before) {
+            continue;  // already the player's (a recorded value the mod never changed)
         }
         if (it->before) {
             out = SetNth(out, it->section, it->key, it->occurrence, *it->before);

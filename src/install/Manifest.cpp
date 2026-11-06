@@ -533,10 +533,13 @@ bool Transaction::EditIni(std::string_view relative, std::function<std::string(s
     bool const record = !ours || preexisting;
     std::vector<ini::Edit> edits;
     std::string const changed = edit(*text, record ? &edits : nullptr);
-    if (changed == *text) {
+    bool const textChanged = changed != *text;
+    if (!textChanged && edits.empty()) {
         return true;
     }
-    if (!WriteFileAtomic(target, changed)) {
+    // Edits without a change are values recorded as they are (ini::Record: keys the mod may write later): on record,
+    // nothing written.
+    if (textChanged && !WriteFileAtomic(target, changed)) {
         Fail("couldn't write " + std::string(relative) + WriteFailureHint(target));
         return false;
     }
@@ -558,7 +561,10 @@ bool Transaction::EditIni(std::string_view relative, std::function<std::string(s
             ini::Merge(entry->edits, e);
         }
     }
-    Note("edited " + std::string(relative) + " (" + std::to_string(edits.size()) + " values)");
+    if (textChanged) {
+        auto const values = std::count_if(edits.begin(), edits.end(), [](ini::Edit const& e) { return e.before != std::optional<std::string>(e.after); });
+        Note("edited " + std::string(relative) + " (" + std::to_string(values) + " values)");
+    }
     return Save();
 }
 
@@ -630,7 +636,7 @@ bool Transaction::RevertIni(std::string_view relative) {
     }
     fs::path const target = layout_.Full(relative);
     if (auto const text = ReadFile(target)) {
-        std::string const reverted = ini::Revert(*text, entry->edits);
+        std::string const reverted = ini::Revert(*text, entry->edits, modWrites_);
         if (reverted != *text && !WriteFileAtomic(target, reverted)) {
             Fail("couldn't write " + std::string(relative));
             return false;
@@ -746,7 +752,7 @@ bool Transaction::Uninstall(bool keepUserData) {
                 // Kept, with what we changed in it put back (each value still as we set it; the player's since stay).
                 if (!f.edits.empty()) {
                     if (auto const text = ReadFile(target)) {
-                        std::string const reverted = ini::Revert(*text, f.edits);
+                        std::string const reverted = ini::Revert(*text, f.edits, modWrites_);
                         if (reverted != *text && !WriteFileAtomic(target, reverted)) {
                             Fail("couldn't restore the values in " + f.path);
                             ok = false;
@@ -820,7 +826,7 @@ bool Transaction::Uninstall(bool keepUserData) {
             }
         } else if (f.action == "edited") {
             if (auto const text = ReadFile(target)) {
-                std::string const reverted = ini::Revert(*text, f.edits);
+                std::string const reverted = ini::Revert(*text, f.edits, modWrites_);
                 if (reverted != *text && !WriteFileAtomic(target, reverted)) {
                     Fail("couldn't restore the values in " + f.path);
                     ok = false;

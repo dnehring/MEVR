@@ -223,6 +223,18 @@ Check ((Test-Path (Join-Path $fakeLocal 'report.last')) -and (Test-Path (Join-Pa
 Check (-not (Compare-Object $beforeReport (Snapshot))) 'report: the game folder untouched'
 # The fake log stays: the uninstall below removes the mod's run-time files and the Logs folder (on record as ours).
 
+# What the mod writes while it's installed (research/33 section 13): the first VR start's eye size through Halcyon's profile
+# into GamerSettings.ini (the game copies it into BIOEngine.ini), and Halcyon's DepthOfField line at the top of the section.
+# The uninstall puts the player's values back over those too.
+$melevrPath = Join-Path $win64 'ASI\MELEVR.ini'
+[IO.File]::WriteAllText($melevrPath, ([IO.File]::ReadAllText($melevrPath) -replace '(?m)^sfr2ResX = \d+', 'sfr2ResX = 2824' -replace '(?m)^sfr2ResY = \d+', 'sfr2ResY = 2880'))
+foreach ($f in (Join-Path $config 'GamerSettings.ini'), (Join-Path $config 'BIOEngine.ini')) {
+    [IO.File]::WriteAllText($f, ([IO.File]::ReadAllText($f) -replace '(?m)^ResX=\d+', 'ResX=2824' -replace '(?m)^ResY=\d+', 'ResY=2880'))
+}
+$gs = Join-Path $config 'GamerSettings.ini'
+[IO.File]::WriteAllText($gs, ([IO.File]::ReadAllText($gs) -replace '(?m)^\[SystemSettings\]\r?\n', "[SystemSettings]`r`nDepthOfField=True`r`n"))
+Check ((Get-Content -Raw $gs) -match '(?m)^ResX=2824' -and (Get-Content -Raw $gs) -match '(?m)^DepthOfField=True') 'the mod''s writes in place (eye size, depth of field)'
+
 Check ((Run-Setup @('--uninstall')) -eq 0) 'uninstall'
 $after = Snapshot
 $diff = Compare-Object $before $after

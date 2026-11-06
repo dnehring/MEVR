@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -36,9 +37,18 @@ std::string Set(std::string_view text, std::string_view section, std::string_vie
 // Removes every `key` line in `section`.
 std::string Remove(std::string_view text, std::string_view section, std::string_view key);
 
-// Undoes `edits`, newest first: a key still holding the value an edit wrote gets its old value back (or is removed,
-// if it wasn't there before); a key the player has changed since is left alone.
-std::string Revert(std::string_view text, std::vector<Edit> const& edits);
+// Records `key`'s value in `section` as it is, unchanged (an Edit whose `after` is its `before`, "" when the key is
+// missing), unless an edit of that key is already on record: a key the setup leaves alone but the mod writes later
+// (Halcyon's DepthOfField, our menu's resolution), so Revert can put the player's value back (with `ours`).
+void Record(std::string_view text, std::string_view section, std::string_view key, std::vector<Edit>* edits);
+
+// Whether `now`, a value an edit's key holds that isn't the edit's own `after`, was written by the mod since (not by the
+// player): such a key gets its old value back too.
+using Ours = std::function<bool(Edit const& edit, std::string_view now)>;
+
+// Undoes `edits`, newest first: a key still holding the value an edit wrote (or one `ours` says the mod wrote since) gets
+// its old value back (or is removed, if it wasn't there before); a key the player has changed since is left alone.
+std::string Revert(std::string_view text, std::vector<Edit> const& edits, Ours const& ours = {});
 
 // The section names in file order (as written, without brackets).
 std::vector<std::string> Sections(std::string_view text);

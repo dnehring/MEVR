@@ -699,6 +699,23 @@ folders a new player has.
   the Steam path printed `started (pid 0)`; now `started (through Steam)`. `LE1MEVR.log` has six first-chance access violations before the session started (three each at
   `LE1MEVR.asi+0x7F6DC6` and `+0x77EB0D`, handled), not looked into.
 - **The dev setup** went back byte for byte (the record of 9,311 files, hashes of everything Setup can touch).
+- **The mod's own later writes** (found reading the code after the fix above, the same day): `ini::Revert` keeps a value
+  "the player changed since", but the mod itself writes the game's settings after the install. Halcyon's
+  `ApplyResolutionForCurrentMode` (`WriteGameResolution`) puts the active mode's resolution from its profile into
+  GamerSettings.ini's `ResX`/`ResY`: the first VR start's eye size (`main_menu::FirstStartEyeSize`, the "Automatic"
+  choice) and every resolution change in our menu. The game copies those into `BIOEngine.ini`. And Halcyon's
+  `EnsureDepthOfFieldSetting` writes `DepthOfField` at every launch (adding the line when it's missing). Uninstall kept all
+  of them. Now: `settings::ModWrites` reads Halcyon's `MELEVR.ini` at Uninstall (and Restore), before the uninstall removes it,
+  and counts a `[SystemSettings]` `ResX`/`ResY` equal to any of its profiles' resolutions, and any `DepthOfField`, as the
+  mod's (`Transaction::ModWrites`, `ini::Revert`'s `ours`). For keys Setup doesn't change (`DepthOfField`, the resolution
+  with "keep"), `ini::Record` keeps their value at install as an edit whose `after` is its `before` (`EditIni` saves such a
+  record without writing the file). A resolution the player picked in the game's own options that none of Halcyon's
+  profiles holds stays theirs. Checked: `install` tests (the first VR start's eye size and the added `DepthOfField` line
+  reverted to the byte with `ModWrites`, not without; "keep"; a player's 1920 kept) and the fake game (the mod's writes
+  made before its uninstall, then byte for byte: 84 of 84). Repair doesn't undo the eye size: it applies the settings only
+  while they wait for the game's first start. Left: Halcyon's attach-time `SmoothFrameRate=TRUE`/`MaxSmoothedFrameRate=120`
+  in `BIOEngine.ini` ([ENGSMOOTH]), which the game's own save at exit puts back to its loaded values, so only a crash
+  leaves them.
 
 ## Open
 
@@ -706,9 +723,6 @@ folders a new player has.
   Settled in sections 11 and 13: a direct start of the Steam build hands back to Steam's arguments prompt; install, verify
   then Repair, and uninstall on the real game; Launch through Steam (SteamVR, the launcher's autoboot, our loader in the
   game, gameplay on the fake headset).
-- Uninstall after the "auto" resolution's first VR start: the host writes the headset's eye size into GamerSettings.ini
-  (`main_menu::FirstStartEyeSize`), and the game copies it into `BIOEngine.ini`; `ini::Revert` sees a value changed since
-  Setup's and keeps it in both. Not seen on the real game yet (section 13's install chose Performance on a started game).
 - **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,
   MEM's download, unpacking and a real pack install on a real game.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).

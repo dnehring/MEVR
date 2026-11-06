@@ -73,7 +73,11 @@ std::string ApplyGamerSettings(std::string_view text, Choices const& c, std::vec
     if (c.target.width > 0 && c.target.height > 0) {
         set("SystemSettings", "ResX", std::to_string(c.target.width));
         set("SystemSettings", "ResY", std::to_string(c.target.height));
+    } else {
+        ini::Record(out, "SystemSettings", "ResX", edits);
+        ini::Record(out, "SystemSettings", "ResY", edits);
     }
+    ini::Record(out, "SystemSettings", "DepthOfField", edits);
     set("SystemSettings", "BorderlessWindow", "True");
     set("SystemSettings", "Fullscreen", "False");
     set("SystemSettings", "DynamicShadows", "False");
@@ -103,7 +107,11 @@ std::string ApplyEngineSettings(std::string_view text, Choices const& c, std::ve
     if (c.target.width > 0 && c.target.height > 0) {
         set("ResX", std::to_string(c.target.width));
         set("ResY", std::to_string(c.target.height));
+    } else {
+        ini::Record(out, "SystemSettings", "ResX", edits);
+        ini::Record(out, "SystemSettings", "ResY", edits);
     }
+    ini::Record(out, "SystemSettings", "DepthOfField", edits);
     set("Fullscreen", "False");
     if (c.anisotropy16) {
         set("MaxAnisotropy", "16");
@@ -112,6 +120,55 @@ std::string ApplyEngineSettings(std::string_view text, Choices const& c, std::ve
     set("MotionBlur", "False");
     set("FoliageDrawRadiusMultiplier", "0.500000");
     return out;
+}
+
+ini::Ours ModWrites(std::string_view halcyonIni) {
+    // Every resolution Halcyon's profiles hold (sfr2ResX, monoResX, aerResX, dibrResX, stereoResX, expectedResX..., any
+    // slot): ApplyResolutionForCurrentMode writes the active mode's pair into GamerSettings.ini.
+    std::vector<std::string> xs;
+    std::vector<std::string> ys;
+    std::size_t at = 0;
+    while (at < halcyonIni.size()) {
+        std::size_t end = halcyonIni.find('\n', at);
+        if (end == std::string_view::npos) {
+            end = halcyonIni.size();
+        }
+        std::string_view const line = halcyonIni.substr(at, end - at);
+        at = end + 1;
+        std::size_t const eq = line.find('=');
+        if (eq == std::string_view::npos) {
+            continue;
+        }
+        auto trim = [](std::string_view s) {
+            std::size_t const b = s.find_first_not_of(" \t\r");
+            std::size_t const e = s.find_last_not_of(" \t\r");
+            return b == std::string_view::npos ? std::string() : std::string(s.substr(b, e - b + 1));
+        };
+        std::string const key = trim(line.substr(0, eq));
+        std::string const value = trim(line.substr(eq + 1));
+        if (key.size() < 4 || value.empty() || value == "0") {
+            continue;
+        }
+        std::string_view const tail = std::string_view(key).substr(key.size() - 4);
+        if (_stricmp(std::string(tail).c_str(), "ResX") == 0) {
+            xs.push_back(value);
+        } else if (_stricmp(std::string(tail).c_str(), "ResY") == 0) {
+            ys.push_back(value);
+        }
+    }
+    return [xs = std::move(xs), ys = std::move(ys)](ini::Edit const& e, std::string_view now) {
+        if (_stricmp(e.section.c_str(), "SystemSettings") != 0) {
+            return false;
+        }
+        auto const in = [&](std::vector<std::string> const& values) { return std::find(values.begin(), values.end(), now) != values.end(); };
+        if (_stricmp(e.key.c_str(), "ResX") == 0) {
+            return in(xs);
+        }
+        if (_stricmp(e.key.c_str(), "ResY") == 0) {
+            return in(ys);
+        }
+        return _stricmp(e.key.c_str(), "DepthOfField") == 0;
+    };
 }
 
 Current Read(std::string_view text) {

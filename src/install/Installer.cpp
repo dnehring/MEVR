@@ -516,6 +516,9 @@ Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runni
     if (!tx.Exists()) {
         return Error("Nothing to uninstall: no install record (MEVR-install.json) in the game's ASI folder");
     }
+    // The game settings the mod wrote since the install (the resolution from Halcyon's profiles, its depth of field) are
+    // put back too: read from MELEVR.ini now, before the uninstall removes it (research/33 section 13).
+    tx.ModWrites(settings::ModWrites(ReadFile(layout.Full(paths::kHalcyonIni)).value_or(std::string())));
     // A loader another tool put in place of ours since (ME3Tweaks Mod Manager, say) stays, with RAD's DLL behind it.
     std::error_code ec;
     LoaderNow const loader = CheckLoader(layout, tx.Data());
@@ -735,6 +738,7 @@ Outcome RestoreSettings(Layout const& layout) {
     if (!tx.Load()) {
         return Finish(tx, false);
     }
+    tx.ModWrites(settings::ModWrites(ReadFile(layout.Full(paths::kHalcyonIni)).value_or(std::string())));
     bool ok = tx.RevertIni(paths::kGamerSettings);
     ok = tx.RevertIni(paths::kEngineIni) && ok;
     tx.Data().gameSettings = false;
