@@ -4282,12 +4282,14 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // chain (deferred-context scene, no gameplay composite shader), so the normal SFR pass-0 capture
     // boundary never fires there. Arm the cine boundary (backbuffer-batch trigger in d3d_capture) so
     // the pair keeps publishing instead of freezing on the last gameplay image.
-    MELEVR::D3DCapture::SetSfrCineBoundary(sfr2Active && cinematicContext);
+    // [MEVR] research/59: a conversation in the world still renders through the conversation camera's post chain: same boundary.
+    const bool mevrConvoWorld = gameMode == 5 && MELEVR::MevrBridge::ConversationInWorld();
+    MELEVR::D3DCapture::SetSfrCineBoundary(sfr2Active && (cinematicContext || mevrConvoWorld));
     // [NOLETTERBOX] while a VR cine is live in Stereo 2, clear LE1's cine-camera 16:9 aspect
     // constraint each frame at Draw entry (render_hook), so the cine renders FULL-FRAME exactly
     // like gameplay - which is what LE2/LE3 cine always did and why they never needed a band crop,
     // a UI squash, or an aspect probe. Flat cine (movies) keeps engine-default behaviour.
-    MELEVR::RenderHook::SetCineUnconstrain(sfr2Active && vrCineActive);
+    MELEVR::RenderHook::SetCineUnconstrain(sfr2Active && (vrCineActive || mevrConvoWorld));   // [MEVR] research/59: no 16:9 bars
     // Per-eye UI dup runs on the game draw thread; give it a cheap flag for "SBS stereo is the active
     // submit path" so it only fires in stereo (not AER/mono/DIBR, which render one full-frame eye).
     MELEVR::D3DCapture::SetStereoUiActive(stereoActive);

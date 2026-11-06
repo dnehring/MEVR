@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Offline tests for conversations in the world (research/59, core/vr/ConversationWorld): the setting's words, the conversation
-// movie's subtitle and wheel bands on the HUD frame, the subtitle's place under a face, the held view moved with the pawn, and
+// movie's subtitle and wheel bands on the HUD frame, the subtitle's place under a face, the place following the head bone's jumps, and
 // the host's latest state.
 
 #include "core/vr/ConversationWorld.hpp"
@@ -42,28 +42,30 @@ void TestParseMode() {
 }
 
 void TestCrops() {
-    // The HUD frame of the PS VR2's eye: 2344 x 2392, the 1280 x 720 stage across its width, its bottom on the frame's.
+    // The HUD frame of the PS VR2's eye: 2344 x 2392, the 1280 x 720 stage across its width, centred top to bottom.
     std::uint32_t const w = 2344;
     std::uint32_t const h = 2392;
     double const scale = w / 1280.0;
-    auto const sub = cw::DefaultSubtitleCrop(w, h);
-    CHECK(sub.Valid());
-    // The band's bottom: stage y 640, 80 stage px above the stage's bottom edge, which is the frame's bottom.
-    CHECK(Close((sub.y + sub.height) * h, h - 80.0 * scale, 0.5));
-    CHECK(Close(sub.height * h, 80.0 * scale, 0.5));
-    CHECK(Close(sub.x, 140.0 / 1280.0) && Close(sub.width, 1000.0 / 1280.0));
+    double const top = (h - 720.0 * scale) / 2.0;  // 537 px
+    CHECK(Close(top, 536.75, 0.01));
     auto const wheel = cw::DefaultWheelCrop(w, h);
     CHECK(wheel.Valid());
-    CHECK(Close(wheel.y + wheel.height, 1.0, 1e-4));  // down to the stage's bottom
-    CHECK(wheel.x > sub.x && wheel.x + wheel.width < sub.x + sub.width);
-    // The wheel's centre on the movie's authored x (639.7 of 1280), within a stage pixel.
+    // The wheel measured at frame y 1620..1780 (its rows) inside the band.
+    CHECK(wheel.y * h < 1620.0 && (wheel.y + wheel.height) * h > 1780.0);
+    // Centred on the movie's authored x (639.7 of 1280), within a stage pixel.
     CHECK(Close((wheel.x + wheel.width * 0.5) * 1280.0, 640.0, 1.0));
+    auto const sub = cw::DefaultSubtitleCrop(w, h);
+    CHECK(sub.Valid());
+    // A one-row line measured at frame y 1569 inside the band; the band ends where the wheel's begins.
+    CHECK(sub.y * h < 1569.0 && (sub.y + sub.height) * h > 1569.0);
+    CHECK(Close(sub.y + sub.height, wheel.y, 1e-4));
+    CHECK(Close(sub.x, 80.0 / 1280.0) && Close(sub.width, 1120.0 / 1280.0));
     // A frame exactly 16:9 puts the stage on the whole frame: the bands at their stage places.
     auto const sub169 = cw::DefaultSubtitleCrop(1280, 720);
-    CHECK(Close(sub169.y * 720.0, 560.0, 0.01) && Close(sub169.height * 720.0, 80.0, 0.01));
+    CHECK(Close(sub169.y * 720.0, 480.0, 0.01) && Close(sub169.height * 720.0, 106.0, 0.01));
     // No frame: nothing.
     CHECK(!cw::DefaultSubtitleCrop(0, 0).Valid());
-    // A frame shorter than the stage (wider than 16:9): the band clipped to the frame, never negative.
+    // A frame wider than 16:9 (the stage taller than the frame): the band clipped to the frame, never negative.
     auto const wide = cw::DefaultWheelCrop(2000, 500);
     CHECK(wide.y >= 0.0f && wide.y + wide.height <= 1.0001f);
 }
@@ -85,14 +87,18 @@ void TestSubtitlePoint() {
     CHECK(cw::SubtitlePoint(face, eyes, -1.0f, 0.0f, out) && Close(out.y, 1.6));
 }
 
-void TestHeldLocation() {
-    cw::Vec3 const view{100.0, 200.0, 160.0};
-    cw::Vec3 const start{90.0, 195.0, 92.0};
-    cw::Vec3 const now{140.0, 175.0, 92.0};  // the stage moved Shepard 50 units along X, -20 along Y
-    cw::Vec3 const held = cw::HeldLocation(view, start, now, true);
-    CHECK(Close(held.x, 150.0) && Close(held.y, 180.0) && Close(held.z, 160.0));
-    cw::Vec3 const still = cw::HeldLocation(view, start, now, false);
-    CHECK(Close(still.x, 100.0) && Close(still.y, 200.0) && Close(still.z, 160.0));
+void TestFollowHead() {
+    cw::Vec3 const place{100.0, 200.0, 160.0};
+    cw::Vec3 const anchor{95.0, 190.0, 130.0};
+    // A gesture's 15 units: the place stays.
+    cw::Follow const still = cw::FollowHead(place, anchor, {105.0, 195.0, 135.0}, 40.0);
+    CHECK(!still.jumped && Close(still.place.x, 100.0) && Close(still.anchor.x, 95.0));
+    // The stage puts Shepard 2.25 m along -Y: the place moves with him, the new head is the anchor.
+    cw::Follow const moved = cw::FollowHead(place, anchor, {95.0, -35.0, 130.0}, 40.0);
+    CHECK(moved.jumped && Close(moved.place.x, 100.0) && Close(moved.place.y, -25.0) && Close(moved.place.z, 160.0));
+    CHECK(Close(moved.anchor.y, -35.0));
+    // Exactly at the threshold: no jump.
+    CHECK(!cw::FollowHead(place, anchor, {135.0, 190.0, 130.0}, 40.0).jumped);
 }
 
 void TestLatest() {
@@ -119,7 +125,7 @@ int RunConversationWorldTests() {
     TestParseMode();
     TestCrops();
     TestSubtitlePoint();
-    TestHeldLocation();
+    TestFollowHead();
     TestLatest();
     std::printf("conversation world tests: %s\n", gFailures == 0 ? "ok" : "FAILED");
     return gFailures;

@@ -5,10 +5,12 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/vr/HostView.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SettingsFile.hpp"
 #include "engine/Skeleton.hpp"
 #include "engine/XrToUnreal.hpp"
+#include "game/ConsoleRequest.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
@@ -20,12 +22,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace mevr::game::conversation_world {
@@ -64,6 +68,7 @@ ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels"};
 ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler"};
 ue3::ClassRef gConvHandlerClass{"SFXGame.BioSFHandler_Conversation"};
 ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel"};
+ue3::FieldRef gSlotsUsed{"SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed"};  // byte[6]: which wheel locations hold a reply
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
 ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
 ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry"};  // mevr convo pick (tests)
@@ -72,8 +77,8 @@ ue3::FunctionRef gSkipConversation{"SFXGame.BioSFHandler_Conversation.SkipConver
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
 struct Settings {
     cw::Mode mode = cw::Mode::Screen;  // the shipped default (research/52); world is opt-in
-    bool follow = true;                // the held view moves with Shepard's pawn
-    float subtitleHeightDeg = 3.0f;
+    bool follow = true;                // the player's place follows Shepard's head bone when it jumps (worldFollow)
+    float subtitleHeightDeg = 4.0f;  // two rows of the line: 3 read small at 2 m (2026-11-06)
     float subtitleBelowM = 0.22f;
     float subtitleTowardM = 0.15f;
     int wheelHand = 0;                 // 0 left, 1 right, 2 in front
@@ -255,8 +260,22 @@ struct Foot {
     float fov = 90.0f;
     ue3::Vector pawn{};                              // Shepard's pawn at that camera update
     std::optional<engine::TrackingFrame> frame;      // the room as that view maps it
+    std::uint64_t ms = 0;                            // when
+    // The first-person eye from Shepard's head bone, in his yaw frame (forward, right, up; Unreal units): arm IK's log of the first
+    // person camera against the head bone with the headset at the recenter point (2026-11-06: forward 8.9, right 1.7, up 29.3). A
+    // measure on foot picks up body follow's lean (0.59 m from the head bone, 2026-11-06), so the constant.
+    ik::Vec3 eyeFromHead{8.9, 1.7, 29.3};
 };
 Foot gFoot;
+
+ik::Vec3 YawForward(double yawDeg) {
+    double const y = yawDeg / kRadToDeg;
+    return {std::cos(y), std::sin(y), 0.0};
+}
+ik::Vec3 YawRight(double yawDeg) {
+    double const y = yawDeg / kRadToDeg;
+    return {-std::sin(y), std::cos(y), 0.0};
+}
 struct PovAt {
     float* location = nullptr;
     ue3::Rotator* rotation = nullptr;
@@ -286,6 +305,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
             gFoot.pawn = *p;
         }
         gFoot.have = true;
+        gFoot.ms = GetTickCount64();
         return;
     }
     if (mode && *mode == kModeConversation) {
@@ -320,7 +340,14 @@ struct Convo {
     std::uint64_t startMs = 0;
     std::uint32_t number = 0;
     bool world = false;          // shown in the world
-    ue3::Vector pawnAtStart{};   // Shepard's pawn at the last on-foot camera update (the hold's reference)
+    // The player's place for this conversation: the view on foot if it was Shepard's just now, else his eyes from his head bone
+    // (a conversation right after a level load or a cutscene); it follows his head bone when that jumps (a stage's placement).
+    ik::Vec3 hold;
+    ue3::Rotator holdRotation{};
+    float holdFov = 90.0f;
+    char const* holdFrom = "";
+    std::optional<ik::Vec3> anchorHead;  // Shepard's head bone where the hold was last placed
+    int reanchors = 0;
     std::vector<Tracked> actors;
     ue3::Object* speaker = nullptr;
     std::uint32_t speakerSerial = 0;
@@ -418,14 +445,21 @@ ue3::Object* WheelHandler(ue3::Object* controller) {
     return nullptr;
 }
 
-// The camera cut to a new shot: what it shows against Shepard's place.
+// The camera cut to a new shot: what it shows against Shepard's place. Every actor of the conversation whose face is inside the
+// frame (the lens's horizontal angle, 16:9) is listed; the nearest of them is the shot's subject.
 void LogShot(ue3::Object* pawn, ik::Vec3 eyes) {
     ik::Vec3 const cam = V(gPov.lastLocation);
     ik::Vec3 const fwd = Forward(gPov.lastRotation);
-    // The subject: the conversation's actor nearest the camera's centre ray (perpendicular distance at its distance).
+    ik::Vec3 const right = YawRight(YawDeg(gPov.lastRotation));
+    ik::Vec3 const up = ik::Normalize(ik::Cross(right, fwd), {0.0, 0.0, 1.0});
+    double const halfH = std::clamp(static_cast<double>(gPov.lastFov), 1.0, 170.0) * 0.5 / kRadToDeg;
+    double const halfV = std::atan(std::tan(halfH) * 9.0 / 16.0);
     Tracked const* subject = nullptr;
-    double best = 1e9;
+    double nearest = 1e9;
     ik::Vec3 subjectFace{};
+    bool shepardInFrame = false;
+    double shepardFromCamera = 0.0;
+    std::string inFrame;
     for (Tracked const& t : gC.actors) {
         auto const face = FacePoint(t.actor);
         if (!face) {
@@ -433,12 +467,17 @@ void LogShot(ue3::Object* pawn, ik::Vec3 eyes) {
         }
         ik::Vec3 const d = *face - cam;
         double const along = ik::Dot(d, fwd);
-        if (along <= 10.0) {
+        if (along <= 10.0 || std::abs(std::atan2(ik::Dot(d, right), along)) > halfH || std::abs(std::atan2(ik::Dot(d, up), along)) > halfV) {
             continue;
         }
-        double const off = ik::Length(d - fwd * along);
-        if (off < best) {
-            best = off;
+        double const distance = ik::Length(d);
+        inFrame += std::format("{}{} {:.1f} m", inFrame.empty() ? "" : ", ", t.actor == pawn ? "Shepard" : t.name, distance / kUnitsPerMeter);
+        if (t.actor == pawn) {
+            shepardInFrame = true;
+            shepardFromCamera = distance;
+        }
+        if (distance < nearest) {
+            nearest = distance;
             subject = &t;
             subjectFace = *face;
         }
@@ -446,31 +485,34 @@ void LogShot(ue3::Object* pawn, ik::Vec3 eyes) {
     double const camToEyes = Dist(cam, eyes) / kUnitsPerMeter;
     bool const subjectIsShepard = subject != nullptr && subject->actor == pawn;
     std::string kind;
+    std::string key;
     std::string seen;
-    if (subject == nullptr || best > 120.0) {
-        kind = "cutaway (no actor of the conversation near the frame's centre)";
+    if (subject == nullptr) {
+        kind = "a cutaway (no actor of the conversation in the frame)";
+        key = "cutaway";
         ++gC.shotsHidden;
     } else if (camToEyes < 0.4) {
         kind = "from Shepard's eyes";
+        key = "from Shepard's eyes";
     } else if (subjectIsShepard) {
-        kind = "on Shepard (the reverse: not seen from his own eyes)";
+        kind = "on Shepard (a reverse shot: his own face, not seen from his eyes)";
+        key = "on Shepard";
         ++gC.shotsHidden;
     } else {
         bool const visible = LineOfSight(pawn, eyes, subjectFace);
         double const offAxis = AngleDeg(subjectFace - cam, subjectFace - eyes);
-        kind = camToEyes < 1.5 && AngleDeg(fwd, subjectFace - eyes) < 25.0 ? "over Shepard's shoulder" : "on " + subject->name;
-        seen = std::format(", {} from Shepard's eyes ({:.1f} m away), the camera {:.0f} deg off his line to it",
+        bool const shoulder = shepardInFrame && shepardFromCamera < 150.0;
+        kind = shoulder ? "over Shepard's shoulder onto " + subject->name : "on " + subject->name;
+        key = shoulder ? "over Shepard's shoulder" : "on an NPC";
+        seen = std::format(", {} from Shepard's eyes ({:.1f} m away, the camera {:.0f} deg off his line to it)",
             visible ? "visible" : "BLOCKED", Dist(eyes, subjectFace) / kUnitsPerMeter, offAxis);
         if (!visible) {
             ++gC.shotsHidden;
         }
     }
-    std::string const key = kind.substr(0, kind.find(' ', kind.find(' ') + 1));
-    ++gC.shotKinds[kind.starts_with("on ") && !subjectIsShepard ? "on an NPC" : key];
-    log::Info("convo: shot {} at {:.1f} s: {}{}; the camera at {} ({:.2f} m from Shepard's eyes), {:.0f} deg lens, subject {} {:.0f} units off "
-              "the centre ray; speaker {}",
-        gC.shots, Seconds(), kind, seen, F(cam), camToEyes, gPov.lastFov, subject != nullptr ? subject->name : "none", best,
-        ShortName(gC.speaker));
+    ++gC.shotKinds[key];
+    log::Info("convo: shot {} at {:.1f} s: {}{}; in frame: {}; the camera at {} ({:.2f} m from Shepard's eyes), {:.0f} deg lens; speaker {}",
+        gC.shots, Seconds(), kind, seen, inFrame.empty() ? "nobody" : inFrame, F(cam), camToEyes, gPov.lastFov, ShortName(gC.speaker));
 }
 
 void Begin(ue3::Object* conv, ue3::Object* controller) {
@@ -480,7 +522,6 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
     gC.name = ue3::runtime::FullName(conv);
     gC.startMs = GetTickCount64();
     gC.number = ++gConversations;
-    gC.pawnAtStart = gFoot.pawn;
     gC.world = CurrentMode() == cw::Mode::World;
     ue3::Object* const pawn = player::Pawn(controller);
     ue3::Object* const stage = gStage.Read<ue3::Object*>(conv).value_or(nullptr);
@@ -493,6 +534,37 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
         log::Info("convo: Shepard's last view on foot at {} yaw {:.0f}, his pawn then at {}{}", F(V(gFoot.location)), YawDeg(gFoot.rotation),
             F(V(gFoot.pawn)), nowPawn ? std::format(", now at {} ({:.2f} m from there)", F(V(*nowPawn)), Dist(V(*nowPawn), V(gFoot.pawn)) / kUnitsPerMeter)
                                       : std::string());
+    }
+    // The player's place: the view on foot if it was Shepard's a moment ago and his pawn is still there, else his eyes from his head
+    // bone facing where his pawn faces (a conversation straight after a level load or a cutscene: the view on foot is elsewhere).
+    {
+        auto const nowPawn = player::Location(pawn);
+        auto const head = HeadOf(pawn);
+        bool const footFresh = gFoot.have && GetTickCount64() - gFoot.ms < 5000 && nowPawn && Dist(V(*nowPawn), V(gFoot.pawn)) < 300.0;
+        if (footFresh) {
+            gC.hold = V(gFoot.location) + (V(*nowPawn) - V(gFoot.pawn));
+            gC.holdRotation = gFoot.rotation;
+            gC.holdFov = gFoot.fov;
+            gC.holdFrom = "the view on foot";
+        } else if (head) {
+            auto const rot = player::Rotation(pawn);
+            double const yaw = rot ? YawDeg(*rot) : 0.0;
+            ik::Vec3 const& e = gFoot.eyeFromHead;
+            gC.hold = head->at + YawForward(yaw) * e.x + YawRight(yaw) * e.y + ik::Vec3{0.0, 0.0, e.z};
+            gC.holdRotation = {0, rot ? rot->yaw : 0, 0};
+            gC.holdFov = gFoot.have ? gFoot.fov : 90.0f;
+            gC.holdFrom = "Shepard's head bone";
+        } else {
+            gC.hold = V(gFoot.location);
+            gC.holdRotation = gFoot.rotation;
+            gC.holdFov = gFoot.fov;
+            gC.holdFrom = "the last view on foot (no head bone)";
+        }
+        if (head) {
+            gC.anchorHead = head->at;
+        }
+        log::Info("convo: the player's place: {} at {} facing {:.0f} deg{}", gC.holdFrom, F(gC.hold), YawDeg(gC.holdRotation),
+            head ? std::format(" ({:.2f} m from Shepard's head bone)", Dist(gC.hold, head->at) / kUnitsPerMeter) : std::string());
     }
     Track(pawn);
     Track(gOwner.Read<ue3::Object*>(conv).value_or(nullptr));
@@ -640,7 +712,50 @@ void SetStatus(std::string json) {
     gStatusJson = std::move(json);
 }
 
+// The depth of field: the conversation camera's is focused for the director's shot (the door behind Chakwas blurred, then the
+// whole room when the focus moved on, 2026-11-06), whatever its behaviour's m_bDOFSettingDisabled says (tried: no effect). The
+// engine's own switch through the local player's console while the world view lasts (`scale set`, a boolean through its opposite
+// first, research/35), and back to what the game's BIOEngine.ini said before (read first: the game writes the live value there
+// during play, 2026-11-06, so a read afterwards finds our False).
+bool gDofOff = false;
+bool gDofWas = true;  // BIOEngine.ini's value read before we switched it (the game writes its live value there during play)
+
+bool DofInIni() {
+    // <exe dir>\..\..\BioGame\Config\BIOEngine.ini's [SystemSettings] (it wins over GamerSettings.ini, research/35).
+    std::filesystem::path const ini = engine::SettingsFile().parent_path().parent_path().parent_path().parent_path() / L"BioGame" /
+        L"Config" / L"BIOEngine.ini";
+    ini::Loaded const loaded = ini::Read(ini);
+    auto const v = ini::Get(loaded.file, "SystemSettings", "DepthOfField");
+    return !v || ini::Lower(ini::Trim(*v)) != "false";
+}
+
+void DofOff() {
+    if (gDofOff) {
+        return;
+    }
+    gDofOff = true;
+    gDofWas = DofInIni();
+    std::string ignored;
+    bool const ok = console_request::RunCommand("scale set DepthOfField True", &ignored) &&
+                    console_request::RunCommand("scale set DepthOfField False", &ignored);
+    log::Info("convo: depth of field off for the world view{}", ok ? "" : " (the console wasn't there: it stays as it is)");
+}
+
+void DofBack() {
+    if (!gDofOff) {
+        return;
+    }
+    gDofOff = false;
+    if (gDofWas) {
+        std::string ignored;
+        console_request::RunCommand("scale set DepthOfField False", &ignored);
+        console_request::RunCommand("scale set DepthOfField True", &ignored);
+        log::Info("convo: depth of field on again (BIOEngine.ini's [SystemSettings])");
+    }
+}
+
 void StopWorld(Link const& link, char const* why) {
+    DofBack();
     if (gPublished && link.publish != nullptr) {
         link.publish(nullptr);
     }
@@ -687,43 +802,54 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
         End("another conversation began");
         Begin(conv, controller);
     }
-    // Shepard's eyes: the held view's (the player's) in the world mode, else his head bone.
-    ik::Vec3 eyes = V(gFoot.location);
-    auto const pawnNow = pawn != nullptr ? player::Location(pawn) : std::nullopt;
-    cw::Vec3 held{gFoot.location.x, gFoot.location.y, gFoot.location.z};
-    if (pawnNow) {
-        held = cw::HeldLocation({gFoot.location.x, gFoot.location.y, gFoot.location.z}, {gC.pawnAtStart.x, gC.pawnAtStart.y, gC.pawnAtStart.z},
-            {pawnNow->x, pawnNow->y, pawnNow->z}, gSettings.follow);
-        eyes = {held.x, held.y, held.z};
-    }
+    // The player's place follows Shepard's head bone when it jumps (a stage's placement, a cut to a new mark): re-anchored past
+    // kReanchorUnits, never for the head's own small moves (gestures, breathing), which the player's real head replaces.
+    constexpr double kReanchorUnits = 40.0;
     auto const shepardHead = HeadOf(pawn);
-    if (!gFoot.have && shepardHead) {
-        eyes = shepardHead->at;
+    if (shepardHead && gC.anchorHead && gSettings.follow) {
+        ik::Vec3 const& a = *gC.anchorHead;
+        ik::Vec3 const& h = shepardHead->at;
+        cw::Follow const f = cw::FollowHead({gC.hold.x, gC.hold.y, gC.hold.z}, {a.x, a.y, a.z}, {h.x, h.y, h.z}, kReanchorUnits);
+        if (f.jumped) {
+            log::Info("convo: at {:.1f} s Shepard's head bone JUMPED {:.2f} m: the player's place moves with it to ({:.0f}, {:.0f}, {:.0f})",
+                Seconds(), Dist(h, a) / kUnitsPerMeter, f.place.x, f.place.y, f.place.z);
+            gC.hold = {f.place.x, f.place.y, f.place.z};
+            gC.anchorHead = h;
+            ++gC.reanchors;
+        }
     }
+    ik::Vec3 const eyes = gC.hold;
     std::uint64_t const now = GetTickCount64();
     if (now >= gNextSampleMs) {
         gNextSampleMs = now + 100;
         Sample(conv, controller, pawn, eyes);
     }
     // ---- The world mode ----
-    bool const world = gC.world && CurrentMode() == cw::Mode::World && link.publish != nullptr && gFoot.have && gFoot.frame.has_value();
+    bool const world = CurrentMode() == cw::Mode::World && link.publish != nullptr;  // live, as the 3D screen's setting
     if (!world) {
-        StopWorld(link, gC.world && link.publish == nullptr ? "an older host" : gC.world && !gFoot.have ? "Shepard's view on foot isn't known"
-                                                                                                       : "not in the world mode");
+        StopWorld(link, CurrentMode() == cw::Mode::World ? "an older host" : "not in the world mode");
         SetStatus(std::format("{{\"on\": true, \"world\": false, \"conversation\": {}, \"shots\": {}, \"speaker\": \"{}\"}}", gC.number,
             gC.shots, ShortName(gC.speaker)));
         return;
     }
-    // The held frame: the on-foot one, moved with the pawn.
-    engine::TrackingFrame frame = *gFoot.frame;
-    double const dx = held.x - gFoot.location.x;
-    double const dy = held.y - gFoot.location.y;
-    double const dz = held.z - gFoot.location.z;
-    frame.headWorld.x += dx;
-    frame.headWorld.y += dy;
-    frame.headWorld.z += dz;
-    view_anchor::Hold(frame);
-    gHeld = true;
+    // The room as the held view maps it: the host's view (its head pose and head look) placed on the held view, as view_anchor does
+    // on the game camera; before the host shows the world (its first frames), the frame on foot moved to the held place.
+    std::optional<engine::TrackingFrame> frame;
+    vr::host_view::State const view = vr::host_view::Latest();
+    if (view.valid && gInWorld) {
+        frame = engine::FromCameraView(engine::UnrealVector{gC.hold.x, gC.hold.y, gC.hold.z},
+            engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll}, {view.lookPitch, view.lookYaw, 0},
+            {view.offsetForward, view.offsetRight, view.offsetUp}, view.head, view.unitsPerMeter);
+    } else if (gFoot.frame && gC.holdFrom == std::string_view("the view on foot")) {
+        frame = gFoot.frame;
+        frame->headWorld.x += gC.hold.x - gFoot.location.x;
+        frame->headWorld.y += gC.hold.y - gFoot.location.y;
+        frame->headWorld.z += gC.hold.z - gFoot.location.z;
+    }
+    if (frame) {
+        view_anchor::Hold(frame);
+        gHeld = true;
+    }
     if (shepardHead) {
         gC.eyeToViewMax = std::max(gC.eyeToViewMax, Dist(shepardHead->at, eyes));
     }
@@ -743,11 +869,11 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     if (face == pawn || face == nullptr) {
         face = gListener.Read<ue3::Object*>(conv).value_or(nullptr);
     }
-    if (face != nullptr && face != pawn) {
+    if (face != nullptr && face != pawn && frame) {
         if (auto const point = FacePoint(face)) {
-            XrVector3f const faceT = engine::ToTracking(frame, engine::UnrealVector{point->x, point->y, point->z});
+            XrVector3f const faceT = engine::ToTracking(*frame, engine::UnrealVector{point->x, point->y, point->z});
             XrVector3f out{};
-            if (cw::SubtitlePoint(faceT, frame.head.position, gSettings.subtitleBelowM, gSettings.subtitleTowardM, out)) {
+            if (cw::SubtitlePoint(faceT, frame->head.position, gSettings.subtitleBelowM, gSettings.subtitleTowardM, out)) {
                 state.subtitle = 1;
                 state.subtitleAt[0] = out.x;
                 state.subtitleAt[1] = out.y;
@@ -757,31 +883,33 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     }
     if (gPov.location != nullptr && now - gPov.ms < 500) {
         state.holdRender = 1;
-        state.holdLocation[0] = static_cast<float>(held.x);
-        state.holdLocation[1] = static_cast<float>(held.y);
-        state.holdLocation[2] = static_cast<float>(held.z);
-        state.holdRotation[0] = gFoot.rotation.pitch;
-        state.holdRotation[1] = gFoot.rotation.yaw;
-        state.holdRotation[2] = gFoot.rotation.roll;
-        state.holdFov = gFoot.fov;
+        state.holdLocation[0] = static_cast<float>(gC.hold.x);
+        state.holdLocation[1] = static_cast<float>(gC.hold.y);
+        state.holdLocation[2] = static_cast<float>(gC.hold.z);
+        state.holdRotation[0] = gC.holdRotation.pitch;
+        state.holdRotation[1] = gC.holdRotation.yaw;
+        state.holdRotation[2] = gC.holdRotation.roll;
+        state.holdFov = gC.holdFov;
         state.povLocationAddress = reinterpret_cast<std::uint64_t>(gPov.location);
         state.povRotationAddress = reinterpret_cast<std::uint64_t>(gPov.rotation);
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gPov.fov);
     }
+    DofOff();
     link.publish(&state);
     gPublished = true;
     ++gWorldTicks;
     if (!gInWorld) {
         gInWorld = true;
-        log::Info("convo: conversation {} in the world: the view held at Shepard's on foot {} (yaw {:.0f}){}, arm IK and body follow on",
-            gC.number, F(V(gFoot.location)), YawDeg(gFoot.rotation), gSettings.follow ? ", moved with his pawn" : "");
+        log::Info("convo: conversation {} in the world: the view held at {} ({}, yaw {:.0f}){}; arm IK and body follow {}", gC.number,
+            F(gC.hold), gC.holdFrom, YawDeg(gC.holdRotation), gSettings.follow ? ", following his head bone's jumps" : "",
+            frame ? "on" : "waiting for the host's world view");
     }
     SetStatus(std::format("{{\"on\": true, \"world\": true, \"conversation\": {}, \"shots\": {}, \"speaker\": \"{}\", \"wheel\": {}, "
                           "\"subtitle\": {}, \"subtitleAt\": [{:.3f}, {:.3f}, {:.3f}], \"held\": [{:.1f}, {:.1f}, {:.1f}], \"heldRender\": {}, "
-                          "\"pawnMovedM\": {:.3f}}}",
+                          "\"reanchors\": {}, \"frame\": {}, \"from\": \"{}\"}}",
         gC.number, gC.shots, ShortName(gC.speaker), state.wheel != 0 ? "true" : "false", state.subtitle != 0 ? "true" : "false",
-        state.subtitleAt[0], state.subtitleAt[1], state.subtitleAt[2], held.x, held.y, held.z, state.holdRender != 0 ? "true" : "false",
-        std::sqrt(dx * dx + dy * dy + dz * dz) / kUnitsPerMeter));
+        state.subtitleAt[0], state.subtitleAt[1], state.subtitleAt[2], gC.hold.x, gC.hold.y, gC.hold.z, state.holdRender != 0 ? "true" : "false",
+        gC.reanchors, frame ? "true" : "false", gC.holdFrom));
 }
 
 bool InWorld() {
@@ -800,7 +928,7 @@ std::string Command(std::string const& rest) {
             return std::format("convo: the mode from the file again: {}", cw::Name(gSettings.mode));
         }
         gModeOverride = what == "on" || what.empty() ? cw::Mode::World : cw::ParseMode(what.c_str(), cw::Mode::World);
-        return std::format("convo: conversations {} until `mevr convo world off` (the next conversation)", cw::Name(*gModeOverride));
+        return std::format("convo: conversations {} until `mevr convo world off` (now)", cw::Name(*gModeOverride));
     }
     if (verb == "pick" || verb == "skip") {
         // Tests without controllers: the wheel's own reply pick (a wheel location 0..5, as the stick and A choose) or its skip
@@ -810,11 +938,23 @@ std::string Command(std::string const& rest) {
         if (handler == nullptr || f == nullptr) {
             return std::format("convo: no conversation wheel handler{}", f == nullptr ? " (or its function wasn't found)" : "");
         }
-        ue3::Params parms(ue3::runtime::Get(), f);
+        // Only on the game's own terms: a pick while the wheel is up and on a slot it uses, a skip while a line plays. A pick
+        // between lines crashed the game inside the script (2026-11-06 12:23, research/59: it reads an empty reply list).
+        bool const wheelUp = gDisplayingWheel.ReadBool(handler).value_or(false);
         int location = 0;
         if (verb == "pick") {
             words >> location;
-            parms.Set("nWheelLocation", static_cast<std::uint8_t>(std::clamp(location, 0, 5)));
+            location = std::clamp(location, 0, 5);
+            std::uint8_t const* const used = gSlotsUsed.At<std::uint8_t>(handler, location);
+            if (!wheelUp || used == nullptr || *used == 0) {
+                return std::format("convo: no pick: {}", !wheelUp ? "the wheel isn't up" : std::format("slot {} isn't used", location));
+            }
+        } else if (wheelUp) {
+            return "convo: no skip: the wheel is up (pick a reply)";
+        }
+        ue3::Params parms(ue3::runtime::Get(), f);
+        if (verb == "pick") {
+            parms.Set("nWheelLocation", static_cast<std::uint8_t>(location));
         }
         bool const called = ue3::runtime::Call(handler, f, parms);
         return std::format("convo: {} called {}{}", verb == "pick" ? std::format("SelectConversationEntry({})", location) : "SkipConversation",

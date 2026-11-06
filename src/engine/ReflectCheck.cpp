@@ -724,6 +724,7 @@ void CheckFields() {
     CheckField("SFXGame.BioConversation", "m_nCurrentEntry", SDK_FIELD(UBioConversation, m_nCurrentEntry));
     CheckField("SFXGame.BioConversation", "bUseFixedCameras", SDK_BOOL(UBioConversation, bUseFixedCameras));
     CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayingWheel));
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed", SDK_FIELD(UBioSFHandler_Conversation, m_bSlotsUsed));
     CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
     CheckField("Engine.SequenceEvent", "Originator", SDK_FIELD(USequenceEvent, Originator));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));

@@ -21,16 +21,18 @@ std::uint64_t gSequence = 0;
 constexpr float kStageWidth = 1280.0f;
 constexpr float kStageHeight = 720.0f;
 
-// A band of the stage (stage pixels, the stage's bottom on the frame's bottom) as fractions of the frame.
+// A band of the stage (stage pixels) as fractions of the frame. The conversation movie shows its whole 1280x720 stage across the
+// frame's width, centred top to bottom (measured 2026-11-06 on a 2344x2392 HUD frame: the wheel's centre at frame y 1715, stage y
+// 643 at 1.83 frame pixels per stage pixel, 537 px of frame above and below the stage).
 interact::Rect StageBand(std::uint32_t width, std::uint32_t height, float left, float right, float top, float bottom) {
     if (width == 0 || height == 0) {
         return {};
     }
     float const w = static_cast<float>(width);
     float const h = static_cast<float>(height);
-    float const scale = w / kStageWidth;            // frame pixels per stage pixel
-    float const stageBottom = h;                    // the stage's bottom edge on the frame's
-    auto const y = [&](float stageY) { return stageBottom - (kStageHeight - stageY) * scale; };
+    float const scale = w / kStageWidth;                     // frame pixels per stage pixel
+    float const stageTop = (h - kStageHeight * scale) * 0.5f;  // centred (negative for a frame wider than 16:9)
+    auto const y = [&](float stageY) { return stageTop + stageY * scale; };
     float const y0 = std::clamp(y(top), 0.0f, h);
     float const y1 = std::clamp(y(bottom), 0.0f, h);
     interact::Rect rect;
@@ -101,13 +103,15 @@ char const* Name(Mode mode) {
 }
 
 interact::Rect DefaultSubtitleCrop(std::uint32_t width, std::uint32_t height) {
-    // The line centred on x 639, up to two rows about 22 stage px each from y 605.6 [verify: measured on a HUD frame].
-    return StageBand(width, height, 140.0f, 1140.0f, 560.0f, 640.0f);
+    // The line across the stage, its bottom row at stage y 564..575 (measured), up to three rows above it (a long line wraps
+    // upward from SubtitleConversation's anchor at 605.6); the wheel's top row starts at 590.
+    return StageBand(width, height, 80.0f, 1200.0f, 480.0f, 586.0f);
 }
 
 interact::Rect DefaultWheelCrop(std::uint32_t width, std::uint32_t height) {
-    // Centred on (639.7, 643.3); the replies reach about 300 stage px to each side and the ring about 80 px up and down [verify].
-    return StageBand(width, height, 330.0f, 950.0f, 560.0f, 720.0f);
+    // The ring centred on (640, 643), its rows at stage y 590..680 (measured), the replies' text up to about 260 stage px to
+    // each side of it.
+    return StageBand(width, height, 330.0f, 950.0f, 586.0f, 712.0f);
 }
 
 bool SubtitlePoint(XrVector3f const& face, XrVector3f const& eyes, float belowM, float towardM, XrVector3f& out) {
@@ -121,11 +125,14 @@ bool SubtitlePoint(XrVector3f const& face, XrVector3f const& eyes, float belowM,
     return true;
 }
 
-Vec3 HeldLocation(Vec3 const& footView, Vec3 const& pawnAtStart, Vec3 const& pawnNow, bool follow) {
-    if (!follow) {
-        return footView;
+Follow FollowHead(Vec3 const& place, Vec3 const& anchor, Vec3 const& headNow, double threshold) {
+    double const dx = headNow.x - anchor.x;
+    double const dy = headNow.y - anchor.y;
+    double const dz = headNow.z - anchor.z;
+    if (!(std::sqrt(dx * dx + dy * dy + dz * dz) > threshold)) {
+        return {place, anchor, false};
     }
-    return {footView.x + (pawnNow.x - pawnAtStart.x), footView.y + (pawnNow.y - pawnAtStart.y), footView.z + (pawnNow.z - pawnAtStart.z)};
+    return {{place.x + dx, place.y + dy, place.z + dz}, headNow, true};
 }
 
 } // namespace mevr::vr::conversation_world

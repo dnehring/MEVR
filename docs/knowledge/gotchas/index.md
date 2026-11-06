@@ -19,7 +19,7 @@
 
 * [SteamVR's room setup kills the game at the title on the fake headset](steamvr-room-setup-kills-the-game.md) - An unregistered null-driver chaperone universe makes vrmonitor launch room setup and vrserver kill the running scene app 5 s later.
 * [EA's launcher refuses to start the game from inside a job object](ea-launcher-in-a-job-object.md) - EASteamLauncher's breakaway CreateProcess is denied when our shell or the EA app itself sits in a job; Steam's own launch works (`tools/launch-game.ps1 -Steam`).
-* [A test run in the game overwrites the player's saves](test-runs-overwrite-saves.md) - A map from the command line, the Mako drop or a resumed save autosaves into the player's career and rewrites the profile; back up `Save` and the inis before every run; bitten 2026-11-05 and 2026-11-06.
+* [A test run in the game overwrites the player's saves](test-runs-overwrite-saves.md) - A map from the command line, the Mako drop, a resumed save or a conversation's end autosaves into the player's career and rewrites the profile; back up `Save` and the inis before every run; bitten 2026-11-05 and twice 2026-11-06.
 * [The LE console prints less than UE3's: what works and what is silent](le-console-quirks.md) - `scale set` and `set` take effect, `getall` and the streaming stats print nothing, `god`/`ghost`/`pause` toggle.
 
 # Code and tooling

@@ -357,6 +357,21 @@ switching frameworks.
   in xr_session.cpp (decision, park, projection, lean, plan, submit, the pace, and the conversation movie at its authored size
   instead of Halcyon's half-size VR layout: the wheel 1.75x larger); host `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE]
   ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
+- LE1 conversations in the world, first person ([research/59](research/59-conversations-in-world.md), HostServices v33
+  `setConversationWorld`; `core/vr/ConversationWorld`, `game/ConversationWorld`, host `plugin/ConversationWorld`; **off by default**,
+  `[Cinematics] conversations = world`, live): in game mode 5 the player stands at Shepard's place (the view on foot if fresh, else
+  his head bone + the first-person eye offset, facing his pawn), head tracked, both eyes, full rate; the place follows his head
+  bone's jumps past 0.4 m (`FollowHead`). The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
+  `view_anchor::Hold` (arm IK, body follow); `MevrBridge::ConversationInWorld` in five `[MEVR]` seams in xr_session.cpp (not a cine,
+  the second eye's gate as gameplay, the conversation movie's authored layout, the cine capture boundary: else the UI stays in the
+  eyes, `[NOLETTERBOX]`: else a 16:9 band) and one in head_aim.cpp (the first-person hides). The conversation movie goes to the
+  HUD panel; its subtitle band goes on a quad under the speaker's face, the game's own wheel on a quad above the left hand (the
+  stage centred top to bottom on the frame, unlike the HUD's: `DefaultSubtitleCrop`/`DefaultWheelCrop`). The conversation camera's
+  depth of field blurs the room: `scale set DepthOfField False` while it lasts, back to BIOEngine.ini's value **read before** (the
+  game writes the live value there). Measured whatever the mode (logs `convo:`: moves, jumps at cuts, gaze, each shot against
+  Shepard's place): conversations teleport actors onto marks at camera cuts and half the shots are Shepard's own face.
+  `mevr convo [dump | world on|off | pick <slot> | skip]` (pick only with the wheel up: a pick between lines crashed the game).
+  Snapshot `"mod"."conversationWorld"`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

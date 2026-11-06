@@ -110,6 +110,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   inside the 16:9 frame (if cut: `[Cinematics] aspect = 0`, live), camera pans smooth at 90 (if they stutter: `fullRate = 0`,
   live), the dialogue wheel readable, the pointer picks a line. The 1.5% / 3 m at 2.6 m first default was "a little
   cross-eyed" (2026-11-06).
+- [ ] **Conversations in the world** (built 2026-11-06, off by default; session: conversations in the world): set
+  `[Cinematics] conversations = world` in `ASI\LE1MEVR.ini` and talk to someone on the Normandy (Pressly, Joker, Chakwas). You
+  stay where Shepard stands, head tracked, at real scale: do the people look human-sized and lifelike? Is the subtitle under
+  the speaker's face readable, and the dialogue wheel above your left hand (steered with the left stick, A picks)? The game
+  teleports people onto marks at its camera cuts (in the medical bay Ashley jumps 2.9 m in front of you, Anderson three times,
+  Shepard once): how bad are those pops? Any moment of discomfort. (research/59; checked on the fake headset, not by a person)
 - [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
   screen's lower buttons must not close it. (research/57 sections 2-3 and 6, built 2026-11-04/05)

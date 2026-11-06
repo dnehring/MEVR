@@ -62,13 +62,13 @@ Mode ParseMode(char const* text, Mode fallback);
 char const* Name(Mode mode);
 
 // ---- The conversation movie's parts on the HUD frame -------------------------------------------------------------------------
-// The conversation movie (GUI_SF_Conversation) is a 1280x720 stage shown across the HUD frame's width; the frame is taller than
-// the stage (2344x2392: 1306 stage pixels), and its subtitle and wheel are anchored to the stage's bottom edge, which lands on the
-// frame's bottom (as the HUD's bottom widgets do, research/41) [verify]. Authored places (pchud.cpp, from the movie's SWF):
-// SubtitleConversation at (639, 605.6), ConversationWheel at (639.7, 643.3), SubtitleBottom at (639, 703.1).
-// The subtitle's band: the line (up to two rows, centred) above the wheel.
+// The conversation movie (GUI_SF_Conversation) shows its 1280x720 stage across the HUD frame's width, centred top to bottom
+// (measured 2026-11-06, research/59; unlike the HUD movie, whose bottom widgets sit on the frame's bottom, research/41). Authored
+// places (pchud.cpp, from the movie's SWF): SubtitleConversation at (639, 605.6), ConversationWheel at (639.7, 643.3); measured:
+// the wheel's rows at stage y 590..680, a one-row line at 564..575.
+// The subtitle's band: the line (up to three rows) above the wheel.
 interact::Rect DefaultSubtitleCrop(std::uint32_t width, std::uint32_t height);
-// The wheel's square around its centre (the six replies' text reaches about 300 stage px to each side).
+// The wheel's band around its centre (the six replies' text reaches about 260 stage px to each side of the ring).
 interact::Rect DefaultWheelCrop(std::uint32_t width, std::uint32_t height);
 
 // ---- Placement -----------------------------------------------------------------------------------------------------------------
@@ -76,13 +76,19 @@ interact::Rect DefaultWheelCrop(std::uint32_t width, std::uint32_t height);
 // inside the speaker's body, in tracking space. False if the speaker is at the eyes.
 bool SubtitlePoint(XrVector3f const& face, XrVector3f const& eyes, float belowM, float towardM, XrVector3f& out);
 
-// The held view's location: Shepard's on-foot view moved with his pawn since the conversation began (`follow`), so a stage that
-// places him moves the player with him (the camera cuts hid such moves; research/59 measures them). Unreal units.
+// The player's place follows Shepard's head bone when it jumps (a stage placing him, a cut to a new mark), never for the head's
+// own small moves (gestures, breathing: the player's real head replaces them): past `threshold` (Unreal units) from where it was
+// when the place was last set, the place moves by the same jump and the head is the new anchor. Unreal units.
 struct Vec3 {
     double x = 0.0;
     double y = 0.0;
     double z = 0.0;
 };
-Vec3 HeldLocation(Vec3 const& footView, Vec3 const& pawnAtStart, Vec3 const& pawnNow, bool follow);
+struct Follow {
+    Vec3 place;
+    Vec3 anchor;
+    bool jumped = false;
+};
+Follow FollowHead(Vec3 const& place, Vec3 const& anchor, Vec3 const& headNow, double threshold);
 
 } // namespace mevr::vr::conversation_world
