@@ -347,12 +347,16 @@ switching frameworks.
   `ASI\LE1MEVR.ini`, on by default; our menu's Comfort > Conversations and cutscenes: In VR / 3D screen / Flat screen): a VR cine
   renders both Stereo 2 passes at the game's own projection from two parallel cameras on the director's camera (head look and
   lean parked; `PlanStereo`'s screen branch, mode 1) and each eye's render goes on its own quad (eye visibility) at one pose,
-  fixed in the room by `PlacePanel` (`widthM` 3.0, `distanceM` 2.6). Each eye drops `depth / (1 + depth)` of its width on
-  opposite sides, which puts infinity `depth` (1.5% of the width) behind the screen; the cameras' distance follows each shot's
-  lens so the scene `convergeM` (1.2 m at 100 units per metre) away lands on the plane; infinity's disparity is capped at 80% of
-  the eye distance (`core/vr/CineScreen`, unit-tested). `[MEVR]` seams in xr_session.cpp (decision, park, projection, lean, plan,
-  submit, and the conversation movie at its authored size instead of Halcyon's half-size VR layout: the wheel 1.75x larger); host
-  `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE] ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
+  fixed in the room by `PlacePanel` (`widthM` 2.9, `distanceM` 3.5: 45 degrees, the typical shot's own angle; since the
+  owner's first headset trial, 2026-11-06, research/52 "In the headset"). Each eye drops `depth / (1 + depth)` of its width on
+  opposite sides, which puts infinity `depth` (1.0% of the width; 1.5% was cross-eyed) behind the screen; the cameras' distance
+  follows each shot's lens (planned at most 80 degrees: a conversation's first frame reports the gameplay window) so the scene
+  `convergeM` (1.2 m at 100 units per metre) away lands on the plane; infinity's disparity is capped at 80% of the eye distance
+  (`core/vr/CineScreen`, unit-tested). The screen shows the eye image's middle 16:9 band (`aspect`; 0 = the whole, nearly
+  square image) and runs at the headset's rate (`fullRate`; 0 = Halcyon's `cineFpsCap`, half the display rate). `[MEVR]` seams
+  in xr_session.cpp (decision, park, projection, lean, plan, submit, the pace, and the conversation movie at its authored size
+  instead of Halcyon's half-size VR layout: the wheel 1.75x larger); host `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE]
+  ... -> 3D screen (MEVR)`; snapshot `"cineScreen"`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

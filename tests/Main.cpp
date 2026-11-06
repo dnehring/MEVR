@@ -7412,7 +7412,9 @@ void TestCineScreen() {
     auto const capped = cs::Plan(wide, 0.064f, 100.0f, halfH);
     CHECK(capped.depthCapped && NearD(capped.depth, 0.8 * 0.064 / 8.0, 1e-6) && NearD(capped.depth * 8.0, 0.8 * 0.064, 1e-6));
     auto const plain = cs::Plan(cs::Settings{}, 0.064f, 100.0f, halfH);
-    CHECK(!plain.depthCapped && NearD(plain.depth, 0.015, 1e-6) &&
+    // The default (1.0% since the owner's headset trial, 2026-11-06): under the cap for a 59 mm eye distance too.
+    CHECK(!plain.depthCapped && NearD(plain.depth, cs::Settings{}.depth, 1e-6) && NearD(plain.depth, 0.010, 1e-6) &&
+          !cs::Plan(cs::Settings{}, 0.059f, 100.0f, halfH).depthCapped &&
           NearD(plain.baselineUU, cs::BaselineUU(plain.crop, cs::Settings{}.convergeM * cs::kSceneUnitsPerMeter, halfH), 1e-4));
     CHECK(cs::Settings{}.conversations && cs::Settings{}.cutscenes);   // on by default since the in-game check (research/52)
     CHECK(cs::Plan(cs::Settings{}, 0.064f, 0.0f, halfH).baselineUU == 0.0f);   // no scale yet: no separation

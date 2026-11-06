@@ -7,6 +7,14 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+### Seeing the game
+- The cinema screen for conversations and cutscenes is calmer: a 16:9 screen a little farther away (2.9 m wide at 3.5 m)
+  with gentler depth, so it no longer pulls your eyes apart. The size, distance and depth are in Comfort > Conversations
+  and cutscenes.
+- Conversations and cutscenes on the screen run at your headset's full frame rate instead of half of it.
+- No more burst of depth at the start of a conversation.
+- Motion blur stays off after cutscenes and conversations (it could come back after one and make surfaces flicker).
+
 ### The Mako
 - Repair the Mako from the throttle: while your left hand holds the throttle lever, click the left thumbstick. The button on
   the desk still works too.

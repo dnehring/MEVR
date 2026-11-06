@@ -24,9 +24,13 @@ struct Settings {
     bool cutscenes = true;       // cutscenes: the same for cutscenes (prerendered movies stay on the flat screen)
     bool frontEnd = true;        // frontEnd: the start-up's front end (the title, its main menu) on the 3D screen, whatever
                                  // `cutscenes` says; 0: the flat panel (research/56)
-    float distanceM = 2.6f;      // distanceM: how far ahead the screen stands when a scene starts
-    float widthM = 3.0f;         // widthM: the screen's width
-    float depth = 0.015f;        // depth: infinity's disparity, a fraction of the screen's width (0 = flat, at the screen)
+    // The owner's first headset trial (PS VR2, 59 mm eyes, 2026-11-06) of the fake-headset defaults (3.0 m wide at 2.6 m, 60
+    // degrees; depth 1.5%: the far scene 0.99 degrees behind, its two images 77% of the eye distance apart): "a little
+    // cross-eyed", the characters "physically large", "maybe even a little bit farther out". Now 45 degrees across, the angle
+    // the game renders a typical shot at (people at the shot's own size), and the far scene 0.47 degrees behind.
+    float distanceM = 3.5f;      // distanceM: how far ahead the screen stands when a scene starts
+    float widthM = 2.9f;         // widthM: the screen's width
+    float depth = 0.010f;        // depth: infinity's disparity, a fraction of the screen's width (0 = flat, at the screen)
     float convergeM = 1.2f;      // convergeM: the scene distance that lands on the screen plane (metres of the scene). LE1's
                                  // close-ups put the camera ~0.85 m from a face: at 2.5 m one came 1.9 degrees out of the
                                  // screen, at 1.2 m 0.5 (research/52, measured)

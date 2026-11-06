@@ -105,10 +105,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   test rig ignored it.) This is also the first headset check of clicks on any flat menu. (research/51 section 8)
 - [ ] From the console: are the map's labels readable, and does the disc's near edge draw over the console? (research/51
   section 8.1)
-- [ ] A conversation and a cutscene on the 3D screen: depth comfort, the dialogue wheel readable, the pointer picks a
-  wheel option. (research/52 "Limits")
-
-### The omni-tool menu on the wrist (session: VR performance optimization; on the release-blockers branch, not on main yet)
+- [ ] A conversation and a cutscene on the 3D screen at the new defaults (2.9 m wide at 3.5 m, depth 1.0%, 16:9, the
+  headset's full rate; research/52 "In the headset"): no cross-eyed strain (also at a conversation's first second), subtitles
+  inside the 16:9 frame (if cut: `[Cinematics] aspect = 0`, live), camera pans smooth at 90 (if they stutter: `fullRate = 0`,
+  live), the dialogue wheel readable, the pointer picks a line. The 1.5% / 3 m at 2.6 m first default was "a little
+  cross-eyed" (2026-11-06).
 - [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
   screen's lower buttons must not close it. (research/57 sections 2-3 and 6, built 2026-11-04/05)
