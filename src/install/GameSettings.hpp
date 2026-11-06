@@ -18,10 +18,10 @@ struct Target {
     int height = 0;
 };
 
-// The target for a choice: "headset" (the runtime's recommended eye size, when known), "low", "performance",
-// "balanced", "sharp", "max" (Halcyon's ladder: width, width / 0.964 even), "auto" (performance's, a stand-in: the mod
-// sets the headset's own size at the first VR start, Choices::eyeSizeAtFirstStart) or "keep". {0, 0} for "keep", an
-// unknown key, or "headset" without a known size.
+// The target for a choice: "headset" (0.85 of the runtime's recommended eye size, when known; FSR scales it up), "low",
+// "performance", "balanced", "sharp", "max" (Halcyon's ladder: width, width / 0.964 even), "auto" (performance's, a
+// stand-in: the mod sets 0.85 of the headset's eye size at the first VR start, Choices::eyeSizeAtFirstStart) or "keep".
+// {0, 0} for "keep", an unknown key, or "headset" without a known size.
 Target TargetFor(std::string_view choice, int headsetWidth, int headsetHeight);
 
 struct Choices {

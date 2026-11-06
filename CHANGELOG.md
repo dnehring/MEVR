@@ -28,9 +28,11 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
   journal, codex, the mission computer) appears on your wrist; touch one and it's projected from your wrist, the menu
   beside it to switch. The hacking screen comes from the omni-tool too.
 - The galaxy map as a hologram on the Normandy.
-- Colour presets per headset (brightness, contrast, saturation), optional FSR 1 upscaling, and a render resolution
-  sized to your headset: when MEVR Setup can't tell your headset's size yet, the first VR start sets it for the
-  launches after it.
+- Colour presets per headset (brightness, contrast, saturation), and a render resolution sized to your headset: 85% of
+  its eye size, sharpened back up by FSR 1, for frame rate. When MEVR Setup can't tell your headset's size yet, the first
+  VR start sets it for the launches after it.
+- Each frame renders the scene once and builds the second eye from it, about a fifth less work per frame than two full
+  renders.
 
 ### Your squad
 - Point and order: squeeze the left grip away from the gun, point at an enemy, a spot or a squadmate, let go: attack, move

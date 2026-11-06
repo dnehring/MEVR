@@ -16,6 +16,11 @@
 // a slider's only once it has rested for a moment. Unit-tested in tests/Main.cpp.
 namespace mevr::vr::menu_settings {
 
+// `[Hands] handPitch` when the file has none: the game's hand model sits 90 degrees off the OpenXR grip pose (on every
+// controller tried since 2026-10-08: Touch, PS VR2 Sense), so 90 is where hands look right (the owner, 2026-11-05: the
+// dev settings are the defaults). The menu's hand-angle row shows and sets the trim around it (its -30..30).
+inline constexpr float kHandPitchDefault = 90.0f;
+
 enum class Type {
     Flag,    // 0 / 1, a toggle
     Number,  // a slider (with a "<key>_text" companion: the value as the row reads it)
@@ -106,7 +111,8 @@ std::string ResolutionChoice(int resX, int resY, int recommendedWidth, int recom
 std::string HeadsetSizesText(int recommendedWidth, int recommendedHeight);
 // A new install's first VR start (the owner, 2026-11-04): MEVR Setup leaves Halcyon's Performance size as a stand-in when
 // it can't learn the headset's own eye size (`wanted`, its manifest's eyeSizeAtFirstStart). Once the runtime recommends
-// a size, the target becomes exactly that, once (`alreadySet`: done before). {0, 0}: nothing to do (not wanted, done, no
+// a size, the target becomes 0.85 of it (the "x 0.85" chip; FSR, on by default, scales it up to the eye; since 2026-11-05,
+// before that the size exactly), once (`alreadySet`: done before). {0, 0}: nothing to do (not wanted, done, no
 // recommendation yet, or the target is that size already).
 Size FirstStartSize(bool wanted, bool alreadySet, Size current, int recommendedWidth, int recommendedHeight);
 

@@ -430,10 +430,11 @@ void App::Refresh() {
                                                                   : "Ours: the game's bink2w64.dll is kept as bink2w64_original.dll and ours goes in front of it";
     install::settings::Target const target = install::settings::TargetFor(quality_, headsetWidth_, headsetHeight_);
     qualityText_ = quality_ == "keep" ? "The resolution stays as it is"
-        : quality_ == "auto"         ? std::format("Your headset's own size, set at the first VR start for the launches after it ({} × {} per eye until then)",
+        : quality_ == "auto"         ? std::format("Sized for your headset at the first VR start, for the launches after it: 0.85 of its eye size, which FSR "
+                                                       "sharpens up to it ({} × {} per eye until then)",
                                            target.width, target.height)
         : target.width > 0           ? std::format("{} × {} per eye{}", target.width, target.height,
-                                           quality_ == "headset" ? " (your headset's own size)" : quality_ == "performance" ? " (Halcyon's default)" : "")
+                                           quality_ == "headset" ? " (0.85 of your headset's eye size; FSR sharpens it up to it)" : quality_ == "performance" ? " (Halcyon's default)" : "")
                                      : "";
     headsetText_ = headsetKnown_ ? std::format("{} × {} per eye, from the last VR session", headsetWidth_, headsetHeight_)
                                  : "Not known yet: it's read from the last VR session, or Detect asks the VR runtime";

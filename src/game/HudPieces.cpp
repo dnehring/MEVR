@@ -27,6 +27,12 @@ bool gToldNoHost = false;
 std::uintptr_t gWeaponKey = 0;
 std::uint32_t gSerial = 0;
 std::string gWhy;  // why the gun piece isn't shown (empty: shown)
+// Raised to the eye, the panel over the receiver sat right in the sight line (the owner's QA, 2026-11-05: "I can't actually
+// see through my iron sights"): it leaves the gun above this raised weight (sights::RaisedWeight) and comes back below
+// the lower one, so it doesn't flicker at the edge. Meanwhile the host shows the weapon panel on the HUD panel.
+constexpr float kRaisedHide = 0.55f;
+constexpr float kRaisedShow = 0.35f;
+bool gRaisedHidden = false;
 unsigned gTicksShown = 0;
 unsigned gTicksHidden = 0;
 
@@ -73,6 +79,9 @@ void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
         why = "not on foot";
     } else if (!ray.valid) {
         why = "no gun aimed along its barrel";
+    } else if (float const raised = sights::RaisedWeight();
+               (gRaisedHidden = raised > (gRaisedHidden ? kRaisedShow : kRaisedHide))) {
+        why = "the gun is raised to the eye: the sights stay clear";
     } else if (auto const top = sights::GunTop(ray); !top) {
         why = "the barrel points straight up or down";
     } else {

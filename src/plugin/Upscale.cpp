@@ -58,7 +58,7 @@ void Tick() {
     wchar_t method[32]{};
     wchar_t sharpness[32]{};
     if (!path.empty()) {
-        GetPrivateProfileStringW(L"Upscale", L"method", L"off", method, 32, path.c_str());
+        GetPrivateProfileStringW(L"Upscale", L"method", L"fsr", method, 32, path.c_str());  // fsr by default since 2026-11-05
         GetPrivateProfileStringW(L"Upscale", L"sharpness", L"0.9", sharpness, 32, path.c_str());
     }
     std::string narrowMethod;

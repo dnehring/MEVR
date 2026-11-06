@@ -7,6 +7,7 @@
 #include "core/ik/GunKick.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/MenuSettings.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/Sights.hpp"
 
@@ -34,7 +35,7 @@ namespace {
 namespace fs = std::filesystem;
 
 struct Values {
-    double pitch = 0.0;
+    double pitch = vr::menu_settings::kHandPitchDefault;  // the hand model sits 90 degrees off the grip pose
     double yaw = 0.0;
     double roll = 0.0;
     double gunRoll = 0.0;
@@ -100,7 +101,8 @@ constexpr char const* kDefaultFile =
     "; How Shepard's hands sit on the controllers, in degrees, the same for both hands (mirrored for\n"
     "; the left). handPitch: positive tilts the fingers down. handYaw: positive turns them outward\n"
     "; for the right hand. handRoll: positive rolls the thumb side outward for the right hand.\n"
-    "handPitch = 0\n"
+    "; 90 is where the game's hand model sits right on the controllers (the menu's hand angle trims around it).\n"
+    "handPitch = 90\n"
     "handYaw = 0\n"
     "handRoll = 0\n"
     "; A held gun's barrel follows the controller's aim and its top the thumb side of the hand.\n"
@@ -802,8 +804,8 @@ constexpr char const* kGameBlock =
     "[Game]\n"
     "; The game's own behaviour around VR. pauseUnfocused: 1 = the game freezes everything but you while its window\n"
     "; doesn't have the focus, as Mass Effect does (a click beside the window or the headset's dashboard can do that);\n"
-    "; 0 = it runs on.\n"
-    "pauseUnfocused = 1\n";
+    "; 0 = it runs on (the default: in VR the window often isn't in front).\n"
+    "pauseUnfocused = 0\n";
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too

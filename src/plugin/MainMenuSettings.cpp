@@ -356,7 +356,8 @@ void Settings::Read(menu::Values& v) {
         }
     }
     // Body.
-    v.numbers["trim_pitch"] = ini.Num("Hands", "handPitch", 0.0f);
+    // The row is the trim around the hand model's 90 degrees (ms::kHandPitchDefault), the file the whole angle.
+    v.numbers["trim_pitch"] = ini.Num("Hands", "handPitch", ms::kHandPitchDefault) - ms::kHandPitchDefault;
     v.numbers["trim_yaw"] = ini.Num("Hands", "handYaw", 0.0f);
     v.numbers["trim_roll"] = ini.Num("Hands", "handRoll", 0.0f);
     calibration::Summary const cal = calibration::GetSummary();
@@ -417,7 +418,7 @@ void Settings::Read(menu::Values& v) {
                                       : "applies after a restart";
     flag("headset_known", recommendedW > 0 && recommendedH > 0);
     v.texts["headset_text"] = ms::HeadsetSizesText(recommendedW, recommendedH);
-    v.texts["upscale"] = ms::UpscaleChoice(ini.Text("Upscale", "method", "off"));
+    v.texts["upscale"] = ms::UpscaleChoice(ini.Text("Upscale", "method", "fsr"));
     flag("steady_cine", c.cineFpsCap);
     // HUD and sights.
     v.numbers["hud_distance"] = c.hudPanelDistanceM;
@@ -652,7 +653,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Hands", "gunKick", onOff("gun_kick"), true);
     } else if (key == "trim_pitch" || key == "trim_yaw" || key == "trim_roll") {
         char const* name = key == "trim_pitch" ? "handPitch" : key == "trim_yaw" ? "handYaw" : "handRoll";
-        Put("Hands", name, fixed(v.Number(key), 1), final);
+        float const value = key == "trim_pitch" ? v.Number(key) + ms::kHandPitchDefault : v.Number(key);
+        Put("Hands", name, fixed(value, 1), final);
     } else if (key == "sight_pistol") {
         Put("Sights", "pistol", ms::SightValue(v.Text(key), ""), true);
     } else if (key == "sight_shotgun") {
@@ -1054,12 +1056,13 @@ void FirstStartEyeSize() {
         MELEVR::Config::SaveProfile(active);
         int wx = 0, wy = 0;
         MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
-        log::Info("first VR start: the render resolution is now your headset's own eye size, {}x{} (MEVR Setup's stand-in was {}x{}); "
+        log::Info("first VR start: the render resolution is now 0.85 of your headset's eye size, {}x{}, which FSR scales up to it "
+                  "(MEVR Setup's stand-in was {}x{}); "
                   "profile {} saved, GamerSettings.ini {}: it applies from the next launch ([Display] eyeSizeSet = 1)",
             size.width, size.height, oldW, oldH, MELEVR::Config::ProfileName(active),
             wx > 0 ? std::format("set to {}x{}", wx, wy) : std::string("unchanged (auto-set per mode is off)"));
     } else {
-        log::Info("first VR start: the render resolution {}x{} is already your headset's own eye size ([Display] eyeSizeSet = 1)", oldW, oldH);
+        log::Info("first VR start: the render resolution {}x{} is already 0.85 of your headset's eye size ([Display] eyeSizeSet = 1)", oldW, oldH);
     }
     if (WritePrivateProfileStringW(L"Display", L"eyeSizeSet", L"1", path.c_str()) == 0) {
         log::Warn("first VR start: couldn't write [Display] eyeSizeSet to {}: the next VR start checks again", ini::Utf8(std::filesystem::path(path)));

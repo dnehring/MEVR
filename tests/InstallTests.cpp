@@ -321,7 +321,8 @@ void TestGameSettings() {
     }
     ICHECK(st::TargetFor("performance", 0, 0).height == 3188);
     ICHECK(st::TargetFor("auto", 0, 0).width == 3072 && st::TargetFor("auto", 0, 0).height == 3188);  // the stand-in until the first VR start
-    ICHECK(st::TargetFor("headset", 2824, 2880).width == 2824);
+    ICHECK(st::TargetFor("headset", 2824, 2880).width == 2400 && st::TargetFor("headset", 2824, 2880).height == 2448);  // 0.85, FSR
+    ICHECK(st::TargetFor("headset", 2064, 2208).width == 1754 && st::TargetFor("headset", 2064, 2208).height == 1876);
     ICHECK(st::TargetFor("headset", 0, 0).width == 0);
     ICHECK(st::TargetFor("keep", 1, 1).width == 0);
     std::string const original = "[SystemSettings]\r\nResX=2560\r\nResY=1440\r\nFullscreen=True\r\nUseVSync=True\r\nMotionBlur=True\r\n"

@@ -2338,7 +2338,7 @@ void Tick() {
         }
         static int umbraShared = -1;
         int const umbraSharedRead = std::clamp(readInt(L"umbraSharedVisibility", 0), 0, 3);
-        int const clearBits = readInt(L"umbraSecondEyeClearBits", 0);
+        int const clearBits = readInt(L"umbraSecondEyeClearBits", 2);  // the default its description gives (and the dev file's)
         gUmbraSecondEyeClearBits.store(clearBits, std::memory_order_relaxed);
         if (umbraSharedRead != umbraShared) {
             umbraShared = umbraSharedRead;
@@ -2410,7 +2410,9 @@ void Tick() {
                     window != 0 ? "the symmetric window" : "each eye's own frustum (an object wholly inside the other eye's outer wedge can stay occluded)", window);
             }
         }
-        int const shareRaw = readInt(L"sharePass", 0);
+        // Default 5 since 2026-11-05 (the owner: the dev settings are the defaults): one Draw a frame, the second eye
+        // synthesised from the first's recorded render, with the health check falling back to Halcyon's second Draw.
+        int const shareRaw = readInt(L"sharePass", 5);
         int const share = shareRaw < 0 ? 0 : (shareRaw > 5 ? 5 : shareRaw);
         if (share != sharePass) {
             sharePass = share;

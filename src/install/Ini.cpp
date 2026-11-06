@@ -344,6 +344,11 @@ std::string HalcyonReleaseIni() {
         "combatHeadAim = 0", "makoHeadAim = 0",
         "mirrorPresentEvery = 2", "depthPopKeyEnabled = 0",
         "sfr2Metric = 1",
+        // The owner's own profile (2026-11-05: the dev settings are the defaults): the right stick doesn't tilt the view
+        // (only the head does), the view framed 7.8 cm right and 8.2 cm down, and the flat screen's dolly at 0.674 m.
+        "decoupledPitch = 1",
+        "cameraOffsetEnabled = 1", "cameraOffsetRight = 0.078", "cameraOffsetUp = -0.082",
+        "screenDistanceEnabled = 1", "flatScreenDistance = 0.674",
     };
     std::string out = "; MELE VR config - written by the in-headset menu.\r\n\r\n[active]\r\nprofile=Default\r\n\r\n"
                       "[hotkeys]\r\nenabled=0\r\nprofile0=112\r\nprofile1=113\r\nprofile2=114\r\nprofile3=115\r\n\r\n";

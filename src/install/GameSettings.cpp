@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <string.h>
 
@@ -42,8 +43,11 @@ Target TargetFor(std::string_view choice, int headsetWidth, int headsetHeight) {
         choice = "performance";  // the stand-in until the mod learns the headset's own size at the first VR start
     }
     if (choice == "headset") {
+        // 0.85 of the runtime's eye size, which FSR (on by default) scales up to it: the owner's own setting, the default
+        // since 2026-11-05. Rounded to even as the in-game menu's "x 0.85" chip (core/vr/MenuSettings HeadsetSize).
         if (headsetWidth > 0 && headsetHeight > 0) {
-            return {Even(headsetWidth), Even(headsetHeight)};
+            auto const scaled = [](int v) { return 2 * static_cast<int>(std::lround(static_cast<double>(v) * 0.85 * 0.5)); };
+            return {scaled(headsetWidth), scaled(headsetHeight)};
         }
         return {};
     }

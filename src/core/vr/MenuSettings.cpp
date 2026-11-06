@@ -180,7 +180,7 @@ std::vector<Field> const& Schema() {
         {"quality_note", Type::Text, 0, "applies after a restart"},
         {"headset_known", Type::Flag, 0},
         {"headset_text", Type::Text, 0, "Your headset's own eye size, known once VR starts"},
-        {"upscale", Type::Choice, 0, "off"},
+        {"upscale", Type::Choice, 0, "fsr"},  // FSR 1 by default (2026-11-05): it acts only when the target is below the eye
         {"steady_cine", Type::Flag, 1},
         // HUD and sights.
         {"hud_distance", Type::Number, 1.5f, "", 1, 3, F::Meters1},
@@ -378,7 +378,9 @@ Size FirstStartSize(bool wanted, bool alreadySet, Size current, int recommendedW
     if (!wanted || alreadySet) {
         return {};
     }
-    Size const size = HeadsetSize("headset", recommendedWidth, recommendedHeight);
+    // 0.85 of it (the owner, 2026-11-05: the dev settings are the defaults; theirs was 0.83), which FSR, on by default,
+    // scales up to the eye.
+    Size const size = HeadsetSize("headset85", recommendedWidth, recommendedHeight);
     if (size.width <= 0 || size.height <= 0 || size == current) {
         return {};
     }

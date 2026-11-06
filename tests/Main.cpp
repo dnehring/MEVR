@@ -9802,13 +9802,15 @@ void TestMenuSettings() {
     CHECK((ms::HeadsetSize("headset85", 2017, 2161) == ms::Size{1714, 1836}));  // 1714.45 x 1836.85, each even
     CHECK((ms::HeadsetSize("headset85", 0, 0) == ms::Size{}));                  // before VR has started
     CHECK((ms::HeadsetSize("balanced", 2824, 2880) == ms::Size{}));
-    // A new install's first VR start: the setup's Performance stand-in becomes the headset's own size, once.
-    CHECK((ms::FirstStartSize(true, false, {3072, 3188}, 2824, 2880) == ms::Size{2824, 2880}));
-    CHECK((ms::FirstStartSize(true, false, {3072, 3188}, 2064, 2208) == ms::Size{2064, 2208}));  // a Quest 3 over Link
+    // A new install's first VR start: the setup's Performance stand-in becomes 0.85 of the headset's eye size (FSR scales it
+    // up; the owner's own setting, 2026-11-05), once.
+    CHECK((ms::FirstStartSize(true, false, {3072, 3188}, 2824, 2880) == ms::Size{2400, 2448}));  // 0.85 of the eye (FSR)
+    CHECK((ms::FirstStartSize(true, false, {3072, 3188}, 2064, 2208) == ms::Size{1754, 1876}));  // a Quest 3 over Link
+    CHECK((ms::FirstStartSize(true, false, {2400, 2448}, 2824, 2880) == ms::Size{}));            // that size already
     CHECK((ms::FirstStartSize(false, false, {3072, 3188}, 2824, 2880) == ms::Size{}));  // a developer deploy, or a choice
     CHECK((ms::FirstStartSize(true, true, {3072, 3188}, 2824, 2880) == ms::Size{}));    // done once already
     CHECK((ms::FirstStartSize(true, false, {3072, 3188}, 0, 0) == ms::Size{}));         // no recommendation yet
-    CHECK((ms::FirstStartSize(true, false, {2824, 2880}, 2824, 2880) == ms::Size{}));   // already that size
+    CHECK((ms::FirstStartSize(true, false, {2824, 2880}, 2824, 2880) == ms::Size{2400, 2448}));  // the full size: 0.85 of it too
     // Selected: a headset chip when the target is exactly its size; a ladder tier by its width; else none.
     CHECK(ms::ResolutionChoice(2824, 2880, 2824, 2880) == "headset");
     CHECK(ms::ResolutionChoice(2400, 2448, 2824, 2880) == "headset85");

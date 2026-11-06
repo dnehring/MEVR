@@ -181,7 +181,12 @@ if ($Game -eq 'LE1') {
             # depth pop (P) costs about 30% while on.
             'mirrorPresentEvery = 2', 'depthPopKeyEnabled = 0',
             # research/30: life-size stereo (each eye from its real place, no convergence shift).
-            'sfr2Metric = 1', ''
+            'sfr2Metric = 1',
+            # The owner's own profile, the defaults since 2026-11-05 (src/install/Ini.cpp HalcyonReleaseIni): the stick
+            # doesn't tilt the view, the view framed 7.8 cm right and 8.2 cm down, the flat screen's dolly at 0.674 m.
+            'decoupledPitch = 1',
+            'cameraOffsetEnabled = 1', 'cameraOffsetRight = 0.078', 'cameraOffsetUp = -0.082',
+            'screenDistanceEnabled = 1', 'flatScreenDistance = 0.674', ''
         )
         $lines = @('; MELE VR config - written by the in-headset menu.', '',
             '[active]', 'profile=Default', '',

@@ -61,7 +61,7 @@ namespace {
 namespace controllers = mevr::vr::controllers;
 
 struct Trims {
-    float pitch = 0.0f;
+    float pitch = 90.0f;  // [Hands] handPitch's default (core/vr/MenuSettings kHandPitchDefault): the hand model's
     float yaw = 0.0f;
     float roll = 0.0f;
 };

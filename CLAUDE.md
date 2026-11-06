@@ -381,7 +381,9 @@ switching frameworks.
   host in `HalcyonOverlays`; `[Hud]` in `ASI\LE1MEVR.ini`): the HUD's player status (health/shield arc, squad portraits, medi-gel;
   bottom CENTRE of the HUD) on a quad at the left wrist (`wristStatus`, `wristWidthM` 0.08, `wristOffset` in the left grip's axes),
   and the weapon panel (gun silhouette, heat strip, grenades; bottom left) over the gun's receiver (`gunStatus`, `gunBackM` 0.15,
-  `gunUpM` 0.04; the mod publishes the anchor from the aim ray and `sights::GunTop`). Both masked out of the HUD panel (the panel
+  `gunUpM` 0.04; the mod publishes the anchor from the aim ray and `sights::GunTop`; raised to the eye, `sights::RaisedWeight`
+  over 0.55 and back under 0.35, it leaves the gun for the HUD panel so the sights stay clear: the owner's QA, 2026-11-05,
+  "I can't actually see through my iron sights"). Both masked out of the HUD panel (the panel
   shader takes three masks now); the radar and power bar stay. The HUD frame is ~1306 stage px tall and its bottom widgets are
   anchored to the frame's bottom, so the crops are bottom-anchored (`DefaultWristCrop`/`DefaultGunCrop`; `wristCrop`/`gunCrop` by
   hand). Logs `hud pieces:`, `[MEVR-HUD] ... wrist/gun`; snapshot `"mod"."hudPieces"`, layers `wrist`, `gun`.
@@ -568,7 +570,7 @@ switching frameworks.
   components `bOwnerNoSee`. `tools/make-drive-recording.py` drives the Mako by replay on the fake headset. An enum value with a numeric suffix goes in a package as the name and
   the suffix plus one (`TEXTUREGROUP_Environment`, 1025), or the game reads past the enum's end (`LODGroup 27`: one mip resident, the model one colour). The parts are placed by writing `Location`/`Rotation` and flushing.
   **In the Mako by itself** (`[Cockpit]`, research/47 "The cockpit by itself"): entering runs `ASI\cockpit\cockpit.txt` (`tools/cockpit/place.py
-  --script`), leaving parks it. **`[Game] pauseUnfocused = 0`** (`game/FocusPause`) undoes ME1's freeze while the window has no focus
+  --script`), leaving parks it. **`[Game] pauseUnfocused = 0`** (`game/FocusPause`, the default since 2026-11-05) undoes ME1's freeze while the window has no focus
   (`bPlayersOnly`; it also refused the Mako's exit); the pad reaches the game only with focus, the cockpit's controls without.
   **Shepard in the seat** (`[Cockpit] seated`, research/47 "Shepard in the seat"): the script's `seat` line; the driver (hidden by the game
   at the vehicle's origin) is shown eyes-only (`bOnlyOwnerSee`, owned by the vehicle), its head's meshes hidden, lit by the vehicle's light
@@ -651,7 +653,8 @@ switching frameworks.
   more gradation at both ends** (the sky at the sun 50,000 distinct colours against 19,000, the darkest patch 5,900
   against 400 with 9% black) and carries the artists' grade; the float path is not an improvement over it until it
   carries the game's own toe and grade. `hdrDisplay = 0` is the game's SDR pass.
-- LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, off by
+- LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, `method = fsr` by default
+  since 2026-11-05 with the render target at 0.85 of the eye; before that off by
   default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1
   -Scale 0.75`, or the main menu's Display > Headset × 0.75 / × 0.85 and Upscale > FSR), Halcyon's eye blit scales each 8-bit eye up with FSR 1 (EASU into an intermediate, RCAS into the
   eye, the colour correction at the end; `sharpness` 0..1) instead of its bilinear fill: seam `[MEVR] upscale` in
@@ -849,8 +852,9 @@ switching frameworks.
   puts back too (`settings::ModWrites` from `MELEVR.ini`, `ini::Record`). A game never started (no
   GamerSettings.ini) keeps the chosen settings as `pendingSettings` in the manifest and offers "Start the game once";
   the resolution's default without a known headset size is **Automatic** (`auto`, 2026-11-04, the owner): Performance now,
-  the manifest's `eyeSizeAtFirstStart`, and the host's `main_menu::FirstStartEyeSize` sets the headset's own eye size at the
-  first VR start for the launches after it, once (`[Display] eyeSizeSet = 1`; log `first VR start:`);
+  the manifest's `eyeSizeAtFirstStart`, and the host's `main_menu::FirstStartEyeSize` sets 0.85 of the headset's eye size
+  (FSR, on by default, scales it up; Setup's "Headset" choice is the same 0.85) at the first VR start for the launches after
+  it, once (`[Display] eyeSizeSet = 1`; log `first VR start:`);
   Repair applies them once the file exists, puts back what Steam's "verify files" removed (loader, TOC entry) and the
   status lists what it would fix (research/33 section 9). Texture packs: the pack's page
   plus Mass Effect Modder's CLI, never bundled or auto-downloaded (Nexus terms). In game, Display > Optional content
@@ -867,6 +871,13 @@ switching frameworks.
   --from-game` at once, background priority, no window) and the crash offer (`install/ReportMarks`) write a redacted
   `MEVR-report-<date-time>.zip` to the Desktop with REPORT.md first (`install/Report`, `install/Zip`; unit-tested). Never
   uploads anything. Issue form: `.github/ISSUE_TEMPLATE/bug.yml`. The build's commit: `tools/cmake/BuildInfo.cmake`.
+- **The owner's dev settings are the shipped defaults** (2026-11-05, after the first QA pass of the release found the
+  release without them): `[Hands] handPitch = 90` (`vr::menu_settings::kHandPitchDefault`: the game's hand model sits 90
+  degrees off the grip pose; the menu's hand-angle row trims around it), `[Performance] sharePass = 5`,
+  `umbraSecondEyeClearBits = 2`, `[Upscale] method = fsr`, `[Game] pauseUnfocused = 0`, the render target at 0.85 of the
+  headset's eye size, and in Halcyon's fresh `MELEVR.ini` (`ini::HalcyonReleaseIni`, `tools/deploy-asi.ps1`) `decoupledPitch = 1`,
+  `cameraOffsetEnabled = 1` (right 0.078, up -0.082) and `screenDistanceEnabled = 1` (0.674). A new setting the owner tunes in
+  their own file is a candidate default: compare `ASI\LE1MEVR.ini` and the active `MELEVR.ini` profile with a fresh install's.
 - Release engineering (docs/release-checklist.md section 5): **the version is written once**, `project(MEVR VERSION x.y.z)`
   in `CMakeLists.txt` (generated `mevr/Version.hpp` for the C++ and the `.rc` files; the binaries' ProductVersion is
   `<version>+<commit>`; the menu's About shows both). `tools/package-release.ps1` refuses a dirty tree (`-AllowDirty`), a
@@ -978,7 +989,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   research/50): crowds are cheap (skinned meshes 1.0-1.15 ms of render thread), the Presidium's 3,200 draws its peak.
   LE1's menus take real input (`keybd_event`, a click) with the game window in front; posted keys reach them only as Enter. Live render levers
   (`plugin/RenderLevers`, [research/32](research/32-ue3-vr-performance.md)) in `[Performance]` of `ASI\LE1MEVR.ini`:
-  `sharePass` (experimental; 1: the second eye renders on the first's scene renderer, no second visibility; 2: as 1
+  `sharePass` (**default 5 since 2026-11-05**, the owner: "the dev settings should be default"; 1: the second eye renders
+  on the first's scene renderer, no second visibility; 2: as 1
   but the second eye is a replay of the first's recorded D3D11 calls with the view's bytes substituted,
   `plugin/DrawReplay`; **3** ([research/37](research/37-single-pass-stereo.md), 2026-10-25): the second render keeps
   its Umbra resolve (two Draws with one resolve deadlock the game thread in Umbra's command ring) but its pass
