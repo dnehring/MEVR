@@ -297,10 +297,6 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 
 ## 7. Claude checks these alone on the fake headset (no need to wear it)
 Ask Claude to run them when the machine is free; each is a console command, a snapshot, a replay or a probe.
-- Codex review fixes (303238d, notes/codex-review-2026-11-06.md): after a game screen (mode 7) in first person, a snapshot
-  shows no head in view; with our menu open and another window in front, clicks reach that window; quitting VR from the
-  runtime logs `session stood down` and the monitor keeps its HUD; `mevr vent heat 1.0 hold` then a vent logs `latch
-  cleared`; our menu opened over the weapon wheel logs `not paused yet` then `paused`.
 - Powers: the glow's render-thread cost; the self-cast powers (Barrier...) with the weapon away. (research/55)
 - Melee: `mevr melee punch` with the weapon away: the pistol whip plays and hurts, no holster draw logged. (research/20)
 - Right stick hold: the game's power wheel opens and closes from an input replay. (research/19 "Hold only")

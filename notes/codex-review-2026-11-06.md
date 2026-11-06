@@ -9,7 +9,24 @@ session's scratchpad.
 
 ## Worth fixing (medium or above after verification)
 
-All 13 fixed on 2026-11-06 (same day; built in all three builds, ctest green; not yet checked in the game or headset).
+All 13 fixed on 2026-11-06 (303238d; built in all three builds, ctest green).
+
+**Checked in the game on the fake headset, 2026-11-06 14:48-14:58** (host and mod from adc80d7, Eden Prime save):
+- halcyon#3: a held key (GetAsyncKeyState after keybd_event; a key the hook swallows never reaches the key state) with
+  our menu open: swallowed with the game in front (False), reaches Windows with SteamVR's window in front (True).
+  This was the user's dead keyboard and mouse at 14:40-14:46, in another session's build without the fix.
+- halcyon#6: `mevr gui Journal`, then `mevr omni close`, same pawn: `[FPHIDE] cleared (save menu)` at 14:54:07, `[FPHIDE]
+  applied` again at 14:54:12.
+- gameM#2: pistol held at 100% heat (`mevr vent heat 1.0 hold`; the game sets m_bOverheated itself there, it clears a
+  `setprop` below it), the rack replay (`tools/make-rack-recording.py`): `vent: VENTED ... overheated: latch cleared`,
+  and the vents after it saw no overheat.
+- gameM#3: `mevr call 0 EnterWeaponWheel`, our menu opened (no pause in mode 3), the wheel closed with ExitWeaponWheel:
+  `menu pause: the game paused` 24 s later, at once after the close.
+- halcyon#4: vrmonitor stopped: session state 6 (STOPPING) and 8 (EXITING) each logged `[XR] [MEVR] session stood down`;
+  SteamVR then killed the game 5 s later as it does to any scene app that doesn't quit (vrserver.txt), so the monitor's
+  HUD after it wasn't seen.
+- Not checked in the game: the voice tail (needs a microphone listen), the LLM paths, squad roster, DOF restore, one Draw's
+  fault path, the DrawReplay refusal, the installer fixes (Setup's tests are offline: `tools/setup/test-fake-game.ps1`).
 
 | id | where | what | who |
 |---|---|---|---|
