@@ -21,6 +21,9 @@ struct Options {
 };
 
 std::string Gbnf(vr::squad_context::Scene const& scene, std::vector<vr::squad_context::Group> const& groups, Options const& options);
+// With the landmarks' ids (L1..) among the targets, for a move or hold to cover.
+std::string Gbnf(vr::squad_context::Scene const& scene, std::vector<vr::squad_context::Group> const& groups,
+    std::vector<vr::squad_context::Landmark> const& landmarks, Options const& options);
 // The same grammar read off a text block (its PARTY letters and power codes, its E ids and PT lines), for tools that have
 // the prompt but not the scene (mevr-llm-bench over a dataset).
 std::string GbnfFromBlock(std::string_view block, int maxClauses = 3);

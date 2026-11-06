@@ -71,6 +71,10 @@ struct Parsed {
 // roster (names, aliases, the powers' spoken names and codes).
 Parsed Parse(std::string_view transcript, squad_context::Scene const& scene, std::vector<squad_context::Group> const& groups,
     std::vector<squad_context::RosterEntry> const& roster, Settings const& settings);
+// With the landmarks (the cover around the squad): "get behind that crate", "take cover behind the wall on the left" become
+// a hold at that cover (Target::Landmark, or Pointed for "that"); "the ones behind the crates" the group nearest it.
+Parsed Parse(std::string_view transcript, squad_context::Scene const& scene, std::vector<squad_context::Group> const& groups,
+    std::vector<squad_context::Landmark> const& landmarks, std::vector<squad_context::RosterEntry> const& roster, Settings const& settings);
 
 // Helpers, tested on their own.
 std::vector<std::string> Tokens(std::string_view text);  // lower-case words, apostrophes kept, the rest dropped

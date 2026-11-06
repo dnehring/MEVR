@@ -545,7 +545,19 @@ void TickStandings(double dt, hand_calibration::SquadOrders const& s) {
 
 // ---- Dispatch -------------------------------------------------------------------------------------------------------------
 
-std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optional<engine::UnrealVector> point, sp::StandingHint const& hint) {
+std::string Dispatch(sc::Resolved const& given, sc::Action const& action, std::optional<engine::UnrealVector> point, sp::StandingHint const& hint) {
+    sc::Resolved r = given;
+    // A move to cover is a hold at its far side (research/54 "Landmarks"): the slot farthest from the nearest group.
+    std::string coverNote;
+    if (r.landmark != 0) {
+        if (sc::Landmark const* const l = sc::Find(squad_context::Landmarks(), r.landmark)) {
+            point = Units(sc::LandmarkPoint(*l, squad_context::Groups(), squad_context::Scene()), gUpm);
+            if (r.order == sc::Order::Move) r.order = sc::Order::Hold;
+            coverNote = std::format("cover L{} ({}, {} slots)", l->id, l->type, l->slots.size());
+        } else {
+            return std::format("refused: cover L{} is gone", r.landmark);
+        }
+    }
     ue3::Object* controller = nullptr;
     if (!Functions(controller)) return controller == nullptr ? "no player controller" : "the game's order functions weren't found";
     hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
@@ -555,6 +567,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
     for (Recipient const& rc : to) names += std::format("{}{} (squad index {})", names.empty() ? "" : ", ", rc.name, rc.index);
     std::string returns;
     auto const note = [&](std::string const& result) { returns += std::format("{}{}", returns.empty() ? "" : "/", result); };
+    if (!coverNote.empty()) note(coverNote);
     auto const until = [&](ss::Until byDefault) {
         switch (hint.until) {
         case sp::StandingHint::Until::Calm: return ss::Until::Calm;
@@ -711,7 +724,7 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
 }
 
 std::string GiveResolved(sc::Action const& action, std::optional<engine::UnrealVector> point, sp::StandingHint const& hint) {
-    sc::Resolved const r = sc::Validate(action, squad_context::Scene(), squad_context::Groups(), {}, gHistory);
+    sc::Resolved const r = sc::Validate(action, squad_context::Scene(), squad_context::Groups(), squad_context::Landmarks(), {}, gHistory);
     std::string outcome;
     if (!r.ok) {
         outcome = std::format("refused: {}", r.problem);
@@ -843,7 +856,8 @@ std::string Say(std::string_view transcript, double secondsAgo) {
     sc::Scene const& scene = squad_context::Scene();
     std::vector<sc::Group> const& groups = squad_context::Groups();
     sp::Settings ps;
-    sp::Parsed const parsed = sp::Parse(transcript, scene, groups, squad_context::Roster(), ps);
+    std::vector<sc::Landmark> const& landmarks = squad_context::Landmarks();
+    sp::Parsed const parsed = sp::Parse(transcript, scene, groups, landmarks, squad_context::Roster(), ps);
     std::string lines;
     for (sp::Clause const& c : parsed.clauses) {
         lines += std::format("{}{} ({:.2f}{}{})", lines.empty() ? "" : "; ", sc::Line(c.action), c.confidence,
@@ -915,9 +929,9 @@ std::string Say(std::string_view transcript, double secondsAgo) {
                 }
                 if (supporting.empty()) supporting = std::format("{} isn't here: the gun's target", c.supportOf);
             }
-            sc::Resolved const r = sc::Validate(action, scene, groups, deictics, gHistory);
-            if (r.ok && (r.order == sc::Order::Move || r.order == sc::Order::Hold) && action.target.kind == sc::Target::Pointed) {
-                point = place;
+            sc::Resolved const r = sc::Validate(action, scene, groups, landmarks, deictics, gHistory);
+            if (r.ok && (r.order == sc::Order::Move || r.order == sc::Order::Hold) && action.target.kind == sc::Target::Pointed && r.landmark == 0) {
+                point = place;  // "over there": the floor the left hand's ray hits (a pointed group's or cover's place comes from the resolution)
             }
             outcome = !r.ok ? std::format("refused: {}", r.problem)
                 : r.notReady ? std::format("not ready: {} in {:.0f} s", r.power, r.readyInS)

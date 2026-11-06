@@ -482,14 +482,17 @@ constexpr char const* kSquadContextBlock =
     "; like left/far/above, what the gun and your look point at, and a 4 s history of where you pointed and looked.\n"
     "; `mevr context [word]` in the console prints it. refreshS: how often it's read. joinM: enemies within this of a\n"
     "; group join it, unless they stand splitAboveM higher or lower. maxGroups: the nearest groups kept. nearM / farM: the\n"
-    "; distance bands.\n"
+    "; distance bands. landmarkRangeM / maxLandmarks: the level's cover (its CoverLink slots) within this of you, the\n"
+    "; nearest few, as the landmarks of \"get behind that crate\" / \"take cover behind the wall on the left\".\n"
     "enabled = 1\n"
     "refreshS = 0.25\n"
     "joinM = 6\n"
     "splitAboveM = 2.5\n"
     "maxGroups = 6\n"
     "nearM = 10\n"
-    "farM = 30\n";
+    "farM = 30\n"
+    "landmarkRangeM = 25\n"
+    "maxLandmarks = 5\n";
 // Appended to a settings file that has no [SquadOrders] yet (and part of a new file).
 constexpr char const* kSquadOrdersBlock =
     "\n"
@@ -1429,6 +1432,12 @@ SquadContext ReadSquadContext(Ini const& ini) {
     }
     if (Number(ini, "SquadContext", "farM", value)) {
         s.farM = std::clamp(value, s.nearM, 500.0);
+    }
+    if (Number(ini, "SquadContext", "landmarkRangeM", value)) {
+        s.landmarkRangeM = std::clamp(value, 0.0, 200.0);
+    }
+    if (Number(ini, "SquadContext", "maxLandmarks", value)) {
+        s.maxLandmarks = static_cast<int>(std::clamp(value, 0.0, 9.0));
     }
     return s;
 }

@@ -434,6 +434,49 @@ pale gold, the one in hand dotted. The left trigger's squad wheel is off by defa
 the marker `placeWeapons` that still holds `lb` moves once), the menu's default and the controller guide's B text with it;
 `leftTrigger = lb` brings the wheel back. Not yet seen in the game.
 
+## Landmarks: "get behind that crate" (2026-11-05, evening)
+
+The user asked how an order could name a thing on the map, and why pointing should be needed at all. The answer in three
+parts: a look is already a point (the ray history holds the head's ray with the hands', so "that crate" resolves from the
+gaze alone); the game marks its own cover (`Engine.CoverLink` with slots along crates, walls and railings, which the
+retreat already searches); and what was missing was the map in the context, so that a name with neither a look nor a point
+("the crate on the left") has something to resolve against. So the context lists the cover around the squad as it lists
+the enemy groups:
+
+- **The representation** (`core/vr/SquadContext`): the mod snapshots the cover links within `[SquadContext] landmarkRangeM`
+  (25 m, read every 2 s: they don't move) as `Cover` pieces (place, front yaw, slots in metres, a type word); `Landmarker`
+  keeps the nearest `maxLandmarks` (5) as `L<id>` with ids that stay by the object while the level lives, left to right,
+  with the groups' words (sector, band, elevation, nearest / leftmost / rightmost). The block gets `L1 crate | left near
+  level | nearest` lines after the E lines; the prefix says an L id is a place for move and hold only; the grammar offers
+  the L ids; `Target::Landmark` and `L<n>` in the line form. `LandmarkPoint` is where to go: the slot farthest from the
+  nearest group's centre (with no groups, the far side from the player; without slots, 1 m behind the link's front), so the
+  cover stands between the squadmate and the threat. The ray resolution scores landmarks beside groups (their slots and
+  centre), so a pointed or looked-at crate is a candidate; the validator takes a landmark for a move or hold (an attack on
+  cover is refused: "a place to go, not a target"), the best group for an attack, and lets a move "over there" with nothing
+  under the ray through (the dispatcher has the floor; until now it was refused as "points at nothing").
+- **The parser** (`core/vr/SquadParser`): cover nouns ("crate", "wall", "pillar", "barrier", "cover"...) become landmark
+  words only while the scene lists cover, after the phrases (so "take cover behind", "cover me" keep their meaning; a noun
+  "cover" after "the", "behind", "nearest" is the landmark); "get behind", "duck behind", "take cover behind"... are hold
+  verbs that name the cover after them, and a bare "behind" followed by cover or a deictic means the far side, not the
+  Behind sector. The fit is the groups' logic on the landmarks (sector, flags, elevation, the type word; a nameless piece
+  ("cover") fits a typed word only when no typed piece does); one fit is the target, else the deictic, else the nearest of
+  several with the confidence down, else "no cover like that here" for the model. "The ones behind the crates" with an
+  attack verb is the group nearest that cover. A cover word said exactly is never a slipped name ("pillar" was Williams at
+  0.50). Unit-tested in `tests/LandmarkTests.cpp` (the ids, the words, the point, the rays, the validator, the grammar,
+  eleven phrasings); the 196-line corpus still parses 173 of 173.
+- **The dispatcher** (`game/SquadOrders`): a resolved landmark becomes a hold at `LandmarkPoint` (a move to cover is a hold
+  there), through the HOLD formation and the AI's `PushMoveToPoint` like every hold.
+- **The generator** (`make_dataset.py`, generator 3): scenes carry 0-3 landmarks (mostly "cover", some typed), a "cover"
+  kind of order (8%) says "get behind the crate", "take cover behind the wall on the left", "Ashley, behind that one" (a
+  PT line whose candidates are L ids), gold `A|-|-|hold|L2` or `PT1`; run3's config takes it.
+
+**What the game hasn't said yet** [verify]: the type words. The mod says "cover" for every piece until it learns which mesh
+a cover link stands against (the level's static mesh names, `Crate_01`, `Pillar`...: a map from mesh names to words, and
+the nearest mesh per link), so today "the crate on the left" works through the lenient fit (the only piece on the left),
+and "the crate" among several pieces goes to the model or the nearest. The in-game check (the checklist): `mevr context`
+on a level with cover shows the L lines; "Ashley, get behind that crate" with the hand on it; the slot chosen is on the
+far side. The walk over the objects for the cover links every 2 s is the cost to measure there.
+
 ## The rule parser (2026-11-04, later)
 
 Tier 1 of research/54's parser design, [src/core/vr/SquadParser.hpp](../src/core/vr/SquadParser.hpp) (pure, unit-tested,

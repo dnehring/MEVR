@@ -150,6 +150,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   `PushMoveToPoint`, the placement's road, since `QuickCommandMoveTo` ignores the point in VR): "Ashley, move up" with the
   left hand on a spot 5 m off, or the left grip let go on the floor there; she should walk to it and hold until it's calm,
   then come back. (`mevr voice say Ashley, move up`, log `squad orders: move to`)
+- [ ] Landmarks (2026-11-05 evening, research/54 "Landmarks"): on a level with cover (Eden Prime's crates, the UNC20 drop zone's
+  rocks), `mevr context` lists `L1 cover | left near level` lines (the game's own cover links within 25 m); "Ashley, get behind
+  that crate" with the left hand on it, or "take cover behind the cover on the left", sends her to the slot on its far side
+  from the enemies (log `squad orders: ... cover L1`). Every piece is called "cover" until the mesh words are learned; the
+  objects walk every 2 s is a cost to read in the heartbeat. (`[SquadContext] landmarkRangeM`, `maxLandmarks`)
 - [ ] The microphone's lag over your link: tap a controller on the headset while a recording runs with `mevr voice listen 5`;
   the tap's jolt in the poses against the click in the transcript's word times says how much tail `[Voice] tailMs` needs.
   (research/54 step 3)

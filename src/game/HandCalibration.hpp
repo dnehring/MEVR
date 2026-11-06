@@ -339,6 +339,8 @@ struct SquadContext {
     int maxGroups = 6;
     double nearM = 10.0;
     double farM = 30.0;
+    double landmarkRangeM = 25.0;  // the level's cover within this of the player is a landmark ("behind that crate")
+    int maxLandmarks = 5;
 };
 SquadContext GetSquadContext();
 // [SquadOrders] (research/54, game/SquadOrders): the flat squad orders by gesture. enabled; gesture: the left-grip gesture

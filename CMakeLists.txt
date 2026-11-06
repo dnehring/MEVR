@@ -930,6 +930,7 @@ if (MEVR_BUILD_TESTS)
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
         tests/SquadPlaceTests.cpp
+        tests/LandmarkTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
         tests/VrCoverTests.cpp

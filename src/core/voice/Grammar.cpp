@@ -21,6 +21,10 @@ std::string Alternatives(std::vector<std::string> const& words) {
 }  // namespace
 
 std::string Gbnf(sc::Scene const& scene, std::vector<sc::Group> const& groups, Options const& options) {
+    return Gbnf(scene, groups, {}, options);
+}
+
+std::string Gbnf(sc::Scene const& scene, std::vector<sc::Group> const& groups, std::vector<sc::Landmark> const& landmarks, Options const& options) {
     std::vector<std::string> who{"-", "ALL"};
     std::set<std::string> powers;
     for (sc::Member const& m : scene.party) {
@@ -37,6 +41,7 @@ std::string Gbnf(sc::Scene const& scene, std::vector<sc::Group> const& groups, O
     std::vector<std::string> const order{"-", "attack", "move", "follow", "hold", "regroup", "use", "cancel", "repeat"};
     std::vector<std::string> target{"-", "AIM", "GAZE", "LAST", "OTHER", "SELF", "AHEAD", "LEFT", "RIGHT", "BEHIND"};
     for (sc::Group const& g : groups) target.push_back(std::format("E{}", g.id));
+    for (sc::Landmark const& l : landmarks) target.push_back(std::format("L{}", l.id));
     for (int i = 1; i <= std::clamp(options.deictics, 0, 9); ++i) target.push_back(std::format("PT{}", i));
     int const extra = std::clamp(options.maxClauses, 1, 5) - 1;
     // A newline may end the answer (zero-shot, greedy decoding never stopped at one clause without a way to end), and so may
@@ -55,6 +60,7 @@ std::string Gbnf(sc::Scene const& scene, std::vector<sc::Group> const& groups, O
 std::string GbnfFromBlock(std::string_view block, int maxClauses) {
     sc::Scene scene;
     std::vector<sc::Group> groups;
+    std::vector<sc::Landmark> landmarks;
     Options options;
     options.maxClauses = maxClauses;
     std::size_t at = 0;
@@ -90,11 +96,15 @@ std::string GbnfFromBlock(std::string_view block, int maxClauses) {
             g.id = 0;
             for (std::size_t i = 1; i < line.size() && line[i] >= '0' && line[i] <= '9'; ++i) g.id = g.id * 10 + (line[i] - '0');
             if (g.id > 0) groups.push_back(g);
+        } else if (line.starts_with("L") && line.size() > 1 && line[1] >= '0' && line[1] <= '9') {
+            sc::Landmark l;
+            for (std::size_t i = 1; i < line.size() && line[i] >= '0' && line[i] <= '9'; ++i) l.id = l.id * 10 + (line[i] - '0');
+            if (l.id > 0) landmarks.push_back(l);
         } else if (line.starts_with("PT") && line.size() > 2 && line[2] >= '1' && line[2] <= '9') {
             options.deictics = std::max(options.deictics, line[2] - '0');
         }
     }
-    return Gbnf(scene, groups, options);
+    return Gbnf(scene, groups, landmarks, options);
 }
 
 std::string Prompt(std::string const& block) {

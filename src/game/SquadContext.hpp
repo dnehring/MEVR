@@ -23,6 +23,8 @@ void Tick(double deltaSeconds);
 // The latest scene and groups (empty while off foot or unreadable).
 vr::squad_context::Scene const& Scene();
 std::vector<vr::squad_context::Group> const& Groups();
+// The landmarks: the level's cover (CoverLink slots) within `[SquadContext] landmarkRangeM`, read every 2 s, as L ids.
+std::vector<vr::squad_context::Landmark> const& Landmarks();
 // What the head and the hands pointed at `secondsAgo` (the word's time), best first.
 std::vector<vr::squad_context::Candidate> ResolveAgo(double secondsAgo);
 // The text block for now: `said` as the SAY line, and with `word` a PT1 line resolved `secondsAgo`.

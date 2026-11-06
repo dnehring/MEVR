@@ -85,10 +85,19 @@ def sample_scene(rng):
         nearest["nearest"] = True
         biggest = max(groups, key=lambda g: g["count"])
         biggest["biggest"] = True
+    # The landmarks (research/54 "Landmarks"): the level's cover near the player as L ids, with the same words as the groups;
+    # the mod says "cover" for all of them until it learns the level's meshes, with a few typed ones for the words.
+    landmarks = []
+    for i in range(rng.choice([0, 0, 1, 2, 3])):
+        landmarks.append({"id": i + 1, "type": rng.choice(["cover", "cover", "cover", "crate", "wall", "pillar", "barrier"]), "sector": rng.choice(SECTORS),
+                          "band": rng.choice(["near", "near", "mid"]), "elevation": rng.choice(["level", "level", "level", "above", "below"]),
+                          "distanceM": rng.randint(2, 20)})
+    if landmarks:
+        min(landmarks, key=lambda l: l["distanceM"])["nearest"] = True
     aim = rng.choice([None] + [g["id"] for g in groups]) if groups else None
     gaze = rng.choice([None] + [g["id"] for g in groups]) if groups else None
     combat = bool(groups) and rng.random() < 0.8
-    return {"party": party, "groups": groups, "aim": aim, "gaze": gaze, "combat": combat,
+    return {"party": party, "groups": groups, "landmarks": landmarks, "aim": aim, "gaze": gaze, "combat": combat,
             "shepardWeapon": rng.choice(list(WEAPONS)) if combat or rng.random() < 0.3 else None}
 
 
@@ -97,7 +106,7 @@ def prefix(scene):
     out = ("You turn a spoken squad order into one line: WHO|WEAPON|POWER|ORDER|TARGET.\n"
            "WHO: a party letter, ALL, or LAST. WEAPON: a code or -. POWER: a code or -.\n"
            "ORDER: attack, move, follow, hold, regroup, use, cancel, repeat.\n"
-           "TARGET: an E id, PT1..PT3 (what the player pointed at while saying a word), AIM, GAZE, LAST, OTHER, SELF, or -.\n"
+           "TARGET: an E id, an L id (cover: only for move and hold), PT1..PT3 (what the player pointed at while saying a word), AIM, GAZE, LAST, OTHER, SELF, or -.\n"
            "Only name squadmates listed in PARTY. Use only powers marked ok unless told to wait.\n"
            "ROSTER\n")
     for m in scene["party"]:
@@ -123,6 +132,11 @@ def block(scene, say, deictics=()):
         flags = " ".join(w for w, on in (("nearest", g.get("nearest")), ("biggest", g.get("biggest") and len(scene["groups"]) > 1)) if on)
         if flags:
             line += f" | {flags}"
+        lines.append(line)
+    for l in scene.get("landmarks", []):
+        line = f"L{l['id']} {l['type']} | {l['sector']} {l['band']} {l['elevation']}"
+        if l.get("nearest") and len(scene["landmarks"]) > 1:
+            line += " | nearest"
         lines.append(line)
     if scene["aim"] or scene["gaze"]:
         lines.append(f"AIM {'E' + str(scene['aim']) if scene['aim'] else '-'} | GAZE {'E' + str(scene['gaze']) if scene['gaze'] else '-'}")
@@ -171,6 +185,31 @@ def describe(group, rng, groups):
     return rng.choice(unique) if unique else None
 
 
+COVER_NOUNS = {"cover": ["cover", "the cover", "that cover"], "crate": ["the crate", "the crates", "those crates", "the boxes"], "wall": ["the wall", "that wall"],
+               "pillar": ["the pillar", "the column"], "barrier": ["the barrier", "the barricade"]}
+
+
+def describe_cover(landmark, rng, landmarks):
+    """Words for a piece of cover that fit it alone among the landmarks (None: point instead)."""
+    same_type = lambda l: l["type"] == landmark["type"]
+    same_sector = lambda l: l["sector"] == landmark["sector"]
+    nouns = COVER_NOUNS[landmark["type"]]
+    forms = []
+    if landmark["type"] != "cover":
+        for n in nouns:
+            forms.append((n, same_type))
+    for n in nouns:
+        forms.append((f"{n} {SECTOR_PHRASE[landmark['sector']]}", lambda l: same_type(l) and same_sector(l)))
+    forms.append((f"the cover {SECTOR_PHRASE[landmark['sector']]}", same_sector))
+    if landmark.get("nearest") and len(landmarks) > 1:  # the block flags it only among several
+        forms.append(("the nearest cover", lambda l: l.get("nearest")))
+        forms.append(("the closest cover", lambda l: l.get("nearest")))
+    if landmark["elevation"] != "level":
+        forms.append((f"the cover {ELEVATION_PHRASE[landmark['elevation']]}", lambda l: l["elevation"] == landmark["elevation"]))
+    unique = [words for words, fits in forms if sum(1 for l in landmarks if fits(l)) == 1]
+    return rng.choice(unique) if unique else None
+
+
 def unique_surface(group, groups):
     same = {"bridge": "bridge", "catwalk": "bridge"}
     return bool(group["surface"]) and sum(1 for g in groups if g["surface"] and same.get(g["surface"], g["surface"]) == same.get(group["surface"], group["surface"])) == 1
@@ -198,8 +237,11 @@ def gold_and_say(scene, rng):
     members = scene["party"]
     groups = scene["groups"]
     deictics = []
-    kind = rng.choices(["attack", "move", "hold", "follow", "equip", "use", "compound", "correction", "talk", "cancel"],
-                       weights=[26, 10, 8, 14, 8, 14, 8, 4, 6, 2])[0]
+    landmarks = scene.get("landmarks", [])
+    kind = rng.choices(["attack", "move", "hold", "follow", "equip", "use", "compound", "correction", "talk", "cancel", "cover"],
+                       weights=[24, 9, 7, 13, 8, 13, 8, 4, 6, 2, 8])[0]
+    if kind == "cover" and not landmarks:
+        kind = "hold"
     member = rng.choice(members + [None])
     who = member["letter"] if member else "ALL"
 
@@ -241,6 +283,23 @@ def gold_and_say(scene, rng):
         if not groups:
             deictics[-1] = (word, ["-"])
         return f"{who}|-|-|move|{t}", f"{rng.choice(FILLERS)}{who_text(member, rng)}{rng.choice(MOVE_VERBS)} {word}", deictics
+    if kind == "cover":
+        # A hold at a piece of cover: "get behind the crate", "take cover behind the wall on the left", "Ashley, behind that
+        # cover" (pointed: PT with the L id), "the ones behind the crates" is an attack on the group nearest it (not generated:
+        # the rules do that; the model sees cover only as a place).
+        l = rng.choice(landmarks)
+        verb = rng.choice(["get behind", "take cover behind", "get behind", "move behind", "hide behind", "duck behind", "go behind", "behind", "get to", "hold"])
+        words = describe_cover(l, rng, landmarks)
+        if words is None or rng.random() < 0.3:
+            word = rng.choice(["that", "that one", "this one"])
+            candidates = [f"L{l['id']}"] + [f"L{x['id']}" for x in landmarks if x is not l][:2]
+            deictics.append((word, candidates))
+            phrase, target = f"{word} {COVER_NOUNS[l['type']][0].replace('the ', '').replace('that ', '')}" if rng.random() < 0.7 else word, f"PT{len(deictics)}"
+        else:
+            phrase, target = words, f"L{l['id']}"
+        if verb in ("get to", "hold") and phrase.startswith(("that", "this")):
+            verb = "get behind"
+        return f"{who}|-|-|hold|{target}", f"{rng.choice(FILLERS)}{who_text(member, rng)}{verb} {phrase}", deictics
     if kind == "hold":
         named = [x for x in groups if unique_surface(x, groups)]  # a surface only one group stands on names the point
         if named and rng.random() < 0.6:
@@ -310,7 +369,7 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--noise", type=float, default=0.3)
     ap.add_argument("--teacher-lines", default="")
-    ap.add_argument("--generator", type=int, default=2, help="the generator's version, for the run config's hash (2: unambiguous descriptions)")
+    ap.add_argument("--generator", type=int, default=3, help="the generator's version, for the run config's hash (2: unambiguous descriptions; 3: landmarks)")
     args = ap.parse_args()
     rng = random.Random(args.seed)
     out = pathlib.Path(args.out)

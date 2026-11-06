@@ -53,6 +53,7 @@ with its `SYSTEM` line (thinking off), and `core/voice/Llm` wraps the prefix and
 text). Run1 answered 7 of 300 raw and 285 of 300 wrapped. Change the system line in both places or in neither.
 
 The prompt format is the mod's own: `core/vr/SquadContext`'s `Prefix` (the rules and the roster) + `Block` (NOW, PARTY,
-SHEP, the E groups, AIM/GAZE, PT lines, SAY) + `\nACTION:` (`core/voice/Grammar::Prompt`). `make_dataset.py` writes it
+SHEP, the E groups, the L landmarks (the level's cover: a place for a move or hold, research/54 "Landmarks"), AIM/GAZE, PT
+lines, SAY) + `\nACTION:` (`core/voice/Grammar::Prompt`). `make_dataset.py` writes it
 by hand, so a change to `Block` needs the same change there (the llm bench's grammar reader `GbnfFromBlock` reads the
 same lines). The answer is `WHO|WEAPON|POWER|ORDER|TARGET`, several joined by ` ; `, or `none`.
