@@ -566,16 +566,17 @@ void App::UpdateHero() {
     } else if (upstreamFound_) {
         heroTitle_ = "Ready to install";
         heroText_ = "Halcyon's MELE-VR is installed: Install moves its two DLLs aside (Uninstall puts them back), then puts the mod, its ASI loader and "
-                    "the VR game settings in place, recorded so it can all be undone.";
-        heroAction_ = "goto_install";
+                    "the recommended VR game settings in place, recorded so it can all be undone. Options lets you choose the settings first.";
+        heroAction_ = "install";  // one click: the Install page's defaults (research/33 section 11)
         heroButton_ = "Install";
-        heroEnabled_ = canInstall_;
+        heroEnabled_ = canInstall_ && hasPayload_;
     } else {
         heroTitle_ = "Ready to install";
-        heroText_ = "Everything checks out. Install puts the mod, its ASI loader and the VR game settings in place, recorded so it can all be undone.";
-        heroAction_ = "goto_install";
+        heroText_ = "Everything checks out. Install puts the mod, its ASI loader and the recommended VR game settings in place, recorded so it can all "
+                    "be undone. Options lets you choose the settings first.";
+        heroAction_ = "install";  // one click: the Install page's defaults (research/33 section 11)
         heroButton_ = "Install";
-        heroEnabled_ = canInstall_;
+        heroEnabled_ = canInstall_ && hasPayload_;
     }
 }
 

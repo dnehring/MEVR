@@ -59,9 +59,11 @@
 				<div class="heroh">{{hero_title}}</div>
 				<div class="herop">{{hero_text}}</div>
 			</div>
-			<!-- One button: what matters most now (SetupApp::UpdateHero): install, launch, repair, start the game once, apply the waiting settings. -->
+			<!-- One button: what matters most now (SetupApp::UpdateHero): install (at once, with the Install page's defaults), launch, repair, start
+			     the game once, apply the waiting settings. Before an install, Options opens the Install page to choose first. -->
+			<button class="btn" data-if="hero_action == 'install'" data-class-disabled="busy || waiting" data-event-click="act('goto_install')"><div class="sweep"/><div class="bi i-sliders"/><span>Options</span><div class="tick"/></button>
 			<button class="btn primary" data-if="hero_action != ''" data-class-disabled="!hero_enabled || busy || waiting" data-event-click="act(hero_action)"><div class="sweep"/>
-				<div class="bi i-download" data-if="hero_action == 'goto_install'"/><div class="bi i-play" data-if="hero_action == 'launch' || hero_action == 'first_start'"/>
+				<div class="bi i-download" data-if="hero_action == 'goto_install' || hero_action == 'install'"/><div class="bi i-play" data-if="hero_action == 'launch' || hero_action == 'first_start'"/>
 				<div class="bi i-wrench" data-if="hero_action == 'repair'"/><div class="bi i-sliders" data-if="hero_action == 'apply_pending'"/><span>{{hero_button}}</span></button>
 		</div>
 		<div class="tiles">
