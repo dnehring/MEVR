@@ -4,14 +4,17 @@ left wrist in front of the chest as if reading a watch, looks down at it, and ta
 given times (research/57, the omni-tool: the tap opens the rail and the game's omni-tool, a second tap closes them). Between
 taps the right hand rests low beside the body. For checking the omni-tool's wrist screens and rail on the fake headset.
 
-Usage: python tools/make-wrist-recording.py out.mevrrec [seconds 60] [taps 4] [eye height 0] [look wrist] [B presses]
+Usage: python tools/make-wrist-recording.py out.mevrrec [seconds 60] [taps 4] [eye height 0] [look wrist] [B presses] [hovers]
   taps:       the tap times in seconds, comma-separated ("4" opens once; "4,40" opens, then closes)
   eye height: the head's height in tracking space (0 on the fake headset, whose null driver puts the head at the origin)
   look:       "wrist" turns the head to look at the raised wrist (yaw and pitch); a number only pitches it that many
               degrees (negative is down)
   B presses:  times (comma-separated) the right controller's B is held 0.2 s; replay with -Inputs for the game to see it
-The tap (core/vr/OmniRail's Tap): the fingertip, 0.035 m along the right aim ray, comes from farther than 0.07 m to within
-0.035 m of the wrist point (the left grip pose plus [Hud] wristOffset, -0.03 0.06 0.05 in its axes by default).
+  hovers:     times (comma-separated) the fingertip comes to 0.06 m beside the target and stays 3 s without tapping (the
+              target's armed look, for a snapshot)
+The tap (core/vr/OmniRail's Tap): the fingertip, 0.035 m along the right aim ray, comes from farther than 0.08 m to within
+0.04 m of the tap's target (OmniRail's TargetPoint: 0.035 m below the wrist point, the left grip pose plus [Hud]
+wristOffset, -0.03 0.06 0.05 in its axes by default).
 Then: tools/replay.ps1 -Path out.mevrrec -Loop (poses only; no -Inputs: no buttons), with [Pointer] setCursor = 0 so the
 replayed rays never move the desktop's cursor; tools/snapshot.ps1 after the tap; tools/replay.ps1 -Stop."""
 import math
@@ -27,6 +30,7 @@ FRAME = struct.Struct("<qI" + (POSE + "4f") * 2 + ("I4f" + POSE + POSE) * 2)
 IDENTITY = (0.0, 0.0, 0.0, 1.0)  # looking along -Z (OpenXR: -Z forward, +Y up, +X right)
 WRIST_OFFSET = (-0.03, 0.06, 0.05)  # [Hud] wristOffset's default, in the left grip's axes (identity here)
 TIP_AHEAD = 0.035  # plugin/OmniToolRail's kTipAheadM
+TARGET_BELOW = 0.035  # core/vr/OmniRail's kTargetBelowM: the tap's target below the wrist point
 
 
 def lerp(a, b, f):
@@ -52,6 +56,7 @@ def main():
     eye_h = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
     look = sys.argv[5] if len(sys.argv) > 5 else "wrist"
     presses = [float(x) for x in (sys.argv[6] if len(sys.argv) > 6 else "").split(",") if x.strip()]
+    hovers = [float(x) for x in (sys.argv[7] if len(sys.argv) > 7 else "").split(",") if x.strip()]
     hz = 90.0
     ipd = 0.064
     fov = (-0.785, 0.785, 0.785, -0.785)  # left, right, up, down (radians)
@@ -60,9 +65,11 @@ def main():
     left_up = (-0.10, eye_h - 0.32, -0.34)
     wrist_up = tuple(a + b for a, b in zip(left_up, WRIST_OFFSET))
     # The right hand: low at the side; tapping, the aim pose sits TIP_AHEAD behind the wrist along -Z (identity: the ray
-    # points -Z), so the fingertip is on the wrist point; it comes from 0.15 m to the right.
+    # points -Z), so the fingertip is on the tap's target; it comes from 0.15 m to the right.
     right_rest = (0.22, eye_h - 0.60, -0.15)
-    right_on = (wrist_up[0], wrist_up[1], wrist_up[2] + TIP_AHEAD)
+    target_up = (wrist_up[0], wrist_up[1] - TARGET_BELOW, wrist_up[2])
+    right_on = (target_up[0], target_up[1], target_up[2] + TIP_AHEAD)
+    right_hover = (right_on[0] + 0.06, right_on[1], right_on[2])
     right_near = (right_on[0] + 0.15, right_on[1] - 0.03, right_on[2])
     # The head: turned to look at the raised wrist (as a person reading a watch does), or only pitched by `look` degrees.
     if look == "wrist":
@@ -92,6 +99,17 @@ def main():
                 right = lerp(right_on, right_near, smooth((d - 0.2) / 0.25))
             elif 0.45 <= d < 1.2:
                 right = lerp(right_near, right_rest, smooth((d - 0.45) / 0.75))
+        for hover in hovers:
+            # 1.0 s over to near, 0.5 s to 6 cm beside the target, held 3 s, then back to rest over 1 s.
+            d = t - hover
+            if 0.0 <= d < 1.0:
+                right = lerp(right_rest, right_near, smooth(d))
+            elif 1.0 <= d < 1.5:
+                right = lerp(right_near, right_hover, smooth((d - 1.0) / 0.5))
+            elif 1.5 <= d < 4.5:
+                right = right_hover
+            elif 4.5 <= d < 5.5:
+                right = lerp(right_hover, right_rest, smooth(d - 4.5))
         eyes = [(*head, side * ipd / 2, eye_h, 0.0) for side in (-1, 1)]
         left_grip = (*IDENTITY, *left)
         left_aim = (*IDENTITY, left[0], left[1] + 0.05, left[2] - 0.02)
