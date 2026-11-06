@@ -572,6 +572,12 @@ Same spot each time (e.g. the Normandy's CIC, standing still, same direction), 3
 5. Controllers down until they sleep (session still focused): if fps jumps, the input path costs.
 6. Optional: PS VR2 at 120 Hz, throttling back on Auto: does it hold a steady 60?
 
+## The levers as menu modes (2026-11-06)
+
+The levers that survived (the render size with FSR, the small-object cull, the grass radius, ambient occlusion) are now the
+menu's Performance modes, Quality / Balanced / Performance, each measured at Eden Prime's heavy cells and in a fight with
+one Draw a frame: [research/60](60-performance-modes.md).
+
 ## Other options noted
 
 - **Eye-tracked foveated rendering on the PS VR2.** Sony's PC adapter has no eye tracking, but

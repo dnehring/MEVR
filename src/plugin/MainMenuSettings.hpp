@@ -75,6 +75,11 @@ private:
     void Flush(bool all);
     void HalcyonChanged(bool saveNow);
     void SaveHalcyon(char const* why);
+    // The render target from a Render resolution chip or a ladder tier (Display, Advanced > Performance, a performance mode):
+    // Halcyon's profile and GamerSettings.ini for the next launch. False if the chip has no size yet (the headset's unknown).
+    bool SetResolution(std::string const& choice);
+    // An old file's [Performance] minScreenRadiusTenths emptied, so the cull a row or a mode writes counts.
+    void ClearCullTenths();
 
     vr::menu_settings::PendingWrites pending_;
     bool halcyonDirty_ = false;

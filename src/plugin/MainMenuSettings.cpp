@@ -12,6 +12,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/CineScreen.hpp"
+#include "core/vr/PerformanceModes.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
@@ -255,7 +256,7 @@ void Settings::Read(menu::Values& v) {
         // A section missing here makes its rows snap back to their defaults after a write (the Hacking row's bug, f1f8d8b).
         for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort",
                                  L"Upscale", L"Cinematics", L"WorldUi", L"Galaxy", L"Hud", L"Interact", L"Vent", L"Mako", L"Cockpit",
-                                 L"Squad"}) {
+                                 L"Squad", L"Performance", L"SystemSettings"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -421,6 +422,25 @@ void Settings::Read(menu::Values& v) {
     v.texts["headset_text"] = ms::HeadsetSizesText(recommendedW, recommendedH);
     v.texts["upscale"] = ms::UpscaleChoice(ini.Text("Upscale", "method", "fsr"));
     flag("steady_cine", c.cineFpsCap);
+    // The Performance row (research/60): which mode the files are now, what it trades, what waits for a restart; and the
+    // bundled levers one by one (Advanced > Performance).
+    {
+        namespace pm = vr::perf_modes;
+        pm::Levers const levers = pm::Current(
+            [&](std::string_view section, std::string_view key) { return ini.Get(std::string(section).c_str(), std::string(key).c_str()); },
+            v.texts["quality"]);
+        v.texts["perf_mode"] = pm::ModeFor(levers);
+        v.texts["perf_desc"] = pm::Description(levers);
+        bool const live = resolution.renderWidth > 0 && resolution.renderHeight > 0;
+        bool const pendingSize = live && (static_cast<int>(resolution.renderWidth) != c.sfr2ResX ||
+                                             static_cast<int>(resolution.renderHeight) != c.sfr2ResY);
+        v.texts["perf_note"] = pm::RestartNote(pendingSize);
+        v.texts["cull_px"] = pm::CullChoice(levers.minScreenRadiusPx);
+        v.numbers["grass"] = std::clamp(pm::FoliagePercent(levers.foliage), 25.0f, 100.0f);
+        flag("dyn_shadows", levers.dynamicShadows);
+        flag("ambient_occl", levers.ambientOcclusion);
+        v.numbers["fsr_sharpness"] = std::clamp(std::round(ini.Num("Upscale", "sharpness", 0.9f) * 100.0f), 0.0f, 100.0f);
+    }
     // HUD and sights.
     v.numbers["hud_distance"] = c.hudPanelDistanceM;
     v.numbers["hud_size"] = std::round(c.hudPanelWidthM / 1.3f * 100.0f);
@@ -564,6 +584,55 @@ void Settings::SaveHalcyon(char const* why) {
     log::Info("main menu: renderer settings saved to profile {} ({})", MELEVR::Config::ProfileName(active), why);
 }
 
+bool Settings::SetResolution(std::string const& choice) {
+    // A headset chip (the runtime's recommended eye size, or 0.85 / 0.75 of it) or a ladder tier (Halcyon's near-square
+    // height). Either way written as tools/vr-game-settings.ps1 writes a target: sfr2ResX/Y and the watchdog's
+    // expectedResX/Y in MELEVR.ini (the active profile), GamerSettings.ini's ResX/ResY for the next launch.
+    MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
+    MELEVR::XrSession::ResolutionStats resolution{};
+    MELEVR::XrSession::GetResolutionStats(&resolution);
+    ms::Size size = ms::HeadsetSize(choice, static_cast<int>(resolution.recommendedEyeWidth),
+        static_cast<int>(resolution.recommendedEyeHeight));
+    if (size.width == 0) {
+        int const width = ms::QualityWidth(choice);
+        if (width > 0) {
+            size = {width, MELEVR::Config::EyeHeightForWidth(width)};
+        }
+    }
+    if (size.width <= 0) {
+        log::Warn("main menu: render resolution {}: no size for it (the headset's isn't known before VR starts)", choice);
+        return false;
+    }
+    if (c.sfr2ResX == size.width && c.sfr2ResY == size.height && c.expectedResX == size.width && c.expectedResY == size.height) {
+        return true;  // the target already (a mode picked with the size it has): no profile save, no GamerSettings.ini write
+    }
+    c.sfr2ResX = size.width;
+    c.sfr2ResY = size.height;
+    c.expectedResX = size.width;
+    c.expectedResY = size.height;
+    HalcyonChanged(true);  // as Halcyon's slider: saved, and GamerSettings.ini written for the next launch
+    int wx = 0, wy = 0;
+    if (!noSave_) {  // after a Reset the profile isn't saved: GamerSettings.ini stays with it (Profiles > Save writes both)
+        MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
+    }
+    log::Info("main menu: render resolution {} ({}x{}), GamerSettings.ini {}", choice, c.sfr2ResX, c.sfr2ResY,
+        wx > 0 ? std::format("set to {}x{}", wx, wy) : std::string("unchanged (auto-set per mode is off)"));
+    return true;
+}
+
+void Settings::ClearCullTenths() {
+    // plugin/RenderLevers reads minScreenRadiusTenths before minScreenRadiusPx: a file that has it would keep its cull whatever
+    // the row or a mode writes. Emptied (an empty value is the default, so minScreenRadiusPx counts), never added.
+    std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
+    if (path.empty()) {
+        return;
+    }
+    wchar_t buffer[32]{};
+    if (GetPrivateProfileStringW(L"Performance", L"minScreenRadiusTenths", L"", buffer, 32, path.c_str()) > 0) {
+        Put("Performance", "minScreenRadiusTenths", "", true);
+    }
+}
+
 void Settings::Write(std::string const& key, menu::Values const& v, bool final) {
     auto onOff = [&](char const* k) { return std::string(v.Flag(k) ? "1" : "0"); };
     auto fixed = [&](float value, int decimals) { return std::format("{:.{}f}", value, decimals); };
@@ -674,6 +743,18 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Sights", "sniperRifle", ms::SightValue(v.Text(key), Narrow(previous), 0.0f), true);
     } else if (key == "upscale") {
         Put("Upscale", "method", v.Text("upscale") == "fsr" ? "fsr" : "off", true);  // plugin/Upscale re-reads it within a second
+    } else if (key == "fsr_sharpness") {
+        Put("Upscale", "sharpness", fixed(v.Number("fsr_sharpness") / 100.0f, 2), final);
+    } else if (key == "cull_px") {
+        Put("Performance", "minScreenRadiusPx", v.Text("cull_px"), true);  // plugin/RenderLevers re-reads it within a second
+        ClearCullTenths();
+    } else if (key == "grass") {
+        // game/SystemSettings applies the section by `scale set` within a second of the file's change.
+        Put("SystemSettings", "FoliageDrawRadiusMultiplier", fixed(vr::perf_modes::FoliageFromPercent(v.Number("grass")), 2), final);
+    } else if (key == "dyn_shadows") {
+        Put("SystemSettings", "DynamicShadows", v.Flag("dyn_shadows") ? "True" : "False", true);
+    } else if (key == "ambient_occl") {
+        Put("SystemSettings", "AmbientOcclusion", v.Flag("ambient_occl") ? "True" : "False", true);
     } else if (key == "sight_assist") {
         Put("Sights", "assist", onOff("sight_assist"), true);
     } else if (key == "sight_converge") {
@@ -709,34 +790,20 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
             HalcyonChanged(false);
         }
     } else if (key == "quality") {
-        // A headset chip (the runtime's recommended eye size, or 0.85 / 0.75 of it) or a ladder tier (Halcyon's near-square
-        // height). Either way written as tools/vr-game-settings.ps1 writes a target: sfr2ResX/Y and the watchdog's
-        // expectedResX/Y in MELEVR.ini (the active profile), GamerSettings.ini's ResX/ResY for the next launch.
-        std::string const choice = v.Text("quality");
-        MELEVR::XrSession::ResolutionStats resolution{};
-        MELEVR::XrSession::GetResolutionStats(&resolution);
-        ms::Size size = ms::HeadsetSize(choice, static_cast<int>(resolution.recommendedEyeWidth),
-            static_cast<int>(resolution.recommendedEyeHeight));
-        if (size.width == 0) {
-            int const width = ms::QualityWidth(choice);
-            if (width > 0) {
-                size = {width, MELEVR::Config::EyeHeightForWidth(width)};
+        SetResolution(v.Text("quality"));
+    } else if (key == "perf_mode") {
+        // A mode's bundle (research/60): its live levers key by key, then its render resolution as the row above sets one. The
+        // Custom chip only shows; it sets nothing.
+        namespace pm = vr::perf_modes;
+        if (pm::Mode const* mode = pm::Find(v.Text("perf_mode"))) {
+            for (pm::Edit const& edit : pm::Edits(mode->levers)) {
+                Put(edit.section.c_str(), edit.key.c_str(), edit.value, true);
             }
-        }
-        if (size.width > 0) {
-            c.sfr2ResX = size.width;
-            c.sfr2ResY = size.height;
-            c.expectedResX = size.width;
-            c.expectedResY = size.height;
-            HalcyonChanged(true);  // as Halcyon's slider: saved, and GamerSettings.ini written for the next launch
-            int wx = 0, wy = 0;
-            if (!noSave_) {  // after a Reset the profile isn't saved: GamerSettings.ini stays with it (Profiles > Save writes both)
-                MELEVR::Config::ApplyResolutionForCurrentMode(&wx, &wy);
-            }
-            log::Info("main menu: render resolution {} ({}x{}), GamerSettings.ini {}", choice, c.sfr2ResX, c.sfr2ResY,
-                wx > 0 ? std::format("set to {}x{}", wx, wy) : std::string("unchanged (auto-set per mode is off)"));
-        } else {
-            log::Warn("main menu: render resolution {}: no size for it (the headset's isn't known before VR starts)", choice);
+            ClearCullTenths();
+            bool const sized = SetResolution(mode->levers.resolution);
+            std::string const against = pm::Differences(mode->levers, pm::Find(pm::kDefault)->levers);
+            log::Info("main menu: performance mode {}{}{}", mode->key, against.empty() ? std::string() : ": " + against + " (against Balanced)",
+                sized ? "" : "; the render resolution waits until the headset's size is known");
         }
     } else if (key == "steady_cine") {
         c.cineFpsCap = v.Flag(key);

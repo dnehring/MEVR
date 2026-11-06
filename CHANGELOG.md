@@ -7,6 +7,14 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+### Performance
+- A Performance setting on the menu's Display page: **Quality**, **Balanced** (the standard) and **Performance**. Each sets the
+  render resolution, FSR and the settings that decide the frame rate together; the line under it says what it trades. Change
+  one of those settings yourself and it shows **Custom**. Everything applies at once except the render resolution, which
+  applies after a restart (the row says when one is waiting).
+- The individual settings are in Advanced > Performance: small-object culling, grass distance, dynamic shadows, ambient
+  occlusion and FSR sharpness, with the original fixed render sizes (2048 to 6144 wide).
+
 ### Seeing the game
 - The cinema screen for conversations and cutscenes is calmer: a 16:9 screen a little farther away (2.9 m wide at 3.5 m)
   with gentler depth, so it no longer pulls your eyes apart. The size, distance and depth are in Comfort > Conversations

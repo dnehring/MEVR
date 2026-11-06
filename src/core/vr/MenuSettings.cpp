@@ -182,6 +182,16 @@ std::vector<Field> const& Schema() {
         {"headset_text", Type::Text, 0, "Your headset's own eye size, known once VR starts"},
         {"upscale", Type::Choice, 0, "fsr"},  // FSR 1 by default (2026-11-05): it acts only when the target is below the eye
         {"steady_cine", Type::Flag, 1},
+        // Display's Performance row (core/vr/PerformanceModes, research/60): quality | balanced | performance | custom, what it
+        // trades, what waits for a restart. Advanced > Performance's rows are the bundled levers one by one.
+        {"perf_mode", Type::Choice, 0, "balanced"},
+        {"perf_desc", Type::Text, 0, ""},
+        {"perf_note", Type::Text, 0, ""},
+        {"cull_px", Type::Choice, 0, "8"},                              // [Performance] minScreenRadiusPx
+        {"grass", Type::Number, 50, "", 25, 100, F::Percent},         // [SystemSettings] FoliageDrawRadiusMultiplier x 100
+        {"dyn_shadows", Type::Flag, 0},                                 // [SystemSettings] DynamicShadows
+        {"ambient_occl", Type::Flag, 1},                                // [SystemSettings] AmbientOcclusion
+        {"fsr_sharpness", Type::Number, 90, "", 0, 100, F::Percent},  // [Upscale] sharpness x 100
         // HUD and sights.
         {"hud_distance", Type::Number, 1.5f, "", 1, 3, F::Meters1},
         {"hud_size", Type::Number, 100, "", 45, 155, F::Percent},  // of 1.3 m: Halcyon's hudPanelWidthM, 0.6 to 2 m

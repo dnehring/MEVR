@@ -106,6 +106,7 @@ if (MEVR_MAIN_MENU)
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp
         src/core/vr/MenuSettings.cpp
+        src/core/vr/PerformanceModes.cpp
         src/plugin/menu/MenuBackdrop.cpp
         src/plugin/menu/MenuBackdrop.hpp
         src/plugin/menu/MenuDecorators.cpp
@@ -961,6 +962,7 @@ if (MEVR_BUILD_TESTS)
         tests/OmniPadTests.cpp
         tests/SwapchainBudgetTests.cpp
         tests/VrCoverTests.cpp
+        tests/PerformanceModesTests.cpp
         src/core/vr/GuiEvents.cpp
         tests/SquadPhrasings.cpp
         tests/VoiceTests.cpp
@@ -1019,6 +1021,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/LayerComposite.cpp
         src/core/vr/MenuPointer.cpp
         src/core/vr/MenuSettings.cpp
+        src/core/vr/PerformanceModes.cpp
         src/core/vr/CineScreen.cpp
         src/core/vr/PresentationHold.cpp
         src/core/vr/TransitionFade.cpp

@@ -286,6 +286,8 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 	decorator: chamfer(8dp #FFFFFF #E3DDD2);
 	box-shadow: rgba(0,0,0,35%) 0dp 4dp 14dp 0dp;
 }
+/* A chip that only shows a state (Display's Custom performance mode): drawn on, never pressed or focused. */
+.segb.shown { pointer-events: none; focus: none; tab-index: none; }
 .advtabs { display: flex; flex-wrap: wrap; margin-bottom: 22dp; align-self: flex-start; }
 .advwrap { display: flex; }
 
