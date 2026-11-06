@@ -338,6 +338,36 @@ selection, whether the Rotation swap lands the move point where the ray hit (and
 controller's rotation, drives the native's trace in VR), the cost of the trace while holding, and the gesture's feel against
 the support grip's and the grenades' zones.
 
+### Placement by an arc: the right B (2026-11-05, evening)
+
+The user, once the grenade had become a gesture: "we need to use the right click and something like the teleport gesture to
+place our squad mates manually". The left grip's pointing already moved them (above), but with a straight ray, no mark on the
+ground, and on a grip the support grip, the grenades, the vent and the radio all share. The user picked the right B held (B
+melees nothing on foot since `meleeButton = 0`) and asked this session to build it. Built in 7bd3dd7:
+
+- **The rules**, [src/core/vr/SquadPlace.hpp](../src/core/vr/SquadPlace.hpp) (unit-tested, `tests/SquadPlaceTests.cpp`): the
+  arc is a throw from the right hand's aim pose, `placeSpeedMS` 14 m/s under 9.8 m/s² (about 20 m aimed at 45 degrees, 7 m
+  level from the hand's height), cut into 0.08 s segments up to 3 s or `placeRangeM` 30 m flat. Its landing is floor when the
+  hit's normal is within about 45 degrees of up (`minUpNormal` 0.7), else a wall; nothing hit in reach is nothing. A press
+  shorter than `placeMinHoldS` 0.15 s is a blip, one held 15 s is called off, and one held through a place it couldn't start (a
+  wheel, a menu) never starts until B is let go. The squadmate the right hand's straight ray points at (`memberConeDeg`) as B
+  goes down gets the order alone. Let go on floor: a move there, or a follow when it lands within `followWithinM` of Shepard;
+  on a wall or nothing: called off.
+- **The game side**, [src/game/SquadPlace.cpp](../src/game/SquadPlace.cpp) (mod): while B is held on foot it traces the arc's
+  segments with `Engine.Actor.Trace` (`bTraceActors` false: level geometry only, so pawns and movable things don't stop the
+  throw; the first hit ends it) every tick, and the order goes through `squad_orders::GiveAt`, the one dispatcher, so the move
+  gets the Rotation swap, the acknowledgement and the standing bookkeeping like every other order. It stands down while B is the
+  game's melee button (`[Throwables] meleeButton = 1`, logged once), while the squad's or the power wheel is open, and anywhere
+  but on foot. `mevr place aim <pitchDeg> [yawDeg]` holds B from the head (no controllers), `mevr place release` lets go.
+  Logs `squad place:`; snapshot `"mod"."squadPlace"`.
+- **The drawing**, [src/plugin/SquadPlaceDraw.cpp](../src/plugin/SquadPlaceDraw.cpp) (host, HostServices v32 `setSquadPlace`):
+  the mod sends the arc's points, the landing and its normal in tracking space each tick; the host draws them in a projection
+  layer of its own with the galaxy hologram's renderer (additive light, 4x MSAA at 0.6 of the eye's size, only while the view is
+  active and fresh): a ribbon about 0.15 degrees wide with a bead running toward the end, a ring lying on the floor (blue for
+  the squad, amber for one squadmate, green for "on me") that grows in over 0.15 s, a red spark where a refused flight ends.
+  The layer draws over the world (no depth test against the scene), like most games' teleport arcs. Layers `squadplace-left`/
+  `-right` in snapshots.
+
 ## The rule parser (2026-11-04, later)
 
 Tier 1 of research/54's parser design, [src/core/vr/SquadParser.hpp](../src/core/vr/SquadParser.hpp) (pure, unit-tested,
@@ -720,6 +750,17 @@ four groups all "left far above": the block carries no "ridge"), and "Ashley, sa
 took the nearest power rather than refusing; the validator let it through because the power is hers). The budget the
 baseline predicted holds: about 0.8 s from the release to the order when the rules can't place a line.
 
-**Next, in order:** the answer-only loss; a sweep only if that leaves accuracy under 95% (`pipeline.py sweep ... rank=8,16,32
-lr=1e-4,2e-4 epochs=1,2,3`); a shorter block for the prefill (the baseline's levers); real transcripts from the headset
-into the training data, with the generator's golds checked against them.
+**Run2: the loss on the answer alone** (`--loss answer`, `configs/run2.json`, 16:48-18:10; the prompt's tokens labelled
+-100, 8 labelled tokens of about 370 a record): the loss reads the answer now (3.6 at step 20, 0.01-0.02 through the second
+epoch, the mean 0.054, against run1's 0.20 floor), 56 minutes, 948 of 1,000 exact on the GPU (run1 939) and 284 of 300
+under llama.cpp (run1 285, the same 0.64 s median): the same model within noise, and the same misses. Reading those misses'
+scene blocks settles what they are: **the generator's labels, not the model.** "The left ones" where E2 (left mid above)
+and E3 (left far below) are both left, gold E2; "the behind ones" with E1 and E2 both behind, gold E1; "those thorian
+creepers" with creepers at E2 and E5, gold E5; "both of you hold position" with a group as the hold's point, gold E3. Each
+is a draw between two legal answers (or no right answer), so the ~5% residual is the data's ambiguity and the model's
+accuracy on unambiguous lines is higher than the figure. run1 stays deployed (the one checked in the game); run2's file
+is `scratch/voice-model/runs/run2/model-q8_0.gguf`.
+
+**Next, in order:** the generator: no description that fits two groups (or a gold that names both), no hold with a group as
+its point, and its talk and ASR noise widened; then real transcripts from the headset into the training data; a shorter
+block for the prefill (the baseline's levers). A hyperparameter sweep is not where the next point is.
