@@ -66,6 +66,8 @@ ue3::ClassRef gConvHandlerClass{"SFXGame.BioSFHandler_Conversation"};
 ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel"};
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
 ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
+ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry"};  // mevr convo pick (tests)
+ue3::FunctionRef gSkipConversation{"SFXGame.BioSFHandler_Conversation.SkipConversation"};     // mevr convo skip (tests)
 
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
 struct Settings {
@@ -800,6 +802,24 @@ std::string Command(std::string const& rest) {
         gModeOverride = what == "on" || what.empty() ? cw::Mode::World : cw::ParseMode(what.c_str(), cw::Mode::World);
         return std::format("convo: conversations {} until `mevr convo world off` (the next conversation)", cw::Name(*gModeOverride));
     }
+    if (verb == "pick" || verb == "skip") {
+        // Tests without controllers: the wheel's own reply pick (a wheel location 0..5, as the stick and A choose) or its skip
+        // of the current line (what A / X do while a line plays).
+        ue3::Object* const handler = WheelHandler(player::Controller());
+        ue3::Function* const f = verb == "pick" ? gSelectEntry.Get() : gSkipConversation.Get();
+        if (handler == nullptr || f == nullptr) {
+            return std::format("convo: no conversation wheel handler{}", f == nullptr ? " (or its function wasn't found)" : "");
+        }
+        ue3::Params parms(ue3::runtime::Get(), f);
+        int location = 0;
+        if (verb == "pick") {
+            words >> location;
+            parms.Set("nWheelLocation", static_cast<std::uint8_t>(std::clamp(location, 0, 5)));
+        }
+        bool const called = ue3::runtime::Call(handler, f, parms);
+        return std::format("convo: {} called {}{}", verb == "pick" ? std::format("SelectConversationEntry({})", location) : "SkipConversation",
+            called, parms.ReturnBool() ? std::format(", returned {}", *parms.ReturnBool()) : std::string());
+    }
     if (verb == "dump" || verb.empty()) {
         std::string out = std::format("convo: mode {}; ", cw::Name(CurrentMode()));
         if (!gC.on) {
@@ -813,7 +833,7 @@ std::string Command(std::string const& rest) {
         }
         return out;
     }
-    return "usage: mevr convo [dump | world on|off|screen|vr]";
+    return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip]";
 }
 
 std::string StatusJson() {

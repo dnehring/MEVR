@@ -27,7 +27,7 @@ void TryStartup();
 void Tick(double deltaSeconds, Link const& link);
 // A conversation is shown in the world now (arm IK keeps Shepard's arms on the controllers as on foot).
 bool InWorld();
-// `mevr convo [dump | world on|off|screen|vr]`.
+// `mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip]`.
 std::string Command(std::string const& rest);
 std::string StatusJson();
 void LogStats();

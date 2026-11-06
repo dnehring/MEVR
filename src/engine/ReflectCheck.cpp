@@ -1175,6 +1175,8 @@ void CheckFunctions() {
         "SFXGame.BioWorldInfo.CheckConditional",
         "SFXGame.BioArtPlaceableBehavior.OnArtPlaceableUsed",
         "SFXGame.BioSFHandler_GalaxyMap.TravelConfirm",
+        "SFXGame.BioSFHandler_Conversation.SelectConversationEntry",  // game/ConversationWorld: mevr convo pick
+        "SFXGame.BioSFHandler_Conversation.SkipConversation",
         "SFXGame.BioPawn.GetWeaponStartTraceLocation",
         "Engine.Pawn.GetWeaponStartTraceLocation",
         "SFXGame.BioPlayerController.GetAdjustedAimFor",
@@ -1438,6 +1440,7 @@ void CheckParams() {
     PARAM(ABioWorldInfo_execCheckConditional_Parms, "SFXGame.BioWorldInfo.CheckConditional", ReturnValue);
     PARAM(UBioArtPlaceableBehavior_eventOnArtPlaceableUsed_Parms, "SFXGame.BioArtPlaceableBehavior.OnArtPlaceableUsed", User);
     PARAM(UBioSFHandler_GalaxyMap_execTravelConfirm_Parms, "SFXGame.BioSFHandler_GalaxyMap.TravelConfirm", nContext);
+    PARAM(UBioSFHandler_Conversation_execSelectConversationEntry_Parms, "SFXGame.BioSFHandler_Conversation.SelectConversationEntry", nWheelLocation);
     PARAM(AActor_execDestroy_Parms, "Engine.Actor.Destroy", ReturnValue);
     PARAM(ABioBaseSquad_execGetSquadSize_Parms, "SFXGame.BioBaseSquad.GetSquadSize", ReturnValue);
     PARAM(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember", nIndex);

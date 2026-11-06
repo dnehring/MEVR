@@ -1770,8 +1770,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     namespace cwv = mevr::vr::conversation_world;
     bool const convoAllowed = convo && engaged && frame.worldFrame && !frame.menuOpen && frame.headValid && gPanel.texture != nullptr &&
         gPanel.tintSrv != nullptr && device != nullptr;
-    bool const convoSubtitleWanted = convoAllowed && convo->subtitle != 0 && !gLabelSwapchain.failed;
-    bool const convoWheelWanted = convoAllowed && convo->wheel != 0 && !gWheelSwapchain.failed;
+    bool const convoSubtitleWanted = convoAllowed && convo->subtitle != 0 && !gLabelSwapchain.Refused();
+    bool const convoWheelWanted = convoAllowed && convo->wheel != 0 && !gWheelSwapchain.Refused();
     il::Pixels const convoSubPx = convo ? il::ToPixels(convo->subtitleCrop[2] > 0.0f && convo->subtitleCrop[3] > 0.0f
                                                            ? il::Rect{convo->subtitleCrop[0], convo->subtitleCrop[1], convo->subtitleCrop[2], convo->subtitleCrop[3]}
                                                            : cwv::DefaultSubtitleCrop(gPanel.width, gPanel.height),
