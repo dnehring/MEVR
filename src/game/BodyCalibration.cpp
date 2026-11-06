@@ -31,6 +31,7 @@ struct Values {
     std::optional<double> crouchEye;
     std::optional<double> armLength;
     std::optional<double> shoulderWidth;
+    std::optional<XrQuaternionf> handTrim[2];  // the neutral hand trims (0 left, 1 right), research/25 section 10
     std::optional<cal::Stance> pistol;
     std::optional<cal::Stance> rifle;
 };
@@ -133,6 +134,8 @@ Values ReadValues(fs::path const& path, std::string const& key) {
     v.crouchEye = Number(path, section, "crouchEyeM", 0.2, 2.0);
     v.armLength = Number(path, section, "armLengthM", 0.3, 1.2);
     v.shoulderWidth = Number(path, section, "shoulderWidthM", 0.15, 0.75);
+    v.handTrim[0] = cal::ParseRotation(Read(path, section, "handTrimLeft"));
+    v.handTrim[1] = cal::ParseRotation(Read(path, section, "handTrimRight"));
     int const eye = Read(path, section, "eye") == "left" ? 0 : 1;
     v.pistol = ReadStance(path, section, "pistol", eye);
     v.rifle = ReadStance(path, section, "rifle", eye);
@@ -157,13 +160,14 @@ std::string Describe(Values const& v) {
             cal::FormatVector(s->line), s->spreadDeg, s->hasLeft ? std::format(", foregrip {} m", cal::FormatVector(s->foregrip)) : "");
     };
     auto const meters = [](std::optional<double> const& m) { return m ? std::format("{:.2f} m", *m) : std::string("-"); };
-    return std::format("[Calibration.{}] ({}), {}: {} eye; {}; {}{}; eyes {} standing, {} crouched; arms {}, shoulders {}", v.key,
+    return std::format("[Calibration.{}] ({}), {}: {} eye; {}; {}{}; eyes {} standing, {} crouched; arms {}, shoulders {}; neutral hands {}", v.key,
         v.label.empty() ? "?" : v.label, v.when, v.pistol || v.rifle ? ((v.pistol ? v.pistol : v.rifle)->eye == 0 ? "left" : "right") : "-",
         stance("pistol", v.pistol), stance("rifle", v.rifle),
         !v.rifle && v.pistol ? " (the long guns take the pistol's grip frame, not its sight line)"
             : !v.rifle       ? " (the long guns follow the controller's aim pose)"
                              : "",
-        meters(v.standEye), meters(v.crouchEye), meters(v.armLength), meters(v.shoulderWidth));
+        meters(v.standEye), meters(v.crouchEye), meters(v.armLength), meters(v.shoulderWidth),
+        v.handTrim[0] && v.handTrim[1] ? "both" : v.handTrim[0] ? "left only" : v.handTrim[1] ? "right only" : "none (the [Hands] hand angle)");
 }
 
 void Load(char const* why) {
@@ -272,6 +276,10 @@ std::optional<double> StandingEyeHeight() {
 
 std::optional<double> ArmLength() {
     return Usable() ? gValues.armLength : std::nullopt;
+}
+
+std::optional<XrQuaternionf> HandTrim(int side) {
+    return Usable() ? gValues.handTrim[side == 0 ? 0 : 1] : std::nullopt;
 }
 
 std::optional<ik::posture::CrouchParams> CrouchParams(ik::posture::CrouchParams const& base) {

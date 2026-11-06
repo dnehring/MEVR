@@ -71,6 +71,9 @@ namespace mevr::game::hand_calibration {
 
 // The trim for one hand (0 left, 1 right), in the grip's own axes (ik::GripTrim).
 ik::Quat Trim(int side);
+// The same angles around their defaults (handPitch - 90, handYaw, handRoll; identity at 90/0/0): the fine trim on top of a
+// calibrated neutral hand (game/body_calibration's HandTrim, research/25 section 10).
+ik::Quat FineTrim(int side);
 double GunRoll();
 bool BodyFollowsHead();
 double ArmStretch();

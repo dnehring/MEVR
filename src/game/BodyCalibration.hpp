@@ -57,6 +57,9 @@ std::optional<vr::calibration::Stance> TwoHanded();
 // Body measures (nullopt: not measured).
 std::optional<double> StandingEyeHeight();
 std::optional<double> ArmLength();
+// The hand's neutral trim from the arms-ahead step (research/25 section 10; 0 left, 1 right): the relaxed hand's frame
+// (OpenXR axes: -Z the fingers, +Y the thumb side) is grip * trim. Nullopt: not calibrated (the [Hands] hand angle alone).
+std::optional<XrQuaternionf> HandTrim(int side);
 // Physical crouch thresholds between the measured standing and crouched eye heights
 // (vr::calibration::CrouchFromHeights), with the dwell of `base`; nullopt: use `base` as it is.
 std::optional<ik::posture::CrouchParams> CrouchParams(ik::posture::CrouchParams const& base);

@@ -9728,6 +9728,25 @@ void TestCalibration() {
     CHECK(cal::DirectionAngleDeg(cal::Rotate(look, {0, 0, -1}), {1, 0, -1}) < 0.01f);
     CHECK(cal::Rotate(look, {0, 1, 0}).y > 0.999f);  // level: no cant
     CHECK(!cal::LookRotation({0.0f, 1.0f, 0.0f}).has_value());
+    // The neutral hand trim (2026-11-06): any grip orientation, the arm ahead and a little down and inward: grip * trim puts the
+    // fingers (-Z) along the arm and the thumb side (+Y) up; the T pose's cross-check measures the fingers' angle from an arm.
+    {
+        XrQuaternionf const grip = cal::Normalize(cal::Multiply(AxisAngle(1, 0, 0, -40), AxisAngle(0, 0, 1, 25)));
+        XrVector3f const arm{0.15f, -0.10f, -0.60f};
+        auto const neutral = cal::NeutralHandTrim(grip, arm);
+        CHECK(neutral.has_value());
+        if (neutral) {
+            XrQuaternionf const hand = cal::Normalize(cal::Multiply(grip, *neutral));
+            CHECK(cal::DirectionAngleDeg(cal::Rotate(hand, {0, 0, -1}), arm) < 0.01f);
+            XrVector3f const thumb = cal::Rotate(hand, {0, 1, 0});
+            CHECK(thumb.y > 0.98f && std::abs(thumb.x * arm.x + thumb.y * arm.y + thumb.z * arm.z) < 1e-4f);
+            CHECK(cal::FingerAngleDeg(grip, *neutral, arm) < 0.01f);
+            CHECK(std::abs(cal::FingerAngleDeg(grip, *neutral, {1.0f, 0.0f, 0.0f}) - cal::DirectionAngleDeg(arm, {1.0f, 0.0f, 0.0f})) < 0.01f);
+        }
+        CHECK(!cal::NeutralHandTrim(grip, {0.0f, 1.0f, 0.0f}).has_value());  // straight up: no roll to give
+        XrVector3f const shoulder = cal::ShoulderPoint({0.1f, 1.7f, 0.2f}, {1.0f, 0.0f, 0.0f}, 0.40f, 1.45f, 0);
+        CHECK(std::abs(shoulder.x - (0.1f - 0.20f)) < 1e-6f && shoulder.y == 1.45f && std::abs(shoulder.z - 0.2f) < 1e-6f);
+    }
     CHECK(std::abs(cal::HeadingOf(cal::YawRotation(0.5f)) - 0.5f) < 1e-4f);
     XrQuaternionf const qs[] = {AxisAngle(0, 1, 0, 10), AxisAngle(0, 1, 0, 12)};
     XrQuaternionf const flipped[] = {qs[0], {-qs[1].x, -qs[1].y, -qs[1].z, -qs[1].w}};

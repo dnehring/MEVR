@@ -2493,6 +2493,11 @@ ik::Quat Trim(int side) {
     return gTrims[side == 0 ? 0 : 1];
 }
 
+ik::Quat FineTrim(int side) {
+    double const pitch = gValues.pitch - vr::menu_settings::kHandPitchDefault;
+    return side == 0 ? ik::GripTrim(pitch, -gValues.yaw, -gValues.roll) : ik::GripTrim(pitch, gValues.yaw, gValues.roll);
+}
+
 double GunRoll() {
     return gValues.gunRoll;
 }

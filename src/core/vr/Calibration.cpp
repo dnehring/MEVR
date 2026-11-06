@@ -504,6 +504,24 @@ float ShoulderWidth(XrVector3f const& left, XrVector3f const& right, XrVector3f 
     return static_cast<float>(std::abs(Dot(From(right) - From(left), across)));
 }
 
+std::optional<XrQuaternionf> NeutralHandTrim(XrQuaternionf const& grip, XrVector3f const& shoulderToGrip, XrVector3f const& up) {
+    auto const hand = LookRotation(shoulderToGrip, up);
+    if (!hand) {
+        return std::nullopt;
+    }
+    return Normalize(Multiply(Conjugate(Normalize(grip)), *hand));
+}
+
+float FingerAngleDeg(XrQuaternionf const& grip, XrQuaternionf const& trim, XrVector3f const& along) {
+    XrVector3f const fingers = Rotate(Normalize(Multiply(Normalize(grip), trim)), {0.0f, 0.0f, -1.0f});
+    return DirectionAngleDeg(fingers, along);
+}
+
+XrVector3f ShoulderPoint(XrVector3f const& head, XrVector3f const& right, float shoulderWidth, float shoulderHeight, int side) {
+    float const half = 0.5f * shoulderWidth * (side == 0 ? -1.0f : 1.0f);
+    return {head.x + right.x * half, shoulderHeight, head.z + right.z * half};
+}
+
 std::optional<float> ArmLength(float tPoseSpan, float shoulderWidth) {
     if (!std::isfinite(tPoseSpan) || !std::isfinite(shoulderWidth) || shoulderWidth < 0.15f || shoulderWidth > 0.75f) {
         return std::nullopt;

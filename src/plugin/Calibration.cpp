@@ -147,6 +147,10 @@ struct Run {
     float standHeadY = 0.0f;        // app space
     bool haveT = false;
     XrVector3f tHead{}, tLeft{}, tRight{};
+    XrQuaternionf tGrip[2]{};  // the T pose's grip orientations (0 left, 1 right): the neutral trim's cross-check
+    // The hands' neutral trims (cal::NeutralHandTrim) from the arms-ahead step, and the T pose's cross-check (degrees).
+    std::optional<XrQuaternionf> handTrim[2];
+    std::optional<float> handCheckDeg[2];
     float tSpan = 0.0f;
     std::optional<float> shoulderWidth;
     std::optional<float> armLength;
@@ -575,6 +579,41 @@ void Say(std::string text, bool warn = false, std::uint64_t ms = kMessageMs) {
 void Note(std::string text, std::uint64_t ms = kNoteMs) {
     gRun.boardNote = std::move(text);
     gRun.noteUntil = Now() + ms;
+}
+
+// The hands' neutral trims (research/25 section 10, the user's idea, 2026-11-06): both arms straight ahead, thumbs up, wrists
+// straight: each relaxed hand's fingers along its arm, from its shoulder (the T pose's grip height, half the measured shoulder
+// width to the side) to its grip, the thumb side up. The T pose checks it: there the same trim should point the fingers out
+// along the arm (a twisted wrist or a hand not straight shows as a large angle; over 35 degrees the hand isn't kept).
+void SolveHandTrims(XrVector3f const& head, XrPosef const& left, XrPosef const& right, float shoulderWidth) {
+    constexpr float kMaxCheckDeg = 35.0f;
+    XrVector3f const across = cal::AnchorRight(gRun.anchor);
+    float const shoulderHeight = gRun.haveT ? 0.5f * (gRun.tLeft.y + gRun.tRight.y) : head.y - 0.25f;
+    XrPosef const grips[2] = {left, right};
+    for (int side : {0, 1}) {
+        gRun.handTrim[side].reset();
+        gRun.handCheckDeg[side].reset();
+        XrVector3f const shoulder = cal::ShoulderPoint(head, across, shoulderWidth, shoulderHeight, side);
+        XrVector3f const p = grips[side].position;
+        auto const trim = cal::NeutralHandTrim(grips[side].orientation, {p.x - shoulder.x, p.y - shoulder.y, p.z - shoulder.z});
+        if (!trim) {
+            log::Info("calibration: {} hand: no neutral trim (the arm points straight up or down)", side == 0 ? "left" : "right");
+            continue;
+        }
+        if (gRun.haveT) {
+            XrVector3f const t = side == 0 ? gRun.tLeft : gRun.tRight;
+            XrVector3f const tShoulder = cal::ShoulderPoint(gRun.tHead, across, shoulderWidth, shoulderHeight, side);
+            gRun.handCheckDeg[side] = cal::FingerAngleDeg(gRun.tGrip[side], *trim, {t.x - tShoulder.x, t.y - tShoulder.y, t.z - tShoulder.z});
+        }
+        bool const kept = !gRun.handCheckDeg[side] || *gRun.handCheckDeg[side] <= kMaxCheckDeg;
+        if (kept) {
+            gRun.handTrim[side] = trim;
+        }
+        log::Info("calibration: {} hand: neutral trim ({}){}{}", side == 0 ? "left" : "right", cal::FormatRotation(*trim),
+            gRun.handCheckDeg[side] ? std::format("; the T pose's fingers {:.1f} deg from the arm", *gRun.handCheckDeg[side])
+                                    : std::string("; no T pose to check it"),
+            kept ? "" : ": not kept (the hand wasn't neutral in one of the poses)");
+    }
 }
 
 void Captured(std::initializer_list<int> hands) {
@@ -1056,6 +1095,8 @@ void StepBody(XrPosef const& head, float dt) {
         gRun.tHead = gRun.still.Average(0).position;
         gRun.tRight = gRun.still.Average(1).position;
         gRun.tLeft = gRun.still.Average(2).position;
+        gRun.tGrip[0] = gRun.still.Average(2).orientation;
+        gRun.tGrip[1] = gRun.still.Average(1).orientation;
         gRun.tSpan = Distance(gRun.tLeft, gRun.tRight);
         gRun.haveT = true;
         Captured({0, 1});
@@ -1076,6 +1117,7 @@ void StepBody(XrPosef const& head, float dt) {
         float const width = cal::ShoulderWidth(gRun.still.Average(2).position, gRun.still.Average(1).position, forward);
         gRun.shoulderWidth = width;
         gRun.armLength = gRun.haveT ? cal::ArmLength(gRun.tSpan, width) : std::nullopt;
+        SolveHandTrims(gRun.still.Average(0).position, gRun.still.Average(2), gRun.still.Average(1), width);
         Captured({0, 1});
         log::Info("calibration: arms forward: shoulders {:.3f} m; arm length {}", width,
             gRun.armLength ? std::format("{:.3f} m", *gRun.armLength) : std::string("not measured (no T pose, or implausible)"));
@@ -1200,6 +1242,11 @@ void Save() {
     }
     if (gRun.armLength) {
         WriteIni(section, "armLengthM", Fixed(*gRun.armLength));
+    }
+    for (int side : {0, 1}) {
+        if (gRun.handTrim[side]) {
+            WriteIni(section, side == 0 ? "handTrimLeft" : "handTrimRight", cal::FormatRotation(*gRun.handTrim[side]));
+        }
     }
     cal::Stance const& any = gRun.pistol.valid ? gRun.pistol : gRun.rifle;
     if (any.valid) {

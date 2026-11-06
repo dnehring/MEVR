@@ -282,3 +282,32 @@ user (0.73 m, 0.29 m): 0.28 m along the bore, the far orb 0.54 m ahead of the ey
 - The judgement: `calibration: the rifle aims judged: redo-one (spread 5.30 deg, limit 4.5; farthest aim 2 at
   8.02 deg from the other two, which agree within 0.41; failed judgements in this step 1)`, then the stance, or
   `kept the other two`.
+
+## 10. The hands' neutral trim (2026-11-06)
+
+The user: "I want to see if we can fix things like the controller offset parameter when we're doing our initial calibration.
+when the person has their arms out we would assume the hand would be in the neutral position". The "controller offset" is
+`[Hands] handPitch / handYaw / handRoll` (90 / 0 / 0 by default): one rotation of Shepard's empty hand against the grip pose
+for both hands (mirrored), tuned by eye; the calibration never measured it, and the grip pose's axes differ between controllers
+and runtimes.
+
+**The rule.** With both arms straight ahead, level, a shoulder-width apart, thumbs up and wrists straight (the step's text now
+asks for that), each relaxed hand's fingers point along its arm and its thumb side is up. The arm runs from the shoulder (at the
+T pose's grip height, the arms then lying along the shoulder line, half the measured shoulder width to the side) to the grip.
+The trim is `conj(grip) * LookRotation(shoulder to grip, up)`: the hand frame in OpenXR axes, -Z the fingers, +Y the thumb
+side (`vr::calibration::NeutralHandTrim`, `ShoulderPoint`, unit-tested in `TestCalibration`). Thumb up is the forearm's
+anatomical neutral and how controllers are held with the arms ahead; the fingers' direction alone can't give the roll.
+
+**The check.** The T pose shows the same hand pointing out along the arm: the same trim must point the fingers there
+(`FingerAngleDeg`). Over 35 degrees the hand wasn't neutral in one of the poses (a bent or twisted wrist) and that hand's trim
+isn't kept. Logs `calibration: <left|right> hand: neutral trim (...); the T pose's fingers N deg from the arm`.
+
+**Kept and used.** `handTrimLeft` / `handTrimRight` (x, y, z, w) in `[Calibration.<key>]`, per controller type like
+the rest. `game/BodyCalibration` reads them (`HandTrim`), and arm IK's empty hand is `grip * handTrim` turned into the hand
+bone as before (`ik::HandFromGrip`), with the `[Hands]` hand angle as a fine trim around its default
+(`hand_calibration::FineTrim`: identity at 90 / 0 / 0, so the menu's hand angle still nudges it). A hand holding a gun keeps
+its stance's trim (section 3). No calibration, or one from before this: the hand angle alone, as before.
+
+**Unchecked.** The user's recordings hold one incidental frame with both arms ahead (its solve was 35-52 degrees from 90 / 0 / 0:
+one unposed frame says nothing). [verify] in the headset: calibrate again, read the two log lines (the T pose's angle), and
+see whether the empty hands sit naturally on the controllers without touching the hand angle.

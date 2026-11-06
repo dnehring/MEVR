@@ -250,7 +250,10 @@ switching frameworks.
   check, save. Why an aim isn't captured is on the panel and the board; an aim off the other two is redone alone,
   and after two tries the agreeing pair is kept (`vr::calibration::AimSet`; rifle 4.5 degrees, pistol 3; research/25
   section 9); a cyan ring marks each hand's grab point (`[Calibration] grabOffset`). Solved in `core/vr/Calibration` (unit-tested): the gun frame (eye-to-target line, level) in
-  the right GRIP frame, the line's offset from the grip, the eye, the rifle's foregrip, left trim and stock.
+  the right GRIP frame, the line's offset from the grip, the eye, the rifle's foregrip, left trim and stock; **each empty
+  hand's neutral trim** (research/25 section 10, 2026-11-06: arms ahead, thumbs up, wrists straight, the fingers along shoulder
+  to grip, the thumb side up, checked against the T pose; `handTrimLeft`/`handTrimRight`; arm IK's empty hand is grip * trim,
+  the `[Hands]` hand angle a fine trim around its 90/0/0 default, `hand_calibration::FineTrim`).
   Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` in `ASI\LE1MEVR.ini`;
   `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
   moved onto the calibrated line (`gunShift`, the assist on top), the foregrip point takes the left grip,

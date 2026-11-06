@@ -169,6 +169,18 @@ XrVector3f OnPlane(Line const& line, XrVector3f const& planePoint, XrVector3f co
 float ShoulderWidth(XrVector3f const& left, XrVector3f const& right, XrVector3f const& forward);
 std::optional<float> ArmLength(float tPoseSpan, float shoulderWidth);
 
+// The hand's neutral trim (the user, 2026-11-06: "when the person has their arms out we would assume the hand would be in the
+// neutral position"): with the arms straight ahead, thumbs up, wrists straight, the relaxed hand's fingers point along the arm
+// (from the shoulder to the grip) and its thumb side is up. The trim takes the grip's orientation to that hand frame (OpenXR
+// axes: -Z the fingers, +Y the thumb side): grip * trim. Nullopt for a degenerate arm (zero, or pointing straight up or down).
+std::optional<XrQuaternionf> NeutralHandTrim(XrQuaternionf const& grip, XrVector3f const& shoulderToGrip,
+    XrVector3f const& up = {0.0f, 1.0f, 0.0f});
+// How far (degrees) the fingers of grip * trim are from `along` (the T pose's cross-check: they should point down the arm).
+float FingerAngleDeg(XrQuaternionf const& grip, XrQuaternionf const& trim, XrVector3f const& along);
+// A shoulder for the neutral trim: the T pose's grip height (the arms along the shoulder line), above the head's floor
+// position, half the shoulder width to the side (`right` horizontal, unit; `side` 0 left, 1 right).
+XrVector3f ShoulderPoint(XrVector3f const& head, XrVector3f const& right, float shoulderWidth, float shoulderHeight, int side);
+
 // Physical crouch thresholds from the measured standing and crouched eye heights (meters): crouch below
 // the point `crouchAt` of the way down from standing to crouched, stand again above `standAt` of the way
 // (fractions of the standing height, as core/ik/Posture's CrouchParams wants them). Nullopt unless the

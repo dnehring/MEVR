@@ -1141,9 +1141,18 @@ void Drive(double deltaSeconds) {
                 }
             }
             if (!arm.hasRotation && hand.hasRotation && componentRotation && gAnatomy[side]) {
-                ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * hand.rotation);
+                vr::controllers::Hand const& tracked = side == kLeft ? controllers.left : controllers.right;
+                if (auto const neutral = body_calibration::HandTrim(side); neutral && controllers.active && tracked.gripValid) {
+                    // Calibrated (research/25 section 10): the relaxed hand's frame is grip * its neutral trim; the [Hands] hand
+                    // angle trims around it (identity at its 90/0/0 default).
+                    ik::Quat const relaxed = hand_targets::WorldRotation(targets.body, cal::Normalize(cal::Multiply(tracked.grip.orientation, *neutral)));
+                    ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * relaxed);
+                    arm.rotation = ik::HandFromGrip(grip, hand_calibration::FineTrim(side), *gAnatomy[side]);
+                } else {
+                    ik::Quat const grip = ik::Normalize(ik::Conjugate(*componentRotation) * hand.rotation);
+                    arm.rotation = ik::HandFromGrip(grip, hand_calibration::Trim(side), *gAnatomy[side]);
+                }
                 arm.hasRotation = true;
-                arm.rotation = ik::HandFromGrip(grip, hand_calibration::Trim(side), *gAnatomy[side]);
             }
             driven += driven.empty() ? kSideNames[side] : std::string(" and ") + kSideNames[side];
         }
