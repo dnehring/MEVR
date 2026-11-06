@@ -7420,6 +7420,23 @@ void TestOmniRail() {
     CHECK(!held.Step(true, away, wrist, true, 0.01f) && held.Armed());
     CHECK(!held.Step(true, touching, wrist, false, 0.01f) && !held.Armed());
     CHECK(!held.Step(true, touching, wrist, true, 0.01f));
+    // The tap's target (2026-11-05): below the wrist readout; faint with the wrist raised before the face, brighter with the right
+    // fingertip near, armed within releaseM once the fingertip has been away; never while the tap isn't allowed.
+    XrVector3f const eyes{0.0f, 0.0f, 0.0f};
+    XrVector3f const target = rail::TargetPoint({-0.05f, -0.35f, -0.35f});
+    CHECK(NearD(target.y, -0.35 - rail::kTargetBelowM, 1e-6) && NearD(target.x, -0.05, 1e-6));
+    float const release = rail::TapSettings{}.releaseM;
+    XrVector3f const atSide{0.30f, -0.60f, -0.10f};  // the right hand at the side
+    CHECK(rail::TargetLookFor(true, eyes, target, true, atSide, true, release) == rail::TargetLook::Faint);       // the wrist raised
+    CHECK(rail::TargetLookFor(true, eyes, {-0.2f, -0.9f, -0.2f}, true, atSide, true, release) == rail::TargetLook::Hidden);  // arm down
+    XrVector3f const nearTip{target.x + 0.15f, target.y, target.z};
+    CHECK(rail::TargetLookFor(true, eyes, {-0.2f, -0.9f, -0.2f}, true, {-0.1f, -0.9f, -0.2f}, true, release) == rail::TargetLook::Near);
+    CHECK(rail::TargetLookFor(true, eyes, target, true, nearTip, true, release) == rail::TargetLook::Near);
+    XrVector3f const closeTip{target.x + 0.05f, target.y, target.z};
+    CHECK(rail::TargetLookFor(true, eyes, target, true, closeTip, true, release) == rail::TargetLook::Armed);
+    CHECK(rail::TargetLookFor(true, eyes, target, true, closeTip, false, release) == rail::TargetLook::Near);  // not armed: resting
+    CHECK(rail::TargetLookFor(false, eyes, target, true, closeTip, true, release) == rail::TargetLook::Hidden);  // a gun drawn
+    CHECK(rail::TargetLookFor(true, eyes, target, false, closeTip, true, release) == rail::TargetLook::Faint);   // no right hand
     // The world UI's wrist rule (research/57): a listed screen nothing owns; a locker's equipment stands by the locker; the
     // minigame always; the minigame's own width, the others' 16:9 width.
     wu::Settings const s;

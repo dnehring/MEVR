@@ -50,7 +50,8 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   with the trigger, or the index fingertip's touch; its trigger is kept from the game while it's pointed at
   (`omni_rail::OwnsTriggers` in the XInput hook).
 - **Opening it:** tap the left wrist (the HUD's wrist piece, where the omni-tool's display is) with the right index fingertip:
-  the fingertip coming within 3.5 cm from farther than 7 cm, at most every 0.6 s, not while a gun is drawn (the mod's gun
+  the fingertip coming within 4 cm from farther than 8 cm (3.5 and 7 until 2026-11-05; aimed at the target below the readout,
+  section 3), at most every 0.6 s, not while a gun is drawn (the mod's gun
   panel shows), on foot or in the game's screens (`vr::omni_rail::Tap`). Alone it stands where a wrist screen would, 0.26 m
   tall, with an OMNI-TOOL header. It also shows by itself beside any of its screens the game's own keys or wheel opened. A tap
   while it shows, or its Close, closes it and the screens.
@@ -80,6 +81,17 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   fake headset's poses, the arm-length scaling): screens project from the omni-tool's display (`State::emitter`), the rail alone
   doesn't yet (no state is published without a screen). [open]
 - The tap's distances on a real wrist; whether the HUD's wrist point is where the player sees the display.
+  **The first headset try (the user, 2026-11-05 evening, the 0.1.0 release, PS VR2):** nothing opened, and the log has no tap. The
+  user tapped their real wrist with their real finger and "didn't see anything", so didn't know where to tap: the tap's points are
+  the controllers' (3.5 cm ahead of the right aim pose, the wrist readout's centre 5 cm off the left grip), not the body's, and
+  nothing marked them; the pistol was also drawn for part of it (no tap then). **Since then a target marks it**
+  (`omni_rail::TargetPoint`/`TargetLookFor`, unit-tested; host `plugin/OmniToolRail`'s four static images, swapchains named
+  `omnitarget-*` in snapshots): a 4 cm button 3.5 cm below the wrist readout (the tap aims at it now), facing the eyes, faint
+  orange while the left wrist is raised before the face (within 0.45 m below the eyes and 0.60 m of them across), brighter while
+  the right fingertip is within 0.30 m, ME1 cyan with a light tick in the right hand once in tap range, a pressed flash on the tap;
+  hidden whenever the tap isn't allowed. The tap counts within 4 cm from farther than 8 cm (was 3.5 and 7). Each reach logs its
+  closest approach and why it didn't tap (`omni-tool rail: a reach for the wrist target (#n): closest x cm ...`), so the next
+  headset session gives the distances. [verify] in the headset.
 - The rail's size and legibility at 0.42 m (entries 112 dp of a 1000 dp canvas: about 3 cm tall on a 0.31 m rail).
 - **The squad member behind the equipment and squad screens: done 2026-11-05 (section 7)**, the game's own figure through a capture
   of its UI world. Below, the earlier hologram idea.
