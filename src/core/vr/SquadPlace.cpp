@@ -63,24 +63,56 @@ char const* Name(Order order) {
     return "none";
 }
 
+int TileCount(int members) {
+    return members >= 2 ? 3 : members == 1 ? 1 : 0;
+}
+
+int SquadTileIndex(int members) {
+    return members >= 2 ? 1 : 0;
+}
+
+int MemberOfTile(int tile, int members) {
+    if (members < 2) return kSquadTile;
+    return tile == 0 ? 0 : tile == 2 ? 1 : kSquadTile;
+}
+
+std::vector<int> WeaponTypes(std::uint8_t mask) {
+    std::vector<int> out;
+    for (int w = 0; w < 4; ++w) {
+        if ((mask & (1u << w)) != 0) out.push_back(w);
+    }
+    return out;
+}
+
+int Machine::Weapon() const {
+    return row_ == Row::Weapon && weaponTile_ >= 0 && weaponTile_ < static_cast<int>(weapons_.size()) ? weapons_[static_cast<std::size_t>(weaponTile_)]
+                                                                                                    : -1;
+}
+
 void Machine::Reset() {
     holding_ = false;
     heldS_ = 0.0f;
-    member_ = -1;
+    tile_ = SquadTileIndex(members_);
+    armed_ = true;
+    row_ = Row::Who;
+    weapons_.clear();
+    weaponTile_ = 0;
     landing_ = Landing::None;
 }
 
 Step Machine::Advance(Input const& in, Settings const& settings) {
     Step step;
+    float const dt = std::max(in.dt, 0.0f);
     bool const pressed = in.button && !wasDown_;
     wasDown_ = in.button;
     if (!in.button) blocked_ = false;
+    sinceBlipS_ += dt;
     if (holding_) {
-        heldS_ += std::max(in.dt, 0.0f);
+        heldS_ += dt;
         if (!settings.enabled || !in.usable) {
             step.cancelled = true;
             step.why = "no longer usable here";
-            step.member = member_;
+            step.member = Member();
             Reset();
             blocked_ = in.button;
             return step;
@@ -89,19 +121,71 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
             step.landingChanged = true;
             landing_ = in.landing;
         }
+        // The squad shrank or grew under the hold: the selector starts over on the squad.
+        if (in.members != members_) {
+            members_ = in.members;
+            tile_ = SquadTileIndex(members_);
+            row_ = Row::Who;
+            weapons_.clear();
+            weaponTile_ = 0;
+            step.selectionChanged = true;
+        }
+        // A flick of the right stick, re-armed near the centre: sideways steps the lit row's tiles, down opens the weapon row
+        // under the names, up goes back to them. The stronger axis decides.
+        bool const sideways = std::abs(in.stickX) >= std::abs(in.stickY);
+        float const along = sideways ? in.stickX : in.stickY;
+        if (armed_ && std::abs(along) >= settings.flickOn) {
+            armed_ = false;
+            if (sideways && row_ == Row::Who) {
+                int const next = std::clamp(tile_ + (along > 0.0f ? 1 : -1), 0, std::max(TileCount(members_) - 1, 0));
+                if (next != tile_) {
+                    tile_ = next;
+                    step.selectionChanged = true;
+                }
+            } else if (sideways) {
+                int const next = std::clamp(weaponTile_ + (along > 0.0f ? 1 : -1), 0, std::max(static_cast<int>(weapons_.size()) - 1, 0));
+                if (next != weaponTile_) {
+                    weaponTile_ = next;
+                    step.weaponChanged = true;
+                }
+            } else if (along < 0.0f && row_ == Row::Who && settings.weapons) {
+                weapons_ = WeaponTypes(in.weaponMask);
+                if (!weapons_.empty()) {
+                    row_ = Row::Weapon;
+                    weaponTile_ = 0;
+                    for (std::size_t i = 0; i < weapons_.size(); ++i) {
+                        if (weapons_[i] == in.currentWeapon) weaponTile_ = static_cast<int>(i);
+                    }
+                    step.rowChanged = true;
+                }
+            } else if (along > 0.0f && row_ == Row::Weapon) {
+                row_ = Row::Who;
+                weapons_.clear();
+                weaponTile_ = 0;
+                step.rowChanged = true;
+            }
+        } else if (!armed_ && std::abs(in.stickX) <= settings.flickOff && std::abs(in.stickY) <= settings.flickOff) {
+            armed_ = true;
+        }
         if (in.button && heldS_ > settings.maxHoldS) {
             step.cancelled = true;
             step.why = "held too long";
-            step.member = member_;
+            step.member = Member();
             Reset();
             blocked_ = true;
             return step;
         }
         if (!in.button) {
-            step.member = member_;
+            step.member = Member();
             if (heldS_ < settings.minHoldS) {
                 step.cancelled = true;
                 step.why = "a blip";
+                sinceBlipS_ = 0.0f;
+            } else if (row_ == Row::Weapon) {
+                step.weapon = Weapon();
+                step.equip = step.weapon >= 0;
+                step.cancelled = !step.equip;
+                step.why = step.equip ? "" : "no weapon lit";
             } else if (in.landing != Landing::Floor) {
                 step.cancelled = true;
                 step.why = Name(in.landing);
@@ -113,13 +197,27 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
         }
         return step;
     }
+    if (pressed && !blocked_ && settings.enabled && in.usable && sinceBlipS_ <= settings.doubleTapS) {
+        // The second tap: the whole squad back to Shepard at once; this press never becomes a hold.
+        step.regroup = true;
+        step.order = Order::Follow;
+        step.member = kSquadTile;
+        sinceBlipS_ = 1e9f;
+        blocked_ = true;
+        return step;
+    }
     if (pressed && !blocked_ && settings.enabled && in.usable) {
         holding_ = true;
         heldS_ = 0.0f;
-        member_ = in.pointedMember;
+        members_ = in.members;
+        tile_ = SquadTileIndex(members_);
+        armed_ = std::abs(in.stickX) <= settings.flickOff && std::abs(in.stickY) <= settings.flickOff;  // a pushed stick waits
+        row_ = Row::Who;
+        weapons_.clear();
+        weaponTile_ = 0;
         landing_ = in.landing;
         step.started = true;
-        step.member = member_;
+        step.member = Member();
     } else if (pressed) {
         blocked_ = true;  // pressed where it can't start: this press never becomes one
     }

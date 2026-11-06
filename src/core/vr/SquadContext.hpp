@@ -67,6 +67,15 @@ struct Hostile {
     bool visible = true;  // rendered within the last second
     std::string surface;  // where it stands, if the mod has a word ("bridge", "catwalk"); empty = none
 };
+// A piece of the level's cover near the player, as the mod snapshots it: one CoverLink (the game marks its own cover
+// along crates, walls and railings with slots) with the word the mod has for what it is.
+struct Cover {
+    std::uint64_t id = 0;     // the object, stable while the level lives
+    Vec3 position;            // the link's place
+    float yawDeg = 0.0f;      // which way its front faces (the side an enemy would be on)
+    std::vector<Vec3> slots;  // where a pawn stands in it
+    std::string type;         // "crate", "wall"...; empty: just "cover"
+};
 struct Scene {
     double time = 0.0;
     Vec3 player;             // the player's pawn location (distances and heights are measured from it)
@@ -76,6 +85,7 @@ struct Scene {
     int shepardWeapon = -1;  // in hand (-1: holstered)
     std::vector<Member> party;
     std::vector<Hostile> hostiles;
+    std::vector<Cover> cover;  // the cover within the landmarks' range (research/54 "Landmarks")
     PawnId aimTarget = 0;   // what the gun's line hits
     PawnId gazeTarget = 0;  // the game's selection from the head's gaze
 };
@@ -134,6 +144,53 @@ Group const* Find(std::vector<Group> const& groups, int id);
 // The group a pawn belongs to (0: none).
 int GroupOf(std::vector<Group> const& groups, PawnId pawn);
 
+// ---- Landmarks: the cover around the squad, by the player's words ---------------------------------------------------
+//
+// "Get behind that crate", "take cover behind the wall on the left" (research/54 "Landmarks"): the cover pieces within
+// range become landmarks with ids (L1..) that stay while the level lives, each with the same egocentric words as the
+// enemy groups, so a description or a look picks one and a move or hold to it is the slot on its far side from the threat.
+
+struct LandmarkSettings {
+    float rangeM = 25.0f;     // cover farther than this from the player stays out
+    int maxLandmarks = 5;     // the nearest ones
+    float nearM = 8.0f;       // the distance bands (cover is nearer business than enemies)
+    float farM = 20.0f;
+    float levelM = 1.5f;
+    float aheadDeg = 30.0f;
+    float behindDeg = 120.0f;
+};
+struct Landmark {
+    int id = 0;               // L<id>
+    std::uint64_t cover = 0;  // the Cover's id
+    Vec3 centre;              // the slots' centre (the link's place without slots)
+    float yawDeg = 0.0f;      // the cover's front
+    std::vector<Vec3> slots;
+    std::string type;         // the word ("crate"; "cover" when the mod has none)
+    float distanceM = 0.0f;
+    float bearingDeg = 0.0f;
+    float heightM = 0.0f;
+    Sector sector = Sector::Ahead;
+    Band band = Band::Near;
+    Elevation elevation = Elevation::Level;
+    bool nearest = false, leftmost = false, rightmost = false;
+};
+// Keeps the landmarks' ids across updates (by the cover's id; a new piece takes the next id). Left to right.
+class Landmarker {
+public:
+    std::vector<Landmark> const& Update(Scene const& scene, LandmarkSettings const& settings);
+    std::vector<Landmark> const& Landmarks() const { return landmarks_; }
+    void Reset();
+
+private:
+    std::vector<Landmark> landmarks_;
+    std::vector<std::pair<std::uint64_t, int>> ids_;
+    int nextId_ = 1;
+};
+Landmark const* Find(std::vector<Landmark> const& landmarks, int id);
+// Where to go for a landmark: its slot farthest from the threat (the nearest group's centre; with no groups, the far side
+// from the player), so the cover is between the squadmate and the enemy; without slots, 1 m behind the link's front.
+Vec3 LandmarkPoint(Landmark const& landmark, std::vector<Group> const& groups, Scene const& scene);
+
 // ---- "Those": the rays around the word -----------------------------------------------------------------------------
 
 struct PoseSample {
@@ -173,11 +230,14 @@ struct DeixisSettings {
     float minScore = 0.05f;       // below this a group isn't a candidate
 };
 struct Candidate {
-    int group = 0;
+    int group = 0;       // a group's id...
     float score = 0.0f;  // 0..1
+    int landmark = 0;    // ...or a landmark's (one of the two; last, so {group, score} still reads as before)
 };
-// Who "those" meant when it was said at `wordTime`: the groups the head and the hands pointed at around then, best
-// first (the best source's score, normalised so a hand held on a group all along scores 1).
+// Who "those" meant when it was said at `wordTime`: the groups (and the landmarks: "that crate") the head and the hands
+// pointed at around then, best first (the best source's score, normalised so a hand held on a group all along scores 1).
+std::vector<Candidate> Resolve(PoseHistory const& history, double wordTime, std::vector<Group> const& groups,
+    std::vector<Landmark> const& landmarks, Scene const& scene, DeixisSettings const& settings);
 std::vector<Candidate> Resolve(PoseHistory const& history, double wordTime, std::vector<Group> const& groups,
     Scene const& scene, DeixisSettings const& settings);
 
@@ -201,8 +261,9 @@ struct Who {
 struct Target {
     // Direction: "go left", "move up", "flank right": a point `directionM` from the player that way (index: the Sector);
     // an attack that way is the nearest group in that sector.
-    enum Kind : std::uint8_t { None, Group, Pointed, Aim, Gaze, Last, Other, Self, Direction } kind = None;
-    int index = 0;  // Group: the id; Pointed: the deictic's index; Direction: the Sector
+    // Landmark: "behind that crate", "the wall on the left": a move or hold to the cover's far side (never an attack).
+    enum Kind : std::uint8_t { None, Group, Pointed, Aim, Gaze, Last, Other, Self, Direction, Landmark } kind = None;
+    int index = 0;  // Group: the id; Pointed: the deictic's index; Direction: the Sector; Landmark: the id
 };
 // The point `distanceM` from the player's feet in a direction relative to where they face (Behind: back the way they came).
 Vec3 DirectionPoint(Scene const& scene, Sector sector, float distanceM);
@@ -240,7 +301,10 @@ struct Resolved {
     Order order = Order::None;
     int group = 0;      // the target group (0: none)
     int runnerUp = 0;   // the next-best group, kept for "no, the other ones"
+    int landmark = 0;   // a move or hold to this cover (0: none)
 };
+Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> const& groups, std::vector<Landmark> const& landmarks,
+    std::vector<Deictic> const& deictics, std::vector<Command> const& history);
 Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> const& groups,
     std::vector<Deictic> const& deictics, std::vector<Command> const& history);
 
@@ -249,6 +313,8 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
 // The dynamic block (research/54's schema): NOW, one PARTY line per present squadmate (weapons, * in hand; powers,
 // ok or the seconds left), SHEP, one line per group (id, type, count, sector band elevation, surface, flags), AIM and
 // GAZE, each deictic's candidates, the last commands with their age, and SAY <the transcript>.
+std::string Block(Scene const& scene, std::vector<Group> const& groups, std::vector<Landmark> const& landmarks,
+    std::vector<Deictic> const& deictics, std::vector<Command> const& history, std::string_view said);
 std::string Block(Scene const& scene, std::vector<Group> const& groups, std::vector<Deictic> const& deictics,
     std::vector<Command> const& history, std::string_view said);
 

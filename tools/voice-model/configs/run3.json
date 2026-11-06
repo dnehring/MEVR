@@ -1,6 +1,6 @@
 {
   "base": "Qwen/Qwen3-0.6B",
-  "dataset": {"count": 20000, "seed": 1, "noise": 0.3, "eval_count": 1000, "eval_seed": 2, "generator": 2},
+  "dataset": {"count": 20000, "seed": 1, "noise": 0.3, "eval_count": 1000, "eval_seed": 2, "generator": 3},
   "train": {"rank": 16, "alpha": 32, "lr": 0.0002, "epochs": 2, "batch": 16, "micro_batch": 4, "max_len": 512, "warmup": 0.03, "weight_decay": 0.01, "seed": 1, "loss": "answer"},
   "gguf": {"types": ["q8_0"]},
   "bench": {"threads": 4, "limit": 300}

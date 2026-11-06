@@ -14,6 +14,7 @@ namespace {
 enum class Tag : std::uint8_t {
     None, Stop, Name, All, Order, Power, Weapon, Deictic, Place, Sector, Flag, Elevation, Surface, Type, Generic, Aim, Gaze, Other,
     LastTarget, Conj, No, Cancel, Repeat, Equip, Until, Stay, NoRetreat, ComeBack, Support,
+    Landmark,     // "crate", "wall", "cover": a piece of the level's cover (only while the scene lists some)
     Statement,    // "I'm hit", "watch out", "nice shot": said over the radio, not an order
     Unsupported   // "hold fire", "medi-gel", "reload": orders the game has no call for (refused by name, not guessed at)
 };
@@ -112,7 +113,11 @@ std::vector<Phrase> const& Vocabulary() {
                    "give me covering fire", "give me cover fire", "lay down fire", "lay down covering fire", "clear", "smash", "crush",
                    "wreck", "murder", "obliterate", "flatten", "pound", "hammer", "shred"},
             Tag::Order, static_cast<int>(sc::Order::Attack));
-        // A Move phrase's code names what it describes: "take the high ground" is a move to what's above.
+        // A Move phrase's code names what it describes: "take the high ground" is a move to what's above; "get behind" the cover
+        // named after it (research/54 "Landmarks": a hold on its far side).
+        Add(p, {"get behind", "go behind", "move behind", "get in behind", "duck behind", "hide behind", "get down behind", "take cover behind",
+                   "get cover behind", "cover behind", "get to cover behind", "get in cover behind", "hunker down behind", "hold behind"},
+            Tag::Order, static_cast<int>(sc::Order::Hold), "behind");
         Add(p, {"move", "move up", "move to", "move over", "go to", "go", "get to", "get over", "advance", "flank", "take position",
                    "push up", "push", "head", "run", "get up", "move forward", "push forward", "go up", "get up there", "climb", "get there",
                    "move in", "spread out", "fan out", "go around", "circle around", "get in"},
@@ -183,6 +188,14 @@ std::vector<Phrase> const& Vocabulary() {
         return p;
     }();
     return v;
+}
+
+// The words for a piece of cover (any kind: the scene's own type words are added to them).
+std::vector<std::string> const& CoverWords() {
+    static std::vector<std::string> const w = {"cover", "crate", "box", "container", "wall", "pillar", "column", "barrier", "barricade", "rock",
+        "boulder", "car", "truck", "console", "desk", "table", "counter", "railing", "barrel", "sandbag", "block", "wreck", "debris", "rubble",
+        "corner", "doorway", "pipe", "machine", "generator", "ledge"};
+    return w;
 }
 
 // bridge = catwalk = walkway: the surface synonyms, in groups.
@@ -265,6 +278,11 @@ std::string Singular(std::string_view word) {
 
 Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc::Group> const& groups,
     std::vector<sc::RosterEntry> const& roster, Settings const& st) {
+    return Parse(transcript, scene, groups, {}, roster, st);
+}
+
+Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc::Group> const& groups, std::vector<sc::Landmark> const& landmarks,
+    std::vector<sc::RosterEntry> const& roster, Settings const& st) {
     Parsed parsed;
     std::vector<std::string> const words = Tokens(transcript);
     std::vector<Token> tokens(words.size());
@@ -323,7 +341,9 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         bool const stopWord = std::any_of(Vocabulary().begin(), Vocabulary().end(), [&](Phrase const& p) {
             return p.words.size() == 1 && p.words[0] == tokens[i].text && p.tag != Tag::Name;
         });
-        if (bestLetter != 0 && best >= st.nameSimilarity && best - second >= st.nameMargin && !(stopWord && best < 1.0f)) {
+        // A cover word said exactly isn't a slipped name ("pillar" was Williams at 0.50) while the scene has cover to mean.
+        bool const coverWord = !landmarks.empty() && std::any_of(CoverWords().begin(), CoverWords().end(), [&](std::string const& w) { return Singular(tokens[i].text) == w; });
+        if (bestLetter != 0 && best >= st.nameSimilarity && best - second >= st.nameMargin && !((stopWord || coverWord) && best < 1.0f)) {
             tokens[i].tag = Tag::Name;
             tokens[i].value = bestLetter;
             tokens[i].similarity = best;
@@ -415,6 +435,30 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             i += p.words.size() - 1;
         }
     }
+    // 4a'. The cover's words, while the scene lists landmarks: after the phrases ("take cover behind", "cover me" keep their
+    // meaning) and the groups' words (a group standing on crates keeps "crates"); a noun "cover" ("the cover on the left",
+    // "behind cover", "the nearest cover") is a landmark too, not the support verb.
+    if (!landmarks.empty()) {
+        std::vector<std::string> coverWords = CoverWords();
+        for (sc::Landmark const& l : landmarks) {
+            for (std::string const& w : Tokens(l.type)) coverWords.push_back(w);
+        }
+        for (std::size_t i = 0; i < tokens.size(); ++i) {
+            Token& t = tokens[i];
+            bool const nounCover = t.tag == Tag::Support && t.head && t.text == "cover" && i > 0 &&
+                (tokens[i - 1].text == "the" || tokens[i - 1].text == "that" || tokens[i - 1].text == "this" || tokens[i - 1].text == "some" ||
+                    tokens[i - 1].text == "behind" || tokens[i - 1].text == "nearest" || tokens[i - 1].text == "closest" || tokens[i - 1].text == "to" ||
+                    tokens[i - 1].text == "into" || tokens[i - 1].text == "in");
+            if (t.tag != Tag::None && !nounCover) continue;
+            for (std::string const& w : coverWords) {
+                if (Singular(t.text) == w || WordMatches(Singular(t.text), w, st.wordSimilarity)) {
+                    t.tag = Tag::Landmark;
+                    t.code = w;
+                    break;
+                }
+            }
+        }
+    }
     // 4b. "Go sniper": a "go" before a weapon is an equip. A support verb with no squadmate after it ("cover the door", "watch the
     // left", bare "cover") is a hold there; a bare "help" is a call to come.
     auto const nextHead = [&](std::size_t i) {
@@ -452,7 +496,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
     // A target named without a verb ("Wrex, the destroyer") is an order too, for what follows it.
     auto const isTargetish = [](Tag t) {
         return t == Tag::Sector || t == Tag::Flag || t == Tag::Elevation || t == Tag::Surface || t == Tag::Type || t == Tag::Generic || t == Tag::Aim ||
-            t == Tag::Gaze || t == Tag::Other || t == Tag::LastTarget;
+            t == Tag::Gaze || t == Tag::Other || t == Tag::LastTarget || t == Tag::Landmark;
     };
     bool orderSeen = false;
     bool inStatement = false;
@@ -521,10 +565,17 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         std::optional<sc::Sector> sector;
         std::optional<sc::Elevation> elevation;
         std::vector<int> flags;
-        std::vector<std::string> surfaces, types;
+        std::vector<std::string> surfaces, types, landmarkWords;
+        bool coverBehind = false;  // "behind that crate": the cover's far side, not the Behind sector
         std::optional<sc::Target::Kind> explicitTarget;
         std::vector<std::string> unknown;
         bool afterDeictic = false;
+        auto const nextHeadIn = [&](std::size_t i) {
+            for (std::size_t j = i + 1; j < b; ++j) {
+                if (tokens[j].head && tokens[j].tag != Tag::Stop) return j;
+            }
+            return b;
+        };
         for (std::size_t i = a; i < b; ++i) {
             Token const& t = tokens[i];
             if (!clause.words.empty()) clause.words += ' ';
@@ -553,7 +604,11 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             case Tag::Order:
                 if (!verb) verb = static_cast<sc::Order>(t.value);
                 if (t.code == "above") elevation = sc::Elevation::Above;
+                if (t.code == "behind") coverBehind = true;  // "get behind", "take cover behind": the cover named next
                 anyOrderWord = true;
+                break;
+            case Tag::Landmark:
+                landmarkWords.push_back(t.code);
                 break;
             case Tag::Statement: statement = true; break;
             case Tag::Unsupported: unsupported = true; break;
@@ -579,7 +634,18 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
                     for (std::size_t k = i + 1; k < b && !tokens[k].head; ++k) parsed.deictics.back().word += " " + tokens[k].text;
                 }
                 break;
-            case Tag::Sector: sector = static_cast<sc::Sector>(t.value); break;
+            case Tag::Sector: {
+                // "Behind the crate", "behind that": the far side of a piece of cover, when cover or a deictic follows the word
+                // and nothing has named an enemy yet; else the Behind sector ("the ones behind us").
+                std::size_t const n = nextHeadIn(i);
+                bool const coverNext = n < b && (tokens[n].tag == Tag::Landmark || (tokens[n].tag == Tag::Deictic && tokens[n].text != "them" && tokens[n].text != "him" && tokens[n].text != "her" && tokens[n].text != "it"));
+                if (static_cast<sc::Sector>(t.value) == sc::Sector::Behind && coverNext && !landmarks.empty()) {
+                    coverBehind = true;
+                } else {
+                    sector = static_cast<sc::Sector>(t.value);
+                }
+                break;
+            }
             case Tag::Elevation: elevation = static_cast<sc::Elevation>(t.value); break;
             case Tag::Flag: flags.push_back(t.value); break;
             case Tag::Surface: surfaces.push_back(t.code); break;
@@ -660,7 +726,8 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             // "Hit them with overload", "overload him": a power named with an attack verb is the power's use.
             if (*verb == sc::Order::Attack && !act.power.empty()) act.order = sc::Order::Use;
             // "Stay on him", "hold on the destroyer": a hold on a thing (not a place) keeps attacking it.
-            if (*verb == sc::Order::Hold && surfaces.empty() && !sector && (!types.empty() || (deictic > 0 && !deicticPlace) || explicitTarget)) {
+            if (*verb == sc::Order::Hold && surfaces.empty() && !sector && !coverBehind && landmarkWords.empty() &&
+                (!types.empty() || (deictic > 0 && !deicticPlace) || explicitTarget)) {
                 act.order = sc::Order::Attack;
                 if (clause.standing.until == StandingHint::Until::Default) clause.standing.until = StandingHint::Until::GroupGone;
             }
@@ -672,6 +739,8 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             act.order = targeted && act.weapon >= 0 ? sc::Order::Attack : sc::Order::None;
         } else if (clause.standing.stay && deictic < 0 && !explicitTarget) {
             act.order = sc::Order::Hold;  // "stay there" alone: hold where they are
+        } else if (coverBehind || (!landmarkWords.empty() && types.empty() && surfaces.empty() && !explicitTarget)) {
+            act.order = sc::Order::Hold;  // "Ashley, behind the crate", "the wall on the left": take that cover
         } else if (deictic > 0 && deicticPlace) {
             act.order = sc::Order::Move;
         } else if (deictic > 0 || explicitTarget || sector || elevation || !flags.empty() || !surfaces.empty() || !types.empty()) {
@@ -704,8 +773,66 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         // The target: an explicit kind, else a description that fits one group, else the deictic, else the description's best.
         bool const placeOrder = act.order == sc::Order::Move || act.order == sc::Order::Hold;
         bool const sectorOnly = sector && !elevation && flags.empty() && surfaces.empty() && types.empty() && !generic && deictic < 0;
+        bool const wantsCover = (coverBehind || !landmarkWords.empty()) && !landmarks.empty();
+        // The cover that fits the words (sector, nearest/leftmost/rightmost, elevation, its type word; "cover" fits any).
+        std::vector<sc::Landmark const*> coverFit;
+        if (wantsCover) {
+            // Strictly first (a word names a typed piece: "the crate" is the crate, never the nameless piece beside it); when
+            // nothing is typed that way, a nameless piece ("cover": the mod has no word for it yet) may be what was meant.
+            for (int pass = 0; pass < 2 && coverFit.empty(); ++pass) {
+                for (sc::Landmark const& l : landmarks) {
+                    bool ok = (!sector || l.sector == *sector) && (!elevation || l.elevation == *elevation);
+                    for (int f : flags) ok = ok && (f == Nearest ? l.nearest : f == Leftmost ? l.leftmost : f == Rightmost ? l.rightmost : true);
+                    for (std::string const& w : landmarkWords) {
+                        bool found = w == "cover" || (pass == 1 && l.type == "cover");
+                        for (std::string const& lw : Tokens(l.type)) found = found || lw == w;
+                        ok = ok && found;
+                    }
+                    if (ok) coverFit.push_back(&l);
+                }
+                if (pass == 1 && !coverFit.empty()) {
+                    confidence *= 0.85f;  // a nameless piece taken for the word said: likely, not certain
+                    parsed.notes += std::format("'{}' taken as nameless cover; ", landmarkWords.front());
+                }
+            }
+        }
         if (act.order == sc::Order::Follow || act.order == sc::Order::Regroup) {
             act.target = {};  // "get back here": to the player, wherever "here" was
+        } else if (wantsCover && placeOrder) {
+            // One piece fits: it; else the one pointed at; else the nearest of several; else nothing by that name.
+            if (coverFit.size() == 1) {
+                act.target = {sc::Target::Landmark, coverFit[0]->id};
+            } else if (deictic > 0) {
+                act.target = {sc::Target::Pointed, deictic};
+            } else if (coverFit.size() > 1) {
+                sc::Landmark const* nearest = coverFit[0];
+                for (sc::Landmark const* l : coverFit) {
+                    if (l->distanceM < nearest->distanceM) nearest = l;
+                }
+                act.target = {sc::Target::Landmark, nearest->id};
+                unresolved += std::format("the cover fits {} pieces; ", coverFit.size());
+                confidence *= 0.7f;
+            } else {
+                unresolved += "no cover like that here; ";
+                confidence *= 0.5f;
+            }
+        } else if (wantsCover && (act.order == sc::Order::Attack || act.order == sc::Order::Use)) {
+            // "The ones behind the crates": the group nearest that cover.
+            sc::Landmark const* piece = coverFit.size() == 1 ? coverFit[0] : nullptr;
+            sc::Group const* nearest = nullptr;
+            if (piece != nullptr) {
+                for (sc::Group const& g : groups) {
+                    if (nearest == nullptr || sc::Distance(g.centre, piece->centre) < sc::Distance(nearest->centre, piece->centre)) nearest = &g;
+                }
+            }
+            if (nearest != nullptr && sc::Distance(nearest->centre, piece->centre) <= 10.0f) {
+                act.target = {sc::Target::Group, nearest->id};
+            } else if (deictic > 0) {
+                act.target = {sc::Target::Pointed, deictic};
+            } else {
+                unresolved += "which enemies at that cover; ";
+                confidence *= 0.6f;
+            }
         } else if (explicitTarget) {
             act.target.kind = *explicitTarget;
         } else if (placeOrder && sectorOnly) {

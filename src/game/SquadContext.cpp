@@ -46,8 +46,15 @@ ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile"};
 ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
 ue3::FunctionRef gGetPercentHealthFn{"SFXGame.BioEpicPawnBehavior.GetPercentHealth"};
 ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
+// The level's cover (research/54 "Landmarks"): CoverLink slots, each at the link's place plus its offset in the link's axes
+// (the rows are game/SquadOrders' retreat's).
+ue3::ClassRef gCoverLink{"Engine.CoverLink"};
+ue3::FieldRef gCoverSlots{"Engine.CoverLink", "Slots"};
+ue3::FieldRef gCoverSlotOffset{gCoverSlots, "LocationOffset"};
+ue3::FieldRef gCoverDisabled{"Engine.CoverLink", "bDisabled"};
 
 constexpr int kMaxPawns = 512;
+constexpr double kCoverRefreshS = 2.0;  // the cover is static: a walk over the objects this often is enough
 
 struct Known {  // a squadmate seen this session: the roster
     char letter = 0;
@@ -58,6 +65,10 @@ struct Known {  // a squadmate seen this session: the roster
 
 sc::Scene gScene;
 sc::Grouper gGrouper;
+sc::Landmarker gLandmarker;
+std::vector<sc::Cover> gCover;  // the cover links within range at the last walk
+double gSinceCover = 1e9;
+unsigned gCoverWalks = 0, gCoverLinksSeen = 0;
 sc::PoseHistory gPoses(4.0);
 double gClock = 0.0;      // the mod's seconds, the history's clock
 double gSinceRead = 1e9;
@@ -177,6 +188,41 @@ sc::Vec3 Metres(engine::UnrealVector const& v, double upm) {
     return {static_cast<float>(v.x / upm), static_cast<float>(v.y / upm), static_cast<float>(v.z / upm)};
 }
 
+// The cover links within rangeM of the player: a walk over the live objects (every kCoverRefreshS; the links don't move),
+// each as a Cover with its slots in metres. The word for what the cover is stays "cover" until the mod learns the level's
+// meshes (the [verify] in research/54 "Landmarks").
+void ReadCover(sc::Vec3 const& player, double upm, float rangeM) {
+    gCover.clear();
+    ++gCoverWalks;
+    gCoverLinksSeen = 0;
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::int32_t const n = r.ObjectCount();
+    for (std::int32_t i = 0; i < n && gCover.size() < 32; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !ue3::IsA(o, gCoverLink)) continue;
+        ++gCoverLinksSeen;
+        if (gCoverDisabled.ReadBool(o).value_or(false)) continue;
+        std::optional<ue3::Vector> const loc = player::Location(o);
+        std::optional<ue3::Rotator> const rot = player::Rotation(o);
+        if (!loc || !rot) continue;
+        sc::Cover c;
+        c.id = reinterpret_cast<std::uint64_t>(o);
+        c.position = Metres(*loc, upm);
+        if (sc::Distance(c.position, player) > rangeM + 10.0f) continue;
+        engine::UnrealRotation const rotation{rot->pitch, rot->yaw, rot->roll};
+        c.yawDeg = static_cast<float>(rotation.yaw * 360.0 / 65536.0);
+        engine::Basis const axes = engine::ToBasis(rotation);
+        if (auto const slots = gCoverSlots.ElementsOf(o)) {
+            for (std::int32_t k = 0; k < slots->count && k < 16; ++k) {
+                ue3::Vector const offset = gCoverSlotOffset.Read<ue3::Vector>(slots->At(k)).value_or(ue3::Vector{});
+                engine::UnrealVector const local = engine::Apply(axes, {offset.x, offset.y, offset.z});
+                c.slots.push_back(Metres(engine::UnrealVector{loc->x + local.x, loc->y + local.y, loc->z + local.z}, upm));
+            }
+        }
+        gCover.push_back(std::move(c));
+    }
+}
+
 void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame const& frame, double upm) {
     sc::Scene scene;
     scene.time = gClock;
@@ -244,8 +290,15 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
     bool combatTarget = false;
     scene.gazeTarget = reinterpret_cast<sc::PawnId>(interact::Target(combatTarget));
     (void)controller;
-    gScene = std::move(scene);
     hand_calibration::SquadContext const s = hand_calibration::GetSquadContext();
+    if (s.maxLandmarks > 0 && s.landmarkRangeM > 0.0) {
+        if (gClock - gSinceCover >= kCoverRefreshS || gSinceCover > gClock) {
+            gSinceCover = gClock;
+            ReadCover(scene.player, upm, static_cast<float>(s.landmarkRangeM));
+        }
+        scene.cover = gCover;
+    }
+    gScene = std::move(scene);
     sc::GroupSettings gs;
     gs.joinM = static_cast<float>(s.joinM);
     gs.splitAboveM = static_cast<float>(s.splitAboveM);
@@ -253,6 +306,10 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
     gs.nearM = static_cast<float>(s.nearM);
     gs.farM = static_cast<float>(s.farM);
     gGrouper.Update(gScene, gs);
+    sc::LandmarkSettings ls;
+    ls.rangeM = static_cast<float>(s.landmarkRangeM);
+    ls.maxLandmarks = s.maxLandmarks;
+    gLandmarker.Update(gScene, ls);
     ++gReads;
 }
 
@@ -300,9 +357,12 @@ void Tick(double deltaSeconds) {
     gOnFoot = mode && *mode == 0 && pawn != nullptr && frame.has_value();
     if (!gOnFoot) {
         gWhyNot = pawn == nullptr ? "no player pawn (vehicle or cutscene?)" : !frame ? "no tracking frame" : "not on foot";
-        if (gScene.hostiles.size() + gScene.party.size() > 0) {
+        if (gScene.hostiles.size() + gScene.party.size() + gScene.cover.size() > 0) {
             gScene = {};
             gGrouper.Reset();
+            gLandmarker.Reset();  // a new level: the cover's objects are new ones
+            gCover.clear();
+            gSinceCover = 1e9;
         }
         return;
     }
@@ -319,10 +379,11 @@ char LetterOf(int classId) { return LetterOfClass(classId); }
 
 sc::Scene const& Scene() { return gScene; }
 std::vector<sc::Group> const& Groups() { return gGrouper.Groups(); }
+std::vector<sc::Landmark> const& Landmarks() { return gLandmarker.Landmarks(); }
 
 std::vector<sc::Candidate> ResolveAgo(double secondsAgo) {
     sc::DeixisSettings ds;
-    return sc::Resolve(gPoses, gClock - secondsAgo, gGrouper.Groups(), gScene, ds);
+    return sc::Resolve(gPoses, gClock - secondsAgo, gGrouper.Groups(), gLandmarker.Landmarks(), gScene, ds);
 }
 
 std::string Block(std::string_view said, std::string_view word, double secondsAgo) {
@@ -330,7 +391,7 @@ std::string Block(std::string_view said, std::string_view word, double secondsAg
     if (!word.empty()) {
         deictics.push_back({1, std::string(word), ResolveAgo(secondsAgo)});
     }
-    return sc::Block(gScene, gGrouper.Groups(), deictics, {}, said);
+    return sc::Block(gScene, gGrouper.Groups(), gLandmarker.Landmarks(), deictics, {}, said);
 }
 
 std::optional<ue3::Name> PowerName(std::string_view code) {
@@ -372,10 +433,15 @@ std::string StatusJson() {
         party += std::format("{}{{\"letter\": \"{}\", \"alive\": {}, \"carried\": {}, \"inHand\": {}, \"powers\": [{}]}}", party.empty() ? "" : ", ",
             m.letter, m.alive ? "true" : "false", m.carried, m.inHand, powers);
     }
+    std::string landmarks;
+    for (sc::Landmark const& l : gLandmarker.Landmarks()) {
+        landmarks += std::format("{}{{\"id\": {}, \"type\": {}, \"sector\": \"{}\", \"band\": \"{}\", \"distanceM\": {}, \"slots\": {}}}", landmarks.empty() ? "" : ", ",
+            l.id, json::JsonString(l.type), sc::Name(l.sector), sc::Name(l.band), json::JsonNumber(l.distanceM), l.slots.size());
+    }
     return std::format("{{\"onFoot\": {}, \"why\": {}, \"combat\": {}, \"shepardWeapon\": {}, \"headYawDeg\": {}, \"party\": [{}], \"hostiles\": {}, "
-                       "\"groups\": [{}], \"aimGroup\": {}, \"gazeGroup\": {}, \"poseSamples\": {}, \"reads\": {}}}",
+                       "\"groups\": [{}], \"landmarks\": [{}], \"coverLinks\": {}, \"aimGroup\": {}, \"gazeGroup\": {}, \"poseSamples\": {}, \"reads\": {}}}",
         gOnFoot ? "true" : "false", json::JsonString(gWhyNot), gScene.combat ? "true" : "false", gScene.shepardWeapon,
-        json::JsonNumber(gScene.headYawDeg), party, gScene.hostiles.size(), groups, sc::GroupOf(gGrouper.Groups(), gScene.aimTarget),
+        json::JsonNumber(gScene.headYawDeg), party, gScene.hostiles.size(), groups, landmarks, gCoverLinksSeen, sc::GroupOf(gGrouper.Groups(), gScene.aimTarget),
         sc::GroupOf(gGrouper.Groups(), gScene.gazeTarget), gPoses.Size(), gReads);
 }
 
@@ -389,14 +455,23 @@ void LogStats() {
         groups += std::format("{}E{} {} x{} {} {} {}", groups.empty() ? "" : "; ", g.id, g.type.empty() ? "enemy" : g.type, sc::Count(g),
             sc::Name(g.sector), sc::Name(g.band), sc::Name(g.elevation));
     }
-    log::Info("squad context: {} squadmate(s), {} hostile(s) in {} group(s){}{}; {} reads, {} pose samples kept; aim E{}, gaze E{}",
-        gScene.party.size(), gScene.hostiles.size(), gGrouper.Groups().size(), groups.empty() ? "" : ": ", groups, gReads, gPoses.Size(),
-        sc::GroupOf(gGrouper.Groups(), gScene.aimTarget), sc::GroupOf(gGrouper.Groups(), gScene.gazeTarget));
+    std::string landmarks;
+    for (sc::Landmark const& l : gLandmarker.Landmarks()) {
+        landmarks += std::format("{}L{} {} {} {} {:.0f} m ({} slots)", landmarks.empty() ? "" : "; ", l.id, l.type, sc::Name(l.sector), sc::Name(l.band), l.distanceM,
+            l.slots.size());
+    }
+    log::Info("squad context: {} squadmate(s), {} hostile(s) in {} group(s){}{}; {} landmark(s) of {} cover links in {} walks{}{}; {} reads, {} pose samples kept; "
+              "aim E{}, gaze E{}",
+        gScene.party.size(), gScene.hostiles.size(), gGrouper.Groups().size(), groups.empty() ? "" : ": ", groups, gLandmarker.Landmarks().size(), gCoverLinksSeen,
+        gCoverWalks, landmarks.empty() ? "" : ": ", landmarks, gReads, gPoses.Size(), sc::GroupOf(gGrouper.Groups(), gScene.aimTarget),
+        sc::GroupOf(gGrouper.Groups(), gScene.gazeTarget));
 }
 
 void Shutdown() {
     gScene = {};
     gGrouper.Reset();
+    gLandmarker.Reset();
+    gCover.clear();
     gPoses.Clear();
     gOnFoot = false;
 }

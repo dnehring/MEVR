@@ -204,10 +204,12 @@ constexpr char const* kControlsBlock =
     "; aimAtShoulder: 1 = aimed fire (LT) needs the gun at the shoulder as well (the right hand\n"
     "; close under the eyes, near the cheek); 0 = both hands on the gun is enough.\n"
     "aimAtShoulder = 1\n"
-    "; leftTrigger: lb = the weapon wheel (the default; with [Squad] on, the trigger opens the game's wheel at\n"
-    "; your left hand at once, and letting go gives the highlighted weapon); lt = the game's LT (aim, zoom), as\n"
-    "; before; none = the game doesn't see it. Aimed fire comes from holding the gun with both hands at the shoulder.\n"
-    "leftTrigger = lb\n"
+    "; leftTrigger: none (the default since 2026-11-05) = the game doesn't see it; lb = the old squad weapon wheel (with\n"
+    "; [Squad] on, the trigger opens the game's wheel at your left hand); lt = the game's LT (aim, zoom). The squad's\n"
+    "; weapons are in the right B's hold now: hold B, flick the stick down, pick, let go (placeWeapons = 0 turns that row off).\n"
+    "; Aimed fire comes from holding the gun with both hands at the shoulder.\n"
+    "leftTrigger = none\n"
+    "placeWeapons = 1\n"
     "; leftGripAway: what a left grip squeezed away from the gun does. none (the default): nothing, the\n"
     "; grip only takes the gun; lb = the weapon wheel (only with [Squad] off).\n"
     "leftGripAway = none\n";
@@ -480,14 +482,17 @@ constexpr char const* kSquadContextBlock =
     "; like left/far/above, what the gun and your look point at, and a 4 s history of where you pointed and looked.\n"
     "; `mevr context [word]` in the console prints it. refreshS: how often it's read. joinM: enemies within this of a\n"
     "; group join it, unless they stand splitAboveM higher or lower. maxGroups: the nearest groups kept. nearM / farM: the\n"
-    "; distance bands.\n"
+    "; distance bands. landmarkRangeM / maxLandmarks: the level's cover (its CoverLink slots) within this of you, the\n"
+    "; nearest few, as the landmarks of \"get behind that crate\" / \"take cover behind the wall on the left\".\n"
     "enabled = 1\n"
     "refreshS = 0.25\n"
     "joinM = 6\n"
     "splitAboveM = 2.5\n"
     "maxGroups = 6\n"
     "nearM = 10\n"
-    "farM = 30\n";
+    "farM = 30\n"
+    "landmarkRangeM = 25\n"
+    "maxLandmarks = 5\n";
 // Appended to a settings file that has no [SquadOrders] yet (and part of a new file).
 constexpr char const* kSquadOrdersBlock =
     "\n"
@@ -1428,6 +1433,12 @@ SquadContext ReadSquadContext(Ini const& ini) {
     if (Number(ini, "SquadContext", "farM", value)) {
         s.farM = std::clamp(value, s.nearM, 500.0);
     }
+    if (Number(ini, "SquadContext", "landmarkRangeM", value)) {
+        s.landmarkRangeM = std::clamp(value, 0.0, 200.0);
+    }
+    if (Number(ini, "SquadContext", "maxLandmarks", value)) {
+        s.maxLandmarks = static_cast<int>(std::clamp(value, 0.0, 9.0));
+    }
     return s;
 }
 
@@ -1535,6 +1546,9 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
     }
     if (Number(ini, "SquadOrders", "placeMinHoldS", value)) {
         s.placeMinHoldS = std::clamp(value, 0.0, 2.0);
+    }
+    if (Number(ini, "Controls", "placeWeapons", value)) {
+        s.placeWeapons = value != 0.0;
     }
     return s;
 }
@@ -2925,6 +2939,21 @@ void Refresh() {
             }
         }
     }
+    // [Controls] since 2026-11-05 (research/54 "The weapon row"): the squad's weapons are in squad placement's hold, so the left
+    // trigger's squad weapon wheel is off by default. A file without the marker placeWeapons that still holds the old default
+    // leftTrigger = lb gets none; any other value is the player's.
+    if (auto const s = ini.find("Controls"); s != ini.end() && s->second.find("placeWeapons") == s->second.end()) {
+        if (auto const k = s->second.find("leftTrigger"); k != s->second.end()) {
+            if (k->second == "lb" && WritePrivateProfileStringW(L"Controls", L"leftTrigger", L"none", path.wstring().c_str()) != 0) {
+                log::Info("hands: [Controls] leftTrigger lb -> none: the squad's weapons are in the right B's hold now (stick down) "
+                          "in {}", ini::Utf8(path));
+                ini = ReadIni(path);
+                stamp = fs::last_write_time(path, ec);
+            } else if (k->second != "lb") {
+                log::Info("hands: [Controls] leftTrigger = {} kept (your choice; the default is none)", k->second);
+            }
+        }
+    }
     // [Throwables] since 2026-11-05 (research/20 "Gesture only"): melee is the gesture only, B no longer melees on foot. A file
     // without the marker meleeFist that still holds the old default meleeButton = 1 gets 0; any other value is the player's.
     if (auto const s = ini.find("Throwables"); s != ini.end() && s->second.find("meleeFist") == s->second.end()) {
@@ -3099,6 +3128,9 @@ void Refresh() {
         // The right fist's punch with the weapon away (2026-11-05, research/20 "Gesture only"). The marker meleeFist comes
         // after meleeButton's migration above.
         {L"Throwables", "Throwables", L"meleeFist", "meleeFist", L"1"},
+        // The squad's weapon row in squad placement's hold (2026-11-05). The marker placeWeapons comes after leftTrigger's
+        // migration above.
+        {L"Controls", "Controls", L"placeWeapons", "placeWeapons", L"1"},
     };
     std::string addedKeys;
     for (auto const& k : kNewKeys) {

@@ -15,6 +15,7 @@
 #include "game/MakoControls.hpp"
 #include "game/Posture.hpp"
 #include "game/SquadWeapons.hpp"
+#include "game/SquadPlace.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/Throwables.hpp"
 #include "game/Vent.hpp"
@@ -279,6 +280,7 @@ void Tick(double deltaSeconds, bool requested) {
     power_wheel::AdjustPad(options);  // X is the power wheel's on foot; the left hand its own while it's open (research/55)
     throwables::AdjustPad(options);  // B and X off on foot if turned off; no RB from a squeeze at the grenade slot
     comfort::AdjustPad(options);  // our own turn (no right-stick X for the game) and walking toward the left hand
+    squad_place::AdjustPad(options);  // the right stick is squad placement's selector while B is held
     mako_controls::AdjustPad(options);  // the Mako's lever and stick (research/46): a squeeze there is theirs, and their buttons
     cockpit_panel::AdjustPad(options);  // the cockpit's extraction handle (research/48 section 27): a squeeze there is the handle's
     options.cockpitLook = cockpit_probe::Riding();  // the head looks round the cockpit in the Mako (research/47)

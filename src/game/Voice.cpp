@@ -114,7 +114,7 @@ std::string Remainder(std::string const& text, std::string const& prefix) {
 
 // A parse worth acting on before the player lets go: confident, complete, no power (a cooldown is spent at once).
 bool EarlyWorthy(std::string const& text, double minConfidence) {
-    sp::Parsed const parsed = sp::Parse(text, squad_context::Scene(), squad_context::Groups(), squad_context::Roster(), {});
+    sp::Parsed const parsed = sp::Parse(text, squad_context::Scene(), squad_context::Groups(), squad_context::Landmarks(), squad_context::Roster(), {});
     if (parsed.empty || parsed.confidence < minConfidence || parsed.correction) return false;
     for (sp::Clause const& c : parsed.clauses) {
         if (!c.action.power.empty() || c.action.order == sc::Order::Use || !c.unresolved.empty()) return false;
@@ -126,12 +126,12 @@ bool EarlyWorthy(std::string const& text, double minConfidence) {
 // resolved at its time, under the scene's grammar; the answer is dispatched when it comes (TakeModelAnswer).
 void AskModel(std::string const& text, double secondsAgo) {
     if (gLink.askModel == nullptr) return;
-    sp::Parsed const parsed = sp::Parse(text, squad_context::Scene(), squad_context::Groups(), squad_context::Roster(), {});
+    sp::Parsed const parsed = sp::Parse(text, squad_context::Scene(), squad_context::Groups(), squad_context::Landmarks(), squad_context::Roster(), {});
     std::string const word = parsed.deictics.empty() ? std::string() : parsed.deictics.front().word;
     std::string const block = squad_context::Block(text, word, secondsAgo);
     mevr::voice::grammar::Options options;
     options.deictics = static_cast<int>(parsed.deictics.size());
-    std::string const gbnf = mevr::voice::grammar::Gbnf(squad_context::Scene(), squad_context::Groups(), options);
+    std::string const gbnf = mevr::voice::grammar::Gbnf(squad_context::Scene(), squad_context::Groups(), squad_context::Landmarks(), options);
     std::string const prefix = squad_context::Prefix();
     std::uint32_t const id = gLink.askModel(prefix.c_str(), mevr::voice::grammar::Prompt(block).c_str(), gbnf.c_str());
     if (id == 0) return;

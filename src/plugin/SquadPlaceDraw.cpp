@@ -5,8 +5,10 @@
 
 #include "core/Log.hpp"
 #include "core/vr/GalaxyHologram.hpp"
+#include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/SquadPlace.hpp"
 #include "plugin/GalaxyHologramDraw.hpp"
+#include "plugin/MevrMenu.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/menu/StateGuard.hpp"
 
@@ -26,6 +28,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <mutex>
 #include <vector>
@@ -46,6 +49,9 @@ constexpr gh::Colour kSquad{0.30f, 0.70f, 1.00f, 1.0f};
 constexpr gh::Colour kMember{1.00f, 0.62f, 0.22f, 1.0f};
 constexpr gh::Colour kFollow{0.35f, 1.00f, 0.55f, 1.0f};
 constexpr gh::Colour kRefused{1.00f, 0.25f, 0.18f, 1.0f};
+constexpr gh::Colour kWeapon{0.95f, 0.85f, 0.45f, 1.0f};  // the weapon row: a pale gold, apart from who
+// The weapon row's names as the mod sends them (squad_menu's WeaponName, capitalised), to mark the one in hand.
+constexpr char const* kWeaponNames[4] = {"Pistol", "Shotgun", "Assault rifle", "Sniper rifle"};
 
 struct EyeChain {
     XrSwapchain handle = XR_NULL_HANDLE;
@@ -160,12 +166,19 @@ bool EnsureTargets(ID3D11Device* device, XrSession session, int width, int heigh
 bool EnsureRenderer(ID3D11Device* device) {
     if (gRendererTried) return gRenderer.Ready();
     gRendererTried = true;
+    // The selector's names in the menus' font (deploy-asi puts it in ASI\fonts); without it, no names (the tiles' order and
+    // the haptics still tell who).
+    std::filesystem::path font;
+    std::wstring const& settings = MELEVR::MevrBridge::SettingsPath();
+    if (!settings.empty()) {
+        font = std::filesystem::path(settings).parent_path() / L"fonts" / L"Rajdhani-SemiBold.ttf";
+    }
     std::string error;
-    bool const ok = gRenderer.Init(device, {}, &error);  // no labels: no font
+    bool const ok = gRenderer.Init(device, font, &error);
     if (!ok) {
         log::Error("squad place: the renderer failed ({}); no arc drawn", error);
     } else {
-        log::Info("squad place: renderer ready");
+        log::Info("squad place: renderer ready{}", error.empty() ? std::string() : " (" + error + ")");
     }
     return ok;
 }
@@ -175,12 +188,76 @@ gh::Colour Scaled(gh::Colour c, float a) {
     return c;
 }
 
+// The selector above the hand: its tiles side by side across the line of sight, the lit one larger, in its colour, underlined.
+void AddSelector(gh::DrawList& list, sp::View const& view, XrPosef const& head) {
+    int const tiles = std::min<int>(view.tiles, 3);
+    if (tiles <= 0) return;
+    XrVector3f const right = vr::overlay::Rotate(head.orientation, {1.0f, 0.0f, 0.0f});
+    XrVector3f const flatRight = gh::Normalize({right.x, 0.0f, right.z});
+    XrVector3f const centre = gh::Add(view.hand.position, {0.0f, 0.09f, 0.0f});
+    float const distance = std::max(gh::Length(gh::Sub(centre, head.position)), 0.2f);
+    float const scale = std::clamp(distance / 0.5f, 0.6f, 2.0f);  // about the same angular size wherever the hand is
+    float const spacing = 0.075f * scale;
+    for (int t = 0; t < tiles; ++t) {
+        bool const lit = t == view.tile;
+        int const member = sp::MemberOfTile(t, tiles == 3 ? 2 : 1);
+        gh::Colour const colour = member == sp::kSquadTile ? kSquad : kMember;
+        XrVector3f const at = gh::Add(centre, gh::Mul(flatRight, (static_cast<float>(t) - static_cast<float>(tiles - 1) * 0.5f) * spacing));
+        gh::Label label;
+        label.anchor = at;
+        label.heightM = (lit ? 0.020f : 0.015f) * scale;
+        label.colour = lit ? Scaled(colour, 1.0f) : gh::Colour{0.55f, 0.6f, 0.65f, 0.8f};
+        label.text = view.names[t][0] != 0 ? std::string(view.names[t], strnlen(view.names[t], sizeof(view.names[t]))) : "?";
+        label.plate = true;
+        list.labels.push_back(label);
+        if (lit) {
+            XrVector3f const under = gh::Add(at, {0.0f, -0.006f * scale, 0.0f});
+            float const half = 0.026f * scale;
+            list.lines.push_back({gh::Sub(under, gh::Mul(flatRight, half)), gh::Add(under, gh::Mul(flatRight, half)), 0.0022f * scale,
+                Scaled(colour, 0.95f)});
+        }
+    }
+    // The weapon row (stick down): the lit squadmate's weapons under the names, the lit one in the weapon colour and underlined,
+    // the one in hand marked by a dot. The names above stay, their lit tile showing whose weapons these are.
+    int const weapons = std::min<int>(view.weaponTiles, 4);
+    if (view.row != 1 || weapons <= 0) return;
+    XrVector3f const rowCentre = gh::Add(centre, {0.0f, -0.045f * scale, 0.0f});
+    float const weaponSpacing = 0.085f * scale;
+    for (int w = 0; w < weapons; ++w) {
+        bool const lit = w == view.weaponTile;
+        XrVector3f const at =
+            gh::Add(rowCentre, gh::Mul(flatRight, (static_cast<float>(w) - static_cast<float>(weapons - 1) * 0.5f) * weaponSpacing));
+        gh::Label label;
+        label.anchor = at;
+        label.heightM = (lit ? 0.018f : 0.013f) * scale;
+        label.colour = lit ? kWeapon : gh::Colour{0.55f, 0.6f, 0.65f, 0.8f};
+        label.text = view.weaponNames[w][0] != 0 ? std::string(view.weaponNames[w], strnlen(view.weaponNames[w], sizeof(view.weaponNames[w])))
+                                                : "?";
+        label.plate = true;
+        list.labels.push_back(label);
+        if (lit) {
+            XrVector3f const under = gh::Add(at, {0.0f, -0.006f * scale, 0.0f});
+            float const half = 0.03f * scale;
+            list.lines.push_back({gh::Sub(under, gh::Mul(flatRight, half)), gh::Add(under, gh::Mul(flatRight, half)), 0.0022f * scale, kWeapon});
+        }
+        std::string const name(view.weaponNames[w], strnlen(view.weaponNames[w], sizeof(view.weaponNames[w])));
+        if (view.weaponInHand >= 0 && view.weaponInHand < 4 && name == kWeaponNames[view.weaponInHand]) {
+            list.sprites.push_back({gh::Add(at, {0.0f, 0.03f * scale, 0.0f}), 0.004f * scale, kWeapon, gh::SpriteStyle::Star, {}});
+        }
+    }
+}
+
 // The arc and its end, in the app space.
-gh::DrawList Build(sp::View const& view, XrVector3f const& head, float timeS) {
+gh::DrawList Build(sp::View const& view, XrPosef const& headPose, float timeS) {
+    XrVector3f const head = headPose.position;
     gh::DrawList list;
     sp::Landing const landing = static_cast<sp::Landing>(view.landing);
     gh::Colour const colour = landing != sp::Landing::Floor ? kRefused : view.follow != 0 ? kFollow : view.member >= 0 ? kMember : kSquad;
     int const count = std::min<int>(view.count, sp::kMaxPoints);
+    if (count < 2) {  // the weapon row: no arc, no ring, only the selector
+        AddSelector(list, view, headPose);
+        return list;
+    }
     // The ribbon: about 0.15 degrees wide at any distance (never under 4 mm), dim at the hand, bright toward the end; a bead of
     // light runs along it so it reads as a throw.
     float const run = std::fmod(timeS * 1.6f, 1.0f);
@@ -208,10 +285,22 @@ gh::DrawList Build(sp::View const& view, XrVector3f const& head, float timeS) {
         list.rings.push_back({centre, normal, radius, width, Scaled(colour, 0.95f)});
         list.rings.push_back({centre, normal, radius * 0.35f, width * 0.7f, Scaled(colour, 0.6f)});
         list.sprites.push_back({centre, std::max(0.03f, distance * 0.004f), Scaled(colour, 0.7f), gh::SpriteStyle::Halo, {}});
+        // Who goes there, over the ring: about 1.6 degrees tall at any distance.
+        if (view.tiles > 0 && view.tile < 3 && view.names[view.tile][0] != 0) {
+            gh::Label name;
+            name.anchor = gh::Add(centre, gh::Mul(normal, std::max(0.25f, distance * 0.02f)));
+            name.heightM = std::max(0.03f, distance * 0.028f);
+            name.colour = Scaled(colour, 1.0f);
+            name.text = view.follow != 0 ? "Regroup"
+                                         : std::string(view.names[view.tile], strnlen(view.names[view.tile], sizeof(view.names[view.tile])));
+            name.plate = true;
+            list.labels.push_back(name);
+        }
     } else {
         // Refused: a red spark where the flight ends.
         list.sprites.push_back({view.landingPoint, std::max(0.04f, distance * 0.006f), Scaled(colour, 0.9f), gh::SpriteStyle::Star, {}});
     }
+    AddSelector(list, view, headPose);
     return list;
 }
 
@@ -224,7 +313,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     }
     sp::View const view = sp::Latest();
     std::uint64_t const now = GetTickCount64();
-    if (view.active == 0 || view.size != sizeof(sp::View) || view.count < 2) {
+    if (view.active == 0 || view.size != sizeof(sp::View) || (view.count < 2 && view.tiles == 0)) {
         if (gStartMs != 0) SetStatus("{\"shown\": false}");
         gStartMs = 0;
         return nullptr;
@@ -235,7 +324,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     int const height = std::clamp(frame.eyeHeight > 0 ? static_cast<int>(static_cast<float>(frame.eyeHeight) * kScale) : 1200, 512, 2048);
     if (!EnsureTargets(frame.device, frame.session, width, height)) return nullptr;
     float const timeS = static_cast<float>(now - gStartMs) / 1000.0f;
-    gh::DrawList const list = Build(view, frame.head.position, timeS);
+    gh::DrawList const list = Build(view, frame.head, timeS);
     LARGE_INTEGER t0{}, t1{}, freq{};
     QueryPerformanceCounter(&t0);
     gRenderer.Prepare(list, frame.head);
@@ -281,9 +370,9 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         gDrawMsSum = 0.0;
     }
     SetStatus(std::format("{{\"shown\": true, \"landing\": \"{}\", \"follow\": {}, \"member\": {}, \"points\": {}, "
-                          "\"landingPoint\": [{:.3f}, {:.3f}, {:.3f}], \"target\": [{}, {}]}}",
+                          "\"landingPoint\": [{:.3f}, {:.3f}, {:.3f}], \"tiles\": {}, \"tile\": {}, \"target\": [{}, {}]}}",
         sp::Name(static_cast<sp::Landing>(view.landing)), view.follow != 0 ? "true" : "false", view.member, view.count,
-        view.landingPoint.x, view.landingPoint.y, view.landingPoint.z, width, height));
+        view.landingPoint.x, view.landingPoint.y, view.landingPoint.z, view.tiles, view.tile, width, height));
     gLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
     gLayer.space = frame.appSpace;
     gLayer.viewCount = 2;

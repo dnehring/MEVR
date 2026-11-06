@@ -255,6 +255,102 @@ int GroupOf(std::vector<Group> const& groups, PawnId pawn) {
     return 0;
 }
 
+// ---- Landmarks ----------------------------------------------------------------------------------------------------------
+
+std::vector<Landmark> const& Landmarker::Update(Scene const& scene, LandmarkSettings const& s) {
+    std::vector<Landmark> fresh;
+    for (Cover const& c : scene.cover) {
+        if (c.id == 0) continue;
+        Landmark l;
+        l.cover = c.id;
+        l.yawDeg = c.yawDeg;
+        l.slots = c.slots;
+        l.type = c.type.empty() ? "cover" : c.type;
+        if (c.slots.empty()) {
+            l.centre = c.position;
+        } else {
+            for (Vec3 const& p : c.slots) {
+                l.centre.x += p.x;
+                l.centre.y += p.y;
+                l.centre.z += p.z;
+            }
+            float const n = static_cast<float>(c.slots.size());
+            l.centre = {l.centre.x / n, l.centre.y / n, l.centre.z / n};
+        }
+        l.distanceM = Distance(scene.player, l.centre);
+        if (l.distanceM > s.rangeM) continue;
+        l.bearingDeg = BearingDeg(scene.player, scene.headYawDeg, l.centre);
+        l.heightM = l.centre.z - scene.player.z;
+        fresh.push_back(std::move(l));
+    }
+    std::sort(fresh.begin(), fresh.end(), [](Landmark const& a, Landmark const& b) { return a.distanceM < b.distanceM; });
+    if (s.maxLandmarks > 0 && fresh.size() > static_cast<std::size_t>(s.maxLandmarks)) fresh.resize(static_cast<std::size_t>(s.maxLandmarks));
+    std::sort(fresh.begin(), fresh.end(), [](Landmark const& a, Landmark const& b) { return a.bearingDeg < b.bearingDeg; });
+    for (Landmark& l : fresh) {
+        auto const known = std::find_if(ids_.begin(), ids_.end(), [&](auto const& p) { return p.first == l.cover; });
+        if (known != ids_.end()) {
+            l.id = known->second;
+        } else {
+            l.id = nextId_++;
+            ids_.emplace_back(l.cover, l.id);
+        }
+        float const ab = std::abs(l.bearingDeg);
+        l.sector = ab <= s.aheadDeg ? Sector::Ahead : ab >= s.behindDeg ? Sector::Behind : l.bearingDeg < 0.0f ? Sector::Left : Sector::Right;
+        l.band = l.distanceM < s.nearM ? Band::Near : l.distanceM > s.farM ? Band::Far : Band::Mid;
+        l.elevation = l.heightM > s.levelM ? Elevation::Above : l.heightM < -s.levelM ? Elevation::Below : Elevation::Level;
+    }
+    if (fresh.size() >= 2) {
+        auto const by = [&](auto key, bool Landmark::*flag, bool least) {
+            std::size_t best = 0;
+            for (std::size_t i = 1; i < fresh.size(); ++i) {
+                if (least ? key(fresh[i]) < key(fresh[best]) : key(fresh[i]) > key(fresh[best])) best = i;
+            }
+            fresh[best].*flag = true;
+        };
+        by([](Landmark const& l) { return l.distanceM; }, &Landmark::nearest, true);
+        by([](Landmark const& l) { return l.bearingDeg; }, &Landmark::leftmost, true);
+        by([](Landmark const& l) { return l.bearingDeg; }, &Landmark::rightmost, false);
+    }
+    landmarks_ = std::move(fresh);
+    return landmarks_;
+}
+
+void Landmarker::Reset() {
+    landmarks_.clear();
+    ids_.clear();
+    nextId_ = 1;
+}
+
+Landmark const* Find(std::vector<Landmark> const& landmarks, int id) {
+    for (Landmark const& l : landmarks) {
+        if (l.id == id) return &l;
+    }
+    return nullptr;
+}
+
+Vec3 LandmarkPoint(Landmark const& landmark, std::vector<Group> const& groups, Scene const& scene) {
+    // The threat: the nearest group's centre; none: the player stands in for it (the far side from Shepard is at least
+    // the side the enemy would come from when the player faces them).
+    Vec3 threat = scene.player;
+    Group const* nearest = nullptr;
+    for (Group const& g : groups) {
+        if (nearest == nullptr || g.distanceM < nearest->distanceM) nearest = &g;
+    }
+    if (nearest != nullptr) threat = nearest->centre;
+    if (landmark.slots.empty()) {
+        // 1 m behind the link's front: the front faces the enemy's side.
+        float const r = landmark.yawDeg * kPi / 180.0f;
+        Vec3 const behind{landmark.centre.x - std::cos(r), landmark.centre.y - std::sin(r), landmark.centre.z};
+        Vec3 const toward{landmark.centre.x + std::cos(r), landmark.centre.y + std::sin(r), landmark.centre.z};
+        return Distance(behind, threat) >= Distance(toward, threat) ? behind : toward;
+    }
+    Vec3 best = landmark.slots[0];
+    for (Vec3 const& p : landmark.slots) {
+        if (Distance(p, threat) > Distance(best, threat)) best = p;
+    }
+    return best;
+}
+
 // ---- Deixis -------------------------------------------------------------------------------------------------------------
 
 void PoseHistory::Push(PoseSample const& sample) {
@@ -271,14 +367,25 @@ void PoseHistory::Between(double from, double to, std::vector<PoseSample>& out) 
 
 std::vector<Candidate> Resolve(PoseHistory const& history, double wordTime, std::vector<Group> const& groups,
     Scene const& scene, DeixisSettings const& st) {
-    if (groups.empty()) return {};
-    std::vector<std::vector<Vec3>> positions(groups.size());
+    return Resolve(history, wordTime, groups, {}, scene, st);
+}
+
+std::vector<Candidate> Resolve(PoseHistory const& history, double wordTime, std::vector<Group> const& groups,
+    std::vector<Landmark> const& landmarks, Scene const& scene, DeixisSettings const& st) {
+    if (groups.empty() && landmarks.empty()) return {};
+    // The things a ray can mean: the groups (their members' places), then the landmarks (their slots and centre).
+    std::size_t const things = groups.size() + landmarks.size();
+    std::vector<std::vector<Vec3>> positions(things);
     for (std::size_t g = 0; g < groups.size(); ++g) {
         for (PawnId id : groups[g].members) {
             for (Hostile const& h : scene.hostiles) {
                 if (h.id == id) positions[g].push_back(h.position);
             }
         }
+    }
+    for (std::size_t l = 0; l < landmarks.size(); ++l) {
+        positions[groups.size() + l] = landmarks[l].slots;
+        positions[groups.size() + l].push_back(landmarks[l].centre);
     }
     struct Source {
         int kind;  // 0 head, 1 left hand, 2 right hand
@@ -290,11 +397,11 @@ std::vector<Candidate> Resolve(PoseHistory const& history, double wordTime, std:
         {2, st.handPeakS, st.handBeforeS, st.handAfterS, st.handSigmaDeg, 0.0f, st.handWeight},
     };
     float const maxWeight = std::max(st.headWeight, st.handWeight);
-    std::vector<float> best(groups.size(), 0.0f);
+    std::vector<float> best(things, 0.0f);
     std::vector<PoseSample> samples;
     for (Source const& src : sources) {
         history.Between(wordTime - src.before, wordTime + src.after, samples);
-        std::vector<float> sum(groups.size(), 0.0f);
+        std::vector<float> sum(things, 0.0f);
         float weightSum = 0.0f;
         for (PoseSample const& sample : samples) {
             Ray ray = src.kind == 0 ? sample.head : src.kind == 1 ? sample.leftAim : sample.rightAim;
@@ -316,7 +423,7 @@ std::vector<Candidate> Resolve(PoseHistory const& history, double wordTime, std:
                 ray.direction.z += flat * std::tan(src.upBias * kPi / 180.0f);
             }
             weightSum += wt;
-            for (std::size_t g = 0; g < groups.size(); ++g) {
+            for (std::size_t g = 0; g < things; ++g) {
                 float angle = 180.0f;
                 for (Vec3 const& p : positions[g]) angle = std::min(angle, AngleTo(ray, p));
                 float const a = angle / src.sigma;
@@ -324,13 +431,17 @@ std::vector<Candidate> Resolve(PoseHistory const& history, double wordTime, std:
             }
         }
         if (weightSum <= 0.0f) continue;
-        for (std::size_t g = 0; g < groups.size(); ++g) {
+        for (std::size_t g = 0; g < things; ++g) {
             best[g] = std::max(best[g], src.weight * sum[g] / weightSum / maxWeight);
         }
     }
     std::vector<Candidate> out;
-    for (std::size_t g = 0; g < groups.size(); ++g) {
-        if (best[g] >= st.minScore) out.push_back({groups[g].id, best[g]});
+    for (std::size_t g = 0; g < things; ++g) {
+        if (best[g] < st.minScore) continue;
+        Candidate c;
+        c.score = best[g];
+        if (g < groups.size()) c.group = groups[g].id; else c.landmark = landmarks[g - groups.size()].id;
+        out.push_back(c);
     }
     std::stable_sort(out.begin(), out.end(), [](Candidate const& a, Candidate const& b) { return a.score > b.score; });
     if (st.top > 0 && out.size() > static_cast<std::size_t>(st.top)) out.resize(static_cast<std::size_t>(st.top));
@@ -381,6 +492,7 @@ std::string Line(Action const& a) {
     case Target::Other: target = "OTHER"; break;
     case Target::Self: target = "SELF"; break;
     case Target::Direction: target = Upper(Name(static_cast<Sector>(a.target.index))); break;
+    case Target::Landmark: target = std::format("L{}", a.target.index); break;
     case Target::None: break;
     }
     return std::format("{}|{}|{}|{}|{}", who, WeaponCode(a.weapon), a.power.empty() ? "-" : a.power, Name(a.order), target);
@@ -461,11 +573,20 @@ std::optional<Action> ParseLine(std::string_view line) {
         auto const v = number(std::string_view(target).substr(2));
         if (!v || *v <= 0) return std::nullopt;
         a.target = {Target::Pointed, *v};
+    } else if (target.size() >= 2 && target[0] == 'L') {
+        auto const v = number(std::string_view(target).substr(1));
+        if (!v || *v <= 0) return std::nullopt;
+        a.target = {Target::Landmark, *v};
     } else return std::nullopt;
     return a;
 }
 
 Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> const& groups,
+    std::vector<Deictic> const& deictics, std::vector<Command> const& history) {
+    return Validate(action, scene, groups, {}, deictics, history);
+}
+
+Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> const& groups, std::vector<Landmark> const& landmarks,
     std::vector<Deictic> const& deictics, std::vector<Command> const& history) {
     Resolved r;
     Action a = action;
@@ -583,14 +704,43 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
         for (Deictic const& c : deictics) {
             if (c.index == a.target.index) d = &c;
         }
+        bool const place = r.order == Order::Move || r.order == Order::Hold;
         if (d == nullptr || d->candidates.empty()) {
+            // A move or hold at a pointed spot needs no thing there: the dispatcher has the floor the ray hit.
+            if (place) break;
             r.problem = std::format("PT{} points at nothing", a.target.index);
             return r;
         }
-        r.group = d->candidates[0].group;
-        if (d->candidates.size() > 1) r.runnerUp = d->candidates[1].group;
+        // A move or hold takes the best thing pointed at, a group or a landmark; an attack the best group.
+        Candidate const* chosen = nullptr;
+        for (Candidate const& c : d->candidates) {
+            if (c.group != 0 || (place && c.landmark != 0)) {
+                chosen = &c;
+                break;
+            }
+        }
+        if (chosen == nullptr) {
+            r.problem = std::format("PT{} points at cover, not an enemy", a.target.index);
+            return r;
+        }
+        r.group = chosen->group;
+        r.landmark = chosen->landmark;
+        for (Candidate const& c : d->candidates) {
+            if (&c != chosen && c.group != 0 && r.runnerUp == 0) r.runnerUp = c.group;
+        }
         break;
     }
+    case Target::Landmark:
+        if (Find(landmarks, a.target.index) == nullptr) {
+            r.problem = std::format("no cover L{}", a.target.index);
+            return r;
+        }
+        if (r.order != Order::Move && r.order != Order::Hold) {
+            r.problem = std::format("L{} is cover: a place to go, not a target", a.target.index);
+            return r;
+        }
+        r.landmark = a.target.index;
+        break;
     case Target::Aim:
         r.group = GroupOf(groups, scene.aimTarget);
         break;
@@ -642,6 +792,11 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
         r.group = 0;
         return r;
     }
+    if (r.landmark != 0 && Find(landmarks, r.landmark) == nullptr) {
+        r.problem = std::format("cover L{} is out of range", r.landmark);
+        r.landmark = 0;
+        return r;
+    }
     if (wantsTarget && r.group == 0 && r.order != Order::Move) {
         r.problem = "no target";
         return r;
@@ -658,6 +813,11 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
 
 std::string Block(Scene const& scene, std::vector<Group> const& groups, std::vector<Deictic> const& deictics,
     std::vector<Command> const& history, std::string_view said) {
+    return Block(scene, groups, {}, deictics, history, said);
+}
+
+std::string Block(Scene const& scene, std::vector<Group> const& groups, std::vector<Landmark> const& landmarks,
+    std::vector<Deictic> const& deictics, std::vector<Command> const& history, std::string_view said) {
     std::string out = scene.combat ? "NOW combat\n" : "NOW explore\n";
     for (Member const& m : scene.party) {
         if (!m.present) continue;
@@ -693,6 +853,15 @@ std::string Block(Scene const& scene, std::vector<Group> const& groups, std::vec
         if (!g.visible) out += " | hidden";
         out += "\n";
     }
+    for (Landmark const& l : landmarks) {
+        out += std::format("L{} {} | {} {} {}", l.id, l.type, Name(l.sector), Name(l.band), Name(l.elevation));
+        std::string flags;
+        for (auto const& [set, word] : {std::pair{l.nearest, "nearest"}, std::pair{l.leftmost, "leftmost"}, std::pair{l.rightmost, "rightmost"}}) {
+            if (set) flags += (flags.empty() ? "" : " ") + std::string(word);
+        }
+        if (!flags.empty()) out += " | " + flags;
+        out += "\n";
+    }
     int const aim = GroupOf(groups, scene.aimTarget);
     int const gaze = GroupOf(groups, scene.gazeTarget);
     if (aim != 0 || gaze != 0) {
@@ -703,7 +872,7 @@ std::string Block(Scene const& scene, std::vector<Group> const& groups, std::vec
         if (d.candidates.empty()) out += " nothing";
         bool first = true;
         for (Candidate const& c : d.candidates) {
-            out += std::format("{} E{} {}", first ? "" : ",", c.group, ScoreText(c.score));
+            out += std::format("{} {}{} {}", first ? "" : ",", c.landmark != 0 ? "L" : "E", c.landmark != 0 ? c.landmark : c.group, ScoreText(c.score));
             first = false;
         }
         out += "\n";
@@ -733,7 +902,7 @@ std::string Prefix(std::vector<RosterEntry> const& roster) {
         "You turn a spoken squad order into one line: WHO|WEAPON|POWER|ORDER|TARGET.\n"
         "WHO: a party letter, ALL, or LAST. WEAPON: a code or -. POWER: a code or -.\n"
         "ORDER: attack, move, follow, hold, regroup, use, cancel, repeat.\n"
-        "TARGET: an E id, PT1..PT3 (what the player pointed at while saying a word), AIM, GAZE, LAST, OTHER, SELF, or -.\n"
+        "TARGET: an E id, an L id (cover: only for move and hold), PT1..PT3 (what the player pointed at while saying a word), AIM, GAZE, LAST, OTHER, SELF, or -.\n"
         "Only name squadmates listed in PARTY. Use only powers marked ok unless told to wait.\n"
         "ROSTER\n";
     for (RosterEntry const& e : roster) {
