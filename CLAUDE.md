@@ -584,7 +584,8 @@ switching frameworks.
   **The repair button and the extraction lever** (research/48 section 27; `tools/cockpit/panel_controls.py`, `game/CockpitPanel`,
   rules in `core/vr/CockpitPanel`, unit-tested): the script's `panel` line (place.py from the manifest's `panels`); a fingertip
   pushes the button on the right desk shelf, held 2 s it calls `SFXGameModeVehicle.RepairVehicle`; a grip pulls the overhead handle
-  out, held at the end it calls `LeaveWorld` (the game's own functions on the game thread, never the pad); the ring's nine lamps
+  down (5 cm of the hand's travel along the cabin's down swing it its 10 degrees, as its arrows point; it took a push up until
+  2026-11-05), held at the end it calls `LeaveWorld` (the game's own functions on the game thread, never the pad); the ring's nine lamps
   show the hull's health (`Light_*_MIC` swapped onto `Repair_Base`'s elements). While a hand works them (or the right hand is at the
   handle) the gunner keeps the turret, at once (`mako_gunner::Hands::busy`; the user: "the aim should remain in auto mode").
   Pressed while the repair can't run (the vehicle's `VehicleRepair` power: `IsRequiredResourceAvailable`, `m_fCooldownRemaining`)
