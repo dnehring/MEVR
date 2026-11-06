@@ -10,6 +10,7 @@
 #include "plugin/ScopeCaptureSource.hpp"
 #include "plugin/SightPictures.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -54,10 +55,18 @@ struct Swapchain {
     std::vector<ComPtr<ID3D11RenderTargetView>> rtvs;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
-    bool failed = false;
+    bool failed = false;          // refused (or its picture failed) at failedMs
+    std::uint64_t failedMs = 0;
     std::uint64_t signature = 0;  // static images: what they show
 
+    // Refused just now: not tried again until plugin/Swapchains says (2 s, or once room was freed).
+    bool Refused() const { return failed && !swapchains::RetryDue(failedMs); }
+    void Refuse() {
+        failed = true;
+        failedMs = GetTickCount64();
+    }
     void Forget() {
+        swapchains::Forget(handle);
         handle = XR_NULL_HANDLE;
         images.clear();
         rtvs.clear();
@@ -66,11 +75,12 @@ struct Swapchain {
         signature = 0;
     }
     void Destroy() {
-        if (handle != XR_NULL_HANDLE) {
-            testloop::ForgetSwapchain(handle);
-            xrDestroySwapchain(handle);
-        }
-        Forget();
+        swapchains::Destroy(handle);
+        handle = XR_NULL_HANDLE;
+        images.clear();
+        rtvs.clear();
+        width = height = 0;
+        signature = 0;
     }
 };
 
@@ -93,30 +103,17 @@ bool Create(XrSession session, std::uint32_t width, std::uint32_t height, Swapch
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &out.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(out.handle, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(out.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        log::Error("sights: {} swapchain {}x{} failed (XrResult {}); that part of the sight won't show", what, width, height,
-            static_cast<int>(r));
-        out.Destroy();
-        out.failed = true;
+    out.Destroy();
+    // Freed for room (plugin/Swapchains) when no frame has shown it for a second: made and filled again when next wanted.
+    if (XR_FAILED(swapchains::Create(session, info, what, [&out] { out.Destroy(); }, out.handle, out.images))) {
+        out.Refuse();  // that part of the sight doesn't show until it's made; plugin/Swapchains logged it
         return false;
     }
-    for (auto const& image : images) {
-        out.images.push_back(image.texture);
-    }
-    out.rtvs.resize(count);
+    out.failed = false;
+    out.rtvs.resize(out.images.size());
     out.width = width;
     out.height = height;
     testloop::NameSwapchain(out.handle, name);
-    log::Info("sights: {} swapchain {}x{}, {} images", what, width, height, count);
     return true;
 }
 
@@ -755,13 +752,13 @@ bool EnsureDot(Frame const& frame, sv::Sight const& sight, DotLayout const& layo
     if (gDot.handle != XR_NULL_HANDLE) {
         gDot.Destroy();
     }
-    if (gDot.failed || !Create(frame.session, kDotPixels, kDotPixels, gDot, "sight reticle", "sight")) {
+    if (gDot.Refused() || !Create(frame.session, kDotPixels, kDotPixels, gDot, "sight reticle", "sight")) {
         return false;
     }
     if (!FillStatic(frame.context, frame.device, gDot, DotPixels(layout, sight.dotColor))) {
         log::Error("sights: the reticle's picture couldn't be filled; no dot");
         gDot.Destroy();
-        gDot.failed = true;
+        gDot.Refuse();
         return false;
     }
     gDot.signature = signature;
@@ -772,12 +769,12 @@ bool EnsureFrame(Frame const& frame) {
     if (gFrame.handle != XR_NULL_HANDLE) {
         return true;
     }
-    if (gFrame.failed || !Create(frame.session, kFramePixels, kFramePixels, gFrame, "sight window ring", "sightframe")) {
+    if (gFrame.Refused() || !Create(frame.session, kFramePixels, kFramePixels, gFrame, "sight window ring", "sightframe")) {
         return false;
     }
     if (!FillStatic(frame.context, frame.device, gFrame, FramePixels())) {
         gFrame.Destroy();
-        gFrame.failed = true;
+        gFrame.Refuse();
         return false;
     }
     return true;
@@ -811,7 +808,7 @@ std::uint32_t EnsurePicture(Frame const& frame, sv::Sight const& sight) {
     if (gScope.handle != XR_NULL_HANDLE && gScope.width != size) {
         gScope.Destroy();
     }
-    if (gScope.handle == XR_NULL_HANDLE && (gScope.failed || !Create(frame.session, size, size, gScope, "scope picture", "scope"))) {
+    if (gScope.handle == XR_NULL_HANDLE && (gScope.Refused() || !Create(frame.session, size, size, gScope, "scope picture", "scope"))) {
         return 0;
     }
     if (!EnsurePipeline(frame.device)) {

@@ -13,6 +13,7 @@
 #include "plugin/PowerIcons.hpp"
 #include "plugin/PowerWheelDraw.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
@@ -60,7 +61,8 @@ struct Canvas {
     ComPtr<ID3D11RenderTargetView> resultRtv;
     XrSwapchain swapchain = XR_NULL_HANDLE;
     std::vector<ID3D11Texture2D*> images;  // owned by the runtime
-    bool swapchainFailed = false;
+    bool swapchainFailed = false;  // refused at swapchainFailedMs
+    std::uint64_t swapchainFailedMs = 0;
     char const* name = "";
     XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 };
@@ -226,8 +228,8 @@ bool EnsureSwapchain(XrSession session, Canvas& c) {
     if (c.swapchain != XR_NULL_HANDLE) {
         return true;
     }
-    if (c.swapchainFailed) {
-        return false;
+    if (c.swapchainFailed && !swapchains::RetryDue(c.swapchainFailedMs)) {
+        return false;  // refused just now (plugin/Swapchains: tried again in 2 s, or once room was freed)
     }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
@@ -238,31 +240,20 @@ bool EnsureSwapchain(XrSession session, Canvas& c) {
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &c.swapchain);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(c.swapchain, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(c.swapchain, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        log::Error("power wheel: {} swapchain {}x{} failed (XrResult {})", c.name, c.width, c.height, static_cast<int>(r));
-        if (c.swapchain != XR_NULL_HANDLE) {
-            xrDestroySwapchain(c.swapchain);
-        }
+    // Freed for room (plugin/Swapchains) when no frame has shown it for a second; made again when next wanted (each canvas
+    // is copied in every frame it's shown). `c` is one of the module's canvases, which live as long as the process.
+    auto evict = [&c] {
+        swapchains::Destroy(c.swapchain);
         c.swapchain = XR_NULL_HANDLE;
         c.images.clear();
-        c.swapchainFailed = true;
+    };
+    if (XR_FAILED(swapchains::Create(session, info, c.name, evict, c.swapchain, c.images))) {
+        c.swapchainFailed = true;  // plugin/Swapchains logged it
+        c.swapchainFailedMs = GetTickCount64();
         return false;
     }
-    c.images.clear();
-    for (auto const& image : images) {
-        c.images.push_back(image.texture);
-    }
+    c.swapchainFailed = false;
     testloop::NameSwapchain(c.swapchain, c.name);  // snapshots: <stamp>-powerwheel.png, and in the eyes' composites
-    log::Info("power wheel: {} swapchain {}x{}, {} images", c.name, c.width, c.height, count);
     return true;
 }
 
@@ -443,14 +434,11 @@ namespace {
 
 int PowerLayers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity) {
     if (frame.session != gSession) {
-        gWheel.swapchain = XR_NULL_HANDLE;  // the old session's swapchains died with it
-        gWheel.images.clear();
-        gHint.swapchain = XR_NULL_HANDLE;
-        gHint.images.clear();
-        gLock.swapchain = XR_NULL_HANDLE;
-        gLock.images.clear();
-        gSquad.swapchain = XR_NULL_HANDLE;
-        gSquad.images.clear();
+        for (Canvas* c : {&gWheel, &gHint, &gLock, &gSquad}) {
+            swapchains::Forget(c->swapchain);
+            c->swapchain = XR_NULL_HANDLE;  // the old session's swapchains died with it
+            c->images.clear();
+        }
         gSession = frame.session;
     }
     gWheel.name = "powerwheel";

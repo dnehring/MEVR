@@ -26,6 +26,7 @@
 #include "plugin/OmniToolRail.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 #include "mod/ModApi.hpp"
 
 #include <RmlUi/Core.h>
@@ -83,7 +84,8 @@ std::uint64_t gPadMs = 0;
 struct Swapchain {
     XrSwapchain handle = XR_NULL_HANDLE;
     std::vector<ID3D11Texture2D*> images;  // the runtime's
-    bool failed = false;
+    bool failed = false;  // refused at failedMs
+    std::uint64_t failedMs = 0;
 };
 
 struct State {
@@ -242,8 +244,8 @@ bool EnsureSwapchain(XrSession session) {
     if (g.swapchain.handle != XR_NULL_HANDLE) {
         return true;
     }
-    if (g.swapchain.failed) {
-        return false;
+    if (g.swapchain.failed && !swapchains::RetryDue(g.swapchain.failedMs)) {
+        return false;  // refused just now (plugin/Swapchains: tried again in 2 s, or once room was freed)
     }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
@@ -254,29 +256,20 @@ bool EnsureSwapchain(XrSession session) {
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &g.swapchain.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(g.swapchain.handle, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(g.swapchain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        log::Error("main menu: swapchain {}x{} failed (XrResult {}); no menu in the headset", kWidth, kHeight, static_cast<int>(r));
-        if (g.swapchain.handle != XR_NULL_HANDLE) {
-            xrDestroySwapchain(g.swapchain.handle);
-        }
+    // Freed for room (plugin/Swapchains) when no frame has shown it for a second; made and drawn again when next wanted.
+    auto evict = [] {
+        swapchains::Destroy(g.swapchain.handle);
         g.swapchain = {};
+        g.submitted = false;
+    };
+    if (XR_FAILED(swapchains::Create(session, info, "main menu", evict, g.swapchain.handle, g.swapchain.images))) {
+        g.swapchain = {};  // plugin/Swapchains logged it
         g.swapchain.failed = true;
+        g.swapchain.failedMs = GetTickCount64();
         return false;
     }
-    for (auto const& image : images) {
-        g.swapchain.images.push_back(image.texture);
-    }
     testloop::NameSwapchain(g.swapchain.handle, "mainmenu");  // snapshots: <stamp>-mainmenu.png, and in the eyes
-    log::Info("main menu: swapchain {}x{}, {} images", kWidth, kHeight, count);
+    g.submitted = false;
     return true;
 }
 
@@ -886,6 +879,7 @@ void Recentered() {
 XrCompositionLayerQuad const* Layer(Frame const& frame) {
     gLastLayerMs = GetTickCount64();
     if (frame.session != g.session) {
+        swapchains::Forget(g.swapchain.handle);
         g.swapchain = {};  // the old session's swapchain died with it
         g.session = frame.session;
         g.submitted = false;

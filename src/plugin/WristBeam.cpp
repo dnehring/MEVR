@@ -5,6 +5,7 @@
 
 #include "core/Log.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -38,17 +39,18 @@ constexpr float kBlue = 0.35f;
 // Present thread.
 XrSession gSession = XR_NULL_HANDLE;
 XrSwapchain gSwapchain = XR_NULL_HANDLE;
-bool gSwapchainFailed = false;
+std::vector<ID3D11Texture2D*> gImages;  // the runtime's
+bool gSwapchainFailed = false;  // refused at gSwapchainFailedMs
+std::uint64_t gSwapchainFailedMs = 0;
 bool gFilled = false;
 XrCompositionLayerQuad gQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 bool gLoggedFirst = false;
 
 void ForgetSession() {
     // The session's swapchains went with it.
-    if (gSwapchain != XR_NULL_HANDLE) {
-        testloop::ForgetSwapchain(gSwapchain);
-    }
+    swapchains::Forget(gSwapchain);
     gSwapchain = XR_NULL_HANDLE;
+    gImages.clear();
     gSwapchainFailed = false;
     gFilled = false;
 }
@@ -58,8 +60,8 @@ bool Ensure(Frame const& frame) {
     if (gSwapchain != XR_NULL_HANDLE && gFilled) {
         return true;
     }
-    if (gSwapchainFailed || frame.device == nullptr || frame.context == nullptr) {
-        return false;
+    if ((gSwapchainFailed && !swapchains::RetryDue(gSwapchainFailedMs)) || frame.device == nullptr || frame.context == nullptr) {
+        return false;  // refused just now (plugin/Swapchains: tried again in 2 s, or once room was freed)
     }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
@@ -70,15 +72,15 @@ bool Ensure(Frame const& frame) {
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = gSwapchain == XR_NULL_HANDLE ? xrCreateSwapchain(frame.session, &info, &gSwapchain) : XR_SUCCESS;
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(gSwapchain, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(gSwapchain, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
+    // Freed for room (plugin/Swapchains) when no frame has shown it for a second; made and filled again when next wanted.
+    auto evict = [] {
+        swapchains::Destroy(gSwapchain);
+        gSwapchain = XR_NULL_HANDLE;
+        gImages.clear();
+        gFilled = false;
+    };
+    XrResult r = gSwapchain == XR_NULL_HANDLE ? swapchains::Create(frame.session, info, "wrist fan", evict, gSwapchain, gImages) : XR_SUCCESS;
+    std::uint32_t const count = static_cast<std::uint32_t>(gImages.size());
     std::vector<std::uint32_t> const pixels = vr::world_ui::BeamPixels(kSize, kRed, kGreen, kBlue);
     D3D11_TEXTURE2D_DESC td{};
     td.Width = kSize;
@@ -92,14 +94,17 @@ bool Ensure(Frame const& frame) {
     D3D11_SUBRESOURCE_DATA data{pixels.data(), kSize * 4, 0};
     ComPtr<ID3D11Texture2D> texture;
     if (XR_FAILED(r) || count == 0 || FAILED(frame.device->CreateTexture2D(&td, &data, texture.GetAddressOf()))) {
-        log::Error("world ui: the wrist's fan of light couldn't be made (XrResult {}): no fan this session", static_cast<int>(r));
-        if (gSwapchain != XR_NULL_HANDLE) {
-            xrDestroySwapchain(gSwapchain);
-        }
+        if (XR_SUCCEEDED(r)) {
+            log::Error("world ui: the wrist's fan of light: its texture couldn't be made; no fan until it can");
+        }  // a refused swapchain: plugin/Swapchains logged it
+        swapchains::Destroy(gSwapchain);
         gSwapchain = XR_NULL_HANDLE;
+        gImages.clear();
         gSwapchainFailed = true;
+        gSwapchainFailedMs = GetTickCount64();
         return false;
     }
+    gSwapchainFailed = false;
     // Every image gets the picture: the runtime may show any of them.
     for (std::uint32_t i = 0; i < count; ++i) {
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -109,8 +114,8 @@ bool Ensure(Frame const& frame) {
         }
         XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
         wait.timeout = XR_INFINITE_DURATION;
-        if (XR_SUCCEEDED(xrWaitSwapchainImage(gSwapchain, &wait)) && index < images.size()) {
-            frame.context->CopyResource(images[index].texture, texture.Get());
+        if (XR_SUCCEEDED(xrWaitSwapchainImage(gSwapchain, &wait)) && index < gImages.size()) {
+            frame.context->CopyResource(gImages[index], texture.Get());
         }
         XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         xrReleaseSwapchainImage(gSwapchain, &release);

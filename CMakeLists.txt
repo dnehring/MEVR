@@ -748,6 +748,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/PowerWheel.hpp
     src/plugin/PowerWheelDraw.cpp
     src/plugin/PowerWheelDraw.hpp
+    src/plugin/Swapchains.cpp
+    src/plugin/Swapchains.hpp
     src/plugin/TestLoop.cpp
     src/plugin/TestLoop.hpp
     src/plugin/Vignette.cpp
@@ -941,6 +943,7 @@ if (MEVR_BUILD_TESTS)
         tests/LandmarkTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
+        tests/SwapchainBudgetTests.cpp
         tests/VrCoverTests.cpp
         src/core/vr/GuiEvents.cpp
         tests/SquadPhrasings.cpp

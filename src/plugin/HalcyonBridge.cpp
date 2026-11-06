@@ -38,6 +38,7 @@
 #include "plugin/DrawReplay.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/Spectator.hpp"
+#include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
 
@@ -256,6 +257,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     ++gTarget.instanceGeneration;
     ++gTarget.sessionGeneration;
     mevr::host::testloop::OnSessionCreated(gTarget.session);
+    mevr::host::swapchains::OnSessionCreated(gTarget.session);  // our swapchains went with the old session
     mevr::host::spectator::OnSessionCreated();  // its swapchain copies went with the old session
     gInputFailed = !gInput.Create(gTarget);
     if (gInputFailed) {

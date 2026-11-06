@@ -1124,9 +1124,13 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **The long forms live in [docs/knowledge/gotchas](docs/knowledge/gotchas/index.md)** (OKF, since 2026-10-30, after
   motion blur bit a third time under a third name): symptom, cause, check, fix in place, the dates each bit. Read it
   when something looks familiar; add the date when it bites again. The bullets below are the short forms.
-- **The runtime limits swapchains** (XR_ERROR_LIMIT_REACHED, -10; SteamVR, 2026-11-06: the calibration's target board failed,
-  no targets, its aims lost): ours are made lazily and never freed, so share one swapchain between a quad's looks and log a
-  failed create (research/25 section 10).
+- **The runtime limits swapchains** (XR_ERROR_LIMIT_REACHED, -10, about 16 a session on SteamVR, Halcyon holds 4; 2026-11-06:
+  the calibration's targets, then the omni-tool's rail, the sights, the galaxy map and eight more went missing one after
+  another, each owner having given up for the session): **make every swapchain through `plugin/Swapchains`** (`swapchains::
+  Create` with an `evict` that lets go and redraws when made again; rules `core/vr/SwapchainBudget`, unit-tested): a refusal
+  frees ours not shown for a second at that frame's end and the owner asks again next frame (else every 2 s; the calibration's
+  are Essential); never latch a refusal for the session; share one swapchain between a quad's looks. Log `swapchains:`
+  (every live one at a refusal), snapshot `"swapchains"` (gotchas/openxr-swapchain-limit).
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
 - An inline `python - <<'EOF'` loses one backslash of every pair (the Bash tool); write scripts with backslashes to a file.
 - `Windows.h` macros eat ordinary names (`SetProp`, `far`, `near`, `min`, `max`): don't name ours after them; build `build-mono/` too.
