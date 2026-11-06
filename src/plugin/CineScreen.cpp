@@ -7,6 +7,7 @@
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/ConversationWorld.hpp"
 
 #include <Windows.h>
 
@@ -70,7 +71,17 @@ void RefreshSettings(std::uint64_t now) {
     cs::Settings s;
     std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
     if (!path.empty()) {
-        s.conversations = GetPrivateProfileIntW(L"Cinematics", L"conversations", s.conversations ? 1 : 0, path.c_str()) != 0;
+        {   // 0/vr, 1/screen, or world (research/59: the mod shows it in the world; this screen stays off)
+            wchar_t text[32] = {};
+            GetPrivateProfileStringW(L"Cinematics", L"conversations", L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
+            std::string narrow;
+            for (wchar_t const* p = text; *p != L'\0' && *p < 128; ++p) {
+                narrow.push_back(static_cast<char>(*p));
+            }
+            namespace cw = mevr::vr::conversation_world;
+            cw::Mode const mode = cw::ParseMode(narrow.c_str(), s.conversations ? cw::Mode::Screen : cw::Mode::Vr);
+            s.conversations = mode == cw::Mode::Screen;
+        }
         s.cutscenes = GetPrivateProfileIntW(L"Cinematics", L"cutscenes", s.cutscenes ? 1 : 0, path.c_str()) != 0;
         s.frontEnd = GetPrivateProfileIntW(L"Cinematics", L"frontEnd", s.frontEnd ? 1 : 0, path.c_str()) != 0;
         s.distanceM = ReadFloat(L"distanceM", s.distanceM, path);

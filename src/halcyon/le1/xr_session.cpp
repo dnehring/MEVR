@@ -3464,6 +3464,8 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
         d.inConversation = false;
         d.inCutscene = false;
     }
+    // [MEVR] research/59: a conversation in the world (the view held at Shepard's, first person) is the world as on foot.
+    if (d.inConversation && in.gameMode == 5 && MELEVR::MevrBridge::ConversationInWorld()) d.inConversation = false;
     const bool cinematicContext = d.inConversation || d.inCutscene;
     bool vrCineOn = (d.inConversation && cfg.cineVrConvo) ||
                     (d.inCutscene && cfg.cineVrCutscene) ||
@@ -3795,6 +3797,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             if (inConversationMode)  effectiveGm = 5;
             else if (inCutsceneMode) effectiveGm = 6;
         }
+        if (gameMode == 5 && !inConversationMode && MELEVR::MevrBridge::ConversationInWorld()) effectiveGm = 0;   // [MEVR] research/59: as on foot
         MELEVR::RenderHook::PublishGameModeForSfr(effectiveGm, cfg.cineVrConvo, cfg.cineVrCutscene || cineIn.frontEndScreen, liveWorldGui);   // [MEVR]
         MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameCine);   // [MEVR] frame-breakdown probe
     }
@@ -4069,7 +4072,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                                 useDibrUi ? cfg.pchudOffsetYDibr : (useStereoUi ? cfg.pchudOffsetYStereo : cfg.pchudOffsetY));
     // [MEVR] research/52: on the 3D cinema screen the conversation movie keeps its authored size and place. The VR layout
     // (half size, centred, for a head-locked view) made the dialogue wheel about 0.9 degrees tall on the screen.
-    if (mevrCineScreen)
+    if (mevrCineScreen || (gameMode == 5 && MELEVR::MevrBridge::ConversationInWorld()))   // [MEVR] research/59: on the HUD panel too
         MELEVR::Pchud::SetConvoTransform(true, 1.0f, 1.0f, 0.0f, 0.0f);
     else
     MELEVR::Pchud::SetConvoTransform(cfg.convoEnabled,

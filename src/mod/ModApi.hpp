@@ -76,6 +76,9 @@ struct Panel;
 namespace vr::squad_place {
 struct View;
 }
+namespace vr::conversation_world {
+struct State;
+}
 namespace vr::voice {
 struct Line;
 struct State;
@@ -88,7 +91,7 @@ struct State;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 32;
+inline constexpr int kHostServicesVersion = 33;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -393,6 +396,16 @@ struct HostServices {
     // still works, undrawn. The mod sends only if squadPlaceSize matches its sizeof(View). Any thread.
     std::uint32_t squadPlaceSize = 0;
     void (*setSquadPlace)(vr::squad_place::View const* view) = nullptr;
+
+    // Version 33: conversations in the world, first person (game/ConversationWorld, core/vr/ConversationWorld's State,
+    // research/59; 2026-11-06). While a conversation (game mode 5) is shown in the world ([Cinematics] conversations = world) the
+    // mod sends each tick the view held at Shepard's (the POV's addresses, as the world screens do), where the speaker's subtitle
+    // goes and whether the dialogue wheel is up; null when it ends. While active and fresh the host shows the conversation as on
+    // foot (head tracked, both eyes, no 3D screen), swaps the held view into the main view's CalcSceneView, and cuts the
+    // conversation movie's subtitle and wheel out of the HUD panel (plugin/ConversationWorld). The mod sends only if
+    // conversationWorldSize matches its sizeof(State). Any thread.
+    std::uint32_t conversationWorldSize = 0;
+    void (*setConversationWorld)(vr::conversation_world::State const* state) = nullptr;
 };
 
 } // namespace mevr

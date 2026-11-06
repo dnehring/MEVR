@@ -71,6 +71,8 @@
 #include "game/GalaxyDump.hpp"
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
+#include "game/ConversationWorld.hpp"
+#include "core/vr/ConversationWorld.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/Spectator.hpp"
 #include "game/SquadAck.hpp"
@@ -313,6 +315,7 @@ void TryInstallScriptHooks() {
     game::focus_pause::TryStartup();  // [Game] pauseUnfocused (research/47: a BioWorldInfo.Tick handler)
     game::galaxy_dump::TryStartup();  // the galaxy map's Flash calls, traced on request (research/51 section 8)
     game::world_ui::TryStartup();  // the camera-update handler that holds Shepard's view while a game screen stands in the room
+    game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
@@ -606,6 +609,17 @@ mevr::game::world_ui::Link WorldUiLink() {
     }
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
         link.railOpen = (gHost->mainMenu() & kOmniRailOpen) != 0;  // the host's omni-tool rail (research/57)
+    }
+    return link;
+}
+
+// Host renderer (HostServices v33): conversations in the world (research/59), if the host's State matches ours.
+mevr::game::conversation_world::Link ConversationWorldLink() {
+    using namespace mevr;
+    game::conversation_world::Link link;
+    if (gHostOwnsVr && MEVR_HOST_HAS(setConversationWorld) && gHost->setConversationWorld != nullptr &&
+        gHost->conversationWorldSize == sizeof(vr::conversation_world::State)) {
+        link.publish = gHost->setConversationWorld;
     }
     return link;
 }
@@ -956,7 +970,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -968,7 +982,8 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson(), game::body_scale::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson(), game::body_scale::StatusJson(),
+        game::conversation_world::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1119,6 +1134,7 @@ void Heartbeat() {
         game::squad_orders::LogStats();
         game::squad_place::LogStats();
     game::body_scale::LogStats();
+        game::conversation_world::LogStats();
         game::squad_ack::LogStats();
         game::voice::LogStats();
         game::mako::LogStats();
@@ -1328,6 +1344,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::spectator::Tick(deltaSeconds, SpectatorLink());
         game::galaxy_map::Tick(GalaxyMapLink());
         game::world_ui::Tick(WorldUiLink());
+        // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
+        game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1433,6 +1451,7 @@ MEVR_MOD_API void MevrModShutdown() {
     // the process is exiting. Before sights' shutdown and the reflection layer's.
     game::spectator::Shutdown(exiting);  // its capture and the head it hid, on the game thread
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
+    game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
     game::power_wheel::Shutdown(PowerWheelLink());  // the host's wheel closed
     game::galaxy_map::Shutdown(GalaxyMapLink(), exiting);  // the host forgets the hologram; the window's captures go
     if (gHost != nullptr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr) {

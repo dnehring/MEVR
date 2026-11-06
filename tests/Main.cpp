@@ -11380,6 +11380,8 @@ int RunPowerWheelTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
 int RunLandmarkTests();
+// tests/ConversationWorldTests.cpp: conversations in the world (research/59).
+int RunConversationWorldTests();
 int RunGuiEventsTests();
 int RunOmniPadTests();
 int RunVrCoverTests();
@@ -11524,6 +11526,7 @@ int main() {
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
     gFailures += RunLandmarkTests();
+    gFailures += RunConversationWorldTests();
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();
     gFailures += RunVrCoverTests();

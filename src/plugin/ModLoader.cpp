@@ -27,6 +27,7 @@
 #include "core/vr/Spectator.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/SquadPlace.hpp"
+#include "core/vr/ConversationWorld.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
@@ -336,6 +337,13 @@ HostServices WithVoice(HostServices services) {
     services.takeVoiceModelAnswer = &HostTakeVoiceModelAnswer;
     return services;
 }
+void HostSetConversationWorld(vr::conversation_world::State const* state) {
+    if (state != nullptr && state->size == sizeof(vr::conversation_world::State)) {
+        vr::conversation_world::Publish(*state);
+    } else {
+        vr::conversation_world::Reset();
+    }
+}
 void HostSetSquadPlace(vr::squad_place::View const* view) {
     vr::squad_place::View none;
     vr::squad_place::Publish(view != nullptr && view->size == sizeof(vr::squad_place::View) ? *view : none);
@@ -348,6 +356,8 @@ HostServices WithPowerWheel(HostServices services) {
     services.takeGuiEvents = &HostTakeGuiEvents;  // v30: the game pointer's input as GuiKey events (research/57 section 6)
     services.squadPlaceSize = static_cast<std::uint32_t>(sizeof(vr::squad_place::View));  // v32: squad placement's arc
     services.setSquadPlace = &HostSetSquadPlace;
+    services.conversationWorldSize = static_cast<std::uint32_t>(sizeof(vr::conversation_world::State));  // v33 (research/59)
+    services.setConversationWorld = &HostSetConversationWorld;
     return services;
 }
 HostServices const gServices = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,

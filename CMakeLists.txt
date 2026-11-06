@@ -334,6 +334,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/GalaxyMap.hpp
     src/core/vr/WorldUi.cpp
     src/core/vr/WorldUi.hpp
+    src/core/vr/ConversationWorld.cpp
+    src/core/vr/ConversationWorld.hpp
     src/core/vr/OmniRail.cpp
     src/core/vr/OmniRail.hpp
     src/core/vr/Spectator.cpp
@@ -498,6 +500,8 @@ set(MEVR_MOD_SOURCES
     src/game/GalaxyMap.hpp
     src/game/WorldUi.cpp
     src/game/WorldUi.hpp
+    src/game/ConversationWorld.cpp
+    src/game/ConversationWorld.hpp
     src/game/UiWorldFigure.cpp
     src/game/UiWorldFigure.hpp
     src/game/OmniTool.cpp
@@ -643,6 +647,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/GalaxyMap.hpp
     src/core/vr/WorldUi.cpp
     src/core/vr/WorldUi.hpp
+    src/core/vr/ConversationWorld.cpp
+    src/core/vr/ConversationWorld.hpp
     src/core/vr/OmniRail.cpp
     src/core/vr/OmniRail.hpp
     src/core/vr/OmniPad.cpp
@@ -726,6 +732,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/GalaxyHologram.hpp
     src/plugin/WorldUi.cpp
     src/plugin/WorldUi.hpp
+    src/plugin/ConversationWorld.cpp
+    src/plugin/ConversationWorld.hpp
     src/plugin/UiWorldFigure.cpp
     src/plugin/UiWorldFigure.hpp
     src/plugin/GalaxyHologramDraw.cpp
@@ -939,6 +947,7 @@ if (MEVR_BUILD_TESTS)
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/LandmarkTests.cpp
+        tests/ConversationWorldTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
         tests/VrCoverTests.cpp
@@ -1013,6 +1022,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/GalaxyHologram.cpp
         src/core/vr/GalaxyMap.cpp
         src/core/vr/WorldUi.cpp
+        src/core/vr/ConversationWorld.cpp
         src/core/vr/OmniRail.cpp
         src/core/vr/OmniPad.cpp
         src/core/gfx/Raster.cpp

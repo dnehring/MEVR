@@ -261,6 +261,11 @@ void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept;
 // one of ours is up in the GUI mode (the shop...). Halcyon then treats mode 7 as a live in-world GUI ([LIVEGUI]'s
 // liveWorldGui): no flat panel, both Draws; HalcyonOverlays stands the game's UI in the room.
 bool WorldUiActive() noexcept;
+// [MEVR] A conversation in the world, first person (research/59; src/plugin/ConversationWorld.cpp, the mod's
+// game/ConversationWorld): true while the mod holds the view at Shepard's through a conversation ([Cinematics] conversations =
+// world). Halcyon then presents mode 5 as on foot (no VR cine, no 3D screen, head look on, both Draws), keeps its first-person
+// hides up, and the main view's CalcSceneView gets the held view (GalaxyViewSwapBegin).
+bool ConversationInWorld() noexcept;
 
 struct MenuPointer
 {

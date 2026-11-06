@@ -10,6 +10,7 @@
 
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Calibration.hpp"
+#include "plugin/ConversationWorld.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
@@ -909,6 +910,22 @@ bool GalaxyViewSwapBegin() noexcept {
         gGalaxySwap.active = true;
         if (gGalaxySwaps++ == 0) {
             mevr::log::Info("galaxy hologram: the view held at Shepard's for the main view's build only (the game keeps its map camera)");
+        }
+        return true;
+    }
+    // A conversation in the world (research/59): the director's camera keeps serving the game; the main view is Shepard's.
+    if (auto const convo = mevr::host::conversation_world::Current();
+        convo && convo->holdRender != 0 && convo->povLocationAddress != 0 && convo->povRotationAddress != 0 && convo->povFovAddress != 0) {
+        gGalaxySwap.location = reinterpret_cast<float*>(convo->povLocationAddress);
+        gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(convo->povRotationAddress);
+        gGalaxySwap.fov = reinterpret_cast<float*>(convo->povFovAddress);
+        if (!SwapIn(gGalaxySwap, convo->holdLocation, convo->holdRotation, convo->holdFov)) {
+            return false;
+        }
+        gGalaxySwap.active = true;
+        static std::uint64_t convoSwaps = 0;
+        if (convoSwaps++ == 0) {
+            mevr::log::Info("conversation world: the view held at Shepard's for the main view's build only (the director's camera serves the game)");
         }
         return true;
     }

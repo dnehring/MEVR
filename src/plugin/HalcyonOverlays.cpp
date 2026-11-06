@@ -40,6 +40,7 @@
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/ConversationWorld.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/SquadPlaceDraw.hpp"
 #include "plugin/UiWorldFigure.hpp"
@@ -1054,6 +1055,16 @@ struct LabelState {
 };
 LabelState gLabel;
 
+// A conversation in the world (research/59): its subtitle and wheel on the label's and the game wheel's swapchains.
+struct ConvoUiState {
+    bool subtitleShown = false;
+    std::uint32_t speakerSerial = 0;
+    bool wheelShown = false;
+    std::uint32_t conversation = 0;
+    XrPosef wheelPose{};
+};
+ConvoUiState gConvoUi;
+
 // The mod's latest label, or none (a struct of another size: host and mod from different builds).
 il::Label LabelWanted() {
     il::Label latest = il::Latest();
@@ -1667,7 +1678,11 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool const galaxyUi = gLastGameMode == 9 && mevr::host::galaxy_hologram::InWorld();
     // One of the game's screens standing in the room (research/53: the shop...): its UI goes to the panel, placed where it opened.
     bool const worldUi = mevr::vr::world_ui::ScreenMode(gLastGameMode) && mevr::host::world_ui::Active();
-    bool const uiToPanel = gameplay || galaxyUi || worldUi;
+    // A conversation in the world (research/59): its movie goes to the panel, its subtitle and wheel cut out of it below.
+    mevr::host::conversation_world::NoteFrame(frame.gameMode);
+    std::optional<mevr::vr::conversation_world::State> const convo =
+        gLastGameMode == 5 ? mevr::host::conversation_world::Current() : std::nullopt;
+    bool const uiToPanel = gameplay || galaxyUi || worldUi || convo.has_value();
 
     // The game's own crosshair marks the screen centre (the head), not the gun: hidden while our
     // hand reticle stands in for it. The HUD movie keeps its authored layout on the panel (Halcyon's
@@ -1745,6 +1760,29 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     il::Pixels const labelPx = il::ToPixels(labelRect, gPanel.width, gPanel.height);
     if (labelWanted && labelPx.width > 0) {
         hudMasks.Add(labelPx.x, labelPx.y, labelPx.width, labelPx.height);
+    }
+    // The conversation's subtitle at the speaker and its wheel at a hand (research/59): their bands out of the panel. The label's
+    // and the game wheel's swapchains serve them (neither is up in a conversation; the runtime limits swapchains).
+    namespace cwv = mevr::vr::conversation_world;
+    bool const convoAllowed = convo && engaged && frame.worldFrame && !frame.menuOpen && frame.headValid && gPanel.texture != nullptr &&
+        gPanel.tintSrv != nullptr && device != nullptr;
+    bool const convoSubtitleWanted = convoAllowed && convo->subtitle != 0 && !gLabelSwapchain.failed;
+    bool const convoWheelWanted = convoAllowed && convo->wheel != 0 && !gWheelSwapchain.failed;
+    il::Pixels const convoSubPx = convo ? il::ToPixels(convo->subtitleCrop[2] > 0.0f && convo->subtitleCrop[3] > 0.0f
+                                                           ? il::Rect{convo->subtitleCrop[0], convo->subtitleCrop[1], convo->subtitleCrop[2], convo->subtitleCrop[3]}
+                                                           : cwv::DefaultSubtitleCrop(gPanel.width, gPanel.height),
+                                              gPanel.width, gPanel.height)
+                                        : il::Pixels{};
+    il::Pixels const convoWheelPx = convo ? il::ToPixels(convo->wheelCrop[2] > 0.0f && convo->wheelCrop[3] > 0.0f
+                                                             ? il::Rect{convo->wheelCrop[0], convo->wheelCrop[1], convo->wheelCrop[2], convo->wheelCrop[3]}
+                                                             : cwv::DefaultWheelCrop(gPanel.width, gPanel.height),
+                                                gPanel.width, gPanel.height)
+                                          : il::Pixels{};
+    if (convoSubtitleWanted && convoSubPx.width > 0) {
+        hudMasks.Add(convoSubPx.x, convoSubPx.y, convoSubPx.width, convoSubPx.height);
+    }
+    if (convoWheelWanted && convoWheelPx.width > 0) {
+        hudMasks.Add(convoWheelPx.x, convoWheelPx.y, convoWheelPx.width, convoWheelPx.height);
     }
     // The HUD pieces on the body (research/41): on foot only, with the HUD on the panel, never with a wheel up. The wrist
     // needs the left controller tracked; the gun needs the mod's anchor (a drawn gun aimed along its barrel).
@@ -1899,6 +1937,80 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     } else if (gLabel.shown) {
         gLabel.shown = false;
         LogBoth("[MEVR-INTERACT] the prompt at the object is gone");
+    }
+    // A conversation in the world (research/59): the speaker's line under their face, facing the eyes, the same angular size at
+    // any distance (the interaction label's way); the dialogue wheel above a hand, placed where it opens (the game wheel's way).
+    if (convoSubtitleWanted && panelShown && convoSubPx.width > 0 && count < capacity) {
+        il::Quad quad;
+        float const aspect = static_cast<float>(convoSubPx.width) / static_cast<float>(convoSubPx.height);
+        XrVector3f const at{convo->subtitleAt[0], convo->subtitleAt[1], convo->subtitleAt[2]};
+        if (il::Place(at, ToVec(frame.headPosition), convo->subtitleHeightDeg, aspect, quad) &&
+            EnsureSwapchain(gLabelSwapchain, convoSubPx.width, convoSubPx.height, "conversation subtitle", "label") &&
+            Blit(context, device.Get(), gLabelSwapchain, {convoSubPx.x, convoSubPx.y, convoSubPx.width, convoSubPx.height}, 1, Masks{},
+                frame.floatWhiteScale) != nullptr) {
+            gLabelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+            gLabelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+            gLabelQuad.space = static_cast<XrSpace>(frame.appSpace);
+            gLabelQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            gLabelQuad.subImage.swapchain = gLabelSwapchain.handle;
+            gLabelQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(convoSubPx.width), static_cast<int32_t>(convoSubPx.height)}};
+            gLabelQuad.pose = quad.pose;
+            gLabelQuad.size = {quad.width, quad.height};
+            layersOut[count++] = &gLabelQuad;
+            if (!gConvoUi.subtitleShown || gConvoUi.speakerSerial != convo->speakerSerial) {
+                char line[320];
+                std::snprintf(line, sizeof line,
+                    "[MEVR-CONVO] the subtitle at the speaker: (%.2f, %.2f, %.2f) m, %.2f x %.2f m (%.1f deg tall); the UI's part (%u, %u) "
+                    "%ux%u of %ux%u (%s)", quad.pose.position.x, quad.pose.position.y, quad.pose.position.z, quad.width, quad.height,
+                    convo->subtitleHeightDeg, convoSubPx.x, convoSubPx.y, convoSubPx.width, convoSubPx.height, gPanel.width, gPanel.height,
+                    convo->subtitleCrop[2] > 0.0f ? "[Cinematics] subtitleCrop" : "the default band");
+                LogBoth(line);
+            }
+            gConvoUi.subtitleShown = true;
+            gConvoUi.speakerSerial = convo->speakerSerial;
+        }
+    } else if (gConvoUi.subtitleShown) {
+        gConvoUi.subtitleShown = false;
+        LogBoth("[MEVR-CONVO] the subtitle at the speaker is gone");
+    }
+    XrCompositionLayerQuad const* convoWheelLayer = nullptr;
+    if (convoWheelWanted && panelShown && convoWheelPx.width > 0) {
+        if (!gConvoUi.wheelShown || gConvoUi.conversation != convo->conversation) {
+            XrPosef headPose{};
+            headPose.orientation = head;
+            headPose.position = ToVec(frame.headPosition);
+            char const* from = "";
+            gConvoUi.wheelPose = PlaceWheel(convo->wheelHand, std::clamp(convo->wheelDistanceM, 0.05f, 0.8f), headPose, from);
+            char line[320];
+            std::snprintf(line, sizeof line,
+                "[MEVR-CONVO] the dialogue wheel %.2f m from %s, at (%.2f, %.2f, %.2f) m, %.2f m wide; the UI's part (%u, %u) %ux%u of %ux%u (%s)",
+                convo->wheelDistanceM, from, gConvoUi.wheelPose.position.x, gConvoUi.wheelPose.position.y, gConvoUi.wheelPose.position.z,
+                convo->wheelWidthM, convoWheelPx.x, convoWheelPx.y, convoWheelPx.width, convoWheelPx.height, gPanel.width, gPanel.height,
+                convo->wheelCrop[2] > 0.0f ? "[Cinematics] wheelCrop" : "the default band");
+            LogBoth(line);
+        }
+        gConvoUi.wheelShown = true;
+        gConvoUi.conversation = convo->conversation;
+        UINT const factor = std::clamp<UINT>(static_cast<UINT>(std::lround(convoWheelPx.width / 1024.0)), 1u, 4u);
+        std::uint32_t const width = std::max<std::uint32_t>(convoWheelPx.width / factor, 16);
+        std::uint32_t const height = std::max<std::uint32_t>(convoWheelPx.height / factor, 16);
+        if (EnsureSwapchain(gWheelSwapchain, width, height, "conversation wheel", "wheel") &&
+            Blit(context, device.Get(), gWheelSwapchain, {convoWheelPx.x, convoWheelPx.y, convoWheelPx.width, convoWheelPx.height}, factor,
+                Masks{}, frame.floatWhiteScale) != nullptr) {
+            float const quadWidth = std::clamp(convo->wheelWidthM, 0.15f, 1.5f);
+            gWheelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+            gWheelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+            gWheelQuad.space = static_cast<XrSpace>(frame.appSpace);
+            gWheelQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            gWheelQuad.subImage.swapchain = gWheelSwapchain.handle;
+            gWheelQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(width), static_cast<int32_t>(height)}};
+            gWheelQuad.pose = gConvoUi.wheelPose;
+            gWheelQuad.size = {quadWidth, quadWidth * static_cast<float>(convoWheelPx.height) / static_cast<float>(convoWheelPx.width)};
+            convoWheelLayer = &gWheelQuad;
+        }
+    } else if (gConvoUi.wheelShown) {
+        gConvoUi.wheelShown = false;
+        LogBoth("[MEVR-CONVO] the dialogue wheel is gone");
     }
     // The player's status on the back of the left wrist: a small quad a fixed offset from the left grip pose, facing the
     // eyes, upright (research/41).
@@ -2317,7 +2429,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             layersOut[count++] = layer;
         }
     }
-    // ---- The game's wheel at the hand: last, on top ----
+    // ---- The game's wheel at the hand: last, on top (the conversation's wheel likewise, research/59) ----
+    if (convoWheelLayer != nullptr && count < capacity) {
+        layersOut[count++] = convoWheelLayer;
+    }
     if (wheelLayer != nullptr && count < capacity) {
         layersOut[count++] = wheelLayer;
         if (!gWheel.loggedThisOpening) {

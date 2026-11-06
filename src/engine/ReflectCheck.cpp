@@ -574,6 +574,7 @@ void CheckClasses() {
     CheckClass<USFXModule>("Engine.SFXModule");
     CheckClass<UBioSFHandler>("Engine.BioSFHandler");
     CheckClass<UBioSFPanel>("Engine.BioSFPanel");
+    CheckClass<UBioSFHandler_Conversation>("SFXGame.BioSFHandler_Conversation");  // game/ConversationWorld: the dialogue wheel
     CheckClass<UBioSFManager>("Engine.BioSFManager");
     CheckClass<ABioPawn>("SFXGame.BioPawn");
     CheckClass<ABioTriggerStream>("SFXGame.BioTriggerStream");  // mevr stream
@@ -709,6 +710,20 @@ void CheckFields() {
     CheckField("SFXGame.BioSkillGame_Handler", "m_oDependent", SDK_FIELD(UBioSkillGame_Handler, m_oDependent));
     CheckField("SFXGame.BioSkillGame_Handler", "m_bGameActive", SDK_BOOL(UBioSkillGame_Handler, m_bGameActive));  // the puzzle played: its d-pad
     CheckField("SFXGame.BioSFHandler_Shop", "m_shop", SDK_FIELD(UBioSFHandler_Shop, m_shop));
+    // game/ConversationWorld (research/59): the live conversation, its actors and the dialogue wheel.
+    CheckField("SFXGame.BioWorldInfo", "m_oCurrentConversation", SDK_FIELD(ABioWorldInfo, m_oCurrentConversation));
+    CheckField("SFXGame.BioConversation", "m_pSpeaker", SDK_FIELD(UBioConversation, m_pSpeaker));
+    CheckField("SFXGame.BioConversation", "m_pListener", SDK_FIELD(UBioConversation, m_pListener));
+    CheckField("SFXGame.BioConversation", "m_pConversationOwner", SDK_FIELD(UBioConversation, m_pConversationOwner));
+    CheckField("SFXGame.BioConversation", "m_pConversationPlayer", SDK_FIELD(UBioConversation, m_pConversationPlayer));
+    CheckField("SFXGame.BioConversation", "m_stage", SDK_FIELD(UBioConversation, m_stage));
+    CheckField("SFXGame.BioConversation", "m_SpeakerList", SDK_FIELD(UBioConversation, m_SpeakerList));
+    CheckField("SFXGame.BioConversation", "m_LookAtList", SDK_FIELD(UBioConversation, m_LookAtList));
+    CheckField("SFXGame.BioConversation", "m_aFSPrevPositions", SDK_FIELD(UBioConversation, m_aFSPrevPositions));
+    CheckField("SFXGame.BioConversation", "m_sCurrentSubTitle", SDK_FIELD(UBioConversation, m_sCurrentSubTitle));
+    CheckField("SFXGame.BioConversation", "m_nCurrentEntry", SDK_FIELD(UBioConversation, m_nCurrentEntry));
+    CheckField("SFXGame.BioConversation", "bUseFixedCameras", SDK_BOOL(UBioConversation, bUseFixedCameras));
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayingWheel));
     CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
     CheckField("Engine.SequenceEvent", "Originator", SDK_FIELD(USequenceEvent, Originator));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));

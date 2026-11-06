@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "game/ConsoleRequest.hpp"
 #include "game/BodyProbe.hpp"
+#include "game/ConversationWorld.hpp"
 
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
@@ -618,6 +619,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string which;
         words >> which;
         return game_menu_request::Inject(which);
+    }
+    if (verb == "convo") {
+        // `mevr convo [dump | world on|off|screen|vr]`: the conversation now (research/59), or how the next one is shown.
+        std::string rest;
+        std::getline(words, rest);
+        return conversation_world::Command(rest);
     }
     if (verb == "body") {
         // `mevr body`: Shepard's drawn dimensions against the player's (research/58, the body's scale).
