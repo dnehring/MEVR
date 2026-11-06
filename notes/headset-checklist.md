@@ -203,11 +203,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Calibration on each controller type: the rifle step finishes, the far orb is in reach, the cyan ring sits where
   your hand feels it. PS VR2 and a Quest over Steam Link get different calibrations. (research/25 sections 4, 8-9)
 
-### The game's start on one panel (session: Weapon-specific scope models)
-- [ ] Launch the game with the headset on: from the first frame the logos, the title, the camera flight after a key, the
-  main menu and the load's movie all show on one flat panel that stays where it appeared; no moment of the title's
-  planet painting filling the view, no 3D cinema screen in between, no flash of the world after the key. The level then
-  comes in as VR. (research/56, built 2026-11-05)
+### The game's start (session: release blockers)
+- [ ] Launch the game with the headset on: the boot and logos on the flat panel, then the title, the camera flight after a
+  key and the main menu on the 3D cinema screen, fixed in the room like a monitor: turn and move your head and the picture
+  inside stays still (no panning with the head), the planet scene with depth behind the screen. The load's movie on the flat
+  panel, no flash of the world after the key, then the level in VR. (research/56 "The front end on the 3D screen",
+  checked on the fake headset 2026-11-05)
 
 ## 3. Aiming, sights and scopes (session: Weapon-specific scope models)
 - [ ] Raise the sniper rifle: the picture only at the eye (never at a casual hold), no on/off flicker, the eye reaches

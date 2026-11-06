@@ -125,6 +125,12 @@ std::string StatusJson() {
         gFrame.depthCapped ? "true" : "false", j(gHeightM));
 }
 
+bool FrontEndWanted() noexcept {
+    std::lock_guard lock(gMutex);
+    RefreshSettings(GetTickCount64());
+    return gSettings.frontEnd;
+}
+
 } // namespace mevr::host::cine_screen
 
 namespace MELEVR::MevrBridge {
@@ -136,12 +142,6 @@ bool CineScreenWanted(bool conversation) noexcept {
     return conversation ? host::gSettings.conversations : host::gSettings.cutscenes;
 }
 
-bool FrontEndOnScreen() noexcept {
-    namespace host = mevr::host::cine_screen;
-    std::lock_guard lock(host::gMutex);
-    host::RefreshSettings(GetTickCount64());
-    return host::gSettings.frontEnd;
-}
 
 bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept {
     namespace host = mevr::host::cine_screen;

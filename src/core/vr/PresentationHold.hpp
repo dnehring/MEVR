@@ -30,11 +30,15 @@ public:
     int LastReadable() const { return last_; }
     // Still before the first load from the menus and the first gameplay mode.
     bool Starting() const { return starting_; }
+    // The start-up's boot, before the title (its unreadable byte, the logos' movie): the title's 3D screen comes with the
+    // title itself (7, or the camera flight's 6), so the boot isn't the screen, then a movie, then the screen again.
+    bool BeforeTitle() const { return starting_ && !titled_; }
 
 private:
     int last_ = -1;
     int lastOther_ = -1;      // the last mode read other than a movie (8)
     bool starting_ = true;
+    bool titled_ = false;     // a 6 or 7 read at start-up
     int gameplayFrames_ = 0;  // consecutive frames of a gameplay mode (0-4)
 };
 

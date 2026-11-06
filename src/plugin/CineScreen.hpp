@@ -19,4 +19,8 @@ vr::cine_screen::Frame PlanFrame(float halfH, float ipdM, float unitsPerMeter);
 // For snapshots: the settings, whether a scene is on the screen, its last plan and quads.
 std::string StatusJson();
 
+// [Cinematics] frontEnd: the start-up's front end (the title, its main menu) on the 3D screen (plugin/PresentationHold's
+// MevrBridge::FrontEndOnScreen asks).
+bool FrontEndWanted() noexcept;
+
 } // namespace mevr::host::cine_screen

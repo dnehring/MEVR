@@ -3438,6 +3438,7 @@ struct CineInputs
     bool        manualFlat    = false;   // g_flatCineCopyActive
     bool        sfr2CfgOn     = false;   // Stereo 2 is the active mode (serves tracking-off cine)
     bool        frontEndScreen = false;  // [MEVR] research/56: the front end on the 3D cinema screen (FrontEndOnScreen)
+    bool        frontEndBoot   = false;  // [MEVR] research/56: ... still before the title: flat (FrontEndBeforeTitle)
 };
 
 struct CineDecision
@@ -3532,7 +3533,8 @@ static CineDecision DecideCine(const CineInputs& in,
     static bool s_convo = false, s_cutscene = false;
     // [MEVR] research/56 (second pass, 2026-11-05): the front end on the 3D screen is one cutscene from the start to the
     // first gameplay (its unreadable start, the title, its camera flight, the main menu, a load): one fixed screen, the title's
-    // 3D scene in stereo, head look parked. Its movies still go flat ([DEADVETO], inMovie); its one-frame 0 is held by HoldPlainVr.
+    // 3D scene in stereo, head look parked. Its movies still go flat at once ([DEADVETO], inMovie unsustained below); its
+    // one-frame 0 is held by HoldPlainVr; the load from the menus is the flat panel (FrontEndOnScreen).
     if (in.frontEndScreen && !(in.gameMode >= 0 && in.gameMode <= 4)) { s_convo = false; s_cutscene = true; }
     // [MEVR] research/56: a 5 or 6 the front end shows as its menu (the title's camera flight, inMenuMode) never latches.
     else if (in.gameMode == 5 && !in.inMenuMode)   { s_convo = true;  s_cutscene = false; }
@@ -3579,7 +3581,10 @@ static CineDecision DecideCine(const CineInputs& in,
             if (s_menuRun  < kMenuSustain)  adj.inMenuMode = false;
             if (s_movieRun < kMovieSustain) adj.inMovie    = false;
         }
-        if (in.frontEndScreen) adj.inMenuMode = false;   // [MEVR] research/56: the title's GUI stays on the front end's screen
+        if (in.frontEndScreen) {   // [MEVR] research/56: the title's GUI stays on the front end's screen; its movies (the
+            adj.inMenuMode = false;  // logos) go flat at once, as outside a latched cine (the sustain kept a load's movie on
+            adj.inMovie = in.inMovie || in.frontEndBoot;  // the screen for a second, 2026-11-05), and so does the boot
+        }
         CineFinishDecision(d, adj, cfg);
     }
     return d;
@@ -3759,6 +3764,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     cineIn.manualFlat   = g_flatCineCopyActive.load(std::memory_order_acquire);
     cineIn.sfr2CfgOn    = cfg.sfr2Enabled && !cfg.stereoEnabled && !cfg.aerEnabled && !cfg.dibrEnabled;
     cineIn.frontEndScreen = frontEndHold && cineIn.sfr2CfgOn && MELEVR::MevrBridge::FrontEndOnScreen();   // [MEVR] research/56
+    cineIn.frontEndBoot   = cineIn.frontEndScreen && MELEVR::MevrBridge::FrontEndBeforeTitle();             // [MEVR] research/56
     CineDecision cine = DecideCine(cineIn, cfg);
     {   // [MEVR] research/56: plain VR after another view waits 100 ms with that view kept: pressing a key at the title went
         // 6 -> 0 -> 7 within 40 ms, one frame of the world between the cinematic's screen and the main menu's panel.
@@ -3783,7 +3789,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // moment video is involved; the latch fold is for camera-mode blips inside REAL 3D scenes only.
     {
         int effectiveGm = gameMode;
-        if (frontEndHold && !cineIn.frontEndScreen) effectiveGm = 7;   // [MEVR] research/56: the front end's flat panel: no second eye
+        if (frontEndHold && (!cineIn.frontEndScreen || cineIn.frontEndBoot)) effectiveGm = 7;   // [MEVR] research/56: the front end's flat panel (or its boot): no second eye
         else if (!binkActiveNow && !inMovie)
         {
             if (inConversationMode)  effectiveGm = 5;

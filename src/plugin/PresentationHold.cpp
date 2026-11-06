@@ -7,6 +7,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/PresentationHold.hpp"
+#include "plugin/CineScreen.hpp"
 
 #include <Windows.h>
 
@@ -57,7 +58,8 @@ bool FrontEndHold(int gameMode) noexcept {
         }
         mevr::log::Info("presentation: mode {} ({}) {}: the front end ({}){}", gameMode, ModeName(gameMode),
             gFrontEnd.Starting() ? "at start-up, before the first load or gameplay" : "after the menus (a load)",
-            MELEVR::MevrBridge::FrontEndOnScreen() ? "the 3D screen; a movie on the flat panel" : "the flat panel",
+            !FrontEndOnScreen() ? "the flat panel" : gFrontEnd.BeforeTitle() ? "the boot before the title: flat, head look parked"
+                                                    : "the 3D screen; a movie on the flat panel",
             gameMode == -1 && gFrontEnd.LastReadable() < 0 ? ", not the title's backdrop in VR" : "");
         gLoggedMode = gameMode;
     } else if (!held && gFrontEndHeld) {
@@ -71,6 +73,16 @@ bool FrontEndHold(int gameMode) noexcept {
     }
     gFrontEndHeld = held;
     return held;
+}
+
+bool FrontEndBeforeTitle() noexcept {
+    return gFrontEnd.BeforeTitle();
+}
+
+bool FrontEndOnScreen() noexcept {
+    // A load from the menus stays on the flat panel (its unreadable byte and movie: no scene to show, and the screen would
+    // come and go for the second before Halcyon sees the movie decoding).
+    return gFrontEnd.Starting() && mevr::host::cine_screen::FrontEndWanted();
 }
 
 bool HoldPlainVr(bool plainVr, int gameMode) noexcept {

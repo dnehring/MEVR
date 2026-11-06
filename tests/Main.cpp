@@ -7277,10 +7277,13 @@ void TestPresentationHold() {
     namespace pr = mevr::vr::presentation;
     {   // The front end: start-up's unreadable byte, the title, its camera flight, the menu's load, gameplay, an in-game load.
         pr::FrontEnd f;
+        CHECK(f.BeforeTitle());
         CHECK(f.Update(-1));    // start-up: no mode read yet
         CHECK(f.Update(8));     // the logos' movie mode (its video not always seen decoding)
         CHECK(f.Update(-1));
+        CHECK(f.BeforeTitle());
         CHECK(f.Update(7));     // the title
+        CHECK(!f.BeforeTitle());
         CHECK(f.Update(6));     // a key pressed: the camera flight to the main menu is the front end's menu, not a cutscene
         CHECK(!f.Update(0));    // a frame of mode 0 in the middle of it (seen 6, 0, 7)
         CHECK(!f.Update(0));
@@ -7290,6 +7293,7 @@ void TestPresentationHold() {
         CHECK(f.Starting());
         CHECK(f.Update(-1));    // a load from the main menu
         CHECK(!f.Starting());   // its cinematics are the game's
+        CHECK(!f.BeforeTitle());
         CHECK(f.Update(8));     // the load's movie mode, still after the menus
         CHECK(f.Update(-1));
         CHECK(!f.Update(6));    // a new game's opening cutscene: the game's

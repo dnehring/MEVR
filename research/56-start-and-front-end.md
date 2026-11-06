@@ -77,15 +77,33 @@ Why: the flat panel above is world-locked, but Halcyon parks head look only whil
 (`menuOpen || (cinematicContext && ...)` in RunFrame). The front end's hold is neither, so the title's camera kept turning with
 the head and the picture on the fixed panel panned with it.
 
-Now the front end is one cutscene on the 3D cinema screen (research/52), from the start to the first gameplay, when
-`[Cinematics] frontEnd = 1` (the default; 0: the flat panel as above): `MevrBridge::FrontEndOnScreen`, `CineInputs::frontEndScreen`
-(the hold and Stereo 2 on). In `DecideCine` it latches a cutscene in every front-end mode but gameplay; the sustained-GUI rule
-doesn't flatten it (`adj.inMenuMode` off), `CineFinishDecision` puts it on the screen whatever `[Cinematics] cutscenes` and
-Halcyon's VR-cutscene switch say, and the second-eye gate gets 6 for it, not 7. So head look is parked (the screen's rule), both
-eyes render at the game's projection from parallel cameras, and the title's UI is in the picture. Prerendered movies (the logos,
-a load's movie) still go to the flat panel (`[DEADVETO]`, `inMovie`); the title's one-frame 0 between 6 and 7 is still held back
-by `HoldPlainVr`. The latch ends at the first gameplay mode, as any cutscene's. [verify] on the fake headset: launch, title, a
-key, main menu, load; then in the headset.
+Now the title and its main menu are a cutscene on the 3D cinema screen (research/52), when `[Cinematics] frontEnd = 1` (the
+default; 0: the flat panel as above): `MevrBridge::FrontEndOnScreen` (the setting, before the first load from the menus),
+`CineInputs::frontEndScreen` (also the hold and Stereo 2 on). In `DecideCine` it latches a cutscene in every front-end mode but
+gameplay; the sustained-GUI rule doesn't flatten it (`adj.inMenuMode` off), `CineFinishDecision` puts it on the screen whatever
+`[Cinematics] cutscenes` and Halcyon's VR-cutscene switch say, and the second-eye gate gets 6 for it, not 7. So head look is
+parked (the screen's rule), both eyes render at the game's projection from parallel cameras, and the title's UI is in the
+picture. Three edges, each found on the fake headset's first run:
+
+- **The boot before the title** (the unreadable byte, the logos' 8; `FrontEnd::BeforeTitle`, until a 6 or 7 is read): flat, as a
+  movie would be (`CineInputs::frontEndBoot` sets `adj.inMovie`; the gate as 7, no second eye), the cutscene still latched so
+  head look stays parked. The first build put the boot's -1 on the screen, the logos' movie on the flat panel, then the title on
+  the screen: two switches in 3 s.
+- **Movies flatten at once** in the front end (`adj.inMovie` unsustained), as Halcyon does outside a latched cine; the latch's
+  0.3 s movie sustain kept a load's movie on the screen for 1.35 s before the flat panel.
+- **The load from the menus is the flat panel** from its first frame, as before (`FrontEndOnScreen` is false once `Starting()`
+  ends: the load's -1 and 8 have no scene to show).
+
+The title's one-frame 0 between 6 and 7 is still held back by `HoldPlainVr`; the latch ends at the first gameplay mode.
+
+Checked on the fake headset (2026-11-05, 23:22-23:32, three launches): `[VRSTATE] gm -1/8 ... -> FLAT panel` with `headLook=0`,
+`gm 7 alive cutscene -> 3D screen (MEVR)` at the title (`headLook=0`), the camera flight's 6 and the main menu's 7 on the screen,
+the load's `gm -1 ... -> FLAT panel` at its first frame, then `gm 0 ... -> VR` with `headLook=1`. Under a replayed head sweeping
++-25 degrees the screen's picture held still (mean difference 2 of 255 between yaws 24.5, 7, -18.5 and 0, against 12 for the same
+picture moved 20 px) and the screen stayed where it was in the room. Both eyes carry the title and its text, 35 px apart on a
+2309 px eye image: the screen's crop (1.48% a side) puts them at the screen's infinity, 1.5% of its width behind it; the title's
+scene (a planet from orbit) is all far away, so its 3D is that depth, not a near/far spread. The screen is the eye's shape (3.00 x
+3.11 m at 2.6 m), not 16:9. Not yet seen by a person in the headset.
 
 ## Left as it is
 

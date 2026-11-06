@@ -10,6 +10,9 @@ bool FrontEnd::Update(int gameMode) {
             starting_ = false;  // gameplay (not the title's one-frame 0 between its camera flight and the main menu)
         }
         last_ = gameMode;
+        if (gameMode == 6 || gameMode == 7) {
+            titled_ = true;
+        }
         if (gameMode != 8) {
             lastOther_ = gameMode;
         }

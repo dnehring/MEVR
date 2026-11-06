@@ -347,9 +347,10 @@ switching frameworks.
   cine only when the byte is unreadable (Halcyon's own comment). Plain VR after another view waits 100 ms (the title's 6, 0, 7
   flashed the world for a frame). Log `presentation:`. **Since 2026-11-05 the front end is on the 3D cinema screen**
   (`[Cinematics] frontEnd = 1`, default; the owner: the flat panel's picture moved with the head, Halcyon keeps head look on
-  there): one cutscene from the start to the first gameplay (`MevrBridge::FrontEndOnScreen`, `CineInputs::frontEndScreen` in
-  `DecideCine`/`CineFinishDecision`, the second-eye gate as 6), head look parked, the title in stereo on a fixed screen; movies
-  stay on the flat panel. research/56 "The front end on the 3D screen".
+  there): the title and main menu a cutscene on the screen (`MevrBridge::FrontEndOnScreen`, `CineInputs::frontEndScreen` in
+  `DecideCine`/`CineFinishDecision`, the second-eye gate as 6), head look parked, the title in stereo on a fixed screen; the boot
+  before the title flat with head look parked (`FrontEnd::BeforeTitle`, `frontEndBoot`), movies flat at once, the load from the
+  menus flat from its first frame. Checked on the fake headset. research/56 "The front end on the 3D screen".
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,
