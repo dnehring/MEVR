@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/ik/ArmLength.hpp"
+#include "core/ik/BodyScale.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BoneNames.hpp"
 #include "core/ik/CameraHook.hpp"
@@ -13,6 +14,7 @@
 #include "core/vr/Controllers.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/BodyFollow.hpp"
+#include "game/BodyScale.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/Fingers.hpp"
 #include "game/GunKick.hpp"
@@ -1046,6 +1048,20 @@ void Drive(double deltaSeconds) {
             body_follow::Reset();
         }
         request.maxStretch = hand_calibration::ArmStretch();
+        // The body at the player's size (research/58, game/body_scale): scaled about the floor under the view so Shepard's eyes
+        // are where the view is; the writer maps the goals below through the inverse. The writer measures his unscaled eyes
+        // above his floor from `eyes`.
+        request.eyes = info->eyes;
+        double bodyScale = 1.0;
+        {
+            ik::Vec3 const view = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
+            if (auto const unscaled = engine::bone_pose::UnscaledBody()) {
+                bodyScale = body_scale::Step(view.z - unscaled->floorZ, targets.body.unitsPerMeter, deltaSeconds);
+                request.bodyScale = {bodyScale, {view.x, view.y, unscaled->floorZ}};
+            } else {
+                body_scale::Idle(deltaSeconds);  // nothing measured yet: the request stays unscaled, the reach too
+            }
+        }
         auto const componentRotation = ik::RotationOf(componentToWorld);
         std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
         std::optional<weapon::Grip> heldGrip;
@@ -1067,7 +1083,13 @@ void Drive(double deltaSeconds) {
             // eyes, where the hand sits on its controller (a gun at the cheek lines up with the eye).
             if (double const player = body_calibration::ArmLength().value_or(hand_calibration::ArmLength());
                 player > 0.0 && gLayout.lengths[side] > 0.0) {
-                fullReach[side] = std::clamp(gLayout.lengths[side] / (player * targets.body.unitsPerMeter), kMinReachScale, kMaxReachScale);
+                // With the body at the player's size (research/58) the hands go on the controllers, 1:1 (the arms stretch for
+                // what's left, [Hands] armStretch): the calibrated arm is measured from shoulders 0.27 m apart, Shepard's joints
+                // are 0.37 apart, so comparing them understated his reach by 8%; his grip span at the player's size matches the
+                // player's (1.75 against 1.74 m, measured 2026-11-05).
+                fullReach[side] = std::abs(bodyScale - 1.0) > ik::body_scale::kOffWithin
+                    ? 1.0
+                    : std::clamp(gLayout.lengths[side] / (player * targets.body.unitsPerMeter), kMinReachScale, kMaxReachScale);
                 vr::controllers::Hand const& tracked = side == kLeft ? controllers.left : controllers.right;
                 if (controllers.active && tracked.gripValid) {
                     XrVector3f const& g = tracked.grip.position;

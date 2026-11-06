@@ -70,7 +70,9 @@ std::atomic<bool> gBroken{false};  // an access violation in the writer: writes 
 std::atomic<unsigned> gCalls{0};
 std::atomic<unsigned> gPlayerCalls{0};
 std::atomic<unsigned> gWrites{0};
-std::atomic<double> gBodyScale{1.0};  // research/58's experiment (SetBodyScale)
+// The unscaled body (research/58): the last write's eye height and floor (UnscaledBody), under gSampleLock.
+Unscaled gUnscaled;
+std::uint64_t gUnscaledMs = 0;
 std::atomic<std::uint64_t> gTotalWrites{0};
 std::atomic<unsigned> gRejects{0};
 // Writes in which a solve moved a kept bone (Request::keep), which then kept its animated entry.
@@ -349,6 +351,8 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         copy.legs = gRequest.legs;
         copy.keep.assign(gRequest.keep.begin(), gRequest.keep.end());
         copy.keepKeys.assign(gRequest.keepKeys.begin(), gRequest.keepKeys.end());
+        copy.bodyScale = gRequest.bodyScale;
+        copy.eyes = gRequest.eyes;
     }
     ReleaseSRWLockShared(&gRequestLock);
     if (stale != nullptr) {
@@ -419,6 +423,50 @@ void Write(Mesh* self, float deltaTime) {
     kept.clear();
     for (int bone : request.keep) {
         kept.push_back(pose[bone]);
+    }
+    // The body's scale (research/58). The animated pose is unscaled (the animation recomposed it): its floor (the lowest
+    // bone not kept) and Shepard's eyes above it go to the mod for the factor. The goals are in the scaled world: through the
+    // inverse they land where they were meant to once the finished pose is scaled (below, after the fingers).
+    {
+        double floorZ = std::numeric_limits<double>::infinity();
+        for (int i = 0; i < count; ++i) {
+            if (std::find(request.keep.begin(), request.keep.end(), i) == request.keep.end()) {
+                floorZ = (std::min)(floorZ, pose[static_cast<std::size_t>(i)].translation.z);
+            }
+        }
+        int const eyeL = request.eyes[0];
+        int const eyeR = request.eyes[1];
+        if (std::isfinite(floorZ) && eyeL >= 0 && eyeL < count && eyeR >= 0 && eyeR < count) {
+            double const eyeZ = 0.5 * (pose[static_cast<std::size_t>(eyeL)].translation.z + pose[static_cast<std::size_t>(eyeR)].translation.z);
+            AcquireSRWLockExclusive(&gSampleLock);
+            gUnscaled = {eyeZ - floorZ, floorZ};
+            gUnscaledMs = GetTickCount64();
+            ReleaseSRWLockExclusive(&gSampleLock);
+        }
+    }
+    ik::body_scale::Scale const scale = request.bodyScale;
+    if (scale.Active()) {
+        namespace bs = ik::body_scale;
+        for (Arm& arm : request.arms) {
+            if (arm.target == Target::Component) {
+                arm.wrist = bs::Unscale(scale, arm.wrist);
+            }
+        }
+        ik::TorsoGoal& goal = request.torso.goal;
+        goal.head = goal.relative ? bs::UnscaleVector(scale, goal.head) : bs::Unscale(scale, goal.head);
+        goal.bodyAt = bs::Unscale(scale, goal.bodyAt);
+        goal.maxBodyShift = bs::UnscaleLength(scale, goal.maxBodyShift);
+        // The support grip's left-controller meters become fewer unscaled units; its foregrip, barrel and muzzle are in the
+        // hand bone's own axes, already without the bone's scale (game/weapon divides it out); the calibrated span is in
+        // drawn component units.
+        request.support.unitsPerMeter = bs::UnscaleLength(scale, request.support.unitsPerMeter);
+        request.support.calibratedSpan = bs::UnscaleVector(scale, request.support.calibratedSpan);
+        request.gunShift = bs::UnscaleVector(scale, request.gunShift);
+        request.gunKick.backUnits = bs::UnscaleLength(scale, request.gunKick.backUnits);
+        for (Leg& leg : request.legs) {
+            leg.ankle = bs::Unscale(scale, leg.ankle);
+            leg.knee = bs::Unscale(scale, leg.knee);
+        }
     }
     if (request.head >= 0 && request.head < count) {
         AcquireSRWLockExclusive(&gSampleLock);
@@ -637,31 +685,18 @@ void Write(Mesh* self, float deltaTime) {
         gFingersTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
     }
-    // The body's scale (research/58, an experiment: `mevr body scale <s>`): every bone but the kept ones (Camera and God) scaled
-    // by s about the floor under the Root bone, its own scale too, so the skinned mesh grows; 1 = off.
-    if (double const s = gBodyScale.load(std::memory_order_relaxed); s != 1.0 && std::isfinite(s) && s > 0.5 && s < 2.0) {
-        double floorZ = std::numeric_limits<double>::infinity();
-        for (int i = 0; i < count; ++i) {
-            if (std::find(request.keep.begin(), request.keep.end(), i) == request.keep.end()) {
-                floorZ = (std::min)(floorZ, pose[static_cast<std::size_t>(i)].translation.z);
-            }
-        }
+    // The body's scale (research/58): every bone but the kept ones (Camera and God) scaled about the pivot, its own scale
+    // too, so the skinned mesh and what's attached to it grow; the goals went through the inverse above.
+    if (scale.Active()) {
         int root = -1;
-        for (int i = 0; i < count && root < 0; ++i) {
-            if (std::find(request.keep.begin(), request.keep.end(), i) == request.keep.end()) {
-                root = i;
+        for (int i = 0; i < count; ++i) {
+            if (std::find(request.keep.begin(), request.keep.end(), i) != request.keep.end()) {
+                continue;
             }
+            pose[static_cast<std::size_t>(i)] = ik::body_scale::Apply(scale, pose[static_cast<std::size_t>(i)]);
+            root = root < 0 ? i : root;
         }
-        if (root >= 0 && std::isfinite(floorZ)) {
-            ik::Vec3 const pivot{pose[static_cast<std::size_t>(root)].translation.x, pose[static_cast<std::size_t>(root)].translation.y, floorZ};
-            for (int i = 0; i < count; ++i) {
-                if (std::find(request.keep.begin(), request.keep.end(), i) != request.keep.end()) {
-                    continue;
-                }
-                ik::Transform& scaled = pose[static_cast<std::size_t>(i)];
-                scaled.translation = pivot + (scaled.translation - pivot) * s;
-                scaled.scale *= s;
-            }
+        if (root >= 0) {
             first = (std::min)(first, root);
         }
     }
@@ -1472,12 +1507,15 @@ std::optional<FingersSample> LatestFingers() {
     return fresh ? std::optional<FingersSample>(sample) : std::nullopt;
 }
 
-void SetBodyScale(double scale) {
-    gBodyScale.store(scale, std::memory_order_relaxed);
-}
-
-double BodyScale() {
-    return gBodyScale.load(std::memory_order_relaxed);
+std::optional<Unscaled> UnscaledBody(std::uint64_t maxAgeMs) {
+    AcquireSRWLockShared(&gSampleLock);
+    Unscaled const copy = gUnscaled;
+    std::uint64_t const at = gUnscaledMs;
+    ReleaseSRWLockShared(&gSampleLock);
+    if (at == 0 || GetTickCount64() - at > maxAgeMs) {
+        return std::nullopt;
+    }
+    return copy;
 }
 
 KickSamples WrittenGunKicks() {

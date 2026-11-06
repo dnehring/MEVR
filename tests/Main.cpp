@@ -11350,6 +11350,7 @@ int RunExeTests();
 int RunGfxTests();
 int RunPowerWheelTests();
 int RunSquadPlaceTests();
+int RunBodyScaleTests();
 int RunLandmarkTests();
 int RunGuiEventsTests();
 int RunOmniPadTests();
@@ -11493,6 +11494,7 @@ int main() {
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
     gFailures += RunSquadPlaceTests();
+    gFailures += RunBodyScaleTests();
     gFailures += RunLandmarkTests();
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();

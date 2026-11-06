@@ -77,6 +77,7 @@
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
 #include "game/SquadPlace.hpp"
+#include "game/BodyScale.hpp"
 #include "game/Voice.hpp"
 #include "core/vr/Voice.hpp"
 #include "game/SquadWeapons.hpp"
@@ -955,7 +956,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -967,7 +968,7 @@ void PublishStatus() {
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
-        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson());
+        game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson(), game::body_scale::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1117,6 +1118,7 @@ void Heartbeat() {
         game::squad_context::LogStats();
         game::squad_orders::LogStats();
         game::squad_place::LogStats();
+    game::body_scale::LogStats();
         game::squad_ack::LogStats();
         game::voice::LogStats();
         game::mako::LogStats();
@@ -1454,6 +1456,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::squad_context::Shutdown();
     game::squad_orders::Shutdown();
     game::squad_place::Shutdown();
+    game::body_scale::Shutdown();
     game::squad_ack::Shutdown();
     game::voice::Shutdown();
     game::vent::Shutdown();

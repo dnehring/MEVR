@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/ik/ArmPose.hpp"
+#include "core/ik/BodyScale.hpp"
 #include "core/ik/Fingers.hpp"
 #include "core/ik/GunKick.hpp"
 #include "core/ik/TorsoPose.hpp"
@@ -168,6 +169,14 @@ struct Request {
     // their RefSkeleton names, checked like the chains'. A future whole-body move must keep them too.
     std::vector<int> keep;
     std::vector<std::uint64_t> keepKeys;
+
+    // The body's scale (research/58, game/body_scale): after every solve, every bone but `keep` scaled by `bodyScale.s` about
+    // its pivot (the floor under the view), its own scale too, so the skinned mesh and what's attached (the gun) grow; the
+    // goals above are in the scaled world and the writer maps them through the inverse before solving. Inactive near 1.
+    ik::body_scale::Scale bodyScale;
+    // Shepard's eye bones (-1: unknown): the writer measures their height above his lowest bone in the unscaled pose for
+    // the scale's factor (UnscaledEyeHeight).
+    std::array<int, 2> eyes{-1, -1};
 };
 
 // What the writer did with Request::support on its last write.
@@ -411,10 +420,13 @@ struct KickSamples {
     std::uint64_t kickedWrites = 0;  // writes with a kick in them since the hook went in (never reset)
 };
 KickSamples WrittenGunKicks();
-// research/58's experiment: every bone but the kept ones scaled by scale about the floor under Shepard's Root, written after
-// the solves (1 = off; 0.5..2). Any thread.
-void SetBodyScale(double scale);
-double BodyScale();
+// Shepard's eyes above his lowest bone in the last write's unscaled pose (component units), and that lowest bone's height (the
+// floor the body's scale pivots on); nullopt without eyes in the request or a write within `maxAgeMs`. Any thread.
+struct Unscaled {
+    double eyeHeight = 0.0;
+    double floorZ = 0.0;
+};
+std::optional<Unscaled> UnscaledBody(std::uint64_t maxAgeMs = 500);
 
 // What the writer did with Request::fingers on its last write (any hand enabled), within half a second.
 struct FingersSample {

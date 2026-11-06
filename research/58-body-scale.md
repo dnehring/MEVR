@@ -68,7 +68,30 @@ the floor under Root, its own `FBoneAtom::scale` multiplied):
   view hangs off them), with arm IK's and the torso's goals mapped through its inverse so they land where they are meant to
   after it; reach scaling then comes near 1. Both engine questions are answered yes (section 2).
 
-## 4. The plan (B)
+## 4. Built (2026-11-06 00:00) and checked on the fake headset
+
+`core/ik/BodyScale` (the factor, the scale and its inverse; `tests/BodyScaleTests.cpp`), `engine/BonePose` (`Request::bodyScale`,
+`Request::eyes`: the writer measures Shepard's unscaled eyes above his floor, maps every goal through the inverse before the
+solves and scales the finished pose, Camera and God kept; `UnscaledBody()`), `game/BodyScale` (`[Body] scale = auto | off |
+<number>`, auto by default; the slow-falling estimates; at most 0.1 per second of change; `mevr body scale <s>|auto|off`;
+heartbeat `body scale:`; snapshot `"mod"."bodyScale"`), `game/ArmIk` (fills the request on foot in first person; with the body
+scaled the hands go on the controllers 1:1, the arms stretching up to `[Hands] armStretch` for the rest).
+
+Checked (23:54-23:56, the user's `Custom 1` view, 1.75 m above the floor): auto settled at 1.048 (Shepard's standing eyes
+measured 1.674 m, the view 1.755 m; his eyes then 1.76 m, at the view); both drawn wrists on their controllers to the
+millimetre (7 cm behind each grip along its -Z, the designed wrist-from-grip offset; at scale 1 the reach scaling had drawn the
+raised left wrist 6 cm short); the assault rifle drawn, its grip measured unchanged in the hand's axes (muzzle 49.2 units from
+the wrist), the aim ray along the drawn barrel, body and gun in proportion in the eye image. `game/weapon`'s follow check
+drops the bone's scale by design (diagnostics), so it reads the scaled gun as 1.9 units of error.
+
+**The view's height decides the size.** Auto puts Shepard's eyes at the view; the view is the game's first-person camera
+(about 1.83 m above his floor) plus Halcyon's camera offset, and the user's profile lowers it 8.2 cm, so auto came to 1.048
+rather than the 1.089 their calibrated 1.84 m eye height asks. With `cameraOffsetUp` back near 0 the view is at about their
+real eye height and auto goes to about 1.08. Next: set the view's height from the calibrated standing eye height (a host seam),
+so it needs no hand tuning. [verify] in the headset: the body and hands at the player's size, the gun's feel, the sights (the
+calibrated stance's shift is computed on the unscaled gun: at 1.09 about 5 mm off, the sight assist takes the last centimetre).
+
+## 5. The plan as designed (B)
 
 1. **s from the two eye heights**: the player's standing eye height (the calibration's `standEyeM`, else the holsters' floor
    sample, else `[Holsters] eyeHeightM`) over Shepard's, measured live from his eye bones while he stands holstered and

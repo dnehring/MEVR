@@ -2,11 +2,11 @@
 #include "game/BodyProbe.hpp"
 
 #include "core/Log.hpp"
-#include "engine/BonePose.hpp"
 #include "engine/Skeleton.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/ArmIk.hpp"
 #include "game/BodyCalibration.hpp"
+#include "game/BodyScale.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HandTargets.hpp"
 #include "game/Player.hpp"
@@ -39,15 +39,10 @@ std::string Command(std::string const& args) {
     std::string sub;
     words >> sub;
     if (sub == "scale") {
-        // `mevr body scale <s>`: research/58's experiment, the drawn body scaled about the floor (1 = off).
-        double s = 1.0;
-        words >> s;
-        if (!words || !(s >= 0.5 && s <= 2.0)) {
-            return std::format("body: scale is {:.3f}; give 0.5..2 (1 = off)", engine::bone_pose::BodyScale());
-        }
-        engine::bone_pose::SetBodyScale(s);
-        log::Info("body: the drawn body scaled {:.3f} about the floor (experiment)", s);
-        return std::format("body: scale {:.3f}", s);
+        // `mevr body scale <s> | auto | off`: the body at the player's size (research/58, game/body_scale).
+        std::string rest;
+        std::getline(words, rest);
+        return body_scale::Command(rest);
     }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;

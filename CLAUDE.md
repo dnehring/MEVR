@@ -291,6 +291,15 @@ switching frameworks.
   backing up (`legsFollowMotion = 0`: the old rule; log `torso: legs:`, snapshot `torso.legs`; replay
   `tools/make-walk-recording.py`'s walk with `-Inputs`). Room-scale (the pawn following real steps past the cap) is
   designed there, not built.
+- LE1 body at the player's size ([research/58](research/58-body-scale.md), 2026-11-06; the user: "vital for release"; `core/ik/BodyScale`,
+  `game/BodyScale`, `engine/BonePose`'s `Request::bodyScale`): on foot in first person the bone writer scales every bone but
+  Camera and God by s about the floor under the view, after the solves (the skinning honours `FBoneAtom::scale`, and the gun
+  and anything attached grow with the hand: measured), and maps every goal through the inverse before them, so the hands land
+  on the controllers 1:1 (reach scaling only without it). `[Body] scale = auto` (default): s puts Shepard's eyes at the view
+  (the view's standing height above his floor over his standing holstered eye height, both measured live; 0.85..1.25, 0.1/s);
+  `off`, or a number. So the view's height decides the size: the user's 1.84 m eye height against Shepard's 1.69 asks 1.089,
+  their profile's `cameraOffsetUp = -0.082` held it at 1.048. `mevr body` measures (bones above the floor, arms, the gun), `mevr
+  body scale <s>|auto|off`; log `body scale:`; snapshot `"mod"."bodyScale"`. [verify] in the headset.
 - LE1 weapon drawn, like exploring ([research/38](research/38-combat-stance.md), `game/CombatStance`, rules in
   `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, on by default except `exploreStance`; our menu's Controls > Weapon drawn): VR on
   foot, first person. `exploreStance` (A, mod; **off by default until the headset confirms the redesign**; no menu row since

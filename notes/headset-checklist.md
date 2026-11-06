@@ -112,6 +112,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
   screen's lower buttons must not close it. (research/57 sections 2-3 and 6, built 2026-11-04/05)
+- [ ] The body at your size (squad-placement session, research/58, built 2026-11-06): on foot in first person Shepard's
+  body, hands and gun are scaled so his eyes are at the view (`[Body] scale = auto`; the heartbeat's `body scale:` line says
+  the factor). Your `Custom 1` profile lowers the view 8.2 cm (`cameraOffsetUp = -0.082` in MELEVR.ini): try it near 0 so the
+  view is at your real eye height (the factor then about 1.08). Do the hands sit on your real hands, does the rifle feel
+  life-size, do the sights still line up? `mevr body scale off` compares.
 - [ ] The wrist tap's target (squad-placement session; built 2026-11-05 evening after the first try found nothing to aim at):
   weapon holstered, raise the left wrist: a faint orange button on the back of Shepard's forearm, just behind the wrist?
   Touch it with Shepard's right index fingertip (the hand you see, pointing): brighter, then cyan with a light tick, and the

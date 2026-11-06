@@ -253,6 +253,7 @@ set(MEVR_MOD_SOURCES
     src/core/d3d11/Blit.cpp
     src/core/d3d11/Blit.hpp
     src/core/ik/ArmLength.cpp
+    src/core/ik/BodyScale.cpp
     src/core/ik/ArmLength.hpp
     src/core/ik/ArmPose.cpp
     src/core/ik/ArmPose.hpp
@@ -402,6 +403,8 @@ set(MEVR_MOD_SOURCES
     src/game/BodyCalibration.hpp
     src/game/BodyProbe.cpp
     src/game/BodyProbe.hpp
+    src/game/BodyScale.cpp
+    src/game/BodyScale.hpp
     src/game/Comfort.cpp
     src/game/Comfort.hpp
     src/game/CameraProbe.cpp
@@ -934,6 +937,7 @@ if (MEVR_BUILD_TESTS)
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
         tests/SquadPlaceTests.cpp
+        tests/BodyScaleTests.cpp
         tests/LandmarkTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
@@ -958,6 +962,7 @@ if (MEVR_BUILD_TESTS)
         src/ue3/Reflect.cpp
         src/core/PngFile.cpp
         src/core/ik/ArmLength.cpp
+        src/core/ik/BodyScale.cpp
         src/core/ik/ArmPose.cpp
         src/core/ik/BodySlots.cpp
         src/core/ik/HandFrame.cpp
