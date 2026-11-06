@@ -66,6 +66,27 @@ One panel from the first frame until the loaded level, which then comes in as VR
 `2026-11-05_08-29-45-625`). The panel is world-locked where it first appears (`worldLockedPanels`), so it doesn't move between
 the logos, the title and the main menu (`world panels:` logs one placement). Unit tests: `TestPresentationHold`.
 
+## The front end on the 3D screen (2026-11-05, second pass)
+
+The owner, after the release's first QA: "in opening menu, we're doing the flat display, but right now it's actually just doing
+head track. So when I move my head, I physically see the scene change. What I wanted is that the scene actually was within the
+bounding box of like a visual monitor, but it was still 3D in appearance. So right now it's the worst of both worlds." And: "the
+world position moves with my head position instead of staying still but it's rendered in 3d."
+
+Why: the flat panel above is world-locked, but Halcyon parks head look only while its own menu is open or in a cinematic
+(`menuOpen || (cinematicContext && ...)` in RunFrame). The front end's hold is neither, so the title's camera kept turning with
+the head and the picture on the fixed panel panned with it.
+
+Now the front end is one cutscene on the 3D cinema screen (research/52), from the start to the first gameplay, when
+`[Cinematics] frontEnd = 1` (the default; 0: the flat panel as above): `MevrBridge::FrontEndOnScreen`, `CineInputs::frontEndScreen`
+(the hold and Stereo 2 on). In `DecideCine` it latches a cutscene in every front-end mode but gameplay; the sustained-GUI rule
+doesn't flatten it (`adj.inMenuMode` off), `CineFinishDecision` puts it on the screen whatever `[Cinematics] cutscenes` and
+Halcyon's VR-cutscene switch say, and the second-eye gate gets 6 for it, not 7. So head look is parked (the screen's rule), both
+eyes render at the game's projection from parallel cameras, and the title's UI is in the picture. Prerendered movies (the logos,
+a load's movie) still go to the flat panel (`[DEADVETO]`, `inMovie`); the title's one-frame 0 between 6 and 7 is still held back
+by `HoldPlainVr`. The latch ends at the first gameplay mode, as any cutscene's. [verify] on the fake headset: launch, title, a
+key, main menu, load; then in the headset.
+
 ## Left as it is
 
 - An in-game load (`gm 0 -> -1`) still shows its first 0.4 s as plain VR. That's the last frame of the old level, frozen

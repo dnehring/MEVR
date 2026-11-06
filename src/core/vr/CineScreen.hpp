@@ -22,6 +22,8 @@ namespace mevr::vr::cine_screen {
 struct Settings {
     bool conversations = true;   // conversations: on the 3D screen while Halcyon's VR conversations are on
     bool cutscenes = true;       // cutscenes: the same for cutscenes (prerendered movies stay on the flat screen)
+    bool frontEnd = true;        // frontEnd: the start-up's front end (the title, its main menu) on the 3D screen, whatever
+                                 // `cutscenes` says; 0: the flat panel (research/56)
     float distanceM = 2.6f;      // distanceM: how far ahead the screen stands when a scene starts
     float widthM = 3.0f;         // widthM: the screen's width
     float depth = 0.015f;        // depth: infinity's disparity, a fraction of the screen's width (0 = flat, at the screen)

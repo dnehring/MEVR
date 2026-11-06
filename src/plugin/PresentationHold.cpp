@@ -55,12 +55,13 @@ bool FrontEndHold(int gameMode) noexcept {
         if (!gFrontEndHeld) {
             gFrontEndSinceMs = now;
         }
-        mevr::log::Info("presentation: mode {} ({}) {}: the front end's flat panel{}", gameMode, ModeName(gameMode),
+        mevr::log::Info("presentation: mode {} ({}) {}: the front end ({}){}", gameMode, ModeName(gameMode),
             gFrontEnd.Starting() ? "at start-up, before the first load or gameplay" : "after the menus (a load)",
+            MELEVR::MevrBridge::FrontEndOnScreen() ? "the 3D screen; a movie on the flat panel" : "the flat panel",
             gameMode == -1 && gFrontEnd.LastReadable() < 0 ? ", not the title's backdrop in VR" : "");
         gLoggedMode = gameMode;
     } else if (!held && gFrontEndHeld) {
-        mevr::log::Info("presentation: mode {} ({}) after {:.1f} s on the front end's flat panel: Halcyon decides again",
+        mevr::log::Info("presentation: mode {} ({}) after {:.1f} s of the front end: Halcyon decides again",
             gameMode, ModeName(gameMode), static_cast<double>(now - gFrontEndSinceMs) / 1000.0);
         gLoggedMode = -2;
     }

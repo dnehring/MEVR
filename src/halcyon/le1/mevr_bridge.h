@@ -477,6 +477,10 @@ bool CineScreenWanted(bool conversation) noexcept;
 // or gameplay. RunFrame then treats it as the menu (the flat panel, no second eye) instead of plain VR or a cine, and neither
 // the mode nor the camera's name latches a cine there.
 bool FrontEndHold(int gameMode) noexcept;
+// Present thread, each frame the front end holds: true to show it on the 3D cinema screen ([Cinematics] frontEnd, default 1:
+// a fixed screen, the title's 3D scene in stereo, head look parked; the owner, 2026-11-05: "within the bounding box of like a
+// visual monitor, but it was still 3D"), false for the flat panel. Prerendered movies stay on the flat panel either way.
+bool FrontEndOnScreen() noexcept;
 // Present thread, each frame after the decision: true to show the previous frame's presentation instead of this one's plain
 // VR (plain VR after another view waits 100 ms, so a one-frame mode 0 between two other views never shows the world).
 bool HoldPlainVr(bool plainVr, int gameMode) noexcept;

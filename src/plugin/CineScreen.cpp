@@ -56,7 +56,8 @@ float ReadFloat(wchar_t const* key, float fallback, std::wstring const& path) {
 }
 
 bool Same(cs::Settings const& a, cs::Settings const& b) {
-    return a.conversations == b.conversations && a.cutscenes == b.cutscenes && a.distanceM == b.distanceM && a.widthM == b.widthM &&
+    return a.conversations == b.conversations && a.cutscenes == b.cutscenes && a.frontEnd == b.frontEnd && a.distanceM == b.distanceM &&
+           a.widthM == b.widthM &&
            a.depth == b.depth && a.convergeM == b.convergeM;
 }
 
@@ -71,6 +72,7 @@ void RefreshSettings(std::uint64_t now) {
     if (!path.empty()) {
         s.conversations = GetPrivateProfileIntW(L"Cinematics", L"conversations", s.conversations ? 1 : 0, path.c_str()) != 0;
         s.cutscenes = GetPrivateProfileIntW(L"Cinematics", L"cutscenes", s.cutscenes ? 1 : 0, path.c_str()) != 0;
+        s.frontEnd = GetPrivateProfileIntW(L"Cinematics", L"frontEnd", s.frontEnd ? 1 : 0, path.c_str()) != 0;
         s.distanceM = ReadFloat(L"distanceM", s.distanceM, path);
         s.widthM = ReadFloat(L"widthM", s.widthM, path);
         s.depth = ReadFloat(L"depth", s.depth, path);
@@ -81,9 +83,10 @@ void RefreshSettings(std::uint64_t now) {
         gSettingsLogged = true;
         gCapLogged = false;
         mevr::log::Info("cine screen: [Cinematics] conversations = {}, cutscenes = {} (on the 3D screen while Halcyon's VR conversations / "
-                        "cutscenes are on; off: in VR as before); the screen {:.2f} m wide at {:.2f} m, depth {:.2f}% of its width "
+                        "cutscenes are on; off: in VR as before), frontEnd = {} (the title and its menus); the screen {:.2f} m wide at "
+                        "{:.2f} m, depth {:.2f}% of its width "
                         "(at most {:.2f}% for a 64 mm eye distance), the scene {:.2f} m away on the screen plane",
-            s.conversations ? 1 : 0, s.cutscenes ? 1 : 0, s.widthM, s.distanceM, s.depth * 100.0f,
+            s.conversations ? 1 : 0, s.cutscenes ? 1 : 0, s.frontEnd ? 1 : 0, s.widthM, s.distanceM, s.depth * 100.0f,
             cs::MaxDepth(s.widthM, cs::kDefaultIpdM) * 100.0f, s.convergeM);
     }
     gSettings = s;
@@ -131,6 +134,13 @@ bool CineScreenWanted(bool conversation) noexcept {
     std::lock_guard lock(host::gMutex);
     host::RefreshSettings(GetTickCount64());
     return conversation ? host::gSettings.conversations : host::gSettings.cutscenes;
+}
+
+bool FrontEndOnScreen() noexcept {
+    namespace host = mevr::host::cine_screen;
+    std::lock_guard lock(host::gMutex);
+    host::RefreshSettings(GetTickCount64());
+    return host::gSettings.frontEnd;
 }
 
 bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept {

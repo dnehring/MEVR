@@ -3437,6 +3437,7 @@ struct CineInputs
     bool        liveWorldGui  = false;
     bool        manualFlat    = false;   // g_flatCineCopyActive
     bool        sfr2CfgOn     = false;   // Stereo 2 is the active mode (serves tracking-off cine)
+    bool        frontEndScreen = false;  // [MEVR] research/56: the front end on the 3D cinema screen (FrontEndOnScreen)
 };
 
 struct CineDecision
@@ -3464,7 +3465,8 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
     }
     const bool cinematicContext = d.inConversation || d.inCutscene;
     bool vrCineOn = (d.inConversation && cfg.cineVrConvo) ||
-                    (d.inCutscene && cfg.cineVrCutscene);
+                    (d.inCutscene && cfg.cineVrCutscene) ||
+                    (d.inCutscene && in.frontEndScreen);   // [MEVR] research/56: the front end's screen, whatever the cutscene choice
     // [DEADVETO] a dead scene is prerendered video: no depth exists, so VR presentation is never
     // right. ME2 landed on this for its gm 5/6 startup logos; ME3 for its gm-8 movies.
     if (!in.sceneAlive) vrCineOn = false;
@@ -3480,7 +3482,7 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
     d.vrCineActive = cinematicContext && vrCineOn && !d.forceFlatCine;
     // [MEVR] the 3D cinema screen (research/52): a VR cine renders both passes as usual but at the game's own projection,
     // and each eye's render goes on a screen fixed in the room instead of filling the view ([Cinematics] in LE1MEVR.ini).
-    d.mevrScreen = d.vrCineActive && MELEVR::MevrBridge::CineScreenWanted(d.inConversation);
+    d.mevrScreen = d.vrCineActive && (in.frontEndScreen || MELEVR::MevrBridge::CineScreenWanted(d.inConversation));   // [MEVR] front end
 
     // [VRCINE FILL] render AND declare the same window gameplay uses. ME2's reasoning, from its
     // own source: the director's per-shot framing FOV is not the mod's to honour in a headset.
@@ -3528,8 +3530,12 @@ static CineDecision DecideCine(const CineInputs& in,
     // to remove. The video itself is handled by [DEADVETO] in CineFinishDecision and by the
     // inMovie flat-force, so holding the CONTEXT costs nothing.
     static bool s_convo = false, s_cutscene = false;
+    // [MEVR] research/56 (second pass, 2026-11-05): the front end on the 3D screen is one cutscene from the start to the
+    // first gameplay (its unreadable start, the title, its camera flight, the main menu, a load): one fixed screen, the title's
+    // 3D scene in stereo, head look parked. Its movies still go flat ([DEADVETO], inMovie); its one-frame 0 is held by HoldPlainVr.
+    if (in.frontEndScreen && !(in.gameMode >= 0 && in.gameMode <= 4)) { s_convo = false; s_cutscene = true; }
     // [MEVR] research/56: a 5 or 6 the front end shows as its menu (the title's camera flight, inMenuMode) never latches.
-    if (in.gameMode == 5 && !in.inMenuMode)        { s_convo = true;  s_cutscene = false; }
+    else if (in.gameMode == 5 && !in.inMenuMode)   { s_convo = true;  s_cutscene = false; }
     else if (in.gameMode == 6 && !in.inMenuMode)   { s_convo = false; s_cutscene = true;  }
     else if (in.gameMode >= 0 && in.gameMode <= 4) { s_convo = false; s_cutscene = false; }
     else if (in.haveCineMode && !s_convo && !s_cutscene &&
@@ -3573,6 +3579,7 @@ static CineDecision DecideCine(const CineInputs& in,
             if (s_menuRun  < kMenuSustain)  adj.inMenuMode = false;
             if (s_movieRun < kMovieSustain) adj.inMovie    = false;
         }
+        if (in.frontEndScreen) adj.inMenuMode = false;   // [MEVR] research/56: the title's GUI stays on the front end's screen
         CineFinishDecision(d, adj, cfg);
     }
     return d;
@@ -3751,6 +3758,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     cineIn.liveWorldGui = liveWorldGui;
     cineIn.manualFlat   = g_flatCineCopyActive.load(std::memory_order_acquire);
     cineIn.sfr2CfgOn    = cfg.sfr2Enabled && !cfg.stereoEnabled && !cfg.aerEnabled && !cfg.dibrEnabled;
+    cineIn.frontEndScreen = frontEndHold && cineIn.sfr2CfgOn && MELEVR::MevrBridge::FrontEndOnScreen();   // [MEVR] research/56
     CineDecision cine = DecideCine(cineIn, cfg);
     {   // [MEVR] research/56: plain VR after another view waits 100 ms with that view kept: pressing a key at the title went
         // 6 -> 0 -> 7 within 40 ms, one frame of the world between the cinematic's screen and the main menu's panel.
@@ -3775,13 +3783,13 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // moment video is involved; the latch fold is for camera-mode blips inside REAL 3D scenes only.
     {
         int effectiveGm = gameMode;
-        if (frontEndHold) effectiveGm = 7;   // [MEVR] research/56: the front end's menu renders no second eye (as 7)
+        if (frontEndHold && !cineIn.frontEndScreen) effectiveGm = 7;   // [MEVR] research/56: the front end's flat panel: no second eye
         else if (!binkActiveNow && !inMovie)
         {
             if (inConversationMode)  effectiveGm = 5;
             else if (inCutsceneMode) effectiveGm = 6;
         }
-        MELEVR::RenderHook::PublishGameModeForSfr(effectiveGm, cfg.cineVrConvo, cfg.cineVrCutscene, liveWorldGui);
+        MELEVR::RenderHook::PublishGameModeForSfr(effectiveGm, cfg.cineVrConvo, cfg.cineVrCutscene || cineIn.frontEndScreen, liveWorldGui);   // [MEVR]
         MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameCine);   // [MEVR] frame-breakdown probe
     }
     // [VRSTATE] ME2's transition log, ported. One UNCAPPED line per CHANGE of the whole flat/VR
