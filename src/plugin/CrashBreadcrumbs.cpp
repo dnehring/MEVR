@@ -69,7 +69,18 @@ bool gNamed = false;
 ue3::safe::Memory gMemory;
 ue3::safe::FrameLayout gFrameLayout;
 std::uintptr_t gExeBase = 0;
+std::uintptr_t gExeEnd = 0;
 
+// The early report (2026-11-05): leaving the Mako ended the game three times at MassEffect1.exe+0x307120 reading 0x0, and
+// no crash-breadcrumbs.txt was written. The game ends such a fault its own way (no unhandled-exception filter runs; Windows
+// still records an APPCRASH), so the first-chance handler writes the same report when the game's own code reads or writes a
+// null-ish address, the first time at that address, at most kEarlyReports a process: crash-firstchance.txt. A fault the
+// game survives leaves a report that only says so.
+wchar_t gEarlyPath[MAX_PATH] = {};
+wchar_t gEarlyPreviousPath[MAX_PATH] = {};
+std::atomic<unsigned> gEarlyReports{0};
+constexpr unsigned kEarlyReports = 3;
+void EarlyReport(EXCEPTION_POINTERS* info);  // below, with the report
 // The report: static, so writing it allocates nothing.
 constexpr std::size_t kReportBytes = 512 * 1024;
 char gReport[kReportBytes];
@@ -143,6 +154,7 @@ LONG CALLBACK FirstChanceHandler(EXCEPTION_POINTERS* info) {
             }
             logIt = seenCount[slot]++ < 3;
         }
+        bool const firstAtAddress = slot < 32 && seenCount[slot] == 1;
         // A stack overflow runs this on the few KB past the guard page, and heap corruption would allocate on the
         // corrupted heap: those are recorded in the ring above only (the unhandled filter reports them), never logged.
         bool const noLog = r.ExceptionCode == EXCEPTION_STACK_OVERFLOW || r.ExceptionCode == 0xC0000374u;
@@ -164,6 +176,11 @@ LONG CALLBACK FirstChanceHandler(EXCEPTION_POINTERS* info) {
                 breadcrumbs::ThreadId(), base, rva,
                 av ? std::format(" ({} 0x{:X})", r.ExceptionInformation[0] == 1 ? "writing" : r.ExceptionInformation[0] == 8 ? "executing" : "reading",
                                  static_cast<std::uintptr_t>(r.ExceptionInformation[1])) : std::string());
+        }
+        bool const gameNull = r.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r.NumberParameters >= 2 &&
+            r.ExceptionInformation[1] < 0x10000 && address >= gExeBase && address < gExeEnd;
+        if (gameNull && firstAtAddress && !noLog && gEarlyReports.fetch_add(1, std::memory_order_relaxed) < kEarlyReports) {
+            EarlyReport(info);
         }
     }
     return EXCEPTION_CONTINUE_SEARCH;
@@ -530,11 +547,11 @@ void Build(text::Appender& out, EXCEPTION_POINTERS const& info) {
     out.Str("==== end of crash breadcrumbs ====\r\n");
 }
 
-void WriteFileText(wchar_t const* path, text::Appender const& report) {
+void WriteFileText(wchar_t const* path, wchar_t const* previous, text::Appender const& report) {
     if (path[0] == L'\0') {
         return;
     }
-    MoveFileExW(path, gPreviousReportPath, MOVEFILE_REPLACE_EXISTING);
+    MoveFileExW(path, previous, MOVEFILE_REPLACE_EXISTING);
     HANDLE const file = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         return;
@@ -549,8 +566,38 @@ void Report(EXCEPTION_POINTERS* info) {
     gReporting.store(true);
     text::Appender out(gReport, sizeof(gReport));
     Build(out, *info);
-    WriteFileText(gReportPath, out);
+    WriteFileText(gReportPath, gPreviousReportPath, out);
     log::WriteUnformatted("error", "crash breadcrumbs (also in %LOCALAPPDATA%\\MEVR\\crash-breadcrumbs.txt):", out.View());
+}
+
+void EarlyReportBody(EXCEPTION_POINTERS* info) {
+    text::Appender out(gReport, sizeof(gReport));
+    out.Str("(first-chance: written the moment the game's own code faulted at a null address, before anything handled it; "
+            "if the game carried on, it handled this one)\r\n");
+    Build(out, *info);
+    WriteFileText(gEarlyPath, gEarlyPreviousPath, out);
+}
+
+bool EarlyReportGuarded(EXCEPTION_POINTERS* info) {
+    __try {
+        EarlyReportBody(info);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;  // a fault in the report itself: the game's own handling goes on
+    }
+}
+
+void EarlyReport(EXCEPTION_POINTERS* info) {
+    bool expected = false;
+    if (!gReporting.compare_exchange_strong(expected, true)) {
+        return;  // another report is being written
+    }
+    bool const written = EarlyReportGuarded(info);
+    gReporting.store(false);
+    if (written) {
+        log::Warn("crash breadcrumbs: the game's code faulted at a null address (the first time there): the full report is in "
+                  "%LOCALAPPDATA%\\MEVR\\crash-firstchance.txt (if the game closes now, this is why)");
+    }
 }
 
 LONG WINAPI UnhandledFilter(EXCEPTION_POINTERS* info) {
@@ -591,6 +638,10 @@ void Paths() {
     wcscat_s(gReportPath, L"\\crash-breadcrumbs.txt");
     wcscpy_s(gPreviousReportPath, dir);
     wcscat_s(gPreviousReportPath, L"\\crash-breadcrumbs.prev.txt");
+    wcscpy_s(gEarlyPath, dir);
+    wcscat_s(gEarlyPath, L"\\crash-firstchance.txt");
+    wcscpy_s(gEarlyPreviousPath, dir);
+    wcscat_s(gEarlyPreviousPath, L"\\crash-firstchance.prev.txt");
 }
 
 } // namespace
@@ -601,6 +652,11 @@ void Install() {
     }
     Paths();
     gExeBase = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    {
+        auto const* const dos = reinterpret_cast<IMAGE_DOS_HEADER const*>(gExeBase);
+        auto const* const nt = reinterpret_cast<IMAGE_NT_HEADERS64 const*>(gExeBase + static_cast<std::uintptr_t>(dos->e_lfanew));
+        gExeEnd = gExeBase + nt->OptionalHeader.SizeOfImage;
+    }
     auto const layout = engine::adapter::ReflectionLayout();
     auto const globals = engine::adapter::ReflectionGlobalsForGame();
     auto const [rdataLo, rdataHi] = ReadOnlyData(gExeBase);

@@ -1075,7 +1075,11 @@ Use it to check VR changes yourself instead of asking the user what they see
 - **After a crash:** read `%LOCALAPPDATA%\MEVR\crash-breadcrumbs.txt` (the one before is `.prev.txt`; the same text
   is at the end of `LE1MEVR.log`). It holds the exception, the registers, the native stack, the script frames
   (FFrames) on the faulting thread, and the last ProcessEvents, script handler calls and mod writes, with names
-  (research/36). The unhandled-exception filter writes it once per process; handled AVs don't write it.
+  (research/36). The unhandled-exception filter writes it once per process; handled AVs don't write it. **A game that just
+  vanishes** (no report; Windows' Application log has an APPCRASH): the game ends some faults its own way, past the filter, so
+  the first-chance handler writes the same report to `crash-firstchance.txt` (`.prev.txt` before it) when the game's own code
+  reads or writes a null-ish address, the first time at that address, at most 3 a process (2026-11-05: leaving the Mako ended
+  the game three times at `MassEffect1.exe+0x307120` reading 0x0 with no report; not reproduced on the fake headset).
 - **Console commands:** `tools/console.ps1 "<command>" ...` runs them through the local PlayerController's
   `ConsoleCommand` (`game/ConsoleRequest`, mod side) and prints the output. `tools/console.ps1 pause` freezes the
   world but keeps rendering, which holds a scene still for snapshots and A/B captures.
