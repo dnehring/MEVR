@@ -33,7 +33,7 @@ VENV_PY = ROOT / ".venv-voice" / "Scripts" / "python.exe"
 DEFAULT = {
     "base": "Qwen/Qwen3-0.6B",
     "dataset": {"count": 20000, "seed": 1, "noise": 0.3, "eval_count": 1000, "eval_seed": 2},
-    "train": {"rank": 16, "alpha": 32, "lr": 2e-4, "epochs": 2, "batch": 16, "micro_batch": 4, "max_len": 512, "warmup": 0.03, "weight_decay": 0.01, "seed": 1},
+    "train": {"rank": 16, "alpha": 32, "lr": 2e-4, "epochs": 2, "batch": 16, "micro_batch": 4, "max_len": 512, "warmup": 0.03, "weight_decay": 0.01, "seed": 1, "loss": "answer"},
     "gguf": {"types": ["q8_0", "q4_k_m"]},
     "bench": {"threads": 4, "limit": 300},
 }
@@ -111,7 +111,7 @@ def step_train(run, cfg, force):
         raise SystemExit(f"no venv at {VENV_PY}: run tools/voice-model/setup-env.ps1")
     sh([VENV_PY, HERE / "train_lora.py", "--data", run / "train.jsonl", "--out", run, "--base", cfg["base"], "--epochs", t["epochs"], "--rank", t["rank"],
         "--alpha", t["alpha"], "--lr", t["lr"], "--batch", t["batch"], "--micro-batch", t.get("micro_batch", 4), "--max-len", t["max_len"], "--warmup", t["warmup"], "--weight-decay", t["weight_decay"],
-        "--seed", t["seed"]], run / "train.log")
+        "--seed", t["seed"], "--loss", t.get("loss", "answer")], run / "train.log")
     mark_done(run, "train", key)
 
 

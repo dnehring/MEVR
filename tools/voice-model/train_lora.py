@@ -36,6 +36,12 @@ def to_chat(tokenizer, row):
     return tokenizer.apply_chat_template(messages, tokenize=False, enable_thinking=False)
 
 
+def to_prompt(tokenizer, row):
+    """The text up to the answer: the same template with the generation prompt, a string prefix of to_chat's."""
+    messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": row["prompt"]}]
+    return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
+
+
 def evaluate(merged, tokenizer, eval_path, show=8):
     """Exact match of the greedy answer against the gold line, the first misses printed."""
     import torch
@@ -77,6 +83,8 @@ def main():
     ap.add_argument("--micro-batch", type=int, default=4, help="examples per forward pass; batch / micro-batch steps accumulate (the vocabulary's logits are the memory: 16 x 768 tokens spilled the 4090 to system memory and ran at 500 s a step)")
     ap.add_argument("--no-grad-checkpoint", action="store_true")
     ap.add_argument("--max-len", type=int, default=768)
+    ap.add_argument("--loss", choices=["answer", "all"], default="answer",
+                    help="answer: the loss over the answer's tokens only (the prompt's labels -100); all: every token (run1: the loss sat at 0.20, the scene block's own perplexity)")
     ap.add_argument("--eval", default="")
     ap.add_argument("--gguf", default="", help="llama.cpp's convert_hf_to_gguf.py: merges the LoRA and writes <out>/model-q8_0.gguf")
     args = ap.parse_args()
@@ -102,12 +110,18 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.base)
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
     texts = [to_chat(tokenizer, r) for r in rows]
+    prompts = [to_prompt(tokenizer, r) for r in rows]
 
     def tokenize(batch):
         enc = tokenizer(batch["text"], truncation=True, max_length=args.max_len)
+        if args.loss == "answer":
+            # The prompt's tokens are labelled -100 (ignored by the loss): the model learns the answer, not the scene block.
+            # The prompt text is a string prefix of the record, and its last token ("\n\n") ends before the answer's first.
+            heads = tokenizer(batch["prompt"], truncation=True, max_length=args.max_len)["input_ids"]
+            enc["labels"] = [[-100] * min(len(h), len(ids)) + ids[len(h):] for h, ids in zip(heads, enc["input_ids"])]
         return enc
 
-    train = Dataset.from_dict({"text": texts}).map(tokenize, batched=True, remove_columns=["text"])
+    train = Dataset.from_dict({"text": texts, "prompt": prompts}).map(tokenize, batched=True, remove_columns=["text", "prompt"])
     model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.bfloat16, device_map="auto")
     lora = LoraConfig(r=args.rank, lora_alpha=args.alpha or args.rank * 2, lora_dropout=0.05, target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
                       task_type="CAUSAL_LM")
@@ -123,7 +137,12 @@ def main():
                                  learning_rate=args.lr, lr_scheduler_type="cosine", warmup_steps=int(steps * args.warmup),  # transformers 5 has no warmup_ratio
                                  weight_decay=args.weight_decay, logging_steps=20, save_strategy="no", bf16=True, report_to=[], dataloader_num_workers=0, seed=args.seed,
                                  gradient_checkpointing=not args.no_grad_checkpoint)
-    trainer = Trainer(model=model, args=training, train_dataset=train, data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False))
+    if args.loss == "answer":
+        from transformers import DataCollatorForSeq2Seq
+        collator = DataCollatorForSeq2Seq(tokenizer, padding=True, label_pad_token_id=-100)  # pads the labels with -100 too
+    else:
+        collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
+    trainer = Trainer(model=model, args=training, train_dataset=train, data_collator=collator)
     trainer.train()
     # The whole loss curve (the `{'loss': ...}` lines the progress callback prints every 20 steps reach a piped train.log
     # late: the pipeline runs this unbuffered for that).
