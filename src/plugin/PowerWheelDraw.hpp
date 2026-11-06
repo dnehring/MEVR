@@ -26,7 +26,8 @@ inline constexpr unsigned kHintWidth = 920;    // the hint card's canvas
 inline constexpr unsigned kHintHeight = 210;
 
 struct Fonts {
-    ImFont* label = nullptr;  // the tiles' names (Rajdhani Bold)
+    ImFont* label = nullptr;  // the tiles' names (the game's Biomass from the game-art cache, else Rajdhani Bold)
+    bool gameFont = false;    // label is the game's Biomass (set in capitals, a little smaller)
     ImFont* title = nullptr;  // the hint's title (Titillium Web SemiBold)
     ImFont* body = nullptr;   // the hint's text (Titillium Web Regular)
 };

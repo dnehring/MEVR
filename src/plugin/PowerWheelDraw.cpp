@@ -9,7 +9,12 @@
 #include <array>
 #include <cfloat>
 #include <cmath>
+#include <fstream>
+#include <iterator>
 #include <numbers>
+
+#include "core/gfx/Swf.hpp"
+#include "core/gfx/SwfFont.hpp"
 
 namespace mevr::host::power_wheel_draw {
 namespace {
@@ -41,13 +46,16 @@ struct Theme {
 // GUI_SF_InGameGui.PC_MainWheel, 2026-11-04): lines (125, 211, 232); a wheel button's blue fill (40, 133, 172) at its
 // edge to (23, 72, 104) inside; the chosen button's orange (220, 103, 27) to (117, 48, 2); frames' orange (255, 157, 90);
 // panels' deep indigo (3, 19, 96) with fine scanlines. The middles here are darker than the game's, for the icons.
-Theme Blue() {
-    return {Rgba(125, 211, 232), Rgba(226, 246, 250), Rgba(125, 211, 232, 58), Rgba(40, 133, 172, 210), Rgba(10, 34, 62, 212),
-        Rgba(170, 225, 240, 15), Rgba(226, 244, 250)};
+// Since 2026-11-05 (the user: "like it could be projected from the omni tool", the chosen tile "change color to make it
+// obvious"): every tile is the omni-tool's projection, thin orange light over see-through glass (the gauntlet's hologram,
+// game/OmniTool: mid (233, 147, 81), core (255, 205, 103)); the chosen one turns to ME1's own UI cyan.
+Theme Omni() {
+    return {Rgba(240, 150, 75, 235), Rgba(255, 214, 160, 200), Rgba(240, 150, 75, 50), Rgba(160, 76, 26, 120), Rgba(100, 42, 12, 70),
+        Rgba(0, 0, 0, 70), Rgba(255, 204, 150)};
 }
-Theme Orange() {
-    return {Rgba(255, 157, 90), Rgba(255, 230, 200), Rgba(255, 157, 90, 90), Rgba(220, 103, 27, 222), Rgba(52, 21, 3, 218),
-        Rgba(255, 200, 150, 18), Rgba(255, 246, 236)};
+Theme Chosen() {
+    return {Rgba(140, 220, 255), Rgba(225, 248, 255), Rgba(140, 220, 255, 70), Rgba(60, 150, 205, 175), Rgba(22, 74, 122, 130),
+        Rgba(0, 0, 0, 70), Rgba(240, 252, 255)};
 }
 ImU32 Mix(ImU32 a, ImU32 b, float t) {
     t = std::clamp(t, 0.0f, 1.0f);
@@ -58,15 +66,13 @@ ImU32 Mix(ImU32 a, ImU32 b, float t) {
     };
     return channel(IM_COL32_R_SHIFT) | channel(IM_COL32_G_SHIFT) | channel(IM_COL32_B_SHIFT) | channel(IM_COL32_A_SHIFT);
 }
-constexpr ImU32 kLine = Rgba(125, 211, 232);
-constexpr ImU32 kIndigo = Rgba(3, 19, 96);
-constexpr ImU32 kSpoke = Rgba(125, 211, 232, 225);
-constexpr ImU32 kSpokeCore = Rgba(226, 246, 250, 235);
-constexpr ImU32 kBeam = Rgba(255, 150, 70);
+constexpr ImU32 kLight = Rgba(255, 160, 80);        // the projection's light
+constexpr ImU32 kLightChosen = Rgba(120, 210, 255);  // ...toward the chosen tile
+constexpr ImU32 kEmitter = Rgba(255, 210, 150);      // the omni-tool's emitter
+// The hint card's and the lock marker's lines, in the same projection's colours.
+constexpr ImU32 kLine = Rgba(240, 150, 75);
+constexpr ImU32 kChevron = Rgba(255, 214, 160);
 constexpr ImU32 kBeamCore = Rgba(255, 232, 196);
-constexpr ImU32 kChevron = Rgba(255, 157, 90);
-constexpr ImU32 kEmblemRing = Rgba(255, 136, 44);
-constexpr ImU32 kEmblemCore = Rgba(255, 218, 168);
 
 // ---- Geometry -----------------------------------------------------------------------------------------------------------
 pw::Vec2 Dir(float deg) {
@@ -222,7 +228,7 @@ struct TileDraw {
 };
 
 void DrawTile(ImDrawList* dl, Fonts const& fonts, WheelView const& view, Entry const& entry, TileDraw const& t, float alpha) {
-    Theme const theme = t.chosen ? Orange() : Blue();
+    Theme const theme = t.chosen ? Chosen() : Omni();
     float const dim = entry.enabled ? 1.0f : 0.5f;
     std::vector<ImVec2> const outline = ToCanvas(pw::Outline(t.strip));
 
@@ -301,7 +307,7 @@ void DrawTile(ImDrawList* dl, Fonts const& fonts, WheelView const& view, Entry c
     if (entry.cooldown > 0.0f) {
         FillStrip(dl, t.strip, WithAlpha(Rgba(0, 0, 0, 150), alpha * entry.cooldown), WithAlpha(Rgba(0, 0, 0, 110), alpha * entry.cooldown));
     }
-    float const thickness = t.chosen ? 3.6f : 2.2f;
+    float const thickness = t.chosen ? 2.6f : 1.8f;
     ImU32 const border = WithAlpha(theme.border, alpha * dim);
     if (entry.cooldown > 0.0f) {
         dl->AddPolyline(outline.data(), static_cast<int>(outline.size()), WithAlpha(theme.border, alpha * 0.35f), ImDrawFlags_Closed, thickness);
@@ -320,15 +326,18 @@ void DrawTile(ImDrawList* dl, Fonts const& fonts, WheelView const& view, Entry c
     pw::Vec2 const middle = Mul(Dir(t.angle), t.centre + (view.tile.outerRadius - view.tile.innerRadius) * 0.02f);
     ImVec2 const c = ToCanvas(middle);
     float const iconSize = 0.70f * (view.tile.outerRadius - view.tile.innerRadius) * t.scale;
-    float const labelSize = 42.0f * (t.chosen ? 1.06f : 1.0f);
+    float const labelSize = (fonts.gameFont ? 34.0f : 42.0f) * (t.chosen ? 1.06f : 1.0f);
     float const iconTop = c.y - iconSize * 0.66f;
     float const labelTop = iconTop + iconSize * 0.94f;
     if (entry.icon != 0) {
-        ImU32 const tint = entry.enabled ? WithAlpha(IM_COL32_WHITE, alpha) : WithAlpha(Rgba(150, 150, 165), alpha * 0.6f);
+        // The icons are white light (power_icons::Hologram): tinted the tile's colour.
+        ImU32 const tint = entry.enabled ? WithAlpha(t.chosen ? Rgba(235, 250, 255) : Rgba(255, 185, 110), alpha)
+                                         : WithAlpha(Rgba(150, 120, 100), alpha * 0.6f);
         dl->AddImage(ImTextureRef(entry.icon), {c.x - iconSize * 0.5f, iconTop}, {c.x + iconSize * 0.5f, iconTop + iconSize}, {0.0f, 0.0f},
             {1.0f, 1.0f}, tint);
     }
-    std::string const text = view.upperCase ? Upper(entry.label) : entry.label;
+    bool const upper = view.upperCase || fonts.gameFont;  // the game's Biomass, as the game sets it: capitals
+    std::string const text = upper ? Upper(entry.label) : entry.label;
     float left = 0.0f;
     float right = 0.0f;
     float centreX = c.x;
@@ -338,7 +347,7 @@ void DrawTile(ImDrawList* dl, Fonts const& fonts, WheelView const& view, Entry c
         room = right - left - 26.0f;
     }
     float size = labelSize;
-    float const tracking = view.upperCase ? 2.4f : 0.8f;
+    float const tracking = fonts.gameFont ? 1.2f : upper ? 2.4f : 0.8f;
     float const width = TrackedWidth(fonts.label, size, text, tracking);
     ImU32 const colour = WithAlpha(theme.label, alpha * dim);
     // A long name on a narrow tile goes on two lines (split at the space nearest its middle) rather than shrinking far.
@@ -386,17 +395,6 @@ void DrawWheel(ImDrawList* dl, Fonts const& fonts, WheelView const& view) {
     pw::TileSettings tile = view.tile;
     tile.halfWidthDeg = pw::HalfWidthDeg(count, view.tile, view.layout);
     float const middle = (tile.innerRadius + tile.outerRadius) * 0.5f;
-    ImVec2 const hand = ToCanvas(view.hand);
-
-    // The rings between the tiles (drawn first: the tiles cover them), after the game's own wheel: a deep indigo band, a
-    // bright cyan circle at the hub's edge, faint cyan rings outside.
-    dl->AddCircle(kCentre, (tile.innerRadius + 30.0f) * spread, WithAlpha(kIndigo, alpha * 0.85f), 160, 16.0f);
-    dl->AddCircle(kCentre, (tile.innerRadius + 30.0f) * spread, WithAlpha(Rgba(40, 70, 190, 120), alpha), 160, 4.0f);
-    dl->AddCircle(kCentre, (tile.innerRadius - 12.0f) * spread, WithAlpha(kLine, alpha * 0.85f), 160, 1.8f);
-    DashedCircle(dl, kCentre, middle * 0.97f * spread, WithAlpha(kLine, alpha * 0.32f), 1.6f, 2.2f, 1.6f, view.time * 4.0f);
-    DashedCircle(dl, kCentre, (tile.outerRadius + 26.0f) * spread, WithAlpha(kLine, alpha * 0.22f), 1.2f, 0.8f, 2.2f, -view.time * 2.0f);
-    dl->PathArcTo(kCentre, (tile.outerRadius + 40.0f) * spread, -0.9f * kPi, -0.62f * kPi, 24);  // a faint arc, top left
-    dl->PathStroke(WithAlpha(kLine, alpha * 0.25f), 0, 2.0f);
 
     // Each tile's place.
     std::vector<TileDraw> tiles;
@@ -416,37 +414,45 @@ void DrawWheel(ImDrawList* dl, Fonts const& fonts, WheelView const& view) {
         tiles.push_back(std::move(t));
     }
 
-    // The spokes from the palm to each tile's inner edge, then the chosen one's beam.
-    constexpr float kEmblemRadius = 56.0f;
-    constexpr float kTickRing = 76.0f;
+    // The omni-tool projecting the wheel (the user, 2026-11-05: not "a flat line going through the middle"): from an emitter in
+    // the wheel's gap, where the forearm and the gauntlet are, a soft cone of light to each tile's inner edge, brightest at the
+    // source, thin rays along its sides, and specks of dust drifting out through the light.
+    ImVec2 const uv = ImGui::GetFontTexUvWhitePixel();
+    ImVec2 emitter = ToCanvas(Mul(Dir(view.layout.gapCentreDeg), tile.outerRadius * spread + 30.0f));
+    emitter.x = std::clamp(emitter.x, 24.0f, static_cast<float>(kCanvas) - 24.0f);
+    emitter.y = std::clamp(emitter.y, 24.0f, static_cast<float>(kCanvas) - 24.0f);
     for (TileDraw const& t : tiles) {
-        pw::Vec2 const edge = Mul(Dir(t.angle), (tile.innerRadius + (t.chosen ? (middle - tile.innerRadius) * (1.0f - t.scale) + t.push : 0.0f)) * spread);
-        ImVec2 const end = ToCanvas(edge);
-        ImVec2 const d{end.x - hand.x, end.y - hand.y};
-        float const length = std::sqrt(d.x * d.x + d.y * d.y);
-        if (length < kEmblemRadius + 8.0f) {
-            continue;
+        ImU32 const light = t.chosen ? kLightChosen : kLight;
+        float const strength = (t.chosen ? 0.30f : 0.20f) * alpha * (view.entries[static_cast<std::size_t>(t.index)].enabled ? 1.0f : 0.5f);
+        ImVec2 const left = ToCanvas(t.strip.inner.front());
+        ImVec2 const right = ToCanvas(t.strip.inner.back());
+        ImVec2 const reachL{emitter.x + (left.x - emitter.x) * open, emitter.y + (left.y - emitter.y) * open};
+        ImVec2 const reachR{emitter.x + (right.x - emitter.x) * open, emitter.y + (right.y - emitter.y) * open};
+        dl->PrimReserve(3, 3);
+        ImDrawIdx const base = static_cast<ImDrawIdx>(dl->_VtxCurrentIdx);
+        dl->PrimWriteVtx(emitter, uv, WithAlpha(light, strength));
+        dl->PrimWriteVtx(reachL, uv, WithAlpha(light, strength * 0.25f));
+        dl->PrimWriteVtx(reachR, uv, WithAlpha(light, strength * 0.25f));
+        dl->PrimWriteIdx(base);
+        dl->PrimWriteIdx(static_cast<ImDrawIdx>(base + 1));
+        dl->PrimWriteIdx(static_cast<ImDrawIdx>(base + 2));
+        dl->AddLine(emitter, reachL, WithAlpha(light, strength * 1.4f), 1.0f);
+        dl->AddLine(emitter, reachR, WithAlpha(light, strength * 1.4f), 1.0f);
+        // Dust: a fixed scatter per tile, drifting outward along the light and fading as it goes.
+        for (int k = 0; k < 18; ++k) {
+            float const seed = static_cast<float>(t.index * 131 + k * 37);
+            float const across = std::fmod(seed * 0.6180339f, 1.0f);
+            float const along = std::fmod(seed * 0.4142135f + view.time * (0.05f + 0.03f * across), 1.0f);
+            float const reach = 0.12f + 0.83f * along;
+            ImVec2 const edge{left.x + (right.x - left.x) * across, left.y + (right.y - left.y) * across};
+            ImVec2 const at{emitter.x + (edge.x - emitter.x) * reach * open, emitter.y + (edge.y - emitter.y) * reach * open};
+            dl->AddCircleFilled(at, 1.0f + 1.2f * std::fmod(seed * 0.7071f, 1.0f), WithAlpha(light, alpha * 0.55f * (1.0f - along)), 6);
         }
-        ImVec2 const u{d.x / length, d.y / length};
-        ImVec2 const start{hand.x + u.x * (kEmblemRadius + 4.0f), hand.y + u.y * (kEmblemRadius + 4.0f)};
-        ImVec2 const reach{start.x + (end.x - start.x) * open, start.y + (end.y - start.y) * open};
-        if (t.chosen) {
-            dl->AddLine(start, reach, WithAlpha(kBeam, alpha), 5.0f);
-            dl->AddLine(start, reach, WithAlpha(kBeamCore, alpha), 1.8f);
-            ImVec2 const n{-u.y, u.x};
-            dl->AddLine({end.x - n.x * 13.0f, end.y - n.y * 13.0f}, {end.x + n.x * 13.0f, end.y + n.y * 13.0f}, WithAlpha(kBeam, alpha), 3.5f);
-            Node(dl, end, 7.0f, WithAlpha(kBeamCore, alpha));
-        } else {
-            dl->AddLine(start, reach, WithAlpha(kSpoke, alpha), 3.0f);
-            dl->AddLine(start, reach, WithAlpha(kSpokeCore, alpha * 0.7f), 1.2f);
-            Node(dl, end, 5.0f, WithAlpha(kSpokeCore, alpha));
-        }
-        // A tick where it crosses the emblem's thin ring.
-        ImVec2 const tick{hand.x + u.x * kTickRing, hand.y + u.y * kTickRing};
-        ImVec2 const n{-u.y, u.x};
-        dl->AddLine({tick.x - n.x * 5.0f, tick.y - n.y * 5.0f}, {tick.x + n.x * 5.0f, tick.y + n.y * 5.0f},
-            WithAlpha(t.chosen ? kBeamCore : kSpokeCore, alpha), 2.0f);
     }
+    // The emitter: a hot point in a soft halo.
+    dl->AddCircleFilled(emitter, 30.0f, WithAlpha(kEmitter, alpha * 0.10f), 32);
+    dl->AddCircleFilled(emitter, 14.0f, WithAlpha(kEmitter, alpha * 0.35f), 24);
+    dl->AddCircleFilled(emitter, 5.0f, WithAlpha(Rgba(255, 240, 220), alpha), 16);
 
     // The tiles, the chosen one last (on top).
     for (TileDraw const& t : tiles) {
@@ -457,24 +463,7 @@ void DrawWheel(ImDrawList* dl, Fonts const& fonts, WheelView const& view) {
     for (TileDraw const& t : tiles) {
         if (t.chosen) {
             DrawTile(dl, fonts, view, view.entries[static_cast<std::size_t>(t.index)], t, alpha);
-            // The double chevron beyond it, pointing out.
-            pw::Vec2 const dir = Dir(t.angle);
-            float const beyond = (tile.outerRadius + (tile.outerRadius - middle) * (t.scale - 1.0f) + t.push) * spread;
-            float const pulse = 0.85f + 0.15f * std::sin(view.time * 4.0f);
-            Chevron(dl, Mul(dir, beyond + 44.0f), dir, 34.0f, 18.0f, 8.0f, WithAlpha(kChevron, alpha * 0.9f * pulse));
-            Chevron(dl, Mul(dir, beyond + 78.0f), dir, 34.0f, 18.0f, 8.0f, WithAlpha(kChevron, alpha * 0.75f * pulse));
         }
-    }
-
-    // The emblem on the palm.
-    dl->AddCircleFilled(hand, kEmblemRadius, WithAlpha(Rgba(16, 10, 30, 150), alpha), 64);
-    dl->AddCircle(hand, kEmblemRadius - 9.0f, WithAlpha(Rgba(255, 150, 60, 80), alpha), 64, 1.2f);
-    dl->AddCircle(hand, kEmblemRadius, WithAlpha(kEmblemRing, alpha), 96, 5.5f);
-    dl->AddCircle(hand, kEmblemRadius, WithAlpha(kEmblemCore, alpha), 96, 1.8f);
-    dl->AddCircle(hand, kTickRing, WithAlpha(kLine, alpha * 0.7f), 96, 1.4f);
-    DashedCircle(dl, hand, kTickRing + 16.0f, WithAlpha(Rgba(255, 150, 70, 110), alpha), 1.2f, 50.0f, 10.0f, view.time * 10.0f);
-    if (view.emblem == Emblem::N7) {
-        N7(dl, hand, 1.08f, alpha);
     }
 }
 
@@ -535,7 +524,7 @@ void DrawHint(ImDrawList* dl, Fonts const& fonts, HintView const& view) {
 void DrawLock(ImDrawList* dl, LockDrawView const& view) {
     float const size = static_cast<float>(kLockCanvas);
     ImVec2 const c{size * 0.5f, size * 0.5f};
-    Theme const theme = view.ready ? Orange() : Blue();
+    Theme const theme = view.ready ? Chosen() : Omni();
     float const alpha = view.ready ? 1.0f : 0.70f;
     float const closed = size * kLockBox * 0.5f;  // the brackets' half box, closed
     if (view.onActor) {
@@ -641,9 +630,45 @@ Fonts LoadFonts(ImGuiIO& io, std::vector<std::filesystem::path> const& folders, 
     }
     Fonts fonts;
     std::string labelName;
+    // The game's own Biomass (the user, 2026-11-05: "use the games own font"), built from the player's own game-art cache
+    // (game/GameArt copies GUI_SF_Fonts there) through core/gfx; kept alive for the atlas. Missing: the fonts below.
+    {
+        static std::vector<std::uint8_t> biomass;
+        if (biomass.empty()) {
+            wchar_t local[MAX_PATH]{};
+            if (GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH) != 0) {
+                std::filesystem::path const file = std::filesystem::path(local) / L"MEVR" / L"gameart" / L"GUI_SF_Fonts.Fonts.gfx";
+                std::ifstream in(file, std::ios::binary);
+                std::vector<std::uint8_t> const bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                if (!bytes.empty()) {
+                    if (auto const movie = gfx::Movie::Parse(bytes)) {
+                        for (gfx::FontInfo const& info : gfx::Fonts(*movie)) {
+                            if (info.name.starts_with("Biomass")) {
+                                if (auto ttf = gfx::FontAsTtf(*movie, info.id, "ME1 Biomass")) {
+                                    biomass = std::move(*ttf);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (!biomass.empty()) {
+            ImFontConfig config;
+            config.FontDataOwnedByAtlas = false;
+            fonts.label = io.Fonts->AddFontFromMemoryTTF(biomass.data(), static_cast<int>(biomass.size()), 48.0f, &config);
+            if (fonts.label != nullptr) {
+                fonts.gameFont = true;
+                labelName = "the game's Biomass";
+            }
+        }
+    }
     std::string titleName;
     std::string bodyName;
-    fonts.label = FirstFont(io, labels, labelName);
+    if (fonts.label == nullptr) {
+        fonts.label = FirstFont(io, labels, labelName);
+    }
     fonts.title = FirstFont(io, titles, titleName);
     fonts.body = FirstFont(io, bodies, bodyName);
     if (fonts.label == nullptr) {

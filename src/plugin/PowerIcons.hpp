@@ -44,5 +44,10 @@ Icon ForPower(std::string_view label);
 
 // Straight-alpha sRGB RGBA8 (0xAABBGGRR), kPixels square: what ImGui's textures take.
 std::vector<std::uint32_t> Picture(Icon icon);
+// The icon as projected light (the user, 2026-11-05: the wheels as the omni-tool's projection, "the holographic effect ... for
+// all of the icons", not cartoony): the picture's bright core strokes only, as white light the wheel tints (orange, cyan when
+// chosen): bright edges over a see-through body that fades toward the bottom, a soft halo, a faint ghost a few pixels up, and
+// fine scanlines. Same format and size as Picture.
+std::vector<std::uint32_t> Hologram(std::vector<std::uint32_t> const& picture);
 
 }  // namespace mevr::host::power_icons

@@ -157,7 +157,7 @@ ImTextureID Icon(int id) {
     }
     auto it = gGpu.icons.find(id);
     if (it == gGpu.icons.end()) {
-        std::vector<std::uint32_t> const pixels = icons::Picture(static_cast<icons::Icon>(id));
+        std::vector<std::uint32_t> const pixels = icons::Hologram(icons::Picture(static_cast<icons::Icon>(id)));
         D3D11_TEXTURE2D_DESC td{};
         td.Width = icons::kPixels;
         td.Height = icons::kPixels;
