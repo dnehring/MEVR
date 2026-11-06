@@ -155,7 +155,8 @@ float4 PSMain(VSOut i) : SV_Target {
         gameHalo = artReticle.SampleGrad(linearClamp, ru, ddx(ru) * 6.0, ddy(ru) * 6.0);
         gameTube = artTube.SampleGrad(linearClamp, tu, ddx(tu), ddy(tu));
     }
-    bool game = art.x > 0.5 && style > 2.5;
+    bool game = art.x > 0.5 && style > 2.5 && style < 3.5;
+    bool window = style > 3.5;  // a dot's window (research/21 section 17): the world at 1x, no reticle, rim or shadow
     float r = length(lens);
     float rim = saturate((1.0 - r) / px + 0.5);
     if (rim <= 0.0) return float4(0.0, 0.0, 0.0, 0.0);
@@ -178,7 +179,8 @@ float4 PSMain(VSOut i) : SV_Target {
         }
         float ink = 0.0;
         float glow = 0.0;
-        if (game) {
+        if (window) {
+        } else if (game) {
             c = c * (1.0 - gameTube.a) + gameTube.rgb;  // the lens mask's specks and the rings, then the reticle
             c *= 1.0 - art.z * saturate(gameHalo.a * 4.0);
             c = c * (1.0 - gameReticle.a) + gameReticle.rgb;
@@ -200,7 +202,9 @@ float4 PSMain(VSOut i) : SV_Target {
         c *= 1.0 - smoothstep(0.82, 1.0, pr);
     }
     float a = rim * saturate(lit.w);
-    if (game) {
+    if (window) {
+        a *= 1.0 - smoothstep(1.0 - art.w, 1.0, r);  // fades into the housing behind (art.w: the faded share of the radius)
+    } else if (game) {
         a *= 1.0 - smoothstep(0.95, 1.0, r);  // the game's rings fade out at the picture's edge
     } else {
         c *= 1.0 - smoothstep(0.84, 0.97, r);  // the tube's dark rim: a scope's edge, not a hard cut
@@ -335,6 +339,16 @@ ScopeParams MakeScopeParams(sv::Sight const& sight, sv::Lens const& lens, sv::Sc
         {std::isfinite(decodeGamma) && decodeGamma > 0.0f ? decodeGamma : 1.0f, 0.0f, 0.0f, 0.0f},
         {art ? 1.0f : 0.0f, vr::scope_art::kPictureRadius / vr::scope_art::kLayerSpan, kArtHalo, kArtBoost},
     };
+}
+
+ScopeParams MakeWindowParams(sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
+    XrPosef const& source, XrFovf const& fov, XrRect2Di const& rect, unsigned textureWidth, unsigned textureHeight, unsigned size) {
+    ScopeParams p = MakeScopeParams(sight, lens, view, eye, source, fov, rect, textureWidth, textureHeight, size);
+    p.lensAxis[3] = 1.0f;      // 1x: each window point shows its own direction from the eye
+    p.row1[3] = kWindowStyle;  // no reticle
+    p.art[0] = 0.0f;
+    p.art[3] = kWindowFade;    // the window's edge (the shader reads art.w as the faded share for a window)
+    return p;
 }
 
 } // namespace mevr::host::sight_pictures

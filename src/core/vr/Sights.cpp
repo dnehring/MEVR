@@ -739,6 +739,45 @@ std::optional<ScopeView> View(Lens const& lens, XrVector3f const& eye, float eye
     return view;
 }
 
+std::optional<ScopeView> WindowView(Lens const& lens, XrVector3f const& eye, float minAlong, float maxAlong) {
+    if (!Finite(eye) || !(lens.radius > 0.0f)) {
+        return std::nullopt;
+    }
+    Line const line = EyeLine(eye, lens.center, lens.axis, lens.up);
+    if (!(line.along >= minAlong) || !(line.along <= maxAlong)) {
+        return std::nullopt;
+    }
+    ScopeView view;
+    view.along = line.along;
+    view.qx = line.x / lens.radius;
+    view.qy = line.y / lens.radius;
+    // The pupil far wider than the window and centred: no shadow anywhere on it.
+    view.pupil = 4.0f;
+    view.px = 0.0f;
+    view.py = 0.0f;
+    view.fade = 1.0f;
+    return view;
+}
+
+int EyeHold::Update(int chosen, std::uint64_t nowMs, std::uint64_t holdMs) {
+    if (chosen == 0 || chosen == 1) {
+        if (holding_ && chosen == eye_) {
+            ++bridged_;
+        }
+        holding_ = false;
+        eye_ = chosen;
+        seenMs_ = nowMs;
+        return chosen;
+    }
+    if (eye_ >= 0 && nowMs >= seenMs_ && nowMs - seenMs_ < holdMs) {
+        holding_ = true;
+        return eye_;
+    }
+    holding_ = false;
+    eye_ = -1;
+    return -1;
+}
+
 float PictureRadius(float lensRadius, float along, float fieldDeg) {
     if (!(fieldDeg > 0.0f) || !std::isfinite(fieldDeg) || !(along > 0.0f)) {
         return lensRadius;

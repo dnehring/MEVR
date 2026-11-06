@@ -20,6 +20,8 @@
 //                                       the capture's own render target (traced from the eyepiece, 1024 px)
 //   dot.png, holo.png, frame.png        the reticles and the window ring over grey
 //   eye-right-dot.png                   the right eye looking through a red dot sight
+//   eye-right-dot-housing.png, eye-right-dot-window*.png, window.png
+//                                       a red dot on a solid housing without and with its window (research/21 section 17)
 //
 //   mevr-sight-preview [output folder] --art <folder>   also the game's own scope view (research/21 section 16), from its
 //                                       three textures exported to PNG (tools/scope-art.py says how; game data, local only):
@@ -769,6 +771,72 @@ int main(int argc, char** argv) {
         q.image = &dotImage;
         composite::Draw(eye, composite::Eye{rightPose, kFov}, q);
         Save(dir, "eye-right-holo.png", eye.width, eye.height, eye.pixels);
+    }
+    // A red dot on a solid housing (research/21 section 17): the scene's tube face 10 cm ahead blocks the right eye like the
+    // assault rifle's box; with kWindow the eye sees the world through a 3 cm window there (the left eye's image at 1x), the
+    // ring and the dot over it. eye-right-dot-housing.png is the same without the window (what the user saw), and
+    // eye-right-dot-window-off-*.png the eye off the window's line.
+    {
+        XrVector3f const window{0.0f, 0.0f, -0.10f};
+        XrVector3f const axis{0.0f, 0.0f, -1.0f};
+        XrVector3f const up{0.0f, 1.0f, 0.0f};
+        sv::Sight s = dot;
+        s.center = window;
+        s.axis = axis;
+        s.up = up;
+        s.radius = 0.03f;
+        s.focusM = 40.0f;
+        s.zoom = 1.0f;
+        s.flags = sv::kFrame | sv::kWindow;
+        auto const windowLens = sv::MakeLens(window, axis, up, s.radius);
+        composite::Image const frameImage = Straight(pic::FramePixels(), static_cast<int>(pic::kPictureSize));
+        pic::DotLayout const layout = pic::LayoutFor(s);
+        composite::Image const dotImage = Straight(pic::DotPixels(layout, s.dotColor), static_cast<int>(pic::kPictureSize));
+        struct WindowCase {
+            char const* name;
+            XrVector3f eye;
+            bool window;
+        };
+        WindowCase const windowCases[] = {
+            {"dot-housing", kRightEye, false},
+            {"dot-window", kRightEye, true},
+            {"dot-window-off-1.5cm", {0.015f, -0.01f, 0.0f}, true},
+        };
+        for (WindowCase const& c : windowCases) {
+            composite::Image eye = TraceImage(c.eye, kFov, kEyeSize);
+            composite::Eye const view{{{0.0f, 0.0f, 0.0f, 1.0f}, c.eye}, kFov};
+            if (c.window && windowLens) {
+                auto const wv = sv::WindowView(*windowLens, c.eye, 0.02f, 1.0f);
+                if (wv) {
+                    pic::ScopeParams const params =
+                        pic::MakeWindowParams(s, *windowLens, *wv, c.eye, leftPose, kFov, rect, kEyeSize, kEyeSize, kScopeSize);
+                    std::vector<std::uint32_t> const picture = RenderScope(gpu, leftSrv.Get(), params, kScopeSize);
+                    if (std::string(c.name) == "dot-window") {
+                        Save(dir, "window.png", kScopeSize, kScopeSize, OverGrey(picture));
+                    }
+                    composite::Image const pictureImage = Straight(picture, static_cast<int>(kScopeSize));
+                    sv::Quad const disc = sv::Disc(window, axis, up, s.radius);
+                    composite::Quad wq;
+                    wq.pose = disc.pose;
+                    wq.width = wq.height = disc.size;
+                    wq.image = &pictureImage;
+                    composite::Draw(eye, view, wq);
+                }
+            }
+            sv::Quad const frame = sv::Disc(window, axis, up, s.radius * pic::kFrameScale);
+            composite::Quad ring;
+            ring.pose = frame.pose;
+            ring.width = ring.height = frame.size;
+            ring.image = &frameImage;
+            composite::Draw(eye, view, ring);
+            sv::Quad const reticle = sv::Reticle(window, axis, up, 50.0f, layout.quadDeg * 3.14159265f / 180.0f);
+            composite::Quad q;
+            q.pose = reticle.pose;
+            q.width = q.height = reticle.size;
+            q.image = &dotImage;
+            composite::Draw(eye, view, q);
+            Save(dir, (std::string("eye-right-") + c.name + ".png").c_str(), eye.width, eye.height, eye.pixels);
+        }
     }
     return 0;
 }

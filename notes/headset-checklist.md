@@ -217,6 +217,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   (`[Sights] scopeCapturePost = 0` removes it and the grade); say if it bothers you. (research/39 sections 10, 12)
 - [ ] The assault rifle's red dot at the cheek: shows without hunting, lines up. Close each eye in turn: the dot and the
   scope show in the aiming eye only, on SteamVR and on the Oculus runtime. (research/21 sections 7, 11)
+- [ ] The assault rifle raised to the right eye: you see through its sight housing (the target and the dot in a round
+  window, the box around it; with the left eye closed too); the gun stays where your hand puts it (no sliding by itself);
+  the dot doesn't blink, also when the support hand's aimed fire comes on. Say if the window's edge or a near object in it
+  looks shifted. (research/21 section 17, built 2026-11-05)
 - [ ] Shot groups: the pistol at 10-20 m on the dot, the sniper at 5 m and 20-40 m on the crosshair, no drift to the
   right. (research/21 sections 9-10)
 
@@ -297,7 +301,8 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Gun: the muzzle through a wall doesn't shoot through it; camera modes' hook-bone gap near 0. (research/14, 18)
 - Wheels: the weapon and power wheels' crops in snapshots. (research/15)
 - Sights: a snapshot per gun model under an ADS replay (window ring, scope picture, the sniper's lens glow); the near
-  plane's log line. (research/21 sections 13-16)
+  plane's log line. (research/21 sections 13-16) The assault rifle's window under that replay (the right eye's snapshot shows
+  the target through the housing), and what moves in the tick the support grip's aimed fire switches. (research/21 section 17)
 - Scope capture: picture checks against `scopeCapture = 0`, the frame checks under two Draws and `sharePass 5`, the cost
   and the dark speckle at the heavy cell. (research/39)
 - Level camera under a firing replay; the logs of comfort, colour, the main menu and life-size stereo. (research/24, 27,

@@ -681,9 +681,13 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, vr::aim_ra
             gRaiseAlongBefore, gRaiseAlongAfter, gPull.reliefM,
             gRaiseAlongBefore - gPull.reliefM > PullLimit(settings, drawn, true) + 0.005f ? ": the pull's limit was reached" : "");
     }
+    // A sight the assist can't move (a red dot since 2026-11-05: assistDotMaxM 0, no pull) keeps its statistics but not the
+    // on/off lines: they'd say "slides 0.0 cm".
+    bool const moves = assist.maxShiftM > 0.0f || gPull.maxM > 0.0f;
     if (on != gAssisting) {
         gAssisting = on;
-        if (on) {
+        if (!moves) {
+        } else if (on) {
             if (!gAds) {
                 gRaisePullMax = 0.0f;
                 gRaiseAlongBefore = gRaiseAlongAfter = gGoal.along;
@@ -977,8 +981,10 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 gPlacedWeapon = weapon::Key();
                 out.kind = static_cast<std::int32_t>(gun.kind);
                 out.weapon = type;
+                // A dot on the game's solid housing (the assault rifles' boxes, Optic): seen through (research/21 section 17).
+                bool const window = settings.dotWindow && !scope && gun.autoPlace && gModel.opticApplies && gModel.weapon == weapon::Key();
                 out.flags = (settings.frame && !scope ? sv::kFrame : 0u) | (settings.replaceRing ? sv::kReplaceRing : 0u) |
-                    (settings.otherEye ? sv::kOtherEye : 0u);
+                    (settings.otherEye ? sv::kOtherEye : 0u) | (window ? sv::kWindow : 0u);
                 out.eyeBox = std::max(settings.eyeBoxUnits, settings.windowUnits) / unitsPerMeter;
                 out.center = sv::Place(ray.origin, ray.direction, *top, placed.back / unitsPerMeter, placed.height / unitsPerMeter,
                     placed.side / unitsPerMeter);

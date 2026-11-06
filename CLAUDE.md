@@ -709,7 +709,13 @@ switching frameworks.
   resources in the sight; the host composes two layers once, `SightLayers` PrepareArt, layout `vr::scope_art` from
   `tools/scope-art.py`; the duplex if not found). **It can't load** (the game frees those textures, research/21 section 16),
   so **`reticle = duplex` is the default** since 2026-11-04 (the owner; an old file's `game` is kept and falls back to it).
-  The sight struct grew: host and mod deploy together.
+  The sight struct grew: host and mod deploy together. **A red dot on the game's solid housing is seen through** (research/21
+  section 17, 2026-11-05; the assault rifles' boxes, `[Sights] dotWindow`): the mod sets `kWindow` (a `flags` bit, no size change)
+  and the host draws, for the dot's eye and behind its ring and dot, the other eye's image at 1x on a disc at the window
+  (`sv::WindowView`, the scope shader's window style, the eye copy; not the capture: its grade would show). Dots no longer slide
+  toward the eye (`assistDotMaxM` 0; 0.03 migrated once, marker `dotWindow`: the slide toggled at the corridor's edge while the
+  eye already sat on the line), and the dot's eye survives a 120 ms dropout (`sv::EyeHold`). Log `[MEVR-SIGHT] first window`,
+  `sights: the dot's window was up`; snapshot `sights.window`.
 - LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **on by default since 2026-11-04**,
   `[Sights] scopeCapture = 1`, an old file's 0 moved once (marker `scopeCapturePost`); measured in research/39 section 12: the
   render thread +0.5 ms in a light scene, no GPU cost visible, the picture as sharp as the display instead of 2.2x below it;

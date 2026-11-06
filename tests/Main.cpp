@@ -7143,6 +7143,55 @@ void TestSightShots() {
 // The scope's virtual eyepiece (research/21 section 13): the picture keeps its apparent size from 25 to 60 cm behind the
 // eyepiece, the magnification stays true across it, the shadow comes in with the eye off the line, and it fades past
 // its range.
+// A red dot seen through the game's solid housing (research/21 section 17): the window at 1x, and the dot's eye kept
+// through a dropout.
+void TestSightWindow() {
+    namespace s = mevr::vr::sights;
+    // The assault rifle's housing: a 3 cm window 0.3 m ahead of the eye, the gun pointing along -Z.
+    auto const lens = s::MakeLens({0.0f, 0.0f, -0.3f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.03f);
+    CHECK(lens.has_value());
+    if (!lens) {
+        return;
+    }
+    // Wherever the eye is behind it, each point of the window shows its own direction from the eye: 1x, no shadow.
+    for (XrVector3f const eye : {XrVector3f{0.0f, 0.0f, 0.0f}, XrVector3f{0.02f, -0.01f, 0.05f}, XrVector3f{-0.05f, 0.03f, 0.4f}}) {
+        auto const view = s::WindowView(*lens, eye, 0.02f, 1.0f);
+        CHECK(view.has_value());
+        if (!view) {
+            continue;
+        }
+        CHECK(view->fade == 1.0f && view->px == 0.0f && view->py == 0.0f && view->pupil >= 2.0f);
+        for (auto const& [x, y] : {std::pair{0.0f, 0.0f}, std::pair{0.9f, 0.0f}, std::pair{-0.5f, 0.7f}}) {
+            XrVector3f const d = s::LensDirection(*lens, *view, x, y, 1.0f);
+            XrVector3f const point{lens->center.x + (lens->right.x * x + lens->up.x * y) * lens->radius,
+                lens->center.y + (lens->right.y * x + lens->up.y * y) * lens->radius,
+                lens->center.z + (lens->right.z * x + lens->up.z * y) * lens->radius};
+            CHECK(NearX(d, {point.x - eye.x, point.y - eye.y, point.z - eye.z}, 1e-5));
+        }
+    }
+    CHECK(!s::WindowView(*lens, {0.0f, 0.0f, -0.31f}, 0.02f, 1.0f));  // in front of the window
+    CHECK(!s::WindowView(*lens, {0.0f, 0.0f, 0.75f}, 0.02f, 1.0f));   // 1.05 m back
+    // The dot's eye through a dropout: a one-tick jump of the drawn gun (the session's 0.58 m sample) keeps it, 120 ms not.
+    s::EyeHold hold;
+    CHECK(hold.Update(1, 1000) == 1);
+    CHECK(hold.Update(-1, 1011) == 1);
+    CHECK(hold.Update(-1, 1100) == 1);
+    CHECK(hold.Update(1, 1105) == 1 && hold.Bridged() == 1);
+    CHECK(hold.Update(-1, 1110) == 1);
+    CHECK(hold.Update(-1, 1225) == -1);
+    CHECK(hold.Update(-1, 1230) == -1);
+    CHECK(hold.Update(0, 1240) == 0);  // the other eye takes it at once
+    CHECK(hold.Update(-1, 1250) == 0 && hold.Bridged() == 1);
+    hold.Reset();
+    CHECK(hold.Update(-1, 1260) == -1);
+    CHECK(hold.Update(1, 2000) == 1);
+    CHECK(hold.Update(-1, 1990) == -1);  // a clock that went back holds nothing
+    // A dot doesn't slide toward the eye by default; scopes still do.
+    s::Assist const assist;
+    CHECK(assist.dotMaxShiftM == 0.0f && assist.maxShiftM > 0.0f);
+    CHECK(s::Settings{}.dotWindow);
+}
+
 void TestSightVirtualEyepiece() {
     namespace s = mevr::vr::sights;
     auto const lens = s::MakeLens({0.0f, 0.0f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.02f);
@@ -8361,8 +8410,8 @@ void TestSightAssist() {
     namespace s = mevr::vr::sights;
     CHECK(s::Smooth(-1.0f) == 0.0f && s::Smooth(0.0f) == 0.0f && s::Smooth(1.0f) == 1.0f && s::Smooth(2.0f) == 1.0f);
     CHECK(std::abs(s::Smooth(0.5f) - 0.5f) < 1e-6f && s::Smooth(0.2f) < s::Smooth(0.3f));
-    s::Assist settings;  // full strength, 0.10 m at most (a scope), 0.03 m for a dot
-    CHECK(settings.maxShiftM == 0.10f && settings.dotMaxShiftM == 0.03f);
+    s::Assist settings;  // full strength, 0.10 m at most (a scope); a dot doesn't move (research/21 section 17)
+    CHECK(settings.maxShiftM == 0.10f && settings.dotMaxShiftM == 0.0f);
     XrVector3f const eyes[2] = {{-0.032f, 0.0f, 0.0f}, {0.032f, 0.0f, 0.0f}};
     XrVector3f const ahead{0.0f, 0.0f, -1.0f};
     XrVector3f const up{0.0f, 1.0f, 0.0f};
@@ -11453,6 +11502,7 @@ int main() {
     TestScopeMapping();
     TestSightShots();
     TestSightVirtualEyepiece();
+    TestSightWindow();
     TestScopeCapture();
     TestSceneCaptureScope();
     TestSpectator();
