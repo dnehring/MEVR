@@ -133,28 +133,47 @@ def block(scene, say, deictics=()):
     return "\n".join(lines) + "\n"
 
 
-def describe(group, rng):
-    """Words a player would use for a group."""
-    forms = []
+SECTOR_PHRASE = {"ahead": "ahead", "left": "on the left", "right": "on the right", "behind": "behind us"}
+ELEVATION_PHRASE = {"above": "up there", "below": "down there"}
+
+
+def describe(group, rng, groups):
+    """Words a player would use for a group, chosen among the forms that fit ONLY this group in the scene; None when no
+    words single it out (two groups alike in type, place and surface), and the caller points instead. Run1 and run2's
+    residual misses were all descriptions that fit two groups ("the left ones" with two groups on the left, "those thorian
+    creepers" with creepers in two groups): the gold was a coin toss (research/54 "The fine-tune")."""
     plural = group["count"] > 1
     noun = group["type"] + ("s" if plural else "")
-    forms.append(f"the {noun}")
-    forms.append(f"{'those' if plural else 'that'} {noun}")
+    same_type = lambda g: g["type"] == group["type"]
+    surface_word = lambda s: "bridge" if s in ("bridge", "catwalk") else s  # the prefix's WORDS line: bridge = catwalk = walkway
+    same_surface = lambda g: g["surface"] and surface_word(g["surface"]) == surface_word(group["surface"])
+    same_sector = lambda g: g["sector"] == group["sector"]
+    same_elevation = lambda g: g["elevation"] == group["elevation"]
+    # (the words, what they match)
+    forms = [(f"the {noun}", same_type), (f"{'those' if plural else 'that'} {noun}", same_type)]
     if group["surface"]:
-        forms.append(f"the ones on the {group['surface']}")
-        forms.append(f"the {noun} on the {group['surface']}")
+        forms.append((f"the ones on the {group['surface']}", same_surface))
+        forms.append((f"the {noun} on the {group['surface']}", lambda g: same_type(g) and same_surface(g)))
     if group.get("nearest"):
-        forms.append("the nearest ones" if plural else "the nearest one")
-        forms.append("the closest")
-    if group.get("biggest"):
-        forms.append("the big group")
-    forms.append(f"the {group['sector']} ones" if group["sector"] != "ahead" else "the ones ahead")
-    if group["elevation"] == "above":
-        forms.append("the ones up top")
-        forms.append("the ones up there")
-    if group["elevation"] == "below":
-        forms.append("the ones down there")
-    return rng.choice(forms)
+        forms.append(("the nearest ones" if plural else "the nearest one", lambda g: g.get("nearest")))
+        forms.append(("the closest", lambda g: g.get("nearest")))
+    if group.get("biggest") and len(groups) > 1:
+        forms.append(("the big group", lambda g: g.get("biggest")))
+    forms.append((f"the {group['sector']} ones" if group["sector"] != "ahead" else "the ones ahead", same_sector))
+    forms.append((f"the {noun} {SECTOR_PHRASE[group['sector']]}", lambda g: same_type(g) and same_sector(g)))
+    if group["elevation"] != "level":
+        forms.append((f"the ones {ELEVATION_PHRASE[group['elevation']]}", same_elevation))
+        if group["elevation"] == "above":
+            forms.append(("the ones up top", same_elevation))
+        forms.append((f"the {noun} {ELEVATION_PHRASE[group['elevation']]}", lambda g: same_type(g) and same_elevation(g)))
+        forms.append((f"the ones {ELEVATION_PHRASE[group['elevation']]} {SECTOR_PHRASE[group['sector']]}", lambda g: same_sector(g) and same_elevation(g)))
+    unique = [words for words, fits in forms if sum(1 for g in groups if fits(g)) == 1]
+    return rng.choice(unique) if unique else None
+
+
+def unique_surface(group, groups):
+    same = {"bridge": "bridge", "catwalk": "bridge"}
+    return bool(group["surface"]) and sum(1 for g in groups if g["surface"] and same.get(g["surface"], g["surface"]) == same.get(group["surface"], group["surface"])) == 1
 
 
 ATTACK_VERBS = ["take out", "attack", "kill", "focus on", "deal with", "hit", "engage", "light up", "take down", "open fire on", "shoot", "get", "waste", "drop"]
@@ -198,7 +217,11 @@ def gold_and_say(scene, rng):
             return rng.choice(["my target", "what I'm shooting at"]), "AIM"
         if r < 0.5 and scene["gaze"] == group["id"]:
             return rng.choice(["what I'm looking at", "that one I'm looking at"]), "GAZE"
-        return describe(group, rng), f"E{group['id']}"
+        words = describe(group, rng, groups)
+        if words is None:  # nothing singles it out: the player points
+            word = rng.choice(["those", "them", "those guys", "these"])
+            return word, deictic(word, group)
+        return words, f"E{group['id']}"
 
     if kind == "attack" and groups:
         g = rng.choice(groups)
@@ -219,10 +242,10 @@ def gold_and_say(scene, rng):
             deictics[-1] = (word, ["-"])
         return f"{who}|-|-|move|{t}", f"{rng.choice(FILLERS)}{who_text(member, rng)}{rng.choice(MOVE_VERBS)} {word}", deictics
     if kind == "hold":
-        if groups and rng.random() < 0.6 and groups[0]["surface"]:
-            g = rng.choice([x for x in groups if x["surface"]] or groups)
-            if g["surface"]:
-                return f"{who}|-|-|hold|E{g['id']}", f"{rng.choice(FILLERS)}{who_text(member, rng)}{rng.choice(HOLD_VERBS)} {g['surface']}".replace("hold the the", "hold the"), deictics
+        named = [x for x in groups if unique_surface(x, groups)]  # a surface only one group stands on names the point
+        if named and rng.random() < 0.6:
+            g = rng.choice(named)
+            return f"{who}|-|-|hold|E{g['id']}", f"{rng.choice(FILLERS)}{who_text(member, rng)}{rng.choice(HOLD_VERBS)} {g['surface']}".replace("hold the the", "hold the"), deictics
         return f"{who}|-|-|hold|-", f"{rng.choice(FILLERS)}{who_text(member, rng)}{rng.choice(['hold position', 'hold here', 'stay here', 'hold this position', 'dig in', 'take cover', 'stay put'])}", deictics
     if kind == "follow":
         return f"{who}|-|-|follow|-", f"{rng.choice(FILLERS)}{who_text(member, rng)}{rng.choice(FOLLOW)}", deictics
@@ -251,23 +274,27 @@ def gold_and_say(scene, rng):
         return f"{a['letter']}|{w}|-|-|- ; {a['letter']}|-|-|attack|{target}", say, deictics
     if kind == "correction" and len(groups) >= 2:
         g1, g2 = rng.sample(groups, 2)
-        p1, t1 = describe(g1, rng), f"E{g1['id']}"
-        p2, t2 = describe(g2, rng), f"E{g2['id']}"
-        say = f"{who_text(member, rng)}{rng.choice(ATTACK_VERBS)} {p1}, {rng.choice(['no', 'no wait', 'no no', 'sorry'])}, {p2}"
-        return f"{who}|-|-|attack|{t2}", say, deictics
+        p1, p2 = describe(g1, rng, groups), describe(g2, rng, groups)
+        if p1 is not None and p2 is not None:
+            say = f"{who_text(member, rng)}{rng.choice(ATTACK_VERBS)} {p1}, {rng.choice(['no', 'no wait', 'no no', 'sorry'])}, {p2}"
+            return f"{who}|-|-|attack|E{g2['id']}", say, deictics
+        kind = "talk"  # no words for one of them: this record is talk instead
     if kind == "cancel":
         return "-|-|-|cancel|-", rng.choice(CANCEL), deictics
     return "none", rng.choice(TALK), deictics
 
 
+DROPPABLE = {"uh", "um", "okay", "hey", "alright", "the", "your", "then", "and", "please", "just"}  # never a word that carries the target
+
+
 def noisy(text, rng, rate):
     out = []
-    for word in text.split():
+    for i, word in enumerate(text.split()):
         bare = re.sub(r"[^a-z']", "", word.lower())
         if bare in ASR_SLIPS and rng.random() < rate:
             out.append(rng.choice(ASR_SLIPS[bare]))
-        elif rng.random() < rate * 0.1:
-            continue  # a dropped word
+        elif (bare in DROPPABLE or (i == 0 and bare == "right")) and rng.random() < rate * 0.3:
+            continue  # a dropped filler (a dropped "at platform" once turned a hold at the platform into a bare "hold position" with the platform's gold)
         else:
             out.append(word.lower().strip(",") if rng.random() < 0.7 else word)
     s = " ".join(out)
@@ -283,6 +310,7 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--noise", type=float, default=0.3)
     ap.add_argument("--teacher-lines", default="")
+    ap.add_argument("--generator", type=int, default=2, help="the generator's version, for the run config's hash (2: unambiguous descriptions)")
     args = ap.parse_args()
     rng = random.Random(args.seed)
     out = pathlib.Path(args.out)
