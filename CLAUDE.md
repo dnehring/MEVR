@@ -81,8 +81,9 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   (Halcyon's settings in sub-tabs). Every row drives a real setting (`plugin/MainMenuSettings`: our
   `LE1MEVR.ini` key by key, Halcyon's live config saved with its own `SaveProfile` when the menu closes;
   never a reset written over a profile; Comfort's turning, vignette and walking rows since 2026-10-23,
-  research/31; Display's render resolution offers the headset's own eye size, × 0.85 and × 0.75 of it before
-  Halcyon's ladder, and the Upscale row is `[Upscale] method`, since 2026-10-23, research/28's mapping table) or is
+  research/31; Display's render resolution offers the headset's own eye size, × 0.85 and × 0.75 of it (Halcyon's
+  ladder in Advanced > Performance since 2026-11-06), and the Upscale row is `[Upscale] method`, since 2026-10-23,
+  research/28's mapping table; Display's Performance row since 2026-11-06, research/60, below) or is
   marked Soon. Code: `src/plugin/menu` (game-independent:
   RmlUi's own DX11 renderer wrapped for the game's context, our `chamfer`/`backdrop`/`icon` decorators,
   the data model over `core/vr/MenuSettings`' schema, the frosted backdrop from the left eye's image),
@@ -711,6 +712,19 @@ switching frameworks.
   `core/vr/Upscale` (unit-tested), AMD's MIT headers in `external/fsr1` embedded at build time. Offline look and
   check: `mevr-upscale-preview` (PNGs; `--check` is ctest `mevr-upscale-shader`; `--bench` times an eye). Log
   `upscale:`; the probe JSON's `"upscale"`.
+- LE1 performance modes ([research/60](research/60-performance-modes.md), 2026-11-06, the owner: "better performance modes in
+  our settings"; `core/vr/PerformanceModes`, unit-tested; `plugin/MainMenuSettings`): Display's **Performance** row, Quality /
+  Balanced / Performance, each a bundle measured at Eden Prime's heavy cells: the render resolution chip (headset, × 0.85,
+  × 0.75; a restart applies it, the row's note says when one waits), `[Upscale] method`, `[Performance] minScreenRadiusPx`,
+  `[SystemSettings] FoliageDrawRadiusMultiplier`, `DynamicShadows`, `AmbientOcclusion` (live within a second). **Balanced is
+  the shipped defaults** (a fresh install reads as Balanced; keep the two in step when a default changes). Any bundled value
+  set by hand shows **Custom** (a shown-only chip) with what differs from the nearest mode. Advanced > Performance has each
+  lever as its own row, FSR sharpness (no mode's), and Halcyon's fixed sizes (the ladder, relabelled by width). Motion blur is
+  never a mode's. A mode writes every bundled key; an old file's `minScreenRadiusTenths` (read first by RenderLevers) is
+  emptied. Log `main menu: performance mode ...`; offline look `mevr-menu-preview`'s `section-display-perf-*.png`,
+  `advanced-perf.png`. **Scripted menu tests:** `tools/make-menu-recording.py` writes a replay whose right ray clicks document
+  points (open the menu with its key: the both-sticks hold counts only live controllers; wait a few seconds after a scroll,
+  RmlUi's smooth scroll keeps moving; needs main's 303238d, else Halcyon's low-level hooks eat the desktop's input).
 - LE1 gun sights ([research/21](research/21-sights-and-scopes.md), HostServices v13): a collimated red
   dot / holo per gun (a quad 50 m out along the sight line, `eyeVisibility` = the eye looking through the
   window) and a 4x picture-in-picture scope on the sniper rifle (a disc at the eyepiece for the aiming

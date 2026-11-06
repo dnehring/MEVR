@@ -287,6 +287,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   (research/35 attempt 49)
 - [ ] `sharePass = 5` (experimental) in a heavy fight: a strobing eye or objects jumping? (research/37)
 - [ ] FSR upscale on and off at the same render scale: sharper than bilinear, no ringing, HUD text clean. (research/32)
+- [ ] Display > Performance (built 2026-11-06, session: Performance modes): try Quality, Balanced and Performance at Eden
+  Prime's heavy spot and in a fight, restarting after each (the render size waits for one; the row says so). Which holds 90
+  Hz in fpsVR; how soft Performance looks (0.75 of the eye with FSR); pop-in from its culling and shorter grass; Quality's
+  sharpness. Then change one lever in Advanced > Performance: the row shows Custom and names what differs. (research/60)
 - [ ] Quest 3 over Steam Link: the headset name in `[MEVR-COLOUR] headset:`, the Quest profile against neutral (hold A
   to compare), banding on the grey ramp, black level and white point. (research/27 sections 5, 8)
 - [ ] One cutscene with `cineFpsCap = 0` against the capped 45 fps: which judders less? (research/16)
