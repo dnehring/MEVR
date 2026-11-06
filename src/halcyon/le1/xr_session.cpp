@@ -5943,6 +5943,30 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         const MELEVR::MevrBridge::PanelPose placed = MELEVR::MevrBridge::PlacePanel(kind, viewPos, g_viewSpace, g_appSpace,
                                                                                     headValid, mevrHeadQ, mevrHeadP);
         const float heightM = screenNow.heightM > 0.1f ? screenNow.heightM : screenNow.widthM * 9.0f / 16.0f;
+        {   // [MEVR] the floor and horizon around the screen (src/plugin/CinemaBackdrop.cpp, research/52): under its quads
+            MELEVR::MevrBridge::BackdropFrame bf;
+            bf.session = g_session;
+            bf.appSpace = g_appSpace;
+            bf.context = g_context;
+            bf.headValid = headValid;
+            for (int e = 0; e < 2; ++e)
+            {
+                const XrView& v = g_subViews[e];
+                bf.eyeOrientation[e][0] = v.pose.orientation.x; bf.eyeOrientation[e][1] = v.pose.orientation.y;
+                bf.eyeOrientation[e][2] = v.pose.orientation.z; bf.eyeOrientation[e][3] = v.pose.orientation.w;
+                bf.eyePosition[e][0] = v.pose.position.x; bf.eyePosition[e][1] = v.pose.position.y; bf.eyePosition[e][2] = v.pose.position.z;
+                bf.eyeFov[e][0] = v.fov.angleLeft; bf.eyeFov[e][1] = v.fov.angleRight;
+                bf.eyeFov[e][2] = v.fov.angleUp; bf.eyeFov[e][3] = v.fov.angleDown;
+            }
+            for (int i = 0; i < 4; ++i) bf.screenOrientation[i] = placed.orientation[i];
+            for (int i = 0; i < 3; ++i) bf.screenPosition[i] = placed.position[i];
+            bf.screenWidthM = screenNow.widthM;
+            bf.eyeWidth = static_cast<int>(g_eyes[0].width);
+            bf.eyeHeight = static_cast<int>(g_eyes[0].height);
+            if (placed.headLocked) bf.headValid = false;   // the screen isn't in the room: no floor to put under it
+            if (const void* backdrop = MELEVR::MevrBridge::CinemaBackdropLayer(bf))
+                layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(backdrop);
+        }
         for (int e = 0; e < 2; ++e)
         {
             XrCompositionLayerQuad& q = mevrScreenQuad[e];

@@ -470,6 +470,24 @@ struct CineScreenQuads
 };
 // Present thread, each frame a VR cine is decided: whether this one goes on the 3D screen ([Cinematics]).
 bool CineScreenWanted(bool conversation) noexcept;
+// The cinema screen's floor and horizon (src/plugin/CinemaBackdrop.cpp, research/52): this frame's eyes (app space) and the
+// screen as placed; the layer to submit UNDER the screen's quads (an XrCompositionLayerProjection*), or null.
+struct BackdropFrame
+{
+    void* session = nullptr;                 // XrSession
+    void* appSpace = nullptr;                // XrSpace
+    ID3D11DeviceContext* context = nullptr;
+    bool headValid = false;
+    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    float eyePosition[2][3] = {};
+    float eyeFov[2][4] = {};                 // angleLeft, angleRight, angleUp, angleDown (radians)
+    float screenOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // the screen's quad pose, app space
+    float screenPosition[3] = {};
+    float screenWidthM = 0.0f;
+    int eyeWidth = 0;                        // the eye images' size, for the layer's resolution
+    int eyeHeight = 0;
+};
+const void* CinemaBackdropLayer(const BackdropFrame& frame) noexcept;
 
 // ---- Holds on the presentation decision (src/plugin/PresentationHold.cpp, core/vr/PresentationHold, research/56) ------
 // Present thread, each frame with the mode byte as read (-1 unreadable), before the decision: true while the frame is the
