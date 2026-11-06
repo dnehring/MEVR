@@ -131,6 +131,12 @@ Because the characters look physically large, but they don't look human or lifel
   (judder in a world around you) is gone: `[Cinematics] fullRate` (default 1) leaves the screen at the headset's rate (`[MEVR]`
   seam on `cinePace60`, `MevrBridge::CineScreenFullRate`); 0 brings the cap back. **Not yet measured in the game** (the machine
   was busy); `tools/perf-probe.py --per-second` is ready for a capture across a scene and its end.
+- **The screen moved with the player** ("if I'd move, the screen would move with me in some capacity"): it was placed by
+  Halcyon's world-locked panel rules for menus (`plugin/WorldPanels`, `core/vr/OverlayPlacement`): re-placed at the head on
+  a kind change (ME1 flips conversation and cutscene mid-scene) when the head had moved 5 cm or turned 5 degrees, on any
+  gap of 5 frames, and following past 70 degrees after a second. Now `ScreenPanelSettings`: a conversation and a cutscene
+  are one kind, a gap of up to 3 s is the same showing, no follow; a new sequence after gameplay or a recenter places it
+  afresh (unit-tested).
 - **After a scene** the rate climbed back over ~6 s (`[PRESENTHZ]` 52.5, 70.5, 87.5, 90 after the 10:08:26 cutscene, which
   ended into combat: `StartCombat`); the render cost the same before and after (4.8-5.9 ms); GPU memory fell 2748 -> 2089 MB
   over 20 s. Which thread pays in those seconds is open: a per-second probe across a scene's end.
