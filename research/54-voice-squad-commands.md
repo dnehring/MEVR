@@ -421,6 +421,19 @@ arc on the hand denotes placement", and "double b will have the squad all return
   v32 (size-checked).
 Pointing to pick is gone. Not yet seen in the game (the game folder went to the install test, then the user's playtest).
 
+#### The weapon row (2026-11-05, night)
+
+The user: fold the squad's weapons into the same flow, "ideally we wouldn't need those older menus"; asked how, they chose stick
+down for a weapon row and the left trigger's wheel off by default. Built in 63abe6c ([core/vr/SquadPlace](../src/core/vr/SquadPlace.hpp),
+`Row`, unit-tested): while B is held a flick down opens a row of the lit tile's weapons under the names (a squadmate's carried ones,
+`MemberView::carried`; for the squad tile any one of them carries), starting on the one in hand; the arc and ring fade out (the
+View's `count` 0). Sideways now steps weapons, up goes back to the names and the arc; the stronger axis decides a diagonal. Letting
+go in the row equips the lit weapon for each recipient that carries it (`squad_weapons::GiveWeapon`, the squad weapon menu's own
+path) and moves no one. Haptics: a 50 ms pulse at the row change, a tick per weapon. The host draws the row 4.5 cm under the names in
+pale gold, the one in hand dotted. The left trigger's squad wheel is off by default (`[Controls] leftTrigger = none`; a file without
+the marker `placeWeapons` that still holds `lb` moves once), the menu's default and the controller guide's B text with it;
+`leftTrigger = lb` brings the wheel back. Not yet seen in the game.
+
 ## The rule parser (2026-11-04, later)
 
 Tier 1 of research/54's parser design, [src/core/vr/SquadParser.hpp](../src/core/vr/SquadParser.hpp) (pure, unit-tested,

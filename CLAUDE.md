@@ -726,7 +726,9 @@ switching frameworks.
   reticle stays collimated. Logs `scope capture:`, `scope capture source:`; snapshots `"mod"."scopeCapture"`,
   `"sights"."pictureSource"`/`"capture"`; offline `mevr-sight-preview`'s `scope-capture-*.png`.
 - LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
-  sections 9-11): **pull the left trigger** (`[Controls] leftTrigger = lb`): the wheel opens at the left
+  sections 9-11): **since 63abe6c the squad's weapons are in squad placement's hold (B, stick down; below) and the left trigger's
+  wheel is off by default** (`[Controls] leftTrigger = none`, an old file's `lb` moved once; `lb` brings back what follows).
+  With `leftTrigger = lb`, **pull the left trigger**: the wheel opens at the left
   hand at once; pointing the left hand at a squadmate preselects them; letting go of the trigger gives
   the highlighted entry. The squad takes the trigger per pull on foot and in the wheels
   (`squad_menu::OwnTrigger`: the game sees no LB then; the Mako keeps LB). **The left grip never opens
@@ -756,7 +758,10 @@ switching frameworks.
   one dispatcher). **Who goes: a selector above the hand** (5ff56ac; [first squadmate | Squad | second], ME1's d-pad order, starting on
   the squad), stepped by a sideways flick of the right stick (one pulse for the first, two for the second, a long one for the squad; the
   stick reaches neither the game, `gamepad::kFlagSquadPlace`, nor the comfort turn while B is held); the ring names them (amber for
-  one, blue for the squad). **B double-tapped: the whole squad back to Shepard.** Within `followWithinM` of Shepard: a follow
+  one, blue for the squad). **Stick down: their weapons** (63abe6c; a row under the names, a squadmate's own or any the squad
+  carries, starting on the one in hand, the arc fading out; sideways picks, up goes back; letting go there equips through
+  `squad_weapons::GiveWeapon`, no move; `[Controls] placeWeapons`). **B double-tapped: the whole squad back to Shepard.** Within
+  `followWithinM` of Shepard: a follow
   (green); a wall, a steep slope or nothing in reach: called off (red). Off while `meleeButton = 1`, in the squad's or the power wheel,
   anywhere but on foot (`place = 0` off). The host draws it in a projection layer of its own (galaxy_draw's renderer, over the world).
   `mevr place aim <pitchDeg> [yawDeg] | release` without controllers. Logs `squad place:`; snapshot `"mod"."squadPlace"`, layers

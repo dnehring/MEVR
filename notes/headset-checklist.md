@@ -127,7 +127,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   calls off. Judge: the tiles' size and legibility at the hand, whether one / two / long pulses tell who without looking,
   whether a flick ever misfires while aiming, the double tap's timing (0.35 s), the arc's reach (14 m/s: 20 m at 45 degrees),
   and whether the arc drawn over walls (no depth test) confuses. With two squadmates, both sent to one ring: do they crowd?
-  (research/54 "Placement by an arc", "The selector")
+  Weapons: while holding B, flick the stick down: the lit squadmate's weapons appear under the names (the arc fades);
+  sideways picks, let go equips (up goes back to placing). Is down-then-sideways easy mid-fight, and is the left trigger
+  missed now that its wheel is off? (research/54 "Placement by an arc", "The selector", "The weapon row")
 - [ ] In a fight, `mevr say "<name>, hold here"` typed by Claude while you watch: does a held squadmate stay put under
   the HOLD formation, does a hurt or crowded one visibly fall back to cover and come back when it's calm, and does being
   re-ordered every few seconds make them twitch. Claude can read the logs; only you can see whether it looks right.
