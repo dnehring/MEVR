@@ -74,9 +74,10 @@ def sh(cmd, log=None, cwd=None):
         out.flush()
         # Unbuffered: a child's print() through a pipe is block-buffered, so run1's loss lines reached train.log 8 KB at a
         # time, long after the progress bar (stderr) showed the step.
-        # expandable_segments: run3 (2026-11-05) ran at 1.35 s a step for 170 steps and then crept past the 4090's 24 GB into
-        # system memory (35 s a step) as the caching allocator fragmented over the varying record lengths.
-        env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
+        # No PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True (tried for run3's spills, 2026-11-05) reserved 23.5 GB of the
+        # 4090 where the default allocator holds 11.4 GB for the same data; the spills were the game's 5-8 GB beside the
+        # trainer, not the allocator (README: train only with the game closed).
+        env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
         proc = subprocess.Popen([str(c) for c in cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", cwd=cwd, env=env)
         tail = []
         for line in proc.stdout:
