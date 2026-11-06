@@ -470,6 +470,17 @@ the enemy groups:
   kind of order (8%) says "get behind the crate", "take cover behind the wall on the left", "Ashley, behind that one" (a
   PT line whose candidates are L ids), gold `A|-|-|hold|L2` or `PT1`; run3's config takes it.
 
+**In the game, 19:43-19:52** (the fake headset, the UNC20 drop-zone save): the walk runs every 2 s as meant (29 walks
+in 56 s of reads) and found two "cover links" at 338 m, both the classes' default objects (`Default__CoverLink`,
+`Default__SFXDynamicCoverLink`, one slot each): **the drop zone has no placed cover at all**, so the walk skips default
+objects now (the retreat's `CoverNear` in game/SquadOrders should too; its distance check hides them today) and the
+level shows 0 landmarks, rightly. The heartbeat carries the counts (`N landmark(s) of M cover links in K walks`) and the
+first walk logs each link by name and distance, which is where the mesh words will come from. Eden Prime for a check
+with real cover: `open BIOA_PRO10` through the console returned nothing and the map stayed (the Mako helper's `open
+BIOA_UNC20` works), and `launch-game.ps1 -Map` still resumed the save at the title, so the check with cover is the
+checklist's (a save on Eden Prime, or the reason `open` refuses that map, [verify]). `[SquadContext] landmarkRangeM` isn't
+re-read live, either: the key is read with the file at start.
+
 **What the game hasn't said yet** [verify]: the type words. The mod says "cover" for every piece until it learns which mesh
 a cover link stands against (the level's static mesh names, `Crate_01`, `Pillar`...: a map from mesh names to words, and
 the nearest mesh per link), so today "the crate on the left" works through the lenient fit (the only piece on the left),

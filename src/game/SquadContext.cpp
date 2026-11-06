@@ -200,14 +200,20 @@ void ReadCover(sc::Vec3 const& player, double upm, float rangeM) {
     for (std::int32_t i = 0; i < n && gCover.size() < 32; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
         if (o == nullptr || !ue3::IsA(o, gCoverLink)) continue;
-        ++gCoverLinksSeen;
         if (gCoverDisabled.ReadBool(o).value_or(false)) continue;
+        std::string const name = ue3::runtime::FullName(o);
+        if (name.find("Default__") != std::string::npos) continue;  // the class default objects (a level without cover lists only those)
+        ++gCoverLinksSeen;
         std::optional<ue3::Vector> const loc = player::Location(o);
         std::optional<ue3::Rotator> const rot = player::Rotation(o);
         if (!loc || !rot) continue;
         sc::Cover c;
         c.id = reinterpret_cast<std::uint64_t>(o);
         c.position = Metres(*loc, upm);
+        if (gCoverLinksSeen <= 8 && gCoverWalks % 30 == 1) {  // the first walk and every minute: what the level has (the words to learn)
+            log::Info("squad context: cover link {} at {:.0f} m, {} slots{}", ue3::runtime::FullName(o), sc::Distance(c.position, player),
+                gCoverSlots.ElementsOf(o) ? gCoverSlots.ElementsOf(o)->count : 0, sc::Distance(c.position, player) > rangeM + 10.0f ? " (out of range)" : "");
+        }
         if (sc::Distance(c.position, player) > rangeM + 10.0f) continue;
         engine::UnrealRotation const rotation{rot->pitch, rot->yaw, rot->roll};
         c.yawDeg = static_cast<float>(rotation.yaw * 360.0 / 65536.0);
