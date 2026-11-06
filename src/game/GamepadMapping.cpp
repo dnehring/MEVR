@@ -304,6 +304,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.makoDrive ? kFlagMakoDrive : 0u) | (options.makoLever ? kFlagMakoLever : 0u) | (options.makoStick ? kFlagMakoStick : 0u) |
            (options.cockpitLook ? kFlagCockpitLook : 0u) | (options.physicalCrouch ? kFlagPhysicalCrouch : 0u) |
            (options.powerWheel ? kFlagPowerWheel : 0u) | (options.modPowerHold ? kFlagModPowerHold : 0u) |
+           (options.squadPlace ? kFlagSquadPlace : 0u) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -330,6 +331,7 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.physicalCrouch = (flags & kFlagPhysicalCrouch) != 0;
     options.powerWheel = (flags & kFlagPowerWheel) != 0;
     options.modPowerHold = (flags & kFlagModPowerHold) != 0;
+    options.squadPlace = (flags & kFlagSquadPlace) != 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
     options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
@@ -437,6 +439,9 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     }
     if (options.makoStick) {
         pad.sThumbRX = pad.sThumbRY = 0;  // ...and the thumbstick aims its turret (also inside the "pushed" radius above)
+    }
+    if (options.squadPlace) {
+        pad.sThumbRX = pad.sThumbRY = 0;  // squad placement's selector (game/SquadPlace) while B is held
     }
     pad.bLeftTrigger = options.leftTrigger && !options.leftTriggerShoulder ? ToTrigger(l.trigger) : BYTE{0};
     pad.bRightTrigger = ToTrigger(r.trigger);

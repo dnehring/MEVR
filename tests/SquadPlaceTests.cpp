@@ -66,13 +66,14 @@ void TestArc() {
     CHECK(sp::IsFloor({0.0f, 0.0f, 5.0f}, s));  // not unit: still floor
 }
 
-sp::Step Tick(sp::Machine& m, bool button, sp::Landing landing = sp::Landing::Floor, float fromPlayerM = 8.0f, int member = -1,
-    bool usable = true, float dt = 0.05f) {
+sp::Step Tick(sp::Machine& m, bool button, sp::Landing landing = sp::Landing::Floor, float fromPlayerM = 8.0f, float stickX = 0.0f,
+    bool usable = true, float dt = 0.05f, int members = 2) {
     sp::Input in;
     in.dt = dt;
     in.usable = usable;
     in.button = button;
-    in.pointedMember = member;
+    in.stickX = stickX;
+    in.members = members;
     in.landing = landing;
     in.landingFromPlayerM = fromPlayerM;
     return m.Advance(in, sp::Settings{});
@@ -88,12 +89,65 @@ void TestHold() {
         s = Tick(m, false);
         CHECK(s.given && s.order == sp::Order::Move && s.member == -1 && !m.Holding());
     }
-    {  // The squadmate pointed at when B went down gets it alone, wherever the ray goes after.
+    {  // The selector: starts on the squad; a flick left is the first squadmate, held over (no repeat) and centred it stays;
+       // right twice from there is the second; past the end it stays.
         sp::Machine m;
-        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, 1).member == 1);
-        for (int i = 0; i < 10; ++i) Tick(m, true, sp::Landing::Floor, 8.0f, -1);
-        sp::Step const s = Tick(m, false, sp::Landing::Floor, 8.0f, 0);
+        sp::Step s = Tick(m, true);
+        CHECK(s.started && m.Tile() == 1 && m.Member() == sp::kSquadTile);
+        s = Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f);
+        CHECK(s.selectionChanged && m.Tile() == 0 && m.Member() == 0);
+        for (int i = 0; i < 5; ++i) CHECK(!Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f).selectionChanged);  // held: no repeat
+        Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f);
+        CHECK(m.Member() == 0);
+        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, 0.8f).selectionChanged && m.Member() == sp::kSquadTile);
+        Tick(m, true, sp::Landing::Floor, 8.0f, 0.1f);
+        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, 0.8f).selectionChanged && m.Member() == 1);
+        Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f);
+        CHECK(!Tick(m, true, sp::Landing::Floor, 8.0f, 0.8f).selectionChanged && m.Member() == 1);  // the last tile
+        Tick(m, true, sp::Landing::Floor, 8.0f, 0.45f);  // between the thresholds: not re-armed, not a flick
+        s = Tick(m, false);
         CHECK(s.given && s.member == 1);
+        // The next hold starts on the squad again.
+        CHECK(Tick(m, true).started && m.Member() == sp::kSquadTile);
+    }
+    {  // A stick already pushed when B goes down doesn't step until it comes back.
+        sp::Machine m;
+        Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f);
+        CHECK(m.Member() == sp::kSquadTile);
+        CHECK(!Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f).selectionChanged);
+        Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f);
+        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, -0.9f).selectionChanged && m.Member() == 0);
+    }
+    {  // One squadmate: one tile, the squad; flicks change nothing.
+        sp::Machine m;
+        Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f, true, 0.05f, 1);
+        CHECK(!Tick(m, true, sp::Landing::Floor, 8.0f, 0.9f, true, 0.05f, 1).selectionChanged);
+        CHECK(m.Member() == sp::kSquadTile);
+        CHECK(sp::TileCount(1) == 1 && sp::TileCount(2) == 3 && sp::TileCount(0) == 0);
+        CHECK(sp::MemberOfTile(0, 2) == 0 && sp::MemberOfTile(1, 2) == sp::kSquadTile && sp::MemberOfTile(2, 2) == 1);
+        CHECK(sp::MemberOfTile(0, 1) == sp::kSquadTile);
+    }
+    {  // Double tap: two quick presses bring the whole squad back; a slow second press is a new hold instead.
+        sp::Machine m;
+        Tick(m, true);
+        CHECK(Tick(m, false).cancelled);         // the first tap, a blip
+        Tick(m, false);
+        sp::Step s = Tick(m, true);
+        CHECK(s.regroup && s.order == sp::Order::Follow && s.member == sp::kSquadTile && !m.Holding());
+        CHECK(!Tick(m, true).started);           // the second press, held on, never becomes a hold
+        Tick(m, false);
+        sp::Machine n;
+        Tick(n, true);
+        Tick(n, false);
+        for (int i = 0; i < 10; ++i) Tick(n, false);  // 0.5 s later
+        s = Tick(n, true);
+        CHECK(s.started && !s.regroup);
+        // A held placement let go, then a quick press: not a double tap (only a blip arms it).
+        sp::Machine o;
+        Tick(o, true);
+        for (int i = 0; i < 10; ++i) Tick(o, true);
+        CHECK(Tick(o, false).given);
+        CHECK(Tick(o, true).started);
     }
     {  // Near Shepard: on me (a follow).
         sp::Machine m;
@@ -134,10 +188,10 @@ void TestHold() {
     {  // No longer usable while holding (a menu opened): called off; pressed where it can't start: that press never does.
         sp::Machine m;
         Tick(m, true);
-        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, -1, false).cancelled);
+        CHECK(Tick(m, true, sp::Landing::Floor, 8.0f, 0.0f, false).cancelled);
         CHECK(!Tick(m, true).started);
         sp::Machine n;
-        CHECK(!Tick(n, true, sp::Landing::Floor, 8.0f, -1, false).started);
+        CHECK(!Tick(n, true, sp::Landing::Floor, 8.0f, 0.0f, false).started);
         CHECK(!Tick(n, true).started);  // usable now, but B was already down
         Tick(n, false);
         CHECK(Tick(n, true).started);

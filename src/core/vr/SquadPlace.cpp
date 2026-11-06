@@ -63,24 +63,40 @@ char const* Name(Order order) {
     return "none";
 }
 
+int TileCount(int members) {
+    return members >= 2 ? 3 : members == 1 ? 1 : 0;
+}
+
+int SquadTileIndex(int members) {
+    return members >= 2 ? 1 : 0;
+}
+
+int MemberOfTile(int tile, int members) {
+    if (members < 2) return kSquadTile;
+    return tile == 0 ? 0 : tile == 2 ? 1 : kSquadTile;
+}
+
 void Machine::Reset() {
     holding_ = false;
     heldS_ = 0.0f;
-    member_ = -1;
+    tile_ = SquadTileIndex(members_);
+    armed_ = true;
     landing_ = Landing::None;
 }
 
 Step Machine::Advance(Input const& in, Settings const& settings) {
     Step step;
+    float const dt = std::max(in.dt, 0.0f);
     bool const pressed = in.button && !wasDown_;
     wasDown_ = in.button;
     if (!in.button) blocked_ = false;
+    sinceBlipS_ += dt;
     if (holding_) {
-        heldS_ += std::max(in.dt, 0.0f);
+        heldS_ += dt;
         if (!settings.enabled || !in.usable) {
             step.cancelled = true;
             step.why = "no longer usable here";
-            step.member = member_;
+            step.member = Member();
             Reset();
             blocked_ = in.button;
             return step;
@@ -89,19 +105,37 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
             step.landingChanged = true;
             landing_ = in.landing;
         }
+        // The squad shrank or grew under the hold: the selector starts over on the squad.
+        if (in.members != members_) {
+            members_ = in.members;
+            tile_ = SquadTileIndex(members_);
+            step.selectionChanged = true;
+        }
+        // A sideways flick of the right stick steps the selector one tile, re-armed near the centre.
+        if (armed_ && std::abs(in.stickX) >= settings.flickOn) {
+            armed_ = false;
+            int const next = std::clamp(tile_ + (in.stickX > 0.0f ? 1 : -1), 0, std::max(TileCount(members_) - 1, 0));
+            if (next != tile_) {
+                tile_ = next;
+                step.selectionChanged = true;
+            }
+        } else if (!armed_ && std::abs(in.stickX) <= settings.flickOff) {
+            armed_ = true;
+        }
         if (in.button && heldS_ > settings.maxHoldS) {
             step.cancelled = true;
             step.why = "held too long";
-            step.member = member_;
+            step.member = Member();
             Reset();
             blocked_ = true;
             return step;
         }
         if (!in.button) {
-            step.member = member_;
+            step.member = Member();
             if (heldS_ < settings.minHoldS) {
                 step.cancelled = true;
                 step.why = "a blip";
+                sinceBlipS_ = 0.0f;
             } else if (in.landing != Landing::Floor) {
                 step.cancelled = true;
                 step.why = Name(in.landing);
@@ -113,13 +147,24 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
         }
         return step;
     }
+    if (pressed && !blocked_ && settings.enabled && in.usable && sinceBlipS_ <= settings.doubleTapS) {
+        // The second tap: the whole squad back to Shepard at once; this press never becomes a hold.
+        step.regroup = true;
+        step.order = Order::Follow;
+        step.member = kSquadTile;
+        sinceBlipS_ = 1e9f;
+        blocked_ = true;
+        return step;
+    }
     if (pressed && !blocked_ && settings.enabled && in.usable) {
         holding_ = true;
         heldS_ = 0.0f;
-        member_ = in.pointedMember;
+        members_ = in.members;
+        tile_ = SquadTileIndex(members_);
+        armed_ = std::abs(in.stickX) <= settings.flickOff;  // a stick already pushed doesn't step until it comes back
         landing_ = in.landing;
         step.started = true;
-        step.member = member_;
+        step.member = Member();
     } else if (pressed) {
         blocked_ = true;  // pressed where it can't start: this press never becomes one
     }

@@ -12,6 +12,7 @@
 #include "game/HeadTracking.hpp"
 #include "game/Mako.hpp"
 #include "game/SquadWeapons.hpp"
+#include "game/SquadPlace.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
 
@@ -264,7 +265,8 @@ void Tick(double deltaSeconds, Link const& link) {
     gSettings = hand_calibration::GetComfort();
     vr::controllers::State const controllers = vr::controllers::Latest();
     bool const tracked = controllers.active;
-    float const stickX = tracked ? controllers.right.stickX : 0.0f;
+    // While squad placement's B is held the right stick steps its selector, not the turn.
+    float const stickX = tracked && !squad_place::Holding() ? controllers.right.stickX : 0.0f;
     float const moveX = tracked ? controllers.left.stickX : 0.0f;
     float const moveY = tracked ? controllers.left.stickY : 0.0f;
     bool const onFoot = head_tracking::OnFoot();
