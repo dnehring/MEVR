@@ -1,9 +1,16 @@
-# ME VR Attempt
+# MEVR: Mass Effect Legendary Edition in VR
 
-Native VR for **Mass Effect 1, Legendary Edition** (PC): stereo 3D and 6DOF on Halcyon's
-[MassEffect1-VR](https://github.com/jrush64/MassEffect1-VR) renderer, with our motion controls on top:
-controller aim, arm and body IK, body holsters, a two-handed rifle grip, physical grenades and melee, gun
-sights and scopes, a VR main menu and a guided calibration.
+**A free VR mod for Mass Effect 1 (Legendary Edition) on PC.** Play it in stereo 3D at life size with head tracking,
+and with motion controllers: aim with your hand, draw from body holsters, hold rifles with both hands, throw real
+grenades, and order your squad by pointing or by voice. For PC VR headsets through SteamVR (tested on Quest 3 over
+Steam Link and on PS VR2). Built on Halcyon's [MassEffect1-VR](https://github.com/jrush64/MassEffect1-VR) renderer.
+
+**[Download](https://github.com/dnehring/MEVR/releases/latest)** | [Website](https://dnehring.github.io/MEVR/) |
+[Code signing policy](docs/code-signing.md)
+
+Under the hood (the project's working name is ME VR Attempt): stereo 3D and 6DOF on Halcyon's renderer, with our
+motion controls on top: controller aim, arm and body IK, body holsters, a two-handed rifle grip, physical grenades and
+melee, gun sights and scopes, a VR main menu and a guided calibration.
 
 **Status: development preview, LE1 only.** LE2 and LE3 build (on our own early renderer) for development,
 but they aren't playable in VR. **Downloads:** players' builds (MEVR-Setup, a one-click installer) go on the

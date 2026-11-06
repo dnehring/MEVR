@@ -300,6 +300,22 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
 
 ## 6. Delivery channels (owner, 2026-11-04: consider more than GitHub)
 
+- [ ] **[D] Found by search (owner, 2026-11-05: "it needs to be discoverable via google search and right now it doesn't
+  pull up", for the SignPath application).** On 2026-11-05 the repository was 13 days public with no stars, topics,
+  website, release or inbound links, and the README's title was "ME VR Attempt"; a web search found Halcyon's mod and
+  press about it, not ours. Done in the repository: the README opens with "MEVR: Mass Effect Legendary Edition in VR"
+  and a plain description; `site/` is a landing page (title, description, structured data, FAQ, sitemap, not-affiliated
+  note) that `.github/workflows/pages.yml` publishes at https://dnehring.github.io/MEVR/. The owner's steps:
+  - [ ] Settings > Pages > Source: GitHub Actions, then push (the Pages run deploys `site/`).
+  - [ ] The repository's About: website https://dnehring.github.io/MEVR/, topics (mass-effect,
+    mass-effect-legendary-edition, vr, virtual-reality, vr-mod, openxr, steamvr, game-mod), and a description that
+    starts with the words people search ("Mass Effect Legendary Edition VR mod: ...").
+  - [ ] Google Search Console: add https://dnehring.github.io/MEVR/ (an HTML-file or meta-tag check, added to `site/`),
+    submit `sitemap.xml`, request indexing.
+  - [ ] Publish v0.1.0 (a release page), the Nexus Mods page (dist/MEVR-mod-page.md), and posts where VR and Mass
+    Effect players are (r/virtualreality, r/masseffect, the Flat2VR community, the ME3Tweaks Discord); each links to the
+    site or the repository. Links from other sites are what gets a new page indexed.
+
 GitHub Releases stays the source of truth (the setup's update check reads it). **The owner decided on 2026-11-04: GitHub
 only for the first release**: Nexus not for now, ME3Tweaks Mod Manager not at all, Steam (guide, forum post) not for the
 first release. The notes below stay for later. Where else players look:

@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: MIT
+# The project's landing page (site/) on GitHub Pages, https://dnehring.github.io/MEVR/: what search engines and
+# players find first (the README links it). Needs Settings > Pages > Build and deployment > Source: GitHub Actions,
+# once; until then this run fails. Deploys on every push to main that changes site/, or by hand (Run workflow).
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out the site only
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: site
+          lfs: false
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The project's landing page on GitHub Pages (.github/workflows/pages.yml): what search engines and players find
+     first. Plain HTML, no scripts, no trackers, no game art (never commit the game's images). -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MEVR: Mass Effect Legendary Edition VR Mod | Play Mass Effect 1 in VR</title>
+  <meta name="description" content="MEVR is a free VR mod for Mass Effect Legendary Edition: play Mass Effect 1 in VR with motion controllers, hand aiming, body holsters, squad orders by voice and a one-click installer.">
+  <link rel="canonical" href="https://dnehring.github.io/MEVR/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="MEVR: Mass Effect Legendary Edition in VR">
+  <meta property="og:description" content="A free VR mod for Mass Effect 1 (Legendary Edition): stereo 3D, head tracking and motion controllers for everything.">
+  <meta property="og:url" content="https://dnehring.github.io/MEVR/">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "MEVR",
+    "alternateName": ["Mass Effect VR mod", "Mass Effect Legendary Edition VR"],
+    "description": "A free VR mod for Mass Effect 1 (Legendary Edition) on PC: stereo 3D at life size, head tracking and motion controllers.",
+    "applicationCategory": "GameApplication",
+    "applicationSubCategory": "Game mod",
+    "operatingSystem": "Windows 10, Windows 11",
+    "softwareVersion": "0.1.0",
+    "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "url": "https://dnehring.github.io/MEVR/",
+    "downloadUrl": "https://github.com/dnehring/MEVR/releases/latest",
+    "codeRepository": "https://github.com/dnehring/MEVR",
+    "author": { "@type": "Person", "name": "dnehring", "url": "https://github.com/dnehring" }
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #0e1116;
+      --panel: #161b23;
+      --text: #e8ebf0;
+      --muted: #a7b0bd;
+      --accent: #f08a24;
+      --line: #263040;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main, header, footer { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+    header { padding-top: 56px; padding-bottom: 32px; }
+    h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.1; margin: 0 0 12px; }
+    h1 span { color: var(--accent); }
+    h2 { font-size: 1.4rem; margin: 48px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    h3 { font-size: 1.05rem; margin: 24px 0 6px; color: var(--accent); }
+    p.lead { font-size: 1.15rem; color: var(--muted); margin: 0 0 24px; }
+    a { color: var(--accent); }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+    .button {
+      display: inline-block; padding: 12px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;
+      background: var(--accent); color: #111;
+    }
+    .button.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 18px 12px; }
+    ul { padding-left: 20px; }
+    li { margin: 4px 0; }
+    ol li { margin: 8px 0; }
+    details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; margin: 10px 0; }
+    summary { cursor: pointer; font-weight: 600; }
+    footer { color: var(--muted); font-size: 0.9rem; padding-top: 32px; padding-bottom: 48px; border-top: 1px solid var(--line); margin-top: 56px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Mass Effect 1 <span>in VR</span></h1>
+    <p class="lead">MEVR is a free VR mod for Mass Effect Legendary Edition. Draw your pistol from your hip, pull a grenade
+      off your chest and throw it, duck behind cover, and tell Garrus to take out those troopers. Stereo 3D at life size,
+      head tracking, and motion controllers for everything.</p>
+    <div class="buttons">
+      <a class="button" href="https://github.com/dnehring/MEVR/releases/latest">Download MEVR</a>
+      <a class="button secondary" href="https://github.com/dnehring/MEVR">Source code on GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <h2>What you get</h2>
+    <div class="grid">
+      <section class="card">
+        <h3>Your hands do the fighting</h3>
+        <ul>
+          <li>Aim with the controller; Shepard's arms and fingers follow yours.</li>
+          <li>Holsters on your body, a two-handed rifle grip.</li>
+          <li>Red dots, holo sights, a sniper scope that really zooms.</li>
+          <li>Throw real grenades, punch, rack a hot gun to vent it.</li>
+          <li>Cast powers from a wheel at your palm.</li>
+        </ul>
+      </section>
+      <section class="card">
+        <h3>A squad that listens</h3>
+        <ul>
+          <li>Point to attack, move or regroup.</li>
+          <li>Throw an arc to post your squad where it lands.</li>
+          <li>Optional voice orders, recognised on your own PC.</li>
+        </ul>
+      </section>
+      <section class="card">
+        <h3>The galaxy around you</h3>
+        <ul>
+          <li>Cutscenes on a big 3D cinema screen.</li>
+          <li>Health on your wrist, heat on your gun.</li>
+          <li>Your omni-tool's menus projected from your arm.</li>
+          <li>The galaxy map as a hologram on the Normandy.</li>
+        </ul>
+      </section>
+      <section class="card">
+        <h3>The Mako and comfort</h3>
+        <ul>
+          <li>A cockpit with a throttle and flight stick.</li>
+          <li>Real crouch and cover that protects you.</li>
+          <li>Smooth or snap turning, an optional vignette.</li>
+          <li>A one-minute calibration fits it to your body.</li>
+        </ul>
+      </section>
+    </div>
+
+    <h2>Install in one click</h2>
+    <ol>
+      <li>Start Mass Effect 1 once without the mod and quit at the main menu.</li>
+      <li>Unzip MEVR anywhere and run <strong>MEVR-Setup.exe</strong>.</li>
+      <li>Click <strong>Install</strong>: the mod, its loader and VR-ready game settings, in about a second.</li>
+      <li>Put your headset on and click <strong>Launch</strong>. Setup starts SteamVR and takes you straight into the game.</li>
+    </ol>
+    <p><strong>Uninstall</strong> in the same app puts your game and settings back exactly as they were. No mod manager needed.</p>
+
+    <h2>What you need</h2>
+    <ul>
+      <li>Mass Effect Legendary Edition on Steam or the EA app (game version 2.0.0.48602, the current one).</li>
+      <li>A PC VR headset with motion controllers, through SteamVR or Meta's runtime. Tested on Quest 3 over Steam Link and on PS VR2.</li>
+      <li>Windows 10 or 11 and a strong graphics card.</li>
+    </ul>
+
+    <h2>Questions</h2>
+    <details>
+      <summary>Is there a VR mod for Mass Effect?</summary>
+      <p>Yes. MEVR plays Mass Effect 1 from the Legendary Edition in full VR with motion controls. It's built on Halcyon's
+        MassEffect1-VR renderer and adds hand aiming, a body, holsters, squad orders and in-world menus.</p>
+    </details>
+    <details>
+      <summary>Does it work with Mass Effect 2 and 3?</summary>
+      <p>Not yet. MEVR plays Mass Effect 1 only; Mass Effect 2 and 3 are planned. The installer doesn't touch their files.</p>
+    </details>
+    <details>
+      <summary>Does it work with Quest 3 or PS VR2?</summary>
+      <p>Yes, through SteamVR: it has been played on a Quest 3 over Steam Link and on a PS VR2 with Sony's PC adapter.
+        Other PC VR headsets with motion controllers should work.</p>
+    </details>
+    <details>
+      <summary>Is it free and safe to uninstall?</summary>
+      <p>It's free and open source (GPL-3.0). The installer records every change it makes, and Uninstall puts the game
+        back exactly as it was.</p>
+    </details>
+    <details>
+      <summary>Why does Windows warn me about the installer?</summary>
+      <p>Releases aren't code-signed yet. Click <strong>More info</strong>, then <strong>Run anyway</strong>, or unblock
+        the zip in its Properties before unzipping. Read our
+        <a href="https://github.com/dnehring/MEVR/blob/main/docs/code-signing.md">code signing policy</a>.</p>
+    </details>
+
+    <h2>Thanks</h2>
+    <p>Halcyon for MassEffect1-VR, Aeka0 for Overlord, Aphar for MassFPS, ME3Tweaks and llamathings for the Legendary
+      Edition modding tools, and BioWare for Mass Effect.</p>
+  </main>
+
+  <footer>
+    <p>MEVR is a fan-made mod. It is not affiliated with or endorsed by Electronic Arts or BioWare. Mass Effect is a
+      trademark of EA International (Studio and Publishing) Ltd.</p>
+    <p>Free and open source under the GPL-3.0. <a href="https://github.com/dnehring/MEVR">github.com/dnehring/MEVR</a> |
+      <a href="https://github.com/dnehring/MEVR/blob/main/docs/code-signing.md">Code signing policy</a></p>
+  </footer>
+</body>
+</html>
