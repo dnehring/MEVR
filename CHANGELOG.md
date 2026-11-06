@@ -5,6 +5,12 @@ What changes for players from one release to the next. Newest first; each releas
 `tools/package-release.ps1` copies its entry into the release notes (`.github/release-notes-template.md`). The version
 itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.txt`.
 
+## Unreleased
+
+### The Mako
+- Repair the Mako from the throttle: while your left hand holds the throttle lever, click the left thumbstick. The button on
+  the desk still works too.
+
 ## 0.1.0 (2026-11-05)
 
 The first public release, a **development preview**: **Mass Effect 1 (Legendary Edition) in VR**, played with motion

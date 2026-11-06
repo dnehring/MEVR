@@ -213,6 +213,58 @@ Output Panel::Step(Input const& in, Settings const& s) {
     return out;
 }
 
+void ThrottleClick::Reset() {
+    *this = ThrottleClick();
+}
+
+ClickOutput ThrottleClick::Step(ClickInput const& in, Settings const& s) {
+    ClickOutput out;
+    if (!s.on || !s.throttleClick) {
+        Reset();
+        return out;
+    }
+    double const dt = std::clamp(in.deltaSeconds, 0.0, 0.1);
+    auto const buzz = [&out](float seconds, float amplitude) {
+        if (out.hapticCount < static_cast<int>(std::size(out.haptics))) {
+            out.haptics[out.hapticCount++] = {0, seconds, amplitude};
+        }
+    };
+    if (secondBuzzIn_ >= 0.0) {
+        secondBuzzIn_ -= dt;
+        if (secondBuzzIn_ < 0.0) {
+            buzz(0.06f, 0.5f);
+        }
+    }
+    bool const wasDown = down_;
+    down_ = in.click;
+    if (down_ && !wasDown) {
+        onLever_ = in.leverHeld;
+        if (onLever_ && in.refusal == Refusal::None) {
+            out.repair = true;
+            refused_ = Refusal::None;
+            buzz(0.15f, 0.9f);
+        } else if (onLever_) {
+            refused_ = in.refusal;
+            refusedFor_ = 0.0;
+            buzz(0.06f, 0.5f);
+            secondBuzzIn_ = 0.15;
+        }
+    } else if (!down_) {
+        onLever_ = false;
+    }
+    if (refused_ != Refusal::None) {
+        if (refusedFor_ >= s.clickRefusalS && !(down_ && onLever_)) {
+            refused_ = Refusal::None;
+        } else {
+            double const period = std::max(static_cast<double>(s.refusalFlashS), 0.1);
+            out.refused = refused_;
+            out.refusedLit = refused_ == Refusal::NoGel || std::fmod(refusedFor_, period) < period / 2.0;
+            refusedFor_ += dt;
+        }
+    }
+    return out;
+}
+
 int HealthLamps(float health, int count) {
     if (!(health > 0.0f) || count <= 0) {
         return 0;

@@ -1127,6 +1127,22 @@ ready, `hull_assemble.py` places them and builds their mounts, the package carri
   gun before, the gunner takes it at the press, not after the 3 s handback; afterwards the next aim by hand or thumbstick
   takes it again. With `[Mako] gunner = 0` there is no auto mode and nothing changes. Log `mako gunner: the gunner aims the
   turret (a hand works the cockpit's panel)`.
+- **The repair on the throttle** (the user, 2026-11-05, the first QA pass of release 0.1.0: "the repair button is now just
+  too far away, so it now needs to be likely integrated into the throttle controller. I mean, not the joystick on the right,
+  so I can have that as just a clickable button"; built, not yet tried in the game). While the left hand holds the throttle
+  lever (`vr::mako_controls`' grab, cockpit up or not), the left thumbstick's click runs the repair at once, no hold: one
+  click, one `RepairVehicle` (the same call as the button's, on the game thread), a strong pulse in the left hand. A click
+  that went down off the lever counts for nothing until it's let go. Why the thumbstick's click: on the lever X is the jump
+  jets, Y and the trigger the boost, and the thumbstick itself is kept from the game while the mod drives, so its click is
+  the one free button under the left thumb; the vehicle mode binds no L3 (research/46 section 3), so the game sees nothing
+  of it. While the repair can't run the click runs nothing: the power is asked while the click is down on the lever, the
+  plate's squares show why as a press of the button would (solid red with no omni-gel, the 1.2 s flash while cooling down)
+  for 2.4 s (`clickRefusalS`) or while the click is held, and the left hand buzzes twice, 0.15 s apart. Rules
+  `cp::ThrottleClick` in `core/vr/CockpitPanel` (unit-tested: `TestThrottleClick`); mod only, no host change. **The button
+  on the shelf stays** as a second way (it carries the hull's lamps, and nothing about it gets in the way). `mevr cockpit
+  panel throttle` clicks the held lever without controllers; log `cockpit panel: the repair (the throttle's click): ...
+  called`, `cockpit panel: the throttle's click: the repair can't run: ...`; status `"throttleClick"`. Not done: a button
+  drawn on the handle's model (its orange lamp at the tip could light with the repair), and Shepard's thumb on it.
 
 ## 5. Not done
 

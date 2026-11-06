@@ -68,6 +68,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] Repair button: press it with a fingertip from the front, hold 2 s while the squares fill blue, the repair runs.
   With no omni-gel the squares are solid red; right after a repair (cooling down) they flash red every 1.2 s; neither
   repairs. (research/48 section 27, red built 2026-11-05)
+- [ ] Repair on the throttle: holding the throttle lever, click the left thumbstick: the repair runs at once, a strong
+  pulse in the left hand. With no omni-gel or cooling down, two buzzes and the shelf's squares red; a click begun off the
+  lever does nothing. Is the click easy to find while driving, and never pressed by accident? (research/48 section 27 "The
+  repair on the throttle", built 2026-11-05)
 - [ ] Extraction handle overhead: grab it with a new squeeze (never fires the cannon or boosts), pull it toward you, hold
   at the end: the "Return to Normandy?" box shows at the windshield with the cockpit still around you, and takes a
   click, a touch, A and B. Say whether the handle swings the right way and its label reads from the seat. Shepard's hand

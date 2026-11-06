@@ -283,11 +283,82 @@ void TestGunnerWhileBusy() {
     CHECK(mg::Step(old, pressing, 0.0, off) == mg::Control::Hand);
 }
 
+cp::ClickOutput Click(cp::ThrottleClick& click, cp::Settings const& s, bool lever, bool down, cp::Refusal refusal = cp::Refusal::None) {
+    cp::ClickInput in;
+    in.deltaSeconds = 0.05;
+    in.leverHeld = lever;
+    in.click = down;
+    in.refusal = refusal;
+    return click.Step(in, s);
+}
+
+// The repair on the throttle: the left thumbstick's click while the left hand holds the lever.
+void TestThrottleClick() {
+    cp::Settings s;
+    cp::ThrottleClick click;
+    // a click on the held lever repairs at once, once, with a strong pulse in the left hand
+    cp::ClickOutput out = Click(click, s, true, true);
+    CHECK(out.repair && out.refused == cp::Refusal::None && out.hapticCount == 1 && out.haptics[0].hand == 0);
+    bool again = false;
+    for (int i = 0; i < 40; ++i) {
+        again = again || Click(click, s, true, true).repair;
+    }
+    CHECK(!again);
+    // let go and click again: another repair
+    Click(click, s, true, false);
+    CHECK(Click(click, s, true, true).repair);
+    Click(click, s, true, false);
+    // off the lever: nothing, and grabbing the lever while still clicking doesn't make it one
+    out = Click(click, s, false, true);
+    CHECK(!out.repair && out.hapticCount == 0);
+    out = Click(click, s, true, true);
+    CHECK(!out.repair && out.refused == cp::Refusal::None);
+    Click(click, s, true, false);
+    // no omni-gel: no repair, solid red for 2.4 s, two buzzes 0.15 s apart
+    out = Click(click, s, true, true, cp::Refusal::NoGel);
+    CHECK(!out.repair && out.refused == cp::Refusal::NoGel && out.refusedLit && out.hapticCount == 1);
+    int buzzes = 1;
+    int litTicks = 1;
+    for (int i = 0; i < 60; ++i) {  // 3 s, the click let go after the first tick
+        out = Click(click, s, true, false);
+        buzzes += out.hapticCount;
+        CHECK(!out.repair);
+        if (out.refused == cp::Refusal::NoGel) {
+            CHECK(out.refusedLit);
+            ++litTicks;
+        }
+    }
+    CHECK(buzzes == 2 && litTicks >= 47 && litTicks <= 49 && out.refused == cp::Refusal::None);
+    // cooling down: the squares flash, lit for the first 0.6 s of every 1.2
+    out = Click(click, s, true, true, cp::Refusal::Cooling);
+    CHECK(out.refused == cp::Refusal::Cooling && out.refusedLit);
+    bool litAt[40]{};
+    for (int i = 0; i < 40; ++i) {
+        litAt[i] = Click(click, s, true, false).refusedLit;
+    }
+    CHECK(litAt[5] && !litAt[13] && litAt[25] && !litAt[37]);
+    // a refused click held past the time stays red until let go; a later click with the gel back repairs
+    click.Reset();
+    Click(click, s, true, true, cp::Refusal::Cooling);
+    for (int i = 0; i < 80; ++i) {
+        out = Click(click, s, true, true, cp::Refusal::None);
+    }
+    CHECK(out.refused == cp::Refusal::Cooling && !out.repair);
+    out = Click(click, s, true, false);
+    CHECK(out.refused == cp::Refusal::None);
+    CHECK(Click(click, s, true, true).repair);
+    // off in the settings: nothing
+    s.throttleClick = false;
+    Click(click, s, true, false);
+    CHECK(!Click(click, s, true, true).repair);
+}
+
 }  // namespace
 
 int RunCockpitPanelTests() {
     TestButton();
     TestRefusal();
+    TestThrottleClick();
     TestLever();
     TestLamps();
     TestGunnerWhileBusy();

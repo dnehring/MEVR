@@ -15,8 +15,10 @@ struct Object;
 // the button's cap, holding it fills the plate's squares and then calls the game's own repair; a grip pulls the overhead
 // handle out, and held at the end it calls the game's own extraction (SFXGameModeVehicle.RepairVehicle and .LeaveWorld, on
 // the vehicle mode the player controller holds, as Y and X do on a pad). The ring's lamps show the hull's health. The rules
-// are core/vr/CockpitPanel's (unit-tested); game/CockpitProbe moves the models and swaps the lamps' instances. Log `cockpit
-// panel:`; snapshot "mod"."cockpitPanel".
+// are core/vr/CockpitPanel's (unit-tested); game/CockpitProbe moves the models and swaps the lamps' instances. The repair is
+// also the left thumbstick's click while the left hand holds the throttle lever (the user, 2026-11-05: the button was too far
+// away), cockpit or not: at once, no hold, its refusal on the plate's squares and two buzzes. Log `cockpit panel:`; snapshot
+// "mod"."cockpitPanel" (its "throttleClick").
 namespace mevr::game::cockpit_panel {
 
 struct Link {
@@ -32,8 +34,9 @@ void AdjustPad(gamepad::Options& options);
 vr::cockpit_panel::Output const& Current();
 // Snapshot JSON.
 std::string StatusJson();
-// `mevr cockpit panel [repair|extract|ask]`: the state, or (for tests) one of the two calls as the controls would make it, or
-// what a press would show now (the VehicleRepair power's answer: no omni-gel, cooling down, or none).
+// `mevr cockpit panel [repair|extract|ask|throttle]`: the state, or (for tests) one of the two calls as the controls would make
+// it, or what a press would show now (the VehicleRepair power's answer: no omni-gel, cooling down, or none), or a click on the
+// held throttle lever through its rule (no controllers needed).
 std::string Command(std::string const& rest);
 
 }  // namespace mevr::game::cockpit_panel

@@ -34,6 +34,8 @@ struct Settings {
     float pullHoldS = 0.4f;        // held at the end this long: the extraction
     float returnDegPerS = 240.0f;  // a handle let go swings back this fast
     float refusalFlashS = 1.2f;    // pressed while the repair cools down: the squares flash red once this often
+    bool throttleClick = true;     // the left thumbstick's click on the held throttle lever is the repair too (ThrottleClick)
+    float clickRefusalS = 2.4f;    // a refused click shows red this long (two of the cooldown's flashes), or while it's held
 };
 
 // Why the game's repair can't run now (game/CockpitPanel asks the vehicle's VehicleRepair power while the button is pushed).
@@ -121,6 +123,39 @@ private:
     double atEnd_ = 0.0;
     bool armed_ = true;      // the extraction may run (back below half the pull since it last did)
     bool endTicked_ = false;
+};
+
+// The repair on the throttle (the user, 2026-11-05, the release's first QA pass: the shelf's button was too far away): while the
+// left hand holds the throttle lever, its thumbstick's click runs the repair at once, no hold, with the cockpit up or not. One
+// click, one repair; a click that went down off the lever counts for nothing until it's let go. While the repair can't run the
+// click runs nothing: the plate's squares show why as a press of the button would (solid red with no omni-gel, the flash while
+// cooling down) for clickRefusalS or while the click is held, and the left hand buzzes twice.
+struct ClickInput {
+    double deltaSeconds = 0.0;
+    bool leverHeld = false;  // the left hand holds the throttle lever (vr::mako_controls), our menu not up
+    bool click = false;      // the left thumbstick's click
+    Refusal refusal = Refusal::None;  // the repair can't run (asked while the click is down on the lever)
+};
+
+struct ClickOutput {
+    bool repair = false;     // this step: run the repair
+    Refusal refused = Refusal::None;  // a refused click: the squares show red...
+    bool refusedLit = false;          // ...lit now
+    Haptic haptics[3];
+    int hapticCount = 0;
+};
+
+class ThrottleClick {
+public:
+    ClickOutput Step(ClickInput const& input, Settings const& settings);
+    void Reset();
+
+private:
+    bool down_ = false;
+    bool onLever_ = false;     // this click went down on the lever
+    Refusal refused_ = Refusal::None;
+    double refusedFor_ = 0.0;
+    double secondBuzzIn_ = -1.0;  // a refusal's second buzz, this many seconds on (< 0 none)
 };
 
 // The lamps. Health: how many of `count` light for a hull at `health` (0..1): none at 0, all at full, each one a share of it.

@@ -6,6 +6,7 @@
 #include "core/vr/TestRequest.hpp"
 #include "engine/GameAdapter.hpp"
 #include "game/CockpitProbe.hpp"
+#include "game/MakoControls.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Params.hpp"
@@ -44,6 +45,12 @@ struct RepairPower {
 };
 RepairPower gRepairPower;
 unsigned gRefusals = 0;
+// The repair on the throttle: the left thumbstick's click while the left hand holds the lever (core/vr/CockpitPanel).
+cp::ThrottleClick gThrottleClick;
+cp::ClickOutput gClick;
+unsigned gThrottleRepairs = 0;
+unsigned gClickRefusals = 0;
+int gSimulatedClickTicks = 0;  // `mevr cockpit panel throttle`: a click on the held lever for these ticks, without controllers
 
 XrVector3f AimTip(XrPosef const& aim) {
     XrQuaternionf const q = aim.orientation;
@@ -172,9 +179,9 @@ void CallGame(ue3::FunctionRef& declared, char const* name, char const* what) {
     log::Info("cockpit panel: the {}: {}.{} called on the player's vehicle mode", what, r.NameText(r.OuterOf(call)), name);
 }
 
-void Repair() {
+void Repair(char const* what) {
     ++gRepairs;
-    CallGame(gRepairVehicle, "RepairVehicle", "repair");
+    CallGame(gRepairVehicle, "RepairVehicle", what);
 }
 
 void Extract() {
@@ -182,8 +189,8 @@ void Extract() {
     CallGame(gLeaveWorld, "LeaveWorld", "extraction");
 }
 #else
-void Repair() {
-    gLast = "repair: LE1 only";
+void Repair(char const* what) {
+    gLast = std::format("{}: LE1 only", what);
 }
 void Extract() {
     gLast = "extraction: LE1 only";
@@ -203,10 +210,13 @@ void ShowLamps(bool riding) {
             want[static_cast<std::size_t>(i)] = cp::HealthColour(*health);
         }
     }
-    // The plate's squares: the hold's progress, or all red while the repair can't run (solid: no omni-gel; flashing: cooling down).
-    int const squares = gOut.refused != cp::Refusal::None ? (gOut.refusedLit ? cp::kProgressLamps : 0)
-                                                           : cp::ProgressLamps(gOut.progress, cp::kProgressLamps);
-    cp::Colour const colour = gOut.refused != cp::Refusal::None ? cp::Colour::Red : kProgressColour;
+    // The plate's squares: the hold's progress, or all red while the repair can't run (solid: no omni-gel; flashing: cooling down),
+    // for a press of the button or a click on the throttle.
+    bool const buttonRefused = gOut.refused != cp::Refusal::None;
+    bool const refused = buttonRefused || gClick.refused != cp::Refusal::None;
+    bool const refusedLit = buttonRefused ? gOut.refusedLit : gClick.refusedLit;
+    int const squares = refused ? (refusedLit ? cp::kProgressLamps : 0) : cp::ProgressLamps(gOut.progress, cp::kProgressLamps);
+    cp::Colour const colour = refused ? cp::Colour::Red : kProgressColour;
     for (int i = 0; i < squares; ++i) {
         want[static_cast<std::size_t>(cp::kHealthLamps + i)] = colour;
     }
@@ -247,14 +257,41 @@ void Tick(double deltaSeconds, Link const& link) {
         log::Info("cockpit panel: {}", in.active ? "the repair button and the extraction lever are in reach" : "the controls are out of use");
     }
     if (gOut.repair) {
-        Repair();
+        Repair("repair");
     }
     if (gOut.extract) {
         Extract();
     }
+
+    // The repair on the throttle (the user, 2026-11-05): the left thumbstick's click while the left hand holds the lever, with the
+    // cockpit up or not. The power is asked while the click is down on the lever, so its first tick finds the answer.
+    cp::ClickInput click;
+    click.deltaSeconds = deltaSeconds;
+    click.leverHeld = !link.mainMenuOpen && controllers.active && mako_controls::CurrentPose().leverHeld;
+    click.click = controllers.active && controllers.left.stickClick;
+    if (gSimulatedClickTicks > 0) {
+        --gSimulatedClickTicks;
+        click.leverHeld = click.click = true;
+    }
+    click.refusal = click.leverHeld && click.click ? AskRepair() : cp::Refusal::None;
+    cp::Refusal const clickBefore = gClick.refused;
+    gClick = gThrottleClick.Step(click, gSettings);
+    if (gClick.refused != cp::Refusal::None && gClick.refused != clickBefore) {
+        ++gClickRefusals;
+        log::Info("cockpit panel: the throttle's click: the repair can't run: {} (the VehicleRepair power's cooldown {:.1f} s)",
+            cp::Name(gClick.refused), gRepairPower.cooldownS);
+    }
+    if (gClick.repair) {
+        ++gThrottleRepairs;
+        Repair("repair (the throttle's click)");
+    }
+
     if (link.hapticPulse != nullptr) {
         for (int i = 0; i < gOut.hapticCount; ++i) {
             link.hapticPulse(gOut.haptics[i].hand, gOut.haptics[i].seconds, gOut.haptics[i].amplitude);
+        }
+        for (int i = 0; i < gClick.hapticCount; ++i) {
+            link.hapticPulse(gClick.haptics[i].hand, gClick.haptics[i].seconds, gClick.haptics[i].amplitude);
         }
     }
     if (layout) {
@@ -295,18 +332,24 @@ std::string StatusJson() {
     }
     std::string const power = std::format("{{\"known\": {}, \"gel\": {}, \"cooldownS\": {}, \"why\": {}}}", gRepairPower.known ? "true" : "false",
         gRepairPower.gel ? "true" : "false", json::JsonNumber(gRepairPower.cooldownS), json::JsonString(gRepairPower.why));
+    std::string const throttle = std::format("{{\"refused\": {}, \"refusedLit\": {}, \"refusals\": {}, \"repairs\": {}}}",
+        json::JsonString(cp::Name(gClick.refused)), gClick.refusedLit ? "true" : "false", gClickRefusals, gThrottleRepairs);
     return std::format("{{\"active\": {}, \"pressM\": {}, \"pressed\": {}, \"progress\": {}, \"refused\": {}, \"refusedLit\": {}, \"refusals\": {}, "
-                       "\"repairPower\": {}, \"pullDeg\": {}, \"held\": {}, \"repairs\": {}, \"extractions\": {}, \"lamps\": [{}], \"last\": {}, "
-                       "\"layout\": {}}}",
+                       "\"repairPower\": {}, \"throttleClick\": {}, \"pullDeg\": {}, \"held\": {}, \"repairs\": {}, \"extractions\": {}, "
+                       "\"lamps\": [{}], \"last\": {}, \"layout\": {}}}",
         gWasActive ? "true" : "false", json::JsonNumber(gOut.pressM), gOut.pressed ? "true" : "false", json::JsonNumber(gOut.progress),
-        json::JsonString(cp::Name(gOut.refused)), gOut.refusedLit ? "true" : "false", gRefusals, power, json::JsonNumber(gOut.pullDeg),
+        json::JsonString(cp::Name(gOut.refused)), gOut.refusedLit ? "true" : "false", gRefusals, power, throttle, json::JsonNumber(gOut.pullDeg),
         gOut.held ? "true" : "false", gRepairs, gExtractions, lamps, json::JsonString(gLast), layout);
 }
 
 std::string Command(std::string const& rest) {
     if (rest == "repair") {
-        Repair();
+        Repair("repair");
         return "cockpit panel: " + gLast;
+    }
+    if (rest == "throttle") {  // a click on the held throttle lever over the next two ticks, as the left thumb would make it
+        gSimulatedClickTicks = 2;
+        return "cockpit panel: the throttle's click goes down for the next two ticks (repair, or the refusal on the squares)";
     }
     if (rest == "extract") {
         Extract();

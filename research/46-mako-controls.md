@@ -86,7 +86,9 @@ upright are all reached by passing the pad buttons the game already reads:
 
 - **Left hand holds the lever (`gamepad::kFlagMakoLever`):** X is the game's A (jump jets; upright when flipped, by the same
   binding), Y is the game's LB (boost). The left trigger stays LB too. With the lever let go, X and Y are the game's again
-  (leave the world, repair).
+  (leave the world, repair). The left stick's click on the lever is the repair since 2026-11-05: the mod calls
+  `RepairVehicle` itself (game/CockpitPanel, research/48 section 27 "The repair on the throttle"); the vehicle mode binds no
+  L3, so the pad's click reaches nothing.
 - **Right hand holds the stick (`kFlagMakoStick`):** the trigger stays RT (the machine gun). A is the game's RB: the cannon
   **(our decision, not in the approved table: the grip, which is the cannon today, now holds the stick, and "trigger fires" reaches
   only the machine gun; A's own job is on the lever's X meanwhile).** The right thumbstick is kept from the game (no camera turn).
