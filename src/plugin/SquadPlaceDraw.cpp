@@ -10,6 +10,7 @@
 #include "plugin/GalaxyHologramDraw.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 #include "plugin/menu/StateGuard.hpp"
 
 #include <Windows.h>
@@ -55,15 +56,26 @@ struct EyeChain {
     std::vector<ID3D11Texture2D*> images;
     int width = 0;
     int height = 0;
-    bool failed = false;
+    bool failed = false;  // refused (or its MSAA target failed) at failedMs
+    std::uint64_t failedMs = 0;
+    // Refused just now: not tried again until plugin/Swapchains says (2 s, or once room was freed).
+    bool Refused() const { return failed && !swapchains::RetryDue(failedMs); }
+    void Refuse() {
+        failed = true;
+        failedMs = GetTickCount64();
+    }
     void Destroy() {
-        if (handle != XR_NULL_HANDLE) {
-            testloop::ForgetSwapchain(handle);
-            xrDestroySwapchain(handle);
-        }
+        swapchains::Destroy(handle);
         handle = XR_NULL_HANDLE;
         images.clear();
         width = height = 0;
+    }
+    void Forget() {  // its session is gone, and the swapchain with it
+        swapchains::Forget(handle);
+        handle = XR_NULL_HANDLE;
+        images.clear();
+        width = height = 0;
+        failed = false;
     }
 };
 
@@ -99,20 +111,16 @@ bool MakeChain(XrSession session, int width, int height, EyeChain& out, char con
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &out.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) r = xrEnumerateSwapchainImages(out.handle, 0, &count, nullptr);
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(out.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        log::Error("squad place: the {} eye's swapchain {}x{} failed (XrResult {}); no arc drawn", name, width, height, static_cast<int>(r));
-        out.Destroy();
-        out.failed = true;
+    out.Destroy();
+    // Freed for room (plugin/Swapchains) with its other eye when no frame has shown it for a second; made again when next wanted.
+    auto evict = [] {
+        for (EyeChain& pair : gChains) pair.Destroy();
+    };
+    if (XR_FAILED(swapchains::Create(session, info, name, evict, out.handle, out.images))) {
+        out.Refuse();  // no arc drawn until it's made; plugin/Swapchains logged it
         return false;
     }
-    for (auto const& image : images) out.images.push_back(image.texture);
+    out.failed = false;
     out.width = width;
     out.height = height;
     testloop::NameSwapchain(out.handle, name);
@@ -122,14 +130,13 @@ bool MakeChain(XrSession session, int width, int height, EyeChain& out, char con
 bool EnsureTargets(ID3D11Device* device, XrSession session, int width, int height) {
     if (session != gSession) {
         for (EyeChain& c : gChains) {
-            c.Destroy();
-            c.failed = false;
+            c.Forget();
         }
         gSession = session;
     }
     for (int e = 0; e < 2; ++e) {
         EyeChain& c = gChains[e];
-        if (c.failed) return false;
+        if (c.Refused()) return false;
         if (c.handle == XR_NULL_HANDLE || c.width != width || c.height != height) {
             c.Destroy();
             if (!MakeChain(session, width, height, c, e == 0 ? "squadplace-left" : "squadplace-right")) return false;
@@ -151,7 +158,7 @@ bool EnsureTargets(ID3D11Device* device, XrSession session, int width, int heigh
         if (FAILED(device->CreateTexture2D(&td, nullptr, gMsaa.GetAddressOf())) ||
             FAILED(device->CreateRenderTargetView(gMsaa.Get(), nullptr, gMsaaRtv.GetAddressOf()))) {
             log::Error("squad place: the {}x{} 4x MSAA target failed; no arc drawn", width, height);
-            for (EyeChain& c : gChains) c.failed = true;
+            for (EyeChain& c : gChains) c.Refuse();
             return false;
         }
         gMsaaWidth = width;

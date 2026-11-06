@@ -1,9 +1,10 @@
 # Rendering and stereo
 
-* [Motion blur smears each eye its own way, and keeps coming back](motion-blur-in-stereo.md) - UE3's motion blur takes its velocity from the other eye's view under Halcyon's stereo; bitten 2026-10-07, 2026-10-23 and 2026-10-28, each time under a different report.
+* [Motion blur smears each eye its own way, and keeps coming back](motion-blur-in-stereo.md) - UE3's motion blur takes its velocity from the other eye's view under Halcyon's stereo; bitten 2026-10-07, 2026-10-23, 2026-10-28, 2026-11-02 and 2026-11-06 (back after cinematics), each time under a different report.
 * [BIOEngine.ini's SystemSettings win, the game rewrites them, and a level load re-arms them](system-settings-precedence.md) - DynamicShadows and MotionBlur in GamerSettings.ini are overridden; a loaded level renders with the old values; `scale set` to the stored value changes nothing.
 * [The engine's dynamic vertex and index rings wrap inside a recorded frame](dynamic-ring-wraps-inside-the-recorded-tail.md) - A DISCARD map inside the recorded tail makes the replay draw from garbage: the strobing right eye.
 * [d3d11 swaps per-context vtable entries, so a vtable or single-body hook misses calls](d3d11-per-context-vtable.md) - Draw, clear, copy and dispatch entries move between variants as the context's state changes.
+* [The OpenXR runtime limits a session's swapchains, and ours used to give up on the first refusal](openxr-swapchain-limit.md) - SteamVR's XR_ERROR_LIMIT_REACHED past 16 a session (12 ours); one refusal and a dozen quads (the omni-tool's rail, the sights, the calibration's targets) went missing in turn; bitten 2026-11-06.
 
 # Engine and threading
 
@@ -18,6 +19,7 @@
 
 * [SteamVR's room setup kills the game at the title on the fake headset](steamvr-room-setup-kills-the-game.md) - An unregistered null-driver chaperone universe makes vrmonitor launch room setup and vrserver kill the running scene app 5 s later.
 * [EA's launcher refuses to start the game from inside a job object](ea-launcher-in-a-job-object.md) - EASteamLauncher's breakaway CreateProcess is denied when our shell or the EA app itself sits in a job; Steam's own launch works (`tools/launch-game.ps1 -Steam`).
+* [A test run in the game overwrites the player's saves](test-runs-overwrite-saves.md) - A map from the command line, the Mako drop or a resumed save autosaves into the player's career and rewrites the profile; back up `Save` and the inis before every run; bitten 2026-11-05 and 2026-11-06.
 * [The LE console prints less than UE3's: what works and what is silent](le-console-quirks.md) - `scale set` and `set` take effect, `getall` and the streaming stats print nothing, `god`/`ghost`/`pause` toggle.
 
 # Code and tooling

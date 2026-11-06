@@ -20,7 +20,9 @@ struct ID3D11DeviceContext;
 //     frame already rendered (the other eye's by default: the gun's own scope model blocks the aiming eye's
 //     view of the target). The image is copied as Halcyon releases it (testloop::SetReleaseTap), so the
 //     picture is the frame's own; no extra scene render.
-// Snapshots carry the layers as "sight", "sightframe" and "scope".
+// All of it comes from one swapchain (research/21 section 18: SteamVR holds 16 a session): the picture at the image's origin,
+// the reticle and the ring in a column beside it, each quad taking its part by imageRect; snapshots name the layers "sight",
+// "sight-2", ...
 namespace mevr::host::sight_layers {
 
 struct Frame {

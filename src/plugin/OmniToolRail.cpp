@@ -19,6 +19,7 @@
 #include "plugin/RailArt.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 
 #include <RmlUi/Core.h>
 
@@ -87,7 +88,8 @@ TargetStatus gTargetStatus;
 struct Swapchain {
     XrSwapchain handle = XR_NULL_HANDLE;
     std::vector<ID3D11Texture2D*> images;
-    bool failed = false;
+    bool failed = false;  // refused at failedMs
+    std::uint64_t failedMs = 0;
 };
 
 struct Settings {
@@ -259,8 +261,8 @@ bool EnsureSwapchain(XrSession session) {
     if (g.swapchain.handle != XR_NULL_HANDLE) {
         return true;
     }
-    if (g.swapchain.failed) {
-        return false;
+    if (g.swapchain.failed && !swapchains::RetryDue(g.swapchain.failedMs)) {
+        return false;  // refused just now (plugin/Swapchains: tried again in 2 s, or once room was freed)
     }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
@@ -271,28 +273,20 @@ bool EnsureSwapchain(XrSession session) {
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &g.swapchain.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(g.swapchain.handle, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(g.swapchain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        log::Error("omni-tool rail: swapchain {}x{} failed (XrResult {}); no rail", kWidth, kHeight, static_cast<int>(r));
-        if (g.swapchain.handle != XR_NULL_HANDLE) {
-            xrDestroySwapchain(g.swapchain.handle);
-        }
+    // Freed for room (plugin/Swapchains) when no frame has shown it for a second; made and drawn again when next wanted.
+    auto evict = [] {
+        swapchains::Destroy(g.swapchain.handle);
         g.swapchain = {};
+        g.needRender = true;
+    };
+    if (XR_FAILED(swapchains::Create(session, info, "omni-tool rail", evict, g.swapchain.handle, g.swapchain.images))) {
+        g.swapchain = {};  // plugin/Swapchains logged it
         g.swapchain.failed = true;
+        g.swapchain.failedMs = GetTickCount64();
         return false;
     }
-    for (auto const& image : images) {
-        g.swapchain.images.push_back(image.texture);
-    }
     testloop::NameSwapchain(g.swapchain.handle, "omnirail");  // snapshots: <stamp>-omnirail.png, and in the eyes
+    g.needRender = true;  // a new swapchain holds no picture yet (the rail redraws only on change)
     return true;
 }
 
@@ -364,8 +358,8 @@ std::vector<std::uint32_t> TargetPixels(int look) {
 // small immutable texture; a change of look copies it into the swapchain once.
 bool EnsureTarget(XrSession session, ID3D11Device* device, ID3D11DeviceContext* context, int look) {
     Swapchain& chain = g.target;
-    if (chain.failed) {
-        return false;
+    if (chain.failed && !swapchains::RetryDue(chain.failedMs)) {
+        return false;  // refused just now (plugin/Swapchains: tried again in 2 s, or once room was freed)
     }
     if (chain.handle == XR_NULL_HANDLE) {
         XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
@@ -377,26 +371,17 @@ bool EnsureTarget(XrSession session, ID3D11Device* device, ID3D11DeviceContext* 
         info.faceCount = 1;
         info.arraySize = 1;
         info.mipCount = 1;
-        XrResult r = xrCreateSwapchain(session, &info, &chain.handle);
-        std::uint32_t count = 0;
-        if (XR_SUCCEEDED(r)) {
-            r = xrEnumerateSwapchainImages(chain.handle, 0, &count, nullptr);
-        }
-        std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-        if (XR_SUCCEEDED(r) && count > 0) {
-            r = xrEnumerateSwapchainImages(chain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-        }
-        if (XR_FAILED(r) || count == 0) {
-            log::Error("omni-tool rail: the tap target's swapchain failed (XrResult {}); no target", static_cast<int>(r));
-            if (chain.handle != XR_NULL_HANDLE) {
-                xrDestroySwapchain(chain.handle);
-            }
-            chain = {};
+        // Freed for room (plugin/Swapchains) when no frame has shown it for a second; made and filled again when next wanted.
+        auto evict = [] {
+            swapchains::Destroy(g.target.handle);
+            g.target = {};
+            g.targetDrawn = -1;
+        };
+        if (XR_FAILED(swapchains::Create(session, info, "omni-tool tap target", evict, chain.handle, chain.images))) {
+            chain = {};  // no target until it's made; plugin/Swapchains logged it
             chain.failed = true;
+            chain.failedMs = GetTickCount64();
             return false;
-        }
-        for (auto const& image : images) {
-            chain.images.push_back(image.texture);
         }
         testloop::NameSwapchain(chain.handle, "omnitarget");
         g.targetDrawn = -1;

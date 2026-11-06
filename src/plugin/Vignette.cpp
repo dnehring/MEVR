@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "core/vr/Comfort.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -49,7 +50,8 @@ XrSpace gViewSpace = XR_NULL_HANDLE;
 bool gViewSpaceFailed = false;
 XrSwapchain gSwapchain = XR_NULL_HANDLE;
 std::vector<ID3D11Texture2D*> gImages;  // owned by the runtime
-bool gSwapchainFailed = false;
+bool gSwapchainFailed = false;  // refused at gSwapchainFailedMs
+std::uint64_t gSwapchainFailedMs = 0;
 ComPtr<ID3D11Texture2D> gTexture;       // our copy, refilled from the CPU
 cf::HalfExtents gExtents;
 std::vector<std::uint8_t> gMask;
@@ -82,9 +84,7 @@ void ForgetSession() {
     // The session's swapchains and spaces went with it.
     gViewSpace = XR_NULL_HANDLE;
     gViewSpaceFailed = false;
-    if (gSwapchain != XR_NULL_HANDLE) {
-        testloop::ForgetSwapchain(gSwapchain);
-    }
+    swapchains::Forget(gSwapchain);
     gSwapchain = XR_NULL_HANDLE;
     gImages.clear();
     gSwapchainFailed = false;
@@ -115,8 +115,8 @@ bool EnsureSwapchain(ID3D11Device* device) {
     if (gSwapchain != XR_NULL_HANDLE && gTexture != nullptr) {
         return true;
     }
-    if (gSwapchainFailed || device == nullptr) {
-        return false;
+    if ((gSwapchainFailed && !swapchains::RetryDue(gSwapchainFailedMs)) || device == nullptr) {
+        return false;  // refused just now (plugin/Swapchains: tried again in 2 s, or once room was freed)
     }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;  // as the reticle's (CopyResource)
@@ -127,15 +127,15 @@ bool EnsureSwapchain(ID3D11Device* device) {
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(gSession, &info, &gSwapchain);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(gSwapchain, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(gSwapchain, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
+    // Freed for room (plugin/Swapchains) when no frame has shown it for a second; made and filled again when next wanted.
+    auto evict = [] {
+        swapchains::Destroy(gSwapchain);
+        gSwapchain = XR_NULL_HANDLE;
+        gImages.clear();
+        gLevel = -1;
+    };
+    XrResult r = gSwapchain == XR_NULL_HANDLE ? swapchains::Create(gSession, info, "vignette", evict, gSwapchain, gImages) : XR_SUCCESS;
+    std::uint32_t const count = static_cast<std::uint32_t>(gImages.size());
     D3D11_TEXTURE2D_DESC td{};
     td.Width = kSize;
     td.Height = kSize;
@@ -146,23 +146,20 @@ bool EnsureSwapchain(ID3D11Device* device) {
     td.Usage = D3D11_USAGE_DEFAULT;
     td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     if (XR_FAILED(r) || count == 0 || FAILED(device->CreateTexture2D(&td, nullptr, gTexture.ReleaseAndGetAddressOf()))) {
-        log::Error("vignette: its swapchain or texture ({}x{}) couldn't be made (XrResult {}): no comfort vignette this session", kSize,
-            kSize, static_cast<int>(r));
-        if (gSwapchain != XR_NULL_HANDLE) {
-            xrDestroySwapchain(gSwapchain);
-        }
+        if (XR_SUCCEEDED(r)) {
+            log::Error("vignette: its {}x{} texture couldn't be made: no comfort vignette until it can", kSize, kSize);
+        }  // a refused swapchain: plugin/Swapchains logged it
+        swapchains::Destroy(gSwapchain);
         gSwapchain = XR_NULL_HANDLE;
+        gImages.clear();
         gTexture.Reset();
         gSwapchainFailed = true;
+        gSwapchainFailedMs = GetTickCount64();
         return false;
     }
-    gImages.clear();
-    for (auto const& image : images) {
-        gImages.push_back(image.texture);
-    }
+    gSwapchainFailed = false;
     testloop::NameSwapchain(gSwapchain, "vignette");
     gLevel = -1;
-    log::Info("vignette: swapchain {}x{}, {} images", kSize, kSize, count);
     return true;
 }
 

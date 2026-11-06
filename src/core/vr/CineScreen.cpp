@@ -20,6 +20,11 @@ Settings Clamped(Settings const& s) {
     out.widthM = Within(s.widthM, kMinWidthM, kMaxWidthM, d.widthM);
     out.depth = Within(s.depth, 0.0f, kMaxDepth, d.depth);
     out.convergeM = Within(s.convergeM, kMinConvergeM, kMaxConvergeM, d.convergeM);
+    if (!std::isfinite(s.aspect) || s.aspect < 0.0f) {
+        out.aspect = d.aspect;
+    } else if (s.aspect > 0.0f) {
+        out.aspect = std::clamp(s.aspect, kMinAspect, kMaxAspect);
+    }
     return out;
 }
 
@@ -38,7 +43,7 @@ float CropFraction(float depth) {
     return depth / (1.0f + depth);
 }
 
-EyeRects Rects(int width, int height, float crop) {
+EyeRects Rects(int width, int height, float crop, float aspect) {
     EyeRects r;
     if (width <= 0 || height <= 0) {
         return r;
@@ -46,8 +51,17 @@ EyeRects Rects(int width, int height, float crop) {
     float const c = std::isfinite(crop) ? std::clamp(crop, 0.0f, 0.25f) : 0.0f;
     int const drop = static_cast<int>(std::lround(c * static_cast<float>(width)));
     int const shown = width - drop;
-    r.left = {drop, 0, shown, height};
-    r.right = {0, 0, shown, height};
+    int y = 0;
+    int rows = height;
+    if (std::isfinite(aspect) && aspect > 0.0f) {
+        int const band = static_cast<int>(std::lround(static_cast<float>(shown) / std::clamp(aspect, kMinAspect, kMaxAspect)));
+        if (band > 0 && band < height) {
+            y = (height - band) / 2;
+            rows = band;
+        }
+    }
+    r.left = {drop, y, shown, rows};
+    r.right = {0, y, shown, rows};
     return r;
 }
 
@@ -63,7 +77,7 @@ float BaselineUU(float crop, float convergeUU, float halfH) {
         !std::isfinite(convergeUU)) {
         return 0.0f;
     }
-    return crop * convergeUU * 2.0f * std::tan(halfH);
+    return crop * convergeUU * 2.0f * std::tan(std::min(halfH, kMaxLensHalfH));
 }
 
 Frame Plan(Settings const& s, float ipdM, float unitsPerMeter, float halfH) {

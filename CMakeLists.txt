@@ -756,6 +756,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/PowerWheel.hpp
     src/plugin/PowerWheelDraw.cpp
     src/plugin/PowerWheelDraw.hpp
+    src/plugin/Swapchains.cpp
+    src/plugin/Swapchains.hpp
     src/plugin/TestLoop.cpp
     src/plugin/TestLoop.hpp
     src/plugin/Vignette.cpp
@@ -950,6 +952,7 @@ if (MEVR_BUILD_TESTS)
         tests/ConversationWorldTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
+        tests/SwapchainBudgetTests.cpp
         tests/VrCoverTests.cpp
         src/core/vr/GuiEvents.cpp
         tests/SquadPhrasings.cpp
@@ -1165,6 +1168,12 @@ if (MEVR_BUILD_TESTS)
     target_link_libraries(mevr-stack-sampler PRIVATE dbghelp winmm)
     target_compile_definitions(mevr-stack-sampler PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-stack-sampler PRIVATE /W4 /WX /permissive- /utf-8)
+
+    # How many swapchains the active OpenXR runtime lets a session hold (tools/swapchain-probe, research/21 section 18).
+    add_executable(mevr-swapchain-probe tools/swapchain-probe/Main.cpp)
+    target_link_libraries(mevr-swapchain-probe PRIVATE OpenXR::openxr_loader d3d11 dxgi)
+    target_compile_definitions(mevr-swapchain-probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-swapchain-probe PRIVATE /W4 /WX /permissive- /utf-8)
 
     # The colour correction, offline (tools/colour-preview, research/27): the shader (core/vr/Colour's prelude) on a
     # D3D11 device of its own, checked against the CPU reference, and the test strip through each preset as PNGs.

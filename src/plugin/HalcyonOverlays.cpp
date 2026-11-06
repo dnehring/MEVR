@@ -57,6 +57,7 @@
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
 #include "plugin/Spectator.hpp"
+#include "plugin/Swapchains.hpp"
 #include "plugin/PowerWheel.hpp"
 #include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
@@ -81,6 +82,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -499,9 +501,17 @@ struct QuadSwapchain {
     std::vector<ComPtr<ID3D11RenderTargetView>> rtvs;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
-    bool failed = false;
+    bool failed = false;          // refused (or its texture failed) at failedMs
+    std::uint64_t failedMs = 0;
 
+    // Refused just now: not tried again until plugin/Swapchains says (2 s, or once room was freed). Never for the session.
+    bool Refused() const { return failed && !mevr::host::swapchains::RetryDue(failedMs); }
+    void Refuse() {
+        failed = true;
+        failedMs = GetTickCount64();
+    }
     void Forget() {  // the session that owned it is gone: its swapchains went with it
+        mevr::host::swapchains::Forget(handle);
         handle = XR_NULL_HANDLE;
         images.clear();
         rtvs.clear();
@@ -509,11 +519,11 @@ struct QuadSwapchain {
         failed = false;
     }
     void Destroy() {
-        if (handle != XR_NULL_HANDLE) {
-            mevr::host::testloop::ForgetSwapchain(handle);
-            xrDestroySwapchain(handle);
-        }
-        Forget();
+        mevr::host::swapchains::Destroy(handle);
+        handle = XR_NULL_HANDLE;
+        images.clear();
+        rtvs.clear();
+        width = height = 0;
     }
 };
 
@@ -523,8 +533,9 @@ QuadSwapchain gReticleSwapchain;
 QuadSwapchain gPointerDotSwapchain;   // the game pointer's dot (plugin/GamePointer, research/42)
 UINT gPanelFactor = 2;
 
+// `evict`: how plugin/Swapchains lets go of it for room (default: Destroy; it's made again when next wanted).
 bool CreateSwapchain(XrSession session, std::uint32_t width, std::uint32_t height, QuadSwapchain& out,
-    char const* what) {
+    char const* what, std::function<void()> evict = {}) {
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
     info.format = kSwapchainFormat;
@@ -534,29 +545,18 @@ bool CreateSwapchain(XrSession session, std::uint32_t width, std::uint32_t heigh
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &out.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(out.handle, 0, &count, nullptr);
+    if (!evict) {
+        evict = [&out] { out.Destroy(); };
     }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(
-            out.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        mevr::log::Error("overlays: {} swapchain {}x{} failed (XrResult {})", what, width, height, static_cast<int>(r));
-        out.Destroy();
-        out.failed = true;
+    out.Destroy();
+    if (XR_FAILED(mevr::host::swapchains::Create(session, info, what, std::move(evict), out.handle, out.images))) {
+        out.Refuse();  // plugin/Swapchains logged it
         return false;
     }
-    for (auto const& image : images) {
-        out.images.push_back(image.texture);
-    }
-    out.rtvs.resize(count);
+    out.failed = false;
+    out.rtvs.resize(out.images.size());
     out.width = width;
     out.height = height;
-    mevr::log::Info("overlays: {} swapchain {}x{}, {} images", what, width, height, count);
     return true;
 }
 
@@ -807,12 +807,13 @@ ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSw
 }
 
 // (Re)makes `swapchain` at width x height; false if it can't.
-bool EnsureSwapchain(QuadSwapchain& swapchain, std::uint32_t width, std::uint32_t height, char const* what, char const* name) {
+bool EnsureSwapchain(QuadSwapchain& swapchain, std::uint32_t width, std::uint32_t height, char const* what, char const* name,
+    std::function<void()> evict = {}) {
     if (swapchain.handle != XR_NULL_HANDLE && (swapchain.width != width || swapchain.height != height)) {
         swapchain.Destroy();
     }
     if (swapchain.handle == XR_NULL_HANDLE) {
-        if (swapchain.failed || !CreateSwapchain(gSession, width, height, swapchain, what)) {
+        if (swapchain.Refused() || !CreateSwapchain(gSession, width, height, swapchain, what, std::move(evict))) {
             return false;
         }
         mevr::host::testloop::NameSwapchain(swapchain.handle, name);
@@ -1196,7 +1197,10 @@ std::uint32_t gMakoViewSize = 0;  // a mismatch already logged
 template <class Pixels>
 bool UpdateControl(ID3D11DeviceContext* context, ID3D11Device* device, ControlQuad& control, std::uint32_t width, std::uint32_t height,
     std::uint32_t key, char const* what, char const* name, Pixels const& pixels) {
-    if (!EnsureSwapchain(control.swapchain, width, height, what, name)) {
+    if (!EnsureSwapchain(control.swapchain, width, height, what, name, [&control] {
+            control.swapchain.Destroy();
+            control.key = 0xFFFFFFFFu;  // made again, it's drawn again
+        })) {
         return false;
     }
     if (key == control.key) {
@@ -1214,7 +1218,7 @@ bool UpdateControl(ID3D11DeviceContext* context, ID3D11Device* device, ControlQu
         if (FAILED(device->CreateTexture2D(&td, nullptr, control.upload.GetAddressOf()))) {
             mevr::log::Error("overlays: {} texture creation failed", what);
             control.swapchain.Destroy();
-            control.swapchain.failed = true;
+            control.swapchain.Refuse();
             return false;
         }
     }
@@ -1278,7 +1282,7 @@ bool EnsureReticle(ID3D11DeviceContext* context, ID3D11Device* device) {
     if (gReticleSwapchain.handle != XR_NULL_HANDLE) {
         return true;
     }
-    if (gReticleSwapchain.failed || !CreateSwapchain(gSession, kReticleSize, kReticleSize, gReticleSwapchain, "reticle")) {
+    if (gReticleSwapchain.Refused() || !CreateSwapchain(gSession, kReticleSize, kReticleSize, gReticleSwapchain, "reticle")) {
         return false;
     }
     std::vector<std::uint32_t> const pixels = ReticlePixels();
@@ -1296,7 +1300,7 @@ bool EnsureReticle(ID3D11DeviceContext* context, ID3D11Device* device) {
     if (FAILED(device->CreateTexture2D(&td, &data, source.GetAddressOf()))) {
         mevr::log::Error("overlays: reticle texture creation failed");
         gReticleSwapchain.Destroy();
-        gReticleSwapchain.failed = true;
+        gReticleSwapchain.Refuse();
         return false;
     }
     // The content never changes: fill every image once; the runtime keeps showing the last released.
@@ -1305,7 +1309,7 @@ bool EnsureReticle(ID3D11DeviceContext* context, ID3D11Device* device) {
         if (!AcquireImage(gReticleSwapchain, index)) {
             mevr::log::Error("overlays: reticle swapchain image acquire failed");
             gReticleSwapchain.Destroy();
-            gReticleSwapchain.failed = true;
+            gReticleSwapchain.Refuse();
             return false;
         }
         context->CopyResource(gReticleSwapchain.images[index], source.Get());
@@ -1349,7 +1353,7 @@ bool EnsurePointerDot(ID3D11DeviceContext* context, ID3D11Device* device) {
     if (gPointerDotSwapchain.handle != XR_NULL_HANDLE) {
         return true;
     }
-    if (gPointerDotSwapchain.failed ||
+    if (gPointerDotSwapchain.Refused() ||
         !CreateSwapchain(gSession, kPointerDotSize, kPointerDotSize, gPointerDotSwapchain, "game pointer dot")) {
         return false;
     }
@@ -1368,7 +1372,7 @@ bool EnsurePointerDot(ID3D11DeviceContext* context, ID3D11Device* device) {
     if (FAILED(device->CreateTexture2D(&td, &data, source.GetAddressOf()))) {
         mevr::log::Error("overlays: game pointer dot texture creation failed");
         gPointerDotSwapchain.Destroy();
-        gPointerDotSwapchain.failed = true;
+        gPointerDotSwapchain.Refuse();
         return false;
     }
     for (size_t i = 0; i < gPointerDotSwapchain.images.size(); ++i) {
@@ -1376,7 +1380,7 @@ bool EnsurePointerDot(ID3D11DeviceContext* context, ID3D11Device* device) {
         if (!AcquireImage(gPointerDotSwapchain, index)) {
             mevr::log::Error("overlays: game pointer dot swapchain image acquire failed");
             gPointerDotSwapchain.Destroy();
-            gPointerDotSwapchain.failed = true;
+            gPointerDotSwapchain.Refuse();
             return false;
         }
         context->CopyResource(gPointerDotSwapchain.images[index], source.Get());
@@ -1688,7 +1692,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // hand reticle stands in for it. The HUD movie keeps its authored layout on the panel (Halcyon's
     // head-locked shrink-and-centre would only make it small there).
     bool const handAim = ControllerAimActive();
-    bool const panelUsable = !gPanelSwapchain.failed && !gPanel.failed && !(gPipeline.tried && !gPipeline.ready);
+    bool const panelUsable = !gPanelSwapchain.Refused() && !gPanel.failed && !(gPipeline.tried && !gPipeline.ready);
     bool const engaged = cfg.hudPanel && frame.sfr2 && panelUsable;
     MELEVR::Pchud::SetAuthoredLayout(engaged);
 
@@ -1732,7 +1736,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     int const wheelMode = frame.gameMode == 2 || frame.gameMode == 3 ? frame.gameMode : -1;
     int const wheelPlace = wheelMode == 3 ? wheelSettings.weaponPlace : wheelSettings.powerPlace;  // -1: stays on the HUD panel
     bool const wheelWanted = wheelSettings.enabled && wheelPlace >= 0 && engaged && gameplay && frame.worldFrame && wheelMode >= 0 &&
-        gPanel.texture != nullptr && gPanel.tintSrv != nullptr && !gWheelSwapchain.failed && device != nullptr;
+        gPanel.texture != nullptr && gPanel.tintSrv != nullptr && !gWheelSwapchain.Refused() && device != nullptr;
     char const* cropFrom = "the default guess";
     crop::Rect cropRect;
     if (wheelSettings.crop[2] > 0.0f && wheelSettings.crop[3] > 0.0f) {
@@ -1752,7 +1756,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // The interaction prompt at the object (never with a wheel up: both take their part out of the same panel).
     il::Label const label = LabelWanted();
     bool const labelWanted = label.visible && !wheelWanted && engaged && gameplay && gLastGameMode == 0 && frame.worldFrame &&
-        !frame.menuOpen && frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && !gLabelSwapchain.failed &&
+        !frame.menuOpen && frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && !gLabelSwapchain.Refused() &&
         device != nullptr;
     il::Rect const labelRect = label.crop[2] > 0.0f && label.crop[3] > 0.0f
         ? il::Rect{label.crop[0], label.crop[1], label.crop[2], label.crop[3]}
@@ -1800,10 +1804,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         LogBoth(cockpitHud ? "[MEVR-HUD] the cockpit's HUD: the Mako's status and radar on its displays, the HUD panel at its anchor"
                            : "[MEVR-HUD] the cockpit's HUD is off: the HUD panel as before");
     }
-    bool const wristWanted = piecesAllowed && hud.wristStatus && !gWristSwapchain.failed && pieceControllers.active &&
+    bool const wristWanted = piecesAllowed && hud.wristStatus && !gWristSwapchain.Refused() && pieceControllers.active &&
         pieceControllers.left.gripValid;
-    bool const gunWanted = ((piecesAllowed && hud.gunStatus && pieces.gunVisible) || cockpitHud) && !gGunSwapchain.failed;
-    bool const radarWanted = cockpitHud && !gRadarSwapchain.failed;
+    bool const gunWanted = ((piecesAllowed && hud.gunStatus && pieces.gunVisible) || cockpitHud) && !gGunSwapchain.Refused();
+    bool const radarWanted = cockpitHud && !gRadarSwapchain.Refused();
     hp::Pixels const wristPx = hp::ToPixels(hp::WristCrop(hud, gPanel.width, gPanel.height), gPanel.width, gPanel.height);
     hp::Pixels const gunPx = hp::ToPixels(hp::GunCrop(hud, gPanel.width, gPanel.height), gPanel.width, gPanel.height);
     hp::Pixels const radarPx = hp::ToPixels(hp::DefaultRadarCrop(gPanel.width, gPanel.height), gPanel.width, gPanel.height);
@@ -2200,11 +2204,11 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             gLastGameMode == 1 && device != nullptr;
         bool shown = false;
         if (wanted && count + 2 <= capacity) {
-            bool const lever = !gLeverQuad.swapchain.failed &&
+            bool const lever = !gLeverQuad.swapchain.Refused() &&
                 UpdateControl(context, device.Get(), gLeverQuad, mc::kLeverPixelsWide, mc::kLeverPixelsLong,
                     mc::LeverKey(view.lever, view.detent, view.leverNear, view.leverHeld), "Mako lever", "makolever",
                     [&view] { return mc::LeverPixels(view.lever, view.travelM, view.detent, view.leverNear, view.leverHeld); });
-            bool const stick = !gStickQuad.swapchain.failed &&
+            bool const stick = !gStickQuad.swapchain.Refused() &&
                 UpdateControl(context, device.Get(), gStickQuad, mc::kStickPixels, mc::kStickPixels,
                     mc::StickKey(view.steer, view.stickNear, view.stickHeld), "Mako stick", "makostick",
                     [&view] { return mc::StickPixels(view.steer, view.stickNear, view.stickHeld); });

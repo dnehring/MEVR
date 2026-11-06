@@ -952,3 +952,35 @@ anything VR-side needs the GPU to itself.
 **[verify] in the headset (notes/headset-checklist.md section 3):** the rifle's sight seen through with the right eye, the
 target and the dot in the window, the housing around it, no seam that bothers; the gun stays put in the hand at the face; the
 dot doesn't blink, also when the support grip's aimed fire comes on (with focus, the game's TightAim camera).
+
+## 18. No sight at all: the runtime's swapchain limit (headset session 2026-11-06, fixed the same morning)
+
+**Report (user, 2026-11-06):** "I wasn't able to actually see any of the scopes ... I saw that the model would disappear, so
+it made it easier to just view the heads-up display, but I never saw the scopes render in my game." (The development build
+3b5bc93, f2a9f47 included; not the 0.1.0 release the user thought it was.)
+
+**The log (`LE1MEVR.log`, 09:42-10:00, PS VR2):** `sights: sight window ring swapchain 256x256 failed (XrResult -10)` at 09:55:26,
+`sight reticle swapchain 256x256 failed (XrResult -10)` at 09:55:28 and `scope picture swapchain 768x768 failed (XrResult -10)` at
+09:57:13: XR_ERROR_LIMIT_REACHED. Each latched `failed` for the session, so no dot on any gun, no ring, no rifle window and no
+scope picture all session, although the mod published the sights, ADS came on and the scope capture rendered (`scope capture
+source: first scope picture from the capture`: its texture was found; there was nothing to draw it into). The calibration's
+board, the galaxy hologram, the omni-tool rail, the squad arc, the gun status and the pointer dot failed the same way.
+
+**The limit, measured** (`tools/swapchain-probe`, `mevr-swapchain-probe`, c0f232f: a session of its own, swapchains until the
+runtime refuses): SteamVR/OpenXR 2.18.4 with the PS VR2 refuses the 17th, at 64x64, 256x256, 1024x1024 and 2048x2048 alike (a
+count, not memory); a destroyed one is given back at once; `maxLayerCount` is 16 too. Halcyon holds 4, so 12 are ours, and
+every overlay made its own and kept it for the session.
+
+**The fix:** the host-wide part is the Biotic session's `plugin/Swapchains` (ac68488): every owner creates through it, a
+refused create frees the least recently shown of ours idle for a second (never one in this or the last frame's layers), and
+nobody gives up for the session (`RetryDue`). Here: **the sight takes one swapchain instead of three.** One image (P + 256) x
+max(P, 512), P the sight's resolution (768): the scope's or the window's picture at the origin (drawn into it each frame it
+shows, viewport P x P), the dot or holo reticle and the window's ring in a column to its right (256 squares, copied from one
+immutable texture into each image once per look: `gFilled` per image, refilled after a free); each quad takes its part by
+`imageRect`. The ring and the dot used to be static swapchains filled once; now any frame that shows the sight acquires the
+one image (a 0.5 MB copy the first time per image, nothing after). Log `sights: one swapchain WxH for the picture (P px), the
+reticle and the window's ring`; snapshots name the layers `sight`, `sight-2`, `sight-3`.
+
+**"The model would disappear":** not settled by this log. Likely the sniper rifle pulled toward the eye under ADS (`pulled at
+most 7.8 cm` at 09:58:00): with its picture missing, what's left of the tube near the camera's near plane is cut away. [verify]
+once the picture draws again.

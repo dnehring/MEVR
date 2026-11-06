@@ -59,7 +59,7 @@ float ReadFloat(wchar_t const* key, float fallback, std::wstring const& path) {
 bool Same(cs::Settings const& a, cs::Settings const& b) {
     return a.conversations == b.conversations && a.cutscenes == b.cutscenes && a.frontEnd == b.frontEnd && a.distanceM == b.distanceM &&
            a.widthM == b.widthM &&
-           a.depth == b.depth && a.convergeM == b.convergeM;
+           a.depth == b.depth && a.convergeM == b.convergeM && a.aspect == b.aspect && a.fullRate == b.fullRate;
 }
 
 // Under gMutex.
@@ -88,6 +88,8 @@ void RefreshSettings(std::uint64_t now) {
         s.widthM = ReadFloat(L"widthM", s.widthM, path);
         s.depth = ReadFloat(L"depth", s.depth, path);
         s.convergeM = ReadFloat(L"convergeM", s.convergeM, path);
+        s.aspect = ReadFloat(L"aspect", s.aspect, path);
+        s.fullRate = GetPrivateProfileIntW(L"Cinematics", L"fullRate", s.fullRate ? 1 : 0, path.c_str()) != 0;
     }
     s = cs::Clamped(s);
     if (!gSettingsLogged || !Same(s, gSettings)) {
@@ -96,9 +98,12 @@ void RefreshSettings(std::uint64_t now) {
         mevr::log::Info("cine screen: [Cinematics] conversations = {}, cutscenes = {} (on the 3D screen while Halcyon's VR conversations / "
                         "cutscenes are on; off: in VR as before), frontEnd = {} (the title and its menus); the screen {:.2f} m wide at "
                         "{:.2f} m, depth {:.2f}% of its width "
-                        "(at most {:.2f}% for a 64 mm eye distance), the scene {:.2f} m away on the screen plane",
+                        "(at most {:.2f}% for a 64 mm eye distance), the scene {:.2f} m away on the screen plane, {}, {}",
             s.conversations ? 1 : 0, s.cutscenes ? 1 : 0, s.frontEnd ? 1 : 0, s.widthM, s.distanceM, s.depth * 100.0f,
-            cs::MaxDepth(s.widthM, cs::kDefaultIpdM) * 100.0f, s.convergeM);
+            cs::MaxDepth(s.widthM, cs::kDefaultIpdM) * 100.0f, s.convergeM,
+            s.aspect > 0.0f ? std::format("the eye image's middle band at {:.2f}:1 (aspect)", s.aspect)
+                            : std::string("the whole eye image (aspect = 0)"),
+            s.fullRate ? "at the headset's rate (fullRate)" : "at Halcyon's cinematic cap, half the display rate (fullRate = 0)");
     }
     gSettings = s;
 }
@@ -128,10 +133,11 @@ std::string StatusJson() {
     bool const active = gSubmitMs != 0 && now - gSubmitMs < kActiveForMs;
     auto j = [](float v) { return std::isfinite(v) ? std::format("{:.5g}", v) : std::string("null"); };
     return std::format("{{\"active\": {}, \"kind\": \"{}\", \"sceneFrames\": {}, \"settings\": {{\"conversations\": {}, \"cutscenes\": {}, "
-                       "\"distanceM\": {}, \"widthM\": {}, \"depth\": {}, \"convergeM\": {}}}, \"plan\": {{\"valid\": {}, \"depth\": {}, "
+                       "\"distanceM\": {}, \"widthM\": {}, \"depth\": {}, \"convergeM\": {}, \"aspect\": {}, \"fullRate\": {}}}, \"plan\": {{\"valid\": {}, \"depth\": {}, "
                        "\"crop\": {}, \"baselineUU\": {}, \"halfHDeg\": {}, \"ipdM\": {}, \"depthCapped\": {}}}, \"heightM\": {}}}",
         active ? "true" : "false", gSubmitConversation ? "conversation" : "cutscene", gSceneFrames, gSettings.conversations ? "true" : "false",
         gSettings.cutscenes ? "true" : "false", j(gSettings.distanceM), j(gSettings.widthM), j(gSettings.depth), j(gSettings.convergeM),
+        j(gSettings.aspect), gSettings.fullRate ? "true" : "false",
         gPlanned ? "true" : "false", j(gFrame.depth), j(gFrame.crop), j(gFrame.baselineUU), j(gFrameHalfH * 57.29578f), j(gFrameIpdM),
         gFrame.depthCapped ? "true" : "false", j(gHeightM));
 }
@@ -154,6 +160,13 @@ bool CineScreenWanted(bool conversation) noexcept {
 }
 
 
+bool CineScreenFullRate() noexcept {
+    namespace host = mevr::host::cine_screen;
+    std::lock_guard lock(host::gMutex);
+    host::RefreshSettings(GetTickCount64());
+    return host::gSettings.fullRate;
+}
+
 bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept {
     namespace host = mevr::host::cine_screen;
     if (out == nullptr) {
@@ -163,7 +176,8 @@ bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* 
     out->distanceM = host::gSettings.distanceM;
     out->widthM = host::gSettings.widthM;
     out->crop = host::gPlanned ? host::gFrame.crop : 0.0f;
-    host::cs::EyeRects const rects = host::cs::Rects(static_cast<int>(eyeWidth), static_cast<int>(eyeHeight), out->crop);
+    host::cs::EyeRects const rects =
+        host::cs::Rects(static_cast<int>(eyeWidth), static_cast<int>(eyeHeight), out->crop, host::gSettings.aspect);
     host::cs::Rect const* const eyes[2] = {&rects.left, &rects.right};
     for (int e = 0; e < 2; ++e) {
         out->rect[e][0] = eyes[e]->x;

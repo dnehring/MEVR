@@ -98,6 +98,43 @@ BIOA_STA00` from the title: the Citadel arrival cutscene (game mode 6) and then 
   band; a crop to that band would cut the bottom of the frame where the game puts subtitles, so the full frame stays.
 - **Not checked in the headset** by a person yet: comfort, the wheel's readability, the game pointer on the screen.
 
+## In the headset (2026-11-06, the owner, PS VR2)
+
+The first person in the headset, at the title, a cutscene and a conversation (Normandy, Eden Prime): "I like what you've
+done with the stereo display. One problem is that the gap seems to be wrong, so I'm getting a little cross-eyed"; "is there a
+way to change the aspect ratio instead of being so tall, being more cinematic and maybe even a little bit farther out?
+Because the characters look physically large, but they don't look human or lifelike"; and later "the cpu timing explodes".
+
+- **The depth, measured in the headset's snapshot** (`2026-11-06_09-45-51-148`, a space shot): every feature +1.51% of the
+  width (42 px of 2782), 4.5 cm on the 3 m screen, 77% of the owner's 59 mm eye distance (`[MEVR-STEREO]` 0.0590 m): the eyes
+  fuse the far scene near 11 m while the screen's edge is at 2.6 m, 0.99 degrees apart. Below the 80% cap, too much in use.
+- **A 6.5 cm baseline at a conversation's first frame**: `cine screen: a conversation on the 3D screen ... the cameras 6.53
+  units apart for a 123.0-degree lens` (09:51:09; 0.31..6.53 in that 10 s). The plan reads the render's horizontal half angle,
+  and the conversation's first frame still has the gameplay window (the headset's 61.5-degree half angle). Fixed:
+  `kMaxLensHalfH` (a lens over 80 degrees is planned as 80; LE1's shots measured 24-67).
+- **The size**: 60 degrees across for a shot rendered at about 45 (the typical lens; `halfHDeg` 22.5 in the snapshot), so
+  everything a third larger than the shot; and the cameras 1-1.5 cm apart against 5.9 cm eyes. A close-up stays a large face on
+  any screen; only the scene around the player is life-size (the conversations-in-the-world prototype, its own session).
+- **New defaults** (the owner's trial values, live in their file first): 2.9 m wide at 3.5 m (45 degrees, the shot's own
+  angle), depth 1.0% (the far scene 0.47 degrees behind, its images 49% of a 59 mm eye distance apart). The menu's 3D depth
+  100% is now 1.0% (150% the old 1.5%).
+- **16:9** (`[Cinematics] aspect`, default 16/9, read live; 0 = the whole image): UE3's lens is horizontal, so the nearly
+  square eye render only adds sky and floor above and below the director's frame. In the conversation's snapshots
+  (`2026-11-06_09-52-4x`, Anderson's close-ups) the middle band is the shot as framed; the squad selection screen's panel
+  sits at 62-72% of the height, inside the band (23-77%). The quad is 2.9 x 1.63 m; the game pointer's quad is the whole
+  window, taller by the rows left out. **Not yet seen:** whether subtitles sit inside the band (research/52's earlier note
+  that they don't was not measured; Halcyon's authored placements are in a 1280 x 720 stage, `pchud.cpp` kConvoElemBase).
+- **45 fps** is Halcyon's `cineFpsCap` ([CINEPACE60]: VR cinematics paced to half the display rate, chosen at 120 Hz where
+  half is the 60 the cutscenes were made for). At 90 Hz it is 45: 449 frames per 10 s on the screen, `[PACE] avgHold=17.80ms
+  ... target=22.22ms (2.0 periods)`, so fpsVR's CPU frame time read ~30 ms for ~4.4 ms of work, and each picture showed twice
+  (moving content doubles). On the screen the compositor keeps the quads world-locked at the display rate, so the cap's reason
+  (judder in a world around you) is gone: `[Cinematics] fullRate` (default 1) leaves the screen at the headset's rate (`[MEVR]`
+  seam on `cinePace60`, `MevrBridge::CineScreenFullRate`); 0 brings the cap back. **Not yet measured in the game** (the machine
+  was busy); `tools/perf-probe.py --per-second` is ready for a capture across a scene and its end.
+- **After a scene** the rate climbed back over ~6 s (`[PRESENTHZ]` 52.5, 70.5, 87.5, 90 after the 10:08:26 cutscene, which
+  ended into combat: `StartCombat`); the render cost the same before and after (4.8-5.9 ms); GPU memory fell 2748 -> 2089 MB
+  over 20 s. Which thread pays in those seconds is open: a per-second probe across a scene's end.
+
 ## The dialogue wheel at its authored size (2026-11-04)
 
 A `[MEVR]` seam in `xr_session.cpp` gives the conversation movie the identity transform (`Pchud::SetConvoTransform(true, 1,

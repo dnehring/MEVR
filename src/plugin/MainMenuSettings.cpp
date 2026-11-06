@@ -44,7 +44,8 @@ constexpr std::uint64_t kSliderRestMs = 300;    // a slider's value is written o
 constexpr std::uint64_t kColourRestMs = 400;
 constexpr std::uint64_t kHalcyonRestMs = 2000;  // Halcyon's profile saved this long after the last change
 constexpr std::uint64_t kResetArmMs = 4000;
-constexpr float kCineDepthFull = 0.015f;          // [Cinematics] depth at the menu's 100% (core/vr/CineScreen's default)
+constexpr float kCineDepthFull = 0.010f;          // [Cinematics] depth at the menu's 100% (core/vr/CineScreen's default; 150% is
+                                                   // the first default, 1.5%, which the owner found cross-eyed)
 constexpr std::uint64_t kMeasureTimeoutMs = 30000;
 
 std::uint64_t Now() {
@@ -290,8 +291,8 @@ void Settings::Read(menu::Values& v) {
     };
     v.texts["cine_convo"] = cineChoice(c.cineVrConvo, "conversations", cineDefaults.conversations);
     v.texts["cine_cut"] = cineChoice(c.cineVrCutscene, "cutscenes", cineDefaults.cutscenes);
-    v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 3.0f), 1.5f, 8.0f);
-    v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 2.6f), 1.0f, 6.0f);
+    v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
+    v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 3.5f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
     {
         // The omni-tool's screens (research/53 section 6, research/57): projected from the wrist unless [WorldUi] wrist is none.

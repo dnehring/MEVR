@@ -13,6 +13,7 @@
 #include "plugin/MevrMenu.hpp"
 #include "plugin/ScopeCaptureSource.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -32,6 +33,7 @@
 #include <cstring>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <cstdio>
 #include <filesystem>
 #include <format>
@@ -56,15 +58,26 @@ struct EyeChain {
     std::vector<ID3D11Texture2D*> images;
     int width = 0;
     int height = 0;
-    bool failed = false;
+    bool failed = false;  // refused (or its MSAA target failed) at failedMs
+    std::uint64_t failedMs = 0;
+    // Refused just now: not tried again until plugin/Swapchains says (2 s, or once room was freed).
+    bool Refused() const { return failed && !swapchains::RetryDue(failedMs); }
+    void Refuse() {
+        failed = true;
+        failedMs = GetTickCount64();
+    }
     void Destroy() {
-        if (handle != XR_NULL_HANDLE) {
-            testloop::ForgetSwapchain(handle);
-            xrDestroySwapchain(handle);
-        }
+        swapchains::Destroy(handle);
         handle = XR_NULL_HANDLE;
         images.clear();
         width = height = 0;
+    }
+    void Forget() {  // its session is gone, and the swapchain with it
+        swapchains::Forget(handle);
+        handle = XR_NULL_HANDLE;
+        images.clear();
+        width = height = 0;
+        failed = false;
     }
 };
 
@@ -206,7 +219,8 @@ private:
     ID3D11SamplerState* sampler_ = nullptr;
 };
 
-bool MakeChain(XrSession session, int width, int height, EyeChain& out, char const* name) {
+// `evict`: how plugin/Swapchains lets go of it for room (both eyes of its pair; made again when next wanted).
+bool MakeChain(XrSession session, int width, int height, EyeChain& out, char const* name, std::function<void()> evict) {
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
     info.format = kFormat;
@@ -216,24 +230,12 @@ bool MakeChain(XrSession session, int width, int height, EyeChain& out, char con
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &out.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(out.handle, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(out.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        log::Error("galaxy hologram: the {} eye's swapchain {}x{} failed (XrResult {}); no hologram", name, width, height, static_cast<int>(r));
-        out.Destroy();
-        out.failed = true;
+    out.Destroy();
+    if (XR_FAILED(swapchains::Create(session, info, name, std::move(evict), out.handle, out.images))) {
+        out.Refuse();  // no hologram until it's made; plugin/Swapchains logged it
         return false;
     }
-    for (auto const& image : images) {
-        out.images.push_back(image.texture);
-    }
+    out.failed = false;
     out.width = width;
     out.height = height;
     testloop::NameSwapchain(out.handle, name);
@@ -243,19 +245,22 @@ bool MakeChain(XrSession session, int width, int height, EyeChain& out, char con
 bool EnsureTargets(ID3D11Device* device, XrSession session, int width, int height) {
     if (session != gSession) {
         for (EyeChain& c : gChains) {
-            c.Destroy();
-            c.failed = false;
+            c.Forget();
         }
         gSession = session;
     }
     for (int e = 0; e < 2; ++e) {
         EyeChain& c = gChains[e];
-        if (c.failed) {
+        if (c.Refused()) {
             return false;
         }
         if (c.handle == XR_NULL_HANDLE || c.width != width || c.height != height) {
             c.Destroy();
-            if (!MakeChain(session, width, height, c, e == 0 ? "galaxy-left" : "galaxy-right")) {
+            if (!MakeChain(session, width, height, c, e == 0 ? "galaxy-left" : "galaxy-right", [] {
+                    for (EyeChain& pair : gChains) {
+                        pair.Destroy();
+                    }
+                })) {
                 return false;
             }
             log::Info("galaxy hologram: the {} eye's swapchain {}x{}, {} images", e == 0 ? "left" : "right", width, height, c.images.size());
@@ -277,7 +282,7 @@ bool EnsureTargets(ID3D11Device* device, XrSession session, int width, int heigh
             FAILED(device->CreateRenderTargetView(gMsaa.Get(), nullptr, gMsaaRtv.GetAddressOf()))) {
             log::Error("galaxy hologram: the {}x{} 4x MSAA target failed; no hologram", width, height);
             for (EyeChain& c : gChains) {
-                c.failed = true;
+                c.Refuse();
             }
             return false;
         }
@@ -775,8 +780,7 @@ int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
     }
     if (frame.session != gWindow.session) {
         for (WindowEye& eye : gWindow.eyes) {
-            eye.chain.Destroy();
-            eye.chain.failed = false;
+            eye.chain.Forget();
         }
         gWindow.session = frame.session;
     }
@@ -792,12 +796,16 @@ int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
                 name)) {
             return 0;
         }
-        if (eye.chain.failed) {
+        if (eye.chain.Refused()) {
             return 0;
         }
         if (eye.chain.handle == XR_NULL_HANDLE || eye.chain.width != shownW || eye.chain.height != height) {
             eye.chain.Destroy();
-            if (!MakeChain(frame.session, shownW, height, eye.chain, e == 0 ? "galaxy-window-left" : "galaxy-window-right")) {
+            if (!MakeChain(frame.session, shownW, height, eye.chain, e == 0 ? "galaxy-window-left" : "galaxy-window-right", [] {
+                    for (WindowEye& pair : gWindow.eyes) {
+                        pair.chain.Destroy();
+                    }
+                })) {
                 return 0;
             }
         }

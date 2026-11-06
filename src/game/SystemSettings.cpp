@@ -6,6 +6,7 @@
 #include "engine/GameAdapter.hpp"
 #include "engine/SettingsFile.hpp"
 #include "game/ConsoleRequest.hpp"
+#include "game/HeadTracking.hpp"
 
 #include <Windows.h>
 
@@ -43,6 +44,12 @@ constexpr float kSettleApplyAt[] = {3.0f, 15.0f};
 void const* gSeenWorld = nullptr;
 float gSinceWorldChange = 0.0f;
 int gSettleApplies = 0;  // of kSettleApplyAt, done in this level
+// Back to gameplay after a cinematic (2026-11-06, the owner in the PS VR2 on Eden Prime: "the exact same behavior", the
+// assets flickering): the blur was off by hand at 10:12:58, a cutscene (10:13:10) and a conversation (10:16:11) played,
+// and it was back by 10:18 with no level change, so nothing re-applied it. Every return to gameplay (modes 0-4) from any
+// other mode (a conversation, a cutscene, a menu, a movie) applies the settings again, once.
+bool gLeftGameplay = false;
+int gLeftMode = -1;  // the last mode outside gameplay, for the log
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -127,6 +134,11 @@ std::vector<Setting> Wanted(fs::path const& path) {
 } // namespace
 
 void Tick(float deltaSeconds) {
+    std::optional<unsigned char> const mode = head_tracking::GameMode();
+    if (mode && *mode > 4) {
+        gLeftGameplay = true;  // read every tick: a short cinematic between two polls still counts
+        gLeftMode = *mode;
+    }
     gSincePoll += deltaSeconds;
     if (gSincePoll < kPollSeconds) {
         return;
@@ -149,7 +161,11 @@ void Tick(float deltaSeconds) {
     }
     bool const settleDue = gApplied && world != nullptr && gSettleApplies < static_cast<int>(std::size(kSettleApplyAt)) &&
                            gSinceWorldChange >= kSettleApplyAt[gSettleApplies];
-    if (gApplied && !changed && !newLevel && !settleDue) {
+    bool const backToGameplay = gApplied && gLeftGameplay && mode && *mode <= 4;
+    if (backToGameplay) {
+        gLeftGameplay = false;
+    }
+    if (gApplied && !changed && !newLevel && !settleDue && !backToGameplay) {
         return;
     }
     std::vector<Setting> const wanted = Wanted(path);
@@ -165,7 +181,7 @@ void Tick(float deltaSeconds) {
         }
         return true;
     };
-    if (gApplied && same() && !newLevel && !settleDue) {
+    if (gApplied && same() && !newLevel && !settleDue && !backToGameplay) {
         gStamp = stamp;
         gHaveStamp = !ec;
         return;
@@ -201,6 +217,7 @@ void Tick(float deltaSeconds) {
               newLevel              ? " (a new level: applied again)"
               : changed && gApplied ? " (the file's values changed)"
               : settleDue           ? std::format(" (the level has rendered {:.0f} s: applied again)", gSinceWorldChange)
+              : backToGameplay      ? std::format(" (back to gameplay after mode {}: applied again)", gLeftMode)
                                     : " (BIOEngine.ini's [SystemSettings] wins over GamerSettings' and the game rewrites it)");
     if (settleDue && !newLevel) {
         ++gSettleApplies;

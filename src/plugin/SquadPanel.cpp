@@ -10,6 +10,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
@@ -58,7 +59,8 @@ Gpu gGpu;
 struct Swapchain {
     XrSwapchain handle = XR_NULL_HANDLE;
     std::vector<ID3D11Texture2D*> images;  // owned by the runtime
-    bool failed = false;
+    bool failed = false;  // refused at failedMs
+    std::uint64_t failedMs = 0;
 };
 Swapchain gSwapchain;
 XrSession gSession = XR_NULL_HANDLE;
@@ -159,8 +161,8 @@ bool EnsureSwapchain(XrSession session) {
     if (gSwapchain.handle != XR_NULL_HANDLE) {
         return true;
     }
-    if (gSwapchain.failed) {
-        return false;
+    if (gSwapchain.failed && !swapchains::RetryDue(gSwapchain.failedMs)) {
+        return false;  // refused just now (plugin/Swapchains: tried again in 2 s, or once room was freed)
     }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
@@ -171,30 +173,18 @@ bool EnsureSwapchain(XrSession session) {
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(session, &info, &gSwapchain.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(gSwapchain.handle, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(gSwapchain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        log::Error("squad panel: swapchain {}x{} failed (XrResult {}); no squad menu in the headset", kWidth, kHeight,
-            static_cast<int>(r));
-        if (gSwapchain.handle != XR_NULL_HANDLE) {
-            xrDestroySwapchain(gSwapchain.handle);
-        }
+    // Freed for room (plugin/Swapchains) when no frame has shown it for a second; made and drawn again when next wanted.
+    auto evict = [] {
+        swapchains::Destroy(gSwapchain.handle);
         gSwapchain = {};
+    };
+    if (XR_FAILED(swapchains::Create(session, info, "squad panel", evict, gSwapchain.handle, gSwapchain.images))) {
+        gSwapchain = {};  // plugin/Swapchains logged it
         gSwapchain.failed = true;
+        gSwapchain.failedMs = GetTickCount64();
         return false;
     }
-    for (auto const& image : images) {
-        gSwapchain.images.push_back(image.texture);
-    }
     testloop::NameSwapchain(gSwapchain.handle, "squad");  // snapshots: <stamp>-squad.png, and in the eyes' composites
-    log::Info("squad panel: swapchain {}x{}, {} images", kWidth, kHeight, count);
     return true;
 }
 
@@ -244,6 +234,7 @@ void Recentered() {
 
 XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (frame.session != gSession) {
+        swapchains::Forget(gSwapchain.handle);
         gSwapchain = {};  // the old session's swapchain died with it
         gSession = frame.session;
         gPlaced = false;

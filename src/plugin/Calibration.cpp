@@ -12,6 +12,7 @@
 #include "plugin/Halcyon.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Swapchains.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
@@ -305,7 +306,7 @@ struct Swapchain {
     unsigned width = 0;
     unsigned height = 0;
     bool failed = false;
-    std::uint64_t failedMs = 0;  // when it failed: tried again 2 s later (another layer may have let one go)
+    std::uint64_t failedMs = 0;  // when it failed: tried again when plugin/Swapchains says (2 s, or once room was freed)
     bool filled = false;  // a static picture, already in every image
 };
 enum SwapchainId { kPanelChain = 0, kBoardChain, kOrbActiveChain, kOrbHeldChain, kDotChain, kMarkerChain, kChains };
@@ -428,7 +429,7 @@ bool EnsureChain(int id, unsigned width, unsigned height) {
     if (chain.handle != XR_NULL_HANDLE) {
         return true;
     }
-    if (chain.failed && GetTickCount64() - chain.failedMs < 2000) {
+    if (chain.failed && !swapchains::RetryDue(chain.failedMs)) {
         return false;
     }
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
@@ -440,35 +441,21 @@ bool EnsureChain(int id, unsigned width, unsigned height) {
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    XrResult r = xrCreateSwapchain(gSession, &info, &chain.handle);
-    std::uint32_t count = 0;
-    if (XR_SUCCEEDED(r)) {
-        r = xrEnumerateSwapchainImages(chain.handle, 0, &count, nullptr);
-    }
-    std::vector<XrSwapchainImageD3D11KHR> images(count, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    if (XR_SUCCEEDED(r) && count > 0) {
-        r = xrEnumerateSwapchainImages(chain.handle, count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
-    }
-    if (XR_FAILED(r) || count == 0) {
-        if (!chain.failed) {  // logged once; retried quietly every 2 s
-            log::Error("calibration: {} swapchain {}x{} failed (XrResult {}{})", ChainName(id), width, height, static_cast<int>(r),
-                r == XR_ERROR_LIMIT_REACHED ? ": the runtime's limit on layers' swapchains" : "");
-        }
-        if (chain.handle != XR_NULL_HANDLE) {
-            xrDestroySwapchain(chain.handle);
-        }
-        chain = {};
+    // Essential (plugin/Swapchains): a refusal here loses what the player is measuring, so room is made by freeing our other
+    // quads (idle ones first). Freed in turn once the calibration has been closed a second and something else needs room.
+    auto evict = [id] {
+        swapchains::Destroy(gChains[id].handle);
+        gChains[id] = {};
+    };
+    if (XR_FAILED(swapchains::Create(gSession, info, ChainName(id), evict, chain.handle, chain.images, swapchains::Need::Essential))) {
+        chain = {};  // plugin/Swapchains logged it; tried again on the next frame once it freed room
         chain.failed = true;
         chain.failedMs = GetTickCount64();
         return false;
     }
-    for (auto const& image : images) {
-        chain.images.push_back(image.texture);
-    }
     chain.width = width;
     chain.height = height;
     testloop::NameSwapchain(chain.handle, ChainName(id));
-    log::Info("calibration: {} swapchain {}x{}, {} images", ChainName(id), width, height, count);
     return true;
 }
 
@@ -528,12 +515,14 @@ bool EnsurePicture(ID3D11DeviceContext* context, ID3D11Device* device, int id, u
     if (FAILED(device->CreateTexture2D(&td, &data, source.GetAddressOf()))) {
         log::Error("calibration: {} picture failed", ChainName(id));
         chain.failed = true;
+        chain.failedMs = GetTickCount64();
         return false;
     }
     for (std::size_t i = 0; i < chain.images.size(); ++i) {
         std::uint32_t index = 0;
         if (!Acquire(chain, index)) {
             chain.failed = true;
+            chain.failedMs = GetTickCount64();
             return false;
         }
         context->CopyResource(chain.images[index], source.Get());
@@ -1521,6 +1510,7 @@ std::uint64_t gLastMs = 0;
 
 void ForgetSession(XrSession session) {
     for (Swapchain& chain : gChains) {
+        swapchains::Forget(chain.handle);
         chain = {};  // the old session's swapchains died with it
     }
     gSession = session;
