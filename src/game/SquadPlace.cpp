@@ -282,12 +282,15 @@ void Tick(double deltaSeconds, Link const& link) {
         sp::Vec3 originM{};
         sp::Vec3 direction{};
         if (simulated) {
-            // From the head, its yaw plus the console's, at the console's pitch; 0.3 m below the eyes (the hand's height).
+            // From the head, its yaw plus the console's, at the console's pitch.
             engine::UnrealVector const head = frame->headWorld;
             engine::Basis const look = engine::OrientationToWorld(*frame, frame->head.orientation);
             double const yaw = std::atan2(look.forward.y, look.forward.x) + gSim.yawDeg * std::numbers::pi / 180.0;
             double const pitch = gSim.pitchDeg * std::numbers::pi / 180.0;
+            // 0.35 m ahead (flat) and 0.3 m below the eyes: where a hand holding the arc out would be.
             originM = Metres(head, gUpm);
+            originM.x += static_cast<float>(std::cos(yaw) * 0.35);
+            originM.y += static_cast<float>(std::sin(yaw) * 0.35);
             originM.z -= 0.3f;
             direction = {static_cast<float>(std::cos(pitch) * std::cos(yaw)), static_cast<float>(std::cos(pitch) * std::sin(yaw)),
                 static_cast<float>(std::sin(pitch))};
