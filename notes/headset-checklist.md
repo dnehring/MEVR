@@ -120,6 +120,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   the feel: the cones (8 degrees on an enemy, 12 on a squadmate), the haptic ticks, whether a squeeze meant as the
   support grip or a grenade ever becomes an order, and how long the AI takes to react (the game's own 1-1.5 s order
   delays). Built 2026-11-04. (research/54 "The flat orders", `[SquadOrders]`)
+- [ ] Squad placement (session: VR mod for Mass Effect Legendary Edition, built 2026-11-05): hold the right B on foot, an arc
+  leaves your right hand and a ring lies where it lands; let go and the squad walks there. Point at a squadmate as you press
+  B to send only them (amber ring); drop it at your feet for a regroup (green); on a wall or out of reach it's red and calls
+  off. Judge: the arc's reach (14 m/s: 20 m at 45 degrees), its thickness and brightness, whether the ring reads as "they'll
+  go here", the haptic ticks, and whether the arc drawn over walls (no depth test) confuses. (research/54 "Placement by an arc")
 - [ ] In a fight, `mevr say "<name>, hold here"` typed by Claude while you watch: does a held squadmate stay put under
   the HOLD formation, does a hurt or crowded one visibly fall back to cover and come back when it's calm, and does being
   re-ordered every few seconds make them twitch. Claude can read the logs; only you can see whether it looks right.
@@ -136,6 +141,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   left controller as it comes within `radioRadiusM` (0.20 m) of the ear point (8 cm left and 3 cm below the eyes), stronger
   nearer it, and stops when you squeeze (the listen's own tick) or leave. Does it find the spot without looking, and is 0.4
   felt but not annoying while the hand passes the head (reloads, the wrist tap)? (`game/Voice`, `EarCue`)
+- [ ] A spoken or pointed move lands where meant (2026-11-05 evening: a move is the HOLD formation at the point plus the AI's
+  `PushMoveToPoint`, the placement's road, since `QuickCommandMoveTo` ignores the point in VR): "Ashley, move up" with the
+  left hand on a spot 5 m off, or the left grip let go on the floor there; she should walk to it and hold until it's calm,
+  then come back. (`mevr voice say Ashley, move up`, log `squad orders: move to`)
 - [ ] The microphone's lag over your link: tap a controller on the headset while a recording runs with `mevr voice listen 5`;
   the tap's jolt in the poses against the click in the transcript's word times says how much tail `[Voice] tailMs` needs.
   (research/54 step 3)

@@ -58,7 +58,9 @@ ue3::FunctionRef gGetFormationFn{"SFXGame.BioBaseSquad.GetMemberFormation"};
 ue3::FunctionRef gOrderPowerFn{"SFXGame.BioPlayerController.SquadOrderUsePower"};
 ue3::FunctionRef gApplyTacticalFn{"SFXGame.BioPlayerController.ApplyTacticalOrders"};
 ue3::FunctionRef gAiUsePowerFn{"SFXGame.BioAiController.AddUsePower"};
+ue3::FunctionRef gPushMoveFn{"SFXGame.BioAiController.PushMoveToPoint"};  // the walk to a point (game/SquadPlace's finding)
 ue3::FieldRef gPawnController{"Engine.Pawn", "Controller"};
+constexpr float kPointToleranceUnits = 60.0f;
 // The level's cover for a retreat (research/54 "Retreat to cover"): CoverLink slots, each at the link's place plus its offset
 // in the link's axes.
 ue3::ClassRef gCoverLink{"Engine.CoverLink"};
@@ -286,6 +288,24 @@ std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector co
     return CallResult(parms, called);
 }
 
+// The walk to a point: the squadmate's own AI pushed toward it (BioAiController.PushMoveToPoint), the way game/SquadPlace found
+// works in VR (2026-11-05: QuickCommandMoveTo ignores the point there and sends them 30 m along the head's facing, whatever
+// the controller's Rotation says; the HOLD formation keeps them where they stand). With the HOLD formation set at the point
+// first, they walk there and hold it (0.6 m from the ring in the placement's check).
+std::string PushMove(ue3::Object* pawn, engine::UnrealVector const& point) {
+    ue3::Function* const fn = gPushMoveFn.Get();
+    if (fn == nullptr) return "no PushMoveToPoint";
+    auto const ai = gPawnController.Read<ue3::Object*>(pawn);
+    if (!ai || *ai == nullptr) return "no AI controller on the squadmate";
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (r.FindFunction(r.ClassOf(*ai), "PushMoveToPoint") != fn) return "the squadmate's controller has no PushMoveToPoint";
+    ue3::Params parms(r, fn);
+    parms.Set("vLoc", ue3::Vector{static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)});
+    parms.Set("PointTolerance", kPointToleranceUnits);
+    bool const called = ue3::runtime::Call(*ai, fn, parms);
+    return std::format("PushMoveToPoint {}", called ? "called" : "not called");
+}
+
 // A squad power order. tactical: SquadOrderUsePower(nmPower, pPawn) records it on the player controller and ApplyTacticalOrders
 // applies it (the weapon order's path, research/19); ai: the member's own controller takes AddUsePower(nmPower, oTarget,
 // bOrderedByPlayer, fTimeOut, vTarget). The target: the group's nearest living member, or none (a self-buff, a place power
@@ -338,15 +358,17 @@ std::string CallHold(int index, engine::UnrealVector const& point) {
     ue3::Function* const setFormation = gSetFormationFn.Get();
     ue3::Function* const getFormation = gGetFormationFn.Get();
     if (setPosition == nullptr || setFormation == nullptr) return "the squad's hold functions weren't found";
-    ue3::Params position(ue3::runtime::Get(), setPosition);
-    position.Set("nIndex", static_cast<std::int32_t>(index));
-    position.Set("vPosition", ue3::Vector{static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)});
-    bool const placed = ue3::runtime::Call(squad, setPosition, position);
+    // The formation first: setting HOLD takes the member's place as its hold position (2026-11-05: a hold point set before it
+    // was lost and the squadmate held where she stood), so the point goes in after it.
     ue3::Params formation(ue3::runtime::Get(), setFormation);
     formation.Set("eFormation", kFormationHold);
     formation.SetBool("bForceFormation", true);
     formation.Set("iSquadMember", static_cast<std::int32_t>(index));
     bool const formed = ue3::runtime::Call(squad, setFormation, formation);
+    ue3::Params position(ue3::runtime::Get(), setPosition);
+    position.Set("nIndex", static_cast<std::int32_t>(index));
+    position.Set("vPosition", ue3::Vector{static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)});
+    bool const placed = ue3::runtime::Call(squad, setPosition, position);
     std::string now = "?";
     if (getFormation != nullptr) {
         ue3::Params read(ue3::runtime::Get(), getFormation);
@@ -485,12 +507,20 @@ void TickStandings(double dt, hand_calibration::SquadOrders const& s) {
         std::string result = "no squadmate";
         if (who != nullptr && callable && issue.kind != ss::Issue::None) {
             switch (issue.kind) {
-            case ss::Issue::MoveTo: result = CallMove(controller, who->index, Units(issue.point, gUpm)); break;
+            case ss::Issue::MoveTo:
+                // A drifted hold under the HOLD formation: its hold position again, never QuickCommandMoveTo, whose point comes
+                // from the camera's view in VR (2026-11-05: it dragged a held squadmate 30 m ahead every reassertS).
+                // The hold position alone never walks them (the placement's finding), so their AI is pushed to the point too.
+                if (s.holdFormation && st.intent.kind == ss::Kind::HoldAt) {
+                    result = CallHold(who->index, Units(issue.point, gUpm)) + "; " + PushMove(who->pawn, Units(issue.point, gUpm));
+                } else {
+                    result = CallMove(controller, who->index, Units(issue.point, gUpm));
+                }
+                break;
             case ss::Issue::Follow: result = CallFollow(controller, who->index); break;
             case ss::Issue::Retreat: {
                 engine::UnrealVector const where = Units(issue.point, gUpm);
-                result = CallMove(controller, who->index, where);
-                if (s.holdFormation) result += "; " + CallHold(who->index, where);
+                result = s.holdFormation ? CallHold(who->index, where) + "; " + PushMove(who->pawn, where) : CallMove(controller, who->index, where);
                 break;
             }
             case ss::Issue::Attack: {
@@ -568,9 +598,12 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
                 where = {at->x, at->y, at->z};
             }
             bool const distant = point && at && Len(Sub(where, {at->x, at->y, at->z})) / gUpm > s.holdRadiusM;  // not `far`: a Windows.h macro
-            if (distant) note(CallMove(controller, rc.index, where));
+            // The HOLD formation walks them to its point by itself (the henchman AI's GetFollowTargets reads it); a
+            // QuickCommandMoveTo first would send them along the camera's view instead, overriding it (2026-11-05, game/SquadPlace).
+            if (distant && !s.holdFormation) note(CallMove(controller, rc.index, where));
             if (s.holdFormation) {
                 note(CallHold(rc.index, where));
+                if (distant) note(PushMove(rc.pawn, where));  // the hold position alone never walks them there (2026-11-05)
             } else if (!distant) {
                 note("holds here");
             }
@@ -616,10 +649,18 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
         }
         if (!point) return "move: no point to move to";
         for (Recipient const& rc : to) {
-            note(CallMove(controller, rc.index, *point));
+            if (s.holdFormation) {
+                // The placement's way (2026-11-05): the HOLD formation at the point, then the AI walked there; they hold it until
+                // it's calm (the standing orders' return), or until relieved / "stay there". QuickCommandMoveTo ignores the point in VR.
+                note(CallHold(rc.index, *point));
+                note(PushMove(rc.pawn, *point));
+            } else {
+                note(CallMove(controller, rc.index, *point));
+            }
             expect(rc, sc::Order::Move);
-            // "Move there and stay" / "until ...": a move becomes a hold there.
-            bool const keep = s.standing && (hint.stay || hint.until != sp::StandingHint::Until::Default || hint.noRetreat);
+            // A move is a hold at the point (with the formation it must be: nothing else releases HOLD); "and stay" / "until ..."
+            // keeps them there after it's calm. Without the formation, only those hints make a hold of it.
+            bool const keep = s.standing && (s.holdFormation || hint.stay || hint.until != sp::StandingHint::Until::Default || hint.noRetreat);
             if (keep) {
                 ss::Intent intent;
                 intent.who = rc.letter;
@@ -633,7 +674,8 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
                 DropStanding(rc.letter, "moved elsewhere");
             }
         }
-        what = std::format("move to ({:.0f}, {:.0f}, {:.0f}): QuickCommandMoveTo for {} -> {}", point->x, point->y, point->z, names, returns);
+        what = std::format("move to ({:.0f}, {:.0f}, {:.0f}): {} for {} -> {}", point->x, point->y, point->z,
+            s.holdFormation ? "the HOLD formation there and PushMoveToPoint" : "QuickCommandMoveTo", names, returns);
         break;
     }
     case sc::Order::Use: {
@@ -787,8 +829,13 @@ std::string Give(sc::Action const& action) {
     return GiveResolved(action, std::nullopt, {});
 }
 
-std::string GiveAt(sc::Action const& action, engine::UnrealVector const& point) {
-    return GiveResolved(action, point, {});
+std::string GiveAt(sc::Action const& action, engine::UnrealVector const& point, bool untilCalledBack) {
+    sp::StandingHint hint;
+    if (untilCalledBack) {
+        hint.until = sp::StandingHint::Until::Relieved;
+        hint.stay = true;
+    }
+    return GiveResolved(action, point, hint);
 }
 
 std::string Say(std::string_view transcript, double secondsAgo) {
