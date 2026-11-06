@@ -47,6 +47,13 @@ struct Pieces {
     float radarWidthM = 0.0f;
     XrVector3f panelAnchor{};
     float panelWidthM = 0.0f;
+    // Shepard's drawn arms on foot in first person (tracking space, meters, last tick's pose after arm IK): the omni-tool's wrist
+    // tap aims at his forearm with his index fingertip (vr::omni_rail::Body, research/57 section 3). False: the controllers.
+    bool bodyValid = false;
+    XrVector3f leftWrist{};
+    XrVector3f leftElbow{};
+    XrVector3f rightIndex1{};
+    XrVector3f rightIndex2{};
     std::uint64_t sequence = 0;  // set by Publish
     std::uint64_t timeMs = 0;    // GetTickCount64 when published
 };

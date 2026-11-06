@@ -3,7 +3,11 @@
 
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "engine/Skeleton.hpp"
+#include "engine/XrToUnreal.hpp"
+#include "game/ArmIk.hpp"
 #include "game/CockpitProbe.hpp"
+#include "game/ViewAnchor.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/Sights.hpp"
@@ -45,6 +49,101 @@ char const* TypeName() {
     case weapon::RangedType::Unknown: break;
     }
     return "gun";
+}
+
+// Shepard's drawn arms for the omni-tool's wrist tap (research/57 section 3): the bones found once per skeleton asset.
+struct BodyBones {
+    ue3::Object const* asset = nullptr;
+    int leftWrist = -1;
+    int leftElbow = -1;
+    int rightIndex1 = -1;
+    int rightIndex2 = -1;
+    bool Found() const { return leftWrist >= 0 && leftElbow >= 0 && rightIndex1 >= 0 && rightIndex2 >= 0; }
+};
+BodyBones gBody;
+std::string gBodyWhy = "not looked for yet";
+// A cross-check for snapshots: the right wrist from SpaceBases, and the engine's own GetBoneLocation of the index's second
+// joint, in tracking space.
+int gRightWristBone = -1;
+std::uint64_t gIndex2Key = 0;
+XrVector3f gRightWrist{};
+std::optional<XrVector3f> gIndex2Native;
+
+int BoneNamed(engine::skeleton::RefSkeleton const& skeleton, std::string_view name) {
+    for (std::size_t i = 0; i < skeleton.names.size(); ++i) {
+        if (skeleton.names[i] == name) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+// Fills pieces.body* on foot in first person, from last tick's pose (after arm IK and the fingers). Game thread.
+void FillBody(hp::Pieces& pieces, bool onFoot) {
+    std::string why;
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
+    ue3::Object* const mesh = pawn != nullptr ? player::Mesh(pawn) : nullptr;
+    ue3::Object const* const asset = mesh != nullptr ? player::SkeletalMesh(mesh) : nullptr;
+    std::optional<engine::TrackingFrame> const frame = onFoot ? view_anchor::Current() : std::nullopt;
+    if (!onFoot) {
+        why = "not on foot";
+    } else if (!arm_ik::FirstPerson()) {
+        why = "arm IK isn't drawing the arms in first person";
+    } else if (asset == nullptr) {
+        why = "no player mesh";
+    } else if (!frame) {
+        why = "no view frame";
+    } else {
+        if (asset != gBody.asset) {
+            gBody = {};
+            gBody.asset = asset;
+            if (auto const skeleton = engine::skeleton::ReadRefSkeleton(mesh)) {
+                gBody.leftWrist = BoneNamed(*skeleton, "LeftWrist");
+                gBody.leftElbow = BoneNamed(*skeleton, "LeftElbow");
+                gBody.rightIndex1 = BoneNamed(*skeleton, "RightIndexFinger1");
+                gBody.rightIndex2 = BoneNamed(*skeleton, "RightIndexFinger2");
+                gRightWristBone = BoneNamed(*skeleton, "RightWrist");
+                gIndex2Key = gBody.rightIndex2 >= 0 ? skeleton->keys[static_cast<std::size_t>(gBody.rightIndex2)] : 0;
+            }
+            log::Info("hud pieces: the omni-tool tap's bones: LeftWrist {}, LeftElbow {}, RightIndexFinger1 {}, RightIndexFinger2 {}{}",
+                gBody.leftWrist, gBody.leftElbow, gBody.rightIndex1, gBody.rightIndex2,
+                gBody.Found() ? "" : ": not all found, the tap stays on the controllers");
+        }
+        if (!gBody.Found()) {
+            why = "the skeleton lacks a bone";
+        } else {
+            namespace sk = engine::skeleton;
+            auto const w = sk::BoneLocation(mesh, gBody.leftWrist, sk::Space::World);
+            auto const e = sk::BoneLocation(mesh, gBody.leftElbow, sk::Space::World);
+            auto const i1 = sk::BoneLocation(mesh, gBody.rightIndex1, sk::Space::World);
+            auto const i2 = sk::BoneLocation(mesh, gBody.rightIndex2, sk::Space::World);
+            if (w && e && i1 && i2) {
+                pieces.leftWrist = engine::ToTracking(*frame, *w);
+                pieces.leftElbow = engine::ToTracking(*frame, *e);
+                pieces.rightIndex1 = engine::ToTracking(*frame, *i1);
+                pieces.rightIndex2 = engine::ToTracking(*frame, *i2);
+                pieces.bodyValid = true;
+                if (auto const rw = gRightWristBone >= 0 ? sk::BoneLocation(mesh, gRightWristBone, sk::Space::World) : std::nullopt) {
+                    gRightWrist = engine::ToTracking(*frame, *rw);
+                }
+                // The engine's own answer once a second (two ProcessEvents): it agreed to 0.01 mm on the fake headset (2026-11-05).
+                static std::uint64_t nativeMs = 0;
+                if (std::uint64_t const now = GetTickCount64(); gIndex2Key != 0 && now - nativeMs >= 1000) {
+                    nativeMs = now;
+                    auto const native = sk::NativeBoneLocation(mesh, gIndex2Key, sk::Space::World);
+                    gIndex2Native = native ? std::optional<XrVector3f>(engine::ToTracking(*frame, *native)) : std::nullopt;
+                }
+            } else {
+                why = "the bones aren't posed";
+            }
+        }
+    }
+    if (why != gBodyWhy) {
+        log::Info("hud pieces: the omni-tool tap {}", why.empty() ? "follows Shepard's drawn forearm and index fingertip"
+                                                                  : std::format("is on the controllers ({})", why));
+        gBodyWhy = why;
+    }
 }
 
 void Publish(Link const& link, hp::Pieces const& pieces) {
@@ -108,17 +207,28 @@ void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
                   "redeploy the host");
     }
     cockpit_probe::FillHud(pieces);  // in the Mako's cockpit: its displays (research/47)
+    FillBody(pieces, onFoot);
     Publish(link, pieces);
 }
 
 std::string StatusJson() {
     hp::Pieces const& p = gLast;
     return std::format("{{\"gunStatus\": {}, \"wristStatus\": {}, \"gunVisible\": {}, \"why\": {}, \"anchor\": [{}, {}, {}], "
-                       "\"up\": [{}, {}, {}], \"gunBackM\": {}, \"gunUpM\": {}, \"serial\": {}, \"hostTakesIt\": {}}}",
+                       "\"up\": [{}, {}, {}], \"gunBackM\": {}, \"gunUpM\": {}, \"serial\": {}, \"hostTakesIt\": {}, \"body\": {}}}",
         gSettings.gunStatus ? "true" : "false", gSettings.wristStatus ? "true" : "false", p.gunVisible ? "true" : "false",
         gWhy.empty() ? std::string("null") : json::JsonString(gWhy), json::JsonNumber(p.gunAnchor.x), json::JsonNumber(p.gunAnchor.y),
         json::JsonNumber(p.gunAnchor.z), json::JsonNumber(p.gunUp.x), json::JsonNumber(p.gunUp.y), json::JsonNumber(p.gunUp.z),
-        json::JsonNumber(gSettings.gunBackM), json::JsonNumber(gSettings.gunUpM), p.serial, gSent ? "true" : "false");
+        json::JsonNumber(gSettings.gunBackM), json::JsonNumber(gSettings.gunUpM), p.serial, gSent ? "true" : "false",
+        p.bodyValid ? std::format("{{\"leftWrist\": [{}, {}, {}], \"leftElbow\": [{}, {}, {}], \"rightIndex2\": [{}, {}, {}], "
+                                  "\"rightWrist\": [{}, {}, {}], \"rightIndex2Native\": {}}}",
+                          json::JsonNumber(p.leftWrist.x), json::JsonNumber(p.leftWrist.y), json::JsonNumber(p.leftWrist.z),
+                          json::JsonNumber(p.leftElbow.x), json::JsonNumber(p.leftElbow.y), json::JsonNumber(p.leftElbow.z),
+                          json::JsonNumber(p.rightIndex2.x), json::JsonNumber(p.rightIndex2.y), json::JsonNumber(p.rightIndex2.z),
+                          json::JsonNumber(gRightWrist.x), json::JsonNumber(gRightWrist.y), json::JsonNumber(gRightWrist.z),
+                          gIndex2Native ? std::format("[{}, {}, {}]", json::JsonNumber(gIndex2Native->x), json::JsonNumber(gIndex2Native->y),
+                                                  json::JsonNumber(gIndex2Native->z))
+                                        : std::string("null"))
+                    : json::JsonString(gBodyWhy));
 }
 
 void LogStats() {
@@ -143,6 +253,8 @@ void Shutdown(Link const& link) {
     gWeaponKey = 0;
     gToldNoHost = false;
     gSettings = {};
+    gBody = {};
+    gBodyWhy = "not looked for yet";
 }
 
 } // namespace mevr::game::hud_pieces

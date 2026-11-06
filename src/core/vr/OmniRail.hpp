@@ -78,6 +78,22 @@ inline constexpr float kTargetNearM = 0.30f;        // the right fingertip this 
 inline constexpr float kRaisedBelowEyesM = 0.45f;   // the wrist raised: the target within this below the eyes...
 inline constexpr float kRaisedAcrossM = 0.60f;      // ...and this near them across the floor
 XrVector3f TargetPoint(XrVector3f const& wrist);
+// On Shepard's drawn arm (the user, 2026-11-05: "I want it to be the wrist target", on the body, not at the controller: the
+// arm IK's reach scaling draws the arm up to 15 cm from the controller): the mod sends his bones in tracking space and the
+// target sits on the back of his left forearm, kForearmAlong of the way from the wrist to the elbow (where the omni-tool's
+// gauntlet is), lifted kForearmLiftM toward the eyes (onto the arm's surface); the tap is his right index fingertip.
+inline constexpr float kForearmAlong = 0.30f;
+inline constexpr float kForearmLiftM = 0.035f;
+inline constexpr float kFingertipRatio = 1.0f;  // the tip beyond the index's second joint, as a share of its first bone
+struct Body {
+    XrVector3f leftWrist{};
+    XrVector3f leftElbow{};
+    XrVector3f rightIndex1{};  // the index's first and second joints (RightIndexFinger1, RightIndexFinger2)
+    XrVector3f rightIndex2{};
+};
+// Nullopt for a degenerate arm (wrist on the elbow, eyes on the arm, not finite).
+std::optional<XrVector3f> BodyTarget(Body const& body, XrVector3f const& eyes);
+std::optional<XrVector3f> BodyFingertip(Body const& body);
 enum class TargetLook : std::uint8_t { Hidden, Faint, Near, Armed };
 // `tipTracked` false: only the raised wrist counts. `armed`: Tap::Armed() (the fingertip has been away since the last tap).
 TargetLook TargetLookFor(bool allowed, XrVector3f const& eyes, XrVector3f const& target, bool tipTracked, XrVector3f const& tip,

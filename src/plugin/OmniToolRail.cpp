@@ -93,6 +93,7 @@ struct Swapchain {
 struct Settings {
     bool enabled = true;  // [OmniTool] enabled
     bool tap = true;      // [OmniTool] tap: the left wrist's tap opens it
+    bool tapOnBody = true;  // [OmniTool] tapOnBody: the tap's target on Shepard's drawn forearm, his index fingertip (else the controllers')
     float aloneHeightM = rail::kAloneHeightM;
 };
 
@@ -124,6 +125,7 @@ struct State {
     Swapchain target[4];
     XrCompositionLayerQuad targetQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
     bool targetShown = false;
+    bool onBody = false;  // the tap on Shepard's drawn arm this frame
     rail::TargetLook targetLook = rail::TargetLook::Hidden;
     float pressedS = 0.0f;       // the pressed look's time left after a tap
     // A reach for the target (the right fingertip within kTargetNearM): its closest approach, logged when it ends.
@@ -169,16 +171,19 @@ void ReadSettings() {
     Settings s;
     s.enabled = GetPrivateProfileIntW(L"OmniTool", L"enabled", 1, path.c_str()) != 0;
     s.tap = GetPrivateProfileIntW(L"OmniTool", L"tap", 1, path.c_str()) != 0;
+    s.tapOnBody = GetPrivateProfileIntW(L"OmniTool", L"tapOnBody", 1, path.c_str()) != 0;
     wchar_t text[32]{};
     GetPrivateProfileStringW(L"OmniTool", L"aloneHeightM", L"", text, 32, path.c_str());
     if (auto const v = ini::Number(ini::Utf8(std::filesystem::path(text)))) {
         s.aloneHeightM = std::clamp(static_cast<float>(*v), 0.10f, 0.60f);
     }
     static bool logged = false;
-    if (!logged || s.enabled != g.settings.enabled || s.tap != g.settings.tap || s.aloneHeightM != g.settings.aloneHeightM) {
+    if (!logged || s.enabled != g.settings.enabled || s.tap != g.settings.tap || s.tapOnBody != g.settings.tapOnBody ||
+        s.aloneHeightM != g.settings.aloneHeightM) {
         logged = true;
-        log::Info("omni-tool rail: [OmniTool] enabled = {}, tap = {} (tap the left wrist with the right index fingertip), aloneHeightM = {:.2f}",
-            s.enabled ? 1 : 0, s.tap ? 1 : 0, s.aloneHeightM);
+        log::Info("omni-tool rail: [OmniTool] enabled = {}, tap = {} (tap the left wrist with the right index fingertip), tapOnBody = {}, "
+                  "aloneHeightM = {:.2f}",
+            s.enabled ? 1 : 0, s.tap ? 1 : 0, s.tapOnBody ? 1 : 0, s.aloneHeightM);
     }
     g.settings = s;
     if (!s.enabled) {
@@ -625,8 +630,15 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     // The tap on the left wrist: opens it, or closes it and the screen it stands by.
     vr::controllers::State const live = vr::controllers::Latest();
     bool const handsTracked = live.active && live.right.aimValid && frame.wristValid;
+    // On Shepard's drawn arm when the mod sends it (rail::BodyTarget), else at the controllers.
+    std::optional<XrVector3f> const bodyTarget =
+        g.settings.tapOnBody && frame.body && frame.headValid ? rail::BodyTarget(*frame.body, frame.eyes) : std::nullopt;
+    std::optional<XrVector3f> const bodyTip = bodyTarget ? rail::BodyFingertip(*frame.body) : std::nullopt;
+    bool const onBody = bodyTarget && bodyTip;
     XrVector3f tip{};
-    if (handsTracked) {
+    if (handsTracked && onBody) {
+        tip = *bodyTip;
+    } else if (handsTracked) {
         XrVector3f d = vr::menu_pointer::AimDirection(live.right.aim);
         float const n = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
         tip = n > 1e-6f ? XrVector3f{live.right.aim.position.x + d.x / n * kTipAheadM, live.right.aim.position.y + d.y / n * kTipAheadM,
@@ -647,7 +659,11 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
                                 : goingForPanel                                ? "the fingertip was going for a screen"
                                                                                : nullptr;
     // The tap aims at its target, a button just below the wrist readout (rail::TargetPoint).
-    XrVector3f const target = rail::TargetPoint(frame.wrist);
+    XrVector3f const target = onBody ? *bodyTarget : rail::TargetPoint(frame.wrist);
+    if (onBody != g.onBody) {
+        g.onBody = onBody;
+        log::Info("omni-tool rail: the tap's target {}", onBody ? "is on Shepard's drawn forearm, the fingertip his" : "is at the controllers");
+    }
     bool const visibleBefore = g.shown;
     bool const tapped = g.tap.Step(handsTracked, tip, target, tapAllowed, dt);
     StepTarget(frame, handsTracked, tip, target, tapAllowed && g.settings.tap, refused, tapped, dt);
@@ -779,11 +795,11 @@ std::string StatusJson() {
     return std::format("{{\"rail\": {}, \"target\": {{\"stepped\": {}, \"wristValid\": {}, \"headValid\": {}, \"handsTracked\": {}, "
                        "\"allowed\": {}, \"refused\": \"{}\", \"look\": \"{}\", \"shown\": {}, \"fingertipM\": {:.3f}, "
                        "\"belowEyesM\": {:.3f}, \"acrossM\": {:.3f}, \"at\": [{:.3f}, {:.3f}, {:.3f}], \"eyes\": [{:.3f}, {:.3f}, {:.3f}], "
-                       "\"layerCalls\": {}, \"layerGiven\": {}, \"swapchain\": \"{:#x}\"}}}}",
+                       "\"layerCalls\": {}, \"layerGiven\": {}, \"swapchain\": \"{:#x}\", \"onBody\": {}}}}}",
         gStatus, t.stepped, t.wristValid, t.headValid, t.handsTracked, t.allowed, t.refused != nullptr ? t.refused : "",
         LookName(static_cast<rail::TargetLook>(t.look)), t.shown, t.distanceM, t.belowEyesM, t.acrossM, t.target.x, t.target.y,
         t.target.z, t.eyes.x, t.eyes.y, t.eyes.z, gTargetCalls.load(std::memory_order_relaxed),
-        gTargetGiven.load(std::memory_order_relaxed), reinterpret_cast<std::uintptr_t>(g.targetQuad.subImage.swapchain));
+        gTargetGiven.load(std::memory_order_relaxed), reinterpret_cast<std::uintptr_t>(g.targetQuad.subImage.swapchain), g.onBody);
 }
 
 } // namespace mevr::host::omni_rail

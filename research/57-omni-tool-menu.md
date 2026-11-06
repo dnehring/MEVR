@@ -97,8 +97,18 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   no tap"), the taps opened and closed the rail. **But the target floats about 15 cm above Shepard's drawn left hand** on those
   poses: it is placed at the controller's wrist, and the arm IK draws Shepard's arm lower and nearer (the reach scaling; the
   same gap as the rail's, below). The player aims at the hand they see, so the target (and the tap's two points) belong on
-  Shepard's drawn left wrist and right index fingertip, from the mod's bones [open]. Snapshots carry `"omniRail"."target"` (its
+  Shepard's drawn left wrist and right index fingertip, from the mod's bones. Snapshots carry `"omniRail"."target"` (its
   inputs each frame) and layers `omnitarget-*`.
+  **On Shepard's drawn arm (the user, 2026-11-05: "I want it to be the wrist target"):** the mod (`game/HudPieces`) sends
+  LeftWrist, LeftElbow, RightIndexFinger1 and RightIndexFinger2 (bones 59, 58, 90, 91 on HMM_ARM_MEDb) in tracking space each
+  tick on foot while arm IK draws first person, from SpaceBases after arm IK and the fingers (the engine's `GetBoneLocation`
+  agreed to 0.01 mm); the host puts the target 30% from the wrist to the elbow, lifted 3.5 cm toward the eyes, and takes the
+  fingertip one first-bone length past the index's second joint (`omni_rail::BodyTarget`, `BodyFingertip`, unit-tested).
+  On the fake headset (22:51-22:55): the target sits on the back of the drawn forearm just behind the wrist (log `omni-tool
+  rail: the tap's target is on Shepard's drawn forearm`); both drawn wrists are about 12 cm nearer the eyes than the
+  controllers. The synthetic recording holds the controllers level, which the IK draws as a hand hanging down (the index 14 cm
+  below the wrist), so its taps came 17 cm short: whether a real reach's drawn finger lands on the drawn forearm comfortably
+  is [verify] in the headset. `[OmniTool] tapOnBody = 0` puts it back on the controllers.
 - The rail's size and legibility at 0.42 m (entries 112 dp of a 1000 dp canvas: about 3 cm tall on a 0.31 m rail).
 - **The squad member behind the equipment and squad screens: done 2026-11-05 (section 7)**, the game's own figure through a capture
   of its UI world. Below, the earlier hologram idea.
