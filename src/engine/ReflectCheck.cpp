@@ -1210,6 +1210,7 @@ void CheckFunctions() {
         "SFXGame.BioBaseSquad.GetMemberFormation",
         "SFXGame.BioPlayerController.SquadOrderUsePower",  // power orders and the acknowledgement (research/54, 2026-11-05)
         "SFXGame.BioAiController.AddUsePower",
+        "SFXGame.BioAiController.PushMoveToPoint",  // game/SquadPlace: the squadmate walked to the arc's point
         "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
         "SFXGame.BioPawn.PlaySoundSet",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
@@ -1451,6 +1452,10 @@ void CheckParams() {
     PARAM(ABioAiController_execAddUsePower_Parms, "SFXGame.BioAiController.AddUsePower", bOrderedByPlayer);
     PARAM(ABioAiController_execAddUsePower_Parms, "SFXGame.BioAiController.AddUsePower", fTimeOut);
     PARAM(ABioAiController_execAddUsePower_Parms, "SFXGame.BioAiController.AddUsePower", vTarget);
+    PARAM(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint", vLoc);
+    PARAM(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint", PointTolerance);
+    PARAM(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint", bWalking);
+    PARAM(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint", bRequiresPrecisionMovement);
     PARAM(ABioBaseSquad_eventSquadHandleChatterEvent_Parms, "SFXGame.BioBaseSquad.SquadHandleChatterEvent", eSoundSet);
     PARAM(ABioBaseSquad_eventSquadHandleChatterEvent_Parms, "SFXGame.BioBaseSquad.SquadHandleChatterEvent", nFlags);
     PARAM(ABioPawn_execPlaySoundSet_Parms, "SFXGame.BioPawn.PlaySoundSet", eType);

@@ -40,6 +40,11 @@ constexpr int kDrawPoints = 24;
 constexpr double kPlausibleUnits = 10.0;
 
 ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
+// The squadmate's own AI walked to the point (2026-11-05): the HOLD formation's hold position keeps them where they stand and
+// QuickCommandMoveTo picks its point from the camera's view, so neither brings them to the ring.
+ue3::FieldRef gPawnController{"Engine.Pawn", "Controller"};
+ue3::FunctionRef gPushMoveFn{"SFXGame.BioAiController.PushMoveToPoint"};
+constexpr float kPointToleranceUnits = 60.0f;
 
 sp::Machine gMachine;
 double gUpm = engine::kUnitsPerMeter;
@@ -49,6 +54,7 @@ bool gPublished = false;  // the last view sent was active (one inactive view fo
 // The console's stand-in for B (no tracked controllers): held with the arc from the head at a pitch.
 struct Simulated {
     bool held = false;
+    bool releasing = false;  // let go: the next tick still aims from the head, so the release is judged where it was held
     float pitchDeg = -10.0f;
     float yawDeg = 0.0f;  // relative to where the head looks
 };
@@ -162,6 +168,32 @@ int PointedMember(sp::Vec3 const& originM, sp::Vec3 const& direction, double con
     return best;
 }
 
+// Each recipient's AI pushed toward the point; the outcome in words.
+std::string WalkThere(int member, engine::UnrealVector const& point) {
+    ue3::Function* const fn = gPushMoveFn.Get();
+    if (fn == nullptr) return "no PushMoveToPoint";
+    std::string out;
+    int index = 0;
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+        if (member < 0 || member == index) {
+            ue3::Object* const* const controller = m.pawn != nullptr ? gPawnController.In<ue3::Object*>(m.pawn) : nullptr;
+            ue3::Object* const ai = controller != nullptr ? *controller : nullptr;
+            bool called = false;
+            if (ai != nullptr && ue3::runtime::Get().FindFunction(ue3::runtime::Get().ClassOf(ai), "PushMoveToPoint") == fn) {
+                ue3::Params parms(ue3::runtime::Get(), fn);
+                parms.Set("vLoc", ue3::Vector{static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)});
+                parms.Set("PointTolerance", kPointToleranceUnits);
+                parms.SetBool("bWalking", false);
+                parms.SetBool("bRequiresPrecisionMovement", false);
+                called = ue3::runtime::Call(ai, fn, parms);
+            }
+            out += std::format("{}{}: {}", out.empty() ? "" : ", ", m.name, ai == nullptr ? "no AI" : called ? "walking" : "not a BioAiController");
+        }
+        ++index;
+    }
+    return out;
+}
+
 void PublishView(Link const& link, engine::TrackingFrame const* frame, sp::ArcSettings const& settings, bool follow) {
     if (link.publish == nullptr) return;
     sp::View view;
@@ -208,8 +240,10 @@ void Tick(double deltaSeconds, Link const& link) {
         log::Info("squad place: off while B is the game's melee button ([Throwables] meleeButton = 1)");
     }
     bool const tracked = controllers.active && controllers.right.aimValid;
+    bool const simulated = gSim.held || gSim.releasing;
+    gSim.releasing = false;
     bool const button = gSim.held || (tracked && controllers.right.secondary);
-    bool const usable = s.enabled && s.place && !melee && onFoot && frame.has_value() && (tracked || gSim.held) &&
+    bool const usable = s.enabled && s.place && !melee && onFoot && frame.has_value() && (tracked || simulated) &&
         !squad_weapons::Members().empty() && !squad_weapons::IsOpen() && !power_wheel::IsOpen();
 
     gArc = {};
@@ -217,7 +251,7 @@ void Tick(double deltaSeconds, Link const& link) {
     if (usable && (button || gMachine.Holding())) {
         sp::Vec3 originM{};
         sp::Vec3 direction{};
-        if (gSim.held) {
+        if (simulated) {
             // From the head, its yaw plus the console's, at the console's pitch; 0.3 m below the eyes (the hand's height).
             engine::UnrealVector const head = frame->headWorld;
             engine::Basis const look = engine::OrientationToWorld(*frame, frame->head.orientation);
@@ -281,8 +315,12 @@ void Tick(double deltaSeconds, Link const& link) {
             action.order = sc::Order::Follow;
             outcome = squad_orders::Give(action);
         } else {
-            action.order = sc::Order::Move;
-            outcome = squad_orders::GiveAt(action, gArc.point);
+            // A hold at the point, kept until they're called back: the game's own HOLD formation puts each one exactly there
+            // (SetMemberHoldPosition, read by the henchman AI's GetFollowTargets), where QuickCommandMoveTo picks its own point
+            // along the camera's view (2026-11-05: a point 5 m off sent Ashley 30 m ahead, whatever Rotation said).
+            action.order = sc::Order::Hold;
+            outcome = squad_orders::GiveAt(action, gArc.point, true);
+            outcome += "; " + WalkThere(step.member, gArc.point);
         }
         gLast = std::format("{} for {}, {:.1f} m from Shepard at ({:.0f}, {:.0f}, {:.0f}): {}", sp::Name(step.order),
             whoName(step.member), gArc.fromPlayerM, gArc.point.x, gArc.point.y, gArc.point.z, outcome);
@@ -308,6 +346,7 @@ std::string Console(std::string_view args) {
                            "(last arc: {}, {:.1f} m from Shepard)", gSim.pitchDeg, gSim.yawDeg, sp::Name(gArc.landing), gArc.fromPlayerM);
     }
     if (verb == "release") {
+        gSim.releasing = gSim.held;
         gSim.held = false;
         return std::string("B let go: the order follows on the next tick (see the log's `squad place:` line)");
     }

@@ -351,7 +351,7 @@ melees nothing on foot since `meleeButton = 0`) and asked this session to build 
   hit's normal is within about 45 degrees of up (`minUpNormal` 0.7), else a wall; nothing hit in reach is nothing. A press
   shorter than `placeMinHoldS` 0.15 s is a blip, one held 15 s is called off, and one held through a place it couldn't start (a
   wheel, a menu) never starts until B is let go. The squadmate the right hand's straight ray points at (`memberConeDeg`) as B
-  goes down gets the order alone. Let go on floor: a move there, or a follow when it lands within `followWithinM` of Shepard;
+  goes down gets the order alone. Let go on floor: they go there and hold it (below), or a follow when it lands within `followWithinM` of Shepard;
   on a wall or nothing: called off.
 - **The game side**, [src/game/SquadPlace.cpp](../src/game/SquadPlace.cpp) (mod): while B is held on foot it traces the arc's
   segments with `Engine.Actor.Trace` (`bTraceActors` false: level geometry only, so pawns and movable things don't stop the
@@ -367,6 +367,30 @@ melees nothing on foot since `meleeButton = 0`) and asked this session to build 
   the squad, amber for one squadmate, green for "on me") that grows in over 0.15 s, a red spark where a refused flight ends.
   The layer draws over the world (no depth test against the scene), like most games' teleport arcs. Layers `squadplace-left`/
   `-right` in snapshots.
+
+**In the game, 2026-11-05 18:12-18:23** (fake headset, the UNC20 save, Ashley in the party; `mevr place aim`/`release`): the arc and
+the ring draw as meant (a 1406x1435 layer per eye, 0.17 ms of CPU a frame for both eyes; four or five traces a tick while aiming).
+Getting Ashley to the ring took four findings, all in the dispatcher's move and hold:
+1. **`QuickCommandMoveTo` ignores the point in VR.** A move to a point 5.7 m ahead sent her 32 m ahead; one at 4.9 m and 40
+   degrees to the side sent her 30 m straight ahead again. Turning the controller's `Rotation` toward the point (the 2026-11-04
+   trace's way), also the camera's `CameraCache.POV` rotation, and setting `m_fMoveToDropDistance` to the point's distance for the
+   call changed nothing: the native's point comes from the view along the head's facing (level), most likely when the order is
+   applied after `m_fMoveToDelayTime` (1.5 s), after anything swapped for the call is back **[verify in Ghidra: the project was
+   locked by another session]**. So every move through it lands along the head's facing, until the first rise in the ground.
+2. **The HOLD formation keeps a squadmate where she stands.** `SetMemberHoldPosition` then `SetSquadFollowFormation(HOLD)` read
+   back HOLD but she never walked: setting the formation takes her place as the hold position, over the one just set.
+   `CallHold` now sets the formation first and the point after it.
+3. **The hold doesn't walk them there either**, so placement also pushes each recipient's own AI to the point:
+   `BioAiController.PushMoveToPoint(vLoc, 60 units, run, no precision)` on the pawn's `Controller`.
+4. **The standing order's re-assert went through `QuickCommandMoveTo`** ("move (drifted)" every `reassertS`), dragging her back
+   30 m out each time: a drifted hold under the HOLD formation now re-asserts its hold position, and a retreat with the formation
+   is the hold alone (no move first); a formation hold no longer sends a move before it either.
+With all four: let go 7.2 m out at 50 degrees to the left, Ashley ran there and stood 0.6 m from the ring's point, kept there
+("A keeps a standing hold order until relieved, and stays"). Placement is therefore a **hold until called back**
+(`squad_orders::GiveAt(..., untilCalledBack)`: the standing order's "until I say so" and "stay there"), released by a follow
+(the left grip on her, `mevr order ALL|-|-|follow|-`, or dropping the arc at your feet). **Still open:** the left grip's "move
+there" and spoken moves still go through `QuickCommandMoveTo` and land along the head's facing (the voice session's to decide:
+the same push, or a hold); two squadmates and a crowd of hostiles weren't tried.
 
 ## The rule parser (2026-11-04, later)
 

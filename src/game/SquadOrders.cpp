@@ -338,15 +338,17 @@ std::string CallHold(int index, engine::UnrealVector const& point) {
     ue3::Function* const setFormation = gSetFormationFn.Get();
     ue3::Function* const getFormation = gGetFormationFn.Get();
     if (setPosition == nullptr || setFormation == nullptr) return "the squad's hold functions weren't found";
-    ue3::Params position(ue3::runtime::Get(), setPosition);
-    position.Set("nIndex", static_cast<std::int32_t>(index));
-    position.Set("vPosition", ue3::Vector{static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)});
-    bool const placed = ue3::runtime::Call(squad, setPosition, position);
+    // The formation first: setting HOLD takes the member's place as its hold position (2026-11-05: a hold point set before it
+    // was lost and the squadmate held where she stood), so the point goes in after it.
     ue3::Params formation(ue3::runtime::Get(), setFormation);
     formation.Set("eFormation", kFormationHold);
     formation.SetBool("bForceFormation", true);
     formation.Set("iSquadMember", static_cast<std::int32_t>(index));
     bool const formed = ue3::runtime::Call(squad, setFormation, formation);
+    ue3::Params position(ue3::runtime::Get(), setPosition);
+    position.Set("nIndex", static_cast<std::int32_t>(index));
+    position.Set("vPosition", ue3::Vector{static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)});
+    bool const placed = ue3::runtime::Call(squad, setPosition, position);
     std::string now = "?";
     if (getFormation != nullptr) {
         ue3::Params read(ue3::runtime::Get(), getFormation);
@@ -485,12 +487,16 @@ void TickStandings(double dt, hand_calibration::SquadOrders const& s) {
         std::string result = "no squadmate";
         if (who != nullptr && callable && issue.kind != ss::Issue::None) {
             switch (issue.kind) {
-            case ss::Issue::MoveTo: result = CallMove(controller, who->index, Units(issue.point, gUpm)); break;
+            case ss::Issue::MoveTo:
+                // A drifted hold under the HOLD formation: its hold position again, never QuickCommandMoveTo, whose point comes
+                // from the camera's view in VR (2026-11-05: it dragged a held squadmate 30 m ahead every reassertS).
+                result = s.holdFormation && st.intent.kind == ss::Kind::HoldAt ? CallHold(who->index, Units(issue.point, gUpm))
+                                                                                : CallMove(controller, who->index, Units(issue.point, gUpm));
+                break;
             case ss::Issue::Follow: result = CallFollow(controller, who->index); break;
             case ss::Issue::Retreat: {
                 engine::UnrealVector const where = Units(issue.point, gUpm);
-                result = CallMove(controller, who->index, where);
-                if (s.holdFormation) result += "; " + CallHold(who->index, where);
+                result = s.holdFormation ? CallHold(who->index, where) : CallMove(controller, who->index, where);
                 break;
             }
             case ss::Issue::Attack: {
@@ -568,7 +574,9 @@ std::string Dispatch(sc::Resolved const& r, sc::Action const& action, std::optio
                 where = {at->x, at->y, at->z};
             }
             bool const distant = point && at && Len(Sub(where, {at->x, at->y, at->z})) / gUpm > s.holdRadiusM;  // not `far`: a Windows.h macro
-            if (distant) note(CallMove(controller, rc.index, where));
+            // The HOLD formation walks them to its point by itself (the henchman AI's GetFollowTargets reads it); a
+            // QuickCommandMoveTo first would send them along the camera's view instead, overriding it (2026-11-05, game/SquadPlace).
+            if (distant && !s.holdFormation) note(CallMove(controller, rc.index, where));
             if (s.holdFormation) {
                 note(CallHold(rc.index, where));
             } else if (!distant) {
@@ -787,8 +795,13 @@ std::string Give(sc::Action const& action) {
     return GiveResolved(action, std::nullopt, {});
 }
 
-std::string GiveAt(sc::Action const& action, engine::UnrealVector const& point) {
-    return GiveResolved(action, point, {});
+std::string GiveAt(sc::Action const& action, engine::UnrealVector const& point, bool untilCalledBack) {
+    sp::StandingHint hint;
+    if (untilCalledBack) {
+        hint.until = sp::StandingHint::Until::Relieved;
+        hint.stay = true;
+    }
+    return GiveResolved(action, point, hint);
 }
 
 std::string Say(std::string_view transcript, double secondsAgo) {
