@@ -1159,6 +1159,12 @@ if (MEVR_BUILD_TESTS)
     target_compile_definitions(mevr-stack-sampler PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-stack-sampler PRIVATE /W4 /WX /permissive- /utf-8)
 
+    # How many swapchains the active OpenXR runtime lets a session hold (tools/swapchain-probe, research/21 section 18).
+    add_executable(mevr-swapchain-probe tools/swapchain-probe/Main.cpp)
+    target_link_libraries(mevr-swapchain-probe PRIVATE OpenXR::openxr_loader d3d11 dxgi)
+    target_compile_definitions(mevr-swapchain-probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-swapchain-probe PRIVATE /W4 /WX /permissive- /utf-8)
+
     # The colour correction, offline (tools/colour-preview, research/27): the shader (core/vr/Colour's prelude) on a
     # D3D11 device of its own, checked against the CPU reference, and the test strip through each preset as PNGs.
     # Also a test: the shader must match the CPU reference within one 8-bit step.
