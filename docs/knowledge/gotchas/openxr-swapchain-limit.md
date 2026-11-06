@@ -43,7 +43,13 @@ of ours not shown for a second are freed through their owners' own paths; the re
 frame, else every 2 s, never giving up for the session. The calibration's creates are Essential: they may also free
 ours shown 0.1 s ago. A new quad must make its swapchain with `swapchains::Create`, let go of it in its `evict`
 (redrawing a static picture when it's made again), and never latch a refusal for the session. Fewer swapchains is
-still better: the tap target's four looks share one (d375fdc); a static picture can be a rect of a shared image.
+still better: the tap target's four looks share one (d375fdc), the sights' three are one (f67b871); a static picture can
+be a rect of a shared image.
+
+Checked on the fake headset (2026-11-06, `[Debug] swapchainCap = 2` in `ASI\LE1MEVR.ini`, which refuses ours past N as
+the runtime would): in the Mako the gun status and cockpit radar were refused, the power wheel's swapchain (idle 254 s)
+was freed at that frame's end and the gun status made on the next frame (18 ms later); the cap raised live to 3, the
+radar was made on its next 2 s retry. The cap is the way to test a change here without filling the runtime.
 
 # Citations
 

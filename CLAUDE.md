@@ -1136,7 +1136,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   Create` with an `evict` that lets go and redraws when made again; rules `core/vr/SwapchainBudget`, unit-tested): a refusal
   frees ours not shown for a second at that frame's end and the owner asks again next frame (else every 2 s; the calibration's
   are Essential); never latch a refusal for the session; share one swapchain between a quad's looks. Log `swapchains:`
-  (every live one at a refusal), snapshot `"swapchains"` (gotchas/openxr-swapchain-limit).
+  (every live one at a refusal), snapshot `"swapchains"` (gotchas/openxr-swapchain-limit); test with `[Debug] swapchainCap = N`
+  (ours past N refused as the runtime would; checked on the fake headset 2026-11-06).
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
 - An inline `python - <<'EOF'` loses one backslash of every pair (the Bash tool); write scripts with backslashes to a file.
 - `Windows.h` macros eat ordinary names (`SetProp`, `far`, `near`, `min`, `max`): don't name ours after them; build `build-mono/` too.
