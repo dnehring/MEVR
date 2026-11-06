@@ -742,7 +742,9 @@ switching frameworks.
   (`sv::WindowView`, the scope shader's window style, the eye copy; not the capture: its grade would show). Dots no longer slide
   toward the eye (`assistDotMaxM` 0; 0.03 migrated once, marker `dotWindow`: the slide toggled at the corridor's edge while the
   eye already sat on the line), and the dot's eye survives a 120 ms dropout (`sv::EyeHold`). Log `[MEVR-SIGHT] first window`,
-  `sights: the dot's window was up`; snapshot `sights.window`.
+  `sights: the dot's window was up`; snapshot `sights.window`. **The sight takes one swapchain** (research/21 section 18; SteamVR
+  holds 16 a session, `mevr-swapchain-probe`): the picture at the image's origin, the reticle and ring beside it, each quad by
+  `imageRect` (the three of them refused on 2026-11-06 left the player with no dot or scope all session).
 - LE1 scope capture ([research/39](research/39-scope-capture.md), HostServices v20; **on by default since 2026-11-04**,
   `[Sights] scopeCapture = 1`, an old file's 0 moved once (marker `scopeCapturePost`); measured in research/39 section 12: the
   render thread +0.5 ms in a light scene, no GPU cost visible, the picture as sharp as the display instead of 2.2x below it;

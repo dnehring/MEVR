@@ -40,8 +40,6 @@ using Microsoft::WRL::ComPtr;
 namespace sv = vr::sights;
 
 constexpr std::int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-constexpr UINT kDotPixels = sight_pictures::kPictureSize;
-constexpr UINT kFramePixels = sight_pictures::kPictureSize;
 constexpr float kDotDistance = 50.0f;  // meters out along the sight line: the reticle sits at the target's depth
 constexpr float kMinAlong = 0.02f;     // an eye this close behind a dot sight's window or closer doesn't count
 constexpr float kMaxAlong = 1.0f;      // ...nor one further back than this (held out at arm's length)
@@ -85,13 +83,10 @@ struct Swapchain {
 };
 
 XrSession gSession = XR_NULL_HANDLE;
-Swapchain gDot;
-Swapchain gFrame;
-Swapchain gScope;
 XrCompositionLayerQuad gDotQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 XrCompositionLayerQuad gFrameQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 XrCompositionLayerQuad gScopeQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
-XrCompositionLayerQuad gWindowQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};  // a dot's window (kWindow): in gScope's swapchain
+XrCompositionLayerQuad gWindowQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};  // a dot's window (kWindow)
 
 bool Create(XrSession session, std::uint32_t width, std::uint32_t height, Swapchain& out, char const* what, char const* name) {
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
@@ -135,35 +130,6 @@ bool Acquire(Swapchain& swapchain, std::uint32_t& index) {
 void Release(Swapchain& swapchain) {
     XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
     xrReleaseSwapchainImage(swapchain.handle, &release);
-}
-
-// Fills every image of a fresh swapchain with `pixels` once (premultiplied sRGB RGBA8): its content never
-// changes, the runtime keeps showing the last released, and snapshots draw it from the same pixels.
-bool FillStatic(ID3D11DeviceContext* context, ID3D11Device* device, Swapchain& swapchain, std::vector<std::uint32_t> const& pixels) {
-    D3D11_TEXTURE2D_DESC td{};
-    td.Width = swapchain.width;
-    td.Height = swapchain.height;
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_IMMUTABLE;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA data{pixels.data(), swapchain.width * 4, 0};
-    ComPtr<ID3D11Texture2D> source;
-    if (FAILED(device->CreateTexture2D(&td, &data, source.GetAddressOf()))) {
-        return false;
-    }
-    for (size_t i = 0; i < swapchain.images.size(); ++i) {
-        std::uint32_t index = 0;
-        if (!Acquire(swapchain, index)) {
-            return false;
-        }
-        context->CopyResource(swapchain.images[index], source.Get());
-        Release(swapchain);
-    }
-    testloop::SetStaticImage(swapchain.handle, swapchain.width, swapchain.height, pixels);
-    return true;
 }
 
 // The pictures (reticles, the scope shader) are in plugin/SightPictures.
@@ -730,54 +696,119 @@ void Off() {
     testloop::SetReleaseTap(XR_NULL_HANDLE, nullptr);
 }
 
-XrCompositionLayerQuad MakeQuad(XrSpace space, Swapchain const& swapchain, sv::Quad const& quad, XrEyeVisibility visibility) {
+// ---- The sight's one swapchain (research/21 section 18) ----------------------------------------------------------
+// SteamVR holds 16 swapchains a session whatever their size (tools/swapchain-probe, 2026-11-06; Halcyon's 4 among them), so the
+// sight's three pictures share one: the scope's or the window's picture (P x P at the origin, P the sight's resolution) and,
+// in a column to its right, the dot or holo reticle over the window's ring (kPictureSize squares). Each image gets the
+// reticle and the ring copied in once per look (gFilled), the picture is drawn into it each frame it shows, and the quads
+// take their parts by imageRect. plugin/Swapchains may free it when no frame has shown it for a second; it's made again
+// when next wanted.
+Swapchain gChain;
+std::vector<std::uint64_t> gFilled;  // per image: the reticle and ring it holds (their signature; 0 none)
+ComPtr<ID3D11Texture2D> gStatics;     // the reticle over the ring, kPictureSize x 2 kPictureSize
+std::uint64_t gStaticsSignature = 0;
+std::uint32_t gPictureSize = 0;      // P while an image is acquired
+std::uint32_t gImage = 0;
+bool gAcquired = false;
+bool gLoggedSight = false;
+
+XrRect2Di PictureRect() {
+    return {{0, 0}, {static_cast<std::int32_t>(gPictureSize), static_cast<std::int32_t>(gPictureSize)}};
+}
+XrRect2Di DotRect() {
+    return {{static_cast<std::int32_t>(gPictureSize), 0}, {static_cast<std::int32_t>(kPictureSize), static_cast<std::int32_t>(kPictureSize)}};
+}
+XrRect2Di RingRect() {
+    return {{static_cast<std::int32_t>(gPictureSize), static_cast<std::int32_t>(kPictureSize)},
+        {static_cast<std::int32_t>(kPictureSize), static_cast<std::int32_t>(kPictureSize)}};
+}
+
+XrCompositionLayerQuad MakeQuad(XrSpace space, XrRect2Di const& rect, sv::Quad const& quad, XrEyeVisibility visibility) {
     XrCompositionLayerQuad q{XR_TYPE_COMPOSITION_LAYER_QUAD};
     q.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
     q.space = space;
     q.eyeVisibility = visibility;
-    q.subImage.swapchain = swapchain.handle;
-    q.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(swapchain.width), static_cast<int32_t>(swapchain.height)}};
+    q.subImage.swapchain = gChain.handle;
+    q.subImage.imageRect = rect;
     q.pose = quad.pose;
     q.size = {quad.size, quad.size};
     return q;
 }
 
-// The dot or holo reticle's swapchain, made (again) for these looks.
-bool EnsureDot(Frame const& frame, sv::Sight const& sight, DotLayout const& layout) {
-    std::uint64_t const signature = (static_cast<std::uint64_t>(sight.kind) << 56) ^ (static_cast<std::uint64_t>(sight.dotColor) << 24) ^
-        static_cast<std::uint64_t>(std::lround(layout.dotRadius * 4096.0f)) ^ (static_cast<std::uint64_t>(std::lround(layout.ringRadius * 4096.0f)) << 12);
-    if (gDot.handle != XR_NULL_HANDLE && gDot.signature == signature) {
+// The reticle (dot or holo, in the sight's colour) over the window's ring, for copying into the swapchain's images.
+bool EnsureStatics(Frame const& frame, sv::Sight const& sight, DotLayout const& layout) {
+    std::uint64_t const signature = ((static_cast<std::uint64_t>(sight.kind) << 56) ^ (static_cast<std::uint64_t>(sight.dotColor) << 24) ^
+                                        static_cast<std::uint64_t>(std::lround(layout.dotRadius * 4096.0f)) ^
+                                        (static_cast<std::uint64_t>(std::lround(layout.ringRadius * 4096.0f)) << 12)) |
+        1u;  // never 0 (an image that holds nothing)
+    if (gStatics != nullptr && gStaticsSignature == signature) {
         return true;
     }
-    if (gDot.handle != XR_NULL_HANDLE) {
-        gDot.Destroy();
-    }
-    if (gDot.Refused() || !Create(frame.session, kDotPixels, kDotPixels, gDot, "sight reticle", "sight")) {
+    std::vector<std::uint32_t> pixels = DotPixels(layout, sight.dotColor);
+    std::vector<std::uint32_t> const ring = FramePixels();
+    pixels.insert(pixels.end(), ring.begin(), ring.end());
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = kPictureSize;
+    td.Height = 2 * kPictureSize;
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA data{pixels.data(), kPictureSize * 4, 0};
+    ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(frame.device->CreateTexture2D(&td, &data, texture.GetAddressOf()))) {
+        log::Error("sights: the reticle's picture couldn't be made; no dot");
         return false;
     }
-    if (!FillStatic(frame.context, frame.device, gDot, DotPixels(layout, sight.dotColor))) {
-        log::Error("sights: the reticle's picture couldn't be filled; no dot");
-        gDot.Destroy();
-        gDot.Refuse();
-        return false;
-    }
-    gDot.signature = signature;
+    gStatics = texture;
+    gStaticsSignature = signature;
     return true;
 }
 
-bool EnsureFrame(Frame const& frame) {
-    if (gFrame.handle != XR_NULL_HANDLE) {
-        return true;
+// Acquires an image of the sight's swapchain (made for this sight's picture size if it must be) with the reticle and the
+// ring in it; EndSight releases it. False: nothing of the sight shows this frame.
+bool BeginSight(Frame const& frame, sv::Sight const& sight, DotLayout const& layout) {
+    std::uint32_t const picture = static_cast<std::uint32_t>(std::clamp(sight.resolution, 128, 2048));
+    std::uint32_t const width = picture + kPictureSize;
+    std::uint32_t const height = std::max(picture, 2 * kPictureSize);
+    if (gChain.handle != XR_NULL_HANDLE && (gChain.width != width || gChain.height != height)) {
+        gChain.Destroy();
     }
-    if (gFrame.Refused() || !Create(frame.session, kFramePixels, kFramePixels, gFrame, "sight window ring", "sightframe")) {
+    if (gChain.handle == XR_NULL_HANDLE) {
+        if (gChain.Refused() || !Create(frame.session, width, height, gChain, "sight", "sight")) {
+            return false;
+        }
+        gFilled.assign(gChain.images.size(), 0);
+        if (!gLoggedSight) {
+            gLoggedSight = true;
+            log::Info("sights: one swapchain {}x{} for the picture ({} px), the reticle and the window's ring (research/21 section 18)", width,
+                height, picture);
+        }
+    }
+    if (gFilled.size() != gChain.images.size()) {
+        gFilled.assign(gChain.images.size(), 0);
+    }
+    if (!EnsureStatics(frame, sight, layout) || !Acquire(gChain, gImage)) {
         return false;
     }
-    if (!FillStatic(frame.context, frame.device, gFrame, FramePixels())) {
-        gFrame.Destroy();
-        gFrame.Refuse();
-        return false;
+    gPictureSize = picture;
+    if (gFilled[gImage] != gStaticsSignature) {
+        frame.context->CopySubresourceRegion(gChain.images[gImage], 0, picture, 0, 0, gStatics.Get(), 0, nullptr);
+        gFilled[gImage] = gStaticsSignature;
     }
+    gAcquired = true;
     return true;
+}
+
+void EndSight() {
+    if (!gAcquired) {
+        return;
+    }
+    testloop::OnImageWritten(gChain.handle, gChain.images[gImage]);  // snapshots
+    Release(gChain);
+    gAcquired = false;
 }
 
 // What the scope's picture samples: the eye copy (the other eye's image as rendered) or the scope capture (research/39).
@@ -802,93 +833,50 @@ PictureSource CaptureSource(scope_capture_source::Source const& capture) {
         XrRect2Di{{0, 0}, {static_cast<std::int32_t>(capture.width), static_cast<std::int32_t>(capture.height)}}, capture.decodeGamma};
 }
 
-// The picture's swapchain (the scope's, also a dot's window), sized for this sight; 0 if it can't be had.
-std::uint32_t EnsurePicture(Frame const& frame, sv::Sight const& sight) {
-    std::uint32_t const size = static_cast<std::uint32_t>(std::clamp(sight.resolution, 128, 2048));
-    if (gScope.handle != XR_NULL_HANDLE && gScope.width != size) {
-        gScope.Destroy();
-    }
-    if (gScope.handle == XR_NULL_HANDLE && (gScope.Refused() || !Create(frame.session, size, size, gScope, "scope picture", "scope"))) {
-        return 0;
-    }
-    if (!EnsurePipeline(frame.device)) {
-        return 0;
-    }
-    return size;
-}
-
-bool RenderPicture(Frame const& frame, ScopeParams const& params, std::uint32_t size, PictureSource const& source);
-
-// Draws the scope's picture into its swapchain; false if anything is missing.
-bool RenderScope(Frame const& frame, sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
-    PictureSource const& source) {
-    std::uint32_t const size = EnsurePicture(frame, sight);
-    if (size == 0 || source.srv == nullptr) {
+// Draws a picture (the scope's or a dot's window: `params` from MakeScopeParams / MakeWindowParams for gPictureSize) into
+// the acquired image's picture part; false if anything is missing.
+bool DrawPicture(Frame const& frame, ScopeParams const& params, PictureSource const& source) {
+    if (!gAcquired || source.srv == nullptr || !EnsurePipeline(frame.device)) {
         return false;
     }
-    return RenderPicture(frame,
-        MakeScopeParams(sight, lens, view, eye, source.pose, source.fov, source.rect, source.width, source.height, size, source.decodeGamma,
-            gArt.ready),
-        size, source);
-}
-
-// Draws a dot's window (kWindow) into the same swapchain: the source at 1x, no reticle.
-bool RenderWindow(Frame const& frame, sv::Sight const& sight, sv::Lens const& lens, sv::ScopeView const& view, XrVector3f const& eye,
-    PictureSource const& source) {
-    std::uint32_t const size = EnsurePicture(frame, sight);
-    if (size == 0 || source.srv == nullptr) {
-        return false;
-    }
-    return RenderPicture(frame,
-        sight_pictures::MakeWindowParams(sight, lens, view, eye, source.pose, source.fov, source.rect, source.width, source.height, size),
-        size, source);
-}
-
-bool RenderPicture(Frame const& frame, ScopeParams const& params, std::uint32_t size, PictureSource const& source) {
-    std::uint32_t index = 0;
-    if (!Acquire(gScope, index)) {
-        return false;
-    }
-    ComPtr<ID3D11RenderTargetView>& rtv = gScope.rtvs[index];
+    ComPtr<ID3D11RenderTargetView>& rtv = gChain.rtvs[gImage];
     if (rtv == nullptr) {
         D3D11_RENDER_TARGET_VIEW_DESC rd{};
         rd.Format = static_cast<DXGI_FORMAT>(kSwapchainFormat);
         rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-        frame.device->CreateRenderTargetView(gScope.images[index], &rd, rtv.GetAddressOf());
+        frame.device->CreateRenderTargetView(gChain.images[gImage], &rd, rtv.GetAddressOf());
     }
-    bool drew = false;
-    if (rtv != nullptr) {
-        ID3D11DeviceContext* const c = frame.context;
-        c->UpdateSubresource(gPipeline.params.Get(), 0, nullptr, &params, 0, 0);
-        StateGuard guard(c);
-        D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(size), static_cast<float>(size), 0.0f, 1.0f};
-        float const blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        ID3D11RenderTargetView* target = rtv.Get();
-        ID3D11ShaderResourceView* images[3] = {source.srv, gArt.ready ? gArt.layers[0].Get() : nullptr,
-            gArt.ready ? gArt.layers[1].Get() : nullptr};
-        ID3D11Buffer* constants = gPipeline.params.Get();
-        ID3D11SamplerState* sampler = gPipeline.sampler.Get();
-        c->OMSetRenderTargets(1, &target, nullptr);
-        c->OMSetBlendState(gPipeline.opaque.Get(), blendFactor, 0xFFFFFFFFu);
-        c->OMSetDepthStencilState(gPipeline.noDepth.Get(), 0);
-        c->RSSetState(gPipeline.raster.Get());
-        c->RSSetViewports(1, &viewport);
-        c->IASetInputLayout(nullptr);
-        c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        c->VSSetShader(gPipeline.vs.Get(), nullptr, 0);
-        c->PSSetShader(gPipeline.ps.Get(), nullptr, 0);
-        c->GSSetShader(nullptr, nullptr, 0);
-        c->HSSetShader(nullptr, nullptr, 0);
-        c->DSSetShader(nullptr, nullptr, 0);
-        c->PSSetShaderResources(0, 3, images);
-        c->PSSetConstantBuffers(0, 1, &constants);
-        c->PSSetSamplers(0, 1, &sampler);
-        c->Draw(3, 0);
-        drew = true;
+    if (rtv == nullptr) {
+        return false;
     }
-    testloop::OnImageWritten(gScope.handle, gScope.images[index]);  // snapshots
-    Release(gScope);
-    return drew;
+    ID3D11DeviceContext* const c = frame.context;
+    c->UpdateSubresource(gPipeline.params.Get(), 0, nullptr, &params, 0, 0);
+    StateGuard guard(c);
+    // The picture's square at the image's origin: the viewport keeps the reticle and the ring beside it untouched.
+    D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(gPictureSize), static_cast<float>(gPictureSize), 0.0f, 1.0f};
+    float const blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    ID3D11RenderTargetView* target = rtv.Get();
+    ID3D11ShaderResourceView* images[3] = {source.srv, gArt.ready ? gArt.layers[0].Get() : nullptr,
+        gArt.ready ? gArt.layers[1].Get() : nullptr};
+    ID3D11Buffer* constants = gPipeline.params.Get();
+    ID3D11SamplerState* sampler = gPipeline.sampler.Get();
+    c->OMSetRenderTargets(1, &target, nullptr);
+    c->OMSetBlendState(gPipeline.opaque.Get(), blendFactor, 0xFFFFFFFFu);
+    c->OMSetDepthStencilState(gPipeline.noDepth.Get(), 0);
+    c->RSSetState(gPipeline.raster.Get());
+    c->RSSetViewports(1, &viewport);
+    c->IASetInputLayout(nullptr);
+    c->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    c->VSSetShader(gPipeline.vs.Get(), nullptr, 0);
+    c->PSSetShader(gPipeline.ps.Get(), nullptr, 0);
+    c->GSSetShader(nullptr, nullptr, 0);
+    c->HSSetShader(nullptr, nullptr, 0);
+    c->DSSetShader(nullptr, nullptr, 0);
+    c->PSSetShaderResources(0, 3, images);
+    c->PSSetConstantBuffers(0, 1, &constants);
+    c->PSSetSamplers(0, 1, &sampler);
+    c->Draw(3, 0);
+    return true;
 }
 
 char const* EyeName(int eye) {
@@ -914,9 +902,9 @@ Output Layers(Frame const& frame) {
     gWindowDrawn = false;
     gFromCapture = false;
     if (frame.session != gSession) {
-        gDot.Forget();
-        gFrame.Forget();
-        gScope.Forget();
+        gChain.Forget();
+        gFilled.clear();
+        gAcquired = false;
         gCopy.swapchain = XR_NULL_HANDLE;
         scope_capture_source::Forget();
         gSession = frame.session;
@@ -957,13 +945,26 @@ Output Layers(Frame const& frame) {
             gSource = window ? 1 - gDotEye : -1;
             XrSwapchain const windowSwapchain = window ? frame.projectionSwapchain[gSource] : XR_NULL_HANDLE;
             testloop::SetReleaseTap(windowSwapchain, window ? &OnEyeReleased : nullptr);
-            if (window && out.count < kMaxLayers) {
-                bool const fresh = gCopy.srv != nullptr && gCopy.swapchain == windowSwapchain && gCopy.frame + 2 >= gFrameCount;
-                auto const lens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
-                XrVector3f const eye = frame.eyes[gDotEye].position;
-                auto const windowView = lens ? sv::WindowView(*lens, eye, kMinAlong, 1.2f * kMaxAlong) : std::nullopt;
-                if (fresh && windowView && RenderWindow(frame, sight, *lens, *windowView, eye, EyeCopySource(frame, gSource))) {
-                    gWindowQuad = MakeQuad(frame.appSpace, gScope, sv::Disc(sight.center, sight.axis, sight.up, lens->radius),
+            std::optional<sv::Lens> windowLens;
+            std::optional<sv::ScopeView> windowView;
+            if (window && gCopy.srv != nullptr && gCopy.swapchain == windowSwapchain && gCopy.frame + 2 >= gFrameCount) {
+                windowLens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
+                windowView = windowLens ? sv::WindowView(*windowLens, frame.eyes[gDotEye].position, kMinAlong, 1.2f * kMaxAlong) : std::nullopt;
+            }
+            bool const wantRing = (sight.flags & sv::kFrame) != 0;
+            bool const wantDot = on[0] || on[1];
+            DotLayout const layout = LayoutFor(sight);
+            // One image of the sight's swapchain for all three (research/21 section 18): the window's picture, the ring, the dot.
+            if ((windowView || wantRing || wantDot) && BeginSight(frame, sight, layout)) {
+                PictureSource const windowSource = windowView ? EyeCopySource(frame, gSource) : PictureSource{};
+                bool const drewWindow = windowView &&
+                    DrawPicture(frame,
+                        sight_pictures::MakeWindowParams(sight, *windowLens, *windowView, frame.eyes[gDotEye].position, windowSource.pose,
+                            windowSource.fov, windowSource.rect, windowSource.width, windowSource.height, gPictureSize),
+                        windowSource);
+                EndSight();
+                if (drewWindow) {
+                    gWindowQuad = MakeQuad(frame.appSpace, PictureRect(), sv::Disc(sight.center, sight.axis, sight.up, windowLens->radius),
                         VisibilityOf(gDotEye));
                     out.layers[out.count++] = &gWindowQuad;
                     gWindowDrawn = true;
@@ -975,33 +976,32 @@ Output Layers(Frame const& frame) {
                         log::Info("[MEVR-SIGHT] first window through the {}'s sight housing: the {} eye ({:.3f} m behind it, {:.4f} m off "
                                   "the line) sees the {} eye's image at 1x on a {:.3f} m disc (research/21 section 17)",
                             sv::WeaponName(sight.weapon), EyeName(gDotEye), windowView->along, gLines[gDotEye].lateral, EyeName(gSource),
-                            2.0f * lens->radius);
+                            2.0f * windowLens->radius);
                     }
                 }
-            }
-            if ((sight.flags & sv::kFrame) != 0 && out.count < kMaxLayers && EnsureFrame(frame)) {
-                gFrameQuad = MakeQuad(frame.appSpace, gFrame, sv::Disc(sight.center, sight.axis, sight.up, sight.radius * kFrameScale),
-                    XR_EYE_VISIBILITY_BOTH);
-                out.layers[out.count++] = &gFrameQuad;
-                if (!gLoggedFrame) {
-                    gLoggedFrame = true;
-                    log::Info("[MEVR-SIGHT] first sight window ring at ({:.3f}, {:.3f}, {:.3f}) m, {:.3f} m across",
-                        sight.center.x, sight.center.y, sight.center.z, gFrameQuad.size.width);
+                if (wantRing && out.count < kMaxLayers) {
+                    gFrameQuad = MakeQuad(frame.appSpace, RingRect(), sv::Disc(sight.center, sight.axis, sight.up, sight.radius * kFrameScale),
+                        XR_EYE_VISIBILITY_BOTH);
+                    out.layers[out.count++] = &gFrameQuad;
+                    if (!gLoggedFrame) {
+                        gLoggedFrame = true;
+                        log::Info("[MEVR-SIGHT] first sight window ring at ({:.3f}, {:.3f}, {:.3f}) m, {:.3f} m across",
+                            sight.center.x, sight.center.y, sight.center.z, gFrameQuad.size.width);
+                    }
                 }
-            }
-            DotLayout const layout = LayoutFor(sight);
-            if ((on[0] || on[1]) && out.count < kMaxLayers && EnsureDot(frame, sight, layout)) {
-                sv::Quad const quad = sv::Reticle(sight.center, sight.axis, sight.up, kDotDistance, layout.quadDeg * kPi / 180.0f);
-                gDotQuad = MakeQuad(frame.appSpace, gDot, quad, VisibilityOf(gDotEye));
-                out.layers[out.count++] = &gDotQuad;
-                view |= (on[0] ? sv::kViewLeft : 0u) | (on[1] ? sv::kViewRight : 0u);
-                if (!gLoggedDot) {
-                    gLoggedDot = true;
-                    int const e = on[1] ? 1 : 0;
-                    log::Info("[MEVR-SIGHT] first {} reticle: the {} eye looks through the window ({:.3f} m behind it, {:.4f} m off "
-                              "the line, window radius {:.4f} m, eye box {:.4f} m); the reticle {:.0f} m out along the sight line, "
-                              "{:.2f} deg",
-                        sv::Name(kind), EyeName(e), gLines[e].along, gLines[e].lateral, sight.radius, box, kDotDistance, layout.quadDeg);
+                if (wantDot && out.count < kMaxLayers) {
+                    sv::Quad const quad = sv::Reticle(sight.center, sight.axis, sight.up, kDotDistance, layout.quadDeg * kPi / 180.0f);
+                    gDotQuad = MakeQuad(frame.appSpace, DotRect(), quad, VisibilityOf(gDotEye));
+                    out.layers[out.count++] = &gDotQuad;
+                    view |= (on[0] ? sv::kViewLeft : 0u) | (on[1] ? sv::kViewRight : 0u);
+                    if (!gLoggedDot) {
+                        gLoggedDot = true;
+                        int const e = on[1] ? 1 : 0;
+                        log::Info("[MEVR-SIGHT] first {} reticle: the {} eye looks through the window ({:.3f} m behind it, {:.4f} m off "
+                                  "the line, window radius {:.4f} m, eye box {:.4f} m); the reticle {:.0f} m out along the sight line, "
+                                  "{:.2f} deg",
+                            sv::Name(kind), EyeName(e), gLines[e].along, gLines[e].lateral, sight.radius, box, kDotDistance, layout.quadDeg);
+                    }
                 }
             }
         } else if (kind == sv::Kind::Scope) {
@@ -1041,12 +1041,19 @@ Output Layers(Frame const& frame) {
                 bool const fresh =
                     capture.has_value() || (gCopy.srv != nullptr && gCopy.swapchain == swapchain && gCopy.frame + 2 >= gFrameCount);
                 PictureSource const source = capture ? CaptureSource(*capture) : EyeCopySource(frame, gSource);
-                if (fresh && out.count < kMaxLayers &&
-                    RenderScope(frame, sight, picture, *scopeView, frame.eyes[gAiming].position, source)) {
+                bool drew = false;
+                if (fresh && out.count < kMaxLayers && BeginSight(frame, sight, LayoutFor(sight))) {
+                    drew = DrawPicture(frame,
+                        MakeScopeParams(sight, picture, *scopeView, frame.eyes[gAiming].position, source.pose, source.fov, source.rect,
+                            source.width, source.height, gPictureSize, source.decodeGamma, gArt.ready),
+                        source);
+                    EndSight();
+                }
+                if (drew) {
                     if (gFromCapture) {
                         ++gCaptureFrames;
                     }
-                    gScopeQuad = MakeQuad(frame.appSpace, gScope, sv::Disc(sight.center, sight.axis, sight.up, picture.radius),
+                    gScopeQuad = MakeQuad(frame.appSpace, PictureRect(), sv::Disc(sight.center, sight.axis, sight.up, picture.radius),
                         gAiming == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT);
                     out.layers[out.count++] = &gScopeQuad;
                     view |= sv::kViewScope;
