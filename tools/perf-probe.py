@@ -144,6 +144,9 @@ def main():
     parser.add_argument('path', nargs='?')
     parser.add_argument('--latest', action='store_true')
     parser.add_argument('--all', action='store_true', help='every frame, not only headset frames')
+    parser.add_argument('--per-second', action='store_true',
+                        help='a row per second of the capture (frames, interval, work, holds): how a scene change '
+                             'and the recovery after it go, e.g. the end of a cinematic')
     args = parser.parse_args()
     path = args.path if args.path and not args.latest else latest_probe()
     if not path or not os.path.exists(path):
@@ -194,6 +197,9 @@ def main():
         elif prev is not None and prev.get('t_wait_end') is not None and prev.get('t_end') is not None                 and cur.get('t_start') is not None:
             m['steamvr_cpu'] = (prev['t_end'] - prev['t_wait_end']) + (cur['t_end_frame_end'] - cur['t_start'])
     get = lambda key: [m.get(key) for m in metrics]
+    if args.per_second:
+        per_second(chosen, metrics, ticks)
+        return
 
     # The headset's own period is the shortest the runtime reported; a longer median means it throttles
     # the game (SteamVR's half-rate lock reports twice the period).
@@ -323,6 +329,39 @@ def main():
         if wait:
             print(f'  -> xrWaitFrame holds the render thread {wait[0]:.2f} ms of each {interval[0]:.2f} ms frame '
                   '(median).')
+
+
+def per_second(chosen, metrics, ticks):
+    """One row per second: frames, the median interval, the render thread's work, Halcyon's hold (the cinematic cap or
+    stereo pacing), what fpsVR calls CPU frametime, the GPU's work and the game thread's (engine + ours)."""
+    if not chosen:
+        return
+    t0 = chosen[0]['t_start']
+
+    def med(values):
+        v = sorted(x for x in values if x is not None)
+        return v[len(v) // 2] if v else None
+
+    def fmt(v):
+        return f'{v:6.2f}' if v is not None else '     -'
+
+    buckets = {}
+    for r, m in zip(chosen, metrics):
+        buckets.setdefault(int((r['t_start'] - t0) // 1000.0), []).append(m)
+    tick_buckets = {}
+    for t in ticks:
+        if t.get('t_begin') is not None:
+            tick_buckets.setdefault(int((t['t_begin'] - t0) // 1000.0), []).append(
+                (t.get('engine_busy_ms') or 0.0) + (t.get('host_busy_ms') or 0.0))
+    print()
+    print('  s  frames  interval  render work  hold  fpsVR CPU   GPU  game thread   (medians, ms)')
+    for sec in sorted(buckets):
+        ms = buckets[sec]
+        work = [((m.get('game_busy') or 0.0) + (m.get('overlays') or 0.0) + (m.get('copies') or 0.0) +
+                 (m.get('end_frame') or 0.0)) for m in ms]
+        print(f'{sec:3d}  {len(ms):6d}    {fmt(med([m.get("interval") for m in ms]))}       {fmt(med(work))} '
+              f'{fmt(med([m.get("hold") for m in ms]))}     {fmt(med([m.get("steamvr_cpu") for m in ms]))} '
+              f'{fmt(med([m.get("gpu_work") for m in ms]))}       {fmt(med(tick_buckets.get(sec, [])))}')
 
 
 if __name__ == '__main__':
