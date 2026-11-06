@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 namespace {
 
@@ -198,6 +199,81 @@ void TestHold() {
     }
 }
 
+sp::Step TickW(sp::Machine& m, bool button, float stickX, float stickY, std::uint8_t mask = 0b1011, int current = 3,
+    sp::Landing landing = sp::Landing::Floor) {
+    sp::Input in;
+    in.dt = 0.05f;
+    in.usable = true;
+    in.button = button;
+    in.stickX = stickX;
+    in.stickY = stickY;
+    in.members = 2;
+    in.weaponMask = mask;
+    in.currentWeapon = current;
+    in.landing = landing;
+    in.landingFromPlayerM = 8.0f;
+    return m.Advance(in, sp::Settings{});
+}
+
+void TestWeapons() {
+    CHECK(sp::WeaponTypes(0b1011) == (std::vector<int>{0, 1, 3}));
+    CHECK(sp::WeaponTypes(0).empty());
+    {  // Down opens the row on the weapon in hand; sideways picks; let go equips (no move).
+        sp::Machine m;
+        TickW(m, true, 0.0f, 0.0f);
+        TickW(m, true, -0.9f, 0.0f);  // the first squadmate
+        TickW(m, true, 0.0f, 0.0f);
+        sp::Step s = TickW(m, true, 0.0f, -0.9f);
+        CHECK(s.rowChanged && m.CurrentRow() == sp::Row::Weapon && m.Weapon() == 3 && m.WeaponTile() == 2);
+        TickW(m, true, 0.0f, 0.0f);
+        s = TickW(m, true, -0.9f, 0.0f);
+        CHECK(s.weaponChanged && m.Weapon() == 1 && m.Member() == 0);  // sideways steps weapons now, not who
+        TickW(m, true, 0.0f, 0.0f);
+        s = TickW(m, false, 0.0f, 0.0f);
+        CHECK(s.equip && s.weapon == 1 && s.member == 0 && !s.given && !s.cancelled);
+    }
+    {  // Up goes back to the names: let go places them as before.
+        sp::Machine m;
+        TickW(m, true, 0.0f, 0.0f);
+        TickW(m, true, 0.0f, -0.9f);
+        CHECK(m.CurrentRow() == sp::Row::Weapon);
+        TickW(m, true, 0.0f, 0.0f);
+        CHECK(TickW(m, true, 0.0f, 0.9f).rowChanged && m.CurrentRow() == sp::Row::Who && m.Weapon() == -1);
+        TickW(m, true, 0.0f, 0.0f);
+        sp::Step const s = TickW(m, false, 0.0f, 0.0f);
+        CHECK(s.given && !s.equip && s.member == sp::kSquadTile);
+    }
+    {  // No weapons for the lit tile, or the row turned off: down does nothing; a diagonal goes by the stronger axis.
+        sp::Machine m;
+        TickW(m, true, 0.0f, 0.0f, 0);
+        CHECK(!TickW(m, true, 0.0f, -0.9f, 0).rowChanged && m.CurrentRow() == sp::Row::Who);
+        sp::Machine n;
+        sp::Settings off;
+        off.weapons = false;
+        sp::Input in;
+        in.dt = 0.05f;
+        in.usable = true;
+        in.button = true;
+        in.members = 2;
+        in.weaponMask = 0b1111;
+        n.Advance(in, off);
+        in.stickY = -0.9f;
+        CHECK(!n.Advance(in, off).rowChanged);
+        sp::Machine d;
+        TickW(d, true, 0.0f, 0.0f);
+        sp::Step const s = TickW(d, true, -0.7f, -0.8f);  // more down than left
+        CHECK(s.rowChanged && !s.selectionChanged);
+    }
+    {  // The next hold starts on the names again.
+        sp::Machine m;
+        TickW(m, true, 0.0f, 0.0f);
+        TickW(m, true, 0.0f, -0.9f);
+        TickW(m, true, 0.0f, 0.0f);
+        TickW(m, false, 0.0f, 0.0f);
+        CHECK(TickW(m, true, 0.0f, 0.0f).started && m.CurrentRow() == sp::Row::Who);
+    }
+}
+
 void TestLatest() {
     sp::View v;
     v.active = 1;
@@ -214,6 +290,7 @@ void TestLatest() {
 int RunSquadPlaceTests() {
     TestArc();
     TestHold();
+    TestWeapons();
     TestLatest();
     return gFailures;
 }

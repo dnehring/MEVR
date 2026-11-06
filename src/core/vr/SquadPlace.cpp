@@ -76,11 +76,27 @@ int MemberOfTile(int tile, int members) {
     return tile == 0 ? 0 : tile == 2 ? 1 : kSquadTile;
 }
 
+std::vector<int> WeaponTypes(std::uint8_t mask) {
+    std::vector<int> out;
+    for (int w = 0; w < 4; ++w) {
+        if ((mask & (1u << w)) != 0) out.push_back(w);
+    }
+    return out;
+}
+
+int Machine::Weapon() const {
+    return row_ == Row::Weapon && weaponTile_ >= 0 && weaponTile_ < static_cast<int>(weapons_.size()) ? weapons_[static_cast<std::size_t>(weaponTile_)]
+                                                                                                    : -1;
+}
+
 void Machine::Reset() {
     holding_ = false;
     heldS_ = 0.0f;
     tile_ = SquadTileIndex(members_);
     armed_ = true;
+    row_ = Row::Who;
+    weapons_.clear();
+    weaponTile_ = 0;
     landing_ = Landing::None;
 }
 
@@ -109,17 +125,46 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
         if (in.members != members_) {
             members_ = in.members;
             tile_ = SquadTileIndex(members_);
+            row_ = Row::Who;
+            weapons_.clear();
+            weaponTile_ = 0;
             step.selectionChanged = true;
         }
-        // A sideways flick of the right stick steps the selector one tile, re-armed near the centre.
-        if (armed_ && std::abs(in.stickX) >= settings.flickOn) {
+        // A flick of the right stick, re-armed near the centre: sideways steps the lit row's tiles, down opens the weapon row
+        // under the names, up goes back to them. The stronger axis decides.
+        bool const sideways = std::abs(in.stickX) >= std::abs(in.stickY);
+        float const along = sideways ? in.stickX : in.stickY;
+        if (armed_ && std::abs(along) >= settings.flickOn) {
             armed_ = false;
-            int const next = std::clamp(tile_ + (in.stickX > 0.0f ? 1 : -1), 0, std::max(TileCount(members_) - 1, 0));
-            if (next != tile_) {
-                tile_ = next;
-                step.selectionChanged = true;
+            if (sideways && row_ == Row::Who) {
+                int const next = std::clamp(tile_ + (along > 0.0f ? 1 : -1), 0, std::max(TileCount(members_) - 1, 0));
+                if (next != tile_) {
+                    tile_ = next;
+                    step.selectionChanged = true;
+                }
+            } else if (sideways) {
+                int const next = std::clamp(weaponTile_ + (along > 0.0f ? 1 : -1), 0, std::max(static_cast<int>(weapons_.size()) - 1, 0));
+                if (next != weaponTile_) {
+                    weaponTile_ = next;
+                    step.weaponChanged = true;
+                }
+            } else if (along < 0.0f && row_ == Row::Who && settings.weapons) {
+                weapons_ = WeaponTypes(in.weaponMask);
+                if (!weapons_.empty()) {
+                    row_ = Row::Weapon;
+                    weaponTile_ = 0;
+                    for (std::size_t i = 0; i < weapons_.size(); ++i) {
+                        if (weapons_[i] == in.currentWeapon) weaponTile_ = static_cast<int>(i);
+                    }
+                    step.rowChanged = true;
+                }
+            } else if (along > 0.0f && row_ == Row::Weapon) {
+                row_ = Row::Who;
+                weapons_.clear();
+                weaponTile_ = 0;
+                step.rowChanged = true;
             }
-        } else if (!armed_ && std::abs(in.stickX) <= settings.flickOff) {
+        } else if (!armed_ && std::abs(in.stickX) <= settings.flickOff && std::abs(in.stickY) <= settings.flickOff) {
             armed_ = true;
         }
         if (in.button && heldS_ > settings.maxHoldS) {
@@ -136,6 +181,11 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
                 step.cancelled = true;
                 step.why = "a blip";
                 sinceBlipS_ = 0.0f;
+            } else if (row_ == Row::Weapon) {
+                step.weapon = Weapon();
+                step.equip = step.weapon >= 0;
+                step.cancelled = !step.equip;
+                step.why = step.equip ? "" : "no weapon lit";
             } else if (in.landing != Landing::Floor) {
                 step.cancelled = true;
                 step.why = Name(in.landing);
@@ -161,7 +211,10 @@ Step Machine::Advance(Input const& in, Settings const& settings) {
         heldS_ = 0.0f;
         members_ = in.members;
         tile_ = SquadTileIndex(members_);
-        armed_ = std::abs(in.stickX) <= settings.flickOff;  // a stick already pushed doesn't step until it comes back
+        armed_ = std::abs(in.stickX) <= settings.flickOff && std::abs(in.stickY) <= settings.flickOff;  // a pushed stick waits
+        row_ = Row::Who;
+        weapons_.clear();
+        weaponTile_ = 0;
         landing_ = in.landing;
         step.started = true;
         step.member = Member();

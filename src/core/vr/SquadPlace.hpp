@@ -45,8 +45,9 @@ struct Settings {
     float maxHoldS = 15.0f;      // held longer: called off
     float followWithinM = 2.0f;  // a landing this close to Shepard means "on me"
     float doubleTapS = 0.35f;    // a second press this soon after a blip's release: the whole squad back to Shepard
-    float flickOn = 0.6f;        // the right stick past this, sideways, steps the selector...
+    float flickOn = 0.6f;        // the right stick past this steps the selector (sideways) or its row (up/down)...
     float flickOff = 0.3f;       // ...once; it re-arms back inside this
+    bool weapons = true;         // stick down opens the weapon row ([Controls] placeWeapons)
 };
 
 enum class Landing : std::uint8_t { None, Floor, Wall };
@@ -60,12 +61,22 @@ int TileCount(int members);
 int SquadTileIndex(int members);          // where the selector starts
 int MemberOfTile(int tile, int members);  // kSquadTile or the squadmate's index
 
+// The weapon row (the user, 2026-11-05: squad weapons folded into this flow, the left trigger's wheel retired): stick down from
+// the names opens a row of the lit tile's weapons under them (a squadmate's: the ones they carry; the squad's: any one of them
+// carries), the arc fading out; sideways picks one, stick up goes back to the names and the arc; letting go in the row equips
+// it (no move). Weapon types as squad_menu's: 0 pistol, 1 shotgun, 2 assault rifle, 3 sniper rifle; `mask` bit n = type n.
+enum class Row : std::uint8_t { Who, Weapon };
+std::vector<int> WeaponTypes(std::uint8_t mask);
+
 struct Input {
     float dt = 0.0f;
     bool usable = false;       // on foot in VR, the right controller tracked, a squad present, nothing else holds B
     bool button = false;       // B is down
     float stickX = 0.0f;       // the right stick, -1 left .. 1 right (only read while holding)
+    float stickY = 0.0f;       // ...-1 down .. 1 up
     int members = 0;           // squadmates present
+    std::uint8_t weaponMask = 0;  // the lit tile's weapons (see WeaponTypes)
+    int currentWeapon = -1;       // the lit squadmate's weapon in hand (-1: none or the squad): where the row starts
     Landing landing = Landing::None;
     float landingFromPlayerM = 0.0f;  // Floor: how far from Shepard
 };
@@ -80,6 +91,10 @@ struct Step {
     bool regroup = false;      // B double-tapped: the whole squad back to Shepard
     bool landingChanged = false;  // the landing's kind changed while holding (a haptic tick)
     bool selectionChanged = false;  // the stick moved the selector (a haptic tick per squadmate)
+    bool rowChanged = false;        // the stick went down to the weapons or back up to the names
+    bool weaponChanged = false;     // a sideways flick in the weapon row
+    bool equip = false;             // let go in the weapon row: `member` takes `weapon` (no move)
+    int weapon = -1;
     Order order = Order::None;
     int member = kSquadTile;   // kSquadTile: everyone
     char const* why = "";
@@ -92,6 +107,10 @@ public:
     int Tile() const { return tile_; }
     int Member() const { return MemberOfTile(tile_, members_); }
     int Members() const { return members_; }
+    Row CurrentRow() const { return row_; }
+    std::vector<int> const& Weapons() const { return weapons_; }  // the row's types, left to right
+    int WeaponTile() const { return weaponTile_; }
+    int Weapon() const;  // the lit weapon's type, or -1
     float HeldS() const { return heldS_; }
     void Reset();
 
@@ -104,6 +123,9 @@ private:
     float sinceBlipS_ = 1e9f;  // since the last blip's release (the double tap)
     int tile_ = 0;
     int members_ = 0;
+    Row row_ = Row::Who;
+    std::vector<int> weapons_;
+    int weaponTile_ = 0;
     Landing landing_ = Landing::None;
 };
 
@@ -127,6 +149,12 @@ struct View {
     std::uint8_t padding[2] = {};
     char names[3][24] = {};
     XrPosef hand{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    // The weapon row (row 1): its tiles' names, the lit one, the one in hand (-1 none); no arc or ring then (count 0).
+    std::uint8_t row = 0;
+    std::uint8_t weaponTiles = 0;
+    std::uint8_t weaponTile = 0;
+    std::int8_t weaponInHand = -1;
+    char weaponNames[4][16] = {};
 };
 void Publish(View const& view);
 View Latest(std::uint64_t maxAgeMs = 250);

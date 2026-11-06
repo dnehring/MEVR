@@ -124,7 +124,7 @@ Fingers GetFingers();
 // [Controls] (appended to an older file that lacks it): the two-handed grip and the left trigger.
 struct Controls {
     bool leftTrigger = false;     // leftTrigger = lt: the game's LT
-    bool leftTriggerLB = true;    // leftTrigger = lb (the default): the weapon wheel
+    bool leftTriggerLB = false;   // since 2026-11-05 the squad's weapons are in squad placement's hold (B, stick down)    // leftTrigger = lb (the default): the weapon wheel
     bool gripLB = false;          // leftGripAway = lb: a left grip away from the gun is LB
     bool supportGrip = true;      // supportGrip
     // supportZone = capsule (the default since 2026-10-22): the grab zone is a capsule along the gun, from
@@ -381,6 +381,7 @@ struct SquadOrders {
     double placeSpeedMS = 14.0;
     double placeRangeM = 30.0;
     double placeMinHoldS = 0.15;  // a shorter press of B is a blip
+    bool placeWeapons = true;     // [Controls] placeWeapons: stick down in the hold opens the squad's weapon row
 };
 SquadOrders GetSquadOrders();
 // [Voice] (research/54, game/Voice; the host reads its own keys of the section: enabled, model, device, key, tailMs, duckDb...):
