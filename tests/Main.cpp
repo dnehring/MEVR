@@ -7362,6 +7362,24 @@ void TestCineScreen() {
           r.right.height == 2392 && r.left.y == 0);
     CHECK(cs::Rects(0, 100, c).left.width == 0 && cs::Rects(100, 100, 2.0f).left.x == 25);   // the crop is limited to a quarter
     CHECK(NearD(cs::HeightM(r, 3.0f), 3.0 * 2392.0 / (2344.0 - drop), 1e-5));
+    {   // 16:9: the middle band of rows, the same in both eyes; the screen that shape; a wider image keeps all its rows.
+        auto const band = cs::Rects(2344, 2392, c, 16.0f / 9.0f);
+        int const rows = static_cast<int>(std::lround((2344.0f - drop) * 9.0f / 16.0f));
+        CHECK(band.left.height == rows && band.right.height == rows && band.left.y == (2392 - rows) / 2 && band.right.y == band.left.y &&
+              band.left.x == drop && band.left.width == 2344 - drop);
+        CHECK(NearD(cs::HeightM(band, 2.9f), 2.9 * 9.0 / 16.0, 2e-3));
+        auto const wide = cs::Rects(3840, 1600, c, 16.0f / 9.0f);
+        CHECK(wide.left.y == 0 && wide.left.height == 1600);
+        CHECK(cs::Rects(2344, 2392, c, 0.0f).left.height == 2392);   // 0: the whole image
+        CHECK(cs::Rects(2344, 2392, c, 0.2f).left.height == 2344 - drop);   // below 1 it is taken as square
+        cs::Settings odd;
+        odd.aspect = -1.0f;
+        CHECK(NearD(cs::Clamped(odd).aspect, 16.0 / 9.0, 1e-6));
+        odd.aspect = 0.0f;
+        CHECK(cs::Clamped(odd).aspect == 0.0f);
+        odd.aspect = 9.0f;
+        CHECK(NearD(cs::Clamped(odd).aspect, cs::kMaxAspect, 1e-6));
+    }
     // The geometry, end to end: two parallel cameras b apart, a render half angle h; a point straight ahead at distance Z
     // projects at +-(b/2) f / Z of the image's width from the centre (f = 1 / (2 tan h)); after the crop each eye's shown part
     // maps onto the same screen. The convergence distance lands on the screen plane, infinity `depth` behind it.
@@ -7380,6 +7398,9 @@ void TestCineScreen() {
     CHECK(NearD(screenDisparity(1e12), 0.015, 1e-5));                                // infinity: depth, uncrossed (behind)
     CHECK(screenDisparity(convergeUU / 2.0) < 0.0 && screenDisparity(convergeUU * 2.0) > 0.0);   // nearer: in front
     // A close-up's narrower lens gets a narrower baseline for the same depth budget.
+    // A lens wider than a director's (the gameplay window on a conversation's first frame) is planned as 80 degrees.
+    CHECK(NearD(cs::BaselineUU(c, convergeUU, 1.0734f), cs::BaselineUU(c, convergeUU, cs::kMaxLensHalfH), 1e-6) &&
+          cs::BaselineUU(c, convergeUU, 1.0734f) < 0.5f * c * convergeUU * 2.0f * std::tan(1.0734f));
     CHECK(cs::BaselineUU(c, convergeUU, 0.2f) < b && cs::BaselineUU(0.0f, convergeUU, halfH) == 0.0f &&
           cs::BaselineUU(c, convergeUU, 1.6f) == 0.0f && cs::BaselineUU(c, -1.0f, halfH) == 0.0f);
     // The divergence cap: infinity's disparity on a 3 m screen stays under 0.8 of a 64 mm eye distance.

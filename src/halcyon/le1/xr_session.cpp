@@ -5963,10 +5963,12 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             q.size.height = heightM;
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&q);
         }
-        // The game pointer (research/42): the whole image as both eyes see it on average, centred on the screen and wider by
-        // the crop, so a controller's ray maps onto the game window's pixel.
+        // The game pointer (research/42): the whole image as both eyes see it on average, centred on the screen, wider by
+        // the crop and taller by the rows the screen's shape leaves out, so a controller's ray maps onto the game window's pixel.
         const float crop = screenNow.crop > 0.0f && screenNow.crop < 0.25f ? screenNow.crop : 0.0f;
-        MELEVR::MevrBridge::OnFlatQuad(kind, mevrHeadQ, mevrHeadP, placed, screenNow.widthM / (1.0f - crop), heightM, headValid);
+        const float shownRows = screenNow.rect[0][3] > 0 ? static_cast<float>(screenNow.rect[0][3]) : static_cast<float>(g_eyes[0].height);
+        const float wholeHeightM = g_eyes[0].height > 0 ? heightM * static_cast<float>(g_eyes[0].height) / shownRows : heightM;
+        MELEVR::MevrBridge::OnFlatQuad(kind, mevrHeadQ, mevrHeadP, placed, screenNow.widthM / (1.0f - crop), wholeHeightM, headValid);
         MELEVR::MevrBridge::NoteCineScreenSubmit(inConversationMode, heightM);
     }
     else if (submitted)

@@ -30,6 +30,9 @@ struct Settings {
     float convergeM = 1.2f;      // convergeM: the scene distance that lands on the screen plane (metres of the scene). LE1's
                                  // close-ups put the camera ~0.85 m from a face: at 2.5 m one came 1.9 degrees out of the
                                  // screen, at 1.2 m 0.5 (research/52, measured)
+    float aspect = 16.0f / 9.0f; // aspect: the screen's shape (width / height): the eye image's middle band of that shape, the
+                                 // director's 16:9 frame (UE3's lens is horizontal: a taller render only adds sky and floor);
+                                 // 0 = the whole, nearly square image (the owner in the PS VR2, 2026-11-06: "more cinematic")
 };
 
 inline constexpr float kMinDistanceM = 1.0f;
@@ -37,6 +40,12 @@ inline constexpr float kMaxDistanceM = 10.0f;
 inline constexpr float kMinWidthM = 1.0f;
 inline constexpr float kMaxWidthM = 12.0f;
 inline constexpr float kMaxDepth = 0.05f;
+inline constexpr float kMinAspect = 1.0f;   // a non-zero aspect below this is taken as 1 (square), above kMaxAspect as that
+inline constexpr float kMaxAspect = 3.0f;
+// The widest lens the cameras' distance is planned for (half angle, radians: 80 degrees across). LE1's cinematic shots measured
+// 24-67 degrees; the first frame of a conversation still reports the gameplay window (the headset's 123 degrees), which set the
+// cameras 6.5 units apart for that frame (the owner, cross-eyed at a conversation's start, 2026-11-06).
+inline constexpr float kMaxLensHalfH = 0.6981317f;
 inline constexpr float kMinConvergeM = 0.5f;
 inline constexpr float kMaxConvergeM = 20.0f;
 inline constexpr float kDefaultIpdM = 0.064f;
@@ -64,15 +73,17 @@ struct EyeRects {
     Rect left, right;
 };
 // The part of each eye's image (`width` x `height` pixels) the screen shows: the left eye drops its left `crop`, the right
-// eye its right `crop`; both the same size.
-EyeRects Rects(int width, int height, float crop);
+// eye its right `crop`; both the same size; with `aspect` > 0 only the middle band of rows that makes the shown part that
+// shape (none when the image is already wider).
+EyeRects Rects(int width, int height, float crop, float aspect = 0.0f);
 
 // The screen's height for a shown part `rects` (its aspect), at `widthM`.
 float HeightM(EyeRects const& rects, float widthM);
 
 // The distance between the two cameras (game units) for a render whose horizontal half angle is `halfH` (radians) so that
 // the scene `convergeUU` away lands on the screen plane after a crop of `crop`: a point at that distance has a disparity of
-// baseline / (2 tan(halfH) convergeUU) of the image's width, which the crop cancels. 0 for a degenerate input.
+// baseline / (2 tan(halfH) convergeUU) of the image's width, which the crop cancels. 0 for a degenerate input; a lens wider
+// than kMaxLensHalfH is planned as that (it isn't a director's lens).
 float BaselineUU(float crop, float convergeUU, float halfH);
 
 // What a frame uses, from the settings, the headset's eye distance and the render's horizontal half angle.
