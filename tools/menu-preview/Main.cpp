@@ -13,8 +13,9 @@
 //   section-<name>.png       each section (the menu over the stand-in world, as the headset composites it)
 //   section-<name>-<x>.png   a section's other states (Comfort's snap and movement, Display's image quality rows with
 //                            the headset known and before VR has started, the controller guide on a first run and with
-//                            other settings) and its lower screenfuls (-2, -3, -4: the guide, Comfort, Controls, HUD)
-//   advanced-<tab>.png       each of Advanced's tabs (-2: the lower half of Stereo, Game UI and Diagnostics;
+//                            other settings) and its lower screenfuls (-2, -3, -4: the guide, Comfort, Controls, HUD);
+//                            section-display-perf-<mode>.png: the Performance row in each mode and Custom (research/60)
+//   advanced-<tab>.png       each of Advanced's tabs (-2: the lower half of Stereo, Performance, Game UI and Diagnostics;
 //                            advanced-stereo-expert.png: the original stereo's rows)
 //   advanced-diag-about.png  Diagnostics scrolled to its end: About, with this build's version and commit
 //   state-hover.png          the pointer resting on Resume (its light sweep part-way) and a row hovered
@@ -27,6 +28,7 @@
 #include "core/PngFile.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/MenuSettings.hpp"
+#include "core/vr/PerformanceModes.hpp"
 #include "plugin/menu/MenuBackdrop.hpp"
 #include "plugin/menu/MenuModel.hpp"
 #include "plugin/menu/MenuRenderer.hpp"
@@ -517,6 +519,31 @@ int main(int argc, char** argv) {
         model.SetText("upscale", "off");
         frames(10);
         save("section-display-quality-novr");
+        // The Performance row (research/60): each mode as the host reads it back, then a mix of the levers (Custom).
+        namespace pm = mevr::vr::perf_modes;
+        model.SetNumber("headset_known", 1.0f);
+        model.SetText("headset_text", ms::HeadsetSizesText(2824, 2880));
+        model.SetText("upscale", "fsr");
+        for (pm::Mode const& mode : pm::Modes()) {
+            mevr::vr::menu_settings::Size const size = ms::HeadsetSize(mode.levers.resolution, 2824, 2880);
+            model.SetText("quality", mode.levers.resolution);
+            model.SetText("quality_text", ms::SizeText(size.width, size.height));
+            model.SetText("perf_mode", pm::ModeFor(mode.levers));
+            model.SetText("perf_desc", pm::Description(mode.levers));
+            model.SetText("perf_note", pm::RestartNote(std::string(mode.key) != "balanced"));
+            frames(10);
+            save(std::string("section-display-perf-") + mode.key);
+        }
+        pm::Levers mix = pm::Find("balanced")->levers;
+        mix.foliage = 0.75f;
+        mix.minScreenRadiusPx = 16;
+        model.SetText("quality", mix.resolution);
+        model.SetText("quality_text", ms::SizeText(2400, 2448));
+        model.SetText("perf_mode", pm::ModeFor(mix));
+        model.SetText("perf_desc", pm::Description(mix));
+        model.SetText("perf_note", pm::RestartNote(false));
+        frames(10);
+        save("section-display-perf-custom");
         content->SetScrollTop(0.0f);
     }
     model.SetNumber("headset_known", 1.0f);
@@ -529,14 +556,14 @@ int main(int argc, char** argv) {
     model.SetText("vignette_when", "turn");
     model.SetText("walk", "head");
     model.SetText("section", "advanced");
-    for (char const* tab : {"tracking", "fp", "view", "stereo", "hud", "profiles", "diag"}) {
+    for (char const* tab : {"tracking", "fp", "view", "stereo", "perf", "hud", "profiles", "diag"}) {
         model.SetText("advtab", tab);
         frames(30);
         std::vector<std::uint32_t> const menu = save(std::string("advanced-") + tab);
         if (std::string(tab) == "stereo") {
             mevr::png::Write(output / "menu-alpha.png", w, h, Straight(menu).data());
         }
-        if (std::string(tab) == "hud" || std::string(tab) == "diag" || std::string(tab) == "stereo") {
+        if (std::string(tab) == "hud" || std::string(tab) == "diag" || std::string(tab) == "stereo" || std::string(tab) == "perf") {
             if (Rml::Element* content = element("content")) {  // the tab's lower half
                 content->SetScrollTop(content->GetScrollHeight());
                 frames(10);

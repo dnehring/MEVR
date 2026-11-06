@@ -157,9 +157,9 @@ nothing writes defaults over a profile: Reset is for the session (below).
 | | Brightness, Contrast, Saturation, Mid-tones, Black level | the headset's Custom values (`colour::SetCustom`: live while moving, saved once at rest) |
 | | Hold A | `colour::HoldCompare` |
 | | Preview | `core/vr/ColourStrip` through `core/vr/Colour` `Correct` (the shader's CPU reference) |
+| | Performance Quality / Balanced / Performance (Custom only shown) | each mode's bundle (`core/vr/PerformanceModes`, research/60): `[Upscale] method`, `[Performance] minScreenRadiusPx`, `[SystemSettings] FoliageDrawRadiusMultiplier`, `DynamicShadows`, `AmbientOcclusion` (live), then the render resolution as the row below sets it (restart); selected when the files hold exactly a mode's bundle, else Custom with what differs from the nearest mode (since 2026-11-06) |
 | | Render resolution Headset / Headset × 0.85 / Headset × 0.75 | the runtime's recommended eye size (Halcyon's `g_recommendedEyeWidth/Height` through `XrSession::GetResolutionStats`, as the perf probe's `"recommendedEye"`) exactly, or 0.85 / 0.75 of it rounded to even (`menu_settings::HeadsetSize`; PS VR2: 2824 × 2880, 2400 × 2448, 2118 × 2160) into Halcyon `sfr2ResX/Y` and `expectedResX/Y`, `ApplyResolutionForCurrentMode` (GamerSettings ResX/ResY, restart). Selected when `sfr2ResX/Y` equal its size (`ResolutionChoice`). Before VR has started: one disabled chip, "Headset (unknown until VR starts)" (research/32) |
-| | Fixed sizes Low / Performance / Balanced / Sharp / Max | Halcyon `sfr2ResX` 2048 / 3072 / 4096 / 5120 / 6144, `sfr2ResY` = width / 0.964 even, and `expectedResX/Y` (since 2026-10-23; before, the watchdog kept the old size), `ApplyResolutionForCurrentMode` (restart). Selected when `sfr2ResX` is the tier's width; a size no chip makes selects none |
-| | Upscale Off / FSR | `[Upscale] method` = `off` / `fsr` (plugin/Upscale re-reads it within a second: live); `sharpness` stays a file setting (research/32) |
+| | Upscale Off / FSR | `[Upscale] method` = `off` / `fsr` (plugin/Upscale re-reads it within a second: live); `sharpness` is Advanced > Performance's (research/32) |
 | | Steady cutscenes | Halcyon `cineFpsCap` |
 | HUD & sights | Distance | Halcyon `hudPanelDistanceM` |
 | | Size | Halcyon `hudPanelWidthM` (100% = 1.3 m; 45-155%, the range Advanced's Width had) |
@@ -182,6 +182,11 @@ nothing writes defaults over a profile: Reset is for the session (below).
 | | Quest Link image fix | `questFovMatch` |
 | | Depth of field | `!disableDof`, `D3DCapture::EnsureDepthOfFieldSetting` (restart) |
 | | Desktop mirror Every 8th / Every 2nd / Every frame | `mirrorPresentEvery` 8 / 2 / 1 (the deploy's is 2) |
+| Advanced > Performance | Small-object culling Off / 4 / 8 / 16 / 24 / 32 px | `[Performance] minScreenRadiusPx` (plugin/RenderLevers, live; an old file's `minScreenRadiusTenths`, read first, emptied) |
+| | Grass distance 25-100% | `[SystemSettings] FoliageDrawRadiusMultiplier` (game/SystemSettings' `scale set`, live) |
+| | Dynamic shadows, Ambient occlusion | `[SystemSettings] DynamicShadows`, `AmbientOcclusion` (`True` / `False`, live) |
+| | FSR sharpness 0-100% | `[Upscale] sharpness` 0..1 (no mode's) |
+| | Fixed sizes 2048 / 3072 / 4096 / 5120 / 6144 (Halcyon's ladder Low to Max; on Display until 2026-11-06) | Halcyon `sfr2ResX` 2048 / 3072 / 4096 / 5120 / 6144, `sfr2ResY` = width / 0.964 even, and `expectedResX/Y` (since 2026-10-23; before, the watchdog kept the old size), `ApplyResolutionForCurrentMode` (restart). Selected when `sfr2ResX` is the tier's width; a size no chip makes selects none |
 | Advanced > Game UI | Conversation wheel: Fit it to your view, Size, Left / right, Down / up, Standard | `convoEnabled` and the conversation movie's set the renderer uses (`convo*Dibr` in Depth mode, `convo*Stereo` with the old side-by-side stereo, else `convoScaleX/Y`, `convoOffsetX/Y`): size as a percentage of Halcyon's tuned scale (both axes, their ratio kept), the offsets as a nudge from its tuned place in movie pixels (up +, so `Offset Y` = tuned - value); Standard puts the tuned values back (its HUD tab's Reset) |
 | | Mission overlays: the same | `designerUiEnabled`, `designerUiScaleX/Y`, `designerUiOffsetX/Y` (one set for every mode) |
 | Advanced > Profiles | Load / Save per slot | `Config::LoadProfile(i)` / `SaveProfile(i)` (Default, Custom 1-3) |

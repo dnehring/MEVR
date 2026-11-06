@@ -301,10 +301,12 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Image quality</span><div class="gline"/></div>
+			<!-- One choice for the frame rate (research/60): each mode sets the render resolution and the levers in Advanced >
+			     Performance; any of them changed by hand shows Custom. -->
+			<div class="row"><div class="rl"><div class="rlab">Performance</div><div class="rdesc">{{perf_desc}}</div><div class="note">{{perf_note}}</div></div>
+				<div class="seg"><button class="segb" data-class-on="perf_mode == 'quality'" data-event-click="pick('perf_mode','quality')">Quality</button><button class="segb" data-class-on="perf_mode == 'balanced'" data-event-click="pick('perf_mode','balanced')">Balanced</button><button class="segb" data-class-on="perf_mode == 'performance'" data-event-click="pick('perf_mode','performance')">Performance</button><button class="segb on shown" data-if="perf_mode == 'custom'">Custom</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">Now {{quality_text}} per eye · {{quality_note}}</div><div class="rdesc">{{headset_text}}</div></div>
 				<div class="seg"><button class="segb disabled" data-if="!headset_known">Headset (unknown until VR starts)</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="pick('quality','headset')">Headset</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset85'" data-event-click="pick('quality','headset85')">Headset × 0.85</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset75'" data-event-click="pick('quality','headset75')">Headset × 0.75</button></div></div>
-			<div class="row"><div class="rl"><div class="rlab">Fixed sizes</div><div class="rdesc">Set sizes from 2048 to 6144 pixels wide per eye. Above your headset's own size the picture gets sharper, but each step costs a lot of frame rate.</div></div>
-				<div class="seg"><button class="segb" data-class-on="quality == 'low'" data-event-click="pick('quality','low')">Low</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="pick('quality','performance')">Performance</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="pick('quality','balanced')">Balanced</button><button class="segb" data-class-on="quality == 'sharp'" data-event-click="pick('quality','sharp')">Sharp</button><button class="segb" data-class-on="quality == 'max'" data-event-click="pick('quality','max')">Max</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Upscale</div><div class="rdesc">Renders smaller and sharpens it back up: faster, a little softer. Pairs with Headset × 0.85.</div></div>
 				<div class="seg"><button class="segb" data-class-on="upscale == 'off'" data-event-click="pick('upscale','off')">Off</button><button class="segb" data-class-on="upscale == 'fsr'" data-event-click="pick('upscale','fsr')">FSR</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Steady cutscenes</div><div class="rdesc">Caps cutscenes to a frame rate the headset can hold</div></div>
@@ -370,6 +372,7 @@
 			<button class="segb" data-class-on="advtab == 'fp'" data-event-click="advtab = 'fp'">First person</button>
 			<button class="segb" data-class-on="advtab == 'view'" data-event-click="advtab = 'view'">View</button>
 			<button class="segb" data-class-on="advtab == 'stereo'" data-event-click="advtab = 'stereo'">Stereo</button>
+			<button class="segb" data-class-on="advtab == 'perf'" data-event-click="advtab = 'perf'">Performance</button>
 			<button class="segb" data-class-on="advtab == 'hud'" data-event-click="advtab = 'hud'">Game UI</button>
 			<button class="segb" data-class-on="advtab == 'profiles'" data-event-click="advtab = 'profiles'">Profiles</button>
 			<button class="segb" data-class-on="advtab == 'diag'" data-event-click="advtab = 'diag'">Diagnostics</button>
@@ -446,6 +449,27 @@
 					<button class="tog" data-class-on="dof" data-event-click="toggle('dof')"><div class="knob"/></button></div>
 				<div class="row"><div class="rl"><div class="rlab">Desktop mirror</div><div class="rdesc">How often the game window on your monitor updates. Every 2nd is the standard; every frame is smooth for recording but costs frame rate.</div></div>
 					<div class="seg"><button class="segb" data-class-on="mirror == 'normal'" data-event-click="pick('mirror','normal')">Every 8th</button><button class="segb" data-class-on="mirror == 'smooth'" data-event-click="pick('mirror','smooth')">Every 2nd</button><button class="segb" data-class-on="mirror == 'every'" data-event-click="pick('mirror','every')">Every frame</button></div></div>
+			</div>
+		</div>
+
+		<!-- Performance: the levers Display's Performance modes set, one by one (research/60), and Halcyon's fixed render sizes. -->
+		<div data-if="advtab == 'perf'">
+			<div class="group">
+				<div class="gtitle"><span>Performance levers</span><div class="gline"/></div>
+				<div class="hint">Display's Performance modes set these. Changing one makes the mode Custom. All of them apply at once.</div>
+				<div class="row"><div class="rl"><div class="rlab">Small-object culling</div><div class="rdesc">Skips objects smaller than this many pixels on screen. Up to 8 can't be seen; from 24 far details pop in.</div></div>
+					<div class="seg"><button class="segb" data-class-on="cull_px == '0'" data-event-click="pick('cull_px','0')">Off</button><button class="segb" data-class-on="cull_px == '4'" data-event-click="pick('cull_px','4')">4</button><button class="segb" data-class-on="cull_px == '8'" data-event-click="pick('cull_px','8')">8</button><button class="segb" data-class-on="cull_px == '16'" data-event-click="pick('cull_px','16')">16</button><button class="segb" data-class-on="cull_px == '24'" data-event-click="pick('cull_px','24')">24</button><button class="segb" data-class-on="cull_px == '32'" data-event-click="pick('cull_px','32')">32</button></div></div>
+				<div class="srow d"><div class="sl"><div class="slab">Grass distance</div><div class="rdesc">Of the game's own. Grass costs on the processor and the graphics card for every blade, twice in VR.</div></div><input type="range" min="25" max="100" step="5" data-value="grass"/><div class="sval">{{grass_text}}</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Dynamic shadows</div><div class="rdesc">Moving shadows from characters and lights. Off is the standard: they cost frame time and the game's own shadows stay.</div></div>
+					<button class="tog" data-class-on="dyn_shadows" data-event-click="toggle('dyn_shadows')"><div class="knob"/></button></div>
+				<div class="row"><div class="rl"><div class="rlab">Ambient occlusion</div><div class="rdesc">Soft shading in corners and under objects. Off saves graphics-card time and flattens the picture a little.</div></div>
+					<button class="tog" data-class-on="ambient_occl" data-event-click="toggle('ambient_occl')"><div class="knob"/></button></div>
+				<div class="srow d"><div class="sl"><div class="slab">FSR sharpness</div><div class="rdesc">How much the upscale sharpens a smaller render. No mode sets it.</div></div><input type="range" min="0" max="100" step="5" data-value="fsr_sharpness"/><div class="sval">{{fsr_sharpness_text}}</div></div>
+			</div>
+			<div class="group">
+				<div class="gtitle"><span>Fixed render sizes</span><div class="gline"/></div>
+				<div class="row"><div class="rl"><div class="rlab">Fixed sizes</div><div class="rdesc">The original MELE-VR sizes, in pixels wide per eye. Above your headset's own size the picture gets sharper, but each step costs a lot of frame rate. Applies after a restart.</div></div>
+					<div class="seg"><button class="segb" data-class-on="quality == 'low'" data-event-click="pick('quality','low')">2048</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="pick('quality','performance')">3072</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="pick('quality','balanced')">4096</button><button class="segb" data-class-on="quality == 'sharp'" data-event-click="pick('quality','sharp')">5120</button><button class="segb" data-class-on="quality == 'max'" data-event-click="pick('quality','max')">6144</button></div></div>
 			</div>
 		</div>
 
