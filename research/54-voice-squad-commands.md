@@ -392,6 +392,14 @@ With all four: let go 7.2 m out at 50 degrees to the left, Ashley ran there and 
 there" and spoken moves still go through `QuickCommandMoveTo` and land along the head's facing (the voice session's to decide:
 the same push, or a hold); two squadmates and a crowd of hostiles weren't tried.
 
+**The voice and gesture moves take the same road** (2026-11-05, later): the dispatcher's `Order::Move` (the left grip let go
+on the floor, "Ashley, move up", a model's `A|-|-|move|PT1`) was a `QuickCommandMoveTo` behind a turned `Rotation`, which the
+placement's check above shows lands along the head's facing in VR. With `holdFormation` (the default) a move is now the HOLD
+formation at the point followed by the squadmate's own `PushMoveToPoint` (`squad_orders::PushMove`), and a standing hold there
+until it's calm (then they follow), relieved, or "stay there"; `holdFormation = 0` keeps the old call. The afternoon's in-game
+"Ashley, move up" (`QuickCommandMoveTo` true) therefore sent her up the head's line, not the hand's: not re-checked yet, the
+game folder was the install test's.
+
 ## The rule parser (2026-11-04, later)
 
 Tier 1 of research/54's parser design, [src/core/vr/SquadParser.hpp](../src/core/vr/SquadParser.hpp) (pure, unit-tested,
