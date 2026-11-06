@@ -61,7 +61,7 @@ The blur is meant to be off, and three mechanisms turned it back on (details in
 again"): the log had five applies in the level (the last 15 s after it rendered), and the aligned check found both eyes
 equally sharp in 12 frames with the head turning 20-40 degrees (L/R 0.99-1.00, before and after a manual True/False).
 What was there: Halcyon's 45 fps cap in cutscenes and conversations (`cineFpsCap`; 449 frames per 10 s on the screen,
-88-90 per 10 s x 10 in gameplay), which shows each picture twice on a 90 Hz display, so moving content (a pan, someone walking)
+880-900 in gameplay), which shows each picture twice on a 90 Hz display, so moving content (a pan, someone walking)
 doubles and smears. Check the frame rate (`render levers: last 10 s: N frames`) and the view (`[VRSTATE]`) at the moment
 of the report before chasing the setting.
 
