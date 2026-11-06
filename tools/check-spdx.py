@@ -26,6 +26,8 @@ ALLOWED = ('MIT', 'GPL-3.0-only')
 
 # Third-party code and data with their own licences, and the licence texts themselves.
 SKIP_PREFIXES = ('third_party/', 'external/', 'LICENSES/', 'reference/', 'mods/')
+# Files a service hands us to publish unchanged: Google Search Console's site verification for the landing page.
+SKIP_PATTERNS = (re.compile(r'^site/google[0-9a-f]{16}\.html$'),)
 
 # The comment syntax per file type: (start, end). Types not listed here aren't checked.
 COMMENT = {
@@ -58,8 +60,8 @@ def git_files():
     out = subprocess.run(['git', '-C', ROOT, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
                          capture_output=True, check=True).stdout
     files = sorted(set(f for f in out.decode('utf-8').split('\0') if f))
-    return [f for f in files if not f.startswith(SKIP_PREFIXES) and comment_for(f) is not None
-            and os.path.isfile(os.path.join(ROOT, f))]
+    return [f for f in files if not f.startswith(SKIP_PREFIXES) and not any(p.match(f) for p in SKIP_PATTERNS)
+            and comment_for(f) is not None and os.path.isfile(os.path.join(ROOT, f))]
 
 
 def read_identifier(path):
