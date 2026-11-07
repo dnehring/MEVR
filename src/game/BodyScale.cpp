@@ -100,10 +100,13 @@ double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds) {
     g.unitsPerMeter = unitsPerMeter > 0.0 ? unitsPerMeter : g.unitsPerMeter;
     bool const crouched = posture::PhysicallyCrouched();
     // Shepard standing holstered (the combat stance carries his head 16 cm lower), unscaled, from the writer's last pose.
-    if (auto const body = engine::bone_pose::UnscaledBody(); body && weapon::Key() == 0 && !crouched) {
+    // Only heights a standing person can have count: a floor read far below (a trace through a gap) said 50 m once and took
+    // the scale to its minimum for good.
+    if (auto const body = engine::bone_pose::UnscaledBody();
+        body && weapon::Key() == 0 && !crouched && bs::Plausible(body->eyeHeight, g.unitsPerMeter)) {
         Track(g.shepardEye, body->eyeHeight, deltaSeconds);
     }
-    if (!crouched && std::isfinite(viewAboveFloor)) {
+    if (!crouched && bs::Plausible(viewAboveFloor, g.unitsPerMeter)) {
         Track(g.viewEye, viewAboveFloor, deltaSeconds);
     }
     Mode const mode = g.overrideOff ? Mode::Off : g.override ? Mode::Fixed : g.settings.mode;
