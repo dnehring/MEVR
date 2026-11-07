@@ -66,6 +66,11 @@ struct Settings {
     // touchDragM along the surface first: a drag that scrolls (a wheel notch per touchScrollNotchM, the content following the
     // finger) and never clicks. touchScroll = false presses at once, as before.
     bool touchScroll = true;
+    // Click on contact (the omni-tool's rail, 2026-11-06, the owner: "I can't select any of the menus unless I'm perfectly
+    // aligned"): a fingertip reaching the surface from the front clicks at once where it touched (the down, and the up on the
+    // next step, pinned there), whatever it does after; another click needs it pulled back past touchReleaseM. For a panel of
+    // buttons with nothing to scroll or drag (touchScroll is ignored then).
+    bool touchClickOnContact = false;
     float touchHoldS = 0.15f;
     float touchDragM = 0.012f;
     float touchScrollNotchM = 0.013f;
@@ -113,6 +118,7 @@ private:
     bool pressByTouch_ = false;              // the open press is a touch's (else a trigger's)
     bool touchWaiting_ = false;              // a touch reached the surface: click, press or drag not decided yet
     bool dragging_ = false;                  // the touch is a drag: it scrolls
+    bool touchConsumed_[2] = {false, false};  // this touch already clicked on contact: no more until it lets go
     bool clickUpNext_ = false;               // a tap's button down was sent: its up goes on the next step
     int touchHand_ = 1;                      // the hand of the waiting or dragging touch
     float waitS_ = 0.0f;

@@ -2286,6 +2286,37 @@ void TestGamePointer() {
     CHECK(out.pressed);
     out = tipAt(0.05f, 0.0f, 0.03f);  // pulled back: let go
     CHECK(!out.pressed && out.pressEdge && out.hit);
+    // Click on contact (the omni-tool's rail, 2026-11-06): an angled poke that slides 3 cm along the surface as it pushes
+    // through clicks once, where it touched (with scrolling it became a drag and never clicked); no second click until the
+    // finger pulls back out, then a new poke clicks again.
+    {
+        Settings railSettings;
+        railSettings.touchClickOnContact = true;
+        railSettings.touchScroll = false;
+        Pointer rail(railSettings);
+        auto at = [&](float x, float depth) {
+            touch.hands[1].tip = {x, 1.6f, -0.5f + depth};
+            return rail.Step(panel, touch);
+        };
+        out = at(0.050f, 0.04f);  // hovering
+        CHECK(out.touch && !out.pressed);
+        out = at(0.055f, 0.003f);  // reaches the surface: the button down at once, at the contact
+        CHECK(out.pressed && out.pressEdge && NearD(out.u, 0.6375, 1e-3));
+        float const contactU = out.u;
+        out = at(0.065f, -0.01f);  // sliding through it: the button up, still at the contact
+        CHECK(!out.pressed && out.pressEdge && NearD(out.u, contactU, 1e-6));
+        int edges = 0;
+        for (float tipX = 0.07f; tipX <= 0.085f; tipX += 0.005f) {  // further through and along: no more clicks
+            out = at(tipX, -0.03f);
+            edges += out.pressEdge ? 1 : 0;
+        }
+        CHECK(edges == 0 && !out.pressed);
+        out = at(0.085f, 0.04f);  // pulled back out
+        CHECK(!out.pressed && !out.pressEdge);
+        out = at(-0.05f, 0.04f);   // hovering over another button
+        out = at(-0.05f, 0.004f);  // a new poke there: clicks again
+        CHECK(out.pressed && out.pressEdge && NearD(out.u, 0.375, 1e-3));
+    }
     // Scrolling by touch (the default): a tap clicks on letting go, a hold presses, a drag scrolls and never clicks.
     {
         Pointer tap;
