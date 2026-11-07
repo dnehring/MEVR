@@ -302,7 +302,7 @@ void Update(bool up, std::vector<std::string> const& wanted, std::optional<std::
         for (std::string const& s : already) {
             skipped += std::format("{}{} (the game had hidden it)", skipped.empty() ? "" : ", ", s);
         }
-        log::Info("sights: the {}'s scope picture is up: hid {} while it shows ([Sights] {}Hide){}", weapon,
+        log::Info("sights: the {} is raised to the eye: hid {} while it's up ([Sights] {}Hide){}", weapon,
             gHiddenNames.empty() ? std::string("nothing") : std::format("'{}'", gLastWhat), sv::WeaponKey(weaponType),
             skipped.empty() ? std::string() : std::format("; not hidden: {}", skipped));
     }

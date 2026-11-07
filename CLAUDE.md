@@ -752,8 +752,10 @@ switching frameworks.
   switch, holster or unload; the gun's materials logged once per model). Since 2026-10-27 (later) **a scope's picture
   only while aiming down the sight** (research/21 section 15, mod only; `core/vr/Ads`, Overlord's ADS, GPL-3.0): Overlord's
   corridor (the centre eye 0.15-1.5 m behind the muzzle, 9 cm beside the bore, -2.5/+16 cm, 30 degrees; exit 0.10-1.7,
-  13 cm, -6/+22, 40), 100 ms dwell each way, plus our reach (the eye within `[Sights] adsReachM` 0.40 m of the sight, 0.50
-  to leave), all on the gun WITHOUT the assist's move; below ADS the mod publishes no scope (kind None: no picture, the
+  13 cm, -6/+22, 40), 100 ms dwell each way, plus our reach (the eye within `[Sights] adsReachM` 0.55 m of the sight, `adsReachExitM` 0.80
+  to leave; since 2026-11-06, research/21 section 19: a gun pulled into the shoulder pushes the scope away up to `scopeAdsPushM` 0.15 so the
+  eyepiece stays the relief ahead, the lens part hides whenever the gun is raised, a red dot shows to an eye up to 8 cm past its window, and
+  Halcyon's crosshair hide acts through the kept handler on any game-thread event), all on the gun WITHOUT the assist's move; below ADS the mod publishes no scope (kind None: no picture, the
   model's own lens, no scope capture), `scopeMaxM` only with `ads = 0`. The assist's 10-degree cone is gone: Overlord's
   continuous approach weight (angle 5-45 degrees, smooth corridor edges) x distance weight drives the sideways move (dots
   and holos at most `assistDotMaxM` 0.03) and the pull (dot none, holo 5 cm, scope under 3x 10 cm, scopes

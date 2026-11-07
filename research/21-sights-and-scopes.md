@@ -984,3 +984,42 @@ reticle and the window's ring`; snapshots name the layers `sight`, `sight-2`, `s
 **"The model would disappear":** not settled by this log. Likely the sniper rifle pulled toward the eye under ADS (`pulled at
 most 7.8 cm` at 09:58:00): with its picture missing, what's left of the tube near the camera's near plane is cut away. [verify]
 once the picture draws again.
+
+## 19. Simpler: the scope at the shoulder and held out, the dot past its window, the crosshair (headset session 2026-11-06 21:12, fixed the same evening)
+
+**Report (user, 2026-11-06, PS VR2, the players' build 5479d30):** "if I hold it too far into my shoulder, I no longer see the
+red dot. But if I hold it too far away, I can still get these points where I actually see the model of the rifle. So I get a
+white light that blinds my eye ... we may need to just get something a bit more naive when it's on shoulder or when it's
+equipped and it's close to me, that it just tries to get to the synthetic scope faster." Also: "sometimes when equipping guns
+I'd get the old HUD for the crosshair for the weapons like the assault rifle".
+
+### What the session shows (`LE1MEVR.log` 21:21-21:22, the sniper rifle `WPN_SNPa_MDL`, the assault rifle `WPN_ASLa_MDL`)
+
+- **Held out:** `ADS off (the eye 0.62 m from the sight (past 0.50) ...)` while the gun was still aimed: past adsReachM + 0.10
+  the picture went, and 0.15 s later `Scope_Lens` (the glow) was back in front of the eye.
+- **Into the shoulder:** while ADS was on the picture dropped out (`no eye through it` 21:21:44.965, back 190 ms later); the
+  heartbeat before says the eye was `0.03..0.26 m behind the eyepiece`: the hold brought the eye up to and past the eyepiece
+  the pull had put at 0.12 m, where no picture can be (the host needs the eye behind it).
+- **The crosshair:** Halcyon's log has no `[MEVR-CROSSHAIR]` line in either of the day's sessions: the hide never ran. It acts
+  on the crosshair handler's own ProcessEvents only, and that handler gets them now and then (a draw, a mode change), not
+  while the player aims, so a hide asked for between them waited for the next one.
+
+### Built (mod `game/Sights`, `game/ScopeParts`; `core/vr/Sights`, unit-tested; host `plugin/SightLayers`, `[MEVR]` in pchud.cpp)
+
+1. **ADS sooner and kept further:** `[Sights] adsReachM` 0.40 -> 0.55 (a file without the marker `scopeAdsPushM` that holds
+   exactly 0.40 moves once), off only past `adsReachExitM` (0.80; at least adsReachM + 0.05). Overlord's corridor (facing,
+   beside and above the bore) still decides; the host's scope range follows (exit + 0.10).
+2. **The push** (`scopeAdsPushM` 0.15, `vr::sights::Pull::pushM`): under ADS an eye nearer the eyepiece than the relief pushes
+   the gun away along its line, up to 0.15 m, so the eyepiece stays 0.12 m ahead of it; an eye up to the push PAST the
+   eyepiece still counts (`AssistTarget`'s floor). Same spring as the pull. `goal.pull` below 0 is a push.
+3. **The lens hides whenever the gun is raised** (scope_parts' `up` = the picture up, or ADS, or `RaisedWeight` over 0.20 until
+   it falls under 0.08), not only while the picture is up, so the glow never reaches the eye while aiming.
+4. **The red dot past its window:** the host picks the dot's eye with along down to -0.08 m (`kDotMinAlong`): the dot (50 m out)
+   shows; the window's picture still needs the eye behind it. `AimingEye`'s hysteresis now widens a negative floor too.
+5. **The crosshair** (`[MEVR]` in `MevrApplyCrosshair`): the handler last seen is kept, and when the wanted state changes (or
+   once a second for the re-stamp) it's used from the next ProcessEvent of any object on the game thread
+   (`MevrBridge::OnGameThread`), after its class is checked again (SEH-guarded); the panel is still read live from it.
+
+**[verify] in the headset (notes/headset-checklist.md section 3):** the sniper's picture comes as the gun comes up, stays at the
+shoulder and held out, no glow; the gun moving off the shoulder isn't disturbing; the rifle's dot stays at the cheek; no game
+crosshair after a draw (Halcyon's log: `[MEVR-CROSSHAIR] game crosshair hidden`).
