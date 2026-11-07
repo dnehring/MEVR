@@ -111,6 +111,47 @@ std::string WriteFailureHint(fs::path const& file) {
     return " (is the game running, or is the folder read-only?)";
 }
 
+// Antivirus (and the search indexer) opens a file for a moment right after it's written: a rename, replace, copy or delete
+// of it in that moment fails with access denied or a sharing violation. So each file step is tried again for about 1.3 s
+// before it's an error (2026-11-06: the tests' install right after an uninstall failed 3 runs in about 80 on the manifest's
+// write, Windows error 5). A read-only `target` is refused with the same error, and no wait helps it: no retry then. On
+// false, GetLastError() is the last try's error.
+bool Busy(DWORD error) {
+    return error == ERROR_ACCESS_DENIED || error == ERROR_SHARING_VIOLATION || error == ERROR_LOCK_VIOLATION;
+}
+
+template <typename Step>
+bool Retrying(Step&& step, fs::path const* target = nullptr) {
+    static constexpr DWORD kWaitsMs[] = {0, 10, 20, 40, 80, 160, 320, 640};
+    DWORD error = ERROR_SUCCESS;
+    for (DWORD const wait : kWaitsMs) {
+        if (wait != 0) {
+            Sleep(wait);
+        }
+        if (step()) {
+            return true;
+        }
+        error = GetLastError();
+        if (!Busy(error) || (error == ERROR_ACCESS_DENIED && target != nullptr && detect::ReadOnlyFile(*target))) {
+            break;
+        }
+    }
+    SetLastError(error);
+    return false;
+}
+
+// fs::remove (which also deletes a read-only file) tried again while the file is busy: true once it's gone or never was.
+bool RemoveFile(fs::path const& file, std::error_code& ec) {
+    return Retrying([&] {
+        ec.clear();
+        fs::remove(file, ec);
+        if (ec) {
+            SetLastError(ec.category() == std::system_category() ? static_cast<DWORD>(ec.value()) : ERROR_GEN_FAILURE);
+        }
+        return !ec;
+    });
+}
+
 } // namespace
 
 std::string Sha256(std::string_view bytes) {
@@ -149,19 +190,27 @@ std::optional<std::string> ReadFile(fs::path const& file) {
 bool WriteFileAtomic(fs::path const& file, std::string_view bytes) {
     fs::path temp = file;
     temp += L".mevr-writing";
-    {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            return false;
-        }
-        out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-        if (!out) {
-            return false;
-        }
+    HANDLE h = INVALID_HANDLE_VALUE;
+    if (!Retrying([&] {
+            h = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            return h != INVALID_HANDLE_VALUE;
+        }, &temp)) {
+        return false;  // GetLastError says why
     }
-    if (!MoveFileExW(temp.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::error_code ec;
-        fs::remove(temp, ec);
+    DWORD written = 0;
+    bool const wrote = bytes.size() <= MAXDWORD &&
+                       WriteFile(h, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) && written == bytes.size();
+    DWORD const writeError = wrote ? ERROR_SUCCESS : GetLastError();
+    CloseHandle(h);
+    if (!wrote) {
+        DeleteFileW(temp.c_str());
+        SetLastError(writeError != ERROR_SUCCESS ? writeError : ERROR_WRITE_FAULT);
+        return false;
+    }
+    if (!Retrying([&] { return MoveFileExW(temp.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE; }, &file)) {
+        DWORD const moveError = GetLastError();
+        DeleteFileW(temp.c_str());
+        SetLastError(moveError);
         return false;
     }
     return true;
@@ -388,7 +437,8 @@ bool Transaction::Save() {
         return false;
     }
     if (!WriteFileAtomic(layout_.ManifestFile(), json::Write(manifest_.ToJson()))) {
-        Fail("couldn't write " + ToUtf8(layout_.ManifestFile().wstring()));
+        DWORD const error = GetLastError();
+        Fail("couldn't write " + ToUtf8(layout_.ManifestFile().wstring()) + " (error " + std::to_string(error) + ")");
         return false;
     }
     exists_ = true;
@@ -428,7 +478,7 @@ bool Transaction::Backup(std::string_view relative, std::string& backupRelative)
     }
     fs::path const target = layout_.BackupDir() / fs::path(FromUtf8(candidate));
     fs::create_directories(target.parent_path(), ec);
-    if (!CopyFileW(layout_.Full(relative).c_str(), target.c_str(), TRUE)) {
+    if (!Retrying([&] { return CopyFileW(layout_.Full(relative).c_str(), target.c_str(), TRUE) != FALSE; })) {
         Fail("couldn't back up " + std::string(relative) + " (error " + std::to_string(GetLastError()) + ")");
         return false;
     }
@@ -457,7 +507,8 @@ bool Transaction::WriteIn(std::string_view relative, std::string_view bytes, boo
         }
     }
     if (!WriteFileAtomic(target, bytes)) {
-        Fail("couldn't write " + std::string(relative) + WriteFailureHint(target));
+        DWORD const error = GetLastError();
+        Fail("couldn't write " + std::string(relative) + " (error " + std::to_string(error) + ")" + WriteFailureHint(target));
         if (entry == nullptr) {
             // Nothing changed, but a backup may have been taken: keep it on record so it's cleaned up.
             if (!fresh.backup.empty()) {
@@ -511,7 +562,9 @@ bool Transaction::PlaceIn(fs::path const& source, std::string_view relative, std
             }
         }
     }
-    if (!MoveFileExW(source.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH)) {
+    if (!Retrying([&] {
+            return MoveFileExW(source.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH) != FALSE;
+        }, &target)) {
         DWORD const error = GetLastError();
         Fail("couldn't put " + std::string(relative) + " in place (error " + std::to_string(error) + ")" + WriteFailureHint(target));
         if (entry == nullptr && !fresh.backup.empty()) {
@@ -555,7 +608,7 @@ bool Transaction::RemoveContent(std::string_view content) {
         fs::path const target = layout_.Full(f.path);
         if (f.action == "replaced") {
             fs::path const backup = layout_.BackupDir() / fs::path(FromUtf8(f.backup));
-            if (!CopyFileW(backup.c_str(), target.c_str(), FALSE)) {
+            if (!Retrying([&] { return CopyFileW(backup.c_str(), target.c_str(), FALSE) != FALSE; }, &target)) {
                 Fail("couldn't restore " + f.path + " (error " + std::to_string(GetLastError()) + ")");
                 ok = false;
                 continue;
@@ -563,7 +616,7 @@ bool Transaction::RemoveContent(std::string_view content) {
             fs::remove(backup, ec);
             Note("restored " + f.path);
         } else {
-            if (fs::exists(target, ec) && !fs::remove(target, ec)) {
+            if (fs::exists(target, ec) && !RemoveFile(target, ec)) {
                 Fail("couldn't remove " + f.path + ": " + ec.message());
                 ok = false;
                 continue;
@@ -626,9 +679,9 @@ bool Transaction::Rename(std::string_view from, std::string_view to) {
         if (!Backup(to, entry.backup)) {
             return false;
         }
-        fs::remove(target, ec);
+        RemoveFile(target, ec);
     }
-    if (!MoveFileExW(source.c_str(), target.c_str(), MOVEFILE_WRITE_THROUGH)) {
+    if (!Retrying([&] { return MoveFileExW(source.c_str(), target.c_str(), MOVEFILE_WRITE_THROUGH) != FALSE; })) {
         Fail("couldn't rename " + std::string(from) + " (error " + std::to_string(GetLastError()) + ")");
         return false;
     }
@@ -888,7 +941,7 @@ bool Transaction::Uninstall(bool keepUserData) {
                 }
                 continue;  // still on record if something else fails (a retry may be a full uninstall); Revert is idempotent
             }
-            if (fs::exists(target, ec) && !fs::remove(target, ec)) {
+            if (fs::exists(target, ec) && !RemoveFile(target, ec)) {
                 Fail("couldn't remove " + f.path + ": " + ec.message());
                 ok = false;
                 stillOurs.push_back(f.path);
@@ -901,7 +954,7 @@ bool Transaction::Uninstall(bool keepUserData) {
                 continue;
             }
             fs::path const backup = layout_.BackupDir() / fs::path(FromUtf8(f.backup));
-            if (!CopyFileW(backup.c_str(), target.c_str(), FALSE)) {
+            if (!Retrying([&] { return CopyFileW(backup.c_str(), target.c_str(), FALSE) != FALSE; }, &target)) {
                 Fail("couldn't restore " + f.path + " (error " + std::to_string(GetLastError()) + ")");
                 ok = false;
                 continue;
@@ -922,7 +975,7 @@ bool Transaction::Uninstall(bool keepUserData) {
                 Note(f.from + " is already back; left " + f.path);
             } else if (f.path != paths::kBinkOriginal && !fs::exists(target, ec)) {
                 Note(f.path + " is gone: nothing to rename back to " + f.from);
-            } else if (!MoveFileExW(target.c_str(), original.c_str(), MOVEFILE_WRITE_THROUGH)) {
+            } else if (!Retrying([&] { return MoveFileExW(target.c_str(), original.c_str(), MOVEFILE_WRITE_THROUGH) != FALSE; })) {
                 Fail("couldn't rename " + f.path + " back to " + f.from + " (error " + std::to_string(GetLastError()) + ")");
                 ok = false;
                 continue;
@@ -931,7 +984,7 @@ bool Transaction::Uninstall(bool keepUserData) {
             }
             if (!f.backup.empty()) {
                 fs::path const backup = layout_.BackupDir() / fs::path(FromUtf8(f.backup));
-                if (!CopyFileW(backup.c_str(), target.c_str(), FALSE)) {
+                if (!Retrying([&] { return CopyFileW(backup.c_str(), target.c_str(), FALSE) != FALSE; }, &target)) {
                     Fail("couldn't restore " + f.path);
                     ok = false;
                     continue;
