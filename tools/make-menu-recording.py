@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: MIT
 """Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, see tools/mevrrec.py) that works our main menu (research/28)
-with the right controller, by the document's own coordinates (1440 x 900 dp, as mevr-menu-preview's PNGs show them): both
-stick clicks held to open it, the right aim ray on a point, a trigger pull, the right stick to scroll. For checking the
+with the right controller, by the document's own coordinates (1440 x 900 dp, as mevr-menu-preview's PNGs show them):
+the right aim ray on a point, a trigger pull, the right stick to scroll. For checking the
 menu's rows in the game on the fake headset (research/60: the Performance row clicked through).
 
-    python tools/make-menu-recording.py out.mevrrec "open; point 150 452; click; scroll 4; point 1281 236; click; hold 4"
+    # Open the menu with its real menu key (default backslash) before replay; recorded stick clicks cannot open it.
+    python tools/make-menu-recording.py out.mevrrec "point 150 452; click; scroll 4; point 1281 236; click; hold 4"
     tools/replay.ps1 -Path out.mevrrec -Inputs          # -Inputs: the recorded buttons and sticks reach the menu
     tools/snapshot.ps1 -Count 4 -Interval 3 -Delay 2    # the menu layer is <stamp>-menu.png; the JSON's "mainMenu" has
                                                          # the pointer's hit (x, y in dp) to check the aim
 
 Steps, separated by ';' (seconds in brackets are the defaults):
-  open                 both stick clicks held 0.6 s (the menu opens after 0.4 s), then 0.6 s to settle
   point X Y [1.2]      the right aim ray moved onto document point (X, Y) and held there
   click                the right trigger pulled for 0.15 s, then 0.35 s held still
   scroll S [down]      the right stick held down (or up) for S seconds; the ray stays where it points
@@ -66,8 +66,8 @@ def main():
     def doc_point(x, y):
         return (centre[0] + (x / DOC_W - 0.5) * width, centre[1] + (0.5 - y / DOC_H) * height, centre[2])
 
-    # A timeline of segments: (seconds, sticks clicked, trigger, stickY, aim target or None to keep).
-    segments = [(0.5, False, 0.0, 0.0, None)]
+    # A timeline of segments: (seconds, trigger, stickY, aim target or None to keep). Initial settle: 0.5 s.
+    segments = [(0.5, 0.0, 0.0, None)]
     t = 0.5
     for raw in script.split(";"):
         words = raw.split()
@@ -75,23 +75,20 @@ def main():
             continue
         verb = words[0]
         print(f"{t:6.2f} s  {raw.strip()}")
-        if verb == "open":
-            segments += [(0.6, True, 0.0, 0.0, None), (0.6, False, 0.0, 0.0, None)]
-            t += 1.2
-        elif verb == "point":
+        if verb == "point":
             secs = float(words[3]) if len(words) > 3 else 1.2
-            segments.append((secs, False, 0.0, 0.0, doc_point(float(words[1]), float(words[2]))))
+            segments.append((secs, 0.0, 0.0, doc_point(float(words[1]), float(words[2]))))
             t += secs
         elif verb == "click":
-            segments += [(0.15, False, 1.0, 0.0, None), (0.35, False, 0.0, 0.0, None)]
+            segments += [(0.15, 1.0, 0.0, None), (0.35, 0.0, 0.0, None)]
             t += 0.5
         elif verb == "scroll":
             secs = float(words[1])
             up = len(words) > 2 and words[2] == "up"
-            segments.append((secs, False, 0.0, 1.0 if up else -1.0, None))
+            segments.append((secs, 0.0, 1.0 if up else -1.0, None))
             t += secs
         elif verb == "hold":
-            segments.append((float(words[1]), False, 0.0, 0.0, None))
+            segments.append((float(words[1]), 0.0, 0.0, None))
             t += float(words[1])
         else:
             raise SystemExit(f"unknown step '{raw.strip()}'")
@@ -106,11 +103,11 @@ def main():
     aim = (0.0, 0.0, 0.0, 1.0)
     frames = []
     clock = 0.0
-    for secs, sticks, trigger, stick_y, target in segments:
+    for secs, trigger, stick_y, target in segments:
         if target is not None:
             aim = aim_quat(target)
         for _ in range(max(1, int(round(secs * HZ)))):
-            buttons = valid | (1 if sticks else 0)
+            buttons = valid
             right = (*aim, *HAND)
             frames.append(FRAME.pack(int(clock * 1e9), 3, *eyes[0], *fov, *eyes[1], *fov,
                                      buttons, 0.0, 0.0, 0.0, 0.0, *left, *left,

@@ -1026,6 +1026,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/CombatStance.cpp
         src/core/vr/FloorLock.cpp
         src/core/vr/Sprint.cpp
+        src/core/vr/HostView.cpp
         src/core/vr/GameMenuRequest.cpp
         src/core/vr/HudPieces.cpp
         src/core/vr/MakoControls.cpp

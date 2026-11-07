@@ -5,6 +5,7 @@
 #include "core/WriteJournal.hpp"
 #include "core/vr/Sprint.hpp"
 #include "engine/CallFunction.hpp"
+#include "engine/Engine.hpp"
 #include "game/HandCalibration.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "game/Player.hpp"
@@ -38,6 +39,7 @@ bool gActive = false;     // the last tick: sprint = speed, VR, on foot (StormOn
 bool gHeld = false;       // the sprint button, from StormOn / StormOff
 sp::State gState;
 ue3::Object* gPawn = nullptr;  // the pawn whose GroundSpeed we wrote
+void const* gPawnWorld = nullptr;
 float gBase = 0.0f;            // its run speed as the game set it
 float gWrote = 0.0f;           // what we wrote (0: nothing)
 float gFactor = 1.0f;
@@ -67,7 +69,9 @@ bool OnStormOff(ue3::Object*, ue3::Function*, ue3::Function*) {
 #if defined(MEVR_GAME_LE1)
 // The run speed back where the game left it, if what's there is still ours.
 void Restore() {
-    if (gPawn != nullptr && gWrote > 0.0f) {
+    // A transition may destroy the old pawn before this tick. Never form a field address until validated.
+    if (gPawn != nullptr && gWrote > 0.0f && gPawnWorld != nullptr && gPawnWorld == engine::World() &&
+        ue3::runtime::IsAlive(gPawn) && player::IsBioPawn(gPawn)) {
         if (float* const speed = gGroundSpeed.In<float>(gPawn); speed != nullptr && *speed == gWrote) {
             *speed = gBase;
             write_journal::Wrote("Sprint.groundSpeed(restore)", speed, sizeof(float));
@@ -75,6 +79,7 @@ void Restore() {
     }
     gWrote = 0.0f;
     gPawn = nullptr;
+    gPawnWorld = nullptr;
 }
 #endif
 
@@ -139,7 +144,8 @@ void Tick(double deltaSeconds, bool headTrackedView) {
     if (speed == nullptr) {
         return;
     }
-    if (pawn != gPawn) {
+    void const* const world = engine::World();
+    if (pawn != gPawn || world != gPawnWorld) {
         Restore();
     }
     if (!boosting) {
@@ -153,6 +159,7 @@ void Tick(double deltaSeconds, bool headTrackedView) {
     float const sprintSpeed = (drawn ? gCombatStormSpeed : gStormSpeed).Read<float>(pawn).value_or(0.0f);
     gFactor = sp::SpeedFactor(gBase, sprintSpeed);
     gPawn = pawn;
+    gPawnWorld = world;
     gWrote = gBase * gFactor;
     if (*speed != gWrote) {
         *speed = gWrote;

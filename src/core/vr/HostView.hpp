@@ -38,7 +38,7 @@ struct State {
     bool baseRightValid = false;
     float baseRight[3] = {0.0f, 0.0f, 0.0f};
     std::uint64_t sequence = 0;  // increments with every published sample
-    std::uint64_t timeMs = 0;    // GetTickCount64 when published
+    std::uint64_t timeMs = 0;    // GetTickCount64 when sampled (republication must preserve it)
     // v34: the corrected common centre, excluding metric eye displacement. Same latched head/offsets as the render.
     bool floorLocked = false;
     bool centreValid = false; // also carries the corrected on-foot reference through a held world view
@@ -50,6 +50,7 @@ struct State {
 };
 
 void Publish(State const& state);
+void Publish(State const& state, std::uint64_t sampledAtMs); // a corrected view of an existing XR sample
 // Stores a sample published elsewhere (by the host, for the mod), keeping its sequence and time.
 void Mirror(State const& state);
 // The latest sample; `valid` is forced false if it's older than `maxAgeMs` (VR stopped).

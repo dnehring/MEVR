@@ -432,7 +432,12 @@ bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, Lock
         }
         return false;
     }
-    if (speed >= settings.pushSpeedMS && travel >= settings.pushTravelM && time - push.lastFire >= settings.cooldownS) {
+    if (push.held && speed < settings.pushSpeedMS * 0.4f) {
+        push.held = false;  // it slowed down without ever being allowed: a miss
+        ++push.heldMissed;
+    }
+    if ((push.held || (speed >= settings.pushSpeedMS && travel >= settings.pushTravelM)) &&
+        time - push.lastFire >= settings.cooldownS) {
         if (!canFire) {
             push.held = true;  // not spent: the same push casts once it may
             return false;
@@ -441,10 +446,6 @@ bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, Lock
         push.held = false;
         push.lastFire = time;
         return true;
-    }
-    if (push.held && speed < settings.pushSpeedMS * 0.4f) {
-        push.held = false;  // it slowed down without ever being allowed: a miss
-        ++push.heldMissed;
     }
     return false;
 }

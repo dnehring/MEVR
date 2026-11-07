@@ -206,7 +206,9 @@ void PresentEnd() {
     Restore(now, !eligible || gActions.empty());
     ++gFrames;
     unsigned const budget = gActions.empty() && !gForce ? 0 : gMaxTries;
-    gResult = gDetector.Step({gLastPresent, gInterval, gWork, gPeriod, eligible && !gActions.empty() && gRestoreHz == 0 && gBoostDomains == 0, gLevel},
+    auto const gpu = perf::LatestGpuTiming(); // only already-completed probe results; no GPU query or clock sync here
+    gResult = gDetector.Step({gLastPresent, gInterval, gWork, gPeriod,
+        eligible && !gActions.empty() && gRestoreHz == 0 && gBoostDomains == 0, gLevel, gpu.work, gLastPresent - gpu.sampledAt},
         budget, gForce);
     switch (gResult.event) {
     case qp::Event::Entering:

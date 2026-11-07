@@ -298,6 +298,7 @@ std::atomic<int*> g_captureTarget{nullptr};
 // GetAsyncKeyState-polling approach in PollRecenterRebind could never see the NEW key: the hook itself ate it
 // first. Fix: capture the vkCode directly inside the hook, before it gets swallowed, and hand it off here.
 std::atomic<int> g_capturedVk{0};
+std::atomic<bool> g_hostKeyCapture{false}; // [MEVR] our menu shares this handoff, never writes a target on the hook thread
 
 LRESULT CALLBACK MenuMouseLLProc(int code, WPARAM wp, LPARAM lp)
 {
@@ -334,7 +335,9 @@ LRESULT CALLBACK MenuKeyLLProc(int code, WPARAM wp, LPARAM lp)
             // Key-rebind capture (fix, 2026-07-12): grab the vkCode HERE, on keydown, before this same hook
             // swallows it below. Still returns 1 either way - the key never reaches the game during capture.
             if ((wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN) &&
-                g_captureTarget.load(std::memory_order_acquire) != nullptr &&
+                (g_captureTarget.load(std::memory_order_acquire) != nullptr ||
+                    (g_hostKeyCapture.load(std::memory_order_acquire) &&
+                     static_cast<int>(k->vkCode) != MELEVR::Config::Get().menuKey)) && // [MEVR] retain our menu's close key
                 k->vkCode != VK_LBUTTON && k->vkCode != VK_RBUTTON)
             {
                 g_capturedVk.store(static_cast<int>(k->vkCode), std::memory_order_release);
@@ -2062,6 +2065,19 @@ void BuildUI() noexcept
     ImGui::End();
 }
 }  // namespace
+
+// [MEVR] Render-thread capture lifecycle for our menu; the hook only hands off vkCode, as for classic rebinds.
+void BeginKeyCapture() noexcept {
+    g_captureTarget.store(nullptr, std::memory_order_release);
+    g_capturingKey = false;
+    g_capturedVk.store(0, std::memory_order_release);
+    g_hostKeyCapture.store(true, std::memory_order_release);
+}
+int TakeCapturedKey() noexcept { return g_capturedVk.exchange(0, std::memory_order_acq_rel); }
+void CancelKeyCapture() noexcept {
+    g_hostKeyCapture.store(false, std::memory_order_release);
+    g_capturedVk.store(0, std::memory_order_release);
+}
 
 void Init(ID3D11Device* device, ID3D11DeviceContext* context, int width, int height) noexcept
 {

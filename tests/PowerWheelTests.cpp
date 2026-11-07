@@ -524,6 +524,26 @@ void TestPush() {
         }
         CHECK(!firedShort && shortPush.heldMissed == 1 && !shortPush.held);
     }
+    // Review core#1: qualified while tucked, then below full speed when the hand reaches casting range.
+    {
+        constexpr double times[]{0, .04, .08, .10, .14, .18, .22};
+        constexpr float reaches[]{0, .08f, .16f, .18f, .21f, .23f, .235f};
+        pw::Push p;
+        unsigned fires = 0;
+        for (int i = 0; i < 7; ++i) {
+            bool const cast = pw::StepPush(p, times[i], {0, 0, -reaches[i]}, forward, s, reaches[i] >= s.reachM);
+            CHECK(cast == (i == 4));
+            if (cast) ++fires;
+            if (i == 2) CHECK(p.held);
+        }
+        CHECK(fires == 1 && !p.held && p.heldMissed == 0);
+        // The existing miss threshold wins even if canFire becomes true on that same sample.
+        p = {};
+        for (int i = 0; i < 3; ++i) pw::StepPush(p, times[i], {0, 0, -reaches[i]}, forward, s, false);
+        CHECK(!pw::StepPush(p, .14, {0, 0, -.16f}, forward, s, false));
+        CHECK(!pw::StepPush(p, .18, {0, 0, -.16f}, forward, s, true));
+        CHECK(!p.held && p.heldMissed == 1);
+    }
     // The ray tilted down 45 degrees: a push along it counts.
     {
         pw::Push p;

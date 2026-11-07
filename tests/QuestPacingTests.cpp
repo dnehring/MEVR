@@ -14,9 +14,10 @@ void Check(bool ok, int line) {
 struct Feed {
     qp::Detector detector;
     double time = 1;
-    qp::Result Frame(double dt = 1.0 / 36, double work = .003, bool eligible = true, std::uint64_t level = 1, unsigned tries = 3) {
+    qp::Result Frame(double dt = 1.0 / 36, double work = .003, bool eligible = true, std::uint64_t level = 1, unsigned tries = 3,
+        double gpuWork = .003, double gpuAge = .03) {
         time += dt;
-        return detector.Step({time, dt, work, 1.0 / 72, eligible, level}, tries);
+        return detector.Step({time, dt, work, 1.0 / 72, eligible, level, gpuWork, gpuAge}, tries);
     }
     std::vector<qp::Event> Run(int frames, double dt = 1.0 / 36, double work = .003, bool eligible = true, std::uint64_t level = 1, unsigned tries = 3) {
         std::vector<qp::Event> events;
@@ -91,6 +92,24 @@ void ForcedAndCooldown() {
     s.now = 33;
     CHECK(d.Step(s, 2, true).event == qp::Event::GaveUp);
 }
+void GpuHeadroom() {
+    for (double gpu : {-.001, .014, .020, std::numeric_limits<double>::quiet_NaN()}) {
+        Feed f;
+        for (int i = 0; i < 1600; ++i) CHECK(f.Frame(1.0 / 36, .003, true, 1, 3, gpu).event == qp::Event::None);
+        // The GPU-heavy scene consumed no tries: a real lock can still recover in the same world.
+        CHECK(f.Run(108).empty());
+        CHECK(f.Frame().event == qp::Event::Entering);
+        auto const r = f.Frame();
+        CHECK(r.event == qp::Event::Recovering && r.tries == 1);
+    }
+    for (double age : {-1.0, .251, std::numeric_limits<double>::infinity()}) {
+        Feed f;
+        CHECK(f.Run(90).empty());
+        CHECK(f.Frame(1.0 / 36, .003, true, 1, 3, .003, age).event == qp::Event::None);
+        CHECK(f.Run(108).empty()); // invalid evidence resets the full window
+        CHECK(f.Frame().event == qp::Event::Entering);
+    }
+}
 void FrameOwnership() {
     // Fake runtime contract: both render paths, load gap, failed begin, live option change and STOPPING.
     // A prediction is assigned once on wait and remains the one ended, even if several seconds old.
@@ -118,7 +137,7 @@ void FrameOwnership() {
 }
 } // namespace
 int RunQuestPacingTests() {
-    Detection(); Exclusions(); ForcedAndCooldown(); FrameOwnership();
+    Detection(); Exclusions(); GpuHeadroom(); ForcedAndCooldown(); FrameOwnership();
     CHECK(qp::Actions("auto", false).empty()); // PS VR2 default
     CHECK(qp::Actions("auto", true).size() == 3);
     CHECK(qp::Actions("off", true).empty());

@@ -25,6 +25,10 @@ bool IsOpen() noexcept;
 int  LeftStickMagnitude() noexcept;
 void Toggle() noexcept;   // Insert edge
 void SetOpen(bool open) noexcept;   // force open/closed (first-run welcome pop)
+// [MEVR] Our menu uses the existing low-level rebind handoff: polling cannot see swallowed keys.
+void BeginKeyCapture() noexcept;
+int TakeCapturedKey() noexcept;
+void CancelKeyCapture() noexcept;
 
 // Give the menu the game's top-level window so it can subclass it and swallow mouse+keyboard messages
 // while open (so navigating the menu can't rotate/fire/move the game). Call once with the swapchain's HWND.

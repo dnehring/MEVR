@@ -50,7 +50,9 @@ Result Detector::Step(Sample const& s, unsigned maxTries, bool force) {
     r.tries = tries_;
     bool const valid = std::isfinite(s.now) && std::isfinite(s.interval) && std::isfinite(s.work) &&
         std::isfinite(s.period) && s.interval > 0 && s.interval <= .250 && s.work >= 0 && s.period > .001 && s.period < .050;
-    if (!valid || !s.eligible) {
+    bool const gpuHeadroom = std::isfinite(s.gpuWork) && std::isfinite(s.gpuAge) &&
+        s.gpuWork >= 0 && s.gpuWork < s.period * .8 && s.gpuAge >= 0 && s.gpuAge <= .250;
+    if (!valid || !s.eligible || !gpuHeadroom) {
         Suspend();
         if (!force) return r;
     } else {

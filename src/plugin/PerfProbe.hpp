@@ -26,6 +26,10 @@ namespace mevr::host::perf {
 // that take a GPU timestamp; nullptr uses the last one given.
 void Mark(int point, ID3D11DeviceContext* context = nullptr);
 void FrameSubmitted(std::int64_t period, bool shouldRender); // own frame's metadata, never N+1's wait
+struct GpuTiming {
+    double work = -1, sampledAt = 0; // seconds, QPC clock; unavailable until a complete, non-disjoint probe frame
+};
+GpuTiming LatestGpuTiming(); // render thread only; cached completed queries, never waits or starts a capture
 
 // Two marks around a scope.
 class ScopedMarks {

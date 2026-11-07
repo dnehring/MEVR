@@ -359,11 +359,23 @@ void Post(bool start, bool devices, std::string why) {
 void Apply(bool listen) {
     if (gResyncListen.exchange(false)) gListening = false;  // a restarted recognizer listens to nothing yet
     if (listen == gListening) return;
-    gListening = listen;
-    if (!gLoaded.load()) return;
+    // gListening is the last accepted request, not the desired input. Keep retrying a held input through restart/loading.
+    // The DLL then owns an accepted start until phase 3 has drained and StartListen succeeds (see its worker state machine).
+    if (!gLoaded.load() || gStarting.load()) return;
+    vr::voice::State state;
+    gFns.state(&state, sizeof state);
+    if (state.status != static_cast<std::uint8_t>(vr::voice::Status::Ready)) return;
+    static int lastRefused = 0;  // retried every frame while held: one line per new refusal
     int const err = gFns.listen(listen ? 1 : 0);
-    if (listen) ++gListens;
-    if (err != 0) log::Warn("voice: listen {} refused ({})", listen ? "on" : "off", err);
+    if (err == 0) {
+        lastRefused = 0;
+        gListening = listen;
+        if (listen) ++gListens;
+    } else {
+        if (err != lastRefused) log::Warn("voice: listen {} refused ({})", listen ? "on" : "off", err);
+        lastRefused = err;
+        return;
+    }
 }
 
 bool TakeRequest(fs::path const& path, std::string& text) {

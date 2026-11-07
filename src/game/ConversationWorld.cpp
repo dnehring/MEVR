@@ -647,7 +647,8 @@ void KeepInPlace(ue3::Object* pawn) {
         return;
     }
     std::uint64_t const now = GetTickCount64();
-    double const dt = gStayMs == 0 ? 0.0 : std::clamp(static_cast<double>(now - gStayMs) / 1000.0, 0.0, 0.1);
+    double const elapsed = gStayMs == 0 ? 0.0 : static_cast<double>(now - gStayMs) / 1000.0;
+    double const dt = std::clamp(elapsed, 0.0, 0.1); // cap our own slide/turn step, not the engine's elapsed movement
     gStayMs = now;
     double const nowS = static_cast<double>(now) / 1000.0;
     // Whom each one looks at (the game's own look-at list), else the speaker.
@@ -686,8 +687,10 @@ void KeepInPlace(ue3::Object* pawn) {
         Stay& st = *it;
         ik::Vec3 const previousKept = st.place;
         double const d = Dist(V(*at), st.place);
+        double const unexplained = st.walk.Phase() == cw::WalkPhase::Walking
+            ? cw::BeyondWalk(WalkPoint(st.place), WalkPoint(V(*at)), st.walk.Wanted(), st.speedUnitsPerS, elapsed) : d;
         bool const isShepard = t.actor == pawn || t.actor == gC.playerPawn;
-        if (d >= kJumpUnits && d < kStayMaxUnits) {
+        if (unexplained >= kJumpUnits && d < kStayMaxUnits) {
             ik::Vec3 const wanted = V(*at);  // capture BEFORE undoing the game's native placement
             bool const moved = PutAt(t.actor, st.place);
             EndWalk(st, "cancel", "a newer placement restarts the wait");

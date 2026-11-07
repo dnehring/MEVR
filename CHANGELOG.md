@@ -7,6 +7,13 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## 0.1.0 (2026-11-07)
 
+- Fixed sprint speed restoration touching a pawn destroyed during a level transition.
+- A power push started at the chest now casts when the arm extends, even if it has slowed below full casting speed.
+- Automatic Quest pacing recovery now requires fresh completed GPU timings with headroom, preserving attempts in GPU-heavy scenes.
+- With floor lock enabled, stopping VR no longer leaves the last tracked view fresh during flat play.
+- Voice: the keyboard key picker works with the menu open; held listen requests survive recognizer loading and transcript draining.
+- The controller guide now respects disabled power-wheel and casting-gesture settings.
+- Optional conversation walking tolerates an NPC's expected movement during a hitch before treating displacement as a teleport.
 - Fixed a Quest over Link dropping to half rate after a level load and staying there: after a load the game rendered both
   eyes in full for about 11 s before going back to one render a frame, which the headset's compositor answered with half
   rate. It now goes back within about half a second. A detector logs the stuck state and asks the runtime to recover.

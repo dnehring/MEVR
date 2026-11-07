@@ -40,6 +40,7 @@
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/FloorLock.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/ConversationWorld.hpp"
 #include "plugin/GalaxyHologram.hpp"
@@ -1447,6 +1448,7 @@ bool HudPanelCapturesEarlyUi() noexcept {
 }
 
 void OnSessionStopped() noexcept {
+    mevr::host::floor_lock::Reset();
     gArmed.store(false, std::memory_order_release);  // no OverlayLayers runs now to disarm it: the UI back to the frame
     gGalaxyEarlyUi.store(false, std::memory_order_release);
 }

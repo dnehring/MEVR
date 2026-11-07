@@ -60,7 +60,7 @@ std::atomic<std::uint64_t> gWantedAtMs{0};
 std::mutex gMoonshine;  // every moonshine_* call on the transcriber (the capture thread adds audio under it too)
 
 // The listen: 0 idle, 1 listening, 2 tail (the gesture ended, audio still kept), 3 draining (stopped, the final transcript
-// due), 4 final taken.
+// due). The worker returns 3 -> 0 after publishing the final transcript and end marker.
 std::atomic<int> gPhase{0};
 std::atomic<std::uint64_t> gTailUntilMs{0};
 std::atomic<std::uint64_t> gListenStartMs{0};
@@ -267,16 +267,32 @@ void StopStream() {
 int ApplyListen(int on, std::uint64_t askedMs);  // below, with MevrVoiceListen
 
 void WorkerMain() {
+    // Latest desired request wins. 0 idle -> 1 listen -> 2 tail -> 3 drain -> 0; re-squeeze in 2 resumes 1.
+    // Phase 3 is runnable without a wake. Retain a pending start through 3 (coalesced auto-reset signals are harmless),
+    // drain the old transcript first, then retry until StartListen succeeds. New off requests cancel a pending start.
+    int pending = -1;
+    std::uint64_t pendingAtMs = 0;
+    bool pendingLogged = false;  // one refusal line per pending request, not one per retry
     while (gRunning.load()) {
         int const phase = gPhase.load();
-        DWORD const wait = phase == 1 || phase == 2 ? static_cast<DWORD>(std::max(gConfig.intervalMs, 30)) : INFINITE;
-        if (gWanted.load() < 0) WaitForSingleObject(gWake, wait);
+        DWORD const wait = phase == 1 || phase == 2 || pending >= 0 ? static_cast<DWORD>(std::max(gConfig.intervalMs, 30)) : INFINITE;
+        if (phase != 3 && gWanted.load() < 0) WaitForSingleObject(gWake, wait);
         if (!gRunning.load()) break;
         if (int const wanted = gWanted.exchange(-1); wanted >= 0) {
+            pending = wanted;
+            pendingAtMs = gWantedAtMs.load();
+            pendingLogged = false;
+        }
+        if (pending >= 0) {
             std::lock_guard<std::mutex> lock(gMoonshine);
-            int const err = ApplyListen(wanted, gWantedAtMs.load());
-            if (err != 0) Log(1, std::format("voice: listen {} refused ({})", wanted != 0 ? "on" : "off", err));
-            continue;  // the phase changed: wait anew
+            if (gPhase.load() != 3) {
+                int const err = ApplyListen(pending, pendingAtMs);
+                if (err == 0) { pending = -1; continue; }
+                if (!pendingLogged) {
+                    pendingLogged = true;
+                    Log(1, std::format("voice: listen {} refused ({}); pending", pending != 0 ? "on" : "off", err));
+                }
+            }
         }
         int now = gPhase.load();
         // The tail also ends here, not only in the capture loop: with no microphone, or one unplugged mid-listen, no
@@ -323,7 +339,10 @@ void WorkerMain() {
         if (err != MOONSHINE_ERROR_NONE && err != MOONSHINE_ERROR_BUSY) {
             Log(1, std::format("voice: transcribe_stream failed: {}", moonshine_error_to_string(err)));
         }
-        if (finalCall) gPhase.store(0);
+        if (finalCall) {
+            gPhase.store(0);
+            if (pending >= 0) SetEvent(gWake); // run the deferred request immediately after the drain
+        }
     }
 }
 
@@ -614,6 +633,7 @@ void MevrVoiceShutdown() {
     if (gWake != nullptr) CloseHandle(gWake);
     gWake = nullptr;
     gPhase.store(0);
+    gWanted.store(-1);
     gStatus.store(voice::Status::Off);
     std::lock_guard<std::mutex> lock(gLinesMutex);
     gLines.clear();

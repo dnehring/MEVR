@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 #include "core/vr/FloorLock.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/HostView.hpp"
 #include "core/ik/BodyScale.hpp"
+
+#include <Windows.h>
 
 #include <cmath>
 #include <cstdio>
@@ -37,6 +40,20 @@ floor::State Sample(float height = 1.845f) {
 }
 
 int RunFloorLockTests() {
+    // Review context#1: rebuilding a corrected view cannot renew the source XR sample's age.
+    namespace hv = mevr::vr::host_view;
+    hv::State view;
+    view.valid = true;
+    std::uint64_t const sampledAt = GetTickCount64() - 1000;
+    for (int i = 0; i < 10; ++i) {
+        hv::Publish(view, sampledAt);
+        CHECK(!hv::Latest().valid);
+        CHECK(hv::Latest().timeMs == sampledAt);
+    }
+    hv::Publish(view);
+    CHECK(hv::Latest().valid);
+    hv::Reset();
+    CHECK(!hv::Latest().valid && hv::Latest().timeMs == 0);
     auto c = Ordinary();
     auto s = Sample();
     // The real camera chain: animated hook bone + mode hook - rotated mode offset, then Halcyon's framing + recentered lean.

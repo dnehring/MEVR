@@ -1,6 +1,9 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-07 adversarial-review fixes (full builds/deployment pending): run the per-finding checks in
+  [codex-review-2026-11-07.md](codex-review-2026-11-07.md), especially held voice through restart/drain, XR stop with floor
+  lock, sprint across loads, and GPU-heavy Quest pacing with/without completed probe evidence.
 - [ ] 2026-11-07 Quest pacing (quest-pacing): repeated identical loads on Meta OpenXR and SteamVR over Quest Link,
   `frameLoop = halcyon` then `full`; 30 s captures and `quest pacing:` logs/snapshot. Confirm sustained full cadence,
   refresh restored after a cycle, no blank frames or cine/menu pacing regressions; PS VR2 default regression (research/22).

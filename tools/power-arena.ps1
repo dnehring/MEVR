@@ -27,6 +27,27 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+function Enable-DebugRequests([string]$Text) {
+    # Like core/Ini: case-insensitive names, whitespace-tolerant headers, first section and first key win.
+    $headers = [regex]::Matches($Text, '(?m)^[ \t]*\[([^\]\r\n]+)\][^\r\n]*(?:\r?\n|\z)')
+    for ($i = 0; $i -lt $headers.Count; ++$i) {
+        $header = $headers[$i]
+        if ($header.Groups[1].Value.Trim() -ine 'Debug') { continue }
+        $start = $header.Index + $header.Length
+        $end = if ($i + 1 -lt $headers.Count) { $headers[$i + 1].Index } else { $Text.Length }
+        $body = $Text.Substring($start, $end - $start)
+        $key = [regex]::Match($body, '(?im)^[ \t]*requests[ \t]*=[^\r\n]*')
+        if ($key.Success) {
+            $body = $body.Substring(0, $key.Index) + 'requests = 1' + $body.Substring($key.Index + $key.Length)
+        } else {
+            $prefix = if ($header.Value.EndsWith("`n")) { '' } else { "`r`n" }
+            $body = $prefix + "requests = 1`r`n" + $body
+        }
+        return $Text.Substring(0, $start) + $body + $Text.Substring($end)
+    }
+    return $Text.TrimEnd() + "`r`n`r`n[Debug]`r`nrequests = 1`r`n"
+}
+
 $game = $null
 foreach ($root in @("${env:ProgramFiles(x86)}\Steam\steamapps\common\Mass Effect Legendary Edition", "$env:ProgramFiles\EA Games\Mass Effect Legendary Edition")) {
     if (Test-Path "$root\Game\ME1\Binaries\Win64\MassEffect1.exe") { $game = "$root\Game\ME1"; break }
@@ -100,11 +121,8 @@ Write-Host "backed up the saves and settings to $backup"
 # 2. The console for the players' build ([Debug] requests = 1; -Restore puts the file back).
 $ini = "$asi\LE1MEVR.ini"
 $text = [IO.File]::ReadAllText($ini)
-if ($text -notmatch '(?m)^\s*requests\s*=\s*1') {
-    if ($text -match '(?m)^\[Debug\]\r?$') { $text = $text -replace '(?m)^(\[Debug\]\r?\n)', "`$1requests = 1`r`n" }
-    else { $text = $text.TrimEnd() + "`r`n`r`n[Debug]`r`nrequests = 1`r`n" }
-    [IO.File]::WriteAllText($ini, $text)
-}
+$updated = Enable-DebugRequests $text
+if ($updated -cne $text) { [IO.File]::WriteAllText($ini, $updated) }
 
 # 3. The game, the landing, on foot.
 & "$PSScriptRoot\launch-game.ps1" -Steam | Select-Object -Last 1 | Write-Host

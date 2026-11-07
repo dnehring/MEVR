@@ -15,6 +15,7 @@ struct Sample {
     double now = 0, interval = 0, work = 0, period = 0;
     bool eligible = false;
     std::uint64_t level = 0; // stable world identity; zero means unknown, never replenishes the budget
+    double gpuWork = -1, gpuAge = -1; // seconds; completed GPU span and age at this sample, negative means unavailable
 };
 enum class Event { None, Entering, Recovering, Recovered, GaveUp };
 struct Result {

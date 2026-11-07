@@ -259,7 +259,7 @@ void Settings::Read(menu::Values& v) {
         // A section missing here makes its rows snap back to their defaults after a write (the Hacking row's bug, f1f8d8b).
         for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort",
                                  L"Upscale", L"Cinematics", L"WorldUi", L"Galaxy", L"Hud", L"Interact", L"Vent", L"Mako", L"Cockpit",
-                                 L"Squad", L"Performance", L"SystemSettings", L"Voice", L"Display"}) {
+                                 L"Squad", L"Performance", L"SystemSettings", L"Voice", L"Display", L"PowerWheel"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -1038,14 +1038,12 @@ void Settings::Command(std::string const& name, std::string const& argument, men
             Write("steamvr_smoothing", v, true);
         }
     } else if (name == "voice_key_set") {
-        // The next key pressed on the keyboard (Tick), within 10 s; keys down now don't count until let go.
+        // The hook sees keydown before it swallows it; GetAsyncKeyState cannot capture with the menu open.
         keyWaitMs_ = Now();
-        keysDown_.fill(false);
-        for (int vk = 8; vk <= 0xFE; ++vk) {
-            keysDown_[static_cast<std::size_t>(vk)] = MELEVR::MevrBridge::KeyDown(vk);
-        }
+        MELEVR::Menu::BeginKeyCapture();
     } else if (name == "voice_key_clear") {
         keyWaitMs_ = 0;
+        MELEVR::Menu::CancelKeyCapture();
         Put("Voice", "key", "0", true);
         voice::SetKey(0);
     } else if (name == "voice_restart") {
@@ -1175,19 +1173,15 @@ void Settings::Tick(vr::controllers::State const& live, bool headValid, XrVector
     if (keyWaitMs_ != 0) {
         if (now - keyWaitMs_ > 10000) {
             keyWaitMs_ = 0;
+            MELEVR::Menu::CancelKeyCapture();
         } else {
-            for (int vk = 8; vk <= 0xFE; ++vk) {
-                bool const down = MELEVR::MevrBridge::KeyDown(vk);
-                bool const was = keysDown_[static_cast<std::size_t>(vk)];
-                keysDown_[static_cast<std::size_t>(vk)] = down;
-                int const key = down && !was ? ms::VoiceKeyFromPress(vk, MELEVR::Config::Get().menuKey) : 0;
-                if (key != 0) {
-                    keyWaitMs_ = 0;
-                    Put("Voice", "key", std::to_string(key), true);
-                    voice::SetKey(key);
-                    log::Info("main menu: the voice orders' hold-to-talk key is {} ({})", KeyName(key), key);
-                    break;
-                }
+            int const key = ms::VoiceKeyFromPress(MELEVR::Menu::TakeCapturedKey(), MELEVR::Config::Get().menuKey);
+            if (key != 0) {
+                keyWaitMs_ = 0;
+                MELEVR::Menu::CancelKeyCapture();
+                Put("Voice", "key", std::to_string(key), true);
+                voice::SetKey(key);
+                log::Info("main menu: the voice orders' hold-to-talk key is {} ({})", KeyName(key), key);
             }
         }
     }
@@ -1211,6 +1205,7 @@ bool Settings::CancelPending() {
     }
     if (keyWaitMs_ != 0) {
         keyWaitMs_ = 0;
+        MELEVR::Menu::CancelKeyCapture();
         cancelled = true;
     }
     return cancelled;
@@ -1219,6 +1214,7 @@ bool Settings::CancelPending() {
 void Settings::Closed() {
     measure_ = Measure::Idle;
     keyWaitMs_ = 0;
+    MELEVR::Menu::CancelKeyCapture();
     resetArmedMs_ = 0;
     diagMsg_.clear();
     Flush(true);

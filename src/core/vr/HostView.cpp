@@ -15,10 +15,14 @@ std::uint64_t gSequence = 0;
 } // namespace
 
 void Publish(State const& state) {
+    Publish(state, GetTickCount64());
+}
+
+void Publish(State const& state, std::uint64_t sampledAtMs) {
     std::lock_guard lock(gMutex);
     gLatest = state;
     gLatest.sequence = ++gSequence;
-    gLatest.timeMs = GetTickCount64();
+    gLatest.timeMs = sampledAtMs;
 }
 
 void Mirror(State const& state) {

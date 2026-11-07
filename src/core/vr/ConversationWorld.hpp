@@ -127,6 +127,8 @@ struct WalkStep {
     bool arrived = false;
 };
 WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double dtS);
+// Distance outside the segment a walk could have covered since the last observation; tolerates collision stopping short.
+double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, double elapsedS);
 
 // The set pieces (research/59 "The scan"): the 18 conversations whose lines are a quarter or more authored camera work (a
 // director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...), composed for a camera elsewhere.

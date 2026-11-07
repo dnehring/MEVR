@@ -139,6 +139,7 @@ Capture gCapture;
 
 ID3D11DeviceContext* gContext = nullptr;  // the game's immediate context: lives as long as the game
 fp::Frame gFrame;                          // being filled
+GpuTiming gGpuTiming;
 
 constexpr std::size_t kGpuPoints = fp::kGpuPoints.size();
 
@@ -278,6 +279,15 @@ bool Collect(GpuSlot& slot) {
         fp::Frame& frame = gCapture.frames[slot.frame];
         frame.gpu = ticks;
         frame.gpuValid = !dj.Disjoint && dj.Frequency != 0;
+        auto const end = static_cast<std::size_t>(fp::GpuIndex(fp::kEndFrameBegin));
+        if (frame.gpuValid && slot.issued.front() && slot.issued[end] && ticks[end] >= ticks.front()) {
+            double const sampledAt = static_cast<double>(frame.qpc[fp::kStart]) / QpcFrequency();
+            if (sampledAt > gGpuTiming.sampledAt) {
+                // Scene, overlays and eye copies before submission, including any idle gaps: a conservative bound.
+                // Exclude xrEndFrame/next-frame waits, which measure runtime pacing rather than our GPU work.
+                gGpuTiming = {static_cast<double>(ticks[end] - ticks.front()) / static_cast<double>(dj.Frequency), sampledAt};
+            }
+        }
     }
     return true;
 }
@@ -632,6 +642,8 @@ void Mark(int point, ID3D11DeviceContext* context) {
     }
     Record(point, context);
 }
+
+GpuTiming LatestGpuTiming() { return gGpuTiming; }
 
 void FrameSubmitted(std::int64_t period, bool shouldRender) {
     if (!OnRenderThread()) return;

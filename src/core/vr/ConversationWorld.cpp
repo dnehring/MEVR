@@ -206,6 +206,15 @@ bool MarkWalk::StartIfSettled(Vec3 standing, double nowS, double settleS, double
     return true;
 }
 
+double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, double elapsedS) {
+    Vec3 const end = StepTowardMark(standing, mark, speedUnitsPerS, elapsedS).place;
+    Vec3 const delta{end.x - standing.x, end.y - standing.y, end.z - standing.z};
+    double const lengthSq = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+    double const along = lengthSq > 1e-12 ? std::clamp(((actual.x - standing.x) * delta.x +
+        (actual.y - standing.y) * delta.y + (actual.z - standing.z) * delta.z) / lengthSq, 0.0, 1.0) : 0.0;
+    return MarkDistance(actual, {standing.x + along * delta.x, standing.y + along * delta.y, standing.z + along * delta.z});
+}
+
 WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double dtS) {
     double const distance = MarkDistance(standing, mark);
     if (distance <= 1e-6) {

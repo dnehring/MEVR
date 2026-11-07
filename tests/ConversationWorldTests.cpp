@@ -194,6 +194,14 @@ void TestMarkWalk() {
 }
 
 void TestWalkStep() {
+    // Review game#2: 0.25 s at 140 units/s is legitimate travel, even past the 30-unit teleport threshold.
+    CHECK(Close(cw::BeyondWalk({}, {35, 0, 0}, {300, 0, 0}, 140, .25), 0));
+    CHECK(Close(cw::BeyondWalk({}, {10, 0, 0}, {300, 0, 0}, 140, .25), 0)); // collision shortened it
+    CHECK(cw::BeyondWalk({}, {65, 0, 0}, {300, 0, 0}, 140, .25) >= 30); // too far
+    CHECK(cw::BeyondWalk({}, {0, 35, 0}, {300, 0, 0}, 140, .25) >= 30); // wrong direction
+    CHECK(cw::BeyondWalk({}, {-35, 0, 0}, {300, 0, 0}, 140, .25) >= 30);
+    CHECK(Close(cw::BeyondWalk({}, {35, 0, 0}, {300, 0, 0}, 140, 0), 35));
+    CHECK(Close(cw::BeyondWalk({}, {35, 0, 0}, {10, 0, 0}, 140, .25), 25)); // no allowance past the mark
     // 1.4 m/s at 100 units/m; a diagonal 3D step keeps that speed.
     cw::WalkStep const step = cw::StepTowardMark({}, {300.0, 400.0, 0.0}, 140.0, 0.1);
     CHECK(!step.arrived && Close(step.place.x, 8.4) && Close(step.place.y, 11.2));

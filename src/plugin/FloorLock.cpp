@@ -28,8 +28,10 @@ struct Pending {
     vr::floor::State floor;
     fl::Context context;
     std::uint64_t arm = 0;
+    std::uint64_t sequence = 0;
 };
 Pending gPending;
+std::uint64_t gSequence = 0; // gMutex; also rejects a game-side publication racing session stop
 // Game/render-build thread only; the replay uses precisely this pair's immutable inputs.
 Pending gPair;
 fl::Result gPairResult;
@@ -62,6 +64,7 @@ bool Enabled() {
 void Queue(vr::host_view::State const& view, vr::floor::State const& floor, bool ordinaryWorld) {
     Pending p;
     p.view = view;
+    p.view.timeMs = GetTickCount64();
     p.floor = floor;
     p.arm = MELEVR::RenderHook::GetHeadArmSeq();
     p.context.world = view.valid && ordinaryWorld;
@@ -69,8 +72,16 @@ void Queue(vr::host_view::State const& view, vr::floor::State const& floor, bool
     p.context.menu = MELEVR::Menu::IsOpen() || MELEVR::MevrBridge::MainMenuOpen() || calibration::Active();
     std::lock_guard lock(gMutex);
     p.context.enabled = gEnabled;
+    p.sequence = ++gSequence;
     gPending = p;
-    if (!gEnabled) vr::host_view::Publish(view); // exact legacy publication point, with no corrected centre
+    if (!gEnabled) vr::host_view::Publish(p.view, p.view.timeMs); // legacy publication point, no corrected centre
+}
+
+void Reset() {
+    std::lock_guard lock(gMutex);
+    gPending = {};
+    gPawn = {};
+    vr::host_view::Reset();
 }
 
 float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ,
@@ -92,6 +103,10 @@ float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float fo
         gPair.view.offsetForward = *forward;
         double const commonZ = *right * rightZ + *up * upZ + *forward * forwardZ;
         std::uint64_t const now = GetTickCount64();
+        if (gPair.view.timeMs == 0 || now - gPair.view.timeMs > 250) {
+            gPair.view.valid = false;
+            gPair.context.world = false;
+        }
         gPairResult = fl::Correct(gPair.context, gPair.floor, now, rawCameraZ, commonZ, gPair.view.unitsPerMeter);
         auto& view = gPair.view;
         view.floorLocked = gPairResult.active;
@@ -101,7 +116,10 @@ float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float fo
         view.stageEyeM = gPair.floor.eyeHeight;
         view.floorSequence = gPair.floor.sequence;
         view.floorCorrection = gPairResult.correction;
-        if (gPair.context.enabled) vr::host_view::Publish(view);
+        if (gPair.context.enabled) {
+            std::lock_guard lock(gMutex);
+            if (gPair.sequence == gPending.sequence) vr::host_view::Publish(view, view.timeMs);
+        }
         if (fl::Applies(gPair.context) && !fl::ValidFloor(gPair.floor, now) && !gWarned) {
             gWarned = true;
             log::Warn("floor lock: no fresh valid STAGE/LOCAL_FLOOR sample; using the old camera behaviour");
