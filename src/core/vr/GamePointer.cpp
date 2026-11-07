@@ -28,6 +28,7 @@ Output Pointer::Release() {
     latched_[0] = latched_[1] = false;
     touchArmed_[0] = touchArmed_[1] = false;
     touchLatched_[0] = touchLatched_[1] = false;
+    touchConsumed_[0] = touchConsumed_[1] = false;
     touchWaiting_ = false;  // a touch not yet decided is dropped (no click); a tap's down already sent gets its up above
     dragging_ = false;
     clickUpNext_ = false;
@@ -96,6 +97,9 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
         }
         if (!t.near) {
             touchArmed_[i] = false;
+        }
+        if (!touchLatched_[i]) {
+            touchConsumed_[i] = false;
         }
     }
     // A fingertip near the quad takes over from the rays (the hand that presses, else the nearer one), unless a trigger's press
@@ -188,6 +192,13 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
                 pressByTouch_ = true;
                 clickUpNext_ = true;
                 pinned = true;
+            } else if (t.d < -settings_.touchPokeDepthM) {
+                touchWaiting_ = false;  // pushed on through: a poke, its click where it touched, once
+                touchConsumed_[touchHand_] = true;
+                pressing_ = true;
+                pressByTouch_ = true;
+                clickUpNext_ = true;
+                pinned = true;
             } else if (std::sqrt(du * du + dv * dv) > settings_.touchDragM) {
                 touchWaiting_ = false;
                 dragging_ = true;
@@ -203,7 +214,21 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
             }
         }
     } else if (touchHand >= 0) {
-        if (touchLatched_[hand_] && settings_.touchScroll) {
+        if (touchLatched_[hand_] && settings_.touchClickOnContact) {
+            if (!touchConsumed_[hand_]) {
+                touchConsumed_[hand_] = true;  // the click, where it touched
+                waitU_ = std::clamp(touches[hand_].u, 0.0f, 1.0f);
+                waitV_ = std::clamp(touches[hand_].v, 0.0f, 1.0f);
+                pressing_ = true;
+                pressByTouch_ = true;
+                clickUpNext_ = true;
+                pinned = true;
+            } else {
+                pressing_ = false;
+            }
+        } else if (touchLatched_[hand_] && touchConsumed_[hand_]) {
+            pressing_ = false;  // a poke that already clicked: nothing more until it pulls back
+        } else if (touchLatched_[hand_] && settings_.touchScroll) {
             touchWaiting_ = true;
             touchHand_ = hand_;
             waitS_ = 0.0f;

@@ -83,7 +83,7 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
 - Use doors, lockers and people by looking at them and pressing A; the prompt appears at the object.
 - Your powers on a wheel at your left hand: hold X and it opens around your palm with your biotic, tech and combat
   powers; move your hand toward one (or push the left stick toward it) and let go of X to equip it. Tap X instead and
-  it stays open until you pinch the left trigger.
+  it stays open until you pinch the left trigger. Its light comes from the omni-tool on your hand.
   X no longer throws a grenade the game's way on foot (throw real ones from your chest).
 - Cast with your hand: with the wheel closed, raise your left arm and point it at an enemy; orange brackets lock onto the
   one nearest your hand's line (they stay on it while you sway, and through a moment behind cover). Point roughly and the
@@ -109,6 +109,8 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
 - Smooth turning (the game's own), or snap turns of 30, 45 or 60 degrees.
 - An optional vignette while turning or moving; walk toward where your head or your left hand points.
 - Recenter with R or a double-click of the right stick; a badly tilted start is fixed by recentering.
+- Sprinting is a faster run: the camera and your gun stay as they are, you can still shoot, and it lasts about 6 seconds
+  before it needs a rest (`[Hands] sprint = game` gives the game's own sprint back).
 
 ### The Mako
 - When the Mako's hull is badly damaged, the cockpit's lights turn red and flash like a warning beacon until it's repaired.

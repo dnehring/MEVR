@@ -60,6 +60,17 @@ constexpr std::int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // o
 constexpr std::uint64_t kSettingsEveryMs = 2000;
 constexpr float kTipAheadM = 0.035f;  // the index fingertip ahead of the aim pose (plugin/GamePointer's touchTipM)
 
+// The rail's buttons by touch (2026-11-06, the owner's QA: only a perfectly aligned poke selected anything, and the hand went
+// through without a feel of the surface): a click the moment the fingertip reaches a button, where it touched (a poke that
+// slides along the surface as it pushes in used to turn into a scroll and never click), 2 cm of margin around the rail.
+vr::game_pointer::Settings RailPointerSettings() {
+    vr::game_pointer::Settings s;
+    s.touchClickOnContact = true;
+    s.touchScroll = false;
+    s.touchMarginM = 0.02f;
+    return s;
+}
+
 // ---- Any thread ----
 std::atomic<bool> gOpen{false};         // the player opened it (the tap, the main menu)
 std::atomic<bool> gOwnsTriggers{false};
@@ -116,7 +127,8 @@ struct State {
     XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
     bool needRender = true;
     bool shown = false;
-    gp::Pointer pointer;
+    gp::Pointer pointer{RailPointerSettings()};
+    float behindBuzzS = 0.0f;  // the fingertip through the surface: a faint buzz every 0.08 s, the surface's feel
     rail::Tap tap;
     std::optional<vr::world_ui::Panel> lastPanel;  // where the rail stood last frame (the tap isn't taken while going for it)
     std::uint64_t tapsHeld = 0;                    // frames a fingertip near a panel kept the tap off
@@ -559,6 +571,12 @@ void PointerStep(rail::Rail const& at, float dt) {
     if (out.left) {
         context->ProcessMouseLeave();
         g.needRender = true;
+    }
+    // Through the surface the hand can't be stopped, so it's felt: a faint buzz while the fingertip is behind it.
+    g.behindBuzzS = std::max(0.0f, g.behindBuzzS - dt);
+    if (out.touch && out.touchDistance < 0.0f && g.behindBuzzS <= 0.0f) {
+        halcyon::RequestHaptic(out.hand, 0.01f, 0.15f, 0.0f);
+        g.behindBuzzS = 0.08f;
     }
     gOwnsTriggers.store(out.hit, std::memory_order_relaxed);
 }

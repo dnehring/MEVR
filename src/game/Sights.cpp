@@ -155,6 +155,7 @@ std::string gLoggedStatus;
 std::uint32_t gHostView = 0;
 std::uint32_t gLoggedHostView = 0;
 bool gScopeUp = false;  // the held gun's sight is a scope and the host shows its picture
+bool gDotRaised = false;   // the gun raised toward the eye (RaisedWeight, with hysteresis): kRaised for the host
 bool gAtShoulder = false;  // a long gun at the calibrated shoulder, looking along it (research/21 section 20)
 unsigned gShoulderOns = 0;  // for the heartbeat
 bool gInZone = false;       // ik::Shouldered's last answer (its own hysteresis)
@@ -589,6 +590,7 @@ void ResetAssist(char const* why) {
     gLensRaised = false;
     gAtShoulder = false;
     gInZone = false;
+    gDotRaised = false;
     gFastSpring = false;
 }
 
@@ -662,6 +664,7 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, vr::aim_ra
     // The model's lens part (the sniper's glow) hides whenever the gun is raised, not only while the picture is up: a gun
     // held out past the picture's reach still showed its glowing lens to the eye (research/21 section 19).
     float const raisedNow = gApproach * gDistanceWeight;
+    gDotRaised = gDotRaised ? raisedNow >= kLensRaisedOff : raisedNow >= kLensRaisedOn;
     gLensRaised = scope && (gAds || (gLensRaised ? raisedNow >= kLensRaisedOff : raisedNow >= kLensRaisedOn));
     sv::Assist assist = settings.assist;
     if (!scope) {
@@ -1027,7 +1030,8 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 // A dot on the game's solid housing (the assault rifles' boxes, Optic): seen through (research/21 section 17).
                 bool const window = settings.dotWindow && !scope && gun.autoPlace && gModel.opticApplies && gModel.weapon == weapon::Key();
                 out.flags = (settings.frame && !scope ? sv::kFrame : 0u) | (settings.replaceRing ? sv::kReplaceRing : 0u) |
-                    (settings.otherEye ? sv::kOtherEye : 0u) | (window ? sv::kWindow : 0u) | (gAtShoulder ? sv::kShouldered : 0u);
+                    (settings.otherEye ? sv::kOtherEye : 0u) | (window ? sv::kWindow : 0u) | (gAtShoulder ? sv::kShouldered : 0u) |
+                    (gDotRaised ? sv::kRaised : 0u);
                 out.eyeBox = std::max(settings.eyeBoxUnits, settings.windowUnits) / unitsPerMeter;
                 out.center = sv::Place(ray.origin, ray.direction, *top, placed.back / unitsPerMeter, placed.height / unitsPerMeter,
                     placed.side / unitsPerMeter);
@@ -1395,6 +1399,7 @@ void Shutdown(bool exiting) {
     gLoggedHostView = 0;
     gScopeUp = false;
     gLensRaised = false;
+    gDotRaised = false;
     gAimedShotsTotal = 0;
     gLoggedAimed = false;
     gSpring.Reset();
