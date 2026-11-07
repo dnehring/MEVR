@@ -265,6 +265,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   while you shift your cheek; lowered off the shoulder they go. (research/21 section 20)
 - [ ] The rifle's red dot at an ordinary raised hold (not pressed in): it shows, on the sight rather than beside it, and
   the shots land near it. (research/21 section 21)
+- [ ] The rifle's outline (ring) and its red dot always together at any raised hold; pushed in past the window the dot
+  stays; lowered, both go. (research/21 section 22)
 - [ ] Raise the sniper rifle: the picture only at the eye (never at a casual hold), no on/off flicker, the eye reaches
   the eyepiece; lowered, the gun eases back. (research/21 section 15)
 - [ ] Under the scope, flick the right stick forward and back: the zoom steps 3.5x / 7x with a tick; the reticle reads.

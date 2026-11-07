@@ -7259,6 +7259,23 @@ void TestSightWindow() {
     }
     CHECK(!s::WindowView(*lens, {0.0f, 0.0f, -0.31f}, 0.02f, 1.0f));  // in front of the window
     CHECK(!s::WindowView(*lens, {0.0f, 0.0f, 0.75f}, 0.02f, 1.0f));   // 1.05 m back
+    // A raised gun's dot (research/21 section 22): the nearer eye however far off the line, kept unless the other is 2 cm
+    // nearer; an eye too far back or past the floor doesn't count.
+    {
+        s::Line ls[2];
+        ls[0].lateral = 0.30f;
+        ls[0].along = 0.3f;
+        ls[1].lateral = 0.25f;
+        ls[1].along = 0.3f;
+        CHECK(s::NearestEye(ls, -0.08f, 1.2f, -1, 0.02f) == 1);
+        CHECK(s::NearestEye(ls, -0.08f, 1.2f, 0, 0.02f) == 1);   // 5 cm nearer: it switches
+        ls[1].lateral = 0.29f;
+        CHECK(s::NearestEye(ls, -0.08f, 1.2f, 0, 0.02f) == 0);   // 1 cm nearer: kept
+        ls[0].along = 1.5f;
+        CHECK(s::NearestEye(ls, -0.08f, 1.2f, 0, 0.02f) == 1);   // the current eye too far back
+        ls[1].along = -0.2f;
+        CHECK(s::NearestEye(ls, -0.08f, 1.2f, 0, 0.02f) == -1);
+    }
     // The dot kept inside its window (research/21 section 21): on the line the true dot; 8 cm off, the dot where the eye's
     // ray crosses the window at 0.8 of its radius, toward the true dot's side; past the window the true dot.
     {

@@ -46,7 +46,7 @@ constexpr float kMaxAlong = 1.0f;      // ...nor one further back than this (hel
 // The dot itself (collimated, 50 m out) still shows to an eye up to this far PAST the window (the gun pulled into the
 // shoulder: the window behind the eye, research/21 section 19); the window's picture needs the eye behind it (kMinAlong).
 constexpr float kDotMinAlong = -0.08f;
-constexpr float kShoulderBox = 0.10f;  // the dot's eye box at the calibrated shoulder or raised (meters)
+constexpr float kEyeSwitchM = 0.02f;   // a raised gun's dot goes to the other eye only when it's this much nearer the line
 constexpr float kDotInWindow = 0.8f;   // a dot kept inside its window: at most this much of the radius from the centre
 constexpr float kScopeBox = 2.0f;      // lens radii: an eye this far off the line still sees the eyepiece (dark)
 constexpr float kPi = 3.14159265358979f;
@@ -944,10 +944,14 @@ Output Layers(Frame const& frame) {
             // other eye looks past it).
             // At the calibrated shoulder (kShouldered, research/21 section 20) the eye is on the line by the calibration: a
             // wider box, so a cheek weld a little off still shows the dot.
-            // Raised (kRaised, section 21) the same: the dot shows to an eye a little off the line, kept inside the window.
+            // Raised or shouldered (kRaised, kShouldered; research/21 section 22, the user: the outline showed without its dot):
+            // the dot and its outline come together. The nearer eye gets the dot however far off the line it is, kept inside
+            // the window; not raised, the eye box as before and the outline only with a dot.
             bool const wide = (sight.flags & (sv::kShouldered | sv::kRaised)) != 0;
-            float const box = std::max({sight.eyeBox, sight.radius, wide ? kShoulderBox : 0.0f});
-            gDotEye = gDotHold.Update(sv::AimingEye(gLines, box, kDotMinAlong, kMaxAlong, gDotEye), GetTickCount64());
+            float const box = std::max(sight.eyeBox, sight.radius);
+            int const chosen = wide ? sv::NearestEye(gLines, kDotMinAlong, 1.2f * kMaxAlong, gDotEye, kEyeSwitchM)
+                                    : sv::AimingEye(gLines, box, kDotMinAlong, kMaxAlong, gDotEye);
+            gDotEye = gDotHold.Update(chosen, GetTickCount64());
             bool const on[2] = {gDotEye == 0, gDotEye == 1};
             // A solid housing (kWindow, research/21 section 17): that eye sees the world through the window, the other eye's
             // image at 1x (the same copy as the scope's, taken as that image is released), drawn behind the ring and the dot.
@@ -961,8 +965,8 @@ Output Layers(Frame const& frame) {
                 windowLens = sv::MakeLens(sight.center, sight.axis, sight.up, sight.radius);
                 windowView = windowLens ? sv::WindowView(*windowLens, frame.eyes[gDotEye].position, kMinAlong, 1.2f * kMaxAlong) : std::nullopt;
             }
-            bool const wantRing = (sight.flags & sv::kFrame) != 0;
             bool const wantDot = on[0] || on[1];
+            bool const wantRing = (sight.flags & sv::kFrame) != 0 && (wide || wantDot);
             DotLayout const layout = LayoutFor(sight);
             // One image of the sight's swapchain for all three (research/21 section 18): the window's picture, the ring, the dot.
             if ((windowView || wantRing || wantDot) && BeginSight(frame, sight, layout)) {

@@ -1065,3 +1065,19 @@ real red dot's parallax would be; on the line nothing changes. The window line i
 (`the dot kept inside its window N frames so far`).
 
 **[verify] in the headset:** the rifle's dot at an ordinary raised hold, on the sight, not beside it; the shots land near it.
+
+## 22. The dot comes with its outline (2026-11-07)
+
+**Report (user):** "I see the scope outline that you draw but I don't see the red dot until I push in too much (at which point
+the scope outline you created isn't visible anymore)". The two had different rules: the ring (`kFrame`) was drawn for both eyes
+whenever the rifle was held, the dot only for an eye inside the eye box (6 cm; 10 cm raised, section 21), and the user's hold
+put the eye 6-8 cm off the line. Pushed in, the eye reached the box while the ring, at the window, grew past the view or went
+behind the eye. (The session's log was overwritten by later runs; whether that build had section 21 isn't known.)
+
+**Built (chosen by the user; host `plugin/SightLayers`, `vr::sights::NearestEye`, unit-tested in `TestSightWindow`):** while the
+gun is raised or shouldered (`kRaised`, `kShouldered`), the dot goes to the eye nearer the sight line however far off it is
+(behind the sight, up to 1.2 m, or 8 cm past it; the other eye takes over only 2 cm nearer), kept inside the window (section 21);
+the ring is drawn only with the gun raised or a dot up, so the outline never shows without its dot. Not raised: the 6 cm box as
+before. The window over a solid housing follows the dot's eye as before.
+
+**[verify] in the headset:** at any raised hold, the outline and the dot together; pushed in past the window the dot stays.
