@@ -75,6 +75,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HeadSim.hpp"
+#include "TestTemp.hpp"
 
 #include <Windows.h>
 #include <objbase.h>
@@ -2614,9 +2615,8 @@ void TestPoseRecording() {
     Recording empty;
     CHECK(!Sample(empty, 0, true, s));
 
-    // Through a real file: the Writer streams what Load reads back (left in %TEMP% for
-    // tools/mevrrec.py to read).
-    std::filesystem::path const file = std::filesystem::temp_directory_path() / "mevr-tests-roundtrip.mevrrec";
+    // Through a real file: the Writer streams what Load reads back (in this run's own temp folder, tests/TestTemp.hpp).
+    std::filesystem::path const file = mevr::tests::TempRoot() / "mevr-tests-roundtrip.mevrrec";
     {
         Writer writer;
         CHECK(writer.Open(file, 42));
@@ -3095,7 +3095,7 @@ void TestPng() {
                 static_cast<std::uint8_t>(255 - x * 40)));
         }
     }
-    std::filesystem::path const file = std::filesystem::temp_directory_path() / "mevr-tests-snapshot.png";
+    std::filesystem::path const file = mevr::tests::TempRoot() / "mevr-tests-snapshot.png";
     std::string error;
     CHECK(mevr::png::Write(file, 5, 3, pixels.data(), &error));
     int width = 0, height = 0;
@@ -10189,8 +10189,7 @@ void TestMenuSettings() {
     CHECK(due.size() == 1 && due[0].value == "2.0" && pending.Empty());
 
     // Written key by key into a real file: the rest of it (other keys, comments, other sections) stays as it was.
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const temp = mevr::tests::TempRoot();
     std::filesystem::path const file = std::filesystem::path(temp) / L"mevr-menu-settings-test.ini";
     std::ofstream(file) << "; ME VR Attempt settings\n[Hands]\n; how the hands sit\nhandPitch = 0\nphysicalCrouch = 1\n\n[Sights]\npistol = dot\n";
     pending.Put("Hands", "physicalCrouch", "0", 0);
@@ -11768,6 +11767,7 @@ int main() {
     TestTestRequest();
     TestFrameProbe();
     TestPng();
+    mevr::tests::RemoveTempRoot();
     if (gFailures == 0) {
         std::printf("all tests passed\n");
     }

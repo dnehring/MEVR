@@ -17,11 +17,13 @@
 #include "install/Updates.hpp"
 #include "install/Voice.hpp"
 #include "loader/LoaderCore.hpp"
+#include "TestTemp.hpp"
 
 #include <Windows.h>
 #include <shellapi.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -29,6 +31,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -45,6 +48,16 @@ void Check(bool ok, char const* what, int line) {
     }
 }
 #define ICHECK(expr) Check((expr), #expr, __LINE__)
+
+// An Install / Uninstall / Repair... that failed prints its errors, so a failure says which file and why.
+bool Ok(mevr::install::Outcome const& outcome) {
+    if (!outcome.ok) {
+        for (std::string const& e : outcome.errors) {
+            std::printf("  its error: %s\n", e.c_str());
+        }
+    }
+    return outcome.ok;
+}
 
 void Write(fs::path const& file, std::string const& text) {
     fs::create_directories(file.parent_path());
@@ -605,8 +618,7 @@ void TestNetworkPaths() {
     ICHECK(http::EffectiveUrl("https://github.com/x") == "https://github.com/x");
     // Without a test server, plain http is refused before anything is sent.
     ICHECK(http::Get("http://127.0.0.1:1/x").error == "not an https URL");
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const temp = mevr::tests::TempRoot();
     fs::path const target = fs::path(temp) / L"mevr-http-test" / L"x.bin";
     ICHECK(http::Download("http://127.0.0.1:1/x", target, nullptr, nullptr) == "not an https URL" && !fs::exists(target));
     ICHECK(http::ErrorText(12029).find("couldn't connect") == 0 && http::ErrorText(12002).find("no answer in time") == 0);
@@ -682,8 +694,7 @@ void TestNetworkPaths() {
 // undo, then the Installer's whole Install, RestoreSettings and Uninstall on it.
 void TestTransaction() {
     using namespace mevr::install;
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const temp = mevr::tests::TempRoot();
     fs::path const root = fs::path(temp) / L"mevr-install-test" / L"Mass Effect Legendary Edition";
     std::error_code ec;
     fs::remove_all(root.parent_path(), ec);
@@ -791,7 +802,7 @@ void TestTransaction() {
         // The existing MELEVR.ini kept, with the fixes.
         std::string const h = Read(layout.Full(paths::kHalcyonIni));
         ICHECK(ini::Get(h, "profile:Default", "sfr2ResX") == std::optional<std::string>("3072"));
-        ICHECK(RecordPack(layout, "alot-le1", "ALOT for ME1").ok);
+        ICHECK(Ok(RecordPack(layout, "alot-le1", "ALOT for ME1")));
         ICHECK(ReadStatus(root, "Steam").packs.size() == 1);
         Outcome const back = RestoreSettings(layout);
         ICHECK(back.ok);
@@ -812,8 +823,7 @@ void TestQaFixes() {
     ICHECK(detect::HasMelevrMarker(std::string("MZ\0\0 ... MELEVR 1.0", 18)));
     ICHECK(detect::HasMelevrMarker(std::string("M\0E\0L\0E\0V\0R\0", 12)));
     ICHECK(!detect::HasMelevrMarker("ReShade dxgi.dll"));
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const temp = mevr::tests::TempRoot();
     fs::path const base = fs::path(temp) / L"mevr-install-qa";
     fs::path const root = base / L"Mass Effect Legendary Edition";
     if (detect::GameRunningIn(root)) {
@@ -861,7 +871,7 @@ void TestQaFixes() {
         Transaction tx(layout);
         ICHECK(tx.Load() && tx.Verify().empty());  // the files moved aside aren't something Repair must bring back
     }
-    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Ok(Uninstall(layout, false, {})));
     ICHECK(Read(layout.Win64() / L"dxgi.dll").find("MELEVR") != std::string::npos);
     ICHECK(Read(layout.Win64() / L"openxr_loader.dll") == "khronos loader");
     ICHECK(!fs::exists(layout.Win64() / L"dxgi.dll.mevr-off"));
@@ -885,7 +895,7 @@ void TestQaFixes() {
     ICHECK(ReadStatus(root, "Folder").installed && ReadStatus(root, "Folder").needsRepair.empty());  // not something Repair changes
     Outcome const repaired = Repair(layout, payload);
     ICHECK(repaired.ok && Read(layout.Win64() / L"bink2w64.dll") == "ME3Tweaks' loader");
-    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Ok(Uninstall(layout, false, {})));
     ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "ME3Tweaks' loader");
     ICHECK(Read(layout.Win64() / L"bink2w64_original.dll") == "RAD original");
     ICHECK(!fs::exists(layout.Full(paths::kModAsi)));
@@ -893,7 +903,7 @@ void TestQaFixes() {
     fs::remove(layout.Win64() / L"bink2w64_original.dll", ec);
     Write(layout.Win64() / L"bink2w64.dll", "RAD original");
     ourInstall();
-    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Ok(Uninstall(layout, false, {})));
     ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && !fs::exists(layout.Win64() / L"bink2w64_original.dll"));
     // ...and an uninstall that fails half way (a locked file) keeps only what's left on record: the retry doesn't
     // remove bink2w64.dll again (by then RAD's DLL, renamed back by the first try).
@@ -903,31 +913,31 @@ void TestQaFixes() {
     ICHECK(!Uninstall(layout, false, {}).ok);
     CloseHandle(lock);
     ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && ReadStatus(root, "Folder").installed);
-    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Ok(Uninstall(layout, false, {})));
     ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && !fs::exists(layout.Full(paths::kModAsi)));
     ICHECK(!fs::exists(layout.ManifestFile()));
 
     // 3. The mod's run-time files: kept by "keep my settings", deleted by a full uninstall (with the Logs folder the
     // game run made, once empty). Not "installed" with only settings or a pack on record.
     fresh();
-    ICHECK(Install(layout, payload, options).ok);
+    ICHECK(Ok(Install(layout, payload, options)));
     ICHECK(ReadStatus(root, "Folder").installed);
     Write(layout.Full(paths::kModIni), "[Calibration]\r\n");
     Write(layout.Win64() / L"Logs" / L"LE1MEVR.log", "log");
     Write(layout.Win64() / L"Logs" / L"LE1MEVR.prev.log", "log");
-    ICHECK(Uninstall(layout, true, {}).ok);
+    ICHECK(Ok(Uninstall(layout, true, {})));
     ICHECK(fs::exists(layout.Full(paths::kModIni)) && fs::exists(layout.Win64() / L"Logs" / L"LE1MEVR.log"));
     ICHECK(fs::exists(layout.Full(paths::kHalcyonIni)));
-    ICHECK(Install(layout, payload, options).ok);  // the files left by "keep" are on record again
-    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Ok(Install(layout, payload, options)));  // the files left by "keep" are on record again
+    ICHECK(Ok(Uninstall(layout, false, {})));
     ICHECK(!fs::exists(layout.Full(paths::kModIni)) && !fs::exists(layout.Full(paths::kHalcyonIni)));
     ICHECK(!fs::exists(layout.Win64() / L"Logs") && !fs::exists(layout.Asi()));
-    ICHECK(ApplySettings(layout, options.choices).ok);
+    ICHECK(Ok(ApplySettings(layout, options.choices)));
     Status const settingsOnly = ReadStatus(root, "Folder");
     ICHECK(settingsOnly.hasRecord && settingsOnly.gameSettings && !settingsOnly.installed);
     ICHECK(!Repair(layout, payload).ok);  // "Not installed yet"
-    ICHECK(RestoreSettings(layout).ok && Read(layout.Full(paths::kGamerSettings)) == gamer);
-    ICHECK(RecordPack(layout, "alot-le1", "ALOT for ME1").ok && !ReadStatus(root, "Folder").installed);
+    ICHECK(Ok(RestoreSettings(layout)) && Read(layout.Full(paths::kGamerSettings)) == gamer);
+    ICHECK(Ok(RecordPack(layout, "alot-le1", "ALOT for ME1")) && !ReadStatus(root, "Folder").installed);
     fs::remove(layout.ManifestFile(), ec);
 
     // 4. A read-only GamerSettings.ini: the install goes on (with a warning), Settings > Apply says why it can't.
@@ -952,9 +962,9 @@ void TestQaFixes() {
     fs::path const fakeLocal = base / L"LocalAppData";
     SetEnvironmentVariableW(L"LOCALAPPDATA", fakeLocal.c_str());
     Write(fakeLocal / L"MEVR" / L"snapshots" / L"a.png", "png");
-    ICHECK(Uninstall(layout, false, {}, false).ok && fs::exists(fakeLocal / L"MEVR" / L"snapshots" / L"a.png"));
-    ICHECK(Install(layout, payload, options).ok);
-    ICHECK(Uninstall(layout, false, {}, true).ok && !fs::exists(fakeLocal / L"MEVR"));
+    ICHECK(Ok(Uninstall(layout, false, {}, false)) && fs::exists(fakeLocal / L"MEVR" / L"snapshots" / L"a.png"));
+    ICHECK(Ok(Install(layout, payload, options)));
+    ICHECK(Ok(Uninstall(layout, false, {}, true)) && !fs::exists(fakeLocal / L"MEVR"));
     SetEnvironmentVariableW(L"LOCALAPPDATA", realLocal);
 
     // 6. A lost install record, then a reinstall over our loader (the built bink2w64.dll next to this exe: its version
@@ -969,7 +979,7 @@ void TestQaFixes() {
         ICHECK(ReadStatus(root, "Folder").bink == detect::BinkState::Ours);
         InstallOptions plain = options;
         plain.gameSettings = false;
-        ICHECK(Install(layout, payload, plain).ok);
+        ICHECK(Ok(Install(layout, payload, plain)));
         fs::remove(layout.ManifestFile(), ec);
         Outcome const again = Install(layout, payload, plain);
         ICHECK(again.ok);
@@ -982,7 +992,7 @@ void TestQaFixes() {
             ICHECK(bink != nullptr && bink->action == "added" && original != nullptr && original->action == "renamed");
             ICHECK(asi != nullptr && asi->action == "added");
         }
-        ICHECK(Uninstall(layout, false, {}).ok);
+        ICHECK(Ok(Uninstall(layout, false, {})));
         ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && !fs::exists(layout.Win64() / L"bink2w64_original.dll"));
         ICHECK(!fs::exists(layout.Asi()));
         Write(payloadDir / L"bink2w64.dll", "our loader");
@@ -1012,8 +1022,7 @@ std::string SmallToc() {
 // Steam's "verify files" (the cockpit's TOC entry back by Repair).
 void TestFirstRunInstall() {
     using namespace mevr::install;
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const temp = mevr::tests::TempRoot();
     fs::path const base = fs::path(temp) / L"mevr-install-firstrun";
     fs::path const root = base / L"Mass Effect Legendary Edition";
     if (detect::GameRunningIn(root)) {
@@ -1076,9 +1085,9 @@ void TestFirstRunInstall() {
     s = ReadStatus(root, "Folder");
     ICHECK(s.gameSettings && !s.pendingSettings && s.eyeSizeAtFirstStart);  // carried through the pending settings
     // Restore: the game's own file again; nothing waits.
-    ICHECK(RestoreSettings(layout).ok && Read(layout.Full(paths::kGamerSettings)) == gamer && !ReadStatus(root, "Folder").pendingSettings);
+    ICHECK(Ok(RestoreSettings(layout)) && Read(layout.Full(paths::kGamerSettings)) == gamer && !ReadStatus(root, "Folder").pendingSettings);
     ICHECK(!ReadStatus(root, "Folder").eyeSizeAtFirstStart);
-    ICHECK(Uninstall(layout, false, {}).ok);
+    ICHECK(Ok(Uninstall(layout, false, {})));
     ICHECK(Read(layout.Full(paths::kToc)) == toc && !fs::exists(layout.Asi()));
     // The choices survive the manifest's JSON.
     {
@@ -1099,7 +1108,7 @@ void TestFirstRunInstall() {
                                  "firstRunDone = 0\r\nmenuKey = 45\r\nfpEnabled = 0\r\nmirrorPresentEvery = 1\r\nsfr2HalfEyeUU = 3.4\r\n\r\n"
                                  "[profile:Custom 1]\r\nvrMode = 3\r\nfpEnabled = 0\r\n";
     Write(layout.Full(paths::kHalcyonIni), upstream);
-    ICHECK(Install(layout, payload, options).ok);
+    ICHECK(Ok(Install(layout, payload, options)));
     std::string h = Read(layout.Full(paths::kHalcyonIni));
     for (char const* slot : {"profile:Default", "profile:Custom 1"}) {
         ICHECK(ini::Get(h, slot, "vrMode") == std::optional<std::string>("2"));
@@ -1117,39 +1126,39 @@ void TestFirstRunInstall() {
         ICHECK(entry != nullptr && entry->userData && entry->edits.size() >= 10);  // every change on record
     }
     // An update over the top changes nothing more: the slots are this mod's now.
-    ICHECK(Install(layout, payload, options).ok && Read(layout.Full(paths::kHalcyonIni)) == h);
-    ICHECK(Uninstall(layout, true, {}).ok);
+    ICHECK(Ok(Install(layout, payload, options)) && Read(layout.Full(paths::kHalcyonIni)) == h);
+    ICHECK(Ok(Uninstall(layout, true, {})));
     ICHECK(Read(layout.Full(paths::kHalcyonIni)) == upstream);  // kept, exactly as it came
     // Again, and this time the player picks Depth (DIBR) in the Custom 1 slot through our menu before uninstalling (the
     // in-game save writes every key, sfr2MetricDepth among them).
-    ICHECK(Install(layout, payload, options).ok);
+    ICHECK(Ok(Install(layout, payload, options)));
     h = ini::Set(Read(layout.Full(paths::kHalcyonIni)), "profile:Custom 1", "vrMode", "3");
     h = ini::Set(h, "profile:Custom 1", "sfr2MetricDepth", "1.00");
     Write(layout.Full(paths::kHalcyonIni), h);
-    ICHECK(Repair(layout, payload).ok && ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Custom 1", "vrMode") == std::optional<std::string>("3"));
-    ICHECK(Uninstall(layout, true, {}).ok);
+    ICHECK(Ok(Repair(layout, payload)) && ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Custom 1", "vrMode") == std::optional<std::string>("3"));
+    ICHECK(Ok(Uninstall(layout, true, {})));
     std::string const kept = Read(layout.Full(paths::kHalcyonIni));
     ICHECK(ini::Get(kept, "profile:Custom 1", "vrMode") == std::optional<std::string>("3"));  // theirs since
     ICHECK(ini::Get(kept, "profile:Default", "vrMode") == std::optional<std::string>("1"));   // ours, put back
     ICHECK(ini::Get(kept, "profile:Default", "menuKey") == std::optional<std::string>("45"));
     // Reinstalled: the slot the player saved in game is still theirs (Depth stays); the untouched one is normalised again.
-    ICHECK(Install(layout, payload, options).ok);
+    ICHECK(Ok(Install(layout, payload, options)));
     h = Read(layout.Full(paths::kHalcyonIni));
     ICHECK(ini::Get(h, "profile:Custom 1", "vrMode") == std::optional<std::string>("3"));
     ICHECK(ini::Get(h, "profile:Default", "vrMode") == std::optional<std::string>("2"));
     // The player deletes it; Repair writes the release file, wholly ours from then on: a "keep" uninstall leaves it as written
     // (the key edits recorded on the old file don't apply to it).
     fs::remove(layout.Full(paths::kHalcyonIni), ec);
-    ICHECK(Repair(layout, payload).ok && Read(layout.Full(paths::kHalcyonIni)) == ini::HalcyonReleaseIni());
-    ICHECK(Uninstall(layout, true, {}).ok && Read(layout.Full(paths::kHalcyonIni)) == ini::HalcyonReleaseIni());
+    ICHECK(Ok(Repair(layout, payload)) && Read(layout.Full(paths::kHalcyonIni)) == ini::HalcyonReleaseIni());
+    ICHECK(Ok(Uninstall(layout, true, {})) && Read(layout.Full(paths::kHalcyonIni)) == ini::HalcyonReleaseIni());
     // A full uninstall deletes it (the player's VR data, as before).
-    ICHECK(Install(layout, payload, options).ok);
-    ICHECK(Uninstall(layout, false, {}).ok && !fs::exists(layout.Full(paths::kHalcyonIni)));
+    ICHECK(Ok(Install(layout, payload, options)));
+    ICHECK(Ok(Uninstall(layout, false, {})) && !fs::exists(layout.Full(paths::kHalcyonIni)));
 
     // 3. Steam's "verify files": the game's own TOC back (and the cockpit's package gone): Status says so, Repair puts both back.
     fresh();
     Write(layout.Full(paths::kGamerSettings), gamer);
-    ICHECK(Install(layout, payload, options).ok);
+    ICHECK(Ok(Install(layout, payload, options)));
     std::string const installedToc = Read(layout.Full(paths::kToc));
     ICHECK(installedToc != toc && ReadStatus(root, "Folder").needsRepair.empty());
     Write(layout.Full(paths::kToc), toc);
@@ -1157,10 +1166,10 @@ void TestFirstRunInstall() {
     std::vector<std::string> const bad = ReadStatus(root, "Folder").needsRepair;
     ICHECK(bad.size() == 2 && std::find(bad.begin(), bad.end(), paths::kToc) != bad.end() &&
            std::find(bad.begin(), bad.end(), paths::kCockpitPackage) != bad.end());
-    ICHECK(Repair(layout, payload).ok);
+    ICHECK(Ok(Repair(layout, payload)));
     ICHECK(Read(layout.Full(paths::kToc)) == installedToc && fs::exists(layout.Full(paths::kCockpitPackage)));
     ICHECK(ReadStatus(root, "Folder").needsRepair.empty());
-    ICHECK(Uninstall(layout, false, {}).ok && Read(layout.Full(paths::kToc)) == toc);
+    ICHECK(Ok(Uninstall(layout, false, {})) && Read(layout.Full(paths::kToc)) == toc);
 
     // 4. A lost install record, then a reinstall over our loader (the built bink2w64.dll next to this exe): the cockpit's
     // script, package and TOC entry are adopted with the rest, so the uninstall takes them out too.
@@ -1173,9 +1182,9 @@ void TestFirstRunInstall() {
         Write(payloadDir / L"bink2w64.dll", Read(builtLoader));
         InstallOptions plain = options;
         plain.gameSettings = false;
-        ICHECK(Install(layout, payload, plain).ok);
+        ICHECK(Ok(Install(layout, payload, plain)));
         fs::remove(layout.ManifestFile(), ec);
-        ICHECK(Install(layout, payload, plain).ok);
+        ICHECK(Ok(Install(layout, payload, plain)));
         {
             Transaction tx(layout);
             ICHECK(tx.Load());
@@ -1184,7 +1193,7 @@ void TestFirstRunInstall() {
             ICHECK(pkg != nullptr && pkg->action == "added");
             ICHECK(tocEntry != nullptr && tocEntry->toc.size() == 1 && !tocEntry->toc[0].before);
         }
-        ICHECK(Uninstall(layout, false, {}).ok);
+        ICHECK(Ok(Uninstall(layout, false, {})));
         ICHECK(Read(layout.Full(paths::kToc)) == toc && !fs::exists(layout.Full(paths::kCockpitPackage)) && !fs::exists(layout.Asi()));
         ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original");
     } else {
@@ -1244,8 +1253,7 @@ void TestToc() {
     }
 
     // Through the manifest: set, verify, uninstall takes it out again (a fake game folder; no game needed).
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const temp = mevr::tests::TempRoot();
     fs::path const base = fs::path(temp) / L"mevr-install-toc";
     std::error_code ec;
     fs::remove_all(base, ec);
@@ -1416,8 +1424,7 @@ void TestVoice() {
         "digest": "md5:abc"}]})", "m.gguf");
     ICHECK(noDigest && noDigest->sha256.empty() && noDigest->size == 7);
 
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const temp = mevr::tests::TempRoot();
     fs::path const base = fs::path(temp) / L"mevr-install-voice";
     std::error_code ec;
     fs::remove_all(base, ec);
@@ -1567,9 +1574,50 @@ void TestVoice() {
     ICHECK(Read(layout.Full(voice::kDll)) == "release recognizer interface");
     fs::remove(layout.Full(voice::kDll), ec);
     ICHECK((ReadStatus(root, "Folder").needsRepair == std::vector<std::string>{voice::kDll}));
-    ICHECK(Repair(layout, payload).ok && Read(layout.Full(voice::kDll)) == "release recognizer interface");
-    ICHECK(Uninstall(layout, false, {}).ok && !fs::exists(layout.Full(voice::kDir)));
+    ICHECK(Ok(Repair(layout, payload)) && Read(layout.Full(voice::kDll)) == "release recognizer interface");
+    ICHECK(Ok(Uninstall(layout, false, {})) && !fs::exists(layout.Full(voice::kDir)));
     fs::remove_all(base, ec);
+}
+
+// A file another process holds for a moment, as antivirus does right after a write (the installer's record failed 3 installs
+// in about 80 that way, error 5, 2026-11-06): the write over it waits and goes through once it's let go. A read-only one fails
+// at once, with no wait.
+void TestBusyFile() {
+    fs::path const dir = mevr::tests::TempRoot() / L"mevr-busy-file";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::path const file = dir / L"MEVR-install.json";
+    Write(file, "old");
+    // Opened without delete sharing, as the scanner holds it: Windows refuses a replace at once.
+    HANDLE const held = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    ICHECK(held != INVALID_HANDLE_VALUE);
+    fs::path const other = dir / L"other.json";
+    Write(other, "other");
+    BOOL const moved = MoveFileExW(other.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING);
+    DWORD const refused = GetLastError();
+    ICHECK(!moved && (refused == ERROR_ACCESS_DENIED || refused == ERROR_SHARING_VIOLATION));
+    // Let go after 100 ms: the write waits for it.
+    auto const t0 = std::chrono::steady_clock::now();
+    std::thread release([held] {
+        Sleep(100);
+        CloseHandle(held);
+    });
+    bool const wrote = mevr::install::WriteFileAtomic(file, "new");
+    double const ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    release.join();
+    ICHECK(wrote && Read(file) == "new" && ms >= 90.0 && ms < 1300.0);
+    std::printf("install: a write over a file held 100 ms went through after %.0f ms (refused at once with error %lu)\n", ms,
+        refused);
+    // Read-only: refused at once (no retries), with the error for the message.
+    SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_READONLY);
+    auto const t1 = std::chrono::steady_clock::now();
+    bool const readOnlyWrote = mevr::install::WriteFileAtomic(file, "newer");
+    DWORD const readOnlyError = GetLastError();
+    double const readOnlyMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+    ICHECK(!readOnlyWrote && readOnlyError == ERROR_ACCESS_DENIED && readOnlyMs < 100.0 && Read(file) == "new");
+    ICHECK(!fs::exists(fs::path(file) += L".mevr-writing"));
+    SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL);
+    fs::remove_all(dir, ec);
 }
 
 } // namespace
@@ -1592,4 +1640,5 @@ void RunInstallTests(int& failures) {
     TestToc();
     TestFirstRunInstall();
     TestVoice();
+    TestBusyFile();
 }
