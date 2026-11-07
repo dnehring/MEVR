@@ -91,7 +91,6 @@ The full list is in the [changelog](CHANGELOG.md); every button and gesture is i
 - **Walking more than about 0.75 m** around your room leaves Shepard behind: recenter (double-click the right stick).
 - **Steam's "verify files"** or a game update can remove the loader: run **Repair** in `MEVR-Setup.exe` from the
   downloaded release.
-- **Panels have no depth:** the game's UI draws over everything near it (the radar over the cockpit's throttle).
 - **Scopes show a plain duplex reticle**, and the sniper scope's dark areas can show a black speckle
   (`[Sights] scopeCapturePost = 0` in `ASI\LE1MEVR.ini` removes it, with the game's colour grade).
 - **The galaxy map's travel question** may ignore the pointer's click; the assault rifle's red dot can sit off the
