@@ -824,7 +824,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return std::format("{}.OnArtPlaceableUsed(the player's pawn) called {}", r.FullName(gFound[index]), called);
     }
     if (verb == "spawnpawn") {
-        // `mevr spawnpawn <ActorType path> [count 1] [distanceM 8] [spreadM 2]` (the powers QA arena, 2026-11-07): the game's own
+        // `mevr spawnpawn <ActorType path> [count 1] [distanceM 8] [spreadM 2] [hostile|ring|hostile,ring]` (the powers QA arena, 2026-11-07): the game's own
         // BioSPGame.SpawnPawn(TheActorType, SpawnLocation, SpawnRotation, bIsPlayer=false) builds a whole NPC from its BioActorType
         // (e.g. BIOA_UNC_C.Mercenary.MIN_MercenaryHumanMaleRocketSoldier), in a row across the player's facing, `distanceM` ahead,
         // each facing the player. Says what each one is: its class, health, whether it's hostile to the player.
@@ -867,7 +867,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         ue3::Function* const hostile = r.FindFunction(r.ClassOf(pawn), "IsHostile");
         // "hostile": the level's first live combat squad (a BioSquadCombat, as UNC20's mercenaries are in).
         ue3::Object* combatSquad = nullptr;
-        if (mode == "hostile") {
+        if (mode.find("hostile") != std::string::npos) {
             for (std::int32_t i = 0, n = r.ObjectCount(); i < n && combatSquad == nullptr; ++i) {
                 ue3::Object* const o = r.ObjectAt(i);
                 if (o != nullptr && r.IsAlive(o) && r.NameText(r.ClassOf(o)) == "BioSquadCombat" &&
@@ -881,11 +881,17 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         }
         std::string out = std::format("mevr spawnpawn {} x{} at {:.1f} m:", type, count, distanceM);
         int made = 0;
+        bool const ring = mode.find("ring") != std::string::npos;  // "ring": all around the player, each facing them
         for (int i = 0; i < count; ++i) {
             double const side = (i - (count - 1) / 2.0) * spreadM * 100.0;
             ue3::Vector where{static_cast<float>(at->x + fx * distanceM * 100.0 - fy * side),
                 static_cast<float>(at->y + fy * distanceM * 100.0 + fx * side), at->z};
-            ue3::Rotator const back{0, static_cast<std::int32_t>(facing->yaw + 32768), 0};
+            ue3::Rotator back{0, static_cast<std::int32_t>(facing->yaw + 32768), 0};
+            if (ring) {
+                double const a = yaw + 2.0 * 3.14159265358979 * (i + 0.5) / count;
+                where = {static_cast<float>(at->x + std::cos(a) * distanceM * 100.0), static_cast<float>(at->y + std::sin(a) * distanceM * 100.0), at->z};
+                back.yaw = static_cast<std::int32_t>(a * kUnitsPerRad + 32768.0);
+            }
             ue3::Params parms(r, spawn);
             parms.Set("TheActorType", name.Get());
             parms.Set("SpawnLocation", where);
