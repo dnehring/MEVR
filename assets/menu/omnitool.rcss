@@ -19,6 +19,7 @@ body {
 	font-family: "Titillium Web";
 	font-weight: 600;
 	color: #CBEBF5;
+	position: relative;
 }
 
 .panel {
@@ -160,3 +161,12 @@ body.art .entry, body.art .entry.close {
 body.art .entry:hover { color: #FFF3DE; decorator: image(mevr:me1-tab-hover); }
 body.art .entry.on { color: #FFFFFF; decorator: image(mevr:me1-tab-selected); }
 body.art .entry.on:hover { decorator: image(mevr:me1-tab-selected-hover); }
+
+/* The fingertip's ring (plugin/OmniToolRail): the depth cue, wide and faint far off, small and bright at the surface. */
+.touchring {
+	position: absolute;
+	border: 3dp #C4F6FF;
+	border-radius: 999dp;
+	background-color: rgba(143, 232, 255, 28%);
+	pointer-events: none;
+}

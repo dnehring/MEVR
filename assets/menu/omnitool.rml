@@ -22,5 +22,6 @@
 		<div class="entry" data-class-on="active == 'computer'" data-event-click="pick('computer')"><div class="box"><div class="ico i-computer"/></div><div class="label">Computer</div></div>
 		<div class="entry close" data-event-click="pick('close')"><div class="box"><div class="ico i-close"/></div><div class="label">Close</div></div>
 	</div>
+	<div class="touchring" data-if="ring" data-style-left="ringLeft" data-style-top="ringTop" data-style-width="ringSize" data-style-height="ringSize" data-style-opacity="ringAlpha"/>
 </body>
 </rml>

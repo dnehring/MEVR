@@ -128,6 +128,10 @@ struct State {
     bool needRender = true;
     bool shown = false;
     gp::Pointer pointer{RailPointerSettings()};
+    // The fingertip's ring on the rail (the depth cue: our quads draw over the hand, so the hand never shows in front of the
+    // rail): under the fingertip, wide and faint far off, small and bright at the surface.
+    bool ring = false;
+    Rml::String ringLeft, ringTop, ringSize, ringAlpha;
     float behindBuzzS = 0.0f;  // the fingertip through the surface: a faint buzz every 0.08 s, the surface's feel
     rail::Tap tap;
     std::optional<vr::world_ui::Panel> lastPanel;  // where the rail stood last frame (the tap isn't taken while going for it)
@@ -248,6 +252,11 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     ctor.Bind("active", &g.active);
     ctor.Bind("alone", &g.alone);
     ctor.Bind("art", &g.art);
+    ctor.Bind("ring", &g.ring);
+    ctor.Bind("ringLeft", &g.ringLeft);
+    ctor.Bind("ringTop", &g.ringTop);
+    ctor.Bind("ringSize", &g.ringSize);
+    ctor.Bind("ringAlpha", &g.ringAlpha);
     ctor.BindEventCallback("pick", [](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const& args) {
         if (!args.empty()) {
             g.picked = args[0].Get<Rml::String>();
@@ -530,7 +539,7 @@ void Publish(bool shown, char const* place) {
 }
 
 // The pointer: the controllers' rays and index fingertips on the rail, as RmlUi's mouse.
-void PointerStep(rail::Rail const& at, float dt) {
+void PointerStep(rail::Rail const& at, float dt, std::optional<XrVector3f> const& drawnTip) {
     vr::controllers::State const state = vr::controllers::Latest();
     gp::Input input;
     input.active = state.active;
@@ -539,7 +548,12 @@ void PointerStep(rail::Rail const& at, float dt) {
         input.hands[i].aimValid = hand.aimValid && i != 0;  // the left hand wears the omni-tool: no ray or fingertip on its rail
         input.hands[i].aim = hand.aim;
         input.hands[i].trigger = hand.trigger;
-        if (hand.aimValid && i != 0) {
+        if (hand.aimValid && i != 0 && drawnTip) {
+            // Shepard's drawn index fingertip, where the player sees it (the controller's point sat under it: the owner's
+            // QA, 2026-11-06, "it is most certainly under my index finger").
+            input.hands[i].tipValid = true;
+            input.hands[i].tip = *drawnTip;
+        } else if (hand.aimValid && i != 0) {
             XrVector3f d = vr::menu_pointer::AimDirection(hand.aim);
             float const n = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
             if (n > 1e-6f) {
@@ -570,6 +584,34 @@ void PointerStep(rail::Rail const& at, float dt) {
     }
     if (out.left) {
         context->ProcessMouseLeave();
+        g.needRender = true;
+    }
+    // The ring under the fingertip.
+    bool const ring = out.touch && out.hit;
+    if (ring) {
+        float const pxPerM = static_cast<float>(kWidth) / std::max(at.widthM, 0.01f);
+        float const d = std::clamp(out.touchDistance, 0.0f, 0.06f);
+        float const sizePx = (0.008f + 0.55f * d) * pxPerM;
+        float const alpha = 1.0f - 0.75f * (d / 0.06f);
+        Rml::String const left = std::to_string(static_cast<int>(static_cast<float>(out.x) - sizePx * 0.5f)) + "px";
+        Rml::String const top = std::to_string(static_cast<int>(static_cast<float>(out.y) - sizePx * 0.5f)) + "px";
+        Rml::String const size = std::to_string(static_cast<int>(sizePx)) + "px";
+        Rml::String const a = std::to_string(static_cast<int>(alpha * 100.0f) / 100.0f);
+        if (!g.ring || left != g.ringLeft || top != g.ringTop || size != g.ringSize || a != g.ringAlpha) {
+            g.ringLeft = left;
+            g.ringTop = top;
+            g.ringSize = size;
+            g.ringAlpha = a;
+            g.model.DirtyVariable("ringLeft");
+            g.model.DirtyVariable("ringTop");
+            g.model.DirtyVariable("ringSize");
+            g.model.DirtyVariable("ringAlpha");
+            g.needRender = true;
+        }
+    }
+    if (ring != g.ring) {
+        g.ring = ring;
+        g.model.DirtyVariable("ring");
         g.needRender = true;
     }
     // Through the surface the hand can't be stopped, so it's felt: a faint buzz while the fingertip is behind it.
@@ -758,7 +800,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.model.DirtyVariable("art");
         g.needRender = true;
     }
-    PointerStep(*at, dt);
+    PointerStep(*at, dt, frame.body ? rail::BodyFingertip(*frame.body) : std::nullopt);
     HandlePick(screen);
     if (g.needRender) {
         float const clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};

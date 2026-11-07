@@ -35,10 +35,13 @@ Transform Apply(Scale const& scale, Transform t) {
     return t;
 }
 
+bool Plausible(double eyeHeight, double unitsPerMeter) {
+    return std::isfinite(eyeHeight) && unitsPerMeter > 0.0 && eyeHeight >= kMinEyeM * unitsPerMeter &&
+           eyeHeight <= kMaxEyeM * unitsPerMeter;
+}
+
 std::optional<double> Factor(double viewEyeHeight, double shepardEyeHeight, double unitsPerMeter) {
-    double const minimum = 0.5 * unitsPerMeter;
-    if (!std::isfinite(viewEyeHeight) || !std::isfinite(shepardEyeHeight) || !(unitsPerMeter > 0.0) || viewEyeHeight < minimum ||
-        shepardEyeHeight < minimum) {
+    if (!(unitsPerMeter > 0.0) || !Plausible(viewEyeHeight, unitsPerMeter) || !Plausible(shepardEyeHeight, unitsPerMeter)) {
         return std::nullopt;
     }
     return std::clamp(viewEyeHeight / shepardEyeHeight, kMin, kMax);
