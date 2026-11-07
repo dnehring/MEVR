@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/TwoHand.hpp"
 #include "core/vr/Ads.hpp"
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
@@ -154,6 +155,9 @@ std::string gLoggedStatus;
 std::uint32_t gHostView = 0;
 std::uint32_t gLoggedHostView = 0;
 bool gScopeUp = false;  // the held gun's sight is a scope and the host shows its picture
+bool gAtShoulder = false;  // a long gun at the calibrated shoulder, looking along it (research/21 section 20)
+unsigned gShoulderOns = 0;  // for the heartbeat
+bool gInZone = false;       // ik::Shouldered's last answer (its own hysteresis)
 bool gLensRaised = false;  // the held scoped gun is raised toward the eye (its lens part hides; research/21 section 19)
 constexpr float kLensRaisedOn = 0.20f;   // RaisedWeight to hide the lens part...
 constexpr float kLensRaisedOff = 0.08f;  // ...and to show it again
@@ -583,6 +587,8 @@ void ResetAssist(char const* why) {
     gAds = false;
     gApproach = gDistanceWeight = gPullLimit = 0.0f;
     gLensRaised = false;
+    gAtShoulder = false;
+    gInZone = false;
     gFastSpring = false;
 }
 
@@ -610,10 +616,33 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, vr::aim_ra
     // ADS (Overlord's corridor on the centre eye, its dwell and hysteresis, and our reach to the sight).
     gAdsSample = ads::Measure(head.position, forward, muzzle, center, ray.direction, drawn.up);
     bool const wasAds = gAds;
+    // At the calibrated shoulder (research/21 section 20): the right grip in the zone around the calibration's stock point
+    // and the head along the barrel. Not calibrated, or a pistol: the distance rule alone.
+    bool const wasShoulder = gAtShoulder;
+    gAtShoulder = false;
+    if (settings.shoulderAds && weapon::Type() != weapon::RangedType::Pistol) {
+        auto const zone = body_calibration::ShoulderZone();
+        vr::controllers::State const controllers = vr::controllers::Latest();
+        if (zone && controllers.active && controllers.right.gripValid) {
+            XrVector3f const& g = controllers.right.grip.position;
+            gInZone = ik::Shouldered({head.position.x, head.position.y, head.position.z}, {forward.x, forward.y, forward.z},
+                {0.0, 1.0, 0.0}, {g.x, g.y, g.z}, gInZone, *zone);
+            gAtShoulder = ads::AtShoulder(gInZone, gAdsSample.facingDeg, wasShoulder);
+        } else {
+            gInZone = false;
+        }
+    }
+    if (gAtShoulder != wasShoulder) {
+        if (gAtShoulder) {
+            ++gShoulderOns;
+        }
+        log::Info("sights: {} the calibrated shoulder ({}): {}", gAtShoulder ? "at" : "away from", SampleText(gAdsSample),
+            gAtShoulder ? "the sight is on at once" : "the distance rule again");
+    }
     gAdsGate = scope && settings.ads;
     if (gAdsGate) {
         ads::Reach const reach{settings.adsReachM, ReachExit(settings)};
-        gAds = gAdsPolicy.Update(ads::Inside(gAdsSample, gAdsPolicy.Active(), reach), static_cast<float>(dt));
+        gAds = gAdsPolicy.Update(gAtShoulder || ads::Inside(gAdsSample, gAdsPolicy.Active(), reach), static_cast<float>(dt));
     } else {
         gAdsPolicy.Reset();
         gAds = false;
@@ -621,6 +650,9 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, vr::aim_ra
     // The continuous weight: how raised the gun is (Overlord's approach), times how near the sight is to the eye.
     gApproach = ads::Approach(gAdsSample);
     gDistanceWeight = ads::DistanceWeight(gAdsSample.eyeToSight, gAds);
+    if (gAtShoulder) {
+        gApproach = gDistanceWeight = 1.0f;  // fully raised: the assist, the pull and the lens hide as at the eye
+    }
     float const weight = settings.assist.enabled ? gApproach * gDistanceWeight : 0.0f;
     gPullLimit = gPull.reliefM > 0.0f ? PullLimit(settings, drawn, gAds) : 0.0f;
     gPull.maxM = gPullLimit;
@@ -995,7 +1027,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
                 // A dot on the game's solid housing (the assault rifles' boxes, Optic): seen through (research/21 section 17).
                 bool const window = settings.dotWindow && !scope && gun.autoPlace && gModel.opticApplies && gModel.weapon == weapon::Key();
                 out.flags = (settings.frame && !scope ? sv::kFrame : 0u) | (settings.replaceRing ? sv::kReplaceRing : 0u) |
-                    (settings.otherEye ? sv::kOtherEye : 0u) | (window ? sv::kWindow : 0u);
+                    (settings.otherEye ? sv::kOtherEye : 0u) | (window ? sv::kWindow : 0u) | (gAtShoulder ? sv::kShouldered : 0u);
                 out.eyeBox = std::max(settings.eyeBoxUnits, settings.windowUnits) / unitsPerMeter;
                 out.center = sv::Place(ray.origin, ray.direction, *top, placed.back / unitsPerMeter, placed.height / unitsPerMeter,
                     placed.side / unitsPerMeter);
@@ -1242,12 +1274,14 @@ std::string AdsJson() {
     ads::Sample const& s = gAdsSample;
     return std::format("{{\"gate\": {}, \"active\": {}, \"entering\": {}, \"leaving\": {}, \"heldS\": {}, \"valid\": {}, \"depthM\": {}, "
                        "\"lateralM\": {}, \"heightM\": {}, \"facingDeg\": {}, \"eyeToSightM\": {}, \"sightToMuzzleM\": {}, "
-                       "\"approach\": {}, \"distanceWeight\": {}, \"weight\": {}, \"pullLimitM\": {}, \"fastSpring\": {}}}",
+                       "\"approach\": {}, \"distanceWeight\": {}, \"weight\": {}, \"pullLimitM\": {}, \"fastSpring\": {}, "
+                       "\"atShoulder\": {}, \"inShoulderZone\": {}, \"shoulderOns\": {}}}",
         gAdsGate ? "true" : "false", gAds ? "true" : "false", gAdsPolicy.Entering() ? "true" : "false",
         gAdsPolicy.Leaving() ? "true" : "false", json::JsonNumber(gAdsPolicy.Held()), s.valid ? "true" : "false", json::JsonNumber(s.depth),
         json::JsonNumber(s.lateral), json::JsonNumber(s.height), json::JsonNumber(s.facingDeg), json::JsonNumber(s.eyeToSight),
         json::JsonNumber(s.sightToMuzzle), json::JsonNumber(gApproach), json::JsonNumber(gDistanceWeight),
-        json::JsonNumber(gApproach * gDistanceWeight), json::JsonNumber(gPullLimit), gFastSpring ? "true" : "false");
+        json::JsonNumber(gApproach * gDistanceWeight), json::JsonNumber(gPullLimit), gFastSpring ? "true" : "false",
+        gAtShoulder ? "true" : "false", gInZone ? "true" : "false", gShoulderOns);
 }
 
 // What came from the game (research/21 section 16): the model and its optic, the weapon's magnifications, the scope art.

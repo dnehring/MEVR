@@ -750,7 +750,9 @@ switching frameworks.
   13 cm, -6/+22, 40), 100 ms dwell each way, plus our reach (the eye within `[Sights] adsReachM` 0.55 m of the sight, `adsReachExitM` 0.80
   to leave; since 2026-11-06, research/21 section 19: a gun pulled into the shoulder pushes the scope away up to `scopeAdsPushM` 0.15 so the
   eyepiece stays the relief ahead, the lens part hides whenever the gun is raised, a red dot shows to an eye up to 8 cm past its window, and
-  Halcyon's crosshair hide acts through the kept handler on any game-thread event), all on the gun WITHOUT the assist's move; below ADS the mod publishes no scope (kind None: no picture, the
+  Halcyon's crosshair hide acts through the kept handler on any game-thread event; section 20: a rifle or shotgun with the
+  right grip in the calibrated shoulder zone and the head along the barrel, `vr::ads::AtShoulder`, `[Sights] shoulderAds`,
+  is ADS and fully raised at once, flag `kShouldered` widens the host's dot box to 0.10 m), all on the gun WITHOUT the assist's move; below ADS the mod publishes no scope (kind None: no picture, the
   model's own lens, no scope capture), `scopeMaxM` only with `ads = 0`. The assist's 10-degree cone is gone: Overlord's
   continuous approach weight (angle 5-45 degrees, smooth corridor edges) x distance weight drives the sideways move (dots
   and holos at most `assistDotMaxM` 0.03) and the pull (dot none, holo 5 cm, scope under 3x 10 cm, scopes

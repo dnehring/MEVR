@@ -67,6 +67,15 @@ bool Inside(Sample const& sample, bool active, Reach const& reach = {});
 // 0 at t <= 0, 1 at t >= 1, the quintic smoothstep between.
 float Smooth(float t);
 
+// At the calibrated shoulder (research/21 section 20, 2026-11-06, the user: "something a bit more naive when it's on
+// shoulder"): the right grip inside the shoulder zone around the guided calibration's stock point (research/25) and the
+// head looking along the barrel (25 degrees to come on, 35 to stay). The calibration solved the gun frame from the eye's
+// line to the target with the hand at that stock point, so there the eye is on the sight line by construction: the sight
+// is on at once, whatever the eye's distance. `inZone` ik::Shouldered's answer; `was` the last answer.
+inline constexpr float kShoulderFacingOnDeg = 25.0f;
+inline constexpr float kShoulderFacingOffDeg = 35.0f;
+bool AtShoulder(bool inZone, float facingDeg, bool was);
+
 // Overlord's `approach`: 0..1, independent of the ADS latch. The angle between the head's forward and the barrel, full
 // within 5 degrees and none at 45, times smooth edges between the entry and exit corridors (depth, lateral, height), so
 // a gun held parallel at the hip or side gets nothing.

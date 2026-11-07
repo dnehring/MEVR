@@ -9420,6 +9420,11 @@ void TestHudPieces() {
 
 void TestAds() {
     namespace ads = mevr::vr::ads;
+    // At the calibrated shoulder (research/21 section 20): in the zone and looking along the barrel, 25 degrees on, 35 kept.
+    CHECK(ads::AtShoulder(true, 10.0f, false) && ads::AtShoulder(true, 24.0f, false));
+    CHECK(!ads::AtShoulder(true, 30.0f, false) && ads::AtShoulder(true, 30.0f, true) && !ads::AtShoulder(true, 36.0f, true));
+    CHECK(!ads::AtShoulder(false, 5.0f, true) && !ads::AtShoulder(true, std::numeric_limits<float>::quiet_NaN(), true));
+    CHECK(mevr::vr::sights::Settings{}.shoulderAds);
     XrVector3f const head{0.0f, 0.0f, 0.0f};
     XrVector3f const forward{0.0f, 0.0f, -1.0f};
     XrVector3f const barrel{0.0f, 0.0f, -1.0f};
