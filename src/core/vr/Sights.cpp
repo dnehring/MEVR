@@ -580,6 +580,23 @@ int AimingEye(Line const lines[2], float box, float minAlong, float maxAlong, in
     return best;
 }
 
+int NearestEye(Line const lines[2], float minAlong, float maxAlong, int current, float switchMargin) {
+    auto usable = [&](int e) {
+        return std::isfinite(lines[e].lateral) && std::isfinite(lines[e].along) && lines[e].along >= minAlong && lines[e].along <= maxAlong;
+    };
+    int best = -1;
+    for (int e = 0; e < 2; ++e) {
+        if (usable(e) && (best < 0 || lines[e].lateral < lines[best].lateral)) {
+            best = e;
+        }
+    }
+    if ((current == 0 || current == 1) && usable(current) && best == 1 - current &&
+        !(lines[best].lateral < lines[current].lateral - std::max(switchMargin, 0.0f))) {
+        return current;
+    }
+    return best;
+}
+
 float Smooth(float t) {
     if (!(t > 0.0f)) {
         return 0.0f;

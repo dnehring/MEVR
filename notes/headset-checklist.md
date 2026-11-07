@@ -140,18 +140,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   sense of place without competing with it (too bright or too dark: `[Cinematics] backdropBrightness`, live; off: `backdrop = 0`).
   Entering and leaving a cutscene or conversation: a short dip from black instead of a hard cut, smooth, not too long or too
   short (`[Cinematics] fadeS`, 0.35 s, live; 0 off).
-- [ ] **Conversations in the world** (built 2026-11-06, off by default; session: conversations in the world): set
-  `[Cinematics] conversations = world` in `ASI\LE1MEVR.ini` and talk to someone on the Normandy (Pressly, Joker, Chakwas). You
-  stay where Shepard stands, head tracked, at real scale: do the people look human-sized and lifelike? Is the subtitle under
-  the speaker's face readable, and the dialogue wheel above your left hand (steered with the left stick, A picks)? People now
-  stay where they stand instead of jumping to the game's marks (built the same evening): does anyone talking from behind you
-  feel wrong (Ashley in the medical bay), are their turns natural? One jump of your own place is left (about 30 s into the
-  medical bay, Shepard's body after the wake-up cutscene): how bad is it? `worldStay = 0` brings back the game's jumps.
-  It's now the menu's Comfort > Conversations > First person. After the owner's first try (research/59 "The owner's first
-  try"): the room fully drawn and sharp in the comm room's kind of scene (the game's camera now held at your place), the wheel
-  in front of you, and the 18 set pieces (Nihlus in the comm room, Anderson's briefing, Saren, Sovereign) on the 3D screen.
-  (research/59; checked on the fake headset, not by a person)
-- [ ] **Walking to marks prototype** (built 2026-11-06, session: codex/convo-walk): with conversations in the world and
+- [ ] **Walking to marks prototype** (built 2026-11-06, session: codex/convo-walk; First person itself QA-approved 2026-11-07,
+  research/59): with conversations in the world and
   `worldStay = 1`, try `worldWalk = 1` (AI/slide fallback) and `2` (slide). Lasting marks should wait 2.5 s then walk; bouncing
   marks and observed returns should cancel; Shepard stays kept. Check locomotion/gestures, turns, collision/timeout, no drawn
   jumps, and no stale velocity or AI move on disable/end. Native returns exactly at the already-kept place cannot be detected
@@ -296,6 +286,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   while you shift your cheek; lowered off the shoulder they go. (research/21 section 20)
 - [ ] The rifle's red dot at an ordinary raised hold (not pressed in): it shows, on the sight rather than beside it, and
   the shots land near it. (research/21 section 21)
+- [ ] The rifle's outline (ring) and its red dot always together at any raised hold; pushed in past the window the dot
+  stays; lowered, both go. (research/21 section 22)
 - [ ] Raise the sniper rifle: the picture only at the eye (never at a casual hold), no on/off flicker, the eye reaches
   the eyepiece; lowered, the gun eases back. (research/21 section 15)
 - [ ] Under the scope, flick the right stick forward and back: the zoom steps 3.5x / 7x with a tick; the reticle reads.

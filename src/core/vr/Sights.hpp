@@ -381,6 +381,9 @@ private:
 // nearest the line, within `box` (meters off the line); `current` keeps the eye it had while it stays
 // within 1.25 box and isn't clearly worse (another eye nearer by more than a quarter box).
 int AimingEye(Line const lines[2], float box, float minAlong, float maxAlong, int current);
+// A raised gun's dot (research/21 section 22): the eye nearer the sight line, however far off it, among the eyes behind the
+// sight within minAlong..maxAlong; the current eye kept unless the other is `switchMargin` nearer. -1: neither.
+int NearestEye(Line const lines[2], float minAlong, float maxAlong, int current, float switchMargin);
 
 // ---- The alignment assist ----------------------------------------------------------------------------
 
