@@ -603,14 +603,23 @@ Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runni
             // so a % in the game's path stays as it is.
             SetEnvironmentVariableW(L"MEVR_OLD_SETUP", moved.c_str());
             SetEnvironmentVariableW(L"MEVR_ASI_DIR", layout.Asi().c_str());
-            std::wstring command = L"cmd.exe /d /c ping -n 3 127.0.0.1 >nul & del /f /q \"%MEVR_OLD_SETUP%\"";
+            // The running Setup can't be deleted until its window closes, which the player does when they like: the
+            // helper tries once a second for up to 10 minutes (it gave up after 2 s, so MEVR-Setup.exe.old and the ASI
+            // folder usually stayed; Codex review 2026-11-06, install#17). cmd and ping by their full System32 paths,
+            // never found by search next to Setup (install#2).
+            wchar_t system[MAX_PATH] = {};
+            UINT const n = GetSystemDirectoryW(system, MAX_PATH);
+            std::wstring const sys = n > 0 && n < MAX_PATH ? std::wstring(system, n) : std::wstring(L"C:\\Windows\\System32");
+            std::wstring const cmd = sys + L"\\cmd.exe";
+            std::wstring command = L"\"" + cmd + L"\" /d /c (for /l %i in (1,1,600) do @(if exist \"%MEVR_OLD_SETUP%\" (del /f /q \"%MEVR_OLD_SETUP%\" "
+                                   L"2>nul & if exist \"%MEVR_OLD_SETUP%\" \"" + sys + L"\\PING.EXE\" -n 2 127.0.0.1 >nul)))";
             if (asiOurs) {
                 command += L" & rmdir \"%MEVR_ASI_DIR%\"";  // only if empty, and only the folder we created
             }
             STARTUPINFOW si{};
             si.cb = sizeof si;
             PROCESS_INFORMATION pi{};
-            if (CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            if (CreateProcessW(cmd.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
             }

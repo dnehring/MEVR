@@ -155,7 +155,13 @@ bool WriteFileAtomic(fs::path const& file, std::string_view bytes) {
             return false;
         }
         out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-        if (!out) {
+        // The buffered bytes reach the disk at the close: a failure there (a full disk) put a truncated file over the
+        // good one, the manifest or an ini (Codex review 2026-11-06, install#6). And the size checked, for good measure.
+        out.close();
+        std::error_code sizeError;
+        if (!out || fs::file_size(temp, sizeError) != bytes.size() || sizeError) {
+            std::error_code ec;
+            fs::remove(temp, ec);
             return false;
         }
     }
