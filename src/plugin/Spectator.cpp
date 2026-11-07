@@ -327,6 +327,9 @@ struct Capture {
     bool floatTexture = false;
 };
 Capture gCapture;
+// The game's device, from the window's swap chain (MirrorPresent), for frames before any quad was copied. Held WITHOUT a
+// reference: the game's device outlives us, and a static's Release at process exit would run after d3d11 may be gone.
+ID3D11Device* gWindowDevice = nullptr;
 sc::TexturePath gHint;
 std::uint64_t gSeenResets = 0;
 
@@ -403,13 +406,19 @@ bool ResolveCapture(ID3D11Device* device, sp::Frame const& frame) {
         return false;
     }
     ++gCapture.tries;
+    // A capture target's texture sits behind an unaligned pointer (+0xA0 -> +0x8, research/39 section 11): the search finds it
+    // only by the class of a texture of our own on the game's device, which NoteDevice learns. Until 2026-11-07 only the scope,
+    // the galaxy map, the world UI's figure and the sights noted it, so on a walk with none of them the spectator never found
+    // its picture and the window kept Halcyon's one-eye mirror (research/49, the first run).
+    scope_capture_source::NoteDevice(device);
     D3D11_TEXTURE2D_DESC desc{};
     ID3D11Texture2D* const found = scope_capture_source::FindTargetTexture(frame.resource, frame.width, frame.height, gHint, &desc);
     if (found == nullptr) {
         if (gCapture.tries >= kResolveTries) {
             gCapture.gaveUp = true;
-            log::Warn("spectator: no {}x{} D3D11 texture found behind the render target's resource 0x{:X} in {} frames; the desktop window "
-                      "keeps Halcyon's mirror", frame.width, frame.height, frame.resource, gCapture.tries);
+            log::Warn("spectator: no {}x{} D3D11 texture found behind the render target's resource 0x{:X} in {} frames (last search: {}; the "
+                      "known class's textures there:{}); the desktop window keeps Halcyon's mirror", frame.width, frame.height,
+                frame.resource, gCapture.tries, scope_capture_source::LastSearch(), scope_capture_source::DescribeTextures(frame.resource));
         }
         return false;
     }
@@ -679,6 +688,9 @@ ID3D11Texture2D* OnEndFrame(std::vector<XrSwapchain> const& projectionSwapchains
         gCapture.texture->GetDevice(deviceRef.GetAddressOf());
     }
     if (deviceRef == nullptr) {
+        deviceRef = gWindowDevice;  // a reference of our own for this frame (ComPtr's assignment AddRefs)
+    }
+    if (deviceRef == nullptr) {
         // The first frames: the capture's texture through the search, which needs no device to find it.
         D3D11_TEXTURE2D_DESC desc{};
         sc::TexturePath hint = gHint;
@@ -799,6 +811,12 @@ ID3D11Texture2D* OnEndFrame(std::vector<XrSwapchain> const& projectionSwapchains
 }
 
 void MirrorPresent(IDXGISwapChain* swapChain) {
+    if (gWindowDevice == nullptr && swapChain != nullptr) {
+        ComPtr<ID3D11Device> d;
+        if (SUCCEEDED(swapChain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(d.GetAddressOf())))) {
+            gWindowDevice = d.Get();
+        }
+    }
     if (!gPictureMirror || gPicture.srv == nullptr || swapChain == nullptr || GetTickCount64() - gPictureMs > kPictureFreshMs ||
         !gPipeline.ready) {
         return;

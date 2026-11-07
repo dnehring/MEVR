@@ -120,3 +120,19 @@ paid for the third render. Turned off again for the release. Next, before any pr
 - check that the picture carries the player's VRIK pose (arms on the controllers), not the animation's;
 - then sections 3 and 4 (the view actor, the cost) and the hand angle the owner saw, with a real 16:9 recording.
 
+
+## 2026-11-07, the picture found (ff47917)
+
+Cause of the first run's failure: a capture target's texture sits behind an unaligned pointer that only the search's
+known-class walk finds, and the class is learned by `scope_capture_source::NoteDevice`, which only the scope, the galaxy map,
+the world UI's figure and the sights called. The spectator calls it itself now (and takes the game's device from the window's
+swap chain before any quad is copied). On the fake headset (BIOA_PRO00, the release build plus the fix): `the render
+target's D3D11 texture: 1920x1080 format 27, read as format 29 (found in 1 frames)`, the window showed the picture
+letterboxed into the 2118x2160 backbuffer. Under a replay of the owner's PS VR2 recording (2026-11-06 22:40, controllers
+tracked) the picture shows the VRIK arms where the eyes show them (both hands raised, open), so it does carry the player's
+pose. Its 85 degrees across is narrower than an eye's view, so it frames tighter.
+
+For recording: the window is the stereo target's size (2118x2160 at the owner's Performance mode), so a 16:9 picture always
+has bars inside it; `width = 2118`, `height = 1192` fills its width pixel for pixel, and OBS's Crop/Pad filter takes 484 rows
+off the top and 485 off the bottom (rows depend on the window's size: (H - 1192) / 2). The cost (section 4) and the view actor
+(section 3) are still unmeasured.
