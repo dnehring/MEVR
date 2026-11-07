@@ -7,47 +7,19 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
-### Performance
-- A Performance setting on the menu's Display page: **Quality**, **Balanced** (the standard) and **Performance**. Each sets the
-  render resolution, FSR and the settings that decide the frame rate together; the line under it says what it trades. Change
-  one of those settings yourself and it shows **Custom**. Everything applies at once except the render resolution, which
-  applies after a restart (the row says when one is waiting).
-- The individual settings are in Advanced > Performance: small-object culling, grass distance, dynamic shadows, ambient
-  occlusion and FSR sharpness, with the original fixed render sizes (2048 to 6144 wide).
-
-### Seeing the game
-- Movement is always life-size: your steps, leans and crouches move you one to one. The Comfort toggle for the old
-  half-scale movement (and Advanced > View's Movement scale) is gone; profiles that had it off move life-size now.
-- The cinema screen for conversations and cutscenes is calmer: a 16:9 screen a little farther away (2.9 m wide at 3.5 m)
-  with gentler depth, so it no longer pulls your eyes apart. The size, distance and depth are in Comfort > Conversations
-  and cutscenes.
-- Conversations and cutscenes on the screen run at your headset's full frame rate instead of half of it.
-- No more burst of depth at the start of a conversation.
-- Motion blur stays off after cutscenes and conversations (it could come back after one and make surfaces flicker).
-- The cinema screen stays where a scene began when you lean or look around, and stands over a dim floor with a horizon
-  behind it, so you keep a sense of place (Comfort > Conversations and cutscenes, or `[Cinematics] backdrop`).
-- Entering and leaving a cutscene or conversation dips from black instead of cutting hard (`[Cinematics] fadeS`).
-
-### The Mako
-- Repair the Mako from the throttle: while your left hand holds the throttle lever, click the left thumbstick. The button on
-  the desk still works too.
-- The cockpit's joystick turns in your hand when you twist it (the twist always steered; now the stick shows it).
-- The extraction handle overhead is pulled down, as its arrows say (it took a push up before).
-
-### The setup
-- MEVR Setup no longer fails an install, repair or uninstall now and then because your antivirus was checking a file it had
-  just written: it waits a moment and tries again (about a second at most).
-
-## 0.1.0 (2026-11-05)
+## 0.1.0 (2026-11-06)
 
 The first public release, a **development preview**: **Mass Effect 1 (Legendary Edition) in VR**, played with motion
 controllers. Built on Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 only; Mass Effect 2
 and 3 come later. Much of it has been tried in a headset only a few times so far: reports are very welcome.
 
 ### Seeing the game
-- Stereo 3D and head tracking (6DOF) in first person, at life size: each eye is rendered from where it really is.
-- Conversations and cutscenes on a large 3D cinema screen in front of you (or in VR, or on a flat screen: your choice
-  in the menu).
+- Stereo 3D and head tracking (6DOF) in first person, at life size: each eye is rendered from where it really is, and
+  your steps, leans and crouches move you one to one.
+- Conversations and cutscenes on a large 3D cinema screen (16:9, 2.9 m wide at 3.5 m) at your headset's full frame rate.
+  It stays where the scene began when you lean or look around, stands over a dim floor with a horizon behind it, and the
+  switch to it and back dips from black. Or play them in VR, or on a flat screen: Comfort > Conversations and cutscenes.
+- Motion blur stays off (in VR it smears each eye its own way), after level loads and cutscenes too.
 - The HUD on a panel that follows your body; your health and shields on your left wrist, your weapon's heat and
   grenades on the gun.
 - The game's own screens (shop, loot, journal, codex, map) as panels in the room, used with a laser pointer.
@@ -60,6 +32,14 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
   VR start sets it for the launches after it.
 - Each frame renders the scene once and builds the second eye from it, about a fifth less work per frame than two full
   renders.
+
+### Performance
+- A Performance setting on the menu's Display page: **Quality**, **Balanced** (the standard) and **Performance**. Each sets the
+  render resolution, FSR and the settings that decide the frame rate together; the line under it says what it trades. Change
+  one of those settings yourself and it shows **Custom**. Everything applies at once except the render resolution, which
+  applies after a restart (the row says when one is waiting).
+- The individual settings are in Advanced > Performance: small-object culling, grass distance, dynamic shadows, ambient
+  occlusion and FSR sharpness, with the original fixed render sizes (2048 to 6144 wide).
 
 ### Your squad
 - Point and order: squeeze the left grip away from the gun, point at an enemy, a spot or a squadmate, let go: attack, move
@@ -132,8 +112,11 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
 - A squadmate runs the Mako's guns while you drive: they aim at the nearest enemy they can see, fire the machine gun, and
   switch to the cannon for heavy targets and groups. Push the stick's thumbstick or aim with your free right hand to take the
   guns yourself; they take them back a few seconds after you stop.
-- Drive it with a throttle lever and a flight stick in the cockpit: grab them, tilt the stick to steer, fire with the
-  trigger and A, and tilt the stick while the jump jets fire to drift the Mako forward, back or sideways in the air.
+- Drive it with a throttle lever and a flight stick in the cockpit: grab them, tilt the stick to steer (twist it to turn on
+  the spot; the stick turns in your hand), fire with the trigger and A, and tilt the stick while the jump jets fire to drift
+  the Mako forward, back or sideways in the air.
+- Repair it with the button on the desk, or by clicking the left thumbstick while your left hand holds the throttle. Pull
+  the handle overhead down to call for extraction.
 - The turret follows your right hand.
 
 ### The menu and the setup
