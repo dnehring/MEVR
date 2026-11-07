@@ -800,8 +800,20 @@ orders.". Command line: `--install-voice [--voice-small] [--voice-medium] [--no-
   pin matched, GitHub's 404 for `voice-model-1` took the "not published yet" path, `--check-voice --deep` passed, and the
   uninstall left the folder byte for byte what it was (110 of 110 checks).
 
-Not yet: the model tier from the real release (the user uploads the asset); the files loaded by the game from a Setup
-install (the same files `deploy-asi.ps1` deploys, which the game loads: research/54 "In the game").
+**The model's release, and the package's model tier** (2026-11-07). The owner published release `voice-model-1` (a
+pre-release) with `model.gguf`: GitHub lists 639,446,880 bytes and `sha256:7452847f...e108b`, the file the dev machine
+trained (docs/release-checklist.md's pin). A package built in a clean worktree then showed a gap: the LE1 host compiles
+the model tier's runtime (`core/voice/Llm`, `MEVR_HAVE_LLAMA`) only when `external/llama-cpp`'s headers exist, and a tree
+without them (the clean worktree, the 2026-11-06 QA build) builds a host that logs "voice model: off: this build has no
+llama.cpp runtime" whatever Setup installed. `tools/package-release.ps1` now fetches them (`fetch-voice.ps1 -Llm
+-NoBaseModel`: llama.cpp's archive and headers, not the 600 MB base GGUF), configures again when the host project has no
+`Llm.cpp`, and refuses to package without it (783e604; CI's release.yml runs the same script). That package, from
+783e604: `test-fake-game.ps1 -Voice` downloaded everything for real, the order model from the release (639 MB, GitHub's
+digest checked), llama.cpp's 18 files, the recognizer and the tiny models; `--check-voice --deep` passed and the
+uninstall left the fake game byte for byte (110 of 110).
+
+Not yet: the files loaded by the game from a Setup install (the same files `deploy-asi.ps1` deploys, which the game
+loads: research/54 "In the game").
 
 **The row reads the files too** (2026-11-06, late): in the 0.1.0 build on the owner's machine the menu's Display > Optional
 content row said "Installed: None yet" while the same session's log had loaded `ASI\voice\MEVR-Voice.dll` and the tiny
