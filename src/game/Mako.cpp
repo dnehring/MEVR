@@ -69,6 +69,11 @@ ue3::FieldRef gDesiredBoneRotation{"SFXGame.BioSkelControl_TurretConstrained", "
 ue3::FieldRef gConstrainYaw{"SFXGame.BioSkelControl_TurretConstrained", "bConstrainYaw"};
 ue3::FieldRef gConstrainPitch{"SFXGame.BioSkelControl_TurretConstrained", "bConstrainPitch"};
 ue3::FunctionRef gSetTurretAim{"SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint"};
+// Whether the Mako is still driven: the native turret aim reads its driver and controller, which TryExitVehicle clears
+// (the owner's QA, 2026-11-07, and 2026-11-05: B to leave the Mako ended the game at MassEffect1.exe+0x307120 reading 0x0,
+// inside our SetDesiredTurretAimPoint from the vehicle's tick 37 ms after TryExitVehicle).
+ue3::FieldRef gTurretVehicleController{"Engine.Pawn", "Controller"};
+ue3::FieldRef gTurretVehicleDriver{"Engine.Vehicle", "Driver"};
 ue3::FunctionRef gVehicleTick{"SFXGame.BioVehicleWheeled.Tick"};
 ue3::FunctionRef gVehicleStartTrace{"SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation"};
 ue3::FieldRef gVehicleStartReturn{gVehicleStartTrace, "ReturnValue"};
@@ -182,6 +187,7 @@ unsigned long long gShotsTotal = 0;
 std::atomic<unsigned> gTurretCallsTick{0};
 std::atomic<unsigned> gTurretCallsPawn{0};
 std::atomic<unsigned> gTurretCallsRefused{0};
+std::atomic<unsigned> gTurretCallsSkippedNoDriver{0};  // turret aims skipped: the vehicle being left or empty
 std::atomic<unsigned> gPawnTicks{0};
 std::atomic<unsigned> gStartsSeen{0};
 
@@ -431,6 +437,12 @@ void CheckTurretHeld() {
 // The game's own turret aim, for our point, on every turret the weapons sit on; then what it wrote into the
 // controls is remembered (the held check, and the pose seam re-asserts it before the vehicle's pose).
 void AimTurrets(ue3::Object* behavior, Seam seam) {
+    // Never while the vehicle is being left or empty (see gTurretVehicleController).
+    if (gVehicle == nullptr || !ue3::runtime::IsAlive(gVehicle) || gTurretVehicleController.Read<ue3::Object*>(gVehicle).value_or(nullptr) == nullptr ||
+        gTurretVehicleDriver.Read<ue3::Object*>(gVehicle).value_or(nullptr) == nullptr) {
+        gTurretCallsSkippedNoDriver.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
     ue3::Function* const fn = gSetTurretAim.Get();
     if (fn == nullptr) {
         if (!gLoggedNoTurretFn) {
