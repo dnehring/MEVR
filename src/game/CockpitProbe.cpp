@@ -2631,6 +2631,11 @@ void PointAim() {
     ue3::Object* const camera = player::Camera(controller);
     ue3::Object* const target = gCameraViewTargetActor.Read<ue3::Object*>(camera).value_or(nullptr);
     ue3::Object* const eyeActor = target != nullptr ? target : player::Pawn(controller);
+    // During a level load the camera's view target can still name an actor that's gone: Actor.SetOwner walks the new owner's
+    // chain and faulted on it (the owner's QA, 2026-11-07: two crashes loading UNC20 from Resume, black screen with sound).
+    if (!Still(eyeActor, gActorClass)) {
+        return;
+    }
     if (gAim.reticleOwner != eyeActor || gOwnerField.Read<ue3::Object*>(gAim.reticle) != eyeActor ||
         gOwnerNoSee.ReadBool(gAim.reticleComponent) != !gAim.showInEyes) {
         SetOwnerOf(gAim.reticle, eyeActor);
