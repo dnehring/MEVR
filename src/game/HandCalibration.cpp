@@ -60,12 +60,8 @@ struct Values {
     bool exploreRamp = true;         // [Hands] exploreRamp (research/38 C)
     double drawRate = vr::combat_stance::kDefaultDrawRate;  // [Hands] drawRate (research/38 D)
     double holsterRate = vr::combat_stance::kDefaultHolsterRate;  // [Hands] holsterRate
-    // [Hands] sprint, sprintStaminaS, sprintRefillS (game/sprint): the game's own sprint until it's checked in the game.
-    vr::sprint::Settings sprint = [] {
-        vr::sprint::Settings s;
-        s.enabled = false;
-        return s;
-    }();
+    // [Hands] sprint, sprintStaminaS, sprintRefillS (game/sprint): the faster run by default since 2026-11-06 (the user).
+    vr::sprint::Settings sprint;
     bool fingers = true;          // [Hands] fingers (research/43)
     double fingerCurlDeg = 70.0;  // [Hands] fingerCurlDeg
     bool fingerTouch = true;      // [Hands] fingerTouch (research/43 "Touch sensors")
@@ -2948,6 +2944,16 @@ void Refresh() {
             }
         }
     }
+    // [Hands] since 2026-11-06 (later): the sprint is the faster run by default. A file without the marker sprintDefault whose
+    // sprint still holds the first default `game` (39dc8ac) gets `speed`; anything else is the player's.
+    if (auto const h = ini.find("Hands"); h != ini.end() && h->second.find("sprintDefault") == h->second.end()) {
+        if (auto const k = h->second.find("sprint"); k != h->second.end() && _stricmp(k->second.c_str(), "game") == 0 &&
+            WritePrivateProfileStringW(L"Hands", L"sprint", L"speed", path.wstring().c_str()) != 0) {
+            log::Info("hands: [Hands] sprint game -> speed: the sprint button is a faster run (game/sprint) in {}", ini::Utf8(path));
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
+    }
     // [Holsters] since 2026-11-06: putting a weapon away is quicker (the user: "takes too long and feels weird in VR"). A file
     // without the marker [Hands] holsterRate that still holds the old default releaseGrace = 0.3 gets 0.2; any other is kept.
     if (auto const h = ini.find("Hands"); h == ini.end() || h->second.find("holsterRate") == h->second.end()) {
@@ -3119,8 +3125,10 @@ void Refresh() {
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
         // A faster holster (2026-11-06); also the marker for releaseGrace's move above.
         {L"Hands", "Hands", L"holsterRate", "holsterRate", L"15.0"},
-        // The sprint button as a faster run (2026-11-06; game/sprint): the game's own until checked in the game.
-        {L"Hands", "Hands", L"sprint", "sprint", L"game"},
+        // The sprint button as a faster run (2026-11-06; game/sprint), on by default (the user); a file that got `game` from
+        // 39dc8ac moves once (the migration above; marker sprintStaminaS's companion sprintDefault).
+        {L"Hands", "Hands", L"sprint", "sprint", L"speed"},
+        {L"Hands", "Hands", L"sprintDefault", "sprintDefault", L"speed"},
         {L"Hands", "Hands", L"sprintStaminaS", "sprintStaminaS", L"6"},
         {L"Hands", "Hands", L"sprintRefillS", "sprintRefillS", L"8"},
         // The pistol's weapon panel beside the gun, clear of its sight (2026-11-06).
