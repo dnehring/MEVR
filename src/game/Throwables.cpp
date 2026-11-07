@@ -1372,8 +1372,8 @@ void AdjustPad(gamepad::Options& options) {
             log::Warn("throwables: meleeButton/grenadeButton = 0 needs the redeployed host (services v14): until then B and X still "
                       "reach the game; close the game and redeploy the host");
         }
-        options.meleeButton = settings.meleeButton;
-        options.grenadeButton = settings.grenadeButton;
+        options.meleeButton = options.meleeButton && settings.meleeButton;
+        options.grenadeButton = options.grenadeButton && settings.grenadeButton;
     }
     if (gActive && gNearRight && settings.rightHand && gMachine.Holder() < 0) {
         options.rightGripFree = true;  // a new right squeeze at the grenade slot isn't RB (gripHolds 0)

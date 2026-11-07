@@ -304,7 +304,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.makoDrive ? kFlagMakoDrive : 0u) | (options.makoLever ? kFlagMakoLever : 0u) | (options.makoStick ? kFlagMakoStick : 0u) |
            (options.cockpitLook ? kFlagCockpitLook : 0u) | (options.physicalCrouch ? kFlagPhysicalCrouch : 0u) |
            (options.powerWheel ? kFlagPowerWheel : 0u) | (options.modPowerHold ? kFlagModPowerHold : 0u) |
-           (options.squadPlace ? kFlagSquadPlace : 0u) |
+           (options.squadPlace ? kFlagSquadPlace : 0u) | (options.handPowerWheel ? kFlagHandPowerWheel : 0u) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -330,6 +330,7 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.cockpitLook = (flags & kFlagCockpitLook) != 0;
     options.physicalCrouch = (flags & kFlagPhysicalCrouch) != 0;
     options.powerWheel = (flags & kFlagPowerWheel) != 0;
+    options.handPowerWheel = (flags & kFlagHandPowerWheel) != 0;
     options.modPowerHold = (flags & kFlagModPowerHold) != 0;
     options.squadPlace = (flags & kFlagSquadPlace) != 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
@@ -403,7 +404,8 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     std::uint8_t const leftActive = static_cast<std::uint8_t>((pushed(input.left.stickX, input.left.stickY) ? kPowerLeftStick : 0) |
         (input.left.stickClick ? kPowerL3 : 0) | (input.left.primary ? kPowerX : 0) |
         (input.left.trigger > kPowerPressed ? kPowerLeftTrigger : 0) | (input.left.squeeze > kPowerPressed ? kPowerLeftGrip : 0));
-    latches.powerHeld = options.powerWheel ? leftActive : static_cast<std::uint8_t>(latches.powerHeld & leftActive);
+    latches.powerHeld = options.powerWheel ? leftActive : static_cast<std::uint8_t>(
+        (latches.powerHeld & leftActive) | (options.handPowerWheel ? (leftActive & kPowerX) : 0));
     std::uint8_t const powerBlock = options.powerWheel ? kPowerAll : latches.powerHeld;
     if ((powerBlock & kPowerLeftStick) != 0) {
         state.left.stickX = state.left.stickY = 0.0f;

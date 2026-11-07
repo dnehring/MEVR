@@ -37,7 +37,8 @@
 // BioPlayerInput.ActivatePower. Both hands share one cooldown, never shorter than the game's own melee
 // cooldown (read live from the power). A tick on the strike; a thump when the target's health drops
 // within 1.2 s (the hit).
-// X stays the game's grenade unless [Throwables] grenadeButton = 0; B no longer melees on foot by
+// X is the hand power wheel only on foot while [PowerWheel] on = 1. With it off, grenadeButton = 1 restores game X;
+// grenadeButton = 0 (default) keeps physical throws only. B no longer melees on foot by
 // default since 2026-11-05 (meleeButton = 0: the gesture only; host v14).
 //
 // Ties to the other hand features: a squeeze that takes a grenade is "claimed" (Claim, before holsters

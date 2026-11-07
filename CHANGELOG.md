@@ -12,6 +12,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## 0.1.0 (2026-11-06)
 
+- Fixed X throwing a grenade while selecting powers: on foot with the hand power wheel on, taps and holds of X only
+  use that wheel. Grenades: grab one at the left of your chest with either hand (the left while the right holds the gun) and throw; release slowly to put it back.
+  An old `grenadeButton = 1` and the old right-hand-only grenades move once; X keeps its game meaning in the Mako, menus and conversations.
 - Powers on yourself now show where to touch and a ring while you hold: gun powers such as Overkill use the gun's top.
   A flash, the power's name and a pulse in both hands confirm a cast; a red message explains a cooldown, unavailable power
   or holstered weapon.

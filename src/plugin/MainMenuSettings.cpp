@@ -347,8 +347,8 @@ void Settings::Read(menu::Values& v) {
         g.powerWheel = Lower(ini.Text("Holsters", "powerWheel", "r3"));
         g.grenades = ini.Num("Throwables", "enabled", 1.0f) != 0.0f;
         g.melee = ini.Num("Throwables", "melee", 1.0f) != 0.0f;
-        g.grenadeHands = Lower(ini.Text("Throwables", "hands", "right"));
-        g.grenadeButton = ini.Num("Throwables", "grenadeButton", 1.0f) != 0.0f;
+        g.grenadeHands = Lower(ini.Text("Throwables", "hands", "both"));
+        g.grenadeButton = ini.Num("Throwables", "grenadeButton", 0.0f) != 0.0f;
         g.meleeButton = ini.Num("Throwables", "meleeButton", 0.0f) != 0.0f;
         g.meleeFist = ini.Num("Throwables", "meleeFist", 1.0f) != 0.0f;
         g.vent = v.Flag("vent");

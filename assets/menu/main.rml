@@ -162,8 +162,8 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Conversations and cutscenes</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc">First person: you stand in Shepard's place, the wheel at your hand. In VR the director's camera moves you around; the 3D screen shows its shots on a big screen with depth; the flat screen without.</div></div>
-				<div class="seg"><button class="segb" data-class-on="cine_convo == 'world'" data-event-click="pick('cine_convo','world')">First person</button><button class="segb" data-class-on="cine_convo == 'vr'" data-event-click="pick('cine_convo','vr')">In VR</button><button class="segb" data-class-on="cine_convo == 'screen'" data-event-click="pick('cine_convo','screen')">3D screen</button><button class="segb" data-class-on="cine_convo == 'flat'" data-event-click="pick('cine_convo','flat')">Flat screen</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc">In VR the director's camera moves you around; the 3D screen shows its shots on a big screen with depth; the flat screen without.</div></div>
+				<div class="seg"><button class="segb" data-class-on="cine_convo == 'vr'" data-event-click="pick('cine_convo','vr')">In VR</button><button class="segb" data-class-on="cine_convo == 'screen'" data-event-click="pick('cine_convo','screen')">3D screen</button><button class="segb" data-class-on="cine_convo == 'flat'" data-event-click="pick('cine_convo','flat')">Flat screen</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Cutscenes</div><div class="rdesc">The same choice for cutscenes.</div></div>
 				<div class="seg"><button class="segb" data-class-on="cine_cut == 'vr'" data-event-click="pick('cine_cut','vr')">In VR</button><button class="segb" data-class-on="cine_cut == 'screen'" data-event-click="pick('cine_cut','screen')">3D screen</button><button class="segb" data-class-on="cine_cut == 'flat'" data-event-click="pick('cine_cut','flat')">Flat screen</button></div></div>
 			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">Screen width</div><input type="range" min="1.5" max="8" step="0.1" data-value="cine_width"/><div class="sval">{{cine_width_text}}</div></div>
@@ -208,7 +208,7 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Combat</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Physical grenades and melee</div><div class="rdesc">Take a grenade from the left of your chest and throw it; strike fast at an enemy to melee</div><div class="note" data-if="throwables_note != ''">{{throwables_note}}</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Physical grenades and melee</div><div class="rdesc">{{guide_grenade}} Strike fast at an enemy to melee.</div><div class="note" data-if="throwables_note != ''">{{throwables_note}}</div></div>
 				<button class="tog" data-class-on="throwables" data-event-click="toggle('throwables')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Vent by racking the gun</div><div class="rdesc">When the gun runs hot, squeeze the left grip on its top just ahead of your right hand and pull back fast: the heat is gone at once (a change to the game's rules)</div></div>
 				<button class="tog" data-class-on="vent" data-event-click="toggle('vent')"><div class="knob"/></button></div>

@@ -244,7 +244,7 @@ Squad GetSquad();
 //   fromHand         1: the grenade starts at the hand that threw it
 //   drawForThrow     1: taking a grenade with the weapon away draws it (ME1 only throws with a weapon out)
 //   earlyRelease     the analog grip lets go this far below its peak while the hand moves fast (0: off)
-//   grenadeButton    1: X still throws a grenade the game's way; 0: only the physical throw (on foot)
+//   grenadeButton    0: physical throw only; 1: game X on foot with [PowerWheel] on = 0
 //   melee            1: a fast stroke of a hand toward an enemy in reach is the game's melee
 //   meleeSpeedMS     the free hand's speed for a strike (m/s, relative to the head)
 //   meleeGunSpeedMS  the gun hand's
@@ -259,7 +259,7 @@ Squad GetSquad();
 //   hapticAmplitude  0..1 (0.5 as designed; 0: none); holdBuzz: 1 = a faint buzz while a grenade is held
 struct Throwables {
     bool enabled = true;
-    bool leftHand = false;  // right hand only by default (user, 2026-10-22)
+    bool leftHand = true;  // both hands by default since 2026-11-07 (the owner: X no longer throws, the right hand holds the gun)
     bool rightHand = true;
     ik::body_slots::Slot slot{"grenade", ik::body_slots::Weapon::None, {-0.13, -0.33, 0.0}, 0.10};
     double throwSpeedMin = 1.5;
@@ -269,7 +269,7 @@ struct Throwables {
     bool fromHand = true;
     bool drawForThrow = true;
     double earlyRelease = 0.3;
-    bool grenadeButton = true;
+    bool grenadeButton = false;
     bool melee = true;
     double meleeSpeed = 3.0;
     double meleeGunSpeed = 3.5;

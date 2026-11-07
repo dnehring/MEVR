@@ -339,10 +339,16 @@ post-handler sees them with the projectile in `ReturnValue`.
 
 ### The buttons
 
-`meleeButton = 1`, `grenadeButton = 1` (the defaults until 2026-11-05): B and X stay. With 0 the host's pad mapping keeps
+**2026-11-07 update:** X is exclusively the hand power wheel on foot while `[PowerWheel] on = 1`,
+including taps and the opening press. `grenadeButton = 0` now ships (and `hands = both`); an old `grenadeButton = 1` and `hands = right`
+move once behind `powerWheelX`. Grab with a grip at the left chest (either hand by default since 2026-11-07) and throw; a slow release
+puts it back. Explicit `grenadeButton = 1` is available with the hand wheel off. See research/55
+section 6's dated note for the option-overwrite cause, host/mod fix, tests and Overkill diagnostics.
+
+Originally `meleeButton = 1`, `grenadeButton = 1`: B and X stayed. With 0 the host's pad mapping keeps
 B or X from the game **on foot only** (menus keep B), through `gamepad::kFlagNoMeleeButton` /
 `kFlagNoGrenadeButton` (HostServices v14; an older host ignores them and the mod logs it once). B
-or X as the power wheel's RB source stays RB.
+as the game's power-wheel RB source stays RB; X can do so only with the hand wheel off.
 
 ### Gesture only (2026-11-05)
 
