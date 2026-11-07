@@ -30,6 +30,7 @@
 #include "core/vr/SquadPlace.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/FloorLock.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
@@ -367,6 +368,8 @@ HostServices WithPowerWheel(HostServices services) {
     services.setSquadPlace = &HostSetSquadPlace;
     services.conversationWorldSize = static_cast<std::uint32_t>(sizeof(vr::conversation_world::State));  // v33 (research/59)
     services.setConversationWorld = &HostSetConversationWorld;
+    services.floorLockSampleSize = static_cast<std::uint32_t>(sizeof(vr::floor_lock::PawnSample));
+    services.setFloorLockSample = &floor_lock::SetPawn;
     return services;
 }
 HostServices const gServices = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,
@@ -384,6 +387,7 @@ HostServices const gServices = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHo
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.
 void ForgetModState() {
+    floor_lock::SetPawn(nullptr);
     halcyon::SetModHandAim(false);
     vr::aim_ray::Reset();
     vr::squad_menu::Reset();

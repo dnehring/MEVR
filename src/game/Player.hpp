@@ -2,6 +2,7 @@
 #pragma once
 
 #include "ue3/Types.hpp"
+#include "core/vr/FloorLock.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -40,6 +41,11 @@ std::optional<Pov> CameraPov(ue3::Object* camera);
 // Actor.Location / Actor.Rotation.
 std::optional<ue3::Vector> Location(ue3::Object const* actor);
 std::optional<ue3::Rotator> Rotation(ue3::Object const* actor);
+// Stable cylinder floor and actual on-foot camera ownership; reflection failures stand down.
+vr::floor_lock::PawnSample FloorLockSample();
+// Register before installing ProcessEvent handlers; refresh at the camera update as well as each mod tick.
+void PublishFloorLockOnCamera(void (*publish)(vr::floor_lock::PawnSample const*));
+std::optional<bool> Crouched(ue3::Object const* pawn);
 // Pawn.Mesh, and a SkeletalMeshComponent's SkeletalMesh (its asset).
 ue3::Object* Mesh(ue3::Object const* pawn);
 ue3::Object* SkeletalMesh(ue3::Object const* mesh);

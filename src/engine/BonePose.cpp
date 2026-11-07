@@ -439,7 +439,8 @@ void Write(Mesh* self, float deltaTime) {
         if (std::isfinite(floorZ) && eyeL >= 0 && eyeL < count && eyeR >= 0 && eyeR < count) {
             double const eyeZ = 0.5 * (pose[static_cast<std::size_t>(eyeL)].translation.z + pose[static_cast<std::size_t>(eyeR)].translation.z);
             AcquireSRWLockExclusive(&gSampleLock);
-            gUnscaled = {eyeZ - floorZ, floorZ};
+            gUnscaled = {eyeZ - floorZ, floorZ,
+                (pose[static_cast<std::size_t>(eyeL)].translation + pose[static_cast<std::size_t>(eyeR)].translation) * 0.5};
             gUnscaledMs = GetTickCount64();
             ReleaseSRWLockExclusive(&gSampleLock);
         }

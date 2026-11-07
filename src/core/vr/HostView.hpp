@@ -39,6 +39,14 @@ struct State {
     float baseRight[3] = {0.0f, 0.0f, 0.0f};
     std::uint64_t sequence = 0;  // increments with every published sample
     std::uint64_t timeMs = 0;    // GetTickCount64 when published
+    // v34: the corrected common centre, excluding metric eye displacement. Same latched head/offsets as the render.
+    bool floorLocked = false;
+    bool centreValid = false; // also carries the corrected on-foot reference through a held world view
+    double centreZ = 0.0;
+    double pawnFloorZ = 0.0;
+    double stageEyeM = 0.0;
+    std::uint64_t floorSequence = 0;
+    double floorCorrection = 0.0;
 };
 
 void Publish(State const& state);

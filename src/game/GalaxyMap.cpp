@@ -9,6 +9,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/ViewAnchor.hpp"
+#include "core/vr/HostView.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
@@ -567,6 +568,13 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     if (!gHold.active) {
         if (mode && *mode == 0) {
             gHold.location = *pov->location;
+            // Carry the corrected on-foot base into the hold; the renderer still adds its common offsets once.
+            auto const view = vr::host_view::Latest();
+            if (view.valid && view.floorLocked) {
+                auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
+                double const commonZ = basis.forward.z * view.offsetForward + basis.right.z * view.offsetRight + basis.up.z * view.offsetUp;
+                gHold.location.z = static_cast<float>(view.centreZ - commonZ);
+            }
             gHold.rotation = *pov->rotation;
             gHold.fov = *pov->fov;
             gHold.haveView = true;

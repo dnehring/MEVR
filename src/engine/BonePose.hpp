@@ -425,6 +425,7 @@ KickSamples WrittenGunKicks();
 struct Unscaled {
     double eyeHeight = 0.0;
     double floorZ = 0.0;
+    ik::Vec3 eye; // before our solves/scaling; for a standing eye measured against the pawn cylinder floor
 };
 std::optional<Unscaled> UnscaledBody(std::uint64_t maxAgeMs = 500);
 

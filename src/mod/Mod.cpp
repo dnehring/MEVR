@@ -15,6 +15,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
+#include "game/Player.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -320,6 +321,9 @@ void TryInstallScriptHooks() {
     game::world_ui::TryStartup();  // the camera-update handler that holds Shepard's view while a game screen stands in the room
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
+    if (gHostOwnsVr && gHost->version >= 36 && gHost->floorLockSampleSize == sizeof(vr::floor_lock::PawnSample)) {
+        game::player::PublishFloorLockOnCamera(gHost->setFloorLockSample);
+    }
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     game::power_wheel::TryStartup();  // the bolt from the hand: BioPawn.ReleasePower's timing (research/55 section 9)
@@ -1249,6 +1253,11 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     }
     if (gHooked) {
         game::head_tracking::RefreshGameMode();
+        if (gHostOwnsVr && MEVR_HOST_HAS(setFloorLockSample) && gHost->setFloorLockSample != nullptr &&
+            gHost->floorLockSampleSize == sizeof(vr::floor_lock::PawnSample)) {
+            auto const sample = game::player::FloorLockSample();
+            gHost->setFloorLockSample(&sample);
+        }
     }
     // The guided calibration's results and whether it runs, before anything uses them.
     game::body_calibration::Tick(BodyCalibrationLink());

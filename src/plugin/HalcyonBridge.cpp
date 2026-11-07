@@ -23,6 +23,7 @@
 #include "halcyon/le1/le1_game.h"
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Calibration.hpp"
+#include "plugin/FloorLock.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/Colour.hpp"
@@ -461,7 +462,7 @@ bool KeyDown(int vk) noexcept {
 
 void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOrientation[4],
     float const headPosition[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU,
-    float unitsPerMeter) noexcept {
+    float unitsPerMeter, bool floorWorld) noexcept {
     mevr::vr::host_view::State view;
     view.valid = worldView;
     view.headLook = headLook;
@@ -478,7 +479,9 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOr
     view.unitsPerMeter = unitsPerMeter;
     view.baseRightValid =
         MELEVR::RenderHook::GetLastViewRight(&view.baseRight[0], &view.baseRight[1], &view.baseRight[2]);
-    mevr::vr::host_view::Publish(view);
+    mevr::vr::floor::State floor;
+    mevr::host::halcyon::Floor(&floor);
+    mevr::host::floor_lock::Queue(view, floor, floorWorld);
     if (worldView && !gLoggedView) {
         gLoggedView = true;
         mevr::log::Info("halcyon bridge: first world view: head look yaw {} pitch {} (head aim {}), view offset "
@@ -1116,6 +1119,7 @@ void RefreshCameraSettings() {
     nextReadMs = now + 1000;
     MELEVR::MevrBridge::RefreshConstantEyeSetting();
     MELEVR::MevrBridge::RefreshBlendFixSetting();
+    mevr::host::floor_lock::RefreshSettings();
 }
 
 void SetModHandAim(bool on) {

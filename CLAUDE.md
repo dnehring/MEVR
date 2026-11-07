@@ -301,15 +301,22 @@ switching frameworks.
   backing up (`legsFollowMotion = 0`: the old rule; log `torso: legs:`, snapshot `torso.legs`; replay
   `tools/make-walk-recording.py`'s walk with `-Inputs`). Room-scale (the pawn following real steps past the cap) is
   designed there, not built.
-- LE1 body at the player's size ([research/58](research/58-body-scale.md), 2026-11-06; the user: "vital for release"; `core/ik/BodyScale`,
-  `game/BodyScale`, `engine/BonePose`'s `Request::bodyScale`): on foot in first person the bone writer scales every bone but
-  Camera and God by s about the floor under the view, after the solves (the skinning honours `FBoneAtom::scale`, and the gun
-  and anything attached grow with the hand: measured), and maps every goal through the inverse before them, so the hands land
-  on the controllers 1:1 (reach scaling only without it). `[Body] scale = auto` (default): s puts Shepard's eyes at the view
-  (the view's standing height above his floor over his standing holstered eye height, both measured live; 0.85..1.25, 0.1/s);
-  `off`, or a number. So the view's height decides the size: the user's 1.84 m eye height against Shepard's 1.69 asks 1.089,
-  their profile's `cameraOffsetUp = -0.082` held it at 1.048. `mevr body` measures (bones above the floor, arms, the gun), `mevr
-  body scale <s>|auto|off`; log `body scale:`; snapshot `"mod"."bodyScale"`. [verify] in the headset.
+- LE1 body at the player's size ([research/58](research/58-body-scale.md), floor lock 2026-11-07; `core/ik/BodyScale`,
+  `core/vr/FloorLock`, `plugin/FloorLock`, `game/BodyScale`): ordinary on-foot first person puts the common eye centre at
+  `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
+  recenter posture, animated camera bones, mode offsets and vertical framing. Both eyes share the correction before metric
+  eye offsets and head look; `HostServices` v34 publishes the corrected centre/pose to ViewAnchor, IK and sights (host and mod
+  deploy together). `[Body] floorLock = 1` by default, file only; `0` retains the old view and live filtered sizing path.
+  Physical crouch lowers the view once; button crouch keeps gameplay state while the real head controls height. Mako, cover,
+  third person, director/3D/flat screens, front end, menus and the galaxy's own camera are excluded; world conversation/map holds
+  carry the corrected on-foot base. Missing/stale floor samples fall back, warned once. `constantEye` keeps horizontal placement;
+  `cameraOffsetUp`'s vertical contribution is absorbed (the shipped -0.082 is -4.1 uu, not -8.2).
+  `[Body] scale = auto` (default) uses calibrated standing eye height, else a frozen standing STAGE reference, over Shepard's
+  standing holstered unscaled eyes above that same cylinder floor. The reference settles once per skeleton after a standing
+  grace period, excluding physical and game crouch; no animation/recenter chase. Scale is clamped 0.85..1.25, approaches at 0.1/s;
+  `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
+  hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
+  and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.
 - LE1 weapon drawn, like exploring ([research/38](research/38-combat-stance.md), `game/CombatStance`, rules in
   `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, on by default except `exploreStance`; our menu's Controls > Weapon drawn): VR on
   foot, first person. `exploreStance` (A, mod; **off by default until the headset confirms the redesign**; no menu row since
