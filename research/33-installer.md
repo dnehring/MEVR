@@ -848,6 +848,59 @@ held open without delete sharing, as a scanner holds it, refuses a replace at on
 The cost: the test that holds the ASI open on purpose (a running game) now waits the 1.27 s before its expected failure; a
 player whose game holds a file waits that long before the message.
 
+## 16. Steam launch failures and recovery (2026-11-07)
+
+A player reported `couldn't ask Steam to start the game (error N)`; **no number or player logs** were supplied.
+This is `StartLe1`'s failed **CreateProcessW of steam.exe**, after the ActiveProcess pid/user checks, not a failed
+game/EA process. Ranking below is inference for a typical player, not a diagnosis of that player. The old `SteamExe()`
+already checked `exists`; an absent executable never reached this message. Windows errors depend on the failing layer.
+
+| Rank | Realistic cause | Win32 errors and code evidence |
+| --- | --- | --- |
+| 1 | Steam set to Run as administrator / an elevation compatibility shim (possibly inherited `__COMPAT_LAYER`) | **740 ERROR_ELEVATION_REQUIRED** from unelevated Setup's CreateProcess; it cannot present UAC. Steam can already be running and still fail a new process request. |
+| 2 | Permissions or security software/policy blocks executing Steam | **5 ERROR_ACCESS_DENIED** (ACL/EDR); **1260 ERROR_ACCESS_DISABLED_BY_POLICY** (AppLocker/SRP); **577 ERROR_INVALID_IMAGE_HASH** (signature/WDAC); **225 ERROR_VIRUS_INFECTED**, **226 ERROR_VIRUS_DELETED** (AV). `exists` checks none of these execution permissions/policies. AV quarantine can instead cause 2. |
+| 3 | Steam update/file lock, corrupt/replaced executable, wrong image or broken image configuration | **32 ERROR_SHARING_VIOLATION** (incompatible open), **5** (directory passed as exe: old `exists` accepted it), **193 ERROR_BAD_EXE_FORMAT**, **216 ERROR_EXE_MACHINE_TYPE_MISMATCH**, **192 ERROR_EXE_MARKED_INVALID**; **14001 ERROR_SXS_CANT_GEN_ACTCTX** (bad side-by-side manifest); an IFEO debugger pointing at a missing executable can give **2**. |
+| 4 | Path/drive/CWD becomes unavailable between exists and CreateProcess | **2 ERROR_FILE_NOT_FOUND**, **3 ERROR_PATH_NOT_FOUND**, **15 ERROR_INVALID_DRIVE**, **21 ERROR_NOT_READY**, **53 ERROR_BAD_NETPATH** / **67 ERROR_BAD_NET_NAME** (network install), **267 ERROR_DIRECTORY** (Steam parent CWD); storage faults can give **23 ERROR_CRC**, **1117 ERROR_IO_DEVICE**, **1392 ERROR_FILE_CORRUPT**. Persistent stale paths after moving Steam normally get the earlier not-found message. |
+| 5 | Unusual process restrictions or exhausted machine resources | **5** (restrictive inherited job, e.g. active-process limit), **8 ERROR_NOT_ENOUGH_MEMORY**, **14 ERROR_OUTOFMEMORY**, **1450 ERROR_NO_SYSTEM_RESOURCES**, **1455 ERROR_COMMITMENT_LIMIT**, **1816 ERROR_NOT_ENOUGH_QUOTA**. No special token or breakaway flags are requested here. |
+
+Other explanations: missing HKCU SteamExe (**2**), the old MAX_PATH registry overflow (**234 ERROR_MORE_DATA**), malformed
+names (**123 ERROR_INVALID_NAME**) and overlong paths (**206 ERROR_FILENAME_EXCED_RANGE**) normally fail **before** this
+message. Forward slashes are normal Steam spelling; lowercase works on ordinary Windows directories (case-sensitive
+directories are exceptional). W APIs preserve non-ASCII paths. Elevated Setup with ordinary Steam inherits elevation:
+the mismatch alone does not fail CreateProcess; a different elevation account can change HKCU/readiness instead.
+
+The EA app branch has a different error; only misclassification reaches this one (`SetupApp::SteamGame`/CLI Main use
+source == Steam **or** `\steamapps\common\` in the path). `--launch` and the ExitProcess `--request` child use this same
+code even inside the game folder: Steam's **explicit parent CWD** overrides Setup's. Explicit unquoted lpApplicationName,
+quoted argv[0], fixed args and mutable command buffer are correct. Steam/EA IPC and game/DLL failures after accepted
+creation are separate symptoms; Steam being "ready" here only means a live registry PID and nonzero ActiveUser.
+
+**Recovery built:** normalize absolute registry paths (slashes, surrounding quotes/whitespace, dot segments, preserve
+Unicode/case), verify a regular file, then try InstallPath + steam.exe (HKCU and HKLM 32/64 views; HKCU SteamPath too).
+Missing paths still allow the registered protocol. Launch order: **CreateProcess -> ShellExecuteEx(open) on the same
+exe/arguments/CWD -> ShellExecuteEx on the Steam URL**. The shell honors elevation/app compatibility (may show UAC;
+cancellation is 1223); errors are captured immediately, handles closed, and attempts stop on first accepted request.
+
+The URL form is `steam://run/<appid>//<args>/`: here **`steam://run/1328670//-game 1 -autoterminate/`** (whole string in
+lpFile, no lpParameters); without autoboot, `steam://run/1328670`. Sources: [Valve's protocol reference](https://developer.valvesoftware.com/wiki/Steam_browser_protocol)
+(fetch returned 403), [integration API](https://www.challengermode.com/developers/docs/game-integration-api/game-handling?lang=en),
+[Valve tracker #12264](https://github.com/ValveSoftware/steam-for-linux/issues/12264) (also records ignored URL arguments),
+and section 11's Windows ExecuteSteamURL log. **Both -applaunch attempts come first**; only the URL with arguments may
+show Steam's arguments confirmation (section 11), or the game picker if arguments are ignored. Shell on steam.exe may show UAC.
+
+All requests, paths/CWD, registry candidates, acceptance/errors go to `%LOCALAPPDATA%\MEVR\SetupLaunch.log` (UTC/pid),
+also DebugView; Report a problem includes its redacted last 256 KiB. Failure text includes every attempted method's
+numeric error + FormatMessageW meaning, then asks the player to start from Steam's library: the MEVR install still applies.
+Offline InstallTests inject launch/file checks: path variants, stale/missing paths, both argument modes, each success
+boundary, all failures, and skipped exe attempts. **Not built/run in this change; the owner reviews/builds.**
+
+Sources: [CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw),
+[UAC and CreateProcess](https://learn.microsoft.com/en-us/windows-server/security/user-account-control/how-user-account-control-works),
+[ShellExecuteExW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecuteexw),
+[error meanings](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes) (names above, not a guarantee of
+which layer reports them). Missing ordinary DLLs/game failures often happen **after** successful CreateProcess and are a
+different symptom.
+
 ## Per-game SteamVR motion smoothing (2026-11-07)
 
 Display's **Motion smoothing (SteamVR)** row is visible only when `colour::GetMenuState().runtime` names SteamVR.

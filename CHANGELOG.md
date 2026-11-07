@@ -7,6 +7,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## 0.1.0 (2026-11-07)
 
+- Setup's Launch now recovers from Steam elevation/compatibility and stale install paths, with clearer Windows errors and a launch log in problem reports.
 - Fixed sprint speed restoration touching a pawn destroyed during a level transition.
 - A power push started at the chest now casts when the arm extends, even if it has slowed below full casting speed.
 - Automatic Quest pacing recovery now requires fresh completed GPU timings with headroom, preserving attempts in GPU-heavy scenes.

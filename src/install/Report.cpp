@@ -1038,6 +1038,7 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
         md += ".\n";
     }
     md += "\nFor an assistant reading the zip: logs/LE1MEVR.log is the mod's own log of this session (lines \"[time] [level] text\"); "
+          "logs/SetupLaunch.log records Setup's Steam launch attempts and Windows errors; "
           "logs/MELEVR_Log.txt is the renderer's (Halcyon's) log of its last session; logs/MEVRLoader.log (or LEBinkProxy's bink2w64_proxy.log) is the ASI loader's; "
           "perf/ (if included) is a frame-timing capture: tools/perf-probe.py in the repository reads it; "
           "system/folders.txt lists the game's Win64 and ASI folders (other mods' DLLs there can conflict).\n\n";
@@ -1196,6 +1197,7 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
 
     // ---- Logs.
     fs::path const logs = game ? layout.Win64() / L"Logs" : fs::path();
+    addFile("logs/SetupLaunch.log", {local / L"SetupLaunch.log"}, 0, 256u << 10);
     addFile("logs/LE1MEVR.log", {game ? logs / L"LE1MEVR.log" : fs::path(), local / L"LE1MEVR.log"}, 1u << 20, 3u << 20);
     addFile("logs/LE1MEVR.prev.log", {game ? logs / L"LE1MEVR.prev.log" : fs::path(), local / L"LE1MEVR.prev.log"}, 1u << 20, 2u << 20);
     std::string halcyonSession;

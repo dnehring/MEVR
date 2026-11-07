@@ -559,6 +559,84 @@ void TestLaunch() {
     ICHECK(!l::ParseLauncherArgs({L"-game", L"12"}).game && !l::ParseLauncherArgs({L"-game", L"x"}).game);
     ICHECK(l::ParseLauncherArgs({L"-autoterminate"}).autoTerminate && !l::ParseLauncherArgs({L"-autoterminate"}).game);
     ICHECK(std::wstring(l::kSteamBootLe1Args) == L"-applaunch 1328670 -game 1 -autoterminate");
+
+    // Registry paths must resolve independently of Setup's folder, keeping Unicode/case and accepting Steam's slashes.
+    ICHECK(l::NormalizeSteamPath(L"c:/program files (x86)/steam/steam.exe").native() == L"c:\\program files (x86)\\steam\\steam.exe");
+    ICHECK(l::NormalizeSteamPath(L" \t\"D:/Steam/old/../steam.exe\"\r\n").native() == L"D:\\Steam\\steam.exe");
+    ICHECK(l::NormalizeSteamPath(L"C:/Users/Zo\u00eb/\u6e38\u620f/Steam.exe").native() == L"C:\\Users\\Zo\u00eb\\\u6e38\u620f\\Steam.exe");
+    ICHECK(l::NormalizeSteamPath(L"//server/games/Steam/steam.exe").native() == L"\\\\server\\games\\Steam\\steam.exe");
+    for (auto const* bad : {L"", L" \t", L"steam.exe", L"Steam/steam.exe", L"C:steam.exe", L"/Steam/steam.exe", L"\"C:/Steam/steam.exe"}) {
+        ICHECK(l::NormalizeSteamPath(bad).empty());
+    }
+    std::wstring const longPath = L"C:/" + std::wstring(280, L'x') + L"/steam.exe";
+    ICHECK(l::NormalizeSteamPath(longPath).native().size() == longPath.size());  // no MAX_PATH registry buffer
+    fs::path const primary = L"C:\\Steam\\steam.exe", moved = L"D:\\Steam\\steam.exe";
+    auto bothFiles = [&](fs::path const& p) { return p == primary || p == moved; };
+    auto movedOnly = [&](fs::path const& p) { return p == moved; };
+    ICHECK(l::ResolveSteamExe(L"C:/Steam/steam.exe", L"D:/Steam", bothFiles) == primary);
+    ICHECK(l::ResolveSteamExe(L"C:/Steam/steam.exe", L"D:/Steam", movedOnly) == moved);
+    ICHECK(l::ResolveSteamExe(L"", L"\"D:/Steam\"", movedOnly) == moved);
+    ICHECK(l::ResolveSteamExe(L"steam.exe", L"D:/Steam", movedOnly) == moved);
+    ICHECK(l::ResolveSteamExe(L"C:/Steam", L"D:/Steam", movedOnly) == moved);  // directory isn't an exe
+    ICHECK(l::ResolveSteamExe(L"C:/Steam/steam.exe", L"D:/Steam", [](fs::path const&) { return false; }).empty());
+
+    // Every success boundary, both launcher modes; no calls after acceptance (avoids duplicate launch requests).
+    using Method = l::SteamLaunchMethod;
+    std::vector<Method> const order{Method::Process, Method::Shell, Method::Url};
+    fs::path const steam = L"D:\\Steam folder\\steam.exe";
+    for (bool const boots : {false, true}) {
+        for (std::size_t succeedsAt = 0; succeedsAt <= order.size(); ++succeedsAt) {
+            std::vector<Method> calls;
+            std::vector<std::string> log;
+            l::SteamLaunchHooks hooks;
+            hooks.log = [&](std::string const& line) { log.push_back(line); };
+            hooks.launch = [&](Method method, std::wstring const& target, std::wstring const& args, fs::path const& directory) -> unsigned long {
+                std::size_t const index = calls.size();
+                calls.push_back(method);
+                ICHECK(index < order.size() && method == order[index]);
+                if (method == Method::Url) {
+                    ICHECK(target == (boots ? L"steam://run/1328670//-game 1 -autoterminate/" : L"steam://run/1328670"));
+                    ICHECK(args.empty() && directory.empty());
+                } else {
+                    ICHECK(target == steam.native() && directory == steam.parent_path());
+                    ICHECK(args == (boots ? L"-applaunch 1328670 -game 1 -autoterminate" : L"-applaunch 1328670"));
+                }
+                if (index == succeedsAt) {
+                    return ERROR_SUCCESS;
+                }
+                // The likely report, a declined elevation prompt, then a broken Steam URL association.
+                return method == Method::Process ? ERROR_ELEVATION_REQUIRED : method == Method::Shell ? ERROR_CANCELLED : ERROR_NO_ASSOCIATION;
+            };
+            l::Result const result = l::RequestSteamLaunch(steam, boots, hooks);
+            ICHECK(result.started == (succeedsAt < order.size()) && result.pid == 0);
+            ICHECK(calls.size() == std::min(succeedsAt + 1, order.size()));
+            ICHECK(log.size() == calls.size() * 2);  // target/arguments/directory and result for every attempt
+            if (!result.started) {
+                for (auto const* code : {"740", "1223", "1155"}) {
+                    ICHECK(result.message.find(std::string("error ") + code + " (") != std::string::npos);
+                }
+                ICHECK(result.message.find("Steam's library") != std::string::npos && result.message.find("installation still applies") != std::string::npos);
+                ICHECK(result.message.find("Windows supplied no description") == std::string::npos);  // FormatMessage, any Windows language
+            }
+            ICHECK((result.message.find("confirm the launch options") != std::string::npos) == (boots && succeedsAt == 2));
+        }
+    }
+    for (bool const acceptsUrl : {false, true}) {
+        unsigned calls = 0;
+        std::vector<std::string> log;
+        l::SteamLaunchHooks hooks;
+        hooks.log = [&](std::string const& line) { log.push_back(line); };
+        hooks.launch = [&](Method method, std::wstring const&, std::wstring const&, fs::path const&) -> unsigned long {
+            ++calls;
+            ICHECK(method == Method::Url);  // missing/stale registry still reaches the protocol handler
+            return acceptsUrl ? ERROR_SUCCESS : ERROR_NO_ASSOCIATION;
+        };
+        l::Result const result = l::RequestSteamLaunch({}, true, hooks);
+        ICHECK(calls == 1 && result.started == acceptsUrl && log.size() == 4);
+        if (!acceptsUrl) {
+            ICHECK(result.message.find("program wasn't found") != std::string::npos);
+        }
+    }
 }
 
 void TestPacksAndUpdates() {

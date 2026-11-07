@@ -11,8 +11,8 @@
 // Starting LE1 without the Legendary Edition launcher's game picker (research/33, "Launching"). The launcher only
 // starts Game\ME1\Binaries\Win64\MassEffect1.exe with a few arguments made from the player's launcher settings
 // (Documents\BioWare\Mass Effect Legendary Edition\LauncherConfig.cfg: language, English voices, subtitle size);
-// ME3Tweaks' launcher autoboot and Mod Manager start the same exe the same way. So does our Launch button, with
-// Steam's app id in the environment and steam_appid.txt next to the exe (as Mod Manager does for Steam installs).
+// ME3Tweaks' launcher autoboot and Mod Manager start the same exe the same way. Setup asks Steam to start the
+// launcher for Steam installs; the EA app build starts the game directly [verify].
 namespace mevr::install::launch {
 
 struct Result {
@@ -20,6 +20,24 @@ struct Result {
     unsigned long pid = 0;
     std::string message;
 };
+
+// Registry path cleanup without depending on Setup's current directory. Only absolute paths are accepted;
+// Unicode and case are preserved. Resolve checks files (not directories), then tries InstallPath/steam.exe.
+std::filesystem::path NormalizeSteamPath(std::wstring_view value);
+std::filesystem::path ResolveSteamExe(std::wstring_view steamExe, std::wstring_view installPath,
+    std::function<bool(std::filesystem::path const&)> const& isFile);
+
+enum class SteamLaunchMethod { Process, Shell, Url };
+struct SteamLaunchHooks {
+    // Zero means the request was accepted; otherwise a Win32 error, captured immediately at the failed call.
+    // For Url, target is the entire URL and arguments/directory are empty. No game start is implied by acceptance.
+    std::function<unsigned long(SteamLaunchMethod, std::wstring const& target, std::wstring const& arguments,
+        std::filesystem::path const& directory)> launch;
+    std::function<void(std::string const&)> log;
+};
+// CreateProcess -> shell on the same exe/arguments -> registered Steam URL. Empty exe skips the first two.
+// The URL with launch options may show Steam's arguments confirmation. Injectable for offline tests.
+Result RequestSteamLaunch(std::filesystem::path const& steamExe, bool boots, SteamLaunchHooks const& hooks);
 
 // Starts LE1. The Steam build (`steam`) goes through Steam (started first if it isn't running, up to 60 s for a
 // logged-in user): `steam.exe -applaunch 1328670 -game 1 -autoterminate` when the launcher can boot the game itself (our
