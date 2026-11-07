@@ -154,6 +154,12 @@ void TakeModelAnswer() {
             continue;
         }
         gModelRequest = 0;
+        // An answer that took longer than this is no longer what the player wants now (they have moved on or said it again).
+        constexpr double kModelAnswerMaxS = 5.0;
+        if (gClock - gModelAskedAt > kModelAnswerMaxS) {
+            log::Info("voice: the model's answer #{} came {:.1f} s after the ask: too late, dropped", id, gClock - gModelAskedAt);
+            continue;
+        }
         std::string const answer = text;
         if (answer.empty() || answer == "none") {
             log::Info("voice: the model heard no order in \"{}\" ({} ms)", gModelText, ms);
@@ -196,6 +202,12 @@ void Dispatch(std::string const& text, double secondsAgo, char const* how) {
     } else {
         ++gOrders;
         Pulse(0.08f, 0.8f);
+        // A newer order (or a "belay that") the rules gave themselves supersedes a model answer still on its way: it would
+        // otherwise arrive after it and bring the older order back (Codex review 2026-11-06, gameM#5).
+        if (gModelRequest != 0) {
+            log::Info("voice: the model's answer #{} won't be used: a newer order was given", gModelRequest);
+            gModelRequest = 0;
+        }
     }
     log::Info("voice: {} \"{}\" -> {}", how, text, gLastOutcome);
 }
@@ -297,6 +309,7 @@ void UpdateKeyterms(double dt) {
     };
     for (sc::RosterEntry const& e : squad_context::Roster()) {
         add(e.name);
+        for (std::string const& alias : e.aliases) add(alias);  // the surnames and short forms ("Vakarian", "Ash")
         for (auto const& [code, spoken] : e.powers) add(spoken);
     }
     if (terms != gKeyterms) {

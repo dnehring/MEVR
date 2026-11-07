@@ -6,6 +6,7 @@
 #include "imgui.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -57,6 +58,9 @@ struct WheelView {
     Emblem emblem = Emblem::N7;
     bool upperCase = false;       // the concept's capitals; false: the game's title case
     vr::power_wheel::Vec2 hand;   // the palm's offset from the wheel's centre, canvas pixels, y up (the emblem sits there)
+    // Where the light comes from: the omni-tool's display as the eye sees it on the wheel, canvas pixels from the wheel's
+    // centre, y up (it moves with the hand); none: the wheel's gap, where the forearm comes in.
+    std::optional<vr::power_wheel::Vec2> source;
     vr::power_wheel::LayoutSettings layout;
     vr::power_wheel::TileSettings tile;
 };

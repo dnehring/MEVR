@@ -98,8 +98,6 @@ std::vector<Field> const& Schema() {
         {"vignette_when", Type::Choice, 0, "turn"},
         {"walk", Type::Choice, 0, "head"},
         {"crouch", Type::Flag, 1},
-        {"lifesize", Type::Flag, 0},
-        {"lifesize_note", Type::Text, 0, ""},  // Halcyon's leanGain is neither 1 nor 2 (Advanced > View's Movement scale)
         {"pause", Type::Flag, 1},
         // Comfort: conversations and cutscenes (research/52), each in VR (Halcyon's), on the 3D cinema screen, or the flat screen.
         {"cine_convo", Type::Choice, 0, "screen"},
@@ -220,7 +218,6 @@ std::vector<Field> const& Schema() {
         {"fp_right", Type::Number, 0, "", -1, 1, F::SignedMeters2},
         {"fp_up", Type::Number, 0, "", -1, 1, F::SignedMeters2},
         {"lean", Type::Flag, 1},
-        {"lean_gain", Type::Number, 1, "", 0.5f, 3, F::Times1},
         {"flat_size", Type::Number, 2.35f, "", 1, 3.5f, F::Meters2},
         {"fov_fill", Type::Flag, 1},
         {"vr_mode", Type::Choice, 0, "stereo"},
@@ -268,6 +265,29 @@ std::vector<Field> const& Schema() {
         {"classic_desc", Type::Text, 0, "The original MELE-VR settings menu, with expert settings these pages don't have (also: Ctrl + "
                                         "the menu key)"},
         {"about_build", Type::Text, 0, ""},  // Diagnostics > About: version and commit (AboutBuild)
+        // Voice (research/54 "The menu's Voice page"): [Voice] in <GAME>MEVR.ini and the host's recognizer (plugin/Voice).
+        {"voice_on", Type::Flag, 1},                                 // [Voice] enabled
+        {"voice_status", Type::Text, 0, ""},                         // VoiceStatusText
+        {"voice_ready", Type::Flag, 0},                              // the recognizer is ready (the status line's colour)
+        {"voice_level", Type::Number, 0, "", 0, 100, F::Percent},    // the bar (VoiceMeterPercent), set by MainMenu each frame
+        {"voice_heard", Type::Flag, 0},                              // the bar went past kVoiceHeardPercent in the last 1.5 s
+        {"mic", Type::Choice, 0, "default"},                         // "default", "0".."7", or "missing"
+        {"mic_count", Type::Number, 0, "", 0, kMicSlots},
+        {"mic0", Type::Text, 0, ""},
+        {"mic1", Type::Text, 0, ""},
+        {"mic2", Type::Text, 0, ""},
+        {"mic3", Type::Text, 0, ""},
+        {"mic4", Type::Text, 0, ""},
+        {"mic5", Type::Text, 0, ""},
+        {"mic6", Type::Text, 0, ""},
+        {"mic7", Type::Text, 0, ""},
+        {"mic_default", Type::Text, 0, "Windows' default communications microphone"},
+        {"mic_missing", Type::Text, 0, ""},                          // [Voice] device when no listed device holds it
+        {"mic_note", Type::Text, 0, ""},                             // why there's no list
+        {"voice_model", Type::Choice, 0, "tiny"},                    // [Voice] model
+        {"voice_key", Type::Text, 0, "(none)"},                      // [Voice] key by name
+        {"voice_key_wait", Type::Flag, 0},                           // waiting for the key to press
+        {"ear_cue", Type::Number, 40, "", 0, 100, F::Percent},       // [Voice] earCueStrength x 100 (the mod's)
     };
     return fields;
 }
@@ -621,6 +641,93 @@ std::string AboutBuild(std::string_view version, std::string_view commit, bool d
         text += " \xC2\xB7 development build";
     }
     return text;
+}
+
+std::string VoiceModelChoice(std::string_view value) {
+    std::string const v = Lower(Trim(value));
+    return v == "small" || v == "medium" ? v : std::string("tiny");
+}
+
+int MicIndex(std::vector<std::string> const& names, std::string_view setting) {
+    std::string const want = Lower(setting);
+    if (want.empty()) {
+        return -1;
+    }
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (Lower(names[i]).find(want) != std::string::npos) {
+            return static_cast<int>(i);
+        }
+    }
+    return -2;
+}
+
+float VoiceMeterPercent(float rms) {
+    if (!std::isfinite(rms) || rms <= 1e-6f) {
+        return 0.0f;
+    }
+    float const db = 20.0f * std::log10(rms);
+    return std::clamp((db + 60.0f) / 60.0f * 100.0f, 0.0f, 100.0f);
+}
+
+float VoiceMeterStep(float shown, float target, float dtS, float fallPerS) {
+    if (!std::isfinite(shown)) shown = 0.0f;
+    if (!std::isfinite(target)) target = 0.0f;
+    if (target >= shown) {
+        return target;
+    }
+    return std::max(target, shown - std::max(dtS, 0.0f) * fallPerS);
+}
+
+std::string VoiceStatusText(VoiceStatusInput const& in) {
+    if (in.restarting) {
+        return "Restarting the recognizer with the new settings\xE2\x80\xA6";
+    }
+    if (!in.enabled) {
+        return "Voice orders are off.";
+    }
+    switch (in.status) {
+    case 1:
+        return "Loading the recognizer\xE2\x80\xA6";
+    case 2: {
+        std::string text = in.listening ? "Listening" : "Ready";
+        if (!in.device.empty()) {
+            text += " \xC2\xB7 microphone: " + in.device;
+        } else {
+            text += " \xC2\xB7 no microphone opened";
+        }
+        if (!in.model.empty()) {
+            text += " \xC2\xB7 " + in.model + " model";
+        }
+        if (!in.error.empty()) {
+            text += " \xC2\xB7 " + in.error;
+        }
+        return text;
+    }
+    case 3:
+        return "The recognizer failed: " + (in.error.empty() ? std::string("see LE1MEVR.log") : in.error);
+    default:
+        break;
+    }
+    if (in.error.find("MEVR-Voice.dll") != std::string::npos || in.error.find("models") != std::string::npos) {
+        return "Not installed: add Voice orders in Display > Optional content (" + in.error + ")";
+    }
+    return "Off" + (in.error.empty() ? std::string(".") : ": " + in.error);
+}
+
+int VoiceKeyFromPress(int vk, int menuKey) {
+    if (vk <= 0 || vk > 0xFE) {
+        return 0;
+    }
+    switch (vk) {
+    case 0x01: case 0x02: case 0x04: case 0x05: case 0x06:  // the mouse buttons
+    case 0x1B:                                              // Escape
+    case 0x23: case 0x24:                                   // End, Home: the test loop's snapshot and recording
+    case 0x10: case 0x11: case 0x12:                        // Shift, Ctrl, Alt (the generic ones; their left and right are fine)
+        return 0;
+    default:
+        break;
+    }
+    return vk == menuKey ? 0 : vk;
 }
 
 void PendingWrites::Put(std::string section, std::string key, std::string value, std::uint64_t dueMs) {

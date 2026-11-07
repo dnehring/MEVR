@@ -26,6 +26,7 @@
 #include "plugin/OmniToolRail.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Voice.hpp"
 #include "plugin/Swapchains.hpp"
 #include "mod/ModApi.hpp"
 
@@ -133,6 +134,9 @@ struct State {
     int navDir = -1;                 // the direction held (Rml key) for repeats
     std::uint64_t navNextMs = 0;
     std::uint64_t lastRefreshMs = 0;
+    std::uint64_t lastLevelMs = 0;      // the Voice page's level bar (about 30 times a second while it shows)
+    float levelShown = 0.0f;
+    std::uint64_t heardUntilMs = 0;
     std::uint64_t lastFrameMs = 0;
     bool needRender = true;
     XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
@@ -924,6 +928,18 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.lastRefreshMs = now;
         g.model->Refresh();
         gPauseWanted.store(g.settings->PauseWanted());
+    }
+    if (now - g.lastLevelMs >= 33 && g.model->Get().Text("section") == "voice") {
+        // The microphone's level (research/54 "The menu's Voice page"): a meter's quick rise and slow fall, in whole percents
+        // so the page redraws only when the bar moves.
+        float const dtS = g.lastLevelMs == 0 ? 0.033f : static_cast<float>(now - g.lastLevelMs) / 1000.0f;
+        g.lastLevelMs = now;
+        g.levelShown = vr::menu_settings::VoiceMeterStep(g.levelShown, vr::menu_settings::VoiceMeterPercent(voice::Level()), dtS);
+        if (g.levelShown >= vr::menu_settings::kVoiceHeardPercent) {
+            g.heardUntilMs = now + 1500;
+        }
+        g.model->SetNumber("voice_level", std::round(g.levelShown));
+        g.model->SetNumber("voice_heard", now < g.heardUntilMs ? 1.0f : 0.0f);
     }
     g.settings->Tick(g.live, frame.headValid, frame.head.position);
     g.model->SetUserInput(true);  // only the player's input changes a setting through a slider

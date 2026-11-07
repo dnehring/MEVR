@@ -458,6 +458,31 @@ Vec2 InPlane(XrPosef const& wheel, XrVector3f point) {
     return {local.x, local.y};
 }
 
+XrVector3f ToFrame(XrPosef const& frame, XrVector3f point) {
+    XrQuaternionf const inverse{-frame.orientation.x, -frame.orientation.y, -frame.orientation.z, frame.orientation.w};
+    return Rotate(inverse, Sub(point, frame.position));
+}
+
+XrVector3f FromFrame(XrPosef const& frame, XrVector3f local) {
+    XrVector3f const r = Rotate(frame.orientation, local);
+    return {frame.position.x + r.x, frame.position.y + r.y, frame.position.z + r.z};
+}
+
+Vec2 SeenInPlane(XrPosef const& wheel, XrVector3f eye, XrVector3f source) {
+    XrVector3f const normal = Rotate(wheel.orientation, {0.0f, 0.0f, 1.0f});
+    XrVector3f const d = Sub(source, eye);
+    float const along = d.x * normal.x + d.y * normal.y + d.z * normal.z;
+    float const length = Length(d);
+    if (length > 1e-6f && std::abs(along) > length * 0.0872f) {  // sin 5 degrees
+        XrVector3f const toCentre = Sub(wheel.position, eye);
+        float const t = (toCentre.x * normal.x + toCentre.y * normal.y + toCentre.z * normal.z) / along;
+        if (t > 0.0f) {
+            return InPlane(wheel, {eye.x + d.x * t, eye.y + d.y * t, eye.z + d.z * t});
+        }
+    }
+    return InPlane(wheel, source);
+}
+
 char const* Name(Event event) {
     switch (event) {
     case Event::None: return "none";

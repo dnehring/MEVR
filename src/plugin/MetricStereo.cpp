@@ -346,7 +346,7 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
     }
     if (std::fabs(in.unitsPerMeter - kLifeSizeUnitsPerMeter) > 1.0f) {
         line += std::format("; NOT life-size: Shepard's skeleton is about {:.0f} uu/m, so the world reads {:.2f} times "
-                            "its size (turn on Life-size movement: lean gain 2)",
+                            "its size (Halcyon's lean gain should be 2: life-size movement)",
             kLifeSizeUnitsPerMeter, kLifeSizeUnitsPerMeter / in.unitsPerMeter);
     }
     if (cantDeg > 0.5f) {

@@ -29,6 +29,7 @@
 #include "core/vr/ColourStrip.hpp"
 #include "core/vr/Upscale.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/Sprint.hpp"
 #include "core/vr/CockpitHazard.hpp"
 #include "core/vr/MakoGunner.hpp"
 #include "core/vr/Comfort.hpp"
@@ -74,6 +75,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/HeadSim.hpp"
+#include "TestTemp.hpp"
 
 #include <Windows.h>
 #include <objbase.h>
@@ -2613,9 +2615,8 @@ void TestPoseRecording() {
     Recording empty;
     CHECK(!Sample(empty, 0, true, s));
 
-    // Through a real file: the Writer streams what Load reads back (left in %TEMP% for
-    // tools/mevrrec.py to read).
-    std::filesystem::path const file = std::filesystem::temp_directory_path() / "mevr-tests-roundtrip.mevrrec";
+    // Through a real file: the Writer streams what Load reads back (in this run's own temp folder, tests/TestTemp.hpp).
+    std::filesystem::path const file = mevr::tests::TempRoot() / "mevr-tests-roundtrip.mevrrec";
     {
         Writer writer;
         CHECK(writer.Open(file, 42));
@@ -3094,7 +3095,7 @@ void TestPng() {
                 static_cast<std::uint8_t>(255 - x * 40)));
         }
     }
-    std::filesystem::path const file = std::filesystem::temp_directory_path() / "mevr-tests-snapshot.png";
+    std::filesystem::path const file = mevr::tests::TempRoot() / "mevr-tests-snapshot.png";
     std::string error;
     CHECK(mevr::png::Write(file, 5, 3, pixels.data(), &error));
     int width = 0, height = 0;
@@ -5139,6 +5140,19 @@ void TestSquadParser() {
     CHECK(p.clauses.size() == 1 && p.clauses[0].supportOf == 0 && p.confidence < 0.6f);
     p = Parse("wrex, target those, garrus, hold here", two, five, four, st);
     CHECK(p.clauses.size() == 2 && line(p, 0) == "W|-|-|attack|PT1" && line(p, 1) == "G|-|-|hold|-");
+    // The known aliases (the game names them "ASHLEY"): surnames, short forms and ranks are the squadmate; a word of
+    // under four letters is a name only when said exactly ("as" is not Ash).
+    std::vector<sc::RosterEntry> known = four;
+    for (sc::RosterEntry& e : known) e.aliases = sc::KnownAliases(e.letter == 'A' ? "ASHLEY" : e.letter == 'G' ? "GARRUS" : e.letter == 'W' ? "Wrex" : "liara");
+    CHECK(known[0].aliases.size() == 2 && known[0].aliases[1] == "Vakarian" && sc::KnownAliases("SQUADMATE").empty());
+    p = Parse("t'soni, hold here", two, five, known, st);  // the present two are Liara and Ashley
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "L|-|-|hold|-" && p.confidence > 0.99f);
+    p = Parse("chief, hold here", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "A|-|-|hold|-");
+    p = Parse("williams and tsoni, take those out", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "ALL|-|-|attack|PT1");
+    p = Parse("as soon as you can, liara, hold here", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "L|-|-|hold|-");
 }
 void TestSquadStanding() {
     using namespace mevr::vr::squad_standing;
@@ -9338,6 +9352,10 @@ void TestHudPieces() {
     // The gun point: behind the muzzle along the barrel, up toward the gun's top.
     XrVector3f const anchor = hp::GunPoint({0.0f, 1.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.15f, 0.04f);
     CHECK(close(anchor.x, 0.0, 1e-6) && close(anchor.y, 1.04, 1e-6) && close(anchor.z, -0.85, 1e-6));
+    // The pistol's: beside the gun, its left (gun along -Z, top +Y: right is +X).
+    XrVector3f const beside = hp::GunPoint({0.0f, 1.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.15f, 0.0f, -0.05f);
+    CHECK(close(beside.x, -0.05, 1e-6) && close(beside.y, 1.0, 1e-6) && close(beside.z, -0.85, 1e-6));
+    CHECK(close(hp::Settings{}.pistolSideM, -0.05, 1e-6) && hp::Settings{}.pistolUpM == 0.0f);
 
     // Settings: defaults, values, and bad values kept out with a word each.
     hp::Settings const defaults = hp::ReadSettings(mevr::ini::File{});
@@ -10102,7 +10120,18 @@ void TestMenuSettings() {
         CHECK(text(shipped, "guide_rstick") == "Turn, hold: powers");
         CHECK(text(shipped, "guide_rstick_how").find("recenter") != std::string::npos);
         CHECK(text(shipped, "guide_rgrip") == "Draw and holster");
-        CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Back (menus)");
+        CHECK(text(shipped, "guide_x") == "Power wheel" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Back (menus)");
+        // The powers (research/55, 2026-11-06): the wheel at the left hand, the lock and the push, the self-cast gestures.
+        CHECK(text(shipped, "guide_pick").find("Hold X") != std::string::npos);
+        CHECK(text(shipped, "guide_cast").find("Push your open hand") != std::string::npos);
+        CHECK(text(shipped, "guide_self").find("chest") != std::string::npos && text(shipped, "guide_self").find("Unity") != std::string::npos);
+        ms::GuideInput noHandWheel = shipped;
+        noHandWheel.handWheel = false;
+        CHECK(text(noHandWheel, "guide_x") == "Grenade");
+        CHECK(text(noHandWheel, "guide_cast").find("right stick click") != std::string::npos);
+        ms::GuideInput noGestures = shipped;
+        noGestures.selfGestures = false;
+        CHECK(text(noGestures, "guide_self").rfind("Pushed", 0) == 0);
         CHECK(text(shipped, "guide_melee").find("right fist") != std::string::npos);  // [Throwables] meleeFist (2026-11-05)
         ms::GuideInput withB = shipped;
         withB.meleeButton = true;
@@ -10124,6 +10153,7 @@ void TestMenuSettings() {
         CHECK(text(noHold, "guide_rgrip") == "Draw, powers" && text(noHold, "guide_rstick") == "Turn");
         ms::GuideInput x = shipped;
         x.powerWheel = "x";
+        x.handWheel = false;  // with the hand's power wheel on, X is that wheel
         CHECK(text(x, "guide_x") == "Powers");
         ms::GuideInput b = shipped;
         b.powerWheel = "b";
@@ -10149,6 +10179,7 @@ void TestMenuSettings() {
         kept.grenadeHands = "left";
         kept.walk = "hand";
         kept.turn = "snap";
+        kept.handWheel = false;  // X free of the hand's power wheel
         CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Back (menus)");
         CHECK(text(kept, "guide_lgrip") == "Two-handed grip" && text(kept, "guide_lgrip_how").find("vent") == std::string::npos);
         CHECK(text(kept, "guide_lgrip_how").find("grenade") != std::string::npos);
@@ -10184,8 +10215,7 @@ void TestMenuSettings() {
     CHECK(due.size() == 1 && due[0].value == "2.0" && pending.Empty());
 
     // Written key by key into a real file: the rest of it (other keys, comments, other sections) stays as it was.
-    wchar_t temp[MAX_PATH]{};
-    GetTempPathW(MAX_PATH, temp);
+    std::filesystem::path const temp = mevr::tests::TempRoot();
     std::filesystem::path const file = std::filesystem::path(temp) / L"mevr-menu-settings-test.ini";
     std::ofstream(file) << "; ME VR Attempt settings\n[Hands]\n; how the hands sit\nhandPitch = 0\nphysicalCrouch = 1\n\n[Sights]\npistol = dot\n";
     pending.Put("Hands", "physicalCrouch", "0", 0);
@@ -10884,6 +10914,36 @@ void TestUpscale() {
 }
 
 // The weapon drawn, like exploring (core/vr/CombatStance, research/38).
+void TestSprint() {
+    namespace sp = mevr::vr::sprint;
+    sp::Settings const s;  // 6 s of stamina, refilled in 8 s after 1 s, a restart past 30%
+    sp::State st;
+    CHECK(!sp::Step(st, s, false, true, 0.1f));          // not held: the run
+    CHECK(!sp::Step(st, s, true, false, 0.1f));          // held standing still: nothing spent
+    CHECK(st.stamina == 1.0f);
+    int ticks = 0;
+    while (sp::Step(st, s, true, true, 0.1f) && ticks < 1000) {
+        ++ticks;
+    }
+    CHECK(ticks >= 59 && ticks <= 61 && st.exhausted && st.stamina == 0.0f && st.emptied == 1);  // 6 s
+    CHECK(!sp::Step(st, s, true, true, 0.1f));           // still held: no stutter back on
+    for (int i = 0; i < 40; ++i) {                       // 4 s let go: 1 s delay, then 3 s of the 8 s refill
+        sp::Step(st, s, false, true, 0.1f);
+    }
+    CHECK(st.stamina > 0.3f && st.stamina < 0.45f && st.exhausted);
+    CHECK(sp::Step(st, s, true, true, 0.1f) && !st.exhausted);  // a new press past 30% runs again
+    sp::State low;
+    low.stamina = 0.1f;
+    low.exhausted = true;
+    CHECK(!sp::Step(low, s, true, true, 0.1f));          // a new press under 30%: not yet
+    sp::Settings off = s;
+    off.enabled = false;
+    sp::State game;
+    CHECK(!sp::Step(game, off, true, true, 0.1f));       // style = game: never ours
+    CHECK(std::abs(sp::SpeedFactor(400.0f, 525.0f) - 1.3125f) < 1e-5f);
+    CHECK(sp::SpeedFactor(400.0f, 300.0f) == 1.0f && sp::SpeedFactor(0.0f, 525.0f) == 1.0f && sp::SpeedFactor(100.0f, 900.0f) == 2.0f);
+}
+
 void TestCombatStance() {
     namespace cs = mevr::vr::combat_stance;
     // A: the decision, in priority order.
@@ -11069,6 +11129,7 @@ void TestCombatStance() {
     CHECK(cs::ClampDrawRate(0.5) == 1.0);
     CHECK(cs::ClampDrawRate(9.0) == 9.0);
     CHECK(cs::ClampDrawRate(25.0) == cs::kMaxDrawRate);
+    CHECK(cs::ClampHolsterRate(15.0) == 15.0 && cs::ClampHolsterRate(25.0) == cs::kMaxHolsterRate && cs::kDefaultHolsterRate > cs::kDefaultDrawRate);
     CHECK(cs::ClampDrawRate(std::numeric_limits<double>::quiet_NaN()) == 1.0);
     CHECK(cs::RateNeedsWrite(1.0f, 2.0));
     CHECK(!cs::RateNeedsWrite(2.0f, 2.0));
@@ -11451,6 +11512,8 @@ int RunExeTests();
 // tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/57 section 5).
 int RunGfxTests();
 int RunPowerWheelTests();
+// tests/VoiceMenuTests.cpp: the main menu's Voice page (research/54 "The menu's Voice page").
+int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
 int RunLandmarkTests();
@@ -11601,6 +11664,7 @@ int main() {
     gFailures += RunExeTests();
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
+    gFailures += RunVoiceMenuTests();
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
     gFailures += RunLandmarkTests();
@@ -11618,6 +11682,7 @@ int main() {
     TestCockpitHazard();
     TestComfort();
     TestCombatStance();
+    TestSprint();
     TestPoseGraft();
     TestFingers();
     TestMetricStereo();
@@ -11731,6 +11796,7 @@ int main() {
     TestTestRequest();
     TestFrameProbe();
     TestPng();
+    mevr::tests::RemoveTempRoot();
     if (gFailures == 0) {
         std::printf("all tests passed\n");
     }

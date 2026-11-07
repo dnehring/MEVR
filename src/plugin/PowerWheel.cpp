@@ -5,6 +5,7 @@
 #include "plugin/PowerWheel.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/SquadPlace.hpp"
@@ -35,8 +36,10 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace mevr::host::power_wheel {
@@ -90,6 +93,7 @@ std::uint64_t gLockStartMs = 0;  // for its turning ring
 XrSession gSession = XR_NULL_HANDLE;
 std::uint64_t gLastDrawMs = 0;
 std::uint32_t gLoggedSerial = 0;
+char const* gLoggedSource = "";  // where the light came from at the last log of it
 bool gLoggedSize = false;
 bool gLoggedFirst = false;
 
@@ -492,6 +496,25 @@ int PowerLayers(Frame const& frame, XrCompositionLayerQuad const** out, int capa
     wheel.upperCase = view.upperCase != 0;
     // The emblem stays at the wheel's centre (the user, 2026-11-04): the rendered hand is what moves toward a tile.
     wheel.hand = {};
+    // The light's source (the user, 2026-11-06: "actually connect to the omni-tool"): the omni-tool's display on Shepard's hand,
+    // which the mod measures in the left grip's frame, put on the grip as it is this frame and taken where the eyes see it on
+    // the wheel; the grip itself while no display is on the arm; the console's hand without controllers; else the gap.
+    char const* sourceFrom = "the gap";
+    mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
+    if (controllers.active && controllers.left.gripValid) {
+        XrVector3f const at = view.sourceValid != 0 ? pw::FromFrame(controllers.left.grip, view.source) : controllers.left.grip.position;
+        pw::Vec2 const seen = frame.headValid ? pw::SeenInPlane(view.pose, frame.head, at) : pw::InPlane(view.pose, at);
+        wheel.source = pw::Vec2{seen.x * pixelsPerM, seen.y * pixelsPerM};
+        sourceFrom = view.sourceValid != 0 ? "the omni-tool's display" : "the left grip";
+    } else if (view.hand.x != 0.0f || view.hand.y != 0.0f) {
+        wheel.source = pw::Vec2{view.hand.x * pixelsPerM, view.hand.y * pixelsPerM};
+        sourceFrom = "the console's hand";
+    }
+    if (std::string_view(sourceFrom) != gLoggedSource) {
+        gLoggedSource = sourceFrom;
+        log::Info("power wheel: its light comes from {}{}", sourceFrom,
+            wheel.source ? std::format(" ({:.0f}, {:.0f}) px from the centre", wheel.source->x, wheel.source->y) : std::string());
+    }
     Render(frame.context, gWheel, dt, [&](ImDrawList* dl) { draw::DrawWheel(dl, gGpu.fonts, wheel); });
     if (!Submit(frame.context, gWheel)) {
         return 0;

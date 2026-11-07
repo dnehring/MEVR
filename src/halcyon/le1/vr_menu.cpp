@@ -1235,9 +1235,7 @@ void BuildUI() noexcept
             {
                 ImGui::Checkbox("Lean enabled", &c.leanEnabled);
                 ResetBtn("leanEnabled", c.leanEnabled, kDefaults.leanEnabled);
-                ImGui::SetNextItemWidth(ControlWidth());
-                ImGui::SliderFloat("Lean gain", &c.leanGain, 0.5f, 3.0f, "%.2f");
-                ResetBtn("leanGain", c.leanGain, kDefaults.leanGain);
+                ImGui::TextDisabled("Lean gain 2.00: life-size movement only");  // [MEVR] no slider (2026-11-06)
             }
             ImGui::EndTabItem();
         }

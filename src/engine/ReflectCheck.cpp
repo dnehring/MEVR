@@ -668,6 +668,9 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "m_oVisorMesh", SDK_FIELD(ABioPawn, m_oVisorMesh));
     CheckField("SFXGame.BioPawn", "m_oFacePlateMesh", SDK_FIELD(ABioPawn, m_oFacePlateMesh));
     CheckField("Engine.Pawn", "Health", SDK_FIELD(APawn, Health));
+    CheckField("Engine.Pawn", "GroundSpeed", SDK_FIELD(APawn, GroundSpeed));  // game/sprint
+    CheckField("SFXGame.BioPawn", "StormSpeed", SDK_FIELD(ABioPawn, StormSpeed));
+    CheckField("SFXGame.BioPawn", "CombatStormSpeed", SDK_FIELD(ABioPawn, CombatStormSpeed));
     CheckField("Engine.Pawn", "Controller", SDK_FIELD(APawn, Controller));  // a squadmate's AI for a power order (research/54)
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
     CheckField("Engine.WorldInfo", "bPlayersOnlyPending", SDK_BOOL(AWorldInfo, bPlayersOnlyPending));
@@ -1234,6 +1237,8 @@ void CheckFunctions() {
         "SFXGame.BioPawn.PlaySoundSet",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
         "SFXGame.SFXGameModeDefault.TryHolster",
+        "SFXGame.SFXGameModeDefault.StormOn",   // game/sprint: the sprint button as a faster run (2026-11-06)
+        "SFXGame.SFXGameModeDefault.StormOff",
         "SFXGame.SFXGameModeDefault.SwitchToWeapon",
         "SFXGame.SFXPawn_Player.DrawPrimaryWeapon",  // holsters' onlyHolstersDraw (2026-10-25)
         "SFXGame.SFXGameModeDefault.UseFirstAid",         // ...whose draws still go through from these (2026-10-26)

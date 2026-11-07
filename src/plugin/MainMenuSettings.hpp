@@ -8,6 +8,7 @@
 
 #include <openxr/openxr.h>
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -110,6 +111,14 @@ private:
     // A write of the settings file failed (a read-only ASI folder or file): the menu's status line says so.
     bool saveFailed_ = false;
     void Wrote(bool ok, std::string_view what);
+    // The Voice page (research/54 "The menu's Voice page").
+    void ReadVoice(menu::Values& v, bool enabled, std::string const& model, float earCue);
+    void WriteVoiceDevice(std::string const& name);
+    std::uint64_t nextDeviceListMs_ = 0;
+    std::string micPicked_;            // the microphone just picked, shown until the restart has read it
+    std::uint64_t micPickedMs_ = 0;
+    std::uint64_t keyWaitMs_ = 0;      // waiting for the hold-to-talk key since (0: not)
+    std::array<bool, 256> keysDown_{};
 };
 
 // A new install's first VR start (the owner, 2026-11-04; docs/release-checklist.md section 3): when MEVR Setup left Halcyon's

@@ -7,41 +7,19 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
-### Performance
-- A Performance setting on the menu's Display page: **Quality**, **Balanced** (the standard) and **Performance**. Each sets the
-  render resolution, FSR and the settings that decide the frame rate together; the line under it says what it trades. Change
-  one of those settings yourself and it shows **Custom**. Everything applies at once except the render resolution, which
-  applies after a restart (the row says when one is waiting).
-- The individual settings are in Advanced > Performance: small-object culling, grass distance, dynamic shadows, ambient
-  occlusion and FSR sharpness, with the original fixed render sizes (2048 to 6144 wide).
-
-### Seeing the game
-- The cinema screen for conversations and cutscenes is calmer: a 16:9 screen a little farther away (2.9 m wide at 3.5 m)
-  with gentler depth, so it no longer pulls your eyes apart. The size, distance and depth are in Comfort > Conversations
-  and cutscenes.
-- Conversations and cutscenes on the screen run at your headset's full frame rate instead of half of it.
-- No more burst of depth at the start of a conversation.
-- Motion blur stays off after cutscenes and conversations (it could come back after one and make surfaces flicker).
-- The cinema screen stays where a scene began when you lean or look around, and stands over a dim floor with a horizon
-  behind it, so you keep a sense of place (Comfort > Conversations and cutscenes, or `[Cinematics] backdrop`).
-- Entering and leaving a cutscene or conversation dips from black instead of cutting hard (`[Cinematics] fadeS`).
-
-### The Mako
-- Repair the Mako from the throttle: while your left hand holds the throttle lever, click the left thumbstick. The button on
-  the desk still works too.
-- The cockpit's joystick turns in your hand when you twist it (the twist always steered; now the stick shows it).
-- The extraction handle overhead is pulled down, as its arrows say (it took a push up before).
-
-## 0.1.0 (2026-11-05)
+## 0.1.0 (2026-11-06)
 
 The first public release, a **development preview**: **Mass Effect 1 (Legendary Edition) in VR**, played with motion
 controllers. Built on Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 only; Mass Effect 2
 and 3 come later. Much of it has been tried in a headset only a few times so far: reports are very welcome.
 
 ### Seeing the game
-- Stereo 3D and head tracking (6DOF) in first person, at life size: each eye is rendered from where it really is.
-- Conversations and cutscenes on a large 3D cinema screen in front of you (or in VR, or on a flat screen: your choice
-  in the menu).
+- Stereo 3D and head tracking (6DOF) in first person, at life size: each eye is rendered from where it really is, and
+  your steps, leans and crouches move you one to one.
+- Conversations and cutscenes on a large 3D cinema screen (16:9, 2.9 m wide at 3.5 m) at your headset's full frame rate.
+  It stays where the scene began when you lean or look around, stands over a dim floor with a horizon behind it, and the
+  switch to it and back dips from black. Or play them in VR, or on a flat screen: Comfort > Conversations and cutscenes.
+- Motion blur stays off (in VR it smears each eye its own way), after level loads and cutscenes too.
 - The HUD on a panel that follows your body; your health and shields on your left wrist, your weapon's heat and
   grenades on the gun.
 - The game's own screens (shop, loot, journal, codex, map) as panels in the room, used with a laser pointer.
@@ -55,6 +33,14 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
 - Each frame renders the scene once and builds the second eye from it, about a fifth less work per frame than two full
   renders.
 
+### Performance
+- A Performance setting on the menu's Display page: **Quality**, **Balanced** (the standard) and **Performance**. Each sets the
+  render resolution, FSR and the settings that decide the frame rate together; the line under it says what it trades. Change
+  one of those settings yourself and it shows **Custom**. Everything applies at once except the render resolution, which
+  applies after a restart (the row says when one is waiting).
+- The individual settings are in Advanced > Performance: small-object culling, grass distance, dynamic shadows, ambient
+  occlusion and FSR sharpness, with the original fixed render sizes (2048 to 6144 wide).
+
 ### Your squad
 - Point and order: squeeze the left grip away from the gun, point at an enemy, a spot or a squadmate, let go: attack, move
   there, or regroup. Pointing at a squadmate as you squeeze orders them alone. Your squad answers with the game's own
@@ -63,12 +49,16 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
   it lands and holds that spot. With two squadmates, a small wheel at your right hand picks who goes (move your hand
   toward one, or up for both). Double-tap B to call everyone back.
 - Say it: hold the left grip at your left ear, speak ("Garrus, take out those troopers on the bridge", "Wrex, hold the
-  line", "Liara, lift the big one", "everyone on me", "get behind that crate"), let go. Recognized on your own machine, nothing leaves it; no
-  microphone, no voice, the rest of the mod is unchanged. Needs the voice files: MEVR Setup's Optional content page
-  downloads them (about 70 MB from Moonshine's releases, each file checked; Remove and Uninstall take them out again). A
-  line the rules can't place ("Ash, the thresher maw is yours") goes to a small language model trained for the squad (also
-  on your machine, under a second): the same page's model tier adds it (llama.cpp and the model, about 665 MB, once the
-  model's release is published).
+  line", "Liara, lift the big one", "everyone on me", "get behind that crate"), let go. Call them by first name, surname,
+  short form or rank ("Vakarian", "Ash", "Chief", "Alenko"), or "everyone". Recognized on your own machine, nothing leaves it; no
+  microphone, no voice, the rest of the mod is unchanged. Needs the speech recognizer: MEVR Setup's Optional content
+  page downloads it (about 70 MB from Moonshine Voice's GitHub release and Hugging Face, each file checked against its
+  SHA-256; Remove and Uninstall take it out again). A line the rules can't place ("Ash, the thresher maw is yours") goes to
+  a small language model trained for the squad (also on your machine, under a second): the same page's model tier adds it
+  (llama.cpp and the model, about 665 MB). Until the model's own release is published, the setup installs the recognizer
+  alone and the orders run on the built-in rules.
+- The menu's Voice page: pick your microphone by name, watch its input level move as you speak, see whether the
+  recognizer is ready, choose its size, the radio hum's strength and a keyboard key to hold for talking.
 
 ### Your hands
 - You aim with the controller, not your head. Your arms, hands and fingers follow the controllers; the gun is in
@@ -126,8 +116,11 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
 - A squadmate runs the Mako's guns while you drive: they aim at the nearest enemy they can see, fire the machine gun, and
   switch to the cannon for heavy targets and groups. Push the stick's thumbstick or aim with your free right hand to take the
   guns yourself; they take them back a few seconds after you stop.
-- Drive it with a throttle lever and a flight stick in the cockpit: grab them, tilt the stick to steer, fire with the
-  trigger and A, and tilt the stick while the jump jets fire to drift the Mako forward, back or sideways in the air.
+- Drive it with a throttle lever and a flight stick in the cockpit: grab them, tilt the stick to steer (twist it to turn on
+  the spot; the stick turns in your hand), fire with the trigger and A, and tilt the stick while the jump jets fire to drift
+  the Mako forward, back or sideways in the air.
+- Repair it with the button on the desk, or by clicking the left thumbstick while your left hand holds the throttle. Pull
+  the handle overhead down to call for extraction.
 - The turret follows your right hand.
 
 ### The menu and the setup

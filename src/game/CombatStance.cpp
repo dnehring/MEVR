@@ -608,7 +608,7 @@ void UpdateStance(double deltaSeconds, Link const& link, ue3::Object* controller
     engine::bone_pose::StanceStats const stats = engine::bone_pose::GetStanceStats();
     ue3::Object* const root = mesh != nullptr ? gAnimations.Read<ue3::Object*>(mesh).value_or(nullptr) : nullptr;
     // The tree is walked for A and for D's sequences.
-    bool const walk = (settings.exploreStance || cs::ClampDrawRate(settings.drawRate) > 1.0005) && link.headTrackedView && onFoot &&
+    bool const walk = (settings.exploreStance || cs::ClampDrawRate(settings.drawRate) > 1.0005 || cs::ClampHolsterRate(settings.holsterRate) > 1.0005) && link.headTrackedView && onFoot &&
         pawn != nullptr && root != nullptr;
     bool const wanted = walk && settings.exploreStance;
     // A tree we no longer walk (a level loaded into a cutscene or conversation, the pawn gone) may be freed: its nodes
@@ -858,10 +858,12 @@ void RestoreRate(RateWrite const& w) {
     }
 }
 
-void UpdateRates(bool wanted, double drawRate) {
+void UpdateRates(bool wanted, double drawRate, double holsterRate) {
     std::vector<ue3::Object*> sequences = gTree.draws;
     sequences.insert(sequences.end(), gTree.holsters.begin(), gTree.holsters.end());
-    for (ue3::Object* seq : sequences) {
+    for (std::size_t i = 0; i < sequences.size(); ++i) {
+        ue3::Object* const seq = sequences[i];
+        double const want = i < gTree.draws.size() ? drawRate : holsterRate;  // the holster its own, faster (2026-11-06)
         bool const playing = gSeqPlaying.ReadBool(seq).value_or(false);
         float* const rate = gSeqRate.In<float>(seq);
         if (rate == nullptr) {
@@ -873,9 +875,9 @@ void UpdateRates(bool wanted, double drawRate) {
             gEvent.maxRate = std::max(gEvent.maxRate, *rate);
             gEvent.maxSeqTime = std::max(gEvent.maxSeqTime, gSeqTime.Read<float>(seq).value_or(0.0f));
         }
-        if (wanted && playing && cs::RateNeedsWrite(*rate, drawRate)) {
+        if (wanted && playing && want > 1.0005 && cs::RateNeedsWrite(*rate, want)) {
             float const original = written != gRates.end() && *rate == written->wrote ? written->original : *rate;
-            *rate = static_cast<float>(drawRate);
+            *rate = static_cast<float>(want);
             write_journal::Wrote("CombatStance.drawRate", rate, sizeof(float));
             ++gRateWrites;
             if (written != gRates.end()) {
@@ -1029,9 +1031,10 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
     double const rate = cs::ClampDrawRate(settings.drawRate);
-    bool const rateWanted = rate > 1.0005 && link.headTrackedView && onFoot && mesh != nullptr &&
+    double const holsterRate = cs::ClampHolsterRate(settings.holsterRate);
+    bool const rateWanted = (rate > 1.0005 || holsterRate > 1.0005) && link.headTrackedView && onFoot && mesh != nullptr &&
         gAnimations.Read<ue3::Object*>(mesh).value_or(nullptr) == gTree.tree && gTree.tree != nullptr;
-    UpdateRates(rateWanted, rate);
+    UpdateRates(rateWanted, rate, holsterRate);
 #else
     (void)link;
 #endif

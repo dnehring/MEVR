@@ -261,11 +261,6 @@ Read-only in the file's Properties, then use **Settings > Apply**.
 - **Performance:** in the heaviest scenes 90 Hz isn't held everywhere, even on a fast PC. A lower render resolution
   (VR menu: Display) helps when the GPU is the limit.
 - **Steam's "verify files"** or a game update can remove the loader and the cockpit's table entry: run **Repair**.
-- **Equipment and character record** show no 3D model of Shepard or the squadmate while they stand in the room. To
-  put those screens back on the flat screen, model included, list every screen but `Inventory`, `XMods` and
-  `CharacterRecord` in `ASI\LE1MEVR.ini`:
-  `[WorldUi] screens = shop, Loot, Specialization, Journal, Codex, Map, PartySelect, MenuBrowser, Options, Save, Load,
-  MessageBox, Achievement, AdditionalContent, SkillGame, DesignerUI, GameOver` (one line).
 - **The galaxy map's travel question** may not take the pointer's click.
 - **Panels have no depth:** the game's UI panels draw over everything, so the radar can cover the cockpit's throttle,
   and the galaxy map's disc the console's front.

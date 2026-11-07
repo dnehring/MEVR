@@ -493,8 +493,8 @@ Outcome Install(Layout const& layout, std::optional<Payload> const& payload, Cho
                 if (!found.notPublished) {
                     return Error(found.error);
                 }
-                tx.Note(found.error + ": installing the rest without the model tier (the rule parser alone reads the orders; the "
-                                      "setup gets it once it's published)");
+                tx.Note(found.error + ". The speech recognizer is installed and voice orders work with the built-in rules; the "
+                                      "model tier waits for that release (Apply, or --install-voice, adds it once it's published)");
                 std::erase(wanted, std::string("llm-model"));
                 std::erase(wanted, std::string("llm-runtime"));
             } else {

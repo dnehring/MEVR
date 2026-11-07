@@ -78,11 +78,6 @@ long gMeasureRequests = 0;
 bool gHaveCamera = false;
 float gCamera[3] = {0.0f, 0.0f, 0.0f};  // forward, right, up (units)
 float gCameraAppliedAt[3] = {1e9f, 1e9f, 1e9f};  // the measurement the last alignment used
-// Life-size movement is Halcyon's lean gain of 2 in the live profile (since 2026-10-26; [Camera] lifeSize, a separate
-// flag that could disagree with the profile, is no longer read).
-bool LifeSize() noexcept {
-    return std::fabs(MELEVR::Config::Get().leanGain - 2.0f) < 0.01f;
-}
 // The left-trigger alignment: armed from the tab (the menu closes, since the view isn't tracked
 // while it's open); the player stands naturally and pulls the left trigger; it recenters, waits
 // for the mod's next measurement, and moves the camera.
@@ -354,14 +349,7 @@ void CameraSection() {
     if (done) {
         MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
     }
-    bool lifeSize = LifeSize();
-    if (ImGui::Checkbox("Life-size movement (crouch, lean and step 1:1 with the body)", &lifeSize)) {
-        c.leanGain = lifeSize ? 2.0f : 1.0f;  // 100 units per metre, Shepard's skeleton scale
-        MELEVR::Config::SaveProfile(MELEVR::Config::ActiveProfileIndex());
-        mevr::log::Info("menu: life-size movement {} (lean gain {:.1f}, forward emphasis {:.0f})", lifeSize ? "on" : "off",
-            c.leanGain, lifeSize ? 1.0 : 3.0);
-    }
-    ImGui::TextDisabled("Off: Halcyon's half-scale movement, forward tripled.");
+    ImGui::TextDisabled("Movement is life-size: crouch, lean and step 1:1 with the body.");
 }
 
 } // namespace
@@ -679,7 +667,7 @@ static void SightsSection() {
 }
 
 float ForwardLeanEmphasis() noexcept {
-    return LifeSize() ? 1.0f : 3.0f;
+    return 1.0f;  // life-size movement only (2026-11-06): upstream's 3x forward emphasis was for its half-scale lean
 }
 
 void BuildMenuTabs() noexcept {

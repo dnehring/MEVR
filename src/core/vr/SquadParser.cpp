@@ -343,7 +343,9 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         });
         // A cover word said exactly isn't a slipped name ("pillar" was Williams at 0.50) while the scene has cover to mean.
         bool const coverWord = !landmarks.empty() && std::any_of(CoverWords().begin(), CoverWords().end(), [&](std::string const& w) { return Singular(tokens[i].text) == w; });
-        if (bestLetter != 0 && best >= st.nameSimilarity && best - second >= st.nameMargin && !((stopWord || coverWord) && best < 1.0f)) {
+        // A word of under four letters is a name only said exactly ("as" was Ash at 0.67; "Rex" and "Ash" are aliases).
+        bool const tooShort = tokens[i].text.size() < 4 && best < 1.0f;
+        if (bestLetter != 0 && best >= st.nameSimilarity && best - second >= st.nameMargin && !((stopWord || coverWord) && best < 1.0f) && !tooShort) {
             tokens[i].tag = Tag::Name;
             tokens[i].value = bestLetter;
             tokens[i].similarity = best;

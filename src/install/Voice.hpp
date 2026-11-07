@@ -41,7 +41,7 @@ inline constexpr char kName[] = "Voice orders";
 // The fine-tuned model's GitHub release (the user uploads it; until then the lookup says it isn't published and the rest
 // installs without it: the rule parser alone). MEVR-Setup.ini's [Voice] keys override each (ReadModelSource).
 inline constexpr char kModelTag[] = "voice-model-1";
-inline constexpr char kModelAsset[] = "mevr-voice-qwen3-0.6b-q8_0.gguf";
+inline constexpr char kModelAsset[] = "model.gguf";
 
 enum class Archive {
     None,   // the download is the file itself

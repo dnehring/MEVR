@@ -735,7 +735,7 @@ NOTICE.md. So the setup downloads each from its own release, never from a mirror
 | models-tiny (always) | Hugging Face `moonshine-ai/moonshine-voice-assets`, `tiny-streaming-en/quantized_26_08_21`, 8 files | `models\tiny-streaming-en\` | 45 MB | 45 MB |
 | models-small, models-medium (ticked) | the same, `small`/`medium` | `models\<size>-streaming-en\` | 142 / 269 MB | the same |
 | llm-runtime (the model tier, on by default) | llama.cpp b12128's `bin-win-cpu-x64.zip` (GitHub): `llama.dll`, `ggml.dll`, `ggml-base.dll`, `libomp.dll`, the 14 `ggml-cpu-*.dll`, `LICENSE-LLVM-OpenMP` | `llm\` | 25 MB | 26 MB |
-| llm-model (with the runtime) | this mod's GitHub release `voice-model-1`, asset `mevr-voice-qwen3-0.6b-q8_0.gguf` | `llm\model.gguf` | 639 MB | 639 MB |
+| llm-model (with the runtime) | this mod's GitHub release `voice-model-1`, asset `model.gguf` | `llm\model.gguf` | 639 MB | 639 MB |
 
 llama.cpp's files are what `llama.dll` needs (its imports: ggml, ggml-base; ggml-base imports libomp; read from the PE
 import tables) and the CPU backends `ggml_backend_load_all_from_path` chooses from; not its tools, `mtmd.dll` or the RPC
@@ -750,7 +750,7 @@ library, so Moonshine's LICENSE goes in the release's `licenses\` (`MoonshineVoi
 models and logs "voice off" before it ever loads the DLL (plugin/Voice checks the models first).
 
 **The model's release.** The fine-tuned GGUF is ours, so it comes from a release of this repository, which the user
-uploads: tag `voice-model-1` (not `v*`: that would start the release workflow), asset `mevr-voice-qwen3-0.6b-q8_0.gguf`,
+uploads: tag `voice-model-1` (not `v*`: that would start the release workflow), asset `model.gguf` (639 MB; its SHA-256 in docs/release-checklist.md),
 placed as `model.gguf`. The setup asks GitHub's API for the release by tag (`/repos/<owner>/<repo>/releases/tags/<tag>`)
 and takes the asset's `browser_download_url` (github.com only), `size` and `digest` (`sha256:...`, which GitHub lists for
 every asset), so the file isn't pinned in the code (it was retrained the day it was written). All of it is in
@@ -803,6 +803,32 @@ orders.". Command line: `--install-voice [--voice-small] [--voice-medium] [--no-
 Not yet: the model tier from the real release (the user uploads the asset); the files loaded by the game from a Setup
 install (the same files `deploy-asi.ps1` deploys, which the game loads: research/54 "In the game").
 
+## 15. Files busy for a moment (2026-11-06)
+
+`mevr-tests` failed now and then and passed on a rerun (twice in the day's merges). Looped alone on the dev machine it failed
+3 times in about 80 runs, always the same Install of the fake game right after an Uninstall; the two failures that printed
+their errors were both on the installer's own record, and the second gave the code: `couldn't write
+...\ASI\MEVR-install.json (error 5)`, access denied. The record is written after every step (a temporary file
+renamed over it), dozens of times an install, and a file just written is opened for a moment by another process; Defender's
+on-access scanning was on (inferred as the holder, not traced). A rename onto, over or of a file held without delete sharing
+is refused with error 5 or 32 until it closes. A player's antivirus does the same to Setup.
+
+The fix (`src/install/Manifest.cpp`): every replace, copy, rename and delete goes through `Retrying` / `RemoveFile`, which on
+access denied, a sharing violation or a lock violation waits 10, 20 ... 640 ms (1.27 s in all) and tries again; a read-only
+target fails at once. `WriteFileAtomic` is Win32 calls and keeps the error code for the message. The tests print a failed
+Outcome's errors (`Ok`), and every test's scratch files are under `%TEMP%\mevr-tests-<pid>` (`tests/TestTemp.hpp`): the fixed
+names (`%TEMP%\mevr-install-firstrun`...) were shared by every worktree's tests, a second way for two sessions to break each
+other's runs.
+
+Measured after the fix: 0 failures in 150 runs (about 5 expected at the earlier rate), but the retry never fired in them
+either, so no file was busy then: the rate depends on what else the machine does (main's unchanged test binary failed 1 run
+in 2 in the same hour, while other sessions were building). So the mechanism is tested directly (`TestBusyFile`): the record
+held open without delete sharing, as a scanner holds it, refuses a replace at once with error 5, the failures' code, and
+`WriteFileAtomic` goes through 106-189 ms after the file is let go at 100 ms; a read-only record still fails at once.
+
+The cost: the test that holds the ASI open on purpose (a running game) now waits the 1.27 s before its expected failure; a
+player whose game holds a file waits that long before the message.
+
 ## Open
 
 - **[verify]** In the game: the EA app build; "Install after I quit" end to end; "Start the game once" (section 9).
@@ -812,7 +838,7 @@ install (the same files `deploy-asi.ps1` deploys, which the game loads: research
 - **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,
   MEM's download, unpacking and a real pack install on a real game.
 - **The voice orders' model release** (section 14): upload the fine-tuned GGUF as the asset
-  `mevr-voice-qwen3-0.6b-q8_0.gguf` of a release tagged `voice-model-1` (not `v*`); the setup then installs the model tier.
+  `model.gguf` of a release tagged `voice-model-1` (not `v*`); the setup then installs the model tier.
   Another tag or name: `MEVR-Setup.ini` `[Voice] modelTag` / `modelAsset` in the release package
   (`tools/package-release.ps1` writes the file). **[verify]** the game loading a Setup-installed `ASI\voice`.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).

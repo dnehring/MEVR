@@ -19,6 +19,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 ### Powers at the left hand (session: Biotic/tech attack targeting system)
 - [ ] Hold X: the wheel opens at your left palm and stays put while your hand moves. Pick by moving your hand and by the
   left stick; letting go of X equips. On a real save, powers you don't have yet are dimmed. (research/55 section 6)
+- [ ] The wheel's light comes from the omni-tool on your hand (2026-11-06): with the wheel open, does the bright point sit on the
+  omni-tool's display on Shepard's hand and follow it as your hand moves, and do the pulses running out to the tiles, the
+  shimmer and the turning rings feel alive without being busy? The log's `power wheel: #N its light comes from the omni-tool's
+  display, (x, y, z) cm from the left grip` says what it used. (research/55 "The light from the omni-tool, alive")
 - [ ] Raise your left arm at an enemy: orange brackets lock on. Push your open left hand toward it: the power casts and
   lands on that enemy. Say whether the push (1.6 m/s over 10 cm) is too easy or too hard, and whether the brackets read
   at 5 m and at 35 m. (research/55 section 7)
@@ -182,6 +186,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   (`PlaySoundSet` 70 / 61) fits when it doesn't; names over Link / Steam Link ("Rex", "Gurus" on synthesized speech: the
   parser absorbs those; a name the rules can't place goes to the model); the ducked game audio. Set `[Voice] model`
   (tiny / small / medium) if the partials lag. (research/54 "The voice path built", `[Voice]`)
+- [ ] The menu's Voice page (2026-11-06, research/54 "The menu's Voice page"; needs the host and `ASI\voice` redeployed
+  together): open the menu > Voice. Is your headset's microphone listed and picked, and does the Input level bar move and say
+  "Hearing you" when you speak (and stay low when you don't)? Pick another microphone: the status says Restarting, then Ready
+  with the new name within a few seconds, and the bar follows the new one. Try Small, then back to Tiny.
 - [ ] The ear's contact buzz (2026-11-05 evening, `[Voice] earCue`, `earCueStrength` 0.4): the open left hand hums in the
   left controller as it comes within `radioRadiusM` (0.20 m) of the ear point (8 cm left and 3 cm below the eyes), stronger
   nearer it, and stops when you squeeze (the listen's own tick) or leave. Does it find the spot without looking, and is 0.4

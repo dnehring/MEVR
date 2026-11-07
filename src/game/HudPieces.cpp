@@ -184,7 +184,9 @@ void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
     } else if (auto const top = sights::GunTop(ray); !top) {
         why = "the barrel points straight up or down";
     } else {
-        pieces.gunAnchor = hp::GunPoint(ray.origin, ray.direction, *top, gSettings.gunBackM, gSettings.gunUpM);
+        bool const pistol = weapon::Type() == weapon::RangedType::Pistol;  // beside the slide, clear of its sight
+        pieces.gunAnchor = hp::GunPoint(ray.origin, ray.direction, *top, gSettings.gunBackM, pistol ? gSettings.pistolUpM : gSettings.gunUpM,
+            pistol ? gSettings.pistolSideM : 0.0f);
         pieces.gunUp = *top;
         pieces.gunVisible = std::isfinite(pieces.gunAnchor.x) && std::isfinite(pieces.gunAnchor.y) && std::isfinite(pieces.gunAnchor.z);
         if (!pieces.gunVisible) {

@@ -11,6 +11,7 @@
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/MakoControls.hpp"
 #include "core/vr/MakoGunner.hpp"
+#include "core/vr/Sprint.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
@@ -113,9 +114,16 @@ struct CombatStance {
     bool exploreStance = false;      // the body composes as explore while drawn, the arms as combat (A; off until the headset confirms)
     bool exploreStanceStorm = true;  // ...while sprinting too
     bool exploreRamp = true;         // combat walking ramps like exploring (C)
-    double drawRate = 6.0;           // the draw and holster animations' rate, 1..10 (D; 1: the game's)
+    double drawRate = 6.0;           // the draw animation's rate, 1..10 (D; 1: the game's)
+    double holsterRate = 15.0;       // the holster animation's, 1..20
 };
 CombatStance GetCombatStance();
+// [Hands] sprint (game | speed), sprintStaminaS, sprintRefillS: the sprint button as a faster run with a stamina of its own
+// (game/sprint, core/vr/Sprint).
+struct Sprint {
+    vr::sprint::Settings rules;
+};
+Sprint GetSprint();
 // [Hands] fingers, fingerCurlDeg, fingerTouch: the fingers follow the controllers' trigger and grip, and their touch
 // sensors (game/fingers, research/43).
 struct Fingers {

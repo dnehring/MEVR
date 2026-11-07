@@ -8,6 +8,7 @@
 #include "core/vr/SquadParser.hpp"
 #include "core/vr/SquadStanding.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "engine/Engine.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
@@ -73,6 +74,7 @@ constexpr std::uint8_t kFormationHold = 2;
 sg::Machine gMachine;
 std::vector<sc::Command> gHistory;
 std::vector<ss::Standing> gStandings;  // at most one per squadmate
+void const* gWorld = nullptr;  // the world the standings and the history were given in
 bool gOwnGrip = false;
 std::uint32_t gLastCount = 0;
 bool gHaveCount = false;
@@ -823,6 +825,17 @@ void Tick(double deltaSeconds, Link const& link) {
             gPointer.hit == sg::Hit::Ground ? std::format(" {:.1f} m away", gPointer.distanceM)
             : gPointer.hit == sg::Hit::Enemy ? std::format(" (E{})", gPointer.group) : std::string());
         GiveResolved(action, point, {});
+    }
+    // Standing orders and the order history belong to the level they were given in: a new world (a level change, a load)
+    // drops them, or a hold was re-issued at the old level's coordinates for up to maxAgeS (Codex review 2026-11-06,
+    // gameM#4). Null while a level loads: only a different live world counts.
+    if (void const* const world = engine::World(); world != nullptr && world != gWorld) {
+        if (gWorld != nullptr && (!gStandings.empty() || !gHistory.empty())) {
+            log::Info("squad orders: a new world: {} standing orders and {} remembered orders dropped", gStandings.size(), gHistory.size());
+        }
+        gStandings.clear();
+        gHistory.clear();
+        gWorld = world;
     }
     if (s.enabled && onFoot) {
         TickStandings(deltaSeconds, s);

@@ -598,7 +598,7 @@ def test_request(setup, root, payload, local):
 
 
 VOICE_TAG_API = "/api.github.com/repos/dnehring/MEVR/releases/tags/voice-model-1"
-VOICE_MODEL_ASSET = "mevr-voice-qwen3-0.6b-q8_0.gguf"
+VOICE_MODEL_ASSET = "model.gguf"
 VOICE_MODEL_URL = "/github.com/dnehring/MEVR/releases/download/voice-model-1/" + VOICE_MODEL_ASSET
 VOICE_MOONSHINE = "/github.com/moonshine-ai/moonshine/releases/download/v0.1.5/moonshine-voice-windows-x86_64.tar.gz"
 VOICE_LLAMA = "/github.com/ggml-org/llama.cpp/releases/download/b12128/llama-b12128-bin-win-cpu-x64.zip"

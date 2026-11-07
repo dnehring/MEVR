@@ -414,45 +414,94 @@ void DrawWheel(ImDrawList* dl, Fonts const& fonts, WheelView const& view) {
         tiles.push_back(std::move(t));
     }
 
-    // The omni-tool projecting the wheel (the user, 2026-11-05: not "a flat line going through the middle"): from an emitter in
-    // the wheel's gap, where the forearm and the gauntlet are, a soft cone of light to each tile's inner edge, brightest at the
-    // source, thin rays along its sides, and specks of dust drifting out through the light.
+    // The omni-tool projecting the wheel (the user, 2026-11-05: not "a flat line going through the middle"; 2026-11-06: not static,
+    // and "actually connect to the omni-tool"): the light comes from the display on Shepard's hand where the eye sees it on the
+    // wheel (view.source, which moves with the hand every frame), else from the wheel's gap where the forearm comes in. A soft
+    // cone of light to each tile's inner edge, bands of it shimmering across, thin rays along its sides; pulses running out along
+    // each cone to its tile (faster and brighter to the chosen one); specks of dust drifting out; at the source a hot core that
+    // breathes and flickers inside two slowly turning rings of arcs (the omni-tool's hologram), flaring when the pick changes.
     ImVec2 const uv = ImGui::GetFontTexUvWhitePixel();
-    ImVec2 emitter = ToCanvas(Mul(Dir(view.layout.gapCentreDeg), tile.outerRadius * spread + 30.0f));
+    float const time = view.time;
+    ImVec2 emitter = ToCanvas(view.source ? *view.source : Mul(Dir(view.layout.gapCentreDeg), tile.outerRadius * spread + 30.0f));
     emitter.x = std::clamp(emitter.x, 24.0f, static_cast<float>(kCanvas) - 24.0f);
     emitter.y = std::clamp(emitter.y, 24.0f, static_cast<float>(kCanvas) - 24.0f);
-    for (TileDraw const& t : tiles) {
-        ImU32 const light = t.chosen ? kLightChosen : kLight;
-        float const strength = (t.chosen ? 0.30f : 0.20f) * alpha * (view.entries[static_cast<std::size_t>(t.index)].enabled ? 1.0f : 0.5f);
-        ImVec2 const left = ToCanvas(t.strip.inner.front());
-        ImVec2 const right = ToCanvas(t.strip.inner.back());
-        ImVec2 const reachL{emitter.x + (left.x - emitter.x) * open, emitter.y + (left.y - emitter.y) * open};
-        ImVec2 const reachR{emitter.x + (right.x - emitter.x) * open, emitter.y + (right.y - emitter.y) * open};
+    float const flicker = 0.90f + 0.10f * std::sin(time * 23.0f) * std::sin(time * 7.3f + 1.1f);
+    auto triangle = [&](ImVec2 a, ImVec2 b, ImVec2 c, ImU32 ca, ImU32 cb, ImU32 cc) {
         dl->PrimReserve(3, 3);
         ImDrawIdx const base = static_cast<ImDrawIdx>(dl->_VtxCurrentIdx);
-        dl->PrimWriteVtx(emitter, uv, WithAlpha(light, strength));
-        dl->PrimWriteVtx(reachL, uv, WithAlpha(light, strength * 0.25f));
-        dl->PrimWriteVtx(reachR, uv, WithAlpha(light, strength * 0.25f));
+        dl->PrimWriteVtx(a, uv, ca);
+        dl->PrimWriteVtx(b, uv, cb);
+        dl->PrimWriteVtx(c, uv, cc);
         dl->PrimWriteIdx(base);
         dl->PrimWriteIdx(static_cast<ImDrawIdx>(base + 1));
         dl->PrimWriteIdx(static_cast<ImDrawIdx>(base + 2));
-        dl->AddLine(emitter, reachL, WithAlpha(light, strength * 1.4f), 1.0f);
-        dl->AddLine(emitter, reachR, WithAlpha(light, strength * 1.4f), 1.0f);
+    };
+    auto quad = [&](ImVec2 a, ImVec2 b, ImVec2 c, ImVec2 d, ImU32 inner, ImU32 outer) {  // a, b at the inner edge; c, d outer
+        triangle(a, b, c, inner, inner, outer);
+        triangle(a, c, d, inner, outer, outer);
+    };
+    for (TileDraw const& t : tiles) {
+        ImU32 const light = t.chosen ? kLightChosen : kLight;
+        bool const enabled = view.entries[static_cast<std::size_t>(t.index)].enabled;
+        float const strength = (t.chosen ? 0.30f : 0.20f) * alpha * (enabled ? 1.0f : 0.5f) * flicker;
+        ImVec2 const left = ToCanvas(t.strip.inner.front());
+        ImVec2 const right = ToCanvas(t.strip.inner.back());
+        auto along = [&](ImVec2 edge, float k) {  // a point k of the way from the source to the tile, as far as the light reaches
+            return ImVec2{emitter.x + (edge.x - emitter.x) * k * open, emitter.y + (edge.y - emitter.y) * k * open};
+        };
+        auto across = [&](float u) { return ImVec2{left.x + (right.x - left.x) * u, left.y + (right.y - left.y) * u}; };
+        // The cone in five bands across, each breathing on its own: the light shimmers.
+        constexpr int kBands = 5;
+        for (int b = 0; b < kBands; ++b) {
+            float const u0 = static_cast<float>(b) / kBands;
+            float const u1 = static_cast<float>(b + 1) / kBands;
+            float const shimmer = 0.70f + 0.30f * std::sin(time * (1.7f + 0.4f * static_cast<float>(b)) + static_cast<float>(t.index * 5 + b) * 1.3f);
+            triangle(emitter, along(across(u0), 1.0f), along(across(u1), 1.0f), WithAlpha(light, strength * shimmer),
+                WithAlpha(light, strength * shimmer * 0.25f), WithAlpha(light, strength * shimmer * 0.25f));
+        }
+        dl->AddLine(emitter, along(left, 1.0f), WithAlpha(light, strength * 1.4f), 1.0f);
+        dl->AddLine(emitter, along(right, 1.0f), WithAlpha(light, strength * 1.4f), 1.0f);
+        // Pulses running out to the tile: a soft band of light (rising over its back, falling over its front) that dims as it
+        // nears the tile.
+        int const pulses = t.chosen ? 2 : 1;
+        float const speed = t.chosen ? 1.1f : 0.45f;
+        for (int p = 0; p < pulses; ++p) {
+            float const peak = std::fmod(time * speed + static_cast<float>(t.index) * 0.37f + static_cast<float>(p) / pulses, 1.0f);
+            float const back = std::max(0.0f, peak - 0.16f);
+            float const front = std::min(1.0f, peak + 0.06f);
+            float const glow = strength * (t.chosen ? 2.0f : 1.4f) * (1.0f - 0.6f * peak) * std::min(1.0f, peak * 6.0f);
+            quad(along(left, back), along(right, back), along(right, peak), along(left, peak), WithAlpha(light, 0.0f), WithAlpha(light, glow));
+            quad(along(left, front), along(right, front), along(right, peak), along(left, peak), WithAlpha(light, 0.0f), WithAlpha(light, glow));
+        }
         // Dust: a fixed scatter per tile, drifting outward along the light and fading as it goes.
         for (int k = 0; k < 18; ++k) {
             float const seed = static_cast<float>(t.index * 131 + k * 37);
-            float const across = std::fmod(seed * 0.6180339f, 1.0f);
-            float const along = std::fmod(seed * 0.4142135f + view.time * (0.05f + 0.03f * across), 1.0f);
-            float const reach = 0.12f + 0.83f * along;
-            ImVec2 const edge{left.x + (right.x - left.x) * across, left.y + (right.y - left.y) * across};
-            ImVec2 const at{emitter.x + (edge.x - emitter.x) * reach * open, emitter.y + (edge.y - emitter.y) * reach * open};
-            dl->AddCircleFilled(at, 1.0f + 1.2f * std::fmod(seed * 0.7071f, 1.0f), WithAlpha(light, alpha * 0.55f * (1.0f - along)), 6);
+            float const u = std::fmod(seed * 0.6180339f, 1.0f);
+            float const out = std::fmod(seed * 0.4142135f + time * (0.05f + 0.03f * u), 1.0f);
+            dl->AddCircleFilled(along(across(u), 0.12f + 0.83f * out), 1.0f + 1.2f * std::fmod(seed * 0.7071f, 1.0f),
+                WithAlpha(light, alpha * 0.55f * (1.0f - out)), 6);
         }
     }
-    // The emitter: a hot point in a soft halo.
-    dl->AddCircleFilled(emitter, 30.0f, WithAlpha(kEmitter, alpha * 0.10f), 32);
-    dl->AddCircleFilled(emitter, 14.0f, WithAlpha(kEmitter, alpha * 0.35f), 24);
-    dl->AddCircleFilled(emitter, 5.0f, WithAlpha(Rgba(255, 240, 220), alpha), 16);
+    // The source: a hot core that breathes, in a soft halo, two rings of arcs turning opposite ways, and a flare at each new pick.
+    float const breathe = 0.5f + 0.5f * std::sin(time * 3.1f);
+    dl->AddCircleFilled(emitter, 30.0f + 5.0f * breathe, WithAlpha(kEmitter, alpha * (0.08f + 0.05f * breathe)), 32);
+    dl->AddCircleFilled(emitter, 14.0f, WithAlpha(kEmitter, alpha * 0.35f * flicker), 24);
+    dl->AddCircleFilled(emitter, 4.5f + 1.0f * breathe, WithAlpha(Rgba(255, 240, 220), alpha), 16);
+    for (int ring = 0; ring < 2; ++ring) {
+        float const radius = ring == 0 ? 21.0f : 33.0f;
+        int const arcs = ring == 0 ? 3 : 6;
+        float const turn = time * (ring == 0 ? 0.9f : -0.55f);
+        float const length = (ring == 0 ? 0.55f : 0.30f) * 2.0f * kPi / static_cast<float>(arcs);
+        for (int a = 0; a < arcs; ++a) {
+            float const start = turn + static_cast<float>(a) * 2.0f * kPi / static_cast<float>(arcs);
+            dl->PathArcTo(emitter, radius * (0.6f + 0.4f * open), start, start + length, 10);
+            dl->PathStroke(WithAlpha(kEmitter, alpha * (ring == 0 ? 0.55f : 0.30f) * flicker), 0, ring == 0 ? 1.6f : 1.1f);
+        }
+    }
+    if (view.selected >= 0 && view.selectedFor < 0.30f) {
+        float const k = std::clamp(view.selectedFor / 0.30f, 0.0f, 1.0f);
+        dl->AddCircle(emitter, 8.0f + 46.0f * Ease(k), WithAlpha(kLightChosen, alpha * (1.0f - k) * 0.8f), 40, 2.0f);
+    }
 
     // The tiles, the chosen one last (on top).
     for (TileDraw const& t : tiles) {

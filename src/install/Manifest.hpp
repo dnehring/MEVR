@@ -137,7 +137,7 @@ std::string Sha256File(std::filesystem::path const& file);
 std::string Sha256(std::string_view bytes);
 
 std::optional<std::string> ReadFile(std::filesystem::path const& file);
-// Through a temporary file and a rename, so a reader never sees half of it.
+// Through a temporary file and a rename, so a reader never sees half of it. False: GetLastError() says why.
 bool WriteFileAtomic(std::filesystem::path const& file, std::string_view bytes);
 
 // The current local time as "2026-10-23T14:05:00".

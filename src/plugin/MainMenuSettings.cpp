@@ -22,6 +22,7 @@
 #include "plugin/ReportRequest.hpp"
 #include "plugin/SetupRequest.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Voice.hpp"
 
 #include "mevr/BuildInfo.hpp"  // MEVR_GIT_COMMIT, About (generated: tools/cmake/BuildInfo.cmake)
 #include "mevr/Version.hpp"    // MEVR_VERSION, About (generated from CMake's project(VERSION))
@@ -257,7 +258,7 @@ void Settings::Read(menu::Values& v) {
         // A section missing here makes its rows snap back to their defaults after a write (the Hacking row's bug, f1f8d8b).
         for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort",
                                  L"Upscale", L"Cinematics", L"WorldUi", L"Galaxy", L"Hud", L"Interact", L"Vent", L"Mako", L"Cockpit",
-                                 L"Squad", L"Performance", L"SystemSettings"}) {
+                                 L"Squad", L"Performance", L"SystemSettings", L"Voice"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -276,13 +277,8 @@ void Settings::Read(menu::Values& v) {
     // brings back Halcyon's "look left, move right" bug), so a file with it off shows no chip until Where I look is picked.
     v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : c.moveFollowsHead ? "head" : "body";
     flag("crouch", ini.Num("Hands", "physicalCrouch", 1.0f) != 0.0f);
-    // Life-size movement is Halcyon's lean gain of 2 in the live profile (what's in effect), not a key of ours; Advanced > View's
-    // Movement scale sets any other gain, and the row says so.
-    bool const lifeSize = std::fabs(c.leanGain - 2.0f) < 0.01f;
-    flag("lifesize", lifeSize);
-    v.texts["lifesize_note"] = lifeSize || std::fabs(c.leanGain - 1.0f) < 0.01f
-        ? std::string()
-        : std::format("Now {:.1f}\xC3\x97 (Advanced > View > Movement scale): switching sets 2\xC3\x97 or 1\xC3\x97", c.leanGain);
+    // Movement is always life-size (the owner, 2026-11-06: Halcyon's lean gain is 2 whatever a profile says, vr_config's
+    // [MEVR] seam); no row for it.
     flag("pause", ini.Num("Menu", "pause", 1.0f) != 0.0f);
     // Conversations and cutscenes (research/52), each on its own row: flat with Halcyon's VR conversations (cutscenes) off, on the
     // 3D cinema screen with [Cinematics] conversations (cutscenes) on, else in VR.
@@ -480,7 +476,6 @@ void Settings::Read(menu::Values& v) {
     v.numbers["fp_right"] = c.cameraOffsetEnabled ? c.cameraOffsetRight : 0.0f;
     v.numbers["fp_up"] = c.cameraOffsetEnabled ? c.cameraOffsetUp : 0.0f;
     flag("lean", c.leanEnabled);
-    v.numbers["lean_gain"] = c.leanGain;
     v.numbers["flat_size"] = c.menuMonoQuadWidth;
     flag("fov_fill", c.vrFovFillEnabled);
     v.texts["vr_mode"] = ModeChoice(c);
@@ -527,6 +522,68 @@ void Settings::Read(menu::Values& v) {
 #else
     v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, true);
 #endif
+    ReadVoice(v, ini.Num("Voice", "enabled", 1.0f) != 0.0f, ini.Text("Voice", "model", "tiny"), ini.Num("Voice", "earCueStrength", 0.4f));
+}
+
+// The Voice page (research/54 "The menu's Voice page"): the recognizer's state from the host (plugin/Voice), the microphones it
+// lists, and [Voice]'s keys. The level bar is MainMenu's (every frame while the page is open).
+void Settings::ReadVoice(menu::Values& v, bool enabled, std::string const& model, float earCue) {
+    std::uint64_t const now = Now();
+    bool const onPage = v.Text("section") == "voice";
+    if (onPage && now >= nextDeviceListMs_) {
+        nextDeviceListMs_ = now + 3000;  // a headset plugged in while the page is open shows up
+        voice::ListDevices();
+    }
+    voice::MenuView const view = voice::Menu();
+    v.numbers["voice_on"] = enabled ? 1.0f : 0.0f;
+    v.texts["voice_model"] = ms::VoiceModelChoice(model);
+    v.numbers["ear_cue"] = std::clamp(std::round(earCue * 100.0f), 0.0f, 100.0f);
+    ms::VoiceStatusInput status;
+    status.enabled = enabled;
+    status.restarting = view.restarting;
+    status.status = view.state.status;
+    status.device = view.state.device;
+    status.model = view.state.model;
+    status.error = view.state.error;
+    status.listening = view.state.listening != 0;
+    v.texts["voice_status"] = ms::VoiceStatusText(status);
+    v.numbers["voice_ready"] = !view.restarting && enabled && view.state.status == 2 ? 1.0f : 0.0f;
+    // The device: the one just picked until the restart has read it, else what the recognizer runs with.
+    std::string const device = now - micPickedMs_ < 3000 ? micPicked_ : view.device;
+    int const count = std::min(static_cast<int>(view.devices.size()), ms::kMicSlots);
+    v.numbers["mic_count"] = static_cast<float>(count);
+    for (int i = 0; i < ms::kMicSlots; ++i) {
+        v.texts[std::format("mic{}", i)] = i < count ? view.devices[static_cast<std::size_t>(i)] : std::string();
+    }
+    int const index = ms::MicIndex(view.devices, device);
+    v.texts["mic"] = index == -1 ? "default" : index >= 0 && index < count ? std::to_string(index) : "missing";
+    v.texts["mic_missing"] = index == -2 && view.listed ? device : std::string();
+    v.texts["mic_default"] = view.defaultDevice >= 0 && view.defaultDevice < static_cast<int>(view.devices.size())
+                                 ? "Windows' default communications microphone: " + view.devices[static_cast<std::size_t>(view.defaultDevice)]
+                                 : std::string("Windows' default communications microphone");
+    v.texts["mic_note"] = view.listed ? (view.devices.empty() ? std::string("No microphone found: is the headset connected?") : std::string())
+                                      : view.listNote.empty() ? std::string("Listing the microphones\xE2\x80\xA6") : view.listNote;
+    v.numbers["voice_key_wait"] = keyWaitMs_ != 0 ? 1.0f : 0.0f;
+    v.texts["voice_key"] = keyWaitMs_ != 0 ? std::string("Press a key\xE2\x80\xA6") : view.key != 0 ? KeyName(view.key) : std::string("None");
+}
+
+void Settings::WriteVoiceDevice(std::string const& name) {
+    std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
+    if (path.empty()) {
+        return;
+    }
+    // The name as UTF-16 (Put's narrow path would turn a device's "ö" into '?'): plugin/Voice reads it back the same way.
+    std::wstring wide;
+    if (!name.empty()) {
+        int const n = MultiByteToWideChar(CP_UTF8, 0, name.data(), static_cast<int>(name.size()), nullptr, 0);
+        wide.resize(static_cast<std::size_t>(std::max(n, 0)));
+        if (n > 0) MultiByteToWideChar(CP_UTF8, 0, name.data(), static_cast<int>(name.size()), wide.data(), n);
+    }
+    bool const ok = WritePrivateProfileStringW(L"Voice", L"device", wide.c_str(), path.c_str()) != 0;
+    Wrote(ok, "[Voice] device");
+    log::Info("main menu: [Voice] device = {}{}", name.empty() ? "(the default communications device)" : name, ok ? "" : " (NOT saved)");
+    micPicked_ = name;
+    micPickedMs_ = Now();
 }
 
 void Settings::Wrote(bool ok, std::string_view what) {
@@ -669,6 +726,32 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("WorldUi", "on", onOff("world_ui"), true);
     } else if (key == "galaxy_holo") {
         Put("Galaxy", "hologram", onOff("galaxy_holo"), true);
+    } else if (key == "voice_on") {
+        // Voice (research/54 "The menu's Voice page"): the recognizer restarts with the file's [Voice] (plugin/Voice).
+        Put("Voice", "enabled", onOff("voice_on"), true);
+        voice::Restart(v.Flag("voice_on") ? "the menu: voice orders on" : "the menu: voice orders off");
+    } else if (key == "voice_model") {
+        std::string const model = ms::VoiceModelChoice(v.Text("voice_model"));
+        Put("Voice", "model", model, true);
+        voice::Restart("the menu: the " + model + " model");
+    } else if (key == "mic") {
+        std::string const pick = v.Text("mic");
+        voice::MenuView const view = voice::Menu();
+        if (pick == "default") {
+            WriteVoiceDevice({});
+        } else if (pick != "missing") {
+            int const i = std::atoi(pick.c_str());
+            if (i < 0 || i >= static_cast<int>(view.devices.size())) {
+                return;
+            }
+            WriteVoiceDevice(view.devices[static_cast<std::size_t>(i)]);  // the whole name: a part of it that is unique
+        } else {
+            return;
+        }
+        voice::Restart(pick == "default" ? std::string("the menu: the default microphone")
+                                         : "the menu: microphone " + view.devices[static_cast<std::size_t>(std::atoi(pick.c_str()))]);
+    } else if (key == "ear_cue") {
+        Put("Voice", "earCueStrength", fixed(v.Number("ear_cue") / 100.0f, 2), final);  // the mod re-reads it
     } else if (key == "fingers") {
         Put("Hands", "fingers", onOff("fingers"), true);
     } else if (key == "vent") {
@@ -697,10 +780,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Comfort", "vignetteWhen", v.Text("vignette_when") == "move" ? "move" : "turn", true);
     } else if (key == "crouch") {
         Put("Hands", "physicalCrouch", onOff("crouch"), true);
-    } else if (key == "lifesize") {
-        // As the VR hands tab's checkbox: Halcyon's lean gain (2: one to one with Shepard's skeleton), saved in its profile.
-        c.leanGain = v.Flag("lifesize") ? 2.0f : 1.0f;
-        HalcyonChanged(false);
     } else if (key == "pause") {
         Put("Menu", "pause", onOff("pause"), true);
         pause_ = v.Flag("pause");
@@ -855,9 +934,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "lean") {
         c.leanEnabled = v.Flag(key);
         HalcyonChanged(false);
-    } else if (key == "lean_gain") {
-        c.leanGain = v.Number(key);
-        HalcyonChanged(false);
     } else if (key == "flat_size") {
         float const w = v.Number(key);
         c.menuMonoQuadWidth = c.galaxyMonoQuadWidth = c.convoMonoQuadWidth = c.cutsceneMonoQuadWidth = c.movieMonoQuadWidth = w;
@@ -942,7 +1018,20 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
 
 void Settings::Command(std::string const& name, std::string const& argument, menu::Values& v) {
     log::Info("main menu: {}{}{}", name, argument.empty() ? "" : " ", argument);
-    if (name == "resume") {
+    if (name == "voice_key_set") {
+        // The next key pressed on the keyboard (Tick), within 10 s; keys down now don't count until let go.
+        keyWaitMs_ = Now();
+        keysDown_.fill(false);
+        for (int vk = 8; vk <= 0xFE; ++vk) {
+            keysDown_[static_cast<std::size_t>(vk)] = MELEVR::MevrBridge::KeyDown(vk);
+        }
+    } else if (name == "voice_key_clear") {
+        keyWaitMs_ = 0;
+        Put("Voice", "key", "0", true);
+        voice::SetKey(0);
+    } else if (name == "voice_restart") {
+        voice::Restart("the menu's Restart");
+    } else if (name == "resume") {
         after_ = After::Close;
     } else if (name == "game_menu") {
         after_ = After::GameStart;
@@ -1064,6 +1153,25 @@ void Settings::Tick(vr::controllers::State const& live, bool headValid, XrVector
             measure_ = Measure::Idle;
         }
     }
+    if (keyWaitMs_ != 0) {
+        if (now - keyWaitMs_ > 10000) {
+            keyWaitMs_ = 0;
+        } else {
+            for (int vk = 8; vk <= 0xFE; ++vk) {
+                bool const down = MELEVR::MevrBridge::KeyDown(vk);
+                bool const was = keysDown_[static_cast<std::size_t>(vk)];
+                keysDown_[static_cast<std::size_t>(vk)] = down;
+                int const key = down && !was ? ms::VoiceKeyFromPress(vk, MELEVR::Config::Get().menuKey) : 0;
+                if (key != 0) {
+                    keyWaitMs_ = 0;
+                    Put("Voice", "key", std::to_string(key), true);
+                    voice::SetKey(key);
+                    log::Info("main menu: the voice orders' hold-to-talk key is {} ({})", KeyName(key), key);
+                    break;
+                }
+            }
+        }
+    }
     perf::Status const p = perf::GetStatus();
     if (!p.pending && !p.lastCapture.empty()) {
         perfMsg_ = "Saved in AppData\\Local\\MEVR\\perf. Switch on \"With the latest frame timing\" to put it in a report.";
@@ -1082,11 +1190,16 @@ bool Settings::CancelPending() {
         measureMsg_ = "Measurement cancelled.";
         cancelled = true;
     }
+    if (keyWaitMs_ != 0) {
+        keyWaitMs_ = 0;
+        cancelled = true;
+    }
     return cancelled;
 }
 
 void Settings::Closed() {
     measure_ = Measure::Idle;
+    keyWaitMs_ = 0;
     resetArmedMs_ = 0;
     diagMsg_.clear();
     Flush(true);

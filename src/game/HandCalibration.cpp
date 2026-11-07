@@ -7,6 +7,7 @@
 #include "core/ik/GunKick.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/Sprint.hpp"
 #include "core/vr/MenuSettings.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/Sights.hpp"
@@ -58,6 +59,9 @@ struct Values {
     bool exploreStanceStorm = true;  // [Hands] exploreStanceStorm
     bool exploreRamp = true;         // [Hands] exploreRamp (research/38 C)
     double drawRate = vr::combat_stance::kDefaultDrawRate;  // [Hands] drawRate (research/38 D)
+    double holsterRate = vr::combat_stance::kDefaultHolsterRate;  // [Hands] holsterRate
+    // [Hands] sprint, sprintStaminaS, sprintRefillS (game/sprint): the faster run by default since 2026-11-06 (the user).
+    vr::sprint::Settings sprint;
     bool fingers = true;          // [Hands] fingers (research/43)
     double fingerCurlDeg = 70.0;  // [Hands] fingerCurlDeg
     bool fingerTouch = true;      // [Hands] fingerTouch (research/43 "Touch sensors")
@@ -159,7 +163,8 @@ constexpr char const* kDefaultFile =
     "; combat pose (learned on each weapon type's first draw); the game still plays its combat\n"
     "; animations underneath, so draws, shots, grenades and powers work as before. exploreStanceStorm: 1 = also while\n"
     "; sprinting. exploreRamp: 1 = walking with a weapon out speeds up and slows down as gently as exploring.\n"
-    "; drawRate: how fast the draw and holster animations play (1 = the game's own, up to 10). constantEye (read by\n"
+    "; drawRate: how fast the draw animation plays (1 = the game's own, up to 10); holsterRate: the holster's (up to 20:\n"
+    "; the gun leaves your open hand that much sooner). constantEye (read by\n"
     "; the host): 1 = drawing, holstering, aimed fire and sprinting with a weapon out leave your view where it is.\n"
     "; blendFix (read by the host): 1 = a camera blend (the sniper's first draw, cover) doesn't jump your view.\n"
     "; crouchDrop (read by the host): 0 = when you crouch for real only your head lowers the view; 1 = the game's lower\n"
@@ -168,6 +173,7 @@ constexpr char const* kDefaultFile =
     "exploreStanceStorm = 1\n"
     "exploreRamp = 1\n"
     "drawRate = 6.0\n"
+    "holsterRate = 15.0\n"
     "constantEye = 1\n"
     "blendFix = 1\n"
     "crouchDrop = 0\n"
@@ -228,7 +234,7 @@ constexpr char const* kHolstersBlock =
     "; a tap does nothing), y, x or b (RB: hold = power wheel, tap = your mapped power) or none.\n"
     "; gripHolds 0 = the old mapping: the right grip is RB, except a squeeze at a slot.\n"
     "gripHolds = 1\n"
-    "releaseGrace = 0.3\n"
+    "releaseGrace = 0.2\n"
     "powerWheel = r3\n"
     "; weaponWheel: 1 keeps the game's weapon wheel (LB: the left trigger, see leftTrigger) as a fallback;\n"
     "; 0 turns LB off while holsters are on. The wheel also picks your squad's weapons.\n"
@@ -636,7 +642,8 @@ constexpr char const* kHudBlock =
     "; and the medi-gel count) on the back of your left wrist, wristWidthM wide (meters); wristOffset = x y z moves it, in\n"
     "; the left controller's grip axes (meters: x out of the palm, y toward the elbow, z down the handle). gunStatus: 1 =\n"
     "; the weapon panel (the gun, its heat strip, the grenade count) on the drawn gun, gunWidthM wide, gunBackM behind the\n"
-    "; muzzle and gunUpM above the bore. wristCrop / gunCrop = x y width height (fractions of the HUD frame) set a piece's\n"
+    "; muzzle and gunUpM above the bore; the pistol's beside it instead, pistolSideM to its right (negative: left) and\n"
+    "; pistolUpM above the bore, clear of its sight. wristCrop / gunCrop = x y width height (fractions of the HUD frame) set a piece's\n"
     "; part of the HUD by hand; empty: the measured place.\n"
     "wristStatus = 1\n"
     "wristWidthM = 0.08\n"
@@ -645,6 +652,8 @@ constexpr char const* kHudBlock =
     "gunWidthM = 0.06\n"
     "gunBackM = 0.15\n"
     "gunUpM = 0.04\n"
+    "pistolSideM = -0.05\n"
+    "pistolUpM = 0\n"
     "wristCrop =\n"
     "gunCrop =\n";
 
@@ -915,6 +924,20 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "drawRate", values.drawRate)) {
         values.drawRate = vr::combat_stance::ClampDrawRate(values.drawRate);
+    }
+    if (Number(ini, "Hands", "holsterRate", values.holsterRate)) {
+        values.holsterRate = vr::combat_stance::ClampHolsterRate(values.holsterRate);
+    }
+    if (auto const it = ini.find("Hands"); it != ini.end()) {
+        if (auto const k = it->second.find("sprint"); k != it->second.end()) {
+            values.sprint.enabled = _stricmp(k->second.c_str(), "speed") == 0;
+        }
+    }
+    if (double v = 0.0; Number(ini, "Hands", "sprintStaminaS", v)) {
+        values.sprint.staminaS = static_cast<float>(std::clamp(v, 1.0, 60.0));
+    }
+    if (double v = 0.0; Number(ini, "Hands", "sprintRefillS", v)) {
+        values.sprint.refillS = static_cast<float>(std::clamp(v, 1.0, 120.0));
     }
     if (Number(ini, "Hands", "fingers", flag)) {
         values.fingers = flag != 0.0;
@@ -2542,8 +2565,12 @@ bool AimAssist() {
     return gValues.aimAssist;
 }
 
+Sprint GetSprint() {
+    return {gValues.sprint};
+}
+
 CombatStance GetCombatStance() {
-    return {gValues.exploreStance, gValues.exploreStanceStorm, gValues.exploreRamp, gValues.drawRate};
+    return {gValues.exploreStance, gValues.exploreStanceStorm, gValues.exploreRamp, gValues.drawRate, gValues.holsterRate};
 }
 
 Fingers GetFingers() {
@@ -2749,7 +2776,7 @@ void Refresh() {
     };
     static constexpr NewKey kNewHolsterKeys[] = {
         {L"gripHolds", "gripHolds", L"1"},
-        {L"releaseGrace", "releaseGrace", L"0.3"},
+        {L"releaseGrace", "releaseGrace", L"0.2"},
         {L"powerWheel", "powerWheel", L"r3"},
         {L"eyeHeightFromFloor", "eyeHeightFromFloor", L"1"},
         {L"onlyHolstersDraw", "onlyHolstersDraw", L"1"},  // 2026-10-25
@@ -2917,6 +2944,31 @@ void Refresh() {
             }
         }
     }
+    // [Hands] since 2026-11-06 (later): the sprint is the faster run by default. A file without the marker sprintDefault whose
+    // sprint still holds the first default `game` (39dc8ac) gets `speed`; anything else is the player's.
+    if (auto const h = ini.find("Hands"); h != ini.end() && h->second.find("sprintDefault") == h->second.end()) {
+        if (auto const k = h->second.find("sprint"); k != h->second.end() && _stricmp(k->second.c_str(), "game") == 0 &&
+            WritePrivateProfileStringW(L"Hands", L"sprint", L"speed", path.wstring().c_str()) != 0) {
+            log::Info("hands: [Hands] sprint game -> speed: the sprint button is a faster run (game/sprint) in {}", ini::Utf8(path));
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
+    }
+    // [Holsters] since 2026-11-06: putting a weapon away is quicker (the user: "takes too long and feels weird in VR"). A file
+    // without the marker [Hands] holsterRate that still holds the old default releaseGrace = 0.3 gets 0.2; any other is kept.
+    if (auto const h = ini.find("Hands"); h == ini.end() || h->second.find("holsterRate") == h->second.end()) {
+        if (auto const s = ini.find("Holsters"); s != ini.end()) {
+            if (auto const k = s->second.find("releaseGrace"); k != s->second.end()) {
+                if ((k->second == "0.3" || k->second == "0.30") &&
+                    WritePrivateProfileStringW(L"Holsters", L"releaseGrace", L"0.2", path.wstring().c_str()) != 0) {
+                    log::Info("hands: [Holsters] releaseGrace 0.3 -> 0.2: a gun let go away from its slot goes back sooner in {}",
+                        ini::Utf8(path));
+                    ini = ReadIni(path);
+                    stamp = fs::last_write_time(path, ec);
+                }
+            }
+        }
+    }
     // [Sights] since 2026-11-05 (research/21 section 17): red dots don't slide toward the eye. A file without the marker
     // dotWindow that still holds the old default assistDotMaxM = 0.03 gets 0; any other value is the player's and kept.
     if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("dotWindow") == s->second.end()) {
@@ -3071,6 +3123,17 @@ void Refresh() {
         {L"Hands", "Hands", L"exploreStanceStorm", "exploreStanceStorm", L"1"},
         {L"Hands", "Hands", L"exploreRamp", "exploreRamp", L"1"},
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
+        // A faster holster (2026-11-06); also the marker for releaseGrace's move above.
+        {L"Hands", "Hands", L"holsterRate", "holsterRate", L"15.0"},
+        // The sprint button as a faster run (2026-11-06; game/sprint), on by default (the user); a file that got `game` from
+        // 39dc8ac moves once (the migration above; marker sprintStaminaS's companion sprintDefault).
+        {L"Hands", "Hands", L"sprint", "sprint", L"speed"},
+        {L"Hands", "Hands", L"sprintDefault", "sprintDefault", L"speed"},
+        {L"Hands", "Hands", L"sprintStaminaS", "sprintStaminaS", L"6"},
+        {L"Hands", "Hands", L"sprintRefillS", "sprintRefillS", L"8"},
+        // The pistol's weapon panel beside the gun, clear of its sight (2026-11-06).
+        {L"Hud", "Hud", L"pistolSideM", "pistolSideM", L"-0.05"},
+        {L"Hud", "Hud", L"pistolUpM", "pistolUpM", L"0"},
         {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
         {L"Hands", "Hands", L"blendFix", "blendFix", L"1"},  // read by the host (research/38 B)
         {L"Hands", "Hands", L"crouchDrop", "crouchDrop", L"0"},  // read by the host (2026-11-04: no double crouch drop)

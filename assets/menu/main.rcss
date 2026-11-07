@@ -170,7 +170,7 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 	display: flex;
 	align-items: center;
 	gap: 16dp;
-	height: 70dp;  /* seven sections and the status chips fit the rail (76 until the controller guide came) */
+	height: 64dp;  /* eight sections and the status chips fit the rail (70 until Voice came, 76 until the controller guide) */
 	padding: 0dp 20dp;
 	color: #AEB4B9;
 }
@@ -191,6 +191,7 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 .i-crosshair { decorator: icon(crosshair); }
 .i-sliders { decorator: icon(sliders); }
 .i-guide { decorator: icon(guide); }
+.i-mic { decorator: icon(mic); }
 
 .content {
 	flex: 1 1 auto;
@@ -500,3 +501,19 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc { width: 0dp;
 .row .actions { display: flex; gap: 8dp; flex: 0 0 auto; }
 .crashoffer .row { border-color: rgba(255,170,160,35%); background-color: rgba(60,26,26,45%); }
 .crashoffer .rlab { color: #FFD9D3; }
+
+/* ---- Voice (research/54 "The menu's Voice page") -------------------------------------------------------- */
+/* The input level: the microphone's RMS from -60 to 0 dBFS; the mark at "hearing you" (-40). */
+.meterrow { height: auto; min-height: 76dp; padding: 10dp 20dp; }
+.meter { position: relative; flex: 1 1 0dp; height: 18dp; background-color: rgba(0,0,0,40%); border: 1dp rgba(255,255,255,12%); }
+.meter .fill { height: 16dp; width: 0%; decorator: linear-gradient(90deg, rgba(124,203,242,55%), #7CCBF2); }
+.meter .fill.hot { decorator: linear-gradient(90deg, #7CCBF2, #FF8F3F); }
+.meter .mark { position: absolute; left: 33%; top: -4dp; width: 2dp; height: 24dp; background-color: rgba(255,255,255,35%); }
+.rdesc.heard { color: #FF8F3F; }
+.info.warn { color: #FFCF9E; }
+/* A microphone to pick: a row with a radio dot. */
+button.row.mic { width: 100%; box-sizing: border-box; text-align: left; }
+.row.mic .radio { width: 22dp; height: 22dp; flex: 0 0 auto; border: 2dp rgba(255,255,255,35%); border-radius: 11dp; }
+.row.mic.on { border-color: rgba(124,203,242,55%); }
+.row.mic.on .radio { border-color: #7CCBF2; background-color: #7CCBF2; box-shadow: #7CCBF2 0dp 0dp 10dp 0dp; }
+.row.mic .rlab { font-size: 19dp; }

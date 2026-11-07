@@ -726,6 +726,9 @@ std::vector<Icon> const& Icons() {
             hook.points.push_back({12, 15});
             v.push_back({"guide", 24.0f, 1.8f, {Circle(12, 12, 9.5f), hook, Line({{12, 17.5f}, {12, 18.5f}})}});
         }
+        // Voice (the rail's Voice section, research/54): a microphone on its stand.
+        v.push_back({"mic", 24.0f, 1.8f,
+            {Rounded(9, 2.5f, 6, 11.5f, 3), Arc(12, 10.5f, 6.5f, 0, 180, 16), Line({{12, 17}, {12, 21}}), Line({{8, 21}, {16, 21}})}});
         // The omni-tool's rail (research/57): the game's own screens.
         v.push_back({"squad", 24.0f, 1.8f,  // two figures, the second behind
             {Circle(9, 8, 3.5f), Arc(9, 21, 6.5f, 180, 360, 16), Circle(17, 7, 2.8f, 0.7f), Arc(17, 17.5f, 5, 215, 360, 12)}});

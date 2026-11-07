@@ -299,6 +299,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Comfort.cpp
     src/core/vr/Comfort.hpp
     src/core/vr/CombatStance.cpp
+    src/core/vr/Sprint.cpp
     src/core/vr/CombatStance.hpp
     src/core/vr/GameMenuRequest.cpp
     src/core/vr/GameMenuRequest.hpp
@@ -413,6 +414,7 @@ set(MEVR_MOD_SOURCES
     src/game/CameraProbe.cpp
     src/game/CameraProbe.hpp
     src/game/CombatStance.cpp
+    src/game/Sprint.cpp
     src/game/CombatStance.hpp
     src/game/ConsoleRequest.cpp
     src/game/ConsoleRequest.hpp
@@ -584,6 +586,7 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Comfort.cpp
     src/core/vr/Comfort.hpp
     src/core/vr/CombatStance.cpp
+    src/core/vr/Sprint.cpp
     src/core/vr/CombatStance.hpp
     src/core/vr/GameMenuRequest.cpp
     src/core/vr/GameMenuRequest.hpp
@@ -954,6 +957,7 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/VoiceMenuTests.cpp
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/LandmarkTests.cpp
@@ -1005,6 +1009,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Calibration.cpp
         src/core/vr/Comfort.cpp
         src/core/vr/CombatStance.cpp
+        src/core/vr/Sprint.cpp
         src/core/vr/GameMenuRequest.cpp
         src/core/vr/HudPieces.cpp
         src/core/vr/MakoControls.cpp

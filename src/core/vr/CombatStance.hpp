@@ -141,6 +141,11 @@ bool RampNeedsWrite(float tacAccel, float tacDecel, float exploreAccel, float ex
 inline constexpr double kDefaultDrawRate = 6.0;
 inline constexpr double kMaxDrawRate = 10.0;
 double ClampDrawRate(double rate);
+// [Hands] holsterRate: the holster's own, faster (2026-11-06, the user: putting a weapon away "takes too long and feels
+// weird in VR": at 6x the gun stayed in the open hand 0.22 s after letting go at its slot); clamped to [1, kMaxHolsterRate].
+inline constexpr double kDefaultHolsterRate = 15.0;
+inline constexpr double kMaxHolsterRate = 20.0;
+double ClampHolsterRate(double rate);
 // Whether a playing draw or holster sequence needs its Rate written (it differs from `wanted` by more than 0.001).
 bool RateNeedsWrite(float current, double wanted);
 
