@@ -132,7 +132,7 @@ nothing writes defaults over a profile: Reset is for the session (below).
 | | Comfort vignette, Vignette when, Vignette strength | `[Comfort] vignette`, `vignetteWhen`, `vignetteStrength` (research/31) |
 | | Walk toward: Where I look / Left hand / Body | Halcyon `moveFollowsHead` / `[Comfort] walk = hand` (research/31) / `moveFollowsHead = 0` (its description warns of Halcyon's "look left, move right" bug, `vr_menu.cpp` `[MOVEFIX]`) |
 | | Physical crouch | `[Hands] physicalCrouch` |
-| | Life-size movement | Halcyon `leanGain` (2 / 1), as the VR hands tab; a note names any other gain (Advanced > View > Movement scale) |
+| | ~~Life-size movement~~ | Removed 2026-11-06 (the owner: only life-size movement): Halcyon's `leanGain` is always 2 (`vr_config` `[MEVR]` seam) |
 | | Conversations / Cutscenes: In VR / 3D screen / Flat screen | each its own: Halcyon `cineVrConvo` / `cineVrCutscene` off for flat, else `[Cinematics] conversations` / `cutscenes` 1 (3D screen) or 0 (research/52); Screen width, distance, 3D depth while either is on the screen |
 | | Game screens in the room, Hacking screen, Galaxy map hologram | `[WorldUi] on`, `wrist` (research/53), `[Galaxy] hologram` (research/51) |
 | | Pause while open | `[Menu] pause` (HostServices v16, `game/MenuPause`) |
@@ -173,7 +173,7 @@ nothing writes defaults over a profile: Reset is for the session (below).
 | | Flat game menus, Flat galaxy map | `menuFlat`, `galaxyFlat` (the conversation and cutscene toggles that were here are Comfort's rows) |
 | Advanced > First person | First person, Hide head | `fpEnabled`, `fpHideHead` |
 | | Back, Right, Up | `flatScreenDistance`, `cameraOffsetRight`, `cameraOffsetUp` (metres, the camera alignment's fields; their switches turned on) |
-| Advanced > View | Lean, Movement scale | `leanEnabled`, `leanGain` (0.5-3; Comfort's Life-size movement is its 2 / 1) |
+| Advanced > View | Lean | `leanEnabled` (Movement scale removed 2026-11-06: `leanGain` is always 2) |
 | | Flat screen width | the flat screens' widths (`menu`, `galaxy`, `convo`, `cutscene`, `movieMonoQuadWidth`) |
 | | Fill the field of view | `vrFovFillEnabled` |
 | Advanced > Stereo | VR mode Mono / Stereo / Depth | `sfr2Enabled` / `dibrEnabled` (AER and the old side-by-side never), saved, resolution written (restart) |
@@ -283,7 +283,7 @@ change which profile SteamVR picks for an emulated controller and lose A/B/X/Y.
 ## Rows that show what's in effect (2026-10-26, QA)
 
 An adversarial pass found rows that showed something other than the setting in effect; each now reads the real value:
-- **Life-size movement** is Halcyon's `leanGain` of 2 in the live profile (the separate `[Camera] lifeSize` key could
+- **Life-size movement** (removed as a choice 2026-11-06: Halcyon reads `leanGain` as 2 whatever a profile says) is Halcyon's `leanGain` of 2 in the live profile (the separate `[Camera] lifeSize` key could
   disagree with a loaded profile; it's no longer read, by the menu or the VR hands tab's forward emphasis).
 - **First person's Back / Right / Up** read 0 while Halcyon's `screenDistanceEnabled` / `cameraOffsetEnabled` are off
   (moving one turns its switch on, as before).
@@ -326,7 +326,7 @@ of what it does. Walk toward's Body and Advanced's Look speed keep their behavio
 warning each. Slider rows can carry a description now (`.srow.d`: the name and a line in a 330 dp column).
 
 **One control per setting.**
-- `leanGain`: Comfort's Life-size movement (2 / 1) is the player's; Advanced > View's slider adds the range (0.5-3) and is
+- `leanGain` (until 2026-11-06; now always 2, no row): Comfort's Life-size movement (2 / 1) was the player's; Advanced > View's slider adds the range (0.5-3) and is
   "Movement scale", saying 2.0× is Life-size movement. A gain neither 1 nor 2 shows a note under Life-size movement.
 - `hudPanelWidthM`: one Size slider on HUD & sights, its range widened to 45-155% (0.6-2.0 m, what Advanced's Width
   allowed); Below your eyes, Comes round past and the Place button moved there too, so Advanced's HUD panel group is gone.

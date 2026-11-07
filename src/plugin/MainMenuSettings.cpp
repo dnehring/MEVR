@@ -275,13 +275,8 @@ void Settings::Read(menu::Values& v) {
     // brings back Halcyon's "look left, move right" bug), so a file with it off shows no chip until Where I look is picked.
     v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : c.moveFollowsHead ? "head" : "body";
     flag("crouch", ini.Num("Hands", "physicalCrouch", 1.0f) != 0.0f);
-    // Life-size movement is Halcyon's lean gain of 2 in the live profile (what's in effect), not a key of ours; Advanced > View's
-    // Movement scale sets any other gain, and the row says so.
-    bool const lifeSize = std::fabs(c.leanGain - 2.0f) < 0.01f;
-    flag("lifesize", lifeSize);
-    v.texts["lifesize_note"] = lifeSize || std::fabs(c.leanGain - 1.0f) < 0.01f
-        ? std::string()
-        : std::format("Now {:.1f}\xC3\x97 (Advanced > View > Movement scale): switching sets 2\xC3\x97 or 1\xC3\x97", c.leanGain);
+    // Movement is always life-size (the owner, 2026-11-06: Halcyon's lean gain is 2 whatever a profile says, vr_config's
+    // [MEVR] seam); no row for it.
     flag("pause", ini.Num("Menu", "pause", 1.0f) != 0.0f);
     // Conversations and cutscenes (research/52), each on its own row: flat with Halcyon's VR conversations (cutscenes) off, on the
     // 3D cinema screen with [Cinematics] conversations (cutscenes) on, else in VR.
@@ -474,7 +469,6 @@ void Settings::Read(menu::Values& v) {
     v.numbers["fp_right"] = c.cameraOffsetEnabled ? c.cameraOffsetRight : 0.0f;
     v.numbers["fp_up"] = c.cameraOffsetEnabled ? c.cameraOffsetUp : 0.0f;
     flag("lean", c.leanEnabled);
-    v.numbers["lean_gain"] = c.leanGain;
     v.numbers["flat_size"] = c.menuMonoQuadWidth;
     flag("fov_fill", c.vrFovFillEnabled);
     v.texts["vr_mode"] = ModeChoice(c);
@@ -691,10 +685,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Comfort", "vignetteWhen", v.Text("vignette_when") == "move" ? "move" : "turn", true);
     } else if (key == "crouch") {
         Put("Hands", "physicalCrouch", onOff("crouch"), true);
-    } else if (key == "lifesize") {
-        // As the VR hands tab's checkbox: Halcyon's lean gain (2: one to one with Shepard's skeleton), saved in its profile.
-        c.leanGain = v.Flag("lifesize") ? 2.0f : 1.0f;
-        HalcyonChanged(false);
     } else if (key == "pause") {
         Put("Menu", "pause", onOff("pause"), true);
         pause_ = v.Flag("pause");
@@ -848,9 +838,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         HalcyonChanged(false);
     } else if (key == "lean") {
         c.leanEnabled = v.Flag(key);
-        HalcyonChanged(false);
-    } else if (key == "lean_gain") {
-        c.leanGain = v.Number(key);
         HalcyonChanged(false);
     } else if (key == "flat_size") {
         float const w = v.Number(key);

@@ -16,6 +16,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   occlusion and FSR sharpness, with the original fixed render sizes (2048 to 6144 wide).
 
 ### Seeing the game
+- Movement is always life-size: your steps, leans and crouches move you one to one. The Comfort toggle for the old
+  half-scale movement (and Advanced > View's Movement scale) is gone; profiles that had it off move life-size now.
 - The cinema screen for conversations and cutscenes is calmer: a 16:9 screen a little farther away (2.9 m wide at 3.5 m)
   with gentler depth, so it no longer pulls your eyes apart. The size, distance and depth are in Comfort > Conversations
   and cutscenes.
