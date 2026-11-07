@@ -72,7 +72,7 @@ void RefreshSettings(std::uint64_t now) {
     cs::Settings s;
     std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
     if (!path.empty()) {
-        {   // 0/vr, 1/screen, or world (research/59: the mod shows it in the world; this screen stays off)
+        {   // 0/vr, 1/screen, or world (research/59: the mod shows it in the world; what it leaves out, the set pieces, comes here)
             wchar_t text[32] = {};
             GetPrivateProfileStringW(L"Cinematics", L"conversations", L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
             std::string narrow;
@@ -81,7 +81,7 @@ void RefreshSettings(std::uint64_t now) {
             }
             namespace cw = mevr::vr::conversation_world;
             cw::Mode const mode = cw::ParseMode(narrow.c_str(), s.conversations ? cw::Mode::Screen : cw::Mode::Vr);
-            s.conversations = mode == cw::Mode::Screen;
+            s.conversations = mode == cw::Mode::Screen || mode == cw::Mode::World;
         }
         s.cutscenes = GetPrivateProfileIntW(L"Cinematics", L"cutscenes", s.cutscenes ? 1 : 0, path.c_str()) != 0;
         s.frontEnd = GetPrivateProfileIntW(L"Cinematics", L"frontEnd", s.frontEnd ? 1 : 0, path.c_str()) != 0;

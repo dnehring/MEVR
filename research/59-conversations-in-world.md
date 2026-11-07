@@ -251,6 +251,25 @@ on; 23 walks need a look each; **18 framed set pieces are composed for a camera 
 3D screen even in First person (by name from the scan's list, or by the runtime rule: far shots), the rest in the world.
 
 
+## The owner's first try (QA build 0.1.0+242d28a, 2026-11-06, 22:08)
+
+The owner, in Nihlus's comm-room conversation on the Normandy (`nor10_comm_room`): "a weird background ... it looks like it's lost a
+lot of the texture, or the asset's not being drawn correctly. And also the selection for having the conversation is no longer in
+front of me." From the log (`LE1MEVR.log` 22:08-22:10):
+
+- **Culling and streaming followed the director's camera.** The held view reached the main view's `CalcSceneView` (the swap's line),
+  but the render levers' one-Draw line gave the view origin at the director's camera, (-5495, 16380) against the player's place
+  (-5091, 17165): 5-9 m away behind Nihlus, a 10-13 degree lens. What the engine draws and streams sharp was decided from there; the
+  medical bay's director stood near Shepard, so the first test didn't show it. **Fix:** the mod writes the held place into the
+  player camera's POV itself, in the `Camera.UpdateCamera` post-handler after reading the director's (`worldCamera = 1`, journalled
+  `ConversationWorld.cameraPov`; log `convo: the game's camera held at the player's place too`): culling, streaming, the one-Draw
+  record and the sound follow the player's eyes; the measurements keep the director's POV read first.
+- **The wheel at the left hand** was out of sight with the arm down (placed at (-0.25, -0.84, -0.05) m from the head). **Fix:**
+  `wheelHand = front` is the default (0.45 m ahead, 0.35 m below the eyes, placed when it appears); `left`/`right` stay.
+- **The comm room is a set piece** (17 of 17 lines authored camera). **Fix:** in First person the scan's 18 set pieces go to the
+  3D screen (`cw::IsSetPiece`, unit-tested; `worldSetPieces = screen`, `world` keeps them in the world; the host's screen takes
+  conversations in the world mode for what the mod leaves out). Log `convo: ... shown on the 3D screen (a set piece ...)`.
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the

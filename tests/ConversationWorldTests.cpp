@@ -41,6 +41,19 @@ void TestParseMode() {
     CHECK(std::string_view(cw::Name(cw::Mode::World)) == "world");
 }
 
+void TestSetPieces() {
+    // The scan's framed conversations go to the 3D screen in the world mode, by the game's full name or its short forms.
+    CHECK(cw::IsSetPiece("BioConversation nor10_comm_room_d.nor10_comm_room_dlg"));
+    CHECK(cw::IsSetPiece("end90_saren_D.end90_saren_dlg"));
+    CHECK(cw::IsSetPiece("JUG70_Sovereign_dlg"));
+    CHECK(cw::IsSetPiece("sta90_council_saren"));
+    CHECK(cw::IsSetPiece("nor10_comm_room_d"));
+    CHECK(!cw::IsSetPiece("BioConversation nor20_medbay_d.nor20_medbay_dlg"));  // the medical bay stays in the world
+    CHECK(!cw::IsSetPiece("end90_saren2_dlg"));                                 // a walk, not a set piece
+    CHECK(!cw::IsSetPiece("nor10_captain_extra"));
+    CHECK(!cw::IsSetPiece(""));
+}
+
 void TestCrops() {
     // The HUD frame of the PS VR2's eye: 2344 x 2392, the 1280 x 720 stage across its width, centred top to bottom.
     std::uint32_t const w = 2344;
@@ -137,6 +150,7 @@ void TestLatest() {
 int RunConversationWorldTests() {
     gFailures = 0;
     TestParseMode();
+    TestSetPieces();
     TestCrops();
     TestSubtitlePoint();
     TestFollowHead();

@@ -4,6 +4,7 @@
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/vr/HostView.hpp"
 #include "engine/ProcessEvent.hpp"
@@ -87,11 +88,14 @@ struct Settings {
     float subtitleHeightDeg = 4.0f;  // two rows of the line: 3 read small at 2 m (2026-11-06)
     float subtitleBelowM = 0.22f;
     float subtitleTowardM = 0.15f;
-    int wheelHand = 0;                 // 0 left, 1 right, 2 in front
+    int wheelHand = 2;                 // 0 left, 1 right, 2 in front (the default since the owner's QA, 2026-11-06: at the hand it
+                                       // was out of sight with the arm down)
     float wheelWidthM = 0.40f;
     float wheelDistanceM = 0.12f;
     bool stay = true;                  // keep people where they stand: undo the conversation's jumps onto its marks (worldStay)
     float turnDegPerS = 120.0f;        // ... and turn them toward whom they look at, at most this fast (worldTurnDegPerS)
+    bool setPiecesOnScreen = true;     // the scan's set pieces on the 3D screen, not in the world (worldSetPieces = screen | world)
+    bool camera = true;                // the game's own camera at the player's place too, not only the main view (worldCamera)
     float subtitleCrop[4] = {};
     float wheelCrop[4] = {};
 };
@@ -134,17 +138,22 @@ void RefreshSettings() {
     s.subtitleTowardM = number("subtitleTowardM", s.subtitleTowardM, 0.0f, 1.0f);
     if (auto const text = ini::Get(loaded.file, "Cinematics", "wheelHand")) {
         std::string const w = ini::Lower(ini::Trim(*text));
-        s.wheelHand = w == "right" || w == "1" ? 1 : w == "front" || w == "2" ? 2 : 0;
+        s.wheelHand = w == "right" || w == "1" ? 1 : w == "left" || w == "0" ? 0 : 2;
     }
     s.wheelWidthM = number("wheelWidthM", s.wheelWidthM, 0.15f, 1.5f);
     s.wheelDistanceM = number("wheelDistanceM", s.wheelDistanceM, 0.05f, 0.8f);
     s.stay = number("worldStay", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.turnDegPerS = number("worldTurnDegPerS", s.turnDegPerS, 10.0f, 1000.0f);
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldSetPieces")) {
+        s.setPiecesOnScreen = ini::Lower(ini::Trim(*text)) != "world";
+    }
+    s.camera = number("worldCamera", 1.0f, 0.0f, 1.0f) != 0.0f;
     ReadCrop(loaded.file, "subtitleCrop", s.subtitleCrop);
     ReadCrop(loaded.file, "wheelCrop", s.wheelCrop);
     std::string const text = std::format("conversations = {}, worldFollow = {}, subtitles {:.1f} deg tall {:.2f} m under the face, the wheel "
-                                         "at the {} hand {:.2f} m wide", cw::Name(s.mode), s.follow ? 1 : 0, s.subtitleHeightDeg,
-        s.subtitleBelowM, s.wheelHand == 0 ? "left" : s.wheelHand == 1 ? "right" : "front:", s.wheelWidthM);
+                                         "{} {:.2f} m wide, set pieces {}, the game's camera {}", cw::Name(s.mode), s.follow ? 1 : 0,
+        s.subtitleHeightDeg, s.subtitleBelowM, s.wheelHand == 0 ? "at the left hand" : s.wheelHand == 1 ? "at the right hand" : "in front",
+        s.wheelWidthM, s.setPiecesOnScreen ? "on the 3D screen" : "in the world", s.camera ? "at the player's place" : "the director's");
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("convo: [Cinematics] {}", text);
@@ -299,6 +308,20 @@ PovAt gPov;
 
 void KeepInPlace(ue3::Object* pawn);
 
+// The game's own camera at the player's place (worldCamera; the owner's QA, 2026-11-06): the host's swap held the main view's build
+// only, so the engine's culling and texture streaming still followed the director's camera (in the comm room 5-9 m away behind
+// Nihlus with a 10-degree lens: assets missing or blurred from where the player stands). Written into the camera's POV right after
+// the game computes it each tick (the director's own POV is read first, for the measurements); set by the tick while the world
+// view is up.
+struct CameraHold {
+    bool on = false;
+    ue3::Vector location{};
+    ue3::Rotator rotation{};
+    float fov = 90.0f;
+    std::uint64_t writes = 0;
+};
+CameraHold gCameraHold;
+
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     ue3::Object* const controller = player::Controller();
     if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) {
@@ -329,6 +352,15 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         gPov.lastRotation = *pov->rotation;
         gPov.lastFov = *pov->fov;
         KeepInPlace(player::Pawn(controller));  // after the conversation's placements of this tick, before its draw
+        if (gCameraHold.on) {
+            *pov->location = gCameraHold.location;
+            *pov->rotation = gCameraHold.rotation;
+            *pov->fov = gCameraHold.fov;
+            write_journal::Wrote("ConversationWorld.cameraPov", pov->location, sizeof(ue3::Vector));
+            if (gCameraHold.writes++ == 0) {
+                log::Info("convo: the game's camera held at the player's place too (culling, streaming, sound follow it)");
+            }
+        }
     }
 }
 
@@ -353,6 +385,7 @@ struct Convo {
     std::uint64_t startMs = 0;
     std::uint32_t number = 0;
     bool world = false;          // shown in the world
+    bool setPiece = false;       // one of the scan's set pieces: on the 3D screen instead (worldSetPieces)
     // The player's place for this conversation: the view on foot if it was Shepard's just now, else his eyes from his head bone
     // (a conversation right after a level load or a cutscene); it follows his head bone when that jumps (a stage's placement).
     ik::Vec3 hold;
@@ -674,14 +707,15 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
     gC.name = ue3::runtime::FullName(conv);
     gC.startMs = GetTickCount64();
     gC.number = ++gConversations;
-    gC.world = CurrentMode() == cw::Mode::World;
+    gC.setPiece = CurrentMode() == cw::Mode::World && gSettings.setPiecesOnScreen && cw::IsSetPiece(gC.name);
+    gC.world = CurrentMode() == cw::Mode::World && !gC.setPiece;
     ue3::Object* const pawn = player::Pawn(controller);
     ue3::Object* const stage = gStage.Read<ue3::Object*>(conv).value_or(nullptr);
     gC.stage = stage != nullptr;
     log::Info("convo: conversation {} began: {} (owner {}, player {}, stage {}{}{}); shown {}", gC.number, gC.name,
         ShortName(gOwner.Read<ue3::Object*>(conv).value_or(nullptr)), ShortName(gConvPlayer.Read<ue3::Object*>(conv).value_or(nullptr)),
         ShortName(stage), stage != nullptr && player::Location(stage) ? " at " + F(V(*player::Location(stage))) : std::string(),
-        gUseFixedCameras.ReadBool(conv).value_or(false) ? ", fixed cameras" : "", gC.world ? "in the world (first person)" : cw::Name(CurrentMode()));
+        gUseFixedCameras.ReadBool(conv).value_or(false) ? ", fixed cameras" : "", gC.world ? "in the world (first person)" : gC.setPiece ? "on the 3D screen (a set piece: research/59 \"The scan\")" : cw::Name(CurrentMode()));
     if (gFoot.have) {
         auto const nowPawn = player::Location(pawn);
         log::Info("convo: Shepard's last view on foot at {} yaw {:.0f}, his pawn then at {}{}", F(V(gFoot.location)), YawDeg(gFoot.rotation),
@@ -933,6 +967,7 @@ void DofBack() {
 }
 
 void StopWorld(Link const& link, char const* why) {
+    gCameraHold.on = false;
     DofBack();
     if (gPublished && link.publish != nullptr) {
         link.publish(nullptr);
@@ -1005,9 +1040,9 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
         Sample(conv, controller, pawn, eyes);
     }
     // ---- The world mode ----
-    bool const world = CurrentMode() == cw::Mode::World && link.publish != nullptr;  // live, as the 3D screen's setting
+    bool const world = CurrentMode() == cw::Mode::World && !gC.setPiece && link.publish != nullptr;  // live, as the 3D screen's setting
     if (!world) {
-        StopWorld(link, CurrentMode() == cw::Mode::World ? "an older host" : "not in the world mode");
+        StopWorld(link, gC.setPiece ? "a set piece: on the 3D screen" : CurrentMode() == cw::Mode::World ? "an older host" : "not in the world mode");
         SetStatus(std::format("{{\"on\": true, \"world\": false, \"conversation\": {}, \"shots\": {}, \"speaker\": \"{}\"}}", gC.number,
             gC.shots, ShortName(gC.speaker)));
         return;
@@ -1074,6 +1109,10 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
         state.povRotationAddress = reinterpret_cast<std::uint64_t>(gPov.rotation);
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gPov.fov);
     }
+    gCameraHold.on = gSettings.camera && state.holdRender != 0;
+    gCameraHold.location = {static_cast<float>(gC.hold.x), static_cast<float>(gC.hold.y), static_cast<float>(gC.hold.z)};
+    gCameraHold.rotation = gC.holdRotation;
+    gCameraHold.fov = gC.holdFov;
     DofOff();
     link.publish(&state);
     gPublished = true;
