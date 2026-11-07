@@ -108,3 +108,15 @@ Results of the run: (to be filled in).
 - The world in the picture is the game's post-processed float output; whether its brightness matches the eyes'
   (`floatWhiteScale`) is checked by comparing a still with the eye snapshot of the same frame [verify].
 - The sights for a left-eye aimer: only the right eye's single-eye layers are drawn.
+
+## 2026-11-06, the first run in the game (the owner's 0.1.0 QA)
+
+Turned on in the release build (`[Spectator] enabled = 1`, 1920x1080, head camera): the mod spawned the capture, owned it by
+the pawn and hid the head meshes, but the host logged `no 1920x1080 D3D11 texture found behind the render target's resource
+... in 240 frames; the desktop window keeps Halcyon's mirror` and went off. So the window showed Halcyon's one-eye mirror
+(the left eye), which the owner recorded and found "strange" (the raw wide head view, not a 16:9 picture), while the game
+paid for the third render. Turned off again for the release. Next, before any promo footage:
+- find the render target's texture (the scope capture's search finds its own; compare the two targets' layouts);
+- check that the picture carries the player's VRIK pose (arms on the controllers), not the animation's;
+- then sections 3 and 4 (the view actor, the cost) and the hand angle the owner saw, with a real 16:9 recording.
+
