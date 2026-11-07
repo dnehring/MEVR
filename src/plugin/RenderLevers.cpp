@@ -1197,21 +1197,30 @@ void EndEyeScissor() {
 }
 std::atomic<bool> gOneDrawFallback{false};   // Halcyon's second Draw resumed by the health check
 unsigned gOneDrawMisses = 0, gOneDrawMatches = 0;   // render thread
+// Matches needed before one Draw resumes. A lost view (no pass-1 record: the camera after a level load) comes back after
+// 30, as research/37 had it: 300 kept the game on two full renders for ~11 s after every load (at half rate), and that
+// overload is what put a Quest over Link into its half-rate lock (the owner's QA, 2026-11-07, `quest pacing:`). A tail
+// that wasn't replayable (an unshadowed in-tail discard, 3d74d4b) still waits 300.
+unsigned gOneDrawResumeAfter = 300;
+bool gOneDrawStreakNotReplayable = false;  // a miss in this streak was an unreplayable tail or a failed replay
 std::atomic<std::uint64_t> gOneDrawFallbacks{0}, gOneDrawRearms{0};
 void NoteOneDrawMatch(bool matched) {
     if (matched) {
         gOneDrawMisses = 0;
-        if (gOneDrawFallback.load(std::memory_order_relaxed) && ++gOneDrawMatches >= 300) {
+        gOneDrawStreakNotReplayable = false;
+        if (gOneDrawFallback.load(std::memory_order_relaxed) && ++gOneDrawMatches >= gOneDrawResumeAfter) {
             gOneDrawMatches = 0;
             gOneDrawFallback.store(false, std::memory_order_relaxed);
             MELEVR::MevrBridge::g_oneDrawStereo.store(gOneDrawWanted.load(std::memory_order_relaxed), std::memory_order_relaxed);
             gOneDrawRearms.fetch_add(1, std::memory_order_relaxed);
-            log::Info("render levers: one Draw: pass 1's records match the rendered view again (300 frames running): one Draw a frame resumes");
+            log::Info("render levers: one Draw: pass 1's records match the rendered view again ({} frames running): one Draw a frame resumes",
+                gOneDrawResumeAfter);
         }
     } else {
         gOneDrawMatches = 0;
         if (!gOneDrawFallback.load(std::memory_order_relaxed) && ++gOneDrawMisses >= 3) {
             gOneDrawMisses = 0;
+            gOneDrawResumeAfter = gOneDrawStreakNotReplayable ? 300u : 30u;
             gOneDrawFallback.store(true, std::memory_order_relaxed);
             MELEVR::MevrBridge::g_oneDrawStereo.store(false, std::memory_order_relaxed);
             gOneDrawFallbacks.fetch_add(1, std::memory_order_relaxed);
@@ -1223,6 +1232,7 @@ void OneDrawSecondEye(std::uint8_t* renderer);
 // A fault in the one-Draw path stops its replays for the session: Halcyon's second Draw has to come back with it, or
 // the right eye kept the last image for the rest of the session (Codex review 2026-11-06, plugin#6).
 void OneDrawGiveUp() {
+    gOneDrawResumeAfter = 300;
     gOneDrawFallback.store(true, std::memory_order_relaxed);
     MELEVR::MevrBridge::g_oneDrawStereo.store(false, std::memory_order_relaxed);
     gOneDrawFallbacks.fetch_add(1, std::memory_order_relaxed);
@@ -1273,6 +1283,7 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
     if (!draw_replay::TailReplayable(&why)) {
         gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
         gMode5LastBlocker = why;
+        gOneDrawStreakNotReplayable = true;
         NoteOneDrawMatch(false);   // no second eye this frame: a miss for the health check
         return;
     }
@@ -1323,6 +1334,7 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
     } else {
         gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
         gMode5LastBlocker = std::format("replay returned {}", rc);
+        gOneDrawStreakNotReplayable = true;
     }
     NoteOneDrawMatch(rc == 0);  // after the replay: a replay that failed is no second eye either (it counted as one)
 }
