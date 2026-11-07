@@ -43,7 +43,7 @@ struct Config {
     std::string device;
     int tailMs = 200;
     float duckDb = 12.0f;
-    int threads = 2;
+    int threads = 1;
     bool wordTimestamps = true;
     int intervalMs = 150;
     std::string keyterms;
@@ -55,6 +55,8 @@ std::atomic<bool> gRunning{false};
 std::atomic<voice::Status> gStatus{voice::Status::Off};
 std::atomic<std::int32_t> gTranscriber{-1};
 std::int32_t gStream = -1;
+std::atomic<int> gWanted{-1};            // MevrVoiceListen's request for the worker: 1 on, 0 off, -1 none
+std::atomic<std::uint64_t> gWantedAtMs{0};
 std::mutex gMoonshine;  // every moonshine_* call on the transcriber (the capture thread adds audio under it too)
 
 // The listen: 0 idle, 1 listening, 2 tail (the gesture ended, audio still kept), 3 draining (stopped, the final transcript
@@ -262,12 +264,20 @@ void StopStream() {
 
 // ---- The worker: partial transcripts while listening, the final one after the stop ---------------------------------------
 
+int ApplyListen(int on, std::uint64_t askedMs);  // below, with MevrVoiceListen
+
 void WorkerMain() {
     while (gRunning.load()) {
         int const phase = gPhase.load();
         DWORD const wait = phase == 1 || phase == 2 ? static_cast<DWORD>(std::max(gConfig.intervalMs, 30)) : INFINITE;
-        WaitForSingleObject(gWake, wait);
+        if (gWanted.load() < 0) WaitForSingleObject(gWake, wait);
         if (!gRunning.load()) break;
+        if (int const wanted = gWanted.exchange(-1); wanted >= 0) {
+            std::lock_guard<std::mutex> lock(gMoonshine);
+            int const err = ApplyListen(wanted, gWantedAtMs.load());
+            if (err != 0) Log(1, std::format("voice: listen {} refused ({})", wanted != 0 ? "on" : "off", err));
+            continue;  // the phase changed: wait anew
+        }
         int now = gPhase.load();
         // The tail also ends here, not only in the capture loop: with no microphone, or one unplugged mid-listen, no
         // packet ever arrived to end it, and a released listen stayed in its tail (and the game ducked) for good.
@@ -504,6 +514,14 @@ void CaptureMain() {
 
 void LoaderMain() {
     auto const t0 = std::chrono::steady_clock::now();
+    // Moonshine passes no thread count to ONNX Runtime, whose default is a pool of every core that spins between ops:
+    // a partial transcript then took every core for 200-300 ms (the game lost 2 s of frames per listen, 2026-11-06).
+    // Its own switch (ort-utils' ort_maybe_force_single_thread, read with the CRT's getenv, which our static link shares)
+    // puts the sessions on one thread, the worker's own. Set before any session is made, both copies of the environment.
+    bool const single = gConfig.threads <= 1;
+    _putenv_s("MOONSHINE_ORT_SINGLE_THREAD", single ? "1" : "");
+    SetEnvironmentVariableA("MOONSHINE_ORT_SINGLE_THREAD", single ? "1" : nullptr);
+    Log(0, single ? "voice: the recognizer runs on one thread (MOONSHINE_ORT_SINGLE_THREAD)" : "voice: the recognizer runs on ONNX Runtime's default threads (every core)");
     std::vector<moonshine_option_t> options;
     std::string const timestamps = gConfig.wordTimestamps ? "true" : "false";
     options.push_back({"word_timestamps", timestamps.c_str()});
@@ -601,9 +619,22 @@ void MevrVoiceShutdown() {
     gLines.clear();
 }
 
+// The listen request is applied by the worker (ApplyListen below): the caller is the host's render thread, and the
+// lock it took here waited out a partial transcript in flight (up to 300 ms a release, 2026-11-06).
 int MevrVoiceListen(int on) {
     if (gStatus.load() != voice::Status::Ready) return -1;
-    std::lock_guard<std::mutex> lock(gMoonshine);
+    gWantedAtMs.store(GetTickCount64());
+    gWanted.store(on != 0 ? 1 : 0);
+    if (gWake != nullptr) SetEvent(gWake);
+    return 0;
+}
+
+}  // extern "C"
+
+namespace {
+
+// Under gMoonshine, on the worker.
+int ApplyListen(int on, std::uint64_t askedMs) {
     int const phase = gPhase.load();
     if (on != 0) {
         if (phase == 1) return 0;
@@ -618,11 +649,15 @@ int MevrVoiceListen(int on) {
     if (gConfig.tailMs <= 0 || gFromFile.load()) {
         StopStream();
     } else {
-        gTailUntilMs.store(GetTickCount64() + static_cast<std::uint64_t>(gConfig.tailMs));
+        gTailUntilMs.store(askedMs + static_cast<std::uint64_t>(gConfig.tailMs));  // from the release, not from this call
         gPhase.store(2);
     }
     return 0;
 }
+
+}  // namespace
+
+extern "C" {
 
 int MevrVoiceTake(voice::Line* out, std::uint32_t size) {
     if (out == nullptr || size < sizeof(voice::Line)) return 0;

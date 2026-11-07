@@ -849,6 +849,22 @@ Unit-tested in `tests/VoiceMenuTests.cpp`; offline look `mevr-menu-preview`'s `s
 checked on the dev machine through the DLL itself (four microphones, the PS VR2's the default); the bar with a real
 microphone and a restart in the game are the checklist's.
 
+### One thread for the recognizer (2026-11-06, late)
+
+The owner's first spoken orders in the headset ("Test one, two, three, four", 21:20): the recognizer heard them (a 1.8 s
+listen, the final transcript 163 ms after the release, 7 partials, the costliest 283 ms), and the game stalled while it
+did: `render levers` counted 700 and 767 frames in the 10 s windows with a listen against 899 otherwise, about 2 s of
+frames lost per order. The cause is in [the gotcha](../docs/knowledge/gotchas/recognizer-on-every-core.md): Moonshine
+passes no thread count to ONNX Runtime, whose default is a pool of every core (24 here) spinning between operators, so
+each partial took the whole machine for 200-300 ms and the game's threads waited; `MevrVoiceConfig::threads` was never
+passed on. Moonshine's own switch, the environment variable `MOONSHINE_ORT_SINGLE_THREAD` (undocumented, read with the
+CRT's `getenv` in its ort-utils), puts the sessions on the worker's thread: the DLL sets it before the models load when
+`[Voice] threads = 1` (the default now). And the release no longer waits: `MevrVoiceListen` hands the switch to the
+worker instead of taking the recognizer's lock on the render thread (a release during a partial in flight stalled the
+frame up to 300 ms). The deployed host at the time was built without llama.cpp (`voice model: off`), so the model tier
+had no part in it. [verify] in the headset after the redeploy: the frame count during a listen, the partial's cost on one
+thread (expected under 100 ms for tiny), and Task Manager showing one core, not all.
+
 ## The fine-tune (2026-11-05, evening)
 
 **The pipeline.** [tools/voice-model/pipeline.py](../tools/voice-model/pipeline.py) runs one config

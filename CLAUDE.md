@@ -853,7 +853,7 @@ switching frameworks.
   (`src/voice`, our C interface `VoiceApi.h` over Moonshine Voice's prebuilt MIT library and ONNX Runtime; `tools/fetch-voice.ps1` fetches
   them into `external/moonshine-voice` and the models into `models/voice`, both gitignored; `tools/deploy-asi.ps1` copies them to
   `ASI\voice`): WASAPI capture, a Moonshine stream per listen with `tailMs` after the release, partials every `intervalMs`, key-term
-  biasing from the roster, word timestamps, the game's audio ducked; `plugin/Voice` loads it on a worker (no DLL or models: voice off, one
+  biasing from the roster, word timestamps, the game's audio ducked; **the recognizer on one thread** (`[Voice] threads = 1`, Moonshine's `MOONSHINE_ORT_SINGLE_THREAD` set by the DLL before the models load; ONNX Runtime's default pool of every core, spinning, stalled the game 2 s per spoken order on 2026-11-06, gotchas/recognizer-on-every-core; the listen switch is applied on the DLL's worker, never under its lock on the render thread); `plugin/Voice` loads it on a worker (no DLL or models: voice off, one
   log line), listens on the mod's request or `[Voice] key`, reads `%LOCALAPPDATA%\MEVR\voice.request` (`wav <path>`, `listen <s>`,
   `keyterms`, `stop`). The mod (`game/Voice`, rules `core/vr/VoiceGesture`, unit-tested) claims the squeeze before the flat orders, joins a
   listen's lines and gives them to `squad_orders::Say`; a settled partial that parses whole is given early (`earlyDispatch`, `settleMs`);

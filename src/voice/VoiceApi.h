@@ -19,7 +19,8 @@ struct MevrVoiceConfig {
     char const* device = nullptr;    // a substring of the capture device's name; null or empty: the default device
     int tailMs = 200;                // audio kept after the listen ends (the last word's lag over the link)
     float duckDb = 12.0f;            // the game's own audio session is turned down this much while listening (0: never)
-    int threads = 2;                 // ONNX Runtime's intra-op threads
+    int threads = 1;                 // 1: ONNX Runtime on one thread (Moonshine's MOONSHINE_ORT_SINGLE_THREAD); else its default,
+                                     // every core and spinning, which starved the game's threads (research/54 "One thread")
     int wordTimestamps = 1;          // ask for a time per word
     int intervalMs = 150;            // how often the worker asks for a partial transcript while listening
     char const* keyterms = nullptr;  // comma-separated words to bias toward (squadmates' and powers' names)
