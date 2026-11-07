@@ -5,7 +5,7 @@ What changes for players from one release to the next. Newest first; each releas
 `tools/package-release.ps1` copies its entry into the release notes (`.github/release-notes-template.md`). The version
 itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.txt`.
 
-## Unreleased
+## 0.1.0 (2026-11-07)
 
 - Fixed a Quest over Link dropping to half rate after a level load and staying there: after a load the game rendered both
   eyes in full for about 11 s before going back to one render a frame, which the headset's compositor answered with half
@@ -18,8 +18,6 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   Rail Equipment and its related panels use the wrist even when a nearby useable was recently selected; use-opened screens keep their anchors.
 - Optional conversation walking prototype: in First person conversations, `worldWalk = 1` requests an AI walk (slide fallback),
   or `2` slides NPCs toward lasting stage marks after a wait. Off by default (`0`); not yet checked in the game.
-
-## 0.1.0 (2026-11-06)
 
 - Hide the game's centre reticle throughout VR gameplay with the hand reticle on, including holstered weapons and Mako controls; park the cockpit's orange aim marker on exit and refresh its eye-hidden ownership on possession changes. Native sniper scope and non-gameplay screens keep their presentation; `mevr reticles` diagnoses both reticle paths.
 - First-person eye height follows your real floor height, through recentering, drawing weapons and crouching. Physical crouch
