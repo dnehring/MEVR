@@ -19,6 +19,7 @@
 #include <format>
 #include <fstream>
 #include <intrin.h>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <new>
@@ -1761,6 +1762,79 @@ bool Blocked(Stream const& s, std::string* why) {
 }
 
 // Re-issues one recorded entry through the vtable's next entries. False if the entry is malformed.
+// The engine's own constant buffers after the second eye (Codex's review and the owner's QA, 2026-11-06): the replay writes
+// each substituted upload into the engine's buffer, so after it the buffer holds the SECOND eye's values while the engine's
+// RHI still thinks it holds what it uploaded for the first eye, and it uploads a constant buffer again only when its own
+// copy changed. Next frame, a draw whose constants the engine didn't re-upload ran with the other eye's matrices: objects
+// dropped out or flickered one by one, depending on the view (a fire-lit floor, the arms after a look up and back). So the
+// last FIRST-eye bytes of every buffer the replay changed are kept and written back at the replay's end.
+struct ConstantRestore {
+    ID3D11Resource* resource = nullptr;
+    UINT subresource = 0;
+    bool map = false;  // written through Map (WRITE_DISCARD) or UpdateSubresource
+    bool hasBox = false;
+    D3D11_BOX box{};
+    UINT rowPitch = 0, depthPitch = 0;
+    std::vector<std::uint8_t> bytes;
+};
+thread_local std::vector<ConstantRestore> t_constantRestore;
+std::atomic<std::uint64_t> gConstantsRestored{0};
+
+// Notes a constant upload of the replay: `original` the first eye's bytes, `changed` whether the substitution changed them.
+void NoteConstantUpload(ID3D11Resource* resource, UINT subresource, bool map, bool hasBox, D3D11_BOX const* box, UINT rowPitch,
+    UINT depthPitch, std::uint8_t const* original, std::size_t size, bool changed) {
+    auto it = std::find_if(t_constantRestore.begin(), t_constantRestore.end(),
+        [&](ConstantRestore const& r) { return r.resource == resource && r.subresource == subresource; });
+    if (!changed) {
+        if (it != t_constantRestore.end()) {
+            t_constantRestore.erase(it);  // its last write was the first eye's own bytes: nothing to put back
+        }
+        return;
+    }
+    if (it == t_constantRestore.end()) {
+        t_constantRestore.emplace_back();
+        it = std::prev(t_constantRestore.end());
+    }
+    it->resource = resource;
+    it->subresource = subresource;
+    it->map = map;
+    it->hasBox = hasBox;
+    if (box != nullptr) {
+        it->box = *box;
+    }
+    it->rowPitch = rowPitch;
+    it->depthPitch = depthPitch;
+    it->bytes.assign(original, original + size);
+}
+
+// Writes the first eye's bytes back into every constant buffer the replay left with the second eye's.
+void RestoreConstants(ID3D11DeviceContext* c) {
+    for (ConstantRestore const& r : t_constantRestore) {
+        if (r.map) {
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            HRESULT const hr = Live<HRESULT(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_MAP, UINT,
+                D3D11_MAPPED_SUBRESOURCE*)>(kMap)(c, r.resource, r.subresource, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+            if (SUCCEEDED(hr) && mapped.pData != nullptr) {
+                std::memcpy(mapped.pData, r.bytes.data(), r.bytes.size());
+                Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT)>(kUnmap)(c, r.resource, r.subresource);
+                gConstantsRestored.fetch_add(1, std::memory_order_relaxed);
+            }
+        } else {
+            Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_BOX const*, void const*, UINT, UINT)>(
+                kUpdateSubresource)(c, r.resource, r.subresource, r.hasBox ? &r.box : nullptr, r.bytes.data(), r.rowPitch,
+                r.depthPitch);
+            gConstantsRestored.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+    static bool logged = false;
+    if (!logged && !t_constantRestore.empty()) {
+        logged = true;
+        log::Info("draw replay: put the first eye's bytes back in {} constant buffer(s) the second eye changed (logged once; "
+                  "the engine re-uploads only what it changed itself)", t_constantRestore.size());
+    }
+    t_constantRestore.clear();
+}
+
 bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bool& skipped) {
     skipped = false;
     switch (h.op) {
@@ -1875,9 +1949,12 @@ bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bo
         }
         auto* const data = const_cast<std::uint8_t*>(reinterpret_cast<std::uint8_t const*>(a + 1));
         if (a->kind == 1 && a->dataSize >= 16 && a->dataSize <= kSubstituteMaxBytes) {
+            std::vector<std::uint8_t> const original(data, data + a->dataSize);
             unsigned matrixHits = 0;  // in place: the stream is this frame's recording, replayed once
-            gSubstitutions.fetch_add(gSubstitution.Apply(data, a->dataSize, &matrixHits), std::memory_order_relaxed);
+            auto const subs = gSubstitution.Apply(data, a->dataSize, &matrixHits);
+            gSubstitutions.fetch_add(subs, std::memory_order_relaxed);
             gMatrixSubstitutions.fetch_add(matrixHits, std::memory_order_relaxed);
+            NoteConstantUpload(resource, a->subresource, true, false, nullptr, 0, 0, original.data(), original.size(), std::memcmp(original.data(), data, original.size()) != 0);
         }
         std::memcpy(mapped.pData, data, a->dataSize);
         Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT)>(kUnmap)(c, resource, a->subresource);
@@ -1891,9 +1968,13 @@ bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bo
         }
         auto* const data = const_cast<std::uint8_t*>(reinterpret_cast<std::uint8_t const*>(a + 1));
         if (a->kind == 1 && a->dataSize >= 16 && a->dataSize <= kSubstituteMaxBytes) {
+            std::vector<std::uint8_t> const original(data, data + a->dataSize);
             unsigned matrixHits = 0;  // in place
-            gSubstitutions.fetch_add(gSubstitution.Apply(data, a->dataSize, &matrixHits), std::memory_order_relaxed);
+            auto const subs = gSubstitution.Apply(data, a->dataSize, &matrixHits);
+            gSubstitutions.fetch_add(subs, std::memory_order_relaxed);
             gMatrixSubstitutions.fetch_add(matrixHits, std::memory_order_relaxed);
+            NoteConstantUpload(static_cast<ID3D11Resource*>(a->resource), a->subresource, false, a->hasBox != 0, &a->box, a->rowPitch,
+                a->depthPitch, original.data(), original.size(), std::memcmp(original.data(), data, original.size()) != 0);
         }
         Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_BOX const*, void const*, UINT, UINT)>(
             kUpdateSubresource)(c, static_cast<ID3D11Resource*>(a->resource), a->subresource, a->hasBox ? &a->box : nullptr, data,
@@ -2468,6 +2549,7 @@ int Replay(ViewFields const& first, ViewFields const& second, bool rightHalf) {
                 issued, kOpNames[static_cast<unsigned>(cursor.header->op)]);
             t_rightHalf = false;
             t_shadowSub.clear();
+            RestoreConstants(gContext);
             return 3;
         }
         ++issued;
@@ -2475,6 +2557,7 @@ int Replay(ViewFields const& first, ViewFields const& second, bool rightHalf) {
     }
     t_shadowSub.clear();
     t_rightHalf = false;
+    RestoreConstants(gContext);
     gReplays.fetch_add(1, std::memory_order_relaxed);
     gReplayedCalls.fetch_add(issued, std::memory_order_relaxed);
     return 0;
