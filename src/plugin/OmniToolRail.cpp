@@ -635,6 +635,7 @@ void Hide(char const* why) {
         }
     }
     g.shown = false;
+    g.lastPanel.reset();  // a closed rail is nothing to go for: its old place beside the wrist refused the next tap (2026-11-06)
     gShown.store(false, std::memory_order_relaxed);
     gOwnsTriggers.store(false, std::memory_order_relaxed);
     Publish(false, "none");
