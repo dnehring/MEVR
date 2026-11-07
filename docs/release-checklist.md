@@ -89,7 +89,7 @@ The two facts behind most of this list:
   `tools/setup/test-fake-game.ps1 -Voice` (real downloads, pins, `--check-voice --deep`, uninstall byte for byte). Once
   the model is uploaded, run it again: the order model now installs (`llm\model.gguf`, `--check-voice --deep` passes).
   In the real game, once: Optional content > Voice orders > Install, then launch. The log shows `voice:` loading
-  `MEVR-Voice.dll` and the tiny model, and with `[Debug] requests = 1` in `ASIe1mevr.ini` (the players' build ignores
+  `MEVR-Voice.dll` and the tiny model, and with `[Debug] requests = 1` in `ASI\LE1MEVR.ini` (the players' build ignores
   `console.request` without it) `mevr voice wav` of a synthesized line (`tools/voice-tts-corpus.ps1`) gives
   `squad orders:` an order.
 
