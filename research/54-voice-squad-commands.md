@@ -520,6 +520,21 @@ traces the left hand's ray for the point, each action is validated and dispatche
 `[SquadOrders] minConfidence` (0.6) is refused with the unresolved words (where a model would take over). The typed stand-in
 for the recognizer: `tools/console.ps1 "mevr say Garrus, take out those troops on the bridge"`. Not yet run in the game.
 
+### The names: first names, surnames, short forms, ranks (2026-11-06)
+
+The roster carries the game's first name per squadmate (`HenchmanByClass`: ASHLEY, KAIDAN, GARRUS, WREX, TALI, LIARA) and,
+until today, no aliases in the game: "Williams", "Alenko", "Vakarian" and "Chief" only reached the model tier (which took
+"Williams, go sidearm" right, at 0.7-0.85 s and as a guess). `squad_context::KnownAliases(name)` is the table the dataset's
+`ROSTER` already trained the model on, extended: Garrus/Vakarian; Wrex/Urdnot/Rex; Liara/T'Soni/Tsoni; Tali/Zorah/
+Tali'Zorah; Ashley/Williams/Ash/Chief; Kaidan/Alenko/Lieutenant. `game/SquadContext`'s `Roster()` fills `RosterEntry::aliases`
+from it, so the parser matches them (a single word fuzzily at 0.5, a multi-word alias exactly), the model's prefix lists
+them after the name as the training prefix did (the live prefix had none: closer to the training distribution now), and the
+recognizer's key terms carry them (`game/Voice`'s `UpdateKeyterms`: "Vakarian", "Ash"), so Moonshine spells them right.
+A guard with it: a word of under four letters is a name only when said exactly ("as" was Ash at 0.67 once "Ash" was an alias;
+"Rex" and "Ash" are aliases, so they're exact). Tested in `TestSquadParser` (t'soni, chief, "williams and tsoni" = ALL, "as
+soon as you can, liara"). "Everyone", "everybody", "all of you", "you two", "both of you", "squad", "team", "all", "both"
+are the whole squad; no name at all is everyone for an order that needs someone.
+
 ## Standing orders: memory above the game's one-shot orders (2026-11-04, later)
 
 The user, before any in-game check: "how we'd handle more complex grammar and memory, like 'hold the bridge': they would hold
@@ -811,6 +826,44 @@ if the rules take nine orders in ten: a nicety for the tenth, off by default whe
   the validator ("a weapon or a power needs one squadmate"). The untrained model's answer is nonsense, as expected; the
   loop (the mod's ask, the host's worker, the grammar, the validator, the dispatcher) is proven, and the budget for a
   trained one is about a second at these settings.
+
+### The menu's Voice page (2026-11-06)
+
+The player asked, the first time in the headset, whether the menu lets them pick the microphone and see that it hears
+them. Our menu (research/28) has a Voice section now, between Controls and Body: the microphones by name (MEVR-Voice.dll's
+new `MevrVoiceDevices`, the WASAPI capture endpoints' friendly names and the default communications device; interface
+version 2, so the host and `ASI\voice` deploy together), listed on the host's voice worker when the page opens and every
+3 s while it shows; a pick writes the whole name to `[Voice] device` (UTF-16 through the profile API: a name with an "ö"
+survives) and the default row empties it. Under it an input level bar: the microphone's RMS over its last 20 ms (the
+capture runs whenever the recognizer does, listening or not) as -60..0 dBFS, rising at once and falling at 90% a second,
+"Hearing you" past -40 dBFS (a mark on the bar), refreshed about 30 times a second while the page shows
+(`menu_settings::VoiceMeterPercent`/`VoiceMeterStep`). The status line is the recognizer's (ready with the device it
+opened and the model, loading, failed, off, or not installed with what's missing). The voice switch, the recognizer size
+(tiny / small / medium, one line on the cost) and the microphone restart the recognizer: `plugin/Voice` now does its start
+on a worker of its own (the start at attach, the menu's restarts and device lists, one at a time), stops the DLL
+(`MevrVoiceShutdown` joins its threads), re-reads `[Voice]` and starts it again; the page says "Restarting..." meanwhile.
+Also on the page: a Restart button (a headset plugged in late), the radio hum's strength (`[Voice] earCueStrength`, the
+mod's) and the hold-to-talk key (Set key takes the next key pressed within 10 s, never the mouse, Escape, the menu's own
+key or the test loop's End and Home; None clears it; shown by name as the menu shows Halcyon's keys; takes effect at once).
+Unit-tested in `tests/VoiceMenuTests.cpp`; offline look `mevr-menu-preview`'s `section-voice*.png`. The device list was
+checked on the dev machine through the DLL itself (four microphones, the PS VR2's the default); the bar with a real
+microphone and a restart in the game are the checklist's.
+
+### One thread for the recognizer (2026-11-06, late)
+
+The owner's first spoken orders in the headset ("Test one, two, three, four", 21:20): the recognizer heard them (a 1.8 s
+listen, the final transcript 163 ms after the release, 7 partials, the costliest 283 ms), and the game stalled while it
+did: `render levers` counted 700 and 767 frames in the 10 s windows with a listen against 899 otherwise, about 2 s of
+frames lost per order. The cause is in [the gotcha](../docs/knowledge/gotchas/recognizer-on-every-core.md): Moonshine
+passes no thread count to ONNX Runtime, whose default is a pool of every core (24 here) spinning between operators, so
+each partial took the whole machine for 200-300 ms and the game's threads waited; `MevrVoiceConfig::threads` was never
+passed on. Moonshine's own switch, the environment variable `MOONSHINE_ORT_SINGLE_THREAD` (undocumented, read with the
+CRT's `getenv` in its ort-utils), puts the sessions on the worker's thread: the DLL sets it before the models load when
+`[Voice] threads = 1` (the default now). And the release no longer waits: `MevrVoiceListen` hands the switch to the
+worker instead of taking the recognizer's lock on the render thread (a release during a partial in flight stalled the
+frame up to 300 ms). The deployed host at the time was built without llama.cpp (`voice model: off`), so the model tier
+had no part in it. [verify] in the headset after the redeploy: the frame count during a listen, the partial's cost on one
+thread (expected under 100 ms for tiny), and Task Manager showing one core, not all.
 
 ## The fine-tune (2026-11-05, evening)
 

@@ -5193,6 +5193,19 @@ void TestSquadParser() {
     CHECK(p.clauses.size() == 1 && p.clauses[0].supportOf == 0 && p.confidence < 0.6f);
     p = Parse("wrex, target those, garrus, hold here", two, five, four, st);
     CHECK(p.clauses.size() == 2 && line(p, 0) == "W|-|-|attack|PT1" && line(p, 1) == "G|-|-|hold|-");
+    // The known aliases (the game names them "ASHLEY"): surnames, short forms and ranks are the squadmate; a word of
+    // under four letters is a name only when said exactly ("as" is not Ash).
+    std::vector<sc::RosterEntry> known = four;
+    for (sc::RosterEntry& e : known) e.aliases = sc::KnownAliases(e.letter == 'A' ? "ASHLEY" : e.letter == 'G' ? "GARRUS" : e.letter == 'W' ? "Wrex" : "liara");
+    CHECK(known[0].aliases.size() == 2 && known[0].aliases[1] == "Vakarian" && sc::KnownAliases("SQUADMATE").empty());
+    p = Parse("t'soni, hold here", two, five, known, st);  // the present two are Liara and Ashley
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "L|-|-|hold|-" && p.confidence > 0.99f);
+    p = Parse("chief, hold here", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "A|-|-|hold|-");
+    p = Parse("williams and tsoni, take those out", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "ALL|-|-|attack|PT1");
+    p = Parse("as soon as you can, liara, hold here", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "L|-|-|hold|-");
 }
 void TestSquadStanding() {
     using namespace mevr::vr::squad_standing;
@@ -6898,7 +6911,7 @@ void TestSightSettings() {
     CHECK(defaults.guns[2].kind == s::Kind::Dot && defaults.guns[2].lens == 0.0f && defaults.guns[2].hide.empty());
     gun = s::ParseGun("scope 1.5", defaults.guns[2]);
     CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 1.5f && gun->lens == 0.0f);
-    CHECK(defaults.ads && defaults.adsReachM == 0.40f && defaults.scopeAdsPullMaxM == 0.35f && defaults.scopePullMaxM == 0.15f);
+    CHECK(defaults.ads && defaults.adsReachM == 0.55f && defaults.scopeAdsPullMaxM == 0.35f && defaults.scopePullMaxM == 0.15f);
     // The one-time move back (section 15): exactly section 14's `scope 1.5` becomes dot; anything else is the player's.
     CHECK(s::MigrateAssaultRifle("scope 1.5") == std::optional<std::string>("dot"));
     CHECK(s::MigrateAssaultRifle(" Scope  1.50 ") == std::optional<std::string>("dot"));
@@ -7246,6 +7259,25 @@ void TestSightWindow() {
     }
     CHECK(!s::WindowView(*lens, {0.0f, 0.0f, -0.31f}, 0.02f, 1.0f));  // in front of the window
     CHECK(!s::WindowView(*lens, {0.0f, 0.0f, 0.75f}, 0.02f, 1.0f));   // 1.05 m back
+    // The dot past its window (the gun pulled into the shoulder, research/21 section 19): an eye up to 8 cm past still aims,
+    // kept a little further with the hysteresis, never 10 cm past.
+    {
+        s::Line past[2];
+        past[0].lateral = 0.05f;
+        past[0].along = 0.1f;
+        past[1].lateral = 0.01f;
+        past[1].along = -0.05f;
+        CHECK(s::AimingEye(past, 0.06f, -0.08f, 1.0f, -1) == 1);
+        CHECK(s::AimingEye(past, 0.06f, 0.02f, 1.0f, -1) == 0);  // the old floor: only the other eye
+        past[1].along = -0.09f;
+        CHECK(s::AimingEye(past, 0.06f, -0.08f, 1.0f, 1) == 1);   // kept (to -0.096)
+        past[1].along = -0.10f;
+        CHECK(s::AimingEye(past, 0.06f, -0.08f, 1.0f, 1) == 0);
+        past[0].along = past[1].along = 0.017f;
+        CHECK(s::AimingEye(past, 0.06f, 0.02f, 1.0f, 1) == 1);    // a positive floor's hysteresis as before (to 0.016)
+        past[0].along = past[1].along = 0.015f;
+        CHECK(s::AimingEye(past, 0.06f, 0.02f, 1.0f, 1) == -1);
+    }
     // The dot's eye through a dropout: a one-tick jump of the drawn gun (the session's 0.58 m sample) keeps it, 120 ms not.
     s::EyeHold hold;
     CHECK(hold.Update(1, 1000) == 1);
@@ -8627,6 +8659,17 @@ void TestSightAssist() {
     // Never away from the eye: an eyepiece already nearer than the relief stays.
     goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.08f}, ahead, up, eyes, 1.0f, -1, pull);
     CHECK(goal.pull == 0.0f && NearX(goal.shift, {0.0f, 0.0f, 0.0f}, 1e-6));
+    // ...unless a push is allowed (a scope under ADS pulled into the shoulder, research/21 section 19): the eyepiece 0.08 m
+    // ahead goes 0.04 m away, to the relief; an eye 3 cm past the eyepiece still counts and pushes the whole 0.15 m.
+    s::Pull const push{0.12f, 0.15f, 0.15f};
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.08f}, ahead, up, eyes, 1.0f, -1, push);
+    CHECK(goal.eye == 1 && std::abs(goal.pull + 0.04f) < 1e-5f && NearX(goal.shift, {0.0f, 0.0f, -0.04f}, 1e-5));
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, 0.03f}, ahead, up, eyes, 1.0f, -1, push);
+    CHECK(goal.eye == 1 && std::abs(goal.pull + 0.15f) < 1e-5f);
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, 0.03f}, ahead, up, eyes, 1.0f, -1, pull).eye == -1);  // no push: no eye
+    CHECK(std::abs(s::AssistTarget(settings, {0.032f, 0.0f, -0.235f}, ahead, up, eyes, 1.0f, -1, push).pull - 0.115f) < 1e-5f);
+    // The defaults: ADS on within 0.55 m, off past 0.80, a 15 cm push.
+    CHECK(s::Settings{}.adsReachM == 0.55f && s::Settings{}.adsReachExitM == 0.80f && s::Settings{}.scopeAdsPushM == 0.15f);
     // Weighted like the sideways move: half raised, half the pull.
     goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.3f}, ahead, up, eyes, 0.5f, -1, pull);
     CHECK(std::abs(goal.pull - 0.5f * 0.15f) < 1e-5f);
@@ -10160,7 +10203,18 @@ void TestMenuSettings() {
         CHECK(text(shipped, "guide_rstick") == "Turn, hold: powers");
         CHECK(text(shipped, "guide_rstick_how").find("recenter") != std::string::npos);
         CHECK(text(shipped, "guide_rgrip") == "Draw and holster");
-        CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Back (menus)");
+        CHECK(text(shipped, "guide_x") == "Power wheel" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Back (menus)");
+        // The powers (research/55, 2026-11-06): the wheel at the left hand, the lock and the push, the self-cast gestures.
+        CHECK(text(shipped, "guide_pick").find("Hold X") != std::string::npos);
+        CHECK(text(shipped, "guide_cast").find("Push your open hand") != std::string::npos);
+        CHECK(text(shipped, "guide_self").find("chest") != std::string::npos && text(shipped, "guide_self").find("Unity") != std::string::npos);
+        ms::GuideInput noHandWheel = shipped;
+        noHandWheel.handWheel = false;
+        CHECK(text(noHandWheel, "guide_x") == "Grenade");
+        CHECK(text(noHandWheel, "guide_cast").find("right stick click") != std::string::npos);
+        ms::GuideInput noGestures = shipped;
+        noGestures.selfGestures = false;
+        CHECK(text(noGestures, "guide_self").rfind("Pushed", 0) == 0);
         CHECK(text(shipped, "guide_melee").find("right fist") != std::string::npos);  // [Throwables] meleeFist (2026-11-05)
         ms::GuideInput withB = shipped;
         withB.meleeButton = true;
@@ -10182,6 +10236,7 @@ void TestMenuSettings() {
         CHECK(text(noHold, "guide_rgrip") == "Draw, powers" && text(noHold, "guide_rstick") == "Turn");
         ms::GuideInput x = shipped;
         x.powerWheel = "x";
+        x.handWheel = false;  // with the hand's power wheel on, X is that wheel
         CHECK(text(x, "guide_x") == "Powers");
         ms::GuideInput b = shipped;
         b.powerWheel = "b";
@@ -10207,6 +10262,7 @@ void TestMenuSettings() {
         kept.grenadeHands = "left";
         kept.walk = "hand";
         kept.turn = "snap";
+        kept.handWheel = false;  // X free of the hand's power wheel
         CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Back (menus)");
         CHECK(text(kept, "guide_lgrip") == "Two-handed grip" && text(kept, "guide_lgrip_how").find("vent") == std::string::npos);
         CHECK(text(kept, "guide_lgrip_how").find("grenade") != std::string::npos);
@@ -11539,6 +11595,8 @@ int RunExeTests();
 // tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/57 section 5).
 int RunGfxTests();
 int RunPowerWheelTests();
+// tests/VoiceMenuTests.cpp: the main menu's Voice page (research/54 "The menu's Voice page").
+int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
 int RunLandmarkTests();
@@ -11689,6 +11747,7 @@ int main() {
     gFailures += RunExeTests();
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
+    gFailures += RunVoiceMenuTests();
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
     gFailures += RunLandmarkTests();

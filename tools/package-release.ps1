@@ -279,7 +279,7 @@ $ini = "; MEVR Setup's settings.`r`n[Update]`r`n; The GitHub repository whose Re
     "`r`n[Voice]`r`n; The voice orders' fine-tuned model (Optional content, research/33 section 14): the asset modelAsset of the release`r`n" +
     "; modelTag in [Update] repo (or modelRepo). modelUrl = https://... downloads that instead (checked against modelSha256 and`r`n" +
     "; modelSize when given). Until the release exists the setup installs the rest and says the model isn't published yet.`r`n" +
-    ";modelTag = voice-model-1`r`n;modelAsset = mevr-voice-qwen3-0.6b-q8_0.gguf`r`n"
+    ";modelTag = voice-model-1`r`n;modelAsset = model.gguf`r`n"
 [IO.File]::WriteAllText((Join-Path $dist 'MEVR-Setup.ini'), $ini)
 
 # The symbols: the PDBs and the exact binaries they belong to, next to the players' folder.

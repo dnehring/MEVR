@@ -14,10 +14,21 @@ melee, gun sights and scopes, a VR main menu and a guided calibration.
 
 **Status: development preview, LE1 only.** LE2 and LE3 build (on our own early renderer) for development,
 but they aren't playable in VR. **Downloads:** players' builds (MEVR-Setup, a one-click installer) go on the
-[Releases page](https://github.com/dnehring/MEVR/releases); until the first one is published, build from source. The
-voice orders' recognizer and models aren't in the download: the setup's **Optional content** page fetches them from
-their authors' releases ([research/33](research/33-installer.md) section 14; on a development machine
-`tools/fetch-voice.ps1`). The
+[Releases page](https://github.com/dnehring/MEVR/releases); until the first one is published, build from source.
+The download carries the mod and our voice bridge (`MEVR-Voice.dll`). The voice orders' speech recognizer and models come
+from the setup's **Optional content** page, which downloads each file from its author's own release, checks it against
+a pinned size and SHA-256, and records it so Remove and Uninstall take it out again
+([research/33](research/33-installer.md) section 14):
+
+| What | From | Licence | Download |
+|---|---|---|---|
+| ONNX Runtime (`onnxruntime.dll`, from Moonshine Voice v0.1.5's Windows release) | GitHub, moonshine-ai/moonshine | MIT | 26 MB |
+| The tiny English streaming recognizer (small and medium optional) | Hugging Face, moonshine-ai/moonshine-voice-assets | MIT | 45 MB (142 / 269 MB) |
+| The model tier, on by default: llama.cpp b12128's CPU DLLs | GitHub, ggml-org/llama.cpp | MIT (its OpenMP runtime Apache-2.0 with LLVM exceptions) | 25 MB |
+| The model tier: our order model, Qwen3-0.6B fine-tuned (`model.gguf`) | GitHub, this repository's release `voice-model-1` | Apache-2.0 | 639 MB |
+
+Until the model's release is published, the setup installs the recognizer and voice orders run on the built-in rules.
+On a development machine `tools/fetch-voice.ps1` fetches the same files. The
 players' build runs entirely on our own reflection layer (`src/ue3`, [research/34](research/34-reflection.md)): it
 contains none of [LExSDKv2](https://github.com/llamathings/LExSDKv2), which development builds still use for a
 cross-check.

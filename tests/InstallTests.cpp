@@ -1407,8 +1407,8 @@ void TestVoice() {
     std::string const sha(64, 'a');
     std::string const release = R"({"tag_name": "voice-model-1", "assets": [
         {"name": "notes.txt", "browser_download_url": "https://github.com/dnehring/MEVR/releases/download/voice-model-1/notes.txt", "size": 5},
-        {"name": "mevr-voice-qwen3-0.6b-q8_0.gguf", "size": 639446880, "digest": "sha256:)" + std::string(64, 'A') + R"(",
-         "browser_download_url": "https://github.com/dnehring/MEVR/releases/download/voice-model-1/mevr-voice-qwen3-0.6b-q8_0.gguf"}]})";
+        {"name": "model.gguf", "size": 639446880, "digest": "sha256:)" + std::string(64, 'A') + R"(",
+         "browser_download_url": "https://github.com/dnehring/MEVR/releases/download/voice-model-1/model.gguf"}]})";
     std::string why;
     auto const model = voice::ModelFromRelease(release, voice::kModelAsset, &why);
     ICHECK(model.has_value());

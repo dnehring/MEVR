@@ -34,6 +34,14 @@ std::string Lower(std::string_view text) {
     return out;
 }
 
+std::string Upper(std::string_view text) {
+    std::string out;
+    for (char const c : text) {
+        out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
 std::string Trim(std::string_view text) {
     std::size_t begin = 0;
     std::size_t end = text.size();
@@ -150,6 +158,9 @@ std::vector<Field> const& Schema() {
         {"guide_b_how", Type::Text, 0, ""},
         {"guide_grenade", Type::Text, 0, ""},
         {"guide_melee", Type::Text, 0, ""},
+        {"guide_pick", Type::Text, 0, ""},
+        {"guide_cast", Type::Text, 0, ""},
+        {"guide_self", Type::Text, 0, ""},
         // Body and calibration.
         {"cal_running", Type::Flag, 0},
         {"cal_status", Type::Text, 0, "Not calibrated for these controllers yet"},
@@ -265,6 +276,29 @@ std::vector<Field> const& Schema() {
         {"classic_desc", Type::Text, 0, "The original MELE-VR settings menu, with expert settings these pages don't have (also: Ctrl + "
                                         "the menu key)"},
         {"about_build", Type::Text, 0, ""},  // Diagnostics > About: version and commit (AboutBuild)
+        // Voice (research/54 "The menu's Voice page"): [Voice] in <GAME>MEVR.ini and the host's recognizer (plugin/Voice).
+        {"voice_on", Type::Flag, 1},                                 // [Voice] enabled
+        {"voice_status", Type::Text, 0, ""},                         // VoiceStatusText
+        {"voice_ready", Type::Flag, 0},                              // the recognizer is ready (the status line's colour)
+        {"voice_level", Type::Number, 0, "", 0, 100, F::Percent},    // the bar (VoiceMeterPercent), set by MainMenu each frame
+        {"voice_heard", Type::Flag, 0},                              // the bar went past kVoiceHeardPercent in the last 1.5 s
+        {"mic", Type::Choice, 0, "default"},                         // "default", "0".."7", or "missing"
+        {"mic_count", Type::Number, 0, "", 0, kMicSlots},
+        {"mic0", Type::Text, 0, ""},
+        {"mic1", Type::Text, 0, ""},
+        {"mic2", Type::Text, 0, ""},
+        {"mic3", Type::Text, 0, ""},
+        {"mic4", Type::Text, 0, ""},
+        {"mic5", Type::Text, 0, ""},
+        {"mic6", Type::Text, 0, ""},
+        {"mic7", Type::Text, 0, ""},
+        {"mic_default", Type::Text, 0, "Windows' default communications microphone"},
+        {"mic_missing", Type::Text, 0, ""},                          // [Voice] device when no listed device holds it
+        {"mic_note", Type::Text, 0, ""},                             // why there's no list
+        {"voice_model", Type::Choice, 0, "tiny"},                    // [Voice] model
+        {"voice_key", Type::Text, 0, "(none)"},                      // [Voice] key by name
+        {"voice_key_wait", Type::Flag, 0},                           // waiting for the key to press
+        {"ear_cue", Type::Number, 40, "", 0, 100, F::Percent},       // [Voice] earCueStrength x 100 (the mod's)
     };
     return fields;
 }
@@ -554,7 +588,11 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
                                                                                                    : "where you look";
     put("lstick", "Walk, click: crouch",
         "Walk toward " + toward + ". Click to crouch or stand" + (in.physicalCrouch ? "; or just crouch for real." : "."));
-    if (power == "x") {
+    if (in.handWheel) {
+        put("x", "Power wheel", std::string("Hold for your powers around your left hand: move the hand toward one and let go of X to "
+                                            "equip it (a tap keeps the wheel open).") +
+                                    (in.grenades ? " X throws no grenade on foot: take grenades from your chest." : ""));
+    } else if (power == "x") {
         put("x", "Powers", "Powers: " + powersHow + ".");
     } else if (in.grenadeButton) {
         put("x", "Grenade", "Throw a grenade the game's way.");
@@ -606,6 +644,26 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
                                                                                         "right fist: squeeze the grip and the trigger."
                                                                                       : "")
                                              : std::string("Off (Controls > Physical grenades and melee)."));
+
+    // ---- Powers (research/55): the wheel at the left hand, the lock and the push, the self-cast gestures ----
+    std::string const gameWheel = power == "r3" ? "hold the right stick click for the game's power wheel"
+                                : power == "grip" ? "hold the right grip for the game's power wheel"
+                                : power == "none" || power.empty() ? "the game's power wheel isn't on a button (Controls)"
+                                                                   : "hold " + Upper(power) + " for the game's power wheel";
+    out.emplace_back("guide_pick", in.handWheel ? "Hold X: your powers around your left hand. Move the hand toward one and let go of "
+                                                  "X to equip it. A card then shows how to cast it."
+                                                : "The power wheel at your hand is off ([PowerWheel] on): " + gameWheel + ".");
+    out.emplace_back("guide_cast", in.handWheel && in.castLock
+                                       ? std::string("Raise your left hand at an enemy: orange brackets lock on (or on the one you face). "
+                                                     "Push your open hand toward it to cast what you equipped. Powers that land somewhere "
+                                                     "go where your hand points. Your right hand can keep the gun.")
+                                       : "Cast from the game's power wheel: " + gameWheel + ".");
+    out.emplace_back("guide_self", !(in.handWheel && in.castLock) ? std::string("From the game's power wheel, like the others.")
+                                   : in.selfGestures ? std::string("Powers on yourself are gestures of the open left hand: flat on "
+                                                                   "your chest, held (Barrier, Shield Boost, Immunity, Adrenaline "
+                                                                   "Burst); slapped onto the gun (Marksman, Overkill, Carnage, "
+                                                                   "Assassination); raised above your head, held (Unity).")
+                                                     : std::string("Pushed forward like the others."));
     return out;
 }
 
@@ -618,6 +676,93 @@ std::string AboutBuild(std::string_view version, std::string_view commit, bool d
         text += " \xC2\xB7 development build";
     }
     return text;
+}
+
+std::string VoiceModelChoice(std::string_view value) {
+    std::string const v = Lower(Trim(value));
+    return v == "small" || v == "medium" ? v : std::string("tiny");
+}
+
+int MicIndex(std::vector<std::string> const& names, std::string_view setting) {
+    std::string const want = Lower(setting);
+    if (want.empty()) {
+        return -1;
+    }
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (Lower(names[i]).find(want) != std::string::npos) {
+            return static_cast<int>(i);
+        }
+    }
+    return -2;
+}
+
+float VoiceMeterPercent(float rms) {
+    if (!std::isfinite(rms) || rms <= 1e-6f) {
+        return 0.0f;
+    }
+    float const db = 20.0f * std::log10(rms);
+    return std::clamp((db + 60.0f) / 60.0f * 100.0f, 0.0f, 100.0f);
+}
+
+float VoiceMeterStep(float shown, float target, float dtS, float fallPerS) {
+    if (!std::isfinite(shown)) shown = 0.0f;
+    if (!std::isfinite(target)) target = 0.0f;
+    if (target >= shown) {
+        return target;
+    }
+    return std::max(target, shown - std::max(dtS, 0.0f) * fallPerS);
+}
+
+std::string VoiceStatusText(VoiceStatusInput const& in) {
+    if (in.restarting) {
+        return "Restarting the recognizer with the new settings\xE2\x80\xA6";
+    }
+    if (!in.enabled) {
+        return "Voice orders are off.";
+    }
+    switch (in.status) {
+    case 1:
+        return "Loading the recognizer\xE2\x80\xA6";
+    case 2: {
+        std::string text = in.listening ? "Listening" : "Ready";
+        if (!in.device.empty()) {
+            text += " \xC2\xB7 microphone: " + in.device;
+        } else {
+            text += " \xC2\xB7 no microphone opened";
+        }
+        if (!in.model.empty()) {
+            text += " \xC2\xB7 " + in.model + " model";
+        }
+        if (!in.error.empty()) {
+            text += " \xC2\xB7 " + in.error;
+        }
+        return text;
+    }
+    case 3:
+        return "The recognizer failed: " + (in.error.empty() ? std::string("see LE1MEVR.log") : in.error);
+    default:
+        break;
+    }
+    if (in.error.find("MEVR-Voice.dll") != std::string::npos || in.error.find("models") != std::string::npos) {
+        return "Not installed: add Voice orders in Display > Optional content (" + in.error + ")";
+    }
+    return "Off" + (in.error.empty() ? std::string(".") : ": " + in.error);
+}
+
+int VoiceKeyFromPress(int vk, int menuKey) {
+    if (vk <= 0 || vk > 0xFE) {
+        return 0;
+    }
+    switch (vk) {
+    case 0x01: case 0x02: case 0x04: case 0x05: case 0x06:  // the mouse buttons
+    case 0x1B:                                              // Escape
+    case 0x23: case 0x24:                                   // End, Home: the test loop's snapshot and recording
+    case 0x10: case 0x11: case 0x12:                        // Shift, Ctrl, Alt (the generic ones; their left and right are fine)
+        return 0;
+    default:
+        break;
+    }
+    return vk == menuKey ? 0 : vk;
 }
 
 void PendingWrites::Put(std::string section, std::string key, std::string value, std::uint64_t dueMs) {

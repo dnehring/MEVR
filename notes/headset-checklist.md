@@ -23,6 +23,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   omni-tool's display on Shepard's hand and follow it as your hand moves, and do the pulses running out to the tiles, the
   shimmer and the turning rings feel alive without being busy? The log's `power wheel: #N its light comes from the omni-tool's
   display, (x, y, z) cm from the left grip` says what it used. (research/55 "The light from the omni-tool, alive")
+- [ ] How to cast it (2026-11-06): equip a power on the wheel; a card where the wheel was names it, draws its gesture and says how
+  to cast it, and goes when you cast. Is it in a good place, readable, and do the drawings show the gesture (Throw: raise and push;
+  Barrier: palm on the chest; Marksman: slap the gun; Unity: hand over the head)? Also the menu's Controller guide > Powers.
+  (research/55 "How to cast it, on a card")
 - [ ] Raise your left arm at an enemy: orange brackets lock on. Push your open left hand toward it: the power casts and
   lands on that enemy. Say whether the push (1.6 m/s over 10 cm) is too easy or too hard, and whether the brackets read
   at 5 m and at 35 m. (research/55 section 7)
@@ -184,6 +188,14 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   (`PlaySoundSet` 70 / 61) fits when it doesn't; names over Link / Steam Link ("Rex", "Gurus" on synthesized speech: the
   parser absorbs those; a name the rules can't place goes to the model); the ducked game audio. Set `[Voice] model`
   (tiny / small / medium) if the partials lag. (research/54 "The voice path built", `[Voice]`)
+- [ ] The recognizer on one thread (2026-11-06 late, research/54 "One thread for the recognizer"; needs the host and `ASI\voice`
+  redeployed together, the game closed for it): speak a few orders; does the game keep its frames while you talk (the log's
+  `render levers: last 10 s: N frames` near 899 during a listen, 700 before the fix), Task Manager one busy core, not all,
+  and `voice: ... the costliest N ms` under 100 for tiny? If a partial costs more than 250 ms now, `[Voice] intervalMs = 500`.
+- [ ] The menu's Voice page (2026-11-06, research/54 "The menu's Voice page"; needs the host and `ASI\voice` redeployed
+  together): open the menu > Voice. Is your headset's microphone listed and picked, and does the Input level bar move and say
+  "Hearing you" when you speak (and stay low when you don't)? Pick another microphone: the status says Restarting, then Ready
+  with the new name within a few seconds, and the bar follows the new one. Try Small, then back to Tiny.
 - [ ] The ear's contact buzz (2026-11-05 evening, `[Voice] earCue`, `earCueStrength` 0.4): the open left hand hums in the
   left controller as it comes within `radioRadiusM` (0.20 m) of the ear point (8 cm left and 3 cm below the eyes), stronger
   nearer it, and stops when you squeeze (the listen's own tick) or leave. Does it find the spot without looking, and is 0.4
@@ -242,6 +254,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   checked on the fake headset 2026-11-05)
 
 ## 3. Aiming, sights and scopes (session: Weapon-specific scope models)
+- [ ] The sniper rifle pushed into the shoulder, then held out at arm's length: the picture stays both ways (the gun moves off
+  the shoulder by itself, up to 15 cm: comfortable?), no white glow from the lens while raised; the rifle's red dot stays with
+  the eye at or past the housing; after drawing any gun, no game crosshair beside the hand reticle. (research/21 section 19)
 - [ ] Raise the sniper rifle: the picture only at the eye (never at a casual hold), no on/off flicker, the eye reaches
   the eyepiece; lowered, the gun eases back. (research/21 section 15)
 - [ ] Under the scope, flick the right stick forward and back: the zoom steps 3.5x / 7x with a tick; the reticle reads.

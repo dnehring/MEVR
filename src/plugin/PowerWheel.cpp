@@ -94,6 +94,8 @@ XrSession gSession = XR_NULL_HANDLE;
 std::uint64_t gLastDrawMs = 0;
 std::uint32_t gLoggedSerial = 0;
 char const* gLoggedSource = "";  // where the light came from at the last log of it
+std::uint32_t gLoggedCoach = 0;     // the opening whose how-to-cast card was logged...
+std::uint8_t gLoggedCoachKind = 0;  // ...and what it showed
 bool gLoggedSize = false;
 bool gLoggedFirst = false;
 
@@ -425,6 +427,35 @@ int SquadLayer(Frame const& frame, XrCompositionLayerQuad const** out, int capac
     return 1;
 }
 
+// The how-to-cast card after an equip (research/55 "How to cast it, on a card"), where the wheel was, a little above its centre:
+// 0 or 1 quads. It's drawn on the hint card's canvas (the hint shows only while the wheel is open).
+int CoachLayer(Frame const& frame, pw::View const& view, XrCompositionLayerQuad const** out, int capacity, float dt) {
+    if (view.coach == 0 || view.size != sizeof(pw::View) || capacity <= 0 || !frame.worldFrame || frame.menuOpen ||
+        frame.session == XR_NULL_HANDLE || frame.context == nullptr || frame.device == nullptr) {
+        return 0;
+    }
+    if (!EnsureGpu(frame.device, frame.context) || !EnsureSwapchain(frame.session, gHint)) {
+        return 0;
+    }
+    draw::CoachView coach;
+    coach.coach = static_cast<pw::Coach>(std::min<std::uint8_t>(view.coach, static_cast<std::uint8_t>(pw::Coach::Raise)));
+    coach.name.assign(view.coachName, strnlen(view.coachName, sizeof(view.coachName)));
+    coach.time = view.coachFor;
+    coach.open = std::clamp(view.coachFor / 0.2f, 0.0f, 1.0f) * std::clamp((pw::kCoachS - view.coachFor) / 0.5f, 0.0f, 1.0f);
+    Render(frame.context, gHint, dt, [&](ImDrawList* dl) { draw::DrawCoach(dl, gGpu.fonts, coach); });
+    if (!Submit(frame.context, gHint)) {
+        return 0;
+    }
+    gHint.quad = Quad(frame, gHint, view.pose, 0.0f, 0.08f, kHintWidthM);
+    out[0] = &gHint.quad;
+    if (gLoggedCoach != view.serial || gLoggedCoachKind != view.coach) {
+        gLoggedCoach = view.serial;
+        gLoggedCoachKind = view.coach;
+        log::Info("power wheel: how to cast {} drawn ({}) where the wheel was", coach.name, pw::Name(coach.coach));
+    }
+    return 1;
+}
+
 int PowerLayers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity);
 
 }  // namespace
@@ -454,7 +485,8 @@ int PowerLayers(Frame const& frame, XrCompositionLayerQuad const** out, int capa
         std::uint64_t const now = GetTickCount64();
         float const dt = gLastDrawMs == 0 ? 1.0f / 72.0f : static_cast<float>(now - gLastDrawMs) / 1000.0f;
         gLastDrawMs = now;
-        return LockLayer(frame, out, capacity, dt);
+        int const n = LockLayer(frame, out, capacity, dt);
+        return n + CoachLayer(frame, view, out + n, capacity - n, dt);
     }
     if (view.size != sizeof(pw::View)) {
         if (!gLoggedSize) {

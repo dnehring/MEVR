@@ -94,6 +94,9 @@ struct Assist {
 struct Pull {
     float reliefM = 0.0f;  // tracking meters: where the eyepiece should end up in front of the eye
     float maxM = 0.0f;     // tracking meters: the gun moves at most this far toward the eye
+    // tracking meters: an eye nearer the eyepiece than the relief (the gun pulled into the shoulder) pushes the gun this far
+    // away at most, so the eyepiece stays the relief ahead of it (2026-11-06, research/21 section 19); 0: never away.
+    float pushM = 0.0f;
 };
 
 struct Settings {
@@ -147,9 +150,14 @@ struct Settings {
     // `adsReachM`: the centre eye within this of the sight to come on, 0.10 m further to go off). A scope's picture shows,
     // and its lens part hides, only under ADS; the pull may then reach `scopeAdsPullMaxM` with the faster spring. ads = 0:
     // the picture whenever an eye is behind the eyepiece within scopeMaxM (section 13), the pull at scopePullMaxM.
+    // Since 2026-11-06 (research/21 section 19, the user: "something a bit more naive ... it just tries to get to the
+    // synthetic scope faster"): on within 0.55 m, off only past `adsReachExitM` (0.80), and a gun pulled into the shoulder
+    // pushes the scope forward up to `scopeAdsPushM` so its eyepiece stays the relief ahead of the eye.
     bool ads = true;
-    float adsReachM = 0.40f;
+    float adsReachM = 0.55f;
+    float adsReachExitM = 0.80f;
     float scopeAdsPullMaxM = 0.35f;
+    float scopeAdsPushM = 0.15f;
     // Both.
     bool replaceRing = true;            // hide the floating ring reticle while an eye looks through a sight
     bool aimedFire = true;              // the sniper rifle's shots get the game's aimed-fire accuracy while
@@ -382,7 +390,7 @@ struct AssistGoal {
     float x = 0.0f;        // the eye's offset from the line along the sight's right (meters)...
     float y = 0.0f;        // ...and its up (the gun's top)
     float weight = 0.0f;   // 0..1: the given weight times the strength
-    float pull = 0.0f;     // of `shift`: how far the gun moves back along the line toward the eye (meters)
+    float pull = 0.0f;     // of `shift`: how far the gun moves back along the line toward the eye (meters; below 0 a push away)
 };
 // `pull`: the gun also slides back along the sight line toward the aiming eye, `pull.maxM` at most, until the sight is
 // `pull.reliefM` ahead of it, times the same weight (never forward, never past the relief). The sideways move is capped

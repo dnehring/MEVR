@@ -74,6 +74,25 @@ The two facts behind most of this list:
   11.1) predate `keepBoundShaderStates`; nothing newer exists for the default path. Re-measure at Eden Prime's heavy cell,
   the Presidium and a fight, then settle the defaults in section 3.
 
+### Voice orders (research/33 section 14)
+- [ ] **[U] Upload the order model.** On https://github.com/dnehring/MEVR/releases, make a release with the tag
+  `voice-model-1` (not `v*`, which would start the release workflow; mark it a pre-release so it isn't "Latest") and
+  attach the dev machine's `models/voice/llm/model.gguf` under its own name, `model.gguf`:
+  639,446,880 bytes (610 MiB), SHA-256 `7452847f4326b91b58de9d5503524678972fecdf8da9189eea663bf1331e108b`.
+  The setup takes the size and SHA-256 from GitHub's listing of the asset and checks the download against them, so the
+  check passes for whatever file is attached. After uploading, compare the asset's SHA-256 on the release page with the
+  one above: another value means another file went up. A retrained model is a new upload under the same tag and name,
+  or a new tag set in `MEVR-Setup.ini` `[Voice] modelTag`. Until it exists, Setup installs the speech recognizer, says the
+  model tier waits for this release, and voice orders run on the built-in rules.
+- [ ] **[C] Optional content's voice check on the release package.** From `tools/package-release.ps1 -Zip`'s package,
+  confirm that `payload\voice\MEVR-Voice.dll` is in the zip and signed with the other binaries. On a fake game:
+  `tools/setup/test-fake-game.ps1 -Voice` (real downloads, pins, `--check-voice --deep`, uninstall byte for byte). Once
+  the model is uploaded, run it again: the order model now installs (`llm\model.gguf`, `--check-voice --deep` passes).
+  In the real game, once: Optional content > Voice orders > Install, then launch. The log shows `voice:` loading
+  `MEVR-Voice.dll` and the tiny model, and with `[Debug] requests = 1` in `ASI\LE1MEVR.ini` (the players' build ignores
+  `console.request` without it) `mevr voice wav` of a synthesized line (`tools/voice-tts-corpus.ps1`) gives
+  `squad orders:` an order.
+
 ## 2. On by default, never seen by a person in a headset
 
 Each needs a headset verdict, or ships off. Source: notes/next-vr-session.md steps 41-49 unless noted.

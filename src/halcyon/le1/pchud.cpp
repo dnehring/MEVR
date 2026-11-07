@@ -4,6 +4,7 @@
 #include "pchud.h"
 
 #include "logger.h"
+#include "mevr_bridge.h"  // [MEVR] OnGameThread for the crosshair hide
 
 #include <Windows.h>
 #include <MinHook.h>
@@ -122,6 +123,8 @@ std::atomic_uintptr_t g_mevrReticuleClsName{0};   // interned FName ptr -> point
 std::uintptr_t g_mevrReticulePanel = 0;           // game thread: the movie instance last written
 bool g_mevrCrosshairHidden = false;               // game thread: what that instance holds now
 uint32_t g_mevrReticuleEvents = 0;                // game thread: re-stamp cadence
+void* g_mevrReticuleHandler = nullptr;             // game thread: the crosshair handler last seen (re-checked before use)
+unsigned long long g_mevrReticuleRestampMs = 0;    // game thread: the last re-stamp through the handler kept
 
 // ---- Conversation wheel (BioSFHandler_Conversation): a SECOND movie target driven by the exact same
 // mechanism. oPanel lives at 0x80 in the BASE UBioSFHandler (verified in Engine_classes.h), so every handler
@@ -1879,6 +1882,11 @@ void MaybeBoostReflectionCaptureRate() noexcept
 // PCHUD apply: the panel is read live from the handler being processed, never cached across events.
 // _root._alpha rather than _visible, so giving it back can't force-show a movie the game hid (the
 // VISIBILITY RULE above). Inert unless hiding or restoring: one class-name pointer compare per event.
+// [MEVR] 2026-11-06: the crosshair's handler gets events only now and then (a weapon drawn, a mode change), not while the
+// player aims, so a hide asked for between them never came and the game's crosshair stayed up beside the hand reticle (the
+// user: "sometimes when equipping guns I'd get the old HUD for the crosshair"). The handler last seen is kept (only its
+// pointer) and, when the wanted state changed or once a second for the re-stamp, used from any game-thread event after its
+// class is checked again (SEH-guarded); the panel is still read live from it.
 void MevrApplyCrosshair(void* context) noexcept
 {
     const bool want = g_mevrHideCrosshair.load(std::memory_order_acquire);
@@ -1886,15 +1894,40 @@ void MevrApplyCrosshair(void* context) noexcept
     const char* cls = ClassNameSEH(context);
     if (cls == nullptr) return;
     const std::uintptr_t cached = g_mevrReticuleClsName.load(std::memory_order_relaxed);
+    bool own = false;
     if (cached != 0)
     {
-        if (reinterpret_cast<std::uintptr_t>(cls) != cached) return;
+        own = reinterpret_cast<std::uintptr_t>(cls) == cached;
+    }
+    else if (std::strcmp(cls, "BioSFHandler_Reticule") == 0)
+    {
+        own = true;
+        g_mevrReticuleClsName.store(reinterpret_cast<std::uintptr_t>(cls), std::memory_order_relaxed);
+        LogLine("[MEVR-CROSSHAIR] found the crosshair movie's handler (BioSFHandler_Reticule) obj=" + PtrText(context));
+    }
+    if (own)
+    {
+        g_mevrReticuleHandler = context;
     }
     else
     {
-        if (std::strcmp(cls, "BioSFHandler_Reticule") != 0) return;
-        g_mevrReticuleClsName.store(reinterpret_cast<std::uintptr_t>(cls), std::memory_order_relaxed);
-        LogLine("[MEVR-CROSSHAIR] found the crosshair movie's handler (BioSFHandler_Reticule) obj=" + PtrText(context));
+        // Another object's event: act through the kept handler only when there's something to do, on the game thread.
+        void* const kept = g_mevrReticuleHandler;
+        if (kept == nullptr || cached == 0) return;
+        const unsigned long long now = GetTickCount64();
+        const bool pending = want != g_mevrCrosshairHidden;
+        const bool due = want && now - g_mevrReticuleRestampMs >= 1000;
+        if (!pending && !due) return;
+        if (!MELEVR::MevrBridge::OnGameThread()) return;
+        const char* keptCls = ClassNameSEH(kept);
+        if (reinterpret_cast<std::uintptr_t>(keptCls) != cached)
+        {
+            g_mevrReticuleHandler = nullptr;   // gone (or reused): wait for the handler's own next event
+            return;
+        }
+        g_mevrReticuleRestampMs = now;
+        if (!pending) g_mevrReticuleEvents = 59u;   // the re-stamp below
+        context = kept;
     }
     void* panel = nullptr;
     if (!ReadPtrAtSEH(context, kPchudHandlerPanel, &panel) || !PointerLooksCanonicalAligned(panel) ||
