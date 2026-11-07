@@ -7,6 +7,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/ScopeCapture.hpp"
+#include "core/vr/ScreenReticle.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/Engine.hpp"
 #include "core/Ini.hpp"
@@ -479,6 +480,9 @@ struct AimScreen {
     // `aimreticle`: the package's Aim_Reticle at the traced aim point, seen by the captures, not the eyes.
     ue3::Object* reticle = nullptr;
     ue3::Object* reticleComponent = nullptr;
+    ue3::Object* reticleOwner = nullptr;  // refreshed when possession or the eye view target changes
+    bool showInEyes = false;           // only the explicit diagnostic `aimreticle eyes`
+    bool parked = false;
     float reticleDeg = 6.0f;      // its width as seen from the aim capture
     float reticleWidthUnits = 97.0f;  // the mesh's own width (research/48: 97 package units)
     double traceUnits = 0.0;      // the last traced distance
@@ -2587,6 +2591,7 @@ std::string DoRide(std::istringstream& words) {
 
 // On foot, the stand-in for the Mako's aim: from the head along its view. The capture's centre is the aim point.
 void PointAim() {
+    if (!vr::screen_reticle::AimCaptureActive(gAim.parked)) return;
     std::optional<Eye> eye = HeadNow();
     if (gRide.riding) {
         // In the Mako: along the turret's aim (game/mako), else straight ahead of the vehicle from about the turret.
@@ -2619,6 +2624,21 @@ void PointAim() {
     gAim.lastPointed = Now();
     if (gAim.reticle == nullptr || !Still(gAim.reticle, gActorClass)) {
         return;
+    }
+    // bOwnerNoSee compares the scene proxy's owner chain with the eye's view actor. Possession and
+    // re-entering a parked cockpit can change it after aimreticle ran; reattach after changing it.
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const camera = player::Camera(controller);
+    ue3::Object* const target = gCameraViewTargetActor.Read<ue3::Object*>(camera).value_or(nullptr);
+    ue3::Object* const eyeActor = target != nullptr ? target : player::Pawn(controller);
+    if (gAim.reticleOwner != eyeActor || gOwnerField.Read<ue3::Object*>(gAim.reticle) != eyeActor ||
+        gOwnerNoSee.ReadBool(gAim.reticleComponent) != !gAim.showInEyes) {
+        SetOwnerOf(gAim.reticle, eyeActor);
+        ue3::Params noSee = ParamsOf(gSetOwnerNoSee);
+        noSee.SetBool("bNewOwnerNoSee", !gAim.showInEyes);
+        Call(gAim.reticleComponent, gSetOwnerNoSee, noSee);
+        FlushActor(gAim.reticle, false);
+        gAim.reticleOwner = eyeActor;
     }
     // Where the aim meets the world (Actor.Trace on the pawn, which it ignores; our parts have no collision), else 200 m out;
     // the reticle just short of it, square to the aim, its width `reticleDeg` as the capture sees it.
@@ -2712,6 +2732,7 @@ std::string DoAimReticle(std::istringstream& words) {
         }
     }
     gAim.reticleDeg = deg;
+    gAim.showInEyes = eyes;
     if (gAim.captureActor == nullptr) {
         return Refuse("no aim screen: mevr cockpit aimscreen first");
     }
@@ -4670,6 +4691,11 @@ Auto gAuto;
 bool gLoggedNoScript = false;
 
 void ShowCockpit(bool show) {
+    gAim.parked = !show;
+    if (Still(gAim.reticle, gActorClass)) {
+        SetActorHidden(gAim.reticle, !show);
+        FlushActor(gAim.reticle, false);
+    }
     for (Part const& part : gParts) {
         if (PartAlive(part)) {
             ue3::Params hide = ParamsOf(gSetHidden);
@@ -5074,6 +5100,18 @@ void Tick(std::optional<std::uint32_t> recenters) {
     }
 }
 
+std::string ReticleReport() {
+    if (!Still(gAim.reticle, gActorClass)) return "cockpit Aim_Reticle: absent";
+    ue3::Object* const controller = player::Controller();
+    return std::format("cockpit BIOG_MEVR_Cockpit.Aim_Reticle actor={} component={} owner={} pawn={} viewTarget={} bHidden={} bOwnerNoSee={} parked={} diagnosticEyes={}",
+        ue3::runtime::FullName(gAim.reticle), ue3::runtime::FullName(gAim.reticleComponent),
+        ue3::runtime::FullName(gOwnerField.Read<ue3::Object*>(gAim.reticle).value_or(nullptr)),
+        ue3::runtime::FullName(player::Pawn(controller)),
+        ue3::runtime::FullName(gCameraViewTargetActor.Read<ue3::Object*>(player::Camera(controller)).value_or(nullptr)),
+        gHiddenField.ReadBool(gAim.reticle).value_or(false), gOwnerNoSee.ReadBool(gAim.reticleComponent).value_or(false),
+        gAim.parked, gAim.showInEyes);
+}
+
 std::string StatusJson() {
     namespace json = vr::test_request;
     return std::format("{{\"up\": {}, \"actor\": {}, \"kind\": {}, \"mesh\": {}, \"mic\": {}, \"parent\": {}, \"parameter\": {}, \"size\": [{}, {}], \"capture\": {}, "
@@ -5152,6 +5190,8 @@ void Shutdown(bool exiting) {
 }
 
 #else
+
+std::string ReticleReport() { return "cockpit Aim_Reticle: LE1 only"; }
 
 std::string Command(std::string const& /*line*/) {
     return "mevr cockpit: LE1 only";

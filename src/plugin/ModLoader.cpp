@@ -10,6 +10,7 @@
 #include "plugin/ProcessEventHook.hpp"
 
 #if defined(MEVR_WITH_HALCYON)
+#include "halcyon/le1/pchud.h"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Calibration.hpp"
@@ -292,6 +293,7 @@ HostServices WithWorldUi(HostServices services) {
     services.takeGameUiRequest = &HostTakeGameUiRequest;
     services.reserveWorldUi = &world_ui::Reserve;
     services.logWorldUiStats = &world_ui::LogStats;
+    services.hideScreenReticle = &MELEVR::Pchud::CrosshairHidden;
     return services;
 }
 HostServices WithGalaxyMap(HostServices services) {

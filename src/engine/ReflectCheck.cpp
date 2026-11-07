@@ -638,6 +638,7 @@ void CheckClasses() {
     CheckClass<USVehicleSimTank>("Engine.SVehicleSimTank");
     CheckClass<UBioSVehicleSimTank>("SFXGame.BioSVehicleSimTank");
     CheckClass<UBioSFHandler_PCHUD>("SFXGame.BioSFHandler_PCHUD");
+    CheckClass<UBioSFHandler_Reticule>("SFXGame.BioSFHandler_Reticule");
 }
 
 void CheckFields() {
@@ -711,6 +712,11 @@ void CheckFields() {
     CheckField("Engine.BioSFPanel", "bFullScreen", SDK_BOOL(UBioSFPanel, bFullScreen));
     CheckField("Engine.BioSFPanel", "m_DefaultHandler", SDK_FIELD(UBioSFPanel, m_DefaultHandler));
     CheckField("Engine.BioSFPanel", "IsVisible", SDK_BOOL(UBioSFPanel, IsVisible));
+    CheckField("Engine.BioSFPanel", "ScriptHandlers", SDK_FIELD(UBioSFPanel, ScriptHandlers));  // game/ScreenReticle
+    CheckField("Engine.BioSFPanel", "MovieRef", SDK_FIELD(UBioSFPanel, MovieRef));
+    CheckField("SFXGame.BioSFHandler_Reticule", "m_Reticule", SDK_FIELD(UBioSFHandler_Reticule, m_Reticule));
+    CheckField("SFXGame.BioSFHandler_Reticule", "m_eLastReticuleMode", SDK_FIELD(UBioSFHandler_Reticule, m_eLastReticuleMode));
+    CheckField("SFXGame.BioSFHandler_Reticule.ReticuleInfo", "m_eMode", SDK_FIELD(FReticuleInfo, m_eMode));
     CheckField("SFXGame.BioSFHandler_Loot", "m_oLootInventory", SDK_FIELD(UBioSFHandler_Loot, m_oLootInventory));
     CheckField("SFXGame.BioSkillGame_Handler", "m_oDependent", SDK_FIELD(UBioSkillGame_Handler, m_oDependent));
     CheckField("SFXGame.BioSkillGame_Handler", "m_bGameActive", SDK_BOOL(UBioSkillGame_Handler, m_bGameActive));  // the puzzle played: its d-pad
@@ -1284,6 +1290,8 @@ void CheckFunctions() {
         "SFXGame.BioInventoryGuiInterface.GetEquippedItem",
         // game/GuiCursor (research/57 section 6)
         "Engine.BioSFPanel.GetVariableFloat",
+        "Engine.BioSFPanel.GetVariableBool",
+        "Engine.BioSFPanel.SetVariableFloat",
         "SFXGame.SFXGameModeVehicle.ShowMenuGui",
         // CockpitPanel (research/48 section 27): the repair button's and the extraction lever's calls, as Y and X in the Mako
         "SFXGame.SFXGameModeVehicle.RepairVehicle",
@@ -1443,6 +1451,12 @@ void CheckParams() {
     PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
     PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", ReturnValue);
     PARAM(UBioSFPanel_execSetMovieVisibility_Parms, "Engine.BioSFPanel.SetMovieVisibility", bVisible);
+    PARAM(UBioSFPanel_execGetVariableFloat_Parms, "Engine.BioSFPanel.GetVariableFloat", sPath);
+    PARAM(UBioSFPanel_execGetVariableFloat_Parms, "Engine.BioSFPanel.GetVariableFloat", ReturnValue);
+    PARAM(UBioSFPanel_execGetVariableBool_Parms, "Engine.BioSFPanel.GetVariableBool", sPath);
+    PARAM(UBioSFPanel_execGetVariableBool_Parms, "Engine.BioSFPanel.GetVariableBool", ReturnValue);
+    PARAM(UBioSFPanel_execSetVariableFloat_Parms, "Engine.BioSFPanel.SetVariableFloat", sPath);
+    PARAM(UBioSFPanel_execSetVariableFloat_Parms, "Engine.BioSFPanel.SetVariableFloat", fVar);
     PARAM(UBioSFPanel_execInvokeMethod_Parms, "Engine.BioSFPanel.InvokeMethod", sMethodName);
     PARAM(UBio2DA_execGetFloatEntryII_Parms, "Engine.Bio2DA.GetFloatEntryII", nRow);
     PARAM(UBio2DA_execGetFloatEntryII_Parms, "Engine.Bio2DA.GetFloatEntryII", nColumn);

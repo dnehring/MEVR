@@ -57,6 +57,7 @@
 #include "game/HeadSim.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/HudPieces.hpp"
+#include "game/ScreenReticle.hpp"
 #include "game/Interact.hpp"
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
@@ -1348,6 +1349,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
             game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);
         }
+        game::screen_reticle::Tick(MEVR_HOST_HAS(hideScreenReticle) && gHost->hideScreenReticle != nullptr &&
+                                  gHost->hideScreenReticle());
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
         game::galaxy_map::Tick(GalaxyMapLink());
@@ -1458,6 +1461,7 @@ MEVR_MOD_API void MevrModShutdown() {
     // Disables and destroys the scope's scene capture (game thread: the host unloads the mod from its tick), unless
     // the process is exiting. Before sights' shutdown and the reflection layer's.
     game::spectator::Shutdown(exiting);  // its capture and the head it hid, on the game thread
+    game::screen_reticle::Shutdown(exiting);
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
     game::power_wheel::Shutdown(PowerWheelLink());  // the host's wheel closed

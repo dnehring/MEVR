@@ -187,3 +187,76 @@ aim: SetDesiredTurretAimPoint(turret 0, (x, y, z)) ran and returned pitch P yaw 
 6. The view anchor's head-locked assumption (section 2): the reticle sits where the controller appears to point in
    the picture.
 7. `turretSeam = 1`, `2`, `4` one at a time, to learn which seam the game lets stand (for the record here).
+
+
+## Persistent centre cursor after the Mako drop (2026-11-07; code diagnosis, no game run)
+
+Owner QA: Quest 3 through SteamVR, UNC20, Shepard on sand with the weapon holstered and the Mako parked about 15 m
+away: a small orange ring, upper tick and horizontal range ticks fixed to the view centre; also seen in tonight's
+on-foot fake-headset captures. Same report in the first-person cockpit. Eden Prime and Normandy on foot are clear.
+
+**Two distinct paths must be separated.** The strongest match for this particular orange shape is **our own
+`BIOG_MEVR_Cockpit.Aim_Reticle` world mesh**, not a proven Scaleform element. `tools/cockpit/hull_assemble.py::AimReticle`
+builds the ring, cross, dot and symmetric range ticks in orange RGB (1, .36, .06); `hull_shapes.py::RETICLE` supplies
+its layout. `tools/cockpit/place.py` writes `aimscreen 768 306` and `aimreticle 6` into the automatic cockpit script.
+`game/CockpitProbe.cpp::PointAim` uses the head's view on foot, so this mesh can stay at the view centre while walking.
+Previously `ShowCockpit(false)` hid only `gParts` and disabled the captures: the separate `gAim.reticle` stayed visible,
+and Tick continued calling PointAim. Its bOwnerNoSee owner was set only when aimreticle ran, while entering/leaving
+changes the pawn. The notes in research/47 "The aim reticle" and "Riding in the Mako" establish that this marker is
+intended for the captures alone. A Reticule panel already logged hidden is compatible with this separate mesh leak.
+**[verify]** Attribution of the owner's pixels still requires a game run; code and shape are evidence, not visual proof.
+
+The most likely **native Scaleform** candidate remains `GUI_SF_HUD.Reticule` on `BioSFHandler_Reticule.oPanel`, in
+`RETICULE_MODE_VEHICLE` (6) or `VEHICLE_ZOOM` (7), possibly left over after the drop. These enums and fields
+`m_Reticule.m_eMode` / `m_eLastReticuleMode` exist in LExSDKv2's LE1 declarations. There is no code/notes evidence for a
+separate vehicle-reticle handler or a named PCHUD child to hide. Research/15's [PANELDISC] #272 establishes the
+Reticule movie is separate from PCHUD; research/41's status/radar crops and CockpitProbe's HUD layout only move HUD
+pieces. They do not suppress either reticle source. **[verify]** the exact vehicle clip path inside Reticule; do not
+invent a child path or hide the whole HUD/DesignerUI to cover it.
+
+Why 6f268db did not cover the report: mode-1-only hiding misses on-foot mode 0, and the old on-foot request depended
+on a ray seen in 500 ms (holstered may publish no ray). ControllerAimActive also required recent right aim tracking.
+The old pchud seam remembered only the last handler that got an event, and alpha writes cannot hide a world mesh.
+
+**Changed:**
+
+- HalcyonOverlays requests suppression whenever the hand-reticle option is on in a XR gameplay frame (including the Mako on the flat VR panel), regardless
+  of weapon, source/ray, tracking focus, hand aim or the gunner. The small [MEVR] pchud seam now only publishes a request
+  with a 500 ms expiry; HostServices v35 carries it to `game/ScreenReticle`. No script runs on the Present thread.
+- Each game tick enumerates the local GUI manager's panels and each panel's default plus ScriptHandlers. Dedicated
+  Reticule handlers are matched by class and their live oPanel, so dormant and multiple registered handlers are covered.
+  Only that panel's `_root._alpha` is set to zero through BioSFPanel.SetVariableFloat. The previous game alpha is saved
+  per panel/movie identity, updated when the game writes a new nonzero alpha, and restored only while our zero remains.
+  IsVisible and `_root._visible` are never forced true. Native sniper mode (2), unreadable reticle mode, non-gameplay
+  modes (conversation/cinematic/GUI/galaxy) and an absent/expired VR request release ownership. No HUD crop or shader mask.
+- ShowCockpit now parks/hides the separate aim mesh too; PointAim does no work while parked. While active it refreshes
+  the marker's Owner/bOwnerNoSee against the eye view target (pawn fallback), flushing its scene proxy on a change.
+  This keeps the orange marker in the cockpit's capture views and out of the eyes across possession/re-entry.
+  The existing explicit `aimreticle eyes` diagnostic remains an opt-in exception.
+
+**One-run diagnostics:** every observed panel/handler alpha or visibility/mode/identity change, plus additions/removals,
+logs `[MEVR-CROSSHAIR]` on the game thread (including HUD, DesignerUI and any second registered handler). The line names
+the panel tag, panel/movie, every registered handler, each Reticule's current/last mode and oPanel, engine IsVisible,
+Flash `_root._visible`, observed `_root._alpha`, suppression and sniper exemption. The same prefix logs the cockpit
+marker's actor/component, owner, pawn, viewTarget, bHidden, bOwnerNoSee, parked and diagnosticEyes when these change.
+`mevr reticles` prints a fresh read-only inventory of both paths. Float/string queries use engine-owned FStrings through
+our reflection layer, avoiding Halcyon's historical stack-FString/out-param hazard (pchud's baseline comment).
+
+**Next authorized game run** (not performed here): capture `mevr reticles` before entering, in the cockpit, after exit
+with weapon holstered and drawn, and on re-entry. Expect Reticule alpha 0 with suppression true in gameplay (mode 2
+scope exempt); after exit expect the orange mesh bHidden=1/parked=1; in cockpit bOwnerNoSee=1, matching eye owner,
+while the aim screen still has its orange sight. Compare both eye images, HUD quad and desktop mirror: if Scaleform is
+zero/hidden and the mesh is correctly hidden yet the orange pixels remain, these receipts disprove both candidates and
+point to another render source. Check native sniper zoom, galaxy map, conversation/cutscene and world UI, then hand
+reticle off and VR off: game alpha/visibility must return as authored, with health, radar and prompts intact.
+
+**Offline validation:** game-independent gameplay/sniper/request gating and parked/re-entry rules are tested in
+`tests/Main.cpp::TestScreenReticle`. Final checks passed: `cmake --build build-mono --config Release --target MEVR-LE1 mevr-tests`,
+`build-mono\Release\mevr-tests.exe` (all tests passed), `python tools/check-spdx.py` (every source has an identifier),
+and `git diff --check`. The shell's default Python was inaccessible; used Blender's bundled Python interpreter directly
+(without launching Blender). MSBuild needed the installed SDK supplied explicitly to avoid a denied per-user SDK scan:
+`/p:_LatestWindowsTargetPlatformVersion=10.0.22621.0`, `/p:TargetPlatformSdkPath=<installed Windows Kits/10>`,
+`/p:TargetPlatformDisplayName=Windows10`. Only build-mono was built. The existing tests' optional EXE-pattern check read
+the cached .text dump under LOCALAPPDATA on initial runs; no writes were made there. The final test run redirected
+LOCALAPPDATA to a path under build-mono, so that optional check used synthetic images only. No game launch, deployment,
+game-folder change or player-data write occurred. Runtime/visual acceptance remains open.

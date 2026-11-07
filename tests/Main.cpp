@@ -37,6 +37,7 @@
 #include "core/vr/GamePointer.hpp"
 #include "core/vr/Haptics.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/ScreenReticle.hpp"
 #include "core/vr/MakoControls.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/InteractLabel.hpp"
@@ -11848,7 +11849,26 @@ void TestIni() {
     CHECK(mevr::vr::menu_settings::ParseSection("a=1\nA=2\n").at("a") == "1");
 }
 
+void TestScreenReticle() {
+    namespace sr = mevr::vr::screen_reticle;
+    // No weapon/aim-ray input: holstered, tracking lost, gunner and cockpit controls share the rule.
+    for (int mode = 0; mode <= 4; ++mode) {
+        for (int reticule = 0; reticule < 10; ++reticule) {
+            CHECK(sr::Hide(true, mode, reticule) == (reticule != 2));
+            CHECK(!sr::Hide(false, mode, reticule));  // VR off, hand reticle off, or expired host frame
+        }
+        CHECK(!sr::Hide(true, mode, -1));  // unresolved: preserve a possible native scope
+        CHECK(!sr::Hide(true, mode, 255));
+    }
+    for (int mode : {-1, 5, 6, 7, 8, 9, 10, 255}) {
+        CHECK(!sr::Hide(true, mode, 6));  // conversation, cinematic, GUI, galaxy and unknown
+    }
+    CHECK(sr::AimCaptureActive(false));  // manual probe, or enter/re-enter
+    CHECK(!sr::AimCaptureActive(true));  // leave/disable: never follow the head on foot
+}
+
 int main() {
+    TestScreenReticle();
     TestIni();
     TestPowerWheel();
     RunInstallTests(gFailures);

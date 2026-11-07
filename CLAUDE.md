@@ -417,6 +417,7 @@ switching frameworks.
   guessed, then measured once per session) is cut out of the HUD panel and shown on a quad of its
   own at the left / right hand ("wheel"). Toggles: `MELEVR.ini` `hudPanel*` / `handReticle*`, our menu's
   HUD & sights and Advanced > HUD placement, or the classic menu's HUD tab; the wheel panel's in `[Squad]`.
+  With the hand reticle on, VR gameplay suppresses all registered Reticule panels independently of weapon/ray state (native sniper mode preserved), and the cockpit aim mesh parks and follows the eye owner across possession; `mevr reticles` reports both paths (research/44, 2026-11-07).
 - LE1 using things with A ([research/40](research/40-interaction.md), HostServices v21; `[Interact]` in `ASI\LE1MEVR.ini`):
   the game chooses what A uses in `BioPlayerSelection`'s native UpdateSelection (`0xC79D70`) from the player camera's
   `CameraCache.POV` (a cone around its forward, half its FOV, the distance-scaled selection angle, line of sight), which

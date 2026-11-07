@@ -91,7 +91,7 @@ struct State;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 34;
+inline constexpr int kHostServicesVersion = 35;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -414,6 +414,8 @@ struct HostServices {
     // Game thread, immediately before Show*Gui. screen = 0 cancels that request (request = 0 cancels all).
     void (*reserveWorldUi)(std::uint32_t request, std::uint32_t screen, std::uint32_t origin) = nullptr;
     void (*logWorldUiStats)() = nullptr;  // existing game-thread heartbeat
+    // Version 35: hand-reticle suppression, fresh only while XR gameplay frames run.
+    bool (*hideScreenReticle)() = nullptr;
 };
 
 } // namespace mevr

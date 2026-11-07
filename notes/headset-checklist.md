@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-07 reticle fix: UNC20 holstered/drawn, exit/re-enter Mako with cockpit on (also controls/gunner); no centre cursor in either eye or mirror, aim-screen marker retained; check sniper, galaxy, cutscene, world UI and VR-off restoration with `mevr reticles` (research/44).
+
 One list of everything that still needs **you in the headset** (tracked hands, your eyes, your comfort), compiled
 2026-11-05 from every research note's open `[verify]` items. The step-by-step instructions for the older features are in
 [next-vr-session.md](next-vr-session.md); the source after each item says where the details are.

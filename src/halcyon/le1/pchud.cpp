@@ -4,7 +4,7 @@
 #include "pchud.h"
 
 #include "logger.h"
-#include "mevr_bridge.h"  // [MEVR] OnGameThread for the crosshair hide
+#include "mevr_bridge.h"  // [MEVR] game-thread bridge
 
 #include <Windows.h>
 #include <MinHook.h>
@@ -117,14 +117,8 @@ std::atomic_uint64_t g_lastAppliedRev{0};
 
 // [MEVR] Body-locked HUD panel: the PCHUD movie keeps its authored layout while on (SetAuthoredLayout).
 std::atomic_bool g_mevrAuthored{false};
-// [MEVR] Hand reticle: the game's crosshair movie (BioSFHandler_Reticule) hidden while on.
-std::atomic_bool g_mevrHideCrosshair{false};
-std::atomic_uintptr_t g_mevrReticuleClsName{0};   // interned FName ptr -> pointer compare
-std::uintptr_t g_mevrReticulePanel = 0;           // game thread: the movie instance last written
-bool g_mevrCrosshairHidden = false;               // game thread: what that instance holds now
-uint32_t g_mevrReticuleEvents = 0;                // game thread: re-stamp cadence
-void* g_mevrReticuleHandler = nullptr;             // game thread: the crosshair handler last seen (re-checked before use)
-unsigned long long g_mevrReticuleRestampMs = 0;    // game thread: the last re-stamp through the handler kept
+// [MEVR] The host requests suppression; game/ScreenReticle applies it through live handler panels.
+std::atomic_uint64_t g_mevrHideCrosshairUntilMs{0};
 
 // ---- Conversation wheel (BioSFHandler_Conversation): a SECOND movie target driven by the exact same
 // mechanism. oPanel lives at 0x80 in the BASE UBioSFHandler (verified in Engine_classes.h), so every handler
@@ -1878,82 +1872,6 @@ void MaybeBoostReflectionCaptureRate() noexcept
     if (s_cursor == 0) s_sweepNotBefore = now + 2000;
 }
 
-// [MEVR] Hand reticle: hide (or give back) the game's crosshair on its own handler's events, like the
-// PCHUD apply: the panel is read live from the handler being processed, never cached across events.
-// _root._alpha rather than _visible, so giving it back can't force-show a movie the game hid (the
-// VISIBILITY RULE above). Inert unless hiding or restoring: one class-name pointer compare per event.
-// [MEVR] 2026-11-06: the crosshair's handler gets events only now and then (a weapon drawn, a mode change), not while the
-// player aims, so a hide asked for between them never came and the game's crosshair stayed up beside the hand reticle (the
-// user: "sometimes when equipping guns I'd get the old HUD for the crosshair"). The handler last seen is kept (only its
-// pointer) and, when the wanted state changed or once a second for the re-stamp, used from any game-thread event after its
-// class is checked again (SEH-guarded); the panel is still read live from it.
-void MevrApplyCrosshair(void* context) noexcept
-{
-    const bool want = g_mevrHideCrosshair.load(std::memory_order_acquire);
-    if (context == nullptr || (!want && !g_mevrCrosshairHidden)) return;
-    const char* cls = ClassNameSEH(context);
-    if (cls == nullptr) return;
-    const std::uintptr_t cached = g_mevrReticuleClsName.load(std::memory_order_relaxed);
-    bool own = false;
-    if (cached != 0)
-    {
-        own = reinterpret_cast<std::uintptr_t>(cls) == cached;
-    }
-    else if (std::strcmp(cls, "BioSFHandler_Reticule") == 0)
-    {
-        own = true;
-        g_mevrReticuleClsName.store(reinterpret_cast<std::uintptr_t>(cls), std::memory_order_relaxed);
-        LogLine("[MEVR-CROSSHAIR] found the crosshair movie's handler (BioSFHandler_Reticule) obj=" + PtrText(context));
-    }
-    if (own)
-    {
-        g_mevrReticuleHandler = context;
-    }
-    else
-    {
-        // Another object's event: act through the kept handler only when there's something to do, on the game thread.
-        void* const kept = g_mevrReticuleHandler;
-        if (kept == nullptr || cached == 0) return;
-        const unsigned long long now = GetTickCount64();
-        const bool pending = want != g_mevrCrosshairHidden;
-        const bool due = want && now - g_mevrReticuleRestampMs >= 1000;
-        if (!pending && !due) return;
-        if (!MELEVR::MevrBridge::OnGameThread()) return;
-        const char* keptCls = ClassNameSEH(kept);
-        if (reinterpret_cast<std::uintptr_t>(keptCls) != cached)
-        {
-            g_mevrReticuleHandler = nullptr;   // gone (or reused): wait for the handler's own next event
-            return;
-        }
-        g_mevrReticuleRestampMs = now;
-        if (!pending) g_mevrReticuleEvents = 59u;   // the re-stamp below
-        context = kept;
-    }
-    void* panel = nullptr;
-    if (!ReadPtrAtSEH(context, kPchudHandlerPanel, &panel) || !PointerLooksCanonicalAligned(panel) ||
-        !Readable(panel, 0x100))
-    {
-        return;
-    }
-    const std::uintptr_t panelBits = reinterpret_cast<std::uintptr_t>(panel);
-    if (panelBits != g_mevrReticulePanel)
-    {
-        g_mevrReticulePanel = panelBits;   // a fresh movie instance shows its crosshair
-        g_mevrCrosshairHidden = false;
-        g_mevrReticuleEvents = 0;
-    }
-    // While hidden, re-stamp now and then: the movie's own timeline may reset _alpha.
-    const bool restamp = want && g_mevrCrosshairHidden && ((++g_mevrReticuleEvents % 60u) == 0u);
-    if (want == g_mevrCrosshairHidden && !restamp) return;
-    const bool ok = CallBioSfPanelSetVariableFloat(panel, L"_root._alpha", want ? 0.0f : 100.0f);
-    if (want != g_mevrCrosshairHidden)
-    {
-        LogLine(std::string("[MEVR-CROSSHAIR] game crosshair ") + (want ? "hidden (the hand reticle replaces it)" : "shown again") +
-                " ok=" + (ok ? "1" : "0") + " panel=" + PtrText(panel));
-    }
-    if (ok) g_mevrCrosshairHidden = want;
-}
-
 void __fastcall ProcessEventHook(void* context, void* function, void* params, void* result) noexcept
 {
     ProcessEventFn original = g_originalProcessEvent;
@@ -2010,8 +1928,6 @@ void __fastcall ProcessEventHook(void* context, void* function, void* params, vo
 
     // Ignore events that this own SetVariableFloat call triggered (reentrancy guard).
     if (g_applyingPchud) return;
-
-    MevrApplyCrosshair(context);   // [MEVR] hand reticle: the game's crosshair hidden while it aims
 
     // RELIABLE conversation detection for the overlay standdown - runs on EVERY event while the overlay is
     // on, independent of the convo-movie feature, so the overlay reliably stays off for the whole convo (the
@@ -3421,10 +3337,16 @@ void SetAuthoredLayout(bool on) noexcept
     }
 }
 
-// [MEVR] hand reticle: hide the game's crosshair (applied from the ProcessEvent hook).
+// [MEVR] Game-thread consumer: HostServices -> game/ScreenReticle (all live handler panels).
 void SetCrosshairHidden(bool hidden) noexcept
 {
-    g_mevrHideCrosshair.store(hidden, std::memory_order_release);
+    g_mevrHideCrosshairUntilMs.store(hidden ? GetTickCount64() + 500 : 0, std::memory_order_release);
+}
+
+// [MEVR] Expiry restores the game movie when VR stops and OverlayLayers no longer runs.
+bool CrosshairHidden() noexcept
+{
+    return GetTickCount64() < g_mevrHideCrosshairUntilMs.load(std::memory_order_acquire);
 }
 
 void SetConvoTransform(bool enabled, float scaleX, float scaleY, float offsetX, float offsetY) noexcept

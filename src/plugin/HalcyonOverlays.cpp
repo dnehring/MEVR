@@ -687,7 +687,6 @@ bool gLoggedFallback = false;
 bool gProbedPanel = false;
 int gReticleSource = -1;  // last logged: 0 none, 1 aim ray, 2 right controller
 int gLastGameMode = -1;   // the last readable USFXGameModeManager mode
-std::uint64_t gReticleSeenMs = 0;  // the reticle last had a ray
 std::uint64_t gSightSeenMs = 0;    // an eye last looked through the gun's sight (the ring hides meanwhile)
 std::uint64_t gNextPanelLogMs = 0;
 
@@ -2244,10 +2243,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
 
     // ---- Hand reticle ----
     // Where the weapon points: the mod's aim ray (muzzle and barrel) once it publishes one, else the
-    // right controller's aim pose. While it has a ray, the game's screen-centre crosshair is hidden
-    // (held half a second so a flickering ray doesn't make it blink).
+    // right controller's aim pose. Game-reticle suppression lasts throughout VR gameplay.
     // On foot; in the Mako (game mode 1, research/44) only on a ray the mod publishes (the controller's, while it aims the
-    // turret), never the controller fallback: the game's own turret aim shows its own crosshair otherwise.
+    // turret), never the controller fallback.
     mevr::vr::aim_ray::Ray const ray = mevr::vr::aim_ray::Latest();
     bool const producer = ray.sequence != 0 && now - ray.timeMs < 1000;
     bool const makoRay = gLastGameMode == 1 && producer && ray.valid;
@@ -2281,14 +2279,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                                                                   : "hidden (the mod reports no aim ray)");
         }
     }
-    if (source != 0) {
-        gReticleSeenMs = now;
-    }
-    // In the Mako the game's screen-centre crosshair is always hidden with the hand reticle on (the owner's QA, 2026-11-07: "when
-    // the Mako is loaded I always see its aiming cursor"): in VR it sits at the head's centre, aiming nothing, whenever the hand
-    // isn't aiming the turret (on the cockpit's controls, the gunner aiming); ours shows wherever there's a ray.
-    bool const makoHide = cfg.handReticle && handAim && gLastGameMode == 1;
-    MELEVR::Pchud::SetCrosshairHidden(makoHide || (reticleMode && gReticleSeenMs != 0 && now - gReticleSeenMs < 500));
+    // Independent of a weapon, aim ray, controller tracking or a free turret hand.
+    // The game-thread consumer preserves the native sniper movie and the game's visibility.
+    // OverlayLayers runs only inside an XR frame, including a Mako shown on Halcyon's flat VR panel.
+    MELEVR::Pchud::SetCrosshairHidden(cfg.handReticle && gameplay);
     if (source != 0 && !sightHidesRing && frame.worldFrame && !frame.menuOpen && frame.headValid && count < capacity &&
         device != nullptr) {
         overlay::Billboard reticle;

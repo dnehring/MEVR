@@ -100,8 +100,7 @@ void Tick() noexcept;
 // panel itself sets the HUD's size and place. Off restores the configured layout.
 void SetAuthoredLayout(bool on) noexcept;
 
-// [MEVR] Hand reticle: hides the game's screen-centre crosshair (the BioSFHandler_Reticule movie,
-// _root._alpha = 0) while our reticle on the weapon's aim ray replaces it; off gives it back (100).
-// Applied from the ProcessEvent hook on the handler's own events (game thread).
+// [MEVR] XR gameplay-frame request (500 ms expiry); game/ScreenReticle applies it on the game thread.
 void SetCrosshairHidden(bool hidden) noexcept;
+bool CrosshairHidden() noexcept;
 }

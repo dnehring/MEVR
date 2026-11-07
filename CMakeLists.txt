@@ -458,6 +458,8 @@ set(MEVR_MOD_SOURCES
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
     src/game/HudPieces.cpp
+    src/game/ScreenReticle.cpp
+    src/game/ScreenReticle.hpp
     src/game/HudPieces.hpp
     src/game/PowerWheel.cpp
     src/game/PowerWheel.hpp

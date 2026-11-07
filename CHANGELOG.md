@@ -14,6 +14,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## 0.1.0 (2026-11-06)
 
+- Hide the game's centre reticle throughout VR gameplay with the hand reticle on, including holstered weapons and Mako controls; park the cockpit's orange aim marker on exit and refresh its eye-hidden ownership on possession changes. Native sniper scope and non-gameplay screens keep their presentation; `mevr reticles` diagnoses both reticle paths.
+
 - Fixed X throwing a grenade while selecting powers: on foot with the hand power wheel on, taps and holds of X only
   use that wheel. Grenades: grab one at the left of your chest with either hand (the left while the right holds the gun) and throw; release slowly to put it back.
   An old `grenadeButton = 1` and the old right-hand-only grenades move once; X keeps its game meaning in the Mako, menus and conversations.

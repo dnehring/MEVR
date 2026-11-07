@@ -20,6 +20,7 @@
 #include "game/GalaxyDump.hpp"
 #include "game/HoloProbe.hpp"
 #include "game/GuiCursor.hpp"
+#include "game/ScreenReticle.hpp"
 #include "game/UiWorldFigure.hpp"
 #include "game/InventoryProbe.hpp"
 #include "game/GalaxyMap.hpp"
@@ -757,6 +758,9 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             gFound.push_back(d != defaults.end() ? d->second : cls);
         }
         return out;
+    }
+    if (verb == "reticles") {
+        return screen_reticle::Command();
     }
     if (verb == "funcs") {
         // `mevr funcs <n> <text>`: the n-th of `find`'s functions (its class chain) whose name holds the text, with parameters.
