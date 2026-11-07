@@ -628,3 +628,25 @@ not one Draw's. `oneDrawWindow = 1` (the default) shows the sun in both eyes; th
 Where that leaves `sharePass = 5` for a GPU at the budget: the symmetric window is the correct image, and its 24%
 of unseen columns are the price; the eye's own frustum is sharper and cheaper but misplaces the sun and loses the
 far-edge wedge. The render resolution is the lever that remains.
+
+## 2026-11-06, the owner's QA: lights clipped in the second eye, and what else the replay carries over
+
+At Eden Prime's burning rocks (before the conduit) the scene the fire lit flickered while the fire was off to the side and
+stayed steady with it centred; gone with `sharePass = 0`, worse with 3. Cause: the engine's scissor rects are its lights'
+screen bounds (its two scissor-on rasterizer states), worked out for the first eye's view, and the replay set them verbatim
+for the second eye. Fix 4b07c02: a replayed scissor rect is the second eye's whole viewport (`gWholeRects`). [verify] in the
+headset with `sharePass = 5`.
+
+A review of the replay (Codex, the same night) lists what else the second eye takes from the first eye's render unchanged,
+none seen yet, ranked by likely visibility:
+1. CPU-derived per-view constants the matrix substitution doesn't match (it scans constant uploads of 512 bytes or less
+   for the view's bytes): light screen bounds in constants, screen-to-shadow composites, projection scale/bias, packed
+   post-process parameters; in mode 5 the synthesised projection isn't written into the second captured view
+   (`RenderLevers.cpp` around 1126-1154).
+2. Occlusion-driven draw lists: the second eye replays the first eye's draws, so something hidden from the first eye but
+   visible 6.5 cm away (a doorway's edge) is missing; the symmetric window covers the frustum wedge, not this.
+3. Lens flares, sun sprites, light shafts positioned on the CPU.
+4. Camera-facing particle quads and translucency sort order built on the CPU for the first eye.
+5. View origin, pre-view translation, height fog, reflections (larger constant buffers stay first-eye).
+6. Stencil light volumes' camera-inside decisions; LOD and decal choices; depth bounds (no use found).
+
