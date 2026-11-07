@@ -1108,12 +1108,12 @@ Use it to check VR changes yourself instead of asking the user what they see
   pass 0 recording what pass 1's view would be, `MevrBridge::RecordPass1View`), the first render recorded and replayed
   in its own finish hook with the second view synthesised in the host (a scene render into another target than the eye renders', a
   SceneCapture2D's, takes no eye index and runs untouched, counted as a capture in the levers line, 2026-10-27): the
-  engine's own right eye to within temporal noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair; **both eyes
-  render on the symmetric window** (the plan's mode 1) because the frame's only render decides visibility for both eyes
-  and its occlusion tests see only its own frustum (an object in the other eye's outer wedge stayed "occluded" under the
-  PS VR2's projections; mode 1's angular resolution is the price, a wider `-ResX` buys it back, and 24% of each eye's
-  rendered columns are never shown, so `oneDrawWindow = 0` renders each eye on its own frustum instead when the GPU is
-  the limit; `eyeScissor = 1` (2026-10-26, off by default) scissors each eye's scene draws to the columns it shows with
+  engine's own right eye to within temporal noise, 9.1 ms against 11.4 (20%) at the heaviest cell, `replayInverse = 0` drops the inverse-matrix pair; **each eye
+  renders on its own frustum** (`oneDrawWindow = 0`, the default since 2026-11-07: on the symmetric window, mode 1, the
+  owner's QA saw whole meshes drop out frame by frame in both eyes, a floor piece at Eden Prime's fires and the arms and gun
+  after a look up and back, gone with the eye's own frustum, research/37's 2026-11-06 section); `oneDrawWindow = 1` is the
+  symmetric window (an object only in the other eye's outer wedge then stays visible, 24% of each eye's rendered columns
+  never shown); `eyeScissor = 1` (2026-10-26, off by default) scissors each eye's scene draws to the columns it shows with
   the occlusion queries exempt, through scissor-on clones of the engine's rasterizer states, which keep scissoring off:
   worth 1% of GPU at the heavy cell, since the one render's visibility needs depth over the whole window and the cell
   is draw-bound; research/37's 2026-10-26 section, with the vtable re-entrancy lesson); while no record of

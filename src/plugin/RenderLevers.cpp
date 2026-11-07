@@ -1165,7 +1165,7 @@ std::atomic<bool> gOneDrawFaulted{false};
 // resumes (g_oneDrawStereo cleared; the engine renders the right eye as in sharePass 0) and the host only checks each
 // frame, with the views alive, whether a record would match; after 30 matches running one Draw resumes.
 std::atomic<bool> gOneDrawWanted{false};     // [Performance] sharePass = 5 and the hooks in place
-std::atomic<int> gOneDrawWindow{1};          // [Performance] oneDrawWindow: both eyes on the symmetric window (1) or each on its own frustum (0)
+std::atomic<int> gOneDrawWindow{0};          // [Performance] oneDrawWindow: each eye on its own frustum (0, the default since 2026-11-07) or both on the symmetric window (1)
 std::atomic<int> gEyeScissor{0};             // [Performance] eyeScissor: each eye's scene draws scissored to what it shows of the window (1% of GPU at the heavy cell: off)
 float gEyeScissorLogged[2][4] = {{-1.0f, 0, 0, 0}, {-1.0f, 0, 0, 0}};
 
@@ -2414,7 +2414,7 @@ void Tick() {
             }
         }
         {
-            int const window = readInt(L"oneDrawWindow", 1) != 0 ? 1 : 0;
+            int const window = readInt(L"oneDrawWindow", 0) != 0 ? 1 : 0;  // 0 by default since 2026-11-07 (research/37)
             if (gOneDrawWindow.exchange(window, std::memory_order_relaxed) != window) {
                 log::Info("render levers: one Draw a frame renders both eyes on {} ([Performance] oneDrawWindow = {})",
                     window != 0 ? "the symmetric window" : "each eye's own frustum (an object wholly inside the other eye's outer wedge can stay occluded)", window);

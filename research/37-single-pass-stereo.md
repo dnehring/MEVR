@@ -650,3 +650,13 @@ none seen yet, ranked by likely visibility:
 5. View origin, pre-view translation, height fog, reflections (larger constant buffers stay first-eye).
 6. Stencil light volumes' camera-inside decisions; LOD and decal choices; depth bounds (no use found).
 
+### The cause found live: the symmetric window (2026-11-07, 00:10)
+
+The two fixes above (4b07c02, the second eye's scissor rects; 176e0b7, the engine's constant buffers put back after the
+replay) correct real errors but not what the owner saw. Their snapshots at one head pose showed a whole floor mesh missing
+in the FIRST eye's world image in two frames of three: the real render skipped it, a visibility decision. Live levers in
+the headset: `umbraEyeMatrix = 0`, the floor still vanished; `oneDrawWindow = 0` (each eye on its own frustum), the floor
+and the arms stayed, walking around too. So `oneDrawWindow = 0` is the default now. Why the symmetric window's occlusion
+drops whole meshes is open (its depth and its queries, the eye's own matrix put into Umbra's queries by umbraEyeMatrix
+against a depth drawn on the symmetric window?): [verify] with the levers line before changing it back.
+

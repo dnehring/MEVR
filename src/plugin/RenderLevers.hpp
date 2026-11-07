@@ -55,10 +55,11 @@ std::string SettingsJson();
 // [Performance] perEyeViewState: Halcyon renders each Stereo 2 eye through its own scene view state in gameplay
 // (MevrBridge::PerEyeViewState; research/32).
 bool PerEyeViewState();
-// [Performance] oneDrawWindow (research/37): with one Draw a frame (sharePass = 5) both eyes render on the symmetric
-// window (1, the default: the one render's occlusion tests then see both eyes' frusta) or each on its own frustum
-// (0: sharper, no pixels rendered outside the eye's sub-rectangle, but an object wholly inside the other eye's
-// outer wedge can stay occluded).
+// [Performance] oneDrawWindow (research/37): with one Draw a frame (sharePass = 5) each eye renders on its own frustum
+// (0, the default since 2026-11-07: sharper, no pixels rendered outside the eye's sub-rectangle, but an object wholly
+// inside the other eye's outer wedge can stay occluded) or both on the symmetric window (1: the default until then; in
+// the owner's QA whole meshes (a floor piece, the arms and gun after a look up and back) dropped out frame by frame on
+// it, in both eyes, and stayed with the eye's own frustum).
 bool OneDrawWindow();
 
 } // namespace mevr::host::render_levers
