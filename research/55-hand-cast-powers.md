@@ -535,3 +535,18 @@ made that especially hard to diagnose later in a session. This change is built a
   installed SDK **10.0.22621.0**, and CTest was reconfigured to an accessible bundled Python interpreter; no source/build
   flags were relaxed. In-headset target alignment on each gun model, reach comfort, readability and haptic feel remain
   **[verify]**. No game launch, deployment or push was performed.
+
+### Spawning enemies for a powers arena (2026-11-07, the fake headset, UNC20, flat console)
+
+The owner wants an arena to check every power: god mode, many hostile soldiers. `DebugSpawnActor` spawned nothing (above), but
+**the game's own `BioSPGame.SpawnPawn(TheActorType, SpawnLocation, SpawnRotation, bIsPlayer)` builds a whole NPC from its actor
+type**: `mevr spawnpawn BIOA_UNC_C.Mercenary.MIN_MercenaryHumanMaleRocketSoldier [count] [distanceM] [spreadM] [hostile]` (a row
+across the player's facing). The pawn comes with its own AI controller (`BioAI_HumanoidMinion`), behaviour (active, everything
+enabled), actor type (`BioPawnChallengeScaledType`), gun and inventory, 100 health, collision, on the ground. Spawned plain it
+joins the level's `DefaultSquad` (a `BioSquadCommoner`) and isn't hostile; with `hostile` its `BioPawnSquadInterface.ChangeSquads`
+moves it into the level's first `BioSquadCombat` (UNC20's: `BioSquadCombat_0`, the dormant mercenaries' squad) and `IsHostile`
+answers true. With UNC20's own wake (`ModifyPropertyPawn_1`, above) they fight: target checks through `BioAI_Core.IsAttackTargetValid`,
+`BioActiveShoot`, projectiles; snapshots show them aiming at Shepard and the squad dropping them. 15 at once at 25 m in a row: all
+alive and fighting 8 s later, one scene render 4.5 ms. Not checked: whether the wake is needed when the squad is ours alone.
+`mevr call1 <n> <Function> <m>` calls a found object's function with another found object as its first parameter. Opening UNC20 and
+the Mako's landing autosave into the career: back up the saves first and restore them after (done; restored byte for byte).

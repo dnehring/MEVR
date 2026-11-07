@@ -823,6 +823,134 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         bool const called = ue3::runtime::Call(gFound[index], f, parms);
         return std::format("{}.OnArtPlaceableUsed(the player's pawn) called {}", r.FullName(gFound[index]), called);
     }
+    if (verb == "spawnpawn") {
+        // `mevr spawnpawn <ActorType path> [count 1] [distanceM 8] [spreadM 2]` (the powers QA arena, 2026-11-07): the game's own
+        // BioSPGame.SpawnPawn(TheActorType, SpawnLocation, SpawnRotation, bIsPlayer=false) builds a whole NPC from its BioActorType
+        // (e.g. BIOA_UNC_C.Mercenary.MIN_MercenaryHumanMaleRocketSoldier), in a row across the player's facing, `distanceM` ahead,
+        // each facing the player. Says what each one is: its class, health, whether it's hostile to the player.
+        std::string type;
+        int count = 1;
+        float distanceM = 8.0f, spreadM = 2.0f;
+        std::string mode;
+        words >> type >> count >> distanceM >> spreadM >> mode;
+        ue3::Reflection& r = ue3::runtime::Get();
+        auto const objectField = [&](ue3::Object* o, std::string_view field) -> ue3::Object* {
+            if (o == nullptr) {
+                return nullptr;
+            }
+            auto const info = r.PropertyOf(r.ClassOf(o), field);
+            if (!info) {
+                return nullptr;
+            }
+            ue3::Object* value = nullptr;
+            std::memcpy(&value, reinterpret_cast<std::uint8_t const*>(o) + info->offset, sizeof value);
+            return value;
+        };
+        ue3::Object* const game = objectField(objectField(pc, "WorldInfo"), "Game");
+        if (type.empty() || game == nullptr) {
+            return std::string(game == nullptr ? "mevr spawnpawn: no WorldInfo.Game" : "usage: mevr spawnpawn <ActorType path> [count] [distanceM] [spreadM]");
+        }
+        ue3::Function* const spawn = r.FindFunction(r.ClassOf(game), "SpawnPawn");
+        if (spawn == nullptr) {
+            return std::format("{} has no SpawnPawn", r.FullName(game));
+        }
+        std::optional<ue3::Vector> const at = player::Location(pawn);
+        std::optional<ue3::Rotator> const facing = player::Rotation(pawn);
+        if (!at || !facing) {
+            return std::string("mevr spawnpawn: no player place");
+        }
+        constexpr double kUnitsPerRad = 32768.0 / 3.14159265358979;
+        double const yaw = facing->yaw / kUnitsPerRad;
+        double const fx = std::cos(yaw), fy = std::sin(yaw);
+        count = std::clamp(count, 1, 40);
+        ue3::memory::OwnedString const name(ue3::memory::Widen(type));
+        ue3::Function* const hostile = r.FindFunction(r.ClassOf(pawn), "IsHostile");
+        // "hostile": the level's first live combat squad (a BioSquadCombat, as UNC20's mercenaries are in).
+        ue3::Object* combatSquad = nullptr;
+        if (mode == "hostile") {
+            for (std::int32_t i = 0, n = r.ObjectCount(); i < n && combatSquad == nullptr; ++i) {
+                ue3::Object* const o = r.ObjectAt(i);
+                if (o != nullptr && r.IsAlive(o) && r.NameText(r.ClassOf(o)) == "BioSquadCombat" &&
+                    r.FullName(o).find("Default__") == std::string::npos) {
+                    combatSquad = o;
+                }
+            }
+            if (combatSquad == nullptr) {
+                return std::string("mevr spawnpawn: no BioSquadCombat in this level to join");
+            }
+        }
+        std::string out = std::format("mevr spawnpawn {} x{} at {:.1f} m:", type, count, distanceM);
+        int made = 0;
+        for (int i = 0; i < count; ++i) {
+            double const side = (i - (count - 1) / 2.0) * spreadM * 100.0;
+            ue3::Vector where{static_cast<float>(at->x + fx * distanceM * 100.0 - fy * side),
+                static_cast<float>(at->y + fy * distanceM * 100.0 + fx * side), at->z};
+            ue3::Rotator const back{0, static_cast<std::int32_t>(facing->yaw + 32768), 0};
+            ue3::Params parms(r, spawn);
+            parms.Set("TheActorType", name.Get());
+            parms.Set("SpawnLocation", where);
+            parms.Set("SpawnRotation", back);
+            parms.SetBool("bIsPlayer", false);
+            bool const called = ue3::runtime::Call(game, spawn, parms);
+            ue3::Object* const made1 = parms.Return<ue3::Object*>().value_or(nullptr);
+            if (made1 != nullptr) {
+                ++made;
+                gFound.push_back(made1);
+            }
+            std::string squadText;
+            if (made1 != nullptr && combatSquad != nullptr) {
+                ue3::Object* const behavior = objectField(objectField(made1, "m_oBehavior"), "m_oSquadInterface");  // BioPawnSquadInterface
+                ue3::Function* const change = behavior != nullptr ? r.FindFunction(r.ClassOf(behavior), "ChangeSquads") : nullptr;
+                if (change != nullptr) {
+                    ue3::Params c(r, change);
+                    c.Set("NewSquad", combatSquad);
+                    squadText = std::format(", ChangeSquads({}) {}", r.NameText(combatSquad), ue3::runtime::Call(behavior, change, c));
+                } else {
+                    squadText = ", no ChangeSquads";
+                }
+            }
+            std::string hostileText = "?";
+            if (made1 != nullptr && hostile != nullptr) {
+                ue3::Params h(r, hostile);
+                h.Set("Other", made1);
+                if (ue3::runtime::Call(pawn, hostile, h)) {
+                    hostileText = h.ReturnBool().value_or(false) ? "hostile" : "not hostile";
+                }
+            }
+            out += std::format("\n  #{} called {}: {} ({}{})", i, called, made1 != nullptr ? r.FullName(made1) : std::string("nothing"), hostileText,
+                squadText);
+        }
+        out += std::format("\n  {} made; they're appended to the found list (mevr props <n>, mevr call <n> <Function>)", made);
+        return out;
+    }
+    if (verb == "call1") {
+        // `mevr call1 <n> <Function> <m>`: the n-th found object's function called with the m-th found object as its first
+        // parameter (the rest left zero), e.g. a behaviour's ChangeSquads(squad).
+        std::size_t index = 0, arg = 0;
+        std::string name;
+        words >> index >> name >> arg;
+        ue3::Reflection& r = ue3::runtime::Get();
+        if (index >= gFound.size() || arg >= gFound.size() || !r.IsAlive(gFound[index]) || !r.IsAlive(gFound[arg]) || name.empty()) {
+            return std::string("usage: mevr call1 <n> <Function> <m> (mevr find or instances first)");
+        }
+        ue3::Function* const f = r.FindFunction(r.ClassOf(gFound[index]), name);
+        if (f == nullptr) {
+            return std::format("{} has no {}", r.FullName(gFound[index]), name);
+        }
+        ue3::Params parms(r, f);
+        ue3::ParamSpec const* first = nullptr;
+        for (ue3::ParamSpec const& spec : parms.Specs()) {
+            if (&spec != parms.ReturnSpec() && first == nullptr) {
+                first = &spec;
+            }
+        }
+        if (first == nullptr || !parms.Set(first->name, gFound[arg])) {
+            return std::format("{}'s first parameter isn't an object", name);
+        }
+        bool const called = ue3::runtime::Call(gFound[index], f, parms);
+        return std::format("{}.{}({}) called {}{}", r.FullName(gFound[index]), name, r.FullName(gFound[arg]), called,
+            parms.ReturnBool() ? std::format(", returned {}", *parms.ReturnBool()) : std::string());
+    }
     if (verb == "call") {
         // `mevr call <n> <Function>`: a function without parameters (a return value is fine) called on the n-th of `find` /
         // `instances` through ProcessEvent (research: e.g. SFXGameModeDefault.Used, what A does on the current selection).
