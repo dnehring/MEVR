@@ -257,6 +257,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] The sniper rifle pushed into the shoulder, then held out at arm's length: the picture stays both ways (the gun moves off
   the shoulder by itself, up to 15 cm: comfortable?), no white glow from the lens while raised; the rifle's red dot stays with
   the eye at or past the housing; after drawing any gun, no game crosshair beside the hand reticle. (research/21 section 19)
+- [ ] Calibrated (Body & calibration), shoulder the rifle and the sniper: the dot and the scope are there at once and stay
+  while you shift your cheek; lowered off the shoulder they go. (research/21 section 20)
 - [ ] Raise the sniper rifle: the picture only at the eye (never at a casual hold), no on/off flicker, the eye reaches
   the eyepiece; lowered, the gun eases back. (research/21 section 15)
 - [ ] Under the scope, flick the right stick forward and back: the zoom steps 3.5x / 7x with a tick; the reticle reads.
