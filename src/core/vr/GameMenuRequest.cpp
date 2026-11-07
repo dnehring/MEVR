@@ -40,27 +40,44 @@ Action FromValue(std::uint32_t value) {
     return Action::None;
 }
 
-Action Slot::Put(Action action) {
-    return FromValue(value_.exchange(static_cast<std::uint32_t>(action), std::memory_order_acq_rel));
+std::uint32_t Encode(Action action, Origin origin) {
+    return static_cast<std::uint32_t>(action) | (static_cast<std::uint32_t>(origin) << 8);
+}
+
+Action DecodeAction(std::uint32_t value) {
+    return (value & ~0x1FFu) == 0 ? FromValue(value & 0xFFu) : Action::None;
+}
+
+Origin DecodeOrigin(std::uint32_t value) {
+    return DecodeAction(value) != Action::None && (value & 0x100u) != 0 ? Origin::OmniRail : Origin::Menu;
+}
+
+Action Slot::Put(Action action, Origin origin) {
+    return DecodeAction(value_.exchange(Encode(action, origin), std::memory_order_acq_rel));
 }
 
 Action Slot::Take() {
-    polled_.store(true, std::memory_order_relaxed);
-    if (value_.load(std::memory_order_relaxed) == 0) {
-        return Action::None;  // the usual case, every tick: no write
-    }
-    return FromValue(value_.exchange(0, std::memory_order_acq_rel));
+    return DecodeAction(TakeValue());
 }
 
-void Take(Schedule& schedule, Action action) {
+std::uint32_t Slot::TakeValue() {
+    polled_.store(true, std::memory_order_relaxed);
+    if (value_.load(std::memory_order_relaxed) == 0) {
+        return 0;  // the usual case, every tick: no write
+    }
+    return value_.exchange(0, std::memory_order_acq_rel);
+}
+
+void Take(Schedule& schedule, Action action, Origin origin) {
     if (action == Action::None) {
         return;
     }
-    schedule = {action, 0, 0};
+    schedule = {action, 0, 0, origin};
 }
 
 Step Advance(Schedule& schedule, bool menuOpen, bool pausedByMenu) {
     Step step;
+    step.origin = schedule.origin;
     if (schedule.action == Action::None) {
         return step;
     }

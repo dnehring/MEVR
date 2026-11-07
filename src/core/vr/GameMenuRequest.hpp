@@ -31,15 +31,20 @@ bool IsScreen(Action action);
 char const* ShowFunction(Action action);
 // Values from another module (an older or newer host): anything unknown is None.
 Action FromValue(std::uint32_t value);
+enum class Origin : std::uint32_t { Menu = 0, OmniRail = 1 };
+std::uint32_t Encode(Action action, Origin origin);
+Action DecodeAction(std::uint32_t value);
+Origin DecodeOrigin(std::uint32_t value);
 
 // The host's side: the menu's button stores a request (any thread), the mod takes it once (HostServices v19). A newer
 // request replaces one not yet taken. Whether anything has ever asked (Taken() called) tells the host a v19 mod runs.
 class Slot {
 public:
     // Returns the request it replaced (None if none was waiting).
-    Action Put(Action action);
+    Action Put(Action action, Origin origin = Origin::Menu);
     // The waiting request, cleared (None if none).
     Action Take();
+    std::uint32_t TakeValue();
     // A mod has polled at least once.
     bool Polled() const { return polled_.load(std::memory_order_relaxed); }
 
@@ -57,15 +62,17 @@ struct Schedule {
     Action action = Action::None;
     int settled = 0;  // ticks in a row with the menu closed and the game not paused by it
     int age = 0;      // ticks since it was taken
+    Origin origin = Origin::Menu;
 };
 struct Step {
     Action run = Action::None;      // do this now
     Action dropped = Action::None;  // this request was called off
     bool reopened = false;          // ...because our menu opened again (else it waited too long)
+    Origin origin = Origin::Menu;
 };
 // A request just taken (None: nothing new, the schedule is left alone). A new one replaces one still waiting (the menu
 // can't ask twice without opening in between, which calls the first off anyway).
-void Take(Schedule& schedule, Action action);
+void Take(Schedule& schedule, Action action, Origin origin = Origin::Menu);
 // One game tick. `menuOpen`: our main menu is open; `pausedByMenu`: the game is still paused by it.
 Step Advance(Schedule& schedule, bool menuOpen, bool pausedByMenu);
 

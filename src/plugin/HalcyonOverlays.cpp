@@ -1686,11 +1686,12 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool const galaxyUi = gLastGameMode == 9 && mevr::host::galaxy_hologram::InWorld();
     // One of the game's screens standing in the room (research/53: the shop...): its UI goes to the panel, placed where it opened.
     bool const worldUi = mevr::vr::world_ui::ScreenMode(gLastGameMode) && mevr::host::world_ui::Active();
+    bool const worldUiPending = (mevr::host::world_ui::Ownership(gLastGameMode) & 6u) != 0;
     // A conversation in the world (research/59): its movie goes to the panel, its subtitle and wheel cut out of it below.
     mevr::host::conversation_world::NoteFrame(frame.gameMode);
     std::optional<mevr::vr::conversation_world::State> const convo =
         gLastGameMode == 5 ? mevr::host::conversation_world::Current() : std::nullopt;
-    bool const uiToPanel = gameplay || galaxyUi || worldUi || convo.has_value();
+    bool const uiToPanel = gameplay || galaxyUi || worldUi || worldUiPending || convo.has_value();
 
     // The game's own crosshair marks the screen centre (the head), not the gun: hidden while our
     // hand reticle stands in for it. The HUD movie keeps its authored layout on the panel (Halcyon's
@@ -1840,7 +1841,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     gPanelBackdrop = worldShown ? std::max(worldShown->backdrop, 1.0f / 256.0f) : 0.0f;
     gPanelFigure = worldShown && device != nullptr ? mevr::host::ui_world_figure::ForFrame(device.Get(), gPanelBackdrop) : std::nullopt;
     if (frame.worldFrame && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr &&
-        (!worldUi || worldShown)) {
+        (!worldUiPending || worldUi) && (!worldUi || worldShown)) {
         gPanelDrawsLastFrame.store(draws, std::memory_order_relaxed);
         if (RenderPanel(context, device.Get(), frame.floatWhiteScale, worldUi ? Masks{} : hudMasks)) {
             float const width = std::clamp(cfg.hudPanelWidthM, 0.3f, 4.0f);
@@ -2156,7 +2157,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     }
     // Next frame's UI goes to the panel only if this one showed it (or nothing went there yet, so
     // the texture can be made), and the panel works.
-    bool const armNext = engaged && uiToPanel && frame.worldFrame && (panelShown || gPanel.texture == nullptr);
+    bool const armNext = engaged && uiToPanel && (frame.worldFrame || worldUiPending || worldUi) &&
+        (panelShown || gPanel.texture == nullptr || worldUiPending || worldUi);
+    mevr::host::world_ui::RedirectReady(worldUi && panelShown && draws > 0 && gArmed.load(std::memory_order_acquire));
     if (armNext != gArmed.load(std::memory_order_relaxed)) {
         mevr::log::Info("overlays: game UI goes to {}", !armNext ? "the eye images" : galaxyUi ? "a panel over the galaxy hologram's table"
                                                                                                 : worldUi ? "a screen standing in the room"

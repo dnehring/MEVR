@@ -32,6 +32,14 @@ struct Shown {
 
 // A screen of ours is up (the mod's state is fresh).
 bool Active();
+void Reserve(std::uint32_t request, std::uint32_t screen, std::uint32_t origin);
+void Publish(vr::world_ui::State const* state);
+void Forget();
+unsigned Ownership(int mode);  // bit 0: active; bit 1: eligible mode-7 reservation; bit 2: reserved before mode change (0-4)
+bool HoldFrame(int mode);
+void RedirectReady(bool ready);
+void NotePresent(bool reserved, bool flatPanel, bool held);
+void LogStats();
 // The screen to show this frame, given the head (app space) and the game window's size (the UI panel's source); nullopt
 // while none is up or it can't be placed yet (no valid head at its opening).
 // `wrist`: the left wrist's point (hud_pieces::WristPoint from the left grip) while the left controller is tracked.

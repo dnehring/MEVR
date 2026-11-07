@@ -145,7 +145,7 @@ std::string ClassName(ue3::Object const* object) {
     return r.NameText(r.ClassOf(object));
 }
 
-void OpenPauseMenu() {
+void OpenPauseMenu(Link const& link, gm::Origin origin) {
     std::string why;
     std::optional<Modes> const modes = ReadModes(why);
     if (!modes) {
@@ -174,8 +174,10 @@ void OpenPauseMenu() {
         return;
     }
     ue3::Params parms(r, show);
-    ue3::runtime::Call(mode, show, parms);  // the script function through ProcessEvent (game thread)
-    bool const opened = parms.ReturnBool().value_or(false);
+    std::uint32_t const request = world_ui::BeginOpening(link.worldUi, gm::Action::PauseMenu, origin);
+    bool const called = ue3::runtime::Call(mode, show, parms);  // game thread: permission precedes the mode change inside the call
+    bool const opened = called && parms.ReturnBool().value_or(false);
+    if (!opened && request != 0) world_ui::CancelOpening(link.worldUi, request);
     std::string const declared = r.NameText(r.OuterOf(show));
     std::string const where = std::format("{}.ShowMenuGui{}", ClassName(mode),
         declared != ClassName(mode) ? std::format(" (declared on {})", declared) : std::string());
@@ -232,6 +234,7 @@ struct Switch {
     gm::Action action = gm::Action::None;  // what to do once no screen is up (CloseScreens: nothing more)
     int backOuts = 0;
     int wait = 0;
+    gm::Origin origin = gm::Origin::Menu;
 };
 Switch gSwitch;
 
@@ -280,7 +283,7 @@ Focus FocusedPanel() {
     return focus;
 }
 
-void OpenScreen(gm::Action action, Modes const& modes) {
+void OpenScreen(gm::Action action, gm::Origin origin, Modes const& modes, Link const& link) {
     ue3::FunctionRef* const ref = ShowRef(action);
     std::string how;
     ue3::Object* const mode = ActiveMode(modes, how);
@@ -297,13 +300,23 @@ void OpenScreen(gm::Action action, Modes const& modes) {
         return;
     }
     ue3::Params parms(r, show);
-    parms.SetBool("bShow", true);
-    ue3::runtime::Call(mode, show, parms);  // as its key: the script function through ProcessEvent (game thread)
+    if (!parms.SetBool("bShow", true)) {
+        gLast = std::format("{}: bShow parameter missing", gm::Name(action));
+        log::Warn("omni-tool: {} not opened: bShow parameter missing", gm::Name(action));
+        return;
+    }
+    std::uint32_t const request = world_ui::BeginOpening(link.worldUi, action, origin);
+    if (!ue3::runtime::Call(mode, show, parms)) {
+        if (request != 0) world_ui::CancelOpening(link.worldUi, request);
+        gLast = std::format("{}: opening call failed", gm::Name(action));
+        log::Warn("omni-tool: {} opening call failed", gm::Name(action));
+        return;
+    }
     gLast = std::format("{}: {}.{}(true) called", gm::Name(action), ClassName(mode), gm::ShowFunction(action));
     log::Info("omni-tool: opened {} ({}.{}(true); {})", gm::Name(action), ClassName(mode), gm::ShowFunction(action), how);
 }
 
-void StepSwitch() {
+void StepSwitch(Link const& link) {
     if (gSwitch.action == gm::Action::None) {
         return;
     }
@@ -359,6 +372,7 @@ void StepSwitch() {
         return;
     }
     gm::Action const action = gSwitch.action;
+    gm::Origin const origin = gSwitch.origin;
     gSwitch = {};
     if (action == gm::Action::CloseScreens) {
         gLast = "close: done";
@@ -366,7 +380,7 @@ void StepSwitch() {
         return;
     }
     if (action == gm::Action::PauseMenu) {
-        OpenPauseMenu();  // on the active mode, whichever it is (the Mako's and the wheels' overrides run)
+        OpenPauseMenu(link, origin);  // on the active mode, whichever it is (the Mako's and the wheels' overrides run)
         return;
     }
     if (current != 0 && current != 1) {
@@ -374,10 +388,10 @@ void StepSwitch() {
         log::Info("omni-tool: {} not opened: the game's screens open on foot or in the Mako (game mode {})", gm::Name(action), current);
         return;
     }
-    OpenScreen(action, *modes);
+    OpenScreen(action, origin, *modes, link);
 }
 
-void Run(gm::Action action) {
+void Run(gm::Action action, gm::Origin origin) {
     switch (action) {
     case gm::Action::Holster: Holster(); return;
     case gm::Action::PauseMenu:  // the game opens none over its own screens (ShowMenuGui returns 0 in mode 7): back out first
@@ -387,13 +401,13 @@ void Run(gm::Action action) {
     case gm::Action::Codex:
     case gm::Action::Map:
     case gm::Action::CloseScreens:
-        gSwitch = {action, 0, 0};  // StepSwitch does it, a tick at a time
+        gSwitch = {action, 0, 0, origin};  // StepSwitch does it, a tick at a time
         return;
     case gm::Action::None: return;
     }
 }
 #else
-void Run(gm::Action) {
+void Run(gm::Action, gm::Origin) {
     gLast = "not LE1";
 }
 #endif
@@ -408,11 +422,16 @@ void Tick(Link const& link) {
         }
         return;
     }
-    gm::Action const taken = gm::FromValue(link.take());
+    std::uint32_t const value = link.take();
+    gm::Action const taken = gm::DecodeAction(value);
     if (taken != gm::Action::None) {
         log::Info("main menu request: {} taken; it runs once the main menu is closed and the game runs ({} ticks)",
             gm::Name(taken), gm::kSettleTicks);
-        gm::Take(gSchedule, taken);
+        world_ui::CancelOpening(link.worldUi);
+#if defined(MEVR_GAME_LE1)
+        gSwitch = {};  // a replacement must not finish the older backout/opening path
+#endif
+        gm::Take(gSchedule, taken, gm::DecodeOrigin(value));
     }
     gm::Step const step = gm::Advance(gSchedule, link.menuOpen, menu_pause::Paused());
     if (step.dropped != gm::Action::None) {
@@ -421,10 +440,10 @@ void Tick(Link const& link) {
             step.reopened ? "the main menu opened again first" : "the game stayed paused by the main menu");
     }
     if (step.run != gm::Action::None) {
-        Run(step.run);
+        Run(step.run, step.origin);
     }
 #if defined(MEVR_GAME_LE1)
-    StepSwitch();
+    StepSwitch(link);
 #endif
 }
 
@@ -439,7 +458,7 @@ std::string Inject(std::string const& which) {
     for (Name const& name : kNames) {
         if (which == name.word) {
             log::Info("main menu request: {} asked from the console (mevr omni {})", gm::Name(name.action), which);
-            gm::Take(gSchedule, name.action);
+            gm::Take(gSchedule, name.action, gm::Origin::OmniRail);
             return std::format("omni: {} taken; it runs in {} ticks once nothing of ours pauses the game (log `main menu request:`, "
                                "`omni-tool:`)", gm::Name(name.action), gm::kSettleTicks);
         }

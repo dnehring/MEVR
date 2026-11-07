@@ -3674,7 +3674,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
     }
     // [MEVR] research/53: one of the game's screens stands in the room (the shop, the minigame...): a live in-world GUI.
-    if ((gameMode == 7 || gameMode == 10) && MELEVR::MevrBridge::WorldUiActive()) liveWorldGui = true;
+    const unsigned mevrWorldUi = MELEVR::MevrBridge::WorldUiOwnership(gameMode);   // [MEVR] active OR eligible pending ownership
+    if ((mevrWorldUi & 3u) != 0) liveWorldGui = true;   // [MEVR] mode 7 reservation; mode 10 still requires active publication
     // [SFR] gate feed MOVED below the cine decision ([SFRGATE-LATCH 2026-08-12]): it used to be fed
     // the RAW mode byte here, which flaps 7/8/-1 mid-cutscene - the presentation held (CINEFLAPFIX)
     // but SfrModeAllowsReplay returns false for all three, so every blip killed the SECOND EYE pass
@@ -3686,6 +3687,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // follows, not plain VR (the title's 3D backdrop filled the view for 2 s at every launch); so are the front end's
     // cinematics before the first load or gameplay (the title's camera flight). Called every frame.
     const bool frontEndHold = MELEVR::MevrBridge::FrontEndHold(gameMode);
+    if (frontEndHold) liveWorldGui = false;   // [MEVR] an opening never overrides the front end
     const bool inMenuMode   = (gameMode == 7) || frontEndHold;      // 7 = GUI (full-screen front-end menu)
     const bool inGalaxyMode = (gameMode == 9);                      // 9 = Galaxy map (flat mono, or VR w/ zoom)
     // PRERENDERED MOVIE / 2D-only detection (2026-07-07: movies are too zoomed in). A prerendered
@@ -3783,7 +3785,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     {   // [MEVR] research/56: plain VR after another view waits 100 ms with that view kept: pressing a key at the title went
         // 6 -> 0 -> 7 within 40 ms, one frame of the world between the cinematic's screen and the main menu's panel.
         static CineDecision s_shownCine;
-        if (MELEVR::MevrBridge::HoldPlainVr(!cine.forceFlatCine && !cine.vrCineActive, gameMode)) cine = s_shownCine;
+        if (MELEVR::MevrBridge::HoldPlainVr(!cine.forceFlatCine && !cine.vrCineActive, gameMode, (liveWorldGui || (mevrWorldUi & 4u) != 0) && !frontEndHold)) cine = s_shownCine;   // [MEVR] authorized handoff accepts immediately
         else s_shownCine = cine;
     }
     const bool inConversationMode = cine.inConversation;
@@ -4877,6 +4879,9 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // The game's backbuffer goes to BOTH eyes (identical image). Depth is flat; immersion comes from the
     // head tracking + lean + the world-locked, roll-removed submit pose below.
     bool submitted = false;
+    // [MEVR] research/57: keep the last clean eyes while the opening call/classification/UI redirection catches up.
+    // Do not acquire or overwrite eye images while holding: reuse their last released image and its exact projection.
+    const bool mevrHoldWorldUi = !frontEndHold && !forceFlatCine && MELEVR::MevrBridge::WorldUiHoldFrame(gameMode);
     bool sfrPairSubmitted = false;  // [FREEZETAG] the captured-pair path fed the eyes this present (fresh OR held);
                                     // false when the hold expired and the submit fell through to the live mono
                                     // path - live pixels must never inherit a frozen tag.
@@ -4896,7 +4901,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             gapBackBuffer->Release();
         }
     }
-    if (fs.shouldRender != 0 && gameSwapChain != nullptr)
+    if (fs.shouldRender != 0 && gameSwapChain != nullptr && !mevrHoldWorldUi)   // [MEVR] preserve clean eyes through an opening
     {
         ID3D11Texture2D* backBuffer = nullptr;
         if (SUCCEEDED(gameSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer))) &&
@@ -5731,6 +5736,19 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
     }
 
+    // [MEVR] Reuse only a world projection belonging to these swapchains; a recreated session must earn one again.
+    static XrCompositionLayerProjectionView mevrCleanViews[2] = {};
+    static XrSwapchain mevrCleanChains[2] = {};
+    if (mevrHoldWorldUi) {
+        submitted = fs.shouldRender != 0 && g_eyes[0].swapchain != nullptr && g_eyes[1].swapchain != nullptr &&
+            mevrCleanChains[0] == g_eyes[0].swapchain && mevrCleanChains[1] == g_eyes[1].swapchain;
+        if (submitted) { projViews[0] = mevrCleanViews[0]; projViews[1] = mevrCleanViews[1]; }
+    } else if (submitted && !forceFlatCine && !mevrCineScreen && ((gameMode >= 0 && gameMode <= 4) || (mevrWorldUi & 1u) != 0)) {
+        for (int e = 0; e < 2; ++e) { mevrCleanViews[e] = projViews[e]; mevrCleanChains[e] = g_eyes[e].swapchain; }
+    } else if (submitted) {
+        mevrCleanChains[0] = nullptr; mevrCleanChains[1] = nullptr;   // [MEVR] these images were overwritten by another presentation
+    }
+
     // [MEVR] life-size stereo: what this frame declares (the [MEVR-STEREO] submit line, the snapshot's "stereo").
     if (sfr2Active && !forceFlatCine && headValid)
     {
@@ -5750,7 +5768,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // [AERBLACK] A renderable XR frame must never lose the projection layer because GetBuffer or
     // another transient copy-path prerequisite hiccupped. The eye swapchains still contain the last
     // released pair, so hold their exact last projection instead of flashing both eyes black.
-    if (aerActive && !forceFlatCine && fs.shouldRender != 0)
+    if (aerActive && !forceFlatCine && fs.shouldRender != 0 && !mevrHoldWorldUi)   // [MEVR] don't replace the reserved projection
     {
         if (submitted)
         {
@@ -6221,6 +6239,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             if (const void* fade = MELEVR::MevrBridge::TransitionFadeLayer(g_session, g_viewSpace, g_context, mevrView))
                 layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
     }
+    MELEVR::MevrBridge::WorldUiPresent((mevrWorldUi & 6u) != 0, submitted && forceFlatCine && g_eyes[0].swapchain != nullptr, mevrHoldWorldUi);   // [MEVR] every Present, actual flat-layer branch above
     XrFrameEndInfo fei = {};
     fei.type = XR_TYPE_FRAME_END_INFO_VALUE;
     fei.displayTime = fs.predictedDisplayTime;

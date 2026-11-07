@@ -562,8 +562,14 @@ switching frameworks.
   a locker's equipment, still stands by what was used: `world_ui::OnWrist`; `wristMenuWidthM` 0.70 for a whole stage (0.55 until
   2026-11-05, the user wanted them larger; an old file's 0.55 moves once, marker `figure`; the menu's Wrist screen size slider),
   `wristWidthM` 0.30 the minigame's frame; the menu's row is Comfort > Game screens > Omni-tool screens). **A rail of the game's screens stands to its
-  left** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`, `[OmniTool]` enabled/tap/aloneHeightM):
-  Squad, Equipment, Map, Journal, Codex, Computer, Close; a second RmlUi context of the main menu's library (`menu::Ui` allows one
+  left** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`, `[OmniTool]` enabled/tap/aloneHeightM).
+  since 2026-11-07, HostServices v34 carries explicit `Origin::OmniRail` through the request and backout path: an admitted rail
+  opening and its related personal panels skip remembered-use anchors and use the wrist (`wristFollow` still applies; missing
+  controller falls back to the room). Every eligible request reserves presentation immediately before `Show*Gui`/`ShowMenuGui`:
+  separate from `State.active`, 500 ms bounded, matched by request ID and visible screen, cancelled on failure, rejection or unload.
+  Pending mode-7 permission suppresses the flat branch and bypasses PresentationHold; clean eyes wait for UI redirection.
+  Heartbeat `world ui: reservation Presents ..., flat-panel frames during reservation ...` counts every Present (expected 0).
+  Its entries are Squad, Equipment, Map, Journal, Codex, Computer, Close; a second RmlUi context of the main menu's library (`menu::Ui` allows one
   per document now), `vr::game_pointer::Pointer` on its quad (ray and trigger, or the fingertip), its trigger kept from the game
   (`omni_rail::OwnsTriggers`). **Tap the left wrist with the right index fingertip** to open it alone on the wrist (4 cm from
   8 cm, not with a gun drawn; `omni_rail::Tap`), **at a target button on Shepard's drawn left forearm, measured from his drawn

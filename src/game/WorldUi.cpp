@@ -107,6 +107,10 @@ struct Used {
 };
 Used gUsed;
 Used gUsedAtOpening;  // frozen when a screen opens
+wu::Opening gOpening;
+std::uint32_t gRequestSerial = static_cast<std::uint32_t>(GetTickCount64());
+wu::OpeningSource gOpeningSource;
+bool gOpeningSawGui = false;
 
 // A full-screen panel (bFullScreen) makes the game render its UI world (GUI_UIWorld: a backdrop stage of blurred machinery
 // under a blue gradient, its own camera) instead of the level; with the flag cleared the level renders behind the screen
@@ -369,10 +373,55 @@ void TryStartup() {
     engine::process_event::AddPostHandler(update, &OnUpdateCamera);
 }
 
+void CancelOpening(Link const& link, std::uint32_t request) {
+    bool const cancelled = gOpening.Cancel(request);
+    if ((cancelled || request == 0) && link.reserve != nullptr) link.reserve(request, 0, 0);
+    if (cancelled || request == 0) gOpeningSource.Clear();
+}
+
+std::uint32_t BeginOpening(Link const& link, vr::game_menu::Action action, vr::game_menu::Origin origin) {
+    CancelOpening(link);
+    if (link.setState != nullptr) link.setState(nullptr);  // an earlier screen cannot authorize this request
+    wu::Screen screen = wu::Screen::None;
+    using Action = vr::game_menu::Action;
+    switch (action) {
+    case Action::PauseMenu: screen = wu::Screen::MenuBrowser; break;
+    case Action::Equipment: screen = wu::Screen::Inventory; break;
+    case Action::Squad: screen = wu::Screen::CharacterRecord; break;
+    case Action::Journal: screen = wu::Screen::Journal; break;
+    case Action::Codex: screen = wu::Screen::Codex; break;
+    case Action::Map: screen = wu::Screen::Map; break;
+    default: return 0;
+    }
+    wu::Settings const settings = hand_calibration::GetWorldUi();
+    // Squad and map open over the browser wheel. The entire known opening stack must be admitted before its call.
+    std::uint32_t const required = wu::Bit(screen) | ((action == Action::Squad || action == Action::Map) ? wu::Bit(wu::Screen::MenuBrowser) : 0u);
+    auto const mode = player::GameMode(player::Controller());
+    if (link.setState == nullptr || link.reserve == nullptr || !settings.on || !Resolved() ||
+        (settings.screens & required) != required || !mode || *mode > 4 || (!gCockpit.valid && (!gHold.haveView || !gHold.footFrame))) {
+        return 0;
+    }
+    if (++gRequestSerial == 0) ++gRequestSerial;
+    gOpening.Begin(gRequestSerial, screen, origin, GetTickCount64());
+    gOpeningSource.Begin(screen, origin);
+    gOpeningSawGui = false;
+    link.reserve(gRequestSerial, static_cast<std::uint32_t>(screen), static_cast<std::uint32_t>(origin));
+    return gRequestSerial;
+}
+
 void Tick(Link const& link) {
     wu::Settings const settings = hand_calibration::GetWorldUi();
     ue3::Object* const controller = player::Controller();
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
+    if (gOpening.Expire(GetTickCount64())) {
+        if (link.reserve != nullptr) link.reserve(0, 0, 0);
+    }
+    if (mode && wu::ScreenMode(*mode)) {
+        gOpeningSawGui = true;
+    } else {
+        gOpeningSource.Clear();
+        if (gOpeningSawGui || !mode) CancelOpening(link);
+    }
     // The host's rail alone on the wrist (a tap, no screen yet): the game's omni-tool on Shepard's arm, on foot only.
     bool const railOmniTool = link.railOpen && settings.omniTool && mode && *mode == 0;
     if (railOmniTool != gRailOmniTool) {
@@ -392,6 +441,7 @@ void Tick(Link const& link) {
         }
     }
     if (link.setState == nullptr || !settings.on || !mode || !wu::ScreenMode(*mode)) {
+        if (!settings.on || link.setState == nullptr) CancelOpening(link);
         if (!gS.stack.empty()) {
             gS.stack.clear();
         }
@@ -399,6 +449,7 @@ void Tick(Link const& link) {
         return;
     }
     if (!Resolved()) {
+        CancelOpening(link);
         if (!gS.loggedMissing) {
             gS.loggedMissing = true;
             log::Warn("world ui: the GUI manager's panels (BioSFManager.m_lstPanels, BioSFPanel.nmTag...) weren't found through our "
@@ -421,7 +472,12 @@ void Tick(Link const& link) {
         gS.stack = stack;
     }
     wu::Screen const screen = base != nullptr ? wu::FromTag(base->tag) : wu::Screen::None;
+    std::uint32_t visibleScreens = 0;
+    for (OpenPanel const& o : panels) {
+        if (o.visible && wu::FromTag(o.tag) != wu::Screen::None) visibleScreens |= wu::Bit(wu::FromTag(o.tag));
+    }
     if (screen == wu::Screen::None) {
+        (void)gOpeningSource.Observe(*mode, screen, visibleScreens);
         Down(link, "no screen of ours open");
         return;
     }
@@ -429,6 +485,7 @@ void Tick(Link const& link) {
     // squadmate, the character record's Shepard) keeps Halcyon's panel, and the main wheel it opened from with it.
     for (OpenPanel const& o : panels) {
         if (wu::Screen const s = wu::FromTag(o.tag); o.visible && s != wu::Screen::None && (settings.screens & wu::Bit(s)) == 0) {
+            CancelOpening(link);
             Down(link, "not one of [WorldUi] screens");
             return;
         }
@@ -445,9 +502,14 @@ void Tick(Link const& link) {
     }
     bool const inCockpit = cockpitAnchor.has_value();
     if (!inCockpit && (!gHold.haveView || !gHold.footFrame)) {
+        CancelOpening(link);
         Down(link, "Shepard's view on foot isn't known (opened before any camera update on foot)");
         return;
     }
+    bool const matched = gOpening.Matches(gOpening.Request(), visibleScreens);
+    if (!matched && gOpening.Pending() && screen != wu::Screen::MenuBrowser) CancelOpening(link);
+    auto const origin = gOpeningSource.Observe(*mode, screen, visibleScreens);
+    bool const railOpening = origin == vr::game_menu::Origin::OmniRail;
     std::erase_if(gClearedPanels, [&](ue3::Object* p) {
         return std::none_of(panels.begin(), panels.end(), [&](OpenPanel const& o) { return o.panel == p; });  // closed since
     });
@@ -457,7 +519,7 @@ void Tick(Link const& link) {
             log::Info("world ui: the {} screen isn't full screen any more: the level renders behind it, not the game's UI world", o.tag);
         }
     }
-    if (!gS.open || gS.screen != wu::Name(screen)) {
+    if (matched || !gS.open || gS.screen != wu::Name(screen)) {
         if (gS.open) {
             log::Info("world ui: {} takes over from {} (a new opening: placed and unfolded again)", wu::Name(screen), gS.screen);
             gS.published = false;  // logged as up again below
@@ -466,18 +528,22 @@ void Tick(Link const& link) {
         ++gS.opening;
         gS.screen = wu::Name(screen);
         std::uint64_t const now = GetTickCount64();
-        gUsedAtOpening = gUsed.target != nullptr && now - gUsed.ms < kUsedWithinMs ? gUsed : Used{};
+        gUsedAtOpening = wu::UseAnchor(origin) && gUsed.target != nullptr && now - gUsed.ms < kUsedWithinMs ? gUsed : Used{};
     }
     wu::State state;
     state.active = 1;
     state.screen = static_cast<std::uint8_t>(screen);
     state.opening = gS.opening;
+    state.openingRequest = matched ? gOpening.Request() : 0;
+    state.visibleScreens = visibleScreens;
     state.widthM = wu::RoomWidth(screen, settings.widthM);  // the loot keeps the stage's scale, its empty sides cut
     state.distanceM = settings.distanceM;
     state.belowM = settings.belowM;
     state.backdrop = settings.backdrop;
     bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && wu::FromTag(o.tag) == wu::Screen::MenuBrowser; });
-    if (inCockpit) {
+    if (!wu::UseAnchor(origin)) {
+        state.anchored = 0;  // explicit rail provenance: neither a remembered selection nor a handler owns this opening
+    } else if (inCockpit) {
         wu::CockpitPlacement const place = wu::InCockpit(eyesNow, *cockpitAnchor, state.widthM, settings.distanceM);
         state.anchored = 1;
         state.anchor[0] = cockpitAnchor->x;
@@ -496,8 +562,8 @@ void Tick(Link const& link) {
     }
     // On the wrist (the omni-tool, research/57): a listed screen nothing in the world owns; one a use opened (a locker's equipment)
     // stands by what was used. The bypass minigame is the omni-tool's own, so it always goes on the wrist; never in the Mako's
-    // cockpit (its screens stand at the windshield).
-    bool const onWrist = !inCockpit && wu::OnWrist(settings, screen, state.anchored != 0);
+    // cockpit (its screens stand at the windshield), except explicit rail picks, which always request the wrist.
+    bool const onWrist = (!inCockpit || railOpening) && wu::OnWrist(settings, screen, state.anchored != 0, origin);
     wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop
     state.stageCrop[0] = crop.u0;
     state.stageCrop[1] = crop.v0;
@@ -519,7 +585,7 @@ void Tick(Link const& link) {
                                                           : "isn't being played");
     }
     // The projector: the omni-tool's display as Shepard's arm shows it (last tick's pose), in the room's frame on foot.
-    if (auto const display = onWrist ? omni_tool::DisplayWorld() : std::nullopt; display && gHold.footFrame) {
+    if (auto const display = onWrist && !inCockpit ? omni_tool::DisplayWorld() : std::nullopt; display && gHold.footFrame) {
         XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{display->x, display->y, display->z});
         state.emitter[0] = p.x;
         state.emitter[1] = p.y;
@@ -554,6 +620,7 @@ void Tick(Link const& link) {
     }
     ui_world_figure::Tick(settings, screen, state);  // the equipment and squad screens' squad member behind them (research/57 section 7)
     link.setState(&state);
+    if (matched) gOpening.Cancel(0);  // synchronous matching publication released the host reservation
     gEmitterOnly = false;  // the screen's state took its place
     gS.published = true;
     gScreenUp = true;
@@ -564,7 +631,7 @@ void Tick(Link const& link) {
                                           : "the arms go back to the game");
     }
     gWristUp = onWrist;
-    view_anchor::Hold(onWrist ? gHold.footFrame : std::nullopt);
+    view_anchor::Hold(onWrist && !inCockpit ? gHold.footFrame : std::nullopt);  // rail in the Mako uses its controller, never an old on-foot frame
     SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}], "
                           "\"placement\": {}, \"inCockpit\": {}, \"heldView\": {}, \"omniTool\": {}, \"figure\": {}}}",
         gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement,
@@ -585,6 +652,7 @@ std::string StatusJson() {
 }
 
 void Shutdown(Link const& link) {
+    CancelOpening(link);
     Down(link, "the mod unloads");
     ui_world_figure::Shutdown();
 }

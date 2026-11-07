@@ -46,8 +46,9 @@ void NoteControllers(vr::controllers::State const& live);
 // HostServices v19 (any thread; the mod's tick): what the menu's Game menu or Holster button asked for, once (None:
 // nothing waiting). The mod calls the game's own function on the game thread (game/GameMenuRequest, research/28).
 vr::game_menu::Action TakeGameRequest();
+std::uint32_t TakeGameRequestValue();
 // A request from elsewhere in the host (the omni-tool's rail, research/57) through the same slot. Any thread.
-void PutGameRequest(vr::game_menu::Action action);
+void PutGameRequest(vr::game_menu::Action action, vr::game_menu::Origin origin = vr::game_menu::Origin::Menu);
 // Where the menu's documents and fonts are (ASI\menu, or [Menu] assets; ASI\fonts): the rail's document sits beside main.rml.
 std::filesystem::path AssetsFolder();
 std::filesystem::path FontsFolder();

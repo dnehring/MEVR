@@ -47,6 +47,60 @@ Screen FromTag(std::string_view tag) {
     return Screen::None;
 }
 
+bool Opening::Begin(std::uint32_t request, Screen screen, game_menu::Origin origin, std::uint64_t nowMs) {
+    if (request == 0 || screen <= Screen::None || screen >= Screen::Count) {
+        return false;
+    }
+    request_ = request;
+    screen_ = screen;
+    origin_ = origin;
+    sinceMs_ = nowMs;
+    return true;
+}
+
+bool Opening::Cancel(std::uint32_t request) {
+    if (!Pending() || (request != 0 && request != request_)) {
+        return false;
+    }
+    request_ = 0;
+    return true;
+}
+
+bool Opening::Expire(std::uint64_t nowMs) {
+    return Pending() && (nowMs < sinceMs_ || nowMs - sinceMs_ >= kTimeoutMs) && Cancel(0);
+}
+
+bool Opening::Matches(std::uint32_t request, std::uint32_t visibleScreens) const {
+    return Pending() && request == request_ && (visibleScreens & Bit(screen_)) != 0;
+}
+
+bool RailPanel(Screen screen) {
+    if (screen == FromTag("MessageBox")) return true;  // avoid Windows.h's MessageBox macro at the enum's use site
+    switch (screen) {
+    case Screen::Inventory: case Screen::XMods: case Screen::CharacterRecord: case Screen::Specialization:
+    case Screen::Journal: case Screen::Codex: case Screen::Map: case Screen::MenuBrowser: case Screen::Options:
+    case Screen::Save: case Screen::Load: case Screen::Achievement: case Screen::AdditionalContent:
+        return true;
+    default: return false;
+    }
+}
+
+bool UseAnchor(game_menu::Origin origin) {
+    return origin != game_menu::Origin::OmniRail;
+}
+
+game_menu::Origin OpeningSource::Observe(int mode, Screen base, std::uint32_t visibleScreens) {
+    if (mode != 7 || (base != Screen::None && !RailPanel(base))) {
+        Clear();
+    } else if (expected_ != Screen::None) {
+        if ((visibleScreens & Bit(expected_)) != 0) expected_ = Screen::None;
+        else if (base != Screen::None && base != Screen::MenuBrowser) Clear();
+    } else if (!RailPanel(base)) {
+        Clear();
+    }
+    return origin_;
+}
+
 char const* Name(Screen screen) {
     auto const i = static_cast<std::size_t>(screen);
     return i < kTags.size() ? kTags[i] : "None";
@@ -133,7 +187,8 @@ Rect WristCrop(Screen screen) {
     return DefaultCrop(screen);
 }
 
-bool OnWrist(Settings const& settings, Screen screen, bool anchored) {
+bool OnWrist(Settings const& settings, Screen screen, bool anchored, game_menu::Origin origin) {
+    if (!UseAnchor(origin) && RailPanel(screen)) return true;
     if ((settings.wristScreens & Bit(screen)) == 0) {
         return false;
     }

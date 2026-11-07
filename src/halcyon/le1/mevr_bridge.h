@@ -265,6 +265,10 @@ void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept;
 // one of ours is up in the GUI mode (the shop...). Halcyon then treats mode 7 as a live in-world GUI ([LIVEGUI]'s
 // liveWorldGui): no flat panel, both Draws; HalcyonOverlays stands the game's UI in the room.
 bool WorldUiActive() noexcept;
+// [MEVR] v34: separate bounded opening permission; no drawable State until classification/publication.
+unsigned WorldUiOwnership(int mode) noexcept;
+bool WorldUiHoldFrame(int mode) noexcept;
+void WorldUiPresent(bool reserved, bool flatPanel, bool held) noexcept;
 // [MEVR] A conversation in the world, first person (research/59; src/plugin/ConversationWorld.cpp, the mod's
 // game/ConversationWorld): true while the mod holds the view at Shepard's through a conversation ([Cinematics] conversations =
 // world). Halcyon then presents mode 5 as on foot (no VR cine, no 3D screen, head look on, both Draws), keeps its first-person
@@ -522,7 +526,7 @@ bool CineScreenFullRate() noexcept;
 bool FrontEndBeforeTitle() noexcept;
 // Present thread, each frame after the decision: true to show the previous frame's presentation instead of this one's plain
 // VR (plain VR after another view waits 100 ms, so a one-frame mode 0 between two other views never shows the world).
-bool HoldPlainVr(bool plainVr, int gameMode) noexcept;
+bool HoldPlainVr(bool plainVr, int gameMode, bool worldUi = false) noexcept;
 // Present thread, at submit: the screen, the last plan's crop and each eye's shown part of an image `eyeWidth` x `eyeHeight`.
 // False before any plan (then nothing is cropped).
 bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept;

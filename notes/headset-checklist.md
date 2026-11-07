@@ -142,6 +142,14 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   marks and observed returns should cancel; Shepard stays kept. Check locomotion/gestures, turns, collision/timeout, no drawn
   jumps, and no stale velocity or AI move on disable/end. Native returns exactly at the already-kept place cannot be detected
   by position sampling alone. Still off by default; NOT yet checked in the game. (research/59 "Walking to marks (prototype)")
+- [ ] Rail handoff and provenance (2026-11-07, research/57): test touch and ray picks with identical wrist/head poses, including
+  Equipment while facing a selected useable. No large Halcyon menu quad or UI-world backdrop should appear; Equipment -> XMods
+  and Computer -> Options/Save/Load stay on the wrist, without `opened by using ...`. Genuine use-opened equipment keeps its anchor.
+  Repeat with an excluded `[WorldUi] screens` entry (Halcyon panel), world UI off, a rejected opening, backout/screen switches,
+  a load/unload, and the Mako; verify galaxy mode 9, mode 10's puzzle/d-pad, front end, movies, conversations and cinematics.
+  Arm burst snapshots before selection; inspect composed eyes and layer JSON. The heartbeat's per-Present `flat-panel frames
+  during reservation` must be 0; burst snapshots alone are not every-frame evidence. Check reservation release/cancel/timeout logs.
+  Release tooling needs `[Debug] requests = 1`; pose replay needs `[Pointer] setCursor = 0`. No runtime checks performed for this patch.
 - [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
   screen's lower buttons must not close it. (research/57 sections 2-3 and 6, built 2026-11-04/05)

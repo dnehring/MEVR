@@ -48,6 +48,7 @@ public:
 
     // Each frame, with whether this frame's decision is plain VR. True: show the previous presentation instead.
     bool Hold(bool plainVr, std::uint64_t nowMs, std::uint64_t holdMs = kHoldMs);
+    void AcceptWorldUi();  // an authorized handoff is not a transient mode blip
     // Plain VR runs that ended before the hold did (a blip never shown), for the log.
     unsigned Covered() const { return covered_; }
 

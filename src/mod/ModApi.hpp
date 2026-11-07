@@ -91,7 +91,7 @@ struct State;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 33;
+inline constexpr int kHostServicesVersion = 34;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -406,6 +406,12 @@ struct HostServices {
     // conversationWorldSize matches its sizeof(State). Any thread.
     std::uint32_t conversationWorldSize = 0;
     void (*setConversationWorld)(vr::conversation_world::State const* state) = nullptr;
+    // Version 34: explicit menu request provenance and bounded world-UI opening permission (research/57).
+    // Request value: core/vr/GameMenuRequest Encode; the old v19 callback keeps returning a bare Action.
+    std::uint32_t (*takeGameUiRequest)() = nullptr;
+    // Game thread, immediately before Show*Gui. screen = 0 cancels that request (request = 0 cancels all).
+    void (*reserveWorldUi)(std::uint32_t request, std::uint32_t screen, std::uint32_t origin) = nullptr;
+    void (*logWorldUiStats)() = nullptr;  // existing game-thread heartbeat
 };
 
 } // namespace mevr

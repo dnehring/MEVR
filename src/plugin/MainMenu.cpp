@@ -847,8 +847,10 @@ vr::game_menu::Action TakeGameRequest() {
     return gGameRequest.Take();
 }
 
-void PutGameRequest(vr::game_menu::Action action) {
-    vr::game_menu::Action const replaced = gGameRequest.Put(action);
+std::uint32_t TakeGameRequestValue() { return gGameRequest.TakeValue(); }
+
+void PutGameRequest(vr::game_menu::Action action, vr::game_menu::Origin origin) {
+    vr::game_menu::Action const replaced = gGameRequest.Put(action, origin);
     if (replaced != vr::game_menu::Action::None) {
         log::Info("main menu request: {} replaced {} not yet taken", vr::game_menu::Name(action), vr::game_menu::Name(replaced));
     }

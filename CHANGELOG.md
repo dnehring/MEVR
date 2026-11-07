@@ -7,6 +7,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- Omni-tool rail openings reserve world UI before the game's opening call, preventing the intervening flat-menu decision.
+  Rail Equipment and its related panels use the wrist even when a nearby useable was recently selected; use-opened screens keep their anchors.
 - Optional conversation walking prototype: in First person conversations, `worldWalk = 1` requests an AI walk (slide fallback),
   or `2` slides NPCs toward lasting stage marks after a wait. Off by default (`0`); not yet checked in the game.
 

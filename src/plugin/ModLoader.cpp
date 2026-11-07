@@ -34,6 +34,7 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/Voice.hpp"
+#include "plugin/WorldUi.hpp"
 #include "plugin/VoiceModel.hpp"
 #include "core/vr/Voice.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -276,15 +277,21 @@ HostServices WithGalaxyHologram(HostServices services) {
 }
 // v27: the game's screens in the room (core/vr/WorldUi, plugin/WorldUi, research/53).
 void HostSetWorldUi(vr::world_ui::State const* state) {
-    if (state != nullptr) {
-        vr::world_ui::Publish(*state);
-    } else {
-        vr::world_ui::Forget();
-    }
+    world_ui::Publish(state);
+}
+std::uint32_t HostTakeGameUiRequest() {
+#if defined(MEVR_WITH_MAIN_MENU)
+    return main_menu::TakeGameRequestValue();
+#else
+    return 0;
+#endif
 }
 HostServices WithWorldUi(HostServices services) {
     services.worldUiSize = static_cast<std::uint32_t>(sizeof(vr::world_ui::State));
     services.setWorldUi = &HostSetWorldUi;
+    services.takeGameUiRequest = &HostTakeGameUiRequest;
+    services.reserveWorldUi = &world_ui::Reserve;
+    services.logWorldUiStats = &world_ui::LogStats;
     return services;
 }
 HostServices WithGalaxyMap(HostServices services) {
@@ -385,7 +392,7 @@ void ForgetModState() {
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
     vr::mako_controls::Reset();  // no lever or stick without the mod
     vr::spectator::Reset();      // the desktop window gets Halcyon's mirror back
-    vr::world_ui::Forget();      // the game's screens go back to Halcyon's panel
+    world_ui::Forget();         // the game's screens and pending ownership go back to Halcyon's panel
     halcyon::ForgetSupportGrip();
     halcyon::ForgetHaptics();
     vignette::Forget();

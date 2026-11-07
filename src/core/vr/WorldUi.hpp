@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/vr/GameMenuRequest.hpp"
+
 #include <openxr/openxr.h>
 
 #include <cstdint>
@@ -47,6 +49,40 @@ enum class Screen : std::uint8_t {
 Screen FromTag(std::string_view tag);  // case-insensitive
 char const* Name(Screen screen);       // its library tag ("None" for None)
 inline constexpr std::uint32_t Bit(Screen screen) { return 1u << static_cast<unsigned>(screen); }
+
+// Presentation permission only: never a drawable State. No clock/platform dependency, so lifetime and matching are tested.
+class Opening {
+public:
+    static constexpr std::uint64_t kTimeoutMs = 500;
+    bool Begin(std::uint32_t request, Screen screen, game_menu::Origin origin, std::uint64_t nowMs);
+    bool Cancel(std::uint32_t request);  // 0: unload/replacement; stale cancellations cannot cancel a newer request
+    bool Expire(std::uint64_t nowMs);
+    bool Pending() const { return request_ != 0; }
+    bool Eligible(int mode) const { return Pending() && mode == 7; }
+    bool Matches(std::uint32_t request, std::uint32_t visibleScreens) const;
+    std::uint32_t Request() const { return request_; }
+    Screen Expected() const { return screen_; }
+    game_menu::Origin Source() const { return origin_; }
+private:
+    std::uint32_t request_ = 0;
+    Screen screen_ = Screen::None;
+    game_menu::Origin origin_ = game_menu::Origin::Menu;
+    std::uint64_t sinceMs_ = 0;
+};
+
+// Related personal panels retain an explicit rail opening until that GUI stretch ends. A use never inherits rail provenance.
+bool RailPanel(Screen screen);
+bool UseAnchor(game_menu::Origin origin);
+class OpeningSource {
+public:
+    void Begin(Screen expected, game_menu::Origin origin) { expected_ = expected; origin_ = origin; }
+    void Clear() { expected_ = Screen::None; origin_ = game_menu::Origin::Menu; }
+    // Classifying an empty/related stack is separate from the presentation reservation's deadline.
+    game_menu::Origin Observe(int mode, Screen base, std::uint32_t visibleScreens);
+private:
+    Screen expected_ = Screen::None;
+    game_menu::Origin origin_ = game_menu::Origin::Menu;
+};
 
 // ---- Settings ([WorldUi] in <GAME>MEVR.ini, parsed by the mod) --------------------------------------------------------
 struct Settings {
@@ -153,6 +189,8 @@ struct State {
     std::uint64_t figureTarget = 0;   // the render target (UTextureRenderTarget2D*), as the capture's probe holds it
     std::uint64_t levelWorld = 0;     // the level's UWorld (the eye renders' scene is its Scene: the host finds the field)
     std::uint64_t uiWorld = 0;        // the UI world's UWorld (BioUIWorld.m_pWorld)
+    std::uint32_t openingRequest = 0; // v34: matches the separately reserved opening, 0 for game/use openings
+    std::uint32_t visibleScreens = 0;
 };
 
 void Publish(State const& state);
@@ -187,7 +225,7 @@ Rect DefaultCrop(Screen screen);
 Rect WristCrop(Screen screen);
 // Whether a screen goes on the wrist (research/57): listed in wristScreens, and not one a use opened (`anchored`: it belongs to
 // something in the world, a locker's equipment, which keeps standing by it); the bypass minigame (the omni-tool's own) always.
-bool OnWrist(Settings const& settings, Screen screen, bool anchored);
+bool OnWrist(Settings const& settings, Screen screen, bool anchored, game_menu::Origin origin = game_menu::Origin::Menu);
 // Its width there: the bypass minigame's frame (wristWidthM) or a whole 16:9 stage (wristMenuWidthM).
 float WristWidth(Settings const& settings, Screen screen);
 // "SkillGame, Inventory, ..." (the ini's form), "none" for no bits.

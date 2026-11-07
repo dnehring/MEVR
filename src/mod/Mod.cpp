@@ -608,6 +608,7 @@ mevr::game::world_ui::Link WorldUiLink() {
     game::world_ui::Link link;
     if (gHostOwnsVr && MEVR_HOST_HAS(setWorldUi) && gHost->setWorldUi != nullptr && gHost->worldUiSize == sizeof(vr::world_ui::State)) {
         link.setState = gHost->setWorldUi;
+        if (MEVR_HOST_HAS(reserveWorldUi)) link.reserve = gHost->reserveWorldUi;
     }
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
         link.railOpen = (gHost->mainMenu() & kOmniRailOpen) != 0;  // the host's omni-tool rail (research/57)
@@ -876,7 +877,9 @@ mevr::game::game_menu_request::Link GameMenuRequestLink() {
     game::game_menu_request::Link link;
     if (gHostOwnsVr && MEVR_HOST_HAS(takeGameMenuRequest)) {
         link.take = gHost->takeGameMenuRequest;
+        if (MEVR_HOST_HAS(takeGameUiRequest) && gHost->takeGameUiRequest != nullptr) link.take = gHost->takeGameUiRequest;
     }
+    link.worldUi = WorldUiLink();
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
         link.menuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
     }
@@ -1138,6 +1141,7 @@ void Heartbeat() {
         game::squad_place::LogStats();
     game::body_scale::LogStats();
         game::conversation_world::LogStats();
+        if (MEVR_HOST_HAS(logWorldUiStats) && gHost->logWorldUiStats != nullptr) gHost->logWorldUiStats();
         game::squad_ack::LogStats();
         game::voice::LogStats();
         game::mako::LogStats();

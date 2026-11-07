@@ -39,6 +39,25 @@ struct Placed {
 };
 Placed gPlaced;  // render thread
 std::mutex gMutex;
+std::mutex gOpeningMutex;
+wu::Opening gOpening;
+bool gGuard = false;  // keep the last clean eyes until the admitted UI has actually been redirected and shown
+std::uint64_t gGuardSinceMs = 0;
+std::uint64_t gReservedPresents = 0;
+std::uint64_t gReservedFlat = 0;
+std::uint64_t gHeldPresents = 0;
+
+void ExpireOpening() {
+    wu::Screen const screen = gOpening.Expected();
+    if (gOpening.Expire(GetTickCount64())) {
+        gGuard = false;
+        log::Info("world ui: reservation timeout for {}", wu::Name(screen));
+    }
+    if (gGuard && GetTickCount64() - gGuardSinceMs >= wu::Opening::kTimeoutMs) {
+        gGuard = false;
+        log::Info("world ui: clean-eye guard timeout (UI redirection not acknowledged)");
+    }
+}
 
 constexpr float kWristSmoothS = 0.05f;  // the wrist's smoothing time constant
 constexpr float kBeamAfterS = 0.6f;     // a screen left where it was projected keeps its fan this long
@@ -64,6 +83,89 @@ void Project(Shown& shown, vr::world_ui::Panel const& panel, XrVector3f const& e
 
 bool Active() {
     return wu::Latest(kFreshMs).has_value();
+}
+
+void Reserve(std::uint32_t request, std::uint32_t screen, std::uint32_t origin) {
+    std::lock_guard<std::mutex> const lock(gOpeningMutex);
+    ExpireOpening();
+    if (screen == 0) {
+        if (gOpening.Cancel(request)) {
+            gGuard = false;
+            log::Info("world ui: reservation cancelled (request {})", request);
+        }
+        if (request == 0) gGuard = false;
+        return;
+    }
+    if (gOpening.Cancel(0)) {
+        log::Info("world ui: reservation cancelled (replaced)");
+    }
+    if (gOpening.Begin(request, static_cast<wu::Screen>(screen), static_cast<vr::game_menu::Origin>(origin), GetTickCount64())) {
+        gGuard = true;
+        gGuardSinceMs = GetTickCount64();
+        log::Info("world ui: reserved for {} ({})", wu::Name(gOpening.Expected()),
+            gOpening.Source() == vr::game_menu::Origin::OmniRail ? "rail" : "menu");
+    }
+}
+
+void Publish(wu::State const* state) {
+    std::lock_guard<std::mutex> const lock(gOpeningMutex);
+    ExpireOpening();
+    if (state != nullptr) {
+        wu::Publish(*state);
+        if (state->active != 0 && gOpening.Matches(state->openingRequest, state->visibleScreens)) {
+            log::Info("world ui: reservation released for {} (published, request {})", wu::Name(gOpening.Expected()), gOpening.Request());
+            gOpening.Cancel(0);
+            // gGuard lasts until a redirected panel was submitted, not merely until classification.
+        }
+    } else {
+        wu::Forget();  // an empty tick is not a rejected opening
+    }
+}
+
+void Forget() {
+    std::lock_guard<std::mutex> const lock(gOpeningMutex);
+    if (gOpening.Cancel(0)) log::Info("world ui: reservation cancelled (unload)");
+    gGuard = false;
+    wu::Forget();
+}
+
+unsigned Ownership(int mode) {
+    std::lock_guard<std::mutex> const lock(gOpeningMutex);
+    ExpireOpening();
+    if (gOpening.Pending() && mode != 7 && !(mode >= 0 && mode <= 4)) {
+        gOpening.Cancel(0);
+        gGuard = false;
+        log::Info("world ui: reservation cancelled (game mode {})", mode);
+    }
+    return (wu::ScreenMode(mode) && Active() ? 1u : 0u) | (gOpening.Eligible(mode) ? 2u : 0u) |
+        (gOpening.Pending() && mode >= 0 && mode <= 4 ? 4u : 0u);  // opening call hasn't changed the mode yet
+}
+
+bool HoldFrame(int mode) {
+    std::lock_guard<std::mutex> const lock(gOpeningMutex);
+    ExpireOpening();
+    return (mode == 7 || (mode >= 0 && mode <= 4)) && gGuard && (gOpening.Pending() || Active());
+}
+
+void RedirectReady(bool ready) {
+    std::lock_guard<std::mutex> const lock(gOpeningMutex);
+    if (ready && !gOpening.Pending()) gGuard = false;
+}
+
+void NotePresent(bool reserved, bool flatPanel, bool held) {
+    std::lock_guard<std::mutex> const lock(gOpeningMutex);
+    if (reserved || gOpening.Pending()) {  // include a request armed after this Present sampled its mode/ownership
+        ++gReservedPresents;
+        if (flatPanel) ++gReservedFlat;
+    }
+    if (held) ++gHeldPresents;
+}
+
+void LogStats() {
+    std::lock_guard<std::mutex> const lock(gOpeningMutex);
+    ExpireOpening();
+    log::Info("    world ui: reservation Presents {}, flat-panel frames during reservation {} (expected 0), clean-eye holds {}",
+        gReservedPresents, gReservedFlat, gHeldPresents);
 }
 
 std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, bool headValid, std::uint32_t windowWidth,
@@ -199,5 +301,9 @@ namespace MELEVR::MevrBridge {
 bool WorldUiActive() noexcept {
     return mevr::host::world_ui::Active();
 }
+
+unsigned WorldUiOwnership(int mode) noexcept { return mevr::host::world_ui::Ownership(mode); }
+bool WorldUiHoldFrame(int mode) noexcept { return mevr::host::world_ui::HoldFrame(mode); }
+void WorldUiPresent(bool reserved, bool flatPanel, bool held) noexcept { mevr::host::world_ui::NotePresent(reserved, flatPanel, held); }
 
 } // namespace MELEVR::MevrBridge

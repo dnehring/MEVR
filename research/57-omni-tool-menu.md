@@ -410,3 +410,54 @@ both ways [verify: whether the game keeps helmets on there, against the flat scr
 (host) and the world UI's `"figure"` (mod); `mevr uiworld` prints the UI world, its vtable, its queue, its camera and our capture.
 Not covered: the XMods screen, a squad of three, the cost in a heavy level (the UI world is a small scene of its own, rendered once a
 frame at 1280x720 while one of these screens is up).
+
+## 8. Rail opening handoff and request provenance (2026-11-07)
+
+The read-only investigation distinguished two faults. A rail click and a ray click share `HandlePick` and the same request
+slot; contact/release timing can change whether a Present samples the opening gap, but there is no touch-only rendering path.
+`GameMenuRequest` runs before `world_ui::Tick`: `Show*Gui` can enter mode 7 before the mod classifies/publishes the screen.
+Halcyon's next decision can select its large menu quad, then PresentationHold can retain that decision for another 100 ms.
+Separately, `gUsed` remembers a selection target, not a confirmed use. Direct rail Equipment lacks the browser wheel and can
+therefore satisfy Inventory's remembered-use heuristic, attributing the opening to an unrelated `BioUseable`.
+
+Implemented here:
+
+- [GameMenuRequest](../src/game/GameMenuRequest.cpp) arms an eligible opening on the game thread immediately before
+  `Show*Gui(true)` or `ShowMenuGui`, after function/parameter checks and the existing backout/settle sequence. Eligibility uses
+  `[WorldUi] on`, the intended screen and known opening stack (Squad/Map's browser wheel), reflected panel access and the known
+  gameplay view/cockpit. The visible-stack screens veto remains authoritative after the call. Failed calls, a rejected pause
+  menu, replacement, loss of eligibility and unload cancel; missing publication times out at 500 ms, including during a game-thread hitch.
+- [HostServices v34](../src/mod/ModApi.hpp) appends an origin-preserving request callback, a reserve/cancel callback and the
+  heartbeat callback. The v19 callback still returns a bare action for older mods; the enlarged world-UI State remains size-gated.
+  Host and mod must deploy together. A generation plus intended visible-screen bit acknowledges the opening synchronously with
+  publication. Empty/emitter-only publications cannot acknowledge or erase the separate reservation. `State.active` is never faked.
+- [Host WorldUi](../src/plugin/WorldUi.cpp) separates drawable ownership from bounded presentation permission. The small `[MEVR]`
+  seams in [xr_session](../src/halcyon/le1/xr_session.cpp) admit pending mode-7 ownership and immediately accept the authorized
+  plain-VR decision in [PresentationHold](../src/core/vr/PresentationHold.cpp). Pre-mode-change gameplay permission also prevents
+  the old flat decision surviving a backout/opening. Pending ownership does not admit mode 9 or mode 10 or override the front end,
+  movies, conversations or cinematics; the existing active mode-10 gate is unchanged.
+- The opening guard skips eye-image copies and reuses the last clean world projection and released eye images until a classified
+  panel has actually received redirected UI and been submitted. Pending UI is captured but is not drawn as the ordinary HUD panel.
+  Cached declarations are invalidated when another presentation overwrites those images. The guard is also bounded to 500 ms.
+  If no clean world image is available, it submits no world image during the guard rather than declaring an unrelated image as
+  the world; the normal path resumes on acknowledgement or timeout. This fallback and the actual first fresh render remain [verify].
+- [Origin::OmniRail](../src/core/vr/GameMenuRequest.hpp) travels atomically with the action through the slot, scheduler and backout
+  switch (including Computer's shared PauseMenu action). [OpeningSource](../src/core/vr/WorldUi.cpp) retains it across related
+  personal panels independently of the presentation timeout, and clears it when the GUI stretch ends, an unrelated screen takes
+  over, the request is rejected/replaced, or the mod unloads. The game skips both `gUsedAtOpening` and `AnchorOf` for that opening,
+  requesting Wrist/WristOnce according to `wristFollow`, including a rail pick in the Mako. Missing tracking still falls back to the
+  room. Genuine use openings keep the existing anchor and cockpit policies; `kOmniRailOpen` is not used as provenance.
+
+Logs: `world ui: reserved for Inventory (rail)` (or another intended tag), reservation released/cancelled/timeout. The existing
+heartbeat now includes cumulative `reservation Presents`, `flat-panel frames during reservation` (expected **0**) and clean-eye
+holds. The counter samples every submitted Present's actual flat-layer branch, including a reservation begun after its early
+decision; it is not inferred from pointer appearance logs or serialized burst snapshots.
+
+Offline validation: monolithic Release `MEVR-LE1` and `mevr-tests`, the test executable and SPDX check. Tests exercise expiry at
+500 ms, empty/mismatched/stale publications, stale cancellation, replacement and unload; rail origin through the request slot and
+settling; related-panel provenance and genuine-use reset; placement overriding remembered anchors; and immediate authorized
+PresentationHold acceptance with the ordinary hold retained for later transitions. MSBuild needs explicit installed SDK discovery
+properties in this sandbox, and the SPDX script uses an accessible Python interpreter because the configured user Python is denied.
+No game launch, deployment or headset validation in this run. The [headset checklist](../notes/headset-checklist.md) retains touch/ray
+comparisons, useable-facing Equipment -> XMods, Computer -> Options/Save/Load, excluded screens, rejection/timeout, and the unaffected
+presentation modes. A recorded **zero** counter plus eyes/layer inspection is still required to establish the runtime result.

@@ -5405,6 +5405,22 @@ void TestGameMenuRequest() {
     CHECK(slot.Take() == Action::Holster);
     CHECK(slot.Polled());
     CHECK(slot.Take() == Action::None);
+    CHECK(slot.Put(Action::Equipment, Origin::OmniRail) == Action::None);
+    std::uint32_t const rail = slot.TakeValue();
+    CHECK(DecodeAction(rail) == Action::Equipment && DecodeOrigin(rail) == Origin::OmniRail);
+    CHECK(slot.TakeValue() == 0);
+    CHECK(DecodeAction(0xFFFFFFFFu) == Action::None && DecodeOrigin(0xFFFFFFFFu) == Origin::Menu);
+    CHECK(DecodeOrigin(Encode(Action::PauseMenu, Origin::OmniRail)) == Origin::OmniRail);
+    CHECK(DecodeOrigin(Encode(Action::PauseMenu, Origin::Menu)) == Origin::Menu);  // Computer shares the action
+    Schedule railSchedule;
+    Take(railSchedule, DecodeAction(rail), DecodeOrigin(rail));
+    CHECK(Advance(railSchedule, false, true).run == Action::None);
+    CHECK(Advance(railSchedule, false, false).run == Action::None);
+    Step const railStep = Advance(railSchedule, false, false);
+    CHECK(railStep.run == Action::Equipment && railStep.origin == Origin::OmniRail);
+    Take(railSchedule, Action::Journal, Origin::OmniRail);
+    Take(railSchedule, Action::PauseMenu);  // a replacing main-menu request does not inherit rail origin
+    CHECK(railSchedule.origin == Origin::Menu);
     // Nothing taken: nothing runs.
     Schedule s;
     Step st = Advance(s, false, false);
@@ -7431,6 +7447,16 @@ void TestTransitionFade() {
 }
 
 void TestPresentationHold() {
+    {
+        mevr::vr::presentation::VrEntry entry;
+        CHECK(!entry.Hold(false, 100));
+        CHECK(entry.Hold(true, 101));  // ordinarily retains the flat decision for 100 ms
+        entry.AcceptWorldUi();
+        CHECK(!entry.Hold(true, 102));  // pending or active authorized world UI is accepted on this very Present
+        CHECK(!entry.Hold(true, 103) && entry.Covered() == 0);
+        CHECK(!entry.Hold(false, 104));
+        CHECK(entry.Hold(true, 105));   // later ordinary transitions still have their normal hold
+    }
     namespace pr = mevr::vr::presentation;
     {   // The front end: start-up's unreadable byte, the title, its camera flight, the menu's load, gameplay, an in-game load.
         pr::FrontEnd f;
@@ -7701,6 +7727,62 @@ void TestOmniRail() {
 }
 
 void TestWorldUi() {
+    {
+        using namespace mevr::vr::world_ui;
+        using Origin = mevr::vr::game_menu::Origin;
+        Opening opening;
+        CHECK(!opening.Pending() && !opening.Eligible(7));
+        CHECK(!opening.Begin(0, Screen::Inventory, Origin::OmniRail, 100));
+        CHECK(!opening.Begin(1, Screen::None, Origin::OmniRail, 100));
+        CHECK(opening.Begin(1, Screen::Inventory, Origin::OmniRail, 100));
+        CHECK(opening.Pending() && opening.Eligible(7));
+        CHECK(!opening.Eligible(0) && !opening.Eligible(9) && !opening.Eligible(10) && !opening.Eligible(5));
+        CHECK(!opening.Matches(1, 0));  // no panels yet: permission survives, no fake active screen
+        CHECK(!opening.Matches(2, Bit(Screen::Inventory)));  // stale publication
+        CHECK(!opening.Matches(1, Bit(Screen::Journal)));    // unrelated publication
+        CHECK(!opening.Cancel(2) && opening.Pending());     // stale cancellation
+        CHECK(!opening.Expire(599) && opening.Pending());
+        CHECK(opening.Matches(1, Bit(Screen::Inventory) | Bit(Screen::XMods)));
+        CHECK(opening.Cancel(1) && !opening.Pending());      // matching synchronous publication releases
+        CHECK(opening.Begin(2, Screen::Journal, Origin::Menu, 1000));
+        CHECK(opening.Begin(3, Screen::Map, Origin::OmniRail, 1100)); // replacement starts a fresh deadline
+        CHECK(!opening.Cancel(2) && !opening.Expire(1599));
+        CHECK(opening.Expire(1600) && !opening.Pending());
+        CHECK(opening.Begin(4, Screen::MenuBrowser, Origin::Menu, 2000));
+        CHECK(opening.Cancel(0) && !opening.Pending());  // failure/rejection/unload
+        CHECK(opening.Begin(5, Screen::Codex, Origin::Menu, 2000));
+        CHECK(opening.Expire(1999));  // a backwards clock also fails closed
+
+        Settings settings;
+        CHECK(UseAnchor(Origin::Menu) && !UseAnchor(Origin::OmniRail));
+        CHECK(!OnWrist(settings, Screen::Inventory, true, Origin::Menu));  // genuine locker equipment retains its anchor
+        CHECK(OnWrist(settings, Screen::Inventory, true, Origin::OmniRail));
+        settings.wristScreens = 0;  // explicit rail placement wins over the remembered-use heuristic and wrist preference
+        for (Screen screen : {Screen::Inventory, Screen::XMods, Screen::MenuBrowser, Screen::Options, Screen::Save, Screen::Load}) {
+            CHECK(RailPanel(screen) && OnWrist(settings, screen, true, Origin::OmniRail));
+        }
+        CHECK(!RailPanel(Screen::Shop) && !RailPanel(Screen::Loot) && !RailPanel(Screen::SkillGame));
+        CHECK(!OnWrist(settings, Screen::Shop, true, Origin::Menu));
+        OpeningSource source;
+        source.Begin(Screen::Inventory, Origin::OmniRail);
+        CHECK(source.Observe(7, Screen::None, 0) == Origin::OmniRail);  // empty classification, even after reservation timeout
+        CHECK(source.Observe(7, Screen::Inventory, Bit(Screen::Inventory)) == Origin::OmniRail);
+        CHECK(source.Observe(7, Screen::XMods, Bit(Screen::XMods)) == Origin::OmniRail);
+        CHECK(source.Observe(0, Screen::None, 0) == Origin::Menu);  // GUI stretch ended: a genuine use does not inherit it
+        CHECK(source.Observe(7, Screen::Inventory, Bit(Screen::Inventory)) == Origin::Menu);
+        source.Begin(Screen::MenuBrowser, Origin::OmniRail);
+        CHECK(source.Observe(7, Screen::MenuBrowser, Bit(Screen::MenuBrowser)) == Origin::OmniRail);
+        for (Screen screen : {Screen::Options, Screen::Save, Screen::Load}) {
+            CHECK(source.Observe(7, screen, Bit(screen)) == Origin::OmniRail);
+        }
+        CHECK(source.Observe(7, Screen::None, 0) == Origin::Menu);  // no related panels remain
+        source.Begin(Screen::Inventory, Origin::OmniRail);
+        CHECK(source.Observe(7, Screen::Shop, Bit(Screen::Shop)) == Origin::Menu);  // mismatched screen, its real owner wins
+        source.Begin(Screen::Map, Origin::OmniRail);
+        CHECK(source.Observe(7, Screen::MenuBrowser, Bit(Screen::MenuBrowser)) == Origin::OmniRail);  // intermediate base
+        source.Clear();  // rejection/unload
+        CHECK(source.Observe(7, Screen::Map, Bit(Screen::Map)) == Origin::Menu);
+    }
     namespace wu = mevr::vr::world_ui;
     // The tags (the game's GUI library), either case.
     CHECK(wu::FromTag("shop") == wu::Screen::Shop && wu::FromTag("SHOP") == wu::Screen::Shop);

@@ -85,7 +85,8 @@ bool FrontEndOnScreen() noexcept {
     return gFrontEnd.Starting() && mevr::host::cine_screen::FrontEndWanted();
 }
 
-bool HoldPlainVr(bool plainVr, int gameMode) noexcept {
+bool HoldPlainVr(bool plainVr, int gameMode, bool worldUi) noexcept {
+    if (plainVr && worldUi) gVrEntry.AcceptWorldUi();
     unsigned const coveredBefore = gVrEntry.Covered();
     bool const hold = gVrEntry.Hold(plainVr, GetTickCount64());
     if (hold) {

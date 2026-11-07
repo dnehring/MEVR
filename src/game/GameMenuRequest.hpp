@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "game/WorldUi.hpp"
+
 #include <cstdint>
 #include <string>
 
@@ -18,6 +20,7 @@ namespace mevr::game::game_menu_request {
 struct Link {
     std::uint32_t (*take)() = nullptr;  // HostServices::takeGameMenuRequest (v19); null: an older host (nothing to take)
     bool menuOpen = false;              // HostServices::mainMenu has kMainMenuOpen
+    world_ui::Link worldUi;
 };
 
 void Tick(Link const& link);

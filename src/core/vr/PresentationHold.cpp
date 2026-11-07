@@ -25,6 +25,12 @@ bool FrontEnd::Update(int gameMode) {
     return starting_ || lastOther_ == 7;
 }
 
+void VrEntry::AcceptWorldUi() {
+    have_ = true;
+    shownPlain_ = true;
+    waiting_ = false;
+}
+
 bool VrEntry::Hold(bool plainVr, std::uint64_t nowMs, std::uint64_t holdMs) {
     if (!plainVr) {
         if (waiting_) {

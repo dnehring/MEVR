@@ -658,7 +658,7 @@ void HandlePick(std::optional<wu::Screen> screen) {
     if (*entry == rail::Entry::Close) {
         gOpen.store(false, std::memory_order_relaxed);
         if (screen) {
-            main_menu::PutGameRequest(gm::Action::CloseScreens);
+            main_menu::PutGameRequest(gm::Action::CloseScreens, gm::Origin::OmniRail);
         }
         g.last = "close";
         log::Info("omni-tool rail: Close{}", screen ? ": the game's screens close" : "");
@@ -669,7 +669,7 @@ void HandlePick(std::optional<wu::Screen> screen) {
         return;
     }
     gOpen.store(true, std::memory_order_relaxed);  // stays when the screen it opens goes again
-    main_menu::PutGameRequest(info.action);
+    main_menu::PutGameRequest(info.action, gm::Origin::OmniRail);
     g.last = info.id;
     log::Info("omni-tool rail: {} picked: {} asked of the mod", info.label, gm::Name(info.action));
 }
@@ -735,7 +735,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         if (visibleBefore) {
             gOpen.store(false, std::memory_order_relaxed);
             if (screen) {
-                main_menu::PutGameRequest(gm::Action::CloseScreens);
+                main_menu::PutGameRequest(gm::Action::CloseScreens, gm::Origin::OmniRail);
             }
             log::Info("omni-tool rail: the wrist tapped: closed{}", screen ? " with the game's screen" : "");
         } else {
