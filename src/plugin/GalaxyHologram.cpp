@@ -353,6 +353,12 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         Down(!scene ? "the mod sends no map" : !modeOk ? "not the galaxy map" : "a menu is open");
         return nullptr;
     }
+    if (inWorld && scene->onFoot == 0 && frame.gameMode != 9) {
+        // Opening/closing holds only the CIC view. Do not allocate/draw our fallback
+        // hologram when the map window stops (research/51 section 8.2).
+        Down("the map's camera transition");
+        return nullptr;
+    }
     std::uint64_t const now = GetTickCount64();
     gh::TableSettings settings;
     settings.distanceM = scene->tableDistanceM;

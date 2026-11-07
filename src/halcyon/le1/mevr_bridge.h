@@ -87,6 +87,9 @@ bool CockpitLook() noexcept;
 // Render thread (draw hooks): UI draws go to the HUD panel. Armed by OverlayLayers for the frame
 // after a head-tracked world frame, while the panel is on.
 bool HudPanelArmed() noexcept;
+// The galaxy window's Flash draws may precede the eye-copy boundary. Its panel
+// owns those backbuffer draws independently of the stereo mirror (research/51).
+bool HudPanelCapturesEarlyUi() noexcept;
 
 // Present thread, when the XR session stops, is lost or exits (Halcyon's event poll; RunFrame no longer runs):
 // the HUD panel disarmed, so the game's UI draws go back to the frame for the monitor.
@@ -104,7 +107,7 @@ ID3D11RenderTargetView* HudPanelTarget(ID3D11DeviceContext* context, unsigned wi
 ID3D11BlendState* HudPanelBlend(ID3D11DeviceContext* context, ID3D11BlendState* game) noexcept;
 
 // Counts one UI draw that went to the panel (OverlayLayers logs and resets the count).
-void NoteHudPanelDraw() noexcept;
+void NoteHudPanelDraw(bool beforeEyeCopy, bool textBatch) noexcept;
 
 // Scaleform's other blend modes (multiply, screen, add...: blended, not "over", with Scaleform's
 // DEST_ALPHA alpha factor) go to the panel too, so no part of the UI stays in the eyes (the doubled

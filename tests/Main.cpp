@@ -8094,6 +8094,26 @@ void TestGalaxyHologram() {
 
 void TestGalaxyMap() {
     namespace gm = mevr::vr::galaxy_map;
+    // The observed exit sequence must never release/reacquire the CIC view in its middle.
+    gm::ClosingHold close;
+    CHECK(!close.Update(9, true, 1000));
+    CHECK(close.Update(0, true, 1010));
+    CHECK(close.Update(0, true, 1020));
+    CHECK(close.Update(6, true, 1030));
+    CHECK(close.Update(6, true, 1400));
+    CHECK(!close.Update(0, true, 1410));
+    CHECK(!close.Update(6, false, 1420));  // an unrelated cinematic cannot reacquire it
+    CHECK(!close.Update(9, true, 2000));
+    CHECK(close.Update(0, true, 2010));
+    CHECK(!close.Update(0, true, 2160));  // no closing cinematic: bounded bridge
+    CHECK(!close.Update(9, true, 3000));
+    CHECK(close.Update(6, true, 3010));  // direct 9 -> 6 also works
+    CHECK(!close.Update(6, true, 6010));  // stuck cinematic: bounded hold
+    CHECK(!close.Update(9, true, 7000));
+    CHECK(!close.Update(7, true, 7010));  // menus/load transitions never get the hold
+    CHECK(!close.Update(0, false, 7020));
+    CHECK(!close.Update(9, false, 8000));
+    CHECK(!close.Update(0, false, 8010)); // a flat map owns no CIC view
     // The scale: a map centre 50,000 units ahead of its camera shown 0.9 m ahead.
     CHECK(gm::UnitsPerMeter(50000.0f, 0.9f).has_value() && NearD(*gm::UnitsPerMeter(50000.0f, 0.9f), 50000.0 / 0.9, 1e-1));
     CHECK(!gm::UnitsPerMeter(0.0f, 0.9f) && !gm::UnitsPerMeter(-5.0f, 0.9f) && !gm::UnitsPerMeter(100.0f, 0.0f));

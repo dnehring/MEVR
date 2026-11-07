@@ -32,6 +32,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/FrameProbe.hpp"
+#include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/MakoControls.hpp"
 #include "core/vr/InteractLabel.hpp"
@@ -127,13 +128,52 @@ struct PanelTexture {
 };
 PanelTexture gPanel;
 std::atomic<bool> gArmed{false};
+std::atomic<bool> gGalaxyEarlyUi{false};
 std::atomic<unsigned> gPanelDraws{0};
+std::atomic<unsigned> gPanelTextDraws{0};
+std::atomic<unsigned> gPanelEarlyDraws{0};
+std::atomic<unsigned> gPanelEarlyTextDraws{0};
 std::atomic<unsigned> gPanelDrawsLastFrame{0};
 std::atomic<unsigned> gTintDraws{0};
 std::atomic<bool> gPanelIsFloat{false};
 bool gPanelNeedsClear = false;
 bool gTintDirty = false;  // Present thread: the tint texture has draws in it (cleared to white with the panel)
 bool gLoggedTint = false;
+
+// Non-indexed Scaleform batches are the text/glyph proxy, not a pixel visibility test.
+// Cumulative per opening: zero-text runs catch missing frames even between periodic log lines.
+struct GalaxyUiStats {
+    std::uint64_t frames = 0, noUi = 0, noText = 0, earlyFrames = 0, earlyUi = 0, earlyText = 0;
+    unsigned noTextRun = 0, maxNoTextRun = 0, minDraws = ~0u, maxDraws = 0;
+    std::uint64_t lastLogMs = 0;
+};
+GalaxyUiStats gGalaxyUiStats;
+
+void NoteGalaxyUi(bool window, unsigned draws, unsigned text, unsigned early, unsigned earlyText,
+                  bool armed, bool shown, std::uint64_t now) {
+    auto& s = gGalaxyUiStats;
+    if (window) {
+        if (s.frames == 0) s.lastLogMs = now;
+        ++s.frames;
+        s.noUi += draws == 0 ? 1u : 0u;
+        s.noText += text == 0 ? 1u : 0u;
+        s.noTextRun = text == 0 ? s.noTextRun + 1 : 0;
+        s.maxNoTextRun = std::max(s.maxNoTextRun, s.noTextRun);
+        s.minDraws = std::min(s.minDraws, draws);
+        s.maxDraws = std::max(s.maxDraws, draws);
+        s.earlyFrames += early != 0 ? 1u : 0u;
+        s.earlyUi += early;
+        s.earlyText += earlyText;
+    }
+    if (s.frames != 0 && (!window || now - s.lastLogMs >= 5000)) {
+        mevr::log::Info("galaxy UI: {} frames, {} with UI / {} without, {} with text / {} without (longest gap {}); "
+                       "UI draws min/max {}/{}; before eye copy: {} frames, {} UI / {} text draws; armed {} shown {}{}",
+            s.frames, s.frames - s.noUi, s.noUi, s.frames - s.noText, s.noText, s.maxNoTextRun,
+            s.minDraws, s.maxDraws, s.earlyFrames, s.earlyUi, s.earlyText, armed, shown, window ? "" : "; window ended");
+        s.lastLogMs = now;
+    }
+    if (!window) s = GalaxyUiStats{};
+}
 
 struct BlendEntry {
     ID3D11BlendState* game = nullptr;  // AddRef'd, so the address can't be reused for another state
@@ -1402,8 +1442,13 @@ bool HudPanelArmed() noexcept {
     return gArmed.load(std::memory_order_acquire);
 }
 
+bool HudPanelCapturesEarlyUi() noexcept {
+    return gGalaxyEarlyUi.load(std::memory_order_acquire);
+}
+
 void OnSessionStopped() noexcept {
     gArmed.store(false, std::memory_order_release);  // no OverlayLayers runs now to disarm it: the UI back to the frame
+    gGalaxyEarlyUi.store(false, std::memory_order_release);
 }
 
 ID3D11RenderTargetView* HudPanelTarget(ID3D11DeviceContext* context, unsigned width, unsigned height, int format) noexcept {
@@ -1491,8 +1536,13 @@ ID3D11BlendState* HudPanelBlend(ID3D11DeviceContext* context, ID3D11BlendState* 
     return gBlends.back().ours.Get();
 }
 
-void NoteHudPanelDraw() noexcept {
+void NoteHudPanelDraw(bool beforeEyeCopy, bool textBatch) noexcept {
     gPanelDraws.fetch_add(1, std::memory_order_relaxed);
+    if (textBatch) gPanelTextDraws.fetch_add(1, std::memory_order_relaxed);
+    if (beforeEyeCopy) {
+        gPanelEarlyDraws.fetch_add(1, std::memory_order_relaxed);
+        if (textBatch) gPanelEarlyTextDraws.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 void HudPanelTintBlends(ID3D11DeviceContext* context, ID3D11BlendState* game, ID3D11BlendState** colour,
@@ -1646,6 +1696,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     ID3D11DeviceContext* const context = frame.context;
     if (context == nullptr || frame.session == nullptr) {
         gArmed.store(false, std::memory_order_release);
+        gGalaxyEarlyUi.store(false, std::memory_order_release);
         return 0;
     }
     ComPtr<ID3D11Device> device;
@@ -1683,6 +1734,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // The galaxy map open in the CIC (research/51 section 8): the game's UI (its own map hidden, so its travel question) goes to
     // the panel too, which then stands over the hologram's table instead of in front of the body.
     bool const galaxyUi = gLastGameMode == 9 && mevr::host::galaxy_hologram::InWorld();
+    auto const galaxyScene = mevr::vr::galaxy_holo::Latest(500);
+    bool const galaxyWindowUi = galaxyUi && galaxyScene && galaxyScene->windowOn != 0;
     // One of the game's screens standing in the room (research/53: the shop...): its UI goes to the panel, placed where it opened.
     bool const worldUi = mevr::vr::world_ui::ScreenMode(gLastGameMode) && mevr::host::world_ui::Active();
     bool const worldUiPending = (mevr::host::world_ui::Ownership(gLastGameMode) & 6u) != 0;
@@ -1702,6 +1755,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
 
     unsigned count = 0;
     unsigned const draws = gPanelDraws.exchange(0, std::memory_order_relaxed);
+    unsigned const textDraws = gPanelTextDraws.exchange(0, std::memory_order_relaxed);
+    unsigned const earlyDraws = gPanelEarlyDraws.exchange(0, std::memory_order_relaxed);
+    unsigned const earlyTextDraws = gPanelEarlyTextDraws.exchange(0, std::memory_order_relaxed);
 
     // ---- HUD panel ----
     overlay::PanelSettings settings;
@@ -2166,6 +2222,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gPanelNeedsClear = true;
     }
     gArmed.store(armNext, std::memory_order_release);
+    NoteGalaxyUi(galaxyWindowUi, draws, textDraws, earlyDraws, earlyTextDraws,
+        gGalaxyEarlyUi.load(std::memory_order_relaxed), panelShown, now);
+    gGalaxyEarlyUi.store(armNext && galaxyWindowUi, std::memory_order_release);
 
     // ---- The gun's sight (plugin/SightLayers): a red dot or holo reticle, or a scope's picture ----
     // Worked out before the ring reticle, which hides while an eye looks through the sight (held 0.3 s so

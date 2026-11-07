@@ -222,3 +222,47 @@ level's nebula, axes and rings come out as the game draws them, in stereo; the c
 - Open: the game's travel box ignores the pointer's click in this mode while the console's identical press answers it [verify];
   the galaxy level (whether its picture is Flash or scene in the window) and going back out a level; the on-foot hologram is
   still ours (the plan: the game's projector hologram as the visual, our picks on it).
+
+### 8.2 Label flicker and the exit transition (2026-11-07, patch awaiting headset verification)
+
+Owner: Quest 3, map opened at the CIC console; name tags flicker and exit stutters after the placement change.
+Read the `2026-11-07_04-36-52-340` and `04-36-54-201` snapshot JSONs, HUD/window/left-eye PNGs. Both have labels in the HUD,
+identical quad poses, crops and sizes (window 3.00892 x 3.36591 m; UI 3.06012 x 3.36697 m), and window-left/right then HUD
+in submission order. **No evidence of alternating placement/crop/backdrop.** These are two samples, not a frame trace.
+The quads have no shared depth attachment and UI submits last (`HalcyonOverlays::OverlayLayers`); coplanarity is not
+a depth fight here. No geometry, crop, alpha, backdrop or windowScale change in this patch.
+
+**Likely flicker mechanism, not yet proven by per-frame telemetry:** `d3d_capture::MevrHudPanelDraw` required
+`SfrUiMirrorArmed` (capture armed AND pass 0 already copied). This is the eye-mirroring boundary, not UI ownership.
+One Draw replays at scene finish (`RenderLevers::FinishHook`), while the engine draws Flash once; early Flash batches
+fail the panel gate and stay in the eye target. The panel is cleared each Present, so missing batches cannot persist.
+The patch admits early backbuffer UI only while the galaxy window's panel is armed; size/viewport/blend/stencil
+classification remains, other render targets and other modes keep the old boundary. UI cannot be missed merely
+because it preceded the eye copy, including during a fallback to Halcyon's second Draw. Captures render inside the
+scene render, before the Present-thread panel/window blits; changing their submission order would not recover a lost draw.
+
+**Exit defect confirmed by current logs (a later session than the snapshots):** LE1MEVR.log at 04:43:05.252 releases
+the hold; .254 pauses the window, shows the projector and drops the scene; .269 reacquires the hold and hides the projector;
+.274 places the table at (-2.78, 64.16, 29.05) m. MELEVR_Log.txt has mode 0 at .250, mode 6 at .272 and mode 0 at .659.
+The intervening unheld tick permits camera/anchor resampling from the map's outgoing camera. Presentation also changes
+from stereo mode 2 to the symmetric mode 1 at .296, back to mode 2 at .791. The previous host log additionally shows
+fallback hologram swapchains being remade immediately after a window pause (04:41:22.878).
+`ClosingHold` now bridges the initial mode 0 for at most 150 ms, holds mode 6 for at most 3 s, and releases on the final 0
+(or another mode). Pause both captures as soon as mode 9 ends; `Rig::SetEnabled(false)` flushes its pending reattach
+without waiting for a future Point. The host suppresses fallback hologram drawing/allocation during the transition.
+No GPU/CPU trace of the individual exit frames was provided: residual stalls and the capture-disable cost remain **[verify]**.
+
+**Diagnostic:** `galaxy UI:` every 5 s and on window exit, cumulative per opening: frames with/without redirected UI,
+frames with/without non-indexed text batches and longest text gap, min/max draw count, and frames/UI/text draws captured
+before the eye copy (these would have failed the old gate). Non-indexed batches are a glyph proxy, not proof that a
+particular name passed stencil or was visible. Warm stable-map gaps are suspicious; opening/zoom/closing can differ.
+If flicker persists with steady counts and zero early text, the eye-copy hypothesis is insufficient; inspect shader/stencil
+coverage next, rather than moving the labels. Existing logs contain no per-frame label counts to decide this retrospectively.
+
+Validation: added exit-sequence, direct-close, timeout, unrelated-mode and flat-map cases to `TestGalaxyMap`.
+Ran that function with the core implementation in an isolated MSVC C++20 harness: passed under `/W4 /WX /permissive-`.
+Syntax-checked the four changed game/host translation units under those warnings and the monolithic LE1 definitions;
+the changed Halcyon translation unit passed its upstream warning setting. `git diff --check` passed.
+Full builds, deployment and headset acceptance are left to the owner. In headset: hold still, pan and zoom through
+galaxy/cluster/system, check names remain attached in both eyes, open/cancel Travel, then close/reopen repeatedly.
+Expect one window pause, one final hold release, no reacquisition or fallback swapchain recreation during closing.

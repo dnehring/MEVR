@@ -4507,9 +4507,13 @@ void SfrMirrorUiDrawIntoPass0(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexce
 // the panel, their effect on what's behind into the panel's tint texture (HudPanelTintBlends).
 // Returns false (draw untouched) for anything else. Render thread, immediate context only.
 template <typename DrawThunk>
-bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
+bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw, bool textBatch = false) noexcept
 {
-    if (!MELEVR::MevrBridge::HudPanelArmed() || !SfrUiMirrorArmed() || ctx != g_gameContext) return false;
+    // [MEVR] research/51: the galaxy UI panel is independent of the left-eye copy.
+    // With one Draw (or its fallback), gating Flash on that copy loses early batches.
+    const bool eyeCopied = SfrUiMirrorArmed();
+    if (!MELEVR::MevrBridge::HudPanelArmed() || ctx != g_gameContext ||
+        (!eyeCopied && !MELEVR::MevrBridge::HudPanelCapturesEarlyUi())) return false;
     const UINT bbW = g_sceneRenderW.load(std::memory_order_acquire);
     const UINT bbH = g_sceneRenderH.load(std::memory_order_acquire);
     if (bbW == 0 || bbH == 0) return false;
@@ -4591,6 +4595,8 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
                 " fmt=" + std::to_string(static_cast<int>(td.Format)) + ")");
     }
     if (!sceneSized || !(isBackbuffer || ldrFrame)) return false;
+    // [MEVR] Early capture only owns the actual backbuffer, never an LDR scene/capture target.
+    if (!eyeCopied && !isBackbuffer) return false;
 
     ID3D11BlendState* gameBlend = nullptr;
     float blendFactor[4] = {};
@@ -4677,7 +4683,7 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw) noexcept
     }
     if (savedDsv != nullptr) savedDsv->Release();
     if (gameBlend != nullptr) gameBlend->Release();
-    MELEVR::MevrBridge::NoteHudPanelDraw();
+    MELEVR::MevrBridge::NoteHudPanelDraw(!eyeCopied, textBatch);
     return true;
 }
 
@@ -5575,7 +5581,7 @@ void STDMETHODCALLTYPE DrawHook(ID3D11DeviceContext* context, UINT vertexCount, 
         }
     }
     // [MEVR] body-locked HUD: the UI draw goes into the HUD panel instead of the frame (both eyes).
-    if (MevrHudPanelDraw(context, [&] { original(context, vertexCount, startVertexLocation); })) return;
+    if (MevrHudPanelDraw(context, [&] { original(context, vertexCount, startVertexLocation); }, true)) return;
     // [SFR-UI] Stereo 2: mirror non-indexed UI draws (Scaleform TEXT glyphs) into the left-eye pass.
     if (SfrUiMirrorArmed())
     {

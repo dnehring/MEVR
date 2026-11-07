@@ -19,6 +19,35 @@
 // game's own mouse. This file: engine-agnostic and unit-tested (tests/Main.cpp TestGalaxyMap).
 namespace mevr::vr::galaxy_map {
 
+// Closing the map is 9 -> 0 -> 6 -> 0. Keep the CIC view across the brief first 0,
+// but release at the final 0; bound both waits if the cinematic never starts/ends.
+class ClosingHold {
+public:
+    bool Update(int mode, bool held, std::uint64_t nowMs) {
+        if (lastMode_ == 9 && mode != 9 && held) {
+            bridgeUntil_ = nowMs + 150;
+            cineUntil_ = nowMs + 3000;
+            sawCine_ = false;
+        }
+        lastMode_ = mode;
+        if (mode == 6 && nowMs < cineUntil_) {
+            sawCine_ = true;
+            return true;
+        }
+        if (mode == 0 && !sawCine_ && nowMs < bridgeUntil_) {
+            return true;
+        }
+        bridgeUntil_ = cineUntil_ = 0;
+        return false;
+    }
+
+private:
+    int lastMode_ = -1;
+    bool sawCine_ = false;
+    std::uint64_t bridgeUntil_ = 0;
+    std::uint64_t cineUntil_ = 0;
+};
+
 // ---- Settings ([Galaxy] in <GAME>MEVR.ini, parsed by the mod) -------------------------------------------------------
 struct Settings {
     bool hologram = true;     // hologram: our own hologram of the map (core/vr/GalaxyHologram, research/51 section 8) on a table

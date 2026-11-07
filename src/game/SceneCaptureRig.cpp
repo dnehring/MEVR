@@ -277,7 +277,9 @@ bool Rig::SetEnabled(bool on) {
     enabled_ = on;
     enabledTicks_ = 0;
     reattach_ = true;
-    return true;
+    // No Point follows a disable. Send the changed component to the renderer now,
+    // rather than leaving its old capture probe alive until the next opening.
+    return on || Flush();
 }
 
 bool Rig::SetFov(float fovDeg) {

@@ -149,8 +149,7 @@ struct Hold {
     std::uint64_t cameraTicks = 0;
     std::uint64_t lastHideMs = 0;
     int hides = 0;
-    std::uint64_t closingUntilMs = 0;  // the map's closing cutscene, held too (the view stays the CIC's)
-    std::uint8_t lastMode = 255;
+    vr::galaxy_map::ClosingHold closing;
 };
 Hold gHold;
 
@@ -1210,13 +1209,13 @@ void Tick(Link const& link) {
     // In the CIC the view stays Shepard's while the map is open, through the opening a pick on foot started, and through the
     // closing cutscene after it (both are the game's camera flying between the CIC and the map's scene).
     std::uint8_t const modeNow = mode ? *mode : 255;
-    if (gHold.active && gHold.lastMode == kGalaxyMode && modeNow != kGalaxyMode) {
-        gHold.closingUntilMs = now + 3000;
-    }
-    gHold.lastMode = modeNow;
+    bool const closing = gHold.closing.Update(modeNow, gHold.active, now);
     bool const used = gConsole.usedMs != 0 && now - gConsole.usedMs < 4000;  // the console's use (A, or our pick) opens the map
-    bool const opening = ((gOpen.pending || used) && modeNow == 6) || (modeNow == 6 && now < gHold.closingUntilMs);
-    bool const holding = inWorld && gHold.haveView && mode && (*mode == kGalaxyMode || opening);
+    bool const opening = (gOpen.pending || used) && modeNow == 6;
+    bool const holding = inWorld && gHold.haveView && mode && (*mode == kGalaxyMode || opening || closing);
+    if (modeNow != kGalaxyMode) {
+        PauseWindow();  // stop both captures once, even while the CIC view remains held through closing
+    }
     if (holding != gHold.active) {
         gRenderHold.on = false;  // the camera handler gives the fields again while holding
         gHold.active = holding;
@@ -1232,7 +1231,7 @@ void Tick(Link const& link) {
     if (holding && mode && *mode == kGalaxyMode && !gWindow.on) {
         HideFlashMap();
     }
-    if (link.setScene == nullptr || !settings.hologram || !mode || (*mode != kGalaxyMode && !(inWorld && (*mode == 0 || opening)))) {
+    if (link.setScene == nullptr || !settings.hologram || !mode || (*mode != kGalaxyMode && !(inWorld && (*mode == 0 || opening || closing)))) {
         Forget(link, !settings.hologram ? "[Galaxy] hologram = 0" : "the map closed");
         return;
     }
