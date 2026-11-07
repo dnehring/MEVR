@@ -704,6 +704,7 @@ void Tick(float deltaSeconds, Link const& link) {
         out.width = static_cast<std::uint32_t>(gSizeX.Read<std::int32_t>(gState.target).value_or(gState.width));
         out.height = static_cast<std::uint32_t>(gSizeY.Read<std::int32_t>(gState.target).value_or(gState.height));
         out.resource = gResource.Read<std::uint64_t>(gState.target).value_or(0);
+        out.target = reinterpret_cast<std::uint64_t>(gState.target);
         out.generation = gState.generation;
         out.enabledTicks = gState.enabledTicks;
         out.tanHalfX = sp::TanHalfX(gState.fovDeg);

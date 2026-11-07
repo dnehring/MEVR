@@ -5,6 +5,7 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/vr/ScopeCapture.hpp"
+#include "core/vr/Spectator.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "plugin/ScopeCaptureSource.hpp"
 
@@ -85,9 +86,24 @@ tCaptureUmbraCamera* gCaptureUmbraCameraOrig = nullptr;
 std::atomic<std::uint64_t> gUmbraSkips{0};
 std::atomic<bool> gLoggedUmbraSkip{false};
 
+std::atomic<std::uint64_t> gSpectatorUmbraSkips{0};
+std::atomic<bool> gLoggedSpectatorSkip{false};
+
 void CaptureUmbraCameraHook(void* captureInfo, void* umbra, void* family) {
     std::uint64_t const ours = OurTarget();
-    if (ours != 0 && ProbeTarget(captureInfo) == ours) {
+    std::uint64_t const probeTarget = (ours != 0 || vr::spectator::Latest(kFreshMs).target != 0) ? ProbeTarget(captureInfo) : 0;
+    // The spectator's capture (research/49, 2026-11-07): Umbra's query pipeline runs across consecutive resolves, so a capture
+    // from another place fed the eyes' next resolve its visibility. With the head camera in the room during a cutscene, the
+    // cutscene lost whole meshes (Chakwas's hair, one eye's mesh in the conduit scene). Without a query of its own the probe
+    // renders it without Umbra (frustum culling only) and leaves Umbra's pipeline to the eyes.
+    if (std::uint64_t const spectator = vr::spectator::Latest(kFreshMs).target; spectator != 0 && probeTarget == spectator) {
+        gSpectatorUmbraSkips.fetch_add(1, std::memory_order_relaxed);
+        if (!gLoggedSpectatorSkip.exchange(true)) {
+            log::Info("ui world figure: the spectator's capture gets no Umbra camera query (its visibility stays out of the eyes')");
+        }
+        return;
+    }
+    if (ours != 0 && probeTarget == ours) {
         gUmbraSkips.fetch_add(1, std::memory_order_relaxed);
         if (!gLoggedUmbraSkip.exchange(true)) {
             log::Info("ui world figure: our capture gets no Umbra camera query (it renders the UI world, which Umbra doesn't know)");

@@ -99,6 +99,8 @@ struct Frame {
     std::uint32_t flags = 0;           // kFlag* below
     std::uint64_t sequence = 0;        // set by Publish
     std::uint64_t timeMs = 0;          // GetTickCount64 at Publish
+    std::uint64_t target = 0;          // the render target (UTextureRenderTarget2D*) as the capture's probe holds it: the host
+                                       // gives that capture no Umbra query (research/49, 2026-11-07)
 };
 inline constexpr std::uint32_t kFlagMirror = 1u;  // the desktop window shows the picture
 inline constexpr std::uint32_t kFlagLayers = 2u;  // our quad layers are composited in
