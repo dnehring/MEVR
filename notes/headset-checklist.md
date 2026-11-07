@@ -19,6 +19,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 ### Powers at the left hand (session: Biotic/tech attack targeting system)
 - [ ] Hold X: the wheel opens at your left palm and stays put while your hand moves. Pick by moving your hand and by the
   left stick; letting go of X equips. On a real save, powers you don't have yet are dimmed. (research/55 section 6)
+- [ ] The wheel's light comes from the omni-tool on your hand (2026-11-06): with the wheel open, does the bright point sit on the
+  omni-tool's display on Shepard's hand and follow it as your hand moves, and do the pulses running out to the tiles, the
+  shimmer and the turning rings feel alive without being busy? The log's `power wheel: #N its light comes from the omni-tool's
+  display, (x, y, z) cm from the left grip` says what it used. (research/55 "The light from the omni-tool, alive")
 - [ ] Raise your left arm at an enemy: orange brackets lock on. Push your open left hand toward it: the power casts and
   lands on that enemy. Say whether the push (1.6 m/s over 10 cm) is too easy or too hard, and whether the brackets read
   at 5 m and at 35 m. (research/55 section 7)

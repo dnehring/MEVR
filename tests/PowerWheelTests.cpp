@@ -143,6 +143,34 @@ void TestPlacement() {
     CHECK(Close(z.x, 0.0f) && Close(z.y, toEyeY / length) && Close(z.z, toEyeZ / length));
 }
 
+void TestSource() {
+    // The omni-tool's display rides on the left grip: into its frame and back (a grip turned 90 degrees about up).
+    XrPosef grip{{0.0f, 0.70710678f, 0.0f, 0.70710678f}, {0.2f, 1.2f, -0.4f}};
+    XrVector3f const local = pw::ToFrame(grip, {1.2f, 1.2f, -0.4f});  // 1 m along world +x
+    CHECK(Close(local.x, 0.0f) && Close(local.y, 0.0f) && Close(local.z, 1.0f));
+    XrVector3f const back = pw::FromFrame(grip, local);
+    CHECK(Close(back.x, 1.2f) && Close(back.y, 1.2f) && Close(back.z, -0.4f));
+    // Where the eye sees the display on the wheel: straight ahead and level, the wheel 0.46 m out facing the eye.
+    XrVector3f const eye{0.0f, 1.6f, 0.0f};
+    XrPosef const wheel = pw::Place({0.0f, 1.6f, -0.5f}, eye, 0.04f);
+    CHECK(Close(wheel.position.z, -0.46f));
+    // 5 cm behind the wheel's plane and 5 cm right: seen nearer the centre than straight across (0.05 x 0.46 / 0.51).
+    pw::Vec2 const behind = pw::SeenInPlane(wheel, eye, {0.05f, 1.6f, -0.51f});
+    CHECK(Close(behind.x, 0.05f * 0.46f / 0.51f) && Close(behind.y, 0.0f));
+    // 6 cm in front of it (between the eye and the wheel): seen further out (0.05 x 0.46 / 0.40), and 2 cm up likewise.
+    pw::Vec2 const front = pw::SeenInPlane(wheel, eye, {0.05f, 1.62f, -0.40f});
+    CHECK(Close(front.x, 0.05f * 0.46f / 0.40f) && Close(front.y, 0.02f * 0.46f / 0.40f));
+    // On the plane itself: where it is.
+    pw::Vec2 const on = pw::SeenInPlane(wheel, eye, {-0.07f, 1.55f, -0.46f});
+    CHECK(Close(on.x, -0.07f) && Close(on.y, -0.05f));
+    // A line along the plane (the eye beside the display) or a display behind the eye: straight across, no wild point.
+    XrPosef const edgeOn = pw::Place({0.0f, 1.6f, -0.5f}, {0.0f, 1.6f, 0.0f}, 0.04f);
+    pw::Vec2 const along = pw::SeenInPlane(edgeOn, {-0.5f, 1.6f, -0.46f}, {0.1f, 1.6f, -0.46f});
+    CHECK(Close(along.x, 0.1f) && Close(along.y, 0.0f));
+    pw::Vec2 const behindEye = pw::SeenInPlane(wheel, eye, {0.05f, 1.6f, 0.2f});
+    CHECK(Close(behindEye.x, 0.05f) && Close(behindEye.y, 0.0f));
+}
+
 void TestTableAndView() {
     pw::PowerInfo const* const thr = pw::FindPower("TK_Throw");
     CHECK(thr != nullptr && thr->icon == 1 && thr->discipline == 0);
@@ -558,6 +586,7 @@ void TestSelfCast() {
 int RunPowerWheelTests() {
     TestMachine();
     TestPlacement();
+    TestSource();
     TestTableAndView();
     TestPad();
     TestPowerHold();

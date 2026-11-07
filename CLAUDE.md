@@ -898,8 +898,12 @@ switching frameworks.
   while aimed, gestured and 2.5 s after the cast. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
   left trigger and grip are its own (`gamepad::kFlagPowerWheel`, `Latches::powerHeld` until released) and the squad's trigger stands down
   (`power_wheel::OwnsLeftHand`). **The look is the omni-tool's projection** (research/55 section 5 "The omni-tool's projection", 03a6a08;
-  the squad wheel shares it): orange light over see-through tiles, the chosen tile ME1 cyan, light from an emitter in the wheel's gap
-  (no rings, spokes or N7 mark), the game's own Biomass from the game-art cache (Rajdhani without it), icons through
+  the squad wheel shares it): orange light over see-through tiles, the chosen tile ME1 cyan, no rings, spokes or N7 mark; **the light
+  comes from the omni-tool's display on Shepard's hand** (2026-11-06, the user: "actually connect to the omni-tool"; research/55 "The
+  light from the omni-tool, alive"): the mod sends `omni_tool::DisplayWorld` in the left grip's frame (`View::source`, the View
+  grew: host and mod together), the host puts it on this frame's grip and where the eyes see it on the wheel (`SeenInPlane`), the
+  grip itself without a display, the gap without a hand; it moves (shimmering cones, pulses out to each tile, faster to the chosen
+  one, a breathing core in turning rings, a flare at a new pick; log `power wheel: its light comes from`), the game's own Biomass from the game-art cache (Rajdhani without it), icons through
   `power_icons::Hologram`; a two-level bloom (`plugin/Glow`, its own device
   context state) adds light in the premultiplied quad. Offline look: `mevr-power-wheel-preview`. Tests: `tests/PowerWheelTests.cpp`
   (`RunPowerWheelTests`). Console: `mevr powerwheel [open|hand x y|pick n|equip|close|roster]` (no tracked controllers needed). Logs

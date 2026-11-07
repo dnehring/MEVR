@@ -180,6 +180,30 @@ The look now (plugin/PowerWheelDraw, both wheels):
 Checked offline in `mevr-power-wheel-preview` (every state); in the game the drawing is the same code that drew the squad wheel at
 20:18 (positions and pick checked then).
 
+### The light from the omni-tool, alive (2026-11-06)
+
+The user, in the headset: the "central light point which projects outward is static and it needs to be more dynamic and actually
+connect to the omni-tool". The emitter had been a fixed point in the wheel's gap, so it stayed where the forearm was when the wheel
+opened, while the hand moved to pick.
+- **The source is the omni-tool's display on Shepard's hand.** game/PowerWheel reads it (`omni_tool::DisplayWorld`, the
+  `OmniHand_Loop` particle system's transform: the gauntlet the wheel already wears) each tick, converts it to tracking space, and
+  sends it in the left grip's frame (`View::source`, `sourceValid`; the View grew, so host and mod deploy together). A display more
+  than 30 cm from the grip is ignored, because its first transforms are the animation's arm. Each frame plugin/PowerWheel puts that
+  offset back on the grip the host has (`FromFrame`), so the light moves with the hand without the game tick's delay. It then takes
+  the point where the eyes see it on the wheel: `SeenInPlane`, the line from the head through the display meets the wheel's plane;
+  straight across when that line runs within 5 degrees of the plane or meets it behind the eye; unit-tested. Fallbacks: no display
+  on the arm, the left grip itself; no controllers, the console's hand (`mevr powerwheel hand x y`); else the gap as before. The
+  host logs `power wheel: its light comes from ...` and the mod `... #N its light comes from the omni-tool's display, (x, y, z) cm
+  from the left grip`. The left-hand-mode branch (research/61) publishes the off-hand as `State::left` and moves the gauntlet to
+  it, so this follows without change.
+- **It moves.** The cones shimmer in five bands across, each breathing on its own clock. Soft pulses of light run out along each
+  cone to its tile: one at a time, slow, to the others; two, faster and brighter, to the chosen tile. The rays along the sides
+  flicker. At the source a core breathes inside two rings of arcs turning opposite ways, and a ring flares out from it when the
+  pick changes. The dust still drifts.
+Checked offline (`mevr-power-wheel-preview`'s `source-*.png`: the light at the hand, moved toward Throw, a new pick, and four
+frames 0.1 s apart). Not run in the game yet: the fake headset has no tracked controllers, so a check there needs a replay with the
+left hand (and `mevr powerwheel open`). How it looks over the real hand is for the headset.
+
 ## 6. In the game: X opens it at the left hand (2026-11-04)
 
 The user's controls: everything on the left hand, no right-hand pinch; picking either by moving the left hand into place or

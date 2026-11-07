@@ -131,6 +131,12 @@ struct View {
     XrPosef pose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};  // the wheel's centre in tracking space, +Z toward the eyes
     float widthM = 0.42f;
     Vec2 hand;                          // the palm's offset from the centre in the wheel's plane, metres, y up
+    // Where the light comes from (the user, 2026-11-06: "actually connect to the omni-tool"): the omni-tool's display as
+    // Shepard's hand shows it (game/OmniTool DisplayWorld), in the left grip's frame (metres), so the host puts it on the
+    // grip it has that frame (ToFrame/FromFrame). 0: no display on the arm; the host uses the left grip itself.
+    XrVector3f source{};
+    std::uint8_t sourceValid = 0;
+    std::uint8_t sourcePad[3] = {};
 };
 // Any thread: the host keeps the latest; Latest says closed when it's older than `maxAgeMs` (the mod stopped sending).
 void Publish(View const& view);
@@ -140,6 +146,13 @@ View Latest(std::uint64_t maxAgeMs = 250);
 XrPosef Place(XrVector3f palm, XrVector3f eye, float towardM);
 // A point's offset from the wheel's centre in its plane (x right, y up as the eye sees it), in the pose's units.
 Vec2 InPlane(XrPosef const& wheel, XrVector3f point);
+// A point in a pose's frame, and back (the omni-tool's display rides on the left grip).
+XrVector3f ToFrame(XrPosef const& frame, XrVector3f point);
+XrVector3f FromFrame(XrPosef const& frame, XrVector3f local);
+// Where the eye sees `source` on the wheel: the line from `eye` through it meets the wheel's plane there (an offset from the
+// centre in the plane, as InPlane). Straight along the wheel's normal when that line runs within 5 degrees of the plane or
+// meets it behind the eye.
+Vec2 SeenInPlane(XrPosef const& wheel, XrVector3f eye, XrVector3f source);
 
 // The left hand's controls through one opening (pure: tested offline). X held opens the wheel; the left hand's travel
 // toward a tile, or the left stick's direction, picks it; letting go of X equips the pick. X tapped (let go within tapS)

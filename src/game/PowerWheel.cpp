@@ -303,6 +303,7 @@ bool gConsole = false;        // allowed without controllers or a world view
 bool gConsoleHold = false;    // X held
 bool gConsoleCancel = false;  // close unequipped on the next tick
 std::optional<pw::Vec2> gConsoleHand;
+std::uint32_t gSourceLogged = 0;  // the opening whose light's source (the omni-tool's display) was logged
 std::optional<int> gConsolePick;
 
 XrVector3f HeadForwardFlat(XrQuaternionf const& q) {
@@ -1369,6 +1370,27 @@ void Tick(double deltaSeconds, Link const& link) {
             v.openFor = static_cast<float>(gClock - gMachine.openedAt);
             v.widthM = s.widthM;
             v.hand = in.handValid ? in.hand : pw::Vec2{};
+            // Where the light comes from: the omni-tool's display as Shepard's hand shows it, in the left grip's frame
+            // (plugin/PowerWheel puts it on the grip it has that frame, so it moves with the hand at once). None while no display
+            // is on the arm, or while it's still far from the hand (its first transforms are the animation's arm).
+            v.sourceValid = 0;
+            if (controllers.active && left.gripValid) {
+                std::optional<ue3::Vector> const display = omni_tool::DisplayWorld();
+                std::optional<engine::TrackingFrame> const tracking = display ? view_anchor::Current() : std::nullopt;
+                if (display && tracking) {
+                    XrVector3f const local =
+                        pw::ToFrame(left.grip, engine::ToTracking(*tracking, engine::UnrealVector{display->x, display->y, display->z}));
+                    if (std::sqrt(local.x * local.x + local.y * local.y + local.z * local.z) < 0.30f) {
+                        v.source = local;
+                        v.sourceValid = 1;
+                        if (gSourceLogged != gMachine.serial) {
+                            gSourceLogged = gMachine.serial;
+                            log::Info("power wheel: #{} its light comes from the omni-tool's display, ({:.1f}, {:.1f}, {:.1f}) cm from the "
+                                      "left grip in its frame", gMachine.serial, local.x * 100.0f, local.y * 100.0f, local.z * 100.0f);
+                        }
+                    }
+                }
+            }
             v.emblem = s.emblem ? 1 : 0;
             v.upperCase = s.upperCase ? 1 : 0;
             v.hint = gHintShown <= s.hintOpenings ? 1 : 0;

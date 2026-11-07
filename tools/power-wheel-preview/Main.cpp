@@ -8,7 +8,7 @@
 //
 //   <scene>.png         the wheel with its glow: biotic-six (the concept's arrangement, Lift chosen), each tile chosen in
 //                       turn, none chosen, tech, sentinel (one cooling down, one disabled), eight entries, half open,
-//                       the hand moved toward a tile
+//                       the hand moved toward a tile; source-*: the light from the omni-tool on the hand, moving
 //   <scene>-raw.png     the same without the glow (biotic-six only)
 //   hint.png            the first-time hint card
 //   icons.png           every icon on a tile's glass, in Icon order
@@ -279,6 +279,21 @@ int main(int argc, char** argv) {
         v.selected = 3;
         v.hand = {70.0f, 45.0f};
         wheel(v, "biotic-six-hand");
+        // The light from the omni-tool's display on the hand (plugin/PowerWheel's source): at the centre, then moved toward
+        // Throw with the hand, and frames 0.1 s apart to see it move (the pulses, the shimmer, the turning rings).
+        v = six;
+        v.source = mevr::vr::power_wheel::Vec2{0.0f, -20.0f};
+        wheel(v, "source-centre");
+        v.selected = 3;
+        v.source = mevr::vr::power_wheel::Vec2{60.0f, 30.0f};
+        wheel(v, "source-toward-throw");
+        v.selectedFor = 0.1f;
+        wheel(v, "source-new-pick");
+        v.selectedFor = 1.0f;
+        for (int f = 0; f < 4; ++f) {
+            v.time = 0.3f + 0.1f * static_cast<float>(f);
+            wheel(v, "source-frame" + std::to_string(f));
+        }
     }
     {
         draw::WheelView v;
