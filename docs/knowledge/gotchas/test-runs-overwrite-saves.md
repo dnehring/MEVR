@@ -6,7 +6,7 @@ tags: [le1, test-loop, saves, fake-headset, shared-machine]
 status: stable
 timestamp: 2026-11-06T11:00:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-06T11:00:00Z }
-bitten: [2026-11-05, 2026-11-06, 2026-11-06]
+bitten: [2026-11-05, 2026-11-06, 2026-11-06, 2026-11-06]
 ---
 
 # Symptom
@@ -21,6 +21,7 @@ and `Launcher_Profile` with the same time.
 | 2026-11-05 | the Mako exit crash repro on the fake headset (the user's own save, `tools/mako-start.ps1`) | `PROFILE\GamerProfile.pcsav`, `VR00\VR00_AutoSave.pcsav`; put back from a backup |
 | 2026-11-06 10:46 | a swapchain check: `UNC20`'s party pick and the Mako drop | `John01\John01_AutoSave.pcsav` 5061 -> 2159 bytes over the player's Eden Prime autosave from 30 minutes before, the profile and `Launcher_Profile`; found by a backup comparison and put back |
 | 2026-11-06 12:39 | a conversation measurement: `open BIOA_STA00` from the front end, the medical bay conversation played to its end | the conversation's end into gameplay autosaved: `John01\John01_AutoSave.pcsav`, `PROFILE\GamerProfile.pcsav`, `Launcher_Profile`, `TrilogyGamerProfile` (its time); found by the hash comparison after the run and put back (research/59) |
+| 2026-11-06 17:37 | the same, a later run (people kept in place) | the same four files; put back from the run's own backup |
 
 # Cause
 

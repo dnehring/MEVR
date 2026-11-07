@@ -135,4 +135,19 @@ Follow FollowHead(Vec3 const& place, Vec3 const& anchor, Vec3 const& headNow, do
     return {{place.x + dx, place.y + dy, place.z + dz}, headNow, true};
 }
 
+bool FollowHeadSettled(FollowState& state, Vec3 const& headNow, double threshold, int settle) {
+    Follow const f = FollowHead(state.place, state.anchor, headNow, threshold);
+    if (!f.jumped) {
+        state.away = 0;
+        return false;
+    }
+    if (++state.away < std::max(1, settle)) {
+        return false;
+    }
+    state.place = f.place;
+    state.anchor = f.anchor;
+    state.away = 0;
+    return true;
+}
+
 } // namespace mevr::vr::conversation_world

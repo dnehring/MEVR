@@ -73,6 +73,10 @@ ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
 ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
 ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry"};  // mevr convo pick (tests)
 ue3::FunctionRef gSkipConversation{"SFXGame.BioSFHandler_Conversation.SkipConversation"};     // mevr convo skip (tests)
+// Keeping people where they stand (research/59 "Keeping people in place"): the game's placements are native (no script call or
+// event moves them, call trace 2026-11-06), so a jump is undone after it, in the camera update of the same tick, before the draw.
+ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
+ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
 
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
 struct Settings {
@@ -84,6 +88,8 @@ struct Settings {
     int wheelHand = 0;                 // 0 left, 1 right, 2 in front
     float wheelWidthM = 0.40f;
     float wheelDistanceM = 0.12f;
+    bool stay = true;                  // keep people where they stand: undo the conversation's jumps onto its marks (worldStay)
+    float turnDegPerS = 120.0f;        // ... and turn them toward whom they look at, at most this fast (worldTurnDegPerS)
     float subtitleCrop[4] = {};
     float wheelCrop[4] = {};
 };
@@ -130,6 +136,8 @@ void RefreshSettings() {
     }
     s.wheelWidthM = number("wheelWidthM", s.wheelWidthM, 0.15f, 1.5f);
     s.wheelDistanceM = number("wheelDistanceM", s.wheelDistanceM, 0.05f, 0.8f);
+    s.stay = number("worldStay", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.turnDegPerS = number("worldTurnDegPerS", s.turnDegPerS, 10.0f, 1000.0f);
     ReadCrop(loaded.file, "subtitleCrop", s.subtitleCrop);
     ReadCrop(loaded.file, "wheelCrop", s.wheelCrop);
     std::string const text = std::format("conversations = {}, worldFollow = {}, subtitles {:.1f} deg tall {:.2f} m under the face, the wheel "
@@ -287,6 +295,8 @@ struct PovAt {
 };
 PovAt gPov;
 
+void KeepInPlace(ue3::Object* pawn);
+
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     ue3::Object* const controller = player::Controller();
     if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) {
@@ -316,6 +326,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         gPov.lastLocation = *pov->location;
         gPov.lastRotation = *pov->rotation;
         gPov.lastFov = *pov->fov;
+        KeepInPlace(player::Pawn(controller));  // after the conversation's placements of this tick, before its draw
     }
 }
 
@@ -347,7 +358,10 @@ struct Convo {
     float holdFov = 90.0f;
     char const* holdFrom = "";
     std::optional<ik::Vec3> anchorHead;  // Shepard's head bone where the hold was last placed
+    vr::conversation_world::FollowState follow;  // the hold and its anchor, for FollowHeadSettled
     int reanchors = 0;
+    int kept = 0;       // jumps undone (people kept where they stood)
+    int letGo = 0;      // jumps too long to undo (a scripted entrance)
     std::vector<Tracked> actors;
     ue3::Object* speaker = nullptr;
     std::uint32_t speakerSerial = 0;
@@ -366,6 +380,127 @@ struct Convo {
     double eyeToViewMax = 0.0;  // Shepard's head bone from the held view's eyes (the player's), largest
 };
 Convo gC;
+
+// Where each person of the conversation is kept, and the yaw shown while they turn.
+struct Stay {
+    ue3::Object* actor = nullptr;
+    ik::Vec3 place;
+    double shownYaw = 0.0;
+    int kept = 0;
+};
+std::vector<Stay> gStay;
+std::uint64_t gStayMs = 0;
+bool gInWorldForStay = false;  // set by Tick: the world view is up
+
+constexpr double kJumpUnits = 30.0;      // in one frame: a run moves under 3 units a frame at 90 Hz, a placement metres
+constexpr double kStayMaxUnits = 600.0;  // farther: a scripted entrance, let through
+
+int ToUnits(double degrees) {
+    return static_cast<int>(std::lround(degrees * 65536.0 / 360.0));
+}
+
+double Seconds();
+
+// After the frame's draw (the mod's tick): anyone still away from where we keep them was moved after this tick's camera update,
+// so the drawn frame showed the jump. Undone at the next camera update; counted to measure whether the camera update is early
+// enough.
+int gDrawnJumps = 0;
+void CheckDrawn() {
+    for (Stay const& st : gStay) {
+        auto const at = st.actor != nullptr && ue3::runtime::IsAlive(st.actor) ? player::Location(st.actor) : std::nullopt;
+        if (at && Dist(V(*at), st.place) > kJumpUnits && Dist(V(*at), st.place) < kStayMaxUnits) {
+            ++gDrawnJumps;
+            log::Info("convo: a jump of {:.2f} m reached a drawn frame (after the camera update)", Dist(V(*at), st.place) / kUnitsPerMeter);
+        }
+    }
+}
+
+void KeepInPlace(ue3::Object* pawn) {
+    if (!gC.on || !gInWorldForStay || !gSettings.stay || gSetLocation.Get() == nullptr || gC.object == nullptr ||
+        !ue3::runtime::IsAlive(gC.object)) {
+        gStayMs = 0;
+        return;
+    }
+    std::uint64_t const now = GetTickCount64();
+    double const dt = gStayMs == 0 ? 0.0 : std::clamp(static_cast<double>(now - gStayMs) / 1000.0, 0.0, 0.1);
+    gStayMs = now;
+    // Whom each one looks at (the game's own look-at list), else the speaker.
+    std::map<ue3::Object*, ue3::Object*> lookAt;
+    if (auto const list = gLookAtList.ElementsOf(gC.object, 64)) {
+        for (std::int32_t i = 0; i < list->count; ++i) {
+            ue3::Object* const a = gLookActor.Read<ue3::Object*>(list->At(i)).value_or(nullptr);
+            ue3::Object* const b = gLookTarget.Read<ue3::Object*>(list->At(i)).value_or(nullptr);
+            if (a != nullptr && b != nullptr) {
+                lookAt[a] = b;
+            }
+        }
+    }
+    ue3::Object* const speaker = gSpeaker.Read<ue3::Object*>(gC.object).value_or(nullptr);
+    for (Tracked const& t : gC.actors) {
+        if (t.actor == nullptr || !ue3::runtime::IsAlive(t.actor)) {
+            continue;
+        }
+        auto const at = player::Location(t.actor);
+        auto const rot = player::Rotation(t.actor);
+        if (!at || !rot) {
+            continue;
+        }
+        auto it = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == t.actor; });
+        if (it == gStay.end()) {
+            gStay.push_back({t.actor, V(*at), YawDeg(*rot), 0});
+            continue;
+        }
+        Stay& st = *it;
+        double const d = Dist(V(*at), st.place);
+        bool const isShepard = t.actor == pawn;
+        if (d > kJumpUnits && d < kStayMaxUnits) {
+            ue3::Params p(ue3::runtime::Get(), gSetLocation.Get());
+            ue3::Vector const back{static_cast<float>(st.place.x), static_cast<float>(st.place.y), static_cast<float>(st.place.z)};
+            bool const moved = p.Valid() && p.Set("NewLocation", back) && ue3::runtime::Call(t.actor, gSetLocation.Get(), p) &&
+                               p.ReturnBool().value_or(false);
+            ++st.kept;
+            ++gC.kept;
+            log::Info("convo: at {:.1f} s {} kept in place: the game put {} {:.2f} m away{}", Seconds(), isShepard ? "Shepard" : t.name,
+                isShepard ? "him" : "it", d / kUnitsPerMeter, moved ? "" : " (SetLocation refused: it stays there)");
+            if (!moved) {
+                st.place = V(*at);
+            }
+        } else {
+            if (d >= kStayMaxUnits) {
+                ++gC.letGo;
+                log::Info("convo: at {:.1f} s {} moved {:.1f} m at once: a scripted entrance, let through", Seconds(), t.name,
+                    d / kUnitsPerMeter);
+            }
+            st.place = V(*at);  // its own walking, or a jump let through
+        }
+        if (isShepard || gSetRotation.Get() == nullptr) {
+            continue;  // Shepard's body turns under the player's view (body follow)
+        }
+        // The yaw: toward whom it looks at (or the speaker), from where it stands, at most turnDegPerS.
+        double target = YawDeg(*rot);
+        auto const look = lookAt.find(t.actor);
+        ue3::Object* const other = look != lookAt.end() ? look->second : speaker != t.actor ? speaker : nullptr;
+        if (other != nullptr && ue3::runtime::IsAlive(other)) {
+            if (auto const o = player::Location(other)) {
+                ik::Vec3 const to = V(*o) - st.place;
+                if (std::hypot(to.x, to.y) > 20.0) {
+                    target = std::atan2(to.y, to.x) * kRadToDeg;
+                }
+            }
+        }
+        double const diff = YawDiffDeg(target, st.shownYaw);
+        double const step = gSettings.turnDegPerS * dt;
+        st.shownYaw += std::clamp(diff, -step, step);
+        if (std::abs(YawDiffDeg(st.shownYaw, YawDeg(*rot))) > 1.0) {
+            ue3::Params p(ue3::runtime::Get(), gSetRotation.Get());
+            ue3::Rotator r = *rot;
+            r.yaw = ToUnits(st.shownYaw);
+            if (p.Valid() && p.Set("NewRotation", r)) {
+                ue3::runtime::Call(t.actor, gSetRotation.Get(), p);
+            }
+        }
+    }
+}
 std::uint32_t gConversations = static_cast<std::uint32_t>(GetTickCount64() & 0xFFFF);
 bool gHeld = false;          // view_anchor::Hold set by us
 bool gPublished = false;
@@ -517,6 +652,9 @@ void LogShot(ue3::Object* pawn, ik::Vec3 eyes) {
 
 void Begin(ue3::Object* conv, ue3::Object* controller) {
     gC = {};
+    gStay.clear();
+    gStayMs = 0;
+    gDrawnJumps = 0;
     gC.on = true;
     gC.object = conv;
     gC.name = ue3::runtime::FullName(conv);
@@ -563,6 +701,7 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
         if (head) {
             gC.anchorHead = head->at;
         }
+        gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, gC.anchorHead ? cw::Vec3{gC.anchorHead->x, gC.anchorHead->y, gC.anchorHead->z} : cw::Vec3{}, 0};
         log::Info("convo: the player's place: {} at {} facing {:.0f} deg{}", gC.holdFrom, F(gC.hold), YawDeg(gC.holdRotation),
             head ? std::format(" ({:.2f} m from Shepard's head bone)", Dist(gC.hold, head->at) / kUnitsPerMeter) : std::string());
     }
@@ -608,7 +747,9 @@ void End(char const* why) {
     log::Info("convo: conversation {} ended ({}) after {:.1f} s: {} shots ({}), {} not seeable from Shepard's eyes; the wheel opened {} times; {}",
         gC.number, why, Seconds(), gC.shots, kinds.empty() ? "none" : kinds, gC.shotsHidden, gC.wheelOpenings, moves);
     if (gC.world) {
-        log::Info("convo: in the world: Shepard's head bone was at most {:.2f} m from the player's held eyes", gC.eyeToViewMax / kUnitsPerMeter);
+        log::Info("convo: in the world: Shepard's head bone was at most {:.2f} m from the player's held eyes; {} jumps onto marks undone "
+                  "(people kept in place, {} of them seen in a drawn frame), {} long moves let through", gC.eyeToViewMax / kUnitsPerMeter, gC.kept,
+            gDrawnJumps, gC.letGo);
     }
     gC = {};
 }
@@ -774,6 +915,7 @@ void StopWorld(Link const& link, char const* why) {
     }
     gPublished = false;
     gInWorld = false;
+    gInWorldForStay = false;
 }
 
 } // namespace
@@ -812,14 +954,15 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     // kReanchorUnits, never for the head's own small moves (gestures, breathing), which the player's real head replaces.
     constexpr double kReanchorUnits = 40.0;
     auto const shepardHead = HeadOf(pawn);
+    // Settled over 3 ticks: a pawn put back (people kept in place) drags his mesh there and back within a tick.
+    constexpr int kSettleTicks = 3;
     if (shepardHead && gC.anchorHead && gSettings.follow) {
-        ik::Vec3 const& a = *gC.anchorHead;
+        ik::Vec3 const a = *gC.anchorHead;
         ik::Vec3 const& h = shepardHead->at;
-        cw::Follow const f = cw::FollowHead({gC.hold.x, gC.hold.y, gC.hold.z}, {a.x, a.y, a.z}, {h.x, h.y, h.z}, kReanchorUnits);
-        if (f.jumped) {
+        if (cw::FollowHeadSettled(gC.follow, {h.x, h.y, h.z}, kReanchorUnits, kSettleTicks)) {
             log::Info("convo: at {:.1f} s Shepard's head bone JUMPED {:.2f} m: the player's place moves with it to ({:.0f}, {:.0f}, {:.0f})",
-                Seconds(), Dist(h, a) / kUnitsPerMeter, f.place.x, f.place.y, f.place.z);
-            gC.hold = {f.place.x, f.place.y, f.place.z};
+                Seconds(), Dist(h, a) / kUnitsPerMeter, gC.follow.place.x, gC.follow.place.y, gC.follow.place.z);
+            gC.hold = {gC.follow.place.x, gC.follow.place.y, gC.follow.place.z};
             gC.anchorHead = h;
             ++gC.reanchors;
         }
@@ -904,6 +1047,10 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     link.publish(&state);
     gPublished = true;
     ++gWorldTicks;
+    if (gInWorldForStay && gSettings.stay) {
+        CheckDrawn();
+    }
+    gInWorldForStay = true;
     if (!gInWorld) {
         gInWorld = true;
         log::Info("convo: conversation {} in the world: the view held at {} ({}, yaw {:.0f}){}; arm IK and body follow {}", gC.number,
@@ -912,10 +1059,10 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     }
     SetStatus(std::format("{{\"on\": true, \"world\": true, \"conversation\": {}, \"shots\": {}, \"speaker\": \"{}\", \"wheel\": {}, "
                           "\"subtitle\": {}, \"subtitleAt\": [{:.3f}, {:.3f}, {:.3f}], \"held\": [{:.1f}, {:.1f}, {:.1f}], \"heldRender\": {}, "
-                          "\"reanchors\": {}, \"frame\": {}, \"from\": \"{}\"}}",
+                          "\"reanchors\": {}, \"frame\": {}, \"from\": \"{}\", \"kept\": {}, \"letGo\": {}}}",
         gC.number, gC.shots, ShortName(gC.speaker), state.wheel != 0 ? "true" : "false", state.subtitle != 0 ? "true" : "false",
         state.subtitleAt[0], state.subtitleAt[1], state.subtitleAt[2], gC.hold.x, gC.hold.y, gC.hold.z, state.holdRender != 0 ? "true" : "false",
-        gC.reanchors, frame ? "true" : "false", gC.holdFrom));
+        gC.reanchors, frame ? "true" : "false", gC.holdFrom, gC.kept, gC.letGo));
 }
 
 bool InWorld() {

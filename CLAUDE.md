@@ -376,7 +376,11 @@ switching frameworks.
   stage centred top to bottom on the frame, unlike the HUD's: `DefaultSubtitleCrop`/`DefaultWheelCrop`). The conversation camera's
   depth of field blurs the room: `scale set DepthOfField False` while it lasts, back to BIOEngine.ini's value **read before** (the
   game writes the live value there). Measured whatever the mode (logs `convo:`: moves, jumps at cuts, gaze, each shot against
-  Shepard's place): conversations teleport actors onto marks at camera cuts and half the shots are Shepard's own face.
+  Shepard's place): conversations teleport actors onto marks at camera cuts and half the shots are Shepard's own face. **People
+  are kept where they stand** (`worldStay = 1`; research/59 "Keeping people in place"): the placements are native, so a jump past
+  30 units in a frame (under 6 m) is undone with `Actor.SetLocation` in the `Camera.UpdateCamera` post-handler (before the draw: 0 of
+  25 seen in a drawn frame), NPCs turn toward their look-at target at `worldTurnDegPerS`, and the player's place follows Shepard's
+  head bone only when a jump lasts 3 ticks (`FollowHeadSettled`).
   `mevr convo [dump | world on|off | pick <slot> | skip]` (pick only with the wheel up: a pick between lines crashed the game).
   Snapshot `"mod"."conversationWorld"`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host

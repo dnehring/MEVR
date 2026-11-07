@@ -116,15 +116,57 @@ shared: `core/vr/ConversationWorld` (unit-tested: `tests/ConversationWorldTests.
   on the null driver): **the full rate**. On the 3D screen a conversation runs at 45 fps (Halcyon's `cineFpsCap`, measured by the
   release-blockers session); the world mode isn't a cine to Halcyon.
 
+## Keeping people in place (2026-11-06, evening)
+
+The owner, on the pops: "Is there a way we can fix the transporting effect? Since we know the direction I'm curious if we could
+have them walk to the target locations." The cheapest of the three answers (keep them where they stand; walk them there; hide the
+jump with a dip to dark) first, since the marks only frame the director's shots, which the world mode doesn't show.
+
+- **How the game moves them: natively.** A call trace across the medical bay's jumps (`mevr calltrace 150 position placeactor
+  setlocation setrotation teleport facing moveto -canfire -arrowposition`) saw no script call and no ProcessEvent: the stage's
+  placement (or a matinee track) moves them in native code. So the move can't be refused, only undone.
+- **Undone before the frame is drawn.** The conversation camera cuts in the same tick as the jump (the director's view never shows
+  a pop), so the camera update (our `Engine.Camera.UpdateCamera` post-handler, game thread, before the draw) sees the actor already
+  on the new mark. There, a jump of 30 units or more since the last frame (a run moves under 3 a frame at 90 Hz) and under 6 m (a
+  scripted entrance is let through) is put back with `Actor.SetLocation`; continuous moves update the kept place. A check in the
+  mod's tick, after the draw, counts any jump still standing (one that came after the camera update and was drawn).
+- **Turning.** Everyone but Shepard turns toward whom the game's look-at list says they look at (else the speaker), from where they
+  stand, at most `worldTurnDegPerS` 120 degrees a second; the stage's facing was for its mark. Shepard's body turns under the
+  player's view (body follow).
+- **Shepard is kept too**, so the player doesn't move with his placements. Putting his pawn back drags his mesh there and back
+  within a tick (his head bone read 2 m out and back), which moved the player's place twice in 0.1 s on the first try; the place now
+  follows his head bone only when a jump lasts three ticks (`FollowHeadSettled`, unit-tested).
+- `[Cinematics] worldStay = 1` (0: the jumps as the game makes them), `worldTurnDegPerS`. Logs `convo: ... kept in place: the game put
+  it N m away`, the end summary's `N jumps onto marks undone (people kept in place, M of them seen in a drawn frame)`; snapshot
+  `"mod"."conversationWorld"."kept"`.
+
+**Measured** (the whole medical bay conversation again, 229.6 s, the final code): **25 jumps onto marks undone, 0 seen in a drawn
+frame**: Ashley's 2.91 m four times, Anderson's 1.50 and 2.50 m thirteen times (the game puts him back on his mark at nearly every
+line), Shepard's 1.96 m seven times; every actor ended where it began (moved at most 0.00 m in the 0.1 s samples). The director's
+shots now frame empty marks (7 classed as cutaways): not shown in the world mode, so it doesn't matter.
+
+**One jump left in this scene: Shepard's own body.** At 31.5 s his head bone moved 2.26 m and stayed: his mesh, which had stood
+2.25 m off his pawn since the wake-up cutscene (an animation's root offset, measured at the start), snapped back onto the pawn. The
+player's place follows it (snapshot 2026-11-06_17-33-53-015: behind a medical bed, Chakwas 3.8 m away instead of 1.6). A
+conversation started on foot has his mesh on his pawn, so this is the "conversation straight after a cutscene" case. Candidates:
+the transition fade (`plugin/TransitionFade`, main since a5c9e8e) over the player's own moves; or not following it while body
+follow can't reach (the arms would stretch).
+
+Walking them to their marks stays possible (the undo knows where the game wanted them: the jump's far end), but most of these
+people have no AI to send, their gestures are authored standing, and Anderson's thirteen returns to the same mark would be a walk
+every line; standing still is the better default. Next if the headset says someone behind you is wrong: walk only the first move
+of each person, at the speed of the scene.
+
 ## Limits and next
 
 - **One conversation measured.** Eden Prime's Cole (`UsedBy` on the pawn starts nothing; Shepard was then killed by the geth)
   and the Normandy's other people (`SFXGameModeDefault.Used` needs the gaze selection on the NPC) weren't reached. Next: Pressly,
   Joker, Nihlus on the Normandy, a Citadel conversation with cutaways; `mevr convo` logs each.
-- **NPC teleports at cuts are visible** (Ashley's 2.9 m, Anderson's three). A fade over a jump past `kReanchorUnits`, or
-  hiding the pawn for the cut, is the next design question; Shepard's own jumps move the player with him (a pop too).
+- **NPC teleports at cuts**: undone since the evening (above); Shepard's own body snapping back onto his pawn after a cutscene
+  still moves the player once.
 - **Reverse shots are lost** (half the shots): the player sees whom Shepard faces, not Shepard. Intended.
 - **The depth of field is a global switch**: if the game dies mid-conversation, `BIOEngine.ini` keeps the False the game wrote.
   A post-handler on the conversation camera's `ModifyPostProcessSettings` (its `bEnableDOF`) would be scoped to it [verify].
 - **Subtitles during spoken lines** [verify the option]; the wheel at the left hand with tracked controllers; the first frame.
-- [verify] In the headset: scale and presence (the owner's question), comfort at the pops, the subtitle's size and place.
+- [verify] In the headset: scale and presence (the owner's question), people staying where they stand (someone talking from
+  behind you), the smoothed turns, the one remaining jump of your own place, the subtitle's size and place.

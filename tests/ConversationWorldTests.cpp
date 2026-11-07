@@ -99,6 +99,20 @@ void TestFollowHead() {
     CHECK(Close(moved.anchor.y, -35.0));
     // Exactly at the threshold: no jump.
     CHECK(!cw::FollowHead(place, anchor, {135.0, 190.0, 130.0}, 40.0).jumped);
+
+    // Settled: a jump there and back within a tick (the mesh catching up with a pawn put back) isn't followed...
+    cw::FollowState s{place, anchor, 0};
+    CHECK(!cw::FollowHeadSettled(s, {95.0, -35.0, 130.0}, 40.0, 3));
+    CHECK(!cw::FollowHeadSettled(s, {95.0, 190.0, 130.0}, 40.0, 3));
+    CHECK(s.away == 0 && Close(s.place.y, 200.0));
+    // ... a lasting one is, on its third tick, by the head's place then.
+    CHECK(!cw::FollowHeadSettled(s, {95.0, -35.0, 130.0}, 40.0, 3));
+    CHECK(!cw::FollowHeadSettled(s, {95.0, -35.0, 130.0}, 40.0, 3));
+    CHECK(cw::FollowHeadSettled(s, {95.0, -36.0, 130.0}, 40.0, 3));
+    CHECK(Close(s.place.y, -26.0) && Close(s.anchor.y, -36.0) && s.away == 0);
+    // settle 0 or 1: at once.
+    cw::FollowState now{place, anchor, 0};
+    CHECK(cw::FollowHeadSettled(now, {95.0, -35.0, 130.0}, 40.0, 0));
 }
 
 void TestLatest() {
