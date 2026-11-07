@@ -411,6 +411,7 @@ std::vector<sc::RosterEntry> Roster() {
         sc::RosterEntry e;
         e.letter = letter;
         e.name = known.name;
+        e.aliases = sc::KnownAliases(known.name);
         e.weapons = known.weapons;
         e.powers = known.powers;
         roster.push_back(e);

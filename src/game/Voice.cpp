@@ -309,6 +309,7 @@ void UpdateKeyterms(double dt) {
     };
     for (sc::RosterEntry const& e : squad_context::Roster()) {
         add(e.name);
+        for (std::string const& alias : e.aliases) add(alias);  // the surnames and short forms ("Vakarian", "Ash")
         for (auto const& [code, spoken] : e.powers) add(spoken);
     }
     if (terms != gKeyterms) {
