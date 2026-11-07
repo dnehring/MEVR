@@ -1,0 +1,30 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- -windows: LegendaryExplorerCore's texture code needs System.Drawing.Common, in the Windows desktop runtime. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>conversation-scan</AssemblyName>
+    <RootNamespace>Mevr.ConversationScan</RootNamespace>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Legendary Explorer's nightly: referenced by path, never copied to our output or to git. Program.cs resolves them
+         from this folder at run time. Override with -p:LexDir=<folder>. -->
+    <LexDir Condition="'$(LexDir)' == '' And Exists('$(MSBuildThisFileDirectory)..\..\mod-manager')">$(MSBuildThisFileDirectory)..\..\mod-manager\ME3TweaksModManager\data\ExternalTools\Legendary Explorer (Nightly)</LexDir>
+    <!-- From a worktree under .claude/worktrees: the main checkout's mod-manager. -->
+    <LexDir Condition="'$(LexDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\..\mod-manager\ME3TweaksModManager\data\ExternalTools\Legendary Explorer (Nightly)</LexDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+    <Reference Include="LegendaryExplorerCore"><HintPath>$(LexDir)\LegendaryExplorerCore.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Serilog"><HintPath>$(LexDir)\Serilog.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>LexDir</_Parameter1>
+      <_Parameter2>$(LexDir)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

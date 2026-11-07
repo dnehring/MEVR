@@ -12,6 +12,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/CineScreen.hpp"
+#include "core/vr/ConversationWorld.hpp"
 #include "core/vr/PerformanceModes.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
@@ -287,6 +288,11 @@ void Settings::Read(menu::Values& v) {
                                                                                                        : std::string("vr");
     };
     v.texts["cine_convo"] = cineChoice(c.cineVrConvo, "conversations", cineDefaults.conversations);
+    // Conversations have a fourth way, first person in the world (research/59): `conversations = world`.
+    if (c.cineVrConvo && mevr::vr::conversation_world::ParseMode(ini.Text("Cinematics", "conversations", "").c_str(),
+                             mevr::vr::conversation_world::Mode::Vr) == mevr::vr::conversation_world::Mode::World) {
+        v.texts["cine_convo"] = "world";
+    }
     v.texts["cine_cut"] = cineChoice(c.cineVrCutscene, "cutscenes", cineDefaults.cutscenes);
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 3.5f), 1.0f, 6.0f);
@@ -706,7 +712,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         (convo ? c.cineVrConvo : c.cineVrCutscene) = view != "flat";
         HalcyonChanged(false);
         if (view != "flat") {
-            Put("Cinematics", convo ? "conversations" : "cutscenes", view == "screen" ? "1" : "0", true);
+            Put("Cinematics", convo ? "conversations" : "cutscenes", view == "world" && convo ? "world" : view == "screen" ? "1" : "0", true);
         }
     } else if (key == "cine_width") {
         Put("Cinematics", "widthM", fixed(v.Number("cine_width"), 2), final);

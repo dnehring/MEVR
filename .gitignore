@@ -11,6 +11,8 @@ mod-manager/
 # Build output
 tools/cockpit/package/bin/
 tools/cockpit/package/obj/
+tools/conversation-scan/bin/
+tools/conversation-scan/obj/
 build/
 build-*/
 out/

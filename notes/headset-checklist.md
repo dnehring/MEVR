@@ -128,6 +128,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   stay where they stand instead of jumping to the game's marks (built the same evening): does anyone talking from behind you
   feel wrong (Ashley in the medical bay), are their turns natural? One jump of your own place is left (about 30 s into the
   medical bay, Shepard's body after the wake-up cutscene): how bad is it? `worldStay = 0` brings back the game's jumps.
+  It's now the menu's Comfort > Conversations > First person. The scan's 18 framed set pieces (research/59: Saren, Sovereign,
+  the Council) still play in first person: how much is lost?
   (research/59; checked on the fake headset, not by a person)
 - [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
