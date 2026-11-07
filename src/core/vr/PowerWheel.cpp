@@ -295,6 +295,7 @@ View Latest(std::uint64_t maxAgeMs) {
     auto const age = std::chrono::steady_clock::now() - gLatestAt;
     if (gLatestAt == std::chrono::steady_clock::time_point{} || age > std::chrono::milliseconds(maxAgeMs)) {
         out.open = 0;
+        out.coach = 0;  // the coach card goes when the mod stops sending it
     }
     return out;
 }
@@ -671,6 +672,47 @@ SelfCastStep StepSelfCast(SelfCastState& s, SelfGesture gesture, SelfCastInput c
         step.progress = 1.0f;
     }
     return step;
+}
+
+Coach CoachFor(Aim aim, SelfGesture gesture) {
+    switch (gesture) {
+    case SelfGesture::Chest: return Coach::Chest;
+    case SelfGesture::Gun: return Coach::Gun;
+    case SelfGesture::Raise: return Coach::Raise;
+    case SelfGesture::None: break;
+    }
+    switch (aim) {
+    case Aim::Target: return Coach::Target;
+    case Aim::Place: return Coach::Place;
+    case Aim::None: break;
+    }
+    return Coach::Forward;
+}
+
+CoachText CoachLines(Coach coach) {
+    switch (coach) {
+    case Coach::Target: return {"Raise your left hand at an enemy until it locks on,", "then push your open hand toward it."};
+    case Coach::Place: return {"Point your left hand at an enemy or a spot,", "then push your open hand toward it."};
+    case Coach::Forward: return {"Push your open left hand forward to cast it.", "Your right hand can keep the gun."};
+    case Coach::Chest: return {"Hold your open left hand flat on your chest", "for a moment to cast it."};
+    case Coach::Gun: return {"Slap your open left hand onto the top", "of the gun in your right hand."};
+    case Coach::Raise: return {"Raise your open left hand above your head", "and hold it there for a moment."};
+    case Coach::None: break;
+    }
+    return {"", ""};
+}
+
+char const* Name(Coach coach) {
+    switch (coach) {
+    case Coach::Target: return "target";
+    case Coach::Place: return "place";
+    case Coach::Forward: return "forward";
+    case Coach::Chest: return "chest";
+    case Coach::Gun: return "gun";
+    case Coach::Raise: return "raise";
+    case Coach::None: break;
+    }
+    return "none";
 }
 
 }  // namespace mevr::vr::power_wheel

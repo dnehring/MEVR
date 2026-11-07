@@ -381,6 +381,138 @@ void DrawTile(ImDrawList* dl, Fonts const& fonts, WheelView const& view, Entry c
     TrackedCentred(dl, fonts.label, size, centreX, labelTop + (labelSize - size) * 0.5f, colour, text, tracking);
 }
 
+// An open left hand's outline, palm toward the viewer, fingers up: four rounded fingers, the palm, the thumb out to the left.
+// `palm` is the palm's centre, `s` the size (1: the hint card's hand, about 90 px tall).
+void HandOutline(ImDrawList* dl, ImVec2 palm, float s, ImU32 line, float thickness) {
+    auto finger = [&](float x, float top, float bottom) {
+        dl->AddRect({palm.x + (x - 8.0f) * s, palm.y + top * s}, {palm.x + (x + 8.0f) * s, palm.y + bottom * s}, line, 8.0f * s, 0, thickness);
+    };
+    finger(-24.0f, -60.0f, -14.0f);
+    finger(-8.0f, -70.0f, -14.0f);
+    finger(8.0f, -66.0f, -14.0f);
+    finger(24.0f, -54.0f, -14.0f);
+    dl->AddRect({palm.x - 33.0f * s, palm.y - 18.0f * s}, {palm.x + 33.0f * s, palm.y + 34.0f * s}, line, 16.0f * s, 0, thickness);
+    ImVec2 const base{palm.x - 30.0f * s, palm.y + 12.0f * s};
+    ImVec2 const tip{palm.x - 50.0f * s, palm.y - 16.0f * s};
+    float const r = 8.0f * s;
+    float const along = std::atan2(tip.y - base.y, tip.x - base.x);
+    dl->PathArcTo(tip, r, along - kPi * 0.5f, along + kPi * 0.5f, 12);
+    dl->PathArcTo(base, r, along + kPi * 0.5f, along + kPi * 1.5f, 12);
+    dl->PathStroke(line, ImDrawFlags_Closed, thickness);
+}
+
+ImVec2 Lerp(ImVec2 a, ImVec2 b, float t) {
+    return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
+}
+
+// An arrow from `a` to `b` (a line and a head).
+void Arrow(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 colour, float thickness) {
+    dl->AddLine(a, b, colour, thickness);
+    float const along = std::atan2(b.y - a.y, b.x - a.x);
+    float const head = 12.0f;
+    dl->AddLine(b, {b.x - head * std::cos(along - 0.5f), b.y - head * std::sin(along - 0.5f)}, colour, thickness);
+    dl->AddLine(b, {b.x - head * std::cos(along + 0.5f), b.y - head * std::sin(along + 0.5f)}, colour, thickness);
+}
+
+// A person from the chest up, facing the viewer: the head and the shoulders' line down to the chest, in the box at `c`.
+void Bust(ImDrawList* dl, ImVec2 c, ImU32 colour, float thickness) {
+    dl->AddCircle({c.x, c.y - 52.0f}, 17.0f, colour, 24, thickness);
+    std::array<ImVec2, 6> const body{ImVec2{c.x - 60.0f, c.y + 70.0f}, ImVec2{c.x - 54.0f, c.y - 8.0f}, ImVec2{c.x - 22.0f, c.y - 26.0f},
+        ImVec2{c.x + 22.0f, c.y - 26.0f}, ImVec2{c.x + 54.0f, c.y - 8.0f}, ImVec2{c.x + 60.0f, c.y + 70.0f}};
+    dl->AddPolyline(body.data(), static_cast<int>(body.size()), colour, 0, thickness);
+}
+
+// The gesture, looping every kLoopS in the card's left box (centre `c`): the hand goes there, does it, and the light answers.
+void DrawGesture(ImDrawList* dl, pw::Coach coach, ImVec2 c, float time, float alpha) {
+    constexpr float kLoopS = 1.8f;
+    float const t = std::fmod(std::max(time, 0.0f), kLoopS) / kLoopS;  // 0..1 through the loop
+    ImU32 const line = WithAlpha(Rgba(226, 244, 250), alpha);
+    ImU32 const omni = WithAlpha(kLine, alpha);
+    ImU32 const cyan = WithAlpha(kLightChosen, alpha);
+    float const thick = 2.4f;
+    auto ease = [](float x) { return Ease(std::clamp(x, 0.0f, 1.0f)); };
+    switch (coach) {
+    case pw::Coach::Target:
+    case pw::Coach::Place:
+    case pw::Coach::Forward: {
+        // The hand rises toward the mark (brackets on an enemy, a ring on the ground, or straight ahead), then pushes into it.
+        ImVec2 const mark{c.x + 48.0f, c.y - 50.0f};
+        if (coach == pw::Coach::Target) {
+            for (int sx = -1; sx <= 1; sx += 2) {
+                for (int sy = -1; sy <= 1; sy += 2) {
+                    ImVec2 const k{mark.x + 18.0f * static_cast<float>(sx), mark.y + 18.0f * static_cast<float>(sy)};
+                    dl->AddLine(k, {k.x - 8.0f * static_cast<float>(sx), k.y}, t > 0.35f ? cyan : omni, 2.4f);
+                    dl->AddLine(k, {k.x, k.y - 8.0f * static_cast<float>(sy)}, t > 0.35f ? cyan : omni, 2.4f);
+                }
+            }
+        } else if (coach == pw::Coach::Place) {
+            dl->AddEllipse(mark, ImVec2{24.0f, 9.0f}, t > 0.35f ? cyan : omni, 0.0f, 32, 2.2f);
+        }
+        float const raise = ease(t / 0.35f);                     // up toward it
+        float const push = t > 0.45f ? ease((t - 0.45f) / 0.20f) : 0.0f;  // then a push into it
+        ImVec2 const start{c.x - 45.0f, c.y + 48.0f};
+        ImVec2 const aimed{c.x - 8.0f, c.y + 4.0f};
+        ImVec2 const palm = Lerp(Lerp(start, aimed, raise), mark, push * 0.45f);
+        float const size = 0.62f - 0.18f * push;  // smaller as it goes away from you
+        HandOutline(dl, palm, size, line, thick);
+        if (push > 0.0f && t < 0.85f) {
+            Arrow(dl, {palm.x - 14.0f, palm.y + 30.0f}, {palm.x + 6.0f, palm.y + 8.0f}, cyan, 2.4f);
+        }
+        if (t > 0.62f && t < 0.9f) {  // the cast: a ring from the mark
+            float const k = (t - 0.62f) / 0.28f;
+            dl->AddCircle(mark, 10.0f + 26.0f * k, WithAlpha(kLightChosen, alpha * (1.0f - k)), 32, 2.0f);
+        }
+        break;
+    }
+    case pw::Coach::Chest:
+    case pw::Coach::Raise: {
+        // The hand comes in to the chest (or up over the head), stays, and a ring fills while it's held.
+        ImVec2 const bustCentre{c.x + 10.0f, c.y + (coach == pw::Coach::Raise ? 36.0f : 20.0f)};
+        Bust(dl, bustCentre, omni, 2.0f);
+        ImVec2 const start{c.x - 52.0f, c.y + 64.0f};
+        ImVec2 const at = coach == pw::Coach::Chest ? ImVec2{bustCentre.x + 6.0f, bustCentre.y + 18.0f} : ImVec2{bustCentre.x + 6.0f, bustCentre.y - 88.0f};
+        float const come = ease(t / 0.35f);
+        ImVec2 const palm = Lerp(start, at, come);
+        HandOutline(dl, palm, 0.42f, line, thick);
+        if (t > 0.35f) {
+            float const hold = std::clamp((t - 0.40f) / 0.30f, 0.0f, 1.0f);
+            float const r = 30.0f;
+            dl->PathArcTo(palm, r, -kPi * 0.5f, -kPi * 0.5f + 2.0f * kPi * hold, 40);
+            dl->PathStroke(hold >= 1.0f ? cyan : omni, 0, 3.0f);
+            if (hold >= 1.0f) {
+                float const k = std::clamp((t - 0.70f) / 0.25f, 0.0f, 1.0f);
+                dl->AddCircle(palm, r + 22.0f * k, WithAlpha(kLightChosen, alpha * (1.0f - k)), 40, 2.0f);
+            }
+        } else {
+            Arrow(dl, Lerp(start, at, 0.15f), Lerp(start, at, 0.55f), omni, 2.0f);
+        }
+        break;
+    }
+    case pw::Coach::Gun: {
+        // A pistol, side on; the hand comes down onto its top fast, and it lights up.
+        ImVec2 const g{c.x + 4.0f, c.y + 42.0f};
+        std::array<ImVec2, 8> const gun{ImVec2{g.x - 58.0f, g.y - 16.0f}, ImVec2{g.x + 56.0f, g.y - 16.0f}, ImVec2{g.x + 56.0f, g.y + 2.0f},
+            ImVec2{g.x - 20.0f, g.y + 2.0f}, ImVec2{g.x - 30.0f, g.y + 46.0f}, ImVec2{g.x - 52.0f, g.y + 46.0f},
+            ImVec2{g.x - 46.0f, g.y + 2.0f}, ImVec2{g.x - 58.0f, g.y + 2.0f}};
+        float const hit = t > 0.30f && t < 0.62f ? 1.0f - (t - 0.30f) / 0.32f : 0.0f;
+        dl->AddPolyline(gun.data(), static_cast<int>(gun.size()), hit > 0.0f ? cyan : omni, ImDrawFlags_Closed, 2.2f);
+        ImVec2 const above{g.x - 6.0f, g.y - 90.0f};
+        ImVec2 const onTop{g.x - 6.0f, g.y - 32.0f};
+        float const down = t < 0.30f ? ease(t / 0.30f) * ease(t / 0.30f) : (t < 0.70f ? 1.0f : 1.0f - ease((t - 0.70f) / 0.30f));
+        HandOutline(dl, Lerp(above, onTop, down), 0.42f, line, thick);
+        if (t < 0.30f) {
+            Arrow(dl, {above.x + 40.0f, above.y - 8.0f}, {above.x + 40.0f, above.y + 34.0f}, omni, 2.0f);
+        }
+        if (hit > 0.0f) {
+            dl->AddLine({g.x - 66.0f, g.y - 24.0f}, {g.x + 64.0f, g.y - 24.0f}, WithAlpha(kLightChosen, alpha * hit), 3.0f);
+        }
+        break;
+    }
+    case pw::Coach::None:
+        break;
+    }
+}
+
 }  // namespace
 
 void DrawWheel(ImDrawList* dl, Fonts const& fonts, WheelView const& view) {
@@ -539,27 +671,7 @@ void DrawHint(ImDrawList* dl, Fonts const& fonts, HintView const& view) {
     // The hand, in a box of its own.
     float const boxRight = m + 150.0f;
     dl->AddLine({boxRight, m + 22.0f}, {boxRight, h - m - 22.0f}, WithAlpha(kLine, alpha * 0.6f), 1.6f);
-    ImVec2 const palm{m + 76.0f, h * 0.5f + 18.0f};
-    ImU32 const line = WithAlpha(Rgba(226, 244, 250), alpha);
-    float const s = 1.15f;
-    auto finger = [&](float x, float top, float bottom) {
-        dl->AddRect({palm.x + (x - 8.0f) * s, palm.y + top * s}, {palm.x + (x + 8.0f) * s, palm.y + bottom * s}, line, 8.0f * s, 0, 2.6f);
-    };
-    finger(-24.0f, -60.0f, -14.0f);
-    finger(-8.0f, -70.0f, -14.0f);
-    finger(8.0f, -66.0f, -14.0f);
-    finger(24.0f, -54.0f, -14.0f);
-    dl->AddRect({palm.x - 33.0f * s, palm.y - 18.0f * s}, {palm.x + 33.0f * s, palm.y + 34.0f * s}, line, 16.0f * s, 0, 2.6f);
-    // The thumb: a rounded digit out from the palm's side, up and to the left.
-    {
-        ImVec2 const base{palm.x - 30.0f * s, palm.y + 12.0f * s};
-        ImVec2 const tip{palm.x - 50.0f * s, palm.y - 16.0f * s};
-        float const r = 8.0f * s;
-        float const along = std::atan2(tip.y - base.y, tip.x - base.x);
-        dl->PathArcTo(tip, r, along - kPi * 0.5f, along + kPi * 0.5f, 12);
-        dl->PathArcTo(base, r, along + kPi * 0.5f, along + kPi * 1.5f, 12);
-        dl->PathStroke(line, ImDrawFlags_Closed, 2.6f);
-    }
+    HandOutline(dl, {m + 76.0f, h * 0.5f + 18.0f}, 1.15f, WithAlpha(Rgba(226, 244, 250), alpha), 2.6f);
 
     float const x = boxRight + 26.0f;
     dl->AddText(fonts.title, 40.0f, {x, m + 14.0f}, WithAlpha(Rgba(255, 157, 90), alpha), view.title.c_str());
@@ -568,6 +680,44 @@ void DrawHint(ImDrawList* dl, Fonts const& fonts, HintView const& view) {
         dl->AddText(fonts.body, 31.0f, {x, y}, WithAlpha(Rgba(226, 238, 244), alpha), text.c_str());
         y += 38.0f;
     }
+}
+
+void DrawCoach(ImDrawList* dl, Fonts const& fonts, CoachView const& view) {
+    float const alpha = std::clamp(view.open, 0.0f, 1.0f);
+    if (alpha <= 0.0f || fonts.title == nullptr) {
+        return;
+    }
+    // The hint card's panel: deep indigo with fine scanlines, a thin frame with 45-degree corners.
+    float const w = static_cast<float>(kHintWidth);
+    float const h = static_cast<float>(kHintHeight);
+    float const m = 14.0f;
+    float const cut = 26.0f;
+    std::array<ImVec2, 6> const card{ImVec2{m + cut, m}, ImVec2{w - m, m}, ImVec2{w - m, h - m - cut}, ImVec2{w - m - cut, h - m},
+        ImVec2{m, h - m}, ImVec2{m, m + cut}};
+    dl->AddConvexPolyFilled(card.data(), 6, WithAlpha(Rgba(4, 14, 52, 222), alpha));
+    for (float y = m + 2.5f; y < h - m - 1.0f; y += 3.0f) {
+        float const x0 = y < m + cut ? m + cut - (y - m) : m;
+        float const x1 = y > h - m - cut ? w - m - (y - (h - m - cut)) : w - m;
+        dl->AddLine({x0 + 1.0f, y}, {x1 - 1.0f, y}, WithAlpha(Rgba(150, 200, 240, 14), alpha), 1.0f);
+    }
+    dl->AddPolyline(card.data(), 6, WithAlpha(kLine, alpha), ImDrawFlags_Closed, 2.0f);
+
+    // The gesture, moving, in its box.
+    float const boxRight = m + 190.0f;
+    dl->AddLine({boxRight, m + 22.0f}, {boxRight, h - m - 22.0f}, WithAlpha(kLine, alpha * 0.6f), 1.6f);
+    dl->PushClipRect({m + 4.0f, m + 4.0f}, {boxRight - 2.0f, h - m - 4.0f}, true);
+    DrawGesture(dl, view.coach, {m + 98.0f, h * 0.5f + 6.0f}, view.time, alpha);
+    dl->PopClipRect();
+
+    // The power's name (the game's capitals), what it is, and how to cast it.
+    float const x = boxRight + 26.0f;
+    std::string const name = Upper(view.name);
+    dl->AddText(fonts.title, 40.0f, {x, m + 14.0f}, WithAlpha(Rgba(255, 157, 90), alpha), name.c_str());
+    float const nameWidth = fonts.title->CalcTextSizeA(40.0f, FLT_MAX, 0.0f, name.c_str()).x;
+    dl->AddText(fonts.body, 26.0f, {x + nameWidth + 16.0f, m + 24.0f}, WithAlpha(kLightChosen, alpha), "equipped");
+    pw::CoachText const how = pw::CoachLines(view.coach);
+    dl->AddText(fonts.body, 31.0f, {x, m + 70.0f}, WithAlpha(Rgba(226, 238, 244), alpha), how.line1);
+    dl->AddText(fonts.body, 31.0f, {x, m + 108.0f}, WithAlpha(Rgba(226, 238, 244), alpha), how.line2);
 }
 
 void DrawLock(ImDrawList* dl, LockDrawView const& view) {

@@ -355,6 +355,9 @@ void Settings::Read(menu::Values& v) {
         g.turn = v.Text("turn");
         g.walk = v.Text("walk");
         g.physicalCrouch = v.Flag("crouch");
+        g.handWheel = ini.Num("PowerWheel", "on", 1.0f) != 0.0f;  // the mod's defaults (game/PowerWheel)
+        g.castLock = ini.Num("PowerWheel", "lock", 1.0f) != 0.0f;
+        g.selfGestures = ini.Num("PowerWheel", "selfGestures", 1.0f) != 0.0f;
         for (auto const& [key, text] : ms::GuideTexts(g)) {
             v.texts[key] = text;
         }

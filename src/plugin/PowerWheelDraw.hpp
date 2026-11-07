@@ -67,12 +67,22 @@ struct WheelView {
 void DrawWheel(ImDrawList* dl, Fonts const& fonts, WheelView const& view);
 
 struct HintView {
-    std::string title = "Biotic Powers (VR)";
-    std::vector<std::string> lines = {"Use your left hand to select a power.", "Move hand toward a power to target it,",
-        "then pinch/close to equip."};
+    std::string title = "Powers";
+    std::vector<std::string> lines = {"Move your left hand toward a power to pick it,", "then let go of X to equip it.",
+        "A card then shows how to cast it."};
     float open = 1.0f;
 };
 void DrawHint(ImDrawList* dl, Fonts const& fonts, HintView const& view);
+
+// The how-to-cast card after an equip (research/55 "How to cast it, on a card"), on the hint card's canvas: the power's
+// name, its gesture drawn and looping (core/vr/PowerWheel's Coach), the two lines of CoachLines.
+struct CoachView {
+    vr::power_wheel::Coach coach = vr::power_wheel::Coach::Target;
+    std::string name = "Throw";
+    float time = 0.0f;  // seconds since the equip (the loop, the fades)
+    float open = 1.0f;  // 0..1
+};
+void DrawCoach(ImDrawList* dl, Fonts const& fonts, CoachView const& view);
 
 // The lock's marker (research/55 section 4), on a square canvas the host puts at the locked hostile, facing the eyes: four
 // corner brackets closing in as it locks, a diamond at its chest, the equipped power's icon in a cut-corner box below

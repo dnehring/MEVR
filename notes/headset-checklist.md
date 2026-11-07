@@ -23,6 +23,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   omni-tool's display on Shepard's hand and follow it as your hand moves, and do the pulses running out to the tiles, the
   shimmer and the turning rings feel alive without being busy? The log's `power wheel: #N its light comes from the omni-tool's
   display, (x, y, z) cm from the left grip` says what it used. (research/55 "The light from the omni-tool, alive")
+- [ ] How to cast it (2026-11-06): equip a power on the wheel; a card where the wheel was names it, draws its gesture and says how
+  to cast it, and goes when you cast. Is it in a good place, readable, and do the drawings show the gesture (Throw: raise and push;
+  Barrier: palm on the chest; Marksman: slap the gun; Unity: hand over the head)? Also the menu's Controller guide > Powers.
+  (research/55 "How to cast it, on a card")
 - [ ] Raise your left arm at an enemy: orange brackets lock on. Push your open left hand toward it: the power casts and
   lands on that enemy. Say whether the push (1.6 m/s over 10 cm) is too easy or too hard, and whether the brackets read
   at 5 m and at 35 m. (research/55 section 7)

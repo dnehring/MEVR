@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 namespace {
@@ -169,6 +170,26 @@ void TestSource() {
     CHECK(Close(along.x, 0.1f) && Close(along.y, 0.0f));
     pw::Vec2 const behindEye = pw::SeenInPlane(wheel, eye, {0.05f, 1.6f, 0.2f});
     CHECK(Close(behindEye.x, 0.05f) && Close(behindEye.y, 0.0f));
+}
+
+void TestCoach() {
+    // What the card after an equip shows: the gesture when the power has one, else by how it aims.
+    auto coach = [](char const* label, bool gestures) {
+        pw::PowerInfo const* const p = pw::FindPower(label);
+        return p == nullptr ? pw::Coach::None : pw::CoachFor(p->aim, gestures ? pw::SelfGestureFor(label) : pw::SelfGesture::None);
+    };
+    CHECK(coach("TK_Throw", true) == pw::Coach::Target);
+    CHECK(coach("SD_Singularity", true) == pw::Coach::Place && coach("EL_EMP_Delivery", true) == pw::Coach::Place);
+    CHECK(coach("KF_Barrier", true) == pw::Coach::Chest && coach("SW_Critical", true) == pw::Coach::Gun);
+    CHECK(coach("TC_TakeDown", true) == pw::Coach::Raise);
+    // The gestures off: a power that aims at nothing is pushed forward.
+    CHECK(coach("KF_Barrier", false) == pw::Coach::Forward && coach("TK_Throw", false) == pw::Coach::Target);
+    // Every kind has two lines and a name; None has none.
+    for (pw::Coach c : {pw::Coach::Target, pw::Coach::Place, pw::Coach::Forward, pw::Coach::Chest, pw::Coach::Gun, pw::Coach::Raise}) {
+        pw::CoachText const t = pw::CoachLines(c);
+        CHECK(t.line1[0] != '\0' && t.line2[0] != '\0' && std::string(pw::Name(c)) != "none");
+    }
+    CHECK(pw::CoachLines(pw::Coach::None).line1[0] == '\0' && std::string(pw::Name(pw::Coach::None)) == "none");
 }
 
 void TestTableAndView() {
@@ -587,6 +608,7 @@ int RunPowerWheelTests() {
     TestMachine();
     TestPlacement();
     TestSource();
+    TestCoach();
     TestTableAndView();
     TestPad();
     TestPowerHold();
