@@ -10,7 +10,7 @@
 // from ASI\voice at run time (plugin/Voice), so a game without the DLL or the models runs without voice. Every function is
 // extern "C" and takes plain data; the DLL has its own C runtime and heap, so nothing allocated on one side is freed on the
 // other (the text lives in the caller's structs).
-#define MEVR_VOICE_API_VERSION 1
+#define MEVR_VOICE_API_VERSION 2  // 2: MevrVoiceDevices (the menu's microphone picker)
 
 struct MevrVoiceConfig {
     int version = MEVR_VOICE_API_VERSION;
@@ -39,6 +39,10 @@ __declspec(dllexport) void MevrVoiceState(mevr::vr::voice::State* out, std::uint
 __declspec(dllexport) int MevrVoiceFeedFile(wchar_t const* path);
 __declspec(dllexport) int MevrVoiceSetKeyterms(char const* commaSeparated);
 __declspec(dllexport) int MevrVoiceApiVersion();
+// The active capture endpoints' friendly names (UTF-8), each ended by a newline, into `names` (a name that doesn't fit is left out);
+// `*defaultIndex` the default communications capture device's place in the list (-1: none). Works before MevrVoiceStartup (its
+// own COM apartment, on the caller's thread: call it off the render thread). The number of names written, or negative.
+__declspec(dllexport) int MevrVoiceDevices(char* names, std::uint32_t size, int* defaultIndex);
 }
 
 using MevrVoiceStartupFn = decltype(&MevrVoiceStartup);
@@ -49,3 +53,4 @@ using MevrVoiceStateFn = decltype(&MevrVoiceState);
 using MevrVoiceFeedFileFn = decltype(&MevrVoiceFeedFile);
 using MevrVoiceSetKeytermsFn = decltype(&MevrVoiceSetKeyterms);
 using MevrVoiceApiVersionFn = decltype(&MevrVoiceApiVersion);
+using MevrVoiceDevicesFn = decltype(&MevrVoiceDevices);

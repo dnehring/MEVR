@@ -56,6 +56,8 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
   a small language model trained for the squad (also on your machine, under a second): the same page's model tier adds it
   (llama.cpp and the model, about 665 MB). Until the model's own release is published, the setup installs the recognizer
   alone and the orders run on the built-in rules.
+- The menu's Voice page: pick your microphone by name, watch its input level move as you speak, see whether the
+  recognizer is ready, choose its size, the radio hum's strength and a keyboard key to hold for talking.
 
 ### Your hands
 - You aim with the controller, not your head. Your arms, hands and fingers follow the controllers; the gun is in

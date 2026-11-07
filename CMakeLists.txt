@@ -957,6 +957,7 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/VoiceMenuTests.cpp
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/LandmarkTests.cpp

@@ -866,7 +866,10 @@ switching frameworks.
   `models/voice/llm/model.gguf`, which deploy-asi ships; under llama.cpp 285 of 300 exact at 0.62 s median on 4 quiet threads,
   **only with the chat template around the prompt** (`Llm`'s `Settings::chatTemplate`, the trainer's `SYSTEM` line; `[Voice]
   llmChat`) and `-` allowed as the grammar's order: without them 2% and 81%). Benches: `mevr-voice-bench` + `tools/voice-bench.py` over `tools/voice-tts-corpus.ps1`'s WAVs,
-  `mevr-llm-bench`. Logs `voice:`, `voice model:`, `squad orders: ... answered`; snapshots `"voice"` (host), `"mod"."voice"`,
+  `mevr-llm-bench`. **The menu's Voice page** (research/54 "The menu's Voice page", 2026-11-06): the microphone by name
+  (the DLL's `MevrVoiceDevices`, interface v2: host and `ASI\voice` deploy together), a live input level bar, the recognizer's
+  status, size, the radio hum and the hold-to-talk key; a new microphone, size or the switch restarts the recognizer on
+  `plugin/Voice`'s worker. Logs `voice:`, `voice model:`, `squad orders: ... answered`; snapshots `"voice"` (host), `"mod"."voice"`,
   `"mod"."squadAck"`. Run in the game on the fake headset with a file feed (research/54 "In the game"); a real microphone and the
   fine-tuned model's answers in play are the checklist's (section 1).
 - LE1 power wheel at the left hand ([research/55](research/55-hand-cast-powers.md), HostServices v28 `setPowerWheel`, v29 `setPowerLock`; `core/vr/PowerWheel`,

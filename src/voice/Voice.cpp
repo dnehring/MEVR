@@ -559,8 +559,13 @@ int MevrVoiceStartup(MevrVoiceConfig const* config) {
     gConfig.intervalMs = std::clamp(config->intervalMs, 30, 1000);
     gConfig.keyterms = config->keyterms != nullptr ? config->keyterms : "";
     gConfig.log = config->log;
-    gModelName = ArchName(gConfig.arch);
-    gError.clear();
+    {
+        std::lock_guard<std::mutex> lock(gText);  // a restart (the menu's new microphone or model): nothing of the last run shown
+        gModelName = ArchName(gConfig.arch);
+        gDeviceName.clear();
+        gError.clear();
+    }
+    gLevel.store(0.0f);
     gWake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     gRunning.store(true);
     gStatus.store(voice::Status::Loading);
@@ -680,6 +685,66 @@ int MevrVoiceFeedFile(wchar_t const* path) {
         if (gPhase.load() == 1) StopStream();
     });
     return 0;
+}
+
+int MevrVoiceDevices(char* names, std::uint32_t size, int* defaultIndex) {
+    if (defaultIndex != nullptr) *defaultIndex = -1;
+    if (names == nullptr || size == 0) return -1;
+    names[0] = '\0';
+    HRESULT const init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);  // RPC_E_CHANGED_MODE: the thread's own apartment works too
+    int count = -2;
+    IMMDeviceEnumerator* enumerator = nullptr;
+    if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator)))) {
+        std::wstring defaultId;
+        IMMDevice* fallback = nullptr;
+        if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eCapture, eCommunications, &fallback))) {
+            LPWSTR id = nullptr;
+            if (SUCCEEDED(fallback->GetId(&id)) && id != nullptr) {
+                defaultId = id;
+                CoTaskMemFree(id);
+            }
+            fallback->Release();
+        }
+        IMMDeviceCollection* devices = nullptr;
+        if (SUCCEEDED(enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &devices))) {
+            count = 0;
+            std::size_t used = 0;
+            UINT n = 0;
+            devices->GetCount(&n);
+            for (UINT i = 0; i < n; ++i) {
+                IMMDevice* device = nullptr;
+                if (FAILED(devices->Item(i, &device))) continue;
+                std::string name;
+                IPropertyStore* props = nullptr;
+                if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, &props))) {
+                    PROPVARIANT value;
+                    PropVariantInit(&value);
+                    if (SUCCEEDED(props->GetValue(PKEY_Device_FriendlyName, &value)) && value.vt == VT_LPWSTR) name = Narrow(value.pwszVal);
+                    PropVariantClear(&value);
+                    props->Release();
+                }
+                bool isDefault = false;
+                LPWSTR id = nullptr;
+                if (SUCCEEDED(device->GetId(&id)) && id != nullptr) {
+                    isDefault = !defaultId.empty() && defaultId == id;
+                    CoTaskMemFree(id);
+                }
+                device->Release();
+                name.erase(std::remove(name.begin(), name.end(), '\n'), name.end());
+                if (name.empty() || used + name.size() + 1 >= size) continue;
+                std::memcpy(names + used, name.data(), name.size());
+                used += name.size();
+                names[used++] = '\n';
+                names[used] = '\0';
+                if (isDefault && defaultIndex != nullptr) *defaultIndex = count;
+                ++count;
+            }
+            devices->Release();
+        }
+        enumerator->Release();
+    }
+    if (SUCCEEDED(init)) CoUninitialize();
+    return count;
 }
 
 int MevrVoiceSetKeyterms(char const* commaSeparated) {

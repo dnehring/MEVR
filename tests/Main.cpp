@@ -11486,6 +11486,8 @@ int RunExeTests();
 // tests/GfxTests.cpp: the game's own UI art: the GFx reader, rasterizer and TrueType fonts (core/gfx, research/57 section 5).
 int RunGfxTests();
 int RunPowerWheelTests();
+// tests/VoiceMenuTests.cpp: the main menu's Voice page (research/54 "The menu's Voice page").
+int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
 int RunLandmarkTests();
@@ -11636,6 +11638,7 @@ int main() {
     gFailures += RunExeTests();
     gFailures += RunGfxTests();
     gFailures += RunPowerWheelTests();
+    gFailures += RunVoiceMenuTests();
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
     gFailures += RunLandmarkTests();

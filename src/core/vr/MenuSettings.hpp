@@ -181,6 +181,35 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
 // "MEVR 0.1.0 · commit 1a0622c1f2", and " · development build" for a hot-reload (not a players') build.
 std::string AboutBuild(std::string_view version, std::string_view commit, bool development);
 
+// ---- Voice (the Voice page: [Voice] in <GAME>MEVR.ini, the host's plugin/Voice; research/54 "The menu's Voice page") ----------
+// The microphone rows: at most this many capture devices get a row (the rest are named by [Voice] device by hand).
+inline constexpr int kMicSlots = 8;
+// The recognizer size's chip: "tiny", "small" or "medium" (anything else: plugin/Voice reads it as tiny).
+std::string VoiceModelChoice(std::string_view value);
+// Which device [Voice] device picks, as the DLL does (the first whose name holds it, case-insensitive; ASCII case only):
+// -1 for an empty setting (the default communications device), -2 when no listed name holds it, else its place.
+int MicIndex(std::vector<std::string> const& names, std::string_view setting);
+// The level bar's fill, 0..100: the RMS (0..1) in decibels from -60 to 0 dBFS (speech at arm's length reads 40-70).
+float VoiceMeterPercent(float rms);
+// The bar shown: up at once, down at `fallPerS` percent a second (a meter's ballistics; `dtS` since the last call).
+float VoiceMeterStep(float shown, float target, float dtS, float fallPerS = 90.0f);
+// Loud enough to count as "heard you" (-40 dBFS, about a quiet word at the headset's microphone).
+inline constexpr float kVoiceHeardPercent = 33.0f;
+// The status line under the level bar.
+struct VoiceStatusInput {
+    bool enabled = true;
+    bool restarting = false;
+    int status = 0;            // vr::voice::Status: 0 off, 1 loading, 2 ready, 3 failed
+    std::string device;        // the capture device it opened
+    std::string model;         // the DLL's name for the models ("tiny streaming")
+    std::string error;         // why it's off or failed
+    bool listening = false;
+};
+std::string VoiceStatusText(VoiceStatusInput const& in);
+// The hold-to-talk key's value from a key the player pressed (`vk`): 0 for keys that can't be one (the mouse buttons, Escape,
+// the menu's own key `menuKey`, the test loop's End and Home), else vk.
+int VoiceKeyFromPress(int vk, int menuKey);
+
 // ---- Settings-file edits -------------------------------------------------------------------------------------
 // Edits on their way to an ini file: one per (section, key), the latest value wins, each written when it's due
 // (a slider's 300 ms after it last moved; a toggle at once). Until then a re-read of the file shows the pending

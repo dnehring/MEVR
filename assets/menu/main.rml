@@ -31,6 +31,7 @@
 		<button class="navb" id="nav-guide" data-class-on="section == 'guide'" data-event-click="section = 'guide'"><div class="nico i-guide"/><div><div class="navl">Controller guide</div><div class="navs">Every button and gesture</div></div></button>
 		<button class="navb" id="nav-comfort" data-class-on="section == 'comfort'" data-event-click="section = 'comfort'"><div class="nico i-turn"/><div><div class="navl">Comfort</div><div class="navs">Turning, movement</div></div></button>
 		<button class="navb" id="nav-controls" data-class-on="section == 'controls'" data-event-click="section = 'controls'"><div class="nico i-controls"/><div><div class="navl">Controls</div><div class="navs">Guns, holsters, grenades</div></div></button>
+		<button class="navb" id="nav-voice" data-class-on="section == 'voice'" data-event-click="section = 'voice'"><div class="nico i-mic"/><div><div class="navl">Voice</div><div class="navs">Microphone, squad orders</div></div></button>
 		<button class="navb" id="nav-body" data-class-on="section == 'body'" data-event-click="section = 'body'"><div class="nico i-body"/><div><div class="navl">Body &amp; calibration</div><div class="navs">Height, arms, aim</div></div></button>
 		<button class="navb" id="nav-display" data-class-on="section == 'display'" data-event-click="section = 'display'"><div class="nico i-eye"/><div><div class="navl">Display</div><div class="navs">Colour, resolution</div></div></button>
 		<button class="navb" id="nav-hud" data-class-on="section == 'hud'" data-event-click="section = 'hud'"><div class="nico i-crosshair"/><div><div class="navl">HUD &amp; sights</div><div class="navs">Panel, reticle, scopes</div></div></button>
@@ -223,6 +224,49 @@
 				<button class="tog" data-class-on="mako_controls" data-event-click="toggle('mako_controls')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Sit in the cockpit</div><div class="rdesc">In the Mako you sit in its cockpit, the outside view on the screen ahead. Off: the game's camera behind the Mako.</div></div>
 				<button class="tog" data-class-on="cockpit" data-event-click="toggle('cockpit')"><div class="knob"/></button></div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Voice -->
+	<!-- Voice orders (research/54 "The menu's Voice page"): the microphone, its level, the recognizer (the host's plugin/Voice,
+	     restarted on a change of microphone, model or the switch), and [Voice]'s other keys. -->
+	<div data-if="section == 'voice'">
+		<div class="stitle">Voice</div>
+		<div class="sdesc">Talk to your squad: hold the left grip at your left ear like a radio, speak, let go.</div>
+		<div class="group">
+			<div class="gtitle"><span>Microphone</span><div class="gline"/></div>
+			<div class="srow meterrow"><div class="sl"><div class="slab">Input level</div><div class="rdesc" data-if="!voice_heard">Speak to test</div><div class="rdesc heard" data-if="voice_heard">Hearing you</div></div>
+				<div class="meter"><div class="fill" data-class-hot="voice_heard" data-style-width="voice_level + '%'"/><div class="mark"/></div></div>
+			<div class="info" data-class-warn="!voice_ready"><div class="ico i-info"/><span>{{voice_status}}</span></div>
+			<button class="row mic" data-class-on="mic == 'default'" data-event-click="pick('mic','default')"><div class="radio"/><div class="rl"><div class="rlab">Default</div><div class="rdesc">{{mic_default}}</div></div></button>
+			<button class="row mic" data-if="mic_count > 0" data-class-on="mic == '0'" data-event-click="pick('mic','0')"><div class="radio"/><div class="rl"><div class="rlab">{{mic0}}</div></div></button>
+			<button class="row mic" data-if="mic_count > 1" data-class-on="mic == '1'" data-event-click="pick('mic','1')"><div class="radio"/><div class="rl"><div class="rlab">{{mic1}}</div></div></button>
+			<button class="row mic" data-if="mic_count > 2" data-class-on="mic == '2'" data-event-click="pick('mic','2')"><div class="radio"/><div class="rl"><div class="rlab">{{mic2}}</div></div></button>
+			<button class="row mic" data-if="mic_count > 3" data-class-on="mic == '3'" data-event-click="pick('mic','3')"><div class="radio"/><div class="rl"><div class="rlab">{{mic3}}</div></div></button>
+			<button class="row mic" data-if="mic_count > 4" data-class-on="mic == '4'" data-event-click="pick('mic','4')"><div class="radio"/><div class="rl"><div class="rlab">{{mic4}}</div></div></button>
+			<button class="row mic" data-if="mic_count > 5" data-class-on="mic == '5'" data-event-click="pick('mic','5')"><div class="radio"/><div class="rl"><div class="rlab">{{mic5}}</div></div></button>
+			<button class="row mic" data-if="mic_count > 6" data-class-on="mic == '6'" data-event-click="pick('mic','6')"><div class="radio"/><div class="rl"><div class="rlab">{{mic6}}</div></div></button>
+			<button class="row mic" data-if="mic_count > 7" data-class-on="mic == '7'" data-event-click="pick('mic','7')"><div class="radio"/><div class="rl"><div class="rlab">{{mic7}}</div></div></button>
+			<div class="row mic on" data-if="mic == 'missing'"><div class="radio"/><div class="rl"><div class="rlab">{{mic_missing}}</div><div class="rdesc">Set in the file but not connected now: the default is used until it is.</div></div></div>
+			<div class="note" data-if="mic_note != ''">{{mic_note}}</div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Recognizer</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Voice orders</div><div class="rdesc">Off: the microphone stays closed and the radio gesture does nothing</div></div>
+				<button class="tog" data-class-on="voice_on" data-event-click="toggle('voice_on')"><div class="knob"/></button></div>
+			<div class="row" data-class-disabled="!voice_on"><div class="rl"><div class="rlab">Recognizer size</div><div class="rdesc">Tiny is the default: it answers fastest beside the running game. Small and medium understand more but each update takes three times as long or more.</div></div>
+				<div class="seg"><button class="segb" data-class-on="voice_model == 'tiny'" data-event-click="pick('voice_model','tiny')">Tiny</button><button class="segb" data-class-on="voice_model == 'small'" data-event-click="pick('voice_model','small')">Small</button><button class="segb" data-class-on="voice_model == 'medium'" data-event-click="pick('voice_model','medium')">Medium</button></div></div>
+			<div class="row" data-class-disabled="!voice_on"><div class="rl"><div class="rlab">Restart the recognizer</div><div class="rdesc">Opens the microphone again: after plugging in a headset</div></div>
+				<button class="btn" data-event-click="cmd('voice_restart')"><div class="sweep"/><span>Restart</span><div class="tick"/></button></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Talking</span><div class="gline"/></div>
+			<div class="srow d" data-class-disabled="!voice_on"><div class="sl"><div class="slab">Radio hum</div><div class="rdesc">The left controller hums when your hand is at the ear, stronger nearer it. 0%: none.</div></div><input type="range" min="0" max="100" step="5" data-value="ear_cue"/><div class="sval">{{ear_cue_text}}</div></div>
+			<div class="row" data-class-disabled="!voice_on"><div class="rl"><div class="rlab">Hold-to-talk key</div><div class="rdesc">A keyboard key held to speak, besides the radio gesture: {{voice_key}}</div></div>
+				<div class="actions">
+					<button class="btn" data-class-armed="voice_key_wait" data-event-click="cmd('voice_key_set')"><div class="sweep"/><span>Set key</span><div class="tick"/></button>
+					<button class="btn" data-event-click="cmd('voice_key_clear')"><div class="sweep"/><span>None</span><div class="tick"/></button>
+				</div></div>
 		</div>
 	</div>
 

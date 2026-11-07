@@ -14,7 +14,8 @@
 //   section-<name>-<x>.png   a section's other states (Comfort's snap and movement, Display's image quality rows with
 //                            the headset known and before VR has started, the controller guide on a first run and with
 //                            other settings) and its lower screenfuls (-2, -3, -4: the guide, Comfort, Controls, HUD);
-//                            section-display-perf-<mode>.png: the Performance row in each mode and Custom (research/60)
+//                            section-display-perf-<mode>.png: the Performance row in each mode and Custom (research/60);
+//                            section-voice-<state>.png: the Voice page speaking, quiet, restarting, not installed (research/54)
 //   advanced-<tab>.png       each of Advanced's tabs (-2: the lower half of Stereo, Performance, Game UI and Diagnostics;
 //                            advanced-stereo-expert.png: the original stereo's rows)
 //   advanced-diag-about.png  Diagnostics scrolled to its end: About, with this build's version and commit
@@ -102,6 +103,22 @@ public:
             v.numbers["fp_up"] = -0.05f;
             v.numbers["panel_follow"] = 70;
             v.texts["content_installed"] = "ALOT for ME1";  // Display > Optional content (research/33)
+            // The Voice page (research/54 "The menu's Voice page"): a PS VR2 player with a Quest's link software installed.
+            v.numbers["mic_count"] = 3;
+            v.texts["mic0"] = "Headset Microphone (PlayStation VR2)";
+            v.texts["mic1"] = "Microphone (Realtek(R) Audio)";
+            v.texts["mic2"] = "Headset Microphone (Oculus Virtual Audio Device)";
+            v.texts["mic"] = "0";
+            v.texts["mic_default"] = "Windows' default communications microphone: Microphone (Realtek(R) Audio)";
+            {
+                ms::VoiceStatusInput status;
+                status.status = 2;
+                status.device = "Headset Microphone (PlayStation VR2)";
+                status.model = "tiny streaming";
+                v.texts["voice_status"] = ms::VoiceStatusText(status);
+            }
+            v.numbers["voice_ready"] = 1;
+            v.texts["voice_key"] = "None";
             Guide(v, ms::GuideInput{});  // the controller guide with the shipped settings
             v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, false);  // this build's, as a players' build shows it
         }
@@ -426,7 +443,7 @@ int main(int argc, char** argv) {
     };
 
     rml->ProcessMouseMove(-50, -50, 0);
-    for (char const* section : {"guide", "comfort", "controls", "body", "display", "hud"}) {
+    for (char const* section : {"guide", "comfort", "controls", "voice", "body", "display", "hud"}) {
         model.SetText("section", section);
         frames(30);
         save(std::string("section-") + section);
@@ -448,8 +465,46 @@ int main(int argc, char** argv) {
         }
         content->SetScrollTop(0.0f);
     };
-    for (char const* section : {"guide", "comfort", "controls", "hud"}) {
+    for (char const* section : {"guide", "comfort", "controls", "voice", "hud"}) {
         scrolled(section);
+    }
+    // The Voice page's states (research/54 "The menu's Voice page"): speaking (the bar past the mark), quiet, a restart after a new
+    // microphone, and a game without the voice download.
+    model.SetText("section", "voice");
+    model.SetNumber("voice_level", ms::VoiceMeterPercent(0.08f));
+    model.SetNumber("voice_heard", 1.0f);
+    frames(20);
+    save("section-voice-speaking");
+    model.SetNumber("voice_level", ms::VoiceMeterPercent(0.002f));
+    model.SetNumber("voice_heard", 0.0f);
+    frames(20);
+    save("section-voice-quiet");
+    {
+        ms::VoiceStatusInput status;
+        status.restarting = true;
+        model.SetText("voice_status", ms::VoiceStatusText(status));
+        model.SetNumber("voice_ready", 0.0f);
+        model.SetText("mic", "1");
+        model.SetNumber("voice_level", 0.0f);
+        frames(20);
+        save("section-voice-restarting");
+        status = {};
+        status.error = "no tiny models in C:\\Games\\Mass Effect Legendary Edition\\Game\\ME1\\Binaries\\Win64\\ASI\\voice\\models\\tiny-streaming-en";
+        model.SetText("voice_status", ms::VoiceStatusText(status));
+        model.SetText("mic", "default");
+        model.SetText("voice_key", "Press a key\xE2\x80\xA6");
+        model.SetNumber("voice_key_wait", 1.0f);
+        frames(20);
+        save("section-voice-not-installed");
+        status = {};
+        status.status = 2;
+        status.device = "Headset Microphone (PlayStation VR2)";
+        status.model = "tiny streaming";
+        model.SetText("voice_status", ms::VoiceStatusText(status));
+        model.SetNumber("voice_ready", 1.0f);
+        model.SetText("mic", "0");
+        model.SetText("voice_key", "None");
+        model.SetNumber("voice_key_wait", 0.0f);
     }
     // The controller guide as a new player first sees it (MainMenu's first run: the welcome line), and with other settings:
     // the left trigger as Aim, the power wheel on Y, the right grip as RB (holsters off), grenades in the left hand, no vent,

@@ -812,6 +812,28 @@ if the rules take nine orders in ten: a nicety for the tenth, off by default whe
   loop (the mod's ask, the host's worker, the grammar, the validator, the dispatcher) is proven, and the budget for a
   trained one is about a second at these settings.
 
+### The menu's Voice page (2026-11-06)
+
+The player asked, the first time in the headset, whether the menu lets them pick the microphone and see that it hears
+them. Our menu (research/28) has a Voice section now, between Controls and Body: the microphones by name (MEVR-Voice.dll's
+new `MevrVoiceDevices`, the WASAPI capture endpoints' friendly names and the default communications device; interface
+version 2, so the host and `ASI\voice` deploy together), listed on the host's voice worker when the page opens and every
+3 s while it shows; a pick writes the whole name to `[Voice] device` (UTF-16 through the profile API: a name with an "ö"
+survives) and the default row empties it. Under it an input level bar: the microphone's RMS over its last 20 ms (the
+capture runs whenever the recognizer does, listening or not) as -60..0 dBFS, rising at once and falling at 90% a second,
+"Hearing you" past -40 dBFS (a mark on the bar), refreshed about 30 times a second while the page shows
+(`menu_settings::VoiceMeterPercent`/`VoiceMeterStep`). The status line is the recognizer's (ready with the device it
+opened and the model, loading, failed, off, or not installed with what's missing). The voice switch, the recognizer size
+(tiny / small / medium, one line on the cost) and the microphone restart the recognizer: `plugin/Voice` now does its start
+on a worker of its own (the start at attach, the menu's restarts and device lists, one at a time), stops the DLL
+(`MevrVoiceShutdown` joins its threads), re-reads `[Voice]` and starts it again; the page says "Restarting..." meanwhile.
+Also on the page: a Restart button (a headset plugged in late), the radio hum's strength (`[Voice] earCueStrength`, the
+mod's) and the hold-to-talk key (Set key takes the next key pressed within 10 s, never the mouse, Escape, the menu's own
+key or the test loop's End and Home; None clears it; shown by name as the menu shows Halcyon's keys; takes effect at once).
+Unit-tested in `tests/VoiceMenuTests.cpp`; offline look `mevr-menu-preview`'s `section-voice*.png`. The device list was
+checked on the dev machine through the DLL itself (four microphones, the PS VR2's the default); the bar with a real
+microphone and a restart in the game are the checklist's.
+
 ## The fine-tune (2026-11-05, evening)
 
 **The pipeline.** [tools/voice-model/pipeline.py](../tools/voice-model/pipeline.py) runs one config
