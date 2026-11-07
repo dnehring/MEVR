@@ -260,6 +260,9 @@ enum Flags : std::uint32_t {
     // The gun is at the calibrated shoulder (research/21 section 20): the host takes the eye nearest the sight line in a wider
     // box for a dot. A host from before ignores it.
     kShouldered = 16u,
+    // The gun is raised toward the eye (sights::RaisedWeight; research/21 section 21): the same wider box for a dot, and the
+    // dot is kept inside its window. A host from before ignores it.
+    kRaised = 32u,
 };
 
 struct Sight {
@@ -433,6 +436,14 @@ struct Quad {
 // The collimated reticle: `distance` out along the sight line from its centre, facing back, upright to
 // the gun's top, `angularSize` (radians) across.
 Quad Reticle(XrVector3f const& center, XrVector3f const& axis, XrVector3f const& up, float distance, float angularSize);
+// The red dot kept inside its window (research/21 section 21, 2026-11-06, the user chose it): seen from `eye`, a dot 50 m
+// out along the line would sit outside the window once the eye is off the line by more than the window's radius, beside
+// the sight's housing. This puts the dot where the eye's ray toward the true dot crosses the window's plane, pulled in to
+// `fraction` of the radius from the centre when it falls further out, and returns the quad `distance` out along the ray
+// from the eye through that point, facing the eye (`angularSize` across). An eye at or past the window (not behind it):
+// the true dot (Reticle). `clamped` says whether it was pulled in.
+Quad ReticleInWindow(XrVector3f const& center, XrVector3f const& axis, XrVector3f const& up, float radius, XrVector3f const& eye,
+    float distance, float angularSize, float fraction, bool* clamped = nullptr);
 // A disc at the sight's centre, facing back along the line (the eyepiece; the window's ring).
 Quad Disc(XrVector3f const& center, XrVector3f const& axis, XrVector3f const& up, float radius);
 
