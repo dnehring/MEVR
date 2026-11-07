@@ -155,10 +155,8 @@ conversation started on foot has his mesh on his pawn, so this is the "conversat
 the transition fade (`plugin/TransitionFade`, main since a5c9e8e) over the player's own moves; or not following it while body
 follow can't reach (the arms would stretch).
 
-Walking them to their marks stays possible (the undo knows where the game wanted them: the jump's far end), but most of these
-people have no AI to send, their gestures are authored standing, and Anderson's thirteen returns to the same mark would be a walk
-every line; standing still is the better default. Next if the headset says someone behind you is wrong: walk only the first move
-of each person, at the speed of the scene.
+The undo also knows where the game wanted them: the jump's far end. Most of these people have no AI to send and their gestures
+are authored standing, so standing still remains the default. The optional prototype below waits for a lasting mark before walking.
 
 ## The survey and the scan: every conversation (2026-11-06, night)
 
@@ -269,6 +267,48 @@ front of me." From the log (`LE1MEVR.log` 22:08-22:10):
 - **The comm room is a set piece** (17 of 17 lines authored camera). **Fix:** in First person the scan's 18 set pieces go to the
   3D screen (`cw::IsSetPiece`, unit-tested; `worldSetPieces = screen`, `world` keeps them in the world; the host's screen takes
   conversations in the world mode for what the mod leaves out). Log `convo: ... shown on the 3D screen (a set piece ...)`.
+
+## Walking to marks (prototype)
+
+**Built offline, NOT yet checked in the game.** With `conversations = world` and `worldStay = 1`, each tracked actor remembers
+the destination and monotonic time of the latest jump that KeepInPlace undoes. NPCs walk only when that mark is **more than
+`worldWalkMinM`** from their current place and **`worldWalkSettleS`** has passed without a newer jump. Every newer jump (even to
+the same mark) restarts the wait and cancels a running walk; an observed return within the minimum distance cancels the request.
+Shepard stays kept and never walks. The pure `core/vr/ConversationWorld::MarkWalk` rule and slide steps have offline unit tests.
+
+`[Cinematics]` settings (read live, next to `worldStay`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `worldWalk` | `0` | `0` off; `1` AI; `2` slide |
+| `worldWalkSettleS` | `2.5` | Seconds without a newer observed placement before starting |
+| `worldWalkMinM` | `0.5` | Minimum distance from the actor when deciding to walk |
+| `worldWalkSpeedMS` | `1.4` | Slide speed in metres/second; both methods' timeout uses distance / this speed + 3 s |
+
+**AI:** `Engine.Pawn.Controller`, checked for BioAiController and the matching `PushMoveToPoint` function, receives the point
+with walking and precision movement requested. A missing controller/function/parameter or failed call (including a null move
+action) logs the reason and uses slide for that walk. Its returned `BioSeqData_MoveToPoint.Terminate` flag ends only our move
+on cancellation/arrival/timeout (journalled by FieldRef). **Slide:** `Actor.SetLocation` steps toward the mark at speed, faces
+the travel direction with the existing smoothed turn, and writes journalled `Actor.Velocity` from the actual step for locomotion;
+arrival/exit zeroes it. The kept place follows progress, becomes the mark on arrival, and stays at the reached place on timeout.
+Collision refusals remain bounded by the timeout. Disabling stay/walking, changing methods, leaving world mode and conversation
+end cancel walks; speed is captured at each walk's start so its deadline stays consistent.
+Logs start `convo: walk:` (start/from/to/distance/method, fallback, arrival/end/cancel); summary JSON and the survey's table
+include `walks` (starts, including fallback; older survey records display zero).
+
+Offline validation: Release `MEVR-LE1-mod` and `mevr-tests` built with `/W4 /WX`; the test executable printed `all tests passed`
+and `conversation world tests: ok`; SPDX passed. The survey table was checked with synthetic new and old records. No game run
+or deployment. Two existing installer recovery cases were skipped because the loader DLL was not built.
+
+- [verify] Medical bay: Anderson's bouncing marks keep restarting/cancelling; a lasting mark starts after 2.5 s; Shepard never walks.
+  The observer still uses the existing 30-unit jump threshold: a native placement exactly at the already-kept place is
+  indistinguishable from no placement, so such returns cannot cancel a pending walk from location samples alone.
+- [verify] AI can move during a conversation, stops when its own action's `Terminate` is set, respects collisions and leaves other
+  actions intact; missing AI falls back to slide. AI pace is the game's walking pace, not a speed override.
+- [verify] Slide looks like walking with the scene's animation tree (standing gestures may override locomotion), speed/velocity
+  integration is correct, turns are natural, and blocked moves end where they stand after the timeout.
+- [verify] New jumps during a walk, return-to-current-place cancellation, live disable, conversation end/unload and the next
+  conversation leave no stale movement/velocity. Recheck jumps reaching a drawn frame with each method.
 
 ## Limits and next
 

@@ -132,6 +132,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   try"): the room fully drawn and sharp in the comm room's kind of scene (the game's camera now held at your place), the wheel
   in front of you, and the 18 set pieces (Nihlus in the comm room, Anderson's briefing, Saren, Sovereign) on the 3D screen.
   (research/59; checked on the fake headset, not by a person)
+- [ ] **Walking to marks prototype** (built 2026-11-06, session: codex/convo-walk): with conversations in the world and
+  `worldStay = 1`, try `worldWalk = 1` (AI/slide fallback) and `2` (slide). Lasting marks should wait 2.5 s then walk; bouncing
+  marks and observed returns should cancel; Shepard stays kept. Check locomotion/gestures, turns, collision/timeout, no drawn
+  jumps, and no stale velocity or AI move on disable/end. Native returns exactly at the already-kept place cannot be detected
+  by position sampling alone. Still off by default; NOT yet checked in the game. (research/59 "Walking to marks (prototype)")
 - [ ] Tap your left wrist with your right index: the omni-tool's rail opens beside it (Squad, Equipment, Map, Journal,
   Codex, Computer, Close), its entries readable; a tap on an entry opens that screen on the wrist. Reaching for a wrist
   screen's lower buttons must not close it. (research/57 sections 2-3 and 6, built 2026-11-04/05)

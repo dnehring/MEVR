@@ -385,6 +385,7 @@ switching frameworks.
   comm room: assets missing): the `UpdateCamera` post-handler writes the place into the POV after reading the director's. The wheel
   is in front by default (`wheelHand = front|left|right`); **the scan's 18 set pieces go to the 3D screen** (`cw::IsSetPiece`,
   `worldSetPieces = screen|world`).
+  Walking to lasting marks is an off-by-default prototype (`worldWalk = 0|1|2`: off/AI/slide; settle 2.5 s, minimum 0.5 m, speed 1.4 m/s); see research/59 "Walking to marks (prototype)" for settings and open game checks.
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
   Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
   `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into

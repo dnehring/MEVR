@@ -579,6 +579,8 @@ void CheckClasses() {
     CheckClass<ABioPawn>("SFXGame.BioPawn");
     CheckClass<ABioTriggerStream>("SFXGame.BioTriggerStream");  // mevr stream
     CheckClass<ABioPlayerController>("SFXGame.BioPlayerController");
+    CheckClass<ABioAiController>("SFXGame.BioAiController");  // game/ConversationWorld: walking to marks
+    CheckClass<UBioSeqData_MoveToPoint>("SFXGame.BioSeqData_MoveToPoint");
     CheckClass<UBioPlayerInput>("SFXGame.BioPlayerInput");
     CheckClass<ASFXCameraNativeBase>("SFXGame.SFXCameraNativeBase");
     CheckClass<USFXCameraMode>("SFXGame.SFXCameraMode");
@@ -714,6 +716,9 @@ void CheckFields() {
     CheckField("SFXGame.BioSkillGame_Handler", "m_bGameActive", SDK_BOOL(UBioSkillGame_Handler, m_bGameActive));  // the puzzle played: its d-pad
     CheckField("SFXGame.BioSFHandler_Shop", "m_shop", SDK_FIELD(UBioSFHandler_Shop, m_shop));
     // game/ConversationWorld (research/59): the live conversation, its actors and the dialogue wheel.
+    // Walking also uses Engine.Pawn.Controller, Engine.Actor.Velocity, Actor.SetLocation/SetRotation and PushMoveToPoint:
+    // their shared field/function/parameter rows are below (and with SquadOrders).
+    CheckField("SFXGame.BioSeqData_MoveToPoint", "Terminate", SDK_BOOL(UBioSeqData_MoveToPoint, Terminate));
     CheckField("SFXGame.BioWorldInfo", "m_oCurrentConversation", SDK_FIELD(ABioWorldInfo, m_oCurrentConversation));
     CheckField("SFXGame.BioConversation", "m_pSpeaker", SDK_FIELD(UBioConversation, m_pSpeaker));
     CheckField("SFXGame.BioConversation", "m_pListener", SDK_FIELD(UBioConversation, m_pListener));
@@ -1481,6 +1486,7 @@ void CheckParams() {
     PARAM(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint", PointTolerance);
     PARAM(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint", bWalking);
     PARAM(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint", bRequiresPrecisionMovement);
+    PARAM(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint", ReturnValue);  // game/ConversationWorld
     PARAM(ABioBaseSquad_eventSquadHandleChatterEvent_Parms, "SFXGame.BioBaseSquad.SquadHandleChatterEvent", eSoundSet);
     PARAM(ABioBaseSquad_eventSquadHandleChatterEvent_Parms, "SFXGame.BioBaseSquad.SquadHandleChatterEvent", nFlags);
     PARAM(ABioPawn_execPlaySoundSet_Parms, "SFXGame.BioPawn.PlaySoundSet", eType);
@@ -1637,6 +1643,7 @@ void CheckParams() {
     PARMS(ABioPawn_execIsHostile_Parms, "SFXGame.BioPawn.IsHostile");
     PARMS(UBioEpicPawnBehavior_execGetPercentHealth_Parms, "SFXGame.BioEpicPawnBehavior.GetPercentHealth");
     PARMS(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation");
+    PARMS(ABioAiController_execPushMoveToPoint_Parms, "SFXGame.BioAiController.PushMoveToPoint");  // game/ConversationWorld
     PARMS(AActor_execDestroy_Parms, "Engine.Actor.Destroy");
     PARMS(ABioWeaponRanged_eventDoCoolDownEffect_Parms, "SFXGame.BioWeaponRanged.DoCoolDownEffect");
     PARMS(USkeletalMeshComponent_execForceSkelUpdate_Parms, "Engine.SkeletalMeshComponent.ForceSkelUpdate");

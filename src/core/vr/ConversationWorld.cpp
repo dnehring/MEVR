@@ -179,4 +179,45 @@ bool FollowHeadSettled(FollowState& state, Vec3 const& headNow, double threshold
     return true;
 }
 
+namespace {
+double MarkDistance(Vec3 a, Vec3 b) {
+    return std::hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+} // namespace
+
+void MarkWalk::Jump(Vec3 wanted, Vec3 standing, double nowS, double minUnits) {
+    wanted_ = wanted;
+    wantedAtS_ = nowS;
+    phase_ = MarkDistance(wanted, standing) > std::max(0.0, minUnits) ? WalkPhase::Waiting : WalkPhase::Idle;
+}
+
+bool MarkWalk::StartIfSettled(Vec3 standing, double nowS, double settleS, double minUnits) {
+    if (phase_ != WalkPhase::Waiting) {
+        return false;
+    }
+    if (!(MarkDistance(wanted_, standing) > std::max(0.0, minUnits))) {
+        End();
+        return false;
+    }
+    if (nowS - wantedAtS_ < std::max(0.0, settleS)) {
+        return false;
+    }
+    phase_ = WalkPhase::Walking;
+    return true;
+}
+
+WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double dtS) {
+    double const distance = MarkDistance(standing, mark);
+    if (distance <= 1e-6) {
+        return {mark, {}, true};
+    }
+    if (!(dtS > 0.0) || !(speedUnitsPerS > 0.0)) {
+        return {standing, {}, false};
+    }
+    double const fraction = std::min(1.0, speedUnitsPerS * dtS / distance);
+    Vec3 const delta{(mark.x - standing.x) * fraction, (mark.y - standing.y) * fraction, (mark.z - standing.z) * fraction};
+    return {{standing.x + delta.x, standing.y + delta.y, standing.z + delta.z},
+            {delta.x / dtS, delta.y / dtS, delta.z / dtS}, fraction == 1.0};
+}
+
 } // namespace mevr::vr::conversation_world

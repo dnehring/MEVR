@@ -7,6 +7,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- Optional conversation walking prototype: in First person conversations, `worldWalk = 1` requests an AI walk (slide fallback),
+  or `2` slides NPCs toward lasting stage marks after a wait. Off by default (`0`); not yet checked in the game.
+
 ## 0.1.0 (2026-11-06)
 
 The first public release, a **development preview**: **Mass Effect 1 (Legendary Edition) in VR**, played with motion
