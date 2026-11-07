@@ -98,8 +98,6 @@ std::vector<Field> const& Schema() {
         {"vignette_when", Type::Choice, 0, "turn"},
         {"walk", Type::Choice, 0, "head"},
         {"crouch", Type::Flag, 1},
-        {"lifesize", Type::Flag, 0},
-        {"lifesize_note", Type::Text, 0, ""},  // Halcyon's leanGain is neither 1 nor 2 (Advanced > View's Movement scale)
         {"pause", Type::Flag, 1},
         // Comfort: conversations and cutscenes (research/52), each in VR (Halcyon's), on the 3D cinema screen, or the flat screen.
         {"cine_convo", Type::Choice, 0, "screen"},
@@ -220,7 +218,6 @@ std::vector<Field> const& Schema() {
         {"fp_right", Type::Number, 0, "", -1, 1, F::SignedMeters2},
         {"fp_up", Type::Number, 0, "", -1, 1, F::SignedMeters2},
         {"lean", Type::Flag, 1},
-        {"lean_gain", Type::Number, 1, "", 0.5f, 3, F::Times1},
         {"flat_size", Type::Number, 2.35f, "", 1, 3.5f, F::Meters2},
         {"fov_fill", Type::Flag, 1},
         {"vr_mode", Type::Choice, 0, "stereo"},

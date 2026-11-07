@@ -96,12 +96,10 @@ public:
             v.numbers["headset_known"] = 1;
             v.texts["headset_text"] = ms::HeadsetSizesText(2824, 2880);
             v.texts["prof_active"] = "1";
-            v.numbers["lifesize"] = 1;
             v.numbers["eye_distance"] = 6.8f;  // twice Halcyon's sfr2HalfEyeUU 3.4
             v.numbers["convergence"] = 0.012f;
             v.numbers["fp_back"] = 0.23f;
             v.numbers["fp_up"] = -0.05f;
-            v.numbers["lean_gain"] = 2.0f;
             v.numbers["panel_follow"] = 70;
             v.texts["content_installed"] = "ALOT for ME1";  // Display > Optional content (research/33)
             Guide(v, ms::GuideInput{});  // the controller guide with the shipped settings
@@ -583,19 +581,6 @@ int main(int argc, char** argv) {
         content->SetScrollTop(0.0f);
     }
     model.SetNumber("life_size", 1.0f);
-    // Comfort's Life-size movement row when Advanced > View's Movement scale holds another gain.
-    model.SetText("section", "comfort");
-    model.SetNumber("lifesize", 0.0f);
-    model.SetText("lifesize_note", "Now 1.5\xC3\x97 (Advanced > View > Movement scale): switching sets 2\xC3\x97 or 1\xC3\x97");
-    frames(10);
-    if (Rml::Element* content = element("content")) {
-        content->SetScrollTop(content->GetScrollHeight() * 0.3f);
-        frames(10);
-        save("section-comfort-lifesize-note");
-        content->SetScrollTop(0.0f);
-    }
-    model.SetNumber("lifesize", 1.0f);
-    model.SetText("lifesize_note", "");
     model.SetText("section", "advanced");
     model.SetText("advtab", "diag");  // the stereo expert shot above left Stereo selected
     // Report a problem (research/33 section 8): the request answered, then the crash offer over the first section.

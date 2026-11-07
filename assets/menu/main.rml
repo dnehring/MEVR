@@ -152,8 +152,6 @@
 				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you</div></div>
 				<button class="tog" data-class-on="crouch" data-event-click="toggle('crouch')"><div class="knob"/></button></div>
-			<div class="row"><div class="rl"><div class="rlab">Life-size movement</div><div class="rdesc">Your steps and leans move you one to one and the world has its true size. Off: half as far, and the world looks twice as big.</div><div class="note" data-if="lifesize_note != ''">{{lifesize_note}}</div></div>
-				<button class="tog" data-class-on="lifesize" data-event-click="toggle('lifesize')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Conversations and cutscenes</span><div class="gline"/></div>
@@ -414,7 +412,6 @@
 				<div class="gtitle"><span>Lean and view</span><div class="gline"/></div>
 				<div class="row"><div class="rl"><div class="rlab">Lean</div><div class="rdesc">Leaning and stepping move the camera</div></div>
 					<button class="tog" data-class-on="lean" data-event-click="toggle('lean')"><div class="knob"/></button></div>
-				<div class="srow d" data-class-disabled="!lean"><div class="sl"><div class="slab">Movement scale</div><div class="rdesc">2.0× is life-size (Comfort's Life-size movement); lower makes the world look bigger</div></div><input type="range" min="0.5" max="3" step="0.1" data-value="lean_gain"/><div class="sval">{{lean_gain_text}}</div></div>
 				<div class="srow d"><div class="sl"><div class="slab">Flat screen width</div><div class="rdesc">The flat screen for menus, the map and flat cutscenes</div></div><input type="range" min="1" max="3.5" step="0.05" data-value="flat_size"/><div class="sval">{{flat_size_text}}</div></div>
 				<div class="row"><div class="rl"><div class="rlab">Fill the field of view</div><div class="rdesc">Stretches the game's picture to the headset's full view</div></div>
 					<button class="tog" data-class-on="fov_fill" data-event-click="toggle('fov_fill')"><div class="knob"/></button></div>
@@ -426,7 +423,7 @@
 				<div class="gtitle"><span>Stereo</span><div class="gline"/></div>
 				<div class="row"><div class="rl"><div class="rlab">VR mode</div><div class="rdesc">Stereo: each eye rendered on its own (the standard). Mono: one picture for both eyes, no depth, faster. Depth: the second eye made from the first one's depth, faster, with fringes at edges. Mono and Depth aren't tested with hand aiming. Needs a restart.</div><div class="note" data-if="mode_note != ''">{{mode_note}}</div></div>
 					<div class="seg"><button class="segb" data-class-on="vr_mode == 'mono'" data-event-click="pick('vr_mode','mono')">Mono</button><button class="segb" data-class-on="vr_mode == 'stereo'" data-event-click="pick('vr_mode','stereo')">Stereo</button><button class="segb" data-class-on="vr_mode == 'dibr'" data-event-click="pick('vr_mode','dibr')">Depth</button></div></div>
-				<div class="row"><div class="rl"><div class="rlab">Real eye positions</div><div class="rdesc">Each eye sees from where it really is, so depth and sizes are true (life-size with Comfort's Life-size movement). Off: the original MELE-VR stereo, set by hand below.</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Real eye positions</div><div class="rdesc">Each eye sees from where it really is, so depth and sizes are true (life-size). Off: the original MELE-VR stereo, set by hand below.</div></div>
 					<button class="tog" data-class-on="life_size" data-event-click="toggle('life_size')"><div class="knob"/></button></div>
 				<div data-if="life_size">
 					<div class="srow d"><div class="sl"><div class="slab">Extra depth</div><div class="rdesc">1.00× is your own eye distance; more makes depth stronger and the world smaller</div></div><input type="range" min="0.5" max="2" step="0.05" data-value="extra_depth"/><div class="sval">{{extra_depth_text}}</div></div>

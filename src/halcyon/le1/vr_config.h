@@ -218,7 +218,7 @@ struct VrConfig
 
     // ---- Lean (positional 6DOF) ----
     bool  leanEnabled = true;   // physical head movement translates the viewpoint (6DOF freedom)
-    float leanGain    = 1.0f;   // 0.5 = subtle .. 3.0 = exaggerated
+    float leanGain    = 2.0f;   // [MEVR] always 2: life-size movement only (upstream 1.0; 0.5 = subtle .. 3.0 = exaggerated)
 
     // ---- Same-frame stereo (P1 layout) = the primary VR mode ----
     // (AER was removed 2026-06-28: half-rate + cadence flicker, no GPU budget to save on this hardware.)

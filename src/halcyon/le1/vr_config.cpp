@@ -304,7 +304,7 @@ void ApplyKeyValue(VrConfig& c, const char* key, double val) noexcept
     else if (strcmp(key, "showEyeBackground")  == 0) { /* retired diagnostic ignored */ }
     else if (strcmp(key, "useFullHmdFov")      == 0) { /* retired diagnostic ignored */ }
     else if (strcmp(key, "leanEnabled")        == 0) c.leanEnabled        = b;
-    else if (strcmp(key, "leanGain")           == 0) c.leanGain           = v;
+    else if (strcmp(key, "leanGain")           == 0) c.leanGain           = 2.0f;  // [MEVR] life-size movement only (the file's value ignored)
     // AER (re-ported 2026-06-29). Legacy aer* keys (aerMode/aerIsolation) are silently ignored below.
     else if (strcmp(key, "aerEnabled")        == 0) c.aerEnabled         = b;
     else if (strcmp(key, "aerHalfEyeUU")      == 0) c.aerHalfEyeUU       = v;
