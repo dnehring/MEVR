@@ -705,6 +705,51 @@ Quad Reticle(XrVector3f const& center, XrVector3f const& axis, XrVector3f const&
     return quad;
 }
 
+Quad ReticleInWindow(XrVector3f const& center, XrVector3f const& axisIn, XrVector3f const& up, float radius, XrVector3f const& eye,
+    float distance, float angularSize, float fraction, bool* clamped) {
+    if (clamped != nullptr) {
+        *clamped = false;
+    }
+    Quad const truth = Reticle(center, axisIn, up, distance, angularSize);
+    auto const axis = Unit(axisIn);
+    if (!axis || !Finite(center) || !Finite(eye) || !(radius > 0.0f) || !(distance > 0.0f)) {
+        return truth;
+    }
+    float const ahead = Dot(Sub(center, eye), *axis);  // the window this far ahead of the eye along the line
+    if (!(ahead > 0.01f)) {
+        return truth;
+    }
+    // The ray from the eye toward the true dot, where it crosses the window's plane.
+    auto const toDot = Unit(Sub(truth.pose.position, eye));
+    if (!toDot) {
+        return truth;
+    }
+    float const along = Dot(*toDot, *axis);
+    if (!(along > 0.05f)) {
+        return truth;
+    }
+    XrVector3f const crossing = Add(eye, Scale(*toDot, ahead / along));
+    XrVector3f const offset = Sub(crossing, center);
+    float const off = Length(offset);
+    float const limit = std::clamp(fraction, 0.0f, 1.0f) * radius;
+    if (off <= limit) {
+        return truth;
+    }
+    XrVector3f const inside = Add(center, Scale(offset, limit / off));
+    auto const ray = Unit(Sub(inside, eye));
+    if (!ray) {
+        return truth;
+    }
+    Quad quad;
+    quad.pose.position = Add(eye, Scale(*ray, distance));
+    quad.pose.orientation = overlay::Facing(Scale(*ray, -1.0f), up);
+    quad.size = 2.0f * distance * std::tan(0.5f * angularSize);
+    if (clamped != nullptr) {
+        *clamped = true;
+    }
+    return quad;
+}
+
 Quad Disc(XrVector3f const& center, XrVector3f const& axis, XrVector3f const& up, float radius) {
     Quad quad;
     quad.pose.position = center;

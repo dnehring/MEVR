@@ -7259,6 +7259,26 @@ void TestSightWindow() {
     }
     CHECK(!s::WindowView(*lens, {0.0f, 0.0f, -0.31f}, 0.02f, 1.0f));  // in front of the window
     CHECK(!s::WindowView(*lens, {0.0f, 0.0f, 0.75f}, 0.02f, 1.0f));   // 1.05 m back
+    // The dot kept inside its window (research/21 section 21): on the line the true dot; 8 cm off, the dot where the eye's
+    // ray crosses the window at 0.8 of its radius, toward the true dot's side; past the window the true dot.
+    {
+        XrVector3f const c{0.0f, 0.0f, -0.3f};
+        XrVector3f const ax{0.0f, 0.0f, -1.0f};
+        XrVector3f const upv{0.0f, 1.0f, 0.0f};
+        float const size = 0.75f * 3.14159265f / 180.0f;
+        bool clamped = true;
+        s::Quad const onLine = s::ReticleInWindow(c, ax, upv, 0.03f, {0.0f, 0.0f, 0.0f}, 50.0f, size, 0.8f, &clamped);
+        s::Quad const truth = s::Reticle(c, ax, upv, 50.0f, size);
+        CHECK(!clamped && NearX(onLine.pose.position, truth.pose.position, 1e-4));
+        XrVector3f const eye{0.08f, 0.0f, 0.0f};
+        s::Quad const kept = s::ReticleInWindow(c, ax, upv, 0.03f, eye, 50.0f, size, 0.8f, &clamped);
+        XrVector3f const d{kept.pose.position.x - eye.x, kept.pose.position.y - eye.y, kept.pose.position.z - eye.z};
+        float const t = (c.z - eye.z) / d.z;  // where the ray to the dot crosses the window's plane
+        CHECK(clamped && std::abs(eye.x + d.x * t - 0.024f) < 1e-4f && std::abs(eye.y + d.y * t) < 1e-4f);
+        CHECK(std::abs(std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z) - 50.0f) < 1e-2f && std::abs(kept.size - truth.size) < 1e-4f);
+        s::Quad const past = s::ReticleInWindow(c, ax, upv, 0.03f, {0.08f, 0.0f, -0.35f}, 50.0f, size, 0.8f, &clamped);
+        CHECK(!clamped && NearX(past.pose.position, truth.pose.position, 1e-4));
+    }
     // The dot past its window (the gun pulled into the shoulder, research/21 section 19): an eye up to 8 cm past still aims,
     // kept a little further with the hysteresis, never 10 cm past.
     {

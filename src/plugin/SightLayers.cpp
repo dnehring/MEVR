@@ -46,7 +46,8 @@ constexpr float kMaxAlong = 1.0f;      // ...nor one further back than this (hel
 // The dot itself (collimated, 50 m out) still shows to an eye up to this far PAST the window (the gun pulled into the
 // shoulder: the window behind the eye, research/21 section 19); the window's picture needs the eye behind it (kMinAlong).
 constexpr float kDotMinAlong = -0.08f;
-constexpr float kShoulderBox = 0.10f;  // the dot's eye box at the calibrated shoulder (meters)
+constexpr float kShoulderBox = 0.10f;  // the dot's eye box at the calibrated shoulder or raised (meters)
+constexpr float kDotInWindow = 0.8f;   // a dot kept inside its window: at most this much of the radius from the centre
 constexpr float kScopeBox = 2.0f;      // lens radii: an eye this far off the line still sees the eyepiece (dark)
 constexpr float kPi = 3.14159265358979f;
 
@@ -611,6 +612,7 @@ void PrepareArt(Frame const& frame, sv::Sight const& sight) {
 
 // ---- State ------------------------------------------------------------------------------------------------
 int gDotEye = -1;          // the eye looking through a dot or holo sight
+std::uint64_t gDotClampedFrames = 0;  // frames the dot was kept inside its window (research/21 section 21)
 sv::EyeHold gDotHold;      // ...kept through a brief dropout (research/21 section 17)
 bool gWindowDrawn = false; // this frame: a dot's window (kWindow)
 // While a dot's window is up: how the eye looked through it, for one line when it goes.
@@ -686,8 +688,8 @@ void FlushScopeStats() {
 void FlushWindowStats() {
     double const n = static_cast<double>(gWindowFrames);
     log::Info("sights: the dot's window was up {} frames: the eye {:.2f} m behind it and {:.1f} cm off its line on average; {} "
-              "dropouts bridged so far (research/21 section 17)",
-        gWindowFrames, gWindowAlongSum / n, gWindowLateralSum / n * 100.0, gDotHold.Bridged());
+              "dropouts bridged so far (research/21 section 17); the dot kept inside its window {} frames so far (section 21)",
+        gWindowFrames, gWindowAlongSum / n, gWindowLateralSum / n * 100.0, gDotHold.Bridged(), gDotClampedFrames);
     gWindowFrames = 0;
     gWindowAlongSum = gWindowLateralSum = 0.0;
 }
@@ -942,7 +944,9 @@ Output Layers(Frame const& frame) {
             // other eye looks past it).
             // At the calibrated shoulder (kShouldered, research/21 section 20) the eye is on the line by the calibration: a
             // wider box, so a cheek weld a little off still shows the dot.
-            float const box = std::max({sight.eyeBox, sight.radius, (sight.flags & sv::kShouldered) != 0 ? kShoulderBox : 0.0f});
+            // Raised (kRaised, section 21) the same: the dot shows to an eye a little off the line, kept inside the window.
+            bool const wide = (sight.flags & (sv::kShouldered | sv::kRaised)) != 0;
+            float const box = std::max({sight.eyeBox, sight.radius, wide ? kShoulderBox : 0.0f});
             gDotEye = gDotHold.Update(sv::AimingEye(gLines, box, kDotMinAlong, kMaxAlong, gDotEye), GetTickCount64());
             bool const on[2] = {gDotEye == 0, gDotEye == 1};
             // A solid housing (kWindow, research/21 section 17): that eye sees the world through the window, the other eye's
@@ -996,7 +1000,15 @@ Output Layers(Frame const& frame) {
                     }
                 }
                 if (wantDot && out.count < kMaxLayers) {
-                    sv::Quad const quad = sv::Reticle(sight.center, sight.axis, sight.up, kDotDistance, layout.quadDeg * kPi / 180.0f);
+                    // Kept inside the window for the eye it shows to (research/21 section 21): with the eye off the line the
+                    // true dot would float beside the housing.
+                    int const dotEye = on[1] ? 1 : 0;
+                    bool clamped = false;
+                    sv::Quad const quad = wide ? sv::ReticleInWindow(sight.center, sight.axis, sight.up, sight.radius,
+                                                     frame.eyes[dotEye].position, kDotDistance, layout.quadDeg * kPi / 180.0f,
+                                                     kDotInWindow, &clamped)
+                                               : sv::Reticle(sight.center, sight.axis, sight.up, kDotDistance, layout.quadDeg * kPi / 180.0f);
+                    gDotClampedFrames += clamped ? 1u : 0u;
                     gDotQuad = MakeQuad(frame.appSpace, DotRect(), quad, VisibilityOf(gDotEye));
                     out.layers[out.count++] = &gDotQuad;
                     view |= (on[0] ? sv::kViewLeft : 0u) | (on[1] ? sv::kViewRight : 0u);

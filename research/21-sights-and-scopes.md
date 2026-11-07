@@ -1045,3 +1045,23 @@ the calibrated shoulder (...)` / `away from ...`; snapshot `sights.ads.atShoulde
 
 **[verify] in the headset:** shouldered, the scope and the dot are there at once and stay while you shift the cheek; lowered
 from the shoulder they go; a recalibration after a stance change.
+
+## 21. The red dot kept inside its window, raised or shouldered (2026-11-06, the QA session at 21:59)
+
+**Report (user, the QA build 0.1.0+63e1e58):** the assault rifle's red dot "only shows up when I have the gun really close into
+my shoulder". The log: away from the calibrated shoulder the eye has to be within 6 cm of the sight line; the user's ordinary hold
+put the right eye 6-8 cm off it (`alignment assist on: the right eye 5.0 cm left of and 8.1 cm above the sight line`), and only
+the shoulder's 10 cm box (section 20) took it. The gun's lower look the same evening was the 21:19 recalibration (the user
+confirmed; the rifle turned 7.6 degrees, two of its three aims kept), not code.
+
+**Chosen (user):** the wider box whenever the gun is raised, and the dot drawn inside the window rather than where a true
+collimated dot would be (beside the housing for an eye that far off).
+
+**Built** (mod `game/Sights`: `kRaised`, 32, a flags bit, while `RaisedWeight` is over 0.20 until it falls under 0.08; host
+`plugin/SightLayers`; `vr::sights::ReticleInWindow`, unit-tested in `TestSightWindow`): raised or shouldered, the dot's eye box is
+0.10 m, and the dot sits where the eye's ray toward the true dot crosses the window's plane, pulled in to 0.8 of the radius when
+it falls further out (an eye at or past the window: the true dot). Off the line the dot is then a little off the true aim, as a
+real red dot's parallax would be; on the line nothing changes. The window line in the log counts the frames it was pulled in
+(`the dot kept inside its window N frames so far`).
+
+**[verify] in the headset:** the rifle's dot at an ordinary raised hold, on the sight, not beside it; the shots land near it.
