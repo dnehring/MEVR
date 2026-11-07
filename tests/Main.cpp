@@ -11069,6 +11069,7 @@ void TestCombatStance() {
     CHECK(cs::ClampDrawRate(0.5) == 1.0);
     CHECK(cs::ClampDrawRate(9.0) == 9.0);
     CHECK(cs::ClampDrawRate(25.0) == cs::kMaxDrawRate);
+    CHECK(cs::ClampHolsterRate(15.0) == 15.0 && cs::ClampHolsterRate(25.0) == cs::kMaxHolsterRate && cs::kDefaultHolsterRate > cs::kDefaultDrawRate);
     CHECK(cs::ClampDrawRate(std::numeric_limits<double>::quiet_NaN()) == 1.0);
     CHECK(cs::RateNeedsWrite(1.0f, 2.0));
     CHECK(!cs::RateNeedsWrite(2.0f, 2.0));

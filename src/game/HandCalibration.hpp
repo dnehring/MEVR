@@ -113,7 +113,8 @@ struct CombatStance {
     bool exploreStance = false;      // the body composes as explore while drawn, the arms as combat (A; off until the headset confirms)
     bool exploreStanceStorm = true;  // ...while sprinting too
     bool exploreRamp = true;         // combat walking ramps like exploring (C)
-    double drawRate = 6.0;           // the draw and holster animations' rate, 1..10 (D; 1: the game's)
+    double drawRate = 6.0;           // the draw animation's rate, 1..10 (D; 1: the game's)
+    double holsterRate = 15.0;       // the holster animation's, 1..20
 };
 CombatStance GetCombatStance();
 // [Hands] fingers, fingerCurlDeg, fingerTouch: the fingers follow the controllers' trigger and grip, and their touch

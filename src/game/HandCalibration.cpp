@@ -58,6 +58,7 @@ struct Values {
     bool exploreStanceStorm = true;  // [Hands] exploreStanceStorm
     bool exploreRamp = true;         // [Hands] exploreRamp (research/38 C)
     double drawRate = vr::combat_stance::kDefaultDrawRate;  // [Hands] drawRate (research/38 D)
+    double holsterRate = vr::combat_stance::kDefaultHolsterRate;  // [Hands] holsterRate
     bool fingers = true;          // [Hands] fingers (research/43)
     double fingerCurlDeg = 70.0;  // [Hands] fingerCurlDeg
     bool fingerTouch = true;      // [Hands] fingerTouch (research/43 "Touch sensors")
@@ -159,7 +160,8 @@ constexpr char const* kDefaultFile =
     "; combat pose (learned on each weapon type's first draw); the game still plays its combat\n"
     "; animations underneath, so draws, shots, grenades and powers work as before. exploreStanceStorm: 1 = also while\n"
     "; sprinting. exploreRamp: 1 = walking with a weapon out speeds up and slows down as gently as exploring.\n"
-    "; drawRate: how fast the draw and holster animations play (1 = the game's own, up to 10). constantEye (read by\n"
+    "; drawRate: how fast the draw animation plays (1 = the game's own, up to 10); holsterRate: the holster's (up to 20:\n"
+    "; the gun leaves your open hand that much sooner). constantEye (read by\n"
     "; the host): 1 = drawing, holstering, aimed fire and sprinting with a weapon out leave your view where it is.\n"
     "; blendFix (read by the host): 1 = a camera blend (the sniper's first draw, cover) doesn't jump your view.\n"
     "; crouchDrop (read by the host): 0 = when you crouch for real only your head lowers the view; 1 = the game's lower\n"
@@ -168,6 +170,7 @@ constexpr char const* kDefaultFile =
     "exploreStanceStorm = 1\n"
     "exploreRamp = 1\n"
     "drawRate = 6.0\n"
+    "holsterRate = 15.0\n"
     "constantEye = 1\n"
     "blendFix = 1\n"
     "crouchDrop = 0\n"
@@ -228,7 +231,7 @@ constexpr char const* kHolstersBlock =
     "; a tap does nothing), y, x or b (RB: hold = power wheel, tap = your mapped power) or none.\n"
     "; gripHolds 0 = the old mapping: the right grip is RB, except a squeeze at a slot.\n"
     "gripHolds = 1\n"
-    "releaseGrace = 0.3\n"
+    "releaseGrace = 0.2\n"
     "powerWheel = r3\n"
     "; weaponWheel: 1 keeps the game's weapon wheel (LB: the left trigger, see leftTrigger) as a fallback;\n"
     "; 0 turns LB off while holsters are on. The wheel also picks your squad's weapons.\n"
@@ -915,6 +918,9 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "drawRate", values.drawRate)) {
         values.drawRate = vr::combat_stance::ClampDrawRate(values.drawRate);
+    }
+    if (Number(ini, "Hands", "holsterRate", values.holsterRate)) {
+        values.holsterRate = vr::combat_stance::ClampHolsterRate(values.holsterRate);
     }
     if (Number(ini, "Hands", "fingers", flag)) {
         values.fingers = flag != 0.0;
@@ -2543,7 +2549,7 @@ bool AimAssist() {
 }
 
 CombatStance GetCombatStance() {
-    return {gValues.exploreStance, gValues.exploreStanceStorm, gValues.exploreRamp, gValues.drawRate};
+    return {gValues.exploreStance, gValues.exploreStanceStorm, gValues.exploreRamp, gValues.drawRate, gValues.holsterRate};
 }
 
 Fingers GetFingers() {
@@ -2749,7 +2755,7 @@ void Refresh() {
     };
     static constexpr NewKey kNewHolsterKeys[] = {
         {L"gripHolds", "gripHolds", L"1"},
-        {L"releaseGrace", "releaseGrace", L"0.3"},
+        {L"releaseGrace", "releaseGrace", L"0.2"},
         {L"powerWheel", "powerWheel", L"r3"},
         {L"eyeHeightFromFloor", "eyeHeightFromFloor", L"1"},
         {L"onlyHolstersDraw", "onlyHolstersDraw", L"1"},  // 2026-10-25
@@ -2917,6 +2923,21 @@ void Refresh() {
             }
         }
     }
+    // [Holsters] since 2026-11-06: putting a weapon away is quicker (the user: "takes too long and feels weird in VR"). A file
+    // without the marker [Hands] holsterRate that still holds the old default releaseGrace = 0.3 gets 0.2; any other is kept.
+    if (auto const h = ini.find("Hands"); h == ini.end() || h->second.find("holsterRate") == h->second.end()) {
+        if (auto const s = ini.find("Holsters"); s != ini.end()) {
+            if (auto const k = s->second.find("releaseGrace"); k != s->second.end()) {
+                if ((k->second == "0.3" || k->second == "0.30") &&
+                    WritePrivateProfileStringW(L"Holsters", L"releaseGrace", L"0.2", path.wstring().c_str()) != 0) {
+                    log::Info("hands: [Holsters] releaseGrace 0.3 -> 0.2: a gun let go away from its slot goes back sooner in {}",
+                        ini::Utf8(path));
+                    ini = ReadIni(path);
+                    stamp = fs::last_write_time(path, ec);
+                }
+            }
+        }
+    }
     // [Sights] since 2026-11-05 (research/21 section 17): red dots don't slide toward the eye. A file without the marker
     // dotWindow that still holds the old default assistDotMaxM = 0.03 gets 0; any other value is the player's and kept.
     if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("dotWindow") == s->second.end()) {
@@ -3071,6 +3092,8 @@ void Refresh() {
         {L"Hands", "Hands", L"exploreStanceStorm", "exploreStanceStorm", L"1"},
         {L"Hands", "Hands", L"exploreRamp", "exploreRamp", L"1"},
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
+        // A faster holster (2026-11-06); also the marker for releaseGrace's move above.
+        {L"Hands", "Hands", L"holsterRate", "holsterRate", L"15.0"},
         {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
         {L"Hands", "Hands", L"blendFix", "blendFix", L"1"},  // read by the host (research/38 B)
         {L"Hands", "Hands", L"crouchDrop", "crouchDrop", L"0"},  // read by the host (2026-11-04: no double crouch drop)
