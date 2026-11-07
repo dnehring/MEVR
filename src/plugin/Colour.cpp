@@ -425,6 +425,11 @@ char const* DisplayName(cv::Display d) {
 
 } // namespace
 
+bool StreamedHeadset() {
+    std::lock_guard lock(gMutex);
+    return gDetection.display == cv::Display::QuestStreamed;
+}
+
 void SetHeadset(std::string const& runtimeName, std::string const& systemName, std::uint32_t vendorId) {
     cv::Detection const detection = cv::Detect(runtimeName, systemName);
     std::string const key = cv::HeadsetKey(runtimeName, systemName);

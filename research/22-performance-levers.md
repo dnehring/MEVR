@@ -635,3 +635,18 @@ one Draw a frame: [research/60](60-performance-modes.md).
 - Not found: published millisecond costs of FSR 1 at VR resolutions; what SteamVR's
   `motionSmoothingOverride` values mean; whether UE3 shares shadow or visibility work across the
   views of one view family; the DLSS SDK license's compatibility with GPL-3.0 (not searched).
+
+## A Quest stuck at half rate after a load: the early wait, per headset since 2026-11-07
+
+The owner's QA on a Quest 3 (Steam Link and Quest Link): every loading screen dropped the headset to half rate (fpsVR 40-45,
+more than half the frames reprojected) and it never recovered until the level was left and entered again. The game kept
+handing the runtime a frame every 13.89 ms (72.0 fps, the probe's `2026-11-07_02-5x-quest-dropped`), its work light (render
+thread 3.5 ms, GPU 1.7 ms), but with `earlyFrameWait = 1` SteamVR's CPU frame time (xrWaitFrame's return to xrEndFrame) read
+13.76 of 13.89 ms. Switched live to the late wait (`earlyFrameWait = 0`): the CPU frame time read 10.92 ms and fpsVR climbed back
+to 72 at once; a later load dropped it and it recovered by itself. So `[Performance] earlyFrameWait = auto` (the default, or the
+key absent) is the late wait for a streamed Meta headset (`colour::StreamedHeadset`: a Quest by name, SteamVR's `oculus` tracking
+system, Virtual Desktop) and the early wait otherwise (the PS VR2 needed it for 90 here in October); `0`/`1` force either.
+Codex's read of the mechanism (research only): the runtimes adjust their prediction and throttling from submission feedback,
+and a frame waited for before a stall goes stale while the clock runs; neither runtime publishes its recovery rule.
+**[verify]** the PS VR2 with the early wait still at 90 on today's lighter frame (one Draw), and whether the late wait would now
+do as well there.

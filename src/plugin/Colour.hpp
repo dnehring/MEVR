@@ -25,6 +25,9 @@ namespace mevr::host::colour {
 // The headset (OnSessionCreated): xrGetInstanceProperties' runtime name, xrGetSystemProperties' system name and
 // vendor id. Logged (ours and Halcyon's log), and picks the [Colour.<key>] section and what Auto means.
 void SetHeadset(std::string const& runtimeName, std::string const& systemName, std::uint32_t vendorId);
+// The headset is a streamed Meta one (a Quest over Steam Link, Quest Link, Air Link, Virtual Desktop, ALVR): what the frame
+// loop's automatic frame wait goes by (PerfProbe's EarlyFrameWait). False before the session told us.
+bool StreamedHeadset();
 
 // The correction is on now: a non-neutral profile, no comparison held.
 bool Correcting();

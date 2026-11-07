@@ -4,6 +4,7 @@
 // frame functions wrapped through MevrBridge::WrapSessionFunctions (plugin/TestLoop).
 
 #include "plugin/PerfProbe.hpp"
+#include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/RenderLevers.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -738,13 +739,25 @@ bool EarlyFrameWait() noexcept {
         if (path.empty()) {
             path = MELEVR::MevrBridge::SettingsPath();  // <exe dir>\ASI\LE1MEVR.ini, as the mod
         }
-        int const read = path.empty() ? 1 : (GetPrivateProfileIntW(L"Performance", L"earlyFrameWait", 1, path.c_str()) != 0 ? 1 : 0);
+        // `auto` (the default, or the key absent): the late wait for a streamed Meta headset, the early one for the rest. The
+        // owner's QA (2026-11-07, a Quest 3 over Steam Link and Quest Link): with the early wait the Quest dropped to half rate at
+        // a loading screen and never came back, although the game kept handing it 72 frames a second (SteamVR's CPU frame time
+        // read 13.76 of 13.89 ms); switched to the late wait live it climbed back to 72 at once, and after a later load it
+        // dropped and recovered. The PS VR2 needed the early wait to reach 90 (research/22, 2026-10-22).
+        wchar_t text[16] = L"";
+        if (!path.empty()) {
+            GetPrivateProfileStringW(L"Performance", L"earlyFrameWait", L"auto", text, static_cast<DWORD>(std::size(text)), path.c_str());
+        }
+        bool const automatic = text[0] == L'\0' || _wcsicmp(text, L"auto") == 0;
+        bool const streamed = mevr::host::colour::StreamedHeadset();
+        int const read = automatic ? (streamed ? 0 : 1) : (_wtoi(text) != 0 ? 1 : 0);
         if (read != value) {
             value = read;
-            mevr::log::Info("frame loop: {} ([Performance] earlyFrameWait = {})",
+            mevr::log::Info("frame loop: {} ([Performance] earlyFrameWait = {}{})",
                 value != 0 ? "xrWaitFrame for the next frame right after xrEndFrame, before the game renders it"
                            : "xrWaitFrame at Present, after the game rendered the frame (upstream)",
-                value);
+                automatic ? "auto: " : "", automatic ? (streamed ? "a streamed Meta headset" : "not a streamed Meta headset")
+                                                     : (value != 0 ? "1" : "0"));
         }
     }
     return value != 0;
