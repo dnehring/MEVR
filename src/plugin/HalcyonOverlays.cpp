@@ -2284,7 +2284,11 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     if (source != 0) {
         gReticleSeenMs = now;
     }
-    MELEVR::Pchud::SetCrosshairHidden(reticleMode && gReticleSeenMs != 0 && now - gReticleSeenMs < 500);
+    // In the Mako the game's screen-centre crosshair is always hidden with the hand reticle on (the owner's QA, 2026-11-07: "when
+    // the Mako is loaded I always see its aiming cursor"): in VR it sits at the head's centre, aiming nothing, whenever the hand
+    // isn't aiming the turret (on the cockpit's controls, the gunner aiming); ours shows wherever there's a ray.
+    bool const makoHide = cfg.handReticle && handAim && gLastGameMode == 1;
+    MELEVR::Pchud::SetCrosshairHidden(makoHide || (reticleMode && gReticleSeenMs != 0 && now - gReticleSeenMs < 500));
     if (source != 0 && !sightHidesRing && frame.worldFrame && !frame.menuOpen && frame.headValid && count < capacity &&
         device != nullptr) {
         overlay::Billboard reticle;
