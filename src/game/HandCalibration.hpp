@@ -11,6 +11,7 @@
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/MakoControls.hpp"
 #include "core/vr/MakoGunner.hpp"
+#include "core/vr/Sprint.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
@@ -117,6 +118,12 @@ struct CombatStance {
     double holsterRate = 15.0;       // the holster animation's, 1..20
 };
 CombatStance GetCombatStance();
+// [Hands] sprint (game | speed), sprintStaminaS, sprintRefillS: the sprint button as a faster run with a stamina of its own
+// (game/sprint, core/vr/Sprint).
+struct Sprint {
+    vr::sprint::Settings rules;
+};
+Sprint GetSprint();
 // [Hands] fingers, fingerCurlDeg, fingerTouch: the fingers follow the controllers' trigger and grip, and their touch
 // sensors (game/fingers, research/43).
 struct Fingers {

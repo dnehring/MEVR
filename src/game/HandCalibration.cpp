@@ -7,6 +7,7 @@
 #include "core/ik/GunKick.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/Sprint.hpp"
 #include "core/vr/MenuSettings.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/Sights.hpp"
@@ -59,6 +60,12 @@ struct Values {
     bool exploreRamp = true;         // [Hands] exploreRamp (research/38 C)
     double drawRate = vr::combat_stance::kDefaultDrawRate;  // [Hands] drawRate (research/38 D)
     double holsterRate = vr::combat_stance::kDefaultHolsterRate;  // [Hands] holsterRate
+    // [Hands] sprint, sprintStaminaS, sprintRefillS (game/sprint): the game's own sprint until it's checked in the game.
+    vr::sprint::Settings sprint = [] {
+        vr::sprint::Settings s;
+        s.enabled = false;
+        return s;
+    }();
     bool fingers = true;          // [Hands] fingers (research/43)
     double fingerCurlDeg = 70.0;  // [Hands] fingerCurlDeg
     bool fingerTouch = true;      // [Hands] fingerTouch (research/43 "Touch sensors")
@@ -924,6 +931,17 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "holsterRate", values.holsterRate)) {
         values.holsterRate = vr::combat_stance::ClampHolsterRate(values.holsterRate);
+    }
+    if (auto const it = ini.find("Hands"); it != ini.end()) {
+        if (auto const k = it->second.find("sprint"); k != it->second.end()) {
+            values.sprint.enabled = _stricmp(k->second.c_str(), "speed") == 0;
+        }
+    }
+    if (double v = 0.0; Number(ini, "Hands", "sprintStaminaS", v)) {
+        values.sprint.staminaS = static_cast<float>(std::clamp(v, 1.0, 60.0));
+    }
+    if (double v = 0.0; Number(ini, "Hands", "sprintRefillS", v)) {
+        values.sprint.refillS = static_cast<float>(std::clamp(v, 1.0, 120.0));
     }
     if (Number(ini, "Hands", "fingers", flag)) {
         values.fingers = flag != 0.0;
@@ -2551,6 +2569,10 @@ bool AimAssist() {
     return gValues.aimAssist;
 }
 
+Sprint GetSprint() {
+    return {gValues.sprint};
+}
+
 CombatStance GetCombatStance() {
     return {gValues.exploreStance, gValues.exploreStanceStorm, gValues.exploreRamp, gValues.drawRate, gValues.holsterRate};
 }
@@ -3097,6 +3119,10 @@ void Refresh() {
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
         // A faster holster (2026-11-06); also the marker for releaseGrace's move above.
         {L"Hands", "Hands", L"holsterRate", "holsterRate", L"15.0"},
+        // The sprint button as a faster run (2026-11-06; game/sprint): the game's own until checked in the game.
+        {L"Hands", "Hands", L"sprint", "sprint", L"game"},
+        {L"Hands", "Hands", L"sprintStaminaS", "sprintStaminaS", L"6"},
+        {L"Hands", "Hands", L"sprintRefillS", "sprintRefillS", L"8"},
         // The pistol's weapon panel beside the gun, clear of its sight (2026-11-06).
         {L"Hud", "Hud", L"pistolSideM", "pistolSideM", L"-0.05"},
         {L"Hud", "Hud", L"pistolUpM", "pistolUpM", L"0"},

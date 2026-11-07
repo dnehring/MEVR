@@ -29,6 +29,7 @@
 #include "core/vr/ColourStrip.hpp"
 #include "core/vr/Upscale.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/Sprint.hpp"
 #include "core/vr/CockpitHazard.hpp"
 #include "core/vr/MakoGunner.hpp"
 #include "core/vr/Comfort.hpp"
@@ -10888,6 +10889,36 @@ void TestUpscale() {
 }
 
 // The weapon drawn, like exploring (core/vr/CombatStance, research/38).
+void TestSprint() {
+    namespace sp = mevr::vr::sprint;
+    sp::Settings const s;  // 6 s of stamina, refilled in 8 s after 1 s, a restart past 30%
+    sp::State st;
+    CHECK(!sp::Step(st, s, false, true, 0.1f));          // not held: the run
+    CHECK(!sp::Step(st, s, true, false, 0.1f));          // held standing still: nothing spent
+    CHECK(st.stamina == 1.0f);
+    int ticks = 0;
+    while (sp::Step(st, s, true, true, 0.1f) && ticks < 1000) {
+        ++ticks;
+    }
+    CHECK(ticks >= 59 && ticks <= 61 && st.exhausted && st.stamina == 0.0f && st.emptied == 1);  // 6 s
+    CHECK(!sp::Step(st, s, true, true, 0.1f));           // still held: no stutter back on
+    for (int i = 0; i < 40; ++i) {                       // 4 s let go: 1 s delay, then 3 s of the 8 s refill
+        sp::Step(st, s, false, true, 0.1f);
+    }
+    CHECK(st.stamina > 0.3f && st.stamina < 0.45f && st.exhausted);
+    CHECK(sp::Step(st, s, true, true, 0.1f) && !st.exhausted);  // a new press past 30% runs again
+    sp::State low;
+    low.stamina = 0.1f;
+    low.exhausted = true;
+    CHECK(!sp::Step(low, s, true, true, 0.1f));          // a new press under 30%: not yet
+    sp::Settings off = s;
+    off.enabled = false;
+    sp::State game;
+    CHECK(!sp::Step(game, off, true, true, 0.1f));       // style = game: never ours
+    CHECK(std::abs(sp::SpeedFactor(400.0f, 525.0f) - 1.3125f) < 1e-5f);
+    CHECK(sp::SpeedFactor(400.0f, 300.0f) == 1.0f && sp::SpeedFactor(0.0f, 525.0f) == 1.0f && sp::SpeedFactor(100.0f, 900.0f) == 2.0f);
+}
+
 void TestCombatStance() {
     namespace cs = mevr::vr::combat_stance;
     // A: the decision, in priority order.
@@ -11623,6 +11654,7 @@ int main() {
     TestCockpitHazard();
     TestComfort();
     TestCombatStance();
+    TestSprint();
     TestPoseGraft();
     TestFingers();
     TestMetricStereo();

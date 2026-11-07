@@ -40,6 +40,7 @@
 #include "game/MakoGunner.hpp"
 #include "game/CameraProbe.hpp"
 #include "game/CombatStance.hpp"
+#include "game/Sprint.hpp"
 #include "game/Comfort.hpp"
 #include "game/ConsoleRequest.hpp"
 #include "game/SystemSettings.hpp"
@@ -303,6 +304,7 @@ void TryInstallScriptHooks() {
     }
     game::holsters::TryStartup();  // logs what it found; holsters stay off without it
     game::combat_stance::TryStartup();  // the weapon drawn, like exploring (research/38)
+    game::sprint::TryStartup();  // the sprint button as a faster run (skip handlers, before the hook)
     game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     game::vent::TryStartup();  // and the physical vent of a hot gun (research/45)
@@ -970,7 +972,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}, \"sprint\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -983,7 +985,7 @@ void PublishStatus() {
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
         game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson(), game::body_scale::StatusJson(),
-        game::conversation_world::StatusJson());
+        game::conversation_world::StatusJson(), game::sprint::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1127,6 +1129,7 @@ void Heartbeat() {
         game::view_level::LogStats();
         game::gun_kick::LogStats();
         game::combat_stance::LogStats();
+        game::sprint::LogStats();
         game::fingers::LogStats();
         game::comfort::LogStats();
         game::interact::LogStats();
@@ -1321,6 +1324,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::camera_probe::Tick();
         // The weapon drawn, like exploring (research/38): the stance for the next pose, the speed ramp, draw rates.
         game::combat_stance::Tick(deltaSeconds, CombatStanceLink());
+        game::sprint::Tick(deltaSeconds, CombatStanceLink().headTrackedView);
         game::hand_aim::Tick();
         game::view_level::Tick(ViewLevelLink());
         gTickAimRay = {};
@@ -1481,6 +1485,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::vent::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
+    game::sprint::Shutdown();  // the run speed back
     game::combat_stance::Shutdown();  // the game's speed ramp and animation rates back, the pre-stage stopped
     game::fingers::Shutdown();
     game::call_trace::Shutdown();
