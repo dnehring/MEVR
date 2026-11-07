@@ -743,6 +743,13 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
             log::Info("omni-tool rail: the wrist tapped: open");
         }
     }
+    // The owner's QA (2026-11-07): an open rail stayed up through a load (a save loaded from Computer), cutscenes and the
+    // rest. It belongs to on-foot play and the game's screens (0 on foot, 7 the GUI, 10 the bypass puzzle): anything else
+    // (-1 loading, 8 a movie, 6 a cinematic, 5 a conversation, 1 the Mako...) closes it, as a tap on the wrist would.
+    if (gOpen.load(std::memory_order_relaxed) && frame.gameMode != 0 && frame.gameMode != 7 && frame.gameMode != 10) {
+        gOpen.store(false, std::memory_order_relaxed);
+        log::Info("omni-tool rail: closed by itself: the game left on-foot play (game mode {})", static_cast<int>(frame.gameMode));
+    }
     // Shown: opened by the player, or beside a screen of the rail's on the wrist (the game's own key or wheel opened it).
     bool const screenOnWrist = frame.screen && frame.screen->onWrist && rail::ForScreen(frame.screen->screen).has_value();
     bool const open = gOpen.load(std::memory_order_relaxed);
