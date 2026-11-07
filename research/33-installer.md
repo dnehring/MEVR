@@ -803,6 +803,13 @@ orders.". Command line: `--install-voice [--voice-small] [--voice-medium] [--no-
 Not yet: the model tier from the real release (the user uploads the asset); the files loaded by the game from a Setup
 install (the same files `deploy-asi.ps1` deploys, which the game loads: research/54 "In the game").
 
+**The row reads the files too** (2026-11-06, late): in the 0.1.0 build on the owner's machine the menu's Display > Optional
+content row said "Installed: None yet" while the same session's log had loaded `ASI\voice\MEVR-Voice.dll` and the tiny
+models: the row listed Setup's record (`MEVR-install.json`'s `packs`), and the developer deploy had put the files there
+without a record. `setup_request::InstalledPacksText` now adds "Voice orders (the files are in ASI\voice, not put there
+by Setup)" when the DLL and a `*-streaming-en` model folder are on disk and no pack with the voice id or name is recorded,
+with or without a manifest; a Setup download records the pack and the note goes.
+
 ## 15. Files busy for a moment (2026-11-06)
 
 `mevr-tests` failed now and then and passed on a rerun (twice in the day's merges). Looped alone on the dev machine it failed

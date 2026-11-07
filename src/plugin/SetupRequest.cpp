@@ -31,6 +31,18 @@ fs::path RequestFile() {
     return fs::path(buffer) / L"MEVR" / L"setup.request";
 }
 
+// The voice files Setup's record doesn't know: a developer deploy (tools/deploy-asi.ps1) or a hand copy puts the DLL and a
+// model folder into ASI\voice, and the recognizer loads from there whatever the record says (2026-11-06: the row said
+// "None yet" in a release build whose own log had just loaded the tiny models).
+bool VoiceFilesOnDisk(fs::path const& asi) {
+    std::error_code ec;
+    if (!fs::exists(asi / L"voice" / L"MEVR-Voice.dll", ec)) return false;
+    for (auto const& entry : fs::directory_iterator(asi / L"voice" / L"models", ec)) {
+        if (entry.is_directory(ec) && entry.path().filename().wstring().ends_with(L"-streaming-en")) return true;
+    }
+    return false;
+}
+
 std::mutex gMutex;
 std::string gText = "None yet";
 ULONGLONG gNextRead = 0;
@@ -44,20 +56,31 @@ std::string InstalledPacksText() {
         return gText;
     }
     gNextRead = now + 2000;
-    std::ifstream in(AsiDir() / L"MEVR-install.json", std::ios::binary);
-    if (!in) {
-        gText = "None (the mod wasn't installed with MEVR Setup)";
-        return gText;
-    }
-    std::ostringstream s;
-    s << in.rdbuf();
+    fs::path const asi = AsiDir();
+    std::ifstream in(asi / L"MEVR-install.json", std::ios::binary);
     std::string names;
-    if (auto const manifest = json::Parse(s.str())) {
-        for (json::Value const& pack : manifest->Get("packs").Items()) {
-            names += (names.empty() ? "" : ", ") + pack.String("name", pack.String("id"));
+    bool voiceRecorded = false;
+    bool const bySetup = static_cast<bool>(in);
+    if (bySetup) {
+        std::ostringstream s;
+        s << in.rdbuf();
+        if (auto const manifest = json::Parse(s.str())) {
+            for (json::Value const& pack : manifest->Get("packs").Items()) {
+                std::string const id = pack.String("id");
+                std::string const name = pack.String("name", id);
+                if (id.find("voice") != std::string::npos || name.find("Voice") != std::string::npos) voiceRecorded = true;
+                names += (names.empty() ? "" : ", ") + name;
+            }
         }
     }
-    gText = names.empty() ? "None yet" : names;
+    if (!voiceRecorded && VoiceFilesOnDisk(asi)) {
+        names += (names.empty() ? "" : ", ") + std::string("Voice orders (the files are in ASI\\voice, not put there by Setup)");
+    }
+    if (names.empty()) {
+        gText = bySetup ? "None yet" : "None (the mod wasn't installed with MEVR Setup)";
+    } else {
+        gText = names;
+    }
     return gText;
 }
 
