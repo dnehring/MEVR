@@ -2339,7 +2339,7 @@ void TestGamePointer() {
         out = at(pin, 0.05f, 0.0f, 0.002f);
         CHECK(out.touchWaiting && atContact(out));
         out = at(pin, 0.054f, 0.0f, 0.0f);
-        out = at(pin, 0.058f, 0.0f, 0.0f);  // slid 8 mm (20 px), under the drag's 1.2 cm
+        out = at(pin, 0.058f, 0.0f, 0.0f);  // slid 8 mm (20 px), under the drag's 2 cm
         CHECK(out.touchWaiting && atContact(out));
         out = at(pin, 0.065f, 0.0f, 0.03f);  // pulled out further aside: the button down at the contact
         CHECK(out.pressed && out.pressEdge && atContact(out));
@@ -2370,7 +2370,7 @@ void TestGamePointer() {
             everPressed = everPressed || out.pressed;
         }
         CHECK(out.dragging && !everPressed);
-        CHECK(dragged >= 4 && dragged <= 5);  // the first 1.2 cm decide it's a drag
+        CHECK(dragged >= 3 && dragged <= 5);  // the first 2 cm decide it's a drag
         out = at(drag, 0.05f, -0.015f, 0.03f);  // let go: no click
         CHECK(!out.pressed && !out.pressEdge && !out.dragging);
         // A drag up scrolls down.
@@ -2381,7 +2381,29 @@ void TestGamePointer() {
         for (int i = 1; i <= 10; ++i) {
             upNotches += at(up, 0.0f, -0.05f + 0.0065f * static_cast<float>(i), 0.0f).wheelNotches;
         }
-        CHECK(upNotches <= -4);
+        CHECK(upNotches <= -3);
+        // An angled poke (2026-11-06): sliding 3 cm along while it pushes 2 cm through is a click where it touched, once,
+        // not a scroll; it clicks again only after pulling back out.
+        Pointer poke;
+        out = at(poke, 0.05f, 0.0f, 0.03f);
+        out = at(poke, 0.05f, 0.0f, 0.002f);  // at the surface: waiting
+        CHECK(out.touchWaiting && !out.pressed);
+        float const touchedU = out.u;
+        int downs = 0, ups = 0, pokeNotches = 0;
+        bool everDragged = false;
+        for (int i = 1; i <= 6; ++i) {  // 5 mm along and 3.3 mm deeper each step
+            out = at(poke, 0.05f + 0.005f * static_cast<float>(i), 0.0f, 0.002f - 0.0037f * static_cast<float>(i));
+            downs += out.pressEdge && out.pressed ? 1 : 0;
+            ups += out.pressEdge && !out.pressed ? 1 : 0;
+            pokeNotches += out.wheelNotches;
+            everDragged = everDragged || out.dragging;
+            if (out.pressEdge) {
+                CHECK(NearD(out.u, touchedU, 1e-6));  // the click stays where it touched
+            }
+        }
+        CHECK(downs == 1 && ups == 1 && pokeNotches == 0 && !everDragged);
+        out = at(poke, 0.08f, 0.0f, 0.03f);  // pulled back out: nothing more
+        CHECK(!out.pressEdge);
     }
     // From behind: a hand coming through the panel never presses.
     Pointer behind;

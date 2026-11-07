@@ -72,7 +72,10 @@ struct Settings {
     // buttons with nothing to scroll or drag (touchScroll is ignored then).
     bool touchClickOnContact = false;
     float touchHoldS = 0.15f;
-    float touchDragM = 0.012f;
+    float touchDragM = 0.02f;   // 1.2 cm until 2026-11-06: a poke's slide while pushing in became a scroll
+    // A touch still undecided that pushes this far through the surface is a poke, not a scroll: it clicks where it touched,
+    // once (2026-11-06, the owner's QA: an angled poke slides along the surface as it goes in).
+    float touchPokeDepthM = 0.01f;
     float touchScrollNotchM = 0.013f;
 };
 

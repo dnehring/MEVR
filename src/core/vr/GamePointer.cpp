@@ -192,6 +192,13 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
                 pressByTouch_ = true;
                 clickUpNext_ = true;
                 pinned = true;
+            } else if (t.d < -settings_.touchPokeDepthM) {
+                touchWaiting_ = false;  // pushed on through: a poke, its click where it touched, once
+                touchConsumed_[touchHand_] = true;
+                pressing_ = true;
+                pressByTouch_ = true;
+                clickUpNext_ = true;
+                pinned = true;
             } else if (std::sqrt(du * du + dv * dv) > settings_.touchDragM) {
                 touchWaiting_ = false;
                 dragging_ = true;
@@ -219,6 +226,8 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
             } else {
                 pressing_ = false;
             }
+        } else if (touchLatched_[hand_] && touchConsumed_[hand_]) {
+            pressing_ = false;  // a poke that already clicked: nothing more until it pulls back
         } else if (touchLatched_[hand_] && settings_.touchScroll) {
             touchWaiting_ = true;
             touchHand_ = hand_;
