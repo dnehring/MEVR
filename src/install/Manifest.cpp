@@ -198,10 +198,20 @@ bool WriteFileAtomic(fs::path const& file, std::string_view bytes) {
         return false;  // GetLastError says why
     }
     DWORD written = 0;
-    bool const wrote = bytes.size() <= MAXDWORD &&
-                       WriteFile(h, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) && written == bytes.size();
-    DWORD const writeError = wrote ? ERROR_SUCCESS : GetLastError();
-    CloseHandle(h);
+    bool wrote = bytes.size() <= MAXDWORD &&
+                 WriteFile(h, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) && written == bytes.size();
+    DWORD writeError = wrote ? ERROR_SUCCESS : GetLastError();
+    // A failure at the close (a full disk) must not put a truncated file over the good one, the manifest or an ini (Codex
+    // review 2026-11-06, install#6). And the size checked, for good measure.
+    if (!CloseHandle(h) && wrote) {
+        wrote = false;
+        writeError = GetLastError();
+    }
+    std::error_code sizeError;
+    if (wrote && (fs::file_size(temp, sizeError) != bytes.size() || sizeError)) {
+        wrote = false;
+        writeError = ERROR_WRITE_FAULT;
+    }
     if (!wrote) {
         DeleteFileW(temp.c_str());
         SetLastError(writeError != ERROR_SUCCESS ? writeError : ERROR_WRITE_FAULT);

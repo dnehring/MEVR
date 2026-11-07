@@ -46,6 +46,12 @@ All 13 fixed on 2026-11-06 (303238d; built in all three builds, ctest green).
 
 ## Low (real, narrow, dev-only or latent)
 
+Fixed too, as the low ones a player can actually meet (2026-11-06, the owner: "player reachable, not the obscure"):
+install#17 (the self-uninstall helper retries the delete once a second for 10 minutes; checked against a file held open
+6 s: gone at 6 s, then the folder), install#2 with it (cmd and ping by their System32 paths), install#6 (`WriteFileAtomic`
+checks the close and the size), gameM#4 (a new world drops the standing orders and the order history), gameM#5 (a model
+answer is dropped once the rules gave a newer order, or after 5 s). The rest below stay as they are.
+
 - **Hot-reload teardown**: core#2/engine#1 (Output's D3D/XR teardown on the game thread, LE2/LE3 only), engine#2 (trampoline removed before the drain; the natives are game-thread anyway), gameA#1 (detached `galaxy press` thread), gameA#2 (XInput unhook without a drain; not installed on LE1), gameA#4 (power wheel left open), gameM#6 (omni-tool effect left at 3600 s; `omni_tool::Shutdown` has no caller), gameM#7 (jets latch).
 - **Races**: core#6 (the breadcrumb seqlock writes the payload before invalidating), engine#4 (keyterms log), plugin#4 (blocker strings), plugin#5 (voice status strings), halcyon#7 (metric latch vs head look, about 1 mm), halcyon#8 (one frame of old-space controllers at recenter), halcyon#1 (upstream's worker-thread CopyResource at SteamVR bring-up).
 - **Voice file feed (dev)**: engine#5 (WAVs under 10 Hz never advance), engine#6 (a cancelled feeder feeds and stops the next listen).

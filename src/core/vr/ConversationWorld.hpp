@@ -90,5 +90,15 @@ struct Follow {
     bool jumped = false;
 };
 Follow FollowHead(Vec3 const& place, Vec3 const& anchor, Vec3 const& headNow, double threshold);
+// The same, taken only once the head has stayed past `threshold` from the anchor for `settle` calls in a row (once a tick): when
+// the mod puts Shepard's pawn back after the game's placement (people kept in place), his mesh catches up a tick later, so his
+// head bone reads a jump there and back within a tick (2 m and back, measured 2026-11-06); a lasting jump (his mesh put back on
+// his pawn) is followed. True when it moved the place.
+struct FollowState {
+    Vec3 place;
+    Vec3 anchor;
+    int away = 0;  // calls in a row past the threshold
+};
+bool FollowHeadSettled(FollowState& state, Vec3 const& headNow, double threshold, int settle);
 
 } // namespace mevr::vr::conversation_world

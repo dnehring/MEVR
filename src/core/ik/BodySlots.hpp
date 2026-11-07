@@ -108,7 +108,7 @@ struct Input {
     // let go anywhere else and it goes back to its holster after `releaseGrace` seconds (negative:
     // never), unless squeezed again first, and never while the trigger is held.
     bool gripHolds = false;
-    double releaseGrace = 0.3;
+    double releaseGrace = 0.2;  // 0.3 until 2026-11-06 (putting a weapon away felt slow)
     double deltaSeconds = 0.0;  // since the last step (the grace's clock)
     // gripHolds: the squeeze held now holds the gun (the host kept it from the game), even if it began
     // while the machine wasn't running (a menu, the power wheel, a conversation): with a gun out, it's

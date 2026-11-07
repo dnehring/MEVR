@@ -202,6 +202,10 @@ double ClampDrawRate(double rate) {
     return std::isfinite(rate) ? std::clamp(rate, 1.0, kMaxDrawRate) : 1.0;
 }
 
+double ClampHolsterRate(double rate) {
+    return std::isfinite(rate) ? std::clamp(rate, 1.0, kMaxHolsterRate) : 1.0;
+}
+
 bool RateNeedsWrite(float current, double wanted) {
     return !std::isfinite(current) || std::fabs(static_cast<double>(current) - wanted) > 1e-3;
 }
