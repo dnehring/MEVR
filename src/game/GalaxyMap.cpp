@@ -136,6 +136,7 @@ struct PendingOpen {
 };
 PendingOpen gOpen;
 std::uint64_t gAwaySinceMs = 0;
+bool gSeenAtTable = false;  // this opening: the head was seen near the table; only then does walking away close the map
 std::uint64_t gLastExitMs = 0;
 
 // In-world ([Galaxy] inWorld): the last on-foot view, held while the game is in its map mode so the player stays in the CIC.
@@ -1343,12 +1344,29 @@ void Tick(Link const& link) {
         }
         HideProjector(true);
         // Walking away from the table closes the open map (its own way out), as stepping back from the console would.
-        if (*mode == kGalaxyMode) {
+        // The owner's QA (2026-11-07, a real headset): the map opened from the game's console was closed within a tick, the
+        // head measured 5-9 m from the table, and the timer left running from the last opening closed the next one at once.
+        // Now: armed only once the head has been seen at the table during this opening, and reset whenever the map is down.
+        if (*mode != kGalaxyMode) {
+            gAwaySinceMs = 0;
+            gSeenAtTable = false;
+        } else {
             auto const frame = view_anchor::Current();
             float const dx = frame ? frame->head.position.x - scene.anchor[0] : 0.0f;
             float const dz = frame ? frame->head.position.z - scene.anchor[2] : 0.0f;
-            bool const away = std::hypot(dx, dz) > settings.worldRadiusM + 1.6f;
+            float const distance = std::hypot(dx, dz);
+            if (frame && distance <= settings.worldRadiusM + 0.8f) {
+                gSeenAtTable = true;
+            }
+            bool const away = frame && gSeenAtTable && distance > settings.worldRadiusM + 1.6f;
             gAwaySinceMs = away ? (gAwaySinceMs == 0 ? now : gAwaySinceMs) : 0;
+            static std::uint64_t nextFarLog = 0;
+            if (frame && !gSeenAtTable && now >= nextFarLog) {
+                nextFarLog = now + 5000;
+                log::Info("galaxy hologram: the map is open with the head {:.1f} m from the table's centre (head ({:.2f}, {:.2f}), "
+                          "table ({:.2f}, {:.2f})): not closing it until the head has been at the table",
+                          distance, frame->head.position.x, frame->head.position.z, scene.anchor[0], scene.anchor[2]);
+            }
             if (gAwaySinceMs != 0 && now - gAwaySinceMs > 600 && now - gLastExitMs > 3000) {
                 gLastExitMs = now;
                 bool const closed = InvokeFlash(LiveHandler(), "exitGalaxyMap");
