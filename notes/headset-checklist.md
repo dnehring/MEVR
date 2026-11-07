@@ -190,6 +190,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   (`PlaySoundSet` 70 / 61) fits when it doesn't; names over Link / Steam Link ("Rex", "Gurus" on synthesized speech: the
   parser absorbs those; a name the rules can't place goes to the model); the ducked game audio. Set `[Voice] model`
   (tiny / small / medium) if the partials lag. (research/54 "The voice path built", `[Voice]`)
+- [ ] The recognizer on one thread (2026-11-06 late, research/54 "One thread for the recognizer"; needs the host and `ASI\voice`
+  redeployed together, the game closed for it): speak a few orders; does the game keep its frames while you talk (the log's
+  `render levers: last 10 s: N frames` near 899 during a listen, 700 before the fix), Task Manager one busy core, not all,
+  and `voice: ... the costliest N ms` under 100 for tiny? If a partial costs more than 250 ms now, `[Voice] intervalMs = 500`.
 - [ ] The menu's Voice page (2026-11-06, research/54 "The menu's Voice page"; needs the host and `ASI\voice` redeployed
   together): open the menu > Voice. Is your headset's microphone listed and picked, and does the Input level bar move and say
   "Hearing you" when you speak (and stay low when you don't)? Pick another microphone: the status says Restarting, then Ready
@@ -255,6 +259,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] The sniper rifle pushed into the shoulder, then held out at arm's length: the picture stays both ways (the gun moves off
   the shoulder by itself, up to 15 cm: comfortable?), no white glow from the lens while raised; the rifle's red dot stays with
   the eye at or past the housing; after drawing any gun, no game crosshair beside the hand reticle. (research/21 section 19)
+- [ ] Calibrated (Body & calibration), shoulder the rifle and the sniper: the dot and the scope are there at once and stay
+  while you shift your cheek; lowered off the shoulder they go. (research/21 section 20)
 - [ ] Raise the sniper rifle: the picture only at the eye (never at a casual hold), no on/off flicker, the eye reaches
   the eyepiece; lowered, the gun eases back. (research/21 section 15)
 - [ ] Under the scope, flick the right stick forward and back: the zoom steps 3.5x / 7x with a tick; the reticle reads.

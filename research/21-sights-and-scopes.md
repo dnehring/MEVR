@@ -1023,3 +1023,25 @@ I'd get the old HUD for the crosshair for the weapons like the assault rifle".
 **[verify] in the headset (notes/headset-checklist.md section 3):** the sniper's picture comes as the gun comes up, stays at the
 shoulder and held out, no glow; the gun moving off the shoulder isn't disturbing; the rifle's dot stays at the cheek; no game
 crosshair after a draw (Halcyon's log: `[MEVR-CROSSHAIR] game crosshair hidden`).
+
+## 20. At the calibrated shoulder: the sight on at once (2026-11-06, the same evening)
+
+**Asked (user):** whether the two-handed calibration decides when the sight comes on. It didn't: the rifle stance (research/25)
+posed the gun and its foregrip, and its stock point only set the support grip's "at the shoulder" zone (the game's aimed fire);
+ADS was the eye's distance to the sight (section 19). The user: "please proceed" with using it.
+
+**Why it's the right signal:** the calibration solved the rifle's gun frame from the eye's line to three targets with the right
+hand at that stock point, so with the hand back there and the head looking along the barrel the eye is on the sight line by
+construction, whatever the eye's distance to the sight: the case the distance rule kept losing at the cheek.
+
+**Built** (`vr::ads::AtShoulder`, unit-tested in `TestAds`; mod `game/Sights`; host `plugin/SightLayers`; `[Sights] shoulderAds`,
+1 by default): a rifle or shotgun (never the pistol), the right grip in `body_calibration::ShoulderZone()` (the zone 0.12 m around
+the calibrated stock point, `ik::Shouldered` with its own hysteresis), and the head within 25 degrees of the barrel (35 to stay):
+- a scope's ADS comes on at once (the dwell still 100 ms) and holds while it lasts, whatever the reach;
+- the raised weight is 1 (the assist, the pull or push, the lens hidden, the gun's HUD panel off the gun);
+- the mod sets `kShouldered` (16, a flags bit: no size change) and the host takes the dot's eye in a 0.10 m box instead of 0.06.
+Without a calibration for the controllers in use (or `shoulderAds = 0`) the distance rule alone, as in section 19. Logs `sights: at
+the calibrated shoulder (...)` / `away from ...`; snapshot `sights.ads.atShoulder`, `inShoulderZone`, `shoulderOns`.
+
+**[verify] in the headset:** shouldered, the scope and the dot are there at once and stay while you shift the cheek; lowered
+from the shoulder they go; a recalibration after a stance change.

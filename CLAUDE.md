@@ -755,7 +755,9 @@ switching frameworks.
   13 cm, -6/+22, 40), 100 ms dwell each way, plus our reach (the eye within `[Sights] adsReachM` 0.55 m of the sight, `adsReachExitM` 0.80
   to leave; since 2026-11-06, research/21 section 19: a gun pulled into the shoulder pushes the scope away up to `scopeAdsPushM` 0.15 so the
   eyepiece stays the relief ahead, the lens part hides whenever the gun is raised, a red dot shows to an eye up to 8 cm past its window, and
-  Halcyon's crosshair hide acts through the kept handler on any game-thread event), all on the gun WITHOUT the assist's move; below ADS the mod publishes no scope (kind None: no picture, the
+  Halcyon's crosshair hide acts through the kept handler on any game-thread event; section 20: a rifle or shotgun with the
+  right grip in the calibrated shoulder zone and the head along the barrel, `vr::ads::AtShoulder`, `[Sights] shoulderAds`,
+  is ADS and fully raised at once, flag `kShouldered` widens the host's dot box to 0.10 m), all on the gun WITHOUT the assist's move; below ADS the mod publishes no scope (kind None: no picture, the
   model's own lens, no scope capture), `scopeMaxM` only with `ads = 0`. The assist's 10-degree cone is gone: Overlord's
   continuous approach weight (angle 5-45 degrees, smooth corridor edges) x distance weight drives the sideways move (dots
   and holos at most `assistDotMaxM` 0.03) and the pull (dot none, holo 5 cm, scope under 3x 10 cm, scopes
@@ -858,7 +860,7 @@ switching frameworks.
   (`src/voice`, our C interface `VoiceApi.h` over Moonshine Voice's prebuilt MIT library and ONNX Runtime; `tools/fetch-voice.ps1` fetches
   them into `external/moonshine-voice` and the models into `models/voice`, both gitignored; `tools/deploy-asi.ps1` copies them to
   `ASI\voice`): WASAPI capture, a Moonshine stream per listen with `tailMs` after the release, partials every `intervalMs`, key-term
-  biasing from the roster, word timestamps, the game's audio ducked; `plugin/Voice` loads it on a worker (no DLL or models: voice off, one
+  biasing from the roster, word timestamps, the game's audio ducked; **the recognizer on one thread** (`[Voice] threads = 1`, Moonshine's `MOONSHINE_ORT_SINGLE_THREAD` set by the DLL before the models load; ONNX Runtime's default pool of every core, spinning, stalled the game 2 s per spoken order on 2026-11-06, gotchas/recognizer-on-every-core; the listen switch is applied on the DLL's worker, never under its lock on the render thread); `plugin/Voice` loads it on a worker (no DLL or models: voice off, one
   log line), listens on the mod's request or `[Voice] key`, reads `%LOCALAPPDATA%\MEVR\voice.request` (`wav <path>`, `listen <s>`,
   `keyterms`, `stop`). The mod (`game/Voice`, rules `core/vr/VoiceGesture`, unit-tested) claims the squeeze before the flat orders, joins a
   listen's lines and gives them to `squad_orders::Say`; a settled partial that parses whole is given early (`earlyDispatch`, `settleMs`);

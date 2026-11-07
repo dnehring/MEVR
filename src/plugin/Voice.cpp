@@ -41,6 +41,7 @@ struct Settings {
     int tailMs = 200;
     double duckDb = 12.0;
     int intervalMs = 250;  // fewer partials: each costs 100-300 ms of a worker beside the game
+    int threads = 1;       // 1: the recognizer on one thread; anything else: ONNX Runtime's every core (it starved the game)
     bool wordTimestamps = true;
     std::string keyterms = "Garrus,Wrex,Liara,Tali,Ashley,Kaidan,Shepard,Overload,Sabotage,Damping,Lift,Throw,Singularity,Warp,Stasis,Barrier,Neural Shock,"
                            "Marksman,Carnage,Adrenaline Burst,Immunity,Assassination,Shield Boost,First Aid,Unity";
@@ -153,6 +154,7 @@ void ReadSettings() {
     gSettings.tailMs = static_cast<int>(ReadNumber(L"tailMs", 200.0));
     gSettings.duckDb = ReadNumber(L"duckDb", 12.0);
     gSettings.intervalMs = static_cast<int>(ReadNumber(L"intervalMs", 250.0));
+    gSettings.threads = static_cast<int>(ReadNumber(L"threads", 1.0));
     gSettings.wordTimestamps = ReadNumber(L"wordTimestamps", 1.0) != 0.0;
     gSettings.keyterms = ReadText(L"keyterms", gSettings.keyterms.c_str());
     gKey.store(gSettings.key);
@@ -237,6 +239,7 @@ void StartRecognizer(Settings const& settings) {
     config.duckDb = static_cast<float>(settings.duckDb);
     config.wordTimestamps = settings.wordTimestamps ? 1 : 0;
     config.intervalMs = settings.intervalMs;
+    config.threads = settings.threads;
     config.keyterms = keyterms.c_str();
     config.log = &DllLog;
     int const err = gFns.startup(&config);

@@ -17,5 +17,7 @@
 * **Update**: [a `cd` in a Bash tool call moves the session](gotchas/bash-cd-moves-the-session.md) bit again (a `cd` into the SDK headers).
 
 ## 2026-11-06
+
+- gotcha: [A library's ONNX Runtime session runs on every core and spins unless told otherwise](gotchas/recognizer-on-every-core.md) (the voice recognizer stalled the game; one thread now).
 * **Create**: [The OpenXR runtime limits a session's swapchains](gotchas/openxr-swapchain-limit.md), after the calibration's targets and then the omni-tool's rail went missing in the same session, with ten other quads.
 * **Update**: [a `cd` in a Bash tool call moves the session](gotchas/bash-cd-moves-the-session.md) and [the Bash tool collapses doubled backslashes](gotchas/bash-heredoc-backslashes.md) bit again.

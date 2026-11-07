@@ -158,6 +158,10 @@ struct Settings {
     float adsReachExitM = 0.80f;
     float scopeAdsPullMaxM = 0.35f;
     float scopeAdsPushM = 0.15f;
+    // At the calibrated shoulder (research/21 section 20): a long gun's sight comes on at once with the right hand at the
+    // guided calibration's stock point and the head along the barrel (vr::ads::AtShoulder); without a calibration, or a
+    // pistol, the distance rule above alone. shoulderAds = 0: the distance rule always.
+    bool shoulderAds = true;
     // Both.
     bool replaceRing = true;            // hide the floating ring reticle while an eye looks through a sight
     bool aimedFire = true;              // the sniper rifle's shots get the game's aimed-fire accuracy while
@@ -253,6 +257,9 @@ enum Flags : std::uint32_t {
     // the eye looking through sees the world through the window (the other eye's image at 1x on a disc there), not the
     // housing's back face. A host from before ignores it.
     kWindow = 8u,
+    // The gun is at the calibrated shoulder (research/21 section 20): the host takes the eye nearest the sight line in a wider
+    // box for a dot. A host from before ignores it.
+    kShouldered = 16u,
 };
 
 struct Sight {

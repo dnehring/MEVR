@@ -421,6 +421,9 @@ constexpr char const* kSightsBlock =
     "scopePullMaxM = 0.15\n"
     "scopeAdsPullMaxM = 0.35\n"
     "scopeAdsPushM = 0.15\n"
+    "; shoulderAds: 1 = a rifle or shotgun at your calibrated shoulder (Body & calibration), looking along it, shows its\n"
+    "; sight at once, however near or far your eye is; 0 = only the distance rule above.\n"
+    "shoulderAds = 1\n"
     "assaultRifleLens = auto\n"
     "sniperRifleLens = auto\n"
     "sniperRifleHide = auto\n"
@@ -2313,6 +2316,9 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     number("scopePullMaxM", out.scopePullMaxM, 0.0f, 0.30f);
     number("scopeAdsPullMaxM", out.scopeAdsPullMaxM, 0.0f, 0.50f);
     number("scopeAdsPushM", out.scopeAdsPushM, 0.0f, 0.30f);
+    if (Number(ini, "Sights", "shoulderAds", value)) {
+        out.shoulderAds = value != 0.0;
+    }
     if (Number(ini, "Sights", "ads", value)) {
         out.ads = value != 0.0;
     }
@@ -3128,6 +3134,8 @@ void Refresh() {
         // marker scopeAdsPushM comes after adsReachM's migration above.
         {L"Sights", "Sights", L"adsReachExitM", "adsReachExitM", L"0.80"},
         {L"Sights", "Sights", L"scopeAdsPushM", "scopeAdsPushM", L"0.15"},
+        // At the calibrated shoulder (2026-11-06, research/21 section 20).
+        {L"Sights", "Sights", L"shoulderAds", "shoulderAds", L"1"},
         // The spectator camera (2026-11-03, research/49), off by default: the rest of [Spectator] is file-only.
         {L"Spectator", "Spectator", L"enabled", "enabled", L"0"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},

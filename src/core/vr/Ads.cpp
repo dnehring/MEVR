@@ -167,4 +167,11 @@ bool Policy::Update(bool aligned, float dtIn, float dwell) {
     return active_;
 }
 
+bool AtShoulder(bool inZone, float facingDeg, bool was) {
+    if (!inZone || !std::isfinite(facingDeg) || facingDeg < 0.0f) {
+        return false;
+    }
+    return facingDeg <= (was ? kShoulderFacingOffDeg : kShoulderFacingOnDeg);
+}
+
 } // namespace mevr::vr::ads
