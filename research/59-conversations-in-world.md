@@ -310,6 +310,9 @@ or deployment. Two existing installer recovery cases were skipped because the lo
 - [verify] New jumps during a walk, return-to-current-place cancellation, live disable, conversation end/unload and the next
   conversation leave no stale movement/velocity. Recheck jumps reaching a drawn frame with each method.
 
+**QA-approved by the owner (2026-11-07)** in the QA build 0.1.0+7ffe648 with these three fixes. Still open: walking to marks (the
+prototype below, off), the one jump of the player's own place after a cutscene.
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the
