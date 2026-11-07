@@ -352,6 +352,13 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     auto const mode = player::GameMode(controller);
     if (mode && *mode == 0) {
         gFoot.location = *pov->location;
+        // Store the corrected base, not the raw animated camera. Common framing is still applied by the held render.
+        auto const view = vr::host_view::Latest();
+        if (view.valid && view.floorLocked) {
+            auto const basis = engine::ToBasis(engine::UnrealRotation{gFoot.rotation.pitch, gFoot.rotation.yaw, gFoot.rotation.roll});
+            double const commonZ = basis.forward.z * view.offsetForward + basis.right.z * view.offsetRight + basis.up.z * view.offsetUp;
+            gFoot.location.z = static_cast<float>(view.centreZ - commonZ);
+        }
         gFoot.rotation = *pov->rotation;
         gFoot.fov = *pov->fov;
         if (auto const p = player::Location(player::Pawn(controller))) {
@@ -938,6 +945,13 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
             gC.holdRotation = {0, rot ? rot->yaw : 0, 0};
             gC.holdFov = gFoot.have ? gFoot.fov : 90.0f;
             gC.holdFrom = "Shepard's head bone";
+            // No recent on-foot POV: use the same cylinder-floor eye reference if it is available, retaining XY staging.
+            auto const view = vr::host_view::Latest();
+            if (view.valid && view.floorLocked) {
+                auto const basis = engine::ToBasis(engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll});
+                double const commonZ = basis.forward.z * view.offsetForward + basis.right.z * view.offsetRight + basis.up.z * view.offsetUp;
+                gC.hold.z = view.centreZ - commonZ;
+            }
         } else {
             gC.hold = V(gFoot.location);
             gC.holdRotation = gFoot.rotation;
@@ -1258,6 +1272,7 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
         frame = engine::FromCameraView(engine::UnrealVector{gC.hold.x, gC.hold.y, gC.hold.z},
             engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll}, {view.lookPitch, view.lookYaw, 0},
             {view.offsetForward, view.offsetRight, view.offsetUp}, view.head, view.unitsPerMeter);
+        if (view.centreValid) frame->headWorld.z = view.centreZ;
     } else if (gFoot.frame && gC.holdFrom == std::string_view("the view on foot")) {
         frame = gFoot.frame;
         frame->headWorld.x += gC.hold.x - gFoot.location.x;

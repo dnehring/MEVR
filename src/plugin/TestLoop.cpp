@@ -34,6 +34,7 @@
 #include "core/PngFile.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/HostView.hpp"
+#include "plugin/FloorLock.hpp"
 #include "core/vr/ImageConvert.hpp"
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/PoseRecording.hpp"
@@ -813,7 +814,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "  \"aimRay\": {{\"valid\": {}, \"origin\": {}, \"direction\": {}, \"ageMs\": {}}},\n"
         "  \"hostView\": {{\"valid\": {}, \"headLook\": {}, \"headAim\": {}, \"lookYawUU\": {}, \"lookPitchUU\": {}, "
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
-        "  \"colour\": {},\n  \"stereo\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n  \"voice\": {},\n"
+        "  \"colour\": {},\n  \"stereo\": {},\n  \"floorLock\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n  \"voice\": {},\n"
         "  \"spectator\": {},\n  \"figure\": {},\n  \"omniPad\": {},\n  \"omniRail\": {},\n  \"swapchains\": {},\n  \"mod\": {},\n"
         "  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
@@ -822,6 +823,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         J(view.valid), J(view.headLook), J(view.headAim), view.lookYaw, view.lookPitch, J(view.offsetForward),
         J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), recenter_tilt::StatusJson(), sight_layers::StatusJson(),
         calibration::StatusJson(), mevr::host::colour::StatusJson(), metric_stereo::StatusJson(),
+        floor_lock::StatusJson(),
         mevr::host::cine_screen::StatusJson(),
 #if defined(MEVR_WITH_MAIN_MENU)
         main_menu::StatusJson(),

@@ -1660,22 +1660,26 @@ bool ApplyViewOffsetSEH(void* fsv) noexcept
         s_pairU = g_viewOffUp.load(std::memory_order_relaxed);
         s_pairF = g_viewOffFwd.load(std::memory_order_relaxed);
     }
-    const float r = s_pairR;
-    const float u = s_pairU;
-    const float f = s_pairF;
-    if (r == 0.0f && u == 0.0f && f == 0.0f) return true;
+    float r = s_pairR;
+    float u = s_pairU;
+    float f = s_pairF;
     __try
     {
         BYTE* base = reinterpret_cast<BYTE*>(fsv);
         const float* VM = reinterpret_cast<const float*>(base + kFsvViewMatrix);  // world->view, row-major
+        float* pvt = reinterpret_cast<float*>(base + kFsvPreViewTranslation);
+        // [MEVR] Anchor the common centre to the floor before metric stereo. PVT is -camera position;
+        // use its pristine Z, never an eye's displaced origin. Policy and pair latching live in our host.
+        const float floorDz = MELEVR::MevrBridge::FloorViewTranslation(t_fvcReplay, -pvt[2], VM[8], VM[9], VM[10], &r, &u, &f);
+        if (r == 0.0f && u == 0.0f && f == 0.0f && floorDz == 0.0f) return true;
         // View axes expressed in world = columns of VM's rotation: right=col0, up=col1, forward=col2.
         const float wx = r * VM[0] + u * VM[1] + f * VM[2];
         const float wy = r * VM[4] + u * VM[5] + f * VM[6];
-        const float wz = r * VM[8] + u * VM[9] + f * VM[10];
-        float* pvt = reinterpret_cast<float*>(base + kFsvPreViewTranslation);
+        const float wz = r * VM[8] + u * VM[9] + f * VM[10] + floorDz; // [MEVR] absorb every vertical framing term
         float* vo = reinterpret_cast<float*>(base + kFsvViewOrigin);
         pvt[0] -= wx; pvt[1] -= wy; pvt[2] -= wz;   // move the camera by (+w): vertices pre-translate by -w
         vo[0] += wx; vo[1] += wy; vo[2] += wz;
+        if (floorDz != 0.0f) MELEVR::MevrBridge::JournalFloorViewWrite(vo, pvt); // [MEVR]
         return true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
@@ -2419,8 +2423,12 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
         if (!s_cineFocusLogged.exchange(true))
             LogLine("[CINEFOCUS] per-eye view states active for VR cine (pass0=left, pass1=right)");
     }
-    if (!ApplyMetricEyeOffset(fsv)) ApplyReplayProofOffsetSEH(fsv);   // [MEVR] life-size stereo, else upstream's
-    ApplyViewOffsetSEH(fsv);   // base camera offset/lean, before head-look
+    // [MEVR] The disabled path retains upstream's order as well as its arithmetic.
+    static bool s_pairFloor = false;
+    if (!t_fvcReplay) s_pairFloor = MELEVR::MevrBridge::FloorLockEnabled();
+    if (s_pairFloor) ApplyViewOffsetSEH(fsv); // common centre before metric eye displacement
+    if (!ApplyMetricEyeOffset(fsv)) ApplyReplayProofOffsetSEH(fsv);   // [MEVR] metric eyes stay relative to the corrected centre
+    if (!s_pairFloor) ApplyViewOffsetSEH(fsv); // legacy: metric eye first, then common offset
     int aerRenderedEye = -1;
     if (aerPrimaryView)
     {
@@ -2521,6 +2529,8 @@ void PostProcessPerspectiveFsv(void* fsv, bool aerPrimaryView = false) noexcept
                     pairArm = slot.arm;
                 }
             }
+            // [MEVR] A floor-locked pair uses the head pose/arm latched with its floor and common centre.
+            MELEVR::MevrBridge::FloorViewLook(&s_pairLookOn, &s_pairYawF, &s_pairPitchF, &pairArm);
             g_pairArmSeq.store(pairArm, std::memory_order_release);
             RecordMetricLatch(pairArm);   // [MEVR] life-size stereo: what this pair renders with
             MELEVR::MevrBridge::NoteDrawArm(pairArm);   // [MEVR] research/39: the scope capture's pose this Draw renders

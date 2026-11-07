@@ -107,3 +107,78 @@ calibrated stance's shift is computed on the unscaled gun: at 1.09 about 5 mm of
 5. Gun-unit constants measured on the models (a scope's eyepiece offsets, `OpticFor`) are multiplied by s where they're used
    in the world; whatever reads the gun through the engine (muzzle, sockets, `BoneWorld`) already includes it.
 6. Only on foot in first person; third person, conversations and the Mako draw Shepard as the game does.
+
+## 6. Floor lock implemented (2026-11-07; owner decision, headset validation pending)
+
+The owner's PS VR2 standing eye is 1.84-1.85 m above STAGE. The previous path used the animated camera plus displacement
+from a recenter which captured height, then automatic sizing fitted the body to that drifting reference. Its heartbeat
+contained filtered estimates, not raw instantaneous camera measurements; those logs cannot prove every intermediate raw height.
+
+The new contract for ordinary on-foot first person is:
+
+```text
+rendered eye midpoint Z = pawn cylinder bottom Z + unitsPerMeter * live floor eye height
+pawn cylinder bottom Z = Actor.Location.z - Pawn.CylinderComponent.CollisionHeight
+```
+
+`game/Player::FloorLockSample` resolves these fields through our reflection layer on the game thread, at Camera.UpdateCamera
+and the mod tick. ReflectCheck includes CollisionHeight (the other fields already had rows). The copied sample crosses
+HostServices v34, size checked; host and mod must deploy together. No ray or lowest animated bone supplies the locked floor.
+The cylinder bottom is the pawn reference, not a claim that support geometry on a slope is horizontal at that elevation.
+
+`plugin/FloorLock` holds policy and pair state; pure arithmetic/gates/standing learning are in `core/vr/FloorLock`.
+`render_hook.cpp::ApplyViewOffsetSEH` calls the small `[MEVR] FloorViewTranslation` seam while the view is pristine: camera
+Z comes from -PreViewTranslation.z, and the world common offset from the pre-look camera basis. The common Z correction is
+applied before metric per-eye displacement and head look. Both eyes reuse one correction, floor sample, common offsets and
+head pose/arm; eye offsets are untouched. New floor writes are journalled. The metric passes and one-Draw eye delta retain
+only the per-eye displacement. CameraOrigin/PVT interpretation and the actual rendered result still need the headset check.
+
+All vertical terms, including cameraOffsetUp and forward framing projected by pitch, are absorbed. Horizontal constantEye,
+framing and lean remain. Correction to the earlier sections: current Halcyon multiplies static offsets by 50; -0.082 is
+**-4.1 uu (-4.1 cm at 100 uu/m)**, not -8.2 cm. Earlier measured outcomes remain historical, but the old offset explanation
+and plan to anchor to calibrated height plus recenter-relative motion are superseded by the live floor contract above.
+
+Gates: first-person ownership, ordinary on-foot mode and an eligible Explore/Combat/TightAim camera (including crouch), a
+BioPawn and no cover. Disabled in Mako, K third person, scope/director cameras, cutscenes, cinema/flat screens, front end,
+game menus and the galaxy's scene camera. Physical crouch changes the live height once; button crouch retains game crouch
+state/collision while real head height controls the camera. A floor sample requires a STAGE/LOCAL_FLOOR source, finite valid
+height and age at most 250 ms; stale pawn samples also stand down. Invalid/missing floor falls back to the old camera and
+filtered scaling, logged once. `[Body] floorLock = 1` defaults on, no menu row; 0 restores the legacy publication, render order
+and sizing path (apart from the additional diagnostic fields).
+
+The corrected common centre is published with the latched head/offsets/floor sequence in host_view::State. ViewAnchor uses
+its Z for arm IK and sights/ADS. World conversations and galaxy-map holds capture the corrected on-foot base with common
+offsets still applied once; held renders publish their actual common centre. Their staging remains, and the galaxy's own
+camera never receives a floor anchor. Conversation fallback keeps horizontal head-based placement and takes an available
+corrected vertical reference.
+
+Body sizing: calibrated standEyeM, else a frozen standing STAGE mean, over Shepard's unscaled eye midpoint above the same
+cylinder bottom. After 0.5 s upright/holstered grace (the unscaled pose can be 500 ms old), 0.5 s of standing samples settle
+the reference for the current skeleton. Both physical and game crouch are excluded; physical head height below 90% of an
+available calibration also stops learning before crouch dwell finishes. Drawn poses never teach the standing reference.
+The target then stays fixed through animation, recenter, crouch and drawing; calibration changes can deliberately update it.
+Scale's existing clamp and 0.1/s approach remain. The scale pivot uses the cylinder floor too. About 1.10-1.11 is expected
+for 1.84-1.85 m over the owner's previously measured 1.66-1.67 m Shepard, not a new runtime measurement.
+
+Diagnostics: `floor lock:` at most once a second while changing (0.1 uu / 1 mm thresholds), otherwise every 10 s while
+active: raw camera Z, pawn floor Z, STAGE eye height, correction, final eye height. Snapshot `"floorLock"` includes enabled,
+active, raw camera/pawn floor, eye height, correction, final centre, floor sequence/time and units/m. The body-scale
+heartbeat and JSON name calibrated/learned standing versus legacy filtered view/lowest bone references.
+
+Offline tests cover varied recenter heights, animated camera bones, modes, pitch, framing, units/m; exact floor-relative
+midpoint, preserved stereo separation, all scope gates, invalid/stale floor and pawn inputs, and crouch changing view height
+without changing the settled body target. These are arithmetic/gate tests, not a game or headset result.
+
+**Replay limit:** existing .mevrrec recordings store recentered LOCAL eye/controller poses, not the matching floor sample.
+Replay still leaves core/xr/Floor live, so it cannot validate this invariant or recenter posture independence. No recording
+format was changed here. Add a versioned floor payload per frame: valid, source, eyeHeight, sequence and sample time relative
+to the recorded frame; record it beside the pose, substitute it at OnFrameBegun/MeasureFloor during replay, and remap freshness
+to the replay clock. Old recordings must explicitly report ?no floor fixture?, not silently claim a validation. Space-aware
+view substitution/recenter coverage is also required. A separately authorized headset/fake-headset run with that fixture is
+still needed for slopes/stairs, recenter while bent/standing, draw/holster/ADS, both crouches, holds and all excluded modes.
+
+Verification on 2026-11-07: development MEVR-LE1 + MEVR-LE1-mod + mevr-tests and monolithic MEVR-LE1 built successfully;
+CTest Release passed all 7 tests (57.67 s); check-spdx.py and git diff --check passed. MSBuild's automatic SDK discovery
+was denied a user-profile directory in this sandbox, so the installed 10.0.22621.0 SDK location/version/display name were
+supplied as build properties; compiler warning/error flags were unchanged. The Python interpreter configured in the
+development build ran the SPDX check because python was absent from PATH. No game, deployment, replay or headset run.

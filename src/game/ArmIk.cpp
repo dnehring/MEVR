@@ -23,6 +23,7 @@
 #include "engine/Skeleton.hpp"
 #include "game/HandTargets.hpp"
 #include "game/Player.hpp"
+#include "core/vr/HostView.hpp"
 #include "game/Sights.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Weapon.hpp"
@@ -1058,8 +1059,18 @@ void Drive(double deltaSeconds) {
         {
             ik::Vec3 const view = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
             if (auto const unscaled = engine::bone_pose::UnscaledBody()) {
-                bodyScale = body_scale::Step(view.z - unscaled->floorZ, targets.body.unitsPerMeter, deltaSeconds);
-                request.bodyScale = {bodyScale, {view.x, view.y, unscaled->floorZ}};
+                auto const hostView = vr::host_view::Latest();
+                std::optional<double> shepardEyeM;
+                double pivotZ = unscaled->floorZ;
+                if (hostView.valid && hostView.floorLocked && targets.body.unitsPerMeter > 0.0) {
+                    auto const eyeWorld = ik::TransformPoint(componentToWorld, unscaled->eye);
+                    shepardEyeM = (eyeWorld.z - hostView.pawnFloorZ) / targets.body.unitsPerMeter;
+                    pivotZ = ik::TransformPoint(*worldToComponent,
+                        {targets.headWorld.x, targets.headWorld.y, hostView.pawnFloorZ}).z;
+                }
+                bodyScale = body_scale::Step(view.z - unscaled->floorZ, targets.body.unitsPerMeter, deltaSeconds,
+                    shepardEyeM, reinterpret_cast<std::uintptr_t>(info->asset));
+                request.bodyScale = {bodyScale, {view.x, view.y, pivotZ}};
             } else {
                 body_scale::Idle(deltaSeconds);  // nothing measured yet: the request stays unscaled, the reach too
             }

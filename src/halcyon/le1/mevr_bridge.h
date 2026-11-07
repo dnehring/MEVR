@@ -60,7 +60,14 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
 // movement. Head look is read from RenderHook.
 void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOrientation[4],
                  float const headPosition[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU,
-                 float unitsPerMeter) noexcept;
+    float unitsPerMeter, bool floorWorld) noexcept;
+
+// [MEVR] Common centre before metric eye displacement/head look. Main pass latches; second eye reuses it.
+bool FloorLockEnabled() noexcept;
+void FloorViewLook(bool* on, float* yaw, float* pitch, std::uint64_t* arm) noexcept;
+float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ,
+    float* right, float* up, float* forward) noexcept;
+void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexcept;
 
 // True while our mod aims weapons with the right controller and that controller is tracked
 // (held for a moment through brief tracking loss): Halcyon's on-foot combat head aim then stays

@@ -16,6 +16,17 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 
 ## 1. Newest (2026-11-03 to 11-05)
 
+### Floor lock (session: floor-lock, built 2026-11-07; research/58 section 6 and research/30 section 8)
+- [ ] After a separately authorized host+mod v34 deployment, PS VR2 standing eye 1.84-1.85 m: recenter standing and bent,
+  explore/draw/holster/ADS, idle for a minute, stairs and slopes. `floor lock:` final eye height should equal live STAGE
+  height; raw camera changes should be cancelled. Verify reflection CollisionHeight and PVT sign against the actual view.
+- [ ] Physically crouch: one real-head drop. L3/button crouch while standing: game crouch/collision retained, no extra camera
+  drop. Body-scale target stays fixed (~1.10-1.11 for the measured Shepard); heartbeat names its standing reference.
+- [ ] K third person, cover, Mako, front end, menus, 3D/flat cinema and the galaxy's own camera: no floor correction.
+  World conversation entry/exit and galaxy-map hold retain the corrected on-foot height, with staging and ADS still aligned.
+  File `[Body] floorLock = 0` restores the former view and filtered sizing; no menu row. Old replay recordings cannot prove
+  floor lock without the per-frame floor fixture described in research/58.
+
 ### Powers at the left hand (session: Biotic/tech attack targeting system)
 - [ ] X only selects powers on foot (tap and hold); a grip at the left chest throws on a fast release; X still works in Mako/menus/conversations; check Overkill disabled diagnostics with assault rifle drawn/holstered (2026-11-07, x-button; research/55 section 6).
 - [ ] Self-cast confirmation (2026-11-07, power-confirmation; research/55 section 10): equip Overkill/Marksman with a rifle

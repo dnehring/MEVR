@@ -36,6 +36,9 @@ struct Ray;
 namespace vr::floor {
 struct State;
 }
+namespace vr::floor_lock {
+struct PawnSample;
+}
 namespace vr::sights {
 struct Sight;
 }
@@ -91,7 +94,7 @@ struct State;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 33;
+inline constexpr int kHostServicesVersion = 34;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -408,6 +411,10 @@ struct HostServices {
     // conversationWorldSize matches its sizeof(State). Any thread.
     std::uint32_t conversationWorldSize = 0;
     void (*setConversationWorld)(vr::conversation_world::State const* state) = nullptr;
+    // Version 34: floor lock's game-thread cylinder/camera sample; host_view::State also appended.
+    // Host and mod must deploy together (viewStateSize and floorLockSampleSize are checked).
+    std::uint32_t floorLockSampleSize = 0;
+    void (*setFloorLockSample)(vr::floor_lock::PawnSample const* sample) = nullptr;
 };
 
 } // namespace mevr

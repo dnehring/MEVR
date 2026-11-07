@@ -299,6 +299,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Comfort.cpp
     src/core/vr/Comfort.hpp
     src/core/vr/CombatStance.cpp
+    src/core/vr/FloorLock.cpp
     src/core/vr/Sprint.cpp
     src/core/vr/CombatStance.hpp
     src/core/vr/GameMenuRequest.cpp
@@ -586,6 +587,7 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Comfort.cpp
     src/core/vr/Comfort.hpp
     src/core/vr/CombatStance.cpp
+    src/core/vr/FloorLock.cpp
     src/core/vr/Sprint.cpp
     src/core/vr/CombatStance.hpp
     src/core/vr/GameMenuRequest.cpp
@@ -715,6 +717,7 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/Halcyon.cpp
     src/plugin/Halcyon.hpp
     src/plugin/HalcyonBridge.cpp
+    src/plugin/FloorLock.cpp
     src/plugin/HalcyonOverlays.cpp
     src/plugin/MevrMenu.hpp
     src/plugin/MevrMenuPointer.cpp
@@ -960,6 +963,7 @@ if (MEVR_BUILD_TESTS)
         tests/VoiceMenuTests.cpp
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
+        tests/FloorLockTests.cpp
         tests/LandmarkTests.cpp
         tests/ConversationWorldTests.cpp
         tests/GuiEventsTests.cpp
@@ -1009,6 +1013,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Calibration.cpp
         src/core/vr/Comfort.cpp
         src/core/vr/CombatStance.cpp
+        src/core/vr/FloorLock.cpp
         src/core/vr/Sprint.cpp
         src/core/vr/GameMenuRequest.cpp
         src/core/vr/HudPieces.cpp

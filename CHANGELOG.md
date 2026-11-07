@@ -12,6 +12,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## 0.1.0 (2026-11-06)
 
+- First-person eye height follows your real floor height, through recentering, drawing weapons and crouching. Physical crouch
+  lowers the view once; button crouch keeps its game effect while your real head controls the camera. Automatic body sizing
+  uses a fixed standing reference. File setting `[Body] floorLock = 0` restores the previous behaviour. Headset validation pending.
+
 - Fixed X throwing a grenade while selecting powers: on foot with the hand power wheel on, taps and holds of X only
   use that wheel. Grenades: grab one at the left of your chest with either hand (the left while the right holds the gun) and throw; release slowly to put it back.
   An old `grenadeButton = 1` and the old right-hand-only grenades move once; X keeps its game meaning in the Mako, menus and conversations.

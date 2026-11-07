@@ -750,6 +750,7 @@ void CheckFields() {
     CheckField("Engine.WorldInfo", "PawnList", SDK_FIELD(AWorldInfo, PawnList));
     CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));  // the Mako's gunner: a target's size
     CheckField("Engine.CylinderComponent", "CollisionRadius", SDK_FIELD(UCylinderComponent, CollisionRadius));
+    CheckField("Engine.CylinderComponent", "CollisionHeight", SDK_FIELD(UCylinderComponent, CollisionHeight));
     CheckField("Engine.WorldInfo", "TimeSeconds", SDK_FIELD(AWorldInfo, TimeSeconds));  // mevr crowd
     CheckField("SFXGame.BioEpicPawnBehavior", "m_powers", SDK_FIELD(UBioEpicPawnBehavior, m_powers));  // the squad context (research/54)
     CheckField("SFXGame.BioPower", "m_nmPower", SDK_FIELD(UBioPower, m_nmPower));

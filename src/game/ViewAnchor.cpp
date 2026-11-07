@@ -107,9 +107,10 @@ std::optional<engine::TrackingFrame> FromHost() {
             gTurn = {};  // the camera has updated: the turn is in it
         }
     }
-    engine::TrackingFrame const frame = engine::FromCameraView(location, camera,
+    engine::TrackingFrame frame = engine::FromCameraView(location, camera,
         {view.lookPitch, view.lookYaw, 0}, {view.offsetForward, view.offsetRight, view.offsetUp}, view.head,
         view.unitsPerMeter);
+    if (view.centreValid) frame.headWorld.z = view.centreZ;
     if (!gLogged) {
         LogHostFrame(frame, camera, view);
     }

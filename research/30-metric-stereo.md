@@ -197,3 +197,19 @@ submit note), `src/halcyon/le1/mevr_bridge.h` (`PlanStereo`, `NoteStereoSubmit`)
 and `src/plugin/MainMenuSettings.cpp`, `src/core/vr/MenuSettings.cpp` ("Life-size stereo", "Extra depth"),
 `src/plugin/TestLoop.cpp` (`"stereo"`), `src/plugin/PerfProbe.cpp`, `tools/deploy-asi.ps1`,
 `tools/stereo-check.py`, `tests/Main.cpp` (`TestMetricStereo`).
+
+## 8. Common floor-locked centre (2026-11-07)
+
+See research/58 section 6. The `[MEVR] FloorViewTranslation` seam in render_hook.cpp's ApplyViewOffsetSEH corrects the
+common world Z before ApplyMetricEyeOffset and before head look: cylinder bottom + units/m * live STAGE/LOCAL_FLOOR eye
+height. The two metric offsets remain displacement from the midpoint; the same latched common correction applies to both
+passes, including the one-Draw synthesized view. HostServices v34 carries the pawn sample and the host view's corrected
+centre/pose to the mod. `[Body] floorLock = 0` retains the previous ordering and arithmetic. Cinema, map scene cameras,
+cover, third person, front end and menus are excluded; world holds carry the corrected on-foot base.
+
+FloorLockTests exercises recenter origins, mode/bone/pitch/framing terms, metric separation, gates and frozen standing scale
+under crouch. This does not establish headset alignment, support height on slopes, or runtime reflection success.
+**Current replay cannot validate floor lock:** recordings lack the corresponding STAGE/LOCAL_FLOOR sample and replay leaves
+that measurement live. A versioned per-frame valid/source/eyeHeight/sequence/time payload, replay-clock freshness mapping
+and substitution alongside recorded poses would supply a deterministic floor fixture; see research/58 section 6. No game,
+replay, deployment or headset run was performed for this change.

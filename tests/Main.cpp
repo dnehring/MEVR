@@ -11628,6 +11628,7 @@ int RunPowerWheelTests();
 int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
+int RunFloorLockTests();
 int RunLandmarkTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
@@ -11779,6 +11780,7 @@ int main() {
     gFailures += RunVoiceMenuTests();
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
+    gFailures += RunFloorLockTests();
     gFailures += RunLandmarkTests();
     gFailures += RunConversationWorldTests();
     gFailures += RunGuiEventsTests();

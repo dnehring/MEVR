@@ -5136,7 +5136,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             const float mevrLeanScale = mevrGalaxy ? mevrGalaxyUpm / kMetersToUU   // [MEVR] galaxy hologram
                                                    : ((cfg.leanEnabled && cfg.leanGain > 0.0f) ? cfg.leanGain : 1.0f);
             MELEVR::MevrBridge::OnViewBuilt(headValid && !menuOpen && !forceFlatCine, headLookApplied, headAimApplied,
-                                            mevrHeadQ, mevrHeadP, rightUU, upUU, fwdUU, kMetersToUU * mevrLeanScale);
+                                            mevrHeadQ, mevrHeadP, rightUU, upUU, fwdUU, kMetersToUU * mevrLeanScale,
+                                            gameMode == 0 && !cinematicContext && !mevrCineScreen && !frontEndHold); // [MEVR] floor lock: ordinary on foot only
 
             // [MEVR] life-size stereo (research/30): each pass of the next game frame from its eye's real place, at
             // the view's own scale (the lean's units per metre, which the hands use too); its own frustum where the
