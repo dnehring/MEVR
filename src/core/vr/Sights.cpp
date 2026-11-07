@@ -562,8 +562,9 @@ bool Looking::Update(Line const& line, float radius, float minAlong, float maxAl
 int AimingEye(Line const lines[2], float box, float minAlong, float maxAlong, int current) {
     auto inside = [&](int e, float scale, float alongScale) {
         Line const& l = lines[e];
-        return std::isfinite(l.lateral) && std::isfinite(l.along) && l.lateral <= box * scale && l.along >= minAlong * (2.0f - alongScale) &&
-            l.along <= maxAlong * alongScale;
+        // The hysteresis widens the range on both ends, also for a minimum below zero (an eye a little past the sight).
+        return std::isfinite(l.lateral) && std::isfinite(l.along) && l.lateral <= box * scale &&
+            l.along >= minAlong - std::abs(minAlong) * (alongScale - 1.0f) && l.along <= maxAlong * alongScale;
     };
     int best = -1;
     for (int e = 0; e < 2; ++e) {
@@ -592,7 +593,10 @@ float Smooth(float t) {
 AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f const& axisIn, XrVector3f const& upIn,
     XrVector3f const eyes[2], float weightIn, int currentEye, Pull const& pull) {
     constexpr float kDeg = 3.14159265358979f / 180.0f;
-    constexpr float kMinAlong = 0.02f;     // the eye at the sight itself: no line to speak of
+    // The eye at the sight itself: no line to speak of. With a push (a scope pulled into the shoulder) an eye up to the push
+    // past the eyepiece still counts: it's what the push moves away from.
+    bool const pushes = pull.pushM > 0.0f && std::isfinite(pull.pushM) && pull.reliefM > 0.0f;
+    float const kMinAlong = pushes ? -std::min(pull.pushM, 0.5f) : 0.02f;
     constexpr float kMaxAlong = 1.5f;      // an eye further back than this isn't aiming through it
     constexpr float kEyeSwitchDeg = 1.5f;  // the other eye takes over only when this much nearer the line
     AssistGoal goal;
@@ -610,7 +614,7 @@ AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f co
         lines[e] = EyeLine(eyes[e], center, *axis, up);
         usable[e] = std::isfinite(lines[e].along) && lines[e].along >= kMinAlong && lines[e].along <= kMaxAlong;
         if (usable[e]) {
-            angles[e] = std::atan2(lines[e].lateral, lines[e].along) / kDeg;
+            angles[e] = std::atan2(lines[e].lateral, std::max(lines[e].along, 0.02f)) / kDeg;
         }
     }
     int eye = -1;
@@ -645,9 +649,11 @@ AssistGoal AssistTarget(Assist const& s, XrVector3f const& center, XrVector3f co
     if (length > s.maxShiftM && length > 0.0f) {
         shift = Scale(shift, std::max(s.maxShiftM, 0.0f) / length);
     }
-    // The pull: back along the line toward the eye, until the sight is the relief ahead of it (never away).
-    if (pull.reliefM > 0.0f && pull.maxM > 0.0f && std::isfinite(pull.reliefM) && std::isfinite(pull.maxM)) {
-        float const want = std::clamp(line.along - pull.reliefM, 0.0f, pull.maxM);
+    // The pull: back along the line toward the eye, until the sight is the relief ahead of it; away from the eye (a push)
+    // only up to pushM, when the eye is nearer than the relief.
+    if (pull.reliefM > 0.0f && (pull.maxM > 0.0f || pushes) && std::isfinite(pull.reliefM) && std::isfinite(pull.maxM)) {
+        float const push = pushes ? std::min(pull.pushM, 0.5f) : 0.0f;
+        float const want = std::clamp(line.along - pull.reliefM, -push, std::max(pull.maxM, 0.0f));
         goal.pull = want * goal.weight;
         shift = Sub(shift, Scale(*axis, goal.pull));
     }

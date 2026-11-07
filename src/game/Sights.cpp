@@ -154,6 +154,9 @@ std::string gLoggedStatus;
 std::uint32_t gHostView = 0;
 std::uint32_t gLoggedHostView = 0;
 bool gScopeUp = false;  // the held gun's sight is a scope and the host shows its picture
+bool gLensRaised = false;  // the held scoped gun is raised toward the eye (its lens part hides; research/21 section 19)
+constexpr float kLensRaisedOn = 0.20f;   // RaisedWeight to hide the lens part...
+constexpr float kLensRaisedOff = 0.08f;  // ...and to show it again
 bool gAimedFire = true;
 std::atomic<unsigned> gAimErrorCalls{0};
 std::atomic<unsigned> gAimedShots{0};
@@ -186,7 +189,7 @@ double gAdsSinceMs = 0.0;
 int gAdsOnsHeartbeat = 0;
 int gAdsTicksHeartbeat = 0;
 double gAdsEyeSumHeartbeat = 0.0;  // the aiming eye's distance to the pulled eyepiece while ADS was on
-constexpr float kAdsReachHysteresisM = 0.10f;  // [Sights] adsReachM to come on, this much further to go off
+constexpr float kAdsReachHysteresisM = 0.05f;  // [Sights] adsReachM to come on, adsReachExitM (at least this much further) to go off
 constexpr float kAssistOnWeight = 0.10f;       // the alignment assist's log line: on from this weight...
 constexpr float kAssistOffWeight = 0.02f;      // ...off below this
 // Heartbeat and snapshot: where the aiming eye sat against the unassisted sight line while the gun was
@@ -537,7 +540,7 @@ std::string SampleText(ads::Sample const& s) {
 }
 
 float ReachExit(sv::Settings const& settings) {
-    return settings.adsReachM > 0.0f ? settings.adsReachM + kAdsReachHysteresisM : 0.0f;
+    return settings.adsReachM > 0.0f ? std::max(settings.adsReachExitM, settings.adsReachM + kAdsReachHysteresisM) : 0.0f;
 }
 
 // How far this sight may slide toward the eye (research/21 section 15, Overlord's per-optic distances): a red dot none, a
@@ -579,6 +582,7 @@ void ResetAssist(char const* why) {
     gAdsGate = false;
     gAds = false;
     gApproach = gDistanceWeight = gPullLimit = 0.0f;
+    gLensRaised = false;
     gFastSpring = false;
 }
 
@@ -620,6 +624,13 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, vr::aim_ra
     float const weight = settings.assist.enabled ? gApproach * gDistanceWeight : 0.0f;
     gPullLimit = gPull.reliefM > 0.0f ? PullLimit(settings, drawn, gAds) : 0.0f;
     gPull.maxM = gPullLimit;
+    // A scope under ADS pulled into the shoulder is pushed away so its eyepiece stays the relief ahead of the eye (research/21
+    // section 19): the eye never passes the eyepiece, where the picture can't be.
+    gPull.pushM = scope && gAds && settings.assist.enabled && gPull.reliefM > 0.0f ? settings.scopeAdsPushM : 0.0f;
+    // The model's lens part (the sniper's glow) hides whenever the gun is raised, not only while the picture is up: a gun
+    // held out past the picture's reach still showed its glowing lens to the eye (research/21 section 19).
+    float const raisedNow = gApproach * gDistanceWeight;
+    gLensRaised = scope && (gAds || (gLensRaised ? raisedNow >= kLensRaisedOff : raisedNow >= kLensRaisedOn));
     sv::Assist assist = settings.assist;
     if (!scope) {
         assist.maxShiftM = std::min(assist.maxShiftM, assist.dotMaxShiftM);  // a dot's or holo's sideways move is gentle
@@ -1220,7 +1231,8 @@ void SetHostView(std::uint32_t view) {
         gHideText = key;
         gHideList = sv::HideList(hide, ownModel ? gModel.optic : std::nullopt, type);
     }
-    scope_parts::Update(gScopeUp, gHideList, ownModel ? gModel.bone : std::nullopt, type);
+    scope_parts::Update(gScopeUp || (gLensRaised && gLast.kind == static_cast<std::int32_t>(sv::Kind::Scope)), gHideList,
+        ownModel ? gModel.bone : std::nullopt, type);
 }
 
 namespace {
@@ -1348,6 +1360,7 @@ void Shutdown(bool exiting) {
     gHostView = 0;
     gLoggedHostView = 0;
     gScopeUp = false;
+    gLensRaised = false;
     gAimedShotsTotal = 0;
     gLoggedAimed = false;
     gSpring.Reset();

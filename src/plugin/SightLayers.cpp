@@ -43,6 +43,9 @@ constexpr std::int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 constexpr float kDotDistance = 50.0f;  // meters out along the sight line: the reticle sits at the target's depth
 constexpr float kMinAlong = 0.02f;     // an eye this close behind a dot sight's window or closer doesn't count
 constexpr float kMaxAlong = 1.0f;      // ...nor one further back than this (held out at arm's length)
+// The dot itself (collimated, 50 m out) still shows to an eye up to this far PAST the window (the gun pulled into the
+// shoulder: the window behind the eye, research/21 section 19); the window's picture needs the eye behind it (kMinAlong).
+constexpr float kDotMinAlong = -0.08f;
 constexpr float kScopeBox = 2.0f;      // lens radii: an eye this far off the line still sees the eyepiece (dark)
 constexpr float kPi = 3.14159265358979f;
 
@@ -937,7 +940,7 @@ Output Layers(Frame const& frame) {
             // hysteresis and through a brief dropout. One eye only, like a real red dot seen with both eyes open (the
             // other eye looks past it).
             float const box = std::max(sight.eyeBox, sight.radius);
-            gDotEye = gDotHold.Update(sv::AimingEye(gLines, box, kMinAlong, kMaxAlong, gDotEye), GetTickCount64());
+            gDotEye = gDotHold.Update(sv::AimingEye(gLines, box, kDotMinAlong, kMaxAlong, gDotEye), GetTickCount64());
             bool const on[2] = {gDotEye == 0, gDotEye == 1};
             // A solid housing (kWindow, research/21 section 17): that eye sees the world through the window, the other eye's
             // image at 1x (the same copy as the scope's, taken as that image is released), drawn behind the ring and the dot.

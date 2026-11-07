@@ -406,7 +406,8 @@ constexpr char const* kSightsBlock =
     "scopeMaxM = 0.70\n"
     "; Aiming down the sight (ADS): ads = 1 shows a scope's picture only once you bring the gun up to your eye (your\n"
     "; head behind the gun, looking along it, your eyes within adsReachM meters of the eyepiece, for a tenth of a second;\n"
-    "; it goes when you lower it). Below that you see the gun's own scope. ads = 0: the picture whenever an eye is behind\n"
+    "; it goes when you lower it or hold it out past adsReachExitM). Pulled into your shoulder, the gun is pushed away up\n"
+    "; to scopeAdsPushM so the eyepiece stays in front of your eye. Below that you see the gun's own scope. ads = 0: the picture whenever an eye is behind\n"
     "; the eyepiece (up to scopeMaxM). The pull: raised to your eye, a gun slides back along its line until its sight is\n"
     "; scopeReliefM in front of your eye (never inside the camera's near plane): a holo 5 cm at most, a low-power scope\n"
     "; (under 3x) 10 cm, other scopes scopePullMaxM, and a scope under ADS scopeAdsPullMaxM (faster); the picture then\n"
@@ -414,10 +415,12 @@ constexpr char const* kSightsBlock =
     "; units; auto: the game's model's own, measured). <gun>Hide: the model's bones hidden while the scope's picture is up\n"
     "; (auto: the game's model's own; none: nothing).\n"
     "ads = 1\n"
-    "adsReachM = 0.40\n"
+    "adsReachM = 0.55\n"
+    "adsReachExitM = 0.80\n"
     "scopeReliefM = 0.12\n"
     "scopePullMaxM = 0.15\n"
     "scopeAdsPullMaxM = 0.35\n"
+    "scopeAdsPushM = 0.15\n"
     "assaultRifleLens = auto\n"
     "sniperRifleLens = auto\n"
     "sniperRifleHide = auto\n"
@@ -565,7 +568,8 @@ constexpr char const* kVoiceBlock =
     "; transcripts cost 300 ms at worst, small's 950, medium's more); device = part of the microphone's name (empty:\n"
     "; the default communications device); key = a virtual key code held to talk at the desk (0: none; 86 is V); tailMs:\n"
     "; audio kept after the release; duckDb: the game's audio turned down while listening; intervalMs: how often a\n"
-    "; partial transcript is asked for; keyterms: words the recognizer is biased toward until the mod sets the roster's.\n"
+    "; partial transcript is asked for; threads = 1: the recognizer on one thread (any other value: ONNX Runtime's every\n"
+    "; core, which starves the game); keyterms: words the recognizer is biased toward until the mod sets the roster's.\n"
     "enabled = 1\n"
     "model = tiny\n"
     "device = \n"
@@ -573,6 +577,7 @@ constexpr char const* kVoiceBlock =
     "tailMs = 200\n"
     "duckDb = 12\n"
     "intervalMs = 250\n"
+    "threads = 1\n"
     "wordTimestamps = 1\n"
     "; The mod: the gesture (gesture = 0: the key and the console only), the ear point from the eyes (earSideM, earDownM),\n"
     "; how near the hand must be (radioRadiusM), a squeeze shorter than minHoldS is a blip, longer than maxHoldS ends by\n"
@@ -2307,10 +2312,12 @@ vr::sights::Settings ReadSights(Ini const& ini) {
     number("scopeReliefM", out.scopeReliefM, 0.0f, 0.50f);
     number("scopePullMaxM", out.scopePullMaxM, 0.0f, 0.30f);
     number("scopeAdsPullMaxM", out.scopeAdsPullMaxM, 0.0f, 0.50f);
+    number("scopeAdsPushM", out.scopeAdsPushM, 0.0f, 0.30f);
     if (Number(ini, "Sights", "ads", value)) {
         out.ads = value != 0.0;
     }
     number("adsReachM", out.adsReachM, 0.0f, 1.20f);  // 0: Overlord's corridor alone
+    number("adsReachExitM", out.adsReachExitM, 0.0f, 1.50f);
     if (Number(ini, "Sights", "frame", value)) {
         out.frame = value != 0.0;
     }
@@ -2393,7 +2400,7 @@ std::string Describe(vr::sights::Settings const& s) {
                                : std::string("the physical lens"),
         s.replaceRing ? "hidden while sighting" : "kept", s.aimedFire ? "on" : "off",
         s.ads ? std::format("a scope's picture only while aiming down it (ADS: Overlord's corridor, the eyes within {:.2f} m of the "
-                            "eyepiece, {:.2f} m to leave)", s.adsReachM, s.adsReachM > 0.0f ? s.adsReachM + 0.10f : 0.0f)
+                            "eyepiece, {:.2f} m to leave)", s.adsReachM, s.adsReachM > 0.0f ? std::max(s.adsReachExitM, s.adsReachM + 0.05f) : 0.0f)
               : std::string("a scope's picture whenever an eye is behind it (ads = 0)"),
         s.assist.enabled ? std::format("on (as raised: Overlord's ADS approach weight; {:.0f}% of the way, at most {:.2f} m for a scope, "
                                        "{:.2f} m for a dot or holo)",
@@ -2984,6 +2991,19 @@ void Refresh() {
             }
         }
     }
+    // [Sights] since 2026-11-06 (research/21 section 19): ADS comes on within 0.55 m. A file without the marker scopeAdsPushM
+    // that still holds the old default adsReachM = 0.40 gets 0.55; any other value is the player's and kept.
+    if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("scopeAdsPushM") == s->second.end()) {
+        if (auto const k = s->second.find("adsReachM"); k != s->second.end()) {
+            if ((k->second == "0.4" || k->second == "0.40") &&
+                WritePrivateProfileStringW(L"Sights", L"adsReachM", L"0.55", path.wstring().c_str()) != 0) {
+                log::Info("hands: [Sights] adsReachM 0.40 -> 0.55: a scope's picture comes sooner as you raise the gun "
+                          "(research/21 section 19) in {}", ini::Utf8(path));
+                ini = ReadIni(path);
+                stamp = fs::last_write_time(path, ec);
+            }
+        }
+    }
     // [WorldUi] since 2026-11-04 (research/57): the omni-tool takes every personal screen. A file without the marker
     // wristMenuWidthM whose wrist still holds the old default (the bypass minigame alone) gets the new list; any other is kept.
     if (auto const s = ini.find("WorldUi"); s != ini.end() && s->second.find("wristMenuWidthM") == s->second.end()) {
@@ -3087,7 +3107,7 @@ void Refresh() {
         // Aiming down the sight (2026-10-27, research/21 section 15). The marker ads comes after the assault rifle's
         // migration above.
         {L"Sights", "Sights", L"ads", "ads", L"1"},
-        {L"Sights", "Sights", L"adsReachM", "adsReachM", L"0.40"},
+        {L"Sights", "Sights", L"adsReachM", "adsReachM", L"0.55"},
         {L"Sights", "Sights", L"scopeAdsPullMaxM", "scopeAdsPullMaxM", L"0.35"},
         {L"Sights", "Sights", L"assistDotMaxM", "assistDotMaxM", L"0"},
         {L"Sights", "Sights", L"assaultRifleLens", "assaultRifleLens", L"auto"},
@@ -3104,6 +3124,10 @@ void Refresh() {
         // A red dot seen through the game's solid housing (2026-11-05, research/21 section 17). The marker dotWindow comes
         // after assistDotMaxM's migration above.
         {L"Sights", "Sights", L"dotWindow", "dotWindow", L"1"},
+        // ADS reached sooner and kept further, the scope pushed off the shoulder (2026-11-06, research/21 section 19). The
+        // marker scopeAdsPushM comes after adsReachM's migration above.
+        {L"Sights", "Sights", L"adsReachExitM", "adsReachExitM", L"0.80"},
+        {L"Sights", "Sights", L"scopeAdsPushM", "scopeAdsPushM", L"0.15"},
         // The spectator camera (2026-11-03, research/49), off by default: the rest of [Spectator] is file-only.
         {L"Spectator", "Spectator", L"enabled", "enabled", L"0"},
         {L"Hands", "Hands", L"noCover", "noCover", L"1"},

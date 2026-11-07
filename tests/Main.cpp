@@ -6858,7 +6858,7 @@ void TestSightSettings() {
     CHECK(defaults.guns[2].kind == s::Kind::Dot && defaults.guns[2].lens == 0.0f && defaults.guns[2].hide.empty());
     gun = s::ParseGun("scope 1.5", defaults.guns[2]);
     CHECK(gun && gun->kind == s::Kind::Scope && gun->zoom == 1.5f && gun->lens == 0.0f);
-    CHECK(defaults.ads && defaults.adsReachM == 0.40f && defaults.scopeAdsPullMaxM == 0.35f && defaults.scopePullMaxM == 0.15f);
+    CHECK(defaults.ads && defaults.adsReachM == 0.55f && defaults.scopeAdsPullMaxM == 0.35f && defaults.scopePullMaxM == 0.15f);
     // The one-time move back (section 15): exactly section 14's `scope 1.5` becomes dot; anything else is the player's.
     CHECK(s::MigrateAssaultRifle("scope 1.5") == std::optional<std::string>("dot"));
     CHECK(s::MigrateAssaultRifle(" Scope  1.50 ") == std::optional<std::string>("dot"));
@@ -7206,6 +7206,25 @@ void TestSightWindow() {
     }
     CHECK(!s::WindowView(*lens, {0.0f, 0.0f, -0.31f}, 0.02f, 1.0f));  // in front of the window
     CHECK(!s::WindowView(*lens, {0.0f, 0.0f, 0.75f}, 0.02f, 1.0f));   // 1.05 m back
+    // The dot past its window (the gun pulled into the shoulder, research/21 section 19): an eye up to 8 cm past still aims,
+    // kept a little further with the hysteresis, never 10 cm past.
+    {
+        s::Line past[2];
+        past[0].lateral = 0.05f;
+        past[0].along = 0.1f;
+        past[1].lateral = 0.01f;
+        past[1].along = -0.05f;
+        CHECK(s::AimingEye(past, 0.06f, -0.08f, 1.0f, -1) == 1);
+        CHECK(s::AimingEye(past, 0.06f, 0.02f, 1.0f, -1) == 0);  // the old floor: only the other eye
+        past[1].along = -0.09f;
+        CHECK(s::AimingEye(past, 0.06f, -0.08f, 1.0f, 1) == 1);   // kept (to -0.096)
+        past[1].along = -0.10f;
+        CHECK(s::AimingEye(past, 0.06f, -0.08f, 1.0f, 1) == 0);
+        past[0].along = past[1].along = 0.017f;
+        CHECK(s::AimingEye(past, 0.06f, 0.02f, 1.0f, 1) == 1);    // a positive floor's hysteresis as before (to 0.016)
+        past[0].along = past[1].along = 0.015f;
+        CHECK(s::AimingEye(past, 0.06f, 0.02f, 1.0f, 1) == -1);
+    }
     // The dot's eye through a dropout: a one-tick jump of the drawn gun (the session's 0.58 m sample) keeps it, 120 ms not.
     s::EyeHold hold;
     CHECK(hold.Update(1, 1000) == 1);
@@ -8587,6 +8606,17 @@ void TestSightAssist() {
     // Never away from the eye: an eyepiece already nearer than the relief stays.
     goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.08f}, ahead, up, eyes, 1.0f, -1, pull);
     CHECK(goal.pull == 0.0f && NearX(goal.shift, {0.0f, 0.0f, 0.0f}, 1e-6));
+    // ...unless a push is allowed (a scope under ADS pulled into the shoulder, research/21 section 19): the eyepiece 0.08 m
+    // ahead goes 0.04 m away, to the relief; an eye 3 cm past the eyepiece still counts and pushes the whole 0.15 m.
+    s::Pull const push{0.12f, 0.15f, 0.15f};
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.08f}, ahead, up, eyes, 1.0f, -1, push);
+    CHECK(goal.eye == 1 && std::abs(goal.pull + 0.04f) < 1e-5f && NearX(goal.shift, {0.0f, 0.0f, -0.04f}, 1e-5));
+    goal = s::AssistTarget(settings, {0.032f, 0.0f, 0.03f}, ahead, up, eyes, 1.0f, -1, push);
+    CHECK(goal.eye == 1 && std::abs(goal.pull + 0.15f) < 1e-5f);
+    CHECK(s::AssistTarget(settings, {0.032f, 0.0f, 0.03f}, ahead, up, eyes, 1.0f, -1, pull).eye == -1);  // no push: no eye
+    CHECK(std::abs(s::AssistTarget(settings, {0.032f, 0.0f, -0.235f}, ahead, up, eyes, 1.0f, -1, push).pull - 0.115f) < 1e-5f);
+    // The defaults: ADS on within 0.55 m, off past 0.80, a 15 cm push.
+    CHECK(s::Settings{}.adsReachM == 0.55f && s::Settings{}.adsReachExitM == 0.80f && s::Settings{}.scopeAdsPushM == 0.15f);
     // Weighted like the sideways move: half raised, half the pull.
     goal = s::AssistTarget(settings, {0.032f, 0.0f, -0.3f}, ahead, up, eyes, 0.5f, -1, pull);
     CHECK(std::abs(goal.pull - 0.5f * 0.15f) < 1e-5f);
