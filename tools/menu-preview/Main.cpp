@@ -773,6 +773,8 @@ int main(int argc, char** argv) {
         Rml::String active;
         bool alone = true;
         bool art = false;
+        bool ring = false;  // the fingertip's ring (plugin/OmniToolRail)
+        Rml::String ringLeft = "0px", ringTop = "0px", ringSize = "0px", ringAlpha = "1";
         Rml::DataModelHandle handle;
         Target railTarget;
         bool ok = railUi.Init(railSetup) && MakeTarget(device.Get(), rw, rh, railTarget);
@@ -783,6 +785,11 @@ int main(int argc, char** argv) {
                 ctor.Bind("active", &active);
                 ctor.Bind("alone", &alone);
                 ctor.Bind("art", &art);
+                ctor.Bind("ring", &ring);
+                ctor.Bind("ringLeft", &ringLeft);
+                ctor.Bind("ringTop", &ringTop);
+                ctor.Bind("ringSize", &ringSize);
+                ctor.Bind("ringAlpha", &ringAlpha);
                 ctor.BindEventCallback("pick", [](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const&) {});
                 handle = ctor.GetModelHandle();
                 if (!gameArt.empty()) {
@@ -820,6 +827,22 @@ int main(int argc, char** argv) {
         railShot("rail-squad");
         railUi.Context()->ProcessMouseMove(rw / 2, rh / 2 - 60, 0);
         railShot("rail-hover");
+        // rail-touch.png: a fingertip 2 cm off the Map entry (the rail 0.14 m wide: 2571 px a metre), its ring.
+        {
+            float const pxPerM = static_cast<float>(rw) / 0.14f;
+            int const sizePx = static_cast<int>((0.008f + 0.55f * 0.02f) * pxPerM);
+            ring = true;
+            ringLeft = std::to_string(rw / 2 - sizePx / 2) + "px";
+            ringTop = std::to_string(rh / 2 - 60 - sizePx / 2) + "px";
+            ringSize = std::to_string(sizePx) + "px";
+            ringAlpha = "0.75";
+            for (char const* v : {"ring", "ringLeft", "ringTop", "ringSize", "ringAlpha"}) {
+                handle.DirtyVariable(v);
+            }
+            railShot("rail-touch");
+            ring = false;
+            handle.DirtyVariable("ring");
+        }
         railUi.Context()->ProcessMouseMove(-50, -50, 0);
         active = "equipment";
         handle.DirtyVariable("active");
