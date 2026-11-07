@@ -32,6 +32,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - The cockpit's joystick turns in your hand when you twist it (the twist always steered; now the stick shows it).
 - The extraction handle overhead is pulled down, as its arrows say (it took a push up before).
 
+### The setup
+- MEVR Setup no longer fails an install, repair or uninstall now and then because your antivirus was checking a file it had
+  just written: it waits a moment and tries again (about a second at most).
+
 ## 0.1.0 (2026-11-05)
 
 The first public release, a **development preview**: **Mass Effect 1 (Legendary Edition) in VR**, played with motion

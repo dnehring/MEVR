@@ -803,6 +803,32 @@ orders.". Command line: `--install-voice [--voice-small] [--voice-medium] [--no-
 Not yet: the model tier from the real release (the user uploads the asset); the files loaded by the game from a Setup
 install (the same files `deploy-asi.ps1` deploys, which the game loads: research/54 "In the game").
 
+## 15. Files busy for a moment (2026-11-06)
+
+`mevr-tests` failed now and then and passed on a rerun (twice in the day's merges). Looped alone on the dev machine it failed
+3 times in about 80 runs, always the same Install of the fake game right after an Uninstall; the two failures that printed
+their errors were both on the installer's own record, and the second gave the code: `couldn't write
+...\ASI\MEVR-install.json (error 5)`, access denied. The record is written after every step (a temporary file
+renamed over it), dozens of times an install, and a file just written is opened for a moment by another process; Defender's
+on-access scanning was on (inferred as the holder, not traced). A rename onto, over or of a file held without delete sharing
+is refused with error 5 or 32 until it closes. A player's antivirus does the same to Setup.
+
+The fix (`src/install/Manifest.cpp`): every replace, copy, rename and delete goes through `Retrying` / `RemoveFile`, which on
+access denied, a sharing violation or a lock violation waits 10, 20 ... 640 ms (1.27 s in all) and tries again; a read-only
+target fails at once. `WriteFileAtomic` is Win32 calls and keeps the error code for the message. The tests print a failed
+Outcome's errors (`Ok`), and every test's scratch files are under `%TEMP%\mevr-tests-<pid>` (`tests/TestTemp.hpp`): the fixed
+names (`%TEMP%\mevr-install-firstrun`...) were shared by every worktree's tests, a second way for two sessions to break each
+other's runs.
+
+Measured after the fix: 0 failures in 150 runs (about 5 expected at the earlier rate), but the retry never fired in them
+either, so no file was busy then: the rate depends on what else the machine does (main's unchanged test binary failed 1 run
+in 2 in the same hour, while other sessions were building). So the mechanism is tested directly (`TestBusyFile`): the record
+held open without delete sharing, as a scanner holds it, refuses a replace at once with error 5, the failures' code, and
+`WriteFileAtomic` goes through 106-189 ms after the file is let go at 100 ms; a read-only record still fails at once.
+
+The cost: the test that holds the ASI open on purpose (a running game) now waits the 1.27 s before its expected failure; a
+player whose game holds a file waits that long before the message.
+
 ## Open
 
 - **[verify]** In the game: the EA app build; "Install after I quit" end to end; "Start the game once" (section 9).

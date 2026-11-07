@@ -23,6 +23,7 @@
 #include <shellapi.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -30,6 +31,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -1577,6 +1579,47 @@ void TestVoice() {
     fs::remove_all(base, ec);
 }
 
+// A file another process holds for a moment, as antivirus does right after a write (the installer's record failed 3 installs
+// in about 80 that way, error 5, 2026-11-06): the write over it waits and goes through once it's let go. A read-only one fails
+// at once, with no wait.
+void TestBusyFile() {
+    fs::path const dir = mevr::tests::TempRoot() / L"mevr-busy-file";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::path const file = dir / L"MEVR-install.json";
+    Write(file, "old");
+    // Opened without delete sharing, as the scanner holds it: Windows refuses a replace at once.
+    HANDLE const held = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    ICHECK(held != INVALID_HANDLE_VALUE);
+    fs::path const other = dir / L"other.json";
+    Write(other, "other");
+    BOOL const moved = MoveFileExW(other.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING);
+    DWORD const refused = GetLastError();
+    ICHECK(!moved && (refused == ERROR_ACCESS_DENIED || refused == ERROR_SHARING_VIOLATION));
+    // Let go after 100 ms: the write waits for it.
+    auto const t0 = std::chrono::steady_clock::now();
+    std::thread release([held] {
+        Sleep(100);
+        CloseHandle(held);
+    });
+    bool const wrote = mevr::install::WriteFileAtomic(file, "new");
+    double const ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    release.join();
+    ICHECK(wrote && Read(file) == "new" && ms >= 90.0 && ms < 1300.0);
+    std::printf("install: a write over a file held 100 ms went through after %.0f ms (refused at once with error %lu)\n", ms,
+        refused);
+    // Read-only: refused at once (no retries), with the error for the message.
+    SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_READONLY);
+    auto const t1 = std::chrono::steady_clock::now();
+    bool const readOnlyWrote = mevr::install::WriteFileAtomic(file, "newer");
+    DWORD const readOnlyError = GetLastError();
+    double const readOnlyMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+    ICHECK(!readOnlyWrote && readOnlyError == ERROR_ACCESS_DENIED && readOnlyMs < 100.0 && Read(file) == "new");
+    ICHECK(!fs::exists(fs::path(file) += L".mevr-writing"));
+    SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL);
+    fs::remove_all(dir, ec);
+}
+
 } // namespace
 
 void RunInstallTests(int& failures) {
@@ -1597,4 +1640,5 @@ void RunInstallTests(int& failures) {
     TestToc();
     TestFirstRunInstall();
     TestVoice();
+    TestBusyFile();
 }

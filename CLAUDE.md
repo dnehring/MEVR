@@ -966,7 +966,9 @@ switching frameworks.
   keep building all three games. Per-game field spellings go in `src/engine/GameAdapter.hpp`;
   per-game addresses sit next to their use (e.g. `engine/SceneView.cpp`).
 - Offline tests: `cmake --build build --config Release --target mevr-tests`, then
-  `ctest -C Release --test-dir build`. Put game-independent math there.
+  `ctest -C Release --test-dir build`. Put game-independent math there. A test's scratch files go under
+  `mevr::tests::TempRoot()` (`tests/TestTemp.hpp`, `%TEMP%\mevr-tests-<pid>`), never a fixed name in `%TEMP%`: every
+  worktree's tests share it.
 - `tools/vr-game-settings.ps1` sets VR-friendly GamerSettings.ini values (VSync, motion blur,
   film grain off, HDR to SDR, 16x anisotropic filtering); `-Restore` puts the user's originals back. On
   LE1 it also does what Halcyon's installer (`MELE-VR.bat`) does: a borderless window (a bordered one is
@@ -1173,6 +1175,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   are Essential); never latch a refusal for the session; share one swapchain between a quad's looks. Log `swapchains:`
   (every live one at a refusal), snapshot `"swapchains"` (gotchas/openxr-swapchain-limit); test with `[Debug] swapchainCap = N`
   (ours past N refused as the runtime would; checked on the fake headset 2026-11-06).
+- **A file just written is busy for a moment** (antivirus): a rename, replace or delete of it fails now and then with error 5
+  or 32. The installer's file steps go through `Retrying` / `RemoveFile` (`src/install/Manifest.cpp`); mevr-tests failed 3 runs
+  in about 80 until 2026-11-06 (gotchas/fresh-file-busy-for-a-moment).
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
 - An inline `python - <<'EOF'` loses one backslash of every pair (the Bash tool); write scripts with backslashes to a file.
 - `Windows.h` macros eat ordinary names (`SetProp`, `far`, `near`, `min`, `max`): don't name ours after them; build `build-mono/` too.
