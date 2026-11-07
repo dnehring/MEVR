@@ -292,6 +292,7 @@ thread_local D3D11_RECT t_engineRects[16];
 thread_local UINT t_setRectCount = 0;        // what the eye scissor last set on the context (skipped when the same)
 thread_local D3D11_RECT t_setRects[16];
 std::atomic<std::uint64_t> gEyeScissorUnchanged{0};
+std::atomic<std::uint64_t> gWholeRects{0};  // the second eye's scissor rects opened to its whole viewport (the lights' bounds)
 // The engine's rasterizer states keep scissoring DISABLED (10 of its 12 states; the two with it on are its light
 // bounds), so a scissor rect alone does nothing to its draws: while the eye scissor applies, a scissor-off state is
 // bound through a clone with ScissorEnable on (made once per state) and the rect set to the eye's alone; a
@@ -1947,6 +1948,22 @@ bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bo
                 gShiftedRects.fetch_add(1, std::memory_order_relaxed);
                 final = shifted;
             }
+        }
+        // The engine's scissor rects are its lights' screen bounds, worked out for the FIRST eye's view: replayed as they
+        // are, they cut each light off wrongly in the second eye, the more the further off-centre it is (the owner's QA,
+        // 2026-11-06: the scene lit by a fire flickered while the fire was off to the side, steady with it centred; gone
+        // with two engine renders). The second eye takes each rect as its whole viewport: the light draws fully there.
+        D3D11_RECT whole[16];
+        if (final == recorded && t_haveViewport && t_viewport.Width > 0.0f && t_viewport.Height > 0.0f) {
+            n = h.n < 16 ? h.n : 16;
+            for (UINT i = 0; i < n; ++i) {
+                whole[i].left = static_cast<LONG>(t_viewport.TopLeftX);
+                whole[i].top = static_cast<LONG>(t_viewport.TopLeftY);
+                whole[i].right = static_cast<LONG>(t_viewport.TopLeftX + t_viewport.Width + 0.5f);
+                whole[i].bottom = static_cast<LONG>(t_viewport.TopLeftY + t_viewport.Height + 0.5f);
+            }
+            gWholeRects.fetch_add(1, std::memory_order_relaxed);
+            final = whole;
         }
         OurCall const ours;
         RememberRects(n, final);
