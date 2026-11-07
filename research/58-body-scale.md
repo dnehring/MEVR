@@ -143,7 +143,7 @@ BioPawn and no cover. Disabled in Mako, K third person, scope/director cameras, 
 game menus and the galaxy's scene camera. Physical crouch changes the live height once; button crouch retains game crouch
 state/collision while real head height controls the camera. A floor sample requires a STAGE/LOCAL_FLOOR source, finite valid
 height and age at most 250 ms; stale pawn samples also stand down. Invalid/missing floor falls back to the old camera and
-filtered scaling, logged once. `[Body] floorLock = 1` defaults on, no menu row; 0 restores the legacy publication, render order
+filtered scaling, logged once. `[Body] floorLock` defaults off since 2026-11-07 (the owner's QA: with it on the arms rode high in the omni-tool's held screens, the Computer; the held view's arms aren't corrected yet [verify]), no menu row; 0 restores the legacy publication, render order
 and sizing path (apart from the additional diagnostic fields).
 
 The corrected common centre is published with the latched head/offsets/floor sequence in host_view::State. ViewAnchor uses

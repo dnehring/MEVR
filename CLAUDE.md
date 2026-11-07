@@ -306,7 +306,7 @@ switching frameworks.
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
   recenter posture, animated camera bones, mode offsets and vertical framing. Both eyes share the correction before metric
   eye offsets and head look; `HostServices` v34 publishes the corrected centre/pose to ViewAnchor, IK and sights (host and mod
-  deploy together). `[Body] floorLock = 1` by default, file only; `0` retains the old view and live filtered sizing path.
+  deploy together). `[Body] floorLock = 0` by default since 2026-11-07 (the owner's QA: the arms rode high in the omni-tool's held screens), file only; `1` turns it on.
   Physical crouch lowers the view once; button crouch keeps gameplay state while the real head controls height. Mako, cover,
   third person, director/3D/flat screens, front end, menus and the galaxy's own camera are excluded; world conversation/map holds
   carry the corrected on-foot base. Missing/stale floor samples fall back, warned once. `constantEye` keeps horizontal placement;
