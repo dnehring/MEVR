@@ -75,7 +75,7 @@ The two facts behind most of this list:
   the Presidium and a fight, then settle the defaults in section 3.
 
 ### Voice orders (research/33 section 14)
-- [ ] **[U] Upload the order model.** On https://github.com/dnehring/MEVR/releases, make a release with the tag
+- [x] **[U] Upload the order model** (done 2026-11-07 with `gh release create`, the asset listed by GitHub as 639,446,880 bytes, digest `7452847f…e108b`: the pin). On https://github.com/dnehring/MEVR/releases, make a release with the tag
   `voice-model-1` (not `v*`, which would start the release workflow; mark it a pre-release so it isn't "Latest") and
   attach the dev machine's `models/voice/llm/model.gguf` under its own name, `model.gguf`:
   639,446,880 bytes (610 MiB), SHA-256 `7452847f4326b91b58de9d5503524678972fecdf8da9189eea663bf1331e108b`.
