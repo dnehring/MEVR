@@ -20,7 +20,9 @@
 #                           Voice's library, MIT: its licence goes in licenses\). MEVR Setup puts it in ASI\voice with the
 #                           mod; the runtime and models it needs are optional content the setup downloads (install/Voice,
 #                           research/33 section 14). Moonshine's SDK is fetched first if external\moonshine-voice is missing
-#                           (tools/fetch-voice.ps1 -Models @(), 26 MB). -NoVoice leaves it out.
+#                           (tools/fetch-voice.ps1 -Models @(), 26 MB), and llama.cpp's headers (-Llm -NoBaseModel), without
+#                           which the host has no model tier: it refuses a host project without core/voice/Llm.cpp.
+#                           -NoVoice leaves both out.
 #   dist\MEVR-<version>-symbols\
 #     *.pdb and the binaries they match (LE1MEVR.asi, bink2w64.dll, MEVR-Setup.exe, MEVR-Voice.dll), to symbolise the stacks in players'
 #     crash reports. Kept next to the players' folder, never inside it (the binaries name their PDB without a path:
@@ -138,10 +140,21 @@ if (-not $NoBuild) {
             throw 'tools/fetch-voice.ps1 failed: no Moonshine Voice SDK for MEVR-Voice.dll (or pass -NoVoice)'
         }
     }
-    if (-not $NoVoice -and -not (Test-Path (Join-Path $buildDir 'MEVR-Voice.vcxproj'))) {
+    # The model tier's runtime in the host (core/voice/Llm, MEVR_HAVE_LLAMA) needs llama.cpp's headers (external\llama-cpp,
+    # gitignored): without them the host builds without it and the game logs "voice model: off: this build has no llama.cpp
+    # runtime" even with the model installed (the 2026-11-06 QA build). Fetched once (fetch-voice.ps1 -Llm -NoBaseModel).
+    $llamaHeader = Join-Path $repo 'external\llama-cpp\include\llama.h'
+    if (-not $NoVoice -and -not (Test-Path $llamaHeader)) {
+        Invoke-Native { & (Join-Path $repo 'tools\fetch-voice.ps1') -Models @() -Llm -NoBaseModel }
+        if (-not (Test-Path $llamaHeader)) { throw 'tools/fetch-voice.ps1 -Llm failed: no llama.cpp headers for the model tier (or pass -NoVoice)' }
+    }
+    $hostProject = Join-Path $buildDir 'MEVR-LE1.vcxproj'
+    $hostHasLlm = { (Test-Path $hostProject) -and (Select-String -Path $hostProject -Pattern 'core\\voice\\Llm\.cpp' -Quiet) }
+    if (-not $NoVoice -and (-not (Test-Path (Join-Path $buildDir 'MEVR-Voice.vcxproj')) -or -not (& $hostHasLlm))) {
         Invoke-Native { cmake -S $repo -B $buildDir }
         if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
     }
+    if (-not $NoVoice -and -not (& $hostHasLlm)) { throw "$hostProject has no core\voice\Llm.cpp after configuring: the host would have no model tier" }
     $targets = @('MEVR-LE1', 'MEVR-Loader', 'MEVR-Setup')
     if (-not $NoVoice) { $targets += 'MEVR-Voice' }
     if (-not $SkipTests) { $targets += 'mevr-test-programs' }  # everything ctest runs (CMakeLists.txt)

@@ -9,6 +9,7 @@
 param(
     [string[]] $Models = @('tiny', 'small', 'medium'),
     [switch] $Llm,
+    [switch] $NoBaseModel,  # with -Llm: llama.cpp only, not Qwen3-0.6B's base GGUF (the release package needs only the headers)
     [string] $MoonshineRelease = 'v0.1.5',
     [string] $LlamaRelease = 'b12128'
 )
@@ -70,8 +71,10 @@ if ($Llm) {
     Copy-Item (Join-Path $top.FullName 'include\llama.h') $inc -Force
     Copy-Item (Join-Path $top.FullName 'ggml\include\*.h') $inc -Force
     Copy-Item (Join-Path $top.FullName 'LICENSE') (Join-Path $llama 'LICENSE') -Force
-    $gguf = Join-Path $modelRoot 'llm'
-    Write-Output "Qwen3-0.6B GGUF (Apache-2.0) -> $gguf"
-    Fetch 'https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf' (Join-Path $gguf 'Qwen3-0.6B-Q8_0.gguf')
+    if (-not $NoBaseModel) {
+        $gguf = Join-Path $modelRoot 'llm'
+        Write-Output "Qwen3-0.6B GGUF (Apache-2.0) -> $gguf"
+        Fetch 'https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf' (Join-Path $gguf 'Qwen3-0.6B-Q8_0.gguf')
+    }
 }
 Write-Output 'Done. Configure CMake again (it finds external/moonshine-voice) and build MEVR-Voice and mevr-voice-bench.'
