@@ -21,6 +21,7 @@
 #include "plugin/PerfProbe.hpp"
 #include "plugin/ReportRequest.hpp"
 #include "plugin/SetupRequest.hpp"
+#include "plugin/SteamVrSmoothingRequest.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Voice.hpp"
 
@@ -258,7 +259,7 @@ void Settings::Read(menu::Values& v) {
         // A section missing here makes its rows snap back to their defaults after a write (the Hacking row's bug, f1f8d8b).
         for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort",
                                  L"Upscale", L"Cinematics", L"WorldUi", L"Galaxy", L"Hud", L"Interact", L"Vent", L"Mako", L"Cockpit",
-                                 L"Squad", L"Performance", L"SystemSettings", L"Voice"}) {
+                                 L"Squad", L"Performance", L"SystemSettings", L"Voice", L"Display"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -387,6 +388,9 @@ void Settings::Read(menu::Values& v) {
     v.texts["align_msg"] = MELEVR::MevrBridge::CameraAlignBusy() ? std::string("Armed: stand naturally and pull the left trigger") : align;
     // Display.
     colour::MenuState const colour = colour::GetMenuState();
+    flag("steamvr_runtime", Lower(colour.runtime).find("steamvr") != std::string::npos);
+    v.texts["steamvr_smoothing"] = Lower(ini.Text("Display", "steamvrSmoothing", "steamvr")) == "off" ? "off" : "steamvr";
+    v.texts["steamvr_smoothing_note"] = steamvr_smoothing::StatusText();
     v.texts["profile"] = cv::Name(colour.chosen);
     std::string const headset = ms::HeadsetLabel(colour.runtime, colour.system);
     switch (colour.chosen) {
@@ -829,6 +833,11 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         wchar_t previous[64]{};
         GetPrivateProfileStringW(L"Sights", L"sniperRifle", L"scope auto", previous, 64, path.c_str());
         Put("Sights", "sniperRifle", ms::SightValue(v.Text(key), Narrow(previous), 0.0f), true);
+    } else if (key == "steamvr_smoothing") {
+        if (Lower(colour::GetMenuState().runtime).find("steamvr") == std::string::npos) return;
+        bool const off = v.Text(key) == "off";
+        Put("Display", "steamvrSmoothing", off ? "off" : "steamvr", true);
+        steamvr_smoothing::Request(off);
     } else if (key == "upscale") {
         Put("Upscale", "method", v.Text("upscale") == "fsr" ? "fsr" : "off", true);  // plugin/Upscale re-reads it within a second
     } else if (key == "fsr_sharpness") {
@@ -1021,7 +1030,14 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
 
 void Settings::Command(std::string const& name, std::string const& argument, menu::Values& v) {
     log::Info("main menu: {}{}{}", name, argument.empty() ? "" : " ", argument);
-    if (name == "voice_key_set") {
+    if (name == "steamvr_smoothing") {
+        // Clicking a selected chip retries a failed request or restores a choice changed in SteamVR's dashboard.
+        if ((argument == "steamvr" || argument == "off") &&
+            Lower(colour::GetMenuState().runtime).find("steamvr") != std::string::npos) {
+            v.texts["steamvr_smoothing"] = argument;
+            Write("steamvr_smoothing", v, true);
+        }
+    } else if (name == "voice_key_set") {
         // The next key pressed on the keyboard (Tick), within 10 s; keys down now don't count until let go.
         keyWaitMs_ = Now();
         keysDown_.fill(false);

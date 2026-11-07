@@ -83,7 +83,8 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   never a reset written over a profile; Comfort's turning, vignette and walking rows since 2026-10-23,
   research/31; Display's render resolution offers the headset's own eye size, × 0.85 and × 0.75 of it (Halcyon's
   ladder in Advanced > Performance since 2026-11-06), and the Upscale row is `[Upscale] method`, since 2026-10-23,
-  research/28's mapping table; Display's Performance row since 2026-11-06, research/60, below) or is
+  research/28's mapping table; Display's Performance row since 2026-11-06, research/60, below;
+  Display's SteamVR-only motion smoothing row asks out-of-process Setup to set the Steam app's override, research/33) or is
   marked Soon. Code: `src/plugin/menu` (game-independent:
   RmlUi's own DX11 renderer wrapped for the game's context, our `chamfer`/`backdrop`/`icon` decorators,
   the data model over `core/vr/MenuSettings`' schema, the frosted backdrop from the left eye's image),

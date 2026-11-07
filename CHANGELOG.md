@@ -7,8 +7,13 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
-- Detect and attempt recovery from stuck Quest streaming cadence after loading, with bounded app-side refresh requests,
-  diagnostics, and an optional full OpenXR wait/begin-before-render frame loop for testing.
+- Fixed a Quest over Link dropping to half rate after a level load and staying there: after a load the game rendered both
+  eyes in full for about 11 s before going back to one render a frame, which the headset's compositor answered with half
+  rate. It now goes back within about half a second. A detector logs the stuck state and asks the runtime to recover.
+  The optional full OpenXR frame order (`[Performance] frameLoop = full`) is there for testing.
+- Display: SteamVR players can turn motion smoothing off for the Steam version of this game, or return it to SteamVR's global setting, through MEVR Setup. No change until requested.
+- Galaxy map: opening it at the CIC's console no longer closes it at once; the game's own projector hologram shows on
+  approach, and the open map lies where that hologram is, at 0.7 of its size (`[Galaxy] windowScale`).
 - Omni-tool rail openings reserve world UI before the game's opening call, preventing the intervening flat-menu decision.
   Rail Equipment and its related panels use the wrist even when a nearby useable was recently selected; use-opened screens keep their anchors.
 - Optional conversation walking prototype: in First person conversations, `worldWalk = 1` requests an AI walk (slide fallback),

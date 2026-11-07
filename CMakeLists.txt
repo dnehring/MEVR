@@ -825,7 +825,8 @@ function(mevr_add_plugin game)
             list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/OmniPad.cpp src/plugin/OmniPad.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
                 src/plugin/MainMenuSettings.cpp
                 src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/plugin/ReportRequest.cpp
-                src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
+                src/plugin/ReportRequest.hpp src/plugin/SteamVrSmoothingRequest.cpp src/plugin/SteamVrSmoothingRequest.hpp
+                src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
     # LE1 without LExSDKv2 (MEVR_LE1_LESDK off: every release build): neither the mod nor the host links it.
@@ -894,6 +895,8 @@ add_library(mevr-install STATIC
     src/core/Version.hpp
     src/install/Detect.cpp
     src/install/Detect.hpp
+    src/install/SteamVrSettings.cpp
+    src/install/SteamVrSettings.hpp
     src/install/GameSettings.cpp
     src/install/GameSettings.hpp
     src/install/Http.cpp

@@ -190,6 +190,9 @@ std::vector<Field> const& Schema() {
         {"headset_known", Type::Flag, 0},
         {"headset_text", Type::Text, 0, "Your headset's own eye size, known once VR starts"},
         {"upscale", Type::Choice, 0, "fsr"},  // FSR 1 by default (2026-11-05): it acts only when the target is below the eye
+        {"steamvr_runtime", Type::Flag, 0, "", 0, 1, Format::None, true},
+        {"steamvr_smoothing", Type::Choice, 0, "steamvr"},
+        {"steamvr_smoothing_note", Type::Text, 0, ""},
         {"steady_cine", Type::Flag, 1},
         // Display's Performance row (core/vr/PerformanceModes, research/60): quality | balanced | performance | custom, what it
         // trades, what waits for a restart. Advanced > Performance's rows are the bundled levers one by one.
