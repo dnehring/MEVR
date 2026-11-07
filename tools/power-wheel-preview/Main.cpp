@@ -381,6 +381,29 @@ int main(int argc, char** argv) {
         lock(cast, "lock-cast");
     }
 
+    // Self-cast targets and the confirmation card, using the host's drawing on its existing canvases.
+    {
+        namespace pwc = mevr::vr::power_wheel;
+        for (int i = 0; i < 6; ++i) {
+            char const* const names[] = {"self-target-faint", "self-target-near", "self-target-in-range", "self-ring-half", "self-success", "self-refusal"};
+            pwc::SelfView v;
+            v.look = i == 0 ? pwc::SelfLook::Faint : i == 1 ? pwc::SelfLook::Near : pwc::SelfLook::InRange;
+            v.progress = i == 3 ? 0.5f : i == 4 ? 1.0f : 0.0f;
+            v.confirmation = i == 4 ? pwc::Confirmation::Success : i == 5 ? pwc::Confirmation::Refused : pwc::Confirmation::None;
+            v.confirmationFor = 0.08f;
+            std::snprintf(v.name, sizeof(v.name), "%s", "Overkill");
+            std::snprintf(v.reason, sizeof(v.reason), "%s", "Cooling down 40%");
+            Picture const picture = Render(gpu, draw::kLockCanvas, draw::kLockCanvas,
+                [&](ImDrawList* dl) { draw::DrawSelfTarget(dl, v); }, true);
+            Save(out / (std::string(names[i]) + ".png"), draw::kLockCanvas, draw::kLockCanvas, OverBackdrop(picture));
+            if (i >= 4) {
+                Picture const card = Render(gpu, draw::kHintWidth, draw::kHintHeight,
+                    [&](ImDrawList* dl) { draw::DrawConfirmation(dl, gpu.fonts, v); }, true);
+                Save(out / (std::string(names[i]) + "-message.png"), draw::kHintWidth, draw::kHintHeight, OverBackdrop(card));
+            }
+        }
+    }
+
     // Every icon on a tile's glass.
     {
         int const count = static_cast<int>(I::Count);

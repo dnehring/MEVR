@@ -572,11 +572,12 @@ void TestSelfCast() {
     pw::StepSelfCast(raise, pw::SelfGesture::Raise, in, s);
     in.time = 4.4;
     CHECK(pw::StepSelfCast(raise, pw::SelfGesture::Raise, in, s).cast);
-    // The gun: its top 6 cm up and 5 cm ahead of the right aim pose; a slap at 1 m/s casts on entry.
+    // The drawn gun's top capsule, 4 cm above the bore; a slap at 1 m/s casts on entry.
     pw::SelfCastState gun;
     in.gunValid = true;
     in.gun.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
     in.gun.position = {0.2f, 1.3f, -0.3f};
+    in.gunZone = pw::GunZone({0.2f, 1.3f, -0.3f}, {0.2f, 1.3f, -0.75f}, {0.0f, 1.0f, 0.0f});
     in.hand = {0.2f, 1.60f, -0.35f};
     in.time = 5.0;
     CHECK(!pw::StepSelfCast(gun, pw::SelfGesture::Gun, in, s).cast);
@@ -591,7 +592,7 @@ void TestSelfCast() {
     in.hand = {0.2f, 1.47f, -0.35f};
     in.time = 6.0;
     pw::StepSelfCast(slow, pw::SelfGesture::Gun, in, s);
-    in.hand = {0.2f, 1.44f, -0.35f};
+    in.hand = {0.2f, 1.42f, -0.35f};
     in.time = 6.1;
     CHECK(!pw::StepSelfCast(slow, pw::SelfGesture::Gun, in, s).cast);
     in.time = 6.5;
@@ -602,6 +603,166 @@ void TestSelfCast() {
     pw::StepSelfCast(none, pw::SelfGesture::Gun, in, s);
     in.time = 8.0;
     CHECK(!pw::StepSelfCast(none, pw::SelfGesture::Gun, in, s).cast);
+}
+
+void TestSelfConfirmation() {
+    CHECK(pw::RefusalFor(pw::SelfGesture::Gun, false, false, 0.4f) == pw::SelfRefusal::DrawWeapon);
+    CHECK(pw::RefusalFor(pw::SelfGesture::Gun, true, false, 0.4f) == pw::SelfRefusal::CoolingDown);
+    CHECK(pw::RefusalFor(pw::SelfGesture::Chest, false, false, 0.0f) == pw::SelfRefusal::Unavailable);
+    CHECK(pw::RefusalFor(pw::SelfGesture::Raise, false, true, 0.0f) == pw::SelfRefusal::None);
+    pw::SelfCastSettings const settings;
+    pw::SelfCastInput in;
+    in.tracked = true;
+    in.open = true;
+    in.gunValid = true;
+    in.gunZone = pw::GunZone({0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, -0.65f}, {0.0f, 1.0f, 0.0f});
+    auto const zone = in.gunZone;
+    CHECK(Close(zone.start.y, 1.04f) && Close(zone.end.z, -0.65f));
+    CHECK(Close(pw::ClosestPoint(zone, {0.0f, 1.2f, -0.5f}).z, -0.5f));
+    CHECK(Close(pw::ClosestPoint(zone, {0.0f, 1.2f, -0.9f}).z, -0.65f));
+    CHECK(Close(pw::ClosestPoint({zone.start, zone.start, 0.1f}, {}).y, 1.04f));
+    auto const rolled = pw::GunZone({1.0f, 0.0f, 0.0f}, {1.6f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f});
+    CHECK(Close(rolled.start.z, 0.04f) && Close(rolled.end.x, 1.6f));
+    in.hand = {0.0f, 1.6f, -0.5f};
+    CHECK(pw::LookFor(pw::SelfGesture::Gun, in, zone) == pw::SelfLook::Faint);
+    in.hand.y = 1.22f;
+    CHECK(pw::LookFor(pw::SelfGesture::Gun, in, zone) == pw::SelfLook::Near);
+    in.hand.y = 1.10f;
+    CHECK(pw::LookFor(pw::SelfGesture::Gun, in, zone) == pw::SelfLook::InRange);
+    in.head.position = {0.0f, 1.7f, 0.0f};
+    in.head.orientation.w = 1.0f;
+    in.hand = {0.0f, 1.71f, -0.14f};
+    CHECK(pw::LookFor(pw::SelfGesture::Chest, in, pw::ZoneFor(pw::SelfGesture::Chest, in)) == pw::SelfLook::Faint);
+    in.hand.y = 1.77f;
+    CHECK(pw::LookFor(pw::SelfGesture::Raise, in, pw::ZoneFor(pw::SelfGesture::Raise, in)) == pw::SelfLook::Near);
+    in.hand.y = 1.80f;
+    CHECK(pw::LookFor(pw::SelfGesture::Raise, in, pw::ZoneFor(pw::SelfGesture::Raise, in)) == pw::SelfLook::InRange);
+    in.hand = {0.0f, 1.10f, -0.5f};
+    // Contact at the rifle's forward end works, far beyond the old controller sphere.
+    pw::SelfCastState state;
+    auto step = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(step.entered && !step.cast);
+    in.time = 0.175;
+    step = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(Close(step.progress, 0.5f) && !step.cast);
+    in.time = 0.36;
+    step = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(step.cast && step.attempt.open && step.attempt.gunDrawn && Close(step.attempt.closestM, 0.06f));
+    in.open = false;
+    in.time = 0.4;
+    CHECK(!pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings).cast);
+    in.open = true;
+    in.time = 1.0;
+    step = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(!step.cast && Close(step.progress, 1.0f));
+    in.hand.y = 1.8f;
+    in.time = 1.1;
+    CHECK(!pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings).missed); // already reported at cast
+    // Closed foregrip contacts never cast; one missed attempt when the reach retreats.
+    state = {};
+    in.hand.y = 1.04f;
+    in.open = false;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.time = 2.0;
+    CHECK(!pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings).cast);
+    in.hand.y = 1.8f;
+    auto const missed = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(missed.missed && !missed.attempt.open && missed.attempt.gunDrawn);
+    CHECK(!pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings).missed);
+    // Letting go of the foregrip in place (closed, then open, the hand still in the zone) never casts, however long it rests;
+    // leaving the zone and coming back open does.
+    state = {};
+    in.hand = {0.0f, 1.04f, -0.5f};
+    in.open = false;
+    in.time = 5.0;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.open = true;
+    in.time = 5.1;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.time = 6.0;
+    step = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(!step.cast && Close(step.progress, 0.0f));
+    in.hand.y = 1.4f;
+    in.time = 6.1;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.hand.y = 1.10f;
+    in.time = 7.0;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.time = 7.4;
+    CHECK(pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings).cast);
+    // Moving the target onto a stationary hand is a slow touch, not an instant slap.
+    state = {};
+    in.open = true;
+    in.time = 2.4;
+    in.hand = {0.0f, 1.20f, -0.5f};
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.gunZone.start.y += 0.10f;
+    in.gunZone.end.y += 0.10f;
+    in.time = 2.5;
+    step = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(step.entered && !step.cast && Close(step.entrySpeedMS, 0.0f));
+    in.gunZone = zone;
+    // A near miss records its closest point even though it never enters the capsule.
+    state = {};
+    in.hand = {0.0f, 1.25f, -0.5f};
+    in.time = 2.1;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.hand.y = 1.20f;
+    in.time = 2.2;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.hand.y = 1.8f;
+    in.time = 2.3;
+    CHECK(Close(pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings).attempt.closestM, 0.16f));
+    // A holstered reach can request a refusal, never a cast or an orange gun target.
+    state = {};
+    in.open = true;
+    in.gunValid = false;
+    in.gunProbe = true;
+    in.gun.orientation.w = 1.0f;
+    // A slow or resting hand there (the omni-tool's wrist tap, hands held together) says nothing...
+    in.hand = {0.0f, 0.04f, -0.2f};
+    in.time = 3.0;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.time = 3.4;
+    step = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(!step.weaponMissing && !step.cast && !step.entered && Close(step.progress, 0.0f));
+    // ...a slap is told to draw the weapon.
+    state = {};
+    in.hand = {0.0f, 0.34f, -0.2f};
+    in.time = 3.5;
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.hand = {0.0f, 0.04f, -0.2f};
+    in.time = 3.6;
+    step = pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    CHECK(step.weaponMissing && !step.cast && !step.attempt.gunDrawn);
+    CHECK(pw::LookFor(pw::SelfGesture::Gun, in, pw::ZoneFor(pw::SelfGesture::Gun, in)) == pw::SelfLook::Hidden);
+    // Tracking loss cancels dwell and reports a miss once.
+    state = {};
+    in.gunValid = true;
+    in.hand = {0.0f, 1.10f, -0.5f};
+    pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings);
+    in.tracked = false;
+    CHECK(pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings).missed);
+    CHECK(!pw::StepSelfCast(state, pw::SelfGesture::Gun, in, settings).missed);
+    // Both outcomes last one second; the second beat fires exactly once and never late after a pause.
+    for (auto kind : {pw::Confirmation::Success, pw::Confirmation::Refused}) {
+        pw::ConfirmationState confirmation;
+        pw::BeginConfirmation(confirmation, kind, 10.0);
+        CHECK(pw::StepConfirmation(confirmation, 10.0).visible);
+        CHECK(!pw::StepConfirmation(confirmation, 10.1).beat);
+        auto const beat = pw::StepConfirmation(confirmation, 10.23);
+        CHECK(beat.beat && beat.seconds > 0.0f && beat.strength > 1.0f);
+        CHECK(!pw::StepConfirmation(confirmation, 10.3).beat);
+        CHECK(!pw::StepConfirmation(confirmation, 11.0).visible);
+        pw::BeginConfirmation(confirmation, kind, 20.0);
+        CHECK(!pw::StepConfirmation(confirmation, 22.0).beat);
+    }
+    pw::View view;
+    view.self.look = pw::SelfLook::InRange;
+    view.self.progress = 0.5f;
+    pw::Publish(view);
+    CHECK(Close(pw::Latest().self.progress, 0.5f));
+    CHECK(pw::Latest(0).self.look == pw::SelfLook::Hidden);
 }
 
 int RunPowerWheelTests() {
@@ -617,5 +778,6 @@ int RunPowerWheelTests() {
     TestPush();
     TestLockView();
     TestSelfCast();
+    TestSelfConfirmation();
     return gFailures;
 }

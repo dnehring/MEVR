@@ -12,6 +12,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## 0.1.0 (2026-11-06)
 
+- Powers on yourself now show where to touch and a ring while you hold: gun powers such as Overkill use the gun's top.
+  A flash, the power's name and a pulse in both hands confirm a cast; a red message explains a cooldown, unavailable power
+  or holstered weapon.
+
 The first public release, a **development preview**: **Mass Effect 1 (Legendary Edition) in VR**, played with motion
 controllers. Built on Halcyon's MassEffect1-VR renderer, with our hands, body and menus on top. LE1 only; Mass Effect 2
 and 3 come later. Much of it has been tried in a headset only a few times so far: reports are very welcome.

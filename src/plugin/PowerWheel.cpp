@@ -458,6 +458,36 @@ int CoachLayer(Frame const& frame, pw::View const& view, XrCompositionLayerQuad 
 
 int PowerLayers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity);
 
+int SelfLayers(Frame const& frame, pw::SelfView const& self, XrCompositionLayerQuad const** out, int capacity, float dt) {
+    if (capacity <= 0 || !frame.worldFrame || frame.menuOpen || !frame.headValid || frame.session == XR_NULL_HANDLE ||
+        frame.context == nullptr || frame.device == nullptr) {
+        return 0;
+    }
+    bool const flash = self.confirmation != pw::Confirmation::None && self.confirmationFor < pw::kConfirmationFlashS;
+    bool const target = self.look != pw::SelfLook::Hidden || flash;
+    bool const message = self.confirmation != pw::Confirmation::None;
+    if ((!target && !message) || !EnsureGpu(frame.device, frame.context)) {
+        return 0;
+    }
+    int n = 0;
+    if (target && EnsureSwapchain(frame.session, gLock)) {
+        Render(frame.context, gLock, dt, [&](ImDrawList* dl) { draw::DrawSelfTarget(dl, self); });
+        if (Submit(frame.context, gLock)) {
+            gLock.quad = Quad(frame, gLock, pw::Place(self.target, frame.head, 0.0f), 0.0f, 0.0f, 0.18f);
+            out[n++] = &gLock.quad;
+        }
+    }
+    if (message && n < capacity && EnsureSwapchain(frame.session, gHint)) {
+        Render(frame.context, gHint, dt, [&](ImDrawList* dl) { draw::DrawConfirmation(dl, gGpu.fonts, self); });
+        if (Submit(frame.context, gHint)) {
+            XrVector3f const at{self.hand.x, self.hand.y + 0.10f, self.hand.z};
+            gHint.quad = Quad(frame, gHint, pw::Place(at, frame.head, 0.05f), 0.0f, 0.0f, 0.36f);
+            out[n++] = &gHint.quad;
+        }
+    }
+    return n;
+}
+
 }  // namespace
 
 int Layers(Frame const& frame, XrCompositionLayerQuad const** out, int capacity) {
@@ -480,20 +510,25 @@ int PowerLayers(Frame const& frame, XrCompositionLayerQuad const** out, int capa
     gHint.name = "powerhint";
     gLock.name = "powerlock";
     pw::View const view = pw::Latest();
+    if (view.size != sizeof(pw::View)) {
+        if (!gLoggedSize) {
+            gLoggedSize = true;
+            log::Warn("power wheel: view size mismatch (mod {}, host {}); rebuild both", view.size, sizeof(pw::View));
+        }
+        return 0;
+    }
     if (view.open == 0 || capacity <= 0) {
         // The wheel closed: the lock's marker, if the mod has one up.
         std::uint64_t const now = GetTickCount64();
         float const dt = gLastDrawMs == 0 ? 1.0f / 72.0f : static_cast<float>(now - gLastDrawMs) / 1000.0f;
         gLastDrawMs = now;
+        if (view.self.look != pw::SelfLook::Hidden || view.self.confirmation != pw::Confirmation::None) {
+            // Mutually exclusive with the actor lock; the coach yields its canvas to confirmation text.
+            int const n = SelfLayers(frame, view.self, out, capacity, dt);
+            return view.self.confirmation != pw::Confirmation::None ? n : n + CoachLayer(frame, view, out + n, capacity - n, dt);
+        }
         int const n = LockLayer(frame, out, capacity, dt);
         return n + CoachLayer(frame, view, out + n, capacity - n, dt);
-    }
-    if (view.size != sizeof(pw::View)) {
-        if (!gLoggedSize) {
-            gLoggedSize = true;
-            log::Warn("power wheel: the mod's view is {} bytes, the host's {}: not drawn; rebuild both", view.size, sizeof(pw::View));
-        }
-        return 0;
     }
     if (!frame.worldFrame || frame.menuOpen || frame.session == XR_NULL_HANDLE || frame.context == nullptr || frame.device == nullptr) {
         return 0;

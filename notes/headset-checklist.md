@@ -17,6 +17,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 ## 1. Newest (2026-11-03 to 11-05)
 
 ### Powers at the left hand (session: Biotic/tech attack targeting system)
+- [ ] Self-cast confirmation (2026-11-07, power-confirmation; research/55 section 10): equip Overkill/Marksman with a rifle
+  and pistol; find the orange target on the gun's receiver/barrel, approach to cyan, slap fast and touch slowly (0.35 s
+  ring), then check the cyan flash, power name and two beats in BOTH hands. Retry during cooldown and with the gun holstered
+  (right hand raised): red flash and a readable reason. Try Chest/Raise too; a closed foregrip must never cast. Targets must
+  still show after more than three equips. Check target height/size, text by the hand, and one diagnostic line per attempt.
 - [ ] Hold X: the wheel opens at your left palm and stays put while your hand moves. Pick by moving your hand and by the
   left stick; letting go of X equips. On a real save, powers you don't have yet are dimmed. (research/55 section 6)
 - [ ] The wheel's light comes from the omni-tool on your hand (2026-11-06): with the wheel open, does the bright point sit on the

@@ -720,6 +720,56 @@ void DrawCoach(ImDrawList* dl, Fonts const& fonts, CoachView const& view) {
     dl->AddText(fonts.body, 31.0f, {x, m + 108.0f}, WithAlpha(Rgba(226, 238, 244), alpha), how.line2);
 }
 
+void DrawSelfTarget(ImDrawList* dl, pw::SelfView const& view) {
+    bool const flash = view.confirmation != pw::Confirmation::None && view.confirmationFor < pw::kConfirmationFlashS;
+    if (view.look == pw::SelfLook::Hidden && !flash) {
+        return;
+    }
+    bool const red = flash && view.confirmation == pw::Confirmation::Refused;
+    bool const cyan = flash || view.look == pw::SelfLook::InRange;
+    float const alpha = flash ? 1.0f : view.look == pw::SelfLook::Faint ? 0.22f : 0.75f;
+    ImU32 const colour = WithAlpha(red ? Rgba(255, 65, 65) : cyan ? Rgba(98, 235, 255) : Rgba(255, 157, 90), alpha);
+    ImVec2 const c{128.0f, 128.0f};
+    dl->AddCircle(c, 59.0f, colour, 64, 2.5f);
+    dl->AddCircle(c, 47.0f, WithAlpha(colour, 0.4f), 64, 1.5f);
+    if (!flash) {
+        dl->AddLine({116.0f, 128.0f}, {140.0f, 128.0f}, colour, 2.0f);
+        dl->AddLine({128.0f, 116.0f}, {128.0f, 140.0f}, colour, 2.0f);
+    }
+    float const progress = std::clamp(view.progress, 0.0f, 1.0f);
+    if (progress > 0.0f) {
+        dl->PathArcTo(c, 68.0f, -1.5707963f, -1.5707963f + progress * 6.2831853f, 64);
+        dl->PathStroke(colour, 0, 7.0f);
+    }
+    if (flash) {
+        float const t = std::clamp(view.confirmationFor / pw::kConfirmationFlashS, 0.0f, 1.0f);
+        dl->AddCircle(c, 64.0f + t * 45.0f, WithAlpha(colour, 1.0f - t), 64, 5.0f);
+        if (red) {
+            dl->AddLine({111.0f, 111.0f}, {145.0f, 145.0f}, colour, 4.0f);
+            dl->AddLine({145.0f, 111.0f}, {111.0f, 145.0f}, colour, 4.0f);
+        } else {
+            dl->AddLine({109.0f, 132.0f}, {123.0f, 145.0f}, colour, 4.0f);
+            dl->AddLine({123.0f, 145.0f}, {150.0f, 112.0f}, colour, 4.0f);
+        }
+    }
+}
+
+void DrawConfirmation(ImDrawList* dl, Fonts const& fonts, pw::SelfView const& view) {
+    if (view.confirmation == pw::Confirmation::None || fonts.label == nullptr || fonts.body == nullptr) {
+        return;
+    }
+    float const alpha = std::clamp((pw::kConfirmationS - view.confirmationFor) / 0.2f, 0.0f, 1.0f);
+    bool const ok = view.confirmation == pw::Confirmation::Success;
+    ImU32 const colour = WithAlpha(ok ? Rgba(98, 235, 255) : Rgba(255, 90, 80), alpha);
+    dl->AddRectFilled({14.0f, 14.0f}, {906.0f, 196.0f}, WithAlpha(Rgba(4, 14, 40, 220), alpha), 12.0f);
+    dl->AddRect({14.0f, 14.0f}, {906.0f, 196.0f}, colour, 12.0f, 0, 2.0f);
+    std::string const name = fonts.gameFont ? Upper(view.name) : std::string(view.name);
+    float const measured = fonts.label->CalcTextSizeA(48.0f, FLT_MAX, 0.0f, name.c_str()).x;
+    float const size = measured > 820.0f ? 48.0f * 820.0f / measured : 48.0f;
+    dl->AddText(fonts.label, size, {42.0f, 38.0f}, colour, name.c_str());
+    dl->AddText(fonts.body, 38.0f, {42.0f, 116.0f}, colour, ok ? "Activated" : view.reason);
+}
+
 void DrawLock(ImDrawList* dl, LockDrawView const& view) {
     float const size = static_cast<float>(kLockCanvas);
     ImVec2 const c{size * 0.5f, size * 0.5f};

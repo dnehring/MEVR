@@ -296,6 +296,7 @@ View Latest(std::uint64_t maxAgeMs) {
     if (gLatestAt == std::chrono::steady_clock::time_point{} || age > std::chrono::milliseconds(maxAgeMs)) {
         out.open = 0;
         out.coach = 0;  // the coach card goes when the mod stops sending it
+        out.self = {};
     }
     return out;
 }
@@ -612,66 +613,173 @@ char const* Name(SelfGesture gesture) {
     return "none";
 }
 
+SelfRefusal RefusalFor(SelfGesture gesture, bool gunDrawn, bool available, float cooldown) {
+    if (gesture == SelfGesture::Gun && !gunDrawn) {
+        return SelfRefusal::DrawWeapon;
+    }
+    if (cooldown > 0.0f) {
+        return SelfRefusal::CoolingDown;
+    }
+    return available ? SelfRefusal::None : SelfRefusal::Unavailable;
+}
+
+SelfZone GunZone(XrVector3f grip, XrVector3f muzzle, XrVector3f up, SelfCastSettings const& settings) {
+    up = Normalized(up, {0.0f, 1.0f, 0.0f});
+    auto lift = [&](XrVector3f p) {
+        return XrVector3f{p.x + up.x * settings.gunUpM, p.y + up.y * settings.gunUpM, p.z + up.z * settings.gunUpM};
+    };
+    return {lift(grip), lift(muzzle), settings.gunRadiusM};
+}
+
+XrVector3f ClosestPoint(SelfZone const& zone, XrVector3f hand) {
+    XrVector3f const axis = Sub(zone.end, zone.start);
+    XrVector3f const rel = Sub(hand, zone.start);
+    float const length2 = axis.x * axis.x + axis.y * axis.y + axis.z * axis.z;
+    float const t = length2 > 1e-8f ? std::clamp((rel.x * axis.x + rel.y * axis.y + rel.z * axis.z) / length2, 0.0f, 1.0f) : 0.0f;
+    return {zone.start.x + t * axis.x, zone.start.y + t * axis.y, zone.start.z + t * axis.z};
+}
+
+SelfZone ZoneFor(SelfGesture gesture, SelfCastInput const& in, SelfCastSettings const& settings) {
+    if (gesture == SelfGesture::Gun) {
+        if (in.gunValid) {
+            return in.gunZone;
+        }
+        XrVector3f const ahead = Rotate(in.gun.orientation, {0.0f, 0.0f, -0.35f});
+        return GunZone(in.gun.position, {in.gun.position.x + ahead.x, in.gun.position.y + ahead.y, in.gun.position.z + ahead.z},
+            Rotate(in.gun.orientation, {0.0f, 1.0f, 0.0f}), settings);
+    }
+    XrVector3f f = Rotate(in.head.orientation, {0.0f, 0.0f, -1.0f});
+    f.y = 0.0f;
+    f = Normalized(f, {0.0f, 0.0f, -1.0f});
+    XrVector3f point{in.head.position.x + f.x * settings.chestAheadM, in.head.position.y - settings.chestBelowM,
+        in.head.position.z + f.z * settings.chestAheadM};
+    if (gesture == SelfGesture::Raise) {
+        point = {in.hand.x, in.head.position.y + settings.raiseAboveM, in.hand.z};
+    }
+    return {point, point, gesture == SelfGesture::Chest ? settings.chestRadiusM : 0.0f};
+}
+
+SelfLook LookFor(SelfGesture gesture, SelfCastInput const& in, SelfZone const& zone) {
+    if (!in.tracked || gesture == SelfGesture::None || (gesture == SelfGesture::Gun && !in.gunValid)) {
+        return SelfLook::Hidden;
+    }
+    float const distance = Length(Sub(in.hand, ClosestPoint(zone, in.hand)));
+    bool const inside = gesture == SelfGesture::Raise ? in.hand.y >= zone.start.y : distance <= zone.radiusM;
+    if (in.open && inside) {
+        return SelfLook::InRange;
+    }
+    if (distance <= zone.radiusM + 0.15f) {
+        return SelfLook::Near;
+    }
+    return gesture == SelfGesture::Gun || distance <= 0.30f ? SelfLook::Faint : SelfLook::Hidden;
+}
+
 SelfCastStep StepSelfCast(SelfCastState& s, SelfGesture gesture, SelfCastInput const& in, SelfCastSettings const& settings) {
     SelfCastStep step;
-    auto const leave = [&s]() {
-        s.inZone = false;
-        s.spent = false;
-    };
-    if (gesture == SelfGesture::None || !in.tracked) {
-        leave();
-        s.hasLast = false;
-        return step;
+    SelfZone const zone = ZoneFor(gesture, in, settings);
+    XrVector3f const point = ClosestPoint(zone, in.hand);
+    float const distance = Length(Sub(in.hand, point));
+    bool const valid = gesture != SelfGesture::None && in.tracked &&
+        (gesture != SelfGesture::Gun || in.gunValid || in.gunProbe);
+    bool const inside = valid && (gesture == SelfGesture::Raise ? in.hand.y >= point.y : distance <= zone.radiusM);
+    bool const close = valid && (gesture == SelfGesture::Raise ? in.hand.y >= point.y - 0.30f : distance <= zone.radiusM + 0.30f);
+    if (!close) {
+        if (s.reaching && !s.reported) {
+            step.missed = true;
+            step.attempt = s.attempt;
+        }
+        s.reaching = false;
+        s.reported = false;
+    } else {
+        if (!s.reaching) {
+            s.reaching = true;
+            s.attempt = {};
+        }
+        if (distance < s.attempt.closestM) {
+            s.attempt.closestM = distance;
+            s.attempt.open = in.open;
+            s.attempt.gunDrawn = in.gunDrawn || in.gunValid;
+        }
     }
-    // Where the zone is, and whether the hand is in it.
-    bool inside = false;
-    XrVector3f point{};
-    if (gesture == SelfGesture::Chest) {
-        XrVector3f f = Rotate(in.head.orientation, {0.0f, 0.0f, -1.0f});
-        f.y = 0.0f;
-        f = Normalized(f, {0.0f, 0.0f, -1.0f});
-        point = {in.head.position.x + f.x * settings.chestAheadM, in.head.position.y - settings.chestBelowM,
-            in.head.position.z + f.z * settings.chestAheadM};
-        inside = Length(Sub(in.hand, point)) <= settings.chestRadiusM;
-    } else if (gesture == SelfGesture::Raise) {
-        inside = in.hand.y >= in.head.position.y + settings.raiseAboveM;
-    } else if (in.gunValid) {
-        XrVector3f const up = Rotate(in.gun.orientation, {0.0f, 1.0f, 0.0f});
-        XrVector3f const ahead = Rotate(in.gun.orientation, {0.0f, 0.0f, -1.0f});
-        point = {in.gun.position.x + up.x * settings.gunUpM + ahead.x * settings.gunAheadM,
-            in.gun.position.y + up.y * settings.gunUpM + ahead.y * settings.gunAheadM,
-            in.gun.position.z + up.z * settings.gunUpM + ahead.z * settings.gunAheadM};
-        inside = Length(Sub(in.hand, point)) <= settings.gunRadiusM;
-    }
-    // The hand's speed toward the gun's top as it came in (a slap).
     float approach = 0.0f;
-    if (gesture == SelfGesture::Gun && s.hasLast && in.time > s.lastTime) {
-        XrVector3f const to = Normalized(Sub(point, s.last), {0.0f, 0.0f, 0.0f});
-        XrVector3f const moved = Sub(in.hand, s.last);
-        float const dt = static_cast<float>(in.time - s.lastTime);
-        approach = (moved.x * to.x + moved.y * to.y + moved.z * to.z) / dt;
+    if (s.hasLast && in.time > s.lastTime && in.time - s.lastTime <= 0.15) {
+        // Same-frame geometry: gun motion onto a still hand cannot be a slap.
+        float const previous = Length(Sub(s.last, ClosestPoint(zone, s.last)));
+        approach = (previous - distance) / static_cast<float>(in.time - s.lastTime);
     }
     s.last = in.hand;
     s.lastTime = in.time;
-    s.hasLast = true;
-    if (!inside || !in.open) {
-        leave();
+    s.hasLast = valid;
+    if (!inside) {
+        s.inZone = false;
+        s.spent = false;
+        s.closedInStay = false;
         return step;
     }
     if (!s.inZone) {
         s.inZone = true;
         s.since = in.time;
-        step.entered = true;
+        step.entrySpeedMS = approach;
+        s.attempt.entrySpeedMS = approach;
+        step.entered = in.open;
+    }
+    // A hand closed in the zone (the support grip on the foregrip, a grenade at the chest) must leave it before the gesture
+    // counts: opening it in place never casts (else letting go of the foregrip cast Overkill a third of a second later).
+    if (!in.open) {
+        s.since = in.time;
+        s.closedInStay = true;
+        return step;
+    }
+    if (s.spent) {
+        step.progress = 1.0f;
+        return step;
+    }
+    if (s.closedInStay) {
+        return step;
     }
     float const held = static_cast<float>(in.time - s.since);
-    step.progress = settings.dwellS > 0.0f ? std::min(1.0f, held / settings.dwellS) : 1.0f;
+    step.progress = settings.dwellS > 0.0f ? std::clamp(held / settings.dwellS, 0.0f, 1.0f) : 1.0f;
     bool const slap = gesture == SelfGesture::Gun && step.entered && approach >= settings.slapSpeedMS;
-    if (!s.spent && (slap || held >= settings.dwellS)) {
+    // With no gun drawn only a real slap is answered ("Draw your weapon"): a resting or slow hand near the right controller (the
+    // omni-tool's wrist tap, hands held together) says nothing.
+    if (gesture == SelfGesture::Gun && !in.gunValid && !slap) {
+        step.entered = false;  // no tick, no ring
+        step.progress = 0.0f;
+        return step;
+    }
+    if (slap || held >= settings.dwellS) {
         s.spent = true;
-        step.cast = true;
+        s.reported = true;
+        step.weaponMissing = gesture == SelfGesture::Gun && !in.gunValid;
+        step.cast = !step.weaponMissing;
         step.progress = 1.0f;
+        s.attempt.open = in.open;
+        s.attempt.gunDrawn = in.gunDrawn || in.gunValid;
+        step.attempt = s.attempt;
     }
     return step;
+}
+
+void BeginConfirmation(ConfirmationState& state, Confirmation kind, double time) {
+    state = {kind, time, false};
+}
+
+ConfirmationStep StepConfirmation(ConfirmationState& state, double time) {
+    ConfirmationStep out;
+    if (state.kind == Confirmation::None) {
+        return out;
+    }
+    out.age = static_cast<float>(time - state.since);
+    out.visible = out.age >= 0.0f && out.age < kConfirmationS;
+    bool const success = state.kind == Confirmation::Success;
+    float const delay = success ? 0.16f : 0.22f;
+    if (!state.secondBeat && out.age >= delay) {
+        state.secondBeat = true;
+        out.beat = out.visible;
+    }
+    out.seconds = success ? 0.055f : 0.085f;
+    out.strength = success ? 2.2f : 1.4f;
+    return out;
 }
 
 Coach CoachFor(Aim aim, SelfGesture gesture) {

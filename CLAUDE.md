@@ -911,7 +911,12 @@ switching frameworks.
   sends `BioPawn.ReleasePower` itself at the learned delay (`mevr powerwheel unarmed on|off`), so casts work with the gun out
   (left hand alone) and with it holstered. **Self-cast powers by gesture** (section 10; `[PowerWheel] selfGestures`): the open
   left palm on the chest (Barrier, Shield Boost, Immunity, Adrenaline Burst), slapped onto the gun (Marksman, Overkill, Carnage,
-  Assassination) or raised above the head (Unity), never the left trigger or grip (`vr::power_wheel::StepSelfCast`;
+  Assassination) or raised above the head (Unity), never the left trigger or grip; the gun's zone is a capsule from its drawn
+  grip to muzzle, 4 cm above the bore, radius 8.5 cm (open hand, 0.6 m/s slap or 0.35 s dwell, once per stay). All three have
+  orange-to-cyan targets and a dwell ring; a cast flashes cyan and names the power for 1 s, a refusal flashes red and says why,
+  both with distinct two-beat haptics in both hands (existing lock/hint canvases, no new swapchain; section 10, 2026-11-07).
+  One `power wheel: gesture attempt:` line records the closest approach, entry speed, hand/weapon state and outcome
+  (`vr::power_wheel::StepSelfCast`;
   `mevr powerwheel selfcast`); powers that use the omni-tool (tech, or the omni-tool in their own effects) wear the gauntlet
   while aimed, gestured and 2.5 s after the cast. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
   left trigger and grip are its own (`gamepad::kFlagPowerWheel`, `Latches::powerHeld` until released) and the squad's trigger stands down

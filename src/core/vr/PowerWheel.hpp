@@ -117,6 +117,18 @@ struct ViewEntry {
     std::uint8_t padding[2] = {};
     float cooldown = 0.0f;         // the part of its cooldown still to run, 0..1
 };
+enum class SelfLook : std::uint8_t { Hidden, Faint, Near, InRange };
+enum class Confirmation : std::uint8_t { None, Success, Refused };
+struct SelfView {
+    SelfLook look = SelfLook::Hidden;
+    Confirmation confirmation = Confirmation::None;
+    float progress = 0.0f;
+    float confirmationFor = 0.0f;
+    XrVector3f target{};
+    XrVector3f hand{};
+    char name[kLabelBytes] = {};
+    char reason[64] = {};
+};
 struct View {
     std::uint32_t size = sizeof(View);  // the mod's sizeof(View): the host draws only a matching one
     std::uint32_t serial = 0;           // + 1 at each opening
@@ -143,6 +155,7 @@ struct View {
     std::uint8_t coachPad[2] = {};
     float coachFor = 0.0f;
     char coachName[kLabelBytes] = {};
+    SelfView self;
 };
 // Any thread: the host keeps the latest; Latest says closed when it's older than `maxAgeMs` (the mod stopped sending).
 void Publish(View const& view);
@@ -278,6 +291,8 @@ LockView LatestLock(std::uint64_t maxAgeMs = 250);
 enum class SelfGesture : std::uint8_t { None, Chest, Gun, Raise };
 SelfGesture SelfGestureFor(char const* label);  // by the 2DA label; None for a power that aims
 char const* Name(SelfGesture gesture);
+enum class SelfRefusal : std::uint8_t { None, DrawWeapon, CoolingDown, Unavailable };
+SelfRefusal RefusalFor(SelfGesture gesture, bool gunDrawn, bool available, float cooldown);
 
 struct SelfCastSettings {
     float chestBelowM = 0.28f;   // the chest point: below the eyes
@@ -285,11 +300,17 @@ struct SelfCastSettings {
     float chestRadiusM = 0.13f;
     float raiseAboveM = 0.08f;   // the hand this far above the eyes
     float dwellS = 0.35f;        // held this long (chest, raise; the gun's slow touch)
-    float gunUpM = 0.06f;        // the gun's top: this far up and ahead of the right hand's aim pose
-    float gunAheadM = 0.05f;
-    float gunRadiusM = 0.10f;
+    float gunUpM = 0.04f;        // above the drawn bore, from the model's grip to its muzzle
+    float gunRadiusM = 0.085f;
     float slapSpeedMS = 0.6f;    // a slap: entering the gun's zone this fast casts at once
 };
+struct SelfZone {
+    XrVector3f start{};
+    XrVector3f end{};
+    float radiusM = 0.0f;
+};
+SelfZone GunZone(XrVector3f grip, XrVector3f muzzle, XrVector3f up, SelfCastSettings const& settings = {});
+XrVector3f ClosestPoint(SelfZone const& zone, XrVector3f hand);
 struct SelfCastInput {
     double time = 0.0;
     bool tracked = false;   // the left hand
@@ -297,7 +318,18 @@ struct SelfCastInput {
     XrVector3f hand{};      // the left hand (tracking space)
     XrPosef head{};
     bool gunValid = false;  // the right hand holds a drawn gun
-    XrPosef gun{};          // the right hand's aim pose
+    bool gunDrawn = false;  // game says drawn, even if its geometry is temporarily unavailable
+    SelfZone gunZone{};    // the drawn gun, in tracking metres
+    bool gunProbe = false; // tracked right hand held up: a holstered attempt can be refused
+    XrPosef gun{};          // only the missing-weapon probe uses the controller pose
+};
+SelfZone ZoneFor(SelfGesture gesture, SelfCastInput const& input, SelfCastSettings const& settings = {});
+SelfLook LookFor(SelfGesture gesture, SelfCastInput const& input, SelfZone const& zone);
+struct GestureAttempt {
+    float closestM = 1e9f; // distance to the axis/centre, metres
+    float entrySpeedMS = 0.0f;
+    bool open = false;
+    bool gunDrawn = false;
 };
 struct SelfCastState {
     bool inZone = false;
@@ -306,13 +338,38 @@ struct SelfCastState {
     bool hasLast = false;
     XrVector3f last{};
     double lastTime = 0.0;
+    bool reaching = false;
+    bool reported = false;
+    bool closedInStay = false;  // closed in the zone during this stay: leave it to re-arm
+    GestureAttempt attempt;
 };
 struct SelfCastStep {
     bool entered = false;   // came into the zone (a tick)
     bool cast = false;
     float progress = 0.0f;  // 0..1 of the dwell
+    float entrySpeedMS = 0.0f;
+    bool weaponMissing = false;
+    bool missed = false;
+    GestureAttempt attempt;
 };
 SelfCastStep StepSelfCast(SelfCastState& state, SelfGesture gesture, SelfCastInput const& input, SelfCastSettings const& settings);
+
+inline constexpr float kConfirmationS = 1.0f;
+inline constexpr float kConfirmationFlashS = 0.28f;
+struct ConfirmationState {
+    Confirmation kind = Confirmation::None;
+    double since = 0.0;
+    bool secondBeat = false;
+};
+struct ConfirmationStep {
+    bool visible = false;
+    bool beat = false;
+    float age = 0.0f;
+    float seconds = 0.0f;
+    float strength = 0.0f; // multiplier of the user's haptic setting
+};
+void BeginConfirmation(ConfirmationState& state, Confirmation kind, double time);
+ConfirmationStep StepConfirmation(ConfirmationState& state, double time);
 
 // ---- How to cast what was just equipped (the coach card) ------------------------------------------------------------
 // The user, 2026-11-06: "we may need instructions to show the gestures and how to actually use the powers". After an equip

@@ -483,3 +483,55 @@ the gun hand: [verify] whether both show, and whether the game's should be hidde
 - **Not checked:** a self-cast power that uses the omni-tool (Shield Boost, Immunity, Adrenaline Burst and Unity can't be switched
   on on this save), the 2.5 s after a cast once nothing is aimed, and the game's own omni-tool effect at the right wrist. In the
   headset: the zones' sizes and the dwell, false casts (a hand resting on the chest, reaching for the foregrip past the gun's top).
+
+### Visible self-cast targets and confirmation (2026-11-07)
+
+Owner QA: "The one power I had didn't seem to work. We may need a better confirmation for abilities like Overkill."
+The earlier gun sphere sat on the right controller, with no visible target or dwell progress. The three-equip coach limit
+made that especially hard to diagnose later in a session. This change is built and checked offline; no game or headset run.
+
+- **Gun geometry:** `weapon::CurrentAsDrawn` supplies the live model's origin, muzzle and bore, including its kick (the
+  same verified weapon that `Current`/`BoneWorld` describe). Project the grip/origin onto the bore, then make a capsule
+  from there to the muzzle, **0.04 m above the bore**, **0.085 m radius**, using `sights::GunTop` for the gun's roll, as the
+  HUD gun-status anchor does. This uses the same segment-distance principle as `ik::MakeSupportZone`; it does not claim
+  a support grip or share its closed-hand input. The open left hand (both grip and trigger **< 0.3**) must enter at
+  **>= 0.6 m/s** to slap-cast at once, or remain for **0.35 s**. Once per physical stay; closing/reopening the hand in
+  that stay does not rearm it. Entry speed measures hand motion against this frame's capsule, so moving the gun onto a
+  still palm cannot count as a slap. `support_grip::Held` also forces closed-hand input, so the target can stay visible
+  while supporting the gun without allowing a cast.
+- **Targets and progress:** always available while a self-gesture power is equipped, independent of the coach count.
+  Gun: faint orange on the drawn gun, brighter within radius + **0.15 m**, cyan on open-hand contact. A distant marker
+  sits at the capsule's middle; up close it follows the nearest point along its top. Chest: the unchanged centre
+  **0.28 m below / 0.14 m ahead** of the eyes, radius **0.13 m**, target within **0.30 m**. Raise: the unchanged
+  **0.08 m above the eyes** threshold, marker beneath the raised hand (near within **0.15 m**, faint within **0.30 m**).
+  A ring fills clockwise with the published dwell, for all three. The marker canvas is **0.18 m** across; its base
+  ring is about **0.083 m** across.
+- **Confirmation:** `ActivatePower` returning true gives a cyan check and expanding ring for **0.28 s**, and the power's
+  name plus "Activated" by the left hand for **1.0 s**, fading in the last **0.2 s**. The host uses its game-font label
+  when cached (fallback otherwise). Both hands pulse **55 ms**, twice with **160 ms** between onsets, at **2.2 x** the
+  haptic setting (clamped to 1; default **0.77**). Confirmation survives taking the support grip immediately afterward.
+  This confirms that the game accepted the cast, not that the later release/effect was independently observed.
+- **Refusals:** red cross/flash, the power's name and "Cooling down N%", "Not available now", or "Draw your weapon",
+  with the same display timings. Both hands buzz **85 ms**, twice **220 ms** apart, **1.4 x** haptic (default **0.49**).
+  Without a drawn model the gun target stays hidden; a tracked right aim held within **0.45 m below the eyes** supplies
+  a refusal-only probe, **0.35 m** along its aim, lifted **0.04 m**, same radius and slap/dwell rules. It can never cast.
+  Missing drawn geometry refuses as unavailable. Holstered weapon takes precedence over cooldown, then cooldown over
+  unavailable. Gesture refusals no longer say "push not cast"; a self-gesture movement is not also processed as a push.
+- **QA logging:** a reach starts within radius + **0.30 m** (Raise: **0.30 m below** its threshold), finishes at a cast,
+  refusal, retreat, tracking loss or an input/power change. One `power wheel: gesture attempt:` line names the power and
+  gesture, closest distance **to the capsule axis / zone centre** in metres, entry speed in m/s, open/closed and drawn
+  weapon state, and cast/refused reason/missed. No extra missed line after a reported cast/refusal. An interruption
+  flushes an unfinished reach as missed. A reach which never enters has entry speed zero.
+- **Mod/host boundary:** `View::self` carries the target, look, progress and confirmation through the existing
+  `setPowerWheel`; the host checks `sizeof(View)`, and stale publication clears the entire self view after **250 ms**.
+  `SelfLayers` draws on the existing **powerlock** canvas; the left-hand message takes the existing **powerhint** canvas
+  from the coach while visible. No new canvas swapchain or OpenXR allocation is introduced. Geometry, look, attempt
+  lifecycle, refusal precedence and confirmation timing live in `core/vr/PowerWheel`, covered by `RunPowerWheelTests`.
+- **Offline review:** `mevr-power-wheel-preview build/power-confirmation-preview` produces `self-target-faint.png`,
+  `self-target-near.png`, `self-target-in-range.png`, `self-ring-half.png`, `self-success.png`, `self-refusal.png`, plus
+  `self-success-message.png` and `self-refusal-message.png`. These are the host's actual drawing; reviewed visually.
+  Validation: all four requested hot-reload build targets and monolithic LE1 passed, with warnings as errors;
+  CTest **7/7 passed** (58.52 s), SPDX and whitespace checks clean. The managed shell required explicit selection of
+  installed SDK **10.0.22621.0**, and CTest was reconfigured to an accessible bundled Python interpreter; no source/build
+  flags were relaxed. In-headset target alignment on each gun model, reach comfort, readability and haptic feel remain
+  **[verify]**. No game launch, deployment or push was performed.

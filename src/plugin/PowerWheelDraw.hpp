@@ -101,5 +101,8 @@ struct LockDrawView {
     ImTextureID icon = 0;
 };
 void DrawLock(ImDrawList* dl, LockDrawView const& view);
+// Reuses the lock canvas at the gesture's zone and the hint canvas by the left hand.
+void DrawSelfTarget(ImDrawList* dl, vr::power_wheel::SelfView const& view);
+void DrawConfirmation(ImDrawList* dl, Fonts const& fonts, vr::power_wheel::SelfView const& view);
 
 }  // namespace mevr::host::power_wheel_draw

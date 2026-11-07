@@ -17,6 +17,8 @@
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
+#include "game/Sights.hpp"
+#include "game/Weapon.hpp"
 #include "game/ViewAnchor.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "ue3/Handles.hpp"
@@ -580,7 +582,7 @@ bool Cast(ue3::Object* controller, Power const& power, ue3::Object* target, std:
 void Refuse(Link const& link, std::string const& why) {
     ++gRefused;
     gLastCast = why;
-    log::Info("power wheel: push not cast: {}", why);
+    log::Info("power wheel: cast refused: {}", why);
     if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
         link.haptic(0, 0.12f, gSettings.haptic * 0.5f);  // a long soft buzz: no
     }
@@ -838,6 +840,10 @@ void TickUnarmedRelease() {
 // ---- Self-cast gestures and the omni-tool (research/55 section 10) --------------------------------------------------------
 pw::SelfCastSettings gSelfSettings;
 pw::SelfCastState gSelfCast;
+pw::SelfView gSelfView;
+pw::ConfirmationState gConfirmation;
+pw::SelfView gConfirmed;
+std::string gSelfPower;
 float gSelfProgress = 0.0f;         // the gesture's dwell, 0..1 (the hand is in place)
 bool gConsoleSelfCast = false;      // `mevr powerwheel selfcast` (tests)
 std::string gLastCastPower;
@@ -895,6 +901,43 @@ void CastFeedback(Link const& link, bool ok) {
     }
 }
 
+void LogGesture(pw::GestureAttempt const& attempt, std::string const& power, pw::SelfGesture gesture, std::string const& outcome) {
+    pw::PowerInfo const* const info = pw::FindPower(power.c_str());
+    log::Info("power wheel: gesture attempt: {} ({}) closest {:.3f} m, entry {:.2f} m/s, open {}, gun drawn {}: {}",
+        info != nullptr ? std::format("{} [{}]", info->name, power) : power,
+        pw::Name(gesture), attempt.closestM, attempt.entrySpeedMS, attempt.open, attempt.gunDrawn, outcome);
+}
+
+void ConfirmGesture(Link const& link, bool ok, std::string const& reason) {
+    pw::BeginConfirmation(gConfirmation, ok ? pw::Confirmation::Success : pw::Confirmation::Refused, gClock);
+    gConfirmed = gSelfView;
+    gConfirmed.confirmation = gConfirmation.kind;
+    std::snprintf(gConfirmed.reason, sizeof(gConfirmed.reason), "%s", reason.c_str());
+    pw::ConfirmationStep const beat = pw::StepConfirmation(gConfirmation, gClock);
+    if (link.haptic != nullptr && gSettings.haptic > 0.0f) {
+        for (int hand : {0, 1}) { // Host/HalcyonBridge: 0 left, 1 right
+            link.haptic(hand, beat.seconds, std::min(1.0f, beat.strength * gSettings.haptic));
+        }
+    }
+}
+
+void TickConfirmation(Link const& link, vr::controllers::State const& controllers) {
+    pw::ConfirmationStep const confirmation = pw::StepConfirmation(gConfirmation, gClock);
+    if (confirmation.visible) {
+        gSelfView.confirmation = gConfirmed.confirmation;
+        gSelfView.confirmationFor = confirmation.age;
+        gSelfView.target = gConfirmed.target;
+        gSelfView.hand = controllers.active && controllers.left.gripValid ? controllers.left.grip.position : gConfirmed.hand;
+        std::snprintf(gSelfView.name, sizeof(gSelfView.name), "%s", gConfirmed.name);
+        std::snprintf(gSelfView.reason, sizeof(gSelfView.reason), "%s", gConfirmed.reason);
+    }
+    if (confirmation.beat && link.haptic != nullptr && gSettings.haptic > 0.0f) {
+        for (int hand : {0, 1}) {
+            link.haptic(hand, confirmation.seconds, std::min(1.0f, confirmation.strength * gSettings.haptic));
+        }
+    }
+}
+
 void TickLock(Link const& link, vr::host_view::State const& view, vr::controllers::State const& controllers, ue3::Object* controller,
     ue3::Object* pawn, bool onFoot) {
     pw::LockSettings const& s = gLockSettings;
@@ -907,6 +950,7 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     gSeen.clear();
     gPlace.reset();
     gOmniAiming = false;
+    gSelfView = {};
     bool const pushAsked = gConsolePush;
     gConsolePush = false;
     std::optional<Power> const ready = s.on && onFoot && controller != nullptr && pawn != nullptr ? ReadyPower(controller, pawn) : std::nullopt;
@@ -925,12 +969,19 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         why = "the left controller isn't tracked";
     } else if (gMachine.open || gHeldAfter) {
         why = "the wheel has the left hand";
-    } else if (support_grip::Held()) {
+    } else if (support_grip::Held() && (!gSelfGestures || pw::SelfGestureFor(ready->label.c_str()) == pw::SelfGesture::None)) {
         why = "the left hand holds the gun";
     } else if (squad_weapons::IsOpen()) {
         why = "the squad's weapon wheel is open";
     }
     if (why != nullptr) {
+        if (gSelfCast.reaching && !gSelfCast.reported) {
+            LogGesture(gSelfCast.attempt, gSelfPower, pw::SelfGestureFor(gSelfPower.c_str()), std::format("missed ({})", why));
+        }
+        gSelfCast = {};
+        if (!onFoot || !view.valid || !s.on || gMachine.open) {
+            gConfirmation = {};
+        }
         gLockWhy = why;
         gLock = {};
         gTarget = nullptr;
@@ -938,6 +989,15 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         return;
     }
     gLockWhy = "ready";
+    pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(ready->label.c_str()) : pw::SelfGesture::None;
+    if (gSelfPower != ready->label) {
+        if (gSelfCast.reaching && !gSelfCast.reported) {
+            LogGesture(gSelfCast.attempt, gSelfPower, pw::SelfGestureFor(gSelfPower.c_str()), "missed (power changed)");
+        }
+        gSelfCast = {};
+        gConfirmation = {};
+        gSelfPower = ready->label;
+    }
     XrPosef const aim = hand ? controllers.left.aim : view.head;
     // The arm raised: the hand ahead of the eyes (as seen flat).
     XrVector3f const forwardFlat = HeadForwardFlat(view.head.orientation);
@@ -988,7 +1048,7 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         XrVector3f const along = RotateXr(controllers.left.aim.orientation, {0.0f, 0.0f, -1.0f});
         pushed = (pw::StepPush(gPush, gClock, controllers.left.aim.position, along, s) && raised) || pushed;
     }
-    if (pushed) {
+    if (pushed && gesture == pw::SelfGesture::None) {
         ++gPushes;
         if (!ready->enabled) {
             Refuse(link, std::format("{} can't be cast now (the game says it's unavailable: suppressed, or not with the weapon in hand)",
@@ -1049,36 +1109,76 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
 
     // The self-cast gestures (research/55 section 10): a power that aims at nothing is cast by its own gesture of the open left
     // hand, not the push (the chest, the gun, the raise); `mevr powerwheel selfcast` stands in for it without tracked hands.
-    pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(ready->label.c_str()) : pw::SelfGesture::None;
     pw::SelfCastInput self;
     self.time = gClock;
     self.tracked = hand && controllers.left.gripValid;
-    self.open = controllers.left.squeeze < 0.3f && controllers.left.trigger < 0.3f;
+    self.open = !support_grip::Held() && controllers.left.squeeze < 0.3f && controllers.left.trigger < 0.3f;
     self.hand = controllers.left.grip.position;
     self.head = view.head;
-    self.gunValid = controllers.right.aimValid && WeaponOut(pawn);
+    self.gunDrawn = WeaponOut(pawn);
     self.gun = controllers.right.aim;
+    self.gunProbe = controllers.right.aimValid && self.gun.position.y >= view.head.position.y - 0.45f;
+    if (gesture == pw::SelfGesture::Gun && self.gunDrawn) {
+        // Use the live, kicked model so both the target and the contact volume stay on the drawn receiver/barrel.
+        if (auto const gun = weapon::CurrentAsDrawn()) {
+            vr::aim_ray::Ray ray;
+            ray.valid = true;
+            ray.origin = engine::ToTracking(*frame, gun->location);
+            double const back = Dot3(Minus(gun->origin, gun->location), gun->barrel);
+            XrVector3f const base = engine::ToTracking(*frame, Plus(gun->location, Scaled(gun->barrel, back)));
+            XrVector3f const along = engine::ToTracking(*frame, Plus(gun->location, Scaled(gun->barrel, upm)));
+            ray.direction = {along.x - ray.origin.x, along.y - ray.origin.y, along.z - ray.origin.z};
+            if (auto const top = sights::GunTop(ray)) {
+                self.gunZone = pw::GunZone(base, ray.origin, *top, gSelfSettings);
+                self.gunValid = true;
+            }
+        }
+    }
+    pw::SelfZone const zone = pw::ZoneFor(gesture, self, gSelfSettings);
+    gSelfView.look = pw::LookFor(gesture, self, zone);
+    // A stable centre while distant, then the point on the capsule nearest the approaching palm.
+    XrVector3f const middle{(zone.start.x + zone.end.x) * 0.5f, (zone.start.y + zone.end.y) * 0.5f,
+        (zone.start.z + zone.end.z) * 0.5f};
+    gSelfView.target = gSelfView.look == pw::SelfLook::Faint ? middle : pw::ClosestPoint(zone, self.hand);
+    gSelfView.hand = self.hand;
+    std::snprintf(gSelfView.name, sizeof(gSelfView.name), "%s", ready->info->name);
     pw::SelfCastStep const selfStep = pw::StepSelfCast(gSelfCast, gesture, self, gSelfSettings);
     gSelfProgress = selfStep.progress;
-    if (selfStep.entered && link.haptic != nullptr && gSettings.haptic > 0.0f) {
+    gSelfView.progress = selfStep.progress;
+    if (selfStep.missed) {
+        LogGesture(selfStep.attempt, ready->label, gesture, "missed");
+    }
+    if (selfStep.entered && !selfStep.cast && !selfStep.weaponMissing && link.haptic != nullptr && gSettings.haptic > 0.0f) {
         link.haptic(0, 0.03f, gSettings.haptic * 0.6f);  // a tick: the hand is in place
     }
     bool const selfAsked = gConsoleSelfCast;
     gConsoleSelfCast = false;
-    if (gesture != pw::SelfGesture::None && (selfStep.cast || selfAsked)) {
-        if (!ready->enabled) {
-            Refuse(link, std::format("{} can't be cast now (the game says it's unavailable)", ready->info->name));
-        } else if (ready->cooldown > 0.0f) {
-            Refuse(link, std::format("{} is still cooling down ({:.0f}% to go)", ready->info->name, ready->cooldown * 100.0f));
+    if (gesture != pw::SelfGesture::None && (selfStep.cast || selfStep.weaponMissing || selfAsked)) {
+        bool ok = false;
+        std::string reason;
+        pw::SelfRefusal const refusal = pw::RefusalFor(gesture, WeaponOut(pawn), ready->enabled && !selfStep.weaponMissing, ready->cooldown);
+        if (refusal == pw::SelfRefusal::DrawWeapon) {
+            reason = "Draw your weapon";
+        } else if (refusal == pw::SelfRefusal::CoolingDown) {
+            reason = std::format("Cooling down {:.0f}%", ready->cooldown * 100.0f);
+        } else if (refusal == pw::SelfRefusal::Unavailable) {
+            reason = "Not available now";
         } else {
-            bool const ok = Cast(controller, *ready, nullptr, std::nullopt);
-            log::Info("power wheel: {}: {}{}", selfAsked ? "self-cast from the console" : pw::Name(gesture), gLastCast,
-                self.gunValid ? " (a gun in the right hand)" : "");
+            ok = Cast(controller, *ready, nullptr, std::nullopt);
             if (ok) {
                 AfterCast(*ready, pawn);
+                ++gCastCount;
+                ++gCasts;
+            } else {
+                reason = "Not available now";
             }
-            CastFeedback(link, ok);
         }
+        if (!ok) {
+            ++gRefused;
+            gLastCast = reason;
+        }
+        ConfirmGesture(link, ok, reason);
+        LogGesture(selfStep.attempt, ready->label, gesture, ok ? "cast" : "refused: " + reason);
     }
     gOmniAiming = UsesOmniTool(*ready) && (gSelfProgress > 0.0f || (ready->info->aim != pw::Aim::None && raised && (target != nullptr || gPlace)));
 
@@ -1394,6 +1494,9 @@ void Tick(double deltaSeconds, Link const& link) {
             }
         }
     }
+    TickLock(link, view, controllers, controller, pawn, onFoot);
+    TickConfirmation(link, controllers);
+    gView.self = gSelfView;
     // What the host draws.
     if (link.publish != nullptr) {
         if (gMachine.open) {
@@ -1448,13 +1551,13 @@ void Tick(double deltaSeconds, Link const& link) {
             coached.coachFor = static_cast<float>(gClock - gCoach.since);
             std::snprintf(coached.coachName, sizeof(coached.coachName), "%s", gCoach.name.c_str());
             link.publish(&coached);
-        } else if (event == pw::Event::Equipped || event == pw::Event::Cancelled) {
+        } else {
             pw::View closed = gView;
             closed.open = 0;
+            closed.coach = 0;
             link.publish(&closed);
         }
     }
-    TickLock(link, view, controllers, controller, pawn, onFoot);
     // The omni-tool gauntlet on the forearm for a power that uses it: while it's aimed or gestured, and 2.5 s after its cast.
     if (onFoot && (gOmniAiming || (gLastCastUsesOmniTool && gClock - gPushCastAt < 2.5))) {
         omni_tool::Request();
