@@ -90,6 +90,12 @@ bool HudPanelArmed() noexcept;
 // The galaxy window's Flash draws may precede the eye-copy boundary. Its panel
 // owns those backbuffer draws independently of the stereo mirror (research/51).
 bool HudPanelCapturesEarlyUi() noexcept;
+// [MEVR] research/51: bracket the WHOLE Present, including the downstream desktop Present.
+// Galaxy capture owns game rendering only; classify/log Present's lookalike draws without redirecting them.
+void HudPanelPresentBegin(unsigned long long present) noexcept;
+void HudPanelPresentEnd(int mirrorPath) noexcept; // 0: no desktop call, 1: throttled, 2: downstream Present
+void HudPanelPresentDesktop() noexcept;
+bool HudPanelPresentDraw(unsigned shaderHash, bool textBatch) noexcept;
 
 // Present thread, when the XR session stops, is lost or exits (Halcyon's event poll; RunFrame no longer runs):
 // the HUD panel disarmed, so the game's UI draws go back to the frame for the monitor.

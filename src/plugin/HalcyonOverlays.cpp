@@ -138,8 +138,32 @@ std::atomic<unsigned> gPanelDrawsLastFrame{0};
 std::atomic<unsigned> gTintDraws{0};
 std::atomic<bool> gPanelIsFloat{false};
 bool gPanelNeedsClear = false;
+bool gGalaxyClearPending = false; // clear immediately before the next game UI draw, never after its copy
+unsigned gGalaxyUiClears = 0;
 bool gTintDirty = false;  // Present thread: the tint texture has draws in it (cleared to white with the panel)
 bool gLoggedTint = false;
+
+// Immediate-context thread only. The eye-copy flag is false throughout Present, so it cannot
+// distinguish next-frame Flash from runtime/desktop overlay work inside Present.
+struct PanelPresent {
+    bool active = false, galaxy = false, shown = false;
+    unsigned long long number = 0;
+    unsigned stage = 0; // before copy, copy-to-retire, after retire (including late wait), downstream Present
+    unsigned draws = 0, text = 0, early = 0, startClears = 0;
+    unsigned rejected[4]{}, textRejected[4]{}, firstShader[4]{};
+};
+thread_local PanelPresent tPanelPresent;
+unsigned gGalaxyOrderLines = 0;
+
+void ClearPanel(ID3D11DeviceContext* context) {
+    float const clear[4] = {0, 0, 0, 0};
+    float const white[4] = {1, 1, 1, 1};
+    context->ClearRenderTargetView(gPanel.rtv.Get(), clear);
+    if (gPanel.tintRtv != nullptr) context->ClearRenderTargetView(gPanel.tintRtv.Get(), white);
+    gTintDirty = false;
+    gGalaxyClearPending = false;
+    ++gGalaxyUiClears;
+}
 
 // Non-indexed Scaleform batches are the text/glyph proxy, not a pixel visibility test.
 // Cumulative per opening: zero-text runs catch missing frames even between periodic log lines.
@@ -1447,6 +1471,44 @@ bool HudPanelCapturesEarlyUi() noexcept {
     return gGalaxyEarlyUi.load(std::memory_order_acquire);
 }
 
+void HudPanelPresentBegin(unsigned long long present) noexcept {
+    tPanelPresent = {};
+    tPanelPresent.active = true;
+    tPanelPresent.galaxy = HudPanelCapturesEarlyUi();
+    tPanelPresent.number = present;
+    tPanelPresent.startClears = gGalaxyUiClears;
+    gGalaxyUiClears = 0;
+}
+
+void HudPanelPresentDesktop() noexcept {
+    tPanelPresent.stage = 3;
+}
+
+bool HudPanelPresentDraw(unsigned shaderHash, bool textBatch) noexcept {
+    auto& p = tPanelPresent;
+    if (!p.active || !(p.galaxy || HudPanelCapturesEarlyUi())) return false;
+    ++p.rejected[p.stage];
+    p.textRejected[p.stage] += textBatch ? 1u : 0u;
+    if (p.firstShader[p.stage] == 0) p.firstShader[p.stage] = shaderHash;
+    return true; // draw normally into its own target; never contaminate the next galaxy UI frame
+}
+
+void HudPanelPresentEnd(int mirrorPath) noexcept {
+    auto const p = tPanelPresent;
+    tPanelPresent.active = false;
+    if (!p.galaxy) return;
+    // Bounded trace, with adjacent odd/even samples even after the opening; no readback or stack walk.
+    if (gGalaxyOrderLines++ < 16 || p.number % 300 < 2) {
+        mevr::log::Info("galaxy UI order: present {} parity {} mirror {}; copied UI/text {}/{} early {}; start-clears {}; shown {}; "
+                       "rejected UI/text before-copy {}/{}, copy-retire {}/{}, after-retire {}/{}, desktop {}/{}; "
+                       "first PS {:08X}/{:08X}/{:08X}/{:08X}",
+            p.number, p.number % 2, mirrorPath, p.draws, p.text, p.early, p.startClears, p.shown,
+            p.rejected[0], p.textRejected[0], p.rejected[1], p.textRejected[1],
+            p.rejected[2], p.textRejected[2], p.rejected[3], p.textRejected[3],
+            p.firstShader[0], p.firstShader[1], p.firstShader[2], p.firstShader[3]);
+    }
+}
+
 void OnSessionStopped() noexcept {
     mevr::host::floor_lock::Reset();
     gArmed.store(false, std::memory_order_release);  // no OverlayLayers runs now to disarm it: the UI back to the frame
@@ -1456,6 +1518,7 @@ void OnSessionStopped() noexcept {
 ID3D11RenderTargetView* HudPanelTarget(ID3D11DeviceContext* context, unsigned width, unsigned height, int format) noexcept {
     DXGI_FORMAT const fmt = static_cast<DXGI_FORMAT>(format);
     if (gPanel.texture != nullptr && gPanel.width == width && gPanel.height == height && gPanel.format == fmt) {
+        if (gGalaxyClearPending) ClearPanel(context);
         return gPanel.rtv.Get();
     }
     if (gPanel.failed && gPanel.width == width && gPanel.height == height && gPanel.format == fmt) {
@@ -1501,6 +1564,7 @@ ID3D11RenderTargetView* HudPanelTarget(ID3D11DeviceContext* context, unsigned wi
     float const white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     context->ClearRenderTargetView(gPanel.rtv.Get(), clear);
     context->ClearRenderTargetView(gPanel.tintRtv.Get(), white);
+    gGalaxyClearPending = false;
     gPanelIsFloat.store(IsFloatFormat(fmt), std::memory_order_relaxed);
     LogBoth("[MEVR-HUD] HUD panel texture " + std::to_string(width) + "x" + std::to_string(height) + " fmt=" +
         std::to_string(format) + (IsFloatFormat(fmt) ? " (float scRGB: scaled to SDR white)" : "") +
@@ -1760,6 +1824,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     unsigned const textDraws = gPanelTextDraws.exchange(0, std::memory_order_relaxed);
     unsigned const earlyDraws = gPanelEarlyDraws.exchange(0, std::memory_order_relaxed);
     unsigned const earlyTextDraws = gPanelEarlyTextDraws.exchange(0, std::memory_order_relaxed);
+    tPanelPresent.galaxy = tPanelPresent.galaxy || galaxyWindowUi;
+    tPanelPresent.draws = draws;
+    tPanelPresent.text = textDraws;
+    tPanelPresent.early = earlyDraws;
 
     // ---- HUD panel ----
     overlay::PanelSettings settings;
@@ -1901,6 +1969,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         (!worldUiPending || worldUi) && (!worldUi || worldShown)) {
         gPanelDrawsLastFrame.store(draws, std::memory_order_relaxed);
         if (RenderPanel(context, device.Get(), frame.floatWhiteScale, worldUi ? Masks{} : hudMasks)) {
+            tPanelPresent.stage = 1; // the swapchain now contains this game's complete panel
             float const width = std::clamp(cfg.hudPanelWidthM, 0.3f, 4.0f);
             gPanelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
             gPanelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
@@ -2202,7 +2271,11 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         mevr::log::Info("overlays: first frame with Scaleform blend-mode draws in the panel's tint ({} draws)", tintDraws);
     }
     gTintDirty = gTintDirty || tintDraws > 0;
-    if (gPanel.rtv != nullptr && (draws > 0 || gPanelNeedsClear)) {
+    if (galaxyWindowUi) {
+        // Preserve a complete image until the next game's UI starts. A frame without Flash keeps
+        // the last complete image; a runtime/desktop draw inside Present cannot start that frame.
+        gGalaxyClearPending = true;
+    } else if (gPanel.rtv != nullptr && (draws > 0 || gPanelNeedsClear || gGalaxyClearPending)) {
         float const clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         context->ClearRenderTargetView(gPanel.rtv.Get(), clear);
         if (gTintDirty && gPanel.tintRtv != nullptr) {
@@ -2211,7 +2284,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             gTintDirty = false;
         }
         gPanelNeedsClear = false;
+        gGalaxyClearPending = false;
     }
+    tPanelPresent.stage = 2;
+    tPanelPresent.shown = panelShown;
     // Next frame's UI goes to the panel only if this one showed it (or nothing went there yet, so
     // the texture can be made), and the panel works.
     bool const armNext = engaged && uiToPanel && (frame.worldFrame || worldUiPending || worldUi) &&
@@ -2227,6 +2303,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     NoteGalaxyUi(galaxyWindowUi, draws, textDraws, earlyDraws, earlyTextDraws,
         gGalaxyEarlyUi.load(std::memory_order_relaxed), panelShown, now);
     gGalaxyEarlyUi.store(armNext && galaxyWindowUi, std::memory_order_release);
+    if (!galaxyWindowUi) gGalaxyOrderLines = 0;
 
     // ---- The gun's sight (plugin/SightLayers): a red dot or holo reticle, or a scope's picture ----
     // Worked out before the ring reticle, which hides while an eye looks through the sight (held 0.3 s so

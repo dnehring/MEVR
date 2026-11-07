@@ -4612,11 +4612,13 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw, bool textBatch
     const bool tint = !over && gameBlend != nullptr && bd.RenderTarget[0].BlendEnable != FALSE &&
                       bd.RenderTarget[0].DestBlendAlpha == D3D11_BLEND_DEST_ALPHA;
 
+    unsigned panelShaderHash = 0;
     {   // one line per distinct pixel shader, either way
         ID3D11PixelShader* ps = nullptr;
         ctx->PSGetShader(&ps, nullptr, nullptr);
         if (ps != nullptr) ps->Release();   // identity only (LookupPsHash keys on the pointer)
         const unsigned hash = LookupPsHash(ps);
+        panelShaderHash = hash;
         static unsigned s_seen[64] = {};    // render-thread only
         static int s_seenN = 0;
         bool seen = false;
@@ -4638,6 +4640,13 @@ bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk&& draw, bool textBatch
                           static_cast<unsigned>(bd.RenderTarget[0].RenderTargetWriteMask));
             LogLine(line);
         }
+    }
+    // [MEVR] Present resets the eye-copy flag before XR/desktop work. Its blended backbuffer draws
+    // are not the next game's Flash frame (mirrorPresentEvery can make them alternate).
+    if ((over || tint) && MELEVR::MevrBridge::HudPanelPresentDraw(panelShaderHash, textBatch))
+    {
+        if (gameBlend != nullptr) gameBlend->Release();
+        return false;
     }
     ID3D11RenderTargetView* panelRtv = (over || tint)
         ? MELEVR::MevrBridge::HudPanelTarget(ctx, td.Width, td.Height, static_cast<int>(rd.Format)) : nullptr;
@@ -6417,6 +6426,12 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     MELEVR::MevrBridge::PerfPresentScope mevrPerf(g_gameContext);   // [MEVR] frame-breakdown probe
     TickGpuTiming();
     const unsigned long long n = g_presentCount.fetch_add(1, std::memory_order_relaxed) + 1;
+    // [MEVR] research/51: retain ownership through original(), not just through the XR call.
+    struct PanelPresentScope {
+        int mirrorPath = 0;
+        explicit PanelPresentScope(unsigned long long present) { MELEVR::MevrBridge::HudPanelPresentBegin(present); }
+        ~PanelPresentScope() { MELEVR::MevrBridge::HudPanelPresentEnd(mirrorPath); }
+    } panelPresent(n);
     g_uiDepthCaptured = false;   // [RELIEF M0.5] re-arm the once-per-present UI-latch depth capture
     // [RELIEF M0.6] stereo probe+promote ONCE here from the fullest mid-scene capture (before the reset),
     // so only one good frame publishes per present - no white flash from early sparse mid-scene copies.
@@ -6594,6 +6609,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
                     LogLine("[MIRRORTHROTTLE] flat mirror present throttled to 1 frame in " +
                             std::to_string(every) + " (headset already submitted; mirror is cosmetic)");
                 }
+                panelPresent.mirrorPath = 1; // [MEVR] distinguish cosmetic skips in the galaxy UI trace
                 return S_OK;
             }
         }
@@ -6608,6 +6624,8 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         MELEVR::MevrBridge::SpectatorMirror(swapChain);
         g_sfrBbDirty.store(mevrDirty, std::memory_order_relaxed);
     }
+    panelPresent.mirrorPath = 2; // [MEVR] downstream overlays may draw inside this call
+    MELEVR::MevrBridge::HudPanelPresentDesktop(); // [MEVR] after XR, late wait and spectator mirror
     return original(swapChain, 0, presentFlags);
 }
 // Caller must hold g_hookMutex.

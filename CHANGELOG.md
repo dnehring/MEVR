@@ -7,6 +7,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## 0.1.0 (2026-11-07)
 
+- Galaxy map: isolate the label panel from XR/desktop Present draws and clear at the next game UI draw; log panel counts and rejected batches by Present phase/parity. Headset verification pending.
 - Setup's Launch now recovers from Steam elevation/compatibility and stale install paths, with clearer Windows errors and a launch log in problem reports.
 - Fixed sprint speed restoration touching a pawn destroyed during a level transition.
 - A power push started at the chest now casts when the arm extends, even if it has slowed below full casting speed.

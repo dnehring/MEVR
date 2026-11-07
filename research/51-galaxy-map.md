@@ -223,7 +223,7 @@ level's nebula, axes and rings come out as the game draws them, in stereo; the c
   the galaxy level (whether its picture is Flash or scene in the window) and going back out a level; the on-foot hologram is
   still ours (the plan: the game's projector hologram as the visual, our picks on it).
 
-### 8.2 Label flicker and the exit transition (2026-11-07, patch awaiting headset verification)
+### 8.2 Label flicker and the exit transition (2026-11-07; initial flicker patch insufficient, follow-up below)
 
 Owner: Quest 3, map opened at the CIC console; name tags flicker and exit stutters after the placement change.
 Read the `2026-11-07_04-36-52-340` and `04-36-54-201` snapshot JSONs, HUD/window/left-eye PNGs. Both have labels in the HUD,
@@ -266,3 +266,63 @@ the changed Halcyon translation unit passed its upstream warning setting. `git d
 Full builds, deployment and headset acceptance are left to the owner. In headset: hold still, pan and zoom through
 galaxy/cluster/system, check names remain attached in both eyes, open/cancel Travel, then close/reopen repeatedly.
 Expect one window pause, one final hold release, no reacquisition or fallback swapchain recreation during closing.
+
+#### 8.2.1 Frame ownership after e134beb (2026-11-07 14:00 Quest retest)
+
+The owner still sees flicker. Read the installed mod log and Halcyon log: at 14:01:00.725 the first opening totals
+643 frames, 642 with UI/text, max 45 draws, and 321 early frames with exactly 642 UI / 642 non-indexed draws.
+The next opening repeats the exact half-rate pattern (1553 frames, 776 early frames / 1552 early draws).
+Single-frame snapshots with labels do not establish temporal completeness. **The prior inference that these two
+draws were early Flash glyphs is unproven:** every non-indexed Draw was counted as text, including host/overlay draws.
+The new PS `CB6E09E3` at 14:00:46.110 uses src/dst alpha 5/6, unlike the observed Flash family 5/7;
+that is supporting evidence for a lookalike, not identification of its owner.
+
+Code establishes the following order on the immediate-context/Present thread:
+
+1. The game's scene and UI commands execute before its Present. In one-Draw mode, `RenderLevers::FinishHook`
+   replays the scene tail inside scene finish; `HookFViewportClientDraw` enqueues capture instead of a second Draw.
+   This is a stereo pair within one game frame, not alternating left/right Presents. The fallback can still enqueue
+   a second Draw; none is driven from `RunFrame` or from the mirror throttle.
+2. `d3d_capture::PresentHook` calls `SfrOnPresent`: capture pass 1, publish the pair, **reset pass-0-captured false**.
+   Thus `SfrUiMirrorArmed == false` also means *already finished the game's UI, now inside Present*, not just *before
+   this game's eye copy*. The e134beb early gate accepted either meaning while the galaxy panel was armed.
+3. `XrSession::OnPresent -> RunFrame`: pace/wait/begin (the wait may be late/blocking on streamed Quest), eye copies,
+   `OverlayLayers`: exchange the UI counters, blit panel to its swapchain, then clear colour/tint. Later XR work,
+   `xrEndFrame`, and any optional next-frame wait/begin all occur before returning from `OnPresent`. Waiting does
+   not run the next game render's immediate-context commands; deferred recording is excluded by the context gate.
+4. Only **after all of that**, `mirrorPresentEvery` decides whether to return S_OK or call the downstream desktop
+   Present. With every=2 the latter runs on alternate calls. Spectator mirror is on that latter path too (its own
+   blit is opaque). A blended backbuffer draw made inside downstream Present met the old early-capture gate,
+   landed **after the clear**, and polluted the *next* game's panel and counters. It was not lost between copy and
+   clear. Those leftover pixels were combined with the next UI, while its 2 non-indexed draws appeared as "early
+   text" in that next frame's statistic. This is a real ownership defect whether or not those batches are labels.
+
+**Fix:** a small `[MEVR]` scope brackets the entire Present including `original(...)`. Galaxy-only lookalike
+draws inside that scope are classified and counted but execute normally into their original target; they cannot
+write the panel. The galaxy colour and tint clear moves to `HudPanelTarget`, immediately before the first game
+UI draw after a retired panel. All subsequent batches accumulate until the next Present's copy. A frame with no
+game UI retains the previous complete image. No extra texture, swapchain, GPU readback, or wait. On leaving the
+galaxy window the old clear path cleans up; ordinary HUD, wheels, world screens and conversations keep their old
+capture gate and clear-after-copy behavior. Present ownership is thread-local so recording on another thread does
+not inherit its scope.
+
+**Proof for the next owner run:** `galaxy UI order:` logs the first 16 frames of an opening, then adjacent parity
+samples every 300 Presents. It runs *after downstream Present returns*. Fields: actual Present number/parity;
+mirror 0=no desktop call, 1=throttled, 2=downstream Present; copied UI/text/early counts, start-of-UI clears and shown flag; rejected
+UI/text candidates before copy, between copy and retirement, after retirement (remaining XR work/late wait and
+spectator mirror), and inside downstream Present, plus first PS hash per phase. "Retirement" is the former clear
+location, now the deferred-clear boundary. Rejected candidates never enter the copied counts.
+
+Expected in a stationary warm map: same copied UI/text counts on both parities/mirror paths, start-clears=1, shown=true. If the
+two batches came from downstream Present, `desktop 2/2` appears only on mirror=2, early drops to zero, and
+copy-retire/after-retire stay 0/0. They would formerly have appeared in the next frame's early counter. Other
+outcomes explicitly distinguish the alternatives: nonzero before-copy/copy-retire/after-retire locates reentry
+inside XR; remaining early counts outside Present are actual game-render candidates. **The supplied aggregate
+logs do not prove which phase or shader owns those two draws, nor that the panel's visible pixels alternate.**
+That attribution and visible flicker resolution remain [verify] in the headset; do not report them as measured.
+If copied counts still alternate or flicker persists with stable counts, capture consecutive panel images and
+investigate actual glyph/stencil coverage instead of inferring visibility from the non-indexed proxy.
+
+Validation: MSVC C++20 syntax checks passed for `HalcyonOverlays.cpp` under `/W4 /WX /permissive-` with monolithic
+LE1/main-menu definitions and for `d3d_capture.cpp` at Halcyon's warning setting. `git diff --check` passed.
+No build, deployment, runtime injection, or headset test performed; no commit. The owner builds and installs.
