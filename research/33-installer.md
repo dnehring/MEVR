@@ -848,6 +848,55 @@ held open without delete sharing, as a scanner holds it, refuses a replace at on
 The cost: the test that holds the ASI open on purpose (a running game) now waits the 1.27 s before its expected failure; a
 player whose game holds a file waits that long before the message.
 
+## Per-game SteamVR motion smoothing (2026-11-07)
+
+Display's **Motion smoothing (SteamVR)** row is visible only when `colour::GetMenuState().runtime` names SteamVR.
+It reads `[Display] steamvrSmoothing = steamvr|off` (default `steamvr`) from LE1MEVR.ini; opening the menu never
+queries or changes SteamVR. Only a player change starts hidden `ASI/MEVR-Setup.exe --steamvr-smoothing off|default`.
+`plugin/SteamVrSmoothingRequest` serializes requests on a worker, inherits only a private output pipe, and shows
+Setup's single result line in the row. A helper exceeding 30 seconds is stopped and reported as unconfirmed.
+The ini remembers the requested choice even if Setup fails; the note reports that failure. An outside dashboard
+change can therefore differ from the remembered choice; clicking either chip again reapplies it, including a retry
+after failure. No OpenVR initialization occurs in the game process.
+
+`install/SteamVrSettings` reads `%LOCALAPPDATA%/openvr/openvrpaths.vrpath` (`runtime` and `config` arrays), loads
+`runtime/bin/win64/openvr_api.dll` by absolute wide path, initializes as Background, then requests IVRSettings_003.
+It sets only the named app's `motionSmoothingOverride`, reads it back, shuts down and unloads. The minimal vtable
+prefix was checked against [Valve's header](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h)
+(first seven slots, no destructor or Sync slot). Background is application type 3 and explicitly does not start SteamVR.
+The retained BSD notice is in NOTICE.md and LICENSES/BSD-3-Clause-Valve.txt.
+
+Local evidence, read 2026-11-07: `Steam/config/steamvr.vrsettings` contains `steam.app.1328670` and its smoothing
+override. `Steam/logs/vrserver.txt` identifies MassEffect1.exe's OpenXR instance and scene as that same app key
+(e.g. 01:35:50 and 01:35:53). The installed dashboard's `chunk~8012d0c89.js` enum maps UseGlobal=0, ForceOn=1,
+ForceOff=2, ForceAlwaysOn=3. Its `onMotionSmoothChange` calls `setAppState("smoothing", value)` immediately,
+which calls `SetAppSettings(currentApp.key, ...)`; there is no restart warning on this control. Resolution/FOV
+controls have separate restart warnings in `localization/vrmonitor_english.json`. **Inference:** smoothing is
+intended to update live; our UI says changes are sent immediately. Actual compositor response to IVRSettings
+for this running OpenXR game remains **[verify]**, rather than claiming a measured live effect. No confirmed
+EA app key was found in the available logs or Valve documentation; the row explicitly says Steam version only.
+`--app <key>` is available for an explicitly identified non-Steam app key; no EA key is guessed.
+
+When initialization fails, `get` reports stopped (exit 1) if no vrserver is running. `off/default` may edit the
+discovered config's steamvr.vrsettings only with no vrserver.exe; failed process enumeration blocks the write.
+The edit replaces just the target value's bytes or inserts a missing member/section, retaining other values,
+precision, order, whitespace, line endings and BOM. Invalid JSON, ambiguous target objects, unreadable existing
+files, concurrent edits, and a server found at the final check are refused. A per-session mutex serializes Setup
+helpers; the fallback writes a PID-specific `.tmp`, closes it, rechecks the server/file, then moves over the file.
+There remains a narrow race if SteamVR starts between the final check and move; Windows provides no shared lock
+protocol with vrserver. A live API failure while vrserver exists never falls back to disk.
+
+Verification after building (not built/run in this edit-only handoff): `MEVR-Setup.exe --steamvr-smoothing get`
+with SteamVR running should print the app override (0 inherit, 1 on, 2 off, 3 always on) and exit 0; stopped it
+should print that SteamVR is not running and exit 1 without starting it or editing any file. `off` writes 2,
+`default` writes 0; stopped success says next launch. Exit 2 is usage, 3 a failure. Test stopped writes with a
+saved config copy and compare the diff. `mevr-tests` includes runtime/config parsing, Unicode/BOM, exact edits,
+insertions, idempotence, unrelated/nested settings, malformed/duplicate objects and invalid command/key tests.
+Run `mevr-menu-preview <folder>`: Display includes the row; `section-display-smoothing-off.png`,
+`section-display-smoothing-error.png`, and `section-display-other-runtime.png` cover results and visibility.
+The sandbox could read installed SteamVR code/config/logs but denied the user's openvrpaths.vrpath; live helper,
+visual preview and headset verification are pending the user's build.
+
 ## Open
 
 - **[verify]** In the game: the EA app build; "Install after I quit" end to end; "Start the game once" (section 9).

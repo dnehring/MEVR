@@ -215,6 +215,7 @@ $licences = [ordered]@{
     'FreeType-FTL.txt'               = 'external\freetype\docs\FTL.TXT'
     'FSR1-MIT.txt'                   = 'external\fsr1\LICENSE.txt'
     'OpenXR-Loader-Apache-2.0.txt'   = 'external\OpenXR-SDK\LICENSE'
+    'OpenVR-Valve-BSD-3-Clause.txt' = 'LICENSES\BSD-3-Clause-Valve.txt'
     'OpenXR-Loader-jsoncpp.txt'      = 'external\OpenXR-SDK\src\external\jsoncpp\LICENSE'
     'Rajdhani-OFL.txt'               = 'third_party\fonts\Rajdhani-OFL.txt'
     'TitilliumWeb-OFL.txt'           = 'third_party\fonts\TitilliumWeb-OFL.txt'

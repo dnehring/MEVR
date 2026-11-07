@@ -18,6 +18,7 @@
 //       on the Desktop unless --report-dir; --local reads another %LOCALAPPDATA%\MEVR, for tests; --from-game: started by
 //       the in-game menu, at background priority, its report.request's choices)
 //     | --check-update [--repo <url>]  (the update check: GitHub's latest release against this version)
+//     | --steamvr-smoothing get|off|default [--app <key>] (SteamVR per-app override; one line, no game detection or window)
 //     | --get-mem  (Mass Effect Modder's latest CLI build from its GitHub releases into %LOCALAPPDATA%\MEVR\tools, unpacked)
 //     | --install-pack <id> --file <download>  (a texture pack through MEM, recorded, our recorded VR game settings again where
 //       MEM wrote over them)
@@ -33,6 +34,7 @@
 
 #include "SetupApp.hpp"
 #include "install/Voice.hpp"
+#include "install/SteamVrSettings.hpp"
 
 #include "core/PngFile.hpp"
 #include "install/Detect.hpp"
@@ -1030,6 +1032,36 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     std::vector<std::wstring> args(argv + 1, argv + argc);
     LocalFree(argv);
+
+    // This command needs no game detection, UI, COM or OpenXR. Preserve a redirected stdout pipe from the host.
+    if (std::find(args.begin(), args.end(), L"--steamvr-smoothing") != args.end()) {
+        namespace smoothing = mevr::install::steamvr;
+        std::string command, app = smoothing::kApp;
+        bool valid = true;
+        bool seenCommand = false, seenApp = false;
+        for (std::size_t i = 0; i < args.size(); ++i) {
+            if (args[i] == L"--steamvr-smoothing" && !seenCommand && i + 1 < args.size()) {
+                seenCommand = true;
+                command = detect::Utf8(args[++i]);
+            } else if (args[i] == L"--app" && !seenApp && i + 1 < args.size()) {
+                seenApp = true;
+                app = detect::Utf8(args[++i]);
+            } else valid = false;
+        }
+        smoothing::Result result{2, "Usage: --steamvr-smoothing get|off|default [--app <key>]"};
+        try {
+            if (valid && seenCommand) result = smoothing::Smoothing(command, app);
+        } catch (...) { result = {3, "SteamVR smoothing failed; the change was not confirmed."}; }
+        HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (output == nullptr || output == INVALID_HANDLE_VALUE) {
+            AttachConsole(ATTACH_PARENT_PROCESS);
+            output = GetStdHandle(STD_OUTPUT_HANDLE);
+        }
+        std::string const line = result.line + "\n";
+        DWORD written = 0;
+        WriteFile(output, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
+        return result.code;
+    }
 
     Cli cli;
     mevr::setup::Options options;

@@ -16,6 +16,7 @@
 #include "install/Toc.hpp"
 #include "install/Updates.hpp"
 #include "install/Voice.hpp"
+#include "install/SteamVrSettings.hpp"
 #include "loader/LoaderCore.hpp"
 #include "TestTemp.hpp"
 
@@ -93,6 +94,60 @@ void TestJson() {
     ICHECK(!json::Parse("[1, 2"));
     ICHECK(!json::Parse("{} x"));
     ICHECK(json::Parse("\xEF\xBB\xBF{}").has_value());  // a byte order mark
+}
+
+void TestSteamVrSettings() {
+    namespace sv = mevr::install::steamvr;
+    std::string const paths = R"({"runtime":["","relative",42,"C:\\SteamVR"],"config":["D:\\Steam\\config"],"other":true})";
+    ICHECK(sv::RuntimePath(paths) == std::optional<fs::path>(L"C:\\SteamVR"));
+    ICHECK(sv::ConfigPath(paths) == std::optional<fs::path>(L"D:\\Steam\\config"));
+    ICHECK(!sv::RuntimePath("{}"));
+    ICHECK(!sv::RuntimePath(R"({"runtime":"C:\\SteamVR"})"));
+    ICHECK(!sv::RuntimePath(R"({"runtime":["relative","C:\\bad\u0000path"]})"));
+    ICHECK(!sv::RuntimePath("broken"));
+    ICHECK(sv::RuntimePath("\xEF\xBB\xBF" R"({"runtime":["C:\\VR-\u00e9"]})") ==
+           std::optional<fs::path>(L"C:\\VR-\u00e9"));
+
+    // Byte-exact except for the target value: CRLF, BOM, escaping, nested values and high-precision numbers survive.
+    std::string const original = "\xEF\xBB\xBF{\r\n   \"steam.app.1328670\" : {\r\n      \"motionSmoothingOverride\" : 1,\r\n"
+        "      \"resolutionScale\" : 1.234567890123456789\r\n   },\r\n"
+        "   \"steam.app.other\" : {\"motionSmoothingOverride\": 2},\r\n"
+        "   \"steamvr\" : {\"motionSmoothing\":true,\"nested\":[{},[1,2],\"}\\\"{\"]}\r\n}\r\n";
+    std::string expected = original;
+    expected.replace(expected.find("Override\" : 1") + 12, 1, "2");
+    auto const off = sv::EditSmoothing(original, sv::kApp, 2);
+    ICHECK(off && *off == expected);
+    if (off) {
+        ICHECK(sv::EditSmoothing(*off, sv::kApp, 2) == off); // idempotent
+        auto const inherit = sv::EditSmoothing(*off, sv::kApp, 0);
+        ICHECK(inherit && json::Parse(*inherit)->Get(sv::kApp).Number("motionSmoothingOverride") == 0);
+    }
+    for (std::string const text : {"{}", "{\r\n}\r\n", "{\"other\": [1, {\"x\": 2}]}",
+                                   "{\"steam.app.1328670\":{}}", "{\"steam.app.1328670\":{\n  \"keep\":true\n}}"}) {
+        auto const changed = sv::EditSmoothing(text, sv::kApp, 2);
+        ICHECK(changed.has_value());
+        auto const parsed = changed ? json::Parse(*changed) : std::nullopt;
+        ICHECK(parsed && parsed->Get(sv::kApp).Number("motionSmoothingOverride") == 2);
+        if (parsed) {
+            auto const before = json::Parse(text);
+            for (auto const& [key, value] : before->Members()) {
+                if (key != sv::kApp) ICHECK(json::Write(parsed->Get(key)) == json::Write(value));
+            }
+            ICHECK(sv::EditSmoothing(*changed, sv::kApp, 2) == changed);
+        }
+    }
+    ICHECK(!sv::EditSmoothing("{", sv::kApp, 2));
+    ICHECK(!sv::EditSmoothing("[]", sv::kApp, 2));
+    ICHECK(!sv::EditSmoothing(R"({"steam.app.1328670":false})", sv::kApp, 2));
+    ICHECK(!sv::EditSmoothing(R"({"steam.app.1328670":{},"steam.app.1328670":{}})", sv::kApp, 2));
+    ICHECK(!sv::EditSmoothing(R"({"steam.app.1328670":{"motionSmoothingOverride":0,"motionSmoothingOverride":2}})", sv::kApp, 2));
+    ICHECK(sv::EditSmoothing(R"({"steam.app.1328670":{"keep":"unchanged"}})", sv::kApp, 2) ==
+           std::optional<std::string>(R"({"steam.app.1328670":{"keep":"unchanged", "motionSmoothingOverride" : 2}})"));
+    ICHECK(!sv::EditSmoothing("{}", "bad\nkey", 2));
+    ICHECK(!sv::EditSmoothing("{}", "", 2));
+    ICHECK(!sv::EditSmoothing("{}", sv::kApp, 1)); // no force-on command
+    ICHECK(sv::Smoothing("bad-command").code == 2); // usage never loads OpenVR or edits the machine
+    ICHECK(sv::Smoothing("off", "bad\nkey").code == 2);
 }
 
 void TestIni() {
@@ -1625,6 +1680,7 @@ void TestBusyFile() {
 void RunInstallTests(int& failures) {
     gInstallFailures = &failures;
     TestJson();
+    TestSteamVrSettings();
     TestIni();
     TestHalcyonIni();
     TestUpstreamHalcyonIni();

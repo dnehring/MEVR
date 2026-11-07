@@ -22,7 +22,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-ALLOWED = ('MIT', 'GPL-3.0-only')
+ALLOWED = ('MIT', 'GPL-3.0-only', 'MIT AND BSD-3-Clause')  # SteamVrSettings.cpp's minimal Valve ABI declarations
 
 # Third-party code and data with their own licences, and the licence texts themselves.
 SKIP_PREFIXES = ('third_party/', 'external/', 'LICENSES/', 'reference/', 'mods/')

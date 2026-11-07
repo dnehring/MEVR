@@ -15,7 +15,8 @@ GPL VR mods.
   GPL-3.0 code, so the mod as built is a GPL-3.0 work.
 - **Our original files are MIT** (`LICENSES/MIT.txt`, Copyright (c) 2026 ME VR Attempt contributors).
   Every source file says which applies on its first line: `SPDX-License-Identifier: MIT` or
-  `SPDX-License-Identifier: GPL-3.0-only`. `python tools/check-spdx.py` lists files without one.
+  `SPDX-License-Identifier: GPL-3.0-only`; SteamVrSettings.cpp also retains BSD-3-Clause for Valve's ABI declarations.
+  `python tools/check-spdx.py` lists files without one.
 - **GPL-3.0-only, because they contain GPL code:** all of `src/halcyon/` (Halcyon's files and our seam
   header `mevr_bridge.h`), the Overlord-derived files in the table below (`src/core/ik/ArmPose.*`,
   `TouchReference.*`, `TwoHand.*`, `src/core/vr/Sights.*`, `src/core/vr/Ads.*`, `src/engine/BonePose.cpp`,
@@ -31,6 +32,13 @@ GPL VR mods.
   outputs, concept images and working files are not in the repository.
 
 Code it contains from other projects keeps its own license and notices:
+
+`src/install/SteamVrSettings.cpp` includes a minimal ABI prefix adapted from Valve Corporation's
+[OpenVR openvr.h](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h): the first seven
+IVRSettings_003 slots and the dynamically loaded initialization entry points. Copyright (c) 2015, Valve
+Corporation. BSD-3-Clause; the full notice, conditions and disclaimer are retained in
+[LICENSES/BSD-3-Clause-Valve.txt](LICENSES/BSD-3-Clause-Valve.txt). No OpenVR SDK or binary is bundled;
+MEVR Setup loads the user's installed SteamVR API. The implementation surrounding the ABI is original MIT code.
 
 | Code | Where | License |
 |------|-------|---------|

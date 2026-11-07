@@ -73,6 +73,7 @@ public:
         if (!seeded_) {
             seeded_ = true;
             v.texts["chip_headset"] = "PlayStation VR2 \xC2\xB7 SteamVR";
+            v.numbers["steamvr_runtime"] = 1;
             v.texts["chip_controllers"] = "Sense controllers";
             v.texts["chip_calibrated"] = "Calibrated";
             v.numbers["calibrated"] = 1;
@@ -134,7 +135,9 @@ public:
     }
     void Command(std::string const& name, std::string const& argument, mevr::menu::Values& v) override {
         std::printf("  command %s %s\n", name.c_str(), argument.c_str());
-        if (name == "reset") {
+        if (name == "steamvr_smoothing") {
+            v.texts["steamvr_smoothing"] = argument;
+        } else if (name == "reset") {
             v.numbers["reset_armed"] = v.Flag("reset_armed") ? 0.0f : 1.0f;
         }
     }
@@ -465,7 +468,7 @@ int main(int argc, char** argv) {
         }
         content->SetScrollTop(0.0f);
     };
-    for (char const* section : {"guide", "comfort", "controls", "voice", "hud"}) {
+    for (char const* section : {"guide", "comfort", "controls", "voice", "display", "hud"}) {
         scrolled(section);
     }
     // The Voice page's states (research/54 "The menu's Voice page"): speaking (the bar past the mark), quiet, a restart after a new
@@ -565,6 +568,22 @@ int main(int argc, char** argv) {
         content->SetScrollTop(content->GetScrollHeight());
         frames(10);
         save("section-display-quality");
+        if (Rml::Element* row = element("steamvr-smoothing-row")) row->ScrollIntoView(true);
+        frames(10);
+        save("section-display-smoothing-default");
+        model.SetText("steamvr_smoothing", "off");
+        model.SetText("steamvr_smoothing_note", "Off for this game. SteamVR has the change.");
+        frames(10);
+        save("section-display-smoothing-off");
+        model.SetText("steamvr_smoothing_note", "Couldn't change it in SteamVR. Try again; the log says why.");
+        frames(10);
+        save("section-display-smoothing-error");
+        model.SetNumber("steamvr_runtime", 0);
+        frames(10);
+        save("section-display-other-runtime");
+        model.SetNumber("steamvr_runtime", 1);
+        model.SetText("steamvr_smoothing", "steamvr");
+        model.SetText("steamvr_smoothing_note", "");
         model.SetNumber("headset_known", 0.0f);
         model.SetText("headset_text", ms::HeadsetSizesText(0, 0));
         model.SetText("quality", ms::ResolutionChoice(2824, 2880, 0, 0));
