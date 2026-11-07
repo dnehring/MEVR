@@ -1280,6 +1280,14 @@ void Tick(Link const& link) {
         // The owner's QA (2026-11-07): on approach the game's own projector, not our model; the map opens at its console.
         if (!settings.onFootHologram && !gOpen.pending && !gHold.active) {
             Forget(link, "on foot: the game's own projector ([Galaxy] onFootHologram = 0)");
+            // The projector's hologram is measured here, on foot, so the open map lies where it was: measured only once the
+            // map was open, the player camera was the map's and the disc came out 6 m away and tilted the wrong way (an oval,
+            // the owner's QA 2026-11-07).
+            if (inWorld) {
+                FindConsole();
+                gh::Scene measured;
+                PlaceInWorld(measured, settings);
+            }
             return;
         }
         if (picked && *mode == 0) {

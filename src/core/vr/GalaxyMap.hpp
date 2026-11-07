@@ -42,7 +42,7 @@ struct Settings {
                                    // (0: the captures' rectangle)
     bool windowOnHologram = true;  // windowOnHologram: the window lies where the projector's own hologram is, at its tilt and
                                    // size (the map takes its place; 0: upright over the table, windowWidthM wide)
-    float windowScale = 0.5f;      // windowScale: on the hologram, the window's size against the projector's hologram, about
+    float windowScale = 0.7f;      // windowScale: on the hologram, the window's size against the projector's hologram, about
                                    // its centre at the same tilt (the owner's QA, 2026-11-07: at 1 its near edge was at the eyes)
     bool onFootHologram = false;   // onFootHologram: our model of the map over the projector on foot (picked with the trigger);
                                    // 0 (default since 2026-11-07, the owner's QA): the game's own projector until the map opens
