@@ -70,8 +70,11 @@ shared: `core/vr/ConversationWorld` (unit-tested: `tests/ConversationWorldTests.
 - **The player's place.** The view on foot if it was Shepard's in the last 5 s and his pawn is within 3 m of it; else his eyes
   from his head bone (+8.9 forward, +1.7 right, +29.3 up units, arm IK's measure with the headset at the recenter point),
   facing his pawn's yaw (a conversation straight after a load or a cutscene: the medical bay's). It follows his head bone's jumps
-  past 0.40 m (`FollowHead`, `worldFollow = 1`), never its small moves and never the pawn's turns: the player's real
-  head replaces them, body follow turns the body under the view.
+  past 0.80 m that last three ticks (`FollowHeadSettled`, `worldFollow = 1`; 0.40 m until the survey, below, found a 0.4 m
+  animation step re-anchoring the player), never its small moves and never the pawn's turns: the player's real head replaces
+  them, body follow turns the body under the view.
+- **The setting.** Our menu's Comfort > Conversations: **First person** (`conversations = world`), In VR, 3D screen, Flat screen;
+  the conventional ways stay the default (the 3D screen). Cutscenes keep their three.
 - **The view.** The mod sends the place and the POV's addresses (recorded by an `Engine.Camera.UpdateCamera` post-handler in
   mode 5); the host swaps the place into the POV around the main view's `CalcSceneView` only (`GalaxyViewSwapBegin`, the galaxy
   map's and the world screens' seam): the director's camera still serves the game. The tracking frame for arm IK and the
@@ -157,11 +160,102 @@ people have no AI to send, their gestures are authored standing, and Anderson's 
 every line; standing still is the better default. Next if the headset says someone behind you is wrong: walk only the first move
 of each person, at the speed of the scene.
 
+## The survey and the scan: every conversation (2026-11-06, night)
+
+The owner: "I imagine there are many scenes that we need to address, it sounds like you only did the early levels", then "we would
+also need to categorize some of the scenes which would be bad in the first person mode. I'm thinking of things like the boss fights
+where the camera moves to different locations to frame things differently", and "Is there a reason you can't use the decompiling
+approach to get these scenes programmatically?". Two tools came of it: a survey that plays conversations in the game, and a scan of
+the game's packages that classifies all of them without it. The scan answers "which scenes"; the survey answers "does our fix hold".
+
+### The survey (in the game)
+
+`tools/conversation-survey.ps1 -Maps <persistent level> -Lists <name filters> [-Streams] [-Filter text]`: opens the map (a fresh
+Shepard, `disconnect` first), plays any conversation that starts by itself, then fires each `BioSeqAct_StartConversation` of the
+level's script (`mevr instances`, `mevr activate n 0`, as its event would; one per conversation, by the action's `Conv`), picks a
+random used wheel slot while the wheel is up, skips lines otherwise (`mevr convo pick|skip`), ends a conversation that loops past
+`-ConversationSeconds` (`mevr convo end`: `BioConversation.EndConversation`), and keeps the mod's end-of-conversation line
+(`convo: summary {...}`: shots by kind, not seeable from Shepard's eyes, far shots, jumps undone and drawn, the player's place
+re-anchored). `-Streams` touches each of the map's `BioTriggerStream` volumes in turn (Shepard moved onto it) and surveys what that
+area loaded, skipping volumes that show no chunk not seen yet (Noveria: 62 of 209). `tools/conversation-survey.py --all` tabulates.
+`UsedBy` and `SFXGameModeDefault.Used` started nothing; the Kismet actions do, out of plot order.
+
+**28 conversations played** (the Normandy, the Citadel's arrival, Noveria's Port Hanshan and Peak 15 through its volumes), **0
+jumps onto marks seen in a drawn frame**: the transmissions (12: one shot on Shepard throughout, nobody in the room), the staged
+ones (Pressly, Joker seated, Liara, Mira, Anoleis, Gianna Parasini, Lorik Qui'in, Mallene Calis), the Oculon approach (41 shots, 26
+jumps undone), and the Ilos approach and opening, where the player's place followed Shepard's steps: at 0.40 m a 0.4 m step of
+his animation moved the player four times in a 13 s scene; at 0.80 m once in the 45 s approach (Maeko's greeting: twice).
+**Limits:** a fresh map is the story's start: Feros, Virmire and Therum never reached gameplay from `open` (their persistent levels
+wait for the landing), and plot conditions are skipped (a conversation can play out of its story). Slow: about 1.8 minutes per
+volume before the chunk filter, 1-3 per conversation. The mod now also counts **far shots** (the camera more than 8 m from
+Shepard's eyes) and the farthest camera (`farShots`, `cameraFarM` in the summary).
+
+### The scan (the packages, no game)
+
+`tools/conversation-scan` (C#, GPL-3.0 like the cockpit packager, over Legendary Explorer's `LegendaryExplorerCore` by path, never
+copied) reads every LE1 package that can hold a conversation (the English localised ones and the levels' own; 2,058 of 4,947, 33 s)
+and writes one JSON line per `BioConversation` (lines, speakers, camera intimacy, GUI styles, ambient lines), per
+`BioSeqAct_StartConversation` (its conversation and its stage: the `BioStage` actor and its `BioStageType`, whose marks the game
+puts the actors on and whose cameras it cuts between) and per line's matinee (the node sequence's `BioSeqEvt_ConvNode` and the
+`SeqAct_Interp` it fires: every group and track). `python tools/conversation-scan.py scan.jsonl [--list <kind>] [--csv out]`
+joins them per conversation. Its output is the game's data: kept out of the repository (only these counts are ours).
+
+What a line's matinee holds, over the whole game (34,858 lines): voice and gesture tracks on all; `BioEvtSysTrackSwitchCamera`
+(the stage's cameras) on 8,971; **`InterpGroupDirector` (authored camera cuts, a cutscene's own) on 1,187**; `InterpTrackMove` on
+742 (groups named for a camera, `Cam`, `matcam`, `CamNav`, `Flyer`, or for a person, `kaidan`, `Wrex`, `Saren`, `shep`); look-at
+3,213, set-facing 2,397, fades 101.
+
+**The kinds** (each conversation the first that applies):
+
+| Kind | Rule | Count | What first person does with it |
+|---|---|---|---|
+| ambient | every line ambient (barks, no conversation mode) | 57 | nothing: not a conversation in mode 5 |
+| framed | authored camera (a director track or a moving camera) on a quarter or more of its lines | 18 | loses the composition: the set pieces |
+| remote | started on the game's `transmission` stage, or a transmission or distress call by name | 19 | fine: a voice or a hologram, nobody to see |
+| walks | someone walks an authored path during a line (a move track on a person) | 23 | the walk is kept unless past 6 m [verify each] |
+| stage | played on a stage: the game puts people on its marks | 172 | the marks' jumps are undone (above) |
+| free | no stage, no authored camera or walk: people stay where they stand | 202 | as on foot |
+
+| Area | free | stage | remote | walks | framed | ambient |
+|---|---|---|---|---|---|---|
+| CHA (squadmates) | 2 | 5 | 0 | 3 | 0 | 0 |
+| END (the Citadel's end) | 3 | 2 | 0 | 3 | 1 | 0 |
+| ICE (Noveria) | 39 | 32 | 0 | 1 | 0 | 8 |
+| JUG (Virmire) | 19 | 10 | 0 | 3 | 1 | 2 |
+| LAV (Therum) | 3 | 2 | 0 | 0 | 0 | 4 |
+| LOS (Ilos) | 13 | 3 | 0 | 0 | 1 | 1 |
+| NOR (the Normandy) | 9 | 18 | 4 | 2 | 8 | 2 |
+| PRC (Bring Down the Sky) | 5 | 2 | 0 | 4 | 2 | 2 |
+| PRO (Eden Prime) | 17 | 7 | 0 | 0 | 0 | 5 |
+| SP (assignments) | 18 | 13 | 15 | 1 | 0 | 7 |
+| STA (the Citadel) | 43 | 58 | 0 | 5 | 4 | 22 |
+| WAR (Feros) | 28 | 20 | 0 | 1 | 1 | 4 |
+| others (combat, default, UNC) | 3 | 0 | 0 | 0 | 0 | 0 |
+| **all 491** | 202 | 172 | 19 | 23 | 18 | 57 |
+
+**The framed set pieces** (authored camera on lines/of lines): Saren at the end (`end90_saren`, 28/45), Sovereign on Virmire
+(`jug70_sovereign`, 53/78), the door on Ilos (`los10_trig_door00`, 10/20), Anderson's briefing and the comm room on the Normandy
+(`nor10_captain` 71/72, `nor10_comm_room` 17/17), the Ilos approach and opening (`nor20_ilos_approach` 22/27, `nor20_ilos_open`
+2/7), leaving the Oculon (`nor20_leaving_oculon` 25/49, with 9 walks), the empty locker (`nor20_empty_locker`, 5 fades), Kaidan's
+and Liara's starts, Bring Down the Sky's discovery and console, the Citadel's scenic view, the stripper's seat, Wrex at Fist's,
+Saren before the Council (`sta90_council_saren`, 14/31), Feros' entry (`war30_trig_01_entry`, 15/43). These are the owner's "boss
+fights". The survey's runtime "framed" (a third of the shots far, or half not seeable) agreed where both saw a scene (the Ilos
+approach and opening), and found one the data can't: the Council's hologram call before Virmire (`nor20_virmire_open`, 8 of 12
+shots not seeable), which the scan calls remote.
+
+**Checked against the survey** where both saw a conversation: the 12 runtime transmissions are all remote, the Oculon approach
+(26 jumps undone) and Noveria's staged ones are stage, the Ilos scenes framed.
+
+**What it means for First person:** 395 conversations (free, stage, remote) are the cases the world mode was built and measured
+on; 23 walks need a look each; **18 framed set pieces are composed for a camera elsewhere**: the next step is to show those on the
+3D screen even in First person (by name from the scan's list, or by the runtime rule: far shots), the rest in the world.
+
+
 ## Limits and next
 
-- **One conversation measured.** Eden Prime's Cole (`UsedBy` on the pawn starts nothing; Shepard was then killed by the geth)
-  and the Normandy's other people (`SFXGameModeDefault.Used` needs the gaze selection on the NPC) weren't reached. Next: Pressly,
-  Joker, Nihlus on the Normandy, a Citadel conversation with cutaways; `mevr convo` logs each.
+- **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the
+  runtime numbers (jumps undone, drawn) are from 28. Next in the game: the 18 framed set pieces and the 23 walks, from the
+  scan's lists, started by `tools/conversation-survey.ps1 -Filter <name>` on their map.
 - **NPC teleports at cuts**: undone since the evening (above); Shepard's own body snapping back onto his pawn after a cutscene
   still moves the player once.
 - **Reverse shots are lost** (half the shots): the player sees whom Shepard faces, not Shepard. Intended.

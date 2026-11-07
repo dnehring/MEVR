@@ -621,7 +621,8 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return game_menu_request::Inject(which);
     }
     if (verb == "convo") {
-        // `mevr convo [dump | world on|off|screen|vr]`: the conversation now (research/59), or how the next one is shown.
+        // `mevr convo [dump | world on|off|screen|vr | pick | skip | end]`: the conversation now (research/59), or how the next one
+        // is shown. A level's conversations start from its script: `mevr instances BioSeqAct_StartConversation`, `mevr activate n 0`.
         std::string rest;
         std::getline(words, rest);
         return conversation_world::Command(rest);

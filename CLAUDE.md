@@ -368,7 +368,7 @@ switching frameworks.
   `setConversationWorld`; `core/vr/ConversationWorld`, `game/ConversationWorld`, host `plugin/ConversationWorld`; **off by default**,
   `[Cinematics] conversations = world`, live): in game mode 5 the player stands at Shepard's place (the view on foot if fresh, else
   his head bone + the first-person eye offset, facing his pawn), head tracked, both eyes, full rate; the place follows his head
-  bone's jumps past 0.4 m (`FollowHead`). The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
+  bone's jumps past 0.8 m that last 3 ticks (`FollowHeadSettled`); our menu's Comfort > Conversations: First person. The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
   `view_anchor::Hold` (arm IK, body follow); `MevrBridge::ConversationInWorld` in five `[MEVR]` seams in xr_session.cpp (not a cine,
   the second eye's gate as gameplay, the conversation movie's authored layout, the cine capture boundary: else the UI stays in the
   eyes, `[NOLETTERBOX]`: else a 16:9 band) and one in head_aim.cpp (the first-person hides). The conversation movie goes to the
@@ -381,8 +381,13 @@ switching frameworks.
   30 units in a frame (under 6 m) is undone with `Actor.SetLocation` in the `Camera.UpdateCamera` post-handler (before the draw: 0 of
   25 seen in a drawn frame), NPCs turn toward their look-at target at `worldTurnDegPerS`, and the player's place follows Shepard's
   head bone only when a jump lasts 3 ticks (`FollowHeadSettled`).
-  `mevr convo [dump | world on|off | pick <slot> | skip]` (pick only with the wheel up: a pick between lines crashed the game).
-  Snapshot `"mod"."conversationWorld"`.
+  `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
+  Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
+  `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into
+  free 202, stage 172, remote 19, walks 23, **framed 18** (authored camera cuts: the set pieces, Saren, Sovereign, the Council) and
+  ambient 57; `tools/conversation-survey.ps1` (+ `.py`) plays a map's conversations in the game through its Kismet actions
+  (`-Streams`: area by area) and tabulates the mod's `convo: summary` lines (28 played, 0 jumps drawn). It opens maps: back up the
+  saves first.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

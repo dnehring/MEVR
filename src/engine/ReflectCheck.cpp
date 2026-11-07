@@ -1178,6 +1178,7 @@ void CheckFunctions() {
         "SFXGame.BioSFHandler_GalaxyMap.TravelConfirm",
         "SFXGame.BioSFHandler_Conversation.SelectConversationEntry",  // game/ConversationWorld: mevr convo pick
         "SFXGame.BioSFHandler_Conversation.SkipConversation",
+        "SFXGame.BioConversation.EndConversation",               // ... mevr convo end
         "SFXGame.BioPawn.GetWeaponStartTraceLocation",
         "Engine.Pawn.GetWeaponStartTraceLocation",
         "SFXGame.BioPlayerController.GetAdjustedAimFor",

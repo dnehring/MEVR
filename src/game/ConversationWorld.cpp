@@ -76,6 +76,8 @@ ue3::FunctionRef gSkipConversation{"SFXGame.BioSFHandler_Conversation.SkipConver
 // Keeping people where they stand (research/59 "Keeping people in place"): the game's placements are native (no script call or
 // event moves them, call trace 2026-11-06), so a jump is undone after it, in the camera update of the same tick, before the draw.
 ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
+// The survey's `mevr convo end` (research/59 "The survey"): the conversation's own end, for one that loops past its time.
+ue3::FunctionRef gEndConversation{"SFXGame.BioConversation.EndConversation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
 
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
@@ -360,6 +362,9 @@ struct Convo {
     std::optional<ik::Vec3> anchorHead;  // Shepard's head bone where the hold was last placed
     vr::conversation_world::FollowState follow;  // the hold and its anchor, for FollowHeadSettled
     int reanchors = 0;
+    int lines = 0;      // lines spoken (the subtitle field changed to a new text)
+    std::map<std::string, int> speakers;  // who spoke, how often
+    bool stage = false;
     int kept = 0;       // jumps undone (people kept where they stood)
     int letGo = 0;      // jumps too long to undo (a scripted entrance)
     std::vector<Tracked> actors;
@@ -375,6 +380,8 @@ struct Convo {
     bool haveShot = false;
     std::map<std::string, int> shotKinds;
     int shotsHidden = 0;   // shots whose subject can't be seen from Shepard's eyes
+    int shotsFar = 0;      // shots framed from far off (the camera past kFarCameraM from Shepard's eyes): a set piece's framing
+    double cameraFarM = 0; // the farthest any shot's camera stood from Shepard's eyes
     int wheelOpenings = 0;
     bool wheel = false;
     double eyeToViewMax = 0.0;  // Shepard's head bone from the held view's eyes (the player's), largest
@@ -618,6 +625,13 @@ void LogShot(ue3::Object* pawn, ik::Vec3 eyes) {
         }
     }
     double const camToEyes = Dist(cam, eyes) / kUnitsPerMeter;
+    // A director's camera far from Shepard (a boss's entrance, a wide shot of the room) frames what his eyes can't: the survey's
+    // "framed" scenes, which first person shows from a place the scene wasn't composed for.
+    constexpr double kFarCameraM = 8.0;
+    if (camToEyes > kFarCameraM) {
+        ++gC.shotsFar;
+    }
+    gC.cameraFarM = std::max(gC.cameraFarM, camToEyes);
     bool const subjectIsShepard = subject != nullptr && subject->actor == pawn;
     std::string kind;
     std::string key;
@@ -663,6 +677,7 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
     gC.world = CurrentMode() == cw::Mode::World;
     ue3::Object* const pawn = player::Pawn(controller);
     ue3::Object* const stage = gStage.Read<ue3::Object*>(conv).value_or(nullptr);
+    gC.stage = stage != nullptr;
     log::Info("convo: conversation {} began: {} (owner {}, player {}, stage {}{}{}); shown {}", gC.number, gC.name,
         ShortName(gOwner.Read<ue3::Object*>(conv).value_or(nullptr)), ShortName(gConvPlayer.Read<ue3::Object*>(conv).value_or(nullptr)),
         ShortName(stage), stage != nullptr && player::Location(stage) ? " at " + F(V(*player::Location(stage))) : std::string(),
@@ -751,6 +766,20 @@ void End(char const* why) {
                   "(people kept in place, {} of them seen in a drawn frame), {} long moves let through", gC.eyeToViewMax / kUnitsPerMeter, gC.kept,
             gDrawnJumps, gC.letGo);
     }
+    // One line for the survey (tools/conversation-survey.ps1): everything above as numbers.
+    double maxMove = 0.0;
+    for (Tracked const& t : gC.actors) {
+        maxMove = std::max(maxMove, t.maxMove);
+    }
+    log::Info("convo: summary {{\"name\": \"{}\", \"why\": \"{}\", \"seconds\": {:.1f}, \"stage\": {}, \"actors\": {}, \"lines\": {}, "
+              "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
+              "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
+              "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}}}",
+        gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
+        gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
+        gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
+        gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
+        gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM);
     gC = {};
 }
 
@@ -778,6 +807,8 @@ void Sample(ue3::Object* conv, ue3::Object* controller, ue3::Object* pawn, ik::V
     if (subtitle != gC.subtitle) {
         gC.subtitle = subtitle;
         if (!subtitle.empty()) {
+            ++gC.lines;
+            ++gC.speakers[ShortName(speaker)];
             log::Info("convo: at {:.1f} s the line: \"{}\"", Seconds(), subtitle);
         }
     }
@@ -952,7 +983,7 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     }
     // The player's place follows Shepard's head bone when it jumps (a stage's placement, a cut to a new mark): re-anchored past
     // kReanchorUnits, never for the head's own small moves (gestures, breathing), which the player's real head replaces.
-    constexpr double kReanchorUnits = 40.0;
+    constexpr double kReanchorUnits = 80.0;  // 0.4 m: his own steps in the comm room moved the player 4 times (2026-11-06)
     auto const shepardHead = HeadOf(pawn);
     // Settled over 3 ticks: a pawn put back (people kept in place) drags his mesh there and back within a tick.
     constexpr int kSettleTicks = 3;
@@ -1113,8 +1144,18 @@ std::string Command(std::string const& rest) {
         return std::format("convo: {} called {}{}", verb == "pick" ? std::format("SelectConversationEntry({})", location) : "SkipConversation",
             called, parms.ReturnBool() ? std::format(", returned {}", *parms.ReturnBool()) : std::string());
     }
+    if (verb == "end") {
+        // The conversation's own end (tests: a survey's conversation that loops past its time).
+        if (!gC.on || gC.object == nullptr || !ue3::runtime::IsAlive(gC.object) || gEndConversation.Get() == nullptr) {
+            return "convo: no conversation to end";
+        }
+        ue3::Params p(ue3::runtime::Get(), gEndConversation.Get());
+        bool const called = ue3::runtime::Call(gC.object, gEndConversation.Get(), p);
+        return std::format("convo: EndConversation called {}", called);
+    }
     if (verb == "dump" || verb.empty()) {
-        std::string out = std::format("convo: mode {}; ", cw::Name(CurrentMode()));
+        auto const gameMode = player::GameMode(player::Controller());
+        std::string out = std::format("convo: mode {}; game mode {}; ", cw::Name(CurrentMode()), gameMode ? static_cast<int>(*gameMode) : -1);
         if (!gC.on) {
             return out + "no conversation";
         }
@@ -1126,7 +1167,7 @@ std::string Command(std::string const& rest) {
         }
         return out;
     }
-    return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip]";
+    return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end]";
 }
 
 std::string StatusJson() {
