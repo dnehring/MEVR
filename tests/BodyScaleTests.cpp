@@ -38,6 +38,10 @@ int RunBodyScaleTests() {
     CHECK(bs::Factor(250.0, 150.0, 100.0) == bs::kMax);  // clamped
     CHECK(bs::Factor(120.0, 169.0, 100.0) == bs::kMin);
     CHECK(!bs::Factor(30.0, 169.0, 100.0) && !bs::Factor(184.0, 0.0, 100.0) && !bs::Factor(NAN, 169.0, 100.0));
+    // A bad floor reading (2026-11-06, the owner's QA: Shepard's eyes "50.3 m" and the view "39.5 m" above it took the scale to
+    // kMin for good): no factor, and neither height counts.
+    CHECK(!bs::Factor(3948.3, 5031.8, 100.0) && !bs::Factor(183.2, 5031.8, 100.0) && !bs::Factor(493.4, 167.5, 100.0));
+    CHECK(bs::Plausible(183.2, 100.0) && !bs::Plausible(3948.3, 100.0) && !bs::Plausible(40.0, 100.0));
 
     // The scale about a floor point under the view: the floor stays, the eyes rise by s, the head stays over the pivot.
     bs::Scale scale{1.1, {10.0, 5.0, 3.7}};

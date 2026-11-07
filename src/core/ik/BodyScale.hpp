@@ -15,6 +15,10 @@ namespace mevr::ik::body_scale {
 inline constexpr double kOffWithin = 0.002;
 inline constexpr double kMin = 0.85;
 inline constexpr double kMax = 1.25;
+// A standing eye height in metres that can be (2026-11-06, the owner's QA: a floor read 50 m below Shepard took the scale to
+// kMin and kept it there; "when I do the recenter, I'm still much taller than the in-game avatar").
+inline constexpr double kMinEyeM = 0.5;
+inline constexpr double kMaxEyeM = 2.5;
 
 struct Scale {
     double s = 1.0;
@@ -33,8 +37,10 @@ double UnscaleLength(Scale const& scale, double length);
 Transform Apply(Scale const& scale, Transform t);
 
 // The factor that puts Shepard's eyes where the view is: the view's standing height above the floor over Shepard's eye height
-// (both measured standing, unscaled, the same units), clamped to kMin..kMax; nullopt for heights that can't be (below 0.5 m
-// or not finite: no measurement yet).
+// (both measured standing, unscaled, the same units), clamped to kMin..kMax; nullopt for heights that can't be (outside
+// kMinEyeM..kMaxEyeM or not finite: no measurement yet, or a bad floor reading).
+// True for an eye height (component units) a standing person can have: kMinEyeM..kMaxEyeM.
+bool Plausible(double eyeHeight, double unitsPerMeter);
 std::optional<double> Factor(double viewEyeHeight, double shepardEyeHeight, double unitsPerMeter);
 
 // Moves `current` toward `target` by at most `ratePerSecond` x dt (a change of size never pops).
