@@ -520,6 +520,21 @@ traces the left hand's ray for the point, each action is validated and dispatche
 `[SquadOrders] minConfidence` (0.6) is refused with the unresolved words (where a model would take over). The typed stand-in
 for the recognizer: `tools/console.ps1 "mevr say Garrus, take out those troops on the bridge"`. Not yet run in the game.
 
+### The names: first names, surnames, short forms, ranks (2026-11-06)
+
+The roster carries the game's first name per squadmate (`HenchmanByClass`: ASHLEY, KAIDAN, GARRUS, WREX, TALI, LIARA) and,
+until today, no aliases in the game: "Williams", "Alenko", "Vakarian" and "Chief" only reached the model tier (which took
+"Williams, go sidearm" right, at 0.7-0.85 s and as a guess). `squad_context::KnownAliases(name)` is the table the dataset's
+`ROSTER` already trained the model on, extended: Garrus/Vakarian; Wrex/Urdnot/Rex; Liara/T'Soni/Tsoni; Tali/Zorah/
+Tali'Zorah; Ashley/Williams/Ash/Chief; Kaidan/Alenko/Lieutenant. `game/SquadContext`'s `Roster()` fills `RosterEntry::aliases`
+from it, so the parser matches them (a single word fuzzily at 0.5, a multi-word alias exactly), the model's prefix lists
+them after the name as the training prefix did (the live prefix had none: closer to the training distribution now), and the
+recognizer's key terms carry them (`game/Voice`'s `UpdateKeyterms`: "Vakarian", "Ash"), so Moonshine spells them right.
+A guard with it: a word of under four letters is a name only when said exactly ("as" was Ash at 0.67 once "Ash" was an alias;
+"Rex" and "Ash" are aliases, so they're exact). Tested in `TestSquadParser` (t'soni, chief, "williams and tsoni" = ALL, "as
+soon as you can, liara"). "Everyone", "everybody", "all of you", "you two", "both of you", "squad", "team", "all", "both"
+are the whole squad; no name at all is everyone for an order that needs someone.
+
 ## Standing orders: memory above the game's one-shot orders (2026-11-04, later)
 
 The user, before any in-game check: "how we'd handle more complex grammar and memory, like 'hold the bridge': they would hold

@@ -897,6 +897,20 @@ std::string Block(Scene const& scene, std::vector<Group> const& groups, std::vec
     return out;
 }
 
+std::vector<std::string> KnownAliases(std::string_view name) {
+    std::string key;
+    for (char c : name) key += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    while (!key.empty() && key.back() == ' ') key.pop_back();
+    // The first alias is the name's spoken form (the dataset lists it first too: tools/voice-model/make_dataset.py's ROSTER).
+    if (key == "garrus") return {"Garrus", "Vakarian"};
+    if (key == "wrex") return {"Wrex", "Urdnot", "Rex"};
+    if (key == "liara") return {"Liara", "T'Soni", "Tsoni"};
+    if (key == "tali") return {"Tali", "Zorah", "Tali'Zorah"};
+    if (key == "ashley") return {"Ashley", "Williams", "Ash", "Chief"};
+    if (key == "kaidan") return {"Kaidan", "Alenko", "Lieutenant"};
+    return {};
+}
+
 std::string Prefix(std::vector<RosterEntry> const& roster) {
     std::string out =
         "You turn a spoken squad order into one line: WHO|WEAPON|POWER|ORDER|TARGET.\n"

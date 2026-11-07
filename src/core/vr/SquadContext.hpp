@@ -328,4 +328,9 @@ struct RosterEntry {
 };
 std::string Prefix(std::vector<RosterEntry> const& roster);
 
+// The names a player calls one of LE1's six squadmates by, for the roster's first name as the game gives it ("ASHLEY",
+// any case): the first name, the surname, the short forms and the rank ("Chief", "Lieutenant"). The parser matches them
+// (fuzzy, among the present), the model's prefix lists them, and the recognizer is biased toward them. Unknown: empty.
+std::vector<std::string> KnownAliases(std::string_view name);
+
 }  // namespace mevr::vr::squad_context

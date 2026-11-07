@@ -5140,6 +5140,19 @@ void TestSquadParser() {
     CHECK(p.clauses.size() == 1 && p.clauses[0].supportOf == 0 && p.confidence < 0.6f);
     p = Parse("wrex, target those, garrus, hold here", two, five, four, st);
     CHECK(p.clauses.size() == 2 && line(p, 0) == "W|-|-|attack|PT1" && line(p, 1) == "G|-|-|hold|-");
+    // The known aliases (the game names them "ASHLEY"): surnames, short forms and ranks are the squadmate; a word of
+    // under four letters is a name only when said exactly ("as" is not Ash).
+    std::vector<sc::RosterEntry> known = four;
+    for (sc::RosterEntry& e : known) e.aliases = sc::KnownAliases(e.letter == 'A' ? "ASHLEY" : e.letter == 'G' ? "GARRUS" : e.letter == 'W' ? "Wrex" : "liara");
+    CHECK(known[0].aliases.size() == 2 && known[0].aliases[1] == "Vakarian" && sc::KnownAliases("SQUADMATE").empty());
+    p = Parse("t'soni, hold here", two, five, known, st);  // the present two are Liara and Ashley
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "L|-|-|hold|-" && p.confidence > 0.99f);
+    p = Parse("chief, hold here", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "A|-|-|hold|-");
+    p = Parse("williams and tsoni, take those out", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "ALL|-|-|attack|PT1");
+    p = Parse("as soon as you can, liara, hold here", two, five, known, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "L|-|-|hold|-");
 }
 void TestSquadStanding() {
     using namespace mevr::vr::squad_standing;
@@ -10107,7 +10120,18 @@ void TestMenuSettings() {
         CHECK(text(shipped, "guide_rstick") == "Turn, hold: powers");
         CHECK(text(shipped, "guide_rstick_how").find("recenter") != std::string::npos);
         CHECK(text(shipped, "guide_rgrip") == "Draw and holster");
-        CHECK(text(shipped, "guide_x") == "Grenade" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Back (menus)");
+        CHECK(text(shipped, "guide_x") == "Power wheel" && text(shipped, "guide_y") == "Medi-gel" && text(shipped, "guide_b") == "Back (menus)");
+        // The powers (research/55, 2026-11-06): the wheel at the left hand, the lock and the push, the self-cast gestures.
+        CHECK(text(shipped, "guide_pick").find("Hold X") != std::string::npos);
+        CHECK(text(shipped, "guide_cast").find("Push your open hand") != std::string::npos);
+        CHECK(text(shipped, "guide_self").find("chest") != std::string::npos && text(shipped, "guide_self").find("Unity") != std::string::npos);
+        ms::GuideInput noHandWheel = shipped;
+        noHandWheel.handWheel = false;
+        CHECK(text(noHandWheel, "guide_x") == "Grenade");
+        CHECK(text(noHandWheel, "guide_cast").find("right stick click") != std::string::npos);
+        ms::GuideInput noGestures = shipped;
+        noGestures.selfGestures = false;
+        CHECK(text(noGestures, "guide_self").rfind("Pushed", 0) == 0);
         CHECK(text(shipped, "guide_melee").find("right fist") != std::string::npos);  // [Throwables] meleeFist (2026-11-05)
         ms::GuideInput withB = shipped;
         withB.meleeButton = true;
@@ -10129,6 +10153,7 @@ void TestMenuSettings() {
         CHECK(text(noHold, "guide_rgrip") == "Draw, powers" && text(noHold, "guide_rstick") == "Turn");
         ms::GuideInput x = shipped;
         x.powerWheel = "x";
+        x.handWheel = false;  // with the hand's power wheel on, X is that wheel
         CHECK(text(x, "guide_x") == "Powers");
         ms::GuideInput b = shipped;
         b.powerWheel = "b";
@@ -10154,6 +10179,7 @@ void TestMenuSettings() {
         kept.grenadeHands = "left";
         kept.walk = "hand";
         kept.turn = "snap";
+        kept.handWheel = false;  // X free of the hand's power wheel
         CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Back (menus)");
         CHECK(text(kept, "guide_lgrip") == "Two-handed grip" && text(kept, "guide_lgrip_how").find("vent") == std::string::npos);
         CHECK(text(kept, "guide_lgrip_how").find("grenade") != std::string::npos);
