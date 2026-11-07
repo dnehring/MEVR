@@ -153,8 +153,8 @@ struct Hold {
 };
 Hold gHold;
 
-// The game's own map as a stereo window over the table (research/51 section 8): the game's map camera as it was this tick (before
-// the held view replaced it) and two captures from it, side by side.
+// The game's own map as a stereo window over the table (research/51 section 8): the untouched map camera after UpdateCamera,
+// and two captures from it, side by side. The CIC hold is applied only inside the main view's CalcSceneView.
 struct MapPov {
     bool valid = false;
     ue3::Vector location{};
@@ -536,8 +536,8 @@ void StepPick(ue3::Object* behavior, HWND window) {
     }
 }
 
-// Camera.UpdateCamera, after the game's: on foot, remember the view; while the map is open in-world, put that view back (the
-// game's camera would show the map's own scene).
+// Camera.UpdateCamera, after the game's: remember the on-foot view and the live map POV. Publish addresses for the host's
+// scoped CalcSceneView swaps; leave CameraCache untouched here (the native map label update needs the map camera).
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     ue3::Object* const controller = player::Controller();
     if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) {
@@ -585,7 +585,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         return;
     }
     if (mode && *mode == kGalaxyMode) {
-        // The game's map camera (the window's captures look from it), before the held view replaces it.
+        // The game's map camera (the window's captures look from it); no held view is written here.
         gMapPov = MapPov{true, *pov->location, *pov->rotation, *pov->fov, GetTickCount64()};
     }
     // The held view goes in at render time only (the host's CalcSceneView seam): the game keeps its map camera here, so the
@@ -1104,6 +1104,18 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
     gWindow.crop = crop;
     gWindow.convergeUU = converge;
     ++gWindow.pointed;
+    // The host's label-projecting CalcSceneView uses exactly the POV just sent to these captures. The ordinary
+    // player POV can advance before the next end-of-tick Point (especially while easing/zooming).
+    constexpr float kUnitToRad = 6.2831853f / 65536.0f;
+    scene.camera.location[0] = gMapPov.location.x;
+    scene.camera.location[1] = gMapPov.location.y;
+    scene.camera.location[2] = gMapPov.location.z;
+    scene.camera.pitch = static_cast<float>(gMapPov.rotation.pitch) * kUnitToRad;
+    scene.camera.yaw = static_cast<float>(gMapPov.rotation.yaw) * kUnitToRad;
+    scene.camera.roll = static_cast<float>(gMapPov.rotation.roll) * kUnitToRad;
+    scene.camera.fovXDeg = gMapPov.fovDeg;
+    scene.camera.aspect = static_cast<float>(gWindow.eyes[0].Width()) / static_cast<float>(gWindow.eyes[0].Height());
+    scene.camera.valid = 1;
     scene.windowOn = 1;
     scene.windowFloat = 0;
     scene.windowRound = settings.windowRound ? 1 : 0;

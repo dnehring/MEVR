@@ -39,6 +39,8 @@ constexpr std::uintptr_t kCalcSceneViewRva = 0x4C5300;
 constexpr std::uintptr_t kFViewportClientDrawRva = 0x4C71A0;
 constexpr std::uintptr_t kFViewportClientDrawEndRva = 0x4C9434;
 constexpr std::uintptr_t kGameplayCalcSceneViewReturnRva = 0x4C7A4E;
+// [MEVR] research/51 8.3: native player world-to-pixel helper (0xCBB830), used by the map's label update (0xC40B10).
+constexpr std::uintptr_t kWorldToPixelCalcSceneViewReturnRva = 0xCBB9F0;
 constexpr std::uintptr_t kLikelyAllocateViewStateRva = 0x742B70;
 constexpr std::uintptr_t kSceneRenderBRva = 0x76EE20;
 constexpr std::uintptr_t kSceneRenderCRva = 0x767900;
@@ -2831,6 +2833,25 @@ void* __fastcall HookCalcSceneView(void* a1, void* a2, void* a3, void* a4, void*
     const bool isPrimary = retRva == kGameplayCalcSceneViewReturnRva &&
                            reinterpret_cast<std::uintptr_t>(a1) ==
                                g_primaryLocalPlayer.load(std::memory_order_acquire);
+
+    // [MEVR] Galaxy labels are projected during BioCameraBehaviorGalaxy.Tick, through this auxiliary view, NOT the
+    // main CIC view. Upstream post-processes every perspective view outside AER: that widened these labels to the
+    // headset FOV, translated them by an eye/lean and rotated them with the head, while the captures stayed on the
+    // map camera. Pin this calculation to the captures' published POV and return the engine's projection unchanged.
+    // Do this before the main-view swap and every stereo/FOV/head edit (and their global view-state publications).
+    if (retRva == kWorldToPixelCalcSceneViewReturnRva && MELEVR::MevrBridge::GalaxyProjectionSwapBegin())
+    {
+        struct ProjectionRestore {
+            void* location;
+            void* rotation;
+            float p0 = 0.0f, p5 = 0.0f;
+            ~ProjectionRestore() { MELEVR::MevrBridge::GalaxyProjectionSwapEnd(location, rotation, p0, p5); }
+        } restore{a3, a4};
+        void* const mapView = g_origCalc(a1, a2, a3, a4, a5, a6);
+        float p15 = 0.0f;
+        ReadRawProjMatrixSEH(mapView, &restore.p0, &restore.p5, &p15);
+        return mapView;
+    }
 
     // [MEVR] The galaxy map in the CIC (research/51 section 8): the main view is built from the view held at Shepard's while
     // the game keeps its map camera for everything else (its Flash labels, its cursor's picks).

@@ -274,6 +274,10 @@ bool GalaxyHeld() noexcept;
 // the held view into the player camera's POV (true: it did) and End puts the game's map camera back.
 bool GalaxyViewSwapBegin() noexcept;
 void GalaxyViewSwapEnd() noexcept;
+// [MEVR] The map's native world-to-pixel helper builds an auxiliary CalcSceneView. Use the camera last sent to
+// the window captures (game thread, before the next end-of-tick Point), and leave that view free of VR edits.
+bool GalaxyProjectionSwapBegin() noexcept;
+void GalaxyProjectionSwapEnd(void const* location, void const* rotation, float p0, float p5) noexcept;
 // Each frame the hologram is shown: the render's symmetric half angles (radians, the game's own projection), so the game
 // pointer gets the game's screen as a quad in the room through the map's centre (core/vr/GalaxyMap VirtualScreen).
 void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept;

@@ -4,8 +4,9 @@ The question (user, 2026-11-03): the game's full-screen experiences should be be
 Normandy: instead of a full-screen view steered with the left stick, show the map as a hologram over the CIC's projector and
 travel by pointing and clicking. For ME2, planet scanning could become an automatic scan that takes a planet's resources at once.
 
-Everything below is read from our code and the generated SDK headers (`external/LExSDKv2/Src/LESDK/LE1|LE2/`, class layouts and
-function signatures; nothing disassembled). **[inferred]** marks what the headers only suggest; nothing here was tried in the game.
+The initial survey below reads our code and generated SDK headers (`external/LExSDKv2/Src/LESDK/LE1|LE2/`, class layouts and
+function signatures). Later sections identify game measurements and native analysis separately. **[inferred]** marks what
+the headers only suggest; the initial survey was not tried in the game.
 
 ## 1. What we do today (LE1)
 
@@ -326,3 +327,61 @@ investigate actual glyph/stencil coverage instead of inferring visibility from t
 Validation: MSVC C++20 syntax checks passed for `HalcyonOverlays.cpp` under `/W4 /WX /permissive-` with monolithic
 LE1/main-menu definitions and for `d3d_capture.cpp` at Halcyon's warning setting. `git diff --check` passed.
 No build, deployment, runtime injection, or headset test performed; no commit. The owner builds and installs.
+
+### 8.3 Tags projected through a VR-edited auxiliary view (2026-11-07)
+
+Owner: Quest 3, 14:00-14:04, names near their objects but moving independently; setting `windowDepth = 0` did not help.
+Inspected both `2026-11-07_14-00-56-615` and `14-00-58-449` left-eye/HUD/window PNG triplets and JSONs. The rings stay
+nearly fixed in window UV; the leaders are substantially displaced. For example, Citadel's leader tip is near normalized
+X 0.32 on the HUD while its ring is near 0.15 on the window. Identical layer poses, UI 4.264 x 4.691 m and window
+4.212 x 4.692 m, cannot explain that offset. The 1.2% crop is far smaller. Two samples do not measure continuous motion.
+
+**Code-confirmed cause: the tag projection gets the renderer's VR edits.** Native analysis of LE1 2.0.0.48602 with
+`tools/ghidra` in an isolated, read-only copy of the local project established this chain (no game code copied here):
+
+- The script entry is `SFXGame.BioCameraBehaviorGalaxy.Tick`, native thunk `+0xB95180`, dispatching virtual slot `+0x2D8`.
+  The implementation at `+0xC51F20` occupies that slot and calls the label updater at `+0xC40B10`.
+- That updater reads `m_pScaleformObjects` (`+0x17C`), projects each actor's Location and batches the resulting pixel
+  coordinates to the GalaxyMap movie. Thus this calculation belongs to the camera behaviour's native update, rather
+  than a separate script `BioSFHandler_GalaxyMap.Update` or a `Canvas.Project` call that calltrace could intercept.
+- The player world-to-pixel helper at `+0xCBB830` calls `ULocalPlayer::CalcSceneView`, returning to **`+0xCBB9F0`**,
+  projects through the returned view, then converts normalized coordinates to viewport pixels (Y inverted).
+- Our main-view hold recognizes only `+0x4C7A4E`; the label helper does **not** receive Shepard's held POV. However,
+  upstream `HookCalcSceneView` runs `PostProcessPerspectiveFsv` on **every** perspective view outside AER. In the owner's
+  Stereo 2 session this includes the label helper: target FOV, metric eye/common translation, head rotation and asymmetric
+  eye projection. The map captures are built separately from `gMapPov` and do not go through that hook.
+
+This links hypotheses 1 and 3: the wrong *view matrices* reach the labels even though CameraCache was restored correctly.
+The 14:00:56.742 `[RENDER_FOV_MATCH]` gives P00/P11 0.726543/0.700208; the galaxy `[XRDECL]` at 14:00:53.825 declares
+108/110 degrees. A 72-degree horizontal capture has P00 1.376382 and P11 about 1.251 at 720x792. Horizontal offsets
+are compressed to about 0.528 of the capture's, consistent with Citadel. Head rotation/translation on that same helper
+also explains swimming while the captures stay on the map camera. XRDECL alone would not have proved the label path.
+
+**Fix:** a narrow `[MEVR]` branch for `+0xCBB9F0` with a fresh, held in-world window. `GalaxyProjectionSwapBegin/End`
+temporarily installs the capture centre POV, calls the engine's CalcSceneView and returns its native matrices without
+`PostProcessPerspectiveFsv` or any of its global publications. RAII restores the live map POV immediately. Separate swap
+storage leaves the main CIC hold intact. Flat maps and other screens keep their previous path. All new POV writes are journaled.
+
+**Camera timing (hypothesis 2):** `plugin/Entry::GameEngineTickHook` calls the mod after the original engine tick;
+`game/GalaxyMap::Tick -> StepWindow` sends SetView/SetFov/ForceUpdateComponents then publishes the scene. The next native
+label update can see a newer live camera than that configuration. `StepWindow` now puts the exact capture centre POV in
+`Scene.camera`, and the label helper uses that published configuration until the next Point/publication. This makes the
+tag calculation and the configured captures agree through easing/zoom as well as when still. A temporal mismatch was not
+measured in the supplied run; it is handled by camera ownership rather than guessed offsets or a fixed delay.
+
+**Owner log to check: `galaxy projection:`**, every 5 s in LE1MEVR.log. It identifies `+0xCBB9F0`, the capture sequence,
+`VR edits bypassed`, raw P00/P11 versus expected capture P00/P11, actual CalcSceneView-output location/rotation delta
+against the capture centre, live-to-capture location/FOV difference before the swap, and restoration. For a 72-degree
+720x792 capture expect approximately `raw P 1.376382/1.251256, capture P 1.376382/1.251256`, `view read true`,
+`delta 0.000 uu / 0 rotator units`, including while moving the head. The client/capture aspect rounding can differ by
+about 0.03%; large scale or view deltas indicate an additional native projection modifier and must not be called a pass.
+`[XRDECL]` may still say 108/110: it describes the CIC's headset scene, which still needs that projection.
+
+Validation: MSVC syntax checks passed for GamePointer.cpp and GalaxyMap.cpp under C++20 `/W4 /WX /permissive-` with
+monolithic LE1/main-menu definitions, and render_hook.cpp under its C++17/upstream warning setting. An isolated harness
+executed the actual extracted swap scope with real Scene Publish/Latest/Forget: disabled/incomplete scenes, capture versus
+advanced live POV, rotation round trip, nested begin, next capture sequence and restoration all passed. The harness's
+synthetic projection log reports zero pose delta and equal scales; this is not a measurement from the game.
+`git diff --check` passed. No game build, install, injection, commit or headset test. The owner builds/installs; check
+stationary tags, head turns/leans, zoom/selection through galaxy/cluster/system, travel and close/reopen. Keep the existing
+window pose, size, crop, depth, backdrop and UI frame-ownership patch. Visible alignment and temporal acceptance remain [verify].

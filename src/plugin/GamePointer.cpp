@@ -18,6 +18,7 @@
 #include "core/Hook.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/GamePointer.hpp"
 #include "core/vr/GuiEvents.hpp"
@@ -864,6 +865,9 @@ struct GalaxyViewSwap {
 };
 GalaxyViewSwap gGalaxySwap;  // game thread (CalcSceneView)
 std::uint64_t gGalaxySwaps = 0;
+GalaxyViewSwap gGalaxyProjectionSwap;  // separate from the CIC hold; never leaves the native projection call
+mevr::vr::galaxy_holo::GameCamera gGalaxyProjectionCamera;
+std::uint32_t gGalaxyProjectionSequence = 0;
 
 bool SwapIn(GalaxyViewSwap& s, float const location[3], std::int32_t const rotation[3], float fov) noexcept {
     __try {
@@ -893,7 +897,92 @@ void SwapOut(GalaxyViewSwap& s) noexcept {
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
 }
+
+void JournalProjectionSwap() noexcept {
+    auto const& s = gGalaxyProjectionSwap;
+    mevr::write_journal::Wrote("GalaxyMap.projectionLocation", s.location, sizeof(float) * 3);
+    mevr::write_journal::Wrote("GalaxyMap.projectionRotation", s.rotation, sizeof(std::int32_t) * 3);
+    mevr::write_journal::Wrote("GalaxyMap.projectionFov", s.fov, sizeof(float));
+}
+
+// CalcSceneView's output location/rotation, before any headset edits, against the capture's centre camera.
+bool ProjectionDelta(void const* location, void const* rotation, float& units, int& angle) noexcept {
+    __try {
+        auto const* at = static_cast<float const*>(location);
+        auto const* rot = static_cast<std::int32_t const*>(rotation);
+        auto const& camera = gGalaxyProjectionCamera;
+        float const dx = at[0] - camera.location[0], dy = at[1] - camera.location[1], dz = at[2] - camera.location[2];
+        units = std::sqrt(dx * dx + dy * dy + dz * dz);
+        angle = 0;
+        float const radians[3] = {camera.pitch, camera.yaw, camera.roll};
+        for (int i = 0; i < 3; ++i) {
+            int const expected = static_cast<int>(std::lround(radians[i] * (65536.0f / 6.2831853f)));
+            int const delta = static_cast<int>(static_cast<std::int16_t>(rot[i] - expected));
+            angle = (std::max)(angle, std::abs(delta));
+        }
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
 } // namespace
+
+bool GalaxyProjectionSwapBegin() noexcept {
+    auto& swap = gGalaxyProjectionSwap;
+    if (swap.active) {
+        return false;
+    }
+    auto const scene = mevr::vr::galaxy_holo::Latest(500);
+    if (!scene || !scene->inWorld || !scene->windowOn || !scene->holdRender || !scene->camera.valid ||
+        scene->povLocationAddress == 0 || scene->povRotationAddress == 0 || scene->povFovAddress == 0) {
+        return false;
+    }
+    auto const& camera = scene->camera;
+    std::int32_t const rotation[3] = {
+        static_cast<std::int32_t>(std::lround(camera.pitch * (65536.0f / 6.2831853f))),
+        static_cast<std::int32_t>(std::lround(camera.yaw * (65536.0f / 6.2831853f))),
+        static_cast<std::int32_t>(std::lround(camera.roll * (65536.0f / 6.2831853f)))};
+    swap.location = reinterpret_cast<float*>(scene->povLocationAddress);
+    swap.rotation = reinterpret_cast<std::int32_t*>(scene->povRotationAddress);
+    swap.fov = reinterpret_cast<float*>(scene->povFovAddress);
+    if (!SwapIn(swap, camera.location, rotation, camera.fovXDeg)) {
+        return false;
+    }
+    JournalProjectionSwap();
+    swap.active = true;
+    gGalaxyProjectionCamera = camera;
+    gGalaxyProjectionSequence = scene->sequence;
+    return true;
+}
+
+void GalaxyProjectionSwapEnd(void const* location, void const* rotation, float p0, float p5) noexcept {
+    auto& swap = gGalaxyProjectionSwap;
+    if (!swap.active) {
+        return;
+    }
+    SwapOut(swap);  // restore the live map POV before logging or returning to the native caller
+    JournalProjectionSwap();
+    swap.active = false;
+    static std::uint64_t nextLogMs = 0;
+    std::uint64_t const now = GetTickCount64();
+    if (now < nextLogMs) {
+        return;
+    }
+    nextLogMs = now + 5000;
+    auto const& camera = gGalaxyProjectionCamera;
+    float units = 0.0f;
+    int angle = 0;
+    bool const read = ProjectionDelta(location, rotation, units, angle);
+    float const captureP0 = 1.0f / std::tan(camera.fovXDeg * (3.14159265f / 360.0f));
+    float const dx = swap.savedLocation[0] - camera.location[0];
+    float const dy = swap.savedLocation[1] - camera.location[1];
+    float const dz = swap.savedLocation[2] - camera.location[2];
+    mevr::log::Info("galaxy projection: native world-to-pixel CalcSceneView +0xCBB9F0, capture sequence {}; VR edits bypassed; "
+                   "raw P {:.6f}/{:.6f}, capture P {:.6f}/{:.6f} (hFov {:.2f}); view read {}, delta {:.3f} uu / {} rotator units; "
+                   "live-to-capture {:.3f} uu / {:.3f} FOV deg; map POV restored",
+        gGalaxyProjectionSequence, p0, p5, captureP0, captureP0 * camera.aspect, camera.fovXDeg, read, units, angle,
+        std::sqrt(dx * dx + dy * dy + dz * dz), swap.savedFov - camera.fovXDeg);
+}
 
 bool GalaxyViewSwapBegin() noexcept {
     // The galaxy map in the CIC, or one of the game's screens standing in the room (research/53: the shop's camera looks at a
