@@ -158,6 +158,8 @@ Settings ReadSettings(ini::File const& file, std::string* problems) {
     ReadRange(file, "gunWidthM", 0.02f, 0.5f, s.gunWidthM, problems);
     ReadRange(file, "gunBackM", -0.5f, 1.0f, s.gunBackM, problems);
     ReadRange(file, "gunUpM", -0.2f, 0.3f, s.gunUpM, problems);
+    ReadRange(file, "pistolSideM", -0.3f, 0.3f, s.pistolSideM, problems);
+    ReadRange(file, "pistolUpM", -0.2f, 0.3f, s.pistolUpM, problems);
     if (auto const text = ini::Get(file, "Hud", "wristOffset"); text && !ini::Trim(*text).empty()) {
         float parts[3] = {};
         if (ParseNumbers(*text, 3, parts) && std::abs(parts[0]) <= 0.5f && std::abs(parts[1]) <= 0.5f && std::abs(parts[2]) <= 0.5f) {
@@ -240,9 +242,11 @@ XrVector3f WristPoint(XrPosef const& grip, XrVector3f const& offset) {
     return {grip.position.x + moved.x, grip.position.y + moved.y, grip.position.z + moved.z};
 }
 
-XrVector3f GunPoint(XrVector3f const& muzzle, XrVector3f const& direction, XrVector3f const& top, float backM, float upM) {
-    return {muzzle.x - direction.x * backM + top.x * upM, muzzle.y - direction.y * backM + top.y * upM,
-        muzzle.z - direction.z * backM + top.z * upM};
+XrVector3f GunPoint(XrVector3f const& muzzle, XrVector3f const& direction, XrVector3f const& top, float backM, float upM, float sideM) {
+    XrVector3f const right{direction.y * top.z - direction.z * top.y, direction.z * top.x - direction.x * top.z,
+        direction.x * top.y - direction.y * top.x};
+    return {muzzle.x - direction.x * backM + top.x * upM + right.x * sideM, muzzle.y - direction.y * backM + top.y * upM + right.y * sideM,
+        muzzle.z - direction.z * backM + top.z * upM + right.z * sideM};
 }
 
 } // namespace mevr::vr::hud_pieces

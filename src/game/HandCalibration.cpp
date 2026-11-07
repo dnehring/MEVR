@@ -639,7 +639,8 @@ constexpr char const* kHudBlock =
     "; and the medi-gel count) on the back of your left wrist, wristWidthM wide (meters); wristOffset = x y z moves it, in\n"
     "; the left controller's grip axes (meters: x out of the palm, y toward the elbow, z down the handle). gunStatus: 1 =\n"
     "; the weapon panel (the gun, its heat strip, the grenade count) on the drawn gun, gunWidthM wide, gunBackM behind the\n"
-    "; muzzle and gunUpM above the bore. wristCrop / gunCrop = x y width height (fractions of the HUD frame) set a piece's\n"
+    "; muzzle and gunUpM above the bore; the pistol's beside it instead, pistolSideM to its right (negative: left) and\n"
+    "; pistolUpM above the bore, clear of its sight. wristCrop / gunCrop = x y width height (fractions of the HUD frame) set a piece's\n"
     "; part of the HUD by hand; empty: the measured place.\n"
     "wristStatus = 1\n"
     "wristWidthM = 0.08\n"
@@ -648,6 +649,8 @@ constexpr char const* kHudBlock =
     "gunWidthM = 0.06\n"
     "gunBackM = 0.15\n"
     "gunUpM = 0.04\n"
+    "pistolSideM = -0.05\n"
+    "pistolUpM = 0\n"
     "wristCrop =\n"
     "gunCrop =\n";
 
@@ -3094,6 +3097,9 @@ void Refresh() {
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
         // A faster holster (2026-11-06); also the marker for releaseGrace's move above.
         {L"Hands", "Hands", L"holsterRate", "holsterRate", L"15.0"},
+        // The pistol's weapon panel beside the gun, clear of its sight (2026-11-06).
+        {L"Hud", "Hud", L"pistolSideM", "pistolSideM", L"-0.05"},
+        {L"Hud", "Hud", L"pistolUpM", "pistolUpM", L"0"},
         {L"Hands", "Hands", L"constantEye", "constantEye", L"1"},
         {L"Hands", "Hands", L"blendFix", "blendFix", L"1"},  // read by the host (research/38 B)
         {L"Hands", "Hands", L"crouchDrop", "crouchDrop", L"0"},  // read by the host (2026-11-04: no double crouch drop)

@@ -9338,6 +9338,10 @@ void TestHudPieces() {
     // The gun point: behind the muzzle along the barrel, up toward the gun's top.
     XrVector3f const anchor = hp::GunPoint({0.0f, 1.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.15f, 0.04f);
     CHECK(close(anchor.x, 0.0, 1e-6) && close(anchor.y, 1.04, 1e-6) && close(anchor.z, -0.85, 1e-6));
+    // The pistol's: beside the gun, its left (gun along -Z, top +Y: right is +X).
+    XrVector3f const beside = hp::GunPoint({0.0f, 1.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, 0.15f, 0.0f, -0.05f);
+    CHECK(close(beside.x, -0.05, 1e-6) && close(beside.y, 1.0, 1e-6) && close(beside.z, -0.85, 1e-6));
+    CHECK(close(hp::Settings{}.pistolSideM, -0.05, 1e-6) && hp::Settings{}.pistolUpM == 0.0f);
 
     // Settings: defaults, values, and bad values kept out with a word each.
     hp::Settings const defaults = hp::ReadSettings(mevr::ini::File{});

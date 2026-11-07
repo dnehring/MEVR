@@ -75,6 +75,10 @@ struct Settings {
     XrVector3f wristOffset{-0.03f, 0.06f, 0.05f};
     float gunBackM = 0.15f;  // the gun anchor: this far behind the muzzle along the barrel...
     float gunUpM = 0.04f;    // ...and this far above the bore toward the gun's top
+    // The pistol's panel beside the gun instead of on top (2026-11-06, the user: on top "it interferes with the sights"):
+    // this far to its right (negative: its left) and this far above the bore.
+    float pistolSideM = -0.05f;
+    float pistolUpM = 0.0f;
     Rect wristCrop;  // the status band by hand (fractions of the HUD frame); width 0: the measured default
     Rect gunCrop;    // the weapon panel's band by hand; width 0: the measured default
 };
@@ -106,7 +110,9 @@ bool Place(XrVector3f const& position, XrVector3f const& head, float widthM, flo
 XrVector3f WristPoint(XrPosef const& grip, XrVector3f const& offset);
 // Where the gun quad's centre goes: `backM` behind the muzzle along `direction` (unit), `upM` toward `top` (unit,
 // perpendicular to the direction; the gun's top).
-XrVector3f GunPoint(XrVector3f const& muzzle, XrVector3f const& direction, XrVector3f const& top, float backM, float upM);
+// `sideM` to the gun's right (direction x top; negative: its left).
+XrVector3f GunPoint(XrVector3f const& muzzle, XrVector3f const& direction, XrVector3f const& top, float backM, float upM,
+    float sideM = 0.0f);
 
 // "a b c ..." or "a, b, c": exactly `count` numbers into `out`; false otherwise.
 bool ParseNumbers(std::string_view text, int count, float* out);
