@@ -102,6 +102,32 @@ struct FollowState {
 };
 bool FollowHeadSettled(FollowState& state, Vec3 const& headNow, double threshold, int settle);
 
+// ---- Walking to lasting stage marks (prototype) ------------------------------------------------------------------------------
+// Positions/distances are in Unreal units; times are monotonic seconds. Each observed native placement is a NEW request,
+// even for the same mark. End consumes it (arrival, timeout or cancellation): no retry until another placement.
+enum class WalkPhase { Idle, Waiting, Walking };
+class MarkWalk {
+public:
+    void Jump(Vec3 wanted, Vec3 standing, double nowS, double minUnits);
+    bool StartIfSettled(Vec3 standing, double nowS, double settleS, double minUnits);
+    void End() { phase_ = WalkPhase::Idle; }
+    WalkPhase Phase() const { return phase_; }
+    Vec3 Wanted() const { return wanted_; }
+    double WantedAtS() const { return wantedAtS_; }
+
+private:
+    Vec3 wanted_;
+    double wantedAtS_ = 0.0;
+    WalkPhase phase_ = WalkPhase::Idle;
+};
+
+struct WalkStep {
+    Vec3 place;
+    Vec3 velocity;  // units per second, from the actual step (including the shorter final step)
+    bool arrived = false;
+};
+WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double dtS);
+
 // The set pieces (research/59 "The scan"): the 18 conversations whose lines are a quarter or more authored camera work (a
 // director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...), composed for a camera elsewhere.
 // In the world mode they go to the 3D screen (`[Cinematics] worldSetPieces = screen`). `name` is the conversation's object

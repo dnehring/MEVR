@@ -69,14 +69,14 @@ def main(argv):
         return 1
     best, tried = load(paths)
     rows = sorted(best.values(), key=lambda rs: (rs[0]['map'], kind(rs[1]), rs[1]['name']))
-    print('| Map | Conversation | Kind | s | Lines | Shots | On Shepard | Cutaway | Not seeable | Far shots | Camera max m | Kept | Drawn | Let go | Player moved | Max move m |')
-    print('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
+    print('| Map | Conversation | Kind | s | Lines | Shots | On Shepard | Cutaway | Not seeable | Far shots | Camera max m | Kept | Drawn | Let go | Walks | Player moved | Max move m |')
+    print('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
     counts = {}
     for r, s in rows:
         k = kind(s)
         counts[k] = counts.get(k, 0) + 1
         print(f"| {r['map']} | {s['name'].split('.')[-1]} | {k} | {s['seconds']:.0f} | {s['lines']} | {s['shots']} | {s['onShepard']} | "
-              f"{s['cutaway']} | {s['notSeeable']} | {s.get('farShots', '?')} | {s.get('cameraFarM', '?')} | {s['kept']} | {s['drawn']} | {s['letGo']} | {s['reanchors']} | {s['maxMoveM']:.2f} |")
+              f"{s['cutaway']} | {s['notSeeable']} | {s.get('farShots', '?')} | {s.get('cameraFarM', '?')} | {s['kept']} | {s['drawn']} | {s['letGo']} | {s.get('walks', 0)} | {s['reanchors']} | {s['maxMoveM']:.2f} |")
     print()
     print(f"{len(rows)} conversations from {tried} actions tried ({', '.join(f'{k} {n}' for k, n in sorted(counts.items()))}); "
           f"drawn jumps in total: {sum(s['drawn'] for _, s in rows)}")

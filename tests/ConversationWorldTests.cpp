@@ -91,8 +91,8 @@ void TestSubtitlePoint() {
     CHECK(cw::SubtitlePoint(face, eyes, 0.22f, 0.15f, out));
     CHECK(Close(out.x, 0.0) && Close(out.y, 1.38) && Close(out.z, -1.85));
     // Toward the eyes at most half the way: a face 0.2 m away takes 0.1 m.
-    XrVector3f const near{0.2f, 1.6f, 0.0f};
-    CHECK(cw::SubtitlePoint(near, eyes, 0.2f, 0.5f, out));
+    XrVector3f const closeFace{0.2f, 1.6f, 0.0f};
+    CHECK(cw::SubtitlePoint(closeFace, eyes, 0.2f, 0.5f, out));
     CHECK(Close(out.x, 0.1) && Close(out.y, 1.4));
     // Straight above or below the eyes (no level line to them): no place.
     CHECK(!cw::SubtitlePoint({0.0f, 0.5f, 0.0f}, eyes, 0.2f, 0.1f, out));
@@ -128,6 +128,85 @@ void TestFollowHead() {
     CHECK(cw::FollowHeadSettled(now, {95.0, -35.0, 130.0}, 40.0, 0));
 }
 
+void TestMarkWalk() {
+    cw::Vec3 const standing{100.0, 200.0, 50.0};
+    cw::Vec3 const mark{250.0, 200.0, 50.0};
+    cw::MarkWalk walk;
+    CHECK(walk.Phase() == cw::WalkPhase::Idle);
+    CHECK(!walk.StartIfSettled(standing, 10.0, 2.5, 50.0));  // no placement, no walk
+
+    walk.Jump(mark, standing, 10.0, 50.0);
+    CHECK(Close(walk.Wanted().x, 250.0) && Close(walk.WantedAtS(), 10.0));
+    CHECK(walk.Phase() == cw::WalkPhase::Waiting);
+    CHECK(!walk.StartIfSettled(standing, 12.499, 2.5, 50.0));
+    CHECK(walk.StartIfSettled(standing, 12.5, 2.5, 50.0));  // exact settle boundary
+    CHECK(walk.Phase() == cw::WalkPhase::Walking);
+    CHECK(!walk.StartIfSettled(standing, 20.0, 2.5, 50.0));  // start once
+    walk.End();
+    CHECK(!walk.StartIfSettled(standing, 30.0, 2.5, 50.0));  // arrival/timeout consumes the request
+
+    // Every newer placement restarts the clock, including the SAME mark.
+    walk.Jump(mark, standing, 30.0, 50.0);
+    walk.Jump(mark, standing, 32.0, 50.0);
+    CHECK(Close(walk.WantedAtS(), 32.0));
+    CHECK(!walk.StartIfSettled(standing, 32.5, 2.5, 50.0));
+    walk.Jump({100.0, 400.0, 50.0}, standing, 34.0, 50.0);
+    CHECK(!walk.StartIfSettled(standing, 36.499, 2.5, 50.0));
+    CHECK(walk.StartIfSettled(standing, 36.5, 2.5, 50.0));
+    CHECK(Close(walk.Wanted().y, 400.0));
+
+    // A newer mark interrupts a running walk; a return to where the actor stands cancels either phase.
+    walk.Jump(mark, standing, 37.0, 50.0);
+    CHECK(walk.Phase() == cw::WalkPhase::Waiting);
+    walk.Jump(standing, standing, 38.0, 50.0);
+    CHECK(walk.Phase() == cw::WalkPhase::Idle);
+    CHECK(!walk.StartIfSettled(standing, 100.0, 2.5, 50.0));
+    walk.Jump(mark, standing, 100.0, 50.0);
+    CHECK(walk.StartIfSettled(standing, 102.5, 2.5, 50.0));
+    cw::Vec3 const halfway{180.0, 200.0, 50.0};
+    walk.Jump({210.0, 200.0, 50.0}, halfway, 103.0, 50.0);
+    CHECK(walk.Phase() == cw::WalkPhase::Idle);  // within 0.5 m of its CURRENT place
+
+    // Strict minimum distance, including vertical distance; zero dwell can start at once.
+    walk.Jump({150.0, 200.0, 50.0}, standing, 104.0, 50.0);
+    CHECK(walk.Phase() == cw::WalkPhase::Idle);
+    walk.Jump({100.0, 200.0, 100.01}, standing, 104.0, 50.0);
+    CHECK(walk.StartIfSettled(standing, 104.0, 0.0, 50.0));
+
+    // The actor can move on its own during the wait: re-check the distance when deciding.
+    walk.Jump(mark, standing, 110.0, 50.0);
+    CHECK(!walk.StartIfSettled({240.0, 200.0, 50.0}, 112.5, 2.5, 50.0));
+    CHECK(walk.Phase() == cw::WalkPhase::Idle);
+    // Anderson's out/back requests every line never settle into a walk.
+    for (int i = 0; i < 13; ++i) {
+        double const now = 120.0 + i * 2.0;
+        walk.Jump(mark, standing, now, 50.0);
+        CHECK(!walk.StartIfSettled(standing, now + 0.9, 2.5, 50.0));
+        walk.Jump(standing, standing, now + 1.0, 50.0);
+        CHECK(!walk.StartIfSettled(standing, now + 1.9, 2.5, 50.0));
+    }
+    // Plans belong to individual actors.
+    cw::MarkWalk other;
+    other.Jump(mark, standing, 150.0, 50.0);
+    walk.Jump(mark, standing, 152.0, 50.0);
+    CHECK(other.StartIfSettled(standing, 152.5, 2.5, 50.0));
+    CHECK(!walk.StartIfSettled(standing, 152.5, 2.5, 50.0));
+}
+
+void TestWalkStep() {
+    // 1.4 m/s at 100 units/m; a diagonal 3D step keeps that speed.
+    cw::WalkStep const step = cw::StepTowardMark({}, {300.0, 400.0, 0.0}, 140.0, 0.1);
+    CHECK(!step.arrived && Close(step.place.x, 8.4) && Close(step.place.y, 11.2));
+    CHECK(Close(std::hypot(step.velocity.x, step.velocity.y, step.velocity.z), 140.0));
+    cw::WalkStep const finalStep = cw::StepTowardMark({295.0, 400.0, 0.0}, {300.0, 400.0, 0.0}, 140.0, 0.1);
+    CHECK(finalStep.arrived && Close(finalStep.place.x, 300.0) && Close(finalStep.velocity.x, 50.0));
+    cw::WalkStep const arrived = cw::StepTowardMark(finalStep.place, finalStep.place, 140.0, 0.1);
+    CHECK(arrived.arrived && Close(arrived.velocity.x, 0.0));
+    CHECK(Close(cw::StepTowardMark({}, {300.0, 0.0, 0.0}, 140.0, 0.0).place.x, 0.0));
+    CHECK(Close(cw::StepTowardMark({}, {300.0, 0.0, 0.0}, 0.0, 0.1).place.x, 0.0));
+    CHECK(Close(cw::StepTowardMark({}, {0.0, 0.0, -100.0}, 140.0, 0.1).place.z, -14.0));
+}
+
 void TestLatest() {
     cw::Reset();
     CHECK(!cw::Latest().has_value());
@@ -154,6 +233,8 @@ int RunConversationWorldTests() {
     TestCrops();
     TestSubtitlePoint();
     TestFollowHead();
+    TestMarkWalk();
+    TestWalkStep();
     TestLatest();
     std::printf("conversation world tests: %s\n", gFailures == 0 ? "ok" : "FAILED");
     return gFailures;

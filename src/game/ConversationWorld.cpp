@@ -80,6 +80,14 @@ ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
 // The survey's `mevr convo end` (research/59 "The survey"): the conversation's own end, for one that loops past its time.
 ue3::FunctionRef gEndConversation{"SFXGame.BioConversation.EndConversation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
+ue3::FieldRef gWalkController{"Engine.Pawn", "Controller"};
+ue3::FieldRef gWalkVelocity{"Engine.Actor", "Velocity"};
+ue3::ClassRef gWalkPawnClass{"Engine.Pawn"};
+ue3::ClassRef gWalkAiClass{"SFXGame.BioAiController"};
+ue3::FunctionRef gPushMove{"SFXGame.BioAiController.PushMoveToPoint"};
+// Terminate only the movement action we pushed, never clear the actor's other AI actions.
+ue3::ClassRef gMoveDataClass{"SFXGame.BioSeqData_MoveToPoint"};
+ue3::FieldRef gMoveTerminate{"SFXGame.BioSeqData_MoveToPoint", "Terminate"};
 
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
 struct Settings {
@@ -93,6 +101,10 @@ struct Settings {
     float wheelWidthM = 0.40f;
     float wheelDistanceM = 0.12f;
     bool stay = true;                  // keep people where they stand: undo the conversation's jumps onto its marks (worldStay)
+    int walk = 0;                     // prototype: 0 off, 1 AI (slide fallback), 2 slide (worldWalk)
+    float walkSettleS = 2.5f;
+    float walkMinM = 0.5f;
+    float walkSpeedMS = 1.4f;
     float turnDegPerS = 120.0f;        // ... and turn them toward whom they look at, at most this fast (worldTurnDegPerS)
     bool setPiecesOnScreen = true;     // the scan's set pieces on the 3D screen, not in the world (worldSetPieces = screen | world)
     bool camera = true;                // the game's own camera at the player's place too, not only the main view (worldCamera)
@@ -143,6 +155,10 @@ void RefreshSettings() {
     s.wheelWidthM = number("wheelWidthM", s.wheelWidthM, 0.15f, 1.5f);
     s.wheelDistanceM = number("wheelDistanceM", s.wheelDistanceM, 0.05f, 0.8f);
     s.stay = number("worldStay", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.walk = static_cast<int>(number("worldWalk", 0.0f, 0.0f, 2.0f));
+    s.walkSettleS = number("worldWalkSettleS", s.walkSettleS, 0.0f, 60.0f);
+    s.walkMinM = number("worldWalkMinM", s.walkMinM, 0.0f, 6.0f);
+    s.walkSpeedMS = number("worldWalkSpeedMS", s.walkSpeedMS, 0.1f, 3.0f);
     s.turnDegPerS = number("worldTurnDegPerS", s.turnDegPerS, 10.0f, 1000.0f);
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldSetPieces")) {
         s.setPiecesOnScreen = ini::Lower(ini::Trim(*text)) != "world";
@@ -151,9 +167,11 @@ void RefreshSettings() {
     ReadCrop(loaded.file, "subtitleCrop", s.subtitleCrop);
     ReadCrop(loaded.file, "wheelCrop", s.wheelCrop);
     std::string const text = std::format("conversations = {}, worldFollow = {}, subtitles {:.1f} deg tall {:.2f} m under the face, the wheel "
-                                         "{} {:.2f} m wide, set pieces {}, the game's camera {}", cw::Name(s.mode), s.follow ? 1 : 0,
+                                         "{} {:.2f} m wide, set pieces {}, the game's camera {}, worldWalk = {} (settle {:.2f} s, "
+                                         "min {:.2f} m, speed {:.2f} m/s)", cw::Name(s.mode), s.follow ? 1 : 0,
         s.subtitleHeightDeg, s.subtitleBelowM, s.wheelHand == 0 ? "at the left hand" : s.wheelHand == 1 ? "at the right hand" : "in front",
-        s.wheelWidthM, s.setPiecesOnScreen ? "on the 3D screen" : "in the world", s.camera ? "at the player's place" : "the director's");
+        s.wheelWidthM, s.setPiecesOnScreen ? "on the 3D screen" : "in the world", s.camera ? "at the player's place" : "the director's",
+        s.walk, s.walkSettleS, s.walkMinM, s.walkSpeedMS);
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("convo: [Cinematics] {}", text);
@@ -381,6 +399,7 @@ struct Tracked {
 struct Convo {
     bool on = false;
     ue3::Object* object = nullptr;
+    ue3::Object* playerPawn = nullptr;  // retain Shepard's identity even if possession temporarily changes
     std::string name;
     std::uint64_t startMs = 0;
     std::uint32_t number = 0;
@@ -399,6 +418,7 @@ struct Convo {
     std::map<std::string, int> speakers;  // who spoke, how often
     bool stage = false;
     int kept = 0;       // jumps undone (people kept where they stood)
+    int walks = 0;      // walks started (including AI calls that fell back to slide)
     int letGo = 0;      // jumps too long to undo (a scripted entrance)
     std::vector<Tracked> actors;
     ue3::Object* speaker = nullptr;
@@ -424,9 +444,16 @@ Convo gC;
 // Where each person of the conversation is kept, and the yaw shown while they turn.
 struct Stay {
     ue3::Object* actor = nullptr;
+    std::string name;
     ik::Vec3 place;
     double shownYaw = 0.0;
     int kept = 0;
+    cw::MarkWalk walk;
+    int method = 0;               // the method chosen for this walk (1 AI, 2 slide)
+    int requestedMethod = 0;      // detect a live setting change even after falling back to slide
+    ue3::Object* moveAction = nullptr;
+    double deadlineS = 0.0;
+    double speedUnitsPerS = 0.0;
 };
 std::vector<Stay> gStay;
 std::uint64_t gStayMs = 0;
@@ -440,6 +467,156 @@ int ToUnits(double degrees) {
 }
 
 double Seconds();
+
+cw::Vec3 WalkPoint(ik::Vec3 v) {
+    return {v.x, v.y, v.z};
+}
+ik::Vec3 WalkPoint(cw::Vec3 v) {
+    return {v.x, v.y, v.z};
+}
+ue3::Vector EnginePoint(ik::Vec3 v) {
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
+}
+
+bool PutAt(ue3::Object* actor, ik::Vec3 point) {
+    ue3::Params p(ue3::runtime::Get(), gSetLocation.Get());
+    return p.Valid() && p.Set("NewLocation", EnginePoint(point)) && ue3::runtime::Call(actor, gSetLocation.Get(), p) &&
+           p.ReturnBool().value_or(false);
+}
+
+bool WalkVelocity(ue3::Object* actor, ik::Vec3 velocity) {
+    ue3::Vector* const out = gWalkVelocity.In<ue3::Vector>(actor);
+    if (out == nullptr) {
+        return false;  // the handle logs a missing field; the caller stands the walk down
+    }
+    *out = EnginePoint(velocity);
+    write_journal::Wrote("ConversationWorld.walkVelocity", out, sizeof(*out));
+    return true;
+}
+
+void EndWalk(Stay& st, char const* event, char const* why) {
+    if (st.walk.Phase() == cw::WalkPhase::Idle) {
+        return;
+    }
+    bool const running = st.walk.Phase() == cw::WalkPhase::Walking;
+    if (st.moveAction != nullptr && ue3::runtime::IsAlive(st.moveAction) && ue3::IsA(st.moveAction, gMoveDataClass)) {
+        if (!gMoveTerminate.WriteBool(st.moveAction, true)) {  // FieldRef journals the bitfield write
+            log::Warn("convo: walk: could not terminate {}'s AI move", st.name);
+        }
+    }
+    if (running && ue3::runtime::IsAlive(st.actor)) {
+        WalkVelocity(st.actor, {});
+        if (auto const at = player::Location(st.actor)) {
+            st.place = V(*at);
+        }
+    }
+    log::Info("convo: walk: {} {} at {} ({}, {})", event, st.name, F(st.place),
+        running ? (st.method == 1 ? "ai" : "slide") : "pending", why);
+    st.moveAction = nullptr;
+    st.walk.End();
+}
+
+void EndWalks(char const* why) {
+    for (Stay& st : gStay) {
+        EndWalk(st, "cancel", why);
+    }
+}
+
+// Returns the reason to use slide, or nullptr for a successful AI request. Game thread (camera post-handler) only.
+char const* StartAiWalk(Stay& st) {
+    if (gWalkPawnClass.Get() == nullptr || !ue3::IsA(st.actor, gWalkPawnClass)) return "actor is not an Engine.Pawn";
+    if (gWalkController.Get() == nullptr) return "Engine.Pawn.Controller missing";
+    ue3::Object* const ai = gWalkController.Read<ue3::Object*>(st.actor).value_or(nullptr);
+    if (ai == nullptr || !ue3::runtime::IsAlive(ai)) return "no live controller";
+    if (gWalkAiClass.Get() == nullptr || !ue3::IsA(ai, gWalkAiClass)) return "controller is not a BioAiController";
+    ue3::Function* const fn = gPushMove.Get();
+    if (fn == nullptr) return "PushMoveToPoint missing";
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (r.FindFunction(r.ClassOf(ai), "PushMoveToPoint") != fn) return "controller class has no matching PushMoveToPoint";
+    if (gMoveDataClass.Get() == nullptr || gMoveTerminate.Get() == nullptr) return "AI move termination reflection missing";
+    ue3::Params p(r, fn);
+    if (!p.Valid() || !p.Set("vLoc", EnginePoint(WalkPoint(st.walk.Wanted()))) || !p.Set("PointTolerance", 10.0f) ||
+        !p.SetBool("bWalking", true) || !p.SetBool("bRequiresPrecisionMovement", true) || p.ReturnSpec() == nullptr ||
+        p.ReturnSpec()->size != static_cast<std::int32_t>(sizeof(ue3::Object*))) return "PushMoveToPoint parameter lookup failed";
+    if (!ue3::runtime::Call(ai, fn, p)) return "PushMoveToPoint call failed";
+    st.moveAction = p.Return<ue3::Object*>().value_or(nullptr);
+    if (st.moveAction == nullptr || !ue3::runtime::IsAlive(st.moveAction)) {
+        st.moveAction = nullptr;
+        return "PushMoveToPoint returned no live move action";
+    }
+    if (!ue3::IsA(st.moveAction, gMoveDataClass)) {
+        st.moveAction = nullptr;
+        return "PushMoveToPoint returned an unexpected action class";
+    }
+    return nullptr;
+}
+
+// Advances a walk and returns whether its travel heading owns the turn this frame.
+bool WalkToMark(Stay& st, ik::Vec3 previousKept, double nowS, double dt, double& heading) {
+    if (st.walk.Phase() == cw::WalkPhase::Waiting) {
+        // Both methods need to zero velocity on exit and face the travel direction. Missing reflection leaves normal stay on.
+        if (gWalkVelocity.In<ue3::Vector>(st.actor) == nullptr || gSetRotation.Get() == nullptr) {
+            EndWalk(st, "end", "walk reflection missing; keeping in place");
+            return false;
+        }
+        if (st.walk.StartIfSettled(WalkPoint(st.place), nowS, gSettings.walkSettleS, gSettings.walkMinM * kUnitsPerMeter)) {
+            previousKept = st.place;  // start from the actor's actual place when the wait finishes
+            st.method = st.requestedMethod = gSettings.walk;
+            st.speedUnitsPerS = gSettings.walkSpeedMS * kUnitsPerMeter;
+            double const distance = Dist(st.place, WalkPoint(st.walk.Wanted()));
+            st.deadlineS = nowS + distance / st.speedUnitsPerS + 3.0;
+            if (st.method == 1) {
+                if (char const* why = StartAiWalk(st)) {
+                    st.method = 2;
+                    log::Info("convo: walk: {} ai unavailable: {}; falling back to slide for this walk", st.name, why);
+                }
+            }
+            ++gC.walks;
+            log::Info("convo: walk: start {} from {} to {}, {:.2f} m, method {}", st.name, F(st.place),
+                F(WalkPoint(st.walk.Wanted())), distance / kUnitsPerMeter, st.method == 1 ? "ai" : "slide");
+        } else if (st.walk.Phase() == cw::WalkPhase::Idle) {
+            log::Info("convo: walk: cancel {} pending mark: already within worldWalkMinM", st.name);
+        }
+    }
+    if (st.walk.Phase() != cw::WalkPhase::Walking) return false;
+    ik::Vec3 const mark = WalkPoint(st.walk.Wanted());
+    ik::Vec3 const travel = mark - st.place;
+    if (Dist(st.place, mark) <= (st.method == 1 ? 10.0 : 0.01)) {
+        // The AI has a small point tolerance; settle its last centimetres onto the exact mark if collision permits it.
+        if (PutAt(st.actor, mark)) {
+            auto const actual = player::Location(st.actor);
+            if (actual) st.place = V(*actual);
+            if (Dist(st.place, mark) <= 0.01) {
+                EndWalk(st, "arrival", "reached the mark");
+                return false;
+            }
+        }
+    }
+    if (nowS >= st.deadlineS) {
+        EndWalk(st, "end", "distance / speed + 3 s elapsed; staying here");
+        return false;
+    }
+    if (std::hypot(travel.x, travel.y) > 0.01) heading = std::atan2(travel.y, travel.x) * kRadToDeg;
+    if (st.method == 2 && dt > 0.0) {
+        // Velocity can also be integrated by the engine between camera updates. Step from the previous DRAWN/kept place,
+        // so that engine motion and our SetLocation together advance one speed * dt, rather than doubling the slide speed.
+        ik::Vec3 const before = previousKept;
+        cw::WalkStep const step = cw::StepTowardMark(WalkPoint(before), st.walk.Wanted(), st.speedUnitsPerS, dt);
+        bool const moved = PutAt(st.actor, WalkPoint(step.place));
+        auto const actual = player::Location(st.actor);
+        if (!actual) {
+            EndWalk(st, "end", "actor location lookup failed");
+            return false;
+        }
+        st.place = V(*actual);  // collision can refuse or shorten SetLocation: never assume we reached the requested point
+        if (!WalkVelocity(st.actor, (st.place - before) * (1.0 / dt))) {
+            EndWalk(st, "end", "velocity lookup failed");
+            return false;
+        }
+        if (moved && Dist(st.place, mark) <= 0.01) EndWalk(st, "arrival", "reached the mark");
+    }
+    return true;
+}
 
 // After the frame's draw (the mod's tick): anyone still away from where we keep them was moved after this tick's camera update,
 // so the drawn frame showed the jump. Undone at the next camera update; counted to measure whether the camera update is early
@@ -458,12 +635,14 @@ void CheckDrawn() {
 void KeepInPlace(ue3::Object* pawn) {
     if (!gC.on || !gInWorldForStay || !gSettings.stay || gSetLocation.Get() == nullptr || gC.object == nullptr ||
         !ue3::runtime::IsAlive(gC.object)) {
+        EndWalks("keeping in place is unavailable");
         gStayMs = 0;
         return;
     }
     std::uint64_t const now = GetTickCount64();
     double const dt = gStayMs == 0 ? 0.0 : std::clamp(static_cast<double>(now - gStayMs) / 1000.0, 0.0, 0.1);
     gStayMs = now;
+    double const nowS = static_cast<double>(now) / 1000.0;
     // Whom each one looks at (the game's own look-at list), else the speaker.
     std::map<ue3::Object*, ue3::Object*> lookAt;
     if (auto const list = gLookAtList.ElementsOf(gC.object, 64)) {
@@ -477,27 +656,34 @@ void KeepInPlace(ue3::Object* pawn) {
     }
     ue3::Object* const speaker = gSpeaker.Read<ue3::Object*>(gC.object).value_or(nullptr);
     for (Tracked const& t : gC.actors) {
+        auto it = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == t.actor; });
         if (t.actor == nullptr || !ue3::runtime::IsAlive(t.actor)) {
+            if (it != gStay.end()) EndWalk(*it, "end", "actor no longer alive");
             continue;
         }
         auto const at = player::Location(t.actor);
         auto const rot = player::Rotation(t.actor);
         if (!at || !rot) {
+            if (it != gStay.end()) EndWalk(*it, "end", "actor transform lookup failed");
             continue;
         }
-        auto it = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == t.actor; });
         if (it == gStay.end()) {
-            gStay.push_back({t.actor, V(*at), YawDeg(*rot), 0});
+            Stay st;
+            st.actor = t.actor;
+            st.name = t.name;
+            st.place = V(*at);
+            st.shownYaw = YawDeg(*rot);
+            gStay.push_back(st);
             continue;
         }
         Stay& st = *it;
+        ik::Vec3 const previousKept = st.place;
         double const d = Dist(V(*at), st.place);
-        bool const isShepard = t.actor == pawn;
-        if (d > kJumpUnits && d < kStayMaxUnits) {
-            ue3::Params p(ue3::runtime::Get(), gSetLocation.Get());
-            ue3::Vector const back{static_cast<float>(st.place.x), static_cast<float>(st.place.y), static_cast<float>(st.place.z)};
-            bool const moved = p.Valid() && p.Set("NewLocation", back) && ue3::runtime::Call(t.actor, gSetLocation.Get(), p) &&
-                               p.ReturnBool().value_or(false);
+        bool const isShepard = t.actor == pawn || t.actor == gC.playerPawn;
+        if (d >= kJumpUnits && d < kStayMaxUnits) {
+            ik::Vec3 const wanted = V(*at);  // capture BEFORE undoing the game's native placement
+            bool const moved = PutAt(t.actor, st.place);
+            EndWalk(st, "cancel", "a newer placement restarts the wait");
             ++st.kept;
             ++gC.kept;
             log::Info("convo: at {:.1f} s {} kept in place: the game put {} {:.2f} m away{}", Seconds(), isShepard ? "Shepard" : t.name,
@@ -505,22 +691,32 @@ void KeepInPlace(ue3::Object* pawn) {
             if (!moved) {
                 st.place = V(*at);
             }
+            st.walk.Jump(WalkPoint(wanted), WalkPoint(st.place), nowS, gSettings.walkMinM * kUnitsPerMeter);
+            if (!moved) EndWalk(st, "cancel", "SetLocation refused the undo");
+            if (isShepard || gSettings.walk == 0) st.walk.End();  // remember the mark/time, but never walk Shepard
         } else {
             if (d >= kStayMaxUnits) {
+                EndWalk(st, "cancel", "a scripted entrance was let through");
                 ++gC.letGo;
                 log::Info("convo: at {:.1f} s {} moved {:.1f} m at once: a scripted entrance, let through", Seconds(), t.name,
                     d / kUnitsPerMeter);
             }
             st.place = V(*at);  // its own walking, or a jump let through
         }
+        if (isShepard || gSettings.walk == 0 ||
+            (st.walk.Phase() == cw::WalkPhase::Walking && st.requestedMethod != gSettings.walk)) {
+            EndWalk(st, "cancel", isShepard ? "the player's pawn stays kept" : "worldWalk changed or disabled");
+        }
         if (isShepard || gSetRotation.Get() == nullptr) {
+            EndWalk(st, "end", "turn reflection unavailable or player's pawn");
             continue;  // Shepard's body turns under the player's view (body follow)
         }
         // The yaw: toward whom it looks at (or the speaker), from where it stands, at most turnDegPerS.
         double target = YawDeg(*rot);
+        bool const walking = gSettings.walk != 0 && WalkToMark(st, previousKept, nowS, dt, target);
         auto const look = lookAt.find(t.actor);
         ue3::Object* const other = look != lookAt.end() ? look->second : speaker != t.actor ? speaker : nullptr;
-        if (other != nullptr && ue3::runtime::IsAlive(other)) {
+        if (!walking && other != nullptr && ue3::runtime::IsAlive(other)) {
             if (auto const o = player::Location(other)) {
                 ik::Vec3 const to = V(*o) - st.place;
                 if (std::hypot(to.x, to.y) > 20.0) {
@@ -710,6 +906,7 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
     gC.setPiece = CurrentMode() == cw::Mode::World && gSettings.setPiecesOnScreen && cw::IsSetPiece(gC.name);
     gC.world = CurrentMode() == cw::Mode::World && !gC.setPiece;
     ue3::Object* const pawn = player::Pawn(controller);
+    gC.playerPawn = pawn;
     ue3::Object* const stage = gStage.Read<ue3::Object*>(conv).value_or(nullptr);
     gC.stage = stage != nullptr;
     log::Info("convo: conversation {} began: {} (owner {}, player {}, stage {}{}{}); shown {}", gC.number, gC.name,
@@ -779,6 +976,7 @@ void End(char const* why) {
     if (!gC.on) {
         return;
     }
+    EndWalks(why);
     std::string moves;
     for (Tracked const& t : gC.actors) {
         auto const at = ue3::runtime::IsAlive(t.actor) ? player::Location(t.actor) : std::nullopt;
@@ -808,12 +1006,12 @@ void End(char const* why) {
     log::Info("convo: summary {{\"name\": \"{}\", \"why\": \"{}\", \"seconds\": {:.1f}, \"stage\": {}, \"actors\": {}, \"lines\": {}, "
               "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
               "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
-              "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}}}",
+              "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
-        gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM);
+        gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks);
     gC = {};
 }
 
@@ -967,6 +1165,8 @@ void DofBack() {
 }
 
 void StopWorld(Link const& link, char const* why) {
+    EndWalks(why);
+    gStayMs = 0;
     gCameraHold.on = false;
     DofBack();
     if (gPublished && link.publish != nullptr) {
@@ -997,6 +1197,9 @@ void TryStartup() {
 
 void Tick(double /*deltaSeconds*/, Link const& link) {
     RefreshSettings();
+    if (!gSettings.stay || gSettings.walk == 0) {
+        EndWalks("worldStay or worldWalk disabled");
+    }
     ue3::Object* const controller = player::Controller();
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
@@ -1129,10 +1332,10 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     }
     SetStatus(std::format("{{\"on\": true, \"world\": true, \"conversation\": {}, \"shots\": {}, \"speaker\": \"{}\", \"wheel\": {}, "
                           "\"subtitle\": {}, \"subtitleAt\": [{:.3f}, {:.3f}, {:.3f}], \"held\": [{:.1f}, {:.1f}, {:.1f}], \"heldRender\": {}, "
-                          "\"reanchors\": {}, \"frame\": {}, \"from\": \"{}\", \"kept\": {}, \"letGo\": {}}}",
+                          "\"reanchors\": {}, \"frame\": {}, \"from\": \"{}\", \"kept\": {}, \"letGo\": {}, \"walks\": {}}}",
         gC.number, gC.shots, ShortName(gC.speaker), state.wheel != 0 ? "true" : "false", state.subtitle != 0 ? "true" : "false",
         state.subtitleAt[0], state.subtitleAt[1], state.subtitleAt[2], gC.hold.x, gC.hold.y, gC.hold.z, state.holdRender != 0 ? "true" : "false",
-        gC.reanchors, frame ? "true" : "false", gC.holdFrom, gC.kept, gC.letGo));
+        gC.reanchors, frame ? "true" : "false", gC.holdFrom, gC.kept, gC.letGo, gC.walks));
 }
 
 bool InWorld() {
