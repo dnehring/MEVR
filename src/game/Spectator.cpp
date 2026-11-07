@@ -8,6 +8,7 @@
 #include "engine/Engine.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
+#include "game/HeadTracking.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
@@ -525,7 +526,13 @@ std::optional<Aim> AimFor(sp::Settings const& settings, float dt, ue3::Object* c
     }
     auto const frame = view_anchor::Current();
     Aim aim;
-    if (frame && frame->unitsPerMeter > 0.0) {
+    // The head camera only in gameplay (on foot, 0; the Mako, 1). A cutscene or conversation on the 3D screen still has a
+    // head-tracked view (the player in the room before the screen), and filming it kept Shepard's head meshes hidden from
+    // the cutscene's own camera (the owner's QA, 2026-11-07: the Normandy's beacon scene, Shepard headless); the game's camera
+    // is the better picture there anyway.
+    std::optional<unsigned char> const mode = head_tracking::GameMode();
+    bool const gameplay = !mode || *mode == 0 || *mode == 1;
+    if (frame && frame->unitsPerMeter > 0.0 && (gameplay || camera != sp::kHead)) {
         std::optional<XrPosef> target;
         bool smooth = true;
         if (camera == sp::kHead) {
