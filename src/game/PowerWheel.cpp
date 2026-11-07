@@ -384,6 +384,10 @@ struct Seen {
 };
 pw::LockState gLock;
 pw::Push gPush;
+int gPushMissedSeen = 0;      // gPush.heldMissed already logged
+float gPushHeldReach = 0.0f;  // the farthest the hand got ahead of the eyes while a push was held
+double gRaisedAt = -1e9;      // the arm last raised (the lock's wind-up)
+constexpr double kWindUpS = 1.5;  // a lock is kept this long with the arm lowered: point, pull back to the chest, push
 std::vector<Seen> gSeen;
 ue3::Object* gTarget = nullptr;
 engine::UnrealVector gTargetAt{};
@@ -1028,8 +1032,14 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     for (Seen const& seen : gSeen) {
         candidates.push_back({reinterpret_cast<std::uint64_t>(seen.pawn), seen.angleDeg, seen.gazeDeg, seen.distanceM, seen.visible});
     }
-    std::uint64_t const id = pw::UpdateLock(gLock, candidates, gClock, s);
-    ue3::Object* target = nullptr;
+    // The wind-up: with the arm lowered (pulled back to push) the lock stays on what was locked for kWindUpS; the scan
+    // doesn't run then, so it would let go at once.
+    if (raised) {
+        gRaisedAt = gClock;
+    }
+    bool const windUp = hand && !raised && gTarget != nullptr && ue3::runtime::IsAlive(gTarget) && gClock - gRaisedAt <= kWindUpS;
+    std::uint64_t const id = windUp ? reinterpret_cast<std::uint64_t>(gTarget) : pw::UpdateLock(gLock, candidates, gClock, s);
+    ue3::Object* target = windUp ? gTarget : nullptr;
     for (Seen const& seen : gSeen) {
         if (reinterpret_cast<std::uint64_t>(seen.pawn) == id) {
             target = seen.pawn;
@@ -1059,7 +1069,18 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         // Every sample counts (a push may start low), but only one that ends with the arm raised casts: a fast reach
         // elsewhere (walking, grabbing) is spent silently.
         XrVector3f const along = RotateXr(controllers.left.aim.orientation, {0.0f, 0.0f, -1.0f});
-        pushed = (pw::StepPush(gPush, gClock, controllers.left.aim.position, along, s) && raised) || pushed;
+        pushed = pw::StepPush(gPush, gClock, controllers.left.aim.position, along, s, raised) || pushed;
+        if (gPush.held) {
+            gPushHeldReach = std::max(gPushHeldReach, reach);
+        }
+        if (gPush.heldMissed != gPushMissedSeen) {
+            gPushMissedSeen = gPush.heldMissed;
+            log::Info("power wheel: a push of {} ended with the arm in (the hand {:.2f} m ahead of the eyes at most; it casts once "
+                      "{:.2f} m ahead): not cast", ready->info->name, gPushHeldReach, s.reachM);
+            gPushHeldReach = 0.0f;
+        } else if (!gPush.held) {
+            gPushHeldReach = 0.0f;
+        }
     }
     if (pushed && gesture == pw::SelfGesture::None) {
         ++gPushes;

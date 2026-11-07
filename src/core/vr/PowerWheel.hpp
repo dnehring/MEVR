@@ -261,8 +261,13 @@ struct Push {
     int count = 0;
     bool armed = true;
     double lastFire = -1e9;
+    bool held = false;     // fast enough, but not allowed to cast yet (the arm still in): kept armed, the push goes on
+    int heldMissed = 0;    // pushes that slowed down while held (ended without the arm out): one more each
 };
-bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, LockSettings const& settings);
+// `canFire` false (the arm not yet raised): a push fast enough is HELD, not spent, so a push that starts with the hand at the
+// chest casts the moment the arm is out (the owner's QA, 2026-11-07: "I would start with my arm tucked closer to my chest and
+// try to push out, but this didn't register": the push fired its 10 cm at the chest and was spent before the arm was raised).
+bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, LockSettings const& settings, bool canFire = true);
 
 // The lock's marker, as the mod sends it each tick (HostServices v29, setPowerLock); the host draws it at the target.
 struct LockView {

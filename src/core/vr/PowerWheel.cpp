@@ -393,7 +393,7 @@ std::uint64_t UpdateLock(LockState& state, std::vector<LockCandidate> const& can
     return state.target;
 }
 
-bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, LockSettings const& settings) {
+bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, LockSettings const& settings, bool canFire) {
     constexpr double kWindowS = 0.12;
     constexpr int kMax = 16;
     // Keep the samples of the last window (and at most kMax), newest last.
@@ -433,9 +433,18 @@ bool StepPush(Push& push, double time, XrVector3f hand, XrVector3f forward, Lock
         return false;
     }
     if (speed >= settings.pushSpeedMS && travel >= settings.pushTravelM && time - push.lastFire >= settings.cooldownS) {
+        if (!canFire) {
+            push.held = true;  // not spent: the same push casts once it may
+            return false;
+        }
         push.armed = false;
+        push.held = false;
         push.lastFire = time;
         return true;
+    }
+    if (push.held && speed < settings.pushSpeedMS * 0.4f) {
+        push.held = false;  // it slowed down without ever being allowed: a miss
+        ++push.heldMissed;
     }
     return false;
 }

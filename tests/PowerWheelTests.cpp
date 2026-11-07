@@ -500,6 +500,30 @@ void TestPush() {
         }
         CHECK(!fired);
     }
+    // From the chest (the owner's QA, 2026-11-07): the push is fast from its first 10 cm, but the arm is only "raised" once the
+    // hand is 20 cm ahead of the eyes; held, not spent, it casts the moment the arm is out. One that stops short is a miss.
+    {
+        pw::Push p;
+        bool fired = false;
+        double firedAt = -1.0;
+        for (int i = 0; i < 30 && !fired; ++i) {
+            float const z = -2.0f * static_cast<float>(i * dt);  // 2 m/s straight ahead from the chest (0 m)
+            bool const raised = -z >= s.reachM;
+            if (pw::StepPush(p, i * dt, {0.0f, 0.0f, z}, forward, s, raised)) {
+                fired = true;
+                firedAt = i * dt;
+            }
+        }
+        CHECK(fired && firedAt >= s.reachM / 2.0 - 1e-6);  // cast once the hand passed 20 cm, not at the first 10
+        pw::Push shortPush;
+        bool firedShort = false;
+        for (int i = 0; i < 40; ++i) {
+            double const t = i * dt;
+            float const z = t < 0.08 ? -2.0f * static_cast<float>(t) : -0.16f;  // 16 cm out at 2 m/s, then stops
+            firedShort = pw::StepPush(shortPush, t, {0.0f, 0.0f, z}, forward, s, -z >= s.reachM) || firedShort;
+        }
+        CHECK(!firedShort && shortPush.heldMissed == 1 && !shortPush.held);
+    }
     // The ray tilted down 45 degrees: a push along it counts.
     {
         pw::Push p;
