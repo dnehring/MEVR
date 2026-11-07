@@ -871,7 +871,7 @@ bool PlaceInWorld(gh::Scene& scene, vr::galaxy_map::Settings const& settings) {
         scene.discNormal[0] = gLastAnchor.discNormal.x;
         scene.discNormal[1] = gLastAnchor.discNormal.y;
         scene.discNormal[2] = gLastAnchor.discNormal.z;
-        scene.discRadiusM = gLastAnchor.discRadiusM;
+        scene.discRadiusM = gLastAnchor.discRadiusM * settings.windowScale;
     }
     return true;
 }
@@ -1074,8 +1074,8 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
         }
     }
     // On the hologram the window is its diameter wide (the disc found on foot, frozen while the view is held).
-    float const widthM = settings.windowOnHologram && gLastAnchor.disc && gLastAnchor.discRadiusM > 0.1f ? 2.0f * gLastAnchor.discRadiusM
-                                                                                                          : settings.windowWidthM;
+    float const widthM = settings.windowOnHologram && gLastAnchor.disc && gLastAnchor.discRadiusM > 0.1f
+        ? 2.0f * gLastAnchor.discRadiusM * settings.windowScale : settings.windowWidthM;
     float const depth = std::min(settings.windowDepth, vr::cine_screen::MaxDepth(widthM, vr::cine_screen::kDefaultIpdM));
     float const crop = vr::cine_screen::CropFraction(depth);
     float const halfH = gMapPov.fovDeg * 0.5f * 0.01745329f;
@@ -1277,6 +1277,11 @@ void Tick(Link const& link) {
     gh::Scene scene;
     if (*mode != kGalaxyMode) {
         // ---- On foot (or the map opening) in the CIC: the galaxy from the tables over the console ----
+        // The owner's QA (2026-11-07): on approach the game's own projector, not our model; the map opens at its console.
+        if (!settings.onFootHologram && !gOpen.pending && !gHold.active) {
+            Forget(link, "on foot: the game's own projector ([Galaxy] onFootHologram = 0)");
+            return;
+        }
         if (picked && *mode == 0) {
             bool const opened = OpenMap(controller);
             gOpen = PendingOpen{opened, id, now};
