@@ -1604,6 +1604,7 @@ int ReadGameModeSEH() noexcept
 bool ReadWorldTelemetrySEH(WorldTelemetry* out) noexcept
 {
     if (out == nullptr) return false;
+    out->worldIdentity = 0; // [MEVR] unknown worlds never replenish pacing recovery attempts
     out->hasPawn = false; out->pauserSet = false;
     out->playersOnly = false; out->playersOnlyPending = false;
     out->timeDilation = 0.0f; out->timeSeconds = 0.0f;
@@ -1624,6 +1625,7 @@ bool ReadWorldTelemetrySEH(WorldTelemetry* out) noexcept
         const std::uint32_t flags = static_cast<std::uint32_t>(
             MELEVR::LE1::ReadI32(worldInfo, MELEVR::LE1::kWorldInfoFlagsWord790));
         if (!std::isfinite(timeSec) || !std::isfinite(dilation)) return false;
+        out->worldIdentity = reinterpret_cast<std::uint64_t>(worldInfo); // [MEVR]
         out->hasPawn = (pawn != nullptr);
         out->pauserSet = (pauser != nullptr);
         out->playersOnly = (flags & MELEVR::LE1::kWorldInfoPlayersOnlyMask) != 0;

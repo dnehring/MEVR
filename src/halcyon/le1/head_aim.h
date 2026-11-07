@@ -65,6 +65,7 @@ int ReadGameModeSEH() noexcept;
 // episode until the real discriminator is proven from data. Pure SEH-guarded reads, fail-safe false.
 struct WorldTelemetry
 {
+    std::uint64_t worldIdentity; // [MEVR] read-only identity for the per-level pacing recovery budget
     bool hasPawn;
     bool pauserSet;
     bool playersOnly;

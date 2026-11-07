@@ -11736,6 +11736,7 @@ int RunGuiEventsTests();
 int RunOmniPadTests();
 // tests/PerformanceModesTests.cpp: Display's Performance row (research/60).
 int RunPerformanceModesTests();
+int RunQuestPacingTests();
 int RunVrCoverTests();
 int RunSquadPhrasingTests();
 int RunVoiceTests();
@@ -11905,6 +11906,7 @@ int main() {
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();
     gFailures += RunPerformanceModesTests();
+    gFailures += RunQuestPacingTests();
     gFailures += RunVrCoverTests();
     gFailures += RunSquadPhrasingTests();
     gFailures += RunVoiceTests();

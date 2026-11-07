@@ -4,6 +4,7 @@
 // frame functions wrapped through MevrBridge::WrapSessionFunctions (plugin/TestLoop).
 
 #include "plugin/PerfProbe.hpp"
+#include "plugin/QuestPacing.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/RenderLevers.hpp"
@@ -434,6 +435,7 @@ PFN_xrBeginFrame gRealBeginFrame = nullptr;
 PFN_xrEndFrame gRealEndFrame = nullptr;
 
 XrResult XRAPI_CALL WrappedWaitSwapchainImage(XrSwapchain swapchain, XrSwapchainImageWaitInfo const* info) {
+    quest_pacing::RuntimeCall const runtimeCall;
     if (!OnRenderThread()) {
         return gRealWaitSwapchainImage(swapchain, info);
     }
@@ -444,14 +446,16 @@ XrResult XRAPI_CALL WrappedWaitSwapchainImage(XrSwapchain swapchain, XrSwapchain
 }
 
 XrResult XRAPI_CALL WrappedWaitFrame(XrSession session, XrFrameWaitInfo const* info, XrFrameState* state) {
+    quest_pacing::RuntimeCall const runtimeCall;
     if (!OnRenderThread()) {
         return gRealWaitFrame(session, info, state);
     }
-    Record(fp::kWaitBegin, nullptr);
+    bool const next = quest_pacing::NextFramePhase();
+    Record(next ? fp::kNextWaitBegin : fp::kWaitBegin, nullptr);
     XrResult const result = gRealWaitFrame(session, info, state);
-    Record(fp::kWaitEnd, nullptr);
+    Record(next ? fp::kNextWaitEnd : fp::kWaitEnd, nullptr);
     gFrame.xrFrame = true;
-    if (XR_SUCCEEDED(result) && state != nullptr) {
+    if (!next && XR_SUCCEEDED(result) && state != nullptr) {
         gFrame.displayPeriodNs = state->predictedDisplayPeriod;
         gFrame.shouldRender = state->shouldRender != XR_FALSE;
     }
@@ -459,16 +463,19 @@ XrResult XRAPI_CALL WrappedWaitFrame(XrSession session, XrFrameWaitInfo const* i
 }
 
 XrResult XRAPI_CALL WrappedBeginFrame(XrSession session, XrFrameBeginInfo const* info) {
+    quest_pacing::RuntimeCall const runtimeCall;
     if (!OnRenderThread()) {
         return gRealBeginFrame(session, info);
     }
-    Record(fp::kBeginBegin, nullptr);
+    bool const next = quest_pacing::NextFramePhase();
+    Record(next ? fp::kNextBeginBegin : fp::kBeginBegin, nullptr);
     XrResult const result = gRealBeginFrame(session, info);
-    Record(fp::kBeginEnd, nullptr);
+    Record(next ? fp::kNextBeginEnd : fp::kBeginEnd, nullptr);
     return result;
 }
 
 XrResult XRAPI_CALL WrappedEndFrame(XrSession session, XrFrameEndInfo const* info) {
+    quest_pacing::RuntimeCall const runtimeCall;
     if (!OnRenderThread()) {
         return gRealEndFrame(session, info);
     }
@@ -615,7 +622,22 @@ void Mark(int point, ID3D11DeviceContext* context) {
     if (point <= fp::kStart || point >= fp::kPointCount || !OnRenderThread()) {
         return;
     }
+    if (quest_pacing::NextFramePhase()) {
+        switch (point) {
+        case fp::kInputBegin: point = fp::kNextInputBegin; break;
+        case fp::kInputEnd: point = fp::kNextInputEnd; break;
+        case fp::kFrameBegunEnd: point = fp::kNextFrameBegunEnd; break;
+        default: break;
+        }
+    }
     Record(point, context);
+}
+
+void FrameSubmitted(std::int64_t period, bool shouldRender) {
+    if (!OnRenderThread()) return;
+    gFrame.xrFrame = true;
+    gFrame.displayPeriodNs = period;
+    gFrame.shouldRender = shouldRender;
 }
 
 void WrapFrameFunctions(void** waitSwapchainImage, void** waitFrame, void** beginFrame, void** endFrame) {
@@ -764,10 +786,12 @@ bool EarlyFrameWait() noexcept {
 }
 
 void PerfPresentBegin(ID3D11DeviceContext* context) noexcept {
+    mevr::host::quest_pacing::PresentBegin();
     mevr::host::perf::Mark(mevr::vr::frame_probe::kPresent, context);
 }
 
 void PerfPresentEnd(ID3D11DeviceContext* context) noexcept {
+    mevr::host::quest_pacing::PresentEnd();
     mevr::host::perf::Mark(mevr::vr::frame_probe::kEnd, context);
     mevr::host::render_levers::OnPresentEnd(context);
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -786,6 +810,8 @@ void PerfPoint(int point) noexcept {
     case kPerfFrameEntry: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameEntry); break;
     case kPerfFrameReads: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameReads); break;
     case kPerfFrameCine: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameCine); break;
+    case kPerfFramePrepared: mevr::host::perf::Mark(mevr::vr::frame_probe::kFramePrepared); break;
+    case kPerfFrameReady: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameReady); break;
     default: break;
     }
 }

@@ -22,6 +22,7 @@
 #include "xr_types.h"
 #include "logger.h"
 #include "mevr_bridge.h"   // [MEVR]
+#include "core/vr/QuestPacing.hpp" // [MEVR] cached frame ownership, game-independent and tested
 #include "render_hook.h"
 #include "d3d_capture.h"
 #include "vr_menu.h"
@@ -82,6 +83,7 @@ XrInstance g_instance = nullptr;
 XrSystemId g_systemId = 0;
 Functions g_fn;
 bool g_hasRefreshRateExt = false;    // XR_FB_display_refresh_rate enabled => mod can query the true headset Hz
+bool g_mevrHasPerformanceExt = false; // [MEVR] enabled only when enumerated
 // [LINKFOV] Meta's PC runtime ("Oculus" over Quest Link/Air Link) composites projection layers assuming ITS
 // OWN per-eye asymmetric FOV from xrLocateViews; a declared FOV that differs (the symmetric render window)
 // is not honored -> each eye's image lands ~7 deg off in OPPOSITE directions = the constant unfusable
@@ -103,8 +105,9 @@ XrSpace g_viewSpace = nullptr;  // VIEW (head-locked) - the options menu quad ri
 XrSessionState g_sessionState = 0;
 bool g_sessionRunning = false;
 // [MEVR] early frame wait (research/22): the next frame's xrWaitFrame, taken at the end of RunFrame.
-bool g_mevrEarlyFsPending = false;
+mevr::vr::quest_pacing::FrameSlot g_mevrFrameSlot; // [MEVR] waited vs already begun, one prediction per ticket
 XrFrameState g_mevrEarlyFs = {};
+uint64_t g_mevrEarlyBeginMs = 0; // [MEVR] a load can age a begun prediction; finish it, never silently discard it
 
 struct EyeSwapchain
 {
@@ -346,6 +349,7 @@ bool CreateInstance()
     // Is XR_FB_display_refresh_rate available? Enumerate FIRST - enabling an UNSUPPORTED extension makes
     // xrCreateInstance fail outright (= no VR), so this only enables it if the runtime advertises it. (AER section 15.1)
     g_hasRefreshRateExt = false;
+    g_mevrHasPerformanceExt = false; // [MEVR]
     bool mevrHasHpControllerExt = false;   // [MEVR] XR_EXT_hp_mixed_reality_controller: the HP Reverb G2's bindings (core/xr/Input)
     {
         PFN_xrVoidFunction enumFn = nullptr;
@@ -363,6 +367,11 @@ bool CreateInstance()
                         if (std::strcmp(p.extensionName, kDisplayRefreshRateExtensionName) == 0) { g_hasRefreshRateExt = true; break; }
                     for (const auto& p : props)   // [MEVR] enabled only when advertised, like the refresh rate's
                         if (std::strcmp(p.extensionName, "XR_EXT_hp_mixed_reality_controller") == 0) { mevrHasHpControllerExt = true; break; }
+                    for (const auto& p : props) // [MEVR] no speculative enable: unsupported extensions fail instance creation
+                    {
+                        LogLine(std::string("quest pacing: runtime extension ") + p.extensionName);
+                        if (std::strcmp(p.extensionName, "XR_EXT_performance_settings") == 0) g_mevrHasPerformanceExt = true;
+                    }
                 }
             }
         }
@@ -370,10 +379,11 @@ bool CreateInstance()
     }
 
     // [MEVR] upstream: {D3D11, refresh rate} and a count of 1 or 2; now built from what the runtime has.
-    const char* extensions[3] = {kD3D11ExtensionName, nullptr, nullptr};
+    const char* extensions[4] = {kD3D11ExtensionName, nullptr, nullptr, nullptr}; // [MEVR]
     uint32_t extensionCount = 1;
     if (g_hasRefreshRateExt) extensions[extensionCount++] = kDisplayRefreshRateExtensionName;
     if (mevrHasHpControllerExt) extensions[extensionCount++] = "XR_EXT_hp_mixed_reality_controller";
+    if (g_mevrHasPerformanceExt) extensions[extensionCount++] = "XR_EXT_performance_settings"; // [MEVR]
     XrInstanceCreateInfo info = {};
     info.type = XR_TYPE_INSTANCE_CREATE_INFO_VALUE;
     CopyAscii(info.applicationInfo.applicationName, sizeof(info.applicationInfo.applicationName), "MELEVR M0");
@@ -387,6 +397,7 @@ bool CreateInstance()
     const XrResult r = reinterpret_cast<PFN_xrCreateInstance>(createInstanceFn)(&info, &g_instance);
     LogLine(std::string("[XR] xrCreateInstance (XR_KHR_D3D11_enable") +
             (g_hasRefreshRateExt ? " + XR_FB_display_refresh_rate" : "") +
+            (g_mevrHasPerformanceExt ? " + XR_EXT_performance_settings" : "") + // [MEVR]
             (mevrHasHpControllerExt ? " + XR_EXT_hp_mixed_reality_controller" : "") + "): " + FmtXr(r));   // [MEVR]
     if (!XrSucceeded(r) || g_instance == nullptr)
         return false;
@@ -417,6 +428,8 @@ bool CreateInstance()
 
 bool ResolveSessionFunctions()
 {
+    MELEVR::MevrBridge::QuestPacingInit(g_instance, reinterpret_cast<void*>(g_getProc),
+        g_hasRefreshRateExt, g_mevrHasPerformanceExt); // [MEVR] host owns recovery, all calls on Present thread
     PFN_xrVoidFunction p = nullptr;
 #define RESOLVE(name, field, type)            \
     if (!ResolveProc(name, &p)) return false; \
@@ -786,14 +799,17 @@ void PollEvents()
             }
             else if (g_sessionState == XR_SESSION_STATE_STOPPING_VALUE)
             {
+                MELEVR::MevrBridge::QuestPacingStopped(); // [MEVR] restore temporary refresh before ending session
                 g_fn.endSession(g_session);
                 g_sessionRunning = false;
-                g_mevrEarlyFsPending = false;   // [MEVR] the waited frame dies with the session
+                g_mevrFrameSlot.Clear();   // [MEVR] the waited/begun ticket dies with the session
                 MevrStandDown();                // [MEVR] RunFrame stops: nothing else would disarm these
             }
             else if (g_sessionState == XR_SESSION_STATE_EXITING_VALUE ||
                      g_sessionState == XR_SESSION_STATE_LOSS_PENDING_VALUE)
             {
+                MELEVR::MevrBridge::QuestPacingStopped(); // [MEVR]
+                g_mevrFrameSlot.Clear(); // [MEVR]
                 g_shutdown.store(true);
                 MevrStandDown();                // [MEVR]
             }
@@ -3933,6 +3949,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // morning while the logs still read "paced". Stereo now measures its natural cadence and locks to the
     // integer period count it actually occupies (120Hz->2, 60Hz->1), or deliberately declines when no
     // integer lock exists (72/90Hz -> free-run, no throttle). See StereoLockPeriods.
+    bool mevrIntentionalPace = forceFlatCine || vrCineActive || gameMode < 0 || gameMode >= 2; // [MEVR] modes capped on purpose
     {
         const MELEVR::Config::VrConfig& paceCfg = MELEVR::Config::Get();
         const bool aerPaceActive = paceCfg.aerEnabled && !paceCfg.stereoEnabled && !paceCfg.dibrEnabled &&
@@ -4004,26 +4021,35 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             }
             PaceDisplayLockedAer(static_cast<double>(s_cpPeriods));
         }
-        else if (aerPaceActive) PaceDisplayLockedAer(paceCfg.fullRefreshPacing ? 1.0 : 2.0);
+        else if (aerPaceActive) { mevrIntentionalPace = mevrIntentionalPace || !paceCfg.fullRefreshPacing; PaceDisplayLockedAer(paceCfg.fullRefreshPacing ? 1.0 : 2.0); } // [MEVR]
         else if (stereoPaceActive || sfr2PaceActive)
         {
             const double lockPeriods = StereoLockPeriods();
+            mevrIntentionalPace = mevrIntentionalPace || lockPeriods > 1.0; // [MEVR] the deliberate stereo hold
             // adaptiveObserve feeds the pre-hold work time back to [STEREOPACE v2] so the lock can
             // step up during sustained load and probe back down when headroom returns.
             if (lockPeriods > 0.0) PaceDisplayLockedAer(lockPeriods, true);
         }
     }
 
+    MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFramePrepared); // [MEVR] pre-wait pacing is done
     XrFrameWaitInfo fwi = {};
     fwi.type = XR_TYPE_FRAME_WAIT_INFO_VALUE;
     XrFrameState fs = {};
     fs.type = XR_TYPE_FRAME_STATE_VALUE;
-    if (g_mevrEarlyFsPending)   // [MEVR] early frame wait: already waited, at the end of the last frame
+    const bool mevrAlreadyBegun = g_mevrFrameSlot.state == mevr::vr::quest_pacing::FrameSlot::State::Begun; // [MEVR]
+    if (mevrAlreadyBegun && GetTickCount64() - g_mevrEarlyBeginMs > 250) // [MEVR] no replacement wait/begin over a stale ticket
+        LogLine("quest pacing: begun frame aged " + std::to_string(GetTickCount64() - g_mevrEarlyBeginMs) + " ms across a load; finishing its original prediction");
+    if (g_mevrFrameSlot.Pending())   // [MEVR] retain this exact prediction, even across loads or live option changes
     {
         fs = g_mevrEarlyFs;
-        g_mevrEarlyFsPending = false;
     }
-    else if (!XrSucceeded(g_fn.waitFrame(g_session, &fwi, &fs))) return;
+    else // [MEVR] failed begins retain a waited ticket; never wait a second time over it
+    {
+        if (!XrSucceeded(g_fn.waitFrame(g_session, &fwi, &fs))) return;
+        g_mevrEarlyFs = fs;
+        g_mevrFrameSlot.Waited();
+    }
 
     // Learn the headset's true refresh (runtime FB query first, else measured) so the pace above locks correctly.
     // Runs for AER always (pacing is core there) and for stereo when its opt-in pacing is on.
@@ -4047,9 +4073,12 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
 
     XrFrameBeginInfo fbi = {};
     fbi.type = XR_TYPE_FRAME_BEGIN_INFO_VALUE;
-    g_fn.beginFrame(g_session, &fbi);
+    if (!mevrAlreadyBegun && !XrSucceeded(g_fn.beginFrame(g_session, &fbi))) return; // [MEVR] consume only on successful begin
+    if (!mevrAlreadyBegun) g_mevrEarlyBeginMs = GetTickCount64(); // [MEVR]
+    g_mevrFrameSlot.Clear(); // [MEVR] RunFrame now owns the begun ticket through xrEndFrame, including a load's stale prediction
     // [MEVR] motion controllers, located in the app space at this frame's display time
-    MELEVR::MevrBridge::OnFrameBegun(g_session, g_appSpace, static_cast<std::int64_t>(fs.predictedDisplayTime));
+    if (!mevrAlreadyBegun) MELEVR::MevrBridge::OnFrameBegun(g_session, g_appSpace, static_cast<std::int64_t>(fs.predictedDisplayTime)); // [MEVR] full mode already published before rendering
+    MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameReady); // [MEVR] copies/layers follow, even when begin/input ran last Present
 
     // --- Options menu: lazy-init (Present thread), Insert toggle ------------------------------------
     if (!g_menuInited)
@@ -6289,8 +6318,17 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // [XRENDF / STEAMVR 2026-07-20] xrEndFrame's result was silently discarded - a runtime rejecting
     // the submitted layers (SteamVR validates; Meta forgives) was indistinguishable from success. Log failures.
     const XrResult endFrameResult = g_fn.endFrame(g_session, &fei);
+    // [MEVR] read-only world identity; stalls do not reset the per-level budget. No UnrealScript here.
+    MELEVR::HeadAim::WorldTelemetry mevrWorld = {};
+    const bool mevrWorldValid = MELEVR::MevrBridge::QuestPacingEnabled() && MELEVR::HeadAim::ReadWorldTelemetrySEH(&mevrWorld); // [MEVR] no extra engine reads when off
+    MELEVR::MevrBridge::QuestPacingFrame(g_session, g_sessionState,
+        mevrIntentionalPace || !mevrWorldValid || !mevrWorld.hasPawn || menuOpen,
+        mevrWorldValid ? mevrWorld.worldIdentity : 0, fs.predictedDisplayPeriod, fs.shouldRender != 0,
+        fs.predictedDisplayTime, layerCount, endFrameResult);
     if (!XrSucceeded(endFrameResult))
     {
+        // [MEVR] OpenXR recommends retiring a failed submission, not retrying end with changed
+        // parameters. Its wait/begin/end were all attempted; the next ticket gets a fresh wait.
         static std::atomic<unsigned> s_efLogs{0};
         const unsigned n = s_efLogs.fetch_add(1, std::memory_order_relaxed);
         if (n < 8 || (n % 300) == 0)
@@ -6343,9 +6381,12 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // [MEVR] early frame wait (research/22): wait for the NEXT frame now, before the game renders it,
     // instead of at the next Present once it is already rendered (then waited, begun and ended back to
     // back: the runtime never saw the game wait, and SteamVR held it at half rate). The next RunFrame
-    // begins the frame this wait returned. Off ([Performance] earlyFrameWait = 0): upstream's order.
-    if (MELEVR::MevrBridge::EarlyFrameWait())
+    // begins the frame this wait returned. [MEVR] frameLoop=full also begins it here, before rendering.
+    // Off ([Performance] earlyFrameWait = 0, frameLoop=halcyon): upstream's order.
+    const bool mevrFull = MELEVR::MevrBridge::FullFrameLoop(); // [MEVR] full overrides earlyFrameWait; default halcyon preserves it
+    if (mevrFull || MELEVR::MevrBridge::EarlyFrameWait()) // [MEVR] also after a logged, retired submission error
     {
+        MELEVR::MevrBridge::QuestPacingNextFrame(true); // [MEVR] distinct probe points: these calls own N+1, not N
         XrFrameWaitInfo nextWait = {};
         nextWait.type = XR_TYPE_FRAME_WAIT_INFO_VALUE;
         XrFrameState next = {};
@@ -6353,8 +6394,20 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         if (XrSucceeded(g_fn.waitFrame(g_session, &nextWait, &next)))
         {
             g_mevrEarlyFs = next;
-            g_mevrEarlyFsPending = true;
+            g_mevrFrameSlot.Waited(); // [MEVR]
+            if (mevrFull) // [MEVR] full wait/begin before either one-Draw or two-Draw rendering starts
+            {
+                XrFrameBeginInfo nextBegin = {};
+                nextBegin.type = XR_TYPE_FRAME_BEGIN_INFO_VALUE;
+                if (XrSucceeded(g_fn.beginFrame(g_session, &nextBegin)))
+                {
+                    g_mevrFrameSlot.Begun();
+                    g_mevrEarlyBeginMs = GetTickCount64(); // [MEVR]
+                    MELEVR::MevrBridge::OnFrameBegun(g_session, g_appSpace, static_cast<std::int64_t>(next.predictedDisplayTime));
+                }
+            }
         }
+        MELEVR::MevrBridge::QuestPacingNextFrame(false); // [MEVR]
     }
 }
 

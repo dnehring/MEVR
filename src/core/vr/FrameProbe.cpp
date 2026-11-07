@@ -6,9 +6,10 @@
 namespace mevr::vr::frame_probe {
 namespace {
 
-constexpr char const* kNames[kPointCount] = {"start", "pass0", "present", "preamble", "frame_entry", "frame_reads", "frame_cine", "wait_begin", "wait_end", "begin_begin",
-    "begin_end", "input_begin", "input_end", "frame_begun_end", "overlay_begin", "overlay_end", "end_frame_begin",
-    "end_frame_end", "end"};
+constexpr char const* kNames[kPointCount] = {"start", "pass0", "present", "preamble", "frame_entry", "frame_reads", "frame_cine", "frame_prepared", "wait_begin", "wait_end", "begin_begin",
+    "begin_end", "input_begin", "input_end", "frame_begun_end", "frame_ready", "overlay_begin", "overlay_end", "end_frame_begin",
+    "end_frame_end", "next_wait_begin", "next_wait_end", "next_begin_begin", "next_begin_end",
+    "next_input_begin", "next_input_end", "next_frame_begun_end", "end"};
 
 double QpcMs(Clocks const& clocks, std::int64_t qpc) {
     return clocks.qpcFrequency > 0.0 ? static_cast<double>(qpc - clocks.originQpc) * 1000.0 / clocks.qpcFrequency : 0.0;

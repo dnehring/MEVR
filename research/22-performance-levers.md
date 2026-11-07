@@ -650,3 +650,108 @@ Codex's read of the mechanism (research only): the runtimes adjust their predict
 and a frame waited for before a stall goes stale while the clock runs; neither runtime publishes its recovery rule.
 **[verify]** the PS VR2 with the early wait still at 90 on today's lighter frame (one Draw), and whether the late wait would now
 do as well there.
+
+## Quest cadence detection and app-side recovery experiment (2026-11-07, quest-pacing)
+
+**Later owner measurement supersedes the earlier recovery claim above:** on both Meta's OpenXR runtime and SteamVR
+over Quest Link, post-load Presents stayed around 37-56/s at 72 Hz with ~3 ms render work and ~2 ms GPU work. Two scene
+Draws temporarily returned after loading; one Draw later resumed without restoring cadence. A FOCUSED -> VISIBLE ->
+FOCUSED transition correlated with full-rate recovery. We act on a latched Meta scheduling/ASW hypothesis; the mod's
+timestamps alone do not establish the internal compositor decision. Players never need to change runtime/Link settings.
+
+### What the public APIs actually offer
+
+- [Meta's PC performance statistics](https://developers.meta.com/vr/documentation/native/pc/dg-performance-stats/)
+  describe ASW engaging when native frame rate cannot be met. They provide no app-side OpenXR ASW reset command.
+- [XR_FB_display_refresh_rate](https://github.com/KhronosGroup/OpenXR-Docs/blob/main/specification/sources/chapters/extensions/fb/fb_display_refresh_rate.adoc)
+  offers enumeration, current-rate query and a **request**, not a guaranteed mode switch or ASW reset. The
+  [request reference](https://registry.khronos.org/OpenXR/specs/1.0/man/html/xrRequestDisplayRefreshRateFB.html)
+  requires an enumerated rate (or zero); we use only enumerated, nonzero rates. Re-request current first; if cadence
+  stays bad through the cooldown, request the nearest other listed rate for 0.5 s, then request the original back.
+  Restoration is queried and retried once a second until confirmed. A single-rate list cannot do a cycle.
+- [Khronos' runtime inventory](https://github.khronos.org/OpenXR-Inventory/runtime_extension_support.html)
+  lists refresh control and `XR_META_performance_metrics` for Meta PC, but **not** `XR_EXT_performance_settings`.
+  This is a support snapshot, not our capability gate: enumerate the live runtime before enabling extensions.
+  Every advertised extension is logged at startup. Meta PC support must not be inferred from Quest Android docs.
+- [XR_EXT_performance_settings](https://github.com/KhronosGroup/OpenXR-Docs/blob/main/specification/sources/chapters/extensions/ext/ext_performance_settings.adoc)
+  supplies CPU/GPU **hints**. If actually listed/enabled, the last action pulses BOOST for 0.5 s and returns each
+  accepted domain to SUSTAINED_HIGH (the specified default). An ignored hint may do nothing; this is not an ASW API.
+- [XR_META_performance_metrics](https://github.com/KhronosGroup/OpenXR-Docs/blob/main/specification/sources/chapters/extensions/meta/meta_performance_metrics.adoc)
+  is telemetry, not a scheduling actuator. [XR_FB_space_warp](https://github.com/KhronosGroup/OpenXR-Docs/blob/main/specification/sources/chapters/extensions/fb/fb_space_warp.adoc) supplies application
+  motion/depth data for Application SpaceWarp, not a PC ASW disable/reset. Neither is enabled as a recovery action.
+  No private `XR_OCULUS_ovrsession_handle` route: [Meta's own response](https://communityforums.atmeta.com/discussions/dev-openxr/cannot-find-documentation-for-oculus-xr-extensions/822121/replies/999853)
+  says that interface is undocumented and intended for removal. No runtime configuration files or debug tools touched.
+- [OpenXR rendering rules](https://github.com/KhronosGroup/OpenXR-Docs/blob/main/specification/sources/chapters/rendering.adoc)
+  recommend beginning before graphics work; they do not promise that `xrEndFrame` returns immediately.
+  No focus-forcing API or legal arbitrary `xrEndSession` reset is supplied by the
+  [session lifecycle](https://github.com/KhronosGroup/OpenXR-Docs/blob/main/specification/sources/chapters/session.adoc).
+
+### Implementation and settings (ASI/LE1MEVR.ini, live-read once a second)
+
+```ini
+[Performance]
+pacingRecovery = auto
+pacingRecoveryTries = 3
+frameLoop = halcyon
+; explicit comma-separated list: refresh,refresh-cycle,performance (order preserved)
+; pacingRecovery = off disables automatic detection/actions
+; frameLoop = full overrides earlyFrameWait; halcyon preserves that existing setting
+[Debug]
+pacingRecoveryRequest = 0
+; increment to a positive new number to force one recovery attempt, including without XR
+```
+
+`auto` enables the ordered list only for `colour::StreamedHeadset()`; PS VR2 keeps its existing early-wait policy,
+with no automatic actions or new per-frame cycle measurement. Invalid list tokens fail closed. Tries clamp to 0-16;
+zero allows diagnostic detection but no actions. Explicit Debug force bypasses eligibility/auto selection, **not** the
+cooldown, attempt budget or capability checks; no XR produces a logged refusal. Force uses refresh if no list is enabled.
+
+The pure core detector consumes Present-to-Present timestamps, useful render-thread CPU cycles divided by the same
+TSC-frequency estimate as the probe, and the display period. CPU cycles inside wait/begin/end/swapchain wait are removed;
+sleeping is absent from the cycle counter. Display period comes from the live refresh query, otherwise the shortest valid
+prediction observed this session (prediction periods may themselves reflect throttling). That fallback is less certain.
+After >=3 s of focused, uncapped, valid samples, delivered/display rate <=0.6 and useful-work p90 <=0.5 periods enters Stuck.
+Any interval >250 ms, invalid reading, unfocused frame, missing world/pawn, menu, flat/cine/game-mode cap or deliberate
+stereo hold clears the evidence window. Recovery requires a three-second window >=0.85 rate sustained for another second.
+Each action is >=10 s after the preceding one, including across loads; attempts reset only on a new nonzero WorldInfo
+identity. Unknown worlds and ordinary stalls do not replenish the budget. Reused world addresses conservatively retain it.
+`quest pacing:` entering/recovering/recovered/gave-up messages, API results and a ten-second cumulative heartbeat accompany
+a `questPacing` snapshot JSON block. Recovery means cadence improved, not proof of which API caused it.
+
+`full` caches a waited **and begun** N+1 ticket at N's tail, with its original XrFrameState. Both one-Draw and two-Draw
+paths render after it. Bootstrap begins at the first Present. A failed begin retains its waited ticket; a failed end
+is logged and retired after the paired end attempt, as the rendering specification recommends, rather than resubmitted.
+A load finishes the original begun prediction (logs age >250 ms), then gets a fresh
+one; it never inserts a replacement begin or a blank submission. STOPPING clears the slot after the session ends.
+Visible/focused transitions keep pairing. Live loop switches finish existing tickets. Cine/stereo pacing holds remain.
+Controller OnFrameBegun moves with begin in full mode; Halcyon's exact render-pose tagging remains in place.
+Probe `next_wait_*`, `next_begin_*`, `next_input_*` and `next_frame_begun_end` distinguish N+1 from N; `frame_prepared`
+ends pre-wait pacing and `frame_ready` starts copies/layers even with cached begin. The analyzer understands both schemas
+and excludes end-call CPU busy time from useful work; its per-second work previously included end-call wall time.
+
+### Verification and limits
+
+- Offline: `QuestPacingTests` covers the 3 s gate, rate/work rejection, p90, stalls/focus/mode exclusion, hysteresis,
+  10 s cooldown, per-world budget, force and cached-ticket ownership. The separate `mevr-quest-pacing-host-tests`
+  drives the actual host dispatcher with fake XR functions: no headset, unsupported refresh/performance extensions,
+  same-rate request, alternate-rate cycle and restoration, single-rate refusal, request rejection, STOPPING restoration,
+  BOOST/HIGH pairing, and PS VR2 auto-off. Each case gets its own process/settings under `tests::TempRoot()`.
+  Run `mevr-tests` (also builds the host tests) and the full CTest suite on build. `PerfProbeTests.py` checks synthetic
+  old/new capture rows, including bootstrap's two waits, copy/mirror attribution and XR CPU-wait exclusion.
+- Fake headset: increment Debug request; expect entering/recovering and either extension results or an unavailable
+  reason. With API validation, A/B early/late/full through loads, both Draw paths, menu/cine, focus, STOPPING/restart and
+  live option switches. Check exactly one wait/begin/end per submitted ticket, original prediction ownership and layers.
+  Simulate single/multiple-rate lists, asynchronous changes, rejected requests and restoration failures. Fake success
+  validates dispatch/pairing only; it cannot validate Meta ASW recovery. These live-runtime checks remain unrun here.
+- Owner Quest: same save/location and repeated loads on **each** Meta OpenXR and SteamVR, halcyon then full, 30 s probes
+  spanning the stuck interval and action outcome. Confirm sustained near-72 cadence, actual original refresh restored,
+  no blank flashes or tracking/tag regressions, and preserved cinema/menu caps. Recheck PS VR2 defaults separately.
+- Risks: listed APIs can be ignored or list only the current rate; cycling may visibly flicker; a begun prediction ages
+  during loading/cine holds; runtime error paths need validation; CPU cycle conversion is an estimate, not GPU
+  headroom measurement. Temporary hints/rates can only be restored when the runtime accepts calls; focus/off/STOPPING
+  expedite restoration, pending changes retry while a session remains available. No guarantee of a compositor reset.
+- Sandbox verification: normal CMake regeneration succeeded, but MSBuild SDK discovery was denied access to the user
+  SDK directory before compiling. Direct MSVC checks passed: detector tests and all ten host-dispatch cases at /W4 /WX;
+  the changed host/probe translation units at /W4 /WX; Halcyon's changed units at its existing /W3 policy. Both analyzer
+  tests, SPDX and three CTest checks (analyzer, RVA table, OKF) passed. A complete linked ASI, full CTest and hardware
+  checks remain separate gates.

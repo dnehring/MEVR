@@ -2,6 +2,7 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
 
 struct ID3D11DeviceContext;
 
@@ -24,6 +25,7 @@ namespace mevr::host::perf {
 // A step of the frame (vr::frame_probe::Point). `context`: the game's immediate context, for the steps
 // that take a GPU timestamp; nullptr uses the last one given.
 void Mark(int point, ID3D11DeviceContext* context = nullptr);
+void FrameSubmitted(std::int64_t period, bool shouldRender); // own frame's metadata, never N+1's wait
 
 // Two marks around a scope.
 class ScopedMarks {

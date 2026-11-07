@@ -336,7 +336,8 @@ void PerfPresentEnd(ID3D11DeviceContext* context) noexcept;
 void PerfPass0Captured(ID3D11DeviceContext* context) noexcept;
 // [MEVR] finer steps of the present path (research/37, the present path trimmed): the hook's preamble done
 // (before XrSession::OnPresent) and the frame function entered (after the runtime's event poll).
-enum PerfPointId : int { kPerfPreamble = 1, kPerfFrameEntry = 2, kPerfFrameReads = 3, kPerfFrameCine = 4 };
+enum PerfPointId : int { kPerfPreamble = 1, kPerfFrameEntry = 2, kPerfFrameReads = 3, kPerfFrameCine = 4,
+    kPerfFramePrepared = 5, kPerfFrameReady = 6 }; // [MEVR] valid for cached/begun predictions too
 void PerfPoint(int point) noexcept;
 
 struct PerfPresentScope
@@ -396,8 +397,17 @@ void RecordClearDepthStencilView(ID3D11DeviceContext* context, ID3D11DepthStenci
 
 // Present thread, at the end of RunFrame: whether to call xrWaitFrame for the next frame there, before the
 // game renders it (research/22), rather than at the next Present. [Performance] earlyFrameWait in
-// ASI\LE1MEVR.ini, default 1, re-read once a second (0: upstream's order).
+// ASI\LE1MEVR.ini, default auto, re-read once a second (late for streamed Meta, early otherwise; 0: upstream's order). [MEVR]
 bool EarlyFrameWait() noexcept;
+
+// [MEVR] Quest cadence recovery and full pre-render wait/begin experiment (research/22).
+bool FullFrameLoop() noexcept;
+bool QuestPacingEnabled() noexcept;
+void QuestPacingInit(void* instance, void* getProc, bool refreshEnabled, bool performanceEnabled) noexcept;
+void QuestPacingNextFrame(bool next) noexcept;
+void QuestPacingFrame(void* session, int state, bool capped, std::uint64_t level,
+    std::int64_t period, bool shouldRender, std::int64_t prediction, unsigned layers, int result) noexcept;
+void QuestPacingStopped() noexcept;
 
 // Render thread, per Stereo 2 pass: whether gameplay too renders each eye through its own FSceneViewState (Halcyon
 // does it in cine only). With one shared state the second eye's "previous frame" occlusion query is the first eye's

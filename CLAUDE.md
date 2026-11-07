@@ -1003,7 +1003,7 @@ switching frameworks.
 - **The owner's dev settings are the shipped defaults** (2026-11-05, after the first QA pass of the release found the
   release without them): `[Hands] handPitch = 90` (`vr::menu_settings::kHandPitchDefault`: the game's hand model sits 90
   degrees off the grip pose; the menu's hand-angle row trims around it), `[Performance] sharePass = 5`,
-  `umbraSecondEyeClearBits = 2`, `[Performance] earlyFrameWait = auto` (the late wait for a streamed Meta headset: a Quest stuck at half rate after every load with the early one, research/22 2026-11-07), `[Upscale] method = fsr`, `[Game] pauseUnfocused = 0`, the render target at 0.85 of the
+  `umbraSecondEyeClearBits = 2`, `[Performance] earlyFrameWait = auto` (the late wait for a streamed Meta headset: a Quest stuck at half rate after every load with the early one, research/22 2026-11-07), `pacingRecovery = auto` (bounded recovery for streamed Meta headsets, off otherwise), `pacingRecoveryTries = 3` per level, `frameLoop = halcyon` (`full` overrides earlyFrameWait for the wait/begin-before-render experiment; research/22), `[Upscale] method = fsr`, `[Game] pauseUnfocused = 0`, the render target at 0.85 of the
   headset's eye size, and in Halcyon's fresh `MELEVR.ini` (`ini::HalcyonReleaseIni`, `tools/deploy-asi.ps1`) `decoupledPitch = 1`,
   `cameraOffsetEnabled = 1` (right 0.078, up -0.082) and `screenDistanceEnabled = 1` (0.674). A new setting the owner tunes in
   their own file is a candidate default: compare `ASI\LE1MEVR.ini` and the active `MELEVR.ini` profile with a fresh install's.

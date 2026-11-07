@@ -196,6 +196,7 @@ add_library(halcyon-le1 STATIC
 )
 target_include_directories(halcyon-le1 PUBLIC
     ${HALCYON_LE1_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src # [MEVR] game-independent cached frame ownership
     third_party/imgui
     third_party/imgui/backends
 )
@@ -599,6 +600,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/Floor.hpp
     src/core/vr/FrameProbe.cpp
     src/core/vr/FrameProbe.hpp
+    src/core/vr/QuestPacing.cpp
+    src/core/vr/QuestPacing.hpp
     src/core/vr/GamePointer.cpp
     src/core/vr/GamePointer.hpp
     src/core/vr/GuiEvents.cpp
@@ -731,6 +734,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MetricStereo.hpp
     src/plugin/PerfProbe.cpp
     src/plugin/PerfProbe.hpp
+    src/plugin/QuestPacing.cpp
+    src/plugin/QuestPacing.hpp
     src/plugin/RenderLevers.cpp
     src/plugin/RenderLevers.hpp
     src/plugin/RecenterTilt.cpp
@@ -973,6 +978,7 @@ if (MEVR_BUILD_TESTS)
         tests/SwapchainBudgetTests.cpp
         tests/VrCoverTests.cpp
         tests/PerformanceModesTests.cpp
+        tests/QuestPacingTests.cpp
         src/core/vr/GuiEvents.cpp
         tests/SquadPhrasings.cpp
         tests/VoiceTests.cpp
@@ -1027,6 +1033,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Colour.cpp
         src/core/vr/ColourStrip.cpp
         src/core/vr/FrameProbe.cpp
+        src/core/vr/QuestPacing.cpp
         src/core/vr/GamePointer.cpp
         src/core/vr/Haptics.cpp
         src/core/vr/ImageConvert.cpp
@@ -1084,9 +1091,20 @@ if (MEVR_BUILD_TESTS)
         target_compile_definitions(mevr-tests PRIVATE MEVR_TEST_FREETYPE)
     endif ()
     add_test(NAME mevr-tests COMMAND mevr-tests)
+    add_executable(mevr-quest-pacing-host-tests tests/QuestPacingHostTests.cpp
+        src/plugin/QuestPacing.cpp src/core/vr/QuestPacing.cpp src/core/Ini.cpp src/core/vr/TestRequest.cpp)
+    target_include_directories(mevr-quest-pacing-host-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(mevr-quest-pacing-host-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-quest-pacing-host-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-quest-pacing-host-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-quest-pacing-host-tests)
+    foreach(pacing_case no-headset unsupported refresh cycle single-rate rejected stop-restore performance perf-unsupported psvr2-auto)
+        add_test(NAME mevr-quest-pacing-${pacing_case} COMMAND mevr-quest-pacing-host-tests ${pacing_case})
+    endforeach()
     # Every `k...Rva = 0x...` constant in src/ is in our RVA table (engine/Addresses.hpp, research/34 stage 4).
     find_package(Python3 COMPONENTS Interpreter)
     if (Python3_Interpreter_FOUND)
+        add_test(NAME mevr-perf-probe COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/PerfProbeTests.py)
         add_test(NAME mevr-rva-table COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-rva-table.py
             ${CMAKE_CURRENT_SOURCE_DIR})
         # The knowledge bundle (docs/knowledge, Open Knowledge Format): a typed frontmatter on every concept, complete

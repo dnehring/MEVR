@@ -1,6 +1,9 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-07 Quest pacing (quest-pacing): repeated identical loads on Meta OpenXR and SteamVR over Quest Link,
+  `frameLoop = halcyon` then `full`; 30 s captures and `quest pacing:` logs/snapshot. Confirm sustained full cadence,
+  refresh restored after a cycle, no blank frames or cine/menu pacing regressions; PS VR2 default regression (research/22).
 - [ ] 2026-11-07 reticle fix: UNC20 holstered/drawn, exit/re-enter Mako with cockpit on (also controls/gunner); no centre cursor in either eye or mirror, aim-screen marker retained; check sniper, galaxy, cutscene, world UI and VR-off restoration with `mevr reticles` (research/44).
 
 One list of everything that still needs **you in the headset** (tracked hands, your eyes, your comfort), compiled

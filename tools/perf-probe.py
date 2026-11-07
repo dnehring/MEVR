@@ -86,7 +86,7 @@ def frame_metrics(r):
     # 2026-10-26 finding: a 0.6 ms step that was the copies and xrEndFrame counted twice). The frame then begins
     # (xrBeginFrame) right after the point where the wait would have been, so that is the step's end.
     early = r.get('t_wait_begin') is not None and r.get('t_end_frame_begin') is not None and         r.get('t_wait_begin') > r.get('t_end_frame_begin')
-    wait_point = 'begin_begin' if early else 'wait_begin'
+    wait_point = 'frame_prepared' if r.get('t_frame_prepared') is not None else ('begin_begin' if early else 'wait_begin')
     m['pre_wait'] = span(r, 'present', wait_point)
     m['preamble'] = span(r, 'present', 'preamble')
     m['poll'] = span(r, 'preamble', 'frame_entry')
@@ -95,22 +95,32 @@ def frame_metrics(r):
     m['frame_cine'] = span(r, 'frame_reads', 'frame_cine')
     m['frame_pace'] = span(r, 'frame_cine', wait_point)
     m['early_wait'] = span(r, 'end_frame_end', 'wait_begin') if early else None
-    m['wait_wall'] = span(r, 'wait_begin', 'wait_end')
-    m['wait_busy'] = span(r, 'wait_begin', 'wait_end', 'busy')
-    m['begin_wall'] = span(r, 'begin_begin', 'begin_end')
-    m['begin_busy'] = span(r, 'begin_begin', 'begin_end', 'busy')
-    m['input'] = span(r, 'input_begin', 'input_end')
-    m['frame_begun_rest'] = span(r, 'input_end', 'frame_begun_end')
+    # New captures keep N+1's tail calls separate from this row's submit, including bootstrap frames
+    # with both a late wait and a next wait. Sum their cost without overwriting either timestamp.
+    def call_cost(a, b, kind='t'):
+        costs = [span(r, a, b, kind), span(r, 'next_' + a, 'next_' + b, kind)]
+        return sum(v for v in costs if v is not None) if any(v is not None for v in costs) else None
+    m['wait_wall'] = call_cost('wait_begin', 'wait_end')
+    m['wait_busy'] = call_cost('wait_begin', 'wait_end', 'busy')
+    m['begin_wall'] = call_cost('begin_begin', 'begin_end')
+    m['begin_busy'] = call_cost('begin_begin', 'begin_end', 'busy')
+    m['input'] = call_cost('input_begin', 'input_end')
+    m['frame_begun_rest'] = call_cost('input_end', 'frame_begun_end')
     m['overlays'] = span(r, 'overlay_begin', 'overlay_end')
-    copies = span(r, 'frame_begun_end', 'end_frame_begin')
+    ready_point = 'frame_ready' if r.get('t_frame_ready') is not None else 'frame_begun_end'
+    copies = span(r, ready_point, 'end_frame_begin')
     if copies is not None and m['overlays'] is not None:
         copies -= m['overlays']
     m['copies'] = copies
     m['end_frame'] = span(r, 'end_frame_begin', 'end_frame_end')
     m['tail'] = span(r, 'end_frame_end', 'end')
+    if m['tail'] is not None:
+        for a, b in [('next_wait_begin', 'next_wait_end'), ('next_begin_begin', 'next_begin_end'),
+                     ('next_input_begin', 'next_frame_begun_end')]:
+            m['tail'] -= span(r, a, b) or 0.0
     m['swapchain_wait'] = r.get('swapchain_wait_ms')
     busy_total = r.get('busy_end')
-    waits = sum(v for v in (m['wait_busy'], m['begin_busy']) if v is not None)
+    waits = sum(v for v in (m['wait_busy'], m['begin_busy'], span(r, 'end_frame_begin', 'end_frame_end', 'busy')) if v is not None)
     m['render_busy_total'] = busy_total
     m['render_work'] = busy_total - waits if busy_total is not None else None
     # GPU: work per step (upper bound) and lag behind the CPU at each point.
@@ -124,7 +134,7 @@ def frame_metrics(r):
         # A step's span: from when the GPU could start it (done with the step before, and the CPU issuing
         # it) to when it finished. The copies are issued after xrBeginFrame, so the wait isn't counted.
         issue = dict(t)
-        issue['end_frame_begin'] = r.get('t_begin_end')
+        issue['end_frame_begin'] = r.get('t_frame_ready') or r.get('t_begin_end')
         chain = [p for p in points if g[p] is not None and t[p] is not None]
         total = 0.0
         for a, b in zip(chain, chain[1:]):
@@ -188,14 +198,18 @@ def main():
     # renders, every hold (Halcyon's cutscene cap, stereo pacing) and every idle between them, busy or not.
     for prev, cur, m in zip([None] + chosen[:-1], chosen, metrics):
         m['steamvr_cpu'] = None
-        m['hold'] = span(cur, 'present', 'begin_begin')
+        m['hold'] = span(cur, 'frame_cine', 'frame_prepared') if cur.get('t_frame_prepared') is not None else span(cur, 'present', 'begin_begin')
         if cur.get('t_end_frame_end') is None:
             continue
         own_wait = span(cur, 'wait_end', 'end_frame_end')
         if own_wait is not None and own_wait >= 0:   # the wait came before the submit: upstream's order
             m['steamvr_cpu'] = own_wait
-        elif prev is not None and prev.get('t_wait_end') is not None and prev.get('t_end') is not None                 and cur.get('t_start') is not None:
-            m['steamvr_cpu'] = (prev['t_end'] - prev['t_wait_end']) + (cur['t_end_frame_end'] - cur['t_start'])
+        elif prev is not None and prev.get('t_end') is not None and cur.get('t_start') is not None:
+            previous_wait = prev.get('t_next_wait_end')
+            if previous_wait is None:
+                previous_wait = prev.get('t_wait_end')
+            if previous_wait is not None:
+                m['steamvr_cpu'] = (prev['t_end'] - previous_wait) + (cur['t_end_frame_end'] - cur['t_start'])
     get = lambda key: [m.get(key) for m in metrics]
     if args.per_second:
         per_second(chosen, metrics, ticks)
@@ -357,8 +371,7 @@ def per_second(chosen, metrics, ticks):
     print('  s  frames  interval  render work  hold  fpsVR CPU   GPU  game thread   (medians, ms)')
     for sec in sorted(buckets):
         ms = buckets[sec]
-        work = [((m.get('game_busy') or 0.0) + (m.get('overlays') or 0.0) + (m.get('copies') or 0.0) +
-                 (m.get('end_frame') or 0.0)) for m in ms]
+        work = [m.get('render_work') for m in ms]
         print(f'{sec:3d}  {len(ms):6d}    {fmt(med([m.get("interval") for m in ms]))}       {fmt(med(work))} '
               f'{fmt(med([m.get("hold") for m in ms]))}     {fmt(med([m.get("steamvr_cpu") for m in ms]))} '
               f'{fmt(med([m.get("gpu_work") for m in ms]))}       {fmt(med(tick_buckets.get(sec, [])))}')

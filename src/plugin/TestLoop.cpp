@@ -18,6 +18,7 @@
 #include "plugin/MetricStereo.hpp"
 #include "plugin/CineScreen.hpp"
 #include "plugin/PerfProbe.hpp"
+#include "plugin/QuestPacing.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/SightLayers.hpp"
 #include "plugin/Spectator.hpp"
@@ -816,7 +817,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
         "  \"colour\": {},\n  \"stereo\": {},\n  \"floorLock\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n  \"voice\": {},\n"
         "  \"spectator\": {},\n  \"figure\": {},\n  \"omniPad\": {},\n  \"omniRail\": {},\n  \"swapchains\": {},\n  \"mod\": {},\n"
-        "  \"layers\": [{}\n  ]",
+        "  \"questPacing\": {},\n  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
         J(ray.valid), JVec(ray.origin), JVec(ray.direction), ray.timeMs != 0 ? GetTickCount64() - ray.timeMs : 0,
@@ -837,7 +838,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
 #else
         std::string("null"), std::string("null"),
 #endif
-        swapchains::StatusJson(), mod, LayersJson(layers));
+        swapchains::StatusJson(), mod, quest_pacing::StatusJson(), LayersJson(layers));
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);

@@ -21,6 +21,7 @@ enum Point : int {
     kFrameEntry,     // its frame function entered, after the runtime's event poll
     kFrameReads,     // its game-state reads done (camera mode name, game mode)
     kFrameCine,      // its cine decision published
+    kFramePrepared,  // pre-wait pacing done (also present when wait/begin already ran for this frame)
     kWaitBegin,      // xrWaitFrame
     kWaitEnd,
     kBeginBegin,     // xrBeginFrame
@@ -28,10 +29,18 @@ enum Point : int {
     kInputBegin,     // our controllers: xrSyncActions, the action reads, the locates, haptics, floor
     kInputEnd,
     kFrameBegunEnd,  // the rest of our OnFrameBegun (test loop, publishing)
+    kFrameReady,     // own ticket consumed; copies/layers can proceed, even with cached begin/input
     kOverlayBegin,   // our quads: HUD panel, reticle, sights, squad menu, wheel
     kOverlayEnd,
     kEndFrameBegin,  // xrEndFrame: the eye copies are issued by now
     kEndFrameEnd,
+    kNextWaitBegin,  // wait/begin/input for N+1, after ending this row's frame N
+    kNextWaitEnd,
+    kNextBeginBegin,
+    kNextBeginEnd,
+    kNextInputBegin,
+    kNextInputEnd,
+    kNextFrameBegunEnd,
     kEnd,            // Present returns (after the desktop mirror's present, on the frames it runs)
     kPointCount
 };
