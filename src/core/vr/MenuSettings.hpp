@@ -171,10 +171,13 @@ struct GuideInput {
     std::string turn = "smooth";         // the Turn style chip: smooth | snap
     std::string walk = "head";           // the Walk toward chip: head | hand | body
     bool physicalCrouch = true;          // [Hands] physicalCrouch
+    bool handWheel = true;               // [PowerWheel] on: X opens the power wheel at the left hand (research/55)
+    bool castLock = true;                // [PowerWheel] lock: raise the left hand at an enemy, push to cast
+    bool selfGestures = true;            // [PowerWheel] selfGestures: powers on yourself by a gesture of the open left hand
 };
 // The page's texts, as (key, text): "guide_<id>" (the short label on the controller drawing) and "guide_<id>_how" (the
-// line in the list under it) for the ids lt, lgrip, lstick, x, y, menu, rt, rgrip, rstick, a, b; and "guide_grenade",
-// "guide_melee" (the gestures).
+// line in the list under it) for the ids lt, lgrip, lstick, x, y, menu, rt, rgrip, rstick, a, b; "guide_grenade",
+// "guide_melee" (the gestures); "guide_pick", "guide_cast", "guide_self" (the powers: pick one, cast it, the self-cast gestures).
 std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& input);
 // ---- About ----------------------------------------------------------------------------------------------------
 // The build line a report needs, from the generated headers' MEVR_VERSION and MEVR_GIT_COMMIT:

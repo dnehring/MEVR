@@ -329,6 +329,28 @@ int main(int argc, char** argv) {
         Save(out / "hint.png", draw::kHintWidth, draw::kHintHeight, OverBackdrop(picture));
     }
 
+    // The how-to-cast card after an equip (coach-<kind>-<frame>.png): each gesture at three points of its loop.
+    {
+        namespace pwc = mevr::vr::power_wheel;
+        struct Case {
+            pwc::Coach coach;
+            char const* power;
+        };
+        for (Case const c : {Case{pwc::Coach::Target, "Throw"}, Case{pwc::Coach::Place, "Singularity"}, Case{pwc::Coach::Forward, "Barrier"},
+                 Case{pwc::Coach::Chest, "Barrier"}, Case{pwc::Coach::Gun, "Marksman"}, Case{pwc::Coach::Raise, "Unity"}}) {
+            for (int f = 0; f < 3; ++f) {
+                draw::CoachView v;
+                v.coach = c.coach;
+                v.name = c.power;
+                v.time = 1.8f * (0.2f + 0.3f * static_cast<float>(f)) + 1.8f;  // the loop at 0.2, 0.5, 0.8 (its second time round)
+                Picture const picture =
+                    Render(gpu, draw::kHintWidth, draw::kHintHeight, [&](ImDrawList* dl) { draw::DrawCoach(dl, gpu.fonts, v); }, true);
+                Save(out / ("coach-" + std::string(pwc::Name(c.coach)) + "-" + std::to_string(f) + ".png"), draw::kHintWidth,
+                    draw::kHintHeight, OverBackdrop(picture));
+            }
+        }
+    }
+
     // The lock's marker (research/55 section 4): locked and ready, closing in, cooling down, a place, a cast's flash. Shown
     // over the backdrop at 2x for a closer look.
     {

@@ -906,7 +906,11 @@ switching frameworks.
   light from the omni-tool, alive"): the mod sends `omni_tool::DisplayWorld` in the left grip's frame (`View::source`, the View
   grew: host and mod together), the host puts it on this frame's grip and where the eyes see it on the wheel (`SeenInPlane`), the
   grip itself without a display, the gap without a hand; it moves (shimmering cones, pulses out to each tile, faster to the chosen
-  one, a breathing core in turning rings, a flare at a new pick; log `power wheel: its light comes from`), the game's own Biomass from the game-art cache (Rajdhani without it), icons through
+  one, a breathing core in turning rings, a flare at a new pick; log `power wheel: its light comes from`). **How to cast it is
+  shown** (2026-11-06, the user: "instructions to show the gestures"; research/55 "How to cast it, on a card"): after an equip a card
+  where the wheel was names the power, draws its gesture looping and says how to cast it (`vr::power_wheel::Coach`, unit-tested;
+  `[PowerWheel] coach` 3 equips per power per session; gone at the cast or after 8 s; on the hint's canvas), and the menu's
+  controller guide has a Powers group (`guide_pick`, `guide_cast`, `guide_self`; X is "Power wheel"). The game's own Biomass from the game-art cache (Rajdhani without it), icons through
   `power_icons::Hologram`; a two-level bloom (`plugin/Glow`, its own device
   context state) adds light in the premultiplied quad. Offline look: `mevr-power-wheel-preview`. Tests: `tests/PowerWheelTests.cpp`
   (`RunPowerWheelTests`). Console: `mevr powerwheel [open|hand x y|pick n|equip|close|roster]` (no tracked controllers needed). Logs

@@ -86,6 +86,7 @@ struct Settings {
     bool emblem = true;        // our N7 mark on the palm (0: none)
     bool upperCase = false;    // the names in capitals (the concept's); 0: title case (the game's)
     int hintOpenings = 3;      // the hint card shows beside the wheel the first this many openings each session
+    int coachTimes = 3;        // the how-to-cast card after the first this many equips of each power each session (0: never)
     float haptic = 0.35f;      // 0..1: a tick on the left hand when the pick changes, a pulse when a power is equipped
     bool omniTool = true;      // Shepard's forearm wears the game's omni-tool gauntlet while it's open (the user, 2026-11-04)
 };
@@ -136,7 +137,12 @@ struct View {
     // grip it has that frame (ToFrame/FromFrame). 0: no display on the arm; the host uses the left grip itself.
     XrVector3f source{};
     std::uint8_t sourceValid = 0;
-    std::uint8_t sourcePad[3] = {};
+    // After an equip, with the wheel closed: how to cast what was equipped, on a card where the wheel was (Coach; 0 none), the
+    // power's name, and the seconds since the equip. The mod sends it each tick while the card is up.
+    std::uint8_t coach = 0;
+    std::uint8_t coachPad[2] = {};
+    float coachFor = 0.0f;
+    char coachName[kLabelBytes] = {};
 };
 // Any thread: the host keeps the latest; Latest says closed when it's older than `maxAgeMs` (the mod stopped sending).
 void Publish(View const& view);
@@ -307,5 +313,24 @@ struct SelfCastStep {
     float progress = 0.0f;  // 0..1 of the dwell
 };
 SelfCastStep StepSelfCast(SelfCastState& state, SelfGesture gesture, SelfCastInput const& input, SelfCastSettings const& settings);
+
+// ---- How to cast what was just equipped (the coach card) ------------------------------------------------------------
+// The user, 2026-11-06: "we may need instructions to show the gestures and how to actually use the powers". After an equip
+// the wheel's place shows a card: the power's name, its gesture drawn and moving, two lines on how to cast it; gone at the
+// cast or after kCoachS, for the first Settings::coachTimes equips of each power in a session.
+//   Target   raise the left hand at an enemy (it locks on), push the open hand toward it
+//   Place    point the left hand at an enemy or a spot (it lands where the hand's ray does), push toward it
+//   Forward  push the open left hand forward (a power that aims at nothing, when its gesture is off)
+//   Chest, Gun, Raise   the self-cast gestures above
+enum class Coach : std::uint8_t { None, Target, Place, Forward, Chest, Gun, Raise };
+// The gesture when the power has one (and the gestures are on), else by how it aims.
+Coach CoachFor(Aim aim, SelfGesture gesture);
+struct CoachText {
+    char const* line1;
+    char const* line2;
+};
+CoachText CoachLines(Coach coach);
+char const* Name(Coach coach);
+inline constexpr float kCoachS = 8.0f;
 
 }  // namespace mevr::vr::power_wheel

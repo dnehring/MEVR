@@ -85,6 +85,9 @@ constexpr char kBlock[] =
     "upperCase = 0\n"
     "hintOpenings = 3\n"
     "haptic = 0.35\n"
+    "; coach: after you equip a power, a card where the wheel was shows how to cast it (its gesture drawn), until you cast it or\n"
+    "; 8 s pass, for the first this many equips of each power each session (0: never).\n"
+    "coach = 3\n"
     "; omniTool 1: your left forearm wears Shepard's omni-tool gauntlet (the game's own hologram) while the wheel is open.\n"
     "omniTool = 1\n"
     "; The lock and the push: with the wheel closed, raise your left arm (lockReachM ahead of your eyes) and point your hand: the\n"
@@ -175,6 +178,9 @@ void RefreshSettings() {
     number("hintOpenings", hint, 0.0f, 100.0f);
     s.hintOpenings = static_cast<int>(hint);
     number("haptic", s.haptic, 0.0f, 1.0f);
+    float coachTimes = static_cast<float>(s.coachTimes);
+    number("coach", coachTimes, 0.0f, 100.0f);
+    s.coachTimes = static_cast<int>(coachTimes);
     flag("omniTool", s.omniTool);
     pw::LockSettings l;
     flag("lock", l.on);
@@ -304,6 +310,16 @@ bool gConsoleHold = false;    // X held
 bool gConsoleCancel = false;  // close unequipped on the next tick
 std::optional<pw::Vec2> gConsoleHand;
 std::uint32_t gSourceLogged = 0;  // the opening whose light's source (the omni-tool's display) was logged
+// The how-to-cast card after an equip (research/55 "How to cast it, on a card"): what, since when, the casts by then.
+struct CoachState {
+    pw::Coach kind = pw::Coach::None;
+    std::string name;
+    double since = 0.0;
+    std::uint64_t casts = 0;
+};
+CoachState gCoach;
+std::map<std::string, int> gCoachShown;  // equips coached, per power label, this session
+unsigned gCoachCount = 0;
 std::optional<int> gConsolePick;
 
 XrVector3f HeadForwardFlat(XrQuaternionf const& q) {
@@ -1309,8 +1325,20 @@ void Tick(double deltaSeconds, Link const& link) {
     case pw::Event::Equipped:
         ++gEquips;
         if (gMachine.equipped >= 0 && gMachine.equipped < static_cast<int>(gRoster.size())) {
-            Equip(controller, gRoster[static_cast<std::size_t>(gMachine.equipped)]);
-            gLastEvent = std::string("equipped ") + gRoster[static_cast<std::size_t>(gMachine.equipped)].info->name;
+            Power const& equipped = gRoster[static_cast<std::size_t>(gMachine.equipped)];
+            Equip(controller, equipped);
+            gLastEvent = std::string("equipped ") + equipped.info->name;
+            // How to cast it, on a card where the wheel was: the first coachTimes equips of each power this session.
+            pw::Coach const kind =
+                pw::CoachFor(equipped.info->aim, gSelfGestures ? pw::SelfGestureFor(equipped.info->label) : pw::SelfGesture::None);
+            int& shown = gCoachShown[equipped.info->label];
+            if (s.coachTimes > 0 && shown < s.coachTimes && kind != pw::Coach::None) {
+                ++shown;
+                ++gCoachCount;
+                gCoach = {kind, equipped.info->name, gClock, gCastCount};
+                log::Info("power wheel: how to cast {} shown ({}; {} of {} this session)", equipped.info->name, pw::Name(kind), shown,
+                    s.coachTimes);
+            }
         }
         if (link.haptic != nullptr && s.haptic > 0.0f) {
             link.haptic(0, 0.06f, std::min(1.0f, s.haptic * 1.6f));
@@ -1348,6 +1376,24 @@ void Tick(double deltaSeconds, Link const& link) {
         gHeldAfter = still;
     }
 
+    // The how-to-cast card goes at the cast, after kCoachS, at the next opening, or off foot.
+    if (gCoach.kind != pw::Coach::None) {
+        char const* gone = gCastCount > gCoach.casts       ? "cast"
+                        : gClock - gCoach.since > pw::kCoachS ? "time"
+                        : gMachine.open                    ? "the wheel opened"
+                        : !onFoot                          ? "not on foot"
+                                                           : nullptr;
+        if (gone != nullptr) {
+            log::Info("power wheel: how to cast {} gone ({}, after {:.1f} s)", gCoach.name, gone, gClock - gCoach.since);
+            gCoach = {};
+            if (link.publish != nullptr && !gMachine.open) {
+                pw::View closed = gView;
+                closed.open = 0;
+                closed.coach = 0;
+                link.publish(&closed);
+            }
+        }
+    }
     // What the host draws.
     if (link.publish != nullptr) {
         if (gMachine.open) {
@@ -1395,6 +1441,13 @@ void Tick(double deltaSeconds, Link const& link) {
             v.upperCase = s.upperCase ? 1 : 0;
             v.hint = gHintShown <= s.hintOpenings ? 1 : 0;
             link.publish(&v);
+        } else if (gCoach.kind != pw::Coach::None) {
+            pw::View coached = gView;
+            coached.open = 0;
+            coached.coach = static_cast<std::uint8_t>(gCoach.kind);
+            coached.coachFor = static_cast<float>(gClock - gCoach.since);
+            std::snprintf(coached.coachName, sizeof(coached.coachName), "%s", gCoach.name.c_str());
+            link.publish(&coached);
         } else if (event == pw::Event::Equipped || event == pw::Event::Cancelled) {
             pw::View closed = gView;
             closed.open = 0;

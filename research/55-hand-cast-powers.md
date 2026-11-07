@@ -204,6 +204,32 @@ Checked offline (`mevr-power-wheel-preview`'s `source-*.png`: the light at the h
 frames 0.1 s apart). Not run in the game yet: the fake headset has no tracked controllers, so a check there needs a replay with the
 left hand (and `mevr powerwheel open`). How it looks over the real hand is for the headset.
 
+### How to cast it, on a card (2026-11-06)
+
+The user: "we may need instructions to show the gestures and how to actually use the powers". The wheel's hint card said how to pick
+("pinch/close to equip", which no longer matched: letting go of X equips), and the menu's controller guide still had X as the grenade
+button and nothing on the lock, the push or the self-cast gestures. Now there are two kinds of help:
+- **At the moment it's needed, in the room.** After an equip, a card stands where the wheel was, 8 cm above its centre, on the hint
+  card's canvas (no extra swapchain). It shows the power's name in the game's capitals with "equipped", the gesture drawn in the
+  omni-tool's hologram lines and looping every 1.8 s, and two lines on how to cast it. It goes at the cast (push or gesture), after
+  8 s, at the next opening, or off foot. It shows for the first `[PowerWheel] coach` equips (3) of each power per session; 0 turns
+  it off. Which card a power gets (`vr::power_wheel::Coach`, `CoachFor`, `CoachLines`; unit-tested): its self-cast gesture when it
+  has one and `selfGestures` is on (Chest: the hand comes to the chest and a ring fills while it's held; Gun: the hand drops onto a
+  pistol's top, which lights; Raise: the hand goes up over the head and the ring fills), else how it aims (Target: brackets on an
+  enemy, the hand rises toward them and pushes; Place: a ring on the ground in their place; Forward: a push straight on). The mod
+  sends it in the View (`coach`, `coachFor`, `coachName`; `Latest` clears it once stale), the host draws it (`CoachLayer`,
+  `draw::DrawCoach`). Logs `power wheel: how to cast <power> shown (<kind>; n of N this session)`, `... gone (<why>, after s)` (mod)
+  and `... drawn (<kind>) where the wheel was` (host).
+- **For reference, in our menu.** The controller guide's X reads "Power wheel" while `[PowerWheel] on` (the hand's wheel, with a
+  note that grenades come from the chest), and a new Powers group has three rows: Pick a power, Cast it (the lock and the push, place
+  powers where the hand points, the gun kept in the right hand), Powers on yourself (the three gestures and their powers). Each falls
+  back to the game's power wheel when its setting is off (`GuideInput::handWheel`, `castLock`, `selfGestures`, from `[PowerWheel]`).
+- The wheel's own hint card now says: move your left hand toward a power to pick it, then let go of X to equip it; a card then shows
+  how to cast it.
+Checked offline: `mevr-power-wheel-preview`'s `coach-<kind>-<0..2>.png` (each gesture at three points of its loop) and
+`mevr-menu-preview`'s guide page. In the headset: whether the card stands in a good place after the wheel closes, and whether the
+drawings say the gestures well enough on their own.
+
 ## 6. In the game: X opens it at the left hand (2026-11-04)
 
 The user's controls: everything on the left hand, no right-hand pinch; picking either by moving the left hand into place or

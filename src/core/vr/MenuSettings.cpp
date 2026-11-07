@@ -34,6 +34,14 @@ std::string Lower(std::string_view text) {
     return out;
 }
 
+std::string Upper(std::string_view text) {
+    std::string out;
+    for (char const c : text) {
+        out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
 std::string Trim(std::string_view text) {
     std::size_t begin = 0;
     std::size_t end = text.size();
@@ -150,6 +158,9 @@ std::vector<Field> const& Schema() {
         {"guide_b_how", Type::Text, 0, ""},
         {"guide_grenade", Type::Text, 0, ""},
         {"guide_melee", Type::Text, 0, ""},
+        {"guide_pick", Type::Text, 0, ""},
+        {"guide_cast", Type::Text, 0, ""},
+        {"guide_self", Type::Text, 0, ""},
         // Body and calibration.
         {"cal_running", Type::Flag, 0},
         {"cal_status", Type::Text, 0, "Not calibrated for these controllers yet"},
@@ -577,7 +588,11 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
                                                                                                    : "where you look";
     put("lstick", "Walk, click: crouch",
         "Walk toward " + toward + ". Click to crouch or stand" + (in.physicalCrouch ? "; or just crouch for real." : "."));
-    if (power == "x") {
+    if (in.handWheel) {
+        put("x", "Power wheel", std::string("Hold for your powers around your left hand: move the hand toward one and let go of X to "
+                                            "equip it (a tap keeps the wheel open).") +
+                                    (in.grenades ? " X throws no grenade on foot: take grenades from your chest." : ""));
+    } else if (power == "x") {
         put("x", "Powers", "Powers: " + powersHow + ".");
     } else if (in.grenadeButton) {
         put("x", "Grenade", "Throw a grenade the game's way.");
@@ -629,6 +644,26 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
                                                                                         "right fist: squeeze the grip and the trigger."
                                                                                       : "")
                                              : std::string("Off (Controls > Physical grenades and melee)."));
+
+    // ---- Powers (research/55): the wheel at the left hand, the lock and the push, the self-cast gestures ----
+    std::string const gameWheel = power == "r3" ? "hold the right stick click for the game's power wheel"
+                                : power == "grip" ? "hold the right grip for the game's power wheel"
+                                : power == "none" || power.empty() ? "the game's power wheel isn't on a button (Controls)"
+                                                                   : "hold " + Upper(power) + " for the game's power wheel";
+    out.emplace_back("guide_pick", in.handWheel ? "Hold X: your powers around your left hand. Move the hand toward one and let go of "
+                                                  "X to equip it. A card then shows how to cast it."
+                                                : "The power wheel at your hand is off ([PowerWheel] on): " + gameWheel + ".");
+    out.emplace_back("guide_cast", in.handWheel && in.castLock
+                                       ? std::string("Raise your left hand at an enemy: orange brackets lock on (or on the one you face). "
+                                                     "Push your open hand toward it to cast what you equipped. Powers that land somewhere "
+                                                     "go where your hand points. Your right hand can keep the gun.")
+                                       : "Cast from the game's power wheel: " + gameWheel + ".");
+    out.emplace_back("guide_self", !(in.handWheel && in.castLock) ? std::string("From the game's power wheel, like the others.")
+                                   : in.selfGestures ? std::string("Powers on yourself are gestures of the open left hand: flat on "
+                                                                   "your chest, held (Barrier, Shield Boost, Immunity, Adrenaline "
+                                                                   "Burst); slapped onto the gun (Marksman, Overkill, Carnage, "
+                                                                   "Assassination); raised above your head, held (Unity).")
+                                                     : std::string("Pushed forward like the others."));
     return out;
 }
 

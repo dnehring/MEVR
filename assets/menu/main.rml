@@ -120,6 +120,12 @@
 			<div class="row"><div class="rl"><div class="rlab">This menu, recenter</div><div class="rdesc">Press and hold both thumbsticks for this menu. Double-click the right thumbstick to turn the view to face where you look.</div></div></div>
 		</div>
 		<div class="group">
+			<div class="gtitle"><span>Powers</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Pick a power</div><div class="rdesc">{{guide_pick}}</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Cast it</div><div class="rdesc">{{guide_cast}}</div></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Powers on yourself</div><div class="rdesc">{{guide_self}}</div></div></div>
+		</div>
+		<div class="group">
 			<div class="gtitle"><span>In the Mako</span><div class="gline"/></div>
 			<div data-if="mako_controls">
 				<div class="row"><div class="rl"><div class="rlab">Throttle lever, left hand</div><div class="rdesc">Squeeze the grip at the lever by your left side. Push it forward to drive, pull it back to reverse; it stays where you leave it. X: jump jets (and back onto the wheels), Y: boost.</div></div></div>
