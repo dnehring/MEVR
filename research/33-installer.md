@@ -735,7 +735,7 @@ NOTICE.md. So the setup downloads each from its own release, never from a mirror
 | models-tiny (always) | Hugging Face `moonshine-ai/moonshine-voice-assets`, `tiny-streaming-en/quantized_26_08_21`, 8 files | `models\tiny-streaming-en\` | 45 MB | 45 MB |
 | models-small, models-medium (ticked) | the same, `small`/`medium` | `models\<size>-streaming-en\` | 142 / 269 MB | the same |
 | llm-runtime (the model tier, on by default) | llama.cpp b12128's `bin-win-cpu-x64.zip` (GitHub): `llama.dll`, `ggml.dll`, `ggml-base.dll`, `libomp.dll`, the 14 `ggml-cpu-*.dll`, `LICENSE-LLVM-OpenMP` | `llm\` | 25 MB | 26 MB |
-| llm-model (with the runtime) | this mod's GitHub release `voice-model-1`, asset `mevr-voice-qwen3-0.6b-q8_0.gguf` | `llm\model.gguf` | 639 MB | 639 MB |
+| llm-model (with the runtime) | this mod's GitHub release `voice-model-1`, asset `model.gguf` | `llm\model.gguf` | 639 MB | 639 MB |
 
 llama.cpp's files are what `llama.dll` needs (its imports: ggml, ggml-base; ggml-base imports libomp; read from the PE
 import tables) and the CPU backends `ggml_backend_load_all_from_path` chooses from; not its tools, `mtmd.dll` or the RPC
@@ -750,7 +750,7 @@ library, so Moonshine's LICENSE goes in the release's `licenses\` (`MoonshineVoi
 models and logs "voice off" before it ever loads the DLL (plugin/Voice checks the models first).
 
 **The model's release.** The fine-tuned GGUF is ours, so it comes from a release of this repository, which the user
-uploads: tag `voice-model-1` (not `v*`: that would start the release workflow), asset `mevr-voice-qwen3-0.6b-q8_0.gguf`,
+uploads: tag `voice-model-1` (not `v*`: that would start the release workflow), asset `model.gguf` (639 MB; its SHA-256 in docs/release-checklist.md),
 placed as `model.gguf`. The setup asks GitHub's API for the release by tag (`/repos/<owner>/<repo>/releases/tags/<tag>`)
 and takes the asset's `browser_download_url` (github.com only), `size` and `digest` (`sha256:...`, which GitHub lists for
 every asset), so the file isn't pinned in the code (it was retrained the day it was written). All of it is in
@@ -838,7 +838,7 @@ player whose game holds a file waits that long before the message.
 - **[verify]** Against GitHub and the real MEM (section 10's "still untested"): the update check once a release exists,
   MEM's download, unpacking and a real pack install on a real game.
 - **The voice orders' model release** (section 14): upload the fine-tuned GGUF as the asset
-  `mevr-voice-qwen3-0.6b-q8_0.gguf` of a release tagged `voice-model-1` (not `v*`); the setup then installs the model tier.
+  `model.gguf` of a release tagged `voice-model-1` (not `v*`); the setup then installs the model tier.
   Another tag or name: `MEVR-Setup.ini` `[Voice] modelTag` / `modelAsset` in the release package
   (`tools/package-release.ps1` writes the file). **[verify]** the game loading a Setup-installed `ASI\voice`.
 - The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).

@@ -667,7 +667,8 @@ void App::UpdateVoice() {
     voiceLicences_ = "MIT (Moonshine Voice and its models, ONNX Runtime, llama.cpp); Apache-2.0 (the order model, fine-tuned from Qwen3-0.6B)";
     voice::Part const* modelPart = voice::Find("llm-model");
     voiceModelText_ = std::format("Reads the loose wordings the rules aren't sure of: llama.cpp ({}) and our fine-tuned model ({}, this mod's GitHub "
-                                  "release {}). Until that's published the rest installs and the rules read the orders alone.",
+                                  "release {}). If that release isn't published yet, Install still puts in the speech recognizer and voice orders "
+                                  "work with the built-in rules; the model tier waits for the release, and Apply adds it once it's there.",
         install::http::SizeText(voice::SizesFor({"llm-runtime"}).download), install::http::SizeText(modelPart != nullptr ? modelPart->modelSize : 0),
         voice::kModelTag);
     if (sample_) {
@@ -724,7 +725,8 @@ void App::UpdateVoice() {
     } else if (voiceUpToDate_) {
         voiceState_ = "Installed: " + voiceParts_ + ". In game, hold the left grip at your left ear, speak, let go.";
     } else if (voiceInstalled_ && voiceLlm_ && !state.Has("llm-model") && !extra && missing.size() <= 2) {
-        voiceState_ = "Installed without the fine-tuned model (it wasn't published yet when you installed): Apply looks for it again.";
+        voiceState_ = "The speech recognizer is installed and voice orders work. The model tier is waiting: its release (voice-model-1) "
+                      "wasn't published yet when you installed. Apply adds it once it's there.";
     } else if (voiceInstalled_) {
         voiceState_ = "Installed: " + voiceParts_ + ". Apply makes it match the choices below.";
     } else {
@@ -1384,7 +1386,8 @@ void App::Sample(std::string const& state) {
         voiceParts_ = "Speech recognizer runtime, Recognizer model (tiny)";
         voiceSize_ = std::format("{} to download, {} in the game folder", install::http::SizeText(install::voice::SizesFor({"llm-runtime", "llm-model"}).download),
             install::http::SizeText(install::voice::SizesFor(install::voice::PartsFor({})).disk));
-        voiceState_ = "Installed without the fine-tuned model (it wasn't published yet when you installed): Apply looks for it again.";
+        voiceState_ = "The speech recognizer is installed and voice orders work. The model tier is waiting: its release (voice-model-1) "
+                      "wasn't published yet when you installed. Apply adds it once it's there.";
     } else {
         for (PackView& v : packs_) {
             v.installed = false;

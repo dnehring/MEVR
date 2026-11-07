@@ -50,11 +50,12 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
   toward one, or up for both). Double-tap B to call everyone back.
 - Say it: hold the left grip at your left ear, speak ("Garrus, take out those troopers on the bridge", "Wrex, hold the
   line", "Liara, lift the big one", "everyone on me", "get behind that crate"), let go. Recognized on your own machine, nothing leaves it; no
-  microphone, no voice, the rest of the mod is unchanged. Needs the voice files: MEVR Setup's Optional content page
-  downloads them (about 70 MB from Moonshine's releases, each file checked; Remove and Uninstall take them out again). A
-  line the rules can't place ("Ash, the thresher maw is yours") goes to a small language model trained for the squad (also
-  on your machine, under a second): the same page's model tier adds it (llama.cpp and the model, about 665 MB, once the
-  model's release is published).
+  microphone, no voice, the rest of the mod is unchanged. Needs the speech recognizer: MEVR Setup's Optional content
+  page downloads it (about 70 MB from Moonshine Voice's GitHub release and Hugging Face, each file checked against its
+  SHA-256; Remove and Uninstall take it out again). A line the rules can't place ("Ash, the thresher maw is yours") goes to
+  a small language model trained for the squad (also on your machine, under a second): the same page's model tier adds it
+  (llama.cpp and the model, about 665 MB). Until the model's own release is published, the setup installs the recognizer
+  alone and the orders run on the built-in rules.
 
 ### Your hands
 - You aim with the controller, not your head. Your arms, hands and fingers follow the controllers; the gun is in
