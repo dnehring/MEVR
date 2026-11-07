@@ -17,6 +17,7 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 ## 1. Newest (2026-11-03 to 11-05)
 
 ### Powers at the left hand (session: Biotic/tech attack targeting system)
+- [ ] X only selects powers on foot (tap and hold); a grip at the left chest throws on a fast release; X still works in Mako/menus/conversations; check Overkill disabled diagnostics with assault rifle drawn/holstered (2026-11-07, x-button; research/55 section 6).
 - [ ] Self-cast confirmation (2026-11-07, power-confirmation; research/55 section 10): equip Overkill/Marksman with a rifle
   and pistol; find the orange target on the gun's receiver/barrel, approach to cyan, slap fast and touch slowly (0.35 s
   ring), then check the cyan flash, power name and two beats in BOTH hands. Retry during cooldown and with the gun holstered

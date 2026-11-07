@@ -591,7 +591,7 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     if (in.handWheel) {
         put("x", "Power wheel", std::string("Hold for your powers around your left hand: move the hand toward one and let go of X to "
                                             "equip it (a tap keeps the wheel open).") +
-                                    (in.grenades ? " X throws no grenade on foot: take grenades from your chest." : ""));
+                                    " X is only the power wheel on foot, for taps and holds.");
     } else if (power == "x") {
         put("x", "Powers", "Powers: " + powersHow + ".");
     } else if (in.grenadeButton) {

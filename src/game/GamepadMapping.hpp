@@ -346,6 +346,8 @@ struct Options {
     // left grip are its own (Latches::powerHeld keeps each from the game until released or centred after it closes). The
     // right hand stays the game's. Set only on foot.
     bool powerWheel = false;
+    // The hand wheel is enabled on foot, including while CLOSED: X is never a game button or an RB source.
+    bool handPowerWheel = false;
     // Squad placement's B is held (game/SquadPlace): the right stick steps its selector, so the game sees it centred (no turn,
     // no camera). Set only on foot.
     bool squadPlace = false;
@@ -380,6 +382,7 @@ inline constexpr std::uint32_t kFlagPhysicalCrouch = 1u << 23;   // Options::phy
 inline constexpr std::uint32_t kFlagPowerWheel = 1u << 24;       // Options::powerWheel (host v28)
 inline constexpr std::uint32_t kFlagModPowerHold = 1u << 25;     // Options::modPowerHold (a host of 2026-11-05 or later)
 inline constexpr std::uint32_t kFlagSquadPlace = 1u << 26;       // Options::squadPlace (a v32 host of 2026-11-05 or later)
+inline constexpr std::uint32_t kFlagHandPowerWheel = 1u << 27;   // Options::handPowerWheel (2026-11-07)
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

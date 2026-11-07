@@ -6,6 +6,7 @@
 
 #include "core/vr/Controllers.hpp"
 #include "core/vr/PowerWheel.hpp"
+#include "core/vr/FootControls.hpp"
 #include "game/GamepadMapping.hpp"
 
 #include <cmath>
@@ -765,7 +766,74 @@ void TestSelfConfirmation() {
     CHECK(pw::Latest(0).self.look == pw::SelfLook::Hidden);
 }
 
+void TestXOwnership() {
+    namespace fc = mevr::vr::foot_controls;
+    // All LE1 EGameModes, plus unknown: only the on-foot VR hand wheel owns X. The open/closed state
+    // and the physical-throw toggle do not decide ownership. Late grenadeButton=1 cannot undo it.
+    for (int mode = -1; mode <= 13; ++mode) {
+        for (bool wheel : {false, true}) {
+            for (bool world : {false, true}) {
+                for (bool grenade : {false, true}) {
+                    bool const owned = fc::HandWheelOwnsX(mode, wheel, true, world, true);
+                    CHECK(owned == (mode == 0 && wheel && world));
+                    pad::Options options;
+                    options.handPowerWheel = owned;
+                    options.meleeButton = false;  // shipped default: exposed the overwrite in Throwables
+                    options.grenadeButton = mode == 0 && world ? grenade : true;
+                    options = pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(options));  // mod -> host
+                    CHECK(options.handPowerWheel == owned);
+                    pad::Latches latches;
+                    mevr::vr::controllers::State input;
+                    input.left.primary = true;
+                    bool const expectedX = !owned && options.grenadeButton;
+                    for (std::uint64_t time : {10u, 90u, 1500u}) {  // first poll, tap, hold, wheel still closed
+                        input.timeMs = time;
+                        auto const mapped = pad::FromControllers(input, latches, options);
+                        CHECK(((mapped.wButtons & XINPUT_GAMEPAD_X) != 0) == expectedX);
+                    }
+                    if (owned) {
+                        // X configured as the legacy game's power-wheel/RB source must also stay reserved.
+                        latches = {};
+                        options.rightGripHolds = true;
+                        options.rbSource = pad::RbSource::X;
+                        auto const mapped = pad::FromControllers(input, latches, options);
+                        CHECK((mapped.wButtons & (XINPUT_GAMEPAD_X | XINPUT_GAMEPAD_RIGHT_SHOULDER)) == 0);
+                        // A mode change or turning the feature off while X is down must wait for release.
+                        options.handPowerWheel = false;
+                        options.grenadeButton = true;
+                        options.rbSource = pad::RbSource::None;
+                        CHECK((pad::FromControllers(input, latches, options).wButtons & XINPUT_GAMEPAD_X) == 0);
+                        input.left.primary = false;
+                        pad::FromControllers(input, latches, options);
+                        input.left.primary = true;
+                        CHECK((pad::FromControllers(input, latches, options).wButtons & XINPUT_GAMEPAD_X) != 0);
+                    }
+                }
+            }
+        }
+    }
+    CHECK(!fc::HandWheelOwnsX(0, true, false, true, true));  // old host
+    CHECK(!fc::HandWheelOwnsX(0, true, true, true, false));  // no pawn
+    // A marker-free old default moves once; explicit subsequent choices survive. The shared reader handles
+    // Win32 casing, comments and UTF-16/BOM decoding before this pure migration plan sees the file.
+    auto file = mevr::ini::Parse("[THROWABLES]\ngrenadeBUTTON = 1 ; old\nhands = right\n");
+    CHECK(fc::MigrateGrenades(file).button && fc::MigrateGrenades(file).hands);
+    file["Throwables"]["grenadeButton"] = "0";
+    file["Throwables"]["hands"] = "left";
+    CHECK(!fc::MigrateGrenades(file).button);
+    file["Throwables"]["powerWheelX"] = "1";
+    file["Throwables"]["grenadeButton"] = "1";
+    file["Throwables"]["hands"] = "right";
+    CHECK(!fc::MigrateGrenades(file).button);
+    file = mevr::ini::Parse("[Throwables]\ngrenadeButton=0\nhands=both\n");
+    CHECK(!fc::MigrateGrenades(file).button);
+    CHECK(!fc::MigrateGrenades({}).button);
+    CHECK(std::string(pw::kControlsCoach).find("X: power wheel") != std::string::npos);
+    CHECK(std::string(pw::kControlsCoach).find("either hand at your left chest") != std::string::npos);
+}
+
 int RunPowerWheelTests() {
+    TestXOwnership();
     TestMachine();
     TestPlacement();
     TestSource();

@@ -152,7 +152,7 @@ std::string HeadsetLabel(std::string_view runtimeName, std::string_view systemNa
 std::string ControllersLabel(std::string_view calibrationLabel);
 
 // ---- The controller guide (the Controller guide page) ---------------------------------------------------------
-// What each button and the right grenade gesture do on foot, from the settings that change them (CLAUDE.md's LE1 bullets,
+// What each button and the grenade gesture do on foot, from the settings that change them (CLAUDE.md's LE1 bullets,
 // game/GamepadMapping, research/19 section 6's bindings). Every field is what the file holds (or the menu's chip).
 struct GuideInput {
     std::string leftTrigger = "lb";      // [Controls] leftTrigger: lb | lt | none
@@ -163,8 +163,8 @@ struct GuideInput {
     std::string powerWheel = "r3";       // [Holsters] powerWheel (with gripHolds): r3 | y | x | b | none
     bool grenades = true;                // [Throwables] enabled
     bool melee = true;                   // [Throwables] melee
-    std::string grenadeHands = "right";  // [Throwables] hands: right | left | both
-    bool grenadeButton = true;           // [Throwables] grenadeButton (X)
+    std::string grenadeHands = "both";   // [Throwables] hands: both | right | left
+    bool grenadeButton = false;          // [Throwables] grenadeButton (game X only when handWheel is off)
     bool meleeButton = false;            // [Throwables] meleeButton (B; off by default since 2026-11-05: the gesture only)
     bool meleeFist = true;               // [Throwables] meleeFist (the right fist punches with the weapon away)
     bool vent = true;                    // [Vent] enabled

@@ -233,6 +233,8 @@ struct HostServices {
     // Version 14: physical melee and grenades (game/throwables, research/20). No new fields:
     // setSupportGrip's flags also take gamepad::kFlagNoMeleeButton and kFlagNoGrenadeButton (B and X
     // kept from the game on foot); a v13 or older host ignores them, so the buttons stay.
+    // Since 2026-11-07 kFlagHandPowerWheel reserves X (including legacy RB remaps) while the hand wheel
+    // is enabled on foot, independently of kFlagPowerWheel, which owns the left controls only while OPEN.
 
     // Version 15: the guided calibration (plugin/Calibration, game/body_calibration, research/25).
     // The host's state (core/vr/Calibration.hpp, vr::calibration::HostState), each tick: kCalibrating while the

@@ -7,6 +7,7 @@
 #include "core/ik/GunKick.hpp"
 #include "core/ik/HandFrame.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/FootControls.hpp"
 #include "core/vr/Sprint.hpp"
 #include "core/vr/MenuSettings.hpp"
 #include "core/vr/InteractLabel.hpp"
@@ -310,9 +311,9 @@ constexpr char const* kThrowablesBlock =
     "; Physical grenades: reach to the grenade slot on your body (the left side of the chest), squeeze a\n"
     "; grip to take a grenade, throw it by letting go while the hand moves. A slow release puts it back.\n"
     "enabled = 1\n"
-    "; hands: right (the default) | left | both. The left grip on the gun (anywhere along it) is still\n"
+    "; hands: both (the default) | right | left. The left grip on the gun (anywhere along it) is still\n"
     "; the two-handed grip.\n"
-    "hands = right\n"
+    "hands = both\n"
     "; slot: right, up, forward, radius in meters from your eyes, like the holsters' slots.\n"
     "slot = -0.13, -0.33, 0.00, 0.10\n"
     "; throwSpeedMinMS: a release slower than this (m/s) isn't a throw. throwGain: the throw's speed is the\n"
@@ -329,8 +330,11 @@ constexpr char const* kThrowablesBlock =
     "fromHand = 1\n"
     "drawForThrow = 1\n"
     "earlyRelease = 0.3\n"
-    "; grenadeButton: 1 = X still throws a grenade the game's way; 0 = only the physical throw (on foot).\n"
-    "grenadeButton = 1\n"
+    "; grenadeButton: 0 = physical throw only; 1 = game X on foot ONLY with [PowerWheel] on = 0.\n"
+    "; With the hand power wheel on, taps and holds of X belong only to it. Other game modes keep X.\n"
+    "grenadeButton = 0\n"
+    "; powerWheelX: the old grenade button and grenade hand defaults moved once (2026-11-07).\n"
+    "powerWheelX = 1\n"
     "; Physical melee: a fast stroke of either hand toward an enemy in reach is the game's melee (pistol whip\n"
     "; or rifle butt). Speeds in m/s relative to your head; travel in meters; cooldown in seconds, shared by both\n"
     "; hands and never shorter than the game's own melee cooldown.\n"
@@ -3053,6 +3057,25 @@ void Refresh() {
                 log::Info("hands: [Throwables] meleeButton = {} kept (your choice; the default is 0)", k->second);
             }
         }
+    }
+    // [Throwables] 2026-11-07: X is the hand power wheel only; either hand's grip at the left chest takes a grenade.
+    // The marker is written only after successful changes, so a later reload retries failed writes and later choices stay.
+    if (ini::Get(ini, "Throwables", "powerWheelX") == std::nullopt && ini.find("Throwables") != ini.end()) {
+        auto const move = vr::foot_controls::MigrateGrenades(ini);
+        bool saved = true;
+        if (move.button) {
+            saved = WritePrivateProfileStringW(L"Throwables", L"grenadeButton", L"0", path.wstring().c_str()) != 0;
+        }
+        if (move.hands) {
+            saved = (WritePrivateProfileStringW(L"Throwables", L"hands", L"both", path.wstring().c_str()) != 0) && saved;
+        }
+        if (saved && WritePrivateProfileStringW(L"Throwables", L"powerWheelX", L"1", path.wstring().c_str()) != 0) {
+            log::Info("hands: [Throwables] grenadeButton {}, hands {} (moved once); X is the hand power wheel only "
+                      "while on foot with [PowerWheel] on = 1; later choices are kept in {}",
+                move.button ? "1 -> 0" : "kept", move.hands ? "right -> both" : "kept", ini::Utf8(path));
+        }
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
     }
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other

@@ -10317,8 +10317,12 @@ void TestMenuSettings() {
         CHECK(text(shipped, "guide_self").find("chest") != std::string::npos && text(shipped, "guide_self").find("Unity") != std::string::npos);
         ms::GuideInput noHandWheel = shipped;
         noHandWheel.handWheel = false;
+        CHECK(text(noHandWheel, "guide_x") == "Nothing");
+        noHandWheel.grenadeButton = true;  // a player's explicit fallback with the hand wheel off
         CHECK(text(noHandWheel, "guide_x") == "Grenade");
         CHECK(text(noHandWheel, "guide_cast").find("right stick click") != std::string::npos);
+        noHandWheel.handWheel = true;
+        CHECK(text(noHandWheel, "guide_x") == "Power wheel");  // even with the old grenade default
         ms::GuideInput noGestures = shipped;
         noGestures.selfGestures = false;
         CHECK(text(noGestures, "guide_self").rfind("Pushed", 0) == 0);
@@ -10327,7 +10331,7 @@ void TestMenuSettings() {
         withB.meleeButton = true;
         CHECK(text(withB, "guide_b") == "Melee");
         CHECK(text(shipped, "guide_lgrip_how").find("vent") != std::string::npos);
-        CHECK(text(shipped, "guide_grenade").rfind("Right hand", 0) == 0);  // [Throwables] hands = right
+        CHECK(text(shipped, "guide_grenade").rfind("Either hand", 0) == 0);  // [Throwables] hands = both
         CHECK(text(shipped, "guide_lstick_how").find("where you look") != std::string::npos);
         // The power wheel moved to Y ([Holsters] powerWheel): Y is the powers, the stick click only recenters...
         ms::GuideInput y = shipped;

@@ -255,6 +255,71 @@ with the left stick (which then doesn't walk); X freed from the game's grenade f
 - **Not yet checked in the game** [verify]: the roster's reads and `IsEnabled` on a real save, the equip reaching
   `TryUseMappedPower`, the quad's placement at a tracked palm, the glow's cost on the render thread.
 
+### X belongs only to the hand wheel on foot (2026-11-07, owner QA)
+
+The owner's release log showed a game-way disc launch at 00:57:17, `UseGrenade` draw refusals at
+00:57:19/34, and the hand wheel selecting Overkill later. `[PowerWheel] on = 1` coexisted with
+`[Throwables] grenadeButton = 1`. This was a code bug, not a PS VR2/Touch binding mismatch:
+`SupportGrip::Tick` called `power_wheel::AdjustPad` first (which set `grenadeButton = false` for
+the entire enabled on-foot state), then `throwables::AdjustPad`. The latter assigned BOTH button
+settings whenever either was off. The shipped `meleeButton = 0` made that branch restore
+`grenadeButton = 1`. `ToFlags` therefore sent no `kFlagNoGrenadeButton` through HostServices
+`setSupportGrip`; the host's `HalcyonBridge::PadOptions`/`FromFlags` faithfully restored game X.
+The open-wheel flag bit 24 independently consumed the left controls only while the wheel was
+open, so it did not protect the opening press or a press between openings. Taps had no exemption:
+they could reach game X before the wheel opened, even though a tap keeps the VR wheel open.
+
+Fixed in both host and mod mapping: Throwables only restricts existing button permissions;
+`handPowerWheel` (flag bit 27) independently consumes X before ANY face-button/RB remap whenever
+the hand wheel is enabled on foot in a VR world view, before it opens and even with an empty or
+disabled roster. The core predicate is `vr::foot_controls::HandWheelOwnsX`; it excludes unknown
+mode, no pawn, an older host without the wheel, flat/menu views and every non-default game mode.
+Held X stays consumed until released across a mode/setting change. Mako, conversations, GUI,
+cinematics and the remaining LE1 EGameModes keep their game meaning on a fresh press. The
+host's `HalcyonBridge` and the mod-owned `GamepadBridge` use the same mapping/flags; no OpenXR
+profile changes are needed. A stale host publication still falls back to the existing default
+mapping after its normal timeout; hot-reload gaps are not evidence of the enabled live policy.
+
+Fresh `[Throwables]` defaults: `grenadeButton = 0` and `hands = both`. a grip at the left chest
+takes a grenade, fast release throws, slow release returns it; the physical throw still uses
+the game's `UseGrenade` and projectile path. A marker-free old default `grenadeButton = 1` moves
+to 0 once and `hands = right` to left once, behind `powerWheelX = 1`. The marker is saved only
+after successful writes; subsequent explicit choices survive. For game-way grenades on foot,
+turn `[PowerWheel] on = 0` and set `grenadeButton = 1` after migration. Other modes are unaffected
+by this setting. `GuideTexts`, Controls and the coach card explain the separation; menu writes
+were audited: its physical-grenades/melee switch edits `enabled`/`melee`, never `grenadeButton`.
+Neither `ini::HalcyonReleaseIni` (`src/install/Ini.cpp`) nor `tools/deploy-asi.ps1` carries this
+key; those Halcyon defaults need no change.
+
+**Overkill `(disabled)` is availability, not a biotic or the grenade conflict.** The mod combines
+`m_nEnabled != 0`, `BioPower.IsEnabled()` and `BioPower.IsRequiredWeaponEquipped()`; cooldown is
+read separately and is not that suffix. `m_nSuppressedCount` is logged, not directly tested.
+Both functions are no-argument native Boolean returns (local LE1 SDK `SFXGame_f_structs.hpp`);
+`engine/ReflectCheck` checks their ReturnValue layouts and `ue3::Params::ReturnBool` reads the
+entire UBOOL, so no parameter/mask error was found in this read. Overkill is the assault-rifle
+weapon talent, only usable with an assault rifle ([Prima official guide](https://primagames.com/eguides/mass-effect-pc-eguide/essentials/combat/talents-and-abilities)).
+It should be unavailable with the wrong weapon; absence of a drawn assault rifle is a plausible
+explanation for this QA, not proven by the abbreviated log. The old suffix cannot tell which
+check failed or prove the owner's actual weapon state. Opening and `mevr powerwheel roster`
+now log the enabled/suppressed counts and EACH native Boolean to resolve that on the next run.
+Selecting a disabled tile only equips it; casting still checks availability. Do not bypass the
+game's requirement to make the tile look ready.
+
+Offline regression coverage (`tests/PowerWheelTests.cpp`): every LE1 game mode plus unknown,
+wheel on/off, VR/flat view, old grenade option on/off, pre-open taps/holds, X-to-RB conflict,
+host flag round-trip, release after mode changes, and marker-free/marked settings. No game,
+deployment or headset check was performed for this change; see the headset checklist.
+
+Validation (2026-11-07): the requested Release targets `MEVR-LE1`, `MEVR-LE1-mod`, `mevr-tests`
+and `mevr-menu-preview` passed in `build`; monolithic `MEVR-LE1` passed in `build-mono`.
+The sandbox denied MSBuild's per-user SDK discovery, so these builds used explicit installed
+SDK 10.0.22621.0 properties (`_LatestWindowsTargetPlatformVersion`, `TargetPlatformSdkPath`,
+`TargetPlatformDisplayName`). Final CTest: **7/7 passed**, 55.35 s; SPDX checker passed using
+the configured bundled Python because `python` was absent from the shell PATH; `git diff --check`
+passed. An initial guide-fixture assertion was corrected before that final run. Offline WARP
+menu renders and the power-wheel coach preview succeeded; guide, Controls and coach text were
+visually checked for fit. Preview images live only under the ignored build directory.
+
 ## 7. The lock and the push (2026-11-05)
 
 Section 4's lock and cast, built on the wheel's equip: the power the wheel equipped (the game's `MappedPower`) is the one the

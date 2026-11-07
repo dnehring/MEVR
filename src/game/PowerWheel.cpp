@@ -7,6 +7,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/FootControls.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/GameAdapter.hpp"
@@ -221,6 +222,8 @@ struct Power {
     pw::PowerInfo const* info = nullptr;
     float cooldown = 0.0f;  // 0..1 of its cooldown still to run
     bool enabled = true;
+    std::optional<bool> gameEnabled;
+    std::optional<bool> requiredWeapon;
     std::int32_t enabledCount = 0;  // m_nEnabled
     std::int32_t suppressed = 0;    // m_nSuppressedCount
 };
@@ -233,6 +236,18 @@ bool CallBool(ue3::Object* object, ue3::FunctionRef& ref) {
     ue3::Params parms(ue3::runtime::Get(), function);
     ue3::runtime::Call(object, function, parms);
     return parms.ReturnBool().value_or(false);
+}
+
+void ReadEnabled(Power& power, ue3::Object* object) {
+    power.gameEnabled = gIsEnabledFn.Get() != nullptr ? std::optional<bool>(CallBool(object, gIsEnabledFn)) : std::nullopt;
+    power.requiredWeapon = gIsRequiredWeaponFn.Get() != nullptr ? std::optional<bool>(CallBool(object, gIsRequiredWeaponFn)) : std::nullopt;
+    power.enabled = power.enabledCount != 0 && power.gameEnabled.value_or(true) && power.requiredWeapon.value_or(true);
+}
+
+std::string EnabledChecks(Power const& power) {
+    auto const flag = [](std::optional<bool> value) { return value ? (*value ? "true" : "false") : "function missing"; };
+    return std::format("m_nEnabled {}, m_nSuppressedCount {}, IsEnabled {}, IsRequiredWeaponEquipped {}",
+        power.enabledCount, power.suppressed, flag(power.gameEnabled), flag(power.requiredWeapon));
 }
 
 // The pawn's mappable powers it has trained (m_nEnabled > 0: 0 for every talent without a rank, measured on a save
@@ -270,8 +285,7 @@ std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
         if (p.enabledCount == 0 && !includeUnlearned) {
             continue;  // not trained
         }
-        p.enabled = p.enabledCount != 0 && (gIsEnabledFn.Get() == nullptr || CallBool(power, gIsEnabledFn)) &&
-                    (gIsRequiredWeaponFn.Get() == nullptr || CallBool(power, gIsRequiredWeaponFn));
+        ReadEnabled(p, power);
         out.push_back(std::move(p));
         if (out.size() >= static_cast<std::size_t>(pw::kMaxEntries) * 2) {
             break;
@@ -442,8 +456,7 @@ std::optional<Power> ReadyPower(ue3::Object* controller, ue3::Object* pawn) {
         p.cooldown = total > 0.01f ? std::clamp(remaining / total, 0.0f, 1.0f) : (remaining > 0.0f ? 1.0f : 0.0f);
         p.enabledCount = gEnabledCount.Read<std::int32_t>(power).value_or(-1);
         p.suppressed = gSuppressed.Read<std::int32_t>(power).value_or(-1);
-        p.enabled = p.enabledCount != 0 && (gIsEnabledFn.Get() == nullptr || CallBool(power, gIsEnabledFn)) &&
-                    (gIsRequiredWeaponFn.Get() == nullptr || CallBool(power, gIsRequiredWeaponFn));
+        ReadEnabled(p, power);
         return p;
     }
     return std::nullopt;
@@ -1329,7 +1342,8 @@ void Tick(double deltaSeconds, Link const& link) {
     vr::host_view::State const view = vr::host_view::Latest();
     vr::controllers::State const controllers = vr::controllers::Latest();
     vr::controllers::Hand const& left = controllers.left;
-    gPadOn = s.on && link.publish != nullptr && onFoot;
+    gPadOn = vr::foot_controls::HandWheelOwnsX(mode ? static_cast<int>(*mode) : -1, s.on,
+        link.publish != nullptr, view.valid, pawn != nullptr);
 
     std::string why;
     if (!s.on) {
@@ -1412,6 +1426,7 @@ void Tick(double deltaSeconds, Link const& link) {
         std::string names;
         for (Power const& p : gRoster) {
             names += (names.empty() ? "" : ", ") + std::string(p.info->name) + (p.enabled ? "" : " (disabled)") +
+                     std::format(" [{}]", EnabledChecks(p)) +
                      (p.cooldown > 0.0f ? std::format(" (cooling, {:.0f}% to go)", p.cooldown * 100.0f) : std::string());
         }
         log::Info("power wheel: opened #{} at {} ({:.2f}, {:.2f}, {:.2f}) m, {:.2f} m wide, with {} power(s): {}", gMachine.serial, from,
@@ -1565,6 +1580,7 @@ void Tick(double deltaSeconds, Link const& link) {
 }
 
 void AdjustPad(gamepad::Options& options) {
+    options.handPowerWheel = gPadOn;  // reserved independently of Throwables and of the open-wheel controls
     if (gPadOn) {
         options.grenadeButton = false;  // X is the wheel's on foot (the physical throw stays)
     }
@@ -1692,8 +1708,8 @@ std::string Console(std::string_view args) {
         std::vector<Power> const roster = ReadRoster(pawn, true);
         std::string out = std::format("power wheel: {} power(s); mapped power {}", roster.size(), MappedPower(controller));
         for (Power const& p : roster) {
-            out += std::format("\n  {} ({}): {} (m_nEnabled {}, m_nSuppressedCount {}), {:.0f}% of its cooldown to go", p.info->name,
-                p.label, p.enabled ? "enabled" : "disabled", p.enabledCount, p.suppressed, p.cooldown * 100.0f);
+            out += std::format("\n  {} ({}): {} ({}), {:.0f}% of its cooldown to go", p.info->name,
+                p.label, p.enabled ? "enabled" : "disabled", EnabledChecks(p), p.cooldown * 100.0f);
         }
         return out;
     }

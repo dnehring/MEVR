@@ -17,7 +17,8 @@
 // in range) is locked, sticky, and marked (HostServices v29, setPowerLock); a push of the left hand along its ray casts the
 // equipped power through BioPlayerInput.ActivatePower at the locked hostile (a place power with none: where the ray meets
 // the world; a power without aim: at once).
-// While it's on, X never throws a grenade on foot (the pad's grenadeButton off), and while it's open the left stick, L3,
+// While it's on in the VR world, X never reaches the game on foot (handPowerWheel plus grenadeButton off, taps and holds),
+// even if Throwables keeps the old grenade button or Holsters maps X to RB. Other modes keep X. While open the left stick, L3,
 // X, the left trigger and grip are its own (gamepad::Options::powerWheel). The host draws it (HostServices v28,
 // setPowerWheel; plugin/PowerWheel). Game thread.
 namespace mevr::game::power_wheel {

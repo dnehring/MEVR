@@ -188,18 +188,22 @@ switching frameworks.
   `=` toggles the automatic virtual screen for conversations, cutscenes and menus (default on);
   `-` toggles the lockstep (game thread waits for each Present; default off). These are for our
   own renderer (LE2/LE3); on LE1 Halcyon's keys apply instead.
-- Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks). Mapping
+- Motion controllers reach the game as Xbox pad 0 (`game/GamepadBridge`, XInput hooks; Halcyon's host consumes the same flags).
+  On foot in VR with `[PowerWheel] on = 1`, X is reserved for the hand power wheel, including taps before it opens;
+  it is neither game X nor a legacy RB source. Other game modes keep X. Mapping
   is in `game/GamepadMapping` (unit-tested). The bindings are ours only (`core/xr/Input`, on Halcyon's session; it
   has no action set): Touch, Index, HP Reverb G2 (`XR_EXT_hp_mixed_reality_controller`, enabled by Halcyon's
   instance only when the runtime lists it, `[MEVR]`), WMR (`microsoft/motion_controller`: trackpad click = A, no B),
   Vive wands (trackpad = stick, no A/B) and `khr/simple_controller` (no grip, no sticks). A limited profile logs
   `halcyon bridge: controller profile ...: <what's missing>`. Nothing depends on a menu or system button.
 - Physical grenades and melee (LE1, `game/Throwables` + `core/ik/Throwing`, research/20,
-  `[Throwables]`): a new grip squeeze at the grenade slot (left side of the chest) takes one, a fast
+  `[Throwables]`): a new grip squeeze (either hand by default since 2026-11-07) at the grenade slot (left side of the chest) takes one, a fast
   release throws it (the game's `UseGrenade`; its disc re-aimed from the hand in a post-handler of
   `BioGrenade.LaunchGrenadeAtPoint`), a slow one puts it back; a fast stroke with an enemy in reach
   is `TryMelee`. Claimed squeezes run before holsters; a left squeeze in the support grip's zone is the
-  support grip, never a grenade. X stays unless `grenadeButton = 0` (host v14). **Melee is the gesture only** (research/20
+  support grip, never a grenade. X is the hand power wheel only on foot while `[PowerWheel] on = 1` (tap or hold).
+  `grenadeButton = 0` ships by default (and `hands = both`); an old `grenadeButton = 1` and `hands = right` move once behind `[Throwables] powerWheelX`.
+  An explicit later `grenadeButton = 1` restores game X on foot only with the hand wheel off. **Melee is the gesture only** (research/20
   "Gesture only", 2026-11-05): B no longer melees on foot (`meleeButton = 0`, migrated once); with the weapon away the
   right FIST (grip and trigger) punches through `BioPlayerInput.ActivatePower(Pistol_Whip)` (`meleeFist`; the left hand
   doesn't, its trigger and grip are the squad's); both hands share one cooldown that also waits out the game's melee
@@ -368,7 +372,7 @@ switching frameworks.
   `setConversationWorld`; `core/vr/ConversationWorld`, `game/ConversationWorld`, host `plugin/ConversationWorld`; **off by default**,
   `[Cinematics] conversations = world`, live): in game mode 5 the player stands at Shepard's place (the view on foot if fresh, else
   his head bone + the first-person eye offset, facing his pawn), head tracked, both eyes, full rate; the place follows his head
-  bone's jumps past 0.8 m that last 3 ticks (`FollowHeadSettled`); our menu's Comfort > Conversations: First person. The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
+  bone's jumps past 0.8 m that last 3 ticks (`FollowHeadSettled`); no menu row since 2026-11-07 (the owner: not ready for the release; the ini key only). The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
   `view_anchor::Hold` (arm IK, body follow); `MevrBridge::ConversationInWorld` in five `[MEVR]` seams in xr_session.cpp (not a cine,
   the second eye's gate as gameplay, the conversation movie's authored layout, the cine capture boundary: else the UI stays in the
   eyes, `[NOLETTERBOX]`: else a 16:9 band) and one in head_aim.cpp (the first-person hides). The conversation movie goes to the
@@ -924,7 +928,9 @@ switching frameworks.
   One `power wheel: gesture attempt:` line records the closest approach, entry speed, hand/weapon state and outcome
   (`vr::power_wheel::StepSelfCast`;
   `mevr powerwheel selfcast`); powers that use the omni-tool (tech, or the omni-tool in their own effects) wear the gauntlet
-  while aimed, gestured and 2.5 s after the cast. While on, X never throws a grenade on foot (the pad's `grenadeButton` off); while open the left stick, L3, X, the
+  while aimed, gestured and 2.5 s after the cast. While on, X never throws a grenade on foot (the pad's `handPowerWheel` reservation,
+  plus `grenadeButton` off; Throwables may only restrict it further); both taps and holds are reserved before opening.
+  Menus, conversations, the Mako and other game modes keep their game X. While open the left stick, L3, X, the
   left trigger and grip are its own (`gamepad::kFlagPowerWheel`, `Latches::powerHeld` until released) and the squad's trigger stands down
   (`power_wheel::OwnsLeftHand`). **The look is the omni-tool's projection** (research/55 section 5 "The omni-tool's projection", 03a6a08;
   the squad wheel shares it): orange light over see-through tiles, the chosen tile ME1 cyan, no rings, spokes or N7 mark; **the light
@@ -992,6 +998,8 @@ switching frameworks.
   headset's eye size, and in Halcyon's fresh `MELEVR.ini` (`ini::HalcyonReleaseIni`, `tools/deploy-asi.ps1`) `decoupledPitch = 1`,
   `cameraOffsetEnabled = 1` (right 0.078, up -0.082) and `screenDistanceEnabled = 1` (0.674). A new setting the owner tunes in
   their own file is a candidate default: compare `ASI\LE1MEVR.ini` and the active `MELEVR.ini` profile with a fresh install's.
+  Since 2026-11-07 the X/grenade defaults are `[Throwables] grenadeButton = 0` and `hands = both`: X selects powers,
+  a grip at the left chest (either hand by default since 2026-11-07) takes a physical grenade.
 - Release engineering (docs/release-checklist.md section 5): **the version is written once**, `project(MEVR VERSION x.y.z)`
   in `CMakeLists.txt` (generated `mevr/Version.hpp` for the C++ and the `.rc` files; the binaries' ProductVersion is
   `<version>+<commit>`; the menu's About shows both). `tools/package-release.ps1` refuses a dirty tree (`-AllowDirty`), a
