@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 // LE1 conversations played in the world, in first person (research/59, `[Cinematics] conversations = world`): during a
 // conversation (game mode 5) the player keeps their own head-tracked view at Shepard's place instead of the director's camera.
@@ -100,5 +101,11 @@ struct FollowState {
     int away = 0;  // calls in a row past the threshold
 };
 bool FollowHeadSettled(FollowState& state, Vec3 const& headNow, double threshold, int settle);
+
+// The set pieces (research/59 "The scan"): the 18 conversations whose lines are a quarter or more authored camera work (a
+// director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...), composed for a camera elsewhere.
+// In the world mode they go to the 3D screen (`[Cinematics] worldSetPieces = screen`). `name` is the conversation's object
+// name in any form ("BioConversation nor10_comm_room_d.nor10_comm_room_dlg", "nor10_comm_room_dlg", "nor10_comm_room"), any case.
+bool IsSetPiece(std::string_view name);
 
 } // namespace mevr::vr::conversation_world

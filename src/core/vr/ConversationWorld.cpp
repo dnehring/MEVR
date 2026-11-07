@@ -90,6 +90,35 @@ Mode ParseMode(char const* text, Mode fallback) {
     return fallback;
 }
 
+bool IsSetPiece(std::string_view name) {
+    // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
+    static constexpr std::string_view kSetPieces[] = {
+        "end90_saren", "jug70_sovereign", "los10_trig_door00", "nor10_captain", "nor10_comm_room", "nor20_empty_locker",
+        "nor20_ilos_approach", "nor20_ilos_open", "nor20_leaving_oculon", "nor20_start_kaidan", "nor20_start_liara",
+        "prc1_cutscene_discovered", "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "sta60_wrex_at_fists",
+        "sta90_council_saren", "war30_trig_01_entry",
+    };
+    std::string key;
+    std::size_t const dot = name.rfind('.');
+    std::size_t const space = name.rfind(' ');
+    std::size_t start = 0;
+    if (dot != std::string_view::npos) {
+        start = dot + 1;
+    } else if (space != std::string_view::npos) {
+        start = space + 1;
+    }
+    for (char c : name.substr(start)) {
+        key.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    for (std::string_view suffix : {std::string_view("_dlg"), std::string_view("_d")}) {
+        if (key.size() > suffix.size() && key.compare(key.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            key.resize(key.size() - suffix.size());
+            break;
+        }
+    }
+    return std::find(std::begin(kSetPieces), std::end(kSetPieces), key) != std::end(kSetPieces);
+}
+
 char const* Name(Mode mode) {
     switch (mode) {
     case Mode::Vr:

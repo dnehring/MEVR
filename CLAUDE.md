@@ -380,7 +380,11 @@ switching frameworks.
   are kept where they stand** (`worldStay = 1`; research/59 "Keeping people in place"): the placements are native, so a jump past
   30 units in a frame (under 6 m) is undone with `Actor.SetLocation` in the `Camera.UpdateCamera` post-handler (before the draw: 0 of
   25 seen in a drawn frame), NPCs turn toward their look-at target at `worldTurnDegPerS`, and the player's place follows Shepard's
-  head bone only when a jump lasts 3 ticks (`FollowHeadSettled`).
+  head bone only when a jump lasts 3 ticks (`FollowHeadSettled`). **The game's camera is held there too** (`worldCamera = 1`; the
+  owner's QA 2026-11-06: the render-time swap alone left culling and texture streaming at the director's camera, 5-9 m away in the
+  comm room: assets missing): the `UpdateCamera` post-handler writes the place into the POV after reading the director's. The wheel
+  is in front by default (`wheelHand = front|left|right`); **the scan's 18 set pieces go to the 3D screen** (`cw::IsSetPiece`,
+  `worldSetPieces = screen|world`).
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
   Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
   `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into
