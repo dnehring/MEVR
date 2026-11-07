@@ -2,6 +2,7 @@
 #pragma once
 
 #include "engine/XrToUnreal.hpp"
+#include "core/vr/HostView.hpp"
 
 #include <optional>
 
@@ -29,7 +30,11 @@ std::optional<engine::TrackingFrame> Current();
 void NoteTurn(int units, bool pawnTurned, double pivotX, double pivotY);
 // While a game screen is projected from the wrist (game/WorldUi), the view shown is Shepard's on foot, held at render time while
 // the game's own camera serves its GUI: Current() returns that frame (recorded on foot) until Hold(nullopt). Game thread.
-void Hold(std::optional<engine::TrackingFrame> frame);
+void Hold(std::optional<engine::TrackingFrame> frame,
+    std::optional<vr::host_view::State> floorReference = std::nullopt);
+bool Held();
+// The held frame's cylinder floor for IK's scale pivot; never teaches a new standing reference during a hold.
+vr::host_view::State FloorReference();
 // Heartbeat (host renderer only): what the host's latest view says.
 void LogStats();
 void Shutdown();

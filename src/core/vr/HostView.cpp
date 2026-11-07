@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include <mutex>
+#include <cmath>
 
 namespace mevr::vr::host_view {
 namespace {
@@ -28,6 +29,12 @@ void Publish(State const& state, std::uint64_t sampledAtMs) {
 void Mirror(State const& state) {
     std::lock_guard lock(gMutex);
     gLatest = state;
+}
+
+double HoldBaseZ(State const& view, double rawCameraZ, double rightZ, double upZ, double forwardZ) {
+    double const commonZ = rightZ * view.offsetRight + upZ * view.offsetUp + forwardZ * view.offsetForward;
+    return view.valid && view.floorLocked && view.centreValid && std::isfinite(view.centreZ) && std::isfinite(commonZ)
+        ? view.centreZ - commonZ : rawCameraZ;
 }
 
 State Latest(std::uint64_t maxAgeMs) {

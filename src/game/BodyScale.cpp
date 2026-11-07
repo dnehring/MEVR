@@ -12,6 +12,7 @@
 #include "game/BodyCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/Weapon.hpp"
+#include "game/ViewAnchor.hpp"
 
 #include <Windows.h>
 
@@ -106,6 +107,9 @@ void NoteWhy(std::string why) {
 double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds,
     std::optional<double> shepardPawnEyeM, std::uintptr_t skeleton) {
     ReadSettings();
+    // A GUI/conversation is not a new standing sample. Keep the exact on-foot factor when its view is held;
+    // the live host floorLocked gate correctly goes false outside mode 0 and mustn't select the legacy estimator.
+    if (view_anchor::Held()) return g.s;
     ++g.steps;
     g.unitsPerMeter = unitsPerMeter > 0.0 ? unitsPerMeter : g.unitsPerMeter;
     bool const crouched = posture::PhysicallyCrouched();
@@ -188,11 +192,11 @@ std::string StatusJson() {
     auto meters = [](std::optional<double> v) { return v ? std::format("{:.3f}", *v / g.unitsPerMeter) : std::string("null"); };
     auto standing = [](std::optional<double> v) { return v ? std::format("{:.3f}", *v) : std::string("null"); };
     return std::format("{{\"scale\": {:.4f}, \"target\": {:.4f}, \"why\": \"{}\", \"shepardEyeM\": {}, \"viewEyeM\": {}, \"reference\": \"{}\", "
-        "\"standingPlayerM\": {}, \"standingShepardM\": {}}}", g.s, g.target,
+        "\"standingPlayerM\": {}, \"standingShepardM\": {}, \"held\": {}}}", g.s, g.target,
         g.why, g.floorReference ? standing(g.referenceShepard) : meters(g.shepardEye),
         g.floorReference ? standing(g.referencePlayer) : meters(g.viewEye), g.reference,
         g.referencePlayer ? std::format("{:.4f}", *g.referencePlayer) : "null",
-        g.referenceShepard ? std::format("{:.4f}", *g.referenceShepard) : "null");
+        g.referenceShepard ? std::format("{:.4f}", *g.referenceShepard) : "null", view_anchor::Held());
 }
 
 void LogStats() {

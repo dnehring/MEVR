@@ -67,6 +67,8 @@ struct Hold {
     ue3::Rotator rotation{};
     float fov = 90.0f;
     std::optional<engine::TrackingFrame> footFrame;  // the tracking frame of that view (the anchor's conversion while held)
+    vr::host_view::State footView;
+    float rawZ = 0.0f;
     float* povLocation = nullptr;
     ue3::Rotator* povRotation = nullptr;
     float* povFov = nullptr;
@@ -305,6 +307,11 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     if (mode && *mode == 0) {
         gHold.location = *pov->location;
         gHold.rotation = *pov->rotation;
+        gHold.rawZ = pov->location->z;
+        auto const view = vr::host_view::Latest();
+        auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
+        gHold.location.z = static_cast<float>(vr::host_view::HoldBaseZ(view, gHold.rawZ,
+            basis.right.z, basis.up.z, basis.forward.z));
         gHold.fov = *pov->fov;
         gHold.haveView = true;
         return;
@@ -433,6 +440,10 @@ void Tick(Link const& link) {
     if (mode && *mode == 0) {
         if (auto const frame = view_anchor::Current()) {
             gHold.footFrame = frame;  // the room as Shepard's view maps it (the held view's)
+            gHold.footView = vr::host_view::Latest();
+            auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
+            gHold.location.z = static_cast<float>(vr::host_view::HoldBaseZ(gHold.footView, gHold.rawZ,
+                basis.right.z, basis.up.z, basis.forward.z));
         }
         ue3::Object* const selection = controller != nullptr ? gPlayerSelection.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
         ue3::Object* const target = selection != nullptr ? gCurrentTarget.Read<ue3::Object*>(selection).value_or(nullptr) : nullptr;
@@ -627,11 +638,20 @@ void Tick(Link const& link) {
     ++gS.ticks;
     omni_tool::Tick(onWrist && settings.omniTool);  // Shepard's forearm wears the game's omni-tool while it projects the screen
     if (onWrist != gWristUp) {
+        if (onWrist && !inCockpit && gHold.footFrame) {
+            auto const& v = gHold.footView;
+            auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
+            double const commonZ = basis.right.z * v.offsetRight + basis.up.z * v.offsetUp + basis.forward.z * v.offsetForward;
+            log::Info("floor lock: world UI hold start mode {}: locked {}, raw Z {:.3f}, held base Z {:.3f}, common Z {:+.3f}, "
+                      "render centre Z {:.3f}, IK head Z {:.3f}, delta {:+.3f}, floor Z {:.3f}, saved correction {:+.3f}",
+                *mode, v.floorLocked, gHold.rawZ, gHold.location.z, commonZ, gHold.location.z + commonZ,
+                gHold.footFrame->headWorld.z, gHold.footFrame->headWorld.z - (gHold.location.z + commonZ), v.pawnFloorZ, v.floorCorrection);
+        }
         log::Info("world ui: {}", onWrist ? "the arms follow the controllers while the screen is on the wrist (Shepard's view on foot held)"
                                           : "the arms go back to the game");
     }
     gWristUp = onWrist;
-    view_anchor::Hold(onWrist && !inCockpit ? gHold.footFrame : std::nullopt);  // rail in the Mako uses its controller, never an old on-foot frame
+    view_anchor::Hold(onWrist && !inCockpit ? gHold.footFrame : std::nullopt, gHold.footView);  // rail in the Mako uses its controller
     SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}], "
                           "\"placement\": {}, \"inCockpit\": {}, \"heldView\": {}, \"omniTool\": {}, \"figure\": {}}}",
         gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement,

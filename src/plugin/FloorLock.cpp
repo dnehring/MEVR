@@ -49,9 +49,8 @@ void SetPawn(fl::PawnSample const* sample) {
 
 void RefreshSettings() {
     auto const& path = MELEVR::MevrBridge::SettingsPath();
-    // Off by default for 0.1.0 (the owner, 2026-11-07): with it on, the arms rode high in the omni-tool's held screens (the
-    // Computer); [Body] floorLock = 1 turns it on.
-    bool const on = !path.empty() && GetPrivateProfileIntW(L"Body", L"floorLock", 0, path.c_str()) != 0;
+    // Held world views carry the corrected base too; an explicit 0 keeps the legacy path.
+    bool const on = path.empty() || GetPrivateProfileIntW(L"Body", L"floorLock", 1, path.c_str()) != 0;
     std::lock_guard lock(gMutex);
     gEnabled = on;
 }

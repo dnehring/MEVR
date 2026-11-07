@@ -18,6 +18,7 @@ namespace {
 bool gUseHostView = false;
 bool gLogged = false;
 std::optional<engine::TrackingFrame> gHeld;  // Hold(): the on-foot frame while a wrist screen is up
+vr::host_view::State gHeldFloor;
 
 // The mod's own turn since the game camera last updated (NoteTurn): the camera as it was then, and the turn.
 struct PendingTurn {
@@ -167,8 +168,18 @@ std::optional<engine::TrackingFrame> Current() {
     return gUseHostView ? FromHost() : FromOurRenderer();
 }
 
-void Hold(std::optional<engine::TrackingFrame> frame) {
+void Hold(std::optional<engine::TrackingFrame> frame, std::optional<vr::host_view::State> floorReference) {
+    if (frame && !gHeld) gHeldFloor = floorReference && floorReference->valid ? *floorReference : vr::host_view::Latest();
+    if (!frame) gHeldFloor = {};
     gHeld = frame;
+}
+
+bool Held() { return gHeld.has_value(); }
+
+vr::host_view::State FloorReference() {
+    auto const live = vr::host_view::Latest();
+    // This is the saved frame's reference, not a republication of an old XR sample. Lost tracking still stands down.
+    return live.valid && gHeld && gHeldFloor.valid && gHeldFloor.floorLocked ? gHeldFloor : live;
 }
 
 void LogStats() {
@@ -186,6 +197,7 @@ void Shutdown() {
     gUseHostView = false;
     gLogged = false;
     gHeld.reset();
+    gHeldFloor = {};
     gTurn = {};
     vr::host_view::Reset();
 }

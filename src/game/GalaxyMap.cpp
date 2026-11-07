@@ -146,6 +146,8 @@ struct Hold {
     ue3::Vector location{};
     ue3::Rotator rotation{};
     float fov = 90.0f;
+    float rawZ = 0.0f;
+    vr::host_view::State floorView;
     std::uint64_t cameraTicks = 0;
     std::uint64_t lastHideMs = 0;
     int hides = 0;
@@ -568,14 +570,14 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     if (!gHold.active) {
         if (mode && *mode == 0) {
             gHold.location = *pov->location;
+            gHold.rotation = *pov->rotation;
             // Carry the corrected on-foot base into the hold; the renderer still adds its common offsets once.
             auto const view = vr::host_view::Latest();
-            if (view.valid && view.floorLocked) {
-                auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
-                double const commonZ = basis.forward.z * view.offsetForward + basis.right.z * view.offsetRight + basis.up.z * view.offsetUp;
-                gHold.location.z = static_cast<float>(view.centreZ - commonZ);
-            }
-            gHold.rotation = *pov->rotation;
+            gHold.rawZ = pov->location->z;
+            gHold.floorView = view;
+            auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
+            gHold.location.z = static_cast<float>(vr::host_view::HoldBaseZ(view, pov->location->z,
+                basis.right.z, basis.up.z, basis.forward.z));
             gHold.fov = *pov->fov;
             gHold.haveView = true;
         }
@@ -1235,6 +1237,12 @@ void Tick(Link const& link) {
         gHold.lastHideMs = 0;
         gHandler = HandlerCache{};  // a new map: its handler found again
         if (holding) {
+            auto const& v = gHold.floorView;
+            auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
+            double const commonZ = basis.right.z * v.offsetRight + basis.up.z * v.offsetUp + basis.forward.z * v.offsetForward;
+            log::Info("floor lock: galaxy hold start: locked {}, raw Z {:.3f}, held base Z {:.3f}, common Z {:+.3f}, "
+                      "render centre Z {:.3f}, saved centre Z {:.3f}, floor Z {:.3f}",
+                v.floorLocked, gHold.rawZ, gHold.location.z, commonZ, gHold.location.z + commonZ, v.centreZ, v.pawnFloorZ);
             log::Info("galaxy hologram: the map is open in the CIC: the view held, the game's own map hidden");
         } else {
             log::Info("galaxy hologram: the view is the game's again ({} camera updates held)", gHold.cameraTicks);

@@ -297,6 +297,7 @@ struct Foot {
     float fov = 90.0f;
     ue3::Vector pawn{};                              // Shepard's pawn at that camera update
     std::optional<engine::TrackingFrame> frame;      // the room as that view maps it
+    vr::host_view::State floorView;
     std::uint64_t ms = 0;                            // when
     // The first-person eye from Shepard's head bone, in his yaw frame (forward, right, up; Unreal units): arm IK's log of the first
     // person camera against the head bone with the headset at the recenter point (2026-11-06: forward 8.9, right 1.7, up 29.3). A
@@ -352,14 +353,12 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     auto const mode = player::GameMode(controller);
     if (mode && *mode == 0) {
         gFoot.location = *pov->location;
+        gFoot.rotation = *pov->rotation;
         // Store the corrected base, not the raw animated camera. Common framing is still applied by the held render.
         auto const view = vr::host_view::Latest();
-        if (view.valid && view.floorLocked) {
-            auto const basis = engine::ToBasis(engine::UnrealRotation{gFoot.rotation.pitch, gFoot.rotation.yaw, gFoot.rotation.roll});
-            double const commonZ = basis.forward.z * view.offsetForward + basis.right.z * view.offsetRight + basis.up.z * view.offsetUp;
-            gFoot.location.z = static_cast<float>(view.centreZ - commonZ);
-        }
-        gFoot.rotation = *pov->rotation;
+        auto const basis = engine::ToBasis(engine::UnrealRotation{gFoot.rotation.pitch, gFoot.rotation.yaw, gFoot.rotation.roll});
+        gFoot.location.z = static_cast<float>(vr::host_view::HoldBaseZ(view, pov->location->z,
+            basis.right.z, basis.up.z, basis.forward.z));
         gFoot.fov = *pov->fov;
         if (auto const p = player::Location(player::Pawn(controller))) {
             gFoot.pawn = *p;
@@ -1223,6 +1222,7 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     if (mode && *mode == 0) {
         if (auto const frame = view_anchor::Current()) {
             gFoot.frame = frame;
+            gFoot.floorView = vr::host_view::Latest();
         }
     }
     ue3::Object* const conv = controller != nullptr && mode && *mode == kModeConversation ? ConversationNow(controller) : nullptr;
@@ -1283,7 +1283,7 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
         frame->headWorld.z += gC.hold.z - gFoot.location.z;
     }
     if (frame) {
-        view_anchor::Hold(frame);
+        view_anchor::Hold(frame, gFoot.floorView);
         gHeld = true;
     }
     if (shepardHead) {
@@ -1344,6 +1344,12 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
     gInWorldForStay = true;
     if (!gInWorld) {
         gInWorld = true;
+        auto const& v = gFoot.floorView;
+        auto const basis = engine::ToBasis(engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll});
+        double const commonZ = basis.right.z * v.offsetRight + basis.up.z * v.offsetUp + basis.forward.z * v.offsetForward;
+        log::Info("floor lock: conversation hold start: locked {}, held base Z {:.3f}, common Z {:+.3f}, "
+                  "render centre Z {:.3f}, IK head Z {:.3f}, floor Z {:.3f}",
+            v.floorLocked, gC.hold.z, commonZ, gC.hold.z + commonZ, frame ? frame->headWorld.z : 0.0, v.pawnFloorZ);
         log::Info("convo: conversation {} in the world: the view held at {} ({}, yaw {:.0f}){}; arm IK and body follow {}", gC.number,
             F(gC.hold), gC.holdFrom, YawDeg(gC.holdRotation), gSettings.follow ? ", following his head bone's jumps" : "",
             frame ? "on" : "waiting for the host's world view");

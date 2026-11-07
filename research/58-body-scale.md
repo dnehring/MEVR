@@ -143,7 +143,8 @@ BioPawn and no cover. Disabled in Mako, K third person, scope/director cameras, 
 game menus and the galaxy's scene camera. Physical crouch changes the live height once; button crouch retains game crouch
 state/collision while real head height controls the camera. A floor sample requires a STAGE/LOCAL_FLOOR source, finite valid
 height and age at most 250 ms; stale pawn samples also stand down. Invalid/missing floor falls back to the old camera and
-filtered scaling, logged once. `[Body] floorLock` defaults off since 2026-11-07 (the owner's QA: with it on the arms rode high in the omni-tool's held screens, the Computer; the held view's arms aren't corrected yet [verify]), no menu row; 0 restores the legacy publication, render order
+filtered scaling, logged once. `[Body] floorLock` defaults **on** again after the held-camera fix in section 7 (the temporary
+0.1.0 default-off workaround followed the owner's Computer-screen report), no menu row; 0 restores the legacy publication, render order
 and sizing path (apart from the additional diagnostic fields).
 
 The corrected common centre is published with the latched head/offsets/floor sequence in host_view::State. ViewAnchor uses
@@ -182,3 +183,68 @@ CTest Release passed all 7 tests (57.67 s); check-spdx.py and git diff --check p
 was denied a user-profile directory in this sandbox, so the installed 10.0.22621.0 SDK location/version/display name were
 supplied as build properties; compiler warning/error flags were unchanged. The Python interpreter configured in the
 development build ran the SPDX check because python was absent from PATH. No game, deployment, replay or headset run.
+
+## 7. Held camera height and IK bounds repair (2026-11-07, source only)
+
+Owner evidence (Quest 3): with floor lock on, rail > Computer (`MenuBrowser`, game mode 7) made the arms ride high;
+0.1.0 temporarily defaulted it off (`9fa35ea`). With it off, snapshot `2026-11-07_14-21-22-025` reports legacy filtered
+scale 1.11, Shepard eye 1.672 m vs view 1.858 m, raw camera 170 uu above the cylinder floor vs STAGE 1.879 m.
+That scale is not by itself a defect: matching a taller player's standing height can legitimately require about 1.11.
+The defect is using recenter-relative/animated view height as the reference rather than the live floor and a fixed
+standing body reference. These snapshot values are the owner's report, not a new capture or measurement here.
+
+**Code proof against baseline `04b56a8`:**
+
+- `ViewAnchor::FromHost` replaces `frame.headWorld.z` with the corrected `host_view.centreZ`.
+  `WorldUi::Tick` saves that frame in `gHold.footFrame` and later passes it to `view_anchor::Hold` for wrist-screen IK.
+- `WorldUi::OnUpdateCamera`, however, saved only the raw `CameraCache.POV.Location` into `gHold.location`.
+  `WorldUi::Tick` publishes that raw location as `State.holdLocation`; `plugin/GamePointer::GalaxyViewSwapBegin`
+  swaps it into the main scene view. It never acquired the matching corrected base.
+- `xr_session::OnViewBuilt`'s last argument admits floor correction only for `gameMode == 0`;
+  `Player::FloorLockSample` also returns with `onFoot == false` outside mode 0. Thus `FloorLock::Translate`/
+  `core/vr/FloorLock::Correct` add **zero correction** in mode 7. The held render eye was `rawCameraZ + commonZ`,
+  while the held IK eye was `correctedCentreZ`. Their difference is the lost on-foot correction: visually high arms.
+  This is a missing correction in the render hold, not evidence of correction being applied twice.
+- The same mode change publishes `floorLocked == false`. `ArmIk::Drive` then chose the animated lowest-bone scale pivot,
+  and `BodyScale::Step` selected its legacy filtered estimator. That changed the body reference during the hold too.
+- Conversation and galaxy captures already subtracted common framing, but computed its basis from `gFoot.rotation`/
+  `gHold.rotation` **before** copying the current POV rotation. Pitch/roll changes therefore used the previous basis.
+
+**Fix:** `host_view::HoldBaseZ` carries `centreZ - commonZ`, using the camera rotation being captured, in all three paths.
+World UI pairs that base with the corrected tracking frame/reference in its on-foot tick. The held render adds common
+framing once and receives no fresh floor correction. `view_anchor::Hold` retains the captured cylinder-floor reference
+for ArmIk's scale pivot; `BodyScale::Step` freezes the on-foot factor, target and standing samples during wrist/conversation
+holds. This reference is local game state, not a renewed XR publication; live host-view freshness still gates its use.
+There is no HostServices ABI change (current v36; the floor payload was introduced in v34).
+
+**Bounds, independent of floor lock:** the owner's before/after turn screenshots show the whole `HMM_ARM_CTHb_MDL`
+body vanishing with arms out. Reported bounds were about 37 x 31 x 100 uu at the pelvis and
+`bConsiderAllBodiesForBounds == false`; live `setprop` testing was pending when this patch was requested.
+`ArmIk::ProtectBodyBounds` now sets that engine-supported flag on the driven player's body and skeletal components whose
+`ParentAnimComponent` is that body. It rechecks current components every driven tick (including pawn/armour changes),
+uses reflected masked `FieldRef::WriteBool` writes (already journalled), and never alters global culling or visibility flags.
+This lets the engine compute bounds from all physics bodies instead of relying on a fixed hand-authored enlargement.
+ReflectCheck includes the new field. On pawn changes/unload, changed live components in the same world are restored;
+world, pawn/component identity and liveness checks reject destroyed or replaced objects. Originally true flags stay true.
+Actual post-IK bounds timing/visibility is still a headset acceptance check, not proven by the property write alone.
+
+**Default and checks:** floor lock defaults to 1 again. An existing explicit `[Body] floorLock = 0` remains an opt-out;
+set it to 1 for the owner test. No installed settings are changed here. Regression cases in `FloorLockTests` exercise
+the shared hold-base helper through a mode-7 correction gate, pitch/roll, and legacy/invalid fallbacks; old raw holds
+retain a nonzero render/IK discrepancy. The new cases have not been compiled or run here. `git diff --check` passed;
+the cached Python executable could not run (`Access is denied`), so `check-spdx.py` did not run. A direct PowerShell check
+of every touched C++ file's MIT SPDX header passed. No new files were added.
+No game build, install, native run or headset test was performed; the owner builds and deploys this uncommitted worktree.
+
+Logs at each opening: `floor lock: world UI hold start` prints mode, locked state, raw/base/common/render/IK Z,
+IK-minus-render delta (expected near zero, float rounding only), saved floor and correction.
+`floor lock: IK hold start` prints live-vs-saved lock state, floor, component-space scale pivot and frozen factor;
+`floor lock: galaxy hold start` / `conversation hold start` print their held centres.
+`body bounds:` logs original -> 1 once per pawn/component, or warns if the property is unresolved.
+Snapshot `mod.bodyScale.held` identifies the frozen reference interval.
+
+Headset: compare unchanged controller poses on foot vs rail > Computer/MenuBrowser; open/close several times and move
+both hands while it is up. Recenter standing and bent without the old crouch/recenter workaround; check live STAGE eye
+height, draw/holster and both crouches. Check galaxy and world-conversation entry/exit while looking up/down.
+Hold elbows at 90 degrees/arms out and turn right with the stick, then repeat with floorLock 0 to isolate the bounds fix.
+Repeat after a level load and armour swap; retain snapshots and these logs for the actual acceptance result.

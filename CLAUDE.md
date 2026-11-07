@@ -307,7 +307,10 @@ switching frameworks.
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
   recenter posture, animated camera bones, mode offsets and vertical framing. Both eyes share the correction before metric
   eye offsets and head look; `HostServices` v34 publishes the corrected centre/pose to ViewAnchor, IK and sights (host and mod
-  deploy together). `[Body] floorLock = 0` by default since 2026-11-07 (the owner's QA: the arms rode high in the omni-tool's held screens), file only; `1` turns it on.
+  deploy together; current HostServices v36). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
+  0.1.0 default-off workaround is superseded by the held-camera fix (2026-11-07): world UI, conversations and map holds
+  capture `corrected centre Z - common framing Z` using the captured camera's rotation, then framing is added once.
+  A wrist/conversation hold retains its on-foot scale factor and cylinder-floor pivot, despite mode 7/5 disabling fresh correction.
   Physical crouch lowers the view once; button crouch keeps gameplay state while the real head controls height. Mako, cover,
   third person, director/3D/flat screens, front end, menus and the galaxy's own camera are excluded; world conversation/map holds
   carry the corrected on-foot base. Missing/stale floor samples fall back, warned once. `constantEye` keeps horizontal placement;
@@ -318,6 +321,10 @@ switching frameworks.
   `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
   hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
   and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.
+  Independently of floor lock, ArmIk sets `bConsiderAllBodiesForBounds` on the driven player body and its pose followers,
+  through journalled masked reflection writes; rechecks new pawns/meshes and restores changed live components at unload.
+  Logs `body bounds:` once per pawn/mesh; `floor lock: world UI hold start` shows raw/base/common/IK Z and their delta;
+  `floor lock: IK hold start` shows the saved floor pivot and frozen scale. Headset culling verification remains pending.
 - LE1 weapon drawn, like exploring ([research/38](research/38-combat-stance.md), `game/CombatStance`, rules in
   `core/vr/CombatStance`; `[Hands]` in `ASI\LE1MEVR.ini`, on by default except `exploreStance`; our menu's Controls > Weapon drawn): VR on
   foot, first person. `exploreStance` (A, mod; **off by default until the headset confirms the redesign**; no menu row since
@@ -551,7 +558,8 @@ switching frameworks.
   auto-hack (dropped, the user). **Shepard's forearm wears the game's own omni-tool** while it's up (research/53 section 6.1,
   `[WorldUi] omniTool`, `game/OmniTool`: `BIOG_V_T_Omni_Tool_Z`'s orange gauntlet and display through
   `BioVisualEffect.CreateCrustEffect`, its particle systems moved onto Shepard's mesh at the same bones, since the minigame's
-  `bPlayersOnly` ticks only the player's actors); arm IK runs while a wrist screen is up (`view_anchor::Hold`, the on-foot frame);
+  `bPlayersOnly` ticks only the player's actors); arm IK runs while a wrist screen is up (`view_anchor::Hold`, the on-foot frame,
+  with its saved floor reference and scale; the rendered hold carries the corrected base, research/58 section 7);
   the screen and its now orange fan project from the display's rendered place (`State::emitter`, grew again), `wristAboveM` 0.10.
   Half-Life: Alyx's way is the model for working it by hand. `mevr skillgame start [type] [difficulty] [n]` opens the minigame on any placeable without a save
   (the level's `BioSkillGame.InitializeSkillGame`); `mevr panel SkillGame invoke PreGameButtonBOnPress` cancels it. **The puzzle is played with a touch d-pad**

@@ -20,6 +20,7 @@
 #include "game/GunKick.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BonePose.hpp"
+#include "engine/Engine.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HandTargets.hpp"
 #include "game/Player.hpp"
@@ -28,6 +29,7 @@
 #include "game/SupportGrip.hpp"
 #include "game/Weapon.hpp"
 #include "game/WorldUi.hpp"
+#include "game/ViewAnchor.hpp"
 #include "game/ConversationWorld.hpp"
 #include "ue3/Handles.hpp"
 
@@ -165,6 +167,80 @@ struct Body {
     ue3::Object* pawn = nullptr;  // an SFXGame.BioPawn
     ue3::Object* mesh = nullptr;  // its SkeletalMeshComponent
 };
+
+// UE3's usual physics-asset bounds may use only the pelvis. Our post-animation IK/scale can put the arms
+// outside it. Ask the engine to include every physics body, including pose followers (armour pieces).
+ue3::FieldRef gAllBodyBounds{"Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds"};
+ue3::FieldRef gBodyComponents{"Engine.Actor", "AllComponents"};
+ue3::ClassRef gSkeletalComponent{"Engine.SkeletalMeshComponent"};
+struct BoundsWrite {
+    ue3::Object* mesh = nullptr;
+    ue3::Object* outer = nullptr;
+    ue3::Name name;
+    bool original = false;
+};
+std::vector<BoundsWrite> gBoundsWrites;
+ue3::Object* gBoundsPawn = nullptr;
+ue3::Name gBoundsPawnName;
+void const* gBoundsWorld = nullptr;
+bool gBoundsWarned = false;
+bool gHoldScaleLogged = false;
+
+void RestoreBodyBounds() {
+    // A load/unload can destroy the previous pawn before this tick. Validate before forming any field address.
+    if (ue3::runtime::Ready() && gBoundsWorld != nullptr && gBoundsWorld == engine::World() &&
+        ue3::runtime::IsAlive(gBoundsPawn) && player::IsBioPawn(gBoundsPawn) &&
+        ue3::runtime::Get().NameOf(gBoundsPawn) == gBoundsPawnName) {
+        auto& r = ue3::runtime::Get();
+        for (auto const& w : gBoundsWrites) {
+            if (!w.original && ue3::runtime::IsAlive(w.mesh) && ue3::IsA(w.mesh, gSkeletalComponent) &&
+                r.NameOf(w.mesh) == w.name && r.OuterOf(w.mesh) == w.outer &&
+                gAllBodyBounds.ReadBool(w.mesh).value_or(false)) {
+                gAllBodyBounds.WriteBool(w.mesh, false); // masked and journalled by FieldRef
+            }
+        }
+    }
+    gBoundsWrites.clear();
+    gBoundsPawn = nullptr;
+    gBoundsWorld = nullptr;
+    gBoundsWarned = false;
+}
+
+void ProtectBodyBounds(Body const& body) {
+    auto& r = ue3::runtime::Get();
+    if (gBoundsPawn != body.pawn || gBoundsWorld != engine::World() || r.NameOf(body.pawn) != gBoundsPawnName) {
+        RestoreBodyBounds();
+        gBoundsPawn = body.pawn;
+        gBoundsPawnName = r.NameOf(body.pawn);
+        gBoundsWorld = engine::World();
+    }
+    auto const protect = [&](ue3::Object* mesh) {
+        if (mesh == nullptr || !ue3::runtime::IsAlive(mesh) || !ue3::IsA(mesh, gSkeletalComponent)) return;
+        auto const original = gAllBodyBounds.ReadBool(mesh);
+        if (!original) {
+            if (!gBoundsWarned) log::Warn("body bounds: bConsiderAllBodiesForBounds unresolved for {}: no write", r.FullName(body.pawn));
+            gBoundsWarned = true;
+            return; // unresolved field: no raw offsets or writes
+        }
+        auto const found = std::find_if(gBoundsWrites.begin(), gBoundsWrites.end(), [&](auto const& w) {
+            return w.mesh == mesh && w.name == r.NameOf(mesh) && w.outer == r.OuterOf(mesh);
+        });
+        if (found == gBoundsWrites.end()) {
+            gBoundsWrites.push_back({mesh, r.OuterOf(mesh), r.NameOf(mesh), *original});
+            log::Info("body bounds: pawn {}, mesh {}: bConsiderAllBodiesForBounds {} -> 1 (IK pose; independent of floor lock)",
+                r.FullName(body.pawn), r.FullName(mesh), *original ? 1 : 0);
+        }
+        if (!*original) gAllBodyBounds.WriteBool(mesh, true); // preserves adjacent bits, journalled
+    };
+    protect(body.mesh);
+    if (auto const components = gBodyComponents.ElementsOf(body.pawn)) {
+        for (int i = 0; i < components->count; ++i) {
+            auto* const mesh = *static_cast<ue3::Object**>(components->At(i));
+            if (mesh != nullptr && ue3::runtime::IsAlive(mesh) && ue3::IsA(mesh, gSkeletalComponent) &&
+                engine::skeleton::PoseParent(mesh) == body.mesh) protect(mesh);
+        }
+    }
+}
 
 std::optional<Body> PlayerBody() {
     ue3::Object* const pawn = player::BioPawn(player::Controller());
@@ -941,6 +1017,7 @@ void Drive(double deltaSeconds) {
         return Stop("not on foot");
     }
     ue3::Object* const mesh = body->mesh;
+    ProtectBodyBounds(*body);
     if (engine::skeleton::PoseParent(mesh) != nullptr) {
         return Stop("the body mesh takes its pose from a ParentAnimComponent: not supported");
     }
@@ -1059,7 +1136,7 @@ void Drive(double deltaSeconds) {
         {
             ik::Vec3 const view = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, targets.headWorld.z});
             if (auto const unscaled = engine::bone_pose::UnscaledBody()) {
-                auto const hostView = vr::host_view::Latest();
+                auto const hostView = view_anchor::FloorReference();
                 std::optional<double> shepardEyeM;
                 double pivotZ = unscaled->floorZ;
                 if (hostView.valid && hostView.floorLocked && targets.body.unitsPerMeter > 0.0) {
@@ -1071,6 +1148,12 @@ void Drive(double deltaSeconds) {
                 bodyScale = body_scale::Step(view.z - unscaled->floorZ, targets.body.unitsPerMeter, deltaSeconds,
                     shepardEyeM, reinterpret_cast<std::uintptr_t>(info->asset));
                 request.bodyScale = {bodyScale, {view.x, view.y, pivotZ}};
+                if (view_anchor::Held() && !gHoldScaleLogged) {
+                    gHoldScaleLogged = true;
+                    log::Info("floor lock: IK hold start: live locked {}, saved locked {}, floor Z {:.3f}, "
+                              "component pivot Z {:.3f}, body scale {:.4f}",
+                        vr::host_view::Latest().floorLocked, hostView.floorLocked, hostView.pawnFloorZ, pivotZ, bodyScale);
+                }
             } else {
                 body_scale::Idle(deltaSeconds);  // nothing measured yet: the request stays unscaled, the reach too
             }
@@ -1242,6 +1325,7 @@ void Drive(double deltaSeconds) {
 } // namespace
 
 void Tick(float deltaSeconds) {
+    if (!view_anchor::Held()) gHoldScaleLogged = false;
     // The writer wrote the player's pose since the last tick: what was published is being shown.
     std::uint64_t const writes = engine::bone_pose::TotalWrites();
     bool const written = writes != gLastWrites;
@@ -1311,6 +1395,8 @@ void LogStats() {
 
 void Shutdown() {
     engine::bone_pose::Clear();
+    RestoreBodyBounds();
+    gHoldScaleLogged = false;
     gEnabled = false;
     gGunAimed = gGunAimedAndWritten = false;
     gSupportRequested = false;

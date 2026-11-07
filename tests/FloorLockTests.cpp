@@ -3,6 +3,7 @@
 #include "core/vr/CombatStance.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/ik/BodyScale.hpp"
+#include "engine/XrToUnreal.hpp"
 
 #include <Windows.h>
 
@@ -54,6 +55,33 @@ int RunFloorLockTests() {
     CHECK(hv::Latest().valid);
     hv::Reset();
     CHECK(!hv::Latest().valid && hv::Latest().timeMs == 0);
+    // Regression: mode 7 renders the held camera without a fresh floor correction. Its base must carry the
+    // on-foot centre, while IK still maps the captured frame there. Include pitch/roll and a changed capture rotation.
+    for (auto const rotation : {mevr::engine::UnrealRotation{}, {5200, 16000, -2400}, {-7000, -10000, 3300}}) {
+        auto const basis = mevr::engine::ToBasis(rotation);
+        hv::State foot;
+        foot.valid = foot.centreValid = foot.floorLocked = true;
+        foot.pawnFloorZ = 1000;
+        foot.centreZ = 1187.9;
+        foot.offsetForward = -33.7f;
+        foot.offsetRight = 1.7f;
+        foot.offsetUp = -4.1f;
+        double const raw = 1160;
+        double const common = basis.right.z * foot.offsetRight + basis.up.z * foot.offsetUp + basis.forward.z * foot.offsetForward;
+        double const heldBase = hv::HoldBaseZ(foot, raw, basis.right.z, basis.up.z, basis.forward.z);
+        auto menu = Ordinary();
+        menu.pawn.onFoot = false; // FloorLockSample in mode 7
+        auto const held = fl::Correct(menu, Sample(), 1000, heldBase, common, 100);
+        CHECK(!held.active && held.correction == 0);
+        CHECK(Close(held.centreZ, foot.centreZ)); // render eye == captured IK eye; no doubled correction
+        auto const old = fl::Correct(menu, Sample(), 1000, raw, common, 100);
+        CHECK(std::abs(old.centreZ - foot.centreZ) > 1.0); // the reported high arms, relative to the lower camera
+        foot.floorLocked = false;
+        CHECK(Close(hv::HoldBaseZ(foot, raw, basis.right.z, basis.up.z, basis.forward.z), raw));
+        foot.floorLocked = true;
+        foot.valid = false;
+        CHECK(Close(hv::HoldBaseZ(foot, raw, basis.right.z, basis.up.z, basis.forward.z), raw));
+    }
     auto c = Ordinary();
     auto s = Sample();
     // The real camera chain: animated hook bone + mode hook - rotated mode offset, then Halcyon's framing + recentered lean.

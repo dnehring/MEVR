@@ -53,6 +53,9 @@ void Publish(State const& state);
 void Publish(State const& state, std::uint64_t sampledAtMs); // a corrected view of an existing XR sample
 // Stores a sample published elsewhere (by the host, for the mod), keeping its sequence and time.
 void Mirror(State const& state);
+// A held camera still receives common framing/lean at render time. Carry a locked centre by removing it once.
+// Pass the axes of the camera being captured, not the previous hold's rotation. Disabled/invalid views keep raw Z.
+double HoldBaseZ(State const& view, double rawCameraZ, double rightZ, double upZ, double forwardZ);
 // The latest sample; `valid` is forced false if it's older than `maxAgeMs` (VR stopped).
 State Latest(std::uint64_t maxAgeMs = 250);
 void Reset();

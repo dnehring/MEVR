@@ -787,6 +787,7 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "Animations", SDK_FIELD(USkeletalMeshComponent, Animations));
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases), true);
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds", SDK_BOOL(USkeletalMeshComponent, bConsiderAllBodiesForBounds));
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
     CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton), true);

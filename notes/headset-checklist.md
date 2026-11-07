@@ -1,6 +1,13 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-07 held floor lock + body bounds (galaxy-labels; source changes, owner builds/deploys): with `[Body] floorLock = 1`,
+  compare arms on foot vs omni-tool rail > Computer/MenuBrowser (mode 7), moving both controllers; no height jump on open/close.
+  Stand and recenter without crouching, draw/holster, physically crouch and button crouch; check world conversation/map holds too.
+  Hold elbows at 90 degrees and arms out while turning right with the stick; repeat with floorLock = 0 (bounds independent).
+  Check `floor lock: world UI hold start` delta near 0, `IK hold start` floor/scale, `body bounds:` per pawn/mesh after loads.
+  See research/58 section 7; no build, deployment or headset result claimed for this patch.
+
 - [ ] 2026-11-07 adversarial-review fixes (full builds/deployment pending): run the per-finding checks in
   [codex-review-2026-11-07.md](codex-review-2026-11-07.md), especially held voice through restart/drain, XR stop with floor
   lock, sprint across loads, and GPU-heavy Quest pacing with/without completed probe evidence.

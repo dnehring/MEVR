@@ -5,6 +5,14 @@ What changes for players from one release to the next. Newest first; each releas
 `tools/package-release.ps1` copies its entry into the release notes (`.github/release-notes-template.md`). The version
 itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.txt`.
 
+## Unreleased
+
+- Restore floor lock by default: wrist screens keep the corrected on-foot camera height, body size and scale pivot, so
+  opening the omni-tool's Computer screen no longer places the arms above their on-foot position. Galaxy-map and world
+  conversation holds use the captured camera's rotation when carrying the corrected height. Headset verification pending.
+- Include all physics bodies in the player's skeletal body bounds, including components that inherit its pose, so IK arms
+  do not depend on the small pelvis bounds when turning. Independent of floor lock; restored on unload. Headset verification pending.
+
 ## 0.1.0 (2026-11-07)
 
 - Galaxy map: project name tags with the window captures' camera, without headset FOV, eye offsets or head look; log projection/pose agreement. Window placement and size unchanged; headset verification pending.
