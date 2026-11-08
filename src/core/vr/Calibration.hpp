@@ -164,6 +164,27 @@ XrVector3f OnPlane(Line const& line, XrVector3f const& planePoint, XrVector3f co
 
 // ---- Body measures --------------------------------------------------------------------------------------
 
+enum class PlayPosition { Standing, Seated };
+// Missing/unknown old values are standing. Height is an eye height, in metres, never overall stature.
+PlayPosition ParsePosition(std::string_view text);
+bool PhysicalCrouch(PlayPosition position, bool enabled);
+std::optional<double> StandingEye(PlayPosition position, std::optional<double> measured,
+    std::optional<double> shepard);
+
+// A seated neutral point is session-local, never a standing measurement. Recenter deliberately makes
+// the current seated posture neutral again. Floor motion is preferred; LOCAL head Y works without a floor.
+class SeatedMotion {
+public:
+    std::optional<double> Eye(PlayPosition position, std::optional<double> standingEye,
+        std::optional<double> floorEye, double headY, std::uint64_t session, std::uint64_t recenter);
+    void Reset() { *this = {}; }
+private:
+    std::optional<double> neutral_;
+    bool floor_ = false;
+    std::uint64_t session_ = 0;
+    std::uint64_t recenter_ = 0;
+};
+
 // Shoulder width from both arms held straight ahead: the grips' distance across the body (perpendicular
 // to `forward`, horizontal). Arm length from a T pose's grip span and that width: (span - width) / 2.
 float ShoulderWidth(XrVector3f const& left, XrVector3f const& right, XrVector3f const& forward);
@@ -195,7 +216,7 @@ struct CrouchFractions {
     double standAbove = 0.85;
 };
 std::optional<CrouchFractions> CrouchFromHeights(double standingEye, double crouchedEye, double crouchAt = 0.5,
-    double standAt = 0.35);
+    double standAt = 0.35, PlayPosition position = PlayPosition::Standing);
 
 // ---- Capture: hold still ------------------------------------------------------------------------------------
 

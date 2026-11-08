@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- Seated play: choose **I play seated** at the height or crouch calibration step, or **Body & calibration > Play position**
+  later. Skips crouch capture; lowering your head never crouches Shepard (L3 still does). Keeps a standing body/eye reference
+  and head-relative holsters instead of sizing Shepard to a chair. Saved separately for each controller type. Headset check pending.
+
 - Smoother frames on Virtual Desktop (a player's judder every 10 s): the renderer's diagnostic dumps are off in the
   players' build and its statistics line comes every 60 s; Quest pacing parses the settings file only when it changes,
   asks the runtime for its refresh rate once, and its automatic recovery is off on Virtual Desktop's own runtime (VDXR).

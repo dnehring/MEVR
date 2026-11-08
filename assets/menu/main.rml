@@ -116,7 +116,7 @@
 			<div class="row"><div class="rl"><div class="rlab">Melee</div><div class="rdesc">{{guide_melee}}</div></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Both hands on the gun</div><div class="rdesc">Squeeze the left grip with your left hand on the gun. Raise it to your cheek for aimed fire.</div></div></div>
 			<div class="row" data-if="vent"><div class="rl"><div class="rlab">Vent a hot gun</div><div class="rdesc">When the gun runs hot, squeeze the left grip on its top just ahead of your right hand, then pull back fast as you let go.</div></div></div>
-			<div class="row" data-if="crouch"><div class="rl"><div class="rlab">Crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you, down behind low cover.</div></div></div>
+			<div class="row" data-if="crouch &amp;&amp; play_position != 'seated'"><div class="rl"><div class="rlab">Crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you, down behind low cover.</div></div></div>
 			<div class="row"><div class="rl"><div class="rlab">This menu, recenter</div><div class="rdesc">Press and hold both thumbsticks for this menu. Double-click the right thumbstick to turn the view to face where you look.</div></div></div>
 		</div>
 		<div class="group">
@@ -157,7 +157,7 @@
 			<div class="gtitle"><span>Movement</span><div class="gline"/></div>
 			<div class="row"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, or where your left hand points.</div></div>
 				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button></div></div>
-			<div class="row"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you</div></div>
+			<div class="row" data-class-disabled="play_position == 'seated'"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you. Seated play turns this off; L3 still toggles crouch.</div></div>
 				<button class="tog" data-class-on="crouch" data-event-click="toggle('crouch')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
@@ -284,14 +284,16 @@
 			<div class="big"/>
 			<div class="herot">
 				<div class="heroh">Full calibration</div>
-				<div class="herop">About a minute in a clear space: your height, arms and crouch, then aim a pistol and a rifle the way you naturally would. Saved for these controllers.</div>
+				<div class="herop">About a minute in a clear space: standing or seated, arms, then aim a pistol and a rifle the way you naturally would. Seated players skip crouch. Saved for these controllers.</div>
 				<div class="stat" data-class-warn="!calibrated"><div class="ico i-check" data-if="calibrated"/><div class="ico i-info" data-if="!calibrated"/><span>{{cal_status}}</span></div>
 			</div>
 			<button class="btn primary" id="calibrate" data-event-click="cmd('calibrate')"><div class="sweep"/><div class="bi i-target"/><span>{{cal_action}}</span></button>
 		</div>
+		<div class="row" data-class-disabled="!position_known"><div class="rl"><div class="rlab">Play position</div><div class="rdesc">Seated keeps a standing body with your head motion on top. Crouch with L3; lowering your head never crouches Shepard.</div><div class="note" data-if="!position_known">Available once your controllers are tracked.</div></div>
+			<div class="seg"><button class="segb" data-class-on="play_position == 'standing'" data-event-click="pick('play_position','standing')">Standing</button><button class="segb" data-class-on="play_position == 'seated'" data-event-click="pick('play_position','seated')">Seated</button></div></div>
 		<div class="tiles">
 			<div class="tile"><div class="tl">Standing eye height</div><div class="tv">{{t_stand}}<span class="tu">m</span></div></div>
-			<div class="tile"><div class="tl">Crouched eye height</div><div class="tv">{{t_crouch}}<span class="tu">m</span></div></div>
+			<div class="tile"><div class="tl">Crouched eye height</div><div class="tv">{{t_crouch}}<span class="tu" data-if="play_position != 'seated'">m</span></div></div>
 			<div class="tile"><div class="tl">Arm length</div><div class="tv">{{t_arm}}<span class="tu">m</span></div></div>
 		</div>
 		<div class="tiles last">

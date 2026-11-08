@@ -328,3 +328,64 @@ the last aims). The runtime's limit itself is [verify]; a budget for our swapcha
 
 [verify] in the headset: calibrate again (wrists straight), read the two hand lines, and see whether the empty hands sit
 naturally on the controllers without touching the hand angle.
+
+## 11. Seated-only calibration and body reference (2026-11-07, source; owner builds/tests)
+
+Owner: "In our initial calibration process we need to do better about seated-only players. Can we have a toggle when doing
+crouch." `plugin/CalibrationDraw` now offers **I PLAY SEATED** on height and crouch, through the existing ray/trigger buttons.
+At height it changes the instruction to sit comfortably and look ahead: only a layout/heading is captured. At crouch it
+discards this run's supposed standing measurement (a seated player may already have auto-captured it), restores any earlier
+standing height, and advances without crouch capture. A seated run skips crouch after arms ahead, including Skip/redo;
+B from the pistol goes back to arms ahead, then height is reachable to choose standing again. Cancellation saves nothing.
+Controller changes cancel a running calibration so no previous profile's standing reference can leak into another's save.
+
+**Storage:** `[Calibration.<key>] position = standing | seated`, alongside the usual controller/headset-specific measures.
+Missing/unknown values mean standing. `standEyeM` remains a real standing *eye height*, never seated height or total stature.
+A prior value (or a known eye height entered in that section) survives seated saves. No personal measurement? Shepard's
+actual unscaled standing eye midpoint over the cylinder floor, frozen for that skeleton, supplies the reference. This keeps
+his natural standing size instead of shrinking him to a chair. Holstered and game-standing for about one second settles
+that fallback (the existing grace + mean); no crouched/drawn animation is admitted. Neither seated floor height nor a guessed
+nominal height becomes a standing measurement. `[Body] scale` auto's existing clamps/rate and explicit off/fixed overrides remain.
+
+`game/BodyCalibration` reads position even in a section with no `time`, so the menu works before full calibration. The menu's
+**Body & calibration > Play position: Standing / Seated** writes just that key; unavailable until the controller type is known.
+`[Calibration] use = 0` ignores measured calibration groups, but an explicitly selected play position still applies. Changing
+position keeps the stored standing height; changing to Standing also restores the standing physical-crouch preference.
+
+**Runtime contract (ordinary on-foot first person, floor lock on):**
+
+```text
+standing: eye midpoint Z = pawn cylinder floor Z + unitsPerMeter * live floor eye height  (unchanged)
+seated:   eye midpoint Z = pawn cylinder floor Z + unitsPerMeter * (standing reference + live Y - seated neutral Y)
+```
+
+`core/vr/Calibration::StandingEye`, `PhysicalCrouch`, `CrouchFromHeights` and `SeatedMotion` hold the pure rules.
+`game/BodyScale` learns Shepard independently of the seated height, including the bootstrap before a locked view exists;
+`game/ArmIk` measures the same cylinder-floor reference before lock. Auto scale uses the chosen standing height / frozen
+Shepard height; lowering the head never changes that target. `game/Posture` admits no physical crouch/dwell or standing-height
+learning while seated. L3's game mapping remains; an existing crouch owned by the physical detector is released when seated
+is chosen, whereas an L3 crouch remains the game's. Cover policy is unchanged.
+
+`plugin/FloorLock` adds live motion once, common to both eyes and the published IK centre. Prefer fresh floor Y; without it
+use recentered LOCAL head Y. A new session, position change, floor/LOCAL source change or recenter resets seated neutral;
+recenter therefore puts the current seated posture back at the standing reference. Existing scope/menu/Mako/held-camera
+gates remain. Held wrist/conversation/map views carry the corrected centre through research/58's existing hold contract.
+An explicit `[Body] floorLock = 0` retains the legacy camera path; use 1 for seated-height acceptance.
+
+**Host seam:** no new callback, HostServices table layout/version stays v36. The existing size-checked `floorLockSampleSize`
+payload (`core/vr/FloorLock::PawnSample`) appends seated + chosen standing height. This is needed because the actual Shepard
+skeleton reference is game-thread data and the host owns the final camera translation. Build/deploy matching host and mod;
+older payload sizes are rejected. `mod.calibration.position`, `floorLock.seated` and `floorLock.standingEyeM` identify it.
+
+**Reach points:** `game/Holsters` scales slots using that same standing reference; `core/ik/BodySlots::NeutralEye`/`Anchor`
+already place them relative to the tracked head, not the floor. `game/Throwables` uses that frame/scale for its chest grenade
+slot (the reference is available even if weapon holsters are disabled). Omni-tool visuals attach to driven wrists and the
+wrist target/rail follows the controller/IK mapping, so it inherits the seated body's corrected centre without a floor offset.
+
+**Offline verification:** `mevr-tests`, calibration preview and menu preview are built/run separately from the game targets.
+Rules cases cover old/default position, seated threshold refusal, standing/reference precedence, invalid inputs, Shepard-only
+learning, scale 1 without personal height, 1:1 lowering/raising, no-floor motion, sessions/recenter and correction gates.
+Guide tests retain L3 and remove physical-crouch advice when seated. PNGs are under `work/seated-play-preview/`: calibration
+`panel-crouch.png`, `panel-stand.png`, `panel-stand-seated.png`; menu `section-body.png`, `section-body-seated.png`.
+The look tools used the Windows Bahnschrift font fallback; these are offline UI checks, not runtime/headset evidence.
+Full game build, deployment and headset acceptance stay with the owner; see `notes/headset-checklist.md` for both positions.

@@ -314,6 +314,16 @@ pz::CrouchParams CrouchParamsNow() {
 
 // The eyes' height as a fraction of the standing eye height, and where it came from.
 std::optional<double> Measure(Link const& link, vr::host_view::State const& view, double deltaSeconds) {
+    if (body_calibration::Position() == vr::calibration::PlayPosition::Seated) {
+        gStanding.Reset();
+        gHeadRef.Reset();
+        gFloorSeen = false;
+        gFraction.reset();
+        gEye = gStandingHeight = -1.0;
+        gDetector.Reset();
+        gSource = "seated: physical crouch disabled (L3 remains available)";
+        return std::nullopt; // a chair must never teach the standing detector
+    }
     double const assumed = hand_calibration::GetHolsters().layout.eyeHeight;
     double const headY = view.head.position.y;
     bool recentered = false;
@@ -557,7 +567,8 @@ void Tick(double deltaSeconds, Link const& link) {
         SetWhy("active");
     }
     TickCover(*game, gActive, settings.noCover, deltaSeconds);
-    TickCrouch(*game, link, view, gActive, settings.physicalCrouch, deltaSeconds);
+    TickCrouch(*game, link, view, gActive,
+        vr::calibration::PhysicalCrouch(body_calibration::Position(), settings.physicalCrouch), deltaSeconds);
 #else
     (void)deltaSeconds;
     (void)link;
@@ -574,7 +585,9 @@ std::string StatusJson() {
                        "\"refusedEntries\": {}, \"eyeHeight\": {}, \"standingEyeHeight\": {}, \"fraction\": {}, \"source\": {}, "
                        "\"physical\": {}, \"dwell\": {}, \"gameWantsCrouch\": {}, \"gameCrouched\": {}, \"ours\": {}, \"pending\": {}, "
                        "\"lastChange\": {}}}",
-        settings.noCover ? "true" : "false", settings.physicalCrouch ? "true" : "false", gActive ? "true" : "false", json::JsonString(gWhy),
+        settings.noCover ? "true" : "false",
+        vr::calibration::PhysicalCrouch(body_calibration::Position(), settings.physicalCrouch) ? "true" : "false",
+        gActive ? "true" : "false", json::JsonString(gWhy),
         engine::cover_acquire::Installed() ? "true" : "false", gInCover ? "true" : "false", gRefusedTotal, json::JsonNumber(gEye),
         json::JsonNumber(gStandingHeight), json::JsonNumber(gFraction.value_or(-1.0)), json::JsonString(gSource),
         json::JsonString(gDetector.Crouched() ? "crouched" : "standing"), json::JsonNumber(gDetector.Dwell()),

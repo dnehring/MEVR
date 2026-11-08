@@ -421,6 +421,7 @@ struct HostServices {
     bool (*hideScreenReticle)() = nullptr;
     // Version 36: floor lock's game-thread cylinder/camera sample; host_view::State also appended.
     // Host and mod must deploy together (viewStateSize and floorLockSampleSize are checked).
+    // PawnSample also carries seated play + its standing reference (2026-11-07); the size gate rejects older payloads.
     std::uint32_t floorLockSampleSize = 0;
     void (*setFloorLockSample)(vr::floor_lock::PawnSample const* sample) = nullptr;
 };

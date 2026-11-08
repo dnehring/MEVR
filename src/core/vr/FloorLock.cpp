@@ -21,21 +21,24 @@ bool ValidFloor(floor::State const& s, std::uint64_t nowMs) {
 }
 
 Result Correct(Context const& c, floor::State const& s, std::uint64_t nowMs,
-    double rawCameraZ, double commonWorldZ, double unitsPerMeter) {
+    double rawCameraZ, double commonWorldZ, double unitsPerMeter, std::optional<double> seatedEyeM) {
     Result out{false, 0.0, rawCameraZ + commonWorldZ};
-    if (!Applies(c) || !c.pawn.floorValid || !Fresh(c.pawn.timeMs, nowMs) || !ValidFloor(s, nowMs) ||
+    bool const heightValid = c.pawn.seated
+        ? seatedEyeM && std::isfinite(*seatedEyeM) && *seatedEyeM > 0.2 && *seatedEyeM < 2.7
+        : ValidFloor(s, nowMs);
+    if (!Applies(c) || !c.pawn.floorValid || !Fresh(c.pawn.timeMs, nowMs) || !heightValid ||
         !std::isfinite(c.pawn.floorZ) || !std::isfinite(rawCameraZ) || !std::isfinite(commonWorldZ) ||
         !std::isfinite(unitsPerMeter) || unitsPerMeter <= 0.0) {
         return out;
     }
     out.active = true;
-    out.centreZ = c.pawn.floorZ + unitsPerMeter * static_cast<double>(s.eyeHeight);
+    out.centreZ = c.pawn.floorZ + unitsPerMeter * (c.pawn.seated ? *seatedEyeM : static_cast<double>(s.eyeHeight));
     out.correction = out.centreZ - (rawCameraZ + commonWorldZ);
     return out;
 }
 
 void StandingReference::Feed(std::uintptr_t skeleton, bool physicalCrouch, bool gameCrouch, bool holstered,
-    double stageEyeM, double shepardEyeM, double dt) {
+    double stageEyeM, double shepardEyeM, double dt, bool seated) {
     if (skeleton != skeleton_) {
         *this = {};
         skeleton_ = skeleton;
@@ -45,8 +48,8 @@ void StandingReference::Feed(std::uintptr_t skeleton, bool physicalCrouch, bool 
         quietSeconds_ = seconds_ = playerSum_ = shepardSum_ = 0.0;
         return;
     }
-    if (!std::isfinite(stageEyeM) || !std::isfinite(shepardEyeM) ||
-        stageEyeM < 0.8 || stageEyeM > 2.5 || shepardEyeM < 0.8 || shepardEyeM > 2.5 || !std::isfinite(dt)) {
+    if ((!seated && (!std::isfinite(stageEyeM) || stageEyeM < 0.8 || stageEyeM > 2.5)) ||
+        !std::isfinite(shepardEyeM) || shepardEyeM < 0.8 || shepardEyeM > 2.5 || !std::isfinite(dt)) {
         return;
     }
     double const weight = std::clamp(dt, 0.0, 0.05);
@@ -54,10 +57,10 @@ void StandingReference::Feed(std::uintptr_t skeleton, bool physicalCrouch, bool 
     quietSeconds_ += weight;
     if (quietSeconds_ < 0.5) return;
     seconds_ += weight;
-    playerSum_ += stageEyeM * weight;
+    if (!seated) playerSum_ += stageEyeM * weight;
     shepardSum_ += shepardEyeM * weight;
     if (seconds_ >= 0.5) {
-        player_ = playerSum_ / seconds_;
+        if (!seated) player_ = playerSum_ / seconds_;
         shepard_ = shepardSum_ / seconds_;
     }
 }

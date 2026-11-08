@@ -1144,6 +1144,14 @@ void Drive(double deltaSeconds) {
                     shepardEyeM = (eyeWorld.z - hostView.pawnFloorZ) / targets.body.unitsPerMeter;
                     pivotZ = ik::TransformPoint(*worldToComponent,
                         {targets.headWorld.x, targets.headWorld.y, hostView.pawnFloorZ}).z;
+                } else if (body_calibration::Position() == vr::calibration::PlayPosition::Seated && targets.body.unitsPerMeter > 0.0) {
+                    // Bootstrap the unscaled standing Shepard reference before a seated floor lock is possible.
+                    auto const pawn = player::FloorLockSample();
+                    if (pawn.floorValid && pawn.onFoot && !pawn.cover) {
+                        auto const eyeWorld = ik::TransformPoint(componentToWorld, unscaled->eye);
+                        shepardEyeM = (eyeWorld.z - pawn.floorZ) / targets.body.unitsPerMeter;
+                        pivotZ = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, pawn.floorZ}).z;
+                    }
                 }
                 bodyScale = body_scale::Step(view.z - unscaled->floorZ, targets.body.unitsPerMeter, deltaSeconds,
                     shepardEyeM, reinterpret_cast<std::uintptr_t>(info->asset));

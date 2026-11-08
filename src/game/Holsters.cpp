@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/ik/BodySlots.hpp"
+#include "game/BodyScale.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -519,7 +520,10 @@ void UpdateEyeHeight(hand_calibration::Holsters const& settings, Link const& lin
     std::string source;
     double height = settings.layout.eyeHeight;
     gFloorNow = -1.0;
-    if (auto const calibrated = body_calibration::StandingEyeHeight()) {
+    if (body_calibration::Position() == vr::calibration::PlayPosition::Seated) {
+        height = body_scale::StandingEyeHeight().value_or(settings.layout.eyeHeight);
+        source = "seated standing reference (head-relative slots)";
+    } else if (auto const calibrated = body_calibration::StandingEyeHeight()) {
         // The guided calibration measured it standing tall (research/25): the player's height, whatever the floor
         // learns later. The floor is still watched (gFloorNow, a new session) for the log and the snapshot.
         if (link.floor && link.floor->valid) {
@@ -997,7 +1001,9 @@ void AdjustPad(gamepad::Options& options) {
 }
 
 double EyeHeight() {
-    return gEyeHeight;
+    // Grenades use this even when weapon holsters are disabled (UpdateEyeHeight then stands down).
+    return body_calibration::Position() == vr::calibration::PlayPosition::Seated
+        ? body_scale::StandingEyeHeight().value_or(gEyeHeight) : gEyeHeight;
 }
 
 bool RightHandInSlot() {

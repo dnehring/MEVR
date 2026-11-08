@@ -155,6 +155,7 @@ std::string ControllersLabel(std::string_view calibrationLabel);
 // What each button and the grenade gesture do on foot, from the settings that change them (CLAUDE.md's LE1 bullets,
 // game/GamepadMapping, research/19 section 6's bindings). Every field is what the file holds (or the menu's chip).
 struct GuideInput {
+    bool seated = false;                 // [Calibration.<key>] position (L3 only; physical crouch disabled)
     std::string leftTrigger = "lb";      // [Controls] leftTrigger: lb | lt | none
     bool squad = true;                   // [Squad] enabled: the left trigger's pull is the squad's weapon wheel
     std::string squadStyle = "native";   // [Squad] style: native | custom

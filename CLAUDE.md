@@ -251,7 +251,8 @@ switching frameworks.
   controllers: its 8 s delay and 45 s timeout count only while the session has input focus, and its text says where
   calibration lives later) runs about a minute in the headset
   (`plugin/Calibration`; look in `plugin/CalibrationDraw`, the main menu's style; offline look:
-  `mevr-calibration-preview`): stand tall, T pose, arms ahead, crouch, a pistol orb and two rifle orbs aimed
+  `mevr-calibration-preview`): stand tall, T pose, arms ahead, crouch (or **I play seated**, also at height: skip crouch,
+  use a standing body reference; Body & calibration > Play position changes it later, research/25 section 11), a pistol orb and two rifle orbs aimed
   at three targets (captured on a 1 s hold, no buttons; B back a step, both sticks held cancel), a red-dot
   check, save. Why an aim isn't captured is on the panel and the board; an aim off the other two is redone alone,
   and after two tries the agreeing pair is kept (`vr::calibration::AimSet`; rifle 4.5 degrees, pistol 3; research/25
@@ -267,7 +268,7 @@ switching frameworks.
   moved onto the calibrated line (`gunShift`, the assist on top), the foregrip point takes the left grip,
   two-hand aim keeps the calibrated hands line, the shoulder zone, the crouch thresholds, the holsters'
   eye height. While it runs the game sees a neutral pad and the mod no controllers. `[Calibration] use = 0`
-  or no section: everything as before. Log `calibration:`.
+  or no measured section: measurements as before (a chosen seated position still applies). Log `calibration:`.
 - LE1 body holsters (`game/Holsters`, `core/ik/BodySlots`, research/19): a right-grip squeeze at a
   body slot draws that weapon through `SFXGameModeDefault.SwitchToWeapon` (ProcessEvent). The
   right grip holds the gun (`gripHolds = 1`): let go at its slot to holster (`TryHolster`; while the draw still

@@ -271,6 +271,9 @@ int main(int argc, char** argv) {
         v.body = text.body;
         v.time = 0.3f;
         v.buttons = v.prompt ? std::vector<int>{draw::kDismiss, draw::kCalibrateNow} : std::vector<int>{draw::kSkip, draw::kRestart};
+        if (screen == draw::Screen::Stand || screen == draw::Screen::Crouch || screen == draw::Screen::SeatedStand) {
+            v.buttons.insert(v.buttons.begin(), {screen == draw::Screen::SeatedStand ? draw::kStanding : draw::kSeated, draw::kRowBreak});
+        }
         v.hints = !v.prompt;
         return v;
     };
@@ -288,6 +291,12 @@ int main(int argc, char** argv) {
         v.status = "Hold still";
         v.progress = 0.62f;
         shots.push_back({"stand", v});
+    }
+    {
+        draw::PanelView v = base(draw::Screen::SeatedStand);
+        v.status = "Hold still";
+        v.progress = 0.4f;
+        shots.push_back({"stand-seated", v});
     }
     {
         draw::PanelView v = base(draw::Screen::TPose);

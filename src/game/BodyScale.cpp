@@ -53,6 +53,7 @@ struct State {
     std::string loggedWhy;
     unsigned steps = 0;
     vr::floor_lock::StandingReference standing;
+    vr::calibration::PlayPosition position = vr::calibration::PlayPosition::Standing;
     std::string reference = "legacy filtered view / lowest bone";
     std::optional<double> referencePlayer;
     std::optional<double> referenceShepard;
@@ -115,34 +116,44 @@ double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds,
     bool const crouched = posture::PhysicallyCrouched();
     auto const view = vr::host_view::Latest();
     bool const locked = view.valid && view.floorLocked;
-    g.floorReference = locked;
-    if (locked) {
+    bool const seated = body_calibration::Position() == vr::calibration::PlayPosition::Seated;
+    if (g.position != body_calibration::Position()) {
+        g.position = body_calibration::Position();
+        g.standing = {};
+        g.referencePlayer.reset();
+        g.referenceShepard.reset();
+    }
+    bool const referenceMode = locked || seated;
+    g.floorReference = referenceMode;
+    if (referenceMode) {
         bool const gameCrouch = player::Crouched(player::BioPawn(player::Controller())).value_or(true);
         auto const calibrated = body_calibration::StandingEyeHeight();
-        bool const headLow = calibrated && view.stageEyeM < *calibrated * 0.9;
+        bool const headLow = !seated && calibrated && view.stageEyeM < *calibrated * 0.9;
         g.standing.Feed(skeleton, crouched || headLow, gameCrouch, weapon::Key() == 0,
-            view.stageEyeM, shepardPawnEyeM.value_or(0.0), deltaSeconds);
-        g.referencePlayer = calibrated ? calibrated : g.standing.Player();
+            view.stageEyeM, shepardPawnEyeM.value_or(0.0), deltaSeconds, seated);
         g.referenceShepard = g.standing.Shepard();
+        g.referencePlayer = seated ? vr::calibration::StandingEye(body_calibration::Position(), calibrated, g.referenceShepard)
+                                  : calibrated ? calibrated : g.standing.Player();
         g.reference = calibrated ? "calibrated standing / frozen Shepard cylinder floor"
-                                 : "learned standing STAGE / frozen Shepard cylinder floor";
+                                 : seated ? "seated: Shepard standing / frozen Shepard cylinder floor"
+                                          : "learned standing STAGE / frozen Shepard cylinder floor";
     } else {
         g.reference = "legacy filtered view / lowest bone";
     }
     // Shepard standing holstered (the combat stance carries his head 16 cm lower), unscaled, from the writer's last pose.
     // Only heights a standing person can have count: a floor read far below (a trace through a gap) said 50 m once and took
     // the scale to its minimum for good.
-    if (auto const body = engine::bone_pose::UnscaledBody(); !locked &&
+    if (auto const body = engine::bone_pose::UnscaledBody(); !referenceMode &&
         body && weapon::Key() == 0 && !crouched && bs::Plausible(body->eyeHeight, g.unitsPerMeter)) {
         Track(g.shepardEye, body->eyeHeight, deltaSeconds);
     }
-    if (!locked && !crouched && bs::Plausible(viewAboveFloor, g.unitsPerMeter)) {
+    if (!referenceMode && !crouched && bs::Plausible(viewAboveFloor, g.unitsPerMeter)) {
         Track(g.viewEye, viewAboveFloor, deltaSeconds);
     }
     Mode const mode = g.overrideOff ? Mode::Off : g.override ? Mode::Fixed : g.settings.mode;
-    std::optional<double> const playerEye = locked ? g.referencePlayer : g.viewEye;
-    std::optional<double> const shepardEye = locked ? g.referenceShepard : g.shepardEye;
-    double const referenceUnits = locked ? 1.0 : g.unitsPerMeter;
+    std::optional<double> const playerEye = referenceMode ? g.referencePlayer : g.viewEye;
+    std::optional<double> const shepardEye = referenceMode ? g.referenceShepard : g.shepardEye;
+    double const referenceUnits = referenceMode ? 1.0 : g.unitsPerMeter;
     if (mode == Mode::Off) {
         g.target = 1.0;
         NoteWhy("off");
@@ -151,7 +162,7 @@ double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds,
         NoteWhy(std::format("fixed at {:.3f}{}", g.target, g.override ? " (console)" : ""));
     } else if (auto const f = playerEye && shepardEye ? bs::Factor(*playerEye, *shepardEye, referenceUnits) : std::nullopt) {
         g.target = *f;
-        NoteWhy(locked ? "auto: fixed standing references" : "auto: Shepard's eyes where the view is");
+        NoteWhy(referenceMode ? "auto: fixed standing references" : "auto: Shepard's eyes where the view is");
     } else {
         g.target = 1.0;
         NoteWhy(!shepardEye ? "auto: waiting for Shepard standing holstered (his eye height)" : "auto: waiting for the standing eye height");
@@ -163,6 +174,10 @@ double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds,
 double Idle(double deltaSeconds) {
     g.s = bs::Approach(g.s, 1.0, kRatePerSecond * 3.0, deltaSeconds);
     return g.s;
+}
+
+std::optional<double> StandingEyeHeight() {
+    return vr::calibration::StandingEye(body_calibration::Position(), body_calibration::StandingEyeHeight(), g.referenceShepard);
 }
 
 std::string Command(std::string const& args) {

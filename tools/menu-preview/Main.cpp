@@ -79,6 +79,7 @@ public:
             v.numbers["calibrated"] = 1;
             v.texts["cal_status"] = "Calibrated 22 Oct \xC2\xB7 PlayStation VR2 \xC2\xB7 Sense controllers";
             v.texts["cal_action"] = "Calibrate again";
+            v.numbers["position_known"] = 1;
             v.texts["t_stand"] = "1.64";
             v.texts["t_crouch"] = "1.02";
             v.texts["t_arm"] = "0.72";
@@ -452,6 +453,13 @@ int main(int argc, char** argv) {
         save(std::string("section-") + section);
     }
     // Each section's lower part (the pages scroll): one more picture per screenful.
+    model.SetText("section", "body");
+    model.SetText("play_position", "seated");
+    model.SetText("t_crouch", "Off");
+    frames(20);
+    save("section-body-seated");
+    model.SetText("play_position", "standing");
+    model.SetText("t_crouch", "1.02");
     auto scrolled = [&](char const* section) {
         model.SetText("section", section);
         frames(10);
@@ -517,6 +525,16 @@ int main(int argc, char** argv) {
     frames(30);
     save("section-guide-first-run");
     model.SetNumber("first_run", 0.0f);
+    {
+        ms::GuideInput seated;
+        seated.seated = true;
+        for (auto const& [key, text] : ms::GuideTexts(seated)) model.SetText(key, text);
+        model.SetText("play_position", "seated");
+        frames(20);
+        save("section-guide-seated");
+        for (auto const& [key, text] : ms::GuideTexts(ms::GuideInput{})) model.SetText(key, text);
+        model.SetText("play_position", "standing");
+    }
     {
         ms::GuideInput other;
         other.leftTrigger = "lt";

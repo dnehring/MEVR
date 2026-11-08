@@ -1,6 +1,14 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-07 seated play (galaxy-labels; owner builds/deploys host + mod): choose I play seated at height and at crouch
+  in separate runs; never need to stand/crouch, B goes back and Save/restart retains position per controller. Compare a new
+  seated profile (Shepard's standing size) with one holding a known standEyeM. Lean/lower/raise the head: view moves 1:1,
+  body size stays fixed, no physical crouch; L3 crouches/stands. Recenter seated, switch Standing/Seated in the menu;
+  check hips/shoulder holsters, grenade chest slot, wrist target and Computer screen holds; standing calibration/crouch
+  must stay as before. With no standing reference yet, holster and let Shepard stand for about a second to settle it.
+  See research/25 section 11; offline previews and rules tests are not headset acceptance.
+
 - [ ] 2026-11-07 held floor lock + body bounds (galaxy-labels; source changes, owner builds/deploys): with `[Body] floorLock = 1`,
   compare arms on foot vs omni-tool rail > Computer/MenuBrowser (mode 7), moving both controllers; no height jump on open/close.
   Stand and recenter without crouching, draw/holster, physically crouch and button crouch; check world conversation/map holds too.

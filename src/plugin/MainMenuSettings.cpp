@@ -251,6 +251,7 @@ void Settings::ReadMenuSection() {
 }
 
 void Settings::Read(menu::Values& v) {
+    calibration::Summary const cal = calibration::GetSummary();
     std::wstring const& path = MELEVR::MevrBridge::SettingsPath();
     Ini ini;
     ini.pending = &pending_;
@@ -340,6 +341,7 @@ void Settings::Read(menu::Values& v) {
     {
         // The controller guide: what each button does with these settings (core/vr/MenuSettings GuideTexts).
         ms::GuideInput g;
+        g.seated = cal.seated;
         g.leftTrigger = v.Text("left_trigger");
         g.squad = ini.Num("Squad", "enabled", 1.0f) != 0.0f;
         g.squadStyle = Lower(ini.Text("Squad", "style", "native"));
@@ -368,7 +370,8 @@ void Settings::Read(menu::Values& v) {
     v.numbers["trim_pitch"] = ini.Num("Hands", "handPitch", ms::kHandPitchDefault) - ms::kHandPitchDefault;
     v.numbers["trim_yaw"] = ini.Num("Hands", "handYaw", 0.0f);
     v.numbers["trim_roll"] = ini.Num("Hands", "handRoll", 0.0f);
-    calibration::Summary const cal = calibration::GetSummary();
+    v.texts["play_position"] = cal.seated ? "seated" : "standing";
+    flag("position_known", !cal.key.empty());
     flag("cal_running", cal.running);
     flag("calibrated", cal.calibrated);
     std::string const controllers = ms::ControllersLabel(cal.device);
@@ -378,7 +381,7 @@ void Settings::Read(menu::Values& v) {
                                                 : std::format("Not calibrated for {} yet: the guns follow the controller's aim pose", controllers);
     v.texts["cal_action"] = cal.calibrated ? "Calibrate again" : "Start calibration";
     v.texts["t_stand"] = Fixed(cal.standEyeM, 2);
-    v.texts["t_crouch"] = Fixed(cal.crouchEyeM, 2);
+    v.texts["t_crouch"] = cal.seated ? "Off" : Fixed(cal.crouchEyeM, 2);
     v.texts["t_arm"] = Fixed(ini.Text("Arms", "armLengthM", ""), 2);
     v.texts["t_eye"] = cal.eye == "left" ? "Left" : cal.eye == "right" ? "Right" : "\xE2\x80\x93";
     v.texts["t_pistol"] = Fixed(cal.pistolSpreadDeg, 1);
@@ -785,6 +788,12 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Comfort", "vignetteStrength", fixed(v.Number("vignette_strength") / 100.0f, 2), final);
     } else if (key == "vignette_when") {
         Put("Comfort", "vignetteWhen", v.Text("vignette_when") == "move" ? "move" : "turn", true);
+    } else if (key == "play_position") {
+        auto const cal = calibration::GetSummary();
+        if (!cal.key.empty()) {
+            std::string const section = "Calibration." + cal.key;
+            Put(section.c_str(), "position", v.Text("play_position") == "seated" ? "seated" : "standing", true);
+        }
     } else if (key == "crouch") {
         Put("Hands", "physicalCrouch", onOff("crouch"), true);
     } else if (key == "pause") {

@@ -162,6 +162,8 @@ std::vector<Field> const& Schema() {
         {"guide_cast", Type::Text, 0, ""},
         {"guide_self", Type::Text, 0, ""},
         // Body and calibration.
+        {"play_position", Type::Choice, 0, "standing"},
+        {"position_known", Type::Flag, 0},
         {"cal_running", Type::Flag, 0},
         {"cal_status", Type::Text, 0, "Not calibrated for these controllers yet"},
         {"cal_action", Type::Text, 0, "Start calibration"},
@@ -590,7 +592,8 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     std::string const toward = in.walk == "hand" ? "where your left hand points" : in.walk == "body" ? "where Shepard faces"
                                                                                                    : "where you look";
     put("lstick", "Walk, click: crouch",
-        "Walk toward " + toward + ". Click to crouch or stand" + (in.physicalCrouch ? "; or just crouch for real." : "."));
+        "Walk toward " + toward + ". Click to crouch or stand" + (in.seated ? ". Seated play: lowering your head never crouches Shepard."
+            : in.physicalCrouch ? "; or just crouch for real." : "."));
     if (in.handWheel) {
         put("x", "Power wheel", std::string("Hold for your powers around your left hand: move the hand toward one and let go of X to "
                                             "equip it (a tap keeps the wheel open).") +

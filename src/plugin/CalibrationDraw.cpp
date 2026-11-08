@@ -147,14 +147,15 @@ ScreenText TextFor(Screen screen) {
     switch (screen) {
     case Screen::Prompt:
         return {"CALIBRATE THESE CONTROLLERS?",
-            "About a minute: stand, stretch your arms, crouch, then aim a pistol and a rifle at three targets. Your "
+            "About a minute: choose standing or seated, stretch your arms, then aim a pistol and a rifle at three targets. Your "
             "sights then line up with your eye, and the two-handed grip and the crouch fit you. Later: hold both sticks, "
             "then Body & calibration > Start calibration.",
             0};
-    case Screen::Stand: return {"STAND TALL, LOOK AHEAD", "Stand straight where you can stretch your arms, and look at this panel.", 1};
+    case Screen::Stand: return {"STAND TALL, LOOK AHEAD", "Stand straight and look at this panel. Seated player? Choose I play seated below.", 1};
+    case Screen::SeatedStand: return {"SIT COMFORTABLY, LOOK AHEAD", "Stay seated. Your seated height will never set Shepard's size. Crouch is skipped; L3 still crouches.", 1};
     case Screen::TPose: return {"ARMS OUT TO THE SIDES", "Straight out, level with your shoulders, like a T.", 2};
     case Screen::Forward: return {"BOTH ARMS STRAIGHT AHEAD", "Level with your shoulders, a shoulder-width apart, wrists straight.", 2};
-    case Screen::Crouch: return {"CROUCH DOWN", "As low as you would go to hide behind cover, and hold it.", 3};
+    case Screen::Crouch: return {"CROUCH DOWN", "As low as you would go to hide behind cover. Seated player? Choose I play seated to skip this.", 3};
     case Screen::PistolGrab:
         return {"TAKE THE PISTOL", "Squeeze the right grip at the orange orb (the ring is your hand), and keep it squeezed.", 4};
     case Screen::PistolAim: return {"AIM AT THE LIT TARGET", "Aim the pistol the way you naturally would, and keep it on the target.", 4};
@@ -194,6 +195,8 @@ char const* ButtonLabel(int id) {
     case kRedoRifle: return "REDO RIFLE";
     case kCalibrateNow: return "CALIBRATE NOW";
     case kDismiss: return "NOT NOW";
+    case kSeated: return "I PLAY SEATED";
+    case kStanding: return "I PLAY STANDING";
     default: return "";
     }
 }

@@ -17,6 +17,7 @@
 //                           vr::calibration::ProfileKey), written whole by each save; the host says which key is
 //                           current (HostServices v15), else [Calibration] last:
 //     time                  when (a section without it isn't a calibration)
+//     position              standing (default for old sections) | seated; applies even before time/use of measures
 //     standEyeM, crouchEyeM the eyes above the floor standing tall and crouched (meters)
 //     armLengthM, shoulderWidthM   from the T pose and both arms ahead
 //     eye                   left | right: the eye the sight lines run from
@@ -42,6 +43,7 @@ void Tick(Link const& link);
 // The sequence runs: the mod stands down (the host hides the controllers too; this covers the physical crouch,
 // which follows the head).
 bool Calibrating();
+vr::calibration::PlayPosition Position();
 
 // The stance for a weapon type (BioWeaponRanged's EBioItemWeaponRangedType: 0 pistol, 1 shotgun, 2 assault
 // rifle, 3 sniper rifle): the pistol's for pistols, the rifle's for the rest. Nullopt: not calibrated (or
@@ -55,6 +57,7 @@ bool StanceBorrowed(int weaponType);
 std::optional<vr::calibration::Stance> TwoHanded();
 
 // Body measures (nullopt: not measured).
+// StandingEyeHeight never returns a measured seated height; BodyScale supplies the Shepard fallback.
 std::optional<double> StandingEyeHeight();
 std::optional<double> ArmLength();
 // The hand's neutral trim from the arms-ahead step (research/25 section 10; 0 left, 1 right): the relaxed hand's frame

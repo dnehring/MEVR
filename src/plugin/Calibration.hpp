@@ -19,7 +19,7 @@ struct ID3D11DeviceContext;
 //   1 stand tall, look ahead (standing eye height; the heading the rest is laid out on)
 //   2 arms out to the sides, then straight ahead (the arm-length T-pose sample [Arms] measure* as the tab
 //     takes it, and the shoulder width)
-//   3 crouch (crouched eye height)
+//   3 crouch (crouched eye height), or I play seated (also offered at step 1): skip crouch
 //   4 take the pistol orb with the right grip, aim at three targets
 //   5 take the two rifle orbs (right grip, left grip), shoulder, aim at three targets
 //   6 check: a red dot along each new sight line from the hand; save, switch eye, or redo a part
@@ -100,6 +100,7 @@ struct Summary {
     std::string rifleSpreadDeg;
     std::string standEyeM;
     std::string crouchEyeM;
+    bool seated = false;
 };
 Summary GetSummary();
 

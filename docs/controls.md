@@ -81,8 +81,9 @@ foot: the game's own buttons don't pull your gun out for you (medi-gel and power
 - **Vent:** cools a hot gun at once (a change to Mass Effect 1's rules). When the gun's heat is at least 30%, put your
   left hand on the gun just above and ahead of your right hand (a tick in the controller says you're there), squeeze
   the left grip, pull back fast and let go, like racking a slide. Once every 4 s. `[Vent] enabled = 0` turns it off.
-- **Crouch:** crouch for real and Shepard crouches; stand up and he stands. The game's cover snapping is off in VR:
-  take cover by crouching or leaning behind things.
+- **Crouch:** standing play follows your real crouch. In **Body & calibration > Play position > Seated**, lowering your
+  head never crouches Shepard; click the left stick (L3) to crouch or stand. Calibration also offers **I play seated** at
+  height and crouch, with no standing or crouch measurement required. The game's cover snapping stays off in VR.
 - **Use:** look at what you want to use. Its name and action float at the object; the A button appears once you're
   close enough.
 - **Fingers:** Shepard's index finger follows your trigger, his other fingers your grip.

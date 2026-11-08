@@ -10371,6 +10371,11 @@ void TestMenuSettings() {
         CHECK(text(shipped, "guide_lgrip_how").find("vent") != std::string::npos);
         CHECK(text(shipped, "guide_grenade").rfind("Either hand", 0) == 0);  // [Throwables] hands = both
         CHECK(text(shipped, "guide_lstick_how").find("where you look") != std::string::npos);
+        ms::GuideInput seated = shipped;
+        seated.seated = true;
+        CHECK(text(seated, "guide_lstick_how").find("Click to crouch or stand") != std::string::npos);
+        CHECK(text(seated, "guide_lstick_how").find("lowering your head never crouches") != std::string::npos);
+        CHECK(text(seated, "guide_lstick_how").find("or just crouch for real") == std::string::npos);
         // The power wheel moved to Y ([Holsters] powerWheel): Y is the powers, the stick click only recenters...
         ms::GuideInput y = shipped;
         y.powerWheel = " Y ";

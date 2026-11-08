@@ -552,8 +552,43 @@ std::optional<float> ArmLength(float tPoseSpan, float shoulderWidth) {
     return arm;
 }
 
-std::optional<CrouchFractions> CrouchFromHeights(double standingEye, double crouchedEye, double crouchAt, double standAt) {
-    if (!std::isfinite(standingEye) || !std::isfinite(crouchedEye) || !(standingEye > 0.8) || !(crouchedEye > 0.2) ||
+PlayPosition ParsePosition(std::string_view text) {
+    std::string value(text);
+    auto const begin = value.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos) return PlayPosition::Standing;
+    value = value.substr(begin, value.find_last_not_of(" \t\r\n") - begin + 1);
+    for (char& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return value == "seated" ? PlayPosition::Seated : PlayPosition::Standing;
+}
+
+bool PhysicalCrouch(PlayPosition position, bool enabled) {
+    return enabled && position == PlayPosition::Standing;
+}
+
+std::optional<double> StandingEye(PlayPosition position, std::optional<double> measured, std::optional<double> shepard) {
+    auto valid = [](std::optional<double> v) { return v && std::isfinite(*v) && *v >= 0.8 && *v <= 2.5; };
+    if (valid(measured)) return measured;
+    return position == PlayPosition::Seated && valid(shepard) ? shepard : std::nullopt;
+}
+
+std::optional<double> SeatedMotion::Eye(PlayPosition position, std::optional<double> standingEye,
+    std::optional<double> floorEye, double headY, std::uint64_t session, std::uint64_t recenter) {
+    if (position != PlayPosition::Seated) { Reset(); return std::nullopt; }
+    bool const floor = floorEye && std::isfinite(*floorEye) && *floorEye > 0.2 && *floorEye < 2.7;
+    double const live = floor ? *floorEye : headY;
+    if (!std::isfinite(live)) return std::nullopt;
+    if (!neutral_ || session != session_ || recenter != recenter_ || floor != floor_) neutral_ = live;
+    floor_ = floor;
+    session_ = session;
+    recenter_ = recenter;
+    // Capture neutral even while Shepard's standing reference is still settling.
+    auto const reference = StandingEye(position, standingEye, std::nullopt);
+    return reference ? std::optional<double>(*reference + (live - *neutral_)) : std::nullopt;
+}
+
+std::optional<CrouchFractions> CrouchFromHeights(double standingEye, double crouchedEye, double crouchAt, double standAt,
+    PlayPosition position) {
+    if (!PhysicalCrouch(position, true) || !std::isfinite(standingEye) || !std::isfinite(crouchedEye) || !(standingEye > 0.8) || !(crouchedEye > 0.2) ||
         standingEye - crouchedEye < 0.15) {
         return std::nullopt;
     }

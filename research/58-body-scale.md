@@ -116,6 +116,9 @@ contained filtered estimates, not raw instantaneous camera measurements; those l
 
 The new contract for ordinary on-foot first person is:
 
+For standing play; seated play (research/25 section 11, 2026-11-07) instead adds live seated motion to a standing reference,
+and never uses a chair-height sample to size the body. The same cylinder floor, shared eye correction and hold gates apply.
+
 ```text
 rendered eye midpoint Z = pawn cylinder bottom Z + unitsPerMeter * live floor eye height
 pawn cylinder bottom Z = Actor.Location.z - Pawn.CylinderComponent.CollisionHeight

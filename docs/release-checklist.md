@@ -197,7 +197,8 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
 - [x] **[C] Shots from a muzzle through a wall** fire from the far side (`GetPulledInMuzzleLocation` unused,
   research/14:542-544).
   **Built 2026-11-04 (6318954):** the shot starts 2 units short of what lies between the pawn's start and the muzzle; [verify] in the game.
-- [ ] **[C] Seated play**: no seated preset; holsters and crouch come from a standing recenter (research/19:570-571).
+- [ ] **[C] Seated play**: implemented in source 2026-11-07 (research/25 section 11): calibration toggle/menu row, standing
+  body reference and L3-only crouch. Full game build and seated/standing headset acceptance remain with the owner.
 - [ ] **[C] Legs moonwalk** when strafing or backing up; Shepard is left behind past 0.75 m (research/29:160-171).
   **Built 2026-11-04 (ceb6edd):** moving, the legs keep the run and only the spine (up to 60 degrees, `legsTwistDeg`) turns to
   the view; [verify] in the game. Room-scale (Shepard following you past 0.75 m) is designed in research/29, not built.

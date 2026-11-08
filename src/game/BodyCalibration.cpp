@@ -27,6 +27,7 @@ struct Values {
     std::string key;
     std::string when;
     std::string label;
+    cal::PlayPosition position = cal::PlayPosition::Standing;
     std::optional<double> standEye;
     std::optional<double> crouchEye;
     std::optional<double> armLength;
@@ -124,13 +125,15 @@ Values ReadValues(fs::path const& path, std::string const& key) {
         return v;
     }
     std::string const section = "Calibration." + key;
+    // Position may be selected in the menu before the first full calibration (no time yet).
+    v.position = cal::ParsePosition(Read(path, section, "position"));
+    v.standEye = Number(path, section, "standEyeM", 0.8, 2.3);
     v.when = Read(path, section, "time");
     if (v.when.empty()) {
         return v;
     }
     v.loaded = true;
     v.label = Read(path, section, "label");
-    v.standEye = Number(path, section, "standEyeM", 0.8, 2.3);
     v.crouchEye = Number(path, section, "crouchEyeM", 0.2, 2.0);
     v.armLength = Number(path, section, "armLengthM", 0.3, 1.2);
     v.shoulderWidth = Number(path, section, "shoulderWidthM", 0.15, 0.75);
@@ -179,7 +182,8 @@ void Load(char const* why) {
         key = Read(path, "Calibration", "last");  // an older host doesn't say which controllers: the last calibrated
     }
     gValues = ReadValues(path, key);
-    std::string const text = Describe(gValues);
+    std::string const text = std::format("position {}; {}",
+        gValues.position == cal::PlayPosition::Seated ? "seated (physical crouch off, L3 available)" : "standing", Describe(gValues));
     if (text != gLoggedText) {
         gLoggedText = text;
         log::Info("calibration: {} ({})", text, why);
@@ -246,6 +250,10 @@ bool Calibrating() {
     return gCalibrating;
 }
 
+cal::PlayPosition Position() {
+    return gValues.position;
+}
+
 std::optional<cal::Stance> StanceFor(int weaponType) {
     if (!Usable() || weaponType < 0 || weaponType > 3) {
         return std::nullopt;
@@ -271,7 +279,7 @@ std::optional<cal::Stance> TwoHanded() {
 }
 
 std::optional<double> StandingEyeHeight() {
-    return Usable() ? gValues.standEye : std::nullopt;
+    return gUse ? gValues.standEye : std::nullopt;
 }
 
 std::optional<double> ArmLength() {
@@ -286,7 +294,7 @@ std::optional<ik::posture::CrouchParams> CrouchParams(ik::posture::CrouchParams 
     if (!Usable() || !gValues.standEye || !gValues.crouchEye) {
         return std::nullopt;
     }
-    auto const fractions = cal::CrouchFromHeights(*gValues.standEye, *gValues.crouchEye);
+    auto const fractions = cal::CrouchFromHeights(*gValues.standEye, *gValues.crouchEye, 0.5, 0.35, Position());
     if (!fractions) {
         return std::nullopt;
     }
@@ -309,9 +317,10 @@ std::optional<ik::ShoulderZone> ShoulderZone() {
 
 std::string StatusJson() {
     namespace json = vr::test_request;
-    return std::format("{{\"calibrating\": {}, \"use\": {}, \"key\": {}, \"loaded\": {}, \"time\": {}, \"pistol\": {}, \"rifle\": {}, "
+    return std::format("{{\"calibrating\": {}, \"use\": {}, \"key\": {}, \"position\": \"{}\", \"loaded\": {}, \"time\": {}, \"pistol\": {}, \"rifle\": {}, "
                        "\"twoHanded\": {}, \"standEyeM\": {}, \"crouchEyeM\": {}, \"armLengthM\": {}}}",
-        gCalibrating ? "true" : "false", gUse ? "true" : "false", json::JsonString(gValues.key), gValues.loaded ? "true" : "false",
+        gCalibrating ? "true" : "false", gUse ? "true" : "false", json::JsonString(gValues.key),
+        Position() == cal::PlayPosition::Seated ? "seated" : "standing", gValues.loaded ? "true" : "false",
         json::JsonString(gValues.when), gValues.pistol ? "true" : "false", gValues.rifle ? "true" : "false",
         gValues.rifle && gValues.rifle->hasLeft ? "true" : "false", json::JsonNumber(gValues.standEye.value_or(-1.0)),
         json::JsonNumber(gValues.crouchEye.value_or(-1.0)), json::JsonNumber(gValues.armLength.value_or(-1.0)));

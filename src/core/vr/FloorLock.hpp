@@ -17,6 +17,9 @@ struct PawnSample {
     bool floorValid = false;
     double floorZ = 0.0;     // Actor.Location.z - CylinderComponent.CollisionHeight
     std::uint64_t timeMs = 0;
+    // Extended size-checked payload, no new HostServices callback. Never the measured seated height.
+    bool seated = false;
+    double standingEyeM = 0.0; // calibrated standing eye, else frozen standing Shepard; 0 while learning
 };
 
 struct Context {
@@ -42,13 +45,13 @@ struct Result {
 };
 // rawCameraZ is BEFORE any common or per-eye translation. commonWorldZ includes ALL framing/lean terms.
 Result Correct(Context const& context, floor::State const& sample, std::uint64_t nowMs,
-    double rawCameraZ, double commonWorldZ, double unitsPerMeter);
+    double rawCameraZ, double commonWorldZ, double unitsPerMeter, std::optional<double> seatedEyeM = std::nullopt);
 
 // A standing reference settles once per skeleton. Neither kind of crouch can contribute; the live eye is never a target.
 class StandingReference {
 public:
     void Feed(std::uintptr_t skeleton, bool physicalCrouch, bool gameCrouch, bool holstered,
-        double stageEyeM, double shepardEyeM, double dt);
+        double stageEyeM, double shepardEyeM, double dt, bool seated = false);
     std::optional<double> Player() const { return player_; }
     std::optional<double> Shepard() const { return shepard_; }
 private:

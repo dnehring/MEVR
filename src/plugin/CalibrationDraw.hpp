@@ -39,6 +39,8 @@ enum ButtonId : int {
     kRedoRifle,
     kCalibrateNow,
     kDismiss,
+    kSeated,
+    kStanding,
 };
 char const* ButtonLabel(int id);
 
@@ -54,6 +56,7 @@ struct Button {
 enum class Screen : int {
     Prompt,      // the first-run question
     Stand,       // 1 Height: stand tall, look ahead
+    SeatedStand, // 1 Height: seated neutral, never a standing height measurement
     TPose,       // 2 Arms: out to the sides
     Forward,     // 2 Arms: straight ahead
     Crouch,      // 3 Crouch

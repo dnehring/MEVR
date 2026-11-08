@@ -19,6 +19,8 @@ double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds,
     std::optional<double> shepardPawnEyeM = std::nullopt, std::uintptr_t skeleton = 0);
 // Not driving (third person, the Mako, no headset): the factor eases back to 1 (and Step resumes from there).
 double Idle(double deltaSeconds);
+// Shared seated reference for floor lock and body slots (never the live seated eye height).
+std::optional<double> StandingEyeHeight();
 // `mevr body scale <s> | auto | off`.
 std::string Command(std::string const& args);
 std::string StatusJson();

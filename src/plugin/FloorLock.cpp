@@ -35,6 +35,7 @@ std::uint64_t gSequence = 0; // gMutex; also rejects a game-side publication rac
 // Game/render-build thread only; the replay uses precisely this pair's immutable inputs.
 Pending gPair;
 fl::Result gPairResult;
+vr::calibration::SeatedMotion gSeatedMotion; // game/render-build thread, shared by both eyes
 std::uint64_t gLogMs = 0;
 double gLoggedCorrection = 0.0;
 double gLoggedHeight = 0.0;
@@ -106,7 +107,15 @@ float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float fo
             gPair.view.valid = false;
             gPair.context.world = false;
         }
-        gPairResult = fl::Correct(gPair.context, gPair.floor, now, rawCameraZ, commonZ, gPair.view.unitsPerMeter);
+        auto const position = gPair.context.pawn.seated ? vr::calibration::PlayPosition::Seated
+                                                       : vr::calibration::PlayPosition::Standing;
+        if (position == vr::calibration::PlayPosition::Standing) gSeatedMotion.Reset();
+        auto const seatedEye = fl::Applies(gPair.context) && gPair.view.valid
+            ? gSeatedMotion.Eye(position, gPair.context.pawn.standingEyeM,
+                fl::ValidFloor(gPair.floor, now) ? std::optional<double>(gPair.floor.eyeHeight) : std::nullopt,
+                gPair.view.head.position.y, gPair.floor.sessions, gPair.floor.recenters)
+            : std::nullopt;
+        gPairResult = fl::Correct(gPair.context, gPair.floor, now, rawCameraZ, commonZ, gPair.view.unitsPerMeter, seatedEye);
         auto& view = gPair.view;
         view.floorLocked = gPairResult.active;
         view.centreValid = gPair.context.enabled && view.valid && std::isfinite(gPairResult.centreZ);
@@ -119,7 +128,7 @@ float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float fo
             std::lock_guard lock(gMutex);
             if (gPair.sequence == gPending.sequence) vr::host_view::Publish(view, view.timeMs);
         }
-        if (fl::Applies(gPair.context) && !fl::ValidFloor(gPair.floor, now) && !gWarned) {
+        if (fl::Applies(gPair.context) && !gPair.context.pawn.seated && !fl::ValidFloor(gPair.floor, now) && !gWarned) {
             gWarned = true;
             log::Warn("floor lock: no fresh valid STAGE/LOCAL_FLOOR sample; using the old camera behaviour");
         }
@@ -137,11 +146,11 @@ float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float fo
         auto number = [](double v) { return std::isfinite(v) ? std::format("{:.6f}", v) : std::string("null"); };
         std::string const status = std::format("{{\"enabled\": {}, \"active\": {}, \"rawCameraZ\": {}, \"pawnFloorZ\": {}, "
             "\"stageEyeM\": {}, \"correction\": {}, \"centreZ\": {}, \"floorSequence\": {}, \"floorTimeMs\": {}, \"unitsPerMeter\": {}, "
-            "\"finalEyeM\": {}, \"viewArm\": {}, \"source\": \"{}\"}}",
+            "\"finalEyeM\": {}, \"viewArm\": {}, \"source\": \"{}\", \"seated\": {}, \"standingEyeM\": {}}}",
             gPair.context.enabled, view.floorLocked, number(rawCameraZ), number(view.pawnFloorZ), number(view.stageEyeM),
             number(view.floorCorrection), number(view.centreZ), view.floorSequence, gPair.floor.timeMs, number(view.unitsPerMeter),
             view.unitsPerMeter > 0.0f ? number((view.centreZ - view.pawnFloorZ) / view.unitsPerMeter) : "null",
-            gPair.arm, vr::floor::Name(gPair.floor.source));
+            gPair.arm, vr::floor::Name(gPair.floor.source), gPair.context.pawn.seated, number(gPair.context.pawn.standingEyeM));
         std::lock_guard lock(gMutex);
         gStatus = status;
     } else if (gPair.context.enabled) {

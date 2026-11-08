@@ -2,6 +2,7 @@
 // The guided calibration in the headset (plugin/Calibration.hpp, research/25).
 
 #include "plugin/Calibration.hpp"
+#include "core/Ini.hpp"
 
 #include "core/Log.hpp"
 #include "core/vr/Floor.hpp"
@@ -144,6 +145,8 @@ struct Run {
     XrVector3f grabOffset{};      // [Calibration] grabOffset: the grab point in the right grip's frame
     // Body.
     bool haveStand = false;
+    bool seated = false;
+    std::optional<float> previousStandEye; // only an earlier standing measurement/explicit entry is trusted when seated
     std::optional<float> standEye;  // from the floor
     float standHeadY = 0.0f;        // app space
     bool haveT = false;
@@ -260,6 +263,10 @@ void CheckKey() {
 void UpdateKey() {
     std::string const key = gProfile.empty() ? std::string() : cal::ProfileKey(gProfile, gSystem);
     if (key != gKey) {
+        if (gRunning.exchange(false)) {
+            gPaused.store(false);
+            log::Info("calibration: cancelled: controller type changed; start again for the new controllers");
+        }
         gKey = key;
         gLabel = gProfile.empty() ? std::string() : cal::ProfileLabel(gProfile, gSystem);
         gKeyChecked = false;
@@ -662,6 +669,7 @@ void Enter(Step step, XrPosef const& head) {
 
 // After a part is done: on to the next, or back to the check after a redo.
 void Next(Step step, XrPosef const& head) {
+    if (step == Step::Crouch && gRun.seated) step = Step::PistolGrab;
     Enter(gRun.returnToCheck && step != Step::TPose && step != Step::Forward && step != Step::Crouch &&
                   step != Step::PistolAim && step != Step::RifleAim
               ? Step::Check
@@ -1072,13 +1080,16 @@ void StepBody(XrPosef const& head, float dt) {
         gRun.anchored = true;
         gRun.haveStand = true;
         gRun.standHeadY = avg.position.y;
-        gRun.standEye = floor.valid ? std::optional<float>(floor.eyeHeight) : std::nullopt;
+        if (!gRun.seated) gRun.standEye = floor.valid ? std::optional<float>(floor.eyeHeight) : std::nullopt;
         Captured({0, 1});
-        log::Info("calibration: standing: eyes at ({:.2f}, {:.2f}, {:.2f}), heading {:.1f} deg, {}", avg.position.x, avg.position.y,
+        log::Info("calibration: {} neutral: eyes at ({:.2f}, {:.2f}, {:.2f}), heading {:.1f} deg, standing reference {}",
+            gRun.seated ? "seated" : "standing", avg.position.x, avg.position.y,
             avg.position.z, gRun.anchor.yaw * 57.29578f,
             gRun.standEye ? std::format("{:.3f} m above the {} floor", *gRun.standEye, vr::floor::Name(floor.source))
-                          : std::string("no floor height (the runtime offers no floor space)"));
-        Say(gRun.standEye ? std::format("Standing eye height {:.2f} m.", *gRun.standEye)
+                          : std::string(gRun.seated ? "Shepard's standing eyes (no personal standing measurement)"
+                                                   : "no floor height (the runtime offers no floor space)"));
+        Say(gRun.seated ? "Seated neutral captured. Physical crouch is off; L3 still crouches."
+                          : gRun.standEye ? std::format("Standing eye height {:.2f} m.", *gRun.standEye)
                           : std::string("No floor from the runtime: the crouch will use how far your head drops."));
         Next(Step::TPose, head);
         return;
@@ -1235,6 +1246,7 @@ void Save() {
     WriteIni(section, "profile", gProfile);
     WriteIni(section, "system", gSystem);
     WriteIni(section, "label", gLabel);
+    WriteIni(section, "position", gRun.seated ? "seated" : "standing");
     if (gRun.haveStand) {
         WriteIni(section, "heading", Fixed(gRun.anchor.yaw * 57.29578f, 1));
     }
@@ -1325,6 +1337,18 @@ void Stop(char const* why) {
 void Press(int button, XrPosef const& head) {
     log::Info("calibration: {} pressed ({})", draw::ButtonLabel(button), StepName(gRun.step));
     switch (button) {
+    case draw::kSeated:
+    case draw::kStanding:
+        gRun.seated = button == draw::kSeated;
+        // The first step may have auto-captured before a seated player reached this choice. Discard
+        // that run's supposed standing height; an earlier real standing measurement stays authoritative.
+        gRun.standEye = gRun.previousStandEye;
+        gRun.crouchEye.reset();
+        gRun.crouchDrop.reset();
+        if (gRun.step == Step::Crouch && gRun.seated) Next(Step::PistolGrab, head);
+        else Enter(Step::Stand, head);
+        Say(gRun.seated ? "Seated play: no physical crouch. L3 still toggles crouch." : "Standing play: stand tall to measure your height.");
+        return;
     case draw::kCancel:
         Stop("cancelled on the panel");
         return;
@@ -1400,7 +1424,7 @@ void Back(XrPosef const& head) {
     case Step::TPose: Enter(Step::Stand, head); return;
     case Step::Forward: Enter(Step::TPose, head); return;
     case Step::Crouch: Enter(Step::Forward, head); return;
-    case Step::PistolGrab: Enter(Step::Crouch, head); return;
+    case Step::PistolGrab: Enter(gRun.seated ? Step::Forward : Step::Crouch, head); return;
     case Step::PistolAim: Enter(Step::PistolGrab, head); return;
     case Step::RifleGrab: Enter(Step::PistolGrab, head); return;
     case Step::RifleAim: Enter(Step::RifleGrab, head); return;
@@ -1442,7 +1466,7 @@ Pointer Point(XrPosef const& panelPose, float width, float height, draw::PanelVi
 }
 
 draw::PanelView PanelFor(Step step, std::uint64_t now) {
-    draw::ScreenText const text = draw::TextFor(ScreenOf(step));
+    draw::ScreenText const text = draw::TextFor(step == Step::Stand && gRun.seated ? draw::Screen::SeatedStand : ScreenOf(step));
     draw::PanelView v;
     v.device = gLabel;
     v.step = text.pip;
@@ -1475,6 +1499,7 @@ draw::PanelView PanelFor(Step step, std::uint64_t now) {
         v.summary.push_back(StanceSummary(false));
         v.summary.push_back(StanceSummary(true));
         std::string body;
+        if (gRun.seated) body = "Seated; L3 crouch; ";
         if (gRun.standEye) {
             body += std::format("Eye height {:.2f} m standing", *gRun.standEye);
             if (gRun.crouchEye) {
@@ -1500,6 +1525,9 @@ draw::PanelView PanelFor(Step step, std::uint64_t now) {
         v.hints = false;
     } else {
         v.buttons = {draw::kSkip, draw::kRestart};
+        if (step == Step::Stand || step == Step::Crouch) {
+            v.buttons.insert(v.buttons.begin(), {gRun.seated ? draw::kStanding : draw::kSeated, draw::kRowBreak});
+        }
     }
     return v;
 }
@@ -1637,6 +1665,11 @@ bool Running() {
 
 void Start(char const* why) {
     gRun = {};
+    gRun.seated = cal::ParsePosition(ReadIni(Section(gKey), "position")) == cal::PlayPosition::Seated;
+    if (auto const height = ini::Number(ReadIni(Section(gKey), "standEyeM")); height && *height >= 0.8 && *height <= 2.3) {
+        gRun.previousStandEye = static_cast<float>(*height);
+    }
+    if (gRun.seated) gRun.standEye = gRun.previousStandEye;
     gRun.startedAt = Now();
     // [Calibration] eye = left | right: the player's choice of aiming eye; auto (or nothing): measured.
     std::string const eye = ReadIni("Calibration", "eye", "auto");
@@ -1733,7 +1766,7 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
         if (gRun.reanchor) {
             gRun.reanchor = false;
             bool const body = gRun.step == Step::Stand || gRun.step == Step::TPose || gRun.step == Step::Forward || gRun.step == Step::Crouch;
-            if (body && gRun.haveStand && !gRun.standEye) {
+            if (body && gRun.haveStand && !gRun.standEye && !gRun.seated) {
                 gRun.haveStand = false;
                 log::Info("calibration: recentered: laid out again in front of the head; no floor, so the body starts over");
                 Enter(Step::Stand, head);
@@ -1942,6 +1975,7 @@ Summary GetSummary() {
     s.key = gKey;
     s.calibrated = gKeyCalibrated;
     if (!gKey.empty()) {
+        s.seated = cal::ParsePosition(ReadIni(Section(gKey), "position")) == cal::PlayPosition::Seated;
         s.when = ReadIni(Section(gKey), "time");
         if (s.calibrated) {
             std::string const eye = ReadIni(Section(gKey), "eye");

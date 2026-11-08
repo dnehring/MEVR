@@ -2,6 +2,7 @@
 #include "core/vr/FloorLock.hpp"
 #include "core/vr/CombatStance.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/Calibration.hpp"
 #include "core/ik/BodyScale.hpp"
 #include "engine/XrToUnreal.hpp"
 
@@ -41,6 +42,55 @@ floor::State Sample(float height = 1.845f) {
 }
 
 int RunFloorLockTests() {
+    namespace cal = mevr::vr::calibration;
+    using Position = cal::PlayPosition;
+    CHECK(cal::ParsePosition("") == Position::Standing); // old calibration
+    CHECK(cal::ParsePosition("future-value") == Position::Standing);
+    CHECK(cal::ParsePosition(" SeAtEd ") == Position::Seated);
+    CHECK(cal::PhysicalCrouch(Position::Standing, true));
+    CHECK(!cal::PhysicalCrouch(Position::Standing, false));
+    CHECK(!cal::PhysicalCrouch(Position::Seated, true));
+    CHECK(!cal::PhysicalCrouch(Position::Seated, false));
+    CHECK(!cal::CrouchFromHeights(1.84, 1.05, 0.5, 0.35, Position::Seated));
+    CHECK(cal::CrouchFromHeights(1.84, 1.05).has_value()); // standing thresholds unchanged
+    CHECK(cal::StandingEye(Position::Seated, 1.84, 1.67) == 1.84); // earlier standing/entered value wins
+    CHECK(cal::StandingEye(Position::Seated, std::nullopt, 1.67) == 1.67); // no shrinking to the chair
+    CHECK(cal::StandingEye(Position::Seated, NAN, 1.67) == 1.67);
+    CHECK(cal::StandingEye(Position::Seated, -1.0, 1.67) == 1.67);
+    CHECK(!cal::StandingEye(Position::Seated, std::nullopt, NAN)); // wait for actual Shepard, no guessed height
+    CHECK(!cal::StandingEye(Position::Standing, std::nullopt, 1.67)); // standing still learns its own STAGE ref
+    CHECK(cal::StandingEye(Position::Standing, 1.84, 1.67) == 1.84);
+    fl::StandingReference seatedReference;
+    for (int i = 0; i < 24; ++i) seatedReference.Feed(1, false, false, true, 0.65, 1.67, 0.05, true);
+    CHECK(!seatedReference.Player()); // seated-only players never supply a standing STAGE height
+    CHECK(seatedReference.Shepard() && Close(*seatedReference.Shepard(), 1.67));
+    auto const seatedHeight = cal::StandingEye(Position::Seated, std::nullopt, seatedReference.Shepard());
+    CHECK(mevr::ik::body_scale::Factor(*seatedHeight, *seatedReference.Shepard(), 1.0) == 1.0);
+
+    cal::SeatedMotion motion;
+    CHECK(motion.Eye(Position::Seated, 1.67, 1.1, 0.0, 1, 0) == 1.67);
+    auto const lowered = motion.Eye(Position::Seated, 1.67, 0.9, -0.2, 1, 0);
+    CHECK(lowered && Close(*lowered, 1.47)); // live lowering stays 1:1, never a new body scale
+    auto seated = Ordinary();
+    seated.pawn.seated = true;
+    auto const translated = fl::Correct(seated, Sample(0.9f), 1000, 1355, -74.5, 100, lowered);
+    CHECK(translated.active && Close(translated.centreZ, seated.pawn.floorZ + 147.0));
+    CHECK(!fl::Correct(seated, Sample(0.9f), 1000, 1355, -74.5, 100).active); // never use low floor as standing
+    CHECK(motion.Eye(Position::Seated, 1.67, 0.9, 0.0, 1, 1) == 1.67); // recenter seated neutral
+    CHECK(motion.Eye(Position::Seated, 1.67, 1.2, 0.0, 2, 1) == 1.67); // new session
+    CHECK(motion.Eye(Position::Seated, 1.84, std::nullopt, 0.0, 2, 1) == 1.84); // no-floor fallback
+    auto const noFloor = motion.Eye(Position::Seated, 1.84, std::nullopt, 0.1, 2, 1);
+    CHECK(noFloor && Close(*noFloor, 1.94));
+    CHECK(fl::Correct(seated, {}, 1000, 1400, -4.1, 100, noFloor).active);
+    seated.menu = true;
+    CHECK(!fl::Correct(seated, {}, 1000, 1400, -4.1, 100, noFloor).active);
+    CHECK(!motion.Eye(Position::Standing, 1.84, 1.2, 0.0, 2, 1));
+    CHECK(motion.Eye(Position::Seated, 1.67, 1.0, 0.0, 2, 1) == 1.67); // position change resets neutral
+    motion.Reset();
+    CHECK(!motion.Eye(Position::Seated, std::nullopt, 1.1, 0.0, 1, 0)); // neutral before Shepard reference ready
+    CHECK(motion.Eye(Position::Seated, 1.67, 1.0, -0.1, 1, 0) &&
+        Close(*motion.Eye(Position::Seated, 1.67, 1.0, -0.1, 1, 0), 1.57));
+
     // Review context#1: rebuilding a corrected view cannot renew the source XR sample's age.
     namespace hv = mevr::vr::host_view;
     hv::State view;

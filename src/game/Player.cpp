@@ -5,6 +5,8 @@
 #include "engine/ProcessEvent.hpp"
 #include "ue3/Handles.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "game/BodyCalibration.hpp"
+#include "game/BodyScale.hpp"
 
 #include <Windows.h>
 #include <cmath>
@@ -130,6 +132,8 @@ void PublishFloorLockOnCamera(void (*publish)(vr::floor_lock::PawnSample const*)
 vr::floor_lock::PawnSample FloorLockSample() {
     vr::floor_lock::PawnSample out;
     out.timeMs = GetTickCount64();
+    out.seated = body_calibration::Position() == vr::calibration::PlayPosition::Seated;
+    out.standingEyeM = out.seated ? body_scale::StandingEyeHeight().value_or(0.0) : 0.0;
     auto* const pc = Controller();
     if (pc == nullptr) return out;
     out.onFoot = GameMode(pc) == 0;
