@@ -5,34 +5,32 @@ What changes for players from one release to the next. Newest first; each releas
 `tools/package-release.ps1` copies its entry into the release notes (`.github/release-notes-template.md`). The version
 itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.txt`.
 
-## Unreleased
+## 0.1.1 (2026-11-07)
 
-- Seated play: choose **I play seated** at the height or crouch calibration step, or **Body & calibration > Play position**
-  later. Skips crouch capture; lowering your head never crouches Shepard (L3 still does). Keeps a standing body/eye reference
-  and head-relative holsters instead of sizing Shepard to a chair. Saved separately for each controller type. Headset check pending.
-
-- Smoother frames on Virtual Desktop (a player's judder every 10 s): the renderer's diagnostic dumps are off in the
-  players' build and its statistics line comes every 60 s; Quest pacing parses the settings file only when it changes,
-  asks the runtime for its refresh rate once, and its automatic recovery is off on Virtual Desktop's own runtime (VDXR).
-
-- Restore floor lock by default: wrist screens keep the corrected on-foot camera height, body size and scale pivot, so
-  opening the omni-tool's Computer screen no longer places the arms above their on-foot position. Galaxy-map and world
-  conversation holds use the captured camera's rotation when carrying the corrected height. Headset verification pending.
-- Include all physics bodies in the player's skeletal body bounds, including components that inherit its pose, so IK arms
-  do not depend on the small pelvis bounds when turning. Independent of floor lock; restored on unload. Headset verification pending.
+- **Seated play.** Choose *I play seated* at the calibration's height or crouch step, or later in *Body & calibration >
+  Play position*. Lowering your head never crouches Shepard (the left stick click still does), Shepard keeps his standing
+  height with your head movement on top, and the holsters and grenade slot are measured from your head. Saved for each
+  controller type.
+- **Your height without the crouch-and-recenter trick.** The floor lock is on again: the view sits at your real eye height
+  above Shepard's floor, and the omni-tool's screens (Computer and the rest) no longer lift the arms above where they are
+  on foot.
+- **Arms no longer vanish** when you hold them out and turn with the stick: Shepard's body is no longer culled by a box
+  that only covered his torso.
+- **Galaxy map:** the system and cluster names sit on their stars and stay there when you move your head (they were
+  projected through the headset's wider field of view), they no longer flicker, and leaving the map no longer stutters.
+- **Omni-tool:** the rail closes by itself when you load a save, a cutscene or conversation starts, or you get in the Mako.
+- **Smoother on Virtual Desktop:** less work on the render thread on a timer (a player saw a judder every 10 seconds),
+  and the automatic frame-rate recovery stays off on Virtual Desktop's own runtime.
+- **Updating keeps your settings:** installing a new version over an old one no longer resets your render resolution
+  and the other game settings.
+- **Launch:** if Windows refuses to start Steam (for example Steam set to run as administrator), Setup tries the other ways
+  and says what failed; each attempt goes into problem reports. You can always start the game from Steam's library.
+- Fixes from a code review: a power push started at your chest now casts once your arm is out; sprinting through a level
+  change could touch a destroyed Shepard; the voice talk key survives a recognizer restart and the key picker works with
+  the menu open; the controller guide follows your power-wheel settings.
 
 ## 0.1.0 (2026-11-07)
 
-- Galaxy map: project name tags with the window captures' camera, without headset FOV, eye offsets or head look; log projection/pose agreement. Window placement and size unchanged; headset verification pending.
-- Galaxy map: isolate the label panel from XR/desktop Present draws and clear at the next game UI draw; log panel counts and rejected batches by Present phase/parity. Headset verification pending.
-- Setup's Launch now recovers from Steam elevation/compatibility and stale install paths, with clearer Windows errors and a launch log in problem reports.
-- Fixed sprint speed restoration touching a pawn destroyed during a level transition.
-- A power push started at the chest now casts when the arm extends, even if it has slowed below full casting speed.
-- Automatic Quest pacing recovery now requires fresh completed GPU timings with headroom, preserving attempts in GPU-heavy scenes.
-- With floor lock enabled, stopping VR no longer leaves the last tracked view fresh during flat play.
-- Voice: the keyboard key picker works with the menu open; held listen requests survive recognizer loading and transcript draining.
-- The controller guide now respects disabled power-wheel and casting-gesture settings.
-- Optional conversation walking tolerates an NPC's expected movement during a hitch before treating displacement as a teleport.
 - Fixed a Quest over Link dropping to half rate after a level load and staying there: after a load the game rendered both
   eyes in full for about 11 s before going back to one render a frame, which the headset's compositor answered with half
   rate. It now goes back within about half a second. A detector logs the stuck state and asks the runtime to recover.
@@ -40,8 +38,6 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - Display: SteamVR players can turn motion smoothing off for the Steam version of this game, or return it to SteamVR's global setting, through MEVR Setup. No change until requested.
 - Galaxy map: opening it at the CIC's console no longer closes it at once; the game's own projector hologram shows on
   approach, and the open map lies where that hologram is, at 0.7 of its size (`[Galaxy] windowScale`).
-- Galaxy map: capture early Flash label draws on the table's UI panel and keep the CIC view held through the closing
-  camera transition; stop the map captures on exit. Headset verification pending.
 - Omni-tool rail openings reserve world UI before the game's opening call, preventing the intervening flat-menu decision.
   Rail Equipment and its related panels use the wrist even when a nearby useable was recently selected; use-opened screens keep their anchors.
 - Optional conversation walking prototype: in First person conversations, `worldWalk = 1` requests an AI walk (slide fallback),
