@@ -4,6 +4,7 @@
 #include "install/Detect.hpp"
 #include "install/Installer.hpp"
 #include "install/Report.hpp"
+#include "install/Updates.hpp"
 
 #include <RmlUi/Core/DataModelHandle.h>
 
@@ -49,6 +50,8 @@ struct Host {
     std::function<void(std::string const& url)> openUrl;
     std::function<void()> restartAsAdmin;
     std::function<void(std::filesystem::path const& file)> revealFile;  // Explorer with the file selected
+    // Start the verified new installer and close this window only after the new process starts; error or empty.
+    std::function<std::string(std::filesystem::path const&, std::filesystem::path const&)> updateInstaller;
 };
 
 struct Options {
@@ -57,6 +60,7 @@ struct Options {
     bool request = false;                           // --request: the in-game menu asked for optional content
     unsigned long waitPid = 0;                      // --wait-pid: the game is still closing
     std::string repo;                               // the update check's repository (MEVR-Setup.ini)
+    bool finishUpdate = false;                      // downloaded installer: apply once the old setup exits
 };
 
 class App {
@@ -128,6 +132,9 @@ private:
     bool canInstall_ = false, hasPayload_ = false, adminNeeded_ = false, busy_ = false, waiting_ = false;
     bool hasGamerSettings_ = false, settingsApplied_ = false, texturesMarked_ = false, memReady_ = false, headsetKnown_ = false;
     bool updateEnabled_ = false;
+    bool updateAvailable_ = false;
+    bool applyingUpdate_ = false;
+    std::optional<install::updates::Release> updateRelease_;
     bool upstreamFound_ = false, gamerReadOnly_ = false, removeLocal_ = false;
     std::string upstreamText_, localText_;
     bool sample_ = false;    // the preview's sample states: nothing is read from disk for them

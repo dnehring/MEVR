@@ -42,7 +42,7 @@
 	<div data-if="busy" class="row"><div class="lead i-timer"/><div class="rl"><div class="rlab">{{progress_text}}</div>
 		<div class="progress"><div class="fill" data-style-width="progress + '%'"/></div></div>
 		<button class="btn" data-if="can_cancel" data-event-click="act('stop_waiting')"><div class="sweep"/><span>{{cancel_text}}</span><div class="tick"/></button></div>
-	<div data-if="waiting" class="row warnrow"><div class="lead i-timer"/><div class="rl"><div class="rlab">Waiting for Mass Effect to close</div><div class="rdesc">{{wait_text}}</div></div></div>
+	<div data-if="waiting" class="row warnrow"><div class="lead i-timer"/><div class="rl"><div class="rlab">Waiting to continue</div><div class="rdesc">{{wait_text}}</div></div></div>
 
 	<!-- ===================================================================================== Welcome -->
 	<div data-if="page == 'welcome'">
@@ -82,8 +82,8 @@
 		<div class="group">
 			<div class="gtitle"><span>Updates</span><div class="gline"/></div>
 			<div class="row"><div class="rl"><div class="rlab">Version {{version}}</div><div class="rdesc">{{update_text}}</div></div>
-				<button class="btn" data-if="update_url == ''" data-class-disabled="busy || !update_enabled" data-event-click="act('check_update')"><div class="sweep"/><span>Check</span><div class="tick"/></button>
-				<button class="btn" data-if="update_url != ''" data-event-click="act('open_update')"><div class="sweep"/><div class="bi i-link"/><span>Release page</span><div class="tick"/></button></div>
+				<button class="btn" data-class-disabled="busy || !update_enabled" data-event-click="act('check_update')"><div class="sweep"/><span>Check</span><div class="tick"/></button>
+				<button class="btn primary" data-if="update_available" data-class-disabled="busy || !game_ok || !installed" data-event-click="act('install_update')"><div class="sweep"/><div class="bi i-download"/><span>Download and install</span><div class="tick"/></button></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Something wrong?</span><div class="gline"/></div>
@@ -101,7 +101,7 @@
 		<div data-if="admin_needed" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">The game's folder is protected</div><div class="rdesc">Windows doesn't let this setup write there. Restart it as administrator.</div></div>
 			<button class="btn" data-event-click="act('admin')"><div class="sweep"/><span>Restart as admin</span><div class="tick"/></button></div>
 		<div data-if="upstream_found" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Halcyon's MELE-VR is installed</div><div class="rdesc">{{upstream_text}}</div></div></div>
-		<div data-if="!has_payload" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">This copy can't install</div><div class="rdesc">It's the one kept in the game's folder for uninstalling and optional content. Run MEVR-Setup.exe from the download to install or repair.</div></div></div>
+		<div data-if="!has_payload" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">No install files in this copy</div><div class="rdesc">To update an existing installation, use Updates on Welcome. A fresh install or repair needs the downloaded release's files.</div></div></div>
 		<div data-if="game_ok &amp;&amp; !has_gamer_settings" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Mass Effect 1 hasn't been started on this PC yet</div><div class="rdesc">{{first_start_text}}</div></div>
 			<button class="btn" data-class-disabled="busy || waiting" data-event-click="act('first_start')"><div class="sweep"/><div class="bi i-play"/><span>Start the game once</span><div class="tick"/></button></div>
 		<div class="group">

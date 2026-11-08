@@ -717,6 +717,25 @@ void TestNetworkPaths() {
     ICHECK(u::Check(u::kPlaceholderRepo).state == State::Off);  // no request
     ICHECK(std::string(u::StateName(State::RateLimited)) == "rate limited");
 
+    ICHECK(u::PackageVersion("v1.2.3") == "1.2.3");
+    for (auto const* tag : {"../1.2.3", "v1.2.3-beta", "1..3", "1.2.3/asset", "1.2.3.4", "v999999.1.1"}) {
+        ICHECK(u::PackageVersion(tag).empty());
+    }
+    std::string const sum(64,'a');
+    ICHECK(u::PackageChecksum(sum + "  MEVR-1.2.3.zip\r\n", "MEVR-1.2.3.zip") == sum);
+    ICHECK(u::PackageChecksum(sum + " *MEVR-1.2.3.zip\n", "MEVR-1.2.3.zip") == sum);
+    ICHECK(u::PackageChecksum(sum + "  MEVR-1.2.3-symbols.zip\n", "MEVR-1.2.3.zip").empty());
+    ICHECK(u::PackageChecksum(sum + "  MEVR-1.2.3.zip\n" + sum + "  MEVR-1.2.3.zip\n", "MEVR-1.2.3.zip").empty());
+    auto package = [&](std::string const& url) {
+        return u::ParseLatestRelease(release("v1.2.3", (",\"assets\":[{\"name\":\"MEVR-1.2.3.zip\",\"size\":42,\"digest\":\"sha256:" + sum +
+            "\",\"browser_download_url\":\"" + url + "\"}]").c_str()));
+    };
+    auto goodPackage = package("https://github.com/dnehring/MEVR/releases/download/v1.2.3/MEVR-1.2.3.zip");
+    ICHECK(goodPackage && goodPackage->package && goodPackage->package->sha256 == sum);
+    auto foreignPackage = package("https://github.com/someone/else/releases/download/v1.2.3/MEVR-1.2.3.zip");
+    ICHECK(foreignPackage && !foreignPackage->package);
+    ICHECK(u::HandoffArguments(L"C:\\Games\\ME LE",123) == L"--finish-update --game \"C:\\Games\\ME LE\" --wait-pid 123");
+
     // MEM's asset: GitHub's digest, a plain file name, why not.
     auto memRelease = [](std::string const& asset) {
         return R"({"tag_name": "v534", "assets": [{"name": "MassEffectModderNoGui-v534-linux.7z", "browser_download_url": "https://github.com/l.7z"}, )" +
@@ -1074,6 +1093,29 @@ void TestQaFixes() {
         ICHECK(ini::Get(Read(layout.Full(paths::kGamerSettings)), "SystemSettings", "ResX") != std::optional<std::string>("1456"));
         ICHECK(Ok(Uninstall(layout, false, {})));
     }
+
+    // Downloaded updates don't run legacy profile fixes or apply even previously unapplied game settings.
+    fresh();
+    InstallOptions update = options;
+    update.preserveSettings = true;
+    ICHECK(!Install(layout,payload,update).ok);  // cannot turn an update into a fresh install
+    ICHECK(Ok(Install(layout,payload,options)));
+    std::vector<std::pair<std::string,std::string>> const custom{
+        {paths::kModIni,"; calibration and unknown future keys\r\n[Calibration]\r\nheight=1.77\r\n[MyPlugin]\r\nvalue=mine\r\n"},
+        {paths::kHalcyonIni,"[active]\r\nprofile=Mine\r\n[hotkeys]\r\nenabled=1\r\n[profile:Mine]\r\nmenuKey=121\r\nvrMode=3\r\nsfr2ResX=4321\r\n"},
+        {paths::kGamerSettings,"[SystemSettings]\r\nResX=4321\r\nAntiAliasing=True\r\n"},
+        {paths::kEngineIni,"[SystemSettings]\r\nMotionBlur=True\r\n"}};
+    for (auto const& [path,text] : custom) Write(layout.Full(path),text);
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load());
+        tx.Data().gameSettings = false;
+        ICHECK(tx.Save());
+    }
+    update.reapplySettings = true;  // preserve mode still wins
+    ICHECK(Ok(Install(layout,payload,update)));
+    for (auto const& [path,text] : custom) ICHECK(Read(layout.Full(path)) == text);
+    ICHECK(Ok(Uninstall(layout,false,{})));
 
     // 3. The mod's run-time files: kept by "keep my settings", deleted by a full uninstall (with the Logs folder the
     // game run made, once empty). Not "installed" with only settings or a pack on record.

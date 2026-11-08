@@ -18,6 +18,8 @@
 //       on the Desktop unless --report-dir; --local reads another %LOCALAPPDATA%\MEVR, for tests; --from-game: started by
 //       the in-game menu, at background priority, its report.request's choices)
 //     | --check-update [--repo <url>]  (the update check: GitHub's latest release against this version)
+//     | --download-update (stage and verify only) | --apply-update (this package, settings preserved)
+//     --finish-update --game <folder> --wait-pid <old setup pid>: the downloaded installer's automatic UI handoff.
 //     | --steamvr-smoothing get|off|default [--app <key>] (SteamVR per-app override; one line, no game detection or window)
 //     | --get-mem  (Mass Effect Modder's latest CLI build from its GitHub releases into %LOCALAPPDATA%\MEVR\tools, unpacked)
 //     | --install-pack <id> --file <download>  (a texture pack through MEM, recorded, our recorded VR game settings again where
@@ -270,7 +272,7 @@ int Preview(fs::path const& output, bool warp, mevr::setup::Options const& real,
     mevr::setup::Options options;
     options.exe = ExePath();
     // --request: the window's real start (Start, Tick) instead of the sample states.
-    mevr::setup::App app(real.request ? real : options, {});
+    mevr::setup::App app(real.request || real.finishUpdate ? real : options, {});
     if (!app.Bind(ui.Context()) || !ui.LoadDocument()) {
         return 1;
     }
@@ -330,7 +332,7 @@ int Preview(fs::path const& output, bool warp, mevr::setup::Options const& real,
         }
     };
 
-    if (real.request) {
+    if (real.request || real.finishUpdate) {
         // "Install after I quit" (research/33 section 10): what the window does when the game starts it as it exits.
         app.Start();
         std::string text = "== started\n" + app.StateText();
@@ -338,7 +340,8 @@ int Preview(fs::path const& output, bool warp, mevr::setup::Options const& real,
         text += "== while waiting\n" + app.StateText();
         // --wait-pid: the window waits for the game to exit (Tick polls it), at most 60 s here.
         ULONGLONG const until = GetTickCount64() + 60000;
-        while (app.Waiting() && GetTickCount64() < until) {
+        app.Tick();
+        while ((app.Waiting() || app.Busy()) && GetTickCount64() < until) {
             app.Tick();
             Sleep(50);
         }
@@ -349,7 +352,7 @@ int Preview(fs::path const& output, bool warp, mevr::setup::Options const& real,
             std::ofstream(*out, std::ios::binary) << text;
         }
         ui.Shutdown();
-        return app.Waiting() ? 3 : 0;
+        return app.Waiting() || app.Busy() ? 3 : 0;
     }
 
     struct Shot {
@@ -361,6 +364,7 @@ int Preview(fs::path const& output, bool warp, mevr::setup::Options const& real,
     Shot const shots[] = {
         {"welcome-fresh", "fresh", "welcome"},
         {"welcome-installed", "installed", "welcome"},
+        {"welcome-update", "update-available", "welcome", true},
         {"welcome-nogame", "nogame", "welcome"},
         {"welcome-oldversion", "oldversion", "welcome"},
         {"install", "fresh", "install"},
@@ -535,8 +539,22 @@ int RunCli(Cli const& cli) {
         source = source.empty() ? installs.front().source : source;
     }
     int code = 0;
-    if (cli.command == "check-update" || cli.command == "get-mem") {
-        code = cli.command == "check-update" ? RunCheckUpdate(cli, say) : RunGetMem(say);
+    if (cli.command == "check-update" || cli.command == "get-mem" || cli.command == "download-update") {
+        if (cli.command == "download-update") {
+            namespace updates = mevr::install::updates;
+            auto const status = root ? mevr::install::ReadStatus(*root,source) : mevr::install::Status{};
+            auto const result = updates::Check(cli.repo,status.installedVersion.empty() ? updates::kVersion : status.installedVersion);
+            say(result.text);
+            if (!result.release) {
+                code = 1;
+            } else {
+                auto const prepared = updates::Prepare(*result.release,[&](std::string const& line,int) { say(line); },nullptr);
+                code = prepared.error.empty() ? 0 : 1;
+                say(prepared.error.empty() ? "prepared: " + detect::Utf8(prepared.installer.wstring()) : prepared.error);
+            }
+        } else {
+            code = cli.command == "check-update" ? RunCheckUpdate(cli, say) : RunGetMem(say);
+        }
         if (cli.out) {
             std::ofstream(*cli.out, std::ios::binary) << text;
         }
@@ -572,7 +590,11 @@ int RunCli(Cli const& cli) {
             say(o.ok ? "ok" : "FAILED");
             code = o.ok ? 0 : 1;
         };
-        if (cli.command == "install") {
+        if (cli.command == "apply-update") {
+            auto const payload = mevr::install::FindPayload(ExePath().parent_path());
+            if (!payload) { say("payload: not found"); code = 1; }
+            else report(mevr::install::updates::Apply(layout,*payload,ExePath(),[&](std::string const& line,int) { say(line); },nullptr));
+        } else if (cli.command == "install") {
             auto const payload = cli.payload ? std::optional<mevr::install::Payload>(mevr::install::Payload{*cli.payload})
                                              : mevr::install::FindPayload(ExePath().parent_path());
             if (!payload || !payload->Valid()) {
@@ -948,6 +970,22 @@ int RunWindow(mevr::setup::Options options) {
         static_cast<int>(mevr::menu::kBackdropHeight));
 
     mevr::setup::Host host;
+    host.updateInstaller = [hwnd](fs::path const& exe,fs::path const& game) -> std::string {
+        std::wstring const args = mevr::install::updates::HandoffArguments(game,GetCurrentProcessId());
+        std::wstring const work = exe.parent_path().wstring();
+        SHELLEXECUTEINFOW sei{sizeof sei};
+        sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+        sei.hwnd = hwnd;
+        sei.lpVerb = detect::CanWrite(mevr::install::Layout{game}.Win64()) ? L"open" : L"runas";
+        sei.lpFile = exe.c_str();
+        sei.lpParameters = args.c_str();
+        sei.lpDirectory = work.c_str();
+        sei.nShow = SW_SHOWNORMAL;
+        if (!ShellExecuteExW(&sei)) return "Couldn't start the downloaded installer (error " + std::to_string(GetLastError()) + ").";
+        if (sei.hProcess) CloseHandle(sei.hProcess);
+        PostMessageW(hwnd,WM_CLOSE,0,0);
+        return {};
+    };
     host.pickFolder = [hwnd](std::wstring const& title) { return PickWithDialog(hwnd, title, true); };
     host.pickFile = [hwnd](std::wstring const& title) { return PickWithDialog(hwnd, title, false); };
     host.openUrl = [](std::string const& url) {
@@ -1099,6 +1137,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             cli.keepUpstream = true;
         } else if (a == L"--request") {
             options.request = true;
+        } else if (a == L"--finish-update") {
+            options.finishUpdate = true;
         } else if (a == L"--wait-pid") {
             options.waitPid = std::wcstoul(next().c_str(), nullptr, 10);
         } else if (a == L"--snapshot") {
@@ -1142,7 +1182,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             std::wstring const name = a.substr(2);
             if (name == L"status" || name == L"install" || name == L"uninstall" || name == L"repair" || name == L"launch" || name == L"apply-settings" ||
                 name == L"restore-settings" || name == L"report" || name == L"check-update" || name == L"get-mem" || name == L"install-voice" ||
-                name == L"remove-voice" || name == L"check-voice") {
+                name == L"remove-voice" || name == L"check-voice" || name == L"download-update" || name == L"apply-update") {
                 cli.command = detect::Utf8(name);
             }
         }

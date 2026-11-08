@@ -920,6 +920,7 @@ add_library(mevr-install STATIC
     src/install/Toc.hpp
     src/install/Updates.cpp
     src/install/Updates.hpp
+    src/install/UpdateInstall.cpp
     src/install/Voice.cpp
     src/install/Voice.hpp
     src/install/Zip.cpp
@@ -1169,6 +1170,9 @@ if (MEVR_BUILD_TESTS)
             --setup $<TARGET_FILE:MEVR-Setup> --fake-game $<TARGET_FILE:mevr-fake-game> --fake-mem $<TARGET_FILE:mevr-fake-mem>
             --repo ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(mevr-setup-network PROPERTIES TIMEOUT 900)  # section 5 (the voice files) moves ~250 MB locally
+        add_test(NAME mevr-setup-updates COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/setup/test-updates.py
+            --setup $<TARGET_FILE:MEVR-Setup> --fake-game $<TARGET_FILE:mevr-fake-game> --repo ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(mevr-setup-updates PROPERTIES TIMEOUT 300)
     endif ()
 
     # The gun sights' look, offline (tools/sight-preview): the scope's picture with the host's own shader, the

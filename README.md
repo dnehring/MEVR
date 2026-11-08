@@ -28,6 +28,11 @@ open hand, order your squad by pointing or by voice, and drive the Mako from its
 3. **Click Launch.** It starts SteamVR when that's your runtime, then Mass Effect 1 straight past the launcher. Put on
    the headset.
 
+For later releases, open **MEVR Setup → Welcome → Updates → Check**, then **Download and install**.
+Setup verifies the download, waits for the game to close, and updates the mod while keeping your game settings,
+VR profiles and calibration. Older installers that only show **Release page** need one manual installer upgrade
+to gain this feature.
+
 In the game, **hold both stick clicks** (or press `\`) for the VR menu: comfort, controls, calibration, display and
 more. The first start offers a one-minute **calibration** that measures your height, arms and aim: worth doing.
 

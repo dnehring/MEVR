@@ -5,6 +5,12 @@ What changes for players from one release to the next. Newest first; each releas
 `tools/package-release.ps1` copies its entry into the release notes (`.github/release-notes-template.md`). The version
 itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.txt`.
 
+## Unreleased
+
+- **Update directly from Setup.** Welcome > Updates can download, verify and install a newer release without opening
+  a browser. It waits for the game to close and preserves game settings, VR profiles and calibration. Older installers
+  need one manual upgrade to gain this feature.
+
 ## 0.1.1 (2026-11-07)
 
 - **Seated play.** Choose *I play seated* at the calibration's height or crouch step, or later in *Body & calibration >

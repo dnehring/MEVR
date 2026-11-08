@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <cmath>
+#include <sstream>
 #include <vector>
 
 namespace mevr::install::updates {
@@ -22,6 +24,14 @@ bool ValidName(std::string_view s) {
         }
     }
     return true;
+}
+
+bool Hash(std::string_view text) {
+    return text.size() == 64 && std::all_of(text.begin(), text.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
+}
+std::string LowerHash(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
 }
 
 std::vector<long> Parts(std::string_view v) {
@@ -48,6 +58,34 @@ std::vector<long> Parts(std::string_view v) {
 }
 
 } // namespace
+
+std::string PackageVersion(std::string_view tag) {
+    if (!tag.empty() && tag.front() == 'v') tag.remove_prefix(1);
+    if (tag.empty() || tag.size() > 32) return {};
+    unsigned dots = 0, digits = 0;
+    for (char c : tag) {
+        if (c == '.') {
+            if (digits == 0 || ++dots > 2) return {};
+            digits = 0;
+        } else if (c >= '0' && c <= '9') {
+            if (++digits > 5) return {};
+        } else return {};
+    }
+    return dots == 2 && digits != 0 ? std::string(tag) : std::string();
+}
+
+std::string PackageChecksum(std::string_view text, std::string_view name) {
+    std::istringstream input{std::string(text)};
+    std::string line, found;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.size() < 66 || line[64] != ' ' || (line[65] != ' ' && line[65] != '*')) continue;
+        if (std::string_view(line).substr(66) != name) continue;
+        if (!found.empty() || !Hash(std::string_view(line).substr(0,64))) return {};
+        found = LowerHash(line.substr(0,64));
+    }
+    return found;
+}
 
 std::string LatestReleaseApi(std::string_view repoUrl) {
     constexpr std::string_view kPrefix = "https://github.com/";
@@ -85,6 +123,32 @@ std::optional<Release> ParseLatestRelease(std::string_view text) {
     r.prerelease = v->Bool("prerelease") || v->Bool("draft");
     if (r.tag.empty() || r.page.rfind("https://github.com/", 0) != 0) {
         return std::nullopt;
+    }
+    std::string const version = PackageVersion(r.tag);
+    std::string const suffix = "/releases/tag/" + r.tag;
+    if (!version.empty() && r.page.ends_with(suffix)) {
+        std::string const repo = r.page.substr(0, r.page.size() - suffix.size());
+        if (!LatestReleaseApi(repo).empty()) {
+            std::string const prefix = repo + "/releases/download/" + r.tag + "/";
+            for (auto const& item : v->Get("assets").Items()) {
+                Asset a;
+                a.name = item.String("name");
+                bool const package = a.name == "MEVR-" + version + ".zip";
+                bool const sums = a.name == "MEVR-" + version + "-SHA256SUMS.txt";
+                if (!package && !sums) continue;
+                a.url = item.String("browser_download_url");
+                double const size = item.Number("size");
+                if (a.url != prefix + a.name || !std::isfinite(size) || size <= 0 || size > (package ? 1073741824.0 : 65536.0) || std::floor(size) != size) continue;
+                a.size = static_cast<std::uint64_t>(size);
+                std::string const digest = item.String("digest");
+                if (!digest.empty()) {
+                    if (!digest.starts_with("sha256:") || !Hash(std::string_view(digest).substr(7))) continue;
+                    a.sha256 = LowerHash(digest.substr(7));
+                }
+                if (package) r.package = std::move(a);
+                else r.checksums = std::move(a);
+            }
+        }
     }
     return r;
 }
@@ -153,6 +217,7 @@ CheckResult Interpret(int status, std::string_view body, std::string_view error,
         out.state = State::Newer;
         out.text = "Version " + release->tag + " is out.";
         out.page = release->page;
+        out.release = *release;
     } else if (order < 0 && !release->prerelease) {
         out.text = "This version is newer than the latest release (" + release->tag + ").";
     } else {
@@ -161,7 +226,7 @@ CheckResult Interpret(int status, std::string_view body, std::string_view error,
     return out;
 }
 
-CheckResult Check(std::string_view repoUrl) {
+CheckResult Check(std::string_view repoUrl, std::string_view mine) {
     std::string const api = LatestReleaseApi(repoUrl);
     if (api.empty()) {
         CheckResult off;
@@ -170,7 +235,19 @@ CheckResult Check(std::string_view repoUrl) {
         return off;
     }
     http::Response const r = http::Get(api);
-    return Interpret(r.status, r.body, r.error, r.rateLimited);
+    auto result = Interpret(r.status, r.body, r.error, r.rateLimited, mine);
+    if (result.release) {
+        constexpr std::string_view prefix = "https://api.github.com/repos/";
+        constexpr std::string_view suffix = "/releases/latest";
+        std::string const expectedRepo = "https://github.com/" + api.substr(prefix.size(), api.size() - prefix.size() - suffix.size());
+        if (result.release->page != expectedRepo + "/releases/tag/" + result.release->tag) {
+            result.state = CheckResult::State::Failed;
+            result.text = "Couldn't check: the release belongs to a different repository.";
+            result.release.reset();
+            result.page.clear();
+        }
+    }
+    return result;
 }
 
 } // namespace mevr::install::updates

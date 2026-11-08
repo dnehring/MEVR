@@ -81,6 +81,9 @@ struct InstallOptions {
     // put the default render resolution back over the player's own (the owner's QA, 2026-11-07). The Settings page's
     // Apply (ApplySettings) is the way to change them.
     bool reapplySettings = false;
+    // Downloaded updates preserve every existing game/VR setting byte-for-byte, including legacy profile fixes.
+    // Requires an existing installation; never applies defaults or pending first-start settings.
+    bool preserveSettings = false;
     settings::Choices choices;             // with these
     std::filesystem::path setupExe;        // copied to ASI\MEVR-Setup.exe (for uninstall and "install after I quit")
     std::string source;                    // "Steam" writes steam_appid.txt for the Launch button

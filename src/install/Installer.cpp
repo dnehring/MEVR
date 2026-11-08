@@ -478,6 +478,9 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
     if (!tx.Load()) {
         return Finish(tx, false);
     }
+    if (options.preserveSettings && !Installed(tx)) {
+        return Error("Install MEVR first before applying an update");
+    }
     if (asiOurs) {
         tx.RecordDir(paths::kAsi);
     }
@@ -486,9 +489,11 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
     }
     Manifest& m = tx.Data();
     bool const settingsAlreadyApplied = m.gameSettings;  // an update over an install whose game settings are on
-    m.modVersion = updates::kVersion;
-    m.setupVersion = updates::kVersion;
-    m.installedAt = NowIso();
+    if (!options.preserveSettings) {
+        m.modVersion = updates::kVersion;
+        m.setupVersion = updates::kVersion;
+        m.installedAt = NowIso();
+    }
     if (!tx.Save()) {
         return Finish(tx, false);
     }
@@ -518,9 +523,11 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
     // In the ASI folder only this mod's installs and deploys put it, so one that's there without a record (left by an
     // earlier "keep my settings" uninstall) is the player's VR data too.
     ok = ok && tx.RecordRuntimeFile(paths::kHalcyonIni);
-    ok = ok && tx.WriteIfMissing(paths::kHalcyonIni, ini::HalcyonReleaseIni(), true);
-    ok = ok && EditUnlessReadOnly(tx, paths::kHalcyonIni, "MELEVR.ini",
-                   [](std::string_view text, std::vector<ini::Edit>* edits) { return ini::FixHalcyonIni(text, edits); }, nullptr);
+    if (!options.preserveSettings) {
+        ok = ok && tx.WriteIfMissing(paths::kHalcyonIni, ini::HalcyonReleaseIni(), true);
+        ok = ok && EditUnlessReadOnly(tx, paths::kHalcyonIni, "MELEVR.ini",
+                       [](std::string_view text, std::vector<ini::Edit>* edits) { return ini::FixHalcyonIni(text, edits); }, nullptr);
+    }
     if (ok && options.source == "Steam") {
         // Steam's app id next to the exe, as Mod Manager writes it, for a direct start of the exe. Launch goes through Steam
         // since research/33 section 12 (a direct start of the Steam build hands back to Steam's arguments prompt); kept
@@ -530,10 +537,16 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
         }
     }
     bool kept = false;
-    if (ok && options.gameSettings && (!settingsAlreadyApplied || options.reapplySettings)) {
+    if (ok && !options.preserveSettings && options.gameSettings && (!settingsAlreadyApplied || options.reapplySettings)) {
         ok = ApplySettingsIn(tx, options.choices);
-    } else if (ok && options.gameSettings) {
+    } else if (ok && (options.gameSettings || options.preserveSettings)) {
         kept = true;
+    }
+    if (ok && options.preserveSettings) {
+        m.modVersion = updates::kVersion;
+        m.setupVersion = updates::kVersion;
+        m.installedAt = NowIso();
+        ok = tx.Save();
     }
     Outcome done = Finish(tx, ok);
     if (kept) {

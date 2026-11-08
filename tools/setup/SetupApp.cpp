@@ -174,6 +174,7 @@ bool App::Bind(Rml::Context* context) {
         c.Bind(t.name, t.value);
     }
     c.Bind("progress", &progress_);
+    c.Bind("update_available", &updateAvailable_);
     c.BindEventCallback("act", [this](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const& args) {
         if (args.empty()) {
             return;
@@ -245,7 +246,7 @@ void App::Start() {
         }
     }
     updateEnabled_ = !install::updates::LatestReleaseApi(options_.repo).empty();
-    updateText_ = updateEnabled_ ? "Check asks GitHub for the newest release and links its page; nothing downloads by itself."
+    updateText_ = updateEnabled_ ? "Check for a newer release. Download and install updates here while keeping your settings."
                              : "No release page set yet (MEVR-Setup.ini, [Update] repo).";
     if (options_.request) {
         // "Install after I quit" (plugin/SetupRequest): the game wrote the request and started us as it exited.
@@ -271,7 +272,7 @@ void App::Start() {
     }
     if (options_.waitPid != 0) {
         waiting_ = true;
-        waitText_ = "Changes start once the game has exited.";
+        waitText_ = options_.finishUpdate ? "The downloaded installer is waiting for the previous Setup to close." : "Changes start once the game has exited.";
     }
     // Report a problem: a request the game left (its setup copy wasn't there to answer it), or a crash since the last
     // report and the last "no".
@@ -836,6 +837,10 @@ void App::Tick() {
             Refresh();
         }
     }
+    if (options_.finishUpdate && !waiting_ && !busy_) {
+        options_.finishUpdate = false;
+        Act("finish_update",{});
+    }
     bool changed = false;
     {
         std::lock_guard const lock(jobMutex_);
@@ -844,12 +849,14 @@ void App::Tick() {
             log_ = jobLog_;
             progressText_ = jobProgress_;
             progress_ = jobPercent_;
+            if (applyingUpdate_ && progress_ >= 90) canCancel_ = false;
             changed = true;
         }
     }
     if (busy_ && !working_ && worker_.joinable()) {
         worker_.join();
         busy_ = false;
+        applyingUpdate_ = false;
         canCancel_ = false;
         cancelText_ = "Stop waiting";
         {
@@ -1063,18 +1070,56 @@ void App::Act(std::string const& name, std::string const& arg) {
         }
         auto result = std::make_shared<install::updates::CheckResult>();
         std::string const repo = options_.repo;
-        RunJob("Checking for updates", [this, repo, result] {
-            *result = install::updates::Check(repo);
+        std::string const mine = status_.installedVersion.empty() ? install::updates::kVersion : status_.installedVersion;
+        RunJob("Checking for updates", [this, repo, mine, result] {
+            *result = install::updates::Check(repo,mine);
             Post(result->text, result->state == install::updates::CheckResult::State::Failed);
         });
         jobDone_ = [this, result] {
             updateText_ = result->text;
             updateUrl_ = result->page;
+            updateRelease_ = result->release;
+            updateAvailable_ = updateRelease_ && updateRelease_->package &&
+                (!updateRelease_->package->sha256.empty() || updateRelease_->checksums);
+            if (updateAvailable_) {
+                updateText_ += " Download " + install::http::SizeText(updateRelease_->package->size) + ". Your settings will be kept.";
+            } else if (updateRelease_) {
+                updateText_ += " Its verified update package isn't available yet. Check again later.";
+            }
         };
-    } else if (name == "open_update") {
-        if (host_.openUrl && !updateUrl_.empty()) {
-            host_.openUrl(updateUrl_);
+    } else if (name == "install_update") {
+        if (!gameOk_ || !installed_ || !updateAvailable_ || !updateRelease_ || !host_.updateInstaller) return;
+        auto const release = *updateRelease_;
+        auto const game = status_.root;
+        auto prepared = std::make_shared<install::updates::Prepared>();
+        canCancel_ = true;
+        cancelText_ = "Cancel download";
+        RunJob("Downloading the update",[this,release,prepared] {
+            *prepared = install::updates::Prepare(release,[this](std::string const& text,int percent) { Progress(text,percent); },&cancel_);
+            if (!prepared->error.empty()) Post(prepared->error,true);
+        });
+        jobDone_ = [this,prepared,game] {
+            if (!prepared->error.empty() || cancel_.load()) return;
+            std::string const error = host_.updateInstaller(prepared->installer,game);
+            if (!error.empty()) {
+                Post(error,true);
+                updateText_ = error + " Press Download and install to retry.";
+            }
+        };
+    } else if (name == "finish_update") {
+        page_ = "welcome";
+        if (!gameOk_ || !payload_) {
+            Post("The update package or selected game folder is missing.",true);
+            return;
         }
+        canCancel_ = true;
+        applyingUpdate_ = true;
+        cancelText_ = "Cancel update";
+        auto const payload = *payload_;
+        auto const installer = options_.exe;
+        RunJob("Installing the update",[this,layout,payload,installer] {
+            Apply(install::updates::Apply(layout,payload,installer,[this](std::string const& text,int percent) { Progress(text,percent); },&cancel_));
+        });
     } else if (name == "voice_toggle") {
         if (arg == "small") {
             voiceSmall_ = !voiceSmall_;
@@ -1457,6 +1502,11 @@ void App::Sample(std::string const& state) {
     }
     updateEnabled_ = false;
     updateText_ = "No release page set yet (MEVR-Setup.ini, [Update] repo).";
+    updateAvailable_ = state == "update-available";
+    if (updateAvailable_) {
+        updateEnabled_ = true;
+        updateText_ = "Version v0.2.0 is out. Download 24 MB. Your settings will be kept.";
+    }
     // Report a problem's stand-ins: a crash last session, a gathered preview.
     crashOffer_ = state == "crash";
     reportRequest_ = state == "report-request" ? "You asked for a report from the game's menu. Look over what goes in, then create it." : "";
