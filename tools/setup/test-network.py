@@ -35,6 +35,7 @@ import http.server
 import json
 import lzma
 import os
+import re
 import shutil
 import socket
 import struct
@@ -227,10 +228,14 @@ def test_update_check(setup, base, quick):
     def release(tag, **extra):
         return dict({"tag_name": tag, "name": "MEVR " + tag, "html_url": page + tag, "prerelease": False, "draft": False}, **extra)
 
+    # This setup's own version, from the one place it's written (it was a literal v0.1.0 here, so the "same version" case
+    # failed once the version moved to 0.1.1).
+    own = re.search(r"project\(MEVR VERSION (\d+\.\d+\.\d+)", Path(__file__).resolve().parents[2].joinpath("CMakeLists.txt").read_text(encoding="utf-8"))
+    own_tag = "v" + (own.group(1) if own else "0.1.0")
     cases = [
         ("no release published (404)", json_answer(404, {"message": "Not Found"}), 0, "no release", "No release is published"),
         ("an older release", json_answer(200, release("v0.0.9")), 0, "latest", "newer than the latest release (v0.0.9)"),
-        ("the same version", json_answer(200, release("v0.1.0")), 0, "latest", "This is the latest version."),
+        ("the same version", json_answer(200, release(own_tag)), 0, "latest", "This is the latest version."),
         ("a newer release", json_answer(200, release("v99.2.0")), 0, "newer", "Version v99.2.0 is out."),
         ("a newer pre-release", json_answer(200, release("v99.3.0-beta", prerelease=True)), 0, "latest", "This is the latest version."),
         ("a newer draft", json_answer(200, release("v99.4.0", draft=True)), 0, "latest", "This is the latest version."),
