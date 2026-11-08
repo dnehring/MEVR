@@ -154,7 +154,10 @@
 
 - Voice squad commands (research/54): its sources are cited inline, each next to its number (arXiv papers on Moonshine v2, VoiceAgentBench, Audio2Tool, BFCL Audio, ReALM, F.A.C.U.L., PUBG Ally; Hugging Face model cards; the BFCL leaderboard; llama.cpp, sherpa-onnx, Pipecat, NVIDIA NVIGI/TensorRT-RTX and Microsoft docs; ME3 Kinect hands-on reviews); LExSDKv2's generated LE1 headers for the squad order names only
 
+- Research/61: [Microsoft: ClearUnorderedAccessViewUint](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-clearunorderedaccessviewuint), [VDXR D3D11 submission](https://github.com/mbucchia/VirtualDesktop-OpenXR/blob/6da20fe478e331c05672243fd82a9a1500cd39f5/virtualdesktop-openxr/d3d11_native.cpp), [VDXR frame loop](https://github.com/mbucchia/VirtualDesktop-OpenXR/blob/6da20fe478e331c05672243fd82a9a1500cd39f5/virtualdesktop-openxr/frame.cpp), [VDXR swapchain lifecycle](https://github.com/mbucchia/VirtualDesktop-OpenXR/blob/6da20fe478e331c05672243fd82a9a1500cd39f5/virtualdesktop-openxr/swapchain.cpp). Public source does not establish the player's bundled binary version. No direct UAV-clear call found in that public source tree.
+
 ## Searched, nothing relevant found
+
 - Prior art for turning level asset names (static meshes, materials) into place words for language grounding (research/54): none found in games, modding or robotics
 - A measured end-of-speech-to-action latency for any shipped voice-command game (ME3 Kinect, EndWar, There Came an Echo, NVIDIA ACE titles) (research/54): none; only hands-on impressions and developer figures
 - "vorpX Mass Effect Legendary Edition profile": no vorpX information

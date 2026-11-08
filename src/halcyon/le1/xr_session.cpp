@@ -419,7 +419,11 @@ bool CreateInstance()
                 g_isSteamVrRuntime = std::strstr(props.runtimeName, "SteamVR") != nullptr;
                 LogLine(std::string("[XRRUNTIME] name='") + props.runtimeName +
                         "' oculusFovQuirk=" + (g_isOculusRuntime ? "1" : "0") +
-                        " steamVrFovCrop=" + (g_isSteamVrRuntime ? "1" : "0"));
+                        " steamVrFovCrop=" + (g_isSteamVrRuntime ? "1" : "0") +
+                        // [MEVR] Distinguish bundled runtime revisions in a normal problem report.
+                        " runtimeVersion=" + std::to_string(props.runtimeVersion >> 48) + "." +
+                        std::to_string((props.runtimeVersion >> 32) & 0xFFFF) + "." +
+                        std::to_string(props.runtimeVersion & 0xFFFFFFFF));
             }
         }
     }

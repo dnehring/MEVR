@@ -7,6 +7,7 @@
 
 #include <d3d11.h>
 #include <Windows.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
@@ -644,12 +645,83 @@ T* RecordStruct(Stream& s, Op op, std::uint8_t stage = 0, std::uint16_t n = 0, s
     return reinterpret_cast<T*>(Reserve(s, op, stage, n, sizeof(T) + extra));
 }
 
-void RecordUnsupported(Stream& s, unsigned slot) {
+// A rejected stream alone cannot identify whether the game, an overlay or a runtime made the call.
+// Inline hooks also see other contexts on this thread. Keep a small, automatic diagnostic sample so
+// the player's normal report can distinguish those cases without changing their rendering settings.
+std::string ModuleNameOf(void const* address);
+void TraceUnsupported(Stream const& s, unsigned slot, ID3D11DeviceContext* context,
+    void const* caller, ID3D11UnorderedAccessView* view) noexcept {
+    static std::atomic<unsigned> samples{0};
+    constexpr unsigned kMaxSamples = 8;
+    if (samples.load(std::memory_order_relaxed) >= kMaxSamples) return;
+    unsigned const sample = samples.fetch_add(1, std::memory_order_relaxed);
+    if (sample >= kMaxSamples) return;
+    try {
+        using Microsoft::WRL::ComPtr;
+        ComPtr<ID3D11Device> device, recordedDevice;
+        ComPtr<IUnknown> identity, recordedIdentity;
+        if (context != nullptr) {
+            context->GetDevice(device.GetAddressOf());
+            context->QueryInterface(IID_PPV_ARGS(identity.GetAddressOf()));
+        }
+        if (gContext != nullptr) {
+            gContext->GetDevice(recordedDevice.GetAddressOf());
+            gContext->QueryInterface(IID_PPV_ARGS(recordedIdentity.GetAddressOf()));
+        }
+        log::Info("draw replay: unsupported sample {}/{}: slot={} thread={} entry={} afterTail={} context={} recordedContext={} sameContextIdentity={} sameDevice={} contextType={}",
+            sample + 1, kMaxSamples, slot, GetCurrentThreadId(), s.entries, s.tail != SIZE_MAX,
+            static_cast<void*>(context), static_cast<void*>(gContext),
+            identity && recordedIdentity && identity.Get() == recordedIdentity.Get(),
+            device && recordedDevice && device.Get() == recordedDevice.Get(),
+            context != nullptr ? static_cast<int>(context->GetType()) : -1);
+        auto const site = [](void const* address) {
+            HMODULE module = nullptr;
+            if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    static_cast<LPCWSTR>(address), &module) && module != nullptr) {
+                return std::format("{}+0x{:X}", ModuleNameOf(address),
+                    reinterpret_cast<std::uintptr_t>(address) - reinterpret_cast<std::uintptr_t>(module));
+            }
+            return std::format("{} (no module)", address);
+        };
+        void* stack[12]{};
+        USHORT const depth = CaptureStackBackTrace(0, static_cast<DWORD>(std::size(stack)), stack, nullptr);
+        std::string chain;
+        for (USHORT i = 0; i < depth; ++i) {
+            if (!chain.empty()) chain += " <- ";
+            chain += site(stack[i]);
+        }
+        log::Info("draw replay: unsupported sample {} caller={}; stack={}", sample + 1, site(caller), chain);
+        if (view != nullptr) {
+            D3D11_UNORDERED_ACCESS_VIEW_DESC desc{};
+            view->GetDesc(&desc);
+            ComPtr<ID3D11Resource> resource;
+            view->GetResource(resource.GetAddressOf());
+            D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
+            if (resource) resource->GetType(&dimension);
+            ComPtr<ID3D11Texture2D> texture;
+            ComPtr<ID3D11Buffer> buffer;
+            D3D11_TEXTURE2D_DESC textureDesc{};
+            D3D11_BUFFER_DESC bufferDesc{};
+            if (resource && SUCCEEDED(resource.As(&texture))) texture->GetDesc(&textureDesc);
+            if (resource && SUCCEEDED(resource.As(&buffer))) buffer->GetDesc(&bufferDesc);
+            log::Info("draw replay: unsupported sample {} UAV={} resource={} resourceType={} viewType={} format={} texture={}x{} bufferBytes={}",
+                sample + 1, static_cast<void*>(view), static_cast<void*>(resource.Get()),
+                static_cast<unsigned>(dimension), static_cast<unsigned>(desc.ViewDimension), static_cast<unsigned>(desc.Format),
+                textureDesc.Width, textureDesc.Height, bufferDesc.ByteWidth);
+        }
+    } catch (...) {
+        // Diagnostics must not stop the original D3D call or change the replay eligibility decision.
+    }
+}
+
+void RecordUnsupported(Stream& s, unsigned slot, ID3D11DeviceContext* context, void const* caller,
+    ID3D11UnorderedAccessView* view = nullptr) {
     Reserve(s, Op::Unsupported, 0, static_cast<std::uint16_t>(slot), 0);
     ++s.unsupported;
     if (s.unsupportedSlot == 0) {
         s.unsupportedSlot = slot;
     }
+    TraceUnsupported(s, slot, context, caller, view);
 }
 
 BufferInfo const& Lookup(ID3D11Resource* resource) {
@@ -741,7 +813,7 @@ template <unsigned S, std::uint8_t Stage, typename Shader>
 void STDMETHODCALLTYPE SetShaderHook(ID3D11DeviceContext* c, Shader* shader, ID3D11ClassInstance* const* instances, UINT count) {
     if (t_recording != nullptr) {
         if (count != 0 && instances != nullptr) {
-            RecordUnsupported(*t_recording, S);
+            RecordUnsupported(*t_recording, S, c, _ReturnAddress());
         } else {
             void* p = shader;
             RecordPointers(*t_recording, Op::SetShader, Stage, 0, 1, &p);
@@ -1104,23 +1176,23 @@ void STDMETHODCALLTYPE GenerateMipsHook(ID3D11DeviceContext* c, ID3D11ShaderReso
 void STDMETHODCALLTYPE OMSetRenderTargetsAndUnorderedAccessViewsHook(ID3D11DeviceContext* c, UINT count,
     ID3D11RenderTargetView* const* views, ID3D11DepthStencilView* depth, UINT uavStart, UINT uavCount,
     ID3D11UnorderedAccessView* const* uavs, UINT const* initialCounts) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kOMSetRenderTargetsAndUnorderedAccessViews);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kOMSetRenderTargetsAndUnorderedAccessViews, c, _ReturnAddress());
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, ID3D11RenderTargetView* const*, ID3D11DepthStencilView*, UINT, UINT,
         ID3D11UnorderedAccessView* const*, UINT const*)>(kOMSetRenderTargetsAndUnorderedAccessViews)(
         c, count, views, depth, uavStart, uavCount, uavs, initialCounts);
 }
 void STDMETHODCALLTYPE SOSetTargetsHook(ID3D11DeviceContext* c, UINT count, ID3D11Buffer* const* targets, UINT const* offsets) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kSOSetTargets);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kSOSetTargets, c, _ReturnAddress());
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, ID3D11Buffer* const*, UINT const*)>(kSOSetTargets)(c, count, targets, offsets);
 }
 template <unsigned V>
 void STDMETHODCALLTYPE DrawIndexedInstancedIndirectHook(ID3D11DeviceContext* c, ID3D11Buffer* args, UINT offset) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kDrawIndexedInstancedIndirect);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kDrawIndexedInstancedIndirect, c, _ReturnAddress());
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Buffer*, UINT)>(kDrawIndexedInstancedIndirect, V)(c, args, offset);
 }
 template <unsigned V>
 void STDMETHODCALLTYPE DrawInstancedIndirectHook(ID3D11DeviceContext* c, ID3D11Buffer* args, UINT offset) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kDrawInstancedIndirect);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kDrawInstancedIndirect, c, _ReturnAddress());
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Buffer*, UINT)>(kDrawInstancedIndirect, V)(c, args, offset);
 }
 template <unsigned V>
@@ -1133,30 +1205,30 @@ void STDMETHODCALLTYPE DispatchHook(ID3D11DeviceContext* c, UINT x, UINT y, UINT
 }
 template <unsigned V>
 void STDMETHODCALLTYPE DispatchIndirectHook(ID3D11DeviceContext* c, ID3D11Buffer* args, UINT offset) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kDispatchIndirect);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kDispatchIndirect, c, _ReturnAddress());
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Buffer*, UINT)>(kDispatchIndirect, V)(c, args, offset);
 }
 template <unsigned V>
 void STDMETHODCALLTYPE CopyStructureCountHook(ID3D11DeviceContext* c, ID3D11Buffer* dst, UINT offset, ID3D11UnorderedAccessView* src) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kCopyStructureCount);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kCopyStructureCount, c, _ReturnAddress());
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Buffer*, UINT, ID3D11UnorderedAccessView*)>(kCopyStructureCount, V)(c, dst, offset, src);
 }
 template <unsigned V>
 void STDMETHODCALLTYPE ClearUnorderedAccessViewUintHook(ID3D11DeviceContext* c, ID3D11UnorderedAccessView* view, UINT const values[4]) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kClearUnorderedAccessViewUint);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kClearUnorderedAccessViewUint, c, _ReturnAddress(), view);
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11UnorderedAccessView*, UINT const*)>(kClearUnorderedAccessViewUint, V)(c, view, values);
 }
 template <unsigned V>
 void STDMETHODCALLTYPE ClearUnorderedAccessViewFloatHook(ID3D11DeviceContext* c, ID3D11UnorderedAccessView* view, FLOAT const values[4]) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kClearUnorderedAccessViewFloat);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kClearUnorderedAccessViewFloat, c, _ReturnAddress(), view);
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11UnorderedAccessView*, FLOAT const*)>(kClearUnorderedAccessViewFloat, V)(c, view, values);
 }
 void STDMETHODCALLTYPE SetResourceMinLODHook(ID3D11DeviceContext* c, ID3D11Resource* resource, FLOAT lod) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kSetResourceMinLOD);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kSetResourceMinLOD, c, _ReturnAddress());
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, FLOAT)>(kSetResourceMinLOD)(c, resource, lod);
 }
 void STDMETHODCALLTYPE ExecuteCommandListHook(ID3D11DeviceContext* c, ID3D11CommandList* list, BOOL restore) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kExecuteCommandList);
+    if (t_recording != nullptr) RecordUnsupported(*t_recording, kExecuteCommandList, c, _ReturnAddress());
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11CommandList*, BOOL)>(kExecuteCommandList)(c, list, restore);
 }
 void STDMETHODCALLTYPE CSSetUnorderedAccessViewsHook(ID3D11DeviceContext* c, UINT start, UINT count,

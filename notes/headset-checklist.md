@@ -1,6 +1,12 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-08 Virtual Desktop replay rejection (research/61): with the guarded-rearm build and automatic
+  unsupported-call diagnostics, reproduce the player's natural front-end/Normandy failure on Quest + VDXR.
+  Capture the normal report without changing graphics settings first; inspect caller stack and context identity
+  before choosing a replay-command or context-scope fix. Confirm the recovery guard prevents repeated jumps.
+  Local build and SteamVR fault injection do not establish the VDXR trigger or headset acceptance.
+
 - [ ] 2026-11-07 seated play (galaxy-labels; owner builds/deploys host + mod): choose I play seated at height and at crouch
   in separate runs; never need to stand/crouch, B goes back and Save/restart retains position per controller. Compare a new
   seated profile (Shepard's standing size) with one holding a known standEyeM. Lean/lower/raise the head: view moves 1:1,
