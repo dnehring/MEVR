@@ -97,8 +97,8 @@ struct CaptureSuspend {
 CaptureSuspend SuspendForCapture();
 void ResumeAfterCapture(CaptureSuspend const& suspended);
 
-// Stream 0's tail can be re-issued: it was marked and holds nothing the replay can't repeat (a command list, a
-// compute dispatch, an unsupported call, a large dynamic buffer discarded twice). `why` names what blocks it.
+// Stream 0's tail can be re-issued: it was marked and holds nothing the replay can't repeat (an unsupported
+// call, a large dynamic buffer discarded without a shadow). `why` names what blocks it.
 bool TailReplayable(std::string* why);
 
 // Render thread: re-issues stream 0's tail with `first`'s differing view bytes replaced by `second`'s. 0 done; else

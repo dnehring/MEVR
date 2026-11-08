@@ -67,10 +67,11 @@ enum class Op : std::uint8_t {
     ClearRenderTargetView, ClearDepthStencilView,
     CopyResource, CopySubresourceRegion, ResolveSubresource, GenerateMips,
     Begin, End, SetPredication,
-    CSSetUnorderedAccessViews,  // research/37: the engine unbinds compute UAVs a few times a frame
+    CSSetUnorderedAccessViews,
     Dispatch,                   // research/37, experiment 6: a few frames a second carry one in the tail
     Unsupported,  // the slot in `n`: the tail can't be replayed
     ScissorExempt,              // the shown-columns scissor off (n = 1) or on again (n = 0) around the occlusion queries
+    ClearUnorderedAccessViewUint, DispatchIndirect,  // research/61: the game's compute FXAA pass
     kCount
 };
 char const* const kOpNames[] = {"SetConstantBuffers", "SetShaderResources", "SetSamplers", "SetShader",
@@ -79,7 +80,7 @@ char const* const kOpNames[] = {"SetConstantBuffers", "SetShaderResources", "Set
     "RSSetViewports", "RSSetScissorRects", "OMSetRenderTargets", "OMSetBlendState", "OMSetDepthStencilState",
     "ClearRenderTargetView", "ClearDepthStencilView", "CopyResource", "CopySubresourceRegion", "ResolveSubresource",
     "GenerateMips", "Begin", "End", "SetPredication", "CSSetUnorderedAccessViews", "Dispatch", "Unsupported",
-    "ScissorExempt"};
+    "ScissorExempt", "ClearUnorderedAccessViewUint", "DispatchIndirect"};
 static_assert(sizeof(kOpNames) / sizeof(kOpNames[0]) == static_cast<std::size_t>(Op::kCount));
 
 #pragma pack(push, 1)
@@ -174,6 +175,18 @@ struct PredicationArgs {
 };
 struct DispatchArgs {
     std::uint32_t x, y, z;
+};
+struct ClearUintArgs {
+    void* view;
+    UINT values[4];
+};
+struct DispatchIndirectArgs {
+    void* buffer;
+    UINT offset;
+};
+struct UavArgs {
+    UINT start, hasViews, hasCounts;
+    // then void* views[header.n], and UINT initialCounts[header.n] when hasCounts
 };
 #pragma pack(pop)
 
@@ -270,6 +283,17 @@ ID3D11DeviceContext* gContextSeen = nullptr;  // every context Attach was given,
 Stream gStreams[2];
 thread_local Stream* t_recording = nullptr;
 thread_local Stream* t_armed = nullptr;   // BeginRecording done, the recording starts at MarkTail (nothing before it is replayed)
+
+// A D3D11 compute entry can forward through another hooked variant while validating new state.
+// Record the application command once, then suspend recording during the driver's implementation.
+// Otherwise one Dispatch can be recorded twice (observed on the first dispatch after a UAV change).
+struct ComputeCall {
+    Stream* const recording = t_recording;
+    ComputeCall() { t_recording = nullptr; }
+    ~ComputeCall() { t_recording = recording; }
+    ComputeCall(ComputeCall const&) = delete;
+    ComputeCall& operator=(ComputeCall const&) = delete;
+};
 
 // ---- The shown-columns scissor (research/37) --------------------------------------------------------------------
 // Both eyes render on the symmetric window, so each eye's image holds columns (and rows) the headset never shows:
@@ -1197,15 +1221,21 @@ void STDMETHODCALLTYPE DrawInstancedIndirectHook(ID3D11DeviceContext* c, ID3D11B
 }
 template <unsigned V>
 void STDMETHODCALLTYPE DispatchHook(ID3D11DeviceContext* c, UINT x, UINT y, UINT z) {
-    if (t_recording != nullptr) {
-        auto* const a = RecordStruct<DispatchArgs>(*t_recording, Op::Dispatch);
+    ComputeCall const call;
+    if (call.recording != nullptr) {
+        auto* const a = RecordStruct<DispatchArgs>(*call.recording, Op::Dispatch);
         *a = {x, y, z};
     }
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, UINT, UINT)>(kDispatch, V)(c, x, y, z);
 }
 template <unsigned V>
 void STDMETHODCALLTYPE DispatchIndirectHook(ID3D11DeviceContext* c, ID3D11Buffer* args, UINT offset) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kDispatchIndirect, c, _ReturnAddress());
+    ComputeCall const call;
+    if (call.recording != nullptr) {
+        auto* const a = RecordStruct<DispatchIndirectArgs>(*call.recording, Op::DispatchIndirect);
+        *a = {args, offset};
+        Hold(args);
+    }
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Buffer*, UINT)>(kDispatchIndirect, V)(c, args, offset);
 }
 template <unsigned V>
@@ -1215,7 +1245,13 @@ void STDMETHODCALLTYPE CopyStructureCountHook(ID3D11DeviceContext* c, ID3D11Buff
 }
 template <unsigned V>
 void STDMETHODCALLTYPE ClearUnorderedAccessViewUintHook(ID3D11DeviceContext* c, ID3D11UnorderedAccessView* view, UINT const values[4]) {
-    if (t_recording != nullptr) RecordUnsupported(*t_recording, kClearUnorderedAccessViewUint, c, _ReturnAddress(), view);
+    ComputeCall const call;
+    if (call.recording != nullptr) {
+        auto* const a = RecordStruct<ClearUintArgs>(*call.recording, Op::ClearUnorderedAccessViewUint);
+        a->view = view;
+        std::memcpy(a->values, values, sizeof(a->values));
+        Hold(view);
+    }
     NextV<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11UnorderedAccessView*, UINT const*)>(kClearUnorderedAccessViewUint, V)(c, view, values);
 }
 template <unsigned V>
@@ -1234,9 +1270,19 @@ void STDMETHODCALLTYPE ExecuteCommandListHook(ID3D11DeviceContext* c, ID3D11Comm
 void STDMETHODCALLTYPE CSSetUnorderedAccessViewsHook(ID3D11DeviceContext* c, UINT start, UINT count,
     ID3D11UnorderedAccessView* const* views, UINT const* initialCounts) {
     if (t_recording != nullptr) {
-        // Recorded as a plain pointer set (the initial counts, for append buffers, are not kept: the replay passes
-        // none, which keeps the current counts, and the engine binds these only to unbind them).
-        RecordPointers(*t_recording, Op::CSSetUnorderedAccessViews, 0, start, count, reinterpret_cast<void* const*>(views));
+        // FXAA binds live compute resources as well as unbinding them. Preserve explicit counter resets,
+        // UINT(-1) (keep), a null counts array, and the original slot count even for a null views array.
+        auto* const a = RecordStruct<UavArgs>(*t_recording, Op::CSSetUnorderedAccessViews, 0,
+            static_cast<std::uint16_t>(count), count * sizeof(void*) + (initialCounts ? count * sizeof(UINT) : 0));
+        *a = {start, views != nullptr, initialCounts != nullptr};
+        auto** const recordedViews = reinterpret_cast<void**>(a + 1);
+        for (UINT i = 0; i < count; ++i) {
+            recordedViews[i] = views ? views[i] : nullptr;
+            Hold(recordedViews[i]);
+        }
+        if (initialCounts != nullptr && count != 0) {
+            std::memcpy(recordedViews + count, initialCounts, count * sizeof(UINT));
+        }
     }
     Next<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, UINT, ID3D11UnorderedAccessView* const*, UINT const*)>(
         kCSSetUnorderedAccessViews)(c, start, count, views, initialCounts);
@@ -1997,9 +2043,11 @@ bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bo
         Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*)>(kDrawAuto)(c);
         return true;
     case Op::CSSetUnorderedAccessViews: {
-        auto const* const p = reinterpret_cast<Pointers const*>(body);
+        auto const* const a = reinterpret_cast<UavArgs const*>(body);
+        auto const* const views = reinterpret_cast<ID3D11UnorderedAccessView* const*>(a + 1);
+        auto const* const counts = a->hasCounts ? reinterpret_cast<UINT const*>(views + h.n) : nullptr;
         Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, UINT, ID3D11UnorderedAccessView* const*, UINT const*)>(
-            kCSSetUnorderedAccessViews)(c, p->start, h.n, reinterpret_cast<ID3D11UnorderedAccessView* const*>(p->ptrs), nullptr);
+            kCSSetUnorderedAccessViews)(c, a->start, h.n, a->hasViews ? views : nullptr, counts);
         return true;
     }
     case Op::Map:
@@ -2210,6 +2258,19 @@ bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bo
     case Op::Dispatch: {
         auto const* const a = reinterpret_cast<DispatchArgs const*>(body);
         Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, UINT, UINT, UINT)>(kDispatch)(c, a->x, a->y, a->z);
+        return true;
+    }
+    case Op::ClearUnorderedAccessViewUint: {
+        auto const* const a = reinterpret_cast<ClearUintArgs const*>(body);
+        Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11UnorderedAccessView*, UINT const*)>(
+            kClearUnorderedAccessViewUint)(c, static_cast<ID3D11UnorderedAccessView*>(a->view), a->values);
+        return true;
+    }
+    case Op::DispatchIndirect: {
+        auto const* const a = reinterpret_cast<DispatchIndirectArgs const*>(body);
+        // Read the GPU arguments at this point in the replay, after its preceding clear/compute work.
+        Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Buffer*, UINT)>(kDispatchIndirect)(
+            c, static_cast<ID3D11Buffer*>(a->buffer), a->offset);
         return true;
     }
     case Op::Unsupported:

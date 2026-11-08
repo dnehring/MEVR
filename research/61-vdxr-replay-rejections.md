@@ -8,14 +8,15 @@ performance capture. The supplied video is a separate recording, without a share
 
 **Follow-up result:** enabling the game's compute FXAA naturally reproduces the report's
 three-operation replay rejection under a local SteamVR null headset at the player's render
-dimensions. Turning AA off restores replay in the paired control. This identifies a reproducible
+dimensions. Correct FXAA replay is now implemented and passes a local AA-on Normandy run.
+Turning AA off restored replay in the original paired control. This identifies a reproducible
 engine-side trigger; the original player's effective AA setting was not collected, so attribution
 of their specific failure remains provisional. See the local reproduction below.
 
 ## What the report establishes
 
 The first unsupported recorded operation is D3D11 vtable slot 51, `ClearUnorderedAccessViewUint`.
-`DrawReplay.cpp` deliberately marks that operation unsupported and then forwards it to D3D11.
+The player's 0.1.1 recorder deliberately marks that operation unsupported and then forwards it to D3D11.
 This message is our replay eligibility decision, not an HRESULT from a failed right-eye draw.
 The log says **three unsupported operations, the first at slot 51**; it does not identify the other two.
 The API is a resource clear with no return value. [Microsoft's API documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-clearunorderedaccessviewuint).
@@ -118,7 +119,7 @@ The shader registrations name `FFXAAPrepComputeShader`, `FXAAPass1CS`,
 3. `DispatchIndirect` (context slot 42) at argument-buffer offset 0.
 4. `DispatchIndirect` at offset 12, for the other filtering direction.
 
-The recorder supports ordinary `Dispatch`, but rejects the clear and both indirect dispatches.
+The original recorder supports ordinary `Dispatch`, but rejects the clear and both indirect dispatches.
 That is exactly **three unsupported operations, first at slot 51**. This is a concrete game-side
 explanation; Virtual Desktop does not need to issue a clear for this pattern to occur.
 
@@ -153,13 +154,13 @@ without injected failures and without Virtual Desktop.
 The control, `fxaa-runtime-20261108-094735`, uses the same build, dimensions and Normandy scene
 with anti-aliasing off. It has **no native UAV-clear traces and no unsupported-call rejection**.
 A separate missing-view-record fallback during the menu transition recovers at 09:48:44.717;
-the probe subsequently reports **1,205 successful replays cumulatively** and zero replay failures.
+the probe subsequently reports **1,205 successful replays since the last telemetry reset** and zero replay failures.
 The paired probes contain 375 samples with AA on and 376 with AA off, each over 12 seconds with
-zero access violations. The cumulative replay count is not a count within the 12-second window.
+zero access violations. The replay counter is periodically reset; it is not a count within the 12-second window.
 The machine-readable comparison is `scratch/vdxr-report-analysis/fxaa-comparison.json`.
 
 Timing is not representative of the player's machine: this is an instrumented recovery build
-(its QA rearm threshold is 30 matching views), a null headset, a different refresh rate, and a
+(missing-view recovery and unreplayable-tail probes have different thresholds), a null headset, a different refresh rate, and a
 different local hardware/driver stack. It establishes a native trigger, not
 the player's exact perceived headset experience. An initial tracer attempt at 09:43 did not
 establish an XR session and is excluded from the VR result.
@@ -169,13 +170,52 @@ verification; the selected system OpenXR runtime was unchanged. These are tempor
 not deployment of a new fix. The player's missing game settings and caller trace still prevent
 claiming that their particular instance is conclusively FXAA, but it is now the leading explanation.
 
-The implementation target is correct replay of the complete FXAA pass while keeping One Draw.
-Adding only the UAV clear would leave the two indirect dispatches unsupported. Indirect dispatch
-uses GPU buffer contents, so replay must preserve the buffer reference, byte offset, and preceding
-commands that regenerate that data. [Microsoft's DispatchIndirect documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-dispatchindirect).
-Also audit `CSSetUnorderedAccessViews`: its current replay discards initial counter values under an
-old assumption that the engine only unbinds UAVs. That assumption is not valid for this compute
-path; whether these particular buffers use hidden append counters still needs verification.
+### Implemented replay support
+
+`DrawReplay.cpp` now records and reissues `ClearUnorderedAccessViewUint` and `DispatchIndirect`.
+The clear copies all four integer values and retains its UAV. The dispatch retains the argument
+buffer and byte offset, then reads its GPU-generated contents at that point in the replay after
+the preceding clear/preparation commands. No CPU readback or extra engine eye render is added.
+[Microsoft's DispatchIndirect documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-dispatchindirect).
+
+UAV bindings now retain their initial counter arrays, including explicit resets, `UINT(-1)` keep
+values and null counts. The previous assumption that the engine only unbinds UAVs was false.
+[Microsoft's UAV binding documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-cssetunorderedaccessviews).
+
+The GPU regression test found an additional correctness issue: a D3D11 state-validation dispatch
+entry can forward through another hooked variant. The original pass appended three items, but its
+replay appended four because one dispatch was recorded twice. Compute hooks now pause recording
+while forwarding through D3D11, retaining only the outer application command.
+
+`mevr-draw-replay-tests` exercises the real recorder on a D3D11 device. WARP and RTX 4090 runs pass:
+GPU-generated arguments at offsets 0 and 12, repeated replay after poisoning the original contents,
+four-channel bit-exact clears, retained resource lifetime, UAV unbinding, copied multi-slot counter
+arrays, reset/keep/null counter semantics, and continued rejection of unsupported `CopyStructureCount`.
+The Release host build also passes. No FXAA or One Draw setting is disabled by this change.
+
+The fixed native run is `scratch/qa-replay-jump-v011/fxaa-fixed-runtime-20261108-095921`:
+
+- **AA enabled, sharePass 5, oneDrawWindow 0**, in **BIOA_NOR00**, with the same 3072 x 3188
+  source and 2688 x 2880 eye sizes. The private QA build uses the production recorder and
+  recovery code, with the existing process-local SteamVR selection helper; no failure injector.
+- A successful title replay at **10:00:05.179**, and a gameplay replay at **10:01:05.683**, each
+  contain **one uint UAV clear, two direct dispatches and two indirect dispatches**.
+- The 60-second summary at **10:01:03.050** reports **1,418 eye replays, zero unreplayable tails**.
+  One missing-view fallback during the menu/load transition recovered before the capture; no
+  unsupported-call fallback occurs. The stats counter resets at that summary, so the probe's
+  subsequent value of 265 must not be compared directly against its 625 captured frames.
+- The **20.0074-second / 625-frame** probe has **zero access violations**, and no fallback or
+  rearm events during its interval. The frame draw count stays near 2,417 instead of periodically
+  dropping. Render-thread work excluding XR waits has a median of 7.38 ms. The null runtime still
+  paces at about 31 fps; this is not evidence of the player's 80 Hz headset delivery.
+- Both saved eye images were inspected: each contains a rendered Normandy view, with the expected
+  different asymmetric projection. This is a static diagnostic check, not headset visual acceptance.
+- The optional engine-versus-recorded eye-diff request was consumed but produced no report within
+  20 seconds. No exact pixel/command equivalence with the engine's second-eye path is claimed.
+
+The game and null runtime were closed, and the original installed binary, configuration and profile
+were restored and hash-verified. Physical Quest/VDXR validation remains open. The fix is local and
+unpublished; it does not claim to eliminate unrelated streaming or compositor stalls.
 
 ## Why the title can look stable while gameplay visibly jumps
 

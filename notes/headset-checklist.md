@@ -6,8 +6,10 @@
   Capture the normal report without changing graphics settings first; inspect caller stack and context identity
   and capture effective game anti-aliasing. Local FXAA-on testing now naturally reproduces three unsupported
   calls, first slot 51, under SteamVR at the report's dimensions (clear caller exe+0x99B277, FXAA exe+0x23ABB6).
-  Check the same engine pass under VDXR; compare title quads with asymmetric gameplay projections. Confirm
-  the recovery guard prevents repeated jumps, then validate correct FXAA replay while keeping One Draw.
+  The fix now replays its uint clear and indirect dispatches, preserves UAV counters and avoids nested
+  dispatch double-recording. WARP/hardware GPU tests and the local AA-on Normandy run pass at those dimensions
+  (625 frames, no unsupported-call fallback). Check it under VDXR; compare title quads with asymmetric gameplay
+  projections, verify AA remains enabled and One Draw remains active, and check for repeated jumps.
   Local native reproduction does not establish the original player's caller or headset acceptance.
 
 - [ ] 2026-11-07 seated play (galaxy-labels; owner builds/deploys host + mod): choose I play seated at height and at crouch
