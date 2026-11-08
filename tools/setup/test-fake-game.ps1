@@ -302,9 +302,9 @@ $gamerFile = Join-Path $config 'GamerSettings.ini'
 $engineFile = Join-Path $config 'BIOEngine.ini'
 Remove-Item $gamerFile, $engineFile
 $beforeFirstStart = Snapshot
-Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'performance')) -eq 0) 'install on a game never started'
+Check ((Run-Setup @('--install', '--source', 'Steam')) -eq 0) 'install on a game never started with default quality'
 $out = Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')
-Check ($out -match "hasn't been started on this PC yet" -and $out -match '(?m)^game settings waiting for the game''s first start: 3072 x 3188') 'install: says so, and the settings wait'
+Check ($out -match "hasn't been started on this PC yet" -and $out -match '(?m)^game settings waiting for the game''s first start: 2048 x 2124') 'install: the Automatic starting size waits'
 Check (-not (Test-Path $gamerFile)) 'install: no GamerSettings.ini made up'
 Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match '(?m)^sfr2ResX = 4096') 'install: MELEVR.ini''s target waits too'
 Check ((Run-Setup @('--repair')) -eq 0) 'repair before the first start'
@@ -314,8 +314,10 @@ $firstGamer = "[SystemSettings]`r`nFullscreen=True`r`nResX=1920`r`nResY=1080`r`n
 [IO.File]::WriteAllText($gamerFile, $firstGamer)
 Check ((Run-Setup @('--repair')) -eq 0) 'repair after the first start'
 $g = Get-Content -Raw $gamerFile
-Check ($g -match '(?m)^ResX=3072' -and $g -match '(?m)^ResY=3188' -and $g -match '(?m)^BorderlessWindow=True' -and $g -match '(?m)^Fullscreen=False' -and $g -match 'DynamicRange_SDR') 'repair: the waiting VR game settings applied'
-Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match '(?m)^sfr2ResX = 3072') 'repair: MELEVR.ini''s target with them'
+Check ($g -match '(?m)^ResX=2048' -and $g -match '(?m)^ResY=2124' -and $g -match '(?m)^BorderlessWindow=True' -and $g -match '(?m)^Fullscreen=False' -and $g -match 'DynamicRange_SDR') 'repair: the waiting VR game settings applied'
+Check ((Get-Content -Raw (Join-Path $win64 'ASI\MELEVR.ini')) -match '(?m)^sfr2ResX = 2048') 'repair: MELEVR.ini''s target with them'
+$installRecord = Get-Content -Raw (Join-Path $win64 'ASI\MEVR-install.json') | ConvertFrom-Json
+Check $installRecord.eyeSizeAtFirstStart 'repair: the first VR session will size the render target'
 $out = Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')
 Check ($out -match '(?m)^game settings applied: yes' -and $out -notmatch 'game settings waiting') 'repair: nothing waits any more'
 Check ((Run-Setup @('--uninstall')) -eq 0) 'uninstall'

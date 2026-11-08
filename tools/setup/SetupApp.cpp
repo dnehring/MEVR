@@ -242,7 +242,6 @@ void App::Start() {
         if (auto const size = detect::EyeSizeFromHalcyonLog(*log)) {
             headsetWidth_ = size->width;
             headsetHeight_ = size->height;
-            quality_ = "headset";
         }
     }
     updateEnabled_ = !install::updates::LatestReleaseApi(options_.repo).empty();
@@ -430,8 +429,7 @@ void App::Refresh() {
                                                                   : "Ours: the game's bink2w64.dll is kept as bink2w64_original.dll and ours goes in front of it";
     install::settings::Target const target = install::settings::TargetFor(quality_, headsetWidth_, headsetHeight_);
     qualityText_ = quality_ == "keep" ? "The resolution stays as it is"
-        : quality_ == "auto"         ? std::format("Sized for your headset at the first VR start, for the launches after it: 0.85 of its eye size, which FSR "
-                                                       "sharpens up to it ({} × {} per eye until then)",
+        : quality_ == "auto"         ? std::format("Starts at {} × {} per eye. After the first VR session and restart, uses 85% of the detected eye size.",
                                            target.width, target.height)
         : target.width > 0           ? std::format("{} × {} per eye{}", target.width, target.height,
                                            quality_ == "headset" ? " (0.85 of your headset's eye size; FSR sharpens it up to it)" : quality_ == "performance" ? " (Halcyon's default)" : "")
@@ -1312,7 +1310,7 @@ void App::Sample(std::string const& state) {
                           : detect::XrRuntime{"C:\\Program Files (x86)\\Steam\\steamapps\\common\\SteamVR\\steamxr_win64.json", "SteamVR/OpenXR", "SteamVR"};
     headsetWidth_ = 2824;
     headsetHeight_ = 2880;
-    quality_ = "headset";
+    quality_ = "auto";
     log_.clear();
     busy_ = false;
     canCancel_ = false;

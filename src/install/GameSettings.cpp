@@ -40,7 +40,7 @@ bool IsTrue(std::optional<std::string> const& v, bool fallback) {
 
 Target TargetFor(std::string_view choice, int headsetWidth, int headsetHeight) {
     if (choice == "auto") {
-        choice = "performance";  // the stand-in until the mod learns the headset's own size at the first VR start
+        choice = "low";  // keep the first VR launch light until the runtime reports its eye size
     }
     if (choice == "headset") {
         // 0.85 of the runtime's eye size, which FSR (on by default) scales up to it: the owner's own setting, the default

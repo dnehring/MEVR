@@ -411,7 +411,7 @@ struct Cli {
     std::optional<fs::path> game;
     std::optional<fs::path> payload;
     std::optional<fs::path> out;
-    std::string quality = "performance";
+    std::string quality = "auto";
     std::string source;
     bool noSettings = false;
     bool ignoreVersion = false;

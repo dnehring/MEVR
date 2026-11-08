@@ -247,6 +247,15 @@ bool ApplySettingsIn(Transaction& tx, settings::Choices const& choices, bool* ga
             return ini::SetHalcyonResolution(text, choices.target.width, choices.target.height, edits);
         }, nullptr) && ok;
     }
+    if (ok && !gamerLocked && choices.eyeSizeAtFirstStart && fs::exists(layout.Full(paths::kModIni), ec)) {
+        // Explicitly applying Automatic must work after a previous headset was sized.
+        ok = tx.EditIni(paths::kModIni, [](std::string_view text, std::vector<ini::Edit>* edits) {
+            if (ini::Get(text, "Display", "eyeSizeSet").has_value()) {
+                return ini::Set(text, "Display", "eyeSizeSet", "0", edits);
+            }
+            return std::string(text);
+        });
+    }
     if (gamerReadOnly != nullptr) {
         *gamerReadOnly = gamerLocked;
     }

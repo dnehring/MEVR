@@ -388,7 +388,12 @@ void TestGameSettings() {
         ICHECK(t.width == ms::QualityWidth(tier) && t.height == ms::EyeHeight(t.width));
     }
     ICHECK(st::TargetFor("performance", 0, 0).height == 3188);
-    ICHECK(st::TargetFor("auto", 0, 0).width == 3072 && st::TargetFor("auto", 0, 0).height == 3188);  // the stand-in until the first VR start
+    st::Target const automatic = st::TargetFor("auto", 0, 0);
+    ICHECK(automatic.width == 2048 && automatic.height == 2124);
+    ICHECK(st::TargetFor("auto", 4096, 4096).width == automatic.width);  // Automatic waits for the active runtime
+    st::Target const vdxr = st::TargetFor("headset", 2688, 2880);
+    ICHECK(vdxr.width == 2284 && vdxr.height == 2448);
+    ICHECK((ms::FirstStartSize(true, false, {automatic.width, automatic.height}, 2688, 2880) == ms::Size{vdxr.width, vdxr.height}));
     ICHECK(st::TargetFor("headset", 2824, 2880).width == 2400 && st::TargetFor("headset", 2824, 2880).height == 2448);  // 0.85, FSR
     ICHECK(st::TargetFor("headset", 2064, 2208).width == 1754 && st::TargetFor("headset", 2064, 2208).height == 1876);
     ICHECK(st::TargetFor("headset", 0, 0).width == 0);
@@ -1219,7 +1224,7 @@ void TestFirstRunInstall() {
     ICHECK(said);
     Status s = ReadStatus(root, "Folder");
     ICHECK(s.installed && !s.gameSettings && s.pendingSettings.has_value());
-    ICHECK(s.pendingSettings && s.pendingSettings->width == 3072 && s.pendingSettings->height == 3188 && s.pendingSettings->hdrOff);
+    ICHECK(s.pendingSettings && s.pendingSettings->width == 2048 && s.pendingSettings->height == 2124 && s.pendingSettings->hdrOff);
     ICHECK(s.eyeSizeAtFirstStart && s.pendingSettings && s.pendingSettings->eyeSizeAtFirstStart);  // the mod's job later
     ICHECK(s.needsRepair.empty());
     ICHECK(ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Default", "sfr2ResX") == std::optional<std::string>("4096"));  // not yet
@@ -1233,10 +1238,22 @@ void TestFirstRunInstall() {
     Outcome const later = Repair(layout, payload);
     ICHECK(later.ok);
     std::string const g = Read(layout.Full(paths::kGamerSettings));
-    ICHECK(settings::Read(g).resX == 3072 && settings::Read(g).resY == 3188 && settings::Read(g).borderless && !settings::Read(g).hdr);
-    ICHECK(ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Default", "sfr2ResX") == std::optional<std::string>("3072"));
+    ICHECK(settings::Read(g).resX == 2048 && settings::Read(g).resY == 2124 && settings::Read(g).borderless && !settings::Read(g).hdr);
+    ICHECK(ini::Get(Read(layout.Full(paths::kHalcyonIni)), "profile:Default", "sfr2ResX") == std::optional<std::string>("2048"));
     s = ReadStatus(root, "Folder");
     ICHECK(s.gameSettings && !s.pendingSettings && s.eyeSizeAtFirstStart);  // carried through the pending settings
+    // An existing Performance install keeps its size on update. Applying Automatic sizes the next VR session again.
+    settings::Choices fixed;
+    fixed.target = settings::TargetFor("performance", 0, 0);
+    ICHECK(Ok(ApplySettings(layout, fixed)) && !ReadStatus(root, "Folder").eyeSizeAtFirstStart);
+    std::string const sizedModIni = "[Display]\r\neyeSizeSet=1\r\notherSetting=42\r\n";
+    Write(layout.Full(paths::kModIni), sizedModIni);
+    ICHECK(Ok(Install(layout, payload, options)));
+    ICHECK(settings::Read(Read(layout.Full(paths::kGamerSettings))).resX == 3072);
+    ICHECK(Read(layout.Full(paths::kModIni)) == sizedModIni);  // an update preserves the player's sizing
+    ICHECK(Ok(ApplySettings(layout, options.choices)));
+    ICHECK(settings::Read(Read(layout.Full(paths::kGamerSettings))).resX == 2048 && ReadStatus(root, "Folder").eyeSizeAtFirstStart);
+    ICHECK(Read(layout.Full(paths::kModIni)) == "[Display]\r\neyeSizeSet=0\r\notherSetting=42\r\n");
     // Restore: the game's own file again; nothing waits.
     ICHECK(Ok(RestoreSettings(layout)) && Read(layout.Full(paths::kGamerSettings)) == gamer && !ReadStatus(root, "Folder").pendingSettings);
     ICHECK(!ReadStatus(root, "Folder").eyeSizeAtFirstStart);
@@ -1248,7 +1265,7 @@ void TestFirstRunInstall() {
         m.pendingSettings = PendingFromChoices(options.choices);
         auto const back = Manifest::FromJson(m.ToJson());
         ICHECK(back && back->pendingSettings == m.pendingSettings);
-        ICHECK(ChoicesFromPending(*m.pendingSettings).target.width == 3072);
+        ICHECK(ChoicesFromPending(*m.pendingSettings).target.width == 2048);
         ICHECK(Manifest::FromJson(Manifest{}.ToJson()) && !Manifest::FromJson(Manifest{}.ToJson())->pendingSettings);
     }
 
@@ -1271,7 +1288,7 @@ void TestFirstRunInstall() {
         ICHECK(ini::Get(h, slot, "menuKey") == std::optional<std::string>("220"));
     }
     ICHECK(ini::Get(h, "profile:Default", "sfr2HalfEyeUU") == std::optional<std::string>("3.4"));
-    ICHECK(ini::Get(h, "profile:Default", "sfr2ResX") == std::optional<std::string>("3072"));  // the VR game settings' target
+    ICHECK(ini::Get(h, "profile:Default", "sfr2ResX") == std::optional<std::string>("2048"));  // the Automatic starting size
     {
         Transaction tx(layout);
         ICHECK(tx.Load());

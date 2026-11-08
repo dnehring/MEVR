@@ -50,6 +50,7 @@ body {
 .row.warnrow { border-color: rgba(255,170,160,35%); background-color: rgba(60,26,26,45%); }
 .row.warnrow .rlab { color: #FFD9D3; }
 .row .actions { display: flex; gap: 8dp; flex: 0 0 auto; }
+.resolution-row .segb { padding: 0dp 10dp; min-width: 56dp; }
 
 /* Optional content cards. */
 .card {

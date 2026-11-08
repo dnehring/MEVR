@@ -109,7 +109,7 @@ std::string ResolutionChoice(int resX, int resY, int recommendedWidth, int recom
 // The headset row's description: "Headset 2824 × 2880 · × 0.85: 2400 × 2448 · × 0.75: 2118 × 2160", or a note
 // that the size is known once VR starts.
 std::string HeadsetSizesText(int recommendedWidth, int recommendedHeight);
-// A new install's first VR start (the owner, 2026-11-04): MEVR Setup leaves Halcyon's Performance size as a stand-in when
+// For Automatic, MEVR Setup leaves a low render size as a stand-in before the first VR start, when
 // it can't learn the headset's own eye size (`wanted`, its manifest's eyeSizeAtFirstStart). Once the runtime recommends
 // a size, the target becomes 0.85 of it (the "x 0.85" chip; FSR, on by default, scales it up to the eye; since 2026-11-05,
 // before that the size exactly), once (`alreadySet`: done before). {0, 0}: nothing to do (not wanted, done, no
