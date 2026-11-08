@@ -10,7 +10,7 @@ struct ID3D11DeviceContext;
 
 // The faint fan of light from the wrist to a screen projected from it (research/53 section 6; core/vr/WorldUi BeamTo and
 // BeamPixels): one quad in the app space whose picture narrows from the screen's width at its bottom edge to a point at the
-// wrist, brightest there. Its picture is made once per session (128 x 128, premultiplied); after that only the layer goes out.
+// wrist, brightest there. Its 128 x 128 premultiplied picture follows the gauntlet's power-up, then stays cached.
 // Nothing at all while no screen is on the wrist. Snapshots carry it as the "beam" layer.
 namespace mevr::host::wrist_beam {
 

@@ -344,13 +344,16 @@ void Down(Link const& link, char const* why) {
     // ... and stands at its display, as the screens are projected from it (the rendered arm can fall short of the controller):
     // an inactive state carrying only the emitter (the host shows no screen for it).
     std::optional<ue3::Vector> const display = gRailOmniTool && link.setState != nullptr ? omni_tool::DisplayWorld() : std::nullopt;
-    if (display && gHold.footFrame) {
+    if (link.setState != nullptr && (omni_tool::OnMs() != 0 || (display && gHold.footFrame))) {
         wu::State state;
-        XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{display->x, display->y, display->z});
-        state.emitter[0] = p.x;
-        state.emitter[1] = p.y;
-        state.emitter[2] = p.z;
-        state.emitterValid = 1;
+        state.omniOnMs = omni_tool::OnMs();
+        if (display && gHold.footFrame) {
+            XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{display->x, display->y, display->z});
+            state.emitter[0] = p.x;
+            state.emitter[1] = p.y;
+            state.emitter[2] = p.z;
+            state.emitterValid = 1;
+        }
         link.setState(&state);
         gEmitterOnly = true;
     } else if (gEmitterOnly && link.setState != nullptr) {
@@ -630,13 +633,14 @@ void Tick(Link const& link) {
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gHold.povFov);
     }
     ui_world_figure::Tick(settings, screen, state);  // the equipment and squad screens' squad member behind them (research/57 section 7)
+    omni_tool::Tick(onWrist && settings.omniTool);
+    state.omniOnMs = omni_tool::OnMs();
     link.setState(&state);
     if (matched) gOpening.Cancel(0);  // synchronous matching publication released the host reservation
     gEmitterOnly = false;  // the screen's state took its place
     gS.published = true;
     gScreenUp = true;
     ++gS.ticks;
-    omni_tool::Tick(onWrist && settings.omniTool);  // Shepard's forearm wears the game's omni-tool while it projects the screen
     if (onWrist != gWristUp) {
         if (onWrist && !inCockpit && gHold.footFrame) {
             auto const& v = gHold.footView;

@@ -7644,7 +7644,7 @@ void TestOmniRail() {
     CHECK(rail::ForScreen(wu::Screen::Inventory) == rail::Entry::Equipment && rail::ForScreen(wu::Screen::CharacterRecord) == rail::Entry::Squad);
     CHECK(rail::ForScreen(wu::Screen::MenuBrowser) == rail::Entry::Computer && rail::ForScreen(wu::Screen::Save) == rail::Entry::Computer);
     CHECK(!rail::ForScreen(wu::Screen::Shop) && !rail::ForScreen(wu::Screen::SkillGame) && !rail::ForScreen(wu::Screen::None));
-    // Beside a screen facing +Z at the origin, 0.55 x 0.31 m: to its left, as tall, kRailAspect wide, in its plane.
+    // Beside a screen facing +Z at the origin, 0.55 x 0.31 m: to its right, as tall, kRailAspect wide, in its plane.
     wu::Panel screen;
     screen.pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
     screen.pose.position = {0.0f, 0.0f, -0.5f};
@@ -7652,12 +7652,12 @@ void TestOmniRail() {
     screen.heightM = 0.31f;
     rail::Rail const beside = rail::Beside(screen);
     CHECK(NearD(beside.heightM, 0.31, 1e-6) && NearD(beside.widthM, 0.31 * rail::kRailAspect, 1e-6));
-    CHECK(NearD(beside.pose.position.x, -(0.275 + rail::kGapM + 0.5 * 0.31 * rail::kRailAspect), 1e-5));
+    CHECK(NearD(beside.pose.position.x, 0.275 + rail::kGapM + 0.5 * 0.31 * rail::kRailAspect, 1e-5));
     CHECK(NearD(beside.pose.position.y, 0.0, 1e-6) && NearD(beside.pose.position.z, -0.5, 1e-6));
-    // Turned 90 degrees about Y (facing +X): "left" follows it, -Z in the room.
+    // Turned 90 degrees about Y (facing +X): "right" follows it, -Z in the room.
     screen.pose.orientation = {0.0f, 0.70710678f, 0.0f, 0.70710678f};
     rail::Rail const turned = rail::Beside(screen);
-    CHECK(NearD(turned.pose.position.x, 0.0, 1e-5) && turned.pose.position.z > -0.5f + 0.27f);
+    CHECK(NearD(turned.pose.position.x, 0.0, 1e-5) && turned.pose.position.z < -0.5f - 0.27f);
     // Alone on the wrist: as a wrist screen would stand, kAloneHeightM tall; nothing for a height that can't be.
     auto const alone = rail::Alone({0.0f, 0.0f, 0.0f}, {-0.05f, -0.42f, -0.34f}, rail::kAloneHeightM, 0.10f, 0.0f);
     CHECK(alone && NearD(alone->heightM, rail::kAloneHeightM, 1e-4) && alone->pose.position.y > -0.42f);
@@ -11759,6 +11759,7 @@ int RunLandmarkTests();
 int RunConversationWorldTests();
 int RunGuiEventsTests();
 int RunOmniPadTests();
+int RunOmniRailMotionTests();
 // tests/PerformanceModesTests.cpp: Display's Performance row (research/60).
 int RunPerformanceModesTests();
 int RunQuestPacingTests();
@@ -11930,6 +11931,7 @@ int main() {
     gFailures += RunConversationWorldTests();
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();
+    gFailures += RunOmniRailMotionTests();
     gFailures += RunPerformanceModesTests();
     gFailures += RunQuestPacingTests();
     gFailures += RunVrCoverTests();

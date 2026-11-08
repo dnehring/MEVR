@@ -61,16 +61,98 @@ std::optional<Entry> ForScreen(world_ui::Screen screen) {
     }
 }
 
-Rail Beside(world_ui::Panel const& screen, float gapM, float aspect) {
+Rail Beside(world_ui::Panel const& screen, float side, float gapM, float aspect) {
     Rail rail;
     rail.heightM = screen.heightM;
     rail.widthM = screen.heightM * aspect;
     XrVector3f const right = overlay::Rotate(screen.pose.orientation, {1.0f, 0.0f, 0.0f});
-    float const shift = 0.5f * screen.widthM + gapM + 0.5f * rail.widthM;
+    float const shift = (side < 0.0f ? -1.0f : 1.0f) * (0.5f * screen.widthM + gapM + 0.5f * rail.widthM);
     rail.pose.orientation = screen.pose.orientation;
-    rail.pose.position = {screen.pose.position.x - right.x * shift, screen.pose.position.y - right.y * shift,
-        screen.pose.position.z - right.z * shift};
+    rail.pose.position = {screen.pose.position.x + right.x * shift, screen.pose.position.y + right.y * shift,
+        screen.pose.position.z + right.z * shift};
     return rail;
+}
+
+float SlideEase(float seconds) {
+    float const t = std::isfinite(seconds) ? std::clamp(seconds / kSlideS, 0.0f, 1.0f) : (seconds > 0.0f ? 1.0f : 0.0f);
+    return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+}
+
+float SlideOpacity(float seconds) { return 0.3f + 0.7f * SlideEase(seconds); }
+
+namespace {
+XrQuaternionf Product(XrQuaternionf const& a, XrQuaternionf const& b) {
+    return {a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y, a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
+        a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w, a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z};
+}
+XrQuaternionf Inverse(XrQuaternionf const& q) { return {-q.x, -q.y, -q.z, q.w}; }
+}
+
+Rail Interpolate(Rail const& from, Rail const& to, float seconds) {
+    float const t = SlideEase(seconds);
+    auto mix = [t](float a, float b) { return a + (b-a)*t; };
+    XrQuaternionf a = from.pose.orientation, b = to.pose.orientation;
+    if (a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w < 0.0f) b = {-b.x, -b.y, -b.z, -b.w};
+    XrQuaternionf q{mix(a.x,b.x), mix(a.y,b.y), mix(a.z,b.z), mix(a.w,b.w)};
+    float const length = std::sqrt(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
+    q = length > 1e-6f ? XrQuaternionf{q.x/length,q.y/length,q.z/length,q.w/length} : XrQuaternionf{0,0,0,1};
+    return {{q, {mix(from.pose.position.x,to.pose.position.x), mix(from.pose.position.y,to.pose.position.y),
+        mix(from.pose.position.z,to.pose.position.z)}}, mix(from.widthM,to.widthM), mix(from.heightM,to.heightM)};
+}
+
+Rail Tucked(world_ui::Panel const& screen, float side) {
+    Rail rail = Beside(screen, side);
+    XrVector3f const offset = overlay::Rotate(screen.pose.orientation,
+        {(side < 0.0f ? 1.0f : -1.0f) * (rail.widthM + kGapM), 0.0f, -0.005f});
+    rail.pose.position.x += offset.x;
+    rail.pose.position.y += offset.y;
+    rail.pose.position.z += offset.z;
+    return rail;
+}
+
+std::optional<Face> Exposed(Rail const& rail, world_ui::Panel const& screen, float side) {
+    if (!(rail.widthM > 0.0f)) return std::nullopt;
+    XrVector3f const local = overlay::Rotate(Inverse(screen.pose.orientation),
+        {rail.pose.position.x-screen.pose.position.x,rail.pose.position.y-screen.pose.position.y,rail.pose.position.z-screen.pose.position.z});
+    float const boundary = (side < 0.0f ? -0.5f : 0.5f) * screen.widthM - local.x;
+    float const lo = side < 0.0f ? -rail.widthM/2 : std::max(-rail.widthM/2,boundary);
+    float const hi = side < 0.0f ? std::min(rail.widthM/2,boundary) : rail.widthM/2;
+    if (!(hi-lo > 1e-5f)) return std::nullopt;
+    Face face{rail,(lo+rail.widthM/2)/rail.widthM,(hi+rail.widthM/2)/rail.widthM};
+    XrVector3f const offset = overlay::Rotate(rail.pose.orientation,{(lo+hi)/2,0,0});
+    face.rail.pose.position.x += offset.x;
+    face.rail.pose.position.y += offset.y;
+    face.rail.pose.position.z += offset.z;
+    face.rail.widthM = hi-lo;
+    return face;
+}
+
+void Slide::Reset() { *this = Slide{}; }
+
+Rail Slide::Step(Rail const& target, bool beside, float side, float dt, std::optional<Rail> const& tucked) {
+    started_ = beside && (!beside_ || side != side_);
+    if (started_) {
+        from_ = have_ ? drawn_ : tucked.value_or(target);
+        XrQuaternionf const inverse = Inverse(target.pose.orientation);
+        from_.pose.position = overlay::Rotate(inverse, {from_.pose.position.x-target.pose.position.x,
+            from_.pose.position.y-target.pose.position.y, from_.pose.position.z-target.pose.position.z});
+        from_.pose.orientation = Product(inverse, from_.pose.orientation);
+        ageS_ = 0.0f;
+    } else if (beside && std::isfinite(dt)) {
+        ageS_ = std::clamp(ageS_ + std::max(dt, 0.0f), 0.0f, kSlideS);
+    }
+    drawn_ = target;
+    if (beside && ageS_ < kSlideS) {
+        Rail from = from_;
+        XrVector3f const offset = overlay::Rotate(target.pose.orientation, from.pose.position);
+        from.pose.position = {target.pose.position.x+offset.x, target.pose.position.y+offset.y, target.pose.position.z+offset.z};
+        from.pose.orientation = Product(target.pose.orientation, from.pose.orientation);
+        drawn_ = Interpolate(from, target, ageS_);
+    }
+    have_ = true;
+    beside_ = beside;
+    side_ = side;
+    return drawn_;
 }
 
 std::optional<Rail> Alone(XrVector3f const& eyes, XrVector3f const& wrist, float heightM, float aboveM, float towardM, float aspect) {

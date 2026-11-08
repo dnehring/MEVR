@@ -30,6 +30,8 @@
 #include "core/vr/Colour.hpp"
 #include "core/vr/MenuSettings.hpp"
 #include "core/vr/PerformanceModes.hpp"
+#include "core/vr/OmniRail.hpp"
+#include "core/vr/OmniPower.hpp"
 #include "plugin/menu/MenuBackdrop.hpp"
 #include "plugin/menu/MenuModel.hpp"
 #include "plugin/menu/MenuRenderer.hpp"
@@ -800,6 +802,39 @@ int main(int argc, char** argv) {
     // rail-hover.png: the pointer on Map; rail-equipment.png: beside the equipment screen. Over a dark stand-in for the room;
     // with --gameart in the game's own art.
     {
+        // Face-on geometry diagnostic, in metres from the same pure placement/slide code as the host.
+        namespace rail = mevr::vr::omni_rail;
+        mevr::vr::world_ui::Panel const screen{{{0,0,0,1},{0,0,0}},0.70f,0.39375f};
+        rail::Rail const alonePose{{{0,0,0,1},{0,-0.04f,0}},0.32f*rail::kRailAspect,0.32f};
+        std::ofstream sketch(output / "rail-placement.svg");
+        sketch << "<!-- SPDX-License-Identifier: MIT -->\n"
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1100' height='700' viewBox='0 0 1100 700'>"
+            "<rect width='1100' height='700' fill='#111b24'/>"
+            "<g font-family='sans-serif' font-size='18' fill='#e6eff6'>"
+            "<text x='30' y='32'>Rail placement / face-on diagnostic (0.70 m screen; drawn pose = hit pose)</text>";
+        auto box = [&](float x, float y, float w, float h, char const* color, float alpha) {
+            sketch << "<rect x='" << 550+(x-w/2)*850 << "' y='" << 280+(-y-h/2)*850 << "' width='" << w*850
+                << "' height='" << h*850 << "' fill='none' stroke='" << color << "' stroke-width='2' opacity='" << alpha << "'/>";
+        };
+        box(0,0,screen.widthM,screen.heightM,"#93bed6",1);
+        for (float side : {-1.0f,1.0f}) {
+            auto const to = rail::Beside(screen,side);
+            for (float ageS : {0.0f,0.07f,0.14f,0.28f}) {
+                auto const at = rail::Interpolate(alonePose,to,ageS);
+                box(at.pose.position.x,at.pose.position.y,at.widthM,at.heightM,side<0?"#77a9bb":"#ffae56",rail::SlideOpacity(ageS));
+            }
+            auto const tucked = rail::Tucked(screen,side);
+            box(tucked.pose.position.x,tucked.pose.position.y,tucked.widthM,tucked.heightM,"#a384bd",0.4f);
+        }
+        sketch << "<text x='30' y='505'>Orange: right (default). Blue: left. Violet: tucked start when previously hidden.</text>"
+            "<text x='30' y='535'>Overlapping outlines: alone to beside at 0 / 70 / 140 / 280 ms; cubic ease out.</text>"
+            "<text x='30' y='565'>Power-up, linear luminance (same clock for gauntlet, rail and fan):</text>";
+        for (int i=0; i<=600; ++i) {
+            float const ageS = static_cast<float>(i)/1000;
+            float const l = mevr::vr::omni_power::Luminance(ageS);
+            sketch << "<circle cx='" << 30+i << "' cy='" << 670-l*85 << "' r='1' fill='#ffae56'/>";
+        }
+        sketch << "<text x='680' y='635'>15% to 100% in 0.60 s</text></g></svg>";
         constexpr int rw = 360;
         constexpr int rh = 640;
         mevr::menu::Ui railUi;

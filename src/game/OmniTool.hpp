@@ -4,6 +4,7 @@
 #include "ue3/Types.hpp"
 
 #include <optional>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -18,6 +19,7 @@ void Tick(bool wanted);
 // Another module wants it this tick (the power wheel at the left hand, research/55): the next Tick shows it whatever its
 // `wanted` says. Call it each tick it's wanted, before the world screens' tick (which ticks this one).
 void Request();
+std::uint64_t OnMs();
 // `mevr omnitool on [lifetime s] | off [fade s] | state`: by hand, for tests.
 std::string Console(std::string_view args);
 // Where the omni-tool's display (the hand piece, OmniHand_Loop) is in the world as Shepard's arm shows it (its particle

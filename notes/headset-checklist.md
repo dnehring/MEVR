@@ -178,6 +178,14 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   marks and observed returns should cancel; Shepard stays kept. Check locomotion/gestures, turns, collision/timeout, no drawn
   jumps, and no stale velocity or AI move on disable/end. Native returns exactly at the already-kept place cannot be detected
   by position sampling alone. Still off by default; NOT yet checked in the game. (research/59 "Walking to marks (prototype)")
+### The omni-tool menu on the wrist
+
+- [ ] 2026-11-08 right rail and power-up (research/57 section 9): tap the wrist, then Equipment; the rail slides right over 0.28 s
+  and the right index reaches it without crossing the screen. Touch/ray during the slide must select only the drawn rail; no
+  accidental screen click or wrist close. Switch all tabs (no new slide), close, reopen via the game, and compare `railSide = left`.
+  With `mevr omnitool on`, judge the 0.60 s dim-to-lit start, subtle first 0.15 s flicker, both gauntlet/display and particles,
+  matching fan/rail light, and the unchanged close. Confirm `omni tool: power-up through ...` names a resolved target; a
+  `nothing found: full at once` line is fallback, not successful brightness QA. Repeat with the power wheel, seated and standing.
 - [ ] Rail handoff and provenance (2026-11-07, research/57): test touch and ray picks with identical wrist/head poses, including
   Equipment while facing a selected useable. No large Halcyon menu quad or UI-world backdrop should appear; Equipment -> XMods
   and Computer -> Options/Save/Load stay on the wrist, without `opened by using ...`. Genuine use-opened equipment keeps its anchor.

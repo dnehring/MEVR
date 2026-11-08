@@ -2513,6 +2513,34 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         }
     }
 
+#if defined(MEVR_WITH_MAIN_MENU)
+    XrCompositionLayerQuad const* railLayer = nullptr;
+    // ---- The omni-tool's rail (plugin/OmniToolRail, research/57): beside the game's screen on the wrist, or alone on the wrist
+    // when the player taps it open ----
+    {
+        mevr::host::omni_rail::Frame rail;
+        rail.session = session;
+        rail.appSpace = static_cast<XrSpace>(frame.appSpace);
+        rail.device = device.Get();
+        rail.context = context;
+        rail.headValid = frame.headValid;
+        rail.eyes = ToVec(frame.headPosition);
+        rail.screen = worldShown;
+        rail.display = mevr::vr::world_ui::LatestEmitter(400);  // the mod sends it every tick while the rail stands alone
+        if (pieceControllers.active && pieceControllers.left.gripValid) {
+            rail.wristValid = true;
+            rail.wrist = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
+        }
+        if (pieces.bodyValid) {
+            rail.body = mevr::vr::omni_rail::Body{pieces.leftWrist, pieces.leftElbow, pieces.rightIndex1, pieces.rightIndex2};
+        }
+        rail.gunDrawn = pieces.gunVisible;
+        rail.gameMode = gLastGameMode;
+        rail.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();
+        railLayer = mevr::host::omni_rail::Layer(rail);
+    }
+#endif
+
     // ---- The game pointer (plugin/GamePointer, research/42): on a flat frame (the game's menus, the galaxy map), a
     // controller's ray on the flat screen is the game's mouse; its dot sits on the quad, above it in layer order.
     // Stepped every frame (it releases what it holds when the flat screen goes away) ----
@@ -2520,6 +2548,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         mevr::host::game_pointer::Frame pointerFrame;
         pointerFrame.appSpace = static_cast<XrSpace>(frame.appSpace);
         pointerFrame.halcyonMenuOpen = frame.menuOpen;
+#if defined(MEVR_WITH_MAIN_MENU)
+        pointerFrame.railOwnsInput = railLayer != nullptr && mevr::host::omni_rail::OwnsTriggers();
+#endif
         pointerFrame.headValid = frame.headValid;
         pointerFrame.head = ToVec(frame.headPosition);
         mevr::host::game_pointer::Dot dot;
@@ -2644,29 +2675,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         }
     }
 #if defined(MEVR_WITH_MAIN_MENU)
-    // ---- The omni-tool's rail (plugin/OmniToolRail, research/57): beside the game's screen on the wrist, or alone on the wrist
-    // when the player taps it open ----
     {
-        mevr::host::omni_rail::Frame rail;
-        rail.session = session;
-        rail.appSpace = static_cast<XrSpace>(frame.appSpace);
-        rail.device = device.Get();
-        rail.context = context;
-        rail.headValid = frame.headValid;
-        rail.eyes = ToVec(frame.headPosition);
-        rail.screen = worldShown;
-        rail.display = mevr::vr::world_ui::LatestEmitter(400);  // the mod sends it every tick while the rail stands alone
-        if (pieceControllers.active && pieceControllers.left.gripValid) {
-            rail.wristValid = true;
-            rail.wrist = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
-        }
-        if (pieces.bodyValid) {
-            rail.body = mevr::vr::omni_rail::Body{pieces.leftWrist, pieces.leftElbow, pieces.rightIndex1, pieces.rightIndex2};
-        }
-        rail.gunDrawn = pieces.gunVisible;
-        rail.gameMode = gLastGameMode;
-        rail.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();
-        if (XrCompositionLayerQuad const* layer = mevr::host::omni_rail::Layer(rail); layer != nullptr && count < capacity) {
+        if (XrCompositionLayerQuad const* layer = railLayer; layer != nullptr && count < capacity) {
             layersOut[count++] = layer;
         }
         if (XrCompositionLayerQuad const* target = mevr::host::omni_rail::TargetLayer(); target != nullptr && count < capacity) {

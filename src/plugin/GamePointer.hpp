@@ -23,6 +23,7 @@ namespace mevr::host::game_pointer {
 struct Frame {
     XrSpace appSpace = XR_NULL_HANDLE;
     bool halcyonMenuOpen = false;   // Halcyon's ImGui menu is open: its pointer, not ours
+    bool railOwnsInput = false;     // this frame's drawn rail has the right hand; do not click the screen behind it
     bool headValid = false;
     XrVector3f head{};              // the eyes' centre, app space (the dot's angular size)
 };

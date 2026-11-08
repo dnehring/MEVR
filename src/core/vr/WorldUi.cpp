@@ -135,6 +135,11 @@ std::optional<XrVector3f> LatestEmitter(std::uint64_t maxAgeMs) {
     return XrVector3f{gLatest.emitter[0], gLatest.emitter[1], gLatest.emitter[2]};
 }
 
+std::uint64_t LatestOmniOnMs(std::uint64_t maxAgeMs) {
+    std::lock_guard<std::mutex> const lock(gMutex);
+    return gHave && GetTickCount64() - gLatest.timeMs <= maxAgeMs ? gLatest.omniOnMs : 0;
+}
+
 Rect Stage(float windowWidth, float windowHeight, float aspect) {
     if (!(windowWidth > 0.0f) || !(windowHeight > 0.0f) || !(aspect > 0.0f)) {
         return {};
@@ -348,7 +353,7 @@ std::optional<Beam> BeamTo(XrVector3f const& emitter, Panel const& panel) {
     return beam;
 }
 
-std::vector<std::uint32_t> BeamPixels(int size, float red, float green, float blue) {
+std::vector<std::uint32_t> BeamPixels(int size, float red, float green, float blue, float luminance) {
     size = std::clamp(size, 8, 1024);
     std::vector<std::uint32_t> pixels(static_cast<std::size_t>(size) * size, 0u);
     auto const byte = [](float v) { return static_cast<std::uint32_t>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f)); };
@@ -365,7 +370,7 @@ std::vector<std::uint32_t> BeamPixels(int size, float red, float green, float bl
             float const u = (static_cast<float>(column) + 0.5f) / static_cast<float>(size);
             float const side = std::abs(u - 0.5f) / std::max(half, 1e-4f);  // 0 on the fan's middle line, 1 at its side
             float const soft = std::clamp((1.0f - side) / 0.35f, 0.0f, 1.0f);  // soft sides
-            float const a = strength * soft * soft * (3.0f - 2.0f * soft);
+            float const a = strength * soft * soft * (3.0f - 2.0f * soft) * std::clamp(luminance, 0.0f, 1.0f);
             pixels[static_cast<std::size_t>(row) * size + column] =
                 byte(toSrgb(red * a)) | (byte(toSrgb(green * a)) << 8) | (byte(toSrgb(blue * a)) << 16) | (byte(a) << 24);
         }

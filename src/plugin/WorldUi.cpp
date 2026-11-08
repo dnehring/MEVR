@@ -75,6 +75,7 @@ double Seconds(LARGE_INTEGER counter) {
 void Project(Shown& shown, vr::world_ui::Panel const& panel, XrVector3f const& emitter, float ageS, bool beam) {
     namespace wu = vr::world_ui;
     shown.panel = wu::Unfold(panel, ageS);
+    shown.settled = panel;
     shown.whole = wu::WholeWindow(shown.panel, shown.part);
     shown.beam = beam ? wu::BeamTo(emitter, shown.panel) : std::nullopt;
 }
@@ -279,6 +280,7 @@ std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, 
     }
     Shown shown;
     shown.panel = *panel;
+    shown.settled = *panel;
     shown.whole = wu::WholeWindow(*panel, part);
     shown.part = part;
     shown.backdrop = std::clamp(state->backdrop, 0.0f, 1.0f);

@@ -633,7 +633,8 @@ static bool StepInner(Frame const& frame, Dot& dot) {
     }
 
     // Who owns the pointer now: ours only with our menus closed and no calibration running.
-    bool const othersOwn = frame.halcyonMenuOpen || MELEVR::MevrBridge::MainMenuOpen() || mevr::host::calibration::Active() ||
+    if (frame.railOwnsInput) gWaitRelease = true;  // a held rail trigger must not click the screen as the sliding rail leaves it
+    bool const othersOwn = frame.railOwnsInput || frame.halcyonMenuOpen || MELEVR::MevrBridge::MainMenuOpen() || mevr::host::calibration::Active() ||
         mevr::host::calibration::Running();
     if (!KindWanted(gKind, gSettings) || othersOwn) {
         ReleaseAll(window, othersOwn ? "a menu of ours or the calibration took the controllers" : "the setting is off");

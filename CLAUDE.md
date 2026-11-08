@@ -584,7 +584,17 @@ switching frameworks.
   a locker's equipment, still stands by what was used: `world_ui::OnWrist`; `wristMenuWidthM` 0.70 for a whole stage (0.55 until
   2026-11-05, the user wanted them larger; an old file's 0.55 moves once, marker `figure`; the menu's Wrist screen size slider),
   `wristWidthM` 0.30 the minigame's frame; the menu's row is Comfort > Game screens > Omni-tool screens). **A rail of the game's screens stands to its
-  left** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`, `[OmniTool]` enabled/tap/aloneHeightM).
+  right** (2026-11-08: the right hand can reach it without crossing the screen; `[OmniTool] railSide = right | left`, default right;
+  `core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`, `[OmniTool]` enabled/tap/aloneHeightM).
+  It slides from its standalone pose (otherwise tucked under the selected edge) over 0.28 s, cubic ease out, fading as it emerges.
+  Draw, touch/ray and wrist-tap suppression share that frame's interpolated quad; it takes input before the game pointer so the
+  screen behind it cannot click too. Tab backouts hold its pose; a closed screen closes it. The mode-based `closed by itself`
+  check still precedes Shown. `"omniRail"."rail"` adds side/sliding/slideS/opacity. `core/vr/OmniPower` supplies the shared
+  0.60 s luminance rise (15% to full, subtle deterministic flicker for 0.15 s), used by the gauntlet, rail and fan. The mod publishes
+  the start clock in the size-gated world-UI State, including without a screen; host and mod deploy together. The engine candidate
+  is `BioVisualEffect.SetScalarParameter` on initialized cached brightness/intensity targets, preserving original values; missing
+  targets fall back to full brightness with a log. **Its actual prefab bindings and visual coverage remain [verify] in game**:
+  `mevr omnitool on` restarts and logs curve samples/path; `off` keeps the existing close fade. Research/57 section 9 records the limits.
   since 2026-11-07, HostServices v34 carries explicit `Origin::OmniRail` through the request and backout path: an admitted rail
   opening and its related personal panels skip remembered-use anchors and use the wrist (`wristFollow` still applies; missing
   controller falls back to the room). Every eligible request reserves presentation immediately before `Show*Gui`/`ShowMenuGui`:

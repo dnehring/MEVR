@@ -40,8 +40,9 @@ was stopped. Replays with controller poses near flat screens need `[Pointer] set
   text 0.72 degrees (+29%); 0.80 would be 79 x 50, 96 with the rail. Its bottom edge stays `wristAboveM` over the wrist, so it grows
   upward and sideways. [verify in the headset: which size reads best without turning the head; a real arm holds the wrist
   farther than the replay, which makes all of these a little smaller]
-- **The rail** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml` + `.rcss`): a column to the left of
-  the wrist screen, in its plane, as tall as it (`kRailAspect` 0.36: its 360 x 1000 canvas), `kGapM` from it; entries Squad,
+- **The rail** (`core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml` + `.rcss`): a column on the selected side of
+  the wrist screen (right by default since 2026-11-08, section 9), in its plane, as tall as it (`kRailAspect` 0.5625: its current
+  360 x 640 canvas), `kGapM` from it; entries Squad,
   Equipment, Map, Journal, Codex, Computer (the main wheel: options, save, load, quit), Close. The screen up lights its entry
   (`ForScreen`: Inventory/XMods Equipment, CharacterRecord/Specialization Squad, MenuBrowser/Options/Save/Load Computer). Drawn by
   a **second RmlUi context** of the main menu's library (`menu::Ui` now lets a second document have a context and renderer of
@@ -461,3 +462,61 @@ properties in this sandbox, and the SPDX script uses an accessible Python interp
 No game launch, deployment or headset validation in this run. The [headset checklist](../notes/headset-checklist.md) retains touch/ray
 comparisons, useable-facing Equipment -> XMods, Computer -> Options/Save/Load, excluded screens, rejection/timeout, and the unaffected
 presentation modes. A recorded **zero** counter plus eyes/layer inspection is still required to establish the runtime result.
+
+## 9. Reachable rail and a light powering up (2026-11-08)
+
+The player in the headset could not reach the rail on the screen's left without touching the screen on the way. They asked
+for the rail on the right, sliding into view, and for the omni-tool to turn on from dim light rather than appear at full brightness.
+
+`OmniRail::Beside` now takes a side (+1 right, -1 left); `[OmniTool] railSide = right | left` defaults to right, read with the
+host's existing profile reader. The rail stays in the screen's plane at `kGapM`, as tall as its settled frame. A pure `Slide`
+interpolates position, normalized shortest-path quaternion and size over 0.28 s with cubic ease out; opacity goes from 0.3 to 1.
+It starts at the rail's last standalone pose, otherwise tucked under the chosen edge, 5 mm behind the face. Its starting pose
+is stored relative to the destination so moving the wrist carries the slide. The screen exposes its frame before unfolding:
+another tab's 0.18 s unfold must not collapse/restart the rail. Rail-request backout gaps hold the pose (bounded to 2 s); a
+screen closing without a pending rail switch closes the rail. The existing mode gate and `closed by itself` log remain before
+the Shown decision. Placement uses the published panel/display, never a raw camera height; the floor-locked hold is unchanged.
+
+Drawing, the rail pointer and wrist-tap suppression all receive that frame's interpolated quad. The rail steps before the game
+pointer (its layer still submits in its original order); while it claims the right hand, the game pointer releases rather than
+click the screen behind it. The left projecting hand remains excluded. One `omni-tool rail: slides to the screen's right
+(... m in 0.28 s)` line per slide; snapshots `omniRail.rail` add `side`, `sliding`, `slideS`, `opacity`.
+OpenXR composites by layer order rather than quad depth: the tucked start therefore clips its canvas/quad to the part outside
+the selected screen edge. The pointer uses that same exposed quad and maps its cropped pixels back onto the full rail canvas;
+the hidden part cannot intercept a touch/ray. A slide from the standalone rail stays fully visible throughout.
+
+`core/vr/OmniPower.hpp` provides deterministic linear luminance: 15% to full over 0.60 s, quadratic ease in, two small strikes
+dying away in the first 0.15 s. The game-thread start clock travels in the size-gated world-UI State, also on inactive
+emitter-only publications (and console/power-wheel requests without a screen). Host and mod must deploy together. The fan's
+premultiplied pixels are regenerated during the rise in steps of 0.05 (about 17 pictures), each into one swapchain image (filling
+all three each frame would wait on images the compositor still holds), then cached; the rail multiplies its slide opacity by the
+same light curve.
+The screen's own unfold and existing `kFadeS` close path stay intact.
+
+**Engine path, still [verify] at run time:** the local SDK declarations expose `BioVisualEffect.SetScalarParameter(sParameter,
+fValue)` and its `m_CachedInstanceParameters` (name, current value, initialized bit, resolved property targets). We use that
+effect-wide setter only for explicit brightness/intensity names with a positive finite baseline and initialized nonempty
+targets; it preserves the original baseline at full power. This can reach material and particle properties through the game's
+own bindings and avoids guessing a particle parameter or modifying shared prefab/material assets. Missing reflection or
+bindings logs `omni tool: power-up through nothing found: full at once` and the cached names. A failed call restores full values
+and logs the fallback. New reflection paths/parameters have ReflectCheck rows. There are no new direct writes to engine memory;
+all brightness changes call through `ue3::Params` / `runtime::Call` on the game thread. The headers establish the API, **not that
+this prefab supplies a matching binding, nor that it dims both pieces and particles**. That needs the game; fallback is not
+proof of a successful gauntlet ramp.
+
+`mevr omnitool on` now restarts the effect and logs curve samples at 0, .03, .06, .10, .15, .30 and .60 s with the selected
+engine path. `mevr omnitool state` reports `powerPath`, `onMs`, `luminance`, `powerDone`; `mevr omnitool off` closes as before.
+Use `mevr omni equipment`, then the other rail entries, to inspect the slide log and snapshot, and repeat with a wrist tap
+and right fingertip/ray during the slide. Compare `railSide = left`, switching tabs, B/Close, and reopening through the game's
+own menus. In the headset judge reach without screen contact, timing/legibility, natural wrist motion, subtle flicker, both
+gauntlet pieces and particles, fan/rail synchronization, the power wheel, and seated/standing floor continuity.
+
+Offline checks: `OmniRailMotionTests` covers mirrored/rotated placement, tuck, easing/endpoints, quaternion normalization and
+shortest path, moving wrist, lifecycle, hit geometry, curve bounds/determinism/steady rise, beam dimming and the inactive clock.
+`mevr-menu-preview` also writes `rail-placement.svg`, a face-on geometry/curve diagnostic using the core functions, alongside
+the existing `rail-*.png` canvases. Monolithic Release `MEVR-LE1`, `mevr-tests` and `mevr-menu-preview` built successfully with
+the project's warning-as-error flags. `build-mono/Release/mevr-tests.exe` ended with `all tests passed`; its TEMP/TMP and
+LOCALAPPDATA were redirected inside this worktree, so the optional native dump check used synthetic images only. The WARP
+preview exited 0 and produced all five rail PNGs plus the valid placement SVG; the touch canvas was visually inspected
+(fallback art, no game-art cache supplied). SPDX passed; OKF passed (27 files); `git diff --check` passed. No game launch,
+deployment, commit or changes outside this worktree.

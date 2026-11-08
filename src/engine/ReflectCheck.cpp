@@ -847,6 +847,12 @@ void CheckFields() {
     CheckField("Engine.Actor", "Base", SDK_FIELD(AActor, Base));
     CheckField("Engine.Emitter", "ParticleSystemComponent", SDK_FIELD(AEmitter, ParticleSystemComponent));  // game/OmniTool
     CheckField("Engine.ParticleSystemComponent", "Template", SDK_FIELD(UParticleSystemComponent, Template));  // game/OmniTool
+    CheckField("SFXGame.BioVisualEffect", "m_CachedInstanceParameters", SDK_FIELD(ABioVisualEffect, m_CachedInstanceParameters));
+    CheckElement("SFXGame.BioVisualEffect", "m_CachedInstanceParameters", sizeof(FCachedInstanceParameter));
+    CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "ParameterName"}, SDK_AT(offsetof(FCachedInstanceParameter, ParameterName), 8));
+    CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "fCurrentValue"}, SDK_AT(offsetof(FCachedInstanceParameter, fCurrentValue), 4));
+    CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "OffsetInfo"}, SDK_AT(offsetof(FCachedInstanceParameter, OffsetInfo), 16));
+    CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "bInited"}, SDK_BOOL(FCachedInstanceParameter, bInited));
     CheckField("Engine.Actor", "BaseBoneName", SDK_FIELD(AActor, BaseBoneName));  // game/OmniTool
     CheckField("Engine.Actor", "RelativeLocation", SDK_FIELD(AActor, RelativeLocation));  // game/OmniTool
     CheckField("Engine.Actor", "RelativeRotation", SDK_FIELD(AActor, RelativeRotation));  // game/OmniTool
@@ -1163,6 +1169,7 @@ void CheckFunctions() {
         // the omni-tool on Shepard's arm (game/OmniTool)
         "SFXGame.BioVisualEffect.CreateCrustEffect",
         "SFXGame.BioVisualEffect.SetLifeTime",
+        "SFXGame.BioVisualEffect.SetScalarParameter",
         "SFXGame.BioVisualEffect.CreateVFXOnPosition",  // the bolt from the hand (research/55 section 9)
         "SFXGame.BioPawn.ReleasePower",                  // ...timed against the game's release
         "SFXGame.BioVisualEffect.SetState",
@@ -1391,6 +1398,9 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    PARAM(ABioVisualEffect_execSetScalarParameter_Parms, "SFXGame.BioVisualEffect.SetScalarParameter", sParameter);
+    PARAM(ABioVisualEffect_execSetScalarParameter_Parms, "SFXGame.BioVisualEffect.SetScalarParameter", fValue);
+    PARMS(ABioVisualEffect_execSetScalarParameter_Parms, "SFXGame.BioVisualEffect.SetScalarParameter");
     PARAM(ABioWeaponRanged_execGetMuzzleLoc_Parms, "SFXGame.BioWeaponRanged.GetMuzzleLoc", ReturnValue);
     PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", InSocketName);
     PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", OutLocation);

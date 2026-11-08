@@ -13,6 +13,7 @@
 #include "core/vr/GamePointer.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/OmniRail.hpp"
+#include "core/vr/OmniPower.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/MevrMenu.hpp"
@@ -108,6 +109,7 @@ struct Settings {
     bool tap = true;      // [OmniTool] tap: the left wrist's tap opens it
     bool tapOnBody = true;  // [OmniTool] tapOnBody: the tap's target on Shepard's drawn forearm, his index fingertip (else the controllers')
     float aloneHeightM = rail::kAloneHeightM;
+    float side = 1.0f;
 };
 
 struct State {
@@ -134,7 +136,16 @@ struct State {
     Rml::String ringLeft, ringTop, ringSize, ringAlpha;
     float behindBuzzS = 0.0f;  // the fingertip through the surface: a faint buzz every 0.08 s, the surface's feel
     rail::Tap tap;
-    std::optional<vr::world_ui::Panel> lastPanel;  // where the rail stood last frame (the tap isn't taken while going for it)
+    std::optional<vr::world_ui::Panel> lastPanel;  // the drawn pose to retain during a tab's backout gap
+    rail::Slide slide;
+    bool tuckedSlide = false;
+    bool emerging = false;
+    int imageX = 0, imageWidth = kWidth;
+    bool besideScreen = false;
+    std::optional<rail::Entry> switchingTo;
+    std::uint64_t switchMs = 0;
+    std::uint64_t shownMs = 0;
+    float opacity = 1.0f;
     std::uint64_t tapsHeld = 0;                    // frames a fingertip near a panel kept the tap off
     LARGE_INTEGER lastCounter{};
     Settings settings;
@@ -193,17 +204,19 @@ void ReadSettings() {
     s.tap = GetPrivateProfileIntW(L"OmniTool", L"tap", 1, path.c_str()) != 0;
     s.tapOnBody = GetPrivateProfileIntW(L"OmniTool", L"tapOnBody", 1, path.c_str()) != 0;
     wchar_t text[32]{};
+    GetPrivateProfileStringW(L"OmniTool", L"railSide", L"right", text, 32, path.c_str());
+    s.side = _wcsicmp(text, L"left") == 0 ? -1.0f : 1.0f;
     GetPrivateProfileStringW(L"OmniTool", L"aloneHeightM", L"", text, 32, path.c_str());
     if (auto const v = ini::Number(ini::Utf8(std::filesystem::path(text)))) {
         s.aloneHeightM = std::clamp(static_cast<float>(*v), 0.10f, 0.60f);
     }
     static bool logged = false;
     if (!logged || s.enabled != g.settings.enabled || s.tap != g.settings.tap || s.tapOnBody != g.settings.tapOnBody ||
-        s.aloneHeightM != g.settings.aloneHeightM) {
+        s.aloneHeightM != g.settings.aloneHeightM || s.side != g.settings.side) {
         logged = true;
         log::Info("omni-tool rail: [OmniTool] enabled = {}, tap = {} (tap the left wrist with the right index fingertip), tapOnBody = {}, "
-                  "aloneHeightM = {:.2f}",
-            s.enabled ? 1 : 0, s.tap ? 1 : 0, s.tapOnBody ? 1 : 0, s.aloneHeightM);
+                  "aloneHeightM = {:.2f}, railSide = {}",
+            s.enabled ? 1 : 0, s.tap ? 1 : 0, s.tapOnBody ? 1 : 0, s.aloneHeightM, s.side < 0.0f ? "left" : "right");
     }
     g.settings = s;
     if (!s.enabled) {
@@ -533,9 +546,11 @@ void StepTarget(Frame const& frame, bool handsTracked, XrVector3f const& tip, Xr
 void Publish(bool shown, char const* place) {
     std::lock_guard lock(gStatusMutex);
     gStatus = std::format("{{\"shown\": {}, \"open\": {}, \"place\": \"{}\", \"active\": \"{}\", \"taps\": {}, \"picks\": {}, \"last\": \"{}\", "
-                          "\"art\": {}, \"pose\": [{:.3f}, {:.3f}, {:.3f}], \"size\": [{:.3f}, {:.3f}]}}",
+                          "\"art\": {}, \"pose\": [{:.3f}, {:.3f}, {:.3f}], \"size\": [{:.3f}, {:.3f}], "
+                          "\"side\": \"{}\", \"sliding\": {}, \"slideS\": {:.3f}, \"opacity\": {:.4f}}}",
         shown, gOpen.load(std::memory_order_relaxed), place, g.active, g.taps, g.picks, g.last, g.art, g.quad.pose.position.x,
-        g.quad.pose.position.y, g.quad.pose.position.z, g.quad.size.width, g.quad.size.height);
+        g.quad.pose.position.y, g.quad.pose.position.z, g.quad.size.width, g.quad.size.height,
+        g.settings.side < 0.0f ? "left" : "right", g.slide.Moving(), g.slide.Age(), g.opacity);
 }
 
 // The pointer: the controllers' rays and index fingertips on the rail, as RmlUi's mouse.
@@ -563,10 +578,11 @@ void PointerStep(rail::Rail const& at, float dt, std::optional<XrVector3f> const
             }
         }
     }
-    input.width = kWidth;
+    input.width = g.imageWidth;
     input.height = kHeight;
     input.dt = dt;
-    gp::Output const out = g.pointer.Step(gp::Quad{at.pose, at.widthM, at.heightM}, input);
+    gp::Output out = g.pointer.Step(gp::Quad{at.pose, at.widthM, at.heightM}, input);
+    out.x += g.imageX;
     Rml::Context* const context = g.ui->Context();
     if (out.hit && (out.moved || out.pressEdge)) {
         context->ProcessMouseMove(out.x, out.y, 0);
@@ -589,7 +605,7 @@ void PointerStep(rail::Rail const& at, float dt, std::optional<XrVector3f> const
     // The ring under the fingertip.
     bool const ring = out.touch && out.hit;
     if (ring) {
-        float const pxPerM = static_cast<float>(kWidth) / std::max(at.widthM, 0.01f);
+        float const pxPerM = static_cast<float>(g.imageWidth) / std::max(at.widthM, 0.01f);
         float const d = std::clamp(out.touchDistance, 0.0f, 0.06f);
         float const sizePx = (0.008f + 0.55f * d) * pxPerM;
         float const alpha = 1.0f - 0.75f * (d / 0.06f);
@@ -636,6 +652,11 @@ void Hide(char const* why) {
     }
     g.shown = false;
     g.lastPanel.reset();  // a closed rail is nothing to go for: its old place beside the wrist refused the next tap (2026-11-06)
+    g.slide.Reset();
+    g.emerging = false;
+    g.besideScreen = false;
+    g.switchingTo.reset();
+    g.shownMs = 0;
     gShown.store(false, std::memory_order_relaxed);
     gOwnsTriggers.store(false, std::memory_order_relaxed);
     Publish(false, "none");
@@ -657,7 +678,7 @@ void HandlePick(std::optional<wu::Screen> screen) {
     rail::EntryInfo const& info = rail::Info(*entry);
     if (*entry == rail::Entry::Close) {
         gOpen.store(false, std::memory_order_relaxed);
-        if (screen) {
+        if (screen || g.switchingTo) {
             main_menu::PutGameRequest(gm::Action::CloseScreens, gm::Origin::OmniRail);
         }
         g.last = "close";
@@ -669,9 +690,49 @@ void HandlePick(std::optional<wu::Screen> screen) {
         return;
     }
     gOpen.store(true, std::memory_order_relaxed);  // stays when the screen it opens goes again
+    g.switchingTo = *entry;
+    g.switchMs = GetTickCount64();
     main_menu::PutGameRequest(info.action, gm::Origin::OmniRail);
     g.last = info.id;
     log::Info("omni-tool rail: {} picked: {} asked of the mod", info.label, gm::Name(info.action));
+}
+
+std::optional<rail::Rail> Place(Frame const& frame, float dt) {
+    g.emerging = false;
+    std::optional<rail::Rail> target, tucked;
+    bool const beside = frame.screen.has_value();
+    if (beside) {
+        target = rail::Beside(frame.screen->settled, g.settings.side);
+        tucked = rail::Tucked(frame.screen->settled, g.settings.side);
+        g.besideScreen = true;
+    } else if (g.besideScreen && g.switchingTo && g.lastPanel) {
+        // Backing out of a tab briefly removes its screen. Keep the rail's drawn pose and slide age through that gap.
+        return rail::Rail{g.lastPanel->pose, g.lastPanel->widthM, g.lastPanel->heightM};
+    } else if (frame.wristValid && frame.headValid) {
+        target = rail::Alone(frame.eyes, frame.display.value_or(frame.wrist), g.settings.aloneHeightM, 0.10f, 0.0f);
+    }
+    if (!target) return std::nullopt;
+    rail::Rail const at = g.slide.Step(*target, beside, g.settings.side, dt, tucked);
+    if (g.slide.Started()) {
+        g.tuckedSlide = !g.lastPanel.has_value();
+        XrVector3f const d{at.pose.position.x-target->pose.position.x, at.pose.position.y-target->pose.position.y,
+            at.pose.position.z-target->pose.position.z};
+        log::Info("omni-tool rail: slides to the screen's {} ({:.3f} m in {:.2f} s)",
+            g.settings.side < 0.0f ? "left" : "right", std::sqrt(d.x*d.x+d.y*d.y+d.z*d.z), rail::kSlideS);
+    }
+    g.imageX = 0;
+    g.imageWidth = kWidth;
+    if (g.tuckedSlide && beside && g.slide.Moving()) {
+        auto const face = rail::Exposed(at,frame.screen->settled,g.settings.side);
+        if (!face) {
+            g.emerging = true;
+            return std::nullopt;
+        }
+        g.imageX = std::clamp(static_cast<int>(std::lround(face->u0*kWidth)),0,kWidth-1);
+        g.imageWidth = std::clamp(static_cast<int>(std::lround(face->u1*kWidth))-g.imageX,1,kWidth-g.imageX);
+        return face->rail;
+    }
+    return at;
 }
 
 } // namespace
@@ -687,7 +748,29 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         Hide(!g.settings.enabled ? "[OmniTool] enabled = 0" : "a menu of ours or the calibration is up");
         return nullptr;
     }
+    // The owner's QA (2026-11-07): an open rail stayed up through a load (a save loaded from Computer), cutscenes and the
+    // rest. It belongs to on-foot play and the game's screens (0 on foot, 7 the GUI, 10 the bypass puzzle): anything else
+    // (-1 loading, 8 a movie, 6 a cinematic, 5 a conversation, 1 the Mako...) closes it, as a tap on the wrist would.
+    if (gOpen.load(std::memory_order_relaxed) && frame.gameMode != 0 && frame.gameMode != 7 && frame.gameMode != 10) {
+        gOpen.store(false, std::memory_order_relaxed);
+        log::Info("omni-tool rail: closed by itself: the game left on-foot play (game mode {})", static_cast<int>(frame.gameMode));
+    }
     std::optional<wu::Screen> const screen = frame.screen ? std::optional<wu::Screen>(frame.screen->screen) : std::nullopt;
+    if (g.switchingTo && ((screen && rail::ForScreen(*screen) == g.switchingTo) || GetTickCount64() - g.switchMs > 2000)) {
+        g.switchingTo.reset();
+    }
+    if (g.besideScreen && !frame.screen && !g.switchingTo) {
+        gOpen.store(false, std::memory_order_relaxed);
+        Hide("the screen closed");
+    }
+    bool const screenOnWrist = frame.screen && frame.screen->onWrist && rail::ForScreen(frame.screen->screen).has_value();
+    if ((gOpen.load(std::memory_order_relaxed) || screenOnWrist) &&
+        (!Init(frame.device, frame.context) || !EnsureSwapchain(frame.session))) {
+        Hide("waiting for its canvas or swapchain");
+        g.targetShown = false;
+        return nullptr;
+    }
+    std::optional<rail::Rail> at = gOpen.load(std::memory_order_relaxed) || screenOnWrist ? Place(frame, dt) : std::nullopt;
     // The tap on the left wrist: opens it, or closes it and the screen it stands by.
     vr::controllers::State const live = vr::controllers::Latest();
     bool const handsTracked = live.active && live.right.aimValid && frame.wristValid;
@@ -709,7 +792,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     // Not while the fingertip goes for the wrist screen or the rail (the wrist sits in front of their lower part, research/57
     // section 6).
     bool const goingForPanel = handsTracked && ((frame.screen && frame.screen->onWrist && rail::GoingForPanel(tip, frame.screen->panel)) ||
-                                                   (g.lastPanel && rail::GoingForPanel(tip, *g.lastPanel)));
+                                                   (at && rail::GoingForPanel(tip, wu::Panel{at->pose, at->widthM, at->heightM})));
     if (goingForPanel) {
         ++g.tapsHeld;
     }
@@ -734,7 +817,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         halcyon::RequestHaptic(1, 0.03f, 0.5f, 0.0f);
         if (visibleBefore) {
             gOpen.store(false, std::memory_order_relaxed);
-            if (screen) {
+            if (screen || g.switchingTo) {
                 main_menu::PutGameRequest(gm::Action::CloseScreens, gm::Origin::OmniRail);
             }
             log::Info("omni-tool rail: the wrist tapped: closed{}", screen ? " with the game's screen" : "");
@@ -743,38 +826,33 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
             log::Info("omni-tool rail: the wrist tapped: open");
         }
     }
-    // The owner's QA (2026-11-07): an open rail stayed up through a load (a save loaded from Computer), cutscenes and the
-    // rest. It belongs to on-foot play and the game's screens (0 on foot, 7 the GUI, 10 the bypass puzzle): anything else
-    // (-1 loading, 8 a movie, 6 a cinematic, 5 a conversation, 1 the Mako...) closes it, as a tap on the wrist would.
-    if (gOpen.load(std::memory_order_relaxed) && frame.gameMode != 0 && frame.gameMode != 7 && frame.gameMode != 10) {
-        gOpen.store(false, std::memory_order_relaxed);
-        log::Info("omni-tool rail: closed by itself: the game left on-foot play (game mode {})", static_cast<int>(frame.gameMode));
-    }
     // Shown: opened by the player, or beside a screen of the rail's on the wrist (the game's own key or wheel opened it).
-    bool const screenOnWrist = frame.screen && frame.screen->onWrist && rail::ForScreen(frame.screen->screen).has_value();
     bool const open = gOpen.load(std::memory_order_relaxed);
     if (!open && !screenOnWrist) {
         Hide(screen ? "the screen up isn't one of the rail's" : "closed");
         return nullptr;
     }
-    std::optional<rail::Rail> at;
     char const* place = "beside the screen";
-    if (frame.screen) {
-        at = rail::Beside(frame.screen->panel);
-    } else if (frame.wristValid && frame.headValid) {
-        // At the omni-tool's display as Shepard's arm shows it (where the screens are projected from), else the controller's wrist.
-        at = rail::Alone(frame.eyes, frame.display.value_or(frame.wrist), g.settings.aloneHeightM, 0.10f, 0.0f);
-        place = frame.display ? "on the omni-tool's display" : "on the wrist";
-    }
-    if (!at) {
-        Hide("nowhere to stand (no screen, the left controller not tracked)");
-        return nullptr;
-    }
-    g.lastPanel = vr::world_ui::Panel{at->pose, at->widthM, at->heightM};  // the next frame's tap rule
     if (!Init(frame.device, frame.context) || !EnsureSwapchain(frame.session)) {
         return nullptr;
     }
+    if (!at) at = Place(frame, 0.0f);  // a wrist tap opened it this frame
+    if (!frame.screen && !g.besideScreen) {
+        place = frame.display ? "on the omni-tool's display" : "on the wrist";
+    }
+    if (!at) {
+        if (g.emerging) {
+            g.lastPanel.reset();
+            gOwnsTriggers.store(false, std::memory_order_relaxed);
+            Publish(false,"tucked under the screen");
+            return nullptr;
+        }
+        Hide("nowhere to stand (no screen, the left controller not tracked)");
+        return nullptr;
+    }
+    g.lastPanel = vr::world_ui::Panel{at->pose, at->widthM, at->heightM};
     if (!g.shown) {
+        g.shownMs = GetTickCount64();
         log::Info("omni-tool rail: shown {} ({:.2f} x {:.2f} m){}", place, at->widthM, at->heightM, open ? "" : ": a screen of its own is up");
         g.shown = true;
         gShown.store(true, std::memory_order_relaxed);
@@ -782,7 +860,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     }
     // The document's state: the screen up, and whether it stands alone.
     Rml::String const active = screen && rail::ForScreen(*screen) ? rail::Info(*rail::ForScreen(*screen)).id : "";
-    bool const alone = !frame.screen.has_value();
+    bool const alone = !g.besideScreen;
     if (active != g.active) {
         g.active = active;
         g.model.DirtyVariable("active");
@@ -810,7 +888,15 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     }
     PointerStep(*at, dt, frame.body ? rail::BodyFingertip(*frame.body) : std::nullopt);
     HandlePick(screen);
+    std::uint64_t const onMs = wu::LatestOmniOnMs(400);
+    float const light = vr::omni_power::Luminance(vr::omni_power::Age(onMs != 0 ? onMs : g.shownMs, GetTickCount64()));
+    float const opacity = g.slide.Opacity() * light;
+    if (opacity != g.opacity) {
+        g.opacity = opacity;
+        g.needRender = true;
+    }
     if (g.needRender) {
+        g.ui->Document()->SetProperty("opacity", std::format("{:.4f}", g.opacity));
         float const clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         g.context->ClearRenderTargetView(g.canvasRtv.Get(), clear);
         g.ui->Render(g.context.Get(), g.canvasRtv.Get());
@@ -824,7 +910,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     g.quad.space = frame.appSpace;
     g.quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
     g.quad.subImage.swapchain = g.swapchain.handle;
-    g.quad.subImage.imageRect = {{0, 0}, {kWidth, kHeight}};
+    g.quad.subImage.imageRect = {{g.imageX, 0}, {g.imageWidth, kHeight}};
     g.quad.pose = at->pose;
     g.quad.size = {at->widthM, at->heightM};
     Publish(true, place);

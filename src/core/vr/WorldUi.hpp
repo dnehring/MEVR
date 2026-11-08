@@ -191,6 +191,7 @@ struct State {
     std::uint64_t uiWorld = 0;        // the UI world's UWorld (BioUIWorld.m_pWorld)
     std::uint32_t openingRequest = 0; // v34: matches the separately reserved opening, 0 for game/use openings
     std::uint32_t visibleScreens = 0;
+    std::uint64_t omniOnMs = 0;   // game-thread power-up start; also sent without a screen (size-gated)
 };
 
 void Publish(State const& state);
@@ -204,6 +205,8 @@ std::optional<State> Latest(std::uint64_t maxAgeMs);
 // inactive state carrying only it while the omni-tool's rail stands alone on the wrist (research/57; an older host's Latest
 // ignores such a state).
 std::optional<XrVector3f> LatestEmitter(std::uint64_t maxAgeMs);
+// Includes emitter-only publications. Zero means the gauntlet is off or unavailable.
+std::uint64_t LatestOmniOnMs(std::uint64_t maxAgeMs);
 
 // ---- The math ---------------------------------------------------------------------------------------------------------
 struct Rect {
@@ -301,6 +304,6 @@ std::optional<Beam> BeamTo(XrVector3f const& emitter, Panel const& panel);
 inline constexpr float kBeamApex = 0.04f;  // of the width
 inline constexpr float kBeamNear = 0.30f;
 inline constexpr float kBeamFar = 0.05f;
-std::vector<std::uint32_t> BeamPixels(int size, float red, float green, float blue);
+std::vector<std::uint32_t> BeamPixels(int size, float red, float green, float blue, float luminance = 1.0f);
 
 } // namespace mevr::vr::world_ui

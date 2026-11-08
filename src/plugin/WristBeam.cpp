@@ -4,6 +4,7 @@
 #include "plugin/WristBeam.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/OmniPower.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Swapchains.hpp"
 
@@ -20,6 +21,7 @@
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -43,6 +45,7 @@ std::vector<ID3D11Texture2D*> gImages;  // the runtime's
 bool gSwapchainFailed = false;  // refused at gSwapchainFailedMs
 std::uint64_t gSwapchainFailedMs = 0;
 bool gFilled = false;
+float gLuminance = -1.0f;
 XrCompositionLayerQuad gQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 bool gLoggedFirst = false;
 
@@ -55,9 +58,10 @@ void ForgetSession() {
     gFilled = false;
 }
 
-// The swapchain, its picture copied into every image once (it never changes).
-bool Ensure(Frame const& frame) {
-    if (gSwapchain != XR_NULL_HANDLE && gFilled) {
+// The swapchain, its picture copied into every image when it's made; while the omni-tool powers up, the picture at the new
+// brightness goes into one image per step (the runtime shows the last released), never a wait on all of them in one frame.
+bool Ensure(Frame const& frame, float luminance) {
+    if (gSwapchain != XR_NULL_HANDLE && gFilled && luminance == gLuminance) {
         return true;
     }
     if ((gSwapchainFailed && !swapchains::RetryDue(gSwapchainFailedMs)) || frame.device == nullptr || frame.context == nullptr) {
@@ -81,7 +85,7 @@ bool Ensure(Frame const& frame) {
     };
     XrResult r = gSwapchain == XR_NULL_HANDLE ? swapchains::Create(frame.session, info, "wrist fan", evict, gSwapchain, gImages) : XR_SUCCESS;
     std::uint32_t const count = static_cast<std::uint32_t>(gImages.size());
-    std::vector<std::uint32_t> const pixels = vr::world_ui::BeamPixels(kSize, kRed, kGreen, kBlue);
+    std::vector<std::uint32_t> const pixels = vr::world_ui::BeamPixels(kSize, kRed, kGreen, kBlue, luminance);
     D3D11_TEXTURE2D_DESC td{};
     td.Width = kSize;
     td.Height = kSize;
@@ -105,8 +109,9 @@ bool Ensure(Frame const& frame) {
         return false;
     }
     gSwapchainFailed = false;
-    // Every image gets the picture: the runtime may show any of them.
-    for (std::uint32_t i = 0; i < count; ++i) {
+    // A new swapchain: every image gets the picture (the runtime may show any of them). A brightness step: the next image only.
+    std::uint32_t const writes = gFilled ? 1u : count;
+    for (std::uint32_t i = 0; i < writes; ++i) {
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
         std::uint32_t index = 0;
         if (XR_FAILED(xrAcquireSwapchainImage(gSwapchain, &acquire, &index))) {
@@ -123,7 +128,8 @@ bool Ensure(Frame const& frame) {
     testloop::NameSwapchain(gSwapchain, "beam");
     testloop::SetStaticImage(gSwapchain, kSize, kSize, pixels);  // snapshots draw it from these
     gFilled = true;
-    log::Info("world ui: the wrist's fan of light: a {}x{} picture in {} swapchain images", kSize, kSize, count);
+    gLuminance = luminance;
+    if (!gLoggedFirst) log::Info("world ui: the wrist's fan of light: a {}x{} picture in {} swapchain images", kSize, kSize, count);
     return true;
 }
 
@@ -137,7 +143,11 @@ XrCompositionLayerQuad const* Layer(Frame const& frame, vr::world_ui::Beam const
         ForgetSession();
         gSession = frame.session;
     }
-    if (!Ensure(frame)) {
+    // The omni-tool's power-up, in steps of 0.05 (about 17 new pictures over its 0.6 s, not one a frame).
+    std::uint64_t const onMs = vr::world_ui::LatestOmniOnMs(400);
+    float const luminance =
+        onMs != 0 ? std::round(vr::omni_power::Luminance(vr::omni_power::Age(onMs, GetTickCount64())) * 20.0f) / 20.0f : 1.0f;
+    if (!Ensure(frame, luminance)) {
         return nullptr;
     }
     gQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};

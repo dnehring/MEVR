@@ -979,6 +979,7 @@ if (MEVR_BUILD_TESTS)
         tests/ConversationWorldTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
+        tests/OmniRailMotionTests.cpp
         tests/SwapchainBudgetTests.cpp
         tests/VrCoverTests.cpp
         tests/PerformanceModesTests.cpp
@@ -1412,6 +1413,10 @@ endif ()
 if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
     add_executable(mevr-menu-preview
         tools/menu-preview/Main.cpp
+        src/core/vr/OmniRail.cpp
+        src/core/vr/WorldUi.cpp
+        src/core/vr/OverlayPlacement.cpp
+        src/core/vr/GalaxyHologram.cpp
         src/core/PngFile.cpp
         src/plugin/RailArt.cpp
         src/core/gfx/Raster.cpp
@@ -1421,7 +1426,7 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
     # The generated headers: About shows this build's version and commit, as in the game.
     target_include_directories(mevr-menu-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${MEVR_GENERATED_DIR})
     add_dependencies(mevr-menu-preview mevr-build-info)
-    target_link_libraries(mevr-menu-preview PRIVATE mevr-menu windowscodecs ole32 d3d11)
+    target_link_libraries(mevr-menu-preview PRIVATE mevr-menu OpenXR::headers windowscodecs ole32 d3d11)
     target_compile_definitions(mevr-menu-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-menu-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 endif ()

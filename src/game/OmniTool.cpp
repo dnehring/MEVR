@@ -2,6 +2,8 @@
 #include "game/OmniTool.hpp"
 
 #include "core/Log.hpp"
+#include "core/Ini.hpp"
+#include "core/vr/OmniPower.hpp"
 #include "engine/Engine.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
@@ -10,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <format>
 #include <mutex>
 #include <sstream>
@@ -46,6 +49,12 @@ struct Matrix {
 ue3::FieldRef gBase{"Engine.Actor", "Base"};
 ue3::FieldRef gEmitterComponent{"Engine.Emitter", "ParticleSystemComponent"};
 ue3::FieldRef gParticleTemplate{"Engine.ParticleSystemComponent", "Template"};
+ue3::FunctionRef gSetScalar{"SFXGame.BioVisualEffect.SetScalarParameter"};
+ue3::FieldRef gCachedParameters{"SFXGame.BioVisualEffect", "m_CachedInstanceParameters"};
+ue3::FieldRef gParameterName{gCachedParameters, "ParameterName"};
+ue3::FieldRef gParameterValue{gCachedParameters, "fCurrentValue"};
+ue3::FieldRef gParameterInited{gCachedParameters, "bInited"};
+ue3::FieldRef gParameterTargets{gCachedParameters, "OffsetInfo"};
 
 constexpr std::string_view kTemplate = "BIOG_V_T_Omni_Tool_Z.Prefab.OmniTool_2PieceLoop";
 constexpr std::uint64_t kClassDefaultFlag = 0x200;  // EObjectFlags: RF_ClassDefaultObject
@@ -67,6 +76,12 @@ struct State {
     std::vector<ue3::Object*> adopted;
     ue3::Object* display = nullptr; // the hand piece (OmniHand_Loop) among them
     std::uint64_t adoptedMs = 0;    // when they moved onto the mesh
+    struct Brightness { std::uint64_t name; float full; };
+    std::vector<Brightness> brightness;
+    bool powerFound = false;
+    bool powerDone = false;
+    float luminance = 1.0f;
+    std::string powerPath = "not checked";
     std::string why = "off";
 };
 State gS;
@@ -75,8 +90,9 @@ std::string gStatusJson = "{\"on\": false}";
 
 void SetStatus() {
     std::lock_guard<std::mutex> const lock(gStatusMutex);
-    gStatusJson = std::format("{{\"on\": {}, \"made\": {}, \"emitters\": {}, \"template\": {}, \"state\": \"{}\"}}",
-                              gS.effect != nullptr ? "true" : "false", gS.made, gS.woken, gS.templ != nullptr ? "true" : "false", gS.why);
+    gStatusJson = std::format("{{\"on\": {}, \"made\": {}, \"emitters\": {}, \"template\": {}, \"state\": \"{}\", "
+        "\"powerPath\": \"{}\", \"onMs\": {}, \"luminance\": {:.4f}, \"powerDone\": {}}}",
+        gS.effect != nullptr, gS.made, gS.woken, gS.templ != nullptr, gS.why, gS.powerPath, gS.adoptedMs, gS.luminance, gS.powerDone);
 }
 
 ue3::Object* DefaultObject(ue3::Class* cls) {
@@ -141,6 +157,66 @@ bool CallOn(ue3::Object* object, ue3::FunctionRef& function, F&& fill) {
     }
     ue3::Params p(ue3::runtime::Get(), function.Get());
     return fill(p) && ue3::runtime::Call(object, function.Get(), p);
+}
+
+// The cache belongs to this effect, not its shared prefab/materials. Only initialized parameters with resolved targets count.
+// SetScalarParameter updates those targets through the engine. A successful call alone cannot prove the emitted look.
+void FindPowerPath() {
+    gS.brightness.clear();
+    std::string seen;
+    if (auto const values = gCachedParameters.ElementsOf(gS.effect)) {
+        for (int i = 0; i < values->count; ++i) {
+            void* const value = values->At(i);
+            auto const name = gParameterName.Read<std::uint64_t>(value);
+            auto const full = gParameterValue.Read<float>(value);
+            if (!name) continue;
+            std::string const text = ue3::runtime::NameText(*name);
+            if (!seen.empty()) seen += ", ";
+            seen += text;
+            auto const targets = gParameterTargets.ElementsOf(value);
+            if (vr::omni_power::BrightnessParameter(text) && full && std::isfinite(*full) && *full > 0.0f &&
+                gParameterInited.ReadBool(value).value_or(false) && targets && targets->count > 0 && gSetScalar.Get() != nullptr) {
+                gS.brightness.push_back({*name, *full});
+            }
+        }
+    }
+    gS.powerFound = !gS.brightness.empty();
+    if (gS.powerFound) {
+        gS.powerPath = "BioVisualEffect.SetScalarParameter";
+        for (auto const& binding : gS.brightness) {
+            log::Info("omni tool: power-up through {} '{}' (full {:.4f}, {} adopted systems; visual coverage needs checking)",
+                gS.powerPath, ue3::runtime::NameText(binding.name), binding.full, gS.woken);
+        }
+    } else {
+        gS.powerPath = "nothing found: full at once";
+        log::Warn("omni tool: power-up through nothing found: full at once (no initialized brightness/intensity target; cached: {})",
+            seen.empty() ? "none or reflection unavailable" : seen);
+    }
+}
+
+bool SetBrightness(float luminance) {
+    bool ok = true;
+    for (auto const& binding : gS.brightness) {
+        ok = CallOn(gS.effect, gSetScalar, [&](ue3::Params& p) {
+            return p.Set("sParameter", binding.name) && p.Set("fValue", binding.full * luminance);
+        }) && ok;
+    }
+    return ok;
+}
+
+void PowerStep() {
+    if (!Alive(gS.effect) || gS.powerDone) return;
+    float const age = vr::omni_power::Age(gS.adoptedMs, GetTickCount64());
+    gS.luminance = gS.powerFound ? vr::omni_power::Luminance(age) : 1.0f;
+    if (gS.powerFound && !SetBrightness(gS.luminance)) {
+        SetBrightness(1.0f);
+        gS.powerPath = "SetScalarParameter failed: full at once";
+        gS.luminance = 1.0f;
+        gS.powerFound = false;
+        log::Warn("omni tool: power-up through {}", gS.powerPath);
+    }
+    gS.powerDone = !gS.powerFound || age >= vr::omni_power::kRiseS;
+    SetStatus();
 }
 
 // The prefab's emitters come out of CreateCrustEffect attached to the pawn's bones (the gauntlet on LeftElbowTwist2, the hand's
@@ -226,6 +302,9 @@ void Wake() {
     gS.adoptedMs = GetTickCount64();
     gS.woken = AdoptComponents(gS.pawn, gS.mesh);
     log::Info("omni tool: {} of its particle systems on Shepard's mesh", gS.woken);
+    gS.powerDone = false;
+    FindPowerPath();
+    PowerStep();
 }
 
 // BioVisualEffect.CreateCrustEffect on the class's default object (script's `class'BioVisualEffect'.static.`).
@@ -248,6 +327,7 @@ ue3::Object* Create(ue3::Object* pawn, float lifeS) {
 }
 
 void End(char const* why, float fadeS) {
+    if (Alive(gS.effect)) SetBrightness(1.0f);  // leave the game's existing close fade at its authored brightness
     ReleaseComponents();
     if (gS.effect != nullptr) {
         bool const ended = SetLifeTime(gS.effect, fadeS);
@@ -256,6 +336,8 @@ void End(char const* why, float fadeS) {
     gS.effect = nullptr;
     gS.pawn = nullptr;
     gS.byHand = false;
+    gS.adoptedMs = 0;
+    gS.brightness.clear();
     gS.why = why;
     SetStatus();
 }
@@ -318,6 +400,7 @@ void Tick(bool wanted) {
     } else if (gS.effect != nullptr && !gS.byHand) {
         End("the screen closed", kFadeS);
     }
+    PowerStep();
 #else
     (void)wanted;
 #endif
@@ -327,12 +410,18 @@ std::string Console(std::string_view args) {
 #if defined(MEVR_GAME_LE1)
     std::istringstream words{std::string(args)};
     std::string sub;
-    float seconds = 0.0f;
-    words >> sub >> seconds;
+    std::string number;
+    words >> sub >> number;
+    float const seconds = static_cast<float>(ini::Number(number).value_or(0.0));
     if (sub == "on") {
+        if (Alive(gS.effect)) End("restart power-up by hand", kFadeS);
         gS.lastTryMs = 0;
         bool const ok = Show(seconds > 0.0f ? seconds : kLifeS);
         gS.byHand = ok;
+        for (float t : {0.0f, 0.03f, 0.06f, 0.10f, 0.15f, 0.30f, vr::omni_power::kRiseS}) {
+            log::Info("omni tool: power-up curve {:.2f} s = {:.4f} luminance (engine path: {})", t,
+                vr::omni_power::Luminance(t), gS.powerPath);
+        }
         return ok ? std::format("omni tool on: {}", ue3::runtime::FullName(gS.effect)) : std::format("omni tool: not made ({})", gS.why);
     }
     if (sub == "off") {
@@ -352,6 +441,14 @@ std::string Console(std::string_view args) {
 #else
     (void)args;
     return "omni tool: LE1 only";
+#endif
+}
+
+std::uint64_t OnMs() {
+#if defined(MEVR_GAME_LE1)
+    return Alive(gS.effect) ? gS.adoptedMs : 0;
+#else
+    return 0;
 #endif
 }
 
