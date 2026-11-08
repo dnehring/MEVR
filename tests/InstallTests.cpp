@@ -1050,6 +1050,26 @@ void TestQaFixes() {
     ICHECK(Read(layout.Win64() / L"bink2w64.dll") == "RAD original" && !fs::exists(layout.Full(paths::kModAsi)));
     ICHECK(!fs::exists(layout.ManifestFile()));
 
+    // 2b. An update keeps the player's game settings (the owner's QA, 2026-11-07: reinstalling put the default render
+    // resolution back over the player's own); reapplySettings applies them again.
+    fresh();
+    if (fs::exists(layout.Full(paths::kGamerSettings))) {
+        ICHECK(Ok(Install(layout, payload, options)));
+        std::string const applied = Read(layout.Full(paths::kGamerSettings));
+        std::string mine = applied;
+        if (auto const at = mine.find("ResX="); at != std::string::npos) {
+            mine.replace(at, mine.find('', at) - at, "ResX=1456");
+        }
+        Write(layout.Full(paths::kGamerSettings), mine);
+        ICHECK(Ok(Install(layout, payload, options)));  // the update
+        ICHECK(ini::Get(Read(layout.Full(paths::kGamerSettings)), "SystemSettings", "ResX") == std::optional<std::string>("1456"));
+        InstallOptions again = options;
+        again.reapplySettings = true;
+        ICHECK(Ok(Install(layout, payload, again)));
+        ICHECK(ini::Get(Read(layout.Full(paths::kGamerSettings)), "SystemSettings", "ResX") != std::optional<std::string>("1456"));
+        ICHECK(Ok(Uninstall(layout, false, {})));
+    }
+
     // 3. The mod's run-time files: kept by "keep my settings", deleted by a full uninstall (with the Logs folder the
     // game run made, once empty). Not "installed" with only settings or a pack on record.
     fresh();

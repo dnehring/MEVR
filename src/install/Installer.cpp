@@ -476,6 +476,7 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
         tx.RecordDir(kLogsDir);
     }
     Manifest& m = tx.Data();
+    bool const settingsAlreadyApplied = m.gameSettings;  // an update over an install whose game settings are on
     m.modVersion = updates::kVersion;
     m.setupVersion = updates::kVersion;
     m.installedAt = NowIso();
@@ -519,10 +520,17 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
             ok = tx.WriteIn(paths::kSteamAppId, detect::kSteamAppId);
         }
     }
-    if (ok && options.gameSettings) {
+    bool kept = false;
+    if (ok && options.gameSettings && (!settingsAlreadyApplied || options.reapplySettings)) {
         ok = ApplySettingsIn(tx, options.choices);
+    } else if (ok && options.gameSettings) {
+        kept = true;
     }
-    return Finish(tx, ok);
+    Outcome done = Finish(tx, ok);
+    if (kept) {
+        done.log.push_back("kept your game settings (render resolution and the rest) from the earlier install");
+    }
+    return done;
 }
 
 Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runningExe, bool removeLocalData) {

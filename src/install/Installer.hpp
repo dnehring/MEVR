@@ -77,6 +77,10 @@ settings::Choices ChoicesFromPending(PendingSettings const& pending);
 
 struct InstallOptions {
     bool gameSettings = true;              // apply the VR game settings
+    // An update (the manifest already has them applied) keeps the player's game settings unless this is set: reinstalling
+    // put the default render resolution back over the player's own (the owner's QA, 2026-11-07). The Settings page's
+    // Apply (ApplySettings) is the way to change them.
+    bool reapplySettings = false;
     settings::Choices choices;             // with these
     std::filesystem::path setupExe;        // copied to ASI\MEVR-Setup.exe (for uninstall and "install after I quit")
     std::string source;                    // "Steam" writes steam_appid.txt for the Launch button
