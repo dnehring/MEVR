@@ -2,6 +2,7 @@
 // Exercise the actual host dispatcher against a fake XR function table, with no game or headset.
 #include "plugin/QuestPacing.hpp"
 #include "plugin/PerfProbe.hpp"
+#include "plugin/Colour.hpp"
 #include "halcyon/le1/mevr_bridge.h"
 #include "tests/TestTemp.hpp"
 #include <openxr/openxr.h>
@@ -61,7 +62,7 @@ void Frame(bool session) {
 
 // Host dependencies: settings, headset classifier, logging and the idle perf probe.
 namespace MELEVR::MevrBridge { std::wstring const& SettingsPath() noexcept { return gSettings; } }
-namespace mevr::host::colour { bool StreamedHeadset() { return false; } }
+namespace mevr::host::colour { bool StreamedHeadset() { return false; } MenuState GetMenuState() { return {}; } }
 namespace mevr::host::perf {
 void FrameSubmitted(std::int64_t, bool) {}
 GpuTiming LatestGpuTiming() { return {}; }

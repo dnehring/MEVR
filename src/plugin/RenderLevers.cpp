@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "core/DevChannels.hpp"
 #include "plugin/RenderLevers.hpp"
 
 #include "core/Hook.hpp"
@@ -1306,9 +1307,11 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
     }
     {
         // Research/37: the synthesised view, every 5 s (a frozen head gave a sheared right eye, a moving one a right one).
+        // Development builds only (a Virtual Desktop player's judder every 10 s, 2026-11-07): a long synchronous, flushed log
+        // line on the render thread every 5 s.
         static std::uint64_t nextDump = 0;
         std::uint64_t const now = GetTickCount64();
-        if (now >= nextDump) {
+        if (dev_channels::kDevelopmentBuild && now >= nextDump) {
             nextDump = now + 5000;
             auto const row = [](std::uint8_t const* b, std::size_t at) {
                 auto const* f = reinterpret_cast<float const*>(b + at);
@@ -2153,8 +2156,8 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         share += std::format("; captures (scene renders into another target, no eye index): {:.2f} a frame, {} post-process finals into their own target",
             frames != 0 ? static_cast<double>(captures) / static_cast<double>(frames) : 0.0, gCaptureFinalsBound.exchange(0, std::memory_order_relaxed));
     }
-    log::Info("render levers: last 10 s: {} frames; scene renders per frame {}; per render, by its place in the "
-        "frame: {}{}", frames, perFrame.empty() ? "-" : perFrame, perRender.empty() ? "-" : perRender, share);
+    log::Info("render levers: last {} s: {} frames; scene renders per frame {}; per render, by its place in the "
+        "frame: {}{}", dev_channels::kDevelopmentBuild ? 10 : 60, frames, perFrame.empty() ? "-" : perFrame, perRender.empty() ? "-" : perRender, share);
 }
 
 } // namespace
@@ -2459,7 +2462,9 @@ void Tick() {
             LogStats(current, last);
         }
         last = current;
-        nextLogMs = now + 10000;
+        // The players' build every 60 s (the statistics' formatting and flushed write were a 10 s suspect for a Virtual Desktop
+        // player's judder, 2026-11-07); development builds every 10 s.
+        nextLogMs = now + (dev_channels::kDevelopmentBuild ? 10000 : 60000);
     }
 }
 

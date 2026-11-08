@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- Smoother frames on Virtual Desktop (a player's judder every 10 s): the renderer's diagnostic dumps are off in the
+  players' build and its statistics line comes every 60 s; Quest pacing parses the settings file only when it changes,
+  asks the runtime for its refresh rate once, and its automatic recovery is off on Virtual Desktop's own runtime (VDXR).
+
 - Restore floor lock by default: wrist screens keep the corrected on-foot camera height, body size and scale pivot, so
   opening the omni-tool's Computer screen no longer places the arms above their on-foot position. Galaxy-map and world
   conversation holds use the captured camera's rotation when carrying the corrected height. Headset verification pending.

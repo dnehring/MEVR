@@ -281,7 +281,7 @@ a steady 45 isn't the game's real speed.
 
 | Symptom | Confirm with | Cause | Fix |
 |---------|--------------|-------|-----|
-| Low frame rate everywhere | `render levers: last 10 s: N frames; scene renders per frame ...` (frames per 10 s / 10 = frame rate); Halcyon's `recommended eye image WxH` vs the `[TARGETCHK]` size | A render resolution above the headset's own costs GPU time. | Our menu: **Display > render resolution > Headset** (the headset's own eye size), or Headset × 0.85 / × 0.75 with **Upscale: FSR** (sharpens it back up). |
+| Low frame rate everywhere | `render levers: last 60 s: N frames; scene renders per frame ...` (the players' build; 10 s in development builds: frames / seconds = frame rate); Halcyon's `recommended eye image WxH` vs the `[TARGETCHK]` size | A render resolution above the headset's own costs GPU time. | Our menu: **Display > render resolution > Headset** (the headset's own eye size), or Headset × 0.85 / × 0.75 with **Upscale: FSR** (sharpens it back up). |
 | Low frame rate in heavy scenes only | `render levers:` per-render times (`#0 N ms`, `#1 N ms`) | The render thread (CPU) is the limit there. | A lower resolution helps only if the GPU is the limit. Close other programs; on SteamVR, its per-app settings. Measure first (below). |
 | Shadows or grass look different from the flat game | `system settings: scale set DynamicShadows False, MotionBlur False, FoliageDrawRadiusMultiplier 0.5 (...)` | The mod turns dynamic shadows and motion blur off and halves the grass radius in VR (each was a large cost; motion blur smears one eye). | `[SystemSettings] apply = 0` keeps the engine's values; or override one key in `[SystemSettings]`. |
 | FSR does nothing | `upscale: {} ([Upscale] method = {}, ...)`; `upscale: FSR 1 WxH -> WxH: ...` | FSR runs only when the render target is smaller than the headset's eye. | Pick Headset × 0.85 or × 0.75. |
@@ -550,7 +550,7 @@ heartbeat #N: F fps, GWorld=0x..., objects=N, script hooks live
 - `script hooks waiting for script packages` is normal for the first seconds; minutes of it means the features are off.
 - Lines appear only for features that have something to say (sights, the support grip, the torso, calibration...).
 - "this period" counts are since the previous heartbeat.
-- Every 10 s, separately: `render levers: last 10 s: ...` (frames, scene renders per frame, each render's time),
+- Every 60 s in the players' build (10 s in development builds), separately: `render levers: last 60 s: ...` (frames, scene renders per frame, each render's time),
   `colour: GPU time per draw ...`, `upscale: FSR 1 ...`, and `main menu: open N s: ...` while our menu is open.
 
 **Prefixes:**

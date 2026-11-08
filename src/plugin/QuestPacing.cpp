@@ -68,9 +68,30 @@ template<class T> T Proc(char const* name) {
 void Read(double now) {
     if (now < gNextRead) return;
     gNextRead = now + 1;
-    auto const file = ini::Read(std::filesystem::path(MELEVR::MevrBridge::SettingsPath())).file;
+    // The file is parsed only when it changed (a Virtual Desktop player's judder every 10 s, 2026-11-07: the whole settings
+    // file was read and parsed on the render thread every second); a stat a second is what's left.
+    static std::filesystem::file_time_type lastWrite{};
+    static bool readOnce = false;
+    static ini::File file;
+    std::error_code ec;
+    std::filesystem::path const path(MELEVR::MevrBridge::SettingsPath());
+    auto const stamp = std::filesystem::last_write_time(path, ec);
+    if (!readOnce || (!ec && stamp != lastWrite)) {
+        readOnce = true;
+        lastWrite = ec ? std::filesystem::file_time_type{} : stamp;
+        file = ini::Read(path).file;
+    }
     gSetting = ini::Lower(ini::Trim(ini::Get(file, "Performance", "pacingRecovery").value_or("auto")));
     gActions = qp::Actions(gSetting, colour::StreamedHeadset());
+    // Automatic recovery stays off on Virtual Desktop's own runtime (VDXR): its runtime calls are the other suspect for that
+    // player's judder, and on a Quest over Link the recovery never brought the rate back. An explicit list still applies.
+    static std::string runtime;
+    if (runtime.empty()) {
+        runtime = ini::Lower(colour::GetMenuState().runtime);
+    }
+    if (gSetting == "auto" && runtime.find("virtualdesktop") != std::string::npos) {
+        gActions.clear();
+    }
     gMaxTries = static_cast<unsigned>(std::clamp(ini::GetNumber(file, "Performance", "pacingRecoveryTries").value_or(3), 0.0, 16.0));
     bool const full = ini::Lower(ini::Trim(ini::Get(file, "Performance", "frameLoop").value_or("halcyon"))) == "full";
     if (full != gFull) log::Info("quest pacing: frameLoop = {} (applied at the next frame boundary)", full ? "full" : "halcyon");
@@ -276,8 +297,9 @@ void QuestPacingFrame(void* session, int state, bool capped, std::uint64_t level
     if (!gHaveNativeQuery && predictedPeriod > .001 && predictedPeriod < .050 && (gNativePeriod == 0 || predictedPeriod < gNativePeriod))
         gNativePeriod = predictedPeriod;
     double const now = Now();
-    if (gMeasure && gRefreshEnabled && now >= gNextRateQuery) {
-        gNextRateQuery = now + 1;
+    // The display rate is asked of the runtime until it answers, then not again this session (it was asked every second).
+    if (gMeasure && gRefreshEnabled && !gHaveNativeQuery && now >= gNextRateQuery) {
+        gNextRateQuery = now + 5;
         auto get = Proc<PFN_xrGetDisplayRefreshRateFB>("xrGetDisplayRefreshRateFB");
         float hz = 0;
         if (get && XR_SUCCEEDED(get(gSession, &hz)) && std::isfinite(hz) && hz > 20 && hz < 1000) {
