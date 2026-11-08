@@ -4,8 +4,11 @@
 - [ ] 2026-11-08 Virtual Desktop replay rejection (research/61): with the guarded-rearm build and automatic
   unsupported-call diagnostics, reproduce the player's natural front-end/Normandy failure on Quest + VDXR.
   Capture the normal report without changing graphics settings first; inspect caller stack and context identity
-  before choosing a replay-command or context-scope fix. Confirm the recovery guard prevents repeated jumps.
-  Local build and SteamVR fault injection do not establish the VDXR trigger or headset acceptance.
+  and capture effective game anti-aliasing. Local FXAA-on testing now naturally reproduces three unsupported
+  calls, first slot 51, under SteamVR at the report's dimensions (clear caller exe+0x99B277, FXAA exe+0x23ABB6).
+  Check the same engine pass under VDXR; compare title quads with asymmetric gameplay projections. Confirm
+  the recovery guard prevents repeated jumps, then validate correct FXAA replay while keeping One Draw.
+  Local native reproduction does not establish the original player's caller or headset acceptance.
 
 - [ ] 2026-11-07 seated play (galaxy-labels; owner builds/deploys host + mod): choose I play seated at height and at crouch
   in separate runs; never need to stand/crouch, B goes back and Save/restart retains position per controller. Compare a new

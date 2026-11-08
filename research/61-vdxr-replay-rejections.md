@@ -6,6 +6,12 @@ b9492d8725**, Quest 3 through bundled VirtualDesktopXR, Windows 10 19045.7807, a
 with driver 617.42. It contains both host sessions, only the last Halcyon session, and a 20-second
 performance capture. The supplied video is a separate recording, without a shared frame clock.
 
+**Follow-up result:** enabling the game's compute FXAA naturally reproduces the report's
+three-operation replay rejection under a local SteamVR null headset at the player's render
+dimensions. Turning AA off restores replay in the paired control. This identifies a reproducible
+engine-side trigger; the original player's effective AA setting was not collected, so attribution
+of their specific failure remains provisional. See the local reproduction below.
+
 ## What the report establishes
 
 The first unsupported recorded operation is D3D11 vtable slot 51, `ClearUnorderedAccessViewUint`.
@@ -101,6 +107,104 @@ None is selected as the proven origin by the supplied logs. D3D11 variant change
 evidence of an overlay: [the earlier investigation](../docs/knowledge/gotchas/d3d11-per-context-vtable.md)
 already established that D3D11 changes its own per-context dispatch entries.
 
+## Follow-up: a concrete engine pass matches all three unsupported calls
+
+Targeted local binary research identifies the game's **compute FXAA** pass as a strong candidate.
+The shader registrations name `FFXAAPrepComputeShader`, `FXAAPass1CS`,
+`FXAAFilterComputeShaderHorizontal`, and `FXAAPass2CS`. The pass issues this sequence:
+
+1. `ClearUnorderedAccessViewUint` (context slot 51), clearing the dispatch-argument buffer.
+2. Ordinary compute dispatches that prepare the work.
+3. `DispatchIndirect` (context slot 42) at argument-buffer offset 0.
+4. `DispatchIndirect` at offset 12, for the other filtering direction.
+
+The recorder supports ordinary `Dispatch`, but rejects the clear and both indirect dispatches.
+That is exactly **three unsupported operations, first at slot 51**. This is a concrete game-side
+explanation; Virtual Desktop does not need to issue a clear for this pattern to occur.
+
+For the locally verified LE1 executable, the clear's return address is `exe+0x99B277`, with the
+FXAA pass's caller return at `exe+0x23ABB6`. The indirect-dispatch RHI wrapper is `exe+0x99CEA0`.
+These are diagnostic address/name findings, not copied engine implementation. Raw analysis stays
+outside the repository in the private Ghidra directory. The static call sequence is not proof that
+the player's recording contains these same callers: their report predates caller tracing.
+
+The earlier local negative controls had `AntiAliasing=False` in both `GamerSettings.ini` and
+`BIOEngine.ini`. The supplied report contains neither game INI, so their effective anti-aliasing
+setting cannot be compared. This missing variable is more directly relevant to the unsupported
+command sequence than the runtime name alone.
+
+### Natural local reproduction
+
+The follow-up run `scratch/qa-replay-jump-v011/fxaa-runtime-20261108-094538` uses the existing
+private recovery/tracer build, **`qaForceOneDrawMiss=0`**, `sharePass=5`, `oneDrawWindow=0`,
+SteamVR's null headset at 90 Hz, and the recorded Quest pose/FOV inputs. The renderer confirms
+**3072 x 3188 game source and 2688 x 2880 eye images**. Anti-aliasing was enabled in the game
+configuration and explicitly applied again with the game's own `scale set AntiAliasing True` in
+gameplay. The game reached **BIOA_NOR00, game mode 0**.
+
+At **09:46:22.284**, the tracer observes the native FXAA clear with `recording=true` and
+`afterTail=true`, caller `MassEffect1.exe+0x99B277`, and stack `MassEffect1.exe+0x23ABB6`.
+At **09:46:22.313**, the replay guard reports **three unsupported calls, first at slot 51**.
+The same native clear remains inside the recording in Normandy at 09:46:56.473 and 09:47:06.164.
+The guarded build falls back once and does not repeatedly rearm; the performance probe has zero
+replays. This reproduces the original *eligibility failure* through a real engine setting,
+without injected failures and without Virtual Desktop.
+
+The control, `fxaa-runtime-20261108-094735`, uses the same build, dimensions and Normandy scene
+with anti-aliasing off. It has **no native UAV-clear traces and no unsupported-call rejection**.
+A separate missing-view-record fallback during the menu transition recovers at 09:48:44.717;
+the probe subsequently reports **1,205 successful replays cumulatively** and zero replay failures.
+The paired probes contain 375 samples with AA on and 376 with AA off, each over 12 seconds with
+zero access violations. The cumulative replay count is not a count within the 12-second window.
+The machine-readable comparison is `scratch/vdxr-report-analysis/fxaa-comparison.json`.
+
+Timing is not representative of the player's machine: this is an instrumented recovery build
+(its QA rearm threshold is 30 matching views), a null headset, a different refresh rate, and a
+different local hardware/driver stack. It establishes a native trigger, not
+the player's exact perceived headset experience. An initial tracer attempt at 09:43 did not
+establish an XR session and is excluded from the VR result.
+
+Settings, saves, installed ASI and SteamVR configuration were backed up and restored with hash
+verification; the selected system OpenXR runtime was unchanged. These are temporary QA runs,
+not deployment of a new fix. The player's missing game settings and caller trace still prevent
+claiming that their particular instance is conclusively FXAA, but it is now the leading explanation.
+
+The implementation target is correct replay of the complete FXAA pass while keeping One Draw.
+Adding only the UAV clear would leave the two indirect dispatches unsupported. Indirect dispatch
+uses GPU buffer contents, so replay must preserve the buffer reference, byte offset, and preceding
+commands that regenerate that data. [Microsoft's DispatchIndirect documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-dispatchindirect).
+Also audit `CSSetUnorderedAccessViews`: its current replay discards initial counter values under an
+old assumption that the engine only unbinds UAVs. That assumption is not valid for this compute
+path; whether these particular buffers use hidden append counters still needs verification.
+
+## Why the title can look stable while gameplay visibly jumps
+
+The latest renderer log distinguishes two projection modes:
+
+- At **23:26:12.883**, title-screen mode 1 declares the same symmetric horizontal FOV for both
+  eyes, approximately -15.7 to +15.7 degrees.
+- At **23:26:24.496**, gameplay mode 2 declares -54 to +40 degrees for the left eye and -40 to
+  +54 degrees for the right eye. These are the runtime's asymmetric eye projections.
+
+`OneDrawSecondEye` returns immediately on an unreplayable tail, after the ordinary second Draw
+has already been suppressed. `SfrOnPresent` can still publish the current backbuffer as pass 1
+when a pass-0 capture exists. Thus the failure path can deliver first-eye pixels in the second-eye
+slot, rather than necessarily holding an old correctly rendered pair. Submission routes the pair
+using its metric-eye record and does not know that the tail was rejected.
+
+**Geometric prediction, not a measured video displacement:** using `MetricStereo::Projection`,
+the reported gameplay FOVs give opposite horizontal projection offsets of about +/-0.2425.
+Duplicating one eye's image into the other gives a displacement of about **24.25% of the image
+width** for distant geometry: approximately 745 pixels at the 3072-wide game source, or 652 pixels
+at the 2688-wide eye image. This excludes positional parallax, crop, lens distortion and recording
+scaling. The symmetric title projection has zero offset difference of this kind.
+
+The title's 3D cinema screen also uses eye-specific quads, while boot movies use a common flat
+quad. Neither should be treated as a gameplay projection control. A visually stable title is
+therefore compatible with the logged front-end rejection, without proving that the title has no
+visible stereo defect. Other runtimes can also have asymmetric projections: this mechanism does
+not establish a VDXR-only bug. Calculation: `scratch/vdxr-report-analysis/projection-mismatch.json`.
+
 ## Resolution and runtime pacing
 
 VDXR recommends **2688 x 2880 per eye** in the last session; the swapchains use exactly that size.
@@ -135,10 +239,11 @@ diagnostics remains open; this build was not deployed or published.
 
 Local analysis artifacts are in `scratch/vdxr-report-analysis`: `analyze.py`, `correlation.json`,
 `retry-events.csv`, `perf-summary.txt`, and `retry-correlation.png`. Run the script against an extracted
-report, with `--plot` when matplotlib is available. No new game session was launched for this analysis.
-Earlier SteamVR null-headset fault injection demonstrated the cascade, not the VDXR trigger; earlier
-natural local runs did not reproduce the unsupported operation. An actual connected Quest/VDXR run
-is still required to identify its native caller.
+report, with `--plot` when matplotlib is available. The initial log analysis did not launch a game;
+the subsequent FXAA runs are documented above. Earlier SteamVR null-headset fault injection
+demonstrated the cascade, while the FXAA follow-up reproduces a natural eligibility failure.
+An actual connected Quest/VDXR run remains necessary to validate the player's headset experience
+and confirm whether their original failure has this same native caller.
 
 The live local inventory on 2026-11-08 is Windows 11 build 26300, RTX 4090, driver 591.86
 (32.0.15.9186), with the Virtual Desktop OpenXR manifest selected. The player's Windows 10,
