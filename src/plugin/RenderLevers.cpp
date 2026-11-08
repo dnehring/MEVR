@@ -992,9 +992,9 @@ std::uint64_t ForegroundHook(void* renderer, int dpg, int* out, std::uint32_t* d
 }
 void ReplaySecondEyeInFinish(std::uint8_t* renderer);
 int OneDrawSecondEyeGuarded(std::uint8_t* renderer) noexcept;
-int OneDrawCheckGuarded(std::uint8_t* renderer) noexcept;   // the fallback's health check (below)
-thread_local bool t_oneDrawFinish = false;   // sharePass = 5: this render's finish ends the recording and replays
-thread_local bool t_oneDrawCheck = false;    // sharePass = 5 in the fallback: this render's finish checks the record match
+int OneDrawCheckGuarded(std::uint8_t* renderer, bool recorded) noexcept;
+thread_local bool t_oneDrawFinish = false;   // the finish ends this eye's recording
+thread_local bool t_oneDrawCheck = false;    // the fallback checks this eye without replaying it
 void CaptureFinished(void* renderer);   // below: a capture's render reached its finish (counted, logged)
 void FinishHook(void* renderer, int translucency, std::uint32_t dirty) {
     if (t_captureDepth > 0) {   // never the eye's finish: the eye's one-Draw flags were cleared for the capture
@@ -1008,15 +1008,17 @@ void FinishHook(void* renderer, int translucency, std::uint32_t dirty) {
         return;
     }
     gFinishOrig(renderer, translucency, dirty);
-    if (t_oneDrawFinish) {
-        // The first eye is finished and in the backbuffer; its views are still alive here (Render frees them before
-        // it returns). The recording ends now (the replay's own calls must not join it), then the second eye.
+    bool const recorded = t_oneDrawFinish;
+    if (recorded) {
         t_oneDrawFinish = false;
         draw_replay::EndRecording();
-        OneDrawSecondEyeGuarded(static_cast<std::uint8_t*>(renderer));
-    } else if (t_oneDrawCheck) {
+    }
+    // The first eye is in the backbuffer and its views are still alive.
+    if (t_oneDrawCheck) {
         t_oneDrawCheck = false;
-        OneDrawCheckGuarded(static_cast<std::uint8_t*>(renderer));
+        OneDrawCheckGuarded(static_cast<std::uint8_t*>(renderer), recorded);
+    } else if (recorded) {
+        OneDrawSecondEyeGuarded(static_cast<std::uint8_t*>(renderer));
     }
 }
 
@@ -1163,8 +1165,8 @@ std::atomic<bool> gOneDrawFaulted{false};
 // One Draw's health (research/37, the sweep): after a level load into the game's intro the rendered view sat 70 uu from
 // every record pass 0 had made (a view edited after the record), so no second eye could be made and the right eye
 // showed the left view. While the render thread finds no matching record for 3 frames running, Halcyon's second Draw
-// resumes (g_oneDrawStereo cleared; the engine renders the right eye as in sharePass 0) and the host only checks each
-// frame, with the views alive, whether a record would match; after 30 matches running one Draw resumes.
+// resumes (g_oneDrawStereo cleared; the engine renders the right eye as in sharePass 0). The host checks the
+// view match each frame and records a first-eye tail just before it would otherwise resume One Draw.
 std::atomic<bool> gOneDrawWanted{false};     // [Performance] sharePass = 5 and the hooks in place
 std::atomic<int> gOneDrawWindow{0};          // [Performance] oneDrawWindow: each eye on its own frustum (0, the default since 2026-11-07) or both on the symmetric window (1)
 std::atomic<int> gEyeScissor{0};             // [Performance] eyeScissor: each eye's scene draws scissored to what it shows of the window (1% of GPU at the heavy cell: off)
@@ -1201,27 +1203,27 @@ unsigned gOneDrawMisses = 0, gOneDrawMatches = 0;   // render thread
 // Matches needed before one Draw resumes. A lost view (no pass-1 record: the camera after a level load) comes back after
 // 30, as research/37 had it: 300 kept the game on two full renders for ~11 s after every load (at half rate), and that
 // overload is what put a Quest over Link into its half-rate lock (the owner's QA, 2026-11-07, `quest pacing:`). A tail
-// that wasn't replayable (an unshadowed in-tail discard, 3d74d4b) still waits 300.
-unsigned gOneDrawResumeAfter = 300;
-bool gOneDrawStreakNotReplayable = false;  // a miss in this streak was an unreplayable tail or a failed replay
+// that wasn't replayable (an unshadowed in-tail discard, 3d74d4b) still waits 300 between probes.
+constexpr unsigned kOneDrawViewMatches = 30;
+constexpr unsigned kOneDrawReplayMatches = 300;
+unsigned gOneDrawResumeAfter = kOneDrawViewMatches;
+bool gOneDrawStreakNotReplayable = false;
 std::atomic<std::uint64_t> gOneDrawFallbacks{0}, gOneDrawRearms{0};
+bool OneDrawProbeDue() {
+    return gOneDrawMatches + 1 >= gOneDrawResumeAfter;
+}
 void NoteOneDrawMatch(bool matched) {
     if (matched) {
         gOneDrawMisses = 0;
         gOneDrawStreakNotReplayable = false;
-        if (gOneDrawFallback.load(std::memory_order_relaxed) && ++gOneDrawMatches >= gOneDrawResumeAfter) {
-            gOneDrawMatches = 0;
-            gOneDrawFallback.store(false, std::memory_order_relaxed);
-            MELEVR::MevrBridge::g_oneDrawStereo.store(gOneDrawWanted.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            gOneDrawRearms.fetch_add(1, std::memory_order_relaxed);
-            log::Info("render levers: one Draw: pass 1's records match the rendered view again ({} frames running): one Draw a frame resumes",
-                gOneDrawResumeAfter);
+        if (gOneDrawFallback.load(std::memory_order_relaxed)) {
+            ++gOneDrawMatches;
         }
     } else {
         gOneDrawMatches = 0;
         if (!gOneDrawFallback.load(std::memory_order_relaxed) && ++gOneDrawMisses >= 3) {
             gOneDrawMisses = 0;
-            gOneDrawResumeAfter = gOneDrawStreakNotReplayable ? 300u : 30u;
+            gOneDrawResumeAfter = gOneDrawStreakNotReplayable ? kOneDrawReplayMatches : kOneDrawViewMatches;
             gOneDrawFallback.store(true, std::memory_order_relaxed);
             MELEVR::MevrBridge::g_oneDrawStereo.store(false, std::memory_order_relaxed);
             gOneDrawFallbacks.fetch_add(1, std::memory_order_relaxed);
@@ -1229,32 +1231,48 @@ void NoteOneDrawMatch(bool matched) {
         }
     }
 }
+void NoteOneDrawNotReplayable(std::string const& why) {
+    gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
+    gMode5LastBlocker = why;
+    gOneDrawStreakNotReplayable = true;
+    if (gOneDrawFallback.load(std::memory_order_relaxed)) {
+        gOneDrawResumeAfter = kOneDrawReplayMatches;
+    }
+    NoteOneDrawMatch(false);
+}
 void OneDrawSecondEye(std::uint8_t* renderer);
 // A fault in the one-Draw path stops its replays for the session: Halcyon's second Draw has to come back with it, or
 // the right eye kept the last image for the rest of the session (Codex review 2026-11-06, plugin#6).
 void OneDrawGiveUp() {
-    gOneDrawResumeAfter = 300;
+    gOneDrawFaulted.store(true, std::memory_order_relaxed);
+    gOneDrawMatches = 0;
     gOneDrawFallback.store(true, std::memory_order_relaxed);
     MELEVR::MevrBridge::g_oneDrawStereo.store(false, std::memory_order_relaxed);
     gOneDrawFallbacks.fetch_add(1, std::memory_order_relaxed);
 }
-// In the fallback: would a record match this render's view? (The views alive: the finish hook.)
-void OneDrawCheck(std::uint8_t* renderer) {
+// In the fallback, the last matching frame must also produce a replayable recording.
+void OneDrawCheck(std::uint8_t* renderer, bool recorded) {
+    if (OneDrawProbeDue()) {
+        std::string why;
+        if (!recorded || !draw_replay::TailReplayable(&why)) {
+            NoteOneDrawNotReplayable(recorded ? why : "recorder not attached");
+            return;
+        }
+    }
     auto const* const vo0 = reinterpret_cast<float const*>(View(renderer, 0) + 0x320);
     auto const* const vm0 = reinterpret_cast<float const*>(View(renderer, 0) + 0x90);
     float const fwd0[3] = {vm0[2], vm0[6], vm0[10]};
     MELEVR::MevrBridge::Pass1View p{};
     NoteOneDrawMatch(MELEVR::MevrBridge::FindPass1View(vo0, fwd0, &p));
 }
-int OneDrawCheckGuarded(std::uint8_t* renderer) noexcept {
+int OneDrawCheckGuarded(std::uint8_t* renderer, bool recorded) noexcept {
     if (gOneDrawFaulted.load(std::memory_order_relaxed)) {
         return 2;
     }
     __try {
-        OneDrawCheck(renderer);
+        OneDrawCheck(renderer, recorded);
         return 0;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        gOneDrawFaulted.store(true, std::memory_order_relaxed);
         OneDrawGiveUp();
         log::Warn("render levers: one Draw: the health check faulted; no more replays this session: Halcyon's second Draw resumes");
         return 1;
@@ -1270,7 +1288,6 @@ int OneDrawSecondEyeGuarded(std::uint8_t* renderer) noexcept {
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         // A fault on the render thread inside a hook ends the thread behind the engine's own handler and the game
         // thread then waits forever (research/37): never let one out.
-        gOneDrawFaulted.store(true, std::memory_order_relaxed);
         OneDrawGiveUp();
         log::Warn("render levers: one Draw: the second eye faulted; no more replays this session: Halcyon's second Draw resumes");
         return 1;
@@ -1282,10 +1299,7 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
     draw_replay::ViewFields second;
     std::string why;
     if (!draw_replay::TailReplayable(&why)) {
-        gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
-        gMode5LastBlocker = why;
-        gOneDrawStreakNotReplayable = true;
-        NoteOneDrawMatch(false);   // no second eye this frame: a miss for the health check
+        NoteOneDrawNotReplayable(why);
         return;
     }
     bool const synthesised = SynthesiseSecondView(renderer, first, second);
@@ -1334,12 +1348,13 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
     EndEyeScissor();
     if (rc == 0) {
         gMode5Replays.fetch_add(1, std::memory_order_relaxed);
+        NoteOneDrawMatch(true);
     } else {
         gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
         gMode5LastBlocker = std::format("replay returned {}", rc);
-        gOneDrawStreakNotReplayable = true;
+        OneDrawGiveUp();
+        log::Warn("render levers: one Draw: {}; Halcyon's second Draw resumes for the session", gMode5LastBlocker);
     }
-    NoteOneDrawMatch(rc == 0);  // after the replay: a replay that failed is no second eye either (it counted as one)
 }
 
 std::atomic<std::uint64_t> gSecondRenderSkipped{0};
@@ -1501,27 +1516,29 @@ void SceneRenderHook(void* renderer) {
         // render is recorded and, with the renderer still alive, replayed at once as the second eye.
         ReleaseKept();
         if (index == 0) {
-            bool const stereo = MELEVR::MevrBridge::StereoFrameActive();
+            bool const checkHealth = MELEVR::MevrBridge::StereoFrameActive() && !gOneDrawFaulted.load(std::memory_order_relaxed);
             bool const fallback = gOneDrawFallback.load(std::memory_order_relaxed);
-            bool const recorder = draw_replay::Attached() && stereo && !fallback;
+            bool const recorder = checkHealth && draw_replay::Attached() && (!fallback || OneDrawProbeDue());
+            t_oneDrawCheck = checkHealth && fallback;
             if (recorder) {
                 draw_replay::BeginRecording(0);
-                t_oneDrawFinish = true;   // the finish hook ends the recording and replays, with the views alive
-            } else if (stereo && fallback) {
-                t_oneDrawCheck = true;    // the finish hook asks whether a record would match (the health check)
+                t_oneDrawFinish = true;
             }
             std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
             BeginEyeScissor(0);
             gSceneRenderOrig(renderer);
             EndEyeScissor();
+            if (t_oneDrawFinish) {   // the render bailed before FinishHook could consume the recording
+                t_oneDrawFinish = false;
+                draw_replay::EndRecording();
+                NoteOneDrawNotReplayable("the render's finish never ran");
+            } else if (t_oneDrawCheck) {
+                NoteOneDrawMatch(false);
+            } else if (checkHealth && !fallback && !recorder) {
+                NoteOneDrawNotReplayable("recorder not attached");
+            }
             t_oneDrawCheck = false;
             if (recorder) {
-                if (t_oneDrawFinish) {   // the finish never ran (the render bailed): nothing to replay
-                    t_oneDrawFinish = false;
-                    draw_replay::EndRecording();
-                    gMode5NotReplayable.fetch_add(1, std::memory_order_relaxed);
-                    gMode5LastBlocker = "the render's finish never ran";
-                }
                 std::uint32_t const issued = vr::scene_capture::EyeDrawsIssued(MELEVR::MevrBridge::g_perfDraws, drawsBefore, t_captureDraws);
                 unsigned const recorded = draw_replay::RecordedDraws(0);
                 gFirstDrawsIssued.fetch_add(issued, std::memory_order_relaxed);
@@ -2443,8 +2460,9 @@ void Tick() {
             sharePass = share;
             gSharePass.store(share, std::memory_order_relaxed);
             gOneDrawWanted.store(share == 5 && gReplayHooked, std::memory_order_relaxed);
-            gOneDrawFallback.store(false, std::memory_order_relaxed);   // a fresh start for the health check
-            MELEVR::MevrBridge::g_oneDrawStereo.store(share == 5 && gReplayHooked && !gOneDrawFaulted.load(std::memory_order_relaxed),
+            bool const faulted = gOneDrawFaulted.load(std::memory_order_relaxed);
+            gOneDrawFallback.store(share == 5 && faulted, std::memory_order_relaxed);
+            MELEVR::MevrBridge::g_oneDrawStereo.store(share == 5 && gReplayHooked && !faulted,
                 std::memory_order_relaxed);   // a faulted session keeps Halcyon's second Draw
             log::Info("render levers: {} ([Performance] sharePass = {}){}",
                 share == 2 ? "a frame's second scene render replays the first one's draw calls on its renderer (no second "
@@ -2469,6 +2487,15 @@ void Tick() {
 }
 
 void OnPresentEnd(ID3D11DeviceContext* context) {
+    // Keep the full second Draw scheduled through the probe frame itself.
+    if (gOneDrawMatches >= gOneDrawResumeAfter && gOneDrawFallback.load(std::memory_order_relaxed) &&
+        gOneDrawWanted.load(std::memory_order_relaxed) && !gOneDrawFaulted.load(std::memory_order_relaxed)) {
+        gOneDrawMatches = 0;
+        gOneDrawFallback.store(false, std::memory_order_relaxed);
+        MELEVR::MevrBridge::g_oneDrawStereo.store(true, std::memory_order_relaxed);
+        gOneDrawRearms.fetch_add(1, std::memory_order_relaxed);
+        log::Info("render levers: one Draw: {} matching views and a replayable tail; one Draw a frame resumes", gOneDrawResumeAfter);
+    }
     int const renders = gRenderIndex.exchange(0, std::memory_order_relaxed);
     if (gEyeSeenThisFrame) {
         gFramesWithoutEye = 0;
