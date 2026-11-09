@@ -5252,6 +5252,20 @@ void TestSquadParser() {
     CHECK(p.clauses.size() == 1 && line(p, 0) == "G|SR|-|attack|E1");
     p = Parse("wrex, shotgun, rush the sniper", scene, withSniper, roster, st);
     CHECK(p.clauses.size() == 1 && line(p, 0) == "W|SG|-|attack|E5");
+    // The recognizer's own spelling of the owner's orders (2026-11-09): past tenses, "-ing", a filler at the start. Each was
+    // an unresolved word that pulled the line under the 0.6 bar and sent it to the model.
+    p = parse("yeah wrex rushed them");  // ("Rex" is an alias the game roster adds; this test roster has none)
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "W|-|-|attack|PT1" && p.clauses[0].confidence >= 0.6f);
+    p = parse("you garrus switched to your sniper rifle");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "G|SR|-|-|-" && p.clauses[0].confidence >= 0.95f);
+    p = parse("you wrex moved to that position");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "W|-|-|move|PT1" && p.clauses[0].confidence >= 0.6f);
+    p = parse("mm garrus, move up");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "G|-|-|move|AHEAD" && p.clauses[0].confidence >= 0.95f);
+    p = parse("garrus, took them out");
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "G|-|-|attack|PT1");
+    p = parse("wrex, go left");  // a direction is never a stem
+    CHECK(p.clauses.size() == 1 && line(p, 0).rfind("W|-|-|move|", 0) == 0 && line(p, 0) != "W|-|-|move|PT1");
 }
 void TestSquadStanding() {
     using namespace mevr::vr::squad_standing;

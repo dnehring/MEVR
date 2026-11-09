@@ -232,6 +232,11 @@ Case const kCases[] = {
     {Kind::Refuse, "Garrus, do the thing with the flibbertigibbet", "words the rules can't place"},
     {Kind::Refuse, "Garrus, support", "whom to support"},
     // Known gaps, on record: what a model (or a surface lexicon) would have to take over.
+    // As the recognizer wrote them (2026-11-09): past tenses, a filler first.
+    {Kind::Pass, "Yeah, Wrex rushed them", "W|-|-|attack|PT1"},
+    {Kind::Pass, "Garrus switched to your sniper rifle", "G|SR|-|-|-"},
+    {Kind::Pass, "Wrex moved to that position", "W|-|-|move|PT1"},
+    {Kind::Pass, "Mm, everyone on me", "ALL|-|-|follow|-"},
     {Kind::Gap, "Garrus, snipe them from the bridge", "G|-|-|attack|PT1"},         // "from" a place: the description wins over the deictic
     {Kind::Gap, "Garrus, nice shot, now the destroyer", "G|-|-|attack|E2"},        // praise before a verbless order
     {Kind::Gap, "Wrex, behind the crates", "W|-|-|move|PT1"},                       // a place the level has no word for
