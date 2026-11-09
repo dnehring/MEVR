@@ -402,3 +402,50 @@ The user: "I think the hacking mini game may need some work. Or we are comfortab
   through the GUI events as the d-pad sends its directions. Not built.
 - **How it was read:** the scripts decompiled locally with Legendary Explorer's core (the nightly in `mod-manager/`) and the config
   unpacked from `Coalesced_INT.bin` the same way. The player's game data: nothing of either is in the repository.
+
+## 7. Landing's party selection after a world change (2026-11-08)
+
+The owner landed from the galaxy map with the Mako, reached squad selection, but saw planet exterior partly through the
+floor. This is separate from the map's lost table reservation (research/51 section 8.4) and is a separate code commit.
+Evidence is the same read-only owner log copied to ignored `scratch/owner-2026-11-08.log`; no game was launched or changed.
+
+**Log evidence (line numbers in that copy):**
+
+- 5180, 22:11:26.158: a new player pawn in **BIOA_UNC71**, still in movie mode 8. 5182: cinematic camera.
+- 5184-5194, 22:11:26.420-.421: new-level settings, then mode 7. `PartySelect` with `BioSFHandler_PCPartySelection` is
+  visible; the world UI clears its full-screen flag and publishes it straight ahead. There is no on-foot camera interval
+  between the level arrival and this screen.
+- 5195, 22:11:26.538: `world ui: the view held at Shepard's for the main view's build only`.
+  5197-5198, 26.591: the 1.20 x 0.68 m panel is at (0.04, -0.50, -0.98) m, and UI redirects to it.
+- 5201-5204, 22:11:27.594: nevertheless the cinema backdrop and **cutscene on the 3D screen** appear, transitioning from
+  the movie's flat panel. This is after PartySelect is already active, not evidence that its Flash movie failed to open.
+
+**Two code defects.** `game/WorldUi` remembered a mode-0 POV and tracking frame without world/controller identity, and
+accepted mode-0 camera transitions as foot views. Thus a new planet's GUI could hold a Normandy/map camera position. The
+log does not contain that held position, so it cannot prove the exact geometry of the reported floor clipping. Separately,
+Halcyon's cine latch intentionally survives modes 7/8/9. `liveWorldGui` vetoed `menuFlat` but did not veto the latched
+cinematic or the outgoing movie detector. That explains why a published room panel still ended up behind the cinema
+presentation. The supplied mod log has no `[VRSTATE]` lines, so it does not identify each internal latch bit.
+
+**Fix.** `core/vr/WorldViewHold::Reference` scopes the saved view to Actor.WorldInfo and controller, and only an actual
+on-foot camera may record it. `game/WorldUi` discards the POV, tracking frame, recent use target, vendor and cockpit anchor
+on context changes, releases the old publication/reservation, and restores any remaining panel flags. Actor.WorldInfo already
+has a ReflectCheck row; no new reflection symbol or engine-memory write is introduced. All panel writes still use journalled
+FieldRef writes; the render swap uses the journalled path described in research/51 section 8.4.
+
+Landing can open PartySelect before a foot camera exists in the new world. That screen alone is allowed to publish without
+a saved view: a room panel straight ahead, no old-world anchor and **no held-view swap**, over the destination's current
+camera. Its actual destination framing remains a headset acceptance check. Other foot-anchored screens still require a
+known local foot view; the cockpit path remains unchanged. PartySelect is Flash portraits, not CharacterRecord's mannequin:
+`ShowsFigure(PartySelect)` remains false; there is no evidence of a UI-world figure capture causing this failure.
+
+The small `[MEVR]` seam in `CineFinishDecision` uses `core/vr/PresentationHold::WorldGuiOwnsView`: an admitted live-world GUI
+in mode 7/10 clears the outgoing cinema/flat decision immediately. A GUI blip without ownership, front-end menus and real
+movies/cinematics retain their existing policy. The generic render hold also requires a world-screen mode before swapping
+the camera, so a last GUI publication cannot hold a subsequent movie's view.
+
+**Offline verification:** `tests/WorldUiReturnTests.cpp` follows Normandy foot view -> landing movie -> new world ->
+PartySelect before any foot view -> destination gameplay, plus wrong-camera samples, controller replacement, missing GUI
+ownership, front-end and cinematic guards. Registered in Main.cpp and CMakeLists.txt. Build/test results follow after
+completion. No headset or runtime result is claimed: follow the dated landing checklist, then regress the normal airlock
+squad pick, shop/omni-tool, Mako and extraction screens.

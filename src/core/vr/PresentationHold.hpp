@@ -18,6 +18,12 @@
 // Game-independent (unit-tested, tests/Main.cpp TestPresentationHold).
 namespace mevr::vr::presentation {
 
+// An admitted room GUI takes over from the outgoing cinematic even if the cine latch or
+// movie detector still remembers it. A mode-7 blip without ownership remains cinematic.
+inline constexpr bool WorldGuiOwnsView(int mode, bool owned, bool frontEnd) {
+    return owned && !frontEnd && (mode == 7 || mode == 10);
+}
+
 class FrontEnd {
 public:
     // Gameplay ends the start-up's front end once it lasts this many frames (the title's camera flight goes 6, 0 for a

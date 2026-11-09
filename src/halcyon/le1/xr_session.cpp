@@ -23,6 +23,7 @@
 #include "logger.h"
 #include "mevr_bridge.h"   // [MEVR]
 #include "core/vr/QuestPacing.hpp" // [MEVR] cached frame ownership, game-independent and tested
+#include "core/vr/PresentationHold.hpp" // [MEVR] world GUI takes over from a landing cinematic
 #include "render_hook.h"
 #include "d3d_capture.h"
 #include "vr_menu.h"
@@ -3494,6 +3495,13 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
     if ((in.inGalaxyMode && MELEVR::MevrBridge::GalaxyHologram(nullptr, nullptr)) || MELEVR::MevrBridge::GalaxyHeld(in.gameMode))
     {
         d = {}; // [MEVR] table ownership also beats the outgoing movie's flat-force/latch on return (research/51 8.4)
+        return;
+    }
+    // [MEVR] research/53 section 7: landing's PartySelect can follow a movie without a mode-0 tick.
+    // Live GUI ownership must clear the old cinematic presentation, not merely veto menuFlat.
+    if (mevr::vr::presentation::WorldGuiOwnsView(in.gameMode, in.liveWorldGui, in.frontEndScreen))
+    {
+        d = {};
         return;
     }
     // [MEVR] research/59: a conversation in the world (the view held at Shepard's, first person) is the world as on foot.

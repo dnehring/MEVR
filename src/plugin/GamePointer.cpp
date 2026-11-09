@@ -1029,7 +1029,8 @@ bool GalaxyViewSwapBegin() noexcept {
         return true;
     }
     auto const ui = mevr::vr::world_ui::Latest(500);
-    if (!ui || ui->holdRender == 0 || ui->povLocationAddress == 0 || ui->povRotationAddress == 0 || ui->povFovAddress == 0) {
+    if (!mevr::vr::world_ui::ScreenMode(MELEVR::HeadAim::ReadGameModeSEH()) ||
+        !ui || ui->holdRender == 0 || ui->povLocationAddress == 0 || ui->povRotationAddress == 0 || ui->povFovAddress == 0) {
         return false;
     }
     gGalaxySwap.location = reinterpret_cast<float*>(ui->povLocationAddress);
