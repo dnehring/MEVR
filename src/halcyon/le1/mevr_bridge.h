@@ -269,7 +269,7 @@ void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const head
 bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept;
 // [MEVR] True while the mod holds the view at Shepard's for the map in the CIC: the map open, and its opening and closing
 // cutscenes (their camera flights read as cutscenes): Halcyon presents the world as on foot then too.
-bool GalaxyHeld() noexcept;
+bool GalaxyHeld(int gameMode) noexcept; // [MEVR] a suspended map never holds a movie/conversation camera
 // [MEVR] Around the main view's CalcSceneView (game thread): while the mod holds the view in the CIC at render time, Begin puts
 // the held view into the player camera's POV (true: it did) and End puts the game's map camera back.
 bool GalaxyViewSwapBegin() noexcept;

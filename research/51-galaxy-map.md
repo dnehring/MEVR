@@ -385,3 +385,65 @@ synthetic projection log reports zero pose delta and equal scales; this is not a
 `git diff --check` passed. No game build, install, injection, commit or headset test. The owner builds/installs; check
 stationary tags, head turns/leans, zoom/selection through galaxy/cluster/system, travel and close/reopen. Keep the existing
 window pose, size, crop, depth, backdrop and UI frame-ownership patch. Visible alignment and temporal acceptance remain [verify].
+
+### 8.4 One table through travel and arrival (2026-11-08)
+
+Owner's headset report: entering a system/planet became full screen; after a cinematic the map could not be used there
+again. Sources: the owner's `LE1MEVR.log`, copied read-only into ignored scratch, and the source in this worktree.
+No game launch, deployment, input, GPU test, binary disassembly or decompilation was performed for this investigation.
+
+**Evidence (log line numbers in that copy):**
+
+- 602-628, 22:08:11.398-.630: the CIC hold starts at (-5168, 14655, -35924) game units; table (-0.04, -0.91, -3.01) m;
+  two 1920-square captures start. The head is 3.0 m from the table centre.
+- 689-707, 22:08:22.146-25.021: cluster Argos Rho (level 2), then MessageBox at 23.234, then system Hydra (level 3)
+  at 24.955. At 24.987 UI goes to the eyes, the host hologram says `down (not the galaxy map)` and window says
+  `down (not the map's mode)`. At 25.020 the mod reads **mode 8**, the GalaxyMap panel is invisible; at 25.021 the
+  captures pause, the view is released, and the mod says `down (the map closed)`. At 25.028 the 3D cinema screen appears.
+- 748-780, 22:08:34.053 onward: **mode 9 is already back**, the same GalaxyMap panel becomes visible and the CIC hold
+  restarts at the same correct world coordinates. But captures start then pause after **one tick**, repeatedly.
+- 4479-4483: a mode-5 radio conversation starts at 22:09:00.056. 4552-4562, 22:09:04.146-.165: back at level 4,
+  still the correct saved CIC camera, but the table is (-12.74, 32.88, -24.08) m, 27.2 m horizontally from the head.
+- 5063-5067 and 5101, 22:11:03.379 and 22:11:12.616: the second opening directly at system Hydra, then its planet page,
+  works on the table. The planet page has **zero selectable actors**. These levels are supported; a level-3/4 flat rule
+  would misdiagnose the failure. There are no `[VRSTATE]` lines in the supplied mod log; those belong to Halcyon's log.
+
+**Cause in code.** `Tick` only holds 9 and the bounded opening/closing 0/6 bridge. Travel's 8 falls through `Forget`:
+it pauses captures, clears the publication and invalidates `gLastAnchor` because the hold is inactive. Returning 9 starts
+`StepWindow` **before** `PlaceInWorld`. The latter asks `view_anchor::Current()` to rebuild the lost anchor. While the
+renderer still presents the cinematic it can return nothing; `Forget` pauses the just-started captures before publishing
+a scene. `MevrBridge::GalaxyHologram` then has no scene with which to veto `galaxyFlat`: the recovery depends on its own
+successful publication. If Current does become available, it uses the actual player POV, which is still the **map/director
+camera**, not the saved CIC view. It maps the console through the wrong frame and freezes that distant placement. This
+explains both the start/pause loop and the 27.2 m result without claiming to reconstruct every rendered frame from this log.
+The generic 100 ms plain-VR entry delay and the cinematic/movie flat-force can also carry the outgoing presentation into
+the first returning map frame. `GalaxyHeld` previously had no game-mode bound, so stale publication could suppress the
+start of an unrelated movie/conversation for a frame.
+
+**Fix.** `game/GalaxyMap` records the tracking frame with the actual on-foot camera (using the existing camera-ownership
+check), scoped to its world/controller by `core/vr/WorldViewHold`. On interruption it pauses the captures and publishes a
+suspended table reservation; it does not teach an anchor from the cinematic. Returning 9 re-projects the console and its
+disc from the saved CIC frame, independently of whether Halcyon has resumed head-tracked rendering yet. A different
+world/controller invalidates the saved view, console and capture references. Closing still uses the existing bounded
+0/6 bridge; a closed map cannot reserve a later unrelated cinematic.
+
+Presentation is independent of capture readiness and the optional selectable-object model: all four levels retain the
+window layout and Flash movie while targets warm up. `plugin/HalcyonOverlays` takes UI ownership from the current publication,
+not last Present's hologram draw result; `plugin/GalaxyHologram` keeps its UI plane/width while the captures are pending.
+`plugin/GamePointer` bounds the held-view swap to the table's modes; the small `[MEVR]` seams in `xr_session` let a returning
+table beat the old movie/flat/cinematic decision and accept it immediately. `Scene.suspended` reuses a padding byte; no ABI
+size change. The generic camera swap/restore now journals its writes too. No new reflection symbol was needed (Actor.WorldInfo
+and the player/camera-ownership accessors already have ReflectCheck rows).
+
+**Interactions.** Galaxy/cluster/system native cross-hair picks keep their existing pointer path. The level-4 planet
+information/buttons and the travel question are Flash controls: they now receive the same GameMenu `GetCursorPos` + queued
+`GuiKey` events as the world screens (research/57 section 6), including fingertip presses, without monitor-edge clamping.
+The normal map camera remains untouched outside the existing render-time swap, including the auxiliary label projection.
+No disc size, tilt, backdrop, depth, crop or previous label/frame-ownership fix was changed.
+
+**Offline checks and remaining acceptance.** `tests/TableReturnTests.cpp` exercises all four levels (including an empty
+planet model), travel/movie/radio return, first-frame suspended ownership, closing, disabled ownership, wrong-camera samples,
+world/controller changes, Flash routing and the immediate presentation handoff. Registered in Main.cpp and CMakeLists.txt.
+Build/test results are recorded below after completion. Headset acceptance is pending: follow the dated checklist line,
+especially Travel -> movie/radio -> map, planet Land/Survey/Return and a direct system/planet reopening. Check one pause and
+one restart per interruption and the same physical console placement, in both eyes. Log-based diagnosis is not visual QA.

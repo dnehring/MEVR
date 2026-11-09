@@ -3491,10 +3491,10 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
 {
     // [MEVR] research/51 section 8: the galaxy map open in the CIC (the view held at Shepard's) is the world as on foot, not a
     // cutscene (its camera reads as one): no flat screen, no 3D cinema screen.
-    if ((in.inGalaxyMode && MELEVR::MevrBridge::GalaxyHologram(nullptr, nullptr)) || MELEVR::MevrBridge::GalaxyHeld())
+    if ((in.inGalaxyMode && MELEVR::MevrBridge::GalaxyHologram(nullptr, nullptr)) || MELEVR::MevrBridge::GalaxyHeld(in.gameMode))
     {
-        d.inConversation = false;
-        d.inCutscene = false;
+        d = {}; // [MEVR] table ownership also beats the outgoing movie's flat-force/latch on return (research/51 8.4)
+        return;
     }
     // [MEVR] research/59: a conversation in the world (the view held at Shepard's, first person) is the world as on foot.
     if (d.inConversation && in.gameMode == 5 && MELEVR::MevrBridge::ConversationInWorld()) d.inConversation = false;
@@ -3805,7 +3805,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     {   // [MEVR] research/56: plain VR after another view waits 100 ms with that view kept: pressing a key at the title went
         // 6 -> 0 -> 7 within 40 ms, one frame of the world between the cinematic's screen and the main menu's panel.
         static CineDecision s_shownCine;
-        if (MELEVR::MevrBridge::HoldPlainVr(!cine.forceFlatCine && !cine.vrCineActive, gameMode, (liveWorldGui || (mevrWorldUi & 4u) != 0) && !frontEndHold)) cine = s_shownCine;   // [MEVR] authorized handoff accepts immediately
+        if (MELEVR::MevrBridge::HoldPlainVr(!cine.forceFlatCine && !cine.vrCineActive, gameMode,
+            (liveWorldGui || (mevrWorldUi & 4u) != 0 || MELEVR::MevrBridge::GalaxyHeld(gameMode)) && !frontEndHold)) cine = s_shownCine;   // [MEVR] table/UI handoff accepts immediately
         else s_shownCine = cine;
     }
     const bool inConversationMode = cine.inConversation;

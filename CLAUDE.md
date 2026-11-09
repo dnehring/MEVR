@@ -527,6 +527,11 @@ switching frameworks.
   press|trace|input|movie|invoke|var|aim`, `mevr props`/`setprop`, `tools/make-galaxy-pick-recording.py` (`--world`, `--snapshot`,
   `--panel-uv`), offline look `mevr-galaxy-preview`. Logs `galaxy hologram:`; snapshot `"galaxyHologram"` (objects' places), layers
   `galaxy-left`/`-right`.
+  **Travel/arrival return (2026-11-08, research/51 section 8.4):** the table reservation survives modes 8/5/6 while its
+  captures pause; only mode 9 resumes it (the closing 0/6 bridge is separate). Re-project the console from the saved CIC
+  frame, never the map/cinematic POV. A world/controller change discards the reference. All four levels keep the window
+  and Flash panel even while captures warm up; planet info/buttons and the travel box use the game-thread GUI events.
+  Halcyon's outgoing movie/latch and 100 ms VR-entry hold cannot send a returning map to its flat panel. Headset check pending.
 - LE1 game screens in the room ([research/53](research/53-world-screens.md), HostServices v27 `setWorldUi`; `core/vr/WorldUi`,
   `game/WorldUi`, host `plugin/WorldUi`; `[WorldUi]` in `ASI\LE1MEVR.ini`): research/53 audits all 35 of the game's screens (its GUI
   library, `BioSFManager.HandlerLibrary`). **Every flat screen goes in the room** (the user, 2026-11-04; `screens = all`; the front

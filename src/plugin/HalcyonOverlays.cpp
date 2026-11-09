@@ -33,6 +33,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/GalaxyHologram.hpp"
+#include "core/vr/GalaxyMap.hpp"
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/MakoControls.hpp"
 #include "core/vr/InteractLabel.hpp"
@@ -1799,8 +1800,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool const gameplay = gLastGameMode >= 0 && gLastGameMode <= 4;
     // The galaxy map open in the CIC (research/51 section 8): the game's UI (its own map hidden, so its travel question) goes to
     // the panel too, which then stands over the hologram's table instead of in front of the body.
-    bool const galaxyUi = gLastGameMode == 9 && mevr::host::galaxy_hologram::InWorld();
     auto const galaxyScene = mevr::vr::galaxy_holo::Latest(500);
+    // Ownership is published by the mod, not last Present's Layer result. The first return
+    // frame already belongs to the table even while its captures are warming up.
+    bool const galaxyUi = gLastGameMode == 9 && galaxyScene && galaxyScene->inWorld && galaxyScene->anchorValid;
     bool const galaxyWindowUi = galaxyUi && galaxyScene && galaxyScene->windowOn != 0;
     // One of the game's screens standing in the room (research/53: the shop...): its UI goes to the panel, placed where it opened.
     bool const worldUi = mevr::vr::world_ui::ScreenMode(gLastGameMode) && mevr::host::world_ui::Active();
@@ -2507,8 +2510,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         // hologram, and the game pointer's while the game asks or the window shows the map.
         if (galaxyPanel && count < capacity) {
             layersOut[count++] = &gPanelQuad;
-            if (mevr::host::galaxy_hologram::AskingTravel() || mevr::host::galaxy_hologram::WindowOn()) {
-                mevr::host::game_pointer::NoteGameUiQuad(gPanelQuad.pose, gPanelQuad.size.width, gPanelQuad.size.height);
+            if (galaxyWindowUi || mevr::host::galaxy_hologram::AskingTravel()) {
+                bool const flash = galaxyScene && mevr::vr::galaxy_map::FlashInteraction(galaxyScene->level, galaxyScene->askTravel != 0);
+                mevr::host::game_pointer::NoteGameUiQuad(gPanelQuad.pose, gPanelQuad.size.width, gPanelQuad.size.height,
+                    flash ? MELEVR::MevrBridge::PanelKind::GameMenu : MELEVR::MevrBridge::PanelKind::GalaxyMap);
             }
         }
     }

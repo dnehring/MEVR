@@ -11776,6 +11776,7 @@ int RunLandmarkTests();
 int RunConversationWorldTests();
 int RunGuiEventsTests();
 int RunOmniPadTests();
+int RunTableReturnTests();
 int RunOmniRailMotionTests();
 // tests/PerformanceModesTests.cpp: Display's Performance row (research/60).
 int RunPerformanceModesTests();
@@ -11949,6 +11950,7 @@ int main() {
     gFailures += RunConversationWorldTests();
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();
+    gFailures += RunTableReturnTests();
     gFailures += RunOmniRailMotionTests();
     gFailures += RunPerformanceModesTests();
     gFailures += RunQuestPacingTests();

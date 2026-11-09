@@ -19,6 +19,22 @@
 // game's own mouse. This file: engine-agnostic and unit-tested (tests/Main.cpp TestGalaxyMap).
 namespace mevr::vr::galaxy_map {
 
+// Presentation ownership survives an interruption; rendering and input do not. In particular a
+// travel movie (8), conversation (5) or loading read failure must never inherit the CIC camera.
+inline constexpr bool TableView(int mode, bool ownsTable, bool suspended) {
+    return ownsTable && (mode == 9 || (!suspended && (mode == 0 || mode == 6)));
+}
+
+inline constexpr bool RememberTable(int mode) {
+    return mode == 5 || mode == 6 || mode == 8 || mode == -1 || mode == 255;
+}
+
+// These are Flash controls, not the map's native cross-hair picking. They use the
+// same deterministic GuiKey/cursor path as the other game screens (research/57).
+inline constexpr bool FlashInteraction(int level, bool travelQuestion) {
+    return level == 4 || travelQuestion;
+}
+
 // Closing the map is 9 -> 0 -> 6 -> 0. Keep the CIC view across the brief first 0,
 // but release at the final 0; bound both waits if the cinematic never starts/ends.
 class ClosingHold {
