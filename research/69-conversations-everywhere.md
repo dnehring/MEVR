@@ -105,8 +105,16 @@ or by leaving the area. With the six chains out, what is lost is spoken lines, n
 after the whole scene. One consequence to look at in the game: a scene that follows a chain (the Garrus wheel conversation)
 then starts wherever the player has walked to, and its stage puts Shepard on his mark under the dip from black.
 
-**Not read yet.** What the two transitions on most bark lines do (188 and 189: 56 uses on flowed lines, every other transition
-once or twice; they sit on the game's own barks too). The output links' names.
+**What the transitions are** (`conversation-scan <CookedPCConsole> out.txt --state-events 188,189,...`,
+`tools/conversation-scan/StateEvents.cs`: the plot manager's `BioStateEventMap` read through Legendary Explorer's converter; LE1
+keeps it in `BIOC_Materials` as `PlotManagerAuto.StateTransitionMap`, 3,751 events, and 84 more in `PlotManagerAutoDLC_UNC`).
+Transitions 188 and 189, which make up 56 of the uses on flowed lines and sit on the game's own barks too, each set one
+*local* integer of the object they run on (0 and 1): a bark's own bookkeeping, nothing of the story's state. The transitions
+on the six chains kept as conversations are the story's: global plot booleans (Kahoku's, the krogan's and Fai Zhou's on Feros;
+`jug20_wrex`'s was not looked up), four sub-states of one parent and an increment of a global integer by 8 on Juliana Baynham's chain, a global boolean of
+Bring Down the Sky. So the rule keeps what matters and the bark bookkeeping flows.
+
+**Not read yet.** The action's output links' names.
 
 ### 3. Cutscene or world, decided at run time
 
@@ -194,3 +202,7 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   `engine/Addresses.hpp`; the placement provider, the walk's trigger guard and the three presence rules in
   `game/ConversationWorld`; the bark refusal in `game/ConversationFlow`. All three builds and the offline tests pass. Not yet
   run in the game.
+- 2026-11-09, evening: landed on main (a96ce25). The game folder is not free: the release session holds it for the owner's
+  QA of the 0.2.0 candidate (the players' build of 6bb3227 is installed), so the in-game checks wait for the owner's word, and
+  the candidate goes back into the folder afterwards. Meanwhile the transitions were read (item 1, "What the transitions
+  are"): the two on most bark lines are object-local bookkeeping, the six kept chains carry the story's.
