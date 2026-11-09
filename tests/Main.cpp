@@ -5241,6 +5241,17 @@ void TestSquadParser() {
     CHECK(p.clauses.size() == 1 && line(p, 0) == "ALL|-|-|attack|PT1");
     p = Parse("as soon as you can, liara, hold here", two, five, known, st);
     CHECK(p.clauses.size() == 1 && line(p, 0) == "L|-|-|hold|-");
+    // A weapon and an enemy of the same word: "your sniper" is the gun, "that sniper" the geth (2026-11-09, the user's chains).
+    std::vector<sc::Group> withSniper = groups;
+    withSniper.push_back(group(5, "geth sniper", 1, sc::Sector::Left, sc::Band::Far, sc::Elevation::Above, "bridge", 35.0f));
+    p = Parse("garrus, equip your sniper, and take out that sniper on the bridge", scene, withSniper, roster, st);
+    CHECK(p.clauses.size() == 2 && line(p, 0) == "G|SR|-|-|-" && line(p, 1) == "G|-|-|attack|E5");
+    p = Parse("garrus, take out that sniper with your sniper", scene, withSniper, roster, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "G|SR|-|attack|E5");
+    p = Parse("garrus, use your sniper on the troopers on the bridge", scene, withSniper, roster, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "G|SR|-|attack|E1");
+    p = Parse("wrex, shotgun, rush the sniper", scene, withSniper, roster, st);
+    CHECK(p.clauses.size() == 1 && line(p, 0) == "W|SG|-|attack|E5");
 }
 void TestSquadStanding() {
     using namespace mevr::vr::squad_standing;

@@ -92,11 +92,13 @@ Mode ParseMode(char const* text, Mode fallback) {
 
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
+    // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.
     static constexpr std::string_view kSetPieces[] = {
-        "end90_saren", "jug70_sovereign", "los10_trig_door00", "nor10_captain", "nor10_comm_room", "nor20_empty_locker",
-        "nor20_ilos_approach", "nor20_ilos_open", "nor20_leaving_oculon", "nor20_start_kaidan", "nor20_start_liara",
-        "prc1_cutscene_discovered", "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "sta60_wrex_at_fists",
-        "sta90_council_saren", "war30_trig_01_entry",
+        "end90_council_alive", "end90_council_dead", "end90_saren", "jug20_sal_captainkirrahe", "jug70_sovereign",
+        "los10_trig_door00", "nor10_captain", "nor10_comm_room", "nor20_empty_locker", "nor20_ilos_approach",
+        "nor20_ilos_open", "nor20_leaving_oculon", "nor20_start_kaidan", "nor20_start_liara", "prc1_cutscene_discovered",
+        "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "sta60_wrex_at_fists", "sta90_council_saren",
+        "war30_trig_01_entry",
     };
     std::string key;
     std::size_t const dot = name.rfind('.');

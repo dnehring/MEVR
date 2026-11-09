@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Every LE1 conversation from the game's packages, without running the game (research/59 "The scan"): one JSON line per
 //   conversation   a BioConversation (the _LOC_INT packages hold them): its lines, speakers, camera intimacy, GUI styles
-//   start          a BioSeqAct_StartConversation in a level's script: which conversation, and its stage (a BioStage: the
-//                  marks the game puts the actors on, and the stage's cameras) or none (the actors stay where they stand)
+//   start          a BioSeqAct_StartConversation in a level's script: which conversation, its owner (the actor the conversation
+//                  belongs to: its class and, when it is placed in the level, its Location) and its stage (a BioStage: the marks
+//                  the game puts the actors on, and the stage's cameras) or none (the actors stay where they stand); the launcher
+//                  (tools/conversation-launch.ps1) opens the level, streams the chunk in and stands Shepard by the owner
 //   cinematic      a SeqAct_Interp a conversation node fires in a level's script (BioSeqEvt_ConvNode -> ... -> the matinee):
 //                  its groups and tracks, so authored camera cuts (a director track) and actor moves (move tracks) show
 // Reads only; writes nothing into the game. Its output is game data: keep it out of the repository.
@@ -124,6 +126,36 @@ internal static class Scan
             ["conv"] = conv?.InstancedFullPath,
             ["comment"] = props.GetProp<ArrayProperty<StrProperty>>("m_aObjComment")?.FirstOrDefault()?.Value,
         };
+        foreach (ExportEntry variable in Linked(pcc, props, "Owner"))
+        {
+            // The owner link is a SeqVar_Object (its ObjValue the actor) or a SeqVar_Player / a named variable (found at run time).
+            PropertyCollection vp = variable.GetProperties();
+            ExportEntry owner = pcc.GetEntry(vp.GetProp<ObjectProperty>("ObjValue")?.Value ?? 0) as ExportEntry;
+            record["ownerVar"] = variable.ClassName;
+            if (vp.GetProp<NameProperty>("m_sObjectTagToFind") is { } findTag)
+            {
+                record["ownerTag"] = findTag.Value.Instanced;  // BioSeqVar_ObjectFindByTag: the actor by its Tag at run time
+            }
+            if (owner == null)
+            {
+                continue;
+            }
+            record["owner"] = owner.InstancedFullPath;
+            record["ownerClass"] = owner.ClassName;
+            PropertyCollection op = owner.GetProperties();
+            if (op.GetProp<StructProperty>("Location") is { } at)
+            {
+                record["ownerAt"] = new[] { at.GetProp<FloatProperty>("X")?.Value ?? 0, at.GetProp<FloatProperty>("Y")?.Value ?? 0, at.GetProp<FloatProperty>("Z")?.Value ?? 0 };
+            }
+            if (op.GetProp<StructProperty>("Rotation") is { } rot)
+            {
+                record["ownerYaw"] = (rot.GetProp<IntProperty>("Yaw")?.Value ?? 0) * 360.0 / 65536.0;
+            }
+            if (op.GetProp<NameProperty>("Tag") is { } tag)
+            {
+                record["ownerTag"] = tag.Value.Instanced;
+            }
+        }
         foreach (ExportEntry variable in Linked(pcc, props, "Stage"))
         {
             ExportEntry stage = pcc.GetEntry(variable.GetProperties().GetProp<ObjectProperty>("ObjValue")?.Value ?? 0) as ExportEntry;
@@ -135,6 +167,10 @@ internal static class Scan
             record["stage"] = stage.InstancedFullPath;
             record["stageType"] = pcc.GetEntry(stageProps.GetProp<ObjectProperty>("Type")?.Value ?? 0)?.InstancedFullPath;
             record["stageCameras"] = stageProps.GetProp<ArrayProperty<StructProperty>>("m_CameraCustomList")?.Count ?? 0;
+            if (stageProps.GetProp<StructProperty>("Location") is { } stageAt)
+            {
+                record["stageAt"] = new[] { stageAt.GetProp<FloatProperty>("X")?.Value ?? 0, stageAt.GetProp<FloatProperty>("Y")?.Value ?? 0, stageAt.GetProp<FloatProperty>("Z")?.Value ?? 0 };
+            }
         }
         return record;
     }

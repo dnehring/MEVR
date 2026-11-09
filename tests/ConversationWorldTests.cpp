@@ -49,7 +49,9 @@ void TestSetPieces() {
     CHECK(cw::IsSetPiece("sta90_council_saren"));
     CHECK(cw::IsSetPiece("nor10_comm_room_d"));
     CHECK(!cw::IsSetPiece("BioConversation nor20_medbay_d.nor20_medbay_dlg"));  // the medical bay stays in the world
-    CHECK(!cw::IsSetPiece("end90_saren2_dlg"));                                 // a walk, not a set piece
+    CHECK(cw::IsSetPiece("end90_council_alive_dlg"));                           // Shepard walked by the game
+    CHECK(cw::IsSetPiece("BioConversation jug20_sal_captainkirrahe_D.jug20_sal_captainkirrahe_dlg"));
+    CHECK(!cw::IsSetPiece("end90_saren2_dlg"));                                 // an NPC's walk: in the world, to check
     CHECK(!cw::IsSetPiece("nor10_captain_extra"));
     CHECK(!cw::IsSetPiece(""));
 }

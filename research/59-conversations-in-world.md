@@ -313,6 +313,55 @@ or deployment. Two existing installer recovery cases were skipped because the lo
 **QA-approved by the owner (2026-11-07)** in the QA build 0.1.0+7ffe648 with these three fixes. Still open: walking to marks (the
 prototype below, off), the one jump of the player's own place after a cutscene.
 
+## The launcher: any conversation in two minutes, no save (2026-11-09)
+
+The owner: "a system where you can launch any of the conversation experiences so we can quickly validate the look and feel without
+needing explicit saves." Save editors were weighed first: Legendary Explorer's library has no LE1 save support and Trilogy Save
+Editor is a GUI without a command line, so saves would mean our own LE1 save writer. The game itself has every piece, and the scan
+has the knowledge:
+
+- **The catalogue** (`python tools/conversation-scan.py scan.jsonl --catalogue %LOCALAPPDATA%/MEVR/conversation-catalogue.json`):
+  the scan now records each `BioSeqAct_StartConversation`'s owner (its Owner link's `SeqVar_Object`: the actor's class, `Tag`,
+  `Location` and `Rotation` when it is placed in the level) and its stage's place; the catalogue adds the persistent level
+  (`BIOA_ICE50_06_DSG` -> `BIOA_ICE00`; `UNC`/`FRE` keep their number) and the chunk (`ICE50_06`). 713 starts of 404 conversations,
+  421 with a placed owner; the rest are spawned by the plot or passed in from a parent sequence (no place to stand).
+- **`tools/conversation-launch.ps1 <name> [-World on|screen] [-Party] [-NoOpen] [-Snapshot]`** (`-List <text>` searches): `disconnect`,
+  `open <persistent level>`, wait for gameplay (a map that sits in the party screen for 20 s gets `mevr vehicle party`), find a
+  `BioTriggerStream` volume whose states show the chunk and `mevr stream touch` it, `mevr setloc` Shepard 1.5 m in front of the
+  owner and turn him to face it (the console's `set SFXPawn_Player Rotation` and `set BioPlayerController Rotation`: the first run
+  held the view 107 degrees away from Mira, since the on-foot view keeps the heading from before the teleport), find the start
+  action by its path's tail and `mevr activate n 0`. Plot conditions are skipped: lines can play out of their story.
+
+**First run, five conversations on the fake headset:** Mira on Noveria (`ICE50_08`, streamed), Harkin in Chora's Den (`STA60_05A`)
+and Chellick at C-Sec (`STA30_04A`) started in first person about two minutes after the command, Shepard 2 m from the owner,
+facing it after the fix (Chellick: the view at 180 degrees, Chellick at a bearing of 162; his office was drawn, the wheel in front,
+but nobody stood behind the desk in the snapshot: a placed pawn the plot hasn't shown yet [verify `bHidden`], the fresh plot's
+limit). Two didn't: **Virmire** (`JUG20_08`): the level's own trigger
+conversation (`jug20_trigger`) started after the stream (the launcher now ends one that starts by itself before firing), and the
+teleport to the camp killed Shepard within 3 s, god mode or not (the GameOver screen is mode 7): a teleport into a chunk whose
+floor isn't loaded yet drops him through the world to the kill plane. Next: wait until `mevr vehicle levels` lists the chunk as
+loaded, then teleport a little above the owner's place; **the medical bay** (`NOR10_07wake`): the chunk is loaded by the plot (the wake-up after Eden Prime), no
+streaming volume shows it, and **the engine's `streamlevelin BIOA_NOR10_07wake` froze the game** (no log line for 90 s, the
+heartbeat included; killed and relaunched): plot-loaded chunks need the plot's own Kismet (its level-streaming action fired with
+`mevr activate`), the next step for those.
+
+### Marking the rest: Shepard's walks and wide stages (2026-11-09)
+
+The owner: "Some scenes span wide areas, or has Shepard slightly walking, I imagine we'll need to mark those you determine if those
+need to be cinematic or not." Two more signs are in the data, and the scan gives every conversation a **verdict** for First person
+(`tools/conversation-scan.py --verdicts`; `--set-pieces` prints the C++ list `cw::IsSetPiece` is built from, so the mod's list is
+generated, not typed):
+
+- **Shepard walked by the game** (a move track on his own matinee group, `shep`/`player`): 4 conversations (both Council endings,
+  4 lines each; Liara's first talk; Kirrahe's briefing, 1 line). The player's place would move under the headset: **screen**.
+- **Wide stages** (the stage type names its size: `ST_2P_600_combat`, `ST_2P_1000_observe`, people 6-10 m apart): 6 conversations
+  (Kaira Stirling, the lab ambush and Olar's execution on Noveria; the researcher, the biotic and Darius of the assignments), all
+  stand-offs. People stay where they stand in the world mode, so these may well work; **check** each with the launcher.
+- **An NPC's authored walk**: 23 (the squadmates' talks, Wrex and Kirrahe's camp on Virmire, Bring Down the Sky...): **check**.
+
+Verdicts over all 491: **screen 21** (18 framed + 3 more for Shepard's walks; Liara's was both), **check 26**, **world 387**, the 57
+ambient without one. The 21 are in `IsSetPiece` and go to the 3D screen in First person; the 26 are the launcher's next list.
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the
