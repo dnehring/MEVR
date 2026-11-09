@@ -678,6 +678,16 @@ static bool StepInner(Frame const& frame, Dot& dot) {
             }
         }
     }
+    auto const drawnTip = frame.body ? vr::omni_rail::BodyFingertip(*frame.body) : std::nullopt;
+    static std::optional<bool> bodyTouch;
+    if (bodyTouch != drawnTip.has_value()) {
+        mevr::log::Info("game pointer: touch from {}", drawnTip ? "Shepard's drawn fingertip" : "the controller (no body)");
+        bodyTouch = drawnTip.has_value();
+    }
+    if (drawnTip && gProjectingHand != 1) {
+        input.hands[1].tipValid = true;
+        input.hands[1].tip = *drawnTip;
+    }
     input.touchU0 = gTouchArea[0];
     input.touchV0 = gTouchArea[1];
     input.touchU1 = gTouchArea[2];

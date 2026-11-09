@@ -197,12 +197,15 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   by position sampling alone. Still off by default; NOT yet checked in the game. (research/59 "Walking to marks (prototype)")
 ### The omni-tool menu on the wrist
 
-- [ ] 2026-11-08 right rail and power-up (research/57 section 9): tap the wrist, then Equipment; the rail slides right over 0.28 s
-  and the right index reaches it without crossing the screen. Touch/ray during the slide must select only the drawn rail; no
-  accidental screen click or wrist close. Switch all tabs (no new slide), close, reopen via the game, and compare `railSide = left`.
-  With `mevr omnitool on`, judge the 0.60 s dim-to-lit start, subtle first 0.15 s flicker, both gauntlet/display and particles,
-  matching fan/rail light, and the unchanged close. Confirm `omni tool: power-up through ...` names a resolved target; a
-  `nothing found: full at once` line is fallback, not successful brightness QA. Repeat with the power wheel, seated and standing.
+- [ ] 2026-11-09 rail/fingertip/power follow-up (research/57 section 9): tap the wrist, then Equipment. The standalone rail
+  fades in place for 0.10 s during the 0.18 s screen unfold, then slides from behind the right edge over 0.43 s (cubic in-out),
+  without crossing the screen. Completion log must include distance, duration, frames (about 39 at 90 Hz) and elapsed time.
+  Touch/ray during emergence selects only the visible rail. Compare drawn right fingertip with touch on rail, Inventory's
+  tabs/Equip, bypass opening buttons and puzzle d-pad: source logs must say Shepard's drawn fingertip through modes 7/10,
+  with no accidental wrist close or projecting-left-hand click. Switch all tabs, close/reopen via the game, compare railSide=left.
+  With `mevr omnitool on` and `mevr omnitool params`, inspect first-wake emitter/LOD0/distribution/InstanceParameters/material
+  discovery and cache `0 entries` vs unavailable. Judge the 0.60 s dim-to-lit gauntlet/display/fan and unchanged close.
+  A `nothing found: full at once` line is fallback; a named route needs visible coverage QA. Repeat power wheel and seated/standing.
 - [ ] Rail handoff and provenance (2026-11-07, research/57): test touch and ray picks with identical wrist/head poses, including
   Equipment while facing a selected useable. No large Halcyon menu quad or UI-world backdrop should appear; Equipment -> XMods
   and Computer -> Options/Save/Load stay on the wrist, without `opened by using ...`. Genuine use-opened equipment keeps its anchor.

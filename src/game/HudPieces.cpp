@@ -8,6 +8,7 @@
 #include "game/ArmIk.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/ViewAnchor.hpp"
+#include "game/WorldUi.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/Sights.hpp"
@@ -78,15 +79,15 @@ int BoneNamed(engine::skeleton::RefSkeleton const& skeleton, std::string_view na
     return -1;
 }
 
-// Fills pieces.body* on foot in first person, from last tick's pose (after arm IK and the fingers). Game thread.
+// Drawn first-person arms on foot or in the wrist screen's held on-foot frame; last posed bones after arm IK/fingers. Game thread.
 void FillBody(hp::Pieces& pieces, bool onFoot) {
     std::string why;
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
     ue3::Object* const mesh = pawn != nullptr ? player::Mesh(pawn) : nullptr;
     ue3::Object const* const asset = mesh != nullptr ? player::SkeletalMesh(mesh) : nullptr;
-    std::optional<engine::TrackingFrame> const frame = onFoot ? view_anchor::Current() : std::nullopt;
-    if (!onFoot) {
+    std::optional<engine::TrackingFrame> const frame = onFoot ? view_anchor::Current() : world_ui::WristTrackingFrame();
+    if (!onFoot && !frame) {
         why = "not on foot";
     } else if (!arm_ik::FirstPerson()) {
         why = "arm IK isn't drawing the arms in first person";

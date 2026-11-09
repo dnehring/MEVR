@@ -599,15 +599,24 @@ switching frameworks.
   `wristWidthM` 0.30 the minigame's frame; the menu's row is Comfort > Game screens > Omni-tool screens). **A rail of the game's screens stands to its
   right** (2026-11-08: the right hand can reach it without crossing the screen; `[OmniTool] railSide = right | left`, default right;
   `core/vr/OmniRail`, host `plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`, `[OmniTool]` enabled/tap/aloneHeightM).
-  It slides from its standalone pose (otherwise tucked under the selected edge) over 0.28 s, cubic ease out, fading as it emerges.
-  Draw, touch/ray and wrist-tap suppression share that frame's interpolated quad; it takes input before the game pointer so the
-  screen behind it cannot click too. Tab backouts hold its pose; a closed screen closes it. The mode-based `closed by itself`
-  check still precedes Shown. `"omniRail"."rail"` adds side/sliding/slideS/opacity. `core/vr/OmniPower` supplies the shared
-  0.60 s luminance rise (15% to full, subtle deterministic flicker for 0.15 s), used by the gauntlet, rail and fan. The mod publishes
-  the start clock in the size-gated world-UI State, including without a screen; host and mod deploy together. The engine candidate
-  is `BioVisualEffect.SetScalarParameter` on initialized cached brightness/intensity targets, preserving original values; missing
-  targets fall back to full brightness with a log. **Its actual prefab bindings and visual coverage remain [verify] in game**:
-  `mevr omnitool on` restarts and logs curve samples/path; `off` keeps the existing close fade. Research/57 section 9 records the limits.
+  **2026-11-09 headset follow-up:** every reveal waits for the screen's 0.18 s unfold, then slides from `Tucked` at the
+  selected edge for 0.43 s with cubic smoothstep ease in-out (peak about 0.83 m/s for 0.237 m). An existing standalone rail fades in
+  place over 0.10 s; it never travels across the screen. `Exposed` clips both the drawn and hit quad; pose/crop changes do
+  not redraw RmlUi. Reveal opacity is constant; standalone power/fade opacity is quantized to eighths. Real elapsed time
+  is uncapped; the completion log gives distance, duration, frames and elapsed time. Tab backouts retain the slide.
+  `hud_pieces::Pieces` keeps its existing size: in modes 7/10 with a wrist screen and a held on-foot view, `FillBody` uses
+  `world_ui::WristTrackingFrame` (`gHold.footFrame`), never the GUI camera. The rail, game screens and bypass pad all use
+  `BodyFingertip` from those bones (controllers as fallback); the left projecting hand stays excluded. Each logs a touch
+  source change. `core/vr/OmniPower` retains the 0.60 s dim-to-full rise and initial subtle flicker for the gauntlet/fan.
+  `game/OmniTool` logs read-only discovery at the first wake per session and on `mevr omnitool params`: cache empty vs
+  unavailable, adopted systems, template emitters, LOD0 modules and their reflected particle-parameter distributions,
+  InstanceParameters, emitter/mesh materials and MIC scalar/vector names/values/parents. It tries initialized effect-cache
+  targets, otherwise direct brightness/color particle inputs through PSC SetFloat/Vector/ColorParameter (preserved baselines),
+  otherwise an already effect-owned MIC brightness scalar. Shared package materials are read only. Calls use runtime::Call
+  on the game thread; no new direct engine writes. Missing inputs keep full brightness and explain the fallback.
+  Reflection inventories/parameters have ReflectCheck rows, including dynamic module distribution fields. Actual bindings
+  and coverage of both gauntlet pieces still require the next play log and headset. Host and mod must be built together;
+  existing size-gated State/Pieces ABI is unchanged by this follow-up. Research/57 section 9 records the evidence boundary.
   since 2026-11-07, HostServices v34 carries explicit `Origin::OmniRail` through the request and backout path: an admitted rail
   opening and its related personal panels skip remembered-use anchors and use the wrist (`wristFollow` still applies; missing
   controller falls back to the room). Every eligible request reserves presentation immediately before `Show*Gui`/`ShowMenuGui`:

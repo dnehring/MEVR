@@ -520,3 +520,67 @@ LOCALAPPDATA were redirected inside this worktree, so the optional native dump c
 preview exited 0 and produced all five rail PNGs plus the valid placement SVG; the touch canvas was visually inspected
 (fallback art, no game-art cache supplied). SPDX passed; OKF passed (27 files); `git diff --check` passed. No game launch,
 deployment, commit or changes outside this worktree.
+### 2026-11-09: headset report, edge reveal and drawn-finger touch
+
+This supersedes the 2026-11-08 motion and cache-only brightness attempt above (commit 6d38cbc). The player's report:
+"it's now pretty stuttery when it opens up to the right", asking for "almost a slide to the right animation when the menu
+screen is drawn"; while open, "ensure it still matches our fingertip location", because "it looked like it was mapped to
+our controller again".
+
+The supplied LE1MEVR.log observations (2026-11-09 10:03-10:10; not re-read from the game folder here) showed 0.237, 0.478 and
+0.628 m moves in 0.28 s while heartbeats held 86-90 fps: the long standalone-to-beside traverse and cubic ease-out's fast
+start read as a jump. One first visible tucked sliver was only 0.02 x 0.39 m. Every opening logged the tap on controllers
+("not on foot"): FillBody admitted only mode 0 even though wrist-screen arm IK draws first-person arms in modes 7/10 using
+the held on-foot view. Screens and the puzzle pad separately used only controller aim-offset fingertips. The gauntlet logged
+"none or reflection unavailable" cached parameters and stayed full brightness: no established power-up target.
+
+Changes in this worktree:
+
+- The screen unfolds first for world_ui::kUnfoldS (0.18 s). Every new rail reveal then travels only Tucked -> Beside at the
+  selected edge, for 0.43 s, cubic smoothstep ease-in-out (3t^2-2t^3). Peak speed is 1.5d/T:
+  about 0.83 m/s for 0.237 m. A standalone rail fades at its existing location for 0.10 s during the unfold; the edge reveal
+  uses constant opacity and Exposed's crop. Wrist motion carries the relative slide. Tab changes/backout gaps retain it.
+  Timing uses uncapped performance-counter deltas; a delayed frame advances by actual elapsed time. The screen publishes
+  its unfold age inside the host so a late first rail frame waits only the remaining unfold. No engine/shared struct changes.
+- Pose and imageRect crop alone reveal the rail: no document rerender each slide frame. Standalone luminance/fade changes
+  are quantized to eighths. Hover/press/document changes can still render normally. Drawing, touch, ray and wrist-tap
+  suppression use the same exposed quad. Completion logs once: `omni-tool rail: slid out of the screen's right edge
+  (0.237 m in 0.43 s, 39 frames; elapsed ... s)` (frame count depends on actual Presents). Compare frames and elapsed against
+  heartbeats to distinguish dropped frames from perceived motion. `railSide = left` mirrors it.
+- FillBody now admits GUI modes 7/10 only with a wrist screen, active view_anchor hold and gHold.footFrame. Its conversion
+  uses that saved on-foot frame, never the live GUI camera. First-person arm IK and posed bones are still required. The
+  existing size-checked hud_pieces::Pieces transports the four bones unchanged; HalcyonOverlays passes Body into the rail,
+  game_pointer::Frame and omni_pad::Frame. All three take BodyFingertip for right-hand touch, retaining controller offsets
+  as fallback, and log the source when it changes. The projecting left hand neither touches nor points. Existing mouse,
+  puzzle input isolation, press/release and haptics remain in place. Pieces and State sizes did not change; build/deploy host
+  and mod together as usual (this task performs no deployment).
+- The first wake per session and `mevr omnitool params` log a read-only discovery: adopted component/template, each emitter,
+  LOD0 modules (including required/spawn/type data), actual reflected raw-distribution references (including RwVector and
+  array wrappers), particle-parameter class/ParameterName/default/modes, existing component InstanceParameters with types
+  and values, required/module and mesh-particle/crust materials (including live PSC SMComponents/SMMaterialInterfaces overrides), MIC scalar/vector names/values and parents. Non-parameter
+  distributions are also identified, so a hardcoded color is distinguishable from an available input. Empty caches say
+  `0 entries`; unresolved/unreadable ones say `reflection/read unavailable`. Shared materials are never edited.
+- The runtime route keeps initialized effect-cache brightness bindings if available. Otherwise it tries a direct-mode
+  brightness/intensity scalar or a color-module vector parameter on the adopted PSC, via SetFloatParameter,
+  SetVectorParameter or SetColorParameter. Baselines come from existing InstanceParameters, otherwise the distribution's
+  authored constant; color alpha is preserved. Non-direct mappings, incompatible types, nonfinite/zero baselines and
+  unrelated spawn/lifetime inputs are rejected. If no particle input is usable, an already effect-owned MIC brightness
+  scalar may use SetScalarParameterValue; ownership requires an Outer chain to this effect or an adopted component.
+  Missing inputs log `nothing found: full at once` with the cache status and full discovery above. Call failure attempts
+  baseline restoration and logs the failing route. Calls run through runtime::Call on the game thread; no new direct
+  writes to engine memory. ReflectCheck includes the new classes/fields/functions/parameters and a dynamic field inventory
+  for the distribution walker. A successful call still does not prove visual coverage: next session must show the bindings
+  and both gauntlet/display pieces must be judged in the headset.
+
+Offline validation (2026-11-09): configured `build-mono` with Visual Studio 17 2022, x64, MEVR_HOT_RELOAD=OFF.
+Release MEVR-LE1, mevr-tests and mevr-menu-preview all built successfully under the project's /W4 /WX policy. The test run
+ended `all tests passed`; motion tests include 30/90/144 Hz timing, a delayed frame spanning both phases, a late first screen
+frame, a stationary standalone fade, the hidden start and exposed touch/ray geometry, symmetric easing and peak speed below
+1 m/s. TEMP/TMP and LOCALAPPDATA were redirected to build-mono/qa-temp and qa-local within this worktree, so the optional
+native .text dump check used synthetic images only. WARP preview exited 0 and wrote the rail/pad PNGs and rail-placement.svg;
+the SVG parsed as XML and rail-touch.png was visually inspected (fallback art, diagnostic only; no game-art cache supplied).
+SPDX: `every source file has an SPDX identifier`. OKF: `27 files, every concept typed, indexes complete, links resolve`.
+`git diff --check` passed. The development-only ReflectCheck.cpp (excluded from the no-SDK monolithic build) also passed an
+MSVC syntax-only /W4 /WX check with the project's SDK header/compile conventions. These are offline checks, not runtime
+reflection agreement or gauntlet coverage acceptance. No game launch, deploy, push, branch change, history rewrite or commit.
+The player's log is the runtime evidence; the new behavior remains headset QA.
