@@ -328,7 +328,9 @@ switching frameworks.
   `cameraOffsetUp`'s vertical contribution is absorbed (the shipped -0.082 is -4.1 uu, not -8.2).
   `[Body] scale = auto` (default) uses calibrated standing eye height, else a frozen standing STAGE reference, over Shepard's
   standing holstered unscaled eyes above that same cylinder floor. The reference settles once per skeleton after a standing
-  grace period, excluding physical and game crouch; no animation/recenter chase. Scale is clamped 0.85..1.25, approaches at 0.1/s;
+  grace period, excluding physical and game crouch; no animation/recenter chase. Shepard's side is saved per mesh in
+  `[Body.Shepard] <package.mesh> = <m>` (2026-11-09, research/58 section 8): the next load seeds it at once, the run still
+  measures and rewrites it past 1 cm (`StandingReference::Seed`/`Measured`). Scale is clamped 0.85..1.25, approaches at 0.1/s;
   `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
   hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
   and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.

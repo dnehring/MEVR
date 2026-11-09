@@ -13,6 +13,7 @@
 #include "game/Player.hpp"
 #include "game/Weapon.hpp"
 #include "game/ViewAnchor.hpp"
+#include "ue3/Runtime.hpp"
 
 #include <Windows.h>
 
@@ -58,8 +59,67 @@ struct State {
     std::optional<double> referencePlayer;
     std::optional<double> referenceShepard;
     bool floorReference = false;
+    // Shepard's standing eye height per mesh, kept in [Body.Shepard] across runs (it's the model's, not the player's).
+    std::uintptr_t seededFor = 0;   // the skeleton the saved value was looked up for
+    std::uintptr_t savedFor = 0;    // the skeleton whose measurement was compared with the saved one
+    std::string meshKey;            // that skeleton's mesh as a key ("BIOG_HMM_ARM_HVY.HMM_ARM_HVYa_MDL")
+    std::optional<double> savedEye; // what the file held for it
 };
 State g;
+
+constexpr char kShepardSection[] = "Body.Shepard";
+constexpr double kRewriteM = 0.01;  // a new measurement replaces the saved one when it differs by more
+
+std::string MeshKey(std::uintptr_t skeleton) {
+    std::string name = ue3::runtime::FullName(reinterpret_cast<ue3::Object const*>(skeleton));
+    if (auto const space = name.find(' '); space != std::string::npos) name.erase(0, space + 1);  // drop the class
+    if (name.empty() || name == "None") return {};
+    for (char& c : name) {
+        bool const ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.';
+        if (!ok) c = '_';
+    }
+    return name;
+}
+
+// Once per skeleton: the saved standing eye of its mesh seeds the reference, so the size is right from the first frame
+// instead of after a second standing holstered and the 0.1/s approach.
+void SeedFromFile(std::uintptr_t skeleton) {
+    if (skeleton == 0 || skeleton == g.seededFor) return;
+    g.seededFor = skeleton;
+    g.savedFor = 0;
+    g.meshKey = MeshKey(skeleton);
+    g.savedEye.reset();
+    if (g.meshKey.empty()) return;
+    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    g.savedEye = ini::GetNumber(loaded.file, kShepardSection, g.meshKey);
+    if (g.savedEye) {
+        g.standing.Seed(skeleton, *g.savedEye);
+        log::Info("body scale: Shepard's standing eye {:.3f} m for {} from [{}]{}", *g.savedEye, g.meshKey, kShepardSection,
+            g.standing.Seeded() ? "" : " (out of range: ignored)");
+    } else {
+        log::Info("body scale: no saved standing eye for {}: measuring it (stand holstered for a second)", g.meshKey);
+    }
+}
+
+// Once per skeleton, when this run's own measurement settles: saved if new or more than a centimetre off.
+void SaveMeasured(std::uintptr_t skeleton) {
+    auto const measured = g.standing.Measured();
+    if (!measured || skeleton == 0 || skeleton == g.savedFor || g.meshKey.empty()) return;
+    g.savedFor = skeleton;
+    if (g.savedEye && std::abs(*g.savedEye - *measured) <= kRewriteM) {
+        log::Info("body scale: measured Shepard's standing eye {:.3f} m for {}: the saved {:.3f} m stands", *measured,
+            g.meshKey, *g.savedEye);
+        return;
+    }
+    std::wstring const key(g.meshKey.begin(), g.meshKey.end());  // ASCII by MeshKey
+    std::wstring const value = std::format(L"{:.4f}", *measured);
+    bool const ok = WritePrivateProfileStringW(L"Body.Shepard", key.c_str(), value.c_str(),
+        engine::SettingsFile().wstring().c_str()) != 0;
+    log::Info("body scale: measured Shepard's standing eye {:.3f} m for {}{}{}", *measured, g.meshKey,
+        g.savedEye ? std::format(" (saved {:.3f})", *g.savedEye) : std::string(),
+        ok ? ": saved" : ": couldn't save it (the settings file isn't writable)");
+    if (ok) g.savedEye = measured;
+}
 
 void ReadSettings() {
     std::uint64_t const now = GetTickCount64();
@@ -122,6 +182,7 @@ double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds,
         g.standing = {};
         g.referencePlayer.reset();
         g.referenceShepard.reset();
+        g.seededFor = 0;  // look the saved value up again for the fresh reference
     }
     bool const referenceMode = locked || seated;
     g.floorReference = referenceMode;
@@ -129,14 +190,17 @@ double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds,
         bool const gameCrouch = player::Crouched(player::BioPawn(player::Controller())).value_or(true);
         auto const calibrated = body_calibration::StandingEyeHeight();
         bool const headLow = !seated && calibrated && view.stageEyeM < *calibrated * 0.9;
+        SeedFromFile(skeleton);
         g.standing.Feed(skeleton, crouched || headLow, gameCrouch, weapon::Key() == 0,
             view.stageEyeM, shepardPawnEyeM.value_or(0.0), deltaSeconds, seated);
+        SaveMeasured(skeleton);
         g.referenceShepard = g.standing.Shepard();
         g.referencePlayer = seated ? vr::calibration::StandingEye(body_calibration::Position(), calibrated, g.referenceShepard)
                                   : calibrated ? calibrated : g.standing.Player();
-        g.reference = calibrated ? "calibrated standing / frozen Shepard cylinder floor"
-                                 : seated ? "seated: Shepard standing / frozen Shepard cylinder floor"
-                                          : "learned standing STAGE / frozen Shepard cylinder floor";
+        g.reference = std::string(calibrated ? "calibrated standing / frozen Shepard cylinder floor"
+                                             : seated ? "seated: Shepard standing / frozen Shepard cylinder floor"
+                                                      : "learned standing STAGE / frozen Shepard cylinder floor") +
+            (g.standing.Measured() ? "" : g.standing.Seeded() ? " (Shepard's saved)" : "");
     } else {
         g.reference = "legacy filtered view / lowest bone";
     }

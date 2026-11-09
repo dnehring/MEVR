@@ -60,6 +60,28 @@ int RunFloorLockTests() {
     CHECK(!cal::StandingEye(Position::Seated, std::nullopt, NAN)); // wait for actual Shepard, no guessed height
     CHECK(!cal::StandingEye(Position::Standing, std::nullopt, 1.67)); // standing still learns its own STAGE ref
     CHECK(cal::StandingEye(Position::Standing, 1.84, 1.67) == 1.84);
+    // A saved Shepard answers at once; this run still measures and its value replaces the seed; another skeleton drops it.
+    fl::StandingReference seededReference;
+    seededReference.Seed(7, 1.70);
+    CHECK(seededReference.Seeded() && seededReference.Shepard() && Close(*seededReference.Shepard(), 1.70));
+    CHECK(!seededReference.Measured());
+    seededReference.Feed(7, false, false, true, 1.80, 1.66, 0.05);
+    CHECK(seededReference.Shepard() && Close(*seededReference.Shepard(), 1.70)); // the seed stands while measuring
+    for (int i = 0; i < 24; ++i) seededReference.Feed(7, false, false, true, 1.80, 1.66, 0.05);
+    CHECK(seededReference.Measured() && Close(*seededReference.Measured(), 1.66));
+    CHECK(Close(*seededReference.Shepard(), 1.66) && seededReference.Player() && Close(*seededReference.Player(), 1.80));
+    seededReference.Seed(7, 1.90);
+    CHECK(Close(*seededReference.Shepard(), 1.66)); // a seed never overrides this run's measurement
+    seededReference.Feed(8, false, false, true, 1.80, 1.66, 0.05);
+    CHECK(!seededReference.Shepard() && !seededReference.Seeded()); // a new skeleton starts over
+    fl::StandingReference badSeed;
+    badSeed.Seed(7, 3.0);
+    CHECK(!badSeed.Shepard() && !badSeed.Seeded());
+    fl::StandingReference seatedSeed; // seated: the seed is used and replaced the same way, the player never learned
+    seatedSeed.Seed(9, 1.70);
+    for (int i = 0; i < 24; ++i) seatedSeed.Feed(9, false, false, true, 0.65, 1.67, 0.05, true);
+    CHECK(seatedSeed.Measured() && Close(*seatedSeed.Shepard(), 1.67) && !seatedSeed.Player());
+
     fl::StandingReference seatedReference;
     for (int i = 0; i < 24; ++i) seatedReference.Feed(1, false, false, true, 0.65, 1.67, 0.05, true);
     CHECK(!seatedReference.Player()); // seated-only players never supply a standing STAGE height

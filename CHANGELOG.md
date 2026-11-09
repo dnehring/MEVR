@@ -16,6 +16,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   zones and independently adjustable shoulder/chest reach points. Standing placement is unchanged. The native weapon
   wheel can draw while seated as a button alternative; `[Holsters] seatedWeaponWheel = 0` disables that fallback.
 
+- **Shepard's size is right from the first frame.** The mod remembers Shepard's standing height for each body model, so
+  after a load your calibrated size applies at once instead of after standing holstered for a second and a slow resize.
+
 - **Update directly from Setup.** Welcome > Updates can download, verify and install a newer release without opening
   a browser. It waits for the game to close and preserves game settings, VR profiles and calibration. Older installers
   need one manual upgrade to gain this feature.

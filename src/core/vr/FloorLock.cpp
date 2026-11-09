@@ -43,7 +43,9 @@ void StandingReference::Feed(std::uintptr_t skeleton, bool physicalCrouch, bool 
         *this = {};
         skeleton_ = skeleton;
     }
-    if (shepard_ || skeleton == 0) return;
+    // Settled once per skeleton: Shepard measured, and the player too unless seated (or calibrated: the caller then
+    // doesn't use it). A seeded Shepard keeps both measuring.
+    if ((measured_ && (player_ || seated)) || skeleton == 0) return;
     if (physicalCrouch || gameCrouch || !holstered) {
         quietSeconds_ = seconds_ = playerSum_ = shepardSum_ = 0.0;
         return;
@@ -60,9 +62,23 @@ void StandingReference::Feed(std::uintptr_t skeleton, bool physicalCrouch, bool 
     if (!seated) playerSum_ += stageEyeM * weight;
     shepardSum_ += shepardEyeM * weight;
     if (seconds_ >= 0.5) {
-        if (!seated) player_ = playerSum_ / seconds_;
-        shepard_ = shepardSum_ / seconds_;
+        if (!seated && !player_) player_ = playerSum_ / seconds_;
+        if (!measured_) {
+            measured_ = shepardSum_ / seconds_;
+            shepard_ = measured_;
+        }
     }
+}
+
+void StandingReference::Seed(std::uintptr_t skeleton, double shepardEyeM) {
+    if (skeleton == 0 || !std::isfinite(shepardEyeM) || shepardEyeM < 0.8 || shepardEyeM > 2.5) return;
+    if (skeleton != skeleton_) {
+        *this = {};
+        skeleton_ = skeleton;
+    }
+    if (measured_) return;
+    shepard_ = shepardEyeM;
+    seeded_ = true;
 }
 
 } // namespace mevr::vr::floor_lock
