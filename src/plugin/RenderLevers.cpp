@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "core/DevChannels.hpp"
 #include "plugin/RenderLevers.hpp"
+#include "plugin/MotionBlurGuard.hpp"
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
@@ -2537,12 +2538,12 @@ bool PerEyeViewState() {
 
 std::string SettingsJson() {
     return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"keepBoundShaderStates\": {}, \"minScreenRadiusPx\": {}, \"umbraSharedVisibility\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
-        "\"drawReplay\": {}, \"hooked\": {}}}",
+        "\"drawReplay\": {}, \"motionBlurGuard\": {}, \"hooked\": {}}}",
         gUmbraQueryWait.load(std::memory_order_relaxed), gUe3QueryWait.load(std::memory_order_relaxed),
         gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed),
         gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gUmbraShareResults.load(std::memory_order_relaxed), gKeepBoundShaderStates.load(std::memory_order_relaxed), gMinScreenRadiusTenths.load(std::memory_order_relaxed) / 10.0, gUmbraSharedVisibility.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
-        gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), gHooked ? "true" : "false");
+        gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), motion_blur_guard::StatsJson(), gHooked ? "true" : "false");
 }
 
 } // namespace mevr::host::render_levers

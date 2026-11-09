@@ -12,7 +12,7 @@ if(Test-Path -LiteralPath $OutputDirectory){throw 'Use a fresh output directory.
 New-Item -ItemType Directory -Path $OutputDirectory|Out-Null
 $seconds=if($Phase -eq 'Transition'){120}else{30}
 @{package=$package;repeats=$Repeats;seconds=$seconds;phase=$Phase;delayAfterHostRequestSeconds=$(if($Phase -eq 'Splash'){5}else{0});
- titleHoldProcessSeconds=60;workload='Quality';foreground=$true;eye=@(2284,2448)}|
+ titleHoldProcessSeconds=$(if($Phase -eq 'Transition'){25}else{60});workload='Quality';foreground=$true;eye=@(2284,2448)}|
  ConvertTo-Json|Set-Content -LiteralPath "$OutputDirectory\plan.json"
 $runs=@();$baselineBuild=$null
 Start-Transcript -LiteralPath "$OutputDirectory\transcript.txt"|Out-Null

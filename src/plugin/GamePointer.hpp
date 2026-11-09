@@ -10,6 +10,7 @@ class Context;
 }
 
 #include <string>
+#include "core/vr/OmniRail.hpp"
 
 // The game pointer (research/42): while Halcyon shows the game on its flat screen (the game's own menus: inventory,
 // journal, map, the pause menu, loading and save screens; the galaxy map), a controller's aim ray on that quad is the
@@ -21,6 +22,7 @@ class Context;
 namespace mevr::host::game_pointer {
 
 struct Frame {
+    std::optional<vr::omni_rail::Body> body; // Shepard's drawn bones in app space
     XrSpace appSpace = XR_NULL_HANDLE;
     bool halcyonMenuOpen = false;   // Halcyon's ImGui menu is open: its pointer, not ours
     bool railOwnsInput = false;     // this frame's drawn rail has the right hand; do not click the screen behind it

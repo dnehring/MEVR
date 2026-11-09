@@ -105,9 +105,24 @@ struct PowerInfo {
 };
 // Null: not one of the player's mappable powers (melee, healing, NPC powers...).
 PowerInfo const* FindPower(char const* label);
+// The wheel's last tile, "No power" (the user, 2026-11-09: "we don't have an option for it to return to neutral"): equipping
+// it puts the engine's None into the mapped power, so nothing is aimed, locked or gestured until a power is chosen again
+// (the game itself does nothing for an unmapped power, research/55 section 1). Its label is the engine's "None"; FindPower
+// doesn't know it. Its icon is plugin/PowerIcons' NoPower.
+inline constexpr std::int32_t kNoPowerIcon = 20;
+PowerInfo const& NoPower();
+bool IsNoPower(char const* label);
 
-// What the host draws, as the mod sends it each tick while the wheel is open (HostServices v28, setPowerWheel).
-inline constexpr int kMaxEntries = 10;
+// The weapon a gun power works with, the game's EBioItemWeaponRangedType (0 pistol, 1 shotgun, 2 assault rifle, 3 sniper
+// rifle; game/Weapon's RangedType): Marksman the pistol, Overkill the assault rifle, Carnage the shotgun, Assassination the
+// sniper rifle (research/55 section 10). -1: any weapon, or not a gun power.
+int RequiredWeapon(char const* label);
+// "the pistol", "the shotgun", "the assault rifle", "the sniper rifle"; "a weapon" for anything else.
+char const* WeaponName(int rangedType);
+
+// What the host draws, as the mod sends it each tick while the wheel is open (HostServices v28, setPowerWheel). Twelve since
+// 2026-11-09 (No power took a tile; a Sentinel has ten powers): the View grew, host and mod deploy together.
+inline constexpr int kMaxEntries = 12;
 inline constexpr int kLabelBytes = 32;
 struct ViewEntry {
     char label[kLabelBytes] = {};  // UTF-8, as shown
@@ -296,8 +311,9 @@ LockView LatestLock(std::uint64_t maxAgeMs = 250);
 enum class SelfGesture : std::uint8_t { None, Chest, Gun, Raise };
 SelfGesture SelfGestureFor(char const* label);  // by the 2DA label; None for a power that aims
 char const* Name(SelfGesture gesture);
-enum class SelfRefusal : std::uint8_t { None, DrawWeapon, CoolingDown, Unavailable };
-SelfRefusal RefusalFor(SelfGesture gesture, bool gunDrawn, bool available, float cooldown);
+enum class SelfRefusal : std::uint8_t { None, DrawWeapon, WrongWeapon, CoolingDown, Unavailable };
+// `rightWeapon`: the gun in hand is the one the power works with (RequiredWeapon, and the game's IsRequiredWeaponEquipped).
+SelfRefusal RefusalFor(SelfGesture gesture, bool gunDrawn, bool rightWeapon, bool available, float cooldown);
 
 struct SelfCastSettings {
     float chestBelowM = 0.28f;   // the chest point: below the eyes
@@ -327,6 +343,11 @@ struct SelfCastInput {
     SelfZone gunZone{};    // the drawn gun, in tracking metres
     bool gunProbe = false; // tracked right hand held up: a holstered attempt can be refused
     XrPosef gun{};          // only the missing-weapon probe uses the controller pose
+    // The power can be cast now: the game says it's available (with the gun in hand: Overkill only on an assault rifle) and
+    // it isn't cooling down. Not ready: no target, no tick, no ring (the user, 2026-11-09: Overkill's target showed on every
+    // gun, cooling down or not); only a deliberate attempt is answered (a slap onto the gun, the chest's or the raise's full
+    // dwell), with the refusal saying why.
+    bool ready = true;
 };
 SelfZone ZoneFor(SelfGesture gesture, SelfCastInput const& input, SelfCastSettings const& settings = {});
 SelfLook LookFor(SelfGesture gesture, SelfCastInput const& input, SelfZone const& zone);

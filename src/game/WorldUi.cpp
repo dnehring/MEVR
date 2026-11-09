@@ -701,6 +701,11 @@ bool WristScreenUp() {
     return gWristUp;
 }
 
+std::optional<engine::TrackingFrame> WristTrackingFrame() {
+    auto const mode = player::GameMode(player::Controller());
+    return gWristUp && view_anchor::Held() && gHold.haveView && mode && (*mode == 7 || *mode == 10) ? gHold.footFrame : std::nullopt;
+}
+
 bool PuzzlePlaying() {
     return gPuzzleLogged;  // set each tick from the handler while the minigame's screen is up, cleared when it goes down
 }

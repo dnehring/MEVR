@@ -74,6 +74,7 @@ double Seconds(LARGE_INTEGER counter) {
 // The screen on the wrist this frame: unfolded by its age, its fan from the wrist (the smoothed one) when wanted.
 void Project(Shown& shown, vr::world_ui::Panel const& panel, XrVector3f const& emitter, float ageS, bool beam) {
     namespace wu = vr::world_ui;
+    shown.ageS = ageS;
     shown.panel = wu::Unfold(panel, ageS);
     shown.settled = panel;
     shown.whole = wu::WholeWindow(shown.panel, shown.part);

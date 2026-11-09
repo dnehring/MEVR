@@ -317,9 +317,21 @@ int main(int argc, char** argv) {
         v.entries = {Make(gpu, "Adrenaline Burst", I::Adrenaline, D::Combat), Make(gpu, "Immunity", I::Immunity, D::Combat),
             Make(gpu, "Unity", I::Unity, D::Combat), Make(gpu, "Marksman", I::Marksman, D::Combat), Make(gpu, "Overkill", I::Overkill, D::Combat),
             Make(gpu, "Carnage", I::Carnage, D::Combat), Make(gpu, "Assassination", I::Assassination, D::Combat),
-            Make(gpu, "Shield Boost", I::ShieldBoost, D::Tech)};
+            Make(gpu, "Shield Boost", I::ShieldBoost, D::Tech), Make(gpu, "No power", I::NoPower, D::Combat)};
         v.selected = 4;
         wheel(v, "eight");
+        v.selected = 8;  // the last tile: back to neutral
+        wheel(v, "eight-no-power");
+    }
+    {
+        // The most a class has (a Sentinel's ten with a bonus power) and No power: eleven tiles, a full ring.
+        draw::WheelView v;
+        v.entries = {Make(gpu, "Throw", I::Throw, D::Biotic), Make(gpu, "Lift", I::Lift, D::Biotic), Make(gpu, "Stasis", I::Stasis, D::Biotic),
+            Make(gpu, "Barrier", I::Barrier, D::Biotic), Make(gpu, "Overload", I::Overload, D::Tech), Make(gpu, "Damping", I::Damping, D::Tech),
+            Make(gpu, "Sabotage", I::Sabotage, D::Tech), Make(gpu, "Neural Shock", I::NeuralShock, D::Tech),
+            Make(gpu, "Shield Boost", I::ShieldBoost, D::Tech), Make(gpu, "Unity", I::Unity, D::Combat), Make(gpu, "No power", I::NoPower, D::Combat)};
+        v.selected = 10;
+        wheel(v, "eleven-no-power");
     }
 
     // The hint card.

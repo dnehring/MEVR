@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include "core/vr/OmniRail.hpp"
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -19,6 +20,7 @@ struct ID3D11DeviceContext;
 namespace mevr::host::omni_pad {
 
 struct Frame {
+    std::optional<vr::omni_rail::Body> body; // Shepard's drawn bones in app space
     XrSession session = XR_NULL_HANDLE;
     XrSpace appSpace = XR_NULL_HANDLE;
     ID3D11Device* device = nullptr;

@@ -22,7 +22,7 @@
 # The game must not be running while the driver changes.
 param([switch]$On, [switch]$Off, [switch]$Status, [int]$Width = 2824, [int]$Height = 2880,
       [string]$SteamRoot = 'C:\Program Files (x86)\Steam', [string]$SteamVRRoot = '',
-      [string]$BackupDirectory = '', [int]$AppResolutionScale = 0)
+      [string]$BackupDirectory = '', [int]$AppResolutionScale = 0, [switch]$FixedRenderScale)
 $ErrorActionPreference = 'Stop'
 
 $steam = $SteamRoot
@@ -106,6 +106,12 @@ if ($On) {
     $sv = Section $s 'steamvr'
     Set-Member $sv 'forcedDriver' 'null'
     Set-Member $sv 'activateMultipleDrivers' $false
+    if ($FixedRenderScale) {
+        # Hardware/automatic global supersampling otherwise multiplies the per-app percentage.
+        # The entire original settings file is already backed up and restored by -Off.
+        Set-Member $sv 'supersampleManualOverride' $true
+        Set-Member $sv 'supersampleScale' 1.0
+    }
     if ($AppResolutionScale -gt 0) { Set-Member (Section $s 'steam.app.1328670') 'resolutionScale' $AppResolutionScale }
     Set-Member (Section $s 'driver_playstation_vr2') 'enable' $false
     $pw = Section $s 'power'

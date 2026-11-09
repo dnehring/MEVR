@@ -805,7 +805,6 @@ int main(int argc, char** argv) {
         // Face-on geometry diagnostic, in metres from the same pure placement/slide code as the host.
         namespace rail = mevr::vr::omni_rail;
         mevr::vr::world_ui::Panel const screen{{{0,0,0,1},{0,0,0}},0.70f,0.39375f};
-        rail::Rail const alonePose{{{0,0,0,1},{0,-0.04f,0}},0.32f*rail::kRailAspect,0.32f};
         std::ofstream sketch(output / "rail-placement.svg");
         sketch << "<!-- SPDX-License-Identifier: MIT -->\n"
             "<svg xmlns='http://www.w3.org/2000/svg' width='1100' height='700' viewBox='0 0 1100 700'>"
@@ -819,15 +818,16 @@ int main(int argc, char** argv) {
         box(0,0,screen.widthM,screen.heightM,"#93bed6",1);
         for (float side : {-1.0f,1.0f}) {
             auto const to = rail::Beside(screen,side);
-            for (float ageS : {0.0f,0.07f,0.14f,0.28f}) {
-                auto const at = rail::Interpolate(alonePose,to,ageS);
-                box(at.pose.position.x,at.pose.position.y,at.widthM,at.heightM,side<0?"#77a9bb":"#ffae56",rail::SlideOpacity(ageS));
+            for (float ageS : {0.0f,rail::kSlideS/3,2*rail::kSlideS/3,rail::kSlideS}) {
+                auto const at = rail::Interpolate(rail::Tucked(screen,side),to,ageS);
+                if (auto const face = rail::Exposed(at,screen,side))
+                    box(face->rail.pose.position.x,face->rail.pose.position.y,face->rail.widthM,face->rail.heightM,side<0?"#77a9bb":"#ffae56",1.0f);
             }
             auto const tucked = rail::Tucked(screen,side);
             box(tucked.pose.position.x,tucked.pose.position.y,tucked.widthM,tucked.heightM,"#a384bd",0.4f);
         }
-        sketch << "<text x='30' y='505'>Orange: right (default). Blue: left. Violet: tucked start when previously hidden.</text>"
-            "<text x='30' y='535'>Overlapping outlines: alone to beside at 0 / 70 / 140 / 280 ms; cubic ease out.</text>"
+        sketch << "<text x='30' y='505'>Orange: right (default). Blue: left. Violet: tucked start at every reveal.</text>"
+            "<text x='30' y='535'>Overlapping outlines: edge to beside over 430 ms; cubic ease in-out after 180 ms unfold.</text>"
             "<text x='30' y='565'>Power-up, linear luminance (same clock for gauntlet, rail and fan):</text>";
         for (int i=0; i<=600; ++i) {
             float const ageS = static_cast<float>(i)/1000;

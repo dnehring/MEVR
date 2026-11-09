@@ -2556,6 +2556,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
 #if defined(MEVR_WITH_MAIN_MENU)
         pointerFrame.railOwnsInput = railLayer != nullptr && mevr::host::omni_rail::OwnsTriggers();
 #endif
+        if (pieces.bodyValid) pointerFrame.body = mevr::vr::omni_rail::Body{pieces.leftWrist, pieces.leftElbow, pieces.rightIndex1, pieces.rightIndex2};
         pointerFrame.headValid = frame.headValid;
         pointerFrame.head = ToVec(frame.headPosition);
         mevr::host::game_pointer::Dot dot;
@@ -2701,6 +2702,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         padFrame.device = device.Get();
         padFrame.context = context;
         padFrame.screen = worldShown;
+        if (pieces.bodyValid) padFrame.body = mevr::vr::omni_rail::Body{pieces.leftWrist, pieces.leftElbow, pieces.rightIndex1, pieces.rightIndex2};
         padFrame.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();
         if (XrCompositionLayerQuad const* layer = mevr::host::omni_pad::Layer(padFrame); layer != nullptr && count < capacity) {
             layersOut[count++] = layer;

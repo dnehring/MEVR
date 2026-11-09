@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Build the current checkout; retain the exact pair, configuration and source hashes for native comparisons.
 #Requires -Version 7.0
-param([Parameter(Mandatory)][string]$OutputDirectory,[string]$BuildDirectory='build',[string]$BaselineDirectory='')
+param([Parameter(Mandatory)][string]$OutputDirectory,[string]$BuildDirectory='build',[string]$BaselineDirectory='',[string]$SourceDirectory='')
 $ErrorActionPreference='Stop'
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+if($SourceDirectory){$repo=[IO.Path]::GetFullPath($SourceDirectory)}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $out){throw 'Use a fresh output directory.'}
 if(Get-Process MassEffect1,MassEffectLauncher,MSBuild,cl,link -ErrorAction SilentlyContinue){throw 'Close native tests and other builds first.'}
@@ -22,6 +23,9 @@ try{
   if($baselineHost.Count -ne 1 -or (Get-FileHash -LiteralPath "$BaselineDirectory\LE1MEVR.asi").Hash -ne $baselineHost[0].sha256){throw 'Baseline host hash mismatch.'}
   @{baseline=[IO.Path]::GetFullPath($BaselineDirectory);changedSources=$changed;retainedHost=$baselineHost[0].sha256}|
    ConvertTo-Json -Depth 4|Set-Content "$out\paired-source-check.json"
+  # Copy-Item retains source timestamps. A restored candidate can be older than the baseline .obj;
+  # force the reviewed source deltas through MSBuild without rebuilding unrelated targets.
+  foreach($relative in $changed){[IO.File]::SetLastWriteTimeUtc((Join-Path $repo $relative),[datetime]::UtcNow)}
  }
  cmake --build $BuildDirectory --config Release --target MEVR-LE1 mevr-tests -- /m:4 /nodeReuse:false
  if($LASTEXITCODE){throw 'Build failed.'}
@@ -29,6 +33,10 @@ try{
  if($LASTEXITCODE){throw 'Focused tests failed.'}
  foreach($entry in $hashes){if((Get-FileHash -LiteralPath (Join-Path $repo $entry.path)).Hash -ne $entry.sha256){throw "Source changed during build: $($entry.path)"}}
  foreach($name in 'LE1MEVR.asi','LE1MEVR_mod.dll'){Copy-Item -LiteralPath (Join-Path $BuildDirectory "Release\$name") -Destination $out}
+ if($BaselineDirectory -and @($changed|Where-Object {$_ -like 'src\*'}).Count -and
+    (Get-FileHash -LiteralPath "$out\LE1MEVR_mod.dll").Hash -eq (Get-FileHash -LiteralPath "$BaselineDirectory\LE1MEVR_mod.dll").Hash){
+  throw 'Changed production source produced the baseline module; refusing stale-binary deployment.'
+ }
  if($BaselineDirectory){Copy-Item -LiteralPath "$BaselineDirectory\LE1MEVR.asi" -Destination "$out\LE1MEVR.asi" -Force}
  Copy-Item -LiteralPath (Join-Path $BuildDirectory 'CMakeCache.txt') -Destination $out
  Copy-Item -LiteralPath "$repo\src\game\SystemSettings.cpp" -Destination $out

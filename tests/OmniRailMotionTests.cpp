@@ -5,6 +5,7 @@
 #include "core/vr/GamePointer.hpp"
 
 #include <cmath>
+#include <algorithm>
 #include <cstdio>
 #include <limits>
 
@@ -53,8 +54,22 @@ void PlacementAndSlide() {
     }
     CHECK(Close(rail::SlideEase(-1),0) && Close(rail::SlideEase(0),0));
     CHECK(Close(rail::SlideEase(rail::kSlideS),1) && Close(rail::SlideEase(100),1));
-    CHECK(Close(rail::SlideEase(rail::kSlideS/2),0.875f));
-    CHECK(Close(rail::SlideOpacity(0),0.3f) && Close(rail::SlideOpacity(1),1));
+    CHECK(Close(rail::SlideEase(rail::kSlideS/2),0.5f));
+    // Cubic in-out: zero endpoint speed, symmetric, monotonic, peak ~3d/(2T) < 1 m/s for this rail.
+    float previous = 0;
+    float peak = 0;
+    float const distance = right.pose.position.x-tucked.pose.position.x;
+    for (int i=1; i<=1000; ++i) {
+        float const t = rail::kSlideS*static_cast<float>(i)/1000.0f;
+        float const eased = rail::SlideEase(t);
+        CHECK(eased >= previous && eased <= 1);
+        CHECK(Close(eased+rail::SlideEase(rail::kSlideS-t),1));
+        peak = std::max(peak,(eased-previous)*distance/(rail::kSlideS/1000));
+        previous = eased;
+    }
+    CHECK(peak < 1.0f);
+    CHECK(rail::SlideEase(0.001f) < 0.00002f);
+    CHECK(rail::SlideEase(std::numeric_limits<float>::quiet_NaN()) == 0);
     rail::Rail from{{{0,0,0,1},{-0.1f,0.8f,-0.4f}},0.18f,0.32f};
     auto const start = rail::Interpolate(from,right,0);
     auto const end = rail::Interpolate(from,right,1);
@@ -74,7 +89,16 @@ void PlacementAndSlide() {
     CHECK(slide.Started() && slide.Moving() && Close(slide.Age(),0));
     CHECK(Close(drawn.pose.position.x,from.pose.position.x));
     drawn = slide.Step(right,true,1,0.07f,tucked);
-    CHECK(!slide.Started() && Close(slide.Age(),0.07f));
+    CHECK(!slide.Started() && Close(slide.Age(),0));
+    CHECK(slide.FadingAlone() && Close(slide.Opacity(),0.3f));
+    CHECK(Close(drawn.pose.position.x,from.pose.position.x)); // fading at its old place, never crossing the screen
+    drawn = slide.Step(right,true,1,wu::kUnfoldS-0.07f,tucked);
+    CHECK(!slide.FadingAlone() && Close(slide.Opacity(),1) && Close(slide.Age(),0));
+    CHECK(Close(drawn.pose.position.x,tucked.pose.position.x));
+    CHECK(!rail::Exposed(drawn,screen,1));
+    drawn = slide.Step(right,true,1,rail::kSlideS/2,tucked);
+    CHECK(Close(slide.Age(),rail::kSlideS/2));
+    CHECK(Close(drawn.pose.position.x,(tucked.pose.position.x+right.pose.position.x)/2));
     // No tag/opening argument: another tab in the same opening cannot restart it.
     slide.Step(right,true,1,1.0f,tucked);
     CHECK(!slide.Started() && !slide.Moving() && Close(slide.Opacity(),1));
@@ -87,21 +111,49 @@ void PlacementAndSlide() {
     moved.pose.position.y += 0.3f;
     drawn = slide.Step(moved,true,1,0,std::nullopt);
     CHECK(Close(drawn.pose.position.y,tucked.pose.position.y+0.3f));
+    // One long frame uses wall time without a 100 ms cap, even if it spans both phases.
+    slide.Reset();
+    slide.Step(right,true,1,0,tucked);
+    drawn = slide.Step(right,true,1,wu::kUnfoldS+rail::kSlideS,tucked);
+    CHECK(!slide.Moving() && Close(drawn.pose.position.x,right.pose.position.x));
+    // A screen already partway through its unfold waits only for the remainder.
+    slide.Reset();
+    slide.Step(right,true,1,0,tucked,0.12f);
+    slide.Step(right,true,1,0.06f,tucked);
+    CHECK(Close(slide.Age(),0));
+    slide.Step(right,true,1,rail::kSlideS,tucked);
+    CHECK(!slide.Moving());
+    for (int hz : {30,90,144}) {
+        slide.Reset();
+        slide.Step(right,true,1,0,tucked,wu::kUnfoldS);
+        int frames = 0;
+        while (slide.Moving() && frames<100) {
+            slide.Step(right,true,1,1.0f/static_cast<float>(hz),tucked);
+            ++frames;
+        }
+        CHECK(frames == static_cast<int>(std::ceil(rail::kSlideS*static_cast<float>(hz))));
+        CHECK(Close(slide.Age(),rail::kSlideS));
+    }
     // A rotated screen moves the rail on its local +X, not the room's X.
     screen.pose.orientation = {0,std::sqrt(0.5f),0,std::sqrt(0.5f)};
     CHECK(rail::Beside(screen).pose.position.z < screen.pose.position.z);
     CHECK(rail::Beside(screen,-1).pose.position.z > screen.pose.position.z);
 
-    // Both hit rules follow the actual interpolated quad, including while it overlaps the screen.
+    // Both hit rules follow only the exposed quad: the tucked portion never intercepts touch or ray.
     for (float side : {-1.0f,1.0f}) {
         screen.pose.orientation = {0,0,0,1};
         auto const destination = rail::Beside(screen,side);
-        for (float t : {0.0f,0.07f,0.14f,0.28f}) {
-            auto const at = rail::Interpolate(from,destination,t);
+        for (float t : {0.0f,0.07f,rail::kSlideS/2,rail::kSlideS}) {
+            auto const moving = rail::Interpolate(rail::Tucked(screen,side),destination,t);
+            auto const face = rail::Exposed(moving,screen,side);
+            if (t==0) { CHECK(!face); continue; }
+            CHECK(face.has_value());
+            if (!face) continue;
+            auto const at = face->rail;
             wu::Panel const panel{at.pose,at.widthM,at.heightM};
             XrVector3f const tip{at.pose.position.x,at.pose.position.y,at.pose.position.z+0.02f};
             CHECK(rail::GoingForPanel(tip,panel));
-            CHECK(!rail::GoingForPanel({tip.x+at.widthM,tip.y,tip.z},panel));
+            CHECK(!rail::GoingForPanel({tip.x+at.widthM+2*rail::kTapPanelMarginM,tip.y,tip.z},panel));
             mp::Hit hit;
             CHECK(mp::Intersect({at.pose,at.widthM,at.heightM},tip,{0,0,-1},hit));
             CHECK(Close(hit.u,0.5f) && Close(hit.v,0.5f));

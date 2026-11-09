@@ -9,18 +9,19 @@ Updated 2026-11-09. Evidence: [head-turn investigation](../research/63-head-turn
 Reusable validation: [cafeteria QA](../tools/qa-cafeteria/README.md) and
 [hub route catalog](../tools/qa-hubs/README.md). Hub drafts remain excluded until their actual scene and walking route are verified.
 
-This is the order for the next engineering work: first the hitch reproduced across every preset, then the
-remaining simulation gaps and host CPU bursts, followed by the separately measured physical-runtime stalls.
+This order includes the user's latest emphasis on title/loading transitions. The repeated graphics-reset
+stalls are fixed; hook activation and actual loading work are now the next startup targets. The periodic
+gameplay hitch remains the first gameplay target.
 Keep One Draw enabled. Successful measurement/restoration does not mean the performance gate passed.
 
 | Order | Problem | Evidence and next action | Status |
 |---|---|---|---|
-| 1 | Periodic garbage collection | Every Citadel preset/repeat has a 22.76-25.19 ms engine tick and a 23.07-25.47 ms whole hook. Stacks and the engine caller now identify collection on the configured 60-second timer. Measure phase/object pressure and investigate avoidable mod-owned churn; retain collection and bounded memory use. | Cause identified; mitigation remains open; no GC behavior changed |
-| 2 | Long gaps outside measured ticks | Rare Normandy intervals reached 80-93 ms; the custom Citadel workload reached 36 ms with a 31 ms gap outside the full hook. Queued calls were absent and drains tiny in the Citadel trace. Inspect scheduling/waits; do not disable queued-call safety. | Not reproduced at the old severity in the six preset runs; remains open |
+| 1 | Startup hook activation and loading presentation | Twelve individually enabled draw-hook variants span an 854.54 ms render CPU interval, about 71 ms per completion. Investigate batched activation while preserving SPI ownership and trampoline publication. A separate roughly 1.45-second engine Resume tick needs attribution and tracked loading presentation. | Hook batching is a strong candidate, not yet implemented or measured; engine loading remains open |
+| 2 | Periodic garbage collection | Every original Citadel preset/repeat has a 22.76-25.19 ms engine tick and a 23.07-25.47 ms whole hook. Stacks identify collection on the configured 60-second timer. Measure phase/object pressure and avoidable mod-owned churn; retain collection and bounded memory use. | Cause identified; mitigation open; no GC behavior changed |
 | 3 | Remaining host CPU bursts | Preset runs reach 7.76-10.31 ms host work; custom Citadel reached 25.56 ms, with zero settings writes. Sample the host/mod routines and distinguish polling/object scans from waits before optimizing. | Separate from the fixed diagnostic INI writes; cause unresolved |
-| 4 | Physical-headset submission stalls | Earlier VDXR captures have 35-62 ms worst intervals; 68 of 72 long intervals are dominated by xrEndFrame. Correlate GPU/resource/scheduling evidence with the physical headset. | Null-driver runs cannot close this issue |
-| 5 | Dense-scene render CPU and oversize source resolution | Isolate 8/4/0-pixel small-object culling with fixed resolution/AA/One Draw. New runs are runtime-wait limited; the incomplete comparison cannot establish equal throughput. | Controlled harness implemented; repeated culling comparison open |
-| 6 | Startup graphics resets and presentation pacing | Two title captures reproduce about 153 ms host stalls during the 15-second blanket reset. Guard-aware settling suppression is implemented. The probe now follows render-thread handoffs, keeping wall gaps and excluding invalid cross-thread CPU math. | Probe build/unit checks passed; candidate build and full-transition A/B still required; physical pacing remains open |
+| 4 | Long gaps outside measured ticks | Rare Normandy intervals reached 80-93 ms; custom Citadel reached 36 ms with a 31 ms gap outside the full hook. Queued calls were absent and drains tiny. Inspect scheduling/waits without disabling queued-call safety. | Not reproduced at old severity in the six preset runs; remains open |
+| 5 | Physical-headset submission stalls | Earlier VDXR captures have 35-62 ms worst intervals; 68 of 72 long intervals are dominated by xrEndFrame. Correlate GPU/resource/scheduling evidence with the physical headset. | Null-driver runs cannot close this issue |
+| 6 | Dense-scene render CPU and render-scale control | Six controlled 8/4/0/0/4/8-pixel captures retain 2284 x 2448, AA and One Draw. Threshold-average CPU medians are 5.99/5.91/5.82 ms, with larger variation between the two 8-pixel runs. Zero draws about 4.3% more calls. | Gentler culling is viable for further C-Sec testing; no default changed or physical/uncapped equivalence claimed |
 | 7 | Broader traversal | The fixed C-Sec benchmark does not validate the user's full walk or other hubs. Preserve the archived save and require an observed route before admitting another scene. | Other map development remains paused |
 
 ## Current regression gate
@@ -34,6 +35,25 @@ The first follow-up diagnostic reproduced the collection chain twice, 60.008 sec
 its timer through the LE1 SDK field and a read-only engine inspection. Its sampler substantially changed
 SteamVR pacing, so only the clean six-run matrix is used for performance acceptance. See the
 [diagnostic evidence and limitations](../research/66-citadel-performance-matrix.md#first-priority-garbage-collection-identified).
+
+The newer six-run culling comparison passes measurement validity but is runtime-wait limited near 31 fps,
+so it cannot be pooled with that uncapped preset matrix. Its render CPU and draw counts support testing
+gentler culling in the fixed C-Sec fixture. All six still fail the 22.222 ms whole-hook hitch gate, with
+maxima of 23.76-33.38 ms. Culling did not resolve those spikes. See [the per-repeat table](../research/68-culling-and-startup-followup.md#culling-comparison).
+
+## Completed improvement: startup settings resets and loading reads
+
+The controlled two-baseline/two-candidate startup comparison removed all four timed settings resets per
+launch while the native blur guard stayed healthy. Title host maxima fell from 144.77/156.96 ms to
+1.92/2.60 ms; post-load settling host maxima fell from 155.99/151.92 ms to 6.40/6.30 ms. Initial and
+world settings applies, real edits and unhealthy-guard fallback remain. AA and One Draw stayed enabled.
+Whole-hook loading maxima remain about 1.45-1.79 seconds, so the overall hitch gate still fails.
+
+The probe now captures serialized render-thread handoffs without subtracting unrelated CPU counters;
+all four transitions recorded a handoff with no overlap/context changes. Controller classification before
+controller-field reads and null HUD-helper checks removed the observed loading read-fault burst. Every
+accepted A/B capture had zero access violations and GPU timing drops. These are local null-headset results,
+not physical comfort acceptance. Exact build controls, rejected attempts and restoration are in [research/68](../research/68-culling-and-startup-followup.md).
 
 ## Completed improvement: camera diagnostic writes
 
@@ -85,7 +105,7 @@ earlier baseline. No access violations, GPU timestamp drops or draw-replay failu
 
 Frame-interval p99 stayed approximately 7.8 ms. Each run still had an engine CPU spike: engine wall maxima
 21.4346 / 19.4919 / 19.2030 ms. The general severe-hitch gate still fails because run 1's engine-plus-host
-tick reaches 22.2758 ms against its 22.222 ms limit. The rare 80-93 ms pause did not recur; item 2 remains open.
+tick reaches 22.2758 ms against its 22.222 ms limit. The rare 80-93 ms pause did not recur; the outside-tick gap item remains open.
 
 These runs used the current combined development source, which includes other pending work beyond this
 change. They validate live publication and removal of automatic writes; the timing comparison is not a
