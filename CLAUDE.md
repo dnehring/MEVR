@@ -414,8 +414,8 @@ switching frameworks.
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
   Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
   `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into
-  free 202, stage 172, remote 19, walks 23, **framed 18** (authored camera cuts: the set pieces, Saren, Sovereign, the Council) and
-  ambient 57, and gives each a **verdict** for First person (`--verdicts`: screen 21 = framed or Shepard walked by the game, check 26 =
+  free 78, stage 171, remote 19, walks 23, **framed 18** (authored camera cuts: the set pieces, Saren, Sovereign, the Council) and
+  ambient 182 (every line ambient: barks, whatever their auto-continue replies), and gives each a **verdict** for First person (`--verdicts`: screen 21 = framed or Shepard walked by the game, check 26 =
   wide stand-off stages and NPC walks, world 387; `--set-pieces` prints `cw::IsSetPiece`'s list: generated, never typed); `tools/conversation-survey.ps1` (+ `.py`) plays a map's conversations in the game through its Kismet actions
   (`-Streams`: area by area) and tabulates the mod's `convo: summary` lines (28 played, 0 jumps drawn). It opens maps: back up the
   saves first. **Any conversation in two minutes, no save** (research/59 "The launcher"): `tools/conversation-launch.ps1 <name>
@@ -426,7 +426,17 @@ switching frameworks.
   shows through a named streaming state (the medical bay's wake-up; the catalogue's `streamStates`, from the volumes' states the
   scan records) is streamed with `mevr stream state <name> on` (a loaded `BioSeqAct_SetStreamingState`'s own `Activated`, else the
   world's `m_WorldStreamingStates` entry and every volume's `Retouch`; `mevr stream states` lists them; research/59 "The launcher's
-  gaps closed", [verify] in the game); never `streamlevelin` (it froze the game, 2026-11-09).
+  gaps closed", [verify] in the game); never `streamlevelin` (it froze the game, 2026-11-09). **The walk-up scenes flow**
+  (research/59 "Flowing conversations", 2026-11-09, the owner's cheaper-but-riskier choice; `[Cinematics] worldFlow = all | off`,
+  default all, with the world mode; `game/ConversationFlow`, untested in the game): the game plays a conversation start whose first
+  entry is flagged `bAmbient` as its own barks (`UBioConversation::StartConversation` copies the start entry's flag; no conversation
+  mode, camera or stage; an ambient conversation never turns into one; interrupted beyond the start's `m_fInterruptRange`, else
+  `BioWorldInfo.m_fConversationInterruptDistance`), so the mod flags the **chain starts** (plays that can never reach a
+  `REPLY_STANDARD` reply, the wheel: Garrus and the Executor arguing, Wrex at C-Sec, Udina's arrival lines) on every loaded
+  `BioSeqAct_StartConversation`'s conversation before the script fires it, from the scan's generated table `cw::FlowEntries`
+  (`conversation-scan.py --flow-list`: 102 conversations, 526 entries; set pieces, transmissions and the game's own narration left
+  out; `--flow` the table), journalled and put back when the setting goes off. `worldFlowLeashM` (-1 never, metres) sets the live
+  chain's interrupt range; `mevr convo flow [list | rescan | restore]`; logs `convo flow:`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

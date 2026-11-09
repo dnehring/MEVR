@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <span>
 #include <string_view>
 
 namespace {
@@ -78,6 +79,31 @@ void TestSetPieces() {
     CHECK(!cw::IsSetPiece("end90_saren2_dlg"));                                 // an NPC's walk: in the world, to check
     CHECK(!cw::IsSetPiece("nor10_captain_extra"));
     CHECK(!cw::IsSetPiece(""));
+}
+
+void TestFlowEntries() {
+    // The scan's chain starts (research/59 "Flowing conversations"): Garrus arguing with the Executor is the conversation's
+    // first two entries; Udina's arrival lines; the key in any of the name's forms.
+    CHECK(cw::ConversationKey("BioConversation sta70_garrus_D.sta70_garrus_dlg") == "sta70_garrus");
+    CHECK(cw::ConversationKey("STA70_Garrus_dlg") == "sta70_garrus");
+    CHECK(cw::ConversationKey("sta70_garrus") == "sta70_garrus");
+    std::span<int const> const garrus = cw::FlowEntries("BioConversation sta70_garrus_D.sta70_garrus_dlg");
+    CHECK(garrus.size() == 2 && garrus[0] == 0 && garrus[1] == 1);
+    std::span<int const> const udina = cw::FlowEntries("sta20_human_ambassador_enter_dlg");
+    CHECK(udina.size() == 9 && udina[0] == 35 && udina[8] == 94);
+    CHECK(cw::FlowEntries("sta60_wrex_at_fists_dlg").empty());   // a set piece: on the 3D screen, never barks
+    CHECK(cw::FlowEntries("sp110_distress_call_dlg").empty());   // a transmission: its hologram needs the stage
+    CHECK(cw::FlowEntries("nor10_backgrounds_dlg").empty());     // narration under the character creation
+    CHECK(cw::FlowEntries("sta60_quarian_dlg").empty());         // a wheel from its first line
+    CHECK(cw::FlowEntries("").empty());
+    // Every table row is a non-set-piece with entries in order.
+    for (char const* name : {"sta30_chellik", "sta30_krogan_cutscene", "nor10_joker", "jug80_saren", "war50_krogan"}) {
+        std::span<int const> const e = cw::FlowEntries(name);
+        CHECK(!e.empty() && !cw::IsSetPiece(name));
+        for (std::size_t i = 1; i < e.size(); ++i) {
+            CHECK(e[i] > e[i - 1]);
+        }
+    }
 }
 
 void TestCrops() {
@@ -264,6 +290,7 @@ int RunConversationWorldTests() {
     gFailures = 0;
     TestParseMode();
     TestSetPieces();
+    TestFlowEntries();
     TestArrangement();
     TestCrops();
     TestSubtitlePoint();

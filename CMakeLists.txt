@@ -509,6 +509,8 @@ set(MEVR_MOD_SOURCES
     src/game/WorldUi.hpp
     src/game/ConversationWorld.cpp
     src/game/ConversationWorld.hpp
+    src/game/ConversationFlow.cpp
+    src/game/ConversationFlow.hpp
     src/game/UiWorldFigure.cpp
     src/game/UiWorldFigure.hpp
     src/game/OmniTool.cpp

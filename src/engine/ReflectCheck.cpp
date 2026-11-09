@@ -738,6 +738,16 @@ void CheckFields() {
     CheckField("SFXGame.BioConversation", "m_sCurrentSubTitle", SDK_FIELD(UBioConversation, m_sCurrentSubTitle));
     CheckField("SFXGame.BioConversation", "m_nCurrentEntry", SDK_FIELD(UBioConversation, m_nCurrentEntry));
     CheckField("SFXGame.BioConversation", "bUseFixedCameras", SDK_BOOL(UBioConversation, bUseFixedCameras));
+    // game/ConversationFlow (research/59 "Flowing conversations"): the chain starts' entries flagged ambient before the level's
+    // script starts them, the live conversation's interrupt range.
+    CheckField("SFXGame.BioConversation", "m_EntryList", SDK_FIELD(UBioConversation, m_EntryList));
+    CheckField("SFXGame.BioConversation", "m_ReplyList", SDK_FIELD(UBioConversation, m_ReplyList));
+    CheckField("SFXGame.BioConversation", "m_fInterruptRange", SDK_FIELD(UBioConversation, m_fInterruptRange));
+    CheckField("SFXGame.BioConversation", "m_bAmbient", SDK_BOOL(UBioConversation, m_bAmbient));
+    CheckClass<UBioSeqAct_StartConversation>("SFXGame.BioSeqAct_StartConversation");
+    CheckField("SFXGame.BioSeqAct_StartConversation", "Conv", SDK_FIELD(UBioSeqAct_StartConversation, Conv));
+    CheckField("SFXGame.BioSeqAct_StartConversation", "m_fInterruptRange", SDK_FIELD(UBioSeqAct_StartConversation, m_fInterruptRange));
+    CheckField("SFXGame.BioWorldInfo", "m_fConversationInterruptDistance", SDK_FIELD(ABioWorldInfo, m_fConversationInterruptDistance));
     CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayingWheel));
     CheckField("SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed", SDK_FIELD(UBioSFHandler_Conversation, m_bSlotsUsed));
     CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));

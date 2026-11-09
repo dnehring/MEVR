@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Every LE1 conversation from the game's packages, without running the game (research/59 "The scan"): one JSON line per
-//   conversation   a BioConversation (the _LOC_INT packages hold them): its lines, speakers, camera intimacy, GUI styles
+//   conversation   a BioConversation (the _LOC_INT packages hold them): its lines, speakers, camera intimacy, GUI styles, and its
+//                  graph (the start entries, each entry's ambient flag, speaker and replies, each reply's type and entries), so
+//                  the scan can tell a chain (a play that never reaches a wheel) from a conversation (research/59 "Flowing
+//                  conversations")
 //   start          a BioSeqAct_StartConversation in a level's script: which conversation, its owner (the actor the conversation
 //                  belongs to: its class and, when it is placed in the level, its Location) and its stage (a BioStage: the marks
 //                  the game puts the actors on, and the stage's cameras) or none (the actors stay where they stand); the launcher
@@ -96,14 +99,40 @@ internal static class Scan
         var intimacy = new SortedDictionary<int, int>();
         var styles = new SortedDictionary<string, int>();
         int ambient = 0, unskippable = 0;
+        // The graph itself, for the opening run and the wheels (research/59 "Flowing conversations"): each entry's ambient flag,
+        // speaker and the replies it offers; each reply's type (REPLY_STANDARD and REPLY_DIALOGEND show the wheel,
+        // REPLY_AUTOCONTINUE goes on by itself), ambient flag and the entries it leads to.
+        var nodes = new List<Dictionary<string, object>>();
+        var replyNodes = new List<Dictionary<string, object>>();
         foreach (StructProperty node in entries ?? new ArrayProperty<StructProperty>("m_EntryList"))
         {
             int camera = node.GetProp<IntProperty>("nCameraIntimacy")?.Value ?? -1;
             intimacy[camera] = intimacy.GetValueOrDefault(camera) + 1;
             string style = node.GetProp<EnumProperty>("eGUIStyle")?.Value.Instanced ?? "?";
             styles[style] = styles.GetValueOrDefault(style) + 1;
-            ambient += node.GetProp<BoolProperty>("bAmbient")?.Value == true ? 1 : 0;
+            bool isAmbient = node.GetProp<BoolProperty>("bAmbient")?.Value == true;
+            ambient += isAmbient ? 1 : 0;
             unskippable += node.GetProp<BoolProperty>("bSkippable")?.Value == false ? 1 : 0;
+            nodes.Add(new Dictionary<string, object>
+            {
+                ["ambient"] = isAmbient,
+                ["nonText"] = node.GetProp<BoolProperty>("bNonTextLine")?.Value == true,
+                ["speaker"] = node.GetProp<IntProperty>("nSpeakerIndex")?.Value ?? -1,
+                ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,
+                ["replies"] = node.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?.Select(r => r.GetProp<IntProperty>("nIndex")?.Value ?? -1).ToList()
+                              ?? new List<int>(),
+            });
+        }
+        foreach (StructProperty node in replies ?? new ArrayProperty<StructProperty>("m_ReplyList"))
+        {
+            replyNodes.Add(new Dictionary<string, object>
+            {
+                ["type"] = node.GetProp<EnumProperty>("ReplyType")?.Value.Instanced ?? "REPLY_STANDARD",
+                ["ambient"] = node.GetProp<BoolProperty>("bAmbient")?.Value == true,
+                ["nonText"] = node.GetProp<BoolProperty>("bNonTextLine")?.Value == true,
+                ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,
+                ["entries"] = node.GetProp<ArrayProperty<IntProperty>>("EntryList")?.Select(e => e.Value).ToList() ?? new List<int>(),
+            });
         }
         return new Dictionary<string, object>
         {
@@ -116,6 +145,9 @@ internal static class Scan
             ["styles"] = styles,
             ["ambient"] = ambient,
             ["unskippable"] = unskippable,
+            ["starting"] = props.GetProp<ArrayProperty<IntProperty>>("m_StartingList")?.Select(e => e.Value).ToList() ?? new List<int>(),
+            ["nodes"] = nodes,
+            ["replyNodes"] = replyNodes,
         };
     }
 

@@ -35,6 +35,12 @@ core/vr/ConversationWorld's IsSetPiece):
             walk: in the world for now, each to be looked at with tools/conversation-launch.ps1
   world     everything else (remote, stage, free); ambient lines have no verdict
 
+How each conversation flows (--flow; research/59 "Flowing conversations"): per start entry (m_StartingList), a play that can
+never reach a REPLY_STANDARD reply (the wheel) is a chain: a scene watched on the walk up. --flow-list prints the C++ table
+core/vr/ConversationWorld's FlowEntries is built from: the chain starts' entries that no conversation start reaches and that
+the game left ordinary, for conversations a level's script starts, without set pieces, transmissions and the narration under
+the game's own screens (FLOW_SKIP). The mod flags those entries ambient, and the game plays such a start as its own barks.
+
 The output describes the game's own data: keep it out of the repository (the table of counts is ours).
 """
 import collections
@@ -87,7 +93,8 @@ def measure(name, conv, starts, nodes):
         m['switchCamera'] += any('BioEvtSysTrackSwitchCamera' in g['tracks'] for g in groups)
         m['fade'] += any('InterpTrackFade' in g['tracks'] for g in groups)
     m['lines'] = conv['entries'] + conv['replies'] if conv else 0
-    m['ambient'] = conv is not None and conv['entries'] > 0 and conv['ambient'] == conv['entries'] and conv['replies'] == 0
+    # Every line ambient: barks (their replies, if any, are auto-continues and dialog ends: never a wheel; 2026-11-09).
+    m['ambient'] = conv is not None and conv['entries'] > 0 and conv['ambient'] == conv['entries']
     m['stage'] = any(s.get('stage') for s in starts)
     sizes = [int(x.group(1)) for st in starts if st.get('stageType') for x in [re.search(r'_(\d{3,4})(_|$)', st['stageType'].split('.')[-1])] if x]
     m['stageSpread'] = max(sizes) if sizes else 0
@@ -95,6 +102,74 @@ def measure(name, conv, starts, nodes):
     m['stageTypes'] = sorted({(s.get('stageType') or '-').split('.')[-1] for s in starts})
     m['starts'] = len(starts)
     return m
+
+
+STANDARD = 'REPLY_STANDARD'
+
+
+def reachable(conv, start):
+    """The entries a play from `start` can reach (through replies of every type)."""
+    nodes, replies = conv['nodes'], conv['replyNodes']
+    seen, queue = [], [start]
+    while queue:
+        e = queue.pop()
+        if e in seen or not 0 <= e < len(nodes):
+            continue
+        seen.append(e)
+        for r in nodes[e]['replies']:
+            if 0 <= r < len(replies):
+                queue.extend(replies[r]['entries'])
+    return seen
+
+
+def has_wheel(conv, entries):
+    """The wheel shows at an entry with a REPLY_STANDARD reply (auto-continue and dialog-end replies go on by themselves: the
+    game's own ambient barks end in dialog-end replies)."""
+    replies = conv['replyNodes']
+    return any(replies[r]['type'] == STANDARD for e in entries for r in conv['nodes'][e]['replies'] if 0 <= r < len(replies))
+
+
+def flow(conv):
+    """How a conversation flows (research/59 "Flowing conversations"): per start (m_StartingList; the game picks one by its
+    conditionals), a play that can never reach a wheel is a chain (barks, a scene watched: the Executor arguing with Garrus),
+    a play that can is a conversation. The chain starts' entries that no conversation start reaches and that aren't ambient
+    already are what `--flow-list` makes ambient (the game then plays them as its own barks: no conversation mode)."""
+    nodes, starting = conv.get('nodes'), conv.get('starting')
+    if not nodes:
+        return None
+    chain, wheel_reach = [], set()
+    for s in starting or []:
+        entries = reachable(conv, s)
+        if has_wheel(conv, entries):
+            wheel_reach |= set(entries)
+        else:
+            chain.append((s, entries))
+    flips = sorted({e for s, entries in chain for e in entries if e not in wheel_reach and not nodes[e]['ambient']})
+    return {
+        'starts': len(starting or []), 'chainStarts': len(chain), 'chainEntries': sorted({e for s, entries in chain for e in entries}),
+        'flips': flips, 'ambientEntries': sum(1 for n in nodes if n['ambient']),
+    }
+
+
+# Narration under the game's own screens, never a scene in the world: the character creation's backgrounds, the tutorial
+# popups, the news terminals. Left as the game plays them.
+FLOW_SKIP = {'nor10_backgrounds', 'ice00_popup_text', 'sp_news_vids'}
+
+
+def flow_wanted(k, kd, v):
+    # Set pieces (screen) stay on the 3D screen; a transmission's hologram needs its stage, which an ambient play skips.
+    return v != 'screen' and kd != 'remote' and k not in FLOW_SKIP
+
+
+def ranges(indices):
+    out, i = [], 0
+    while i < len(indices):
+        j = i
+        while j + 1 < len(indices) and indices[j + 1] == indices[j] + 1:
+            j += 1
+        out.append(f'{indices[i]}' if j == i else f'{indices[i]}-{indices[j]}')
+        i = j + 1
+    return out
 
 
 def kind(m):
@@ -243,6 +318,33 @@ def main(argv):
     for a in areas:
         c = collections.Counter(r[2] for r in rows if r[1] == a)
         print(f"| {a} | {c['free']} | {c['stage']} | {c['remote']} | {c['walks']} | {c['framed']} | {c['ambient']} |")
+    if '--flow' in argv or '--flow-list' in argv:
+        # Only conversations a level's script starts (sp_follower_interject and the like are started by code).
+        flows = [(k, kd, verdict(kd, m), flow(c)) for k, a, kd, m, c in rows if flow(c) and starts.get(k)]
+        flipping = [f for f in flows if f[3]['flips'] and flow_wanted(f[0], f[1], f[2])]
+        left_out = [f for f in flows if f[3]['flips'] and not flow_wanted(f[0], f[1], f[2])]
+        print(f"\nflow: {len(flows)} conversations started by a level's script; {sum(1 for f in flows if f[3]['chainStarts'])} have a chain "
+              f"start (a play that can never reach a wheel), {len(flipping)} of them with lines to make ambient "
+              f"({sum(len(f[3]['flips']) for f in flipping)} entries); {len(left_out)} left out (set pieces, transmissions)")
+        if '--flow' in argv:
+            print('\n| Conversation | Kind | Verdict | Starts | Chain starts | Entries made ambient | Already ambient |\n|---|---|---|---|---|---|---|')
+            for k, kd, v, f in flipping:
+                print(f"| {k} | {kd} | {v} | {f['starts']} | {f['chainStarts']} | {' '.join(ranges(f['flips']))} | {f['ambientEntries']} |")
+        if '--flow-list' in argv:
+            # A flat array of entries plus (name, offset, count) rows: an initializer_list member in a constexpr table loses its
+            # backing array on MSVC (the lookups read garbage, 2026-11-09).
+            print('\n// tools/conversation-scan.py --flow-list (research/59 "Flowing conversations"): per conversation, the entries of its chain')
+            print('// starts (plays that never reach a wheel) that no conversation start reaches and that the game left ordinary.')
+            print('constexpr int kFlowEntries[] = {')
+            offset, rows_out = 0, []
+            for k, kd, v, f in flipping:
+                print(f'    {", ".join(str(e) for e in f["flips"])},  // {k}')
+                rows_out.append(f'    {{"{k}", {offset}, {len(f["flips"])}}},')
+                offset += len(f['flips'])
+            print('};')
+            print('constexpr FlowRow kFlowRows[] = {')
+            print('\n'.join(rows_out))
+            print('};')
     if '--list' in argv:
         want = argv[argv.index('--list') + 1]
         print(f'\n| Conversation | Lines | Nodes | Authored camera | Actor moves | Fades | Stage |\n|---|---|---|---|---|---|---|')

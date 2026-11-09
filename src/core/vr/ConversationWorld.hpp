@@ -7,6 +7,8 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -151,5 +153,18 @@ std::vector<ArcSeat> ArcSeats(Vec3 const& player, Vec3 const& owner, int count, 
 // In the world mode they go to the 3D screen (`[Cinematics] worldSetPieces = screen`). `name` is the conversation's object
 // name in any form ("BioConversation nor10_comm_room_d.nor10_comm_room_dlg", "nor10_comm_room_dlg", "nor10_comm_room"), any case.
 bool IsSetPiece(std::string_view name);
+// The conversation's key in the tables above: the object's own name, lower case, without its "_dlg"/"_d" suffix
+// ("BioConversation sta70_garrus_D.sta70_garrus_dlg" -> "sta70_garrus").
+std::string ConversationKey(std::string_view name);
+
+// ---- Flowing conversations (research/59 "Flowing conversations", 2026-11-09) ---------------------------------------------------
+// A conversation's play from a start entry that can never reach a dialogue wheel (a scene watched: Garrus arguing with the
+// Executor, Udina's arrival, the trigger lines on a walk up) is a chain. The game plays a start whose first entry is flagged
+// ambient as its own barks (UBioConversation::StartConversation copies the start entry's bAmbient and skips the conversation
+// mode, the camera and the stage; the first-person player keeps walking, within the interrupt range), so the mod flags the
+// chain starts' entries before the level's script starts them. The entries per conversation come from the scan's
+// `--flow-list` (chain starts' entries no conversation start reaches, left ordinary by the game; set pieces, transmissions and
+// the game's own narration left out): empty for a conversation not in the table. `name` as IsSetPiece takes it.
+std::span<int const> FlowEntries(std::string_view name);
 
 } // namespace mevr::vr::conversation_world

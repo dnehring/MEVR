@@ -413,6 +413,70 @@ state on, then that volume touched), the catalogue's `streamStates` when no load
 `tools/conversation-launch.ps1 jug20_sal_captainkirrahe` (the wait and the raised teleport) and `tools/conversation-launch.ps1
 nor10_oculon_approach` (`stream_wakeup` on, then `BioTriggerStream_147`).
 
+## Flowing conversations: the walk-up scenes as the game's own barks (2026-11-09, evening)
+
+The owner, on the first Citadel visit: "I'll walk up to NPCs and it will start an encounter, like meeting Wrex or saving Tali.
+I want these to allow free character movement (within bounds). A lot of the times they will chain where we don't have any vocal
+interaction and then we have a small conversation option available." Of the two ways (the mod moving Shepard's pawn inside the
+conversation mode, or the game's own ambient path) the owner chose the cheaper, riskier one: "some of the encounters would be
+interesting to see if you could do the cheaper but riskier. The ideal case is that the conversations flow really easily."
+
+**How the game decides a conversation is ambient** (Ghidra, UBioConversation's vtable at RVA 0x131EF20; the natives behind the
+exec thunks `execUpdateConversation` 0xB909B0 and `execswitchToAmbient` 0x371570):
+- `StartConversation` (slot 0x2D0, 0xC86B00) picks the start entry from `m_StartingList` (the first whose conditional holds),
+  then copies that entry's `bAmbient` into the conversation's `m_bAmbient` (an XOR bit copy on +0x2C0, bit 0x200). Not ambient:
+  it tells the player controller's HUD object to enter the conversation mode (a ProcessEvent with a byte 5: game mode 5) and
+  sets the camera up. Ambient: no mode, no camera; it calls `switchToAmbient` (slot 0x318, 0xC892B0: hides the conversation GUI's
+  parts and shows it as ambient) and sets the GUI's subtitle style to 4 (`SUBTITLE_RENDER_AMBIENT`).
+- The entry start (0xC7DCD0, the function that plays the next entry) copies the new entry's `bAmbient` only while the conversation
+  is NOT ambient, and only honours a switch to ambient for an entry with no replies (the last line) whose speaker isn't in the
+  party: that is the game's own "last line plays as you walk away" (the 204 conversations that mix ambient and ordinary lines end
+  on ambient ones; none begins ambient and turns into a conversation). An ambient conversation stays ambient to its end.
+- `UpdateConversation` (slot 0x2E0, 0xC87830): an ambient conversation is interrupted (the controller's slot 0x9F0) when the
+  conversation's player is farther than `m_fInterruptRange` from the speaker; the range is the start action's
+  `BioSeqAct_StartConversation.m_fInterruptRange`, else (0) `BioWorldInfo.m_fConversationInterruptDistance` (BIOGame.ini);
+  -1 never. Skipping and the reply display run only for non-ambient conversations.
+
+So a start whose first entry is flagged ambient plays as the game's own barks, in the ordinary game mode, the player walking;
+the whole conversation then plays that way, so only starts that never need the wheel qualify. **A wheel shows at an entry with a
+`REPLY_STANDARD` reply**; auto-continue and dialog-end replies go on by themselves (the ambient barks of the game end in
+`REPLY_DIALOGEND` replies: Noveria's salarian suicide trigger).
+
+**The scan reads the graph** (`conversation-scan` records every entry's `bAmbient`, speaker and `ReplyListNew`, every reply's
+`ReplyType` and `EntryList`, and `m_StartingList`; `conversation-scan.py --flow`): per start, the entries a play can reach; a
+start that can't reach a standard reply is a **chain**. The owner's examples are chains inside wheel conversations, as separate
+starts: `sta70_garrus` start 0 ("Garrus and Executor argue": Garrus's line, the Executor's, no replies) against start 2 ("Player
+speaks to Garrus", the wheel at once); `sta30_chellik` 0-1; `sta30_krogan_cutscene` 23-29 (Wrex at C-Sec); Udina's arrival
+`sta20_human_ambassador_enter` 35-37 and 89-94; `nor10_joker` 0 and 25-31. Of 404 conversations a level's script starts, 307
+have a chain start; 102 of them have chain lines the game left ordinary (526 entries), the rest are ambient already. With this
+the scan's `ambient` kind is every line ambient whatever the replies (182, not 57: the barks with auto-continue chains counted
+as `free` before); the kinds are now free 78, stage 171, remote 19, walks 23, framed 18, ambient 182.
+
+**`--flow-list` generates `cw::FlowEntries`**: per conversation the chain starts' entries that no wheel start reaches (a shared
+tail would end a wheel conversation ambient) and that aren't ambient; set pieces (the 3D screen), transmissions (their hologram
+needs the stage an ambient play skips) and the narration under the game's own screens (`nor10_backgrounds`, `ice00_popup_text`,
+`sp_news_vids`) are left out. The mod (`game/ConversationFlow`, `[Cinematics] worldFlow = all | off`, default all, only with
+`conversations = world`) scans the loaded `BioSeqAct_StartConversation` actions (at once, 2 s after the object table grows by a
+thousand, every 10 s) and flags those entries' `bAmbient` on their conversations before the level's script fires them
+(journalled `ConversationFlow.entryAmbient`; an entry that offers a standard reply in the live data is refused and logged: the
+table is from the shipped packages). The flags are put back when the setting goes off or the mod unloads. The live conversation
+is watched: a flagged one playing ambient logs `convo flow: <name> plays as barks (ambient): the player stays on foot;
+interrupted beyond N m of the speaker`; `worldFlowLeashM` sets the live conversation's `m_fInterruptRange` (-1 never, else
+metres; 0 the game's). `mevr convo flow [list | rescan | restore]`.
+
+What this gives: the walk-up scene plays while the player walks and looks (bounds: the interrupt range; the game's default
+`m_fConversationInterruptDistance` is 2500 units, 25 m, in BIOGame.ini, where a start sets none), the subtitle in the ambient
+style on the HUD panel, the wheel conversation that follows as First
+person has it. What it costs: the stage's placement of a chain (Udina and Anderson put on their marks, the squad with them) is
+skipped, so the people stay where the level left them; a chain's authored matinee per line fires through the conversation's
+script list whatever the mode [verify]; a chain interrupted by distance ends early (the game's own rule for barks). Walking
+during a conversation that reaches a wheel is NOT this (the entry start never turns an ambient conversation into a conversation):
+that needs the mod moving the pawn inside the conversation mode, the other way.
+
+[verify] in the game (the launcher: `tools/conversation-launch.ps1 sta70_garrus` fires start 0's action? The catalogue lists
+each start's action; `mevr activate <n> 0` on the "Garrus and Executor argue" action): the log's `convo flow: ... plays as
+barks`, game mode 0 throughout, the subtitles, the player walking; then the wheel conversation; the Udina arrival from a save.
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the

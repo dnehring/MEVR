@@ -195,6 +195,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   marks and observed returns should cancel; Shepard stays kept. Check locomotion/gestures, turns, collision/timeout, no drawn
   jumps, and no stale velocity or AI move on disable/end. Native returns exactly at the already-kept place cannot be detected
   by position sampling alone. Still off by default; NOT yet checked in the game. (research/59 "Walking to marks (prototype)")
+- [ ] **Flowing conversations** (built 2026-11-09, untested in the game; research/59 "Flowing conversations"; `[Cinematics]
+  worldFlow = all` with `conversations = world`): the walk-up scenes play as barks while you keep walking (Garrus and the Executor
+  arguing at C-Sec, Wrex at the C-Sec desk, Chellick's opening lines, Udina and Anderson's arrival lines, Joker's first line), then
+  the wheel conversation starts as First person has it. Look for the log's `convo flow: ... plays as barks`, the subtitle on the HUD
+  panel, no camera cut, the people standing where the level left them (the stage's placement is skipped), the scene ending early
+  if you walk off beyond the interrupt range. `worldFlow = off` puts the game's flags back live; `mevr convo flow` lists them.
 ### The omni-tool menu on the wrist
 
 - [ ] 2026-11-08 right rail and power-up (research/57 section 9): tap the wrist, then Equipment; the rail slides right over 0.28 s

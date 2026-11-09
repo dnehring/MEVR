@@ -2,6 +2,7 @@
 #include "game/ConsoleRequest.hpp"
 #include "game/BodyProbe.hpp"
 #include "game/ConversationWorld.hpp"
+#include "game/ConversationFlow.hpp"
 
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
@@ -850,6 +851,10 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         // is shown. A level's conversations start from its script: `mevr instances BioSeqAct_StartConversation`, `mevr activate n 0`.
         std::string rest;
         std::getline(words, rest);
+        std::string const trimmed = rest.substr(rest.find_first_not_of(' ') == std::string::npos ? rest.size() : rest.find_first_not_of(' '));
+        if (trimmed.rfind("flow", 0) == 0) {
+            return conversation_flow::Command(trimmed.size() > 4 ? trimmed.substr(4) : std::string());  // `mevr convo flow [list|rescan|restore]`
+        }
         return conversation_world::Command(rest);
     }
     if (verb == "body") {
