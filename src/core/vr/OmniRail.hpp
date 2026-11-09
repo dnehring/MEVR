@@ -54,7 +54,8 @@ struct Rail {
 };
 // Beside a screen in its plane, as tall as it. +1: the eye's right, -1: left.
 Rail Beside(world_ui::Panel const& screen, float side = 1.0f, float gapM = kGapM, float aspect = kRailAspect);
-inline constexpr float kSlideS = 0.28f;
+inline constexpr float kSlideS = 0.43f;
+inline constexpr float kAloneFadeS = 0.10f;
 float SlideEase(float seconds);
 Rail Interpolate(Rail const& from, Rail const& to, float seconds);
 // Tucked under the selected screen edge, slightly behind its face.
@@ -65,21 +66,25 @@ struct Face {
 };
 // OpenXR orders layers, not their depth. Clip the tucked rail to the part outside the screen's edge as it emerges.
 std::optional<Face> Exposed(Rail const& rail, world_ui::Panel const& screen, float side);
-float SlideOpacity(float seconds);
 
+// Wait kUnfoldS, fading the old standalone rail in place for kAloneFadeS, then reveal from Tucked for kSlideS.
+// dt is real elapsed time (not capped at a frame budget); screenAgeS initializes the remaining unfold wait.
 // A slide is tied to a stretch with a screen, not its tag/opening number. The caller keeps it through tab backouts.
 class Slide {
 public:
-    Rail Step(Rail const& target, bool beside, float side, float dt, std::optional<Rail> const& tucked);
+    Rail Step(Rail const& target, bool beside, float side, float dt, std::optional<Rail> const& tucked,
+        float screenAgeS = 0.0f);
     void Reset();
     bool Started() const { return started_; }
-    bool Moving() const { return beside_ && ageS_ < kSlideS; }
-    float Age() const { return ageS_; }
-    float Opacity() const { return beside_ ? SlideOpacity(ageS_) : 1.0f; }
+    bool Moving() const { return beside_ && Age() < kSlideS; }
+    float Age() const;
+    bool FadingAlone() const { return beside_ && fadeAlone_ && ageS_ < kAloneFadeS; }
+    float Opacity() const;
 private:
-    bool have_ = false, beside_ = false, started_ = false;
-    float side_ = 1.0f, ageS_ = kSlideS;
+    bool have_ = false, beside_ = false, started_ = false, fadeAlone_ = false;
+    float side_ = 1.0f, ageS_ = world_ui::kUnfoldS+kSlideS;
     Rail drawn_{};
+    Rail alone_{};
     Rail from_{};  // relative to the destination pose: the slide follows a moving wrist
 };
 // Alone: projected from the wrist as a screen would be (world_ui::WristPlace), `heightM` tall.

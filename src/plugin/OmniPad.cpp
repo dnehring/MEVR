@@ -290,7 +290,7 @@ void Hold(pad::Arm to, int hand, char const* how) {
 }
 
 // The pointer: the controllers' rays and index fingertips on the pad. While a press is held, the arm under it is the one held.
-void PointerStep(pad::Pad const& at, bool leftProjects, float dt) {
+void PointerStep(pad::Pad const& at, bool leftProjects, float dt, std::optional<XrVector3f> const& drawnTip) {
     vr::controllers::State const state = vr::controllers::Latest();
     gp::Input input;
     input.active = state.active;
@@ -309,6 +309,15 @@ void PointerStep(pad::Pad const& at, bool leftProjects, float dt) {
                     hand.aim.position.z + d.z / n * kTipAheadM};
             }
         }
+    }
+    static std::optional<bool> bodyTouch;
+    if (bodyTouch != drawnTip.has_value()) {
+        log::Info("omni-tool pad: touch from {}", drawnTip ? "Shepard's drawn fingertip" : "the controller (no body)");
+        bodyTouch = drawnTip.has_value();
+    }
+    if (drawnTip) {
+        input.hands[1].tipValid = true;
+        input.hands[1].tip = *drawnTip;
     }
     input.width = kSize;
     input.height = kSize;
@@ -386,7 +395,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (g.ui->ReloadIfChanged()) {
         g.needRender = true;
     }
-    PointerStep(at, onWrist, dt);
+    PointerStep(at, onWrist, dt, frame.body ? vr::omni_rail::BodyFingertip(*frame.body) : std::nullopt);
     g.hand = g.pointer.Hand();
     if (g.needRender) {
         float const clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};

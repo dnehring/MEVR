@@ -24,6 +24,7 @@ struct Shown {
     vr::world_ui::Panel settled; // before the screen's unfold: a tab change must not shrink/move the rail
     vr::world_ui::Panel whole;   // the whole window on the panel's plane (the game pointer's quad)
     vr::world_ui::Rect part;     // the shown part of the window (window UV)
+    float ageS = 0.0f; // real time since the wrist screen started unfolding
     float backdrop = 0.0f;
     vr::world_ui::Screen screen = vr::world_ui::Screen::None;
     bool onWrist = false;                     // projected from the wrist

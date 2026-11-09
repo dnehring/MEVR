@@ -138,7 +138,9 @@ struct State {
     rail::Tap tap;
     std::optional<vr::world_ui::Panel> lastPanel;  // the drawn pose to retain during a tab's backout gap
     rail::Slide slide;
-    bool tuckedSlide = false;
+    unsigned slideFrames = 0;
+    float slideDistanceM = 0.0f, slideElapsedS = 0.0f;
+    bool slideLogged = false;
     bool emerging = false;
     int imageX = 0, imageWidth = kWidth;
     bool besideScreen = false;
@@ -555,6 +557,11 @@ void Publish(bool shown, char const* place) {
 
 // The pointer: the controllers' rays and index fingertips on the rail, as RmlUi's mouse.
 void PointerStep(rail::Rail const& at, float dt, std::optional<XrVector3f> const& drawnTip) {
+    static std::optional<bool> bodyTouch;
+    if (bodyTouch != drawnTip.has_value()) {
+        log::Info("omni-tool rail: touch from {}", drawnTip ? "Shepard's drawn fingertip" : "the controller (no body)");
+        bodyTouch = drawnTip.has_value();
+    }
     vr::controllers::State const state = vr::controllers::Latest();
     gp::Input input;
     input.active = state.active;
@@ -712,17 +719,27 @@ std::optional<rail::Rail> Place(Frame const& frame, float dt) {
         target = rail::Alone(frame.eyes, frame.display.value_or(frame.wrist), g.settings.aloneHeightM, 0.10f, 0.0f);
     }
     if (!target) return std::nullopt;
-    rail::Rail const at = g.slide.Step(*target, beside, g.settings.side, dt, tucked);
+    bool const wasMoving = g.slide.Moving();
+    rail::Rail const at = g.slide.Step(*target, beside, g.settings.side, dt, tucked, beside ? frame.screen->ageS : 0.0f);
     if (g.slide.Started()) {
-        g.tuckedSlide = !g.lastPanel.has_value();
-        XrVector3f const d{at.pose.position.x-target->pose.position.x, at.pose.position.y-target->pose.position.y,
-            at.pose.position.z-target->pose.position.z};
-        log::Info("omni-tool rail: slides to the screen's {} ({:.3f} m in {:.2f} s)",
-            g.settings.side < 0.0f ? "left" : "right", std::sqrt(d.x*d.x+d.y*d.y+d.z*d.z), rail::kSlideS);
+        g.slideFrames = 0;
+        g.slideElapsedS = 0.0f;
+        g.slideLogged = false;
+        XrVector3f const d{tucked->pose.position.x-target->pose.position.x, tucked->pose.position.y-target->pose.position.y,
+            tucked->pose.position.z-target->pose.position.z};
+        g.slideDistanceM = std::sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
+    } else if (beside && wasMoving && (g.slide.Age() > 0.0f)) {
+        ++g.slideFrames;
+        g.slideElapsedS += dt;
+    }
+    if (beside && !g.slide.Moving() && !g.slideLogged) {
+        log::Info("omni-tool rail: slid out of the screen's {} edge ({:.3f} m in {:.2f} s, {} frames; elapsed {:.3f} s)",
+            g.settings.side < 0.0f ? "left" : "right", g.slideDistanceM, rail::kSlideS, g.slideFrames, g.slideElapsedS);
+        g.slideLogged = true;
     }
     g.imageX = 0;
     g.imageWidth = kWidth;
-    if (g.tuckedSlide && beside && g.slide.Moving()) {
+    if (beside && g.slide.Moving() && !g.slide.FadingAlone()) {
         auto const face = rail::Exposed(at,frame.screen->settled,g.settings.side);
         if (!face) {
             g.emerging = true;
@@ -741,7 +758,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     ReadSettings();
     LARGE_INTEGER counter{};
     QueryPerformanceCounter(&counter);
-    float const dt = g.lastCounter.QuadPart != 0 ? std::clamp(static_cast<float>(Seconds(counter) - Seconds(g.lastCounter)), 0.0f, 0.1f) : 0.0f;
+    float const dt = g.lastCounter.QuadPart != 0 ? std::max(static_cast<float>(Seconds(counter) - Seconds(g.lastCounter)), 0.0f) : 0.0f;
     g.lastCounter = counter;
     if (!g.settings.enabled || frame.othersOwnInput || frame.session == XR_NULL_HANDLE || frame.device == nullptr) {
         g.targetShown = false;
@@ -836,7 +853,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (!Init(frame.device, frame.context) || !EnsureSwapchain(frame.session)) {
         return nullptr;
     }
-    if (!at) at = Place(frame, 0.0f);  // a wrist tap opened it this frame
+    if (!at && !g.emerging) at = Place(frame, 0.0f);  // a wrist tap opened it this frame
     if (!frame.screen && !g.besideScreen) {
         place = frame.display ? "on the omni-tool's display" : "on the wrist";
     }
@@ -890,7 +907,9 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     HandlePick(screen);
     std::uint64_t const onMs = wu::LatestOmniOnMs(400);
     float const light = vr::omni_power::Luminance(vr::omni_power::Age(onMs != 0 ? onMs : g.shownMs, GetTickCount64()));
-    float const opacity = g.slide.Opacity() * light;
+    // Crop/pose reveal the slide without touching RmlUi. Quantize only the standalone light/fade.
+    float const opacity = frame.screen && !g.slide.FadingAlone() ? 1.0f
+        : std::round(g.slide.Opacity() * light * 8.0f) / 8.0f;
     if (opacity != g.opacity) {
         g.opacity = opacity;
         g.needRender = true;

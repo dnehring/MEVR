@@ -75,10 +75,9 @@ Rail Beside(world_ui::Panel const& screen, float side, float gapM, float aspect)
 
 float SlideEase(float seconds) {
     float const t = std::isfinite(seconds) ? std::clamp(seconds / kSlideS, 0.0f, 1.0f) : (seconds > 0.0f ? 1.0f : 0.0f);
-    return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+    return t*t*(3.0f-2.0f*t); // cubic smoothstep: zero endpoint velocity, peak slope 1.5
 }
 
-float SlideOpacity(float seconds) { return 0.3f + 0.7f * SlideEase(seconds); }
 
 namespace {
 XrQuaternionf Product(XrQuaternionf const& a, XrQuaternionf const& b) {
@@ -129,26 +128,32 @@ std::optional<Face> Exposed(Rail const& rail, world_ui::Panel const& screen, flo
 
 void Slide::Reset() { *this = Slide{}; }
 
-Rail Slide::Step(Rail const& target, bool beside, float side, float dt, std::optional<Rail> const& tucked) {
+float Slide::Age() const { return std::max(0.0f, ageS_ - world_ui::kUnfoldS); }
+float Slide::Opacity() const { return FadingAlone() ? 1.0f-ageS_/kAloneFadeS : 1.0f; }
+
+Rail Slide::Step(Rail const& target, bool beside, float side, float dt, std::optional<Rail> const& tucked, float screenAgeS) {
     started_ = beside && (!beside_ || side != side_);
     if (started_) {
-        from_ = have_ ? drawn_ : tucked.value_or(target);
+        fadeAlone_ = have_ && !beside_;
+        alone_ = drawn_;
+        from_ = tucked.value_or(target); // never traverse the screen from the standalone rail
         XrQuaternionf const inverse = Inverse(target.pose.orientation);
         from_.pose.position = overlay::Rotate(inverse, {from_.pose.position.x-target.pose.position.x,
             from_.pose.position.y-target.pose.position.y, from_.pose.position.z-target.pose.position.z});
         from_.pose.orientation = Product(inverse, from_.pose.orientation);
-        ageS_ = 0.0f;
+        ageS_ = std::isfinite(screenAgeS) ? std::clamp(screenAgeS, 0.0f, world_ui::kUnfoldS) : 0.0f;
     } else if (beside && std::isfinite(dt)) {
-        ageS_ = std::clamp(ageS_ + std::max(dt, 0.0f), 0.0f, kSlideS);
+        ageS_ = std::clamp(ageS_ + std::max(dt, 0.0f), 0.0f, world_ui::kUnfoldS+kSlideS);
     }
     drawn_ = target;
-    if (beside && ageS_ < kSlideS) {
+    if (beside && Age() < kSlideS) {
         Rail from = from_;
         XrVector3f const offset = overlay::Rotate(target.pose.orientation, from.pose.position);
         from.pose.position = {target.pose.position.x+offset.x, target.pose.position.y+offset.y, target.pose.position.z+offset.z};
         from.pose.orientation = Product(target.pose.orientation, from.pose.orientation);
-        drawn_ = Interpolate(from, target, ageS_);
+        drawn_ = Interpolate(from, target, Age());
     }
+    if (beside && fadeAlone_ && ageS_ < kAloneFadeS) drawn_ = alone_;
     have_ = true;
     beside_ = beside;
     side_ = side;

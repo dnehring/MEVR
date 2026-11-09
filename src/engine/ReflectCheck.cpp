@@ -35,6 +35,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 // Everything the mod reads from LExSDKv2 today, checked against our reflection layer (research/34
 // section 4 is the inventory; section 5 says how to read the result). LExSDKv2's offsets are used
@@ -540,6 +541,21 @@ void CheckClasses() {
     CheckClass<UAnimNode>("Engine.AnimNode");
     CheckClass<UMaterialInstance>("Engine.MaterialInstance");  // game/scope_parts' material log (research/21 section 14)
     CheckClass<UMaterialInstanceConstant>("Engine.MaterialInstanceConstant");
+    CheckClass<UParticleSystemComponent>("Engine.ParticleSystemComponent");
+    CheckClass<UParticleSystem>("Engine.ParticleSystem");
+    CheckClass<UParticleEmitter>("Engine.ParticleEmitter");
+    CheckClass<UParticleModuleMeshMaterial>("Engine.ParticleModuleMeshMaterial");
+    CheckClass<UParticleModuleMaterialByParameter>("Engine.ParticleModuleMaterialByParameter");
+    CheckClass<UParticleLODLevel>("Engine.ParticleLODLevel");
+    CheckClass<UParticleModule>("Engine.ParticleModule");
+    CheckClass<UParticleModuleRequired>("Engine.ParticleModuleRequired");
+    CheckClass<UDistributionFloatParameterBase>("Engine.DistributionFloatParameterBase");
+    CheckClass<UDistributionVectorParameterBase>("Engine.DistributionVectorParameterBase");
+    CheckClass<UDistributionFloatConstant>("Engine.DistributionFloatConstant");
+    CheckClass<UDistributionVectorConstant>("Engine.DistributionVectorConstant");
+    CheckClass<UParticleModuleTypeDataMesh>("Engine.ParticleModuleTypeDataMesh");
+    CheckClass<UDistributionFloatParticleParameter>("Engine.DistributionFloatParticleParameter");
+    CheckClass<UDistributionVectorParticleParameter>("Engine.DistributionVectorParticleParameter");
     CheckClass<UAnimNodeBlendBase>("Engine.AnimNodeBlendBase");  // game/combat_stance (research/38)
     CheckClass<UAnimNodeSequence>("Engine.AnimNodeSequence");
     CheckClass<UAnimTree>("Engine.AnimTree");
@@ -641,7 +657,54 @@ void CheckClasses() {
     CheckClass<UBioSFHandler_Reticule>("SFXGame.BioSFHandler_Reticule");
 }
 
+// OmniTool's read-only distribution walker uses reflected property chains rather than a list of module layouts.
+// Inventory every loaded module class and nested struct/array field against SDK metadata, including RawDistribution.Distribution.
+void CheckModuleDistributionFields() {
+    Guard("field", "particle module distribution inventory", [] {
+        std::unordered_set<UStruct*> visited;
+        std::function<void(UStruct*,ue3::Struct*,int)> walk = [&](UStruct* sdk, ue3::Struct* ours, int depth) {
+            if (!sdk || !ours || depth>5 || !visited.insert(sdk).second) return;
+            for (auto* cls=sdk; cls; cls=static_cast<UStruct*>(cls->SuperField)) {
+                int fields=0;
+                for (auto* f=cls->Children; f && fields++<1024; f=f->Next) {
+                    if (!f->IsA(UProperty::StaticClass())) continue;
+                    auto* const prop = static_cast<UProperty*>(f);
+                    std::string const name = SdkName(prop->Name);
+                    auto const info = R().PropertyOf(ours,name);
+                    bool const relevant = prop->IsA(UStructProperty::StaticClass()) || prop->IsA(UArrayProperty::StaticClass()) || name=="Distribution";
+                    if (!relevant) continue;
+                    Sdk const ref{prop->Offset,0,static_cast<long long>(prop->ElementSize)*prop->ArrayDim};
+                    Add("field",SdkFullName(prop),info && Matches(*info,info->offset,ref),Ours(info),SdkText(ref));
+                    if (prop->IsA(UStructProperty::StaticClass())) {
+                        walk(static_cast<UStructProperty*>(prop)->Struct,info ? R().StructOf(*info) : nullptr,depth+1);
+                    } else if (prop->IsA(UArrayProperty::StaticClass())) {
+                        auto* const inner = static_cast<UArrayProperty*>(prop)->Inner;
+                        auto const innerInfo = info && info->kind==ue3::Kind::Array ? R().Describe(static_cast<ue3::Property*>(info->typed)) : std::nullopt;
+                        Add("path",SdkFullName(prop)+"[]",inner && innerInfo && innerInfo->elementSize==inner->ElementSize,
+                            innerInfo ? std::format("element size {}",innerInfo->elementSize) : "not found",
+                            inner ? std::format("element size {}",inner->ElementSize) : "not found");
+                        if (inner && inner->IsA(UStructProperty::StaticClass()))
+                            walk(static_cast<UStructProperty*>(inner)->Struct,innerInfo ? R().StructOf(*innerInfo) : nullptr,depth+1);
+                    }
+                }
+            }
+        };
+        auto* const parent = R().FindClass("Engine.ParticleModule");
+        for (int i=0,n=R().ObjectCount(); i<n; ++i) {
+            auto* const object = R().ObjectAt(i);
+            if (!object || !R().IsAlive(object) || !R().IsA(object,R().ClassClass())) continue;
+            auto* const cls = static_cast<ue3::Class*>(object);
+            if (!R().IsChildOf(cls,parent)) continue;
+            std::string const path = R().PathName(cls);
+            auto* const resolved = R().FindClass(path);
+            Add("class",path,resolved==cls,R().FullName(resolved),SdkFullName(reinterpret_cast<UObject*>(cls)));
+            walk(reinterpret_cast<UStruct*>(cls),cls,0);
+        }
+    });
+}
+
 void CheckFields() {
+    CheckModuleDistributionFields();
     // Engine
     CheckField("Engine.Actor", "Rotation", SDK_FIELD(AActor, Rotation));
     CheckField("Engine.Actor", "Location", SDK_FIELD(AActor, Location));
@@ -847,6 +910,37 @@ void CheckFields() {
     CheckField("Engine.Actor", "Base", SDK_FIELD(AActor, Base));
     CheckField("Engine.Emitter", "ParticleSystemComponent", SDK_FIELD(AEmitter, ParticleSystemComponent));  // game/OmniTool
     CheckField("Engine.ParticleSystemComponent", "Template", SDK_FIELD(UParticleSystemComponent, Template));  // game/OmniTool
+    // Omni-tool discovery and live component parameter route (2026-11-09).
+    CheckField("Engine.ParticleSystemComponent", "SMComponents", SDK_FIELD(UParticleSystemComponent, SMComponents));
+    CheckField("Engine.ParticleSystemComponent", "SMMaterialInterfaces", SDK_FIELD(UParticleSystemComponent, SMMaterialInterfaces));
+    CheckField("Engine.ParticleModuleMeshMaterial", "MeshMaterials", SDK_FIELD(UParticleModuleMeshMaterial, MeshMaterials));
+    CheckField("Engine.ParticleModuleMaterialByParameter", "DefaultMaterials", SDK_FIELD(UParticleModuleMaterialByParameter, DefaultMaterials));
+    CheckField("Engine.ParticleSystem", "Emitters", SDK_FIELD(UParticleSystem, Emitters));
+    CheckField("Engine.ParticleEmitter", "LODLevels", SDK_FIELD(UParticleEmitter, LODLevels));
+    CheckField("Engine.ParticleLODLevel", "Modules", SDK_FIELD(UParticleLODLevel, Modules));
+    CheckField("Engine.ParticleLODLevel", "RequiredModule", SDK_FIELD(UParticleLODLevel, RequiredModule));
+    CheckField("Engine.ParticleLODLevel", "SpawnModule", SDK_FIELD(UParticleLODLevel, SpawnModule));
+    CheckField("Engine.ParticleLODLevel", "TypeDataModule", SDK_FIELD(UParticleLODLevel, TypeDataModule));
+    CheckField("Engine.ParticleModuleRequired", "Material", SDK_FIELD(UParticleModuleRequired, Material));
+    CheckField("Engine.ParticleModuleTypeDataMesh", "Mesh", SDK_FIELD(UParticleModuleTypeDataMesh, Mesh));
+    CheckField("Engine.StaticMesh", "LODInfo", SDK_FIELD(UStaticMesh, LODInfo));
+    CheckField("Engine.DistributionFloatParameterBase", "ParameterName", SDK_FIELD(UDistributionFloatParameterBase, ParameterName));
+    CheckField("Engine.DistributionVectorParameterBase", "ParameterName", SDK_FIELD(UDistributionVectorParameterBase, ParameterName));
+    CheckField("Engine.DistributionFloatConstant", "Constant", SDK_FIELD(UDistributionFloatConstant, Constant));
+    CheckField("Engine.DistributionVectorConstant", "Constant", SDK_FIELD(UDistributionVectorConstant, Constant));
+    CheckField("Engine.DistributionFloatParameterBase", "ParamMode", SDK_FIELD(UDistributionFloatParameterBase, ParamMode));
+    CheckField("Engine.DistributionVectorParameterBase", "ParamModes", SDK_FIELD(UDistributionVectorParameterBase, ParamModes));
+    CheckField("Engine.ParticleSystemComponent", "InstanceParameters", SDK_FIELD(UParticleSystemComponent, InstanceParameters));
+    CheckElement("Engine.StaticMesh", "LODInfo", sizeof(FStaticMeshLODInfo));
+    CheckPath("Engine.StaticMesh", {"LODInfo", "Elements"}, SDK_AT(offsetof(FStaticMeshLODInfo, Elements), 16));
+    CheckPath("Engine.StaticMesh", {"LODInfo", "Elements", "Material"}, SDK_AT(offsetof(FStaticMeshLODElement, Material), 8));
+    CheckElement("Engine.ParticleSystemComponent", "InstanceParameters", sizeof(FParticleSysParam));
+    CheckPath("Engine.ParticleSystemComponent", {"InstanceParameters", "Material"}, SDK_AT(offsetof(FParticleSysParam, Material), 8));
+    CheckPath("Engine.ParticleSystemComponent", {"InstanceParameters", "Name"}, SDK_AT(offsetof(FParticleSysParam, Name), 8));
+    CheckPath("Engine.ParticleSystemComponent", {"InstanceParameters", "ParamType"}, SDK_AT(offsetof(FParticleSysParam, ParamType), 1));
+    CheckPath("Engine.ParticleSystemComponent", {"InstanceParameters", "Scalar"}, SDK_AT(offsetof(FParticleSysParam, Scalar), 4));
+    CheckPath("Engine.ParticleSystemComponent", {"InstanceParameters", "Vector"}, SDK_AT(offsetof(FParticleSysParam, Vector), 16));
+    CheckPath("Engine.ParticleSystemComponent", {"InstanceParameters", "Color"}, SDK_AT(offsetof(FParticleSysParam, Color), 4));
     CheckField("SFXGame.BioVisualEffect", "m_CachedInstanceParameters", SDK_FIELD(ABioVisualEffect, m_CachedInstanceParameters));
     CheckElement("SFXGame.BioVisualEffect", "m_CachedInstanceParameters", sizeof(FCachedInstanceParameter));
     CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "ParameterName"}, SDK_AT(offsetof(FCachedInstanceParameter, ParameterName), 8));
@@ -1178,6 +1272,10 @@ void CheckFunctions() {
         "Engine.SkeletalMeshComponent.DetachComponent",
         "Engine.ParticleSystemComponent.ActivateSystem",
         "Engine.ParticleSystemComponent.DeactivateSystem",
+        "Engine.ParticleSystemComponent.SetFloatParameter",
+        "Engine.ParticleSystemComponent.SetVectorParameter",
+        "Engine.ParticleSystemComponent.SetColorParameter",
+
         // the galaxy hologram (game/GalaxyMap)
         "SFXGame.BioSPGame.GetSimpleString",
         "Engine.Bio2DA.GetNumRows",
@@ -1399,6 +1497,19 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    PARAM(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter", ParameterName);
+    PARAM(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter", Param);
+    PARMS(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter");
+    PARAM(UParticleSystemComponent_execSetVectorParameter_Parms, "Engine.ParticleSystemComponent.SetVectorParameter", ParameterName);
+    PARAM(UParticleSystemComponent_execSetVectorParameter_Parms, "Engine.ParticleSystemComponent.SetVectorParameter", Param);
+    PARMS(UParticleSystemComponent_execSetVectorParameter_Parms, "Engine.ParticleSystemComponent.SetVectorParameter");
+    PARAM(UParticleSystemComponent_execSetColorParameter_Parms, "Engine.ParticleSystemComponent.SetColorParameter", ParameterName);
+    PARAM(UParticleSystemComponent_execSetColorParameter_Parms, "Engine.ParticleSystemComponent.SetColorParameter", Param);
+    PARMS(UParticleSystemComponent_execSetColorParameter_Parms, "Engine.ParticleSystemComponent.SetColorParameter");
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", Value);
+    PARMS(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue");
+
     PARAM(ABioVisualEffect_execSetScalarParameter_Parms, "SFXGame.BioVisualEffect.SetScalarParameter", sParameter);
     PARAM(ABioVisualEffect_execSetScalarParameter_Parms, "SFXGame.BioVisualEffect.SetScalarParameter", fValue);
     PARMS(ABioVisualEffect_execSetScalarParameter_Parms, "SFXGame.BioVisualEffect.SetScalarParameter");
