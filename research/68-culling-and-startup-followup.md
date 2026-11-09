@@ -170,8 +170,21 @@ native captures finished. Hub offline tests, comparison admission, successful/fa
 present/absent module restoration, fixed render-scale restoration and SPDX checks passed. These build
 checks are not native LE2/LE3 acceptance. The final post-wrapper check verified all 40 protected files,
 original monolithic host, absent separate module, original runtime and cleared game/SteamVR ownership.
-The original installation was restored; no private test build or culling default was promoted.
+The automated batch restored the original installation and did not change a culling default.
 
 Final validation receipt: `scratch/qa-hubs/performance-checkpoint-20261109-0918/result.json`.
 The last session's `verified-after-build-restoration.json` checks the original installation after the
 outer wrapper; the ordinary inner-session verifier expects the test binaries still to be installed.
+
+## Manual headset handoff
+
+At the user's request on November 9, the exact validated candidate was installed for physical-headset QA
+at 09:49 local time. Host SHA-256 starts `522F6B0867CD`, module `B2EE1DFF913D`; both match the retained
+candidate manifest. Settings and the active SteamVR runtime were preserved, and the null headset remains
+disabled. The larger splash-hook and engine-loading stalls are still present; hook batching is not included.
+This is a manual test deployment, not a public release or headset acceptance.
+
+Install/rollback receipt: `scratch/qa-hubs/manual-headset-performance-20261109-094949`.
+The previous monolithic host and original module absence are backed up there. The reusable command is
+`tools/qa-hubs/deploy-validated-build.ps1`; the [QA README](../tools/qa-hubs/README.md#manual-headset-candidate-installation)
+documents installation and restoration.

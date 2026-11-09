@@ -172,6 +172,30 @@ builds LE2/LE3 and runs offline harness/admission/restoration checks. It refuses
 builds must remain outside timing captures. LE1 build and focused CTest results belong to the candidate
 builder's separate receipt.
 
+## Manual headset candidate installation
+
+After a candidate has passed its native checks, install its exact retained pair with the game and launcher
+closed. Use a fresh private receipt directory and the currently installed host hash that you reviewed:
+
+```powershell
+pwsh -NoProfile -File tools/qa-hubs/deploy-validated-build.ps1 `
+  -CandidateDirectory <retained-candidate> -ReceiptDirectory scratch/<new-install-receipt> `
+  -ExpectedInstalledHostSha256 <reviewed-current-host-sha256>
+```
+
+The script checks the candidate manifest, backs up existing binaries (including original module absence),
+publishes the module before its matching host, and verifies hashes and preserved settings/runtime. It does
+not create a module-path override, change the runtime, or enable the fake headset. Existing native QA leases
+and an open game/launcher prevent installation. Restore the backed-up binaries without changing player settings:
+
+```powershell
+pwsh -NoProfile -File tools/qa-hubs/deploy-validated-build.ps1 `
+  -Action Restore -ReceiptDirectory scratch/<install-receipt>
+```
+
+Restoration refuses binaries changed by another owner. Keep the receipt and original backups until manual
+headset acceptance. Installation alone does not prove that the player launched or tested the candidate.
+
 ## Manifest v1
 
 Required top-level fields: `spdxLicenseIdentifier: MIT`, `schemaVersion: 1`, `id`, `label`, `game: LE1`,
