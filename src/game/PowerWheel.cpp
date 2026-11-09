@@ -1161,7 +1161,8 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     pw::SelfCastInput self;
     self.time = gClock;
     self.tracked = hand && controllers.left.gripValid;
-    self.open = !support_grip::Held() && controllers.left.squeeze < 0.3f && controllers.left.trigger < 0.3f;
+    self.holding = support_grip::Held();  // the left hand on the foregrip: no target on the gun (the user, 2026-11-09)
+    self.open = !self.holding && controllers.left.squeeze < 0.3f && controllers.left.trigger < 0.3f;
     self.hand = controllers.left.grip.position;
     self.head = view.head;
     self.gunDrawn = WeaponOut(pawn);
@@ -1202,14 +1203,15 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         }
     }
     pw::SelfZone const zone = pw::ZoneFor(gesture, self, gSelfSettings);
-    gSelfView.look = pw::LookFor(gesture, self, zone);
+    pw::SelfCastStep const selfStep = pw::StepSelfCast(gSelfCast, gesture, self, gSelfSettings);
+    // After the step: a hand that closed in the zone (the foregrip let go of) is hidden from until it leaves.
+    gSelfView.look = pw::LookAfterStep(gesture, self, zone, gSelfCast);
     // A stable centre while distant, then the point on the capsule nearest the approaching palm.
     XrVector3f const middle{(zone.start.x + zone.end.x) * 0.5f, (zone.start.y + zone.end.y) * 0.5f,
         (zone.start.z + zone.end.z) * 0.5f};
     gSelfView.target = gSelfView.look == pw::SelfLook::Faint ? middle : pw::ClosestPoint(zone, self.hand);
     gSelfView.hand = self.hand;
     std::snprintf(gSelfView.name, sizeof(gSelfView.name), "%s", ready->info->name);
-    pw::SelfCastStep const selfStep = pw::StepSelfCast(gSelfCast, gesture, self, gSelfSettings);
     gSelfProgress = selfStep.progress;
     gSelfView.progress = selfStep.progress;
     if (selfStep.missed) {
