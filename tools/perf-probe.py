@@ -53,6 +53,25 @@ def span(row, a, b, kind='t'):
     return y - x if x is not None and y is not None else None
 
 
+def tick_bounds(row):
+    """Prefer the full hook; old probes only measured engine+host, excluding the queue."""
+    if row.get('t_hook_begin') is not None and row.get('hook_ms') is not None:
+        return row['t_hook_begin'], row['t_hook_begin'] + row['hook_ms']
+    return row['t_begin'], row['t_begin'] + row['engine_ms'] + row['host_ms']
+
+
+def tick_total(row):
+    begin, end = tick_bounds(row)
+    return end - begin
+
+
+def tick_gap(previous, following):
+    end, begin = tick_bounds(previous)[1], tick_bounds(following)[0]
+    return {'fromMs': end, 'toMs': begin, 'unmeasuredMs': begin - end,
+            'scope': 'outsideMeasuredHook' if following.get('hook_ms') is not None and following.get('t_hook_begin') is not None
+                     else 'outsideEngineHostOnly'}
+
+
 def stats(values):
     values = sorted(v for v in values if v is not None)
     if not values:
@@ -303,6 +322,13 @@ def main():
     line('engine tick, wall', [t.get('engine_ms') for t in ticks], 'includes waiting for the render thread')
     line('engine tick, busy', [t.get('engine_busy_ms') for t in ticks])
     line('our tick (host + mod), wall', [t.get('host_ms') for t in ticks])
+    line('whole game hook, wall', [t.get('hook_ms') for t in ticks])
+    line('whole game hook, busy', [t.get('hook_busy_ms') for t in ticks])
+    line('queued ProcessEvent drain, wall', [t.get('drain_ms') for t in ticks])
+    line('queued ProcessEvent drain, busy', [t.get('drain_busy_ms') for t in ticks])
+    trace = meta.get('tickInstrumentation', {})
+    if trace.get('ticksDropped') or trace.get('callsDropped'):
+        print('  WARNING: tick/queued-call buffer overflow; this capture cannot pass a complete timing gate.')
     game_work = [(t.get('engine_busy_ms') or 0.0) + (t.get('host_busy_ms') or 0.0) for t in ticks]
     line('busy, engine + ours', game_work, '<- the game thread\'s work')
 

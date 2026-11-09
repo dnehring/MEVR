@@ -1297,8 +1297,9 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
         } else {
             std::wstring const name = newest.filename().wstring();
             std::wstring const stem = name.substr(0, name.size() - 11);
-            for (wchar_t const* part : {L"-probe.json", L"-frames.csv", L"-ticks.csv"}) {
+            for (wchar_t const* part : {L"-probe.json", L"-frames.csv", L"-ticks.csv", L"-calls.csv"}) {
                 fs::path const file = newest.parent_path() / (stem + part);
+                if (std::wstring_view(part) == L"-calls.csv" && !fs::is_regular_file(file, ec)) continue;  // older probes
                 if (addFile("perf/" + detect::Utf8(file.filename().wstring()), {file}, 0, 0)) {
                     b.files.back().note = "frame timing, written " + FileTimeText(file);
                 }

@@ -4,7 +4,7 @@
 param([Parameter(Mandatory)][string]$CandidateReceipt,
       [Parameter(Mandatory)][string]$ExpectedInstalledSha256,
       [Parameter(Mandatory)][string]$GameRoot,
-      [string]$PythonExe='python',[ValidateRange(1,5)][int]$Count=3)
+      [string]$PythonExe='python',[ValidateRange(1,5)][int]$Count=3,[switch]$RequireTickTrace)
 $ErrorActionPreference='Stop'
 $candidate=Get-Content -LiteralPath $CandidateReceipt -Raw|ConvertFrom-Json
 if(-not $candidate.privateQaOnly -or (Get-FileHash -LiteralPath $candidate.binary).Hash -ne $candidate.sha256){throw 'Candidate receipt/hash mismatch.'}
@@ -26,6 +26,10 @@ try{
     & "$PSScriptRoot\report.ps1" -BatchDirectory "$directory\batch" -PythonExe $PythonExe
     & $PythonExe "$PSScriptRoot\check-camera-diagnostic.py" "$directory\batch"
     if($LASTEXITCODE){throw 'Camera diagnostic validation failed.'}
+    if($RequireTickTrace){
+        & $PythonExe "$PSScriptRoot\check-tick-trace.py" "$directory\batch"
+        if($LASTEXITCODE){throw 'Tick/queued-call trace validation failed.'}
+    }
 }finally{
     try{
         if(Get-Process MassEffect1,MassEffectLauncher -ErrorAction SilentlyContinue){throw "Game still running. Keep backup and recover inner run before restoring $installed"}

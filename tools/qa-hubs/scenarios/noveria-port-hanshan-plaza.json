@@ -1,0 +1,32 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "id": "noveria-port-hanshan-plaza",
+  "label": "Noveria: Port Hanshan plaza and interior hub",
+  "game": "LE1",
+  "status": "draft",
+  "expectedMap": "BIOA_ICE00",
+  "start": null,
+  "steps": [],
+  "capture": {
+    "seconds": 90,
+    "yawDegrees": 130,
+    "pitchDegrees": -10,
+    "sweepDegrees": 60
+  },
+  "prerequisites": [
+    "Prepare a private on-foot Port Hanshan save after initial security dialogue, with the intended public interior accessible.",
+    "Record exact start pose, accessible door state, crowd composition and a collision-checked route before promotion from draft.",
+    "Treat different quest states or cleared versus populated rooms as different fixtures; do not silently pool their captures.",
+    "Retain One Draw and the same source/eye resolution and rendering settings in baseline and candidate runs.",
+    "Use an exclusive protected native session; archive test-generated autosaves and restore the original player state afterward."
+  ],
+  "evidence": {
+    "mapIdentity": "Existing repository conversation-survey records and research/59 identify Noveria's Port Hanshan and BIOA_ICE00.",
+    "intendedCoverage": ["dense hub interior", "NPC-rich sightlines", "occlusion changes around corners", "stationary head-turn workload"],
+    "nativeRouteValidated": false,
+    "offlineFinding": "The embedded Normandy is ICE00's authored default start, not evidence that map-open failed. Normal airlock departure and a populated Port Hanshan fixture still need native validation; no required save edit has been identified.",
+    "acquisitionAttempt": "2026-11-08: bounded open BIOA_ICE00 reached the Normandy CIC under the Noveria persistent map, not Port Hanshan. Normal Use showed the Noveria planet screen with no Land action observed. No populated hub fixture or route was acquired.",
+    "notes": "The selected public interior and all route coordinates remain to be observed in a native acquisition. Capture yaw is a draft default, not a validated viewpoint."
+  }
+}

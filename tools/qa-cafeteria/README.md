@@ -119,6 +119,22 @@ validation is recorded in [research/63](../../research/63-head-turn-performance.
 
 ## Camera diagnostic candidate
 
+Full-hook timing candidates append `t_hook_begin`, `hook_ms`, `drain_ms` and busy-time/count columns to
+the original tick CSV; `files.calls` adds one bounded buffered row per queued call. `tickInstrumentation`
+version 2 records overflow counts. Numeric object/function identities are process-local. The analyzers label
+legacy totals `engineHostOnly` and new totals `wholeHook`; a legacy gap may still contain queued mod work.
+Do not compare those total scopes silently. Use the preserved engine/host columns for historical comparison.
+
+```powershell
+& .\tools\qa-cafeteria\validate-tick-trace.ps1
+python tools/qa-cafeteria/check-tick-trace.py '<completed candidate capture or batch>'
+```
+
+`-AllowFunctionalRoute` on the source checker permits an explicitly coordinated functional route to remain
+open during compilation. Never use it during a clean timing capture. The trace checker verifies complete
+records and that each queued call lies within its measured drain; it does not establish a hitch's cause.
+Use `-RequireTickTrace` on the candidate runner below to require the v2 trace check after the captures.
+
 For the camera-diagnostic fix, [the priority list](../../docs/performance-priorities.md) records acceptance criteria.
 The following makes a frozen private build, temporarily installs it for three complete High runs, and restores the
 original ASI afterward. Coordinate native-session ownership first. Use absolute paths and the reviewed installed hash:

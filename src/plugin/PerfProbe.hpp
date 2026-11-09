@@ -3,6 +3,7 @@
 
 #include <string>
 #include <cstdint>
+#include "core/vr/FrameProbe.hpp"
 
 struct ID3D11DeviceContext;
 
@@ -13,8 +14,10 @@ struct ID3D11DeviceContext;
 // at each step (the game's two eye passes and UI, xrWaitFrame, xrBeginFrame, our controllers and quads,
 // the eye copies, xrEndFrame, the desktop mirror), GPU timestamps at the main steps mapped onto the CPU's
 // clock, the draws issued and the access violations raised. Per engine tick on the game thread: the
-// engine's tick and ours, time and busy time. Written to %LOCALAPPDATA%\MEVR\perf\<stamp>[-tag]-frames.csv,
-// -ticks.csv and -probe.json (last); tools/perf-probe.ps1 asks for one, tools/perf-probe.py reads it.
+// engine's tick and ours, the full hook and queued ProcessEvents, time and busy time. Written to
+// %LOCALAPPDATA%\MEVR\perf\<stamp>[-tag]-frames.csv, -ticks.csv, -calls.csv and -probe.json (last);
+// tools/perf-probe.ps1 asks for one, tools/perf-probe.py reads it. Call records use bounded preallocated
+// storage and numeric identities; no per-call logging, formatting or object-name resolution while measuring.
 //
 // Triggers: perf.request ([seconds=N] [tag=word], plugin/TestLoop's request files) and the menu's VR hands
 // tab. Idle, each step costs one atomic load. Running, a few timestamp queries a frame, plus one GPU
@@ -48,6 +51,10 @@ private:
 void WrapFrameFunctions(void** waitSwapchainImage, void** waitFrame, void** beginFrame, void** endFrame);
 
 // ---- Game thread ------------------------------------------------------------------------------------------
+void GameTickBegin();  // first action in our hook, before queue draining or the original engine tick
+void QueueDrainBegin();
+vr::frame_probe::QueuedCall QueueCallBegin(void* object, void* function);
+void QueueCallEnd(vr::frame_probe::QueuedCall call, int outcome);
 void EngineTickBegin();
 void EngineTickEnd();  // the engine's tick returned; ours (the host's and the mod's) follows
 void HostTickEnd();    // ours too

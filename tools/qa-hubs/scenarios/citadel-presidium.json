@@ -1,0 +1,24 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "id": "citadel-presidium",
+  "label": "Citadel Presidium promenade",
+  "game": "LE1",
+  "status": "draft",
+  "expectedMap": "BIOA_STA00",
+  "start": null,
+  "steps": [],
+  "capture": {"seconds": 90, "yawDegrees": 130, "pitchDegrees": -10, "sweepDegrees": 60},
+  "prerequisites": [
+    "Prepare a Presidium gameplay save after the arrival plot sequence.",
+    "Record exact start position/yaw and controller-walk waypoints in the promenade.",
+    "STA20 is a streamed area of BIOA_STA00, not a standalone map to open."
+  ],
+  "evidence": {
+    "reference": "research/50-citadel-crowds.md",
+    "historicalSurveyPositionUU": [-2464, 1088, 300],
+    "historicalSurveyMethod": "Prior static spot survey used forced streaming and position writes; neither is route validation.",
+    "nativeTraversalValidated": false,
+    "purpose": "Large outdoor sight lines and scenery draw density; the earlier survey found this heavier than the crowded clubs."
+  }
+}

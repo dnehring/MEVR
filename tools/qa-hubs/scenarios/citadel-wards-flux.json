@@ -1,0 +1,24 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "id": "citadel-wards-flux",
+  "label": "Citadel Upper Wards to Flux",
+  "game": "LE1",
+  "status": "draft",
+  "expectedMap": "BIOA_STA00",
+  "start": null,
+  "steps": [],
+  "capture": {"seconds": 90, "yawDegrees": 130, "pitchDegrees": -10, "sweepDegrees": 60},
+  "prerequisites": [
+    "Prepare an Upper Wards gameplay save with Flux accessible.",
+    "Validate the ordinary market-to-club path and staircase before entering coordinates.",
+    "Keep streaming changes caused by normal walking; do not touch stream volumes through the console."
+  ],
+  "evidence": {
+    "reference": "research/50-citadel-crowds.md",
+    "historicalSurveyPositionsUU": {"wardsMarket": [-11300, 5000, -30650], "flux": [-11000, 1500, -30060]},
+    "historicalSurveyMethod": "Two separate static spot samples, not evidence of a traversable straight line between them.",
+    "nativeTraversalValidated": false,
+    "purpose": "Market-to-club streaming transition, stairs, dense characters and mixed lighting."
+  }
+}

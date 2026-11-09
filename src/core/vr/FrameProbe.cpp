@@ -95,15 +95,37 @@ std::string FrameCsvRow(std::size_t index, Frame const& frame, Clocks const& clo
 }
 
 std::string TickCsvHeader() {
-    return "tick,t_begin,engine_ms,engine_busy_ms,host_ms,host_busy_ms\n";
+    return "tick,t_begin,engine_ms,engine_busy_ms,host_ms,host_busy_ms,t_hook_begin,hook_ms,hook_busy_ms,t_drain_begin,drain_ms,drain_busy_ms,queued_calls\n";
 }
 
 std::string TickCsvRow(std::size_t index, Tick const& tick, Clocks const& clocks) {
-    return std::format("{},{},{},{},{},{}\n", index, Ms(QpcMs(clocks, tick.beginQpc)),
+    std::string out = std::format("{},{},{},{},{},{}", index, Ms(QpcMs(clocks, tick.beginQpc)),
         Ms(QpcMs(clocks, tick.engineEndQpc) - QpcMs(clocks, tick.beginQpc)),
         Ms(CycleMs(clocks, tick.beginCycles, tick.engineEndCycles)),
         Ms(QpcMs(clocks, tick.endQpc) - QpcMs(clocks, tick.engineEndQpc)),
         Ms(CycleMs(clocks, tick.engineEndCycles, tick.endCycles)));
+    if (tick.hookBeginQpc != 0) {
+        out += std::format(",{},{},{}", Ms(QpcMs(clocks, tick.hookBeginQpc)),
+            Ms(QpcMs(clocks, tick.endQpc) - QpcMs(clocks, tick.hookBeginQpc)),
+            Ms(CycleMs(clocks, tick.hookBeginCycles, tick.endCycles)));
+    } else out += ",,,";
+    if (tick.drainBeginQpc != 0) {
+        out += std::format(",{},{},{}", Ms(QpcMs(clocks, tick.drainBeginQpc)),
+            Ms(QpcMs(clocks, tick.beginQpc) - QpcMs(clocks, tick.drainBeginQpc)),
+            Ms(CycleMs(clocks, tick.drainBeginCycles, tick.beginCycles)));
+    } else out += ",,,";
+    return out + std::format(",{}\n", tick.queuedCalls);
+}
+
+std::string QueuedCallCsvHeader() {
+    return "call,tick,object,function,t_begin,t_end,wall_ms,busy_ms,outcome\n";
+}
+
+std::string QueuedCallCsvRow(std::size_t index, QueuedCall const& call, Clocks const& clocks) {
+    return std::format("{},{},{},{},{},{},{},{},{}\n", index, call.tick, call.object, call.function,
+        Ms(QpcMs(clocks, call.beginQpc)), Ms(QpcMs(clocks, call.endQpc)),
+        Ms(QpcMs(clocks, call.endQpc) - QpcMs(clocks, call.beginQpc)),
+        Ms(CycleMs(clocks, call.beginCycles, call.endCycles)), call.outcome);
 }
 
 } // namespace mevr::vr::frame_probe

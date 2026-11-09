@@ -74,9 +74,13 @@ using tGameEngineTick = void(void* self, float deltaSeconds);  // UGameEngine::T
 tGameEngineTick* gGameEngineTickOrig = nullptr;
 
 void GameEngineTickHook(void* self, float deltaSeconds) {
+#if defined(MEVR_WITH_HALCYON)
+    mevr::host::perf::GameTickBegin();
+#endif
     mevr::host::crash::NoteGameThread();
 #if defined(MEVR_WITH_HALCYON)
     // Halcyon's ProcessEvent calls from the Present thread, queued for here (script on the game thread only).
+    mevr::host::perf::QueueDrainBegin();
     mevr::host::game_thread::Drain();
 #endif
 #if defined(MEVR_WITH_HALCYON)

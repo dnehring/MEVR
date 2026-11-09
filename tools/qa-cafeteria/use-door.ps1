@@ -6,7 +6,8 @@ $repo=$ctx.RepoRoot
 # Invoke the normal gameplay Use action after the replay has selected the door.
 $ErrorActionPreference='Stop'
 $found=Invoke-QaTool 'console.ps1' @{Command=@('mevr find SFXGameModeDefault_')}
-if($found -notmatch '\[0\] SFXGameModeDefault BIOA_NOR00\.') { throw 'Unexpected active game mode; refusing Use.' }
+$expectedMap=if($ctx.StartingMap){$ctx.StartingMap}else{'BIOA_NOR00'}
+if($found -notmatch ('\[0\] SFXGameModeDefault '+[regex]::Escape($expectedMap)+'\.')) { throw 'Unexpected active game mode; refusing Use.' }
 $result=Invoke-QaTool 'console.ps1' @{Command=@('mevr call 0 Used')}
 $result
 $result | Add-Content -LiteralPath "$RunDirectory\route.log"

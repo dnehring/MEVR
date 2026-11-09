@@ -74,6 +74,22 @@ struct Tick {
     std::uint64_t beginCycles = 0;
     std::uint64_t engineEndCycles = 0;
     std::uint64_t endCycles = 0;
+    // Appended instrumentation: preserve the original engine/host columns and their meaning.
+    std::int64_t hookBeginQpc = 0;
+    std::int64_t drainBeginQpc = 0;
+    std::uint64_t hookBeginCycles = 0;
+    std::uint64_t drainBeginCycles = 0;
+    std::uint32_t queuedCalls = 0;
+};
+
+// Numeric identities are process-local, never dereferenced when writing the finished capture.
+// outcome: 0 skipped (object gone), 1 executed, 2 faulted. Includes validation and dispatch.
+struct QueuedCall {
+    std::size_t tick = 0;
+    std::uintptr_t object = 0, function = 0;
+    std::int64_t beginQpc = 0, endQpc = 0;
+    std::uint64_t beginCycles = 0, endCycles = 0;
+    int outcome = 0;
 };
 
 // One reading of the GPU clock against the CPU's, taken with the GPU idle: GPU time minus CPU time, in
@@ -107,8 +123,10 @@ double GpuMs(Clocks const& clocks, std::uint64_t ticks, std::int64_t qpc);
 std::string FrameCsvHeader();
 std::string FrameCsvRow(std::size_t index, Frame const& frame, Clocks const& clocks);
 
-// CSV, one line per tick: index, t_begin, engine_ms, engine_busy_ms, host_ms, host_busy_ms.
+// CSV: original six columns, then whole-hook/queue timing and queued-call count. Missing marks stay empty.
 std::string TickCsvHeader();
 std::string TickCsvRow(std::size_t index, Tick const& tick, Clocks const& clocks);
+std::string QueuedCallCsvHeader();
+std::string QueuedCallCsvRow(std::size_t index, QueuedCall const& call, Clocks const& clocks);
 
 } // namespace mevr::vr::frame_probe

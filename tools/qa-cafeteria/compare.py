@@ -25,11 +25,17 @@ for path in sorted(a.batch.glob('cafeteria-*/analysis.json')):
         errors.append(f'{folder.name}: final state not clean')
     for r in json.loads(path.read_text(encoding='utf-8-sig')):
         levers = r['renderLevers']
+        trace = r.get('tickInstrumentation', {})
+        scope = r.get('tickSummary', {}).get('totalScope', 'engineHostOnly')
+        if trace.get('ticksDropped') or trace.get('callsDropped'):
+            errors.append(f'{folder.name}: tick/queued-call instrumentation overflowed')
+        if scope in ('mixed', 'empty') or (trace.get('version') == 2 and scope != 'wholeHook'):
+            errors.append(f'{folder.name}: incomplete whole-hook timing')
         if not r['halcyon'].get('sfr2') or levers.get('sharePass') != 5:
             errors.append(f'{folder.name}: expected One Draw/sharePass=5 workload is not active')
         if r['accessViolations'] or r['gpuFramesDropped'] or levers.get('shareFailed') or levers.get('replayFailed') or levers.get('drawReplay',{}).get('replayFailures'):
             errors.append(f'{folder.name}: probe correctness/measurement failure')
-        fingerprints.append(json.dumps([ctx['ExpectedAsiSha256'],ctx['Preset'],r['resolution'],r['halcyon'],{k:levers.get(k) for k in ('sharePass','umbraQueryWait','ue3QueryWait','perEyeViewState','perEyeOcclusion','pCoresOnly')}],sort_keys=True))
+        fingerprints.append(json.dumps([ctx['ExpectedAsiSha256'],ctx['Preset'],r['resolution'],r['halcyon'],trace.get('version',1),scope,{k:levers.get(k) for k in ('sharePass','umbraQueryWait','ue3QueryWait','perEyeViewState','perEyeOcclusion','pCoresOnly')}],sort_keys=True))
         s = r['all']
         tick = r.get('tickSummary', {})
         if not tick:
@@ -38,7 +44,8 @@ for path in sorted(a.batch.glob('cafeteria-*/analysis.json')):
                      'maxMs':s['interval']['max'],'over11ms':s['over11ms'],'over22ms':s['over22ms'],
                      'renderWorkP99Ms':s['render_work'].get('p99'),'gpuWorkP99Ms':s['gpu_work'].get('p99'),
                      'tickMaxMs':tick.get('totalMs',{}).get('max'),'engineMaxMs':tick.get('engineMs',{}).get('max'),
-                     'hostMaxMs':tick.get('hostMs',{}).get('max'),'ticksOver11ms':tick.get('over11ms')})
+                     'hostMaxMs':tick.get('hostMs',{}).get('max'),'ticksOver11ms':tick.get('over11ms'),
+                     'tickScope':tick.get('totalScope','engineHostOnly'),'drainMaxMs':tick.get('drainMs',{}).get('max')})
 if not rows:
     errors.append('No completed clean measurements found')
 if (a.batch / 'batch.json').exists():

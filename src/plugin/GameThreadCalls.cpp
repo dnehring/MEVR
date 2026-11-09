@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
+#include "plugin/PerfProbe.hpp"
 #include "ue3/Types.hpp"
 
 #include <Windows.h>
@@ -131,11 +132,15 @@ void Drain() {
             log::Info("game thread calls: a ProcessEvent from another thread ({}) was queued and runs at the next engine tick "
                       "(script must run on the game thread only; research/36)", name.View());
         }
+        auto const timing = perf::QueueCallBegin(c.object, c.function);
         if (!StillAlive(e, c)) {
             ++gSkipped;
+            perf::QueueCallEnd(timing, 0);
             continue;
         }
-        (Run(e, c) ? gRun : gFailed) += 1;
+        bool const ran = Run(e, c);
+        perf::QueueCallEnd(timing, ran ? 1 : 2);
+        (ran ? gRun : gFailed) += 1;
     }
     ULONGLONG const now = GetTickCount64();
     std::uint64_t const pushed = gQueue.Pushed();

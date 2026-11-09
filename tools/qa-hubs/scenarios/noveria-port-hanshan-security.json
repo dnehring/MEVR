@@ -1,0 +1,32 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "id": "noveria-port-hanshan-security",
+  "label": "Noveria: Port Hanshan arrival and security",
+  "game": "LE1",
+  "status": "draft",
+  "expectedMap": "BIOA_ICE00",
+  "start": null,
+  "steps": [],
+  "capture": {
+    "seconds": 90,
+    "yawDegrees": 130,
+    "pitchDegrees": -10,
+    "sweepDegrees": 60
+  },
+  "prerequisites": [
+    "Acquire a private Port Hanshan gameplay save through ordinary progression or a separately recorded bounded map-open acquisition.",
+    "Confirm BIOA_ICE00, on-foot gameplay, start location and yaw, security/door state, and visual arrival evidence before filling waypoints.",
+    "No pawn teleport, ghost mode, forced streamed-level visibility or conversation-action activation is admitted as traversal evidence.",
+    "Coordinate exclusive game/SteamVR ownership and preserve the complete profile and configuration with the shared QA harness.",
+    "Keep One Draw enabled and compare stationary captures separately from route-time replay loading."
+  ],
+  "evidence": {
+    "mapIdentity": "Existing repository conversation-survey records and research/59 use BIOA_ICE00 for Noveria.",
+    "intendedCoverage": ["arrival corridor", "security approach", "door/streaming boundary", "stationary lobby head turns"],
+    "nativeRouteValidated": false,
+    "offlineFinding": "Installed ICE00 PlayerStart matches the observed Normandy spawn exactly in XY/yaw. A normal airlock exit path exists in package wiring; docked conditional 1042 is a gate to observe, not a demonstrated missing save flag. See docs/noveria.md for source identifiers and normal-flow acquisition requirements.",
+    "acquisitionAttempt": "2026-11-08: bounded open BIOA_ICE00 reported mode 0/on foot but visually loaded the Normandy CIC. Normal Use opened the Noveria planet screen with Zoom Out and no Land action observed. The attempt stopped and retained this draft; a played Port Hanshan fixture is still required.",
+    "notes": "No Port Hanshan starting pose or collision-checked walking waypoints have been acquired. The previous conversation survey used stream touches and cannot certify this route. Capture yaw is a draft default."
+  }
+}

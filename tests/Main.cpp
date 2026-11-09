@@ -3213,8 +3213,24 @@ void TestFrameProbe() {
     tick.beginCycles = 0;
     tick.engineEndCycles = 15'000'000;   // 5 ms busy
     tick.endCycles = 18'000'000;         // 1 ms busy
-    CHECK(TickCsvHeader() == "tick,t_begin,engine_ms,engine_busy_ms,host_ms,host_busy_ms\n");
-    CHECK(TickCsvRow(2, tick, clocks) == "2,1.0000,8.0000,5.0000,1.0000,1.0000\n");
+    CHECK(TickCsvHeader().starts_with("tick,t_begin,engine_ms,engine_busy_ms,host_ms,host_busy_ms,"));
+    CHECK(TickCsvRow(2, tick, clocks) == "2,1.0000,8.0000,5.0000,1.0000,1.0000,,,,,,,0\n");
+    // A long queued call before the old t_begin must be inside the hook, not mislabeled as outside it.
+    tick.hookBeginQpc = 1000 - 900'000;  // -90 ms relative to capture origin
+    tick.drainBeginQpc = 1000 - 890'000;
+    tick.hookBeginCycles = 0;
+    tick.drainBeginCycles = 0;
+    tick.queuedCalls = 2;
+    CHECK(TickCsvRow(2, tick, clocks) == "2,1.0000,8.0000,5.0000,1.0000,1.0000,-90.0000,100.0000,6.0000,-89.0000,90.0000,0.0000,2\n");
+    QueuedCall call;
+    call.tick = 2;
+    call.object = 123;
+    call.function = 456;
+    call.beginQpc = tick.drainBeginQpc;
+    call.endQpc = tick.beginQpc;
+    call.endCycles = 3'000'000;
+    call.outcome = 1;
+    CHECK(QueuedCallCsvRow(0, call, clocks) == "0,2,123,456,-89.0000,1.0000,90.0000,1.0000,1\n");
 }
 
 void TestTestRequest() {

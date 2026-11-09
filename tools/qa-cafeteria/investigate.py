@@ -21,7 +21,7 @@ def inspect(directory):
     requested = dt.datetime.fromisoformat(window['requested'])
     log = (directory / 'host.log').read_text(encoding='utf-8-sig', errors='replace')
     starts = []
-    for m in re.finditer(r'\[(\d\d:\d\d:\d\d\.\d+)\].*perf probe: measuring 90 s', log):
+    for m in re.finditer(r'\[(\d\d:\d\d:\d\d\.\d+)\].*perf probe: measuring \d+(?:\.\d+)? s', log):
         start = dt.datetime.combine(requested.date(), dt.time.fromisoformat(m[1]), requested.tzinfo)
         if abs((start-requested).total_seconds()) < 10:
             starts.append(start)
@@ -44,11 +44,12 @@ def inspect(directory):
                 'stacks': dict(Counter(s['stack'] for s in chosen))}
     for path in sorted(directory.glob('*-probe.json')):
         meta = json.loads(path.read_text(encoding='utf-8-sig'))
-        if meta['seconds'] < 80:
+        if meta['seconds'] <= 2:
             continue
         frames = probe.load_rows(directory / meta['files']['frames'])
         ticks = probe.load_rows(directory / meta['files']['ticks'])
-        begins = [t['t_begin'] for t in ticks]
+        calls = probe.load_rows(directory / meta['files']['calls']) if meta['files'].get('calls') else []
+        begins = [probe.tick_bounds(t)[0] for t in ticks]
         episodes = []
         for row in frames:
             if not row['xr_frame'] or not row['should_render'] or not 1000 <= row['t_start'] < (meta['seconds']-1)*1000:
@@ -58,19 +59,19 @@ def inspect(directory):
                 continue
             start, end = row['t_start'], row['t_end']
             nearby = ticks[max(0, bisect.bisect_right(begins,start)-2):bisect.bisect_right(begins,end)+2]
-            overlaps = [t for t in nearby if t['t_begin'] < end and t['t_begin']+t['engine_ms']+t['host_ms'] > start]
-            gaps = [{'fromMs': a['t_begin']+a['engine_ms']+a['host_ms'], 'toMs': b['t_begin'],
-                     'unmeasuredMs': b['t_begin']-a['t_begin']-a['engine_ms']-a['host_ms']}
-                    for a,b in zip(nearby,nearby[1:]) if a['t_begin']+a['engine_ms']+a['host_ms'] < end and b['t_begin'] > start]
+            overlaps = [t for t in nearby if probe.tick_bounds(t)[0] < end and probe.tick_bounds(t)[1] > start]
+            gaps = [probe.tick_gap(a,b) for a,b in zip(nearby,nearby[1:])
+                    if probe.tick_bounds(a)[1] < end and probe.tick_bounds(b)[0] > start]
             sampled = [s for s in samples if start <= s['ms'] <= end]
             cycles = sampled[-1]['threadCycles']-sampled[0]['threadCycles'] if len(sampled)>1 else None
             episodes.append({'atMs': start, 'utc': (origin+dt.timedelta(milliseconds=start)).astimezone(dt.timezone.utc).isoformat(),
                              'metrics': metrics, 'overlappingTicks': overlaps, 'tickGaps': gaps,
+                             'queuedCalls': [c for c in calls if c['t_begin'] < end and c['t_end'] > start],
                              'closestIniWriteDeltaMs': min((w-end for w in writes),key=abs) if writes else None,
                              'sampleCount': len(sampled), 'observerSuspensionMs': sum(s['suspendedMs'] for s in sampled),
                              'sampledThreadCpuMs': cycles*1000/meta['clocks']['cycleFrequency'] if cycles is not None else None,
                              'sampledStacks': dict(Counter(s['stack'] for s in sampled))})
-        long_ticks = [t for t in ticks if t['engine_ms'] > 10 or t['host_ms'] > 10]
+        long_ticks = [t for t in ticks if t['engine_ms'] > 10 or t['host_ms'] > 10 or (t.get('drain_ms') or 0) > 10]
         result.append({'probe': path.name, 'logOrigin': origin.isoformat(), 'iniWriteAtMs': writes,
                        'intrusive': bool(samples), 'episodes': sorted(episodes,key=lambda e:e['metrics']['interval'],reverse=True),
                        'longTicks': long_ticks,

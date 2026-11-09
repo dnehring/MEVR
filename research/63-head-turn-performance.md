@@ -395,6 +395,51 @@ CE247578... ASI. A fresh read-only verification at 20:26:42 found all 42 files m
 processes, no requests or QA lock, and the original global Virtual Desktop OpenXR runtime. The reusable build,
 source checks, candidate runner and restoration verifier are documented in [the QA README](../tools/qa-cafeteria/README.md).
 
+## Whole-hook and queued-call trace (2026-11-08)
+
+Priority 2 now has buffered instrumentation before the original `EngineTickBegin` boundary. The tick CSV
+retains its original six columns and appends whole-hook wall/CPU time, queue-drain wall/CPU time and a queued
+call count. A separate `-calls.csv` records each queued call's validation/dispatch duration, outcome and numeric
+object/function identities. Those identities are process-local addresses, not resolved names. Timing storage
+is reserved before capture; formatting and file writes occur afterward. Additional timestamp queries have
+diagnostic cost, so a changed distribution alone is not evidence of a gameplay optimization.
+
+The probe metadata identifies this as instrumentation version 2 and reports dropped tick/call records. The
+analyzers use the full hook for overlap and between-tick gaps, preserve the old engine/host metrics, and label
+legacy gaps as outside **engine/host only**. Batch comparisons reject dropped records and different trace
+versions. An old capture cannot establish that a stall was outside our hook.
+
+`check-tick-trace.py` checks that every queued call belongs to a recorded tick and lies within that tick's drain,
+that counts and duration boundaries agree, and that the trace did not overflow. The unit fixture places a
+90 ms call before the old timer: the old view shows a 91 ms gap; the full-hook view correctly includes the call
+and leaves a 1 ms gap. A malformed trace with the call moved into the engine portion is rejected.
+These checks validate attribution, not a fix for the original pause. LE1/LE2/LE3 builds, the main C++ suite,
+five Python probe checks and the QA offline checks passed. Build/test transcript:
+`scratch/tick-trace-check-20261108-210401-074/`. Two sandboxed development-build attempts stalled before
+compilation and were canceled; the successful check ran with normal native-process access.
+
+The private monolithic candidate also built and passed its unit suite. Its six timing-related C++ source files
+match the working source; it uses the same process-only SteamVR shim as the earlier camera candidate.
+Private artifact: `scratch/tick-trace-20261108/`, SHA-256
+`6F2F4E4FA5EBC8C06E527C20EAFA95EC5F4F23301247C6BA883B86F2EBAADE17`.
+`run-local.ps1` records the exact one-run validation command with `-RequireTickTrace`.
+
+The native attempt at 21:14 stopped before High settings, launch, traversal or capture because a game launcher
+appeared during preparation. All 42 protected files, original CE247578... ASI and global VDXR were restored and
+verified at 21:14:58; no processes, requests or QA lock remained at that verification. A separate active Mako
+cockpit test then owned the game session. It was left untouched, and no second native attempt was made.
+Receipt: `scratch/tick-trace-20261108/validation-20261108-211425-597/`. This is a recovered preflight refusal,
+not a timing result. Native trace validation and the cause of the 80-93 ms pause remain open. Recheck the
+installed binary hash and session ownership before retrying; another task may legitimately deploy a new build.
+
+The reusable build/check commands and protected candidate runner are in
+[the cafeteria QA README](../tools/qa-cafeteria/README.md). One Draw and the High workload remain unchanged.
+Separate [hub scenarios](../tools/qa-hubs/README.md) preserve route-discovery work, now
+[paused at the user's request](../tools/qa-hubs/PAUSED.md). All seven remain drafts and are excluded from
+regression runs. Noveria loaded at its authored embedded-Normandy start; that successful map load did not yet
+acquire Port Hanshan. Its normal airlock path remains the next supported discovery route, not arbitrary save
+flag injection. No wider-map measurements are included in the CPU baseline.
+
 ## API references
 
 Microsoft documents that query results can be unavailable (`S_FALSE`), and that continually polling

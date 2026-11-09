@@ -1,0 +1,24 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "id": "citadel-csec",
+  "label": "Citadel C-Sec circulation",
+  "game": "LE1",
+  "status": "draft",
+  "expectedMap": "BIOA_STA00",
+  "start": null,
+  "steps": [],
+  "capture": {"seconds": 90, "yawDegrees": 130, "pitchDegrees": -10, "sweepDegrees": 60},
+  "prerequisites": [
+    "Prepare a C-Sec gameplay save after the first Citadel arrival sequence.",
+    "Record the exact starting position and pawn yaw before enabling this route.",
+    "Validate controller-only corridor waypoints; historical teleported survey points are not a walking route."
+  ],
+  "evidence": {
+    "reference": "research/50-citadel-crowds.md",
+    "historicalSurveyPositionUU": [-2010, 10009, -22180],
+    "historicalSurveyMethod": "Prior static spot survey; not controller-walk validation.",
+    "nativeTraversalValidated": false,
+    "purpose": "Multi-level hub interior, ambient characters, corridor occlusion and changing view density."
+  }
+}

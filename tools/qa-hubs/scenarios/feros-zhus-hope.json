@@ -1,0 +1,22 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "id": "feros-zhus-hope",
+  "label": "Feros: Zhu's Hope colony",
+  "game": "LE1",
+  "status": "draft",
+  "expectedMap": "BIOA_WAR00",
+  "start": null,
+  "steps": [],
+  "capture": {"seconds": 90, "yawDegrees": 130, "pitchDegrees": -10, "sweepDegrees": 60},
+  "prerequisites": [
+    "Prepare a real played save in Zhu's Hope with the landing sequence complete and a safe walkable colony state.",
+    "Measure start position/facing and controller-walk waypoints under an exclusive native lease.",
+    "Fresh map-open attempts in research/59 did not reach gameplay; package existence is not fixture availability."
+  ],
+  "evidence": {
+    "sources": ["research/59-conversations-in-world.md: The scan and native survey limits"],
+    "packageChecked": "BIOA_WAR00.pcc exists in the local LE1 installation",
+    "nativeRouteValidated": false
+  }
+}

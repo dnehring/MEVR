@@ -2,7 +2,8 @@
 # Gameplay performance priorities
 
 Updated 2026-11-08. Evidence: [head-turn investigation](../research/63-head-turn-performance.md).
-Reusable validation: [cafeteria QA](../tools/qa-cafeteria/README.md).
+Reusable validation: [cafeteria QA](../tools/qa-cafeteria/README.md) and
+[hub route catalog](../tools/qa-hubs/README.md). Hub drafts remain excluded until their actual scene and walking route are verified.
 
 This is engineering order. Item 2 is the largest individual hitch; item 3 is directly observed in the physical
 headset. Keep One Draw enabled and distinguish each problem's acceptance criteria.
@@ -10,7 +11,7 @@ headset. Keep One Draw enabled and distinguish each problem's acceptance criteri
 | Order | Problem | Evidence and next action | Status |
 |---|---|---|---|
 | 1 | Camera-diagnostic disk writes | Recurring 12-18 ms host stalls; sampled inside synchronous INI writes. Measurements now publish in memory; three High runs had zero automatic settings writes and host maxima 7.03-7.54 ms. | Implemented; local checks passed; headset calibration pending |
-| 2 | Rare 80-93 ms gameplay pauses | Most of the pause lies between measured game ticks. Time the whole hook, queue drain and individual queued calls; inspect scheduling/waits if those are quick. | Cause unresolved |
+| 2 | Rare 80-93 ms gameplay pauses | Most of the pause lies between the original measured game ticks. Buffered whole-hook, queue-drain and individual queued-call timings are implemented; validate the trace locally, then inspect scheduling/waits if the queue is quick. | Builds/automated checks passed; native capture deferred for another owned game test; cause unresolved |
 | 3 | Physical-headset submission stalls | Earlier VDXR captures have 35-62 ms worst intervals; 68 of 72 long intervals are dominated by xrEndFrame. Correlate GPU/resource/scheduling evidence using a controlled headset sweep. | Wait location identified; underlying cause unresolved |
 | 4 | Periodic engine CPU spikes | Approximately 19 ms CPU in the same sampled chain under UWorld::Tick. Identify the routine before changing engine behavior; GC remains a hypothesis. | Cause unresolved |
 | 5 | Dense-scene rendering budget | Physical captures reach about 10 ms render CPU at p99 against 11.111 ms at 90 Hz. Measure visibility/query/replay costs per frame, then optimize the measured bottleneck. | Culling contribution unproven |

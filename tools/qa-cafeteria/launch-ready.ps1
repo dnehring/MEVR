@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-param([Parameter(Mandatory)][string]$RunDirectory,[int]$TimeoutSeconds=150)
+param([Parameter(Mandatory)][string]$RunDirectory,[int]$TimeoutSeconds=150,
+      [ValidatePattern('^BIOA_[A-Z0-9]+$')][string]$ExpectedMap='BIOA_NOR00')
 . "$PSScriptRoot\common.ps1"
 $ctx=Read-QaContext $RunDirectory
 if(Get-Process MassEffect1,MassEffectLauncher -ErrorAction SilentlyContinue){throw 'Game or launcher already running.'}
@@ -49,7 +50,7 @@ while((Get-Date) -lt $deadline){
     if($enters -gt 0){
         # A console timeout while the level loads is expected; it removes its request.
         $ready=(& (Join-Path $ctx.RepoRoot 'tools\console.ps1') 'mevr vehicle' -TimeoutSeconds 3)-join ' '
-        if($ready -match 'map BIOA_NOR00, game mode 0,'){Write-Host "READY: Normandy gameplay ($enters Enter presses)";return}
+        if($ready -match ('map '+[regex]::Escape($ExpectedMap)+', game mode 0,')){Write-Host "READY: $ExpectedMap gameplay ($enters Enter presses)";return}
         if($ready -match 'map (\w+), game mode 0,'){throw "Wrong starting map: $($Matches[1])"}
     }
     if(((Get-Date)-$gameProcess.StartTime).TotalSeconds -gt 25 -and ((Get-Date)-$lastEnter).TotalSeconds -gt 12){
@@ -57,4 +58,4 @@ while((Get-Date) -lt $deadline){
         if(Send-Key $gameProcess.MainWindowHandle 0x0D){$enters++;$lastEnter=Get-Date}
     }
 }
-throw 'Timed out waiting for the original Normandy save.'
+throw "Timed out waiting for the prepared $ExpectedMap save."

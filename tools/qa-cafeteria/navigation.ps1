@@ -41,7 +41,9 @@ function Walk-To([string]$Name,[double]$X,[double]$Y,[double]$Z,[double]$Toleran
    Write-Host "ARRIVED $Name at $($p -join ', ')";return
   }
   if($distance -le $Tolerance){throw "Wrong deck at $Name; position $p"}
-  $yaw=([Math]::Atan2($dy,$dx)*180/[Math]::PI+88.7915+360)%360
+  # Replays are relative to the saved pawn's facing. Preserve Normandy's -16164 default, support other hubs.
+  $startYaw=if($null -ne $ctx.StartingYaw){[double]$ctx.StartingYaw}else{-16164.0}
+  $yaw=([Math]::Atan2($dy,$dx)*180/[Math]::PI-$startYaw*360/65536+720)%360
   $seconds=($distance-12)/85.0
   if($seconds -lt 0.6){$seconds=0.6}
   if($seconds -gt 8.0){$seconds=8.0}

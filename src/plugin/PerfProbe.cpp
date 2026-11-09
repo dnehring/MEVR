@@ -119,6 +119,8 @@ struct Capture {
     double seconds = 0.0;
     std::vector<fp::Frame> frames;  // reserved when armed: never grows while running
     std::vector<fp::Tick> ticks;    // the game thread's
+    std::vector<fp::QueuedCall> calls;  // reserved before capture; no allocation or name resolution per call
+    std::size_t ticksDropped = 0, callsDropped = 0;
     fp::Clocks clocks;
     std::uint64_t tscBegin = 0;
     std::uint64_t tscEnd = 0;
@@ -563,6 +565,7 @@ void WriteCapture() {
     std::string const base = c.stamp + (c.tag.empty() ? std::string() : "-" + c.tag);
     fs::path const framesPath = dir / (base + "-frames.csv");
     fs::path const ticksPath = dir / (base + "-ticks.csv");
+    fs::path const callsPath = dir / (base + "-calls.csv");
     fs::path const jsonPath = dir / (base + "-probe.json");
 
     std::string frames = fp::FrameCsvHeader();
@@ -573,7 +576,11 @@ void WriteCapture() {
     for (std::size_t i = 0; i < c.ticks.size(); ++i) {
         ticks += fp::TickCsvRow(i, c.ticks[i], c.clocks);
     }
-    bool ok = WriteText(framesPath, frames) && WriteText(ticksPath, ticks);
+    std::string calls = fp::QueuedCallCsvHeader();
+    for (std::size_t i = 0; i < c.calls.size(); ++i) {
+        calls += fp::QueuedCallCsvRow(i, c.calls[i], c.clocks);
+    }
+    bool ok = WriteText(framesPath, frames) && WriteText(ticksPath, ticks) && WriteText(callsPath, calls);
 
     MELEVR::Config::VrConfig const& h = MELEVR::Config::Get();
     MELEVR::XrSession::ResolutionStats resolution;
@@ -584,7 +591,8 @@ void WriteCapture() {
         ? static_cast<double>(c.cyclesEnd - c.cyclesBegin) / c.clocks.cycleFrequency : 0.0;
     std::string const json = std::format(
         "{{\n  \"stamp\": {},\n  \"tag\": {},\n  \"trigger\": {},\n  \"secondsRequested\": {},\n  \"seconds\": {},\n"
-        "  \"frames\": {},\n  \"ticks\": {},\n  \"files\": {{\"frames\": {}, \"ticks\": {}}},\n"
+        "  \"frames\": {},\n  \"ticks\": {},\n  \"files\": {{\"frames\": {}, \"ticks\": {}, \"calls\": {}}},\n"
+        "  \"tickInstrumentation\": {{\"version\": 2, \"ticksDropped\": {}, \"callsDropped\": {}, \"queuedCalls\": {}}},\n"
         "  \"clocks\": {{\"qpcFrequency\": {}, \"cycleFrequency\": {}, \"gpuFrequency\": {}, \"syncBegin\": {}, "
         "\"syncEnd\": {}}},\n  \"gpuTimestamps\": {},\n  \"gpuFramesDropped\": {},\n  \"accessViolations\": {},\n"
         "  \"pid\": {},\n  \"renderThread\": {},\n  \"gameThread\": {},\n"
@@ -595,7 +603,8 @@ void WriteCapture() {
         "  \"resolution\": {{\"render\": [{}, {}], \"eye\": [{}, {}], \"recommendedEye\": [{}, {}]}}\n}}\n",
         req::JsonString(c.stamp), req::JsonString(c.tag), req::JsonString(c.trigger), J(c.seconds), J(seconds),
         c.frames.size(), c.ticks.size(), req::JsonString(Utf8(framesPath.filename())),
-        req::JsonString(Utf8(ticksPath.filename())), J(c.clocks.qpcFrequency), J(c.clocks.cycleFrequency),
+        req::JsonString(Utf8(ticksPath.filename())), req::JsonString(Utf8(callsPath.filename())),
+        c.ticksDropped, c.callsDropped, c.calls.size(), J(c.clocks.qpcFrequency), J(c.clocks.cycleFrequency),
         J(c.clocks.gpuFrequency), Sync(c.clocks.syncBegin, c.clocks), Sync(c.clocks.syncEnd, c.clocks),
         c.gpu ? "true" : "false", c.gpuDropped, c.accessViolations, GetCurrentProcessId(), c.renderThread, c.gameThread, J(cycleSeconds),
         J(c.threadSecondsEnd - c.threadSecondsBegin), h.sfr2Enabled ? "true" : "false", J(h.dynResFraction),
@@ -667,15 +676,53 @@ void WrapFrameFunctions(void** waitSwapchainImage, void** waitFrame, void** begi
     wrap(endFrame, gRealEndFrame, &WrappedEndFrame);
 }
 
-void EngineTickBegin() {
-    gTickOpen = gRunning.load(std::memory_order_relaxed);
+void GameTickBegin() {
+    gTickOpen = gRunning.load(std::memory_order_acquire);
     if (!gTickOpen) {
+        return;
+    }
+    if (gCapture.ticks.size() >= gCapture.ticks.capacity()) {
+        ++gCapture.ticksDropped;
+        gTickOpen = false;
         return;
     }
     if (gCapture.gameThread == 0) {
         gCapture.gameThread = GetCurrentThreadId();
     }
     gTick = {};
+    gTick.hookBeginQpc = Now();
+    gTick.hookBeginCycles = ThreadCycles();
+}
+
+void QueueDrainBegin() {
+    if (!gTickOpen) return;
+    gTick.drainBeginQpc = Now();
+    gTick.drainBeginCycles = ThreadCycles();
+}
+
+fp::QueuedCall QueueCallBegin(void* object, void* function) {
+    if (!gTickOpen) return {};
+    fp::QueuedCall call;
+    call.tick = gCapture.ticks.size();
+    call.object = reinterpret_cast<std::uintptr_t>(object);
+    call.function = reinterpret_cast<std::uintptr_t>(function);
+    call.beginQpc = Now();
+    call.beginCycles = ThreadCycles();
+    ++gTick.queuedCalls;
+    return call;
+}
+
+void QueueCallEnd(fp::QueuedCall call, int outcome) {
+    if (call.beginQpc == 0) return;
+    call.endQpc = Now();
+    call.endCycles = ThreadCycles();
+    call.outcome = outcome;
+    if (gCapture.calls.size() < gCapture.calls.capacity()) gCapture.calls.push_back(call);
+    else ++gCapture.callsDropped;
+}
+
+void EngineTickBegin() {
+    if (!gTickOpen) return;
     gTick.beginQpc = Now();
     gTick.beginCycles = ThreadCycles();
 }
@@ -703,6 +750,8 @@ void Tick() {
     State const state = LoadState();
     if (state == State::Finished) {
         gTickOpen = false;  // this tick isn't part of it
+        // A capture can finish while the engine portion of the final tick runs. Keep call/tick references complete.
+        while (!gCapture.calls.empty() && gCapture.calls.back().tick >= gCapture.ticks.size()) gCapture.calls.pop_back();
         WriteCapture();
         gCapture = {};
         StoreState(State::Idle);
@@ -726,6 +775,7 @@ void Tick() {
     std::size_t const capacity = static_cast<std::size_t>(next.seconds * 250.0) + 64;  // up to 240 Hz
     next.frames.reserve(capacity);
     next.ticks.reserve(capacity);
+    next.calls.reserve(capacity * 8);  // bounded even if a pathological frame drains the entire 64-call queue
     gCapture = std::move(next);
     StoreState(State::Armed);  // the render thread starts at the next Present's end
     log::Info("perf probe: armed for {:.0f} s ({})", gCapture.seconds, gCapture.trigger);
