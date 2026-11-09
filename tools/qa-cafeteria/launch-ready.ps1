@@ -67,7 +67,7 @@ while((Get-Date) -lt $deadline){
         & (Join-Path $ctx.RepoRoot 'tools\qa-hubs\focus-owned-session.ps1') -RunDirectory $RunDirectory -Activate
         $lateForegroundDone=$true
     }
-    if($enters -gt 0 -and -not ($ctx.StartupPhase -eq 'Flight' -and $enters -eq 1)){
+    if($enters -gt 0 -and -not ($ctx.StartupPhase -in @('Flight','Transition') -and $enters -eq 1)){
         # A console timeout while the level loads is expected; it removes its request.
         Save-LaunchEvent 'world-query-begin'
         $ready=(& (Join-Path $ctx.RepoRoot 'tools\console.ps1') 'mevr vehicle' -TimeoutSeconds 3)-join ' '

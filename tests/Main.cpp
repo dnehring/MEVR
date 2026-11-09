@@ -3198,13 +3198,31 @@ void TestFrameProbe() {
     frame.pass0Marks = 1;
     std::string const header = FrameCsvHeader();
     std::string const row = FrameCsvRow(7, frame, clocks);
-    CHECK(header.starts_with("frame,t_start,busy_start,draws_start,t_pass0,") && header.ends_with("pass0_marks\n"));
+    CHECK(header.starts_with("frame,t_start,busy_start,draws_start,t_pass0,") && header.ends_with("render_thread,previous_render_thread,cpu_valid\n"));
     CHECK(std::count(header.begin(), header.end(), ',') == std::count(row.begin(), row.end(), ','));
     CHECK(row.starts_with("7,10.0000,0.0000,0,,,,18.0000,1.0000,32,"));
     CHECK(row.find(",10.5000,") != std::string::npos);  // the GPU start, on the CPU's clock
-    CHECK(row.ends_with(",1,1,1,11.1111,0.5000,3,1\n"));
+    CHECK(row.ends_with(",1,1,1,11.1111,0.5000,3,1,0,0,1\n"));
     frame.gpuValid = false;
     CHECK(FrameCsvRow(7, frame, clocks).find(",10.5000,") == std::string::npos);
+    // A loading thread has an unrelated CPU counter. Keep the 8 ms wall interval, omit misleading busy times.
+    frame.cpuValid = false;
+    frame.renderThread = 200;
+    frame.previousRenderThread = 100;
+    frame.cycles[kPresent] = 1;
+    std::string const boundary = FrameCsvRow(7, frame, clocks);
+    CHECK(boundary.starts_with("7,10.0000,,0,,,,18.0000,,32,"));
+    CHECK(boundary.ends_with(",200,100,0\n"));
+    CHECK(std::count(header.begin(), header.end(), ',') == std::count(boundary.begin(), boundary.end(), ','));
+    PresentOwnership ownership;
+    CHECK(!ownership.TryEnter(0));
+    CHECK(ownership.TryEnter(100));
+    CHECK(!ownership.TryEnter(200) && !ownership.TryEnter(100));
+    ownership.Leave(200);  // a failed contender cannot release the owner
+    CHECK(ownership.Owner() == 100);
+    ownership.Leave(100);
+    CHECK(ownership.TryEnter(200));
+    ownership.Leave(200);
 
     Tick tick;
     tick.beginQpc = 1000 + 10'000;       // 1 ms

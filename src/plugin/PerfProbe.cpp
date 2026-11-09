@@ -134,14 +134,22 @@ struct Capture {
     DWORD gameThread = 0;
     bool gpu = false;  // timestamps taken
     std::size_t gpuDropped = 0;
+    std::size_t threadSwitches = 0, contextChanges = 0, cpuBoundaryFrames = 0;
+    std::uint64_t measuredCycles = 0;
 };
 Capture gCapture;
 
 // ---- Render thread ----------------------------------------------------------------------------------------------
 
-ID3D11DeviceContext* gContext = nullptr;  // the game's immediate context: lives as long as the game
+ComPtr<ID3D11DeviceContext> gContext;  // retain the measured context through loading transitions
 fp::Frame gFrame;                          // being filled
 GpuTiming gGpuTiming;
+std::recursive_mutex gRenderMutex;          // short instrumentation operations only; never an XR call
+std::atomic<DWORD> gRenderThread{0};
+fp::PresentOwnership gPresentOwnership;
+std::atomic<std::size_t> gOverlappingPresents{0};
+thread_local unsigned gPresentDepth = 0;
+thread_local bool gPresentOwned = false;
 
 constexpr std::size_t kGpuPoints = fp::kGpuPoints.size();
 
@@ -157,6 +165,7 @@ std::array<GpuSlot, kSlots> gSlots;
 int gSlot = -1;  // the frame being filled
 int gNextSlot = 0;
 bool gQueriesMade = false;
+ComPtr<ID3D11Device> gQueryDevice;
 ComPtr<ID3D11Query> gSyncDisjoint;
 std::array<ComPtr<ID3D11Query>, 6> gSyncStamps;
 
@@ -173,14 +182,14 @@ LONG CALLBACK CountAccessViolation(EXCEPTION_POINTERS* info) {
 }
 
 bool MakeQueries(ID3D11DeviceContext* context) {
-    if (gQueriesMade) {
-        return true;
-    }
     ComPtr<ID3D11Device> device;
     context->GetDevice(device.GetAddressOf());
     if (device == nullptr) {
         return false;
     }
+    if (gQueriesMade && device == gQueryDevice) return true;
+    gQueriesMade = false;
+    for (auto& slot : gSlots) slot = {};
     D3D11_QUERY_DESC const disjoint{D3D11_QUERY_TIMESTAMP_DISJOINT, 0};
     D3D11_QUERY_DESC const stamp{D3D11_QUERY_TIMESTAMP, 0};
     bool ok = SUCCEEDED(device->CreateQuery(&disjoint, gSyncDisjoint.ReleaseAndGetAddressOf()));
@@ -198,6 +207,7 @@ bool MakeQueries(ID3D11DeviceContext* context) {
         return false;
     }
     gQueriesMade = true;
+    gQueryDevice = device;
     return true;
 }
 
@@ -303,6 +313,8 @@ void CollectAll() {
 }
 
 void Record(int point, ID3D11DeviceContext* context) {
+    std::lock_guard lock(gRenderMutex);
+    if (GetCurrentThreadId() != gRenderThread.load(std::memory_order_relaxed)) return;
     gFrame.qpc[point] = Now();
     gFrame.cycles[point] = ThreadCycles();
     gFrame.draws[point] = MELEVR::MevrBridge::g_perfDraws;
@@ -310,7 +322,7 @@ void Record(int point, ID3D11DeviceContext* context) {
         ++gFrame.pass0Marks;
     }
     int const g = fp::GpuIndex(point);
-    if (g > 0 && gSlot >= 0 && (context == nullptr || context == gContext)) {
+    if (g > 0 && gSlot >= 0 && (context == nullptr || context == gContext.Get())) {
         GpuSlot& slot = gSlots[gSlot];
         gContext->End(slot.stamps[g].Get());  // again for a repeated point: the last one counts
         slot.issued[g] = true;
@@ -319,6 +331,7 @@ void Record(int point, ID3D11DeviceContext* context) {
 
 void OpenFrame(std::int64_t qpc, std::uint64_t cycles, std::uint32_t draws) {
     gFrame = {};
+    gFrame.renderThread = gRenderThread.load(std::memory_order_relaxed);
     gFrame.qpc[fp::kStart] = qpc;
     gFrame.cycles[fp::kStart] = cycles;
     gFrame.draws[fp::kStart] = draws;
@@ -351,12 +364,19 @@ void CloseFrame() {
         slot.inFlight = true;
     }
     gCapture.frames.push_back(gFrame);
+    if (gFrame.cpuValid && gFrame.cycles[fp::kEnd] >= gFrame.cycles[fp::kStart]) {
+        gCapture.measuredCycles += gFrame.cycles[fp::kEnd] - gFrame.cycles[fp::kStart];
+    } else {
+        ++gCapture.cpuBoundaryFrames;
+    }
     CollectAll();
 }
 
 void Start(ID3D11DeviceContext* context) {
     gContext = context;
     gCapture.renderThread = GetCurrentThreadId();
+    gRenderThread.store(gCapture.renderThread, std::memory_order_relaxed);
+    gOverlappingPresents.store(0, std::memory_order_relaxed);
     fp::Clocks& clocks = gCapture.clocks;
     clocks.qpcFrequency = QpcFrequency();
     gCapture.gpu = context != nullptr && MakeQueries(context);
@@ -412,6 +432,7 @@ void Stop() {
 }
 
 void OnPresentEnd(ID3D11DeviceContext* context) {
+    std::lock_guard lock(gRenderMutex);
     State const state = LoadState();
     if (state == State::Armed) {
         if (context != nullptr) {
@@ -419,7 +440,7 @@ void OnPresentEnd(ID3D11DeviceContext* context) {
         }
         return;
     }
-    if (state != State::Running || GetCurrentThreadId() != gCapture.renderThread) {
+    if (state != State::Running || GetCurrentThreadId() != gRenderThread.load(std::memory_order_relaxed)) {
         return;
     }
     Record(fp::kEnd, context);
@@ -436,7 +457,50 @@ void OnPresentEnd(ID3D11DeviceContext* context) {
 }
 
 bool OnRenderThread() {
-    return gRunning.load(std::memory_order_relaxed) && GetCurrentThreadId() == gCapture.renderThread;
+    return gRunning.load(std::memory_order_acquire) && GetCurrentThreadId() == gRenderThread.load(std::memory_order_relaxed) &&
+        (gPresentDepth == 0 ? gPresentOwnership.Owner() == 0 : gPresentDepth == 1 && gPresentOwned);
+}
+
+void PresentBegin(ID3D11DeviceContext* context) {
+    ++gPresentDepth;
+    if (gPresentDepth > 1) {
+        if (gRunning.load(std::memory_order_relaxed)) ++gOverlappingPresents;
+        return;
+    }
+    gPresentOwned = gPresentOwnership.TryEnter(GetCurrentThreadId());
+    if (!gPresentOwned) {
+        if (gRunning.load(std::memory_order_relaxed)) ++gOverlappingPresents;
+        return;
+    }
+    std::lock_guard lock(gRenderMutex);
+    if (LoadState() != State::Running) return;
+    DWORD const previous = gRenderThread.load(std::memory_order_relaxed);
+    DWORD const current = GetCurrentThreadId();
+    if (current != previous) {
+        ++gCapture.threadSwitches;
+        gFrame.cpuValid = false;  // preserve the entire wall interval, but never subtract different threads' cycles
+        gFrame.previousRenderThread = previous;
+        gFrame.renderThread = current;
+        gRenderThread.store(current, std::memory_order_relaxed);
+    }
+    if (context != nullptr && context != gContext.Get()) {
+        // Different devices/contexts cannot share a query pool. Finish explicitly as invalid, not a hung capture.
+        ++gCapture.contextChanges;
+        gFrame.cpuValid = false;
+        Record(fp::kEnd, nullptr);
+        CloseFrame();
+        Stop();
+    }
+}
+
+void PresentEnd(ID3D11DeviceContext* context) {
+    if (gPresentDepth == 0) return;
+    if (gPresentDepth == 1 && gPresentOwned) {
+        OnPresentEnd(context);
+        gPresentOwnership.Leave(GetCurrentThreadId());
+        gPresentOwned = false;
+    }
+    --gPresentDepth;
 }
 
 // ---- The wrapped frame functions -------------------------------------------------------------------------------
@@ -453,7 +517,8 @@ XrResult XRAPI_CALL WrappedWaitSwapchainImage(XrSwapchain swapchain, XrSwapchain
     }
     std::int64_t const before = Now();
     XrResult const result = gRealWaitSwapchainImage(swapchain, info);
-    gFrame.swapchainWaitQpc += Now() - before;
+    std::lock_guard lock(gRenderMutex);
+    if (OnRenderThread()) gFrame.swapchainWaitQpc += Now() - before;
     return result;
 }
 
@@ -466,6 +531,8 @@ XrResult XRAPI_CALL WrappedWaitFrame(XrSession session, XrFrameWaitInfo const* i
     Record(next ? fp::kNextWaitBegin : fp::kWaitBegin, nullptr);
     XrResult const result = gRealWaitFrame(session, info, state);
     Record(next ? fp::kNextWaitEnd : fp::kWaitEnd, nullptr);
+    std::lock_guard lock(gRenderMutex);
+    if (!OnRenderThread()) return result;
     gFrame.xrFrame = true;
     if (!next && XR_SUCCEEDED(result) && state != nullptr) {
         gFrame.displayPeriodNs = state->predictedDisplayPeriod;
@@ -491,7 +558,7 @@ XrResult XRAPI_CALL WrappedEndFrame(XrSession session, XrFrameEndInfo const* inf
     if (!OnRenderThread()) {
         return gRealEndFrame(session, info);
     }
-    Record(fp::kEndFrameBegin, gContext);
+    Record(fp::kEndFrameBegin, gContext.Get());
     XrResult const result = gRealEndFrame(session, info);
     Record(fp::kEndFrameEnd, nullptr);
     return result;
@@ -588,12 +655,13 @@ void WriteCapture() {
     double const seconds = c.clocks.qpcFrequency > 0.0
         ? static_cast<double>(c.qpcEnd - c.clocks.originQpc) / c.clocks.qpcFrequency : 0.0;
     double const cycleSeconds = c.clocks.cycleFrequency > 0.0
-        ? static_cast<double>(c.cyclesEnd - c.cyclesBegin) / c.clocks.cycleFrequency : 0.0;
+        ? static_cast<double>(c.measuredCycles) / c.clocks.cycleFrequency : 0.0;
     std::string const json = std::format(
         "{{\n  \"stamp\": {},\n  \"tag\": {},\n  \"trigger\": {},\n  \"secondsRequested\": {},\n  \"seconds\": {},\n"
         "  \"frames\": {},\n  \"ticks\": {},\n  \"files\": {{\"frames\": {}, \"ticks\": {}, \"calls\": {}}},\n"
         "  \"tickInstrumentation\": {{\"version\": 2, \"ticksDropped\": {}, \"callsDropped\": {}, \"queuedCalls\": {}}},\n"
-        "  \"clocks\": {{\"qpcFrequency\": {}, \"cycleFrequency\": {}, \"gpuFrequency\": {}, \"syncBegin\": {}, "
+        "  \"renderInstrumentation\": {{\"version\": 3, \"threadSwitches\": {}, \"cpuBoundaryFrames\": {}, \"overlappingPresents\": {}, \"contextChanges\": {}}},\n"
+        "  \"clocks\": {{\"originQpc\": {}, \"qpcFrequency\": {}, \"cycleFrequency\": {}, \"gpuFrequency\": {}, \"syncBegin\": {}, "
         "\"syncEnd\": {}}},\n  \"gpuTimestamps\": {},\n  \"gpuFramesDropped\": {},\n  \"accessViolations\": {},\n"
         "  \"pid\": {},\n  \"renderThread\": {},\n  \"gameThread\": {},\n"
         "  \"renderThreadBusySeconds\": {{\"fromCycles\": {}, \"fromThreadTimes\": {}}},\n"
@@ -604,10 +672,11 @@ void WriteCapture() {
         req::JsonString(c.stamp), req::JsonString(c.tag), req::JsonString(c.trigger), J(c.seconds), J(seconds),
         c.frames.size(), c.ticks.size(), req::JsonString(Utf8(framesPath.filename())),
         req::JsonString(Utf8(ticksPath.filename())), req::JsonString(Utf8(callsPath.filename())),
-        c.ticksDropped, c.callsDropped, c.calls.size(), J(c.clocks.qpcFrequency), J(c.clocks.cycleFrequency),
+        c.ticksDropped, c.callsDropped, c.calls.size(), c.threadSwitches, c.cpuBoundaryFrames,
+        gOverlappingPresents.load(std::memory_order_relaxed), c.contextChanges, c.clocks.originQpc, J(c.clocks.qpcFrequency), J(c.clocks.cycleFrequency),
         J(c.clocks.gpuFrequency), Sync(c.clocks.syncBegin, c.clocks), Sync(c.clocks.syncEnd, c.clocks),
         c.gpu ? "true" : "false", c.gpuDropped, c.accessViolations, GetCurrentProcessId(), c.renderThread, c.gameThread, J(cycleSeconds),
-        J(c.threadSecondsEnd - c.threadSecondsBegin), h.sfr2Enabled ? "true" : "false", J(h.dynResFraction),
+        c.threadSwitches ? "null" : J(c.threadSecondsEnd - c.threadSecondsBegin), h.sfr2Enabled ? "true" : "false", J(h.dynResFraction),
         h.mirrorPresentEvery, h.stereoFramePacing ? "true" : "false", h.cineFpsCap ? "true" : "false",
         h.disableDof ? "true" : "false", h.hudPanel ? "true" : "false", h.handReticle ? "true" : "false",
         h.sfr2Metric ? "true" : "false", h.sfr2MetricEyeFrustum ? "true" : "false", render_levers::SettingsJson(),
@@ -635,9 +704,10 @@ bool gTickOpen = false;
 
 void Mark(int point, ID3D11DeviceContext* context) {
     if (point == fp::kEnd) {
-        OnPresentEnd(context);
+        PresentEnd(context);
         return;
     }
+    if (point == fp::kPresent) PresentBegin(context);
     if (point <= fp::kStart || point >= fp::kPointCount || !OnRenderThread()) {
         return;
     }
@@ -652,9 +722,13 @@ void Mark(int point, ID3D11DeviceContext* context) {
     Record(point, context);
 }
 
-GpuTiming LatestGpuTiming() { return gGpuTiming; }
+GpuTiming LatestGpuTiming() {
+    std::lock_guard lock(gRenderMutex);
+    return gGpuTiming;
+}
 
 void FrameSubmitted(std::int64_t period, bool shouldRender) {
+    std::lock_guard lock(gRenderMutex);
     if (!OnRenderThread()) return;
     gFrame.xrFrame = true;
     gFrame.displayPeriodNs = period;

@@ -65,7 +65,7 @@ std::string FrameCsvHeader() {
     for (int p : kGpuPoints) {
         out += std::format(",gpu_{}", kNames[p]);
     }
-    out += ",gpu_valid,xr_frame,should_render,display_period_ms,swapchain_wait_ms,access_violations,pass0_marks\n";
+    out += ",gpu_valid,xr_frame,should_render,display_period_ms,swapchain_wait_ms,access_violations,pass0_marks,render_thread,previous_render_thread,cpu_valid\n";
     return out;
 }
 
@@ -78,7 +78,8 @@ std::string FrameCsvRow(std::size_t index, Frame const& frame, Clocks const& clo
             continue;
         }
         out += ',' + Ms(QpcMs(clocks, frame.qpc[p]));
-        out += ',' + Ms(CycleMs(clocks, frame.cycles[kStart], frame.cycles[p]));
+        out += ',';
+        if (frame.cpuValid) out += Ms(CycleMs(clocks, frame.cycles[kStart], frame.cycles[p]));
         out += ',' + std::to_string(frame.draws[p] - frame.draws[kStart]);
     }
     for (std::size_t i = 0; i < kGpuPoints.size(); ++i) {
@@ -89,8 +90,9 @@ std::string FrameCsvRow(std::size_t index, Frame const& frame, Clocks const& clo
     }
     double const swapchainWaitMs =
         clocks.qpcFrequency > 0.0 ? static_cast<double>(frame.swapchainWaitQpc) * 1000.0 / clocks.qpcFrequency : 0.0;
-    out += std::format(",{},{},{},{},{},{},{}\n", frame.gpuValid ? 1 : 0, frame.xrFrame ? 1 : 0, frame.shouldRender ? 1 : 0,
-        Ms(static_cast<double>(frame.displayPeriodNs) * 1e-6), Ms(swapchainWaitMs), frame.accessViolations, frame.pass0Marks);
+    out += std::format(",{},{},{},{},{},{},{},{},{},{}\n", frame.gpuValid ? 1 : 0, frame.xrFrame ? 1 : 0, frame.shouldRender ? 1 : 0,
+        Ms(static_cast<double>(frame.displayPeriodNs) * 1e-6), Ms(swapchainWaitMs), frame.accessViolations, frame.pass0Marks,
+        frame.renderThread, frame.previousRenderThread, frame.cpuValid ? 1 : 0);
     return out;
 }
 
