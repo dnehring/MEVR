@@ -651,10 +651,11 @@ void TestSelfCast() {
 }
 
 void TestSelfConfirmation() {
-    CHECK(pw::RefusalFor(pw::SelfGesture::Gun, false, false, 0.4f) == pw::SelfRefusal::DrawWeapon);
-    CHECK(pw::RefusalFor(pw::SelfGesture::Gun, true, false, 0.4f) == pw::SelfRefusal::CoolingDown);
-    CHECK(pw::RefusalFor(pw::SelfGesture::Chest, false, false, 0.0f) == pw::SelfRefusal::Unavailable);
-    CHECK(pw::RefusalFor(pw::SelfGesture::Raise, false, true, 0.0f) == pw::SelfRefusal::None);
+    CHECK(pw::RefusalFor(pw::SelfGesture::Gun, false, true, false, 0.4f) == pw::SelfRefusal::DrawWeapon);
+    CHECK(pw::RefusalFor(pw::SelfGesture::Gun, true, false, false, 0.4f) == pw::SelfRefusal::WrongWeapon);  // Overkill on a pistol
+    CHECK(pw::RefusalFor(pw::SelfGesture::Gun, true, true, false, 0.4f) == pw::SelfRefusal::CoolingDown);
+    CHECK(pw::RefusalFor(pw::SelfGesture::Chest, false, false, false, 0.0f) == pw::SelfRefusal::Unavailable);  // the gun isn't its
+    CHECK(pw::RefusalFor(pw::SelfGesture::Raise, false, true, true, 0.0f) == pw::SelfRefusal::None);
     pw::SelfCastSettings const settings;
     pw::SelfCastInput in;
     in.tracked = true;
@@ -810,6 +811,81 @@ void TestSelfConfirmation() {
     CHECK(pw::Latest(0).self.look == pw::SelfLook::Hidden);
 }
 
+// The gesture's target only for a power that would cast now (the user, 2026-11-09: Overkill's showed on every gun, cooling down
+// or not): not ready, no target, no tick, no ring, and a resting hand says nothing; a slap or the full dwell is answered (the mod
+// refuses it, saying why).
+void TestSelfNotReady() {
+    pw::SelfCastSettings const s;
+    pw::SelfCastInput in;
+    in.tracked = true;
+    in.open = true;
+    in.ready = false;
+    in.head.orientation.w = 1.0f;
+    in.head.position = {0.0f, 1.7f, 0.0f};
+    in.gunValid = true;
+    in.gunDrawn = true;
+    in.gunZone = pw::GunZone({0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, -0.65f}, {0.0f, 1.0f, 0.0f});
+    in.hand = {0.0f, 1.6f, -0.5f};
+    CHECK(pw::LookFor(pw::SelfGesture::Gun, in, in.gunZone) == pw::SelfLook::Hidden);  // ready, it's Faint (TestSelfConfirmation)
+    in.hand.y = 1.10f;
+    CHECK(pw::LookFor(pw::SelfGesture::Gun, in, in.gunZone) == pw::SelfLook::Hidden);  // even in range
+    // A hand resting on the gun: no tick, no ring, never a cast however long.
+    pw::SelfCastState rest;
+    in.time = 1.0;
+    pw::SelfCastStep step = pw::StepSelfCast(rest, pw::SelfGesture::Gun, in, s);
+    CHECK(!step.entered && !step.cast && Close(step.progress, 0.0f));
+    in.time = 3.0;
+    step = pw::StepSelfCast(rest, pw::SelfGesture::Gun, in, s);
+    CHECK(!step.cast && Close(step.progress, 0.0f));
+    // A slap (3 m/s into the capsule) is answered.
+    pw::SelfCastState slap;
+    in.hand.y = 1.40f;
+    in.time = 4.0;
+    pw::StepSelfCast(slap, pw::SelfGesture::Gun, in, s);
+    in.hand.y = 1.10f;
+    in.time = 4.1;
+    step = pw::StepSelfCast(slap, pw::SelfGesture::Gun, in, s);
+    CHECK(step.cast && !step.entered);
+    // The chest: no target or ring while the hand rests there; the full dwell is answered.
+    pw::SelfCastState chest;
+    in.hand = {0.0f, 1.42f, -0.14f};
+    in.time = 5.0;
+    step = pw::StepSelfCast(chest, pw::SelfGesture::Chest, in, s);
+    CHECK(!step.entered && Close(step.progress, 0.0f));
+    CHECK(pw::LookFor(pw::SelfGesture::Chest, in, pw::ZoneFor(pw::SelfGesture::Chest, in)) == pw::SelfLook::Hidden);
+    in.time = 5.2;
+    step = pw::StepSelfCast(chest, pw::SelfGesture::Chest, in, s);
+    CHECK(!step.cast && Close(step.progress, 0.0f));
+    in.time = 5.36;
+    CHECK(pw::StepSelfCast(chest, pw::SelfGesture::Chest, in, s).cast);
+    // Ready again (the cooldown ran out): the target is back.
+    in.ready = true;
+    CHECK(pw::LookFor(pw::SelfGesture::Chest, in, pw::ZoneFor(pw::SelfGesture::Chest, in)) == pw::SelfLook::InRange);
+}
+
+// No power, the wheel's last tile, and the gun powers' own guns (research/55 section 10).
+void TestNoPowerAndGuns() {
+    CHECK(pw::IsNoPower("None") && !pw::IsNoPower("TK_Throw") && !pw::IsNoPower(nullptr));
+    CHECK(pw::FindPower("None") == nullptr);  // never a power the lock or the gestures act on
+    CHECK(pw::NoPower().icon == pw::kNoPowerIcon && pw::NoPower().aim == pw::Aim::None);
+    CHECK(pw::SelfGestureFor(pw::NoPower().label) == pw::SelfGesture::None);
+    CHECK(pw::RequiredWeapon("LW_Marksman") == 0 && pw::RequiredWeapon("BW_CarnageSetup") == 1);
+    CHECK(pw::RequiredWeapon("AW_Suppression") == 2 && pw::RequiredWeapon("SW_Critical") == 3);
+    CHECK(pw::RequiredWeapon("KF_Barrier") == -1 && pw::RequiredWeapon(nullptr) == -1);
+    CHECK(std::string(pw::WeaponName(2)) == "the assault rifle" && std::string(pw::WeaponName(-1)) == "a weapon");
+    // Every power slapped onto the gun names its gun.
+    for (char const* label : {"LW_Marksman", "AW_Suppression", "BW_CarnageSetup", "SW_Critical"}) {
+        CHECK(pw::SelfGestureFor(label) == pw::SelfGesture::Gun && pw::RequiredWeapon(label) >= 0);
+    }
+    // The most a class has (a Sentinel's ten with a bonus power) and No power fit the View, around the ring without overlap.
+    CHECK(pw::kMaxEntries >= 11);
+    std::vector<float> const angles = pw::Angles(11);
+    CHECK(angles.size() == 11);
+    for (std::size_t i = 1; i < angles.size(); ++i) {
+        CHECK(std::abs(pw::AngleDiff(angles[i - 1], angles[i])) >= 30.0f);
+    }
+}
+
 void TestXOwnership() {
     namespace fc = mevr::vr::foot_controls;
     // All LE1 EGameModes, plus unknown: only the on-foot VR hand wheel owns X. The open/closed state
@@ -891,5 +967,7 @@ int RunPowerWheelTests() {
     TestLockView();
     TestSelfCast();
     TestSelfConfirmation();
+    TestSelfNotReady();
+    TestNoPowerAndGuns();
     return gFailures;
 }

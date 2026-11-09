@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <format>
@@ -292,8 +293,15 @@ std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
         }
     }
     std::stable_sort(out.begin(), out.end(), [](Power const& a, Power const& b) { return a.info->discipline < b.info->discipline; });
-    if (out.size() > static_cast<std::size_t>(pw::kMaxEntries)) {
-        out.resize(static_cast<std::size_t>(pw::kMaxEntries));
+    if (out.size() > static_cast<std::size_t>(pw::kMaxEntries) - 1) {
+        out.resize(static_cast<std::size_t>(pw::kMaxEntries) - 1);
+    }
+    // The last tile: No power (the engine's None in the mapped power), back to neutral.
+    if (!out.empty()) {
+        Power none;
+        none.label = pw::NoPower().label;
+        none.info = &pw::NoPower();
+        out.push_back(std::move(none));
     }
     return out;
 }
@@ -355,6 +363,11 @@ void Equip(ue3::Object* controller, Power const& power) {
     *slot = power.name;
     write_journal::Wrote("PowerWheel.mappedPower", slot);
     gEquipped = power.label;
+    if (pw::IsNoPower(power.label.c_str())) {
+        log::Info("power wheel: no power equipped (the game's mapped power was {}, now {}): nothing is aimed, locked or gestured "
+                  "until a power is chosen", before.empty() ? "none" : before, ue3::runtime::NameText(*slot));
+        return;
+    }
     pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(power.label.c_str()) : pw::SelfGesture::None;
     log::Info("power wheel: equipped {} ({}): the game's mapped power was {}; {} casts it", power.info->name, power.label,
         before.empty() ? "none" : before, gesture != pw::SelfGesture::None ? pw::Name(gesture) : "a push of the left hand");
@@ -862,6 +875,7 @@ pw::ConfirmationState gConfirmation;
 pw::SelfView gConfirmed;
 std::string gSelfPower;
 float gSelfProgress = 0.0f;         // the gesture's dwell, 0..1 (the hand is in place)
+std::string gSelfReadyWhy;          // the gesture target shown or why hidden, as last logged
 bool gConsoleSelfCast = false;      // `mevr powerwheel selfcast` (tests)
 std::string gLastCastPower;
 bool gLastCastUsesOmniTool = false;
@@ -1014,6 +1028,7 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         gSelfCast = {};
         gConfirmation = {};
         gSelfPower = ready->label;
+        gSelfReadyWhy.clear();
     }
     XrPosef const aim = hand ? controllers.left.aim : view.head;
     // The arm raised: the hand ahead of the eyes (as seen flat).
@@ -1168,6 +1183,24 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
             }
         }
     }
+    // Ready: the target shows only for a power that would cast now (the user, 2026-11-09: Overkill's showed on every gun). A gun
+    // power needs its own gun in hand (our ranged type, and the game's IsRequiredWeaponEquipped), none cools down.
+    int const needs = pw::RequiredWeapon(ready->label.c_str());
+    weapon::RangedType const held = weapon::Type();
+    bool const rightWeapon = ready->requiredWeapon.value_or(true) &&
+                             (needs < 0 || held == weapon::RangedType::Unknown || static_cast<int>(held) == needs);
+    self.ready = ready->enabled && rightWeapon && ready->cooldown <= 0.0f;
+    if (gesture != pw::SelfGesture::None) {
+        std::string const readyWhy = self.ready                                     ? std::string("ready")
+                                     : gesture == pw::SelfGesture::Gun && !rightWeapon ? std::format("hidden: it needs {}", pw::WeaponName(needs))
+                                     : ready->cooldown > 0.0f                          ? std::string("hidden: cooling down")
+                                                                                       : std::string("hidden: the game says unavailable");
+        if (readyWhy != gSelfReadyWhy) {
+            gSelfReadyWhy = readyWhy;
+            log::Info("power wheel: {}'s gesture target {} ({}; the gun in hand: type {})", ready->info->name, readyWhy,
+                EnabledChecks(*ready), static_cast<int>(held));
+        }
+    }
     pw::SelfZone const zone = pw::ZoneFor(gesture, self, gSelfSettings);
     gSelfView.look = pw::LookFor(gesture, self, zone);
     // A stable centre while distant, then the point on the capsule nearest the approaching palm.
@@ -1190,9 +1223,16 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     if (gesture != pw::SelfGesture::None && (selfStep.cast || selfStep.weaponMissing || selfAsked)) {
         bool ok = false;
         std::string reason;
-        pw::SelfRefusal const refusal = pw::RefusalFor(gesture, WeaponOut(pawn), ready->enabled && !selfStep.weaponMissing, ready->cooldown);
+        pw::SelfRefusal const refusal =
+            pw::RefusalFor(gesture, WeaponOut(pawn), rightWeapon, ready->enabled && !selfStep.weaponMissing, ready->cooldown);
         if (refusal == pw::SelfRefusal::DrawWeapon) {
             reason = "Draw your weapon";
+        } else if (refusal == pw::SelfRefusal::WrongWeapon) {
+            // "Assault rifle only" (WeaponName without its article, capitalised).
+            std::string weapon = pw::WeaponName(needs);
+            weapon = weapon.substr(weapon.find(' ') + 1);
+            weapon[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(weapon[0])));
+            reason = needs >= 0 ? weapon + " only" : std::string("Not with this weapon");
         } else if (refusal == pw::SelfRefusal::CoolingDown) {
             reason = std::format("Cooling down {:.0f}%", ready->cooldown * 100.0f);
         } else if (refusal == pw::SelfRefusal::Unavailable) {
@@ -1446,6 +1486,10 @@ void Tick(double deltaSeconds, Link const& link) {
         ++gHintShown;
         std::string names;
         for (Power const& p : gRoster) {
+            if (pw::IsNoPower(p.label.c_str())) {
+                names += std::string(names.empty() ? "" : ", ") + p.info->name;
+                continue;
+            }
             names += (names.empty() ? "" : ", ") + std::string(p.info->name) + (p.enabled ? "" : " (disabled)") +
                      std::format(" [{}]", EnabledChecks(p)) +
                      (p.cooldown > 0.0f ? std::format(" (cooling, {:.0f}% to go)", p.cooldown * 100.0f) : std::string());
@@ -1464,9 +1508,10 @@ void Tick(double deltaSeconds, Link const& link) {
             Power const& equipped = gRoster[static_cast<std::size_t>(gMachine.equipped)];
             Equip(controller, equipped);
             gLastEvent = std::string("equipped ") + equipped.info->name;
-            // How to cast it, on a card where the wheel was: the first coachTimes equips of each power this session.
-            pw::Coach const kind =
-                pw::CoachFor(equipped.info->aim, gSelfGestures ? pw::SelfGestureFor(equipped.info->label) : pw::SelfGesture::None);
+            // How to cast it, on a card where the wheel was: the first coachTimes equips of each power this session (not No power).
+            pw::Coach const kind = pw::IsNoPower(equipped.info->label)
+                ? pw::Coach::None
+                : pw::CoachFor(equipped.info->aim, gSelfGestures ? pw::SelfGestureFor(equipped.info->label) : pw::SelfGesture::None);
             int& shown = gCoachShown[equipped.info->label];
             if (s.coachTimes > 0 && shown < s.coachTimes && kind != pw::Coach::None) {
                 ++shown;
@@ -1729,6 +1774,10 @@ std::string Console(std::string_view args) {
         std::vector<Power> const roster = ReadRoster(pawn, true);
         std::string out = std::format("power wheel: {} power(s); mapped power {}", roster.size(), MappedPower(controller));
         for (Power const& p : roster) {
+            if (pw::IsNoPower(p.label.c_str())) {
+                out += std::format("\n  {}: the last tile, back to neutral", p.info->name);
+                continue;
+            }
             out += std::format("\n  {} ({}): {} ({}), {:.0f}% of its cooldown to go", p.info->name,
                 p.label, p.enabled ? "enabled" : "disabled", EnabledChecks(p), p.cooldown * 100.0f);
         }

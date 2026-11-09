@@ -19,6 +19,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Update directly from Setup.** Welcome > Updates can download, verify and install a newer release without opening
   a browser. It waits for the game to close and preserves game settings, VR profiles and calibration. Older installers
   need one manual upgrade to gain this feature.
+- **Powers: the target on your gun only when it would work.** Overkill's target shows on the assault rifle only (Marksman
+  the pistol, Carnage the shotgun, Assassination the sniper rifle), and no gesture target shows while the power cools down.
+  The power wheel's last tile, **No power**, puts your powers away until you pick one again.
 
 ## 0.1.1 (2026-11-07)
 

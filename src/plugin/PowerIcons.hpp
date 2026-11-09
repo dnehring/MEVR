@@ -36,6 +36,7 @@ enum class Icon : int {
     Overkill,
     Carnage,
     Assassination,
+    NoPower,  // the wheel's way back to neutral (vr::power_wheel::kNoPowerIcon)
     Count,
 };
 char const* Name(Icon icon);

@@ -601,6 +601,35 @@ made that especially hard to diagnose later in a session. This change is built a
   flags were relaxed. In-headset target alignment on each gun model, reach comfort, readability and haptic feel remain
   **[verify]**. No game launch, deployment or push was performed.
 
+### Only a ready power shows its target; No power on the wheel (2026-11-09)
+
+Owner QA: "when I have a power selected like the burst fire [Overkill, the three bullets], all weapons show the circular target
+area to engage. Ideally that wouldn't be the case if the power isn't 1. available due to timer 2. intended to be engaged. I think
+with our power selection we don't have an option for it to return to neutral position." The gun's target was Faint whenever a
+gun was drawn (any gun) and the gesture's power was equipped, cooling down or not; and the wheel had no way to equip nothing.
+
+- **Each gun power on its own gun** (Prima's guide; ME1's talents): Marksman the pistol, Overkill the assault rifle, Carnage the
+  shotgun, Assassination the sniper rifle (`vr::power_wheel::RequiredWeapon`, in `EBioItemWeaponRangedType`: 0 pistol, 1 shotgun,
+  2 assault rifle, 3 sniper rifle, `weapon::Type`). The mod's "right weapon" is the game's `IsRequiredWeaponEquipped` (section 6's
+  QA note) **and** our own ranged type when it's known.
+- **Ready** (`SelfCastInput::ready`): the game says available (`m_nEnabled`, `IsEnabled`, `IsRequiredWeaponEquipped`), the right
+  gun, no cooldown. Not ready: `LookFor` says Hidden for every gesture (no target, no ring), `StepSelfCast` gives no arrival tick,
+  a hand resting on the gun never answers, and only a deliberate attempt does (a slap onto the gun, the chest's or the raise's full
+  dwell), refused with the reason: a new **"Assault rifle only"** (`SelfRefusal::WrongWeapon`, after "Draw your weapon", before
+  "Cooling down N%"). The target comes back by itself when the cooldown ends. Log `power wheel: <power>'s gesture target ready |
+  hidden: it needs the assault rifle | hidden: cooling down | hidden: the game says unavailable (<the game's checks>)`, on change.
+- **No power**, the wheel's last tile (`vr::power_wheel::NoPower`, icon `NoPower`: a ring struck through): equipping it writes the
+  engine's None into `BioPlayerInput.MappedPower` (journalled, as any equip). `ReadyPower` already treats None as nothing mapped, so
+  no lock, push, gesture target, coach card or gauntlet follows; the game's own `TryUseMappedPower` does nothing unmapped (section 1).
+  Log `power wheel: no power equipped (the game's mapped power was <label>, now None)`. Never auto-equipped; any power picked later
+  (ours or the game's own wheel) replaces it.
+- **Twelve tiles**: `kMaxEntries` 10 -> 12, since a Sentinel can have ten powers with a bonus one, plus No power (eleven: a full
+  ring at 32.7 degrees, `TestNoPowerAndGuns`). `View` grew: host and mod deploy together (the host draws only a View of its own size).
+- **Guide**: the controller guide's Powers group says No power puts them away, and that the target shows when the power is ready.
+- Checked offline: `TestSelfNotReady`, `TestNoPowerAndGuns`, the refusal order; `mevr-power-wheel-preview`'s `eight-no-power.png`
+  and `eleven-no-power.png`. Not run in the game: whether writing None into MappedPower leaves the game's HUD and its own power wheel
+  well (`ReadyPower` and `TryUseMappedPower` both handle an unmapped power) **[verify]**; the targets in the headset **[verify]**.
+
 ### Spawning enemies for a powers arena (2026-11-07, the fake headset, UNC20, flat console)
 
 The owner wants an arena to check every power: god mode, many hostile soldiers. `DebugSpawnActor` spawned nothing (above), but

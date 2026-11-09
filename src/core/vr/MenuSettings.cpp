@@ -657,7 +657,8 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
                                 : power == "none" || power.empty() ? "the game's power wheel isn't on a button (Controls)"
                                                                    : "hold " + Upper(power) + " for the game's power wheel";
     out.emplace_back("guide_pick", in.handWheel ? "Hold X: your powers around your left hand. Move the hand toward one and let go of "
-                                                  "X to equip it. A card then shows how to cast it."
+                                                  "X to equip it. A card then shows how to cast it. No power, the last tile, puts "
+                                                  "them away."
                                                 : "The power wheel at your hand is off ([PowerWheel] on): " + gameWheel + ".");
     out.emplace_back("guide_cast", in.handWheel && in.castLock
                                        ? std::string("Raise your left hand at an enemy: orange brackets lock on (or on the one you face). "
@@ -668,7 +669,8 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
                                    : in.selfGestures ? std::string("Powers on yourself are gestures of the open left hand: flat on "
                                                                    "your chest, held (Barrier, Shield Boost, Immunity, Adrenaline "
                                                                    "Burst); slapped onto the gun (Marksman, Overkill, Carnage, "
-                                                                   "Assassination); raised above your head, held (Unity).")
+                                                                   "Assassination: each on its own gun); raised above your head, "
+                                                                   "held (Unity). The glowing target shows when it's ready.")
                                                      : std::string("Pushed forward like the others."));
     return out;
 }
