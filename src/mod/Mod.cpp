@@ -1241,7 +1241,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (dev_channels::Allowed(engine::SettingsFile())) {
         game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22); off in the players' build
     }
-    game::system_settings::Tick(deltaSeconds);  // shadows, motion blur, foliage radius: `scale set` by the mod (research/35)
+    game::system_settings::Tick(deltaSeconds, HasMotionBlurProtection(gHost));  // research/62: conditional menu-return reset
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {

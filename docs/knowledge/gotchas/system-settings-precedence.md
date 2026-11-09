@@ -38,6 +38,15 @@ any key (`apply = 0`: off). `tools/vr-game-settings.ps1` and the installer write
 What they are worth: at a heavy spot, shadows off and the foliage radius took the render thread from 9.35 to 6.88 ms
 and the GPU from 8.4 to 4.9 (the grass costs per instance, twice a frame in stereo; 0.25 pops it in too close).
 
+2026-11-08 combined candidate: an installed native motion-blur guard with zero unknown effects
+replaces the blanket menu/conversation-return reapply. Initial, new-level, settle and real settings
+changes retain this application path. If guard coverage is lost, the next poll restores the fallback;
+older hosts retain it. See [research/62](../../../research/62-motion-blur-and-menu-pacing.md).
+
+2026-11-09: healthy native protection now also consumes the 3/15-second settling deadlines without
+blanket resets. Initial/new-level applications, real edits and lost-guard fallback remain. Two controlled
+startup repeats validate reset removal; loading itself still stalls. See [research/68](../../../research/68-culling-and-startup-followup.md).
+
 Related: [motion blur in stereo](motion-blur-in-stereo.md).
 
 # Citations

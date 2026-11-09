@@ -11,6 +11,9 @@
 // FoliageDrawRadiusMultiplier 0.5 (the grass costs per instance, per eye; 0.25 pops in too close). Log `system settings:`.
 namespace mevr::game::system_settings {
 
-void Tick(float deltaSeconds);
+// An installed, healthy native blur guard replaces menu/conversation-return and timed settling resets.
+// Initial application, level applies and actual settings edits remain. Losing protection
+// schedules the old workaround immediately (retried if the local player is not ready).
+void Tick(float deltaSeconds, bool motionBlurProtected = false);
 
 } // namespace mevr::game::system_settings

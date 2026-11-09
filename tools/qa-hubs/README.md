@@ -101,6 +101,10 @@ AA and One Draw retained. Zero removes only the additional small-object filter. 
 culling remains active. Both repeats must complete with matching build/settings/fixture fingerprints;
 live setting interventions invalidate the comparison. Read CPU time and draw counts alongside frame
 intervals: a runtime wait limit can hide a change in available rendering throughput.
+The protected hub session uses `fake-headset.ps1 -FixedRenderScale` to pin global manual scaling to 100%
+as well as the app's 100%. Per-app scaling alone can still produce larger eyes. Both global settings and
+driver dimensions are restored from the complete backup. `test-fake-resolution.ps1` verifies those edits
+and byte-identical restoration without launching SteamVR.
 
 `citadel-startup.ps1 -PackageDirectory <private-fixture> -Phase Transition -Repeats 2` captures 120 seconds
 across initial launch, title, Resume and gameplay. This requires render instrumentation version 3.
@@ -113,6 +117,14 @@ Do not edit its compiled sources while it runs. The script records source hashes
 host/module pair. `test-startup-build.ps1 -CandidateDirectory <private-build> -OutputDirectory
 <new-private-run> -PackageDirectory <private-fixture> -Mode Startup -Phase Transition` temporarily
 deploys that exact pair, runs the protected captures, and verifies restoration of the original pair.
+The restoration receipt preserves file absence too: a monolithic installation returns to its original ASI
+with no separate module DLL. `test-build-restoration.ps1` exercises both layouts through successful and
+failed batches without touching the game.
+For a fresh check **after** that outer wrapper restores the original build, use
+`verify-session-state.ps1 -RunDirectory <last-session> -BuildRestorationDirectory <wrapper-output>`.
+This validates batch membership and both deployment manifests, then checks the original binaries and
+all protected files. It writes `verified-after-build-restoration.json`. The default verification expects
+the test binaries to remain installed and belongs inside the wrapper, before its final build restoration.
 Use `-Mode Culling` for the six-run culling comparison. Coordinate exclusive native-session ownership
 first; neither script grants permission to interrupt another user's or agent's session.
 
@@ -120,6 +132,69 @@ first; neither script grants permission to interrupt another user's or agent's s
 -OutputDirectory <new-private-output>` preserves the full sequence: two baseline transitions, a
 SystemSettings-only paired build, two candidate transitions and six culling runs. It is manually
 started after the shared session is released, never at the expiry of an estimated coordination window.
+
+For a shared checkout, prefer a private frozen pair. `prepare-settling-baseline.ps1` copies current combined
+source into a new directory under `scratch`, retains the candidate settings sources, and substitutes the
+reviewed old `SystemSettings.cpp` and its tests supplied through `-BaselineSettings` and `-BaselineTests`.
+It configures/builds the baseline without rolling the shared checkout back. Dependencies remain junctions;
+do not modify them during the comparison. Then run:
+
+```powershell
+pwsh -NoProfile -File tools/qa-hubs/run-frozen-startup-comparison.ps1 `
+  -StageDirectory scratch/<frozen-pair> `
+  -PackageDirectory scratch/<private-fixture> `
+  -OutputDirectory scratch/<new-comparison> -PythonExe python
+```
+
+`-BaselineDirectory` can select a reviewed common-fix baseline within that frozen pair. Only the settings
+implementation and its tests may differ when the candidate is built; the host bytes are reused exactly.
+The builder refreshes changed-source timestamps before MSBuild and refuses identical module bytes after
+a production-source change. This matters because copying a saved file can preserve a timestamp older than
+the baseline object file. Source hashes alone do not prove that the candidate executable changed.
+
+The comparison rejects identical baseline/candidate modules, reused captures, changed configurations,
+different hardware/runtime/save/resolution, or invalid measurements. `test-startup-comparison.py` exercises
+those admission rules. It reports reset removal separately from the remaining full-hook loading maximum.
+The combined runner proceeds to culling only after both candidate captures remove the timed resets.
+If a build attempt fails, `-BaselineBatchDirectory <completed-baseline/batch>` can retain the two admitted
+baseline captures; their binaries must match the selected baseline. They are reused as evidence, never
+counted as new repetitions. Every native batch still backs up and restores the current installation.
+
+For saved startup captures, `inspect-startup-faults.py <session>` locates access-violation bursts and
+`inspect-startup-stalls.py <session>` correlates CPU peaks with nearby host messages. The latter records
+`startup-stalls.json`; log proximity is diagnostic context, not proof that the named routine caused the
+stall. `tools/resolve-native-symbols.py <exact-binary> <relative-address> ...` resolves retained native
+addresses through LLVM and a matching PDB. Never resolve against whichever binary happens to be installed.
+
+After all native runs have restored the session, `validate-performance-checkpoint.ps1 -BuildDirectory
+<private-build-tree> -ReferenceSession <admitted-stationary-session> -OutputDirectory <new-private-output>`
+builds LE2/LE3 and runs offline harness/admission/restoration checks. It refuses an active native session;
+builds must remain outside timing captures. LE1 build and focused CTest results belong to the candidate
+builder's separate receipt.
+
+## Manual headset candidate installation
+
+After a candidate has passed its native checks, install its exact retained pair with the game and launcher
+closed. Use a fresh private receipt directory and the currently installed host hash that you reviewed:
+
+```powershell
+pwsh -NoProfile -File tools/qa-hubs/deploy-validated-build.ps1 `
+  -CandidateDirectory <retained-candidate> -ReceiptDirectory scratch/<new-install-receipt> `
+  -ExpectedInstalledHostSha256 <reviewed-current-host-sha256>
+```
+
+The script checks the candidate manifest, backs up existing binaries (including original module absence),
+publishes the module before its matching host, and verifies hashes and preserved settings/runtime. It does
+not create a module-path override, change the runtime, or enable the fake headset. Existing native QA leases
+and an open game/launcher prevent installation. Restore the backed-up binaries without changing player settings:
+
+```powershell
+pwsh -NoProfile -File tools/qa-hubs/deploy-validated-build.ps1 `
+  -Action Restore -ReceiptDirectory scratch/<install-receipt>
+```
+
+Restoration refuses binaries changed by another owner. Keep the receipt and original backups until manual
+headset acceptance. Installation alone does not prove that the player launched or tested the candidate.
 
 ## Manifest v1
 

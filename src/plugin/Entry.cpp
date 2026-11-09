@@ -27,6 +27,7 @@
 #include "plugin/Halcyon.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RenderLevers.hpp"
+#include "plugin/MotionBlurGuard.hpp"
 #endif
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/SetupRequest.hpp"
@@ -91,6 +92,7 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
     mevr::host::perf::EngineTickEnd();
     mevr::host::halcyon::Tick(deltaSeconds);
     mevr::host::render_levers::Tick();
+    mevr::host::motion_blur_guard::Tick();
 #endif
     mevr::host::Tick(deltaSeconds);
     mevr::host::process_event::ReportOffThread();
@@ -211,6 +213,7 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     HookExitProcess(init);
 #if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
+    mevr::host::motion_blur_guard::Install(init);
     mevr::host::game_pointer::InstallCursorHook(init);  // research/57 section 6: the game's cursor onto the pointer
     mevr::host::ui_world_figure::Install(init);  // research/57 section 7: no Umbra query for the UI world's capture
 #endif

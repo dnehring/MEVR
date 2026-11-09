@@ -34,6 +34,7 @@
 #include "plugin/FloorLock.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/MotionBlurGuard.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/Voice.hpp"
@@ -374,6 +375,7 @@ HostServices WithPowerWheel(HostServices services) {
     services.setConversationWorld = &HostSetConversationWorld;
     services.floorLockSampleSize = static_cast<std::uint32_t>(sizeof(vr::floor_lock::PawnSample));
     services.setFloorLockSample = &floor_lock::SetPawn;
+    services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
     return services;
 }
 HostServices const gServices = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,

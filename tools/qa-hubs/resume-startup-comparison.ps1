@@ -13,6 +13,10 @@ try{
  & "$PSScriptRoot\build-startup-candidate.ps1" -OutputDirectory "$OutputDirectory\candidate" -BaselineDirectory $BaselineDirectory
  & "$PSScriptRoot\test-startup-build.ps1" -CandidateDirectory "$OutputDirectory\candidate" -PackageDirectory $PackageDirectory `
   -OutputDirectory "$OutputDirectory\candidate-transition" -PythonExe $PythonExe -Phase Transition -Repeats 2
+ & $PythonExe "$PSScriptRoot\compare-startup.py" "$OutputDirectory\baseline-transition\batch" "$OutputDirectory\candidate-transition\batch" "$OutputDirectory\startup-comparison.json"
+ if($LASTEXITCODE){throw 'Startup comparison is not controlled; inspect before culling.'}
+ $comparison=Get-Content -LiteralPath "$OutputDirectory\startup-comparison.json" -Raw|ConvertFrom-Json
+ if(-not $comparison.settlingResetRemoved){throw 'Candidate did not remove timed resets; inspect before culling.'}
  & "$PSScriptRoot\test-startup-build.ps1" -CandidateDirectory "$OutputDirectory\candidate" -PackageDirectory $PackageDirectory `
   -OutputDirectory "$OutputDirectory\candidate-culling" -PythonExe $PythonExe -Mode Culling
 }finally{Stop-Transcript|Out-Null}

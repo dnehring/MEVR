@@ -144,7 +144,7 @@ try{
  if($FakeHeadset){
   if(@(Get-QaProcesses).Count){throw 'Another VR session opened during backup.'}
   $fakeStarted=$true
-  Invoke-QaTool 'fake-headset.ps1' @{On=$true;Width=$EyeWidth;Height=$EyeHeight;SteamRoot=$SteamRoot;SteamVRRoot=$SteamVRRoot;BackupDirectory="$RunDirectory\fake-backup";AppResolutionScale=100}
+  Invoke-QaTool 'fake-headset.ps1' @{On=$true;Width=$EyeWidth;Height=$EyeHeight;SteamRoot=$SteamRoot;SteamVRRoot=$SteamVRRoot;BackupDirectory="$RunDirectory\fake-backup";AppResolutionScale=100;FixedRenderScale=$true}
  }
  $fixture=Invoke-Fixture @('verify',$package)
  $liveProfile=Join-Path $ProfileRoot 'Save\ME1\PROFILE\GamerProfile.pcsav'
