@@ -403,16 +403,21 @@ switching frameworks.
   head bone only when a jump lasts 3 ticks (`FollowHeadSettled`). **The game's camera is held there too** (`worldCamera = 1`; the
   owner's QA 2026-11-06: the render-time swap alone left culling and texture streaming at the director's camera, 5-9 m away in the
   comm room: assets missing): the `UpdateCamera` post-handler writes the place into the POV after reading the director's. The wheel
-  is in front by default (`wheelHand = front|left|right`); **the scan's 18 set pieces go to the 3D screen** (`cw::IsSetPiece`,
+  is in front by default (`wheelHand = front|left|right`); **the scan's 21 set pieces go to the 3D screen** (`cw::IsSetPiece`,
   `worldSetPieces = screen|world`).
   Walking to lasting marks is an off-by-default prototype (`worldWalk = 0|1|2`: off/AI/slide; settle 2.5 s, minimum 0.5 m, speed 1.4 m/s); see research/59 "Walking to marks (prototype)" for settings and open game checks.
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
   Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
   `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into
   free 202, stage 172, remote 19, walks 23, **framed 18** (authored camera cuts: the set pieces, Saren, Sovereign, the Council) and
-  ambient 57; `tools/conversation-survey.ps1` (+ `.py`) plays a map's conversations in the game through its Kismet actions
+  ambient 57, and gives each a **verdict** for First person (`--verdicts`: screen 21 = framed or Shepard walked by the game, check 26 =
+  wide stand-off stages and NPC walks, world 387; `--set-pieces` prints `cw::IsSetPiece`'s list: generated, never typed); `tools/conversation-survey.ps1` (+ `.py`) plays a map's conversations in the game through its Kismet actions
   (`-Streams`: area by area) and tabulates the mod's `convo: summary` lines (28 played, 0 jumps drawn). It opens maps: back up the
-  saves first.
+  saves first. **Any conversation in two minutes, no save** (research/59 "The launcher"): `tools/conversation-launch.ps1 <name>
+  [-World on] [-Snapshot]` (`-List <text>`) reads the catalogue (`conversation-scan.py --catalogue`: each start's persistent level,
+  chunk, placed owner and facing), opens the level, streams the chunk's volume in, stands Shepard 1.5 m in front of the owner facing
+  it and fires the start action. Plot-loaded chunks (the medical bay's wake-up) aren't reachable yet; never `streamlevelin` (it
+  froze the game, 2026-11-09).
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

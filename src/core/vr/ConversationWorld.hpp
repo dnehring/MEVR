@@ -130,8 +130,9 @@ WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double 
 // Distance outside the segment a walk could have covered since the last observation; tolerates collision stopping short.
 double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, double elapsedS);
 
-// The set pieces (research/59 "The scan"): the 18 conversations whose lines are a quarter or more authored camera work (a
-// director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...), composed for a camera elsewhere.
+// The set pieces (research/59 "The scan", "Marking the rest"): the 21 conversations whose lines are a quarter or more authored
+// camera work (a director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...) or where the game walks
+// Shepard himself (the Council endings, Kirrahe): composed for a camera elsewhere, or moving the player's place.
 // In the world mode they go to the 3D screen (`[Cinematics] worldSetPieces = screen`). `name` is the conversation's object
 // name in any form ("BioConversation nor10_comm_room_d.nor10_comm_room_dlg", "nor10_comm_room_dlg", "nor10_comm_room"), any case.
 bool IsSetPiece(std::string_view name);
