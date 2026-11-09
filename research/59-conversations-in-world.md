@@ -638,6 +638,10 @@ Garrus and watch the pawn go around him at 0.7 m; a squadmate seated by Part B i
 
 ## Limits and next
 
+**The work toward making this the default for every conversation has its own note:
+[research/69](69-conversations-everywhere.md)** (story safety of flowed scenes, the cutscene-or-world decision at run time,
+placements stopped at the source, walking and triggers; a status table and a log).
+
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the
   runtime numbers (jumps undone, drawn) are from 28. Next in the game: the 18 framed set pieces and the 23 walks, from the
   scan's lists, started by `tools/conversation-survey.ps1 -Filter <name>` on their map.
