@@ -535,6 +535,18 @@ A guard with it: a word of under four letters is a name only when said exactly (
 soon as you can, liara"). "Everyone", "everybody", "all of you", "you two", "both of you", "squad", "team", "all", "both"
 are the whole squad; no name at all is everyone for an order that needs someone.
 
+### A weapon named with an order, and "that sniper" against "your sniper" (2026-11-09)
+
+The user: "Garrus, equip your sniper, and take out that sniper on the bridge" and "take out that sniper with your sniper"
+must come out whole. Two gaps: the dispatcher read `Resolved::weapon` only for an equip alone (`Order::None`), so
+"Garrus, sniper, those on the bridge" (`G|SR|-|attack|E1`, parsed right since the corpus) attacked with the gun in hand;
+and the parser tagged a group's type word wherever it stood, so with a geth sniper in the scene "your sniper" became the
+enemy and no weapon. Now the dispatcher equips first for any order with a weapon (the squad menu's `GiveWeapon`, noted
+as `equip SR: ...` in the order's line), and the type-word pass skips a token after an owner's word (your, my, his, her,
+a, an), which the vocabulary then tags as the weapon. `TestSquadParser`: the two chains above, "use your sniper on the
+troopers on the bridge" with a sniper group present, "Wrex, shotgun, rush the sniper". The corpus's scene has no sniper
+group, so its 173 lines are unchanged. Not yet run in the game.
+
 ## Standing orders: memory above the game's one-shot orders (2026-11-04, later)
 
 The user, before any in-game check: "how we'd handle more complex grammar and memory, like 'hold the bridge': they would hold

@@ -390,8 +390,13 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             }
         }
         for (std::string const& w : Tokens(g.type)) {
-            for (Token& t : tokens) {
-                if (t.tag == Tag::None && (Singular(t.text) == w || WordMatches(Singular(t.text), w, st.wordSimilarity))) {
+            for (std::size_t i = 0; i < tokens.size(); ++i) {
+                Token& t = tokens[i];
+                // "Take out that sniper with your sniper": after an owner's word the type word is the squadmate's weapon
+                // (the vocabulary tags it next), before it the enemy.
+                bool const owned = i > 0 && (tokens[i - 1].text == "your" || tokens[i - 1].text == "my" || tokens[i - 1].text == "his" ||
+                                                tokens[i - 1].text == "her" || tokens[i - 1].text == "a" || tokens[i - 1].text == "an");
+                if (!owned && t.tag == Tag::None && (Singular(t.text) == w || WordMatches(Singular(t.text), w, st.wordSimilarity))) {
                     t.tag = Tag::Type;
                     t.code = w;
                 }
