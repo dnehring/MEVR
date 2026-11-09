@@ -6,6 +6,36 @@ Normandy test at two source resolutions. Temporary runtime/resolution changes we
 verified. No culling behavior changed. Equivalent physical SteamVR traces and combined-build
 measurements remain needed; the owner reports seeing spikes in both runtimes.
 
+## Prioritized diagnosis after the repeated cafeteria runs
+
+This is the recommended **engineering order**, balancing evidence, scope and player impact. Item 2 has the
+largest individual stall; item 3 has the most direct evidence from the player's physical-headset complaint.
+Item 1 comes first because it is a narrowly identified mod behavior with a concrete replacement. These are
+separate signatures: removing one must not be reported as resolving the others.
+
+| Order | Problem and diagnosis | Confidence and impact | Next action and acceptance evidence |
+|---|---|---|---|
+| 1 | Synchronous camera-diagnostic persistence on the game thread. ArmIk calls `WriteCameraOffset`; changed measurements cause three Win32 profile writes about once a minute. Host stalls coincide with the writes, and all three sampled host spikes are inside that API path. | High confidence that this path contributes to the recurring 12-18 ms host stalls. Exact removable time still needs an A/B. | Keep the current diagnostic sample in memory and expose it to the calibration menu; preserve explicit player saves. Repeat the same High test: automatic camera writes and their host stalls should disappear, while the menu still receives current measurements. Check settings reload activity as well. |
+| 2 | Rare 80-93 ms pauses, with approximately 91 ms missing between measured game ticks in the clean batch. The render thread mostly waits; same-frame GPU work and submission do not explain the gap. | Confirmed symptom; underlying cause unassigned. Highest single-event severity, roughly eight nominal 90 Hz periods. Present in one of the three clean runs and an earlier separate capture. | Time entry to the entire tick hook, queue drain, each queued call, and the interval between hook invocations. Capture scheduling/wait evidence if the queue is quick. The current severe-hitch gate must pass, with a longer repeat/soak because three short runs can miss a rare stall. |
+| 3 | Physical VDXR submission waits. In the earlier descriptive captures, 68 of 72 intervals above 22.222 ms spend more than half their time inside `xrEndFrame`; worst frame intervals span about 35-62 ms. | High confidence about the wait location; uncertain whether the producer is mod/driver resource synchronization, queued GPU work or runtime/compositor contention. This is not proof of a Virtual Desktop defect. | Repeat one controlled physical-headset sweep with matching build/settings, then correlate submission, GPU queues/copies and scheduling. Compare SteamVR separately. Acceptance requires lower repeated long-interval counts and stable headset motion; a null-headset pass cannot satisfy this item. |
+| 4 | Periodic engine CPU work, approximately 19 ms CPU in clean runs and 20-21 ms wall when sampled. The same unnamed chain beneath `UWorld::Tick` repeats. | Confirmed engine cost; function purpose still unknown. Minute-scale housekeeping/GC is a hypothesis, not a diagnosis. | Identify the sampled function chain and add focused duration/count measurements. Only then select a bounded change. Validate engine-tick maxima separately from render intervals, which can conceal a simulation stall. |
+| 5 | Dense-scene rendering leaves limited budget. Earlier physical captures reach approximately 10 ms active game-render CPU at p99 against an 11.111 ms display period. | Confirmed capacity pressure, but no evidence yet that a sudden culling burst explains the severe outliers. | Add frame-aligned visibility/query/replay counters and optimize whichever work consumes the budget. Preserve visibility correctness and One Draw; check pop-in as well as timing. |
+
+The camera file writes also invalidate settings-file timestamps. `HandCalibration::Refresh` and the classic menu
+re-read that file after a change. This is a credible secondary cost, not yet a measured explanation for another
+specific spike. Moving the writes to a worker alone would leave that invalidation and possible profile-reader
+contention; an in-memory diagnostic sample addresses the unnecessary persistence itself.
+
+The largest clean pause is approximately 16 seconds from the closest camera-file write. Its engine tick also falls
+outside the separate periodic CPU spike. Those observations prevent attributing every hitch to either known
+minute-scale activity. The queue is a timing blind spot, not a proven culprit: do not drop or reorder queued
+ProcessEvent calls before measuring them.
+
+One Draw remained healthy throughout the comparable batch: no access violations, GPU timestamp drops or draw-replay
+failures. The earlier AA failure cascade, motion-blur return, and menu-reset behavior remain separate regression
+checks; these stationary post-load probes do not revalidate menu/title transitions. No new evidence here justifies
+disabling One Draw or changing garbage-collection/culling policy.
+
 ## What the captured spikes show
 
 The private analyzer `scratch/performance-spikes-20261108/analyze.py` uses the repository's
@@ -86,9 +116,10 @@ doubled draws in the tested scene. The visibility/query lifecycle must remain in
 5. Compare p95/p99 frame time and long-interval counts with the identical sweep, alongside visible
    correctness. Keep AA and One Draw enabled. Average FPS alone is insufficient for this symptom.
 
-The immediate engineering priority is frame-aligned visibility/query telemetry plus GPU scheduling
-evidence. The available captures support investigating culling, but do not justify making culling
-more aggressive or removing waits wholesale.
+That physical-headset analysis motivates frame-aligned visibility/query telemetry plus GPU scheduling
+evidence. The later local captures add the more specific leads ranked at the top of this document.
+The available captures support investigating culling, but do not justify making culling more aggressive
+or removing waits wholesale.
 
 ## Local fake-headset test, 2026-11-08
 
