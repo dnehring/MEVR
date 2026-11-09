@@ -81,6 +81,38 @@ void TestSetPieces() {
     CHECK(!cw::IsSetPiece(""));
 }
 
+void TestStepPlayer() {
+    // Walking during a conversation: the stick along the head's yaw, inside the leash.
+    cw::Vec3 const anchor{0.0, 0.0, 100.0};
+    cw::Vec3 const start{100.0, 0.0, 100.0};
+    // Forward on the stick with the head along +Y: the step goes +Y at speed * dt.
+    cw::PlayerStep s = cw::StepPlayer(start, anchor, 300.0, 0.0, 1.0, 90.0, 140.0, 0.1);
+    CHECK(s.moved && !s.atLeash);
+    CHECK(Close(s.place.x, 100.0, 1e-6) && Close(s.place.y, 14.0, 1e-6) && Close(s.place.z, 100.0));
+    // Right on the stick with the head along +X: +Y.
+    s = cw::StepPlayer(start, anchor, 300.0, 1.0, 0.0, 0.0, 140.0, 0.1);
+    CHECK(s.moved && Close(s.place.x, 100.0, 1e-6) && Close(s.place.y, 14.0, 1e-6));
+    // The dead zone and no time: no move.
+    CHECK(!cw::StepPlayer(start, anchor, 300.0, 0.1, 0.05, 0.0, 140.0, 0.1).moved);
+    CHECK(!cw::StepPlayer(start, anchor, 300.0, 0.0, 1.0, 0.0, 140.0, 0.0).moved);
+    // Half deflection past the dead zone walks slower than full.
+    cw::PlayerStep const half = cw::StepPlayer(start, anchor, 300.0, 0.0, 0.575, 0.0, 140.0, 0.1);
+    CHECK(half.moved && Close(half.place.x - start.x, 7.0, 1e-6));
+    // At the leash, pushing outward slides along the circle and stays at the radius.
+    cw::Vec3 const edge{300.0, 0.0, 100.0};
+    s = cw::StepPlayer(edge, anchor, 300.0, 0.0, 1.0, 0.0, 140.0, 0.1);  // straight out along +X
+    CHECK(!s.moved && s.atLeash);
+    s = cw::StepPlayer(edge, anchor, 300.0, 1.0, 1.0, 0.0, 140.0, 0.1);  // out and to the right: slides
+    CHECK(s.moved && s.atLeash && Close(std::hypot(s.place.x, s.place.y), 300.0, 1e-6) && s.place.y > 0.0);
+    // Outside already: a step nearer is taken, a step away is not.
+    cw::Vec3 const outside{400.0, 0.0, 100.0};
+    cw::PlayerStep const nearer = cw::StepPlayer(outside, anchor, 300.0, 0.0, -1.0, 0.0, 140.0, 0.1);
+    CHECK(nearer.moved && !nearer.atLeash && Close(nearer.place.x, 386.0, 1e-6));  // as it is, no snap onto the circle
+    CHECK(!cw::StepPlayer(outside, anchor, 300.0, 0.0, 1.0, 0.0, 140.0, 0.1).moved);
+    // No leash: free.
+    CHECK(cw::StepPlayer(outside, anchor, 0.0, 0.0, 1.0, 0.0, 140.0, 0.1).moved);
+}
+
 void TestFlowEntries() {
     // The scan's chain starts (research/59 "Flowing conversations"): Garrus arguing with the Executor is the conversation's
     // first two entries; Udina's arrival lines; the key in any of the name's forms.
@@ -294,6 +326,7 @@ int RunConversationWorldTests() {
     TestParseMode();
     TestSetPieces();
     TestFlowEntries();
+    TestStepPlayer();
     TestArrangement();
     TestCrops();
     TestSubtitlePoint();

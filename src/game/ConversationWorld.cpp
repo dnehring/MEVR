@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SettingsFile.hpp"
@@ -114,6 +115,9 @@ struct Settings {
     bool arrange = true;               // everyone of the conversation (and the squad) brought into the player's view (worldArrange)
     float arcM = 2.5f;                 // the seats' distance from the player (worldArcM)
     float viewDeg = 60.0f;             // half the view's angle a person must be within (worldViewDeg)
+    bool move = true;                  // the left stick walks Shepard during the conversation while the wheel is down (worldMove)
+    float moveLeashM = 3.0f;           // how far from the conversation's owner the walk may go (worldMoveLeashM)
+    float moveSpeedMS = 1.4f;          // the walk's speed at full deflection (worldMoveSpeedMS)
     float subtitleCrop[4] = {};
     float wheelCrop[4] = {};
 };
@@ -176,14 +180,19 @@ void RefreshSettings() {
     s.arrange = number("worldArrange", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.arcM = number("worldArcM", s.arcM, 1.2f, 6.0f);
     s.viewDeg = number("worldViewDeg", s.viewDeg, 20.0f, 90.0f);
+    s.move = number("worldMove", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.moveLeashM = number("worldMoveLeashM", s.moveLeashM, 0.0f, 20.0f);
+    s.moveSpeedMS = number("worldMoveSpeedMS", s.moveSpeedMS, 0.2f, 4.0f);
     ReadCrop(loaded.file, "subtitleCrop", s.subtitleCrop);
     ReadCrop(loaded.file, "wheelCrop", s.wheelCrop);
     std::string const text = std::format("conversations = {}, worldFollow = {}, subtitles {:.1f} deg tall {:.2f} m under the face, the wheel "
                                          "{} {:.2f} m wide, set pieces {}, the game's camera {}, worldWalk = {} (settle {:.2f} s, "
-                                         "min {:.2f} m, speed {:.2f} m/s), the opening {}, arrange {} ({:.1f} m, {:.0f} deg)", cw::Name(s.mode), s.follow ? 1 : 0,
+                                         "min {:.2f} m, speed {:.2f} m/s), the opening {}, arrange {} ({:.1f} m, {:.0f} deg), the player's walk {}",
+        cw::Name(s.mode), s.follow ? 1 : 0,
         s.subtitleHeightDeg, s.subtitleBelowM, s.wheelHand == 0 ? "at the left hand" : s.wheelHand == 1 ? "at the right hand" : "in front",
         s.wheelWidthM, s.setPiecesOnScreen ? "on the 3D screen" : "in the world", s.camera ? "at the player's place" : "the director's",
-        s.walk, s.walkSettleS, s.walkMinM, s.walkSpeedMS, s.openingAccept ? "accepted" : "kept", s.arrange ? "on" : "off", s.arcM, s.viewDeg);
+        s.walk, s.walkSettleS, s.walkMinM, s.walkSpeedMS, s.openingAccept ? "accepted" : "kept", s.arrange ? "on" : "off", s.arcM, s.viewDeg,
+        s.move ? std::format("on (leash {:.1f} m, {:.2f} m/s)", s.moveLeashM, s.moveSpeedMS) : std::string("off"));
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("convo: [Cinematics] {}", text);
@@ -464,6 +473,14 @@ struct Convo {
     int wheelOpenings = 0;
     bool wheel = false;
     double eyeToViewMax = 0.0;  // Shepard's head bone from the held view's eyes (the player's), largest
+    // The player's walk (research/59 "Walking during conversations"): the left stick moves Shepard's pawn and the held view
+    // together, inside a leash around the owner, while the wheel is down.
+    double movedUnits = 0.0;    // walked, summed
+    int moveSteps = 0;          // ticks that moved
+    int leashHits = 0;          // ticks the leash held the step back
+    int moveRefused = 0;        // steps refused: no floor, a ledge, a wall, SetLocation
+    bool moving = false;        // a velocity is set on the pawn
+    bool moveLogged = false;    // the first step logged
 };
 Convo gC;
 
@@ -1072,6 +1089,96 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
     }
 }
 
+// The player's walk during the conversation (research/59 "Walking during conversations"): the left stick moves Shepard's pawn
+// along the head's facing at worldMoveSpeedMS, inside worldMoveLeashM of the conversation's owner (cw::StepPlayer), on the
+// floor (a trace; a drop or rise past 60 units is a ledge or a step: refused), not through walls (the shots' line of sight at
+// waist height), while the wheel is down (its stick is the wheel's) and after the opening. The held view, its anchors and the
+// kept place move with the pawn, so keep-in-place never undoes the walk and the head bone's jump detector never fires on it.
+void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::State const& view, double dt) {
+    auto stop = [&] {
+        if (gC.moving) {
+            WalkVelocity(pawn, {});
+            gC.moving = false;
+        }
+    };
+    if (!gSettings.move || !gC.openingDone || gC.wheel || pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gSetLocation.Get() == nullptr) {
+        stop();
+        return;
+    }
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    if (!controllers.active) {
+        stop();
+        return;
+    }
+    auto const at = player::Location(pawn);
+    if (!at) {
+        stop();
+        return;
+    }
+    ue3::Object* const owner = gOwner.Read<ue3::Object*>(gC.object).value_or(nullptr);
+    auto const ownerAt = owner != nullptr && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
+    ik::Vec3 const anchor = ownerAt ? V(*ownerAt) : gC.hold;
+    engine::Basis const head = engine::OrientationToWorld(frame, view.head.orientation);
+    double const headYaw = std::atan2(head.forward.y, head.forward.x) * kRadToDeg;
+    cw::PlayerStep const step = cw::StepPlayer(WalkPoint(V(*at)), WalkPoint(anchor), gSettings.moveLeashM * kUnitsPerMeter,
+        controllers.left.stickX, controllers.left.stickY, headYaw, gSettings.moveSpeedMS * kUnitsPerMeter, std::clamp(dt, 0.0, 0.1));
+    if (step.atLeash) {
+        ++gC.leashHits;
+    }
+    if (!step.moved) {
+        stop();
+        return;
+    }
+    ik::Vec3 target = WalkPoint(step.place);
+    // The floor under the target, the pawn's height above its own floor kept; a ledge or a step refused.
+    auto const floorHere = FloorZ(pawn, V(*at));
+    auto const floorThere = FloorZ(pawn, target);
+    if (!floorHere || !floorThere || std::abs(*floorThere - *floorHere) > 60.0) {
+        ++gC.moveRefused;
+        stop();
+        return;
+    }
+    target.z = at->z + (*floorThere - *floorHere);
+    if (!LineOfSight(pawn, V(*at), target)) {
+        ++gC.moveRefused;
+        stop();
+        return;
+    }
+    if (!PutAt(pawn, target)) {
+        ++gC.moveRefused;
+        stop();
+        return;
+    }
+    auto const actual = player::Location(pawn);
+    ik::Vec3 const delta = (actual ? V(*actual) : target) - V(*at);
+    gC.hold = gC.hold + delta;
+    frame.headWorld.x += delta.x;
+    frame.headWorld.y += delta.y;
+    frame.headWorld.z += delta.z;
+    if (gC.anchorHead) {
+        *gC.anchorHead = *gC.anchorHead + delta;
+    }
+    gC.follow.place = {gC.follow.place.x + delta.x, gC.follow.place.y + delta.y, gC.follow.place.z + delta.z};
+    gC.follow.anchor = {gC.follow.anchor.x + delta.x, gC.follow.anchor.y + delta.y, gC.follow.anchor.z + delta.z};
+    for (Stay& st : gStay) {
+        if (st.actor == pawn) {
+            st.place = actual ? V(*actual) : target;  // the kept place walks along: keep-in-place puts him back here, not at the start
+        }
+    }
+    double const stepLen = std::hypot(delta.x, delta.y);
+    gC.movedUnits += stepLen;
+    ++gC.moveSteps;
+    if (dt > 0.0) {
+        ik::Vec3 const velocity{delta.x / dt, delta.y / dt, 0.0};
+        gC.moving = WalkVelocity(pawn, velocity);  // the legs' animation reads the pawn's velocity (body follow's legs)
+    }
+    if (!gC.moveLogged) {
+        gC.moveLogged = true;
+        log::Info("convo: at {:.1f} s the player walks: the stick ({:.2f}, {:.2f}) along the head's yaw {:.0f} deg, {:.2f} m from {} (leash {:.1f} m)",
+            Seconds(), controllers.left.stickX, controllers.left.stickY, headYaw, Dist(target, anchor) / kUnitsPerMeter, ShortName(owner), gSettings.moveLeashM);
+    }
+}
+
 void Begin(ue3::Object* conv, ue3::Object* controller) {
     gC = {};
     gStay.clear();
@@ -1185,6 +1292,13 @@ void End(char const* why) {
         log::Info("convo: in the world: Shepard's head bone was at most {:.2f} m from the player's held eyes; {} jumps onto marks undone "
                   "(people kept in place, {} of them seen in a drawn frame), {} long moves let through", gC.eyeToViewMax / kUnitsPerMeter, gC.kept,
             gDrawnJumps, gC.letGo);
+        if (gC.moveSteps > 0 || gC.moveRefused > 0 || gC.leashHits > 0) {
+            log::Info("convo: the player walked {:.2f} m in {} steps; the leash held {} steps back, {} refused (no floor, a ledge, a wall, SetLocation)",
+                gC.movedUnits / kUnitsPerMeter, gC.moveSteps, gC.leashHits, gC.moveRefused);
+        }
+    }
+    if (gC.moving && ue3::runtime::IsAlive(gC.playerPawn)) {
+        WalkVelocity(gC.playerPawn, {});
     }
     // One line for the survey (tools/conversation-survey.ps1): everything above as numbers.
     double maxMove = 0.0;
@@ -1194,12 +1308,14 @@ void End(char const* why) {
     log::Info("convo: summary {{\"name\": \"{}\", \"why\": \"{}\", \"seconds\": {:.1f}, \"stage\": {}, \"actors\": {}, \"lines\": {}, "
               "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
               "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
-              "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}}}",
+              "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
+              "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"moveRefused\": {}}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
-        gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged);
+        gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
+        gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.moveRefused);
     gC = {};
 }
 
@@ -1383,7 +1499,7 @@ void TryStartup() {
     engine::process_event::AddPostHandler(update, &OnUpdateCamera);
 }
 
-void Tick(double /*deltaSeconds*/, Link const& link) {
+void Tick(double deltaSeconds, Link const& link) {
     RefreshSettings();
     if (!gSettings.stay || gSettings.walk == 0) {
         EndWalks("worldStay or worldWalk disabled");
@@ -1451,6 +1567,7 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
             engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll}, {view.lookPitch, view.lookYaw, 0},
             {view.offsetForward, view.offsetRight, view.offsetUp}, view.head, view.unitsPerMeter);
         if (view.centreValid) frame->headWorld.z = view.centreZ;
+        MovePlayer(pawn, *frame, view, deltaSeconds);  // the player's walk: the pawn, the hold and this frame move together
     } else if (gFoot.frame && gC.holdFrom == std::string_view("the view on foot")) {
         frame = gFoot.frame;
         frame->headWorld.x += gC.hold.x - gFoot.location.x;

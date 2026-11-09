@@ -330,6 +330,47 @@ std::span<int const> FlowEntries(std::string_view name) {
     return {};
 }
 
+PlayerStep StepPlayer(Vec3 const& place, Vec3 const& anchor, double leashUnits, double stickX, double stickY, double headYawDeg,
+    double speedUnitsPerS, double dtS) {
+    PlayerStep out;
+    out.place = place;
+    constexpr double kDeadZone = 0.15;
+    double const magnitude = std::hypot(stickX, stickY);
+    if (magnitude < kDeadZone || dtS <= 0.0 || speedUnitsPerS <= 0.0) {
+        return out;
+    }
+    // The stick's deflection past the dead zone, up to 1: a gentle push walks slowly.
+    double const scale = std::min(1.0, (magnitude - kDeadZone) / (1.0 - kDeadZone)) / magnitude;
+    double const yaw = headYawDeg * 3.14159265358979323846 / 180.0;
+    // Unreal: forward (cos, sin), right (-sin, cos) in the X-Y plane.
+    double const dx = (std::cos(yaw) * stickY - std::sin(yaw) * stickX) * scale;
+    double const dy = (std::sin(yaw) * stickY + std::cos(yaw) * stickX) * scale;
+    double const step = speedUnitsPerS * dtS;
+    Vec3 next{place.x + dx * step, place.y + dy * step, place.z};
+    double const before = std::hypot(place.x - anchor.x, place.y - anchor.y);
+    double const after = std::hypot(next.x - anchor.x, next.y - anchor.y);
+    if (leashUnits > 0.0 && after > leashUnits) {
+        if (before > leashUnits) {
+            if (after >= before) {
+                return out;  // outside already (the anchor moved): only a step nearer is taken, as it is
+            }
+        } else {
+            // Slide along the circle: the step's part along the tangent stays, the part outward is dropped.
+            double const ox = next.x - anchor.x, oy = next.y - anchor.y;
+            next.x = anchor.x + ox / after * leashUnits;
+            next.y = anchor.y + oy / after * leashUnits;
+            out.atLeash = true;
+        }
+    }
+    if (std::hypot(next.x - place.x, next.y - place.y) < 1e-6) {
+        out.atLeash = leashUnits > 0.0;
+        return out;
+    }
+    out.place = next;
+    out.moved = true;
+    return out;
+}
+
 char const* Name(Mode mode) {
     switch (mode) {
     case Mode::Vr:
