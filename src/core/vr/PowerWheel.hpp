@@ -348,6 +348,9 @@ struct SelfCastInput {
     // gun, cooling down or not); only a deliberate attempt is answered (a slap onto the gun, the chest's or the raise's full
     // dwell), with the refusal saying why.
     bool ready = true;
+    // The left hand holds the gun (the support grip on the foregrip): the gun's target is hidden (the user, 2026-11-09: "only show
+    // it when my left hand isn't holding the weapon"). The hand is closed then, so it never casts either.
+    bool holding = false;
 };
 SelfZone ZoneFor(SelfGesture gesture, SelfCastInput const& input, SelfCastSettings const& settings = {});
 SelfLook LookFor(SelfGesture gesture, SelfCastInput const& input, SelfZone const& zone);
@@ -379,6 +382,9 @@ struct SelfCastStep {
     GestureAttempt attempt;
 };
 SelfCastStep StepSelfCast(SelfCastState& state, SelfGesture gesture, SelfCastInput const& input, SelfCastSettings const& settings);
+// The look after this tick's StepSelfCast: LookFor, hidden too while the hand that closed in the zone is still there (let go of
+// the foregrip or a grenade, it can't cast until it leaves and comes back, so nothing invites it).
+SelfLook LookAfterStep(SelfGesture gesture, SelfCastInput const& input, SelfZone const& zone, SelfCastState const& state);
 
 inline constexpr float kConfirmationS = 1.0f;
 inline constexpr float kConfirmationFlashS = 0.28f;

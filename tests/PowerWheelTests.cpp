@@ -863,6 +863,47 @@ void TestSelfNotReady() {
     CHECK(pw::LookFor(pw::SelfGesture::Chest, in, pw::ZoneFor(pw::SelfGesture::Chest, in)) == pw::SelfLook::InRange);
 }
 
+// The left hand holding the gun (the support grip): no target on it (the user, 2026-11-09: "only show it when my left hand isn't
+// holding the weapon"); let go in the capsule, still none until the hand leaves; then back.
+void TestSelfHolding() {
+    pw::SelfCastSettings const s;
+    pw::SelfCastInput in;
+    in.tracked = true;
+    in.gunValid = true;
+    in.gunDrawn = true;
+    in.gunZone = pw::GunZone({0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, -0.65f}, {0.0f, 1.0f, 0.0f});
+    in.holding = true;
+    in.open = false;
+    in.hand = {0.0f, 0.90f, -0.5f};  // under the barrel, the foregrip's place (0.14 m from the capsule's axis)
+    CHECK(pw::LookFor(pw::SelfGesture::Gun, in, in.gunZone) == pw::SelfLook::Hidden);
+    in.hand = {0.0f, 1.10f, -0.5f};  // in the capsule
+    pw::SelfCastState st;
+    in.time = 1.0;
+    pw::StepSelfCast(st, pw::SelfGesture::Gun, in, s);
+    CHECK(pw::LookAfterStep(pw::SelfGesture::Gun, in, in.gunZone, st) == pw::SelfLook::Hidden);
+    // Let go there: open, but it closed in this stay, so nothing invites it (and it can't cast).
+    in.holding = false;
+    in.open = true;
+    in.time = 1.1;
+    CHECK(!pw::StepSelfCast(st, pw::SelfGesture::Gun, in, s).cast);
+    CHECK(pw::LookAfterStep(pw::SelfGesture::Gun, in, in.gunZone, st) == pw::SelfLook::Hidden);
+    CHECK(pw::LookFor(pw::SelfGesture::Gun, in, in.gunZone) == pw::SelfLook::InRange);  // the stateless look alone would show it
+    // The hand leaves: the faint target is back; it comes back in: in range.
+    in.hand.y = 1.6f;
+    in.time = 1.2;
+    pw::StepSelfCast(st, pw::SelfGesture::Gun, in, s);
+    CHECK(pw::LookAfterStep(pw::SelfGesture::Gun, in, in.gunZone, st) == pw::SelfLook::Faint);
+    in.hand.y = 1.10f;
+    in.time = 2.0;
+    pw::StepSelfCast(st, pw::SelfGesture::Gun, in, s);
+    CHECK(pw::LookAfterStep(pw::SelfGesture::Gun, in, in.gunZone, st) == pw::SelfLook::InRange);
+    // Let go under the barrel (outside the capsule): near, as any open hand there.
+    in.hand = {0.0f, 0.90f, -0.5f};
+    in.time = 3.0;
+    pw::StepSelfCast(st, pw::SelfGesture::Gun, in, s);
+    CHECK(pw::LookAfterStep(pw::SelfGesture::Gun, in, in.gunZone, st) == pw::SelfLook::Near);
+}
+
 // No power, the wheel's last tile, and the gun powers' own guns (research/55 section 10).
 void TestNoPowerAndGuns() {
     CHECK(pw::IsNoPower("None") && !pw::IsNoPower("TK_Throw") && !pw::IsNoPower(nullptr));
@@ -969,5 +1010,6 @@ int RunPowerWheelTests() {
     TestSelfConfirmation();
     TestSelfNotReady();
     TestNoPowerAndGuns();
+    TestSelfHolding();
     return gFailures;
 }

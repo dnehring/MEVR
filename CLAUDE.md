@@ -980,6 +980,8 @@ switching frameworks.
   and a gun power on its own gun (`vr::power_wheel::RequiredWeapon`: Marksman pistol, Overkill assault rifle, Carnage shotgun,
   Assassination sniper; with the game's `IsRequiredWeaponEquipped`); not ready, no target, tick or ring, and only a slap or a full
   dwell is answered ("Assault rifle only", "Cooling down N%"); log `power wheel: <power>'s gesture target ready|hidden: ...`.
+  Never while the left hand holds the gun (the support grip, `SelfCastInput::holding`), nor after letting go in the capsule until
+  the hand leaves it (`LookAfterStep`).
   **No power**, the wheel's last tile, writes the engine's None into `MappedPower` (back to neutral: nothing aimed or gestured);
   `kMaxEntries` 12, the View grew (host and mod together).
   One `power wheel: gesture attempt:` line records the closest approach, entry speed, hand/weapon state and outcome
