@@ -5,6 +5,9 @@
 //                  belongs to: its class and, when it is placed in the level, its Location) and its stage (a BioStage: the marks
 //                  the game puts the actors on, and the stage's cameras) or none (the actors stay where they stand); the launcher
 //                  (tools/conversation-launch.ps1) opens the level, streams the chunk in and stands Shepard by the owner
+//   volume         a BioTriggerStream (a streaming volume) and its states: the chunks each shows and loads, the world streaming
+//                  state it needs (StateName; None is the plain touch) and the chunk it applies in; the catalogue says per start
+//                  whether a touch shows its chunk or which named state the plot would set (mevr stream state <name> on)
 //   cinematic      a SeqAct_Interp a conversation node fires in a level's script (BioSeqEvt_ConvNode -> ... -> the matinee):
 //                  its groups and tracks, so authored camera cuts (a director track) and actor moves (move tracks) show
 // Reads only; writes nothing into the game. Its output is game data: keep it out of the repository.
@@ -47,6 +50,7 @@ internal static class Scan
                         "BioConversation" => seen.Add(export.InstancedFullPath) ? Conversation(export) : null,
                         "BioSeqAct_StartConversation" => Start(pcc, export),
                         "BioSeqEvt_ConvNode" => Cinematic(pcc, export),
+                        "BioTriggerStream" => Volume(export),
                         _ => null,
                     };
                     if (record != null)
@@ -173,6 +177,29 @@ internal static class Scan
             }
         }
         return record;
+    }
+
+    // A streaming volume and its states (BioTriggerStream.StreamingStates): from every scanned package (the persistent one and
+    // the chunks' own); the catalogue groups them by the persistent level.
+    private static Dictionary<string, object> Volume(ExportEntry export)
+    {
+        var states = new List<object>();
+        foreach (StructProperty state in export.GetProperties().GetProp<ArrayProperty<StructProperty>>("StreamingStates") ?? new ArrayProperty<StructProperty>("StreamingStates"))
+        {
+            states.Add(new Dictionary<string, object>
+            {
+                ["state"] = state.GetProp<NameProperty>("StateName")?.Value.Instanced,
+                ["in"] = state.GetProp<NameProperty>("InChunkName")?.Value.Instanced,
+                ["visible"] = Names(state, "VisibleChunkNames"),
+                ["load"] = Names(state, "LoadChunkNames"),
+            });
+        }
+        return new Dictionary<string, object> { ["kind"] = "volume", ["name"] = export.InstancedFullPath, ["states"] = states };
+    }
+
+    private static List<string> Names(StructProperty owner, string property)
+    {
+        return (owner.GetProp<ArrayProperty<NameProperty>>(property) ?? new ArrayProperty<NameProperty>(property)).Select(n => n.Value.Instanced).ToList();
     }
 
     // A conversation node's event in a level's script and the matinees it fires (followed through up to 4 actions).

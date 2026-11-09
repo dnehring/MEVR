@@ -241,18 +241,231 @@ ue3::FieldRef gStateInChunk{gTriggerStates, "InChunkName"};
 ue3::FieldRef gStateVisible{gTriggerStates, "VisibleChunkNames"};
 ue3::FieldRef gStateLoad{gTriggerStates, "LoadChunkNames"};
 ue3::FunctionRef gTriggerTouch{"SFXGame.BioTriggerStream.Touch"};
+// "mevr stream chunks" / "mevr stream states" / "mevr stream state <name> on|off" (research/59 "The launcher's gaps closed"):
+// a plot-loaded chunk (the medical bay's NOR10_07wake) is listed by no volume's plain state (StateName None or Default,
+// applied by a touch) but by a NAMED one, which applies only while the world's streaming state of that name is on
+// (BioWorldInfo.m_WorldStreamingStates, set by the plot's Kismet through BioSeqAct_SetStreamingState). `chunks` prints every
+// streaming level's load state, one per line, so a script waits for `loaded=1 visible=1` before teleporting (Virmire's
+// teleport into a chunk whose floor wasn't loaded dropped Shepard to the kill plane); `states` the world's named states;
+// `state` switches one the game's own way: a loaded BioSeqAct_SetStreamingState's Activated (its script), with our name and
+// value put on the action for the call and its own put back after; with none loaded, the world's entry is written and
+// every volume's Retouch (native) called [verify]. Never the engine console's `streamlevelin`: it froze the game.
+ue3::FieldRef gActorWorld{"Engine.Actor", "WorldInfo"};
+ue3::FieldRef gStreamingLevels{"Engine.WorldInfo", "StreamingLevels"};
+ue3::FieldRef gLevelPackage{"Engine.LevelStreaming", "PackageName"};
+ue3::FieldRef gLevelChunk{"Engine.LevelStreaming", "VirtualChunkName"};
+ue3::FieldRef gLevelLoaded{"Engine.LevelStreaming", "LoadedLevel"};
+ue3::FieldRef gLevelShouldLoad{"Engine.LevelStreaming", "bShouldBeLoaded"};
+ue3::FieldRef gLevelShouldShow{"Engine.LevelStreaming", "bShouldBeVisible"};
+ue3::FieldRef gLevelVisible{"Engine.LevelStreaming", "bIsVisible"};
+ue3::FieldRef gWorldStates{"SFXGame.BioWorldInfo", "m_WorldStreamingStates"};
+ue3::FieldRef gWorldStateName{gWorldStates, "Name"};
+ue3::FieldRef gWorldStateEnabled{gWorldStates, "Enabled"};
+ue3::ClassRef gSetStreamingState{"SFXGame.BioSeqAct_SetStreamingState"};
+ue3::FieldRef gSetStateName{"SFXGame.BioSeqAct_SetStreamingState", "StateName"};
+ue3::FieldRef gSetStateValue{"SFXGame.BioSeqAct_SetStreamingState", "NewValue"};
+ue3::FunctionRef gSetStateActivated{"SFXGame.BioSeqAct_SetStreamingState.Activated"};
+ue3::FunctionRef gTriggerRetouch{"SFXGame.BioTriggerStream.Retouch"};
 
-std::vector<ue3::Object*> TriggerStreams() {
+std::vector<ue3::Object*> Instances(ue3::ClassRef& cls) {
     ue3::Reflection& r = ue3::runtime::Get();
     std::vector<ue3::Object*> found;
     std::int32_t const n = r.ObjectCount();
     for (std::int32_t i = 0; i < n; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
-        if (o != nullptr && r.IsAlive(o) && ue3::IsA(o, gTriggerStream) && r.NameText(o).rfind("Default__", 0) != 0) {
+        if (o != nullptr && r.IsAlive(o) && ue3::IsA(o, cls) && r.NameText(o).rfind("Default__", 0) != 0) {
             found.push_back(o);
         }
     }
     return found;
+}
+
+std::vector<ue3::Object*> TriggerStreams() {
+    return Instances(gTriggerStream);
+}
+
+// The world (Engine.Actor.WorldInfo) of the pawn, else of the player controller.
+ue3::Object* WorldOf(ue3::Object* pawn) {
+    ue3::Object* world = pawn != nullptr ? gActorWorld.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    if (world == nullptr) {
+        if (ue3::Object* const pc = PlayerController()) {
+            world = gActorWorld.Read<ue3::Object*>(pc).value_or(nullptr);
+        }
+    }
+    return world;
+}
+
+// The world's streaming state of that name: its element, or nullptr.
+void* WorldStateNamed(ue3::Object* world, ue3::Name name) {
+    if (auto const states = gWorldStates.ElementsOf(world)) {
+        for (std::int32_t i = 0; i < states->count; ++i) {
+            void* const state = states->At(i);
+            if (gWorldStateName.Read<ue3::Name>(state) == std::optional<ue3::Name>(name)) {
+                return state;
+            }
+        }
+    }
+    return nullptr;
+}
+
+std::string Tri(std::optional<bool> value) {
+    return value ? (*value ? "on" : "off") : "unknown";
+}
+
+// The engine's Name whose text is `text`, among the names the loaded streaming data holds (the actions' StateName, the
+// volumes' states, the world's states): no name-table lookup, and a name nothing loaded knows can't switch anything.
+std::optional<ue3::Name> StateNameFor(std::string const& text, std::vector<ue3::Object*> const& actions, std::vector<ue3::Object*> const& triggers, ue3::Object* world) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    auto matches = [&](std::optional<ue3::Name> const& name) { return name && ue3::names::EqualsNoCase(r.ToString(*name), text); };
+    for (ue3::Object* const action : actions) {
+        if (auto const name = gSetStateName.Read<ue3::Name>(action); matches(name)) {
+            return name;
+        }
+    }
+    for (ue3::Object* const trigger : triggers) {
+        if (auto const states = gTriggerStates.ElementsOf(trigger)) {
+            for (std::int32_t s = 0; s < states->count; ++s) {
+                if (auto const name = gStateName.Read<ue3::Name>(states->At(s)); matches(name)) {
+                    return name;
+                }
+            }
+        }
+    }
+    if (auto const states = gWorldStates.ElementsOf(world)) {
+        for (std::int32_t s = 0; s < states->count; ++s) {
+            if (auto const name = gWorldStateName.Read<ue3::Name>(states->At(s)); matches(name)) {
+                return name;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+std::string StreamChunks(ue3::Object* pawn) {
+    ue3::Object* const world = WorldOf(pawn);
+    auto const levels = gStreamingLevels.ElementsOf(world);
+    if (!levels) {
+        return std::string("mevr stream chunks: no streaming levels (no world, or WorldInfo.StreamingLevels not read)");
+    }
+    std::string out = std::format("{} streaming levels (package loaded visible shouldLoad shouldShow chunk)\n", levels->count);
+    for (std::int32_t i = 0; i < levels->count; ++i) {
+        ue3::Object* const level = *static_cast<ue3::Object**>(levels->At(i));
+        if (level == nullptr) {
+            continue;
+        }
+        auto const package = gLevelPackage.Read<ue3::Name>(level);
+        auto const chunk = gLevelChunk.Read<ue3::Name>(level);
+        auto flag = [&](ue3::FieldRef& field) { return field.ReadBool(level).value_or(false) ? '1' : '0'; };
+        out += std::format("{} loaded={} visible={} shouldLoad={} shouldShow={} chunk={}\n", package ? ue3::runtime::NameText(*package) : std::string("?"),
+            gLevelLoaded.Read<ue3::Object*>(level).value_or(nullptr) != nullptr ? '1' : '0', flag(gLevelVisible), flag(gLevelShouldLoad), flag(gLevelShouldShow),
+            chunk ? ue3::runtime::NameText(*chunk) : std::string("?"));
+    }
+    return out;
+}
+
+std::string StreamStates(ue3::Object* pawn) {
+    ue3::Object* const world = WorldOf(pawn);
+    auto const states = gWorldStates.ElementsOf(world);
+    if (!states) {
+        return std::string("the world has no named streaming states (BioWorldInfo.m_WorldStreamingStates is empty or wasn't read)");
+    }
+    std::string out = std::format("{} world streaming states\n", states->count);
+    for (std::int32_t i = 0; i < states->count; ++i) {
+        void const* const state = states->At(i);
+        auto const name = gWorldStateName.Read<ue3::Name>(state);
+        out += std::format("{} enabled={}\n", name ? ue3::runtime::NameText(*name) : std::string("?"), gWorldStateEnabled.ReadBool(state).value_or(false) ? 1 : 0);
+    }
+    return out;
+}
+
+std::string StreamState(ue3::Object* pawn, std::string const& name, std::string const& value, std::vector<ue3::Object*> const& triggers) {
+    bool on = false;
+    if (value == "on" || value == "1" || value == "true") {
+        on = true;
+    } else if (!(value == "off" || value == "0" || value == "false")) {
+        return std::string("usage: mevr stream state <StateName> on|off (mevr stream states lists the world's)");
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const world = WorldOf(pawn);
+    if (world == nullptr) {
+        return std::string("mevr stream state: no world (Engine.Actor.WorldInfo not read)");
+    }
+    std::vector<ue3::Object*> const actions = Instances(gSetStreamingState);
+    std::optional<ue3::Name> const state = StateNameFor(name, actions, triggers, world);
+    if (!state) {
+        return std::format("mevr stream state: no loaded action, volume or world state knows a state '{}' (mevr stream states, mevr stream list): nothing done", name);
+    }
+    void* const worldState = WorldStateNamed(world, *state);
+    std::optional<bool> const before = worldState != nullptr ? gWorldStateEnabled.ReadBool(worldState) : std::nullopt;
+    std::string route;
+    bool called = false;
+    if (!actions.empty()) {
+        ue3::Function* const activated = gSetStateActivated.Get();
+        if (activated == nullptr) {
+            return std::string("mevr stream state: SFXGame.BioSeqAct_SetStreamingState.Activated not found: nothing done");
+        }
+        // An action already set to this name and value needs no write; else the first one carries ours for the call.
+        ue3::Object* action = nullptr;
+        for (ue3::Object* const candidate : actions) {
+            if (gSetStateName.Read<ue3::Name>(candidate) == state && gSetStateValue.ReadBool(candidate) == std::optional<bool>(on)) {
+                action = candidate;
+                break;
+            }
+        }
+        bool wrote = false;
+        ue3::Name savedName{};
+        bool savedValue = false;
+        if (action == nullptr) {
+            action = actions.front();
+            ue3::Name* const slot = gSetStateName.In<ue3::Name>(action);
+            std::optional<bool> const held = gSetStateValue.ReadBool(action);
+            if (slot == nullptr || !held || gSetStateValue.Get() == nullptr) {
+                return std::format("mevr stream state: {}'s StateName or NewValue isn't readable: nothing done", r.FullName(action));
+            }
+            savedName = *slot;
+            savedValue = *held;
+            *slot = *state;
+            write_journal::Wrote("ConsoleRequest.streamState.name", slot);
+            gSetStateValue.WriteBool(action, on);
+            write_journal::Wrote("ConsoleRequest.streamState.value", static_cast<std::uint8_t*>(static_cast<void*>(action)) + gSetStateValue.Get()->offset, 4);
+            wrote = true;
+        }
+        ue3::Params parms(r, activated);
+        called = ue3::runtime::Call(action, activated, parms);
+        if (wrote) {
+            if (ue3::Name* const slot = gSetStateName.In<ue3::Name>(action)) {
+                *slot = savedName;
+                write_journal::Wrote("ConsoleRequest.streamState.name", slot);
+            }
+            gSetStateValue.WriteBool(action, savedValue);
+            write_journal::Wrote("ConsoleRequest.streamState.value", static_cast<std::uint8_t*>(static_cast<void*>(action)) + gSetStateValue.Get()->offset, 4);
+        }
+        route = std::format("{}.Activated(){}", r.FullName(action), wrote ? " (our name and value on it for the call, its own put back)" : " (it already held them)");
+    } else {
+        if (worldState == nullptr) {
+            return std::format("mevr stream state: no BioSeqAct_SetStreamingState is loaded and the world has no state '{}' to switch: nothing done", name);
+        }
+        ue3::Function* const retouch = gTriggerRetouch.Get();
+        if (retouch == nullptr) {
+            return std::string("mevr stream state: SFXGame.BioTriggerStream.Retouch not found: nothing done");
+        }
+        gWorldStateEnabled.WriteBool(worldState, on);
+        write_journal::Wrote("ConsoleRequest.streamState.world", static_cast<std::uint8_t*>(worldState) + gWorldStateEnabled.Get()->offset, 4);
+        int retouched = 0;
+        for (ue3::Object* const trigger : triggers) {
+            ue3::Params parms(r, retouch);
+            retouched += ue3::runtime::Call(trigger, retouch, parms) ? 1 : 0;
+        }
+        called = retouched > 0;
+        route = std::format("the world's entry written and {} of {} volumes' Retouch called [verify]", retouched, triggers.size());
+    }
+    // Looked up again: the call may have appended the world's entry (its array moved).
+    void* const afterState = WorldStateNamed(world, *state);
+    std::optional<bool> const after = afterState != nullptr ? gWorldStateEnabled.ReadBool(afterState) : std::nullopt;
+    std::string const text = std::format("stream state: {} {} through {}: called {}; the world's state was {}, is {} (mevr stream chunks shows the levels)", name,
+        on ? "on" : "off", route, called, Tri(before), Tri(after));
+    log::Info("{}", text);
+    return text;
 }
 
 std::string NameList(ue3::FieldRef& field, void const* state) {
@@ -326,7 +539,18 @@ std::string Streams(ue3::Object* pawn, std::istringstream& words) {
         return std::format("{}.Touch(the player's pawn): called {}; the volume is at {:.0f} {:.0f} {:.0f} (`mevr vehicle levels` shows the streaming)", r.NameText(trigger),
             called, at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
     }
-    return std::string("usage: mevr stream list [filter] | mevr stream touch <index|name>");
+    if (verb == "chunks") {
+        return StreamChunks(pawn);
+    }
+    if (verb == "states") {
+        return StreamStates(pawn);
+    }
+    if (verb == "state") {
+        std::string name, value;
+        words >> name >> value;
+        return StreamState(pawn, name, value, triggers);
+    }
+    return std::string("usage: mevr stream list [filter] | mevr stream touch <index|name> | mevr stream chunks | mevr stream states | mevr stream state <StateName> on|off");
 }
 
 std::vector<ue3::Object*> gFound;  // `mevr find`'s list, for `use` and `activate`
@@ -1136,7 +1360,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ... | mevr inv ... | mevr guimouse | mevr guikey ... | mevr uiworld");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch|chunks|states|state | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ... | mevr inv ... | mevr guimouse | mevr guikey ... | mevr uiworld");
 }
 
 ue3::Function* FindConsoleCommand() {

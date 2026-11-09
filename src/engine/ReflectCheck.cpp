@@ -578,6 +578,7 @@ void CheckClasses() {
     CheckClass<UBioSFManager>("Engine.BioSFManager");
     CheckClass<ABioPawn>("SFXGame.BioPawn");
     CheckClass<ABioTriggerStream>("SFXGame.BioTriggerStream");  // mevr stream
+    CheckClass<UBioSeqAct_SetStreamingState>("SFXGame.BioSeqAct_SetStreamingState");  // mevr stream state (research/59)
     CheckClass<ABioPlayerController>("SFXGame.BioPlayerController");
     CheckClass<ABioAiController>("SFXGame.BioAiController");  // game/ConversationWorld: walking to marks
     CheckClass<UBioSeqData_MoveToPoint>("SFXGame.BioSeqData_MoveToPoint");
@@ -766,6 +767,12 @@ void CheckFields() {
     CheckField("SFXGame.BioPower", "m_nEnabled", SDK_FIELD(UBioPower, m_nEnabled));
     CheckField("SFXGame.BioPower", "m_nSuppressedCount", SDK_FIELD(UBioPower, m_nSuppressedCount));
     CheckField("SFXGame.BioTriggerStream", "StreamingStates", SDK_FIELD(ABioTriggerStream, StreamingStates));  // mevr stream
+    // `mevr stream state` and `chunks` (research/59 "The launcher's gaps closed"): the world's named streaming states, the
+    // plot's action that sets one, and each streaming level's chunk.
+    CheckField("SFXGame.BioWorldInfo", "m_WorldStreamingStates", SDK_FIELD(ABioWorldInfo, m_WorldStreamingStates));
+    CheckField("SFXGame.BioSeqAct_SetStreamingState", "StateName", SDK_FIELD(UBioSeqAct_SetStreamingState, StateName));
+    CheckField("SFXGame.BioSeqAct_SetStreamingState", "NewValue", SDK_BOOL(UBioSeqAct_SetStreamingState, NewValue));
+    CheckField("Engine.LevelStreaming", "VirtualChunkName", SDK_FIELD(ULevelStreaming, VirtualChunkName));
     // `mevr vehicle levels` and `event` (the cockpit probe, research/47)
     CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
     CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
@@ -1076,6 +1083,9 @@ void CheckPaths() {
     CheckPath("SFXGame.BioTriggerStream", {"StreamingStates", "InChunkName"}, SDK_AT(offsetof(FBioStreamingState, InChunkName), 8));
     CheckPath("SFXGame.BioTriggerStream", {"StreamingStates", "VisibleChunkNames"}, SDK_AT(offsetof(FBioStreamingState, VisibleChunkNames), 16));
     CheckPath("SFXGame.BioTriggerStream", {"StreamingStates", "LoadChunkNames"}, SDK_AT(offsetof(FBioStreamingState, LoadChunkNames), 16));
+    CheckElement("SFXGame.BioWorldInfo", "m_WorldStreamingStates", static_cast<long long>(sizeof(FWorldStreamingState)));  // mevr stream state
+    CheckPath("SFXGame.BioWorldInfo", {"m_WorldStreamingStates", "Name"}, SDK_AT(offsetof(FWorldStreamingState, Name), 8));
+    CheckPath("SFXGame.BioWorldInfo", {"m_WorldStreamingStates", "Enabled"}, SDK_BOOL(FWorldStreamingState, Enabled));
     CheckPath("Engine.Actor", {"Rotation", "Yaw"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Yaw), 4));
     CheckPath("Engine.Actor", {"Rotation", "Roll"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Roll), 4));
     CheckPath("Engine.Actor", {"Location", "X"}, SDK_AT(offsetof(AActor, Location) + offsetof(FVector, X), 4));
@@ -1164,8 +1174,10 @@ void CheckSkeleton() {
 
 void CheckFunctions() {
     char const* const functions[] = {
-        // mevr stream (the measuring loop's streaming volumes)
+        // mevr stream (the measuring loop's streaming volumes; `state`: research/59 "The launcher's gaps closed")
         "SFXGame.BioTriggerStream.Touch",
+        "SFXGame.BioTriggerStream.Retouch",
+        "SFXGame.BioSeqAct_SetStreamingState.Activated",
         // the omni-tool on Shepard's arm (game/OmniTool)
         "SFXGame.BioVisualEffect.CreateCrustEffect",
         "SFXGame.BioVisualEffect.SetLifeTime",

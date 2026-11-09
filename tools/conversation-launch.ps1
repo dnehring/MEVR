@@ -13,8 +13,10 @@
 # tools/conversation-scan writes scan.jsonl from the game's packages, no game needed) knows, per conversation start, the persistent
 # level, the chunk the start lives in, its owner's place and facing (when the owner is placed in the level) and its stage. The
 # launcher opens the level (`disconnect`, `open`), waits for gameplay (a map that waits in the party screen gets `mevr vehicle
-# party`), touches a BioTriggerStream volume whose states show the chunk (`mevr stream touch`), moves Shepard to 1.5 m in front of
-# the owner, facing it (`mevr setloc`, the console's `set ... Rotation`), finds the start action (`mevr instances BioSeqAct_StartConversation <tail>`) and fires it
+# party`), streams the chunk in (a BioTriggerStream volume whose plain state shows it: `mevr stream touch`; a chunk the plot shows
+# through a named streaming state, like the medical bay's: `mevr stream state <name> on`, then the volume), waits until `mevr
+# stream chunks` says it is loaded and visible, moves Shepard to 1.5 m in front of the owner, 50 units up (the game drops him onto
+# the floor), facing it (`mevr setloc`, the console's `set ... Rotation`), finds the start action (`mevr instances BioSeqAct_StartConversation <tail>`) and fires it
 # (`mevr activate <n> 0`, as its Kismet event would, plot conditions skipped). Needs the game running with the mod (the fake
 # headset: tools/fake-headset.ps1 -On; tools/launch-game.ps1 -Steam). A fresh level's plot state is the story's start: an owner
 # spawned by the plot isn't there (the catalogue has no place for it: `ownerAt` empty), and lines can play out of their story.
@@ -29,7 +31,7 @@ param(
     [switch]$Snapshot,
     [switch]$NoGod,
     [int]$LoadSeconds = 240,
-    [int]$StreamSeconds = 12,
+    [int]$StreamSeconds = 60,
     [double]$StandM = 1.5
 )
 $ErrorActionPreference = 'Stop'
@@ -91,23 +93,63 @@ if (-not $NoOpen) {
 }
 if ($Party -and $NoOpen) { Console 'mevr vehicle party' | Out-Null; Start-Sleep -Seconds 3 }
 
-# The chunk: a streaming volume whose states show it. `[n] Name at x y z` then `state ... visible a,b,c; load ...` lines.
+# The chunk: the loaded streaming volumes and their states (`[n] Name at x y z`, then one `state <name> (in <chunk>): visible
+# a,b; load ...` line per state). A plain state (None or Default) shows its chunks when the volume is touched; a named one only while the
+# world's streaming state of that name is on, which the plot's Kismet sets (the medical bay's NOR10_07wake; research/59 "The
+# launcher's gaps closed"): then `mevr stream state <name> on` comes first, and the catalogue's `streamStates` stand in when no
+# loaded volume lists the chunk at all. Never the engine's `streamlevelin`: it froze the game.
 $r = Console 'mevr stream list'
-$volume = $null
+$chunkRe = "(^|_)$([regex]::Escape($entry.chunk))(_|$)"
+$touchVolume = $null
+$stateVolume = $null
+$stateName = $null
 $current = $null
 foreach ($line in ($r -split "`n")) {
     $m = [regex]::Match($line, '^\[(\d+)\] (\S+) at ')
     if ($m.Success) { $current = $m.Groups[2].Value; continue }
-    if ($null -ne $current -and $line -match 'visible ([^;]*);' -and ($Matches[1] -split ',') -match "(^|_)$([regex]::Escape($entry.chunk))(_|$)") { $volume = $current; break }
+    if ($null -eq $current) { continue }
+    $s = [regex]::Match($line, '^\s*state (\S+) \(in [^)]*\): visible ([^;]*);')
+    if (-not $s.Success) { continue }
+    if (-not @(($s.Groups[2].Value -split ',') -match $chunkRe)) { continue }
+    if ($s.Groups[1].Value -eq 'None' -or $s.Groups[1].Value -eq 'Default') { if ($null -eq $touchVolume) { $touchVolume = $current } }
+    elseif ($null -eq $stateVolume) { $stateVolume = $current; $stateName = $s.Groups[1].Value }
 }
 $actionsBefore = Console ("mevr instances BioSeqAct_StartConversation " + $entry.actionTail.Split('.')[-1])
+$streamed = $false
 if ($actionsBefore -notmatch [regex]::Escape($entry.actionTail)) {
-    if ($null -eq $volume) { Write-Warning "no streaming volume shows chunk $($entry.chunk) and its action isn't loaded; trying anyway" }
-    else {
-        Write-Host "   streaming $($entry.chunk) in through $volume"
-        Console ("mevr stream touch " + $volume) | Out-Null
-        Start-Sleep -Seconds $StreamSeconds
+    if ($touchVolume) {
+        Write-Host "   streaming $($entry.chunk) in through $touchVolume"
+        Console ("mevr stream touch " + $touchVolume) | Out-Null
+        $streamed = $true
+    } elseif ($stateName) {
+        Write-Host "   streaming $($entry.chunk) in: streaming state $stateName on, then $stateVolume touched"
+        Write-Host ('   ' + (Console "mevr stream state $stateName on"))
+        Start-Sleep -Seconds 1
+        Console ("mevr stream touch " + $stateVolume) | Out-Null
+        $streamed = $true
+    } elseif ($entry.streamStates -and @($entry.streamStates).Count -gt 0) {
+        $stateFromCatalogue = @($entry.streamStates)[0]
+        Write-Host "   no loaded volume lists $($entry.chunk): streaming state $stateFromCatalogue on (the catalogue's)"
+        Write-Host ('   ' + (Console "mevr stream state $stateFromCatalogue on"))
+        $streamed = $true
+    } else { Write-Warning "no streaming volume or state shows chunk $($entry.chunk) and its action isn't loaded; trying anyway" }
+}
+if ($streamed) {
+    # Until the chunk is loaded and shown (`mevr stream chunks`: `<package> loaded=<0|1> visible=<0|1> ...` per streaming level;
+    # the start's own package, or the chunk by name), at most $StreamSeconds: a teleport into a chunk whose floor isn't there yet
+    # drops Shepard to the kill plane (Virmire, 2026-11-09).
+    $deadline = (Get-Date).AddSeconds($StreamSeconds)
+    $ready = $false
+    $wanted = @($entry.package, "BIOA_$($entry.chunk)", $entry.chunk)
+    while ((Get-Date) -lt $deadline -and -not $ready) {
+        Start-Sleep -Seconds 2
+        foreach ($line in ((Console 'mevr stream chunks') -split "`n")) {
+            $m = [regex]::Match($line, '^\s*(\S+) loaded=(\d) visible=(\d)')
+            if ($m.Success -and $wanted -contains $m.Groups[1].Value -and $m.Groups[2].Value -eq '1' -and $m.Groups[3].Value -eq '1') { $ready = $true; break }
+        }
     }
+    if ($ready) { Write-Host "   $($entry.chunk) is loaded and visible"; Start-Sleep -Seconds 2 }
+    else { Write-Warning "$($entry.chunk) isn't loaded and visible after $StreamSeconds s (mevr stream chunks says what is); going on" }
 }
 
 # Shepard in front of the owner (its placed spot and facing; else the stage's spot).
@@ -115,8 +157,9 @@ $at = $entry.ownerAt
 if ($at) {
     $yaw = [double]($(if ($null -ne $entry.ownerYaw) { $entry.ownerYaw } else { 0 })) * [math]::PI / 180
     $d = $StandM * 100
-    $x = [double]$at[0] + [math]::Cos($yaw) * $d; $y = [double]$at[1] + [math]::Sin($yaw) * $d; $z = [double]$at[2]
-    Write-Host ("   Shepard to {0:0} {1:0} {2:0} ({3} m in front of the owner)" -f $x, $y, $z, $StandM)
+    # 50 units above the owner's feet: the game drops Shepard onto the floor (at floor level he fell through a fresh chunk's).
+    $x = [double]$at[0] + [math]::Cos($yaw) * $d; $y = [double]$at[1] + [math]::Sin($yaw) * $d; $z = [double]$at[2] + 50
+    Write-Host ("   Shepard to {0:0} {1:0} {2:0} ({3} m in front of the owner, 0.5 m up)" -f $x, $y, $z, $StandM)
     if (-not $NoGod) { Console 'god' | Out-Null }  # Virmire's teleport killed Shepard (the GameOver screen, 2026-11-09)
     Console ("mevr setloc {0:0} {1:0} {2:0}" -f $x, $y, $z) | Out-Null
     # Facing the owner (the engine's console `set` on the pawn and the controller, whose rotation the on-foot camera follows): the

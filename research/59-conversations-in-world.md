@@ -387,6 +387,31 @@ list, so the stage never moves them and neither did we: they stood at the spawn 
 
 [verify] in the game: the Citadel arrival from a save or the launcher (the player beside Udina and Anderson, the squad in view), the
 medical bay (unchanged: Shepard already stood on his mark), a conversation started on foot (no opening moves, no cut).
+### The launcher's gaps closed (2026-11-09, later)
+
+Built for both gaps, not yet run in the game [verify]. **The launcher waits for the chunk:** `mevr stream chunks` prints every
+streaming level as `<package> loaded=<0|1> visible=<0|1> shouldLoad=.. shouldShow=.. chunk=<VirtualChunkName>`
+(`WorldInfo.StreamingLevels`); after the stream the launcher polls it every 2 s for up to `-StreamSeconds` (60) until the start's own
+package (`BIOA_JUG20_08_DSG`) is loaded and visible, then teleports to the owner's place 50 units up, in god mode (the game drops
+Shepard onto the floor). **Plot-loaded chunks are shown by a named streaming state.** A `BioTriggerStream`'s states carry a
+`StateName`: `None` or `Default` (486 and 475 of the 1,482 states in the game) is the plain state a touch applies; a named one
+(`stream_wakeup`, `stream_huddle`, `PostThorian`, `JumpTo20`...) applies only while the world's `BioWorldInfo.m_WorldStreamingStates`
+entry of that name is on, which the plot's Kismet sets through `BioSeqAct_SetStreamingState` (`StateName`, `NewValue`; its
+`Activated` is script, not native: the natives dump lists none for it, while `BioTriggerStream.Retouch` is native). The medical bay's
+`NOR10_07wake` is in `stream_wakeup`'s visible list on `BIOA_NOR00`'s `BioTriggerStream_147` and `_152` (in `BIOA_NOR10_07`), under
+no plain state. `mevr stream state <name> on|off` switches a state the game's own way: a loaded `BioSeqAct_SetStreamingState`'s
+`Activated` through ProcessEvent, one already holding the name and value if there is one, else the first with ours put on it for
+the call and its own put back (journalled); with none loaded, the world's entry written and every volume's `Retouch` called
+[verify]. The name is taken from the loaded actions, volumes and world states (no name-table lookup: a name nothing loaded knows
+can't switch anything). `mevr stream states` lists the world's entries. The scan records every volume's states (`kind: volume`, 998
+volumes) and the catalogue gives each start `touchShows`, `volumeShows` and `streamStates` (a `_DS1` sub-package counts as its
+parent chunk, the persistent package as always there): **104 of the 713 starts sit in a chunk no plain touch shows, 88 of them
+with a named state** (NOR00 39, WAR00 37: `PostThorian`, STA00 21, END00 4, UNC52 3); 16 are listed by no volume state at all
+(`UNC52_01`, the squadmates' `NOR10_09*_DS2` rooms, the Citadel's `*news` chunks: another route, probably the plot's own level
+streaming actions). The launcher reads the live `mevr stream list` first (a plain state listing the chunk: touch; a named one: the
+state on, then that volume touched), the catalogue's `streamStates` when no loaded volume lists the chunk. To run:
+`tools/conversation-launch.ps1 jug20_sal_captainkirrahe` (the wait and the raised teleport) and `tools/conversation-launch.ps1
+nor10_oculon_approach` (`stream_wakeup` on, then `BioTriggerStream_147`).
 
 ## Limits and next
 
