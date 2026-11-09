@@ -183,4 +183,17 @@ struct PlayerStep {
 PlayerStep StepPlayer(Vec3 const& place, Vec3 const& anchor, double leashUnits, double stickX, double stickY, double headYawDeg,
     double speedUnitsPerS, double dtS);
 
+// People in the way (2026-11-09, after the first walk in the game went straight through Garrus: the pawn is moved with
+// SetLocation, which collides with nothing). A step from `place` to `next` that would end within `clearUnits` of one of
+// `people` (horizontally) is pushed out to that distance along the line from the person: the leash's slide turned inside out,
+// so the player walks around them. A place already that close (someone walked up) may only step away. `held` says a person
+// held the step; `moved` is false when nothing of the step is left. Several people: passes on the nearest, at most four; two
+// people closer together than two clearances leave no way between them, and the step is held where it started.
+struct ClearStep {
+    Vec3 place;
+    bool moved = false;
+    bool held = false;
+};
+ClearStep KeepClear(Vec3 const& place, Vec3 const& next, std::span<Vec3 const> people, double clearUnits);
+
 } // namespace mevr::vr::conversation_world
