@@ -39,7 +39,9 @@ void const* gAppliedWorld = nullptr;  // the world the settings last went to: a 
 // The level's settle applies (2026-11-04, docs/release-checklist.md section 1): from a fresh launch the apply at the
 // world change (the save's load) came during the load and the level rendered with the blur anyway (gotchas/motion-blur-
 // in-stereo, 2026-11-02), while the same two lines by hand later turned it off. So each level gets them again once it has
-// been the current world for 3 s and for 15 s, by when it renders.
+// been the current world for 3 s and for 15 s, by when it renders. These are blur recovery attempts;
+// the healthy native guard replaces them. Reapplying every boolean stalls the host for about 153 ms
+// in title captures (research/67), even when all saved graphics values are unchanged.
 constexpr float kSettleApplyAt[] = {3.0f, 15.0f};
 void const* gSeenWorld = nullptr;
 float gSinceWorldChange = 0.0f;
@@ -47,9 +49,12 @@ int gSettleApplies = 0;  // of kSettleApplyAt, done in this level
 // Back to gameplay after a cinematic (2026-11-06, the owner in the PS VR2 on Eden Prime: "the exact same behavior", the
 // assets flickering): the blur was off by hand at 10:12:58, a cutscene (10:13:10) and a conversation (10:16:11) played,
 // and it was back by 10:18 with no level change, so nothing re-applied it. Every return to gameplay (modes 0-4) from any
-// other mode (a conversation, a cutscene, a menu, a movie) applies the settings again, once.
+// other mode applies the settings again, unless the host's native blur guard is healthy (research/62).
 bool gLeftGameplay = false;
 int gLeftMode = -1;  // the last mode outside gameplay, for the log
+bool gGuardPolicyKnown = false;
+bool gMotionBlurProtected = false;
+bool gGuardFallbackPending = false;
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -131,26 +136,28 @@ std::vector<Setting> Wanted(fs::path const& path) {
     return wanted;
 }
 
-} // namespace
-
-void Tick(float deltaSeconds) {
-    std::optional<unsigned char> const mode = head_tracking::GameMode();
+void ObserveMode(std::optional<unsigned char> mode) {
     if (mode && *mode > 4) {
         gLeftGameplay = true;  // read every tick: a short cinematic between two polls still counts
         gLeftMode = *mode;
     }
-    gSincePoll += deltaSeconds;
-    if (gSincePoll < kPollSeconds) {
-        return;
+}
+
+// The poll is separated from engine reads so regression tests exercise the real command path.
+void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProtected,
+          fs::path const& path, void const* world) {
+    if (!gGuardPolicyKnown || gMotionBlurProtected != motionBlurProtected) {
+        gGuardFallbackPending = gGuardFallbackPending || (gMotionBlurProtected && !motionBlurProtected);
+        gGuardPolicyKnown = true;
+        gMotionBlurProtected = motionBlurProtected;
+        log::Info("system settings: menu-return reapply {}", motionBlurProtected
+            ? "disabled: native motion-blur guard healthy"
+            : "enabled: native motion-blur protection unavailable");
     }
-    float const elapsed = gSincePoll;
-    gSincePoll = 0.0f;
-    fs::path const path = FilePath();
     std::error_code ec;
     fs::file_time_type const stamp = fs::last_write_time(path, ec);
     bool const changed = !ec && (!gHaveStamp || stamp != gStamp);
     // A new level (the save loaded after the title's menu world, a map change) renders with the blur again: apply again.
-    void const* const world = engine::World();
     bool const newLevel = gApplied && world != nullptr && world != gAppliedWorld;
     if (world != gSeenWorld) {
         gSeenWorld = world;
@@ -159,13 +166,26 @@ void Tick(float deltaSeconds) {
     } else {
         gSinceWorldChange += elapsed;
     }
-    bool const settleDue = gApplied && world != nullptr && gSettleApplies < static_cast<int>(std::size(kSettleApplyAt)) &&
-                           gSinceWorldChange >= kSettleApplyAt[gSettleApplies];
-    bool const backToGameplay = gApplied && gLeftGameplay && mode && *mode <= 4;
-    if (backToGameplay) {
-        gLeftGameplay = false;
+    bool settleDue = gApplied && world != nullptr && gSettleApplies < static_cast<int>(std::size(kSettleApplyAt)) &&
+                     gSinceWorldChange >= kSettleApplyAt[gSettleApplies];
+    if (settleDue && motionBlurProtected) {
+        // Consume passed deadlines so a later guard loss uses the immediate fallback/retry below,
+        // rather than replaying old settling passes on successive polls. Real edits and loads still apply.
+        do { ++gSettleApplies; }
+        while (gSettleApplies < static_cast<int>(std::size(kSettleApplyAt)) &&
+               gSinceWorldChange >= kSettleApplyAt[gSettleApplies]);
+        settleDue = false;
+        log::Info("system settings: skipped settling reapply at {:.0f} s: native motion-blur guard healthy", gSinceWorldChange);
     }
-    if (gApplied && !changed && !newLevel && !settleDue && !backToGameplay) {
+    bool const returned = gApplied && gLeftGameplay && mode && *mode <= 4;
+    bool const backToGameplay = returned && !motionBlurProtected;
+    if (returned) {
+        gLeftGameplay = false;
+        if (motionBlurProtected) {
+            log::Info("system settings: skipped menu-return reapply after mode {}: native motion-blur guard healthy", gLeftMode);
+        }
+    }
+    if (gApplied && !changed && !newLevel && !settleDue && !backToGameplay && !gGuardFallbackPending) {
         return;
     }
     std::vector<Setting> const wanted = Wanted(path);
@@ -181,7 +201,7 @@ void Tick(float deltaSeconds) {
         }
         return true;
     };
-    if (gApplied && same() && !newLevel && !settleDue && !backToGameplay) {
+    if (gApplied && same() && !newLevel && !settleDue && !backToGameplay && !gGuardFallbackPending) {
         gStamp = stamp;
         gHaveStamp = !ec;
         return;
@@ -196,6 +216,7 @@ void Tick(float deltaSeconds) {
         gAppliedWorld = world;
         gStamp = stamp;
         gHaveStamp = !ec;
+        gGuardFallbackPending = false;  // explicit apply=0 remains authoritative
         return;
     }
     std::string appliedText;
@@ -214,7 +235,8 @@ void Tick(float deltaSeconds) {
         appliedText += (appliedText.empty() ? "" : ", ") + s.key + " " + s.value + (output.empty() ? "" : " (" + Trim(output) + ")");
     }
     log::Info("system settings: scale set {} (booleans through their opposite first){}", appliedText,
-              newLevel              ? " (a new level: applied again)"
+              gGuardFallbackPending ? " (native motion-blur protection lost: fallback applied)"
+              : newLevel            ? " (a new level: applied again)"
               : changed && gApplied ? " (the file's values changed)"
               : settleDue           ? std::format(" (the level has rendered {:.0f} s: applied again)", gSinceWorldChange)
               : backToGameplay      ? std::format(" (back to gameplay after mode {}: applied again)", gLeftMode)
@@ -228,6 +250,19 @@ void Tick(float deltaSeconds) {
     gToldOff = false;
     gStamp = stamp;
     gHaveStamp = !ec;
+    gGuardFallbackPending = false;
+}
+
+} // namespace
+
+void Tick(float deltaSeconds, bool motionBlurProtected) {
+    auto const mode = head_tracking::GameMode();
+    ObserveMode(mode);
+    gSincePoll += deltaSeconds;
+    if (gSincePoll < kPollSeconds) return;
+    float const elapsed = gSincePoll;
+    gSincePoll = 0.0f;
+    Poll(elapsed, mode, motionBlurProtected, FilePath(), engine::World());
 }
 
 } // namespace mevr::game::system_settings

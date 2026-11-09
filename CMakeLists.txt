@@ -738,6 +738,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/QuestPacing.hpp
     src/plugin/RenderLevers.cpp
     src/plugin/RenderLevers.hpp
+    src/plugin/MotionBlurGuard.cpp
+    src/plugin/MotionBlurGuard.hpp
     src/plugin/RecenterTilt.cpp
     src/plugin/RecenterTilt.hpp
     src/plugin/ScopeCaptureSource.cpp
@@ -1108,6 +1110,20 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-draw-replay-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-draw-replay-tests)
     add_test(NAME mevr-draw-replay COMMAND mevr-draw-replay-tests)
+    add_executable(mevr-motion-blur-guard-tests tests/MotionBlurGuardTests.cpp)
+    target_include_directories(mevr-motion-blur-guard-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-motion-blur-guard-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-motion-blur-guard-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-motion-blur-guard-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-motion-blur-guard-tests)
+    add_test(NAME mevr-motion-blur-guard COMMAND mevr-motion-blur-guard-tests)
+    add_executable(mevr-system-settings-tests tests/SystemSettingsTests.cpp)
+    target_include_directories(mevr-system-settings-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-system-settings-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-system-settings-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN MEVR_GAME_LE1)
+    target_compile_options(mevr-system-settings-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-system-settings-tests)
+    add_test(NAME mevr-system-settings COMMAND mevr-system-settings-tests)
     add_executable(mevr-quest-pacing-host-tests tests/QuestPacingHostTests.cpp
         src/plugin/QuestPacing.cpp src/core/vr/QuestPacing.cpp src/core/Ini.cpp src/core/vr/TestRequest.cpp)
     target_include_directories(mevr-quest-pacing-host-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
