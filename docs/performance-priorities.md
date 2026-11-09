@@ -3,7 +3,8 @@
 
 Updated 2026-11-09. Evidence: [head-turn investigation](../research/63-head-turn-performance.md),
 [stationary C-Sec capture](../research/65-citadel-stationary-performance.md), and
-[six-run preset matrix](../research/66-citadel-performance-matrix.md).
+[six-run preset matrix](../research/66-citadel-performance-matrix.md), and
+[startup/title investigation](../research/67-startup-performance.md).
 Reusable validation: [cafeteria QA](../tools/qa-cafeteria/README.md) and
 [hub route catalog](../tools/qa-hubs/README.md). Hub drafts remain excluded until their actual scene and walking route are verified.
 
@@ -18,7 +19,8 @@ Keep One Draw enabled. Successful measurement/restoration does not mean the perf
 | 3 | Remaining host CPU bursts | Preset runs reach 7.76-10.31 ms host work; custom Citadel reached 25.56 ms, with zero settings writes. Sample the host/mod routines and distinguish polling/object scans from waits before optimizing. | Separate from the fixed diagnostic INI writes; cause unresolved |
 | 4 | Physical-headset submission stalls | Earlier VDXR captures have 35-62 ms worst intervals; 68 of 72 long intervals are dominated by xrEndFrame. Correlate GPU/resource/scheduling evidence with the physical headset. | Null-driver runs cannot close this issue |
 | 5 | Dense-scene render CPU and oversize source resolution | Preset p99 frame intervals are 9.62-10.29 ms; custom 3840-square source reaches 16.10 ms. Preset bundles also change shadows/culling/foliage, so isolate those costs before assigning causality. | Culling contribution unproven; preserve the oversize case as a stress test |
-| 6 | Intro/menu transitions and broader traversal | Keep menu-spine/blur-guard improvements, then measure title/intro and menu-return paths separately. The fixed C-Sec benchmark does not validate the user's full walk or other hubs. | Separate scenarios needed; other map development remains paused |
+| 6 | Startup graphics resets and presentation pacing | Two title captures reproduce about 153 ms host stalls during the remaining 15-second blanket settings reset, despite healthy blur protection. Make settling correction selective/guard-aware. Separately, the approximately 32 ms title cadence is dominated by xrWaitFrame, not CPU busy time; verify on a physical headset. | Reset path measured; behavior fix and physical pacing validation open |
+| 7 | Broader traversal | The fixed C-Sec benchmark does not validate the user's full walk or other hubs. Preserve the archived save and require an observed route before admitting another scene. | Other map development remains paused |
 
 ## Current regression gate
 

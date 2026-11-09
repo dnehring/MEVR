@@ -115,6 +115,14 @@ and stationary head-turn measurements; it must not be relabeled as the original 
 The first native stationary capture and repeatable analysis command are documented in the
 [C-Sec performance report](../../../research/65-citadel-stationary-performance.md).
 
+For startup investigation, `citadel-startup.ps1 -PackageDirectory <fixture> -Phase Splash` runs two
+protected 30-second splash captures; `-Phase Flight -Repeats 1` retains the experimental animated-title
+attempt, which currently fails to finish a thread-bound probe and is excluded from regression results.
+These use the same archived fixture for the final Resume/load check. They do not replay walking input.
+The runner records foreground interventions and completes each probe before the next menu/load transition:
+the current probe cannot reliably span the temporary loading render thread. See the
+[startup report](../../../research/67-startup-performance.md) for timing boundaries and interpretation.
+
 Native loader validation on 2026-11-08 succeeded with that separate Save 96 package: Steam/EA launch, two title
 Enter presses, on-foot `BIOA_STA00`, and a loaded position within 0.047 UU of the stored save location. The
 second attempt bound the live start without requiring headset frames, exited normally, and restored/hash-verified

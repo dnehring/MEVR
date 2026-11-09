@@ -19,6 +19,17 @@ spec.loader.exec_module(probe)
 def inspect(directory):
     window = json.loads((directory / 'capture-window.json').read_text(encoding='utf-8-sig'))
     requested = dt.datetime.fromisoformat(window['requested'])
+    startup = window.get('kind') == 'startup'
+    if startup:
+        # The request is intentionally armed before the process exists, potentially minutes before frames.
+        # The unique probe's local stamp identifies the relevant log start; process start retains the local offset.
+        paths = list(directory.glob('*-probe.json'))
+        if len(paths) != 1:
+            raise ValueError('Startup analysis requires exactly one probe')
+        meta = json.loads(paths[0].read_text(encoding='utf-8-sig'))
+        owned = json.loads((directory / 'owned-process.json').read_text(encoding='utf-8-sig'))
+        zone = dt.datetime.fromisoformat(owned['started']).tzinfo
+        requested = dt.datetime.strptime(meta['stamp'], '%Y-%m-%d_%H-%M-%S').replace(tzinfo=zone)
     log = (directory / 'host.log').read_text(encoding='utf-8-sig', errors='replace')
     starts = []
     for m in re.finditer(r'\[(\d\d:\d\d:\d\d\.\d+)\].*perf probe: measuring \d+(?:\.\d+)? s', log):
