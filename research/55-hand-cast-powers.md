@@ -618,6 +618,12 @@ gun was drawn (any gun) and the gesture's power was equipped, cooling down or no
   dwell), refused with the reason: a new **"Assault rifle only"** (`SelfRefusal::WrongWeapon`, after "Draw your weapon", before
   "Cooling down N%"). The target comes back by itself when the cooldown ends. Log `power wheel: <power>'s gesture target ready |
   hidden: it needs the assault rifle | hidden: cooling down | hidden: the game says unavailable (<the game's checks>)`, on change.
+- **Not while the left hand holds the gun** (the owner, the same day: "we should also only show it when my left hand isn't holding
+  the weapon"; this replaces the 2026-11-07 rule above that kept it visible while supporting): `SelfCastInput::holding` is
+  `support_grip::Held()`, and the gun's target is hidden while it holds. Let go with the hand still in the capsule, and it stays
+  hidden until the hand leaves (`LookAfterStep`: the hand closed in this stay can't cast until it leaves and comes back, so nothing
+  invites it); let go under the barrel, outside the capsule, and the target shows as near at once, as for any open hand there
+  (`TestSelfHolding`). The mod now steps the gesture before it decides the look.
 - **No power**, the wheel's last tile (`vr::power_wheel::NoPower`, icon `NoPower`: a ring struck through): equipping it writes the
   engine's None into `BioPlayerInput.MappedPower` (journalled, as any equip). `ReadyPower` already treats None as nothing mapped, so
   no lock, push, gesture target, coach card or gauntlet follows; the game's own `TryUseMappedPower` does nothing unmapped (section 1).

@@ -708,7 +708,7 @@ SelfZone ZoneFor(SelfGesture gesture, SelfCastInput const& in, SelfCastSettings 
 }
 
 SelfLook LookFor(SelfGesture gesture, SelfCastInput const& in, SelfZone const& zone) {
-    if (!in.tracked || !in.ready || gesture == SelfGesture::None || (gesture == SelfGesture::Gun && !in.gunValid)) {
+    if (!in.tracked || !in.ready || gesture == SelfGesture::None || (gesture == SelfGesture::Gun && (!in.gunValid || in.holding))) {
         return SelfLook::Hidden;
     }
     float const distance = Length(Sub(in.hand, ClosestPoint(zone, in.hand)));
@@ -720,6 +720,13 @@ SelfLook LookFor(SelfGesture gesture, SelfCastInput const& in, SelfZone const& z
         return SelfLook::Near;
     }
     return gesture == SelfGesture::Gun || distance <= 0.30f ? SelfLook::Faint : SelfLook::Hidden;
+}
+
+SelfLook LookAfterStep(SelfGesture gesture, SelfCastInput const& in, SelfZone const& zone, SelfCastState const& state) {
+    if (state.inZone && state.closedInStay) {
+        return SelfLook::Hidden;
+    }
+    return LookFor(gesture, in, zone);
 }
 
 SelfCastStep StepSelfCast(SelfCastState& s, SelfGesture gesture, SelfCastInput const& in, SelfCastSettings const& settings) {
