@@ -875,6 +875,7 @@ void LoadFromIni() noexcept
     // Stereo 2 - back then VR cine meant SBS stereo's black-character bug. Stereo 2 renders each eye as
     // a full primary render, so that bug family is impossible by construction there, and the toggle is
     // back as a real menu option (EXPERIMENTAL section), honored from the ini like any other setting.
+    MELEVR::MevrBridge::ModernBaseline(Get(), "launch");   // [MEVR] the life-size first-person baseline, whatever the file says
 }
 
 void SaveToIni() noexcept
@@ -906,6 +907,7 @@ void LoadProfile(int index) noexcept
     if (index < 0 || index >= kProfileCount) return;
     g_active = index;                // mark active
     Get() = g_slots[index];          // apply the slot's values to the live config (address unchanged)
+    MELEVR::MevrBridge::ModernBaseline(Get(), "profile switch");   // [MEVR]
     WriteIniFromSlots();             // persist the new [active] line (+ all slots, unchanged values)
     Logger::LogLine(std::string("[config] loaded profile slot ") + kProfileNames[index]);
 }

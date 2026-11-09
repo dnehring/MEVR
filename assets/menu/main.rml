@@ -35,7 +35,7 @@
 		<button class="navb" id="nav-body" data-class-on="section == 'body'" data-event-click="section = 'body'"><div class="nico i-body"/><div><div class="navl">Body &amp; calibration</div><div class="navs">Height, arms, aim</div></div></button>
 		<button class="navb" id="nav-display" data-class-on="section == 'display'" data-event-click="section = 'display'"><div class="nico i-eye"/><div><div class="navl">Display</div><div class="navs">Colour, resolution</div></div></button>
 		<button class="navb" id="nav-hud" data-class-on="section == 'hud'" data-event-click="section = 'hud'"><div class="nico i-crosshair"/><div><div class="navl">HUD &amp; sights</div><div class="navs">Panel, reticle, scopes</div></div></button>
-		<button class="navb" id="nav-advanced" data-class-on="section == 'advanced'" data-event-click="section = 'advanced'"><div class="nico i-sliders"/><div><div class="navl">Advanced</div><div class="navs">View, stereo, diagnostics</div></div></button>
+		<button class="navb" id="nav-advanced" data-class-on="section == 'advanced'" data-event-click="section = 'advanced'"><div class="nico i-sliders"/><div><div class="navl">Advanced</div><div class="navs">Tracking, graphics, diagnostics</div></div></button>
 		<div class="railspace"/>
 		<!-- The headset, controllers and calibration (in the top bar until the game's menus took its room). -->
 		<div class="chips">
@@ -421,15 +421,15 @@
 		<div class="sdesc">Fine-tuning and troubleshooting. The standard settings suit most players.</div>
 		<div class="advwrap"><div class="seg advtabs">
 			<button class="segb" data-class-on="advtab == 'tracking'" data-event-click="advtab = 'tracking'">Tracking</button>
-			<button class="segb" data-class-on="advtab == 'fp'" data-event-click="advtab = 'fp'">First person</button>
-			<button class="segb" data-class-on="advtab == 'view'" data-event-click="advtab = 'view'">View</button>
-			<button class="segb" data-class-on="advtab == 'stereo'" data-event-click="advtab = 'stereo'">Stereo</button>
 			<button class="segb" data-class-on="advtab == 'perf'" data-event-click="advtab = 'perf'">Performance</button>
+			<button class="segb" data-class-on="advtab == 'graphics'" data-event-click="advtab = 'graphics'">Graphics</button>
 			<button class="segb" data-class-on="advtab == 'hud'" data-event-click="advtab = 'hud'">Game UI</button>
 			<button class="segb" data-class-on="advtab == 'profiles'" data-event-click="advtab = 'profiles'">Profiles</button>
 			<button class="segb" data-class-on="advtab == 'diag'" data-event-click="advtab = 'diag'">Diagnostics</button>
 		</div></div>
 
+		<!-- The life-size stereo, first person, lean, the field of view fill and the flat menus are fixed (the MEVR baseline,
+		     MevrBridge::ModernBaseline): no rows for the old renderer's modes and its hand-set stereo. -->
 		<div data-if="advtab == 'tracking'">
 			<div class="group">
 				<div class="gtitle"><span>Head tracking</span><div class="gline"/></div>
@@ -440,60 +440,11 @@
 			<div class="group">
 				<div class="gtitle"><span>Flat screens</span><div class="gline"/></div>
 				<div class="hint">Conversations and cutscenes are on the Comfort page.</div>
-				<div class="row"><div class="rl"><div class="rlab">Flat game menus</div><div class="rdesc">Full-screen game menus the room doesn't take go on a flat screen in front of you, easy to read. Off: drawn in 3D.</div></div>
-					<button class="tog" data-class-on="flat_menus" data-event-click="toggle('flat_menus')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Flat galaxy map</div><div class="rdesc">A full-screen galaxy map goes on a flat screen. Off: drawn in 3D.</div></div>
-					<button class="tog" data-class-on="flat_galaxy" data-event-click="toggle('flat_galaxy')"><div class="knob"/></button></div>
+				<div class="srow d"><div class="sl"><div class="slab">Flat screen width</div><div class="rdesc">The flat screen for menus the room doesn't take and flat cutscenes</div></div><input type="range" min="1" max="3.5" step="0.05" data-value="flat_size"/><div class="sval">{{flat_size_text}}</div></div>
 			</div>
 		</div>
 
-		<div data-if="advtab == 'fp'">
-			<div class="group">
-				<div class="gtitle"><span>First-person camera</span><div class="gline"/></div>
-				<div class="row"><div class="rl"><div class="rlab">First person</div><div class="rdesc">Off: the game's own third-person camera (also: K)</div></div>
-					<button class="tog" data-class-on="fp_on" data-event-click="toggle('fp_on')"><div class="knob"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Hide Shepard's head</div><div class="rdesc">Keeps hair and helmet out of your view</div></div>
-					<button class="tog" data-class-on="fp_hide_head" data-event-click="toggle('fp_hide_head')"><div class="knob"/></button></div>
-				<div class="srow"><div class="slab">Back</div><input type="range" min="-2" max="2" step="0.01" data-value="fp_back"/><div class="sval">{{fp_back_text}}</div></div>
-				<div class="srow"><div class="slab">Right</div><input type="range" min="-1" max="1" step="0.01" data-value="fp_right"/><div class="sval">{{fp_right_text}}</div></div>
-				<div class="srow"><div class="slab">Up</div><input type="range" min="-1" max="1" step="0.01" data-value="fp_up"/><div class="sval">{{fp_up_text}}</div></div>
-				<div class="hint">Body &amp; calibration's "Line up with Shepard's head" sets these for you.</div>
-			</div>
-		</div>
-
-		<div data-if="advtab == 'view'">
-			<div class="group">
-				<div class="gtitle"><span>Lean and view</span><div class="gline"/></div>
-				<div class="row"><div class="rl"><div class="rlab">Lean</div><div class="rdesc">Leaning and stepping move the camera</div></div>
-					<button class="tog" data-class-on="lean" data-event-click="toggle('lean')"><div class="knob"/></button></div>
-				<div class="srow d"><div class="sl"><div class="slab">Flat screen width</div><div class="rdesc">The flat screen for menus, the map and flat cutscenes</div></div><input type="range" min="1" max="3.5" step="0.05" data-value="flat_size"/><div class="sval">{{flat_size_text}}</div></div>
-				<div class="row"><div class="rl"><div class="rlab">Fill the field of view</div><div class="rdesc">Stretches the game's picture to the headset's full view</div></div>
-					<button class="tog" data-class-on="fov_fill" data-event-click="toggle('fov_fill')"><div class="knob"/></button></div>
-			</div>
-		</div>
-
-		<div data-if="advtab == 'stereo'">
-			<div class="group">
-				<div class="gtitle"><span>Stereo</span><div class="gline"/></div>
-				<div class="row"><div class="rl"><div class="rlab">VR mode</div><div class="rdesc">Stereo: each eye rendered on its own (the standard). Mono: one picture for both eyes, no depth, faster. Depth: the second eye made from the first one's depth, faster, with fringes at edges. Mono and Depth aren't tested with hand aiming. Needs a restart.</div><div class="note" data-if="mode_note != ''">{{mode_note}}</div></div>
-					<div class="seg"><button class="segb" data-class-on="vr_mode == 'mono'" data-event-click="pick('vr_mode','mono')">Mono</button><button class="segb" data-class-on="vr_mode == 'stereo'" data-event-click="pick('vr_mode','stereo')">Stereo</button><button class="segb" data-class-on="vr_mode == 'dibr'" data-event-click="pick('vr_mode','dibr')">Depth</button></div></div>
-				<div class="row"><div class="rl"><div class="rlab">Real eye positions</div><div class="rdesc">Each eye sees from where it really is, so depth and sizes are true (life-size). Off: the original MELE-VR stereo, set by hand below.</div></div>
-					<button class="tog" data-class-on="life_size" data-event-click="toggle('life_size')"><div class="knob"/></button></div>
-				<div data-if="life_size">
-					<div class="srow d"><div class="sl"><div class="slab">Extra depth</div><div class="rdesc">1.00× is your own eye distance; more makes depth stronger and the world smaller</div></div><input type="range" min="0.5" max="2" step="0.05" data-value="extra_depth"/><div class="sval">{{extra_depth_text}}</div></div>
-					<div class="row"><div class="rl"><div class="rlab">Each eye's own field of view</div><div class="rdesc">Renders each eye's real, off-centre view so the whole image is used. Off: one shared window for both eyes</div></div>
-						<button class="tog" data-class-on="eye_frustum" data-event-click="toggle('eye_frustum')"><div class="knob"/></button></div>
-				</div>
-				<div data-if="!life_size">
-					<div class="hint">Expert: the original stereo's own settings, used only while Real eye positions is off.</div>
-					<div class="srow d"><div class="sl"><div class="slab">Eye distance</div><div class="rdesc">How far apart the two cameras are, in Shepard's centimetres (yours: about 6.3). Wider makes the world smaller.</div></div><input type="range" min="1" max="16" step="0.2" data-value="eye_distance"/><div class="sval">{{eye_distance_text}}</div></div>
-					<div class="srow d"><div class="sl"><div class="slab">Convergence</div><div class="rdesc">Shifts the two pictures sideways so near prompts and far scenery both fuse; 0 is no shift</div></div><input type="range" min="-0.02" max="0.05" step="0.001" data-value="convergence"/><div class="sval">{{convergence_text}}</div></div>
-					<div class="row"><div class="rl"><div class="rlab">Swap eyes</div><div class="rdesc">If depth looks inside out</div></div>
-						<button class="tog" data-class-on="swap_eyes" data-event-click="toggle('swap_eyes')"><div class="knob"/></button></div>
-				</div>
-				<div class="row"><div class="rl"><div class="rlab">Quest Link image fix</div><div class="rdesc">Fixes a doubled picture with a Quest on Meta's Link or Air Link. It does nothing through SteamVR or Virtual Desktop, so leave it on.</div></div>
-					<button class="tog" data-class-on="quest_fov" data-event-click="toggle('quest_fov')"><div class="knob"/></button></div>
-			</div>
+		<div data-if="advtab == 'graphics'">
 			<div class="group">
 				<div class="gtitle"><span>Graphics</span><div class="gline"/></div>
 				<div class="row"><div class="rl"><div class="rlab">Depth of field</div><div class="rdesc">Turning it off sharpens the background but washes out colour (after a restart)</div></div>
@@ -516,11 +467,6 @@
 				<div class="row"><div class="rl"><div class="rlab">Ambient occlusion</div><div class="rdesc">Soft shading in corners and under objects. Off saves graphics-card time and flattens the picture a little.</div></div>
 					<button class="tog" data-class-on="ambient_occl" data-event-click="toggle('ambient_occl')"><div class="knob"/></button></div>
 				<div class="srow d"><div class="sl"><div class="slab">FSR sharpness</div><div class="rdesc">How much the upscale sharpens a smaller render. No mode sets it.</div></div><input type="range" min="0" max="100" step="5" data-value="fsr_sharpness"/><div class="sval">{{fsr_sharpness_text}}</div></div>
-			</div>
-			<div class="group">
-				<div class="gtitle"><span>Fixed render sizes</span><div class="gline"/></div>
-				<div class="row"><div class="rl"><div class="rlab">Fixed sizes</div><div class="rdesc">The original MELE-VR sizes, in pixels wide per eye. Above your headset's own size the picture gets sharper, but each step costs a lot of frame rate. Applies after a restart.</div></div>
-					<div class="seg"><button class="segb" data-class-on="quality == 'low'" data-event-click="pick('quality','low')">2048</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="pick('quality','performance')">3072</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="pick('quality','balanced')">4096</button><button class="segb" data-class-on="quality == 'sharp'" data-event-click="pick('quality','sharp')">5120</button><button class="segb" data-class-on="quality == 'max'" data-event-click="pick('quality','max')">6144</button></div></div>
 			</div>
 		</div>
 
@@ -584,10 +530,8 @@
 					<button class="btn" data-event-click="cmd('record')"><div class="sweep"/><div class="bi i-record"/><span data-if="!recording">Record</span><span data-if="recording">Stop</span><div class="tick"/></button></div>
 				<div class="row"><div class="rl"><div class="rlab">Measure frame timing</div><div class="rdesc">Closes the menu and measures where each frame's time goes for 20 seconds, for a report about stutter</div><div class="note" data-if="perf_msg != ''">{{perf_msg}}</div></div>
 					<button class="btn" data-event-click="cmd('perf')"><div class="sweep"/><div class="bi i-timer"/><span>Measure</span><div class="tick"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Reset VR settings</div><div class="rdesc">Puts the view, stereo and HUD settings back to standard for this session, not saved unless you save a profile. Your calibration, controls, resolution and first-person view are kept.</div><div class="note" data-if="diag_msg != ''">{{diag_msg}}</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Reset VR settings</div><div class="rdesc">Puts the view and HUD settings back to standard for this session, not saved unless you save a profile. Your calibration, controls, resolution and first-person view are kept.</div><div class="note" data-if="diag_msg != ''">{{diag_msg}}</div></div>
 					<button class="btn danger" data-class-armed="reset_armed" data-event-click="cmd('reset')"><div class="sweep"/><div class="bi i-trash"/><span data-if="!reset_armed">Reset</span><span data-if="reset_armed">Confirm</span><div class="tick"/></button></div>
-				<div class="row"><div class="rl"><div class="rlab">Classic VR menu</div><div class="rdesc">{{classic_desc}}</div></div>
-					<button class="btn" data-event-click="cmd('classic')"><div class="sweep"/><span>Open</span><div class="tick"/></button></div>
 			</div>
 			<div class="group">
 				<div class="gtitle"><span>About</span><div class="gline"/></div>

@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **One VR mode: life-size stereo in first person.** Advanced no longer offers the original MELE-VR renderer's choices
+  (Mono and Depth modes, hand-set eye distance, convergence and eye swap, third person, lean, the field of view fill,
+  fixed render sizes, the classic menu). An old `MELEVR.ini` that still sets them is ignored at launch, and the game
+  log lists what was put back. *Reset VR settings* now returns to these standard settings, not the original mod's.
+
 - **Reachable seated holsters.** Seated play raises and moves the hip grab zones forward over the thighs, with larger
   zones and independently adjustable shoulder/chest reach points. Standing placement is unchanged. The native weapon
   wheel can draw while seated as a button alternative; `[Holsters] seatedWeaponWheel = 0` disables that fallback.

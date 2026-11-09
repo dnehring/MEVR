@@ -93,8 +93,15 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   Closed it costs nothing. Offline look: `mevr-menu-preview` (PNGs of every section and state, and the
   frame time). Log `main menu:` (its cost every 10 s while open), `menu:`/`rmlui:`; snapshots `"mainMenu"`
   and a `mainmenu` layer.
-- **Halcyon's own menu** is the developer fallback: Ctrl or Shift + `\`, or Advanced > Diagnostics >
-  Classic renderer menu (both thumbsticks held no longer open it). It takes the pad (Touch merged in as
+- **One supported renderer configuration** (2026-11-09, the owner: players get the life-size first-person experience only):
+  `MevrBridge::ModernBaseline` (`[MEVR]` seam after `LoadFromIni` and `LoadProfile`; also the menu's Reset) pins Stereo 2
+  (no mono, AER, DIBR or old SBS), `sfr2Metric`, `sfr2MetricEyeFrustum`, `sfr2MetricDepth = 1`, `questFovMatch`, `vrFovFillEnabled`,
+  `leanEnabled`, `lookSensitivity = 1`, `menuFlat`, `galaxyFlat`, `fpEnabled`, `fpHideHead`, no head aim, `decoupledPitch`,
+  no depth-pop key, whatever MELEVR.ini says (log `halcyon bridge: the MEVR baseline`); a changed mode rewrites the game's
+  render size for the next launch. Our menu's Advanced has no rows for them (tabs Tracking, Performance, Graphics, Game UI,
+  Profiles, Diagnostics). Only the classic menu can still change them live, for that session.
+- **Halcyon's own menu** is the developer fallback: Ctrl or Shift + `\` (no longer a row in our menu since 2026-11-09;
+  both thumbsticks held no longer open it). It takes the pad (Touch merged in as
   Xbox pad 0: left stick/d-pad, A, B; upstream never set ImGui's `HasGamepad` backend flag, so pad nav
   was dead until we did) and our laser pointer (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray
   on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the

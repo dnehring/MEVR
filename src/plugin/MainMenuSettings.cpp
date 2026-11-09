@@ -1140,7 +1140,15 @@ void Settings::Command(std::string const& name, std::string const& argument, men
             c.expectedResY = before.expectedResY;
             c.firstRunDone = before.firstRunDone;
             c.hdrPaperWhiteNits = before.hdrPaperWhiteNits;
-            c.fpEnabled = before.fpEnabled;
+            // The first-person view's place is the calibration's line-up (Body & calibration), not a view setting.
+            c.cameraOffsetEnabled = before.cameraOffsetEnabled;
+            c.cameraOffsetRight = before.cameraOffsetRight;
+            c.cameraOffsetUp = before.cameraOffsetUp;
+            c.screenDistanceEnabled = before.screenDistanceEnabled;
+            c.flatScreenDistance = before.flatScreenDistance;
+            c.mirrorPresentEvery = 2;  // the shipped "every 2nd" (ini::HalcyonReleaseIni), not upstream's
+            // Halcyon's code defaults are upstream's renderer (life-size stereo off, stick pitch on): back to ours.
+            MELEVR::MevrBridge::ModernBaseline(c, "reset");
             resetArmedMs_ = 0;
             noSave_ = true;
             halcyonDirty_ = false;

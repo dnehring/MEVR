@@ -440,6 +440,53 @@ bool FirstPersonAtBoot(bool saved) noexcept {
     return saved;
 }
 
+void ModernBaseline(Config::VrConfig& c, char const* when) noexcept {
+    // One supported configuration (2026-11-09): Stereo 2 at life size, each eye on its own frustum, first person, the hand
+    // aims and the head only looks. Every value below used to be a player's choice in some menu or file; an old MELEVR.ini
+    // (a 0.1.0 install, upstream MELE-VR's, a profile saved in mono) must not bring one back.
+    int changed = 0;
+    std::string names;
+    auto pin = [&](char const* name, auto& field, auto value) {
+        if (field == value) {
+            return;
+        }
+        field = value;
+        ++changed;
+        names += names.empty() ? name : std::string(", ") + name;
+    };
+    bool const modeWas = c.sfr2Enabled && !c.aerEnabled && !c.dibrEnabled && !c.stereoEnabled;
+    pin("Stereo 2 (vrMode)", c.sfr2Enabled, true);
+    pin("AER", c.aerEnabled, false);
+    pin("DIBR", c.dibrEnabled, false);
+    pin("old side-by-side stereo", c.stereoEnabled, false);
+    pin("life-size stereo (sfr2Metric)", c.sfr2Metric, true);
+    pin("each eye's own frustum (sfr2MetricEyeFrustum)", c.sfr2MetricEyeFrustum, true);
+    pin("extra depth (sfr2MetricDepth)", c.sfr2MetricDepth, 1.0f);
+    pin("Quest Link image fix (questFovMatch)", c.questFovMatch, true);
+    pin("field of view fill (vrFovFillEnabled)", c.vrFovFillEnabled, true);
+    pin("lean (leanEnabled)", c.leanEnabled, true);
+    pin("look speed (lookSensitivity)", c.lookSensitivity, 1.0f);
+    pin("flat menus (menuFlat)", c.menuFlat, true);
+    pin("flat galaxy map (galaxyFlat)", c.galaxyFlat, true);
+    pin("first person (fpEnabled)", c.fpEnabled, true);
+    pin("hide Shepard's head (fpHideHead)", c.fpHideHead, true);
+    pin("combat head aim", c.combatHeadAim, false);
+    pin("Mako head aim", c.makoHeadAim, false);
+    pin("stick pitch off (decoupledPitch)", c.decoupledPitch, true);
+    pin("depth pop key", c.depthPopKeyEnabled, false);
+    if (changed == 0) {
+        mevr::log::Info("halcyon bridge: the MEVR baseline ({}): the profile already matches it", when);
+        return;
+    }
+    mevr::log::Info("halcyon bridge: the MEVR baseline ({}): {} old setting(s) in MELEVR.ini ignored: {}", when, changed, names);
+    if (!modeWas) {
+        // The game's render size was the old mode's (GamerSettings.ini): the stereo one from the next launch.
+        int wx = 0, wy = 0;
+        Config::ApplyResolutionForCurrentMode(&wx, &wy);
+        mevr::log::Info("halcyon bridge: the old VR mode's render size replaced: {} x {} from the next launch", wx, wy);
+    }
+}
+
 void SetGameWindow(HWND window) noexcept {
     gGameWindow.store(window);
 }

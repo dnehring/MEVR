@@ -648,14 +648,14 @@ int main(int argc, char** argv) {
     model.SetText("vignette_when", "turn");
     model.SetText("walk", "head");
     model.SetText("section", "advanced");
-    for (char const* tab : {"tracking", "fp", "view", "stereo", "perf", "hud", "profiles", "diag"}) {
+    for (char const* tab : {"tracking", "perf", "graphics", "hud", "profiles", "diag"}) {
         model.SetText("advtab", tab);
         frames(30);
         std::vector<std::uint32_t> const menu = save(std::string("advanced-") + tab);
-        if (std::string(tab) == "stereo") {
+        if (std::string(tab) == "graphics") {
             mevr::png::Write(output / "menu-alpha.png", w, h, Straight(menu).data());
         }
-        if (std::string(tab) == "hud" || std::string(tab) == "diag" || std::string(tab) == "stereo" || std::string(tab) == "perf") {
+        if (std::string(tab) == "hud" || std::string(tab) == "diag" || std::string(tab) == "perf") {
             if (Rml::Element* content = element("content")) {  // the tab's lower half
                 content->SetScrollTop(content->GetScrollHeight());
                 frames(10);
@@ -664,19 +664,7 @@ int main(int argc, char** argv) {
             }
         }
     }
-    // Stereo without real eye positions: the original stereo's expert rows.
-    model.SetText("advtab", "stereo");
-    model.SetNumber("life_size", 0.0f);
-    frames(10);
-    if (Rml::Element* content = element("content")) {
-        content->SetScrollTop(content->GetScrollHeight());
-        frames(10);
-        save("advanced-stereo-expert");
-        content->SetScrollTop(0.0f);
-    }
-    model.SetNumber("life_size", 1.0f);
-    model.SetText("section", "advanced");
-    model.SetText("advtab", "diag");  // the stereo expert shot above left Stereo selected
+    model.SetText("advtab", "diag");
     // Report a problem (research/33 section 8): the request answered, then the crash offer over the first section.
     model.SetText("report_msg", "Saved to the Desktop: MEVR-report-2026-10-26-0143.zip. Open it after the game: nothing was sent.");
     model.SetNumber("report_snapshot", 1.0f);
