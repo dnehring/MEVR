@@ -61,7 +61,7 @@ void Tick(double deltaSeconds, Link const& link);
 // [Holsters] weaponWheel = 0. Called by game/support_grip before it publishes the flags (so after
 // Tick).
 void AdjustPad(gamepad::Options& options);
-// For game/throwables (research/20): the standing eye height that scales the slots (meters), whether
+// For game/throwables (research/20): standing eye height, or kReferenceEyeHeight seated (scale 1), whether
 // the right hand is in a weapon slot now, and the seconds since our last draw request (a draw's fast
 // reach mustn't count as a melee stroke).
 double EyeHeight();
@@ -70,12 +70,15 @@ double SecondsSinceDraw();
 // [Holsters] onlyHolstersDraw (default 1): only a grab at a holster draws. The game's own draws with the weapon away
 // (SFXPawn_Player.DrawPrimaryWeapon, from melee and grenade buttons, the weapon wheel, the holster key's toggle) are
 // skipped on foot in VR with tracked controllers (a refused one buzzes the right hand). Medi-gel (UseFirstAid) and
-// powers (TryUseMappedPower, EnterPowerWheel) still draw: deliberate actions that need combat mode. A draw we want
+// powers (TryUseMappedPower, EnterPowerWheel) still draw: deliberate actions that need combat mode.
+// SeatedWeaponWheel additionally permits the native weapon wheel's Deactivated draw in seated play. A draw we want
 // from the game (a grenade thrown with the weapon away: UseGrenade draws) goes between AllowGameDraw(true) and
 // AllowGameDraw(false). Game thread.
 void AllowGameDraw(bool begin);
 // The game's own draws are refused now (as of holsters' last tick): its weapon stays away unless a holster draws it.
 bool BlocksGameDraws();
+// Seated button fallback: [Holsters] seatedWeaponWheel (default 1).
+bool SeatedWeaponWheel();
 // The measuring loop's draw (`mevr weapon <pistol|shotgun|assault|sniper>` through tools/console.ps1, game/ConsoleRequest):
 // the holsters' own draw of a carried weapon, no grab, no haptics. Returns what happened, for the console's result.
 std::string DrawByName(std::string_view name);

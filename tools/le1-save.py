@@ -20,12 +20,16 @@ bool then the value. The game's deflate isn't zlib's, so a changed payload compr
   python tools/le1-save.py roundtrip <save>...               parse and write each back: payload and file byte for byte
   python tools/le1-save.py plot <save> --bool N [--int N]    read plot values
   python tools/le1-save.py write <in> <out> --level BIOA_STA00 --location X Y Z --yaw DEG [--bool N=1] [--int N=V]
+  python tools/le1-save.py diff <before> <after> --rewind-out beat.json   what a beat set (with the plot's names)
+  python tools/le1-save.py write <later> <out> --rewind beat.json [--with-maps]   ... put back: the beat plays again
                                                              a new save (the edits listed in `write -h`)
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime
+import json
 import math
 import os
 import re
@@ -523,6 +527,139 @@ def angle_deg(units: int) -> float:
     return (units % 65536) * 360.0 / 65536
 
 
+# ---- Rewinding a story beat ----
+# A beat (a conversation, a scene) sets a few plot values when it plays: 28 minutes of the Citadel set 21 booleans and 8
+# integers in the owner's career. A save from just before it and one from just after give the list (`diff`); putting those
+# values back on any later save (`write --rewind`) makes the beat's conditions read "not yet played". The maps' kept world
+# state (who is dead, moved, looted) is recorded too, and put back only on request (`--with-maps`): it also undoes everything
+# else done in that map since.
+
+REWIND_FORMAT = 'mevr-le1-rewind 1'
+
+
+def serialize(t, value) -> bytes:
+    w = Writer()
+    w.write(t, value)
+    return bytes(w.out)
+
+
+def plot_bits(save: Save) -> set[int]:
+    return {i * 32 + b for i, word in enumerate(save.data['plot']['booleans']) for b in range(32) if word >> b & 1}
+
+
+def _changed(a: list, b: list, empty):
+    n = max(len(a), len(b))
+    return {i: (a[i] if i < len(a) else empty) for i in range(n)
+            if (a[i] if i < len(a) else empty) != (b[i] if i < len(b) else empty)}
+
+
+def _maps(save: Save) -> dict:
+    ne = save.data.get('no_export')
+    return ne['legacy_maps'] if ne is not None else {}
+
+
+def diff_saves(before: Save, after: Save) -> dict:
+    """What changed from `before` to `after`, as a rewind: each changed value with its value in `before`."""
+    bb, ab = plot_bits(before), plot_bits(after)
+    spec = {
+        'format': REWIND_FORMAT,
+        'character': str(before.data['character_id']),
+        'booleans': {str(i): (i in bb) for i in sorted(bb ^ ab)},
+        'integers': {str(i): v for i, v in _changed(before.data['plot']['integers'], after.data['plot']['integers'], 0).items()},
+        'floats': {str(i): v for i, v in _changed(before.data['plot']['floats'], after.data['plot']['floats'], 0.0).items()},
+        'maps': {},
+        'mapLevels': {},
+    }
+    # The values after the beat, for reading only (a rewind puts back the ones above).
+    for key in ('integers', 'floats'):
+        values = after.data['plot'][key]
+        spec['after' + key.capitalize()] = {i: (values[int(i)] if int(i) < len(values) else 0) for i in spec[key]}
+    bm, am = _maps(before), _maps(after)
+    for name in list(bm) + [m for m in am if m not in bm]:
+        b_bytes = serialize('Map', bm[name]) if name in bm else None
+        a_bytes = serialize('Map', am[name]) if name in am else None
+        if b_bytes == a_bytes:
+            continue
+        spec['maps'][str(name)] = base64.b64encode(b_bytes).decode('ascii') if b_bytes is not None else None
+        bl = bm[name]['levels'] if name in bm else {}
+        al = am[name]['levels'] if name in am else {}
+        spec['mapLevels'][str(name)] = sorted(str(lv) for lv in set(bl) | set(al)
+                                              if lv not in bl or lv not in al or serialize('Level', bl[lv]) != serialize('Level', al[lv]))
+    return spec
+
+
+def apply_rewind(save: Save, spec: dict, with_maps: bool = False) -> list[str]:
+    """Puts a rewind's values back on `save`; the lines say what changed."""
+    if spec.get('format') != REWIND_FORMAT:
+        raise SaveError(f"not a rewind file ({spec.get('format')!r})")
+    done = []
+    if spec.get('character') and spec['character'] != save.data['character_id']:
+        done.append(f"warning: the rewind is from career {spec['character']}, this save is {save.data['character_id']}")
+    for i, v in spec['booleans'].items():
+        if save.plot_bool(int(i)) != v:
+            save.set_plot_bool(int(i), v)
+            done.append(f'bool {i} = {int(v)}')
+    for key, setter, values in (('integers', save.set_plot_int, save.data['plot']['integers']),
+                                ('floats', save.set_plot_float, save.data['plot']['floats'])):
+        for i, v in spec[key].items():
+            now = values[int(i)] if int(i) < len(values) else 0
+            if now != v:
+                setter(int(i), v)
+                done.append(f'{key[:-1]} {i} = {v} (was {now})')
+    if with_maps:
+        ne = save.data.get('no_export')
+        if ne is None:
+            raise SaveError('this save keeps no world state (a character export)')
+        for name, b64 in spec['maps'].items():
+            if b64 is None:
+                if name in ne['legacy_maps']:
+                    del ne['legacy_maps'][name]
+                    done.append(f'map {name}: forgotten (not visited before the beat)')
+            else:
+                r = Reader(base64.b64decode(b64))
+                ne['legacy_maps'][ustr(name)] = r.read('Map', f'rewind.maps[{name}]')
+                done.append(f'map {name}: world state as before the beat')
+    return done
+
+
+def load_plot_names(path: str | None = None) -> dict[str, dict[int, str]]:
+    """The plot's names from Trilogy Save Editor's databases/me1_raw_plot_db.ron (reference/; tools/fetch-references.ps1),
+    {'booleans': {id: name}, 'integers': ..., 'floats': ...}; empty when it isn't there."""
+    if path is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'reference', 'trilogy-save-editor',
+                            'databases', 'me1_raw_plot_db.ron')
+    names: dict[str, dict[int, str]] = {'booleans': {}, 'integers': {}, 'floats': {}}
+    try:
+        text = open(path, encoding='utf-8').read()
+    except OSError:
+        return names
+    section = None
+    for line in text.splitlines():
+        head = re.match(r'^\s*(booleans|integers|floats): \{', line)
+        if head:
+            section = head.group(1)
+            continue
+        entry = re.match(r'^\s*(\d+): "(.*)",?\s*$', line)
+        if entry and section:
+            names[section][int(entry.group(1))] = entry.group(2)
+    return names
+
+
+def describe_rewind(spec: dict, names: dict) -> str:
+    lines = []
+    for key, label in (('booleans', 'bool'), ('integers', 'int'), ('floats', 'float')):
+        for i, v in spec[key].items():
+            name = names[key].get(int(i), '')
+            after = spec.get('after' + key.capitalize(), {}).get(i, '?')
+            shown = f'{int(v)} -> {1 - int(v)}' if key == 'booleans' else f'{v} -> {after}'
+            lines.append(f'  {label} {i:>5}  {shown:<16} {name}')
+    for name, levels in spec['mapLevels'].items():
+        state = ('not visited before' if spec['maps'][name] is None else
+                 f'{len(levels)} level(s) changed' if levels else 'only its world info changed (streaming states, destination)')
+        lines.append(f"  map {name}: {state}{': ' + ', '.join(levels[:8]) if levels else ''}{' ...' if len(levels) > 8 else ''}")
+    return '\n'.join(lines) or '  nothing changed'
+
+
 # ---- Command line ----
 
 def describe(save: Save) -> str:
@@ -622,6 +759,11 @@ def cmd_write(args) -> int:
         s.set_plot_int(i, v)
     for i, v in _pairs(args.float, float):
         s.set_plot_float(i, v)
+    if args.rewind:
+        with open(args.rewind, encoding='utf-8') as f:
+            spec = json.load(f)
+        for line in apply_rewind(s, spec, args.with_maps):
+            print(f'rewind: {line}')
     if args.display_name is not None:
         s.data['display_name'] = ustr(args.display_name)
     if args.drop_map:
@@ -640,9 +782,30 @@ def cmd_write(args) -> int:
     return 0
 
 
+def cmd_diff(args) -> int:
+    before, after = Save.load(args.before), Save.load(args.after)
+    spec = diff_saves(before, after)
+    spec['before'] = os.path.basename(args.before)
+    spec['after'] = os.path.basename(args.after)
+    print(f"{args.before} -> {args.after}: {len(spec['booleans'])} booleans, {len(spec['integers'])} integers, "
+          f"{len(spec['floats'])} floats, {len(spec['maps'])} maps changed")
+    print(describe_rewind(spec, load_plot_names(args.names)))
+    if args.rewind_out:
+        with open(args.rewind_out, 'w', encoding='utf-8', newline='\n') as f:
+            json.dump(spec, f, indent=1)
+        print(f'rewind written to {args.rewind_out} (write <later save> <out> --rewind {os.path.basename(args.rewind_out)})')
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description='Read and write Mass Effect Legendary Edition ME1 saves (.pcsav).')
     sub = ap.add_subparsers(dest='cmd', required=True)
+    p = sub.add_parser('diff', help='what changed between two saves of a career; --rewind-out keeps it as a rewind')
+    p.add_argument('before')
+    p.add_argument('after')
+    p.add_argument('--rewind-out', metavar='FILE', help='write the changes as a rewind file (the values before)')
+    p.add_argument('--names', metavar='RON', help="Trilogy Save Editor's me1_raw_plot_db.ron (default: reference/)")
+    p.set_defaults(fn=cmd_diff)
     p = sub.add_parser('info', help='what a save holds')
     p.add_argument('saves', nargs='+')
     p.set_defaults(fn=cmd_info)
@@ -668,6 +831,8 @@ def main(argv=None) -> int:
     p.add_argument('--int', action='append', metavar='N=V', help='a plot integer (repeatable)')
     p.add_argument('--float', action='append', metavar='N=V', help='a plot float (repeatable)')
     p.add_argument('--display-name', help='the name the Load menu shows')
+    p.add_argument('--rewind', metavar='FILE', help='put back the plot values a diff --rewind-out recorded (replays a beat)')
+    p.add_argument('--with-maps', action='store_true', help='with --rewind: also the world state of the maps the beat changed, as before it')
     p.add_argument('--drop-map', action='append', metavar='MAP', help='forget a visited map\'s kept state (repeatable)')
     p.add_argument('--keep-time', action='store_true', help='keep the save time (default: now, so it is the newest)')
     p.add_argument('--force', action='store_true', help='replace an existing output')

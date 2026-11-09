@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/HandCalibration.hpp"
+#include "game/BodyCalibration.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -261,7 +262,17 @@ constexpr char const* kHolstersBlock =
     "hipRight = pistol, 0.20, -0.62, -0.05, 0.14\n"
     "shoulderRight = rifle, 0.18, -0.08, -0.20, 0.20\n"
     "hipLeft = shotgun, -0.20, -0.62, 0.00, 0.14\n"
-    "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n";
+    "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n"
+    "; Seated only: right, up, forward, radius in FIXED meters from the neutral head.\n"
+    "; Weapon assignments still come from the four slots above; standing is unchanged.\n"
+    "seatedHipRight = 0.28, -0.42, 0.18, 0.20\n"
+    "seatedHipLeft = -0.28, -0.42, 0.18, 0.20\n"
+    "seatedShoulderRight = 0.28, -0.04, -0.14, 0.20\n"
+    "seatedShoulderLeft = -0.28, -0.04, -0.14, 0.20\n"
+    "seatedGrenade = -0.10, -0.18, 0.08, 0.10\n"
+    "; 1 keeps the weapon wheel available seated and lets it draw even with onlyHolstersDraw.\n"
+    "; Controls > Left trigger must be Weapon wheel; select Shepard, then a weapon and release.\n"
+    "seatedWeaponWheel = 1\n";
 
 // Appended to a settings file that has no [Squad] yet (and part of a new file).
 constexpr char const* kSquadBlock =
@@ -1124,6 +1135,25 @@ Holsters ReadHolsters(Ini const& ini) {
             }
         }
     }
+    holsters.seatedLayout = ik::body_slots::SeatedLayout(holsters.layout);
+    if (Number(ini, "Holsters", "seatedWeaponWheel", value)) holsters.seatedWeaponWheel = value != 0.0;
+    auto const reach = [](std::string const& text, ik::body_slots::Slot& slot) {
+        auto parsed = slot;
+        if (!ReadSlot("pistol, " + text, parsed)) return false;
+        slot.offset = parsed.offset;
+        slot.radius = parsed.radius;  // assignments/off switches always come from the standing slots
+        return true;
+    };
+    if (auto const s = ini.find("Holsters"); s != ini.end()) {
+        for (auto& slot : holsters.seatedLayout.slots) {
+            std::string key = "seated" + std::string(slot.name);
+            key[6] = static_cast<char>(std::toupper(static_cast<unsigned char>(key[6])));
+            if (auto const k = s->second.find(key); k != s->second.end() && !reach(k->second, slot))
+                log::Warn("holsters: can't read {} = {}; seated default kept", key, k->second);
+        }
+        if (auto const k = s->second.find("seatedGrenade"); k != s->second.end() && !reach(k->second, holsters.seatedGrenade))
+            log::Warn("holsters: can't read seatedGrenade = {}; seated default kept", k->second);
+    }
     return holsters;
 }
 
@@ -1140,6 +1170,11 @@ std::string Describe(Holsters const& h) {
         text += std::format(" {} {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, ik::body_slots::Name(slot.weapon), slot.offset.x,
             slot.offset.y, slot.offset.z, slot.radius);
     }
+    text += std::format(" seated wheel {}; fixed-meter seated slots:", h.seatedWeaponWheel ? "draws" : "off");
+    for (auto const& slot : h.seatedLayout.slots)
+        text += std::format(" {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, slot.offset.x, slot.offset.y, slot.offset.z, slot.radius);
+    text += std::format(" grenade ({:.2f}, {:.2f}, {:.2f}) r {:.2f}", h.seatedGrenade.offset.x, h.seatedGrenade.offset.y,
+        h.seatedGrenade.offset.z, h.seatedGrenade.radius);
     return text;
 }
 
@@ -2606,7 +2641,12 @@ Controls GetControls() {
 }
 
 Holsters GetHolsters() {
-    return gHolsters;
+    Holsters h = gHolsters;
+    if (body_calibration::Position() == vr::calibration::PlayPosition::Seated) {
+        h.layout = h.seatedLayout;
+        if (h.seatedWeaponWheel) h.weaponWheel = true;
+    }
+    return h;
 }
 
 Squad GetSquad() {
@@ -2614,7 +2654,9 @@ Squad GetSquad() {
 }
 
 Throwables GetThrowables() {
-    return gThrowables;
+    Throwables t = gThrowables;
+    if (body_calibration::Position() == vr::calibration::PlayPosition::Seated) t.slot = gHolsters.seatedGrenade;
+    return t;
 }
 
 Posture GetPosture() {
@@ -2792,6 +2834,12 @@ void Refresh() {
         {L"powerWheel", "powerWheel", L"r3"},
         {L"eyeHeightFromFloor", "eyeHeightFromFloor", L"1"},
         {L"onlyHolstersDraw", "onlyHolstersDraw", L"1"},  // 2026-10-25
+        {L"seatedHipRight", "seatedHipRight", L"0.28, -0.42, 0.18, 0.20"},
+        {L"seatedHipLeft", "seatedHipLeft", L"-0.28, -0.42, 0.18, 0.20"},
+        {L"seatedShoulderRight", "seatedShoulderRight", L"0.28, -0.04, -0.14, 0.20"},
+        {L"seatedShoulderLeft", "seatedShoulderLeft", L"-0.28, -0.04, -0.14, 0.20"},
+        {L"seatedGrenade", "seatedGrenade", L"-0.10, -0.18, 0.08, 0.10"},
+        {L"seatedWeaponWheel", "seatedWeaponWheel", L"1"},
     };
     std::string added;
     for (NewKey const& k : kNewHolsterKeys) {

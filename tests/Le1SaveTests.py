@@ -149,6 +149,42 @@ check(d['file_name'] == 'John02_MEVR', 'the file name')
 check(ls.DATE_IN_NAME.search(d['display_name']).group(0) != '2026/11/09 10:48:37', 'the shown date follows the time')
 check(ls.unreal_angle(-90) == 49152 and ls.unreal_angle(360) == 0, 'angles wrap')
 
+# Rewind: a beat between two saves (a boolean set, one cleared, an integer and a float changed, a map's world state changed,
+# a map visited for the first time) is found by diff and put back on a later save; the later save's other progress stays.
+before = ls.Save(sample_save())
+after = ls.Save.from_bytes(before.to_bytes())
+after.set_plot_bool(40, True)
+after.set_plot_bool(36, False)  # the sample's set boolean (word 1, bit 4)
+after.set_plot_int(2, 99)
+after.set_plot_float(0, 2.5)
+after.data['no_export']['legacy_maps']['BIOA_PRO00']['levels']['BIOA_PRO10']['actors'].append(ls.ustr('BioPawn_9'))
+after.data['no_export']['legacy_maps'][ls.ustr('BIOA_STA00')] = sample('Map')
+spec = ls.diff_saves(before, after)
+check(spec['booleans'] == {'36': True, '40': False}, 'diff: the booleans with their values before')
+check(spec['integers'] == {'2': 0} and spec['floats'] == {'0': 1.5}, 'diff: the integer and float before')
+check(spec['afterIntegers'] == {'2': 99}, 'diff: the integers after, for reading')
+check(set(spec['maps']) == {'BIOA_PRO00', 'BIOA_STA00'} and spec['maps']['BIOA_STA00'] is None, 'diff: a changed and a new map')
+check(spec['mapLevels']['BIOA_PRO00'] == ['BIOA_PRO10'], 'diff: the changed level named')
+later = ls.Save.from_bytes(after.to_bytes())
+later.set_plot_bool(41, True)  # progress after the beat
+done = ls.apply_rewind(later, spec)
+check(not later.plot_bool(40) and later.plot_bool(36) and later.plot_bool(41), 'rewind: the beat undone, later progress kept')
+check(later.data['plot']['integers'][2] == 0 and later.data['plot']['floats'][0] == 1.5, 'rewind: integer and float back')
+check('BIOA_STA00' in later.data['no_export']['legacy_maps'], 'rewind without --with-maps leaves the maps')
+check(len(done) == 4, f'rewind: one line per value put back ({len(done)})')
+ls.apply_rewind(later, spec, with_maps=True)
+check('BIOA_STA00' not in later.data['no_export']['legacy_maps'], 'rewind --with-maps forgets the map visited in the beat')
+check(ls.serialize('Map', later.data['no_export']['legacy_maps']['BIOA_PRO00'])
+      == ls.serialize('Map', before.data['no_export']['legacy_maps']['BIOA_PRO00']), 'rewind --with-maps: the map as before')
+again = ls.Save.from_bytes(later.to_bytes())
+check(ls.diff_saves(again, later)['booleans'] == {}, 'a rewound save writes and reads back')
+check(ls.apply_rewind(again, spec) == [], 'a second rewind changes nothing')
+try:
+    ls.apply_rewind(again, {'format': 'something else'})
+    check(False, 'a file that is not a rewind is refused')
+except ls.SaveError:
+    pass
+
 # A character export (no world state) reads and writes without it.
 x = sample_save()
 x['no_export'] = None

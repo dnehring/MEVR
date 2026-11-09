@@ -3,7 +3,6 @@
 
 #include "core/Log.hpp"
 #include "core/ik/BodySlots.hpp"
-#include "game/BodyScale.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -73,6 +72,9 @@ ue3::FunctionRef gUseFirstAidFn{"SFXGame.SFXGameModeDefault.UseFirstAid"};
 ue3::FunctionRef gTryUseMappedPowerFn{"SFXGame.SFXGameModeDefault.TryUseMappedPower"};
 ue3::FunctionRef gEnterPowerWheelFn{"SFXGame.SFXGameModeDefault.EnterPowerWheel"};
 std::array<ue3::Function*, 3> gAllowedCallers{};
+ue3::FunctionRef gEnterWeaponWheelFn{"SFXGame.SFXGameModeDefault.EnterWeaponWheel"};
+ue3::FunctionRef gWeaponWheelDeactivatedFn{"SFXGame.SFXGameModeWeaponWheel.Deactivated"};
+std::array<ue3::Function*, 2> gSeatedWheelCallers{};
 // The trigger's draw (research/19 "The trigger's draw", 2026-11-04): RT is the exec SFXGameModeBase.FireWeapon, which
 // draws when the weapon is away. Refused like the rest but without the buzz: a pull with an empty hand is also a fist or
 // a thumbs-up now (research/43 "Touch sensors"), not an attempt to draw.
@@ -521,8 +523,8 @@ void UpdateEyeHeight(hand_calibration::Holsters const& settings, Link const& lin
     double height = settings.layout.eyeHeight;
     gFloorNow = -1.0;
     if (body_calibration::Position() == vr::calibration::PlayPosition::Seated) {
-        height = body_scale::StandingEyeHeight().value_or(settings.layout.eyeHeight);
-        source = "seated standing reference (head-relative slots)";
+        height = slots::kReferenceEyeHeight;
+        source = "seated fixed meters from the neutral head (scale 1)";
     } else if (auto const calibrated = body_calibration::StandingEyeHeight()) {
         // The guided calibration measured it standing tall (research/25): the player's height, whatever the floor
         // learns later. The floor is still watched (gFloorNow, a new session) for the log and the snapshot.
@@ -597,6 +599,12 @@ bool OnDrawPrimaryWeapon(ue3::Object* context, ue3::Function* /*function*/, ue3:
     if (!gBlockDraws || gAllowedDraws > 0 || context == nullptr || context != gBlockPawn) {
         return false;
     }
+    // Only closing applies a choice. EnterWeaponWheel's eager draw remains refused.
+    if (caller != nullptr && SeatedWeaponWheel() && caller == gSeatedWheelCallers[1]) {
+        log::Info("holsters: seated weapon wheel draw allowed: {}", ue3::runtime::FullName(caller));
+        gSinceAllowedDraw = 0.0;
+        return false;
+    }
     if (caller != nullptr && std::find(gAllowedCallers.begin(), gAllowedCallers.end(), caller) != gAllowedCallers.end()) {
         log::Info("holsters: the game draws your weapon for {}: let through (medi-gel and powers need combat mode)",
             ue3::runtime::FullName(caller));
@@ -604,11 +612,12 @@ bool OnDrawPrimaryWeapon(ue3::Object* context, ue3::Function* /*function*/, ue3:
     }
     ++gRefusedDraws;
     bool const trigger = caller != nullptr && caller == gFireWeapon;
-    gRefusedBuzz = gRefusedBuzz || !trigger;
+    bool const silent = trigger || (caller != nullptr && SeatedWeaponWheel() && caller == gSeatedWheelCallers[0]);
+    gRefusedBuzz = gRefusedBuzz || !silent;
     log::Info("holsters: the game wanted to draw your weapon ({}): refused, only a grab at a holster draws "
               "([Holsters] onlyHolstersDraw = 1){}",
         caller != nullptr ? ue3::runtime::FullName(caller) : std::string("called from native code"),
-        trigger ? "; the trigger's, so no buzz" : "");
+        silent ? "; trigger or seated wheel entry, so no buzz" : "");
     return true;
 }
 #endif
@@ -625,6 +634,12 @@ void AllowGameDraw(bool begin) {
 
 bool BlocksGameDraws() {
     return gBlockDraws;
+}
+
+bool SeatedWeaponWheel() {
+    auto const settings = hand_calibration::GetHolsters();
+    return body_calibration::Position() == vr::calibration::PlayPosition::Seated &&
+        settings.enabled && settings.seatedWeaponWheel;
 }
 
 std::string DrawByName(std::string_view name) {
@@ -682,6 +697,7 @@ bool TryStartup() {
         log::Warn("holsters: SFXPawn_Player.DrawPrimaryWeapon not found: the game may still draw by itself");
     }
     gFireWeapon = gFireWeaponFn.Get();
+    gSeatedWheelCallers = {gEnterWeaponWheelFn.Get(), gWeaponWheelDeactivatedFn.Get()};
     gEnterPowerWheel = gEnterPowerWheelFn.Get();
     gExitPowerWheel = gExitPowerWheelFn.Get();
     log::Info("holsters: the right stick click's hold {}", gEnterPowerWheel != nullptr && gExitPowerWheel != nullptr
@@ -904,7 +920,7 @@ void Tick(double deltaSeconds, Link const& link) {
         ++gEntries;
         log::Info("holsters: right hand entered {} ({}, {:.2f} m from its center, radius {:.2f}){}", name(step.entered),
             slots::Name(settings.layout.slots[step.entered].weapon), input.distance[step.entered],
-            settings.layout.slots[step.entered].radius, Carries(settings.layout.slots[step.entered].weapon) ? "" : ": you don't carry one");
+            input.radius[step.entered], Carries(settings.layout.slots[step.entered].weapon) ? "" : ": you don't carry one");
         Pulse(link, slots::EnterEdge(strength));  // the edge; the contact buzz follows below
     }
     switch (step.action) {
@@ -1003,7 +1019,7 @@ void AdjustPad(gamepad::Options& options) {
 double EyeHeight() {
     // Grenades use this even when weapon holsters are disabled (UpdateEyeHeight then stands down).
     return body_calibration::Position() == vr::calibration::PlayPosition::Seated
-        ? body_scale::StandingEyeHeight().value_or(gEyeHeight) : gEyeHeight;
+        ? slots::kReferenceEyeHeight : gEyeHeight;
 }
 
 bool RightHandInSlot() {
@@ -1133,6 +1149,7 @@ void Shutdown() {
     gSwitchToWeapon = gTryHolster = gIsInCombatActionState = gIsSwitchingWeapons = gGetRangedWeaponType = nullptr;
     gEnterPowerWheel = gExitPowerWheel = nullptr;
     gAllowedCallers.fill(nullptr);
+    gSeatedWheelCallers.fill(nullptr);
 #endif
     gPowerHold = {};
     gPowerHoldOn = false;

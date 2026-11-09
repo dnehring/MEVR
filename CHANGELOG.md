@@ -7,13 +7,43 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+## 0.2.0 (2026-11-09)
+
+- **One VR mode: life-size stereo in first person.** Advanced no longer offers the original MELE-VR renderer's choices
+  (Mono and Depth modes, hand-set eye distance, convergence and eye swap, third person, lean, the field of view fill,
+  fixed render sizes, the classic menu). An old `MELEVR.ini` that still sets them is ignored at launch, and the game
+  log lists what was put back. *Reset VR settings* now returns to these standard settings, not the original mod's.
+
+- **Reachable seated holsters.** Seated play raises and moves the hip grab zones forward over the thighs, with larger
+  zones and independently adjustable shoulder/chest reach points. Standing placement is unchanged. The native weapon
+  wheel can draw while seated as a button alternative; `[Holsters] seatedWeaponWheel = 0` disables that fallback.
+
+- **Shepard's size is right from the first frame.** The mod remembers Shepard's standing height for each body model, so
+  after a load your calibrated size applies at once instead of after standing holstered for a second and a slow resize.
+
 - **Update directly from Setup.** Welcome > Updates can download, verify and install a newer release without opening
   a browser. It waits for the game to close and preserves game settings, VR profiles and calibration. Older installers
   need one manual upgrade to gain this feature.
+
 - **Powers: the target on your gun only when it would work.** Overkill's target shows on the assault rifle only (Marksman
   the pistol, Carnage the shotgun, Assassination the sniper rifle), and no gesture target shows while the power cools down
   or while your left hand holds the gun.
   The power wheel's last tile, **No power**, puts your powers away until you pick one again.
+
+- **Omni-tool:** the rail of the game's screens now stands to the right of a wrist screen, where your right hand reaches
+  it, and slides out of the screen's edge after the screen unfolds. While a wrist screen is up, the rail, the screens and
+  the hacking puzzle's d-pad answer Shepard's own fingertip. The gauntlet comes on like a light, dim to full.
+
+- **Weapons after a crouch:** with a gun drawn, the weapons no longer stay low after you crouch and stand up again.
+
+- **Galaxy map and landing:** the map stays on the CIC table through travel, movies and radio calls, its planet buttons
+  and travel question answer the pointer, and a new planet's party screen opens in the room you land in.
+
+- **Smoother start and play:** the game no longer resets its graphics four times while starting, each a stall; motion
+  blur stays off; the right eye keeps the game's anti-aliasing; a first Automatic install starts at a lower resolution.
+
+- **Squad voice orders:** a weapon named with an order is equipped first ("sniper, take the ones on the bridge"), and the
+  recognizer's past tenses and fillers ("switched to", "took them out", "yeah") no longer stop an order.
 
 ## 0.1.1 (2026-11-07)
 

@@ -1381,6 +1381,7 @@ void CheckFunctions() {
         "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
         "SFXGame.BioPawn.PlaySoundSet",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
+        "SFXGame.SFXGameModeWeaponWheel.Deactivated",  // seated holster fallback: draw on close
         "SFXGame.SFXGameModeDefault.TryHolster",
         "SFXGame.SFXGameModeDefault.StormOn",   // game/sprint: the sprint button as a faster run (2026-11-06)
         "SFXGame.SFXGameModeDefault.StormOff",

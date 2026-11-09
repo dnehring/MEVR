@@ -9,9 +9,12 @@
 #   tools/conversation-launch.ps1 ice50_mira -World screen   on the 3D screen instead (mevr convo world <mode>; the setting after)
 #   tools/conversation-launch.ps1 ice50_mira -Snapshot       a snapshot 4 s into the conversation
 #   tools/conversation-launch.ps1 sta20_avina_keeper -Save John02_21
-#                                                            a save from the career's own plot state instead of `open`:
-#                                                            John02\John02_MEVR.pcsav at the owner (below)
-#   tools/conversation-launch.ps1 -RestoreSaves              put the Save folder back as the last -Save run found it
+#                                                            from the career's own plot: its save at the owner, QuickLoaded
+#   tools/conversation-launch.ps1 sta20_avina_keeper -Save John02_QuickSave -Rewind avina.json
+#                                                            ... with a beat's plot values put back (le1-save.py diff): it replays
+#   tools/conversation-launch.ps1 sta20_avina_keeper -Save John02_21 -Load menu
+#                                                            John02_MEVR.pcsav through the game's Load screen instead
+#   tools/conversation-launch.ps1 -RestoreSaves              the Save folder as before the first -Save since the last restore
 #
 # How: the catalogue (python tools/conversation-scan.py scan.jsonl --catalogue %LOCALAPPDATA%\MEVR\conversation-catalogue.json;
 # tools/conversation-scan writes scan.jsonl from the game's packages, no game needed) knows, per conversation start, the persistent
@@ -26,18 +29,21 @@
 # spawned by the plot isn't there (the catalogue has no place for it: `ownerAt` empty), and lines can play out of their story.
 # Opening maps autosaves over the player's career: back up the saves first (docs/knowledge/gotchas/test-runs-overwrite-saves.md).
 #
-# -Save <career save> (research/59 "The launcher", "A save instead of open"): `open` starts the level from the story's start,
-# so the plot isn't the career's (a scene's conditional refuses, the Citadel's arrival never plays). Instead, tools/le1-save.py
-# writes <career>_MEVR.pcsav beside the career's saves (John02\John02_21 -> John02\John02_MEVR.pcsav): the career's whole plot
-# and world state, the catalogue's persistent level (`map`), Shepard 1.5 m in front of the owner facing it, the newest time, so
-# the Load screen lists it. It backs up the Save folder first (%LOCALAPPDATA%\MEVR\save-backups; -RestoreSaves puts back what
-# changed and deletes the *_MEVR saves). Measured 2026-11-09: the title's Enter resumes the profile's last save (GamerProfile
-# names it), never a newer one, and the game lists a career's saves once at its start, so the first -Save of a career runs with
-# the game closed (or the game is restarted after it); after that the file exists and later runs just rewrite it. With the game
-# running, the launcher loads it itself through the game's own Load screen (the pause menu's second entry, `mevr gui Menu` and
-# the GUI's pad events; the record is found by file name in BioSFHandler_LoadGame.lstRecords and the confirm box's context
-# checked against it), waits for Shepard on foot at the place, then streams the chunk and fires the start as with -NoOpen. The
-# plot conditions the start checks are the career's: a scene the career has played may refuse to play again.
+# -Save <career save> (research/59 "The launcher", "A save instead of open", "Replaying a beat"): `open` starts the level from
+# the story's start, so the plot isn't the career's (a scene's conditional refuses, the Citadel's arrival never plays). Instead
+# tools/le1-save.py writes the career's save with the catalogue's persistent level (`map`) and Shepard 1.5 m in front of the
+# owner facing it (and -Rewind: a beat's plot values as before it), and the game loads it:
+# - `-Load quick` (default): it is the career's quicksave (<career>\<career>_QuickSave.pcsav) and the console's `QuickLoad` loads
+#   it, which reads the file whatever the game listed at its start (measured 2026-11-09). The game must have that career loaded
+#   (any of its saves: the title's Enter resumes the profile's last one); a quicksave the player made is never replaced unless
+#   -ReplaceQuickSave (the backup keeps it).
+# - `-Load menu`: <career>_MEVR.pcsav through the game's own Load screen (`mevr gui Menu`, the GUI's pad events; the record found
+#   by file name in BioSFHandler_LoadGame.lstRecords, the confirm box's context checked). The Load screen lists saves once, at
+#   the game's start, so a career's first menu run needs the game closed (or a restart).
+# It backs up the Save folder first (%LOCALAPPDATA%\MEVR\save-backups) and records the files it creates (generated.txt there);
+# -RestoreSaves puts back every file of the oldest backup since the last restore that changed and deletes those files. With the
+# game not running it stops after writing. The start's own conditions are the career's: a scene it has played may refuse or play
+# its repeat; a rewind of that beat (le1-save.py diff of saves from before and after it) brings back the first time.
 param(
     [Parameter(Position = 0)] [string]$Name = '',
     [string]$List = '',
@@ -52,6 +58,10 @@ param(
     [double]$StandM = 1.5,
     [string]$Save = '',
     [string]$Area = '',
+    [string]$Rewind = '',
+    [switch]$RewindMaps,
+    [ValidateSet('quick', 'menu')] [string]$Load = 'quick',
+    [switch]$ReplaceQuickSave,
     [switch]$RestoreSaves,
     [string]$SaveRoot = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'BioWare\Mass Effect Legendary Edition\Save\ME1')
 )
@@ -59,12 +69,15 @@ $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
 
 $backupRoot = Join-Path $env:LOCALAPPDATA 'MEVR\save-backups'
+$generated = Join-Path $backupRoot 'generated.txt'  # the files -Save created (full paths), deleted by -RestoreSaves
 if ($RestoreSaves) {
-    $last = Get-ChildItem -LiteralPath $backupRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
-    if (-not $last) { throw "no backup in $backupRoot" }
-    Write-Host "restoring $SaveRoot from $($last.FullName)"
-    foreach ($f in Get-ChildItem -LiteralPath $last.FullName -File -Recurse) {
-        $rel = $f.FullName.Substring($last.FullName.Length).TrimStart('\')
+    # The oldest backup since the last restore: the Save folder before the first -Save of this round.
+    $open = @(Get-ChildItem -LiteralPath $backupRoot -Directory -ErrorAction SilentlyContinue | Where-Object { -not (Test-Path (Join-Path $_.FullName 'restored')) } | Sort-Object Name)
+    if ($open.Count -eq 0) { throw "no backup in $backupRoot since the last restore" }
+    $first = $open[0]
+    Write-Host "restoring $SaveRoot from $($first.FullName)"
+    foreach ($f in Get-ChildItem -LiteralPath $first.FullName -File -Recurse) {
+        $rel = $f.FullName.Substring($first.FullName.Length).TrimStart('\')
         $dst = Join-Path $SaveRoot $rel
         if (-not (Test-Path -LiteralPath $dst) -or (Get-FileHash -LiteralPath $dst).Hash -ne (Get-FileHash -LiteralPath $f.FullName).Hash) {
             New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
@@ -72,11 +85,15 @@ if ($RestoreSaves) {
             Write-Host "   put back $rel"
         }
     }
-    foreach ($f in Get-ChildItem -LiteralPath $SaveRoot -File -Recurse -Filter '*_MEVR.pcsav') { Remove-Item -LiteralPath $f.FullName; Write-Host "   deleted $($f.Name)" }
+    $made = @(if (Test-Path -LiteralPath $generated) { Get-Content -LiteralPath $generated | Where-Object { $_ } } else { @() })
     foreach ($f in Get-ChildItem -LiteralPath $SaveRoot -File -Recurse) {
         $rel = $f.FullName.Substring($SaveRoot.Length).TrimStart('\')
-        if (-not (Test-Path -LiteralPath (Join-Path $last.FullName $rel))) { Write-Warning "$rel is newer than the backup: left as it is" }
+        if (Test-Path -LiteralPath (Join-Path $first.FullName $rel)) { continue }
+        if ($made -contains $f.FullName) { Remove-Item -LiteralPath $f.FullName; Write-Host "   deleted $rel (written by -Save)" }
+        else { Write-Warning "$rel is newer than the backup and not written by -Save: left as it is" }
     }
+    foreach ($d in $open) { New-Item -ItemType File -Force (Join-Path $d.FullName 'restored') | Out-Null }
+    if (Test-Path -LiteralPath $generated) { Remove-Item -LiteralPath $generated }
     return
 }
 
@@ -223,6 +240,11 @@ function Load-ThroughMenu([string]$stem) {
 }
 
 # -Save: a save at the owner instead of `open`.
+function Current-Career() {
+    $text = Console "mevr instances BioSaveGame`nmevr props 0"
+    $m = [regex]::Match($text, '"m_sCharacterID": "([^"]*)"')
+    if ($m.Success) { $m.Groups[1].Value } else { '' }
+}
 if ($Save) {
     $source = $Save
     if (-not (Test-Path -LiteralPath $source)) {
@@ -230,30 +252,47 @@ if ($Save) {
         $source = @(Get-ChildItem -LiteralPath $SaveRoot -Recurse -File -Filter $leaf | Select-Object -First 1 -ExpandProperty FullName)[0]
         if (-not $source) { throw "no save $leaf under $SaveRoot" }
     }
+    $source = (Resolve-Path -LiteralPath $source).Path
     $career = Split-Path -Leaf (Split-Path $source)
-    $target = Join-Path (Split-Path $source) "$($career)_MEVR.pcsav"
+    $target = Join-Path (Split-Path $source) $(if ($Load -eq 'quick') { "$($career)_QuickSave.pcsav" } else { "$($career)_MEVR.pcsav" })
+    $made = @(if (Test-Path -LiteralPath $generated) { Get-Content -LiteralPath $generated | Where-Object { $_ } } else { @() })
+    $ours = $made -contains $target
+    if ($Load -eq 'quick' -and (Test-Path -LiteralPath $target) -and -not $ours -and -not $ReplaceQuickSave) {
+        throw "$career has a quicksave of its own ($target): -Load menu writes $($career)_MEVR.pcsav instead, or -ReplaceQuickSave (the backup keeps it)"
+    }
     $p = Stand-Place
     if ($null -eq $p) { throw "$($entry.conversation): no place known for the owner or the stage (ownerAt and stageAt empty)" }
     $face = $(if ($null -ne $p.face) { $p.face } else { 0 })
+    $running = [bool](Get-Process MassEffect1 -ErrorAction SilentlyContinue)
+    if ($running -and $Load -eq 'quick') {
+        $now = Current-Career
+        if ($now -ne $career) { throw "the game has career '$now' loaded, QuickLoad loads that career's quicksave: load any save of $career first (or -Load menu)" }
+    }
     # The Save folder first (the game autosaves into the career on its own: docs/knowledge/gotchas/test-runs-overwrite-saves.md).
     $backup = Join-Path $backupRoot (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss')
     New-Item -ItemType Directory -Force $backup | Out-Null
     Copy-Item -Path (Join-Path $SaveRoot '*') -Destination $backup -Recurse -Force
     Write-Host "   the Save folder backed up to $backup (tools/conversation-launch.ps1 -RestoreSaves puts it back)"
+    # A source that is the target itself (a rewind of the last quicksave) is read before it is replaced.
+    $copy = $source
+    if ($source -eq $target) { $copy = Join-Path $backup "source-$(Split-Path -Leaf $source)"; Copy-Item -LiteralPath $source -Destination $copy }
+    if (-not (Test-Path -LiteralPath $target)) { Add-Content -LiteralPath $generated -Value $target }
     $inv = [Globalization.CultureInfo]::InvariantCulture
-    $writeArgs = @('-I', (Join-Path $tools 'le1-save.py'), 'write', $source, $target, '--level', $entry.map, '--location',
+    $writeArgs = @('-I', (Join-Path $tools 'le1-save.py'), 'write', $copy, $target, '--level', $entry.map, '--location',
         $p.x.ToString('0.0', $inv), $p.y.ToString('0.0', $inv), ($p.z + 20).ToString('0.0', $inv), '--yaw', ([double]$face).ToString('0.0', $inv), '--force')
     if ($Area) { $writeArgs += @('--area', $Area) }
+    # A beat's rewind (tools/le1-save.py diff <before> <after> --rewind-out): its plot values as before it, so it plays again.
+    if ($Rewind) { $writeArgs += @('--rewind', (Resolve-Path -LiteralPath $Rewind).Path); if ($RewindMaps) { $writeArgs += '--with-maps' } }
     $out = & python @writeArgs 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { throw "tools/le1-save.py failed: $out" }
+    foreach ($line in ($out -split "`n" | Where-Object { $_ -match '^rewind: ' })) { Write-Host "   $($line.Trim())" }
     Write-Host ("   wrote {0} from {1}: {2}, Shepard at {3:0} {4:0} {5:0} ({6}), facing {7:0} deg" -f $target, (Split-Path -Leaf $source), $entry.map, $p.x, $p.y, $p.z, $p.what, $face)
-    if (-not (Get-Process MassEffect1 -ErrorAction SilentlyContinue)) {
-        Write-Host "   the game is not running: start it (tools/launch-game.ps1; its Enter resumes the career's last save, not this one)"
-        Write-Host '   and run this again: the game then lists the file, and the launcher rewrites it and loads it through the Load screen.'
-
+    if (-not $running) {
+        if ($Load -eq 'quick') { Write-Host "   the game is not running: start it, load any save of $career (the title's Enter resumes the profile's last one), and run this again" }
+        else { Write-Host '   the game is not running: start it and run this again (the game then lists the file; the launcher loads it through the Load screen)' }
         return
     }
-    Load-ThroughMenu "$($career)_MEVR"
+    if ($Load -eq 'quick') { Console 'QuickLoad' | Out-Null; Write-Host '   QuickLoad' } else { Load-ThroughMenu "$($career)_MEVR" }
     $deadline = (Get-Date).AddSeconds($LoadSeconds)
     $arrived = $false
     while ((Get-Date) -lt $deadline -and -not $arrived) {

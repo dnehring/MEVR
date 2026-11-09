@@ -1,6 +1,19 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-09 Shepard's saved standing height (galaxy-labels; research/58 section 8): load a save, stand holstered a
+  second (log `measured Shepard's standing eye ... saved`), then load again: the log names the saved value and Shepard is
+  your size from the first frame, no slow resize. Swap armour (a new mesh: measured once). Seated: the same without standing.
+
+- [ ] 2026-11-09 seated holster reach (galaxy-labels; research/19 section 12; owner builds): with seated mode and both
+  a fresh profile and a tall saved standing height, draw/return pistol, cross-draw shotgun, both shoulder rifles; check
+  chair arms/thigh clearance, early buzz, look-down/lean/yaw/recenter, no accidental draws while resting or aiming.
+  Take/return/throw grenades with both hands, verify grenade versus holster/support-grip priority and repeat with weapon
+  holsters disabled. Reload and restart after changing each seated offset/radius; standing offsets/remaps/off switches
+  must survive. In a combat area use the native weapon wheel to choose Shepard's pistol/rifles from holstered, release,
+  hold/release the right grip, cancel/close without a choice; verify fallback opt-out and trigger refusal. Switch Standing:
+  original hip/shoulder/chest reach, height scaling, physical crouch, L3, grip-hold, powers and weapon-wheel policy remain.
+
 - [ ] 2026-11-08 in-memory camera diagnostic (research/63, performance priority 1): with a normal build of
   the candidate, open classic VR hands calibration and confirm current camera measurements. Use trigger
   alignment after recentering, then verify the explicitly saved profile survives restart. Arm-length Save
@@ -23,7 +36,8 @@
   seated profile (Shepard's standing size) with one holding a known standEyeM. Lean/lower/raise the head: view moves 1:1,
   body size stays fixed, no physical crouch; L3 crouches/stands. Recenter seated, switch Standing/Seated in the menu;
   check hips/shoulder holsters, grenade chest slot, wrist target and Computer screen holds; standing calibration/crouch
-  must stay as before. With no standing reference yet, holster and let Shepard stand for about a second to settle it.
+  must stay as before. With no saved standing reference for his mesh yet (`[Body.Shepard]`), holster and let Shepard stand
+  for about a second to settle it; it is saved for the next loads.
   See research/25 section 11; offline previews and rules tests are not headset acceptance.
 
 - [ ] 2026-11-07 held floor lock + body bounds (galaxy-labels; source changes, owner builds/deploys): with `[Body] floorLock = 1`,

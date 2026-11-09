@@ -93,8 +93,15 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   Closed it costs nothing. Offline look: `mevr-menu-preview` (PNGs of every section and state, and the
   frame time). Log `main menu:` (its cost every 10 s while open), `menu:`/`rmlui:`; snapshots `"mainMenu"`
   and a `mainmenu` layer.
-- **Halcyon's own menu** is the developer fallback: Ctrl or Shift + `\`, or Advanced > Diagnostics >
-  Classic renderer menu (both thumbsticks held no longer open it). It takes the pad (Touch merged in as
+- **One supported renderer configuration** (2026-11-09, the owner: players get the life-size first-person experience only):
+  `MevrBridge::ModernBaseline` (`[MEVR]` seam after `LoadFromIni` and `LoadProfile`; also the menu's Reset) pins Stereo 2
+  (no mono, AER, DIBR or old SBS), `sfr2Metric`, `sfr2MetricEyeFrustum`, `sfr2MetricDepth = 1`, `questFovMatch`, `vrFovFillEnabled`,
+  `leanEnabled`, `lookSensitivity = 1`, `menuFlat`, `galaxyFlat`, `fpEnabled`, `fpHideHead`, no head aim, `decoupledPitch`,
+  no depth-pop key, whatever MELEVR.ini says (log `halcyon bridge: the MEVR baseline`); a changed mode rewrites the game's
+  render size for the next launch. Our menu's Advanced has no rows for them (tabs Tracking, Performance, Graphics, Game UI,
+  Profiles, Diagnostics). Only the classic menu can still change them live, for that session.
+- **Halcyon's own menu** is the developer fallback: Ctrl or Shift + `\` (no longer a row in our menu since 2026-11-09;
+  both thumbsticks held no longer open it). It takes the pad (Touch merged in as
   Xbox pad 0: left stick/d-pad, A, B; upstream never set ImGui's `HasGamepad` backend flag, so pad nav
   was dead until we did) and our laser pointer (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray
   on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the
@@ -279,7 +286,10 @@ switching frameworks.
   because the game's RB casts the mapped power for any press under its 0.3 s; `powerWheel = y/x/b` are still RB.
   Contact haptics while the hand is in a slot
   (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
-  `core/xr/Floor`, STAGE). Squad weapons: below. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
+  `core/xr/Floor`, STAGE). Seated uses fixed-metre head-relative reach points instead (research/19 section 12): raised,
+  forward hips, adjustable `seatedHipRight/Left`, `seatedShoulderRight/Left`, `seatedGrenade`; `seatedWeaponWheel = 1`
+  permits the native weapon wheel's draw on close as a seated button fallback. Squad weapons: below. Settings:
+  `[Holsters]` in `ASI\LE1MEVR.ini`.
   **Only holsters draw** (`onlyHolstersDraw = 1`, 2026-10-25): on foot in VR with tracked controllers, once the
   CallFunction hook is in, the game's own draws with the weapon away (`SFXPawn_Player.DrawPrimaryWeapon`: melee and
   grenade buttons, the weapon wheel, the holster key's toggle) are skipped by `engine/call_function`'s skip handler (it
@@ -318,7 +328,9 @@ switching frameworks.
   `cameraOffsetUp`'s vertical contribution is absorbed (the shipped -0.082 is -4.1 uu, not -8.2).
   `[Body] scale = auto` (default) uses calibrated standing eye height, else a frozen standing STAGE reference, over Shepard's
   standing holstered unscaled eyes above that same cylinder floor. The reference settles once per skeleton after a standing
-  grace period, excluding physical and game crouch; no animation/recenter chase. Scale is clamped 0.85..1.25, approaches at 0.1/s;
+  grace period, excluding physical and game crouch; no animation/recenter chase. Shepard's side is saved per mesh in
+  `[Body.Shepard] <package.mesh> = <m>` (2026-11-09, research/58 section 8): the next load seeds it at once, the run still
+  measures and rewrites it past 1 cm (`StandingReference::Seed`/`Measured`). Scale is clamped 0.85..1.25, approaches at 0.1/s;
   `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
   hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
   and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.
@@ -427,12 +439,13 @@ switching frameworks.
   scan records) is streamed with `mevr stream state <name> on` (a loaded `BioSeqAct_SetStreamingState`'s own `Activated`, else the
   world's `m_WorldStreamingStates` entry and every volume's `Retouch`; `mevr stream states` lists them; research/59 "The launcher's
   gaps closed", [verify] in the game); never `streamlevelin` (it froze the game, 2026-11-09). **From the career's own plot:
-  `-Save <career save>`** (research/59 "A save instead of open"): `tools/le1-save.py` (MIT, our own reader/writer of LE1 `.pcsav`
-  from Trilogy Save Editor's structs; round-trips every save byte for byte; level, area, place, facing, plot values; ctest
-  `mevr-le1-save`) writes `<career>_MEVR.pcsav` beside it at the owner (Save folder backed up to `%LOCALAPPDATA%\MEVR\save-backups`,
-  `-RestoreSaves` undoes it), and with the game running loads it through the game's own Load screen (`mevr gui Menu`, pad events,
-  the record found by file name), so the chunks stream by themselves and the plot is the career's. The game lists saves once at its
-  start and the title's Enter resumes the profile's last save, so a career's first `-Save` runs with the game closed. **The walk-up scenes flow**
+  `-Save <career save> [-Rewind beat.json]`** (research/59 "A save instead of open", "Replaying a beat"): `tools/le1-save.py` (MIT,
+  our own reader/writer of LE1 `.pcsav` from Trilogy Save Editor's structs; round-trips every save byte for byte; level, area,
+  place, facing, plot values; `diff <before> <after> --rewind-out` lists what a beat set, by the plot's names, and `write --rewind`
+  puts it back; ctest `mevr-le1-save`) writes the career's quicksave at the owner and the console's `QuickLoad` loads it (the game
+  must have that career loaded; a player's own quicksave is never replaced; `-Load menu`: `<career>_MEVR.pcsav` through the Load
+  screen, which lists saves once at the game's start). Save folder backed up to `%LOCALAPPDATA%\MEVR\save-backups`, `-RestoreSaves`
+  undoes it. A rewound beat (Avina's first meeting) replayed 6 of 6 times; console `QuickSave` makes the after-save. **The walk-up scenes flow**
   (research/59 "Flowing conversations", 2026-11-09, the owner's cheaper-but-riskier choice; `[Cinematics] worldFlow = all | off`,
   default all, with the world mode; `game/ConversationFlow`): the game plays a conversation start whose first entry is flagged
   `bAmbient` as its own barks (`UBioConversation::StartConversation` takes the first entry of `m_StartingList` whose plot

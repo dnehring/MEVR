@@ -29,6 +29,8 @@ struct ID3D11Resource;
 struct ID3D11DepthStencilView;
 struct D3D11_BOX;
 
+namespace MELEVR::Config { struct VrConfig; }   // [MEVR] vr_config.h's, for ModernBaseline below
+
 namespace MELEVR::MevrBridge
 {
 // The statically linked OpenXR loader's xrGetInstanceProcAddr (upstream loads openxr_loader.dll,
@@ -328,6 +330,12 @@ float ForwardLeanEmphasis() noexcept;
 // Whether first person (K) is on at launch. Upstream always boots it off (experimental, opt-in per
 // session); our VRIK is a first-person experience, so ours keeps what the active profile saved.
 bool FirstPersonAtBoot(bool saved) noexcept;
+
+// The MEVR baseline (2026-11-09, the owner: players get the life-size first-person experience only): after a profile is
+// loaded from MELEVR.ini (at launch, a profile switch) or reset, the old renderer's modes (mono, DIBR, AER, the old
+// side-by-side stereo), its hand-set stereo, third person, head aim, stick pitch and the settings those modes needed
+// are put back to the one configuration we support, whatever an old file says. `when` names the caller for the log.
+void ModernBaseline(Config::VrConfig& c, char const* when) noexcept;
 
 // ---- Test loop: eye snapshots, pose recording and replay (src/plugin/TestLoop.cpp) ------------------
 // ResolveSessionFunctions, once its session functions are resolved: replaces some of them in place

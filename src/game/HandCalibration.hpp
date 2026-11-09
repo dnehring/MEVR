@@ -184,6 +184,11 @@ struct Holsters {
     ik::body_slots::Holster holster = ik::body_slots::Holster::OwnSlot;
     bool eyeHeightFromFloor = true;
     ik::body_slots::Layout layout = ik::body_slots::DefaultLayout();
+    // [Holsters] seatedHipRight/Left, seatedShoulderRight/Left, seatedGrenade:
+    // right/up/forward/radius in fixed meters from the live neutral seated head.
+    ik::body_slots::Layout seatedLayout = ik::body_slots::SeatedLayout(layout);
+    ik::body_slots::Slot seatedGrenade = ik::body_slots::SeatedGrenadeSlot();
+    bool seatedWeaponWheel = true;  // permit deliberate wheel draws while seated
     double hapticAmplitude = 0.5;
 };
 Holsters GetHolsters();
