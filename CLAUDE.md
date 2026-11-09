@@ -416,8 +416,12 @@ switching frameworks.
   saves first. **Any conversation in two minutes, no save** (research/59 "The launcher"): `tools/conversation-launch.ps1 <name>
   [-World on] [-Snapshot]` (`-List <text>`) reads the catalogue (`conversation-scan.py --catalogue`: each start's persistent level,
   chunk, placed owner and facing), opens the level, streams the chunk's volume in, stands Shepard 1.5 m in front of the owner facing
-  it and fires the start action. Plot-loaded chunks (the medical bay's wake-up) aren't reachable yet; never `streamlevelin` (it
-  froze the game, 2026-11-09).
+  it and fires the start action. It waits for the chunk (`mevr stream chunks`: each streaming level `<package> loaded=<0|1>
+  visible=<0|1>`) and teleports 50 units up (Virmire's teleport into an unloaded chunk fell to the kill plane); a chunk the plot
+  shows through a named streaming state (the medical bay's wake-up; the catalogue's `streamStates`, from the volumes' states the
+  scan records) is streamed with `mevr stream state <name> on` (a loaded `BioSeqAct_SetStreamingState`'s own `Activated`, else the
+  world's `m_WorldStreamingStates` entry and every volume's `Retouch`; `mevr stream states` lists them; research/59 "The launcher's
+  gaps closed", [verify] in the game); never `streamlevelin` (it froze the game, 2026-11-09).
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

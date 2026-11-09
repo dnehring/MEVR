@@ -9,7 +9,11 @@ Reads the JSON lines tools/conversation-scan (C#, over Legendary Explorer's libr
 
 The catalogue is what tools/conversation-launch.ps1 reads: per conversation start, the persistent level to open, the level chunk
 to stream in (the start's package, BIOA_ICE50_06_DSG -> ICE50_06), the owner (its class, Tag, place and facing when it is placed
-in the level) and the stage's place. Game data: keep it out of the repository.
+in the level), the stage's place, and how the chunk is streamed: "touchShows" (a volume's plain state, None or Default, applied by
+a touch, lists it; the persistent level's own chunk is always there), "volumeShows" (any state of any volume lists it) and
+"streamStates" (the named world streaming states whose volume states list it: the plot sets one through
+BioSeqAct_SetStreamingState; the launcher's `mevr stream state <name> on`). A sub-package's chunk (NOR10_03_DS1) is streamed
+as its parent's (NOR10_03). Game data: keep it out of the repository.
 
 Per conversation it joins the conversation (lines, speakers), its starts in the levels' scripts (a stage: the marks the game
 puts the actors on) and its lines' matinees (each line's BioSeqEvt_ConvNode -> SeqAct_Interp), and sorts it into one kind:
@@ -137,10 +141,45 @@ def persistent(package):
     return PERSISTENT.get(area)
 
 
+def named(state):
+    # None and Default are the volume's plain state (the touch alone); anything else needs the world's state of that name on.
+    return (state.get('state') or 'None').lower() not in ('', 'none', 'default')
+
+
+def lists(chunk, names):
+    chunks = {chunk.lower()}
+    parent = re.match(r'(.*)_DS\d$', chunk, re.IGNORECASE)  # BIOA_NOR10_03_DS1: a sub-package of the chunk NOR10_03
+    if parent:
+        chunks.add(parent.group(1).lower())
+    wanted = chunks | {f'bioa_{c}' for c in chunks}
+    return any((n or '').lower() in wanted for n in names)
+
+
+def streaming(volumes, chunk, persistent_map):
+    """How the volumes of a persistent level stream a chunk: (a plain touch shows it, any state shows it, the named states)."""
+    touch, any_state, states = False, False, set()
+    if persistent_map and f'bioa_{chunk}'.lower() == persistent_map.lower():
+        touch = any_state = True  # the persistent level's own package: always loaded
+    for v in volumes:
+        for s in v['states']:
+            if not lists(chunk, s.get('visible') or []):
+                continue
+            any_state = True
+            if named(s):
+                states.add(s['state'])
+            else:
+                touch = True
+    return touch, any_state, sorted(states)
+
+
 def catalogue(path, out):
     entries = []
+    volumes = collections.defaultdict(list)  # persistent level -> its volumes (from its own package and its chunks')
     for line in open(path, encoding='utf-8'):
         r = json.loads(line)
+        if r['kind'] == 'volume':
+            volumes[persistent(r['package'])].append(r)
+            continue
         if r['kind'] != 'start' or not r.get('conv'):
             continue
         chunk = re.sub(r'^BIOA_', '', re.sub(r'_(DSG|LAY).*$', '', r['package']), flags=re.IGNORECASE)
@@ -150,12 +189,19 @@ def catalogue(path, out):
             'map': persistent(r['package']), 'owner': r.get('owner'), 'ownerClass': r.get('ownerClass'), 'ownerTag': r.get('ownerTag'),
             'ownerAt': r.get('ownerAt'), 'ownerYaw': r.get('ownerYaw'), 'stage': r.get('stage'), 'stageAt': r.get('stageAt'),
         })
+    for e in entries:
+        e['touchShows'], e['volumeShows'], e['streamStates'] = streaming(volumes.get(e['map'], []), e['chunk'], e['map'])
     entries.sort(key=lambda e: (e['conversation'], e['ownerAt'] is None, e['action']))
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(entries, f, indent=0)
     placed = sum(1 for e in entries if e['ownerAt'])
     print(f"{len(entries)} starts of {len({e['conversation'] for e in entries})} conversations -> {out}; {placed} with a placed owner, "
           f"{sum(1 for e in entries if e['map'] is None)} without a known persistent level")
+    no_volume = [e for e in entries if not e['volumeShows']]
+    no_touch = [e for e in entries if not e['touchShows']]
+    print(f"streaming ({sum(len(v) for v in volumes.values())} volumes): {len(no_touch)} starts whose chunk no plain touch shows, "
+          f"{sum(1 for e in no_touch if e['streamStates'])} of them with a named streaming state; {len(no_volume)} that no volume state "
+          f"lists at all, {sum(1 for e in no_volume if e['streamStates'])} of them with a named state")
 
 
 def main(argv):
