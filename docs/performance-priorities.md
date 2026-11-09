@@ -2,9 +2,10 @@
 # Gameplay performance priorities
 
 Updated 2026-11-09. Evidence: [head-turn investigation](../research/63-head-turn-performance.md),
-[stationary C-Sec capture](../research/65-citadel-stationary-performance.md), and
+[stationary C-Sec capture](../research/65-citadel-stationary-performance.md),
 [six-run preset matrix](../research/66-citadel-performance-matrix.md), and
-[startup/title investigation](../research/67-startup-performance.md).
+[startup/title investigation](../research/67-startup-performance.md), and
+[culling/startup follow-up](../research/68-culling-and-startup-followup.md).
 Reusable validation: [cafeteria QA](../tools/qa-cafeteria/README.md) and
 [hub route catalog](../tools/qa-hubs/README.md). Hub drafts remain excluded until their actual scene and walking route are verified.
 
@@ -18,8 +19,8 @@ Keep One Draw enabled. Successful measurement/restoration does not mean the perf
 | 2 | Long gaps outside measured ticks | Rare Normandy intervals reached 80-93 ms; the custom Citadel workload reached 36 ms with a 31 ms gap outside the full hook. Queued calls were absent and drains tiny in the Citadel trace. Inspect scheduling/waits; do not disable queued-call safety. | Not reproduced at the old severity in the six preset runs; remains open |
 | 3 | Remaining host CPU bursts | Preset runs reach 7.76-10.31 ms host work; custom Citadel reached 25.56 ms, with zero settings writes. Sample the host/mod routines and distinguish polling/object scans from waits before optimizing. | Separate from the fixed diagnostic INI writes; cause unresolved |
 | 4 | Physical-headset submission stalls | Earlier VDXR captures have 35-62 ms worst intervals; 68 of 72 long intervals are dominated by xrEndFrame. Correlate GPU/resource/scheduling evidence with the physical headset. | Null-driver runs cannot close this issue |
-| 5 | Dense-scene render CPU and oversize source resolution | Preset p99 frame intervals are 9.62-10.29 ms; custom 3840-square source reaches 16.10 ms. Preset bundles also change shadows/culling/foliage, so isolate those costs before assigning causality. | Culling contribution unproven; preserve the oversize case as a stress test |
-| 6 | Startup graphics resets and presentation pacing | Two title captures reproduce about 153 ms host stalls during the remaining 15-second blanket settings reset, despite healthy blur protection. Make settling correction selective/guard-aware. Separately, the approximately 32 ms title cadence is dominated by xrWaitFrame, not CPU busy time; verify on a physical headset. | Reset path measured; behavior fix and physical pacing validation open |
+| 5 | Dense-scene render CPU and oversize source resolution | Isolate 8/4/0-pixel small-object culling with fixed resolution/AA/One Draw. New runs are runtime-wait limited; the incomplete comparison cannot establish equal throughput. | Controlled harness implemented; repeated culling comparison open |
+| 6 | Startup graphics resets and presentation pacing | Two title captures reproduce about 153 ms host stalls during the 15-second blanket reset. Guard-aware settling suppression is implemented. The probe now follows render-thread handoffs, keeping wall gaps and excluding invalid cross-thread CPU math. | Probe build/unit checks passed; candidate build and full-transition A/B still required; physical pacing remains open |
 | 7 | Broader traversal | The fixed C-Sec benchmark does not validate the user's full walk or other hubs. Preserve the archived save and require an observed route before admitting another scene. | Other map development remains paused |
 
 ## Current regression gate

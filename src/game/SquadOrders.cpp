@@ -587,6 +587,11 @@ std::string Dispatch(sc::Resolved const& given, sc::Action const& action, std::o
     // The squad's answer (game/SquadAck): expected after each order, the game's line or ours.
     auto const expect = [&](Recipient const& rc, sc::Order order) { squad_ack::Expect(rc.pawn, rc.letter, rc.name, order, gClock); };
     std::string what;
+    // "Sniper, those on the bridge", "shoot him with your sniper": the weapon named with an order is equipped first, through
+    // the squad menu's switch (until 2026-11-09 only an equip alone read the weapon, and the order went out with the gun in hand).
+    if (r.weapon >= 0 && r.order != sc::Order::None) {
+        for (Recipient const& rc : to) note(std::format("equip {}: {}", sc::WeaponCode(r.weapon), squad_weapons::GiveWeapon(rc.pawn, r.weapon)));
+    }
     switch (r.order) {
     case sc::Order::Follow:
     case sc::Order::Regroup:

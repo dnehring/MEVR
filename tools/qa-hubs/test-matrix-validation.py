@@ -53,6 +53,12 @@ def main():
         (run / 'analysis.json').write_text(json.dumps(altered))
         check(False)
     (run / 'analysis.json').write_text(json.dumps(analysis))
+    for field in ('overlappingPresents', 'contextChanges'):
+        altered_meta = json.loads(json.dumps(meta))
+        altered_meta['renderInstrumentation'] = {'version': 3, field: 1}
+        (run / probe_name).write_text(json.dumps(altered_meta))
+        check(False)
+    (run / probe_name).write_text(json.dumps(meta))
     meta['resolution']['render'][0] += 2
     altered = json.loads(json.dumps(analysis))
     altered[0]['resolution'] = meta['resolution']

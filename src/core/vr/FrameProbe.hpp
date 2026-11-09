@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -64,6 +65,25 @@ struct Frame {
     bool xrFrame = false;               // xrWaitFrame ran (a headset frame)
     std::uint32_t accessViolations = 0;  // raised on any thread during the frame
     std::uint32_t pass0Marks = 0;       // how often the first eye was captured (the last one counts)
+    std::uint32_t renderThread = 0, previousRenderThread = 0;
+    bool cpuValid = true;              // false across a thread handoff: cycle counters are unrelated
+};
+
+// A nonblocking instrumentation lease. Concurrent/nested Presents keep running, but are not sampled
+// into the same row. It never serializes the game or holds a mutex across an XR/runtime call.
+class PresentOwnership {
+public:
+    bool TryEnter(std::uint32_t thread) {
+        if (thread == 0) return false;
+        std::uint32_t empty = 0;
+        return owner_.compare_exchange_strong(empty, thread, std::memory_order_acq_rel);
+    }
+    void Leave(std::uint32_t thread) {
+        owner_.compare_exchange_strong(thread, 0, std::memory_order_release);
+    }
+    std::uint32_t Owner() const { return owner_.load(std::memory_order_acquire); }
+private:
+    std::atomic<std::uint32_t> owner_{0};
 };
 
 // One engine tick on the game thread: the engine's own tick, then ours (the host's and the mod's).

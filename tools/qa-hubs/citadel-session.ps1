@@ -11,7 +11,8 @@ param(
  [ValidateRange(512,4096)][int]$EyeWidth=2284, [ValidateRange(512,4096)][int]$EyeHeight=2448,
  [ValidateRange(1,360)][double]$SweepDegrees=120,
  [ValidateSet('Current','Quality','Balanced','Performance')][string]$Workload='Current',
- [ValidateSet('Splash','Flight')][string]$StartupPhase='Splash',
+ [ValidateRange(-1,64)][double]$CullRadiusPx=-1,
+ [ValidateSet('Splash','Flight','Transition')][string]$StartupPhase='Splash',
  [switch]$Diagnostic,
  [string]$LocalAppData=[Environment]::GetFolderPath('LocalApplicationData')
 )
@@ -73,8 +74,11 @@ if($Action -notin @('Measure','Startup')){
  $route=($routeJson -join "`n")|ConvertFrom-Json
  if($Capture -and $CaptureStartSeconds+$CaptureSeconds+5 -gt $route.durationSeconds){throw 'Capture window exceeds the recording.'}
 }elseif($Action -eq 'Measure' -and $CaptureSeconds -lt 30){throw 'Stationary measurement requires 30-120 seconds.'}
-if($Action -eq 'Startup' -and (-not $FakeHeadset -or $CaptureSeconds -lt 15 -or $CaptureSeconds -gt 30 -or $Diagnostic)){
- throw 'Startup requires FakeHeadset, a 15-30 second title capture, and no intrusive diagnostic sampler.'
+if($Action -eq 'Startup' -and (-not $FakeHeadset -or $CaptureSeconds -lt 15 -or ($StartupPhase -ne 'Transition' -and $CaptureSeconds -gt 30) -or $Diagnostic)){
+ throw 'Startup requires FakeHeadset, 15-30 seconds for a title segment or up to 120 seconds for Transition, and no intrusive sampler.'
+}
+if($CullRadiusPx -ge 0 -and ($Action -ne 'Measure' -or -not $FakeHeadset -or $Workload -eq 'Current')){
+ throw 'A culling override requires a named workload, Measure and FakeHeadset.'
 }
 if($Action -eq 'Run' -and -not (Test-Path -LiteralPath "$package\start.json")){throw 'Run -Action Bind once to automatically load and bind this archived fixture.'}
 if($Action -eq 'Bind' -and (Test-Path -LiteralPath "$package\start.json")){throw 'Start is already bound; use Run.'}
@@ -120,11 +124,11 @@ try{
  $ctx=@{RepoRoot=(Split-Path $source -Parent);GameRoot=$GameRoot;SteamRoot=$SteamRoot;ProfileRoot=$ProfileRoot;LocalAppData=$LocalAppData;
         PythonExe=$PythonExe;ExpectedAsiSha256=(Get-FileHash -LiteralPath "$asi\LE1MEVR.asi").Hash;ActiveRuntime=(Get-QaRuntime);
         FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight;Workload=$Workload;Diagnostic=[bool]$Diagnostic;
-        StartupPhase=$(if($Action -eq 'Startup'){$StartupPhase}else{''});StartupSeconds=$CaptureSeconds}
+        StartupPhase=$(if($Action -eq 'Startup'){$StartupPhase}else{''});StartupSeconds=$CaptureSeconds;CullRadiusPx=$CullRadiusPx}
  $ctx|ConvertTo-Json|Set-Content -LiteralPath "$RunDirectory\context.json"
  @{Action=$Action;PackageDirectory=$package;GameRoot=$GameRoot;SteamRoot=$SteamRoot;ProfileRoot=$ProfileRoot;PythonExe=$PythonExe;
    LocalAppData=$LocalAppData;Capture=[bool]$Capture;CaptureStartSeconds=$CaptureStartSeconds;CaptureSeconds=$CaptureSeconds;
-   FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight;SweepDegrees=$SweepDegrees;Workload=$Workload;Diagnostic=[bool]$Diagnostic;StartupPhase=$StartupPhase}|
+   FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight;SweepDegrees=$SweepDegrees;Workload=$Workload;Diagnostic=[bool]$Diagnostic;StartupPhase=$StartupPhase;CullRadiusPx=$CullRadiusPx}|
    ConvertTo-Json|Set-Content -LiteralPath "$RunDirectory\invocation.json"
  $gameConfig=Join-Path $GameRoot 'Game\ME1\BioGame\Config'
  $protected=@("$asi\LE1MEVR.ini","$asi\MELEVR.ini")
@@ -133,7 +137,7 @@ try{
  $backupReady=$true
  if($Workload -ne 'Current'){
   if($Action -notin @('Measure','Startup') -or -not $FakeHeadset){throw 'Named workloads require Measure or Startup with FakeHeadset.'}
-  & "$hub\set-workload.ps1" -RunDirectory $RunDirectory -Workload $Workload
+  & "$hub\set-workload.ps1" -RunDirectory $RunDirectory -Workload $Workload -CullRadiusPx $CullRadiusPx
  }
  # Recheck after backup; use current preferences, changing only the Resume character/slot in a temporary copy.
  if(Get-Process MassEffect1,MassEffectLauncher,MEVR-VRLauncher -ErrorAction SilentlyContinue){throw 'Another session opened during preparation.'}
@@ -164,8 +168,9 @@ try{
     ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}})|ConvertTo-Json|
     Set-Content -LiteralPath "$RunDirectory\build-files.json"
   if($StartupPhase -eq 'Splash'){& "$hub\startup-probe.ps1" -RunDirectory $RunDirectory -Action Arm -Seconds $CaptureSeconds}
+  if($StartupPhase -eq 'Transition'){& "$hub\startup-probe.ps1" -RunDirectory $RunDirectory -Action Arm -Seconds $CaptureSeconds -DelaySeconds 0}
  }
- & "$kit\launch-ready.ps1" -RunDirectory $RunDirectory -ExpectedMap 'BIOA_STA00' -StartupHoldSeconds $(if($Action -eq 'Startup'){60}else{0}) -ForegroundWindow:($Action -eq 'Startup')
+ & "$kit\launch-ready.ps1" -RunDirectory $RunDirectory -ExpectedMap 'BIOA_STA00' -StartupHoldSeconds $(if($Action -eq 'Startup' -and $StartupPhase -ne 'Transition'){60}else{0}) -ForegroundWindow:($Action -eq 'Startup')
  $game=Assert-QaOwnedGame
  $owner.gamePid=$game.Id;$owner.gameStartedTicks=$game.StartTime.ToUniversalTime().Ticks
  $owner|ConvertTo-Json|Set-Content -LiteralPath "$RunDirectory\session-owner.json"
@@ -230,7 +235,7 @@ try{
   $receipt.pawnMovementUU=$movement
   if($movement -gt 60){throw 'Pawn moved during the stationary measurement.'}
  }elseif($Action -eq 'Startup'){
-  $receipt.measurementKind="Foreground $StartupPhase title segment after movie-thread handoff; automatic Resume outside the capture. No replay or stack sampler."
+  $receipt.measurementKind=if($StartupPhase -eq 'Transition'){'Initial launch, title, Resume and gameplay; render-thread handoffs retained. No replay or stack sampler.'}else{"Foreground $StartupPhase title segment after movie-thread handoff; automatic Resume outside the capture. No replay or stack sampler."}
  }elseif($Action -eq 'Bind'){
   & "$hub\citadel-walk.ps1" @arguments -Action BindStart -SaveFile "$package\fixture\save.pcsav"
  }else{

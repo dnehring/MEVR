@@ -27,12 +27,15 @@ def analyze(folder):
     meta = json.loads((folder / investigation[0]['probe']).read_text(encoding='utf-8-sig'))
     raw = probe.load_rows(folder / meta['files']['frames'])
     ticks = probe.load_rows(folder / meta['files']['ticks'])
+    phase = json.loads((folder / 'context.json').read_text(encoding='utf-8-sig')).get('StartupPhase', 'Splash')
+    transition = phase == 'Transition'
     rows = [{**probe.frame_metrics(r), 'at_s': r['t_start'] / 1000, 'frame': int(r['frame'])}
-            for r in raw if r['xr_frame'] and r['should_render'] and
+            for r in raw if (transition or (r['xr_frame'] and r['should_render'])) and
             1000 <= r['t_start'] < (meta['seconds'] - 1) * 1000]
     events = [json.loads(line) for line in (folder / 'launch-events.jsonl').read_text(encoding='utf-8-sig').splitlines()]
     for event in events:
-        event['at_s'] = (dt.datetime.fromisoformat(event['utc']) - origin).total_seconds()
+        event['at_s'] = ((event['qpc'] - meta['clocks']['originQpc']) / meta['clocks']['qpcFrequency']
+                         if meta['clocks'].get('originQpc') else (dt.datetime.fromisoformat(event['utc']) - origin).total_seconds())
     enters = [e['at_s'] for e in events if e['kind'] == 'enter-posted']
     ready = next(e['at_s'] for e in events if e['kind'] == 'gameplay-ready')
     if len(enters) != 2:
@@ -43,12 +46,14 @@ def analyze(folder):
     focus = [e['at_s'] for e in events if e['kind'] == 'foreground-activate' and e.get('foreground')
              and e.get('requested') and e['at_s'] < meta['seconds'] - 3]
     if focus:
-        phase = json.loads((folder / 'context.json').read_text(encoding='utf-8-sig')).get('StartupPhase', 'Splash')
         segment_end = enters[0] - 1 if phase == 'Splash' else enters[1] - 1
         phases.append(('foreground_title_segment', max(1, focus[-1] + 2), min(segment_end, meta['seconds'] - 1)))
     keys = ['interval', 'render_work', 'game_busy', 'wait_wall', 'wait_busy', 'end_frame', 'gpu_work', 'frame_pace']
     result = {'probe': investigation[0]['probe'], 'logOrigin': origin.isoformat(),
-              'boundary': 'Excludes initial movie-thread handoff and 1 s at capture boundaries; log/frame alignment is approximate.',
+              'boundary': 'One second trimmed at capture edges. Transition includes non-XR frames and wall gaps across thread handoffs. Launch events use QPC when available; host log alignment is approximate.',
+              'renderInstrumentation': meta.get('renderInstrumentation'),
+              'threadHandoffs': [{k: r[k] for k in ('frame','t_start','t_end','render_thread','previous_render_thread','cpu_valid')}
+                                 for r in raw if r.get('cpu_valid') == 0],
               'events': events, 'phases': [], 'notCaptured': [], 'settingsApplies': [],
               'accessViolations': meta['accessViolations'], 'gpuFramesDropped': meta['gpuFramesDropped'],
               'tickInstrumentation': meta.get('tickInstrumentation'), 'renderLevers': meta['renderLevers'],
@@ -67,7 +72,10 @@ def analyze(folder):
                          meta['tickInstrumentation']['ticksDropped'] == 0 and meta['tickInstrumentation']['callsDropped'] == 0,
         'oneDrawHealthy': levers['sharePass'] == 5 and not levers['shareFailed'] and not levers['replayFailed'],
         'blurGuardHealthy': levers.get('motionBlurGuard', {}).get('protectsGameplay') is True,
-        'titleOnly': meta['seconds'] < enters[1],
+        'requestedPhasesCaptured': (meta['seconds'] > ready + 17 and meta.get('renderInstrumentation', {}).get('version') == 3)
+                                  if transition else meta['seconds'] < enters[1],
+        'noOverlappingPresents': meta.get('renderInstrumentation', {}).get('overlappingPresents', 0) == 0,
+        'sameRenderContext': meta.get('renderInstrumentation', {}).get('contextChanges', 0) == 0,
     }
     result['measurementValidity'] = {'valid': all(checks.values()), 'checks': checks}
     for name, start, end in phases:
