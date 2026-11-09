@@ -201,7 +201,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   marks and observed returns should cancel; Shepard stays kept. Check locomotion/gestures, turns, collision/timeout, no drawn
   jumps, and no stale velocity or AI move on disable/end. Native returns exactly at the already-kept place cannot be detected
   by position sampling alone. Still off by default; NOT yet checked in the game. (research/59 "Walking to marks (prototype)")
-- [ ] **Walking during conversations** (built 2026-11-09, untested in the game; research/59 "Walking during conversations";
+- [ ] **Walking during conversations** (built 2026-11-09; checked on the fake headset with `mevr convo walk`: 5.47 m during the
+  Garrus wheel conversation, nobody snapped; it walks through people and the squad stays put; research/59 "Walking during conversations";
   `[Cinematics] worldMove = 1` with `conversations = world`): in a wheel conversation (Garrus at C-Sec Academy), with the wheel
   down, push the left stick: you walk where you look at a walking pace, the people turn to follow you, the subtitle stays under the
   speaker's face and the wheel in front of you when it opens; at 3 m from the speaker you slide along an invisible circle, a wall or

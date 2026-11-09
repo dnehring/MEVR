@@ -484,6 +484,15 @@ struct Convo {
 };
 Convo gC;
 
+// `mevr convo walk <x> <y> [seconds]` (tests without controllers, a flat game included): the stick the walk reads until the time
+// is up; the head's facing is the held view's yaw when the host has no VR view.
+struct WalkOverride {
+    float x = 0.0f;
+    float y = 0.0f;
+    std::uint64_t untilMs = 0;
+};
+WalkOverride gWalkOverride;
+
 // Where each person of the conversation is kept, and the yaw shown while they turn.
 struct Stay {
     ue3::Object* actor = nullptr;
@@ -1105,10 +1114,19 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         stop();
         return;
     }
-    vr::controllers::State const controllers = vr::controllers::Latest();
-    if (!controllers.active) {
-        stop();
-        return;
+    // The stick: `mevr convo walk` while it lasts, else the left controller's.
+    float stickX = 0.0f, stickY = 0.0f;
+    if (gWalkOverride.untilMs > GetTickCount64()) {
+        stickX = gWalkOverride.x;
+        stickY = gWalkOverride.y;
+    } else {
+        vr::controllers::State const controllers = vr::controllers::Latest();
+        if (!controllers.active) {
+            stop();
+            return;
+        }
+        stickX = controllers.left.stickX;
+        stickY = controllers.left.stickY;
     }
     auto const at = player::Location(pawn);
     if (!at) {
@@ -1118,10 +1136,14 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     ue3::Object* const owner = gOwner.Read<ue3::Object*>(gC.object).value_or(nullptr);
     auto const ownerAt = owner != nullptr && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
     ik::Vec3 const anchor = ownerAt ? V(*ownerAt) : gC.hold;
-    engine::Basis const head = engine::OrientationToWorld(frame, view.head.orientation);
-    double const headYaw = std::atan2(head.forward.y, head.forward.x) * kRadToDeg;
+    // Where the player faces: the head in the world through the held frame; without a VR view (a flat game), the held view's yaw.
+    double headYaw = YawDeg(gC.holdRotation);
+    if (view.valid) {
+        engine::Basis const head = engine::OrientationToWorld(frame, view.head.orientation);
+        headYaw = std::atan2(head.forward.y, head.forward.x) * kRadToDeg;
+    }
     cw::PlayerStep const step = cw::StepPlayer(WalkPoint(V(*at)), WalkPoint(anchor), gSettings.moveLeashM * kUnitsPerMeter,
-        controllers.left.stickX, controllers.left.stickY, headYaw, gSettings.moveSpeedMS * kUnitsPerMeter, std::clamp(dt, 0.0, 0.1));
+        stickX, stickY, headYaw, gSettings.moveSpeedMS * kUnitsPerMeter, std::clamp(dt, 0.0, 0.1));
     if (step.atLeash) {
         ++gC.leashHits;
     }
@@ -1174,8 +1196,9 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     }
     if (!gC.moveLogged) {
         gC.moveLogged = true;
-        log::Info("convo: at {:.1f} s the player walks: the stick ({:.2f}, {:.2f}) along the head's yaw {:.0f} deg, {:.2f} m from {} (leash {:.1f} m)",
-            Seconds(), controllers.left.stickX, controllers.left.stickY, headYaw, Dist(target, anchor) / kUnitsPerMeter, ShortName(owner), gSettings.moveLeashM);
+        log::Info("convo: at {:.1f} s the player walks: the stick ({:.2f}, {:.2f}){} along the facing {:.0f} deg, {:.2f} m from {} (leash {:.1f} m)",
+            Seconds(), stickX, stickY, gWalkOverride.untilMs > GetTickCount64() ? " (mevr convo walk)" : "", headYaw,
+            Dist(target, anchor) / kUnitsPerMeter, ShortName(owner), gSettings.moveLeashM);
     }
 }
 
@@ -1573,6 +1596,7 @@ void Tick(double deltaSeconds, Link const& link) {
         frame->headWorld.x += gC.hold.x - gFoot.location.x;
         frame->headWorld.y += gC.hold.y - gFoot.location.y;
         frame->headWorld.z += gC.hold.z - gFoot.location.z;
+        MovePlayer(pawn, *frame, view, deltaSeconds);  // without a VR view (a flat game): the held view's yaw, `mevr convo walk`
     }
     if (frame) {
         view_anchor::Hold(frame, gFoot.floorView);
@@ -1672,6 +1696,30 @@ std::string Command(std::string const& rest) {
         }
         gModeOverride = what == "on" || what.empty() ? cw::Mode::World : cw::ParseMode(what.c_str(), cw::Mode::World);
         return std::format("convo: conversations {} until `mevr convo world off` (now)", cw::Name(*gModeOverride));
+    }
+    if (verb == "walk") {
+        // Tests without controllers: `mevr convo walk <x> <y> [seconds]` is the left stick for that long (default 3 s); `walk off`.
+        std::string x;
+        words >> x;
+        if (x == "off" || x.empty()) {
+            gWalkOverride = {};
+            return x.empty() ? std::string("usage: mevr convo walk <x> <y> [seconds] | off") : std::string("convo: the walk override is off");
+        }
+        double sx = 0.0, sy = 0.0, seconds = 3.0;
+        std::string y, s;
+        words >> y >> s;
+        auto const px = ini::Number(x), py = ini::Number(y);
+        if (!px || !py) {
+            return "usage: mevr convo walk <x> <y> [seconds] | off";
+        }
+        sx = std::clamp(*px, -1.0, 1.0);
+        sy = std::clamp(*py, -1.0, 1.0);
+        if (auto const ps = s.empty() ? std::nullopt : ini::Number(s)) {
+            seconds = std::clamp(*ps, 0.1, 60.0);
+        }
+        gWalkOverride = {static_cast<float>(sx), static_cast<float>(sy), GetTickCount64() + static_cast<std::uint64_t>(seconds * 1000.0)};
+        return std::format("convo: the stick is ({:.2f}, {:.2f}) for {:.1f} s (worldMove {}, world mode {}, conversation {})", sx, sy, seconds,
+            gSettings.move ? "on" : "off", gInWorld ? "up" : "not up", gC.on ? "running" : "none");
     }
     if (verb == "pick" || verb == "skip") {
         // Tests without controllers: the wheel's own reply pick (a wheel location 0..5, as the stick and A choose) or its skip

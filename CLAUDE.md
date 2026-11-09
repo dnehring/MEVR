@@ -443,12 +443,16 @@ switching frameworks.
   does); the ambient subtitle on the HUD is [verify]. `worldFlowLeashM` (-1 never, metres) sets the live chain's interrupt range;
   `mevr convo flow [list | rescan | restore]`; logs `convo flow:`. **The player walks during a conversation** (research/59
   "Walking during conversations", 2026-11-09, the owner's ambitious route; `worldMove = 1` default with the world mode,
-  `worldMoveLeashM` 3.0, `worldMoveSpeedMS` 1.4; untested in the game): after the opening and while the wheel is down (its stick is
+  `worldMoveLeashM` 3.0, `worldMoveSpeedMS` 1.4): after the opening and while the wheel is down (its stick is
   the wheel's) the left stick moves Shepard's pawn along the head's facing inside a leash around the owner (`cw::StepPlayer`: slides
   along the circle, only nearer when outside), on the floor (`FloorZ`; a 60-unit drop or rise refused) and not through walls
   (`LineOfSight`), with `Actor.SetLocation`; the held view, the IK frame, the head-bone anchors and his kept place move with it, so
   keep-in-place and the jump follower never undo the walk. Nothing ejects a conversation by distance (the interrupt range is
-  ambient-only). Logs `convo: ... the player walks`, `the player walked N m`; the summary's `playerWalkedM`.
+  ambient-only). `mevr convo walk <x> <y> [seconds] | off` is the stick without controllers (the replay's don't reach it); without
+  a VR view the facing is the held view's yaw. **Checked on the fake headset 2026-11-09** (research/59 "Walking during
+  conversations" > "In the game"): 5.47 m walked during the Garrus wheel conversation at C-Sec, nobody snapped, the conversation
+  ran on; the walk passes through people (no inner radius yet) and the squad stays put. Logs `convo: ... the player walks`, `the
+  player walked N m`; the summary's `playerWalkedM`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

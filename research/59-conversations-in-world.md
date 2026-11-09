@@ -548,6 +548,26 @@ tick or the vignette could mark it); the stick's dead zone and the speed are unt
 during the Garrus conversation at C-Sec (the launcher: `sta70_garrus`, its wheel start) with `mevr` replay inputs or a real
 stick; the kept place and the hold staying together across a camera cut; the subtitle and the wheel following the walk.
 
+**In the game (2026-11-09, the fake headset).** `mevr convo walk <x> <y> [seconds]` stands in for the left stick (tests without
+controllers; the replay's controllers read inactive to `vr::controllers::Latest()`, so the replayed stick never reached the walk),
+and without a VR view the facing is the held view's yaw (the on-foot frame fallback runs `MovePlayer` too). The Garrus wheel
+conversation at C-Sec Academy (`tools/conversation-launch.ps1 sta70_garrus`: the argue chain played as barks, the game started
+the wheel conversation 58533 itself; a reply picked with `mevr convo pick 1`, then `walk 0 1 6` and `walk -1 0 4`):
+
+- `convo: at 91.5 s the player walks: the stick (0.00, 1.00) (mevr convo walk) along the facing 160 deg, 3.67 m from BioPawn_6
+  (leash 3.0 m)`: the opening had placed the player 3.67 m from Garrus, outside the leash, so the first steps were the "only
+  nearer" rule; the pawn went from (3768, -7073) to (3254, -6888) while the conversation ran on (4 shots, the speaker
+  BioPawn_6), Garrus and the Executor (BioPawn_13) standing where they were, and the two drawn frames after the walk show the
+  C-Sec hall from the new place at eye height, nobody snapped: `0 jumps onto marks undone`, no `kept in place: the game put
+  Shepard`, no `JUMPED`.
+- The end summary: `the player walked 5.47 m in 121 steps; the leash held 0 steps back, 0 refused (no floor, a ledge, a wall,
+  SetLocation)`; `SFXPawn_Player_3: moved at most 5.47 m, turned at most 0`; the conversation ended by the game's own leaving of
+  its mode after 103 s, not by distance.
+- Seen and to fix: the walk went straight through Garrus (3.67 m on one side to 1.8 m past him: the leash has no inner radius,
+  and `SetLocation` doesn't collide), so a person in the way needs a minimum distance; the leash was entered from outside, so the
+  slide along the circle is still unobserved in the game; the squad didn't follow; the legs' animation during the walk is unseen
+  (no third-person frame). The 60-unit floor rule and `LineOfSight` refused nothing on the flat hall.
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the
