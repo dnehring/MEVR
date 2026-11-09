@@ -20,15 +20,18 @@
 #     time"; the game died at the title with no crash record, 2026-10-27 19:45, 22:35 and 22:36). A second launch
 #     survived because the game then evicted room setup (which exits at once with no real headset).
 # The game must not be running while the driver changes.
-param([switch]$On, [switch]$Off, [switch]$Status, [int]$Width = 2824, [int]$Height = 2880)
+param([switch]$On, [switch]$Off, [switch]$Status, [int]$Width = 2824, [int]$Height = 2880,
+      [string]$SteamRoot = 'C:\Program Files (x86)\Steam', [string]$SteamVRRoot = '',
+      [string]$BackupDirectory = '', [int]$AppResolutionScale = 0)
 $ErrorActionPreference = 'Stop'
 
-$steam = 'C:\Program Files (x86)\Steam'
-$nullSettings = Join-Path $steam 'steamapps\common\SteamVR\drivers\null\resources\settings\default.vrsettings'
+$steam = $SteamRoot
+if (-not $SteamVRRoot) { $SteamVRRoot = Join-Path $steam 'steamapps\common\SteamVR' }
+$nullSettings = Join-Path $SteamVRRoot 'drivers\null\resources\settings\default.vrsettings'
 $vrSettings = Join-Path $steam 'config\steamvr.vrsettings'
 $chaperone = Join-Path $steam 'config\chaperone_info.vrchap'
-$vrStartup = Join-Path $steam 'steamapps\common\SteamVR\bin\win64\vrstartup.exe'
-$backupDir = Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset'
+$vrStartup = Join-Path $SteamVRRoot 'bin\win64\vrstartup.exe'
+$backupDir = if ($BackupDirectory) { $BackupDirectory } else { Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset' }
 $nullUniverse = '2'   # the null driver's chaperone universe ("Update ZeroPose for the chaperone universe 2" in vrserver.txt)
 
 function Read-Json($path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json }
@@ -103,6 +106,7 @@ if ($On) {
     $sv = Section $s 'steamvr'
     Set-Member $sv 'forcedDriver' 'null'
     Set-Member $sv 'activateMultipleDrivers' $false
+    if ($AppResolutionScale -gt 0) { Set-Member (Section $s 'steam.app.1328670') 'resolutionScale' $AppResolutionScale }
     Set-Member (Section $s 'driver_playstation_vr2') 'enable' $false
     $pw = Section $s 'power'
     Set-Member $pw 'pauseCompositorOnStandby' $false
@@ -120,7 +124,7 @@ if ($On) {
         $c.universes = @($c.universes) + @(New-NullUniverse)
         Write-Json $chaperone $c
     }
-    Start-Process -FilePath $vrStartup | Out-Null
+    Start-Process -FilePath $vrStartup -WindowStyle Hidden | Out-Null
     "fake headset ON: null driver ${Width}x${Height} @ 90 Hz, the PS VR2 driver off, standby off, chaperone universe $nullUniverse registered; SteamVR starting (backups in $backupDir)"
 }
 if ($Off) {

@@ -147,5 +147,8 @@ downloads and the logs to attach by hand are in **[docs/developers.md](docs/deve
 subsystem are documented in [CLAUDE.md](CLAUDE.md) and [docs/development-approach.md](docs/development-approach.md);
 sourced findings in [research/](research/README.md). Contributions and reports are welcome.
 
+For repeatable native performance QA, [the cafeteria test](tools/qa-cafeteria/README.md) supplies a protected
+fake-headset walk, higher workload, head-turn capture and verified settings/save restoration.
+
 Mass Effect is a trademark of EA International (Studio and Publishing) Ltd. MEVR is a fan project, not affiliated with
 or endorsed by EA or BioWare.

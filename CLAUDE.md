@@ -1090,6 +1090,10 @@ switching frameworks.
 Use it to check VR changes yourself instead of asking the user what they see
 (`src/plugin/TestLoop.hpp`; host side, so changes need a redeploy). Everything lives in
 `%LOCALAPPDATA%\MEVR`; the log lines start with `test loop:`.
+- **Repeatable cafeteria QA:** [tools/qa-cafeteria/README.md](tools/qa-cafeteria/README.md) documents the checked
+  CIC-to-mess-table walk, High/Current workload, clean turn capture and backup/restore runner. Use `run.ps1 -Plan`
+  first, coordinate exclusive native-session ownership, and supply the reviewed ASI hash. Sources generate their
+  inputs; saves, captures and run receipts stay in ignored scratch folders.
 - **Snapshots:** `tools/snapshot.ps1 [-Count N -Interval s -Delay s -Tag x]` writes
   `snapshot.request` and waits. Output in `snapshots\`: `<stamp>-left.png` / `-right.png` (what
   each eye shows: the world plus our HUD panel, reticle, squad menu, the game's wheel and Halcyon's

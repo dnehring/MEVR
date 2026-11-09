@@ -3,7 +3,7 @@
 // function, from outside the game (no redeploy). Suspends the thread for each sample (microseconds), walks
 // its stack with dbghelp, and prints the top frames and what is on the stack. Names come from exports and
 // our PDB; the game's exe has none (offsets).
-// Usage: mevr-stack-sampler <pid> <tid> <seconds> [intervalUs] [raw-stacks.txt]; tools/sample-render-thread.ps1
+// Usage: mevr-stack-sampler <pid> <tid> <seconds> [intervalUs] [raw-stacks.txt] [sample-times.csv]; tools/sample-render-thread.ps1
 // finds both and groups the raw stacks by function (tools/stack-functions.py).
 #include <Windows.h>
 #include <DbgHelp.h>
@@ -26,11 +26,16 @@ int main(int argc, char** argv) {
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
     SymInitialize(proc, nullptr, TRUE);
     std::vector<std::vector<DWORD64>> stacks;
+    struct Timing { unsigned long long utcFileTime; long long qpc; double suspendedUs; unsigned long long threadCycles; };
+    std::vector<Timing> timings;
     LARGE_INTEGER f, t0, t; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&t0);
     timeBeginPeriod(1);
     for (;;) {
         QueryPerformanceCounter(&t);
         if ((t.QuadPart - t0.QuadPart) / double(f.QuadPart) > seconds) break;
+        LARGE_INTEGER suspendedAt; QueryPerformanceCounter(&suspendedAt);
+        FILETIME utc{}; GetSystemTimePreciseAsFileTime(&utc);
+        ULONG64 threadCycles = 0; QueryThreadCycleTime(th, &threadCycles);
         if (SuspendThread(th) == (DWORD)-1) break;
         alignas(16) CONTEXT ctx{}; ctx.ContextFlags = CONTEXT_FULL;
         std::vector<DWORD64> st;
@@ -45,7 +50,12 @@ int main(int argc, char** argv) {
             }
         }
         ResumeThread(th);
-        if (!st.empty()) stacks.push_back(std::move(st));
+        LARGE_INTEGER resumedAt; QueryPerformanceCounter(&resumedAt);
+        if (!st.empty()) {
+            stacks.push_back(std::move(st));
+            timings.push_back({(static_cast<unsigned long long>(utc.dwHighDateTime) << 32) | utc.dwLowDateTime,
+                               suspendedAt.QuadPart, (resumedAt.QuadPart - suspendedAt.QuadPart) * 1e6 / f.QuadPart, threadCycles});
+        }
         // spin-sleep to the interval
         LARGE_INTEGER a; QueryPerformanceCounter(&a);
         for (;;) { LARGE_INTEGER b; QueryPerformanceCounter(&b); if ((b.QuadPart - a.QuadPart) * 1e6 / f.QuadPart >= intervalUs) break; Sleep(0); }
@@ -90,6 +100,33 @@ int main(int argc, char** argv) {
             }
             std::fclose(out);
             std::printf("\nraw stacks: %s\n", argv[5]);
+        }
+    }
+    // Optional sidecar leaves the existing stack format compatible with stack-functions.py.
+    // It records observer suspension cost: sampled runs must not be pooled with clean timing baselines.
+    if (argc > 6) {
+        FILE* out = nullptr;
+        if (fopen_s(&out, argv[6], "w") == 0 && out != nullptr) {
+            std::fprintf(out, "sample,utcFileTime,qpc,suspendedUs,threadCycles\n");
+            for (std::size_t i = 0; i < timings.size(); ++i) {
+                auto const& v = timings[i];
+                std::fprintf(out, "%zu,%llu,%lld,%.3f,%llu\n", i, v.utcFileTime, v.qpc, v.suspendedUs, v.threadCycles);
+            }
+            std::fclose(out);
+            std::printf("sample times: %s\n", argv[6]);
+        }
+        std::string const namesPath = std::string(argv[6]) + ".symbols.txt";
+        if (fopen_s(&out, namesPath.c_str(), "w") == 0 && out != nullptr) {
+            std::map<DWORD64, std::string> names;
+            for (auto const& st : stacks) {
+                for (std::size_t i = 0; i < st.size(); ++i) {
+                    auto [it, inserted] = names.try_emplace(st[i]);
+                    if (inserted) it->second = name(st[i]);
+                    std::fprintf(out, "%s%s", i ? ";" : "", it->second.c_str());
+                }
+                std::fprintf(out, "\n");
+            }
+            std::fclose(out);
         }
     }
     return 0;
