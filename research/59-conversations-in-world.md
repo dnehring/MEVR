@@ -629,6 +629,13 @@ the wheel conversation 58533 itself; a reply picked with `mevr convo pick 1`, th
   slide along the circle is still unobserved in the game; the squad didn't follow; the legs' animation during the walk is unseen
   (no third-person frame). The 60-unit floor rule and `LineOfSight` refused nothing on the flat hall.
 
+**Not through people** (the same evening, the owner's yes; `worldMoveClearM` 0.7, 0 off): each step's end is checked against the
+live places of the conversation's actors, the squad and the owner (`cw::KeepClear`, unit-tested): within the clearance of one of
+them it is pushed out to the clearance along the line from that person, the leash's slide turned inside out, so the stick walks
+the player around them instead of through; a player already that close (the person walked up to him) may only step away. The
+end summary counts the steps a person held (`people in the way N`; the summary's `clearHits`). [verify] in the game: walk at
+Garrus and watch the pawn go around him at 0.7 m; a squadmate seated by Part B in the way of the walk.
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the

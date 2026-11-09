@@ -118,6 +118,7 @@ struct Settings {
     bool move = true;                  // the left stick walks Shepard during the conversation while the wheel is down (worldMove)
     float moveLeashM = 3.0f;           // how far from the conversation's owner the walk may go (worldMoveLeashM)
     float moveSpeedMS = 1.4f;          // the walk's speed at full deflection (worldMoveSpeedMS)
+    float moveClearM = 0.7f;           // how close the walk may come to a person of the conversation or the squad (worldMoveClearM)
     float subtitleCrop[4] = {};
     float wheelCrop[4] = {};
 };
@@ -183,6 +184,7 @@ void RefreshSettings() {
     s.move = number("worldMove", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.moveLeashM = number("worldMoveLeashM", s.moveLeashM, 0.0f, 20.0f);
     s.moveSpeedMS = number("worldMoveSpeedMS", s.moveSpeedMS, 0.2f, 4.0f);
+    s.moveClearM = number("worldMoveClearM", s.moveClearM, 0.0f, 3.0f);
     ReadCrop(loaded.file, "subtitleCrop", s.subtitleCrop);
     ReadCrop(loaded.file, "wheelCrop", s.wheelCrop);
     std::string const text = std::format("conversations = {}, worldFollow = {}, subtitles {:.1f} deg tall {:.2f} m under the face, the wheel "
@@ -192,7 +194,7 @@ void RefreshSettings() {
         s.subtitleHeightDeg, s.subtitleBelowM, s.wheelHand == 0 ? "at the left hand" : s.wheelHand == 1 ? "at the right hand" : "in front",
         s.wheelWidthM, s.setPiecesOnScreen ? "on the 3D screen" : "in the world", s.camera ? "at the player's place" : "the director's",
         s.walk, s.walkSettleS, s.walkMinM, s.walkSpeedMS, s.openingAccept ? "accepted" : "kept", s.arrange ? "on" : "off", s.arcM, s.viewDeg,
-        s.move ? std::format("on (leash {:.1f} m, {:.2f} m/s)", s.moveLeashM, s.moveSpeedMS) : std::string("off"));
+        s.move ? std::format("on (leash {:.1f} m, {:.2f} m/s, {:.2f} m clear of people)", s.moveLeashM, s.moveSpeedMS, s.moveClearM) : std::string("off"));
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("convo: [Cinematics] {}", text);
@@ -478,6 +480,7 @@ struct Convo {
     double movedUnits = 0.0;    // walked, summed
     int moveSteps = 0;          // ticks that moved
     int leashHits = 0;          // ticks the leash held the step back
+    int clearHits = 0;          // ticks a person in the way held the step (worldMoveClearM)
     int moveRefused = 0;        // steps refused: no floor, a ledge, a wall, SetLocation
     bool moving = false;        // a velocity is set on the pawn
     bool moveLogged = false;    // the first step logged
@@ -1099,7 +1102,8 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
 }
 
 // The player's walk during the conversation (research/59 "Walking during conversations"): the left stick moves Shepard's pawn
-// along the head's facing at worldMoveSpeedMS, inside worldMoveLeashM of the conversation's owner (cw::StepPlayer), on the
+// along the head's facing at worldMoveSpeedMS, inside worldMoveLeashM of the conversation's owner (cw::StepPlayer), never
+// within worldMoveClearM of a person of the conversation or the squad (cw::KeepClear: pushed out, so he walks around them), on the
 // floor (a trace; a drop or rise past 60 units is a ledge or a step: refused), not through walls (the shots' line of sight at
 // waist height), while the wheel is down (its stick is the wheel's) and after the opening. The held view, its anchors and the
 // kept place move with the pawn, so keep-in-place never undoes the walk and the head bone's jump detector never fires on it.
@@ -1151,7 +1155,29 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         stop();
         return;
     }
-    ik::Vec3 target = WalkPoint(step.place);
+    // Not through people: the conversation's actors, the squad and the owner, at their live places.
+    std::vector<cw::Vec3> people;
+    auto addPerson = [&](ue3::Object* actor) {
+        if (actor == nullptr || actor == pawn || !ue3::runtime::IsAlive(actor)) return;
+        if (auto const where = player::Location(actor)) {
+            people.push_back(WalkPoint(V(*where)));
+        }
+    };
+    for (Stay const& st : gStay) addPerson(st.actor);
+    for (Tracked const& t : gC.actors) {
+        if (std::none_of(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == t.actor; })) addPerson(t.actor);
+    }
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) addPerson(m.pawn);
+    if (ownerAt && std::none_of(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == owner; })) addPerson(owner);
+    cw::ClearStep const clear = cw::KeepClear(WalkPoint(V(*at)), step.place, people, gSettings.moveClearM * kUnitsPerMeter);
+    if (clear.held) {
+        ++gC.clearHits;
+    }
+    if (!clear.moved) {
+        stop();
+        return;
+    }
+    ik::Vec3 target = WalkPoint(clear.place);
     // The floor under the target, the pawn's height above its own floor kept; a ledge or a step refused.
     auto const floorHere = FloorZ(pawn, V(*at));
     auto const floorThere = FloorZ(pawn, target);
@@ -1196,9 +1222,10 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     }
     if (!gC.moveLogged) {
         gC.moveLogged = true;
-        log::Info("convo: at {:.1f} s the player walks: the stick ({:.2f}, {:.2f}){} along the facing {:.0f} deg, {:.2f} m from {} (leash {:.1f} m)",
+        log::Info("convo: at {:.1f} s the player walks: the stick ({:.2f}, {:.2f}){} along the facing {:.0f} deg, {:.2f} m from {} (leash {:.1f} m, "
+                  "{:.2f} m clear of {} people)",
             Seconds(), stickX, stickY, gWalkOverride.untilMs > GetTickCount64() ? " (mevr convo walk)" : "", headYaw,
-            Dist(target, anchor) / kUnitsPerMeter, ShortName(owner), gSettings.moveLeashM);
+            Dist(target, anchor) / kUnitsPerMeter, ShortName(owner), gSettings.moveLeashM, gSettings.moveClearM, people.size());
     }
 }
 
@@ -1315,9 +1342,10 @@ void End(char const* why) {
         log::Info("convo: in the world: Shepard's head bone was at most {:.2f} m from the player's held eyes; {} jumps onto marks undone "
                   "(people kept in place, {} of them seen in a drawn frame), {} long moves let through", gC.eyeToViewMax / kUnitsPerMeter, gC.kept,
             gDrawnJumps, gC.letGo);
-        if (gC.moveSteps > 0 || gC.moveRefused > 0 || gC.leashHits > 0) {
-            log::Info("convo: the player walked {:.2f} m in {} steps; the leash held {} steps back, {} refused (no floor, a ledge, a wall, SetLocation)",
-                gC.movedUnits / kUnitsPerMeter, gC.moveSteps, gC.leashHits, gC.moveRefused);
+        if (gC.moveSteps > 0 || gC.moveRefused > 0 || gC.leashHits > 0 || gC.clearHits > 0) {
+            log::Info("convo: the player walked {:.2f} m in {} steps; the leash held {} steps back, people in the way {}, {} refused (no floor, "
+                      "a ledge, a wall, SetLocation)",
+                gC.movedUnits / kUnitsPerMeter, gC.moveSteps, gC.leashHits, gC.clearHits, gC.moveRefused);
         }
     }
     if (gC.moving && ue3::runtime::IsAlive(gC.playerPawn)) {
@@ -1332,13 +1360,13 @@ void End(char const* why) {
               "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
               "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
-              "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"moveRefused\": {}}}",
+              "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
-        gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.moveRefused);
+        gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused);
     gC = {};
 }
 

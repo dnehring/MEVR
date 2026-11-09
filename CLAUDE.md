@@ -457,8 +457,10 @@ switching frameworks.
   ambient-only). `mevr convo walk <x> <y> [seconds] | off` is the stick without controllers (the replay's don't reach it); without
   a VR view the facing is the held view's yaw. **Checked on the fake headset 2026-11-09** (research/59 "Walking during
   conversations" > "In the game"): 5.47 m walked during the Garrus wheel conversation at C-Sec, nobody snapped, the conversation
-  ran on; the walk passes through people (no inner radius yet) and the squad stays put. Logs `convo: ... the player walks`, `the
-  player walked N m`; the summary's `playerWalkedM`.
+  ran on; the squad stays put. **Not through people** (`worldMoveClearM` 0.7, since the first walk went straight through Garrus):
+  a step ending within the clearance of a conversation actor, a squadmate or the owner is pushed out along the line from them
+  (`cw::KeepClear`), so the stick walks around people; [verify] in the game. Logs `convo: ... the player walks`, `the player walked
+  N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

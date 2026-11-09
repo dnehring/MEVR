@@ -113,6 +113,36 @@ void TestStepPlayer() {
     CHECK(cw::StepPlayer(outside, anchor, 0.0, 0.0, 1.0, 0.0, 140.0, 0.1).moved);
 }
 
+void TestKeepClear() {
+    // People in the way of the walk: a step that would end within the clearance of someone is pushed out to it.
+    cw::Vec3 const person{200.0, 0.0, 100.0};
+    std::vector<cw::Vec3> const people{person};
+    // Far enough: the step stands.
+    cw::ClearStep c = cw::KeepClear({100.0, 0.0, 100.0}, {114.0, 0.0, 100.0}, people, 70.0);
+    CHECK(c.moved && !c.held && Close(c.place.x, 114.0, 1e-6));
+    // Straight at them from outside: the step ends at the clearance.
+    c = cw::KeepClear({120.0, 0.0, 100.0}, {134.0, 0.0, 100.0}, people, 70.0);
+    CHECK(c.moved && c.held && Close(c.place.x, 130.0, 1e-6) && Close(c.place.y, 0.0, 1e-6));
+    // From the clearance itself, toward them and to the side: slides around them at the clearance.
+    c = cw::KeepClear({130.0, 0.0, 100.0}, {140.0, 10.0, 100.0}, people, 70.0);
+    CHECK(c.moved && c.held && Close(std::hypot(c.place.x - 200.0, c.place.y), 70.0, 1e-6) && c.place.y > 0.0);
+    // Already inside (they walked up): a step away is taken as it is, a step nearer is refused.
+    c = cw::KeepClear({160.0, 0.0, 100.0}, {146.0, 0.0, 100.0}, people, 70.0);
+    CHECK(c.moved && c.held && Close(c.place.x, 146.0, 1e-6));
+    c = cw::KeepClear({160.0, 0.0, 100.0}, {174.0, 0.0, 100.0}, people, 70.0);
+    CHECK(!c.moved && c.held && Close(c.place.x, 160.0, 1e-6));
+    // No clearance: free.
+    CHECK(cw::KeepClear({120.0, 0.0, 100.0}, {134.0, 0.0, 100.0}, people, 0.0).moved);
+    // Two people closer together than two clearances: no way between them, the step is held where it started.
+    std::vector<cw::Vec3> const two{{200.0, 0.0, 100.0}, {200.0, 100.0, 100.0}};
+    c = cw::KeepClear({120.0, 50.0, 100.0}, {170.0, 50.0, 100.0}, two, 70.0);
+    CHECK(c.held && !c.moved && Close(c.place.x, 120.0, 1e-6));
+    // Two people with room between them: the step passes.
+    std::vector<cw::Vec3> const apart{{200.0, 0.0, 100.0}, {200.0, 200.0, 100.0}};
+    c = cw::KeepClear({120.0, 100.0, 100.0}, {170.0, 100.0, 100.0}, apart, 70.0);
+    CHECK(c.moved && !c.held && Close(c.place.x, 170.0, 1e-6));
+}
+
 void TestFlowEntries() {
     // The scan's chain starts (research/59 "Flowing conversations"): Garrus arguing with the Executor is the conversation's
     // first two entries; Udina's arrival lines; the key in any of the name's forms.
@@ -327,6 +357,7 @@ int RunConversationWorldTests() {
     TestSetPieces();
     TestFlowEntries();
     TestStepPlayer();
+    TestKeepClear();
     TestArrangement();
     TestCrops();
     TestSubtitlePoint();
