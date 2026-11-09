@@ -22,6 +22,8 @@ def compare(directory, partial=False):
     if isinstance(runs, dict):
         runs = [runs]
     errors, rows, builds, hardware, invariants = [], [], [], [], []
+    culling = plan.get('experiment') == 'small-object-culling'
+    fixed_settings = []
     if not partial and [r['workload'] for r in runs] != plan['workloads']:
         errors.append('Completed workload order/count differs from the fixed plan')
     if not runs:
@@ -36,6 +38,9 @@ def compare(directory, partial=False):
                 raise ValueError('expected one clean probe')
             a = analyses[0]
             meta = read(d / a['source'])
+            render = meta.get('renderInstrumentation', {})
+            if render.get('overlappingPresents', 0) or render.get('contextChanges', 0):
+                raise ValueError('Overlapping Presents or a context change invalidates render instrumentation')
             trace = read(d / 'tick-trace-check.json')
             if not receipt['completed'] or not receipt['restored'] or not receipt['nativeLoadValidated'] or receipt['pawnMovementUU'] > 60:
                 raise ValueError('session/load/stationary/restoration check failed')
@@ -65,6 +70,19 @@ def compare(directory, partial=False):
                     raise ValueError('last live settings application differs from workload: ' + text)
             config = configparser.ConfigParser(strict=False)
             config.read(d / 'config/LE1MEVR.ini', encoding='utf-8-sig')
+            if culling:
+                if read(d / 'capture-window.json')['iniWrites'] or (d / 'pacing-events.jsonl').exists():
+                    raise ValueError('Live settings intervention invalidates a clean culling capture')
+                if expected['cullPx'] != r['cullPx'] or expected['workload'] != plan['workload']:
+                    raise ValueError('Culling experiment differs from planned workload')
+                if expected['source'] != plan['eye'] or expected['eye'] != plan['eye']:
+                    raise ValueError('Culling experiment changed resolution')
+                fixed = {section: dict(config[section]) for section in config.sections()}
+                fixed.get('Performance', {}).pop('minscreenradiuspx', None)
+                renderer = configparser.ConfigParser(strict=False)
+                renderer.read(d / 'config/MELEVR.ini', encoding='utf-8-sig')
+                fixed_settings.append([fixed, {s: dict(renderer[s]) for s in renderer.sections()},
+                                       {k: v for k, v in expected.items() if k != 'cullPx'}])
             builds.append(sorted(read(d / 'build-files.json'), key=lambda x: x['name']))
             machine = read(d / 'machine.json')
             hardware.append({k: machine[k] for k in ('cpu', 'gpu', 'powerScheme')})
@@ -74,9 +92,10 @@ def compare(directory, partial=False):
             intervals = [probe.frame_metrics(f)['interval'] for f in frames
                          if f['xr_frame'] and f['should_render'] and 1000 <= f['t_start'] < (meta['seconds']-1)*1000]
             s, t = a['all'], a['tickSummary']
-            rows.append({'run': label, 'directory': str(d), 'workload': r['workload'], 'source': a['resolution']['render'],
+            rows.append({'run': label, 'directory': str(d), 'workload': r['workload'], 'cullPx': expected['cullPx'], 'source': a['resolution']['render'],
                          'frames': s['frames'], 'intervalMs': s['interval'], 'renderBusyMs': s['render_work'],
                          'gpuSpanMs': s['gpu_work'], 'engineMs': t['engineMs'], 'hostMs': t['hostMs'],
+                         'engineBusyMs': t.get('engineBusyMs', {}), 'waitMs': s['wait_wall'],
                          'hookMs': t['hookMs'], 'endFrameMs': s['end_frame'], 'draws': s['draws'],
                          'iniWrites': len(read(d / 'capture-window.json')['iniWrites']),
                          'budgets': {str(hz): {'budgetMs': 1000/hz, 'exceeded': sum(v > 1000/hz for v in intervals),
@@ -88,17 +107,28 @@ def compare(directory, partial=False):
     for name, values in [('build', builds), ('hardware/power', hardware), ('non-workload settings/save', invariants)]:
         if len({json.dumps(v, sort_keys=True) for v in values}) > 1:
             errors.append(name + ' changed across captures')
+    if culling:
+        if [r['cullPx'] for r in runs] != plan['cullRadii'][:len(runs)]:
+            errors.append('Culling order differs from plan')
+        if len({json.dumps(v, sort_keys=True) for v in fixed_settings}) > 1:
+            errors.append('A setting other than small-object culling changed')
     summary = {}
     for workload in dict.fromkeys(plan['workloads']):
         selected = [r for r in rows if r['workload'] == workload]
         if selected:
             summary[workload] = {'captures': len(selected), 'medianP99Ms': statistics.median(r['intervalMs']['p99'] for r in selected),
+                                 'medianRenderCpuMs': statistics.median(r['renderBusyMs']['p50'] for r in selected),
+                                 'medianRenderCpuP99Ms': statistics.median(r['renderBusyMs']['p99'] for r in selected),
+                                 'medianEngineP99Ms': statistics.median(r['engineMs']['p99'] for r in selected),
+                                 'medianWaitMs': statistics.median(r['waitMs']['p50'] for r in selected),
+                                 'medianDraws': statistics.median(r['draws']['p50'] for r in selected),
                                  'worstIntervalMs': max(r['intervalMs']['max'] for r in selected),
                                  'worstHookMs': max(r['hookMs']['max'] for r in selected),
                                  'allP99At90HzPass': all(r['budgets']['90']['p99Pass'] for r in selected),
                                  'allSevereHitchPass': all(r['severeHitchPass'] for r in selected)}
     result = {'valid': not errors, 'partial': partial, 'errors': errors, 'runs': rows, 'summary': summary,
-              'scope': 'Stationary null-headset throughput. Budget checks are not physical display/drop measurements. Workloads intentionally differ.'}
+              'scope': 'Stationary null-headset throughput. Budget checks are not physical display/drop measurements. ' +
+                       ('Only additional small-object culling intentionally differs.' if culling else 'Workloads intentionally differ.')}
     (directory / 'comparison.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
     print(json.dumps({k: result[k] for k in ('valid','partial','errors','summary')}, indent=2))
     return result

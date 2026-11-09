@@ -2,7 +2,7 @@
 # Arm before launch, collect after Resume. Delay past the temporary Bink startup render thread.
 #Requires -Version 7.0
 param([Parameter(Mandatory)][string]$RunDirectory,[Parameter(Mandatory)][ValidateSet('Arm','Collect','Cleanup')][string]$Action,
- [ValidateRange(15,30)][int]$Seconds=30,[ValidateRange(0,10)][int]$DelaySeconds=5)
+ [ValidateRange(15,120)][int]$Seconds=30,[ValidateRange(0,10)][int]$DelaySeconds=5)
 $ErrorActionPreference='Stop'
 . (Join-Path (Split-Path $PSScriptRoot -Parent) 'qa-cafeteria\common.ps1')
 $ctx=Read-QaContext $RunDirectory
@@ -14,7 +14,7 @@ if($Action -eq 'Arm'){
  $tag='startup-'+[IO.Path]::GetFileName($RunDirectory)
  $request="seconds=$Seconds delay=$DelaySeconds tag=$tag"
  @{requested=[datetime]::UtcNow.ToString('o');tag=$tag;seconds=$Seconds;delay=$DelaySeconds;text=$request;
-   boundary='Bounded title segment; initial movie-thread handoff and Resume loading are outside this capture.'}|
+   boundary=$(if($ctx.StartupPhase -eq 'Transition'){'Includes render-thread handoffs, title and Resume loading.'}else{'Bounded title segment; initial movie-thread handoff and Resume loading are outside this capture.'})}|
   ConvertTo-Json|Set-Content -LiteralPath $receiptPath
  [void](Write-MevrRequest 'perf.request' $request)
  return

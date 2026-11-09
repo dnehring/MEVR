@@ -37,9 +37,23 @@ foreach($name in @('Quality','Balanced','Performance')){
  Restore-QaBackup $run
  if(@(Test-QaBackup (Get-Content -LiteralPath "$run\before.json" -Raw|ConvertFrom-Json)).Count){throw 'Restoration failed'}
 }
+$fixed=$null
+foreach($radius in @(8,4,0)){
+ $run=Join-Path $root "cull-$radius";New-Item -ItemType Directory -Path $run|Out-Null
+ @{GameRoot="$root\game";EyeWidth=2284;EyeHeight=2448}|ConvertTo-Json|Set-Content -LiteralPath "$run\context.json"
+ Save-QaBackup $run $files @() (Get-FileHash -LiteralPath "$asi\LE1MEVR.asi").Hash 'fixture'
+ & "$PSScriptRoot\set-workload.ps1" -RunDirectory $run -Workload Quality -CullRadiusPx $radius
+ $observed=Get-Content -LiteralPath "$run\workload.json" -Raw|ConvertFrom-Json
+ if($observed.cullPx -ne $radius -or ($observed.source -join ',') -ne '2284,2448'){throw 'Culling override changed resolution or failed to apply'}
+ $normalized=@($files|ForEach-Object {(Get-Content -LiteralPath $_ -Raw) -replace 'minScreenRadiusPx=\d+','minScreenRadiusPx=TEST'}) -join "`n"
+ if($null -ne $fixed -and $normalized -ne $fixed){throw 'Culling override changed another setting'}
+ $fixed=$normalized
+ Restore-QaBackup $run
+ if(@(Test-QaBackup (Get-Content -LiteralPath "$run\before.json" -Raw|ConvertFrom-Json)).Count){throw 'Culling restoration failed'}
+}
 $manifest=Get-Content -LiteralPath "$run\before.json" -Raw|ConvertFrom-Json
 'broken'|Set-Content -LiteralPath $manifest.files[0].saved
 $refused=$false
 try{& "$PSScriptRoot\set-workload.ps1" -RunDirectory $run -Workload Quality}catch{$refused=$true}
 if(-not $refused -or @(Test-QaBackup $manifest).Count){throw 'Damaged backup was not rejected before editing'}
-Write-Host "Three workload edits, exact restoration and damaged-backup refusal passed: $root"
+Write-Host "Three preset edits, three isolated culling edits, exact restoration and damaged-backup refusal passed: $root"

@@ -93,6 +93,34 @@ are part of the fingerprint, and dropped tick/call samples fail admission. Null-
 Virtual Desktop transport, encoding, decoding or headset comfort. Main timing interpretation remains in
 [performance priorities](../../docs/performance-priorities.md).
 
+## Culling and startup comparisons
+
+`citadel-culling.ps1 -PackageDirectory <private-fixture> -OutputDirectory <new-private-output>` runs
+8/4/0/0/4/8-pixel small-object thresholds at fixed Quality settings, source/eye size 2284 x 2448,
+AA and One Draw retained. Zero removes only the additional small-object filter. Normal visibility
+culling remains active. Both repeats must complete with matching build/settings/fixture fingerprints;
+live setting interventions invalidate the comparison. Read CPU time and draw counts alongside frame
+intervals: a runtime wait limit can hide a change in available rendering throughput.
+
+`citadel-startup.ps1 -PackageDirectory <private-fixture> -Phase Transition -Repeats 2` captures 120 seconds
+across initial launch, title, Resume and gameplay. This requires render instrumentation version 3.
+Thread handoff rows retain wall time but leave CPU busy columns blank because different threads have
+unrelated cycle counters. Overlapping Presents or a changed render context invalidate the capture.
+The `Splash` and `Flight` modes retain bounded 30-second captures. Launch events include QPC timestamps.
+
+Build and test a candidate with `build-startup-candidate.ps1 -OutputDirectory <new-private-build>`.
+Do not edit its compiled sources while it runs. The script records source hashes and preserves the
+host/module pair. `test-startup-build.ps1 -CandidateDirectory <private-build> -OutputDirectory
+<new-private-run> -PackageDirectory <private-fixture> -Mode Startup -Phase Transition` temporarily
+deploys that exact pair, runs the protected captures, and verifies restoration of the original pair.
+Use `-Mode Culling` for the six-run culling comparison. Coordinate exclusive native-session ownership
+first; neither script grants permission to interrupt another user's or agent's session.
+
+`resume-startup-comparison.ps1 -BaselineDirectory <private-build> -PackageDirectory <private-fixture>
+-OutputDirectory <new-private-output>` preserves the full sequence: two baseline transitions, a
+SystemSettings-only paired build, two candidate transitions and six culling runs. It is manually
+started after the shared session is released, never at the expiry of an estimated coordination window.
+
 ## Manifest v1
 
 Required top-level fields: `spdxLicenseIdentifier: MIT`, `schemaVersion: 1`, `id`, `label`, `game: LE1`,

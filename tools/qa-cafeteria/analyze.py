@@ -59,6 +59,7 @@ for path in sorted(HERE.glob('*-probe.json')):
                    else 'engineHostOnly' for t in measured_ticks}
     result['tickSummary'] = {
         'engineMs': dist(t['engine_ms'] for t in measured_ticks),
+        'engineBusyMs': dist(t['engine_busy_ms'] for t in measured_ticks),
         'hostMs': dist(t['host_ms'] for t in measured_ticks),
         'engineHostMs': dist(t['engine_ms']+t['host_ms'] for t in measured_ticks),
         'drainMs': dist(t.get('drain_ms') for t in measured_ticks),

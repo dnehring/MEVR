@@ -2,7 +2,8 @@
 # Apply a menu-equivalent workload only inside an already backed-up measurement session.
 #Requires -Version 7.0
 param([Parameter(Mandatory)][string]$RunDirectory,
- [Parameter(Mandatory)][ValidateSet('Quality','Balanced','Performance')][string]$Workload)
+ [Parameter(Mandatory)][ValidateSet('Quality','Balanced','Performance')][string]$Workload,
+ [ValidateRange(-1,64)][double]$CullRadiusPx=-1)
 $ErrorActionPreference='Stop'
 $ctx=Get-Content -LiteralPath "$RunDirectory\context.json" -Raw|ConvertFrom-Json
 $before=Get-Content -LiteralPath "$RunDirectory\before.json" -Raw|ConvertFrom-Json
@@ -21,6 +22,7 @@ $mode=switch($Workload){
  'Balanced' {@{scale=0.85;px=8;foliage='0.50';ao='True'}}
  'Performance' {@{scale=0.75;px=24;foliage='0.35';ao='False'}}
 }
+if($CullRadiusPx -ge 0){$mode.px=$CullRadiusPx}
 $width=if($mode.scale -eq 1){[int]$ctx.EyeWidth}else{2*[int][Math]::Round($ctx.EyeWidth*$mode.scale/2,[MidpointRounding]::AwayFromZero)}
 $height=if($mode.scale -eq 1){[int]$ctx.EyeHeight}else{2*[int][Math]::Round($ctx.EyeHeight*$mode.scale/2,[MidpointRounding]::AwayFromZero)}
 Add-Type @'
