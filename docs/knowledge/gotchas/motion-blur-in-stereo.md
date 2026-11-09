@@ -78,6 +78,27 @@ resolution. Do not start there.
 
 # Fix in place
 
+**2026-11-08 native investigation:** the game's profile graphics application directly copies
+`GameOptions.m_nMotionBlur` into the live system setting; there is also a separate render-thread cache and
+an independent permission toggled by `BioPlayerController.RestoreMotionBlur`. The latter alone does not
+cover all blur paths. [Research/62](../../../research/62-motion-blur-and-menu-pacing.md) records the native
+addresses and the new `plugin/MotionBlurGuard`: it switches recognized render proxies to the engine's
+matching no-blur specialization before rendering. Automated host and native-layout checks pass. The
+installed candidate passed physical Quest/VDXR instrumentation with the old workaround paused:
+native `RestoreMotionBlur` plus MotionBlur True produced proxies that the guard converted, including
+through a navigator conversation return. Three captures cover 12,009 frames, with zero unknown proxies,
+replay failures or recorded access violations; AA and One Draw stayed enabled. Only one of the five
+supported proxy pairs was exercised live. The owner could not judge sharpness reliably in Normandy;
+planetary asset disappearance remains unverified. The first tested candidate retained the workaround.
+The subsequent combined candidate skips its menu/conversation-return reset only while the native
+guard is installed and has seen no unknown proxies (HostServices v37, size/version checked).
+Losing coverage schedules a fallback at the next poll; an unavailable player is retried.
+Initial startup, new-level and actual settings edits still apply. Since 2026-11-09, a healthy guard also
+replaces the timed 3/15-second settling resets: the controlled two-repeat comparison removed their
+approximately 150 ms host stalls. Older/unhealthy hosts retain them. See [research/68](../../../research/68-culling-and-startup-followup.md).
+The owner's acceptance boundary
+allows cinematic blur if necessary, but requires gameplay to remain sharp after returning.
+
 `game/SystemSettings` (the mod, hot-reloaded): once a local player exists, and again whenever `engine::World()`
 changes, each boolean goes through its opposite first (`scale set MotionBlur True`, then `False`; the same for
 `DynamicShadows`), then `FoliageDrawRadiusMultiplier 0.5`. `[SystemSettings]` in `ASI\LE1MEVR.ini` overrides any key;

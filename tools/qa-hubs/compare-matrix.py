@@ -28,6 +28,8 @@ def compare(directory, partial=False):
         errors.append('Completed workload order/count differs from the fixed plan')
     if not runs:
         errors.append('No captures')
+    if len({str(Path(r['directory']).resolve()) for r in runs}) != len(runs):
+        errors.append('A capture was reused as an independent repetition')
     for r in runs:
         d = Path(r['directory'])
         label = d.name
@@ -87,7 +89,8 @@ def compare(directory, partial=False):
             machine = read(d / 'machine.json')
             hardware.append({k: machine[k] for k in ('cpu', 'gpu', 'powerScheme')})
             invariants.append([a['halcyon'], {k: levers[k] for k in ('pCoresOnly','umbraQueryWait','ue3QueryWait','perEyeViewState','perEyeOcclusion','sharePass')},
-                               config.get('SystemSettings', 'AntiAliasing'), read(d / 'staged.json')['saveSha256']])
+                               config.get('SystemSettings', 'AntiAliasing'), read(d / 'staged.json')['saveSha256'],
+                               read(d / 'context.json')['ActiveRuntime']])
             frames = probe.load_rows(d / meta['files']['frames'])
             intervals = [probe.frame_metrics(f)['interval'] for f in frames
                          if f['xr_frame'] and f['should_render'] and 1000 <= f['t_start'] < (meta['seconds']-1)*1000]

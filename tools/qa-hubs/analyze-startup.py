@@ -35,7 +35,8 @@ def analyze(folder):
     events = [json.loads(line) for line in (folder / 'launch-events.jsonl').read_text(encoding='utf-8-sig').splitlines()]
     for event in events:
         event['at_s'] = ((event['qpc'] - meta['clocks']['originQpc']) / meta['clocks']['qpcFrequency']
-                         if meta['clocks'].get('originQpc') else (dt.datetime.fromisoformat(event['utc']) - origin).total_seconds())
+                         if meta['clocks'].get('originQpc') and 'qpc' in event else
+                         (dt.datetime.fromisoformat(event['utc']) - origin).total_seconds())
     enters = [e['at_s'] for e in events if e['kind'] == 'enter-posted']
     ready = next(e['at_s'] for e in events if e['kind'] == 'gameplay-ready')
     if len(enters) != 2:
@@ -61,6 +62,8 @@ def analyze(folder):
     receipt = json.loads((folder / 'session-result.json').read_text(encoding='utf-8-sig'))
     final = json.loads((folder / 'verified-final-state.json').read_text(encoding='utf-8-sig'))
     levers = meta['renderLevers']
+    render = meta.get('renderInstrumentation', {})
+    boundaries = [r for r in raw if r.get('cpu_valid') == 0]
     checks = {
         'sessionCompletedAndRestored': receipt.get('completed') and receipt.get('restored') and final.get('passed'),
         'captureDurationComplete': meta['seconds'] >= meta['secondsRequested'] - .1,
@@ -76,6 +79,11 @@ def analyze(folder):
                                   if transition else meta['seconds'] < enters[1],
         'noOverlappingPresents': meta.get('renderInstrumentation', {}).get('overlappingPresents', 0) == 0,
         'sameRenderContext': meta.get('renderInstrumentation', {}).get('contextChanges', 0) == 0,
+        'handoffRowsConsistent': (len(boundaries) == render.get('cpuBoundaryFrames') == render.get('threadSwitches') and
+                                 all(r['render_thread'] != r['previous_render_thread'] and r['t_end'] >= r['t_start'] and
+                                     all(v is None for k, v in r.items() if k.startswith('busy_')) for r in boundaries))
+                                if render.get('version') == 3 else True,
+        'transitionCoverage': 1 < enters[0] < enters[1] <= ready < meta['seconds'] - 17 if transition else True,
     }
     result['measurementValidity'] = {'valid': all(checks.values()), 'checks': checks}
     for name, start, end in phases:

@@ -4,6 +4,8 @@
 Status: the initial render-guard candidate passed host tests, native-layout/signature checks, and
 physical Quest/VDXR instrumentation, including a forced re-enable and crew-conversation return.
 The combined menu/VDXR/blur candidate was installed at 15:38 on 2026-11-08; combined headset QA is pending.
+The 2026-11-09 [startup/culling follow-up](68-culling-and-startup-followup.md) additionally validates
+guard-aware removal of the timed settings resets across repeated full title-to-game transitions.
 The owner could not judge sharpness reliably in Normandy; planetary visual acceptance remains open.
 The combined candidate adds a conditional menu-return fallback, described below. AA and One Draw remain enabled.
 

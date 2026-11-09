@@ -24,7 +24,7 @@ def main():
     run.mkdir()
     (run / 'config').mkdir()
     for name in ('session-result.json','restored.json','before.json','workload.json','analysis.json','tick-trace-check.json',
-                 'host.log','build-files.json','machine.json','staged.json','capture-window.json','config/LE1MEVR.ini'):
+                 'host.log','build-files.json','machine.json','context.json','staged.json','capture-window.json','config/LE1MEVR.ini'):
         shutil.copy2(args.reference / name, run / name)
     analysis = matrix.read(run / 'analysis.json')
     probe_name = analysis[0]['source']
@@ -68,7 +68,19 @@ def main():
     plan['workloads'].append(workload)
     (destination / 'plan.json').write_text(json.dumps(plan))
     check(False)
-    print(f'Valid/slow capture admission, One Draw/fault/resolution rejection, and incomplete-plan rejection passed: {destination}')
+    entries = [{'workload': workload, 'directory': str(run)}] * 2
+    (destination / 'runs.json').write_text(json.dumps(entries))
+    assert any('reused' in error for error in check(False)['errors'])
+    second = destination / 'second'
+    shutil.copytree(run, second)
+    entries[1] = {'workload': workload, 'directory': str(second)}
+    (destination / 'runs.json').write_text(json.dumps(entries))
+    check(True)  # synthetic duplicates are only fixtures for the comparison logic
+    context = matrix.read(second / 'context.json')
+    context['ActiveRuntime'] = 'different-test-runtime'
+    (second / 'context.json').write_text(json.dumps(context))
+    assert any('settings/save' in error for error in check(False)['errors'])
+    print(f'Valid/slow admission; One Draw, faults, resolution, runtime, reused-capture and incomplete-plan rejection passed: {destination}')
 
 
 if __name__ == '__main__':
