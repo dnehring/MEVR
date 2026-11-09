@@ -1,29 +1,51 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Gameplay performance priorities
 
-Updated 2026-11-08. Evidence: [head-turn investigation](../research/63-head-turn-performance.md).
+Updated 2026-11-09. Evidence: [head-turn investigation](../research/63-head-turn-performance.md),
+[stationary C-Sec capture](../research/65-citadel-stationary-performance.md), and
+[six-run preset matrix](../research/66-citadel-performance-matrix.md).
 Reusable validation: [cafeteria QA](../tools/qa-cafeteria/README.md) and
 [hub route catalog](../tools/qa-hubs/README.md). Hub drafts remain excluded until their actual scene and walking route are verified.
 
-This is engineering order. Item 2 is the largest individual hitch; item 3 is directly observed in the physical
-headset. Keep One Draw enabled and distinguish each problem's acceptance criteria.
+This is the order for the next engineering work: first the hitch reproduced across every preset, then the
+remaining simulation gaps and host CPU bursts, followed by the separately measured physical-runtime stalls.
+Keep One Draw enabled. Successful measurement/restoration does not mean the performance gate passed.
 
 | Order | Problem | Evidence and next action | Status |
 |---|---|---|---|
-| 1 | Camera-diagnostic disk writes | Recurring 12-18 ms host stalls; sampled inside synchronous INI writes. Measurements now publish in memory; three High runs had zero automatic settings writes and host maxima 7.03-7.54 ms. | Implemented; local checks passed; headset calibration pending |
-| 2 | Rare 80-93 ms gameplay pauses | Most of the pause lies between the original measured game ticks. Buffered whole-hook/queue-drain tracing passed a native Citadel capture; its 36 ms hitch overlapped a 31 ms gap outside the hook, with no queued calls. Inspect scheduling/waits; the original severe pause did not recur. | Native trace validated; individual queued-call execution unexercised; cause unresolved |
-| 3 | Physical-headset submission stalls | Earlier VDXR captures have 35-62 ms worst intervals; 68 of 72 long intervals are dominated by xrEndFrame. Correlate GPU/resource/scheduling evidence using a controlled headset sweep. | Wait location identified; underlying cause unresolved |
-| 4 | Periodic engine CPU spikes | Approximately 19 ms CPU in the same sampled chain under UWorld::Tick. Identify the routine before changing engine behavior; GC remains a hypothesis. | Cause unresolved |
-| 5 | Dense-scene rendering budget | Physical captures reach about 10 ms render CPU at p99 against 11.111 ms at 90 Hz. Measure visibility/query/replay costs per frame, then optimize the measured bottleneck. | Culling contribution unproven |
+| 1 | Periodic garbage collection | Every Citadel preset/repeat has a 22.76-25.19 ms engine tick and a 23.07-25.47 ms whole hook. Stacks and the engine caller now identify collection on the configured 60-second timer. Measure phase/object pressure and investigate avoidable mod-owned churn; retain collection and bounded memory use. | Cause identified; mitigation remains open; no GC behavior changed |
+| 2 | Long gaps outside measured ticks | Rare Normandy intervals reached 80-93 ms; the custom Citadel workload reached 36 ms with a 31 ms gap outside the full hook. Queued calls were absent and drains tiny in the Citadel trace. Inspect scheduling/waits; do not disable queued-call safety. | Not reproduced at the old severity in the six preset runs; remains open |
+| 3 | Remaining host CPU bursts | Preset runs reach 7.76-10.31 ms host work; custom Citadel reached 25.56 ms, with zero settings writes. Sample the host/mod routines and distinguish polling/object scans from waits before optimizing. | Separate from the fixed diagnostic INI writes; cause unresolved |
+| 4 | Physical-headset submission stalls | Earlier VDXR captures have 35-62 ms worst intervals; 68 of 72 long intervals are dominated by xrEndFrame. Correlate GPU/resource/scheduling evidence with the physical headset. | Null-driver runs cannot close this issue |
+| 5 | Dense-scene render CPU and oversize source resolution | Preset p99 frame intervals are 9.62-10.29 ms; custom 3840-square source reaches 16.10 ms. Preset bundles also change shadows/culling/foliage, so isolate those costs before assigning causality. | Culling contribution unproven; preserve the oversize case as a stress test |
+| 6 | Intro/menu transitions and broader traversal | Keep menu-spine/blur-guard improvements, then measure title/intro and menu-return paths separately. The fixed C-Sec benchmark does not validate the user's full walk or other hubs. | Separate scenarios needed; other map development remains paused |
 
-## Acceptance for item 1
+## Current regression gate
+
+The six preset captures all pass measurement validity and p99 <=11.111 ms at nominal 90 Hz. All fail the
+whole-hook <=22.222 ms limit; only two fail the frame-interval <=22.222 ms limit. Keep both hitch checks.
+Preset median p99: Quality 10.16 ms, Balanced 10.07 ms, Performance 9.84 ms. Each passes the 72/90 Hz
+arithmetic p99 budgets and fails the 120 Hz budget; none is a physical-headset pacing acceptance test.
+
+The first follow-up diagnostic reproduced the collection chain twice, 60.008 seconds apart, and identified
+its timer through the LE1 SDK field and a read-only engine inspection. Its sampler substantially changed
+SteamVR pacing, so only the clean six-run matrix is used for performance acceptance. See the
+[diagnostic evidence and limitations](../research/66-citadel-performance-matrix.md#first-priority-garbage-collection-identified).
+
+## Completed improvement: camera diagnostic writes
+
+The old first item is implemented: camera measurements publish in memory, and all six new preset captures
+also had zero settings-file writes. Keep the calibration acceptance checks below; this does not close the
+new host-burst item. Motion-blur protection and One Draw stayed active throughout the matrix.
+
+## Camera diagnostic acceptance
 
 - Automatic camera measurements no longer modify settings files during gameplay.
 - The calibration menu receives current measurements without waiting for a file timestamp change.
 - Trigger alignment requires a measurement taken after recentering; stale or invalid samples cannot be applied.
 - Explicit camera alignment/profile saves and arm-length calibration saves remain functional.
 - Compare repeated High captures with the original host-stall signature, preserving saves, settings, resolution and One Draw.
-- Record any remaining large pauses separately. Improvement in item 1 does not close items 2-5.
+- Record remaining pauses separately. Removing diagnostic writes does not close the open list above.
 
 ## Baseline
 
@@ -36,7 +58,7 @@ A later [stationary C-Sec run](../research/65-citadel-stationary-performance.md)
 engine tick. It validates the whole-hook trace and provides a fixed Citadel benchmark. Different scene,
 eye resolution and module mean it is not a controlled comparison with the Normandy baseline.
 
-## Item 1 implementation
+## Camera diagnostic implementation
 
 Camera observations now pass from the game-thread producer through HostServices v38 into a host-owned,
 thread-safe in-memory sample. The classic calibration menu reads that sample directly. Samples expire after
@@ -51,7 +73,7 @@ The reusable private-candidate build, three-run validation, result checker and r
 [the QA README](../tools/qa-cafeteria/README.md). The private build selects SteamVR only for its own process;
 it is not a release artifact. Physical headset calibration and comfort remain separate checks.
 
-## Item 1 local result
+## Camera diagnostic local result
 
 Three independent High launch/walk/90-second capture/restore runs retained the baseline resolution, AA,
 shadows, AO and One Draw. Every run delivered a fresh camera sample and had zero settings-file writes.

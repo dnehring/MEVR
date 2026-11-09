@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: MIT
 # Extra, intrusive diagnostic capture. Never include its timing in the clean baseline.
-param([Parameter(Mandatory)][string]$RunDirectory,[ValidateRange(1,3)][int]$Captures=2)
+param([Parameter(Mandatory)][string]$RunDirectory,[ValidateRange(1,3)][int]$Captures=2,
+      [string]$RecordingPath='', [string]$SamplerPath='')
 . "$PSScriptRoot\common.ps1"
 $ctx=Read-QaContext $RunDirectory
 . (Join-Path $ctx.RepoRoot 'tools\common.ps1')
 [void](Assert-QaOwnedGame)
-$sampler=Join-Path $ctx.RepoRoot 'build\Release\mevr-stack-sampler.exe'
+$sampler=if($SamplerPath){$SamplerPath}else{Join-Path $ctx.RepoRoot 'build\Release\mevr-stack-sampler.exe'}
 if(-not (Test-Path -LiteralPath $sampler)){throw 'Build mevr-stack-sampler in build/Release first.'}
 $since=Get-Date
 [void](Write-MevrRequest 'perf.request' 'seconds=2 delay=0 tag=cafeteria-thread-id')
@@ -34,7 +35,11 @@ for($index=1;$index -le $Captures;$index++){
     try{
         # Initial symbol/stack loading can be expensive; exclude warmup from the perf probe.
         Start-Sleep -Seconds 7
-        & "$PSScriptRoot\capture.ps1" -RunDirectory $sampleDir -Tag "cafeteria-$($ctx.Preset.ToLower())-traced-$index"
+        if($RecordingPath){
+            & "$PSScriptRoot\capture.ps1" -RunDirectory $sampleDir -Tag "citadel-traced-$index" -RecordingPath $RecordingPath -ReplayAlreadyRunning
+        }else{
+            & "$PSScriptRoot\capture.ps1" -RunDirectory $sampleDir -Tag "cafeteria-$($ctx.Preset.ToLower())-traced-$index"
+        }
         if(-not $process.WaitForExit(60000)){throw 'Sampler did not finish.'}
         if($process.ExitCode -ne 0){throw "Sampler failed: $($process.ExitCode)"}
     }finally{

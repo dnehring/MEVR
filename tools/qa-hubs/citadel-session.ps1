@@ -10,6 +10,8 @@ param(
  [switch]$FakeHeadset, [string]$SteamVRRoot='',
  [ValidateRange(512,4096)][int]$EyeWidth=2284, [ValidateRange(512,4096)][int]$EyeHeight=2448,
  [ValidateRange(1,360)][double]$SweepDegrees=120,
+ [ValidateSet('Current','Quality','Balanced','Performance')][string]$Workload='Current',
+ [switch]$Diagnostic,
  [string]$LocalAppData=[Environment]::GetFolderPath('LocalApplicationData')
 )
 $ErrorActionPreference='Stop'
@@ -107,17 +109,21 @@ try{
  $hub=Join-Path $source 'qa-hubs';$kit=Join-Path $source 'qa-cafeteria'
  $ctx=@{RepoRoot=(Split-Path $source -Parent);GameRoot=$GameRoot;SteamRoot=$SteamRoot;ProfileRoot=$ProfileRoot;LocalAppData=$LocalAppData;
         PythonExe=$PythonExe;ExpectedAsiSha256=(Get-FileHash -LiteralPath "$asi\LE1MEVR.asi").Hash;ActiveRuntime=(Get-QaRuntime);
-        FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight}
+        FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight;Workload=$Workload;Diagnostic=[bool]$Diagnostic}
  $ctx|ConvertTo-Json|Set-Content -LiteralPath "$RunDirectory\context.json"
  @{Action=$Action;PackageDirectory=$package;GameRoot=$GameRoot;SteamRoot=$SteamRoot;ProfileRoot=$ProfileRoot;PythonExe=$PythonExe;
    LocalAppData=$LocalAppData;Capture=[bool]$Capture;CaptureStartSeconds=$CaptureStartSeconds;CaptureSeconds=$CaptureSeconds;
-   FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight;SweepDegrees=$SweepDegrees}|
+   FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight;SweepDegrees=$SweepDegrees;Workload=$Workload;Diagnostic=[bool]$Diagnostic}|
    ConvertTo-Json|Set-Content -LiteralPath "$RunDirectory\invocation.json"
  $gameConfig=Join-Path $GameRoot 'Game\ME1\BioGame\Config'
  $protected=@("$asi\LE1MEVR.ini","$asi\MELEVR.ini")
  if($FakeHeadset){$protected+=@("$SteamRoot\config\steamvr.vrsettings","$SteamRoot\config\chaperone_info.vrchap","$SteamVRRoot\drivers\null\resources\settings\default.vrsettings")}
  Save-QaBackup $RunDirectory $protected @($ProfileRoot,$gameConfig) $ctx.ExpectedAsiSha256 $ctx.ActiveRuntime
  $backupReady=$true
+ if($Workload -ne 'Current'){
+  if($Action -ne 'Measure' -or -not $FakeHeadset){throw 'Named measurement workloads require Measure with FakeHeadset.'}
+  & "$hub\set-workload.ps1" -RunDirectory $RunDirectory -Workload $Workload
+ }
  # Recheck after backup; use current preferences, changing only the Resume character/slot in a temporary copy.
  if(Get-Process MassEffect1,MassEffectLauncher,MEVR-VRLauncher -ErrorAction SilentlyContinue){throw 'Another session opened during preparation.'}
  if($FakeHeadset){
@@ -182,9 +188,14 @@ try{
    }
   }
   Start-Sleep -Seconds 10
-  $receipt.measurementKind='Stationary sinusoidal head turns; current graphics settings; archived Citadel save; no walking.'
-  Write-Host "Capturing $CaptureSeconds seconds of stationary Citadel head turns."
-  & "$kit\capture.ps1" -RunDirectory $RunDirectory -Tag 'citadel-fixed-save-turns' -Seconds $CaptureSeconds -RecordingPath $turn -ReplayAlreadyRunning
+  $receipt.measurementKind="Stationary sinusoidal head turns; $Workload graphics settings; archived Citadel save; no walking."
+  if($Diagnostic){
+   $receipt.measurementKind+=' Intrusive stack sampling; excluded from clean comparisons.'
+   & "$kit\diagnose.ps1" -RunDirectory $RunDirectory -Captures 1 -RecordingPath $turn -SamplerPath "$repo\build\Release\mevr-stack-sampler.exe"
+  }else{
+   Write-Host "Capturing $CaptureSeconds seconds of stationary Citadel head turns."
+   & "$kit\capture.ps1" -RunDirectory $RunDirectory -Tag 'citadel-fixed-save-turns' -Seconds $CaptureSeconds -RecordingPath $turn -ReplayAlreadyRunning
+  }
   Invoke-QaTool 'replay.ps1' @{Stop=$true}
   $turnStarted=$false
   Invoke-QaTool 'console.ps1' @{Command=@('mevr vehicle','mevr loc')}|Set-Content -LiteralPath "$RunDirectory\end-world.txt"

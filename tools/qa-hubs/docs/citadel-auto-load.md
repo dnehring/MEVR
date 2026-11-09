@@ -62,6 +62,32 @@ graphics settings, build hashes, hardware, raw frames/ticks/queued calls and an 
 The scene snapshot and logs remain private. A null-driver throughput measurement does not establish physical
 SteamVR pacing, Virtual Desktop transport latency, reprojection quality or walking-route performance.
 
+For comparisons, `-Workload Quality`, `Balanced`, or `Performance` applies the menu's resolution, FSR,
+small-object culling, foliage, shadows and AO choices before launch, after the protected backup. AA and
+One Draw stay unchanged. `Current` is the default. Actual source/eye sizes and live settings application
+are checked against the requested workload; no resolution change is assumed to apply without a restart.
+
+```powershell
+& .\tools\qa-hubs\citadel-matrix.ps1 -PackageDirectory $package
+```
+
+The matrix runs Quality/Balanced/Performance and then the reverse order, independently launching and
+restoring each 90-second capture. It records a fixed plan, run ledger and comparison JSON. Measurement
+validity is distinct from performance acceptance: it reports p99 against 72/90/120 Hz budgets and flags
+intervals or whole game-thread hooks over 22.222 ms. All captures use a nominal 90 Hz null driver; the
+other budgets are arithmetic thresholds, not different headset refresh modes. Stop on invalid evidence;
+do not rerun a slow valid sample merely to obtain a pass. `test-workloads.ps1` checks temporary INI edits,
+preservation of AA/One Draw/unrelated preferences, exact restoration, and damaged-backup refusal offline.
+
+After a completed capture, `verify-session-state.ps1 -RunDirectory <session>` verifies protected-file hashes,
+installed host/module hashes, the unchanged runtime, and absence of game/SteamVR processes and QA ownership.
+Run this in the native user environment, before anyone starts another game session.
+
+For a separate diagnostic capture, add `-Diagnostic` to `Measure`. It uses the existing
+`build/Release/mevr-stack-sampler.exe` for one 90-second probe of the same settled replay. The sampler
+suspends the game thread; its rows and suspension costs stay in `diagnostic-1/` and are excluded from the
+clean matrix. `tools/qa-cafeteria/summarize-diagnostics.py <session>` aligns samples with CPU spikes.
+
 The coordinator shares the QA lock with the existing harness. It refuses a running game/launcher, pending
 requests, another owner, corrupted fixture or damaged backup. Before staging anything it backs up the complete
 current player profile/save tree, ME1 configuration and both VR INIs. It temporarily installs the archived save
