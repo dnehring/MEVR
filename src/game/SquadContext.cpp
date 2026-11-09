@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/PowerWheel.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
@@ -116,14 +117,28 @@ std::string Lower(std::string s) {
     return s;
 }
 
-// "SniperCrit" -> "sniper crit": the internal name as words, until a table says the spoken one.
+// The spoken name of a power: the power wheel's table where it knows the label ("TK_Throw" is "Throw"), else the internal
+// name as words without its discipline prefix and its NPC/delivery suffix ("BW_Carnage_NPC" -> "carnage", "EL_EMP_Delivery" ->
+// "emp"). Until 2026-11-09 the letters went in whole ("Ar Shield Boost", "Kro Pistol Whip"): 20 of the recognizer's key
+// terms were words nobody says, and the parser's power words with them.
 std::string Spoken(std::string const& internal) {
+    if (vr::power_wheel::PowerInfo const* const info = vr::power_wheel::FindPower(internal.c_str()); info != nullptr && info->name != nullptr) {
+        return Lower(info->name);
+    }
+    std::string trimmed = internal;
+    if (auto const us = trimmed.find('_'); us != std::string::npos && us >= 2 && us <= 3 &&
+        std::all_of(trimmed.begin(), trimmed.begin() + static_cast<std::ptrdiff_t>(us), [](char c) { return std::isupper(static_cast<unsigned char>(c)) != 0; })) {
+        trimmed = trimmed.substr(us + 1);
+    }
+    for (char const* suffix : {"_NPC", "_Npc", "_Delivery", "_Player"}) {
+        if (trimmed.size() > std::string_view(suffix).size() && trimmed.ends_with(suffix)) trimmed = trimmed.substr(0, trimmed.size() - std::string_view(suffix).size());
+    }
     std::string out;
-    for (std::size_t i = 0; i < internal.size(); ++i) {
-        char const c = internal[i];
+    for (std::size_t i = 0; i < trimmed.size(); ++i) {
+        char const c = trimmed[i];
         if (c == '_') {
             out += ' ';
-        } else if (std::isupper(static_cast<unsigned char>(c)) && i > 0 && std::islower(static_cast<unsigned char>(internal[i - 1]))) {
+        } else if (std::isupper(static_cast<unsigned char>(c)) && i > 0 && std::islower(static_cast<unsigned char>(trimmed[i - 1]))) {
             out += ' ';
             out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         } else {
