@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Citadel regression routes
 
+A [recorded-walk candidate](citadel-recorded-walk.md) now replays the user's 2026-11-08 walkthrough, with
+original-save binding, starting-pose checks and optional timing capture. It is a separate input-replay path;
+the declarative scenarios below still lack validated world-space routes.
+
 The Citadel uses `BIOA_STA00` as its persistent map. Presidium (`STA20`), C-Sec/docks (`STA30`), Wards (`STA60`)
 and Tower (`STA70`) are streamed areas. The runner must check both the map and the starting coordinates/deck;
 map identity alone cannot distinguish a usable hub save from the arrival sequence or a different area.

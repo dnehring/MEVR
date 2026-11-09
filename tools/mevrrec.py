@@ -23,7 +23,8 @@ BUTTONS = ["stickClick", "primary", "secondary", "menu", "gripValid", "aimValid"
 
 
 def read(path):
-    data = open(path, "rb").read()
+    with open(path, "rb") as stream:
+        data = stream.read()
     magic, version, header_bytes, frame_bytes, _, created = HEADER.unpack_from(data, 0)
     if magic != MAGIC:
         raise SystemExit(f"{path}: not a .mevrrec recording")

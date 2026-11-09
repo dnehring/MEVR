@@ -12,6 +12,8 @@ $fixture=Join-Path $repo ('scratch\qa-hubs\offline-'+(Get-Date -Format 'yyyyMMdd
 New-Item -ItemType Directory -Path $fixture|Out-Null
 & $PythonExe "$PSScriptRoot\test-offline.py" $fixture
 if($LASTEXITCODE){throw 'Offline hub tests failed.'}
+& $PythonExe "$PSScriptRoot\test-recorded-route.py"
+if($LASTEXITCODE){throw 'Recorded route offline checks failed.'}
 $oldLocalAppData=$env:LOCALAPPDATA
 try{
     # Exercise actual navigation math with mocked reads/pulses. No native call is reachable here.

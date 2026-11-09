@@ -1,5 +1,9 @@
 <!-- SPDX-License-Identifier: MIT -->
-# Hub regression work paused
+# Other hub development paused
+
+Update: the user subsequently requested a Citadel script based on their saved manual walkthrough and confirmed
+it began at a freshly loaded save. [The recorded-walk candidate](docs/citadel-recorded-walk.md) is now available
+for start binding and native validation. This narrow resumption does not resume other maps or validate any draft.
 
 Paused at the user's request on 2026-11-08. These routes were intended to widen the CPU troubleshooting
 sample; continue the performance investigation with the established Normandy cafeteria workload instead.

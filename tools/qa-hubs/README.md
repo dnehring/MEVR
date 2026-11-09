@@ -1,8 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Hub walking regression tests
 
-Development is [paused at the user's request](PAUSED.md). All current scenarios remain drafts; Normandy
-continues to supply the active CPU troubleshooting workload.
+The user resumed Citadel script generation from their manual walkthrough. The new
+[recorded-walk candidate](docs/citadel-recorded-walk.md) supports save/start binding, one-shot input replay
+and an optional traversal timing capture. It still needs native route validation. Other map development is
+[paused at the user's request](PAUSED.md); all declarative scenarios below remain drafts.
 
 Declarative LE1 routes extend the Normandy cafeteria workload to the Citadel, Noveria and other major centers.
 Each run uses controller walking, checks the starting map/position/facing, checks every waypoint, captures an
