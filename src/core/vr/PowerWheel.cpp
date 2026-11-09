@@ -283,6 +283,41 @@ PowerInfo const* FindPower(char const* label) {
     return nullptr;
 }
 
+PowerInfo const& NoPower() {
+    static constexpr PowerInfo kNone{"None", "No power", 2, kNoPowerIcon, Aim::None};
+    return kNone;
+}
+
+bool IsNoPower(char const* label) {
+    return label != nullptr && std::strcmp(label, NoPower().label) == 0;
+}
+
+int RequiredWeapon(char const* label) {
+    static constexpr struct {
+        char const* label;
+        int type;
+    } kGunPowers[] = {{"LW_Marksman", 0}, {"BW_CarnageSetup", 1}, {"AW_Suppression", 2}, {"SW_Critical", 3}};
+    if (label != nullptr) {
+        for (auto const& power : kGunPowers) {
+            if (std::strcmp(power.label, label) == 0) {
+                return power.type;
+            }
+        }
+    }
+    return -1;
+}
+
+char const* WeaponName(int rangedType) {
+    switch (rangedType) {
+    case 0: return "the pistol";
+    case 1: return "the shotgun";
+    case 2: return "the assault rifle";
+    case 3: return "the sniper rifle";
+    default: break;
+    }
+    return "a weapon";
+}
+
 void Publish(View const& view) {
     std::lock_guard lock(gLatestMutex);
     gLatest = view;
@@ -623,9 +658,12 @@ char const* Name(SelfGesture gesture) {
     return "none";
 }
 
-SelfRefusal RefusalFor(SelfGesture gesture, bool gunDrawn, bool available, float cooldown) {
+SelfRefusal RefusalFor(SelfGesture gesture, bool gunDrawn, bool rightWeapon, bool available, float cooldown) {
     if (gesture == SelfGesture::Gun && !gunDrawn) {
         return SelfRefusal::DrawWeapon;
+    }
+    if (gesture == SelfGesture::Gun && !rightWeapon) {
+        return SelfRefusal::WrongWeapon;
     }
     if (cooldown > 0.0f) {
         return SelfRefusal::CoolingDown;
@@ -670,7 +708,7 @@ SelfZone ZoneFor(SelfGesture gesture, SelfCastInput const& in, SelfCastSettings 
 }
 
 SelfLook LookFor(SelfGesture gesture, SelfCastInput const& in, SelfZone const& zone) {
-    if (!in.tracked || gesture == SelfGesture::None || (gesture == SelfGesture::Gun && !in.gunValid)) {
+    if (!in.tracked || !in.ready || gesture == SelfGesture::None || (gesture == SelfGesture::Gun && !in.gunValid)) {
         return SelfLook::Hidden;
     }
     float const distance = Length(Sub(in.hand, ClosestPoint(zone, in.hand)));
@@ -756,6 +794,15 @@ SelfCastStep StepSelfCast(SelfCastState& s, SelfGesture gesture, SelfCastInput c
         step.entered = false;  // no tick, no ring
         step.progress = 0.0f;
         return step;
+    }
+    // Not ready (cooling down, the wrong gun, unavailable): nothing showed the way in, so no tick and no ring, and a hand resting
+    // on the gun says nothing; a slap onto it, or the chest's or the raise's full dwell, is answered (the caller refuses it).
+    if (!in.ready) {
+        step.entered = false;
+        step.progress = 0.0f;
+        if (gesture == SelfGesture::Gun ? !slap : held < settings.dwellS) {
+            return step;
+        }
     }
     if (slap || held >= settings.dwellS) {
         s.spent = true;

@@ -708,6 +708,15 @@ void PaintGeneric(Painter& paint) {
     paint.Shape([&](V p) { return Circle(p, {}, 0.2f); }, [&](V p) { return Mix(c.core, c.light, Clamp01(Len(p) / 0.2f)); }, c.glow, 0.1f, 0.8f);
 }
 
+// No power (the wheel's way back to neutral, 2026-11-09): an empty ring struck through, nothing equipped.
+void PaintNoPower(Painter& paint) {
+    Palette const c = Combat();
+    paint.Line([&](V p) { return std::abs(Circle(p, {}, 0.52f)); }, 0.024f, c.core, c.glow, 0.06f, 0.6f);
+    V const a = Polar(135.0f, 0.52f);
+    V const b = Polar(-45.0f, 0.52f);
+    paint.Line([&](V p) { return Capsule(p, a, b, 0.0f, 0.0f); }, 0.024f, c.core, c.glow, 0.06f, 0.6f);
+}
+
 }  // namespace
 
 char const* Name(Icon icon) {
@@ -732,6 +741,7 @@ char const* Name(Icon icon) {
     case Icon::Overkill: return "overkill";
     case Icon::Carnage: return "carnage";
     case Icon::Assassination: return "assassination";
+    case Icon::NoPower: return "no-power";
     case Icon::Count: break;
     }
     return "?";
@@ -743,7 +753,8 @@ Icon ForPower(std::string_view label) {
     return info != nullptr && info->icon > 0 && info->icon < static_cast<int>(Icon::Count) ? static_cast<Icon>(info->icon) : Icon::Generic;
 }
 static_assert(static_cast<int>(Icon::Throw) == 1 && static_cast<int>(Icon::Barrier) == 6 && static_cast<int>(Icon::Overload) == 7 &&
-                  static_cast<int>(Icon::ShieldBoost) == 12 && static_cast<int>(Icon::Assassination) == 19,
+                  static_cast<int>(Icon::ShieldBoost) == 12 && static_cast<int>(Icon::Assassination) == 19 &&
+                  static_cast<int>(Icon::NoPower) == vr::power_wheel::kNoPowerIcon,
     "core/vr/PowerWheel's FindPower numbers the icons in this order");
 
 std::vector<std::uint32_t> Picture(Icon icon) {
@@ -768,6 +779,7 @@ std::vector<std::uint32_t> Picture(Icon icon) {
     case Icon::Overkill: PaintOverkill(paint); break;
     case Icon::Carnage: PaintCarnage(paint); break;
     case Icon::Assassination: PaintAssassination(paint); break;
+    case Icon::NoPower: PaintNoPower(paint); break;
     case Icon::Generic:
     case Icon::Count: PaintGeneric(paint); break;
     }

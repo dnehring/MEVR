@@ -74,6 +74,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   ring), then check the cyan flash, power name and two beats in BOTH hands. Retry during cooldown and with the gun holstered
   (right hand raised): red flash and a readable reason. Try Chest/Raise too; a closed foregrip must never cast. Targets must
   still show after more than three equips. Check target height/size, text by the hand, and one diagnostic line per attempt.
+- [ ] Only a ready power shows its target; No power (2026-11-09, research/55 section 10): with Overkill equipped, draw the
+  pistol and shotgun: no target on them (a slap says "Assault rifle only"); the assault rifle: the target; cast it, and the
+  target is gone until the cooldown ends, then back. A hand resting on the gun meanwhile gives no tick. Then pick No power, the
+  wheel's last tile (a struck-through ring): no target on any gun, no brackets, the game's HUD still fine; pick Overkill again.
+  The log's `power wheel: Overkill's gesture target hidden: it needs the assault rifle` / `ready` lines follow the switches.
 - [ ] Hold X: the wheel opens at your left palm and stays put while your hand moves. Pick by moving your hand and by the
   left stick; letting go of X equips. On a real save, powers you don't have yet are dimmed. (research/55 section 6)
 - [ ] The wheel's light comes from the omni-tool on your hand (2026-11-06): with the wheel open, does the bright point sit on the

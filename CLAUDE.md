@@ -976,6 +976,12 @@ switching frameworks.
   grip to muzzle, 4 cm above the bore, radius 8.5 cm (open hand, 0.6 m/s slap or 0.35 s dwell, once per stay). All three have
   orange-to-cyan targets and a dwell ring; a cast flashes cyan and names the power for 1 s, a refusal flashes red and says why,
   both with distinct two-beat haptics in both hands (existing lock/hint canvases, no new swapchain; section 10, 2026-11-07).
+  **Only a ready power shows its target** (2026-11-09, the owner: Overkill's showed on every gun): available, not cooling down,
+  and a gun power on its own gun (`vr::power_wheel::RequiredWeapon`: Marksman pistol, Overkill assault rifle, Carnage shotgun,
+  Assassination sniper; with the game's `IsRequiredWeaponEquipped`); not ready, no target, tick or ring, and only a slap or a full
+  dwell is answered ("Assault rifle only", "Cooling down N%"); log `power wheel: <power>'s gesture target ready|hidden: ...`.
+  **No power**, the wheel's last tile, writes the engine's None into `MappedPower` (back to neutral: nothing aimed or gestured);
+  `kMaxEntries` 12, the View grew (host and mod together).
   One `power wheel: gesture attempt:` line records the closest approach, entry speed, hand/weapon state and outcome
   (`vr::power_wheel::StepSelfCast`;
   `mevr powerwheel selfcast`); powers that use the omni-tool (tech, or the omni-tool in their own effects) wear the gauntlet
