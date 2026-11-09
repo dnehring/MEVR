@@ -14,6 +14,8 @@ New-Item -ItemType Directory -Path $fixture|Out-Null
 if($LASTEXITCODE){throw 'Offline hub tests failed.'}
 & $PythonExe "$PSScriptRoot\test-recorded-route.py"
 if($LASTEXITCODE){throw 'Recorded route offline checks failed.'}
+& $PythonExe "$PSScriptRoot\test-save-fixture.py"
+if($LASTEXITCODE){throw 'Save fixture checks failed.'}
 $oldLocalAppData=$env:LOCALAPPDATA
 try{
     # Exercise actual navigation math with mocked reads/pulses. No native call is reachable here.

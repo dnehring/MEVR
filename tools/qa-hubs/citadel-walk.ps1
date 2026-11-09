@@ -8,7 +8,8 @@ param(
     [ValidateRange(5,480)][int]$CaptureStartSeconds=45,
     [ValidateRange(1,120)][int]$CaptureSeconds=90,
     [string]$PythonExe='python',
-    [string]$LocalAppData=[Environment]::GetFolderPath('LocalApplicationData')
+    [string]$LocalAppData=[Environment]::GetFolderPath('LocalApplicationData'),
+    [string]$SessionDirectory=''
 )
 $ErrorActionPreference='Stop'
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -45,6 +46,7 @@ if($Action -eq 'Stop'){
     $run=Get-Content -LiteralPath $lockPath -Raw
     $owner=Get-Content -LiteralPath (Join-Path $run 'owner.json') -Raw|ConvertFrom-Json
     if($owner.kind -ne 'citadel-recorded-walk' -or $owner.package -ne $package){throw 'Lease belongs to a different test.'}
+    if($owner.childRun){$run=$owner.childRun}
     Set-Content -LiteralPath (Join-Path $run 'stop.signal') -Value 'stop'
     Write-Host 'Stop requested. The running script will release replay inputs.'
     return
@@ -67,14 +69,26 @@ if($Action -eq 'BindStart'){
     $SaveFile=(Resolve-Path -LiteralPath $SaveFile).Path
 }elseif(-not (Test-Path -LiteralPath $fixturePath)){throw 'Reload the original save and BindStart before Run.'}
 New-Item -ItemType Directory -Path $data -Force|Out-Null
-$lease=[IO.File]::Open($lockPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
-$run=Join-Path $package ('runs\'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+$lease=$null
+if($SessionDirectory){
+    $session=[IO.Path]::GetFullPath($SessionDirectory)
+    if((Get-Content -LiteralPath $lockPath -Raw) -ne $session){throw 'Automatic session does not own the lease.'}
+    $owner=Get-Content -LiteralPath "$session\session-owner.json" -Raw|ConvertFrom-Json
+    if($owner.package -ne $package -or $owner.scriptPid -ne $PID -or $owner.gamePid -ne $GameProcessId -or
+       $owner.gameStartedTicks -ne $gameStarted){throw 'Automatic session process identity mismatch.'}
+    $run=Join-Path $session 'walk'
+    $owner.childRun=$run
+    $owner|ConvertTo-Json|Set-Content -LiteralPath "$session\owner.json"
+}else{
+    $lease=[IO.File]::Open($lockPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+    $run=Join-Path $package ('runs\'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+}
 $oldLocalAppData=$env:LOCALAPPDATA
 $startedReplay=$false;$recoveryRequired=$false;$transcript=$false;$perfText=$null
 $result=[ordered]@{action=$Action;completed=$false;nativeRouteValidated=$false;cleanPerformanceCapture=$false}
 try{
     New-Item -ItemType Directory -Path $run|Out-Null
-    $bytes=[Text.Encoding]::UTF8.GetBytes($run);$lease.Write($bytes,0,$bytes.Length);$lease.Flush()
+    if($lease){$bytes=[Text.Encoding]::UTF8.GetBytes($run);$lease.Write($bytes,0,$bytes.Length);$lease.Flush()}
     @{kind='citadel-recorded-walk';package=$package;pid=$GameProcessId;startedTicks=$gameStarted;scriptPid=$PID}|
         ConvertTo-Json|Set-Content -LiteralPath "$run\owner.json"
     Start-Transcript -LiteralPath "$run\transcript.txt"|Out-Null;$transcript=$true
@@ -101,8 +115,17 @@ try{
         return Invoke-RoutePython $argsForWorld
     }
     if(@(Get-ChildItem -LiteralPath $data -Filter '*.request').Count){throw 'Another test-loop request is pending.'}
-    $status=Read-LiveStatus
-    if($status.recording -or $status.replaying){throw 'A recording or replay is already active.'}
+    if($Action -eq 'Run'){
+        $status=Read-LiveStatus
+    }else{
+        # Binding reads live engine state through the console; it does not substitute headset poses.
+        # A stale test-loop file from an earlier VR session is not evidence about this process.
+        $status=$null
+        $statusFile=Get-Item -LiteralPath "$data\testloop.status" -ErrorAction SilentlyContinue
+        if($statusFile -and $statusFile.LastWriteTimeUtc.Ticks -ge $gameStarted -and
+           ([datetime]::UtcNow-$statusFile.LastWriteTimeUtc).TotalSeconds -le 5){$status=Get-MevrTestLoopStatus}
+    }
+    if($status -and ($status.recording -or $status.replaying)){throw 'A recording or replay is already active.'}
     # Keep rerunnable source and configuration/build evidence with each attempt.
     New-Item -ItemType Directory -Path "$run\source\tools\qa-hubs","$run\config"|Out-Null
     foreach($file in @($PSCommandPath,$routeHelper)){
@@ -129,17 +152,20 @@ try{
     if($Action -eq 'BindStart'){
         $start=Read-World 'start'
         $saveHash=(Get-FileHash -LiteralPath $SaveFile).Hash
-        Copy-Item -LiteralPath $SaveFile -Destination "$package\starting-save.pcsav"
+        if(Test-Path -LiteralPath "$package\starting-save.pcsav"){
+            if((Get-FileHash -LiteralPath "$package\starting-save.pcsav").Hash -ne $saveHash){throw 'An existing archived start differs.'}
+        }else{Copy-Item -LiteralPath $SaveFile -Destination "$package\starting-save.pcsav"}
         if((Get-FileHash -LiteralPath "$package\starting-save.pcsav").Hash -ne $saveHash){throw 'Save changed during binding.'}
+        $selectionEvidence=if($SessionDirectory){'Archived fixture automatically staged and resumed; engine slot identity is not exposed; original walkthrough match unconfirmed.'}
+                           else{'Operator-selected loaded save; engine slot identity is not exposed; route match still requires validation.'}
         @{schemaVersion=1;recordingSha256=$route.sha256;start=$start;saveFile=$SaveFile;saveSha256=$saveHash;
-            selectionEvidence='Operator states this is the original freshly loaded save; engine slot identity is not exposed.';
+            selectionEvidence=$selectionEvidence;originalWalkthroughSlotConfirmed=$false;
             observed=(Get-Date).ToString('o')}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $fixturePath
         $result.completed=$true
         Write-Host 'Starting save and pose bound. Reload it before each replay.'
     }else{
         $fixture=Get-Content -LiteralPath $fixturePath -Raw|ConvertFrom-Json
         if($fixture.recordingSha256 -ne $route.sha256 -or
-           (Get-FileHash -LiteralPath $fixture.saveFile).Hash -ne $fixture.saveSha256 -or
            (Get-FileHash -LiteralPath "$package\starting-save.pcsav").Hash -ne $fixture.saveSha256){throw 'Bound recording/save changed.'}
         $result.start=Read-World 'start' -CheckStart
         $clip=Join-Path $run 'walk.mevrrec'
@@ -230,8 +256,10 @@ try{
     if(Test-Path -LiteralPath $run){$result|ConvertTo-Json -Depth 10|Set-Content -LiteralPath "$run\result.json"}
     if($transcript){Stop-Transcript|Out-Null}
     $env:LOCALAPPDATA=$oldLocalAppData
-    $lease.Dispose()
-    if(-not $recoveryRequired){Remove-Item -LiteralPath $lockPath}
+    if($lease){
+        $lease.Dispose()
+        if(-not $recoveryRequired){Remove-Item -LiteralPath $lockPath}
+    }
     Write-Host "Walk artifacts: $run"
 }
 if($recoveryRequired){throw 'Replay release needs recovery; inspect result.json before starting another test.'}

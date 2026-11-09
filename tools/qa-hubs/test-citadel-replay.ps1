@@ -67,7 +67,11 @@ try{
     [void](Get-MevrTestLoopStatus)
     'synthetic private save'|Set-Content -LiteralPath "$root\save.pcsav"
     $arguments=@{PackageDirectory=$package;GameProcessId=424242;PythonExe=$PythonExe;LocalAppData=$env:LOCALAPPDATA}
+    (Get-Item -LiteralPath "$env:LOCALAPPDATA\MEVR\testloop.status").LastWriteTimeUtc=[datetime]::UtcNow.AddSeconds(-20)
     & $runner @arguments -Action BindStart -SaveFile "$root\save.pcsav"
+    [void](Get-MevrTestLoopStatus)
+    # The live source slot may be overwritten or deleted after binding; only the archive is authoritative.
+    Remove-Item -LiteralPath "$root\save.pcsav"
     & $runner @arguments -Action Run
     if($global:ReplayMock.stops -ne 1 -or $global:ReplayMock.active){throw 'Normal completion did not release replay'}
     & $runner @arguments -Action Run -Capture -CaptureStartSeconds 5 -CaptureSeconds 10
@@ -87,6 +91,18 @@ try{
     try{& $runner @arguments -Action Run}catch{$refused=$_.Exception.Message -match 'Route check failed'}
     if(-not $refused -or $global:ReplayMock.requests -ne $requests){throw 'Wrong map reached replay'}
     if(Test-Path -LiteralPath "$env:LOCALAPPDATA\MEVR\qa-cafeteria.lock"){throw 'Successful recovery left a lease'}
+    $global:ReplayMock.wrongMap=$false
+    $session=Join-Path $root 'automatic-session'
+    New-Item -ItemType Directory -Path $session|Out-Null
+    $lease=[IO.File]::Open("$env:LOCALAPPDATA\MEVR\qa-cafeteria.lock",[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+    try{
+        $bytes=[Text.Encoding]::UTF8.GetBytes($session);$lease.Write($bytes,0,$bytes.Length);$lease.Flush()
+        @{kind='citadel-recorded-walk';package=$package;scriptPid=$PID;gamePid=424242;
+          gameStartedTicks=([datetime]'2026-11-08T01:00:00Z').ToUniversalTime().Ticks;childRun=$null}|
+          ConvertTo-Json|Set-Content -LiteralPath "$session\session-owner.json"
+        & $runner @arguments -Action Run -SessionDirectory $session
+        if(-not (Test-Path -LiteralPath "$env:LOCALAPPDATA\MEVR\qa-cafeteria.lock")){throw 'Child removed the automatic session lease'}
+    }finally{$lease.Dispose();Remove-Item -LiteralPath "$env:LOCALAPPDATA\MEVR\qa-cafeteria.lock"}
 }finally{
     $env:LOCALAPPDATA=$oldLocal
     Remove-Variable ReplayMock -Scope Global -ErrorAction SilentlyContinue

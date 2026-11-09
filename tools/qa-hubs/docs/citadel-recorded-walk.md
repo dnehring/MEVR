@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Replay a recorded Citadel walk
 
+For unattended launch/load/exit using a fixed private save, use the
+[automatic session wrapper](citadel-auto-load.md). The manual-session helper below remains available for
+interactive checks. Its archived save now remains usable if the original source slot changes or disappears.
+
 `tools/qa-hubs/citadel-walk.ps1` turns a private `.mevrrec` walkthrough into a bounded, repeatable input
 replay candidate. It runs once in an explicitly selected, already-running LE1 session. It does not launch the
 game, enable the null headset, switch OpenXR runtimes, change graphics settings, teleport or inject saves.
@@ -45,7 +49,7 @@ bind a different start; existing bindings cannot be silently overwritten.
 ## Run, measure, stop
 
 Reload that save before **each** run, including the first validation. Do not touch the controls during replay.
-The script refuses a changed recording/save, wrong map/mode, position farther than 60 Unreal units from the
+The script refuses a changed archived recording/save, wrong map/mode, position farther than 60 Unreal units from the
 bound start, or yaw farther than 1,024 Unreal units (5.625 degrees). It also refuses stale headset status,
 another replay/recording, pending requests and another holder of the shared `qa-cafeteria.lock`.
 
@@ -77,7 +81,7 @@ and `replaying=false`, and only then remove the abandoned lease. Do not clear an
 
 ## Validation limits
 
-The user confirmed the original recording began at a freshly loaded save. Its first world-position query was
+The user initially recalled a freshly loaded save but later could not identify the slot. Its first world-position query was
 33.265 seconds into the clip; that is **not** an exact frame-zero pose capture. Binding the reloaded save now
 supplies a checked start without inventing coordinates. Recorded headset poses are local tracking coordinates,
 not world-space waypoints. Timed movement can drift due to recentering, collisions, NPCs, gestures, turning

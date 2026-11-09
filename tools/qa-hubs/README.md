@@ -6,6 +6,10 @@ The user resumed Citadel script generation from their manual walkthrough. The ne
 and an optional traversal timing capture. It still needs native route validation. Other map development is
 [paused at the user's request](PAUSED.md); all declarative scenarios below remain drafts.
 
+The [automatic session wrapper](docs/citadel-auto-load.md) adds an immutable private save fixture, automatic
+Resume loading, and backup/restoration of the current profile/settings. Later edits to the original save slot
+do not change the archived test input. Original-slot identification and actual route validation remain separate.
+
 Declarative LE1 routes extend the Normandy cafeteria workload to the Citadel, Noveria and other major centers.
 Each run uses controller walking, checks the starting map/position/facing, checks every waypoint, captures an
 arrival image, and measures a stationary head-turn loop after settling. One Draw stays enabled. The shared
