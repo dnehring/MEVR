@@ -7,7 +7,10 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
 // LE1 conversations played in the world, in first person (research/59, `[Cinematics] conversations = world`): during a
 // conversation (game mode 5) the player keeps their own head-tracked view at Shepard's place instead of the director's camera.
@@ -37,6 +40,7 @@ struct State {
     // player camera's POV around the main view's CalcSceneView (Halcyon's [MEVR] seam, as the galaxy map's hold does).
     std::uint8_t holdRender = 0;
     std::uint8_t holdPad[3] = {};
+    std::uint32_t cut = 0;  // counts the player's re-placements inside the conversation (the opening): the host dips from black on a change
     float holdLocation[3] = {};
     std::int32_t holdRotation[3] = {};  // pitch, yaw, roll (Unreal units)
     float holdFov = 0.0f;
@@ -130,11 +134,53 @@ WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double 
 // Distance outside the segment a walk could have covered since the last observation; tolerates collision stopping short.
 double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, double elapsedS);
 
+// ---- Everyone in sight (research/59 "Part B") ----------------------------------------------------------------------------------
+// From the player's eyes at `player` facing `facingYawDeg` (degrees, Unreal's yaw about Z, 0 along +X): is `person` within
+// `halfAngleDeg` of the facing and between `minUnits` and `maxUnits` away (horizontally)? Line of sight is the game's.
+bool InView(Vec3 const& player, double facingYawDeg, Vec3 const& person, double halfAngleDeg, double minUnits, double maxUnits);
+// Seats for `count` people who must come into view: on an arc of `radiusUnits` around the player, centred on the owner's
+// bearing (the owner keeps its place in the middle), alternately right and left of it, `spacingDeg` apart, never beyond
+// `halfAngleDeg`; each seat faces the player. The arc lies in the player's horizontal plane (the caller finds the floor).
+struct ArcSeat {
+    Vec3 at;
+    double yawDeg = 0.0;  // facing the player
+};
+std::vector<ArcSeat> ArcSeats(Vec3 const& player, Vec3 const& owner, int count, double radiusUnits, double spacingDeg, double halfAngleDeg);
+
 // The set pieces (research/59 "The scan", "Marking the rest"): the 21 conversations whose lines are a quarter or more authored
 // camera work (a director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...) or where the game walks
 // Shepard himself (the Council endings, Kirrahe): composed for a camera elsewhere, or moving the player's place.
 // In the world mode they go to the 3D screen (`[Cinematics] worldSetPieces = screen`). `name` is the conversation's object
 // name in any form ("BioConversation nor10_comm_room_d.nor10_comm_room_dlg", "nor10_comm_room_dlg", "nor10_comm_room"), any case.
 bool IsSetPiece(std::string_view name);
+// The conversation's key in the tables above: the object's own name, lower case, without its "_dlg"/"_d" suffix
+// ("BioConversation sta70_garrus_D.sta70_garrus_dlg" -> "sta70_garrus").
+std::string ConversationKey(std::string_view name);
+
+// ---- Flowing conversations (research/59 "Flowing conversations", 2026-11-09) ---------------------------------------------------
+// A conversation's play from a start entry that can never reach a dialogue wheel (a scene watched: Garrus arguing with the
+// Executor, Udina's arrival, the trigger lines on a walk up) is a chain. The game plays a start whose first entry is flagged
+// ambient as its own barks (UBioConversation::StartConversation copies the start entry's bAmbient and skips the conversation
+// mode, the camera and the stage; the first-person player keeps walking, within the interrupt range), so the mod flags the
+// chain starts' entries before the level's script starts them. The entries per conversation come from the scan's
+// `--flow-list` (chain starts' entries no conversation start reaches, left ordinary by the game; set pieces, transmissions and
+// the game's own narration left out): empty for a conversation not in the table. `name` as IsSetPiece takes it.
+std::span<int const> FlowEntries(std::string_view name);
+
+// ---- Walking during a conversation (research/59 "Walking during conversations", 2026-11-09) ---------------------------------
+// The owner: a conversation should feel like the game itself, where "I can somewhat move around", with "some sort of barrier
+// to ensure that the conversation just doesn't get ejected". In the world mode the mod moves Shepard's pawn and the held view
+// by the left stick while the wheel is down: this is the step. The stick (x right, y forward, -1..1; a dead zone of 0.15) moves
+// `place` along the head's world yaw (`headYawDeg`, Unreal's: 0 along +X, 90 along +Y) at `speedUnitsPerS` for `dtS`, kept
+// within `leashUnits` of `anchor` horizontally: a step that would leave the circle slides along it (`atLeash`), and a place
+// already outside (the anchor moved) may only come nearer. The z is the caller's (the floor). `moved` is false for a stick in
+// the dead zone or no time.
+struct PlayerStep {
+    Vec3 place;
+    bool moved = false;
+    bool atLeash = false;
+};
+PlayerStep StepPlayer(Vec3 const& place, Vec3 const& anchor, double leashUnits, double stickX, double stickY, double headYawDeg,
+    double speedUnitsPerS, double dtS);
 
 } // namespace mevr::vr::conversation_world

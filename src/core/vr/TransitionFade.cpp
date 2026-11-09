@@ -13,6 +13,14 @@ bool Fades(View from, View to) {
     return from != to && cinematic(from) && cinematic(to);
 }
 
+void Fade::Cut(double nowS, float fadeS) {
+    if (fadeS > 0.0f && std::isfinite(fadeS) && std::isfinite(nowS)) {
+        fading_ = true;
+        startS_ = nowS;
+        ++count_;
+    }
+}
+
 float Fade::Update(View view, double nowS, float fadeS) {
     if (view != last_) {
         if (Fades(last_, view) && fadeS > 0.0f && std::isfinite(fadeS)) {

@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <span>
 #include <string_view>
 
 namespace {
@@ -41,6 +42,30 @@ void TestParseMode() {
     CHECK(std::string_view(cw::Name(cw::Mode::World)) == "world");
 }
 
+void TestArrangement() {
+    // From the player at the origin facing +X (yaw 0): in view within 60 degrees and 1.2 to 6 m (120 to 600 units).
+    cw::Vec3 const player{0.0, 0.0, 100.0};
+    CHECK(cw::InView(player, 0.0, {250.0, 0.0, 100.0}, 60.0, 120.0, 600.0));
+    CHECK(cw::InView(player, 0.0, {200.0, 200.0, 100.0}, 60.0, 120.0, 600.0));     // 45 degrees left
+    CHECK(!cw::InView(player, 0.0, {100.0, 300.0, 100.0}, 60.0, 120.0, 600.0));    // 72 degrees: out of the cone
+    CHECK(!cw::InView(player, 0.0, {-250.0, 0.0, 100.0}, 60.0, 120.0, 600.0));     // behind
+    CHECK(!cw::InView(player, 0.0, {80.0, 0.0, 100.0}, 60.0, 120.0, 600.0));       // too close
+    CHECK(!cw::InView(player, 0.0, {700.0, 0.0, 100.0}, 60.0, 120.0, 600.0));      // too far
+    CHECK(cw::InView(player, 170.0, {-250.0, 60.0, 100.0}, 60.0, 120.0, 600.0));   // the wrap at 180
+    // Seats: around the owner's bearing (here +X), 25 degrees apart, right (negative yaw) then left, on a 2.5 m arc, facing the player.
+    std::vector<cw::ArcSeat> const seats = cw::ArcSeats(player, {300.0, 0.0, 100.0}, 3, 250.0, 25.0, 60.0);
+    CHECK(seats.size() == 3);
+    CHECK(Close(std::hypot(seats[0].at.x, seats[0].at.y), 250.0, 1e-6) && seats[0].at.z == 100.0);
+    CHECK(seats[0].at.y < 0.0 && seats[1].at.y > 0.0 && seats[2].at.y < seats[0].at.y);   // right, left, further right
+    CHECK(Close(std::atan2(seats[0].at.y, seats[0].at.x) * 180.0 / 3.14159265358979323846, -25.0, 1e-6));
+    CHECK(Close(std::atan2(seats[2].at.y, seats[2].at.x) * 180.0 / 3.14159265358979323846, -50.0, 1e-6));
+    CHECK(Close(seats[0].yawDeg, 155.0, 1e-6));  // facing back toward the origin
+    // Never beyond the view's half angle: the fifth seat would be 75 degrees, capped at 60.
+    std::vector<cw::ArcSeat> const many = cw::ArcSeats(player, {300.0, 0.0, 100.0}, 5, 250.0, 25.0, 60.0);
+    CHECK(Close(std::atan2(many[4].at.y, many[4].at.x) * 180.0 / 3.14159265358979323846, -60.0, 1e-6));
+    CHECK(cw::ArcSeats(player, {300.0, 0.0, 100.0}, 0, 250.0, 25.0, 60.0).empty());
+}
+
 void TestSetPieces() {
     // The scan's framed conversations go to the 3D screen in the world mode, by the game's full name or its short forms.
     CHECK(cw::IsSetPiece("BioConversation nor10_comm_room_d.nor10_comm_room_dlg"));
@@ -54,6 +79,66 @@ void TestSetPieces() {
     CHECK(!cw::IsSetPiece("end90_saren2_dlg"));                                 // an NPC's walk: in the world, to check
     CHECK(!cw::IsSetPiece("nor10_captain_extra"));
     CHECK(!cw::IsSetPiece(""));
+}
+
+void TestStepPlayer() {
+    // Walking during a conversation: the stick along the head's yaw, inside the leash.
+    cw::Vec3 const anchor{0.0, 0.0, 100.0};
+    cw::Vec3 const start{100.0, 0.0, 100.0};
+    // Forward on the stick with the head along +Y: the step goes +Y at speed * dt.
+    cw::PlayerStep s = cw::StepPlayer(start, anchor, 300.0, 0.0, 1.0, 90.0, 140.0, 0.1);
+    CHECK(s.moved && !s.atLeash);
+    CHECK(Close(s.place.x, 100.0, 1e-6) && Close(s.place.y, 14.0, 1e-6) && Close(s.place.z, 100.0));
+    // Right on the stick with the head along +X: +Y.
+    s = cw::StepPlayer(start, anchor, 300.0, 1.0, 0.0, 0.0, 140.0, 0.1);
+    CHECK(s.moved && Close(s.place.x, 100.0, 1e-6) && Close(s.place.y, 14.0, 1e-6));
+    // The dead zone and no time: no move.
+    CHECK(!cw::StepPlayer(start, anchor, 300.0, 0.1, 0.05, 0.0, 140.0, 0.1).moved);
+    CHECK(!cw::StepPlayer(start, anchor, 300.0, 0.0, 1.0, 0.0, 140.0, 0.0).moved);
+    // Half deflection past the dead zone walks slower than full.
+    cw::PlayerStep const half = cw::StepPlayer(start, anchor, 300.0, 0.0, 0.575, 0.0, 140.0, 0.1);
+    CHECK(half.moved && Close(half.place.x - start.x, 7.0, 1e-6));
+    // At the leash, pushing outward slides along the circle and stays at the radius.
+    cw::Vec3 const edge{300.0, 0.0, 100.0};
+    s = cw::StepPlayer(edge, anchor, 300.0, 0.0, 1.0, 0.0, 140.0, 0.1);  // straight out along +X
+    CHECK(!s.moved && s.atLeash);
+    s = cw::StepPlayer(edge, anchor, 300.0, 1.0, 1.0, 0.0, 140.0, 0.1);  // out and to the right: slides
+    CHECK(s.moved && s.atLeash && Close(std::hypot(s.place.x, s.place.y), 300.0, 1e-6) && s.place.y > 0.0);
+    // Outside already: a step nearer is taken, a step away is not.
+    cw::Vec3 const outside{400.0, 0.0, 100.0};
+    cw::PlayerStep const nearer = cw::StepPlayer(outside, anchor, 300.0, 0.0, -1.0, 0.0, 140.0, 0.1);
+    CHECK(nearer.moved && !nearer.atLeash && Close(nearer.place.x, 386.0, 1e-6));  // as it is, no snap onto the circle
+    CHECK(!cw::StepPlayer(outside, anchor, 300.0, 0.0, 1.0, 0.0, 140.0, 0.1).moved);
+    // No leash: free.
+    CHECK(cw::StepPlayer(outside, anchor, 0.0, 0.0, 1.0, 0.0, 140.0, 0.1).moved);
+}
+
+void TestFlowEntries() {
+    // The scan's chain starts (research/59 "Flowing conversations"): Garrus arguing with the Executor is the conversation's
+    // first two entries; Udina's arrival lines; the key in any of the name's forms.
+    CHECK(cw::ConversationKey("BioConversation sta70_garrus_D.sta70_garrus_dlg") == "sta70_garrus");
+    CHECK(cw::ConversationKey("STA70_Garrus_dlg") == "sta70_garrus");
+    CHECK(cw::ConversationKey("sta70_garrus") == "sta70_garrus");
+    std::span<int const> const garrus = cw::FlowEntries("BioConversation sta70_garrus_D.sta70_garrus_dlg");
+    CHECK(garrus.size() == 2 && garrus[0] == 0 && garrus[1] == 1);
+    std::span<int const> const udina = cw::FlowEntries("sta20_human_ambassador_enter_dlg");
+    CHECK(udina.size() == 9 && udina[0] == 35 && udina[8] == 94);
+    CHECK(cw::FlowEntries("sta60_wrex_at_fists_dlg").empty());   // a set piece: on the 3D screen, never barks
+    CHECK(cw::FlowEntries("sp110_distress_call_dlg").empty());   // a transmission: its hologram needs the stage
+    CHECK(cw::FlowEntries("nor10_backgrounds_dlg").empty());     // narration under the character creation
+    CHECK(cw::FlowEntries("sta60_quarian_dlg").empty());         // a wheel from its first line
+    CHECK(cw::FlowEntries("sta30_krogan_cutscene_dlg").empty()); // its chain start sits behind an unconditional start: never plays
+    CHECK(cw::FlowEntries("").empty());
+    std::span<int const> const olar = cw::FlowEntries("ice60_trig12_olar_execution_dlg");  // played as barks on the fake headset
+    CHECK(olar.size() == 2 && olar[0] == 0 && olar[1] == 1);
+    // Every table row is a non-set-piece with entries in order.
+    for (char const* name : {"sta30_chellik", "ice50_trig22_juleth_ambush", "nor10_joker", "jug80_saren", "war50_krogan"}) {
+        std::span<int const> const e = cw::FlowEntries(name);
+        CHECK(!e.empty() && !cw::IsSetPiece(name));
+        for (std::size_t i = 1; i < e.size(); ++i) {
+            CHECK(e[i] > e[i - 1]);
+        }
+    }
 }
 
 void TestCrops() {
@@ -240,6 +325,9 @@ int RunConversationWorldTests() {
     gFailures = 0;
     TestParseMode();
     TestSetPieces();
+    TestFlowEntries();
+    TestStepPlayer();
+    TestArrangement();
     TestCrops();
     TestSubtitlePoint();
     TestFollowHead();

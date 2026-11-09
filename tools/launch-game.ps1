@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Starts LE1 without the launcher's PLAY click or a person at the keyboard (research/35, the measuring loop), then at
-# the title screen presses Enter (which resumes the last save) and waits until the mod reports gameplay ("on foot
+# the title screen presses Enter (which resumes the save the profile names last, PROFILE\GamerProfile.pcsav's last career and
+# file: never a newer save written by a tool; research/59 "A save instead of open") and waits until the mod reports gameplay ("on foot
 # yes" in its log with the test loop's status fresh). With the fake headset on (tools/fake-headset.ps1 -On) this
 # gives the full VR path with nobody in the headset.
 #

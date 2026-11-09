@@ -9,6 +9,7 @@
 #include "core/vr/TransitionFade.hpp"
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/CineScreen.hpp"
+#include "plugin/ConversationWorld.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 
@@ -120,7 +121,16 @@ const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceCont
     tf::View const before = gFade.Last();
     unsigned const countBefore = gFade.Count();
     float const fadeS = mevr::host::cine_screen::FadeSeconds();
-    float const alpha = gFade.Update(v, static_cast<double>(GetTickCount64()) / 1000.0, fadeS);
+    double const nowS = static_cast<double>(GetTickCount64()) / 1000.0;
+    // A cut inside a world conversation (the player re-placed at Shepard's mark after the opening, research/59 "Part A").
+    static std::uint32_t lastCut = 0;
+    if (auto const convo = mevr::host::conversation_world::Current(); convo && convo->cut != lastCut) {
+        if (lastCut != 0 || convo->cut != 0) {
+            gFade.Cut(nowS, fadeS);
+        }
+        lastCut = convo->cut;
+    }
+    float const alpha = gFade.Update(v, nowS, fadeS);
     if (gFade.Count() != countBefore && gLogs < kMaxLogs) {
         ++gLogs;
         mevr::log::Info("transition fade: {} -> {}: from black over {:.2f} s", Name(before), Name(v), fadeS);

@@ -547,6 +547,42 @@ a, an), which the vocabulary then tags as the weapon. `TestSquadParser`: the two
 troopers on the bridge" with a sniper group present, "Wrex, shotgun, rush the sniper". The corpus's scene has no sniper
 group, so its 173 lines are unchanged. Not yet run in the game.
 
+### The recognizer's spelling of an order (2026-11-09, the owner's first spoken session with the model)
+
+The owner's log of the morning (0.1.1 at b1a5d27, the small models on one thread, the microphone "Virtual Desktop Audio"):
+18 spoken orders, 13 parsed by the rules at 0.6 or above, 5 sent to the model (1.1-1.3 s each on 4 threads; two
+dispatched, one a squad hold, two refused by the validator because the ray pointed at nothing). The owner: "the voice
+parsing isn't quite working well. those are approximations for what I said." What the recognizer wrote, against what
+was meant:
+
+| heard | meant | what the rules made of it |
+|---|---|---|
+| "Yeah Rex rushed them." | Wrex, rush them | `W\|-\|-\|attack\|PT1` at 0.43: "yeah", "rushed" unresolved |
+| "you Garrus switched to your sniper rifle." | Garrus, switch to your sniper rifle | `G\|SR\|-\|-\|-` at 0.85: "switched" |
+| "you Kara switched to her rifle" | Garrus, switch to your rifle | 0.43: "Kara" taken as G at 0.50 |
+| "Darius took cover when I'm pointing." | Garrus, take cover where I'm pointing | 0.06: "Darius" G at 0.67, "when" W at 0.60 |
+| "you Rex moved to that position." | Wrex, move to that position | `W\|-\|-\|attack\|PT1` at 0.51: "moved" |
+| "Yeah Rex got to cover." | Wrex, go to cover | 0.36 |
+| "Mm Garrus, move up. switch to Slot Rifle" | ... switch to assault rifle | 0.72: "mm", "slot" |
+| "M Follow me." | Follow me | 0.85: "m" |
+
+Three patterns, two of them ours to fix. **Past tenses and "-ing"**: the streaming model writes "rushed", "moved",
+"switched", "took", "pointing" for the imperative said; each was an unresolved word that cut the confidence, and the
+vocabulary matched the text exactly. Now `Lemmas` gives a word's base forms (an irregular table: took/take, got/get,
+went/go, ran/run, threw/throw, shot/shoot...; "-ed" to the stem, the stem + "e", a doubled consonant undoubled, "-ied" to
+"-y"; "-ing" the same; the plural's singular) and `SameWord` matches the vocabulary's words, the multi-word phrases'
+("switched to" is "switch to") and the phrasal verbs ("took them out") through them; directions are never stemmed
+("left"). **Fillers at the start of a listen**: "Yeah.", "Mm", "M", "you" (the last was already a stop word) are stop words
+now, with "position", "spot" and "location" ("move up to my position"). The key terms carried 20 words nobody says
+("Ar Shield Boost", "Kro Pistol Whip", "El Emp Delivery": the 2DA labels' letters), which the parser's power words were
+too: `Spoken` asks the power wheel's table for the name ("TK_Throw" is "Throw") and else drops the discipline prefix and
+the NPC/Delivery suffix. **Names misheard** ("Kara", "Darius" for Garrus; "Rex" for Wrex every time) is the small model's
+own, with Garrus, Vakarian, Wrex, Urdnot and Rex among its key terms: Rex is an alias and lands; the fuzzy match takes
+"Kara" and "Darius" as Garrus at 0.50-0.67 when Garrus is the only G, which is right more often than not, but "when" as
+Wrex at 0.60 shows the floor is low for a word that is also English. Not changed here; the bigger models hear names
+better (the bench in "One thread for the recognizer") and the key-term list is shorter now. `TestSquadParser` and the
+corpus (177 lines now) carry the recognizer's own spellings.
+
 ## Standing orders: memory above the game's one-shot orders (2026-11-04, later)
 
 The user, before any in-game check: "how we'd handle more complex grammar and memory, like 'hold the bridge': they would hold

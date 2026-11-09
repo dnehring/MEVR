@@ -9,7 +9,11 @@ Reads the JSON lines tools/conversation-scan (C#, over Legendary Explorer's libr
 
 The catalogue is what tools/conversation-launch.ps1 reads: per conversation start, the persistent level to open, the level chunk
 to stream in (the start's package, BIOA_ICE50_06_DSG -> ICE50_06), the owner (its class, Tag, place and facing when it is placed
-in the level) and the stage's place. Game data: keep it out of the repository.
+in the level), the stage's place, and how the chunk is streamed: "touchShows" (a volume's plain state, None or Default, applied by
+a touch, lists it; the persistent level's own chunk is always there), "volumeShows" (any state of any volume lists it) and
+"streamStates" (the named world streaming states whose volume states list it: the plot sets one through
+BioSeqAct_SetStreamingState; the launcher's `mevr stream state <name> on`). A sub-package's chunk (NOR10_03_DS1) is streamed
+as its parent's (NOR10_03). Game data: keep it out of the repository.
 
 Per conversation it joins the conversation (lines, speakers), its starts in the levels' scripts (a stage: the marks the game
 puts the actors on) and its lines' matinees (each line's BioSeqEvt_ConvNode -> SeqAct_Interp), and sorts it into one kind:
@@ -30,6 +34,12 @@ core/vr/ConversationWorld's IsSetPiece):
   check     a wide stage (its type's size 400 units or more: ST_2P_600_combat, a stand-off 6-10 m across) or an NPC's authored
             walk: in the world for now, each to be looked at with tools/conversation-launch.ps1
   world     everything else (remote, stage, free); ambient lines have no verdict
+
+How each conversation flows (--flow; research/59 "Flowing conversations"): per start entry (m_StartingList), a play that can
+never reach a REPLY_STANDARD reply (the wheel) is a chain: a scene watched on the walk up. --flow-list prints the C++ table
+core/vr/ConversationWorld's FlowEntries is built from: the chain starts' entries that no conversation start reaches and that
+the game left ordinary, for conversations a level's script starts, without set pieces, transmissions and the narration under
+the game's own screens (FLOW_SKIP). The mod flags those entries ambient, and the game plays such a start as its own barks.
 
 The output describes the game's own data: keep it out of the repository (the table of counts is ours).
 """
@@ -83,7 +93,8 @@ def measure(name, conv, starts, nodes):
         m['switchCamera'] += any('BioEvtSysTrackSwitchCamera' in g['tracks'] for g in groups)
         m['fade'] += any('InterpTrackFade' in g['tracks'] for g in groups)
     m['lines'] = conv['entries'] + conv['replies'] if conv else 0
-    m['ambient'] = conv is not None and conv['entries'] > 0 and conv['ambient'] == conv['entries'] and conv['replies'] == 0
+    # Every line ambient: barks (their replies, if any, are auto-continues and dialog ends: never a wheel; 2026-11-09).
+    m['ambient'] = conv is not None and conv['entries'] > 0 and conv['ambient'] == conv['entries']
     m['stage'] = any(s.get('stage') for s in starts)
     sizes = [int(x.group(1)) for st in starts if st.get('stageType') for x in [re.search(r'_(\d{3,4})(_|$)', st['stageType'].split('.')[-1])] if x]
     m['stageSpread'] = max(sizes) if sizes else 0
@@ -91,6 +102,83 @@ def measure(name, conv, starts, nodes):
     m['stageTypes'] = sorted({(s.get('stageType') or '-').split('.')[-1] for s in starts})
     m['starts'] = len(starts)
     return m
+
+
+STANDARD = 'REPLY_STANDARD'
+
+
+def reachable(conv, start):
+    """The entries a play from `start` can reach (through replies of every type)."""
+    nodes, replies = conv['nodes'], conv['replyNodes']
+    seen, queue = [], [start]
+    while queue:
+        e = queue.pop()
+        if e in seen or not 0 <= e < len(nodes):
+            continue
+        seen.append(e)
+        for r in nodes[e]['replies']:
+            if 0 <= r < len(replies):
+                queue.extend(replies[r]['entries'])
+    return seen
+
+
+def has_wheel(conv, entries):
+    """The wheel shows at an entry with a REPLY_STANDARD reply (auto-continue and dialog-end replies go on by themselves: the
+    game's own ambient barks end in dialog-end replies)."""
+    replies = conv['replyNodes']
+    return any(replies[r]['type'] == STANDARD for e in entries for r in conv['nodes'][e]['replies'] if 0 <= r < len(replies))
+
+
+def flow(conv):
+    """How a conversation flows (research/59 "Flowing conversations"): per start (m_StartingList; the game picks one by its
+    conditionals), a play that can never reach a wheel is a chain (barks, a scene watched: the Executor arguing with Garrus),
+    a play that can is a conversation. The chain starts' entries that no conversation start reaches and that aren't ambient
+    already are what `--flow-list` makes ambient (the game then plays them as its own barks: no conversation mode)."""
+    nodes, starting = conv.get('nodes'), conv.get('starting')
+    if not nodes:
+        return None
+    chain, wheel_reach = [], set()
+    # The game takes the first start whose plot conditional (nConditionalFunc, -1 none) holds, so a chain start plays only when
+    # every start before it has a conditional that can fail (checked in the game 2026-11-09: sta30_krogan_cutscene's chain start
+    # 23 sits behind the unconditional start 9 and never plays): such chains are left out of the flips.
+    blocked = False
+    for s in starting or []:
+        entries = reachable(conv, s)
+        if has_wheel(conv, entries):
+            wheel_reach |= set(entries)
+        elif not blocked:
+            chain.append((s, entries))
+        if 0 <= s < len(nodes) and nodes[s].get('conditional', -1) == -1:
+            blocked = True
+    flips = sorted({e for s, entries in chain for e in entries if e not in wheel_reach and not nodes[e]['ambient']})
+    first = (starting or [None])[0]
+    return {
+        'starts': len(starting or []), 'chainStarts': len(chain), 'chainEntries': sorted({e for s, entries in chain for e in entries}),
+        'flips': flips, 'ambientEntries': sum(1 for n in nodes if n['ambient']),
+        'firstStartChain': first in flips, 'firstConditional': nodes[first].get('conditional', -1) if first is not None and 0 <= first < len(nodes) else None,
+        'unconditionalBeforeChain': any(nodes[s].get('conditional', -1) == -1 for s in (starting or []) if s not in flips and 0 <= s < len(nodes)),
+    }
+
+
+# Narration under the game's own screens, never a scene in the world: the character creation's backgrounds, the tutorial
+# popups, the news terminals. Left as the game plays them.
+FLOW_SKIP = {'nor10_backgrounds', 'ice00_popup_text', 'sp_news_vids'}
+
+
+def flow_wanted(k, kd, v):
+    # Set pieces (screen) stay on the 3D screen; a transmission's hologram needs its stage, which an ambient play skips.
+    return v != 'screen' and kd != 'remote' and k not in FLOW_SKIP
+
+
+def ranges(indices):
+    out, i = [], 0
+    while i < len(indices):
+        j = i
+        while j + 1 < len(indices) and indices[j + 1] == indices[j] + 1:
+            j += 1
+        out.append(f'{indices[i]}' if j == i else f'{indices[i]}-{indices[j]}')
+        i = j + 1
+    return out
 
 
 def kind(m):
@@ -137,10 +225,45 @@ def persistent(package):
     return PERSISTENT.get(area)
 
 
+def named(state):
+    # None and Default are the volume's plain state (the touch alone); anything else needs the world's state of that name on.
+    return (state.get('state') or 'None').lower() not in ('', 'none', 'default')
+
+
+def lists(chunk, names):
+    chunks = {chunk.lower()}
+    parent = re.match(r'(.*)_DS\d$', chunk, re.IGNORECASE)  # BIOA_NOR10_03_DS1: a sub-package of the chunk NOR10_03
+    if parent:
+        chunks.add(parent.group(1).lower())
+    wanted = chunks | {f'bioa_{c}' for c in chunks}
+    return any((n or '').lower() in wanted for n in names)
+
+
+def streaming(volumes, chunk, persistent_map):
+    """How the volumes of a persistent level stream a chunk: (a plain touch shows it, any state shows it, the named states)."""
+    touch, any_state, states = False, False, set()
+    if persistent_map and f'bioa_{chunk}'.lower() == persistent_map.lower():
+        touch = any_state = True  # the persistent level's own package: always loaded
+    for v in volumes:
+        for s in v['states']:
+            if not lists(chunk, s.get('visible') or []):
+                continue
+            any_state = True
+            if named(s):
+                states.add(s['state'])
+            else:
+                touch = True
+    return touch, any_state, sorted(states)
+
+
 def catalogue(path, out):
     entries = []
+    volumes = collections.defaultdict(list)  # persistent level -> its volumes (from its own package and its chunks')
     for line in open(path, encoding='utf-8'):
         r = json.loads(line)
+        if r['kind'] == 'volume':
+            volumes[persistent(r['package'])].append(r)
+            continue
         if r['kind'] != 'start' or not r.get('conv'):
             continue
         chunk = re.sub(r'^BIOA_', '', re.sub(r'_(DSG|LAY).*$', '', r['package']), flags=re.IGNORECASE)
@@ -150,12 +273,19 @@ def catalogue(path, out):
             'map': persistent(r['package']), 'owner': r.get('owner'), 'ownerClass': r.get('ownerClass'), 'ownerTag': r.get('ownerTag'),
             'ownerAt': r.get('ownerAt'), 'ownerYaw': r.get('ownerYaw'), 'stage': r.get('stage'), 'stageAt': r.get('stageAt'),
         })
+    for e in entries:
+        e['touchShows'], e['volumeShows'], e['streamStates'] = streaming(volumes.get(e['map'], []), e['chunk'], e['map'])
     entries.sort(key=lambda e: (e['conversation'], e['ownerAt'] is None, e['action']))
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(entries, f, indent=0)
     placed = sum(1 for e in entries if e['ownerAt'])
     print(f"{len(entries)} starts of {len({e['conversation'] for e in entries})} conversations -> {out}; {placed} with a placed owner, "
           f"{sum(1 for e in entries if e['map'] is None)} without a known persistent level")
+    no_volume = [e for e in entries if not e['volumeShows']]
+    no_touch = [e for e in entries if not e['touchShows']]
+    print(f"streaming ({sum(len(v) for v in volumes.values())} volumes): {len(no_touch)} starts whose chunk no plain touch shows, "
+          f"{sum(1 for e in no_touch if e['streamStates'])} of them with a named streaming state; {len(no_volume)} that no volume state "
+          f"lists at all, {sum(1 for e in no_volume if e['streamStates'])} of them with a named state")
 
 
 def main(argv):
@@ -197,6 +327,36 @@ def main(argv):
     for a in areas:
         c = collections.Counter(r[2] for r in rows if r[1] == a)
         print(f"| {a} | {c['free']} | {c['stage']} | {c['remote']} | {c['walks']} | {c['framed']} | {c['ambient']} |")
+    if '--flow' in argv or '--flow-list' in argv:
+        # Only conversations a level's script starts (sp_follower_interject and the like are started by code).
+        flows = [(k, kd, verdict(kd, m), flow(c)) for k, a, kd, m, c in rows if flow(c) and starts.get(k)]
+        flipping = [f for f in flows if f[3]['flips'] and flow_wanted(f[0], f[1], f[2])]
+        left_out = [f for f in flows if f[3]['flips'] and not flow_wanted(f[0], f[1], f[2])]
+        print(f"\nflow: {len(flows)} conversations started by a level's script; {sum(1 for f in flows if f[3]['chainStarts'])} have a chain "
+              f"start (a play that can never reach a wheel), {len(flipping)} of them with lines to make ambient "
+              f"({sum(len(f[3]['flips']) for f in flipping)} entries); {len(left_out)} left out (set pieces, transmissions)")
+        if '--flow' in argv:
+            print('\n| Conversation | Kind | Verdict | Starts | Chain starts | Entries made ambient | Already ambient | First start |\n|---|---|---|---|---|---|---|---|')
+            for k, kd, v, f in flipping:
+                first = ('chain' if f['firstStartChain'] else 'wheel') + (' (no condition)' if f['firstConditional'] == -1 else f" (plot {f['firstConditional']})")
+                if not f['firstStartChain'] and f['unconditionalBeforeChain']:
+                    first += ', an unconditional wheel start before the chain: it never plays'
+                print(f"| {k} | {kd} | {v} | {f['starts']} | {f['chainStarts']} | {' '.join(ranges(f['flips']))} | {f['ambientEntries']} | {first} |")
+        if '--flow-list' in argv:
+            # A flat array of entries plus (name, offset, count) rows: an initializer_list member in a constexpr table loses its
+            # backing array on MSVC (the lookups read garbage, 2026-11-09).
+            print('\n// tools/conversation-scan.py --flow-list (research/59 "Flowing conversations"): per conversation, the entries of its chain')
+            print('// starts (plays that never reach a wheel) that no conversation start reaches and that the game left ordinary.')
+            print('constexpr int kFlowEntries[] = {')
+            offset, rows_out = 0, []
+            for k, kd, v, f in flipping:
+                print(f'    {", ".join(str(e) for e in f["flips"])},  // {k}')
+                rows_out.append(f'    {{"{k}", {offset}, {len(f["flips"])}}},')
+                offset += len(f['flips'])
+            print('};')
+            print('constexpr FlowRow kFlowRows[] = {')
+            print('\n'.join(rows_out))
+            print('};')
     if '--list' in argv:
         want = argv[argv.index('--list') + 1]
         print(f'\n| Conversation | Lines | Nodes | Authored camera | Actor moves | Fades | Stage |\n|---|---|---|---|---|---|---|')

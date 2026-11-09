@@ -61,6 +61,7 @@ std::vector<Phrase> const& Vocabulary() {
     static std::vector<Phrase> const v = [] {
         std::vector<Phrase> p;
         Add(p, {"the", "a", "an", "to", "at", "on", "of", "in", "your", "you", "me", "my", "please", "now", "okay", "ok", "hey", "um", "uh",
+                   "yeah", "yep", "yes", "yup", "mm", "mhm", "hmm", "hm", "m", "er", "ah", "oh", "huh", "position", "spot", "location",
                    "with", "for", "it's", "its", "some", "that's", "guy", "one", "ones", "up", "their", "weapons", "weapon", "shields", "shield",
                    "two", "three", "four", "five", "couple", "few", "pair", "could", "can", "would", "will", "you're", "kindly", "out", "from",
                    "quick", "quickly", "fast", "asap", "just", "go ahead and", "i need you to", "i want you to", "can you", "could you",
@@ -218,8 +219,53 @@ bool SameSurface(std::string_view a, std::string_view b) {
 
 // Short words match exactly: "there" is one letter from "these", "hold" from "hole"; the fuzz is for the long ones a recognizer
 // mangles ("singularity", "overload", "destroyer").
-bool WordMatches(std::string_view said, std::string_view want, float threshold) {
+// The base forms a spoken word may be an inflection of: "rushed" rush, "moved" move, "switched" switch, "pointing" point,
+// "running" run, "took" take. The streaming recognizer wrote past tenses for the owner's orders on 2026-11-09 ("Rex rushed
+// them", "Garrus switched to your sniper rifle", "Rex moved to that position"), and every one was an unresolved word that
+// pulled the clause under the confidence bar. Directions are never stemmed ("left").
+std::vector<std::string> Lemmas(std::string_view word) {
+    static constexpr std::pair<char const*, char const*> kIrregular[] = {{"took", "take"}, {"taken", "take"}, {"got", "get"},
+        {"gotten", "get"}, {"went", "go"}, {"gone", "go"}, {"ran", "run"}, {"came", "come"}, {"threw", "throw"}, {"thrown", "throw"},
+        {"shot", "shoot"}, {"held", "hold"}, {"kept", "keep"}, {"stood", "stand"}, {"hid", "hide"}, {"hidden", "hide"},
+        {"drew", "draw"}, {"blew", "blow"}, {"lit", "light"}, {"gave", "give"}, {"sent", "send"}, {"brought", "bring"},
+        {"fell", "fall"}, {"caught", "catch"}, {"made", "make"}, {"dealt", "deal"}, {"found", "find"}, {"stuck", "stick"}};
+    std::vector<std::string> out;
+    std::string const w(word);
+    out.push_back(w);
+    for (auto const& [from, to] : kIrregular) {
+        if (w == from) out.push_back(to);
+    }
+    auto add = [&](std::string const& s) {
+        if (s.size() >= 3 && std::find(out.begin(), out.end(), s) == out.end()) out.push_back(s);
+    };
+    if (w.size() >= 5 && w.ends_with("ed")) {
+        std::string const stem = w.substr(0, w.size() - 2);  // rushed -> rush, pointed -> point
+        add(stem);
+        add(stem + "e");  // moved -> move, charged -> charge
+        if (stem.size() >= 3 && stem[stem.size() - 1] == stem[stem.size() - 2]) add(stem.substr(0, stem.size() - 1));  // stopped -> stop
+        if (w.ends_with("ied")) add(w.substr(0, w.size() - 3) + "y");  // hurried -> hurry
+    }
+    if (w.size() >= 6 && w.ends_with("ing")) {
+        std::string const stem = w.substr(0, w.size() - 3);  // pointing -> point, holding -> hold
+        add(stem);
+        add(stem + "e");  // moving -> move
+        if (stem.size() >= 3 && stem[stem.size() - 1] == stem[stem.size() - 2]) add(stem.substr(0, stem.size() - 1));  // running -> run
+    }
+    if (Singular(w) != w) add(Singular(w));  // rushes -> rush
+    return out;
+}
+
+// The word said, or a form of it, is the one wanted.
+bool SameWord(std::string_view said, std::string_view want) {
     if (said == want) return true;
+    for (std::string const& l : Lemmas(said)) {
+        if (l == want) return true;
+    }
+    return false;
+}
+
+bool WordMatches(std::string_view said, std::string_view want, float threshold) {
+    if (SameWord(said, want)) return true;
     if (want.size() < 6 || said.size() < 4) return false;
     return Similarity(said, want) >= threshold;
 }
@@ -407,7 +453,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
     for (std::size_t i = 0; i < tokens.size(); ++i) {
         if (tokens[i].tag != Tag::None) continue;
         for (Phrasal const& ph : kPhrasals) {
-            if (tokens[i].text != ph.verb) continue;
+            if (!SameWord(tokens[i].text, ph.verb)) continue;
             bool found = false;
             for (std::size_t j = i + 1; j < tokens.size() && j <= i + 4 && !found; ++j) {
                 Tag const t = tokens[j].tag;
@@ -429,7 +475,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             bool ok = true;
             for (std::size_t k = 0; k < p.words.size() && ok; ++k) {
                 ok = tokens[i + k].tag == Tag::None &&
-                    (p.words.size() > 1 ? tokens[i + k].text == p.words[k] : WordMatches(tokens[i + k].text, p.words[k], st.wordSimilarity));
+                    (p.words.size() > 1 ? SameWord(tokens[i + k].text, p.words[k]) : WordMatches(tokens[i + k].text, p.words[k], st.wordSimilarity));
             }
             if (!ok) continue;
             tokens[i].tag = p.tag;

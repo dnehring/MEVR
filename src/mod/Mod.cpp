@@ -76,6 +76,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
 #include "game/ConversationWorld.hpp"
+#include "game/ConversationFlow.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/Spectator.hpp"
@@ -1369,6 +1370,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
+        game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1476,6 +1478,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::screen_reticle::Shutdown(exiting);
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
+    game::conversation_flow::Shutdown();                          // the conversations' ambient flags put back
     game::power_wheel::Shutdown(PowerWheelLink());  // the host's wheel closed
     game::galaxy_map::Shutdown(GalaxyMapLink(), exiting);  // the host forgets the hologram; the window's captures go
     if (gHost != nullptr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr) {

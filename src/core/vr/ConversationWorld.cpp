@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <span>
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -90,6 +91,46 @@ Mode ParseMode(char const* text, Mode fallback) {
     return fallback;
 }
 
+namespace {
+double Wrap180(double deg) {
+    while (deg > 180.0) deg -= 360.0;
+    while (deg < -180.0) deg += 360.0;
+    return deg;
+}
+double BearingDeg(Vec3 const& from, Vec3 const& to) {
+    return std::atan2(to.y - from.y, to.x - from.x) * 180.0 / 3.14159265358979323846;
+}
+} // namespace
+
+bool InView(Vec3 const& player, double facingYawDeg, Vec3 const& person, double halfAngleDeg, double minUnits, double maxUnits) {
+    double const dx = person.x - player.x, dy = person.y - player.y;
+    double const flat = std::hypot(dx, dy);
+    if (flat < minUnits || flat > maxUnits) {
+        return false;
+    }
+    return std::abs(Wrap180(BearingDeg(player, person) - facingYawDeg)) <= halfAngleDeg;
+}
+
+std::vector<ArcSeat> ArcSeats(Vec3 const& player, Vec3 const& owner, int count, double radiusUnits, double spacingDeg, double halfAngleDeg) {
+    std::vector<ArcSeat> seats;
+    if (count <= 0 || radiusUnits <= 0.0) {
+        return seats;
+    }
+    double const centre = BearingDeg(player, owner);
+    for (int i = 0; i < count; ++i) {
+        // Right by one step, left by one, right by two... (the owner's own bearing is the centre).
+        int const step = i / 2 + 1;
+        double const side = (i % 2 == 0) ? -1.0 : 1.0;
+        double const offset = std::min(step * spacingDeg, halfAngleDeg);
+        double const bearing = (centre + side * offset) * 3.14159265358979323846 / 180.0;
+        ArcSeat seat;
+        seat.at = {player.x + std::cos(bearing) * radiusUnits, player.y + std::sin(bearing) * radiusUnits, player.z};
+        seat.yawDeg = Wrap180(BearingDeg(seat.at, player));
+        seats.push_back(seat);
+    }
+    return seats;
+}
+
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.
@@ -100,6 +141,11 @@ bool IsSetPiece(std::string_view name) {
         "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "sta60_wrex_at_fists", "sta90_council_saren",
         "war30_trig_01_entry",
     };
+    std::string const key = ConversationKey(name);
+    return std::find(std::begin(kSetPieces), std::end(kSetPieces), key) != std::end(kSetPieces);
+}
+
+std::string ConversationKey(std::string_view name) {
     std::string key;
     std::size_t const dot = name.rfind('.');
     std::size_t const space = name.rfind(' ');
@@ -118,7 +164,211 @@ bool IsSetPiece(std::string_view name) {
             break;
         }
     }
-    return std::find(std::begin(kSetPieces), std::end(kSetPieces), key) != std::end(kSetPieces);
+    return key;
+}
+
+namespace {
+struct FlowRow {
+    std::string_view name;
+    int offset;  // into kFlowEntries
+    int count;
+};
+// tools/conversation-scan.py --flow-list over the game's packages (2026-11-09; research/59 "Flowing conversations"): per
+// conversation a level's script starts, the entries of its chain starts (plays that can never reach a wheel) that no
+// conversation start reaches and that the game left ordinary; chain starts behind an unconditional start are left out (the game
+// takes the first start whose conditional holds, so they never play), as are set pieces, transmissions and the narration under
+// the game's own screens (the character creation, the tutorial popups, the news terminals). Generated, never typed.
+constexpr int kFlowEntries[] = {
+    67,  // cha00_asari_liara
+    1, 2, 4, 5,  // combat_banter_00
+    2, 3,  // ice20_giannaparasini
+    1, 2, 39, 40, 41, 42,  // ice20_inamorda
+    1,  // ice50_amb_announcements
+    10, 15,  // ice50_trig13_salarian_suicide
+    0,  // ice50_trig22_juleth_ambush
+    2, 3,  // ice60_ambient_barricade_2
+    2, 3,  // ice60_ambient_guard_1
+    2, 3,  // ice60_ambient_guard_2
+    5, 6,  // ice60_ambient_scientist_1
+    5, 6,  // ice60_ambient_scientist_2
+    6, 9, 10,  // ice60_ambient_scientist_3
+    5, 6,  // ice60_ambient_scientist_4
+    0, 1,  // ice60_trig12_olar_execution
+    8,  // jug20_amb_ashley
+    7,  // jug20_amb_garrus
+    1,  // jug20_amb_kaidan
+    1,  // jug20_amb_liara
+    8,  // jug20_amb_tali
+    3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 23,  // jug20_trigger
+    0,  // jug20_wrex
+    26,  // jug70_sal_prisoner
+    31, 32, 35, 38, 39, 42, 52, 55,  // jug70_trigger
+    0, 1, 2, 3, 4, 5, 6, 7, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,  // jug80_saren
+    10, 15, 19, 20,  // jug80_trigger
+    21, 22,  // lav70_asariscientist
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,  // los30_security_system_done
+    5, 6, 7, 8, 9,  // los30_trig_a
+    6,  // los40_trig_c
+    1, 2, 3,  // nor10_ambient_01
+    0, 1, 2,  // nor10_engineer
+    0,  // nor10_joker
+    9, 10,  // nor10_landing_bay
+    1, 3, 4, 5, 6, 7, 8,  // prc1_human_radio
+    72, 73,  // prc1_surveyor_wrapup
+    0,  // prc1_trig_batarians
+    1, 2, 3,  // prc1_trig_main_facility_radio
+    0,  // pro10_m_scientist02
+    0, 1,  // pro20_powell
+    0, 1,  // sp108_diplomat
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,  // sp114_triggers
+    16,  // sp119_major_kyle
+    0, 1, 2, 3, 4, 5, 6, 7, 8,  // sp123_kahoku
+    0,  // sta00_cab
+    1, 4,  // sta20_asari_employee03
+    0,  // sta20_chorban_triggers
+    35, 36, 37, 89, 90, 91, 92, 93, 94,  // sta20_human_ambassador_enter
+    3, 7,  // sta30_banter_01
+    0, 1,  // sta30_chellik
+    1, 4,  // sta60_schells
+    0, 1,  // sta70_garrus
+    1,  // unc_banter_00
+    1, 9,  // war20_ambientbunker01
+    1, 2, 5, 10, 11, 19, 24,  // war20_ambientmain02
+    1, 2, 4, 5, 6,  // war20_arceliasilvamartinez
+    1, 2, 3, 4, 6, 7, 9, 23, 24, 25, 26, 27,  // war20_calanthablake
+    2, 3, 4, 5, 7, 8, 9, 10, 52, 53, 54, 55,  // war20_davinandersson
+    0, 1, 2, 3, 4, 64, 65, 66, 67, 68, 69,  // war20_faizhou
+    28, 29, 30, 31,  // war20_inoste_merchant
+    6, 23, 24, 25,  // war20_machadoyle
+    10,  // war40_ambrefugee_female01
+    10,  // war40_ambrefugee_male01
+    10,  // war40_ambrefugee_male03
+    65, 66, 67, 69, 70, 72, 73, 75, 76,  // war40_juliannabaynham
+    12,  // war50_claw01
+    4, 5, 6, 7, 8, 9,  // war50_krogan
+    15, 17, 18, 20, 22, 72, 73, 74, 75, 76, 77, 78, 79, 80,  // war50_lizbeth
+};
+constexpr FlowRow kFlowRows[] = {
+    {"cha00_asari_liara", 0, 1},
+    {"combat_banter_00", 1, 4},
+    {"ice20_giannaparasini", 5, 2},
+    {"ice20_inamorda", 7, 6},
+    {"ice50_amb_announcements", 13, 1},
+    {"ice50_trig13_salarian_suicide", 14, 2},
+    {"ice50_trig22_juleth_ambush", 16, 1},
+    {"ice60_ambient_barricade_2", 17, 2},
+    {"ice60_ambient_guard_1", 19, 2},
+    {"ice60_ambient_guard_2", 21, 2},
+    {"ice60_ambient_scientist_1", 23, 2},
+    {"ice60_ambient_scientist_2", 25, 2},
+    {"ice60_ambient_scientist_3", 27, 3},
+    {"ice60_ambient_scientist_4", 30, 2},
+    {"ice60_trig12_olar_execution", 32, 2},
+    {"jug20_amb_ashley", 34, 1},
+    {"jug20_amb_garrus", 35, 1},
+    {"jug20_amb_kaidan", 36, 1},
+    {"jug20_amb_liara", 37, 1},
+    {"jug20_amb_tali", 38, 1},
+    {"jug20_trigger", 39, 18},
+    {"jug20_wrex", 57, 1},
+    {"jug70_sal_prisoner", 58, 1},
+    {"jug70_trigger", 59, 8},
+    {"jug80_saren", 67, 21},
+    {"jug80_trigger", 88, 4},
+    {"lav70_asariscientist", 92, 2},
+    {"los30_security_system_done", 94, 16},
+    {"los30_trig_a", 110, 5},
+    {"los40_trig_c", 115, 1},
+    {"nor10_ambient_01", 116, 3},
+    {"nor10_engineer", 119, 3},
+    {"nor10_joker", 122, 1},
+    {"nor10_landing_bay", 123, 2},
+    {"prc1_human_radio", 125, 7},
+    {"prc1_surveyor_wrapup", 132, 2},
+    {"prc1_trig_batarians", 134, 1},
+    {"prc1_trig_main_facility_radio", 135, 3},
+    {"pro10_m_scientist02", 138, 1},
+    {"pro20_powell", 139, 2},
+    {"sp108_diplomat", 141, 2},
+    {"sp114_triggers", 143, 19},
+    {"sp119_major_kyle", 162, 1},
+    {"sp123_kahoku", 163, 9},
+    {"sta00_cab", 172, 1},
+    {"sta20_asari_employee03", 173, 2},
+    {"sta20_chorban_triggers", 175, 1},
+    {"sta20_human_ambassador_enter", 176, 9},
+    {"sta30_banter_01", 185, 2},
+    {"sta30_chellik", 187, 2},
+    {"sta60_schells", 189, 2},
+    {"sta70_garrus", 191, 2},
+    {"unc_banter_00", 193, 1},
+    {"war20_ambientbunker01", 194, 2},
+    {"war20_ambientmain02", 196, 7},
+    {"war20_arceliasilvamartinez", 203, 5},
+    {"war20_calanthablake", 208, 12},
+    {"war20_davinandersson", 220, 12},
+    {"war20_faizhou", 232, 11},
+    {"war20_inoste_merchant", 243, 4},
+    {"war20_machadoyle", 247, 4},
+    {"war40_ambrefugee_female01", 251, 1},
+    {"war40_ambrefugee_male01", 252, 1},
+    {"war40_ambrefugee_male03", 253, 1},
+    {"war40_juliannabaynham", 254, 9},
+    {"war50_claw01", 263, 1},
+    {"war50_krogan", 264, 6},
+    {"war50_lizbeth", 270, 14},
+};
+} // namespace
+
+std::span<int const> FlowEntries(std::string_view name) {
+    std::string const key = ConversationKey(name);
+    for (FlowRow const& row : kFlowRows) {
+        if (row.name == key) {
+            return {kFlowEntries + row.offset, static_cast<std::size_t>(row.count)};
+        }
+    }
+    return {};
+}
+
+PlayerStep StepPlayer(Vec3 const& place, Vec3 const& anchor, double leashUnits, double stickX, double stickY, double headYawDeg,
+    double speedUnitsPerS, double dtS) {
+    PlayerStep out;
+    out.place = place;
+    constexpr double kDeadZone = 0.15;
+    double const magnitude = std::hypot(stickX, stickY);
+    if (magnitude < kDeadZone || dtS <= 0.0 || speedUnitsPerS <= 0.0) {
+        return out;
+    }
+    // The stick's deflection past the dead zone, up to 1: a gentle push walks slowly.
+    double const scale = std::min(1.0, (magnitude - kDeadZone) / (1.0 - kDeadZone)) / magnitude;
+    double const yaw = headYawDeg * 3.14159265358979323846 / 180.0;
+    // Unreal: forward (cos, sin), right (-sin, cos) in the X-Y plane.
+    double const dx = (std::cos(yaw) * stickY - std::sin(yaw) * stickX) * scale;
+    double const dy = (std::sin(yaw) * stickY + std::cos(yaw) * stickX) * scale;
+    double const step = speedUnitsPerS * dtS;
+    Vec3 next{place.x + dx * step, place.y + dy * step, place.z};
+    double const before = std::hypot(place.x - anchor.x, place.y - anchor.y);
+    double const after = std::hypot(next.x - anchor.x, next.y - anchor.y);
+    if (leashUnits > 0.0 && after > leashUnits) {
+        if (before > leashUnits) {
+            if (after >= before) {
+                return out;  // outside already (the anchor moved): only a step nearer is taken, as it is
+            }
+        } else {
+            // Slide along the circle: the step's part along the tangent stays, the part outward is dropped.
+            double const ox = next.x - anchor.x, oy = next.y - anchor.y;
+            next.x = anchor.x + ox / after * leashUnits;
+            next.y = anchor.y + oy / after * leashUnits;
+            out.atLeash = true;
+        }
+    }
+    if (std::hypot(next.x - place.x, next.y - place.y) < 1e-6) {
+        out.atLeash = leashUnits > 0.0;
+        return out;
+    }
+    out.place = next;
+    out.moved = true;
+    return out;
 }
 
 char const* Name(Mode mode) {

@@ -362,6 +362,253 @@ generated, not typed):
 Verdicts over all 491: **screen 21** (18 framed + 3 more for Shepard's walks; Liara's was both), **check 26**, **world 387**, the 57
 ambient without one. The 21 are in `IsSetPiece` and go to the 3D screen in First person; the 26 are the launcher's next list.
 
+## Part A and Part B: the opening accepted, everyone in sight (2026-11-09)
+
+The owner, after the Citadel arrival: "When I loaded into the citadel for the initial conversation I found that I was far away
+(close to my initial spawn point) along with my squad." Why: a conversation right after a cutscene or a load starts with Shepard at
+the spawn point; the stage teleports him onto his mark beside the owner in the first tick, **keep-in-place undid it** (Shepard was
+kept like everyone else), and the player's place was taken from his head bone there, at the spawn. The squad isn't in the speaker
+list, so the stage never moves them and neither did we: they stood at the spawn with the player.
+
+- **Part A, the opening** (`[Cinematics] worldOpening = accept`, the default; `keep` is the old way): the stage's first placements
+  are the scene's design and the player hasn't seen the room in this conversation yet, so they stand. Until the first drawn frame
+  of the world view (or 500 ms) every jump is accepted (`convo: ... the opening put X N m away: accepted`); then the player's place
+  is taken again from Shepard's head bone plus the eye offset, **facing the owner** (`FinishOpening`: `convo: the opening ended after
+  N s: ...`), and the host dips from black (`cw::State::cut`, `transition_fade::Fade::Cut`, unit-tested): the move reads as a cut,
+  not a teleport. Keep-in-place and the walking prototype run from then on.
+- **Part B, everyone in sight** (`worldArrange = 1`, `worldArcM` 2.5, `worldViewDeg` 60): at the end of the opening everyone of
+  the conversation (owner, speaker list) and the squad (`squad_weapons::Members()`) is checked from the player's eyes:
+  within `worldViewDeg` of the facing, 1.2 m to 6 m away, a clear line of sight (`cw::InView`, the shots' `LineOfSight`). The owner
+  keeps its mark; whoever else fails is put on a seat of an arc `worldArcM` from the player centred on the owner's bearing, right
+  then left, 25 degrees apart, never past the view's edge (`cw::ArcSeats`, unit-tested), on the floor there (`Actor.Trace` down,
+  the actor's own height above its floor kept), facing the player (`Actor.SetRotation`); their kept place is the seat. Logs
+  `convo: X is out of view / too near or too far / blocked (...)`, `convo: X brought into view: seat n at ...`; the summary's
+  `openingMoves` and `arranged`.
+
+[verify] in the game: the Citadel arrival from a save or the launcher (the player beside Udina and Anderson, the squad in view), the
+medical bay (unchanged: Shepard already stood on his mark), a conversation started on foot (no opening moves, no cut).
+### The launcher's gaps closed (2026-11-09, later)
+
+Run in the game 2026-11-09 (fake headset): the chunk wait works (Virmire's `JUG20_08 is loaded and visible` before the
+teleport; the Citadel's and Noveria's chunks reported not visible within 60 s although their actions were there and fired
+fine, so the wait's visibility test is stricter than it needs to be [verify]), but **Virmire still kills Shepard**: the teleport
+to 50 units over the owner landed him on the GameOver screen again, and the party screen came back twice (FinalizeParty sent
+each time). **The medical bay's named state set but its chunk never came:** `mevr stream state stream_wakeup on` ran through
+the loaded `BioSeqAct_SetStreamingState_4` (`Activated` called true), the volume was touched after it, and `NOR10_07wake`
+stayed unloaded for 60 s, so the start action wasn't there to fire [verify: whether the state needs the volume's `Retouch`
+with the state already on, route B, or the plot's own sequence does more than the state]. **The launcher waits for the chunk:** `mevr stream chunks` prints every
+streaming level as `<package> loaded=<0|1> visible=<0|1> shouldLoad=.. shouldShow=.. chunk=<VirtualChunkName>`
+(`WorldInfo.StreamingLevels`); after the stream the launcher polls it every 2 s for up to `-StreamSeconds` (60) until the start's own
+package (`BIOA_JUG20_08_DSG`) is loaded and visible, then teleports to the owner's place 50 units up, in god mode (the game drops
+Shepard onto the floor). **Plot-loaded chunks are shown by a named streaming state.** A `BioTriggerStream`'s states carry a
+`StateName`: `None` or `Default` (486 and 475 of the 1,482 states in the game) is the plain state a touch applies; a named one
+(`stream_wakeup`, `stream_huddle`, `PostThorian`, `JumpTo20`...) applies only while the world's `BioWorldInfo.m_WorldStreamingStates`
+entry of that name is on, which the plot's Kismet sets through `BioSeqAct_SetStreamingState` (`StateName`, `NewValue`; its
+`Activated` is script, not native: the natives dump lists none for it, while `BioTriggerStream.Retouch` is native). The medical bay's
+`NOR10_07wake` is in `stream_wakeup`'s visible list on `BIOA_NOR00`'s `BioTriggerStream_147` and `_152` (in `BIOA_NOR10_07`), under
+no plain state. `mevr stream state <name> on|off` switches a state the game's own way: a loaded `BioSeqAct_SetStreamingState`'s
+`Activated` through ProcessEvent, one already holding the name and value if there is one, else the first with ours put on it for
+the call and its own put back (journalled); with none loaded, the world's entry written and every volume's `Retouch` called
+[verify]. The name is taken from the loaded actions, volumes and world states (no name-table lookup: a name nothing loaded knows
+can't switch anything). `mevr stream states` lists the world's entries. The scan records every volume's states (`kind: volume`, 998
+volumes) and the catalogue gives each start `touchShows`, `volumeShows` and `streamStates` (a `_DS1` sub-package counts as its
+parent chunk, the persistent package as always there): **104 of the 713 starts sit in a chunk no plain touch shows, 88 of them
+with a named state** (NOR00 39, WAR00 37: `PostThorian`, STA00 21, END00 4, UNC52 3); 16 are listed by no volume state at all
+(`UNC52_01`, the squadmates' `NOR10_09*_DS2` rooms, the Citadel's `*news` chunks: another route, probably the plot's own level
+streaming actions). The launcher reads the live `mevr stream list` first (a plain state listing the chunk: touch; a named one: the
+state on, then that volume touched), the catalogue's `streamStates` when no loaded volume lists the chunk. To run:
+`tools/conversation-launch.ps1 jug20_sal_captainkirrahe` (the wait and the raised teleport) and `tools/conversation-launch.ps1
+nor10_oculon_approach` (`stream_wakeup` on, then `BioTriggerStream_147`).
+
+### A save instead of open (2026-11-09, later)
+
+The owner: `open` lands in the wrong plot state (the Citadel arrival didn't trigger; a scene's start conditional refused a replay),
+"a better system for launching into the citadel with a custom generated save". Trilogy Save Editor (KarlitosVII, CeCILL-2.1) is the
+only LE1 save editor and has no command line, so we read its structs (`src/save_data/mass_effect_1_le`, `src/unreal`; fetched into
+`reference/` by `tools/fetch-references.ps1`) and wrote our own **`tools/le1-save.py`** (MIT; NOTICE.md lists the source):
+
+- **The format.** A container (magic `C1 83 2A 9E`, block size 0x40000, a total (compressed, uncompressed) pair, one pair per zlib
+  chunk of at most a block, the chunks, then CRC-32/BZIP2 of everything before it, the compression flag 1 and the payload size
+  again) around Unreal's flat serialization (bool = u32, enum = u8, string = i32 length with its 0, negative for UTF-16, arrays and
+  maps a u32 count, option = bool then value): version 50, character id, dates, the plot (booleans as u32 bit words, integers,
+  floats), journal, codex, the player and squad, `base_level_name` (the persistent level, `BIOA_STA00`), `map_name` (the **area**,
+  `MapNOR01`, `MapSTA30_02`: the Load screen's place name and picture), `parent_map_name` (empty in every save), the place
+  (`location` in units, `rotation` in 65536ths), the display text and the file name, then the world state the game keeps per map
+  it has visited (`legacy_maps`: every level's saved actors, the `BioWorldInfoSaveObject` with the world's streaming states;
+  absent in a character export). The tool reads all of it into Python values and writes it back: **all 12 of the owner's saves
+  round-trip byte for byte** (payload and file; the game's deflate isn't zlib's, so an unchanged payload keeps the game's own
+  chunks and a changed one is recompressed, which the game loads). `info`, `roundtrip`, `plot --bool N`, `write <in> <out>
+  --level --area --location --yaw --bool N=1 --int N=V --float N=V --display-name --drop-map`; ctest `mevr-le1-save`
+  (`tests/Le1SaveTests.py`: a synthetic save with every struct and one legacy object of each class, multi-chunk, wide strings,
+  the edits, refused corruption; `MEVR_LE1_SAVES=<folder>` adds a local folder's saves; no player's save is committed).
+- **The display text is the Load screen's record.** `BioSaveGame.SaveGameRecord` (`m_SaveGameNumber`, the date, the area id, class,
+  level, time played) is read from the fixed-width display text (` 21        John 2026/11/09 10:48:37 ... John02   0  NA 00 007
+  1h34m`), the place name and picture from `map_name`; `m_filename` is the file's name. A write stamps the time now (in the text
+  too) and the file name, and a numbered file (`<career>_<n>`) gets its slot in the text.
+
+**Measured in the game** (fake headset, John02, the deployed hot-reload build, 2026-11-09 14:16-14:50; saves backed up and hash-checked
+after, nothing written by the game):
+
+- **The title's Enter resumes the profile's last save**, never a newer one: `PROFILE\GamerProfile.pcsav` ends with the career and
+  file name (`John02`, `John02_AutoSave`); a save with a newer time in its text and a newer file time (slot 98, `_MEVR`) was passed
+  over three times, before and after a restart. The cheat `BioLoadGame <slot>` (`BioCheatManager`) does nothing in this build.
+- **The Load screen lists a career's saves once, at the game's start** (`BioSFHandler_LoadGame.lstRecords`): a file written
+  later isn't listed (slot 22), a file deleted later still is (slot 98), `RebuildLoadGameList` doesn't re-read the folder. Its
+  content is read only when it's loaded. Non-numbered names are listed (`John02_MEVR`), so the launcher's fixed
+  `<career>_MEVR.pcsav` works: once it exists when the game starts, later runs just rewrite it.
+- **The Load screen can be driven**: `mevr gui Menu` (the pause menu), down + A (its second entry is Load, on foot and in the Mako),
+  then down + A on the list (no record has the focus before a pad direction), and the confirm box's handler says which record it
+  is for (`BioSFHandler_MessageBox.nInputCallbackContext` = the record's index): B in a request of its own, the focus moved by the
+  difference, A again, then A to confirm. The launcher does this (`Load-ThroughMenu`).
+- **A loaded save is placed exactly**: Avina's save (`sta20_avina_keeper`, Presidium `STA20_02A`) loaded on foot within 9 s at the
+  written x, y, z 20 units above Avina's own height, dropped onto the floor (z 317 to 286), facing 180 degrees, Avina at her mark;
+  the docking bay save (`sta30_normandy_mechanic`, C-Sec's bay `STA30_08`) the same, facing 298. **The chunks stream by themselves**
+  from where the player is (no volume touched, no fall), unlike a teleport after `open`.
+- **The plot is the career's**: Avina's start (`AvinaWithKeeper`) played its conversation (game mode 5); the mechanic's start
+  (`MechanicKeepsPlayerFromEntering`) fired and played nothing, because John02 has been past the Normandy's bay since its first
+  visit (its starting entry's conditional). From `open` both would have run in the story's opening plot.
+- **The Citadel arrival can't come from John02**: its plot is past the Citadel (Garrus and Wrex in the squad, the Normandy docked).
+  The arrival is the Presidium embassy's (`BioTriggerStream_97`'s state `stream_normandyToEmbassy` shows `BIOA_STA20_A_Arrival_CIN`
+  and `STA20_10C`), so it needs a save between Eden Prime's end and the Citadel (the Normandy after the debrief): none of the owner's
+  careers has one (John01 and VR00 are on Eden Prime). Next: play John01 to the Normandy and save there, then `-Save` from it;
+  setting the arrival's plot booleans on a later save is guesswork until the plot database (Trilogy Save Editor's
+  `databases/me1_raw_plot_db.ron`, its names) is read for them.
+
+**The launcher's `-Save <career save>`**: writes `<career>_MEVR.pcsav` beside it (the catalogue's `map` as the level, Shepard 1.5 m
+in front of the owner facing it), after a backup of the Save folder into `%LOCALAPPDATA%\MEVR\save-backups\<time>`; with the game
+running it loads it through the Load screen, waits for Shepard on foot near the place, then streams the chunk and fires the start
+as `-NoOpen` does. The first `-Save` of a career with the game running fails with "the Load screen doesn't list ...: restart it":
+write it with the game closed (or restart). `-Area MapSTA30_02` sets the area (the Load screen's label; kept from the career save
+otherwise). `-RestoreSaves` puts back every file of the newest backup that changed and deletes the `*_MEVR` saves.
+
+## Flowing conversations: the walk-up scenes as the game's own barks (2026-11-09, evening)
+
+The owner, on the first Citadel visit: "I'll walk up to NPCs and it will start an encounter, like meeting Wrex or saving Tali.
+I want these to allow free character movement (within bounds). A lot of the times they will chain where we don't have any vocal
+interaction and then we have a small conversation option available." Of the two ways (the mod moving Shepard's pawn inside the
+conversation mode, or the game's own ambient path) the owner chose the cheaper, riskier one: "some of the encounters would be
+interesting to see if you could do the cheaper but riskier. The ideal case is that the conversations flow really easily."
+
+**How the game decides a conversation is ambient** (Ghidra, UBioConversation's vtable at RVA 0x131EF20; the natives behind the
+exec thunks `execUpdateConversation` 0xB909B0 and `execswitchToAmbient` 0x371570):
+- `StartConversation` (slot 0x2D0, 0xC86B00) picks the start entry from `m_StartingList` (the first whose conditional holds),
+  then copies that entry's `bAmbient` into the conversation's `m_bAmbient` (an XOR bit copy on +0x2C0, bit 0x200). Not ambient:
+  it tells the player controller's HUD object to enter the conversation mode (a ProcessEvent with a byte 5: game mode 5) and
+  sets the camera up. Ambient: no mode, no camera; it calls `switchToAmbient` (slot 0x318, 0xC892B0: hides the conversation GUI's
+  parts and shows it as ambient) and sets the GUI's subtitle style to 4 (`SUBTITLE_RENDER_AMBIENT`).
+- The entry start (0xC7DCD0, the function that plays the next entry) copies the new entry's `bAmbient` only while the conversation
+  is NOT ambient, and only honours a switch to ambient for an entry with no replies (the last line) whose speaker isn't in the
+  party: that is the game's own "last line plays as you walk away" (the 204 conversations that mix ambient and ordinary lines end
+  on ambient ones; none begins ambient and turns into a conversation). An ambient conversation stays ambient to its end.
+- `UpdateConversation` (slot 0x2E0, 0xC87830): an ambient conversation is interrupted (the controller's slot 0x9F0) when the
+  conversation's player is farther than `m_fInterruptRange` from the speaker; the range is the start action's
+  `BioSeqAct_StartConversation.m_fInterruptRange`, else (0) `BioWorldInfo.m_fConversationInterruptDistance` (BIOGame.ini);
+  -1 never. Skipping and the reply display run only for non-ambient conversations.
+
+So a start whose first entry is flagged ambient plays as the game's own barks, in the ordinary game mode, the player walking;
+the whole conversation then plays that way, so only starts that never need the wheel qualify. **A wheel shows at an entry with a
+`REPLY_STANDARD` reply**; auto-continue and dialog-end replies go on by themselves (the ambient barks of the game end in
+`REPLY_DIALOGEND` replies: Noveria's salarian suicide trigger).
+
+**The scan reads the graph** (`conversation-scan` records every entry's `bAmbient`, speaker and `ReplyListNew`, every reply's
+`ReplyType` and `EntryList`, and `m_StartingList`; `conversation-scan.py --flow`): per start, the entries a play can reach; a
+start that can't reach a standard reply is a **chain**. The owner's examples are chains inside wheel conversations, as separate
+starts: `sta70_garrus` start 0 ("Garrus and Executor argue": Garrus's line, the Executor's, no replies) against start 2 ("Player
+speaks to Garrus", the wheel at once); `sta30_chellik` 0-1; `sta30_krogan_cutscene` 23-29 (Wrex at C-Sec); Udina's arrival
+`sta20_human_ambassador_enter` 35-37 and 89-94; `nor10_joker` 0 and 25-31. Of 404 conversations a level's script starts, 307
+have a chain start; 102 of them have chain lines the game left ordinary (526 entries), the rest are ambient already. With this
+the scan's `ambient` kind is every line ambient whatever the replies (182, not 57: the barks with auto-continue chains counted
+as `free` before); the kinds are now free 78, stage 171, remote 19, walks 23, framed 18, ambient 182.
+
+**`--flow-list` generates `cw::FlowEntries`**: per conversation the chain starts' entries that no wheel start reaches (a shared
+tail would end a wheel conversation ambient), that aren't ambient and whose start the game can take (no unconditional start
+before it, below); set pieces (the 3D screen), transmissions (their hologram
+needs the stage an ambient play skips) and the narration under the game's own screens (`nor10_backgrounds`, `ice00_popup_text`,
+`sp_news_vids`) are left out: 68 conversations, 284 entries (102 and 526 before the start-order rule). The mod (`game/ConversationFlow`, `[Cinematics] worldFlow = all | off`, default all, only with
+`conversations = world`) scans the loaded `BioSeqAct_StartConversation` actions (at once, 2 s after the object table grows by a
+thousand, every 10 s) and flags those entries' `bAmbient` on their conversations before the level's script fires them
+(journalled `ConversationFlow.entryAmbient`; an entry that offers a standard reply in the live data is refused and logged: the
+table is from the shipped packages). The flags are put back when the setting goes off or the mod unloads. The live conversation
+is watched: a flagged one playing ambient logs `convo flow: <name> plays as barks (ambient): the player stays on foot;
+interrupted beyond N m of the speaker`; `worldFlowLeashM` sets the live conversation's `m_fInterruptRange` (-1 never, else
+metres; 0 the game's). `mevr convo flow [list | rescan | restore]`.
+
+What this gives: the walk-up scene plays while the player walks and looks (bounds: the interrupt range; the game's default
+`m_fConversationInterruptDistance` is 2500 units, 25 m, in BIOGame.ini, where a start sets none), the subtitle in the ambient
+style on the HUD panel, the wheel conversation that follows as First
+person has it. What it costs: the stage's placement of a chain (Udina and Anderson put on their marks, the squad with them) is
+skipped, so the people stay where the level left them; a chain's authored matinee per line fires through the conversation's
+script list whatever the mode [verify]; a chain interrupted by distance ends early (the game's own rule for barks). Walking
+during a conversation that reaches a wheel is NOT this (the entry start never turns an ambient conversation into a conversation):
+that needs the mod moving the pawn inside the conversation mode, the other way.
+
+### In the game (2026-11-09, fake headset, the owner's John02 career)
+
+- **The race.** `tools/conversation-launch.ps1 sta70_garrus` (its first placed start is "Garrus and Executor argue") opened the
+  Citadel, streamed C-Sec Academy and fired the scene: it began in the conversation mode, and the flags landed 3 s later. Two
+  faults: the rescan waited 2 s after the object table grew, and **the object table's count never moved for the chunk** (176834
+  before and after: its objects took freed slots), so only the 10 s periodic scan ran. Now the scan runs when the streaming
+  levels' loaded and visible set changes (`LevelsSignature`, at most twice a second), and the flags land within a second of
+  the chunk (Noveria: flagged 13:48:45.9, the chunk's volume touched seconds before).
+- **Which start the game takes.** `UBioConversation::StartConversation` takes the first entry of `m_StartingList` whose
+  conditional holds, so a chain start after an unconditional start never plays (`sta30_krogan_cutscene`: starts 0 (plot 418),
+  9 (none), 23 (ours, none): 23 is never reached), and a chain start with a plot conditional plays only in the right plot state
+  (`sta70_garrus` start 0, conditional 4401, refused the re-fire after the scene had played: `m_bFailed`; `sta30_chellik` took
+  start 22 in this career). The scan records each entry's `nConditionalFunc` now; 69 of the 102 first-pass conversations had their chain behind an unconditional start and are out of the table now (68
+  conversations, 284 entries); 18 have the chain as their first start, 6 of them unconditional (the Juleth ambush and the Olar execution on Noveria, Ilos's security system, the
+  Bring Down the Sky batarian triggers, two Shepard-plot triggers).
+- **Two chain plays as barks.** `ice50_trig22_juleth_ambush` and `ice60_trig12_olar_execution` (a staged two-line scene), fired
+  by the launcher with the flags in place: `convo flow: ... plays as barks (ambient): the player stays on foot; interrupted
+  beyond the world's default 25.0 m of the speaker` 12 ms after the fire, the game mode 0 throughout, no conversation object
+  for `game/ConversationWorld`, the frames plain first-person gameplay with Olar standing in front of the player (snapshots
+  `13-49-5*`); afterwards the conversation reads `m_bConversationEnded` and `m_bInterrupted` (the ambient end goes through the
+  interrupt path). **No subtitle showed on the HUD** in the frames one and two seconds in [verify]: the ambient subtitle style
+  (`SUBTITLE_RENDER_AMBIENT`) against this profile's subtitle setting, or the lines' length.
+- **Parts A and B on a staged conversation** (the Garrus conversations in C-Sec Academy): `the opening ended after 0.0 s: 0
+  placements accepted; the player's place re-placed ... toward BioPawn_6 (0.52 m from where it was)`, arm IK and body follow
+  on, the wheel up at 4.7 s; nobody needed a seat. The Citadel arrival itself didn't trigger from this career's `open BIOA_STA00`
+  (its plot is past it): the arrival's Parts A/B and its chain starts (35-37) remain [verify] from an arrival save.
+- **The fake headset needs SteamVR's manifest pinned** (`[Debug] openxrRuntime`, `tools/fake-headset.ps1 -On`): the machine's
+  active OpenXR runtime was Virtual Desktop's and `xrGetSystem` answered -35 twice.
+
+A generated save would make these checks repeatable from the right plot state (the owner, 2026-11-09: "a better system for
+launching into the citadel with a custom generated save"): Trilogy Save Editor (KarlitosVII, CeCILL-2.1) edits an LE1 save's
+map name, location and rotation but only through its GUI, so a save writer of our own from its `src/save_data/mass_effect_1_le`
+format is the way; a separate job.
+
+## Walking during conversations (2026-11-09, evening)
+
+The owner, choosing the ambitious route: a conversation should be "actually within the game itself and not a dedicated
+experience or the camera back and forth with different placements"; the walk-up scenes play in the game (the flow, above),
+and "when we're talking that I can somewhat move around, but we may have some sort of barrier to ensure that the conversation
+just doesn't get ejected".
+
+**What ejects a conversation.** Nothing by distance: `UpdateConversation`'s interrupt range applies to ambient conversations only
+(above). The stage re-places Shepard at camera cuts, which keep-in-place already undoes; the wheel takes the left stick while it
+is up. So the barrier is ours, for sense and safety: a leash around the conversation's owner, the floor and the walls.
+
+**Built** (`[Cinematics] worldMove = 1`, default on with the world mode; `worldMoveLeashM` 3.0; `worldMoveSpeedMS` 1.4):
+in the world mode, after the opening and while the wheel is down, the left stick moves Shepard's pawn along the head's world
+facing (`engine::OrientationToWorld` of the host view's head pose in the held frame) at the walk speed (a gentle push walks
+slowly: the deflection past a 0.15 dead zone), inside the leash: a step that would leave the circle slides along it, a place
+already outside (the owner moved) may only come nearer (`cw::StepPlayer`, unit-tested). Before the step: the floor under the
+target by `Actor.Trace` (Part B's `FloorZ`), the pawn's height above its floor kept, a drop or rise past 60 units refused (a
+ledge, a step); the shots' `LineOfSight` from the pawn's place to the target refused by a wall; `Actor.SetLocation` (what
+keep-in-place uses), its own refusal respected. After the step everything that defines the player's place moves by the same
+vector: the held view (`gC.hold`, so the host's render, the game's camera written into the POV and the people's turning
+follow), the frame handed to `view_anchor::Hold` (arm IK, body follow), Shepard's head-bone anchors (`FollowHeadSettled` never
+reads the walk as a jump) and his kept place in `gStay` (keep-in-place puts him back where he walked, not where he started).
+The pawn's `Velocity` is set to the step's (body follow's legs animate above 60 u/s; whether the conversation's animation tree
+lets the legs run is [verify]), cleared when the stick rests, the wheel opens or the conversation ends. Logs `convo: at N s the
+player walks: ...` once, and at the end `convo: the player walked N m in K steps; the leash held L steps back, R refused`; the
+summary's `playerWalkedM`, `leashHits`, `moveRefused`.
+
+**Not done here:** the squad doesn't follow a walking Shepard during the conversation (they stand where Part B seated them);
+the NPCs turn toward him (keep-in-place's turn, `worldTurnDegPerS`) but don't step; no visible barrier at the leash (a haptic
+tick or the vignette could mark it); the stick's dead zone and the speed are untried in a headset. [verify] in the game: walk
+during the Garrus conversation at C-Sec (the launcher: `sta70_garrus`, its wheel start) with `mevr` replay inputs or a real
+stick; the kept place and the hold staying together across a camera cut; the subtitle and the wheel following the walk.
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the

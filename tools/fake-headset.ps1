@@ -33,6 +33,19 @@ $chaperone = Join-Path $steam 'config\chaperone_info.vrchap'
 $vrStartup = Join-Path $SteamVRRoot 'bin\win64\vrstartup.exe'
 $backupDir = if ($BackupDirectory) { $BackupDirectory } else { Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset' }
 $nullUniverse = '2'   # the null driver's chaperone universe ("Update ZeroPose for the chaperone universe 2" in vrserver.txt)
+$modIni = Join-Path $steam 'steamapps\common\Mass Effect Legendary Edition\Game\ME1\Binaries\Win64\ASI\LE1MEVR.ini'
+Add-Type -Namespace MevrFake -Name Ini -MemberDefinition @'
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern bool WritePrivateProfileStringW(string section, string key, string value, string file);
+'@
+# [Debug] openxrRuntime in the deployed LE1MEVR.ini: the runtime manifest the game's process uses; '' removes the key.
+function Set-ModRuntime([string]$Manifest) {
+    if (-not (Test-Path -LiteralPath $modIni)) { "no deployed LE1MEVR.ini at ${modIni}: the game's OpenXR runtime stays the machine's active one"; return }
+    # A PowerShell $null becomes "" for a .NET string parameter (the key is then written empty); NullString is the real null,
+    # which makes WritePrivateProfileString delete the key.
+    $value = if ($Manifest) { $Manifest } else { [NullString]::Value }
+    [MevrFake.Ini]::WritePrivateProfileStringW('Debug', 'openxrRuntime', $value, $modIni) | Out-Null
+}
 
 function Read-Json($path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json }
 function Write-Json($path, $obj) {
@@ -131,9 +144,14 @@ if ($On) {
         Write-Json $chaperone $c
     }
     Start-Process -FilePath $vrStartup -WindowStyle Hidden | Out-Null
-    "fake headset ON: null driver ${Width}x${Height} @ 90 Hz, the PS VR2 driver off, standby off, chaperone universe $nullUniverse registered; SteamVR starting (backups in $backupDir)"
+    # The host's statically linked OpenXR loader takes the machine's active runtime (HKLM), which is Virtual Desktop's or
+    # Meta's when the owner tests a Quest; the null driver lives in SteamVR, so the game must use SteamVR's manifest for this
+    # process: [Debug] openxrRuntime in the deployed LE1MEVR.ini (plugin/HalcyonBridge sets XR_RUNTIME_JSON; 2026-11-09).
+    Set-ModRuntime (Join-Path $SteamVRRoot 'steamxr_win64.json')
+    "fake headset ON: null driver ${Width}x${Height} @ 90 Hz, the PS VR2 driver off, standby off, chaperone universe $nullUniverse registered; SteamVR starting (backups in $backupDir); the game's OpenXR runtime pinned to SteamVR's manifest"
 }
 if ($Off) {
+    Set-ModRuntime ''
     Stop-SteamVR
     if (Test-Path -LiteralPath $nullBackup) { Copy-Item -LiteralPath $nullBackup $nullSettings -Force } else {
         $n = Read-Json $nullSettings; Set-Member $n.driver_null 'enable' $false; Write-Json $nullSettings $n

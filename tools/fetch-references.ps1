@@ -22,6 +22,7 @@ $repos = @(
     @{ Name = 'MassEffect1-VR'; Url = 'https://github.com/jrush64/MassEffect1-VR.git'; Submodules = $false }  # GPL-3.0 (Halcyon): design reference only
     @{ Name = 'MassEffect2-VR'; Url = 'https://github.com/jrush64/MassEffect2-VR.git'; Submodules = $false }  # GPL-3.0 (Halcyon): design reference only
     @{ Name = 'MassEffect3-VR'; Url = 'https://github.com/jrush64/MassEffect3-VR.git'; Submodules = $false }  # GPL-3.0 (Halcyon): design reference only
+    @{ Name = 'trilogy-save-editor'; Url = 'https://github.com/KarlitosVII/trilogy-save-editor.git'; Submodules = $false }  # CeCILL-2.1: the LE1 save format (tools/le1-save.py)
 )
 
 foreach ($r in $repos) {

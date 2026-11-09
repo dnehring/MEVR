@@ -119,7 +119,8 @@ and 3 come later. Much of it has been tried in a headset only a few times so far
   toward one, or up for both). Double-tap B to call everyone back.
 - Say it: hold the left grip at your left ear, speak ("Garrus, take out those troopers on the bridge", "Wrex, hold the
   line", "Liara, lift the big one", "everyone on me", "get behind that crate"), let go. Call them by first name, surname,
-  short form or rank ("Vakarian", "Ash", "Chief", "Alenko"), or "everyone". Recognized on your own machine, nothing leaves it; no
+  short form or rank ("Vakarian", "Ash", "Chief", "Alenko"), or "everyone". The recognizer's spelling is understood as
+  said ("Wrex rushed them", "Garrus switched to your sniper rifle", a "yeah" or "mm" first). Recognized on your own machine, nothing leaves it; no
   microphone, no voice, the rest of the mod is unchanged. Needs the speech recognizer: MEVR Setup's Optional content
   page downloads it (about 70 MB from Moonshine Voice's GitHub release and Hugging Face, each file checked against its
   SHA-256; Remove and Uninstall take it out again). A line the rules can't place ("Ash, the thresher maw is yours") goes to
