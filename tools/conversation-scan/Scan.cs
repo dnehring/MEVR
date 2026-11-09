@@ -119,6 +119,7 @@ internal static class Scan
                 ["nonText"] = node.GetProp<BoolProperty>("bNonTextLine")?.Value == true,
                 ["speaker"] = node.GetProp<IntProperty>("nSpeakerIndex")?.Value ?? -1,
                 ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,
+                ["conditional"] = node.GetProp<IntProperty>("nConditionalFunc")?.Value ?? -1,  // -1: none (a start entry always eligible)
                 ["replies"] = node.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?.Select(r => r.GetProp<IntProperty>("nIndex")?.Value ?? -1).ToList()
                               ?? new List<int>(),
             });

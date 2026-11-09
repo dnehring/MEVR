@@ -389,7 +389,14 @@ list, so the stage never moves them and neither did we: they stood at the spawn 
 medical bay (unchanged: Shepard already stood on his mark), a conversation started on foot (no opening moves, no cut).
 ### The launcher's gaps closed (2026-11-09, later)
 
-Built for both gaps, not yet run in the game [verify]. **The launcher waits for the chunk:** `mevr stream chunks` prints every
+Run in the game 2026-11-09 (fake headset): the chunk wait works (Virmire's `JUG20_08 is loaded and visible` before the
+teleport; the Citadel's and Noveria's chunks reported not visible within 60 s although their actions were there and fired
+fine, so the wait's visibility test is stricter than it needs to be [verify]), but **Virmire still kills Shepard**: the teleport
+to 50 units over the owner landed him on the GameOver screen again, and the party screen came back twice (FinalizeParty sent
+each time). **The medical bay's named state set but its chunk never came:** `mevr stream state stream_wakeup on` ran through
+the loaded `BioSeqAct_SetStreamingState_4` (`Activated` called true), the volume was touched after it, and `NOR10_07wake`
+stayed unloaded for 60 s, so the start action wasn't there to fire [verify: whether the state needs the volume's `Retouch`
+with the state already on, route B, or the plot's own sequence does more than the state]. **The launcher waits for the chunk:** `mevr stream chunks` prints every
 streaming level as `<package> loaded=<0|1> visible=<0|1> shouldLoad=.. shouldShow=.. chunk=<VirtualChunkName>`
 (`WorldInfo.StreamingLevels`); after the stream the launcher polls it every 2 s for up to `-StreamSeconds` (60) until the start's own
 package (`BIOA_JUG20_08_DSG`) is loaded and visible, then teleports to the owner's place 50 units up, in god mode (the game drops
@@ -453,9 +460,10 @@ the scan's `ambient` kind is every line ambient whatever the replies (182, not 5
 as `free` before); the kinds are now free 78, stage 171, remote 19, walks 23, framed 18, ambient 182.
 
 **`--flow-list` generates `cw::FlowEntries`**: per conversation the chain starts' entries that no wheel start reaches (a shared
-tail would end a wheel conversation ambient) and that aren't ambient; set pieces (the 3D screen), transmissions (their hologram
+tail would end a wheel conversation ambient), that aren't ambient and whose start the game can take (no unconditional start
+before it, below); set pieces (the 3D screen), transmissions (their hologram
 needs the stage an ambient play skips) and the narration under the game's own screens (`nor10_backgrounds`, `ice00_popup_text`,
-`sp_news_vids`) are left out. The mod (`game/ConversationFlow`, `[Cinematics] worldFlow = all | off`, default all, only with
+`sp_news_vids`) are left out: 68 conversations, 284 entries (102 and 526 before the start-order rule). The mod (`game/ConversationFlow`, `[Cinematics] worldFlow = all | off`, default all, only with
 `conversations = world`) scans the loaded `BioSeqAct_StartConversation` actions (at once, 2 s after the object table grows by a
 thousand, every 10 s) and flags those entries' `bAmbient` on their conversations before the level's script fires them
 (journalled `ConversationFlow.entryAmbient`; an entry that offers a standard reply in the live data is refused and logged: the
@@ -473,9 +481,39 @@ script list whatever the mode [verify]; a chain interrupted by distance ends ear
 during a conversation that reaches a wheel is NOT this (the entry start never turns an ambient conversation into a conversation):
 that needs the mod moving the pawn inside the conversation mode, the other way.
 
-[verify] in the game (the launcher: `tools/conversation-launch.ps1 sta70_garrus` fires start 0's action? The catalogue lists
-each start's action; `mevr activate <n> 0` on the "Garrus and Executor argue" action): the log's `convo flow: ... plays as
-barks`, game mode 0 throughout, the subtitles, the player walking; then the wheel conversation; the Udina arrival from a save.
+### In the game (2026-11-09, fake headset, the owner's John02 career)
+
+- **The race.** `tools/conversation-launch.ps1 sta70_garrus` (its first placed start is "Garrus and Executor argue") opened the
+  Citadel, streamed C-Sec Academy and fired the scene: it began in the conversation mode, and the flags landed 3 s later. Two
+  faults: the rescan waited 2 s after the object table grew, and **the object table's count never moved for the chunk** (176834
+  before and after: its objects took freed slots), so only the 10 s periodic scan ran. Now the scan runs when the streaming
+  levels' loaded and visible set changes (`LevelsSignature`, at most twice a second), and the flags land within a second of
+  the chunk (Noveria: flagged 13:48:45.9, the chunk's volume touched seconds before).
+- **Which start the game takes.** `UBioConversation::StartConversation` takes the first entry of `m_StartingList` whose
+  conditional holds, so a chain start after an unconditional start never plays (`sta30_krogan_cutscene`: starts 0 (plot 418),
+  9 (none), 23 (ours, none): 23 is never reached), and a chain start with a plot conditional plays only in the right plot state
+  (`sta70_garrus` start 0, conditional 4401, refused the re-fire after the scene had played: `m_bFailed`; `sta30_chellik` took
+  start 22 in this career). The scan records each entry's `nConditionalFunc` now; 69 of the 102 first-pass conversations had their chain behind an unconditional start and are out of the table now (68
+  conversations, 284 entries); 18 have the chain as their first start, 6 of them unconditional (the Juleth ambush and the Olar execution on Noveria, Ilos's security system, the
+  Bring Down the Sky batarian triggers, two Shepard-plot triggers).
+- **Two chain plays as barks.** `ice50_trig22_juleth_ambush` and `ice60_trig12_olar_execution` (a staged two-line scene), fired
+  by the launcher with the flags in place: `convo flow: ... plays as barks (ambient): the player stays on foot; interrupted
+  beyond the world's default 25.0 m of the speaker` 12 ms after the fire, the game mode 0 throughout, no conversation object
+  for `game/ConversationWorld`, the frames plain first-person gameplay with Olar standing in front of the player (snapshots
+  `13-49-5*`); afterwards the conversation reads `m_bConversationEnded` and `m_bInterrupted` (the ambient end goes through the
+  interrupt path). **No subtitle showed on the HUD** in the frames one and two seconds in [verify]: the ambient subtitle style
+  (`SUBTITLE_RENDER_AMBIENT`) against this profile's subtitle setting, or the lines' length.
+- **Parts A and B on a staged conversation** (the Garrus conversations in C-Sec Academy): `the opening ended after 0.0 s: 0
+  placements accepted; the player's place re-placed ... toward BioPawn_6 (0.52 m from where it was)`, arm IK and body follow
+  on, the wheel up at 4.7 s; nobody needed a seat. The Citadel arrival itself didn't trigger from this career's `open BIOA_STA00`
+  (its plot is past it): the arrival's Parts A/B and its chain starts (35-37) remain [verify] from an arrival save.
+- **The fake headset needs SteamVR's manifest pinned** (`[Debug] openxrRuntime`, `tools/fake-headset.ps1 -On`): the machine's
+  active OpenXR runtime was Virtual Desktop's and `xrGetSystem` answered -35 twice.
+
+A generated save would make these checks repeatable from the right plot state (the owner, 2026-11-09: "a better system for
+launching into the citadel with a custom generated save"): Trilogy Save Editor (KarlitosVII, CeCILL-2.1) edits an LE1 save's
+map name, location and rotation but only through its GUI, so a save writer of our own from its `src/save_data/mass_effect_1_le`
+format is the way; a separate job.
 
 ## Limits and next
 

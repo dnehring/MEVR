@@ -47,6 +47,10 @@ ue3::FieldRef gCurrentConversation{"SFXGame.BioWorldInfo", "m_oCurrentConversati
 ue3::FieldRef gConvAmbient{"SFXGame.BioConversation", "m_bAmbient"};
 ue3::FieldRef gConvRange{"SFXGame.BioConversation", "m_fInterruptRange"};
 ue3::FieldRef gWorldRange{"SFXGame.BioWorldInfo", "m_fConversationInterruptDistance"};  // the world's default (BIOGame.ini), used when the start's is 0
+// The streaming levels (as `mevr stream chunks` reads them): a chunk loaded or shown is when new start actions appear.
+ue3::FieldRef gStreamingLevels{"Engine.WorldInfo", "StreamingLevels"};
+ue3::FieldRef gLevelLoaded{"Engine.LevelStreaming", "LoadedLevel"};
+ue3::FieldRef gLevelVisible{"Engine.LevelStreaming", "bIsVisible"};
 
 constexpr double kUnitsPerMeter = 100.0;
 
@@ -96,7 +100,7 @@ struct Flipped {
     std::vector<int> entries;  // the entries we flagged (to put back)
 };
 std::vector<Flipped> gFlipped;
-std::int32_t gObjectsAtScan = 0;
+std::uint64_t gLevelsAtScan = 0;  // the streaming levels' signature at the last scan
 std::uint64_t gScanMs = 0;
 std::uint64_t gLastRescanMs = 0;
 int gScans = 0;
@@ -211,6 +215,23 @@ void Flip(ue3::Object* conv, ue3::Object* action) {
         range && *range > 0.0f ? std::format(" within {:.1f} m of the speaker", *range / kUnitsPerMeter) : std::string());
 }
 
+// The world and which of its streaming levels are loaded and visible, as one number that changes with any chunk load.
+std::uint64_t LevelsSignature() {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const world = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    std::uint64_t h = reinterpret_cast<std::uintptr_t>(world) * 1469598103934665603ull;
+    if (auto const levels = world != nullptr ? gStreamingLevels.ElementsOf(world, 1024) : std::nullopt) {
+        for (std::int32_t i = 0; i < levels->count; ++i) {
+            ue3::Object* const level = *static_cast<ue3::Object* const*>(levels->At(i));
+            if (level == nullptr) continue;
+            std::uint64_t const loaded = gLevelLoaded.Read<ue3::Object*>(level).value_or(nullptr) != nullptr ? 2u : 0u;
+            std::uint64_t const visible = gLevelVisible.ReadBool(level).value_or(false) ? 1u : 0u;
+            h = (h ^ (static_cast<std::uint64_t>(i) * 4u + loaded + visible + 1u)) * 1099511628211ull;
+        }
+    }
+    return h;
+}
+
 // Every loaded start action's conversation (as ConsoleRequest's Instances): the conversations a level's script can start.
 void Rescan(char const* why) {
     ue3::Reflection& r = ue3::runtime::Get();
@@ -228,7 +249,6 @@ void Rescan(char const* why) {
         }
     }
     ++gScans;
-    gObjectsAtScan = n;
     gScanMs = GetTickCount64();
     log::Info("convo flow: scan {} ({}): {} start actions among {} objects; {} conversations carry our flags", gScans, why, actions, n, gFlipped.size());
 }
@@ -312,13 +332,16 @@ void Tick() {
         return;
     }
     std::uint64_t const now = GetTickCount64();
-    std::int32_t const objects = ue3::runtime::Get().ObjectCount();
-    // A level or chunk load creates thousands of objects: scan 2 s after the table grew (its actions and conversations are
-    // there by then), else every 10 s; the first scan at once.
-    bool const grew = std::abs(objects - gObjectsAtScan) >= 1000;
-    if (gScans == 0 || (grew && now - gLastRescanMs >= 2000) || now - gScanMs >= 10000) {
+    // A chunk streamed in (or a level loaded) brings its start actions: scan as soon as the streaming levels' loaded and
+    // visible set changes (at most twice a second while loads go on: a chunk's trigger can fire within a second of its load,
+    // and on 2026-11-09 the Executor scene began 3 s before the periodic scan flagged it; the object table's count never
+    // moved for that chunk, its objects took freed slots), else every 10 s; the first scan at once.
+    std::uint64_t const levels = LevelsSignature();
+    bool const changed = levels != gLevelsAtScan;
+    if (gScans == 0 || (changed && now - gLastRescanMs >= 500) || now - gScanMs >= 10000) {
         gLastRescanMs = now;
-        Rescan(gScans == 0 ? "first" : grew ? "the object table changed" : "periodic");
+        gLevelsAtScan = levels;
+        Rescan(gScans == 0 ? "first" : changed ? "the streaming levels changed" : "periodic");
     }
     WatchLive();
 }

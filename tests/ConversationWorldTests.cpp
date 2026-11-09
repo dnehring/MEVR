@@ -95,9 +95,12 @@ void TestFlowEntries() {
     CHECK(cw::FlowEntries("sp110_distress_call_dlg").empty());   // a transmission: its hologram needs the stage
     CHECK(cw::FlowEntries("nor10_backgrounds_dlg").empty());     // narration under the character creation
     CHECK(cw::FlowEntries("sta60_quarian_dlg").empty());         // a wheel from its first line
+    CHECK(cw::FlowEntries("sta30_krogan_cutscene_dlg").empty()); // its chain start sits behind an unconditional start: never plays
     CHECK(cw::FlowEntries("").empty());
+    std::span<int const> const olar = cw::FlowEntries("ice60_trig12_olar_execution_dlg");  // played as barks on the fake headset
+    CHECK(olar.size() == 2 && olar[0] == 0 && olar[1] == 1);
     // Every table row is a non-set-piece with entries in order.
-    for (char const* name : {"sta30_chellik", "sta30_krogan_cutscene", "nor10_joker", "jug80_saren", "war50_krogan"}) {
+    for (char const* name : {"sta30_chellik", "ice50_trig22_juleth_ambush", "nor10_joker", "jug80_saren", "war50_krogan"}) {
         std::span<int const> const e = cw::FlowEntries(name);
         CHECK(!e.empty() && !cw::IsSetPiece(name));
         for (std::size_t i = 1; i < e.size(); ++i) {

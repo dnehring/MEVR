@@ -7,6 +7,7 @@
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/Window.hpp"
 #include "core/vr/CombatStance.hpp"
@@ -53,6 +54,7 @@
 #include <iterator>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <format>
 #include <mutex>
 #include <optional>
@@ -246,6 +248,24 @@ bool gLoggedView = false;     // Present thread
 } // namespace
 
 void* StaticXrGetInstanceProcAddr() noexcept {
+    // [Debug] openxrRuntime = <runtime manifest .json>: the statically linked loader takes XR_RUNTIME_JSON over the machine's
+    // active runtime (HKLM, admin to change). The fake headset's SteamVR null driver needs SteamVR's manifest while the owner's
+    // active runtime is Virtual Desktop's (xrGetSystem -35 twice, 2026-11-09); tools/fake-headset.ps1 sets and clears it.
+    static bool checked = false;
+    if (!checked) {
+        checked = true;
+        std::wstring const& path = SettingsPath();
+        wchar_t manifest[1024] = {};
+        if (!path.empty() && GetPrivateProfileStringW(L"Debug", L"openxrRuntime", L"", manifest, 1024, path.c_str()) > 0 && manifest[0] != 0) {
+            if (GetFileAttributesW(manifest) != INVALID_FILE_ATTRIBUTES) {
+                SetEnvironmentVariableW(L"XR_RUNTIME_JSON", manifest);
+                mevr::log::Info("openxr runtime: this process uses the manifest [Debug] openxrRuntime names: {}", mevr::ini::Utf8(std::filesystem::path(manifest)));
+            } else {
+                mevr::log::Warn("openxr runtime: [Debug] openxrRuntime names a file that isn't there, the active runtime stays: {}",
+                    mevr::ini::Utf8(std::filesystem::path(manifest)));
+            }
+        }
+    }
     return reinterpret_cast<void*>(&xrGetInstanceProcAddr);
 }
 

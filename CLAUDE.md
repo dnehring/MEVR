@@ -428,15 +428,20 @@ switching frameworks.
   world's `m_WorldStreamingStates` entry and every volume's `Retouch`; `mevr stream states` lists them; research/59 "The launcher's
   gaps closed", [verify] in the game); never `streamlevelin` (it froze the game, 2026-11-09). **The walk-up scenes flow**
   (research/59 "Flowing conversations", 2026-11-09, the owner's cheaper-but-riskier choice; `[Cinematics] worldFlow = all | off`,
-  default all, with the world mode; `game/ConversationFlow`, untested in the game): the game plays a conversation start whose first
-  entry is flagged `bAmbient` as its own barks (`UBioConversation::StartConversation` copies the start entry's flag; no conversation
-  mode, camera or stage; an ambient conversation never turns into one; interrupted beyond the start's `m_fInterruptRange`, else
-  `BioWorldInfo.m_fConversationInterruptDistance`), so the mod flags the **chain starts** (plays that can never reach a
-  `REPLY_STANDARD` reply, the wheel: Garrus and the Executor arguing, Wrex at C-Sec, Udina's arrival lines) on every loaded
-  `BioSeqAct_StartConversation`'s conversation before the script fires it, from the scan's generated table `cw::FlowEntries`
-  (`conversation-scan.py --flow-list`: 102 conversations, 526 entries; set pieces, transmissions and the game's own narration left
-  out; `--flow` the table), journalled and put back when the setting goes off. `worldFlowLeashM` (-1 never, metres) sets the live
-  chain's interrupt range; `mevr convo flow [list | rescan | restore]`; logs `convo flow:`.
+  default all, with the world mode; `game/ConversationFlow`): the game plays a conversation start whose first entry is flagged
+  `bAmbient` as its own barks (`UBioConversation::StartConversation` takes the first entry of `m_StartingList` whose plot
+  conditional holds and copies its flag; no conversation mode, camera or stage; an ambient conversation never turns into one;
+  interrupted beyond the start's `m_fInterruptRange`, else `BioWorldInfo.m_fConversationInterruptDistance`, 25 m), so the mod
+  flags the **chain starts** (plays that can never reach a `REPLY_STANDARD` reply, the wheel: Garrus and the Executor arguing, Wrex
+  at C-Sec, Udina's arrival lines) on every loaded `BioSeqAct_StartConversation`'s conversation before the script fires it, from
+  the scan's generated table `cw::FlowEntries` (`conversation-scan.py --flow-list`: 68 conversations, 284 entries; chains behind an
+  unconditional start, set pieces, transmissions and the game's own narration left out; `--flow` the table), journalled and put back when the setting goes off. The
+  scan runs when the streaming levels' loaded/visible set changes (the object table's count doesn't move for a chunk; the flags
+  land within a second of its load). **Checked on the fake headset 2026-11-09** (research/59 "Flowing conversations" > "In the
+  game"): Noveria's Juleth ambush and Olar execution played as barks on foot, no camera cut; a chain start plays only when the
+  game's start choice reaches it (its plot conditional, and no unconditional start before it: `sta30_krogan_cutscene`'s never
+  does); the ambient subtitle on the HUD is [verify]. `worldFlowLeashM` (-1 never, metres) sets the live chain's interrupt range;
+  `mevr convo flow [list | rescan | restore]`; logs `convo flow:`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start
@@ -1181,7 +1186,10 @@ Use it to check VR changes yourself instead of asking the user what they see
   (`mevr-stack-sampler`): where its time goes by module and function, no redeploy.
   **Measuring without a person** (research/35 attempts 40-43): `tools/fake-headset.ps1 -On` (SteamVR's null driver; `-Off`
   gives the real headset back; it also registers the null driver's chaperone universe "2", else vrmonitor launches room setup
-  after every SteamVR start and vrserver kills the game at the title 5 s later, silently: research/35 "Setup for measuring"), `tools/launch-game.ps1` (EA's Link2EA from a scheduled task, PLAY and the title's Enter by
+  after every SteamVR start and vrserver kills the game at the title 5 s later, silently: research/35 "Setup for measuring"; **it also
+  pins the game's OpenXR runtime to SteamVR's manifest** through `[Debug] openxrRuntime` in the deployed `LE1MEVR.ini`, which the
+  host's static loader takes as `XR_RUNTIME_JSON` (`plugin/HalcyonBridge`): the machine's active runtime is Virtual Desktop's or Meta's
+  while the owner tests a Quest, and the null driver lives in SteamVR (xrGetSystem -35, 2026-11-09); `-Off` removes the key), `tools/launch-game.ps1` (EA's Link2EA from a scheduled task, PLAY and the title's Enter by
   keyboard from a foreground shell; never start the game from this shell: the harness's job object breaks the EA app;
   **`-Steam`** asks the running Steam instead, which works while the EA app sits in a job: research/50),
   `tools/console.ps1 "mevr density 2000"` (the densest mesh cells), `"mevr crowd 1000"` (where the characters stand),

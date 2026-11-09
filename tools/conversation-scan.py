@@ -138,16 +138,25 @@ def flow(conv):
     if not nodes:
         return None
     chain, wheel_reach = [], set()
+    # The game takes the first start whose plot conditional (nConditionalFunc, -1 none) holds, so a chain start plays only when
+    # every start before it has a conditional that can fail (checked in the game 2026-11-09: sta30_krogan_cutscene's chain start
+    # 23 sits behind the unconditional start 9 and never plays): such chains are left out of the flips.
+    blocked = False
     for s in starting or []:
         entries = reachable(conv, s)
         if has_wheel(conv, entries):
             wheel_reach |= set(entries)
-        else:
+        elif not blocked:
             chain.append((s, entries))
+        if 0 <= s < len(nodes) and nodes[s].get('conditional', -1) == -1:
+            blocked = True
     flips = sorted({e for s, entries in chain for e in entries if e not in wheel_reach and not nodes[e]['ambient']})
+    first = (starting or [None])[0]
     return {
         'starts': len(starting or []), 'chainStarts': len(chain), 'chainEntries': sorted({e for s, entries in chain for e in entries}),
         'flips': flips, 'ambientEntries': sum(1 for n in nodes if n['ambient']),
+        'firstStartChain': first in flips, 'firstConditional': nodes[first].get('conditional', -1) if first is not None and 0 <= first < len(nodes) else None,
+        'unconditionalBeforeChain': any(nodes[s].get('conditional', -1) == -1 for s in (starting or []) if s not in flips and 0 <= s < len(nodes)),
     }
 
 
@@ -327,9 +336,12 @@ def main(argv):
               f"start (a play that can never reach a wheel), {len(flipping)} of them with lines to make ambient "
               f"({sum(len(f[3]['flips']) for f in flipping)} entries); {len(left_out)} left out (set pieces, transmissions)")
         if '--flow' in argv:
-            print('\n| Conversation | Kind | Verdict | Starts | Chain starts | Entries made ambient | Already ambient |\n|---|---|---|---|---|---|---|')
+            print('\n| Conversation | Kind | Verdict | Starts | Chain starts | Entries made ambient | Already ambient | First start |\n|---|---|---|---|---|---|---|---|')
             for k, kd, v, f in flipping:
-                print(f"| {k} | {kd} | {v} | {f['starts']} | {f['chainStarts']} | {' '.join(ranges(f['flips']))} | {f['ambientEntries']} |")
+                first = ('chain' if f['firstStartChain'] else 'wheel') + (' (no condition)' if f['firstConditional'] == -1 else f" (plot {f['firstConditional']})")
+                if not f['firstStartChain'] and f['unconditionalBeforeChain']:
+                    first += ', an unconditional wheel start before the chain: it never plays'
+                print(f"| {k} | {kd} | {v} | {f['starts']} | {f['chainStarts']} | {' '.join(ranges(f['flips']))} | {f['ambientEntries']} | {first} |")
         if '--flow-list' in argv:
             # A flat array of entries plus (name, offset, count) rows: an initializer_list member in a constexpr table loses its
             # backing array on MSVC (the lookups read garbage, 2026-11-09).
