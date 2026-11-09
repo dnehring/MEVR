@@ -371,6 +371,59 @@ PlayerStep StepPlayer(Vec3 const& place, Vec3 const& anchor, double leashUnits, 
     return out;
 }
 
+ClearStep KeepClear(Vec3 const& place, Vec3 const& next, std::span<Vec3 const> people, double clearUnits) {
+    ClearStep out;
+    out.place = next;
+    if (clearUnits <= 0.0) {
+        out.moved = std::hypot(next.x - place.x, next.y - place.y) >= 1e-6;
+        return out;
+    }
+    for (int pass = 0; pass < 4; ++pass) {
+        Vec3 const* nearest = nullptr;
+        double nearestDist = clearUnits;
+        for (Vec3 const& p : people) {
+            double const d = std::hypot(out.place.x - p.x, out.place.y - p.y);
+            if (d < nearestDist) {
+                nearest = &p;
+                nearestDist = d;
+            }
+        }
+        if (nearest == nullptr) {
+            break;
+        }
+        out.held = true;
+        double const before = std::hypot(place.x - nearest->x, place.y - nearest->y);
+        if (before < clearUnits) {
+            // Already that close (the person walked up): a step away is taken as it is, a step nearer is not.
+            if (nearestDist <= before) {
+                out.place = place;
+            }
+            break;
+        }
+        // Push the step's end out to the clearance along the line from the person; the step's part around them stays.
+        double ox = out.place.x - nearest->x, oy = out.place.y - nearest->y;
+        if (nearestDist < 1e-6) {
+            ox = place.x - nearest->x;  // the step landed on the person: back along the way it came
+            oy = place.y - nearest->y;
+        }
+        double const len = std::hypot(ox, oy);
+        out.place.x = nearest->x + ox / len * clearUnits;
+        out.place.y = nearest->y + oy / len * clearUnits;
+    }
+    // Still within someone's clearance after the passes (two people closer together than two clearances: no way between
+    // them): the step is held where it started.
+    for (Vec3 const& p : people) {
+        double const before = std::hypot(place.x - p.x, place.y - p.y);
+        if (std::hypot(out.place.x - p.x, out.place.y - p.y) < clearUnits - 1e-6 && before >= clearUnits) {
+            out.place = place;
+            out.held = true;
+            break;
+        }
+    }
+    out.moved = std::hypot(out.place.x - place.x, out.place.y - place.y) >= 1e-6;
+    return out;
+}
+
 char const* Name(Mode mode) {
     switch (mode) {
     case Mode::Vr:
