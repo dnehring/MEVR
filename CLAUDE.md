@@ -555,6 +555,9 @@ switching frameworks.
   `[MEVR]` seam in render_hook.cpp's `SfrModeAllowsReplay`. Tools: `mevr panel`, `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>`,
   `mevr classes <text>`, `mevr instances <Class> [text]`, `mevr loot <n>`, `mevr lootcorpse <n>`. Eden Prime's real loot and minigame
   cases: research/53 section 5. Logs `world ui:`; snapshot `"mod"."worldUi"`.
+  **Landing's PartySelect (2026-11-08, research/53 section 7):** saved foot views/use targets belong to one world/controller.
+  A new planet's party screen can open without a foot view: room panel over its current camera, no old Normandy hold or
+  UI-world figure. Admitted world GUI ownership ends the outgoing cinema presentation. Headset acceptance pending.
   **The bypass minigame is projected from the left wrist** (research/53 section 6, the omni-tool; Fallout 4 VR's Pip-Boy and
   Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist` (since research/57 every personal screen too), `wristWidthM`
   0.30, `wristAboveM` 0.06, `wristTowardM`, `wristFollow`, `wristBeam`; the menu's Comfort > Game screens > Omni-tool screens): the host places it each frame from

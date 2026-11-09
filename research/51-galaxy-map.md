@@ -445,6 +445,23 @@ No disc size, tilt, backdrop, depth, crop or previous label/frame-ownership fix 
 **Offline checks and remaining acceptance.** `tests/TableReturnTests.cpp` exercises all four levels (including an empty
 planet model), travel/movie/radio return, first-frame suspended ownership, closing, disabled ownership, wrong-camera samples,
 world/controller changes, Flash routing and the immediate presentation handoff. Registered in Main.cpp and CMakeLists.txt.
-Build/test results are recorded below after completion. Headset acceptance is pending: follow the dated checklist line,
+The offline commands below passed. Headset acceptance is pending: follow the dated checklist line,
 especially Travel -> movie/radio -> map, planet Land/Survey/Return and a direct system/planet reopening. Check one pause and
 one restart per interruption and the same physical console placement, in both eyes. Log-based diagnosis is not visual QA.
+
+**Build receipt (2026-11-08, source commit `553163c10e`, this worktree only):**
+
+- `cmake -S . -B build -G "Visual Studio 17 2022" -A x64`: exit 0.
+- `cmake --build build --config Release --target mevr-tests MEVR-LE1 MEVR-LE1-mod`: exit 0, including the final incremental
+  rebuild after both fixes. Host ASI and mod DLL linked; `scratch/build-final.log`.
+- `build\Release\mevr-tests.exe`: exit 0, `all tests passed`; `scratch/tests-final.log`.
+- `cmake -S . -B build-mono -G "Visual Studio 17 2022" -A x64 -DMEVR_HOT_RELOAD=OFF`: exit 0.
+- `cmake --build build-mono --config Release --target MEVR-LE1`: exit 0; final rebuild in `scratch/build-mono-final.log`.
+  `MEVR_LE1_LESDK=OFF` in this players' build. Both generated BuildInfo headers name `553163c10e`.
+- `python tools/check-spdx.py`: every source file has an SPDX identifier. Git diff whitespace check passed.
+
+The requested MEVR targets retain `/W4 /WX`; no warning-policy relaxation. The final rebuilds have no compiler warnings.
+The initial cold development dependency build reported existing LExSDKv2 C4315/C4789 warnings; third-party targets,
+including Halcyon's `/W3` target, retain the repository's existing policies. No SDK code was added or changed.
+Builds/logs and the copied owner log remain ignored. No game, deployment, SteamVR, GPU test or window input was used.
+The subsequent verification-note commit changes documentation only; this receipt identifies the tested source precisely.

@@ -446,6 +446,8 @@ the camera, so a last GUI publication cannot hold a subsequent movie's view.
 
 **Offline verification:** `tests/WorldUiReturnTests.cpp` follows Normandy foot view -> landing movie -> new world ->
 PartySelect before any foot view -> destination gameplay, plus wrong-camera samples, controller replacement, missing GUI
-ownership, front-end and cinematic guards. Registered in Main.cpp and CMakeLists.txt. Build/test results follow after
-completion. No headset or runtime result is claimed: follow the dated landing checklist, then regress the normal airlock
+ownership, front-end and cinematic guards. Registered in Main.cpp and CMakeLists.txt. At source commit `553163c10e`, both
+development targets and the monolithic players' target built successfully; all unit tests and the SPDX check passed.
+See research/51 section 8.4's build receipt for exact commands and warning policies. No headset or runtime result is
+claimed: follow the dated landing checklist, then regress the normal airlock
 squad pick, shop/omni-tool, Mako and extraction screens.
