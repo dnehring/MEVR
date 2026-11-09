@@ -194,3 +194,18 @@ committed changes to `main`. That is qualitative headset acceptance of this test
 capture. An attempted Citadel start had left Shepard unable to leave the Normandy; the user continued
 through normal story progression before reporting success. Its cause was not established, so neither a
 save-state repair nor a Citadel loading fix is claimed here. The remaining splash/loading work above stays open.
+
+### Stereo shading follow-up
+
+The user then reported dark patches and shot marks that differ between eyes. The retained native right-eye
+world image contains large triangular dark patches beside bodies that are absent from the left-eye view.
+The two initially supplied images appear to be the left-eye composite and its world-only image; the original
+right-eye file resolves that confusing comparison. This is visual evidence of a mismatch, not attribution
+to a particular rendering pass. The saved settings and launch log had both dynamic shadows and AO enabled.
+
+Only `DynamicShadows` was disabled in the three local settings files for an isolated follow-up; AO, AA,
+resolution and One Draw remain unchanged. The user will test later. No renderer change or global-default
+change is claimed. The repeatable [shading comparison script](../tools/qa-hubs/set-stereo-shading.ps1) backs
+up settings, verifies writes and refuses a stale restore. Its single-effect and both-effect file edits and
+restoration passed synthetic checks. Private evidence and original settings are retained under
+`scratch/qa-hubs/stereo-shading-20261109-1102`.

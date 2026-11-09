@@ -196,6 +196,24 @@ pwsh -NoProfile -File tools/qa-hubs/deploy-validated-build.ps1 `
 Restoration refuses binaries changed by another owner. Keep the receipt and original backups until manual
 headset acceptance. Installation alone does not prove that the player launched or tested the candidate.
 
+## Manual stereo shading comparison
+
+For a report of dark shading in only one eye, capture the affected scene before changing settings.
+With ME1 closed, this optional comparison disables dynamic shadows and ambient occlusion in the mod
+settings and both game settings files, with original backups and hash receipts. Select a single effect
+with `-Effect DynamicShadows` or `-Effect AmbientOcclusion` to isolate it:
+
+```powershell
+pwsh -NoProfile -File tools/qa-hubs/set-stereo-shading.ps1 `
+  -GameRoot <game-install-root> -ReceiptDirectory scratch/<new-shading-receipt>
+```
+
+Relaunch and compare the same scene in the headset. This changes no binaries, resolution, AA, or One Draw
+setting and does not change shipped defaults. Turning both effects off can test whether this group is
+responsible; it does not identify which effect is at fault. Selecting a performance preset can restore AO.
+Restore with the same arguments plus `-Action Restore`; restoration refuses newer settings edits rather
+than overwriting them. A saved value alone is not proof that the visual mismatch is resolved.
+
 ## Manifest v1
 
 Required top-level fields: `spdxLicenseIdentifier: MIT`, `schemaVersion: 1`, `id`, `label`, `game: LE1`,
