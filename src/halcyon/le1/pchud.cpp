@@ -978,18 +978,21 @@ const char* DecodeFNameSEH(uint32_t packed) noexcept
 
 const char* ObjectNameSEH(const void* obj) noexcept
 {
+    if (obj == nullptr) return nullptr; // [MEVR] Preserve the failed-read result without raising an AV.
     uint32_t packed = 0;
     return ReadU32AtSEH(obj, kUObjectName, &packed) ? DecodeFNameSEH(packed) : nullptr;
 }
 
 const char* ClassNameSEH(const void* obj) noexcept
 {
+    if (obj == nullptr) return nullptr; // [MEVR] Loading can temporarily leave object/class/outer links null.
     void* cls = nullptr;
     return ReadPtrAtSEH(obj, kUObjectClass, &cls) ? ObjectNameSEH(cls) : nullptr;
 }
 
 const char* OuterNameSEH(const void* obj) noexcept
 {
+    if (obj == nullptr) return nullptr; // [MEVR]
     void* outer = nullptr;
     return ReadPtrAtSEH(obj, 0x40, &outer) ? ObjectNameSEH(outer) : nullptr;
 }

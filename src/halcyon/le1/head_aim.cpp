@@ -98,12 +98,22 @@ bool ReadObjectSlotSEH(void* const* data, std::int32_t index, void** objOut) noe
     }
 }
 
+bool LooksLikePlayerController(const char* className) noexcept;
+
 bool InspectObjectSEH(void* obj, ControllerInfo* info) noexcept
 {
+    info->ok = false;
     __try
     {
         void* classObj = MELEVR::LE1::ReadPtr(obj, MELEVR::LE1::kUObjectClass);
         SafeCopyCString(info->className, sizeof(info->className), MELEVR::LE1::ObjectName(classObj));
+        // [MEVR] A table entry is only a UObject until classified. Reading controller fields on every
+        // small object caused handled AV bursts during load; the old span check also stopped before FOV.
+        if (!LooksLikePlayerController(info->className) ||
+            !IsReadableAddress(obj, MELEVR::LE1::kPlayerFOVAngle + sizeof(float)))
+        {
+            return false;
+        }
         SafeCopyCString(info->objectName, sizeof(info->objectName), MELEVR::LE1::ObjectName(obj));
         info->camera = MELEVR::LE1::ReadPtr(obj, MELEVR::LE1::kPlayerCameraPtr);
         info->fovAngle = MELEVR::LE1::ReadF32(obj, MELEVR::LE1::kPlayerFOVAngle);
@@ -219,7 +229,7 @@ void* FindPlayerControllerOnce(ControllerInfo* infoOut, std::int32_t* foundIndex
             return nullptr;  // table reallocated mid-scan - retry next frame
         }
         if (!PointerLooksCanonicalAligned(obj) ||
-            !IsReadableAddress(obj, MELEVR::LE1::kPlayerCameraPtr + sizeof(void*)))
+            !IsReadableAddress(obj, MELEVR::LE1::kUObjectClass + sizeof(void*)))
         {
             continue;
         }
