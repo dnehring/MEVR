@@ -10,6 +10,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/ViewAnchor.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/WorldViewHold.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
@@ -148,12 +149,17 @@ struct Hold {
     float fov = 90.0f;
     float rawZ = 0.0f;
     vr::host_view::State floorView;
+    std::optional<engine::TrackingFrame> footFrame; // CIC mapping, saved before the map/cinematic camera takes over
     std::uint64_t cameraTicks = 0;
     std::uint64_t lastHideMs = 0;
     int hides = 0;
     vr::galaxy_map::ClosingHold closing;
 };
 Hold gHold;
+vr::world_view::Reference gRoomReference;
+bool ObserveRoom(ue3::Object* controller);
+void HideProjector(bool hide);
+void ShortenOpening(bool shorten);
 
 // The game's own map as a stereo window over the table (research/51 section 8): the untouched map camera after UpdateCamera,
 // and two captures from it, side by side. The CIC hold is applied only inside the main view's CalcSceneView.
@@ -196,6 +202,7 @@ struct RenderHold {
     ue3::Vector* location = nullptr;
     ue3::Rotator* rotation = nullptr;
     float* fov = nullptr;
+    std::uint64_t ms = 0;
 };
 RenderHold gRenderHold;
 
@@ -545,6 +552,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) {
         return;
     }
+    ObserveRoom(controller);
     auto const pov = player::CameraPov(camera);
     if (!pov || pov->location == nullptr || pov->rotation == nullptr || pov->fov == nullptr) {
         return;
@@ -568,7 +576,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         }
     }
     if (!gHold.active) {
-        if (mode && *mode == 0) {
+        if (gRoomReference.Remember(mode.value_or(255), player::FloorLockSample().cameraOwned, false)) {
             gHold.location = *pov->location;
             gHold.rotation = *pov->rotation;
             // Carry the corrected on-foot base into the hold; the renderer still adds its common offsets once.
@@ -581,7 +589,6 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
             gHold.fov = *pov->fov;
             gHold.haveView = true;
         }
-        return;
     }
     if (!gHold.haveView) {
         return;
@@ -592,8 +599,8 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     }
     // The held view goes in at render time only (the host's CalcSceneView seam): the game keeps its map camera here, so the
     // map's Flash labels and its cursor's picks project through it.
-    gRenderHold = RenderHold{true, pov->location, pov->rotation, pov->fov};
-    ++gHold.cameraTicks;
+    gRenderHold = RenderHold{true, pov->location, pov->rotation, pov->fov, GetTickCount64()};
+    if (gHold.active) ++gHold.cameraTicks;
 }
 
 std::filesystem::path VisibilityFile() {
@@ -781,6 +788,39 @@ struct LastAnchor {
 LastAnchor gLastAnchor;
 std::uint64_t gDiscLogs = 0;
 
+bool ObserveRoom(ue3::Object* controller) {
+    auto* const world = ObjectField(gWorldInfo, controller);
+    if (!gRoomReference.Observe({reinterpret_cast<std::uintptr_t>(world), reinterpret_cast<std::uintptr_t>(controller)})) return false;
+    // A controller replacement can leave the old console alive in this world. Return our
+    // edits before dropping its references; never call into an actor from an outgoing world.
+    if (world != nullptr && gConsole.usable != nullptr && ue3::runtime::IsAlive(gConsole.usable) &&
+        ObjectField(gWorldInfo, gConsole.usable) == world) {
+        HideProjector(false);
+        ShortenOpening(false);
+    }
+    gHold = {};
+    gMapPov = {};
+    gRenderHold = {};
+    gLastAnchor = {};
+    gConsole = {};
+    gHandler = {};
+    gOpen = {};
+    gAwaySinceMs = 0;
+    gSeenAtTable = false;
+    gS.behavior = nullptr;
+    gS.scene = {};
+    gS.routesBehavior = nullptr;
+    gS.routesRead = false;
+    gRowsRead = false;
+    for (auto& eye : gWindow.eyes) {
+        if (eye.Alive()) eye.Destroy("the player/world changed"); // same-world controller replacement
+        eye.Forget(); // otherwise the actors went with the old world
+    }
+    gWindow.on = gWindow.flashShown = false;
+    gWindow.failedMs = 0;
+    return true;
+}
+
 // The projector's own hologram as a disc in the world: its centre (the actor's place, the pivot it spins about), its normal (the
 // mesh's up axis) and its radius (the square's half side, from the component's bounds: each world axis's half extent over what
 // the square's two in-plane axes project on it, the smallest of the three, since the mesh's thickness only adds).
@@ -827,7 +867,9 @@ std::optional<WorldDisc> HologramDisc() {
 }
 
 bool PlaceInWorld(gh::Scene& scene, vr::galaxy_map::Settings const& settings) {
-    auto const frame = view_anchor::Current();
+    // Never bootstrap a held view from CameraCache.POV: that is now the map or director's
+    // camera. The last actual CIC frame works even while the renderer still shows a movie.
+    auto const frame = !gHold.active && player::FloorLockSample().cameraOwned ? view_anchor::Current() : gHold.footFrame;
     auto const at = gConsole.usable != nullptr ? player::Location(gConsole.usable) : std::nullopt;
     // While the view is held the table stays where it was when the map opened: the player camera is the map's then (the held
     // view goes in at render time only), so it doesn't say where the CIC is; nor can the player move.
@@ -1055,7 +1097,7 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
         options.nearUnits = 10.0f;
         options.postProcess = true;
         if (!eye.Create(e == 0 ? "galaxy left" : "galaxy right", options, gMapPov.location)) {
-            log::Warn("galaxy window: the {} capture failed ({}); our hologram instead, again in 5 s", e == 0 ? "left" : "right", eye.Failure());
+            log::Warn("galaxy window: the {} capture failed ({}); the table UI stays, retry in 5 s", e == 0 ? "left" : "right", eye.Failure());
             gWindow.failedMs = now;
             PauseWindow();
             return false;
@@ -1086,7 +1128,7 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
         float const side = (e == 0 ? -0.5f : 0.5f) * baseline;
         ue3::Vector const at{gMapPov.location.x + right.x * side, gMapPov.location.y + right.y * side, gMapPov.location.z + right.z * side};
         if (!eye.SetFov(gMapPov.fovDeg) || (!eye.Enabled() && !eye.SetEnabled(true)) || !eye.Point(at, gMapPov.rotation)) {
-            log::Warn("galaxy window: pointing the {} capture failed; our hologram instead", e == 0 ? "left" : "right");
+            log::Warn("galaxy window: pointing the {} capture failed; the table UI stays while it retries", e == 0 ? "left" : "right");
             gWindow.failedMs = now;
             PauseWindow();
             return false;
@@ -1195,6 +1237,21 @@ void Forget(Link const& link, char const* why) {
     gS.pick.reset();
 }
 
+void PutRenderHold(gh::Scene& scene) {
+    if (!gHold.haveView || !gRenderHold.on || !gHoldWrites || GetTickCount64() - gRenderHold.ms >= 500) return;
+    scene.holdRender = 1;
+    scene.holdLocation[0] = gHold.location.x;
+    scene.holdLocation[1] = gHold.location.y;
+    scene.holdLocation[2] = gHold.location.z;
+    scene.holdRotation[0] = gHold.rotation.pitch;
+    scene.holdRotation[1] = gHold.rotation.yaw;
+    scene.holdRotation[2] = gHold.rotation.roll;
+    scene.holdFov = gHold.fov;
+    scene.povLocationAddress = reinterpret_cast<std::uint64_t>(gRenderHold.location);
+    scene.povRotationAddress = reinterpret_cast<std::uint64_t>(gRenderHold.rotation);
+    scene.povFovAddress = reinterpret_cast<std::uint64_t>(gRenderHold.fov);
+}
+
 } // namespace
 
 void TryStartup() {
@@ -1212,9 +1269,13 @@ void TryStartup() {
 void Tick(Link const& link) {
     vr::galaxy_map::Settings const settings = hand_calibration::GetGalaxy();
     ue3::Object* const controller = player::Controller();
+    ObserveRoom(controller);
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     std::uint64_t const now = GetTickCount64();
     bool const inWorld = settings.hologram && settings.inWorld && link.setScene != nullptr;
+    if (mode == 0 && !gHold.active && gRoomReference.Available() && player::FloorLockSample().cameraOwned) {
+        if (auto const frame = view_anchor::Current()) gHold.footFrame = frame;
+    }
     ShortenOpening(inWorld);  // (once the console is known: near it)
     if (gOpen.pending && now - gOpen.startedMs > 8000) {
         log::Info("galaxy hologram: the map didn't open for the pick within 8 s; dropped");
@@ -1226,17 +1287,20 @@ void Tick(Link const& link) {
     bool const closing = gHold.closing.Update(modeNow, gHold.active, now);
     bool const used = gConsole.usedMs != 0 && now - gConsole.usedMs < 4000;  // the console's use (A, or our pick) opens the map
     bool const opening = (gOpen.pending || used) && modeNow == 6;
-    bool const holding = inWorld && gHold.haveView && mode && (*mode == kGalaxyMode || opening || closing);
+    bool const holding = inWorld && gHold.haveView && gHold.footFrame && mode && (*mode == kGalaxyMode || opening || closing);
     if (modeNow != kGalaxyMode) {
         PauseWindow();  // stop both captures once, even while the CIC view remains held through closing
     }
     if (holding != gHold.active) {
-        gRenderHold.on = false;  // the camera handler gives the fields again while holding
         gHold.active = holding;
         gHold.hides = 0;
         gHold.lastHideMs = 0;
         gHandler = HandlerCache{};  // a new map: its handler found again
         if (holding) {
+            if (gS.scene.suspended != 0) {
+                gLastAnchor.valid = false; // re-project the console using the saved CIC frame, never the outgoing movie's view
+                log::Info("galaxy hologram: returning to the CIC table after a cinematic; re-anchoring from the saved on-foot view");
+            }
             auto const& v = gHold.floorView;
             auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
             double const commonZ = basis.right.z * v.offsetRight + basis.up.z * v.offsetUp + basis.forward.z * v.offsetForward;
@@ -1248,8 +1312,25 @@ void Tick(Link const& link) {
             log::Info("galaxy hologram: the view is the game's again ({} camera updates held)", gHold.cameraTicks);
         }
     }
-    if (holding && mode && *mode == kGalaxyMode && !gWindow.on) {
+    if (holding && mode && *mode == kGalaxyMode && !settings.window && !gWindow.on) {
         HideFlashMap();
+    }
+    if (inWorld && gS.published && gRoomReference.Available() && gHold.footFrame && gS.scene.inWorld != 0 && gS.scene.onFoot == 0 &&
+        vr::galaxy_map::RememberTable(modeNow) && !holding) {
+        // Travel/arrival (and a radio conversation) temporarily owns the eyes, not the map's
+        // lifetime. Keep a fresh reservation so the very first mode-9 frame cannot select galaxyFlat.
+        gh::Scene scene = gS.scene;
+        scene.suspended = 1;
+        scene.windowTicks = 0; // reserve the window/UI layout, but never render stale captures through travel
+        scene.camera.valid = 0;
+        scene.holdRender = 0;
+        PutRenderHold(scene); // host uses it ONLY in mode 9; addresses refreshed by Camera.UpdateCamera
+        link.setScene(&scene);
+        gS.scene = scene;
+        gS.pick.reset();
+        gAwaySinceMs = 0;
+        gSeenAtTable = false;
+        return;
     }
     if (link.setScene == nullptr || !settings.hologram || !mode || (*mode != kGalaxyMode && !(inWorld && (*mode == 0 || opening || closing)))) {
         Forget(link, !settings.hologram ? "[Galaxy] hologram = 0" : "the map closed");
@@ -1264,7 +1345,7 @@ void Tick(Link const& link) {
         return;
     }
     ue3::Object* const behavior = FindBehavior();
-    if (behavior == nullptr) {
+    if (behavior == nullptr && !(holding && settings.window)) {
         Forget(link, "no map camera");
         return;
     }
@@ -1330,12 +1411,12 @@ void Tick(Link const& link) {
         }
         StepPick(behavior, window);
         auto const model = ReadModel(behavior, controller, game, window);
-        if (!model) {
+        if (!model && !(holding && settings.window)) {
             Forget(link, "the map's objects couldn't be read");
             return;
         }
         // The pick made on foot, once the map's galaxy is up.
-        if (gOpen.pending && model->state == 1) {
+        if (gOpen.pending && model && model->state == 1) {
             std::string const name = std::to_string(gOpen.id);
             if (std::any_of(model->actors.begin(), model->actors.end(), [&](gh::MapActor const& a) { return a.name == name && !a.hidden; })) {
                 gOpen.pending = false;
@@ -1343,7 +1424,7 @@ void Tick(Link const& link) {
             }
         }
         // What the open map shows is what the galaxy on foot shows next time.
-        if (model->state == 1) {
+        if (model && model->state == 1) {
             bool changed = false;
             for (gh::MapActor const& a : model->actors) {
                 if (auto const it = gHiddenCache.find(a.name); it == gHiddenCache.end() || it->second != a.hidden) {
@@ -1355,8 +1436,14 @@ void Tick(Link const& link) {
                 SaveVisibility();
             }
         }
-        scene = gh::BuildScene(*model);
+        if (model) scene = gh::BuildScene(*model);
+        // Presentation and the Flash panel do not depend on capture readiness or selectable
+        // actors (planet info has none). A temporarily missing camera/target warms up here.
+        scene.windowOn = settings.window && holding ? 1 : 0;
+        scene.windowWidthM = settings.windowOnHologram && gLastAnchor.disc && gLastAnchor.discRadiusM > 0.1f
+            ? 2.0f * gLastAnchor.discRadiusM * settings.windowScale : settings.windowWidthM;
         StepWindow(settings, inWorld && gHold.active, behavior, scene);
+        if (settings.window && !gWindow.flashShown) gWindow.flashShown = SetFlashVisible(true);
         if (inWorld) {
             // The game asks whether to travel (its own message box, which the host shows over the table): no picks meanwhile.
             if (ue3::Object* const handler = LiveHandler(); handler != nullptr && gWaitingForMsgBox.ReadBool(handler).value_or(false)) {
@@ -1412,19 +1499,7 @@ void Tick(Link const& link) {
         gS.lastState = scene.level;
         gS.lastCount = scene.objectCount;
     }
-    if (gHold.active && gHold.haveView && gRenderHold.on && gHoldWrites) {
-        scene.holdRender = 1;
-        scene.holdLocation[0] = gHold.location.x;
-        scene.holdLocation[1] = gHold.location.y;
-        scene.holdLocation[2] = gHold.location.z;
-        scene.holdRotation[0] = gHold.rotation.pitch;
-        scene.holdRotation[1] = gHold.rotation.yaw;
-        scene.holdRotation[2] = gHold.rotation.roll;
-        scene.holdFov = gHold.fov;
-        scene.povLocationAddress = reinterpret_cast<std::uint64_t>(gRenderHold.location);
-        scene.povRotationAddress = reinterpret_cast<std::uint64_t>(gRenderHold.rotation);
-        scene.povFovAddress = reinterpret_cast<std::uint64_t>(gRenderHold.fov);
-    }
+    if (gHold.active) PutRenderHold(scene);
     link.setScene(&scene);
     gS.published = true;
     gS.scene = scene;

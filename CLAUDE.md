@@ -527,6 +527,11 @@ switching frameworks.
   press|trace|input|movie|invoke|var|aim`, `mevr props`/`setprop`, `tools/make-galaxy-pick-recording.py` (`--world`, `--snapshot`,
   `--panel-uv`), offline look `mevr-galaxy-preview`. Logs `galaxy hologram:`; snapshot `"galaxyHologram"` (objects' places), layers
   `galaxy-left`/`-right`.
+  **Travel/arrival return (2026-11-08, research/51 section 8.4):** the table reservation survives modes 8/5/6 while its
+  captures pause; only mode 9 resumes it (the closing 0/6 bridge is separate). Re-project the console from the saved CIC
+  frame, never the map/cinematic POV. A world/controller change discards the reference. All four levels keep the window
+  and Flash panel even while captures warm up; planet info/buttons and the travel box use the game-thread GUI events.
+  Halcyon's outgoing movie/latch and 100 ms VR-entry hold cannot send a returning map to its flat panel. Headset check pending.
 - LE1 game screens in the room ([research/53](research/53-world-screens.md), HostServices v27 `setWorldUi`; `core/vr/WorldUi`,
   `game/WorldUi`, host `plugin/WorldUi`; `[WorldUi]` in `ASI\LE1MEVR.ini`): research/53 audits all 35 of the game's screens (its GUI
   library, `BioSFManager.HandlerLibrary`). **Every flat screen goes in the room** (the user, 2026-11-04; `screens = all`; the front
@@ -550,6 +555,9 @@ switching frameworks.
   `[MEVR]` seam in render_hook.cpp's `SfrModeAllowsReplay`. Tools: `mevr panel`, `mevr gui <Equipment|Squad|Codex|Journal|Map|Menu>`,
   `mevr classes <text>`, `mevr instances <Class> [text]`, `mevr loot <n>`, `mevr lootcorpse <n>`. Eden Prime's real loot and minigame
   cases: research/53 section 5. Logs `world ui:`; snapshot `"mod"."worldUi"`.
+  **Landing's PartySelect (2026-11-08, research/53 section 7):** saved foot views/use targets belong to one world/controller.
+  A new planet's party screen can open without a foot view: room panel over its current camera, no old Normandy hold or
+  UI-world figure. Admitted world GUI ownership ends the outgoing cinema presentation. Headset acceptance pending.
   **The bypass minigame is projected from the left wrist** (research/53 section 6, the omni-tool; Fallout 4 VR's Pip-Boy and
   Half-Life: Alyx's multitool holograms the pattern; `[WorldUi] wrist` (since research/57 every personal screen too), `wristWidthM`
   0.30, `wristAboveM` 0.06, `wristTowardM`, `wristFollow`, `wristBeam`; the menu's Comfort > Game screens > Omni-tool screens): the host places it each frame from

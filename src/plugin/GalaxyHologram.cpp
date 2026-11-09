@@ -771,7 +771,7 @@ void WindowDown(char const* why) {
 
 int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
     auto const scene = gh::Latest(kFreshMs);
-    bool const wanted = scene && scene->windowOn != 0 && scene->inWorld != 0 && scene->anchorValid != 0 && frame.gameMode == 9 &&
+    bool const wanted = scene && scene->suspended == 0 && scene->windowOn != 0 && scene->inWorld != 0 && scene->anchorValid != 0 && frame.gameMode == 9 &&
         !frame.menuOpen && frame.session != XR_NULL_HANDLE && frame.context != nullptr && frame.device != nullptr && frame.headValid;
     if (!wanted) {
         WindowDown(!scene || scene->windowOn == 0 ? "the mod sends no window" : "not the map's mode");
@@ -910,6 +910,10 @@ bool WindowOn() {
 }
 
 float UiPanelWidthM(float fallbackM) {
+    // The UI keeps its table layout while the captures warm up (including the first return frame).
+    if (auto const scene = gh::Latest(kFreshMs); scene && scene->windowOn && scene->windowWidthM > 0.0f) {
+        return scene->windowWidthM / (1.0f - std::clamp(scene->windowCrop, 0.0f, 0.2f));
+    }
     float const w = gWindow.panelWidthM.load(std::memory_order_acquire);
     return WindowOn() && w > 0.0f ? w : fallbackM;
 }

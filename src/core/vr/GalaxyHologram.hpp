@@ -71,7 +71,7 @@ struct Scene {
     std::uint8_t level = 0;  // Level
     std::uint8_t objectCount = 0;
     std::uint8_t linkCount = 0;
-    std::uint8_t pad = 0;
+    std::uint8_t suspended = 0; // remember the CIC during travel; no draw/hold outside mode 9 until the mod resumes
     float centre[3] = {};               // game units: what sits at the table's centre
     float up[3] = {0.0f, 0.0f, 1.0f};   // the map plane's normal, game space, unit
     float forward[3] = {1.0f, 0.0f, 0.0f};  // 'away from the player' on the table, game space, unit, in the plane

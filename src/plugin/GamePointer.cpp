@@ -9,6 +9,7 @@
 #include "core/vr/WorldUi.hpp"
 
 #include "halcyon/le1/mevr_bridge.h"
+#include "halcyon/le1/head_aim.h"
 #include "plugin/Calibration.hpp"
 #include "plugin/ConversationWorld.hpp"
 #include "plugin/GalaxyHologram.hpp"
@@ -839,7 +840,7 @@ bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
     // (0: Halcyon's galaxy lean branch stays off). The camera-based hologram that used a scale (section 7) is gone.
     constexpr std::uint64_t kFreshMs = 500;  // the mod sends every tick while the map is up
     auto const scene = mevr::vr::galaxy_holo::Latest(kFreshMs);
-    if (!scene || scene->inWorld == 0) {
+    if (!scene || scene->inWorld == 0 || scene->anchorValid == 0) {
         // Fresh on foot too: Halcyon decides its galaxy presentation (and holds it) as the map's mode begins, and the mod is
         // still sending the on-foot scene then (a map opened with A at the console as much as by a pick). Only read in mode 9.
         return false;
@@ -881,7 +882,10 @@ bool SwapIn(GalaxyViewSwap& s, float const location[3], std::int32_t const rotat
             s.location[i] = location[i];
             s.rotation[i] = rotation[i];
         }
+        mevr::write_journal::Wrote("WorldView.holdLocation", s.location, sizeof(float) * 3);
+        mevr::write_journal::Wrote("WorldView.holdRotation", s.rotation, sizeof(std::int32_t) * 3);
         *s.fov = fov;
+        mevr::write_journal::Wrote("WorldView.holdFov", s.fov, sizeof(float));
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
@@ -894,7 +898,10 @@ void SwapOut(GalaxyViewSwap& s) noexcept {
             s.location[i] = s.savedLocation[i];
             s.rotation[i] = s.savedRotation[i];
         }
+        mevr::write_journal::Wrote("WorldView.restoreLocation", s.location, sizeof(float) * 3);
+        mevr::write_journal::Wrote("WorldView.restoreRotation", s.rotation, sizeof(std::int32_t) * 3);
         *s.fov = s.savedFov;
+        mevr::write_journal::Wrote("WorldView.restoreFov", s.fov, sizeof(float));
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
 }
@@ -990,7 +997,9 @@ bool GalaxyViewSwapBegin() noexcept {
     // backdrop stage of its own): the view held at Shepard's for the main view's build only.
     gGalaxySwap.active = false;
     auto const scene = mevr::vr::galaxy_holo::Latest(500);
-    if (scene && scene->holdRender != 0 && scene->povLocationAddress != 0 && scene->povRotationAddress != 0 && scene->povFovAddress != 0) {
+    if (scene && mevr::vr::galaxy_map::TableView(MELEVR::HeadAim::ReadGameModeSEH(), scene->inWorld != 0 && scene->onFoot == 0,
+            scene->suspended != 0) && scene->holdRender != 0 && scene->povLocationAddress != 0 &&
+            scene->povRotationAddress != 0 && scene->povFovAddress != 0) {
         gGalaxySwap.location = reinterpret_cast<float*>(scene->povLocationAddress);
         gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(scene->povRotationAddress);
         gGalaxySwap.fov = reinterpret_cast<float*>(scene->povFovAddress);
@@ -1020,7 +1029,8 @@ bool GalaxyViewSwapBegin() noexcept {
         return true;
     }
     auto const ui = mevr::vr::world_ui::Latest(500);
-    if (!ui || ui->holdRender == 0 || ui->povLocationAddress == 0 || ui->povRotationAddress == 0 || ui->povFovAddress == 0) {
+    if (!mevr::vr::world_ui::ScreenMode(MELEVR::HeadAim::ReadGameModeSEH()) ||
+        !ui || ui->holdRender == 0 || ui->povLocationAddress == 0 || ui->povRotationAddress == 0 || ui->povFovAddress == 0) {
         return false;
     }
     gGalaxySwap.location = reinterpret_cast<float*>(ui->povLocationAddress);
@@ -1044,16 +1054,10 @@ void GalaxyViewSwapEnd() noexcept {
     }
 }
 
-bool GalaxyHeld() noexcept {
-    static std::atomic<std::uint64_t> lastHeldMs{0};
+bool GalaxyHeld(int gameMode) noexcept {
     auto const scene = mevr::vr::galaxy_holo::Latest(500);
-    std::uint64_t const now = GetTickCount64();
-    if (scene && scene->inWorld != 0 && scene->onFoot == 0) {
-        lastHeldMs.store(now, std::memory_order_relaxed);
-        return true;
-    }
-    // A short grace: the game's mode changes (to the map's closing cutscene) a frame before the mod's tick sees it and holds.
-    return scene && scene->inWorld != 0 && now - lastHeldMs.load(std::memory_order_relaxed) < 400;
+    return scene && mevr::vr::galaxy_map::TableView(gameMode, scene->inWorld != 0 && scene->anchorValid != 0 && scene->onFoot == 0,
+        scene->suspended != 0);
 }
 
 void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept {

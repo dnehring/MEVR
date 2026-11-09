@@ -50,6 +50,12 @@ Screen FromTag(std::string_view tag);  // case-insensitive
 char const* Name(Screen screen);       // its library tag ("None" for None)
 inline constexpr std::uint32_t Bit(Screen screen) { return 1u << static_cast<unsigned>(screen); }
 
+// Landing may open PartySelect before any on-foot camera exists in the destination.
+// Its Flash portraits can stand in the room over the destination's live camera.
+inline constexpr bool CanPlaceWithView(Screen screen, bool haveFootView) {
+    return haveFootView || screen == Screen::PartySelect;
+}
+
 // Presentation permission only: never a drawable State. No clock/platform dependency, so lifetime and matching are tested.
 class Opening {
 public:

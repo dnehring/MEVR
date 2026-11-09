@@ -166,6 +166,17 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   over; tutorial pop-ups. (research/53 section 3)
 
 ### Galaxy map, conversations (session: VR mod for Mass Effect Legendary Edition)
+- [ ] 2026-11-08 landing squad screen (codex/galaxy-one-display, research/53 section 7): Land on an uncharted Mako planet
+  after map travel; PartySelect must be readable and clickable in the room, with no remaining cinema screen, old Normandy
+  viewpoint or floor clipping. Pick two squadmates and confirm; check the Mako view and extraction/return to Normandy.
+  Repeat a normal airlock PartySelect and a shop/omni-tool screen. Log should discard the saved view on player/world change;
+  landing before an on-foot camera should say `uses the destination's current camera` and show no held-view swap.
+- [ ] 2026-11-08 table return (codex/galaxy-one-display, research/51 8.4): from the CIC, select galaxy -> cluster -> system ->
+  planet, use Survey / Return and open/cancel/confirm Travel with ray and fingertip. All map pages and buttons stay at the
+  projector; no Halcyon galaxy flat panel, including warm-up. Travel through the movie and any arrival radio conversation;
+  the return must align with the same console, not float tens of metres away. Back out each level, close/reopen twice,
+  then reopen directly at system/planet. Check both eyes and labels; expect one capture pause per interruption, a
+  `returning to the CIC table` line and one window restart, no repeated start/pause loop. Not run in game for this patch.
 - [ ] At the CIC projector: pick a cluster, a system, a planet, then Travel. Does the travel box take your click? (The
   test rig ignored it.) This is also the first headset check of clicks on any flat menu. (research/51 section 8)
 - [ ] From the console: are the map's labels readable, and does the disc's near edge draw over the console? (research/51

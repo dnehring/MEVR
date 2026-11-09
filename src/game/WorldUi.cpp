@@ -6,6 +6,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/WorldViewHold.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/OmniTool.hpp"
@@ -58,6 +59,7 @@ ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionT
 ue3::ClassRef gShopHandlerClass{"SFXGame.BioSFHandler_Shop"};
 ue3::FieldRef gShopActor{"SFXGame.BioSFHandler_Shop", "m_shop"};
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"}; // existing ReflectCheck row
 
 // Shepard's view on foot (the last camera update in mode 0), and the player camera's POV fields while a screen is up: the host
 // puts the former into the latter for the main view's render only (the shop's own camera looks at a backdrop stage elsewhere).
@@ -75,6 +77,8 @@ struct Hold {
     std::uint64_t povMs = 0;
 };
 Hold gHold;
+vr::world_view::Reference gRoomReference;
+bool gRoomChanged = false;
 bool gScreenUp = false;  // a screen of ours was published last tick (game thread)
 
 // The Mako's cockpit as the last frame with a head-tracked view saw it (tracking space; the cockpit stands still in the room
@@ -292,6 +296,24 @@ std::optional<ue3::Vector> AnchorOf(wu::Screen screen, ue3::Object* handler, ue3
     return std::nullopt;
 }
 
+void ObserveRoom(ue3::Object* controller) {
+    auto* const world = controller != nullptr ? gWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    if (!gRoomReference.Observe({reinterpret_cast<std::uintptr_t>(world), reinterpret_cast<std::uintptr_t>(controller)})) return;
+    if (gHold.haveView) log::Info("world ui: discarded the saved view and use target (player/world changed)");
+    gHold = {};
+    gUsed = {};
+    gUsedAtOpening = {};
+    gVendor = {};
+    gCockpit = {};
+    gScreenUp = false;
+    gOpeningSource.Clear();
+    gRoomChanged = true; // Tick releases the host's state/reservation and restores panel flags.
+    if (gWristUp) {
+        view_anchor::Hold(std::nullopt);
+        gWristUp = false;
+    }
+}
+
 // Engine.Camera.UpdateCamera, after the game's: on foot, Shepard's view is recorded; while a screen of ours is up, where the POV
 // lives (the host swaps the recorded view in at render time).
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
@@ -299,12 +321,13 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) {
         return;
     }
+    ObserveRoom(controller);
     auto const pov = player::CameraPov(camera);
     if (!pov || pov->location == nullptr || pov->rotation == nullptr || pov->fov == nullptr) {
         return;
     }
     auto const mode = player::GameMode(controller);
-    if (mode && *mode == 0) {
+    if (mode && gRoomReference.Remember(*mode, player::FloorLockSample().cameraOwned, gScreenUp)) {
         gHold.location = *pov->location;
         gHold.rotation = *pov->rotation;
         gHold.rawZ = pov->location->z;
@@ -390,6 +413,7 @@ void CancelOpening(Link const& link, std::uint32_t request) {
 }
 
 std::uint32_t BeginOpening(Link const& link, vr::game_menu::Action action, vr::game_menu::Origin origin) {
+    ObserveRoom(player::Controller());
     CancelOpening(link);
     if (link.setState != nullptr) link.setState(nullptr);  // an earlier screen cannot authorize this request
     wu::Screen screen = wu::Screen::None;
@@ -422,6 +446,13 @@ std::uint32_t BeginOpening(Link const& link, vr::game_menu::Action action, vr::g
 void Tick(Link const& link) {
     wu::Settings const settings = hand_calibration::GetWorldUi();
     ue3::Object* const controller = player::Controller();
+    ObserveRoom(controller);
+    if (gRoomChanged) {
+        gRailOmniTool = false;
+        CancelOpening(link);
+        Down(link, "player/world changed");
+        gRoomChanged = false;
+    }
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     if (gOpening.Expire(GetTickCount64())) {
         if (link.reserve != nullptr) link.reserve(0, 0, 0);
@@ -440,7 +471,7 @@ void Tick(Link const& link) {
     }
     gRailOmniTool = railOmniTool;
     NoteCockpit();
-    if (mode && *mode == 0) {
+    if (mode && *mode == 0 && gRoomReference.Available() && player::FloorLockSample().cameraOwned && !gScreenUp) {
         if (auto const frame = view_anchor::Current()) {
             gHold.footFrame = frame;  // the room as Shepard's view maps it (the held view's)
             gHold.footView = vr::host_view::Latest();
@@ -515,7 +546,8 @@ void Tick(Link const& link) {
         eyesNow = gCockpit.eyes;
     }
     bool const inCockpit = cockpitAnchor.has_value();
-    if (!inCockpit && (!gHold.haveView || !gHold.footFrame)) {
+    bool const haveFootView = gRoomReference.Available() && gHold.haveView && gHold.footFrame.has_value();
+    if (!inCockpit && !wu::CanPlaceWithView(screen, haveFootView)) {
         CancelOpening(link);
         Down(link, "Shepard's view on foot isn't known (opened before any camera update on foot)");
         return;
@@ -565,8 +597,8 @@ void Tick(Link const& link) {
         state.anchor[2] = cockpitAnchor->z;
         state.belowM = place.belowM;
         state.widthM = place.widthM;
-    } else if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
-        {
+    } else if (haveFootView) {
+        if (auto const at = AnchorOf(screen, base->handler, controller, gS.opening, fromWheel)) {
             XrVector3f const p = engine::ToTracking(*gHold.footFrame, engine::UnrealVector{at->x, at->y, at->z});
             state.anchored = 1;
             state.anchor[0] = p.x;
@@ -577,7 +609,7 @@ void Tick(Link const& link) {
     // On the wrist (the omni-tool, research/57): a listed screen nothing in the world owns; one a use opened (a locker's equipment)
     // stands by what was used. The bypass minigame is the omni-tool's own, so it always goes on the wrist; never in the Mako's
     // cockpit (its screens stand at the windshield), except explicit rail picks, which always request the wrist.
-    bool const onWrist = (!inCockpit || railOpening) && wu::OnWrist(settings, screen, state.anchored != 0, origin);
+    bool const onWrist = (inCockpit || haveFootView) && (!inCockpit || railOpening) && wu::OnWrist(settings, screen, state.anchored != 0, origin);
     wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop
     state.stageCrop[0] = crop.u0;
     state.stageCrop[1] = crop.v0;
@@ -610,6 +642,9 @@ void Tick(Link const& link) {
     gS.anchored = state.anchored != 0;
     std::copy(std::begin(state.anchor), std::end(state.anchor), std::begin(gS.anchor));
     if (!gS.published || wasAnchored != gS.anchored) {
+        if (!inCockpit && !haveFootView) {
+            log::Info("world ui: {} uses the destination's current camera (no saved view in this world; no render hold)", gS.screen);
+        }
         log::Info("world ui: {} up (opening {}){}{}", gS.screen, gS.opening,
             inCockpit ? std::format(": in the Mako's cockpit, at its windshield toward ({:.2f}, {:.2f}, {:.2f}) m, {:.2f} m wide, {:.2f} m below "
                                     "the eyes (no view held)",
@@ -619,7 +654,7 @@ void Tick(Link const& link) {
             onWrist ? "; projected from the left wrist (in the room if the left controller isn't tracked)" : "");
     }
     std::uint64_t const now = GetTickCount64();
-    if (!inCockpit && gHold.povLocation != nullptr && now - gHold.povMs < 500) {
+    if (!inCockpit && haveFootView && gHold.povLocation != nullptr && now - gHold.povMs < 500) {
         state.holdRender = 1;
         state.holdLocation[0] = gHold.location.x;
         state.holdLocation[1] = gHold.location.y;

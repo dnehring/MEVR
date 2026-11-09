@@ -980,6 +980,8 @@ if (MEVR_BUILD_TESTS)
         tests/ConversationWorldTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
+        tests/TableReturnTests.cpp
+        tests/WorldUiReturnTests.cpp
         tests/OmniRailMotionTests.cpp
         tests/SwapchainBudgetTests.cpp
         tests/VrCoverTests.cpp
