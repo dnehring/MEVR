@@ -2510,32 +2510,17 @@ bool WriteArmLength(double meters) {
     return WritePrivateProfileStringW(L"Arms", L"armLengthM", value.c_str(), FilePath().wstring().c_str()) != 0;
 }
 
-double gCameraWritten[3] = {1e9, 1e9, 1e9};
+void (*gPublishCameraOffset)(double, double, double) = nullptr;
 
 } // namespace
 
-void WriteCameraOffset(double forward, double right, double up) {
-    double const values[3] = {forward, right, up};
-    bool changed = false;
-    for (int i = 0; i < 3; ++i) {
-        changed = changed || std::abs(values[i] - gCameraWritten[i]) > 1.0;
-    }
-    if (!changed) {
-        return;
-    }
-    // At most once a minute: the sample drifts with the head, and every write of the file makes each module that
-    // watches it re-read (research/35: the settings applier re-ran its engine commands every 5 s on these).
-    static ULONGLONG lastWriteMs = 0;
-    ULONGLONG const nowMs = GetTickCount64();
-    if (lastWriteMs != 0 && nowMs - lastWriteMs < 60000) {
-        return;
-    }
-    lastWriteMs = nowMs;
-    wchar_t const* const keys[3] = {L"measuredForward", L"measuredRight", L"measuredUp"};
-    for (int i = 0; i < 3; ++i) {
-        std::wstring const value = std::format(L"{:.1f}", values[i]);
-        WritePrivateProfileStringW(L"Camera", keys[i], value.c_str(), FilePath().wstring().c_str());
-        gCameraWritten[i] = values[i];
+void SetCameraOffsetPublisher(void (*publish)(double, double, double)) {
+    gPublishCameraOffset = publish;
+}
+
+void PublishCameraOffset(double forward, double right, double up) {
+    if (gPublishCameraOffset != nullptr) {
+        gPublishCameraOffset(forward, right, up);
     }
 }
 

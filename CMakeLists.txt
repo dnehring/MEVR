@@ -975,6 +975,7 @@ if (MEVR_BUILD_TESTS)
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/FloorLockTests.cpp
+        tests/CameraDiagnosticTests.cpp
         tests/LandmarkTests.cpp
         tests/ConversationWorldTests.cpp
         tests/GuiEventsTests.cpp

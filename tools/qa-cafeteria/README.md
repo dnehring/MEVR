@@ -117,6 +117,31 @@ The private predecessor completed the whole route and restored 42 protected file
 caught an approximately 80 ms interval largely between instrumented game ticks. The portable version's current
 validation is recorded in [research/63](../../research/63-head-turn-performance.md).
 
+## Camera diagnostic candidate
+
+For the camera-diagnostic fix, [the priority list](../../docs/performance-priorities.md) records acceptance criteria.
+The following makes a frozen private build, temporarily installs it for three complete High runs, and restores the
+original ASI afterward. Coordinate native-session ownership first. Use absolute paths and the reviewed installed hash:
+
+```powershell
+& .\tools\qa-cafeteria\validate-camera-source.ps1 -BuildDirectory build -TrilogyBuildDirectory build-trilogy
+& .\tools\qa-cafeteria\build-camera-candidate.ps1 -StageDirectory '<checkout>/scratch/<new candidate folder>' -SteamVRManifest '<SteamVR>/steamxr_win64.json'
+& .\tools\qa-cafeteria\run-camera-candidate.ps1 -CandidateReceipt '<candidate folder>/candidate.json' -ExpectedInstalledSha256 '<reviewed installed hash>' -GameRoot '<Legendary Edition root>'
+python tools/qa-cafeteria/check-camera-diagnostic.py '<validation folder>/batch'
+& .\tools\qa-cafeteria\verify-camera-restoration.ps1 -ValidationDirectory '<validation folder>'
+```
+
+The source checker uses already configured development build trees, builds LE1/LE2/LE3 and the test/setup
+programs, and records CTest plus offline checks in a transcript. It refuses active game/SteamVR sessions.
+Use `-TestRegex '<ctest regex>'` only for an explicitly narrowed rerun; omit it for the complete test suite.
+
+The build script copies current source and shares dependency directories through junctions. It adds a private
+process-only runtime shim and pins the private runner to the resulting binary hash; the public runner's allowlist
+is unchanged. This QA binary is not a release artifact. Source hashes, build/test output, binary backup/restoration
+and per-run receipts are retained. The camera check requires a fresh published sample and no settings-file writes
+during capture. It does not certify manual alignment or resolve the other hitch categories. If interrupted, recover
+the inner run first, then use `installation.json` and its hash-checked `before.asi` to restore the original binary.
+
 ## Recovery and offline checks
 
 The runner refuses existing native sessions and pending test-loop requests. It creates `%LOCALAPPDATA%/MEVR/qa-cafeteria.lock`

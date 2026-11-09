@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "engine/GameAdapter.hpp"
 #include "mod/ModApi.hpp"
+#include "core/vr/CameraDiagnostic.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
@@ -359,6 +360,9 @@ void HostSetSquadPlace(vr::squad_place::View const* view) {
     vr::squad_place::Publish(view != nullptr && view->size == sizeof(vr::squad_place::View) ? *view : none);
 }
 HostServices WithPowerWheel(HostServices services) {
+    services.publishCameraOffset = [](double forward, double right, double up) {
+        vr::camera_diagnostic::gCameraDiagnostic.Publish(forward, right, up, GetTickCount64());
+    };
     services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
     services.setPowerWheel = &HostSetPowerWheel;
     services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));  // v29
@@ -387,6 +391,7 @@ HostServices const gServices = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHo
 // forget the two-handed grip (the grip holding the gun, the squad menu's controls), the squad menu and the
 // wheel panel settings go, and the controllers stop vibrating.
 void ForgetModState() {
+    vr::camera_diagnostic::gCameraDiagnostic.Reset();
     floor_lock::SetPawn(nullptr);
     halcyon::SetModHandAim(false);
     vr::aim_ray::Reset();

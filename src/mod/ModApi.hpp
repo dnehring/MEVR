@@ -4,6 +4,7 @@
 // ABI between the host ASI (stable, loaded by LEBinkProxy) and the mod, which is either linked
 // into the host (monolithic release build) or a separate DLL the host hot-reloads (dev build).
 
+#include <cstddef>
 #include <cstdint>
 
 struct IDXGISwapChain;
@@ -94,7 +95,7 @@ struct State;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 36;
+inline constexpr int kHostServicesVersion = 38;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -424,7 +425,24 @@ struct HostServices {
     // PawnSample also carries seated play + its standing reference (2026-11-07); the size gate rejects older payloads.
     std::uint32_t floorLockSampleSize = 0;
     void (*setFloorLockSample)(vr::floor_lock::PawnSample const* sample) = nullptr;
+    // Version 37: native blur guard is installed and has seen no unknown proxies. Any thread.
+    // False (or an older host) retains the mod's menu-return settings workaround.
+    bool (*motionBlurProtected)() = nullptr;
+    // Version 38: volatile camera diagnostics for calibration. No settings-file write; any thread.
+    void (*publishCameraOffset)(double forward, double right, double up) = nullptr;
 };
+
+inline auto CameraOffsetPublisher(HostServices const* host) -> void (*)(double, double, double) {
+    return host != nullptr && host->version >= 38 &&
+        host->servicesSize >= offsetof(HostServices, publishCameraOffset) + sizeof(HostServices::publishCameraOffset)
+        ? host->publishCameraOffset : nullptr;
+}
+
+inline bool HasMotionBlurProtection(HostServices const* host) {
+    return host != nullptr && host->version >= 37 &&
+        host->servicesSize >= offsetof(HostServices, motionBlurProtected) + sizeof(HostServices::motionBlurProtected) &&
+        host->motionBlurProtected != nullptr && host->motionBlurProtected();
+}
 
 } // namespace mevr
 

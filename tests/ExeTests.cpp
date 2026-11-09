@@ -245,28 +245,37 @@ void TestAgainstDump() {
             continue;
         }
         ++patterned;
-        // Unique: one match for code, matches that all reference the RVA for data.
+        // Relocatable hooks need a unique code match. The blur guard deliberately requires AtRva plus
+        // complete vtable fingerprints (MotionBlurGuard::Verified/Install); its exact-site checks can be ambiguous.
         auto const compiled = ue3::pattern::Compile(e.pattern);
         auto const hits = ue3::pattern::FindAll(image.text, *compiled, 16);
-        if (e.kind != Kind::Data) {
+        if (e.kind != Kind::Data && std::strcmp(e.user, "motion blur guard") != 0) {
             CHECK(hits.size() == 1);
         } else {
             CHECK(!hits.empty());
         }
     }
     // All code moved by 0x40 bytes, displacements unchanged (so each RIP-relative reference now points 0x40 further
-    // too, unlike a real relink): every patterned entry is "moved" by exactly 0x40, found by its pattern.
+    // too, unlike a real relink): relocatable entries move by 0x40; strict blur-guard entries must reject it.
     std::vector<std::uint8_t> shifted(text.size() + 0x40, 0xCC);
     std::memcpy(shifted.data() + 0x40, text.data(), text.size());
     exe::Image patched;
     patched.textRva = 0x1000;
     patched.text = shifted;
     int moved = 0;
+    int guardRefused = 0;
     for (exe::Entry const& e : engine::addresses::le1::kTable) {
         if (e.pattern == nullptr) {
             continue;
         }
         exe::Result const r = exe::Check(patched, e);
+        if (std::strcmp(e.user, "motion blur guard") == 0) {
+            // A shifted/ambiguous guard address must fail its strict AtRva gate; it must never install there.
+            CHECK(r.status == Status::Moved || r.status == Status::BytesDiffer);
+            CHECK(r.status != Status::AtRva);
+            ++guardRefused;
+            continue;
+        }
         // Code moved 0x40; a RIP-relative reference moved with the code, so its target moved too.
         if (r.status == Status::Moved && r.found == e.rva + 0x40) {
             ++moved;
@@ -276,8 +285,8 @@ void TestAgainstDump() {
             ++gFailures;
         }
     }
-    CHECK(moved == patterned);
-    std::printf("exe tests: %d LE1 patterns checked against the dump\n", patterned);
+    CHECK(moved + guardRefused == patterned);
+    std::printf("exe tests: %d LE1 patterns checked against the dump (%d strict guard entries refused after shifting)\n", patterned, guardRefused);
 }
 
 // ---- core/Hook ------------------------------------------------------------------------------------------------

@@ -308,7 +308,7 @@ switching frameworks.
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
   recenter posture, animated camera bones, mode offsets and vertical framing. Both eyes share the correction before metric
   eye offsets and head look; `HostServices` v34 publishes the corrected centre/pose to ViewAnchor, IK and sights (host and mod
-  deploy together; current HostServices v36). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
+  deploy together; current HostServices v38). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
   0.1.0 default-off workaround is superseded by the held-camera fix (2026-11-07): world UI, conversations and map holds
   capture `corrected centre Z - common framing Z` using the captured camera's rotation, then framing is added once.
   A wrist/conversation hold retains its on-foot scale factor and cylinder-floor pivot, despite mode 7/5 disabling fresh correction.

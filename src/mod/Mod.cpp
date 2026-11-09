@@ -16,6 +16,7 @@
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/Player.hpp"
+#include "game/HandCalibration.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -1194,6 +1195,8 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
         log::Warn("the host ASI is older than this mod (services v{}): it unloads the mod even when a hook couldn't be "
                   "removed; close the game and redeploy the host", gHost->version);
     }
+    game::hand_calibration::SetCameraOffsetPublisher(CameraOffsetPublisher(gHost));
+    log::Info("camera diagnostics: {}", CameraOffsetPublisher(gHost) != nullptr ? "in-memory publication" : "host service unavailable; no diagnostic writes");
     game::view_anchor::UseHostView(gHostOwnsVr);
     // Crash breadcrumbs (v18, research/36): our writes into engine memory and our CallFunction handlers, kept by the
     // host and written out if the game crashes.
@@ -1524,6 +1527,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::holo_probe::Shutdown();  // the experiment's copy destroyed
     write_journal::Connect(nullptr);
     engine::call_function::SetBreadcrumbs(nullptr, nullptr);
+    game::hand_calibration::SetCameraOffsetPublisher(nullptr);
     gHost = nullptr;
     gHostOwnsVr = false;
     gToldHostOwnsVr = false;

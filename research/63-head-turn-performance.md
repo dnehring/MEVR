@@ -8,6 +8,8 @@ measurements remain needed; the owner reports seeing spikes in both runtimes.
 
 ## Prioritized diagnosis after the repeated cafeteria runs
 
+The maintained action list is [docs/performance-priorities.md](../docs/performance-priorities.md).
+
 This is the recommended **engineering order**, balancing evidence, scope and player impact. Item 2 has the
 largest individual stall; item 3 has the most direct evidence from the player's physical-headset complaint.
 Item 1 comes first because it is a narrowly identified mod behavior with a concrete replacement. These are
@@ -332,6 +334,66 @@ subfolders, raw stacks, per-sample timestamps/cycles, `investigation.json` and `
 Reprocess with `summarize-diagnostics.py`; the optional engine lookup is `inspect-engine-spike.ps1`.
 This fourth session also restored and verified all 42 protected files. A fresh verification found no remaining
 game/SteamVR processes, requests or changed files, and the original global Virtual Desktop runtime was retained.
+
+## In-memory camera diagnostic candidate (2026-11-08, late evening)
+
+Priority 1 in [the saved list](../docs/performance-priorities.md) is implemented. `ArmIk::LogCameraOffset`
+publishes its existing five-second observation through HostServices v38 into a host-owned, mutex-protected
+sample. No camera-diagnostic Win32 profile writes remain. The classic calibration menu consumes this sample
+directly, rejects readings older than 15 seconds, and requires a post-recenter observation for trigger alignment.
+Hot reload invalidates the mailbox. Old hosts omit publication safely rather than reverting to file writes.
+Development deployment must update both host and mod; an old mod still contains the old writer.
+Explicit camera/profile and arm-length saves retain their existing paths; their physical headset workflow
+has not been exercised in these captures and remains on the headset checklist.
+
+Freshness, unchanged-value refresh, invalid samples, unload, old/short host ABI compatibility and concurrent
+publication are covered by `CameraDiagnosticTests`. LE1 host/mod, LE2 and LE3 built successfully, and the main
+test executable passed. The private monolithic candidate also built and passed its main test suite.
+The full suite exposed a stale signature-test assumption that every code pattern uniquely relocates. The test
+now treats the blur guard's deliberately fixed-address patterns separately: all must match the original RVA,
+and shifted copies must fail its strict address gate. No production guard behavior changed in that correction.
+The initial CTest pass completed 21 of 22 checks; the installer-update check timed out using an old Setup
+executable. After rebuilding the game/test/Setup targets, both installer network and update checks passed
+(61 seconds together), as did QA fixture/recording checks and the SPDX audit. All 22 distinct CTest checks
+have passed across the initial run and targeted retry. Final source-check transcript:
+`scratch/camera-source-check-20261108-202551-710/`.
+
+Three independent runs used the same High workload as the earlier baseline: source 3840 x 3840, eye
+2688 x 2880, AA/shadows/AO on, blur off, One Draw/sharePass=5. Each walked from the original Normandy save
+to the cafeteria, settled and captured 90 seconds with one second trimmed at either boundary. The arrival
+snapshot confirms the cafeteria scene. No builds or extra snapshots/replays ran in the clean capture windows.
+
+| Capture start (local) | Frames | Interval p99 ms | Maximum ms | Intervals >11.111 / >22.222 ms | Engine tick max ms | Host tick max ms | Settings writes |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 20:09:45 | 12,266 | 7.7700 | 17.3203 | 1 / 0 | 21.4346 | 7.5417 | 0 |
+| 20:16:39 | 12,268 | 7.7840 | 15.1546 | 1 / 0 | 19.4919 | 7.5129 | 0 |
+| 20:23:36 | 12,266 | 7.8004 | 14.5346 | 1 / 0 | 19.2030 | 7.0280 | 0 |
+
+All three have valid published camera samples (sequence 42/43/43, age 1.125/2.094/2.094 seconds at arrival),
+the host's in-memory-publication startup log, zero settings writes during capture, and zero AVs, GPU timestamp
+drops or draw-replay failures. `check-camera-diagnostic.py` passes all three. The previous per-minute 16-18 ms
+host stalls do not recur; observed host maxima are 7.03-7.54 ms. The removed synchronous persistence path is
+directly verified, but this candidate comes from current combined development source containing other pending
+changes. It is not a single-change rebuild of the earlier CE247578 baseline; broader timing improvements cannot
+all be attributed to this patch.
+
+Each remaining >11.111 ms frame interval overlaps a separate engine tick: respectively 21.435/20.351,
+19.492/19.402 and 19.203/18.346 ms wall/CPU. Host work in those ticks is only 0.841/0.777/0.764 ms. The general
+regression gate remains **failed**: run 1 totals 22.2758 ms engine-plus-host against 22.222 ms. The other two
+total 20.2689 and 19.9666 ms. No 80-93 ms between-tick pause occurs in these three windows; its absence does
+not close priority 2. Physical VDXR submission timing and culling remain unvalidated by this null-headset batch.
+
+Private candidate: `scratch/camera-diagnostic-20261108/`, frozen source plus private process-only SteamVR shim,
+binary SHA-256 `C7BA337EB4BC083FE26F50DD629F67970B7D637BEAF8CA24BAA52789CEEA2A55`.
+Evidence: `validation-20261108-200437-603/batch/` under that directory, with per-run analysis/investigation,
+`camera-diagnostic-check.json`, `comparison.json` and `regression-gate.json`. The public QA runner's original
+binary allowlist is unchanged; only the frozen private runner was pinned to this candidate. This artifact must
+not be released or left installed.
+
+Each run restored and verified its 42 protected files. The outer runner then restored the original
+CE247578... ASI. A fresh read-only verification at 20:26:42 found all 42 files matching, no game/SteamVR
+processes, no requests or QA lock, and the original global Virtual Desktop OpenXR runtime. The reusable build,
+source checks, candidate runner and restoration verifier are documented in [the QA README](../tools/qa-cafeteria/README.md).
 
 ## API references
 

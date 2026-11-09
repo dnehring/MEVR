@@ -38,6 +38,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/CameraDiagnostic.hpp"
 #include "engine/SettingsFile.hpp"
 
 #include "imgui.h"
@@ -74,7 +75,7 @@ bool gHaveArmLength = false;
 float gArmLength = 0.0f;
 long gMeasureRequests = 0;
 // [Camera]: where Halcyon's first-person camera sits from Shepard's head bone at the recenter
-// point (written by the mod, game/HandCalibration WriteCameraOffset), and life-size movement.
+// point (published in memory by game/HandCalibration), and life-size movement.
 bool gHaveCamera = false;
 float gCamera[3] = {0.0f, 0.0f, 0.0f};  // forward, right, up (units)
 float gCameraAppliedAt[3] = {1e9f, 1e9f, 1e9f};  // the measurement the last alignment used
@@ -151,8 +152,17 @@ void Reload(bool force) {
     gHaveArmLength = ReadNumber(L"Arms", L"armLengthM", gArmLength);
     float requests = 0.0f;
     gMeasureRequests = ReadNumber(L"Arms", L"measureRequest", requests) ? std::lround(requests) : 0;
-    gHaveCamera = ReadNumber(L"Camera", L"measuredForward", gCamera[0]) && ReadNumber(L"Camera", L"measuredRight", gCamera[1]) &&
-                  ReadNumber(L"Camera", L"measuredUp", gCamera[2]);
+}
+
+void ReloadCamera(std::uint64_t afterMs = 0) {
+    auto const sample = mevr::vr::camera_diagnostic::gCameraDiagnostic.Latest(GetTickCount64(), afterMs);
+    gHaveCamera = sample.valid;
+    if (gHaveCamera) {
+        gCamera[0] = static_cast<float>(sample.forward);
+        gCamera[1] = static_cast<float>(sample.right);
+        gCamera[2] = static_cast<float>(sample.up);
+        gHaveCamera = std::isfinite(gCamera[0]) && std::isfinite(gCamera[1]) && std::isfinite(gCamera[2]);
+    }
 }
 
 void WriteTrims(char const* why) {
@@ -310,6 +320,7 @@ void ApplyCameraAlignment(char const* why) {
 }
 
 void CameraSection() {
+    ReloadCamera();
     ImGui::SeparatorText("First-person camera");
     MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
     if (gHaveCamera) {
@@ -411,7 +422,7 @@ void TickCameraAlign() noexcept {
     case Align::Settling:
         if (now - gAlignSinceMs >= kAlignSettleMs) {
             gAlign.store(Align::Idle);
-            Reload(true);
+            ReloadCamera(gAlignSinceMs);
             if (gHaveCamera) {
                 ApplyCameraAlignment("left trigger");
                 gAlignResult = std::format("Aligned: the camera was {:.0f} forward, {:.0f} right, {:.0f} up from Shepard's head.",

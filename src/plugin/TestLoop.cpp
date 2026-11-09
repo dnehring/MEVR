@@ -4,6 +4,7 @@
 // (src/halcyon/le1/mevr_bridge.h), called from xr_session.cpp's ResolveSessionFunctions.
 
 #include "plugin/TestLoop.hpp"
+#include "core/vr/CameraDiagnostic.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/DrawReplay.hpp"
@@ -780,6 +781,10 @@ std::string LayersJson(std::vector<LayerShot> const& layers) {
 
 std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, std::string const& trigger) {
     vr::controllers::State const& c = gFrameState;
+    auto const cameraSample = vr::camera_diagnostic::gCameraDiagnostic.Latest(GetTickCount64());
+    std::string const cameraDiagnostic = std::format("{{\"valid\": {}, \"sequence\": {}, \"ageMs\": {}, \"offsetUU\": [{}, {}, {}]}}",
+        J(cameraSample.valid), cameraSample.sequence, cameraSample.timeMs != 0 ? GetTickCount64() - cameraSample.timeMs : 0,
+        J(cameraSample.forward), J(cameraSample.right), J(cameraSample.up));
     vr::aim_ray::Ray const ray = vr::aim_ray::Latest();
     vr::host_view::State const view = vr::host_view::Latest();
     std::string mod = "null";
@@ -817,7 +822,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         "\"offsetUU\": [{}, {}, {}], \"unitsPerMeter\": {}}},\n  \"recenter\": {},\n  \"sights\": {},\n  \"calibration\": {},\n"
         "  \"colour\": {},\n  \"stereo\": {},\n  \"floorLock\": {},\n  \"cineScreen\": {},\n  \"mainMenu\": {},\n  \"gamePointer\": {},\n  \"galaxyHologram\": {},\n  \"voice\": {},\n"
         "  \"spectator\": {},\n  \"figure\": {},\n  \"omniPad\": {},\n  \"omniRail\": {},\n  \"swapchains\": {},\n  \"mod\": {},\n"
-        "  \"questPacing\": {},\n  \"layers\": [{}\n  ]",
+        "  \"cameraDiagnostic\": {},\n  \"questPacing\": {},\n  \"layers\": [{}\n  ]",
         req::JsonString(trigger), req::JsonString(tag), gFrame, static_cast<long long>(displayTime), UnixMs(), J(gFocused),
         J(MELEVR::Menu::IsOpen()), J(gRecordingActive.load()), replay, head, J(c.active), JHand(c.left), JHand(c.right),
         J(ray.valid), JVec(ray.origin), JVec(ray.direction), ray.timeMs != 0 ? GetTickCount64() - ray.timeMs : 0,
@@ -838,7 +843,7 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
 #else
         std::string("null"), std::string("null"),
 #endif
-        swapchains::StatusJson(), mod, quest_pacing::StatusJson(), LayersJson(layers));
+        swapchains::StatusJson(), mod, cameraDiagnostic, quest_pacing::StatusJson(), LayersJson(layers));
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);

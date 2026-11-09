@@ -1,6 +1,12 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-08 in-memory camera diagnostic (research/63, performance priority 1): with a normal build of
+  the candidate, open classic VR hands calibration and confirm current camera measurements. Use trigger
+  alignment after recentering, then verify the explicitly saved profile survives restart. Arm-length Save
+  should still persist. Fake-headset validation checks publication and automatic-write removal; it does
+  not certify the user's alignment or physical headset comfort. The private QA binary is restored after testing.
+
 - [ ] 2026-11-08 Virtual Desktop replay rejection (research/61): with the guarded-rearm build and automatic
   unsupported-call diagnostics, reproduce the player's natural front-end/Normandy failure on Quest + VDXR.
   Capture the normal report without changing graphics settings first; inspect caller stack and context identity
