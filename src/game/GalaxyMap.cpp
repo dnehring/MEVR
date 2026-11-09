@@ -158,6 +158,8 @@ struct Hold {
 Hold gHold;
 vr::world_view::Reference gRoomReference;
 bool ObserveRoom(ue3::Object* controller);
+void HideProjector(bool hide);
+void ShortenOpening(bool shorten);
 
 // The game's own map as a stereo window over the table (research/51 section 8): the untouched map camera after UpdateCamera,
 // and two captures from it, side by side. The CIC hold is applied only inside the main view's CalcSceneView.
@@ -598,7 +600,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     // The held view goes in at render time only (the host's CalcSceneView seam): the game keeps its map camera here, so the
     // map's Flash labels and its cursor's picks project through it.
     gRenderHold = RenderHold{true, pov->location, pov->rotation, pov->fov, GetTickCount64()};
-    ++gHold.cameraTicks;
+    if (gHold.active) ++gHold.cameraTicks;
 }
 
 std::filesystem::path VisibilityFile() {
@@ -789,6 +791,13 @@ std::uint64_t gDiscLogs = 0;
 bool ObserveRoom(ue3::Object* controller) {
     auto* const world = ObjectField(gWorldInfo, controller);
     if (!gRoomReference.Observe({reinterpret_cast<std::uintptr_t>(world), reinterpret_cast<std::uintptr_t>(controller)})) return false;
+    // A controller replacement can leave the old console alive in this world. Return our
+    // edits before dropping its references; never call into an actor from an outgoing world.
+    if (world != nullptr && gConsole.usable != nullptr && ue3::runtime::IsAlive(gConsole.usable) &&
+        ObjectField(gWorldInfo, gConsole.usable) == world) {
+        HideProjector(false);
+        ShortenOpening(false);
+    }
     gHold = {};
     gMapPov = {};
     gRenderHold = {};
@@ -1088,7 +1097,7 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
         options.nearUnits = 10.0f;
         options.postProcess = true;
         if (!eye.Create(e == 0 ? "galaxy left" : "galaxy right", options, gMapPov.location)) {
-            log::Warn("galaxy window: the {} capture failed ({}); our hologram instead, again in 5 s", e == 0 ? "left" : "right", eye.Failure());
+            log::Warn("galaxy window: the {} capture failed ({}); the table UI stays, retry in 5 s", e == 0 ? "left" : "right", eye.Failure());
             gWindow.failedMs = now;
             PauseWindow();
             return false;
@@ -1119,7 +1128,7 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
         float const side = (e == 0 ? -0.5f : 0.5f) * baseline;
         ue3::Vector const at{gMapPov.location.x + right.x * side, gMapPov.location.y + right.y * side, gMapPov.location.z + right.z * side};
         if (!eye.SetFov(gMapPov.fovDeg) || (!eye.Enabled() && !eye.SetEnabled(true)) || !eye.Point(at, gMapPov.rotation)) {
-            log::Warn("galaxy window: pointing the {} capture failed; our hologram instead", e == 0 ? "left" : "right");
+            log::Warn("galaxy window: pointing the {} capture failed; the table UI stays while it retries", e == 0 ? "left" : "right");
             gWindow.failedMs = now;
             PauseWindow();
             return false;

@@ -424,7 +424,8 @@ start of an unrelated movie/conversation for a frame.
 check), scoped to its world/controller by `core/vr/WorldViewHold`. On interruption it pauses the captures and publishes a
 suspended table reservation; it does not teach an anchor from the cinematic. Returning 9 re-projects the console and its
 disc from the saved CIC frame, independently of whether Halcyon has resumed head-tracked rendering yet. A different
-world/controller invalidates the saved view, console and capture references. Closing still uses the existing bounded
+world/controller invalidates the saved view, console and capture references; a console still alive in the current world has
+its projector and opening delay restored before its references are discarded. Closing still uses the existing bounded
 0/6 bridge; a closed map cannot reserve a later unrelated cinematic.
 
 Presentation is independent of capture readiness and the optional selectable-object model: all four levels retain the
