@@ -404,7 +404,12 @@ switching frameworks.
   owner's QA 2026-11-06: the render-time swap alone left culling and texture streaming at the director's camera, 5-9 m away in the
   comm room: assets missing): the `UpdateCamera` post-handler writes the place into the POV after reading the director's. The wheel
   is in front by default (`wheelHand = front|left|right`); **the scan's 21 set pieces go to the 3D screen** (`cw::IsSetPiece`,
-  `worldSetPieces = screen|world`).
+  `worldSetPieces = screen|world`). **The opening is accepted** (research/59 "Part A and Part B", 2026-11-09; `worldOpening =
+  accept|keep`): the stage's first placements stand until the first drawn world frame, then the player's place is taken from
+  Shepard's mark facing the owner under a dip from black (`cw::State::cut`, `Fade::Cut`), and **everyone is brought into view**
+  (`worldArrange`, `worldArcM` 2.5, `worldViewDeg` 60: the conversation's people and the squad checked with `cw::InView` and the
+  shots' line of sight; those out of view seated on an arc around the player centred on the owner, `cw::ArcSeats`, on the floor,
+  facing the player). The Citadel arrival had put the player and squad at the spawn point.
   Walking to lasting marks is an off-by-default prototype (`worldWalk = 0|1|2`: off/AI/slide; settle 2.5 s, minimum 0.5 m, speed 1.4 m/s); see research/59 "Walking to marks (prototype)" for settings and open game checks.
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
   Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):

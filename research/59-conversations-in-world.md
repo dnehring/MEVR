@@ -362,6 +362,32 @@ generated, not typed):
 Verdicts over all 491: **screen 21** (18 framed + 3 more for Shepard's walks; Liara's was both), **check 26**, **world 387**, the 57
 ambient without one. The 21 are in `IsSetPiece` and go to the 3D screen in First person; the 26 are the launcher's next list.
 
+## Part A and Part B: the opening accepted, everyone in sight (2026-11-09)
+
+The owner, after the Citadel arrival: "When I loaded into the citadel for the initial conversation I found that I was far away
+(close to my initial spawn point) along with my squad." Why: a conversation right after a cutscene or a load starts with Shepard at
+the spawn point; the stage teleports him onto his mark beside the owner in the first tick, **keep-in-place undid it** (Shepard was
+kept like everyone else), and the player's place was taken from his head bone there, at the spawn. The squad isn't in the speaker
+list, so the stage never moves them and neither did we: they stood at the spawn with the player.
+
+- **Part A, the opening** (`[Cinematics] worldOpening = accept`, the default; `keep` is the old way): the stage's first placements
+  are the scene's design and the player hasn't seen the room in this conversation yet, so they stand. Until the first drawn frame
+  of the world view (or 500 ms) every jump is accepted (`convo: ... the opening put X N m away: accepted`); then the player's place
+  is taken again from Shepard's head bone plus the eye offset, **facing the owner** (`FinishOpening`: `convo: the opening ended after
+  N s: ...`), and the host dips from black (`cw::State::cut`, `transition_fade::Fade::Cut`, unit-tested): the move reads as a cut,
+  not a teleport. Keep-in-place and the walking prototype run from then on.
+- **Part B, everyone in sight** (`worldArrange = 1`, `worldArcM` 2.5, `worldViewDeg` 60): at the end of the opening everyone of
+  the conversation (owner, speaker list) and the squad (`squad_weapons::Members()`) is checked from the player's eyes:
+  within `worldViewDeg` of the facing, 1.2 m to 6 m away, a clear line of sight (`cw::InView`, the shots' `LineOfSight`). The owner
+  keeps its mark; whoever else fails is put on a seat of an arc `worldArcM` from the player centred on the owner's bearing, right
+  then left, 25 degrees apart, never past the view's edge (`cw::ArcSeats`, unit-tested), on the floor there (`Actor.Trace` down,
+  the actor's own height above its floor kept), facing the player (`Actor.SetRotation`); their kept place is the seat. Logs
+  `convo: X is out of view / too near or too far / blocked (...)`, `convo: X brought into view: seat n at ...`; the summary's
+  `openingMoves` and `arranged`.
+
+[verify] in the game: the Citadel arrival from a save or the launcher (the player beside Udina and Anderson, the squad in view), the
+medical bay (unchanged: Shepard already stood on his mark), a conversation started on foot (no opening moves, no cut).
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the

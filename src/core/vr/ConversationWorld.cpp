@@ -90,6 +90,46 @@ Mode ParseMode(char const* text, Mode fallback) {
     return fallback;
 }
 
+namespace {
+double Wrap180(double deg) {
+    while (deg > 180.0) deg -= 360.0;
+    while (deg < -180.0) deg += 360.0;
+    return deg;
+}
+double BearingDeg(Vec3 const& from, Vec3 const& to) {
+    return std::atan2(to.y - from.y, to.x - from.x) * 180.0 / 3.14159265358979323846;
+}
+} // namespace
+
+bool InView(Vec3 const& player, double facingYawDeg, Vec3 const& person, double halfAngleDeg, double minUnits, double maxUnits) {
+    double const dx = person.x - player.x, dy = person.y - player.y;
+    double const flat = std::hypot(dx, dy);
+    if (flat < minUnits || flat > maxUnits) {
+        return false;
+    }
+    return std::abs(Wrap180(BearingDeg(player, person) - facingYawDeg)) <= halfAngleDeg;
+}
+
+std::vector<ArcSeat> ArcSeats(Vec3 const& player, Vec3 const& owner, int count, double radiusUnits, double spacingDeg, double halfAngleDeg) {
+    std::vector<ArcSeat> seats;
+    if (count <= 0 || radiusUnits <= 0.0) {
+        return seats;
+    }
+    double const centre = BearingDeg(player, owner);
+    for (int i = 0; i < count; ++i) {
+        // Right by one step, left by one, right by two... (the owner's own bearing is the centre).
+        int const step = i / 2 + 1;
+        double const side = (i % 2 == 0) ? -1.0 : 1.0;
+        double const offset = std::min(step * spacingDeg, halfAngleDeg);
+        double const bearing = (centre + side * offset) * 3.14159265358979323846 / 180.0;
+        ArcSeat seat;
+        seat.at = {player.x + std::cos(bearing) * radiusUnits, player.y + std::sin(bearing) * radiusUnits, player.z};
+        seat.yawDeg = Wrap180(BearingDeg(seat.at, player));
+        seats.push_back(seat);
+    }
+    return seats;
+}
+
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.

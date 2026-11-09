@@ -41,6 +41,30 @@ void TestParseMode() {
     CHECK(std::string_view(cw::Name(cw::Mode::World)) == "world");
 }
 
+void TestArrangement() {
+    // From the player at the origin facing +X (yaw 0): in view within 60 degrees and 1.2 to 6 m (120 to 600 units).
+    cw::Vec3 const player{0.0, 0.0, 100.0};
+    CHECK(cw::InView(player, 0.0, {250.0, 0.0, 100.0}, 60.0, 120.0, 600.0));
+    CHECK(cw::InView(player, 0.0, {200.0, 200.0, 100.0}, 60.0, 120.0, 600.0));     // 45 degrees left
+    CHECK(!cw::InView(player, 0.0, {100.0, 300.0, 100.0}, 60.0, 120.0, 600.0));    // 72 degrees: out of the cone
+    CHECK(!cw::InView(player, 0.0, {-250.0, 0.0, 100.0}, 60.0, 120.0, 600.0));     // behind
+    CHECK(!cw::InView(player, 0.0, {80.0, 0.0, 100.0}, 60.0, 120.0, 600.0));       // too close
+    CHECK(!cw::InView(player, 0.0, {700.0, 0.0, 100.0}, 60.0, 120.0, 600.0));      // too far
+    CHECK(cw::InView(player, 170.0, {-250.0, 60.0, 100.0}, 60.0, 120.0, 600.0));   // the wrap at 180
+    // Seats: around the owner's bearing (here +X), 25 degrees apart, right (negative yaw) then left, on a 2.5 m arc, facing the player.
+    std::vector<cw::ArcSeat> const seats = cw::ArcSeats(player, {300.0, 0.0, 100.0}, 3, 250.0, 25.0, 60.0);
+    CHECK(seats.size() == 3);
+    CHECK(Close(std::hypot(seats[0].at.x, seats[0].at.y), 250.0, 1e-6) && seats[0].at.z == 100.0);
+    CHECK(seats[0].at.y < 0.0 && seats[1].at.y > 0.0 && seats[2].at.y < seats[0].at.y);   // right, left, further right
+    CHECK(Close(std::atan2(seats[0].at.y, seats[0].at.x) * 180.0 / 3.14159265358979323846, -25.0, 1e-6));
+    CHECK(Close(std::atan2(seats[2].at.y, seats[2].at.x) * 180.0 / 3.14159265358979323846, -50.0, 1e-6));
+    CHECK(Close(seats[0].yawDeg, 155.0, 1e-6));  // facing back toward the origin
+    // Never beyond the view's half angle: the fifth seat would be 75 degrees, capped at 60.
+    std::vector<cw::ArcSeat> const many = cw::ArcSeats(player, {300.0, 0.0, 100.0}, 5, 250.0, 25.0, 60.0);
+    CHECK(Close(std::atan2(many[4].at.y, many[4].at.x) * 180.0 / 3.14159265358979323846, -60.0, 1e-6));
+    CHECK(cw::ArcSeats(player, {300.0, 0.0, 100.0}, 0, 250.0, 25.0, 60.0).empty());
+}
+
 void TestSetPieces() {
     // The scan's framed conversations go to the 3D screen in the world mode, by the game's full name or its short forms.
     CHECK(cw::IsSetPiece("BioConversation nor10_comm_room_d.nor10_comm_room_dlg"));
@@ -240,6 +264,7 @@ int RunConversationWorldTests() {
     gFailures = 0;
     TestParseMode();
     TestSetPieces();
+    TestArrangement();
     TestCrops();
     TestSubtitlePoint();
     TestFollowHead();

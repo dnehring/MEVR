@@ -13,6 +13,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/ConsoleRequest.hpp"
 #include "game/Player.hpp"
+#include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Params.hpp"
@@ -80,6 +81,7 @@ ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
 // The survey's `mevr convo end` (research/59 "The survey"): the conversation's own end, for one that loops past its time.
 ue3::FunctionRef gEndConversation{"SFXGame.BioConversation.EndConversation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
+ue3::FunctionRef gTrace{"Engine.Actor.Trace"};  // the floor under an arc seat (Part B)
 ue3::FieldRef gWalkController{"Engine.Pawn", "Controller"};
 ue3::FieldRef gWalkVelocity{"Engine.Actor", "Velocity"};
 ue3::ClassRef gWalkPawnClass{"Engine.Pawn"};
@@ -108,6 +110,10 @@ struct Settings {
     float turnDegPerS = 120.0f;        // ... and turn them toward whom they look at, at most this fast (worldTurnDegPerS)
     bool setPiecesOnScreen = true;     // the scan's set pieces on the 3D screen, not in the world (worldSetPieces = screen | world)
     bool camera = true;                // the game's own camera at the player's place too, not only the main view (worldCamera)
+    bool openingAccept = true;         // the stage's opening placements are accepted, the player put at Shepard's mark (worldOpening = accept|keep)
+    bool arrange = true;               // everyone of the conversation (and the squad) brought into the player's view (worldArrange)
+    float arcM = 2.5f;                 // the seats' distance from the player (worldArcM)
+    float viewDeg = 60.0f;             // half the view's angle a person must be within (worldViewDeg)
     float subtitleCrop[4] = {};
     float wheelCrop[4] = {};
 };
@@ -164,14 +170,20 @@ void RefreshSettings() {
         s.setPiecesOnScreen = ini::Lower(ini::Trim(*text)) != "world";
     }
     s.camera = number("worldCamera", 1.0f, 0.0f, 1.0f) != 0.0f;
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldOpening")) {
+        s.openingAccept = ini::Lower(ini::Trim(*text)) != "keep";
+    }
+    s.arrange = number("worldArrange", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.arcM = number("worldArcM", s.arcM, 1.2f, 6.0f);
+    s.viewDeg = number("worldViewDeg", s.viewDeg, 20.0f, 90.0f);
     ReadCrop(loaded.file, "subtitleCrop", s.subtitleCrop);
     ReadCrop(loaded.file, "wheelCrop", s.wheelCrop);
     std::string const text = std::format("conversations = {}, worldFollow = {}, subtitles {:.1f} deg tall {:.2f} m under the face, the wheel "
                                          "{} {:.2f} m wide, set pieces {}, the game's camera {}, worldWalk = {} (settle {:.2f} s, "
-                                         "min {:.2f} m, speed {:.2f} m/s)", cw::Name(s.mode), s.follow ? 1 : 0,
+                                         "min {:.2f} m, speed {:.2f} m/s), the opening {}, arrange {} ({:.1f} m, {:.0f} deg)", cw::Name(s.mode), s.follow ? 1 : 0,
         s.subtitleHeightDeg, s.subtitleBelowM, s.wheelHand == 0 ? "at the left hand" : s.wheelHand == 1 ? "at the right hand" : "in front",
         s.wheelWidthM, s.setPiecesOnScreen ? "on the 3D screen" : "in the world", s.camera ? "at the player's place" : "the director's",
-        s.walk, s.walkSettleS, s.walkMinM, s.walkSpeedMS);
+        s.walk, s.walkSettleS, s.walkMinM, s.walkSpeedMS, s.openingAccept ? "accepted" : "kept", s.arrange ? "on" : "off", s.arcM, s.viewDeg);
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("convo: [Cinematics] {}", text);
@@ -411,6 +423,14 @@ struct Convo {
     std::uint32_t number = 0;
     bool world = false;          // shown in the world
     bool setPiece = false;       // one of the scan's set pieces: on the 3D screen instead (worldSetPieces)
+    // The opening (research/59 "Part A"): the stage's first placements are the scene's design and the player hasn't seen the room
+    // in this conversation yet, so they are accepted until the first drawn frame of the world view (or openingUntilMs), then the
+    // player's place is taken from Shepard's mark and everyone is brought into view (Part B), under a dip from black (`cut`).
+    std::uint64_t openingUntilMs = 0;
+    bool openingDone = false;
+    int openingMoves = 0;        // placements accepted during the opening
+    int arranged = 0;            // people moved to a seat in view
+    std::uint32_t cut = 0;       // the host dips from black when it changes
     // The player's place for this conversation: the view on foot if it was Shepard's just now, else his eyes from his head bone
     // (a conversation right after a level load or a cutscene); it follows his head bone when that jumps (a stage's placement).
     ik::Vec3 hold;
@@ -689,6 +709,16 @@ void KeepInPlace(ue3::Object* pawn) {
         double const unexplained = st.walk.Phase() == cw::WalkPhase::Walking
             ? cw::BeyondWalk(WalkPoint(st.place), WalkPoint(V(*at)), st.walk.Wanted(), st.speedUnitsPerS, elapsed) : d;
         bool const isShepard = t.actor == pawn || t.actor == gC.playerPawn;
+        if (!gC.openingDone && gSettings.openingAccept) {
+            // The opening: the stage's placements stand (Part A); the kept place follows them.
+            if (d >= kJumpUnits) {
+                ++gC.openingMoves;
+                log::Info("convo: at {:.1f} s the opening put {} {:.2f} m away: accepted", Seconds(), isShepard ? "Shepard" : t.name, d / kUnitsPerMeter);
+            }
+            st.place = V(*at);
+            st.shownYaw = YawDeg(*rot);
+            continue;
+        }
         if (unexplained >= kJumpUnits && d < kStayMaxUnits) {
             ik::Vec3 const wanted = V(*at);  // capture BEFORE undoing the game's native placement
             bool const moved = PutAt(t.actor, st.place);
@@ -902,6 +932,146 @@ void LogShot(ue3::Object* pawn, ik::Vec3 eyes) {
         gC.shots, Seconds(), kind, seen, inFrame.empty() ? "nobody" : inFrame, F(cam), camToEyes, gPov.lastFov, ShortName(gC.speaker));
 }
 
+// The floor under a point: a trace straight down from 1 m above to 3 m below it (level geometry only). The seat's z is the floor
+// plus the actor's own height above its floor.
+std::optional<double> FloorZ(ue3::Object* tracer, ik::Vec3 const& at) {
+    ue3::Function* const fn = gTrace.Get();
+    if (fn == nullptr || tracer == nullptr) {
+        return std::nullopt;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    if (!p.Valid()) {
+        return std::nullopt;
+    }
+    p.Set("TraceStart", ue3::Vector{static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z + 100.0)});
+    p.Set("TraceEnd", ue3::Vector{static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z - 300.0)});
+    p.SetBool("bTraceActors", false);
+    if (!ue3::runtime::Call(tracer, fn, p) || p.Return<ue3::Object*>().value_or(nullptr) == nullptr) {
+        return std::nullopt;
+    }
+    auto const hit = p.Get<ue3::Vector>("HitLocation");
+    return hit ? std::optional<double>(hit->z) : std::nullopt;
+}
+
+bool FaceYaw(ue3::Object* actor, double yawDeg) {
+    ue3::Function* const fn = gSetRotation.Get();
+    if (fn == nullptr) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    return p.Valid() && p.Set("NewRotation", ue3::Rotator{0, ToUnits(yawDeg), 0}) && ue3::runtime::Call(actor, fn, p);
+}
+
+// The end of the opening (research/59 "Part A" and "Part B"): the player's place is taken from Shepard's mark (his head bone, the
+// first-person eye offset), facing the owner; then everyone of the conversation and the squad is checked from there (within
+// worldViewDeg of the facing, 1.2 m to 6 m away, a clear line of sight) and whoever fails is put on a seat of an arc around the
+// player, centred on the owner, facing the player. The host dips from black on `cut`, so both moves read as a cut, not a teleport.
+void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
+    gC.openingDone = true;
+    ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
+    auto const ownerAt = owner != nullptr && owner != pawn ? FacePoint(owner) : std::nullopt;
+    // Part A: the player at Shepard's mark.
+    auto const head = HeadOf(pawn);
+    auto const rot = player::Rotation(pawn);
+    ik::Vec3 const before = gC.hold;
+    if (head) {
+        double const yaw = ownerAt ? std::atan2(ownerAt->y - head->at.y, ownerAt->x - head->at.x) * kRadToDeg : rot ? YawDeg(*rot) : 0.0;
+        ik::Vec3 const& e = gFoot.eyeFromHead;
+        gC.hold = head->at + YawForward(yaw) * e.x + YawRight(yaw) * e.y + ik::Vec3{0.0, 0.0, e.z};
+        gC.holdRotation = {0, ToUnits(yaw), 0};
+        gC.holdFrom = "Shepard's mark (the opening accepted)";
+        gC.anchorHead = head->at;
+        gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, {head->at.x, head->at.y, head->at.z}, 0};
+        auto const view = vr::host_view::Latest();
+        if (view.valid && view.floorLocked) {
+            auto const basis = engine::ToBasis(engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll});
+            gC.hold.z = view.centreZ - (basis.forward.z * view.offsetForward + basis.right.z * view.offsetRight + basis.up.z * view.offsetUp);
+        }
+    }
+    double const moved = Dist(before, gC.hold) / kUnitsPerMeter;
+    log::Info("convo: the opening ended after {:.1f} s: {} placements accepted; the player's place {} at {} facing {:.0f} deg{} ({:.2f} m from where it was)",
+        Seconds(), gC.openingMoves, head ? "re-placed" : "kept (no head bone)", F(gC.hold), YawDeg(gC.holdRotation),
+        ownerAt ? std::format(", toward {}", ShortName(owner)) : std::string(), moved);
+    // Part B: everyone in view.
+    if (!gSettings.arrange) {
+        if (moved > 0.05) ++gC.cut;
+        return;
+    }
+    double const facing = YawDeg(gC.holdRotation);
+    double const halfAngle = gSettings.viewDeg;
+    double const minUnits = 120.0, maxUnits = 600.0;
+    std::vector<std::pair<ue3::Object*, std::string>> people;
+    for (Tracked const& t : gC.actors) {
+        if (t.actor != nullptr && t.actor != pawn && ue3::runtime::IsAlive(t.actor)) {
+            people.emplace_back(t.actor, t.name);
+        }
+    }
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+        if (m.pawn != nullptr && ue3::runtime::IsAlive(m.pawn) &&
+            std::none_of(people.begin(), people.end(), [&](auto const& pr) { return pr.first == m.pawn; })) {
+            people.emplace_back(m.pawn, m.name.empty() ? ShortName(m.pawn) : m.name);
+        }
+    }
+    std::vector<std::pair<ue3::Object*, std::string>> out;
+    for (auto const& [actor, name] : people) {
+        if (actor == owner) {
+            continue;  // the owner keeps its mark: the arc is centred on it
+        }
+        auto const at = player::Location(actor);
+        auto const face = FacePoint(actor);
+        if (!at || !face) {
+            continue;
+        }
+        cw::Vec3 const p{at->x, at->y, at->z};
+        bool const inView = cw::InView({gC.hold.x, gC.hold.y, gC.hold.z}, facing, p, halfAngle, minUnits, maxUnits);
+        bool const seen = inView && LineOfSight(pawn, gC.hold, *face);
+        if (!seen) {
+            double const bearing = std::atan2(at->y - gC.hold.y, at->x - gC.hold.x) * kRadToDeg;
+            double off = bearing - facing;
+            while (off > 180.0) off -= 360.0;
+            while (off < -180.0) off += 360.0;
+            log::Info("convo: {} is {} ({:.1f} m away, {:.0f} deg off your facing)", name, !inView ? (std::abs(off) > halfAngle ? "out of view" : "too near or too far") : "blocked",
+                Dist(V(*at), gC.hold) / kUnitsPerMeter, off);
+            out.emplace_back(actor, name);
+        }
+    }
+    if (!out.empty()) {
+        ik::Vec3 const centre = ownerAt ? *ownerAt : gC.hold + YawForward(facing) * 250.0;
+        std::vector<cw::ArcSeat> const seats = cw::ArcSeats({gC.hold.x, gC.hold.y, gC.hold.z}, {centre.x, centre.y, centre.z},
+            static_cast<int>(out.size()), gSettings.arcM * kUnitsPerMeter, 25.0, halfAngle);
+        for (std::size_t i = 0; i < out.size() && i < seats.size(); ++i) {
+            auto const [actor, name] = out[i];
+            auto const at = player::Location(actor);
+            if (!at) {
+                continue;
+            }
+            ik::Vec3 seat{seats[i].at.x, seats[i].at.y, at->z};
+            auto const floorHere = FloorZ(pawn, V(*at));
+            auto const floorThere = FloorZ(pawn, seat);
+            if (!floorThere) {
+                log::Info("convo: no floor under the seat for {} at {}: left where it is", name, F(seat));
+                continue;
+            }
+            seat.z = *floorThere + (floorHere ? at->z - *floorHere : 0.0);
+            bool const put = PutAt(actor, seat);
+            FaceYaw(actor, seats[i].yawDeg);
+            auto it = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == actor; });
+            if (it != gStay.end()) {
+                if (auto const now = player::Location(actor)) {
+                    it->place = V(*now);
+                }
+                it->shownYaw = seats[i].yawDeg;
+            }
+            if (put) ++gC.arranged;
+            log::Info("convo: {} brought into view: seat {} at {} ({:.1f} m from you), facing you{}", name, i + 1, F(seat),
+                Dist(seat, gC.hold) / kUnitsPerMeter, put ? "" : " (SetLocation refused)");
+        }
+    }
+    if (moved > 0.05 || gC.arranged > 0) {
+        ++gC.cut;
+    }
+}
+
 void Begin(ue3::Object* conv, ue3::Object* controller) {
     gC = {};
     gStay.clear();
@@ -964,6 +1134,8 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
             gC.anchorHead = head->at;
         }
         gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, gC.anchorHead ? cw::Vec3{gC.anchorHead->x, gC.anchorHead->y, gC.anchorHead->z} : cw::Vec3{}, 0};
+        gC.openingUntilMs = gC.startMs + 500;
+        gC.openingDone = !(gC.world && gSettings.openingAccept);
         log::Info("convo: the player's place: {} at {} facing {:.0f} deg{}", gC.holdFrom, F(gC.hold), YawDeg(gC.holdRotation),
             head ? std::format(" ({:.2f} m from Shepard's head bone)", Dist(gC.hold, head->at) / kUnitsPerMeter) : std::string());
     }
@@ -1022,12 +1194,12 @@ void End(char const* why) {
     log::Info("convo: summary {{\"name\": \"{}\", \"why\": \"{}\", \"seconds\": {:.1f}, \"stage\": {}, \"actors\": {}, \"lines\": {}, "
               "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
               "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
-              "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}}}",
+              "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
-        gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks);
+        gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged);
     gC = {};
 }
 
@@ -1267,6 +1439,9 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
             gC.shots, ShortName(gC.speaker)));
         return;
     }
+    if (!gC.openingDone && (gInWorld || now >= gC.openingUntilMs)) {
+        FinishOpening(conv, pawn);
+    }
     // The room as the held view maps it: the host's view (its head pose and head look) placed on the held view, as view_anchor does
     // on the game camera; before the host shows the world (its first frames), the frame on foot moved to the held place.
     std::optional<engine::TrackingFrame> frame;
@@ -1317,6 +1492,7 @@ void Tick(double /*deltaSeconds*/, Link const& link) {
             }
         }
     }
+    state.cut = gC.cut;
     if (gPov.location != nullptr && now - gPov.ms < 500) {
         state.holdRender = 1;
         state.holdLocation[0] = static_cast<float>(gC.hold.x);

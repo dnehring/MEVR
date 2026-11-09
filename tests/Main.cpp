@@ -7507,6 +7507,14 @@ void TestTransitionFade() {
     tf::Fade off;
     off.Update(V::World, 0.0, 0.0f);
     CHECK(off.Update(V::Screen, 1.0, 0.0f) == 0.0f && !off.Fading() && off.Count() == 0);
+    // A cut inside the world (a conversation's opening re-places the player): black now, eased out as a view change is.
+    tf::Fade cut;
+    cut.Update(V::World, 0.0, 0.35f);
+    cut.Cut(1.0, 0.35f);
+    CHECK(cut.Fading() && cut.Count() == 1 && cut.Update(V::World, 1.0 + tf::kHoldS * 0.5, 0.35f) == 1.0f);
+    CHECK(cut.Update(V::World, 1.0 + tf::kHoldS + 0.36, 0.35f) == 0.0f && !cut.Fading());
+    off.Cut(2.0, 0.0f);
+    CHECK(!off.Fading() && off.Count() == 0);
 }
 
 void TestPresentationHold() {

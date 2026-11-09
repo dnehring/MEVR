@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 // LE1 conversations played in the world, in first person (research/59, `[Cinematics] conversations = world`): during a
 // conversation (game mode 5) the player keeps their own head-tracked view at Shepard's place instead of the director's camera.
@@ -37,6 +38,7 @@ struct State {
     // player camera's POV around the main view's CalcSceneView (Halcyon's [MEVR] seam, as the galaxy map's hold does).
     std::uint8_t holdRender = 0;
     std::uint8_t holdPad[3] = {};
+    std::uint32_t cut = 0;  // counts the player's re-placements inside the conversation (the opening): the host dips from black on a change
     float holdLocation[3] = {};
     std::int32_t holdRotation[3] = {};  // pitch, yaw, roll (Unreal units)
     float holdFov = 0.0f;
@@ -129,6 +131,19 @@ struct WalkStep {
 WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double dtS);
 // Distance outside the segment a walk could have covered since the last observation; tolerates collision stopping short.
 double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, double elapsedS);
+
+// ---- Everyone in sight (research/59 "Part B") ----------------------------------------------------------------------------------
+// From the player's eyes at `player` facing `facingYawDeg` (degrees, Unreal's yaw about Z, 0 along +X): is `person` within
+// `halfAngleDeg` of the facing and between `minUnits` and `maxUnits` away (horizontally)? Line of sight is the game's.
+bool InView(Vec3 const& player, double facingYawDeg, Vec3 const& person, double halfAngleDeg, double minUnits, double maxUnits);
+// Seats for `count` people who must come into view: on an arc of `radiusUnits` around the player, centred on the owner's
+// bearing (the owner keeps its place in the middle), alternately right and left of it, `spacingDeg` apart, never beyond
+// `halfAngleDeg`; each seat faces the player. The arc lies in the player's horizontal plane (the caller finds the floor).
+struct ArcSeat {
+    Vec3 at;
+    double yawDeg = 0.0;  // facing the player
+};
+std::vector<ArcSeat> ArcSeats(Vec3 const& player, Vec3 const& owner, int count, double radiusUnits, double spacingDeg, double halfAngleDeg);
 
 // The set pieces (research/59 "The scan", "Marking the rest"): the 21 conversations whose lines are a quarter or more authored
 // camera work (a director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...) or where the game walks

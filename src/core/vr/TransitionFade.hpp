@@ -26,6 +26,9 @@ public:
     // Each frame: the view shown, the time (seconds), the ease's length (seconds; 0 or less: never fades). Returns the
     // black's opacity, 0..1, to draw over everything.
     float Update(View view, double nowS, float fadeS);
+    // A cut inside one view (the player's place re-placed at a conversation's opening, research/59 "Part A"): black now, the
+    // same ease out. Nothing with fadeS 0.
+    void Cut(double nowS, float fadeS);
     bool Fading() const { return fading_; }
     unsigned Count() const { return count_; }  // fades started so far
     View Last() const { return last_; }
