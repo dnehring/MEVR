@@ -420,6 +420,67 @@ state on, then that volume touched), the catalogue's `streamStates` when no load
 `tools/conversation-launch.ps1 jug20_sal_captainkirrahe` (the wait and the raised teleport) and `tools/conversation-launch.ps1
 nor10_oculon_approach` (`stream_wakeup` on, then `BioTriggerStream_147`).
 
+### A save instead of open (2026-11-09, later)
+
+The owner: `open` lands in the wrong plot state (the Citadel arrival didn't trigger; a scene's start conditional refused a replay),
+"a better system for launching into the citadel with a custom generated save". Trilogy Save Editor (KarlitosVII, CeCILL-2.1) is the
+only LE1 save editor and has no command line, so we read its structs (`src/save_data/mass_effect_1_le`, `src/unreal`; fetched into
+`reference/` by `tools/fetch-references.ps1`) and wrote our own **`tools/le1-save.py`** (MIT; NOTICE.md lists the source):
+
+- **The format.** A container (magic `C1 83 2A 9E`, block size 0x40000, a total (compressed, uncompressed) pair, one pair per zlib
+  chunk of at most a block, the chunks, then CRC-32/BZIP2 of everything before it, the compression flag 1 and the payload size
+  again) around Unreal's flat serialization (bool = u32, enum = u8, string = i32 length with its 0, negative for UTF-16, arrays and
+  maps a u32 count, option = bool then value): version 50, character id, dates, the plot (booleans as u32 bit words, integers,
+  floats), journal, codex, the player and squad, `base_level_name` (the persistent level, `BIOA_STA00`), `map_name` (the **area**,
+  `MapNOR01`, `MapSTA30_02`: the Load screen's place name and picture), `parent_map_name` (empty in every save), the place
+  (`location` in units, `rotation` in 65536ths), the display text and the file name, then the world state the game keeps per map
+  it has visited (`legacy_maps`: every level's saved actors, the `BioWorldInfoSaveObject` with the world's streaming states;
+  absent in a character export). The tool reads all of it into Python values and writes it back: **all 12 of the owner's saves
+  round-trip byte for byte** (payload and file; the game's deflate isn't zlib's, so an unchanged payload keeps the game's own
+  chunks and a changed one is recompressed, which the game loads). `info`, `roundtrip`, `plot --bool N`, `write <in> <out>
+  --level --area --location --yaw --bool N=1 --int N=V --float N=V --display-name --drop-map`; ctest `mevr-le1-save`
+  (`tests/Le1SaveTests.py`: a synthetic save with every struct and one legacy object of each class, multi-chunk, wide strings,
+  the edits, refused corruption; `MEVR_LE1_SAVES=<folder>` adds a local folder's saves; no player's save is committed).
+- **The display text is the Load screen's record.** `BioSaveGame.SaveGameRecord` (`m_SaveGameNumber`, the date, the area id, class,
+  level, time played) is read from the fixed-width display text (` 21        John 2026/11/09 10:48:37 ... John02   0  NA 00 007
+  1h34m`), the place name and picture from `map_name`; `m_filename` is the file's name. A write stamps the time now (in the text
+  too) and the file name, and a numbered file (`<career>_<n>`) gets its slot in the text.
+
+**Measured in the game** (fake headset, John02, the deployed hot-reload build, 2026-11-09 14:16-14:50; saves backed up and hash-checked
+after, nothing written by the game):
+
+- **The title's Enter resumes the profile's last save**, never a newer one: `PROFILE\GamerProfile.pcsav` ends with the career and
+  file name (`John02`, `John02_AutoSave`); a save with a newer time in its text and a newer file time (slot 98, `_MEVR`) was passed
+  over three times, before and after a restart. The cheat `BioLoadGame <slot>` (`BioCheatManager`) does nothing in this build.
+- **The Load screen lists a career's saves once, at the game's start** (`BioSFHandler_LoadGame.lstRecords`): a file written
+  later isn't listed (slot 22), a file deleted later still is (slot 98), `RebuildLoadGameList` doesn't re-read the folder. Its
+  content is read only when it's loaded. Non-numbered names are listed (`John02_MEVR`), so the launcher's fixed
+  `<career>_MEVR.pcsav` works: once it exists when the game starts, later runs just rewrite it.
+- **The Load screen can be driven**: `mevr gui Menu` (the pause menu), down + A (its second entry is Load, on foot and in the Mako),
+  then down + A on the list (no record has the focus before a pad direction), and the confirm box's handler says which record it
+  is for (`BioSFHandler_MessageBox.nInputCallbackContext` = the record's index): B in a request of its own, the focus moved by the
+  difference, A again, then A to confirm. The launcher does this (`Load-ThroughMenu`).
+- **A loaded save is placed exactly**: Avina's save (`sta20_avina_keeper`, Presidium `STA20_02A`) loaded on foot within 9 s at the
+  written x, y, z 20 units above Avina's own height, dropped onto the floor (z 317 to 286), facing 180 degrees, Avina at her mark;
+  the docking bay save (`sta30_normandy_mechanic`, C-Sec's bay `STA30_08`) the same, facing 298. **The chunks stream by themselves**
+  from where the player is (no volume touched, no fall), unlike a teleport after `open`.
+- **The plot is the career's**: Avina's start (`AvinaWithKeeper`) played its conversation (game mode 5); the mechanic's start
+  (`MechanicKeepsPlayerFromEntering`) fired and played nothing, because John02 has been past the Normandy's bay since its first
+  visit (its starting entry's conditional). From `open` both would have run in the story's opening plot.
+- **The Citadel arrival can't come from John02**: its plot is past the Citadel (Garrus and Wrex in the squad, the Normandy docked).
+  The arrival is the Presidium embassy's (`BioTriggerStream_97`'s state `stream_normandyToEmbassy` shows `BIOA_STA20_A_Arrival_CIN`
+  and `STA20_10C`), so it needs a save between Eden Prime's end and the Citadel (the Normandy after the debrief): none of the owner's
+  careers has one (John01 and VR00 are on Eden Prime). Next: play John01 to the Normandy and save there, then `-Save` from it;
+  setting the arrival's plot booleans on a later save is guesswork until the plot database (Trilogy Save Editor's
+  `databases/me1_raw_plot_db.ron`, its names) is read for them.
+
+**The launcher's `-Save <career save>`**: writes `<career>_MEVR.pcsav` beside it (the catalogue's `map` as the level, Shepard 1.5 m
+in front of the owner facing it), after a backup of the Save folder into `%LOCALAPPDATA%\MEVR\save-backups\<time>`; with the game
+running it loads it through the Load screen, waits for Shepard on foot near the place, then streams the chunk and fires the start
+as `-NoOpen` does. The first `-Save` of a career with the game running fails with "the Load screen doesn't list ...: restart it":
+write it with the game closed (or restart). `-Area MapSTA30_02` sets the area (the Load screen's label; kept from the career save
+otherwise). `-RestoreSaves` puts back every file of the newest backup that changed and deletes the `*_MEVR` saves.
+
 ## Flowing conversations: the walk-up scenes as the game's own barks (2026-11-09, evening)
 
 The owner, on the first Citadel visit: "I'll walk up to NPCs and it will start an encounter, like meeting Wrex or saving Tali.

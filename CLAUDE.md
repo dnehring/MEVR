@@ -426,7 +426,13 @@ switching frameworks.
   shows through a named streaming state (the medical bay's wake-up; the catalogue's `streamStates`, from the volumes' states the
   scan records) is streamed with `mevr stream state <name> on` (a loaded `BioSeqAct_SetStreamingState`'s own `Activated`, else the
   world's `m_WorldStreamingStates` entry and every volume's `Retouch`; `mevr stream states` lists them; research/59 "The launcher's
-  gaps closed", [verify] in the game); never `streamlevelin` (it froze the game, 2026-11-09). **The walk-up scenes flow**
+  gaps closed", [verify] in the game); never `streamlevelin` (it froze the game, 2026-11-09). **From the career's own plot:
+  `-Save <career save>`** (research/59 "A save instead of open"): `tools/le1-save.py` (MIT, our own reader/writer of LE1 `.pcsav`
+  from Trilogy Save Editor's structs; round-trips every save byte for byte; level, area, place, facing, plot values; ctest
+  `mevr-le1-save`) writes `<career>_MEVR.pcsav` beside it at the owner (Save folder backed up to `%LOCALAPPDATA%\MEVR\save-backups`,
+  `-RestoreSaves` undoes it), and with the game running loads it through the game's own Load screen (`mevr gui Menu`, pad events,
+  the record found by file name), so the chunks stream by themselves and the plot is the career's. The game lists saves once at its
+  start and the title's Enter resumes the profile's last save, so a career's first `-Save` runs with the game closed. **The walk-up scenes flow**
   (research/59 "Flowing conversations", 2026-11-09, the owner's cheaper-but-riskier choice; `[Cinematics] worldFlow = all | off`,
   default all, with the world mode; `game/ConversationFlow`): the game plays a conversation start whose first entry is flagged
   `bAmbient` as its own barks (`UBioConversation::StartConversation` takes the first entry of `m_StartingList` whose plot
