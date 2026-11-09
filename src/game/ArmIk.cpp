@@ -67,6 +67,8 @@ hand_targets::Source gSource = hand_targets::Source::None;
 // This tick's request turns the right hand to aim the held gun (game/weapon's grip), and the
 // writer has been writing the pose (engine::bone_pose::TotalWrites moved since the last tick).
 bool gGunAimed = false;
+// The body's scale the last published request asked for (research/58): the animated head is unscaled, the view isn't.
+ik::body_scale::Scale gLastBodyScale;
 bool gGunAimedAndWritten = false;
 std::uint64_t gLastWrites = 0;
 // This tick's request asks the writer for the support grip (engine::bone_pose::Support).
@@ -499,6 +501,7 @@ void Stop(std::string status) {
     body_follow::Reset();
     fingers::Stop("arm IK isn't driving");
     gSupportRequested = false;
+    gLastBodyScale = {};  // nothing is written now: the pose is the animation's, unscaled
     gStatus = std::move(status);
 }
 
@@ -1047,9 +1050,14 @@ void Drive(double deltaSeconds) {
     // The head bone as the animation left it: our spine writes move it, and the hands' anchor
     // mustn't chase them (engine::bone_pose::AnimatedHead). Before the first write, the pose is
     // the animation's anyway.
+    // Scaled as the writer draws it (research/58): the animated head is the unscaled pose's, so with the body at the player's
+    // size (1.18 for a 1.97 m player) it sat ~44 units under the view with a gun drawn, at the first-person test's 45-unit
+    // entry: a crouch took it past the 75-unit exit and it never came back until holstering raised Shepard's head, the hands
+    // left at the third-person anchor (the owner's "weapons very low" after a crouch, 2026-11-09).
     std::optional<engine::UnrealVector> headBone;
     if (auto const animated = engine::bone_pose::AnimatedHead()) {
-        ik::Vec3 const world = ik::TransformPoint(componentToWorld, *animated);
+        ik::Vec3 const drawn = gLastBodyScale.Active() ? ik::body_scale::Apply(gLastBodyScale, *animated) : *animated;
+        ik::Vec3 const world = ik::TransformPoint(componentToWorld, drawn);
         headBone = engine::UnrealVector{world.x, world.y, world.z};
     } else if (info->head >= 0) {
         headBone = engine::skeleton::BoneLocation(mesh, info->head, engine::skeleton::Space::World);
@@ -1324,6 +1332,7 @@ void Drive(double deltaSeconds) {
     if (driven.empty()) {
         return Stop(std::format("no hand targets (source {})", hand_targets::Name(targets.source)));
     }
+    gLastBodyScale = request.bodyScale;
     engine::bone_pose::Publish(std::move(request));
     gStatus = "driving: " + driven;
     gGunAimed = gunAimed;
