@@ -474,12 +474,55 @@ after, nothing written by the game):
   setting the arrival's plot booleans on a later save is guesswork until the plot database (Trilogy Save Editor's
   `databases/me1_raw_plot_db.ron`, its names) is read for them.
 
-**The launcher's `-Save <career save>`**: writes `<career>_MEVR.pcsav` beside it (the catalogue's `map` as the level, Shepard 1.5 m
-in front of the owner facing it), after a backup of the Save folder into `%LOCALAPPDATA%\MEVR\save-backups\<time>`; with the game
-running it loads it through the Load screen, waits for Shepard on foot near the place, then streams the chunk and fires the start
-as `-NoOpen` does. The first `-Save` of a career with the game running fails with "the Load screen doesn't list ...: restart it":
-write it with the game closed (or restart). `-Area MapSTA30_02` sets the area (the Load screen's label; kept from the career save
-otherwise). `-RestoreSaves` puts back every file of the newest backup that changed and deletes the `*_MEVR` saves.
+**The launcher's `-Save <career save>`** (as first built, the Load screen; superseded the same evening by `QuickLoad`, below,
+kept as `-Load menu`): writes `<career>_MEVR.pcsav` beside it (the catalogue's `map` as the level, Shepard 1.5 m in front of the
+owner facing it), after a backup of the Save folder into `%LOCALAPPDATA%\MEVR\save-backups\<time>`; with the game running it loads
+it through the Load screen, waits for Shepard on foot near the place, then streams the chunk and fires the start as `-NoOpen` does.
+The first menu run of a career with the game running fails with "the Load screen doesn't list ...: restart it". `-Area
+MapSTA30_02` sets the area (the Load screen's label; kept from the career save otherwise).
+
+### Replaying a beat (2026-11-09, evening)
+
+The owner: "vital for our testing to be able to replay some of the approach conversations". A save built from scratch isn't
+needed: the plot is small and a beat changes a handful of values (28 minutes of the Citadel in John00 set 21 booleans and 8
+integers, nothing cleared), so a beat is rewound by putting back only what it set.
+
+- **`tools/le1-save.py diff <before> <after> --rewind-out beat.json`** lists every plot boolean, integer and float that differs
+  (with the plot's names from Trilogy Save Editor's `databases/me1_raw_plot_db.ron` in `reference/`), and each visited map whose
+  kept world state differs, by level; the rewind file holds the values before (and each changed map's state before, as its
+  serialized bytes). **`write <later> <out> --rewind beat.json`** puts the plot values back; `--with-maps` also the maps (which
+  undoes everything else done in them since). The launcher's `-Rewind beat.json` (`-RewindMaps`) does it on its save. Unit tests in
+  `tests/Le1SaveTests.py`.
+- **The after-save comes from the console**: `QuickSave` (`BioBasePlayerController.QuickSave`, an exec) writes
+  `<career>_QuickSave.pcsav` and the profile; the cheats `BioSaveGame`/`BioLoadGame <slot>` do nothing, and the pause menu is a wheel
+  (`BioSFHandler_BrowserWheel`: down Load, up Codex, left the character record, right Options; Save is no pad direction).
+- **`QuickLoad` loads the career's quicksave from the console, whatever the game listed at its start**: a quicksave deleted and
+  written fresh by the tool (a file the game never saw) loaded 0.8 s after the command (`world ui: ... player/world changed`, a new
+  player pawn), at the file's place, after Shepard had been moved 4 m away. It loads the career that is loaded
+  (`BioSaveGame.m_sCharacterID` of `Transient.CurrentGame`). So the launcher's default is now `-Load quick`: the save is written as
+  `<career>_QuickSave.pcsav` (never over a quicksave the player made, unless `-ReplaceQuickSave`) and `QuickLoad`ed; no menu
+  driving, no restart. The files it creates are listed in `save-backups\generated.txt`; `-RestoreSaves` puts back the oldest backup
+  since the last restore and deletes exactly those.
+
+**Measured** (fake headset, John02, 15:32-15:49; saves, profiles and inis hash-identical to the run's backup afterwards):
+
+| play | how it was loaded | flag 4019 before | lines | wheels | seconds |
+|---|---|---|---|---|---|
+| first meeting | the Load screen, the career's own plot | 0 | 5 | 2 (the first at once) | 19.8 |
+| repeat, no rewind (control) | already in the level | 1 | 6 | 1 (after 5 lines) | 23.7 |
+| rewound | the Load screen | 0 | 5 | 2 (at once) | 19.8 |
+| rewound | `QuickLoad` of the game's quicksave, rewritten | 0 | 5 | 2 | 19.3 |
+| rewound | `QuickLoad` of a quicksave the tool wrote fresh | 0 | 5 | 2 | 19.3 |
+| rewound, launcher run 1 to 3 | `-Save John02_QuickSave -Rewind avina.json` | 0 | 5, 5, 5 | 2, 2, 2 | 19.3, 19.8, 19.3 |
+
+The beat (Avina, the Presidium's VI) set `FIRST_TIME_TALKED_TO.Avina` (4019), two codex entries (5814, 5815), the dialog's
+`UseAtEnd.Gen0` (3365) and cleared `NoncombatZoneActive` (5534), banter zone integer 69 to 0; the rewound play set exactly the same
+values again. The first meeting replayed 6 of 6 times, the repeat branch played when not rewound. Each launcher run took about 45 s
+from the command to the conversation's end (the replies picked by `mevr convo pick`/`skip`).
+
+Not yet tested: a beat whose rewind needs the map state (someone killed or moved by it: `--with-maps`), a beat that changes levels
+or the squad, other careers and levels than John02 in the Citadel, and the Citadel arrival (needs a save from before it).
+
 
 ## Flowing conversations: the walk-up scenes as the game's own barks (2026-11-09, evening)
 
