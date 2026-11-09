@@ -11769,6 +11769,7 @@ int RunPowerWheelTests();
 int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
+int RunBodySlotsSeatedTests();
 int RunFloorLockTests();
 int RunCameraDiagnosticTests();
 int RunLandmarkTests();
@@ -11945,6 +11946,7 @@ int main() {
     gFailures += RunVoiceMenuTests();
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
+    gFailures += RunBodySlotsSeatedTests();
     gFailures += RunFloorLockTests();
     gFailures += RunCameraDiagnosticTests();
     gFailures += RunLandmarkTests();

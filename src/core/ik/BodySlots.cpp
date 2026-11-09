@@ -71,6 +71,21 @@ Layout DefaultLayout() {
     return layout;
 }
 
+Layout SeatedLayout(Layout const& standing) {
+    Layout layout = standing;
+    layout.eyeHeight = kReferenceEyeHeight;  // fixed meters, never the standing body's scale
+    layout.slots[0].offset = {0.28, -0.42, 0.18};
+    layout.slots[2].offset = {-0.28, -0.42, 0.18};
+    layout.slots[1].offset = {0.28, -0.04, -0.14};
+    layout.slots[3].offset = {-0.28, -0.04, -0.14};
+    for (Slot& slot : layout.slots) slot.radius = 0.20;
+    return layout;
+}
+
+Slot SeatedGrenadeSlot() {
+    return {"grenade", Weapon::None, {-0.10, -0.18, 0.08}, 0.10};
+}
+
 double Scale(Layout const& layout) {
     double const scale = layout.eyeHeight / kReferenceEyeHeight;
     return std::isfinite(scale) ? std::clamp(scale, 0.5, 1.5) : 1.0;

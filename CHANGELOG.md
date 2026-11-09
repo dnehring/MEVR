@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Reachable seated holsters.** Seated play raises and moves the hip grab zones forward over the thighs, with larger
+  zones and independently adjustable shoulder/chest reach points. Standing placement is unchanged. The native weapon
+  wheel can draw while seated as a button alternative; `[Holsters] seatedWeaponWheel = 0` disables that fallback.
+
 - **Update directly from Setup.** Welcome > Updates can download, verify and install a newer release without opening
   a browser. It waits for the game to close and preserves game settings, VR profiles and calibration. Older installers
   need one manual upgrade to gain this feature.

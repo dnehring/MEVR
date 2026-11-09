@@ -279,7 +279,10 @@ switching frameworks.
   because the game's RB casts the mapped power for any press under its 0.3 s; `powerWheel = y/x/b` are still RB.
   Contact haptics while the hand is in a slot
   (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
-  `core/xr/Floor`, STAGE). Squad weapons: below. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
+  `core/xr/Floor`, STAGE). Seated uses fixed-metre head-relative reach points instead (research/19 section 12): raised,
+  forward hips, adjustable `seatedHipRight/Left`, `seatedShoulderRight/Left`, `seatedGrenade`; `seatedWeaponWheel = 1`
+  permits the native weapon wheel's draw on close as a seated button fallback. Squad weapons: below. Settings:
+  `[Holsters]` in `ASI\LE1MEVR.ini`.
   **Only holsters draw** (`onlyHolstersDraw = 1`, 2026-10-25): on foot in VR with tracked controllers, once the
   CallFunction hook is in, the game's own draws with the weapon away (`SFXPawn_Player.DrawPrimaryWeapon`: melee and
   grenade buttons, the weapon wheel, the holster key's toggle) are skipped by `engine/call_function`'s skip handler (it

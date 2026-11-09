@@ -289,7 +289,7 @@
 			</div>
 			<button class="btn primary" id="calibrate" data-event-click="cmd('calibrate')"><div class="sweep"/><div class="bi i-target"/><span>{{cal_action}}</span></button>
 		</div>
-		<div class="row" data-class-disabled="!position_known"><div class="rl"><div class="rlab">Play position</div><div class="rdesc">Seated keeps a standing body with your head motion on top. Crouch with L3; lowering your head never crouches Shepard.</div><div class="note" data-if="!position_known">Available once your controllers are tracked.</div></div>
+		<div class="row" data-class-disabled="!position_known"><div class="rl"><div class="rlab">Play position</div><div class="rdesc">Seated keeps a standing body with your head motion on top. Crouch with L3; lowering your head never crouches Shepard.</div><div class="note" data-if="play_position == 'seated'">Holsters sit higher and forward. For a button draw, use the native Weapon wheel (Controls &gt; Left trigger), choose Shepard and a weapon, then release.</div><div class="note" data-if="!position_known">Available once your controllers are tracked.</div></div>
 			<div class="seg"><button class="segb" data-class-on="play_position == 'standing'" data-event-click="pick('play_position','standing')">Standing</button><button class="segb" data-class-on="play_position == 'seated'" data-event-click="pick('play_position','seated')">Seated</button></div></div>
 		<div class="tiles">
 			<div class="tile"><div class="tl">Standing eye height</div><div class="tv">{{t_stand}}<span class="tu">m</span></div></div>

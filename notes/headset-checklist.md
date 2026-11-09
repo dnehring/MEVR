@@ -1,6 +1,15 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-09 seated holster reach (galaxy-labels; research/19 section 12; owner builds): with seated mode and both
+  a fresh profile and a tall saved standing height, draw/return pistol, cross-draw shotgun, both shoulder rifles; check
+  chair arms/thigh clearance, early buzz, look-down/lean/yaw/recenter, no accidental draws while resting or aiming.
+  Take/return/throw grenades with both hands, verify grenade versus holster/support-grip priority and repeat with weapon
+  holsters disabled. Reload and restart after changing each seated offset/radius; standing offsets/remaps/off switches
+  must survive. In a combat area use the native weapon wheel to choose Shepard's pistol/rifles from holstered, release,
+  hold/release the right grip, cancel/close without a choice; verify fallback opt-out and trigger refusal. Switch Standing:
+  original hip/shoulder/chest reach, height scaling, physical crouch, L3, grip-hold, powers and weapon-wheel policy remain.
+
 - [ ] 2026-11-08 in-memory camera diagnostic (research/63, performance priority 1): with a normal build of
   the candidate, open classic VR hands calibration and confirm current camera measurements. Use trigger
   alignment after recentering, then verify the explicitly saved profile survives restart. Arm-length Save
