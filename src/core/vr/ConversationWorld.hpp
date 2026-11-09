@@ -167,4 +167,20 @@ std::string ConversationKey(std::string_view name);
 // the game's own narration left out): empty for a conversation not in the table. `name` as IsSetPiece takes it.
 std::span<int const> FlowEntries(std::string_view name);
 
+// ---- Walking during a conversation (research/59 "Walking during conversations", 2026-11-09) ---------------------------------
+// The owner: a conversation should feel like the game itself, where "I can somewhat move around", with "some sort of barrier
+// to ensure that the conversation just doesn't get ejected". In the world mode the mod moves Shepard's pawn and the held view
+// by the left stick while the wheel is down: this is the step. The stick (x right, y forward, -1..1; a dead zone of 0.15) moves
+// `place` along the head's world yaw (`headYawDeg`, Unreal's: 0 along +X, 90 along +Y) at `speedUnitsPerS` for `dtS`, kept
+// within `leashUnits` of `anchor` horizontally: a step that would leave the circle slides along it (`atLeash`), and a place
+// already outside (the anchor moved) may only come nearer. The z is the caller's (the floor). `moved` is false for a stick in
+// the dead zone or no time.
+struct PlayerStep {
+    Vec3 place;
+    bool moved = false;
+    bool atLeash = false;
+};
+PlayerStep StepPlayer(Vec3 const& place, Vec3 const& anchor, double leashUnits, double stickX, double stickY, double headYawDeg,
+    double speedUnitsPerS, double dtS);
+
 } // namespace mevr::vr::conversation_world

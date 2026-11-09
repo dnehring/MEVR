@@ -576,6 +576,39 @@ launching into the citadel with a custom generated save"): Trilogy Save Editor (
 map name, location and rotation but only through its GUI, so a save writer of our own from its `src/save_data/mass_effect_1_le`
 format is the way; a separate job.
 
+## Walking during conversations (2026-11-09, evening)
+
+The owner, choosing the ambitious route: a conversation should be "actually within the game itself and not a dedicated
+experience or the camera back and forth with different placements"; the walk-up scenes play in the game (the flow, above),
+and "when we're talking that I can somewhat move around, but we may have some sort of barrier to ensure that the conversation
+just doesn't get ejected".
+
+**What ejects a conversation.** Nothing by distance: `UpdateConversation`'s interrupt range applies to ambient conversations only
+(above). The stage re-places Shepard at camera cuts, which keep-in-place already undoes; the wheel takes the left stick while it
+is up. So the barrier is ours, for sense and safety: a leash around the conversation's owner, the floor and the walls.
+
+**Built** (`[Cinematics] worldMove = 1`, default on with the world mode; `worldMoveLeashM` 3.0; `worldMoveSpeedMS` 1.4):
+in the world mode, after the opening and while the wheel is down, the left stick moves Shepard's pawn along the head's world
+facing (`engine::OrientationToWorld` of the host view's head pose in the held frame) at the walk speed (a gentle push walks
+slowly: the deflection past a 0.15 dead zone), inside the leash: a step that would leave the circle slides along it, a place
+already outside (the owner moved) may only come nearer (`cw::StepPlayer`, unit-tested). Before the step: the floor under the
+target by `Actor.Trace` (Part B's `FloorZ`), the pawn's height above its floor kept, a drop or rise past 60 units refused (a
+ledge, a step); the shots' `LineOfSight` from the pawn's place to the target refused by a wall; `Actor.SetLocation` (what
+keep-in-place uses), its own refusal respected. After the step everything that defines the player's place moves by the same
+vector: the held view (`gC.hold`, so the host's render, the game's camera written into the POV and the people's turning
+follow), the frame handed to `view_anchor::Hold` (arm IK, body follow), Shepard's head-bone anchors (`FollowHeadSettled` never
+reads the walk as a jump) and his kept place in `gStay` (keep-in-place puts him back where he walked, not where he started).
+The pawn's `Velocity` is set to the step's (body follow's legs animate above 60 u/s; whether the conversation's animation tree
+lets the legs run is [verify]), cleared when the stick rests, the wheel opens or the conversation ends. Logs `convo: at N s the
+player walks: ...` once, and at the end `convo: the player walked N m in K steps; the leash held L steps back, R refused`; the
+summary's `playerWalkedM`, `leashHits`, `moveRefused`.
+
+**Not done here:** the squad doesn't follow a walking Shepard during the conversation (they stand where Part B seated them);
+the NPCs turn toward him (keep-in-place's turn, `worldTurnDegPerS`) but don't step; no visible barrier at the leash (a haptic
+tick or the vignette could mark it); the stick's dead zone and the speed are untried in a headset. [verify] in the game: walk
+during the Garrus conversation at C-Sec (the launcher: `sta70_garrus`, its wheel start) with `mevr` replay inputs or a real
+stick; the kept place and the hold staying together across a camera cut; the subtitle and the wheel following the walk.
+
 ## Limits and next
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the

@@ -201,6 +201,13 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   marks and observed returns should cancel; Shepard stays kept. Check locomotion/gestures, turns, collision/timeout, no drawn
   jumps, and no stale velocity or AI move on disable/end. Native returns exactly at the already-kept place cannot be detected
   by position sampling alone. Still off by default; NOT yet checked in the game. (research/59 "Walking to marks (prototype)")
+- [ ] **Walking during conversations** (built 2026-11-09, untested in the game; research/59 "Walking during conversations";
+  `[Cinematics] worldMove = 1` with `conversations = world`): in a wheel conversation (Garrus at C-Sec Academy), with the wheel
+  down, push the left stick: you walk where you look at a walking pace, the people turn to follow you, the subtitle stays under the
+  speaker's face and the wheel in front of you when it opens; at 3 m from the speaker you slide along an invisible circle, a wall or
+  a ledge stops you; the wheel takes the stick while it's up. Watch for your body or arms left behind, a snap back onto the mark at
+  a camera cut (the log's `kept in place` for Shepard), or the squad standing where they were. `worldMoveLeashM`, `worldMoveSpeedMS`
+  live; `worldMove = 0` off.
 - [ ] **Flowing conversations** (built 2026-11-09; two Noveria chains checked as barks on the fake headset, research/59 "Flowing
   conversations" > "In the game"; `[Cinematics] worldFlow = all` with `conversations = world`): in a career that hasn't seen them,
   the walk-up scenes play as barks while you keep walking (Garrus and the Executor arguing at C-Sec, Chellick's opening lines,
