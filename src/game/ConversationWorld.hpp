@@ -25,6 +25,8 @@ struct Link {
 // The camera-update handler (the on-foot view and the POV's address); after ue3::runtime::Ready.
 void TryStartup();
 void Tick(double deltaSeconds, Link const& link);
+// The world mode is asked for: the conversation hooks (engine/ConversationHooks; research/69) should go in.
+bool WantsHooks();
 // A conversation is shown in the world now (arm IK keeps Shepard's arms on the controllers as on foot).
 bool InWorld();
 // `mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | walk <x> <y> [seconds] | off]`.

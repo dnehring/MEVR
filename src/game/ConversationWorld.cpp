@@ -9,6 +9,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "engine/ProcessEvent.hpp"
+#include "engine/ConversationHooks.hpp"
 #include "engine/SettingsFile.hpp"
 #include "engine/Skeleton.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -92,6 +93,18 @@ ue3::FunctionRef gPushMove{"SFXGame.BioAiController.PushMoveToPoint"};
 ue3::ClassRef gMoveDataClass{"SFXGame.BioSeqData_MoveToPoint"};
 ue3::FieldRef gMoveTerminate{"SFXGame.BioSeqData_MoveToPoint", "Terminate"};
 
+// Walking and the level's triggers (research/69 item 5): Actor.SetLocation is UWorld::FarMoveActor, which begins and ends touches
+// like any move, so a step may not change which triggers Shepard's cylinder overlaps.
+ue3::ClassRef gTriggerClass{"Engine.Trigger"};
+ue3::ClassRef gTriggerVolumeClass{"Engine.TriggerVolume"};
+ue3::FieldRef gCollisionComponent{"Engine.Actor", "CollisionComponent"};
+ue3::FunctionRef gPointCheck{"Engine.Actor.PointCheckComponent"};
+ue3::FieldRef gPawnCylinder{"Engine.Pawn", "CylinderComponent"};
+ue3::FieldRef gCylinderRadius{"Engine.CylinderComponent", "CollisionRadius"};
+ue3::FieldRef gCylinderHeight{"Engine.CylinderComponent", "CollisionHeight"};
+// Shepard not in the scene (research/69 item 3).
+ue3::FieldRef gActorHidden{"Engine.Actor", "bHidden"};
+
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
 struct Settings {
     cw::Mode mode = cw::Mode::Screen;  // the shipped default (research/52); world is opt-in
@@ -104,6 +117,11 @@ struct Settings {
     float wheelWidthM = 0.40f;
     float wheelDistanceM = 0.12f;
     bool stay = true;                  // keep people where they stand: undo the conversation's jumps onto its marks (worldStay)
+    bool staySource = true;            // ... and withhold the placements in the game's own placement function (worldStaySource)
+    float absentM = 15.0f;             // Shepard this far from the conversation's owner and out of its sight: a cutscene (worldAbsentM, 0 off)
+    bool moveTriggers = true;          // the walk never changes which triggers Shepard touches (worldMoveTriggers)
+    int autoScreen = 1;                // a scene found at run time to be no place for the player: 0 off, 1 logged only, 2 shown on
+                                       // the 3D screen (worldAutoScreen = off | log | on; research/69 item 3)
     int walk = 0;                     // prototype: 0 off, 1 AI (slide fallback), 2 slide (worldWalk)
     float walkSettleS = 2.5f;
     float walkMinM = 0.5f;
@@ -185,16 +203,27 @@ void RefreshSettings() {
     s.moveLeashM = number("worldMoveLeashM", s.moveLeashM, 0.0f, 20.0f);
     s.moveSpeedMS = number("worldMoveSpeedMS", s.moveSpeedMS, 0.2f, 4.0f);
     s.moveClearM = number("worldMoveClearM", s.moveClearM, 0.0f, 3.0f);
+    s.staySource = number("worldStaySource", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.absentM = number("worldAbsentM", s.absentM, 0.0f, 200.0f);
+    s.moveTriggers = number("worldMoveTriggers", 1.0f, 0.0f, 1.0f) != 0.0f;
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldAutoScreen")) {
+        std::string const v = ini::Lower(ini::Trim(*text));
+        s.autoScreen = v == "off" || v == "0" ? 0 : v == "on" || v == "2" ? 2 : 1;
+    }
     ReadCrop(loaded.file, "subtitleCrop", s.subtitleCrop);
     ReadCrop(loaded.file, "wheelCrop", s.wheelCrop);
     std::string const text = std::format("conversations = {}, worldFollow = {}, subtitles {:.1f} deg tall {:.2f} m under the face, the wheel "
                                          "{} {:.2f} m wide, set pieces {}, the game's camera {}, worldWalk = {} (settle {:.2f} s, "
-                                         "min {:.2f} m, speed {:.2f} m/s), the opening {}, arrange {} ({:.1f} m, {:.0f} deg), the player's walk {}",
+                                         "min {:.2f} m, speed {:.2f} m/s), the opening {}, arrange {} ({:.1f} m, {:.0f} deg), the player's walk {}, "
+                                         "placements {}, Shepard absent beyond {:.0f} m, worldAutoScreen = {}",
         cw::Name(s.mode), s.follow ? 1 : 0,
         s.subtitleHeightDeg, s.subtitleBelowM, s.wheelHand == 0 ? "at the left hand" : s.wheelHand == 1 ? "at the right hand" : "in front",
         s.wheelWidthM, s.setPiecesOnScreen ? "on the 3D screen" : "in the world", s.camera ? "at the player's place" : "the director's",
         s.walk, s.walkSettleS, s.walkMinM, s.walkSpeedMS, s.openingAccept ? "accepted" : "kept", s.arrange ? "on" : "off", s.arcM, s.viewDeg,
-        s.move ? std::format("on (leash {:.1f} m, {:.2f} m/s, {:.2f} m clear of people)", s.moveLeashM, s.moveSpeedMS, s.moveClearM) : std::string("off"));
+        s.move ? std::format("on (leash {:.1f} m, {:.2f} m/s, {:.2f} m clear of people, triggers {})", s.moveLeashM, s.moveSpeedMS, s.moveClearM,
+                     s.moveTriggers ? "kept" : "free") : std::string("off"),
+        s.staySource ? "withheld at the source" : "undone after the fact", s.absentM,
+        s.autoScreen == 0 ? "off" : s.autoScreen == 2 ? "on" : "log");
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("convo: [Cinematics] {}", text);
@@ -481,6 +510,14 @@ struct Convo {
     int moveSteps = 0;          // ticks that moved
     int leashHits = 0;          // ticks the leash held the step back
     int clearHits = 0;          // ticks a person in the way held the step (worldMoveClearM)
+    int triggerHits = 0;        // steps refused because they would begin or end a trigger's touch (worldMoveTriggers)
+    std::string triggerName;    // the last such trigger
+    // Placements withheld in the game's own placement function (engine/ConversationHooks; research/69 item 4).
+    int sourceKept = 0;
+    double sourceFarUnits = 0.0;       // the farthest mark a person was not put on
+    bool sourceLogged = false;
+    std::string absentWhy;             // why this scene is no place for the player, found at run time (research/69 item 3)
+    bool autoScreened = false;         // ... and it was moved to the 3D screen for it (worldAutoScreen = on)
     int moveRefused = 0;        // steps refused: no floor, a ledge, a wall, SetLocation
     bool moving = false;        // a velocity is set on the pawn
     bool moveLogged = false;    // the first step logged
@@ -514,6 +551,25 @@ std::vector<Stay> gStay;
 std::uint64_t gStayMs = 0;
 bool gInWorldForStay = false;  // set by Tick: the world view is up
 
+// The game's own placement function asks (engine/ConversationHooks; research/69 item 4): after the accepted opening a person of
+// this conversation is not put on a stage mark; the call's facing still applies. Called on the game thread from inside the
+// conversation's code: it reads the mod's own state and nothing of the engine. Not with the walk-to-marks prototype, which
+// learns each mark from the jump.
+bool KeepAtSource(void const* conversation, void const* actor, float const* location) {
+    if (!gC.on || !gC.world || !gInWorldForStay || !gSettings.stay || !gSettings.staySource || gSettings.walk != 0 || !gC.openingDone ||
+        conversation != gC.object) {
+        return false;
+    }
+    for (Stay const& st : gStay) {
+        if (st.actor == actor) {
+            ++gC.sourceKept;
+            gC.sourceFarUnits = std::max(gC.sourceFarUnits, std::hypot(location[0] - st.place.x, location[1] - st.place.y));
+            return true;
+        }
+    }
+    return false;
+}
+
 constexpr double kJumpUnits = 30.0;      // in one frame: a run moves under 3 units a frame at 90 Hz, a placement metres
 constexpr double kStayMaxUnits = 600.0;  // farther: a scripted entrance, let through
 
@@ -531,6 +587,94 @@ ik::Vec3 WalkPoint(cw::Vec3 v) {
 }
 ue3::Vector EnginePoint(ik::Vec3 v) {
     return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z)};
+}
+
+// ---- The walk and the level's triggers (research/69 item 5) -------------------------------------------------------------------
+// Actor.SetLocation is UWorld::FarMoveActor (0x3FFCE0), which, for an actor that collides, finds the actors it now touches
+// and tells both sides, as any move does: a step into a trigger volume would fire its Kismet touch (a scene that then can't
+// start during this conversation and may never fire again), a step out of a streaming volume would stream its area out. So
+// a step may not change which triggers Shepard's cylinder overlaps: the triggers near the conversation are gathered (every
+// Engine.Trigger and TriggerVolume whose collision is within the leash) and each step asks the engine's own point check,
+// Actor.PointCheckComponent with the cylinder as a box, at both ends.
+struct TriggerNear {
+    ue3::Object* actor = nullptr;
+    ue3::Object* component = nullptr;
+    std::string name;
+};
+std::vector<TriggerNear> gTriggers;
+std::uint64_t gTriggersMs = 0;
+std::uint32_t gTriggersFor = 0;  // the conversation (its number) they were gathered for
+
+bool Overlaps(TriggerNear const& t, ik::Vec3 at, ik::Vec3 extent) {
+    ue3::Params p(ue3::runtime::Get(), gPointCheck.Get());
+    if (!p.Valid() || !p.Set("InComponent", t.component) ||
+        !p.Set("PointLocation", ue3::Vector{static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)}) ||
+        !p.Set("PointExtent", ue3::Vector{static_cast<float>(extent.x), static_cast<float>(extent.y), static_cast<float>(extent.z)})) {
+        return false;
+    }
+    ue3::runtime::Call(t.actor, gPointCheck.Get(), p);
+    return p.ReturnBool().value_or(false);
+}
+
+void GatherTriggers(ik::Vec3 anchor) {
+    gTriggers.clear();
+    if (gPointCheck.Get() == nullptr || gCollisionComponent.Get() == nullptr) {
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    double const reach = gSettings.moveLeashM * kUnitsPerMeter + 300.0;
+    ik::Vec3 const box{reach, reach, 400.0};
+    std::int32_t const n = r.ObjectCount();
+    for (std::int32_t i = 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !(ue3::IsA(o, gTriggerClass) || ue3::IsA(o, gTriggerVolumeClass)) ||
+            r.NameText(o).rfind("Default__", 0) == 0) {
+            continue;
+        }
+        ue3::Object* const component = gCollisionComponent.Read<ue3::Object*>(o).value_or(nullptr);
+        if (component == nullptr) {
+            continue;
+        }
+        TriggerNear t{o, component, ShortName(o)};
+        if (Overlaps(t, anchor, box)) {  // a component not in the world (its level hidden) answers no
+            gTriggers.push_back(std::move(t));
+        }
+    }
+}
+
+// True if the step from `from` to `to` begins or ends a trigger's touch; `which` and `enters` say which and how.
+bool StepChangesTouch(ue3::Object* pawn, ik::Vec3 anchor, ik::Vec3 from, ik::Vec3 to, std::string& which, bool& enters) {
+    std::uint64_t const now = GetTickCount64();
+    if (gTriggersFor != gC.number || now - gTriggersMs > 5000) {
+        bool const first = gTriggersFor != gC.number;
+        GatherTriggers(anchor);
+        gTriggersFor = gC.number;
+        gTriggersMs = now;
+        if (first) {
+            std::string names;
+            for (TriggerNear const& t : gTriggers) {
+                names += (names.empty() ? "" : ", ") + t.name;
+            }
+            log::Info("convo: the walk's triggers: {} within the leash of the owner{}{}", gTriggers.size(), names.empty() ? "" : ": ", names);
+        }
+    }
+    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+    double const radius = cylinder != nullptr ? gCylinderRadius.Read<float>(cylinder).value_or(34.0f) : 34.0f;
+    double const half = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder).value_or(78.0f) : 78.0f;
+    ik::Vec3 const extent{radius, radius, half};
+    for (TriggerNear const& t : gTriggers) {
+        if (!ue3::runtime::IsAlive(t.actor)) {
+            continue;
+        }
+        bool const before = Overlaps(t, from, extent);
+        bool const after = Overlaps(t, to, extent);
+        if (before != after) {
+            which = t.name;
+            enters = after;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool PutAt(ue3::Object* actor, ik::Vec3 point) {
@@ -1192,6 +1336,20 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         stop();
         return;
     }
+    if (gSettings.moveTriggers) {
+        std::string which;
+        bool enters = false;
+        if (StepChangesTouch(pawn, anchor, V(*at), target, which, enters)) {
+            ++gC.triggerHits;
+            if (gC.triggerName != which) {
+                gC.triggerName = which;
+                log::Info("convo: at {:.1f} s the walk stops at {}: the step would {} it, and a trigger's touch belongs to the level's script",
+                    Seconds(), which, enters ? "enter" : "leave");
+            }
+            stop();
+            return;
+        }
+    }
     if (!PutAt(pawn, target)) {
         ++gC.moveRefused;
         stop();
@@ -1243,6 +1401,31 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
     gC.world = CurrentMode() == cw::Mode::World && !gC.setPiece;
     ue3::Object* const pawn = player::Pawn(controller);
     gC.playerPawn = pawn;
+    // Shepard not in the scene (research/69 item 3; the owner: "some which don't have Shepard at all should be the typical cut
+    // scene"), read from the live scene whatever the name list says: his pawn hidden, or farther than worldAbsentM from the
+    // conversation's owner and out of its sight (the stage has placed everyone by now). Logged; shown on the screen only with
+    // worldAutoScreen = on, until the sweep has shown which scenes the rules name.
+    if (gC.world && gSettings.autoScreen != 0 && pawn != nullptr) {
+        ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
+        auto const pawnAt = player::Location(pawn);
+        auto const ownerAt = owner != nullptr && owner != pawn ? player::Location(owner) : std::nullopt;
+        if (gActorHidden.ReadBool(pawn).value_or(false)) {
+            gC.absentWhy = "Shepard's pawn is hidden";
+        } else if (gSettings.absentM > 0.0f && pawnAt && ownerAt && Dist(V(*pawnAt), V(*ownerAt)) > gSettings.absentM * kUnitsPerMeter &&
+                   !LineOfSight(pawn, V(*pawnAt) + ik::Vec3{0.0, 0.0, 60.0}, V(*ownerAt) + ik::Vec3{0.0, 0.0, 60.0})) {
+            gC.absentWhy = std::format("Shepard is {:.0f} m from {} and out of its sight", Dist(V(*pawnAt), V(*ownerAt)) / kUnitsPerMeter,
+                ShortName(owner));
+        }
+        if (!gC.absentWhy.empty()) {
+            gC.autoScreened = gSettings.autoScreen == 2;
+            log::Info("convo: {}: no place for the player in this scene; {}", gC.absentWhy,
+                gC.autoScreened ? "shown on the 3D screen (worldAutoScreen = on)" : "logged only (worldAutoScreen = log), shown in the world");
+            if (gC.autoScreened) {
+                gC.setPiece = true;
+                gC.world = false;
+            }
+        }
+    }
     ue3::Object* const stage = gStage.Read<ue3::Object*>(conv).value_or(nullptr);
     gC.stage = stage != nullptr;
     log::Info("convo: conversation {} began: {} (owner {}, player {}, stage {}{}{}); shown {}", gC.number, gC.name,
@@ -1342,10 +1525,15 @@ void End(char const* why) {
         log::Info("convo: in the world: Shepard's head bone was at most {:.2f} m from the player's held eyes; {} jumps onto marks undone "
                   "(people kept in place, {} of them seen in a drawn frame), {} long moves let through", gC.eyeToViewMax / kUnitsPerMeter, gC.kept,
             gDrawnJumps, gC.letGo);
-        if (gC.moveSteps > 0 || gC.moveRefused > 0 || gC.leashHits > 0 || gC.clearHits > 0) {
-            log::Info("convo: the player walked {:.2f} m in {} steps; the leash held {} steps back, people in the way {}, {} refused (no floor, "
-                      "a ledge, a wall, SetLocation)",
-                gC.movedUnits / kUnitsPerMeter, gC.moveSteps, gC.leashHits, gC.clearHits, gC.moveRefused);
+        if (gC.sourceKept > 0) {
+            log::Info("convo: {} placements onto marks withheld at their source (the farthest mark {:.2f} m away)", gC.sourceKept,
+                gC.sourceFarUnits / kUnitsPerMeter);
+        }
+        if (gC.moveSteps > 0 || gC.moveRefused > 0 || gC.leashHits > 0 || gC.clearHits > 0 || gC.triggerHits > 0) {
+            log::Info("convo: the player walked {:.2f} m in {} steps; the leash held {} steps back, people in the way {}, a trigger's edge {}{}, "
+                      "{} refused (no floor, a ledge, a wall, SetLocation)",
+                gC.movedUnits / kUnitsPerMeter, gC.moveSteps, gC.leashHits, gC.clearHits, gC.triggerHits,
+                gC.triggerName.empty() ? std::string() : " (" + gC.triggerName + ")", gC.moveRefused);
         }
     }
     if (gC.moving && ue3::runtime::IsAlive(gC.playerPawn)) {
@@ -1360,13 +1548,15 @@ void End(char const* why) {
               "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
               "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
-              "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}}}",
+              "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
+              "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
-        gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused);
+        gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
+        gC.autoScreened ? "true" : "false");
     gC = {};
 }
 
@@ -1550,8 +1740,30 @@ void TryStartup() {
     engine::process_event::AddPostHandler(update, &OnUpdateCamera);
 }
 
+// A scene whose shots are framed from far off is composed for a camera somewhere else (research/59's survey: the framed set
+// pieces; research/69 item 3): at least three shots and two thirds of them from more than 8 m away. Once per conversation.
+void CheckFarShots() {
+    if (!gC.world || gSettings.autoScreen == 0 || !gC.absentWhy.empty() || gC.shots < 3 || gC.shotsFar * 3 < gC.shots * 2) {
+        return;
+    }
+    gC.absentWhy = std::format("{} of the first {} shots are framed from more than 8 m away (the farthest {:.0f} m)", gC.shotsFar, gC.shots,
+        gC.cameraFarM);
+    gC.autoScreened = gSettings.autoScreen == 2;
+    log::Info("convo: at {:.1f} s {}: a scene composed for a camera elsewhere; {}", Seconds(), gC.absentWhy,
+        gC.autoScreened ? "moved to the 3D screen (worldAutoScreen = on)" : "logged only (worldAutoScreen = log), still in the world");
+    if (gC.autoScreened) {
+        gC.setPiece = true;
+        gC.world = false;  // people are no longer kept: the lines' facing tracks put them back on their marks
+    }
+}
+
+bool WantsHooks() {
+    return CurrentMode() == cw::Mode::World;
+}
+
 void Tick(double deltaSeconds, Link const& link) {
     RefreshSettings();
+    engine::conversation_hooks::SetKeepProvider(CurrentMode() == cw::Mode::World ? &KeepAtSource : nullptr);
     if (!gSettings.stay || gSettings.walk == 0) {
         EndWalks("worldStay or worldWalk disabled");
     }
@@ -1597,6 +1809,13 @@ void Tick(double deltaSeconds, Link const& link) {
     if (now >= gNextSampleMs) {
         gNextSampleMs = now + 100;
         Sample(conv, controller, pawn, eyes);
+        CheckFarShots();
+    }
+    if (gC.sourceKept > 0 && !gC.sourceLogged) {
+        gC.sourceLogged = true;
+        log::Info("convo: at {:.1f} s the game's placement of a person onto a mark {:.2f} m away was withheld at its source "
+                  "(UBioConversation::SetPositionRotator; the facing applied): nobody jumps, nothing to undo", Seconds(),
+            gC.sourceFarUnits / kUnitsPerMeter);
     }
     // ---- The world mode ----
     bool const world = CurrentMode() == cw::Mode::World && !gC.setPiece && link.publish != nullptr;  // live, as the 3D screen's setting
@@ -1817,6 +2036,7 @@ void LogStats() {
 }
 
 void Shutdown(Link const& link) {
+    engine::conversation_hooks::SetKeepProvider(nullptr);
     End("the mod unloads");
     StopWorld(link, "the mod unloads");
 }

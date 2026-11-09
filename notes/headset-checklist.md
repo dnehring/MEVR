@@ -210,6 +210,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   a ledge stops you; the wheel takes the stick while it's up. Watch for your body or arms left behind, a snap back onto the mark at
   a camera cut (the log's `kept in place` for Shepard), or the squad standing where they were. `worldMoveLeashM`, `worldMoveSpeedMS`
   live; `worldMove = 0` off.
+- [ ] **First person for every conversation: the robustness round** (built 2026-11-09, research/69 "To check in the game"; Claude
+  checks these on the fake headset first, when the game folder is free): placements withheld at their source (nobody moves, the
+  log's `sourceKept` above zero and `kept` zero); a walk stopping at a trigger's edge; a bystander's bark refused over a flowed
+  scene; `worldAutoScreen = log` naming the scenes with no place for the player. Then in the headset: a staged conversation
+  (the medical bay, Anderson on the Normandy) with nobody shifting at the cuts, and people still turning to face the speaker.
 - [ ] **Flowing conversations** (built 2026-11-09; two Noveria chains checked as barks on the fake headset, research/59 "Flowing
   conversations" > "In the game"; `[Cinematics] worldFlow = all` with `conversations = world`): in a career that hasn't seen them,
   the walk-up scenes play as barks while you keep walking (Garrus and the Executor arguing at C-Sec, Chellick's opening lines,

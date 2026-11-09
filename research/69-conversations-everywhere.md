@@ -26,97 +26,171 @@ The mode can be the default when all of these hold, each backed by the game's co
 5. **Measured on all of them.** Every conversation played once in its plot state by a sweep, each summary inside limits
    (research/59's survey has 28 of 491).
 
-Items 1 to 4 are this note's first round (the owner's "1, 3, 4, 5" of the list given in the session, numbered as there below);
-the sweep is item 2 of that list, which the save writer's story-beat rewind makes possible (research/59 "A save instead of
-open") and comes after.
+Items 1, 3, 4 and 5 below are this note's first round (numbered as in the list given to the owner); item 2 of that list is the
+sweep, which the save writer's story-beat rewind makes possible (research/59 "A save instead of open") and comes after.
 
 ## Status
 
-| # | Item | State | Result so far |
+"Read" means the game's code was read and the answer is recorded below. "Built" means the change is in the mod, compiles in all
+three configurations and passes the offline tests. Nothing in this table has run in the game yet: that needs the game
+folder, which the release session holds.
+
+| # | Item | State | Result |
 |---|---|---|---|
-| 1 | Story safety of flowed (ambient) scenes | intentions written | - |
-| 3 | Cutscene or world, decided at run time | intentions written | - |
-| 4 | Keeping people in place at the source | intentions written | - |
-| 5 | Walking and the level's triggers | intentions written | - |
+| 1 | Story safety of flowed (ambient) scenes | read; built; game check pending | A line's plot effects are on the path both kinds of conversation share. An ambient one can be cut short, and then loses the effects of the lines it never reached. 6 conversations had a chain our flags newly exposed to that: they stay conversations (64 flow, was 68). The game's barks can no longer start over a flowed scene. |
+| 3 | Cutscene or world, decided at run time | data read; built log-only; game check pending | The packages can't say "Shepard isn't in this scene". Three run-time rules (pawn hidden; far from the owner and out of its sight; most shots framed from far away) name such scenes in the log and the survey's summary; they move a scene to the screen only with `worldAutoScreen = on`. |
+| 4 | Keeping people in place at the source | read; built; game check pending | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. The undo after the fact stays as the net. |
+| 5 | Walking and the level's triggers | read; built; game check pending | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
 | 2 | The sweep: every conversation in its plot state | not started | 28 of 491 played (research/59) |
-
-## Intentions
-
-Addresses are RVAs in `MassEffect1.exe` 2.0.0.48602, read with Ghidra (`tools/ghidra`); the conversation class's vtable is at
-`0x131EF20` (research/59 "Flowing conversations"). Nothing here copies decompiled code: findings are stated as behaviour, with
-the address.
-
-### 1. Story safety of flowed scenes
-
-**The risk.** `worldFlow` flags a chain start's entries `bAmbient`, and the game then plays that start through its ambient path:
-no conversation mode, no camera, the player free. If that path treats a line differently from the full path in anything but
-presentation, a flowed scene could leave a plot flag unset or a script output unfired, and a quest would hang hours later.
-
-**Questions for the code.**
-
-- Where does a line apply its plot effects (`nStateTransition` and its parameter on entries and replies, the conditional's
-  side effects, the journal and codex updates), and is that code reached the same way for an ambient line?
-- What does `BioSeqAct_StartConversation` fire when an ambient conversation ends, and when it is interrupted: the same output
-  links as a full one? (In the game the Garrus chain's end did start the wheel conversation: one data point.)
-- What does an interruption do (`UpdateConversation`'s distance test, a second conversation starting, a level transition): are
-  the remaining lines' plot effects applied, skipped or deferred?
-- What does a save during an ambient conversation keep? (The game refuses saves in conversation mode; ambient is on foot.)
-- Skipping: the full path lets the player skip a line; an ambient line can't be skipped. Anything keyed on the skip?
-
-**What will be built from the answers.** If the plot path is shared: record that with the addresses and close the item. If an
-interruption drops effects: the flowed chains default to never interrupted (`worldFlowLeashM = -1` exists) and, if a second
-conversation can still cut one off, the mod finishes the chain's effects or refuses the flow for chains that carry plot effects
-(the scan knows which lines have transitions: add them to its record, so the flow table can leave those out or mark them).
-
-### 3. Cutscene or world, decided at run time
-
-**The risk.** 21 set pieces go to the 3D screen by a generated list of names (`cw::IsSetPiece`). A conversation the scan
-misjudged, one a mod adds, or one where Shepard isn't there at all (a scene between other people, a stand-in double) would be
-shown from Shepard's place: a view of nothing, or of the wrong spot.
-
-**Questions for the data and the code.**
-
-- How does the game itself know whether the player takes part: the conversation's player pawn, the stage's marks, a speaker
-  tag, a hidden pawn? What do the scan's 491 records say (no player line, no player mark, the owner far from the start)?
-- At the start of a conversation, what can the mod read cheaply and reliably that the scan's verdict was computed from
-  (authored camera tracks per line, the stage type, move tracks on the player's group)?
-
-**What will be built.** A decision at the conversation's start from live data, with the generated list as one input:
-Shepard absent, hidden or doubled: cutscene. A fallback while it plays: when the shots turn out far from the player or not
-seeable for a stretch (the survey's runtime rule), switch to the screen under the dip from black, once, and stay there.
-
-### 4. Keeping people in place at the source
-
-**The risk.** Today a jump past 30 units within a frame and under 6 m is noticed after the game made it and undone with
-`SetLocation` before the draw. A threshold can't tell a mark snap from an authored move, and an undo is a second teleport.
-
-**Questions for the code.** Which native puts the conversation's people on the stage's marks, and when (at the start, at each
-camera cut, per line)? Is it one function with the actor and the mark as arguments, so a pre-hook can skip it per actor, as
-`engine/cover_acquire` does for cover? What else does it do that must still happen (facing, look-at targets, animation state)?
-
-**What will be built.** A hook on that native: in the world mode after the accepted opening, placements of people are skipped at
-the source (counted and logged); the reactive undo stays as the safety net and its count should fall to zero. Authored moves
-(matinee move tracks) are a different code path and stay.
-
-### 5. Walking and the level's triggers
-
-**The risk.** The walk moves Shepard's pawn with `Actor.SetLocation` inside a 3 m leash. If that fires touch events as a normal
-move does, a step during a conversation could enter a trigger volume: start another scene, stream a level, fire a Kismet touch.
-If it doesn't, the opposite: a trigger the player walked into silently never fires, and firing it late (when the conversation
-ends inside the volume) may or may not happen.
-
-**Questions for the code.** What does `AActor::SetLocation` (the script native) do about touching actors: the same touch and
-untouch notifications as a physics move, or none? What does the game do with a `BioTriggerStream` or a trigger touched in
-conversation mode?
-
-**What will be built.** Whichever the answer: the walk must not change what the level's script sees. Either a step whose end
-lies in a trigger volume the start isn't in is refused (a wall, in effect), or touches are suppressed during the walk and made
-consistent at the end. Decided by the reading.
 
 ## Findings
 
-(Filled in per item as the reading and the changes land.)
+Addresses are RVAs in `MassEffect1.exe` 2.0.0.48602, read with Ghidra (`tools/ghidra`, an isolated copy of the project while the
+shared one is locked) and named through the natives dump (`%LOCALAPPDATA%\MEVR\dump\natives-LE1-*.csv`: a script native's thunk
+names the vtable slot it calls). Vtables: `UBioConversation` `0x131EF20`, `ABioWorldInfo` `0x12969B0`, `ABioStage` `0x1321DC8`,
+`UBioSeqAct_StartConversation` `0x1327CD0`. Nothing here copies decompiled code: behaviour is stated in words, with the address.
+
+### 1. Story safety of flowed scenes
+
+**Where a line applies its plot effects.** In the function that starts an entry (`0xC7DCD0`): after the speaker and listener are
+resolved it runs the entry's `nStateTransition` through `ABioWorldInfo::ExecuteStateTransition` (slot `0x918`, `0xAB9850`) and
+fires the Kismet conversation-node event for its `nScriptIndex` (`0xC7EE20`), and only then looks at the ambient flag. A reply's
+transition and event are applied when the selected reply finishes (`0xC7F200`, slot `0x2F8`); an ambient conversation reaches
+that by selecting its one reply itself (`0xC7E2B0`, slot `0x2E8`). A reply that auto-continues is passed over in both kinds
+(the next entry is found by `0xC7D180` and started). The end (`UBioConversation::EndConversation`, `0xC7E630`, slot `0x2D8`)
+fires the conversation-ended events for both. `IsAmbient` (slot `0x310`) is asked only around presentation: the GUI, the
+camera, the stage's placement, the game mode. **So a flowed line that plays applies exactly what it would in a conversation.**
+
+**What can end an ambient conversation early, and never a full one.**
+
+- Distance: `UpdateConversation` (`0xC87830`) interrupts when the player is farther from the *current speaker* than the
+  conversation's interrupt range (the start action's, else the world's 25 m; `-1` turns the test off).
+- The owner gone, or the start action gone while the conversation was started by one.
+- **Any other conversation starting.** `ABioWorldInfo::StartConversation` (`0xB65A50`) starts a newcomer when no conversation
+  is current, or when the current one is ambient, which it first ends through `InterruptConversation` (`0xB60460`, slot
+  `0x9F0`). A current conversation that is not ambient refuses every newcomer (the newcomer's action is marked failed).
+
+An interruption ends the conversation through `EndCurrentConversation` (`0xB58790`): it sets the conversation's "ended" flag and
+calls `EndConversation`. **The lines not yet reached never start, so their transitions and node events never happen.**
+
+**What the level's script sees.** `BioSeqAct_StartConversation`'s update (`0xC969B0`) fires its first output when the
+conversation carries the "ended" flag, which a natural end and an interruption both set; its second on failure (a re-run
+detected, no conversation, the start refused); its third when the preload is done. So after an interruption the script goes on
+as after a whole scene. (In the game the Garrus chain's end started the wheel conversation: research/59.)
+
+**How exposed the flowed scenes were.** The scan now records each line's transition and node event
+(`tools/conversation-scan/Scan.cs`: `transition`, `script` on entries and replies). Of the 68 flowed conversations: 36 carry no
+plot effect on a flowed line; 10 only on the chain's first line, which the game applies the moment the conversation starts; 22
+after the first line. Of those 22, 17 start on a line the game's own data already marks ambient, so the unmodded game plays
+them as interruptible barks with the same effects: no exposure of ours. The other 5, and one more whose later effect sits on a
+line that was already ambient inside a chain we would start, are the exposure: **6 conversations had a chain the game plays as
+a conversation and our flags would have turned into interruptible barks with plot effects after the first line**: `jug20_wrex`,
+`prc1_human_radio`, `sp123_kahoku`, `war20_faizhou`, `war40_juliannabaynham` (9 effects), `war50_krogan`.
+
+**Built.**
+
+- The flow table leaves those chains out (`conversation-scan.py`'s `plot_effects`, `flow()`'s `plotChains`; their entries are
+  kept ordinary like a wheel play's, or a conversation reaching one would turn ambient there). `cw::FlowEntries` is regenerated:
+  64 conversations, 249 entries (was 68, 284); unit test `TestFlowEntries`.
+- `engine/ConversationHooks` pre-hooks `InterruptConversation`; `game/ConversationFlow` answers it
+  (`[Cinematics] worldFlowProtect = 1`): while the current conversation is a scene of ours whose every start was an ordinary
+  line before our flags (the game would have played it as a conversation), a newcomer whose every start is ambient by the
+  game's own data (a bystander's bark, a squadmate's remark) is refused, as the game refuses every newcomer during the
+  conversation that scene was authored as. Another scene of the level (one of ours, or a conversation) is let through:
+  refusing it could lose that scene's start and its first-line effects. Log `convo flow: the bark X wanted to start over the
+  flowed scene Y: refused`.
+
+**What is left of the risk.** A flowed scene can still be cut short by distance, by another level scene, by a save and reload
+or by leaving the area. With the six chains out, what is lost is spoken lines, not plot effects, and the script goes on as
+after the whole scene. One consequence to look at in the game: a scene that follows a chain (the Garrus wheel conversation)
+then starts wherever the player has walked to, and its stage puts Shepard on his mark under the dip from black.
+
+**Not read yet.** What the two transitions on most bark lines do (188 and 189: 56 uses on flowed lines, every other transition
+once or twice; they sit on the game's own barks too). The output links' names.
+
+### 3. Cutscene or world, decided at run time
+
+**The data can't say it.** A conversation always has a player (the stage's node 0 is his, `ABioStage::PlaceActors` reads the
+conversation's player), and the scan's records have no field that separates "Shepard listens" from "Shepard isn't there". The
+scenes between other people in the unmodded game are mostly matinees, not conversations: game mode 6, already a cutscene on
+the 3D screen.
+
+**So the rules are run-time ones** (`game/ConversationWorld`), each naming the scene with a reason:
+
+- At the start (the stage has placed everyone by then): Shepard's pawn is hidden (`Actor.bHidden`).
+- At the start: Shepard is farther than `worldAbsentM` (15 m) from the conversation's owner and out of its sight.
+- While it plays: at least three shots, two thirds of them framed from more than 8 m from Shepard's eyes (the survey's
+  measure of the framed set pieces, research/59).
+
+**Built log-only.** `[Cinematics] worldAutoScreen = log` (the default) writes `convo: ...: no place for the player in this scene`
+and puts the reason in the survey's summary line (`noPlace`, `autoScreened`); `on` moves the scene to the 3D screen (at the
+start, or under the dip from black when the shots say so; people are then no longer kept, and the lines' facing tracks put
+them back on their marks); `off` is silent. Log-only because the second rule would also name a radio call from far away,
+which the world mode handles well (a voice, nobody to see), and none of the three has been seen against a real scene yet. The
+sweep's summaries will say which scenes each rule names; then the default can move to `on`.
+
+### 4. Keeping people in place at the source
+
+**One function places everyone.** `UBioConversation::SetPositionRotator` (`0xC862D0`, slot `0x2C0`; the conversation, the
+actor, a place, a rotation): it stops the pawn, moves it when the place isn't zero (and puts it back if the new place is not
+valid, else drops it to the floor), sets its rotation and its controller's focus. Two callers put people on marks:
+
+- `ABioStage::PlaceActors` (`0xC93B60`, slot `0x818`), called once, from the participants' setup (`0xC81300`) when a
+  conversation that is not ambient and has a stage starts: the player on node 0, the owner on 1, the squad on 2 and 3, the
+  other speakers on 4 to 7.
+- A line's `BioEvtSysTrackSetFacing` track (`0xC95AF0`), per key: when the key names a stage node it calls the function with
+  the node's place (research/59's "Anderson back on his mark at nearly every line"), then, if the key says so, again with a
+  zero place for the facing alone.
+
+This is why research/59's call trace saw no script call: both callers are native. A matinee's move track (someone walks in)
+is another path and is not touched.
+
+**Built.** `engine/ConversationHooks` pre-hooks the function; `game/ConversationWorld` answers
+(`[Cinematics] worldStaySource = 1`): in the world mode, after the accepted opening, a placement of a person the mod keeps
+runs with a zero place, the game's own facing-only path, so the person turns as the scene wants and doesn't move. The opening
+placement is made before the mod knows the conversation, as before. The undo after the fact stays and should count zero; the
+walk-to-marks prototype (`worldWalk`) turns the hook's answer off, since it learns each mark from the jump. Logs `convo: at N s
+the game's placement of a person onto a mark D m away was withheld at its source`, the end's `N placements onto marks withheld
+at their source`; the summary's `sourceKept`.
+
+### 5. Walking and the level's triggers
+
+**`SetLocation` is a real move.** `Actor.SetLocation` (`0x369530`) calls `UWorld::FarMoveActor` (`0x3FFCE0`) with its checks
+on: the destination is tested for a free spot and for encroachment, and for an actor that collides the function then finds
+the actors it now touches and tells both sides, as any move does. Shepard's pawn collides. So the walk's steps begin and end
+touches: a step into a trigger volume would fire its Kismet touch, and a scene that trigger starts would be refused while the
+conversation runs (above) and may never fire again; a step out of a streaming volume would stream its area out mid-scene.
+
+**Built.** A step may not change which triggers Shepard's cylinder overlaps (`[Cinematics] worldMoveTriggers = 1`): the
+triggers near the conversation are gathered once per conversation and every 5 s (every `Engine.Trigger` and `TriggerVolume`,
+which covers `BioTrigger`, `BioTriggerVolume` and `BioTriggerStream`, whose collision is within the leash of the owner), and
+each step asks the engine's own point check (`Actor.PointCheckComponent`, `0x505660`, with the cylinder as a box) at both
+ends; a difference refuses the step, like a wall. Logs `convo: the walk's triggers: N within the leash of the owner`, `convo: at
+N s the walk stops at X: the step would enter it`; the summary's `triggerHits`.
+
+**Limit.** A touch event on an actor that is neither class (a mesh with a Kismet touch event) isn't covered; the sweep can
+count how often a walk's touch set changes anyway.
+
+## To check in the game
+
+In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
+
+1. The hooks go in: `hooked UBioConversation::SetPositionRotator`, `hooked ABioWorldInfo::InterruptConversation`, and the
+   address table's patterns hold.
+2. Item 4: the medical bay conversation (research/59 measured 25 jumps undone there) and the Garrus wheel conversation:
+   `sourceKept` above zero, `kept` zero, nobody moves, people still turn to the speaker; then `worldStaySource = 0` for the
+   same scene to compare.
+3. Item 5: `mevr convo walk` toward a streaming volume's edge inside a leash (the C-Sec hall has several): the walk stops
+   with the log line, `mevr stream chunks` unchanged; `worldMoveTriggers = 0` to see the touch it prevents.
+4. Item 1: a flowed scene with bystanders' barks in range (the Citadel's wards): a refusal logged, the scene's lines all
+   spoken; the six chains left out play as conversations again.
+5. Item 3: the survey with `worldAutoScreen = log`; read which scenes each rule names.
 
 ## Log
 
 - 2026-11-09: the note written; intentions for items 1, 3, 4 and 5.
+- 2026-11-09, later: the natives read for all four items (above). Built: the scan's plot effects and the flow table without
+  the six plot-carrying chains; `engine/ConversationHooks` (placement, interruption) with their addresses and patterns in
+  `engine/Addresses.hpp`; the placement provider, the walk's trigger guard and the three presence rules in
+  `game/ConversationWorld`; the bark refusal in `game/ConversationFlow`. All three builds and the offline tests pass. Not yet
+  run in the game.

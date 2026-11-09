@@ -440,8 +440,8 @@ switching frameworks.
   interrupted beyond the start's `m_fInterruptRange`, else `BioWorldInfo.m_fConversationInterruptDistance`, 25 m), so the mod
   flags the **chain starts** (plays that can never reach a `REPLY_STANDARD` reply, the wheel: Garrus and the Executor arguing, Wrex
   at C-Sec, Udina's arrival lines) on every loaded `BioSeqAct_StartConversation`'s conversation before the script fires it, from
-  the scan's generated table `cw::FlowEntries` (`conversation-scan.py --flow-list`: 68 conversations, 284 entries; chains behind an
-  unconditional start, set pieces, transmissions and the game's own narration left out; `--flow` the table), journalled and put back when the setting goes off. The
+  the scan's generated table `cw::FlowEntries` (`conversation-scan.py --flow-list`: 64 conversations, 249 entries; chains behind an
+  unconditional start, set pieces, transmissions, the game's own narration and chains with plot effects after their first line left out; `--flow` the table), journalled and put back when the setting goes off. The
   scan runs when the streaming levels' loaded/visible set changes (the object table's count doesn't move for a chunk; the flags
   land within a second of its load). **Checked on the fake headset 2026-11-09** (research/59 "Flowing conversations" > "In the
   game"): Noveria's Juleth ambush and Olar execution played as barks on foot, no camera cut; a chain start plays only when the
@@ -459,7 +459,18 @@ switching frameworks.
   conversations" > "In the game"): 5.47 m walked during the Garrus wheel conversation at C-Sec, nobody snapped, the conversation
   ran on; the squad stays put. **Not through people** (`worldMoveClearM` 0.7, since the first walk went straight through Garrus):
   a step ending within the clearance of a conversation actor, a squadmate or the owner is pushed out along the line from them
-  (`cw::KeepClear`), so the stick walks around people; [verify] in the game. Logs `convo: ... the player walks`, `the player walked
+  (`cw::KeepClear`), so the stick walks around people; [verify] in the game. **The work toward first person for every conversation
+  is [research/69](research/69-conversations-everywhere.md)** (2026-11-09; a status table and a log; read it before touching this
+  feature): a line's plot effects (its state transition, its Kismet node event) are on the path ambient and full conversations
+  share, but an ambient one can be cut short (distance, any other conversation starting) and loses what it didn't reach, so
+  chains with effects after their first line stay conversations and the game's barks are refused over a flowed scene
+  (`worldFlowProtect`); every stage placement goes through `UBioConversation::SetPositionRotator` (0xC862D0: PlaceActors at the
+  start, each line's SetFacing track), pre-hooked to withhold the place and keep the facing (`engine/ConversationHooks`,
+  `worldStaySource`; with `ABioWorldInfo::InterruptConversation` 0xB60460, both installed when the world mode is asked for);
+  `Actor.SetLocation` is `UWorld::FarMoveActor` and fires touches, so a walk step that would change which `Trigger` /
+  `TriggerVolume` Shepard overlaps is refused (`worldMoveTriggers`, `Actor.PointCheckComponent`); scenes with no place for the
+  player (pawn hidden, far from the owner and out of sight, most shots from over 8 m) are named in the log and the summary
+  (`worldAutoScreen = log | on | off`). All built and unit-tested, none of it run in the game yet. Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus

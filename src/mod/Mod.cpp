@@ -27,6 +27,7 @@
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
 #include "engine/CoverAcquire.hpp"
+#include "engine/ConversationHooks.hpp"
 #include "engine/SelectionGaze.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
@@ -165,6 +166,8 @@ bool gCoverHookTried = false;
 bool gCoverHooked = false;
 bool gSelectionHookTried = false;
 bool gSelectionHooked = false;
+bool gConversationHooksTried = false;
+bool gConversationHooked = false;
 // `]` is the one switch a player needs: once a VR session runs, every VR feature comes on with
 // it (stereo, 6DOF, hand aim, arm IK), and turning VR off (or quitting from the headset) turns
 // them off. The headset sleeping doesn't count as off. Within a session the feature keys switch
@@ -370,6 +373,16 @@ void EnsureCoverHook() {
     if (!gCoverHookTried && game::posture::WantsCoverHook()) {
         gCoverHookTried = true;
         gCoverHooked = engine::cover_acquire::Install(*gInit);
+    }
+}
+
+// The conversation's placement function and BioWorldInfo's interruption of an ambient conversation (research/69): their hooks
+// go in once the first-person conversation mode is first asked for (game thread, outside the conversation's own update).
+void EnsureConversationHooks() {
+    using namespace mevr;
+    if (!gConversationHooksTried && game::conversation_world::WantsHooks()) {
+        gConversationHooksTried = true;
+        gConversationHooked = engine::conversation_hooks::Install(*gInit);
     }
 }
 
@@ -1369,6 +1382,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::galaxy_map::Tick(GalaxyMapLink());
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
+        EnsureConversationHooks();
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::head_tracking::OnTickEnd();
@@ -1479,6 +1493,11 @@ MEVR_MOD_API void MevrModShutdown() {
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
     game::conversation_flow::Shutdown();                          // the conversations' ambient flags put back
+    if (gInit && gConversationHooked) {  // after the two modules above took their providers back
+        removed(engine::conversation_hooks::Uninstall(*gInit, !exiting),
+            "the conversation hooks couldn't be removed, or a call was still inside one");
+    }
+    gConversationHooksTried = gConversationHooked = false;
     game::power_wheel::Shutdown(PowerWheelLink());  // the host's wheel closed
     game::galaxy_map::Shutdown(GalaxyMapLink(), exiting);  // the host forgets the hologram; the window's captures go
     if (gHost != nullptr && MEVR_HOST_HAS(setSpectator) && gHost->setSpectator != nullptr) {

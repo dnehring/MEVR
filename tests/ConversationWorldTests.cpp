@@ -159,10 +159,15 @@ void TestFlowEntries() {
     CHECK(cw::FlowEntries("sta60_quarian_dlg").empty());         // a wheel from its first line
     CHECK(cw::FlowEntries("sta30_krogan_cutscene_dlg").empty()); // its chain start sits behind an unconditional start: never plays
     CHECK(cw::FlowEntries("").empty());
+    // A chain that applies plot effects after its first line stays a conversation (research/69 item 1): as barks it could be
+    // cut short (distance, another conversation starting) and lose them.
+    CHECK(cw::FlowEntries("war50_krogan_dlg").empty());
+    CHECK(cw::FlowEntries("jug20_wrex_dlg").empty());
+    CHECK(cw::FlowEntries("war40_juliannabaynham_dlg").empty());
     std::span<int const> const olar = cw::FlowEntries("ice60_trig12_olar_execution_dlg");  // played as barks on the fake headset
     CHECK(olar.size() == 2 && olar[0] == 0 && olar[1] == 1);
     // Every table row is a non-set-piece with entries in order.
-    for (char const* name : {"sta30_chellik", "ice50_trig22_juleth_ambush", "nor10_joker", "jug80_saren", "war50_krogan"}) {
+    for (char const* name : {"sta30_chellik", "ice50_trig22_juleth_ambush", "nor10_joker", "jug80_saren", "pro20_powell"}) {
         std::span<int const> const e = cw::FlowEntries(name);
         CHECK(!e.empty() && !cw::IsSetPiece(name));
         for (std::size_t i = 1; i < e.size(); ++i) {

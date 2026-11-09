@@ -524,7 +524,8 @@ as `free` before); the kinds are now free 78, stage 171, remote 19, walks 23, fr
 tail would end a wheel conversation ambient), that aren't ambient and whose start the game can take (no unconditional start
 before it, below); set pieces (the 3D screen), transmissions (their hologram
 needs the stage an ambient play skips) and the narration under the game's own screens (`nor10_backgrounds`, `ice00_popup_text`,
-`sp_news_vids`) are left out: 68 conversations, 284 entries (102 and 526 before the start-order rule). The mod (`game/ConversationFlow`, `[Cinematics] worldFlow = all | off`, default all, only with
+`sp_news_vids`) are left out: 68 conversations, 284 entries (102 and 526 before the start-order rule; **64 and 249 since research/69's item 1**,
+which also leaves out the chains that apply plot effects after their first line). The mod (`game/ConversationFlow`, `[Cinematics] worldFlow = all | off`, default all, only with
 `conversations = world`) scans the loaded `BioSeqAct_StartConversation` actions (at once, 2 s after the object table grows by a
 thousand, every 10 s) and flags those entries' `bAmbient` on their conversations before the level's script fires them
 (journalled `ConversationFlow.entryAmbient`; an entry that offers a standard reply in the live data is refused and logged: the

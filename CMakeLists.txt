@@ -379,6 +379,8 @@ set(MEVR_MOD_SOURCES
     src/engine/CallFunction.hpp
     src/engine/CodeDump.cpp
     src/engine/CodeDump.hpp
+    src/engine/ConversationHooks.cpp
+    src/engine/ConversationHooks.hpp
     src/engine/CoverAcquire.cpp
     src/engine/CoverAcquire.hpp
     src/engine/SelectionGaze.cpp
