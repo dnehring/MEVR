@@ -27,7 +27,8 @@ All source paths in the private manifest are provenance only; later runs do not 
 ## Automatic sessions
 
 Close the game and launcher. Steam must be signed in and, for walking replay, the chosen OpenXR runtime/headset ready. The runner
-uses that runtime as configured; it does not enable the null driver or switch runtimes. Bind once, then Run:
+uses that runtime as configured. It only enables the null driver with the explicit `-FakeHeadset` option and
+never changes the global OpenXR runtime. Bind once, then Run:
 
 ```powershell
 & $session -Action Bind -PackageDirectory $package
@@ -39,6 +40,27 @@ the exact live starting pose, then exits and restores current state. Binding nee
 but not headset tracking. It sends no walking input. Run repeats
 the same load, checks the bound pose and replays once. `-CaptureStartSeconds` / `-CaptureSeconds` select the
 timing window. Stop an active replay using `citadel-walk.ps1 -Action Stop -PackageDirectory ...`.
+
+## Stationary fake-headset metrics
+
+The fixed save can also supply a stationary head-turn workload without asserting a match to the unvalidated
+walkthrough. `Measure` loads the archived save, checks its world position, starts a neutral-input 30-second
+sinusoidal head-turn loop, takes a scene snapshot, settles, then captures 90 seconds. It verifies normal gameplay
+and that the pawn stayed within 60 UU of its start afterward. No replay reload or snapshot occurs inside the
+measurement window. The analyzer excludes one second at both clock-synchronization boundaries.
+
+```powershell
+& $session -Action Measure -PackageDirectory $package -FakeHeadset `
+    -EyeWidth 2284 -EyeHeight 2448 -SweepDegrees 120 -CaptureSeconds 90
+```
+
+`-FakeHeadset` requires SteamVR already selected as the global runtime and no existing game/SteamVR session.
+It backs up SteamVR settings, chaperone and null-driver settings alongside the player data, starts the null
+driver at 90 Hz, and restores the exact pre-test files afterward. This uses fresh per-run backups, never an
+older global fake-headset backup. Current game graphics settings and One Draw are retained. Actual resolution,
+graphics settings, build hashes, hardware, raw frames/ticks/queued calls and an analysis JSON are recorded.
+The scene snapshot and logs remain private. A null-driver throughput measurement does not establish physical
+SteamVR pacing, Virtual Desktop transport latency, reprojection quality or walking-route performance.
 
 The coordinator shares the QA lock with the existing harness. It refuses a running game/launcher, pending
 requests, another owner, corrupted fixture or damaged backup. Before staging anything it backs up the complete
@@ -61,8 +83,11 @@ recording's slot. `nativeRouteValidated` stays false until an actual path review
 
 The private 2026-11-08 archive preserves all 14 current LE1 save/profile files. Two manual Citadel saves were
 found, but neither stored location matched the world position queried 33 seconds into the user's recording.
-The original slot remains uncertain. The separate `citadel-autoload-save96-check` package tests loading only;
-it must not be relabeled as the original walkthrough fixture.
+The original slot remains uncertain. The separate `citadel-autoload-save96-check` package validates loading
+and stationary head-turn measurements; it must not be relabeled as the original walkthrough fixture.
+
+The first native stationary capture and repeatable analysis command are documented in the
+[C-Sec performance report](../../../research/65-citadel-stationary-performance.md).
 
 Native loader validation on 2026-11-08 succeeded with that separate Save 96 package: Steam/EA launch, two title
 Enter presses, on-foot `BIOA_STA00`, and a loaded position within 0.047 UU of the stored save location. The

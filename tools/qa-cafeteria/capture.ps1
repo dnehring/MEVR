@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 param([Parameter(Mandatory)][string]$RunDirectory,[string]$Tag='cafeteria-high-turns',
-      [ValidateRange(30,120)][int]$Seconds=90,[string]$RecordingPath='')
+      [ValidateRange(30,120)][int]$Seconds=90,[string]$RecordingPath='', [switch]$ReplayAlreadyRunning)
 . "$PSScriptRoot\common.ps1"
 $ctx=Read-QaContext $RunDirectory
 . (Join-Path $ctx.RepoRoot 'tools\common.ps1')
@@ -11,7 +11,12 @@ if(-not $recording){
     if($LASTEXITCODE){throw 'Turn generation failed.'}
 }
 if(-not (Test-Path -LiteralPath $recording)){throw 'Turn recording is missing.'}
-Invoke-QaTool 'replay.ps1' @{Path=$recording;Loop=$true;Fovs=$true}
+if($ReplayAlreadyRunning){
+    $status=Get-MevrTestLoopStatus
+    $updated=(Get-Item -LiteralPath "$MevrDataDir\testloop.status").LastWriteTimeUtc
+    if(-not $status.replaying -or -not $status.framesRunning -or $status.replayPath -ne [IO.Path]::GetFullPath($recording) -or
+       ([datetime]::UtcNow-$updated).TotalSeconds -gt 5){throw 'The expected settled replay is not active.'}
+}else{Invoke-QaTool 'replay.ps1' @{Path=$recording;Loop=$true;Fovs=$true}}
 Start-Sleep -Seconds 5
 $since=Get-Date
 $ini=Join-Path $ctx.GameRoot 'Game\ME1\Binaries\Win64\ASI\LE1MEVR.ini'

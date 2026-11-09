@@ -11,7 +11,7 @@ headset. Keep One Draw enabled and distinguish each problem's acceptance criteri
 | Order | Problem | Evidence and next action | Status |
 |---|---|---|---|
 | 1 | Camera-diagnostic disk writes | Recurring 12-18 ms host stalls; sampled inside synchronous INI writes. Measurements now publish in memory; three High runs had zero automatic settings writes and host maxima 7.03-7.54 ms. | Implemented; local checks passed; headset calibration pending |
-| 2 | Rare 80-93 ms gameplay pauses | Most of the pause lies between the original measured game ticks. Buffered whole-hook, queue-drain and individual queued-call timings are implemented; validate the trace locally, then inspect scheduling/waits if the queue is quick. | Builds/automated checks passed; native capture deferred for another owned game test; cause unresolved |
+| 2 | Rare 80-93 ms gameplay pauses | Most of the pause lies between the original measured game ticks. Buffered whole-hook/queue-drain tracing passed a native Citadel capture; its 36 ms hitch overlapped a 31 ms gap outside the hook, with no queued calls. Inspect scheduling/waits; the original severe pause did not recur. | Native trace validated; individual queued-call execution unexercised; cause unresolved |
 | 3 | Physical-headset submission stalls | Earlier VDXR captures have 35-62 ms worst intervals; 68 of 72 long intervals are dominated by xrEndFrame. Correlate GPU/resource/scheduling evidence using a controlled headset sweep. | Wait location identified; underlying cause unresolved |
 | 4 | Periodic engine CPU spikes | Approximately 19 ms CPU in the same sampled chain under UWorld::Tick. Identify the routine before changing engine behavior; GC remains a hypothesis. | Cause unresolved |
 | 5 | Dense-scene rendering budget | Physical captures reach about 10 ms render CPU at p99 against 11.111 ms at 90 Hz. Measure visibility/query/replay costs per frame, then optimize the measured bottleneck. | Culling contribution unproven |
@@ -30,6 +30,11 @@ headset. Keep One Draw enabled and distinguish each problem's acceptance criteri
 Three clean 90-second cafeteria captures at source 3840 x 3840, eye 2688 x 2880, AA/shadows/AO on, blur off,
 One Draw/sharePass=5: frame interval p99 7.73/7.80/7.73 ms; maxima 15.08/92.74/15.16 ms.
 The severe-hitch regression gate fails on run 2. Null-headset throughput does not validate physical headset pacing.
+
+A later [stationary C-Sec run](../research/65-citadel-stationary-performance.md) captured frame interval p99
+16.10 ms / maximum 36.00 ms, a separate 25.56 ms host CPU spike with zero settings writes, and a 25.42 ms
+engine tick. It validates the whole-hook trace and provides a fixed Citadel benchmark. Different scene,
+eye resolution and module mean it is not a controlled comparison with the Normandy baseline.
 
 ## Item 1 implementation
 

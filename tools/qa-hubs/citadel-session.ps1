@@ -2,11 +2,14 @@
 # Immutable save fixture -> protected automatic Resume -> bind/replay -> restore current user state.
 #Requires -Version 7.0
 param(
- [ValidateSet('Plan','Freeze','Bind','Run','Recover')][string]$Action='Plan',
+ [ValidateSet('Plan','Freeze','Bind','Run','Measure','Recover')][string]$Action='Plan',
  [string]$PackageDirectory='', [string]$SaveFile='', [string]$ProfileTemplate='',
  [string]$RunDirectory='', [string]$GameRoot='', [string]$SteamRoot='',
  [string]$ProfileRoot='', [string]$PythonExe='python', [switch]$Capture,
  [ValidateRange(5,480)][int]$CaptureStartSeconds=45, [ValidateRange(1,120)][int]$CaptureSeconds=90,
+ [switch]$FakeHeadset, [string]$SteamVRRoot='',
+ [ValidateRange(512,4096)][int]$EyeWidth=2284, [ValidateRange(512,4096)][int]$EyeHeight=2448,
+ [ValidateRange(1,360)][double]$SweepDegrees=120,
  [string]$LocalAppData=[Environment]::GetFolderPath('LocalApplicationData')
 )
 $ErrorActionPreference='Stop'
@@ -41,6 +44,9 @@ if($Action -eq 'Recover'){
  if($controller -and $controller.StartTime.ToUniversalTime().Ticks -eq $owner.scriptStartedTicks){throw 'The session controller is still active.'}
  if(Get-Process MassEffect1,MassEffectLauncher,MEVR-VRLauncher -ErrorAction SilentlyContinue){throw 'Close the game and launcher before recovery.'}
  if((Get-QaRuntime) -ne $ctx.ActiveRuntime){throw 'Runtime changed during session; inspect before recovery.'}
+ if($ctx.FakeHeadset){
+  & (Join-Path $ctx.RepoRoot 'tools\fake-headset.ps1') -Off -SteamRoot $ctx.SteamRoot -SteamVRRoot $ctx.SteamVRRoot -BackupDirectory "$RunDirectory\fake-backup"
+ }
  Restore-QaBackup $RunDirectory
  Remove-Item -LiteralPath $lockPath
  return
@@ -49,13 +55,15 @@ $fixture=Invoke-Fixture @('verify',$package)
 if($Action -eq 'Plan'){
  @{package=$package;fixture=$fixture;startBound=(Test-Path -LiteralPath "$package\start.json");
   workflow='Stage archived save and temporary Resume selection; launch; check Citadel; bind or replay; close owned game; restore current profile/settings.';
-  runtime='Uses the currently selected runtime and headset; does not enable the null driver.'}|ConvertTo-Json -Depth 10
+  runtime='Uses the selected runtime/headset by default; explicit -FakeHeadset enables the null driver only when SteamVR is already the selected runtime.'}|ConvertTo-Json -Depth 10
  return
 }
-$routeJson=& $PythonExe "$hub\recorded_route.py" verify $package
-if($LASTEXITCODE){throw 'Recording/manifest verification failed before launch.'}
-$route=($routeJson -join "`n")|ConvertFrom-Json
-if($Capture -and $CaptureStartSeconds+$CaptureSeconds+5 -gt $route.durationSeconds){throw 'Capture window exceeds the recording.'}
+if($Action -ne 'Measure'){
+ $routeJson=& $PythonExe "$hub\recorded_route.py" verify $package
+ if($LASTEXITCODE){throw 'Recording/manifest verification failed before launch.'}
+ $route=($routeJson -join "`n")|ConvertFrom-Json
+ if($Capture -and $CaptureStartSeconds+$CaptureSeconds+5 -gt $route.durationSeconds){throw 'Capture window exceeds the recording.'}
+}elseif($CaptureSeconds -lt 30){throw 'Stationary measurement requires 30-120 seconds.'}
 if($Action -eq 'Run' -and -not (Test-Path -LiteralPath "$package\start.json")){throw 'Run -Action Bind once to automatically load and bind this archived fixture.'}
 if($Action -eq 'Bind' -and (Test-Path -LiteralPath "$package\start.json")){throw 'Start is already bound; use Run.'}
 if(Test-Path -LiteralPath "$package\start.json"){
@@ -66,6 +74,13 @@ if(Get-Process MassEffect1,MassEffectLauncher,MEVR-VRLauncher -ErrorAction Silen
 if(-not (Get-Process steam -ErrorAction SilentlyContinue)){throw 'Start Steam and sign in first.'}
 if(-not $SteamRoot){$SteamRoot=(Get-ItemProperty 'HKCU:\Software\Valve\Steam').SteamPath -replace '/','\'}
 if(-not $GameRoot){$GameRoot=Find-QaInstall $SteamRoot '1328670'}
+if($FakeHeadset){
+ if(@(Get-QaProcesses).Count){throw 'Close existing game/SteamVR sessions before enabling the fake headset.'}
+ if(-not $SteamVRRoot){$SteamVRRoot=Find-QaInstall $SteamRoot '250820'}
+ if([IO.Path]::GetFullPath((Get-QaRuntime)) -ne [IO.Path]::GetFullPath((Join-Path $SteamVRRoot 'steamxr_win64.json'))){
+  throw 'Select SteamVR as the active runtime before this fake-headset test.'
+ }
+}
 if(-not $ProfileRoot){$ProfileRoot=Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'BioWare\Mass Effect Legendary Edition'}
 $ProfileRoot=[IO.Path]::GetFullPath($ProfileRoot)
 $asi=Join-Path $GameRoot 'Game\ME1\Binaries\Win64\ASI'
@@ -75,7 +90,7 @@ if(@(Get-ChildItem -LiteralPath $data -Filter '*.request').Count){throw 'Pending
 $lockPath=Join-Path $data 'qa-cafeteria.lock'
 $lease=[IO.File]::Open($lockPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
 $RunDirectory=Join-Path $package ('sessions\'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
-$oldLocal=$env:LOCALAPPDATA;$backupReady=$false;$restored=$false
+$oldLocal=$env:LOCALAPPDATA;$backupReady=$false;$restored=$false;$fakeStarted=$false;$turnStarted=$false
 $receipt=[ordered]@{action=$Action;completed=$false;restored=$false;nativeRouteValidated=$false}
 try{
  New-Item -ItemType Directory -Path $RunDirectory|Out-Null
@@ -88,19 +103,28 @@ try{
  $source=Join-Path $RunDirectory 'source\tools'
  New-Item -ItemType Directory -Path $source|Out-Null
  Copy-Item -LiteralPath $hub,$kit -Destination $source -Recurse
- foreach($name in @('common.ps1','console.ps1','mevrrec.py')){Copy-Item -LiteralPath "$repo\tools\$name" -Destination $source}
+ foreach($name in @('common.ps1','console.ps1','mevrrec.py','fake-headset.ps1','replay.ps1','snapshot.ps1','make-walk-recording.py','perf-probe.py')){Copy-Item -LiteralPath "$repo\tools\$name" -Destination $source}
  $hub=Join-Path $source 'qa-hubs';$kit=Join-Path $source 'qa-cafeteria'
  $ctx=@{RepoRoot=(Split-Path $source -Parent);GameRoot=$GameRoot;SteamRoot=$SteamRoot;ProfileRoot=$ProfileRoot;LocalAppData=$LocalAppData;
-        PythonExe=$PythonExe;ExpectedAsiSha256=(Get-FileHash -LiteralPath "$asi\LE1MEVR.asi").Hash;ActiveRuntime=(Get-QaRuntime)}
+        PythonExe=$PythonExe;ExpectedAsiSha256=(Get-FileHash -LiteralPath "$asi\LE1MEVR.asi").Hash;ActiveRuntime=(Get-QaRuntime);
+        FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight}
  $ctx|ConvertTo-Json|Set-Content -LiteralPath "$RunDirectory\context.json"
  @{Action=$Action;PackageDirectory=$package;GameRoot=$GameRoot;SteamRoot=$SteamRoot;ProfileRoot=$ProfileRoot;PythonExe=$PythonExe;
-   LocalAppData=$LocalAppData;Capture=[bool]$Capture;CaptureStartSeconds=$CaptureStartSeconds;CaptureSeconds=$CaptureSeconds}|
+   LocalAppData=$LocalAppData;Capture=[bool]$Capture;CaptureStartSeconds=$CaptureStartSeconds;CaptureSeconds=$CaptureSeconds;
+   FakeHeadset=[bool]$FakeHeadset;SteamVRRoot=$SteamVRRoot;EyeWidth=$EyeWidth;EyeHeight=$EyeHeight;SweepDegrees=$SweepDegrees}|
    ConvertTo-Json|Set-Content -LiteralPath "$RunDirectory\invocation.json"
  $gameConfig=Join-Path $GameRoot 'Game\ME1\BioGame\Config'
- Save-QaBackup $RunDirectory @("$asi\LE1MEVR.ini","$asi\MELEVR.ini") @($ProfileRoot,$gameConfig) $ctx.ExpectedAsiSha256 $ctx.ActiveRuntime
+ $protected=@("$asi\LE1MEVR.ini","$asi\MELEVR.ini")
+ if($FakeHeadset){$protected+=@("$SteamRoot\config\steamvr.vrsettings","$SteamRoot\config\chaperone_info.vrchap","$SteamVRRoot\drivers\null\resources\settings\default.vrsettings")}
+ Save-QaBackup $RunDirectory $protected @($ProfileRoot,$gameConfig) $ctx.ExpectedAsiSha256 $ctx.ActiveRuntime
  $backupReady=$true
  # Recheck after backup; use current preferences, changing only the Resume character/slot in a temporary copy.
  if(Get-Process MassEffect1,MassEffectLauncher,MEVR-VRLauncher -ErrorAction SilentlyContinue){throw 'Another session opened during preparation.'}
+ if($FakeHeadset){
+  if(@(Get-QaProcesses).Count){throw 'Another VR session opened during backup.'}
+  $fakeStarted=$true
+  Invoke-QaTool 'fake-headset.ps1' @{On=$true;Width=$EyeWidth;Height=$EyeHeight;SteamRoot=$SteamRoot;SteamVRRoot=$SteamVRRoot;BackupDirectory="$RunDirectory\fake-backup";AppResolutionScale=100}
+ }
  $fixture=Invoke-Fixture @('verify',$package)
  $liveProfile=Join-Path $ProfileRoot 'Save\ME1\PROFILE\GamerProfile.pcsav'
  $template=if(Test-Path -LiteralPath $liveProfile){$liveProfile}else{"$package\fixture\profile-template.pcsav"}
@@ -132,7 +156,45 @@ try{
  $receipt.loadedPositionDistanceUU=$distance
  $receipt.nativeLoadValidated=$true
  $arguments=@{PackageDirectory=$package;GameProcessId=$game.Id;PythonExe=$PythonExe;LocalAppData=$LocalAppData;SessionDirectory=$RunDirectory}
- if($Action -eq 'Bind'){
+ if($Action -eq 'Measure'){
+  & "$kit\machine.ps1" -OutputDirectory $RunDirectory
+  New-Item -ItemType Directory -Path "$RunDirectory\config"|Out-Null
+  Copy-Item -LiteralPath "$asi\LE1MEVR.ini","$asi\MELEVR.ini" -Destination "$RunDirectory\config"
+  @(Get-ChildItem -LiteralPath $asi -File|Where-Object Name -in @('LE1MEVR.asi','LE1MEVR_mod.dll')|
+    ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}})|ConvertTo-Json|
+    Set-Content -LiteralPath "$RunDirectory\build-files.json"
+  $turn=Join-Path $RunDirectory 'citadel-turn.mevrrec'
+  & $PythonExe "$hub\turn.py" $turn --yaw 0 --pitch -10 --sweep $SweepDegrees
+  if($LASTEXITCODE){throw 'Head-turn generation failed.'}
+  # Snapshot/load work stays outside the capture window. No locomotion input is replayed.
+  $turnStarted=$true
+  Invoke-QaTool 'replay.ps1' @{Path=$turn;Loop=$true;Inputs=$true;Fovs=$true}
+  Invoke-QaTool 'snapshot.ps1' @{Tag='citadel-before-measure';TimeoutSeconds=20}
+  . (Join-Path $ctx.RepoRoot 'tools\common.ps1')
+  $snapshot=Get-MevrTestLoopStatus
+  if($snapshot.lastSnapshot -and (Test-Path -LiteralPath $snapshot.lastSnapshot)){
+   $snapshotMeta=Get-Content -LiteralPath $snapshot.lastSnapshot -Raw|ConvertFrom-Json
+   $snapshotDir=Join-Path $RunDirectory 'snapshot';New-Item -ItemType Directory -Path $snapshotDir|Out-Null
+   Copy-Item -LiteralPath $snapshot.lastSnapshot -Destination $snapshotDir
+   foreach($name in $snapshotMeta.files){
+    if([IO.Path]::GetFileName($name) -ne $name){throw 'Invalid snapshot artifact name.'}
+    Copy-Item -LiteralPath (Join-Path (Split-Path $snapshot.lastSnapshot -Parent) $name) -Destination $snapshotDir
+   }
+  }
+  Start-Sleep -Seconds 10
+  $receipt.measurementKind='Stationary sinusoidal head turns; current graphics settings; archived Citadel save; no walking.'
+  Write-Host "Capturing $CaptureSeconds seconds of stationary Citadel head turns."
+  & "$kit\capture.ps1" -RunDirectory $RunDirectory -Tag 'citadel-fixed-save-turns' -Seconds $CaptureSeconds -RecordingPath $turn -ReplayAlreadyRunning
+  Invoke-QaTool 'replay.ps1' @{Stop=$true}
+  $turnStarted=$false
+  Invoke-QaTool 'console.ps1' @{Command=@('mevr vehicle','mevr loc')}|Set-Content -LiteralPath "$RunDirectory\end-world.txt"
+  $endJson=& $PythonExe "$hub\recorded_route.py" world "$RunDirectory\end-world.txt"
+  if($LASTEXITCODE){throw 'Measurement ended outside normal Citadel gameplay.'}
+  $end=($endJson -join "`n")|ConvertFrom-Json
+  $movement=[Math]::Sqrt([Math]::Pow($end.positionUU[0]-$observed.positionUU[0],2)+[Math]::Pow($end.positionUU[1]-$observed.positionUU[1],2)+[Math]::Pow($end.positionUU[2]-$observed.positionUU[2],2))
+  $receipt.pawnMovementUU=$movement
+  if($movement -gt 60){throw 'Pawn moved during the stationary measurement.'}
+ }elseif($Action -eq 'Bind'){
   & "$hub\citadel-walk.ps1" @arguments -Action BindStart -SaveFile "$package\fixture\save.pcsav"
  }else{
   & "$hub\citadel-walk.ps1" @arguments -Action Run -Capture:$Capture -CaptureStartSeconds $CaptureStartSeconds -CaptureSeconds $CaptureSeconds
@@ -146,6 +208,7 @@ try{
   if($backupReady){
    if(Get-Process MassEffect1 -ErrorAction SilentlyContinue){
     [void](Assert-QaOwnedGame)
+    if($turnStarted){Invoke-QaTool 'replay.ps1' @{Stop=$true}}
     Invoke-QaTool 'console.ps1' @{Command=@('exit')}
     $until=(Get-Date).AddSeconds(45)
     while((Get-Process MassEffect1 -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until){Start-Sleep -Milliseconds 500}
@@ -153,6 +216,7 @@ try{
    if(Get-Process MassEffect1,MassEffectLauncher,MEVR-VRLauncher -ErrorAction SilentlyContinue){throw 'Game/launcher remains open; restore is deferred.'}
    if((Get-QaRuntime) -ne $ctx.ActiveRuntime){throw 'Runtime changed; restore is deferred.'}
    if((Get-FileHash -LiteralPath "$asi\LE1MEVR.asi").Hash -ne $ctx.ExpectedAsiSha256){throw 'Installed build changed; inspect shared-session ownership before restore.'}
+   if($fakeStarted){Invoke-QaTool 'fake-headset.ps1' @{Off=$true;SteamRoot=$SteamRoot;SteamVRRoot=$SteamVRRoot;BackupDirectory="$RunDirectory\fake-backup"}}
    Restore-QaBackup $RunDirectory
    $receipt.restored=$true
   }

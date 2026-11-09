@@ -10,7 +10,9 @@ New-Item -ItemType Directory -Path "$source\qa-hubs","$source\qa-cafeteria","$ro
  "$root\game\Game\ME1\Binaries\Win64\ASI","$root\game\Game\ME1\BioGame\Config","$root\local\MEVR"|Out-Null
 Copy-Item -LiteralPath "$PSScriptRoot\citadel-session.ps1","$PSScriptRoot\save_fixture.py","$PSScriptRoot\recorded_route.py" -Destination "$source\qa-hubs"
 Copy-Item -LiteralPath "$repo\tools\qa-cafeteria\common.ps1","$repo\tools\qa-cafeteria\state.ps1" -Destination "$source\qa-cafeteria"
-Copy-Item -LiteralPath "$repo\tools\common.ps1","$repo\tools\mevrrec.py" -Destination $source
+foreach($name in @('common.ps1','mevrrec.py','fake-headset.ps1','replay.ps1','snapshot.ps1','make-walk-recording.py','perf-probe.py')){
+ Copy-Item -LiteralPath "$repo\tools\$name" -Destination $source
+}
 & $PythonExe "$PSScriptRoot\test-save-fixture.py" --make "$root\input"
 if($LASTEXITCODE){throw 'Synthetic fixture creation failed'}
 $package=Join-Path $root 'input\package'
