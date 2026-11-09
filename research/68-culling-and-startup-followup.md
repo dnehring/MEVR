@@ -182,9 +182,15 @@ At the user's request on November 9, the exact validated candidate was installed
 at 09:49 local time. Host SHA-256 starts `522F6B0867CD`, module `B2EE1DFF913D`; both match the retained
 candidate manifest. Settings and the active SteamVR runtime were preserved, and the null headset remains
 disabled. The larger splash-hook and engine-loading stalls are still present; hook batching is not included.
-This is a manual test deployment, not a public release or headset acceptance.
+This is a manual test deployment, not a public release.
 
 Install/rollback receipt: `scratch/qa-hubs/manual-headset-performance-20261109-094949`.
 The previous monolithic host and original module absence are backed up there. The reusable command is
 `tools/qa-hubs/deploy-validated-build.ps1`; the [QA README](../tools/qa-hubs/README.md#manual-headset-candidate-installation)
 documents installation and restoration.
+
+The user subsequently reported that this candidate "worked beautifully" and approved publishing the
+committed changes to `main`. That is qualitative headset acceptance of this test build, not a new timing
+capture. An attempted Citadel start had left Shepard unable to leave the Normandy; the user continued
+through normal story progression before reporting success. Its cause was not established, so neither a
+save-state repair nor a Citadel loading fix is claimed here. The remaining splash/loading work above stays open.
