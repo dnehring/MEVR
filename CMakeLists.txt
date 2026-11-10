@@ -513,6 +513,8 @@ set(MEVR_MOD_SOURCES
     src/game/ConversationWorld.hpp
     src/game/ConversationFlow.cpp
     src/game/ConversationFlow.hpp
+    src/game/AuthoredMoment.cpp
+    src/game/AuthoredMoment.hpp
     src/game/UiWorldFigure.cpp
     src/game/UiWorldFigure.hpp
     src/game/OmniTool.cpp

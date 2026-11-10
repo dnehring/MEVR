@@ -717,6 +717,7 @@ void CheckFields() {
     CheckField("Engine.Actor", "bDeleteMe", SDK_BOOL(AActor, bDeleteMe));
     CheckField("Engine.Vehicle", "Driver", SDK_FIELD(AVehicle, Driver));  // `mevr vehicle why`
     CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
+    CheckField("Engine.PlayerController", "bCinematicMode", SDK_BOOL(APlayerController, bCinematicMode));  // game/AuthoredMoment
     CheckField("Engine.Actor", "bCollideActors", SDK_BOOL(AActor, bCollideActors));  // the Mako's gunner skips dormant pawns
     CheckField("Engine.Actor", "LastRenderTime", SDK_FIELD(AActor, LastRenderTime));  // mevr crowd
     CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));
@@ -1356,6 +1357,10 @@ void CheckFunctions() {
         "Engine.Actor.SetLocation",
         "Engine.Actor.PointCheckComponent",  // game/ConversationWorld: the walk's triggers (research/69 item 5)
         "Engine.SequenceOp.ForceActivateInput",  // game/ConversationFlow: a held start fired again (research/69 item 1)
+        "Engine.Controller.OnTeleport",          // game/AuthoredMoment: the script's teleport of the player (research/69)
+        "SFXGame.BioPawn.OnTeleport",
+        "SFXGame.BioSeqAct_BlackScreen.Activated",
+        "SFXGame.BioSeqAct_BioToggleCinematicMode.Activated",
         "Engine.Actor.Destroy",
         // Vent (research/45)
         "SFXGame.BioWeaponRanged.DoCoolDownEffect",

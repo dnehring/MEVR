@@ -15,15 +15,23 @@ namespace {
 
 constexpr char const* kPlaceHookName = "UBioConversation::SetPositionRotator";
 constexpr char const* kInterruptHookName = "ABioWorldInfo::InterruptConversation";
+constexpr char const* kMoveTrackHookName = "AActor::MoveWithInterpMoveTrack";
 
 constexpr std::uint32_t kSetPositionRotatorRva = addresses::kConversationSetPositionRotator;
 constexpr std::uint32_t kInterruptConversationRva = addresses::kInterruptConversation;
+constexpr std::uint32_t kMoveTrackRva = addresses::kMoveWithInterpMoveTrack;
 
 using tSetPositionRotator = void(void* conversation, void* actor, float* location, void* rotation);
 using tInterruptConversation = void(void* worldInfo, void* newcomer);
+using tMoveTrack = int(void* actor, void* track, void* instance, float time, float delta);  // UBOOL: whether it moved
 
 tSetPositionRotator* gOrigPlace = nullptr;  // written before the hook goes live (core/Hook)
 tInterruptConversation* gOrigInterrupt = nullptr;
+tMoveTrack* gOrigMove = nullptr;
+bool gMoveInstalled = false;
+std::atomic<MoveTrackProvider> gMove{nullptr};
+std::atomic<unsigned> gTrackMoves{0};
+std::atomic<unsigned> gTrackKept{0};
 bool gPlaceInstalled = false;
 bool gInterruptInstalled = false;
 std::atomic<int> gInFlight{0};
@@ -56,6 +64,15 @@ bool AskInterrupt(InterruptProvider provider, void const* worldInfo, void const*
         return provider(worldInfo, newcomer);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         gInterrupt.store(nullptr, std::memory_order_relaxed);
+        return false;
+    }
+}
+
+bool AskMove(MoveTrackProvider provider, void const* actor, void const* track, void const* instance, float time) {
+    __try {
+        return provider(actor, track, instance, time);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gMove.store(nullptr, std::memory_order_relaxed);
         return false;
     }
 }
@@ -98,9 +115,40 @@ void InterruptConversationHook(void* worldInfo, void* newcomer) {
     }
 }
 
+int MoveTrackHook(void* actor, void* track, void* instance, float time, float delta) {
+    gInFlight.fetch_add(1, std::memory_order_acquire);
+    int moved = 0;
+    __try {
+        gTrackMoves.fetch_add(1, std::memory_order_relaxed);
+        MoveTrackProvider const provider = gMove.load(std::memory_order_relaxed);
+        if (provider != nullptr && actor != nullptr && AskMove(provider, actor, track, instance, time)) {
+            gTrackKept.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            moved = gOrigMove(actor, track, instance, time, delta);
+        }
+    } __finally {
+        gInFlight.fetch_sub(1, std::memory_order_release);
+    }
+    return moved;
+}
+
 } // namespace
 
 bool Install(hook::Context& init) {
+    // The move track's hook is its own: the other two work without it.
+    if (!gMoveInstalled && kMoveTrackRva != 0) {
+        void* const move = init.Resolve(kMoveTrackRva);
+        if (move != nullptr && IsFunctionStart(move)) {
+            gMoveInstalled = hook::Install(init, kMoveTrackHookName, reinterpret_cast<tMoveTrack*>(move), &MoveTrackHook, gOrigMove);
+            if (gMoveInstalled) {
+                log::Info("hooked {}", kMoveTrackHookName);
+            } else {
+                log::Error("convo hooks: the {} hook failed", kMoveTrackHookName);
+            }
+        } else {
+            log::Error("convo hooks: {} is not a function start; not hooking {}", move, kMoveTrackHookName);
+        }
+    }
     if (gPlaceInstalled && gInterruptInstalled) {
         return true;
     }
@@ -137,7 +185,16 @@ bool Install(hook::Context& init) {
 bool Uninstall(hook::Context& init, bool waitForCalls) {
     gKeep.store(nullptr, std::memory_order_relaxed);
     gInterrupt.store(nullptr, std::memory_order_relaxed);
+    gMove.store(nullptr, std::memory_order_relaxed);
     bool removed = true;
+    if (gMoveInstalled) {
+        if (hook::Uninstall(init, kMoveTrackHookName)) {
+            gMoveInstalled = false;
+            log::Info("unhooked {}", kMoveTrackHookName);
+        } else {
+            removed = false;
+        }
+    }
     if (gPlaceInstalled) {
         if (hook::Uninstall(init, kPlaceHookName)) {
             gPlaceInstalled = false;
@@ -180,6 +237,10 @@ void SetInterruptProvider(InterruptProvider provider) {
     gInterrupt.store(provider, std::memory_order_relaxed);
 }
 
+void SetMoveTrackProvider(MoveTrackProvider provider) {
+    gMove.store(provider, std::memory_order_relaxed);
+}
+
 Stats Totals() {
     Stats stats;
     stats.placements = gPlacements.load(std::memory_order_relaxed);
@@ -187,6 +248,8 @@ Stats Totals() {
     stats.facings = gFacings.load(std::memory_order_relaxed);
     stats.interrupts = gInterrupts.load(std::memory_order_relaxed);
     stats.refused = gRefused.load(std::memory_order_relaxed);
+    stats.trackMoves = gTrackMoves.load(std::memory_order_relaxed);
+    stats.trackKept = gTrackKept.load(std::memory_order_relaxed);
     return stats;
 }
 

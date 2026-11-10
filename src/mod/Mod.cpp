@@ -77,6 +77,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
 #include "game/ConversationWorld.hpp"
+#include "game/AuthoredMoment.hpp"
 #include "game/ConversationFlow.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "game/PowerWheel.hpp"
@@ -1161,6 +1162,7 @@ void Heartbeat() {
         game::squad_place::LogStats();
     game::body_scale::LogStats();
         game::conversation_world::LogStats();
+        game::authored_moment::LogStats();
         if (MEVR_HOST_HAS(logWorldUiStats) && gHost->logWorldUiStats != nullptr) gHost->logWorldUiStats();
         game::squad_ack::LogStats();
         game::voice::LogStats();
@@ -1385,6 +1387,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         EnsureConversationHooks();
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
+        game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1493,6 +1496,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
     game::conversation_flow::Shutdown();                          // the conversations' ambient flags put back
+    game::authored_moment::Shutdown();                            // the move track's question taken back
     if (gInit && gConversationHooked) {  // after the two modules above took their providers back
         removed(engine::conversation_hooks::Uninstall(*gInit, !exiting),
             "the conversation hooks couldn't be removed, or a call was still inside one");

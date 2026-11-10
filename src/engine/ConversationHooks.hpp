@@ -26,13 +26,22 @@ class Context;
 //   (UBioConversation::UpdateConversation, 0xC87830). The pre-hook asks the provider: refused, the original is not called,
 //   the current conversation goes on and StartConversation answers the newcomer as it would during a full conversation.
 //
-// Both hooks run on the game thread, inside the conversation's own code; the providers must be quick and never call script.
+// - AActor::MoveWithInterpMoveTrack (0x4B75F0, the actor's vtable slot +0x558; this, the move track, its instance, the time,
+//   the delta) is the one place a matinee's move track places its actor: AActor::physInterpolating calls it each tick for an
+//   actor a track holds (PHYS_Interpolating), and so do SeqAct_Interp.SetPosition and the cinematic skip. The pre-hook asks
+//   the provider: withheld, the original is not called and the hook answers "not moved". (An authored walk of Shepard: the
+//   walk to the council; research/69 "Authored scenes".) It goes in with the other two; they work without it.
+//
+// The hooks run on the game thread, inside the engine's own code; the providers must be quick and never call script.
 namespace mevr::engine::conversation_hooks {
 
 // True: this actor of this conversation stays where it stands (the call's place is `location`, never zero here).
 using KeepProvider = bool (*)(void const* conversation, void const* actor, float const* location);
 // True: the current conversation is not ended for `newcomer` (null: the distance or owner test's interruption).
 using InterruptProvider = bool (*)(void const* worldInfo, void const* newcomer);
+
+// True: this actor is not moved by its move track this tick.
+using MoveTrackProvider = bool (*)(void const* actor, void const* track, void const* instance, float time);
 
 // The hooks go in once (lazily): false if they could not (another game, not a function start).
 bool Install(hook::Context& init);
@@ -42,6 +51,7 @@ bool Installed();
 
 void SetKeepProvider(KeepProvider provider);
 void SetInterruptProvider(InterruptProvider provider);
+void SetMoveTrackProvider(MoveTrackProvider provider);
 
 // Since the hooks went in (cumulative: game/ConversationWorld and game/ConversationFlow each keep what they last saw).
 struct Stats {
@@ -50,6 +60,8 @@ struct Stats {
     unsigned facings = 0;     // calls with a zero place (a facing alone)
     unsigned interrupts = 0;  // InterruptConversation calls
     unsigned refused = 0;     // ...of which were refused
+    unsigned trackMoves = 0;  // MoveWithInterpMoveTrack calls
+    unsigned trackKept = 0;   // ...of which were withheld
 };
 Stats Totals();
 

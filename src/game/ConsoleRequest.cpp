@@ -3,6 +3,7 @@
 #include "game/BodyProbe.hpp"
 #include "game/ConversationWorld.hpp"
 #include "game/ConversationFlow.hpp"
+#include "game/AuthoredMoment.hpp"
 
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
@@ -845,6 +846,12 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string which;
         words >> which;
         return game_menu_request::Inject(which);
+    }
+    if (verb == "moment") {
+        // `mevr moment`: what the level's script did to the player (a track's walk, a teleport, a black screen; research/69).
+        std::string rest;
+        std::getline(words, rest);
+        return authored_moment::Command(rest);
     }
     if (verb == "convo") {
         // `mevr convo [dump | world on|off|screen|vr | pick | skip | end]`: the conversation now (research/59), or how the next one
