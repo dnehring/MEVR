@@ -370,6 +370,35 @@ fail on `kept`), so a judge that passes everything is caught.
 - Tests: ctest `mevr-conversation-sweep` (`tests/ConversationSweepTests.py`: a synthetic scan with a wake-up chunk only
   the Citadel streams, a flowed chain, a trigger; every exception kind, the baseline, the canary set both ways).
 
+### Phases 2 and 3: the runner and the canary set (2026-11-09, built)
+
+- **`tools/conversation-sweep.ps1 -Plan plan.json [-ReachOnly] [-Resume] [-Maps ...] [-Only ...] [-Seed n]`.** Per level:
+  `disconnect`, `open`, the wait for gameplay (the party screen sent on with `FinalizeParty`; a conversation that starts by
+  itself is played and recorded as `(by itself)`, and the plan's own scene of it is not fired again). Per chunk: the
+  loaded volume whose plain state shows it is touched, or its named state set first, then the wait until `mevr stream
+  chunks` says loaded and visible. Per scene: Shepard 1.5 m in front of the owner (else on the stage), the start action
+  fired, the conversation driven to its end (a reply while the wheel is up, in an order seeded by the conversation's name
+  and `-Seed`, so a re-run takes the same replies and another seed is the branch pass; the line skipped otherwise), a
+  flowed scene waited out by its summary line and its follow-up driven too. One result per scene in `results.jsonl` (the
+  judge's record), the scene's stretch of the mod's log in `logs/<conversation>.log`, the levels and chunks in
+  `reach.jsonl`. A watchdog: the process gone is a `crash`, a console silent three times a `hang` (the process is ended);
+  the game is started again, the level and chunk brought back, the run goes on. `-ReachOnly` fires nothing: the reach
+  matrix (`conversation-sweep.py reach <folder>` prints it).
+- **The mod's part:** `convo: summary` has `"entries"`, the entries the conversation passed through in order (the judge's
+  `lines-short` reads them), and `mevr convo` says the current entry and whether the wheel is up (the runner's driver).
+- **The canary set, `tools/conversation-canary.json`** (`conversation-sweep.py canary plan.json tools/conversation-canary.json
+  --out-plan ... --out-expect ... [--broken]`), all at the Citadel, one level load:
+  - the wake-up scene, which starts by itself, with six walks of the stick during it: nothing undone or drawn, at least
+    20 placements withheld, at least one hold at a trigger's edge;
+  - the Garrus argument with two barks and Chorban's start fired half a second after it (a scene's `alsoFire`): no
+    exception, two barks refused, one scene held; and Chorban's conversation then played by itself;
+  - a set piece (`sta60_stripperseat`): on the screen;
+  - **broken**: the same wake-up scene with `worldStaySource = 0` must be `undone` with nothing withheld. A judge that
+    passes that run passes everything.
+- A lesson from the first minutes: the runner wrote its log with `Add-Content`, which wants the file to itself, and a
+  `tail` of that log from another shell ended the run after four levels. Its files are now opened for append with readers
+  let in, tried again for ten seconds.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -480,7 +509,7 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   - Not looked at: what the held action's "failed" output did in between (nothing visible here), and a held scene whose
     owner is far from the player when it finally starts (Chorban's stage is 85 m from C-Sec's desk: the game's stage placed
     Shepard there, as for any conversation started from afar).
-- 2026-11-09, 20:20-21:10, **the sweep's phase 1 built** ("The sweep: progress"): `tools/game-slot.ps1`, the catalogue's
+- 2026-11-09, 19:50-20:50, **the sweep's phase 1 built** ("The sweep: progress"): `tools/game-slot.ps1`, the catalogue's
   level from the streaming lists (36 starts moved), `tools/conversation-sweep.py predict | plan | judge` with its tests,
   and the flowed scene's summary line in the mod. No game run. Next: phase 2, the reach matrix, which is the first use of
   the game slot on the real folder.

@@ -4,6 +4,7 @@ runs (layer 0), the runner's work list, and the judge of a finished pass. No gam
 
   python tools/conversation-sweep.py predict scan.jsonl [--out predictions.json] [--table]
   python tools/conversation-sweep.py plan scan.jsonl --out plan.json [--barks 2]
+  python tools/conversation-sweep.py reach <folder of a -ReachOnly run>
   python tools/conversation-sweep.py canary plan.json tools/conversation-canary.json --out-plan canary-plan.json
         --out-expect canary-expect.json [--broken]
   python tools/conversation-sweep.py judge results.jsonl [more.jsonl ...] [--scan scan.jsonl] [--predictions predictions.json]
@@ -243,6 +244,42 @@ def plan(argv):
     return 0
 
 
+# ---- the reach matrix -----------------------------------------------------------------------------------------------------------
+
+def reach(argv):
+    """The reach matrix from a -ReachOnly run's folder (reach.jsonl, reach-scenes.jsonl): per level, whether `open` got to
+    gameplay, how its chunks streamed and how many start actions were found; then every scene that was not reached."""
+    folder = argv[0]
+    levels, chunks, scenes = collections.OrderedDict(), collections.defaultdict(list), collections.defaultdict(list)
+    for line in open(os.path.join(folder, 'reach.jsonl'), encoding='utf-8-sig'):
+        r = json.loads(line)
+        if r['kind'] == 'level':
+            levels[r['map']] = r
+        else:
+            chunks[r['map']].append(r)
+    path = os.path.join(folder, 'reach-scenes.jsonl' if os.path.exists(os.path.join(folder, 'reach-scenes.jsonl')) else 'results.jsonl')
+    for line in open(path, encoding='utf-8-sig'):
+        r = json.loads(line)
+        scenes[r['map']].append(r)
+    print('| Level | open | s | Chunks ready | by touch | by state | Scenes reached | Started by itself |\n|---|---|---|---|---|---|---|---|')
+    total = reached = 0
+    for mp, lv in levels.items():
+        cs_, sc = chunks[mp], scenes[mp]
+        ok = [s for s in sc if s.get('outcome') not in ('not reached', 'action not loaded')]
+        total += len(sc)
+        reached += len(ok)
+        print(f"| {mp} | {'yes' if lv['opened'] else 'NO'} | {lv['seconds']} | {sum(1 for c in cs_ if c['ready'])} of {len(cs_)} | "
+              f"{sum(1 for c in cs_ if c['route'].startswith('touch'))} | {sum(1 for c in cs_ if c['route'].startswith('state'))} | "
+              f"{len(ok)} of {len(sc)} | {', '.join(lv.get('byItself') or [])} |")
+    print(f"\n{reached} of {total} scenes reached in {len(levels)} levels")
+    missed = [s for sc in scenes.values() for s in sc if s.get('outcome') in ('not reached', 'action not loaded')]
+    if missed:
+        print('\n| Not reached | Level | Chunk | Stream route | Why |\n|---|---|---|---|---|')
+        for s in missed:
+            print(f"| {s['conversation']} | {s['map']} | {s.get('chunk', '-')} | {s.get('stream', '-')} | {s.get('detail', s.get('outcome'))} |")
+    return 0
+
+
 # ---- the canary set -------------------------------------------------------------------------------------------------------------
 
 def canary(argv):
@@ -479,10 +516,10 @@ def judge(argv):
 
 
 def main(argv):
-    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary'):
+    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary', 'reach'):
         print(__doc__)
         return 2
-    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary}[argv[1]](argv[2:])
+    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary, 'reach': reach}[argv[1]](argv[2:])
 
 
 if __name__ == '__main__':

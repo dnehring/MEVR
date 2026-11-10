@@ -53,12 +53,24 @@ $reachFile = Join-Path $Out 'reach.jsonl'
 $runnerLog = Join-Path $Out 'runner.log'
 $doc = Get-Content -LiteralPath $Plan -Raw | ConvertFrom-Json
 
+# A line added to a file someone may be reading right now (a `tail` of the runner's log ended the first run, 2026-11-09:
+# Add-Content wants the file to itself): opened for append with readers and writers let in, tried again for a few seconds.
+function AddLine([string]$file, [string]$line) {
+    for ($try = 0; $try -lt 40; $try++) {
+        try {
+            $fs = [IO.File]::Open($file, 'Append', 'Write', 'ReadWrite')
+            try { $bytes = [Text.Encoding]::UTF8.GetBytes($line + "`r`n"); $fs.Write($bytes, 0, $bytes.Length) } finally { $fs.Close() }
+            return
+        } catch { Start-Sleep -Milliseconds 250 }
+    }
+    Write-Warning "could not write to $file in 10 s: $line"
+}
 function Say([string]$text) {
     $line = "{0} {1}" -f (Get-Date -Format 'HH:mm:ss'), $text
     Write-Host $line
-    Add-Content -LiteralPath $runnerLog -Value $line
+    AddLine $runnerLog $line
 }
-function Append([string]$file, $record) { ($record | ConvertTo-Json -Compress -Depth 8) | Add-Content -LiteralPath $file }
+function Append([string]$file, $record) { AddLine $file ($record | ConvertTo-Json -Compress -Depth 8) }
 
 $script:silent = 0
 function Console([string]$line, [int]$timeout = 10) {
