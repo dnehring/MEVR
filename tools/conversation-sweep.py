@@ -663,6 +663,17 @@ def judge(argv):
                       if (r.get('summary') or {}).get('world') and (r['summary'].get('markM') or 0) >= 1.5), reverse=True)
         if far:
             lines.append("Shepard's mark 1.5 m or more from where the player stood: " + ', '.join(f'{k} {m:.1f} m ({o})' for m, k, o in far[:25]))
+    # The moments (level-script matinees that walk Shepard): how each was held and what it led to.
+    mom = [(k, r) for k, r in results.items() if r.get('modes') is not None]
+    if mom:
+        lines.append('\n## Moments\n\n| Moment | Level | As authored: s, m, modes | In first person: s, walked, carried, dips | Script moves | Led to (opening) |\n|---|---|---|---|---|---|')
+        for k, r in mom:
+            t, v = r.get('track') or {}, r.get('view') or {}
+            led = ', '.join(f"{x['name']} ({x.get('opening') or ('world' if x.get('world') else 'screen')}{', %.1f m' % x['markM'] if x.get('markM') else ''})"
+                            for x in r.get('led') or []) or '-'
+            lines.append(f"| {k.replace('moment_', '')} | {r.get('map', '-')} | {t.get('seconds', '-')} s, {t.get('pathM', '-')} m, {t.get('modes', r.get('modes'))} | "
+                         + (f"{v.get('seconds')} s, {v.get('walkedM')} m, {v.get('carriedM')} m, {v.get('dips')}" if v else 'not held')
+                         + f" | {'; '.join(r.get('script') or []) or '-'} | {led} |")
     for kind in sorted(by_kind, key=lambda x: -len(by_kind[x])):
         lines.append(f"\n## {kind} ({len(by_kind[kind])})\n")
         lines.append('| Conversation | Level | Detail | Predicted risks |\n|---|---|---|---|')

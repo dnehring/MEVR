@@ -462,6 +462,16 @@ function RunScene([string]$map, $scene, $streamed) {
     if ($sums.Count -gt 1) { $record.summaries = @($sums | ForEach-Object { [ordered]@{ name = (Key $_.name); why = $_.why; seconds = $_.seconds; lines = $_.lines; world = $_.world } }) }
     $flow = @($flows | Where-Object { $_.name -eq $scene.conversation }) | Select-Object -Last 1
     if ($flow) { $record.flow = $flow }
+    # A moment: what the track did as authored (or would have), and the first-person view of it (game/AuthoredMoment,
+    # game/ConversationWorld's TickMoment); the conversations it led to, in order, with how each opened.
+    if ($scene.moment) {
+        $track = @(Summaries $window 'moment: summary (\{.*\})') | Select-Object -Last 1
+        $held = @(Summaries $window 'moment: view summary (\{.*\})') | Select-Object -Last 1
+        if ($track) { $record.track = $track }
+        if ($held) { $record.view = $held }
+        $record.led = @($sums | ForEach-Object { [ordered]@{ name = (Key $_.name); world = $_.world; opening = $_.opening; markM = $_.markM; lines = $_.lines; cuts = $_.cuts } })
+        $record.script = @($window | Select-String -Pattern 'moment: the script (teleported|moved) Shepard|moment: the way to|moment: Shepard is where' | ForEach-Object { ($_.Line -replace '^.*moment: ', '') } | Select-Object -First 8)
+    }
     # Another conversation that played inside this scene's stretch (a held start fired after it, the level's own follow-up):
     # its own record, so the judge sees it, and the plan's scene of it is not fired again.
     foreach ($other in $sums) {
