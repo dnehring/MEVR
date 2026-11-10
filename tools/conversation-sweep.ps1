@@ -426,7 +426,10 @@ function RunScene([string]$map, $scene, $streamed) {
             if ($om.Success) { Console ("mevr activate $($om.Groups[1].Value) 0") | Out-Null; Say "   also fired $tail" } else { Say "   alsoFire: $tail is not loaded" }
         }
     }
-    $deadline = $t0.AddSeconds($SceneSeconds)
+    # A long conversation gets more time than the usual limit (Vigil's 123 entries were ended by the runner at 150 s).
+    $limit = $SceneSeconds
+    if ($scene.lines -and $Pace -eq 'skip') { $limit = [math]::Max($SceneSeconds, [math]::Min(600, 3 * [int]$scene.lines)) }
+    $deadline = $t0.AddSeconds($limit)
     # Up to 12 s for a conversation, or for the flow module's line that a chain of ours plays as barks.
     $started = $false; $barks = $false
     $wait = $t0.AddSeconds(12)

@@ -372,7 +372,7 @@ def plan(argv):
                                          'BioSeqEvt_ForegroundStreamingDone') and via['hops'] <= 10 and via['between']:
             scene['via'] = {'opTail': re.sub(r'^.*Main_Sequence[.]', '', via['firstOp']), 'opClass': via['firstOpClass'], 'input': via['firstOpInput'],
                             'event': via['eventClass'], 'originator': via.get('originator'), 'hops': via['hops'], 'between': via['between']}
-        scene['tier'], scene['shape'] = r['tier'], r['shape']
+        scene['tier'], scene['shape'], scene['lines'] = r['tier'], r['shape'], r['lines']
         if r['sweep'] == 'bark':
             if len(barks[r['area']]) < barks_per_area and e['ownerAt']:
                 barks[r['area']].append(scene)
