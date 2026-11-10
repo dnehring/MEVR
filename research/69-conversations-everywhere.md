@@ -41,6 +41,7 @@ folder, which the release session holds.
 | 3 | Cutscene or world, decided at run time | data read; built log-only; game check pending | The packages can't say "Shepard isn't in this scene". Three run-time rules (pawn hidden; far from the owner and out of its sight; most shots framed from far away) name such scenes in the log and the survey's summary; they move a scene to the screen only with `worldAutoScreen = on`. |
 | 4 | Keeping people in place at the source | read; built; **checked in the game** | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. In the medical bay's wake-up scene: 28 placements withheld, 0 left for the undo after the fact (research/59 had 25 undone there). |
 | 5 | Walking and the level's triggers | read; built; **checked in the game** (9 triggers found by the medical bay, the walk stopped at the first one's edge) | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
+| 6 | Authored scenes (the game walks Shepard, frames the scene) | **proposal** ("Authored scenes: a treatment per kind of track"): about thirty moments in the game move Shepard by a track; nothing built | the council moment read from the level's script |
 | 2 | The sweep: every conversation in its plot state | planned ("The sweep: plan"); **phase 1 built** ("The sweep: progress"): the game slot, the catalogue's levels, predictions, the judge, the flowed scene's summary line | 28 of 491 played by the survey (research/59), 5 more by hand on 2026-11-09 |
 
 ## Findings
@@ -217,6 +218,58 @@ hand overrides beside it, is the scene builder's natural core; the mod would rea
 **Not known yet.** What a refused newcomer's action does in between: the game marks its conversation failed and fires the
 action's second output, as it would have during the original conversation; then our re-fire starts it over. Whether any level
 wires that output to something that should not happen twice is for the sweep.
+
+## Authored scenes: a treatment per kind of track, not per scene (proposal, 2026-11-09)
+
+The owner: "when Shepard meets Anderson before the council, I would want to approach Anderson and then he'd tell me to
+follow him and we'd both walk to the podium with the council already talking, like it is intended to play out. I don't know
+how we'd do those scenes in a scalable way."
+
+**What that moment is in the game's data** (`conversation-scan --sequence BIOA_STA70_02captain_DSG:SarenCouncil`): using
+Anderson fires the level's own script, not a conversation: the council's streaming state on, cinematic mode on, the player
+and squad positioned, then **a 7.5 s matinee** with a move track and an animation track on the group `Player`, the same on
+`Captain`, a moving camera and a director track with a fade (Anderson's "The hearing's already started. Come on." is a
+voice-over action); a black screen; that Anderson deactivated; a teleport into the council chunk; and there the
+conversation `sta90_council_saren` on its own stage, with authored cameras on 14 of its 31 lines and **no move track on
+anyone**. So the walk the owner remembers exists, as a short cinematic before the conversation; today the mod shows both
+on the 3D screen (a cinematic mode, then a set piece by the scan's camera rule).
+
+**Where authored content lives, counted** (the scan's `matinee` records: every `SeqAct_Interp` of a level script):
+
+| Where | Count | Of interest |
+|---|---|---|
+| a conversation's lines (a matinee per line) | 34,912 matinees in 277 conversations | Shepard moved by a track in 4 conversations, an NPC in 22, authored cameras on a quarter of the lines or more in 18 |
+| level-script matinees with a director track, outside animated cutscenes | 323 | **27 move Shepard by a track** (368 s in all: the walk to the council 7.5 s, becoming a Spectre 17.8 s, Benezia's entrance, Liara's rescue, the Thorian's first sight ...), 75 animate him or move an NPC, 221 are cameras only |
+| animated cutscenes (`ANIMCUTSCENE` sequences) | 164 matinees | nobody to place: the 3D screen |
+| the rest (doors, lifts, props) | 5,362 | not scenes |
+
+So the moments where the game itself walks Shepard are about thirty in the whole game. That is a list one can test whole,
+and too many to stage by hand one by one.
+
+**The scalable way: one treatment per kind of track, chosen by rule; a per-scene table only for exceptions.**
+
+| What the game authored | First person |
+|---|---|
+| a camera's move, a director's cut, depth of field, FOV | ignored: the head is the camera |
+| an NPC's move track or animation | played as authored, in the world (already so inside conversations: smooth moves are let through; to be confirmed at full length) |
+| Shepard's move track | never drags the player silently. One setting for all of them: **walk it yourself** (the track's end is where the player is wanted: the NPC walks ahead, the player's leash follows the path, the scene waits a moment at its end, and a dip from black takes him there if he doesn't come), **carried** (moved along the path with the comfort vignette), or **cut** (a dip, then standing at the end) |
+| a fade, a black screen | kept: a dip from black, which also covers the teleport behind it |
+| a teleport to another area | kept, under that dip |
+| cinematic mode switched on | not by itself a reason for the screen |
+| the conversation after it | in the world when Shepard has a body and a place there (the presence rules), whatever its cameras do |
+
+With those, the council moment plays as the owner describes without anything written for it: use Anderson, he speaks and
+walks, the player walks with him (or is carried), the dip, and he stands on the podium with the council already talking.
+
+**What it needs** (none of it built):
+1. A world mode for a level-script matinee (game mode 6 with Shepard's pawn in it), as conversations have: today every
+   cinematic mode goes to the 3D screen. The presence rules decide which matinees qualify.
+2. The player's own move track withheld or followed, by the setting above (the placement hook's way: find the native that
+   applies a move track to the player's pawn).
+3. The scan's verdict "screen" split: authored cameras alone no longer make a set piece; `worldSetPieces = world` and a run
+   of the 18 framed conversations say which have no place for the player.
+4. The stage's marks in the scan (also wanted by the predictions).
+The thirty moments are the test list; the sweep's runner can fire them like any start once it knows their events.
 
 ## The sweep: plan
 

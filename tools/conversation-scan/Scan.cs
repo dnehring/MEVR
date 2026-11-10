@@ -18,6 +18,7 @@
 //                  mode (a squadmate's remark on foot, radio chatter, the lines under an animated cutscene: Saren and
 //                  Benezia after Eden Prime are an ANIMCUTSCENE sequence with such actions); the sweep's predictions tell
 //                  these from the conversations a level starts
+//   matinee        every SeqAct_Interp of a level script, with its groups and tracks, whatever starts it
 //   trigger        a trigger or trigger volume placed in a level (any class named *Trigger*, the streaming volumes too): its
 //                  class and place, so the sweep's predictions can say which conversations play within a walk of one (the
 //                  mod refuses a walk step that would change which triggers Shepard overlaps; research/69 item 5)
@@ -65,6 +66,7 @@ internal static class Scan
                         "BioSeqEvt_ConvNode" => Cinematic(pcc, export),
                         "BioTriggerStream" => Volume(export),
                         "BioSeqAct_FaceOnlyVO" => VoiceOver(pcc, export),
+                        "SeqAct_Interp" => LevelMatinee(pcc, export),
                         "BioWorldInfo" or "WorldInfo" => Level(pcc, export),
                         _ => null,
                     };
@@ -258,6 +260,15 @@ internal static class Scan
             });
         }
         return new Dictionary<string, object> { ["kind"] = "volume", ["name"] = export.InstancedFullPath, ["states"] = states };
+    }
+
+    // Every matinee of a level script, with its groups and tracks ("matinee" records): the authored moments around scenes
+    // (Anderson walking Shepard to the council hearing is one, in cinematic mode, before the conversation starts).
+    private static Dictionary<string, object> LevelMatinee(IMEPackage pcc, ExportEntry export)
+    {
+        Dictionary<string, object> record = Matinee(pcc, export);
+        record["kind"] = "matinee";
+        return record;
     }
 
     private static Dictionary<string, object> VoiceOver(IMEPackage pcc, ExportEntry export)

@@ -56,6 +56,11 @@ internal static class Program
         {
             return StateEvents.Run(args[0], args[1], stateEvents);
         }
+        string sequence = args.SkipWhile(a => a != "--sequence").Skip(1).FirstOrDefault();
+        if (sequence != null)
+        {
+            return SequenceDump.Run(args[0], args[1], sequence);
+        }
         string references = args.SkipWhile(a => a != "--references").Skip(1).FirstOrDefault();
         if (references != null)
         {
