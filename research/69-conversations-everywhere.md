@@ -682,3 +682,20 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   level from the streaming lists (36 starts moved), `tools/conversation-sweep.py predict | plan | judge` with its tests,
   and the flowed scene's summary line in the mod. No game run. Next: phase 2, the reach matrix, which is the first use of
   the game slot on the real folder.
+- 2026-11-09, 20:50-23:25, **the sweep in the game, and what it changed in the plan** ("The sweep: progress" has each part):
+  the game slot used for the first time (held since 20:54, the 0.2.0 candidate backed up); the reach matrix (215 of 237
+  scenes in 16 levels; Shepard must float while chunks stream); the canary set validated both ways (the wake-up scene and
+  the Garrus argument pass, the run with `worldStaySource = 0` is caught as `undone`); passes are sampled by a
+  conversation's make-up and each level's place risks (133 of 290 scenes) and paced (`skip`, `shepard`, `full`); a scene
+  can be fired through its own event; the 21 moments where a level-script matinee walks Shepard are a plan of their own;
+  the opening without a cut is built (`worldOpening = auto`, not seen in the game).
+  **Running at 23:25:** the sampled first pass with skips (`%LOCALAPPDATA%/MEVR/sweep/2026-11-09-sample1`, 116 scenes in
+  the levels that open, then its judge's `report.md`), and a reading of the natives for move tracks, teleports, the black
+  screen and the cinematic mode (question list in the session; nothing written yet).
+  **Next, in this order:** judge the sampled pass and triage its exceptions; rebuild the mod (the game is using the DLL
+  from 20:51: no mod build while a pass runs) and try `worldOpening = auto` on Chorban (stay) and the council hearing
+  (walk in), then make it the default; play the moments with `-Fire event` to see what the cinematic mode shows today;
+  build the authored-scene rules from the natives' reading (the player's move track and a same-space teleport withheld,
+  the walk during a cinematic mode); the full-length pass on `plan --sample` plus the exceptions; the side worlds (the
+  runner now leaves the Mako) and Therum (a save); the headset sample; land on main (all three builds and ctest); return
+  the game folder with `tools/game-slot.ps1 return -Quit` and tell the release session.
