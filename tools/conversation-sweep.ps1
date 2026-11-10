@@ -350,7 +350,7 @@ function Place($scene) {
         $z = [double]$scene.ownerAt[2]; $face = ((($yaw + 180) % 360) + 360) % 360
     } elseif ($scene.stageAt) { $x = [double]$scene.stageAt[0]; $y = [double]$scene.stageAt[1]; $z = [double]$scene.stageAt[2] + 90; $face = $null }
     if ($null -eq $x) { return $false }
-    Console ("mevr setloc {0:0} {1:0} {2:0}" -f $x, $y, ($z + 50)) | Out-Null
+    Console ("mevr setloc {0:0} {1:0} {2:0}" -f $x, $y, ($z + 10)) | Out-Null  # 0.1 m up: from 0.5 m he hovered there after `ghost` and `walk` (2026-11-10)
     if ($null -ne $face) {
         $unreal = [int][math]::Round($face * 65536 / 360) % 65536
         Console ("set SFXPawn_Player Rotation (Pitch=0,Yaw={0},Roll=0)" -f $unreal) | Out-Null
