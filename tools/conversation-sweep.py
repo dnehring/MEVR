@@ -565,7 +565,7 @@ def judge_one(r, conv, prediction):
     return kinds
 
 
-BASELINE_FIELDS = ('world', 'kept', 'drawn', 'sourceKept', 'wheel', 'noPlace', 'autoScreened', 'lines')
+BASELINE_FIELDS = ('world', 'kept', 'drawn', 'sourceKept', 'wheel', 'noPlace', 'autoScreened', 'lines', 'opening')
 
 
 def judge(argv):
@@ -593,6 +593,16 @@ def judge(argv):
             by_kind[kind].append((k, detail))
     lines.append(f"{len(results)} scenes judged from {count} records: {len(inside)} inside every limit, {len(results) - len(inside)} exceptions"
                  + ('' if scan else ' (no --scan: the graph checks, lines-short and chain-cut by the graph, were skipped)'))
+    # How the openings ended (worldOpening = auto): a cut only where the composition changed.
+    openings = collections.Counter((r.get('summary') or {}).get('opening') for r in results.values() if (r.get('summary') or {}).get('world'))
+    openings.pop(None, None)
+    if openings:
+        cuts = sum((r.get('summary') or {}).get('cuts', 0) for r in results.values())
+        lines.append('openings in the world: ' + ', '.join(f'{k} {n}' for k, n in openings.most_common()) + f'; dips from black in all: {cuts}')
+        far = sorted(((r['summary'].get('markM', 0), k, r['summary'].get('opening')) for k, r in results.items()
+                      if (r.get('summary') or {}).get('world') and (r['summary'].get('markM') or 0) >= 1.5), reverse=True)
+        if far:
+            lines.append("Shepard's mark 1.5 m or more from where the player stood: " + ', '.join(f'{k} {m:.1f} m ({o})' for m, k, o in far[:25]))
     for kind in sorted(by_kind, key=lambda x: -len(by_kind[x])):
         lines.append(f"\n## {kind} ({len(by_kind[kind])})\n")
         lines.append('| Conversation | Level | Detail | Predicted risks |\n|---|---|---|---|')
