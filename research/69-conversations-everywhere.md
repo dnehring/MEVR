@@ -1388,7 +1388,7 @@ pawn, way 2's bone slide, the walk-in by the view), not to conversations as such
 across the moment's end with the pose writer's own counters (is `UpdateSkelPose` still called for his mesh there, and
 which mesh), and way 2 switched off (`worldBody = hidden`) to see whether the body then shows after the join.
 
-Built: the mod (hot-reloaded through these runs). Not built or run: the players' build, the trilogy build, the tests;
+Built: the mod (hot-reloaded through these runs) and, after the commit, the players' build; mevr-tests 24 of 24. Not built: the trilogy build;
 branch only.
 
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
