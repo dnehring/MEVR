@@ -187,7 +187,12 @@ function Settle([string]$map, [int]$seconds) {
     while ((Get-Date) -lt $deadline -and $steady -lt 3) {
         $s = State
         if (-not $s.answered) { if (-not (Running)) { return $false }; Start-Sleep -Seconds 2; continue }
-        if ($s.convo) { if ($ReachOnly) { Console 'mevr convo end' | Out-Null; Start-Sleep -Seconds 3 } else { PlayByItself $map }; $steady = 0; continue }
+        if ($s.convo) {
+            # A scene that starts by itself is played out; the wait for gameplay begins anew after it (the wake-up scene at
+            # full length outlasted the level's whole waiting time, and the level was taken for one that never opened).
+            if ($ReachOnly) { Console 'mevr convo end' | Out-Null; Start-Sleep -Seconds 3 } else { PlayByItself $map; $deadline = (Get-Date).AddSeconds([math]::Max($seconds, 60)) }
+            $steady = 0; continue
+        }
         if ($s.mode -eq 0) { $steady++ } else { $steady = 0 }
         if ($s.mode -eq 7) {
             if ($null -eq $guiSince) { $guiSince = Get-Date }
@@ -443,7 +448,7 @@ foreach ($level in $doc.maps) {
     $script:byItself = @()
     if (-not $opened) {
         Say "   $map never reached gameplay"
-        foreach ($scene in $scenes) { Append $resultsFile ([ordered]@{ conversation = $scene.conversation; map = $map; chunk = $scene.chunk; action = $scene.actionTail; route = 'open'; outcome = 'not reached'; detail = "open $map never reached gameplay"; expect = [ordered]@{ verdict = $scene.verdict; flowed = [bool]$scene.flowed } }) }
+        foreach ($scene in @($scenes | Where-Object { -not $done.ContainsKey($_.conversation) })) { Append $resultsFile ([ordered]@{ conversation = $scene.conversation; map = $map; chunk = $scene.chunk; action = $scene.actionTail; route = 'open'; outcome = 'not reached'; detail = "open $map never reached gameplay"; expect = [ordered]@{ verdict = $scene.verdict; flowed = [bool]$scene.flowed } }) }
         continue
     }
     foreach ($chunk in $level.chunks) {

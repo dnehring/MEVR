@@ -259,9 +259,10 @@ and too many to stage by hand one by one.
 | the conversation after it | in the world when Shepard has a body and a place there (the presence rules), whatever its cameras do |
 
 **No dip unless the composition is completely different** (the owner, 2026-11-09: "the dip would just require us to not
-walk as long"). Measured for the council: Anderson stands at (-6906, -7285, 61816), the hearing's stage is at (-10068,
--7077, 62107): **32 m further into the same hall and 3 m up its stairs**, and the script's own comment on the teleport is
-"Put player at top of stairs". The black screen there hides nothing but a shorter walk. So a teleport (or an opening
+walk as long"). Measured for the council: Anderson stands at (-6906, -7285, 61816); the script's teleport ("Put player at
+top of stairs", its own comment) takes the player **7.5 m on and 2.9 m up**; the hearing's stage, where the conversation's
+opening placement then puts him, is at (-10068, -7077, 62107), **32 m from Anderson in the same hall**. Two cuts, both
+within one walkable space: the black screen there hides nothing but a shorter walk. So a teleport (or an opening
 placement) is withheld when all of these hold, checked at run time, and kept under a dip otherwise:
 
 - the same space: the place can be walked to from where the player stands (the walk's own floor and wall checks along the
@@ -271,6 +272,15 @@ placement) is withheld when all of these hold, checked at run time, and kept und
   the one who walked is swapped for him on arrival, which the black screen did in the original).
 
 Another area, another time, another cast, or Shepard put where nobody can walk (a seat, the Mako): the dip.
+
+**The game's teleports, counted** (the scan's `teleport` and `event` records): 691 `SeqAct_Teleport` in level scripts, 237
+with the player among their targets. Only 33 of those name a placed destination (the others find it at run time: by tag,
+from a list), and for 26 of them an event of the player's own doing in the same sequence says where he stands when it
+runs: **8 take him under 5 m, 9 between 5 and 15 m, 5 between 15 and 60 m, 4 over 60 m** (Bring Down the Sky's combat
+start 36 m, a side world's base 30 m and 18 m up, Therum's first troop drop 20 m, Zhu's Hope's first creeper 9 and 20 m,
+Kirrahe's camp 13 m, the two Citadel Tower moments 7.5 m). So most scripted teleports of the player that can be measured
+from the data are short hops inside one space; the rule has to measure the rest when they run (a log line per teleport
+of the player: from, to, the distance, whether a walk could make it), which is the first thing to build.
 
 With those, the council moment plays as the owner describes without anything written for it: use Anderson; he says his
 line and walks ahead up the stairs; the player walks with him; the hearing's conversation starts as the script starts it,

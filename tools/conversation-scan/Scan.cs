@@ -18,6 +18,8 @@
 //                  mode (a squadmate's remark on foot, radio chatter, the lines under an animated cutscene: Saren and
 //                  Benezia after Eden Prime are an ANIMCUTSCENE sequence with such actions); the sweep's predictions tell
 //                  these from the conversations a level starts
+//   teleport       a SeqAct_Teleport: its targets' variable classes and its destination's place
+//   event          the player used something or touched a trigger: the event and its originator's place
 //   matinee        every SeqAct_Interp of a level script, with its groups and tracks, whatever starts it
 //   trigger        a trigger or trigger volume placed in a level (any class named *Trigger*, the streaming volumes too): its
 //                  class and place, so the sweep's predictions can say which conversations play within a walk of one (the
@@ -67,6 +69,8 @@ internal static class Scan
                         "BioTriggerStream" => Volume(export),
                         "BioSeqAct_FaceOnlyVO" => VoiceOver(pcc, export),
                         "SeqAct_Interp" => LevelMatinee(pcc, export),
+                        "SeqAct_Teleport" => Teleport(pcc, export),
+                        "BioSeqEvt_OnPlayerActivate" or "SeqEvent_Touch" or "SeqEvent_Used" => Event(pcc, export),
                         "BioWorldInfo" or "WorldInfo" => Level(pcc, export),
                         _ => null,
                     };
@@ -269,6 +273,42 @@ internal static class Scan
         Dictionary<string, object> record = Matinee(pcc, export);
         record["kind"] = "matinee";
         return record;
+    }
+
+    // A level script's teleport: whom it moves (the player, when a player variable is its target) and where to (the
+    // destination actor's place). With the events below, how far a scripted cut takes the player (research/69 "Authored
+    // scenes": a teleport within the same space can be walked instead).
+    private static Dictionary<string, object> Teleport(IMEPackage pcc, ExportEntry export)
+    {
+        PropertyCollection props = export.GetProperties();
+        var record = new Dictionary<string, object> { ["kind"] = "teleport", ["path"] = export.InstancedFullPath };
+        record["targets"] = Linked(pcc, props, "Target").Select(v => v.ClassName).ToList();
+        foreach (ExportEntry variable in Linked(pcc, props, "Destination"))
+        {
+            if (pcc.GetEntry(variable.GetProperties().GetProp<ObjectProperty>("ObjValue")?.Value ?? 0) is ExportEntry destination
+                && destination.GetProperties().GetProp<StructProperty>("Location") is { } at)
+            {
+                record["destination"] = destination.ObjectName.Instanced;
+                record["destinationAt"] = new[] { at.GetProp<FloatProperty>("X")?.Value ?? 0, at.GetProp<FloatProperty>("Y")?.Value ?? 0, at.GetProp<FloatProperty>("Z")?.Value ?? 0 };
+            }
+        }
+        return record;
+    }
+
+    // An event of the player's doing in a level script (he used something, he touched a trigger) and where its originator is
+    // placed: where the player stands when the script that follows runs.
+    private static Dictionary<string, object> Event(IMEPackage pcc, ExportEntry export)
+    {
+        if (pcc.GetEntry(export.GetProperties().GetProp<ObjectProperty>("Originator")?.Value ?? 0) is not ExportEntry originator
+            || originator.GetProperties().GetProp<StructProperty>("Location") is not { } at)
+        {
+            return null;
+        }
+        return new Dictionary<string, object>
+        {
+            ["kind"] = "event", ["path"] = export.InstancedFullPath, ["class"] = export.ClassName, ["originator"] = originator.ObjectName.Instanced,
+            ["at"] = new[] { at.GetProp<FloatProperty>("X")?.Value ?? 0, at.GetProp<FloatProperty>("Y")?.Value ?? 0, at.GetProp<FloatProperty>("Z")?.Value ?? 0 },
+        };
     }
 
     private static Dictionary<string, object> VoiceOver(IMEPackage pcc, ExportEntry export)
