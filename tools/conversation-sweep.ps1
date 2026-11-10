@@ -44,7 +44,11 @@ param(
     [int]$StreamSeconds = 45,
     [double]$StandM = 1.5,
     [int]$Limit = 0,
-    [switch]$NoRestart
+    [switch]$NoRestart,
+    # What is fired. action: the scene's BioSeqAct_StartConversation itself (the script before it skipped). event: the first
+    # action behind the player's own event that leads to it (the plan's `via`), so the level's script runs as authored, with
+    # its plot checks, teleports and matinees; if no conversation follows, the bare start is fired after all.
+    [ValidateSet('action', 'event')] [string]$Fire = 'action'
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
@@ -371,7 +375,21 @@ function RunScene([string]$map, $scene, $streamed) {
     if ($null -eq $index) { $record.outcome = 'action not loaded'; $record.detail = 'gone after Shepard was placed'; return $record }
     $mark = LogMark
     $t0 = Get-Date
-    Console ("mevr activate $index 0") | Out-Null
+    $fired = 'action'
+    if ($Fire -eq 'event' -and $scene.via) {
+        $name = ($scene.via.opTail -split '\.')[-1]
+        $listing = Console ("mevr instances $($scene.via.opClass) $name")
+        $vm = [regex]::Match($listing, '(?m)^\[(\d+)\] \S+ \S*' + [regex]::Escape($scene.via.opTail) + '\s*$')
+        if ($vm.Success) {
+            Console ("mevr activate $($vm.Groups[1].Value) $($scene.via.input)") | Out-Null
+            $fired = 'event'
+            # The script may take a while to reach the start (a matinee, a teleport): up to 40 s for a conversation.
+            $until = (Get-Date).AddSeconds(40)
+            while ((Get-Date) -lt $until -and -not (State).convo -and -not (@(LogSince $mark) -match 'convo flow: .* plays as barks')) { Start-Sleep -Seconds 1 }
+            if (-not (State).convo -and -not (@(LogSince $mark) -match 'convo flow: .* plays as barks')) { $fired = 'event, then action'; Console ("mevr activate $index 0") | Out-Null }
+        } else { Console ("mevr activate $index 0") | Out-Null }
+    } else { Console ("mevr activate $index 0") | Out-Null }
+    $record.fired = $fired
     # A scene's `alsoFire` (the canary set: a bark and another scene's start over a flowed scene): fired half a second later.
     if ($scene.alsoFire) {
         Start-Sleep -Milliseconds 500

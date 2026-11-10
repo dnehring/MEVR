@@ -229,6 +229,13 @@ internal static class Scan
                 record["ownerTag"] = tag.Value.Instanced;
             }
         }
+        // What leads to this start in the level's script (research/69, "fire a scene from its own event"): the nearest event
+        // upstream of it, the first action behind that event (firing that one plays the script as authored: plot checks,
+        // streaming states, teleports, matinees, then this start) and the classes of everything in between.
+        if (Upstream(pcc, export) is { } via)
+        {
+            record["via"] = via;
+        }
         foreach (ExportEntry variable in Linked(pcc, props, "Stage"))
         {
             ExportEntry stage = pcc.GetEntry(variable.GetProperties().GetProp<ObjectProperty>("ObjValue")?.Value ?? 0) as ExportEntry;
@@ -315,6 +322,97 @@ internal static class Scan
     {
         IEntry conv = pcc.GetEntry(export.GetProperties().GetProp<ObjectProperty>("m_pConversation")?.Value ?? 0);
         return conv == null ? null : new Dictionary<string, object> { ["kind"] = "vo", ["path"] = export.InstancedFullPath, ["conv"] = conv.InstancedFullPath };
+    }
+
+    private static string reverseFor;
+    private static Dictionary<int, List<(ExportEntry source, int input)>> reverse;
+
+    // Who links to whom, backwards, for every sequence object of a package (built once per package that has a start).
+    private static Dictionary<int, List<(ExportEntry source, int input)>> Reverse(IMEPackage pcc)
+    {
+        if (reverseFor == pcc.FilePath && reverse != null)
+        {
+            return reverse;
+        }
+        reverse = new Dictionary<int, List<(ExportEntry, int)>>();
+        reverseFor = pcc.FilePath;
+        foreach (ExportEntry op in pcc.Exports.Where(e => e.ClassName.Contains("Seq", StringComparison.Ordinal)))
+        {
+            PropertyCollection props;
+            try
+            {
+                props = op.GetProperties();
+            }
+            catch
+            {
+                continue;
+            }
+            foreach (StructProperty link in props.GetProp<ArrayProperty<StructProperty>>("OutputLinks") ?? new ArrayProperty<StructProperty>("OutputLinks"))
+            {
+                foreach (StructProperty target in link.GetProp<ArrayProperty<StructProperty>>("Links") ?? new ArrayProperty<StructProperty>("Links"))
+                {
+                    int to = target.GetProp<ObjectProperty>("LinkedOp")?.Value ?? 0;
+                    if (to == 0)
+                    {
+                        continue;
+                    }
+                    if (!reverse.TryGetValue(to, out var list))
+                    {
+                        reverse[to] = list = new List<(ExportEntry, int)>();
+                    }
+                    list.Add((op, target.GetProp<IntProperty>("InputLinkIdx")?.Value ?? 0));
+                }
+            }
+        }
+        return reverse;
+    }
+
+    private static bool IsEvent(ExportEntry e) => e.ClassName.Contains("Evt_", StringComparison.Ordinal) || e.ClassName.StartsWith("SeqEvent", StringComparison.Ordinal);
+
+    private static Dictionary<string, object> Upstream(IMEPackage pcc, ExportEntry start)
+    {
+        var links = Reverse(pcc);
+        var parent = new Dictionary<int, (ExportEntry next, int input)>();  // op -> the op it leads to on the way to the start
+        var queue = new Queue<(ExportEntry op, int depth)>();
+        queue.Enqueue((start, 0));
+        parent[start.UIndex] = (null, 0);
+        while (queue.Count > 0)
+        {
+            (ExportEntry op, int depth) = queue.Dequeue();
+            if (depth >= 24 || !links.TryGetValue(op.UIndex, out var sources))
+            {
+                continue;
+            }
+            foreach ((ExportEntry source, int input) in sources)
+            {
+                if (IsEvent(source) && source.ClassName != "SeqEvent_SequenceActivated")
+                {
+                    var between = new List<string>();
+                    for (ExportEntry at = op; at != null && at.UIndex != start.UIndex; at = parent[at.UIndex].next)
+                    {
+                        between.Add(at.ClassName);
+                    }
+                    PropertyCollection ep = source.GetProperties();
+                    return new Dictionary<string, object>
+                    {
+                        ["event"] = source.InstancedFullPath, ["eventClass"] = source.ClassName,
+                        ["originator"] = pcc.GetEntry(ep.GetProp<ObjectProperty>("Originator")?.Value ?? 0)?.ObjectName.Instanced,
+                        ["eventName"] = ep.GetProp<NameProperty>("EventName")?.Value.Instanced,
+                        ["firstOp"] = op.InstancedFullPath, ["firstOpClass"] = op.ClassName, ["firstOpInput"] = input,
+                        ["hops"] = depth + 1, ["between"] = between,
+                    };
+                }
+                // A sub-sequence's own input: go on from the sequence object in its parent.
+                ExportEntry next = source.ClassName == "SeqEvent_SequenceActivated" && source.Parent is ExportEntry sequence ? sequence : source;
+                if (parent.ContainsKey(next.UIndex))
+                {
+                    continue;
+                }
+                parent[next.UIndex] = (op, input);
+                queue.Enqueue((next, depth + 1));
+            }
+        }
+        return null;
     }
 
     // A level's streaming list: the packages its WorldInfo can stream in (LevelStreaming objects' PackageName). A chunk's own

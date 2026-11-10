@@ -363,6 +363,14 @@ def plan(argv):
             'flowed': r['flowed'], 'flowEntries': r['flowEntries'], 'risks': r['risks'], 'sweep': r['sweep'],
             'streamVia': ways.get(e['map'], {}).get(chunk_of(e['package']), []),
         }
+        # The scene's own way in (the scan's `via`): the first action behind the event of the player's doing that leads to
+        # this start. Fired instead of the bare start, the level's script runs as authored (its plot checks, streaming
+        # states, teleports and matinees, then the start); kept to the player's own events and short chains.
+        via = e.get('via')
+        if via and via['eventClass'] in ('BioSeqEvt_OnPlayerActivate', 'SeqEvent_Touch', 'BioSeqEvt_ArtPlaceableUsed', 'SeqEvent_Used',
+                                         'BioSeqEvt_ForegroundStreamingDone') and via['hops'] <= 10 and via['between']:
+            scene['via'] = {'opTail': re.sub(r'^.*Main_Sequence[.]', '', via['firstOp']), 'opClass': via['firstOpClass'], 'input': via['firstOpInput'],
+                            'event': via['eventClass'], 'originator': via.get('originator'), 'hops': via['hops'], 'between': via['between']}
         scene['tier'], scene['shape'] = r['tier'], r['shape']
         if r['sweep'] == 'bark':
             if len(barks[r['area']]) < barks_per_area and e['ownerAt']:

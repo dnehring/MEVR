@@ -323,6 +323,7 @@ def catalogue(path, out, quiet=False):
             'actionTail': re.sub(r'^.*Main_Sequence\.', '', r['path']), 'package': r['package'], 'chunk': chunk,
             'map': persistent(r['package']), 'owner': r.get('owner'), 'ownerClass': r.get('ownerClass'), 'ownerTag': r.get('ownerTag'),
             'ownerAt': r.get('ownerAt'), 'ownerYaw': r.get('ownerYaw'), 'stage': r.get('stage'), 'stageAt': r.get('stageAt'),
+            'via': r.get('via'),
         })
     # The level to open: a persistent level whose streaming list names the start's package; among several (the Normandy's
     # chunks are streamed by the Normandy, the Citadel, Eden Prime and Virmire) the one the package's name says, else the
