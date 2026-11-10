@@ -247,6 +247,21 @@ void TestSceneRules() {
             CHECK(cw::StepGuide(there, false, false, true, 0.1, 0.0) == G::Wait);
             CHECK(!there.guiding && there.idleS == 0.0);
         }
+        // How a walk-in is walked: the body by default, the view when the pawn must not be moved.
+        {
+            using W = cw::WalkInWay;
+            using WR = cw::WalkInRule;
+            CHECK(cw::DecideWalkIn({}, WR::Auto) == W::Body);
+            CHECK(cw::DecideWalkIn({true, false}, WR::Auto) == W::View);   // a moment's walk was on its way (the council)
+            CHECK(cw::DecideWalkIn({false, true}, WR::Auto) == W::View);   // the mark stands inside a trigger
+            CHECK(cw::DecideWalkIn({true, true}, WR::Body) == W::Body);    // by the setting
+            CHECK(cw::DecideWalkIn({}, WR::View) == W::View);
+            CHECK(cw::ParseWalkInRule("View", WR::Auto) == WR::View);
+            CHECK(cw::ParseWalkInRule(" body ", WR::Auto) == WR::Body);
+            CHECK(cw::ParseWalkInRule("auto", WR::Body) == WR::Auto);
+            CHECK(cw::ParseWalkInRule("sideways", WR::Body) == WR::Body);
+            CHECK(std::string_view(cw::Name(W::View)) == "view" && std::string_view(cw::Name(W::Body)) == "body");
+        }
         // A stage mark metres away is never accepted this way, however often the game asks.
         cw::Insistence mark;
         for (int i = 0; i < 10; ++i) {

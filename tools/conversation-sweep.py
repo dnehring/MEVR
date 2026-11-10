@@ -8,6 +8,8 @@ runs (layer 0), the runner's work list, and the judge of a finished pass. No gam
         [--reach reach-scenes.jsonl] [--also names.txt] [--barks 1]
   python tools/conversation-sweep.py moments scan.jsonl --out moments.json     the matinees that walk Shepard, as a plan
   python tools/conversation-sweep.py reach <folder of a -ReachOnly run>
+  python tools/conversation-sweep.py saves scan.jsonl list.json --base <career save> [--table saves.md] [--dry-run]
+        saves for looking at scenes in the headset: the player in front of each scene, before it starts (--remove)
   python tools/conversation-sweep.py canary plan.json tools/conversation-canary.json --out-plan canary-plan.json
         --out-expect canary-expect.json [--broken]
   python tools/conversation-sweep.py judge results.jsonl [more.jsonl ...] [--scan scan.jsonl] [--predictions predictions.json]
@@ -407,12 +409,9 @@ def plan(argv):
 
 # ---- the authored moments -------------------------------------------------------------------------------------------------------
 
-def moments(argv):
-    """The level-script matinees that move the player by a track, outside animated cutscenes (research/69 "Authored scenes"),
-    as a plan the runner can play: each fired through the first action behind the event that leads to it, Shepard stood by
-    that event's originator. The council's walk-in is one of them."""
-    path = argv[0]
-    out = option(argv, '--out')
+def moment_scenes(path):
+    """The level-script matinees that move the player by a track, outside animated cutscenes, per level: the scenes of the
+    moments plan (and of the validation saves)."""
     levels, rows = {}, []
     for line in open(path, encoding='utf-8'):
         if '"kind":"level"' in line:
@@ -445,11 +444,23 @@ def moments(argv):
             'matinee': tail, 'lengthS': round(r['length'], 1), 'event': via['eventClass'], 'between': via['between'],
             # The way to the matinee action by action: where the first one is a plot check a fresh level does not pass, the
             # runner fires the first one behind it that is no check (a test rig's shortcut; the plot is not set).
-            'chain': [{'tail': re.sub(r'^.*Main_Sequence[.]', '', c['op']), 'class': c['class'], 'input': c['input']} for c in via.get('chain', [])],
-            'ownerAt': via.get('originatorAt'), 'ownerYaw': 0, 'stageAt': None, 'touchShows': True, 'streamStates': [],
+            'chain': [dict({'tail': re.sub(r'^.*Main_Sequence[.]', '', c['op']), 'class': c['class'], 'input': c['input']},
+                           **{k: c[k] for k in ('out', 'plot') if k in c}) for c in via.get('chain', [])],
+            'ownerAt': via.get('originatorAt'), 'ownerYaw': via.get('originatorYaw') or 0, 'ownerClass': via.get('originatorClass'),
+            'stageAt': None, 'touchShows': True, 'streamStates': [],
             'kind': 'moment', 'verdict': 'moment', 'tier': 'C', 'shape': 'moment', 'flowed': False, 'flowEntries': [], 'risks': ['shepard-walk'],
             'sweep': 'moment', 'streamVia': ways.get(mp, {}).get(chunk_of(r['package']), []),
         })
+    return by_map
+
+
+def moments(argv):
+    """The level-script matinees that move the player by a track, outside animated cutscenes (research/69 "Authored scenes"),
+    as a plan the runner can play: each fired through the first action behind the event that leads to it, Shepard stood by
+    that event's originator. The council's walk-in is one of them."""
+    path = argv[0]
+    out = option(argv, '--out')
+    by_map = moment_scenes(path)
     maps = [{'map': mp, 'chunks': [{'chunk': s['chunk'], 'scenes': [s]} for s in sorted(by_map[mp], key=lambda s: (s['chunk'], s['conversation']))]}
             for mp in sorted(by_map, key=str)]
     total = sum(len(v) for v in by_map.values())
@@ -463,6 +474,156 @@ def moments(argv):
                 print(f"   {mp['map']:12s} {s['conversation']:44s} {s['lengthS']:5.1f} s  by {s['event'].replace('BioSeqEvt_', '').replace('SeqEvent_', '')}"
                       f"{' at a placed originator' if s['ownerAt'] else ''}; before it: {', '.join(x.replace('BioSeqAct_', '').replace('SeqAct_', '') for x in s['between'][:6]) or '-'}")
     return 0
+
+
+# ---- validation saves ------------------------------------------------------------------------------------------------------------
+
+def plot_for(chain):
+    """The plot values a scene's way from its event wants: each plot check on it (BioSeqAct_PMCheckState) with the output
+    the way leaves it by. Returns ({index: 0|1}, [what could not be set])."""
+    plot, unset = {}, []
+    for c in chain or []:
+        if 'PMCheck' not in c.get('class', ''):
+            continue
+        if c['class'].endswith('PMCheckState') and 'plot' in c and c.get('out') in ('True', 'False'):
+            plot[int(c['plot'])] = 1 if c['out'] == 'True' else 0
+        else:
+            unset.append(f"{c['class'].replace('BioSeqAct_', '')}{' ' + str(c['plot']) if 'plot' in c else ''} (leaves by {c.get('out', '?')})")
+    return plot, unset
+
+
+def stand_before(at, yaw_deg, approach_m):
+    """A place approach_m in front of something placed at `at` and facing yaw_deg (Unreal: 0 along +X, 90 along +Y), 20 units
+    up (the game drops the player onto the floor), and the facing that looks back at it."""
+    import math
+    r = math.radians(yaw_deg or 0.0)
+    return ([at[0] + math.cos(r) * approach_m * 100.0, at[1] + math.sin(r) * approach_m * 100.0, at[2] + 20.0],
+            ((yaw_deg or 0.0) + 180.0) % 360.0)
+
+
+def saves(argv):
+    """Saves for looking at scenes in the headset (the owner, 2026-11-10: "a system which will allow me the save to appear
+    ahead of Anderson (before the dialogue would engage) and all of the other scenes we need to validate"): for each scene
+    of a list, a copy of a career save with the scene's level, the player a few metres in front of the person (or the
+    event's originator) and facing it, before anything engages, and the plot values the scene's own script checks on the
+    way set as it wants them (tools/le1-save.py does the writing). Numbered slots of the career, so the game's Load screen
+    lists them (it reads the folder once, at the game's start); a table says which slot is which scene; --remove deletes
+    what the last run wrote.
+
+      conversation-sweep.py saves scan.jsonl list.json --base <career save.pcsav> [--out-dir <career folder>] [--first-slot 80]
+            [--approach 4] [--table saves.md] [--manifest file.json] [--dry-run]
+      conversation-sweep.py saves --remove [--manifest file.json]
+
+    list.json: {"scenes": [{"scene": "<conversation or moment name>", "title": "...", "approachM": 4, "plot": {"123": 1},
+    "at": [x, y, z], "yaw": 0, "action": "<text in the start's path>"}]} (all but "scene" optional; "at"/"yaw" replace the
+    scan's place; "plot" adds to the checks')."""
+    import subprocess
+    manifest_path = option(argv, '--manifest') or os.path.join(os.environ.get('LOCALAPPDATA', '.'), 'MEVR', 'validation-saves.json')
+    if '--remove' in argv:
+        if not os.path.exists(manifest_path):
+            print(f"nothing to remove: no {manifest_path}")
+            return 0
+        listed = json.load(open(manifest_path, encoding='utf-8'))
+        gone = 0
+        for f in listed.get('files', []):
+            if os.path.exists(f):
+                os.remove(f)
+                gone += 1
+        os.remove(manifest_path)
+        print(f"removed {gone} of {len(listed.get('files', []))} validation saves; {manifest_path} deleted")
+        return 0
+    scan_path, list_path = argv[0], argv[1]
+    base = option(argv, '--base')
+    if not base or not os.path.exists(base):
+        print('saves: --base <career save.pcsav> is needed')
+        return 2
+    out_dir = option(argv, '--out-dir') or os.path.dirname(os.path.abspath(base))
+    first = int(option(argv, '--first-slot', '80'))
+    approach = float(option(argv, '--approach', '4'))
+    dry = '--dry-run' in argv
+    table = option(argv, '--table')
+    career = re.match(r'(.+?)_[^_]+$', os.path.splitext(os.path.basename(base))[0])
+    career = career.group(1) if career else os.path.splitext(os.path.basename(base))[0]
+    wanted = json.load(open(list_path, encoding='utf-8'))['scenes']
+    starts = collections.defaultdict(list)
+    for e in cs.catalogue(scan_path, None, quiet=True):
+        starts[e['conversation']].append(e)
+    moments_by = {s['conversation']: s for v in moment_scenes(scan_path).values() for s in v}
+    tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'le1-save.py')
+    rows, files, commands = [], [], []
+    for i, item in enumerate(wanted):
+        name = item['scene']
+        slot = first + i
+        row = {'slot': slot, 'scene': name, 'title': item.get('title') or name}
+        rows.append(row)
+        if name in moments_by:
+            s = moments_by[name]
+            level, at, yaw, chain, what = s['map'], s.get('ownerAt'), s.get('ownerYaw') or 0, s.get('chain'), s.get('ownerClass') or 'the event\'s originator'
+            event = s.get('event')
+        else:
+            found = [e for e in starts.get(name, []) if not item.get('action') or item['action'] in e['action']]
+            found.sort(key=lambda e: (e.get('ownerAt') is None, (e.get('via') or {}).get('originatorAt') is None))
+            if not found:
+                row['skipped'] = 'no such conversation start or moment in the scan'
+                continue
+            e = found[0]
+            via = e.get('via') or {}
+            level, chain = e['map'], via.get('chain')
+            event = via.get('eventClass')
+            if e.get('ownerAt'):
+                at, yaw, what = e['ownerAt'], e.get('ownerYaw') or 0, e.get('ownerClass') or 'the owner'
+            else:
+                at, yaw, what = via.get('originatorAt'), via.get('originatorYaw') or 0, via.get('originatorClass') or 'the event\'s originator'
+        if item.get('at'):
+            at, yaw, what = item['at'], item.get('yaw') or 0, 'the list\'s place'
+        if not at or not level:
+            row['skipped'] = 'no placed owner or originator in the scan (give "at" and "yaw" in the list)' if level else 'no persistent level known'
+            continue
+        plot, unset = plot_for(chain)
+        plot.update({int(k): int(v) for k, v in (item.get('plot') or {}).items()})
+        place, face = stand_before(at, yaw, float(item.get('approachM', approach)))
+        out = os.path.join(out_dir, f"{career}_{slot:02d}.pcsav")
+        row['starts'] = ('when you use it' if event and 'OnPlayerActivate' in event else 'when you walk in (a trigger)' if event and 'Touch' in event
+                         else 'by itself when its area loads' if event and 'LevelLoaded' in event else 'by the level script' if event else '?')
+        row.update({'file': out, 'level': level, 'place': [round(v, 1) for v in place], 'facing': round(face, 1), 'before': what,
+                    'plot': plot, 'unset': unset})
+        cmd = [sys.executable, '-I', tool, 'write', base, out, '--level', level, '--location', f"{place[0]:.1f}", f"{place[1]:.1f}", f"{place[2]:.1f}",
+               '--yaw', f"{face:.1f}", '--force']
+        for k in sorted(plot):
+            cmd += ['--bool', f"{k}={plot[k]}"]
+        commands.append(cmd)
+        if dry:
+            continue
+        if os.path.exists(out) and out not in json.load(open(manifest_path, encoding='utf-8')).get('files', []) if os.path.exists(manifest_path) else os.path.exists(out):
+            row['skipped'] = f"{os.path.basename(out)} exists and is not one of ours: not replaced (another --first-slot)"
+            continue
+        done = subprocess.run(cmd, capture_output=True, text=True)
+        if done.returncode != 0:
+            row['skipped'] = 'le1-save.py: ' + (done.stderr or done.stdout).strip().splitlines()[-1][:160]
+            continue
+        files.append(out)
+    if not dry:
+        os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+        earlier = json.load(open(manifest_path, encoding='utf-8')).get('files', []) if os.path.exists(manifest_path) else []
+        with open(manifest_path, 'w', encoding='utf-8') as f:
+            json.dump({'base': base, 'files': sorted(set(earlier) | set(files))}, f, indent=1)
+    lines = [f"# Validation saves ({career}, from {os.path.basename(base)})", '',
+             'Start the game after they are written (the Load screen reads the folder once), load the slot, walk up and start the scene yourself.', '',
+             '| Slot | Scene | Level | You stand | It starts | Plot set | Not set (may keep the scene from starting) |', '|---|---|---|---|---|---|---|']
+    for r in rows:
+        if r.get('skipped'):
+            lines.append(f"| {r['slot']} | {r['title']} (`{r['scene']}`) | - | **not written**: {r['skipped']} | | | |")
+        else:
+            lines.append(f"| {r['slot']} | {r['title']} (`{r['scene']}`) | {r['level']} | "
+                         f"in front of {r['before']}, at {r['place'][0]:.0f} {r['place'][1]:.0f} {r['place'][2]:.0f} facing {r['facing']:.0f} deg | {r['starts']} | "
+                         f"{', '.join(f'{k}={v}' for k, v in sorted(r['plot'].items())) or '-'} | {'; '.join(r['unset']) or '-'} |")
+    text = '\n'.join(lines) + '\n'
+    if table:
+        with open(table, 'w', encoding='utf-8') as f:
+            f.write(text)
+    print(text)
+    print(f"{len(files)} saves written to {out_dir}" + (' (dry run: nothing written)' if dry else f"; listed in {manifest_path} (saves --remove deletes them)"))
+    return commands if '--return-commands' in argv else 0
 
 
 # ---- the reach matrix -----------------------------------------------------------------------------------------------------------
@@ -595,7 +756,10 @@ def judge_one(r, conv, prediction):
         if outcome not in ('crash', 'hang'):
             add('no-start', r.get('detail', outcome or 'no summary'))
         return kinds
-    if r.get('ended') == 'forced' or 'ended by' in outcome or 'time' in outcome:
+    # A run that only looks at the opening (-Pace opening) ends every scene itself once the opening has settled: no fault,
+    # and what is counted over a whole scene (lines, the wheel, a chain's end) is not judged.
+    opening_only = r.get('ended') == 'opening' or r.get('pace') == 'opening'
+    if not opening_only and (r.get('ended') == 'forced' or 'ended by' in outcome or 'time' in outcome):
         add('forced-end', outcome)
     if expect.get('flowed'):
         if not flow:
@@ -627,7 +791,7 @@ def judge_one(r, conv, prediction):
         if verdict in ('world', 'check') and not world and r.get('worldMode', True) and not s.get('autoScreened'):
             add('not-in-world', 'world false')
         driver = r.get('driver') or {}
-        if 'picks' in driver and s.get('wheel', 0) > driver['picks']:
+        if not opening_only and 'picks' in driver and s.get('wheel', 0) > driver['picks']:
             add('wheel-unanswered', f"wheel {s['wheel']}, picks {driver['picks']}")
         path = s.get('entries') or driver.get('entries')  # the mod's own list of the entries it passed through
         if conv and path:
@@ -768,10 +932,10 @@ def judge(argv):
 
 
 def main(argv):
-    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary', 'reach', 'moments'):
+    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary', 'reach', 'moments', 'saves'):
         print(__doc__)
         return 2
-    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary, 'reach': reach, 'moments': moments}[argv[1]](argv[2:])
+    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary, 'reach': reach, 'moments': moments, 'saves': saves}[argv[1]](argv[2:])
 
 
 if __name__ == '__main__':

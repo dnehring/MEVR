@@ -38,7 +38,7 @@ param(
     # How lines are paced. skip: every line is skipped about two seconds in (the smoke pass: fast, but what a line does
     # after its start, an authored walk, a camera move, a late facing key, is cut short). shepard: only Shepard's own lines
     # are skipped. full: nothing is skipped, every line plays its length, as a player who listens hears it.
-    [ValidateSet('skip', 'shepard', 'full')] [string]$Pace = 'skip',
+    [ValidateSet('skip', 'shepard', 'full', 'opening')] [string]$Pace = 'skip',
     [int]$SceneSeconds = 0,
     [int]$LoadSeconds = 240,
     [int]$StreamSeconds = 45,
@@ -54,7 +54,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
-if ($SceneSeconds -le 0) { $SceneSeconds = $(if ($Pace -eq 'skip') { 150 } elseif ($Pace -eq 'shepard') { 420 } else { 720 }) }
+if ($SceneSeconds -le 0) { $SceneSeconds = $(if ($Pace -eq 'skip') { 150 } elseif ($Pace -eq 'shepard') { 420 } elseif ($Pace -eq 'opening') { 60 } else { 720 }) }
 $win64 = 'C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition\Game\ME1\Binaries\Win64'
 $log = Join-Path $win64 'Logs\LE1MEVR.log'
 if (-not $Out) { $Out = Join-Path $env:LOCALAPPDATA ("MEVR\sweep\{0}" -f (Get-Date -Format 'yyyy-MM-dd')) }
@@ -140,6 +140,24 @@ function Drive([string]$name, [datetime]$deadline, $walk = $null) {
     $rng = New-Object System.Random (SceneSeed $name)
     $picks = 0; $skips = 0; $quiet = 0; $forced = $false
     $began = Get-Date
+    # -Pace opening (the owner, 2026-11-10: "we just care about the transition"): the scene is ended by the runner once its
+    # opening has settled: a stay or a cut 6 s in; a walk-in when the player has arrived (walked, guided, or the guide gave
+    # up), at most 45 s in. Nothing is skipped or picked before that.
+    if ($Pace -eq 'opening') {
+        $mark0 = $script:openingMark
+        $settled = $false
+        while (-not $settled -and ((Get-Date) - $began).TotalSeconds -lt 45 -and (State).convo) {
+            Start-Sleep -Seconds 1
+            $lines = @(LogSince $mark0)
+            $walkIn = [bool]($lines -match 'convo: the opening.*(walk in|his view walks)')
+            $arrived = [bool]($lines -match "the player's view (reached|was put on)|the player reached Shepard's mark|the guided walk stops")
+            $age = ((Get-Date) - $began).TotalSeconds
+            if ($walkIn) { $settled = $arrived } else { $settled = $age -ge 6 }
+        }
+        Start-Sleep -Seconds 1
+        if ((State).convo) { Console 'mevr convo end' | Out-Null; Start-Sleep -Seconds 3 }
+        return [pscustomobject]@{ picks = 0; skips = 0; forced = $false; opening = $true }
+    }
     $walks = @($walk | Where-Object { $null -ne $_ })
     while ($quiet -lt 2) {
         $s = State
@@ -470,13 +488,16 @@ function RunScene([string]$map, $scene, $streamed) {
     $drive = [pscustomobject]@{ picks = 0; skips = 0; forced = $false }
     if ($barks) {
         # The chain plays in game mode 0: wait for its summary, then for the level's follow-up (a conversation), and drive that.
-        while ((Get-Date) -lt $deadline -and -not (@(LogSince $mark) -match 'convo flow: summary') -and -not (Dead)) {
+        # (An opening-only run does not wait a chain out: 15 s of it.)
+        $chainUntil = $(if ($Pace -eq 'opening') { (Get-Date).AddSeconds(15) } else { $deadline })
+        while ((Get-Date) -lt $chainUntil -and -not (@(LogSince $mark) -match 'convo flow: summary') -and -not (Dead)) {
             if ((State).convo) { break }
             Start-Sleep -Seconds 1
         }
         $follow = (Get-Date).AddSeconds(6)
         while ((Get-Date) -lt $follow -and -not (State).convo) { Start-Sleep -Seconds 1 }
     }
+    $script:openingMark = $mark
     if ((State).convo) { $drive = Drive $scene.conversation $deadline $scene.walks }
     Start-Sleep -Seconds 2
     $window = @(LogSince $mark)
@@ -487,7 +508,7 @@ function RunScene([string]$map, $scene, $streamed) {
     if (-not $mine) { $mine = $sums | Select-Object -Last 1 }
     $record.seconds = [int]((Get-Date) - $t0).TotalSeconds
     $record.placed = $placed
-    $record.ended = $(if ($drive.forced) { 'forced' } else { 'itself' })
+    $record.ended = $(if ($drive.forced) { 'forced' } elseif ($drive.opening) { 'opening' } else { 'itself' })
     $record.driver = [ordered]@{ picks = $drive.picks; skips = $drive.skips }
     if ($mine) { $record.summary = $mine }
     if ($sums.Count -gt 1) { $record.summaries = @($sums | ForEach-Object { [ordered]@{ name = (Key $_.name); why = $_.why; seconds = $_.seconds; lines = $_.lines; world = $_.world } }) }

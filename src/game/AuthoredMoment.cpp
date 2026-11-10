@@ -39,6 +39,8 @@ ue3::FieldRef gActorHidden{"Engine.Actor", "bHidden"};
 ue3::FieldRef gCinematicMode{"Engine.PlayerController", "bCinematicMode"};
 ue3::FieldRef gGuiManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
 ue3::FunctionRef gHideBlackScreen{"SFXGame.MassEffectGuiManager.HideBlackScreen"};
+// EBlackScreenActionSet: 0 turn black on, 1 off, 2 fade to black, 3 fade from black.
+ue3::FieldRef gBlackScreenAction{"SFXGame.BioSeqAct_BlackScreen", "m_eBlackScreenAction"};
 
 // ---- Settings ----------------------------------------------------------------------------------------------------------------
 struct Settings {
@@ -259,8 +261,14 @@ void OnBlackScreen(ue3::Object* context, ue3::Function*, void*, void*) {
             }
         }
     }
-    log::Info("moment: the script's black screen ({}){}{}", context != nullptr ? ue3::runtime::FullName(context) : std::string("?"),
-        gM.on ? " during a track's move of Shepard" : "", hidden ? ": taken down again (the moment is held in first person)" : "");
+    // What the script covers by going black (a character switched off or swapped: Anderson vanished from the stairs in
+    // plain sight when his walk ended, 2026-11-10) still wants a cover: the mod's own short dip from black, the view where
+    // it is (the owner: a forced placement needs a fade). Only where the script turns black on, not where it comes back.
+    int const action = context != nullptr ? static_cast<int>(gBlackScreenAction.Read<std::uint8_t>(context).value_or(255)) : 255;
+    bool const dipped = hidden && (action == 0 || action == 2) && conversation_world::MomentDip();
+    log::Info("moment: the script's black screen ({}, action {}){}{}{}", context != nullptr ? ue3::runtime::FullName(context) : std::string("?"),
+        action, gM.on ? " during a track's move of Shepard" : "", hidden ? ": taken down again (the moment is held in first person)" : "",
+        dipped ? "; a dip from black in its place" : "");
 }
 
 void OnCinematicToggle(ue3::Object* context, ue3::Function*, void*, void*) {

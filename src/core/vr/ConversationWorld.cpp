@@ -437,6 +437,33 @@ Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits
     return Opening::Cut;
 }
 
+WalkInWay DecideWalkIn(WalkInFacts const& facts, WalkInRule rule) {
+    if (rule == WalkInRule::Body) {
+        return WalkInWay::Body;
+    }
+    if (rule == WalkInRule::View) {
+        return WalkInWay::View;
+    }
+    return facts.midMoment || facts.markBehindTrigger ? WalkInWay::View : WalkInWay::Body;
+}
+
+WalkInRule ParseWalkInRule(std::string_view text, WalkInRule fallback) {
+    std::string lower;
+    for (char const c : text) {
+        if (c != ' ' && c != '\t') {
+            lower.push_back(c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c);
+        }
+    }
+    if (lower == "auto") return WalkInRule::Auto;
+    if (lower == "body" || lower == "pawn") return WalkInRule::Body;
+    if (lower == "view") return WalkInRule::View;
+    return fallback;
+}
+
+char const* Name(WalkInWay way) {
+    return way == WalkInWay::View ? "view" : "body";
+}
+
 Guide StepGuide(GuideState& state, bool wanted, bool stickUsed, bool progressed, double dtS, double patienceS, double blockedMaxS) {
     if (!wanted) {
         state = {};

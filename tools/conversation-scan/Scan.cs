@@ -332,16 +332,16 @@ internal static class Scan
     }
 
     private static string reverseFor;
-    private static Dictionary<int, List<(ExportEntry source, int input)>> reverse;
+    private static Dictionary<int, List<(ExportEntry source, int input, string output)>> reverse;
 
     // Who links to whom, backwards, for every sequence object of a package (built once per package that has a start).
-    private static Dictionary<int, List<(ExportEntry source, int input)>> Reverse(IMEPackage pcc)
+    private static Dictionary<int, List<(ExportEntry source, int input, string output)>> Reverse(IMEPackage pcc)
     {
         if (reverseFor == pcc.FilePath && reverse != null)
         {
             return reverse;
         }
-        reverse = new Dictionary<int, List<(ExportEntry, int)>>();
+        reverse = new Dictionary<int, List<(ExportEntry, int, string)>>();
         reverseFor = pcc.FilePath;
         foreach (ExportEntry op in pcc.Exports.Where(e => e.ClassName.Contains("Seq", StringComparison.Ordinal)))
         {
@@ -365,9 +365,9 @@ internal static class Scan
                     }
                     if (!reverse.TryGetValue(to, out var list))
                     {
-                        reverse[to] = list = new List<(ExportEntry, int)>();
+                        reverse[to] = list = new List<(ExportEntry, int, string)>();
                     }
-                    list.Add((op, target.GetProp<IntProperty>("InputLinkIdx")?.Value ?? 0));
+                    list.Add((op, target.GetProp<IntProperty>("InputLinkIdx")?.Value ?? 0, link.GetProp<StrProperty>("LinkDesc")?.Value));
                 }
             }
         }
@@ -379,10 +379,11 @@ internal static class Scan
     private static Dictionary<string, object> Upstream(IMEPackage pcc, ExportEntry start)
     {
         var links = Reverse(pcc);
-        var parent = new Dictionary<int, (ExportEntry next, int input)>();  // op -> the op it leads to on the way to the start
+        // op -> the op it leads to on the way to the start, the input it enters there and the output it leaves by
+        var parent = new Dictionary<int, (ExportEntry next, int input, string output)>();
         var queue = new Queue<(ExportEntry op, int depth)>();
         queue.Enqueue((start, 0));
-        parent[start.UIndex] = (null, 0);
+        parent[start.UIndex] = (null, 0, null);
         while (queue.Count > 0)
         {
             (ExportEntry op, int depth) = queue.Dequeue();
@@ -390,7 +391,7 @@ internal static class Scan
             {
                 continue;
             }
-            foreach ((ExportEntry source, int input) in sources)
+            foreach ((ExportEntry source, int input, string output) in sources)
             {
                 if (IsEvent(source) && source.ClassName != "SeqEvent_SequenceActivated")
                 {
@@ -401,7 +402,18 @@ internal static class Scan
                     int entered = input;
                     for (ExportEntry at = op; at != null; at = parent[at.UIndex].next)
                     {
-                        chain.Add(new Dictionary<string, object> { ["op"] = at.InstancedFullPath, ["class"] = at.ClassName, ["input"] = entered });
+                        // A plot check on the way: the plot value it reads and the output the way leaves it by ("True",
+                        // "False"), so a save for the scene can be written with the plot as the scene wants it.
+                        var step = new Dictionary<string, object> { ["op"] = at.InstancedFullPath, ["class"] = at.ClassName, ["input"] = entered };
+                        if (at.UIndex != start.UIndex && parent[at.UIndex].output is { } leaves)
+                        {
+                            step["out"] = leaves;
+                        }
+                        if (at.ClassName.Contains("PMCheck", StringComparison.Ordinal) && at.GetProperties().GetProp<IntProperty>("m_nIndex") is { } plot)
+                        {
+                            step["plot"] = plot.Value;
+                        }
+                        chain.Add(step);
                         entered = parent[at.UIndex].input;
                         if (at.UIndex == start.UIndex)
                         {
@@ -411,14 +423,23 @@ internal static class Scan
                     }
                     PropertyCollection ep = source.GetProperties();
                     float[] originatorAt = null;
-                    if (pcc.GetEntry(ep.GetProp<ObjectProperty>("Originator")?.Value ?? 0) is ExportEntry originator
-                        && originator.GetProperties().GetProp<StructProperty>("Location") is { } oat)
+                    double? originatorYaw = null;
+                    if (pcc.GetEntry(ep.GetProp<ObjectProperty>("Originator")?.Value ?? 0) is ExportEntry originator)
                     {
-                        originatorAt = new[] { oat.GetProp<FloatProperty>("X")?.Value ?? 0, oat.GetProp<FloatProperty>("Y")?.Value ?? 0, oat.GetProp<FloatProperty>("Z")?.Value ?? 0 };
+                        PropertyCollection op2 = originator.GetProperties();
+                        if (op2.GetProp<StructProperty>("Location") is { } oat)
+                        {
+                            originatorAt = new[] { oat.GetProp<FloatProperty>("X")?.Value ?? 0, oat.GetProp<FloatProperty>("Y")?.Value ?? 0, oat.GetProp<FloatProperty>("Z")?.Value ?? 0 };
+                        }
+                        if (op2.GetProp<StructProperty>("Rotation") is { } orot)
+                        {
+                            originatorYaw = (orot.GetProp<IntProperty>("Yaw")?.Value ?? 0) * 360.0 / 65536.0;
+                        }
                     }
                     return new Dictionary<string, object>
                     {
                         ["event"] = source.InstancedFullPath, ["eventClass"] = source.ClassName, ["originatorAt"] = originatorAt,
+                        ["originatorYaw"] = originatorYaw, ["originatorClass"] = pcc.GetEntry(ep.GetProp<ObjectProperty>("Originator")?.Value ?? 0)?.ClassName,
                         ["originator"] = pcc.GetEntry(ep.GetProp<ObjectProperty>("Originator")?.Value ?? 0)?.ObjectName.Instanced,
                         ["eventName"] = ep.GetProp<NameProperty>("EventName")?.Value.Instanced,
                         ["firstOp"] = op.InstancedFullPath, ["firstOpClass"] = op.ClassName, ["firstOpInput"] = input,
@@ -431,7 +452,7 @@ internal static class Scan
                 {
                     continue;
                 }
-                parent[next.UIndex] = (op, input);
+                parent[next.UIndex] = (op, input, output);
                 queue.Enqueue((next, depth + 1));
             }
         }

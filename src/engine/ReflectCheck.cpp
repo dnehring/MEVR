@@ -724,6 +724,7 @@ void CheckFields() {
     CheckField("Engine.PrimitiveComponent", "bOnlyOwnerSee", SDK_BOOL(UPrimitiveComponent, bOnlyOwnerSee));  // the seated driver
     // The Mako's thrusters (game/MakoControls): longer, pitched by the stick.
     CheckField("SFXGame.BioPlayerController", "bJumpJetsOn", SDK_FIELD(ABioPlayerController, bJumpJetsOn));
+    CheckField("SFXGame.BioSeqAct_BlackScreen", "m_eBlackScreenAction", SDK_FIELD(UBioSeqAct_BlackScreen, m_eBlackScreenAction));  // game/AuthoredMoment
     CheckField("SFXGame.BioVehicleWheeled", "CurrentJumpFuel", SDK_FIELD(ABioVehicleWheeled, CurrentJumpFuel));
     CheckField("SFXGame.BioVehicleWheeled", "CurrentBoostFuel", SDK_FIELD(ABioVehicleWheeled, CurrentBoostFuel));
     CheckField("SFXGame.BioVehicleWheeled", "MaxJumpFuel", SDK_FIELD(ABioVehicleWheeled, MaxJumpFuel));

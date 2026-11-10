@@ -34,6 +34,9 @@ bool InWorld();
 bool MomentWithholds();
 // A moment's first-person view is up (game/AuthoredMoment keeps the script's black screen off it).
 bool MomentViewOn();
+// A short dip from black over the moment's held view (the host's transition fade), the view where it is: for what the
+// script covered with its own black screen. False without a moment's view.
+bool MomentDip();
 // `mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | walk <x> <y> [seconds] | off]`.
 std::string Command(std::string const& rest);
 std::string StatusJson();

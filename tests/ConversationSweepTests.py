@@ -154,6 +154,11 @@ def main():
                  'summary': summary('sta20_talk', kept=2, drawn=2, yielded=2), 'driver': {'picks': 1, 'skips': 3, 'entries': [0, 1]}}]
         _, got_snap = run(snap, write='snap.json')
         check(got_snap['sta20_talk']['kinds'] == [], f"a walk's last step accepted: {got_snap['sta20_talk']['kinds']}")
+        # A run of openings only (-Pace opening): the runner ends the scene itself, with the wheel never answered: no fault.
+        short = [{'conversation': 'sta20_talk', 'map': 'BIOA_STA00', 'outcome': 'played', 'ended': 'opening', 'pace': 'opening',
+                  'summary': summary('sta20_talk', wheel=1), 'driver': {'picks': 0, 'skips': 0}}]
+        _, got_short = run(short, write='short.json')
+        check(got_short['sta20_talk']['kinds'] == [], f"an opening-only run is not judged on the scene's end: {got_short['sta20_talk']['kinds']}")
         snap[0]['summary'] = summary('sta20_talk', kept=3, drawn=2, yielded=2)
         _, got_snap = run(snap, write='snap.json')
         check(got_snap['sta20_talk']['kinds'] == ['undone'], f"one more undone than accepted: {got_snap['sta20_talk']['kinds']}")
@@ -264,7 +269,8 @@ def main():
              'via': {'event': 'x', 'eventClass': 'BioSeqEvt_OnPlayerActivate', 'originator': 'BioPawn_9', 'originatorAt': [9000.0, 100.0, 0.0],
                      'eventName': None, 'firstOp': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.BioSeqAct_PMCheckState_0',
                      'firstOpClass': 'BioSeqAct_PMCheckState', 'firstOpInput': 0, 'hops': 4, 'between': ['BioSeqAct_PMCheckState', 'BioSeqAct_BioToggleCinematicMode'],
-                     'chain': [{'op': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.BioSeqAct_PMCheckState_0', 'class': 'BioSeqAct_PMCheckState', 'input': 0},
+                     'chain': [{'op': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.BioSeqAct_PMCheckState_0', 'class': 'BioSeqAct_PMCheckState', 'input': 0,
+                                'out': 'False', 'plot': 4398},
                                {'op': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.BioSeqAct_BioToggleCinematicMode_0', 'class': 'BioSeqAct_BioToggleCinematicMode', 'input': 0},
                                {'op': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.SeqAct_Interp_0', 'class': 'SeqAct_Interp', 'input': 0}]}},
         ]
@@ -320,6 +326,29 @@ def main():
         check([c['class'] for c in ms[0]['chain']] == ['BioSeqAct_PMCheckState', 'BioSeqAct_BioToggleCinematicMode', 'SeqAct_Interp']
               and ms[0]['chain'][1]['tail'] == 'WalkIn.BioSeqAct_BioToggleCinematicMode_0' and ms[0]['chain'][2]['input'] == 0,
               f"the moment's chain of actions: {ms[0]['chain']}")
+        # The validation saves: the player in front of the scene before it starts, the plot as its script's checks want it.
+        check(sweep.plot_for(ms[0]['chain']) == ({4398: 0}, []), f"the plot a scene's way wants: {sweep.plot_for(ms[0]['chain'])}")
+        check(sweep.plot_for([{'class': 'BioSeqAct_PMCheckConditional', 'out': 'True', 'plot': 77}])[1] != [], 'a conditional cannot be set: named')
+        place, face = sweep.stand_before([9000.0, 100.0, 0.0], 0.0, 4.0)
+        check(place == [9400.0, 100.0, 20.0] and face == 180.0, f'4 m in front of someone facing +X, looking back at him: {place} {face}')
+        place, face = sweep.stand_before([0.0, 0.0, 0.0], 90.0, 2.0)
+        check(abs(place[0]) < 1e-6 and abs(place[1] - 200.0) < 1e-6 and face == 270.0, f'in front of someone facing +Y: {place} {face}')
+        listfile = os.path.join(tmp, 'saves.json')
+        with open(listfile, 'w', encoding='utf-8') as f:
+            json.dump({'scenes': [{'scene': ms[0]['conversation'], 'title': 'the walk-in', 'plot': {'12': 1}},
+                                  {'scene': 'no_such_scene'}]}, f)
+        base = os.path.join(tmp, 'Test00_05.pcsav')
+        open(base, 'wb').close()
+        commands = sweep.saves([path2, listfile, '--base', base, '--dry-run', '--return-commands', '--manifest', os.path.join(tmp, 'm.json'),
+                                '--first-slot', '90'])
+        check(len(commands) == 1, f'one save for the scene the scan knows, none for the unknown one: {len(commands)}')
+        c = commands[0]
+        check(c[c.index('--level') + 1] == 'BIOA_STA00' and c[c.index('--location') + 1:c.index('--location') + 4] == ['9400.0', '100.0', '20.0']
+              and c[c.index('--yaw') + 1] == '180.0' and os.path.basename(c[c.index('write') + 2]) == 'Test00_90.pcsav',
+              f'the save: level, place, facing, slot: {c}')
+        bools = [c[i + 1] for i, a in enumerate(c) if a == '--bool']
+        check(bools == ['12=1', '4398=0'], f"the plot: the check's and the list's: {bools}")
+        check(not os.path.exists(os.path.join(tmp, 'Test00_90.pcsav')) and not os.path.exists(os.path.join(tmp, 'm.json')), 'a dry run writes nothing')
         # ... and the judge takes a moment's record for what it is.
         with open(results, 'w', encoding='utf-8') as f:
             f.write(json.dumps({'conversation': ms[0]['conversation'], 'map': 'BIOA_STA00', 'outcome': 'played', 'modes': [6],

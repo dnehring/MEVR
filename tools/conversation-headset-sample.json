@@ -1,0 +1,15 @@
+{
+ "about": "SPDX-License-Identifier: MIT. The scenes to look at in the headset, one of each kind (research/69 'The headset sample'): tools/conversation-sweep.py saves writes a save in front of each.",
+ "scenes": [
+  {"scene": "moment_sta70_02captain_dsg_sarencouncil", "title": "Council: Anderson's walk, then the hearing (a walk-in from a moment)"},
+  {"scene": "moment_sta70_02captain_dsg_playerbecomesspectre", "title": "Council: becoming a Spectre (a walk-in with a teleport up the stairs)"},
+  {"scene": "ice20_opold", "title": "Noveria: Opold (a plain stage, the mark a step away)"},
+  {"scene": "ice20_anoleis", "title": "Noveria: Anoleis (a mark across the room)", "approachM": 6},
+  {"scene": "jug20_wrex", "title": "Virmire: Wrex on the beach (an authored walk of his)"},
+  {"scene": "sta20_chorban", "title": "Citadel: Chorban (a plain wheel conversation)"},
+  {"scene": "ice60_matriarch", "title": "Noveria: Benezia (a trigger's scene, four people)", "approachM": 8},
+  {"scene": "sta60_wrex_at_fists", "title": "Citadel: Wrex at Fist's (a framed scene, in the world)", "approachM": 6},
+  {"scene": "jug20_sal_captainkirrahe", "title": "Virmire: Kirrahe's camp (a set piece: the 3D screen)"},
+  {"scene": "sta20_avina_keeper", "title": "Citadel: Avina (nothing special: the baseline)"}
+ ]
+}

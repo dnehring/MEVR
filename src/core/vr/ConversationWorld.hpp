@@ -199,6 +199,22 @@ enum class Guide : std::uint8_t { Wait, Walk, GaveUp };
 // `progressed`: the last guided step moved him (ignored unless the last answer was Walk).
 Guide StepGuide(GuideState& state, bool wanted, bool stickUsed, bool progressed, double dtS, double patienceS, double blockedMaxS = 2.0);
 
+// How a walk-in is walked (research/69 "The view walks", 2026-11-10). Body: Shepard is put back under the player and the
+// two walk to the mark together (his body under the player; every step moves the pawn, so it ends and begins touches,
+// which is why it stops at trigger edges, and why putting him back ended the council's hearing). View: Shepard stays
+// where the stage has him, hidden, and only the player's view walks to him (no move of the pawn, so nothing of the
+// level's is touched; no body under the player until he arrives). Auto: the view when a moment's walk was still on its
+// way as the conversation began, or when the mark stands inside a trigger the player is outside of; the body otherwise.
+enum class WalkInRule : std::uint8_t { Auto, Body, View };
+enum class WalkInWay : std::uint8_t { Body, View };
+struct WalkInFacts {
+    bool midMoment = false;          // the conversation began while a moment's walk was on its way
+    bool markBehindTrigger = false;  // the mark is inside a trigger that where the player stands is outside of
+};
+WalkInWay DecideWalkIn(WalkInFacts const& facts, WalkInRule rule);
+WalkInRule ParseWalkInRule(std::string_view text, WalkInRule fallback);
+char const* Name(WalkInWay way);
+
 // People in the way (2026-11-09, after the first walk in the game went straight through Garrus: the pawn is moved with
 // SetLocation, which collides with nothing). A step from `place` to `next` that would end within `clearUnits` of one of
 // `people` (horizontally) is pushed out to that distance along the line from the person: the leash's slide turned inside out,
