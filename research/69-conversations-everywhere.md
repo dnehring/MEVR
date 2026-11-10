@@ -1109,3 +1109,15 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   keeps this build in). **Open after that:** NPCs walking to their marks; the pause and floor marker as a fallback; a
   fade wherever a person in view is placed; the cinema screen's flash at a moment's start; Shepard's body straying
   (eye-far); a save mode for the runner; the unseen set pieces.
+- 2026-11-10, 10:20-10:31, **the players' build for the owner's headset test** (the owner: "base your build off of the now
+  released 0.2.0 candidate so that I can get the improved performance as well"). The branch already contains the released
+  commit (`v0.2.0` = 6bb3227 = origin/main; the candidate's ASI says `0.2.0+6bb322770a`), and the game folder's
+  `LE1MEVR.ini`, `MELEVR.ini`, `GamerSettings.ini` and `BIOEngine.ini` are the candidate's except what the owner's own
+  session wrote (a calibration, `conversations=world`). The one difference was the build type: the folder had the
+  development (hot-reload) host and mod, the candidate is the single-file players' build without LExSDKv2. So the branch
+  was built as `build-mono` and deployed (`0.2.0+180324d4f2`, the `.modpath` gone; the request files still work, the
+  owner's ini has `[Debug] requests = 1`). **Not measured**: whether the development build was slower at all (the owner's
+  session before it ran 900 frames per 10 s at 90 Hz). Then, at idle priority: `build`, `build-trilogy` and ctest on this
+  state, 24 of 24. Still owed: the canary set and a sampled opening-only run, one validation save loaded on the fake
+  headset, the landing on main, the game folder's return. For the fake-headset runs the development build goes back in
+  (`deploy-asi.ps1 -IgnoreSlot`), game closed.
