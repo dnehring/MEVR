@@ -707,6 +707,28 @@ once each, by neither the stage's placement function nor a track). A far-shot co
 Wrex's scene as "no place" (the player 29 m from a scene he had not walked into): far shots are now measured from
 Shepard's mark while a walk-in is on.
 
+### The canary again, the moments, and two more faults of the new opening (2026-11-10 03:00-03:40)
+
+- **The canary set with every change of the night: 3 of 3 as expected** (the wake-up scene, the Garrus argument with its
+  barks and held scene, Chorban after it).
+- **The 16 moments in the levels that open, `worldMoments = walk`, each fired through the first action behind its
+  event:** the walk to the council held in first person as before; Chellick's bump (8.0 s, the track moves Shepard 4.34
+  m) runs in the on-foot game mode, so it is not a moment by the rule (the cinematic mode) and the game carries the
+  player in his own first-person view; the other fourteen did not play from a fresh level (eight fire nothing: their
+  first action is a plot check the story's start does not pass; six were not reached: a chunk, an action gone, the level
+  already in a cinematic). **A fresh level reaches two of the sixteen**: the moments need a career's plot (a save route),
+  which the runner does not have yet.
+- **A fight with the floor** (found because Benezia's conversation started by itself during that run: `undone` 465,
+  `drawn-jump` 466). Not a track: after the opening without a cut Shepard was put back at the height the on-foot record
+  had, which was 0.52 m too low (the record was taken while the runner had him floating), the engine lifted him onto
+  the floor every tick and keep-in-place pushed him down again, each time in a drawn frame. Now he is put back as high
+  above that floor as he stands above the mark's (the view corrected by the same), and for the 1.5 s his mesh needs to
+  settle his kept place is wherever he comes to rest. The same scene after: 0 undone, 0 drawn, the head bone 0.59 m from
+  the eyes.
+- **A track's move of the player in a first-person conversation is withheld** (the summary's `trackHeld`): his place in a
+  conversation shown in the world is his own. (Asked twice in Benezia's scene; it was not the cause there.)
+- `worldOpening = auto` is now the default of the first-person mode.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
