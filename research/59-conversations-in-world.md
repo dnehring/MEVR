@@ -692,6 +692,9 @@ Garrus and watch the pawn go around him at 0.7 m; a squadmate seated by Part B i
 
 ## Limits and next
 
+**The medical bay's wake-up scene is reached with `open BIOA_STA00` alone** (2026-11-09, research/69's log): its level is the
+docked Normandy's, kept under the Citadel's map; the catalogue's `BIOA_NOR00` for it is wrong.
+
 **The work toward making this the default for every conversation has its own note:
 [research/69](69-conversations-everywhere.md)** (story safety of flowed scenes, the cutscene-or-world decision at run time,
 placements stopped at the source, walking and triggers; a status table and a log).
