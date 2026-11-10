@@ -755,6 +755,12 @@ void CheckFields() {
     CheckField("Engine.CameraActor", "FOVAngle", SDK_FIELD(ACameraActor, FOVAngle));
     CheckField("Engine.CameraActor", "AspectRatio", SDK_FIELD(ACameraActor, AspectRatio));
     CheckField("Engine.PrimitiveComponent", "bOwnerNoSee", SDK_BOOL(UPrimitiveComponent, bOwnerNoSee));
+    // game/ConversationWorld's `convo: body:` (research/69 "The plan for the blocker"): every flag that stops a pawn being drawn.
+    CheckField("SFXGame.BioPawn", "m_nHiddenRequestCount", SDK_FIELD(ABioPawn, m_nHiddenRequestCount));
+    CheckField("Engine.PrimitiveComponent", "bIgnoreOwnerHidden", SDK_BOOL(UPrimitiveComponent, bIgnoreOwnerHidden));
+    CheckField("Engine.PrimitiveComponent", "bIgnoreHiddenActorsMembership", SDK_BOOL(UPrimitiveComponent, bIgnoreHiddenActorsMembership));
+    CheckField("Engine.PrimitiveComponent", "LastRenderTime", SDK_FIELD(UPrimitiveComponent, LastRenderTime));
+    CheckField("Engine.PlayerController", "HiddenActors", SDK_FIELD(APlayerController, HiddenActors));
     CheckField("Engine.Actor", "Instigator", SDK_FIELD(AActor, Instigator));
     CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
     // The galaxy hologram (game/GalaxyMap, research/51 section 8).

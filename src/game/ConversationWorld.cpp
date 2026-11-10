@@ -111,6 +111,19 @@ ue3::FieldRef gWorldOfActor{"Engine.Actor", "WorldInfo"};
 ue3::FieldRef gWorldPawns{"Engine.WorldInfo", "PawnList"};
 ue3::FieldRef gNextPawnOf{"Engine.Pawn", "NextPawn"};
 ue3::FunctionRef gSetHidden{"Engine.Actor.SetHidden"};
+// The body's visibility, logged (research/69 "The plan for the blocker", phase A): every flag that stops a pawn being drawn.
+ue3::FieldRef gHiddenRequests{"SFXGame.BioPawn", "m_nHiddenRequestCount"};
+ue3::FieldRef gCompHiddenGame{"Engine.PrimitiveComponent", "HiddenGame"};
+ue3::FieldRef gCompOwnerNoSee{"Engine.PrimitiveComponent", "bOwnerNoSee"};
+ue3::FieldRef gCompOnlyOwnerSee{"Engine.PrimitiveComponent", "bOnlyOwnerSee"};
+ue3::FieldRef gCompIgnoreOwnerHidden{"Engine.PrimitiveComponent", "bIgnoreOwnerHidden"};
+ue3::FieldRef gCompIgnoreMembership{"Engine.PrimitiveComponent", "bIgnoreHiddenActorsMembership"};
+ue3::FieldRef gCompLastRender{"Engine.PrimitiveComponent", "LastRenderTime"};
+ue3::FieldRef gCompBounds{"Engine.PrimitiveComponent", "Bounds"};
+ue3::FieldRef gCompBoundsOrigin{gCompBounds, "Origin"};
+ue3::FieldRef gActorLastRender{"Engine.Actor", "LastRenderTime"};
+ue3::FieldRef gWorldSeconds{"Engine.WorldInfo", "TimeSeconds"};
+ue3::FieldRef gHiddenActors{"Engine.PlayerController", "HiddenActors"};
 
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
 struct Settings {
@@ -168,6 +181,9 @@ struct Settings {
     // stands, not hidden (worldBody = player | hidden): the body follower slides his bones there (BodyAway). The owner,
     // 2026-11-10: no body for a whole walk "will be very immersion breaking".
     bool bodyWithPlayer = true;
+    // `convo: body:` once a second in a scene, every two on foot: the pawn's and his mesh's hidden flags, when they were last
+    // rendered and where they are against the view (worldBodyLog = 1; `mevr convo body log on`). A diagnostic: off by default.
+    bool bodyLog = false;
     float momentPatienceS = 12.0f;     // walk: how long the script waits for him where it wants him before he is carried there
     float momentCarryMS = 3.0f;        // the speed he is carried at to where the script wants him (worldMomentCarryMS)
     float moveLeashM = 3.0f;           // how far from the conversation's owner the walk may go (worldMoveLeashM)
@@ -257,6 +273,9 @@ void RefreshSettings() {
     }
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldBody")) {
         s.bodyWithPlayer = ini::Lower(ini::Trim(*text)) != "hidden";
+    }
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldBodyLog")) {
+        s.bodyLog = ini::Number(*text).value_or(0.0) != 0.0;
     }
     s.momentPatienceS = number("worldMomentPatienceS", 12.0f, 0.0f, 120.0f);
     s.momentCarryMS = number("worldMomentCarryMS", 3.0f, 0.5f, 10.0f);
@@ -2839,6 +2858,77 @@ void ResolveBlack(ue3::Object* pawn) {
     }
 }
 
+// Every flag that stops Shepard being drawn, when he and his mesh were last rendered, and where they are against the view
+// (research/69 "The plan for the blocker", phase A). Reads only.
+std::optional<bool> gBodyLogOverride;  // `mevr convo body log on|off`
+std::uint64_t gBodyLogMs = 0;
+
+std::string BodyLine(ue3::Object* controller, ue3::Object* pawn, std::optional<std::uint8_t> mode) {
+    if (pawn == nullptr || !ue3::runtime::IsAlive(pawn)) {
+        return "convo: body: no pawn";
+    }
+    auto const flag = [](ue3::FieldRef& field, void const* object) -> char {
+        auto const v = object != nullptr ? field.ReadBool(object) : std::nullopt;
+        return v ? (*v ? '1' : '0') : '?';
+    };
+    ue3::Object* const world = gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr);
+    double const now = world != nullptr ? gWorldSeconds.Read<float>(world).value_or(0.0f) : 0.0;
+    bool const scene = (gC.on && gC.world) || gMoment.on;
+    ik::Vec3 const director = V(gPov.lastLocation);
+    ik::Vec3 const view = scene ? gC.hold : director;
+    ue3::Object* const mesh = player::Mesh(pawn);
+    bool const meshOk = mesh != nullptr && ue3::runtime::IsAlive(mesh);
+    std::string meshText = "none";
+    if (meshOk) {
+        void const* const bounds = gCompBounds.Address(mesh);
+        auto const origin = bounds != nullptr ? gCompBoundsOrigin.Read<ue3::Vector>(bounds) : std::nullopt;
+        meshText = std::format("hiddenGame {} ownerNoSee {} onlyOwnerSee {} ignoreOwnerHidden {} ignoreMembership {}, rendered {:.2f} s ago, "
+                               "bounds at {} ({:.2f} m from the view)",
+            flag(gCompHiddenGame, mesh), flag(gCompOwnerNoSee, mesh), flag(gCompOnlyOwnerSee, mesh), flag(gCompIgnoreOwnerHidden, mesh),
+            flag(gCompIgnoreMembership, mesh), now - gCompLastRender.Read<float>(mesh).value_or(0.0f),
+            origin ? F(V(*origin)) : std::string("?"), origin ? Dist(V(*origin), view) / kUnitsPerMeter : -1.0);
+    }
+    int listed = 0;
+    bool inList = false;
+    if (controller != nullptr) {
+        if (auto const list = gHiddenActors.ElementsOf(controller, 4096)) {
+            listed = list->count;
+            for (std::int32_t i = 0; i < list->count && list->stride == static_cast<std::int32_t>(sizeof(void*)); ++i) {
+                if (*static_cast<ue3::Object**>(list->At(i)) == pawn) {
+                    inList = true;
+                }
+            }
+        }
+    }
+    auto const head = HeadOf(pawn);
+    auto const at = player::Location(pawn);
+    ue3::Object* const speaker = gC.on && gC.object != nullptr && ue3::runtime::IsAlive(gC.object)
+        ? gSpeaker.Read<ue3::Object*>(gC.object).value_or(nullptr) : nullptr;
+    return std::format(
+        "convo: body: game mode {}, {}{} | pawn hidden {} hide requests {} rendered {:.2f} s ago, at {} | mesh {} | in HiddenActors {} "
+        "({} listed) | head bone {} ({:.2f} m from the view) | view {} | director's camera {} ({:.2f} m from the view) | speaker {}",
+        mode ? static_cast<int>(*mode) : -1,
+        gMoment.on ? (gMoment.provisional ? "a moment (provisional)" : "a moment") : gC.on ? (gC.world ? "a conversation in the world" : "a conversation") : "no scene",
+        gC.detached ? ", the view away from the pawn" : "",
+        flag(gActorHidden, pawn), gHiddenRequests.Read<std::int32_t>(pawn).value_or(-1),
+        now - gActorLastRender.Read<float>(pawn).value_or(0.0f), at ? F(V(*at)) : std::string("?"), meshText, inList ? 1 : 0, listed,
+        head ? F(head->at) : std::string("?"), head ? Dist(head->at, view) / kUnitsPerMeter : -1.0, F(view), F(director),
+        Dist(director, view) / kUnitsPerMeter, speaker != nullptr ? ShortName(speaker) : std::string("-"));
+}
+
+void BodyReport(ue3::Object* controller, ue3::Object* pawn, std::optional<std::uint8_t> mode) {
+    if (!gBodyLogOverride.value_or(gSettings.bodyLog)) {
+        return;
+    }
+    std::uint64_t const now = GetTickCount64();
+    bool const scene = gC.on || gMoment.on || (mode && (*mode == kModeConversation || *mode == 6));
+    if (now - gBodyLogMs < (scene ? 1000u : 2000u)) {
+        return;
+    }
+    gBodyLogMs = now;
+    log::Info("{}", BodyLine(controller, pawn, mode));
+}
+
 bool MomentWithholds() {
     // In a conversation shown in the world a matinee's move track never moves the player's pawn: his place is his own (the
     // walk, the opening's rule). Left to the track, keep-in-place put him back every tick and the track moved him again:
@@ -2908,6 +2998,7 @@ void Tick(double deltaSeconds, Link const& link) {
         }
     }
     ResolveBlack(pawn);
+    BodyReport(controller, pawn, mode);
     ue3::Object* const conv = controller != nullptr && mode && *mode == kModeConversation ? ConversationNow(controller) : nullptr;
     // A moment in the world (a matinee that walks Shepard): its own view, until the cinematic mode ends or a conversation begins.
     if (conv == nullptr && TickMoment(link, pawn, mode, deltaSeconds)) {
@@ -3103,6 +3194,18 @@ std::string Command(std::string const& rest) {
         }
         gModeOverride = what == "on" || what.empty() ? cw::Mode::World : cw::ParseMode(what.c_str(), cw::Mode::World);
         return std::format("convo: conversations {} until `mevr convo world off` (now)", cw::Name(*gModeOverride));
+    }
+    if (verb == "body") {
+        // `mevr convo body [log on|off]`: every flag that stops Shepard being drawn, now; `log`: the same line once a second.
+        std::string what, value;
+        words >> what >> value;
+        if (what == "log") {
+            gBodyLogOverride = value != "off";
+            return std::format("convo: the body's visibility is {} (`convo: body:`)", *gBodyLogOverride ? "logged once a second in scenes" : "no longer logged");
+        }
+        ue3::Object* const controller = player::Controller();
+        return BodyLine(controller, controller != nullptr ? player::Pawn(controller) : nullptr,
+            controller != nullptr ? player::GameMode(controller) : std::nullopt);
     }
     if (verb == "walk") {
         // Tests without controllers: `mevr convo walk <x> <y> [seconds]` is the left stick for that long (default 3 s); `walk off`.

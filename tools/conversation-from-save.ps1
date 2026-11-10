@@ -7,7 +7,7 @@
 #
 #   tools/conversation-from-save.ps1 -Save John02_81 -Action PlayerBecomesSpectre.BioSeqAct_PMCheckState_2
 #       [-Class BioSeqAct_PMCheckState] [-ActionInput 0] [-Seconds 300] [-EndAfter 0] [-Pace skip|full] [-Snapshots 20,45]
-#       [-Walk 18] [-Replay rec.mevrrec] [-NoLoad]
+#       [-Walk 18] [-Replay rec.mevrrec] [-Before "mevr calltrace 20 hidden"] [-NoLoad]
 #   tools/conversation-from-save.ps1 -All -Career John02 [-FirstSlot 80] [-List tools/conversation-headset-sample.json]
 #       [-Plans a.json,b.json] [-Only 80,81] [-EndAfter 25] [-Seconds 150]
 #
@@ -30,6 +30,7 @@ param(
     [int[]]$Snapshots = @(),
     [int]$Walk = 0,
     [string]$Replay = '',
+    [string]$Before = '',
     [switch]$NoLoad,
     [switch]$All,
     [string]$Career = 'John02',
@@ -98,6 +99,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     }
     if ($index -lt 0) { Say "$class ...$action is not loaded"; return $false }
     $started = Get-Date
+    if ($Before) { Console $Before | Out-Null }   # e.g. a call trace that must cover the scene's first frames
     Console "mevr activate $index $actionInput" | Out-Null
     Say "fired $action (input $actionInput)"
     if ($Walk -gt 0) { Console "mevr convo walk 0 1 $Walk" | Out-Null }

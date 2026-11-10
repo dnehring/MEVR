@@ -1282,6 +1282,62 @@ same camera problem. One run separates them.
 until every frame shows arms, hands and chest; then way 2's rise on the stairs and the standing graft for the legs (the
 script's walk plays in place under a standing player); all three builds and the tests; the checklist's line for the owner.
 
+#### Phase A, run (2026-11-10, 15:50-16:03, fake headset): he is culled, not hidden; and one of the culls is ours
+
+The owner: "Yes, start on phase A". Built as planned (`convo: body:`, `[Cinematics] worldBodyLog = 1` or `mevr convo body log
+on`; `mevr convo body` prints the line once; `conversation-from-save.ps1 -Before "<console line>"` runs a command just before
+a scene is fired, here the call trace). Avina's conversation from its save (slot 89), seven runs of a minute each in one game
+process, under the look-down recording (the head 50 degrees down, the hands up; the recording's head stands 0.43 m behind the
+room's centre), left-eye snapshots at about 6 and 12 s. The baseline on the players' build of 19dad44 was not run: the answer
+came without it.
+
+**No flag hides him.** In every run, on every line: `bHidden` 0, hide requests 0, the mesh's `HiddenGame`, `bOwnerNoSee`,
+`bOnlyOwnerSee`, `bIgnoreOwnerHidden` 0, Halcyon's ignore-membership bit 1, `HiddenActors` empty. The call trace over the
+first 25 s saw no script hide at all: `ResetHiddenActors` every frame from `SFXPlayerCamera.UpdateViewTarget` (on foot), 12
+`SetOwnerNoSee` and 2 `SetHidden` from native code (Halcyon's own application). `BioPawn.RequestHidden` was never called.
+So rows 1 to 4 of the table above are out for this scene; phase B1 is not needed.
+
+**He is not rendered** (the mesh's and the pawn's `LastRenderTime` stand still), and what decides it is which camera the
+visibility is worked out for:
+
+| Run (the head 50 degrees down unless said) | First shot (the director's camera 3 m from the player) | From the second shot on (the director's camera 0.53 m from the player) |
+|---|---|---|
+| as shipped (the game's camera held, Umbra on) | not rendered; **the floor under the player is not drawn either** (the lake shows through) | **not rendered**, 25 s on end; the floor is there |
+| Umbra's occlusion culling off (`UMBRA OCCLUSIONCULLING`) | not rendered; floor missing | **rendered** (0.00 s ago): his feet in the picture |
+| `worldCamera = 0` (the game's camera left to the director), Umbra on | not rendered; floor missing | **rendered** |
+| `worldCamera = 0`, occlusion culling off | not rendered; floor missing | **rendered** |
+| `[Performance] umbraEyeMatrix = 0` (the camera held, Umbra on) | not rendered | **rendered** |
+| the head level, or 25 degrees down (as shipped) | not rendered | not rendered (nor on foot afterwards: at those pitches the pose has nothing of the body in view, so these two say nothing) |
+
+What that says:
+1. **From the second shot on, our own lever culls him.** With the game's camera held at the player's place, Umbra's occlusion
+   queries drawn "with the eye's own matrix" (`umbraEyeMatrix`, research/35 attempt 36, on by default) reject his body; with
+   the lever off, or the occlusion test off, or the game's camera left where the director has it, he is drawn. On foot the
+   same lever is on and he is drawn, so it is the pair (the held camera and the eye's matrix) that disagrees, not either alone.
+   **[verify] which two matrices differ in a held frame** (the lever takes the view's +0x1D0 and its origin; the hold writes
+   the POV level, at the hold, and the render-time swap and the head come after): read `plugin/RenderLevers`' lever beside the
+   `CalcSceneView` swap, log both matrices for a held frame.
+2. **In the first shot nothing tried brings him or the floor back.** The director's camera is 3 m away then (the wheel is
+   up over Shepard's face), and the floor piece under the player's feet is gone with or without the occlusion test and with or
+   without the held camera. This is the owner's morning note in one picture ("the assets near me disappear when the council
+   talks"), and it is not the occlusion test: something earlier in the visibility (Umbra's own camera or cell, or the
+   frustum) is the director's in that shot. The log said `the game's camera held at the player's place too` from the scene's
+   first tick, so the POV write alone does not govern it. **Open: the next thing to measure** (phase B2's first step: the
+   POV at our handler's end against what the scene view and Umbra's camera are built from, per frame, in that shot).
+3. **Where he is drawn, he is not under the player.** The feet are 0.6 m ahead of the view and no arm is in the picture,
+   while on foot the same pose shows both arms and the chest: the body follower and arm IK put him under the view on foot and
+   do not in a conversation (the view is "the view on foot", the recording's head 0.43 m behind the pawn; his head bone stays
+   0.60 m from the view all conversation). The body follower does run there, and believes the two agree: `torso: ... the
+   view 0.06 m from where the game put Shepard, body slid 0.06 m` at the conversation's start. So the frame arm IK and the
+   body follower are given for a held view (`view_anchor::Hold`) and the place the eyes are drawn from differ by the head's
+   offset in the room (half a metre here; a player at the room's centre would see little of it): the hold is taken from the
+   on-foot eye, lean included, and the frame is not. **[verify]** by logging both in one line.
+
+**What to do next** (phase B2, in this order): (a) the two matrices of point 1, and the lever made to agree with a held view
+(or stood down while a view is held: one line, to be measured against the popping it was built to stop); (b) the first shot's
+camera, point 2; (c) the body under the player, point 3; then the same three pictures again, and the ceremony (slot 81) and
+the comm room (slot 87), which were not run.
+
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"
@@ -1579,3 +1635,9 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   - **Not built:** spatial voices (the hook is known: "The voices"), a composition rule for groups, people walking to
     their marks, the pause and floor marker fallback.
   - **Needs the owner in a headset:** everything of today (no real headset was connected all day).
+- 2026-11-10, 15:50-16:03, **phase A of the plan for the missing body, run** ("Phase A, run"). No flag hides Shepard and no
+  script asks for it: he is not rendered. From a conversation's second shot on it is our own Umbra lever (`umbraEyeMatrix`)
+  together with the held game camera that culls him (lever off, occlusion test off or camera not held: drawn); in the first
+  shot, with the director's camera 3 m away, he and the floor under the player are gone whatever was tried (the owner's
+  "assets near me disappear"); and where he is drawn he stands 0.6 m ahead of the view with his arms down. Nothing fixed
+  yet; the instrument (`convo: body:`) is in the tree, off by default. Mod built; build-mono, build-trilogy and the tests not run.
