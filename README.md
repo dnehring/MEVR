@@ -10,7 +10,8 @@ pistol from your hip, steady a rifle with both hands, throw grenades from your c
 open hand, order your squad by pointing or by voice, and drive the Mako from its cockpit.
 
 **[Download MEVR-Setup.exe](https://github.com/dnehring/MEVR/releases/latest)** ·
-[Website](https://dnehring.github.io/MEVR/) · [Controls](docs/controls.md) · [Report a problem](#report-a-problem)
+[Website](https://dnehring.github.io/MEVR/) · [Controls](docs/controls.md) · [Report a problem](#report-a-problem) ·
+[Discord](https://discord.gg/flat2vr)
 
 > **Development preview.** Mass Effect 1 only for now; Mass Effect 2 and 3 come later. Much of it has been played
 > in a headset only a few times, so your reports are very welcome.
@@ -102,11 +103,16 @@ The full list is in the [changelog](CHANGELOG.md); every button and gesture is i
   sight when held with two hands.
 - **Not code-signed yet:** SmartScreen or antivirus warnings (see [Get started](#get-started)).
 
-More symptoms and fixes: [Troubleshooting](docs/troubleshooting.md) (your AI assistant can read it too).
+More symptoms and fixes: [Troubleshooting](docs/troubleshooting.md) (your AI assistant can read it too). Still stuck?
+Ask on [Discord](https://discord.gg/flat2vr).
 
 ## Report a problem
 
-Open **MEVR Setup > Report a problem** (or, in the game, the VR menu's **Advanced > Diagnostics > Report**). It saves
+**Having trouble? Join the [Flat2VR Discord](https://discord.gg/flat2vr) and ask in the MEVR channel.**
+Ask there first: other players and the developer can often help right away, and it's the quickest way to find out
+whether a problem is already known.
+
+To report a bug, open **MEVR Setup > Report a problem** (or, in the game, the VR menu's **Advanced > Diagnostics > Report**). It saves
 `MEVR-report-<date-time>.zip` on your Desktop: logs, settings and a summary, with your Windows user name, computer
 name and e-mail addresses removed. **Nothing is uploaded**: you look at the zip and decide. Its **Open a GitHub
 issue** button opens the [bug form](https://github.com/dnehring/MEVR/issues/new?template=bug.yml) with the versions
