@@ -4,6 +4,7 @@ runs (layer 0), the runner's work list, and the judge of a finished pass. No gam
 
   python tools/conversation-sweep.py predict scan.jsonl [--out predictions.json] [--table]
   python tools/conversation-sweep.py plan scan.jsonl --out plan.json [--barks 2]
+  python tools/conversation-sweep.py plan scan.jsonl --out full.json --sample [--per-shape 2] [--also names.txt]
   python tools/conversation-sweep.py reach <folder of a -ReachOnly run>
   python tools/conversation-sweep.py canary plan.json tools/conversation-canary.json --out-plan canary-plan.json
         --out-expect canary-expect.json [--broken]
@@ -234,6 +235,20 @@ def predictions(path):
             risks.append('cutscene-vo' if vo[k][1] else 'gameplay-vo')
         else:
             risks.append('no-start')
+        # How much the scene asks of First person, from the conversation's own make-up (not from where it plays):
+        #   C authored: the game moves someone or frames the scene itself (a set piece, an authored walk, Shepard walked)
+        #   B staged+:  more than the plain case: a flowed chain, a chain kept for its plot, a wide stage, a transmission,
+        #               or a stage for three or more
+        #   A simple:   two people on a small stage, or nobody placed at all, and a wheel
+        # and its shape: kind, stage type, wheel or watched, and those marks. Scenes of one shape exercise the same rules, so
+        # a costly pass (full length, the headset) can take a few of each shape; where a scene plays (a trigger near, a
+        # spawned owner, a named state) is its own risk, per scene, and only a run of that scene answers it.
+        wheel = bool(conv.get('nodes')) and cs.has_wheel(conv, range(len(conv['nodes'])))
+        big_stage = any(x.group(1) not in ('1', '2') for st in m['stageTypes'] for x in [re.match(r'ST_(\d+)P', st)] if x)
+        make_up = [x for x in risks if x in ('set-piece', 'npc-walk', 'shepard-walk', 'flowed', 'plot-chain', 'wide-stage', 'remote')]
+        tier = 'C' if set(make_up) & {'set-piece', 'npc-walk', 'shepard-walk'} else 'B' if make_up or big_stage else 'A'
+        stage_kinds = sorted({(x.group(1) + 'P' if x else st) for st in m['stageTypes'] if st != '-' for x in [re.match(r'ST_(\d+)P', st)]})
+        shape = ' | '.join([kd, ','.join(stage_kinds) or 'no stage', 'wheel' if wheel else 'watched', ','.join(sorted(make_up)) or '-'])
         starting = conv.get('starting') or []
         if starting and all(0 <= s < len(conv['nodes']) and conv['nodes'][s].get('conditional', -1) != -1 for s in starting):
             risks.append('conditional')
@@ -241,7 +256,7 @@ def predictions(path):
             'conversation': k, 'area': cs.area(k), 'kind': kd, 'verdict': v, 'lines': m['lines'], 'starts': len(mine),
             'map': best['map'] if best else None, 'chunk': best['chunk'] if best else None, 'flowed': flowed,
             'flowEntries': f['flips'] if flowed else [], 'plotEffects': effects, 'stageSpreadM': m['stageSpread'] / 100,
-            'triggers': near, 'risks': risks,
+            'triggers': near, 'risks': risks, 'tier': tier, 'shape': shape,
             'voiceOvers': vo[k][0] if k in vo else 0,
             # A conversation no level script starts and whose lines voice-over actions play never enters the conversation
             # mode: nothing for First person to place (a cutscene's lines go where the cutscene goes, the 3D screen).
@@ -264,6 +279,12 @@ def predict(argv):
     risk = collections.Counter(x for r in rows for x in r['risks'] if r['sweep'] in ('smoke', 'screen'))
     print('risks among the ' + str(sweep['smoke'] + sweep['screen']) + ' that enter the conversation mode: '
           + ', '.join(f'{k} {n}' for k, n in risk.most_common()))
+    swept = [r for r in rows if r['sweep'] in ('smoke', 'screen')]
+    tiers = collections.Counter(r['tier'] for r in swept)
+    place = {'trigger-near', 'owner-spawned', 'named-state', 'no-route'}
+    print(f"by make-up: {tiers['A']} simple (A), {tiers['B']} staged and more (B), {tiers['C']} authored (C); "
+          f"{len({r['shape'] for r in swept})} shapes, {sum(1 for n in collections.Counter(r['shape'] for r in swept).values() if n == 1)} of them with one scene; "
+          f"{sum(1 for r in swept if set(r['risks']) & place)} scenes with a risk from where they play")
     clean = sum(1 for r in rows if r['sweep'] == 'smoke' and not set(r['risks']) - {'plot-effects', 'conditional'})
     print(f"{clean} smoke scenes carry no risk but plot effects or conditional starts")
     if '--table' in argv:
@@ -281,6 +302,23 @@ def plan(argv):
     ways = stream_ways(argv[0])
     out = option(argv, '--out')
     barks_per_area = int(option(argv, '--barks', '2'))
+    # --sample: the costly pass (full length). Every authored scene (tier C), --per-shape of each B shape and one of each A
+    # shape, plus the scenes named in --also (a file of names, one a line: the first pass's exceptions). No barks.
+    keep = None
+    if '--sample' in argv:
+        per_shape = int(option(argv, '--per-shape', '2'))
+        also = set()
+        if option(argv, '--also'):
+            also = {line.strip() for line in open(option(argv, '--also'), encoding='utf-8-sig') if line.strip()}
+        taken, keep = collections.Counter(), set(also)
+        for r in rows:
+            if r['sweep'] not in ('smoke', 'screen') or not any(e['conversation'] == r['conversation'] for e in entries):
+                continue
+            limit = 10 ** 6 if r['tier'] == 'C' else per_shape if r['tier'] == 'B' else 1
+            if taken[r['shape']] < limit:
+                taken[r['shape']] += 1
+                keep.add(r['conversation'])
+        barks_per_area = 0
     first = {}
     for e in entries:
         first.setdefault(e['conversation'], e)
@@ -298,9 +336,12 @@ def plan(argv):
             'flowed': r['flowed'], 'flowEntries': r['flowEntries'], 'risks': r['risks'], 'sweep': r['sweep'],
             'streamVia': ways.get(e['map'], {}).get(chunk_of(e['package']), []),
         }
+        scene['tier'], scene['shape'] = r['tier'], r['shape']
         if r['sweep'] == 'bark':
             if len(barks[r['area']]) < barks_per_area and e['ownerAt']:
                 barks[r['area']].append(scene)
+            continue
+        if keep is not None and r['conversation'] not in keep:
             continue
         scenes.append(scene)
     scenes += [s for area in sorted(barks) for s in barks[area]]
