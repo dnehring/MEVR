@@ -514,6 +514,60 @@ fail on `kept`), so a judge that passes everything is caught.
   that started by itself (the level was taken for one that never opened), and "not reached" was then written over that
   scene's own result.
 
+### Sampling: not every scene of a kind (2026-11-09; the owner: "ensure your runs aren't wasteful and consider sampled runs for more basic experiences")
+
+- **A conversation's make-up, from the data** (`conversation-sweep.py predict`: `tier` and `shape`). Of the 277 that enter the
+  conversation mode: **A, simple, 127** (two people on a small stage or nobody placed, and a wheel; 95 of them one shape),
+  **B, staged and more, 110** (a flowed chain, a chain kept for its plot, a wide stage, a transmission, a stage for three
+  or more), **C, authored, 40** (a set piece, an authored walk, Shepard walked). 76 shapes (kind, stage size, wheel or
+  watched, those marks). Scenes of one shape exercise the same rules. Where a scene plays is its own risk and is not in
+  the shape: 193 of the 277 have a trigger near, a spawned owner, a named streaming state or no route.
+- **The 32 others** that the first count took for unreachable never enter the conversation mode: their lines are
+  voice-over actions (`BioSeqAct_FaceOnlyVO`, the scan's `vo` records), 9 under animated cutscenes (Saren and Benezia after
+  Eden Prime, Sovereign's arrival, the approach fly-bys) and 23 on foot (a squadmate's remark, radio chatter). Found with
+  `conversation-scan --references`; the placeables' packages (`_PLC`), skipped until then, hold one start (Ilos's archive
+  door).
+- **`plan --sample`**: every tier C scene; `--per-shape` of each B shape (2) and one of each A shape; with `--per-place 1`
+  one scene of each level's each place risk per tier; `--reach` leaves out what a reach run could not get to; `--also`
+  adds an earlier pass's exceptions. With `--per-place 1` and the reach run: **36 of 127 A, 55 of 110 B, 35 of 40 C: 133
+  scenes** (116 in the levels that open), against 290. A full pass was stopped after six minutes for this one.
+- **The rule for widening a sample:** a shape whose sampled scenes do not come out alike is run whole; a fix is re-run on
+  its scenes, one of each shape and the canary set, not on everything.
+
+### A scene through its own event; the authored moments (2026-11-09, built, not run)
+
+- The scan traces every start back through the level's script to the nearest event (`via` on a start: the event, its
+  originator's place, the first action behind it, what lies between). **710 of 763 starts have one**: the player used
+  someone 315, a touch 124, a placeable used 86, the level loaded 68, a remote event 58. Between the event and the start:
+  plot checks before 226 and 152 of them, a cinematic mode switch 64, a black screen 28, a teleport 12, a matinee 6.
+- **`conversation-sweep.ps1 -Fire event`** fires that first action instead of the bare start (the plan's `via`: the
+  player's own events, at most ten steps away), so the script runs as authored; without a conversation in 40 s the bare
+  start is fired after all, and the record says which (`fired`). The council hearing is the case that showed the need:
+  its bare start starts nothing.
+- **The moments** (`conversation-sweep.py moments scan.jsonl --out moments.json`): the directed level-script matinees that
+  move the player by a track and have an event upstream, **21 in 7 levels** (the walk to the council 7.5 s, becoming a
+  Spectre 17.8 s, Benezia's entrance and her fight's phases, Liara's rescue, the Thorian's geth, Zhu's Hope's first
+  creeper, the end). The runner plays one like a scene (its `actionClass`), samples the game modes it passes through and
+  drives the conversation it leads to. This is the test list for the authored-scenes work.
+
+### The opening without a cut (2026-11-09, built, not run in the game)
+
+`[Cinematics] worldOpening = auto` (`accept`, today's dip at every staged opening, stays the default until this is seen in
+the game; `keep` as before). `cw::DecideOpening` (unit-tested) from what the mod measures when the opening ends: how far
+the stage put Shepard from where the player stood on foot (the last on-foot view, at most 5 s old), the rise, a line of
+sight from the player's eyes to Shepard's head at the mark, a floor there, whether the pawn is hidden, and how far the
+stage moved the people who were in the player's view (the conversation's own saved places).
+
+| The stage put Shepard | The opening |
+|---|---|
+| within 1.5 m of where the player stood | **stay**: Shepard is put back where he stood, the view is the one on foot, nobody is arranged, nothing dips |
+| up to 40 m away, at most 6 m up or down, in sight, on a floor | **walk in**: the same, and the mark is where he is wanted: he walks there himself (outside the leash a step may only bring him nearer); the lines go on, the wheel waits |
+| anywhere else, or the pawn hidden, or people in view put more than 3 m away, or no fresh place on foot (after a cutscene) | **cut**: at the mark under a dip from black, everyone brought into view, as before |
+
+The summary line carries `"opening"`, `"markM"` and `"cuts"`, and the judge counts them: how many conversations open
+without a dip is a number of every pass from now on. Not in it yet: the people of a walk-in walking to their marks rather
+than standing on them at once (the walking-to-marks prototype), and the squad.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):

@@ -496,7 +496,15 @@ switching frameworks.
   level per start comes from the levels' streaming lists (the scan's `level` records: the Normandy's plot chunks open the
   Citadel, Eden Prime or Ilos); `tools/conversation-sweep.py predict | plan | judge` (risks per conversation from the data,
   the runner's work list, and the judge of a pass with a baseline and a canary set; ctest `mevr-conversation-sweep`); a flowed
-  scene ends with `convo flow: summary {...}`. Logs `convo: ... the player walks`, `the player walked
+  scene ends with `convo flow: summary {...}`. `tools/conversation-sweep.ps1 -Plan <plan> [-Pace skip|shepard|full] [-Fire
+  action|event] [-ReachOnly] [-Resume]` is the runner (per level open, per chunk stream with Shepard floating, per scene place,
+  fire, drive; a watchdog restarts the game; never `tail` its log with a tool that locks it). **Sample, don't run everything**
+  (the owner, 2026-11-09): `plan --sample --per-place 1 --reach <reach-scenes.jsonl>` takes every authored scene, a few of
+  each other shape and of each level's place risks (133 of 290); `canary` writes the canary plan from
+  `tools/conversation-canary.json` (run it before a pass; its broken run must fail); `moments` lists the 21 level-script
+  matinees that walk Shepard as a plan. 32 conversations are voice-over only (`BioSeqAct_FaceOnlyVO`) and never enter the
+  conversation mode. `worldOpening = auto` (built, not seen in the game; `accept` is still the default): no dip at a staged
+  opening when Shepard's mark is where the player stands or within a walk in the same space (`cw::DecideOpening`). Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
