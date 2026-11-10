@@ -492,6 +492,7 @@ struct Convo {
     std::string subtitle;
     std::string lookAts;
     int entry = -1;
+    std::vector<int> entryPath;        // the entries it passed through, in order (the summary's "entries": the sweep's judge)
     // Shots: each cut of the director's camera.
     int shots = 0;
     ue3::Vector shotLocation{};
@@ -1539,7 +1540,11 @@ void End(char const* why) {
     if (gC.moving && ue3::runtime::IsAlive(gC.playerPawn)) {
         WalkVelocity(gC.playerPawn, {});
     }
-    // One line for the survey (tools/conversation-survey.ps1): everything above as numbers.
+    // One line for the survey (tools/conversation-survey.ps1) and the sweep's judge: everything above as numbers.
+    std::string entryPath;
+    for (int const e : gC.entryPath) {
+        entryPath += std::format("{}{}", entryPath.empty() ? "" : ", ", e);
+    }
     double maxMove = 0.0;
     for (Tracked const& t : gC.actors) {
         maxMove = std::max(maxMove, t.maxMove);
@@ -1549,14 +1554,14 @@ void End(char const* why) {
               "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
               "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
-              "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}}}",
+              "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
-        gC.autoScreened ? "true" : "false");
+        gC.autoScreened ? "true" : "false", entryPath);
     gC = {};
 }
 
@@ -1603,6 +1608,9 @@ void Sample(ue3::Object* conv, ue3::Object* controller, ue3::Object* pawn, ik::V
     int const entry = gCurrentEntry.Read<int>(conv).value_or(-1);
     if (entry != gC.entry) {
         gC.entry = entry;
+        if (entry >= 0 && gC.entryPath.size() < 400) {
+            gC.entryPath.push_back(entry);
+        }
     }
     // The wheel.
     ue3::Object* const handler = WheelHandler(controller);
@@ -2013,8 +2021,8 @@ std::string Command(std::string const& rest) {
         if (!gC.on) {
             return out + "no conversation";
         }
-        out += std::format("conversation {} ({}), {:.1f} s, {} shots, speaker {}; actors:", gC.number, gC.name, Seconds(), gC.shots,
-            ShortName(gC.speaker));
+        out += std::format("conversation {} ({}), {:.1f} s, {} shots, speaker {}, entry {}, wheel {}; actors:", gC.number, gC.name,
+            Seconds(), gC.shots, ShortName(gC.speaker), gC.entry, gC.wheel ? "up" : "down");
         for (Tracked const& t : gC.actors) {
             auto const at = ue3::runtime::IsAlive(t.actor) ? player::Location(t.actor) : std::nullopt;
             out += std::format(" {} {}", t.name, at ? F(V(*at)) : std::string("gone"));

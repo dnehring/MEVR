@@ -4,6 +4,8 @@ runs (layer 0), the runner's work list, and the judge of a finished pass. No gam
 
   python tools/conversation-sweep.py predict scan.jsonl [--out predictions.json] [--table]
   python tools/conversation-sweep.py plan scan.jsonl --out plan.json [--barks 2]
+  python tools/conversation-sweep.py canary plan.json tools/conversation-canary.json --out-plan canary-plan.json
+        --out-expect canary-expect.json [--broken]
   python tools/conversation-sweep.py judge results.jsonl [more.jsonl ...] [--scan scan.jsonl] [--predictions predictions.json]
         [--baseline baseline.json] [--write-baseline baseline.json] [--expect canary.json] [--report report.md] [--strict]
 
@@ -52,9 +54,11 @@ The result record (the runner's contract):
    "expect": {"verdict": "world", "flowed": false, "afterCutscene": false},
    "outcome": "played" | "no conversation" | "not reached" | "action not loaded" | "crash" | "hang",
    "ended": "itself" | "forced", "summary": {the mod's convo: summary}, "summaries": [every one in the scene's window],
-   "flow": {the mod's convo flow: summary}, "driver": {"picks": 3, "skips": 12, "entries": [0, 4, 9]}}
+   "flow": {the mod's convo flow: summary}, "driver": {"picks": 3, "skips": 12}}
+(the summary's "entries" are the entries the conversation passed through, in order; outcome "reached" is a reach-only run)
 With --baseline every scene is also compared with the last accepted pass; --write-baseline accepts this one. --expect
-checks named scenes against what they must show (the canary set: {"nor10_oculon_approach": {"kinds": [], "min":
+checks named scenes against what they must show (the canary set, `canary` writes it; "kinds" exactly, "has" and "lacks"
+some of them: {"nor10_oculon_approach": {"kinds": [], "min":
 {"sourceKept": 20}, "max": {"kept": 0}, "flowMin": {"barksRefused": 2}}}; a run with a rule switched off lists the kind that
 must appear) and exits 1 when
 one differs: that is how a judge that passes everything is caught. --strict exits 1 on any exception not in the baseline.
@@ -78,6 +82,9 @@ EYE_FAR_M = 0.8
 
 def option(argv, name, default=None):
     return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
+
+
+option_value = option
 
 
 def conversation_key(name):
@@ -236,6 +243,36 @@ def plan(argv):
     return 0
 
 
+# ---- the canary set -------------------------------------------------------------------------------------------------------------
+
+def canary(argv):
+    """The canary set's own small plan and its expectations, from the full plan and tools/conversation-canary.json."""
+    doc = json.load(open(argv[0], encoding='utf-8'))
+    spec = json.load(open(argv[1], encoding='utf-8'))
+    part = spec['broken'] if '--broken' in argv else spec
+    scenes = {s['conversation']: s for lv in doc['maps'] if lv['map'] == spec['level'] for c in lv['chunks'] for s in c['scenes']}
+    chunks, missing = [], []
+    for name in part['order']:
+        if name not in scenes:
+            missing.append(name)
+            continue
+        scene = dict(scenes[name])
+        for option in ('walks', 'alsoFire'):
+            if option in part['scenes'].get(name, {}):
+                scene[option] = part['scenes'][name][option]
+        chunks.append({'chunk': scene['chunk'], 'scenes': [scene]})
+    out_plan, out_expect = option_value(argv, '--out-plan'), option_value(argv, '--out-expect')
+    if out_plan:
+        with open(out_plan, 'w', encoding='utf-8') as f:
+            json.dump({'scenes': len(chunks), 'maps': [{'map': spec['level'], 'chunks': chunks}], 'unreachable': []}, f, indent=0)
+    if out_expect:
+        with open(out_expect, 'w', encoding='utf-8') as f:
+            json.dump({k: v['expect'] for k, v in part['scenes'].items() if 'expect' in v}, f, indent=0)
+    print(f"the canary set{' (broken: ' + ', '.join(f'{k} = {v}' for k, v in part.get('set', {}).items()) + ')' if '--broken' in argv else ''}: "
+          f"{len(chunks)} scenes at {spec['level']}" + (f"; not in the plan: {', '.join(missing)}" if missing else ''))
+    return 1 if missing else 0
+
+
 # ---- the judge ------------------------------------------------------------------------------------------------------------------
 
 def load_results(paths):
@@ -282,6 +319,8 @@ def judge_one(r, conv, prediction):
     outcome = (r.get('outcome') or '').lower()
     s = r.get('summary')
     flow = r.get('flow')
+    if outcome == 'reached':  # a reach-only run: the start action was found, nothing was fired
+        return kinds
     if outcome in ('crash', 'hang'):
         add(outcome, r.get('detail', ''))
     if outcome in ('not reached', 'action not loaded') or 'never reached' in outcome:
@@ -322,8 +361,9 @@ def judge_one(r, conv, prediction):
         driver = r.get('driver') or {}
         if 'picks' in driver and s.get('wheel', 0) > driver['picks']:
             add('wheel-unanswered', f"wheel {s['wheel']}, picks {driver['picks']}")
-        if conv and driver.get('entries'):
-            text = sum(1 for e in set(driver['entries']) if 0 <= e < len(conv['nodes']) and conv['nodes'][e].get('text') and not conv['nodes'][e].get('nonText'))
+        path = s.get('entries') or driver.get('entries')  # the mod's own list of the entries it passed through
+        if conv and path:
+            text = sum(1 for e in set(path) if 0 <= e < len(conv['nodes']) and conv['nodes'][e].get('text') and not conv['nodes'][e].get('nonText'))
             if s.get('lines', 0) < text:
                 add('lines-short', f"lines {s.get('lines', 0)}, {text} entries with text seen")
     return kinds
@@ -407,6 +447,12 @@ def judge(argv):
             got, s = record[k]['kinds'], results[k].get('summary') or {}
             if 'kinds' in w and sorted(w['kinds']) != got:
                 failed.append(f"{k}: kinds {got}, expected {sorted(w['kinds'])}")
+            for kind in w.get('has') or []:
+                if kind not in got:
+                    failed.append(f"{k}: kinds {got}, expected {kind} among them")
+            for kind in w.get('lacks') or []:
+                if kind in got:
+                    failed.append(f"{k}: kinds {got}, expected no {kind}")
             for f, lo in (w.get('min') or {}).items():
                 if s.get(f, 0) < lo:
                     failed.append(f"{k}: {f} {s.get(f)}, expected at least {lo}")
@@ -433,10 +479,10 @@ def judge(argv):
 
 
 def main(argv):
-    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge'):
+    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary'):
         print(__doc__)
         return 2
-    return {'predict': predict, 'plan': plan, 'judge': judge}[argv[1]](argv[2:])
+    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary}[argv[1]](argv[2:])
 
 
 if __name__ == '__main__':

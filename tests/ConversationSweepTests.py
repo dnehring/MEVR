@@ -199,6 +199,35 @@ def main():
         status, _ = run(worse, '--expect', canary)
         check(status == 1, 'a canary that must pass and fails is caught')
 
+        # "has" and "lacks": some of the kinds, for a run with a rule switched off.
+        with open(canary, 'w', encoding='utf-8') as f:
+            json.dump({'nor10_wake': {'has': ['undone'], 'lacks': ['forced-end']}}, f)
+        status, _ = run(records, '--expect', canary)
+        check(status == 0, 'the broken run shows the kind it must')
+        status, _ = run(fixed, '--expect', canary)
+        check(status == 1, 'the broken run without that kind is caught')
+
+        # The canary's own plan: the named scenes in the given order, with their options; expectations per scene.
+        full = os.path.join(tmp, 'full.json')
+        sweep.plan([path, '--out', full])
+        spec = os.path.join(tmp, 'spec.json')
+        with open(spec, 'w', encoding='utf-8') as f:
+            json.dump({'level': 'BIOA_STA00', 'order': ['sta70_scene', 'nor10_wake'],
+                       'scenes': {'sta70_scene': {'alsoFire': ['X.BioSeqAct_StartConversation_0'], 'expect': {'kinds': []}},
+                                  'nor10_wake': {'walks': [[0, 1, 4]], 'expect': {'max': {'kept': 0}}},
+                                  'sta20_talk': {'expect': {'lacks': ['no-start']}}},
+                       'broken': {'set': {'Cinematics.worldStaySource': '0'}, 'order': ['nor10_wake'],
+                                  'scenes': {'nor10_wake': {'expect': {'has': ['undone']}}}}}, f)
+        cplan, cexpect = os.path.join(tmp, 'cplan.json'), os.path.join(tmp, 'cexpect.json')
+        check(sweep.canary([full, spec, '--out-plan', cplan, '--out-expect', cexpect]) == 0, 'the canary plan is written')
+        cdoc = json.load(open(cplan, encoding='utf-8'))
+        order = [s['conversation'] for c in cdoc['maps'][0]['chunks'] for s in c['scenes']]
+        check(order == ['sta70_scene', 'nor10_wake'], f'the canary scenes in the given order: {order}')
+        check(cdoc['maps'][0]['chunks'][0]['scenes'][0]['alsoFire'] == ['X.BioSeqAct_StartConversation_0'], 'a scene carries its options')
+        check(sorted(json.load(open(cexpect, encoding='utf-8'))) == ['nor10_wake', 'sta20_talk', 'sta70_scene'], 'expectations for every named scene')
+        check(sweep.canary([full, spec, '--broken', '--out-plan', cplan, '--out-expect', cexpect]) == 0, 'the broken run has its own plan')
+        check(json.load(open(cexpect, encoding='utf-8')) == {'nor10_wake': {'has': ['undone']}}, 'and its own expectations')
+
         # The work list.
         out = os.path.join(tmp, 'plan.json')
         sweep.plan([path, '--out', out])

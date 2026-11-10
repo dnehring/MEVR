@@ -1,0 +1,34 @@
+{
+  "about": "The conversation sweep's canary set (research/69 'The sweep: plan', 'Validating the validator'): scenes whose result is known, run before every pass. `scenes` adds options to the plan's scenes (walks: the stick without controllers; alsoFire: other start actions fired half a second later) and says what the judge must find. `broken` is the same run with a rule switched off: it must fail the way it says, or the judge passes everything.",
+  "level": "BIOA_STA00",
+  "order": ["nor10_oculon_approach", "sta70_garrus", "sta60_stripperseat"],
+  "scenes": {
+    "nor10_oculon_approach": {
+      "why": "the medical bay's wake-up scene (it starts by itself when the Citadel is opened): every stage placement withheld at its source, nothing undone after the fact, and the walk held at a trigger's edge",
+      "walks": [[0, 1, 4], [1, 0, 4], [0, -1, 8], [-1, 0, 8], [0, 1, 4], [1, 1, 5]],
+      "expect": {"max": {"kept": 0, "drawn": 0}, "min": {"sourceKept": 20, "triggerHits": 1}, "lacks": ["undone", "drawn-jump", "forced-end", "no-start"]}
+    },
+    "sta70_garrus": {
+      "why": "the Garrus argument as a flowed scene with two barks and another scene's start fired over it: the barks refused, the scene held, the argument whole, its wheel conversation after it",
+      "alsoFire": ["TowerSpecificBanters.BioSeqAct_StartConversation_0", "AmbientDiplomats.BioSeqAct_StartConversation_0", "ChorbanWithKeeper.BioSeqAct_StartConversation_1"],
+      "expect": {"kinds": [], "flowMin": {"barksRefused": 2, "scenesHeld": 1}}
+    },
+    "sta20_chorban": {
+      "why": "the scene held over the Garrus argument: its start fired again after the argument's follow-up, and it played",
+      "expect": {"lacks": ["no-start", "not-reached", "forced-end"]}
+    },
+    "sta60_stripperseat": {
+      "why": "a set piece: on the 3D screen, not in the world",
+      "expect": {"kinds": []}
+    }
+  },
+  "broken": {
+    "why": "placements no longer withheld at their source: the wake-up scene must show people undone after the fact",
+    "set": {"Cinematics.worldStaySource": "0"},
+    "restore": {"Cinematics.worldStaySource": "1"},
+    "order": ["nor10_oculon_approach"],
+    "scenes": {
+      "nor10_oculon_approach": {"expect": {"has": ["undone"], "max": {"sourceKept": 0}}}
+    }
+  }
+}

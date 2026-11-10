@@ -37,6 +37,8 @@ $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
 # ($PSScriptRoot is empty in the param block of a script with [Parameter()] attributes on Windows PowerShell 5.1.)
 if (-not $BuildDir) { $BuildDir = Join-Path $tools '..\build' }
+# (powershell -File passes 'a=1,b=2' as one string: split it here.)
+$Set = @($Set | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $win64 = Join-Path $GameRoot 'Game\ME1\Binaries\Win64'
 $lockFile = Join-Path $StateDir 'lock.json'
 # Each place: its folder, whether its subfolders count, and the files hashed but not copied.
