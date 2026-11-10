@@ -236,6 +236,84 @@ def main():
         chunks = {c['chunk']: [s['conversation'] for s in c['scenes']] for c in doc['maps'][0]['chunks']}
         check(chunks.get('NOR10_07wake') == ['nor10_wake'], f'the wake-up chunk under the level that streams it: {chunks}')
 
+        # More of the game: a second conversation of sta20_talk's shape, a start with its way in through the player's own
+        # event, a conversation only voice-over actions play (under an animated cutscene), a matinee that walks the player.
+        more = RECORDS + [
+            conversation('sta20_talk2', [entry([0]), entry([])], [reply([1])], [0]),
+            dict(start('sta20_talk2', 'BIOA_STA20_01_DSG', [3000.0, 0.0, 0.0]),
+                 via={'event': 'BIOA_STA20_01_DSG.TheWorld.PersistentLevel.Main_Sequence.Talk2.BioSeqEvt_OnPlayerActivate_0',
+                      'eventClass': 'BioSeqEvt_OnPlayerActivate', 'originator': 'BioPawn_0', 'originatorAt': [3000.0, 0.0, 0.0], 'eventName': None,
+                      'firstOp': 'BIOA_STA20_01_DSG.TheWorld.PersistentLevel.Main_Sequence.Talk2.BioSeqAct_PMCheckState_0',
+                      'firstOpClass': 'BioSeqAct_PMCheckState', 'firstOpInput': 0, 'hops': 2, 'between': ['BioSeqAct_PMCheckState']}),
+            conversation('pro20_cutscene_lines', [entry([])], [], [0]),
+            {'kind': 'vo', 'package': 'BIOA_PRO20_E_CIN', 'conv': 'pro20_cutscene_lines_D.pro20_cutscene_lines_dlg',
+             'path': 'BIOA_PRO20_E_CIN.TheWorld.PersistentLevel.Main_Sequence.ANIMCUTSCENE_Pro_20_E.BioSeqAct_FaceOnlyVO_0'},
+            {'kind': 'matinee', 'package': 'BIOA_STA70_02_DSG', 'length': 7.5,
+             'path': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.SeqAct_Interp_0',
+             'groups': [{'class': 'InterpGroupDirector', 'name': None, 'tracks': ['InterpTrackDirector']},
+                        {'class': 'InterpGroup', 'name': 'Player', 'tracks': ['InterpTrackMove', 'InterpTrackAnimControl']}],
+             'via': {'event': 'x', 'eventClass': 'BioSeqEvt_OnPlayerActivate', 'originator': 'BioPawn_9', 'originatorAt': [9000.0, 100.0, 0.0],
+                     'eventName': None, 'firstOp': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.BioSeqAct_PMCheckState_0',
+                     'firstOpClass': 'BioSeqAct_PMCheckState', 'firstOpInput': 0, 'hops': 4, 'between': ['BioSeqAct_PMCheckState', 'BioSeqAct_BioToggleCinematicMode']}},
+        ]
+        path2 = os.path.join(tmp, 'scan2.jsonl')
+        with open(path2, 'w', encoding='utf-8') as f:
+            for r in more:
+                f.write(json.dumps(r, separators=(',', ':')) + '\n')
+        rows, _ = sweep.predictions(path2)
+        p = {r['conversation']: r for r in rows}
+        check(p['pro20_cutscene_lines']['sweep'] == 'vo' and p['pro20_cutscene_lines']['risks'] == ['cutscene-vo'],
+              f"voice-over under a cutscene never enters the conversation mode: {p['pro20_cutscene_lines']['sweep']} {p['pro20_cutscene_lines']['risks']}")
+        check(p['sta20_talk']['tier'] == 'A' and p['sta20_talk']['shape'] == p['sta20_talk2']['shape'], 'two simple conversations of one shape')
+        check(p['sta70_scene']['tier'] == 'B', f"a flowed chain is tier B: {p['sta70_scene']['tier']}")
+
+        # A sample: one of each simple shape; with --per-place, one of each place risk per level too; --also adds by name.
+        sample = os.path.join(tmp, 'sample.json')
+        sweep.plan([path2, '--out', sample, '--sample'])
+        names = lambda doc: sorted(s['conversation'] for m in doc['maps'] for c in m['chunks'] for s in c['scenes'])
+        got = names(json.load(open(sample, encoding='utf-8')))
+        check(len({'sta20_talk', 'sta20_talk2', 'nor10_wake'} & set(got)) == 1, f'one of the three simple scenes of a shape: {got}')
+        check('sta70_scene' in got and 'sta20_bark' not in got and 'pro20_cutscene_lines' not in got, f'a flowed scene, no bark, no voice-over: {got}')
+        sweep.plan([path2, '--out', sample, '--sample', '--per-place', '1'])
+        got = names(json.load(open(sample, encoding='utf-8')))
+        check('sta20_talk' in got and 'sta20_talk2' in got, f'the scene near a trigger and the one with no place risk: {got}')
+        also = os.path.join(tmp, 'also.txt')
+        with open(also, 'w', encoding='utf-8') as f:
+            f.write('sta20_talk2\n')
+        reach_file = os.path.join(tmp, 'reach.jsonl')
+        with open(reach_file, 'w', encoding='utf-8') as f:
+            f.write(json.dumps({'conversation': 'sta20_talk', 'outcome': 'not reached'}) + '\n')
+            f.write(json.dumps({'conversation': 'sta20_talk2', 'outcome': 'reached'}) + '\n')
+        sweep.plan([path2, '--out', sample, '--sample', '--reach', reach_file, '--also', also])
+        doc = json.load(open(sample, encoding='utf-8'))
+        check('sta20_talk' not in names(doc) and 'sta20_talk2' in names(doc) and doc['unreached'] == ['sta20_talk'], f"a scene a reach run missed is left out and listed: {names(doc)} {doc['unreached']}")
+
+        # The way in through the player's own event travels with the scene.
+        full2 = os.path.join(tmp, 'full2.json')
+        sweep.plan([path2, '--out', full2])
+        scenes = {s['conversation']: s for m in json.load(open(full2, encoding='utf-8'))['maps'] for c in m['chunks'] for s in c['scenes']}
+        check(scenes['sta20_talk2'].get('via', {}).get('opTail') == 'Talk2.BioSeqAct_PMCheckState_0' and scenes['sta20_talk2']['via']['opClass'] == 'BioSeqAct_PMCheckState',
+              f"the first action behind the event: {scenes['sta20_talk2'].get('via')}")
+        check('via' not in scenes['sta20_talk'], 'a start without an event upstream has no way in')
+
+        # The moments: a directed matinee that moves the player, as a scene the runner can fire.
+        mfile = os.path.join(tmp, 'moments.json')
+        sweep.moments([path2, '--out', mfile])
+        mdoc = json.load(open(mfile, encoding='utf-8'))
+        ms = [s for m in mdoc['maps'] for c in m['chunks'] for s in c['scenes']]
+        check(len(ms) == 1 and ms[0]['moment'] and ms[0]['map'] == 'BIOA_STA00' and ms[0]['actionClass'] == 'BioSeqAct_PMCheckState'
+              and ms[0]['actionTail'] == 'WalkIn.BioSeqAct_PMCheckState_0' and ms[0]['ownerAt'] == [9000.0, 100.0, 0.0] and ms[0]['lengthS'] == 7.5,
+              f'one moment, fired through its event, Shepard stood by the originator: {ms}')
+        # ... and the judge takes a moment's record for what it is.
+        with open(results, 'w', encoding='utf-8') as f:
+            f.write(json.dumps({'conversation': ms[0]['conversation'], 'map': 'BIOA_STA00', 'outcome': 'played', 'modes': [6],
+                                'track': {'seconds': 7.4, 'pathM': 11.7, 'modes': [6]},
+                                'view': {'seconds': 12.4, 'walkedM': 0.0, 'carriedM': 3.06, 'dips': 0},
+                                'led': [{'name': 'sta90_hearing', 'world': True, 'opening': 'walk in', 'markM': 21.08}]}) + '\n')
+        base = os.path.join(tmp, 'moment-base.json')
+        check(sweep.judge([results, '--write-baseline', base]) == 0 and json.load(open(base, encoding='utf-8'))[ms[0]['conversation']]['kinds'] == [],
+              'a moment that ran is no exception')
+
     print(f"{'FAILED' if failures else 'passed'}: conversation sweep tests ({len(failures)} failures)")
     return 1 if failures else 0
 
