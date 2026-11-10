@@ -190,10 +190,17 @@ function PlayByItself([string]$map) {
 # Waits for gameplay (mode 0 three polls in a row); the party screen is sent on; a conversation that starts is played.
 function Settle([string]$map, [int]$seconds) {
     $deadline = (Get-Date).AddSeconds($seconds)
-    $steady = 0; $guiSince = $null
+    $steady = 0; $guiSince = $null; $mako = 0
     while ((Get-Date) -lt $deadline -and $steady -lt 3) {
         $s = State
         if (-not $s.answered) { if (-not (Running)) { return $false }; Start-Sleep -Seconds 2; continue }
+        # A side world drops the squad in the Mako (game mode 1): Shepard gets out (the game's own exit, then the forced one).
+        if ($s.mode -eq 1) {
+            $mako++
+            if ($mako -eq 3) { Say '   in the Mako: getting out'; Console 'mevr vehicle exit' | Out-Null }
+            elseif ($mako -eq 6) { Say ('   still in the Mako: ' + ((Console 'mevr vehicle exit force') -replace '^.*
+', '')) }
+        } else { $mako = 0 }
         if ($s.convo) {
             # A scene that starts by itself is played out; the wait for gameplay begins anew after it (the wake-up scene at
             # full length outlasted the level's whole waiting time, and the level was taken for one that never opened).
