@@ -4,7 +4,8 @@ runs (layer 0), the runner's work list, and the judge of a finished pass. No gam
 
   python tools/conversation-sweep.py predict scan.jsonl [--out predictions.json] [--table]
   python tools/conversation-sweep.py plan scan.jsonl --out plan.json [--barks 2]
-  python tools/conversation-sweep.py plan scan.jsonl --out full.json --sample [--per-shape 2] [--also names.txt]
+  python tools/conversation-sweep.py plan scan.jsonl --out sample.json --sample [--per-shape 2] [--per-place 1]
+        [--reach reach-scenes.jsonl] [--also names.txt] [--barks 1]
   python tools/conversation-sweep.py reach <folder of a -ReachOnly run>
   python tools/conversation-sweep.py canary plan.json tools/conversation-canary.json --out-plan canary-plan.json
         --out-expect canary-expect.json [--broken]
@@ -302,23 +303,49 @@ def plan(argv):
     ways = stream_ways(argv[0])
     out = option(argv, '--out')
     barks_per_area = int(option(argv, '--barks', '2'))
-    # --sample: the costly pass (full length). Every authored scene (tier C), --per-shape of each B shape and one of each A
-    # shape, plus the scenes named in --also (a file of names, one a line: the first pass's exceptions). No barks.
-    keep = None
+    # --sample: a pass that does not run every scene of a kind (research/69 "The sweep: progress", sampling). Taken:
+    #   every authored scene (tier C);
+    #   of each other shape, --per-shape scenes of tier B (default 2) and one of tier A;
+    #   with --per-place N (default 0), also N scenes of each level's each place risk (a trigger near, a spawned owner, a
+    #   named state, no route) per tier: what a scene's make-up cannot say, where it plays, is sampled by level;
+    #   the scenes named in --also (a file of names, one a line: an earlier pass's exceptions).
+    # --reach <reach-scenes.jsonl> keeps scenes a reach run could not get to out of the sample (they are listed), and
+    # prefers the ones it reached. No barks unless --barks is given.
+    keep, skipped_unreached = None, []
     if '--sample' in argv:
-        per_shape = int(option(argv, '--per-shape', '2'))
+        per_shape, per_place = int(option(argv, '--per-shape', '2')), int(option(argv, '--per-place', '0'))
         also = set()
         if option(argv, '--also'):
             also = {line.strip() for line in open(option(argv, '--also'), encoding='utf-8-sig') if line.strip()}
-        taken, keep = collections.Counter(), set(also)
-        for r in rows:
-            if r['sweep'] not in ('smoke', 'screen') or not any(e['conversation'] == r['conversation'] for e in entries):
+        reached, unreached = set(), set()
+        if option(argv, '--reach'):
+            for line in open(option(argv, '--reach'), encoding='utf-8-sig'):
+                if line.strip():
+                    x = json.loads(line)
+                    (unreached if x.get('outcome') in ('not reached', 'action not loaded') else reached).add(x['conversation'])
+            unreached -= reached
+        level_of = {}
+        for e in entries:
+            level_of.setdefault(e['conversation'], e['map'])
+        place = ('trigger-near', 'owner-spawned', 'named-state', 'no-route')
+        taken, placed, keep = collections.Counter(), collections.Counter(), set(also)
+        candidates = [r for r in rows if r['sweep'] in ('smoke', 'screen') and r['conversation'] in level_of]
+        for r in sorted(candidates, key=lambda r: (r['conversation'] not in reached, r['conversation'])):
+            k = r['conversation']
+            if k in unreached:
+                skipped_unreached.append(k)
                 continue
             limit = 10 ** 6 if r['tier'] == 'C' else per_shape if r['tier'] == 'B' else 1
             if taken[r['shape']] < limit:
                 taken[r['shape']] += 1
-                keep.add(r['conversation'])
-        barks_per_area = 0
+                keep.add(k)
+            cells = [(level_of[k], r['tier'], x) for x in r['risks'] if x in place] or [(level_of[k], r['tier'], 'no place risk')]
+            if any(placed[c] < per_place for c in cells):
+                keep.add(k)
+            if k in keep:
+                for c in cells:
+                    placed[c] += 1
+        barks_per_area = int(option(argv, '--barks', '0'))
     first = {}
     for e in entries:
         first.setdefault(e['conversation'], e)
@@ -349,7 +376,12 @@ def plan(argv):
     for s in scenes:
         by_map[s['map']][s['chunk']].append(s)
     maps = [{'map': mp, 'chunks': [{'chunk': c, 'scenes': by_map[mp][c]} for c in sorted(by_map[mp])]} for mp in sorted(by_map, key=str)]
-    doc = {'scenes': len(scenes), 'maps': maps, 'unreachable': unreachable}
+    doc = {'scenes': len(scenes), 'maps': maps, 'unreachable': unreachable, 'unreached': sorted(skipped_unreached)}
+    if keep is not None:
+        by_tier = collections.Counter(s['tier'] for s in scenes if s['sweep'] != 'bark')
+        total = collections.Counter(r['tier'] for r in rows if r['sweep'] in ('smoke', 'screen'))
+        print('the sample: ' + ', '.join(f"{by_tier[t]} of {total[t]} tier {t}" for t in 'ABC')
+              + (f"; {len(skipped_unreached)} left out as not reached" if skipped_unreached else ''))
     if out:
         with open(out, 'w', encoding='utf-8') as f:
             json.dump(doc, f, indent=0)
