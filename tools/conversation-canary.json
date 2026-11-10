@@ -1,7 +1,7 @@
 {
   "about": "The conversation sweep's canary set (research/69 'The sweep: plan', 'Validating the validator'): scenes whose result is known, run before every pass. `scenes` adds options to the plan's scenes (walks: the stick without controllers; alsoFire: other start actions fired half a second later) and says what the judge must find. `broken` is the same run with a rule switched off: it must fail the way it says, or the judge passes everything.",
   "level": "BIOA_STA00",
-  "order": ["nor10_oculon_approach", "sta70_garrus", "sta90_council_saren"],
+  "order": ["nor10_oculon_approach", "sta70_garrus"],
   "scenes": {
     "nor10_oculon_approach": {
       "why": "the medical bay's wake-up scene (it starts by itself when the Citadel is opened): every stage placement withheld at its source, nothing undone after the fact, and the walk held at a trigger's edge",
@@ -16,12 +16,9 @@
     "sta20_chorban": {
       "why": "the scene held over the Garrus argument: its start fired again after the argument's follow-up, and it played",
       "expect": {"lacks": ["no-start", "not-reached", "forced-end"]}
-    },
-    "sta90_council_saren": {
-      "why": "a set piece (the council hearing): on the 3D screen, not in the world",
-      "expect": {"kinds": []}
     }
   },
+  "later": "A set piece on the 3D screen belongs here. The council hearing does not start from its bare start action (the level's script activates its people first), and the strip club's chunk does not stream in from a fresh Citadel: one that the first pass shows starting alone is to be added.",
   "broken": {
     "why": "placements no longer withheld at their source: the wake-up scene must show people undone after the fact",
     "set": {"Cinematics.worldStaySource": "0"},

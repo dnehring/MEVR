@@ -57,6 +57,9 @@ $resultsFile = Join-Path $Out $(if ($ReachOnly) { 'reach-scenes.jsonl' } else { 
 $reachFile = Join-Path $Out 'reach.jsonl'
 $runnerLog = Join-Path $Out 'runner.log'
 $doc = Get-Content -LiteralPath $Plan -Raw | ConvertFrom-Json
+# (powershell -File passes 'a,b' as one string: split the lists here.)
+$Maps = @($Maps | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 
 # A line added to a file someone may be reading right now (a `tail` of the runner's log ended the first run, 2026-11-09:
 # Add-Content wants the file to itself): opened for append with readers and writers let in, tried again for a few seconds.
@@ -414,6 +417,16 @@ function RunScene([string]$map, $scene, $streamed) {
     if ($sums.Count -gt 1) { $record.summaries = @($sums | ForEach-Object { [ordered]@{ name = (Key $_.name); why = $_.why; seconds = $_.seconds; lines = $_.lines; world = $_.world } }) }
     $flow = @($flows | Where-Object { $_.name -eq $scene.conversation }) | Select-Object -Last 1
     if ($flow) { $record.flow = $flow }
+    # Another conversation that played inside this scene's stretch (a held start fired after it, the level's own follow-up):
+    # its own record, so the judge sees it, and the plan's scene of it is not fired again.
+    foreach ($other in $sums) {
+        $k = Key $other.name
+        if ($k -eq $scene.conversation -or $script:done.ContainsKey($k)) { continue }
+        Append $resultsFile ([ordered]@{ conversation = $k; map = $map; action = "(during $($scene.conversation))"; route = 'open'; pace = $Pace
+            outcome = 'played'; ended = $(if ($drive.forced) { 'forced' } else { 'itself' }); summary = $other })
+        $script:done[$k] = $true
+        Say "   (during $($scene.conversation)) ${k}: played"
+    }
     $record.notes = @($window | Select-String -Pattern 'convo flow: .*(held|refused|fired again|let through)|convo: .*(no place for the player|goes to the 3D screen|set piece)' | ForEach-Object { $_.Line.Substring([math]::Min(15, $_.Line.Length)) } | Select-Object -First 12)
     if (Dead) { $record.outcome = $(if (Running) { 'hang' } else { 'crash' }); $record.detail = 'during the scene' }
     elseif ($mine -or $flow) { $record.outcome = 'played' }
