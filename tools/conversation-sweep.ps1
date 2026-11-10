@@ -221,7 +221,7 @@ function Settle([string]$map, [int]$seconds) {
                 Console 'mevr vehicle party' | Out-Null; $guiSince = $null; Start-Sleep -Seconds 5
             }
         } else { $guiSince = $null }
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
     }
     return $steady -ge 3
 }
@@ -329,7 +329,7 @@ function Stream($scene) {
         $deadline = (Get-Date).AddSeconds($StreamSeconds)
         $arrived = $false
         while ((Get-Date) -lt $deadline -and -not $arrived) {
-            Start-Sleep -Seconds 2
+            Start-Sleep -Seconds 1
             $arrived = (VisibleChunks).ContainsKey($hit.hop)
             if (Dead) { break }
         }
@@ -441,7 +441,7 @@ function RunScene([string]$map, $scene, $streamed) {
         # The chain plays in game mode 0: wait for its summary, then for the level's follow-up (a conversation), and drive that.
         while ((Get-Date) -lt $deadline -and -not (@(LogSince $mark) -match 'convo flow: summary') -and -not (Dead)) {
             if ((State).convo) { break }
-            Start-Sleep -Seconds 2
+            Start-Sleep -Seconds 1
         }
         $follow = (Get-Date).AddSeconds(6)
         while ((Get-Date) -lt $follow -and -not (State).convo) { Start-Sleep -Seconds 1 }
