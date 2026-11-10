@@ -553,12 +553,17 @@ def load_results(paths):
 
 
 def terminal(conv, entry):
-    """True if a play can end at `entry`: it has no reply, or a reply that leads nowhere (the dialog's end)."""
+    """True if a play can end at `entry`: it has no reply, a reply that leads nowhere (the dialog's end), or only replies
+    and entries behind plot conditionals (which this career's plot may all refuse: Ilos's security system ended so)."""
     nodes, replies = conv['nodes'], conv.get('replyNodes') or []
     if not 0 <= entry < len(nodes):
         return True
     mine = [replies[r] for r in nodes[entry]['replies'] if 0 <= r < len(replies)]
-    return not mine or any(not r['entries'] for r in mine)
+    if not mine or any(not r['entries'] for r in mine):
+        return True
+    def open_way(r):
+        return r.get('conditional', -1) == -1 and any(0 <= e < len(nodes) and nodes[e].get('conditional', -1) == -1 for e in r['entries'])
+    return not any(open_way(r) for r in mine)
 
 
 def judge_one(r, conv, prediction):

@@ -486,6 +486,7 @@ struct Convo {
     bool openingDone = false;
     int openingMoves = 0;        // placements accepted during the opening
     cw::Opening opening = cw::Opening::Cut;  // how the opening ended (the summary's "opening")
+    int trackWalks = 0;          // people moved by a matinee's track (authored walks), left to it
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
     std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
@@ -567,6 +568,7 @@ struct Stay {
     ue3::Object* moveAction = nullptr;
     double deadlineS = 0.0;
     double speedUnitsPerS = 0.0;
+    bool tracked = false;  // a matinee's move track moves this actor (an authored walk): never undone
 };
 std::vector<Stay> gStay;
 std::uint64_t gStayMs = 0;
@@ -909,6 +911,20 @@ void KeepInPlace(ue3::Object* pawn) {
                 ++gC.openingMoves;
                 log::Info("convo: at {:.1f} s the opening put {} {:.2f} m away: accepted", Seconds(), isShepard ? "Shepard" : t.name, d / kUnitsPerMeter);
             }
+            st.place = V(*at);
+            st.shownYaw = YawDeg(*rot);
+            continue;
+        }
+        if (!isShepard && authored_moment::TrackMoves(t.actor)) {
+            // An authored walk (a matinee's move track holds this actor): his own move, played as the scene has it. Undone, the
+            // track put him back the next tick and the mod undid it again: 240 times for Wrex on Virmire (2026-11-10).
+            if (!st.tracked) {
+                st.tracked = true;
+                ++gC.trackWalks;
+                log::Info("convo: at {:.1f} s {} is moved by a matinee's track ({:.2f} m from where it stood): an authored walk, left to it",
+                    Seconds(), t.name, d / kUnitsPerMeter);
+            }
+            EndWalk(st, "cancel", "an authored walk took over");
             st.place = V(*at);
             st.shownYaw = YawDeg(*rot);
             continue;
@@ -1668,14 +1684,14 @@ void End(char const* why) {
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
               "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
               "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"opening\": \"{}\", \"markM\": {:.2f}, \"cuts\": {}, "
-              "\"entries\": [{}]}}",
+              "\"trackWalks\": {}, \"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
-        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, entryPath);
+        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, entryPath);
     gC = {};
 }
 

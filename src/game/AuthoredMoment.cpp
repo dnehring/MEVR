@@ -76,9 +76,32 @@ std::atomic<unsigned> gTrackCalls{0};            // calls for the player's pawn 
 std::atomic<void const*> gTrackSeen{nullptr};    // the last track that moved him
 
 std::atomic<std::uint64_t> gTrackMs{0};          // when the last call for him came
+
+// The actors a move track moved lately (game thread: the engine's physics step writes, the mod's tick reads).
+struct TrackMove {
+    void const* actor = nullptr;
+    std::uint64_t ms = 0;
+};
+TrackMove gTrackMoves[24];
 std::atomic<unsigned> gTrackWithheld{0};
 
 bool OnMoveTrack(void const* actor, void const* track, void const*, float) {
+    if (actor != nullptr) {
+        // Remembered per actor: an authored walk of someone in a conversation is his own move, not a placement to undo.
+        std::uint64_t const now = GetTickCount64();
+        TrackMove* slot = &gTrackMoves[0];
+        for (TrackMove& m : gTrackMoves) {
+            if (m.actor == actor) {
+                slot = &m;
+                break;
+            }
+            if (m.ms < slot->ms) {
+                slot = &m;  // the oldest, to reuse
+            }
+        }
+        slot->actor = actor;
+        slot->ms = now;
+    }
     if (actor != nullptr && actor == gPawnForHook.load(std::memory_order_relaxed)) {
         gTrackCalls.fetch_add(1, std::memory_order_relaxed);
         gTrackSeen.store(track, std::memory_order_relaxed);
@@ -332,6 +355,16 @@ void Tick() {
         gPawnAt = V(*at);
         gHavePawnAt = true;
     }
+}
+
+bool TrackMoves(void const* actor, std::uint64_t withinMs) {
+    std::uint64_t const now = GetTickCount64();
+    for (TrackMove const& m : gTrackMoves) {
+        if (m.actor == actor && actor != nullptr) {
+            return now - m.ms <= withinMs;
+        }
+    }
+    return false;
 }
 
 std::uint64_t LastPlayerTrackMs() {
