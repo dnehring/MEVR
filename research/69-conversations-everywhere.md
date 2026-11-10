@@ -252,23 +252,42 @@ and too many to stage by hand one by one.
 |---|---|
 | a camera's move, a director's cut, depth of field, FOV | ignored: the head is the camera |
 | an NPC's move track or animation | played as authored, in the world (already so inside conversations: smooth moves are let through; to be confirmed at full length) |
-| Shepard's move track | never drags the player silently. One setting for all of them: **walk it yourself** (the track's end is where the player is wanted: the NPC walks ahead, the player's leash follows the path, the scene waits a moment at its end, and a dip from black takes him there if he doesn't come), **carried** (moved along the path with the comfort vignette), or **cut** (a dip, then standing at the end) |
-| a fade, a black screen | kept: a dip from black, which also covers the teleport behind it |
-| a teleport to another area | kept, under that dip |
+| Shepard's move track | never drags the player: **he walks it himself** (the NPC walks ahead, the player follows; the scene goes on and its wheel waits for him). A setting may offer being carried along the path with the comfort vignette |
+| a teleport of the player, and the fade or black screen that hides it | **withheld when the place it leads to is the same space** (below): the player walks there and nothing is cut. **Kept, as a dip from black, only when the composition changes** |
+| a stage's placement of Shepard at a conversation's start | the same rule: his mark is where the player is wanted; he walks in (outside the leash a step may only bring him nearer, the rule the walk already has), no cut. Today's dip at the opening (`worldOpening = accept`) becomes the case for a changed composition only |
 | cinematic mode switched on | not by itself a reason for the screen |
 | the conversation after it | in the world when Shepard has a body and a place there (the presence rules), whatever its cameras do |
 
-With those, the council moment plays as the owner describes without anything written for it: use Anderson, he speaks and
-walks, the player walks with him (or is carried), the dip, and he stands on the podium with the council already talking.
+**No dip unless the composition is completely different** (the owner, 2026-11-09: "the dip would just require us to not
+walk as long"). Measured for the council: Anderson stands at (-6906, -7285, 61816), the hearing's stage is at (-10068,
+-7077, 62107): **32 m further into the same hall and 3 m up its stairs**, and the script's own comment on the teleport is
+"Put player at top of stairs". The black screen there hides nothing but a shorter walk. So a teleport (or an opening
+placement) is withheld when all of these hold, checked at run time, and kept under a dip otherwise:
+
+- the same space: the place can be walked to from where the player stands (the walk's own floor and wall checks along the
+  way; a first bound of some tens of metres), in the level that is loaded;
+- the same moment: the script puts no time between the two (a "morning after" is another composition);
+- the same people: who is with the player before is there after (the council chunk has its own Anderson at the podium:
+  the one who walked is swapped for him on arrival, which the black screen did in the original).
+
+Another area, another time, another cast, or Shepard put where nobody can walk (a seat, the Mako): the dip.
+
+With those, the council moment plays as the owner describes without anything written for it: use Anderson; he says his
+line and walks ahead up the stairs; the player walks with him; the hearing's conversation starts as the script starts it,
+so the council and Saren are already talking as he climbs; its wheel waits until he stands at the podium. No cut anywhere.
 
 **What it needs** (none of it built):
 1. A world mode for a level-script matinee (game mode 6 with Shepard's pawn in it), as conversations have: today every
    cinematic mode goes to the 3D screen. The presence rules decide which matinees qualify.
-2. The player's own move track withheld or followed, by the setting above (the placement hook's way: find the native that
-   applies a move track to the player's pawn).
-3. The scan's verdict "screen" split: authored cameras alone no longer make a set piece; `worldSetPieces = world` and a run
+2. The player's own move track withheld (the placement hook's way: find the native that applies a move track to the
+   player's pawn), and the level script's teleport of the player and its black screen withheld when the rule above says
+   the same space. The walk during a cinematic mode (today's walk is for the conversation mode).
+3. An escort: the NPCs the clip moved with Shepard walk on to where they are wanted (the walking-to-marks prototype) and are
+   swapped for their counterpart there. The teleports of the whole game and how far each takes the player are to be
+   counted from the scan first (a `teleport` record): that list says how many moments fall on each side of the rule.
+4. The scan's verdict "screen" split: authored cameras alone no longer make a set piece; `worldSetPieces = world` and a run
    of the 18 framed conversations say which have no place for the player.
-4. The stage's marks in the scan (also wanted by the predictions).
+5. The stage's marks in the scan (also wanted by the predictions).
 The thirty moments are the test list; the sweep's runner can fire them like any start once it knows their events.
 
 ## The sweep: plan
