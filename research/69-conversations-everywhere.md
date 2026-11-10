@@ -481,6 +481,39 @@ fail on `kept`), so a judge that passes everything is caught.
   `tail` of that log from another shell ended the run after four levels. Its files are now opened for append with readers
   let in, tried again for ten seconds.
 
+### In the game: the reach matrix and the canary set (2026-11-09, 20:55-23:05, the first use of the game slot)
+
+- **The reach matrix** (`-ReachOnly`; stopped by hand after 16 of 26 levels, the rest being time-outs): **215 of 237 scenes
+  reached**. Every scene of Noveria (47), the Normandy (40) and Eden Prime (17), 71 of 84 at the Citadel, 21 of 23 on
+  Virmire, 8 of 9 on Ilos, the five freighters, the two end levels. Therum does not reach gameplay by `open`; the side
+  worlds tried (UNC17, UNC24, UNC31) end in the squad screen and then the Mako's game mode, which the runner does not
+  take for gameplay [verify]; Feros and the other side worlds were not tried. At the Citadel 8 scenes are in chunks that
+  never became visible from a fresh level (Chora's Den, the strip club), 4 in chunks that load without their start action.
+- **What the first run taught:** a volume touched from afar streams out the floor Shepard stands on; he falls to the kill
+  plane, the level has no player (`mevr stream list` answers "(no pawn)") and every later scene there fails: Noveria 21
+  of 47 and the Citadel 15 of 64 in that run. Shepard now floats while chunks stream (`ghost`), walks again by the owner
+  (`walk`), and a level without a pawn is opened again. The scan also says every chunk is one streaming hop from its
+  level's own volumes, so the hop-by-hop streaming the runner got (the plan's `streamVia`) is a safeguard, not a need.
+- **The canary set, at full length** (`-Pace full`):
+  - the wake-up scene, by itself after the Citadel opens: 315 s, 55 lines, 20 wheels answered, ended by itself; **30
+    placements withheld, 0 undone, 0 drawn**; the six walks moved the player 2.19 m and were held 403 times at
+    `BioTriggerVolume_1`. One limit broken, the known one: Shepard's head bone up to 2.65 m from the held eyes
+    (`eye-far`; the snap after the cutscene);
+  - the Garrus argument with `TowerSpecificBanters`, `AmbientDiplomats` and Chorban's start fired half a second after it:
+    the flow module's new line reads `convo flow: summary {"name": "sta70_garrus", "why": "it began again as a
+    conversation", "seconds": 14.7, "flagged": 2, "entries": [0, 1], "next": "sta70_garrus", "nextAmbient": false,
+    "barksRefused": 3, "scenesHeld": 1, "scenesRefused": 0}`; the wheel conversation followed (19.0 s, 4 lines), and one
+    second after it Chorban's held start fired and his conversation played (6.6 s). No exception;
+  - **broken** (`worldStaySource = 0`, the wake-up scene again): `undone`, kept 23. The judge catches the run it must
+    catch; the key is back to 1.
+  - No set piece is in the set yet: the council hearing fired from its bare start action starts nothing (the level's script
+    activates its people before it), and the strip club's chunk does not stream in. A fired start skips the script before
+    it; firing a scene's own event instead (the first action behind `BioSeqEvt_OnPlayerActivate`) would play it as
+    authored, teleports and matinees included, and is the route for the authored scenes.
+- Two runner faults found by the first canary run and fixed: the wait for gameplay ran out behind the five-minute scene
+  that started by itself (the level was taken for one that never opened), and "not reached" was then written over that
+  scene's own result.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
