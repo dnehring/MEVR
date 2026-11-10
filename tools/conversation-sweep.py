@@ -6,6 +6,7 @@ runs (layer 0), the runner's work list, and the judge of a finished pass. No gam
   python tools/conversation-sweep.py plan scan.jsonl --out plan.json [--barks 2]
   python tools/conversation-sweep.py plan scan.jsonl --out sample.json --sample [--per-shape 2] [--per-place 1]
         [--reach reach-scenes.jsonl] [--also names.txt] [--barks 1]
+  python tools/conversation-sweep.py moments scan.jsonl --out moments.json     the matinees that walk Shepard, as a plan
   python tools/conversation-sweep.py reach <folder of a -ReachOnly run>
   python tools/conversation-sweep.py canary plan.json tools/conversation-canary.json --out-plan canary-plan.json
         --out-expect canary-expect.json [--broken]
@@ -403,6 +404,63 @@ def plan(argv):
     return 0
 
 
+# ---- the authored moments -------------------------------------------------------------------------------------------------------
+
+def moments(argv):
+    """The level-script matinees that move the player by a track, outside animated cutscenes (research/69 "Authored scenes"),
+    as a plan the runner can play: each fired through the first action behind the event that leads to it, Shepard stood by
+    that event's originator. The council's walk-in is one of them."""
+    path = argv[0]
+    out = option(argv, '--out')
+    levels, rows = {}, []
+    for line in open(path, encoding='utf-8'):
+        if '"kind":"level"' in line:
+            r = json.loads(line)
+            levels[r['package']] = r['streaming']
+        elif '"kind":"matinee"' in line and '"via"' in line:
+            r = json.loads(line)
+            if 'ANIMCUTSCENE' in r['path'].upper() or 'Node_Data_Sequence' in r['path'] or '_LOC_' in r['package'].upper():
+                continue
+            if not any(g['class'] == 'InterpGroupDirector' for g in r['groups']):
+                continue
+            rows.append(r)
+    roots, roots_of = cs.level_roots(levels)
+    ways = stream_ways(path)
+    by_map = collections.defaultdict(list)
+    for r in rows:
+        via = r['via']
+        maps = roots_of(r['package'])
+        by_name = cs.persistent(r['package'])
+        mp = by_name if by_name in maps else (maps[0] if maps else by_name)
+        tail = re.sub(r'^.*Main_Sequence[.]', '', r['path'])
+        name = 'moment_' + re.sub(r'[^a-z0-9]+', '_', (r['package'].replace('BIOA_', '') + '_' + tail.split('.')[-2 if '.' in tail else 0]).lower()).strip('_')
+        chunk = re.sub(r'^BIOA_', '', re.sub(r'_(DSG|LAY).*$', '', r['package']), flags=re.IGNORECASE)
+        taken = {s['conversation'] for v in by_map.values() for s in v}
+        if name in taken:
+            name = next(f'{name}_{i}' for i in range(2, 99) if f'{name}_{i}' not in taken)
+        by_map[mp].append({
+            'conversation': name, 'moment': True, 'map': mp, 'maps': maps, 'chunk': chunk, 'package': r['package'],
+            'actionTail': re.sub(r'^.*Main_Sequence[.]', '', via['firstOp']), 'actionClass': via['firstOpClass'], 'actionInput': via['firstOpInput'],
+            'matinee': tail, 'lengthS': round(r['length'], 1), 'event': via['eventClass'], 'between': via['between'],
+            'ownerAt': via.get('originatorAt'), 'ownerYaw': 0, 'stageAt': None, 'touchShows': True, 'streamStates': [],
+            'kind': 'moment', 'verdict': 'moment', 'tier': 'C', 'shape': 'moment', 'flowed': False, 'flowEntries': [], 'risks': ['shepard-walk'],
+            'sweep': 'moment', 'streamVia': ways.get(mp, {}).get(chunk_of(r['package']), []),
+        })
+    maps = [{'map': mp, 'chunks': [{'chunk': s['chunk'], 'scenes': [s]} for s in sorted(by_map[mp], key=lambda s: (s['chunk'], s['conversation']))]}
+            for mp in sorted(by_map, key=str)]
+    total = sum(len(v) for v in by_map.values())
+    if out:
+        with open(out, 'w', encoding='utf-8') as f:
+            json.dump({'scenes': total, 'maps': maps, 'unreachable': []}, f, indent=0)
+    print(f"{total} moments in {len(maps)} levels" + (f" -> {out}" if out else ''))
+    for mp in maps:
+        for c in mp['chunks']:
+            for s in c['scenes']:
+                print(f"   {mp['map']:12s} {s['conversation']:44s} {s['lengthS']:5.1f} s  by {s['event'].replace('BioSeqEvt_', '').replace('SeqEvent_', '')}"
+                      f"{' at a placed originator' if s['ownerAt'] else ''}; before it: {', '.join(x.replace('BioSeqAct_', '').replace('SeqAct_', '') for x in s['between'][:6]) or '-'}")
+    return 0
+
+
 # ---- the reach matrix -----------------------------------------------------------------------------------------------------------
 
 def reach(argv):
@@ -522,6 +580,8 @@ def judge_one(r, conv, prediction):
     if outcome in ('not reached', 'action not loaded') or 'never reached' in outcome:
         add('not-reached', r.get('detail', outcome))
         return kinds
+    if not s and not flow and r.get('modes') is not None and outcome == 'played':
+        return kinds  # a moment (a matinee that walks Shepard): it ran; what it showed is in its modes and the log
     if not s and not flow:
         if outcome not in ('crash', 'hang'):
             add('no-start', r.get('detail', outcome or 'no summary'))
@@ -685,10 +745,10 @@ def judge(argv):
 
 
 def main(argv):
-    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary', 'reach'):
+    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary', 'reach', 'moments'):
         print(__doc__)
         return 2
-    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary, 'reach': reach}[argv[1]](argv[2:])
+    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary, 'reach': reach, 'moments': moments}[argv[1]](argv[2:])
 
 
 if __name__ == '__main__':

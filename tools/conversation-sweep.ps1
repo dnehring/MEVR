@@ -355,9 +355,11 @@ function Place($scene) {
 }
 
 function FindAction($scene) {
-    $found = Console ("mevr instances BioSeqAct_StartConversation " + ($scene.actionTail -split '\.')[-1])
+    # (A moment's action is the first action behind its event, of whatever class: the plan's actionClass.)
+    $class = $(if ($scene.actionClass) { $scene.actionClass } else { 'BioSeqAct_StartConversation' })
+    $found = Console ("mevr instances $class " + ($scene.actionTail -split '\.')[-1])
     foreach ($line in ($found -split "`n")) {
-        $m = [regex]::Match($line, '^\[(\d+)\] BioSeqAct_StartConversation (\S+)')
+        $m = [regex]::Match($line, '^\[(\d+)\] ' + [regex]::Escape($class) + ' (\S+)')
         if ($m.Success -and $m.Groups[2].Value -like ("*" + $scene.actionTail)) { return [int]$m.Groups[1].Value }
     }
     return $null
@@ -395,8 +397,21 @@ function RunScene([string]$map, $scene, $streamed) {
             while ((Get-Date) -lt $until -and -not (State).convo -and -not (@(LogSince $mark) -match 'convo flow: .* plays as barks')) { Start-Sleep -Seconds 1 }
             if (-not (State).convo -and -not (@(LogSince $mark) -match 'convo flow: .* plays as barks')) { $fired = 'event, then action'; Console ("mevr activate $index 0") | Out-Null }
         } else { Console ("mevr activate $index 0") | Out-Null }
-    } else { Console ("mevr activate $index 0") | Out-Null }
+    } else { Console ("mevr activate $index $(if ($null -ne $scene.actionInput) { [int]$scene.actionInput } else { 0 })") | Out-Null }
     $record.fired = $fired
+    # A moment (a matinee that walks Shepard, then whatever the script does): the game modes it passes through, sampled
+    # once a second until a conversation starts or its length and 25 s have passed.
+    if ($scene.moment) {
+        $modes = @(); $until = (Get-Date).AddSeconds([double]$scene.lengthS + 25)
+        while ((Get-Date) -lt $until -and -not (Dead)) {
+            $st = State
+            if ($st.convo) { break }
+            if ($modes.Count -eq 0 -or $modes[-1] -ne $st.mode) { $modes += $st.mode }
+            Start-Sleep -Seconds 1
+        }
+        $record.modes = $modes
+        $record.playerAt = ((Console 'mevr loc') -replace '^[^\n]*\n', '').Trim()
+    }
     # A scene's `alsoFire` (the canary set: a bark and another scene's start over a flowed scene): fired half a second later.
     if ($scene.alsoFire) {
         Start-Sleep -Milliseconds 500
@@ -455,6 +470,7 @@ function RunScene([string]$map, $scene, $streamed) {
     $record.notes = @($window | Select-String -Pattern 'convo flow: .*(held|refused|fired again|let through)|convo: .*(no place for the player|goes to the 3D screen|set piece)' | ForEach-Object { $_.Line.Substring([math]::Min(15, $_.Line.Length)) } | Select-Object -First 12)
     if (Dead) { $record.outcome = $(if (Running) { 'hang' } else { 'crash' }); $record.detail = 'during the scene' }
     elseif ($mine -or $flow) { $record.outcome = 'played' }
+    elseif ($scene.moment -and @($record.modes | Where-Object { $_ -ne 0 }).Count -gt 0) { $record.outcome = 'played' }
     else { $record.outcome = 'no conversation' }
     return $record
 }

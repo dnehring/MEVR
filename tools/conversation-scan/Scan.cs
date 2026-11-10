@@ -279,6 +279,13 @@ internal static class Scan
     {
         Dictionary<string, object> record = Matinee(pcc, export);
         record["kind"] = "matinee";
+        // A matinee that moves the player by a track: what leads to it (the sweep's "moments": the walk to the council).
+        bool movesPlayer = ((List<object>)record["groups"]).Cast<Dictionary<string, object>>().Any(g =>
+            ((List<string>)g["tracks"]).Contains("InterpTrackMove") && ((string)g["name"] ?? "").Contains("player", StringComparison.OrdinalIgnoreCase));
+        if (movesPlayer && Upstream(pcc, export) is { } via)
+        {
+            record["via"] = via;
+        }
         return record;
     }
 
@@ -393,9 +400,15 @@ internal static class Scan
                         between.Add(at.ClassName);
                     }
                     PropertyCollection ep = source.GetProperties();
+                    float[] originatorAt = null;
+                    if (pcc.GetEntry(ep.GetProp<ObjectProperty>("Originator")?.Value ?? 0) is ExportEntry originator
+                        && originator.GetProperties().GetProp<StructProperty>("Location") is { } oat)
+                    {
+                        originatorAt = new[] { oat.GetProp<FloatProperty>("X")?.Value ?? 0, oat.GetProp<FloatProperty>("Y")?.Value ?? 0, oat.GetProp<FloatProperty>("Z")?.Value ?? 0 };
+                    }
                     return new Dictionary<string, object>
                     {
-                        ["event"] = source.InstancedFullPath, ["eventClass"] = source.ClassName,
+                        ["event"] = source.InstancedFullPath, ["eventClass"] = source.ClassName, ["originatorAt"] = originatorAt,
                         ["originator"] = pcc.GetEntry(ep.GetProp<ObjectProperty>("Originator")?.Value ?? 0)?.ObjectName.Instanced,
                         ["eventName"] = ep.GetProp<NameProperty>("EventName")?.Value.Instanced,
                         ["firstOp"] = op.InstancedFullPath, ["firstOpClass"] = op.ClassName, ["firstOpInput"] = input,
