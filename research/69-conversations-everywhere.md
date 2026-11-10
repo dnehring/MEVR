@@ -1195,6 +1195,91 @@ changed with the load).
 5. Only then judge way 2 by eye (the body under the player during the walk, on stairs: `bodyRise`), and then the legs
    (the script's walk animation plays in place under a standing player: a standing graft, or the slot's weight).
 
+#### The plan for the blocker (2026-11-10 evening; read from the code, nothing run)
+
+The owner: plan how to address the blocker, decompiling the game where the fault may lie. Read with Ghidra (the isolated copy:
+the shared project has been locked by another session's MCP server since 2026-11-09 13:10) and the natives dump. Behaviour in
+words, with addresses; nothing renamed in the project (the names are in `tools/ghidra/symbols-le1.csv`).
+
+**Every way the game stops drawing a pawn, as the code has it:**
+
+| Way | Where | What it does | Covered today? |
+|---|---|---|---|
+| `Actor.bHidden` (actor +0x270, bit 2) | `AActor::SetHidden`'s body `0x2BF170` | sets the bit and re-registers the actor's components (`0x2D6130`), so the renderer learns of it; a raw write of the bit would not reach it. 23 native callers: the squad's move marker (`0xC76580`), squad orders, the grenade and projectile code (`0xC3F360`-`0xC54060`); none in the camera or conversation code by their headers (`0xB32000`/`0xB32C20`, `0xB4F7A0`, `0xA7CED0`, `0x3F7FE0` not read through: **[verify]**) | Halcyon shows the pawn **once**, when its signature changes |
+| `BioPawn.RequestHidden` (`m_nHiddenRequestCount`, pawn +0x9F4) | body `0xA9F3B0`, vtable slot `0xC48`; script thunk `0xB923F0` | a **counted** hide: the first request hides the pawn (the row above) and his weapons (`0x9F34B0` on the equipment), the last release shows them. No native caller: **only UnrealScript asks** | no: Halcyon's `SetHidden(false)` and our `HidePawn` go around the count, so a request made after Halcyon's one application hides him until its own release |
+| `PlayerController.HiddenActors` (+0x5C8) | filled by `USFXCameraMode::DoCameraCollisionNative`'s body `0xCB0040` (pawns with `m_bHideWithCameraCollision` the camera is inside of), emptied by `SFXCameraNativeBase.ResetHiddenActors` (`0xCB7A40`: camera +0x4B8 is the controller) | per view, in gameplay camera modes only; the conversation camera is not one of them, so the list stays as the last on-foot frame left it | yes: Halcyon's `bIgnoreHiddenActorsMembership` bit |
+| component flags (primitive +0x168) | `HiddenGame` 0x4, `bOwnerNoSee` 0x10, `bOnlyOwnerSee` 0x20, **`bIgnoreOwnerHidden` 0x40** (script native `PrimitiveComponent.SetIgnoreOwnerHidden`, `0x25E2E0`) | per component; the last one draws a component whose actor is hidden | Halcyon uses `bOwnerNoSee` for the head only |
+| not hidden, not drawn | visibility decided for another camera (Umbra's resolve, the frustum, draw distance), bounds left at the actor while the bones are elsewhere (way 2 moves bones, not bounds), a skeleton not updated while "not rendered" | | unknown |
+
+`SFXCameraNativeBase.TraceCamera` (`0xCB9BF0`) is the aim trace, not a hide. The three other callers of a vtable slot `0xC48`
+(`0xC724F0`, `0xC72720`, `0xC78C60`) are the player controller's own slots, not the pawn's.
+
+**What this says about the two leads.** The owner's morning note ("the assets near me disappear when the council talks and
+reappear on my turn") is about more than the body and follows **who the director's camera looks at**: that is the last row
+(visibility for another camera), and far shots are exactly where our hold of the game's camera is weakest (the camera mode is
+unreadable there: a camera actor is the view target). The look-down pictures (no body in an ordinary conversation, where the
+view never leaves Shepard) fit either a hide by flag (rows 1-2: something hides him after Halcyon's one application) or the
+same camera problem. One run separates them.
+
+**Phase A: one instrumented run that names the family** (fake headset; mod only, no Halcyon change; about an hour).
+1. `convo: body:` once a second while a scene is in the world, and for the last second on foot before it: the pawn's `bHidden`
+   and `m_nHiddenRequestCount`; the body mesh's `HiddenGame`, `bOwnerNoSee`, `bOnlyOwnerSee`, `bIgnoreOwnerHidden`, the
+   ignore-membership bit; whether `HiddenActors` holds the pawn; the mesh's `LastRenderTime` beside `WorldInfo.TimeSeconds`;
+   the mesh's bounds origin and Shepard's head bone in the world beside the held view's place; the director's camera (its
+   place, its distance from the held view, the view target's class); who speaks. New `FieldRef`s with `ReflectCheck` rows;
+   the same block on `mevr convo body`.
+2. `mevr calltrace 20 sethidden requesthidden setcinematicmode setownernosee sethiddengame` across each scene's start, one
+   line of the NPC's and one of Shepard's: every script caller with its frame. This is the only way to see row 2's callers
+   short of the offline search below.
+3. Pictures at the same instants: the look-down recording, a snapshot on foot, on an NPC's line, on Shepard's line; the Avina
+   conversation (slot 89), the comm room (slot 87: far and near shots), the ceremony (slot 81: the walk, the podium, a
+   councillor's line). First on the players' build of 19dad44 (the baseline the note still owes), then on the branch.
+4. Offline, alongside (30 s a run): a `conversation-scan --script-calls RequestHidden,SetHidden,SetCinematicMode` mode that
+   lists every UnrealScript function calling them (Legendary Explorer's decompiler), so scenes the run did not play are covered.
+
+| The log and the pictures say | Family | Go to |
+|---|---|---|
+| `bHidden` 1 or the count above 0 during the scene | hidden by flag | B1 |
+| flags clear, `LastRenderTime` stale, body back on Shepard's lines or when the director's camera is near | culled for another camera | B2 |
+| flags clear, `LastRenderTime` fresh, still no body in the picture | drawn, but not where the view is (bones, bounds, the pose) | B3 |
+
+**Phase B1: hidden by flag.**
+- The fix that does not care who hides him: `SetIgnoreOwnerHidden(true)` (the game's own function, on the game thread, so the
+  render side is updated) on the body mesh, its pose followers, the head group and the drawn weapon while a scene is in the
+  world; put back at its end and at unload. Halcyon's head hide (`bOwnerNoSee`) stays as it is. Before building: read
+  `0x25E2E0` and `0x2D6130` to confirm the flag reaches the render proxy and where the proxy takes the owner's `bHidden`.
+- If script requests the hide (`RequestHidden` from the conversation or the cinematic switch): leave the game's count alone
+  (other code releases it later) and rely on the flag above; only if the weapons' hide matters, answer the request for the
+  player's pawn through `engine/call_function`'s skip handler during scenes in the world.
+- Only if both fail: Halcyon's anti-cull applied every camera update while `ConversationInWorld()` (a third `[MEVR]` seam;
+  its own comment says why it is edge-driven: writes into freed combat actors).
+
+**Phase B2: culled for another camera.**
+- Measure first: per frame, the POV the scene view is built from against the held place (the `CalcSceneView` seam already
+  sees both), split by shot kind. If far shots show the director's place, the `UpdateCamera` post-handler's write is not what
+  the view is built from there (a camera actor as view target, or the cache rewritten after us): find the later writer by
+  logging `CameraCache.POV` at the handler's end and again at the seam, then hold it there.
+- Then Umbra: `UMBRA OCCLUSIONCULLING` off through the console during a councillor's line. Body and assets back: the query
+  camera is the director's. Read `UmbraResolveViews` (`0x8BFBB0`), the main view's counterpart of the capture's camera update
+  (`0x4FD550`) and what `BeginRenderingViewFamily` hands them; feed them the held view (the galaxy map's and the scope
+  capture's seams are the pattern). Not Umbra: the frustum and draw-distance tests in the scene renderer's visibility pass
+  with the same method.
+- Streaming and LOD follow the same camera: the owner's "assets" may be those; check texture streaming's view list the same way.
+
+**Phase B3: drawn, but not where the view is** (also the second unknown: legs seen at the actor while the log said "slid").
+- Log Shepard's head bone in the world right after our write and at the next tick's start, and count `UpdateSkelPose`
+  (`0x592440`) calls per frame for his mesh with which of them our writer wrote: a matinee's `SetAnimPosition` may pose him
+  again after us. Write after the last, or force the pose once more.
+- Bounds: the bone slide leaves the component's bounds at the actor, 7 to 20 m away; a mesh whose bounds are off screen is
+  not drawn. Read the bounds update (`bConsiderAllBodiesForBounds` is already set by ArmIk; `BoundsScale`, the parent-bounds
+  fields) and grow or move the bounds with the body while away.
+- If the pose cannot be held against the matinee: a body of our own instead of his (a second pawn spawned as the UI-world
+  figure code does, posed by arm IK, the script's Shepard hidden). Heavier; only if the two above fail.
+
+**Phase C: by picture, then the rest.** The same contact sheet (on foot, an NPC's line, Shepard's line, the walk, the podium)
+until every frame shows arms, hands and chest; then way 2's rise on the stairs and the standing graft for the legs (the
+script's walk plays in place under a standing player); all three builds and the tests; the checklist's line for the owner.
+
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"

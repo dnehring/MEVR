@@ -205,3 +205,8 @@ rva,name,kind,comment
 0x2674D0,UTexture2D::CreateResource_guess,func,research/47: RequestedMips
 0x260880,FTexture2DResource::FTexture2DResource_guess,func,research/47: takes each resident mip's bulk data
 0x26E5A0,FTexture2DResource::InitRHI_guess,func,research/47: copies the mips into the RHI texture; a null mip stays unwritten
+0x2BF170,AActor::SetHidden_impl,func,research/69: body of execSetHidden (0x36B9C0): bHidden (+0x270 bit 2) then re-registers the components (0x2D6130)
+0xA9F3B0,ABioPawn::RequestHidden_impl,func,research/69: vtable slot 0xC48 (execRequestHidden 0xB923F0): a counted hide; m_nHiddenRequestCount +0x9F4; the first hides the pawn and its weapons; the last shows them
+0xCB0040,USFXCameraMode::DoCameraCollisionNative_impl,func,research/69: body of execDoCameraCollisionNative (0xB8F200): fills PlayerController.HiddenActors (+0x5C8) in gameplay camera modes
+0xCB7A40,ASFXCameraNativeBase::ResetHiddenActors_impl,func,research/69: empties the controller's HiddenActors (camera +0x4B8 is the controller)
+0xCB9BF0,ASFXCameraNativeBase::TraceCamera_impl,func,research/69: the camera's aim trace (not a hide)
