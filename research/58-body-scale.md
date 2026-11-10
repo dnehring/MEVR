@@ -251,3 +251,20 @@ both hands while it is up. Recenter standing and bent without the old crouch/rec
 height, draw/holster and both crouches. Check galaxy and world-conversation entry/exit while looking up/down.
 Hold elbows at 90 degrees/arms out and turn right with the stick, then repeat with floorLock 0 to isolate the bounds fix.
 Repeat after a level load and armour swap; retain snapshots and these logs for the actual acceptance result.
+
+## 8. Shepard's side saved across runs (2026-11-09, source; headset pending)
+
+The factor is the player's standing eye over Shepard's. Calibration fixes the player's side (`standEyeM` per controller
+type), but Shepard's was measured again after every load and new skeleton: the target sat at 1.0 until he had stood
+holstered for about a second, then approached at 0.1/s, so the body visibly resized after each load (the seated checklist's
+"let Shepard stand for a second"). His standing eye is a property of the mesh, so it is now kept in `ASI\LE1MEVR.ini`:
+`[Body.Shepard] <package.mesh> = <metres>` (the skeletal mesh's name, class dropped, other characters as `_`).
+`StandingReference::Seed` answers the saved value at once for that skeleton; `Feed` still measures, and its settled value
+(`Measured`) replaces the seed for the run and is written back when the file had none or differed by more than 1 cm. A
+play-position switch reseeds. Unit tests in `tests/FloorLockTests.cpp`. Logs: `body scale: Shepard's standing eye ... from
+[Body.Shepard]`, `no saved standing eye for ...`, `measured Shepard's standing eye ...: saved | the saved ... stands`; the
+status line's reference ends `(Shepard's saved)` while the seed is in use.
+
+Not covered: a floor reset after calibration (Guardian or Virtual Desktop) leaves the calibrated `standEyeM` against a new
+floor; the size stays right but nothing suggests recalibrating. Headset: load a save twice; the second load should log the
+saved value and show no resize; swap armour (a new mesh key, measured once); seated, the same without standing up.

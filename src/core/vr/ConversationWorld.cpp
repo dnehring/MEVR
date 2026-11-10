@@ -177,7 +177,9 @@ struct FlowRow {
 // conversation a level's script starts, the entries of its chain starts (plays that can never reach a wheel) that no
 // conversation start reaches and that the game left ordinary; chain starts behind an unconditional start are left out (the game
 // takes the first start whose conditional holds, so they never play), as are set pieces, transmissions and the narration under
-// the game's own screens (the character creation, the tutorial popups, the news terminals). Generated, never typed.
+// the game's own screens (the character creation, the tutorial popups, the news terminals), and chains that apply plot effects
+// after their first line (a state transition or a Kismet node event on a later entry or reply: research/69 item 1; an ambient
+// conversation can be cut short, and the lines it never reaches never apply theirs). Generated, never typed.
 constexpr int kFlowEntries[] = {
     67,  // cha00_asari_liara
     1, 2, 4, 5,  // combat_banter_00
@@ -200,7 +202,6 @@ constexpr int kFlowEntries[] = {
     1,  // jug20_amb_liara
     8,  // jug20_amb_tali
     3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 23,  // jug20_trigger
-    0,  // jug20_wrex
     26,  // jug70_sal_prisoner
     31, 32, 35, 38, 39, 42, 52, 55,  // jug70_trigger
     0, 1, 2, 3, 4, 5, 6, 7, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,  // jug80_saren
@@ -213,7 +214,7 @@ constexpr int kFlowEntries[] = {
     0, 1, 2,  // nor10_engineer
     0,  // nor10_joker
     9, 10,  // nor10_landing_bay
-    1, 3, 4, 5, 6, 7, 8,  // prc1_human_radio
+    1, 3, 4,  // prc1_human_radio
     72, 73,  // prc1_surveyor_wrapup
     0,  // prc1_trig_batarians
     1, 2, 3,  // prc1_trig_main_facility_radio
@@ -222,7 +223,6 @@ constexpr int kFlowEntries[] = {
     0, 1,  // sp108_diplomat
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,  // sp114_triggers
     16,  // sp119_major_kyle
-    0, 1, 2, 3, 4, 5, 6, 7, 8,  // sp123_kahoku
     0,  // sta00_cab
     1, 4,  // sta20_asari_employee03
     0,  // sta20_chorban_triggers
@@ -237,15 +237,13 @@ constexpr int kFlowEntries[] = {
     1, 2, 4, 5, 6,  // war20_arceliasilvamartinez
     1, 2, 3, 4, 6, 7, 9, 23, 24, 25, 26, 27,  // war20_calanthablake
     2, 3, 4, 5, 7, 8, 9, 10, 52, 53, 54, 55,  // war20_davinandersson
-    0, 1, 2, 3, 4, 64, 65, 66, 67, 68, 69,  // war20_faizhou
+    0, 1, 2, 3, 4,  // war20_faizhou
     28, 29, 30, 31,  // war20_inoste_merchant
     6, 23, 24, 25,  // war20_machadoyle
     10,  // war40_ambrefugee_female01
     10,  // war40_ambrefugee_male01
     10,  // war40_ambrefugee_male03
-    65, 66, 67, 69, 70, 72, 73, 75, 76,  // war40_juliannabaynham
     12,  // war50_claw01
-    4, 5, 6, 7, 8, 9,  // war50_krogan
     15, 17, 18, 20, 22, 72, 73, 74, 75, 76, 77, 78, 79, 80,  // war50_lizbeth
 };
 constexpr FlowRow kFlowRows[] = {
@@ -270,53 +268,49 @@ constexpr FlowRow kFlowRows[] = {
     {"jug20_amb_liara", 37, 1},
     {"jug20_amb_tali", 38, 1},
     {"jug20_trigger", 39, 18},
-    {"jug20_wrex", 57, 1},
-    {"jug70_sal_prisoner", 58, 1},
-    {"jug70_trigger", 59, 8},
-    {"jug80_saren", 67, 21},
-    {"jug80_trigger", 88, 4},
-    {"lav70_asariscientist", 92, 2},
-    {"los30_security_system_done", 94, 16},
-    {"los30_trig_a", 110, 5},
-    {"los40_trig_c", 115, 1},
-    {"nor10_ambient_01", 116, 3},
-    {"nor10_engineer", 119, 3},
-    {"nor10_joker", 122, 1},
-    {"nor10_landing_bay", 123, 2},
-    {"prc1_human_radio", 125, 7},
-    {"prc1_surveyor_wrapup", 132, 2},
-    {"prc1_trig_batarians", 134, 1},
-    {"prc1_trig_main_facility_radio", 135, 3},
-    {"pro10_m_scientist02", 138, 1},
-    {"pro20_powell", 139, 2},
-    {"sp108_diplomat", 141, 2},
-    {"sp114_triggers", 143, 19},
-    {"sp119_major_kyle", 162, 1},
-    {"sp123_kahoku", 163, 9},
-    {"sta00_cab", 172, 1},
-    {"sta20_asari_employee03", 173, 2},
-    {"sta20_chorban_triggers", 175, 1},
-    {"sta20_human_ambassador_enter", 176, 9},
-    {"sta30_banter_01", 185, 2},
-    {"sta30_chellik", 187, 2},
-    {"sta60_schells", 189, 2},
-    {"sta70_garrus", 191, 2},
-    {"unc_banter_00", 193, 1},
-    {"war20_ambientbunker01", 194, 2},
-    {"war20_ambientmain02", 196, 7},
-    {"war20_arceliasilvamartinez", 203, 5},
-    {"war20_calanthablake", 208, 12},
-    {"war20_davinandersson", 220, 12},
-    {"war20_faizhou", 232, 11},
-    {"war20_inoste_merchant", 243, 4},
-    {"war20_machadoyle", 247, 4},
-    {"war40_ambrefugee_female01", 251, 1},
-    {"war40_ambrefugee_male01", 252, 1},
-    {"war40_ambrefugee_male03", 253, 1},
-    {"war40_juliannabaynham", 254, 9},
-    {"war50_claw01", 263, 1},
-    {"war50_krogan", 264, 6},
-    {"war50_lizbeth", 270, 14},
+    {"jug70_sal_prisoner", 57, 1},
+    {"jug70_trigger", 58, 8},
+    {"jug80_saren", 66, 21},
+    {"jug80_trigger", 87, 4},
+    {"lav70_asariscientist", 91, 2},
+    {"los30_security_system_done", 93, 16},
+    {"los30_trig_a", 109, 5},
+    {"los40_trig_c", 114, 1},
+    {"nor10_ambient_01", 115, 3},
+    {"nor10_engineer", 118, 3},
+    {"nor10_joker", 121, 1},
+    {"nor10_landing_bay", 122, 2},
+    {"prc1_human_radio", 124, 3},
+    {"prc1_surveyor_wrapup", 127, 2},
+    {"prc1_trig_batarians", 129, 1},
+    {"prc1_trig_main_facility_radio", 130, 3},
+    {"pro10_m_scientist02", 133, 1},
+    {"pro20_powell", 134, 2},
+    {"sp108_diplomat", 136, 2},
+    {"sp114_triggers", 138, 19},
+    {"sp119_major_kyle", 157, 1},
+    {"sta00_cab", 158, 1},
+    {"sta20_asari_employee03", 159, 2},
+    {"sta20_chorban_triggers", 161, 1},
+    {"sta20_human_ambassador_enter", 162, 9},
+    {"sta30_banter_01", 171, 2},
+    {"sta30_chellik", 173, 2},
+    {"sta60_schells", 175, 2},
+    {"sta70_garrus", 177, 2},
+    {"unc_banter_00", 179, 1},
+    {"war20_ambientbunker01", 180, 2},
+    {"war20_ambientmain02", 182, 7},
+    {"war20_arceliasilvamartinez", 189, 5},
+    {"war20_calanthablake", 194, 12},
+    {"war20_davinandersson", 206, 12},
+    {"war20_faizhou", 218, 5},
+    {"war20_inoste_merchant", 223, 4},
+    {"war20_machadoyle", 227, 4},
+    {"war40_ambrefugee_female01", 231, 1},
+    {"war40_ambrefugee_male01", 232, 1},
+    {"war40_ambrefugee_male03", 233, 1},
+    {"war50_claw01", 234, 1},
+    {"war50_lizbeth", 235, 14},
 };
 } // namespace
 

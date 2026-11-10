@@ -377,9 +377,13 @@ payload (`core/vr/FloorLock::PawnSample`) appends seated + chosen standing heigh
 skeleton reference is game-thread data and the host owns the final camera translation. Build/deploy matching host and mod;
 older payload sizes are rejected. `mod.calibration.position`, `floorLock.seated` and `floorLock.standingEyeM` identify it.
 
-**Reach points:** `game/Holsters` scales slots using that same standing reference; `core/ik/BodySlots::NeutralEye`/`Anchor`
-already place them relative to the tracked head, not the floor. `game/Throwables` uses that frame/scale for its chest grenade
-slot (the reference is available even if weapon holsters are disabled). Omni-tool visuals attach to driven wrists and the
+**Reach points (updated 2026-11-09):** the standing-reference scaling originally used here left the seated pistol too low
+and behind the real hip. `core/ik/BodySlots::SeatedLayout` now uses fixed-metre offsets from the live seated neutral head,
+independent of the standing body reference. `game/Throwables` also uses a fixed-metre seated chest point, including with
+weapon holsters disabled. See research/19 section 12 for the sourced survey, defaults, settings and pending headset checks.
+No new calibration step was added: defaults and per-slot `[Holsters] seated*` offsets provide the conservative first fix.
+`[Calibration.<key>] position` remains the sole mode selector; `standEyeM`, floor lock and saved aiming measures are unchanged.
+The optional `seatedWeaponWheel` fallback lets the native wheel draw even with `onlyHolstersDraw`. Omni-tool visuals attach to driven wrists and the
 wrist target/rail follows the controller/IK mapping, so it inherits the seated body's corrected centre without a floor offset.
 
 **Offline verification:** `mevr-tests`, calibration preview and menu preview are built/run separately from the game targets.

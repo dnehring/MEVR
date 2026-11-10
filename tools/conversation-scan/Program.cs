@@ -17,6 +17,7 @@ internal static class Program
         if (args.Length < 2)
         {
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> [--lex-dir <Legendary Explorer nightly>] [--only <text>]");
+            Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --state-events <id,id,...>   what those state transitions do");
             return 2;
         }
         string lexDir = args.SkipWhile(a => a != "--lex-dir").Skip(1).FirstOrDefault()
@@ -49,6 +50,11 @@ internal static class Program
             return IntPtr.Zero;
         };
         // In its own method: nothing of LEC may be touched before the resolver above is up.
+        string stateEvents = args.SkipWhile(a => a != "--state-events").Skip(1).FirstOrDefault();
+        if (stateEvents != null)
+        {
+            return StateEvents.Run(args[0], args[1], stateEvents);
+        }
         return Scan.Run(args[0], args[1], args.SkipWhile(a => a != "--only").Skip(1).FirstOrDefault());
     }
 }

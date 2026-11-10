@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.27)
 # The one version number (docs/release-checklist.md section 5). Change it here only: the generated header below carries
 # it into the C++ and .rc files, tools/package-release.ps1 reads it from this line and refuses binaries that disagree,
 # and the release is tagged v<version>.
-project(MEVR VERSION 0.1.1 LANGUAGES C CXX)
+project(MEVR VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -379,6 +379,8 @@ set(MEVR_MOD_SOURCES
     src/engine/CallFunction.hpp
     src/engine/CodeDump.cpp
     src/engine/CodeDump.hpp
+    src/engine/ConversationHooks.cpp
+    src/engine/ConversationHooks.hpp
     src/engine/CoverAcquire.cpp
     src/engine/CoverAcquire.hpp
     src/engine/SelectionGaze.cpp
@@ -978,6 +980,7 @@ if (MEVR_BUILD_TESTS)
         tests/VoiceMenuTests.cpp
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
+        tests/BodySlotsSeatedTests.cpp
         tests/FloorLockTests.cpp
         tests/CameraDiagnosticTests.cpp
         tests/LandmarkTests.cpp

@@ -40,7 +40,7 @@ reasoning, not a source.
 | Feedback | A short haptic pulse on entering a slot is standard (Quake VR 0.25 s; Overlord 22 ms on draw and stow). Visual hints are optional and limited to the slot the hand is in |
 | Shoulders and handedness | Behind the head at about ear height, bigger zones, no gaze needed. Defined as gun-hand and off-hand sides, so a left-handed mode mirrors |
 | The gun already in hand | It goes back to its own slot on a swap (GoldenEye VR, Doom 3 BFG VR, Overlord's exchange). Nobody drops it |
-| Seated | No game found has a dedicated seated layout. The tools are a height offset, a stand toggle or sit mode, and a non-physical fallback (a weapon wheel or menu) |
+| Seated | Height correction alone does not establish reachable holsters. Updated survey and our separate seated reach layout, adjustable zones and wheel fallback: section 12 |
 | LE1: equip weapon type X | **`SFXGameModeDefault.SwitchToWeapon(Slot)`**, the same exec the PC number keys use. Called through ProcessEvent on the player controller's default game mode. Quick slot index = weapon type (0 pistol, 1 shotgun, 2 assault rifle, 3 sniper rifle). In combat it starts the animated draw (`BioActiveSelectWeapon`); holstered, it changes the slot and draws |
 | LE1: holster | **`SFXGameModeDefault.TryHolster()`**, the holster key. It's a toggle (holstered: draws the primary), so we call it only while `BioPawn.IsInCombatActionState()` is true |
 | LE1: which weapons the player has | `BioPawn.m_oBehavior` → `BioPawnBehavior.m_oEquipment` → `BioEquipment.m_QuickSlotArray[4]`: an empty slot means no weapon of that type is equipped. `m_eQuickSlotCurrent` is the current slot |
@@ -1056,3 +1056,86 @@ deliberate input that needs no such guard.
   and holding bone, in this world), so a redrawn gun is aimed and its foregrip settles within about 0.1 s
   instead of after the hand has held still. A squeeze in that 0.1 s still finds no gun (the host takes
   hold only on a new squeeze): squeeze again.
+
+## 12. Seated reach (2026-11-09; source review, no headset acceptance)
+
+The report is consistent with the code: seated selected `BodyScale::StandingEyeHeight` but still used the standing offsets.
+At reference scale the pistol was 0.62 m below and 0.05 m behind the neutral eye, radius 0.14 m; at 1.84 m standing eye
+height the drop was 0.69 m. A 1.20 m seated eye therefore put its centre about 0.51 m above the floor. Chair/armrest
+interference and reduced cross-body reach are **inferences**, not measured headset findings. The reported ~0.8 m drop
+is not the shipped default. Floor lock lifts the avatar/camera together; it does not lift tracking-space reach zones.
+
+### Survey and evidence limits
+
+These are documented controls and author/player observations, not recovered proprietary holster math. No third-party
+code was copied. Unless stated otherwise, exact offsets, seated belt translation and zone sizes remain **unverified**.
+
+| Game / source | What the evidence supports |
+|---|---|
+| [Half-Life: Alyx, Valve AMA](https://www.reddit.com/r/HalfLife/comments/esen9b/were_developers_from_the_halflife_alyx_team_ask/) | Valve describes seated/one-arm support, off-hand over-shoulder ammo inventory, weapon-hand quick selection and wrist bags. Weapon selection avoids a hip reach; wrist inventory moves with the hand. No special wheelchair hip offset established. |
+| [BONEWORKS, SLZ store](https://store.steampowered.com/app/823500/BONEWORKS/) | Seated support is advertised. A distinct raised-belt algorithm and exact seated inventory-menu behavior were not established from developer material; player reports are leads, not implementation evidence. |
+| [BONELAB Custom Holsters, mod author](https://thunderstore.io/c/bonelab/p/terry86/Custom_Holsters/) | Mod supports body-part anchors, placing at the current hand, mirroring, grab-distance adjustment and saved layouts. This is a mod, not proof that vanilla BONELAB raises its belt. Vanilla automatic seated detection/belt-height behavior remains unverified here. |
+| [Blade & Sorcery, Warpfrog 1.0.7 announcement](https://store.steampowered.com/oldnews/?appids=629730&enddate=1780297200&feed=steam_community_announcements&l=portuguese) | February 2025 added an options-book height offset explicitly enabling seated play. Older claims that no seated support exists are stale. No per-slot seated offset is documented in this announcement. |
+| [Saints & Sinners, developer height guidance](https://steamcommunity.com/app/916840/discussions/0/1750147885674444953/) | HMD Reset calibrates the current sitting/standing stance; physical or button crouch. This establishes posture calibration, not an independently adjustable seated belt. |
+| [Into the Radius 2, developer 0.12 announcement](https://www.reddit.com/r/intotheradius/comments/1h1aoej/) | Enlarged pistol grab area for blind draws; legs scale without scaling the whole body so holsters do not converge for smaller players. This is sequel evidence; ITR1 chair clearance and per-slot adjustment remain unverified. |
+| [Pavlov, official PSVR2 FAQ](https://www.reddit.com/r/PSVR/comments/118dgnt/pavlov_psvr2_faq_official/) | Developer calls it a standing experience and identifies crouched speed / ground-reach problems sitting. A cautionary example, not evidence of a solved seated holster system or current all-platform support. |
+| [Hubris, developer playtest notes](https://steamdb.info/patchnotes/8132675/) | Developer notes add seated play. Exact belt/holster behavior was not established; height support alone is insufficient evidence of reach support. |
+| [Arizona Sunshine 2, direct play observations](https://www.analogstickgaming.com/game-reviews/2023/12/11/arizona-sunshine-2) | Reviewer directly reports adjustable belt height/width and guns returning to the belt on grip release. This is observed UI behavior, not developer-specified math; do not generalize to the original Arizona Sunshine. |
+| [Medal of Honor: Above and Beyond, Respawn patch 1.26](https://steamcommunity.com/app/1402320/announcements/) | Seated mode provides Hold/Click crouch in single-player. It establishes a button alternative to physical posture, not exact holster placement. |
+| [Lone Echo, Ready At Dawn designer's account](https://roadtovr.com/designing-lone-echo-echo-arena-virtual-touchscreen-interfaces-robert-duncan/2/) | Ambidextrous wrist displays attach to either hand. Controller-relative tools/UI avoid low belt reach; applying that pattern to our weapons is an **inference**, not a Lone Echo seated-holster feature. |
+| [UEVR / Praydog documentation](https://docs.uevr.io/) | Motion controls, controller attachment via UObjectHook, game-specific profiles/plugins and normal game controls. No universal seated holster algorithm documented; height/camera offsets must not be mistaken for inventory reach calibration. |
+| [Fallout 4 VR, Bethesda producer interview](https://www.gamedeveloper.com/design/q-a-bethesda-opens-up-about-i-fallout-4-vr-i-and-the-plunge-into-vr-game-dev) | Physical sneak is optional versus a button. Skyrim VR's physical-sneak/toggle distinction is a related lead, but its precise seated threshold was not confirmed from Bethesda material here. Neither is a body-holster solution. |
+| [FRIK author changelog](https://www.nexusmods.com/fallout4/mods/53464?tab=bugs) | v0.76 adds seated body adjustment and comfort-sneak fixes; v0.77.12 fixes respecting fComfortSneakHeight. Body/camera posture and weapon interaction zones are distinct settings. |
+| [Skyrim VRIK author instructions](https://www.nexusmods.com/skyrimspecialedition/mods/23416?file_id=807101) | Configurable activation distance; contact haptics; hold to reposition a holster with the hand. Direct precedent for player-specific reach calibration. |
+| [Fallout Virtual Holsters author documentation](https://www.nexusmods.com/fallout4/mods/51224?tab=description) | Real-time interaction-zone repositioning, configurable interaction buttons/haptics and visible zones. Shoulder anchors changed away from HMD nodes to allow repositioning. |
+| [Meta seated design](https://developers.meta.com/vr/design/locomotion-comfort-usability/), [accessibility](https://developers.meta.com/vr/design/accessibility/) | Offer seated/standing choice, adjustable height, button posture controls, input alternatives and forgiving hit targets. No prescribed holster centimetres. |
+| [XR Access resources](https://xraccess.org/resources/), [AbleGamers APX Flexible Controllers](https://accessible.games/accessible-player-experiences/access-patterns/flexible-controllers/) | Support varied abilities/input devices and consult accessibility research; a physical reach must have an alternative. These resources do not prescribe a belt layout. |
+
+**Patterns / recommendation:** separate rendered body height from reachable interaction points; keep seated reach points
+near the live head or hands, move low belts up/forward, permit per-slot adjustment and larger forgiving zones with contact
+feedback, and retain a button/menu route. Hand-position capture is well supported by VRIK and BONELAB's mod; a universal
+1-second seated pistol/rifle capture wizard was **not** established. Our dimensions below are **design estimates**.
+
+### Implemented candidate
+
+Standing uses exactly its previous geometry/scale. With `position = seated`, `SeatedLayout` uses fixed metres below the
+live, neck-neutralized seated head, not standing height, floor Y or avatar scale. This also works before full calibration,
+without a trustworthy floor, after a recenter and with a very tall saved standing height. Existing torso-yaw lag/freeze and
+anchor smoothing remain. Defaults (right/up/forward/radius, metres):
+
+```ini
+[Holsters]
+seatedHipRight = 0.28, -0.42, 0.18, 0.20
+seatedHipLeft = -0.28, -0.42, 0.18, 0.20
+seatedShoulderRight = 0.28, -0.04, -0.14, 0.20
+seatedShoulderLeft = -0.28, -0.04, -0.14, 0.20
+seatedGrenade = -0.10, -0.18, 0.08, 0.10
+seatedWeaponWheel = 1
+```
+
+Keys are appended only when missing, read with the existing case-insensitive locale-independent INI path, and clamped as
+standing offsets/radii are. Four weapon assignments and disabled slots still come from the standing slot keys. Seated
+zones are never scaled. The larger hip radius starts entry/contact 6 cm sooner; drawing still needs a fresh grip squeeze,
+not merely proximity. Default weapon/grenade spheres are disjoint; the normal cheek aim point is outside weapon zones.
+No broad thigh gesture or new long-press binding: those could conflict with resting hands, melee and power controls.
+
+`seatedWeaponWheel = 1` keeps LB enabled and permits only the weapon wheel's **Deactivated** caller to draw through
+`onlyHolstersDraw`; its eager EnterWeaponWheel draw remains refused without a refusal buzz. SquadWeapons keeps that
+seated wheel draw instead of scheduling its usual re-holster. The trigger remains refused; standing policy is unchanged.
+Use Controls > Left trigger = Weapon wheel and the native squad wheel, select Shepard/weapon and release. The game's
+combat-enabled gate still applies (no wheel in a non-combat hub); custom squad menus have no Shepard selection. The stock
+wheel may draw the existing primary when closed without a new choice: this is a deliberate, opt-out seated fallback.
+
+No new capture step or calibration storage was added: the conservative first fix uses configurable defaults. A later
+optional hand-capture wizard should save neutral-head/body-yaw offsets, mirror hips, validate non-overlap, offer Skip/Reset,
+and preserve samples when calibration rewrites its section. Headset evidence should guide that addition.
+
+**Validation:** new `BodySlotsSeatedTests` covers fixed scale, tall/short/NaN standing heights, floor-origin changes,
+translation/yaw, preserved assignments/off switches, separation, aim clearance, earlier contact and squeeze edges.
+Direct MSVC /W4 /WX compilation/run passed, together with existing slot machine, grip-hold, contact and standing-height
+cases extracted unchanged from Main.cpp. Changed game adapters passed /Zs /W4 /WX syntax checking. CMake's full mevr-tests
+build was blocked by sandbox access to the per-user Microsoft SDK directory; this is not a full-suite or game-build pass.
+The existing offline menu preview loaded the edited assets; standing/seated Body screenshots were visually checked
+(`work/seated-holsters/menu-preview/section-body*.png`). The seated note fits and stays hidden standing.
+Owner must build, test INI reload/persistence, then compare seated chairs/armrests, all four draws, grenade precedence,
+wheel draws/cancel, leaning/look-down/recenter and a full standing regression. No deploy, native launch or commit here.

@@ -1162,7 +1162,9 @@ void TickNative(double deltaSeconds, Link const& link, hand_calibration::Squad c
             gLastResult = std::format("{} given the {} (the game's wheel)", m.name, menu::WeaponName(gWheelGiven.weapon));
         }
         gWheelGiven = {};
-        if (gWheelWasHolstered && gTryHolster != nullptr && holsters::BlocksGameDraws()) {
+        if (gWheelWasHolstered && holsters::SeatedWeaponWheel()) {
+            log::Info("squad: wheel #{}: seated draw fallback: keep Shepard's chosen weapon out", gWheelSerial);
+        } else if (gWheelWasHolstered && gTryHolster != nullptr && holsters::BlocksGameDraws()) {
             // The wheel's own draw was refused (only holsters draw): nothing to put back, and a watch now could put
             // away a gun the player draws from a holster in the next seconds.
             log::Info("squad: wheel #{}: Shepard's weapon stays away (only holsters draw): no re-holster", gWheelSerial);

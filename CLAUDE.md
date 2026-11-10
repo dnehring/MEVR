@@ -93,8 +93,15 @@ mechanics may change to fit VR (see `docs/trilogy-design.md`).
   Closed it costs nothing. Offline look: `mevr-menu-preview` (PNGs of every section and state, and the
   frame time). Log `main menu:` (its cost every 10 s while open), `menu:`/`rmlui:`; snapshots `"mainMenu"`
   and a `mainmenu` layer.
-- **Halcyon's own menu** is the developer fallback: Ctrl or Shift + `\`, or Advanced > Diagnostics >
-  Classic renderer menu (both thumbsticks held no longer open it). It takes the pad (Touch merged in as
+- **One supported renderer configuration** (2026-11-09, the owner: players get the life-size first-person experience only):
+  `MevrBridge::ModernBaseline` (`[MEVR]` seam after `LoadFromIni` and `LoadProfile`; also the menu's Reset) pins Stereo 2
+  (no mono, AER, DIBR or old SBS), `sfr2Metric`, `sfr2MetricEyeFrustum`, `sfr2MetricDepth = 1`, `questFovMatch`, `vrFovFillEnabled`,
+  `leanEnabled`, `lookSensitivity = 1`, `menuFlat`, `galaxyFlat`, `fpEnabled`, `fpHideHead`, no head aim, `decoupledPitch`,
+  no depth-pop key, whatever MELEVR.ini says (log `halcyon bridge: the MEVR baseline`); a changed mode rewrites the game's
+  render size for the next launch. Our menu's Advanced has no rows for them (tabs Tracking, Performance, Graphics, Game UI,
+  Profiles, Diagnostics). Only the classic menu can still change them live, for that session.
+- **Halcyon's own menu** is the developer fallback: Ctrl or Shift + `\` (no longer a row in our menu since 2026-11-09;
+  both thumbsticks held no longer open it). It takes the pad (Touch merged in as
   Xbox pad 0: left stick/d-pad, A, B; upstream never set ImGui's `HasGamepad` backend flag, so pad nav
   was dead until we did) and our laser pointer (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray
   on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the
@@ -279,7 +286,10 @@ switching frameworks.
   because the game's RB casts the mapped power for any press under its 0.3 s; `powerWheel = y/x/b` are still RB.
   Contact haptics while the hand is in a slot
   (host `core/vr/Haptics`); the slots scale with the standing eye height from the floor (host
-  `core/xr/Floor`, STAGE). Squad weapons: below. Settings: `[Holsters]` in `ASI\LE1MEVR.ini`.
+  `core/xr/Floor`, STAGE). Seated uses fixed-metre head-relative reach points instead (research/19 section 12): raised,
+  forward hips, adjustable `seatedHipRight/Left`, `seatedShoulderRight/Left`, `seatedGrenade`; `seatedWeaponWheel = 1`
+  permits the native weapon wheel's draw on close as a seated button fallback. Squad weapons: below. Settings:
+  `[Holsters]` in `ASI\LE1MEVR.ini`.
   **Only holsters draw** (`onlyHolstersDraw = 1`, 2026-10-25): on foot in VR with tracked controllers, once the
   CallFunction hook is in, the game's own draws with the weapon away (`SFXPawn_Player.DrawPrimaryWeapon`: melee and
   grenade buttons, the weapon wheel, the holster key's toggle) are skipped by `engine/call_function`'s skip handler (it
@@ -318,7 +328,9 @@ switching frameworks.
   `cameraOffsetUp`'s vertical contribution is absorbed (the shipped -0.082 is -4.1 uu, not -8.2).
   `[Body] scale = auto` (default) uses calibrated standing eye height, else a frozen standing STAGE reference, over Shepard's
   standing holstered unscaled eyes above that same cylinder floor. The reference settles once per skeleton after a standing
-  grace period, excluding physical and game crouch; no animation/recenter chase. Scale is clamped 0.85..1.25, approaches at 0.1/s;
+  grace period, excluding physical and game crouch; no animation/recenter chase. Shepard's side is saved per mesh in
+  `[Body.Shepard] <package.mesh> = <m>` (2026-11-09, research/58 section 8): the next load seeds it at once, the run still
+  measures and rewrites it past 1 cm (`StandingReference::Seed`/`Measured`). Scale is clamped 0.85..1.25, approaches at 0.1/s;
   `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
   hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
   and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.
@@ -441,8 +453,8 @@ switching frameworks.
   interrupted beyond the start's `m_fInterruptRange`, else `BioWorldInfo.m_fConversationInterruptDistance`, 25 m), so the mod
   flags the **chain starts** (plays that can never reach a `REPLY_STANDARD` reply, the wheel: Garrus and the Executor arguing, Wrex
   at C-Sec, Udina's arrival lines) on every loaded `BioSeqAct_StartConversation`'s conversation before the script fires it, from
-  the scan's generated table `cw::FlowEntries` (`conversation-scan.py --flow-list`: 68 conversations, 284 entries; chains behind an
-  unconditional start, set pieces, transmissions and the game's own narration left out; `--flow` the table), journalled and put back when the setting goes off. The
+  the scan's generated table `cw::FlowEntries` (`conversation-scan.py --flow-list`: 64 conversations, 249 entries; chains behind an
+  unconditional start, set pieces, transmissions, the game's own narration and chains with plot effects after their first line left out; `--flow` the table), journalled and put back when the setting goes off. The
   scan runs when the streaming levels' loaded/visible set changes (the object table's count doesn't move for a chunk; the flags
   land within a second of its load). **Checked on the fake headset 2026-11-09** (research/59 "Flowing conversations" > "In the
   game"): Noveria's Juleth ambush and Olar execution played as barks on foot, no camera cut; a chain start plays only when the
@@ -460,7 +472,18 @@ switching frameworks.
   conversations" > "In the game"): 5.47 m walked during the Garrus wheel conversation at C-Sec, nobody snapped, the conversation
   ran on; the squad stays put. **Not through people** (`worldMoveClearM` 0.7, since the first walk went straight through Garrus):
   a step ending within the clearance of a conversation actor, a squadmate or the owner is pushed out along the line from them
-  (`cw::KeepClear`), so the stick walks around people; [verify] in the game. Logs `convo: ... the player walks`, `the player walked
+  (`cw::KeepClear`), so the stick walks around people; [verify] in the game. **The work toward first person for every conversation
+  is [research/69](research/69-conversations-everywhere.md)** (2026-11-09; a status table and a log; read it before touching this
+  feature): a line's plot effects (its state transition, its Kismet node event) are on the path ambient and full conversations
+  share, but an ambient one can be cut short (distance, any other conversation starting) and loses what it didn't reach, so
+  chains with effects after their first line stay conversations and the game's barks are refused over a flowed scene
+  (`worldFlowProtect`); every stage placement goes through `UBioConversation::SetPositionRotator` (0xC862D0: PlaceActors at the
+  start, each line's SetFacing track), pre-hooked to withhold the place and keep the facing (`engine/ConversationHooks`,
+  `worldStaySource`; with `ABioWorldInfo::InterruptConversation` 0xB60460, both installed when the world mode is asked for);
+  `Actor.SetLocation` is `UWorld::FarMoveActor` and fires touches, so a walk step that would change which `Trigger` /
+  `TriggerVolume` Shepard overlaps is refused (`worldMoveTriggers`, `Actor.PointCheckComponent`); scenes with no place for the
+  player (pawn hidden, far from the owner and out of sight, most shots from over 8 m) are named in the log and the summary
+  (`worldAutoScreen = log | on | off`). All built and unit-tested, none of it run in the game yet. Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus

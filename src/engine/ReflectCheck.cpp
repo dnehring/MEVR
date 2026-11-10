@@ -811,6 +811,10 @@ void CheckFields() {
     CheckField("SFXGame.BioSeqAct_StartConversation", "Conv", SDK_FIELD(UBioSeqAct_StartConversation, Conv));
     CheckField("SFXGame.BioSeqAct_StartConversation", "m_fInterruptRange", SDK_FIELD(UBioSeqAct_StartConversation, m_fInterruptRange));
     CheckField("SFXGame.BioWorldInfo", "m_fConversationInterruptDistance", SDK_FIELD(ABioWorldInfo, m_fConversationInterruptDistance));
+    // research/69: a flowed chain protected from barks (the newcomer's starts), the walk's triggers.
+    CheckField("SFXGame.BioConversation", "m_StartingList", SDK_FIELD(UBioConversation, m_StartingList));
+    CheckClass<ATrigger>("Engine.Trigger");
+    CheckClass<ATriggerVolume>("Engine.TriggerVolume");
     CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayingWheel));
     CheckField("SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed", SDK_FIELD(UBioSFHandler_Conversation, m_bSlotsUsed));
     CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
@@ -1349,6 +1353,7 @@ void CheckFunctions() {
         "SFXGame.BioPawn.IsDead",
         "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
         "Engine.Actor.SetLocation",
+        "Engine.Actor.PointCheckComponent",  // game/ConversationWorld: the walk's triggers (research/69 item 5)
         "Engine.Actor.Destroy",
         // Vent (research/45)
         "SFXGame.BioWeaponRanged.DoCoolDownEffect",
@@ -1376,6 +1381,7 @@ void CheckFunctions() {
         "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
         "SFXGame.BioPawn.PlaySoundSet",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
+        "SFXGame.SFXGameModeWeaponWheel.Deactivated",  // seated holster fallback: draw on close
         "SFXGame.SFXGameModeDefault.TryHolster",
         "SFXGame.SFXGameModeDefault.StormOn",   // game/sprint: the sprint button as a faster run (2026-11-06)
         "SFXGame.SFXGameModeDefault.StormOff",
@@ -1553,6 +1559,10 @@ void CheckParams() {
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceStart);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", bTraceActors);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", ReturnValue);
+    PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", InComponent);
+    PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", PointLocation);
+    PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", PointExtent);
+    PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", ReturnValue);
     PARAM(AActor_execFastTrace_Parms, "Engine.Actor.FastTrace", TraceEnd);  // `mevr vehicle trace`
     PARAM(AActor_execFastTrace_Parms, "Engine.Actor.FastTrace", TraceStart);
     PARAM(AActor_execFastTrace_Parms, "Engine.Actor.FastTrace", ReturnValue);

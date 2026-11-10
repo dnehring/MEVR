@@ -577,7 +577,8 @@ as `free` before); the kinds are now free 78, stage 171, remote 19, walks 23, fr
 tail would end a wheel conversation ambient), that aren't ambient and whose start the game can take (no unconditional start
 before it, below); set pieces (the 3D screen), transmissions (their hologram
 needs the stage an ambient play skips) and the narration under the game's own screens (`nor10_backgrounds`, `ice00_popup_text`,
-`sp_news_vids`) are left out: 68 conversations, 284 entries (102 and 526 before the start-order rule). The mod (`game/ConversationFlow`, `[Cinematics] worldFlow = all | off`, default all, only with
+`sp_news_vids`) are left out: 68 conversations, 284 entries (102 and 526 before the start-order rule; **64 and 249 since research/69's item 1**,
+which also leaves out the chains that apply plot effects after their first line). The mod (`game/ConversationFlow`, `[Cinematics] worldFlow = all | off`, default all, only with
 `conversations = world`) scans the loaded `BioSeqAct_StartConversation` actions (at once, 2 s after the object table grows by a
 thousand, every 10 s) and flags those entries' `bAmbient` on their conversations before the level's script fires them
 (journalled `ConversationFlow.entryAmbient`; an entry that offers a standard reply in the live data is refused and logged: the
@@ -690,6 +691,10 @@ end summary counts the steps a person held (`people in the way N`; the summary's
 Garrus and watch the pawn go around him at 0.7 m; a squadmate seated by Part B in the way of the walk.
 
 ## Limits and next
+
+**The work toward making this the default for every conversation has its own note:
+[research/69](69-conversations-everywhere.md)** (story safety of flowed scenes, the cutscene-or-world decision at run time,
+placements stopped at the source, walking and triggers; a status table and a log).
 
 - **28 conversations played, 491 scanned** (the survey and the scan, above). The scan's kinds are read from the data; the
   runtime numbers (jumps undone, drawn) are from 28. Next in the game: the 18 framed set pieces and the 23 walks, from the

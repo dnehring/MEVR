@@ -52,10 +52,18 @@ class StandingReference {
 public:
     void Feed(std::uintptr_t skeleton, bool physicalCrouch, bool gameCrouch, bool holstered,
         double stageEyeM, double shepardEyeM, double dt, bool seated = false);
+    // Shepard's standing eye height saved from an earlier run for this skeleton's mesh: Shepard() answers it at once, while
+    // Feed still measures; Measured() is this run's own value once settled (it then replaces the saved one). A seed for
+    // another skeleton than the next Feed's is dropped with the rest. Outside 0.8..2.5 m: ignored.
+    void Seed(std::uintptr_t skeleton, double shepardEyeM);
     std::optional<double> Player() const { return player_; }
     std::optional<double> Shepard() const { return shepard_; }
+    std::optional<double> Measured() const { return measured_; }
+    bool Seeded() const { return seeded_; }
 private:
     std::uintptr_t skeleton_ = 0;
+    bool seeded_ = false;
+    std::optional<double> measured_;
     double quietSeconds_ = 0.0;
     double seconds_ = 0.0;
     double playerSum_ = 0.0;

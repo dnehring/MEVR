@@ -129,6 +129,20 @@ def has_wheel(conv, entries):
     return any(replies[r]['type'] == STANDARD for e in entries for r in conv['nodes'][e]['replies'] if 0 <= r < len(replies))
 
 
+def plot_effects(conv, start, entries):
+    """The plot effects a play from `start` applies after its first line (research/69 item 1): a state transition
+    (nStateTransition) or a Kismet conversation-node event (nScriptIndex) on a later entry, or on a reply that leaves one of
+    its entries. The game applies a line's effects when the line starts, on the same code path whether the conversation is
+    ambient or not; an ambient conversation can end early (distance, another conversation starting, its owner gone), and the
+    lines it never reached never apply theirs. The first entry's are applied the moment the conversation starts."""
+    nodes, replies = conv['nodes'], conv.get('replyNodes') or []
+    def has(n):
+        return n.get('transition', -1) != -1 or n.get('script', -1) != -1
+    fx = [('entry', e) for e in sorted(entries) if e != start and has(nodes[e])]
+    fx += [('reply', r) for r in sorted({r for e in entries for r in nodes[e]['replies'] if 0 <= r < len(replies)}) if has(replies[r])]
+    return fx
+
+
 def flow(conv):
     """How a conversation flows (research/59 "Flowing conversations"): per start (m_StartingList; the game picks one by its
     conditionals), a play that can never reach a wheel is a chain (barks, a scene watched: the Executor arguing with Garrus),
@@ -137,7 +151,7 @@ def flow(conv):
     nodes, starting = conv.get('nodes'), conv.get('starting')
     if not nodes:
         return None
-    chain, wheel_reach = [], set()
+    chain, wheel_reach, plot_chains = [], set(), []
     # The game takes the first start whose plot conditional (nConditionalFunc, -1 none) holds, so a chain start plays only when
     # every start before it has a conditional that can fail (checked in the game 2026-11-09: sta30_krogan_cutscene's chain start
     # 23 sits behind the unconditional start 9 and never plays): such chains are left out of the flips.
@@ -147,7 +161,14 @@ def flow(conv):
         if has_wheel(conv, entries):
             wheel_reach |= set(entries)
         elif not blocked:
-            chain.append((s, entries))
+            # A chain the game would play as a conversation (its start not ambient already) that applies plot effects after
+            # its first line stays a conversation: as barks it could be cut short and lose them (research/69 item 1). Its
+            # entries are kept ordinary like a wheel play's, or a conversation reaching one would turn ambient there.
+            if 0 <= s < len(nodes) and not nodes[s]['ambient'] and plot_effects(conv, s, entries):
+                plot_chains.append((s, plot_effects(conv, s, entries)))
+                wheel_reach |= set(entries)
+            else:
+                chain.append((s, entries))
         if 0 <= s < len(nodes) and nodes[s].get('conditional', -1) == -1:
             blocked = True
     flips = sorted({e for s, entries in chain for e in entries if e not in wheel_reach and not nodes[e]['ambient']})
@@ -156,6 +177,7 @@ def flow(conv):
         'starts': len(starting or []), 'chainStarts': len(chain), 'chainEntries': sorted({e for s, entries in chain for e in entries}),
         'flips': flips, 'ambientEntries': sum(1 for n in nodes if n['ambient']),
         'firstStartChain': first in flips, 'firstConditional': nodes[first].get('conditional', -1) if first is not None and 0 <= first < len(nodes) else None,
+        'plotChains': plot_chains,
         'unconditionalBeforeChain': any(nodes[s].get('conditional', -1) == -1 for s in (starting or []) if s not in flips and 0 <= s < len(nodes)),
     }
 
@@ -165,6 +187,7 @@ def flow(conv):
 FLOW_SKIP = {'nor10_backgrounds', 'ice00_popup_text', 'sp_news_vids'}
 
 
+# (research/69 item 1 adds a rule inside flow(): a chain that applies plot effects after its first line stays a conversation.)
 def flow_wanted(k, kd, v):
     # Set pieces (screen) stay on the 3D screen; a transmission's hologram needs its stage, which an ambient play skips.
     return v != 'screen' and kd != 'remote' and k not in FLOW_SKIP
@@ -335,6 +358,9 @@ def main(argv):
         print(f"\nflow: {len(flows)} conversations started by a level's script; {sum(1 for f in flows if f[3]['chainStarts'])} have a chain "
               f"start (a play that can never reach a wheel), {len(flipping)} of them with lines to make ambient "
               f"({sum(len(f[3]['flips']) for f in flipping)} entries); {len(left_out)} left out (set pieces, transmissions)")
+        plot = [(k, f) for k, kd, v, f in flows if f['plotChains'] and flow_wanted(k, kd, v)]
+        print(f"flow: {len(plot)} conversations keep a chain as a conversation because it applies plot effects after its first line: "
+              + ', '.join(f"{k} (start {s}: {len(fx)})" for k, f in plot for s, fx in f['plotChains']))
         if '--flow' in argv:
             print('\n| Conversation | Kind | Verdict | Starts | Chain starts | Entries made ambient | Already ambient | First start |\n|---|---|---|---|---|---|---|---|')
             for k, kd, v, f in flipping:

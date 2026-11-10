@@ -18,6 +18,7 @@
 // crouching is followed but jitter isn't; offsets scale with the player's eye height; zones are
 // spheres with exit hysteresis, ties broken by distance over radius (as Overlord's
 // weapon_holsters.hpp does); only a new squeeze inside a zone acts.
+// SeatedLayout supplies a separate fixed-meter reach layout; it never uses the standing scale.
 namespace mevr::ik::body_slots {
 
 inline constexpr int kSlots = 4;
@@ -48,6 +49,10 @@ struct Layout {
 // The user's layout (research/19, "Default slots"): pistol at the right hip, assault rifle over the
 // right shoulder, shotgun at the left hip (a cross-draw; the belly until 2026-10-25), sniper rifle over the left shoulder.
 Layout DefaultLayout();
+// Seated reach points are fixed meters from the live neutral eye, independent of standing
+// height/avatar scale. Keep the standing layout's weapon assignments (including disabled slots).
+Layout SeatedLayout(Layout const& standing);
+Slot SeatedGrenadeSlot();
 // Offsets scale by eyeHeight / kReferenceEyeHeight, clamped to a sane range.
 double Scale(Layout const& layout);
 

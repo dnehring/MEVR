@@ -120,6 +120,10 @@ internal static class Scan
                 ["speaker"] = node.GetProp<IntProperty>("nSpeakerIndex")?.Value ?? -1,
                 ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,
                 ["conditional"] = node.GetProp<IntProperty>("nConditionalFunc")?.Value ?? -1,  // -1: none (a start entry always eligible)
+                // The line's plot effects (research/69 item 1): the state transition it runs when it starts, and the Kismet
+                // conversation-node event it fires (nScriptIndex into m_ScriptList; -1 none).
+                ["transition"] = node.GetProp<IntProperty>("nStateTransition")?.Value ?? -1,
+                ["script"] = node.GetProp<IntProperty>("nScriptIndex")?.Value ?? -1,
                 ["replies"] = node.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?.Select(r => r.GetProp<IntProperty>("nIndex")?.Value ?? -1).ToList()
                               ?? new List<int>(),
             });
@@ -132,6 +136,9 @@ internal static class Scan
                 ["ambient"] = node.GetProp<BoolProperty>("bAmbient")?.Value == true,
                 ["nonText"] = node.GetProp<BoolProperty>("bNonTextLine")?.Value == true,
                 ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,
+                ["conditional"] = node.GetProp<IntProperty>("nConditionalFunc")?.Value ?? -1,
+                ["transition"] = node.GetProp<IntProperty>("nStateTransition")?.Value ?? -1,
+                ["script"] = node.GetProp<IntProperty>("nScriptIndex")?.Value ?? -1,
                 ["entries"] = node.GetProp<ArrayProperty<IntProperty>>("EntryList")?.Select(e => e.Value).ToList() ?? new List<int>(),
             });
         }

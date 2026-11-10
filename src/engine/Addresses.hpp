@@ -65,6 +65,10 @@ inline constexpr std::uint32_t kTryAcquireCover = 0xAB1430;
 inline constexpr std::uint32_t kCoverTrace = 0xAA92F0;
 // BioPlayerSelection's native UpdateSelection body (engine/SelectionGaze; research/40).
 inline constexpr std::uint32_t kUpdateSelection = 0xC79D70;
+// The conversation's one placement function (UBioConversation's vtable slot 0x2C0: an actor onto a stage mark, or a facing
+// alone) and BioWorldInfo's interruption of an ambient conversation (slot 0x9F0) (engine/ConversationHooks; research/69).
+inline constexpr std::uint32_t kConversationSetPositionRotator = 0xC862D0;
+inline constexpr std::uint32_t kInterruptConversation = 0xB60460;
 // UBioUIWorld's native Tick (its vtable's slot 104): the command queue, then UWorld::Tick of the UI world with GWorld swapped
 // (game/UiWorldFigure, research/57 section 7; called through the object's vtable after checking the slot holds it).
 inline constexpr std::uint32_t kUiWorldTick = 0xB3B810;
@@ -124,6 +128,11 @@ inline constexpr Entry kTable[] = {
         "mod (cover)"},
     {"UBioPlayerSelection::UpdateSelection", kUpdateSelection, Kind::Function, "40 55 53 57 41 54 41 55 41 57 48 8D AC 24 78 FF",
         0, 0, "mod (interaction)"},
+    {"UBioConversation::SetPositionRotator", kConversationSetPositionRotator, Kind::Function,
+        "48 8B C4 55 41 54 41 55 41 56 41 57 48 8D 68 A1 48 81 EC A0 00 00 00 48 C7 45 C7 FE FF FF FF 48 89 58 08 48 89 70 10 48 89 78 18 0F",
+        0, 0, "mod (conversations)"},
+    {"ABioWorldInfo::InterruptConversation", kInterruptConversation, Kind::Function,
+        "48 89 5C 24 08 57 48 83 EC 20 48 8B D9 48 8B FA 48 8B 89 1C", 0, 0, "mod (conversations)"},
     {"UBioUIWorld::Tick", kUiWorldTick, Kind::Function,
         "40 53 48 83 EC 40 48 C7 44 24 20 FE FF FF FF 0F 29 74 24 30 0F 28 F1 8B 81 18 02 00 00 A8 01", 0, 0, "mod (ui world figure)"},
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
@@ -218,6 +227,8 @@ inline constexpr std::uint32_t kUpdateSkelPose = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
 inline constexpr std::uint32_t kUpdateSelection = 0;
+inline constexpr std::uint32_t kConversationSetPositionRotator = 0;
+inline constexpr std::uint32_t kInterruptConversation = 0;
 inline constexpr std::uint32_t kGObjects = 0;  // LE2's reflection layout: stage 5
 inline constexpr std::uint32_t kNamePools = 0;
 inline constexpr std::uint32_t kGMalloc = 0;
@@ -249,6 +260,8 @@ inline constexpr std::uint32_t kUpdateSkelPose = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
 inline constexpr std::uint32_t kUpdateSelection = 0;
+inline constexpr std::uint32_t kConversationSetPositionRotator = 0;
+inline constexpr std::uint32_t kInterruptConversation = 0;
 inline constexpr std::uint32_t kGObjects = 0;  // LE3's reflection layout: stage 5
 inline constexpr std::uint32_t kNamePools = 0;
 inline constexpr std::uint32_t kGMalloc = 0;
