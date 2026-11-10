@@ -1198,7 +1198,7 @@ changed with the load).
 #### The plan for the blocker (2026-11-10 evening; read from the code, nothing run)
 
 The owner: plan how to address the blocker, decompiling the game where the fault may lie. Read with Ghidra (the isolated copy:
-the shared project has been locked by another session's MCP server since 2026-11-09 13:10) and the natives dump. Behaviour in
+the shared project was locked by another session's idle MCP server from 2026-11-09 13:10 until the owner had its process stopped that evening; `tools/ghidra/decompile.ps1` works on it again) and the natives dump. Behaviour in
 words, with addresses; nothing renamed in the project (the names are in `tools/ghidra/symbols-le1.csv`).
 
 **Every way the game stops drawing a pawn, as the code has it:**
@@ -1248,6 +1248,8 @@ same camera problem. One run separates them.
   render side is updated) on the body mesh, its pose followers, the head group and the drawn weapon while a scene is in the
   world; put back at its end and at unload. Halcyon's head hide (`bOwnerNoSee`) stays as it is. Before building: read
   `0x25E2E0` and `0x2D6130` to confirm the flag reaches the render proxy and where the proxy takes the owner's `bHidden`.
+  Read since: `SetHidden`'s `0x2D6130` marks every component of the actor for a deferred update (or re-attaches them), and
+  `SetIgnoreOwnerHidden` is the primitive's virtual at vtable +0x538; the proxy's own read of the two is still to do.
 - If script requests the hide (`RequestHidden` from the conversation or the cinematic switch): leave the game's count alone
   (other code releases it later) and rely on the flag above; only if the weapons' hide matters, answer the request for the
   player's pawn through `engine/call_function`'s skip handler during scenes in the world.
