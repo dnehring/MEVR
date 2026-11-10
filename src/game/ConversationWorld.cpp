@@ -474,6 +474,7 @@ struct Convo {
     cw::Opening opening = cw::Opening::Cut;  // how the opening ended (the summary's "opening")
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
+    std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
     int arranged = 0;            // people moved to a seat in view
     std::uint32_t cut = 0;       // the host dips from black when it changes
     // The player's place for this conversation: the view on foot if it was Shepard's just now, else his eyes from his head bone
@@ -1189,8 +1190,11 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     if (opening == cw::Opening::Cut || !facts.known) {
         return false;
     }
-    // Shepard back where he stood, facing as the player did; the view the one on foot.
+    // Shepard back where he stood, facing as the player did; the view the one on foot. (His head bone's place is read
+    // before the move: read after it, it already has the move in it, and the follower below took the difference for a jump
+    // of his and moved the view to the mark after all, 2026-11-09.)
     ik::Vec3 const mark = V(*markAt);
+    auto const headAtMark = HeadOf(pawn);
     bool const put = PutAt(pawn, stood);
     FaceYaw(pawn, YawDeg(gFoot.rotation));
     for (Stay& st : gStay) {
@@ -1208,9 +1212,13 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     gC.holdRotation = gFoot.rotation;
     gC.holdFov = gFoot.fov;
     gC.holdFrom = "the view on foot";
-    if (auto const head = HeadOf(pawn)) {
-        gC.anchorHead = head->at + (stood - mark);  // the bones follow the actor at the next pose
+    if (headAtMark) {
+        gC.anchorHead = headAtMark->at + (stood - mark);
     }
+    // His head bone is no measure for a moment: the mesh was up to 1.3 m from the pawn when the stage had just placed him
+    // (body follow, a pose not yet updated), and the follower read its catching up as a jump of his and moved the view
+    // 0.8 m (2026-11-09). For a second and a half the anchor just takes the bone's place.
+    gC.settleUntilMs = GetTickCount64() + 1500;
     gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, gC.anchorHead ? cw::Vec3{gC.anchorHead->x, gC.anchorHead->y, gC.anchorHead->z} : cw::Vec3{}, 0};
     if (opening == cw::Opening::WalkIn) {
         gC.wantedMark = mark;
@@ -1890,7 +1898,15 @@ void Tick(double deltaSeconds, Link const& link) {
     auto const shepardHead = HeadOf(pawn);
     // Settled over 3 ticks: a pawn put back (people kept in place) drags his mesh there and back within a tick.
     constexpr int kSettleTicks = 3;
-    if (shepardHead && gC.anchorHead && gSettings.follow) {
+    if (shepardHead && gC.settleUntilMs != 0) {
+        if (GetTickCount64() < gC.settleUntilMs) {
+            gC.anchorHead = shepardHead->at;
+            gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, {shepardHead->at.x, shepardHead->at.y, shepardHead->at.z}, 0};
+        } else {
+            gC.settleUntilMs = 0;
+            gC.eyeToViewMax = 0.0;  // measured from here on: before, the stage had him at the mark and his mesh elsewhere
+        }
+    } else if (shepardHead && gC.anchorHead && gSettings.follow) {
         ik::Vec3 const a = *gC.anchorHead;
         ik::Vec3 const& h = shepardHead->at;
         if (cw::FollowHeadSettled(gC.follow, {h.x, h.y, h.z}, kReanchorUnits, kSettleTicks)) {

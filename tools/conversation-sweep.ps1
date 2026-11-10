@@ -48,7 +48,9 @@ param(
     # What is fired. action: the scene's BioSeqAct_StartConversation itself (the script before it skipped). event: the first
     # action behind the player's own event that leads to it (the plan's `via`), so the level's script runs as authored, with
     # its plot checks, teleports and matinees; if no conversation follows, the bare start is fired after all.
-    [ValidateSet('action', 'event')] [string]$Fire = 'action'
+    [ValidateSet('action', 'event')] [string]$Fire = 'action',
+    # A conversation that starts by itself and is not a scene of the plan is ended instead of played (a targeted run).
+    [switch]$EndUnplanned
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
@@ -204,7 +206,10 @@ function Settle([string]$map, [int]$seconds) {
         if ($s.convo) {
             # A scene that starts by itself is played out; the wait for gameplay begins anew after it (the wake-up scene at
             # full length outlasted the level's whole waiting time, and the level was taken for one that never opened).
-            if ($ReachOnly) { Console 'mevr convo end' | Out-Null; Start-Sleep -Seconds 3 } else { PlayByItself $map; $deadline = (Get-Date).AddSeconds([math]::Max($seconds, 60)) }
+            # ... unless the plan does not ask for it (a targeted run: the Citadel's five-minute wake-up scene is ended).
+            $own = Key $s.name
+            if ($ReachOnly -or ($EndUnplanned -and -not $script:sceneByName.ContainsKey($own))) { Say "   (by itself) ${own}: ended, not in the plan"; Console 'mevr convo end' | Out-Null; Start-Sleep -Seconds 3 }
+            else { PlayByItself $map; $deadline = (Get-Date).AddSeconds([math]::Max($seconds, 60)) }
             $steady = 0; continue
         }
         if ($s.mode -eq 0) { $steady++ } else { $steady = 0 }
