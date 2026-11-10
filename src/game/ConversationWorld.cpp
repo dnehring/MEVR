@@ -489,6 +489,7 @@ struct Convo {
     int openingMoves = 0;        // placements accepted during the opening
     cw::Opening opening = cw::Opening::Cut;  // how the opening ended (the summary's "opening")
     int trackWalks = 0;          // people moved by a matinee's track (authored walks), left to it
+    int trackHeld = 0;           // a track's moves of the player's own pawn withheld during this conversation
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
     std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
@@ -917,6 +918,14 @@ void KeepInPlace(ue3::Object* pawn) {
             st.shownYaw = YawDeg(*rot);
             continue;
         }
+        if (isShepard && gC.settleUntilMs != 0) {
+            // Just put back where he stood after an opening without a cut: the engine settles him onto the floor there (the
+            // recorded height was 0.52 m low in Benezia's scene, and holding him to it was a fight with the floor every tick:
+            // 465 undone steps, each a drawn jump, 2026-11-10). His kept place is where he comes to rest.
+            st.place = V(*at);
+            st.shownYaw = YawDeg(*rot);
+            continue;
+        }
         if (!isShepard && authored_moment::TrackMoves(t.actor)) {
             // An authored walk (a matinee's move track holds this actor): his own move, played as the scene has it. Undone, the
             // track put him back the next tick and the mod undid it again: 240 times for Wrex on Virmire (2026-11-10).
@@ -1230,11 +1239,19 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     // of his and moved the view to the mark after all, 2026-11-09.)
     ik::Vec3 const mark = V(*markAt);
     auto const headAtMark = HeadOf(pawn);
-    bool const put = PutAt(pawn, stood);
+    // He goes back at the height he stands at on that floor (as high above it as he is above the mark's floor), not at
+    // the recorded height: a record taken while he hung in the air or sank (a test's placement) put him half a metre into
+    // the floor, and the engine lifting him out was a jump in a drawn frame. The view goes with that correction.
+    ik::Vec3 back = stood;
+    if (auto const floorHere = FloorZ(pawn, stood), floorMark = FloorZ(pawn, mark); floorHere && floorMark) {
+        back.z = *floorHere + (mark.z - *floorMark);
+    }
+    ik::Vec3 const lift{0.0, 0.0, back.z - stood.z};
+    bool const put = PutAt(pawn, back);
     FaceYaw(pawn, YawDeg(gFoot.rotation));
     for (Stay& st : gStay) {
         if (st.actor == pawn) {
-            st.place = put ? stood : mark;
+            st.place = put ? back : mark;
             st.shownYaw = YawDeg(gFoot.rotation);
         }
     }
@@ -1243,12 +1260,12 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
         gC.opening = cw::Opening::Cut;
         return false;
     }
-    gC.hold = eyes;
+    gC.hold = eyes + lift;
     gC.holdRotation = gFoot.rotation;
     gC.holdFov = gFoot.fov;
     gC.holdFrom = "the view on foot";
     if (headAtMark) {
-        gC.anchorHead = headAtMark->at + (stood - mark);
+        gC.anchorHead = headAtMark->at + (back - mark);
     }
     // His head bone is no measure for a moment: the mesh was up to 1.3 m from the pawn when the stage had just placed him
     // (body follow, a pose not yet updated), and the follower read its catching up as a jump of his and moved the view
@@ -1689,14 +1706,14 @@ void End(char const* why) {
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
               "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
               "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"opening\": \"{}\", \"markM\": {:.2f}, \"cuts\": {}, "
-              "\"trackWalks\": {}, \"entries\": [{}]}}",
+              "\"trackWalks\": {}, \"trackHeld\": {}, \"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
-        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, entryPath);
+        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, entryPath);
     gC = {};
 }
 
@@ -2099,6 +2116,13 @@ bool MomentViewOn() {
 }
 
 bool MomentWithholds() {
+    // In a conversation shown in the world a matinee's move track never moves the player's pawn: his place is his own (the
+    // walk, the opening's rule). Left to the track, keep-in-place put him back every tick and the track moved him again:
+    // 464 times in Benezia's scene, each one a drawn jump of 0.5 m (2026-11-10).
+    if (gC.on && gC.world && gC.openingDone && gInWorldForStay) {
+        ++gC.trackHeld;
+        return true;
+    }
     if (!gSettings.moments || CurrentMode() != cw::Mode::World) {
         return false;
     }
