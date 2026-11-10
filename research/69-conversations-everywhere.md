@@ -206,3 +206,24 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   QA of the 0.2.0 candidate (the players' build of 6bb3227 is installed), so the in-game checks wait for the owner's word, and
   the candidate goes back into the folder afterwards. Meanwhile the transitions were read (item 1, "What the transitions
   are"): the two on most bark lines are object-local bookkeeping, the six kept chains carry the story's.
+- 2026-11-09, 17:00-17:50, the first in-game session (fake headset, the dev build over the 0.2.0 candidate, which is backed up
+  with its hash checked):
+  - **Checked:** both hooks install (`hooked UBioConversation::SetPositionRotator`, `hooked ABioWorldInfo::InterruptConversation`),
+    61 of 61 addresses at their RVAs, none of the new reflection rows mismatch. The Garrus argument plays as barks and its wheel
+    conversation runs to its end with the hooks in.
+  - **Not checked yet: the placement hook withholding anything.** The Garrus conversation makes no per-line placement (0 withheld,
+    0 undone), so it can't show it. The scene that can, the medical bay's wake-up (25 jumps undone in research/59), would not
+    start: through `open` its level never streams in (the known gap), and through the save path too (below).
+  - **The rewind and QuickLoad path, evaluated on that scene** (research/59 "Replaying a beat"; from John02_21):
+    1. `QuickLoad` answers "The Save currently selected cannot be accessed" when the career has no quicksave the game itself
+       knows (John02 had none): the launcher's freshly written quicksave did not load, in a session with levels opened from the
+       console and after a clean restart alike. After the console's own `QuickSave` wrote the file, the same launcher command
+       with `-ReplaceQuickSave` loaded at once, Shepard at the written place on the Normandy. The launcher should make that
+       `QuickSave` itself (told to the save-writer session).
+    2. No career has a save from before the wake-up, so there is no before/after pair to diff. The rewind was written by hand
+       from the game's data instead: the conversation's transitions (`--state-events`) set booleans 4076, 5713, 6014 and 6177.
+    3. With that save loaded, the world's `stream_wakeup` state reads enabled, the medical bay's own levels are loaded and
+       visible, and the scene's level, `BIOA_NOR10_07wake_DSG`, is not among the 55 streaming levels and never loads. So what
+       blocks this scene is level streaming, not the plot. A save keeps streaming states per map and the save tool can't set
+       one; that is the next experiment. Until then the placement hook needs another scene with facing tracks (a staged
+       Noveria conversation the launcher reaches, or any scene the sweep finds with `kept` above zero).
