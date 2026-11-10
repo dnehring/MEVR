@@ -37,10 +37,10 @@ folder, which the release session holds.
 
 | # | Item | State | Result |
 |---|---|---|---|
-| 1 | Story safety of flowed (ambient) scenes | read; built; game check pending | A line's plot effects are on the path both kinds of conversation share. An ambient one can be cut short, and then loses the effects of the lines it never reached. 6 conversations had a chain our flags newly exposed to that: they stay conversations (64 flow, was 68). The game's barks can no longer start over a flowed scene. |
+| 1 | Story safety of flowed (ambient) scenes | read; built; **the protection failed its game check: a decision is open** (log, 18:39) | A line's plot effects are on the path both kinds of conversation share. An ambient one can be cut short, and then loses the effects of the lines it never reached. 6 conversations had a chain our flags newly exposed to that: they stay conversations (64 flow, was 68). The game's barks can no longer start over a flowed scene. |
 | 3 | Cutscene or world, decided at run time | data read; built log-only; game check pending | The packages can't say "Shepard isn't in this scene". Three run-time rules (pawn hidden; far from the owner and out of its sight; most shots framed from far away) name such scenes in the log and the survey's summary; they move a scene to the screen only with `worldAutoScreen = on`. |
 | 4 | Keeping people in place at the source | read; built; **checked in the game** | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. In the medical bay's wake-up scene: 28 placements withheld, 0 left for the undo after the fact (research/59 had 25 undone there). |
-| 5 | Walking and the level's triggers | read; built; game check pending | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
+| 5 | Walking and the level's triggers | read; built; **checked in the game** (9 triggers found by the medical bay, the walk stopped at the first one's edge) | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
 | 2 | The sweep: every conversation in its plot state | not started | 28 of 491 played (research/59) |
 
 ## Findings
@@ -247,3 +247,26 @@ In this order, on the fake headset, when the game folder is free (saves backed u
     name its package, not from the name; then this scene and any other of the docked Normandy launch like the rest. An
     end-game save is a good basis for scenes in the six maps it has visited with a full squad, but it has played every beat, so
     early scenes need the rewind from the game's data either way; for this scene no save was needed at all.
+- 2026-11-09, 18:30-18:45, the rest of the in-game checks (the owner: one try and one retry each, then stop and coordinate):
+  - **Item 5, checked.** In the wake-up scene the walk gathered `9 triggers within the leash of the owner` (two
+    BioTriggerVolumes, a TriggerVolume, a BioTrigger, five streaming volumes) and 0.1 s into the first walk `the walk stops at
+    BioTriggerVolume_1: the step would enter it`. Over six walk commands in four directions: `the player walked 2.50 m in 196
+    steps; ... a trigger's edge 953 (BioTriggerVolume_1), 2479 refused (no floor, a ledge, a wall, SetLocation)`; the scene ran on
+    and its placements stayed withheld. The medical bay is cramped and that one trigger sits right beside Shepard's mark, so the
+    guard leaves little room there: it may want to let through triggers that have nothing left to fire (not looked at).
+  - **Item 1, the bark refusal: not shown, and the opposite seen.** With the Garrus argument playing as barks, a level banter's
+    start (`BIOA_STA70_01_PLC ... TowerSpecificBanters.BioSeqAct_StartConversation_0`) fired half a second later. No refusal
+    was logged; the argument ended at once (0.5 s after it began, against 13 s uncut) and the level's script, told the scene
+    was over, started Garrus's wheel conversation. So a newcomer the rule lets through cut the scene short before it was known
+    whether the newcomer would even start (it did not start). Which side of the rule it fell on is not established (the scan
+    has no record of that action's conversation; the rule lets through anything that is not a bark by the game's own data). The
+    first try missed the window (the launcher waits 12 s after firing).
+    **Open decision:** what a newcomer does to a flowed scene. Refusing every newcomer is what the game does during the
+    conversation the scene was authored as, but with the player free to walk into another scene's trigger it could lose that
+    scene's start for good; letting newcomers through loses the flowed scene's remaining lines, as seen; a third way is to hold
+    the newcomer and start it when the flowed scene ends (refuse now, fire the same start action again at the end).
+  - **Item 3:** no presence rule named any of the eight conversations played this session (the wake-up scene five times,
+    two of them in full; the Garrus wheel conversation three times), so no false alarm on ordinary staged scenes; none of them is a scene the rules should
+    name, so the rules themselves are still unseen.
+  - The game folder is back to the 0.2.0 candidate (102 files in the ASI folder, the Win64 folder, BIOEngine.ini and the 14
+    saves all match their pre-run hashes; the candidate's SHA-256 as the release session gave it).
