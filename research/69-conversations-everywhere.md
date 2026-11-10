@@ -729,6 +729,50 @@ Shepard's mark while a walk-in is on.
   conversation shown in the world is his own. (Asked twice in Benezia's scene; it was not the cause there.)
 - `worldOpening = auto` is now the default of the first-person mode.
 
+### Set pieces in the world (2026-11-10 03:40-04:25)
+
+The 21 conversations the scan sends to the 3D screen (authored cameras on a quarter of the lines or more, or Shepard
+walked by the game), played with `worldSetPieces = world`, each through the first action behind its own event where it
+has one (`-Fire event`), the bare start otherwise. 15 were in levels that open; with the ones that started by
+themselves:
+
+| Scene | In the world | |
+|---|---|---|
+| the council hearing (`sta90_council_saren`) | 26 lines, a walk-in 21 m from the podium, nothing undone | a place |
+| Anderson and Nihlus in the comm room (`nor10_captain`, `nor10_comm_room`) | 33 and 9 lines, the opening a stay, no far shot of 41; 5 of 12 from 11 m | a place |
+| the approach to Ilos (`nor20_ilos_approach`) | 20 lines, a cut (it follows a cutscene), no far shot | a place |
+| the archive door (`los10_trig_door00`) | 4 lines, a walk-in 2.6 m | a place |
+| Wrex at Fist's (`sta60_wrex_at_fists`) | 6 lines, a walk-in 2.4 m | a place |
+| Kirrahe's camp (`jug20_sal_captainkirrahe`) | 43 lines through its event, a walk-in 17 m, an authored walk left to its track; started by itself: 22 of 23 shots from afar, Shepard's own track withheld 12 times, his head 2.4 m from the eyes | the game walks Shepard: the screen |
+| Liara and Kaidan getting up (`nor20_start_liara`, `nor20_start_kaidan`) | no line of their own; Shepard's track withheld 167 times, his head 2 m from the eyes | the screen |
+| the strip club seat | no line, 0.94 m | the screen (not seen whole) |
+| Sovereign, the Ilos open, the Thorian, leaving the Citadel, the empty locker, the scenic view | did not start or were not reached | the screen until seen |
+
+**The rule that came of it:** authored cameras alone do not make a set piece; the head is the camera. The scan's
+verdict takes the six that had a place out of "screen" (`SEEN_IN_WORLD` in `tools/conversation-scan.py`, a list that
+grows only by a run), `cw::IsSetPiece` is the 15 that remain (the game walks Shepard, or not yet seen in the world), and
+the flow table is unchanged (their chains stay conversations until seen as barks). Re-run with the default settings:
+see the log.
+
+### The headset sample (phase 6): what to look at, one of each kind
+
+With `[Cinematics] conversations = world` (the sub-defaults are the ones this note arrived at: `worldOpening = auto`,
+placements withheld at their source, authored walks left to their tracks, flowed chains held and protected); the two
+opt-ins for the council are `worldMoments = walk` and nothing else. `notes/headset-checklist.md` has what to watch for.
+
+| Kind | Scene | Where | What the run showed |
+|---|---|---|---|
+| a plain stage, the mark a step away | Opold | Noveria, Port Hanshan | stay: no dip, the view where it was |
+| a mark across the room | Anoleis | Noveria, his office | walk in 2.8 m, no dip |
+| a long conversation | Vigil | Ilos | 125 lines, 28 wheels |
+| an authored walk of an NPC | Wrex on the beach | Virmire | his walk left to its track (was undone 240 times) |
+| a flowed chain and its follow-up, with others wanting to start | Garrus and the Executor, then Chorban | C-Sec | barks refused, Chorban held and started after |
+| a scene after a cutscene | the wake-up | the Normandy at the Citadel | 30 placements withheld; the body snap of 2.2 m is still there |
+| a four-person stage | a debrief | the Normandy's comm room | Shepard's body strays up to 1.4 m from a player who stands still |
+| a walk-in from a moment | Anderson, then the council hearing | the Citadel Tower | `worldMoments = walk`: no screen, no cut, the hearing from 21 m as you climb |
+| a framed scene now in the world | Anderson and Nihlus | the Normandy's comm room (Eden Prime's level) | a stay, 33 lines |
+| a scene still on the screen | Kirrahe's camp | Virmire | the game walks Shepard |
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):

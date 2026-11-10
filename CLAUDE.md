@@ -503,9 +503,15 @@ switching frameworks.
   each other shape and of each level's place risks (133 of 290); `canary` writes the canary plan from
   `tools/conversation-canary.json` (run it before a pass; its broken run must fail); `moments` lists the 21 level-script
   matinees that walk Shepard as a plan. 32 conversations are voice-over only (`BioSeqAct_FaceOnlyVO`) and never enter the
-  conversation mode. `worldOpening = auto` (`accept` is still the default; seen in the game on three Noveria conversations:
-  no dip, the view stays): no dip at a staged opening when Shepard's mark is where the player stands or within a walk in
-  the same space (`cw::DecideOpening`). **Moments** (research/69 "A moment in the world"; `worldMoments = log | walk | carry |
+  conversation mode. **`worldOpening = auto` is the default of the first-person mode since 2026-11-10** (the sampled pass: 120
+  scenes, 30 stay, 29 walk in, 11 cut, 8 dips in all; `accept` is the old dip at every staged opening): no dip when
+  Shepard's mark is where the player stands or within a walk in the same space (`cw::DecideOpening`); Shepard is put back at
+  floor height where the player stood and his mesh settles 1.5 s before his head bone is read again; after such an opening
+  his head bone no longer moves the view. An actor a matinee's move track moves is left to it (an authored walk; the
+  summary's `trackWalks`), and a track's move of the player's own pawn is withheld in a first-person conversation
+  (`trackHeld`). **The set-piece list is 15** (`cw::IsSetPiece`): six framed conversations seen in first person with a place
+  for the player are out of it (the scan's `SEEN_IN_WORLD`: the council hearing, the comm room with Anderson and Nihlus, the
+  approach to Ilos, the archive door, Wrex at Fist's). **Moments** (research/69 "A moment in the world"; `worldMoments = log | walk | carry |
   off`, default log; `game/AuthoredMoment`, the view in `game/ConversationWorld`'s `TickMoment`; `mevr moment`): a
   level-script matinee that walks Shepard (the walk to the council) is held in first person in the cinematic game mode (host
   seams: host and mod deploy together), its move of him withheld through `engine/ConversationHooks`' pre-hook on
