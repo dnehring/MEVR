@@ -233,6 +233,14 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **First person from the menu** (2026-11-10: Comfort > Conversations > First person (preview); the owner's call whether
   the button stays): choose it in a level, talk to someone, switch back to 3D screen: each change applies to the next
   conversation, nothing stays held. Then the sample in research/69 "The headset sample", one scene of each kind.
+- [ ] **The validation saves** (2026-11-10: John02 slots 80 to 89, table in scratch/validation-saves.md; written, not yet loaded
+  once): does each load, do you stand a few metres before the scene with nothing started, and does the scene start when you
+  use the person or walk in? Note the slots that do not start (their plot may want more than the generator set).
+- [ ] **The council from slot 80** (research/69 "The view walks"): use Anderson. He turns and walks up the first flight; a short
+  dip as the script switches him off; the hearing begins with no dip while you stand at the stairs; walk up, or leave the
+  stick and be walked the 21 m to the podium, where your body is under you again. Look for: your own body visible anywhere
+  on the way, the flash of the cinema screen as his walk begins, how the dip reads, and whether arriving next to Udina with
+  Anderson already there is acceptable until he walks the rest himself.
 - [ ] **A walk-in you don't walk** (built 2026-11-10, research/69 "The guided walk-in"; on the fake headset Virmire's first
   conversation walked the player 5.3 m toward a 7.1 m mark; `[Cinematics] worldWalkInS = 5`, -1 never): start a conversation
   from a few metres away and leave the stick alone: after five seconds you should be walked to Shepard's place at walking

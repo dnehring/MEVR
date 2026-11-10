@@ -876,6 +876,54 @@ opt-ins for the council are `worldMoments = walk` and nothing else. `notes/heads
   the slot's return is the restore; the launcher's is not to be run after it.
 - The canary set on the final build: 3 of 3 as expected.
 
+### The view walks; a moment really shown; saves for the headset (2026-11-10 08:55-10:10, paused for the owner's test)
+
+- **A walk-in by the view** (`cw::DecideWalkIn`, `[Cinematics] worldWalkInWay = auto | body | view`). The pawn is not moved at
+  all: Shepard stays where the stage has him, hidden (the player would see his own headless body at the mark, and arm IK
+  would draw its arms from there), and only the held view walks: by the stick or the guide, over the floor, around
+  people, with no trigger guard, because nothing of the level's is touched. Within a metre of him the rest is walked for
+  the player and the view takes its place over the pawn: the two are one again, his body under the player. If the
+  conversation ends first, Shepard is brought to where the player stands (an ordinary move, the conversation over)
+  instead of the view jumping to him. `auto`: the view when a moment's walk was still on its way as the conversation
+  began (the council), or when the mark stands inside a trigger the player is outside of; the body (put back under the
+  player, the path validated in the sampled pass) otherwise.
+  **The council's hearing with it: 4 of 4 runs, two of them in the zone that ended it before.** No cut, 21.3 to 21.5 m
+  guided up the stairs and along the walkway, arrived beside Udina, 25 or 26 lines. This replaces the morning's rule
+  (a cut) for that case; with `worldWalkInWay = body` the cut is back.
+- **A moment's first-person view had never been rendered.** The first snapshots ever taken of a moment showed the game's
+  own camera: Shepard from behind, headless, for the twelve seconds between Anderson's walk and the hearing. The mod took
+  the game's camera pointers in the conversation mode only, so after its first half second a moment published no view to
+  hold; the logs said "held" all night. **A claim about what the eyes show needs a snapshot, not a log line.** Fixed
+  (the pointers are taken in the cinematic mode too) and seen: Anderson turns, walks up, the view stays at the foot of
+  the stairs in first person.
+- **Anderson and the script's black screen.** His authored walk is the first flight only (7.4 s). Then the script goes
+  black, teleports Shepard up the stairs and switches Anderson off; another Anderson stands at the podium. With the
+  black screen taken down the player saw him vanish from the stairs. Now, where the script turns black **on** during a
+  held moment (`m_eBlackScreenAction` 0 or 2), the mod's own dip from black takes its place, the view where it is
+  (the owner: a forced placement needs a fade); where it turns black off (the hearing's start), nothing. The published
+  dip count no longer falls back to zero between a moment and the conversation after it (the host dips on any change:
+  that was a second dip at the hearing's start).
+- **The owner's direction for what comes next** (2026-11-10): a forced placement always under a fade; NPCs walking to
+  where the scene wants them with the game's own movement instead of appearing there (a narrow rule, not an animation
+  system; the walk-to-marks prototype is the start); as a fallback only, the scene pausing until the player has arrived
+  and a marker on the floor at the mark (the view-walk needs no pawn move, so the game's own pause would do; the squad
+  placement's ring is the marker). None of the three is built.
+- **Opening-only runs** (`conversation-sweep.ps1 -Pace opening`; the owner: "we just care about the transition"): a scene is
+  ended by the runner once its opening has settled (a stay or a cut 6 s in, a walk-in on arrival or when the guide gives
+  up, at most 45 s; a flowed chain 15 s), and the judge does not count the early end, the unanswered wheel or the short
+  line count. Its first run was stopped after nine scenes (a chain's wait was still 720 s: fixed) and is not judged.
+- **Validation saves** (`conversation-sweep.py saves scan.jsonl tools/conversation-headset-sample.json --base <career save>`):
+  for each scene of a list, the career's save rewritten with the scene's level, the player a few metres in front of the
+  person (or the event's originator) facing it, before anything engages, and every plot check on the scene's way set as
+  the way wants it (the scan now records each `BioSeqAct_PMCheckState` on the chain with its plot index and the output
+  taken, and the originator's facing). The council: 4 m in front of Anderson, plot 4398 ("council meeting happened?")
+  back to 0 in a career where it was 1. Numbered slots of the career (the Load screen reads the folder once, at the
+  game's start), a table of slot, scene and how it starts, `--remove` deletes them. Ten scenes written to John02's
+  slots 80 to 89 for the owner's test. **Not yet loaded once**: a plot conditional (Chorban's) cannot be set, and the
+  conversations' own entry conditions are the career's.
+- Seen and not fixed: a flash of the 3D cinema screen (0.15 s, two dips) as a moment begins, before its track first
+  moves Shepard.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -1050,3 +1098,14 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   (5) a walk-in whose track starts more than 3 s into the cinematic mode is not held (the rachni); (6) nine set pieces
   not seen in the world, 29 scenes whose bare start fires nothing; (7) Anderson's swap at the podium; `carry` is built
   and not run.
+- 2026-11-10, 08:55-10:10, **the view walks, and the pause** ("The view walks; a moment really shown; saves for the
+  headset"): the council's hearing without a cut by a walk-in of the view alone (4 of 4); a moment's view found never to
+  have been rendered and fixed, by the first snapshots of one; a dip in place of the script's black screen; opening-only
+  runs; validation saves for the headset (ten written, none loaded yet). **Paused at 10:10 at the owner's word for his
+  headset test**: the dev build and the saves are in the game folder, the game slot is still held, the fake headset is
+  off. The work is a checkpoint on the branch (501cf33), not on main.
+  **Owed when the work resumes:** all three builds and ctest on this state; the canary set and a sampled opening-only
+  run on it; one validation save loaded on the fake headset; land on main; return the game folder (unless the owner
+  keeps this build in). **Open after that:** NPCs walking to their marks; the pause and floor marker as a fallback; a
+  fade wherever a person in view is placed; the cinema screen's flash at a moment's start; Shepard's body straying
+  (eye-far); a save mode for the runner; the unseen set pieces.

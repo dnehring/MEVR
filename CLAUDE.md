@@ -501,7 +501,10 @@ switching frameworks.
   fire, drive; a watchdog restarts the game; never `tail` its log with a tool that locks it). **Sample, don't run everything**
   (the owner, 2026-11-09): `plan --sample --per-place 1 --reach <reach-scenes.jsonl>` takes every authored scene, a few of
   each other shape and of each level's place risks (133 of 290); `canary` writes the canary plan from
-  `tools/conversation-canary.json` (run it before a pass; its broken run must fail); a rewritten career save loads into a level the career never visited (Therum's battlemaster scene from John02 through
+  `tools/conversation-canary.json` (run it before a pass; its broken run must fail); `conversation-sweep.ps1 -Pace opening` ends a scene once its opening has settled (the owner: only the transition matters);
+  `conversation-sweep.py saves` writes validation saves for the headset, the player in front of each scene of
+  `tools/conversation-headset-sample.json` before it starts with the plot its script checks set (the scan's chain records each
+  plot check and the output taken; `--remove` deletes them); a rewritten career save loads into a level the career never visited (Therum's battlemaster scene from John02 through
   `conversation-launch.ps1 -Save`; the runner has no save mode yet; never run the launcher's `-RestoreSaves` after the game
   slot's return: its backup is from mid-session and put three files back over the restored ones, 2026-11-10); a council run
   needs a fresh game process each time (a repeat in one process ends the hearing for other reasons), and a dozen restarts
@@ -519,10 +522,15 @@ switching frameworks.
   approach to Ilos, the archive door, Wrex at Fist's). **A walk-in nobody walks is guided** (`worldWalkInS` 5, 0 at once, -1 never; `cw::StepGuide`; the summary's `guidedM`):
   after five seconds without the stick the player is walked to Shepard's mark by the walk's own step (floor, walls, people,
   triggers), the stick takes it back, 2 s blocked ends it; a mark inside a trigger is not reached (the trigger guard:
-  the council's podium is 13 m past one). **A conversation that begins while a moment's walk is still on its way keeps the
-  stage's placement** (a cut): putting Shepard back from the podium after he had crossed into the chamber's streaming
-  volume ended the council's hearing in its first tick in 9 of 16 runs (research/69 "The hearing that ended at once"; the
-  hearing opens with a dip again; the fix that would give it back, the view walking while the pawn stays, is not built).
+  the council's podium is 13 m past one). **A walk-in can be walked by the view alone** (`worldWalkInWay = auto | body | view`, `cw::DecideWalkIn`, research/69 "The
+  view walks", 2026-11-10, on the branch until the owner's headset test): Shepard stays where the stage has him, hidden,
+  and only the held view walks to him (no pawn move, so no touch and no trigger guard); the two are one again on arrival;
+  auto takes it when a moment's walk was still on its way as the conversation began (putting Shepard back from the podium
+  then ended the council's hearing in its first tick in 9 of 16 runs: "The hearing that ended at once") or when the mark
+  stands inside a trigger. The council's hearing: no cut, 21 m to the podium, 4 of 4. A moment's view is held in the
+  cinematic mode too (it was never rendered before: found by the first snapshots of one; **check what the eyes show with a
+  snapshot, not a log line**), and where the script turns its black screen on during a held moment the mod dips from black
+  in its place.
   "In sight" for the opening is three lines (`InSight`).
   **A small placement the game repeats is its own** (`cw::Insists`,
   2026-11-10): keep-in-place undoes a jump once; one of at most 1 m that comes back at the same place the next tick is
