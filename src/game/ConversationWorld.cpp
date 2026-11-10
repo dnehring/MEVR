@@ -473,6 +473,7 @@ struct Convo {
     int openingMoves = 0;        // placements accepted during the opening
     cw::Opening opening = cw::Opening::Cut;  // how the opening ended (the summary's "opening")
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
+    std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
     int arranged = 0;            // people moved to a seat in view
     std::uint32_t cut = 0;       // the host dips from black when it changes
     // The player's place for this conversation: the view on foot if it was Shepard's just now, else his eyes from his head bone
@@ -1211,6 +1212,9 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
         gC.anchorHead = head->at + (stood - mark);  // the bones follow the actor at the next pose
     }
     gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, gC.anchorHead ? cw::Vec3{gC.anchorHead->x, gC.anchorHead->y, gC.anchorHead->z} : cw::Vec3{}, 0};
+    if (opening == cw::Opening::WalkIn) {
+        gC.wantedMark = mark;
+    }
     log::Info("convo: the opening: no cut; the player stays at {} facing {:.0f} deg{}", F(gC.hold), YawDeg(gC.holdRotation),
         opening == cw::Opening::WalkIn ? std::format("; he is wanted at Shepard's mark {} and walks there himself", F(mark)) : std::string());
     return true;
@@ -1363,7 +1367,12 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     }
     ue3::Object* const owner = gOwner.Read<ue3::Object*>(gC.object).value_or(nullptr);
     auto const ownerAt = owner != nullptr && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
-    ik::Vec3 const anchor = ownerAt ? V(*ownerAt) : gC.hold;
+    // The leash is around the owner; after a walk-in opening, around Shepard's mark (where the stage wanted him) until he is there.
+    if (gC.wantedMark && std::hypot(at->x - gC.wantedMark->x, at->y - gC.wantedMark->y) <= gSettings.moveLeashM * kUnitsPerMeter * 0.5) {
+        log::Info("convo: at {:.1f} s the player reached Shepard's mark ({:.2f} m walked so far)", Seconds(), gC.movedUnits / kUnitsPerMeter);
+        gC.wantedMark.reset();
+    }
+    ik::Vec3 const anchor = gC.wantedMark ? *gC.wantedMark : ownerAt ? V(*ownerAt) : gC.hold;
     // Where the player faces: the head in the world through the held frame; without a VR view (a flat game), the held view's yaw.
     double headYaw = YawDeg(gC.holdRotation);
     if (view.valid) {
