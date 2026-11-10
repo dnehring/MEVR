@@ -218,6 +218,35 @@ void TestSceneRules() {
         CHECK(!cw::Insists(calmed, goal, 33.0));
         cw::Calm(calmed);
         CHECK(!cw::Insists(calmed, goal, 33.0));
+        // A walk-in nobody walks: guided after the wait, taken back by the stick, given up when blocked.
+        {
+            using G = cw::Guide;
+            cw::GuideState g;
+            CHECK(cw::StepGuide(g, false, false, false, 0.1, 5.0) == G::Wait);  // no mark wanted
+            for (int i = 0; i < 39; ++i) {
+                CHECK(cw::StepGuide(g, true, false, false, 0.125, 5.0) == G::Wait);  // 4.875 s of waiting (eighths: exact sums)
+            }
+            CHECK(cw::StepGuide(g, true, false, false, 0.125, 5.0) == G::Walk);
+            CHECK(cw::StepGuide(g, true, false, true, 0.1, 5.0) == G::Walk);
+            CHECK(cw::StepGuide(g, true, true, true, 0.1, 5.0) == G::Wait);    // the stick: his own walk
+            CHECK(cw::StepGuide(g, true, false, true, 0.1, 5.0) == G::Wait);   // and the wait starts again
+            cw::GuideState blocked;
+            CHECK(cw::StepGuide(blocked, true, false, false, 0.1, 0.0) == G::Walk);  // no wait: at once
+            for (int i = 0; i < 16; ++i) {
+                CHECK(cw::StepGuide(blocked, true, false, false, 0.125, 0.0) == G::Walk);  // 2 s against a wall
+            }
+            CHECK(cw::StepGuide(blocked, true, false, false, 0.125, 0.0) == G::GaveUp);
+            CHECK(cw::StepGuide(blocked, true, false, true, 0.1, 0.0) == G::GaveUp);  // for this conversation
+            CHECK(cw::StepGuide(blocked, true, true, false, 0.1, 0.0) == G::Wait);    // until he walks himself
+            cw::GuideState never;
+            for (int i = 0; i < 200; ++i) {
+                CHECK(cw::StepGuide(never, true, false, false, 0.1, -1.0) == G::Wait);
+            }
+            cw::GuideState there;  // arrived: the state starts over
+            CHECK(cw::StepGuide(there, true, false, false, 0.1, 0.0) == G::Walk);
+            CHECK(cw::StepGuide(there, false, false, true, 0.1, 0.0) == G::Wait);
+            CHECK(!there.guiding && there.idleS == 0.0);
+        }
         // A stage mark metres away is never accepted this way, however often the game asks.
         cw::Insistence mark;
         for (int i = 0; i < 10; ++i) {

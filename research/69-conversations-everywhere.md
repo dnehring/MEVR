@@ -769,7 +769,7 @@ opt-ins for the council are `worldMoments = walk` and nothing else. `notes/heads
 | a flowed chain and its follow-up, with others wanting to start | Garrus and the Executor, then Chorban | C-Sec | barks refused, Chorban held and started after |
 | a scene after a cutscene | the wake-up | the Normandy at the Citadel | 30 placements withheld; the body snap of 2.2 m is still there |
 | a four-person stage | a debrief | the Normandy's comm room | Shepard's body strays up to 1.4 m from a player who stands still |
-| a walk-in from a moment | Anderson, then the council hearing | the Citadel Tower | `worldMoments = walk`: no screen, no cut, the hearing from 21 m as you climb |
+| a walk-in from a moment | Anderson, then the council hearing | the Citadel Tower | Anderson's walk in first person, no screen, no cut; the hearing then opens with a dip to the podium (since 2026-11-10: "The hearing that ended at once") |
 | a framed scene now in the world | Anderson and Nihlus | the Normandy's comm room (Eden Prime's level) | a stay, 33 lines |
 | a scene still on the screen | Kirrahe's camp | Virmire | the game walks Shepard |
 
@@ -820,6 +820,60 @@ opt-ins for the council are `worldMoments = walk` and nothing else. `notes/heads
   screen). The settings code never lost the choice; the button was taken out on 2026-11-07 (the owner: not ready for the
   release). Back as a labelled preview so the mode can be tried without editing a file; the default stays the 3D screen.
   **The owner's call**: one button in `assets/menu/main.rml`.
+- The canary set on the final build: 3 of 3 as expected.
+
+### The guided walk-in, the hearing that ended at once, Therum from a save (2026-11-10 06:40-08:46)
+
+- **A walk-in nobody walks is guided** (`[Cinematics] worldWalkInS` 5; 0 at once, -1 never; `cw::StepGuide`,
+  unit-tested): after an opening without a cut that wants the player at Shepard's mark, a player who leaves the stick
+  alone for five seconds is walked there at the walk's own pace (1.4 m/s) by the same step as the stick's: floor,
+  walls, people, the leash, the triggers. The stick takes the walk back at once and the wait starts again; blocked for
+  2 s in a row, the guide gives up for that conversation ("he hears the scene from here"). The summary's `guidedM`.
+  In the game, nobody at the stick: Virmire's first conversation (the mark 7.1 m away) guided 5.3 m in the 3.8 s it
+  lasted; Wrex on the beach from 29 m: 10.7 m, then a ledge, given up 17.9 m short; the council's hearing (while it
+  still opened as a walk-in): 8.6 m up the stairs to the edge of `BioTriggerVolume_0`, 13 m from the podium. That last
+  one is the walk's trigger guard, and it stops the player's own stick there too: **a walk-in cannot reach a mark that
+  stands inside a trigger**. Letting such a touch through was written and taken out again the same morning (below).
+- **"In sight" is three lines now** (`InSight`: to the mark, to a point 80 units above it, and that from 60 units above
+  the eyes): one line grazed the stairs' edge in the council chamber and said "out of sight" in one run of four.
+- **The hearing that ended at once.** The council's hearing ended in its first tick ("the game left its conversation
+  mode", 35 to 44 ms after it began; the rest played as a cutscene on the 3D screen) in 9 of the 16 runs that opened it
+  as a walk-in, and in none of the 4 that kept the stage's placement. What was found, in order:
+  - Not carried-over plot (it happens in a fresh game; but a second council run in one game process is no clean test:
+    every run needs a fresh process), not the day's code (the guide, `Insists`, `IsAlive`: taken out one by one in
+    thought and by the pattern below).
+  - The hearing begins when Shepard, carried or walking toward where the script's teleport wanted him, crosses into
+    the chamber's streaming volume (`BioTriggerStream_106`) 2.3 m into the walk. The runs split by how far past that
+    edge the on-foot record was when the conversation began: up to 13 units, the hearing lived; 18 units or more
+    (three ticks or more between the touch and the conversation), it died.
+  - Where he was put back made no difference: in place; 0.65 m back, out of the streaming volume (found through the
+    engine's own `Actor.Touching` list); 1.5 m back, out of `BioTriggerVolume_4`. Dead in the late runs, alive in the
+    early ones. So it is the put-back itself (a far move of the pawn from the podium, with every touch it ends and
+    begins) arriving while the level's streaming has settled, not a particular edge.
+  - **The rule that holds:** a conversation that begins while a moment's walk is still on its way to where the script
+    wanted Shepard keeps the stage's placement (a cut, with its dip). Two of two after it, one of them in the failing
+    zone; with the two earlier cuts, four of four.
+  - **What it costs:** the hearing opens with a dip again, always (it begins 2.3 m into the walk, never after he has
+    arrived). Anderson's walk before it is still first person and uncut.
+  - **What would give it back:** the view walks and the pawn stays where the scripts have it (no `SetLocation`, so no
+    touch is ever ended or begun by the mod; Shepard's body hidden while the two are apart). That removes the put-back,
+    the trigger guard and this whole class of fault, at the price of no body under the player during a walk-in. Not
+    built: the next step for walk-ins and moments.
+  - Taken out again: stepping back behind a trigger's edge at the opening (two versions), and letting a walk-in pass a
+    trigger that holds the mark (never seen in the game; what a touch sets off is the level's to say).
+- **Therum from a career save.** `tools/conversation-launch.ps1 lav70_trig03_krogan_boss -Save John02_21 -World on`:
+  John02 (1 h 34 min in, before Therum) had never been there; its quicksave rewritten to `BIOA_LAV00` at the scene's
+  owner loaded on foot at the written place, and the battlemaster's conversation played in first person: 7 lines, 2
+  wheels, 4 placements withheld, nothing undone or drawn, the head bone 0.31 m from the eyes; the opening a cut (the
+  stage's mark is 11 m off and out of sight of where the launcher stood him). **A save loads into a level its career
+  has not visited**, so the save route reaches Therum and, with a career at the right point, the plot-bound scenes.
+  The sweep's runner has no save mode yet: the launcher does one scene at a time.
+- Two lessons about the rig. After about a dozen game restarts in a row the EA app stopped starting the game ("Add
+  game" in its log, then nothing): quitting `EADesktop.exe` and asking Steam again started it. And the launcher's
+  `-RestoreSaves` after the game slot's return put three files (the profile, the launcher's profile, John02's autosave)
+  back from its own backup, taken mid-session, over the ones the slot had just restored and hash-checked: they were
+  restored a second time from the slot's backup (14 of 14 files identical to before the session). With the slot held,
+  the slot's return is the restore; the launcher's is not to be run after it.
 - The canary set on the final build: 3 of 3 as expected.
 
 ## To check in the game
@@ -983,3 +1037,16 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   a career's plot (a save route for the runner: `conversation-launch.ps1 -Save` has the pieces); (6) nine set pieces
   not seen in the world, 29 scenes whose bare start fires nothing; (7) Anderson's swap at the podium and the director
   track's fade; `carry` is built and not run.
+- 2026-11-10, 06:40-08:46, **the guided walk-in and the council's hearing** ("The guided walk-in, the hearing that
+  ended at once, Therum from a save"): a walk-in nobody walks is guided to Shepard's mark; the hearing that ended in its
+  first tick in 9 of 16 walk-in openings traced to the mod's put-back of Shepard after a streaming volume's touch, and
+  ruled out by keeping the stage's placement when a conversation begins mid-walk (the hearing has its dip again);
+  Therum's battlemaster scene played from a rewritten career save. Canary 3 of 3; all three builds and ctest on the
+  state that lands.
+  **Open, in the order they matter for play:** (1) the headset: "The headset sample", from the menu's First person
+  (preview); (2) walk-ins and moments where the view walks and the pawn stays put (no touch of the mod's making: the
+  hearing without its dip, marks inside triggers reachable); (3) Shepard's body strays 0.8 to 1.4 m in some scenes
+  (`eye-far`); (4) a save mode for the sweep's runner (Therum and the plot-bound scenes: the launcher's `-Save` works);
+  (5) a walk-in whose track starts more than 3 s into the cinematic mode is not held (the rachni); (6) nine set pieces
+  not seen in the world, 29 scenes whose bare start fires nothing; (7) Anderson's swap at the podium; `carry` is built
+  and not run.

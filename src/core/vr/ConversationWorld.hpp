@@ -183,6 +183,22 @@ struct PlayerStep {
 PlayerStep StepPlayer(Vec3 const& place, Vec3 const& anchor, double leashUnits, double stickX, double stickY, double headYawDeg,
     double speedUnitsPerS, double dtS);
 
+// A walk-in nobody walks (research/69 "The guided walk-in", 2026-11-10): the opening left the player where he stood and
+// wants him at Shepard's mark; a player who does not use the stick for `patienceS` is walked there at the walk's own pace,
+// by the same step as the stick's (floor, walls, people, triggers). The stick takes the walk back at once and starts the
+// wait again. Blocked for `blockedMaxS` in a row (a wall, a ledge, a trigger's edge), the guide gives up for this
+// conversation: he hears it from where he is. patienceS < 0: never guided.
+struct GuideState {
+    double idleS = 0.0;
+    double blockedS = 0.0;
+    bool guiding = false;
+    bool gaveUp = false;
+};
+enum class Guide : std::uint8_t { Wait, Walk, GaveUp };
+// `wanted`: a mark is wanted and he is not there. `stickUsed`: the player's own stick is out of its dead zone.
+// `progressed`: the last guided step moved him (ignored unless the last answer was Walk).
+Guide StepGuide(GuideState& state, bool wanted, bool stickUsed, bool progressed, double dtS, double patienceS, double blockedMaxS = 2.0);
+
 // People in the way (2026-11-09, after the first walk in the game went straight through Garrus: the pawn is moved with
 // SetLocation, which collides with nothing). A step from `place` to `next` that would end within `clearUnits` of one of
 // `people` (horizontally) is pushed out to that distance along the line from the person: the leash's slide turned inside out,

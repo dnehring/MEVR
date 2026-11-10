@@ -148,6 +148,8 @@ struct Settings {
     float momentCarryMS = 3.0f;        // the speed he is carried at to where the script wants him (worldMomentCarryMS)
     float moveLeashM = 3.0f;           // how far from the conversation's owner the walk may go (worldMoveLeashM)
     float moveSpeedMS = 1.4f;          // the walk's speed at full deflection (worldMoveSpeedMS)
+    float walkInS = 5.0f;              // a walk-in nobody walks: guided to Shepard's mark after this long without the stick
+                                       // (worldWalkInS; 0 at once, -1 never; cw::StepGuide)
     float moveClearM = 0.7f;           // how close the walk may come to a person of the conversation or the squad (worldMoveClearM)
     float subtitleCrop[4] = {};
     float wheelCrop[4] = {};
@@ -222,6 +224,7 @@ void RefreshSettings() {
     s.momentCarryMS = number("worldMomentCarryMS", 3.0f, 0.5f, 10.0f);
     s.moveLeashM = number("worldMoveLeashM", s.moveLeashM, 0.0f, 20.0f);
     s.moveSpeedMS = number("worldMoveSpeedMS", s.moveSpeedMS, 0.2f, 4.0f);
+    s.walkInS = number("worldWalkInS", s.walkInS, -1.0f, 120.0f);
     s.moveClearM = number("worldMoveClearM", s.moveClearM, 0.0f, 3.0f);
     s.staySource = number("worldStaySource", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.absentM = number("worldAbsentM", s.absentM, 0.0f, 200.0f);
@@ -359,6 +362,15 @@ bool LineOfSight(ue3::Object* from, ik::Vec3 start, ik::Vec3 end) {
     trace.Set("TraceStart", ue3::Vector{static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(start.z)});
     ue3::runtime::Call(from, gFastTrace.Get(), trace);
     return trace.ReturnBool().value_or(true);
+}
+
+// "The same space" for the opening and a moment's teleport: the place is in sight if one of three lines is clear (to it, to a
+// point 80 units above it, and that one from 60 units above the eyes). One line alone grazed the stairs' edge in the council
+// chamber and said "out of sight" in one run of four (2026-11-10: the hearing opened with a cut from the same place it had
+// opened as a walk-in three times); a wall between two rooms stops all three.
+bool InSight(ue3::Object* from, ik::Vec3 const& eyes, ik::Vec3 const& target) {
+    ik::Vec3 const above = target + ik::Vec3{0.0, 0.0, 80.0};
+    return LineOfSight(from, eyes, target) || LineOfSight(from, eyes, above) || LineOfSight(from, eyes + ik::Vec3{0.0, 0.0, 60.0}, above);
 }
 
 // ---- The on-foot view and the POV (Engine.Camera.UpdateCamera, after the game's) ----------------------------------------------
@@ -548,6 +560,10 @@ struct Convo {
     bool autoScreened = false;         // ... and it was moved to the 3D screen for it (worldAutoScreen = on)
     int moveRefused = 0;        // steps refused: no floor, a ledge, a wall, SetLocation
     bool moving = false;        // a velocity is set on the pawn
+    cw::GuideState guide;       // a walk-in nobody walks: the guided walk to Shepard's mark
+    bool guideProgressed = false;
+    bool guideLogged = false;
+    double guidedUnits = 0.0;   // walked by the guide, summed
     bool moveLogged = false;    // the first step logged
 };
 Convo gC;
@@ -646,13 +662,19 @@ bool Overlaps(TriggerNear const& t, ik::Vec3 at, ik::Vec3 extent) {
     return p.ReturnBool().value_or(false);
 }
 
+// The triggers and trigger volumes whose collision is within `reach` of `at` (a box, 400 units up and down).
+std::vector<TriggerNear> TriggersNear(ik::Vec3 at, double reach);
+
 void GatherTriggers(ik::Vec3 anchor) {
-    gTriggers.clear();
+    gTriggers = TriggersNear(anchor, gSettings.moveLeashM * kUnitsPerMeter + 300.0);
+}
+
+std::vector<TriggerNear> TriggersNear(ik::Vec3 anchor, double reach) {
+    std::vector<TriggerNear> found;
     if (gPointCheck.Get() == nullptr || gCollisionComponent.Get() == nullptr) {
-        return;
+        return found;
     }
     ue3::Reflection& r = ue3::runtime::Get();
-    double const reach = gSettings.moveLeashM * kUnitsPerMeter + 300.0;
     ik::Vec3 const box{reach, reach, 400.0};
     std::int32_t const n = r.ObjectCount();
     for (std::int32_t i = 0; i < n; ++i) {
@@ -667,12 +689,24 @@ void GatherTriggers(ik::Vec3 anchor) {
         }
         TriggerNear t{o, component, ShortName(o)};
         if (Overlaps(t, anchor, box)) {  // a component not in the world (its level hidden) answers no
-            gTriggers.push_back(std::move(t));
+            found.push_back(std::move(t));
         }
     }
+    return found;
+}
+
+// The pawn's collision cylinder as a point check's extent.
+ik::Vec3 PawnExtent(ue3::Object* pawn) {
+    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+    double const radius = cylinder != nullptr ? gCylinderRadius.Read<float>(cylinder).value_or(34.0f) : 34.0f;
+    double const half = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder).value_or(78.0f) : 78.0f;
+    return {radius, radius, half};
 }
 
 // True if the step from `from` to `to` begins or ends a trigger's touch; `which` and `enters` say which and how.
+// (A walk-in's way to Shepard's mark stops at such an edge too, even of a trigger the mark stands in: the council's podium
+// is 13 m past one. Letting those through was written and taken out again on 2026-11-10: a second touch of a volume in
+// the conversation's first ticks ended the council's hearing, and what a touch sets off is the level's to say.)
 bool StepChangesTouch(ue3::Object* pawn, ik::Vec3 anchor, ik::Vec3 from, ik::Vec3 to, std::string& which, bool& enters) {
     std::uint64_t const now = GetTickCount64();
     if (gTriggersFor != gC.number || now - gTriggersMs > 5000) {
@@ -688,10 +722,7 @@ bool StepChangesTouch(ue3::Object* pawn, ik::Vec3 anchor, ik::Vec3 from, ik::Vec
             log::Info("convo: the walk's triggers: {} within the leash of the owner{}{}", gTriggers.size(), names.empty() ? "" : ": ", names);
         }
     }
-    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
-    double const radius = cylinder != nullptr ? gCylinderRadius.Read<float>(cylinder).value_or(34.0f) : 34.0f;
-    double const half = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder).value_or(78.0f) : 78.0f;
-    ik::Vec3 const extent{radius, radius, half};
+    ik::Vec3 const extent = PawnExtent(pawn);
     for (TriggerNear const& t : gTriggers) {
         if (!ue3::runtime::IsAlive(t.actor)) {
             continue;
@@ -1211,6 +1242,13 @@ bool FaceYaw(ue3::Object* actor, double yawDeg) {
 // the player stood on foot. Near, or within a walk in the same space: Shepard is put back where he stood, the player's view
 // stays the one he had, nobody is arranged and nothing dips; his mark is where he is wanted and he walks there himself.
 // Returns false for another composition (the cut below).
+// When a moment's first-person view last ended, and whether the script still wanted Shepard somewhere he had not reached.
+struct MomentEnded {
+    std::uint64_t ms = 0;
+    bool pending = false;
+};
+MomentEnded gMomentEnded;
+
 bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     cw::OpeningFacts facts;
     auto const markAt = player::Location(pawn);
@@ -1223,7 +1261,7 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
         facts.markUnits = std::hypot(mark.x - stood.x, mark.y - stood.y);
         facts.riseUnits = mark.z - stood.z;
         auto const head = HeadOf(pawn);
-        facts.sightToMark = LineOfSight(pawn, eyes, head ? head->at : mark + ik::Vec3{0.0, 0.0, 60.0});
+        facts.sightToMark = InSight(pawn, eyes, head ? head->at : mark + ik::Vec3{0.0, 0.0, 60.0});
         facts.floorAtMark = FloorZ(pawn, mark).has_value();
         if (auto const hidden = gActorHidden.ReadBool(pawn)) {
             facts.shepardHidden = *hidden;
@@ -1241,7 +1279,18 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
             }
         }
     }
-    cw::Opening const opening = cw::DecideOpening(facts, gSettings.opening);
+    // A conversation that begins while a moment's walk is still on its way to where the script wanted Shepard keeps the
+    // stage's placement (a cut). The council's hearing begins the moment he crosses into the chamber's streaming volume,
+    // 2.3 m into the walk the script had done by a teleport; putting him back from the podium then ended the hearing in
+    // its first tick in 9 of 16 runs (whenever the conversation came three ticks or more after that touch: where he was
+    // put made no difference), and in none of the 4 that kept the stage's placement (2026-11-10, research/69 "The hearing
+    // that ended at once").
+    bool const midMoment = gMomentEnded.pending && GetTickCount64() - gMomentEnded.ms < 1000;
+    cw::Opening const opening = midMoment ? cw::Opening::Cut : cw::DecideOpening(facts, gSettings.opening);
+    if (midMoment) {
+        log::Info("convo: the opening: a moment's walk was still on its way to where the script wanted Shepard: the stage's placement "
+                  "stands (a cut), he is not put back");
+    }
     gC.opening = opening;
     gC.markM = facts.markUnits / kUnitsPerMeter;
     log::Info("convo: the opening ({}): Shepard's mark is {:.2f} m from where the player stood ({:+.2f} m up), {}, {}, people in view moved "
@@ -1260,10 +1309,11 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     // the recorded height: a record taken while he hung in the air or sank (a test's placement) put him half a metre into
     // the floor, and the engine lifting him out was a jump in a drawn frame. The view goes with that correction.
     ik::Vec3 back = stood;
-    if (auto const floorHere = FloorZ(pawn, stood), floorMark = FloorZ(pawn, mark); floorHere && floorMark) {
+    auto const floorMark = FloorZ(pawn, mark);
+    if (auto const floorHere = FloorZ(pawn, stood); floorHere && floorMark) {
         back.z = *floorHere + (mark.z - *floorMark);
     }
-    ik::Vec3 const lift{0.0, 0.0, back.z - stood.z};
+    ik::Vec3 const lift = back - stood;
     bool const put = PutAt(pawn, back);
     FaceYaw(pawn, YawDeg(gFoot.rotation));
     for (Stay& st : gStay) {
@@ -1416,26 +1466,24 @@ bool gMomentWalk = false;  // a moment's view is up (set by TickMoment): the wal
 
 void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::State const& view, double dt) {
     auto stop = [&] {
+        gC.guideProgressed = false;
         if (gC.moving) {
             WalkVelocity(pawn, {});
             gC.moving = false;
         }
     };
-    if (!gSettings.move || !gC.openingDone || gC.wheel || pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gSetLocation.Get() == nullptr) {
+    if (!gSettings.move || !gC.openingDone || pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gSetLocation.Get() == nullptr) {
         stop();
         return;
     }
-    // The stick: `mevr convo walk` while it lasts, else the left controller's.
+    // The stick: `mevr convo walk` while it lasts, else the left controller's; the wheel's while the wheel is up.
     float stickX = 0.0f, stickY = 0.0f;
-    if (gWalkOverride.untilMs > GetTickCount64()) {
+    if (gC.wheel) {
+        // (the stick steers the wheel)
+    } else if (gWalkOverride.untilMs > GetTickCount64()) {
         stickX = gWalkOverride.x;
         stickY = gWalkOverride.y;
-    } else {
-        vr::controllers::State const controllers = vr::controllers::Latest();
-        if (!controllers.active) {
-            stop();
-            return;
-        }
+    } else if (vr::controllers::State const controllers = vr::controllers::Latest(); controllers.active) {
         stickX = controllers.left.stickX;
         stickY = controllers.left.stickY;
     }
@@ -1443,6 +1491,27 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     if (!at) {
         stop();
         return;
+    }
+    // A walk-in nobody walks: after worldWalkInS without the stick the player is walked to Shepard's mark by this same step
+    // (cw::StepGuide), wheel up or down. Not in a moment: its own patience and carry are TickMoment's.
+    bool const stickUsed = std::hypot(stickX, stickY) > 0.3;
+    cw::Guide const guide = gMomentWalk ? cw::Guide::Wait
+        : cw::StepGuide(gC.guide, gC.wantedMark.has_value(), stickUsed, gC.guideProgressed, std::clamp(dt, 0.0, 0.1), gSettings.walkInS);
+    bool const guided = guide == cw::Guide::Walk && gC.wantedMark.has_value();
+    if (guide == cw::Guide::GaveUp && gC.guideLogged) {
+        gC.guideLogged = false;
+        log::Info("convo: at {:.1f} s the guided walk stops {:.2f} m from Shepard's mark: the way is blocked (a wall, a ledge, a person or a "
+                  "trigger's edge); he hears the scene from here, the stick still walks",
+            Seconds(), gC.wantedMark ? std::hypot(at->x - gC.wantedMark->x, at->y - gC.wantedMark->y) / kUnitsPerMeter : 0.0);
+    }
+    if (guided) {
+        stickX = 0.0f;
+        stickY = 1.0f;
+        if (!gC.guideLogged) {
+            gC.guideLogged = true;
+            log::Info("convo: at {:.1f} s nobody walks: the player is guided to Shepard's mark, {:.2f} m, at {:.1f} m/s ([Cinematics] worldWalkInS = {:.0f})",
+                Seconds(), std::hypot(at->x - gC.wantedMark->x, at->y - gC.wantedMark->y) / kUnitsPerMeter, gSettings.moveSpeedMS, gSettings.walkInS);
+        }
     }
     ue3::Object* const owner = gOwner.Read<ue3::Object*>(gC.object).value_or(nullptr);
     auto const ownerAt = owner != nullptr && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
@@ -1454,7 +1523,9 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     ik::Vec3 const anchor = gC.wantedMark ? *gC.wantedMark : ownerAt ? V(*ownerAt) : gC.hold;
     // Where the player faces: the head in the world through the held frame; without a VR view (a flat game), the held view's yaw.
     double headYaw = YawDeg(gC.holdRotation);
-    if (view.valid) {
+    if (guided) {
+        headYaw = std::atan2(gC.wantedMark->y - at->y, gC.wantedMark->x - at->x) * kRadToDeg;  // straight to the mark
+    } else if (view.valid) {
         engine::Basis const head = engine::OrientationToWorld(frame, view.head.orientation);
         headYaw = std::atan2(head.forward.y, head.forward.x) * kRadToDeg;
     }
@@ -1543,6 +1614,10 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     double const stepLen = std::hypot(delta.x, delta.y);
     gC.movedUnits += stepLen;
     ++gC.moveSteps;
+    if (guided) {
+        gC.guidedUnits += stepLen;
+        gC.guideProgressed = stepLen > 0.01;
+    }
     if (dt > 0.0) {
         ik::Vec3 const velocity{delta.x / dt, delta.y / dt, 0.0};
         gC.moving = WalkVelocity(pawn, velocity);  // the legs' animation reads the pawn's velocity (body follow's legs)
@@ -1723,14 +1798,14 @@ void End(char const* why) {
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
               "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
               "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"opening\": \"{}\", \"markM\": {:.2f}, \"cuts\": {}, "
-              "\"trackWalks\": {}, \"trackHeld\": {}, \"yielded\": {}, \"entries\": [{}]}}",
+              "\"trackWalks\": {}, \"trackHeld\": {}, \"yielded\": {}, \"guidedM\": {:.2f}, \"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
-        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, entryPath);
+        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, entryPath);
     gC = {};
 }
 
@@ -1937,6 +2012,7 @@ bool FootFresh(std::uint64_t now) {
 }
 
 void EndMomentView(Link const& link, char const* why, bool stopWorld) {
+    gMomentEnded = {GetTickCount64(), gMoment.wanted.has_value()};
     log::Info("moment: the first-person view of the moment ends ({}) after {:.1f} s: the player walked {:.2f} m and was carried {:.2f} m; "
               "the script's moves of Shepard: {} within the same space (he got there {} times), {} accepted under a dip",
         why, static_cast<double>(GetTickCount64() - gMoment.startMs) / 1000.0, gC.movedUnits / kUnitsPerMeter,
@@ -2007,7 +2083,7 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
             facts.known = true;
             facts.markUnits = std::hypot(here.x - gMoment.pawnAt.x, here.y - gMoment.pawnAt.y);
             facts.riseUnits = here.z - gMoment.pawnAt.z;
-            facts.sightToMark = LineOfSight(pawn, gC.hold, here + ik::Vec3{0.0, 0.0, 60.0});
+            facts.sightToMark = InSight(pawn, gC.hold, here + ik::Vec3{0.0, 0.0, 60.0});
             facts.floorAtMark = FloorZ(pawn, here).has_value();
             cw::Opening const rule = cw::DecideOpening(facts, cw::OpeningRule::Auto);
             if (rule != cw::Opening::Cut && PutAt(pawn, gMoment.pawnAt)) {

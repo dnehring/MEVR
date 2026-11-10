@@ -233,6 +233,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **First person from the menu** (2026-11-10: Comfort > Conversations > First person (preview); the owner's call whether
   the button stays): choose it in a level, talk to someone, switch back to 3D screen: each change applies to the next
   conversation, nothing stays held. Then the sample in research/69 "The headset sample", one scene of each kind.
+- [ ] **A walk-in you don't walk** (built 2026-11-10, research/69 "The guided walk-in"; on the fake headset Virmire's first
+  conversation walked the player 5.3 m toward a 7.1 m mark; `[Cinematics] worldWalkInS = 5`, -1 never): start a conversation
+  from a few metres away and leave the stick alone: after five seconds you should be walked to Shepard's place at walking
+  pace, around people, and stop when you touch the stick. Is five seconds right, is being walked comfortable (no vignette
+  yet), and does it read as the game leading you or as losing control?
 - [ ] **Becoming a Spectre in first person** (ran on the fake headset 2026-11-10 with nobody at the stick, fired past its plot
   check: held 22.7 s, the track withheld, the script's teleport 9.8 m up the stairs taken as the same space): you should walk
   up to the council yourself, or be carried there after 12 s. Look for black flashes and for where the council's
@@ -248,8 +253,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **The walk to the council with Anderson** (built 2026-11-10, research/69 "A moment in the world"; ran on the fake headset
   with nobody at the stick: the view held, the teleport withheld, the hearing opened as a walk-in 21 m from the podium;
   all defaults of the first-person mode since 2026-11-10: only `conversations = world` is needed): in the Citadel Tower use Anderson at the stairs: he says
-  his line and walks up; you walk with him in first person (no 3D screen, no black); the council is already talking as you climb,
-  and the wheel waits for you at the podium. Stand still instead: after 12 s you are carried to the top of the stairs
+  his line and walks up; you walk with him in first person (no 3D screen, no black). **Since 2026-11-10 the hearing itself
+  opens with a dip to the podium** (it begins 2.3 m into your walk, and putting Shepard back under you then ended it in 9 of
+  16 runs: research/69 "The hearing that ended at once"); say whether that dip is acceptable until the walk-in is rebuilt
+  so that the view walks and Shepard stays where the script has him. Stand still instead: after 12 s you are carried to the top of the stairs
   (`worldMomentPatienceS`). Look for: the black screen flashing, Anderson vanishing and another one standing at the podium,
   Shepard's legs walking on the spot, and how the hearing reads from the podium (it was made for cameras 38 m away).
 - [ ] **Flowing conversations** (built 2026-11-09; two Noveria chains checked as barks on the fake headset, research/59 "Flowing

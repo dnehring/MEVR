@@ -501,7 +501,11 @@ switching frameworks.
   fire, drive; a watchdog restarts the game; never `tail` its log with a tool that locks it). **Sample, don't run everything**
   (the owner, 2026-11-09): `plan --sample --per-place 1 --reach <reach-scenes.jsonl>` takes every authored scene, a few of
   each other shape and of each level's place risks (133 of 290); `canary` writes the canary plan from
-  `tools/conversation-canary.json` (run it before a pass; its broken run must fail); the scan's `via.chain` is the way from a matinee's event to it action by
+  `tools/conversation-canary.json` (run it before a pass; its broken run must fail); a rewritten career save loads into a level the career never visited (Therum's battlemaster scene from John02 through
+  `conversation-launch.ps1 -Save`; the runner has no save mode yet; never run the launcher's `-RestoreSaves` after the game
+  slot's return: its backup is from mid-session and put three files back over the restored ones, 2026-11-10); a council run
+  needs a fresh game process each time (a repeat in one process ends the hearing for other reasons), and a dozen restarts
+  in a row can stall the EA app (quit EADesktop.exe, `launch-game.ps1 -Steam` again); the scan's `via.chain` is the way from a matinee's event to it action by
   action, and the runner fires the action behind a plot check when nothing comes of the first one; `moments` lists the 21 level-script
   matinees that walk Shepard as a plan. 32 conversations are voice-over only (`BioSeqAct_FaceOnlyVO`) and never enter the
   conversation mode. **`worldOpening = auto` is the default of the first-person mode since 2026-11-10** (the sampled pass: 120
@@ -512,7 +516,15 @@ switching frameworks.
   summary's `trackWalks`), and a track's move of the player's own pawn is withheld in a first-person conversation
   (`trackHeld`). **The set-piece list is 15** (`cw::IsSetPiece`): six framed conversations seen in first person with a place
   for the player are out of it (the scan's `SEEN_IN_WORLD`: the council hearing, the comm room with Anderson and Nihlus, the
-  approach to Ilos, the archive door, Wrex at Fist's). **A small placement the game repeats is its own** (`cw::Insists`,
+  approach to Ilos, the archive door, Wrex at Fist's). **A walk-in nobody walks is guided** (`worldWalkInS` 5, 0 at once, -1 never; `cw::StepGuide`; the summary's `guidedM`):
+  after five seconds without the stick the player is walked to Shepard's mark by the walk's own step (floor, walls, people,
+  triggers), the stick takes it back, 2 s blocked ends it; a mark inside a trigger is not reached (the trigger guard:
+  the council's podium is 13 m past one). **A conversation that begins while a moment's walk is still on its way keeps the
+  stage's placement** (a cut): putting Shepard back from the podium after he had crossed into the chamber's streaming
+  volume ended the council's hearing in its first tick in 9 of 16 runs (research/69 "The hearing that ended at once"; the
+  hearing opens with a dip again; the fix that would give it back, the view walking while the pawn stays, is not built).
+  "In sight" for the opening is three lines (`InSight`).
+  **A small placement the game repeats is its own** (`cw::Insists`,
   2026-11-10): keep-in-place undoes a jump once; one of at most 1 m that comes back at the same place the next tick is
   accepted (a walk's last step onto its goal was fought 512 times; the summary's `yielded`, which the judge allows for).
   **Moments** (research/69 "A moment in the world"; `worldMoments = walk | carry | log |
@@ -524,8 +536,8 @@ switching frameworks.
   seams: host and mod deploy together), its move of him withheld through `engine/ConversationHooks`' pre-hook on
   `AActor::MoveWithInterpMoveTrack` (0x4B75F0) or followed (carry); a script's teleport within the same space is not cut:
   the place is where he is wanted (it may be what streams the next area in), he walks there or is carried after
-  `worldMomentPatienceS`. The council sequence ran so on the fake headset: the hearing opened as a walk-in 21 m from the
-  podium, no dip. Logs `convo: ... the player walks`, `the player walked
+  `worldMomentPatienceS`. The council sequence ran so on the fake headset; its hearing opened as a walk-in 21 m from the
+  podium until the rule above made it a cut (2026-11-10). Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus

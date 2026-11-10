@@ -437,6 +437,40 @@ Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits
     return Opening::Cut;
 }
 
+Guide StepGuide(GuideState& state, bool wanted, bool stickUsed, bool progressed, double dtS, double patienceS, double blockedMaxS) {
+    if (!wanted) {
+        state = {};
+        return Guide::Wait;
+    }
+    if (stickUsed) {
+        state = {};  // his own walk: the wait starts again, and a guide that gave up may try once more after it
+        return Guide::Wait;
+    }
+    if (patienceS < 0.0) {
+        return Guide::Wait;
+    }
+    if (state.gaveUp) {
+        return Guide::GaveUp;
+    }
+    double const dt = dtS > 0.0 ? dtS : 0.0;
+    if (!state.guiding) {
+        state.idleS += dt;
+        if (state.idleS < patienceS) {
+            return Guide::Wait;
+        }
+        state.guiding = true;
+        state.blockedS = 0.0;
+        return Guide::Walk;
+    }
+    state.blockedS = progressed ? 0.0 : state.blockedS + dt;
+    if (state.blockedS > blockedMaxS) {
+        state.guiding = false;
+        state.gaveUp = true;
+        return Guide::GaveUp;
+    }
+    return Guide::Walk;
+}
+
 bool Insists(Insistence& state, Vec3 const& wanted, double movedUnits, InsistLimits const& limits) {
     if (movedUnits > limits.maxUnits) {
         state.count = 0;
