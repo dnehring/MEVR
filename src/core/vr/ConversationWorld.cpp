@@ -395,6 +395,47 @@ NewcomerRule DecideNewcomer(NewcomerFacts const& facts, NewcomerRule scenes) {
     return NewcomerRule::Refuse;
 }
 
+OpeningRule ParseOpeningRule(std::string_view text, OpeningRule fallback) {
+    std::string lower;
+    for (char const c : text) {
+        if (!std::isspace(static_cast<unsigned char>(c))) {
+            lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
+    }
+    if (lower == "auto") return OpeningRule::Auto;
+    if (lower == "keep") return OpeningRule::Keep;
+    if (lower == "accept") return OpeningRule::Accept;
+    return fallback;
+}
+
+char const* Name(OpeningRule rule) {
+    return rule == OpeningRule::Auto ? "auto" : rule == OpeningRule::Keep ? "keep" : "accept";
+}
+
+char const* Name(Opening opening) {
+    return opening == Opening::Stay ? "stay" : opening == Opening::WalkIn ? "walk in" : "cut";
+}
+
+Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits const& limits) {
+    if (rule == OpeningRule::Accept) {
+        return Opening::Cut;
+    }
+    if (rule == OpeningRule::Keep) {
+        return Opening::Stay;
+    }
+    // Without a place to stay at, without a body, or with the people in view rearranged, it is another composition.
+    if (!facts.known || facts.shepardHidden || facts.peopleMovedUnits > limits.peopleMaxUnits) {
+        return Opening::Cut;
+    }
+    if (facts.markUnits <= limits.stayUnits && std::abs(facts.riseUnits) <= limits.stayUnits) {
+        return Opening::Stay;
+    }
+    if (facts.markUnits <= limits.walkMaxUnits && std::abs(facts.riseUnits) <= limits.riseMaxUnits && facts.sightToMark && facts.floorAtMark) {
+        return Opening::WalkIn;
+    }
+    return Opening::Cut;
+}
+
 bool HoldStart(std::vector<HeldStart>& held, std::uint64_t id, std::uint64_t nowMs) {
     for (HeldStart& h : held) {
         if (h.id == id) {

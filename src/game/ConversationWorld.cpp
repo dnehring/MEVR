@@ -130,6 +130,7 @@ struct Settings {
     bool setPiecesOnScreen = true;     // the scan's set pieces on the 3D screen, not in the world (worldSetPieces = screen | world)
     bool camera = true;                // the game's own camera at the player's place too, not only the main view (worldCamera)
     bool openingAccept = true;         // the stage's opening placements are accepted, the player put at Shepard's mark (worldOpening = accept|keep)
+    cw::OpeningRule opening = cw::OpeningRule::Accept;  // worldOpening = accept | keep | auto (research/69: a cut only for another composition)
     bool arrange = true;               // everyone of the conversation (and the squad) brought into the player's view (worldArrange)
     float arcM = 2.5f;                 // the seats' distance from the player (worldArcM)
     float viewDeg = 60.0f;             // half the view's angle a person must be within (worldViewDeg)
@@ -194,7 +195,8 @@ void RefreshSettings() {
     }
     s.camera = number("worldCamera", 1.0f, 0.0f, 1.0f) != 0.0f;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldOpening")) {
-        s.openingAccept = ini::Lower(ini::Trim(*text)) != "keep";
+        s.opening = cw::ParseOpeningRule(*text, cw::OpeningRule::Accept);
+        s.openingAccept = s.opening != cw::OpeningRule::Keep;  // accept and auto let the stage's first placements stand, then decide
     }
     s.arrange = number("worldArrange", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.arcM = number("worldArcM", s.arcM, 1.2f, 6.0f);
@@ -469,6 +471,8 @@ struct Convo {
     std::uint64_t openingUntilMs = 0;
     bool openingDone = false;
     int openingMoves = 0;        // placements accepted during the opening
+    cw::Opening opening = cw::Opening::Cut;  // how the opening ended (the summary's "opening")
+    double markM = 0.0;          // how far Shepard's mark was from where the player stood
     int arranged = 0;            // people moved to a seat in view
     std::uint32_t cut = 0;       // the host dips from black when it changes
     // The player's place for this conversation: the view on foot if it was Shepard's just now, else his eyes from his head bone
@@ -1140,8 +1144,83 @@ bool FaceYaw(ue3::Object* actor, double yawDeg) {
 // first-person eye offset), facing the owner; then everyone of the conversation and the squad is checked from there (within
 // worldViewDeg of the facing, 1.2 m to 6 m away, a clear line of sight) and whoever fails is put on a seat of an arc around the
 // player, centred on the owner, facing the player. The host dips from black on `cut`, so both moves read as a cut, not a teleport.
+// The opening without a cut (worldOpening = auto, research/69 "Authored scenes"): where the stage put Shepard against where
+// the player stood on foot. Near, or within a walk in the same space: Shepard is put back where he stood, the player's view
+// stays the one he had, nobody is arranged and nothing dips; his mark is where he is wanted and he walks there himself.
+// Returns false for another composition (the cut below).
+bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
+    cw::OpeningFacts facts;
+    auto const markAt = player::Location(pawn);
+    bool const footFresh = gFoot.have && gC.startMs >= gFoot.ms && gC.startMs - gFoot.ms < 5000;
+    facts.known = footFresh && markAt.has_value();
+    ik::Vec3 const stood = V(gFoot.pawn);
+    ik::Vec3 const eyes = V(gFoot.location);
+    if (facts.known) {
+        ik::Vec3 const mark = V(*markAt);
+        facts.markUnits = std::hypot(mark.x - stood.x, mark.y - stood.y);
+        facts.riseUnits = mark.z - stood.z;
+        auto const head = HeadOf(pawn);
+        facts.sightToMark = LineOfSight(pawn, eyes, head ? head->at : mark + ik::Vec3{0.0, 0.0, 60.0});
+        facts.floorAtMark = FloorZ(pawn, mark).has_value();
+        if (auto const hidden = gActorHidden.ReadBool(pawn)) {
+            facts.shepardHidden = *hidden;
+        }
+        // The people the player was looking at: how far the stage moved them (the conversation saved their places first).
+        if (auto const saved = gSavedPositions.ElementsOf(conv, 64)) {
+            double const facing = YawDeg(gFoot.rotation);
+            for (std::int32_t i = 0; i < saved->count; ++i) {
+                ue3::Object* const a = gSavedActor.Read<ue3::Object*>(saved->At(i)).value_or(nullptr);
+                auto const was = gSavedPos.Read<ue3::Vector>(saved->At(i));
+                auto const now = a != nullptr && a != pawn && ue3::runtime::IsAlive(a) ? player::Location(a) : std::nullopt;
+                if (was && now && cw::InView({eyes.x, eyes.y, eyes.z}, facing, {was->x, was->y, was->z}, gSettings.viewDeg, 0.0, 3000.0)) {
+                    facts.peopleMovedUnits = std::max(facts.peopleMovedUnits, Dist(V(*now), V(*was)));
+                }
+            }
+        }
+    }
+    cw::Opening const opening = cw::DecideOpening(facts, gSettings.opening);
+    gC.opening = opening;
+    gC.markM = facts.markUnits / kUnitsPerMeter;
+    log::Info("convo: the opening ({}): Shepard's mark is {:.2f} m from where the player stood ({:+.2f} m up), {}, {}, people in view moved "
+              "at most {:.2f} m{}: {}", cw::Name(gSettings.opening), facts.markUnits / kUnitsPerMeter, facts.riseUnits / kUnitsPerMeter,
+        facts.sightToMark ? "in sight" : "out of sight", facts.floorAtMark ? "a floor there" : "no floor there",
+        facts.peopleMovedUnits / kUnitsPerMeter, facts.known ? "" : " (no fresh place on foot)", cw::Name(opening));
+    if (opening == cw::Opening::Cut || !facts.known) {
+        return false;
+    }
+    // Shepard back where he stood, facing as the player did; the view the one on foot.
+    ik::Vec3 const mark = V(*markAt);
+    bool const put = PutAt(pawn, stood);
+    FaceYaw(pawn, YawDeg(gFoot.rotation));
+    for (Stay& st : gStay) {
+        if (st.actor == pawn) {
+            st.place = put ? stood : mark;
+            st.shownYaw = YawDeg(gFoot.rotation);
+        }
+    }
+    if (!put) {
+        log::Info("convo: the opening: Shepard could not be put back where he stood (SetLocation refused): the cut after all");
+        gC.opening = cw::Opening::Cut;
+        return false;
+    }
+    gC.hold = eyes;
+    gC.holdRotation = gFoot.rotation;
+    gC.holdFov = gFoot.fov;
+    gC.holdFrom = "the view on foot";
+    if (auto const head = HeadOf(pawn)) {
+        gC.anchorHead = head->at + (stood - mark);  // the bones follow the actor at the next pose
+    }
+    gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, gC.anchorHead ? cw::Vec3{gC.anchorHead->x, gC.anchorHead->y, gC.anchorHead->z} : cw::Vec3{}, 0};
+    log::Info("convo: the opening: no cut; the player stays at {} facing {:.0f} deg{}", F(gC.hold), YawDeg(gC.holdRotation),
+        opening == cw::Opening::WalkIn ? std::format("; he is wanted at Shepard's mark {} and walks there himself", F(mark)) : std::string());
+    return true;
+}
+
 void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
     gC.openingDone = true;
+    if (gSettings.opening == cw::OpeningRule::Auto && OpeningWithoutCut(conv, pawn)) {
+        return;
+    }
     ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
     auto const ownerAt = owner != nullptr && owner != pawn ? FacePoint(owner) : std::nullopt;
     // Part A: the player at Shepard's mark.
@@ -1554,14 +1633,15 @@ void End(char const* why) {
               "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
               "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
-              "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"entries\": [{}]}}",
+              "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"opening\": \"{}\", \"markM\": {:.2f}, \"cuts\": {}, "
+              "\"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
-        gC.autoScreened ? "true" : "false", entryPath);
+        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, entryPath);
     gC = {};
 }
 

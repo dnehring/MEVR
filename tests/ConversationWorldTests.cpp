@@ -169,6 +169,47 @@ void TestSceneRules() {
     CHECK(cw::ParseNewcomerRule(" Hold ", R::Through) == R::Hold && cw::ParseNewcomerRule("refuse", R::Hold) == R::Refuse);
     CHECK(cw::ParseNewcomerRule("through", R::Hold) == R::Through && cw::ParseNewcomerRule("?", R::Hold) == R::Hold);
     CHECK(std::string(cw::Name(R::Hold)) == "hold");
+    // The opening of a staged conversation: a cut only when the composition is another one.
+    {
+        using O = cw::Opening;
+        using OR = cw::OpeningRule;
+        cw::OpeningFacts near;  // the player walked up to someone and used him: the mark is a step away
+        near.known = true;
+        near.markUnits = 90.0;
+        near.sightToMark = true;
+        CHECK(cw::DecideOpening(near, OR::Auto) == O::Stay);
+        CHECK(cw::DecideOpening(near, OR::Accept) == O::Cut);  // the old way, by the setting
+        cw::OpeningFacts hall = near;  // the council: the podium 24 m on, 3 m up the stairs, in sight
+        hall.markUnits = 2400.0;
+        hall.riseUnits = 290.0;
+        CHECK(cw::DecideOpening(hall, OR::Auto) == O::WalkIn);
+        CHECK(cw::DecideOpening(hall, OR::Keep) == O::Stay);
+        cw::OpeningFacts elsewhere = hall;  // behind a wall, on another deck, too far, or nowhere to stand
+        elsewhere.sightToMark = false;
+        CHECK(cw::DecideOpening(elsewhere, OR::Auto) == O::Cut);
+        elsewhere = hall;
+        elsewhere.riseUnits = 900.0;
+        CHECK(cw::DecideOpening(elsewhere, OR::Auto) == O::Cut);
+        elsewhere = hall;
+        elsewhere.markUnits = 9000.0;
+        CHECK(cw::DecideOpening(elsewhere, OR::Auto) == O::Cut);
+        elsewhere = hall;
+        elsewhere.floorAtMark = false;
+        CHECK(cw::DecideOpening(elsewhere, OR::Auto) == O::Cut);
+        cw::OpeningFacts rearranged = near;  // the stage put the people he was looking at somewhere else
+        rearranged.peopleMovedUnits = 500.0;
+        CHECK(cw::DecideOpening(rearranged, OR::Auto) == O::Cut);
+        cw::OpeningFacts noBody = near;
+        noBody.shepardHidden = true;
+        CHECK(cw::DecideOpening(noBody, OR::Auto) == O::Cut);
+        cw::OpeningFacts unknown = near;  // no place on foot to stay at (the conversation followed a cutscene)
+        unknown.known = false;
+        CHECK(cw::DecideOpening(unknown, OR::Auto) == O::Cut);
+        CHECK(cw::DecideOpening(unknown, OR::Keep) == O::Stay);
+        CHECK(cw::ParseOpeningRule(" Auto ", OR::Accept) == OR::Auto && cw::ParseOpeningRule("keep", OR::Accept) == OR::Keep);
+        CHECK(cw::ParseOpeningRule("?", OR::Accept) == OR::Accept && std::string(cw::Name(OR::Auto)) == "auto");
+        CHECK(std::string(cw::Name(O::WalkIn)) == "walk in" && std::string(cw::Name(O::Cut)) == "cut");
+    }
     // The held starts: first come, first fired, once free; a start held twice counts; old ones are dropped.
     std::vector<cw::HeldStart> held;
     CHECK(cw::HoldStart(held, 11, 1000) && cw::HoldStart(held, 22, 1500));

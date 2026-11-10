@@ -221,6 +221,37 @@ struct NewcomerFacts {
 // under Hold and Refuse alike; a newcomer no action started (code started it) can't be fired again, so Hold lets it through.
 NewcomerRule DecideNewcomer(NewcomerFacts const& facts, NewcomerRule scenes);
 
+// The opening of a conversation on a stage (research/69 "Authored scenes"; the owner, 2026-11-09: no cut unless the scene's
+// composition is completely different). The game puts everyone on the stage's marks when the conversation starts. In first
+// person that is a cut only when it has to be:
+//   Stay    Shepard's mark is about where the player stands: nobody's view moves, nothing is cut
+//   WalkIn  the mark is farther but in the same space (in sight, on a floor, within a walk): the player keeps his place
+//           and walks there himself; the conversation goes on meanwhile and its wheel waits for him
+//   Cut     another composition (out of sight or reach, no floor, no body, or the people he was looking at put elsewhere):
+//           the player is put at the mark under a dip from black, as before
+// `worldOpening = accept` (always Cut), `keep` (always Stay) or `auto` (this rule).
+enum class OpeningRule : std::uint8_t { Accept, Keep, Auto };
+enum class Opening : std::uint8_t { Stay, WalkIn, Cut };
+OpeningRule ParseOpeningRule(std::string_view text, OpeningRule fallback);
+char const* Name(OpeningRule rule);
+char const* Name(Opening opening);
+struct OpeningFacts {
+    bool known = false;              // where the player stood before the stage moved Shepard is known
+    double markUnits = 0.0;          // from there to Shepard's mark, on the ground
+    double riseUnits = 0.0;          // and up or down
+    bool sightToMark = false;        // a clear line from the player's eyes to Shepard's head at the mark
+    bool floorAtMark = true;         // a floor under the mark
+    bool shepardHidden = false;      // the pawn is hidden: no body in this scene
+    double peopleMovedUnits = 0.0;   // the farthest the stage moved someone who was in the player's view
+};
+struct OpeningLimits {
+    double stayUnits = 150.0;        // a mark this near is "where he stands"
+    double walkMaxUnits = 4000.0;    // a walk-in at most this far
+    double riseMaxUnits = 600.0;     // and this much up or down (a stair, not another deck)
+    double peopleMaxUnits = 300.0;   // people in view put farther than this: another composition
+};
+Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits const& limits = {});
+
 // The starts held for later (an opaque id each: the start action). HoldStart: false if it was held already (its count grows)
 // or eight are held. ReleaseStart: the oldest one to fire now, when nothing that would refuse it is playing (`free`); those
 // held longer than maxAgeMs are dropped first (into `expired`).
