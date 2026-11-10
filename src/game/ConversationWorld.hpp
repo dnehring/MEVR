@@ -32,6 +32,8 @@ bool InWorld();
 // A matinee's move of the player's pawn is to be withheld (worldMoments = walk; research/69 "Authored scenes"): asked from
 // inside the engine's physics step through game/AuthoredMoment; reads the mod's state and the game mode only.
 bool MomentWithholds();
+// A moment's first-person view is up (game/AuthoredMoment keeps the script's black screen off it).
+bool MomentViewOn();
 // `mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | walk <x> <y> [seconds] | off]`.
 std::string Command(std::string const& rest);
 std::string StatusJson();

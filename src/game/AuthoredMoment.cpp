@@ -37,6 +37,8 @@ ue3::FunctionRef gCinematicToggle{"SFXGame.BioSeqAct_BioToggleCinematicMode.Acti
 ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
 ue3::FieldRef gActorHidden{"Engine.Actor", "bHidden"};
 ue3::FieldRef gCinematicMode{"Engine.PlayerController", "bCinematicMode"};
+ue3::FieldRef gGuiManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
+ue3::FunctionRef gHideBlackScreen{"SFXGame.MassEffectGuiManager.HideBlackScreen"};
 
 // ---- Settings ----------------------------------------------------------------------------------------------------------------
 struct Settings {
@@ -209,8 +211,22 @@ void OnBlackScreen(ue3::Object* context, ue3::Function*, void*, void*) {
     if (gM.on) {
         ++gM.blackScreens;
     }
-    log::Info("moment: the script's black screen ({}){}", context != nullptr ? ue3::runtime::FullName(context) : std::string("?"),
-        gM.on ? " during a track's move of Shepard" : "");
+    // While the moment is held in first person nothing is hidden behind a black screen: what it covered in the original (the
+    // teleport, the swap of a character) either does not happen or goes under the mod's own dip.
+    bool hidden = false;
+    if (conversation_world::MomentViewOn() && gHideBlackScreen.Get() != nullptr) {
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const manager = controller != nullptr ? gGuiManager.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+        if (manager != nullptr && ue3::runtime::IsAlive(manager)) {
+            ue3::Params p(ue3::runtime::Get(), gHideBlackScreen.Get());
+            if (p.Valid()) {
+                p.SetBool("bFade", false);
+                hidden = ue3::runtime::Call(manager, gHideBlackScreen.Get(), p);
+            }
+        }
+    }
+    log::Info("moment: the script's black screen ({}){}{}", context != nullptr ? ue3::runtime::FullName(context) : std::string("?"),
+        gM.on ? " during a track's move of Shepard" : "", hidden ? ": taken down again (the moment is held in first person)" : "");
 }
 
 void OnCinematicToggle(ue3::Object* context, ue3::Function*, void*, void*) {

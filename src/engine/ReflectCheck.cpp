@@ -1361,6 +1361,7 @@ void CheckFunctions() {
         "SFXGame.BioPawn.OnTeleport",
         "SFXGame.BioSeqAct_BlackScreen.Activated",
         "SFXGame.BioSeqAct_BioToggleCinematicMode.Activated",
+        "SFXGame.MassEffectGuiManager.HideBlackScreen",
         "Engine.Actor.Destroy",
         // Vent (research/45)
         "SFXGame.BioWeaponRanged.DoCoolDownEffect",

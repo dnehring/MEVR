@@ -2073,6 +2073,10 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
 // The move track's question, from game/AuthoredMoment's provider (inside the engine's physics step: reads only): the track's
 // move of the player's pawn is withheld while a moment's view is up, and from its first call when one can start (the
 // cinematic game mode, a fresh place on foot).
+bool MomentViewOn() {
+    return gMoment.on;
+}
+
 bool MomentWithholds() {
     if (!gSettings.moments || CurrentMode() != cw::Mode::World) {
         return false;
@@ -2165,6 +2169,13 @@ void Tick(double deltaSeconds, Link const& link) {
             gC.settleUntilMs = 0;
             gC.eyeToViewMax = 0.0;  // measured from here on: before, the stage had him at the mark and his mesh elsewhere
         }
+    } else if (shepardHead && gC.anchorHead && gSettings.follow && gC.opening != cw::Opening::Cut &&
+               Dist(shepardHead->at, *gC.anchorHead) < kStayMaxUnits) {
+        // After an opening without a cut the player's place is his own: Shepard's body is where the player walked him, and what
+        // his head bone does there (the hearing's animation moved it 0.88 m twice and the view went with it, 2026-11-10) is not
+        // the player's move. Only a move past 6 m (the script put him elsewhere: a scripted entrance) is followed, below.
+        gC.anchorHead = shepardHead->at;
+        gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, {shepardHead->at.x, shepardHead->at.y, shepardHead->at.z}, 0};
     } else if (shepardHead && gC.anchorHead && gSettings.follow) {
         ik::Vec3 const a = *gC.anchorHead;
         ik::Vec3 const& h = shepardHead->at;
@@ -2174,6 +2185,10 @@ void Tick(double deltaSeconds, Link const& link) {
             gC.hold = {gC.follow.place.x, gC.follow.place.y, gC.follow.place.z};
             gC.anchorHead = h;
             ++gC.reanchors;
+            if (gC.opening != cw::Opening::Cut) {
+                ++gC.cut;  // the script moved him to another place in a scene that had no cut so far: under a dip
+                gC.wantedMark.reset();
+            }
         }
     }
     ik::Vec3 const eyes = gC.hold;
