@@ -11,8 +11,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   stands, people stay where they are, and you can walk during the conversation. A scene opens without a cut when it is
   where you already stand or a short walk away; leave the stick alone and you are walked there after a few seconds.
   Scenes made for the camera still go to the 3D screen. People no longer swivel on the spot toward whoever speaks:
-  heads and shoulders turn, as the game animates them, and a body re-faces only when it must. A preview: off unless you
-  choose it.
+  heads and shoulders turn, as the game animates them, and a body re-faces only when it must. A scene no longer begins
+  with a flash of the cinema screen, and a scripted walk (the walk to the Council) plays out whether you walk along or
+  stand and watch. A preview: off unless you choose it.
 
 ## 0.2.0 (2026-11-09)
 

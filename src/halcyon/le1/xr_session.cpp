@@ -3505,10 +3505,10 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
         return;
     }
     // [MEVR] research/59: a conversation in the world (the view held at Shepard's, first person) is the world as on foot.
-    if (d.inConversation && in.gameMode == 5 && MELEVR::MevrBridge::ConversationInWorld()) d.inConversation = false;
+    if (d.inConversation && in.gameMode == 5 && MELEVR::MevrBridge::ConversationWorldOrComing()) d.inConversation = false;
     // [MEVR] research/69 "Authored scenes": a level-script matinee that walks Shepard, held in first person by the mod (the
     // cinematic game mode, 6), is the world as on foot too.
-    if (d.inCutscene && in.gameMode == 6 && MELEVR::MevrBridge::ConversationInWorld()) d.inCutscene = false;
+    if (d.inCutscene && in.gameMode == 6 && MELEVR::MevrBridge::ConversationWorldOrComing()) d.inCutscene = false;
     const bool cinematicContext = d.inConversation || d.inCutscene;
     bool vrCineOn = (d.inConversation && cfg.cineVrConvo) ||
                     (d.inCutscene && cfg.cineVrCutscene) ||
@@ -3843,8 +3843,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             if (inConversationMode)  effectiveGm = 5;
             else if (inCutsceneMode) effectiveGm = 6;
         }
-        if (gameMode == 5 && !inConversationMode && MELEVR::MevrBridge::ConversationInWorld()) effectiveGm = 0;   // [MEVR] research/59: as on foot
-        if (gameMode == 6 && !inCutsceneMode && MELEVR::MevrBridge::ConversationInWorld()) effectiveGm = 0;       // [MEVR] research/69: a moment in the world
+        if (gameMode == 5 && !inConversationMode && MELEVR::MevrBridge::ConversationWorldOrComing()) effectiveGm = 0;   // [MEVR] research/59: as on foot
+        if (gameMode == 6 && !inCutsceneMode && MELEVR::MevrBridge::ConversationWorldOrComing()) effectiveGm = 0;       // [MEVR] research/69: a moment in the world
         MELEVR::RenderHook::PublishGameModeForSfr(effectiveGm, cfg.cineVrConvo, cfg.cineVrCutscene || cineIn.frontEndScreen, liveWorldGui);   // [MEVR]
         MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameCine);   // [MEVR] frame-breakdown probe
     }
@@ -4133,7 +4133,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                                 useDibrUi ? cfg.pchudOffsetYDibr : (useStereoUi ? cfg.pchudOffsetYStereo : cfg.pchudOffsetY));
     // [MEVR] research/52: on the 3D cinema screen the conversation movie keeps its authored size and place. The VR layout
     // (half size, centred, for a head-locked view) made the dialogue wheel about 0.9 degrees tall on the screen.
-    if (mevrCineScreen || (gameMode == 5 && MELEVR::MevrBridge::ConversationInWorld()))   // [MEVR] research/59: on the HUD panel too
+    if (mevrCineScreen || (gameMode == 5 && MELEVR::MevrBridge::ConversationWorldOrComing()))   // [MEVR] research/59: on the HUD panel too
         MELEVR::Pchud::SetConvoTransform(true, 1.0f, 1.0f, 0.0f, 0.0f);
     else
     MELEVR::Pchud::SetConvoTransform(cfg.convoEnabled,
@@ -4343,7 +4343,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // boundary never fires there. Arm the cine boundary (backbuffer-batch trigger in d3d_capture) so
     // the pair keeps publishing instead of freezing on the last gameplay image.
     // [MEVR] research/59: a conversation in the world still renders through the conversation camera's post chain: same boundary.
-    const bool mevrConvoWorld = (gameMode == 5 || gameMode == 6) && MELEVR::MevrBridge::ConversationInWorld();   // [MEVR] research/69: 6 too
+    const bool mevrConvoWorld = (gameMode == 5 || gameMode == 6) && MELEVR::MevrBridge::ConversationWorldOrComing();   // [MEVR] research/69: 6 too
     MELEVR::D3DCapture::SetSfrCineBoundary(sfr2Active && (cinematicContext || mevrConvoWorld));
     // [NOLETTERBOX] while a VR cine is live in Stereo 2, clear LE1's cine-camera 16:9 aspect
     // constraint each frame at Draw entry (render_hook), so the cine renders FULL-FRAME exactly

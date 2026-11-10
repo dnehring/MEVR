@@ -4,7 +4,9 @@
 # without the headset").
 #
 #   tools/fake-headset.ps1 -On        null driver on, the real driver off, standby disabled; SteamVR restarted
-#   tools/fake-headset.ps1 -Off       the user's settings back (from the backups the first -On made); SteamVR stopped
+#   tools/fake-headset.ps1 -Off       the keys -On set put back as they were (undo.json), nothing else touched; SteamVR stopped
+#                                     (until 2026-11-10 it copied the first -On's backup of the whole file back: weeks old
+#                                     by then, without the owner's new headset driver's section)
 #   tools/fake-headset.ps1 -Status    what the files say now
 #
 # Edits (JSON, backed up next to this script's data in %LOCALAPPDATA%\MEVR\fake-headset\ before the first change):
@@ -101,12 +103,30 @@ if (Get-Process MassEffect1 -ErrorAction SilentlyContinue) { throw 'the game is 
 
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 $nullBackup = Join-Path $backupDir 'null-default.vrsettings'
-$vrBackup = Join-Path $backupDir 'steamvr.vrsettings'
+$vrBackup = Join-Path $backupDir 'steamvr.vrsettings'   # the first -On's copy: kept as a record, no longer restored
+$undoFile = Join-Path $backupDir 'undo.json'
+$undoKeys = @(@('steamvr', 'forcedDriver'), @('steamvr', 'activateMultipleDrivers'), @('steamvr', 'supersampleManualOverride'),
+              @('steamvr', 'supersampleScale'), @('steam.app.1328670', 'resolutionScale'), @('driver_playstation_vr2', 'enable'),
+              @('power', 'pauseCompositorOnStandby'), @('power', 'turnOffScreensTimeout'))
 
 if ($On) {
     if (-not (Test-Path -LiteralPath $nullBackup)) { Copy-Item -LiteralPath $nullSettings $nullBackup }
     if (-not (Test-Path -LiteralPath $vrBackup)) { Copy-Item -LiteralPath $vrSettings $vrBackup }
     Stop-SteamVR
+    # What -Off puts back: each key this sets, as it is now (or absent). Taken only while the fake headset is not already on,
+    # so a second -On never records the fake values as the user's.
+    $before = Read-Json $vrSettings
+    $alreadyOn = $before.PSObject.Properties['steamvr'] -and $before.steamvr.PSObject.Properties['forcedDriver'] -and $before.steamvr.forcedDriver -eq 'null'
+    if (-not $alreadyOn -or -not (Test-Path -LiteralPath $undoFile)) {
+        $undo = @()
+        foreach ($pair in $undoKeys) {
+            $sec = $before.PSObject.Properties[$pair[0]]
+            $has = $sec -and $sec.Value.PSObject.Properties[$pair[1]]
+            $undo += [pscustomobject]@{ section = $pair[0]; key = $pair[1]; had = [bool]$has; value = $(if ($has) { $sec.Value.($pair[1]) } else { $null }) }
+        }
+        if ($alreadyOn) { foreach ($u in $undo) { $u.had = $false; $u.value = $null } }  # no record of before: the keys go
+        Write-Json $undoFile $undo
+    }
     $n = Read-Json $nullSettings
     Set-Member $n.driver_null 'enable' $true
     Set-Member $n.driver_null 'renderWidth' $Width
@@ -156,16 +176,18 @@ if ($Off) {
     if (Test-Path -LiteralPath $nullBackup) { Copy-Item -LiteralPath $nullBackup $nullSettings -Force } else {
         $n = Read-Json $nullSettings; Set-Member $n.driver_null 'enable' $false; Write-Json $nullSettings $n
     }
-    if (Test-Path -LiteralPath $vrBackup) { Copy-Item -LiteralPath $vrBackup $vrSettings -Force } else {
-        $s = Read-Json $vrSettings
-        $s.steamvr.PSObject.Properties.Remove('forcedDriver')
-        if ($s.PSObject.Properties['driver_playstation_vr2']) { $s.driver_playstation_vr2.PSObject.Properties.Remove('enable') }
-        if ($s.PSObject.Properties['power']) { $s.power.PSObject.Properties.Remove('pauseCompositorOnStandby'); $s.power.PSObject.Properties.Remove('turnOffScreensTimeout') }
-        Write-Json $vrSettings $s
+    # The user's settings file as it is now, with only the keys -On set put back (undo.json; without one, those keys are
+    # removed): never the first -On's copy of the whole file, which is as old as that day.
+    $s = Read-Json $vrSettings
+    $undo = if (Test-Path -LiteralPath $undoFile) { @(Read-Json $undoFile) } else { @($undoKeys | Where-Object { $_[1] -notin 'supersampleManualOverride', 'supersampleScale', 'resolutionScale' } | ForEach-Object { [pscustomobject]@{ section = $_[0]; key = $_[1]; had = $false; value = $null } }) }
+    foreach ($u in $undo) {
+        $sec = $s.PSObject.Properties[$u.section]
+        if (-not $sec) { continue }
+        if ($u.had) { Set-Member $sec.Value $u.key $u.value } else { $sec.Value.PSObject.Properties.Remove($u.key) }
     }
-    $chapBackup = Join-Path $backupDir 'chaperone_info.vrchap'
-    if (Test-Path -LiteralPath $chapBackup) { Copy-Item -LiteralPath $chapBackup $chaperone -Force }
-    elseif (Test-Path -LiteralPath $chaperone) {
+    Write-Json $vrSettings $s
+    if (Test-Path -LiteralPath $undoFile) { Remove-Item -LiteralPath $undoFile -Confirm:$false }
+    if (Test-Path -LiteralPath $chaperone) {
         $c = Read-Json $chaperone
         $c.universes = @($c.universes | Where-Object { "$($_.universeID)" -ne $nullUniverse })
         Write-Json $chaperone $c

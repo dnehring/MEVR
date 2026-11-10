@@ -21,6 +21,7 @@ constexpr std::uint64_t kFreshMs = 300;   // the mod sends every tick
 constexpr std::uint64_t kGraceMs = 250;   // the game's mode changes a tick before the mod's state does (as GalaxyHeld)
 
 std::atomic<std::uint64_t> gLastActiveMs{0};
+constexpr std::uint64_t kComingMs = 150;  // the mod's "armed" counts this long: the tick or two until its state follows the mode
 std::mutex gMutex;
 bool gShown = false;
 std::uint32_t gConversation = 0;
@@ -92,6 +93,16 @@ bool ConversationInWorld() noexcept {
     // A short grace: the game leaves (or enters) mode 5 a tick before the mod's state follows.
     std::uint64_t const last = host::gLastActiveMs.load(std::memory_order_relaxed);
     return last != 0 && GetTickCount64() - last < host::kGraceMs;
+}
+
+// [MEVR] research/69 "The flash at every scene's start": for the presentation's decision in the conversation and cinematic
+// modes only: a scene the mod shows in the world, or one that began this instant with the mod armed for it (the game's mode
+// is read here a tick before the mod's state can say so).
+bool ConversationWorldOrComing() noexcept {
+    if (ConversationInWorld()) {
+        return true;
+    }
+    return mevr::vr::conversation_world::Armed(mevr::host::conversation_world::kComingMs);
 }
 
 } // namespace MELEVR::MevrBridge

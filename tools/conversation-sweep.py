@@ -10,6 +10,8 @@ runs (layer 0), the runner's work list, and the judge of a finished pass. No gam
   python tools/conversation-sweep.py reach <folder of a -ReachOnly run>
   python tools/conversation-sweep.py saves scan.jsonl list.json --base <career save> [--table saves.md] [--dry-run]
         saves for looking at scenes in the headset: the player in front of each scene, before it starts (--remove)
+  python tools/conversation-sweep.py actions list.json plan.json [more plans] [--first-slot 80]
+        the action that starts each scene of a list, for tools/conversation-from-save.ps1 -All
   python tools/conversation-sweep.py canary plan.json tools/conversation-canary.json --out-plan canary-plan.json
         --out-expect canary-expect.json [--broken]
   python tools/conversation-sweep.py judge results.jsonl [more.jsonl ...] [--scan scan.jsonl] [--predictions predictions.json]
@@ -628,6 +630,35 @@ def saves(argv):
 
 # ---- the reach matrix -----------------------------------------------------------------------------------------------------------
 
+def actions(argv):
+    # `actions list.json plan.json [more plans] [--first-slot 80]`: for each scene of a list (the validation saves' order), the
+    # action that starts it, from the plans: what tools/conversation-from-save.ps1 fires after loading the scene's save.
+    listing = json.load(open(argv[0], encoding='utf-8'))['scenes']
+    first = int(option(argv, '--first-slot', 80))
+    known = {}
+
+    def walk(o):
+        if isinstance(o, dict):
+            if 'conversation' in o and 'actionTail' in o:
+                known.setdefault(o['conversation'], o)
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    for path in [a for a in argv[1:] if not a.startswith('--') and a != str(first)]:
+        walk(json.load(open(path, encoding='utf-8')))
+    rows = []
+    for i, entry in enumerate(listing):
+        s = known.get(entry['scene'])
+        rows.append({'slot': first + i, 'scene': entry['scene'], 'title': entry.get('title', entry['scene']),
+                     'class': (s or {}).get('actionClass') or 'BioSeqAct_StartConversation', 'tail': (s or {}).get('actionTail'),
+                     'input': int((s or {}).get('actionInput') or 0)})
+    print(json.dumps(rows))
+    return 0
+
+
 def reach(argv):
     """The reach matrix from a -ReachOnly run's folder (reach.jsonl, reach-scenes.jsonl): per level, whether `open` got to
     gameplay, how its chunks streamed and how many start actions were found; then every scene that was not reached."""
@@ -932,10 +963,10 @@ def judge(argv):
 
 
 def main(argv):
-    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary', 'reach', 'moments', 'saves'):
+    if len(argv) < 3 or argv[1] not in ('predict', 'plan', 'judge', 'canary', 'reach', 'moments', 'saves', 'actions'):
         print(__doc__)
         return 2
-    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary, 'reach': reach, 'moments': moments, 'saves': saves}[argv[1]](argv[2:])
+    return {'predict': predict, 'plan': plan, 'judge': judge, 'canary': canary, 'reach': reach, 'moments': moments, 'saves': saves, 'actions': actions}[argv[1]](argv[2:])
 
 
 if __name__ == '__main__':

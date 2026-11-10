@@ -34,6 +34,11 @@ bool InWorld();
 bool MomentWithholds();
 // A moment's first-person view is up (game/AuthoredMoment keeps the script's black screen off it).
 bool MomentViewOn();
+// The script switched the cinematic mode on while the player stood on foot (game/AuthoredMoment's handler, the game thread):
+// a moment may be starting. The view is held where the player stands from this instant, and published at once, until a
+// track moves Shepard (a moment) or a quarter of a second passes (a cutscene: it goes to the screen as before). Without it
+// the host showed the 3D screen for the few frames before the track's first move: a flash and two dips as every walk began.
+void MomentMayStart();
 // A short dip from black over the moment's held view (the host's transition fade), the view where it is: for what the
 // script covered with its own black screen. False without a moment's view.
 bool MomentDip();

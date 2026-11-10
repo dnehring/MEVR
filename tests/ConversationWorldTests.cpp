@@ -322,6 +322,21 @@ void TestSceneRules() {
             CHECK(cw::CoveredChanges(before, more).appeared == 1 && cw::CoveredChanges(before, more).gone == 0);
             CHECK(cw::CoveredChanges({}, {}).Total() == 0);
         }
+        // The guided walk follows the way Shepard went, not the straight line to him.
+        {
+            // Along +X for 4 m, then a corner and 4 m along +Y, a point every half metre.
+            std::vector<cw::Vec3> trail;
+            for (int i = 0; i <= 8; ++i) trail.push_back({i * 50.0, 0.0, 0.0});
+            for (int i = 1; i <= 8; ++i) trail.push_back({400.0, i * 50.0, 0.0});
+            auto const first = cw::TrailTarget(trail, cw::Vec3{0.0, 0.0, 0.0});
+            CHECK(first && first->x == 150.0 && first->y == 0.0);                      // 1.5 m ahead along the trail
+            auto const corner = cw::TrailTarget(trail, cw::Vec3{330.0, 20.0, 0.0});    // near the corner: round it, not across
+            CHECK(corner && corner->x == 400.0 && corner->y == 100.0);
+            auto const off = cw::TrailTarget(trail, cw::Vec3{200.0, -120.0, 0.0});     // off the trail: its nearest part, ahead
+            CHECK(off && off->x == 350.0 && off->y == 0.0);
+            CHECK(!cw::TrailTarget(trail, cw::Vec3{400.0, 330.0, 0.0}));               // the end is near: the pawn himself
+            CHECK(!cw::TrailTarget({}, cw::Vec3{0.0, 0.0, 0.0}));
+        }
         // How a walk-in is walked: the body by default, the view when the pawn must not be moved.
         {
             using W = cw::WalkInWay;
@@ -581,7 +596,15 @@ void TestLatest() {
     s.active = 0;  // the mod's state when the conversation leaves the world: nothing shown
     cw::Publish(s);
     CHECK(!cw::Latest().has_value());
+    CHECK(!cw::Armed());                               // ... and not armed either
+    s.holdPad[0] = 1;                                  // on foot, armed: no scene, but one that begins now is the mod's
+    cw::Publish(s);
+    CHECK(!cw::Latest().has_value() && cw::Armed());
+    s.active = 1;
+    cw::Publish(s);
+    CHECK(cw::Latest().has_value() && !cw::Armed());   // a scene in the world is not "coming"
     cw::Reset();
+    CHECK(!cw::Armed());
     CHECK(!cw::Latest().has_value());
 }
 

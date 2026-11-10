@@ -1,0 +1,162 @@
+# SPDX-License-Identifier: MIT
+# Scenes played from validation saves, with the plot each save set (research/69 "From a save"): the fast loop for the
+# first-person scenes. Loads a save in the running game through the loaded career's quicksave slot (no `open`, which resets
+# the plot the save set, and no restart), fires the scene's first action as the player's use or walk-in would, drives what
+# follows (a line skipped a couple of seconds in, the first reply picked) until nothing plays any more, and has
+# tools/conversation-session.py judge that stretch of the log. About a minute and a half a scene; ten scenes in one pass.
+#
+#   tools/conversation-from-save.ps1 -Save John02_81 -Action PlayerBecomesSpectre.BioSeqAct_PMCheckState_2
+#       [-Class BioSeqAct_PMCheckState] [-ActionInput 0] [-Seconds 300] [-EndAfter 0] [-Pace skip|full] [-Snapshots 20,45]
+#       [-Walk 18] [-NoLoad]
+#   tools/conversation-from-save.ps1 -All -Career John02 [-FirstSlot 80] [-List tools/conversation-headset-sample.json]
+#       [-Plans a.json,b.json] [-Only 80,81] [-EndAfter 25] [-Seconds 150]
+#
+# -EndAfter N: a conversation is ended N seconds in (only the opening matters). -Walk N: the left stick held forward for N
+# seconds from the start (a player who walks along; `mevr convo walk`). -All: every scene of the list from its numbered
+# save (the saves `conversation-sweep.py saves` wrote), each one's action from the plans (`conversation-sweep.py actions`).
+#
+# The game must be running with a career loaded (any). The save's bytes go over that career's own quicksave (the game
+# writes one first, else QuickLoad refuses the file): back up the Save folder before (tools/game-slot.ps1 does) and put the
+# career's quicksave back after. -NoLoad fires in the game as it stands.
+param(
+    [string]$Save = '',
+    [string]$Action = '',
+    [string]$Class = 'BioSeqAct_PMCheckState',
+    [int]$ActionInput = 0,
+    [int]$Seconds = 300,
+    [int]$EndAfter = 0,
+    [ValidateSet('skip', 'full')] [string]$Pace = 'skip',
+    [int[]]$Snapshots = @(),
+    [int]$Walk = 0,
+    [switch]$NoLoad,
+    [switch]$All,
+    [string]$Career = 'John02',
+    [int]$FirstSlot = 80,
+    [string]$List = '',
+    [string[]]$Plans = @(),
+    [int[]]$Only = @()
+)
+$ErrorActionPreference = 'Stop'
+$tools = $PSScriptRoot
+$saveRoot = Join-Path $env:USERPROFILE 'Documents\BioWare\Mass Effect Legendary Edition\Save\ME1'
+function Console([string]$line) { (& (Join-Path $tools 'console.ps1') $line) -join "`n" }
+function Say([string]$text) { Write-Output ("{0} {1}" -f (Get-Date -Format HH:mm:ss), $text) }
+function Mode() { [regex]::Match((Console 'mevr convo'), 'game mode (-?\d+)').Groups[1].Value }
+# A message box of the game's (a new talent, a refused load) holds the game in its GUI mode: answered with A.
+function Clear-Boxes() {
+    for ($i = 0; $i -lt 4 -and (Mode) -eq '7'; $i++) {
+        $focused = (Console 'mevr panel') -split "`n" | Where-Object { $_ -match 'focus true' } | Select-Object -First 1
+        if ($focused -notmatch 'MessageBox') { break }
+        Console 'mevr guikey 12' | Out-Null
+        Start-Sleep -Seconds 2
+    }
+}
+if (-not (Get-Process MassEffect1 -ErrorAction SilentlyContinue)) { throw 'the game is not running' }
+
+function Play-Scene([string]$save, [string]$class, [string]$action, [int]$actionInput, [string]$title) {
+    Clear-Boxes
+    if (-not $NoLoad) {
+        $source = $save
+        if (-not (Test-Path -LiteralPath $source)) {
+            $leaf = $(if ($save.EndsWith('.pcsav')) { $save } else { "$save.pcsav" })
+            $source = @(Get-ChildItem -LiteralPath $saveRoot -Recurse -File -Filter $leaf | Select-Object -First 1 -ExpandProperty FullName)[0]
+            if (-not $source) { Say "no save $leaf under $saveRoot"; return $false }
+        }
+        $m = [regex]::Match((Console "mevr instances BioSaveGame`nmevr props 0"), '"m_sCharacterID": "([^"]*)"')
+        if (-not $m.Success -or -not $m.Groups[1].Value) { throw 'no career is loaded in the game (load any save first)' }
+        $career = $m.Groups[1].Value
+        $quick = Join-Path $saveRoot "$career\$($career)_QuickSave.pcsav"
+        $stamp = if (Test-Path -LiteralPath $quick) { (Get-Item -LiteralPath $quick).LastWriteTime } else { [datetime]::MinValue }
+        Console 'QuickSave' | Out-Null
+        $own = $false
+        for ($i = 0; $i -lt 15 -and -not $own; $i++) { Start-Sleep 1; $own = (Test-Path -LiteralPath $quick) -and (Get-Item -LiteralPath $quick).LastWriteTime -gt $stamp }
+        if (-not $own -and -not (Test-Path -LiteralPath $quick)) { Say "the game wrote no quicksave for $career (a conversation, combat or a menu refuses it) and has none: QuickLoad would refuse the save"; return $false }
+        Copy-Item -LiteralPath $source -Destination $quick -Force
+        Console 'QuickLoad' | Out-Null
+        Say "loading $(Split-Path -Leaf $source) through $career's quicksave$(if ($title) { ": $title" })"
+        # Loaded: on foot again, twice in a row, after the load's own modes.
+        Start-Sleep -Seconds 8
+        $onFoot = 0
+        for ($i = 0; $i -lt 60 -and $onFoot -lt 2; $i++) {
+            Start-Sleep -Seconds 2
+            $mode = Mode
+            if ($mode -eq '7') { Clear-Boxes; $mode = Mode }
+            $onFoot = $(if ($mode -eq '0') { $onFoot + 1 } else { 0 })
+        }
+        if ($onFoot -lt 2) { Say 'the save did not come up on foot in two minutes'; return $false }
+        Start-Sleep -Seconds 3
+    }
+    $began = (Get-Date).AddSeconds(-2).ToString('HH:mm:ss')
+    $tail = ($action -split '\.')[-1]
+    $listing = Console "mevr instances $class $tail"
+    $index = -1
+    foreach ($line in $listing -split "`n") {
+        $lm = [regex]::Match($line, '^\[(\d+)\]\s+(\S+)\s+(\S+)')
+        if ($lm.Success -and $lm.Groups[3].Value.EndsWith($action)) { $index = [int]$lm.Groups[1].Value }
+    }
+    if ($index -lt 0) { Say "$class ...$action is not loaded"; return $false }
+    $started = Get-Date
+    Console "mevr activate $index $actionInput" | Out-Null
+    Say "fired $action (input $actionInput)"
+    if ($Walk -gt 0) { Console "mevr convo walk 0 1 $Walk" | Out-Null }
+
+    $shots = @($Snapshots | Sort-Object)
+    $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true
+    while (((Get-Date) - $started).TotalSeconds -lt $Seconds) {
+        Start-Sleep -Milliseconds 1500
+        $elapsed = ((Get-Date) - $started).TotalSeconds
+        if ($shots.Count -gt 0 -and $elapsed -ge $shots[0]) {
+            & (Join-Path $tools 'snapshot.ps1') -Tag ("save-{0:000}" -f [int]$shots[0]) *> $null
+            Say ("snapshot at {0:0} s" -f $elapsed)
+            $shots = @($shots | Select-Object -Skip 1)
+        }
+        $state = Console 'mevr convo'
+        $mode = [regex]::Match($state, 'game mode (-?\d+)').Groups[1].Value
+        $playing = ($state -match 'conversation \d+ \(') -or $mode -eq '6' -or $mode -eq '5'
+        if ($playing) { $seen = $true; $quiet = 0 } else { $quiet++ }
+        if ($seen -and $quiet -ge 5) { Say ("nothing has played for 7 s: done after {0:0} s" -f $elapsed); break }
+        if (-not $seen -and $elapsed -gt 25) { Say 'nothing came of the action in 25 s (a plot check on the way?)'; $ok = $false; break }
+        if ($state -match 'conversation (\d+) \(BioConversation ([^)]+)\), ([\d.]+) s, .*entry (-?\d+), wheel (up|down)') {
+            if ($null -eq $convoSince) { $convoSince = Get-Date }
+            if ($EndAfter -gt 0 -and ((Get-Date) - $convoSince).TotalSeconds -ge $EndAfter) {
+                Console 'mevr convo end' | Out-Null
+                Say ("the conversation ended {0} s in (only its opening was wanted)" -f $EndAfter)
+                $convoSince = $null
+                continue
+            }
+            $key = "$($Matches[1])/$($Matches[4])"
+            if ($Matches[5] -eq 'up') {
+                Console 'mevr convo pick 0' | Out-Null
+            } elseif ($Pace -eq 'skip' -and $key -eq $lastKey) {
+                Console 'mevr convo skip' | Out-Null   # a line two seconds in is skipped; a new line gets its two seconds first
+            }
+            $lastKey = $key
+        } else { $convoSince = $null }
+    }
+    & python -I (Join-Path $tools 'conversation-session.py') --since $began | Select-Object -Skip 1
+    return $ok
+}
+
+if ($All) {
+    if (-not $List) { $List = Join-Path $tools 'conversation-headset-sample.json' }
+    if ($Plans.Count -eq 0) { $Plans = @('moments.json', 'plan-sample-1.json', 'plan-all.json') | ForEach-Object { Join-Path $env:LOCALAPPDATA "MEVR\sweep\$_" } | Where-Object { Test-Path $_ } }
+    $rows = (& python -I (Join-Path $tools 'conversation-sweep.py') actions $List @Plans --first-slot $FirstSlot) | ConvertFrom-Json
+    $done = 0; $failed = @()
+    foreach ($row in $rows) {
+        if ($Only.Count -gt 0 -and $Only -notcontains [int]$row.slot) { continue }
+        Write-Output ''
+        Write-Output ("=== slot {0}: {1}" -f $row.slot, $row.title)
+        if (-not $row.tail) { Say 'no plan knows its starting action: skipped'; $failed += $row.slot; continue }
+        $result = Play-Scene ("{0}_{1}" -f $Career, $row.slot) $row.class $row.tail ([int]$row.input) $row.scene
+        $result | Where-Object { $_ -isnot [bool] }
+        if (@($result)[-1] -ne $true) { $failed += $row.slot }
+        $done++
+    }
+    Write-Output ''
+    Say ("{0} scenes played from their saves; {1}" -f $done, $(if ($failed.Count) { "did not start: slots $($failed -join ', ')" } else { 'all started' }))
+} else {
+    if (-not $Action) { throw '-Action <sequence path tail>, or -All' }
+    $result = Play-Scene $Save $Class $Action $ActionInput ''
+    $result | Where-Object { $_ -isnot [bool] }
+    if (@($result)[-1] -ne $true) { exit 1 }
+}

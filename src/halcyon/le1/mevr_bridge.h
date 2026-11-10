@@ -296,6 +296,7 @@ void WorldUiPresent(bool reserved, bool flatPanel, bool held) noexcept;
 // world). Halcyon then presents mode 5 as on foot (no VR cine, no 3D screen, head look on, both Draws), keeps its first-person
 // hides up, and the main view's CalcSceneView gets the held view (GalaxyViewSwapBegin).
 bool ConversationInWorld() noexcept;
+bool ConversationWorldOrComing() noexcept;  // [MEVR] ... or one beginning this instant (the mode's first tick; research/69)
 
 struct MenuPointer
 {

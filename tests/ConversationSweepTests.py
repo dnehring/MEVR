@@ -359,6 +359,24 @@ def main():
         check(sweep.judge([results, '--write-baseline', base]) == 0 and json.load(open(base, encoding='utf-8'))[ms[0]['conversation']]['kinds'] == [],
               'a moment that ran is no exception')
 
+    # The action that starts each scene of a list, from the plans (for the runs from validation saves).
+    with tempfile.TemporaryDirectory() as tmp2:
+        listing = os.path.join(tmp2, 'list.json')
+        planfile = os.path.join(tmp2, 'plan.json')
+        json.dump({'scenes': [{'scene': 'sta20_talk', 'title': 'a talk'}, {'scene': 'moment_walk'}, {'scene': 'unknown'}]}, open(listing, 'w', encoding='utf-8'))
+        json.dump({'scenes': {'BIOA_STA00': [{'conversation': 'sta20_talk', 'actionTail': 'Talks.BioSeqAct_StartConversation_1'},
+                                             {'conversation': 'moment_walk', 'actionTail': 'Walk.BioSeqAct_PMCheckState_0',
+                                              'actionClass': 'BioSeqAct_PMCheckState', 'actionInput': 0}]}}, open(planfile, 'w', encoding='utf-8'))
+        import io
+        import contextlib
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            sweep.actions([listing, planfile, '--first-slot', '90'])
+        acts = json.loads(out.getvalue())
+        check([a['slot'] for a in acts] == [90, 91, 92] and acts[0]['class'] == 'BioSeqAct_StartConversation'
+              and acts[1]['class'] == 'BioSeqAct_PMCheckState' and acts[1]['tail'] == 'Walk.BioSeqAct_PMCheckState_0' and acts[2]['tail'] is None,
+              f"each scene's starting action, by slot: {acts}")
+
     # A played session, judged from its logs (tools/conversation-session.py): what the player would have noticed.
     session = module('conversation_session', 'conversation-session.py')
     mod_log = '''[10:00:00.000] [info] MEVR attaching

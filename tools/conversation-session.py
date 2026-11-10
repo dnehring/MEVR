@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """What a played session's logs say about its first-person scenes (research/69 "A played session, judged").
 
-  python tools/conversation-session.py [--log <LE1MEVR.log>] [--halcyon <MELEVR_Log.txt>] [--strict]
+  python tools/conversation-session.py [--log <LE1MEVR.log>] [--halcyon <MELEVR_Log.txt>] [--since HH:MM:SS] [--strict]
 
 Reads the mod's log of one run of the game (and Halcyon's, for the first-person hides and the presentation) and lists, per
 scene shown in the world (a conversation, or a moment: a matinee that walks Shepard), what a player would have noticed:
@@ -55,8 +55,14 @@ def scenes_of(mod):
     """The scenes shown in the world, in order: {'kind', 'name', 'start', 'end', 'player', 'summary', 'ended'}."""
     scenes = []
     current = None
+
+    def close(now):  # a scene that never logged its end (a stalled one, a reload) ends where the next begins
+        if scenes and scenes[-1]['end'] is None:
+            scenes[-1]['end'] = now
+
     for t, text in mod:
         if text.startswith('moment: a matinee walks Shepard: held in first person'):
+            close(t)
             current = {'kind': 'moment', 'name': 'a walk of Shepard\'s', 'start': t, 'end': None, 'player': None, 'summary': {}, 'ended': ''}
             scenes.append(current)
         elif text.startswith('moment: the first-person view of the moment ends') and current and current['kind'] == 'moment':
@@ -67,6 +73,7 @@ def scenes_of(mod):
             except ValueError:
                 pass
         elif (m := BEGAN.search(text)):
+            close(t)
             current = {'kind': 'conversation', 'name': m.group(2).split('.')[-1], 'start': t, 'end': None, 'player': m.group(4),
                        'summary': {}, 'ended': '', 'number': m.group(1)}
             scenes.append(current)
@@ -122,7 +129,7 @@ def judge(mod, halcyon=()):
                 found.append(('flash', f'{clock(t)}: {to} was shown for {fades[back][0] - t:.2f} s and taken away again (two dips)'
                               + (': as the scene began' if abs(t - s['start']) < 0.6 else '')))
         for i, (t, frm, to) in enumerate(fades):
-            if i in used or not (s['start'] <= t <= s['end'] + 0.2) or frm != 'the world' or to != 'the world':
+            if i in used or not (s['start'] - 0.5 <= t <= s['end'] + 0.2) or frm != 'the world' or to != 'the world':
                 continue
             used.add(i)
             found.append(('dip', f'{clock(t)}: a dip from black, {t - s["start"]:.1f} s in: {cause_of(mod, t)}'))
@@ -205,6 +212,10 @@ def main(argv):
         with open(halcyon_path, encoding='utf-8', errors='replace') as f:
             halcyon = [(t, text) for t, text in parse(f, HALCYON) if mod[0][0] <= t <= mod[-1][0] + 1.0]
     scenes = judge(mod, halcyon)
+    since = option('--since', '')
+    if since:  # only the scenes that began at or after a time of day (one run of several in a log)
+        h, m, sec = (since.split(':') + ['0', '0'])[:3]
+        scenes = [s for s in scenes if s['start'] >= int(h) * 3600 + int(m) * 60 + float(sec)]
     print(f'{mod_path}: {len(mod)} lines, {clock(mod[0][0]) if mod else "-"} to {clock(mod[-1][0]) if mod else "-"}'
           f'; Halcyon\'s log: {len(halcyon)} lines of that time')
     print(report(scenes))

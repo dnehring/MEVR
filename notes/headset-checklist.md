@@ -251,6 +251,13 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   your own body and arms stay while the council speaks; picking a reply with the stick no longer moves you; no blink at the
   end of the walk along the pathway (the blink as the walk begins is still there: known). And slot 80, the hearing: the
   dip as Anderson is switched off on the stairs should still come.
+- [ ] **A scripted walk, standing still and walking along** (built and run on the fake headset 2026-11-10, research/69 "The
+  script's Shepard, the player's view"): slots 80 and 81. Stand still after using Anderson: no flash as the walk begins;
+  after five seconds you are walked the way Shepard went; the scene starts on time whatever you do. Walk along instead:
+  no blink on the walkway. Look for: how it feels to have no body while your view is away from Shepard's (the cost of this
+  design), whether the guided walk reaches the podium, the blur gone from people during the walk.
+- [ ] **No flash as a conversation begins** (the same note): any ordinary conversation from on foot (slots 85, 87, 89):
+  until 2026-11-10 the 3D screen showed for an eighth of a second at every start.
 - [ ] **A walk-in you don't walk** (built 2026-11-10, research/69 "The guided walk-in"; on the fake headset Virmire's first
   conversation walked the player 5.3 m toward a 7.1 m mark; `[Cinematics] worldWalkInS = 5`, -1 never): start a conversation
   from a few metres away and leave the stick alone: after five seconds you should be walked to Shepard's place at walking

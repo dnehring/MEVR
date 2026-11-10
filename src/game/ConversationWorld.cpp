@@ -158,6 +158,12 @@ struct Settings {
     bool moments = true;
     bool momentCarry = false;          // ... carry: the track moves him and the view goes with him; walk: its move is withheld,
                                        // he walks it himself
+    // view (the default since 2026-11-10, later): the script's Shepard is the script's: the track moves his pawn, hidden,
+    // through every trigger and onto every mark as authored, and only the player's view is the player's: it stays where he
+    // stands, walks by the stick (guided after worldWalkInS) and joins the pawn where it comes to rest. With the move
+    // withheld (walk) the ceremony never began for a player who had not walked far enough: the track carries Shepard
+    // through the trigger that streams the council's chunk in, and the event that starts the ceremony is fired once.
+    bool momentView = true;
     float momentPatienceS = 12.0f;     // walk: how long the script waits for him where it wants him before he is carried there
     float momentCarryMS = 3.0f;        // the speed he is carried at to where the script wants him (worldMomentCarryMS)
     float moveLeashM = 3.0f;           // how far from the conversation's owner the walk may go (worldMoveLeashM)
@@ -241,8 +247,9 @@ void RefreshSettings() {
     s.move = number("worldMove", 1.0f, 0.0f, 1.0f) != 0.0f;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldMoments")) {
         std::string const w = ini::Lower(ini::Trim(*text));
-        s.moments = w == "walk" || w == "carry";
+        s.moments = w == "view" || w == "walk" || w == "carry";
         s.momentCarry = w == "carry";
+        s.momentView = w == "view";
     }
     s.momentPatienceS = number("worldMomentPatienceS", 12.0f, 0.0f, 120.0f);
     s.momentCarryMS = number("worldMomentCarryMS", 3.0f, 0.5f, 10.0f);
@@ -430,6 +437,7 @@ struct PovAt {
     ue3::Rotator* rotation = nullptr;
     float* fov = nullptr;
     std::uint64_t ms = 0;
+    std::uint64_t pointerMs = 0;  // the addresses above are fresh (taken on foot too: a moment's view begins from there)
     ue3::Vector lastLocation{};  // the director's camera as the game left it (the logs' shots)
     ue3::Rotator lastRotation{};
     float lastFov = 0.0f;
@@ -451,6 +459,7 @@ struct CameraHold {
     std::uint64_t writes = 0;
 };
 CameraHold gCameraHold;
+std::uint64_t gArmedSince = 0;  // when the mod last told the host it was armed on foot (set by Arm; 0: not armed)
 
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     ue3::Object* const controller = player::Controller();
@@ -476,6 +485,10 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         }
         gFoot.have = true;
         gFoot.ms = GetTickCount64();
+        gPov.location = reinterpret_cast<float*>(pov->location);
+        gPov.rotation = pov->rotation;
+        gPov.fov = pov->fov;
+        gPov.pointerMs = gFoot.ms;
         return;
     }
     // (The cinematic mode too: a moment's first-person view is held there. Until 2026-11-10 the POV was taken in the
@@ -486,11 +499,20 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         gPov.rotation = pov->rotation;
         gPov.fov = pov->fov;
         gPov.ms = GetTickCount64();
+        gPov.pointerMs = gPov.ms;
         gPov.lastLocation = *pov->location;
         gPov.lastRotation = *pov->rotation;
         gPov.lastFov = *pov->fov;
         if (*mode == kModeConversation) {
             KeepInPlace(player::Pawn(controller));  // after the conversation's placements of this tick, before its draw
+        }
+        if (!gCameraHold.on && gArmedSince != 0 && gPov.ms - gArmedSince < 150 && gFoot.have) {
+            // The mode's first tick, the mod armed on foot a moment ago and its own tick not yet here: the frame drawn now
+            // is the player's view on foot still, not the director's first shot (the host keeps the on-foot presentation).
+            *pov->location = gFoot.location;
+            *pov->rotation = gFoot.rotation;
+            *pov->fov = gFoot.fov;
+            write_journal::Wrote("ConversationWorld.cameraPovArmed", pov->location, sizeof(ue3::Vector));
         }
         if (gCameraHold.on) {
             *pov->location = gCameraHold.location;
@@ -541,9 +563,13 @@ struct Convo {
     bool wheelStickNoted = false;
     int wheelSticks = 0;         // replies picked with the stick still out as the wheel closed: no walk came of them
     int bodyTurns = 0;           // bodies that re-faced: their look-at target stayed outside what the look-at chain covers
+    int reachSamples = 0;        // look-at targets 30 degrees or more off a body's facing, measured after 1.5 s,
+    double reachWorstHead = 0.0; // ... the worst angle a head was still off its target then,
+    double reachMaxBody = 0.0;   // ... and the widest angle a target stood off a body
     int gameTurns = 0;           // ... of those, turned by the game's own turn in place
     int turnsSlid = 0;           // ... and by an eased turn of ours (the game's refused, or did not move the body)
     int facingsHeld = 0;         // facings the stage set at once mid-conversation, put back (they were for its mark)
+    int facingsEased = 0;        // ... and those of people with nobody to look at, taken as a turn instead of at once
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
     std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
@@ -605,6 +631,7 @@ struct Convo {
     bool detached = false;
     ik::Vec3 detachedAt{};
     bool hidPawn = false;       // the mod hid Shepard's pawn (shown again on arrival and at the end)
+    bool noJoin = false;        // a moment's track is moving the pawn: the view does not join it until it rests
     bool arrived = false;       // the view reached Shepard and the two are one again
     char const* walkInWay = "-";
     bool guideProgressed = false;
@@ -639,6 +666,10 @@ struct Stay {
     bool tracked = false;  // a matinee's move track moves this actor (an authored walk): never undone
     cw::Insistence insist; // the same small placement asked tick after tick: the game's own, accepted (cw::Insists)
     cw::AttentionState attention;  // whether its body turns toward whom it looks at (cw::StepAttention)
+    std::optional<double> facingGoal;  // a facing the stage set at once, taken as a turn (nobody to look at)
+    ue3::Object* lookAt = nullptr; // whom it looks at now, since when, and whether the head's reach was logged for it
+    double lookSinceS = 0.0;
+    bool lookLogged = false;
     double turnGoal = 0.0;         // a turn asked of the game (BioPawn.RequestTurnInPlace): where to,
     double turnFromYaw = 0.0;      // ... from where,
     double turnAskedS = 0.0;       // ... when,
@@ -1110,6 +1141,30 @@ void KeepInPlace(ue3::Object* pawn) {
                 }
             }
         }
+        // How far the game's look-at chain really brings the head (research/69 "Who turns, and how"): once per look-at
+        // target, a second and a half after it was taken: the target's angle off the body, and off the head's facing.
+        if (other != st.lookAt) {
+            st.lookAt = other;
+            st.lookSinceS = nowS;
+            st.lookLogged = false;
+        }
+        if (other != nullptr && bearing && !st.lookLogged && nowS - st.lookSinceS >= 1.5) {
+            st.lookLogged = true;
+            if (auto const head = HeadOf(t.actor)) {
+                bool const atPlayer = other == pawn || other == gC.playerPawn;
+                auto const theirs = atPlayer ? std::nullopt : HeadOf(other);
+                ik::Vec3 const to = (atPlayer ? gC.hold : theirs ? theirs->at : V(*player::Location(other)) + ik::Vec3{0.0, 0.0, 70.0}) - head->at;
+                double const bodyOff = std::abs(YawDiffDeg(*bearing, actualYaw));
+                double const headOff = AngleDeg(head->axis[0], to);
+                gC.reachMaxBody = std::max(gC.reachMaxBody, bodyOff);
+                if (bodyOff >= 30.0) {
+                    ++gC.reachSamples;
+                    gC.reachWorstHead = std::max(gC.reachWorstHead, headOff);
+                }
+                log::Info("convo: at {:.1f} s {} looks at {}: {:.0f} deg off its body's facing, its head {:.0f} deg off after 1.5 s", Seconds(),
+                    t.name, atPlayer ? "the player" : ShortName(other), bodyOff, headOff);
+            }
+        }
         bool eased = false;
         if (walking) {
             st.attention = {};
@@ -1143,10 +1198,18 @@ void KeepInPlace(ue3::Object* pawn) {
                 }
                 st.turnUntilS = 0.0;
                 st.shownYaw = actualYaw;
-            } else if (gradual || !bearing) {
+            } else if (gradual) {
                 st.shownYaw = actualYaw;
+            } else if (!bearing) {
+                // The stage's facing for someone the game gives nobody to look at: the scene's own (Udina turning to the
+                // council), but set at once for a camera cut: taken as a turn (180 degrees in a frame, seen in first person).
+                st.facingGoal = actualYaw;
+                ++gC.facingsEased;
             } else {
                 ++gC.facingsHeld;
+            }
+            if (bearing) {
+                st.facingGoal.reset();
             }
             cw::AttentionLimits const limits{gSettings.turnComfortDeg, gSettings.turnSettleDeg, gSettings.turnDwellS};
             cw::AttentionStep const a = cw::StepAttention(st.attention, st.shownYaw, bearing, dt, limits);
@@ -1169,7 +1232,10 @@ void KeepInPlace(ue3::Object* pawn) {
                 }
                 ++gC.turnsSlid;
             }
-            target = a.turning ? a.goalYawDeg : st.shownYaw;
+            target = a.turning ? a.goalYawDeg : st.facingGoal ? *st.facingGoal : st.shownYaw;
+            if (st.facingGoal && std::abs(YawDiffDeg(*st.facingGoal, st.shownYaw)) < 1.0) {
+                st.facingGoal.reset();
+            }
             eased = true;
         }
         double const diff = YawDiffDeg(target, st.shownYaw);
@@ -1406,6 +1472,15 @@ struct MomentEnded {
 };
 MomentEnded gMomentEnded;
 
+// The places Shepard's pawn passed through while the player's view was elsewhere (a moment's track, the script's moves, the
+// stage's mark): the guided walk follows them (cw::TrailTarget). From a moment's start to the view's arrival.
+std::vector<cw::Vec3> gTrail;
+void TrailAdd(ik::Vec3 const& at) {
+    if (gTrail.empty() || std::hypot(gTrail.back().x - at.x, gTrail.back().y - at.y) >= 40.0) {
+        gTrail.push_back({at.x, at.y, at.z});
+    }
+}
+
 bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     cw::OpeningFacts facts;
     auto const markAt = player::Location(pawn);
@@ -1506,6 +1581,7 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
         gC.detached = true;
         gC.detachedAt = back;
         gC.wantedMark = mark;
+        TrailAdd(mark);  // the guided walk follows the way he went, then to the mark
         gC.walkInWay = "view";
         HidePawn(pawn, true);
         log::Info("convo: the opening: no cut and nothing moved; the player stays at {} facing {:.0f} deg and his view walks to Shepard's mark {} "
@@ -1716,7 +1792,7 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
             HidePawn(pawn, true);  // the scene showed him again: hidden once more while the view is elsewhere
         }
         double const left = gC.wantedMark ? std::hypot(gC.detachedAt.x - at->x, gC.detachedAt.y - at->y) : 0.0;
-        if (!gC.wantedMark || left <= 15.0) {
+        if (!gC.noJoin && (!gC.wantedMark || left <= 15.0)) {
             ik::Vec3 const delta = V(*at) - gC.detachedAt;
             gC.hold = gC.hold + delta;
             frame.headWorld.x += delta.x;
@@ -1726,6 +1802,7 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
             gC.detached = false;
             gC.arrived = gC.wantedMark.has_value();
             gC.wantedMark.reset();
+            gTrail.clear();
             HidePawn(pawn, false);
             log::Info("convo: at {:.1f} s the player's view {} Shepard ({:.2f} m walked, {:.2f} m of it guided): the two are one again, his body "
                       "under the player", Seconds(), gC.arrived ? "reached" : "was put on", gC.movedUnits / kUnitsPerMeter,
@@ -1733,13 +1810,13 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
             stop();
             return;
         }
-        glide = left <= 100.0;
+        glide = left <= 100.0 && !gC.noJoin;
         at = EnginePoint(gC.detachedAt);
     }
     // A walk-in nobody walks: after worldWalkInS without the stick the player is walked to Shepard's mark by this same step
     // (cw::StepGuide), wheel up or down. Not in a moment: its own patience and carry are TickMoment's.
     bool const stickUsed = std::hypot(stickX, stickY) > 0.3;
-    cw::Guide const guide = gMomentWalk ? cw::Guide::Wait
+    cw::Guide const guide = gMomentWalk && !gC.detached ? cw::Guide::Wait
         : cw::StepGuide(gC.guide, gC.wantedMark.has_value(), stickUsed, gC.guideProgressed, std::clamp(dt, 0.0, 0.1), gSettings.walkInS);
     bool const guided = (guide == cw::Guide::Walk || glide) && gC.wantedMark.has_value();
     if (guide == cw::Guide::GaveUp && gC.guideLogged) {
@@ -1765,11 +1842,16 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         log::Info("convo: at {:.1f} s the player reached Shepard's mark ({:.2f} m walked so far)", Seconds(), gC.movedUnits / kUnitsPerMeter);
         gC.wantedMark.reset();
     }
-    ik::Vec3 const anchor = gC.wantedMark ? *gC.wantedMark : ownerAt ? V(*ownerAt) : gC.hold;
+    // A guided walk by the view follows the way Shepard went (stairs, a walkway between railings), where there is one. The
+    // leash is then around the next place on that way: around the mark itself it lets a step through only if it brings the
+    // player nearer, and the way there often starts off sideways (the guide stood still for its two seconds and gave up).
+    std::optional<cw::Vec3> const along = guided && gC.detached ? cw::TrailTarget(gTrail, cw::Vec3{at->x, at->y, at->z}) : std::nullopt;
+    ik::Vec3 const anchor = along ? ik::Vec3{along->x, along->y, along->z} : gC.wantedMark ? *gC.wantedMark : ownerAt ? V(*ownerAt) : gC.hold;
     // Where the player faces: the head in the world through the held frame; without a VR view (a flat game), the held view's yaw.
     double headYaw = YawDeg(gC.holdRotation);
     if (guided) {
-        headYaw = std::atan2(gC.wantedMark->y - at->y, gC.wantedMark->x - at->x) * kRadToDeg;  // straight to the mark
+        ik::Vec3 const to = along ? ik::Vec3{along->x, along->y, along->z} : *gC.wantedMark;
+        headYaw = std::atan2(to.y - at->y, to.x - at->x) * kRadToDeg;
     } else if (view.valid) {
         engine::Basis const head = engine::OrientationToWorld(frame, view.head.orientation);
         headYaw = std::atan2(head.forward.y, head.forward.x) * kRadToDeg;
@@ -2000,6 +2082,7 @@ void End(char const* why) {
     if (!gC.on) {
         return;
     }
+    gTrail.clear();
     EndWalks(why);
     if (gC.detached && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
         // The view never reached him and the game now takes its camera back to his pawn: rather than the player's view
@@ -2064,7 +2147,8 @@ void End(char const* why) {
               "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
               "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"opening\": \"{}\", \"markM\": {:.2f}, \"cuts\": {}, "
               "\"trackWalks\": {}, \"trackHeld\": {}, \"yielded\": {}, \"guidedM\": {:.2f}, \"walkInWay\": \"{}\", \"arrived\": {}, "
-              "\"bodyTurns\": {}, \"gameTurns\": {}, \"turnsSlid\": {}, \"facingsHeld\": {}, \"wheelSticks\": {}, \"entries\": [{}]}}",
+              "\"bodyTurns\": {}, \"gameTurns\": {}, \"turnsSlid\": {}, \"facingsHeld\": {}, \"wheelSticks\": {}, \"lookWide\": {}, "
+              "\"lookMaxDeg\": {:.0f}, \"headShortDeg\": {:.0f}, \"facingsEased\": {}, \"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
@@ -2072,7 +2156,7 @@ void End(char const* why) {
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
-        gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, entryPath);
+        gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }
@@ -2264,6 +2348,8 @@ struct MomentView {
     ik::Vec3 pawnAt{};              // where the player's own walk has Shepard
     std::optional<ik::Vec3> wanted; // where the script wants him (its teleport's destination in the same space): he walks there
     int dips = 0;                    // dips from black in place of the script's black screens
+    bool provisional = false;        // begun at the cinematic switch (MomentMayStart): no track has moved Shepard yet
+    bool viewWalk = false;           // the script moved Shepard within the same space: he stays there, the view walks to him
     std::optional<ik::Vec3> trackAt; // where the withheld track has him
     bool trackEnded = false;
     std::uint64_t wantedMs = 0;     // ... since when
@@ -2281,7 +2367,31 @@ bool FootFresh(std::uint64_t now) {
 }
 
 void EndMomentView(Link const& link, char const* why, bool stopWorld) {
-    gMomentEnded = {GetTickCount64(), gMoment.wanted.has_value()};
+    if (gMoment.provisional) {
+        // Never a moment: the cinematic mode began and no track moved Shepard. No summary (nothing was shown as one).
+        log::Info("moment: the cinematic mode began on foot but no track moved Shepard ({}): not a moment; the view was held {:.2f} s",
+            why, static_cast<double>(GetTickCount64() - gMoment.startMs) / 1000.0);
+        gMoment = {};
+        gMomentWalk = false;
+        gCutBase += gC.cut;
+        gC = {};
+        if (stopWorld) {
+            StopWorld(link, why);
+        }
+        return;
+    }
+    // Whether the script still had Shepard somewhere the player is not: a place he was wanted at and had not reached, or a
+    // move of this very tick (the ceremony's teleport and its conversation's start come together): the conversation that
+    // begins then walks in by the view, never by putting Shepard back (cw::DecideWalkIn).
+    bool pending = gMoment.wanted.has_value() || gC.detached;
+    if (ue3::Object* const controller = player::Controller()) {
+        if (ue3::Object* const pawn = player::Pawn(controller); pawn != nullptr && ue3::runtime::IsAlive(pawn)) {
+            if (auto const at = player::Location(pawn)) {
+                pending = pending || Dist(V(*at), gMoment.pawnAt) > kJumpUnits;
+            }
+        }
+    }
+    gMomentEnded = {GetTickCount64(), pending};
     log::Info("moment: the first-person view of the moment ends ({}) after {:.1f} s: the player walked {:.2f} m and was carried {:.2f} m; "
               "the script's moves of Shepard: {} within the same space (he got there {} times), {} accepted under a dip",
         why, static_cast<double>(GetTickCount64() - gMoment.startMs) / 1000.0, gC.movedUnits / kUnitsPerMeter,
@@ -2293,6 +2403,17 @@ void EndMomentView(Link const& link, char const* why, bool stopWorld) {
         if (ue3::Object* const pawn = player::Pawn(controller); pawn != nullptr && gC.moving && ue3::runtime::IsAlive(pawn)) {
             WalkVelocity(pawn, {});
         }
+        // The view was still on its way to Shepard: shown again; a conversation that begins takes it from here (its own
+        // walk-in by the view hides him again), and where the cinematic mode just ends he is brought to where the player
+        // stands (on foot the game's camera is his: the view would jump to him).
+        if (ue3::Object* const pawn = player::Pawn(controller); pawn != nullptr && gC.detached && ue3::runtime::IsAlive(pawn)) {
+            HidePawn(pawn, false);
+            if (stopWorld) {
+                bool const moved = PutAt(pawn, gC.detachedAt);
+                log::Info("moment: the cinematic mode ended with the player's view {:.2f} m from Shepard: he is brought to where the player "
+                          "stands{}", Dist(gC.detachedAt, gMoment.pawnAt) / kUnitsPerMeter, moved ? "" : " (refused: the view goes to him)");
+            }
+        }
     }
     gMoment = {};
     gMomentWalk = false;
@@ -2301,6 +2422,79 @@ void EndMomentView(Link const& link, char const* why, bool stopWorld) {
     if (stopWorld) {
         StopWorld(link, why);
     }
+}
+
+// A moment's view begins: the place on foot, carried to where the pawn is now.
+void BeginMomentView(ik::Vec3 const& pawnAt, std::uint64_t now, bool provisional) {
+    gCutBase += gC.cut;
+    gC = {};
+    gMoment = {};
+    gMoment.on = true;
+    gMoment.provisional = provisional;
+    gMomentWalk = true;
+    gMoment.startMs = now;
+    gMoment.cinematicMs = now;
+    gMoment.number = 900000 + ++gMoments;
+    gMoment.pawnAt = pawnAt;
+    gC.world = true;
+    gC.openingDone = true;
+    gC.startMs = now;
+    gC.number = gMoment.number;
+    gC.hold = V(gFoot.location) + (pawnAt - V(gFoot.pawn));
+    gC.holdRotation = gFoot.rotation;
+    gC.holdFov = gFoot.fov;
+    gC.holdFrom = "the view on foot";
+    gTrail.clear();
+    if (gSettings.momentView && !gSettings.momentCarry) {
+        gC.detached = true;        // the pawn is the script's from the first tick; the view stays the player's
+        gC.detachedAt = pawnAt;
+        gC.noJoin = true;
+        TrailAdd(pawnAt);
+    }
+}
+
+// What the host is told of a moment's view: held at gC.hold, the game's camera too.
+cw::State MomentState(std::uint64_t now) {
+    cw::State state;
+    state.active = 1;
+    state.conversation = gMoment.number;
+    state.cut = gCutBase + gC.cut;
+    if (gPov.location != nullptr && now - gPov.pointerMs < 500) {
+        state.holdRender = 1;
+        state.holdLocation[0] = static_cast<float>(gC.hold.x);
+        state.holdLocation[1] = static_cast<float>(gC.hold.y);
+        state.holdLocation[2] = static_cast<float>(gC.hold.z);
+        state.holdRotation[0] = gC.holdRotation.pitch;
+        state.holdRotation[1] = gC.holdRotation.yaw;
+        state.holdRotation[2] = gC.holdRotation.roll;
+        state.holdFov = gC.holdFov;
+        state.povLocationAddress = reinterpret_cast<std::uint64_t>(gPov.location);
+        state.povRotationAddress = reinterpret_cast<std::uint64_t>(gPov.rotation);
+        state.povFovAddress = reinterpret_cast<std::uint64_t>(gPov.fov);
+    }
+    gCameraHold.on = gSettings.camera && state.holdRender != 0;
+    gCameraHold.location = {static_cast<float>(gC.hold.x), static_cast<float>(gC.hold.y), static_cast<float>(gC.hold.z)};
+    gCameraHold.rotation = gC.holdRotation;
+    gCameraHold.fov = gC.holdFov;
+    return state;
+}
+
+Link gLink;  // the host's publish function, as the last tick had it (MomentMayStart publishes from a handler)
+
+// Armed (research/69 "The flash at every scene's start"): on foot with the first-person mode on, the host is told every tick
+// that a scene beginning now would be shown in the world, so it keeps the on-foot presentation over the tick in which the
+// game's mode has changed and the mod's state has not; said to be off the moment a mode begins that the mod does not take.
+std::uint64_t gArmedMs = 0;
+void Arm(Link const& link, bool armed) {
+    if (link.publish == nullptr || (!armed && gArmedMs == 0)) {
+        return;
+    }
+    cw::State state;
+    state.active = 0;
+    state.holdPad[0] = armed ? 1 : 0;
+    link.publish(&state);
+    gArmedMs = armed ? GetTickCount64() : 0;
+    gArmedSince = gArmedMs;
 }
 
 // True while the moment's view is up this tick (the caller returns).
@@ -2316,24 +2510,25 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
         if (!cinematic || track == 0 || now - track > 500 || !FootFresh(now) || !at) {
             return false;
         }
-        gCutBase += gC.cut;
-        gC = {};
-        gMoment = {};
-        gMoment.on = true;
-        gMomentWalk = true;
-        gMoment.startMs = now;
-        gMoment.number = 900000 + ++gMoments;
-        gMoment.pawnAt = V(*at);
-        gC.world = true;
-        gC.openingDone = true;
-        gC.startMs = now;
-        gC.number = gMoment.number;
-        gC.hold = V(gFoot.location) + (V(*at) - V(gFoot.pawn));
-        gC.holdRotation = gFoot.rotation;
-        gC.holdFov = gFoot.fov;
-        gC.holdFrom = "the view on foot";
+        BeginMomentView(V(*at), now, false);
         log::Info("moment: a matinee walks Shepard: held in first person at {} facing {:.0f} deg; {}", F(gC.hold), YawDeg(gC.holdRotation),
-            gSettings.momentCarry ? "the track carries him, the view goes with him" : "its move of him is withheld, the stick walks him");
+            gSettings.momentCarry ? "the track carries him, the view goes with him"
+            : gSettings.momentView ? "the track moves his pawn, hidden; the view is the player's and walks to him"
+            : "its move of him is withheld, the stick walks him");
+    } else if (gMoment.provisional) {
+        // Begun at the cinematic switch: a moment once a track moves Shepard, else over after a quarter of a second.
+        std::uint64_t const track = authored_moment::LastPlayerTrackMs();
+        if (track != 0 && track + 100 >= gMoment.startMs && now - track <= 500) {
+            gMoment.provisional = false;
+            log::Info("moment: a matinee walks Shepard: held in first person at {} facing {:.0f} deg since the cinematic mode began {:.0f} ms "
+                      "ago (no flash of the screen); {}", F(gC.hold), YawDeg(gC.holdRotation), static_cast<double>(now - gMoment.startMs),
+                gSettings.momentCarry ? "the track carries him, the view goes with him"
+                : gSettings.momentView ? "the track moves his pawn, hidden; the view is the player's and walks to him"
+                : "its move of him is withheld, the stick walks him");
+        } else if (now - gMoment.startMs > 250) {
+            EndMomentView(link, "0.25 s without one", true);
+            return false;
+        }
     }
     if (cinematic) {
         gMoment.cinematicMs = now;
@@ -2345,8 +2540,10 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
     if (auto const at = player::Location(pawn)) {
         ik::Vec3 const here = V(*at);
         if (double const d = Dist(here, gMoment.pawnAt); d > 0.01 && d <= kJumpUnits) {
-            gC.hold = gC.hold + (here - gMoment.pawnAt);
-            gMoment.carriedUnits += d;
+            if (!gC.detached) {  // (detached: the view is the player's own, wherever the pawn is moved)
+                gC.hold = gC.hold + (here - gMoment.pawnAt);
+                gMoment.carriedUnits += d;
+            }
             gMoment.pawnAt = here;
         }
         if (Dist(here, gMoment.pawnAt) > kJumpUnits) {
@@ -2357,18 +2554,37 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
             facts.sightToMark = InSight(pawn, gC.hold, here + ik::Vec3{0.0, 0.0, 60.0});
             facts.floorAtMark = FloorZ(pawn, here).has_value();
             cw::Opening const rule = cw::DecideOpening(facts, cw::OpeningRule::Auto);
-            if (rule != cw::Opening::Cut && PutAt(pawn, gMoment.pawnAt)) {
-                // The same space: nothing is cut. But the script wants him there (the place may be what streams the next
-                // area in, as at the council), so it is where he is wanted: he walks, and past the wait he is carried.
+            if (rule != cw::Opening::Cut) {
+                // The same space: nothing is cut, and Shepard stays where the script put him. What follows may count on it in
+                // this very tick: at the council the place streams the chamber's chunk in and the event that starts the
+                // ceremony is fired once (put back to walk there himself, a player who had not walked far enough during the
+                // walk got no ceremony at all: found on the fake headset, 2026-11-10; the owner had walked the whole way). His
+                // pawn is hidden there and the player's view stays where it is and walks to him: the stick, or guided after
+                // worldWalkInS, as in a walk-in by the view (cw::WalkInWay::View); on arrival the two are one again.
                 ++gMoment.putBack;
                 gMoment.wanted = here;
                 gMoment.wantedMs = now;
+                gMoment.viewWalk = true;
                 gC.wantedMark = here;
-                log::Info("moment: the script moved Shepard {:.2f} m ({:+.2f} m up, {}): the same space, no cut; he is wanted at {} and {}",
-                    facts.markUnits / kUnitsPerMeter, facts.riseUnits / kUnitsPerMeter, facts.sightToMark ? "in sight" : "out of sight", F(here),
-                    gSettings.momentCarry ? "is carried there" : std::format("walks there (carried after {:.0f} s)", gSettings.momentPatienceS));
+                if (!gC.detached) {
+                    gC.detached = true;
+                    gC.detachedAt = gMoment.pawnAt;
+                    HidePawn(pawn, true);
+                }
+                gMoment.pawnAt = here;
+                log::Info("moment: the script moved Shepard {:.2f} m ({:+.2f} m up, {}): the same space, no cut; he stays there, hidden, and "
+                          "the player's view walks to him from {} (the stick, or guided after {:.0f} s)",
+                    facts.markUnits / kUnitsPerMeter, facts.riseUnits / kUnitsPerMeter, facts.sightToMark ? "in sight" : "out of sight",
+                    F(gC.detachedAt), gSettings.walkInS);
             } else {
-                gC.hold = gC.hold + (here - gMoment.pawnAt);
+                gC.hold = gC.hold + (here - (gC.detached ? gC.detachedAt : gMoment.pawnAt));
+                if (gC.detached) {
+                    gC.detached = false;
+                    gC.wantedMark.reset();
+                    gMoment.wanted.reset();
+                    gMoment.viewWalk = false;
+                    HidePawn(pawn, false);
+                }
                 gMoment.pawnAt = here;
                 ++gMoment.cuts;
                 ++gC.cut;
@@ -2380,7 +2596,23 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
     // A withheld track: where it has him is where the script has him. While it runs he walks as he likes; when it lets him
     // go (the matinee is over) and the script has not said otherwise, that place is where he is wanted, as after a teleport:
     // what follows may count on him being there (a door closed behind him, a trigger he was carried through).
-    if (!gSettings.momentCarry) {
+    if (gC.detached && gSettings.momentView && !gMoment.provisional) {
+        // The view's own walk: Shepard is where the script has him, hidden; where he is is where the player is wanted, and
+        // the view joins him only once the track has let him rest.
+        HidePawn(pawn, true);
+        gC.wantedMark = gMoment.pawnAt;
+        TrailAdd(gMoment.pawnAt);
+        std::uint64_t const track = authored_moment::LastPlayerTrackMs();
+        gC.noJoin = track != 0 && now >= track && now - track <= 500;
+        if (!gMoment.viewWalk) {
+            gMoment.viewWalk = true;
+            gMoment.wanted = gMoment.pawnAt;
+            gMoment.wantedMs = now;
+        } else if (gMoment.wanted) {
+            gMoment.wanted = gMoment.pawnAt;
+        }
+    }
+    if (!gSettings.momentCarry && !gSettings.momentView) {
         float place[3];
         std::uint64_t ms = 0;
         if (authored_moment::PlayerTrackPlace(place, &ms) && ms >= gMoment.startMs) {
@@ -2402,7 +2634,14 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
     // Where the script wants him: there when he has walked within a step of it, or carried once the wait is over (or at
     // once with worldMoments = carry), in a straight line at worldMomentCarryMS; then he stands exactly there, as its
     // teleport would have put him.
-    if (gMoment.wanted) {
+    if (gMoment.wanted && gMoment.viewWalk) {
+        if (!gC.detached) {  // MovePlayer brought the view to him
+            ++gMoment.arrivals;
+            log::Info("moment: the player's view reached Shepard where the script has him ({})", F(*gMoment.wanted));
+            gMoment.wanted.reset();
+            gMoment.viewWalk = false;
+        }
+    } else if (gMoment.wanted) {
         ik::Vec3 const to = *gMoment.wanted - gMoment.pawnAt;
         double const left = std::sqrt(to.x * to.x + to.y * to.y + to.z * to.z);
         double const flat = std::hypot(to.x, to.y);
@@ -2454,27 +2693,10 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
         view_anchor::Hold(frame, gFoot.floorView);
         gHeld = true;
     }
-    cw::State state;
-    state.active = 1;
-    state.conversation = gMoment.number;
-    state.cut = gCutBase + gC.cut;
-    if (gPov.location != nullptr && now - gPov.ms < 500) {
-        state.holdRender = 1;
-        state.holdLocation[0] = static_cast<float>(gC.hold.x);
-        state.holdLocation[1] = static_cast<float>(gC.hold.y);
-        state.holdLocation[2] = static_cast<float>(gC.hold.z);
-        state.holdRotation[0] = gC.holdRotation.pitch;
-        state.holdRotation[1] = gC.holdRotation.yaw;
-        state.holdRotation[2] = gC.holdRotation.roll;
-        state.holdFov = gC.holdFov;
-        state.povLocationAddress = reinterpret_cast<std::uint64_t>(gPov.location);
-        state.povRotationAddress = reinterpret_cast<std::uint64_t>(gPov.rotation);
-        state.povFovAddress = reinterpret_cast<std::uint64_t>(gPov.fov);
+    if (!gMoment.provisional) {
+        DofOff();  // the matinee's camera focuses for its own shot: from the player's place it blurred people at random
     }
-    gCameraHold.on = gSettings.camera && state.holdRender != 0;
-    gCameraHold.location = {static_cast<float>(gC.hold.x), static_cast<float>(gC.hold.y), static_cast<float>(gC.hold.z)};
-    gCameraHold.rotation = gC.holdRotation;
-    gCameraHold.fov = gC.holdFov;
+    cw::State const state = MomentState(now);
     link.publish(&state);
     gPublished = true;
     ++gWorldTicks;
@@ -2486,7 +2708,7 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
     // The on-foot record stays fresh: the conversation that follows opens from where the player stands.
     gFoot.location = EnginePoint(gC.hold);
     gFoot.rotation = gC.holdRotation;
-    gFoot.pawn = EnginePoint(gMoment.pawnAt);
+    gFoot.pawn = EnginePoint(gC.detached ? gC.detachedAt : gMoment.pawnAt);  // where the player's feet are
     gFoot.have = true;
     gFoot.ms = now;
     SetStatus(std::format("{{\"on\": true, \"world\": true, \"moment\": {}, \"held\": [{:.1f}, {:.1f}, {:.1f}], \"putBack\": {}, \"cuts\": {}}}",
@@ -2499,8 +2721,29 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
 // The move track's question, from game/AuthoredMoment's provider (inside the engine's physics step: reads only): the track's
 // move of the player's pawn is withheld while a moment's view is up, and from its first call when one can start (the
 // cinematic game mode, a fresh place on foot).
+void MomentMayStart() {
+    std::uint64_t const now = GetTickCount64();
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
+    if (!gSettings.moments || CurrentMode() != cw::Mode::World || gLink.publish == nullptr || gMoment.on || gC.on || !(mode && *mode == 6) ||
+        pawn == nullptr || !ue3::runtime::IsAlive(pawn) || !FootFresh(now)) {
+        return;
+    }
+    auto const at = player::Location(pawn);
+    if (!at) {
+        return;
+    }
+    BeginMomentView(V(*at), now, true);
+    cw::State const state = MomentState(now);
+    gLink.publish(&state);
+    gPublished = true;
+    log::Info("moment: the cinematic mode began on foot: the view is held at {} until a track moves Shepard or 0.25 s pass{}", F(gC.hold),
+        state.holdRender != 0 ? "" : " (no camera address yet: the hold begins with the next camera update)");
+}
+
 bool MomentViewOn() {
-    return gMoment.on;
+    return gMoment.on && !gMoment.provisional;
 }
 
 // The people shown in the player's view (anywhere but behind him, within 30 m), for what a script's black screen covers.
@@ -2581,8 +2824,8 @@ bool MomentWithholds() {
     if (!gSettings.moments || CurrentMode() != cw::Mode::World) {
         return false;
     }
-    if (gSettings.momentCarry) {
-        return false;  // the track carries him; the view goes with him
+    if (gSettings.momentCarry || gSettings.momentView) {
+        return false;  // the track moves him: the view goes with him (carry), or is the player's own (view)
     }
     if (gMoment.on) {
         return true;
@@ -2623,6 +2866,7 @@ bool WantsHooks() {
 }
 
 void Tick(double deltaSeconds, Link const& link) {
+    gLink = link;
     RefreshSettings();
     engine::conversation_hooks::SetKeepProvider(CurrentMode() == cw::Mode::World ? &KeepAtSource : nullptr);
     if (!gSettings.stay || gSettings.walk == 0) {
@@ -2649,6 +2893,7 @@ void Tick(double deltaSeconds, Link const& link) {
     if (conv == nullptr) {
         End(mode && *mode == kModeConversation ? "no conversation object" : "the game left its conversation mode");
         StopWorld(link, "the conversation ended");
+        Arm(link, mode && *mode == 0 && CurrentMode() == cw::Mode::World && FootFresh(GetTickCount64()));
         SetStatus(std::format("{{\"on\": false, \"mode\": \"{}\"}}", cw::Name(CurrentMode())));
         return;
     }
@@ -2708,6 +2953,7 @@ void Tick(double deltaSeconds, Link const& link) {
     // ---- The world mode ----
     bool const world = CurrentMode() == cw::Mode::World && !gC.setPiece && link.publish != nullptr;  // live, as the 3D screen's setting
     if (!world) {
+        Arm(link, false);  // not ours: the host shows it its own way from this tick (armed, it would wait for us)
         StopWorld(link, gC.setPiece ? "a set piece: on the 3D screen" : CurrentMode() == cw::Mode::World ? "an older host" : "not in the world mode");
         SetStatus(std::format("{{\"on\": true, \"world\": false, \"conversation\": {}, \"shots\": {}, \"speaker\": \"{}\"}}", gC.number,
             gC.shots, ShortName(gC.speaker)));

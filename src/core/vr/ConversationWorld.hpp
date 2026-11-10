@@ -39,6 +39,9 @@ struct State {
     // The view held at Shepard's at render time (the director's camera keeps serving the game): the host swaps these into the
     // player camera's POV around the main view's CalcSceneView (Halcyon's [MEVR] seam, as the galaxy map's hold does).
     std::uint8_t holdRender = 0;
+    // holdPad[0]: "armed" (with active 0): the player is on foot and the mod would show a conversation or a moment that begins
+    // now in the world. The game's mode changes a tick before the mod's state can follow: armed, the host keeps the on-foot
+    // presentation over that tick instead of showing the 3D screen for it (a flash and two dips at every scene's start).
     std::uint8_t holdPad[3] = {};
     std::uint32_t cut = 0;  // counts the player's re-placements inside the conversation (the opening): the host dips from black on a change
     float holdLocation[3] = {};
@@ -54,6 +57,9 @@ struct State {
 void Publish(State const& state);
 // The latest state if active and published within `maxAgeMs`.
 std::optional<State> Latest(std::uint64_t maxAgeMs = 300);
+// The mod's last word was "armed" (State::holdPad[0] with active 0) and no older than maxAgeMs: on foot, and a scene that
+// begins now would be shown in the world.
+bool Armed(std::uint64_t maxAgeMs = 150);
 void Reset();
 
 // ---- [Cinematics] conversations ----------------------------------------------------------------------------------------------
@@ -254,6 +260,12 @@ struct Covered {
     int Total() const { return gone + moved + appeared; }
 };
 Covered CoveredChanges(std::span<Seen const> before, std::span<Seen const> after, double movedUnits = 150.0);
+
+// The way Shepard went (research/69 "The script's Shepard, the player's view"): while the player's view walks to a pawn the
+// script moved, the guided walk follows the places the pawn passed through (stairs, a walkway between railings) instead of
+// the straight line to him, which a ledge or a railing blocks. Where to head for from `at`: the trail's point `aheadUnits`
+// along it past the one nearest to `at`; nullopt once the trail's end is that near (then: the pawn himself).
+std::optional<Vec3> TrailTarget(std::span<Vec3 const> trail, Vec3 const& at, double aheadUnits = 150.0);
 
 // How a walk-in is walked (research/69 "The view walks", 2026-11-10). Body: Shepard is put back under the player and the
 // two walk to the mark together (his body under the player; every step moves the pawn, so it ends and begins touches,

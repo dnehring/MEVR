@@ -541,7 +541,17 @@ switching frameworks.
   in the game): **a far shot's camera mode is unreadable, and Halcyon then cleared the first-person hides: the player's own
   body vanished on every line of the council's** (a second `[MEVR]` seam in `head_aim.cpp`'s unreadable-mode branch keeps
   them while `ConversationInWorld()`); **the left stick is the wheel's until it has been let go after a pick**
-  (`cw::StickWalks`: still out as the wheel closed, it walked Shepard half a metre after every reply). **After a headset session run `python tools/conversation-session.py` first**: it
+  (`cw::StickWalks`: still out as the wheel closed, it walked Shepard half a metre after every reply). **The fast loop is scenes from validation saves** (`tools/conversation-from-save.ps1 -All`, research/69 "The script's
+  Shepard, the player's view; the fast loop", 2026-11-10): each save loaded through the loaded career's quicksave, its
+  scene's first action fired, the stretch of log judged: ten scenes in nine minutes, no restart; **the runner's `open` resets
+  the plot**, so a scene behind plot checks is only itself from a save. What it brought: **a scripted walk's Shepard is the
+  script's** (`worldMoments = view`, the default: the track moves his pawn, hidden, through every trigger; the view stays
+  the player's, walks by the stick or guided along the way the pawn went, `cw::TrailTarget`, and joins it at rest; with the
+  move withheld the Spectre ceremony never began for a player who stood still); **no flash of the 3D screen at a scene's
+  start** (the cinematic switch starts a moment's view at once, `MomentMayStart`; on foot the mod tells the host it is
+  "armed", `State::holdPad[0]`, and the host counts a scene as coming for 150 ms, `MevrBridge::ConversationWorldOrComing`);
+  depth of field off during a moment too; a facing the stage sets at once is taken as a turn; `BioPawn.RequestTurnInPlace`
+  turns nobody in a conversation. **After a headset session run `python tools/conversation-session.py` first**: it
   reads the mod's and Halcyon's logs of the last run and names, per scene in the world, what the player would have noticed
   (flash, dip and its cause, body-hidden, screen, pivot, reply-move, drawn-jump, body-strayed; research/69 "A played session,
   judged"). The voices are

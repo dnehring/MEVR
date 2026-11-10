@@ -63,6 +63,11 @@ std::optional<State> Latest(std::uint64_t maxAgeMs) {
     return gLatest;
 }
 
+bool Armed(std::uint64_t maxAgeMs) {
+    std::lock_guard lock(gMutex);
+    return gHave && gLatest.active == 0 && gLatest.holdPad[0] != 0 && GetTickCount64() - gLatest.timeMs <= maxAgeMs;
+}
+
 void Reset() {
     std::lock_guard lock(gMutex);
     gLatest = {};
@@ -517,6 +522,29 @@ Covered CoveredChanges(std::span<Seen const> before, std::span<Seen const> after
         }
     }
     return covered;
+}
+
+std::optional<Vec3> TrailTarget(std::span<Vec3 const> trail, Vec3 const& at, double aheadUnits) {
+    if (trail.empty()) {
+        return std::nullopt;
+    }
+    std::size_t nearest = 0;
+    double best = -1.0;
+    for (std::size_t i = 0; i < trail.size(); ++i) {
+        double const d = std::hypot(trail[i].x - at.x, trail[i].y - at.y);
+        if (best < 0.0 || d <= best) {  // (<=: of two equally near, the later one: never back along the trail)
+            best = d;
+            nearest = i;
+        }
+    }
+    double along = 0.0;
+    for (std::size_t i = nearest; i + 1 < trail.size(); ++i) {
+        along += std::hypot(trail[i + 1].x - trail[i].x, trail[i + 1].y - trail[i].y);
+        if (along >= aheadUnits) {
+            return trail[i + 1];
+        }
+    }
+    return std::nullopt;
 }
 
 WalkInWay DecideWalkIn(WalkInFacts const& facts, WalkInRule rule) {

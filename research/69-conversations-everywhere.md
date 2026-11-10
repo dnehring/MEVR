@@ -1024,6 +1024,82 @@ the cinematic mode too; the same seam covers it), and four more stretches of 5 t
 `tests/ConversationSweepTests.py` over a synthetic session (ctest `mevr-conversation-sweep`). **After every headset session:
 run it first, then read the owner's notes against it.**
 
+### The script's Shepard, the player's view; the fast loop (2026-11-10, 11:25-13:20, on the fake headset)
+
+The owner: "resume, test in headset. I won't be available for validation", then, watching a run: "is there any way you can
+have a better/faster validation loop?" and "there's the strange blur that is applied to keep some characters in focus that
+we would most certainly want to remove".
+
+**The fast loop: scenes from validation saves** (`tools/conversation-from-save.ps1`). The runner's `open <level>` **resets
+the plot**: two runs of the ceremony on it played the hearing's conversation and a second script on top (a plot check on
+the way failed and the step past it mixed two sequences). The saves written for the headset carry the plot each scene
+wants, so the loop is now: the save's bytes over the loaded career's quicksave (the game's own `QuickSave` first),
+`QuickLoad`, the scene's first action fired (`conversation-sweep.py actions` gives it per scene), lines skipped two seconds
+in, the first reply picked, a conversation ended after `-EndAfter` seconds if only its opening is wanted, then
+`conversation-session.py --since` judges that stretch of the logs. No restart, no `open`, no streaming by hand: **ten scenes
+in nine minutes** (`-All`), against four to eight minutes a scene before. A message box of the game's (a new talent after
+the ceremony, a refused load) is answered with A first. `-Walk N` holds the stick forward (a player who walks along).
+
+What the loop found and what was changed, each seen again in a later pass:
+
+1. **The body stays drawn** (the seam in `head_aim.cpp`): no `[FPHIDE] cleared` during any scene of the passes.
+2. **No flash of the 3D screen as a scripted walk begins** (the owner's first blink). The cinematic mode shows a few
+   frames before the track's first move made it a moment. Now the script's cinematic switch itself
+   (`BioSeqAct_BioToggleCinematicMode`'s handler, the game thread) starts the view at once and publishes it
+   (`conversation_world::MomentMayStart`): held where the player stands until a track moves Shepard (a moment: 31 to 47 ms
+   later in the runs) or a quarter of a second passes (a cutscene: it goes to the screen as before, 0.25 s late).
+3. **No flash as an ordinary conversation begins either.** The judge showed it on every plain conversation of the pass:
+   `the world -> the 3D cinema screen -> the world` in 0.13 s, since the mode was built: the host reads the game's mode
+   on its own thread, 3 ms after the conversation began and before the mod's first tick of it had published anything.
+   Now the mod says **"armed"** every tick on foot (`State::holdPad[0]` with `active` 0: no struct change), the host's
+   decision counts a scene as coming for 150 ms after the last armed word (`MevrBridge::ConversationWorldOrComing`, the six
+   `[MEVR]` seams of `xr_session.cpp`; `head_aim.cpp` keeps the strict question), the camera update's handler holds the
+   on-foot view for the frames drawn in that gap, and the mod disarms the moment it knows the scene is not its own (a
+   set piece: Kirrahe's camp still goes to the screen). Three plain conversations after it: nothing found.
+4. **The script's Shepard is the script's** (`worldMoments = view`, the default now; `walk` and `carry` remain). The
+   ceremony never began for a player who stood still: with the track's move withheld (the morning's design: "the stick
+   walks him"), Shepard never passed the trigger on the walkway that streams the council's chunk in, and the event that
+   starts the ceremony is fired once, into a chunk that was not there. The owner had walked the whole way and never saw
+   it. Putting Shepard where the script's teleport wanted him was not enough either (the chunk loads too late). So the
+   track now moves his pawn as authored, **hidden**, through every trigger and onto every mark, and only the view is the
+   player's: it stays where he stands, walks by the stick, is guided after `worldWalkInS`, and joins the pawn where it
+   comes to rest (never while the track still moves it). A script's teleport within the same space leaves the pawn where
+   the script put it. The conversation that begins takes it from there as a walk-in by the view. Both council scenes from
+   their saves, standing still: the hearing 25 lines, the ceremony 40 lines.
+   **The cost**: while the view is away from the pawn the player has no body (the pawn is hidden): the whole scripted
+   walk and the walk-in after it, unless he keeps up.
+5. **The guided walk follows the way Shepard went** (`cw::TrailTarget`): the places the pawn passed through, half a metre
+   apart, then the mark; a straight line met a ledge or a railing, and the walk's leash (around the mark: only nearer)
+   refused the way's first steps sideways, so the leash is around the next place on the way. The ceremony standing still:
+   17.9 m guided up the stairs and along the walkway during Shepard's walk, 7.8 m more in the conversation, `the player's
+   view reached Shepard ... the two are one again` 10.5 s in; the snapshots show the podium, Udina beside the player, the
+   council across the chamber, sharp. (The first saves stood the player on the entrance steps, 1.1 m above the path: 4 m in
+   front of Anderson is on them, and a 60-unit drop is refused; the two council saves now stand 2.5 m from him.)
+6. **The script's black screen**: the hearing dips (1 of 6 people in view gone: Anderson), and so does the ceremony for a
+   player who stands at the stairs (1 of 5 gone). **And for one who walks along** (`-Walk 19`: 13.6 m walked): 1 gone
+   and 9 new in view at that instant (the ceremony's people are shown as the script goes black). So the blink the owner
+   had on the walkway covers something real, by this rule; what he disliked is still there, and the way out is not to dip
+   less but to have the nine there earlier (shown when their chunk streams in) or brought in out of sight: open. A dip
+   that came at the first scene after every hot reload was the reload's own (the published dip count starts again at 0
+   while the host remembers the last).
+7. **The game's turn in place does nothing for people in a conversation**: `RequestTurnInPlace` answered true twice and
+   turned nobody in 0.75 s (Anderson and Udina, 72 degrees off each other after the hearing); the rest was the eased turn,
+   and after two such answers a session no longer asks. In the council's scenes the game's look-at list is empty
+   throughout, so no rule of ours turns anyone there; what turned (Udina 149 to 180 degrees, Benezia's commando 150) was
+   the stage's own facing, set at once for a camera cut: now taken as a turn (`facingsEased`) instead of in one frame.
+   How far the look-at chain really brings a head is logged per look-at target (`convo: ... looks at ...: N deg off its
+   body's facing, its head M deg off after 1.5 s`; the summary's `lookWide`, `lookMaxDeg`, `headShortDeg`): no sample yet
+   (no conversation of the passes had a look-at target more than 30 degrees aside).
+8. **The blur** the owner saw is the depth of field of the matinee's camera, focused for its own shot: it was switched
+   off for conversations only; now for a moment's view too (`convo: depth of field off for the world view` at its start).
+   Motion blur was off throughout (the guard's lines).
+9. **`tools/fake-headset.ps1 -Off` restored a copy of the owner's SteamVR settings from 2026-10-24** (the first `-On`'s
+   backup of the whole file), which no longer had his new headset driver's section (`driver_ivry`). It now puts back only
+   the keys `-On` set, as they were (`undo.json`), and leaves the rest of the file alone.
+
+Not started from its save: slot 84 (Wrex on Virmire's beach: nothing came of the start action in 25 s). Slot 88
+(Kirrahe's camp) is a set piece and went to the screen, as it should.
+
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"
@@ -1264,3 +1340,11 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   controllers lost tracking mid-conversation.
   11:07: the players' build of f339cec is in the game folder for the owner's next run (`0.2.0+f339cecee4`; the one he
   played, 180324d, is kept in `%LOCALAPPDATA%\MEVR\game-slot\previous-asi`). The game slot is still held.
+- 2026-11-10, 11:25-13:20, **resumed on the fake headset at the owner's word** ("The script's Shepard, the player's
+  view; the fast loop"). A loop of scenes from the validation saves (ten in nine minutes, judged from the logs) found, and
+  saw fixed: the flash of the 3D screen at the start of every scripted walk **and of every ordinary conversation**; the
+  ceremony that never began for a player who stood still (the script's Shepard is now moved by the script, hidden, and
+  the view walks to him); the depth of field left on during walks; authored about-faces in one frame. The game's own
+  turn in place does nothing in a conversation. The fake headset's `-Off` no longer restores a weeks-old settings file.
+  The guided walk follows the way Shepard went and arrives. Open: the ceremony's dip stays for a player who walks along
+  (nine people appear at that instant), the body missing while the view is away from the pawn, slot 84.

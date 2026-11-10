@@ -283,6 +283,9 @@ void OnCinematicToggle(ue3::Object* context, ue3::Function*, void*, void*) {
         context != nullptr ? ue3::runtime::FullName(context) : std::string("?"),
         controller != nullptr && gCinematicMode.ReadBool(controller).value_or(false) ? "on" : "off", mode ? static_cast<int>(*mode) : -1,
         pawn != nullptr && gActorHidden.ReadBool(pawn).value_or(false) ? "hidden" : "shown");
+    if (controller != nullptr && gCinematicMode.ReadBool(controller).value_or(false) && mode && *mode == 6) {
+        conversation_world::MomentMayStart();  // a walk of Shepard's may begin: the view is held from this instant
+    }
 }
 
 bool gHandlers = false;
