@@ -7,12 +7,13 @@
 #
 #   tools/conversation-from-save.ps1 -Save John02_81 -Action PlayerBecomesSpectre.BioSeqAct_PMCheckState_2
 #       [-Class BioSeqAct_PMCheckState] [-ActionInput 0] [-Seconds 300] [-EndAfter 0] [-Pace skip|full] [-Snapshots 20,45]
-#       [-Walk 18] [-NoLoad]
+#       [-Walk 18] [-Replay rec.mevrrec] [-NoLoad]
 #   tools/conversation-from-save.ps1 -All -Career John02 [-FirstSlot 80] [-List tools/conversation-headset-sample.json]
 #       [-Plans a.json,b.json] [-Only 80,81] [-EndAfter 25] [-Seconds 150]
 #
 # -EndAfter N: a conversation is ended N seconds in (only the opening matters). -Walk N: the left stick held forward for N
-# seconds from the start (a player who walks along; `mevr convo walk`). -All: every scene of the list from its numbered
+# seconds from the start (a player who walks along; `mevr convo walk`). -Replay: a recording replayed in a loop with its
+# inputs from the moment the scene is fired until it is over (a real stick and buttons: tools/make-walk-recording.py). -All: every scene of the list from its numbered
 # save (the saves `conversation-sweep.py saves` wrote), each one's action from the plans (`conversation-sweep.py actions`).
 #
 # The game must be running with a career loaded (any). The save's bytes go over that career's own quicksave (the game
@@ -28,6 +29,7 @@ param(
     [ValidateSet('skip', 'full')] [string]$Pace = 'skip',
     [int[]]$Snapshots = @(),
     [int]$Walk = 0,
+    [string]$Replay = '',
     [switch]$NoLoad,
     [switch]$All,
     [string]$Career = 'John02',
@@ -99,6 +101,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     Console "mevr activate $index $actionInput" | Out-Null
     Say "fired $action (input $actionInput)"
     if ($Walk -gt 0) { Console "mevr convo walk 0 1 $Walk" | Out-Null }
+    if ($Replay) { & (Join-Path $tools 'replay.ps1') -Path $Replay -Loop -Inputs *> $null }
 
     $shots = @($Snapshots | Sort-Object)
     $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true
@@ -133,6 +136,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             $lastKey = $key
         } else { $convoSince = $null }
     }
+    if ($Replay) { & (Join-Path $tools 'replay.ps1') -Stop *> $null }
     & python -I (Join-Path $tools 'conversation-session.py') --since $began | Select-Object -Skip 1
     return $ok
 }

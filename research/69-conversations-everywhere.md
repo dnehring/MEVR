@@ -1362,3 +1362,16 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   players' build of 19dad44 and is still held by this session's game slot. **A deploy piped into `Select-Object -First
   N` is cut off after N lines**: the fonts, the menu's files and the `.modpath` clean-up never ran (seen as a `.modpath`
   left beside the single-file build; run again without the cut).
+- 2026-11-10, 13:44-14:00, **the real headset, and the stick** (the owner away: "test in headset. I won't be available").
+  **No headset is connected**: SteamVR, started with his own settings, reports `PlayStation VR2 HMD is not found` and
+  `VirtualDesktop: Streamer did not return a connected headset` (the machine's active OpenXR runtime is Virtual Desktop's),
+  so nothing can run on a real headset until someone switches one on; every check of this day is the fake headset's.
+  **The wheel's stick, in the game**: the ceremony from its save with a recording replayed with its inputs from the moment
+  the scene is fired (`conversation-from-save.ps1 -Replay`, `make-walk-recording.py`: the left stick out 16 s of every 20):
+  40 lines, 9 wheels, `the stick that picked the reply is still out` 7 times (`wheelSticks` 7), and the judge finds no
+  move after any of Shepard's lines (the owner's session: 4 of 7); with the stick let go and pushed again he walks (85 m
+  in all). A first try with the replay running while the save loaded was void: the stick walked Shepard out of the
+  chamber before the scene was fired, the level changed and the game was left without a pawn (restarted). The canary's
+  `open` had written a VR00 autosave and the save loop a VR00 quicksave: both are back from the game slot's backup (the
+  folder is byte for byte the backup's); the profile file (`GamerProfile.pcsav`, written by the game at 13:56) is the
+  game's latest and was left. Fake headset off, SteamVR stopped, the players' build of 19dad44 in the folder.
