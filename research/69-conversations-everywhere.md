@@ -657,6 +657,56 @@ script put everyone 15 m away for Anderson's next conversations: a cut (no fresh
   wants splitting (Shepard moved by a track, or no place for him) from "authored cameras";
 - the other 20 moments are not run.
 
+### The sampled pass (2026-11-10 00:10-02:27; skips; `worldOpening = auto`)
+
+`plan --sample --per-place 1 --reach ...` over the 13 levels that open (the credits level left out: its scene ends the
+game): 109 scenes fired, 120 judged with the ones that started by themselves or inside another scene's stretch, **no
+crash, no hang, no restart, nothing drawn mid-jump**, 2 h 17 min (about 75 s a scene with the level loads). Feros opens
+with `open` after all.
+
+| | Scenes | Note |
+|---|---|---|
+| inside every limit | 64 | |
+| **openings in the world** | stay 30, walk in 29, cut 11 | **8 dips from black in all**; with `accept` every staged opening dipped |
+| no-start | 29 | tool side: the bare start action fires nothing (its level script sets the scene up first) |
+| chain-not-played | 9 | by design: the game's start choice took a wheel start (its plot conditional) |
+| not-reached | 6 | a chunk that never became visible (2 on Feros, the locker), an action gone after Shepard was placed (3) |
+| eye-far | 9 | mod side, below |
+| undone | 4 | mod side, below |
+| forced-end, wheel-unanswered | 1 | Vigil's 123 entries against the runner's 150 s: the runner now gives a long conversation more time |
+
+**The mod-side exceptions, by cause:**
+- **An authored walk undone every tick** (`undone`: Wrex on Virmire kept 240, the salarian prisoner 144). A matinee's move
+  track puts the actor where its keys say each tick; keep-in-place took each of those for a stage placement and put him
+  back, and the track moved him again. Fixed: an actor a move track moved in the last 0.3 s (the new hook sees every
+  actor) is left to it (`trackWalks` in the summary).
+- **The view moved by Shepard's own head bone after an opening without a cut** (`eye-far`, and the 0.85-1.2 m "JUMPED"
+  lines: Talitha four times, the Normandy's debriefs). His body stands where the player left it; the scene's animation
+  moves his head there and the follower moved the view with it. Fixed: after such an opening only a move past 6 m (the
+  script put him elsewhere) is followed, under a dip.
+- **The runner's own doing**: Shepard placed 0.5 m above the owner's height hovered there after `ghost` and `walk`
+  (Anderson at the Tower, Anoleis: the mark "0.76 m lower"). Now 0.1 m.
+- The wake-up scene's 2.19 m is the known snap after its cutscene.
+
+**How the sample held up.** By make-up: tier A 41 scenes with 2 mod-side exceptions, B 52 with 4, C 27 with 5: the
+authored scenes fail most, as the tiers say. Of the 12 shapes with two or more scenes played, 10 came out alike; the two
+that did not are the NPC-walk shape (2 of 3: the undone walks) and the four-person stage (1 of 4: a debrief). So one
+scene of a shape does stand for the others where no authored track is involved, and every authored scene is worth
+running. The predictions against the run (share of scenes with that risk that ended as any exception): named-state 77%,
+npc-walk 71%, flowed 70% (mostly "the chain did not play": plot), trigger-near 58%, plot-effects 48%; remote 0 of 11,
+shepard-walk 0 of 2.
+
+**The 12 flagged scenes again, with the fixes (02:29-02:56 and 02:58):** Wrex's walk kept 240 -> 0 and the prisoner's
+144 -> 0, each with `trackWalks` 1 ("is moved by a matinee's track ...: an authored walk, left to it"); no re-anchor of
+the view in any walk-in or stay (Talitha had 4); Vigil played whole (125 lines, 28 wheels answered). Anoleis without the
+hover: the head bone at most 0.54 m from the held eyes (1.13 m before). What stays over the 0.8 m limit is Shepard's own
+body at his mark-less place: the Normandy's debriefs (0.9-1.4 m: a four-person stage whose animation carries his head
+that far) and Talitha's scene (0.84 m): the view no longer follows, so this is how far his body strays under a player
+who stands still, a thing for the headset. Two small ones remain `undone` (the debriefs: a person put 0.4 m and 3 m away
+once each, by neither the stage's placement function nor a track). A far-shot count taken from a walk-in's start named
+Wrex's scene as "no place" (the player 29 m from a scene he had not walked into): far shots are now measured from
+Shepard's mark while a walk-in is on.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
