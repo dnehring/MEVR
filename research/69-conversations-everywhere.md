@@ -1248,3 +1248,5 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   All of it unit-tested and built three ways; **none of it run in the game yet**. Still open from his notes: the flash of
   the 3D screen as a moment begins (his first blink), a composition rule for groups, the 0.1 s of 3D screen when the
   controllers lost tracking mid-conversation.
+  11:07: the players' build of f339cec is in the game folder for the owner's next run (`0.2.0+f339cecee4`; the one he
+  played, 180324d, is kept in `%LOCALAPPDATA%\MEVR\game-slot\previous-asi`). The game slot is still held.
