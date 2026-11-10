@@ -131,7 +131,9 @@ struct Settings {
     bool setPiecesOnScreen = true;     // the scan's set pieces on the 3D screen, not in the world (worldSetPieces = screen | world)
     bool camera = true;                // the game's own camera at the player's place too, not only the main view (worldCamera)
     bool openingAccept = true;         // the stage's opening placements are accepted, the player put at Shepard's mark (worldOpening = accept|keep)
-    cw::OpeningRule opening = cw::OpeningRule::Accept;  // worldOpening = accept | keep | auto (research/69: a cut only for another composition)
+    // worldOpening = auto | accept | keep (research/69): a cut only for another composition. The default since the sampled pass
+    // of 2026-11-10 (120 scenes: 30 stay, 29 walk in, 11 cut; with accept every staged opening dipped from black).
+    cw::OpeningRule opening = cw::OpeningRule::Auto;
     bool arrange = true;               // everyone of the conversation (and the squad) brought into the player's view (worldArrange)
     float arcM = 2.5f;                 // the seats' distance from the player (worldArcM)
     float viewDeg = 60.0f;             // half the view's angle a person must be within (worldViewDeg)
@@ -202,7 +204,7 @@ void RefreshSettings() {
     }
     s.camera = number("worldCamera", 1.0f, 0.0f, 1.0f) != 0.0f;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldOpening")) {
-        s.opening = cw::ParseOpeningRule(*text, cw::OpeningRule::Accept);
+        s.opening = cw::ParseOpeningRule(*text, cw::OpeningRule::Auto);
         s.openingAccept = s.opening != cw::OpeningRule::Keep;  // accept and auto let the stage's first placements stand, then decide
     }
     s.arrange = number("worldArrange", 1.0f, 0.0f, 1.0f) != 0.0f;
