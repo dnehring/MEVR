@@ -1105,11 +1105,14 @@ void LogShot(ue3::Object* pawn, ik::Vec3 eyes) {
     double const camToEyes = Dist(cam, eyes) / kUnitsPerMeter;
     // A director's camera far from Shepard (a boss's entrance, a wide shot of the room) frames what his eyes can't: the survey's
     // "framed" scenes, which first person shows from a place the scene wasn't composed for.
+    // (During a walk-in the scene is composed for Shepard's mark, where the player is on his way to: measured from there, or
+    // every shot of a scene he has not walked into yet counts as far.)
     constexpr double kFarCameraM = 8.0;
-    if (camToEyes > kFarCameraM) {
+    double const camToPlace = gC.wantedMark ? Dist(cam, *gC.wantedMark + ik::Vec3{0.0, 0.0, 60.0}) / kUnitsPerMeter : camToEyes;
+    if (camToPlace > kFarCameraM) {
         ++gC.shotsFar;
     }
-    gC.cameraFarM = std::max(gC.cameraFarM, camToEyes);
+    gC.cameraFarM = std::max(gC.cameraFarM, camToPlace);
     bool const subjectIsShepard = subject != nullptr && subject->actor == pawn;
     std::string kind;
     std::string key;

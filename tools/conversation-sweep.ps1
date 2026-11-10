@@ -381,6 +381,8 @@ function RunScene([string]$map, $scene, $streamed) {
     if ($ReachOnly) { $record.outcome = 'reached'; return $record }
     $placed = Place $scene
     Console 'walk' | Out-Null
+    # (After `ghost` and `walk` he hung in the air where he was put until something moved him: falling says so at once.)
+    Console 'set SFXPawn_Player Physics PHYS_Falling' | Out-Null
     Start-Sleep -Seconds 2
     $s = State
     if ($s.convo) { PlayByItself $map; $s = State }
