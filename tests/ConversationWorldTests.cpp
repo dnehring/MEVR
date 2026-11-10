@@ -68,11 +68,16 @@ void TestArrangement() {
 
 void TestSetPieces() {
     // The scan's framed conversations go to the 3D screen in the world mode, by the game's full name or its short forms.
-    CHECK(cw::IsSetPiece("BioConversation nor10_comm_room_d.nor10_comm_room_dlg"));
+    CHECK(cw::IsSetPiece("BioConversation nor20_ilos_open_d.nor20_ilos_open_dlg"));
     CHECK(cw::IsSetPiece("end90_saren_D.end90_saren_dlg"));
     CHECK(cw::IsSetPiece("JUG70_Sovereign_dlg"));
-    CHECK(cw::IsSetPiece("sta90_council_saren"));
-    CHECK(cw::IsSetPiece("nor10_comm_room_d"));
+    CHECK(cw::IsSetPiece("sta60_scenicview"));
+    CHECK(cw::IsSetPiece("nor20_ilos_open_d"));
+    // Framed for their cameras alone and seen in first person with a place for the player (research/69): in the world.
+    CHECK(!cw::IsSetPiece("sta90_council_saren"));
+    CHECK(!cw::IsSetPiece("BioConversation nor10_comm_room_d.nor10_comm_room_dlg"));
+    CHECK(!cw::IsSetPiece("nor10_captain") && !cw::IsSetPiece("nor20_ilos_approach") && !cw::IsSetPiece("los10_trig_door00"));
+    CHECK(!cw::IsSetPiece("sta60_wrex_at_fists"));
     CHECK(!cw::IsSetPiece("BioConversation nor20_medbay_d.nor20_medbay_dlg"));  // the medical bay stays in the world
     CHECK(cw::IsSetPiece("end90_council_alive_dlg"));                           // Shepard walked by the game
     CHECK(cw::IsSetPiece("BioConversation jug20_sal_captainkirrahe_D.jug20_sal_captainkirrahe_dlg"));

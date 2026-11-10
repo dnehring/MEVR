@@ -195,7 +195,7 @@ def predictions(path):
         conv = convs[k]
         m = cs.measure(k, conv, starts.get(k, []), nodes.get(k, []))
         kd = cs.kind(m)
-        v = cs.verdict(kd, m)
+        v = cs.verdict(kd, m, k)
         f = cs.flow(conv)
         mine = by_conv.get(k, [])
         best = mine[0] if mine else None

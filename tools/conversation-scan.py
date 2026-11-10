@@ -31,7 +31,8 @@ puts the actors on) and its lines' matinees (each line's BioSeqEvt_ConvNode -> S
 Each conversation also gets a verdict for the First person mode (--verdicts lists them; --set-pieces prints the C++ list for
 core/vr/ConversationWorld's IsSetPiece):
   screen    framed, or the game walks Shepard himself during a line (a move track on his group: the player's place would move
-            under the headset): shown on the 3D screen
+            under the headset): shown on the 3D screen; a framed one that has been seen in the world with a place for the
+            player (SEEN_IN_WORLD) is "check" instead
   check     a wide stage (its type's size 400 units or more: ST_2P_600_combat, a stand-off 6-10 m across) or an NPC's authored
             walk: in the world for now, each to be looked at with tools/conversation-launch.ps1
   world     everything else (remote, stage, free); ambient lines have no verdict
@@ -190,8 +191,10 @@ FLOW_SKIP = {'nor10_backgrounds', 'ice00_popup_text', 'sp_news_vids'}
 
 # (research/69 item 1 adds a rule inside flow(): a chain that applies plot effects after its first line stays a conversation.)
 def flow_wanted(k, kd, v):
-    # Set pieces (screen) stay on the 3D screen; a transmission's hologram needs its stage, which an ambient play skips.
-    return v != 'screen' and kd != 'remote' and k not in FLOW_SKIP
+    # Set pieces (screen) stay on the 3D screen; a transmission's hologram needs its stage, which an ambient play skips. A
+    # framed conversation that plays in the world since 2026-11-10 (SEEN_IN_WORLD) was seen as a conversation there: its
+    # chains stay conversations until they have been seen as barks.
+    return v != 'screen' and kd != 'remote' and k not in FLOW_SKIP and k not in SEEN_IN_WORLD
 
 
 def ranges(indices):
@@ -219,9 +222,18 @@ def kind(m):
     return 'free'
 
 
-def verdict(k, m):
+# Framed conversations (authored cameras on a quarter of the lines or more) that were played in first person and had a place
+# for the player (research/69 "Set pieces in the world", 2026-11-10: the council hearing, Anderson and Nihlus in the comm
+# room, the approach to Ilos, the archive door, Wrex at Fist's): their cameras are the only thing authored, and the head is
+# the camera. A framed conversation not in this list stays on the 3D screen until it has been seen in the world.
+SEEN_IN_WORLD = {'sta90_council_saren', 'nor10_captain', 'nor10_comm_room', 'nor20_ilos_approach', 'los10_trig_door00', 'sta60_wrex_at_fists'}
+
+
+def verdict(k, m, name=None):
     if k == 'ambient':
         return '-'
+    if k == 'framed' and not m['shepardMove'] and name in SEEN_IN_WORLD:
+        return 'check'
     if k == 'framed' or m['shepardMove']:
         return 'screen'
     if m['stageSpread'] >= 400 or k == 'walks':
@@ -379,17 +391,17 @@ def main(argv):
         rows.append((k, area(k), kind(m), m, convs[k]))
     by_kind = collections.Counter(r[2] for r in rows)
     print(f"{len(rows)} conversations: " + ', '.join(f'{k} {by_kind[k]}' for k in ('free', 'stage', 'remote', 'walks', 'framed', 'ambient')))
-    by_verdict = collections.Counter(verdict(r[2], r[3]) for r in rows)
+    by_verdict = collections.Counter(verdict(r[2], r[3], r[0]) for r in rows)
     print('verdicts: ' + ', '.join(f'{v} {by_verdict[v]}' for v in ('screen', 'check', 'world')))
     if '--set-pieces' in argv:
-        names = sorted(k for k, a, kd, m, c in rows if verdict(kd, m) == 'screen')
+        names = sorted(k for k, a, kd, m, c in rows if verdict(kd, m, k) == 'screen')
         print('\n// tools/conversation-scan.py --set-pieces: framed, or Shepard walked by the game.')
         for i in range(0, len(names), 5):
             print('        ' + ', '.join(f'"{n}"' for n in names[i:i + 5]) + ',')
     if '--verdicts' in argv:
         print('\n| Conversation | Kind | Verdict | Why |\n|---|---|---|---|')
         for k, a, kd, m, c in rows:
-            v = verdict(kd, m)
+            v = verdict(kd, m, k)
             if v in ('screen', 'check'):
                 why = []
                 if kd == 'framed': why.append(f"authored camera on {m['authoredCamera']} of {m['nodes']} lines")
@@ -404,7 +416,7 @@ def main(argv):
         print(f"| {a} | {c['free']} | {c['stage']} | {c['remote']} | {c['walks']} | {c['framed']} | {c['ambient']} |")
     if '--flow' in argv or '--flow-list' in argv:
         # Only conversations a level's script starts (sp_follower_interject and the like are started by code).
-        flows = [(k, kd, verdict(kd, m), flow(c)) for k, a, kd, m, c in rows if flow(c) and starts.get(k)]
+        flows = [(k, kd, verdict(kd, m, k), flow(c)) for k, a, kd, m, c in rows if flow(c) and starts.get(k)]
         flipping = [f for f in flows if f[3]['flips'] and flow_wanted(f[0], f[1], f[2])]
         left_out = [f for f in flows if f[3]['flips'] and not flow_wanted(f[0], f[1], f[2])]
         print(f"\nflow: {len(flows)} conversations started by a level's script; {sum(1 for f in flows if f[3]['chainStarts'])} have a chain "
@@ -449,7 +461,7 @@ def main(argv):
             for k, a, kd, m, c in rows:
                 w.writerow([k, a, kd, m['lines'], m['nodes'], m['authoredCamera'], m['director'], m['cameraMove'], m['actorMove'],
                             m['switchCamera'], m['fade'], m['stage'], ' '.join(m['stageTypes']), m['starts'],
-                            ' '.join(c['speakers']), m['shepardMove'], m['stageSpread'], verdict(kd, m)])
+                            ' '.join(c['speakers']), m['shepardMove'], m['stageSpread'], verdict(kd, m, k)])
     return 0
 
 

@@ -134,12 +134,13 @@ std::vector<ArcSeat> ArcSeats(Vec3 const& player, Vec3 const& owner, int count, 
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.
+    // Since 2026-11-10 (research/69 "Set pieces in the world") without the six framed conversations that were played in first
+    // person and had a place for the player (the scan's SEEN_IN_WORLD: the council hearing, the comm room with Anderson and
+    // Nihlus, the approach to Ilos, the archive door, Wrex at Fist's): their cameras were all that was authored.
     static constexpr std::string_view kSetPieces[] = {
         "end90_council_alive", "end90_council_dead", "end90_saren", "jug20_sal_captainkirrahe", "jug70_sovereign",
-        "los10_trig_door00", "nor10_captain", "nor10_comm_room", "nor20_empty_locker", "nor20_ilos_approach",
-        "nor20_ilos_open", "nor20_leaving_oculon", "nor20_start_kaidan", "nor20_start_liara", "prc1_cutscene_discovered",
-        "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "sta60_wrex_at_fists", "sta90_council_saren",
-        "war30_trig_01_entry",
+        "nor20_empty_locker", "nor20_ilos_open", "nor20_leaving_oculon", "nor20_start_kaidan", "nor20_start_liara",
+        "prc1_cutscene_discovered", "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "war30_trig_01_entry",
     };
     std::string const key = ConversationKey(name);
     return std::find(std::begin(kSetPieces), std::end(kSetPieces), key) != std::end(kSetPieces);
