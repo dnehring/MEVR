@@ -241,6 +241,16 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   stick and be walked the 21 m to the podium, where your body is under you again. Look for: your own body visible anywhere
   on the way, the flash of the cinema screen as his walk begins, how the dip reads, and whether arriving next to Udina with
   Anderson already there is acceptable until he walks the rest himself.
+- [ ] **Nobody pivots toward the speaker** (built 2026-11-10, research/69 "Who turns, and how"; not yet run in the game):
+  in a conversation with three or more people (the council, Garrus and the Executor, the Normandy's comm room) bodies should
+  stay as they stand while heads and chests turn toward each speaker; walk round someone who looks at you: past about 60
+  degrees held a second the body should re-face, by a turn with its feet (the game's turn in place) and not a slide. Look
+  for: heads that do not reach their partner (then `worldTurnComfortDeg` is too wide), bodies that still slide round
+  (`convo: ... by an eased turn` in the log says the game's turn was refused), anyone left with their back to the speaker.
+- [ ] **The ceremony again, slot 81** (the three fixes of research/69 "The ceremony in the headset"; not yet run in the game):
+  your own body and arms stay while the council speaks; picking a reply with the stick no longer moves you; no blink at the
+  end of the walk along the pathway (the blink as the walk begins is still there: known). And slot 80, the hearing: the
+  dip as Anderson is switched off on the stairs should still come.
 - [ ] **A walk-in you don't walk** (built 2026-11-10, research/69 "The guided walk-in"; on the fake headset Virmire's first
   conversation walked the player 5.3 m toward a 7.1 m mark; `[Cinematics] worldWalkInS = 5`, -1 never): start a conversation
   from a few metres away and leave the stick alone: after five seconds you should be walked to Shepard's place at walking

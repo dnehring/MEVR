@@ -411,7 +411,12 @@ switching frameworks.
   Shepard's place): conversations teleport actors onto marks at camera cuts and half the shots are Shepard's own face. **People
   are kept where they stand** (`worldStay = 1`; research/59 "Keeping people in place"): the placements are native, so a jump past
   30 units in a frame (under 6 m) is undone with `Actor.SetLocation` in the `Camera.UpdateCamera` post-handler (before the draw: 0 of
-  25 seen in a drawn frame), NPCs turn toward their look-at target at `worldTurnDegPerS`, and the player's place follows Shepard's
+  25 seen in a drawn frame), bodies keep the facing the scene composed while the game's own look-at chain (eyes 25, head, neck and chest 50
+  degrees each; `HMM_PLR_lookAt_Def`) turns toward whom the game's look-at list has them look at, and re-face only when that
+  one stays more than 60 degrees off for a second, then by `BioPawn.RequestTurnInPlace` or an eased turn (`worldTurn = look
+  | always | off`, `cw::StepAttention`, research/69 "Who turns, and how", 2026-11-10, the owner: everyone pivoting toward
+  each speaker looked unnatural; never toward "the speaker" by default: the councillors swung 170 degrees; [verify] in the
+  game), and the player's place follows Shepard's
   head bone only when a jump lasts 3 ticks (`FollowHeadSettled`). **The game's camera is held there too** (`worldCamera = 1`; the
   owner's QA 2026-11-06: the render-time swap alone left culling and texture streaming at the director's camera, 5-9 m away in the
   comm room: assets missing): the `UpdateCamera` post-handler writes the place into the POV after reading the director's. The wheel
@@ -530,7 +535,15 @@ switching frameworks.
   stands inside a trigger. The council's hearing: no cut, 21 m to the podium, 4 of 4. A moment's view is held in the
   cinematic mode too (it was never rendered before: found by the first snapshots of one; **check what the eyes show with a
   snapshot, not a log line**), and where the script turns its black screen on during a held moment the mod dips from black
-  in its place.
+  in its place **only if the black screen covered a change in the player's view** (`cw::CoveredChanges`: someone shown in
+  view gone, moved at once or new within 0.3 s; the Spectre ceremony's covered nothing and blinked in the middle of the
+  owner's own walk). From the owner's ceremony session (research/69 "The ceremony in the headset", 2026-11-10; built, [verify]
+  in the game): **a far shot's camera mode is unreadable, and Halcyon then cleared the first-person hides: the player's own
+  body vanished on every line of the council's** (a second `[MEVR]` seam in `head_aim.cpp`'s unreadable-mode branch keeps
+  them while `ConversationInWorld()`); **the left stick is the wheel's until it has been let go after a pick**
+  (`cw::StickWalks`: still out as the wheel closed, it walked Shepard half a metre after every reply). The voices are
+  centred by design (82% of dialogue cues have no attenuation node; LE1 is ISACT over OpenAL, not Wwise): research/69 "The
+  voices" has the hook that would place them.
   "In sight" for the opening is three lines (`InSight`).
   **A small placement the game repeats is its own** (`cw::Insists`,
   2026-11-10): keep-in-place undoes a jump once; one of at most 1 m that comes back at the same place the next tick is

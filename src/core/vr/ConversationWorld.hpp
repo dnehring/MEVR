@@ -199,6 +199,62 @@ enum class Guide : std::uint8_t { Wait, Walk, GaveUp };
 // `progressed`: the last guided step moved him (ignored unless the last answer was Walk).
 Guide StepGuide(GuideState& state, bool wanted, bool stickUsed, bool progressed, double dtS, double patienceS, double blockedMaxS = 2.0);
 
+// Who turns, and how (research/69 "Who turns, and how"; the owner's headset notes, 2026-11-10: everyone pivoting on the spot
+// toward each speaker looked unnatural, a twist should look like the body's own, and the composition should carry the scene).
+// The game's own look-at chain turns a person's eyes, head, neck and chest toward whom they look at (HMM_PLR_lookAt_Def: 25,
+// 50, 50 and 50 degrees, at 1, 0.55, 0.25 and 0.125 strength in a conversation), so the body keeps the facing the scene
+// composed and re-faces only when its look-at target has been more than `comfortDeg` off its facing for `dwellS`; then it
+// turns only until the target is `settleDeg` off: the body ends between the people it attends to, and the next change of
+// speaker needs no turn.
+struct AttentionLimits {
+    double comfortDeg = 60.0;
+    double settleDeg = 25.0;
+    double dwellS = 1.0;
+};
+struct AttentionState {
+    double outsideS = 0.0;
+    bool turning = false;
+};
+struct AttentionStep {
+    bool began = false;      // this step started a body turn
+    bool turning = false;    // the body is turning, toward goalYawDeg
+    double goalYawDeg = 0.0;
+    double offDeg = 0.0;     // the target's bearing off the body's facing, signed
+};
+// `bearingDeg`: the yaw from the person to whom they look at; nullopt: nobody (the body stays, the state starts over).
+AttentionStep StepAttention(AttentionState& state, double bodyYawDeg, std::optional<double> bearingDeg, double dtS, AttentionLimits const& limits = {});
+// One tick of a body turn nothing animates (the fallback when the game's own turn is refused): at most rateDegPerS, slower
+// near the goal, never under a fifth of the rate (so it ends). Returns the signed step toward diffDeg.
+double TurnStepDeg(double diffDeg, double dtS, double rateDegPerS);
+enum class TurnRule : std::uint8_t { Look, Always, Off };
+// "look" (the default): the rule above. "always": the body turns toward the look-at target every tick (until 2026-11-10).
+// "off": the game's own facings stand.
+TurnRule ParseTurnRule(std::string_view text, TurnRule fallback);
+
+// The left stick steers the conversation wheel while it is up, and is still where it picked the reply as the wheel closes:
+// it walks again only once it has been let go (the owner's headset session, 2026-11-10: Shepard lurched half a metre in the
+// reply's direction after every pick). True: the stick may walk the player this tick.
+struct StickLatch {
+    bool held = false;
+};
+bool StickWalks(StickLatch& latch, bool wheelUp, double magnitude, double releasedBelow = 0.25);
+
+// What a script's black screen covered (research/69 "The second blink"): the people shown in the player's view before it
+// and after it. Someone gone, moved at once or new in view wants the mod's dip in the black screen's place; nothing changed
+// wants nothing (the Spectre ceremony's black screen covered a teleport the first-person view never makes: a blink in the
+// middle of the player's own walk, for nothing).
+struct Seen {
+    std::uint64_t id = 0;
+    Vec3 at;
+};
+struct Covered {
+    int gone = 0;
+    int moved = 0;
+    int appeared = 0;
+    int Total() const { return gone + moved + appeared; }
+};
+Covered CoveredChanges(std::span<Seen const> before, std::span<Seen const> after, double movedUnits = 150.0);
+
 // How a walk-in is walked (research/69 "The view walks", 2026-11-10). Body: Shepard is put back under the player and the
 // two walk to the mark together (his body under the player; every step moves the pawn, so it ends and begins touches,
 // which is why it stops at trigger edges, and why putting him back ended the council's hearing). View: Shepard stays

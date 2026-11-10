@@ -924,6 +924,121 @@ opt-ins for the council are `worldMoments = walk` and nothing else. `notes/heads
 - Seen and not fixed: a flash of the 3D cinema screen (0.15 s, two dips) as a moment begins, before its track first
   moves Shepard.
 
+### Who turns, and how (2026-11-10, after the owner's first headset sessions)
+
+The owner played the players' build of the branch on his headset (the validation saves: the council's hearing, then the
+Spectre ceremony) and said: the dip at the Citadel scene bothers him less than he expected; **everyone turning on the spot to
+face each speaker is not wanted where the layout is good, and looks unnatural**; if a body twists, it should look like the
+body's own animation; better still a composition in which nobody needs to turn; and whether the voices can sound spatial
+(below, "The voices").
+
+**What turned them.** Keep-in-place's turn (research/59 "Keeping people in place"): every tick, everything in the
+conversation but Shepard was rotated (`Actor.SetRotation`, 120 degrees a second) toward whom the game's look-at list has it
+look at, **else toward the speaker**. No animation plays for it. In the ceremony's log the three councillors, who look at
+nobody by the game's list, swung 89 to 170 degrees toward whichever of them spoke, Udina 180, Anderson 139, and so did the
+dais (a `BioInert`, 177 degrees).
+
+**What the game already does.** Every humanoid has a look-at chain (`BioPawn.m_oLookAtData`, a `BioLookAt` with a
+`BioLookAtDefinition`; read from the packages with the scan tool's new `--class-dump BioLookAtDefinition`: three definitions
+in the whole game, the humanoid one `HMM_PLR_lookAt_Def` in 232 packages): the eyes turn up to 25 degrees (15 up and down),
+the head, the neck and `Chest1` up to 50 each, at speed factors 6, 4, 2 and 1 (the eyes first, the chest last) and, in a
+conversation, at strengths 1, 0.55, 0.25 and 0.125. That is the twist the owner asks for, animated by the game, and the
+conversation's own look-at list drives it. The game also has a turn on the spot of its own:
+`BioPawn.RequestTurnInPlace(rotation)` (a final native, `m_bTurnInPlaceRequested`), and Kismet's `BioSeqAct_TurnTowards`.
+
+**The rule now** (`[Cinematics] worldTurn = look | always | off`, default look; `cw::StepAttention`, unit-tested):
+
+- A body keeps the facing the scene composed: the stage's opening placement and facing (accepted as before), an arc seat's
+  facing, or how the person stood when the conversation began. Whoever the game's look-at list gives nobody to look at is
+  left entirely to the game (the councillors; the stage's own facings stand, as on a screen). Only people are ever turned
+  (`BioPawn`), never a prop of the conversation.
+- A facing the stage sets **at once** mid-conversation on someone who has a look-at target is put back: it was authored for
+  the stage's mark and for a camera cut (the summary's `facingsHeld`). A turn the game makes gradually (under 360 degrees a
+  second) is its own and is followed.
+- The body re-faces only when the one it looks at has been more than `worldTurnComfortDeg` (60) off its facing for
+  `worldTurnDwellS` (1 s), and then only until that one is `worldTurnSettleDeg` (25) off: the body ends between the people
+  it attends to, so the next change of speaker needs no turn. (Walk round someone who looks at you: this is the case.)
+- The turn itself is asked of the game (`RequestTurnInPlace`, `worldTurnWay = game`); where the game refuses, or the body
+  has not moved after 0.75 s or not arrived after 3 s, the rest is an eased turn of ours (`cw::TurnStepDeg`, at most
+  `worldTurnDegPerS`, slower near the end); after two turns of the game's that came to nothing in a session, ours at once.
+- The summary counts `bodyTurns`, `gameTurns`, `turnsSlid`, `facingsHeld`; each body turn is a log line (`convo: ... turns
+  its body: <whom> has been N deg off its facing ...`).
+
+**Not seen in the game yet** (built, unit-tested, all three builds): whether the look-at chain reaches 60 degrees in practice
+with the conversation strengths (the "speaks to" log line's head and body angles say it per line), what
+`ValidTargetAngleRange` is (the definition leaves it at the class default), whether `RequestTurnInPlace` turns an NPC that
+stands in a conversation and with which animation, and how often a scene needs a body turn at all (the summary's counts over
+the sampled set). The composition side (the owner's "better solution") is so far what the stage authored plus the arc seats;
+a rule that composes a group so that everyone's partners are within the chain's reach (`cw::ArcSeats` facing the group's
+middle instead of the player, seats chosen for the look-at pairs) is the next step if the counts say bodies still turn.
+
+### The ceremony in the headset: a body that vanished, a lurch after every reply, a blink for nothing (2026-11-10)
+
+The owner's second session (10:43-10:49, the players' build `0.2.0+180324d`, slot 81: the Spectre ceremony, 212 s, 32 lines,
+7 wheels; the mod's log and Halcyon's are the record). Three complaints, three causes, all read from the logs; the fixes are
+built and unit-tested, **not yet run in the game**.
+
+1. **"When the council members talk, the assets near me disappear; when it is my turn, we reappear."** His own body and
+   arms. Halcyon's first-person tick (`head_aim.cpp FirstPersonTick`) reads the current camera mode before anything else;
+   on a far shot (the director's cameras stood up to 29.6 m from the player, 27 of 41 shots "far") the read fails, and the
+   branch for an unreadable mode clears the first-person hides after its 45-frame grace: the anti-cull that keeps Shepard's
+   body drawn around the camera goes, the head comes back. `[FPHIDE] cleared (camera-mode unreadable)` at 10:45:57.5, half
+   a second into Sparatus's first line, `applied` again at 10:46:09.9 as the camera came back for the wheel; again from
+   10:47:59 to 10:48:05. Our seam that keeps the hides up in a world conversation sat **after** that early return. Fix: a
+   second `[MEVR]` seam inside the unreadable-mode branch: while `MevrBridge::ConversationInWorld()` the hides are applied
+   and held there too (log `[FPHIDE] applied (a conversation in the world; the camera mode unreadable)`).
+2. **"Shepard is teleported forward for different responses."** Not the stage's emphasis placements (3 were asked, all
+   withheld at their source): the pawn moved 0.4 to 0.5 m at walking speed in the 0.3 s after each of his own lines began
+   (50.8 s, 65.5 s, 86.2 s, 109.9 s in the log). The left stick steers the wheel; as a reply is picked the wheel closes with
+   the stick still out, and the conversation walk took it as a walk. Fix: the stick is the wheel's until it has been let go
+   (`cw::StickWalks`: under 0.25 once, after any wheel; a walk-in walked with the stick held is not affected). Log `convo:
+   ... the stick that picked the reply is still out`, the summary's `wheelSticks`.
+3. **"Two blinks: one as we started up the steps, one while I was already walking on the pathway, and it teleported me to
+   the end of the pathway."** The first is the known flash of the 3D screen at a moment's start (the cinematic mode shows
+   for 30 ms before the track's first move makes it a moment: `the world -> the 3D cinema screen` at 10:45:35.889, back at
+   36.033): still open. The second is the ceremony script's black screen at the end of Shepard's walk (17.8 s, the player
+   having walked the 21.5 m himself): the mod dipped in its place, as built for the hearing, where the black screen covers
+   Anderson being switched off. Here it covered only a teleport the first-person view never makes: by the log the view
+   stood within 0.5 m of where it was (3.76 m from the mark, the walk-in that followed went on under the stick), and nobody
+   in view moved. A blink in the middle of his own walk, with the podium's people then in front of him, read as a teleport.
+   Fix: the dip is decided by **what the black screen covered in the player's view** (`cw::CoveredChanges`: the people
+   shown anywhere but behind him within 30 m, before the black screen and for 0.3 s after: someone gone, moved over 1.5 m
+   at once, or new): a change dips, nothing changed does not (logs `moment: the script's black screen covered a change in
+   view ...: a dip` / `covered nothing in view ...: no dip`). [verify]: the hearing still dips (Anderson), the ceremony
+   does not.
+
+Also in that log: at 10:48:28 the controllers lost tracking and the conversation's state went unpublished for a moment; the
+host showed the 3D screen for 0.1 s (two dips). Not looked into yet.
+
+### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
+
+The owner: "is there anything we can do to make it sound more like spatial audio?"
+
+- **LE1 has no Wwise** (that is LE2 and LE3): it is ISACT over OpenAL (`AudioDeviceClass=ISACTAudio.ISACTAudioDevice`,
+  3,942 `.isb` files, Creative's `OpenAL32.dll` router with the "Generic Software" device: no HRTF).
+- **A line's voice** is played by `USkeletalMeshComponent::PlayFaceFXAnim` (0x587F40; also from
+  `UBioActorBehavior::PlayVOElements`, 0xBFA6C0) on the speaker's facial audio component. **Whether it is placed is decided
+  per sound cue**: a cue whose first node is not a `SoundNodeAttenuation` is played with spatialization off and forced to
+  the centre (`FISACTSoundSource::Update`, 0x7BA90, puts it at the listener's front vector). Of the 32,373 dialogue cues in
+  the localized packages 26,703 (82%) have no attenuation node: **centred, wherever the speaker stands**; 4,408 are placed
+  with a 60 m falloff (barks), 661 placed without falloff, 601 other radii.
+- **The listener** is set once a frame by `FViewportClient::Draw` (0x4C71A0) through `UAudioDevice::SetListener`
+  (0x3043B0) after `CalcSceneView`: its place is the camera's (our held place, without the headset's offset), its
+  orientation the view matrix's, which Halcyon has already turned by the head's yaw and pitch. So the listener should
+  already turn with the head (read, not measured); `BioCheatManager.m_fMicPos` can move its place toward the pawn.
+- **The cheapest real fix**: pre-hook `FISACTSoundSource::Update` and, for the wave instances that belong to the
+  conversation's speakers (a table the mod publishes each tick: their audio components and head places), set
+  spatialization on, the forced centre off and the place to the speaker's head. The flags are re-sent every update, so it
+  works mid-line; Shepard's own lines stay centred. That gives left/right panning that follows the head; distance
+  loudness is ours to add. Offsets are from the decompile; that ISACT honours them for these waves is [verify], as is the
+  thread the update runs on. New addresses need rows in `engine/Addresses.hpp`.
+- **Real binaural** (height, front against back) would mean OpenAL Soft with HRTF in place of the Creative router (the game
+  loads `OpenAL32.dll` by name): a shipped DLL and a check of the reverb's EAX property sets. The largest step.
+- No setting does it: there is no "3D dialogue" switch, and the sound groups' per-group speaker settings are not set for
+  dialogue.
+- To measure first: the OpenAL listener's front vector under a replayed head sweep; a centred line against a placed one
+  (most of `sta20_avina_keeper` against `sta20_hanar_religious`) as left/right loudness in a loopback recording.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -1121,3 +1236,15 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   state, 24 of 24. Still owed: the canary set and a sampled opening-only run, one validation save loaded on the fake
   headset, the landing on main, the game folder's return. For the fake-headset runs the development build goes back in
   (`deploy-asi.ps1 -IgnoreSlot`), game closed.
+- 2026-11-10, 10:45-12:00, **the owner's headset notes, two sessions** ("Who turns, and how", "The ceremony in the
+  headset", "The voices"). The dip at the council is acceptable; nobody should pivot on the spot toward each speaker: the
+  game's own look-at chain does the looking now, bodies keep their composed facing and re-face only past 60 degrees held a
+  second, by the game's `RequestTurnInPlace` (an eased turn if refused); whoever the game gives nobody to look at is left
+  alone (the councillors had been swung up to 170 degrees toward each speaker). From the ceremony's logs: his own body
+  vanished on the council's lines (Halcyon cleared the first-person hides when a far shot's camera mode could not be read:
+  a second seam keeps them), Shepard lurched after every reply (the wheel's stick, still out, walked him: latched until let
+  go), and the script's black screen became a dip that covered nothing (now decided by what changed in view). The voices:
+  82% of dialogue cues are played centred by design; a hook on the sound source's update could place the speakers' lines.
+  All of it unit-tested and built three ways; **none of it run in the game yet**. Still open from his notes: the flash of
+  the 3D screen as a moment begins (his first blink), a composition rule for groups, the 0.1 s of 3D screen when the
+  controllers lost tracking mid-conversation.

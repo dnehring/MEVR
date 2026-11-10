@@ -1737,6 +1737,24 @@ void FirstPersonTick(bool ctrlLive, bool ctrlStable, int gameMode) noexcept
     char cls[64] = {};
     if (!ReadCurrentCameraModeSEH(&mode, cls, sizeof(cls)))
     {
+        // [MEVR] research/69: a conversation or a moment in the world keeps the first-person hides whatever the camera mode
+        // reads as. A far shot's camera mode is unreadable: the hides were cleared after the grace and the player's own body
+        // and arms were gone on every line of the council's, back on his own (the owner's headset session, 2026-11-10).
+        if (::MELEVR::MevrBridge::ConversationInWorld())
+        {
+            if (g_fpActiveFrames < 100000) ++g_fpActiveFrames;
+            const int mevrDelay = (cfg.fpHeadHideDelay > 0.0f) ? static_cast<int>(cfg.fpHeadHideDelay) : 0;
+            const bool mevrHeadNow = cfg.fpHideHead && (g_fpActiveFrames > mevrDelay);
+            const std::uint64_t mevrSig = ComputeFpHideSignature(true, mevrHeadNow);
+            if (mevrSig != g_fpHideSig && FpApplyHides(true, mevrHeadNow))
+            {
+                if (!g_fpHidesDirty) LogLine("[FPHIDE] applied (a conversation in the world; the camera mode unreadable)");
+                g_fpHidesDirty = true;
+                g_fpHideSig = mevrSig;
+            }
+            g_fpHideGrace = 45;
+            return;
+        }
         // Camera-mode read failed ('?' frames, common inside cutscenes). Same rule: pending hides
         // clear after grace so a cinematic never plays against a wireframe head.
         if (g_fpHidesDirty)

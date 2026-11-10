@@ -1468,6 +1468,7 @@ void CheckFunctions() {
         "Engine.Actor.SetPhysics",
         "Engine.Actor.SetCollision",
         "Engine.Actor.SetHidden",
+        "SFXGame.BioPawn.RequestTurnInPlace",    // game/ConversationWorld: a body re-faces by the game's own turn (research/69)
         "Engine.PrimitiveComponent.SetHidden",
         "Engine.PrimitiveComponent.SetLightEnvironment",
         "Engine.PrimitiveComponent.SetRBAngularVelocity",
@@ -1728,6 +1729,8 @@ void CheckParams() {
     PARAM(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision", bNewBlockActors);
     PARAM(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision", bNewIgnoreEncroachers);
     PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
+    PARAM(ABioPawn_execRequestTurnInPlace_Parms, "SFXGame.BioPawn.RequestTurnInPlace", rDesDir);
+    PARAM(ABioPawn_execRequestTurnInPlace_Parms, "SFXGame.BioPawn.RequestTurnInPlace", ReturnValue);
     PARAM(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden", NewHidden);
     PARAM(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment", NewLightEnvironment);
     PARAM(UPrimitiveComponent_execSetRBAngularVelocity_Parms, "Engine.PrimitiveComponent.SetRBAngularVelocity", NewAngVel);
@@ -1865,6 +1868,7 @@ void CheckParams() {
     PARMS(AActor_execSetPhysics_Parms, "Engine.Actor.SetPhysics");
     PARMS(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision");
     PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
+    PARMS(ABioPawn_execRequestTurnInPlace_Parms, "SFXGame.BioPawn.RequestTurnInPlace");
     PARMS(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden");
     PARMS(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment");
     PARMS(UPrimitiveComponent_execSetRBAngularVelocity_Parms, "Engine.PrimitiveComponent.SetRBAngularVelocity");

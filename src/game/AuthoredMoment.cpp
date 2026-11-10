@@ -268,7 +268,7 @@ void OnBlackScreen(ue3::Object* context, ue3::Function*, void*, void*) {
     bool const dipped = hidden && (action == 0 || action == 2) && conversation_world::MomentDip();
     log::Info("moment: the script's black screen ({}, action {}){}{}{}", context != nullptr ? ue3::runtime::FullName(context) : std::string("?"),
         action, gM.on ? " during a track's move of Shepard" : "", hidden ? ": taken down again (the moment is held in first person)" : "",
-        dipped ? "; a dip from black in its place" : "");
+        dipped ? "; a dip from black in its place if it covers a change in the player's view" : "");
 }
 
 void OnCinematicToggle(ue3::Object* context, ue3::Function*, void*, void*) {

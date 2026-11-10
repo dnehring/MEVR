@@ -437,6 +437,88 @@ Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits
     return Opening::Cut;
 }
 
+AttentionStep StepAttention(AttentionState& state, double bodyYawDeg, std::optional<double> bearingDeg, double dtS, AttentionLimits const& limits) {
+    AttentionStep step;
+    if (!bearingDeg) {
+        state = {};
+        return step;
+    }
+    double const off = Wrap180(*bearingDeg - bodyYawDeg);
+    double const comfort = std::max(0.0, limits.comfortDeg);
+    double const settle = std::clamp(limits.settleDeg, 0.0, comfort);
+    step.offDeg = off;
+    if (state.turning) {
+        if (std::abs(off) <= settle + 0.5) {
+            state = {};
+            return step;
+        }
+    } else if (std::abs(off) > comfort) {
+        state.outsideS += std::max(0.0, dtS);
+        if (state.outsideS >= limits.dwellS) {
+            state.turning = true;
+            step.began = true;
+        }
+    } else {
+        state.outsideS = 0.0;
+    }
+    if (state.turning) {
+        step.turning = true;
+        step.goalYawDeg = Wrap180(*bearingDeg - (off > 0.0 ? settle : -settle));
+    }
+    return step;
+}
+
+double TurnStepDeg(double diffDeg, double dtS, double rateDegPerS) {
+    double const rate = std::clamp(std::abs(diffDeg) * 2.0, rateDegPerS * 0.2, rateDegPerS);
+    double const step = rate * std::max(0.0, dtS);
+    return std::clamp(diffDeg, -step, step);
+}
+
+TurnRule ParseTurnRule(std::string_view text, TurnRule fallback) {
+    std::string lower;
+    for (char const c : text) {
+        if (c != ' ' && c != '\t') {
+            lower.push_back(static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c));
+        }
+    }
+    if (lower == "look" || lower == "lookat" || lower == "attention") return TurnRule::Look;
+    if (lower == "always" || lower == "pivot") return TurnRule::Always;
+    if (lower == "off" || lower == "0" || lower == "game") return TurnRule::Off;
+    return fallback;
+}
+
+bool StickWalks(StickLatch& latch, bool wheelUp, double magnitude, double releasedBelow) {
+    if (wheelUp) {
+        latch.held = true;
+        return false;
+    }
+    if (latch.held) {
+        if (magnitude < releasedBelow) {
+            latch.held = false;
+        }
+        return false;
+    }
+    return true;
+}
+
+Covered CoveredChanges(std::span<Seen const> before, std::span<Seen const> after, double movedUnits) {
+    Covered covered;
+    for (Seen const& was : before) {
+        auto const now = std::find_if(after.begin(), after.end(), [&](Seen const& s) { return s.id == was.id; });
+        if (now == after.end()) {
+            ++covered.gone;
+        } else if (std::hypot(now->at.x - was.at.x, now->at.y - was.at.y, now->at.z - was.at.z) > movedUnits) {
+            ++covered.moved;
+        }
+    }
+    for (Seen const& now : after) {
+        if (std::none_of(before.begin(), before.end(), [&](Seen const& s) { return s.id == now.id; })) {
+            ++covered.appeared;
+        }
+    }
+    return covered;
+}
+
 WalkInWay DecideWalkIn(WalkInFacts const& facts, WalkInRule rule) {
     if (rule == WalkInRule::Body) {
         return WalkInWay::Body;

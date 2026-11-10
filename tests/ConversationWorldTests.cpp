@@ -247,6 +247,81 @@ void TestSceneRules() {
             CHECK(cw::StepGuide(there, false, false, true, 0.1, 0.0) == G::Wait);
             CHECK(!there.guiding && there.idleS == 0.0);
         }
+        // Who turns: the body stays while the look-at chain covers the target, and re-faces only so far as it must.
+        {
+            cw::AttentionState a;
+            cw::AttentionLimits const lim;  // comfort 60, settle 25, dwell 1 s
+            // A speaker 40 degrees to the side: the head's business, for as long as it lasts.
+            for (int i = 0; i < 80; ++i) {
+                cw::AttentionStep const s = cw::StepAttention(a, 10.0, 50.0, 0.125, lim);
+                CHECK(!s.turning && !s.began);
+            }
+            CHECK(a.outsideS == 0.0);
+            // A glance past the comfort cone that ends in time: nothing.
+            for (int i = 0; i < 7; ++i) {
+                CHECK(!cw::StepAttention(a, 0.0, 100.0, 0.125, lim).turning);  // 0.875 s
+            }
+            CHECK(!cw::StepAttention(a, 0.0, 30.0, 0.125, lim).turning);
+            CHECK(a.outsideS == 0.0);
+            // Held past the dwell: the body turns, only until the target is 25 degrees off, on the side it came from.
+            cw::AttentionStep began;
+            for (int i = 0; i < 8; ++i) {
+                began = cw::StepAttention(a, 0.0, 100.0, 0.125, lim);
+            }
+            CHECK(began.began && began.turning && std::abs(began.goalYawDeg - 75.0) < 1e-9 && std::abs(began.offDeg - 100.0) < 1e-9);
+            CHECK(!cw::StepAttention(a, 40.0, 100.0, 0.125, lim).began);        // on its way: one beginning
+            CHECK(cw::StepAttention(a, 40.0, 100.0, 0.125, lim).turning);
+            CHECK(!cw::StepAttention(a, 75.0, 100.0, 0.125, lim).turning);      // arrived
+            CHECK(!a.turning && a.outsideS == 0.0);
+            // Across the wrap: a target at -170 from a body at 150 is 40 degrees to its left: inside.
+            cw::AttentionState w;
+            CHECK(!cw::StepAttention(w, 150.0, -170.0, 5.0, lim).turning);
+            // ... and one at -100 is 110 to its left: the body turns left, to 25 short of it.
+            cw::AttentionStep const left = cw::StepAttention(w, 150.0, -100.0, 5.0, lim);
+            CHECK(left.began && std::abs(left.goalYawDeg - (-125.0)) < 1e-9 && left.offDeg > 0.0);
+            cw::AttentionState r;
+            cw::AttentionStep const right = cw::StepAttention(r, -150.0, 100.0, 5.0, lim);
+            CHECK(right.began && std::abs(right.goalYawDeg - 125.0) < 1e-9 && right.offDeg < 0.0);
+            // Nobody to look at: the state starts over.
+            CHECK(!cw::StepAttention(w, 150.0, std::nullopt, 0.1, lim).turning && !w.turning);
+            // The turn nothing animates: capped, slower near the goal, never past it.
+            CHECK(std::abs(cw::TurnStepDeg(90.0, 0.1, 120.0) - 12.0) < 1e-9);    // the cap
+            CHECK(std::abs(cw::TurnStepDeg(-30.0, 0.1, 120.0) + 6.0) < 1e-9);    // 60 deg/s at 30 off
+            CHECK(std::abs(cw::TurnStepDeg(2.0, 0.1, 120.0) - 2.0) < 1e-9);      // the floor (24 deg/s) ends it
+            CHECK(cw::TurnStepDeg(0.0, 0.1, 120.0) == 0.0);
+            using T = cw::TurnRule;
+            CHECK(cw::ParseTurnRule("Look", T::Always) == T::Look && cw::ParseTurnRule(" always ", T::Look) == T::Always);
+            CHECK(cw::ParseTurnRule("off", T::Look) == T::Off && cw::ParseTurnRule("sideways", T::Look) == T::Look);
+        }
+        // The wheel's stick is not the walk's until it has been let go.
+        {
+            cw::StickLatch latch;
+            CHECK(cw::StickWalks(latch, false, 0.9));            // no wheel yet: a walk-in walked with the stick held
+            CHECK(!cw::StickWalks(latch, true, 0.9));            // the wheel is up: the stick is the wheel's
+            CHECK(!cw::StickWalks(latch, false, 0.9));           // the reply picked, the stick still out: no walk
+            CHECK(!cw::StickWalks(latch, false, 0.4));
+            CHECK(!cw::StickWalks(latch, false, 0.1) && !latch.held);  // let go
+            CHECK(cw::StickWalks(latch, false, 0.9));            // pushed again: a walk
+            cw::StickLatch centred;
+            CHECK(!cw::StickWalks(centred, true, 0.0));
+            CHECK(!cw::StickWalks(centred, false, 0.0));         // closed with the stick at rest: free from the next tick
+            CHECK(cw::StickWalks(centred, false, 0.9));
+        }
+        // What a script's black screen covered: someone gone, moved at once or new in the player's view.
+        {
+            cw::Seen const anderson{1, {100.0, 0.0, 0.0}};
+            cw::Seen const udina{2, {400.0, 50.0, 0.0}};
+            cw::Seen const before[] = {anderson, udina};
+            cw::Seen const stepped[] = {udina, {1, {130.0, 20.0, 0.0}}};                 // a step: nothing
+            CHECK(cw::CoveredChanges(before, stepped).Total() == 0);
+            cw::Seen const gone[] = {udina};                                           // switched off on the stairs
+            CHECK(cw::CoveredChanges(before, gone).gone == 1 && cw::CoveredChanges(before, gone).Total() == 1);
+            cw::Seen const moved[] = {{1, {100.0, 900.0, 0.0}}, udina};               // teleported in plain sight
+            CHECK(cw::CoveredChanges(before, moved).moved == 1);
+            cw::Seen const more[] = {anderson, udina, {3, {0.0, 0.0, 0.0}}};          // someone put into the view
+            CHECK(cw::CoveredChanges(before, more).appeared == 1 && cw::CoveredChanges(before, more).gone == 0);
+            CHECK(cw::CoveredChanges({}, {}).Total() == 0);
+        }
         // How a walk-in is walked: the body by default, the view when the pawn must not be moved.
         {
             using W = cw::WalkInWay;

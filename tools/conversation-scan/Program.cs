@@ -19,6 +19,7 @@ internal static class Program
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> [--lex-dir <Legendary Explorer nightly>] [--only <text>]");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --state-events <id,id,...>   what those state transitions do");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --references <name,name,...>  which level objects point at those conversations");
+            Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --class-dump <Class> [--only <file text>]  every object of a class, its properties");
             return 2;
         }
         string lexDir = args.SkipWhile(a => a != "--lex-dir").Skip(1).FirstOrDefault()
@@ -60,6 +61,11 @@ internal static class Program
         if (sequence != null)
         {
             return SequenceDump.Run(args[0], args[1], sequence);
+        }
+        string classDump = args.SkipWhile(a => a != "--class-dump").Skip(1).FirstOrDefault();
+        if (classDump != null)
+        {
+            return ClassDump.Run(args[0], args[1], classDump, args.SkipWhile(a => a != "--only").Skip(1).FirstOrDefault());
         }
         string references = args.SkipWhile(a => a != "--references").Skip(1).FirstOrDefault();
         if (references != null)

@@ -84,6 +84,8 @@ ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
 // The survey's `mevr convo end` (research/59 "The survey"): the conversation's own end, for one that loops past its time.
 ue3::FunctionRef gEndConversation{"SFXGame.BioConversation.EndConversation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
+ue3::FunctionRef gRequestTurn{"SFXGame.BioPawn.RequestTurnInPlace"};  // the game's own turn on the spot, with its animation
+ue3::ClassRef gTurnPawnClass{"SFXGame.BioPawn"};
 ue3::FunctionRef gTrace{"Engine.Actor.Trace"};  // the floor under an arc seat (Part B)
 ue3::FieldRef gWalkController{"Engine.Pawn", "Controller"};
 ue3::FieldRef gWalkVelocity{"Engine.Actor", "Velocity"};
@@ -105,6 +107,9 @@ ue3::FieldRef gCylinderRadius{"Engine.CylinderComponent", "CollisionRadius"};
 ue3::FieldRef gCylinderHeight{"Engine.CylinderComponent", "CollisionHeight"};
 // Shepard not in the scene (research/69 item 3).
 ue3::FieldRef gActorHidden{"Engine.Actor", "bHidden"};
+ue3::FieldRef gWorldOfActor{"Engine.Actor", "WorldInfo"};
+ue3::FieldRef gWorldPawns{"Engine.WorldInfo", "PawnList"};
+ue3::FieldRef gNextPawnOf{"Engine.Pawn", "NextPawn"};
 ue3::FunctionRef gSetHidden{"Engine.Actor.SetHidden"};
 
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
@@ -128,7 +133,15 @@ struct Settings {
     float walkSettleS = 2.5f;
     float walkMinM = 0.5f;
     float walkSpeedMS = 1.4f;
-    float turnDegPerS = 120.0f;        // ... and turn them toward whom they look at, at most this fast (worldTurnDegPerS)
+    float turnDegPerS = 120.0f;        // a body turn of ours: at most this fast (worldTurnDegPerS)
+    // Who turns (research/69 "Who turns, and how"; worldTurn = look | always | off): look: the game's look-at chain does the
+    // looking and the body re-faces only past what it covers (cw::StepAttention); always: every body toward its look-at
+    // target every tick (until 2026-11-10); off: the game's own facings stand.
+    cw::TurnRule turnRule = cw::TurnRule::Look;
+    float turnComfortDeg = 60.0f;      // the look-at chain's business up to here (worldTurnComfortDeg)
+    float turnSettleDeg = 25.0f;       // a body turn ends with the target this far off (worldTurnSettleDeg)
+    float turnDwellS = 1.0f;           // ... and begins after the target was outside for this long (worldTurnDwellS)
+    bool turnByGame = true;            // by BioPawn.RequestTurnInPlace, an eased turn of ours if refused (worldTurnWay = game | slide)
     bool setPiecesOnScreen = true;     // the scan's set pieces on the 3D screen, not in the world (worldSetPieces = screen | world)
     bool camera = true;                // the game's own camera at the player's place too, not only the main view (worldCamera)
     bool openingAccept = true;         // the stage's opening placements are accepted, the player put at Shepard's mark (worldOpening = accept|keep)
@@ -205,6 +218,15 @@ void RefreshSettings() {
     s.walkMinM = number("worldWalkMinM", s.walkMinM, 0.0f, 6.0f);
     s.walkSpeedMS = number("worldWalkSpeedMS", s.walkSpeedMS, 0.1f, 3.0f);
     s.turnDegPerS = number("worldTurnDegPerS", s.turnDegPerS, 10.0f, 1000.0f);
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldTurn")) {
+        s.turnRule = cw::ParseTurnRule(*text, cw::TurnRule::Look);
+    }
+    s.turnComfortDeg = number("worldTurnComfortDeg", s.turnComfortDeg, 5.0f, 180.0f);
+    s.turnSettleDeg = number("worldTurnSettleDeg", s.turnSettleDeg, 0.0f, 90.0f);
+    s.turnDwellS = number("worldTurnDwellS", s.turnDwellS, 0.0f, 30.0f);
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldTurnWay")) {
+        s.turnByGame = ini::Lower(ini::Trim(*text)) != "slide";
+    }
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldSetPieces")) {
         s.setPiecesOnScreen = ini::Lower(ini::Trim(*text)) != "world";
     }
@@ -515,6 +537,13 @@ struct Convo {
     int trackWalks = 0;          // people moved by a matinee's track (authored walks), left to it
     int trackHeld = 0;           // a track's moves of the player's own pawn withheld during this conversation
     int yielded = 0;             // small placements the game repeated tick after tick, accepted (cw::Insists)
+    cw::StickLatch wheelStick;   // the left stick is the wheel's until it has been let go after a pick (cw::StickWalks)
+    bool wheelStickNoted = false;
+    int wheelSticks = 0;         // replies picked with the stick still out as the wheel closed: no walk came of them
+    int bodyTurns = 0;           // bodies that re-faced: their look-at target stayed outside what the look-at chain covers
+    int gameTurns = 0;           // ... of those, turned by the game's own turn in place
+    int turnsSlid = 0;           // ... and by an eased turn of ours (the game's refused, or did not move the body)
+    int facingsHeld = 0;         // facings the stage set at once mid-conversation, put back (they were for its mark)
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
     std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
@@ -609,6 +638,11 @@ struct Stay {
     double speedUnitsPerS = 0.0;
     bool tracked = false;  // a matinee's move track moves this actor (an authored walk): never undone
     cw::Insistence insist; // the same small placement asked tick after tick: the game's own, accepted (cw::Insists)
+    cw::AttentionState attention;  // whether its body turns toward whom it looks at (cw::StepAttention)
+    double turnGoal = 0.0;         // a turn asked of the game (BioPawn.RequestTurnInPlace): where to,
+    double turnFromYaw = 0.0;      // ... from where,
+    double turnAskedS = 0.0;       // ... when,
+    double turnUntilS = 0.0;       // ... and until when it is the game's (0: none on its way)
 };
 std::vector<Stay> gStay;
 std::uint64_t gStayMs = 0;
@@ -909,6 +943,24 @@ void CheckDrawn() {
     }
 }
 
+// The game's own turn on the spot (BioPawn.RequestTurnInPlace, a native: the pawn turns to the rotation with its turn
+// animation). False: not a BioPawn, the function not found, or the game refused.
+int gGameTurnFails = 0;  // turns asked of the game that came to nothing, this session: after two, ours
+bool RequestTurn(ue3::Object* actor, ue3::Rotator const& now, double yawDeg) {
+    ue3::Function* const fn = gRequestTurn.Get();
+    if (fn == nullptr || gTurnPawnClass.Get() == nullptr || !ue3::IsA(actor, gTurnPawnClass)) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    ue3::Rotator r = now;
+    r.yaw = ToUnits(yawDeg);
+    if (!p.Valid() || !p.Set("rDesDir", r)) {
+        return false;
+    }
+    ue3::runtime::Call(actor, fn, p);
+    return p.ReturnBool().value_or(false);
+}
+
 void KeepInPlace(ue3::Object* pawn) {
     if (!gC.on || !gInWorldForStay || !gSettings.stay || gSetLocation.Get() == nullptr || gC.object == nullptr ||
         !ue3::runtime::IsAlive(gC.object)) {
@@ -1036,23 +1088,94 @@ void KeepInPlace(ue3::Object* pawn) {
             EndWalk(st, "end", "turn reflection unavailable or player's pawn");
             continue;  // Shepard's body turns under the player's view (body follow)
         }
-        // The yaw: toward whom it looks at (or the speaker), from where it stands, at most turnDegPerS.
-        double target = YawDeg(*rot);
+        // The body's facing (research/69 "Who turns, and how"; cw::StepAttention). The game's look-at chain turns the eyes, head,
+        // neck and chest toward whom this one looks at (else the speaker), so the body keeps the facing the scene composed: a
+        // facing the stage sets at once mid-conversation is put back (it was for its mark), a turn of the game's own (gradual)
+        // is followed, and the body re-faces only when the one it looks at stays outside what the chain covers: by the game's
+        // own turn in place (its animation), or, where the game refuses or nothing comes of it, by an eased turn of ours.
+        double const actualYaw = YawDeg(*rot);
+        double target = actualYaw;
         bool const walking = gSettings.walk != 0 && WalkToMark(st, previousKept, nowS, dt, target);
+        // Whom it looks at: the game's own look-at list. (Until 2026-11-10 "else the speaker": the councillors, who look at
+        // nobody by that list, swung 90 to 170 degrees toward whichever of them spoke, and so did the dais, a BioInert.)
         auto const look = lookAt.find(t.actor);
-        ue3::Object* const other = look != lookAt.end() ? look->second : speaker != t.actor ? speaker : nullptr;
+        bool const always = gSettings.turnRule == cw::TurnRule::Always;
+        ue3::Object* const other = look != lookAt.end() ? look->second : always && speaker != t.actor ? speaker : nullptr;
+        std::optional<double> bearing;
         if (!walking && other != nullptr && ue3::runtime::IsAlive(other)) {
             if (auto const o = player::Location(other)) {
                 ik::Vec3 const to = V(*o) - st.place;
                 if (std::hypot(to.x, to.y) > 20.0) {
-                    target = std::atan2(to.y, to.x) * kRadToDeg;
+                    bearing = std::atan2(to.y, to.x) * kRadToDeg;
                 }
             }
         }
+        bool eased = false;
+        if (walking) {
+            st.attention = {};
+            st.turnUntilS = 0.0;
+        } else if (gSettings.turnRule == cw::TurnRule::Off || (!always && !player::IsBioPawn(t.actor))) {
+            st.attention = {};
+            st.turnUntilS = 0.0;
+            st.shownYaw = actualYaw;
+            continue;
+        } else if (gSettings.turnRule == cw::TurnRule::Always) {
+            if (bearing) {
+                target = *bearing;
+            }
+        } else {
+            double const moved = std::abs(YawDiffDeg(actualYaw, st.shownYaw));
+            bool const gradual = moved <= std::max(2.0, 360.0 * dt);  // the game turning it, not a facing set at once
+            if (st.turnUntilS != 0.0) {
+                bool const arrived = std::abs(YawDiffDeg(st.turnGoal, actualYaw)) <= 3.0;
+                bool const still = nowS - st.turnAskedS > 0.75 && std::abs(YawDiffDeg(actualYaw, st.turnFromYaw)) < 1.0;
+                if (!arrived && !still && nowS < st.turnUntilS) {
+                    st.shownYaw = actualYaw;  // the game's turn is on its way: the body is its own
+                    continue;
+                }
+                if (!arrived) {
+                    ++gC.turnsSlid;
+                    --gC.gameTurns;
+                    ++gGameTurnFails;
+                    log::Info("convo: at {:.1f} s {}'s turn by the game {} ({:.0f} deg of {:.0f} turned in {:.1f} s): the rest by an eased turn",
+                        Seconds(), t.name, still ? "did not start" : "did not arrive", std::abs(YawDiffDeg(actualYaw, st.turnFromYaw)),
+                        std::abs(YawDiffDeg(st.turnGoal, st.turnFromYaw)), nowS - st.turnAskedS);
+                }
+                st.turnUntilS = 0.0;
+                st.shownYaw = actualYaw;
+            } else if (gradual || !bearing) {
+                st.shownYaw = actualYaw;
+            } else {
+                ++gC.facingsHeld;
+            }
+            cw::AttentionLimits const limits{gSettings.turnComfortDeg, gSettings.turnSettleDeg, gSettings.turnDwellS};
+            cw::AttentionStep const a = cw::StepAttention(st.attention, st.shownYaw, bearing, dt, limits);
+            if (a.began) {
+                ++gC.bodyTurns;
+                bool const asked = gSettings.turnByGame && gGameTurnFails < 2 && RequestTurn(t.actor, *rot, a.goalYawDeg);
+                log::Info("convo: at {:.1f} s {} turns its body: {} has been {:.0f} deg off its facing for {:.1f} s, past the {:.0f} its look-at "
+                          "covers; to {:.0f} deg ({:.0f} deg of turn), {}", Seconds(), t.name, ShortName(other), std::abs(a.offDeg),
+                    gSettings.turnDwellS, gSettings.turnComfortDeg, a.goalYawDeg, std::abs(YawDiffDeg(a.goalYawDeg, st.shownYaw)),
+                    asked ? "by the game's turn in place" : !gSettings.turnByGame ? "by an eased turn (worldTurnWay = slide)"
+                          : gGameTurnFails >= 2 ? "by an eased turn (the game's turn in place came to nothing twice)"
+                          : "by an eased turn (the game's turn in place refused)");
+                if (asked) {
+                    ++gC.gameTurns;
+                    st.turnGoal = a.goalYawDeg;
+                    st.turnFromYaw = actualYaw;
+                    st.turnAskedS = nowS;
+                    st.turnUntilS = nowS + 3.0;
+                    continue;
+                }
+                ++gC.turnsSlid;
+            }
+            target = a.turning ? a.goalYawDeg : st.shownYaw;
+            eased = true;
+        }
         double const diff = YawDiffDeg(target, st.shownYaw);
         double const step = gSettings.turnDegPerS * dt;
-        st.shownYaw += std::clamp(diff, -step, step);
-        if (std::abs(YawDiffDeg(st.shownYaw, YawDeg(*rot))) > 1.0) {
+        st.shownYaw += eased ? cw::TurnStepDeg(diff, dt, gSettings.turnDegPerS) : std::clamp(diff, -step, step);
+        if (std::abs(YawDiffDeg(st.shownYaw, actualYaw)) > 1.0) {
             ue3::Params p(ue3::runtime::Get(), gSetRotation.Get());
             ue3::Rotator r = *rot;
             r.yaw = ToUnits(st.shownYaw);
@@ -1562,14 +1685,22 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     }
     // The stick: `mevr convo walk` while it lasts, else the left controller's; the wheel's while the wheel is up.
     float stickX = 0.0f, stickY = 0.0f;
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    double const pushed = controllers.active ? std::hypot(controllers.left.stickX, controllers.left.stickY) : 0.0;
+    bool const stickWalks = cw::StickWalks(gC.wheelStick, gC.wheel, pushed);  // the wheel's until it has been let go
     if (gC.wheel) {
         // (the stick steers the wheel)
     } else if (gWalkOverride.untilMs > GetTickCount64()) {
         stickX = gWalkOverride.x;
         stickY = gWalkOverride.y;
-    } else if (vr::controllers::State const controllers = vr::controllers::Latest(); controllers.active) {
+    } else if (controllers.active && stickWalks) {
         stickX = controllers.left.stickX;
         stickY = controllers.left.stickY;
+        gC.wheelStickNoted = false;
+    } else if (controllers.active && pushed > 0.3 && !gC.wheelStickNoted) {
+        gC.wheelStickNoted = true;
+        ++gC.wheelSticks;
+        log::Info("convo: at {:.1f} s the stick that picked the reply is still out ({:.2f}): not a walk until it is let go", Seconds(), pushed);
     }
     auto at = player::Location(pawn);
     if (!at) {
@@ -1932,14 +2063,16 @@ void End(char const* why) {
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
               "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
               "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"opening\": \"{}\", \"markM\": {:.2f}, \"cuts\": {}, "
-              "\"trackWalks\": {}, \"trackHeld\": {}, \"yielded\": {}, \"guidedM\": {:.2f}, \"walkInWay\": \"{}\", \"arrived\": {}, \"entries\": [{}]}}",
+              "\"trackWalks\": {}, \"trackHeld\": {}, \"yielded\": {}, \"guidedM\": {:.2f}, \"walkInWay\": \"{}\", \"arrived\": {}, "
+              "\"bodyTurns\": {}, \"gameTurns\": {}, \"turnsSlid\": {}, \"facingsHeld\": {}, \"wheelSticks\": {}, \"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
-        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false", entryPath);
+        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
+        gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }
@@ -2370,13 +2503,71 @@ bool MomentViewOn() {
     return gMoment.on;
 }
 
+// The people shown in the player's view (anywhere but behind him, within 30 m), for what a script's black screen covers.
+std::vector<cw::Seen> PeopleInView(ue3::Object* pawn, ik::Vec3 const& eye, double facing) {
+    std::vector<cw::Seen> seen;
+    ue3::Object* const world = pawn != nullptr ? gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    if (world == nullptr) {
+        return seen;
+    }
+    int guard = 0;
+    for (ue3::Object* p = gWorldPawns.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
+         p = gNextPawnOf.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
+        if (p == pawn || !player::IsBioPawn(p) || gActorHidden.ReadBool(p).value_or(true)) {
+            continue;
+        }
+        if (auto const at = player::Location(p)) {
+            if (cw::InView({eye.x, eye.y, eye.z}, facing, {at->x, at->y, at->z}, 110.0, 0.0, 3000.0)) {
+                seen.push_back({reinterpret_cast<std::uint64_t>(p), {at->x, at->y, at->z}});
+            }
+        }
+    }
+    return seen;
+}
+
+// A script's black screen during a held moment, taken down by game/AuthoredMoment: whether the mod dips in its place is
+// decided over the next ticks, by what the black screen covered in the player's view (cw::CoveredChanges).
+struct BlackPending {
+    bool on = false;
+    std::uint64_t ms = 0;
+    ik::Vec3 eye;        // the view it was seen from
+    double facing = 0.0;
+    std::vector<cw::Seen> before;
+};
+BlackPending gBlack;
+
 bool MomentDip() {
     if (!gMoment.on) {
         return false;
     }
-    ++gC.cut;  // published with the moment's state: the host dips from black on a change
-    ++gMoment.dips;
+    ue3::Object* const controller = player::Controller();
+    gBlack.on = true;
+    gBlack.ms = GetTickCount64();
+    gBlack.eye = gC.hold;
+    gBlack.facing = YawDeg(gC.holdRotation);
+    gBlack.before = PeopleInView(controller != nullptr ? player::Pawn(controller) : nullptr, gBlack.eye, gBlack.facing);
     return true;
+}
+
+void ResolveBlack(ue3::Object* pawn) {
+    if (!gBlack.on) {
+        return;
+    }
+    std::uint64_t const now = GetTickCount64();
+    cw::Covered const covered = cw::CoveredChanges(gBlack.before, PeopleInView(pawn, gBlack.eye, gBlack.facing));
+    if (covered.Total() > 0) {
+        ++gC.cut;  // published with the view's state: the host dips from black on a change
+        if (gMoment.on) {
+            ++gMoment.dips;
+        }
+        log::Info("moment: the script's black screen covered a change in view ({} of {} people gone, {} moved at once, {} new): a dip from "
+                  "black in its place", covered.gone, gBlack.before.size(), covered.moved, covered.appeared);
+        gBlack = {};
+    } else if (now - gBlack.ms > 300) {
+        log::Info("moment: the script's black screen covered nothing in view ({} people, none gone, moved or new in 0.3 s): no dip",
+            gBlack.before.size());
+        gBlack = {};
+    }
 }
 
 bool MomentWithholds() {
@@ -2446,6 +2637,7 @@ void Tick(double deltaSeconds, Link const& link) {
             gFoot.floorView = vr::host_view::Latest();
         }
     }
+    ResolveBlack(pawn);
     ue3::Object* const conv = controller != nullptr && mode && *mode == kModeConversation ? ConversationNow(controller) : nullptr;
     // A moment in the world (a matinee that walks Shepard): its own view, until the cinematic mode ends or a conversation begins.
     if (conv == nullptr && TickMoment(link, pawn, mode, deltaSeconds)) {
