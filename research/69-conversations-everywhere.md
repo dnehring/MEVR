@@ -1348,3 +1348,17 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   turn in place does nothing in a conversation. The fake headset's `-Off` no longer restores a weeks-old settings file.
   The guided walk follows the way Shepard went and arrives. Open: the ceremony's dip stays for a player who walks along
   (nine people appear at that instant), the body missing while the view is away from the pawn, slot 84.
+- 2026-11-10, 13:30-13:50, **the canary on the players' build, the headset back** (the owner still away). The canary set
+  on the single-file build of 19dad44 (`0.2.0+19dad44ebc`, the request files through his ini's `[Debug] requests = 1`): 3 of
+  3 as expected, so that build runs in the game. **The look-at chain's reach, first numbers** (the comm room with Anderson
+  and Nihlus, 54 lines, the first scene of the day whose people have look-at targets): 54 targets stood 30 degrees or more
+  off a body; at 35 off, a head was still 30 off after 1.5 s; at 45 to 56 off, 11 to 49 off: **the chain brings a head
+  about half the way in a conversation** (its strengths: head 0.55), the eyes (25 degrees) do the rest, and past about 50
+  degrees of body angle the gaze falls short. The rule's 60 degrees is at that edge: 13 bodies re-faced in 190 s there
+  (all by the eased turn), against one at every change of speaker before. Not tuned further without the owner's eye.
+  The fake headset is off (`-Off` put back its five keys; his settings file kept its `driver_ivry` section), SteamVR
+  stopped. His VR00 quicksave, which the save loop wrote over, is back from the game slot's backup (hash checked). The
+  ten validation saves are in John02's slots 80 to 89 (80 and 81 now 2.5 m from Anderson). The game folder holds the
+  players' build of 19dad44 and is still held by this session's game slot. **A deploy piped into `Select-Object -First
+  N` is cut off after N lines**: the fonts, the menu's files and the `.modpath` clean-up never ran (seen as a `.modpath`
+  left beside the single-file build; run again without the cut).
