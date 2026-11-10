@@ -14,6 +14,10 @@
 //   level          a persistent level's streaming list (its WorldInfo's StreamingLevels: the packages it can stream in), so the
 //                  catalogue names the level to open for a start by what the game streams, not by the package's name (the
 //                  medical bay's wake-up scene, BIOA_NOR10_07wake_DSG, is streamed by the Citadel's BIOA_STA00)
+//   vo             a BioSeqAct_FaceOnlyVO in a level's script: lines of a conversation played as voice-over, with no conversation
+//                  mode (a squadmate's remark on foot, radio chatter, the lines under an animated cutscene: Saren and
+//                  Benezia after Eden Prime are an ANIMCUTSCENE sequence with such actions); the sweep's predictions tell
+//                  these from the conversations a level starts
 //   trigger        a trigger or trigger volume placed in a level (any class named *Trigger*, the streaming volumes too): its
 //                  class and place, so the sweep's predictions can say which conversations play within a walk of one (the
 //                  mod refuses a walk step that would change which triggers Shepard overlaps; research/69 item 5)
@@ -60,6 +64,7 @@ internal static class Scan
                         "BioSeqAct_StartConversation" => Start(pcc, export),
                         "BioSeqEvt_ConvNode" => Cinematic(pcc, export),
                         "BioTriggerStream" => Volume(export),
+                        "BioSeqAct_FaceOnlyVO" => VoiceOver(pcc, export),
                         "BioWorldInfo" or "WorldInfo" => Level(pcc, export),
                         _ => null,
                     };
@@ -96,7 +101,8 @@ internal static class Scan
     }
 
     // Conversations live in the English localised packages; starts, stages and matinees in the levels' own. The other
-    // languages, the sound, art, lighting and texture packages hold none of them.
+    // languages, the sound, art, lighting and texture packages hold none of them. (The placeables' packages, _PLC, do:
+    // Ilos's archive door starts its conversation from BIOA_LOS40_01_PLC; they were skipped until 2026-11-09.)
     private static bool Wanted(string name)
     {
         string upper = name.ToUpperInvariant();
@@ -104,7 +110,7 @@ internal static class Scan
         {
             return upper.EndsWith("_LOC_INT");
         }
-        return !(upper.EndsWith("_SND") || upper.EndsWith("_ART") || upper.EndsWith("_PLC") || upper.EndsWith("_LIGHT") || upper.StartsWith("TEXTURES"));
+        return !(upper.EndsWith("_SND") || upper.EndsWith("_ART") || upper.EndsWith("_LIGHT") || upper.StartsWith("TEXTURES"));
     }
 
     private static Dictionary<string, object> Conversation(ExportEntry export)
@@ -252,6 +258,12 @@ internal static class Scan
             });
         }
         return new Dictionary<string, object> { ["kind"] = "volume", ["name"] = export.InstancedFullPath, ["states"] = states };
+    }
+
+    private static Dictionary<string, object> VoiceOver(IMEPackage pcc, ExportEntry export)
+    {
+        IEntry conv = pcc.GetEntry(export.GetProperties().GetProp<ObjectProperty>("m_pConversation")?.Value ?? 0);
+        return conv == null ? null : new Dictionary<string, object> { ["kind"] = "vo", ["path"] = export.InstancedFullPath, ["conv"] = conv.InstancedFullPath };
     }
 
     // A level's streaming list: the packages its WorldInfo can stream in (LevelStreaming objects' PackageName). A chunk's own

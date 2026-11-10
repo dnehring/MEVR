@@ -35,7 +35,11 @@ param(
     [switch]$ReachOnly,
     [switch]$Resume,
     [int]$Seed = 1,
-    [int]$SceneSeconds = 150,
+    # How lines are paced. skip: every line is skipped about two seconds in (the smoke pass: fast, but what a line does
+    # after its start, an authored walk, a camera move, a late facing key, is cut short). shepard: only Shepard's own lines
+    # are skipped. full: nothing is skipped, every line plays its length, as a player who listens hears it.
+    [ValidateSet('skip', 'shepard', 'full')] [string]$Pace = 'skip',
+    [int]$SceneSeconds = 0,
     [int]$LoadSeconds = 240,
     [int]$StreamSeconds = 45,
     [double]$StandM = 1.5,
@@ -44,6 +48,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
+if ($SceneSeconds -le 0) { $SceneSeconds = $(if ($Pace -eq 'skip') { 150 } elseif ($Pace -eq 'shepard') { 420 } else { 720 }) }
 $win64 = 'C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition\Game\ME1\Binaries\Win64'
 $log = Join-Path $win64 'Logs\LE1MEVR.log'
 if (-not $Out) { $Out = Join-Path $env:LOCALAPPDATA ("MEVR\sweep\{0}" -f (Get-Date -Format 'yyyy-MM-dd')) }
@@ -88,6 +93,7 @@ function State() {
         answered = [bool]$r; mode = $(if ($m.Success) { [int]$m.Groups[1].Value } else { -2 }); convo = $c.Success
         name = $(if ($c.Success) { $c.Groups[2].Value } else { '' }); entry = $(if ($e.Success) { [int]$e.Groups[1].Value } else { -1 })
         wheel = ($e.Success -and $e.Groups[2].Value -eq 'up'); text = $r
+        shepardSpeaks = [bool]([regex]::Match($r, 'speaker SFXPawn_Player').Success)
     }
 }
 
@@ -146,7 +152,7 @@ function Drive([string]$name, [datetime]$deadline, $walk = $null) {
                 if ($r -match 'called true') { $picks++; break }
                 if ($r -match "the wheel isn't up|no conversation") { break }
             }
-        } else {
+        } elseif ($Pace -eq 'skip' -or ($Pace -eq 'shepard' -and $s.shepardSpeaks)) {
             $r = Console 'mevr convo skip'
             if ($r -match 'called true') { $skips++ }
         }
@@ -205,6 +211,11 @@ function Open([string]$map) {
     if ($ok) { Start-Sleep -Seconds 2; Console 'god' | Out-Null }
     return $ok
 }
+# Shepard is there (a pawn the console can ask about). A volume touched from afar streams out the floor he stands on: he
+# falls to the kill plane and the level has no player (`mevr stream list` then answers "(no pawn)": the first reach run lost
+# most of the Citadel and Noveria to it, 2026-11-09). So he floats while chunks stream (the `ghost` cheat: flying, no
+# collision) and walks again once he stands by the scene's owner (`walk`).
+function PawnOk() { $r = Console 'mevr loc'; return ([bool]$r -and $r -notmatch 'no pawn') }
 
 # The game back after a crash or a hang.
 function Restart() {
@@ -221,43 +232,89 @@ function Restart() {
 }
 function Dead() { return (-not (Running)) -or $script:silent -ge 3 }
 
-# Streams a chunk in: `ready`, the route taken, the seconds it took.
+function ChunkOf([string]$package) {
+    # BIOA_STA60_05A_DSG -> sta60_05a (a state's chunk names are spelled so, with or without the bioa_)
+    return (($package -replace '^(?i)BIOA_', '') -replace '(?i)_(DSG|LAY|ART|SND|PLC|CIN|DS\d).*$', '').ToLower()
+}
+function VisibleChunks() {
+    $set = @{}
+    foreach ($line in ((Console 'mevr stream chunks') -split "`n")) {
+        $m = [regex]::Match($line, '^\s*(\S+) loaded=(\d) visible=(\d)')
+        if ($m.Success -and $m.Groups[2].Value -eq '1' -and $m.Groups[3].Value -eq '1') { $set[(ChunkOf $m.Groups[1].Value)] = $true; $set[$m.Groups[1].Value.ToLower()] = $true }
+    }
+    return $set
+}
+# The loaded streaming volumes: index (for `mevr stream touch`, valid until the next change), and per state its name and the
+# chunks it shows.
+function LoadedVolumes() {
+    $list = @(); $current = $null
+    foreach ($line in ((Console 'mevr stream list') -split "`n")) {
+        $m = [regex]::Match($line, '^\[(\d+)\] (\S+) at ')
+        if ($m.Success) { $current = [pscustomobject]@{ index = [int]$m.Groups[1].Value; name = $m.Groups[2].Value; states = @() }; $list += $current; continue }
+        if ($null -eq $current) { continue }
+        $s = [regex]::Match($line, '^\s*state (\S+) \(in [^)]*\): visible ([^;]*);')
+        if ($s.Success) { $current.states += [pscustomobject]@{ state = $s.Groups[1].Value; shows = @(($s.Groups[2].Value -split ',') | ForEach-Object { ($_ -replace '^(?i)bioa_', '').ToLower() } | Where-Object { $_ }) } }
+    }
+    return $list
+}
+
+# Streams a chunk in: `ready`, the route taken, the seconds it took. A chunk deep in a hub is reached in hops (the plan's
+# `streamVia`: the chunks on the way, from the scan's volumes): at each step the farthest chunk of the way that a loaded
+# volume shows is streamed in (a plain state by a touch; a named one with its streaming state set first), which loads the
+# volumes for the next. Volumes are touched by their index in the listing just made: their names repeat across packages.
 function Stream($scene) {
     $t0 = Get-Date
     $tail = ($scene.actionTail -split '\.')[-1]
     $before = Console ("mevr instances BioSeqAct_StartConversation " + $tail)
     if ($before -match [regex]::Escape($scene.actionTail)) { return [pscustomobject]@{ ready = $true; route = 'loaded'; seconds = 0 } }
-    $r = Console 'mevr stream list'
-    $chunkRe = "(^|_)$([regex]::Escape($scene.chunk))(_|$)"
-    $touchVolume = $null; $stateVolume = $null; $stateName = $null; $current = $null
-    foreach ($line in ($r -split "`n")) {
-        $m = [regex]::Match($line, '^\[(\d+)\] (\S+) at ')
-        if ($m.Success) { $current = $m.Groups[2].Value; continue }
-        if ($null -eq $current) { continue }
-        $s = [regex]::Match($line, '^\s*state (\S+) \(in [^)]*\): visible ([^;]*);')
-        if (-not $s.Success) { continue }
-        if (-not @(($s.Groups[2].Value -split ',') -match $chunkRe)) { continue }
-        if ($s.Groups[1].Value -eq 'None' -or $s.Groups[1].Value -eq 'Default') { if ($null -eq $touchVolume) { $touchVolume = $current } }
-        elseif ($null -eq $stateVolume) { $stateVolume = $current; $stateName = $s.Groups[1].Value }
-    }
-    $route = 'none'
-    if ($touchVolume) { $route = "touch $touchVolume"; Console ("mevr stream touch " + $touchVolume) | Out-Null }
-    elseif ($stateName) { $route = "state $stateName, touch $stateVolume"; Console "mevr stream state $stateName on" | Out-Null; Start-Sleep -Seconds 1; Console ("mevr stream touch " + $stateVolume) | Out-Null }
-    elseif ($scene.streamStates -and @($scene.streamStates).Count -gt 0) { $route = "state $(@($scene.streamStates)[0]) (the catalogue's)"; Console "mevr stream state $(@($scene.streamStates)[0]) on" | Out-Null }
-    else { return [pscustomobject]@{ ready = $false; route = 'none'; seconds = 0 } }
-    $deadline = (Get-Date).AddSeconds($StreamSeconds)
+    $target = (ChunkOf $scene.package)
+    $way = @(@($scene.streamVia) | Where-Object { $_ } | ForEach-Object { $_.ToLower() })
+    if ($way.Count -eq 0 -or $way[-1] -ne $target) { $way += $target }
+    $route = @()
     $ready = $false
-    $wanted = @($scene.package, "BIOA_$($scene.chunk)", $scene.chunk)
-    while ((Get-Date) -lt $deadline -and -not $ready) {
-        Start-Sleep -Seconds 2
-        foreach ($line in ((Console 'mevr stream chunks') -split "`n")) {
-            $m = [regex]::Match($line, '^\s*(\S+) loaded=(\d) visible=(\d)')
-            if ($m.Success -and $wanted -contains $m.Groups[1].Value -and $m.Groups[2].Value -eq '1' -and $m.Groups[3].Value -eq '1') { $ready = $true; break }
+    for ($step = 0; $step -lt ($way.Count + 2) -and -not $ready; $step++) {
+        if ((VisibleChunks).ContainsKey($target)) { $ready = $true; break }
+        $volumes = LoadedVolumes
+        $hit = $null
+        for ($i = $way.Count - 1; $i -ge 0 -and $null -eq $hit; $i--) {
+            foreach ($plain in $true, $false) {
+                foreach ($v in $volumes) {
+                    foreach ($st in $v.states) {
+                        $isPlain = ($st.state -eq 'None' -or $st.state -eq 'Default')
+                        if ($isPlain -eq $plain -and $st.shows -contains $way[$i]) { $hit = [pscustomobject]@{ hop = $way[$i]; volume = $v; state = $(if ($isPlain) { $null } else { $st.state }) }; break }
+                    }
+                    if ($hit) { break }
+                }
+                if ($hit) { break }
+            }
         }
-        if (Dead) { break }
+        if ($null -eq $hit) {
+            # No loaded volume shows any chunk of the way: the catalogue's named state alone, once.
+            if ($step -eq 0 -and $scene.streamStates -and @($scene.streamStates).Count -gt 0) {
+                $name = @($scene.streamStates)[0]
+                Console "mevr stream state $name on" | Out-Null
+                $route += "state $name (no volume)"
+                Start-Sleep -Seconds 4
+                continue
+            }
+            break
+        }
+        if ($hit.state) { Console "mevr stream state $($hit.state) on" | Out-Null; Start-Sleep -Seconds 1 }
+        Console ("mevr stream touch " + $hit.volume.index) | Out-Null
+        $route += $(if ($hit.state) { "$($hit.hop) by state $($hit.state) and $($hit.volume.name)" } else { "$($hit.hop) by $($hit.volume.name)" })
+        $deadline = (Get-Date).AddSeconds($StreamSeconds)
+        $arrived = $false
+        while ((Get-Date) -lt $deadline -and -not $arrived) {
+            Start-Sleep -Seconds 2
+            $arrived = (VisibleChunks).ContainsKey($hit.hop)
+            if (Dead) { break }
+        }
+        if (-not $arrived) { $route += "($($hit.hop) never became visible)"; break }
+        if ($hit.hop -eq $target) { $ready = $true }
+        Start-Sleep -Seconds 1
     }
     if ($ready) { Start-Sleep -Seconds 2 }
-    return [pscustomobject]@{ ready = $ready; route = $route; seconds = [int]((Get-Date) - $t0).TotalSeconds }
+    return [pscustomobject]@{ ready = $ready; route = $(if ($route.Count) { $route -join '; ' } else { 'none' }); seconds = [int]((Get-Date) - $t0).TotalSeconds }
 }
 
 function Place($scene) {
@@ -289,7 +346,7 @@ function FindAction($scene) {
 
 function RunScene([string]$map, $scene, $streamed) {
     $record = [ordered]@{
-        conversation = $scene.conversation; map = $map; chunk = $scene.chunk; action = $scene.actionTail; route = 'open'; seed = $Seed
+        conversation = $scene.conversation; map = $map; chunk = $scene.chunk; action = $scene.actionTail; route = 'open'; seed = $Seed; pace = $Pace
         expect = [ordered]@{ verdict = $scene.verdict; flowed = [bool]$scene.flowed }; stream = $streamed.route
     }
     if (-not $streamed.ready) { $record.outcome = 'not reached'; $record.detail = "the chunk never became loaded and visible ($($streamed.route))"; return $record }
@@ -297,6 +354,7 @@ function RunScene([string]$map, $scene, $streamed) {
     if ($null -eq $index) { $record.outcome = 'action not loaded'; $record.detail = 'the chunk is visible, the start action is not among the loaded ones'; return $record }
     if ($ReachOnly) { $record.outcome = 'reached'; return $record }
     $placed = Place $scene
+    Console 'walk' | Out-Null
     Start-Sleep -Seconds 2
     $s = State
     if ($s.convo) { PlayByItself $map; $s = State }
@@ -369,7 +427,7 @@ foreach ($level in $doc.maps) { foreach ($chunk in $level.chunks) { foreach ($sc
 $script:restarts = 0
 $script:byItself = @()
 $total = 0
-Say ("the sweep: {0} scenes in the plan; {1}; out {2}" -f $doc.scenes, $(if ($ReachOnly) { 'reach only' } else { "seed $Seed" }), $Out)
+Say ("the sweep: {0} scenes in the plan; {1}; out {2}" -f $doc.scenes, $(if ($ReachOnly) { 'reach only' } else { "seed $Seed, pace $Pace, $SceneSeconds s a scene at most" }), $Out)
 if (-not (State).answered) { if (-not (Restart)) { throw 'the game does not answer its console (start it: tools/launch-game.ps1 -Steam)' } }
 foreach ($level in $doc.maps) {
     $map = $level.map
@@ -407,6 +465,11 @@ foreach ($level in $doc.maps) {
                 $streamed = $null
             }
             if ($null -eq $streamed -or -not $streamed.ready -or $null -eq (FindAction $scene)) {
+                if (-not (PawnOk)) {
+                    Say "   no pawn before $($scene.conversation) (Shepard fell or died): the level again"
+                    if (-not (Open $map)) { if ((Dead) -and (Restart)) { [void](Open $map) } }
+                }
+                Console 'ghost' | Out-Null
                 $streamed = Stream $scene
                 if ($null -eq (FindAction $scene) -and $streamed.ready -and -not $ReachOnly) {
                     # Gone with a scene's follow-up (it left the level or streamed the chunk out): the level again, once.

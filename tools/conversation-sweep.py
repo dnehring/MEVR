@@ -28,7 +28,9 @@ risks, each a thing the data shows and a run can confirm:
   named-state      its chunk shows only under a named streaming state (the plot's): the launcher sets it
   no-route         no streaming volume or state of its level lists its chunk
   owner-spawned    its owner is not placed in the level (the plot spawns it): no place to stand Shepard
-  no-start         no level script starts it (code does): the sweep cannot fire it
+  no-start         no level script starts it or plays its lines: the sweep cannot fire it
+  cutscene-vo      (not swept) no start action; voice-over actions in an animated cutscene's sequence play its lines
+  gameplay-vo      (not swept) no start action; voice-over actions play its lines on foot (a squadmate's remark, radio)
   conditional      every start entry has a plot conditional: a fired action may find none that holds
 
 plan: the runner's work list, one scene per conversation that a level script starts (its best start: a placed owner
@@ -109,6 +111,70 @@ def read_scan(path):
     return convs, starts, nodes, triggers, levels
 
 
+def voice_overs(path):
+    """Per conversation, the level script's voice-over actions that play its lines (BioSeqAct_FaceOnlyVO): how many, and
+    how many of them sit in an animated cutscene's sequence."""
+    out = collections.defaultdict(lambda: [0, 0])
+    for line in open(path, encoding='utf-8'):
+        if '"kind":"vo"' in line:
+            r = json.loads(line)
+            k = cs.key(r['conv'], 'd')
+            out[k][0] += 1
+            out[k][1] += 'ANIMCUTSCENE' in r['path'].upper()
+    return out
+
+
+def chunk_of(package):
+    # BIOA_STA60_05A_DSG -> sta60_05a: how a streaming state spells the chunk
+    return re.sub(r'_(DSG|LAY|ART|SND|PLC|CIN|DS[0-9]).*$', '', re.sub(r'^BIOA_', '', package, flags=re.IGNORECASE), flags=re.IGNORECASE).lower()
+
+
+def stream_ways(path):
+    """Per persistent level, the way to each chunk: the chunks to stream in, one after the other, from the level's own
+    package. A volume lives in a chunk and shows others when touched (a named state: when the plot's streaming state is
+    on); a chunk deep in a hub (the Citadel's wards, Noveria's hot labs) is shown only by volumes of chunks nearer the
+    entrance, so the runner streams the way hop by hop. The fewest hops, plain states preferred over named ones."""
+    import heapq
+    levels, volumes = {}, []
+    for line in open(path, encoding='utf-8'):
+        if '"kind":"volume"' in line or '"kind":"level"' in line:
+            r = json.loads(line)
+            if r['kind'] == 'volume':
+                volumes.append(r)
+            else:
+                levels[r['package']] = r['streaming']
+    roots, roots_of = cs.level_roots(levels)
+    ways = {}
+    for root in roots:
+        edges = collections.defaultdict(list)
+        for v in volumes:
+            if root not in roots_of(v['package']):
+                continue
+            home = '' if v['package'].lower() == root.lower() else chunk_of(v['package'])
+            for s in v['states']:
+                cost = 1.25 if cs.named(s) else 1.0
+                for name in s.get('visible') or []:
+                    edges[home].append((cost, re.sub(r'^bioa_', '', (name or '').lower())))
+        dist, prev, heap = {'': 0.0}, {}, [(0.0, '')]
+        while heap:
+            d, c = heapq.heappop(heap)
+            if d > dist.get(c, 1e9):
+                continue
+            for cost, nxt in edges.get(c, ()):
+                if d + cost < dist.get(nxt, 1e9):
+                    dist[nxt] = d + cost
+                    prev[nxt] = c
+                    heapq.heappush(heap, (d + cost, nxt))
+        def way(c):
+            out = []
+            while c:
+                out.append(c)
+                c = prev.get(c, '')
+            return out[::-1]
+        ways[root] = {c: way(c) for c in dist if c}
+    return ways
+
+
 def predictions(path):
     convs, starts, nodes, triggers, levels = read_scan(path)
     entries = cs.catalogue(path, None, quiet=True)
@@ -116,6 +182,7 @@ def predictions(path):
     for e in entries:
         by_conv[e['conversation']].append(e)
     roots, roots_of = cs.level_roots(levels)
+    vo = voice_overs(path)
     by_root = collections.defaultdict(list)
     for t in triggers:
         for root in roots_of(t['package']):
@@ -163,6 +230,8 @@ def predictions(path):
                 risks.append('no-route')
             if not best.get('ownerAt'):
                 risks.append('owner-spawned')
+        elif vo.get(k):
+            risks.append('cutscene-vo' if vo[k][1] else 'gameplay-vo')
         else:
             risks.append('no-start')
         starting = conv.get('starting') or []
@@ -173,7 +242,10 @@ def predictions(path):
             'map': best['map'] if best else None, 'chunk': best['chunk'] if best else None, 'flowed': flowed,
             'flowEntries': f['flips'] if flowed else [], 'plotEffects': effects, 'stageSpreadM': m['stageSpread'] / 100,
             'triggers': near, 'risks': risks,
-            'sweep': 'bark' if kd == 'ambient' else 'screen' if v == 'screen' else 'smoke',
+            'voiceOvers': vo[k][0] if k in vo else 0,
+            # A conversation no level script starts and whose lines voice-over actions play never enters the conversation
+            # mode: nothing for First person to place (a cutscene's lines go where the cutscene goes, the 3D screen).
+            'sweep': 'bark' if kd == 'ambient' else 'vo' if not mine and vo.get(k) else 'screen' if v == 'screen' else 'smoke',
         })
     return out, entries
 
@@ -186,8 +258,10 @@ def predict(argv):
             json.dump(rows, f, indent=0)
     sweep = collections.Counter(r['sweep'] for r in rows)
     print(f"{len(rows)} conversations: {sweep['smoke']} for the smoke pass, {sweep['screen']} set pieces (must go to the screen), "
-          f"{sweep['bark']} barks (sampled)" + (f" -> {out}" if out else ''))
-    risk = collections.Counter(x for r in rows for x in r['risks'] if r['sweep'] != 'bark')
+          f"{sweep['bark']} barks (sampled), {sweep['vo']} played only as voice-over (never the conversation mode: "
+          f"{sum(1 for r in rows if r['sweep'] == 'vo' and 'cutscene-vo' in r['risks'])} of them under animated cutscenes)"
+          + (f" -> {out}" if out else ''))
+    risk = collections.Counter(x for r in rows for x in r['risks'] if r['sweep'] in ('smoke', 'screen'))
     print('risks among the ' + str(sweep['smoke'] + sweep['screen']) + ' that enter the conversation mode: '
           + ', '.join(f'{k} {n}' for k, n in risk.most_common()))
     clean = sum(1 for r in rows if r['sweep'] == 'smoke' and not set(r['risks']) - {'plot-effects', 'conditional'})
@@ -195,7 +269,7 @@ def predict(argv):
     if '--table' in argv:
         print('\n| Conversation | Kind | Verdict | Level | Risks |\n|---|---|---|---|---|')
         for r in rows:
-            if r['sweep'] != 'bark':
+            if r['sweep'] in ('smoke', 'screen'):
                 print(f"| {r['conversation']} | {r['kind']} | {r['verdict']} | {r['map'] or '-'} | {', '.join(r['risks'])} |")
     return 0
 
@@ -204,6 +278,7 @@ def predict(argv):
 
 def plan(argv):
     rows, entries = predictions(argv[0])
+    ways = stream_ways(argv[0])
     out = option(argv, '--out')
     barks_per_area = int(option(argv, '--barks', '2'))
     first = {}
@@ -213,7 +288,7 @@ def plan(argv):
     for r in rows:
         e = first.get(r['conversation'])
         if e is None:
-            if r['sweep'] != 'bark':
+            if r['sweep'] in ('smoke', 'screen'):
                 unreachable.append({'conversation': r['conversation'], 'why': 'no level script starts it'})
             continue
         scene = {
@@ -221,6 +296,7 @@ def plan(argv):
             'action': e['action'], 'actionTail': e['actionTail'], 'ownerAt': e['ownerAt'], 'ownerYaw': e['ownerYaw'], 'stageAt': e['stageAt'],
             'touchShows': e['touchShows'], 'streamStates': e['streamStates'], 'kind': r['kind'], 'verdict': r['verdict'],
             'flowed': r['flowed'], 'flowEntries': r['flowEntries'], 'risks': r['risks'], 'sweep': r['sweep'],
+            'streamVia': ways.get(e['map'], {}).get(chunk_of(e['package']), []),
         }
         if r['sweep'] == 'bark':
             if len(barks[r['area']]) < barks_per_area and e['ownerAt']:
@@ -239,8 +315,10 @@ def plan(argv):
     print(f"{len(scenes)} scenes in {len(maps)} levels ({sum(1 for s in scenes if s['sweep'] == 'bark')} of them barks, sampled); "
           f"{len(unreachable)} conversations no level script starts" + (f" -> {out}" if out else ''))
     for mp in maps:
-        n = sum(len(c['scenes']) for c in mp['chunks'])
-        print(f"   {mp['map']}: {n} scenes in {len(mp['chunks'])} chunks")
+        every = [s for c in mp['chunks'] for s in c['scenes']]
+        hops = collections.Counter(len(s['streamVia']) for s in every)
+        print(f"   {mp['map']}: {len(every)} scenes in {len(mp['chunks'])} chunks; streaming hops "
+              + ', '.join(f"{'no way' if k == 0 else k}: {n}" for k, n in sorted(hops.items())))
     return 0
 
 
@@ -269,7 +347,7 @@ def reach(argv):
         total += len(sc)
         reached += len(ok)
         print(f"| {mp} | {'yes' if lv['opened'] else 'NO'} | {lv['seconds']} | {sum(1 for c in cs_ if c['ready'])} of {len(cs_)} | "
-              f"{sum(1 for c in cs_ if c['route'].startswith('touch'))} | {sum(1 for c in cs_ if c['route'].startswith('state'))} | "
+              f"{sum(1 for c in cs_ if ' by ' in c['route'] or c['route'].startswith('touch'))} | {sum(1 for c in cs_ if 'state ' in c['route'])} | "
               f"{len(ok)} of {len(sc)} | {', '.join(lv.get('byItself') or [])} |")
     print(f"\n{reached} of {total} scenes reached in {len(levels)} levels")
     missed = [s for sc in scenes.values() for s in sc if s.get('outcome') in ('not reached', 'action not loaded')]
