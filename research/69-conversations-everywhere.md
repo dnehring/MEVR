@@ -41,7 +41,7 @@ folder, which the release session holds.
 | 3 | Cutscene or world, decided at run time | data read; built log-only; game check pending | The packages can't say "Shepard isn't in this scene". Three run-time rules (pawn hidden; far from the owner and out of its sight; most shots framed from far away) name such scenes in the log and the survey's summary; they move a scene to the screen only with `worldAutoScreen = on`. |
 | 4 | Keeping people in place at the source | read; built; **checked in the game** | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. In the medical bay's wake-up scene: 28 placements withheld, 0 left for the undo after the fact (research/59 had 25 undone there). |
 | 5 | Walking and the level's triggers | read; built; **checked in the game** (9 triggers found by the medical bay, the walk stopped at the first one's edge) | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
-| 2 | The sweep: every conversation in its plot state | **planned** ("The sweep: plan") | 28 of 491 played by the survey (research/59), 5 more by hand on 2026-11-09 |
+| 2 | The sweep: every conversation in its plot state | planned ("The sweep: plan"); **phase 1 built** ("The sweep: progress"): the game slot, the catalogue's levels, predictions, the judge, the flowed scene's summary line | 28 of 491 played by the survey (research/59), 5 more by hand on 2026-11-09 |
 
 ## Findings
 
@@ -302,6 +302,74 @@ fail on `kept`), so a judge that passes everything is caught.
 - Whether the game stays up for five hours of this. The watchdog assumes not.
 - The 182 barks: a sample per area is planned; if the sample shows a problem class, they get their own pass.
 
+## The sweep: progress
+
+### Phase 1: the tools that need no game (2026-11-09, built)
+
+- **`tools/game-slot.ps1 take | return | status`.** `take -Holder <who>` refuses while the game runs or the slot is held,
+  copies the ASI folder, the top-level files of `Binaries/Win64` (the exe hashed only), `BioGame/Config` and the ME1 saves
+  to `%LOCALAPPDATA%/MEVR/game-slot/backups/<stamp>` with the SHA-256 of every file, writes `lock.json`, deploys this
+  checkout's build, writes any `-Set Section.key=value` into the deployed `LE1MEVR.ini` and turns the fake headset on.
+  `return` turns it off, puts back every file that is missing or differs, moves files that were not there before (the
+  run's saves, the hot-reload path) into the backup's `extras` folder, hashes everything again and fails with the lock
+  kept on any difference; it prints the ASI's SHA-256 before and after. `tools/deploy-asi.ps1` now refuses to deploy over
+  a held slot (`-IgnoreSlot` overrides): a return would undo that deploy without a word. Tried on a fake game folder
+  (changed, deleted and new files all put back; a second take refused). Not yet used on the real folder.
+- **The level to open comes from the streaming lists.** The scan writes a `level` record per package whose WorldInfo has
+  `StreamingLevels` (54; 43 of them are persistent: no other level streams them), and the catalogue's `map` is a
+  persistent level that streams the start's package (`maps`: all of them; `mapByName`: what the name alone said). **36
+  starts moved**: the Normandy's plot chunks belong to the level the Normandy is docked at or flying to
+  (`BIOA_NOR10_07wake_DSG`, `_06wake`, the lockers and `_01patton` under `BIOA_STA00`; the `_DS1` chunks under Eden
+  Prime's `BIOA_PRO00`; the `_DS2` chunks under Ilos's `BIOA_LOS00`). With the right level's volumes, 95 of the 104 starts
+  whose chunk no plain touch shows now have a named streaming state (88 before), and 9 are listed by no volume state at
+  all (16 before).
+- **Layer 0, `tools/conversation-sweep.py predict`.** Per conversation: kind, verdict, level, chunk, and its risks from the
+  data. The scan also writes every placed trigger (2,362: `BioTriggerStream` 970, `BioTriggerVolume` 705, `BioTrigger`
+  603, `DynamicTriggerVolume` 40, `BioSaveTriggerVolume` 20, `TriggerVolume` 19, `Trigger` 5). Of the 309 conversations
+  that enter the conversation mode (288 for the smoke pass, 21 set pieces):
+
+  | Risk | Conversations | What it means for the run |
+  |---|---|---|
+  | plot-effects | 266 | lines set plot values or fire level script: the scene changes the story for what plays after it |
+  | trigger-near | 138 | a trigger's placed origin within 6 m of where it plays (a volume's extent is not in the scan) |
+  | flowed | 64 | a chain start plays as barks |
+  | owner-spawned | 54 | the owner is not placed in the level: the plot spawns it |
+  | named-state | 44 | the chunk shows only under a named streaming state |
+  | no-start | 34 | no level script starts it (code does): the sweep cannot fire it |
+  | conditional | 30 | every start entry has a plot conditional |
+  | npc-walk | 23 | an authored walk |
+  | set-piece | 21 | must go to the 3D screen |
+  | remote | 19 | a transmission |
+  | plot-chain | 15 | a chain kept as a conversation for its plot effects |
+  | wide-stage | 6 | a stage 4 m or more across |
+  | no-route | 5 | no volume or state lists its chunk |
+  | shepard-walk | 4 | the game walks Shepard |
+
+  Only 51 smoke scenes carry no risk but plot effects or conditional starts. **Not predicted** (the plan listed them): a
+  camera far from Shepard's mark and a stage with no mark for someone need the stage's marks, which the scan does not
+  read yet; the stage's size stands in (`wide-stage`).
+- **The work list, `conversation-sweep.py plan`:** 289 scenes in 26 levels (275 conversations and 14 sampled barks, two
+  per area with a placed owner); the Citadel 84 scenes in 43 chunks, Noveria 47 in 17, the Normandy 40 in 9, Feros 30 in
+  12, Virmire 23 in 11, Eden Prime 17 in 10, the side worlds one to twelve each. 34 conversations no level script starts
+  are listed as unreachable by this route.
+- **The judge, `conversation-sweep.py judge`:** reads the runner's results (the record's shape is in the tool's header)
+  and names each scene's exceptions: `not-reached`, `no-start`, `crash`, `hang`, `forced-end`, `undone` (kept above 0),
+  `drawn-jump`, `eye-far` (0.8 m), `no-place`, `not-on-screen`, `not-in-world`, `lines-short`, `wheel-unanswered`,
+  `chain-not-played`, `chain-cut`. `--baseline` names what differs from the last accepted pass, `--write-baseline`
+  accepts one, `--expect` checks the canary set (kinds, minimums, maximums per named scene) and exits 1 on a miss, which
+  is how a run with a rule switched off must fail. `--predictions` adds a table of each risk against the run, so layer 0
+  is graded by every pass. Run over research/59's survey files (made before the rules existed) it names what those runs
+  showed: the wake-up scene `undone` (kept 26) and `eye-far` (2.36 m), two set pieces in the world, three flowed scenes
+  played as conversations, one forced end.
+- **The flowed scene's summary line** (`game/ConversationFlow`): `convo flow: summary {"name", "why", "seconds",
+  "flagged", "entries": [...], "next", "nextAmbient", "barksRefused", "scenesHeld", "scenesRefused"}` when a chain of ours
+  ends: the entries it passed through in order, what the world's conversation was right after (often the same
+  conversation again, as a conversation), and what was refused or held over it. Whether the entries are a whole play is
+  the judge's to say from the graph (`chain-cut`: it ended on an entry the graph goes on from, or another conversation
+  began over it). Builds; not seen in the game yet.
+- Tests: ctest `mevr-conversation-sweep` (`tests/ConversationSweepTests.py`: a synthetic scan with a wake-up chunk only
+  the Citadel streams, a flowed chain, a trigger; every exception kind, the baseline, the canary set both ways).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -412,3 +480,7 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   - Not looked at: what the held action's "failed" output did in between (nothing visible here), and a held scene whose
     owner is far from the player when it finally starts (Chorban's stage is 85 m from C-Sec's desk: the game's stage placed
     Shepard there, as for any conversation started from afar).
+- 2026-11-09, 20:20-21:10, **the sweep's phase 1 built** ("The sweep: progress"): `tools/game-slot.ps1`, the catalogue's
+  level from the streaming lists (36 starts moved), `tools/conversation-sweep.py predict | plan | judge` with its tests,
+  and the flowed scene's summary line in the mod. No game run. Next: phase 2, the reach matrix, which is the first use of
+  the game slot on the real folder.

@@ -475,6 +475,67 @@ void WatchLive() {
     log::Info("convo flow: {} plays as barks (ambient): the player stays on foot; {}{}", ours->key, bounds, leash);
 }
 
+// A flowed scene's run as one line of numbers, for the sweep's judge (research/69 "The sweep: plan"): a chain plays in game
+// mode 0, where conversation_world sees no conversation and writes no summary. The entries it passed through, in order,
+// what came after it (the level's follow-up: often the same conversation again, as a conversation), and what was refused or
+// held over it. Whether the entries are a whole play of the chain is the judge's to say: it has the conversation's graph.
+struct ChainRun {
+    ue3::Object* conv = nullptr;
+    std::string key;
+    std::uint64_t startMs = 0;
+    std::size_t flagged = 0;
+    std::vector<std::int32_t> entries;
+    std::uint32_t barks = 0;
+    std::uint32_t held = 0;
+    std::uint32_t refused = 0;
+};
+ChainRun gChain;
+
+void EndChain(ue3::Object* next, char const* why) {
+    std::string entries;
+    for (std::int32_t const e : gChain.entries) {
+        entries += std::format("{}{}", entries.empty() ? "" : ", ", e);
+    }
+    bool const follows = next != nullptr && ue3::runtime::IsAlive(next);
+    log::Info("convo flow: summary {{\"name\": \"{}\", \"why\": \"{}\", \"seconds\": {:.1f}, \"flagged\": {}, \"entries\": [{}], "
+              "\"next\": \"{}\", \"nextAmbient\": {}, \"barksRefused\": {}, \"scenesHeld\": {}, \"scenesRefused\": {}}}",
+        gChain.key, why, static_cast<double>(GetTickCount64() - gChain.startMs) / 1000.0, gChain.flagged, entries,
+        follows ? cw::ConversationKey(ue3::runtime::FullName(next)) : std::string(),
+        follows && gConvAmbient.ReadBool(next).value_or(false) ? "true" : "false", gBarksRefused - gChain.barks, gScenesHeld - gChain.held,
+        gScenesRefused - gChain.refused);
+    gChain = {};
+}
+
+void WatchChain() {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const world = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    ue3::Object* const conv = world != nullptr ? gCurrentConversation.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+    if (gChain.conv != nullptr) {
+        // Over when the world's conversation is another one, none, or this one started again as a conversation.
+        if (conv != gChain.conv || !gConvAmbient.ReadBool(conv).value_or(false)) {
+            EndChain(conv, conv == nullptr ? "it ended" : conv == gChain.conv ? "it began again as a conversation" : "another conversation began");
+        } else {
+            auto const entry = gConvCurrentEntry.Read<std::int32_t>(conv);
+            if (entry && *entry >= 0 && (gChain.entries.empty() || gChain.entries.back() != *entry)) {
+                gChain.entries.push_back(*entry);
+            }
+            return;
+        }
+    }
+    if (Flipped const* const ours = OurScene(conv)) {
+        gChain.conv = conv;
+        gChain.key = ours->key;
+        gChain.startMs = GetTickCount64();
+        gChain.flagged = ours->entries.size();
+        gChain.barks = gBarksRefused;
+        gChain.held = gScenesHeld;
+        gChain.refused = gScenesRefused;
+        if (auto const entry = gConvCurrentEntry.Read<std::int32_t>(conv); entry && *entry >= 0) {
+            gChain.entries.push_back(*entry);
+        }
+    }
+}
+
 } // namespace
 
 void Tick() {
@@ -507,6 +568,7 @@ void Tick() {
         Rescan(gScans == 0 ? "first" : changed ? "the streaming levels changed" : "periodic");
     }
     WatchLive();
+    WatchChain();
     ReleaseHeld();
 }
 
@@ -555,6 +617,9 @@ void Shutdown() {
     gHeld.clear();
     gHeldNames.clear();
     gPendingLog.clear();
+    if (gChain.conv != nullptr) {
+        EndChain(nullptr, "the mod unloads");
+    }
     Restore("the mod unloads");
 }
 

@@ -15,11 +15,21 @@ param(
     [string]$BuildDir = (Join-Path $PSScriptRoot '..\build'),
     [string]$GameRoot,
     # Removes everything this script deploys instead.
-    [switch]$Remove
+    [switch]$Remove,
+    # Deploys although another session holds the game folder (tools/game-slot.ps1 passes it for its own deploy).
+    [switch]$IgnoreSlot
 )
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
+
+# The game slot (tools/game-slot.ps1): a session that borrowed the game folder puts every file back as it was when it
+# returns it, so a deploy in between would be undone without a word.
+$slotLock = Join-Path $env:LOCALAPPDATA 'MEVR\game-slot\lock.json'
+if (-not $IgnoreSlot -and (Test-Path -LiteralPath $slotLock)) {
+    $slot = Get-Content -LiteralPath $slotLock -Raw | ConvertFrom-Json
+    throw "The game folder is held by '$($slot.holder)' since $($slot.since) (tools/game-slot.ps1 status): its return puts every file back, this deploy included. Wait for the return, or -IgnoreSlot."
+}
 
 if (-not $GameRoot) { $GameRoot = (Find-MELEInstall).Root }
 $bin = Get-MELEBinDir $GameRoot $Game

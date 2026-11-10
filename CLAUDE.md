@@ -490,7 +490,13 @@ switching frameworks.
   scene, which `open BIOA_STA00` alone starts (its level is the docked Normandy's, under the Citadel's map), ran with 28 placements
   withheld and 0 undone; the walk found 9 triggers there and stopped at the first one's edge; at C-Sec two barks were refused over
   the flowed Garrus argument and Chorban's conversation was held and started 1 s after the wheel conversation that follows the
-  argument. The presence rules are not seen in the game yet. Logs `convo: ... the player walks`, `the player walked
+  argument. The presence rules are not seen in the game yet. **The sweep** (research/69 "The sweep: plan" and "progress"; every
+  conversation run unattended and judged): `tools/game-slot.ps1 take -Holder <who> | return | status` borrows the game folder
+  and gives it back hash for hash (a lock file; `tools/deploy-asi.ps1` refuses to deploy over a held slot); the catalogue's
+  level per start comes from the levels' streaming lists (the scan's `level` records: the Normandy's plot chunks open the
+  Citadel, Eden Prime or Ilos); `tools/conversation-sweep.py predict | plan | judge` (risks per conversation from the data,
+  the runner's work list, and the judge of a pass with a baseline and a canary set; ctest `mevr-conversation-sweep`); a flowed
+  scene ends with `convo flow: summary {...}`. Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus

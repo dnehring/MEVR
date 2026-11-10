@@ -11,6 +11,12 @@
 //   volume         a BioTriggerStream (a streaming volume) and its states: the chunks each shows and loads, the world streaming
 //                  state it needs (StateName; None is the plain touch) and the chunk it applies in; the catalogue says per start
 //                  whether a touch shows its chunk or which named state the plot would set (mevr stream state <name> on)
+//   level          a persistent level's streaming list (its WorldInfo's StreamingLevels: the packages it can stream in), so the
+//                  catalogue names the level to open for a start by what the game streams, not by the package's name (the
+//                  medical bay's wake-up scene, BIOA_NOR10_07wake_DSG, is streamed by the Citadel's BIOA_STA00)
+//   trigger        a trigger or trigger volume placed in a level (any class named *Trigger*, the streaming volumes too): its
+//                  class and place, so the sweep's predictions can say which conversations play within a walk of one (the
+//                  mod refuses a walk step that would change which triggers Shepard overlaps; research/69 item 5)
 //   cinematic      a SeqAct_Interp a conversation node fires in a level's script (BioSeqEvt_ConvNode -> ... -> the matinee):
 //                  its groups and tracks, so authored camera cuts (a director track) and actor moves (move tracks) show
 // Reads only; writes nothing into the game. Its output is game data: keep it out of the repository.
@@ -54,12 +60,23 @@ internal static class Scan
                         "BioSeqAct_StartConversation" => Start(pcc, export),
                         "BioSeqEvt_ConvNode" => Cinematic(pcc, export),
                         "BioTriggerStream" => Volume(export),
+                        "BioWorldInfo" or "WorldInfo" => Level(pcc, export),
                         _ => null,
                     };
                     if (record != null)
                     {
                         record["package"] = package;
                         writer.WriteLine(JsonSerializer.Serialize(record));
+                        ++lines;
+                    }
+                    if (export.ClassName.Contains("Trigger", StringComparison.OrdinalIgnoreCase) && export.Parent?.ClassName == "Level"
+                        && export.GetProperties().GetProp<StructProperty>("Location") is { } triggerAt)
+                    {
+                        writer.WriteLine(JsonSerializer.Serialize(new Dictionary<string, object>
+                        {
+                            ["kind"] = "trigger", ["name"] = export.InstancedFullPath, ["class"] = export.ClassName, ["package"] = package,
+                            ["at"] = new[] { triggerAt.GetProp<FloatProperty>("X")?.Value ?? 0, triggerAt.GetProp<FloatProperty>("Y")?.Value ?? 0, triggerAt.GetProp<FloatProperty>("Z")?.Value ?? 0 },
+                        }));
                         ++lines;
                     }
                 }
@@ -235,6 +252,21 @@ internal static class Scan
             });
         }
         return new Dictionary<string, object> { ["kind"] = "volume", ["name"] = export.InstancedFullPath, ["states"] = states };
+    }
+
+    // A level's streaming list: the packages its WorldInfo can stream in (LevelStreaming objects' PackageName). A chunk's own
+    // WorldInfo has none and gives no record.
+    private static Dictionary<string, object> Level(IMEPackage pcc, ExportEntry export)
+    {
+        var streaming = new List<string>();
+        foreach (ObjectProperty level in export.GetProperties().GetProp<ArrayProperty<ObjectProperty>>("StreamingLevels") ?? new ArrayProperty<ObjectProperty>("StreamingLevels"))
+        {
+            if (pcc.GetEntry(level.Value) is ExportEntry entry && entry.GetProperties().GetProp<NameProperty>("PackageName") is { } name)
+            {
+                streaming.Add(name.Value.Instanced);
+            }
+        }
+        return streaming.Count == 0 ? null : new Dictionary<string, object> { ["kind"] = "level", ["name"] = export.InstancedFullPath, ["streaming"] = streaming };
     }
 
     private static List<string> Names(StructProperty owner, string property)

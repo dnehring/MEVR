@@ -1145,6 +1145,9 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-perf-probe COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/PerfProbeTests.py)
         # The LE1 save reader/writer (tools/le1-save.py, research/59 "The launcher"), over synthetic saves.
         add_test(NAME mevr-le1-save COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/Le1SaveTests.py)
+        # The conversation sweep's predictions, work list and judge (tools/conversation-sweep.py, research/69), over a
+        # synthetic scan.
+        add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)
         add_test(NAME mevr-rva-table COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-rva-table.py
             ${CMAKE_CURRENT_SOURCE_DIR})
         # The knowledge bundle (docs/knowledge, Open Knowledge Format): a typed frontmatter on every concept, complete

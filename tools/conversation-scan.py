@@ -8,7 +8,8 @@ Reads the JSON lines tools/conversation-scan (C#, over Legendary Explorer's libr
   python tools/conversation-scan.py scan.jsonl --catalogue %LOCALAPPDATA%/MEVR/conversation-catalogue.json
 
 The catalogue is what tools/conversation-launch.ps1 reads: per conversation start, the persistent level to open, the level chunk
-to stream in (the start's package, BIOA_ICE50_06_DSG -> ICE50_06), the owner (its class, Tag, place and facing when it is placed
+to stream in (the start's package, BIOA_ICE50_06_DSG -> ICE50_06; `map` is a persistent level whose streaming list names that
+package, from the scan's level records: `maps` all of them, `mapByName` what the package's name alone would say), the owner (its class, Tag, place and facing when it is placed
 in the level), the stage's place, and how the chunk is streamed: "touchShows" (a volume's plain state, None or Default, applied by
 a touch, lists it; the persistent level's own chunk is always there), "volumeShows" (any state of any volume lists it) and
 "streamStates" (the named world streaming states whose volume states list it: the plot sets one through
@@ -279,13 +280,40 @@ def streaming(volumes, chunk, persistent_map):
     return touch, any_state, sorted(states)
 
 
-def catalogue(path, out):
+def level_roots(levels):
+    """The persistent levels (a level with a streaming list that no other level streams) and, per package, the roots that
+    stream it (research/69 phase 1): what `open` must be given for a start's package. The name alone is wrong for the scenes
+    the docked Normandy plays (BIOA_NOR10_07wake_DSG, the medical bay's wake-up, is streamed by the Citadel's BIOA_STA00)."""
+    lists = {k.lower(): {s.lower() for s in v} for k, v in levels.items()}
+    streamed = set().union(*lists.values()) if lists else set()
+    roots = sorted(k for k in levels if k.lower() not in streamed)
+    def reach(root):
+        seen, queue = set(), [root.lower()]
+        while queue:
+            p = queue.pop()
+            for s in lists.get(p, ()):
+                if s not in seen:
+                    seen.add(s)
+                    queue.append(s)
+        return seen
+    reached = {r: reach(r) for r in roots}
+    def of(package):
+        p = package.lower()
+        return [r for r in roots if p == r.lower() or p in reached[r]]
+    return roots, of
+
+
+def catalogue(path, out, quiet=False):
+    """The catalogue's entries (one per conversation start); written to `out` unless it is None."""
     entries = []
-    volumes = collections.defaultdict(list)  # persistent level -> its volumes (from its own package and its chunks')
+    volume_rows, levels = [], {}
     for line in open(path, encoding='utf-8'):
         r = json.loads(line)
         if r['kind'] == 'volume':
-            volumes[persistent(r['package'])].append(r)
+            volume_rows.append(r)
+            continue
+        if r['kind'] == 'level':
+            levels[r['package']] = r['streaming']
             continue
         if r['kind'] != 'start' or not r.get('conv'):
             continue
@@ -296,19 +324,42 @@ def catalogue(path, out):
             'map': persistent(r['package']), 'owner': r.get('owner'), 'ownerClass': r.get('ownerClass'), 'ownerTag': r.get('ownerTag'),
             'ownerAt': r.get('ownerAt'), 'ownerYaw': r.get('ownerYaw'), 'stage': r.get('stage'), 'stageAt': r.get('stageAt'),
         })
+    # The level to open: a persistent level whose streaming list names the start's package; among several (the Normandy's
+    # chunks are streamed by the Normandy, the Citadel, Eden Prime and Virmire) the one the package's name says, else the
+    # first. A scan without level records (an old scan.jsonl) keeps the name's.
+    roots, roots_of = level_roots(levels)
+    volumes = collections.defaultdict(list)  # persistent level -> its volumes (from its own package and its chunks')
+    for v in volume_rows:
+        for root in (roots_of(v['package']) if levels else [persistent(v['package'])]):
+            volumes[root].append(v)
+    moved = []
     for e in entries:
+        by_name = e['map']
+        e['maps'] = roots_of(e['package']) if levels else ([by_name] if by_name else [])
+        e['mapByName'] = by_name
+        if e['maps'] and by_name not in e['maps']:
+            e['map'] = e['maps'][0]
+            moved.append(e)
         e['touchShows'], e['volumeShows'], e['streamStates'] = streaming(volumes.get(e['map'], []), e['chunk'], e['map'])
     entries.sort(key=lambda e: (e['conversation'], e['ownerAt'] is None, e['action']))
-    with open(out, 'w', encoding='utf-8') as f:
-        json.dump(entries, f, indent=0)
+    if out:
+        with open(out, 'w', encoding='utf-8') as f:
+            json.dump(entries, f, indent=0)
+    if quiet:
+        return entries
     placed = sum(1 for e in entries if e['ownerAt'])
     print(f"{len(entries)} starts of {len({e['conversation'] for e in entries})} conversations -> {out}; {placed} with a placed owner, "
           f"{sum(1 for e in entries if e['map'] is None)} without a known persistent level")
+    if levels:
+        print(f"levels: {len(roots)} persistent levels; {len(moved)} starts open another level than their package's name says "
+              f"({', '.join(sorted({e['package'] + ' -> ' + e['map'] for e in moved})[:12])}{' ...' if len({e['package'] for e in moved}) > 12 else ''}); "
+              f"{sum(1 for e in entries if not e['maps'])} starts in a package no persistent level streams")
     no_volume = [e for e in entries if not e['volumeShows']]
     no_touch = [e for e in entries if not e['touchShows']]
     print(f"streaming ({sum(len(v) for v in volumes.values())} volumes): {len(no_touch)} starts whose chunk no plain touch shows, "
           f"{sum(1 for e in no_touch if e['streamStates'])} of them with a named streaming state; {len(no_volume)} that no volume state "
           f"lists at all, {sum(1 for e in no_volume if e['streamStates'])} of them with a named state")
+    return entries
 
 
 def main(argv):
