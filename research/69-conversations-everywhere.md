@@ -773,6 +773,55 @@ opt-ins for the council are `worldMoments = walk` and nothing else. `notes/heads
 | a framed scene now in the world | Anderson and Nihlus | the Normandy's comm room (Eden Prime's level) | a stay, 33 lines |
 | a scene still on the screen | Kirrahe's camp | Virmire | the game walks Shepard |
 
+### The morning round: defaults, the side worlds, a walk's last step, walk-ins behind plot checks (2026-11-10 05:15-06:30)
+
+- **The council sequence on the default settings** (only `[Cinematics] conversations = world` set): `worldMoments = walk`
+  is the default now. Anderson's walk held in first person, both black screens taken down, the teleport withheld, the
+  hearing opened as a walk-in 21.5 m from the podium, 26 lines. What made `walk` safe as a default: the mod asks the
+  track itself where it has Shepard while its move is withheld (`engine/ConversationHooks::MoveTrackPlace`, the track's
+  own place function, vtable +0x390), and when the track lets him go that place is where he is wanted, as after a
+  teleport: he walks there or is carried after `worldMomentPatienceS`. Seen in the game on Feros (the geth's entrance:
+  "the track let Shepard go 4.67 m from where it had him").
+- **The side worlds** (the sample's one scene per world plus Bring Down the Sky's, 8 levels, 26 minutes): the runner's
+  Mako exit worked every time (10 of 10). 18 scenes judged: 7 inside every limit, 11 exceptions, no crash or hang;
+  openings walk in 6, stay 3, cut 2, one dip in all. The exceptions: 4 not reached (three chunks of Bring Down the Sky
+  the scan has no route for, one start action not loaded), 4 `eye-far` (Shepard's head bone 0.81 to 1.19 m from the
+  eyes: the open item "Shepard's body strays"), a bare start that fires nothing, a chain that played as a conversation,
+  a trigger's scene that began with Shepard a kilometre away (the runner's doing), and one real fault:
+- **A walk's last step, fought 512 times** (Lieutenant Durand, `sp105_mariedurand`): she walks 4.6 m by herself (steps
+  under the jump limit: left alone), and the walk's end snaps her 0.33 m onto its goal, every tick, for as long as it
+  is undone: 512 put-backs in 22 s. The same shape as Wrex's track and Benezia's floor: **a placement the game repeats
+  is the game's own**. Rule (`cw::Insists`, unit-tested): a placement of at most 1 m that comes back at the same place
+  the tick after it was undone is accepted (the summary's `yielded`); farther ones are never accepted this way (a stage
+  mark is what keeping people in place is for). With three askings the two undone steps each reached a drawn frame (a
+  flicker of 0.35 m), so it is two. The judge allows one undone step and one drawn frame per accepted move. After: kept
+  4, then 0.
+- **A hot reload ended the game** (05:57, the only crash of the round, and the mod's own): the flow module's restore
+  asked `IsAlive` of conversations flagged eight levels earlier, and the engine had given their memory back to the
+  system: the read faulted. `ue3::Reflection::IsAlive` now tests that the object's header can be read at all (a
+  guarded read; unit-tested with a pointer into unmapped memory). The next reload, two levels after its flags: "8
+  flags put back on 10 conversations (6 of them gone with their level)".
+- **Walk-ins behind plot checks** (the moments a fresh level could not play): the scan records the whole way from a
+  matinee's event to it, action by action (`via.chain`), and the runner, when nothing comes of the first action in 8 s
+  and a plot check, gate or condition is on the way, fires the action behind the last of them (a test rig's shortcut:
+  the plot is not set). Six tried, three then played:
+  - **becoming a Spectre** (17.8 s): held in first person 22.7 s, the track withheld, the black screen taken down, the
+    script's teleport 9.76 m and 2.85 m up the stairs judged the same space: no cut, he is wanted there, carried 2.5 m
+    by the time the council's conversation began. The second moment to run whole in first person.
+  - **the geth's entrance on Feros**: held; the game ended its cinematic mode at once (the scene's actors are not there
+    without the plot), 1.0 s.
+  - **the first rachni on Noveria** (20.2 s): **not held**. Its script turns the cinematic mode on, goes black,
+    teleports Shepard 5.66 m, comes back from black and only then starts the track; the rule wants the track within 3 s
+    of a fresh on-foot view. It plays on the screen as before. Holding it would mean trusting an on-foot view through
+    several seconds of cinematic mode, which would also catch real cutscenes that end by placing the player: left as
+    it is until a scene needs it.
+  - not played: two whose first action was gone once Shepard stood there, one whose chunk never became visible.
+- **The menu has First person again** (Comfort > Conversations: First person (preview), In VR, 3D screen, Flat
+  screen). The settings code never lost the choice; the button was taken out on 2026-11-07 (the owner: not ready for the
+  release). Back as a labelled preview so the mode can be tried without editing a file; the default stays the 3D screen.
+  **The owner's call**: one button in `assets/menu/main.rml`.
+- The canary set on the final build: 3 of 3 as expected.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -920,3 +969,17 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   Anderson's swap at the podium, the black screen (taken down by the mod now: not seen since) and the director track's
   fade; (5) the nine set pieces not yet seen in the world; (6) 29 scenes whose bare start fires nothing want the event
   route in a pass; (7) the headset: everything in "The headset sample".
+- 2026-11-10, 05:15-06:30, **the morning round** ("The morning round" under "The sweep: progress"): `worldMoments = walk`
+  the default and the council sequence seen on defaults; the side worlds sampled (the Mako exit works); a walk's last
+  step accepted instead of fought (`cw::Insists`); `IsAlive` safe on freed memory after a hot reload ended the game; the
+  scan's `via.chain` and the runner's step past a plot check (three more walk-ins fired, becoming a Spectre whole in
+  first person); the menu's First person (preview) button. Canary 3 of 3; all three builds and ctest on the state that
+  lands.
+  **Open, in the order they matter for play:** (1) the headset: "The headset sample", now reachable from the menu;
+  (2) Shepard's body strays 0.8 to 1.4 m from a player who stands still in some scenes (`eye-far`: the Normandy's
+  debriefs, four side-world scenes); (3) in a walk-in nobody carries a player who does not walk during the
+  conversation itself, and the scene's people stand on their marks at once; (4) a walk-in whose track starts more than
+  3 s into the cinematic mode is not held (the rachni); (5) Therum does not open and the walk-ins and scenes that need
+  a career's plot (a save route for the runner: `conversation-launch.ps1 -Save` has the pieces); (6) nine set pieces
+  not seen in the world, 29 scenes whose bare start fires nothing; (7) Anderson's swap at the podium and the director
+  track's fade; `carry` is built and not run.

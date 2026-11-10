@@ -230,6 +230,15 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   a flowed scene and fired again after it (Chorban over the Garrus argument). Still for the fake headset: `worldAutoScreen = log`
   naming the scenes with no place for the player. Then in the headset: a staged conversation
   (the medical bay, Anderson on the Normandy) with nobody shifting at the cuts, and people still turning to face the speaker.
+- [ ] **First person from the menu** (2026-11-10: Comfort > Conversations > First person (preview); the owner's call whether
+  the button stays): choose it in a level, talk to someone, switch back to 3D screen: each change applies to the next
+  conversation, nothing stays held. Then the sample in research/69 "The headset sample", one scene of each kind.
+- [ ] **Becoming a Spectre in first person** (ran on the fake headset 2026-11-10 with nobody at the stick, fired past its plot
+  check: held 22.7 s, the track withheld, the script's teleport 9.8 m up the stairs taken as the same space): you should walk
+  up to the council yourself, or be carried there after 12 s. Look for black flashes and for where the council's
+  conversation finds you.
+- [ ] **An NPC who walks during a conversation** (Lieutenant Durand on Chohe; research/69 "The morning round"): her walk
+  should play as authored and end without a flicker (the walk's last step is accepted, not fought).
 - [ ] **A conversation that opens without a cut** (built 2026-11-09, research/69 "The opening without a cut"; on the fake
   headset three Noveria conversations opened with no dip and the view where it was; `[Cinematics] worldOpening = auto` with
   `conversations = world`): walk up to someone and talk: no dip from black, you stay exactly where you stood, the person turns to
@@ -238,7 +247,7 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   another room). Watch for people popping onto their marks in front of you at the start.
 - [ ] **The walk to the council with Anderson** (built 2026-11-10, research/69 "A moment in the world"; ran on the fake headset
   with nobody at the stick: the view held, the teleport withheld, the hearing opened as a walk-in 21 m from the podium;
-  `worldMoments = walk`, `worldOpening = auto`, `worldSetPieces = world`): in the Citadel Tower use Anderson at the stairs: he says
+  all defaults of the first-person mode since 2026-11-10: only `conversations = world` is needed): in the Citadel Tower use Anderson at the stairs: he says
   his line and walks up; you walk with him in first person (no 3D screen, no black); the council is already talking as you climb,
   and the wheel waits for you at the podium. Stand still instead: after 12 s you are carried to the top of the stairs
   (`worldMomentPatienceS`). Look for: the black screen flashing, Anderson vanishing and another one standing at the podium,

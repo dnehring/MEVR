@@ -148,6 +148,15 @@ def main():
         check(got['sta20_talk']['kinds'] == [], f"a clean scene: {got['sta20_talk']['kinds']}")
         check(got['nor10_wake']['kinds'] == ['drawn-jump', 'eye-far', 'undone'], f"three limits broken: {got['nor10_wake']['kinds']}")
         check(got['sta70_scene']['kinds'] == [], f"a whole chain with its follow-up: {got['sta70_scene']['kinds']}")
+        # A small move the game repeated and the mod accepted (`yielded`): its one undone step and drawn frame are no fault;
+        # one more than that is.
+        snap = [{'conversation': 'sta20_talk', 'map': 'BIOA_STA00', 'outcome': 'played', 'ended': 'itself',
+                 'summary': summary('sta20_talk', kept=2, drawn=2, yielded=2), 'driver': {'picks': 1, 'skips': 3, 'entries': [0, 1]}}]
+        _, got_snap = run(snap, write='snap.json')
+        check(got_snap['sta20_talk']['kinds'] == [], f"a walk's last step accepted: {got_snap['sta20_talk']['kinds']}")
+        snap[0]['summary'] = summary('sta20_talk', kept=3, drawn=2, yielded=2)
+        _, got_snap = run(snap, write='snap.json')
+        check(got_snap['sta20_talk']['kinds'] == ['undone'], f"one more undone than accepted: {got_snap['sta20_talk']['kinds']}")
         check(status == 0, 'without --strict or --expect the judge reports and returns 0')
 
         # A chain cut short, a chain that never played, a forced end, an unanswered wheel, short lines, nothing started.
@@ -254,7 +263,10 @@ def main():
                         {'class': 'InterpGroup', 'name': 'Player', 'tracks': ['InterpTrackMove', 'InterpTrackAnimControl']}],
              'via': {'event': 'x', 'eventClass': 'BioSeqEvt_OnPlayerActivate', 'originator': 'BioPawn_9', 'originatorAt': [9000.0, 100.0, 0.0],
                      'eventName': None, 'firstOp': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.BioSeqAct_PMCheckState_0',
-                     'firstOpClass': 'BioSeqAct_PMCheckState', 'firstOpInput': 0, 'hops': 4, 'between': ['BioSeqAct_PMCheckState', 'BioSeqAct_BioToggleCinematicMode']}},
+                     'firstOpClass': 'BioSeqAct_PMCheckState', 'firstOpInput': 0, 'hops': 4, 'between': ['BioSeqAct_PMCheckState', 'BioSeqAct_BioToggleCinematicMode'],
+                     'chain': [{'op': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.BioSeqAct_PMCheckState_0', 'class': 'BioSeqAct_PMCheckState', 'input': 0},
+                               {'op': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.BioSeqAct_BioToggleCinematicMode_0', 'class': 'BioSeqAct_BioToggleCinematicMode', 'input': 0},
+                               {'op': 'BIOA_STA70_02_DSG.TheWorld.PersistentLevel.Main_Sequence.WalkIn.SeqAct_Interp_0', 'class': 'SeqAct_Interp', 'input': 0}]}},
         ]
         path2 = os.path.join(tmp, 'scan2.jsonl')
         with open(path2, 'w', encoding='utf-8') as f:
@@ -304,6 +316,10 @@ def main():
         check(len(ms) == 1 and ms[0]['moment'] and ms[0]['map'] == 'BIOA_STA00' and ms[0]['actionClass'] == 'BioSeqAct_PMCheckState'
               and ms[0]['actionTail'] == 'WalkIn.BioSeqAct_PMCheckState_0' and ms[0]['ownerAt'] == [9000.0, 100.0, 0.0] and ms[0]['lengthS'] == 7.5,
               f'one moment, fired through its event, Shepard stood by the originator: {ms}')
+        # The way to it action by action: the runner's step past a plot check the fresh level does not pass.
+        check([c['class'] for c in ms[0]['chain']] == ['BioSeqAct_PMCheckState', 'BioSeqAct_BioToggleCinematicMode', 'SeqAct_Interp']
+              and ms[0]['chain'][1]['tail'] == 'WalkIn.BioSeqAct_BioToggleCinematicMode_0' and ms[0]['chain'][2]['input'] == 0,
+              f"the moment's chain of actions: {ms[0]['chain']}")
         # ... and the judge takes a moment's record for what it is.
         with open(results, 'w', encoding='utf-8') as f:
             f.write(json.dumps({'conversation': ms[0]['conversation'], 'map': 'BIOA_STA00', 'outcome': 'played', 'modes': [6],

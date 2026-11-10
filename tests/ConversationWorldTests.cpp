@@ -198,6 +198,31 @@ void TestSceneRules() {
         elsewhere = hall;
         elsewhere.markUnits = 9000.0;
         CHECK(cw::DecideOpening(elsewhere, OR::Auto) == O::Cut);
+        // A placement the game repeats every tick (a walk's last step onto its goal): undone once, accepted when it comes back.
+        cw::Insistence snap;
+        cw::Vec3 const goal{100.0, 200.0, 0.0};
+        CHECK(!cw::Insists(snap, goal, 33.0));
+        CHECK(cw::Insists(snap, cw::Vec3{101.0, 200.0, 0.0}, 33.0));
+        cw::Insistence slow;  // with a limit of three: twice no, then yes
+        cw::InsistLimits three;
+        three.ticks = 3;
+        CHECK(!cw::Insists(slow, goal, 33.0, three));
+        CHECK(!cw::Insists(slow, goal, 33.0, three));
+        CHECK(cw::Insists(slow, goal, 33.0, three));
+        // Somewhere else each tick, or a calm tick in between: the count starts again.
+        cw::Insistence wander;
+        CHECK(!cw::Insists(wander, goal, 40.0));
+        CHECK(!cw::Insists(wander, cw::Vec3{160.0, 200.0, 0.0}, 40.0));
+        CHECK(!cw::Insists(wander, cw::Vec3{220.0, 200.0, 0.0}, 40.0));
+        cw::Insistence calmed;
+        CHECK(!cw::Insists(calmed, goal, 33.0));
+        cw::Calm(calmed);
+        CHECK(!cw::Insists(calmed, goal, 33.0));
+        // A stage mark metres away is never accepted this way, however often the game asks.
+        cw::Insistence mark;
+        for (int i = 0; i < 10; ++i) {
+            CHECK(!cw::Insists(mark, goal, 450.0));
+        }
         elsewhere = hall;
         elsewhere.floorAtMark = false;
         CHECK(cw::DecideOpening(elsewhere, OR::Auto) == O::Cut);

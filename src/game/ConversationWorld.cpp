@@ -492,6 +492,7 @@ struct Convo {
     cw::Opening opening = cw::Opening::Cut;  // how the opening ended (the summary's "opening")
     int trackWalks = 0;          // people moved by a matinee's track (authored walks), left to it
     int trackHeld = 0;           // a track's moves of the player's own pawn withheld during this conversation
+    int yielded = 0;             // small placements the game repeated tick after tick, accepted (cw::Insists)
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
     std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
@@ -574,6 +575,7 @@ struct Stay {
     double deadlineS = 0.0;
     double speedUnitsPerS = 0.0;
     bool tracked = false;  // a matinee's move track moves this actor (an authored walk): never undone
+    cw::Insistence insist; // the same small placement asked tick after tick: the game's own, accepted (cw::Insists)
 };
 std::vector<Stay> gStay;
 std::uint64_t gStayMs = 0;
@@ -944,6 +946,18 @@ void KeepInPlace(ue3::Object* pawn) {
         }
         if (unexplained >= kJumpUnits && d < kStayMaxUnits) {
             ik::Vec3 const wanted = V(*at);  // capture BEFORE undoing the game's native placement
+            if (cw::Insists(st.insist, cw::Vec3{wanted.x, wanted.y, wanted.z}, d)) {
+                // The game asks for the same small placement tick after tick (a walk's last step onto its goal, a floor): its
+                // own move, and undoing it only repeats the fight (512 times for Lieutenant Durand, 2026-11-10).
+                cw::Calm(st.insist);
+                ++gC.yielded;
+                log::Info("convo: at {:.1f} s the game put {} {:.2f} m away again: its own small move, accepted", Seconds(),
+                    isShepard ? "Shepard" : t.name, d / kUnitsPerMeter);
+                EndWalk(st, "cancel", "the game insisted on its placement");
+                st.place = wanted;
+                st.shownYaw = YawDeg(*rot);
+                continue;
+            }
             bool const moved = PutAt(t.actor, st.place);
             EndWalk(st, "cancel", "a newer placement restarts the wait");
             ++st.kept;
@@ -964,6 +978,7 @@ void KeepInPlace(ue3::Object* pawn) {
                     d / kUnitsPerMeter);
             }
             st.place = V(*at);  // its own walking, or a jump let through
+            cw::Calm(st.insist);
         }
         if (isShepard || gSettings.walk == 0 ||
             (st.walk.Phase() == cw::WalkPhase::Walking && st.requestedMethod != gSettings.walk)) {
@@ -1708,14 +1723,14 @@ void End(char const* why) {
               "\"eyeToViewM\": {:.2f}, \"farShots\": {}, \"cameraFarM\": {:.1f}, \"walks\": {}, \"openingMoves\": {}, \"arranged\": {}, "
               "\"playerWalkedM\": {:.2f}, \"leashHits\": {}, \"clearHits\": {}, \"moveRefused\": {}, \"triggerHits\": {}, "
               "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"opening\": \"{}\", \"markM\": {:.2f}, \"cuts\": {}, "
-              "\"trackWalks\": {}, \"trackHeld\": {}, \"entries\": [{}]}}",
+              "\"trackWalks\": {}, \"trackHeld\": {}, \"yielded\": {}, \"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
         gC.shotKinds.count("cutaway") != 0 ? gC.shotKinds.at("cutaway") : 0, gC.shotsHidden, gC.world ? "true" : "false", gC.kept, gDrawnJumps,
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
-        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, entryPath);
+        gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, entryPath);
     gC = {};
 }
 

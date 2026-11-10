@@ -437,6 +437,20 @@ Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits
     return Opening::Cut;
 }
 
+bool Insists(Insistence& state, Vec3 const& wanted, double movedUnits, InsistLimits const& limits) {
+    if (movedUnits > limits.maxUnits) {
+        state.count = 0;
+        return false;
+    }
+    double const dx = wanted.x - state.at.x;
+    double const dy = wanted.y - state.at.y;
+    double const dz = wanted.z - state.at.z;
+    bool const same = state.count > 0 && std::sqrt(dx * dx + dy * dy + dz * dz) <= limits.sameUnits;
+    state.count = same ? state.count + 1 : 1;
+    state.at = wanted;
+    return state.count >= limits.ticks;
+}
+
 bool HoldStart(std::vector<HeldStart>& held, std::uint64_t id, std::uint64_t nowMs) {
     for (HeldStart& h : held) {
         if (h.id == id) {

@@ -394,9 +394,19 @@ internal static class Scan
             {
                 if (IsEvent(source) && source.ClassName != "SeqEvent_SequenceActivated")
                 {
+                    // The way from the event to the start, action by action, each with the input it is entered through: a
+                    // runner that finds the first action a plot check the fresh level does not pass can fire the one behind it.
                     var between = new List<string>();
-                    for (ExportEntry at = op; at != null && at.UIndex != start.UIndex; at = parent[at.UIndex].next)
+                    var chain = new List<object>();
+                    int entered = input;
+                    for (ExportEntry at = op; at != null; at = parent[at.UIndex].next)
                     {
+                        chain.Add(new Dictionary<string, object> { ["op"] = at.InstancedFullPath, ["class"] = at.ClassName, ["input"] = entered });
+                        entered = parent[at.UIndex].input;
+                        if (at.UIndex == start.UIndex)
+                        {
+                            break;
+                        }
                         between.Add(at.ClassName);
                     }
                     PropertyCollection ep = source.GetProperties();
@@ -412,7 +422,7 @@ internal static class Scan
                         ["originator"] = pcc.GetEntry(ep.GetProp<ObjectProperty>("Originator")?.Value ?? 0)?.ObjectName.Instanced,
                         ["eventName"] = ep.GetProp<NameProperty>("EventName")?.Value.Instanced,
                         ["firstOp"] = op.InstancedFullPath, ["firstOpClass"] = op.ClassName, ["firstOpInput"] = input,
-                        ["hops"] = depth + 1, ["between"] = between,
+                        ["hops"] = depth + 1, ["between"] = between, ["chain"] = chain,
                     };
                 }
                 // A sub-sequence's own input: go on from the sequence object in its parent.

@@ -406,6 +406,32 @@ function RunScene([string]$map, $scene, $streamed) {
         } else { Console ("mevr activate $index 0") | Out-Null }
     } else { Console ("mevr activate $index $(if ($null -ne $scene.actionInput) { [int]$scene.actionInput } else { 0 })") | Out-Null }
     $record.fired = $fired
+    # A moment whose way from its event passes a plot check (PMCheckState, a gate, a condition) the fresh level does not
+    # pass: when nothing came of the first action in 8 s, the action behind the last check on the way is fired instead (the
+    # plan's `chain`, from the scan). A test rig's shortcut: the plot is not set, only the scene is made to play.
+    if ($scene.moment -and $scene.chain) {
+        $chain = @($scene.chain); $last = -1
+        for ($i = 0; $i -lt $chain.Count - 1; $i++) { if ($chain[$i].class -match 'PMCheck|SeqCond|Gate') { $last = $i } }
+        if ($last -ge 0) {
+            $until = (Get-Date).AddSeconds(8); $moved = $false
+            while ((Get-Date) -lt $until -and -not $moved) {
+                Start-Sleep -Seconds 1
+                $st = State
+                if ($st.convo -or $st.mode -ne 0) { $moved = $true }
+            }
+            if (-not $moved) {
+                $op = $chain[$last + 1]
+                $name = ($op.tail -split '\.')[-1]
+                $listing = Console ("mevr instances $($op.class) $name")
+                $pm = [regex]::Match($listing, '(?m)^\[(\d+)\] \S+ \S*' + [regex]::Escape($op.tail) + '(\s|$)')
+                if ($pm.Success) {
+                    Console ("mevr activate $($pm.Groups[1].Value) $([int]$op.input)") | Out-Null
+                    $record.fired = "past the plot check: $($op.class) $name"
+                    Say "   nothing came of the first action (a check on the way): fired $($op.class) $name"
+                } else { $record.fired = "$fired; the action past the check ($($op.class) $name) is not loaded" }
+            }
+        }
+    }
     # A moment (a matinee that walks Shepard, then whatever the script does): the game modes it passes through, sampled
     # once a second until a conversation starts or its length and 25 s have passed.
     if ($scene.moment) {

@@ -274,6 +274,8 @@ void TestLookups() {
     CHECK(!r.IsA(nullptr, bioPawn));
     CHECK(r.IsAlive(w.shepard));
     CHECK(!r.IsAlive(w.dying));  // pending kill
+    // A pointer into memory that is not there (an object whose block the engine gave back): not alive, and no fault.
+    CHECK(!r.IsAlive(reinterpret_cast<ue3::Object const*>(static_cast<std::uintptr_t>(0x1000))));
 
     // Functions: inherited through the class chain, or by exact path.
     CHECK(r.FindFunction(bioPawn, "SetRotation") == w.setRotation);

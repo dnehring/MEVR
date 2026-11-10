@@ -400,7 +400,7 @@ switching frameworks.
   `setConversationWorld`; `core/vr/ConversationWorld`, `game/ConversationWorld`, host `plugin/ConversationWorld`; **off by default**,
   `[Cinematics] conversations = world`, live): in game mode 5 the player stands at Shepard's place (the view on foot if fresh, else
   his head bone + the first-person eye offset, facing his pawn), head tracked, both eyes, full rate; the place follows his head
-  bone's jumps past 0.8 m that last 3 ticks (`FollowHeadSettled`); no menu row since 2026-11-07 (the owner: not ready for the release; the ini key only). The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
+  bone's jumps past 0.8 m that last 3 ticks (`FollowHeadSettled`); the menu's Comfort > Conversations offers it as **First person (preview)** again since 2026-11-10 (the button was out from 2026-11-07, the owner: not ready for the release; back as a labelled preview after research/69's rounds, the default still the 3D screen; the owner's call, one button in `assets/menu/main.rml`). The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
   `view_anchor::Hold` (arm IK, body follow); `MevrBridge::ConversationInWorld` in five `[MEVR]` seams in xr_session.cpp (not a cine,
   the second eye's gate as gameplay, the conversation movie's authored layout, the cine capture boundary: else the UI stays in the
   eyes, `[NOLETTERBOX]`: else a 16:9 band) and one in head_aim.cpp (the first-person hides). The conversation movie goes to the
@@ -501,7 +501,8 @@ switching frameworks.
   fire, drive; a watchdog restarts the game; never `tail` its log with a tool that locks it). **Sample, don't run everything**
   (the owner, 2026-11-09): `plan --sample --per-place 1 --reach <reach-scenes.jsonl>` takes every authored scene, a few of
   each other shape and of each level's place risks (133 of 290); `canary` writes the canary plan from
-  `tools/conversation-canary.json` (run it before a pass; its broken run must fail); `moments` lists the 21 level-script
+  `tools/conversation-canary.json` (run it before a pass; its broken run must fail); the scan's `via.chain` is the way from a matinee's event to it action by
+  action, and the runner fires the action behind a plot check when nothing comes of the first one; `moments` lists the 21 level-script
   matinees that walk Shepard as a plan. 32 conversations are voice-over only (`BioSeqAct_FaceOnlyVO`) and never enter the
   conversation mode. **`worldOpening = auto` is the default of the first-person mode since 2026-11-10** (the sampled pass: 120
   scenes, 30 stay, 29 walk in, 11 cut, 8 dips in all; `accept` is the old dip at every staged opening): no dip when
@@ -511,8 +512,14 @@ switching frameworks.
   summary's `trackWalks`), and a track's move of the player's own pawn is withheld in a first-person conversation
   (`trackHeld`). **The set-piece list is 15** (`cw::IsSetPiece`): six framed conversations seen in first person with a place
   for the player are out of it (the scan's `SEEN_IN_WORLD`: the council hearing, the comm room with Anderson and Nihlus, the
-  approach to Ilos, the archive door, Wrex at Fist's). **Moments** (research/69 "A moment in the world"; `worldMoments = log | walk | carry |
-  off`, default log; `game/AuthoredMoment`, the view in `game/ConversationWorld`'s `TickMoment`; `mevr moment`): a
+  approach to Ilos, the archive door, Wrex at Fist's). **A small placement the game repeats is its own** (`cw::Insists`,
+  2026-11-10): keep-in-place undoes a jump once; one of at most 1 m that comes back at the same place the next tick is
+  accepted (a walk's last step onto its goal was fought 512 times; the summary's `yielded`, which the judge allows for).
+  **Moments** (research/69 "A moment in the world"; `worldMoments = walk | carry | log |
+  off`, default walk since 2026-11-10: the track's own place for Shepard is asked while its move is withheld,
+  `conversation_hooks::MoveTrackPlace`, so he ends where the script has him, walked or carried after
+  `worldMomentPatienceS`; a walk-in whose track starts more than 3 s into the cinematic mode is not held and plays on the
+  screen; `game/AuthoredMoment`, the view in `game/ConversationWorld`'s `TickMoment`; `mevr moment`): a
   level-script matinee that walks Shepard (the walk to the council) is held in first person in the cinematic game mode (host
   seams: host and mod deploy together), its move of him withheld through `engine/ConversationHooks`' pre-hook on
   `AActor::MoveWithInterpMoveTrack` (0x4B75F0) or followed (carry); a script's teleport within the same space is not cut:
@@ -1416,7 +1423,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   hook blocks are read through parameter handles (`FieldRef{functionRef, "ReturnValue"}`), engine
   strings through `ue3::memory` (`OwnedString`, `FreeString`), and LE2/LE3's few all-game reads through
   `engine/Legacy` until their layouts exist. Every class, field, function or parameter you resolve
-  needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line.
+  needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line. `IsAlive` is safe on a
+  pointer whose memory the engine gave back (a guarded read of the header, 2026-11-10: a hot reload eight levels after the
+  flow module kept its conversations ended the game); a kept object pointer is still checked with it before every use.
 - **ProcessEvent skips any native with an opcode of its own** (`UFunction.iNative` != 0: `Trace`, `Destroy`, `SetLocation`, `SetOwner`...):
   `ue3::runtime::Call` clears the index for its call, so always call through it (gotchas/process-event-skips-opcode-natives).
 - **Never call LExSDKv2's generated function wrappers** (e.g. `USceneCaptureComponent::SetFrameRate`).

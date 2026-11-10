@@ -45,8 +45,9 @@ and sorts every scene into "inside every limit" or one or more exception kinds:
   no-start         the action fired and no conversation (or flowed scene) followed
   crash, hang      the game died or stopped answering during the scene
   forced-end       it did not end by itself (ended by the runner after the time-out)
-  undone           kept > 0: someone was put on a mark and moved back after the fact (the source hook should withhold it)
-  drawn-jump       drawn > 0: a jump reached a drawn frame
+  undone           kept > yielded: someone was put on a mark and moved back after the fact (the source hook should withhold
+                   it); one undone step per small move the game repeated and the mod then accepted (`yielded`) is expected
+  drawn-jump       drawn > yielded: a jump reached a drawn frame
   eye-far          Shepard's head bone 0.8 m or more from the player's held eyes
   no-place         the mod's presence rules named it as no place for the player, and the verdict is not "screen"
   not-on-screen    a set piece that played in the world
@@ -442,6 +443,9 @@ def moments(argv):
             'conversation': name, 'moment': True, 'map': mp, 'maps': maps, 'chunk': chunk, 'package': r['package'],
             'actionTail': re.sub(r'^.*Main_Sequence[.]', '', via['firstOp']), 'actionClass': via['firstOpClass'], 'actionInput': via['firstOpInput'],
             'matinee': tail, 'lengthS': round(r['length'], 1), 'event': via['eventClass'], 'between': via['between'],
+            # The way to the matinee action by action: where the first one is a plot check a fresh level does not pass, the
+            # runner fires the first one behind it that is no check (a test rig's shortcut; the plot is not set).
+            'chain': [{'tail': re.sub(r'^.*Main_Sequence[.]', '', c['op']), 'class': c['class'], 'input': c['input']} for c in via.get('chain', [])],
             'ownerAt': via.get('originatorAt'), 'ownerYaw': 0, 'stageAt': None, 'touchShows': True, 'streamStates': [],
             'kind': 'moment', 'verdict': 'moment', 'tier': 'C', 'shape': 'moment', 'flowed': False, 'flowEntries': [], 'risks': ['shepard-walk'],
             'sweep': 'moment', 'streamVia': ways.get(mp, {}).get(chunk_of(r['package']), []),
@@ -607,9 +611,12 @@ def judge_one(r, conv, prediction):
         world = bool(s.get('world'))
         verdict = expect.get('verdict')
         if world:
-            if s.get('kept', 0) > 0:
-                add('undone', f"kept {s['kept']}")
-            if s.get('drawn', 0) > 0:
+            # A small placement the game repeats is undone once and accepted at its second asking (the summary's `yielded`,
+            # cw::Insists): that one undone step, and the frame it may have reached, are the rule at work, not a fault.
+            yielded = s.get('yielded', 0)
+            if s.get('kept', 0) > yielded:
+                add('undone', f"kept {s['kept']}" + (f" ({yielded} of them before a small move was accepted)" if yielded else ''))
+            if s.get('drawn', 0) > yielded:
                 add('drawn-jump', f"drawn {s['drawn']}")
             if s.get('eyeToViewM', 0) >= EYE_FAR_M and not expect.get('afterCutscene'):
                 add('eye-far', f"{s['eyeToViewM']:.2f} m")

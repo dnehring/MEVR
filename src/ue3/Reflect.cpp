@@ -1,10 +1,31 @@
 // SPDX-License-Identifier: MIT
 #include "ue3/Reflect.hpp"
 
+#include <excpt.h>
+
+#include <algorithm>
+#include <cstddef>
 #include <format>
 
 namespace mevr::ue3 {
 namespace {
+
+// Whether an object's header can be read at all. A pointer kept across a level change may point at freed memory, and the
+// engine gives whole blocks back to the system: the read itself then faults (2026-11-10: the conversation flow's restore
+// at a hot reload, eight levels after it had flagged its conversations; the game ended). A function of its own: __try
+// can't share one with objects that have destructors.
+bool HeaderReadable(void const* object, std::size_t bytes) {
+    __try {
+        auto const* const b = static_cast<unsigned char const volatile*>(object);
+        unsigned char const first = b[0];  // the reads are the test
+        unsigned char const last = b[bytes - 1];
+        (void)first;
+        (void)last;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
 
 // A field chain longer than this is not a field chain (a wrong layout or a freed struct).
 constexpr int kMaxChain = 20000;
@@ -133,6 +154,11 @@ Object* Reflection::OuterOfA(Object const* object, Class const* cls) const {
 
 bool Reflection::IsAlive(Object const* object) const {
     if (object == nullptr) {
+        return false;
+    }
+    // The index and the flags sit in the object's first bytes: if those can't be read, the object is gone.
+    std::size_t const header = std::max<std::size_t>(u_.layout.objectIndex + 4u, u_.layout.objectFlags + 8u);
+    if (!HeaderReadable(object, header)) {
         return false;
     }
     std::int32_t const index = IndexOf(object);

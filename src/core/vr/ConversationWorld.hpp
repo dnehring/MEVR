@@ -252,6 +252,25 @@ struct OpeningLimits {
 };
 Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits const& limits = {});
 
+// A placement the game repeats: undone, it is back at the same place the next tick (a walk's last step snapping onto its
+// goal: 0.33 m for Lieutenant Durand, undone 512 times in 22 s, 2026-11-10; a floor the engine settles a pawn onto). Asked
+// for `ticks` ticks in a row at the same place (within sameUnits), no farther than maxUnits (small enough not to read as a
+// teleport), it is the game's own move: Insists says true and the caller accepts it. Farther placements are never accepted
+// this way (a stage mark is what keeping people in place is for). A tick without a placement starts the count again (Calm).
+// Two ticks: a placement made once is undone once and stays undone; one that comes back is accepted at its second asking
+// (with three, the two undone ones each reached a drawn frame: she flickered 0.35 m twice).
+struct Insistence {
+    Vec3 at;
+    int count = 0;
+};
+struct InsistLimits {
+    int ticks = 2;
+    double sameUnits = 5.0;
+    double maxUnits = 100.0;
+};
+bool Insists(Insistence& state, Vec3 const& wanted, double movedUnits, InsistLimits const& limits = {});
+inline void Calm(Insistence& state) { state.count = 0; }
+
 // The starts held for later (an opaque id each: the start action). HoldStart: false if it was held already (its count grows)
 // or eight are held. ReleaseStart: the oldest one to fire now, when nothing that would refuse it is playing (`free`); those
 // held longer than maxAgeMs are dropped first (into `expired`).
