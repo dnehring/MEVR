@@ -13,7 +13,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   Scenes made for the camera still go to the 3D screen. People no longer swivel on the spot toward whoever speaks:
   heads and shoulders turn, as the game animates them, and a body re-faces only when it must. A scene no longer begins
   with a flash of the cinema screen, and a scripted walk (the walk to the Council) plays out whether you walk along or
-  stand and watch. A preview: off unless you choose it.
+  stand and watch. Your own body, the floor under you and people standing close no longer vanish from shot to shot.
+  A preview: off unless you choose it.
 
 ## 0.2.0 (2026-11-09)
 

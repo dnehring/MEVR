@@ -124,6 +124,12 @@ ue3::FieldRef gCompBoundsOrigin{gCompBounds, "Origin"};
 ue3::FieldRef gActorLastRender{"Engine.Actor", "LastRenderTime"};
 ue3::FieldRef gWorldSeconds{"Engine.WorldInfo", "TimeSeconds"};
 ue3::FieldRef gHiddenActors{"Engine.PlayerController", "HiddenActors"};
+// The near plane a conversation's camera carries (research/69 "The first shot").
+ue3::FieldRef gBodyLocalPlayer{"Engine.PlayerController", "Player"};
+ue3::FieldRef gBodyNearClip{"Engine.LocalPlayer", "NearClipPlane"};
+ue3::ClassRef gConvCameraClass{"SFXGame.BioCameraBehaviorConversation"};
+ue3::FieldRef gConvCameraNear{"SFXGame.BioCameraBehaviorConversation", "m_fNearPlane"};
+ue3::FieldRef gConvCameraFov{"SFXGame.BioCameraBehaviorConversation", "CAMERA_FOV"};
 
 // ---- Settings ([Cinematics] in LE1MEVR.ini, read every second) -----------------------------------------------------------------
 struct Settings {
@@ -156,7 +162,11 @@ struct Settings {
     float turnDwellS = 1.0f;           // ... and begins after the target was outside for this long (worldTurnDwellS)
     bool turnByGame = true;            // by BioPawn.RequestTurnInPlace, an eased turn of ours if refused (worldTurnWay = game | slide)
     bool setPiecesOnScreen = true;     // the scan's set pieces on the 3D screen, not in the world (worldSetPieces = screen | world)
-    bool camera = true;                // the game's own camera at the player's place too, not only the main view (worldCamera)
+    // The game's own camera at the player's place too, not only the main view (worldCamera). Off since 2026-11-10 (research/69
+    // "The first shot"): the main view's build already feeds culling, streaming and the listener; what this was built for
+    // (2026-11-06: assets missing in far shots) was the director's near plane, and with it on Umbra's eye-matrix lever culled
+    // the player's own body.
+    bool camera = false;
     bool openingAccept = true;         // the stage's opening placements are accepted, the player put at Shepard's mark (worldOpening = accept|keep)
     // worldOpening = auto | accept | keep (research/69): a cut only for another composition. The default since the sampled pass
     // of 2026-11-10 (120 scenes: 30 stay, 29 walk in, 11 cut; with accept every staged opening dipped from black).
@@ -181,6 +191,8 @@ struct Settings {
     // stands, not hidden (worldBody = player | hidden): the body follower slides his bones there (BodyAway). The owner,
     // 2026-11-10: no body for a whole walk "will be very immersion breaking".
     bool bodyWithPlayer = true;
+    // The on-foot near plane kept while the world view is held (worldNearPlane = 1; 0: the director's, which clips what is near).
+    bool nearPlane = true;
     // `convo: body:` once a second in a scene, every two on foot: the pawn's and his mesh's hidden flags, when they were last
     // rendered and where they are against the view (worldBodyLog = 1; `mevr convo body log on`). A diagnostic: off by default.
     bool bodyLog = false;
@@ -256,7 +268,8 @@ void RefreshSettings() {
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldSetPieces")) {
         s.setPiecesOnScreen = ini::Lower(ini::Trim(*text)) != "world";
     }
-    s.camera = number("worldCamera", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.camera = number("worldCamera", 0.0f, 0.0f, 1.0f) != 0.0f;
+    s.nearPlane = number("worldNearPlane", 1.0f, 0.0f, 1.0f) != 0.0f;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldOpening")) {
         s.opening = cw::ParseOpeningRule(*text, cw::OpeningRule::Auto);
         s.openingAccept = s.opening != cw::OpeningRule::Keep;  // accept and auto let the stage's first placements stand, then decide
@@ -485,6 +498,15 @@ struct CameraHold {
     std::uint64_t writes = 0;
 };
 CameraHold gCameraHold;
+// The near plane (research/69 "The first shot", 2026-11-10): a conversation's camera sets LocalPlayer.NearClipPlane per shot
+// (BioCameraBehaviorConversation.m_fNearPlane: 279.5 units in Avina's first shot, 177.5 on Shepard's line, 67.5 after, against
+// 10 on foot), which suits a lens metres away and, from the player's own eyes, cuts away everything within reach: the floor
+// under the player, the player's own body, "the assets near me" (the owner, 2026-11-10). While the world view is held the
+// on-foot plane is written back after the camera's update, before the draw.
+bool gNearHold = false;
+float gFootNear = 10.0f;      // the plane on foot (read there each camera update)
+float gNearReplaced = 0.0f;   // the director's plane last replaced (logged when it changes)
+std::uint64_t gNearWrites = 0;
 std::uint64_t gArmedSince = 0;  // when the mod last told the host it was armed on foot (set by Arm; 0: not armed)
 
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
@@ -511,6 +533,11 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         }
         gFoot.have = true;
         gFoot.ms = GetTickCount64();
+        if (ue3::Object* const local = gBodyLocalPlayer.Read<ue3::Object*>(controller).value_or(nullptr)) {
+            if (auto const plane = gBodyNearClip.Read<float>(local); plane && std::isfinite(*plane) && *plane > 0.0f && *plane < 50.0f) {
+                gFootNear = *plane;
+            }
+        }
         gPov.location = reinterpret_cast<float*>(pov->location);
         gPov.rotation = pov->rotation;
         gPov.fov = pov->fov;
@@ -547,6 +574,21 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
             write_journal::Wrote("ConversationWorld.cameraPov", pov->location, sizeof(ue3::Vector));
             if (gCameraHold.writes++ == 0) {
                 log::Info("convo: the game's camera held at the player's place too (culling, streaming, sound follow it)");
+            }
+        }
+        if (gNearHold) {
+            ue3::Object* const local = gBodyLocalPlayer.Read<ue3::Object*>(controller).value_or(nullptr);
+            float* const plane = local != nullptr ? static_cast<float*>(gBodyNearClip.Address(local)) : nullptr;
+            if (plane != nullptr && std::isfinite(*plane) && *plane != gFootNear) {
+                if (*plane != gNearReplaced) {
+                    log::Info("convo: the director's near plane is {:.1f} units ({:.2f} m) in this shot: from the player's eyes it would cut "
+                              "away everything nearer; the on-foot plane ({:.1f}) is kept instead ({} writes so far)",
+                        *plane, *plane / kUnitsPerMeter, gFootNear, gNearWrites);
+                    gNearReplaced = *plane;
+                }
+                *plane = gFootNear;
+                write_journal::Wrote("ConversationWorld.nearClipPlane", plane, sizeof(float));
+                ++gNearWrites;
             }
         }
     }
@@ -2346,6 +2388,7 @@ void StopWorld(Link const& link, char const* why) {
     EndWalks(why);
     gStayMs = 0;
     gCameraHold.on = false;
+    gNearHold = false;
     DofBack();
     if (gPublished && link.publish != nullptr) {
         link.publish(nullptr);
@@ -2502,6 +2545,7 @@ cw::State MomentState(std::uint64_t now) {
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gPov.fov);
     }
     gCameraHold.on = gSettings.camera && state.holdRender != 0;
+    gNearHold = gSettings.nearPlane && state.holdRender != 0;
     gCameraHold.location = {static_cast<float>(gC.hold.x), static_cast<float>(gC.hold.y), static_cast<float>(gC.hold.z)};
     gCameraHold.rotation = gC.holdRotation;
     gCameraHold.fov = gC.holdFov;
@@ -2900,20 +2944,39 @@ std::string BodyLine(ue3::Object* controller, ue3::Object* pawn, std::optional<s
             }
         }
     }
+    ue3::Object* const localPlayer = controller != nullptr ? gBodyLocalPlayer.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    float const nearClip = localPlayer != nullptr ? gBodyNearClip.Read<float>(localPlayer).value_or(-1.0f) : -1.0f;
+    std::string cameras;
+    {
+        ue3::Reflection& r = ue3::runtime::Get();
+        std::int32_t const n = r.ObjectCount();
+        int found = 0;
+        for (std::int32_t i = 0; i < n && found < 3; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !r.IsAlive(o) || !ue3::IsA(o, gConvCameraClass) || r.NameText(o).rfind("Default__", 0) == 0) {
+                continue;
+            }
+            ++found;
+            cameras += std::format(" [near {:.1f} fov {:.1f}]", gConvCameraNear.Read<float>(o).value_or(-1.0f),
+                gConvCameraFov.Read<float>(o).value_or(-1.0f));
+        }
+    }
     auto const head = HeadOf(pawn);
     auto const at = player::Location(pawn);
     ue3::Object* const speaker = gC.on && gC.object != nullptr && ue3::runtime::IsAlive(gC.object)
         ? gSpeaker.Read<ue3::Object*>(gC.object).value_or(nullptr) : nullptr;
     return std::format(
         "convo: body: game mode {}, {}{} | pawn hidden {} hide requests {} rendered {:.2f} s ago, at {} | mesh {} | in HiddenActors {} "
-        "({} listed) | head bone {} ({:.2f} m from the view) | view {} | director's camera {} ({:.2f} m from the view) | speaker {}",
+        "({} listed) | head bone {} ({:.2f} m from the view) | view {} | director's camera {} ({:.2f} m from the view) | speaker {} "
+        "| near plane {:.1f} (LocalPlayer), fov {:.1f} (the director's), conversation camera{}",
         mode ? static_cast<int>(*mode) : -1,
         gMoment.on ? (gMoment.provisional ? "a moment (provisional)" : "a moment") : gC.on ? (gC.world ? "a conversation in the world" : "a conversation") : "no scene",
         gC.detached ? ", the view away from the pawn" : "",
         flag(gActorHidden, pawn), gHiddenRequests.Read<std::int32_t>(pawn).value_or(-1),
         now - gActorLastRender.Read<float>(pawn).value_or(0.0f), at ? F(V(*at)) : std::string("?"), meshText, inList ? 1 : 0, listed,
         head ? F(head->at) : std::string("?"), head ? Dist(head->at, view) / kUnitsPerMeter : -1.0, F(view), F(director),
-        Dist(director, view) / kUnitsPerMeter, speaker != nullptr ? ShortName(speaker) : std::string("-"));
+        Dist(director, view) / kUnitsPerMeter, speaker != nullptr ? ShortName(speaker) : std::string("-"), nearClip, gPov.lastFov,
+        cameras.empty() ? std::string(" none") : cameras);
 }
 
 void BodyReport(ue3::Object* controller, ue3::Object* pawn, std::optional<std::uint8_t> mode) {
@@ -3146,6 +3209,7 @@ void Tick(double deltaSeconds, Link const& link) {
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gPov.fov);
     }
     gCameraHold.on = gSettings.camera && state.holdRender != 0;
+    gNearHold = gSettings.nearPlane && state.holdRender != 0;
     gCameraHold.location = {static_cast<float>(gC.hold.x), static_cast<float>(gC.hold.y), static_cast<float>(gC.hold.z)};
     gCameraHold.rotation = gC.holdRotation;
     gCameraHold.fov = gC.holdFov;

@@ -417,7 +417,13 @@ switching frameworks.
   | always | off`, `cw::StepAttention`, research/69 "Who turns, and how", 2026-11-10, the owner: everyone pivoting toward
   each speaker looked unnatural; never toward "the speaker" by default: the councillors swung 170 degrees; [verify] in the
   game), and the player's place follows Shepard's
-  head bone only when a jump lasts 3 ticks (`FollowHeadSettled`). **The game's camera is held there too** (`worldCamera = 1`; the
+  head bone only when a jump lasts 3 ticks (`FollowHeadSettled`). **The director's near plane is kept off the player's view**
+  (`worldNearPlane = 1`, 2026-11-10, research/69 "The first shot", gotchas/conversation-camera-near-plane: a conversation's camera
+  writes `LocalPlayer.NearClipPlane` per shot, 0.3 to 2.8 m, which from the player's eyes removed the floor underfoot, the
+  player's own body and whoever stood near; the `Camera.UpdateCamera` post-handler writes the on-foot plane back while a world
+  view is held; `mevr convo body` / `worldBodyLog = 1` print every hide flag, the last render time and the near plane), and the
+  camera hold below is **off by default since then** (it was built for that symptom, did not cure it, and with the Umbra
+  eye-matrix lever culled the body). **The game's camera can be held there too** (`worldCamera = 1`; the
   owner's QA 2026-11-06: the render-time swap alone left culling and texture streaming at the director's camera, 5-9 m away in the
   comm room: assets missing): the `UpdateCamera` post-handler writes the place into the POV after reading the director's. The wheel
   is in front by default (`wheelHand = front|left|right`); **the scan's 21 set pieces go to the 3D screen** (`cw::IsSetPiece`,

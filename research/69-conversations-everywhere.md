@@ -1338,6 +1338,59 @@ What that says:
 camera, point 2; (c) the body under the player, point 3; then the same three pictures again, and the ceremony (slot 81) and
 the comm room (slot 87), which were not run.
 
+#### The first shot: the director's near plane (2026-11-10, 16:10-16:30, fake headset; fixed, in the tree)
+
+The owner, on phase A's unexplained first shot: "we may need to solve the unexplained scenario since it may have downstream
+consequences". It had: it was the cause of most of the rest.
+
+**What it was.** The cut in the first shot's picture is a straight line across the frame, the floor gone below it: a plane
+across the view, not a mesh's outline. A conversation's camera carries a near plane per shot
+(`BioCameraBehaviorConversation.m_fNearPlane`, from the stage camera, `BioStage.GetStageCamNearPlane`) and the game writes
+it into `LocalPlayer.NearClipPlane` at each shot. Logged beside the body's line (`near plane N (LocalPlayer)`, each
+conversation camera's `near` and `fov`): **279.5 units (2.8 m) in Avina's first shot, 177.5 on Shepard's line, 67.5 after;
+30 to 200 in the council chamber; 10 on foot.** From a lens metres away that is harmless; from the player's own eyes it
+removes everything within reach: the floor underfoot, the player's body, whoever stands beside the player. This is the
+owner's "assets near me disappear when the council talks and reappear on my turn", and very likely the 2026-11-06 report
+(assets missing in the comm room behind a 10-degree lens) that the camera hold was built for.
+
+**The fix** (`game/ConversationWorld`, mod only): while a world view is held (a conversation or a moment) the
+`Camera.UpdateCamera` post-handler writes the on-foot plane back into `LocalPlayer.NearClipPlane`, after the camera's own
+update and before the draw (`[Cinematics] worldNearPlane = 1`, default; `convo: the director's near plane is N units ...
+the on-foot plane is kept instead`, once per new value; journalled). The game writes its value once per shot, not every
+tick: 3 replacements in Avina's conversation, 23 in the ceremony.
+
+**What it changed, by picture** (the same look-down pose):
+
+| Scene | Before | With the near plane held |
+|---|---|---|
+| Avina, first shot (slot 89) | no floor under the player, no body | the floor and the keeper there; **arms, hands and chest in view** once the body is drawn (below) |
+| Avina, later shots | no body (feet only with the lever off) | arms, hands and chest |
+| Wrex at Fist's (slot 87) | not run | body rendered on every line (`rendered 0.00 s ago`), director 0.7 to 3 m away |
+| The Spectre ceremony (slot 81): the walk, the podium | not run today with this pose | walkway, glass, trees and Udina beside the player all there in far shots (director 11 to 29 m away); **the body is still missing**: below |
+
+**The second cull, and the camera hold stood down.** With the plane held the body was still not rendered as shipped. The
+table, all with the plane held: the game's camera held and the Umbra eye-matrix lever on: not rendered; the lever off:
+rendered; the camera not held (`worldCamera = 0`), lever on: rendered, and nothing else missing in the first shot although
+the director's camera is 3 m away then. So the main view's build (the render-time swap) already carries culling for the
+whole scene, which is what stock UE3 does (Umbra's camera is set from the scene view's own matrices in
+`BeginRenderingViewFamily`, `0x7655A0`: the view matrix at view +0x90 and the projection at +0xD0; the streaming and the
+listener take the scene view too), and the camera hold added nothing but the conflict. **`worldCamera` is 0 by default
+now** (the key stays). Why the hold and the lever disagree is not read: **[verify]** if the hold is ever wanted again.
+The point 3 of phase A (the body 0.6 m ahead, arms down) is gone with the same two changes: that was a body that had
+not been posed because it was never drawn.
+
+**Still open: the body in the ceremony.** With all of the above, during the scripted walk the mesh is rendered and its
+bounds are at the player (way 2's slide: `bounds 1.1 m from the view` with the pawn 17 m away) but no arm shows in the
+look-down pictures; and from the conversation's first tick at the podium it is not rendered at all (flags clear, plane
+10, lever on or off, the director near or far), through the walk-in by the view and after the view has joined Shepard.
+The two ordinary conversations do not have this, so it belongs to the path a moment leaves behind (the view away from the
+pawn, way 2's bone slide, the walk-in by the view), not to conversations as such. Not found; next: the same body line
+across the moment's end with the pose writer's own counters (is `UpdateSkelPose` still called for his mesh there, and
+which mesh), and way 2 switched off (`worldBody = hidden`) to see whether the body then shows after the join.
+
+Built: the mod (hot-reloaded through these runs). Not built or run: the players' build, the trilogy build, the tests;
+branch only.
+
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"
@@ -1641,3 +1694,10 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   shot, with the director's camera 3 m away, he and the floor under the player are gone whatever was tried (the owner's
   "assets near me disappear"); and where he is drawn he stands 0.6 m ahead of the view with his arms down. Nothing fixed
   yet; the instrument (`convo: body:`) is in the tree, off by default. Mod built; build-mono, build-trilogy and the tests not run.
+- 2026-11-10, 16:10-16:30, **the first shot explained and fixed** ("The first shot: the director's near plane"). A
+  conversation's camera sets `LocalPlayer.NearClipPlane` per shot (0.3 to 2.8 m against 0.1 m on foot): from the player's
+  eyes that removed the floor underfoot, the player's body and whoever stood near, shot by shot (the owner's "assets near
+  me disappear when the council talks"). The on-foot plane is now kept while a world view is held, and the game-camera
+  hold (`worldCamera`) is off by default: it was built for this symptom, did not cure it, and with the Umbra eye-matrix
+  lever culled the body. Two ordinary conversations now show arms, hands and chest on every line. **Open:** the body in
+  the ceremony (the scripted walk and the podium after it). Mod built; the other builds and the tests not run; branch only.

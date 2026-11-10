@@ -761,6 +761,9 @@ void CheckFields() {
     CheckField("Engine.PrimitiveComponent", "bIgnoreHiddenActorsMembership", SDK_BOOL(UPrimitiveComponent, bIgnoreHiddenActorsMembership));
     CheckField("Engine.PrimitiveComponent", "LastRenderTime", SDK_FIELD(UPrimitiveComponent, LastRenderTime));
     CheckField("Engine.PlayerController", "HiddenActors", SDK_FIELD(APlayerController, HiddenActors));
+    CheckClass<UBioCameraBehaviorConversation>("SFXGame.BioCameraBehaviorConversation");
+    CheckField("SFXGame.BioCameraBehaviorConversation", "m_fNearPlane", SDK_FIELD(UBioCameraBehaviorConversation, m_fNearPlane));
+    CheckField("SFXGame.BioCameraBehaviorConversation", "CAMERA_FOV", SDK_FIELD(UBioCameraBehaviorConversation, CAMERA_FOV));
     CheckField("Engine.Actor", "Instigator", SDK_FIELD(AActor, Instigator));
     CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
     // The galaxy hologram (game/GalaxyMap, research/51 section 8).
