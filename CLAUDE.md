@@ -488,8 +488,9 @@ switching frameworks.
   player (pawn hidden, far from the owner and out of sight, most shots from over 8 m) are named in the log and the summary
   (`worldAutoScreen = log | on | off`). **In the game (fake headset, 2026-11-09):** the hooks install; the medical bay's wake-up
   scene, which `open BIOA_STA00` alone starts (its level is the docked Normandy's, under the Citadel's map), ran with 28 placements
-  withheld and 0 undone; the walk found 9 triggers there and stopped at the first one's edge. The hold and the presence rules
-  are not run in the game yet. Logs `convo: ... the player walks`, `the player walked
+  withheld and 0 undone; the walk found 9 triggers there and stopped at the first one's edge; at C-Sec two barks were refused over
+  the flowed Garrus argument and Chorban's conversation was held and started 1 s after the wheel conversation that follows the
+  argument. The presence rules are not seen in the game yet. Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus

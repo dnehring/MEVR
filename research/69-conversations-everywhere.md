@@ -37,7 +37,7 @@ folder, which the release session holds.
 
 | # | Item | State | Result |
 |---|---|---|---|
-| 1 | Story safety of flowed (ambient) scenes | read; built; the first protection failed its game check (log, 18:39); **rebuilt as "hold" (the owner's decision), game check pending** | A line's plot effects are on the path both kinds of conversation share. An ambient one can be cut short, and then loses the effects of the lines it never reached. 6 conversations had a chain our flags newly exposed to that: they stay conversations (64 flow, was 68). The game's barks can no longer start over a flowed scene. |
+| 1 | Story safety of flowed (ambient) scenes | read; built; the first protection failed its game check (log, 18:39); rebuilt as "hold" (the owner's decision) and **checked in the game** (log, 19:35) | A line's plot effects are on the path both kinds of conversation share. An ambient one can be cut short, and then loses the effects of the lines it never reached. 6 conversations had a chain our flags newly exposed to that: they stay conversations (64 flow, was 68). The game's barks can no longer start over a flowed scene. |
 | 3 | Cutscene or world, decided at run time | data read; built log-only; game check pending | The packages can't say "Shepard isn't in this scene". Three run-time rules (pawn hidden; far from the owner and out of its sight; most shots framed from far away) name such scenes in the log and the survey's summary; they move a scene to the screen only with `worldAutoScreen = on`. |
 | 4 | Keeping people in place at the source | read; built; **checked in the game** | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. In the medical bay's wake-up scene: 28 placements withheld, 0 left for the undo after the fact (research/59 had 25 undone there). |
 | 5 | Walking and the level's triggers | read; built; **checked in the game** (9 triggers found by the medical bay, the walk stopped at the first one's edge) | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
@@ -315,3 +315,16 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   rules", above): the decision and the queue in the core with unit tests, the facts and the re-fire in `game/ConversationFlow`.
   The cause of the 18:39 failure found on the way: the scene test was "every start ordinary", and `sta70_garrus` has an
   ambient start of the game's own; the test is now the line the scene is on. Builds and tests pass; not run in the game.
+- 2026-11-09, 19:30-19:40, **the hold checked in the game** (fake headset; the candidate put back afterwards, every hash
+  matching). At C-Sec, with the Garrus argument playing as barks and other starts fired half a second after it:
+  - *Barks:* `TowerSpecificBanters` (which starts `sp_news_vids`, the news terminal's narration) and `AmbientDiplomats` were
+    `refused` (three log lines), the argument ran its full length and the wheel conversation began 14.6 s after the
+    argument's start. So the 18:39 cut was the scene test alone: that newcomer was a bark by the game's data all along.
+  - *Another scene:* `ChorbanWithKeeper.BioSeqAct_StartConversation_1` (`sta20_chorban`, every start ordinary) logged `held,
+    its start fires again when the scene and what follows it are over` at 19:37:18.962; the argument ran in full; the wheel
+    conversation ran from 19:37:33.0 to 19:37:49.2; at 19:37:50.265 `the held start of sta20_chorban ... fired again
+    (ForceActivateInput(0) called true); 0 still held`, and 17 ms later `conversation 15768 began: sta20_chorban`. Nothing was
+    lost on either side.
+  - Not looked at: what the held action's "failed" output did in between (nothing visible here), and a held scene whose
+    owner is far from the player when it finally starts (Chorban's stage is 85 m from C-Sec's desk: the game's stage placed
+    Shepard there, as for any conversation started from afar).

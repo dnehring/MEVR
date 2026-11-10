@@ -226,8 +226,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   live; `worldMove = 0` off.
 - [ ] **First person for every conversation: the robustness round** (built 2026-11-09, research/69 "To check in the game"; Claude
   checks these on the fake headset first, when the game folder is free). Checked there 2026-11-09: placements withheld at their
-  source (the wake-up scene: 28 withheld, 0 undone) and the walk stopping at a trigger's edge. Still for the fake headset: another
-  scene's start held during a flowed scene and fired again after it (`worldFlowNewcomers = hold`), and `worldAutoScreen = log`
+  source (the wake-up scene: 28 withheld, 0 undone), the walk stopping at a trigger's edge, and another scene's start held during
+  a flowed scene and fired again after it (Chorban over the Garrus argument). Still for the fake headset: `worldAutoScreen = log`
   naming the scenes with no place for the player. Then in the headset: a staged conversation
   (the medical bay, Anderson on the Normandy) with nobody shifting at the cuts, and people still turning to face the speaker.
 - [ ] **Flowing conversations** (built 2026-11-09; two Noveria chains checked as barks on the fake headset, research/59 "Flowing
