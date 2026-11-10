@@ -503,8 +503,16 @@ switching frameworks.
   each other shape and of each level's place risks (133 of 290); `canary` writes the canary plan from
   `tools/conversation-canary.json` (run it before a pass; its broken run must fail); `moments` lists the 21 level-script
   matinees that walk Shepard as a plan. 32 conversations are voice-over only (`BioSeqAct_FaceOnlyVO`) and never enter the
-  conversation mode. `worldOpening = auto` (built, not seen in the game; `accept` is still the default): no dip at a staged
-  opening when Shepard's mark is where the player stands or within a walk in the same space (`cw::DecideOpening`). Logs `convo: ... the player walks`, `the player walked
+  conversation mode. `worldOpening = auto` (`accept` is still the default; seen in the game on three Noveria conversations:
+  no dip, the view stays): no dip at a staged opening when Shepard's mark is where the player stands or within a walk in
+  the same space (`cw::DecideOpening`). **Moments** (research/69 "A moment in the world"; `worldMoments = log | walk | carry |
+  off`, default log; `game/AuthoredMoment`, the view in `game/ConversationWorld`'s `TickMoment`; `mevr moment`): a
+  level-script matinee that walks Shepard (the walk to the council) is held in first person in the cinematic game mode (host
+  seams: host and mod deploy together), its move of him withheld through `engine/ConversationHooks`' pre-hook on
+  `AActor::MoveWithInterpMoveTrack` (0x4B75F0) or followed (carry); a script's teleport within the same space is not cut:
+  the place is where he is wanted (it may be what streams the next area in), he walks there or is carried after
+  `worldMomentPatienceS`. The council sequence ran so on the fake headset: the hearing opened as a walk-in 21 m from the
+  podium, no dip. Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus

@@ -600,6 +600,63 @@ The summary line carries `"opening"`, `"markM"` and `"cuts"`, and the judge coun
 without a dip is a number of every pass from now on. Not in it yet: the people of a walk-in walking to their marks rather
 than standing on them at once (the walking-to-marks prototype), and the squad.
 
+**In the game (fake headset, 2026-11-09 23:38-23:50, `worldOpening = auto`):** three Noveria conversations fired with
+Shepard 1.5 m in front of their owners: Opold (the mark 1.59 m from where the player stood: walk in), Anoleis (2.81 m,
+0.73 m lower: walk in), Lilihierax (0.80 m: stay). **No dip in any of them, the view stays where it was** (0 re-anchors,
+the head bone at most 0.53 m from the held eyes at Opold's). Two faults on the way, both in how his head bone was read
+right after the stage placed him: read after the pawn was put back it already had the move in it (the follower took the
+difference for a jump and moved the view to the mark after all), and for about a second his mesh is up to 1.3 m from his
+pawn (body follow, a pose not yet updated), which the follower also read as a jump: the anchor now just takes the bone's
+place for 1.5 s after such an opening, and the eye-to-body measure starts after it.
+
+### A moment in the world: the walk to the council (2026-11-10, built and seen in the game)
+
+`[Cinematics] worldMoments = log | walk | carry | off` (default `log`: measured only; `game/AuthoredMoment` measures,
+`game/ConversationWorld` holds the view). The natives' reading held up: the hook on `AActor::MoveWithInterpMoveTrack` goes
+in and is asked about Shepard every tick of the matinee; the script's teleport, black screens and cinematic switches
+arrive at the ProcessEvent handlers.
+
+**Measured as authored** (`log`, the moment fired through Anderson's own event with the runner's moments plan): the
+cinematic mode on (game mode 6, the pawn shown; the 3D screen); the track moves Shepard for 7.4 s, 11.70 m along its way,
+7.25 m from start to end and 2.33 m up; a black screen; the cinematic mode off and on again in one tick; the teleport, 2.89
+m on from the track's end (9.76 m from where he first stood), in sight; the council chunk's own black screen; the hearing's
+conversation on its stage.
+
+**With `worldMoments = walk`:** the mod holds the view where the player stood on foot (the cinematic game mode shown as
+the world: three more `[MEVR]` seams in `xr_session.cpp` and one in `head_aim.cpp`, so the host must be deployed with the
+mod); the track's move of his pawn is withheld (the hook answers "not moved"); the stick walks him, without the trigger
+guard (the script wants him through the triggers on the way). A script's move of him (the teleport; a matinee's reset at
+its end) is judged by the opening's rule: in the same space it is not cut: he is put back where his own walk has him and
+the place becomes where he is wanted (the walk's leash is around it); when he is within a step of it, or after
+`worldMomentPatienceS` (12 s), or at once with `carry`, he is carried there in a straight line at `worldMomentCarryMS` (3
+m/s) and then stands exactly there, as the teleport would have put him. To another composition the view goes with him
+under a dip. The on-foot record is kept fresh, so the conversation after it opens by the opening's rule.
+
+**Why "wanted" and not just "stays":** the first try only withheld the teleport, and the scene never went on: the place
+the script teleports him to is inside the volume that streams the council's chunk in. A scripted teleport of the player
+is also what the next piece of script counts on.
+
+**The run (2026-11-10 00:06, the wait set to 4 s, nobody at the stick, `worldSetPieces = world`):** the view held at
+(-6806, -7285, 61908); the track withheld (0.00 m); the teleport of 9.76 m and 2.85 m up withheld, "the same space, no
+cut; he is wanted at (-7692, -7010, 62090)"; carried 3.06 m when the hearing began (its chunk had streamed in); **the
+hearing opened as a walk-in: "Shepard's mark is 21.08 m from where the player stood (+3.16 m up), in sight ... no cut"**;
+it ran 64.7 s in the world, 26 lines, 4 wheels answered from where the player stood, 0 dips, nothing undone. Then the
+script put everyone 15 m away for Anderson's next conversations: a cut (no fresh place on foot).
+
+**What that run leaves open:**
+- with nobody walking, the player hears the hearing from 21 m away: nothing carries him to a walk-in's mark (only a
+  script's own move has the wait and the carry);
+- at 54 s and 55 s of the hearing Shepard's head bone moved 0.88 m twice (his own animation at the mark) and the view
+  went with it: during a walk-in the follower should stand down;
+- Anderson walks his track while the player stands; when the script deactivates him and the council chunk's own Anderson
+  appears at the podium, nothing hides the swap (the black screen did);
+- the black screen itself and the director track's fade still show (0.3 s here);
+- Shepard's body plays the matinee's animation (walking) where he stands;
+- the presence rule named the hearing: "2 of the first 3 shots are framed from more than 8 m away (the farthest 38 m)".
+  It is in the generated set-piece list for its cameras alone; in the world it had a place for the player. The list
+  wants splitting (Shepard moved by a track, or no place for him) from "authored cameras";
+- the other 20 moments are not run.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
