@@ -300,6 +300,38 @@ so the council and Saren are already talking as he climbs; its wheel waits until
 5. The stage's marks in the scan (also wanted by the predictions).
 The thirty moments are the test list; the sweep's runner can fire them like any start once it knows their events.
 
+### The natives behind an authored moment (read 2026-11-09 by a subagent in the isolated Ghidra project and from the game's
+script packages; **its claims, not yet checked by a hook in the game**)
+
+- **A move track places its actor through one native: `AActor::MoveWithInterpMoveTrack` 0x4B75F0** (actor vtable +0x558,
+  the same pointer for Actor, Pawn, InterpActor and the SFXGame pawns; `this` is the actor moved; arguments the track, the
+  track instance, the time, the delta). `UInterpTrackMove::UpdateTrack` is an empty stub in the game; the track instance's
+  `InitTrackInst` 0x3E31A0 saves the actor's physics and sets PHYS_Interpolating, and each tick `physInterpolating`
+  0x4BCC00 finds the track and calls 0x4B75F0, which takes the keyed place, sets the pawn's desired rotation and calls
+  `UWorld::MoveActor` 0x402E30 (not FarMoveActor, no direct write). `SeqAct_Interp.SetPosition` and the cinematic skip go
+  through the same function. No BioWare subclass of the move track. So **a pre-hook on 0x4B75F0 that leaves the call out
+  when `this` is the player's pawn is the one place to withhold Shepard's authored walk.**
+- **What withholding it leaves to handle:** the pawn stays in PHYS_Interpolating for the matinee (no walking physics, no
+  input movement: the mod's own steps must move him, as in a conversation); with the matinee's `bResetPositionOnFinish`
+  the track instance's end (`TermTrackInst` 0x3EFA90) puts the actor back at its start place; a skipped cinematic places
+  actors at their end keys through the same function; the pawn's animation is the matinee's (`BeginAnimControl`), not his
+  own locomotion, until it ends; the same function sets his rotation.
+- **A matinee ends by time alone** (`USeqAct_Interp::StepInterp` 0x3EEE60: position past the length); it never looks at
+  where anyone is.
+- **`SeqAct_Teleport` is script**: `USequenceAction::Activated` 0x5188D0 calls the target's handler by ProcessEvent:
+  `Engine.Controller.OnTeleport` (which calls the pawn's as a script call) or `SFXGame.BioPawn.OnTeleport`, which sets
+  `BioWorldInfo.m_bHasPlayerTeleported`, syncs the camera's yaw, and ends in `Pawn.OnTeleport`: `SetLocation(destination)`,
+  the rotation, `OnTeleportArrived`. Two ProcessEvent pre-handlers (the controller's when it is the player's, the pawn's
+  when it is his) cover a scripted teleport of the player. Not covered: `SeqAct_SetLocation` (native, 0x516A20).
+- **`BioSeqAct_BlackScreen` is script** (a latent action: `Activated` shows or hides the GUI manager's black screen with a
+  fade, `UpdateOp` returns when no fade runs): with its `Activated` left out the action completes at once.
+- **`BioSeqAct_BioToggleCinematicMode` is script**: `PlayerController.SetCinematicMode` sets `bCinematicMode`, hides the
+  pawn if the action says so, ignores move and look input, hides the HUD; **only with `bCinematicInputMode` does it enable
+  game mode 6**. `SFXEngine.IsInCinematicMode` is true during a conversation that is not ambient or while the local
+  controller's `bCinematicMode` is set.
+- Not determined: whether a matinee's "Player" group is the pawn or the controller in each case; how often scripts move
+  the player with `SeqAct_SetLocation`; the director track's own fade (`InterpTrackFade`).
+
 ## The sweep: plan
 
 The owner (2026-11-09): "How can we scale up evaluating the scenes?", then "make a plan for how you would do this fan out and
