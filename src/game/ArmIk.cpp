@@ -1062,7 +1062,14 @@ void Drive(double deltaSeconds) {
     } else if (info->head >= 0) {
         headBone = engine::skeleton::BoneLocation(mesh, info->head, engine::skeleton::Space::World);
     }
-    hand_targets::Targets const targets = hand_targets::Current(headBone);
+#if defined(MEVR_GAME_LE1)
+    // The view held away from Shepard's pawn (a scripted walk; research/69 "The body stays with the player") is first
+    // person whatever the distance to his animated head: his body is drawn where the player stands (the body follower).
+    bool const bodyAway = conversation_world::BodyAway().on;
+#else
+    bool const bodyAway = false;
+#endif
+    hand_targets::Targets const targets = hand_targets::Current(headBone, bodyAway);
     gFirstPersonMs = targets.source == hand_targets::Source::Controllers && targets.anchor == hand_targets::Anchor::View ? GetTickCount64() : 0;
     gSource = targets.source;
     engine::bone_pose::Request request;

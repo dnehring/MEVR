@@ -34,6 +34,14 @@ bool InWorld();
 bool MomentWithholds();
 // A moment's first-person view is up (game/AuthoredMoment keeps the script's black screen off it).
 bool MomentViewOn();
+// The player's view is away from Shepard's pawn (the script moves the actor, the view is the player's) and his body goes
+// with the player ([Cinematics] worldBody = player): the body follower then slides the whole body to where the player
+// stands, without its limit, and lifts it by `riseUnits` (the player's floor above the pawn's, world units).
+struct BodyAwayState {
+    bool on = false;
+    double riseUnits = 0.0;
+};
+BodyAwayState BodyAway();
 // The script switched the cinematic mode on while the player stood on foot (game/AuthoredMoment's handler, the game thread):
 // a moment may be starting. The view is held where the player stands from this instant, and published at once, until a
 // track moves Shepard (a moment) or a quarter of a second passes (a cutscene: it goes to the screen as before). Without it

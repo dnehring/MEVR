@@ -1100,6 +1100,101 @@ What the loop found and what was changed, each seen again in a later pass:
 Not started from its save: slot 84 (Wrex on Virmire's beach: nothing came of the start action in 25 s). Slot 88
 (Kirrahe's camp) is a set piece and went to the screen, as it should.
 
+### The body in scenes in the world (2026-11-10, 14:10-14:55; unfinished, paused by the owner for usage)
+
+The owner, on the list of known problems: start with the missing body while the view is away from Shepard's ("this one
+will be very immersion breaking"), and: could the animated Shepard simply be removed from the scene and only the VRIK
+avatar be there, since nothing needs third person in those instances?
+
+**The answer in principle: yes, in this form.** The script needs Shepard's *actor* (it is what the track moves through the
+triggers), not his visible body. So the actor stays the script's and the body is drawn where the player stands. Two ways
+were tried; the second is in the tree. **Neither shows a body yet, for a reason that turned out to be more basic** (below).
+
+**How the walk animates him** (read from the packages, `conversation-scan --class-dump InterpGroup / InterpTrackAnimControl
+--only STA70_02captain`): the ceremony's matinee has a `Player` group with an `InterpTrackMove` and an
+`InterpTrackAnimControl` playing `EX_Walk` and `EX_WalkAscend` (anim sets `HMM_EX_Pistol`, `HMM_DP_WanderSouth`). The
+engine applies it through the pawn's events `BeginAnimControl` / `SetAnimPosition` / `FinishAnimControl` (ProcessEvent
+from native code). Our ProcessEvent hook has post-handlers only (`engine/ProcessEvent.hpp`), so the event cannot be
+withheld; the walk animation would have to be taken out at the pose (a slot node's weight around `UpdateSkelPose`, as
+`game/CombatStance` does for the combat node, or a graft of a standing pose over the legs, `core/ik/PoseGraft`). Not built.
+
+**Way 1, abandoned: the mesh component placed in the world by itself** (`PrimitiveComponent.SetAbsolute(true, true,
+false)`, `SetTranslation`, `SetRotation` on `Pawn.Mesh`, every camera update). What it ran into, each seen in the log:
+- **The game re-fits the mesh's height to the floor every tick** (BioPawn's mesh adjustment: `bEnableMeshAdj`,
+  `m_fMeshAdjRate`, `MeshAdjSpeed`, `m_oMeshAdjLastBase` in the SDK headers): it rewrote `Translation.z` between our
+  writes; with the translation absolute (world numbers) the body ended 44 to 115 m under the player
+  (`before this tick's placement the component's translation was (-7816, -7050, 53478)` against a wanted z of 62002).
+- A component's new transform is taken up with the next tick's deferred updates, after that re-fit: the frame was drawn
+  with the dragged height. `Actor.ForceUpdateComponents(false, true)` right after the write fixed the transform (the head
+  bone then read at the player's place) but the body still did not show.
+- Giving the mesh back in the middle of a tick (as a conversation began) left the head bone readable at a nonsense place
+  for that tick (z 103): the conversation took its place from it, decided "out of sight: cut", and put the view in the
+  void. Anything that reads Shepard's head bone must not see a transform in flux.
+  Reverted (`git checkout` of the two files); nothing of it is in the tree.
+
+**Way 2, in the tree: his bones are slid there** (the body follower, which already slides the whole body under the view
+on foot, at most 0.75 m):
+- `conversation_world::BodyAway()` (`game/ConversationWorld`): on while a scene in the world has the view detached from
+  the pawn and `[Cinematics] worldBody = player` (the default; `hidden` is the old behaviour); gives the rise, the
+  player's floor above the pawn's. `HidePawn` no longer hides the pawn then.
+- `game/BodyFollow.cpp`: while away, `TorsoGoal::maxBodyShift` has no limit, `TorsoGoal::bodyRise` (new, `core/ik/TorsoPose`,
+  unit-tested in `tests/Main.cpp`) lifts the body by the floors' difference, and the legs do not take the pawn's speed
+  (it is the script's walk, not the player's).
+- `game/ArmIk.cpp`: a view held away from the pawn counts as first person whatever its distance from his animated head
+  (else, past 0.75 m, arm IK chose the third-person anchor and the body follower did nothing).
+- The log then says what was wanted: `torso: large correction (first person: the whole body where the player stands,
+  away from the pawn): ... the view 7.61 m from where the game put Shepard, body slid 7.61 m; Shepard's head 0.01 m from
+  the head's pivot`. All three builds were not run on this; `build` (mod and tests) compiles and mevr-tests passes.
+
+**What the snapshots show, and the real blocker.** The test: the ceremony from its save with a replayed pose, the head
+pitched 50 degrees down and both hands in front of the chest (`make-walk-recording.py look-down.mevrrec 4 --stick 0
+--pitch -50`; `conversation-from-save.ps1 -All -Only 81 -Replay ... -Snapshots 4,13,32`), three left-eye snapshots made
+into a contact sheet.
+- **On foot the test sees the body**: arms, hands and chest fill the lower half of the frame (the baseline, after a
+  quick load of the same save).
+- **In a scene in the world it sees none**: not during the scripted walk (way 1 or way 2), not after the view has
+  joined Shepard at the podium, and **not in an ordinary conversation where the view never leaves him** (Avina, slot 89,
+  `-Pace full`, snapshot 8 s in), in a fresh game process too. So the player's body is not drawn in the conversation and
+  cinematic modes at all in these runs, and this, not the distance, is what has to be solved first. It also fits the
+  owner's first note better than my first reading did ("the assets near me disappear when the council talks, reappear
+  when it is my turn"): I had put that on Halcyon clearing its hides in far shots and called it fixed from the log alone.
+  **It was never checked with a picture. The lesson of the morning, again.**
+- In the first snapshot of a walk, a pair of legs is on the stairs where Shepard's actor is: the drawn mesh was at the
+  actor while the body follower's log said it had slid the body to the player. So in the cinematic mode the bone write
+  may not be what is drawn either (a second pose update after ours, e.g. the matinee's `SetAnimPosition` re-posing the
+  mesh): a second unknown, separate from the first.
+
+**What is known about the first unknown.** Halcyon's first-person code (`head_aim.cpp FpApplyHides`): "the engine hides
+these when the camera sits inside the pawn; the IgnoreHiddenActorsMembership bit makes them render anyway"; it shows the
+pawn (`SetActorHidden(false)`) and sets that bit on the pawn's components, the body mesh and the attached actors,
+**once, when its signature changes**, not every frame. During the runs its log says `[FPHIDE] cleared (mode
+'BioCameraBehaviorConversation')` at each conversation's first frame and `applied (anti-cull on ...)` 30 ms later, and
+stays applied. So the hides are up and the body is still not there: either something hides the pawn again after that one
+application (the conversation or cinematic camera's own handling, a per-view hidden-actors list that the bit does not
+cover in these modes), or the body is culled by something that follows the director's camera. Reading the flags over the
+console (`mevr instances SkeletalMeshComponent <pawn>`, `mevr props`: `HiddenGame`, `bOwnerNoSee`,
+`bIgnoreHiddenActorsMembership`, `LastRenderTime` against `WorldInfo.TimeSeconds`) was inconclusive: on foot the body
+mesh reads shown with a `LastRenderTime` far behind the world's time (it is only "rendered" while in the frustum: the
+fake head looks straight ahead), and mid-conversation the query came back without the mesh rows (the pawn's name had
+changed with the load).
+
+**What to do next, in this order:**
+1. **Settle the baseline with pictures**: the same look-down test in an ordinary conversation on the players' build of
+   19dad44 (before today's body work), at several times across lines of the NPC and of Shepard. If the body shows on
+   Shepard's lines and not on the NPC's, visibility follows the director's camera; if never, the pawn is hidden in the
+   mode.
+2. **A log line instead of console guesses**: every two seconds while a scene is in the world, the pawn's `bHidden`, the
+   body mesh's `HiddenGame`, `bOwnerNoSee`, the ignore-hidden bit and `LastRenderTime` beside `WorldInfo.TimeSeconds`
+   (new `FieldRef`s with their `ReflectCheck` rows), and the shot's camera distance.
+3. **If the engine hides him again**: apply the anti-cull every camera update while `ConversationInWorld()` (a seam in
+   `FirstPersonTick` making the hides non-edge-driven there, or the same bits written by the mod), and check with the
+   picture.
+4. **Whether the bone write is what is drawn in the cinematic mode**: log Shepard's head bone in the world right after
+   our write and again at the next tick's start; if a later pose update undoes it, find it (the matinee's anim control)
+   and write after it, or force the pose once more.
+5. Only then judge way 2 by eye (the body under the player during the walk, on stairs: `bodyRise`), and then the legs
+   (the script's walk animation plays in place under a standing player: a standing graft, or the slot's weight).
+
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"
@@ -1375,3 +1470,25 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   `open` had written a VR00 autosave and the save loop a VR00 quicksave: both are back from the game slot's backup (the
   folder is byte for byte the backup's); the profile file (`GamerProfile.pcsav`, written by the game at 13:56) is the
   game's latest and was left. Fake headset off, SteamVR stopped, the players' build of 19dad44 in the folder.
+- 2026-11-10, 14:10-14:55, **the body while the view is away, begun and paused** ("The body in scenes in the world").
+  The owner's idea (the script keeps Shepard's actor, the player keeps the body) is right in principle. A first way (the
+  mesh component placed in the world) fought the engine and was dropped; a second (the body follower slides his bones to
+  the player, `worldBody = player`) is in the tree and does what its log says, but **no body is drawn in any scene in the
+  world, the ordinary conversation included**, while on foot the same test shows arms, hands and chest: the body's
+  visibility in the conversation and cinematic modes is the thing to solve first, and my "fixed" for the owner's
+  vanishing-body note this morning was a log line, not a picture. Paused at the owner's word (usage).
+  **Where everything stands at the pause:**
+  - On main (eaa15cf), run on the fake headset: no flash at a scene's start, the script's Shepard with the view walking
+    to him (guided along his path), the wheel's stick latch, depth of field off in walks, eased authored facings, the
+    look-at rule, the black screen's dip by what it covers, the fast loop from saves and the session judge.
+  - On the branch only, unverified: the body with the player (way 2). Default on; it only stops the pawn being hidden
+    while the view is away, and the body does not show either way until the visibility is solved.
+  - **Not solved, from the owner's notes:** the body in scenes in the world (above: the first thing to do); the blink
+    on the ceremony's walkway (nine people are shown at that instant: have them there earlier); bodies that re-face
+    slide (the game's turn in place does nothing in a conversation), 13 in the comm room; heads reach about half the way
+    to their target; the comm room's conversation after a load opens on the screen for a moment and Shepard strays 2.2 m
+    there; 0.1 s of 3D screen when the controllers lose tracking; slot 84 does not start from its save, Chorban's needs a
+    plot conditional; the old runner's `open` resets the plot.
+  - **Not built:** spatial voices (the hook is known: "The voices"), a composition rule for groups, people walking to
+    their marks, the pause and floor marker fallback.
+  - **Needs the owner in a headset:** everything of today (no real headset was connected all day).

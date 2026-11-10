@@ -164,6 +164,10 @@ struct Settings {
     // withheld (walk) the ceremony never began for a player who had not walked far enough: the track carries Shepard
     // through the trigger that streams the council's chunk in, and the event that starts the ceremony is fired once.
     bool momentView = true;
+    // While the view is away from Shepard's pawn (a scripted walk, a walk-in by the view) his body is drawn where the player
+    // stands, not hidden (worldBody = player | hidden): the body follower slides his bones there (BodyAway). The owner,
+    // 2026-11-10: no body for a whole walk "will be very immersion breaking".
+    bool bodyWithPlayer = true;
     float momentPatienceS = 12.0f;     // walk: how long the script waits for him where it wants him before he is carried there
     float momentCarryMS = 3.0f;        // the speed he is carried at to where the script wants him (worldMomentCarryMS)
     float moveLeashM = 3.0f;           // how far from the conversation's owner the walk may go (worldMoveLeashM)
@@ -250,6 +254,9 @@ void RefreshSettings() {
         s.moments = w == "view" || w == "walk" || w == "carry";
         s.momentCarry = w == "carry";
         s.momentView = w == "view";
+    }
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldBody")) {
+        s.bodyWithPlayer = ini::Lower(ini::Trim(*text)) != "hidden";
     }
     s.momentPatienceS = number("worldMomentPatienceS", 12.0f, 0.0f, 120.0f);
     s.momentCarryMS = number("worldMomentCarryMS", 3.0f, 0.5f, 10.0f);
@@ -1452,6 +1459,9 @@ bool FaceYaw(ue3::Object* actor, double yawDeg) {
 // would draw its arms from there to the hands), shown again on arrival and at the conversation's end. Only if the game had
 // him shown: a pawn the scene hides stays the scene's.
 void HidePawn(ue3::Object* pawn, bool hide) {
+    if (gSettings.bodyWithPlayer && !gC.hidPawn) {
+        return;  // not hidden: his body goes with the player instead (BodyAway, the body follower)
+    }
     if (pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gSetHidden.Get() == nullptr) {
         return;
     }
@@ -2744,6 +2754,22 @@ void MomentMayStart() {
 
 bool MomentViewOn() {
     return gMoment.on && !gMoment.provisional;
+}
+
+BodyAwayState BodyAway() {
+    BodyAwayState away;
+    if (!gSettings.bodyWithPlayer || !gC.world || !gC.detached || (gMoment.on && gMoment.provisional)) {
+        return away;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    auto const at = pawn != nullptr && ue3::runtime::IsAlive(pawn) ? player::Location(pawn) : std::nullopt;
+    if (!at) {
+        return away;
+    }
+    away.on = true;
+    away.riseUnits = gC.detachedAt.z - at->z;
+    return away;
 }
 
 // The people shown in the player's view (anywhere but behind him, within 30 m), for what a script's black screen covers.

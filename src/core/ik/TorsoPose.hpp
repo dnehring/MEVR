@@ -70,6 +70,9 @@ struct TorsoGoal {
     bool bodyMoves = false;
     Vec3 bodyAt;
     double maxBodyShift = 0.0;
+    // With `bodyMoves`: the whole body lifted by this along its up as well (units). For a body drawn away from its pawn
+    // (research/69 "The body stays with the player": the script has Shepard's actor elsewhere, on another floor height).
+    double bodyRise = 0.0;
     // The legs keep the run (research/29, 2026-11-04; core/ik/BodyFollow's LegsFollow). With `legsWeight` above 0 the
     // body's turn goes from the rule above (the part of the facing turn beyond maxTwistDegrees, measured from the
     // animated shoulders) toward `legsTurnDegrees` (measured from `body.forward`, the pawn's facing, where its run

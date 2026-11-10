@@ -1466,6 +1466,18 @@ void TestBodyFollow() {
         TorsoResult const capped = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
         CHECK(capped.ok && capped.shiftLimited && NearD(Length(capped.bodyShift), 50.0, 1e-9) && capped.bodyShift.z == 0.0);
         CHECK(NearD(Length(capped.wantedBodyShift), 100.0, 1e-9));
+        // A body drawn away from its pawn (research/69: the script has Shepard's actor elsewhere): no limit, and lifted
+        // by the floors' difference.
+        goal.bodyAt = before[pelvis].translation + Vec3{2000, -300, 0};
+        goal.head = before[head].translation + Vec3{2000, -300, 120};
+        goal.maxBodyShift = 1e9;
+        goal.bodyRise = 120.0;
+        pose = before;
+        TorsoResult const away = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+        CHECK(away.ok && !away.shiftLimited && NearD(away.bodyShift.x, 2000.0, 1e-6) && NearD(away.bodyShift.y, -300.0, 1e-6) &&
+              NearD(away.bodyShift.z, 120.0, 1e-6));
+        CHECK(Length(mid(pose) - (mid(before) + Vec3{2000, -300, 120})) < 2.0);
+        CHECK(NearT(pose[rig.camera], before[rig.camera], 0.0) && NearT(pose[0], before[0], 0.0));
         // The body bone must hang below the skeleton's root and above the spine.
         goal.body = 0;
         CHECK(!PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).ok);

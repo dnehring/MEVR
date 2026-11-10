@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "game/BodyFollow.hpp"
 
+#include "game/ConversationWorld.hpp"
+
 #include "core/Log.hpp"
 #include "core/ik/BodyFollow.hpp"
 #include "core/ik/Ik.hpp"
@@ -334,6 +336,16 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
         goal.maxBodyShift = move.maxMeters * targets.body.unitsPerMeter * scale;
         goal.maxTwistDegrees = kSpineTwistWithBodyDegrees;
         gLast.mode = "first person: the whole body under the view";
+#if defined(MEVR_GAME_LE1)
+        // The view is away from Shepard's pawn (a scripted walk, a walk-in by the view: research/69 "The body stays with
+        // the player"): his body is drawn where the player stands, however far the script has taken the actor, and on the
+        // player's floor. The same slide as on foot, without its limit; the bones move, the component stays the actor's.
+        if (conversation_world::BodyAwayState const away = conversation_world::BodyAway(); away.on) {
+            goal.maxBodyShift = 1e12;
+            goal.bodyRise = away.riseUnits * scale;
+            gLast.mode = "first person: the whole body where the player stands, away from the pawn";
+        }
+#endif
     } else if (firstPerson) {
         // The spine alone (bodyMove off): Shepard's eyes move as far as the headset moved from where it was
         // recentered (ik::TorsoGoal::relative), the old behaviour.
@@ -370,7 +382,12 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
         if (state.anchored != ik::FollowAnchor::None) {
             gLegs.Reset();
         }
+#if defined(MEVR_GAME_LE1)
+        // (Away from the pawn its speed is the script's walk, not the player's: the legs turn with the body.)
+        double const speed = conversation_world::BodyAway().on ? 0.0 : PawnSpeed(pawn);
+#else
         double const speed = PawnSpeed(pawn);
+#endif
         if (!std::isfinite(speed) && !gToldNoSpeed) {
             gToldNoSpeed = true;
             log::Warn("torso: the pawn's velocity (Engine.Actor.Velocity) can't be read: the legs turn with the body while moving too");

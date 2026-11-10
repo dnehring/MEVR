@@ -289,6 +289,9 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
                 shift = length > 1e-12 ? wanted * (max / length) : Vec3{};
                 result.shiftLimited = true;
             }
+            if (goal.bodyRise != 0.0) {
+                shift = shift + up * goal.bodyRise;
+            }
             if (Length(shift) > 1e-9) {
                 for (int i = goal.body; i < count; ++i) {
                     if (IsAncestor(parents, goal.body, i)) {
