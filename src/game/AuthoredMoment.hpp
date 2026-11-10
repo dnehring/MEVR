@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 // LE1 authored moments (research/69 "Authored scenes: a treatment per kind of track"): the level's own script walks Shepard
@@ -14,6 +15,8 @@
 namespace mevr::game::authored_moment {
 
 void Tick();
+// When a move track last moved (or would have moved) the player's pawn, in GetTickCount64 milliseconds; 0 never.
+std::uint64_t LastPlayerTrackMs();
 // `mevr moment`: what is being watched and the last moment's numbers.
 std::string Command(std::string const& rest);
 void LogStats();

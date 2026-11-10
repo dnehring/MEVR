@@ -1800,7 +1800,8 @@ void FirstPersonTick(bool ctrlLive, bool ctrlStable, int gameMode) noexcept
 
     // [MEVR] research/59: a conversation in the world puts the player's eyes in Shepard's head: keep the first-person hides up
     // (the head hidden from his own view, the body drawn) without owning the conversation's camera mode.
-    if (!fpActiveNow && std::strstr(cls, "Conversation") != nullptr && ::MELEVR::MevrBridge::ConversationInWorld()) fpActiveNow = true;
+    // [MEVR] research/69: and a moment in the world (a level-script matinee, whatever its camera mode's class is called).
+    if (!fpActiveNow && ::MELEVR::MevrBridge::ConversationInWorld()) fpActiveNow = true;
 
     // ---- Hides / anti-cull (M2): stateless per-frame apply + clear -------------------------------
     // Grace hold: brief un-classified transition frames (ZoomSnap etc.) keep the hides up so Shepard

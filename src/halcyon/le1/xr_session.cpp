@@ -3506,6 +3506,9 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
     }
     // [MEVR] research/59: a conversation in the world (the view held at Shepard's, first person) is the world as on foot.
     if (d.inConversation && in.gameMode == 5 && MELEVR::MevrBridge::ConversationInWorld()) d.inConversation = false;
+    // [MEVR] research/69 "Authored scenes": a level-script matinee that walks Shepard, held in first person by the mod (the
+    // cinematic game mode, 6), is the world as on foot too.
+    if (d.inCutscene && in.gameMode == 6 && MELEVR::MevrBridge::ConversationInWorld()) d.inCutscene = false;
     const bool cinematicContext = d.inConversation || d.inCutscene;
     bool vrCineOn = (d.inConversation && cfg.cineVrConvo) ||
                     (d.inCutscene && cfg.cineVrCutscene) ||
@@ -3841,6 +3844,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             else if (inCutsceneMode) effectiveGm = 6;
         }
         if (gameMode == 5 && !inConversationMode && MELEVR::MevrBridge::ConversationInWorld()) effectiveGm = 0;   // [MEVR] research/59: as on foot
+        if (gameMode == 6 && !inCutsceneMode && MELEVR::MevrBridge::ConversationInWorld()) effectiveGm = 0;       // [MEVR] research/69: a moment in the world
         MELEVR::RenderHook::PublishGameModeForSfr(effectiveGm, cfg.cineVrConvo, cfg.cineVrCutscene || cineIn.frontEndScreen, liveWorldGui);   // [MEVR]
         MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameCine);   // [MEVR] frame-breakdown probe
     }
@@ -4339,7 +4343,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // boundary never fires there. Arm the cine boundary (backbuffer-batch trigger in d3d_capture) so
     // the pair keeps publishing instead of freezing on the last gameplay image.
     // [MEVR] research/59: a conversation in the world still renders through the conversation camera's post chain: same boundary.
-    const bool mevrConvoWorld = gameMode == 5 && MELEVR::MevrBridge::ConversationInWorld();
+    const bool mevrConvoWorld = (gameMode == 5 || gameMode == 6) && MELEVR::MevrBridge::ConversationInWorld();   // [MEVR] research/69: 6 too
     MELEVR::D3DCapture::SetSfrCineBoundary(sfr2Active && (cinematicContext || mevrConvoWorld));
     // [NOLETTERBOX] while a VR cine is live in Stereo 2, clear LE1's cine-camera 16:9 aspect
     // constraint each frame at Draw entry (render_hook), so the cine renders FULL-FRAME exactly

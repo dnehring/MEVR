@@ -8,6 +8,7 @@
 #include "engine/ConversationHooks.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SettingsFile.hpp"
+#include "game/ConversationWorld.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
@@ -72,12 +73,21 @@ std::atomic<void const*> gPawnForHook{nullptr};  // the player's pawn, set each 
 std::atomic<unsigned> gTrackCalls{0};            // calls for the player's pawn since the hook went in
 std::atomic<void const*> gTrackSeen{nullptr};    // the last track that moved him
 
+std::atomic<std::uint64_t> gTrackMs{0};          // when the last call for him came
+std::atomic<unsigned> gTrackWithheld{0};
+
 bool OnMoveTrack(void const* actor, void const* track, void const*, float) {
     if (actor != nullptr && actor == gPawnForHook.load(std::memory_order_relaxed)) {
         gTrackCalls.fetch_add(1, std::memory_order_relaxed);
         gTrackSeen.store(track, std::memory_order_relaxed);
+        gTrackMs.store(GetTickCount64(), std::memory_order_relaxed);
+        // worldMoments = walk: the player walks it himself (game/ConversationWorld holds the view and moves him).
+        if (conversation_world::MomentWithholds()) {
+            gTrackWithheld.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
     }
-    return false;  // measuring only: the track moves him as authored
+    return false;  // the track moves its actor as authored
 }
 
 // ---- A moment: the stretch in which a track moves the player -------------------------------------------------------------------
@@ -308,10 +318,14 @@ void Tick() {
     }
 }
 
+std::uint64_t LastPlayerTrackMs() {
+    return gTrackMs.load(std::memory_order_relaxed);
+}
+
 std::string Command(std::string const&) {
     return std::format("moment: worldMoments = {} ({}); {} moments, {} teleports of the player, {} black screens, {} cinematic switches seen; "
-                       "the move track's hook has moved Shepard {} times{}{}", gSettings.log ? "log" : "off", gSettings.Active() ? "watching" : "idle",
-        gMoments, gTeleports, gBlackScreens, gToggles, gTrackCalls.load(), gM.on ? "; a moment is running" : "",
+                       "the move track's hook was asked about Shepard {} times ({} withheld){}{}", gSettings.log ? "log" : "off", gSettings.Active() ? "watching" : "idle",
+        gMoments, gTeleports, gBlackScreens, gToggles, gTrackCalls.load(), gTrackWithheld.load(), gM.on ? "; a moment is running" : "",
         gLast.empty() ? std::string() : "\n  the last: " + gLast);
 }
 

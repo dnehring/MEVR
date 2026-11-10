@@ -29,6 +29,9 @@ void Tick(double deltaSeconds, Link const& link);
 bool WantsHooks();
 // A conversation is shown in the world now (arm IK keeps Shepard's arms on the controllers as on foot).
 bool InWorld();
+// A matinee's move of the player's pawn is to be withheld (worldMoments = walk; research/69 "Authored scenes"): asked from
+// inside the engine's physics step through game/AuthoredMoment; reads the mod's state and the game mode only.
+bool MomentWithholds();
 // `mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | walk <x> <y> [seconds] | off]`.
 std::string Command(std::string const& rest);
 std::string StatusJson();
