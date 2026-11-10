@@ -230,6 +230,19 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   a flowed scene and fired again after it (Chorban over the Garrus argument). Still for the fake headset: `worldAutoScreen = log`
   naming the scenes with no place for the player. Then in the headset: a staged conversation
   (the medical bay, Anderson on the Normandy) with nobody shifting at the cuts, and people still turning to face the speaker.
+- [ ] **A conversation that opens without a cut** (built 2026-11-09, research/69 "The opening without a cut"; on the fake
+  headset three Noveria conversations opened with no dip and the view where it was; `[Cinematics] worldOpening = auto` with
+  `conversations = world`): walk up to someone and talk: no dip from black, you stay exactly where you stood, the person turns to
+  you; Shepard's body should be under you, not a step away on his mark. Then one whose mark is across the room: still no dip, you
+  walk over while they talk, the wheel waits. A dip should come only when the scene is somewhere else (after a cutscene,
+  another room). Watch for people popping onto their marks in front of you at the start.
+- [ ] **The walk to the council with Anderson** (built 2026-11-10, research/69 "A moment in the world"; ran on the fake headset
+  with nobody at the stick: the view held, the teleport withheld, the hearing opened as a walk-in 21 m from the podium;
+  `worldMoments = walk`, `worldOpening = auto`, `worldSetPieces = world`): in the Citadel Tower use Anderson at the stairs: he says
+  his line and walks up; you walk with him in first person (no 3D screen, no black); the council is already talking as you climb,
+  and the wheel waits for you at the podium. Stand still instead: after 12 s you are carried to the top of the stairs
+  (`worldMomentPatienceS`). Look for: the black screen flashing, Anderson vanishing and another one standing at the podium,
+  Shepard's legs walking on the spot, and how the hearing reads from the podium (it was made for cameras 38 m away).
 - [ ] **Flowing conversations** (built 2026-11-09; two Noveria chains checked as barks on the fake headset, research/59 "Flowing
   conversations" > "In the game"; `[Cinematics] worldFlow = all` with `conversations = world`): in a career that hasn't seen them,
   the walk-up scenes play as barks while you keep walking (Garrus and the Executor arguing at C-Sec, Chellick's opening lines,
