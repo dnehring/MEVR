@@ -904,3 +904,19 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   the walk during a cinematic mode); the full-length pass on `plan --sample` plus the exceptions; the side worlds (the
   runner now leaves the Mako) and Therum (a save); the headset sample; land on main (all three builds and ctest); return
   the game folder with `tools/game-slot.ps1 return -Quit` and tell the release session.
+- 2026-11-10, 00:00-05:15, **the night in the game** (each part is under "The sweep: progress"): the opening without a cut
+  seen on Noveria and made the default; the walk to the council held in first person through the host's new seams, its
+  teleport withheld, the hearing opened as a walk-in; the sampled pass (120 scenes, no crash, 8 dips in all) and its
+  exceptions fixed and re-run (authored walks left to their tracks, the view no longer moved by Shepard after such an
+  opening, the floor fight); the canary set three times, as expected each time; the moments (two of sixteen reachable
+  from a fresh level); the set pieces in the world (six now play there). At full length (`-Pace full`): the walk of Wrex
+  49 s and the prisoner 52 s with `trackWalks` 1 and nothing undone, the wake-up scene 311 s with 30 placements
+  withheld, Talitha 86 s. All three builds and ctest (24 of 24) pass on the state that lands.
+  **Open, in the order they matter for play:** (1) a save route for the runner: Therum, the side worlds (the Mako exit
+  is built, not run) and fourteen of the sixteen moments need a career's plot; (2) `worldMoments` stays `log` by default:
+  `walk` is seen only on the council sequence, and a moment whose track carries Shepard somewhere the script counts on
+  without a teleport after it would leave him behind; `carry` is built and not run; (3) in a walk-in nobody carries a
+  player who does not walk, and the people of the scene stand on their marks at once instead of walking there; (4)
+  Anderson's swap at the podium, the black screen (taken down by the mod now: not seen since) and the director track's
+  fade; (5) the nine set pieces not yet seen in the world; (6) 29 scenes whose bare start fires nothing want the event
+  route in a pass; (7) the headset: everything in "The headset sample".
