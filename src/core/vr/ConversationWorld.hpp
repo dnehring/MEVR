@@ -196,4 +196,41 @@ struct ClearStep {
 };
 ClearStep KeepClear(Vec3 const& place, Vec3 const& next, std::span<Vec3 const> people, double clearUnits);
 
+// ---- Scene rules: another conversation during a flowed scene (research/69 item 1, 2026-11-09) -----------------------------------
+// The first rules of a scene's description that are data, not code in the game module (the owner: "we likely would codify this
+// as a part of our new scene builder so we can try to avoid these one-off fixes"): the game module gathers the facts, this
+// decides, and a per-scene table can later hand in a scene's own rule in place of the setting's.
+//
+// The game ends an ambient conversation for any conversation that wants to start, and refuses every newcomer while a
+// conversation that is not ambient runs. A flowed scene was such a conversation, so:
+//   Through  the newcomer ends the scene (the game's behaviour for barks; the scene's remaining lines are lost)
+//   Refuse   the newcomer is refused, as the game refuses it during the conversation the scene was authored as (a bystander's
+//            bark: nothing of value is lost)
+//   Hold     refused now, and its start action fired again once the scene and what follows it are over: nothing is lost on
+//            either side (in the game on 2026-11-09 a level banter let through cut the Garrus argument off after 0.5 s)
+enum class NewcomerRule : std::uint8_t { Through, Refuse, Hold };
+NewcomerRule ParseNewcomerRule(std::string_view text, NewcomerRule fallback);
+char const* Name(NewcomerRule rule);
+struct NewcomerFacts {
+    bool sceneOurs = false;       // the current conversation is ambient because of our flags (the line it is on is one we flagged)
+    bool same = false;            // the newcomer is the scene itself
+    bool gameBark = false;        // the newcomer's every start is ambient by the game's own data
+    bool hasStartAction = false;  // a level's start action started it: it can be fired again
+};
+// `scenes`: the rule for a newcomer that is another scene of the level (the setting's, or the scene's own). A bark is refused
+// under Hold and Refuse alike; a newcomer no action started (code started it) can't be fired again, so Hold lets it through.
+NewcomerRule DecideNewcomer(NewcomerFacts const& facts, NewcomerRule scenes);
+
+// The starts held for later (an opaque id each: the start action). HoldStart: false if it was held already (its count grows)
+// or eight are held. ReleaseStart: the oldest one to fire now, when nothing that would refuse it is playing (`free`); those
+// held longer than maxAgeMs are dropped first (into `expired`).
+struct HeldStart {
+    std::uint64_t id = 0;
+    std::uint64_t heldMs = 0;
+    int times = 1;
+};
+bool HoldStart(std::vector<HeldStart>& held, std::uint64_t id, std::uint64_t nowMs);
+std::optional<std::uint64_t> ReleaseStart(std::vector<HeldStart>& held, bool free, std::uint64_t nowMs, std::uint64_t maxAgeMs,
+    std::vector<std::uint64_t>* expired = nullptr);
+
 } // namespace mevr::vr::conversation_world

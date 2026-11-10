@@ -143,6 +143,47 @@ void TestKeepClear() {
     CHECK(c.moved && !c.held && Close(c.place.x, 170.0, 1e-6));
 }
 
+void TestSceneRules() {
+    // A newcomer during a flowed scene (research/69 item 1).
+    using R = cw::NewcomerRule;
+    cw::NewcomerFacts scene;  // another scene of the level, started by an action
+    scene.sceneOurs = true;
+    scene.hasStartAction = true;
+    CHECK(cw::DecideNewcomer(scene, R::Hold) == R::Hold);
+    CHECK(cw::DecideNewcomer(scene, R::Refuse) == R::Refuse);
+    CHECK(cw::DecideNewcomer(scene, R::Through) == R::Through);
+    cw::NewcomerFacts bark = scene;  // a bystander's line: refused as the game would, never held
+    bark.gameBark = true;
+    CHECK(cw::DecideNewcomer(bark, R::Hold) == R::Refuse);
+    CHECK(cw::DecideNewcomer(bark, R::Refuse) == R::Refuse);
+    CHECK(cw::DecideNewcomer(bark, R::Through) == R::Through);
+    cw::NewcomerFacts byCode = scene;  // nothing to fire again: holding would lose it
+    byCode.hasStartAction = false;
+    CHECK(cw::DecideNewcomer(byCode, R::Hold) == R::Through);
+    cw::NewcomerFacts notOurs = scene;  // the game's own ambient conversation: the game's behaviour
+    notOurs.sceneOurs = false;
+    CHECK(cw::DecideNewcomer(notOurs, R::Hold) == R::Through);
+    cw::NewcomerFacts same = scene;
+    same.same = true;
+    CHECK(cw::DecideNewcomer(same, R::Hold) == R::Through);
+    CHECK(cw::ParseNewcomerRule(" Hold ", R::Through) == R::Hold && cw::ParseNewcomerRule("refuse", R::Hold) == R::Refuse);
+    CHECK(cw::ParseNewcomerRule("through", R::Hold) == R::Through && cw::ParseNewcomerRule("?", R::Hold) == R::Hold);
+    CHECK(std::string(cw::Name(R::Hold)) == "hold");
+    // The held starts: first come, first fired, once free; a start held twice counts; old ones are dropped.
+    std::vector<cw::HeldStart> held;
+    CHECK(cw::HoldStart(held, 11, 1000) && cw::HoldStart(held, 22, 1500));
+    CHECK(!cw::HoldStart(held, 11, 1600) && held.size() == 2 && held[0].times == 2);
+    CHECK(!cw::HoldStart(held, 0, 1600));
+    CHECK(!cw::ReleaseStart(held, false, 2000, 60000));          // the scene still plays
+    auto first = cw::ReleaseStart(held, true, 2000, 60000);
+    CHECK(first && *first == 11 && held.size() == 1);
+    std::vector<std::uint64_t> expired;
+    CHECK(!cw::ReleaseStart(held, true, 90000, 60000, &expired));  // 22 waited too long: dropped, not fired
+    CHECK(expired.size() == 1 && expired[0] == 22 && held.empty());
+    for (std::uint64_t id = 1; id <= 8; ++id) CHECK(cw::HoldStart(held, id, 0));
+    CHECK(!cw::HoldStart(held, 9, 0));  // eight at most
+}
+
 void TestFlowEntries() {
     // The scan's chain starts (research/59 "Flowing conversations"): Garrus arguing with the Executor is the conversation's
     // first two entries; Udina's arrival lines; the key in any of the name's forms.
@@ -363,6 +404,7 @@ int RunConversationWorldTests() {
     TestFlowEntries();
     TestStepPlayer();
     TestKeepClear();
+    TestSceneRules();
     TestArrangement();
     TestCrops();
     TestSubtitlePoint();

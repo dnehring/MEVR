@@ -813,6 +813,7 @@ void CheckFields() {
     CheckField("SFXGame.BioWorldInfo", "m_fConversationInterruptDistance", SDK_FIELD(ABioWorldInfo, m_fConversationInterruptDistance));
     // research/69: a flowed chain protected from barks (the newcomer's starts), the walk's triggers.
     CheckField("SFXGame.BioConversation", "m_StartingList", SDK_FIELD(UBioConversation, m_StartingList));
+    CheckField("SFXGame.BioConversation", "m_pKismetStart", SDK_FIELD(UBioConversation, m_pKismetStart));
     CheckClass<ATrigger>("Engine.Trigger");
     CheckClass<ATriggerVolume>("Engine.TriggerVolume");
     CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayingWheel));
@@ -1354,6 +1355,7 @@ void CheckFunctions() {
         "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
         "Engine.Actor.SetLocation",
         "Engine.Actor.PointCheckComponent",  // game/ConversationWorld: the walk's triggers (research/69 item 5)
+        "Engine.SequenceOp.ForceActivateInput",  // game/ConversationFlow: a held start fired again (research/69 item 1)
         "Engine.Actor.Destroy",
         // Vent (research/45)
         "SFXGame.BioWeaponRanged.DoCoolDownEffect",
@@ -1559,6 +1561,7 @@ void CheckParams() {
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceStart);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", bTraceActors);
     PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", ReturnValue);
+    PARAM(USequenceOp_execForceActivateInput_Parms, "Engine.SequenceOp.ForceActivateInput", InputIdx);
     PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", InComponent);
     PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", PointLocation);
     PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", PointExtent);

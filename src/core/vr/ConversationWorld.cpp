@@ -365,6 +365,70 @@ PlayerStep StepPlayer(Vec3 const& place, Vec3 const& anchor, double leashUnits, 
     return out;
 }
 
+NewcomerRule ParseNewcomerRule(std::string_view text, NewcomerRule fallback) {
+    std::string lower;
+    for (char const c : text) {
+        if (!std::isspace(static_cast<unsigned char>(c))) {
+            lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
+    }
+    if (lower == "hold" || lower == "2") return NewcomerRule::Hold;
+    if (lower == "refuse" || lower == "1") return NewcomerRule::Refuse;
+    if (lower == "through" || lower == "off" || lower == "0") return NewcomerRule::Through;
+    return fallback;
+}
+
+char const* Name(NewcomerRule rule) {
+    return rule == NewcomerRule::Hold ? "hold" : rule == NewcomerRule::Refuse ? "refuse" : "through";
+}
+
+NewcomerRule DecideNewcomer(NewcomerFacts const& facts, NewcomerRule scenes) {
+    if (!facts.sceneOurs || facts.same || scenes == NewcomerRule::Through) {
+        return NewcomerRule::Through;
+    }
+    if (facts.gameBark) {
+        return NewcomerRule::Refuse;  // as the game refuses it during the conversation the scene was authored as
+    }
+    if (scenes == NewcomerRule::Hold) {
+        return facts.hasStartAction ? NewcomerRule::Hold : NewcomerRule::Through;  // nothing to fire again: not lost by us
+    }
+    return NewcomerRule::Refuse;
+}
+
+bool HoldStart(std::vector<HeldStart>& held, std::uint64_t id, std::uint64_t nowMs) {
+    for (HeldStart& h : held) {
+        if (h.id == id) {
+            ++h.times;
+            return false;
+        }
+    }
+    if (id == 0 || held.size() >= 8) {
+        return false;
+    }
+    held.push_back({id, nowMs, 1});
+    return true;
+}
+
+std::optional<std::uint64_t> ReleaseStart(std::vector<HeldStart>& held, bool free, std::uint64_t nowMs, std::uint64_t maxAgeMs,
+    std::vector<std::uint64_t>* expired) {
+    for (auto it = held.begin(); it != held.end();) {
+        if (maxAgeMs != 0 && nowMs - it->heldMs > maxAgeMs) {
+            if (expired != nullptr) {
+                expired->push_back(it->id);
+            }
+            it = held.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (!free || held.empty()) {
+        return std::nullopt;
+    }
+    std::uint64_t const id = held.front().id;
+    held.erase(held.begin());
+    return id;
+}
+
 ClearStep KeepClear(Vec3 const& place, Vec3 const& next, std::span<Vec3 const> people, double clearUnits) {
     ClearStep out;
     out.place = next;

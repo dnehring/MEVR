@@ -37,7 +37,7 @@ folder, which the release session holds.
 
 | # | Item | State | Result |
 |---|---|---|---|
-| 1 | Story safety of flowed (ambient) scenes | read; built; **the protection failed its game check: a decision is open** (log, 18:39) | A line's plot effects are on the path both kinds of conversation share. An ambient one can be cut short, and then loses the effects of the lines it never reached. 6 conversations had a chain our flags newly exposed to that: they stay conversations (64 flow, was 68). The game's barks can no longer start over a flowed scene. |
+| 1 | Story safety of flowed (ambient) scenes | read; built; the first protection failed its game check (log, 18:39); **rebuilt as "hold" (the owner's decision), game check pending** | A line's plot effects are on the path both kinds of conversation share. An ambient one can be cut short, and then loses the effects of the lines it never reached. 6 conversations had a chain our flags newly exposed to that: they stay conversations (64 flow, was 68). The game's barks can no longer start over a flowed scene. |
 | 3 | Cutscene or world, decided at run time | data read; built log-only; game check pending | The packages can't say "Shepard isn't in this scene". Three run-time rules (pawn hidden; far from the owner and out of its sight; most shots framed from far away) name such scenes in the log and the survey's summary; they move a scene to the screen only with `worldAutoScreen = on`. |
 | 4 | Keeping people in place at the source | read; built; **checked in the game** | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. In the medical bay's wake-up scene: 28 placements withheld, 0 left for the undo after the fact (research/59 had 25 undone there). |
 | 5 | Walking and the level's triggers | read; built; **checked in the game** (9 triggers found by the medical bay, the walk stopped at the first one's edge) | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
@@ -179,6 +179,45 @@ N s the walk stops at X: the step would enter it`; the summary's `triggerHits`.
 **Limit.** A touch event on an actor that is neither class (a mesh with a Kismet touch event) isn't covered; the sweep can
 count how often a walk's touch set changes anyway.
 
+## Scene rules: toward a scene's description as data
+
+The owner, deciding the newcomer question (2026-11-09): hold it until the scene ends, and "we likely would codify this as a
+part of our new scene builder so we can try to avoid these one-off fixes. Is that possible?" Yes, and the hold is built that
+way. No scene builder exists in the repository yet (nor in the other worktrees or the shared notes), so this section is what
+it would take over.
+
+**What "codified" means here.** A fix is a one-off when the game module decides something about one situation in engine
+code. It is a rule when (1) the decision is a named function in `core/vr/ConversationWorld` over plain facts, unit-tested
+without the game, (2) the game module only gathers the facts and carries the decision out, and (3) the rule's choice per
+scene can come from data. The first such rule is the newcomer's:
+
+- `cw::NewcomerRule { Through, Refuse, Hold }`, `cw::DecideNewcomer(facts, scenes)` over `cw::NewcomerFacts` (is the current
+  conversation a flowed scene of ours; is the newcomer the scene itself, a bark by the game's own data, started by a level's
+  action), and the held starts' queue (`cw::HoldStart`, `cw::ReleaseStart`: first come first fired, a start held twice counted
+  once, eight at most, dropped after three minutes). Tests: `TestSceneRules`.
+- `game/ConversationFlow` reads the facts inside the interruption hook and acts: Through lets the game end the scene; Refuse
+  and Hold keep it; a held start (the newcomer's `BioConversation.m_pKismetStart`) is fired again with
+  `SequenceOp.ForceActivateInput(0)` once no conversation, or only a bark of the game's own, has been playing for a second
+  (so the level's own follow-up to the scene, like Garrus's wheel conversation, plays first).
+- Today the choice for "another scene of the level" is one setting for every scene: `[Cinematics] worldFlowNewcomers = hold |
+  refuse | through` (hold by default; `worldFlowProtect = 0` turns the protection off). A scene builder's table would give
+  `DecideNewcomer` a scene's own value instead.
+
+**What a flowed scene is, corrected.** The first protection asked whether every start of the conversation was an ordinary line
+before our flags. `sta70_garrus` has three starts: two we flag and one the game itself marks ambient (a later one-liner), so
+the test said no and the argument was unprotected: that is why the banter cut it. Now a scene is ours when the conversation
+is ambient and **the line it is on is one we flagged** (`OurScene`).
+
+**The other candidates for the same treatment**, all decided in the game module today and all per scene in nature: where a
+scene is shown (world, screen, flow: today the generated `cw::IsSetPiece` and `cw::FlowEntries`, plus the run-time presence
+rules), whether its people are kept or placed (`worldStaySource`), the walk's leash, clearance and trigger rule, the interrupt
+range, and the opening (`accept` or `keep`). One generated table per conversation, with the scan's verdict as its default and
+hand overrides beside it, is the scene builder's natural core; the mod would read every per-scene choice from it.
+
+**Not known yet.** What a refused newcomer's action does in between: the game marks its conversation failed and fires the
+action's second output, as it would have during the original conversation; then our re-fire starts it over. Whether any level
+wires that output to something that should not happen twice is for the sweep.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -190,8 +229,10 @@ In this order, on the fake headset, when the game folder is free (saves backed u
    same scene to compare.
 3. Item 5: `mevr convo walk` toward a streaming volume's edge inside a leash (the C-Sec hall has several): the walk stops
    with the log line, `mevr stream chunks` unchanged; `worldMoveTriggers = 0` to see the touch it prevents.
-4. Item 1: a flowed scene with bystanders' barks in range (the Citadel's wards): a refusal logged, the scene's lines all
-   spoken; the six chains left out play as conversations again.
+4. Item 1: `bark-refuse2` again (the Garrus argument, then `TowerSpecificBanters` and `AmbientDiplomats` fired half a second
+   later): the banter `held`, the diplomats `refused` (a bark), the argument's 13 s all spoken, the wheel conversation after
+   it, and the banter's start `fired again` a second after the wheel conversation ends. Then the six chains left out play as
+   conversations again.
 5. Item 3: the survey with `worldAutoScreen = log`; read which scenes each rule names.
 
 ## Log
@@ -270,3 +311,7 @@ In this order, on the fake headset, when the game folder is free (saves backed u
     name, so the rules themselves are still unseen.
   - The game folder is back to the 0.2.0 candidate (102 files in the ASI folder, the Win64 folder, BIOEngine.ini and the 14
     saves all match their pre-run hashes; the candidate's SHA-256 as the release session gave it).
+- 2026-11-09, evening: the owner chose **hold**, to be codified for a scene builder. Built as the first scene rule ("Scene
+  rules", above): the decision and the queue in the core with unit tests, the facts and the re-fire in `game/ConversationFlow`.
+  The cause of the 18:39 failure found on the way: the scene test was "every start ordinary", and `sta70_garrus` has an
+  ambient start of the game's own; the test is now the line the scene is on. Builds and tests pass; not run in the game.

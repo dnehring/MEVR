@@ -48,6 +48,10 @@ ue3::FieldRef gActorWorldInfo{"Engine.Actor", "WorldInfo"};
 ue3::FieldRef gCurrentConversation{"SFXGame.BioWorldInfo", "m_oCurrentConversation"};
 ue3::FieldRef gConvAmbient{"SFXGame.BioConversation", "m_bAmbient"};
 ue3::FieldRef gConvRange{"SFXGame.BioConversation", "m_fInterruptRange"};
+// A newcomer during a flowed scene (research/69 item 1): the line the scene is on, the newcomer's start action, and firing it again.
+ue3::FieldRef gConvCurrentEntry{"SFXGame.BioConversation", "m_nCurrentEntry"};
+ue3::FieldRef gKismetStart{"SFXGame.BioConversation", "m_pKismetStart"};
+ue3::FunctionRef gForceActivate{"Engine.SequenceOp.ForceActivateInput"};
 ue3::FieldRef gWorldRange{"SFXGame.BioWorldInfo", "m_fConversationInterruptDistance"};  // the world's default (BIOGame.ini), used when the start's is 0
 // The streaming levels (as `mevr stream chunks` reads them): a chunk loaded or shown is when new start actions appear.
 ue3::FieldRef gStreamingLevels{"Engine.WorldInfo", "StreamingLevels"};
@@ -61,7 +65,8 @@ struct Settings {
     bool world = false;   // conversations = world (the flow belongs to the first-person mode)
     bool flow = true;     // worldFlow = all | off
     float leashM = 0.0f;  // worldFlowLeashM: 0 the game's interrupt range, -1 never interrupted, else metres from the speaker
-    bool protect = true;  // worldFlowProtect: the game's barks can't start over a flowed scene (research/69 item 1)
+    bool protect = true;  // worldFlowProtect: a flowed scene is protected from other conversations at all (research/69 item 1)
+    cw::NewcomerRule newcomers = cw::NewcomerRule::Hold;  // worldFlowNewcomers = hold | refuse | through: another level scene during one
     bool Active() const { return world && flow; }
 };
 Settings gSettings;
@@ -89,10 +94,13 @@ void RefreshSettings() {
     if (auto const v = ini::GetNumber(loaded.file, "Cinematics", "worldFlowProtect")) {
         s.protect = *v != 0.0;
     }
-    std::string const text = std::format("worldFlow = {} ({}), worldFlowLeashM = {}, barks over a flowed scene {}", s.flow ? "all" : "off",
-        s.world ? "conversations = world: active" : "not the world mode: inactive",
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldFlowNewcomers")) {
+        s.newcomers = cw::ParseNewcomerRule(*text, s.newcomers);
+    }
+    std::string const text = std::format("worldFlow = {} ({}), worldFlowLeashM = {}, during a flowed scene barks are {} and other scenes {}",
+        s.flow ? "all" : "off", s.world ? "conversations = world: active" : "not the world mode: inactive",
         s.leashM < 0.0f ? std::string("never interrupted") : s.leashM == 0.0f ? std::string("the game's") : std::format("{:.1f} m", s.leashM),
-        s.protect ? "refused" : "let through");
+        s.protect ? "refused" : "let through", s.protect ? cw::Name(s.newcomers) : "through");
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("convo flow: [Cinematics] {}", text);
@@ -105,9 +113,6 @@ struct Flipped {
     ue3::Object* conversation = nullptr;
     std::string key;
     std::vector<int> entries;  // the entries we flagged (to put back)
-    // Every start of the conversation was an ordinary (not ambient) line before our flags: the game would have played it as
-    // a conversation whatever start it took, and a conversation refuses every newcomer (research/69 item 1).
-    bool wasConversation = false;
 };
 std::vector<Flipped> gFlipped;
 std::uint64_t gLevelsAtScan = 0;  // the streaming levels' signature at the last scan
@@ -117,10 +122,14 @@ int gScans = 0;
 std::map<std::string, int> gRefused;  // conversation key -> entries refused (the live data differs from the scan)
 ue3::Object* gLive = nullptr;         // the live conversation last seen
 std::uint32_t gPlayed = 0;            // chain plays seen as ambient
-std::uint32_t gBarksRefused = 0;      // barks that wanted to start over a flowed chain and were refused (worldFlowProtect)
-std::string gBarkRefused;             // the last one, for the log (written in the hook, logged in Tick)
-std::string gBarkOver;
-std::uint32_t gBarksLogged = 0;
+std::uint32_t gBarksRefused = 0;      // barks that wanted to start over a flowed scene and were refused (worldFlowProtect)
+std::uint32_t gScenesHeld = 0;        // other scenes' starts held until the flowed scene was over (worldFlowNewcomers = hold)
+std::uint32_t gScenesRefused = 0;     // ... or refused (= refuse)
+std::uint32_t gHeldFired = 0;         // held starts fired again
+std::vector<cw::HeldStart> gHeld;     // the start actions held (id: the action's address)
+std::map<std::uint64_t, std::string> gHeldNames;
+std::vector<std::string> gPendingLog; // what the hook decided, logged by Tick (the hook runs inside the game's code)
+std::uint64_t gFreeSinceMs = 0;       // since when nothing that would refuse a held start has been playing
 
 Flipped* Find(ue3::Object* conv) {
     for (Flipped& f : gFlipped) {
@@ -220,24 +229,6 @@ void Flip(ue3::Object* conv, ue3::Object* action) {
     if (record == nullptr) {
         gFlipped.push_back({conv, key, {}});
         record = &gFlipped.back();
-        // Before our flags: was every start an ordinary line? (`done` holds what this pass flagged; anything else ambient
-        // now was the game's own.)
-        bool ordinary = true;
-        int startCount = 0;
-        if (auto const startList = gStartingList.ElementsOf(conv, 512)) {
-            for (std::int32_t i = 0; i < startList->count; ++i) {
-                auto const* const index = static_cast<std::int32_t const*>(startList->At(i));
-                void* const entry = index != nullptr ? entries->At(*index) : nullptr;
-                if (entry == nullptr) {
-                    continue;
-                }
-                ++startCount;
-                if (gEntryAmbient.ReadBool(entry).value_or(false) && std::find(done.begin(), done.end(), *index) == done.end()) {
-                    ordinary = false;
-                }
-            }
-        }
-        record->wasConversation = ordinary && startCount > 0;
     }
     record->entries.insert(record->entries.end(), done.begin(), done.end());
     std::sort(record->entries.begin(), record->entries.end());
@@ -337,24 +328,108 @@ bool IsGameBark(ue3::Object* conv) {
 // refused, as the game refuses them during the conversation this chain was authored as. Another scene of the level (one of
 // ours, or a conversation) is let through: refusing it could lose a scene's start, and with it its plot effects. The distance
 // and owner tests (no newcomer) are the game's. Called on the game thread inside the game's code: reads only.
+// True if `conv` plays as barks because of our flags: it is ambient and the line it is on is one we flagged. (Whether every
+// start of the conversation was ordinary is the wrong question: sta70_garrus has an ambient start of the game's own beside the
+// two we flag, and on 2026-11-09 that left its argument unprotected.)
+Flipped const* OurScene(ue3::Object* conv) {
+    Flipped const* const ours = conv != nullptr ? Find(conv) : nullptr;
+    if (ours == nullptr || !gConvAmbient.ReadBool(conv).value_or(false)) {
+        return nullptr;
+    }
+    auto const entry = gConvCurrentEntry.Read<std::int32_t>(conv);
+    return entry && std::find(ours->entries.begin(), ours->entries.end(), *entry) != ours->entries.end() ? ours : nullptr;
+}
+
 bool RefuseInterrupt(void const* worldInfo, void const* newcomer) {
     if (newcomer == nullptr || !gSettings.protect || !gSettings.Active()) {
         return false;
     }
     ue3::Object* const world = const_cast<ue3::Object*>(static_cast<ue3::Object const*>(worldInfo));
     ue3::Object* const current = gCurrentConversation.Read<ue3::Object*>(world).value_or(nullptr);
-    Flipped const* const ours = current != nullptr ? Find(current) : nullptr;
-    if (ours == nullptr || !ours->wasConversation || current == newcomer || !gConvAmbient.ReadBool(current).value_or(false)) {
+    Flipped const* const ours = OurScene(current);
+    if (ours == nullptr) {
         return false;
     }
     ue3::Object* const comer = const_cast<ue3::Object*>(static_cast<ue3::Object const*>(newcomer));
-    if (!IsGameBark(comer)) {
+    ue3::Object* const action = gKismetStart.Read<ue3::Object*>(comer).value_or(nullptr);
+    cw::NewcomerFacts facts;
+    facts.sceneOurs = true;
+    facts.same = current == comer;
+    facts.gameBark = IsGameBark(comer);
+    facts.hasStartAction = action != nullptr;
+    cw::NewcomerRule const rule = cw::DecideNewcomer(facts, gSettings.newcomers);
+    if (rule == cw::NewcomerRule::Through) {
+        if (!facts.same) {
+            gPendingLog.push_back(std::format("{} starts over the flowed scene {} and ends it: let through ({})",
+                cw::ConversationKey(ue3::runtime::FullName(comer)), ours->key,
+                gSettings.newcomers == cw::NewcomerRule::Through ? "worldFlowNewcomers = through" : "no start action to fire again later"));
+        }
         return false;
     }
-    ++gBarksRefused;
-    gBarkRefused = cw::ConversationKey(ue3::runtime::FullName(comer));
-    gBarkOver = ours->key;
+    std::string const name = cw::ConversationKey(ue3::runtime::FullName(comer));
+    if (rule == cw::NewcomerRule::Hold) {
+        auto const id = reinterpret_cast<std::uint64_t>(action);
+        if (cw::HoldStart(gHeld, id, GetTickCount64())) {
+            ++gScenesHeld;
+            gHeldNames[id] = std::format("{} ({})", name, ue3::runtime::FullName(action));
+            gPendingLog.push_back(std::format("{} wanted to start over the flowed scene {}: held, its start fires again when the scene and "
+                                              "what follows it are over", name, ours->key));
+        }
+        return true;
+    }
+    if (facts.gameBark) {
+        ++gBarksRefused;
+        gPendingLog.push_back(std::format("the bark {} wanted to start over the flowed scene {}: refused, as the game refuses every "
+                                          "conversation during the conversation that scene was authored as", name, ours->key));
+    } else {
+        ++gScenesRefused;
+        gPendingLog.push_back(std::format("{} wanted to start over the flowed scene {}: refused (worldFlowNewcomers = refuse)", name, ours->key));
+    }
     return true;
+}
+
+// Fires the oldest held start again once nothing that would refuse it has been playing for a second: no conversation, or only
+// an ambient one that is no scene of ours (the level's follow-up to a scene, the Garrus wheel conversation, starts in the
+// tick the scene ends and is waited out too). Held past three minutes, a start is dropped.
+void ReleaseHeld() {
+    if (gHeld.empty()) {
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const world = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    if (world == nullptr) {
+        return;
+    }
+    ue3::Object* const current = gCurrentConversation.Read<ue3::Object*>(world).value_or(nullptr);
+    bool const clear = current == nullptr || (gConvAmbient.ReadBool(current).value_or(false) && OurScene(current) == nullptr);
+    std::uint64_t const now = GetTickCount64();
+    if (!clear) {
+        gFreeSinceMs = 0;
+    } else if (gFreeSinceMs == 0) {
+        gFreeSinceMs = now;
+    }
+    std::vector<std::uint64_t> expired;
+    auto const id = cw::ReleaseStart(gHeld, clear && now - gFreeSinceMs >= 1000, now, 180000, &expired);
+    for (std::uint64_t const e : expired) {
+        log::Warn("convo flow: the held start of {} waited three minutes for the scene to end: dropped", gHeldNames[e]);
+        gHeldNames.erase(e);
+    }
+    if (!id) {
+        return;
+    }
+    std::string const name = gHeldNames[*id];
+    gHeldNames.erase(*id);
+    gFreeSinceMs = 0;  // the next held start waits for this one in turn
+    auto* const action = reinterpret_cast<ue3::Object*>(*id);
+    if (!ue3::runtime::IsAlive(action) || gForceActivate.Get() == nullptr) {
+        log::Info("convo flow: the held start of {} is gone with its level: not fired", name);
+        return;
+    }
+    ue3::Params p(ue3::runtime::Get(), gForceActivate.Get());
+    bool const called = p.Valid() && p.Set("InputIdx", static_cast<std::int32_t>(0)) && ue3::runtime::Call(action, gForceActivate.Get(), p);
+    ++gHeldFired;
+    log::Info("convo flow: the flowed scene is over: the held start of {} fired again (ForceActivateInput(0) called {}); {} still held", name,
+        called, gHeld.size());
 }
 
 // The live conversation: a chain of ours playing as barks (logged once), its interrupt range set as asked.
@@ -408,10 +483,12 @@ void Tick() {
         return;
     }
     engine::conversation_hooks::SetInterruptProvider(gSettings.Active() && gSettings.protect ? &RefuseInterrupt : nullptr);
-    if (gBarksLogged != gBarksRefused) {
-        log::Info("convo flow: the bark {} wanted to start over the flowed scene {}: refused, as the game refuses every conversation "
-                  "during the conversation that scene was authored as ({} so far)", gBarkRefused, gBarkOver, gBarksRefused);
-        gBarksLogged = gBarksRefused;
+    if (!gPendingLog.empty()) {
+        std::vector<std::string> lines;
+        lines.swap(gPendingLog);
+        for (std::string const& line : lines) {
+            log::Info("convo flow: {}", line);
+        }
     }
     if (!gSettings.Active()) {
         Restore("the setting is off");
@@ -430,6 +507,7 @@ void Tick() {
         Rescan(gScans == 0 ? "first" : changed ? "the streaming levels changed" : "periodic");
     }
     WatchLive();
+    ReleaseHeld();
 }
 
 std::string Command(std::string const& rest) {
@@ -463,13 +541,20 @@ std::string StatusJson() {
 
 void LogStats() {
     if (gSettings.Active() || !gFlipped.empty()) {
-        log::Info("convo flow: {} scans, {} conversations carry our flags, {} chain plays seen as barks, {} barks refused over them", gScans,
-            gFlipped.size(), gPlayed, gBarksRefused);
+        log::Info("convo flow: {} scans, {} conversations carry our flags, {} chain plays seen as barks; over them {} barks refused, {} scenes "
+                  "held ({} fired again, {} waiting), {} refused", gScans, gFlipped.size(), gPlayed, gBarksRefused, gScenesHeld, gHeldFired,
+            gHeld.size(), gScenesRefused);
     }
 }
 
 void Shutdown() {
     engine::conversation_hooks::SetInterruptProvider(nullptr);
+    if (!gHeld.empty()) {
+        log::Warn("convo flow: {} held starts dropped (the mod unloads)", gHeld.size());
+    }
+    gHeld.clear();
+    gHeldNames.clear();
+    gPendingLog.clear();
     Restore("the mod unloads");
 }
 

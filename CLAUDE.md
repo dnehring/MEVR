@@ -476,14 +476,20 @@ switching frameworks.
   is [research/69](research/69-conversations-everywhere.md)** (2026-11-09; a status table and a log; read it before touching this
   feature): a line's plot effects (its state transition, its Kismet node event) are on the path ambient and full conversations
   share, but an ambient one can be cut short (distance, any other conversation starting) and loses what it didn't reach, so
-  chains with effects after their first line stay conversations and the game's barks are refused over a flowed scene
-  (`worldFlowProtect`); every stage placement goes through `UBioConversation::SetPositionRotator` (0xC862D0: PlaceActors at the
+  chains with effects after their first line stay conversations, and during a flowed scene (ambient, on a line we flagged) the
+  game's barks are refused and another level scene's start is **held and fired again when the scene and its follow-up are over**
+  (`worldFlowNewcomers = hold | refuse | through`, `worldFlowProtect`; the first of the "scene rules": the decision
+  `cw::DecideNewcomer` and the queue in the unit-tested core, facts and `SequenceOp.ForceActivateInput` in `game/ConversationFlow`;
+  research/69 "Scene rules" is what a scene builder would take over; a let-through banter cut the Garrus argument to 0.5 s in the game); every stage placement goes through `UBioConversation::SetPositionRotator` (0xC862D0: PlaceActors at the
   start, each line's SetFacing track), pre-hooked to withhold the place and keep the facing (`engine/ConversationHooks`,
   `worldStaySource`; with `ABioWorldInfo::InterruptConversation` 0xB60460, both installed when the world mode is asked for);
   `Actor.SetLocation` is `UWorld::FarMoveActor` and fires touches, so a walk step that would change which `Trigger` /
   `TriggerVolume` Shepard overlaps is refused (`worldMoveTriggers`, `Actor.PointCheckComponent`); scenes with no place for the
   player (pawn hidden, far from the owner and out of sight, most shots from over 8 m) are named in the log and the summary
-  (`worldAutoScreen = log | on | off`). All built and unit-tested, none of it run in the game yet. Logs `convo: ... the player walks`, `the player walked
+  (`worldAutoScreen = log | on | off`). **In the game (fake headset, 2026-11-09):** the hooks install; the medical bay's wake-up
+  scene, which `open BIOA_STA00` alone starts (its level is the docked Normandy's, under the Citadel's map), ran with 28 placements
+  withheld and 0 undone; the walk found 9 triggers there and stopped at the first one's edge. The hold and the presence rules
+  are not run in the game yet. Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
