@@ -41,7 +41,7 @@ folder, which the release session holds.
 | 3 | Cutscene or world, decided at run time | data read; built log-only; game check pending | The packages can't say "Shepard isn't in this scene". Three run-time rules (pawn hidden; far from the owner and out of its sight; most shots framed from far away) name such scenes in the log and the survey's summary; they move a scene to the screen only with `worldAutoScreen = on`. |
 | 4 | Keeping people in place at the source | read; built; **checked in the game** | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. In the medical bay's wake-up scene: 28 placements withheld, 0 left for the undo after the fact (research/59 had 25 undone there). |
 | 5 | Walking and the level's triggers | read; built; **checked in the game** (9 triggers found by the medical bay, the walk stopped at the first one's edge) | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
-| 2 | The sweep: every conversation in its plot state | not started | 28 of 491 played (research/59) |
+| 2 | The sweep: every conversation in its plot state | **planned** ("The sweep: plan") | 28 of 491 played by the survey (research/59), 5 more by hand on 2026-11-09 |
 
 ## Findings
 
@@ -217,6 +217,90 @@ hand overrides beside it, is the scene builder's natural core; the mod would rea
 **Not known yet.** What a refused newcomer's action does in between: the game marks its conversation failed and fires the
 action's second output, as it would have during the original conversation; then our re-fire starts it over. Whether any level
 wires that output to something that should not happen twice is for the sweep.
+
+## The sweep: plan
+
+The owner (2026-11-09): "How can we scale up evaluating the scenes?", then "make a plan for how you would do this fan out and
+validation". Today a scene costs two to four minutes of one person's attention and the game folder is borrowed by hand. The
+plan turns that into a batch that runs unattended, judges itself, and hands people only the exceptions.
+
+### What fans out, and what cannot
+
+- **Scenes fan out inside one game.** 491 conversations; 182 are barks that never enter the conversation mode (sampled, not
+  swept); 309 remain: 262 judged fit for the world, 26 marked "check", 21 for the screen. 64 conversations have a flowed chain.
+- **The game does not fan out.** One machine, one GPU, one Steam instance, one SteamVR null driver, and the folder is shared
+  with the release candidate and the owner's QA. So there is exactly one **runner**, and it runs when the owner isn't playing.
+- **Everything without the game fans out freely:** building the tools (several sessions at once, each on its own files),
+  the predictions from the game's data, and above all **triage**: reading the exceptions of a finished pass is read-only work
+  over logs, summaries and snapshots, which parallel agents can split by area or by kind of failure.
+
+### The layers of validation
+
+| Layer | What it answers | Covers | Needs the game | Cost |
+|---|---|---|---|---|
+| 0. Predictions from data | which scenes carry which risk (plot effects after the first line, triggers within the leash of the marks, cameras far from Shepard's mark, no mark for someone, authored walks) | all 491 | no | minutes |
+| 1. Smoke | does the scene start, run to its end, and end inside every limit | all 309, and a sample of barks | yes | under a minute each once batched by area |
+| 2. Branches | the lines the smoke run's path did not reach, where the data says they differ in kind (a facing track, a camera, a walk, a plot effect) | scenes with such lines | yes | one more run per uncovered kind |
+| 3. Rules | each scene rule on a scene that exercises it (placements withheld, the trigger guard, a newcomer held, a presence rule naming a scene) | a fixed list, grown with every rule | yes | ten minutes: the canary set |
+| 4. Headset | does it feel right | about ten scenes, one per kind, picked from the pass | the owner | one sitting |
+
+**Limits a run is judged by** (from the mod's `convo: summary` line; a scene outside any of them is an exception):
+
+- it started, and ended by itself (no time-out, no crash, no hang, the mod's log still advancing);
+- `kept` 0 and `drawn` 0 (nothing was undone after the fact, nothing jumped in a drawn frame);
+- the lines played match the path the driver took through the scan's graph, and every wheel it opened was answered;
+- `eyeToViewM` under 0.8, or the scene is marked "after a cutscene" by the data;
+- `noPlace` empty unless the verdict is screen; for a screen scene, that it went to the screen;
+- for a flowed chain: every line of the chain spoken, and the follow-up began after it (**needs a summary line the flow
+  module does not write yet**: a chain plays in game mode 0, where today only "plays as barks" is logged);
+- then, from the second pass on: no difference from the baseline that the change under test doesn't explain.
+
+**Validating the validator.** The canary set runs before every pass and must come out as known: the wake-up scene (28
+withheld, 0 undone), the walk stopping at `BioTriggerVolume_1`, Chorban held over the Garrus argument, two barks refused, one
+set piece on the screen. And one run with a rule switched off on purpose (`worldStaySource = 0`: the wake-up scene must then
+fail on `kept`), so a judge that passes everything is caught.
+
+### Phases
+
+1. **Tools, no game (parallel; about a day).**
+   - `tools/game-slot.ps1 take | return`: what was done by hand four times on 2026-11-09 as one command (refuse if the game
+     runs; back up the ASI folder, the Win64 folder, the engine ini and the saves with hashes; deploy; fake headset; and back,
+     verifying every hash and the candidate's SHA-256; a lock file other sessions can see).
+   - The catalogue's map for each start taken from the persistent levels whose streaming lists name its package (the wake-up
+     scene's was wrong: its level is the docked Normandy's, under `BIOA_STA00`).
+   - The judge: `tools/conversation-sweep.py judge <results>` (the limits above, a baseline, a report with the exceptions
+     grouped by kind) and the layer-0 predictions as one more table of the scan.
+   - The flow module's end-of-chain summary line.
+2. **The reach matrix (one evening with the game).** For each of the game's dozen areas: does `open` reach gameplay; if not, does a
+   save written for that level from John00 (end of the game, six maps kept) or John02 (after the Citadel's arrival); which
+   streaming volumes or states show each chunk. Research/59 found Feros, Virmire and Therum unreachable by `open`. The
+   result is a table, and the list of scenes no route reaches yet, which is the honest size of the gap.
+3. **The area runner (two to three days, most of it without the game).** `tools/conversation-survey.ps1` grown into a
+   resumable batch: per level, load once; per chunk, stream; per conversation, put its plot back (the rewind from the
+   conversation's own transitions), stand Shepard, fire, drive with replies chosen for coverage rather than at random, one
+   snapshot at a fixed moment, the summary appended to `results.jsonl` under `%LOCALAPPDATA%\MEVR\sweep\<date>`. A watchdog
+   restarts the game after a hang or a crash and resumes at the next scene, marking the one that died. Nothing of it goes
+   into the repository but the tools and the counts.
+4. **The first full pass (one night), then triage fanned out.** Estimate: 309 scenes at about 45 s, a dozen level loads, a few
+   restarts: five to six hours. The judge's report groups the exceptions; parallel agents each take a group with its logs
+   and snapshots and return one of three answers per scene: a rule or table entry that fixes it, a tool fault (the scene
+   was not really reached), or "needs the owner's eyes". Their answers are claims, so each proposed fix is checked by
+   re-running its scenes.
+5. **Fixes as scene rules, re-run by difference.** Each fix lands as a rule in the core or a row of the per-scene table
+   (the scene builder's table, above), never as a special case in engine code; only the scenes whose baseline it touches
+   run again, plus the canary set.
+6. **The headset sample.** Ten scenes the pass picks, one per kind (a plain stage, a wide stage, an authored walk, a flowed
+   chain with a follow-up, a scene after a cutscene, a radio call, a set piece on the screen, a crowded room, a walk near a
+   trigger, a held newcomer), with what to look for in `notes/headset-checklist.md`.
+
+### What is not known and could change the plan
+
+- How many scenes no route reaches (phase 2 answers it). A scene that needs a story point no career has may need a save
+  built by hand from the game's data, one per scene.
+- Whether resetting plot between scenes of one loaded level is enough, or some scenes change the level itself (someone
+  dies, a door opens) so the level must be reloaded: that costs time, not correctness.
+- Whether the game stays up for five hours of this. The watchdog assumes not.
+- The 182 barks: a sample per area is planned; if the sample shows a problem class, they get their own pass.
 
 ## To check in the game
 
