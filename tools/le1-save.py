@@ -859,7 +859,7 @@ def main(argv=None) -> int:
     p.add_argument('--rewind', metavar='FILE', help='put back the plot values a diff --rewind-out recorded (replays a beat)')
     p.add_argument('--with-maps', action='store_true', help='with --rewind: also the world state of the maps the beat changed, as before it')
     p.add_argument('--stream-state', action='append', metavar='MAP:STATE=0|1',
-                   help="a visited map's kept streaming state, e.g. BIOA_NOR00:stream_wakeup=1 (repeatable; info lists them)")
+                   help="a visited map's kept streaming state, e.g. BIOA_STA00:stream_wakeup=1 (repeatable; info lists them)")
     p.add_argument('--drop-map', action='append', metavar='MAP', help='forget a visited map\'s kept state (repeatable)')
     p.add_argument('--keep-time', action='store_true', help='keep the save time (default: now, so it is the newest)')
     p.add_argument('--force', action='store_true', help='replace an existing output')

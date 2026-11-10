@@ -511,8 +511,9 @@ integers, nothing cleared), so a beat is rewound by putting back only what it se
   runs `QuickSave` itself before writing (the file then counts as one it created when the career had none) and names the box if
   it still comes.
 - **A visited map's streaming states** (`BioWorldInfoSaveObject.streaming_states`, `info` lists those on): `write --stream-state
-  BIOA_NOR00:stream_wakeup=1` sets one or adds it. Whether the game streams a level in from a state set in the save is [verify]
-  (the medical bay's wake-up level stayed out with the live `stream_wakeup` state on).
+  BIOA_STA00:stream_wakeup=1` sets one or adds it. Whether the game streams a level in from a state set in the save is [verify].
+  The medical bay's wake-up didn't need it: its level is kept under BIOA_STA00 (the docked Normandy), not BIOA_NOR00 as the
+  catalogue says, and `open BIOA_STA00` starts it (research/69's log, 17:50).
 
 **Measured** (fake headset, John02, 15:32-15:49; saves, profiles and inis hash-identical to the run's backup afterwards):
 
