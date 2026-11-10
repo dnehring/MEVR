@@ -541,7 +541,10 @@ switching frameworks.
   in the game): **a far shot's camera mode is unreadable, and Halcyon then cleared the first-person hides: the player's own
   body vanished on every line of the council's** (a second `[MEVR]` seam in `head_aim.cpp`'s unreadable-mode branch keeps
   them while `ConversationInWorld()`); **the left stick is the wheel's until it has been let go after a pick**
-  (`cw::StickWalks`: still out as the wheel closed, it walked Shepard half a metre after every reply). The voices are
+  (`cw::StickWalks`: still out as the wheel closed, it walked Shepard half a metre after every reply). **After a headset session run `python tools/conversation-session.py` first**: it
+  reads the mod's and Halcyon's logs of the last run and names, per scene in the world, what the player would have noticed
+  (flash, dip and its cause, body-hidden, screen, pivot, reply-move, drawn-jump, body-strayed; research/69 "A played session,
+  judged"). The voices are
   centred by design (82% of dialogue cues have no attenuation node; LE1 is ISACT over OpenAL, not Wwise): research/69 "The
   voices" has the hook that would place them.
   "In sight" for the opening is three lines (`InSight`).

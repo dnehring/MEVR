@@ -1010,6 +1010,20 @@ built and unit-tested, **not yet run in the game**.
 Also in that log: at 10:48:28 the controllers lost tracking and the conversation's state went unpublished for a moment; the
 host showed the 3D screen for 0.1 s (two dips). Not looked into yet.
 
+### A played session, judged (2026-11-10)
+
+Reading the ceremony's 2,700 log lines by hand took an hour and still missed something. `tools/conversation-session.py
+[--log <LE1MEVR.log>] [--halcyon <MELEVR_Log.txt>] [--strict]` does it in a second, the same way for every run: per scene
+shown in the world (a conversation or a moment) what a player would have noticed, each with its time and, where the log
+says so, its cause: `flash` (the 3D screen shown and taken away within a second), `dip` (and what asked for it),
+`body-hidden` (Halcyon's first-person hides cleared, and for how long), `screen` (the scene fell back to the 3D screen),
+`pivot` (bodies that turned 60 degrees or more), `reply-move` (Shepard moving in the half second after his own line began),
+`drawn-jump`, `body-strayed`. On the owner's ceremony session it names everything he reported and one thing nobody had
+seen in the log: **his body was not drawn for the whole 17 s walk up the stairs either** (the camera mode is unreadable in
+the cinematic mode too; the same seam covers it), and four more stretches of 5 to 26 s during the conversation. Tests in
+`tests/ConversationSweepTests.py` over a synthetic session (ctest `mevr-conversation-sweep`). **After every headset session:
+run it first, then read the owner's notes against it.**
+
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"

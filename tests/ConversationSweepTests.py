@@ -359,6 +359,45 @@ def main():
         check(sweep.judge([results, '--write-baseline', base]) == 0 and json.load(open(base, encoding='utf-8'))[ms[0]['conversation']]['kinds'] == [],
               'a moment that ran is no exception')
 
+    # A played session, judged from its logs (tools/conversation-session.py): what the player would have noticed.
+    session = module('conversation_session', 'conversation-session.py')
+    mod_log = '''[10:00:00.000] [info] MEVR attaching
+[10:00:10.000] [info] transition fade: the world -> the 3D cinema screen: from black over 0.35 s
+[10:00:10.020] [info] moment: a matinee walks Shepard: held in first person at (0, 0, 0) facing 0 deg; its move of him is withheld
+[10:00:10.150] [info] transition fade: the 3D cinema screen -> the world: from black over 0.35 s
+[10:00:20.000] [info] moment: the script's black screen (BioSeqAct_BlackScreen X, action 0) during a track's move of Shepard: taken down again; a dip from black in its place
+[10:00:20.050] [info] moment: the first-person view of the moment ends (a conversation began) after 10.0 s
+[10:00:20.050] [info] moment: view summary {"seconds": 10.0, "walkedM": 8.0, "carriedM": 0.0, "dips": 1, "why": "a conversation began"}
+[10:00:20.050] [info] convo: conversation 7 began: BioConversation pkg_D.sta_hearing_dlg (owner BioPawn_7, player SFXPawn_Player_1, stage BioStage_2 at (0, 0, 0)); shown in the world (first person)
+[10:00:20.080] [info] transition fade: the world -> the world: from black over 0.35 s
+[10:00:30.000] [info] convo: at 10.0 s the line: "Shepard: I object."
+[10:00:30.100] [info] convo: at 10.1 s SFXPawn_Player_1 moved to (10, 0, 0) facing 0 deg (0.10 m and 0 deg from its start)
+[10:00:30.200] [info] convo: at 10.2 s SFXPawn_Player_1 moved to (24, 0, 0) facing 0 deg (0.24 m and 0 deg from its start)
+[10:00:40.000] [info] convo: at 20.0 s the line: "Shepard: Fine."
+[10:00:50.000] [info] convo: conversation 7 ended (the game left its conversation mode) after 30.0 s: 4 shots; the wheel opened 2 times; SFXPawn_Player_1: moved at most 0.24 m, turned at most 170 deg, ends 0.24 m from its start; BioPawn_7: moved at most 0.00 m, turned at most 180 deg, ends 0.00 m from its start; BioPawn_9: moved at most 0.00 m, turned at most 20 deg, ends 0.00 m from its start
+[10:00:50.000] [info] convo: summary {"name": "BioConversation pkg_D.sta_hearing_dlg", "lines": 6, "opening": "walk in", "markM": 3.5, "walkInWay": "body", "cuts": 0, "playerWalkedM": 0.2, "drawn": 0, "eyeToViewM": 0.4}
+[10:01:00.000] [info] convo: conversation 8 began: BioConversation pkg_D.sta_quiet_dlg (owner BioPawn_2, player SFXPawn_Player_1, stage none); shown in the world (first person)
+[10:01:05.000] [info] convo: conversation 8 ended (the game left its conversation mode) after 5.0 s: 1 shots; BioPawn_2: moved at most 0.00 m, turned at most 10 deg, ends 0.00 m from its start
+[10:01:05.000] [info] convo: summary {"name": "BioConversation pkg_D.sta_quiet_dlg", "lines": 2, "opening": "stay", "cuts": 0, "playerWalkedM": 0.0, "drawn": 0, "eyeToViewM": 0.1}
+'''.splitlines()
+    halcyon_log = '''2026-11-10 09:59:00.000 | [FPHIDE] cleared (another session's line)
+2026-11-10 10:00:25.000 | [FPHIDE] cleared (camera-mode unreadable)
+2026-11-10 10:00:31.500 | [FPHIDE] applied (anti-cull on; head hide after delay)
+2026-11-10 10:00:45.000 | [VRSTATE] gm 5 alive convo -> 3D screen (MEVR)
+'''.splitlines()
+    judged = session.judge(session.parse(mod_log, session.LINE), session.parse(halcyon_log, session.HALCYON))
+    check([s['kind'] for s in judged] == ['moment', 'conversation', 'conversation'], f"the session's scenes: {[s['kind'] for s in judged]}")
+    codes = [[c for c, _ in s['findings']] for s in judged]
+    check(codes[0] == ['flash', 'dip'], f"the moment: the screen's flash as it began, the dip at its end: {codes[0]}")
+    check(sorted(codes[1]) == ['body-hidden', 'pivot', 'reply-move', 'screen'], f'the hearing: {codes[1]}')
+    texts = dict(judged[1]['findings'])
+    check("script's black screen" in dict(judged[0]['findings'])['dip'], f"the dip's cause is read from the line before it: {judged[0]['findings']}")
+    check('6.5 s' in texts['body-hidden'] and 'camera-mode unreadable' in texts['body-hidden'], f"how long the body was gone: {texts['body-hidden']}")
+    check('1 bodies' in texts['pivot'] and 'BioPawn_7 180' in texts['pivot'], f"who pivoted, the player's own pawn left out: {texts['pivot']}")
+    check('1 of his 2 lines' in texts['reply-move'], f"the move after a reply: {texts['reply-move']}")
+    check(codes[2] == [] and 'nothing found' in session.report(judged), 'a quiet conversation has nothing to report')
+    check(session.judge([], []) == [] and 'No scene' in session.report([]), 'a log without a scene in the world says so')
+
     print(f"{'FAILED' if failures else 'passed'}: conversation sweep tests ({len(failures)} failures)")
     return 1 if failures else 0
 
