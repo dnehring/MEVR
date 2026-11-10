@@ -483,6 +483,25 @@ class Save:
         if yaw_deg is not None:
             self.data['rotation'] = {'pitch': unreal_angle(pitch_deg), 'yaw': unreal_angle(yaw_deg), 'roll': 0}
 
+    def set_stream_state(self, map_name: str, state: str, enabled: bool) -> str:
+        """A visited map's kept streaming state (its BioWorldInfoSaveObject), added when the map has none of that name."""
+        ne = self.data.get('no_export')
+        maps = ne['legacy_maps'] if ne is not None else {}
+        key = next((k for k in maps if k.lower() == map_name.lower()), None)
+        if key is None:
+            raise SystemExit(f"{map_name} is not among the maps the save keeps ({', '.join(maps) or 'none'})")
+        w = maps[key]['world']
+        if w is None or w['class_name'] != 'BioWorldInfoSaveObject':
+            raise SystemExit(f'{key} keeps no world info to hold a streaming state')
+        states = w['body']['streaming_states']
+        for st in states:
+            if st['name'].lower() == state.lower():
+                was = bool(st['enabled'])
+                st['enabled'] = 1 if enabled else 0
+                return f"{key}: streaming state {st['name']} {int(was)} -> {int(enabled)}"
+        states.append({'name': ustr(state), 'enabled': 1 if enabled else 0})
+        return f'{key}: streaming state {state} added as {int(enabled)}'
+
     def set_level(self, level: str | None = None, area: str | None = None, parent: str | None = None) -> None:
         """Where the save loads. base_level_name is the persistent level the game opens (BIOA_STA00); map_name is the
         area inside it the menus name (MapSTA30_02 at C-Sec, MapNOR01 on the Normandy docked there); parent_map_name
@@ -764,6 +783,12 @@ def cmd_write(args) -> int:
             spec = json.load(f)
         for line in apply_rewind(s, spec, args.with_maps):
             print(f'rewind: {line}')
+    for item in args.stream_state or []:
+        where, _, value = item.rpartition('=')
+        map_name, colon, state = where.partition(':')
+        if not _ or not colon or not map_name or not state:
+            raise SystemExit(f'expected MAP:STATE=0|1, got {item!r}')
+        print(s.set_stream_state(map_name, state, value.strip().lower() in ('1', 'true', 'yes', 'on')))
     if args.display_name is not None:
         s.data['display_name'] = ustr(args.display_name)
     if args.drop_map:
@@ -833,6 +858,8 @@ def main(argv=None) -> int:
     p.add_argument('--display-name', help='the name the Load menu shows')
     p.add_argument('--rewind', metavar='FILE', help='put back the plot values a diff --rewind-out recorded (replays a beat)')
     p.add_argument('--with-maps', action='store_true', help='with --rewind: also the world state of the maps the beat changed, as before it')
+    p.add_argument('--stream-state', action='append', metavar='MAP:STATE=0|1',
+                   help="a visited map's kept streaming state, e.g. BIOA_STA00:stream_wakeup=1 (repeatable; info lists them)")
     p.add_argument('--drop-map', action='append', metavar='MAP', help='forget a visited map\'s kept state (repeatable)')
     p.add_argument('--keep-time', action='store_true', help='keep the save time (default: now, so it is the newest)')
     p.add_argument('--force', action='store_true', help='replace an existing output')

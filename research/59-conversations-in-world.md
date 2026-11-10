@@ -503,6 +503,17 @@ integers, nothing cleared), so a beat is rewound by putting back only what it se
   `<career>_QuickSave.pcsav` (never over a quicksave the player made, unless `-ReplaceQuickSave`) and `QuickLoad`ed; no menu
   driving, no restart. The files it creates are listed in `save-backups\generated.txt`; `-RestoreSaves` puts back the oldest backup
   since the last restore and deletes exactly those.
+- **Only once the game knows the career has a quicksave** (found by the conversations session the same evening, for the medical
+  bay's `nor10_oculon_approach` from John02_21): with no quicksave of the game's in the career, `QuickLoad` of the tool's file
+  shows the game's box "The Save currently selected cannot be accessed" (mode 7) and loads nothing, in a session with levels
+  opened from the console and after a clean restart alike; after the console's own `QuickSave`, the tool's file written over it
+  loaded at once. (The fresh file above loaded because the game had made a quicksave earlier in that session.) So the launcher
+  runs `QuickSave` itself before writing (the file then counts as one it created when the career had none) and names the box if
+  it still comes.
+- **A visited map's streaming states** (`BioWorldInfoSaveObject.streaming_states`, `info` lists those on): `write --stream-state
+  BIOA_STA00:stream_wakeup=1` sets one or adds it. Whether the game streams a level in from a state set in the save is [verify].
+  The medical bay's wake-up didn't need it: its level is kept under BIOA_STA00 (the docked Normandy), not BIOA_NOR00 as the
+  catalogue says, and `open BIOA_STA00` starts it (research/69's log, 17:50).
 
 **Measured** (fake headset, John02, 15:32-15:49; saves, profiles and inis hash-identical to the run's backup afterwards):
 

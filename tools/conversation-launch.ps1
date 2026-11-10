@@ -34,7 +34,8 @@
 # tools/le1-save.py writes the career's save with the catalogue's persistent level (`map`) and Shepard 1.5 m in front of the
 # owner facing it (and -Rewind: a beat's plot values as before it), and the game loads it:
 # - `-Load quick` (default): it is the career's quicksave (<career>\<career>_QuickSave.pcsav) and the console's `QuickLoad` loads
-#   it, which reads the file whatever the game listed at its start (measured 2026-11-09). The game must have that career loaded
+#   it, which reads the file whatever the game listed at its start (measured 2026-11-09), once the game knows the career has a
+#   quicksave: so the game's own QuickSave comes first and the tool writes over it. The game must have that career loaded
 #   (any of its saves: the title's Enter resumes the profile's last one); a quicksave the player made is never replaced unless
 #   -ReplaceQuickSave (the backup keeps it).
 # - `-Load menu`: <career>_MEVR.pcsav through the game's own Load screen (`mevr gui Menu`, the GUI's pad events; the record found
@@ -277,6 +278,23 @@ if ($Save) {
     $copy = $source
     if ($source -eq $target) { $copy = Join-Path $backup "source-$(Split-Path -Leaf $source)"; Copy-Item -LiteralPath $source -Destination $copy }
     if (-not (Test-Path -LiteralPath $target)) { Add-Content -LiteralPath $generated -Value $target }
+    # QuickLoad refuses a quicksave the game doesn't know the career has ("The Save currently selected cannot be accessed", a box in
+    # mode 7; a career without a quicksave of the game's, 2026-11-09): so the game writes its own first and the tool writes over it.
+    if ($running -and $Load -eq 'quick') {
+        $was = $(if (Test-Path -LiteralPath $target) { (Get-Item -LiteralPath $target).LastWriteTimeUtc } else { [datetime]::MinValue })
+        Console 'QuickSave' | Out-Null
+        $deadline = (Get-Date).AddSeconds(15)
+        $saved = $false
+        while ((Get-Date) -lt $deadline -and -not $saved) {
+            Start-Sleep -Milliseconds 500
+            if ((Test-Path -LiteralPath $target) -and (Get-Item -LiteralPath $target).LastWriteTimeUtc -gt $was) {
+                # Written: wait until the game has closed it.
+                try { $fs = [IO.File]::Open($target, 'Open', 'ReadWrite', 'None'); $fs.Close(); $saved = $true } catch { }
+            }
+        }
+        if ($saved) { Write-Host "   QuickSave: the game's own quicksave first, so QuickLoad takes the one written over it" }
+        else { Write-Warning "the game wrote no quicksave in 15 s (a conversation, combat or a menu refuses it): QuickLoad may refuse the tool's" }
+    }
     $inv = [Globalization.CultureInfo]::InvariantCulture
     $writeArgs = @('-I', (Join-Path $tools 'le1-save.py'), 'write', $copy, $target, '--level', $entry.map, '--location',
         $p.x.ToString('0.0', $inv), $p.y.ToString('0.0', $inv), ($p.z + 20).ToString('0.0', $inv), '--yaw', ([double]$face).ToString('0.0', $inv), '--force')
@@ -297,6 +315,10 @@ if ($Save) {
     $arrived = $false
     while ((Get-Date) -lt $deadline -and -not $arrived) {
         Start-Sleep -Seconds 3
+        if ($Load -eq 'quick' -and (State).mode -eq 7 -and (Panels) -match '(?i)MessageBox') {
+            Console 'mevr guikey 12' | Out-Null
+            throw "QuickLoad refused $target with the game's box ('cannot be accessed': the game doesn't know the career has a quicksave; the launcher's own QuickSave above should have made one): run the console's QuickSave once, then this again"
+        }
         $at = Player-At
         if ([math]::Sqrt([math]::Pow($at.x - $p.x, 2) + [math]::Pow($at.y - $p.y, 2)) -lt 400 -and (State).mode -eq 0) { $arrived = $true }
     }
