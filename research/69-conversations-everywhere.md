@@ -39,7 +39,7 @@ folder, which the release session holds.
 |---|---|---|---|
 | 1 | Story safety of flowed (ambient) scenes | read; built; game check pending | A line's plot effects are on the path both kinds of conversation share. An ambient one can be cut short, and then loses the effects of the lines it never reached. 6 conversations had a chain our flags newly exposed to that: they stay conversations (64 flow, was 68). The game's barks can no longer start over a flowed scene. |
 | 3 | Cutscene or world, decided at run time | data read; built log-only; game check pending | The packages can't say "Shepard isn't in this scene". Three run-time rules (pawn hidden; far from the owner and out of its sight; most shots framed from far away) name such scenes in the log and the survey's summary; they move a scene to the screen only with `worldAutoScreen = on`. |
-| 4 | Keeping people in place at the source | read; built; game check pending | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. The undo after the fact stays as the net. |
+| 4 | Keeping people in place at the source | read; built; **checked in the game** | One function places every person on a stage mark, at the opening and at each line's facing track. A pre-hook withholds the place and lets the facing through. In the medical bay's wake-up scene: 28 placements withheld, 0 left for the undo after the fact (research/59 had 25 undone there). |
 | 5 | Walking and the level's triggers | read; built; game check pending | `SetLocation` begins and ends touches like any move, so a walk could fire a trigger. A step that would change which triggers Shepard's cylinder overlaps is refused. |
 | 2 | The sweep: every conversation in its plot state | not started | 28 of 491 played (research/59) |
 
@@ -227,3 +227,23 @@ In this order, on the fake headset, when the game folder is free (saves backed u
        blocks this scene is level streaming, not the plot. A save keeps streaming states per map and the save tool can't set
        one; that is the next experiment. Until then the placement hook needs another scene with facing tracks (a staged
        Noveria conversation the launcher reaches, or any scene the sweep finds with `kept` above zero).
+- 2026-11-09, 17:50-17:56: **the wake-up scene lives under the Citadel's map, and item 4 is checked.** The owner pointed at
+  the old end-game career as a basis (John00: September 2024, 15 h, level 41 to 45; `John00_96` at the Citadel with six maps
+  kept, `John00_AutoSave` at the final battle). Reading what each career's saves keep per map settled the question the
+  streaming could not: all three careers keep `BIOA_NOR10_07wake_DSG` and `BIOA_NOR10_06wake_DSG` under **`BIOA_STA00`**, not
+  under `BIOA_NOR00`. The Normandy Shepard wakes up on is the one docked at the Citadel, so the launcher's catalogue names the
+  wrong persistent level for that scene (it derives the level from the chunk's area prefix), and `BIOA_NOR00` has no such
+  streaming level to show. `open BIOA_STA00` and nothing else starts the scene by itself 23 s later (its story start is the
+  arrival after Eden Prime; the launcher's teleport to its target had always cut it off after a second or two).
+  - **The scene, played to its end in the world mode** (195.1 s, 40 lines, 43 shots, 12 wheels, driven by `mevr convo
+    pick`/`skip`): `28 placements onto marks withheld at their source (the farthest mark 2.91 m away)`, `0 jumps onto marks
+    undone`, every tracked person ends 0.00 m from where it stood, and people still turned (the facing applies). The first
+    withheld call came at 23.1 s.
+  - Seen beside it: one person (BioPawn_3) was placed 3.93 m away 0.1 s after the opening ended, before the mod had seen him
+    once, so neither the hook nor the undo knew him: part of the opening in effect, but later than the player's place was taken.
+    And Shepard's own body snapped 2.25 m back onto his pawn at 40.7 s, the known one jump of a conversation straight after a
+    cutscene (research/59), which moves the player once.
+  - **For the tools:** the catalogue should take a start's persistent level from the persistent levels whose streaming lists
+    name its package, not from the name; then this scene and any other of the docked Normandy launch like the rest. An
+    end-game save is a good basis for scenes in the six maps it has visited with a full squad, but it has played every beat, so
+    early scenes need the rewind from the game's data either way; for this scene no save was needed at all.
