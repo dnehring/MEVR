@@ -430,8 +430,8 @@ switching frameworks.
   `-Save <career save> [-Rewind beat.json]`** (research/59 "A save instead of open", "Replaying a beat"): `tools/le1-save.py` (MIT,
   our own reader/writer of LE1 `.pcsav` from Trilogy Save Editor's structs; round-trips every save byte for byte; level, area,
   place, facing, plot values; `diff <before> <after> --rewind-out` lists what a beat set, by the plot's names, and `write --rewind`
-  puts it back; ctest `mevr-le1-save`) writes the career's quicksave at the owner and the console's `QuickLoad` loads it (the game
-  must have that career loaded; a player's own quicksave is never replaced; `-Load menu`: `<career>_MEVR.pcsav` through the Load
+  puts it back; ctest `mevr-le1-save`) writes the career's quicksave at the owner over the game's own `QuickSave` (else `QuickLoad` refuses it: "cannot be
+  accessed") and the console's `QuickLoad` loads it (the game must have that career loaded; `write --stream-state MAP:STATE=1`; a player's own quicksave is never replaced; `-Load menu`: `<career>_MEVR.pcsav` through the Load
   screen, which lists saves once at the game's start). Save folder backed up to `%LOCALAPPDATA%\MEVR\save-backups`, `-RestoreSaves`
   undoes it. A rewound beat (Avina's first meeting) replayed 6 of 6 times; console `QuickSave` makes the after-save. **The walk-up scenes flow**
   (research/59 "Flowing conversations", 2026-11-09, the owner's cheaper-but-riskier choice; `[Cinematics] worldFlow = all | off`,

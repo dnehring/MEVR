@@ -205,6 +205,19 @@ with tempfile.TemporaryDirectory(prefix='mevr-le1-save-') as tmp:
     check(o.data['rotation']['yaw'] == 32768 and o.plot_bool(9) and o.data['file_name'] == 'John02_MEVR',
           'the command line edits')
     check(ls.main(['roundtrip', src, out]) == 0, 'roundtrip from the command line')
+    # A visited map's kept streaming states: one changed (the map's name in any case), one added; an unknown map refused.
+    out2 = os.path.join(tmp, 'John02_Stream.pcsav')
+    names = [st['name'] for st in ls.Save.load(src).data['no_export']['legacy_maps']['BIOA_PRO00']['world']['body']['streaming_states']]
+    check(len(names) >= 1, 'the sample map keeps a streaming state')
+    rc = ls.main(['write', src, out2, '--stream-state', f'bioa_pro00:{names[0]}=0', '--stream-state', 'BIOA_PRO00:stream_wakeup=1'])
+    states = {st['name']: st['enabled'] for st in
+              ls.Save.load(out2).data['no_export']['legacy_maps']['BIOA_PRO00']['world']['body']['streaming_states']}
+    check(rc == 0 and states.get(names[0]) == 0 and states.get('stream_wakeup') == 1, f'--stream-state set and added ({states})')
+    try:
+        ls.main(['write', src, os.path.join(tmp, 'x.pcsav'), '--stream-state', 'BIOA_NOR00:stream_wakeup=1'])
+        check(False, '--stream-state on a map the save does not keep is refused')
+    except SystemExit:
+        pass
 
 # Optional: the local saves (never committed).
 folder = os.environ.get('MEVR_LE1_SAVES')
