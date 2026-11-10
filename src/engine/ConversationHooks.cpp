@@ -241,6 +241,32 @@ void SetMoveTrackProvider(MoveTrackProvider provider) {
     gMove.store(provider, std::memory_order_relaxed);
 }
 
+bool MoveTrackPlace(void const* track, void const* instance, float time, float place[3]) {
+    using tGetLocationAtTime = int(void* track, void* instance, float time, float* place, int* rotation);
+    if (track == nullptr || instance == nullptr || place == nullptr) {
+        return false;
+    }
+    __try {
+        auto const* const table = *reinterpret_cast<void* const* const*>(track);
+        auto* const get = reinterpret_cast<tGetLocationAtTime*>(table[0x390 / sizeof(void*)]);
+        // The slot must point into the game's own code (a function start), or the layout is not the one read.
+        if (get == nullptr || !IsFunctionStart(reinterpret_cast<void*>(get))) {
+            return false;
+        }
+        float at[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        int rotation[4] = {0, 0, 0, 0};
+        if (get(const_cast<void*>(track), const_cast<void*>(instance), time, at, rotation) == 0) {
+            return false;
+        }
+        place[0] = at[0];
+        place[1] = at[1];
+        place[2] = at[2];
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 Stats Totals() {
     Stats stats;
     stats.placements = gPlacements.load(std::memory_order_relaxed);

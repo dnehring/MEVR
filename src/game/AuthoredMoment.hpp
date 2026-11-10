@@ -17,6 +17,8 @@ namespace mevr::game::authored_moment {
 void Tick();
 // A matinee's move track moved this actor within the last `withinMs` (an authored walk: Wrex pacing on Virmire).
 bool TrackMoves(void const* actor, std::uint64_t withinMs = 300);
+// Where a withheld track has the player's pawn (the script's place for him) and when that was read; false if never.
+bool PlayerTrackPlace(float place[3], std::uint64_t* ms);
 // When a move track last moved (or would have moved) the player's pawn, in GetTickCount64 milliseconds; 0 never.
 std::uint64_t LastPlayerTrackMs();
 // `mevr moment`: what is being watched and the last moment's numbers.

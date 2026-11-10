@@ -138,8 +138,10 @@ struct Settings {
     float arcM = 2.5f;                 // the seats' distance from the player (worldArcM)
     float viewDeg = 60.0f;             // half the view's angle a person must be within (worldViewDeg)
     bool move = true;                  // the left stick walks Shepard during the conversation while the wheel is down (worldMove)
-    bool moments = false;              // worldMoments = walk | carry: a level-script matinee that walks Shepard is held in first
-                                       // person (research/69 "Authored scenes"; default log: measured only)
+    // worldMoments = walk | carry | log: a level-script matinee that walks Shepard is held in first person (research/69
+    // "Authored scenes"). walk is the default since 2026-11-10: the track's place for him is known even while its move is
+    // withheld, so he always ends where the script has him (walked, or carried after the wait). log only measures.
+    bool moments = true;
     bool momentCarry = false;          // ... carry: the track moves him and the view goes with him; walk: its move is withheld,
                                        // he walks it himself
     float momentPatienceS = 12.0f;     // walk: how long the script waits for him where it wants him before he is carried there
@@ -1903,6 +1905,8 @@ struct MomentView {
     std::uint64_t cinematicMs = 0;  // the last tick in the cinematic mode
     ik::Vec3 pawnAt{};              // where the player's own walk has Shepard
     std::optional<ik::Vec3> wanted; // where the script wants him (its teleport's destination in the same space): he walks there
+    std::optional<ik::Vec3> trackAt; // where the withheld track has him
+    bool trackEnded = false;
     std::uint64_t wantedMs = 0;     // ... since when
     int arrivals = 0;               // times he got there (walked, or carried after the wait)
     double carriedUnits = 0.0;
@@ -2008,6 +2012,28 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
                 ++gC.cut;
                 log::Info("moment: the script moved Shepard {:.2f} m ({:+.2f} m up, {}): another composition, the view goes with him under a dip",
                     facts.markUnits / kUnitsPerMeter, facts.riseUnits / kUnitsPerMeter, facts.sightToMark ? "in sight" : "out of sight");
+            }
+        }
+    }
+    // A withheld track: where it has him is where the script has him. While it runs he walks as he likes; when it lets him
+    // go (the matinee is over) and the script has not said otherwise, that place is where he is wanted, as after a teleport:
+    // what follows may count on him being there (a door closed behind him, a trigger he was carried through).
+    if (!gSettings.momentCarry) {
+        float place[3];
+        std::uint64_t ms = 0;
+        if (authored_moment::PlayerTrackPlace(place, &ms) && ms >= gMoment.startMs) {
+            if (now - ms <= 500) {
+                gMoment.trackAt = ik::Vec3{place[0], place[1], place[2]};
+                gMoment.trackEnded = false;
+            } else if (gMoment.trackAt && !gMoment.trackEnded) {
+                gMoment.trackEnded = true;
+                if (!gMoment.wanted && Dist(*gMoment.trackAt, gMoment.pawnAt) > 150.0) {
+                    gMoment.wanted = *gMoment.trackAt;
+                    gMoment.wantedMs = now;
+                    gC.wantedMark = *gMoment.trackAt;
+                    log::Info("moment: the track let Shepard go {:.2f} m from where it had him ({}): he is wanted there and walks (carried after {:.0f} s)",
+                        Dist(*gMoment.trackAt, gMoment.pawnAt) / kUnitsPerMeter, F(*gMoment.trackAt), gSettings.momentPatienceS);
+                }
             }
         }
     }

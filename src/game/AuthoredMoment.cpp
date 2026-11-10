@@ -84,8 +84,11 @@ struct TrackMove {
 };
 TrackMove gTrackMoves[24];
 std::atomic<unsigned> gTrackWithheld{0};
+// Where the track has the player at its last call (the script's place for him), when it could be asked.
+std::atomic<float> gTrackPlace[3];
+std::atomic<std::uint64_t> gTrackPlaceMs{0};
 
-bool OnMoveTrack(void const* actor, void const* track, void const*, float) {
+bool OnMoveTrack(void const* actor, void const* track, void const* instance, float time) {
     if (actor != nullptr) {
         // Remembered per actor: an authored walk of someone in a conversation is his own move, not a placement to undo.
         std::uint64_t const now = GetTickCount64();
@@ -106,8 +109,16 @@ bool OnMoveTrack(void const* actor, void const* track, void const*, float) {
         gTrackCalls.fetch_add(1, std::memory_order_relaxed);
         gTrackSeen.store(track, std::memory_order_relaxed);
         gTrackMs.store(GetTickCount64(), std::memory_order_relaxed);
-        // worldMoments = walk: the player walks it himself (game/ConversationWorld holds the view and moves him).
+        // worldMoments = walk: the player walks it himself (game/ConversationWorld holds the view and moves him). Where
+        // the track has him is kept: the script counts on him being there when the matinee ends.
         if (conversation_world::MomentWithholds()) {
+            float place[3];
+            if (engine::conversation_hooks::MoveTrackPlace(track, instance, time, place)) {
+                for (int i = 0; i < 3; ++i) {
+                    gTrackPlace[i].store(place[i], std::memory_order_relaxed);
+                }
+                gTrackPlaceMs.store(GetTickCount64(), std::memory_order_relaxed);
+            }
             gTrackWithheld.fetch_add(1, std::memory_order_relaxed);
             return true;
         }
@@ -365,6 +376,20 @@ bool TrackMoves(void const* actor, std::uint64_t withinMs) {
         }
     }
     return false;
+}
+
+bool PlayerTrackPlace(float place[3], std::uint64_t* ms) {
+    std::uint64_t const at = gTrackPlaceMs.load(std::memory_order_relaxed);
+    if (at == 0) {
+        return false;
+    }
+    for (int i = 0; i < 3; ++i) {
+        place[i] = gTrackPlace[i].load(std::memory_order_relaxed);
+    }
+    if (ms != nullptr) {
+        *ms = at;
+    }
+    return true;
 }
 
 std::uint64_t LastPlayerTrackMs() {

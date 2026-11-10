@@ -52,6 +52,10 @@ bool Installed();
 void SetKeepProvider(KeepProvider provider);
 void SetInterruptProvider(InterruptProvider provider);
 void SetMoveTrackProvider(MoveTrackProvider provider);
+// Where a move track wants its actor at `time` (the track's own UInterpTrackMove::GetLocationAtTime, its vtable slot +0x390,
+// as the hooked function calls it: track, instance, time, FVector* place, FRotator* rotation): for a provider that withholds
+// the move and still has to know where the script has the actor. False if the call could not be made or said no.
+bool MoveTrackPlace(void const* track, void const* instance, float time, float place[3]);
 
 // Since the hooks went in (cumulative: game/ConversationWorld and game/ConversationFlow each keep what they last saw).
 struct Stats {
