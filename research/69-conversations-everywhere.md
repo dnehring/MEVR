@@ -105,6 +105,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     save generator writes only a level, a place and plot flags: a spot in a part not yet streamed fell through the world):
     Virmire's deployment, judged clean ("Virmire and the cockpit" below); Eden Prime's train is not reached by opening the
     level (its prologue plays). On the way, Joker's cockpit scene showed the re-facing rule turning a seated pilot: fixed.
+    **Fifth sample 2026-11-11 07:09-07:13** (Therum through the runner): the troop drop held in first person, judged clean; the
+    krogan boss's entrance on the 3D screen by the rule (its track starts 4 s into the cinematic mode), its conversation in the
+    world after it. Seen now: 10 of the 21 (Chellik, Benezia's phases 2 and 3, her intro, Liara's intro, the geth intro, the
+    council walk, the Spectre ceremony, Virmire's deployment, the troop drop, the krogan's entrance); left: the ending's two,
+    Noveria's double homicide and Death-started scene, the Normandy's and the gambler's remote events, Eden Prime's train and
+    the Feros tower's two (all behind a plot point or a start the runner can't make yet).
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
     its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
     world to confirm the list.
@@ -2058,6 +2064,14 @@ Run again: 0 body turns by the rule (`convo: BioPawn_0's body keeps the scene's 
 above its place)`). The judge still names two turns of 104 and 115 degrees: the scene's own (no turn, held or eased facing of
 ours counted).
 
+**Therum** (07:09-07:13, `-Maps BIOA_LAV00`): the troop drop started as the runner streamed its part in: held in first person 31 s,
+the script's moves of Shepard (13 m, then a teleport of 8 m) in the same space, the view kept at the player's place (the guide
+found no floor way up the 1.75 m rise), **nothing found**. The runner's place for it is the save generator's, 4 m in front of the
+trigger volume, over ground that kills Shepard (the save of the third sample died there): when the scene handed Shepard back he
+fell, a test artifact (a player walks in along the path). The krogan boss's entrance went to the 3D screen by the rule: no track
+in its first 0.25 s (it started 4 s in). Her conversation (`lav70_trig03_krogan_boss`, 7 lines) opened in the world: the screen
+stayed 143 ms into it, then one dip to the world (the judge's `screen`: the cutscene's own screen carried over, not a flash).
+
 ### Subtitles for flowed lines (2026-11-11 06:10-06:26, fake headset, Noveria's ICE60_06; item 13)
 
 **The profile shows subtitles.** In Han Olar's conversation (not ambient) his line is drawn on the speaker's subtitle quad
@@ -2684,3 +2698,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 06:11, **items 1 and 7: people animated by gestures only** ("People animated by gestures only"): two seat walks arrived at Han Olar's in their reference pose (their tree has no walk); such people now keep their place, posed.
 - 2026-11-11 06:26, **item 13 built** ("Subtitles for flowed lines"): this profile shows conversation subtitles, so flowed lines lost theirs; the mod hands each to the game's subtitle display in the bottom style, which reaches the HUD panel (seen); the game's mode put back after.
 - 2026-11-11 06:58, **item 4 and 11: Virmire and the cockpit** ("Virmire and the cockpit"): Virmire's deployment and its scenes judged clean; the re-facing rule turned Joker in his seat 134 degrees: no re-facing while the player stands at Shepard's mark or for someone seated (`cw::MayReface`).
+- 2026-11-11 07:13, **item 11, Therum** ("Virmire and the cockpit"): the troop drop held in first person, clean; the krogan's entrance on the screen by rule, her conversation in the world; 10 of the 21 moments seen.
