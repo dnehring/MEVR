@@ -951,6 +951,10 @@ double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, 
     return MarkDistance(actual, {standing.x + along * delta.x, standing.y + along * delta.y, standing.z + along * delta.z});
 }
 
+bool MayReface(double playerFromMarkUnits, double headAboveLocationUnits, double atMarkUnits, double seatedHeadUnits) {
+    return playerFromMarkUnits > atMarkUnits && headAboveLocationUnits >= seatedHeadUnits;
+}
+
 bool ShowBarkSubtitle(BarkSubtitleState& state, bool enabled, int subtitlesOption, std::uint64_t textHash, double nowS, double everyS) {
     if (!enabled || subtitlesOption != 0 || textHash == 0) {
         state = {};

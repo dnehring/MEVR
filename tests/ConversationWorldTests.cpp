@@ -708,6 +708,12 @@ void TestWalkStep() {
     CHECK(!cw::WalkWorthIt(95.0, 179.0, 150.0, 60.0));   // the ceremony's step back
     CHECK(!cw::WalkWorthIt(80.0, -90.0, 150.0, 60.0));   // a step aside
     CHECK(cw::WalkWorthIt(80.0, 350.0, 150.0, 60.0));    // -10 degrees, wrapped
+    // Re-facing for the player: never while the player stands at Shepard's mark, never for someone seated.
+    CHECK(!cw::MayReface(1.0, 55.0));     // Joker: the player at the mark behind him, and he is seated
+    CHECK(!cw::MayReface(1.0, 76.0));     // standing, but the player is where the stage composed Shepard
+    CHECK(!cw::MayReface(300.0, 55.0));   // the player walked off: still seated
+    CHECK(cw::MayReface(300.0, 76.0));    // standing, the player away from the mark: the rule decides
+    CHECK(cw::MayReface(101.0, 62.0));
     // A flowed line's subtitle: a new line at once, the same one again every 0.25 s, nothing when off or with subtitles hidden.
     cw::BarkSubtitleState subs;
     CHECK(cw::ShowBarkSubtitle(subs, true, 0, 7, 10.0, 0.25));

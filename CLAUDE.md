@@ -435,7 +435,9 @@ switching frameworks.
   re-faces only for the player, within `worldTurnWithinM` (4 m), past `worldTurnComfortDeg` (80) for a second, to
   `worldTurnSettleDeg` (40), and goes back `worldTurnHomeS` (3 s) after its last line with him, by an eased turn that also
   sets the pawn's desired rotation (else its physics turns it back; LE1 has no turn-on-the-spot animation for these people:
-  `RequestTurnInPlace` does nothing for them). `worldTurnLog = 1` traces yaws. Checked in the ceremony on the fake headset:
+  `RequestTurnInPlace` does nothing for them); never while the player stands within 1 m of where the stage composed Shepard,
+  nor for someone seated (head bone under 0.62 m above its place: Joker in his chair; `cw::MayReface`, research/69 "Virmire and
+  the cockpit"). `worldTurnLog = 1` traces yaws. Checked in the ceremony on the fake headset:
   0 body turns, the speaker's head 12 degrees short of the player at 77. The player's place follows Shepard's
   head bone only when a jump lasts 3 ticks (`FollowHeadSettled`). **The director's near plane is kept off the player's view**
   (`worldNearPlane = 1`, 2026-11-10, research/69 "The first shot", gotchas/conversation-camera-near-plane: a conversation's camera

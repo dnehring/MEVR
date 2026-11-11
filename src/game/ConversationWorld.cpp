@@ -830,6 +830,7 @@ struct Convo {
     int looksGame = 0;           // look-at targets the game itself gave (an authored look-at): left to it
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
+    std::optional<ik::Vec3> composedAt;  // where the stage composed Shepard (his mark at the opening, or after a jump): cw::MayReface
     std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
     int arranged = 0;            // people moved to a seat in view
     // An opening without a cut (item 7): people of the conversation out of view walk into seats in view, by the game's AI.
@@ -977,6 +978,7 @@ struct Stay {
     ue3::Object* heard = nullptr;      // the speaker a bystander did not look at, last logged
     double lookSinceS = 0.0;
     bool lookLogged = false;
+    bool refaceHeldLogged = false;  // cw::MayReface held its body once (logged)
     double turnGoal = 0.0;         // a turn asked of the game (BioPawn.RequestTurnInPlace): where to,
     double turnFromYaw = 0.0;      // ... from where,
     double turnAskedS = 0.0;       // ... when,
@@ -2299,6 +2301,26 @@ void KeepInPlace(ue3::Object* pawn) {
                 }
             }
         }
+        // Not while the player stands where the stage composed Shepard, and never for someone seated (cw::MayReface).
+        if (mayTurn && other == playerPawn && gC.composedAt) {
+            auto const feet = gC.detached ? std::optional<ik::Vec3>(gC.detachedAt) : [&]() -> std::optional<ik::Vec3> {
+                auto const at = player::Location(playerPawn);
+                return at ? std::optional<ik::Vec3>(V(*at)) : std::nullopt;
+            }();
+            auto const head = HeadOf(t.actor);
+            double const fromMark = feet ? std::hypot(feet->x - gC.composedAt->x, feet->y - gC.composedAt->y) : 1e9;
+            double const headAbove = head ? head->at.z - st.place.z : 1e9;
+            if (!cw::MayReface(fromMark, headAbove)) {
+                mayTurn = false;
+                if (!st.refaceHeldLogged) {
+                    st.refaceHeldLogged = true;
+                    log::Info("convo: {}'s body keeps the scene's facing for the player: {}", t.name,
+                        headAbove < 62.0 ? std::format("seated (its head {:.2f} m above its place)", headAbove / kUnitsPerMeter)
+                                         : std::format("the player stands where the stage composed Shepard ({:.2f} m from his mark)",
+                                               fromMark / kUnitsPerMeter));
+                }
+            }
+        }
         // The body's business only for those whose part lets it turn; a bystander's facing is the scene's.
         std::optional<double> const bearing = mayTurn ? lookBearing : std::nullopt;
         // How far the game's look-at chain really brings the head (research/69 "Who turns, and how"): once per look-at
@@ -2886,6 +2908,9 @@ void PlanSeatWalks(ue3::Object* conv, ue3::Object* pawn) {
 
 void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
     gC.openingDone = true;
+    if (auto const mark = player::Location(pawn)) {
+        gC.composedAt = V(*mark);  // the stage's place for Shepard, before anyone walks
+    }
     if (gSettings.opening == cw::OpeningRule::Auto && OpeningWithoutCut(conv, pawn)) {
         PlanSeatWalks(conv, pawn);
         return;
@@ -4480,6 +4505,9 @@ void Tick(double deltaSeconds, Link const& link) {
                 Seconds(), Dist(h, a) / kUnitsPerMeter, gC.follow.place.x, gC.follow.place.y, gC.follow.place.z);
             gC.hold = {gC.follow.place.x, gC.follow.place.y, gC.follow.place.z};
             gC.anchorHead = h;
+            if (auto const mark = player::Location(pawn)) {
+                gC.composedAt = V(*mark);  // the script's new place for him: the composition from here
+            }
             ++gC.reanchors;
             if (gC.opening != cw::Opening::Cut) {
                 ++gC.cut;  // the script moved him to another place in a scene that had no cut so far: under a dip

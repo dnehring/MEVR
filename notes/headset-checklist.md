@@ -275,6 +275,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   about 80 degrees held a second the body re-faces you, slowly, and it is a slide (no animation exists). Look for: the
   speaker's chest twist looking strained (`worldLookReach = 0` is the game's own, weaker reach), bystanders' glances that
   feel like too much or too little (`worldGlanceDeg`), a slide that bothers you (`worldTurn = off`: no body ever turns).
+  Since 2026-11-11 nobody re-faces you while you stand where the scene put Shepard, and nobody seated ever does (Joker
+  turned in his pilot's chair: research/69 "Virmire and the cockpit"): walk off the mark to see a re-face at all.
 - [ ] **The ceremony again, slot 81** (the three fixes of research/69 "The ceremony in the headset"; not yet run in the game):
   your own body and arms stay while the council speaks; picking a reply with the stick no longer moves you; no blink at the
   end of the walk along the pathway (the blink as the walk begins is still there: known). And slot 80, the hearing: the

@@ -101,6 +101,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     like a cinematic moment, nothing found by the judge. **Third sample 2026-11-11 05:27-05:42** ("A moment after a conversation"
     below): Benezia's intro (after her conversation) now plays in first person instead of on the 3D screen; Therum's troop drop
     save dies on load (GameOver); the Feros tower's start waits on a plot check. 15 moments are still unrun.
+    **Fourth sample 2026-11-11 06:40-06:58** through the sweep runner, which streams the level's parts hop by hop (the
+    save generator writes only a level, a place and plot flags: a spot in a part not yet streamed fell through the world):
+    Virmire's deployment, judged clean ("Virmire and the cockpit" below); Eden Prime's train is not reached by opening the
+    level (its prologue plays). On the way, Joker's cockpit scene showed the re-facing rule turning a seated pilot: fixed.
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
     its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
     world to confirm the list.
@@ -2032,6 +2036,28 @@ nothing there is not walked (`convo: walk: X ai unavailable: its animation tree 
 by gestures only); it stays where it stands`). Run again: both stay at the window, posed, through the conversation
 (`06-10-44-423`). A tree with no action node at all is walked as before.
 
+### Virmire and the cockpit (2026-11-11 06:40-06:58, fake headset, the sweep runner; items 4, 7 and 11)
+
+`conversation-sweep.ps1 -Plan moments.json -Maps <level> -Only <moment> -Pace shepard`, judged by `conversation-session.py`.
+
+**Virmire** (`moment_jug40_01_dsg_jug40_00_player_deployment`): opening the level played the fly-by, the landing's
+`jug20_trigger` (a walk-in, 7 m), the landing (the script moved Shepard 2.4 km to the site: the one dip, another composition),
+Kirrahe's check-in (a walk-in by the view, 10.4 m, walked 8.2 m), the deployment walk held in first person (5.4 m walked, no
+dip) and the check-in again (7.6 m): **nothing found** by the judge in any. No snapshots taken in this run. A seat walk at the
+landing (BioPawn_10, 3.5 m) moved 0.16 m and stopped: the AI didn't carry it, it kept its place (`it didn't walk`); the
+conversation lasted 5 s.
+
+**Eden Prime** (`moment_pro10_00_plc_train`): opening `BIOA_PRO00` starts the prologue on the Normandy, so the train (later in
+the level's plot) is not reached this way. Joker's cockpit scene (`nor10_joker`, 20 lines, a cut opening that put the player on
+Shepard's mark, behind the pilot's seat) played by itself: **the re-facing rule turned Joker in his seat 134 degrees, four
+times** (the player 171-174 degrees off his facing; the judge's `pivot`). The composition is the stage's there: Joker flies and
+talks over his shoulder. **Fix** (`cw::MayReface`, unit-tested): no re-facing for the player while the player stands within 1 m of
+where the stage composed Shepard (his place at the opening, or after one of his jumps: `composedAt`), and never for someone seated
+(the head bone under 0.62 m above the person's own location; Joker and the co-pilot read 0.55 m, standing people 0.70-0.82).
+Run again: 0 body turns by the rule (`convo: BioPawn_0's body keeps the scene's facing for the player: seated (its head 0.55 m
+above its place)`). The judge still names two turns of 104 and 115 degrees: the scene's own (no turn, held or eased facing of
+ours counted).
+
 ### Subtitles for flowed lines (2026-11-11 06:10-06:26, fake headset, Noveria's ICE60_06; item 13)
 
 **The profile shows subtitles.** In Han Olar's conversation (not ambient) his line is drawn on the speaker's subtitle quad
@@ -2657,3 +2683,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 05:56, **item 13 narrowed** ("The subtitle of a line played as a bark"): a flowed scene's lines and the game's own barks are alike (text built, nothing drawn, the profile's subtitle option 0, the game's default); the headset question is what the owner sees with subtitles on.
 - 2026-11-11 06:11, **items 1 and 7: people animated by gestures only** ("People animated by gestures only"): two seat walks arrived at Han Olar's in their reference pose (their tree has no walk); such people now keep their place, posed.
 - 2026-11-11 06:26, **item 13 built** ("Subtitles for flowed lines"): this profile shows conversation subtitles, so flowed lines lost theirs; the mod hands each to the game's subtitle display in the bottom style, which reaches the HUD panel (seen); the game's mode put back after.
+- 2026-11-11 06:58, **item 4 and 11: Virmire and the cockpit** ("Virmire and the cockpit"): Virmire's deployment and its scenes judged clean; the re-facing rule turned Joker in his seat 134 degrees: no re-facing while the player stands at Shepard's mark or for someone seated (`cw::MayReface`).

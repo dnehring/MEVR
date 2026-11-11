@@ -146,6 +146,13 @@ int AiEnableDeficit(int counter);
 // `longUnits`), or a step no more than `stepOffDeg` off where the person faces. Else it keeps its place, as before walking.
 bool WalkWorthIt(double distanceUnits, double offFacingDeg, double longUnits, double stepOffDeg);
 
+// Whether a body may re-face for the player at all (2026-11-11, Joker's cockpit scene: the player stood where the stage puts
+// Shepard, behind the pilot's seat, and the rule turned Joker in his chair 134 degrees, four times). The composition is the
+// stage's while the player stands where it composed Shepard (within `atMarkUnits` of his mark, on the floor), and a seated
+// person (its head bone less than `seatedHeadUnits` above its own location: 55 units in a chair, 70-82 standing) is never
+// turned. Otherwise the re-facing rule decides (cw::StepAttention).
+bool MayReface(double playerFromMarkUnits, double headAboveLocationUnits, double atMarkUnits = 100.0, double seatedHeadUnits = 62.0);
+
 // A flowed scene's line on screen (research/69 "The subtitle of a line played as a bark", 2026-11-11): the game builds an
 // ambient line's text and draws none, so a walk-up scene that was a subtitled conversation lost its subtitles. The mod hands the
 // line's text to the game's own subtitle display again and again with a short life while the line plays, so it goes when the
