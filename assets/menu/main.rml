@@ -32,6 +32,7 @@
 		<button class="navb" id="nav-comfort" data-class-on="section == 'comfort'" data-event-click="section = 'comfort'"><div class="nico i-turn"/><div><div class="navl">Comfort</div><div class="navs">Turning, movement</div></div></button>
 		<button class="navb" id="nav-controls" data-class-on="section == 'controls'" data-event-click="section = 'controls'"><div class="nico i-controls"/><div><div class="navl">Controls</div><div class="navs">Guns, holsters, grenades</div></div></button>
 		<button class="navb" id="nav-voice" data-class-on="section == 'voice'" data-event-click="section = 'voice'"><div class="nico i-mic"/><div><div class="navl">Voice</div><div class="navs">Microphone, squad orders</div></div></button>
+		<button class="navb" id="nav-sound" data-class-on="section == 'sound'" data-event-click="section = 'sound'"><div class="nico i-sound"/><div><div class="navl">Sound</div><div class="navs">3D sound, headphones</div></div></button>
 		<button class="navb" id="nav-body" data-class-on="section == 'body'" data-event-click="section = 'body'"><div class="nico i-body"/><div><div class="navl">Body &amp; calibration</div><div class="navs">Height, arms, aim</div></div></button>
 		<button class="navb" id="nav-display" data-class-on="section == 'display'" data-event-click="section = 'display'"><div class="nico i-eye"/><div><div class="navl">Display</div><div class="navs">Colour, resolution</div></div></button>
 		<button class="navb" id="nav-hud" data-class-on="section == 'hud'" data-event-click="section = 'hud'"><div class="nico i-crosshair"/><div><div class="navl">HUD &amp; sights</div><div class="navs">Panel, reticle, scopes</div></div></button>
@@ -273,6 +274,27 @@
 					<button class="btn" data-class-armed="voice_key_wait" data-event-click="cmd('voice_key_set')"><div class="sweep"/><span>Set key</span><div class="tick"/></button>
 					<button class="btn" data-event-click="cmd('voice_key_clear')"><div class="sweep"/><span>None</span><div class="tick"/></button>
 				</div></div>
+		</div>
+	</div>
+
+	<!-- ===================================================================================== Sound -->
+	<!-- research/69 A3: [Audio] spatial and gainDb (the host's, read when the game starts), overheard and gun (the mod's, live). -->
+	<div data-if="section == 'sound'">
+		<div class="stitle">Sound</div>
+		<div class="sdesc">How the game's sound reaches your ears.</div>
+		<div class="group">
+			<div class="gtitle"><span>3D sound</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Sound for</div><div class="rdesc">Headphones 3D: every sound the game places reaches each ear as it would in the room, above and behind you too. Speakers: the same sounds panned between two speakers. The game's own: its original sound, left and right only.</div><div class="note">{{audio_note}}</div></div>
+				<div class="seg"><button class="segb" data-class-on="audio_spatial == 'hrtf'" data-event-click="pick('audio_spatial','hrtf')">Headphones 3D</button><button class="segb" data-class-on="audio_spatial == 'soft'" data-event-click="pick('audio_spatial','soft')">Speakers</button><button class="segb" data-class-on="audio_spatial == 'game'" data-event-click="pick('audio_spatial','game')">The game's own</button></div></div>
+			<div class="srow d" data-class-disabled="audio_spatial == 'game'"><div class="sl"><div class="slab">Loudness</div><div class="rdesc">Brings the 3D mix up to the game's own level. Applies when the game next starts.</div></div><input type="range" min="0" max="9" step="1" data-value="audio_gain"/><div class="sval">{{audio_gain_text}}</div></div>
+			<div class="info"><div class="ico i-info"/><span>Now: {{audio_now}}</span></div>
+		</div>
+		<div class="group">
+			<div class="gtitle"><span>Where sounds come from</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">People around you</div><div class="rdesc">People talking within a few steps of you are heard from where they stand, not inside your head. Off: as the game mixes them.</div></div>
+				<button class="tog" data-class-on="audio_overheard" data-event-click="toggle('audio_overheard')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Your gun</div><div class="rdesc">Your own weapon's sounds come from the gun in your hand.</div></div>
+				<button class="tog" data-class-on="audio_gun" data-event-click="toggle('audio_gun')"><div class="knob"/></button></div>
 		</div>
 	</div>
 

@@ -81,6 +81,7 @@
 #include "game/ConversationWorld.hpp"
 #include "game/AuthoredMoment.hpp"
 #include "game/ConversationFlow.hpp"
+#include "game/SoundPlace.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/Spectator.hpp"
@@ -172,7 +173,10 @@ bool gSelectionHookTried = false;
 bool gSelectionHooked = false;
 bool gConversationHooksTried = false;
 bool gConversationHooked = false;
-bool gVoicePlaceHooked = false;  // the sound source update (engine/VoicePlace): goes in with the conversation hooks
+// The sound source update (engine/VoicePlace): goes in once the conversation hooks or game/SoundPlace (people near the player,
+// the gun; research/69 A1, A2) first want it.
+bool gVoicePlaceTried = false;
+bool gVoicePlaceHooked = false;
 // `]` is the one switch a player needs: once a VR session runs, every VR feature comes on with
 // it (stereo, 6DOF, hand aim, arm IK), and turning VR off (or quitting from the headset) turns
 // them off. The headset sleeping doesn't count as off. Within a session the feature keys switch
@@ -389,7 +393,16 @@ void EnsureConversationHooks() {
     if (!gConversationHooksTried && game::conversation_world::WantsHooks()) {
         gConversationHooksTried = true;
         gConversationHooked = engine::conversation_hooks::Install(*gInit);
-        gVoicePlaceHooked = engine::voice_place::Install(*gInit);  // the speakers' voices from where they stand
+    }
+}
+
+// The sound source update (engine/VoicePlace): the speakers' voices from where they stand in a first-person conversation,
+// and on foot people near the player and the player's gun (game/SoundPlace). Game thread, outside the audio device's update.
+void EnsureVoicePlaceHook() {
+    using namespace mevr;
+    if (!gVoicePlaceTried && (game::conversation_world::WantsHooks() || game::sound_place::WantsHook())) {
+        gVoicePlaceTried = true;
+        gVoicePlaceHooked = engine::voice_place::Install(*gInit);
     }
     if (game::conversation_world::WantsScriptHook()) {
         EnsureCallFunctionHook();  // a walk to a mark answers the game mode's ban on AI movement in the script hook
@@ -1005,7 +1018,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}, \"sprint\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}, \"sprint\": {}, \"soundPlace\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -1018,7 +1031,7 @@ void PublishStatus() {
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
         game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson(), game::body_scale::StatusJson(),
-        game::conversation_world::StatusJson(), game::sprint::StatusJson());
+        game::conversation_world::StatusJson(), game::sprint::StatusJson(), game::sound_place::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1172,6 +1185,7 @@ void Heartbeat() {
     game::body_scale::LogStats();
         game::conversation_world::LogStats();
         game::authored_moment::LogStats();
+        game::sound_place::LogStats();
         if (MEVR_HOST_HAS(logWorldUiStats) && gHost->logWorldUiStats != nullptr) gHost->logWorldUiStats();
         game::squad_ack::LogStats();
         game::voice::LogStats();
@@ -1394,9 +1408,11 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
         EnsureConversationHooks();
+        EnsureVoicePlaceHook();
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
+        game::sound_place::Tick(deltaSeconds);  // on foot: people near the player and the gun heard from where they are (research/69 A1, A2)
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1511,6 +1527,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
     game::conversation_flow::Shutdown();                          // the conversations' ambient flags put back
     game::authored_moment::Shutdown();                            // the move track's question taken back
+    game::sound_place::Shutdown();                                // nobody named near the player, the gun neither
     if (gInit && gConversationHooked) {  // after the two modules above took their providers back
         removed(engine::conversation_hooks::Uninstall(*gInit, !exiting),
             "the conversation hooks couldn't be removed, or a call was still inside one");
@@ -1519,7 +1536,7 @@ MEVR_MOD_API void MevrModShutdown() {
         removed(engine::voice_place::Uninstall(*gInit, !exiting),
             "the sound source hook couldn't be removed, or a call was still inside it");
     }
-    gVoicePlaceHooked = false;
+    gVoicePlaceTried = gVoicePlaceHooked = false;
     gConversationHooksTried = gConversationHooked = false;
     game::power_wheel::Shutdown(PowerWheelLink());  // the host's wheel closed
     game::galaxy_map::Shutdown(GalaxyMapLink(), exiting);  // the host forgets the hologram; the window's captures go

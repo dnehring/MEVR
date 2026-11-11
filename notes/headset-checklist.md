@@ -255,6 +255,15 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   3 dB OpenAL Soft's mix was under the game's)? A
   conversation: a voice beside you is beside you. `[Audio] spatial = game` in `ASI\LE1MEVR.ini` (next start) is the game's
   own audio to compare; `soft` is OpenAL Soft without the head filters (for loudspeakers).
+- [ ] **People talking near you, and your own gun** (research/69 "The audio list", 2026-11-11; built offline, not yet run in
+  the game: Claude checks items 6 to 9 of research/69's "To check in the game" on the fake headset first). With headphones,
+  on foot: people talking within a few steps (the Garrus argument at C-Sec with first-person conversations on, a squadmate's
+  banter, people chatting in the Wards) should sound from where they stand and stay there as you turn, not inside your head;
+  walking away they get a little quieter, past 8-10 m they go back to the game's mix. Your gun's shots: from the gun in your
+  hand, not from between your ears (if they still sound centred, the shot belongs to Shepard's pawn: say so). Listen for: a
+  voice that starts in the middle and jumps to its place, someone placed who isn't talking (their other sounds should not
+  move), a crowd where the speaker isn't placed. The menu's Sound page: Headphones 3D / Speakers / The game's own and Loudness
+  (both from the next start), People around you and Your gun (at once).
 - [ ] **Who looks at whom, and nobody pivots** (research/69 "Who attends to whom", 2026-11-10; run in the ceremony on the
   fake headset): slot 81 at the podium. When a councillor speaks, Anderson and Udina should glance at the Council; when
   Anderson speaks to you his head and chest turn to you while his feet stay toward the Council, and Udina keeps his back

@@ -340,6 +340,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/WorldUi.hpp
     src/core/vr/ConversationWorld.cpp
     src/core/vr/ConversationWorld.hpp
+    src/core/vr/SoundPlace.cpp
+    src/core/vr/SoundPlace.hpp
     src/core/vr/OmniRail.cpp
     src/core/vr/OmniRail.hpp
     src/core/vr/Spectator.cpp
@@ -517,6 +519,8 @@ set(MEVR_MOD_SOURCES
     src/game/ConversationWorld.hpp
     src/game/ConversationFlow.cpp
     src/game/ConversationFlow.hpp
+    src/game/SoundPlace.cpp
+    src/game/SoundPlace.hpp
     src/game/AuthoredMoment.cpp
     src/game/AuthoredMoment.hpp
     src/game/UiWorldFigure.cpp
@@ -993,6 +997,7 @@ if (MEVR_BUILD_TESTS)
         tests/CameraDiagnosticTests.cpp
         tests/LandmarkTests.cpp
         tests/ConversationWorldTests.cpp
+        tests/SoundPlaceTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
         tests/TableReturnTests.cpp
@@ -1080,6 +1085,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/GalaxyMap.cpp
         src/core/vr/WorldUi.cpp
         src/core/vr/ConversationWorld.cpp
+        src/core/vr/SoundPlace.cpp
         src/core/vr/OmniRail.cpp
         src/core/vr/OmniPad.cpp
         src/core/gfx/Raster.cpp

@@ -11,6 +11,7 @@
 #include <intrin.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -44,6 +45,8 @@ tGetIntegerv gGetIntegerv = nullptr;
 tGetString gGetString = nullptr;
 Mode gMode = Mode::Hrtf;
 float gGainDb = 3.0f;
+std::atomic<bool> gSwitched{false};   // every function of the router's goes to OpenAL Soft (the menu's Running)
+std::atomic<bool> gInstalled{false};  // ASI\audio\soft_oal.dll was there at attach
 
 std::mutex gDescribeMutex;
 std::string gDescribe = "the game's own OpenAL (not looked at yet)";
@@ -202,14 +205,15 @@ std::unordered_map<std::uintptr_t, std::string> Exports(HMODULE module) {
 void Attach(hook::Context& init) {
     std::filesystem::path const settings = engine::SettingsFile();
     gMode = ReadMode(settings);
+    std::filesystem::path const dll = settings.parent_path() / L"audio" / L"soft_oal.dll";
+    std::error_code ec;
+    gInstalled.store(std::filesystem::exists(dll, ec));
     if (gMode == Mode::Game) {
         log::Info("audio: the game's own OpenAL ([Audio] spatial = game)");
         SetDescribe("the game's own OpenAL ([Audio] spatial = game)");
         return;
     }
-    std::filesystem::path const dll = settings.parent_path() / L"audio" / L"soft_oal.dll";
-    std::error_code ec;
-    if (!std::filesystem::exists(dll, ec)) {
+    if (!gInstalled.load()) {
         log::Info("audio: no {}: the game's own OpenAL (pans only; tools/fetch-openal-soft.ps1 builds OpenAL Soft)", ini::Utf8(dll));
         SetDescribe("the game's own OpenAL (no ASI\\audio\\soft_oal.dll)");
         return;
@@ -347,11 +351,27 @@ void Attach(hook::Context& init) {
         gMode == Mode::Hrtf ? "asked for: [Audio] spatial = hrtf" : "off: [Audio] spatial = soft", gGainDb,
         notInSoft.empty() ? std::string() : std::format("; not in OpenAL Soft, left to the router: {}", notInSoft));
     SetDescribe("OpenAL Soft, the game's device not open yet");
+    gSwitched.store(true);
 }
 
 std::string Describe() {
     std::lock_guard lock(gDescribeMutex);
     return gDescribe;
+}
+
+std::string Running() {
+    if (!gSwitched.load()) {
+        return "game";
+    }
+    return gMode == Mode::Hrtf ? "hrtf" : "soft";
+}
+
+float RunningGainDb() {
+    return gSwitched.load() ? gGainDb : 0.0f;
+}
+
+bool Installed() {
+    return gInstalled.load();
 }
 
 } // namespace mevr::host::openal_soft

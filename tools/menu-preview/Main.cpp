@@ -449,11 +449,26 @@ int main(int argc, char** argv) {
     };
 
     rml->ProcessMouseMove(-50, -50, 0);
-    for (char const* section : {"guide", "comfort", "controls", "voice", "body", "display", "hud"}) {
+    model.SetText("audio_now", "OpenAL Soft, HRTF on (\"Built-In HRTF\")");  // what plugin/OpenAlSoft says once the game's device is open
+    model.SetText("audio_note", ms::AudioNote("hrtf", 3.0f, "hrtf", 3.0f, true));
+    for (char const* section : {"guide", "comfort", "controls", "voice", "sound", "body", "display", "hud"}) {
         model.SetText("section", section);
         frames(30);
         save(std::string("section-") + section);
     }
+    // The Sound page (research/69 A3): a choice that waits for the next start, and a game without OpenAL Soft.
+    model.SetText("section", "sound");
+    model.SetText("audio_spatial", "game");
+    model.SetText("audio_note", ms::AudioNote("game", 3.0f, "hrtf", 3.0f, true));
+    frames(20);
+    save("section-sound-pending");
+    model.SetText("audio_spatial", "hrtf");
+    model.SetText("audio_now", "the game's own OpenAL (no ASI\\audio\\soft_oal.dll)");
+    model.SetText("audio_note", ms::AudioNote("hrtf", 3.0f, "game", 0.0f, false));
+    frames(20);
+    save("section-sound-missing");
+    model.SetText("audio_now", "OpenAL Soft, HRTF on (\"Built-In HRTF\")");
+    model.SetText("audio_note", ms::AudioNote("hrtf", 3.0f, "hrtf", 3.0f, true));
     // Each section's lower part (the pages scroll): one more picture per screenful.
     model.SetText("section", "body");
     model.SetText("play_position", "seated");
