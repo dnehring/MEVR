@@ -843,6 +843,21 @@ FpOwnedMode* FindFpOwned(void* mode) noexcept
     return nullptr;
 }
 
+// [MEVR] Every save load makes new camera-mode objects; the old entries die with the level but were only dropped when the
+// same mode was written again (never) or by restore-all (only the pause menu, game mode 7). After 16 loads without the menu
+// the table was full and no new mode was owned: the game's own third-person camera, 2 m behind Shepard (research/69 "The
+// coverage pass from saves", 2026-11-11: three conversations opened from it). A full table first drops its dead entries
+// (the same deep-liveness check as the write path; a corpse gets no restore). Returns how many were dropped.
+int FpPruneDeadOwned() noexcept
+{
+    int kept = 0;
+    for (int i = 0; i < g_fpOwnedCount; ++i)
+        if (FpModeDeepAliveSEH(g_fpOwned[i].mode, g_fpOwned[i].slot, g_fpOwned[i].klass)) g_fpOwned[kept++] = g_fpOwned[i];
+    const int dropped = g_fpOwnedCount - kept;
+    g_fpOwnedCount = kept;
+    return dropped;
+}
+
 // Object-table slot of a live object (linear scan; runs ONCE per owned mode object per level).
 std::int32_t FindObjectSlotSEH(const void* obj) noexcept
 {
@@ -955,6 +970,13 @@ void FpOwnAndWrite(void* mode, const MELEVR::Config::VrConfig::FpStateCfg* st) n
     FpOwnedMode* owned = FindFpOwned(mode);
     if (owned == nullptr)
     {
+        if (g_fpOwnedCount >= kFpOwnedCap)   // [MEVR] full: drop the dead entries of earlier levels first (FpPruneDeadOwned)
+        {
+            const int dropped = FpPruneDeadOwned();
+            static bool s_fullLogged = false;
+            if (dropped > 0) { LogLine("[FPCAM] owned table full: " + std::to_string(dropped) + " dead entries of earlier levels dropped"); s_fullLogged = false; }
+            else if (!s_fullLogged) { s_fullLogged = true; LogLine("[FPCAM] owned table full of live modes: this mode stays third person"); }
+        }
         if (g_fpOwnedCount >= kFpOwnedCap) return;   // table full - skip (never overwrite entries)
         if (!readBefore) return;
         const std::int32_t slot = FindObjectSlotSEH(mode);

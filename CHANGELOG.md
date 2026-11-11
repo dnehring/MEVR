@@ -33,6 +33,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   other. A scripted scene that fades to black before it moves you no longer flashes the cinema screen first, and a cut to
   another place inside one leaves you facing the scene. Riding Eden Prime's tram, you ride along.
   Experimental: off unless you choose it.
+- **First person stays first person after many loads.** Loading saves 16 times without opening the pause menu (say,
+  quickloading after deaths) left the view behind Shepard, as the game's own third-person camera, until the pause menu was
+  opened. It now stays at your eyes however often you load.
 
 ## 0.2.0 (2026-11-09)
 
