@@ -560,7 +560,7 @@ def saves(argv):
     what the last run wrote.
 
       conversation-sweep.py saves scan.jsonl list.json --base <career save.pcsav> [--out-dir <career folder>] [--first-slot 80]
-            [--approach 4] [--table saves.md] [--manifest file.json] [--dry-run]
+            [--approach 4] [--table saves.md] [--manifest file.json] [--dry-run] [--starting-flags]
       conversation-sweep.py saves --remove [--manifest file.json]
 
     list.json: {"scenes": [{"scene": "<conversation or moment name>", "title": "...", "approachM": 4, "plot": {"123": 1},
@@ -629,10 +629,15 @@ def saves(argv):
             row['skipped'] = 'no placed owner or originator in the scan (give "at" and "yaw" in the list)' if level else 'no persistent level known'
             continue
         plot, unset = plot_for(chain)
-        entry_plot, entry_unset = starting_plot(scan_path, name)
-        for k, v in entry_plot.items():
-            plot.setdefault(k, v)
-        unset += entry_unset
+        # The scene's own starting flag, only when asked (--starting-flags): a starting flag can be a plot milestone the level
+        # reacts to (Wrex on Virmire: flag 3684 set, loading the save started Kirrahe's briefing at once, 2026-11-11).
+        if '--starting-flags' in argv:
+            entry_plot, entry_unset = starting_plot(scan_path, name)
+            for k, v in entry_plot.items():
+                plot.setdefault(k, v)
+            unset += entry_unset
+        else:
+            row['startingFlags'] = starting_plot(scan_path, name)[0]  # listed in the table, not written
         plot.update({int(k): int(v) for k, v in (item.get('plot') or {}).items()})
         place, face = stand_before(at, yaw, float(item.get('approachM', approach)))
         out = os.path.join(out_dir, f"{career}_{slot:02d}.pcsav")

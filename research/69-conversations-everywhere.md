@@ -96,10 +96,11 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     number, checked against `nConditionalParam` (1 set, 0 clear). The scan now records both (`fireConditional`,
     `conditionalParam`), and the save generator sets **the first non-ambient starting entry's flag** as it wants it, and any
     flag-checking ambient entry before it the other way (`conversation-sweep.py`'s `starting_plot`, tested in
-    `tests/ConversationSweepTests.py`). Over the ten validation saves: 84 (Wrex) and 85 (Chorban, the known gap: 2 lines in 5 s)
-    lacked theirs (flags 3684, 5316) and now have them, written into those two saves (the old ones kept in
-    `%LOCALAPPDATA%\MEVR`); 82, 83, 86 and 88 lack theirs too but played a later variant, left as they are. [verify] in the
-    game: slots 84 and 85 open their scenes.
+    `tests/ConversationSweepTests.py`). **Tried in the game, it isn't enough:** with flag 3684 written into slot 84, loading the
+    save started Kirrahe's briefing at once (the flag is a plot milestone the level's script reacts to), so the save never came
+    up on foot; Chorban's slot 85 with flag 5316 still played its 2 lines in 4 s. Both saves were put back. The generator sets
+    starting flags only when asked (`--starting-flags`) and otherwise lists them in its table. A scene's plot needs the
+    milestones before it, not only its own flag: still open for slots 84 and 85.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify].
 14. **Bodies that must turn slide** (no turn-on-the-spot animation exists for these people; rare now). Accepted unless the
@@ -2463,3 +2464,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 03:50, **item 10 decided** ("Which scenes have no place for the player"): of 100 scenes seen in the world, the far-shots rule named two that play well in first person; the presence rules now send scenes to the 3D screen by default (`worldAutoScreen = on`), the far shots only log.
 - 2026-11-11 04:00, **slot 84 read** (item 12): Wrex's scene starts from its save as his ambient line (its first starting entry needs conditional 3684, which the save doesn't set); the save generator needs the starting entries' conditionals.
 - 2026-11-11 04:30, **the starting entries' plot flags** (item 12): an entry's conditional is a plot flag unless `bFireConditional`; the scan records it, the save generator sets the scene's entry flag; slots 84 and 85 got theirs (in-game check pending).
+- 2026-11-11 04:20, **the starting flags tried in the game** (item 12): Wrex's flag 3684 made the level start Kirrahe's briefing on load; Chorban's 5316 changed nothing. Saves put back; the generator's starting flags are opt-in.
