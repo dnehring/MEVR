@@ -1304,6 +1304,45 @@ void EndWalks(char const* why) {
 std::string StateNameOf(ue3::Object* object);
 
 // Returns the reason to use slide, or nullptr for a successful AI request. Game thread (camera post-handler) only.
+// Whether a person's animation tree can show a walk (2026-11-11, Noveria's scientists by Han Olar: two bystanders walked into
+// seats in their reference pose, arms out, feet planted, gliding 1.3 m/s): the action node (BioAnimNodeBlendByAction) plays
+// "Gestures" in the gesture mode and its first child, "Posture", otherwise, where locomotion lives. People animated by gestures
+// only have nothing under "Posture": out of the gesture mode they stand in the reference pose. Such a person is not walked.
+// nullopt: no action node in the tree (nothing to judge by: walked as before).
+ue3::ClassRef gWalkTreeBlendBase{"Engine.AnimNodeBlendBase"};
+ue3::ClassRef gWalkTreeActionNode{"SFXGame.BioAnimNodeBlendByAction"};
+ue3::FieldRef gWalkTreeAnimations{"Engine.SkeletalMeshComponent", "Animations"};
+ue3::FieldRef gWalkTreeChildren{"Engine.AnimNodeBlendBase", "Children"};
+ue3::FieldRef gWalkTreeChildAnim{gWalkTreeChildren, "Anim"};
+std::optional<bool> HasPosture(ue3::Object* pawn) {
+    ue3::Object* const mesh = player::Mesh(pawn);
+    ue3::Object* const root = mesh != nullptr ? gWalkTreeAnimations.Read<ue3::Object*>(mesh).value_or(nullptr) : nullptr;
+    std::vector<std::pair<ue3::Object*, int>> todo{{root, 0}};
+    std::vector<ue3::Object const*> seen;
+    while (!todo.empty() && seen.size() < 256) {
+        auto const [node, depth] = todo.back();
+        todo.pop_back();
+        if (node == nullptr || depth > 12 || std::find(seen.begin(), seen.end(), node) != seen.end() || !ue3::runtime::IsAlive(node)) {
+            continue;
+        }
+        seen.push_back(node);
+        if (!ue3::IsA(node, gWalkTreeBlendBase)) {
+            continue;
+        }
+        std::optional<ue3::Elements> const children = gWalkTreeChildren.ElementsOf(node, 64);
+        if (!children) {
+            continue;
+        }
+        if (ue3::IsA(node, gWalkTreeActionNode)) {
+            return children->count > 0 && gWalkTreeChildAnim.Read<ue3::Object*>(children->At(0)).value_or(nullptr) != nullptr;
+        }
+        for (std::int32_t i = 0; i < children->count; ++i) {
+            todo.emplace_back(gWalkTreeChildAnim.Read<ue3::Object*>(children->At(i)).value_or(nullptr), depth + 1);
+        }
+    }
+    return std::nullopt;
+}
+
 char const* StartAiWalk(Stay& st) {
     if (gWalkPawnClass.Get() == nullptr || !ue3::IsA(st.actor, gWalkPawnClass)) return "actor is not an Engine.Pawn";
     if (gWalkController.Get() == nullptr) return "Engine.Pawn.Controller missing";
@@ -1313,6 +1352,7 @@ char const* StartAiWalk(Stay& st) {
     // The game's AI runs no state code for a hidden pawn (C-Sec's Wrex in a plot state where his scene isn't due: the move state
     // was pushed and never began, 2026-11-11), and nobody sees a hidden person walk.
     if (gActorHidden.ReadBool(st.actor).value_or(false)) return "it is hidden";
+    if (HasPosture(st.actor) == false) return "its animation tree has no walk (nothing under Posture: animated by gestures only)";
     ue3::Function* const fn = gPushMove.Get();
     if (fn == nullptr) return "PushMoveToPoint missing";
     ue3::Reflection& r = ue3::runtime::Get();

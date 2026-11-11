@@ -559,6 +559,7 @@ void CheckClasses() {
     CheckClass<UAnimNodeBlendBase>("Engine.AnimNodeBlendBase");  // game/combat_stance (research/38)
     CheckClass<UAnimNodeSequence>("Engine.AnimNodeSequence");
     CheckClass<UAnimTree>("Engine.AnimTree");
+    CheckClass<UBioAnimNodeBlendByAction>("SFXGame.BioAnimNodeBlendByAction");  // game/ConversationWorld: who can walk (research/69)
     CheckClass<USkelControlBase>("Engine.SkelControlBase");
     CheckClass<USkelControlLimb>("Engine.SkelControlLimb");
     CheckClass<USceneCaptureComponent>("Engine.SceneCaptureComponent");

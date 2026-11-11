@@ -73,6 +73,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    (unit-tested, no squad in the scenes run), people out of view walk into seats in an opening without a cut (planned and
    started at C-Sec, whose people the AI doesn't move). Open: seats chosen for the speaker/listener pairs, the squad's walk
    (squadmates outside the conversation have no walk state), and a seat walk seen arriving.
+   **Seat walks seen arriving 2026-11-11** ("People animated by gestures only" below): at Han Olar's on Noveria two
+   bystanders walked 7.6 and 8 m into seats and arrived, **in their reference pose**: their animation tree has no walk. Such
+   people now keep their place (seen: the two stay at the window, posed). A seat walk by someone who can walk is still to see.
 8. **The pause and floor marker**: when the player is wanted at a mark the guided walk can't reach (inside a trigger, the
    way blocked, too far), hold the conversation and show a marker on the floor; it goes on when the player stands there.
    Today such a scene is a cut or stays put.
@@ -2005,6 +2008,22 @@ front and no body in the view. Judge: nothing found (a 0.84 m guided view walk, 
 unchanged. A matinee camera in game mode 0 that **doesn't** move Shepard (a door's shot, a fly-by) is still shown as
 gameplay; none has been seen yet.
 
+### People animated by gestures only (2026-11-11 05:55-06:11, fake headset, Noveria's ICE60_06; items 1 and 7)
+
+Han Olar's conversation (`conversation-launch.ps1 ice60_hanolar`, a stay opening) planned two seat walks: the scientists at the
+window (BioPawn_3, BioPawn_4) were out of view, 7.6 and 8.0 m from their seats. Both arrived by the game's AI (8.4 s and 16.3 s;
+`convo: walk: arrival ...`), but the snapshot during the conversation (`2026-11-11_05-55-31-205`) shows them **standing in the
+reference pose, arms out**, where before the scene they stood talking at the window (`05-50-21-987`). With `worldWalkLog = 1`
+the walk probe gave the reason (`walk-probe/BioPawn_4-tree-*.txt`): their tree's action node (`BioAnimNodeBlendByAction`) has
+**nothing under any child**, `Posture` included. They are animated through the conversation's gestures only, so out of the
+gesture mode (the walk clears it, as for Anderson) they show the reference pose, and the gait trace had their ankles fixed at
+1.3 m/s: a glide. Anderson's tree, which walked, has its locomotion under `Posture`.
+
+**Fix:** before an AI walk the walker's tree is read (`HasPosture`: the first action node's first child). Someone with
+nothing there is not walked (`convo: walk: X ai unavailable: its animation tree has no walk (nothing under Posture: animated
+by gestures only); it stays where it stands`). Run again: both stay at the window, posed, through the conversation
+(`06-10-44-423`). A tree with no action node at all is walked as before.
+
 ### The subtitle of a line played as a bark (2026-11-11 05:49-05:56, fake headset, Noveria's ICE60_06; item 13)
 
 `conversation-launch.ps1 ice60_trig12_olar_execution` (a chain start the flow table flags), then its start action fired again
@@ -2604,3 +2623,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 05:23, **item 11, a moment on foot** ("A moment on foot"): Chellik's bump is a matinee with its own cameras in game mode 0 (third person, letterboxed in the eyes, and the conversation after it opened from that camera: the 1.6-1.8 m stray). The camera's view target now marks it; such a moment is held in first person from where the player stood, without the letterbox (a host seam). Saves 91/92 start as they load (runner fixed); Liara's 10 lines clean.
 - 2026-11-11 05:42, **item 11, a moment after a conversation** ("A moment after a conversation"): Benezia's intro plays in first person after her conversation (the ended conversation leaves its held place as the place on foot; the host stays armed for the track's first move); the guide waits at the mark while a track holds Shepard (it had stepped in place for 12 s); the runner judges self-started scenes from the load and stops at GameOver.
 - 2026-11-11 05:56, **item 13 narrowed** ("The subtitle of a line played as a bark"): a flowed scene's lines and the game's own barks are alike (text built, nothing drawn, the profile's subtitle option 0, the game's default); the headset question is what the owner sees with subtitles on.
+- 2026-11-11 06:11, **items 1 and 7: people animated by gestures only** ("People animated by gestures only"): two seat walks arrived at Han Olar's in their reference pose (their tree has no walk); such people now keep their place, posed.
