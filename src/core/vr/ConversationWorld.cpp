@@ -176,6 +176,16 @@ std::vector<ArcSeat> SquadSeats(Vec3 const& player, double facingYawDeg, Vec3 co
     return seats;
 }
 
+Provisional StepProvisional(bool trackMoved, bool cameraOfItsOwn, double sinceSwitchS, double graceS, double maxS) {
+    if (trackMoved) {
+        return Provisional::Moment;
+    }
+    if (sinceSwitchS <= graceS) {
+        return Provisional::Wait;
+    }
+    return cameraOfItsOwn || sinceSwitchS > maxS ? Provisional::NotOne : Provisional::Wait;
+}
+
 std::vector<TalkPair> CountPairs(std::vector<LineEnds> const& lines) {
     std::vector<TalkPair> pairs;
     for (LineEnds const& line : lines) {

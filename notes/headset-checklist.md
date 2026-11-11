@@ -284,6 +284,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   your own body and arms stay while the council speaks; picking a reply with the stick no longer moves you; no blink at the
   end of the walk along the pathway (the blink as the walk begins is still there: known). And slot 80, the hearing: the
   dip as Anderson is switched off on the stairs should still come.
+- [ ] **Scripted walks met in play** (2026-11-11, research/69 "The scripted walks, named"; on the fake headset): Noveria, when
+  the whole squad goes down and the script brings you round: the world stays (no cinema screen for a moment while the screen is
+  black); the double homicide in Port Hanshan after talking to Anoleis: one dip to the crime scene and you face it (not a wall);
+  Feros's first creeper on foot: you walk after Shepard, no cut. Look for a flash of the screen at a scene's start, and where
+  you face after any dip.
 - [ ] **A scripted walk, standing still and walking along** (built and run on the fake headset 2026-11-10, research/69 "The
   script's Shepard, the player's view"): slots 80 and 81. Stand still after using Anderson: no flash as the walk begins;
   after five seconds you are walked the way Shepard went; the scene starts on time whatever you do. Walk along instead:

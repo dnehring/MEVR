@@ -2074,6 +2074,60 @@ by gestures only); it stays where it stands`). Run again: both stay at the windo
 
 Neither walks Shepard: they are the game's opening cutscene, and the screen is right for them.
 
+**Noveria, after the squad falls** (`moment_ice50_04_dsg_level_events`, `BIOA_ICE50_04_DSG ... Level_Events.SeqAct_Interp_0`;
+its event is the squad's death, fired by the runner past its plot check 4181): the script switches the cinematic mode, waits a
+second (`BioSeqAct_Delay_0`), fades to black, teleports Shepard 5.7 m (in sight: the same space), autosaves, and only then
+plays its matinee, 3.3 s after the switch; the matinee walks him 2.75 m in 20.2 s. The provisional hold let go after its
+quarter second (`no track moved Shepard (0.25 s without one)`): **the 3D screen came under a dip and went under another
+3 s later, in one space** (the owner's "no flash", "no dip within one space"). Then the moment was held in first person;
+the guided walk to him stopped 7.0 m short (blocked) and, the cinematic mode over, Shepard was brought to where the player
+stood (no cut). Of every cinematic switch in the sweep logs this lapse happened twice: here and on Therum's krogan entrance,
+whose own camera shot comes first (the screen right there). **Fix** (`cw::StepProvisional`, unit-tested): the provisional
+hold waits on, up to 6 s, while the game's camera is still the player's (its view target the controller or the pawn: the
+script's delays, black screens and moves before its matinee); a camera of the scene's own ends it after the quarter second as
+before. Log `moment: no track yet N s after the cinematic switch, and no camera of the scene's own has the view: the view stays held`.
+
+**Feros** (08:27-08:32): **the transition to the tower** (`moment_war20_13`, `cinematic_design_war20-30_transition`) started as the
+runner stood Shepard in its trigger: a cutscene with its own camera from its first frame, 80 s on the 3D screen, no track
+moving Shepard in that time (it streams the next part of the level in): the screen by the rule, and right. **The first creeper,
+on foot** (`moment_war40_11_dsg_on_foot`, `On_Foot.SeqAct_Interp_2`, fired past the scene's check): held in first person from
+the cinematic switch (0 ms, no flash), the track walked Shepard 9.0 m in 9.4 s, the player was guided 5.2 m after him, and the
+script's teleport of 8.9 m at its end was in sight (the same space: no cut); the judge found nothing. **The same scene from the
+Mako** (`moment_war40_11_dsg_in_vehicle`): its script teleports Shepard 18 m and then waits for him to leave the Mako
+(`BioSeqAct_ExitVehicle`); on foot that never completes, so its matinee never came: to see it, drive the Mako there.
+
+**Seen now: 16 of the 21** (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
+scene after the squad falls, the Feros transition on the screen, the first creeper on foot, the double homicide: below). Left:
+the ending's two (left out: the account and the career), the gambler (its chunk not kept: below), the creeper from the Mako, Eden Prime's train
+(after the prologue; the John01 career has a save on Eden Prime 22 minutes in, 33 m from the train fight's trigger).
+
+**Noveria's double homicide** (`moment_ice20_03a`): opening `BIOA_ICE00` leaves Shepard on the docked Normandy, the moment had no
+place (its event is the chunk's load, no originator), so he stayed there and the chunk streamed out again once the runner let
+its volume go (`action not loaded: gone after Shepard was placed`). Its way begins with Anoleis's conversation, then plot check
+2713, then the cutscene. Now the plan stands such a moment at its conversation's owner (`conversation-sweep.py moments`), and the
+runner fires past the check when the conversation is over and no track took Shepard in 8 s.
+
+**The rerun** (08:33-08:36, both fixes in): **the double homicide played** (the runner fired the cutscene's sequence past the
+check: the conversation start did not answer in 8 s): held in first person from the switch (0 ms, no flash); its matinee moves
+Shepard 9.4 m out of sight, from Anoleis's desk to the crime scene, so the view went with him under one dip (another
+composition: right by the rule, and where a player stands after Anoleis anyway); he stands there 25 s while the scene plays. **The
+snapshot 2 s in showed a wall a hand's breadth from the eyes**: the view had kept the facing it had at the desk. **Fix**: a cut to
+another composition inside a moment faces the way the script turns Shepard there (his pawn's yaw at the new place; log
+`... the view goes with him under a dip, facing his way there (N deg, was M)`). Run again (08:43): facing the scene (269 degrees,
+was 90), Gianna Parasini in view, **and Shepard's own back filling the middle**: the view's offset from him (half a metre
+ahead at the desk) had moved with him but not turned, so it stood half a metre behind him. The offset now turns with the facing.
+Run again (08:46): the view at his eyes, facing his way, nothing in front of it but the room's corner (the matinee's camera
+stands 2.2 m to his right, filming toward him); whether his own facing shows the scene's subject is [verify] in the headset,
+where the player looks round anyway.
+
+**The gambler on the Citadel** (`moment_sta60_07toss`, a remote event: no originator, no conversation first): the runner now stands
+such a moment in the streaming volume that brought its chunk in; at the volume's own place (-10144, 5824, -30416) the chunk
+streamed out again 4 s later (the place is the brush's pivot, not inside it). Not reached; the next way is the remote event's
+activator (the scan's sequence records) and its trigger's place. **Noveria after the squad falls, again**:
+`held in first person ... since the cinematic mode began 3203 ms ago (no flash of the screen)`: no 3D screen, no fade; the
+script's own black screen covered only the move in sight (no dip of ours); the player guided 8.6 m and arrived (`dips 0`).
+The snapshot 3 s in: the corridor from the player's eyes.
+
 ### Seats for the pairs (2026-11-11 07:40-08:30, offline and on the fake headset; item 7)
 
 The arc's seats went to the people brought into view in the order they were tracked. Now (`cw::CountPairs`, `cw::SeatsForPairs`,
@@ -2774,3 +2828,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 08:05, **item 8 decided by the owner** ("Is the player's place ever necessary"): a small floor marker only where the player's place is necessary; nothing in the logs shows it is (37 walk-ins: 29 arrived, 2 blocked, no scene waited), so nothing is built.
 - 2026-11-11 08:30, **item 7: seats for the pairs** ("Seats for the pairs"): people brought into view take the seats that let those who talk to each other look at each other; seen in Joker's cockpit scene; a refused seat is swapped.
 - 2026-11-11 08:13, **item 11: the moment line names its matinee**: the Normandy's moment is the prologue's opening as `BIOA_PRO00` loads (a placement, on the 3D screen); the other prologue placements are the opening fly-by (`BIOA_GLO00_A_Opening_Flyby_CIN`), not one of the 21.
+- 2026-11-11 08:47, **item 11: six more moments run** ("The scripted walks, named"): Noveria's scene after the squad falls (fixed: no flash of the screen while the script's black screen comes first, `cw::StepProvisional`), the double homicide (fixed: a cut faces Shepard's way, the view's offset turned), Feros's transition (screen) and first creeper (clean); the creeper from the Mako and the gambler not reached. 16 of 21 seen.

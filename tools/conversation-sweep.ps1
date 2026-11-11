@@ -314,6 +314,7 @@ function Stream($scene) {
     if ($way.Count -eq 0 -or $way[-1] -ne $target) { $way += $target }
     $route = @()
     $ready = $false
+    $volumeAt = $null
     for ($step = 0; $step -lt ($way.Count + 2) -and -not $ready; $step++) {
         if ((VisibleChunks).ContainsKey($target)) { $ready = $true; break }
         $volumes = LoadedVolumes
@@ -342,7 +343,9 @@ function Stream($scene) {
             break
         }
         if ($hit.state) { Console "mevr stream state $($hit.state) on" | Out-Null; Start-Sleep -Seconds 1 }
-        Console ("mevr stream touch " + $hit.volume.index) | Out-Null
+        $touched = Console ("mevr stream touch " + $hit.volume.index)
+        $vm = [regex]::Match($touched, 'the volume is at (-?\d+) (-?\d+) (-?\d+)')
+        if ($vm.Success) { $volumeAt = @([double]$vm.Groups[1].Value, [double]$vm.Groups[2].Value, [double]$vm.Groups[3].Value) }
         $route += $(if ($hit.state) { "$($hit.hop) by state $($hit.state) and $($hit.volume.name)" } else { "$($hit.hop) by $($hit.volume.name)" })
         $deadline = (Get-Date).AddSeconds($StreamSeconds)
         $arrived = $false
@@ -356,10 +359,10 @@ function Stream($scene) {
         Start-Sleep -Seconds 1
     }
     if ($ready) { Start-Sleep -Seconds 2 }
-    return [pscustomobject]@{ ready = $ready; route = $(if ($route.Count) { $route -join '; ' } else { 'none' }); seconds = [int]((Get-Date) - $t0).TotalSeconds }
+    return [pscustomobject]@{ ready = $ready; route = $(if ($route.Count) { $route -join '; ' } else { 'none' }); seconds = [int]((Get-Date) - $t0).TotalSeconds; volumeAt = $volumeAt }
 }
 
-function Place($scene) {
+function Place($scene, $streamed = $null) {
     $x = $null
     if ($scene.ownerAt) {
         $yaw = [double]($(if ($null -ne $scene.ownerYaw) { $scene.ownerYaw } else { 0 }))
@@ -367,6 +370,13 @@ function Place($scene) {
         $x = [double]$scene.ownerAt[0] + [math]::Cos($rad) * $StandM * 100; $y = [double]$scene.ownerAt[1] + [math]::Sin($rad) * $StandM * 100
         $z = [double]$scene.ownerAt[2]; $face = ((($yaw + 180) % 360) + 360) % 360
     } elseif ($scene.stageAt) { $x = [double]$scene.stageAt[0]; $y = [double]$scene.stageAt[1]; $z = [double]$scene.stageAt[2] + 90; $face = $null }
+    elseif ($scene.moment -and $streamed -and $streamed.volumeAt) {
+        # A moment with no place of its own (an event with no originator, a remote event: the gambler on the Citadel): Shepard
+        # in the streaming volume that brought its chunk in, so the chunk stays (left where `open` put him, it streamed out again
+        # once the volume was let go; research/69 "The scripted walks, named"). He falls to the floor from its middle.
+        $x = $streamed.volumeAt[0]; $y = $streamed.volumeAt[1]; $z = $streamed.volumeAt[2]; $face = $null
+        Say "   no place of its own: Shepard stands in the volume that streamed its chunk in ($([int]$x) $([int]$y) $([int]$z))"
+    }
     if ($null -eq $x) { return $false }
     Console ("mevr setloc {0:0} {1:0} {2:0}" -f $x, $y, ($z + 10)) | Out-Null  # 0.1 m up: from 0.5 m he hovered there after `ghost` and `walk` (2026-11-10)
     if ($null -ne $face) {
@@ -397,7 +407,7 @@ function RunScene([string]$map, $scene, $streamed) {
     $index = FindAction $scene
     if ($null -eq $index) { $record.outcome = 'action not loaded'; $record.detail = 'the chunk is visible, the start action is not among the loaded ones'; return $record }
     if ($ReachOnly) { $record.outcome = 'reached'; return $record }
-    $placed = Place $scene
+    $placed = Place $scene $streamed
     Console 'walk' | Out-Null
     # (After `ghost` and `walk` he hung in the air where he was put until something moved him: falling says so at once.)
     Console 'set SFXPawn_Player Physics PHYS_Falling' | Out-Null
@@ -499,6 +509,33 @@ function RunScene([string]$map, $scene, $streamed) {
     }
     $script:openingMark = $mark
     if ((State).convo) { $drive = Drive $scene.conversation $deadline $scene.walks }
+    # A moment behind a conversation and a plot check (Noveria's double homicide: Anoleis's conversation, check 2713, then the
+    # cutscene; research/69 "The scripted walks, named"): when the conversation is over and no track has moved Shepard in 8 s,
+    # the action behind the last check is fired (the test rig's shortcut again: the plot is not set).
+    $tookShepard = "matinee's move track takes Shepard"
+    if ($scene.moment -and $scene.chain -and @($scene.chain)[0].class -match 'StartConversation' -and -not (@(LogSince $mark) -match $tookShepard)) {
+        $chain = @($scene.chain); $last = -1
+        for ($i = 1; $i -lt $chain.Count - 1; $i++) { if ($chain[$i].class -match 'PMCheck|SeqCond|Gate') { $last = $i } }
+        if ($last -ge 1) {
+            $until = (Get-Date).AddSeconds(8)
+            while ((Get-Date) -lt $until -and -not (@(LogSince $mark) -match $tookShepard) -and -not (Dead)) { Start-Sleep -Seconds 1 }
+            if (-not (@(LogSince $mark) -match $tookShepard)) {
+                $op = $chain[$last + 1]; $name = ($op.tail -split '\.')[-1]
+                $listing = Console ("mevr instances $($op.class) $name")
+                $pm = [regex]::Match($listing, '(?m)^\[(\d+)\] \S+ \S*' + [regex]::Escape($op.tail) + '(\s|$)')
+                if ($pm.Success) {
+                    Console ("mevr activate $($pm.Groups[1].Value) $([int]$op.input)") | Out-Null
+                    $record.fired = "$($record.fired); after its conversation, past the plot check: $($op.class) $name"
+                    Say "   the conversation ended and no track moved Shepard: fired $($op.class) $name (past the check)"
+                    $until = (Get-Date).AddSeconds([double]$scene.lengthS + 20)
+                    while ((Get-Date) -lt $until -and -not (Dead) -and -not (@(LogSince $mark) -match 'moment: view summary')) {
+                        Start-Sleep -Seconds 1
+                        if ((State).convo) { Drive $scene.conversation $deadline $scene.walks | Out-Null }
+                    }
+                } else { $record.fired = "$($record.fired); the action past the check after its conversation ($($op.class) $name) is not loaded" }
+            }
+        }
+    }
     Start-Sleep -Seconds 2
     $window = @(LogSince $mark)
     Set-Content -LiteralPath (Join-Path $Out "logs\$($scene.conversation).log") -Value $window -Encoding utf8

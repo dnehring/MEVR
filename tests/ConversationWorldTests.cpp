@@ -736,6 +736,14 @@ void TestWalkStep() {
     CHECK(!cw::WalkWorthIt(95.0, 179.0, 150.0, 60.0));   // the ceremony's step back
     CHECK(!cw::WalkWorthIt(80.0, -90.0, 150.0, 60.0));   // a step aside
     CHECK(cw::WalkWorthIt(80.0, 350.0, 150.0, 60.0));    // -10 degrees, wrapped
+    // A provisional moment: a track makes it one at any time; the first quarter second always waits; after it a camera of the
+    // cutscene's own ends it (the krogan's entrance), the player's own camera waits on (Noveria's black screen and move, 3.3 s)
+    // until 6 s.
+    CHECK(cw::StepProvisional(true, true, 5.0) == cw::Provisional::Moment);
+    CHECK(cw::StepProvisional(false, true, 0.1) == cw::Provisional::Wait);
+    CHECK(cw::StepProvisional(false, true, 0.3) == cw::Provisional::NotOne);
+    CHECK(cw::StepProvisional(false, false, 3.3) == cw::Provisional::Wait);
+    CHECK(cw::StepProvisional(false, false, 6.1) == cw::Provisional::NotOne);
     // Re-facing for the player: never while the player stands at Shepard's mark, never for someone seated.
     CHECK(!cw::MayReface(1.0, 55.0));     // Joker: the player at the mark behind him, and he is seated
     CHECK(!cw::MayReface(1.0, 76.0));     // standing, but the player is where the stage composed Shepard

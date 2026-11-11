@@ -189,6 +189,15 @@ void FaceToward(std::vector<ArcSeat>& seats, Vec3 const& middle);
 std::vector<ArcSeat> SquadSeats(Vec3 const& player, double facingYawDeg, Vec3 const& lookAt, int count, double lateralUnits,
     double backUnits);
 
+// A provisional moment (research/69 "The scripted walks, named", 2026-11-11): the cinematic mode began on foot and the view is
+// held while it waits for a matinee's track to move Shepard. Noveria's scene after the squad falls switches the mode, waits a
+// second, fades to black, moves Shepard 5.7 m in sight and only then starts its matinee, 3.3 s in: with a quarter of a second's
+// wait the 3D screen came and went under two dips in one space. It waits on while nothing of the cutscene's own is shown (the
+// game's camera still the player's), up to `maxS`; a camera of its own (a director's shot: the krogan's entrance on Therum)
+// ends it after `graceS`, as before.
+enum class Provisional { Wait, Moment, NotOne };
+Provisional StepProvisional(bool trackMoved, bool cameraOfItsOwn, double sinceSwitchS, double graceS = 0.25, double maxS = 6.0);
+
 // Seats for the pairs (research/69 item 7, "Seats for the pairs", 2026-11-11). Who talks to whom: a line's two ends as the
 // conversation numbers them (its speaker and listener: -2 the player, -1 the owner, 0.. its speaker list); each pair of different
 // people once, with the number of lines either way, the most talkative first.

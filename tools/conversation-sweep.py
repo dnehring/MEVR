@@ -429,8 +429,18 @@ def moment_scenes(path):
     roots, roots_of = cs.level_roots(levels)
     ways = stream_ways(path)
     by_map = collections.defaultdict(list)
+    # A moment whose way begins with a conversation and has no placed originator (its event is the level's load: Noveria's
+    # double homicide, behind Anoleis's conversation) is stood at that conversation's owner (research/69 "The scripted walks,
+    # named"): with no place Shepard stayed where `open` left him and the chunk streamed out again.
+    starts = None
     for r in rows:
         via = r['via']
+        if not via.get('originatorAt') and 'StartConversation' in (via.get('firstOpClass') or ''):
+            if starts is None:
+                starts = {(e['package'], e['actionTail']): e for e in cs.catalogue(path, None, quiet=True)}
+            e = starts.get((r['package'], re.sub(r'^.*Main_Sequence[.]', '', via['firstOp'])))
+            if e and e.get('ownerAt'):
+                via = dict(via, originatorAt=e['ownerAt'], originatorYaw=e.get('ownerYaw') or 0, originatorClass=f"{e['ownerClass']} (its conversation's owner)")
         maps = roots_of(r['package'])
         by_name = cs.persistent(r['package'])
         mp = by_name if by_name in maps else (maps[0] if maps else by_name)

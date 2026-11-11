@@ -30,7 +30,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   a scripted walk that follows a conversation at once (Benezia's entrance on Noveria), instead of the cinema screen.
   Scenes that play out around you as you walk keep their subtitles (when the game's subtitles are on).
   When people are brought round into view at a scene's start, those who talk to each other stand where they can see each
-  other.
+  other. A scripted scene that fades to black before it moves you no longer flashes the cinema screen first, and a cut to
+  another place inside one leaves you facing the scene.
   A preview: off unless you choose it.
 
 ## 0.2.0 (2026-11-09)
