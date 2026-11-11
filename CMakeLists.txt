@@ -384,6 +384,7 @@ set(MEVR_MOD_SOURCES
     src/engine/ConversationHooks.cpp
     src/engine/ConversationHooks.hpp
     src/engine/BodyBounds.cpp
+    src/engine/NameLookup.cpp
     src/engine/BodyBounds.hpp
     src/engine/VoicePlace.cpp
     src/engine/VoicePlace.hpp

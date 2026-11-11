@@ -1420,6 +1420,7 @@ void CheckFunctions() {
         "SFXGame.BioAI_Henchman.DoesGameModeAllowMovement",
         "Core.Object.GetStateName",  // game/ConversationWorld: worldWalkLog's probe of a walker's controller
         "SFXGame.BioPawn.SetDesiredSpeed",  // ... and a walker's speed under a paused controller
+        "SFXGame.BioActorBehavior.AbilityEnable",  // ... and its AI switched on the game's way
         "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
         "SFXGame.BioPawn.PlaySoundSet",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
@@ -1834,6 +1835,12 @@ void CheckParams() {
     PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", InstigatedBy);
     PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", HitLocation);
     PARAM(UBioPawnBehavior_execProxyTakeDamage_Parms, "SFXGame.BioPawnBehavior.ProxyTakeDamage", pDamageCausingActor);
+    // game/ConversationWorld's walk to a mark: the walker's AI switched on the game's way, and its speed.
+    PARAM(UBioActorBehavior_execAbilityEnable_Parms, "SFXGame.BioActorBehavior.AbilityEnable", bEnable);
+    PARAM(UBioActorBehavior_execAbilityEnable_Parms, "SFXGame.BioActorBehavior.AbilityEnable", eEnableType);
+    PARAM(UBioActorBehavior_execAbilityEnable_Parms, "SFXGame.BioActorBehavior.AbilityEnable", nmSubType);
+    PARAM(ABioPawn_execSetDesiredSpeed_Parms, "SFXGame.BioPawn.SetDesiredSpeed", fDesiredSpeed);
+    PARAM(ABioPawn_execSetDesiredSpeed_Parms, "SFXGame.BioPawn.SetDesiredSpeed", bForce);
     PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", Damage);
     PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", HitLocation);
     PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", DamageType);

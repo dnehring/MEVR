@@ -54,9 +54,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 
 1. **People walk to their marks** (2026-11-11, "People walking to their marks" below; the owner: more valuable than the
    audio). A mark the stage asks for during a line is walked to by the game's own AI and locomotion (`worldWalk = 1`, now the
-   default with the world mode), the player never; seen on the fake headset (Anderson mid-stride in the medical bay). Open:
-   why the AI doesn't move C-Sec's Wrex (he stays put), and the squad's own marks (henchmen use `BioAI_Henchman`, which asks
-   `AllowsHenchmenMovement`: answered too, not yet seen walking).
+   default with the world mode), the player never; seen on the fake headset (Anderson mid-stride in the medical bay). C-Sec's
+   Wrex, who didn't walk, was hidden in the test's plot state (not a limit of play). Open: the squad's own marks (henchmen use
+   `BioAI_Henchman`, which asks `AllowsHenchmenMovement`: answered too, not yet seen walking).
 
 2. The body in conversations and scripted walks (near plane, culling pad, the body with the player, standing legs).
 3. The walkway's blink only for changes within 8 m; the 1.5 s trust over game-thread stalls.
@@ -1891,7 +1891,7 @@ and 0.4 s later standing on it, feet together (`2026-11-11_02-00-00-395` and `-7
 four of five walks arrived; one took the long way round the bed (to 1.2 m past the mark at its deadline) and came back on
 the next ask; one stopped 0.7 m short. **C-Sec's Wrex** (his `ALL` counter raised from 0) entered the move state with speed 1
 and out of the gesture mode, yet his move timed out without the state's loop running (`MoveTimer` -9.7, the state's
-`vMoveTarget` never set). Why is open. A walk the AI hasn't moved 8 units in 2 s (1 s cut the bed path short) leaves the
+`vMoveTarget` never set): he was hidden (below). A walk the AI hasn't moved 8 units in 2 s (1 s cut the bed path short) leaves the
 person where it got to: a 2 m glide with planted feet looked worse than staying (the slide's gait, above), and that mark
 isn't tried again in the conversation (the stage asks again at every line: without that Wrex restarted every 4 s).
 
@@ -1901,10 +1901,13 @@ centre, so a 3D distance never closed), then turns to the facing the stage gave 
 walk's time plus 5 s (paths go round things); the AI's counters, its speed and the answered question are let go at any end.
 An AI that can't take the walk at all (no `BioAiController`, no behaviour) also leaves the person where it stands.
 
-**Why C-Sec's people don't walk, as far as it went:** their controller enters `BioSeqAct_MoveToPoint` but the state's code never
-runs (its `InitState` never set `m_oBioPawnCache`, its `vMoveTarget` stays 0); the controller's properties differ from a
-medical bay walker's in nothing that explains it (same class, tick enabled, no stasis; only its balancing tick group, 1 against
-0). They stand in a scripted standoff (`WrexHasseledByOfficer`). Open.
+**Why C-Sec's people didn't walk: they were hidden.** Their controller entered `BioSeqAct_MoveToPoint` but the state's code
+never ran (its `InitState` never set `m_oBioPawnCache`, its `vMoveTarget` stayed 0), with the AI switched on the game's own way
+too (`BioActorBehavior.AbilityEnable(true, DT_AI, 'ALL')` through the engine's name lookup, `engine/NameLookup`, `0xD1150`
+in find-only mode; it fires the enabled event a written counter skips). Both controllers were in their default state before
+the move; the pawns differed in `bHidden`: Wrex (`BioPawn_0` of `STA30_01_DSG`) was hidden. The runner opens the level with
+the plot reset, so the standoff (`WrexHasseledByOfficer`) isn't due and its people are hidden; the game runs no state code for
+them. Not a limit of real play. A hidden person is now never walked or given a seat (`it is hidden`).
 
 ### The composition of groups, first part (2026-11-11 02:40-03:00, fake headset; item 7)
 
@@ -2403,7 +2406,8 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   counters, the conversation's ban on AI movement, its paused speed and, the one that mattered, the gesture mode, whose
   animation node plays gestures over the locomotion branch. Measured by the walker's ankles (30-70 units apart in turn at
   130 u/s) and seen in snapshots (Anderson mid-stride, then on his mark); five of six walks in the medical bay arrive within
-  0.25 m. C-Sec's Wrex isn't moved by the AI and stays put. `worldWalk = 1` is the world mode's default now.
+  0.25 m. C-Sec's Wrex didn't walk: hidden in the test's plot state (the game runs no AI for him). `worldWalk = 1` is the
+  world mode's default now.
 - 2026-11-11, **the audio list, offline** (an agent in a worktree; no game): `engine/VoicePlace` takes three lists (the
   conversation's unchanged, people near the player, the player's gun) and a "centred sources only" voice; `game/SoundPlace`
   names the people within 8 m on foot (those heard first) and the held weapon at its muzzle; `mevr voices census` tells which

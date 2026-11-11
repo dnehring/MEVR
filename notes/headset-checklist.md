@@ -214,7 +214,7 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   another place they turn and walk there with their own walk, not a slide or a jump, and stop on it; seen on the fake headset
   (Anderson mid-stride, then standing on his mark; the ankles alternate 30-70 units apart at 130 u/s). Watch for: gestures
   coming back on their next line, a walker turning to face the scene once there, anyone walking through a bed or a person,
-  and C-Sec's Wrex, whom the game's AI does not move (he stays where he stands; the log says `the game's AI didn't move it`).
+  and anyone who stops short (they stay where they got to; the log says `the game's AI didn't move it`).
   `worldWalk = 0` off, `2` the old slide.
 - [ ] **Groups composed** (2026-11-11, research/69 "The composition of groups"): when a scene opens with a cut and someone
   is brought into view, they stand turned in toward the group (not square to you); a squadmate who isn't in the

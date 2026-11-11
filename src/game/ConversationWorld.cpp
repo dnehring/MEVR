@@ -11,6 +11,7 @@
 #include "engine/CallFunction.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/ConversationHooks.hpp"
+#include "engine/NameLookup.hpp"
 #include "engine/VoicePlace.hpp"
 #include "game/AuthoredMoment.hpp"
 #include "game/CallTrace.hpp"
@@ -1123,23 +1124,58 @@ bool WalkVelocity(ue3::Object* actor, ik::Vec3 velocity) {
 }
 
 // A counter of the AI's enables raised to 1 for a walk (journalled); returns by how much.
-int RaiseAiCounter(ue3::FieldRef& field, ue3::Object* behavior) {
+// The game's own switch for a part of a pawn's AI (BioActorBehavior.AbilityEnable(bEnable, DT_AI, subtype), 0x9E6730 and
+// AbilityEnable_AI 0x9E6770: a counter that fires the enabled or disabled event on its way through 0, which a counter written
+// by hand skips: C-Sec's people entered the move state and its code never ran), `times` times. False: the function or the
+// name isn't there, or a call failed (the caller then writes the counter itself).
+ue3::FunctionRef gAbilityEnable{"SFXGame.BioActorBehavior.AbilityEnable"};
+bool gAbilityEnableNoted = false;
+bool AbilityEnable(ue3::Object* behavior, bool enable, std::wstring_view subtype, int times) {
+    ue3::Function* const f = gAbilityEnable.Get();
+    std::optional<ue3::Name> const name = engine::name_lookup::Find(subtype);
+    if (f == nullptr || !name) {
+        if (!gAbilityEnableNoted) {
+            gAbilityEnableNoted = true;
+            log::Warn("convo: walk: the game's AbilityEnable or the name for the AI's subtype isn't there: its counters are written instead");
+        }
+        return false;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (int i = 0; i < times; ++i) {
+        ue3::Params p(r, f);
+        if (!p.Valid() || !p.SetBool("bEnable", enable) || !p.Set("eEnableType", std::uint8_t{0}) || !p.Set("nmSubType", *name) ||
+            !ue3::runtime::Call(behavior, f, p)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A counter of the AI's enables raised to 1 for a walk, through the game's AbilityEnable (else written, journalled); returns
+// by how much.
+int RaiseAiCounter(ue3::FieldRef& field, ue3::Object* behavior, std::wstring_view subtype) {
     std::int32_t* const value = field.In<std::int32_t>(behavior);
     int const by = value != nullptr ? cw::AiEnableDeficit(*value) : 0;
     if (by == 0) {
         return 0;
     }
-    *value += by;
+    if (AbilityEnable(behavior, true, subtype, by) && field.Read<std::int32_t>(behavior).value_or(0) > 0) {
+        return by;
+    }
+    *value = 1;
     write_journal::Wrote("ConversationWorld.aiEnabled", value, sizeof(*value));
     return by;
 }
 
-void LowerAiCounter(ue3::FieldRef& field, ue3::Object* behavior, int by) {
+void LowerAiCounter(ue3::FieldRef& field, ue3::Object* behavior, std::wstring_view subtype, int by) {
     std::int32_t* const value = by > 0 ? field.In<std::int32_t>(behavior) : nullptr;
     if (value == nullptr) {
         return;
     }
-    *value -= by;  // by what the walk added: any change the game made meanwhile stands
+    if (AbilityEnable(behavior, false, subtype, by)) {
+        return;  // by what the walk added: any change the game made meanwhile stands
+    }
+    *value -= by;
     write_journal::Wrote("ConversationWorld.aiEnabled", value, sizeof(*value));
 }
 
@@ -1159,8 +1195,8 @@ void ReleaseAi(Stay& st) {
         SetWalkerSpeed(st.actor, 0.0f, false);  // as the move state's own Cleanup
     }
     if (st.walkBehavior != nullptr && ue3::runtime::IsAlive(st.walkBehavior) && ue3::IsA(st.walkBehavior, gEpicBehaviorClass)) {
-        LowerAiCounter(gAiAllEnabled, st.walkBehavior, st.allRaised);
-        LowerAiCounter(gAiStackEnabled, st.walkBehavior, st.stackRaised);
+        LowerAiCounter(gAiAllEnabled, st.walkBehavior, L"ALL", st.allRaised);
+        LowerAiCounter(gAiStackEnabled, st.walkBehavior, L"Stack", st.stackRaised);
         if (st.allRaised + st.stackRaised > 0) {
             log::Info("convo: walk: {}'s AI switched off again as the level had it", st.name);
         }
@@ -1213,6 +1249,8 @@ void EndWalks(char const* why) {
     }
 }
 
+std::string StateNameOf(ue3::Object* object);
+
 // Returns the reason to use slide, or nullptr for a successful AI request. Game thread (camera post-handler) only.
 char const* StartAiWalk(Stay& st) {
     if (gWalkPawnClass.Get() == nullptr || !ue3::IsA(st.actor, gWalkPawnClass)) return "actor is not an Engine.Pawn";
@@ -1220,6 +1258,9 @@ char const* StartAiWalk(Stay& st) {
     ue3::Object* const ai = gWalkController.Read<ue3::Object*>(st.actor).value_or(nullptr);
     if (ai == nullptr || !ue3::runtime::IsAlive(ai)) return "no live controller";
     if (gWalkAiClass.Get() == nullptr || !ue3::IsA(ai, gWalkAiClass)) return "controller is not a BioAiController";
+    // The game's AI runs no state code for a hidden pawn (C-Sec's Wrex in a plot state where his scene isn't due: the move state
+    // was pushed and never began, 2026-11-11), and nobody sees a hidden person walk.
+    if (gActorHidden.ReadBool(st.actor).value_or(false)) return "it is hidden";
     ue3::Function* const fn = gPushMove.Get();
     if (fn == nullptr) return "PushMoveToPoint missing";
     ue3::Reflection& r = ue3::runtime::Get();
@@ -1241,8 +1282,8 @@ char const* StartAiWalk(Stay& st) {
     st.walkBehavior = behavior;
     int const allWas = gAiAllEnabled.Read<std::int32_t>(behavior).value_or(0);
     int const stackWas = gAiStackEnabled.Read<std::int32_t>(behavior).value_or(0);
-    st.allRaised = RaiseAiCounter(gAiAllEnabled, behavior);
-    st.stackRaised = RaiseAiCounter(gAiStackEnabled, behavior);
+    st.allRaised = RaiseAiCounter(gAiAllEnabled, behavior, L"ALL");
+    st.stackRaised = RaiseAiCounter(gAiStackEnabled, behavior, L"Stack");
     st.walkController = ai;
     st.answersAtStart = gAllowAnswers;
     gWalkingControllers.push_back(ai);
@@ -1250,6 +1291,9 @@ char const* StartAiWalk(Stay& st) {
         log::Info("convo: walk: {}'s AI switched on for the walk (the level had it off: ALL {}, Stack {})", st.name, allWas, stackWas);
     }
     char const* why = nullptr;
+    if (gSettings.walkLog) {
+        log::Info("convo: walk: {}'s controller is in state {} before its move", st.name, StateNameOf(ai));
+    }
     if (!ue3::runtime::Call(ai, fn, p)) {
         why = "PushMoveToPoint call failed";
     } else {
@@ -1357,16 +1401,21 @@ void DumpTree(ue3::Object* node, int depth, std::vector<ue3::Object const*>& see
 
 // worldWalkLog: what holds an AI walk still, 1 s in: the controller's state and both objects' properties, to a file each.
 ue3::FunctionRef gGetStateName{"Core.Object.GetStateName"};
+std::string StateNameOf(ue3::Object* object) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (ue3::Function* const f = gGetStateName.Get(); f != nullptr && object != nullptr && r.IsAlive(object)) {
+        ue3::Params p(r, f);
+        if (p.Valid() && ue3::runtime::Call(object, f, p)) {
+            return r.ToString(p.Return<ue3::Name>().value_or(ue3::Name{}));
+        }
+    }
+    return "?";
+}
+
 void ProbeWalk(Stay& st) {
     st.probeS = 0.0;
     ue3::Reflection& r = ue3::runtime::Get();
-    std::string state = "?";
-    if (ue3::Function* const f = gGetStateName.Get(); f != nullptr && st.walkController != nullptr && r.IsAlive(st.walkController)) {
-        ue3::Params p(r, f);
-        if (p.Valid() && ue3::runtime::Call(st.walkController, f, p)) {
-            state = r.ToString(p.Return<ue3::Name>().value_or(ue3::Name{}));
-        }
-    }
+    std::string const state = StateNameOf(st.walkController);
     wchar_t buffer[MAX_PATH] = {};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
         return;
@@ -2681,8 +2730,9 @@ void PlanSeatWalks(ue3::Object* conv, ue3::Object* pawn) {
     double const facing = YawDeg(gC.holdRotation);
     std::vector<std::pair<ue3::Object*, std::string>> out;
     for (Tracked const& t : gC.actors) {
-        if (t.actor == nullptr || t.actor == pawn || t.actor == owner || !ue3::runtime::IsAlive(t.actor)) {
-            continue;
+        if (t.actor == nullptr || t.actor == pawn || t.actor == owner || !ue3::runtime::IsAlive(t.actor) ||
+            gActorHidden.ReadBool(t.actor).value_or(false)) {
+            continue;  // a hidden person isn't in the scene to be seen (nor does the game's AI walk it)
         }
         auto const at = player::Location(t.actor);
         auto const face = FacePoint(t.actor);

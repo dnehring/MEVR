@@ -27,6 +27,7 @@
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
 #include "engine/BodyBounds.hpp"
+#include "engine/NameLookup.hpp"
 #include "engine/VoicePlace.hpp"
 #include "engine/CoverAcquire.hpp"
 #include "engine/ConversationHooks.hpp"
@@ -376,6 +377,16 @@ void EnsureBonePoseHook() {
     }
 }
 
+// The engine's name lookup (engine/NameLookup): resolved once the script packages are in, for the AI's walk to a mark.
+void EnsureNameLookup() {
+    using namespace mevr;
+    static bool tried = false;
+    if (!tried) {
+        tried = true;
+        engine::name_lookup::Resolve(*gInit);
+    }
+}
+
 // The cover test runs for every pawn that tests for cover, so its hook only goes in once noCover is
 // first wanted (game thread, outside the pawns' tick).
 void EnsureCoverHook() {
@@ -406,6 +417,7 @@ void EnsureVoicePlaceHook() {
     }
     if (game::conversation_world::WantsScriptHook()) {
         EnsureCallFunctionHook();  // a walk to a mark answers the game mode's ban on AI movement in the script hook
+        EnsureNameLookup();        // ... and switches the walker's AI on through the game's AbilityEnable('ALL')
     }
 }
 
