@@ -114,7 +114,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     starting flags only when asked (`--starting-flags`) and otherwise lists them in its table. A scene's plot needs the
     milestones before it, not only its own flag: still open for slots 84 and 85.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
-    subtitle on the HUD is [verify].
+    subtitle on the HUD is [verify]. **Narrowed 2026-11-11** ("The subtitle of a line played as a bark" below): a flowed scene's
+    lines behave exactly like the game's own barks: the line's text is built, nothing is drawn, in this profile (its subtitle
+    option at the game's default, 0). What the owner sees with subtitles on is the headset's question.
 14. **Bodies that must turn slide** (no turn-on-the-spot animation exists for these people; rare now). Accepted unless the
     headset says otherwise.
 
@@ -2003,6 +2005,29 @@ front and no body in the view. Judge: nothing found (a 0.84 m guided view walk, 
 unchanged. A matinee camera in game mode 0 that **doesn't** move Shepard (a door's shot, a fly-by) is still shown as
 gameplay; none has been seen yet.
 
+### The subtitle of a line played as a bark (2026-11-11 05:49-05:56, fake headset, Noveria's ICE60_06; item 13)
+
+`conversation-launch.ps1 ice60_trig12_olar_execution` (a chain start the flow table flags), then its start action fired again
+with snapshots 2, 4 and 6 s into the barks: **no subtitle on the HUD panel** (the game's whole UI on foot), though the game's
+conversation panel was up (`mevr panel`: Conversation visible). Read mid-line (`mevr props`):
+
+| | Olar's execution (flowed: ours) | the science joke (ambient by the game's own data) | Han Olar's conversation (not ambient) |
+|---|---|---|---|
+| the conversation's `m_bAmbient` | true | true | false |
+| its `m_sCurrentSubTitle` | "Han Olar: Will I get a ..." | "Scientist: How can you tell jokes?" | "Han Olar: You came to find out about them, didn't you?" |
+| its `m_nSubtitlesMode` | 0 | 0 | 0 |
+| the world's `BioSubtitles.m_sSubtitle` | empty | empty | empty |
+| on the HUD panel | nothing | nothing | (the conversation's own band, on its quad) |
+
+So **a flowed scene's line is shown exactly as the game shows its own barks**: the text with the speaker's name is built
+(ambient lines get the name prefixed, `UBioConversation` 0xC84B70), and in this profile nothing draws it. `m_nSubtitlesMode` is
+the player's profile option 5 (`OPTION_TYPE_SUBTITLES`), read at the conversation's start (0xC86B00, through the profile
+object's slot 0x458; option 1, the dialogue mode, beside it). The per-tick update (0xC87830) hands the line to the speaker with a
+"no subtitle" bit set when that option is 0. 0 is also the game's default (`BIOGame.ini m_nDefaultSubTitles=0`). The world's
+`BioSubtitles` isn't where conversation subtitles go (empty in the ordinary conversation too). Open: what the option's 0 means for
+ambient lines (the options screen's value), so the headset question is the owner's: with the game's subtitles on, do people
+talking around you on foot get subtitles, and do the flowed scenes get the same?
+
 ### A moment after a conversation (2026-11-11 05:27-05:42, fake headset; item 11)
 
 Saves 94-96 (`validation-saves-moments2.json`): the tower on Feros on foot, Therum's troop drop, Benezia's phase 3.
@@ -2578,3 +2603,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 04:50, **item 11 sampled** ("Moments from saves, first sample"): 4 moments from new saves 90-93: the geth intro played in first person, Chellik's bump led into a conversation with a 1.73 m stray, two saves didn't come up on foot.
 - 2026-11-11 05:23, **item 11, a moment on foot** ("A moment on foot"): Chellik's bump is a matinee with its own cameras in game mode 0 (third person, letterboxed in the eyes, and the conversation after it opened from that camera: the 1.6-1.8 m stray). The camera's view target now marks it; such a moment is held in first person from where the player stood, without the letterbox (a host seam). Saves 91/92 start as they load (runner fixed); Liara's 10 lines clean.
 - 2026-11-11 05:42, **item 11, a moment after a conversation** ("A moment after a conversation"): Benezia's intro plays in first person after her conversation (the ended conversation leaves its held place as the place on foot; the host stays armed for the track's first move); the guide waits at the mark while a track holds Shepard (it had stepped in place for 12 s); the runner judges self-started scenes from the load and stops at GameOver.
+- 2026-11-11 05:56, **item 13 narrowed** ("The subtitle of a line played as a bark"): a flowed scene's lines and the game's own barks are alike (text built, nothing drawn, the profile's subtitle option 0, the game's default); the headset question is what the owner sees with subtitles on.

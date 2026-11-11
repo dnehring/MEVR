@@ -334,8 +334,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   conversations" > "In the game"; `[Cinematics] worldFlow = all` with `conversations = world`): in a career that hasn't seen them,
   the walk-up scenes play as barks while you keep walking (Garrus and the Executor arguing at C-Sec, Chellick's opening lines,
   Udina and Anderson's arrival lines, Joker's first line), then the wheel conversation starts as First person has it. Look for
-  the log's `convo flow: ... plays as barks`, **the subtitle on the HUD panel (none showed in the fake headset's frames: the ambient
-  subtitle style against your subtitle setting)**, no camera cut, the people standing where the level left them (the stage's
+  the log's `convo flow: ... plays as barks`, **the subtitle on the HUD panel (none showed in the fake headset's frames, and none for the game's own barks either
+  there: research/69 "The subtitle of a line played as a bark"; with your subtitles on, compare a bark of the game's own, people
+  talking as you pass, with a flowed scene)**, no camera cut, the people standing where the level left them (the stage's
   placement is skipped), the scene ending early if you walk off beyond 25 m. `worldFlow = off` puts the game's flags back live;
   `mevr convo flow` lists them.
 ### The omni-tool menu on the wrist
