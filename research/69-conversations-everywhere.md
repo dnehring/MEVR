@@ -174,6 +174,13 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     up on foot; Chorban's slot 85 with flag 5316 still played its 2 lines in 4 s. Both saves were put back. The generator sets
     starting flags only when asked (`--starting-flags`) and otherwise lists them in its table. A scene's plot needs the
     milestones before it, not only its own flag: still open for slots 84 and 85.
+    **Coverage counted 2026-11-11 11:50** (every run's `results.jsonl` against the 290 reachable scenes of `plan-all.json`):
+    **108 played** in some run, 182 never: 40 tried and not played (28 no conversation, 8 not reached, 4 action not loaded),
+    142 never tried; by level the Citadel 64, Noveria 37, Feros 24, the Normandy 16, Virmire 15; by shape 113 stages, 38 free,
+    14 ambient. The next sampled pass is ready, two per level and shape from different chunks, the ending's levels left out (their
+    script runs the end-game statistics and saves the character as they open): 52 scenes in 14 levels
+    (`%LOCALAPPDATA%\MEVR\sweep\plan-next-sample.json`, the list of the 182 in `never-played.json`), about two hours with
+    `tools/conversation-sweep.ps1 -Plan <it> -Pace opening -EndUnplanned` once the game is free after the owner's audit.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify]. **Narrowed 2026-11-11** ("The subtitle of a line played as a bark" below): a flowed scene's
     lines behave exactly like the game's own barks: the line's text is built, nothing is drawn, in this profile (its subtitle
@@ -2975,3 +2982,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 11:15, **the saves and their tests** ("The saves and their tests"): `tools/save-dictionary.py` maps every save to the scene it was written for (or the scenes near it), with the command that plays it.
 - 2026-11-11 11:40, **the second Codex pass** ("An adversarial review by a second model"): five more findings on the fixes, all fixed (the handover when Shepard can't be moved, gestures at teardown, a moment judged by its own matinee, a cinematic on load, subtitles switched off).
 - 2026-11-11 11:33, **the handover fix seen, item 7's seat walk seen arriving** ("The handover, run again"): Anderson's conversation opened as a 4.2 m walk-in after the comm room, no cut; Nihlus walked 2 m into a seat by the AI and arrived.
+- 2026-11-11 11:50, **item 12: coverage counted** (the list's item 12): 108 of 290 reachable scenes played in some run; the next sampled pass (52 scenes, 14 levels) is ready for after the owner's audit.
