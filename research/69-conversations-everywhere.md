@@ -90,6 +90,11 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    people the AI doesn't move). The walk itself is item 1's path (`PushMoveToPoint` with the four holds lifted): in the same
    run the medical bay's people walked 3.0, 1.7 and 2.2 m to the stage's marks and arrived 0.24 m from them (one more walk
    the AI didn't take up: that person stayed). A seat walk arriving is still unseen.
+   **10:00-10:04, Bring Down the Sky's batarian leader** (`BIOA_UNC52`, chosen from the logs: Ashley stood out of view 1.3 m
+   away in its cut opening): opened without a cut (the view's 12.8 m walk-in), but its conversation has two people, Shepard and
+   the batarian, and seats are planned for the conversation's people only; Ashley is squad (squadmates outside the conversation
+   have no walk). No seat walk. The scenes that would show one (an opening without a cut, someone of the conversation out of view
+   within 8 m, a person the AI walks) have not turned up in any sampled run; this is for the owner's play or a scene he names.
 8. **The pause and floor marker**: when the player is wanted at a mark the guided walk can't reach (inside a trigger, the
    way blocked, too far), hold the conversation and show a marker on the floor; it goes on when the player stands there.
    Today such a scene is a cut or stays put.
