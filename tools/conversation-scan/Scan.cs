@@ -149,6 +149,10 @@ internal static class Scan
                 ["speaker"] = node.GetProp<IntProperty>("nSpeakerIndex")?.Value ?? -1,
                 ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,
                 ["conditional"] = node.GetProp<IntProperty>("nConditionalFunc")?.Value ?? -1,  // -1: none (a start entry always eligible)
+                // What the id is (research/69 item 12): bFireConditional set, a conditional function (BioAutoConditionals.F<id> in
+                // PlotManager.pcc) called with the parameter; clear, the plot flag <id> checked against the parameter (1 set, 0 clear).
+                ["fireConditional"] = node.GetProp<BoolProperty>("bFireConditional")?.Value == true,
+                ["conditionalParam"] = node.GetProp<IntProperty>("nConditionalParam")?.Value ?? 0,
                 // The line's plot effects (research/69 item 1): the state transition it runs when it starts, and the Kismet
                 // conversation-node event it fires (nScriptIndex into m_ScriptList; -1 none).
                 ["transition"] = node.GetProp<IntProperty>("nStateTransition")?.Value ?? -1,
@@ -166,6 +170,8 @@ internal static class Scan
                 ["nonText"] = node.GetProp<BoolProperty>("bNonTextLine")?.Value == true,
                 ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,
                 ["conditional"] = node.GetProp<IntProperty>("nConditionalFunc")?.Value ?? -1,
+                ["fireConditional"] = node.GetProp<BoolProperty>("bFireConditional")?.Value == true,
+                ["conditionalParam"] = node.GetProp<IntProperty>("nConditionalParam")?.Value ?? 0,
                 ["transition"] = node.GetProp<IntProperty>("nStateTransition")?.Value ?? -1,
                 ["script"] = node.GetProp<IntProperty>("nScriptIndex")?.Value ?? -1,
                 ["entries"] = node.GetProp<ArrayProperty<IntProperty>>("EntryList")?.Select(e => e.Value).ToList() ?? new List<int>(),

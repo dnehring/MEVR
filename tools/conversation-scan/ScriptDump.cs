@@ -19,6 +19,10 @@ internal static class ScriptDump
     public static int Run(string cooked, string outPath, string target, string only)
     {
         LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default, s => Console.Error.WriteLine("LEC: " + s), null, new[] { MEGame.LE1 });
+        if (target == "exports")
+        {
+            return Exports(cooked, outPath, only ?? "SFXGame");
+        }
         if (target.StartsWith("grep:", StringComparison.Ordinal))
         {
             return Grep(cooked, outPath, target.Substring(5), only ?? "SFXGame");
@@ -59,6 +63,26 @@ internal static class ScriptDump
         }
         Console.WriteLine($"{found} found for {target} -> {outPath}");
         return found > 0 ? 0 : 1;
+    }
+
+    // `--script exports --only <file text>`: what a package holds, by class (the count and the first names of each), for finding
+    // where the game keeps something (LE1's conversation conditionals, research/69 item 12).
+    static int Exports(string cooked, string outPath, string only)
+    {
+        string[] files = Directory.GetFiles(cooked, "*.pcc", SearchOption.AllDirectories)
+            .Where(f => Path.GetFileName(f).Contains(only, StringComparison.OrdinalIgnoreCase)).ToArray();
+        using var writer = new StreamWriter(outPath);
+        foreach (string file in files)
+        {
+            using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+            writer.WriteLine($"// {Path.GetFileName(file)}: {pcc.ExportCount} exports");
+            foreach (var group in pcc.Exports.GroupBy(e => e.ClassName).OrderByDescending(g => g.Count()))
+            {
+                writer.WriteLine($"{group.Key}: {group.Count()} ({string.Join(", ", group.Take(6).Select(e => e.InstancedFullPath))})");
+            }
+        }
+        Console.WriteLine($"{files.Length} packages listed -> {outPath}");
+        return files.Length > 0 ? 0 : 1;
     }
 
     // `--script grep:<text> [--only <file text>]`: every function and state of the packages whose name holds the file text

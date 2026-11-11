@@ -480,6 +480,53 @@ def moments(argv):
 
 # ---- validation saves ------------------------------------------------------------------------------------------------------------
 
+_CONVERSATIONS = {}
+
+
+def starting_plot(scan_path, name):
+    """The plot flags a conversation's own starting list checks (research/69 item 12, slot 84): the game begins with the
+    first starting entry whose condition holds, so a save that leaves the scene's entry unmet plays an ambient alternative
+    (Wrex on Virmire: his ambient line, flag 3015 set, instead of the scene, flag 3684 not). The first non-ambient starting
+    entry's flag is set as it wants, and any flag-checking entry before it the other way. Conditional functions
+    (fireConditional: BioAutoConditionals.F<id>) can't be set this way: listed. Needs a scan with fireConditional
+    (conversation-scan since 2026-11-11). Returns ({flag: 0|1}, [what could not be set])."""
+    if scan_path not in _CONVERSATIONS:
+        found = {}
+        for line in open(scan_path, encoding='utf-8', errors='replace'):
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            if d.get('kind') == 'conversation' and d.get('name'):
+                found[d['name'].split('.')[-1].lower()] = d
+        _CONVERSATIONS[scan_path] = found
+    key = (name if name.lower().endswith('_dlg') else name + '_dlg').lower()
+    record = _CONVERSATIONS[scan_path].get(key)
+    plot, unset = {}, []
+    if not record:
+        return plot, unset
+    nodes = record.get('nodes') or []
+    for i in record.get('starting') or []:
+        if i >= len(nodes):
+            continue
+        node = nodes[i]
+        cond = node.get('conditional', -1)
+        if 'fireConditional' not in node:
+            unset.append(f"the starting entries (the scan predates fireConditional: rescan)")
+            break
+        if node.get('ambient'):
+            if cond >= 0 and not node['fireConditional']:
+                plot[cond] = 0 if node.get('conditionalParam', 1) else 1  # an ambient entry before the scene's: not to hold
+            continue
+        if cond >= 0:
+            if node['fireConditional']:
+                unset.append(f"starting entry {i}: conditional function F{cond}")
+            else:
+                plot[cond] = 1 if node.get('conditionalParam', 1) else 0
+        break
+    return plot, unset
+
+
 def plot_for(chain):
     """The plot values a scene's way from its event wants: each plot check on it (BioSeqAct_PMCheckState) with the output
     the way leaves it by. Returns ({index: 0|1}, [what could not be set])."""
@@ -582,6 +629,10 @@ def saves(argv):
             row['skipped'] = 'no placed owner or originator in the scan (give "at" and "yaw" in the list)' if level else 'no persistent level known'
             continue
         plot, unset = plot_for(chain)
+        entry_plot, entry_unset = starting_plot(scan_path, name)
+        for k, v in entry_plot.items():
+            plot.setdefault(k, v)
+        unset += entry_unset
         plot.update({int(k): int(v) for k, v in (item.get('plot') or {}).items()})
         place, face = stand_before(at, yaw, float(item.get('approachM', approach)))
         out = os.path.join(out_dir, f"{career}_{slot:02d}.pcsav")

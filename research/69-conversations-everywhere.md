@@ -91,7 +91,15 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     needs conditional 3684; entry 1 is ambient, conditional 3015; entry 6 has none), and the save doesn't satisfy 3684. Firing the
     chain from its first op (the use event's plot check) or past it (`OverrideStagePlacement`) changes nothing. The save
     generator sets the plot the script checks on the way to the action, not the starting entry's conditional; conditional
-    3684 isn't among `PlotManager.pcc`'s functions, so where LE1 keeps its conditionals is the next thing to find.
+    3684 isn't among `PlotManager.pcc`'s conditional functions (`BioAutoConditionals.F<id>`, 1066 of them): **it is a plot flag.**
+    An entry's `nConditionalFunc` is a conditional function only with `bFireConditional` set; clear, it is the plot flag of that
+    number, checked against `nConditionalParam` (1 set, 0 clear). The scan now records both (`fireConditional`,
+    `conditionalParam`), and the save generator sets **the first non-ambient starting entry's flag** as it wants it, and any
+    flag-checking ambient entry before it the other way (`conversation-sweep.py`'s `starting_plot`, tested in
+    `tests/ConversationSweepTests.py`). Over the ten validation saves: 84 (Wrex) and 85 (Chorban, the known gap: 2 lines in 5 s)
+    lacked theirs (flags 3684, 5316) and now have them, written into those two saves (the old ones kept in
+    `%LOCALAPPDATA%\MEVR`); 82, 83, 86 and 88 lack theirs too but played a later variant, left as they are. [verify] in the
+    game: slots 84 and 85 open their scenes.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify].
 14. **Bodies that must turn slide** (no turn-on-the-spot animation exists for these people; rare now). Accepted unless the
@@ -2454,3 +2462,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 02:40-03:45, **groups composed, Wrex explained, steps kept** ("The composition of groups", "Why C-Sec's people didn't walk", "The validation saves, run"): seats face the group's middle, the squad beside the player, walk-ins to seats; walkers' AI switched on through the game's AbilityEnable (`engine/NameLookup`); C-Sec's Wrex was hidden in the test's plot state; steps back or aside aren't walked; a failed walk restores the gesture mode.
 - 2026-11-11 03:50, **item 10 decided** ("Which scenes have no place for the player"): of 100 scenes seen in the world, the far-shots rule named two that play well in first person; the presence rules now send scenes to the 3D screen by default (`worldAutoScreen = on`), the far shots only log.
 - 2026-11-11 04:00, **slot 84 read** (item 12): Wrex's scene starts from its save as his ambient line (its first starting entry needs conditional 3684, which the save doesn't set); the save generator needs the starting entries' conditionals.
+- 2026-11-11 04:30, **the starting entries' plot flags** (item 12): an entry's conditional is a plot flag unless `bFireConditional`; the scan records it, the save generator sets the scene's entry flag; slots 84 and 85 got theirs (in-game check pending).

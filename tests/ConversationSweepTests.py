@@ -416,6 +416,33 @@ def main():
     check(codes[2] == [] and 'nothing found' in session.report(judged), 'a quiet conversation has nothing to report')
     check(session.judge([], []) == [] and 'No scene' in session.report([]), 'a log without a scene in the world says so')
 
+    # The starting entries' plot flags (research/69 item 12, Wrex on Virmire): the scene's entry wants flag 3684 set, an
+    # ambient entry before another scene's would hold and must not, a conditional function can't be set, an old scan says so.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'scan.jsonl')
+        def flags(**node):
+            base = {'ambient': False, 'conditional': -1, 'fireConditional': False, 'conditionalParam': 1}
+            base.update(node)
+            return base
+        records = [
+            {'kind': 'conversation', 'name': 'jug20_wrex_D.jug20_wrex_dlg', 'starting': [0, 1, 2],
+             'nodes': [flags(conditional=3684), flags(ambient=True, conditional=3015), flags(fireConditional=True, conditionalParam=-1)]},
+            {'kind': 'conversation', 'name': 'x_D.x_dlg', 'starting': [1, 0],
+             'nodes': [flags(conditional=20, conditionalParam=0), flags(ambient=True, conditional=10)]},
+            {'kind': 'conversation', 'name': 'y_D.y_dlg', 'starting': [0], 'nodes': [flags(conditional=5, fireConditional=True)]},
+            {'kind': 'conversation', 'name': 'z_D.z_dlg', 'starting': [0], 'nodes': [{'ambient': False, 'conditional': 7}]},
+        ]
+        with open(path, 'w', encoding='utf-8') as f:
+            for r in records:
+                f.write(json.dumps(r) + '\n')
+        check(sweep.starting_plot(path, 'jug20_wrex') == ({3684: 1}, []), f"Wrex's scene flag: {sweep.starting_plot(path, 'jug20_wrex')}")
+        check(sweep.starting_plot(path, 'x') == ({10: 0, 20: 0}, []), f"an ambient entry before the scene's held off, a clear flag wanted: {sweep.starting_plot(path, 'x')}")
+        plot, unset = sweep.starting_plot(path, 'y')
+        check(plot == {} and unset and 'F5' in unset[0], f'a conditional function is listed, not set: {plot} {unset}')
+        plot, unset = sweep.starting_plot(path, 'z')
+        check(plot == {} and unset and 'rescan' in unset[0], f'a scan without fireConditional says to rescan: {plot} {unset}')
+        check(sweep.starting_plot(path, 'nothing') == ({}, []), 'an unknown conversation sets nothing')
+
     print(f"{'FAILED' if failures else 'passed'}: conversation sweep tests ({len(failures)} failures)")
     return 1 if failures else 0
 
