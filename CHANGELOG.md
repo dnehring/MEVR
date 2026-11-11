@@ -26,7 +26,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   someone far across a hall, like the Council, still sounds from the middle.
   When a scene moves someone to another spot during a conversation, they now walk there with their own walk (turning,
   stepping, stopping) instead of jumping. A short scripted scene on foot that walks Shepard with its own camera (Chellick
-  bumping into you on the Citadel) is seen from your own eyes too, instead of from behind Shepard with black bars.
+  bumping into you on the Citadel) is seen from your own eyes too, instead of from behind Shepard with black bars, and so is
+  a scripted walk that follows a conversation at once (Benezia's entrance on Noveria), instead of the cinema screen.
   A preview: off unless you choose it.
 
 ## 0.2.0 (2026-11-09)

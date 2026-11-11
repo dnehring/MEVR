@@ -327,6 +327,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   You see it from your own eyes, full frame (no black bars, no shot of Shepard from behind); Shepard's body goes with you while
   the script walks his pawn; the conversation with him opens without a cut, a step away. Look for: a frame of the matinee's
   camera as it starts or ends, where Chellick bumps (he aims at Shepard's pawn, not at you), and the guided walk's pace.
+  **Benezia's entrance on Noveria** the same way (built 2026-11-11, research/69 "A moment after a conversation"): after her
+  conversation the walk down the stairs is first person, not the 3D screen; look for a flash of the screen between the two and
+  how the squad in her stasis reads from there.
 - [ ] **Flowing conversations** (built 2026-11-09; two Noveria chains checked as barks on the fake headset, research/59 "Flowing
   conversations" > "In the game"; `[Cinematics] worldFlow = all` with `conversations = world`): in a career that hasn't seen them,
   the walk-up scenes play as barks while you keep walking (Garrus and the Executor arguing at C-Sec, Chellick's opening lines,

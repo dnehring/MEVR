@@ -649,7 +649,10 @@ switching frameworks.
   a camera actor) in game mode 0 while its track walks Shepard (Chellik's bump) is held the same way, from where the player
   stood; the on-foot record never takes such a camera for the player's eyes, and the host's `[NOLETTERBOX]` clear covers game
   mode 0 while the mod's state is published (a `[MEVR]` seam in xr_session.cpp). Logs `moment: on foot the game's camera is a
-  matinee's: <actor>`, `moment: a matinee walks Shepard with its own camera on foot`.
+  matinee's: <actor>`, `moment: a matinee walks Shepard with its own camera on foot`. A conversation shown in the world leaves
+  its held place as the place on foot when it ends, and one that ends into the cinematic mode keeps the host armed for 300 ms,
+  so a moment straight after it (Benezia's intro) opens in first person from there; a guided walk waits on the mark while a
+  track still holds Shepard (research/69 "A moment after a conversation").
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start

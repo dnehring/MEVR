@@ -92,7 +92,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     **Second run 2026-11-11 05:00-05:23** ("A moment on foot" below): 91 and 92 start as their saves load (the runner drives them
     now); Liara's 10 lines play in first person; **Chellik's bump was a matinee with its own cameras in game mode 0**, shown in the
     eyes letterboxed and third person, and taken for the player's view by the conversation after it: now held in first person
-    like a cinematic moment, nothing found by the judge. 17 moments are still unrun.
+    like a cinematic moment, nothing found by the judge. **Third sample 2026-11-11 05:27-05:42** ("A moment after a conversation"
+    below): Benezia's intro (after her conversation) now plays in first person instead of on the 3D screen; Therum's troop drop
+    save dies on load (GameOver); the Feros tower's start waits on a plot check. 15 moments are still unrun.
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
     its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
     world to confirm the list.
@@ -2001,6 +2003,35 @@ front and no body in the view. Judge: nothing found (a 0.84 m guided view walk, 
 unchanged. A matinee camera in game mode 0 that **doesn't** move Shepard (a door's shot, a fly-by) is still shown as
 gameplay; none has been seen yet.
 
+### A moment after a conversation (2026-11-11 05:27-05:42, fake headset; item 11)
+
+Saves 94-96 (`validation-saves-moments2.json`): the tower on Feros on foot, Therum's troop drop, Benezia's phase 3.
+
+| Slot | Moment | Result |
+|---|---|---|
+| 94 | Feros: the tower on foot | its start action is a plot check (`Should_First_Creeper_scene_fire?`) that this career's plot doesn't pass: nothing played |
+| 95 | Therum: the troop drop | Shepard dies as the save loads: the game's GameOver screen (the runner now says so at once instead of waiting four minutes) |
+| 96 | Noveria: Benezia, phase 3 | the save's spot is inside phase 2's trigger too: her conversation (`ice60_matriarch_dlg`, a cut, 5 lines) and then her intro, a matinee that walks Shepard 3.4 m in the cinematic mode |
+
+**Benezia's intro went to the 3D screen.** The cinematic mode began in the tick her conversation in the world ended. A moment
+needs a fresh place on foot (3 s); the conversation had held the view for 28 s and never counts as one. The fix: **a
+conversation shown in the world leaves its held place as the place on foot when it ends** (`End`). For the tick or two before
+the track's first move opens the moment, **the host is kept armed** (at most 300 ms after a conversation in the world ends into
+the cinematic mode; the same handshake that keeps a scene's start on foot from flashing the 3D screen). The intro then played in
+first person: Benezia at the top of the stairs, a squadmate in her stasis in front of the player
+(`2026-11-11_05-41-46-695`), and the fight began from the player's place (`05-41-52-737`).
+
+**The guide stepped in place for 12 s.** The view reached Shepard's place 2.4 s into the guided walk, but the track still held
+him (`noJoin`: its move is applied every tick until the matinee ends), so the guide went on stepping at full speed round its
+target: "walked 17.4 m" for a 3.4 m way, a step's jitter every frame. Now the guide's last step ends on the mark and it waits
+there while the track holds him: walked 3.2 m, the two one again as the cinematic mode ended.
+
+**The runner** judges a scene that began as its save loaded from the load (its opening came before the runner noticed it: the
+judge had found "no scene in the world"). It stops at the GameOver screen.
+
+Open from this sample: the judge's `pivot` on Benezia (108 degrees, the stage's facing for her at the start of a cut opening:
+the summary counts no turn of ours); the Feros start needs its plot; Therum's troop drop needs a save that doesn't kill Shepard.
+
 ### The handover between two conversations (2026-11-11 04:20-04:33, fake headset, the launcher's comm room; item 9)
 
 `conversation-launch.ps1 nor10_comm_room -World on`, both conversations driven to their ends, judged by `conversation-session.py`.
@@ -2546,3 +2577,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 04:33, **item 9: the handover stray fixed** ("The handover between two conversations"): the ending conversation's keep-in-place undid the next stage's placement of Shepard; it now keeps only for the live conversation.
 - 2026-11-11 04:50, **item 11 sampled** ("Moments from saves, first sample"): 4 moments from new saves 90-93: the geth intro played in first person, Chellik's bump led into a conversation with a 1.73 m stray, two saves didn't come up on foot.
 - 2026-11-11 05:23, **item 11, a moment on foot** ("A moment on foot"): Chellik's bump is a matinee with its own cameras in game mode 0 (third person, letterboxed in the eyes, and the conversation after it opened from that camera: the 1.6-1.8 m stray). The camera's view target now marks it; such a moment is held in first person from where the player stood, without the letterbox (a host seam). Saves 91/92 start as they load (runner fixed); Liara's 10 lines clean.
+- 2026-11-11 05:42, **item 11, a moment after a conversation** ("A moment after a conversation"): Benezia's intro plays in first person after her conversation (the ended conversation leaves its held place as the place on foot; the host stays armed for the track's first move); the guide waits at the mark while a track holds Shepard (it had stepped in place for 12 s); the runner judges self-started scenes from the load and stops at GameOver.

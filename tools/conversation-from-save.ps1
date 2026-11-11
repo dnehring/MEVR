@@ -77,6 +77,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
         if (-not $own -and -not (Test-Path -LiteralPath $quick)) { Say "the game wrote no quicksave for $career (a conversation, combat or a menu refuses it) and has none: QuickLoad would refuse the save"; return $false }
         Copy-Item -LiteralPath $source -Destination $quick -Force
         Console 'QuickLoad' | Out-Null
+        $loadedAt = (Get-Date).AddSeconds(-1)
         Say "loading $(Split-Path -Leaf $source) through $career's quicksave$(if ($title) { ": $title" })"
         # Loaded: on foot again, twice in a row, after the load's own modes.
         Start-Sleep -Seconds 8
@@ -84,7 +85,13 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
         for ($i = 0; $i -lt 60 -and $onFoot -lt 2; $i++) {
             Start-Sleep -Seconds 2
             $mode = Mode
-            if ($mode -eq '7') { Clear-Boxes; $mode = Mode }
+            if ($mode -eq '7') {
+                Clear-Boxes; $mode = Mode
+                # Shepard dead as the save loads (Therum's troop drop, 2026-11-11: four minutes on the game's GameOver screen).
+                if ($mode -eq '7' -and ((Console 'mevr panel') -split "`n" | Where-Object { $_ -match 'GameOver .*focus true' })) {
+                    Say 'the game is over as the save loads (Shepard died: the GameOver screen)'; return $false
+                }
+            }
             # A save that stands the player inside the scene's trigger starts it as it loads (Noveria's Benezia and Therum's
             # Liara, 2026-11-11): that is the scene, played as the game plays it, not a save that never came up.
             if ($mode -eq '5' -or $mode -eq '6') { $script:byItself = $true; break }
@@ -94,7 +101,8 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
         elseif ($onFoot -lt 2) { Say 'the save did not come up on foot in two minutes'; return $false }
         Start-Sleep -Seconds 3
     }
-    $began = (Get-Date).AddSeconds(-2).ToString('HH:mm:ss')
+    # A scene that began as the save loaded is judged from the load: its opening is in the log before the runner saw it.
+    $began = $(if ($script:byItself) { $loadedAt } else { (Get-Date).AddSeconds(-2) }).ToString('HH:mm:ss')
     if (-not $script:byItself) {
     $tail = ($action -split '\.')[-1]
     $listing = Console "mevr instances $class $tail"

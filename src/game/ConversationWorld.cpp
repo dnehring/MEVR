@@ -3089,6 +3089,19 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     if (guided) {
         ik::Vec3 const to = along ? ik::Vec3{along->x, along->y, along->z} : *gC.wantedMark;
         headYaw = std::atan2(to.y - at->y, to.x - at->x) * kRadToDeg;
+        // Never past the mark: the last step ends on it, and there the view waits while the track still holds Shepard (noJoin).
+        // Benezia's intro, 2026-11-11: the guide reached him in 2.4 s, then stepped at full speed round its target for 12 s
+        // (17 m "walked"), a step's jitter every frame.
+        double const left = std::hypot(gC.wantedMark->x - at->x, gC.wantedMark->y - at->y);
+        double const stepUnits = gSettings.moveSpeedMS * kUnitsPerMeter * std::clamp(dt, 0.0, 0.1);
+        if (gC.detached && gC.noJoin && left <= 15.0) {
+            gC.guideProgressed = true;  // where it should be: waiting, not blocked
+            stop();
+            return;
+        }
+        if (stepUnits > 0.0 && left < stepUnits) {
+            stickY = static_cast<float>(left / stepUnits);
+        }
     } else if (view.valid) {
         engine::Basis const head = engine::OrientationToWorld(frame, view.head.orientation);
         headYaw = std::atan2(head.forward.y, head.forward.x) * kRadToDeg;
@@ -3335,6 +3348,19 @@ void End(char const* why) {
     }
     if (gC.hidPawn) {
         HidePawn(gC.playerPawn, false);
+    }
+    // The player's place on foot is where the held view leaves it: a matinee the script starts at once (Benezia's intro, a
+    // cinematic mode straight after her conversation, 2026-11-11) opens its moment from there. The record on foot was half a
+    // minute old, so no moment began and the walk played on the 3D screen.
+    if (gC.world && gInWorld && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
+        if (auto const at = player::Location(gC.playerPawn)) {
+            gFoot.location = EnginePoint(gC.hold);
+            gFoot.rotation = gC.holdRotation;
+            gFoot.fov = gC.holdFov;
+            gFoot.pawn = *at;
+            gFoot.have = true;
+            gFoot.ms = GetTickCount64();
+        }
     }
     std::string moves;
     for (Tracked const& t : gC.actors) {
@@ -3738,6 +3764,7 @@ Link gLink;  // the host's publish function, as the last tick had it (MomentMayS
 // that a scene beginning now would be shown in the world, so it keeps the on-foot presentation over the tick in which the
 // game's mode has changed and the mod's state has not; said to be off the moment a mode begins that the mod does not take.
 std::uint64_t gArmedMs = 0;
+std::uint64_t gLeftWorldMs = 0;  // when a conversation shown in the world ended into the cinematic mode (a moment may follow)
 void Arm(Link const& link, bool armed) {
     if (link.publish == nullptr || (!armed && gArmedMs == 0)) {
         return;
@@ -4365,9 +4392,18 @@ void Tick(double deltaSeconds, Link const& link) {
             conv == nullptr);
     }
     if (conv == nullptr) {
+        bool const shown = gC.on && gC.world && gInWorld;
         End(mode && *mode == kModeConversation ? "no conversation object" : "the game left its conversation mode");
         StopWorld(link, "the conversation ended");
-        Arm(link, mode && *mode == 0 && CurrentMode() == cw::Mode::World && FootFresh(GetTickCount64()));
+        // A cinematic mode straight from a conversation shown in the world (Benezia's intro, 2026-11-11): its track's first move
+        // comes a tick or two later and opens a moment from the player's place (End kept it). Meanwhile the host keeps the
+        // first-person presentation (armed, as at a scene's start on foot) instead of a flash of the 3D screen; 300 ms at most.
+        std::uint64_t const now = GetTickCount64();
+        if (shown && mode && *mode == 6) {
+            gLeftWorldMs = now;
+        }
+        bool const momentMayFollow = mode && *mode == 6 && gLeftWorldMs != 0 && now - gLeftWorldMs < 300;
+        Arm(link, CurrentMode() == cw::Mode::World && FootFresh(now) && ((mode && *mode == 0) || momentMayFollow));
         SetStatus(std::format("{{\"on\": false, \"mode\": \"{}\"}}", cw::Name(CurrentMode())));
         return;
     }
