@@ -203,7 +203,9 @@ struct Settings {
     bool staySource = true;            // ... and withhold the placements in the game's own placement function (worldStaySource)
     float absentM = 15.0f;             // Shepard this far from the conversation's owner and out of its sight: a cutscene (worldAbsentM, 0 off)
     bool moveTriggers = true;          // the walk never changes which triggers Shepard touches (worldMoveTriggers)
-    int autoScreen = 1;                // a scene found at run time to be no place for the player: 0 off, 1 logged only, 2 shown on
+    int autoScreen = 2;                // a scene found at run time to be no place for the player (worldAutoScreen): 0 off, 1 logged
+                                       // only, 2 (on, the default since 2026-11-11, research/69 item 10) the presence rules move it to
+                                       // the 3D screen and the far shots are logged, 3 (all) both move it
                                        // the 3D screen (worldAutoScreen = off | log | on; research/69 item 3)
     int walk = 1;                     // 0 off, 1 the game's AI (default since 2026-11-11), 2 slide, 3 the engine's walking physics
     float walkSettleS = 2.5f;
@@ -444,7 +446,7 @@ void RefreshSettings() {
     s.moveTriggers = number("worldMoveTriggers", 1.0f, 0.0f, 1.0f) != 0.0f;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldAutoScreen")) {
         std::string const v = ini::Lower(ini::Trim(*text));
-        s.autoScreen = v == "off" || v == "0" ? 0 : v == "on" || v == "2" ? 2 : 1;
+        s.autoScreen = v == "off" || v == "0" ? 0 : v == "all" || v == "3" ? 3 : v == "log" || v == "1" ? 1 : 2;
     }
     ReadCrop(loaded.file, "subtitleCrop", s.subtitleCrop);
     ReadCrop(loaded.file, "wheelCrop", s.wheelCrop);
@@ -459,7 +461,7 @@ void RefreshSettings() {
         s.move ? std::format("on (leash {:.1f} m, {:.2f} m/s, {:.2f} m clear of people, triggers {})", s.moveLeashM, s.moveSpeedMS, s.moveClearM,
                      s.moveTriggers ? "kept" : "free") : std::string("off"),
         s.staySource ? "withheld at the source" : "undone after the fact", s.absentM,
-        s.autoScreen == 0 ? "off" : s.autoScreen == 2 ? "on" : "log");
+        s.autoScreen == 0 ? "off" : s.autoScreen == 3 ? "all" : s.autoScreen == 2 ? "on" : "log");
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("convo: [Cinematics] {}", text);
@@ -3179,7 +3181,7 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
                 ShortName(owner));
         }
         if (!gC.absentWhy.empty()) {
-            gC.autoScreened = gSettings.autoScreen == 2;
+            gC.autoScreened = gSettings.autoScreen >= 2;
             log::Info("convo: {}: no place for the player in this scene; {}", gC.absentWhy,
                 gC.autoScreened ? "shown on the 3D screen (worldAutoScreen = on)" : "logged only (worldAutoScreen = log), shown in the world");
             if (gC.autoScreened) {
@@ -4248,9 +4250,11 @@ void CheckFarShots() {
     }
     gC.absentWhy = std::format("{} of the first {} shots are framed from more than 8 m away (the farthest {:.0f} m)", gC.shotsFar, gC.shots,
         gC.cameraFarM);
-    gC.autoScreened = gSettings.autoScreen == 2;
+    // The far shots alone don't move a scene (research/69 item 10: of 100 scenes seen in the world they named the Council's hearing
+    // and Benezia's death, both good in first person, and Kirrahe, a set piece already): only with worldAutoScreen = all.
+    gC.autoScreened = gSettings.autoScreen == 3;
     log::Info("convo: at {:.1f} s {}: a scene composed for a camera elsewhere; {}", Seconds(), gC.absentWhy,
-        gC.autoScreened ? "moved to the 3D screen (worldAutoScreen = on)" : "logged only (worldAutoScreen = log), still in the world");
+        gC.autoScreened ? "moved to the 3D screen (worldAutoScreen = all)" : "logged only, still in the world (worldAutoScreen = all would move it)");
     if (gC.autoScreened) {
         gC.setPiece = true;
         gC.world = false;  // people are no longer kept: the lines' facing tracks put them back on their marks

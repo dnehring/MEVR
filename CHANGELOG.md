@@ -17,7 +17,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Conversations in first person (preview).** Comfort > Conversations has a fourth choice: you stand where Shepard
   stands, people stay where they are, and you can walk during the conversation. A scene opens without a cut when it is
   where you already stand or a short walk away; leave the stick alone and you are walked there after a few seconds.
-  Scenes made for the camera still go to the 3D screen. People no longer swivel on the spot toward whoever speaks:
+  Scenes made for the camera, and scenes Shepard isn't in (a voice far away, out of sight), go to the 3D screen. People no longer swivel on the spot toward whoever speaks:
   whoever speaks to you turns head and shoulders to you, bystanders only glance at the speaker when he is in front of
   them, and a body re-faces only for you, when you stand beside or behind someone who is talking with you. A scene no longer begins
   with a flash of the cinema screen, and a scripted walk (the walk to the Council) plays out whether you walk along or

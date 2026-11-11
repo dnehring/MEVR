@@ -78,8 +78,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    Today such a scene is a cut or stays put.
 9. **The comm room's conversation after a load**: it opens on the 3D screen for a moment and Shepard strays 2.2 m (the
    launcher's Normandy case; not in the validation saves: needs a reproduction first).
-10. **Scenes with no place for the player** (`worldAutoScreen = log`): read which scenes the three rules name over a sampled
-    pass and decide whether `on` (to the 3D screen) is right for them.
+10. **Scenes with no place for the player** (`worldAutoScreen`): read which scenes the three rules name over a sampled
+    pass and decide whether `on` (to the 3D screen) is right for them. **Done 2026-11-11** ("Which scenes have no place for the
+    player" below): the presence rules act by default (`on`), the far shots only log.
 11. **Authored moments beyond the council walk**: 21 level-script matinees walk Shepard (`conversation-sweep.py moments`);
     only the walk to the Council has been run. Run the rest from saves as a sampled set.
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
@@ -1920,6 +1921,24 @@ person whose walk fails isn't left in its standing pose. The other bodies the se
 ceremony's 79-86 degree turns, Benezia's 140) are the re-face-for-the-player rule ("Who attends to whom"), not walking: the same
 before and after.
 
+### Which scenes have no place for the player (2026-11-11 03:50, from the sweep runs' summaries; item 10)
+
+Every scene summary the sweep runs wrote since 2026-11-09 (`results.jsonl`, 83 runs): 100 conversations were shown in the world;
+5 were named by a no-place rule (`noPlace`):
+
+| Scene | Rule | Right for the 3D screen? |
+|---|---|---|
+| `sta90_council_saren` (the Council's hearing) | far shots: 17 of 30 from over 8 m, the farthest 17 m | No: played in first person since 2026-11-10 (the walk to the podium) |
+| `ice60_matriarch` (Benezia's death) | far shots: 4 of 7, 16 m | No: a walk-in, played in the world from its save |
+| `jug20_sal_captainkirrahe` | far shots: 22 of 23, 45 m | Already a set piece (`cw::IsSetPiece`) |
+| `jug20_wrex` (Wrex on the beach) | far shots: 12 of 12, 32 m | Probably (an authored walk of his); its save doesn't start the scene yet |
+| `sp121_trig01_mine` | presence: Shepard 1007 m from the owner and out of its sight | Yes: there is no place for the player |
+
+The far-shots rule is a hint, not a verdict: directors frame from afar scenes that work from Shepard's eyes. So `worldAutoScreen`
+is `on` by default now and means the presence rules (Shepard's pawn hidden, or farther than `worldAbsentM` from the owner and
+out of its sight) move a scene to the 3D screen, while the far shots are only logged; `all` lets both act, `log` and `off` as
+before. Shepard hidden was named by no scene seen so far.
+
 ### The composition of groups, first part (2026-11-11 02:40-03:00, fake headset; item 7)
 
 The opening's arrangement (Part B: people out of the player's view seated on an arc in view) seated everyone facing the
@@ -2427,3 +2446,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   in its own OpenAL layer in the exe (a table of 256 voices, `m_uiSource` at +0xB4), reachable for an EFX band-pass. All three
   builds and the tests pass; the in-game checks are items 6 to 9 of "To check in the game".
 - 2026-11-11 02:40-03:45, **groups composed, Wrex explained, steps kept** ("The composition of groups", "Why C-Sec's people didn't walk", "The validation saves, run"): seats face the group's middle, the squad beside the player, walk-ins to seats; walkers' AI switched on through the game's AbilityEnable (`engine/NameLookup`); C-Sec's Wrex was hidden in the test's plot state; steps back or aside aren't walked; a failed walk restores the gesture mode.
+- 2026-11-11 03:50, **item 10 decided** ("Which scenes have no place for the player"): of 100 scenes seen in the world, the far-shots rule named two that play well in first person; the presence rules now send scenes to the 3D screen by default (`worldAutoScreen = on`), the far shots only log.

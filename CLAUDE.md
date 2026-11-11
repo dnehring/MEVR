@@ -530,7 +530,8 @@ switching frameworks.
   `Actor.SetLocation` is `UWorld::FarMoveActor` and fires touches, so a walk step that would change which `Trigger` /
   `TriggerVolume` Shepard overlaps is refused (`worldMoveTriggers`, `Actor.PointCheckComponent`); scenes with no place for the
   player (pawn hidden, far from the owner and out of sight, most shots from over 8 m) are named in the log and the summary
-  (`worldAutoScreen = log | on | off`). **In the game (fake headset, 2026-11-09):** the hooks install; the medical bay's wake-up
+  (`worldAutoScreen = on | all | log | off`: on, the default since 2026-11-11, sends the presence rules' scenes to the 3D screen and
+  only logs the far shots, which named the Council's hearing and Benezia, both good in first person; research/69 item 10). **In the game (fake headset, 2026-11-09):** the hooks install; the medical bay's wake-up
   scene, which `open BIOA_STA00` alone starts (its level is the docked Normandy's, under the Citadel's map), ran with 28 placements
   withheld and 0 undone; the walk found 9 triggers there and stopped at the first one's edge; at C-Sec two barks were refused over
   the flowed Garrus argument and Chorban's conversation was held and started 1 s after the wheel conversation that follows the
