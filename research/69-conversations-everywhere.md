@@ -44,6 +44,75 @@ folder, which the release session holds.
 | 6 | Authored scenes (the game walks Shepard, frames the scene) | **proposal** ("Authored scenes: a treatment per kind of track"): about thirty moments in the game move Shepard by a track; nothing built | the council moment read from the level's script |
 | 2 | The sweep: every conversation in its plot state | planned ("The sweep: plan"); **phase 1 built** ("The sweep: progress"): the game slot, the catalogue's levels, predictions, the judge, the flowed scene's summary line | 28 of 491 played by the survey (research/59), 5 more by hand on 2026-11-09 |
 
+## What remains for a complete dialogue system (2026-11-10, late evening; supersedes the Status table above for planning)
+
+The owner: "The ultimate goal is to get the dialogue system complete." Everything below is first-person conversations
+(`[Cinematics] conversations = world`) unless marked. "Built" means in the tree, compiled in all three configurations, tested
+offline and, where said, run on the fake headset; nothing on this list has been seen in a real headset unless marked.
+
+**In progress**
+
+1. **People walk to their marks** (this session, next; the owner: more valuable than the audio). The stage puts the owner,
+   the squad and the other speakers on its nodes at the start (`ABioStage::PlaceActors`) and lines move them between nodes
+   (`BioEvtSysTrackSetFacing`); in the world mode the first are accepted as teleports (up to 3 m without a dip, more is a
+   cut) and the second withheld at the source. Wanted: whoever the scene wants elsewhere walks there with the game's own
+   locomotion, never the player; the squad too. The off-by-default prototype (`worldWalk`, research/59 "Walking to marks")
+   learns marks from undone teleports and so turns the source hook off; it was never run in the game.
+
+**Built, waiting for the owner's headset pass** (`notes/headset-checklist.md` has each, with what to look for)
+
+2. The body in conversations and scripted walks (near plane, culling pad, the body with the player, standing legs).
+3. The walkway's blink only for changes within 8 m; the 1.5 s trust over game-thread stalls.
+4. Who looks at whom by part in the line; bodies turning only for the player and back; the pair's head reach.
+5. Voices placed within 8 m; the game's audio through OpenAL Soft for two ears at the game's own level.
+6. Then: First person stops being a labelled preview (the owner's call; one button in `assets/menu/main.rml`).
+
+**Open, in the order they matter**
+
+7. **Composition of groups**: seat people so each one's partners are within the look-at chain's reach (`cw::ArcSeats`
+   facing the group's middle, seats chosen for the speaker/listener pairs), and the squad beside the player rather than
+   wherever they stood. Ties in with item 1 (the seats are the marks they walk to).
+8. **The pause and floor marker**: when the player is wanted at a mark the guided walk can't reach (inside a trigger, the
+   way blocked, too far), hold the conversation and show a marker on the floor; it goes on when the player stands there.
+   Today such a scene is a cut or stays put.
+9. **The comm room's conversation after a load**: it opens on the 3D screen for a moment and Shepard strays 2.2 m (the
+   launcher's Normandy case; not in the validation saves: needs a reproduction first).
+10. **Scenes with no place for the player** (`worldAutoScreen = log`): read which scenes the three rules name over a sampled
+    pass and decide whether `on` (to the 3D screen) is right for them.
+11. **Authored moments beyond the council walk**: 21 level-script matinees walk Shepard (`conversation-sweep.py moments`);
+    only the walk to the Council has been run. Run the rest from saves as a sampled set.
+12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
+    its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
+    world to confirm the list.
+13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
+    subtitle on the HUD is [verify].
+14. **Bodies that must turn slide** (no turn-on-the-spot animation exists for these people; rare now). Accepted unless the
+    headset says otherwise.
+
+**Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**
+
+- **A1. Overheard conversations from where they are**: on foot, 82% of dialogue cues still play in the centre (no
+  attenuation node), so NPCs talking near the player (flowed scenes, ambient conversations, overheard chains) sound inside his
+  head. `engine/VoicePlace` places by the audio component's owner; it needs a second publisher (today only
+  `game/ConversationWorld` names voices, and `Set` replaces the whole list) and an on-foot module naming nearby speaking
+  pawns with their head places, under the same 8 m rule (`cw::PlaceVoice`). Not during cutscenes on the 3D screen.
+- **A2. The player's own gun from his hand**: the game plays it at the pawn, which is the listener, so it sounds inside the
+  head; with HRTF a source at the listener is the least natural. Place the player's weapon's sounds at the gun model
+  (`weapon::Current`'s muzzle) through the same hook, if the weapon's audio component is told apart from the pawn's (its
+  owner: the weapon actor or the pawn: to find out).
+- **A3. Settings in the menu**: `[Audio] spatial` (Headphones 3D / Speakers / The game's own) and `gainDb` as rows (they apply
+  at the next start; the row says so). Players can't be asked to edit the ini.
+- **A4. Measured in combat**: other people's gunfire, explosions and footsteps under OpenAL Soft: the delay between the ears
+  and the balance following the head (`tools/audio-balance.py`); confirm the game positions them at all.
+- **A5. An intercom's colour for far voices** (the owner: the Council "a little like an intercom"): with OpenAL Soft the
+  EFX filters exist (a band-pass on the source, `AL_DIRECT_FILTER`); whether ISACT's sources can be reached by their AL ids
+  from the sound source's update is to find out. Optional.
+- **A6. Signing**: SignPath signs only binaries whose product name is "MEVR"; `soft_oal.dll` says "OpenAL Soft" (a second
+  `pe-file-set` in `.signpath/artifact-configuration.xml`, the owner's process).
+
+**Release housekeeping**: the branch is on local main (fceeaf9); the owner pushes; the game slot is still held by this
+session (`tools/game-slot.ps1 return` when the in-game work is done).
+
 ## Findings
 
 Addresses are RVAs in `MassEffect1.exe` 2.0.0.48602, read with Ghidra (`tools/ghidra`, an isolated copy of the project while the
