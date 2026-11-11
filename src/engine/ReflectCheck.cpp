@@ -757,6 +757,14 @@ void CheckFields() {
     CheckField("Engine.PrimitiveComponent", "bOwnerNoSee", SDK_BOOL(UPrimitiveComponent, bOwnerNoSee));
     // game/ConversationWorld's `convo: body:` (research/69 "The plan for the blocker"): every flag that stops a pawn being drawn.
     CheckField("SFXGame.BioPawn", "m_nHiddenRequestCount", SDK_FIELD(ABioPawn, m_nHiddenRequestCount));
+    // game/ConversationWorld's looks by part (research/69 "Who attends to whom"): the pawn's own look-at target.
+    CheckField("SFXGame.BioPawn", "m_oLookAtData", SDK_FIELD(ABioPawn, m_oLookAtData));
+    CheckField("SFXGame.BioLookAt", "m_oTarget", SDK_FIELD(UBioLookAt, m_oTarget));
+    CheckField("SFXGame.BioLookAt", "m_nRank", SDK_FIELD(UBioLookAt, m_nRank));
+    CheckField("SFXGame.BioLookAt", "m_Controllers", SDK_FIELD(UBioLookAt, m_Controllers));
+    CheckField("SFXGame.BioLookAt", "m_Definition", SDK_FIELD(UBioLookAt, m_Definition));
+    CheckField("SFXGame.BioPawnLookAtController", "mc_pDefinition", SDK_FIELD(UBioPawnLookAtController, mc_pDefinition));
+    CheckField("SFXGame.BioLookAtDefinition", "BoneDefinitions", SDK_FIELD(UBioLookAtDefinition, BoneDefinitions));
     CheckField("Engine.PrimitiveComponent", "bIgnoreOwnerHidden", SDK_BOOL(UPrimitiveComponent, bIgnoreOwnerHidden));
     CheckField("Engine.PrimitiveComponent", "bIgnoreHiddenActorsMembership", SDK_BOOL(UPrimitiveComponent, bIgnoreHiddenActorsMembership));
     CheckField("Engine.PrimitiveComponent", "LastRenderTime", SDK_FIELD(UPrimitiveComponent, LastRenderTime));
@@ -1478,6 +1486,8 @@ void CheckFunctions() {
         "Engine.Actor.SetCollision",
         "Engine.Actor.SetHidden",
         "SFXGame.BioPawn.RequestTurnInPlace",    // game/ConversationWorld: a body re-faces by the game's own turn (research/69)
+        "SFXGame.BioPawn.SetLookAtTarget",       // game/ConversationWorld: a look by the person's part in the line (research/69)
+        "SFXGame.BioPawn.SetDesiredRotation",    // game/ConversationWorld: a body re-faces by its own physics (research/69)
         "Engine.PrimitiveComponent.SetHidden",
         "Engine.PrimitiveComponent.SetLightEnvironment",
         "Engine.PrimitiveComponent.SetRBAngularVelocity",
@@ -1740,6 +1750,11 @@ void CheckParams() {
     PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
     PARAM(ABioPawn_execRequestTurnInPlace_Parms, "SFXGame.BioPawn.RequestTurnInPlace", rDesDir);
     PARAM(ABioPawn_execRequestTurnInPlace_Parms, "SFXGame.BioPawn.RequestTurnInPlace", ReturnValue);
+    PARAM(ABioPawn_execSetLookAtTarget_Parms, "SFXGame.BioPawn.SetLookAtTarget", oTarget);
+    PARAM(ABioPawn_execSetLookAtTarget_Parms, "SFXGame.BioPawn.SetLookAtTarget", a_eTransition);
+    PARAM(ABioPawn_execSetLookAtTarget_Parms, "SFXGame.BioPawn.SetLookAtTarget", nRank);
+    PARAM(ABioPawn_execSetDesiredRotation_Parms, "SFXGame.BioPawn.SetDesiredRotation", rDesiredRotation);
+    PARAM(ABioPawn_execSetDesiredRotation_Parms, "SFXGame.BioPawn.SetDesiredRotation", bForce);
     PARAM(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden", NewHidden);
     PARAM(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment", NewLightEnvironment);
     PARAM(UPrimitiveComponent_execSetRBAngularVelocity_Parms, "Engine.PrimitiveComponent.SetRBAngularVelocity", NewAngVel);
@@ -1878,6 +1893,8 @@ void CheckParams() {
     PARMS(AActor_execSetCollision_Parms, "Engine.Actor.SetCollision");
     PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
     PARMS(ABioPawn_execRequestTurnInPlace_Parms, "SFXGame.BioPawn.RequestTurnInPlace");
+    PARMS(ABioPawn_execSetLookAtTarget_Parms, "SFXGame.BioPawn.SetLookAtTarget");
+    PARMS(ABioPawn_execSetDesiredRotation_Parms, "SFXGame.BioPawn.SetDesiredRotation");
     PARMS(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden");
     PARMS(UPrimitiveComponent_execSetLightEnvironment_Parms, "Engine.PrimitiveComponent.SetLightEnvironment");
     PARMS(UPrimitiveComponent_execSetRBAngularVelocity_Parms, "Engine.PrimitiveComponent.SetRBAngularVelocity");

@@ -292,6 +292,63 @@ void TestSceneRules() {
             using T = cw::TurnRule;
             CHECK(cw::ParseTurnRule("Look", T::Always) == T::Look && cw::ParseTurnRule(" always ", T::Look) == T::Always);
             CHECK(cw::ParseTurnRule("off", T::Look) == T::Off && cw::ParseTurnRule("sideways", T::Look) == T::Look);
+            CHECK(cw::ParseTurnRule("roles", T::Look) == T::Roles);
+        }
+        // Who attends to whom, by their part in the line (the Spectre ceremony: Udina speaks to the player; Anderson stands
+        // in front of Udina with his back to him, the councillors face them from across the chamber).
+        {
+            using Part = cw::Role;
+            std::uint64_t const udina = 0x1000, player = 0x2000, anderson = 0x3000, tevos = 0x4000;
+            CHECK(cw::RoleOf(udina, udina, player) == Part::Speaker && cw::RoleOf(player, udina, player) == Part::Addressed);
+            CHECK(cw::RoleOf(anderson, udina, player) == Part::Bystander && cw::RoleOf(udina, udina, udina) == Part::Speaker);
+            CHECK(cw::RoleOf(0, 0, 0) == Part::Bystander);
+            CHECK(cw::PartnerOf(udina, udina, player) == player && cw::PartnerOf(player, udina, player) == udina);
+            CHECK(cw::PartnerOf(anderson, udina, player) == udina && cw::PartnerOf(udina, udina, 0) == 0);
+            CHECK(cw::PartnerOf(udina, udina, udina) == 0 && cw::PartnerOf(anderson, 0, player) == 0);
+            cw::RoleLimits const lim;  // glance 70, kept to 85
+            // The speaker 78 degrees off the one he speaks to: he looks, and his body may turn (StepAttention decides).
+            cw::RoleState s;
+            cw::RoleAttention const speaks = cw::AttendAs(s, Part::Speaker, udina, 78.0, true, lim);
+            CHECK(speaks.look && speaks.bodyMayTurn && std::abs(speaks.delayS - 0.15) < 1e-9);
+            // Anderson, 147 degrees off Udina: heard, not looked at; the body never turns.
+            cw::RoleState a;
+            cw::RoleAttention const hears = cw::AttendAs(a, Part::Bystander, anderson, -147.0, true, lim);
+            CHECK(!hears.look && !hears.bodyMayTurn);
+            // A councillor, 12 degrees off him across the chamber: a glance, later than the pair, never the body.
+            cw::RoleState c;
+            cw::RoleAttention const glance = cw::AttendAs(c, Part::Bystander, tevos, 12.0, true, lim);
+            CHECK(glance.look && !glance.bodyMayTurn && glance.delayS >= 0.45 && glance.delayS <= 1.05 + 1e-9);
+            // Not in unison: another bystander's glance begins at another moment; the same one's at the same.
+            CHECK(cw::AttendAs(c, Part::Bystander, tevos, 12.0, true, lim).delayS == glance.delayS);
+            cw::RoleState c2;
+            CHECK(cw::AttendAs(c2, Part::Bystander, anderson, 12.0, true, lim).delayS != glance.delayS);
+            // The glance is kept until the speaker is past 85 degrees, and taken again only within 70.
+            CHECK(cw::AttendAs(c, Part::Bystander, tevos, 80.0, true, lim).look);
+            CHECK(!cw::AttendAs(c, Part::Bystander, tevos, 90.0, true, lim).look);
+            CHECK(!cw::AttendAs(c, Part::Bystander, tevos, 80.0, true, lim).look);
+            CHECK(cw::AttendAs(c, Part::Bystander, tevos, -60.0, true, lim).look);
+            // One of the pair whose body cannot turn for it (the other is not the player, or far): the look only within
+            // 120 degrees; the ceremony's first line, Udina with the player 8 m behind him (176 degrees): no look.
+            cw::RoleState u;
+            cw::RoleAttention const behind = cw::AttendAs(u, Part::Speaker, udina, 176.0, false, lim);
+            CHECK(!behind.look && !behind.bodyMayTurn);
+            CHECK(cw::AttendAs(u, Part::Speaker, udina, 100.0, false, lim).look);
+            CHECK(cw::AttendAs(u, Part::Speaker, udina, 176.0, true, lim).look);  // near him: the body turns and the head leads
+            // Nobody to attend to.
+            CHECK(!cw::AttendAs(c, Part::Bystander, tevos, std::nullopt, true, lim).look && !c.glancing);
+            CHECK(!cw::AttendAs(s, Part::Speaker, udina, std::nullopt, true, lim).look);
+            // The look-at chain's reach as the game's code has it: the humanoid definition's strengths leave the head 33
+            // degrees short of a target 79 off the body (measured: 21 to 36), more than the eyes' 25; with 0.4 of the rest
+            // added to each link (the pair's heads) 9 short.
+            cw::LookLink const chain[] = {{0.125, 50.0}, {0.25, 50.0}, {0.55, 50.0}};
+            CHECK(std::abs(cw::HeadShortDeg(79.0, chain) - 32.75) < 0.01);
+            CHECK(cw::HeadShortDeg(70.0, chain) < 25.0 && cw::HeadShortDeg(75.0, chain) > 25.0);  // the eyes cover it up to 71
+            CHECK(std::abs(cw::StrongerLink(0.55, 0.4) - 0.73) < 1e-9 && cw::StrongerLink(1.0, 0.4) == 1.0 && cw::StrongerLink(0.25, 0.0) == 0.25);
+            cw::LookLink const direct[] = {{cw::StrongerLink(0.125, 0.4), 50.0}, {cw::StrongerLink(0.25, 0.4), 50.0}, {cw::StrongerLink(0.55, 0.4), 50.0}};
+            CHECK(cw::HeadShortDeg(79.0, direct) < 10.0);
+            CHECK(cw::HeadShortDeg(-79.0, chain) == cw::HeadShortDeg(79.0, chain));
+            cw::LookLink const stiff[] = {{1.0, 10.0}};
+            CHECK(std::abs(cw::HeadShortDeg(40.0, stiff) - 30.0) < 1e-9);  // a link never turns past its limit
         }
         // The wheel's stick is not the walk's until it has been let go.
         {

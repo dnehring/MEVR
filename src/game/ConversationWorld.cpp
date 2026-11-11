@@ -85,6 +85,22 @@ ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
 ue3::FunctionRef gEndConversation{"SFXGame.BioConversation.EndConversation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
 ue3::FunctionRef gRequestTurn{"SFXGame.BioPawn.RequestTurnInPlace"};  // the game's own turn on the spot, with its animation
+// Whom a pawn looks at, as the game has it (the look-at chain's own target), and the game's function that gives it one
+// (research/69 "Who attends to whom").
+ue3::FieldRef gPawnLookData{"SFXGame.BioPawn", "m_oLookAtData"};
+ue3::FieldRef gLookDataTarget{"SFXGame.BioLookAt", "m_oTarget"};
+ue3::FieldRef gLookDataRank{"SFXGame.BioLookAt", "m_nRank"};
+ue3::FunctionRef gSetLookAt{"SFXGame.BioPawn.SetLookAtTarget"};
+// How far each link of the look-at chain turns: a controller per link, each pointing at its bone's definition in the
+// appearance's shared look-at definition (research/69 "How far a head turns").
+ue3::FieldRef gLookControllers{"SFXGame.BioLookAt", "m_Controllers"};
+ue3::FieldRef gLookDefinition{"SFXGame.BioLookAt", "m_Definition"};
+ue3::FieldRef gControllerDefinition{"SFXGame.BioPawnLookAtController", "mc_pDefinition"};
+ue3::FieldRef gBoneDefinitions{"SFXGame.BioLookAtDefinition", "BoneDefinitions"};
+ue3::FieldRef gLinkStrength{gBoneDefinitions, "m_fConversationStrength"};
+// The facing a pawn's own physics turns it to (Actor.DesiredRotation, by BioPawn.SetDesiredRotation): a rotation set without
+// it is turned back by the pawn's physics within the tick (the ceremony's Anderson, 2026-11-10: every step of an eased turn).
+ue3::FunctionRef gSetDesiredRotation{"SFXGame.BioPawn.SetDesiredRotation"};
 ue3::ClassRef gTurnPawnClass{"SFXGame.BioPawn"};
 ue3::FunctionRef gTrace{"Engine.Actor.Trace"};  // the floor under an arc seat (Part B)
 ue3::FieldRef gWalkController{"Engine.Pawn", "Controller"};
@@ -153,15 +169,37 @@ struct Settings {
     float walkSettleS = 2.5f;
     float walkMinM = 0.5f;
     float walkSpeedMS = 1.4f;
-    float turnDegPerS = 120.0f;        // a body turn of ours: at most this fast (worldTurnDegPerS)
+    float turnDegPerS = 60.0f;         // a body turn of ours: at most this fast (worldTurnDegPerS; 120 until 2026-11-10)
     // Who turns (research/69 "Who turns, and how"; worldTurn = look | always | off): look: the game's look-at chain does the
     // looking and the body re-faces only past what it covers (cw::StepAttention); always: every body toward its look-at
     // target every tick (until 2026-11-10); off: the game's own facings stand.
-    cw::TurnRule turnRule = cw::TurnRule::Look;
-    float turnComfortDeg = 60.0f;      // the look-at chain's business up to here (worldTurnComfortDeg)
-    float turnSettleDeg = 25.0f;       // a body turn ends with the target this far off (worldTurnSettleDeg)
+    cw::TurnRule turnRule = cw::TurnRule::Roles;
+    // Who attends to whom by their part in the line (worldTurn = roles; cw::AttendAs): a bystander looks at the speaker only
+    // within worldGlanceDeg of its body's facing (kept to worldGlanceKeepDeg); worldLookRank is the rank our look-at targets
+    // are given to the game with.
+    float glanceDeg = 70.0f;
+    float glanceKeepDeg = 85.0f;
+    // (Rank: the game's own look-ats, authored tracks among them, are given at 99999 and a lower rank is refused while
+    // one holds; its look at the player in passing is rank 1 or 2. Ours sits between.)
+    int lookRank = 100;
+    // The speaker's and the spoken-to's heads reach further than the game's glance: each link of their look-at chain gets
+    // this share of what its strength leaves (worldLookReach; 0: the game's strengths for everyone).
+    float lookReach = 0.4f;
+    bool turnLog = false;              // worldTurnLog = 1: each looking or turning person's yaw twice a second
+    // (60 and 25 until 2026-11-10 evening: the chain's own reach is about 84 degrees, the head taking all but the eyes' 25,
+    // and people who stand side by side talk with their heads turned.)
+    float turnComfortDeg = 80.0f;      // the look-at chain's business up to here (worldTurnComfortDeg)
+    float turnSettleDeg = 40.0f;       // a body turn ends with the target this far off (worldTurnSettleDeg)
+    // By their part (worldTurn = roles) a body re-faces only for the player (the one person the scene could not compose),
+    // while he stands within worldTurnWithinM, and goes back to the facing the scene composed worldTurnHomeS after the
+    // last line that engaged it with him (negative: it stays turned).
+    float turnWithinM = 4.0f;
+    float turnHomeS = 3.0f;
     float turnDwellS = 1.0f;           // ... and begins after the target was outside for this long (worldTurnDwellS)
-    bool turnByGame = true;            // by BioPawn.RequestTurnInPlace, an eased turn of ours if refused (worldTurnWay = game | slide)
+    // How a body re-faces (worldTurnWay = desired | game | slide): desired: the pawn's own desired rotation, which its physics
+    // turns it to at its own rate; game: BioPawn.RequestTurnInPlace; slide: an eased turn of ours. The first two fall back to
+    // the eased turn where nothing comes of them.
+    int turnWay = 2;                   // 0 desired, 1 game, 2 slide (the default: the other two turned nobody, 2026-11-10)
     bool setPiecesOnScreen = true;     // the scan's set pieces on the 3D screen, not in the world (worldSetPieces = screen | world)
     // The game's own camera at the player's place too, not only the main view (worldCamera). Off since 2026-11-10 (research/69
     // "The first shot"): the main view's build already feeds culling, streaming and the listener; what this was built for
@@ -266,13 +304,21 @@ void RefreshSettings() {
     s.walkSpeedMS = number("worldWalkSpeedMS", s.walkSpeedMS, 0.1f, 3.0f);
     s.turnDegPerS = number("worldTurnDegPerS", s.turnDegPerS, 10.0f, 1000.0f);
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldTurn")) {
-        s.turnRule = cw::ParseTurnRule(*text, cw::TurnRule::Look);
+        s.turnRule = cw::ParseTurnRule(*text, cw::TurnRule::Roles);
     }
+    s.turnLog = number("worldTurnLog", 0.0f, 0.0f, 1.0f) != 0.0f;
+    s.turnWithinM = number("worldTurnWithinM", s.turnWithinM, 0.0f, 100.0f);
+    s.turnHomeS = number("worldTurnHomeS", s.turnHomeS, -1.0f, 600.0f);
+    s.glanceDeg = number("worldGlanceDeg", s.glanceDeg, 0.0f, 180.0f);
+    s.glanceKeepDeg = number("worldGlanceKeepDeg", s.glanceKeepDeg, 0.0f, 180.0f);
+    s.lookRank = static_cast<int>(number("worldLookRank", static_cast<float>(s.lookRank), 0.0f, 99999.0f));
+    s.lookReach = number("worldLookReach", s.lookReach, 0.0f, 1.0f);
     s.turnComfortDeg = number("worldTurnComfortDeg", s.turnComfortDeg, 5.0f, 180.0f);
     s.turnSettleDeg = number("worldTurnSettleDeg", s.turnSettleDeg, 0.0f, 90.0f);
     s.turnDwellS = number("worldTurnDwellS", s.turnDwellS, 0.0f, 30.0f);
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldTurnWay")) {
-        s.turnByGame = ini::Lower(ini::Trim(*text)) != "slide";
+        std::string const way = ini::Lower(ini::Trim(*text));
+        s.turnWay = way == "desired" ? 0 : way == "game" ? 1 : 2;
     }
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldSetPieces")) {
         s.setPiecesOnScreen = ini::Lower(ini::Trim(*text)) != "world";
@@ -651,6 +697,13 @@ struct Convo {
     int turnsSlid = 0;           // ... and by an eased turn of ours (the game's refused, or did not move the body)
     int facingsHeld = 0;         // facings the stage set at once mid-conversation, put back (they were for its mark)
     int facingsEased = 0;        // ... and those of people with nobody to look at, taken as a turn instead of at once
+    int reaches = 0;             // look-at chains of the pair given the further reach (worldLookReach)
+    int looksRefused = 0;        // looks of ours the game refused (a look-at of its own held the pawn's at a higher rank)
+    int turnsHome = 0;           // bodies that went back to the facing the scene composed after their lines with the player
+    int looksSet = 0;            // look-at targets given by a person's part in the line (the pair's, and bystanders' glances)
+    int glances = 0;             // ... of those, bystanders' glances at the speaker
+    int heardOnly = 0;           // bystanders who heard a speaker outside a glance's reach and kept looking where they looked
+    int looksGame = 0;           // look-at targets the game itself gave (an authored look-at): left to it
     double markM = 0.0;          // how far Shepard's mark was from where the player stood
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
     std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
@@ -732,6 +785,18 @@ struct WalkOverride {
 WalkOverride gWalkOverride;
 
 // Where each person of the conversation is kept, and the yaw shown while they turn.
+// A look-at chain given a further reach: each controller's definition pointer put on a copy of ours with a stronger
+// strength, and what it pointed at before (put back when the person is no longer one of the pair, and at the end).
+struct Reach {
+    struct Link {
+        ue3::Object* controller = nullptr;
+        void* original = nullptr;
+        std::unique_ptr<std::uint8_t[]> copy;
+    };
+    std::vector<Link> links;
+    ue3::Object* data = nullptr;  // the pawn's look-at data these controllers belong to
+};
+
 struct Stay {
     ue3::Object* actor = nullptr;
     std::string name;
@@ -749,6 +814,19 @@ struct Stay {
     cw::AttentionState attention;  // whether its body turns toward whom it looks at (cw::StepAttention)
     std::optional<double> facingGoal;  // a facing the stage set at once, taken as a turn (nobody to look at)
     ue3::Object* lookAt = nullptr; // whom it looks at now, since when, and whether the head's reach was logged for it
+    cw::RoleState role;            // its part in the line (cw::AttendAs): a bystander's glance,
+    ue3::Object* rolePartner = nullptr;  // ... and at whom
+    double traceS = 0.0;           // the next line of the turn trace (worldTurnLog)
+    double lookRetryS = 0.0;       // a look the game refused is asked again after this
+    std::shared_ptr<Reach> reach;  // its look-at chain's links pointed at stronger copies of their definitions (the pair)
+    std::optional<double> homeYaw; // the facing the scene composed, while a turn of ours has the body away from it,
+    bool away = false;
+    double engagedS = 0.0;         // ... and when its body last had someone to turn for
+    ue3::Object* lookOurs = nullptr;   // the look-at target we gave it (BioPawn.SetLookAtTarget); nullptr: none of ours
+    ue3::Object* lookWanted = nullptr; // ... the one its part wants, and since when (the look begins a moment later)
+    double lookWantedS = 0.0;
+    ue3::Object* lookGame = nullptr;   // a target the game itself gave it, last seen (logged once per target)
+    ue3::Object* heard = nullptr;      // the speaker a bystander did not look at, last logged
     double lookSinceS = 0.0;
     bool lookLogged = false;
     double turnGoal = 0.0;         // a turn asked of the game (BioPawn.RequestTurnInPlace): where to,
@@ -1058,7 +1136,26 @@ void CheckDrawn() {
 // The game's own turn on the spot (BioPawn.RequestTurnInPlace, a native: the pawn turns to the rotation with its turn
 // animation). False: not a BioPawn, the function not found, or the game refused.
 int gGameTurnFails = 0;  // turns asked of the game that came to nothing, this session: after two, ours
+// The pawn's desired rotation (its physics turns it there at its own rate; `force`: at once).
+bool SetDesired(ue3::Object* actor, ue3::Rotator const& now, double yawDeg, bool force) {
+    ue3::Function* const fn = gSetDesiredRotation.Get();
+    if (fn == nullptr || gTurnPawnClass.Get() == nullptr || !ue3::IsA(actor, gTurnPawnClass)) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    ue3::Rotator r = now;
+    r.yaw = ToUnits(yawDeg);
+    if (!p.Valid() || !p.Set("rDesiredRotation", r) || !p.SetBool("bForce", force)) {
+        return false;
+    }
+    ue3::runtime::Call(actor, fn, p);
+    return true;
+}
+
 bool RequestTurn(ue3::Object* actor, ue3::Rotator const& now, double yawDeg) {
+    if (gSettings.turnWay == 0) {
+        return SetDesired(actor, now, yawDeg, false);
+    }
     ue3::Function* const fn = gRequestTurn.Get();
     if (fn == nullptr || gTurnPawnClass.Get() == nullptr || !ue3::IsA(actor, gTurnPawnClass)) {
         return false;
@@ -1071,6 +1168,241 @@ bool RequestTurn(ue3::Object* actor, ue3::Rotator const& now, double yawDeg) {
     }
     ue3::runtime::Call(actor, fn, p);
     return p.ReturnBool().value_or(false);
+}
+
+// The game's own look-at target on a pawn (BioPawn.m_oLookAtData's target); nullptr: none.
+ue3::Object* GameLookTarget(ue3::Object* actor) {
+    ue3::Object* const data = gPawnLookData.Read<ue3::Object*>(actor).value_or(nullptr);
+    if (data == nullptr || !ue3::runtime::IsAlive(data)) {
+        return nullptr;
+    }
+    return gLookDataTarget.Read<ue3::Object*>(data).value_or(nullptr);
+}
+
+// The game's own function gives `actor` a look-at target (nullptr: none): its look-at chain turns the eyes, head, neck and
+// chest. On the game thread.
+bool SetLook(ue3::Object* actor, ue3::Object* target) {
+    ue3::Function* const fn = gSetLookAt.Get();
+    if (fn == nullptr || actor == nullptr || !ue3::runtime::IsAlive(actor)) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    if (!p.Valid() || !p.Set("oTarget", target) || !p.Set("a_eTransition", std::uint8_t{0}) ||
+        !p.Set("nRank", static_cast<std::int32_t>(gSettings.lookRank))) {
+        return false;
+    }
+    ue3::runtime::Call(actor, fn, p);
+    return true;
+}
+
+// The game's strengths back on a look-at chain we gave a further reach (the controllers still alive and still on our copies).
+void RestoreReach(Stay& st) {
+    if (!st.reach) {
+        return;
+    }
+    for (Reach::Link const& link : st.reach->links) {
+        if (link.controller == nullptr || !ue3::runtime::IsAlive(link.controller)) {
+            continue;
+        }
+        void** const slot = static_cast<void**>(gControllerDefinition.Address(link.controller));
+        if (slot != nullptr && *slot == link.copy.get()) {
+            *slot = link.original;
+            write_journal::Wrote("ConversationWorld.lookDefinitionBack", slot, sizeof(void*));
+        }
+    }
+    st.reach.reset();
+}
+
+// The pair's heads reach further (worldLookReach): the game turns each link of the chain by its definition's strength
+// (the humanoid's: chest 0.125, neck 0.25, head 0.55 of what is left, which leaves the head a third of the way short of
+// someone 80 degrees aside); the strength is read through the controller's pointer each frame, so the controllers of one
+// of the pair point at copies with `lookReach` of the rest added. Once per look-at data (the game makes the controllers
+// anew with each); a bystander keeps the game's glance.
+void ApplyReach(Stay& st) {
+    if (gSettings.lookReach <= 0.0f) {
+        RestoreReach(st);
+        return;
+    }
+    ue3::Object* const data = gPawnLookData.Read<ue3::Object*>(st.actor).value_or(nullptr);
+    if (data == nullptr || !ue3::runtime::IsAlive(data)) {
+        return;
+    }
+    if (st.reach && st.reach->data == data) {
+        return;
+    }
+    RestoreReach(st);
+    ue3::Object* const definition = gLookDefinition.Read<ue3::Object*>(data).value_or(nullptr);
+    if (definition == nullptr || !ue3::runtime::IsAlive(definition)) {
+        return;
+    }
+    auto const defs = gBoneDefinitions.ElementsOf(definition, 32);
+    auto const controllers = gLookControllers.ElementsOf(data, 32);
+    if (!defs || !controllers || defs->stride < 0x38 || defs->stride > 0x100 || controllers->stride != static_cast<std::int32_t>(sizeof(void*))) {
+        return;
+    }
+    auto reach = std::make_shared<Reach>();
+    reach->data = data;
+    std::string strengths;
+    for (std::int32_t i = 0; i < controllers->count; ++i) {
+        ue3::Object* const controller = *static_cast<ue3::Object**>(controllers->At(i));
+        if (controller == nullptr || !ue3::runtime::IsAlive(controller)) {
+            continue;
+        }
+        void** const slot = static_cast<void**>(gControllerDefinition.Address(controller));
+        if (slot == nullptr) {
+            continue;
+        }
+        // Only a pointer into that definition's own array is taken for a definition.
+        std::uint8_t* const original = static_cast<std::uint8_t*>(*slot);
+        std::uint8_t* const end = defs->data + static_cast<std::ptrdiff_t>(defs->count) * defs->stride;
+        if (original < defs->data || original >= end || (original - defs->data) % defs->stride != 0) {
+            continue;
+        }
+        auto copy = std::make_unique<std::uint8_t[]>(static_cast<std::size_t>(defs->stride));
+        std::memcpy(copy.get(), original, static_cast<std::size_t>(defs->stride));
+        float* const strength = static_cast<float*>(gLinkStrength.Address(copy.get()));
+        if (strength == nullptr || !std::isfinite(*strength) || *strength < 0.0f || *strength >= 0.999f) {
+            continue;  // the eyes (1): nothing to add
+        }
+        float const before = *strength;
+        *strength = static_cast<float>(cw::StrongerLink(before, gSettings.lookReach));
+        strengths += std::format("{}{:.2f} -> {:.2f}", strengths.empty() ? "" : ", ", before, *strength);
+        *slot = copy.get();
+        write_journal::Wrote("ConversationWorld.lookDefinition", slot, sizeof(void*));
+        reach->links.push_back({controller, original, std::move(copy)});
+    }
+    if (reach->links.empty()) {
+        return;
+    }
+    st.reach = std::move(reach);
+    if (gC.reaches++ == 0) {
+        log::Info("convo: at {:.1f} s {}'s look-at chain reaches further (one of the pair; worldLookReach {:.2f}): its links' strengths {}",
+            Seconds(), st.name, gSettings.lookReach, strengths);
+    }
+}
+
+// The looks we gave are taken back (a conversation's end, the setting going off): only where the pawn still looks at ours.
+void ReleaseLooks(char const* why) {
+    int released = 0;
+    for (Stay& st : gStay) {
+        RestoreReach(st);
+        if (st.lookOurs == nullptr) {
+            continue;
+        }
+        if (st.actor != nullptr && ue3::runtime::IsAlive(st.actor) && GameLookTarget(st.actor) == st.lookOurs && SetLook(st.actor, nullptr)) {
+            ++released;
+        }
+        st.lookOurs = nullptr;
+        st.lookWanted = nullptr;
+    }
+    if (released != 0) {
+        log::Info("convo: {} look-at target{} of ours taken back ({})", released, released == 1 ? "" : "s", why);
+    }
+}
+
+// Whom `st` looks at by its part in the line (worldTurn = roles; research/69 "Who attends to whom"). `listed`: the
+// conversation's own look-at list's target for it, if any. Returns whom it looks at now; `mayTurn`: whether its body may
+// re-face toward that one (never a bystander's).
+ue3::Object* RoleLook(Stay& st, ue3::Object* listed, ue3::Object* speaker, ue3::Object* listener, ue3::Object* player, double bodyYaw,
+    double nowS, bool& mayTurn) {
+    auto const id = [](ue3::Object const* o) { return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(o)); };
+    cw::Role const role = cw::RoleOf(id(st.actor), id(speaker), id(listener));
+    // Its body may re-face only as one of the pair, only toward the player, only while he stands near: everyone else was
+    // placed and faced by the scene (the ceremony's first line turned Udina right round toward a player 8 m behind him).
+    auto const bodyFor = [&](ue3::Object const* whom) {
+        ik::Vec3 const to = gC.hold - st.place;
+        return role != cw::Role::Bystander && whom == player && std::hypot(to.x, to.y) <= gSettings.turnWithinM * kUnitsPerMeter;
+    };
+    mayTurn = false;
+    // A target the game itself gives (the conversation's list, an authored look-at track) stands in place of the part's.
+    ue3::Object* const game = GameLookTarget(st.actor);
+    ue3::Object* const authored = listed != nullptr ? listed : game != nullptr && game != st.lookOurs ? game : nullptr;
+    if (authored != nullptr) {
+        if (authored != st.lookGame) {
+            st.lookGame = authored;
+            ++gC.looksGame;
+            log::Info("convo: at {:.1f} s {} ({}) looks at {} by the game's own look-at: left to it", Seconds(), st.name, cw::Name(role),
+                authored == player ? "the player" : ShortName(authored));
+        }
+        st.lookOurs = nullptr;
+        st.lookWanted = nullptr;
+        st.role = {};
+        RestoreReach(st);
+        mayTurn = bodyFor(authored);
+        return authored;
+    }
+    st.lookGame = nullptr;
+    ue3::Object* partner = reinterpret_cast<ue3::Object*>(static_cast<std::uintptr_t>(cw::PartnerOf(id(st.actor), id(speaker), id(listener))));
+    if (partner != nullptr && !ue3::runtime::IsAlive(partner)) {
+        partner = nullptr;
+    }
+    std::optional<double> off;
+    if (partner != nullptr) {
+        auto const theirs = partner == player ? std::optional<ik::Vec3>{gC.hold} : [&]() -> std::optional<ik::Vec3> {
+            auto const at = player::Location(partner);
+            return at ? std::optional<ik::Vec3>{V(*at)} : std::nullopt;
+        }();
+        if (theirs) {
+            ik::Vec3 const to = *theirs - st.place;
+            if (std::hypot(to.x, to.y) > 20.0) {
+                off = YawDiffDeg(std::atan2(to.y, to.x) * kRadToDeg, bodyYaw);
+            }
+        }
+    }
+    if (partner != st.rolePartner) {
+        st.rolePartner = partner;
+        st.role = {};  // a glance kept past its reach was for the one before
+    }
+    cw::RoleLimits limits;
+    limits.glanceDeg = gSettings.glanceDeg;
+    limits.glanceKeepDeg = gSettings.glanceKeepDeg;
+    cw::RoleAttention const attend = cw::AttendAs(st.role, role, id(st.actor), off, bodyFor(partner), limits);
+    ue3::Object* const wanted = attend.look ? partner : nullptr;
+    if (role == cw::Role::Bystander && partner != nullptr && off && !attend.look && st.heard != partner) {
+        st.heard = partner;
+        ++gC.heardOnly;
+        log::Info("convo: at {:.1f} s {} (bystander) hears {} {:.0f} deg off its facing, outside a glance ({:.0f} deg): no look, its body stays",
+            Seconds(), st.name, partner == player ? "the player" : ShortName(partner), std::abs(*off), gSettings.glanceDeg);
+    }
+    if (wanted != st.lookWanted) {
+        st.lookWanted = wanted;
+        st.lookWantedS = nowS;
+    }
+    if (wanted != st.lookOurs && nowS - st.lookWantedS >= attend.delayS && nowS >= st.lookRetryS) {
+        if (wanted == nullptr) {
+            // Nothing of ours to take back where the game has since cleared or changed it (game is then null or its own).
+            if (game == st.lookOurs) {
+                SetLook(st.actor, nullptr);
+            }
+            st.lookOurs = nullptr;
+        } else if (SetLook(st.actor, wanted) && GameLookTarget(st.actor) == wanted) {
+            st.lookOurs = wanted;
+            ++gC.looksSet;
+            if (role == cw::Role::Bystander) {
+                ++gC.glances;
+            }
+            st.heard = nullptr;
+            log::Info("convo: at {:.1f} s {} ({}) looks at {}: {:.0f} deg off its body's facing{}", Seconds(), st.name, cw::Name(role),
+                wanted == player ? "the player" : ShortName(wanted), off ? std::abs(*off) : 0.0,
+                role == cw::Role::Bystander ? " (a glance; its body stays)" : "");
+        } else {
+            // Refused: a look-at of the game's own holds the pawn's at a higher rank (a cleared authored look easing out).
+            st.lookOurs = nullptr;
+            st.lookRetryS = nowS + 0.5;
+            if (gC.looksRefused++ == 0) {
+                log::Info("convo: at {:.1f} s {}'s look at {} was refused by the game (rank {} under a look-at of its own): asked again every "
+                          "half second", Seconds(), st.name, wanted == player ? "the player" : ShortName(wanted), gSettings.lookRank);
+            }
+        }
+    }
+    // The pair's heads reach further than a bystander's glance.
+    if (role != cw::Role::Bystander && st.lookOurs != nullptr) {
+        ApplyReach(st);
+    } else {
+        RestoreReach(st);
+    }
+    mayTurn = bodyFor(st.lookOurs);
+    return st.lookOurs;
 }
 
 void KeepInPlace(ue3::Object* pawn) {
@@ -1097,6 +1429,15 @@ void KeepInPlace(ue3::Object* pawn) {
         }
     }
     ue3::Object* const speaker = gSpeaker.Read<ue3::Object*>(gC.object).value_or(nullptr);
+    // Whom the line is spoken to: the game's listener; a line of someone else's with none is spoken to the player.
+    ue3::Object* listener = gListener.Read<ue3::Object*>(gC.object).value_or(nullptr);
+    ue3::Object* const playerPawn = gC.playerPawn != nullptr ? gC.playerPawn : pawn;
+    if (listener == gC.playerPawn || listener == pawn) {
+        listener = playerPawn;
+    } else if (listener == nullptr && speaker != nullptr && speaker != pawn && speaker != gC.playerPawn) {
+        listener = playerPawn;
+    }
+    ue3::Object* const speakerNow = speaker == pawn || speaker == gC.playerPawn ? playerPawn : speaker;
     for (Tracked const& t : gC.actors) {
         auto it = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == t.actor; });
         if (t.actor == nullptr || !ue3::runtime::IsAlive(t.actor)) {
@@ -1212,16 +1553,27 @@ void KeepInPlace(ue3::Object* pawn) {
         // nobody by that list, swung 90 to 170 degrees toward whichever of them spoke, and so did the dais, a BioInert.)
         auto const look = lookAt.find(t.actor);
         bool const always = gSettings.turnRule == cw::TurnRule::Always;
-        ue3::Object* const other = look != lookAt.end() ? look->second : always && speaker != t.actor ? speaker : nullptr;
-        std::optional<double> bearing;
+        ue3::Object* other = look != lookAt.end() ? look->second : always && speaker != t.actor ? speaker : nullptr;
+        // By their part in the line (worldTurn = roles): the speaker and the one spoken to look at each other and may turn,
+        // a bystander glances at the speaker where a glance reaches and its body stays as the scene composed it.
+        bool mayTurn = true;
+        if (gSettings.turnRule == cw::TurnRule::Roles && player::IsBioPawn(t.actor)) {
+            other = RoleLook(st, look != lookAt.end() ? look->second : nullptr, speakerNow, listener, playerPawn, actualYaw, nowS, mayTurn);
+        } else if (st.lookOurs != nullptr) {
+            ReleaseLooks("worldTurn is no longer roles");
+        }
+        std::optional<double> lookBearing;
         if (!walking && other != nullptr && ue3::runtime::IsAlive(other)) {
-            if (auto const o = player::Location(other)) {
-                ik::Vec3 const to = V(*o) - st.place;
+            bool const atPlayer = other == playerPawn;
+            if (auto const o = player::Location(other); o || atPlayer) {
+                ik::Vec3 const to = (atPlayer ? gC.hold : V(*o)) - st.place;
                 if (std::hypot(to.x, to.y) > 20.0) {
-                    bearing = std::atan2(to.y, to.x) * kRadToDeg;
+                    lookBearing = std::atan2(to.y, to.x) * kRadToDeg;
                 }
             }
         }
+        // The body's business only for those whose part lets it turn; a bystander's facing is the scene's.
+        std::optional<double> const bearing = mayTurn ? lookBearing : std::nullopt;
         // How far the game's look-at chain really brings the head (research/69 "Who turns, and how"): once per look-at
         // target, a second and a half after it was taken: the target's angle off the body, and off the head's facing.
         if (other != st.lookAt) {
@@ -1229,13 +1581,14 @@ void KeepInPlace(ue3::Object* pawn) {
             st.lookSinceS = nowS;
             st.lookLogged = false;
         }
-        if (other != nullptr && bearing && !st.lookLogged && nowS - st.lookSinceS >= 1.5) {
+        if (other != nullptr && lookBearing && !st.lookLogged && nowS - st.lookSinceS >= 1.5) {
             st.lookLogged = true;
             if (auto const head = HeadOf(t.actor)) {
                 bool const atPlayer = other == pawn || other == gC.playerPawn;
                 auto const theirs = atPlayer ? std::nullopt : HeadOf(other);
-                ik::Vec3 const to = (atPlayer ? gC.hold : theirs ? theirs->at : V(*player::Location(other)) + ik::Vec3{0.0, 0.0, 70.0}) - head->at;
-                double const bodyOff = std::abs(YawDiffDeg(*bearing, actualYaw));
+                auto const theirPlace = player::Location(other);
+                ik::Vec3 const to = (atPlayer ? gC.hold : theirs ? theirs->at : theirPlace ? V(*theirPlace) + ik::Vec3{0.0, 0.0, 70.0} : gC.hold) - head->at;
+                double const bodyOff = std::abs(YawDiffDeg(*lookBearing, actualYaw));
                 double const headOff = AngleDeg(head->axis[0], to);
                 gC.reachMaxBody = std::max(gC.reachMaxBody, bodyOff);
                 if (bodyOff >= 30.0) {
@@ -1281,28 +1634,46 @@ void KeepInPlace(ue3::Object* pawn) {
                 st.shownYaw = actualYaw;
             } else if (gradual) {
                 st.shownYaw = actualYaw;
-            } else if (!bearing) {
-                // The stage's facing for someone the game gives nobody to look at: the scene's own (Udina turning to the
-                // council), but set at once for a camera cut: taken as a turn (180 degrees in a frame, seen in first person).
+            } else if (!bearing || std::abs(YawDiffDeg(*bearing, actualYaw)) <= gSettings.turnComfortDeg) {
+                // The stage's facing for someone whose body is not ours to turn (nobody to look at, a bystander), or one that
+                // leaves the one it looks at within the look-at chain's reach: the scene's own (Udina turning to the council),
+                // but set at once for a camera cut: taken as a turn (180 degrees in a frame, seen in first person).
                 st.facingGoal = actualYaw;
+                st.away = false;  // the scene's own new facing: there is nothing of ours to go back from
                 ++gC.facingsEased;
             } else {
                 ++gC.facingsHeld;
             }
-            if (bearing) {
+            if (bearing && st.attention.turning) {
                 st.facingGoal.reset();
             }
             cw::AttentionLimits const limits{gSettings.turnComfortDeg, gSettings.turnSettleDeg, gSettings.turnDwellS};
             cw::AttentionStep const a = cw::StepAttention(st.attention, st.shownYaw, bearing, dt, limits);
+            if (bearing) {
+                st.engagedS = nowS;
+            } else if (st.away && st.homeYaw && st.turnUntilS == 0.0 && gSettings.turnHomeS >= 0.0f && nowS - st.engagedS >= gSettings.turnHomeS) {
+                // Its lines with the player are over: back to the facing the scene composed.
+                st.away = false;
+                st.facingGoal = *st.homeYaw;
+                ++gC.turnsHome;
+                log::Info("convo: at {:.1f} s {} goes back to the facing the scene composed ({:.0f} deg, {:.0f} deg of turn): its last line with "
+                          "the player ended {:.1f} s ago", Seconds(), t.name, *st.homeYaw, std::abs(YawDiffDeg(*st.homeYaw, st.shownYaw)),
+                    nowS - st.engagedS);
+            }
             if (a.began) {
+                if (!st.away) {
+                    st.homeYaw = st.shownYaw;
+                    st.away = true;
+                }
                 ++gC.bodyTurns;
-                bool const asked = gSettings.turnByGame && gGameTurnFails < 2 && RequestTurn(t.actor, *rot, a.goalYawDeg);
+                bool const asked = gSettings.turnWay != 2 && gGameTurnFails < 2 && RequestTurn(t.actor, *rot, a.goalYawDeg);
                 log::Info("convo: at {:.1f} s {} turns its body: {} has been {:.0f} deg off its facing for {:.1f} s, past the {:.0f} its look-at "
                           "covers; to {:.0f} deg ({:.0f} deg of turn), {}", Seconds(), t.name, ShortName(other), std::abs(a.offDeg),
                     gSettings.turnDwellS, gSettings.turnComfortDeg, a.goalYawDeg, std::abs(YawDiffDeg(a.goalYawDeg, st.shownYaw)),
-                    asked ? "by the game's turn in place" : !gSettings.turnByGame ? "by an eased turn (worldTurnWay = slide)"
-                          : gGameTurnFails >= 2 ? "by an eased turn (the game's turn in place came to nothing twice)"
-                          : "by an eased turn (the game's turn in place refused)");
+                    asked ? gSettings.turnWay == 0 ? "by its own desired rotation" : "by the game's turn in place"
+                          : gSettings.turnWay == 2 ? "by an eased turn (worldTurnWay = slide)"
+                          : gGameTurnFails >= 2 ? "by an eased turn (the game's turn came to nothing twice)"
+                          : "by an eased turn (the game's turn refused)");
                 if (asked) {
                     ++gC.gameTurns;
                     st.turnGoal = a.goalYawDeg;
@@ -1319,16 +1690,26 @@ void KeepInPlace(ue3::Object* pawn) {
             }
             eased = true;
         }
+        if (gSettings.turnLog && nowS >= st.traceS && (other != nullptr || st.attention.turning || st.facingGoal)) {
+            st.traceS = nowS + 0.5;
+            log::Info("convo: turn trace: at {:.1f} s {} yaw {:.0f} (kept {:.0f}), looks at {} {:.0f} deg off, {}{}{}", Seconds(), t.name, actualYaw,
+                st.shownYaw, other == nullptr ? "nobody" : other == playerPawn ? "the player" : ShortName(other),
+                lookBearing ? std::abs(YawDiffDeg(*lookBearing, actualYaw)) : 0.0, mayTurn ? "may turn" : "body stays",
+                st.attention.turning ? ", turning" : "", st.facingGoal ? ", easing to the stage's facing" : "");
+        }
         double const diff = YawDiffDeg(target, st.shownYaw);
         double const step = gSettings.turnDegPerS * dt;
         st.shownYaw += eased ? cw::TurnStepDeg(diff, dt, gSettings.turnDegPerS) : std::clamp(diff, -step, step);
-        if (std::abs(YawDiffDeg(st.shownYaw, actualYaw)) > 1.0) {
+        // (A threshold of a degree here stopped an eased turn half way at 90 frames a second: its steps near the end are
+        // smaller, were not applied, and the kept facing started over from the body's every tick. 2026-11-10.)
+        if (std::abs(YawDiffDeg(st.shownYaw, actualYaw)) > 0.05) {
             ue3::Params p(ue3::runtime::Get(), gSetRotation.Get());
             ue3::Rotator r = *rot;
             r.yaw = ToUnits(st.shownYaw);
             if (p.Valid() && p.Set("NewRotation", r)) {
                 ue3::runtime::Call(t.actor, gSetRotation.Get(), p);
             }
+            SetDesired(t.actor, *rot, st.shownYaw, false);  // else the pawn's physics turns it back within the tick
         }
     }
 }
@@ -2166,6 +2547,7 @@ void End(char const* why) {
     if (!gC.on) {
         return;
     }
+    ReleaseLooks(why);
     gTrail.clear();
     EndWalks(why);
     if (gC.detached && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
@@ -2232,7 +2614,8 @@ void End(char const* why) {
               "\"sourceKept\": {}, \"noPlace\": \"{}\", \"autoScreened\": {}, \"opening\": \"{}\", \"markM\": {:.2f}, \"cuts\": {}, "
               "\"trackWalks\": {}, \"trackHeld\": {}, \"yielded\": {}, \"guidedM\": {:.2f}, \"walkInWay\": \"{}\", \"arrived\": {}, "
               "\"bodyTurns\": {}, \"gameTurns\": {}, \"turnsSlid\": {}, \"facingsHeld\": {}, \"wheelSticks\": {}, \"lookWide\": {}, "
-              "\"lookMaxDeg\": {:.0f}, \"headShortDeg\": {:.0f}, \"facingsEased\": {}, \"entries\": [{}]}}",
+              "\"lookMaxDeg\": {:.0f}, \"headShortDeg\": {:.0f}, \"facingsEased\": {}, \"looksSet\": {}, \"glances\": {}, \"heardOnly\": {}, "
+              "\"looksGame\": {}, \"turnsHome\": {}, \"reaches\": {}, \"looksRefused\": {}, \"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
@@ -2240,7 +2623,7 @@ void End(char const* why) {
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
-        gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, entryPath);
+        gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }

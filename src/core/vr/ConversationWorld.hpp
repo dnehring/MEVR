@@ -232,10 +232,64 @@ AttentionStep StepAttention(AttentionState& state, double bodyYawDeg, std::optio
 // One tick of a body turn nothing animates (the fallback when the game's own turn is refused): at most rateDegPerS, slower
 // near the goal, never under a fifth of the rate (so it ends). Returns the signed step toward diffDeg.
 double TurnStepDeg(double diffDeg, double dtS, double rateDegPerS);
-enum class TurnRule : std::uint8_t { Look, Always, Off };
-// "look" (the default): the rule above. "always": the body turns toward the look-at target every tick (until 2026-11-10).
-// "off": the game's own facings stand.
+enum class TurnRule : std::uint8_t { Roles, Look, Always, Off };
+// "roles" (the default since 2026-11-10 evening): the rule above, by each person's part in the line (below). "look": the
+// rule above for whoever the game gives a look-at target, whatever their part. "always": the body turns toward the look-at
+// target every tick (until 2026-11-10). "off": the game's own facings stand.
 TurnRule ParseTurnRule(std::string_view text, TurnRule fallback);
+
+// Who attends to whom, by their part in the line (research/69 "Who attends to whom"; the owner, 2026-11-10: "when Udina
+// speaks there's no reason that Anderson would need to face him as much"). The game names each line's speaker and whom
+// they speak to (BioConversation.m_pSpeaker, m_pListener); everyone else in the scene is a bystander. One rule for every
+// scene, no data per scene:
+//  - the speaker looks at whom they speak to, and the one spoken to at the speaker: an engaged pair, whose bodies may
+//    re-face (StepAttention) when the other stays outside what the look-at chain covers;
+//  - a bystander looks at the speaker only where a glance reaches (the speaker within `glanceDeg` of the body's facing, kept
+//    until past `glanceKeepDeg`), a moment later than the pair, and its body never turns: it keeps the facing the scene
+//    composed. Someone speaking behind or beside a bystander is heard, not looked at.
+// A look-at target the game itself gives someone (an authored look-at track) stands in place of the part's.
+enum class Role : std::uint8_t { Speaker, Addressed, Bystander };
+char const* Name(Role role);
+// Ids are opaque (pointers); 0 is nobody. Someone who is both (a line spoken to oneself) is the speaker.
+Role RoleOf(std::uint64_t who, std::uint64_t speaker, std::uint64_t listener);
+// Whom that part attends to: the speaker to the listener, everyone else to the speaker; 0: nobody (no speaker, or oneself).
+std::uint64_t PartnerOf(std::uint64_t who, std::uint64_t speaker, std::uint64_t listener);
+struct RoleLimits {
+    double glanceDeg = 70.0;
+    double glanceKeepDeg = 85.0;
+    double pairDelayS = 0.15;       // the engaged pair turn their heads this long after the line began ...
+    double bystanderDelayS = 0.45;  // ... a bystander this long, plus up to bystanderSpreadS by who they are (not in unison)
+    double bystanderSpreadS = 0.6;
+    // One of the pair whose body cannot turn for it looks at the other only within this of its body's facing: past it the
+    // look-at chain cranks the head over the shoulder as far as it goes (the ceremony's first line: Udina toward a player
+    // 8 m behind him).
+    double pairReachDeg = 120.0;
+};
+struct RoleState {
+    bool glancing = false;  // a bystander is looking at the speaker
+};
+struct RoleAttention {
+    bool look = false;         // looks at its partner (the engaged pair: always, when there is one)
+    bool bodyMayTurn = false;  // its body may re-face toward whom it looks at (never a bystander's)
+    double delayS = 0.0;       // how long after the partner changed the look begins
+};
+// `partnerOffDeg`: the partner's bearing off the body's facing (signed or not); nullopt: no partner. `bodyCanTurn`: whether
+// the body may turn for this partner at all (the game layer's: only for the player, only near); returned as bodyMayTurn
+// for one of the pair.
+RoleAttention AttendAs(RoleState& state, Role role, std::uint64_t who, std::optional<double> partnerOffDeg, bool bodyCanTurn = true,
+    RoleLimits const& limits = {});
+// How far the game's look-at chain leaves the head short of a target `offDeg` off the body's facing (read from the game's
+// code, research/69 "How far a head turns"): each link, from the chest to the head, turns by its strength times what is
+// left, what is left taken as at most the link's limit (`links`: strength and limit per link, chest first; the humanoid
+// definition: 0.125/50, 0.25/50, 0.55/50), the eyes (25 degrees) taking the rest. Measured in the game at 77 to 79 degrees
+// off the body: 21 to 36 short (the animation's own twist adds to it). Returns what is left for the eyes, in degrees.
+// StrongerLink: a link's strength with `gain` of the rest added (the pair's heads reach further: 0.55 with 0.4 is 0.73).
+struct LookLink {
+    double strength = 0.0;
+    double limitDeg = 0.0;
+};
+double HeadShortDeg(double offDeg, std::span<LookLink const> links);
+double StrongerLink(double strength, double gain);
 
 // The left stick steers the conversation wheel while it is up, and is still where it picked the reply as the wheel closes:
 // it walks again only once it has been let go (the owner's headset session, 2026-11-10: Shepard lurched half a metre in the

@@ -486,10 +486,72 @@ TurnRule ParseTurnRule(std::string_view text, TurnRule fallback) {
             lower.push_back(static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c));
         }
     }
+    if (lower == "roles" || lower == "role" || lower == "parts") return TurnRule::Roles;
     if (lower == "look" || lower == "lookat" || lower == "attention") return TurnRule::Look;
     if (lower == "always" || lower == "pivot") return TurnRule::Always;
     if (lower == "off" || lower == "0" || lower == "game") return TurnRule::Off;
     return fallback;
+}
+
+char const* Name(Role role) {
+    return role == Role::Speaker ? "speaker" : role == Role::Addressed ? "spoken to" : "bystander";
+}
+
+Role RoleOf(std::uint64_t who, std::uint64_t speaker, std::uint64_t listener) {
+    if (who != 0 && who == speaker) {
+        return Role::Speaker;
+    }
+    if (who != 0 && who == listener) {
+        return Role::Addressed;
+    }
+    return Role::Bystander;
+}
+
+std::uint64_t PartnerOf(std::uint64_t who, std::uint64_t speaker, std::uint64_t listener) {
+    if (who == 0 || speaker == 0) {
+        return 0;
+    }
+    std::uint64_t const partner = who == speaker ? listener : speaker;
+    return partner == who ? 0 : partner;
+}
+
+RoleAttention AttendAs(RoleState& state, Role role, std::uint64_t who, std::optional<double> partnerOffDeg, bool bodyCanTurn,
+    RoleLimits const& limits) {
+    RoleAttention out;
+    if (!partnerOffDeg) {
+        state.glancing = false;
+        return out;
+    }
+    double const off = std::abs(Wrap180(*partnerOffDeg));
+    if (role != Role::Bystander) {
+        state.glancing = false;
+        out.bodyMayTurn = bodyCanTurn;
+        out.look = bodyCanTurn || off <= limits.pairReachDeg;
+        out.delayS = std::max(0.0, limits.pairDelayS);
+        return out;
+    }
+    double const enter = std::max(0.0, limits.glanceDeg);
+    double const keep = std::max(enter, limits.glanceKeepDeg);
+    state.glancing = off <= (state.glancing ? keep : enter);
+    out.look = state.glancing;
+    // Not in unison: each bystander by who they are (a few bits of the id, spread over bystanderSpreadS).
+    std::uint64_t const mixed = (who ^ (who >> 17)) * 0x9E3779B97F4A7C15ull;
+    double const share = static_cast<double>((mixed >> 40) & 0xFF) / 255.0;
+    out.delayS = std::max(0.0, limits.bystanderDelayS) + std::max(0.0, limits.bystanderSpreadS) * share;
+    return out;
+}
+
+double HeadShortDeg(double offDeg, std::span<LookLink const> links) {
+    double left = std::abs(Wrap180(offDeg));
+    for (LookLink const& link : links) {
+        left -= std::clamp(link.strength, 0.0, 1.0) * std::min(left, std::max(0.0, link.limitDeg));
+    }
+    return left;
+}
+
+double StrongerLink(double strength, double gain) {
+    double const s = std::clamp(strength, 0.0, 1.0);
+    return s + (1.0 - s) * std::clamp(gain, 0.0, 1.0);
 }
 
 bool StickWalks(StickLatch& latch, bool wheelUp, double magnitude, double releasedBelow) {
