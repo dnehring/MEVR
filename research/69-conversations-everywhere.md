@@ -57,6 +57,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    default with the world mode), the player never; seen on the fake headset (Anderson mid-stride in the medical bay). C-Sec's
    Wrex, who didn't walk, was hidden in the test's plot state (not a limit of play). Open: the squad's own marks (henchmen use
    `BioAI_Henchman`, which asks `AllowsHenchmenMovement`: answered too, not yet seen walking).
+   The other ways stay test options, never defaults: `worldWalk = 3` (the engine's walking physics, an acceleration toward the
+   mark) was superseded by the AI's walk, which the snapshots proved; `2` is the old slide. Since 2026-11-11 nobody whose animation
+   tree has no walk is walked ("People animated by gestures only").
 
 2. The body in conversations and scripted walks (near plane, culling pad, the body with the player, standing legs).
 3. The walkway's blink only for changes within 8 m; the 1.5 s trust over game-thread stalls.
@@ -127,7 +130,8 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 14. **Bodies that must turn slide** (no turn-on-the-spot animation exists for these people; rare now). Accepted unless the
     headset says otherwise.
 
-**Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**
+**Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
+merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
 
 - **A1. Overheard conversations from where they are**: on foot, 82% of dialogue cues still play in the centre (no
   attenuation node), so NPCs talking near the player (flowed scenes, ambient conversations, overheard chains) sound inside his
