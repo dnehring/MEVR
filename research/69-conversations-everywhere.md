@@ -78,6 +78,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    Today such a scene is a cut or stays put.
 9. **The comm room's conversation after a load**: it opens on the 3D screen for a moment and Shepard strays 2.2 m (the
    launcher's Normandy case; not in the validation saves: needs a reproduction first).
+   **Shepard's stray found and fixed 2026-11-11** ("The handover between two conversations" below): the comm room hands
+   over to Anderson's conversation, and the last one's keep-in-place undid the new stage's placement of Shepard. The 3D
+   screen for a moment was not seen in the launcher's run (the level's intro and Joker's scene use it, then the world).
 10. **Scenes with no place for the player** (`worldAutoScreen`): read which scenes the three rules name over a sampled
     pass and decide whether `on` (to the 3D screen) is right for them. **Done 2026-11-11** ("Which scenes have no place for the
     player" below): the presence rules act by default (`on`), the far shots only log.
@@ -1936,6 +1939,19 @@ person whose walk fails isn't left in its standing pose. The other bodies the se
 ceremony's 79-86 degree turns, Benezia's 140) are the re-face-for-the-player rule ("Who attends to whom"), not walking: the same
 before and after.
 
+### The handover between two conversations (2026-11-11 04:20-04:33, fake headset, the launcher's comm room; item 9)
+
+`conversation-launch.ps1 nor10_comm_room -World on`, both conversations driven to their ends, judged by `conversation-session.py`.
+The comm room (`nor10_comm_room`, a stay, 9 lines) hands straight over to Anderson's (`nor10_captain`, a cut, 25 lines): the
+judge found **Shepard's head up to 4.27 m from the player's view** in Anderson's. The log at the handover: `Shepard kept in place:
+the game put him 4.18 m away` (the comm room's keep-in-place), then in the same millisecond `conversation ... began: nor10_captain`
+and the player's place taken from Shepard's head bone, still at the new mark: the new stage had placed Shepard and the old
+conversation's keep-in-place, run once more from the camera update before the mod's tick saw the new conversation, put his pawn
+back; the view went to the mark, his body stayed 4 m off. **Fix:** the keep-in-place pass runs only while the game's live
+conversation (`BioWorldInfo.m_oCurrentConversation`) is the one it keeps people for (`KeepsTheLiveConversation`). Replayed: no
+undo at the handover, the player's place re-placed 0.17 m, no `body-strayed` in Anderson's conversation. The 3D screen for a
+moment of the original note was not seen (the level's intro cutscene and Joker's scene start on it, then the world).
+
 ### Which scenes have no place for the player (2026-11-11 03:50, from the sweep runs' summaries; item 10)
 
 Every scene summary the sweep runs wrote since 2026-11-09 (`results.jsonl`, 83 runs): 100 conversations were shown in the world;
@@ -2465,3 +2481,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 04:00, **slot 84 read** (item 12): Wrex's scene starts from its save as his ambient line (its first starting entry needs conditional 3684, which the save doesn't set); the save generator needs the starting entries' conditionals.
 - 2026-11-11 04:30, **the starting entries' plot flags** (item 12): an entry's conditional is a plot flag unless `bFireConditional`; the scan records it, the save generator sets the scene's entry flag; slots 84 and 85 got theirs (in-game check pending).
 - 2026-11-11 04:20, **the starting flags tried in the game** (item 12): Wrex's flag 3684 made the level start Kirrahe's briefing on load; Chorban's 5316 changed nothing. Saves put back; the generator's starting flags are opt-in.
+- 2026-11-11 04:33, **item 9: the handover stray fixed** ("The handover between two conversations"): the ending conversation's keep-in-place undid the next stage's placement of Shepard; it now keeps only for the live conversation.

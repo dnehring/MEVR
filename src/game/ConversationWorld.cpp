@@ -626,6 +626,8 @@ struct PovAt {
 PovAt gPov;
 
 void KeepInPlace(ue3::Object* pawn);
+bool KeepsTheLiveConversation(ue3::Object* controller);
+ue3::Object* ConversationNow(ue3::Object* controller);
 
 // The game's own camera at the player's place (worldCamera; the owner's QA, 2026-11-06): the host's swap held the main view's build
 // only, so the engine's culling and texture streaming still followed the director's camera (in the comm room 5-9 m away behind
@@ -698,7 +700,11 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         gPov.lastLocation = *pov->location;
         gPov.lastRotation = *pov->rotation;
         gPov.lastFov = *pov->fov;
-        if (*mode == kModeConversation) {
+        // Only while the game still plays the conversation we keep people for: when one conversation hands over to the next
+        // (the comm room to Anderson's, research/69 item 9), the new stage places Shepard on its mark in the same tick, and
+        // the last one's keep-in-place undid it (4.18 m) just before the new opening took the player's place from his head
+        // bone, which was still at the mark: the view at one place, his body 4 m off. The mod's tick begins the new one.
+        if (*mode == kModeConversation && KeepsTheLiveConversation(controller)) {
             KeepInPlace(player::Pawn(controller));  // after the conversation's placements of this tick, before its draw
         }
         if (!gCameraHold.on && gArmedSince != 0 && gPov.ms - gArmedSince < 150 && gFoot.have) {
@@ -2035,6 +2041,11 @@ void PublishVoices(ue3::Object* pawn) {
     }
     engine::voice_place::Set(voices, count);
     gVoicesSet = true;
+}
+
+// The conversation the game plays now is the one we keep people for (not the next one, begun in this tick).
+bool KeepsTheLiveConversation(ue3::Object* controller) {
+    return gC.object != nullptr && ConversationNow(controller) == gC.object;
 }
 
 void KeepInPlace(ue3::Object* pawn) {
