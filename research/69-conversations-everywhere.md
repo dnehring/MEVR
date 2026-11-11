@@ -1641,7 +1641,7 @@ and whether transmissions (holograms on a comm, the scan's "remote" class) shoul
 how the pan sounds in headphones (ISACT's software device has no HRTF: left and right only, nothing for above or behind
 beyond what the level tells); the listener's place is the held view without the headset's lean.
 
-#### Real 3D audio: OpenAL Soft in place of the game's OpenAL (2026-11-10, 21:10-21:30, fake headset; a test, nothing shipped)
+#### Real 3D audio: OpenAL Soft in place of the game's OpenAL (2026-11-10, 21:10-21:30, fake headset; the test: how it ships is "OpenAL Soft as the mod ships it" below)
 
 The owner: "I'm curious if there are any open source 3d audio libraries to use instead? Or is this already available in
 game?", then, to trying OpenAL Soft: "Yes please".
@@ -1686,6 +1686,56 @@ licence text is what it is made for; `NOTICE.md` and the installer's licences fo
 wrong for loudspeakers (so a setting, off for speakers); how it sounds: nobody has heard it, the numbers only say the
 cues are there. Other libraries (Steam Audio, Resonance Audio: Apache 2.0) would mean taking each voice's samples away
 from the game and playing them ourselves: not needed while this works.
+
+#### OpenAL Soft as the mod ships it (2026-11-10, 22:00-23:00, fake headset; in the tree)
+
+The owner: "feel free to setup openAL soft", and "remember, this is a mod that we're wanting to distribute, so installation
+of the module needs to be generalizable". (The "module blocked" alert of the same evening was Windows' LSA protection
+refusing Apple Bonjour's `mdnsNSP.dll` in `svchost`, `lsass` and Defender: 966 times that day since 10:20, nothing of the
+game's or the mod's; Code Integrity events 3033, Security-Mitigations 12.)
+
+**What ships.** `tools/fetch-openal-soft.ps1` builds OpenAL Soft from its source release (`openal-soft-1.25.2.tar.bz2`,
+SHA-256 pinned) with our compiler, only the library, the C runtime linked in (`CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`:
+its own `FORCE_STATIC_VCRT` does nothing under CMake's runtime policy, and the first build needed `MSVCP140_ATOMIC_WAIT.dll`),
+into `external/openal-soft/` (gitignored): `soft_oal.dll` (2 MB, only Windows' own DLLs behind it), its licence texts and the
+tarball. `tools/deploy-asi.ps1` copies them to `ASI\audio`; `tools/package-release.ps1` puts them in `payload\audio` and the
+licences and the source tarball in `licenses\` (LGPL-2.0-or-later: the source from the same place as the binary; `-NoAudio`
+leaves it out); MEVR Setup installs `payload\audio` into `ASI\audio` on the manifest, Repair puts back a missing file and
+gives an install from before it the folder, Uninstall takes it out (`install/Installer`, `TestAudio`). **No game file is
+replaced**, so Steam's "verify files" has nothing to undo. Not signed yet: SignPath's configuration names our four binaries
+by product name "MEVR"; OpenAL Soft's says "OpenAL Soft".
+
+**How the game is pointed at it** (`plugin/OpenAlSoft`, host, LE1; `[Audio] spatial = hrtf | soft | game`, default hrtf, read
+at attach). Three tries, two lessons:
+
+1. The exe's original import table (rebuilt by the DRM stub; the PE headers name only `Core/Activation64.dll`) imports 34
+   OpenAL functions from `OpenAL32.dll` (IAT at exe+0xF9D7E8). Changing those 34 slots to OpenAL Soft's functions left the
+   dialogue silent and Creative's driver (`wrap_oal.dll`) loaded: the game's audio engine reaches the router by
+   GetProcAddress as well, so device and sources ended up in two libraries.
+2. Detouring each of the router's 93 exported functions to OpenAL Soft's covers every route, but installed one by one
+   through the loader's hook interface it took 9 s, and the game set up its audio half way through (its context made with
+   OpenAL Soft on a device opened by the router: no sound).
+3. **Now:** every detour created first, then all enabled at once under one freeze of the other threads (MinHook's queue,
+   the host's own MinHook), at the very start of attach, before Halcyon's; if Creative's driver is loaded once the switch is
+   in, the router opened a device first, and everything is put back (the game keeps its own OpenAL, logged). The device and
+   its context go through two wrappers: the device asked for, else OpenAL Soft's default (the game asks for
+   "DirectSound3D"); the game's attributes plus `ALC_HRTF_SOFT` (true for hrtf, false for soft). The switch came 6 s before
+   the game opened its device on this machine (`audio: alcOpenDevice called from MassEffect1.exe+0x799B1`); the device is
+   "OpenAL Soft", HRTF on with its built-in data set (`"Built-In HRTF"`), no `wrap_oal.dll` in the process.
+   `[Audio] trace = 1` logs every OpenAL or DirectSound library load with who asked.
+
+**Measured** (the ceremony from its save; Anderson 1.8 m to the right, 77 degrees off the view), the same as with Creative's
+DLL replaced: his lines 4.0 / 4.4 dB to the right and the left ear 0.92 / 0.94 ms behind (0.77 / 0.83 alike there, -0.27 /
+-0.35 with no shift); the head turned round: -3.5 / -3.8 dB and the right ear 0.88 / 0.92 ms behind; a councillor (not placed)
+0.0 dB, 0.00 ms, 0.97 alike.
+
+**What it gives the rest of the game, without any work per sound:** everything the game positions (other people's
+gunfire and footsteps, explosions, the world's emitters, barks: of the dialogue cues 4,408 have a 60 m falloff and 1,262 other
+attenuation) is now rendered for two ears; with Creative's driver it was panned. Not measured in combat yet (no save puts the
+fake headset in a fight). What it does not change: sounds the game plays unplaced (music, ambient beds: balance 0 with the
+head sweeping during the walk to the Council, either driver), the 82% of dialogue cues without attenuation (placed by
+`engine/VoicePlace` only in a first-person conversation, within 8 m), and the player's own gun (played at the pawn, so at
+the listener).
 
 ## To check in the game
 
@@ -1996,3 +2046,8 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   Creative `OpenAL32.dll`, with HRTF on: Anderson's voice reaches the far ear 0.9 ms later (nothing in common between the
   ears before), mirrored with the head turned round; the Council unchanged. Merely added beside Creative's it is loaded but
   not used. The game folder is back as it was; whether to ship it is the owner's (licence, headphones only, unheard).
+- 2026-11-10, 22:00-23:00, **OpenAL Soft as the mod ships it** (the owner: set it up, and installable for every player).
+  Built from its pinned source release, installed in `ASI\audio` by Setup (no game file replaced; licences and the
+  source in the release), and the host detours the router's 93 functions to it, all at once, at the start of attach
+  (the import slots alone were not the game's route; one by one, the game won the race). The same 0.9 ms between the
+  ears as with the DLL replaced. Everything the game positions now gets it; gunfire not measured in combat yet.

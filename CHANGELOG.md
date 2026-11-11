@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **3D audio for headphones.** Every sound the game places in the world (gunfire, footsteps, explosions, voices near
+  you) now reaches your ears as it would from where it is, including from behind, instead of only being panned left and
+  right. It comes from OpenAL Soft, which MEVR Setup installs in the mod's own folder; no game file is changed.
+  `[Audio] spatial = game` in `ASI\LE1MEVR.ini` brings back the game's own sound, `soft` suits loudspeakers.
 - **Conversations in first person (preview).** Comfort > Conversations has a fourth choice: you stand where Shepard
   stands, people stay where they are, and you can walk during the conversation. A scene opens without a cut when it is
   where you already stand or a short walk away; leave the stick alone and you are walked there after a few seconds.
