@@ -136,6 +136,46 @@ std::vector<ArcSeat> ArcSeats(Vec3 const& player, Vec3 const& owner, int count, 
     return seats;
 }
 
+Vec3 GroupMiddle(Vec3 const& player, Vec3 const& owner, std::vector<ArcSeat> const& seats) {
+    double x = player.x + owner.x;
+    double y = player.y + owner.y;
+    for (ArcSeat const& s : seats) {
+        x += s.at.x;
+        y += s.at.y;
+    }
+    double const n = 2.0 + static_cast<double>(seats.size());
+    return {x / n, y / n, player.z};
+}
+
+void FaceToward(std::vector<ArcSeat>& seats, Vec3 const& middle) {
+    for (ArcSeat& s : seats) {
+        if (std::hypot(middle.x - s.at.x, middle.y - s.at.y) > 1.0) {
+            s.yawDeg = Wrap180(BearingDeg(s.at, middle));
+        }
+    }
+}
+
+std::vector<ArcSeat> SquadSeats(Vec3 const& player, double facingYawDeg, Vec3 const& lookAt, int count, double lateralUnits,
+    double backUnits) {
+    std::vector<ArcSeat> seats;
+    if (count <= 0) {
+        return seats;
+    }
+    double const kDeg = 3.14159265358979323846 / 180.0;
+    double const f = facingYawDeg * kDeg;
+    for (int i = 0; i < count; ++i) {
+        double const side = (i % 2 == 0) ? -1.0 : 1.0;
+        double const ring = static_cast<double>(i / 2 + 1);
+        double const s = f + side * 90.0 * kDeg;
+        ArcSeat seat;
+        seat.at = {player.x + std::cos(s) * lateralUnits * ring - std::cos(f) * backUnits,
+                   player.y + std::sin(s) * lateralUnits * ring - std::sin(f) * backUnits, player.z};
+        seat.yawDeg = Wrap180(BearingDeg(seat.at, lookAt));
+        seats.push_back(seat);
+    }
+    return seats;
+}
+
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.

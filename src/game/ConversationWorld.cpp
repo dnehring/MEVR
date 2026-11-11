@@ -265,6 +265,11 @@ struct Settings {
     // of 2026-11-10 (120 scenes: 30 stay, 29 walk in, 11 cut; with accept every staged opening dipped from black).
     cw::OpeningRule opening = cw::OpeningRule::Auto;
     bool arrange = true;               // everyone of the conversation (and the squad) brought into the player's view (worldArrange)
+    bool faceMiddle = true;            // ... the seated facing the group's middle, not the player (worldFaceMiddle; item 7)
+    bool squadBeside = true;           // ... the squad seated beside the player rather than on the arc (worldSquadBeside)
+    double squadSideM = 1.0;           // ... that far to each side (worldSquadSideM)
+    double squadBackM = 0.3;           // ... and that far behind the player's place (worldSquadBackM)
+    double seatWalkMaxM = 8.0;         // an opening without a cut: people out of view within this walk into seats (worldSeatWalkMaxM)
     float arcM = 2.5f;                 // the seats' distance from the player (worldArcM)
     float viewDeg = 60.0f;             // half the view's angle a person must be within (worldViewDeg)
     bool move = true;                  // the left stick walks Shepard during the conversation while the wheel is down (worldMove)
@@ -400,6 +405,11 @@ void RefreshSettings() {
         s.openingAccept = s.opening != cw::OpeningRule::Keep;  // accept and auto let the stage's first placements stand, then decide
     }
     s.arrange = number("worldArrange", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.faceMiddle = number("worldFaceMiddle", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.squadBeside = number("worldSquadBeside", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.squadSideM = number("worldSquadSideM", 1.0f, 0.5f, 3.0f);
+    s.squadBackM = number("worldSquadBackM", 0.3f, -1.0f, 2.0f);
+    s.seatWalkMaxM = number("worldSeatWalkMaxM", 8.0f, 0.0f, 30.0f);
     s.arcM = number("worldArcM", s.arcM, 1.2f, 6.0f);
     s.viewDeg = number("worldViewDeg", s.viewDeg, 20.0f, 90.0f);
     s.move = number("worldMove", 1.0f, 0.0f, 1.0f) != 0.0f;
@@ -776,6 +786,14 @@ struct Convo {
     std::optional<ik::Vec3> wantedMark;  // a walk-in: Shepard's mark, where the player is wanted (the walk's leash is around it)
     std::uint64_t settleUntilMs = 0;     // after an opening without a cut: his mesh catches up with the pawn; no jump is read into it
     int arranged = 0;            // people moved to a seat in view
+    // An opening without a cut (item 7): people of the conversation out of view walk into seats in view, by the game's AI.
+    struct SeatWalk {
+        ue3::Object* actor = nullptr;
+        ik::Vec3 seat;
+        double yawDeg = 0.0;
+    };
+    std::vector<SeatWalk> seatWalks;  // planned at the opening, handed to each person's walk once its state exists
+    int seatWalked = 0;
     std::uint32_t cut = 0;       // the host dips from black when it changes
     // The player's place for this conversation: the view on foot if it was Shepard's just now, else his eyes from his head bone
     // (a conversation right after a level load or a cutscene); it follows his head bone when that jumps (a stage's placement).
@@ -886,6 +904,7 @@ struct Stay {
     ue3::Object* walkController = nullptr;  // ... and the controller whose movement question is answered while it walks
     int answersAtStart = 0;
     std::optional<ik::Vec3> aiRefused;      // a mark the game's AI couldn't walk it to: not tried again this conversation
+    std::optional<double> seatYaw;          // a seat's facing (item 7): taken at the walk's end instead of the stage's
     double probeS = 0.0;                    // worldWalkLog: when this walk's properties are written (0: written or none)
     double gaitS = 0.0;                     // ... the next line of its gait trace, and when the walk began
     double gaitStartS = 0.0;
@@ -950,6 +969,7 @@ bool KeepAtSource(void const* conversation, void const* actor, float const* loca
                     Seconds(), st.name, away / kUnitsPerMeter, st.marksAsked, st.marksAsked == 1 ? "" : "s", ShortName(gC.speaker),
                     gSettings.walk == 0 ? "" : refused ? " (the game's AI couldn't walk it there before)" : ", a mark to walk to");
                 if (gSettings.walk != 0 && !refused) {
+                    st.seatYaw.reset();  // the stage's own mark: its facing, not a seat's
                     st.walk.Jump(WalkPoint(mark), WalkPoint(st.place), static_cast<double>(GetTickCount64()) / 1000.0,
                         gSettings.walkMinM * kUnitsPerMeter);
                 }
@@ -1443,7 +1463,9 @@ bool WalkToMark(Stay& st, ik::Vec3 previousKept, double nowS, double dt, double&
                     st.progressS = nowS;
                 }
             }
-            if (auto const rot = player::Rotation(st.actor)) {
+            if (st.seatYaw) {
+                st.walkFacing = *st.seatYaw;  // a seat in view: the group's middle
+            } else if (auto const rot = player::Rotation(st.actor)) {
                 st.walkFacing = YawDeg(*rot);
             }
             ++gC.walks;
@@ -2004,6 +2026,17 @@ void KeepInPlace(ue3::Object* pawn) {
             continue;
         }
         Stay& st = *it;
+        if (!gC.seatWalks.empty() && gSettings.walk == 1 && st.walk.Phase() == cw::WalkPhase::Idle) {
+            auto const seat = std::find_if(gC.seatWalks.begin(), gC.seatWalks.end(), [&](Convo::SeatWalk const& w) { return w.actor == st.actor; });
+            if (seat != gC.seatWalks.end()) {
+                // Walk into its seat at once (the settle time is for the stage's marks, which may bounce).
+                st.seatYaw = seat->yawDeg;
+                st.walk.Jump(WalkPoint(seat->seat), WalkPoint(st.place), nowS - gSettings.walkSettleS - 0.1, gSettings.walkMinM * kUnitsPerMeter);
+                ++gC.seatWalked;
+                log::Info("convo: {} walks into a seat in view, {:.1f} m away (the opening had no cut)", st.name, Dist(st.place, seat->seat) / kUnitsPerMeter);
+                gC.seatWalks.erase(seat);
+            }
+        }
         ik::Vec3 const previousKept = st.place;
         double const d = Dist(V(*at), st.place);
         double const unexplained = st.walk.Phase() == cw::WalkPhase::Walking
@@ -2636,9 +2669,67 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     return true;
 }
 
+// An opening without a cut (item 7): the conversation's people out of the player's view are given seats in view (the arc, facing
+// the group's middle), which they walk to with the game's AI when their walk state exists (the tick's loop). Nobody jumps.
+void PlanSeatWalks(ue3::Object* conv, ue3::Object* pawn) {
+    gC.seatWalks.clear();
+    if (!gSettings.arrange || gSettings.walk != 1) {
+        return;
+    }
+    ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
+    auto const ownerAt = owner != nullptr && owner != pawn ? FacePoint(owner) : std::nullopt;
+    double const facing = YawDeg(gC.holdRotation);
+    std::vector<std::pair<ue3::Object*, std::string>> out;
+    for (Tracked const& t : gC.actors) {
+        if (t.actor == nullptr || t.actor == pawn || t.actor == owner || !ue3::runtime::IsAlive(t.actor)) {
+            continue;
+        }
+        auto const at = player::Location(t.actor);
+        auto const face = FacePoint(t.actor);
+        if (!at || !face) {
+            continue;
+        }
+        bool const inView = cw::InView({gC.hold.x, gC.hold.y, gC.hold.z}, facing, {at->x, at->y, at->z}, gSettings.viewDeg, 120.0, 600.0);
+        if (!(inView && LineOfSight(pawn, gC.hold, *face))) {
+            out.emplace_back(t.actor, t.name);
+        }
+    }
+    if (out.empty()) {
+        return;
+    }
+    ik::Vec3 const centre = ownerAt ? *ownerAt : gC.hold + YawForward(facing) * 250.0;
+    cw::Vec3 const player{gC.hold.x, gC.hold.y, gC.hold.z};
+    std::vector<cw::ArcSeat> seats = cw::ArcSeats(player, {centre.x, centre.y, centre.z}, static_cast<int>(out.size()),
+        gSettings.arcM * kUnitsPerMeter, 25.0, gSettings.viewDeg);
+    cw::Vec3 const middle = cw::GroupMiddle(player, {centre.x, centre.y, centre.z}, seats);
+    if (gSettings.faceMiddle) {
+        cw::FaceToward(seats, middle);
+    }
+    for (std::size_t i = 0; i < out.size() && i < seats.size(); ++i) {
+        auto const at = player::Location(out[i].first);
+        ik::Vec3 seat{seats[i].at.x, seats[i].at.y, at ? at->z : gC.hold.z};
+        auto const floorHere = at ? FloorZ(pawn, V(*at)) : std::nullopt;
+        auto const floorThere = FloorZ(pawn, seat);
+        if (!floorThere) {
+            log::Info("convo: no floor under a seat for {}: it stays out of view", out[i].second);
+            continue;
+        }
+        seat.z = *floorThere + (floorHere && at ? at->z - *floorHere : 0.0);
+        if (at && Dist(V(*at), seat) > gSettings.seatWalkMaxM * kUnitsPerMeter) {
+            log::Info("convo: {} is out of view, {:.1f} m from a seat: too far to walk in (worldSeatWalkMaxM {:.0f}); it stays", out[i].second,
+                Dist(V(*at), seat) / kUnitsPerMeter, gSettings.seatWalkMaxM);
+            continue;
+        }
+        gC.seatWalks.push_back({out[i].first, seat, seats[i].yawDeg});
+        log::Info("convo: {} is out of view; seat {} at {} ({:.1f} m from you) to walk to", out[i].second, i + 1, F(seat),
+            Dist(seat, gC.hold) / kUnitsPerMeter);
+    }
+}
+
 void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
     gC.openingDone = true;
     if (gSettings.opening == cw::OpeningRule::Auto && OpeningWithoutCut(conv, pawn)) {
+        PlanSeatWalks(conv, pawn);
         return;
     }
     ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
@@ -2679,13 +2770,16 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
             people.emplace_back(t.actor, t.name);
         }
     }
+    std::vector<ue3::Object*> squadOnly;  // squadmates who aren't people of the conversation: beside the player (item 7)
     for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
         if (m.pawn != nullptr && ue3::runtime::IsAlive(m.pawn) &&
             std::none_of(people.begin(), people.end(), [&](auto const& pr) { return pr.first == m.pawn; })) {
             people.emplace_back(m.pawn, m.name.empty() ? ShortName(m.pawn) : m.name);
+            squadOnly.push_back(m.pawn);
         }
     }
     std::vector<std::pair<ue3::Object*, std::string>> out;
+    std::vector<std::pair<ue3::Object*, std::string>> outSquad;
     for (auto const& [actor, name] : people) {
         if (actor == owner) {
             continue;  // the owner keeps its mark: the arc is centred on it
@@ -2705,13 +2799,28 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
             while (off < -180.0) off += 360.0;
             log::Info("convo: {} is {} ({:.1f} m away, {:.0f} deg off your facing)", name, !inView ? (std::abs(off) > halfAngle ? "out of view" : "too near or too far") : "blocked",
                 Dist(V(*at), gC.hold) / kUnitsPerMeter, off);
-            out.emplace_back(actor, name);
+            bool const squad = gSettings.squadBeside && std::find(squadOnly.begin(), squadOnly.end(), actor) != squadOnly.end();
+            (squad ? outSquad : out).emplace_back(actor, name);
         }
     }
-    if (!out.empty()) {
+    if (!out.empty() || !outSquad.empty()) {
         ik::Vec3 const centre = ownerAt ? *ownerAt : gC.hold + YawForward(facing) * 250.0;
-        std::vector<cw::ArcSeat> const seats = cw::ArcSeats({gC.hold.x, gC.hold.y, gC.hold.z}, {centre.x, centre.y, centre.z},
-            static_cast<int>(out.size()), gSettings.arcM * kUnitsPerMeter, 25.0, halfAngle);
+        cw::Vec3 const player{gC.hold.x, gC.hold.y, gC.hold.z};
+        std::vector<cw::ArcSeat> seats = cw::ArcSeats(player, {centre.x, centre.y, centre.z}, static_cast<int>(out.size()),
+            gSettings.arcM * kUnitsPerMeter, 25.0, halfAngle);
+        // The group's middle (the player, the owner and the arc's seats): the seated face it, as people standing together do.
+        cw::Vec3 const middle = cw::GroupMiddle(player, {centre.x, centre.y, centre.z}, seats);
+        if (gSettings.faceMiddle) {
+            cw::FaceToward(seats, middle);
+        }
+        std::vector<cw::ArcSeat> const beside = cw::SquadSeats(player, facing, middle, static_cast<int>(outSquad.size()),
+            gSettings.squadSideM * kUnitsPerMeter, gSettings.squadBackM * kUnitsPerMeter);
+        std::vector<std::string> kinds(out.size(), "brought into view");
+        for (std::size_t i = 0; i < outSquad.size() && i < beside.size(); ++i) {
+            out.push_back(outSquad[i]);
+            seats.push_back(beside[i]);
+            kinds.push_back("beside you");
+        }
         for (std::size_t i = 0; i < out.size() && i < seats.size(); ++i) {
             auto const [actor, name] = out[i];
             auto const at = player::Location(actor);
@@ -2736,8 +2845,9 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
                 it->shownYaw = seats[i].yawDeg;
             }
             if (put) ++gC.arranged;
-            log::Info("convo: {} brought into view: seat {} at {} ({:.1f} m from you), facing you{}", name, i + 1, F(seat),
-                Dist(seat, gC.hold) / kUnitsPerMeter, put ? "" : " (SetLocation refused)");
+            log::Info("convo: {} {}: seat {} at {} ({:.1f} m from you), facing {:.0f} deg{}{}", name, kinds[i], i + 1, F(seat),
+                Dist(seat, gC.hold) / kUnitsPerMeter, seats[i].yawDeg, gSettings.faceMiddle ? " (the group's middle)" : " (you)",
+                put ? "" : " (SetLocation refused)");
         }
     }
     if (moved > 0.05 || gC.arranged > 0) {

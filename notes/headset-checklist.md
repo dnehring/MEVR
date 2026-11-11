@@ -216,6 +216,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   coming back on their next line, a walker turning to face the scene once there, anyone walking through a bed or a person,
   and C-Sec's Wrex, whom the game's AI does not move (he stays where he stands; the log says `the game's AI didn't move it`).
   `worldWalk = 0` off, `2` the old slide.
+- [ ] **Groups composed** (2026-11-11, research/69 "The composition of groups"): when a scene opens with a cut and someone
+  is brought into view, they stand turned in toward the group (not square to you); a squadmate who isn't in the
+  conversation stands beside you, about 1 m to the side; in a scene that opens without a cut, someone out of view within
+  8 m walks into the group instead of appearing. Watch for anyone placed inside furniture or facing away from the speaker.
 - [ ] **Walking during conversations** (built 2026-11-09; checked on the fake headset with `mevr convo walk`: 5.47 m during the
   Garrus wheel conversation, nobody snapped; the squad stays put; a 0.7 m clearance around people built after it, unchecked:
   walk straight at Garrus and you should go around him; research/59 "Walking during conversations";

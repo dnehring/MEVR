@@ -68,7 +68,11 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 
 7. **Composition of groups**: seat people so each one's partners are within the look-at chain's reach (`cw::ArcSeats`
    facing the group's middle, seats chosen for the speaker/listener pairs), and the squad beside the player rather than
-   wherever they stood. Ties in with item 1 (the seats are the marks they walk to).
+   wherever they stood. Ties in with item 1 (the seats are the marks they walk to). **Partly built 2026-11-11** ("The
+   composition of groups, first part" below): seats face the group's middle (seen), the squad's seats beside the player
+   (unit-tested, no squad in the scenes run), people out of view walk into seats in an opening without a cut (planned and
+   started at C-Sec, whose people the AI doesn't move). Open: seats chosen for the speaker/listener pairs, the squad's walk
+   (squadmates outside the conversation have no walk state), and a seat walk seen arriving.
 8. **The pause and floor marker**: when the player is wanted at a mark the guided walk can't reach (inside a trigger, the
    way blocked, too far), hold the conversation and show a marker on the floor; it goes on when the player stands there.
    Today such a scene is a cut or stays put.
@@ -1896,6 +1900,29 @@ arrives within 0.25 m on the floor (the move's own tolerance is 0.20; the stage'
 centre, so a 3D distance never closed), then turns to the facing the stage gave with the mark; its deadline is twice the
 walk's time plus 5 s (paths go round things); the AI's counters, its speed and the answered question are let go at any end.
 An AI that can't take the walk at all (no `BioAiController`, no behaviour) also leaves the person where it stands.
+
+**Why C-Sec's people don't walk, as far as it went:** their controller enters `BioSeqAct_MoveToPoint` but the state's code never
+runs (its `InitState` never set `m_oBioPawnCache`, its `vMoveTarget` stays 0); the controller's properties differ from a
+medical bay walker's in nothing that explains it (same class, tick enabled, no stasis; only its balancing tick group, 1 against
+0). They stand in a scripted standoff (`WrexHasseledByOfficer`). Open.
+
+### The composition of groups, first part (2026-11-11 02:40-03:00, fake headset; item 7)
+
+The opening's arrangement (Part B: people out of the player's view seated on an arc in view) seated everyone facing the
+player, square to the camera. Now (`cw::GroupMiddle`, `cw::FaceToward`, `cw::SquadSeats`, unit-tested):
+
+- **The seated face the group's middle** (the mean of the player's place, the owner's and the seats': `worldFaceMiddle = 1`),
+  as people standing together face a circle's middle. Seen in the medical bay: Dr Chakwas, brought round from behind the
+  player, stands turned in toward the group beside Ashley (`2026-11-11_02-44-19-283`).
+- **Squadmates who aren't people of the conversation sit beside the player** (`worldSquadBeside = 1`: alternately either
+  side, `worldSquadSideM` 1.0 out, `worldSquadBackM` 0.3 back, a second pair further out, facing the middle). No squad in the
+  scenes run: unit-tested only.
+- **An opening without a cut walks people into their seats** (`PlanSeatWalks`, with `worldWalk = 1`): the conversation's
+  people out of view and within `worldSeatWalkMaxM` (8 m) of a seat get it as a mark, walked to at once with the game's AI,
+  ending at the seat's facing; nobody jumps. At C-Sec an officer 14 m off was given a seat and started (the cap came after)
+  and, like Wrex, wasn't moved by the AI.
+
+Hot reloads during a scene re-detect it and run its opening again: build between runs, not during them.
 `worldWalkLog = 1` adds the gait trace, the walker's properties, its controller's state, its animation tree (all to
 `%LOCALAPPDATA%\MEVR\walk-probe`) and a 4 s call trace of the move state's calls. The CallFunction hook goes in when AI walks
 are wanted (`WantsScriptHook`). `mevr vslot <n> <hex>` prints the exe address of an object's vtable slot (research).

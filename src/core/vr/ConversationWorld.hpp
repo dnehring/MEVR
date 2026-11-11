@@ -156,6 +156,16 @@ struct ArcSeat {
     double yawDeg = 0.0;  // facing the player
 };
 std::vector<ArcSeat> ArcSeats(Vec3 const& player, Vec3 const& owner, int count, double radiusUnits, double spacingDeg, double halfAngleDeg);
+// The composition of a group (research/69 item 7, 2026-11-11). Its middle: the mean of the player's place, the owner's and the
+// seats' (horizontally; z the player's). People standing together face it, as a circle does, not each the player.
+Vec3 GroupMiddle(Vec3 const& player, Vec3 const& owner, std::vector<ArcSeat> const& seats);
+// Each seat turned to face `middle` (one standing on the middle keeps its yaw).
+void FaceToward(std::vector<ArcSeat>& seats, Vec3 const& middle);
+// Seats for the squad beside the player rather than in front: alternately on the facing's negative-yaw and positive-yaw
+// side (the order ArcSeats takes), `lateralUnits` out and `backUnits` behind the player's place, a second pair a further
+// `lateralUnits` out; each facing `lookAt` (the group's middle).
+std::vector<ArcSeat> SquadSeats(Vec3 const& player, double facingYawDeg, Vec3 const& lookAt, int count, double lateralUnits,
+    double backUnits);
 
 // The set pieces (research/59 "The scan", "Marking the rest"): the 21 conversations whose lines are a quarter or more authored
 // camera work (a director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...) or where the game walks

@@ -64,6 +64,22 @@ void TestArrangement() {
     std::vector<cw::ArcSeat> const many = cw::ArcSeats(player, {300.0, 0.0, 100.0}, 5, 250.0, 25.0, 60.0);
     CHECK(Close(std::atan2(many[4].at.y, many[4].at.x) * 180.0 / 3.14159265358979323846, -60.0, 1e-6));
     CHECK(cw::ArcSeats(player, {300.0, 0.0, 100.0}, 0, 250.0, 25.0, 60.0).empty());
+    // The group's middle (item 7): the player at the origin, the owner 3 m ahead, two seats either side at 2.5 m: the middle
+    // lies ahead on +X, and the seats turn from the player toward it (inward, not back at the origin).
+    std::vector<cw::ArcSeat> group = cw::ArcSeats(player, {300.0, 0.0, 100.0}, 2, 250.0, 25.0, 60.0);
+    cw::Vec3 const middle = cw::GroupMiddle(player, {300.0, 0.0, 100.0}, group);
+    CHECK(middle.x > 100.0 && std::abs(middle.y) < 1e-6 && middle.z == 100.0);
+    cw::FaceToward(group, middle);
+    CHECK(group[0].yawDeg > 90.0 && group[0].yawDeg < 155.0);    // the right seat faces back and inward, past the player's line
+    CHECK(group[1].yawDeg < -90.0 && group[1].yawDeg > -155.0);  // the left seat, mirrored
+    // The squad beside the player: facing +X, 1 m to each side and 0.3 m back, the second pair 2 m out; facing the middle.
+    std::vector<cw::ArcSeat> const squad = cw::SquadSeats(player, 0.0, {200.0, 0.0, 100.0}, 3, 100.0, 30.0);
+    CHECK(squad.size() == 3);
+    CHECK(Close(squad[0].at.x, -30.0, 1e-6) && Close(squad[0].at.y, -100.0, 1e-6) && squad[0].at.z == 100.0);
+    CHECK(Close(squad[1].at.x, -30.0, 1e-6) && Close(squad[1].at.y, 100.0, 1e-6));
+    CHECK(Close(squad[2].at.y, -200.0, 1e-6));
+    CHECK(squad[0].yawDeg > 0.0 && squad[0].yawDeg < 90.0);      // toward the middle ahead, turned in
+    CHECK(cw::SquadSeats(player, 0.0, {200.0, 0.0, 100.0}, 0, 100.0, 30.0).empty());
 }
 
 void TestSetPieces() {
