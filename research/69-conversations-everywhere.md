@@ -1641,6 +1641,52 @@ and whether transmissions (holograms on a comm, the scan's "remote" class) shoul
 how the pan sounds in headphones (ISACT's software device has no HRTF: left and right only, nothing for above or behind
 beyond what the level tells); the listener's place is the held view without the headset's lean.
 
+#### Real 3D audio: OpenAL Soft in place of the game's OpenAL (2026-11-10, 21:10-21:30, fake headset; a test, nothing shipped)
+
+The owner: "I'm curious if there are any open source 3d audio libraries to use instead? Or is this already available in
+game?", then, to trying OpenAL Soft: "Yes please".
+
+**What the game has.** Its audio engine (ISACT) plays through OpenAL: the game ships and loads Creative's router
+(`OpenAL32.dll` 6.14.357.24) and Creative's software device (`wrap_oal.dll` 2.2.0.5, over DirectSound), seen in the
+running process. That device pans between two channels and nothing more (above: a voice 77 degrees aside is in one
+channel almost alone: the two channels are 0.1 alike); no head-related filter, no setting for one.
+
+**OpenAL Soft** (openal-soft.org; the Windows binaries `openal-soft-1.25.2-bin.zip`, 18.6 MB, SHA-256 `67a0c4b8...e265434`;
+`COPYING` is the GNU Library GPL version 2) is a software OpenAL with head-related filters for headphones. Its 64-bit
+`soft_oal.dll`, named `OpenAL32.dll` in the game's `Binaries\Win64` in place of Creative's, with an `alsoft.ini` beside the
+exe (`[general] stereo-mode = headphones`, `stereo-encoding = hrtf`, `hrtf = true`): the game starts, plays, and the
+process has OpenAL Soft and no `wrap_oal.dll`. The same ceremony, the same measurement:
+
+| Anderson, 1.8 m away, 77 degrees to the right | Creative's device | OpenAL Soft, HRTF |
+|---|---|---|
+| Head facing the Council: balance | +7.6 / +8.9 dB right | +4.1 / +4.2 dB right |
+| ... the far (left) ear against the near one | nothing in common (0.08 to 0.14 alike at any shift) | **0.92 / 0.94 ms later**, 0.77 / 0.84 alike at that shift |
+| Head turned right round: balance | -8.3 / -9.7 dB | -3.4 / -3.7 dB |
+| ... the far (right) ear | nothing in common | **0.88 / 0.92 ms later**, 0.79 / 0.85 alike |
+| A councillor (not placed) | 0.0 dB | 0.0 dB, 0.00 ms, 0.97 alike |
+
+So ISACT hands OpenAL real positioned sources, and OpenAL Soft renders them for two ears: the voice reaches both, the far
+ear later and duller, which is what tells front from back and near from far. Everything the game positions gets it, the
+voices we place among them. The whole mix is about 3 to 4 dB quieter in this mode (the councillor: -29.3 against -26.2 dB a
+channel).
+
+**Only in the router's place.** With Creative's `OpenAL32.dll` left alone and `soft_oal.dll` merely added beside it, the
+router loads it (the process has all three) but the game still opens Creative's device: the measurement is the old one
+(+7.6 / +8.8 dB, nothing in common). So it means either replacing the game's `OpenAL32.dll` (the installer can record and
+undo that as it does for a replaced `bink2w64.dll`; Steam's "verify files" would put Creative's back, which Repair
+handles), or adding the file and having the host answer the game's device request with OpenAL Soft's device (a hook on
+the router's `alcOpenDevice`; not tried).
+
+**The game folder is as it was**: `OpenAL32.dll` back (SHA-256 `87802322...6454039`, compared), `soft_oal.dll` and
+`alsoft.ini` removed.
+
+**For the owner to decide before anything ships:** the licence (Library GPL 2: an unmodified DLL beside the game with its
+licence text is what it is made for; `NOTICE.md` and the installer's licences folder would name it, and the source's
+"or later" clause is [verify]); that it changes every sound in the game for headphones, not only conversations, and is
+wrong for loudspeakers (so a setting, off for speakers); how it sounds: nobody has heard it, the numbers only say the
+cues are there. Other libraries (Steam Audio, Resonance Audio: Apache 2.0) would mean taking each voice's samples away
+from the game and playing them ourselves: not needed while this works.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -1946,3 +1992,7 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   right is 8 to 9 dB louder on the right (0 in the game's mix), on the left by as much with the head turned round, the
   Council stays centred; ISACT pans but does not attenuate, so the falloff (3 dB a doubling past 2 m, at most 6) is
   ours. No intercom colour yet (no filter in the dialogue path). Not heard by anyone.
+- 2026-11-10, 21:10-21:30, **OpenAL Soft tried** ("Real 3D audio"; the owner asked for the test). In place of the game's
+  Creative `OpenAL32.dll`, with HRTF on: Anderson's voice reaches the far ear 0.9 ms later (nothing in common between the
+  ears before), mirrored with the head turned round; the Council unchanged. Merely added beside Creative's it is loaded but
+  not used. The game folder is back as it was; whether to ship it is the owner's (licence, headphones only, unheard).

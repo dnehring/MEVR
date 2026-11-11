@@ -248,6 +248,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   ears on small head turns (the pan is plain left/right, no HRTF), the step at 8 m, a voice too quiet at a distance
   (`worldVoiceFalloffDb = 0`), and whether the far voices want an intercom's colour (none yet). `worldVoices = game` is
   the game's own mix.
+- [ ] **Real 3D audio with OpenAL Soft** (research/69 "Real 3D audio", 2026-11-10; a test, not installed): measured only.
+  If wanted, a session installs it for a listen (the game's `OpenAL32.dll` replaced, HRTF on): with headphones, does a
+  voice beside or behind you sound there, does the rest of the game still sound right, is it too quiet (3 to 4 dB under)?
 - [ ] **Who looks at whom, and nobody pivots** (research/69 "Who attends to whom", 2026-11-10; run in the ceremony on the
   fake headset): slot 81 at the podium. When a councillor speaks, Anderson and Udina should glance at the Council; when
   Anderson speaks to you his head and chest turn to you while his feet stay toward the Council, and Udina keeps his back
