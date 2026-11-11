@@ -600,7 +600,8 @@ switching frameworks.
   scene's first action fired, the stretch of log judged: ten scenes in nine minutes, no restart; **the runner's `open` resets
   the plot**, so a scene behind plot checks is only itself from a save. Since 2026-11-11 (research/69 "The coverage pass from
   saves") it finalizes a landing's squad screen, streams a chunk in by its named plot state (`actions` rows' `streamStates`),
-  and tells a bark scene by its voice (`mevr voices census`, rows' `barks`); **after 16 loads without the pause menu Halcyon's
+  tells a bark scene by its voice (`mevr voices census`, rows' `barks`) and starts a galaxy-map call through the console's
+  use (`mevr galaxy use`, as play does); **after 16 loads without the pause menu Halcyon's
   first-person table was full and the camera third person** (`[MEVR]` `FpPruneDeadOwned` in head_aim.cpp drops the dead
   entries now; look at the snapshots, not only the judge). What it brought: **a scripted walk's Shepard is the
   script's** (`worldMoments = view`, the default: the track moves his pawn, hidden, through every trigger; the view stays

@@ -157,8 +157,15 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     $started = Get-Date
     if ($Before) { Console $Before | Out-Null }   # e.g. a call trace that must cover the scene's first frames
     if ($barks) { Console 'mevr voices census 14' | Out-Null }   # every sound source and its cue for 14 s
-    Console "mevr activate $index $actionInput" | Out-Null
-    Say "fired $action (input $actionInput)"
+    if ($action -like 'GalaxyMap.Comm_Room_Dialogs.*') {
+        # A call at the galaxy map comes from the console's use, which plays the pending transmission and opens the map after it
+        # (research/69 "Hackett's call and the surveyor, run again"): fired directly, the map's opening wasn't the use's.
+        Console 'mevr galaxy use' | Out-Null
+        Say "used the galaxy map's console (its sequence plays $action)"
+    } else {
+        Console "mevr activate $index $actionInput" | Out-Null
+        Say "fired $action (input $actionInput)"
+    }
     if ($barks) {
         # Barks: no conversation mode. Its lines are told by their cues in the census (the conversation's package name).
         Start-Sleep -Seconds 17

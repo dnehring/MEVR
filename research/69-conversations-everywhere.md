@@ -195,6 +195,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     after 17 loads. The loop now finalizes a landing's squad screen, streams a chunk in by its plot state, and tells barks by
     their voice. Still not started: 4 saves on uncharted worlds (they start a landing), 4 chunks whose state doesn't stream
     them, 8 starts behind plot conditions a save doesn't set, 3 flowed and 4 voiceless (popup text) scenes not confirmed.
+    **Third pass 2026-11-11 15:20-16:04** ("The third sampled pass" below): 39 untried scenes, 1-6 per level and kind from
+    different chunks and every Normandy transmission: 17 conversations played in the world, 6 bark scenes heard; **154 of 290
+    reachable scenes played** now. Every level and kind has been sampled; what is left untried is mostly staged scenes of
+    the Citadel (43), Noveria (16) and Feros (8), the kinds already seen.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify]. **Narrowed 2026-11-11** ("The subtitle of a line played as a bark" below): a flowed scene's
     lines behave exactly like the game's own barks: the line's text is built, nothing is drawn, in this profile (its subtitle
@@ -224,6 +228,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 17. **Scenes on uncharted worlds from a save** (harness, 2026-11-11): a save written on foot on an uncharted world loads into
     the landing (the squad screen, then the drop's cinematic, which didn't end in two minutes); four sampled scenes need a
     save made after the landing, or the runner's `open` and `mevr vehicle party` (research/47 "Reaching the Mako").
+18. **An opening that starts from a view at Shepard's hips** (new 2026-11-11, "The third sampled pass"): in 3 of about 50
+    openings from generated saves (the surveyor, twice; Noveria's guards; Garrus in the Normandy's hold) the view on foot the
+    opening took stood at the pawn's place, 0.26 m below its centre, instead of the first-person eye (0.5 m ahead, 0.9 m up),
+    and each opening cut (Shepard's mark "out of sight" from there, 2.4-6.1 m away). The floor lock had no floor under him
+    (`pawnFloorZ` 0) at the guards. Probably the generator's place (a spot the pawn doesn't stand on as a player would),
+    [verify]: what the game's camera is in those saves before the scene, and whether a player standing there ever sees it.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -2696,6 +2706,32 @@ hiding. The first pass's view inside the torso was the fake headset without cont
 Chellik's bump showed (item 7's note); the judge's `body-strayed` 2.2 m is the opening's record of where the stage animation
 carries his head, not what the eyes see.
 
+### The third sampled pass (2026-11-11 15:20-16:04)
+
+**The sample**: of the 130 scenes never tried (`%LOCALAPPDATA%\MEVR\sweep\untried-2026-11-11.json`), 1-6 per level and kind
+(stage, free, ambient, remote, framed), each from a different chunk where there were several, and all five of the
+Normandy's transmissions; the ending's two left out (their script saves the character and steps the achievements). 37 saves
+written (two scenes have no placed owner), slots 200-238, kept outside the career until the run, the career's Save folder
+put back to its morning state after (checked file by file against the 08:02 backup).
+
+**Played**: 17 conversations in the world (Noveria's Mae Komatsu, the security guards, Lorik Qui'in, Mira; Virmire's choice;
+the Normandy's five transmissions, the return from Virmire, Chakwas, Garrus in the hold; the Presidium's hanar, the crime
+boss, the banker; Feros's asari commando), 6 bark scenes heard (the voice census). The eyes (a snapshot 8 s into each): the
+speaker in front, or the CIC's table for the calls, in 15; in Noveria's guards and Virmire's choice the back of Shepard's
+armour in front, the fake headset without controllers (the body follower doesn't run; item 15's finding). Not started: 6
+ambient or flowed scenes not heard, 4 chunks their named states didn't stream (the Wards' scenic view, `RP109_CarryTheOne`),
+5 behind plot conditions, 2 without a save.
+
+**Findings**:
+- **The transmissions' end flash came back, from the harness**: two of the five calls ended with a single flat frame (0.01 s,
+  two dips). They were fired directly; in play a call at the galaxy map comes from the console's use, which the fix of item
+  16 holds through. The loop now starts `GalaxyMap.Comm_Room_Dialogs` scenes through `mevr galaxy use`, and the two calls
+  run again that way (16:02-16:04): Joker's line, the call, the map straight into the world, nothing found.
+- **Two cuts from a view at Shepard's hips** (item 18).
+- `reply-move` once more (Mira on Noveria), a 146-degree turn of an inert object (the game's, the return from Virmire).
+
+**Coverage: 154 of 290 reachable scenes played** in some run (131 before, 23 new).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3113,3 +3149,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 12:01, **item 11 done: the ending's other branch** ("The scripted walks, named"): the final cutscene's `Interp_2` takes conditional F1289 (plot integer 46 over 47); from a save with 46 = 18 it played held in first person, 16.9 s, one dip at the cut 203 m into the tower; all 21 scripted walks seen. The platform under Shepard is pure black from his eyes (not the near plane, not culling: measured), [verify] in the headset.
 - 2026-11-11 14:30, **item 12: the coverage pass from saves** ("The coverage pass from saves"): 16 conversations played in the world and 7 bark scenes heard (131 of 290 now); a Halcyon fault fixed (its first-person table full after 16 loads without the pause menu: the third-person camera), seen fixed after 17 loads; items 15-17 new.
 - 2026-11-11 15:20, **items 15 and 16 done** ("Hackett's call and the surveyor, run again"): the flash after Hackett's call fixed (the console's use holds through the call it plays; seen twice through the real path), a refused put-back walks by the view instead of a cut; the surveyor's torso was the fake headset without controllers.
+- 2026-11-11 16:10, **item 12: the third sampled pass** ("The third sampled pass"): 17 conversations in the world and 6 bark scenes (154 of 290 now); the transmissions' end flash was the harness firing them directly (through the console's use: none); item 18 new (openings from a view at Shepard's hips, generated saves).
