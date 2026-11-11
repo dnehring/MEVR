@@ -580,9 +580,17 @@ switching frameworks.
   turns nobody in a conversation. **After a headset session run `python tools/conversation-session.py` first**: it
   reads the mod's and Halcyon's logs of the last run and names, per scene in the world, what the player would have noticed
   (flash, dip and its cause, body-hidden, screen, pivot, reply-move, drawn-jump, body-strayed; research/69 "A played session,
-  judged"). The voices are
-  centred by design (82% of dialogue cues have no attenuation node; LE1 is ISACT over OpenAL, not Wwise): research/69 "The
-  voices" has the hook that would place them.
+  judged"). **The voices are placed** (`worldVoices = spatial | game`,
+  research/69 "The voices, placed", 2026-11-10; the owner: the Council like an intercom, other scenes spatial): the game
+  plays 82% of dialogue cues in the centre wherever the speaker stands (no attenuation node; LE1 is ISACT over OpenAL, not
+  Wwise), so `engine/VoicePlace` post-hooks the ISACT source's update (`0x7BA90`) and, for a source whose audio component's
+  `Owner` is a speaker within `worldVoiceWithinM` (8 m, kept to 10; `cw::PlaceVoice`), sends the head's place and "in the
+  world" again through the game's own ISACT calls; further speakers stay the game's centred, full-level mix. ISACT only
+  pans, so loudness is ours (`worldVoiceNearM` 2, `worldVoiceFalloffDb` 3 a doubling, `worldVoiceFloorDb` 6,
+  `worldVoiceGain`). **Measure audio, don't guess:** `build\Release\mevr-audio-loopback.exe out.wav <seconds>` records
+  what the PC plays and `python tools/audio-balance.py out.wav --from s --to s` gives each channel's level and the balance
+  (Anderson 77 degrees to the right: +8 dB right, 0 in the game's mix; mirrored with the head turned round). Logs `convo:
+  ... voice comes from where it stands`, `convo: voices:`, `voice place:`.
   "In sight" for the opening is three lines (`InSight`).
   **A small placement the game repeats is its own** (`cw::Insists`,
   2026-11-10): keep-in-place undoes a jump once; one of at most 1 m that comes back at the same place the next tick is

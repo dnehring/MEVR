@@ -223,3 +223,5 @@ rva,name,kind,comment
 0x9F9D50,UBioEvtSysTrackLookAt::ApplyKey_guess,func,research/69: cancels the pawn's list entry; SetLookAtTarget(actor by tag or None 0 99999); reads only tag duration and bEnabled
 0xA9F510,ABioPawn::RequestTurnInPlace_impl,func,research/69: true before anything turns; primes the move-start animation state machine (0xAA1260) which snaps Rotation to DesiredRotation
 0xA9FF30,ABioPawn::SetDesiredRotation_impl,func,research/69: pawn vtable +0xBD0; writes the pawn's and controller's DesiredRotation when the start/skid/stop states allow
+0x7BA90,FISACTSoundSource::Update,func,research/69: per playing source: volume pitch relative flag and position to ISACT (source +0x10 wave instance; +0x44/+0x4C the two kinds of handle); engine/VoicePlace post-hooks it
+0x79F30,FISACTSoundSource::UnplacedPosition_guess,func,research/69: by the cue's sound group and the wave instance's flags: 1 = not spatialized (the listener's front or the listener) 0 = the wave's Location

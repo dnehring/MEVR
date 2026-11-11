@@ -241,6 +241,13 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   stick and be walked the 21 m to the podium, where your body is under you again. Look for: your own body visible anywhere
   on the way, the flash of the cinema screen as his walk begins, how the dip reads, and whether arriving next to Udina with
   Anderson already there is acceptable until he walks the rest himself.
+- [ ] **Voices from where people stand** (research/69 "The voices, placed", 2026-11-10; measured from the PC's output,
+  never heard): slot 81 at the podium with headphones: Anderson beside you should sound to your right and stay there
+  in the room as you turn your head; the Council should sound as before (in the middle, an intercom). Slots 87 and 89:
+  the speaker in front. Walk away from someone speaking: a little quieter by 4 m. Look for: a voice that jumps between
+  ears on small head turns (the pan is plain left/right, no HRTF), the step at 8 m, a voice too quiet at a distance
+  (`worldVoiceFalloffDb = 0`), and whether the far voices want an intercom's colour (none yet). `worldVoices = game` is
+  the game's own mix.
 - [ ] **Who looks at whom, and nobody pivots** (research/69 "Who attends to whom", 2026-11-10; run in the ceremony on the
   fake headset): slot 81 at the podium. When a councillor speaks, Anderson and Udina should glance at the Council; when
   Anderson speaks to you his head and chest turn to you while his feet stay toward the Council, and Udina keeps his back

@@ -1559,7 +1559,7 @@ three in the game; the copies are made per controller whatever the definition); 
 in this pass: `looksGame` 0); the comm room (its people turned 13 times in the owner's session under the old rule);
 squadmates behind the player. `worldTurnLog = 1` prints each looking or turning person's yaw twice a second.
 
-### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
+### The voices (2026-11-10: read from the code and the packages by a research agent; built and measured in "The voices, placed" below)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"
 
@@ -1587,6 +1587,59 @@ The owner: "is there anything we can do to make it sound more like spatial audio
   dialogue.
 - To measure first: the OpenAL listener's front vector under a replayed head sweep; a centred line against a placed one
   (most of `sta20_avina_keeper` against `sta20_hanar_religious`) as left/right loudness in a loopback recording.
+
+### The voices, placed (2026-11-10, 20:20-21:05, fake headset; in the tree; measured, not heard)
+
+The owner: "For the council we would expect it to sound a little like an intercom. But for other scenes it should be
+spatial."
+
+**The rule** (`[Cinematics] worldVoices = spatial | game`, default spatial with the first-person mode; `cw::PlaceVoice`,
+unit-tested; game side `PublishVoices` in `game/ConversationWorld`, the hook `engine/VoicePlace`). In a conversation in
+the world everyone of the conversation but the player is judged each tick by how far their head is from the player's
+view:
+
+| The speaker's head | The voice |
+|---|---|
+| Within `worldVoiceWithinM` (8 m; kept until past `worldVoiceKeepM`, 10 m, so a step back mid-line changes nothing) | from where the head is, following the player's head and walk mid-line |
+| Further away | left exactly as the game mixes it: in the centre, at full level (the Council across its chamber: the intercom) |
+
+Shepard's own lines stay in the centre. Barks and flowed scenes are not touched (the game places those itself).
+
+**How** (the sound source's update, `0x7BA90`, read again from the decompile). Once a frame per playing source the game
+sends ISACT the volume, the pitch, a "relative to the listener" flag and a position; for a cue without an attenuation node
+the flag is 1 and the position the listener's front. The source holds its wave instance, the wave instance its audio
+component, and the component's `Owner` is the pawn that speaks (reflection: `ActorComponent.Owner`). The function is
+post-hooked (mod side, installed with the conversation hooks): for a source whose component is owned by an actor the
+game layer named, the flag is sent again as 0 and the position as the head's (ISACT's axes: the engine's X, Z, -Y in
+metres), through the same two virtual calls of the ISACT interface the game just used (two kinds of handle, each with its
+own pair of slots; the slots are checked to be code in a loaded image once per vtable). Everything our part reads is under
+an SEH guard; three faults and it places nothing more. The update runs on the game thread (0 calls seen on another).
+
+**Measured** (`mevr-audio-loopback`, a new tool: the default playback device's mix recorded over WASAPI loopback, and
+`tools/audio-balance.py`: each channel's level and right minus left per second; the scenes from their saves under a fixed
+head):
+
+| Scene, line | The game's mix | Placed |
+|---|---|---|
+| The ceremony, Anderson 1.8 m away and 77 degrees to the right, the head facing the Council | +0.1 / -0.1 dB (centre) | **+7.6 / +8.9 dB to the right** (his two lines), the same total level (+1.3 dB) |
+| The same, the head turned right round (yaw 180) | | **-8.3 / -9.7 dB (to the left)**: the listener turns with the head |
+| The ceremony, a councillor 25 m away | +0.1 dB | +0.1 dB (not placed: the intercom); -0.2 with the head turned round |
+| Avina 1.5 m straight ahead (slot 89) | 0.0 dB, -25.5 dB a channel | -0.1 / +0.3 dB, -25.3 dB a channel: centred because she is ahead, the same level |
+| The ceremony's first line, Udina placed at his true 8.6 m (`worldVoiceWithinM = 14` for the test) | -29.8 / -29.5 dB | -29.3 / -27.9 dB: **no quieter for the distance** |
+| Avina with `worldVoiceGain = 0.5` | | 7.4 to 7.9 dB quieter (6 expected: ISACT's volume is a little steeper than amplitude) |
+
+So ISACT honours a position for these cues but only pans; loudness with distance is ours: full within `worldVoiceNearM`
+(2 m), `worldVoiceFalloffDb` (3) quieter per doubling of the distance, at most `worldVoiceFloorDb` (6), sent as the
+game's own volume for the source times that (`worldVoiceGain` on top). At the 8 m edge a placed voice is 6 dB under the
+centred one beyond it: a step heard only by walking across that distance mid-line.
+
+**Not done, and not known:** an intercom's colour for the far voices (band-limiting or a slight echo): the dialogue path
+to ISACT carries volume, pitch, position and the sound entity's variables, no filter was found, so "a little like an
+intercom" is so far the game's own centred, full-level voice; Wrex at Fist's could not be measured (the bar's music is
+6 dB louder than the voices on the recording; the hook placed both speakers by the log); whether 8 m is the right edge
+and whether transmissions (holograms on a comm, the scan's "remote" class) should be intercom whatever the distance;
+how the pan sounds in headphones (ISACT's software device has no HRTF: left and right only, nothing for above or behind
+beyond what the level tells); the listener's place is the held view without the headset's lean.
 
 ## To check in the game
 
@@ -1887,3 +1940,9 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   off in staged scenes. Ceremony: 0 body turns, 38 looks, Anderson's head 12 degrees short of the player at 77 (31 to 36
   before), Udina keeps his back to a speaker behind him. Two faults of the eased turn fixed (the pawn's physics turned it
   back; it stopped half way at 90 frames a second). No turn animation exists to borrow.
+- 2026-11-10, 20:20-21:05, **the voices, placed** ("The voices, placed"; the owner: the Council like an intercom, other
+  scenes spatial). A post-hook on the ISACT source's update sends a speaker's head as the source's place when the speaker
+  is within 8 m; further voices stay the game's centred mix. Measured from the PC's output: Anderson 77 degrees to the
+  right is 8 to 9 dB louder on the right (0 in the game's mix), on the left by as much with the head turned round, the
+  Council stays centred; ISACT pans but does not attenuate, so the falloff (3 dB a doubling past 2 m, at most 6) is
+  ours. No intercom colour yet (no filter in the dialogue path). Not heard by anyone.
