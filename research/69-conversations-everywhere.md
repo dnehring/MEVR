@@ -210,9 +210,17 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     opening cuts (his mark out of sight), and the view, following the head bone's jumps, ends inside his torso (a snapshot at
     8 s: the back of his armour fills the lower half). Find what moves the skeleton (root motion or a stage offset) before
     choosing the view's anchor there.
+    **Done 2026-11-11 14:46, not a fault in play** ("Hackett's call and the surveyor, run again"): with tracked hands (a replayed
+    recording at rest) the body follower takes Shepard's body under the view and the eyes see the room at 6, 12 and 17 s; the
+    torso in front was the fake headset without controllers (no arm IK, no body follower), as Chellik's bump found.
 16. **A flash of the flat panel at a transmission's end** (new 2026-11-11, same section): Hackett's call in the comm room
     (`sp111_transmission`, 13 s): the cinematic's flat panel shown for 0.05 s with two dips as it ended. [verify] what
     switches there (the judge's `flash`).
+    **Done 2026-11-11 15:17** ("Hackett's call and the surveyor, run again"): the call ends into the galaxy map, whose first
+    frame fell to Halcyon's flat panel because the console's use (4 s) had expired during the call; the use's window now lasts
+    through a conversation it began (`vr::galaxy_map::ConsoleUse`, unit-tested). Seen twice through the real path (the
+    console's use: Joker's line, Hackett's call, the map): no flat frame, nothing found. On the way, the call's opening cut at
+    1.2 m when putting Shepard back was refused: the view now walks to him instead (`WalkInFacts::putRefused`).
 17. **Scenes on uncharted worlds from a save** (harness, 2026-11-11): a save written on foot on an uncharted world loads into
     the landing (the squad screen, then the drop's cinematic, which didn't end in two minutes); four sampled scenes need a
     save made after the landing, or the runner's `open` and `mevr vehicle party` (research/47 "Reaching the Mako").
@@ -2656,6 +2664,38 @@ the player has walked in: the owner's re-face question, notes/headset-checklist.
 two short scenes (`reply-move`, no stick involved: the stage's placement, [verify]). Everything else: nothing found.
 **Coverage: 131 of 290 reachable scenes played** in some run (108 before, 16 conversations and 7 bark scenes new).
 
+### Hackett's call and the surveyor, run again (2026-11-11 14:35-15:17; items 15 and 16)
+
+**The flash after Hackett's call (item 16).** Halcyon's log at the first pass's flash: the transmission's conversation (5),
+the cinematic (6) 0.3 s, then the galaxy map (9), whose first frame latched the map's camera (`BioCameraBehaviorGalaxy`) as a
+cutscene and showed the flat panel for 24 ms (`[VRSTATE] gm 9 alive cutscene -> FLAT panel`, `[FLATWHY] sources: galaxy`),
+before the mod's hold took the view. The transmission is the galaxy map's sequence (`GalaxyMap.Comm_Room_Dialogs`): using the
+console plays a pending call first and opens the map after it. The mod holds the map's opening cinematic as the map's for
+4 s after the console's use (`OnArtPlaceableUsed`), and the call (11-13 s) outlasted that, so whether the first map frame was
+flat depended on how fast the cinematic went (1.2 s in a rerun: no flash). Ruled out on the way: a reservation of the table
+from its on-foot scene (the travel path's) never applies by default, since the hologram on foot is off (`[Galaxy]
+onFootHologram`, the owner's QA of 2026-11-07: the game's own projector on approach); that change was reverted. **Fix**
+(`vr::galaxy_map::ConsoleUse`, core, unit-tested in `tests/TableReturnTests.cpp`): the use's 4 s window stays open while a
+conversation it began plays and runs from its end (at most 3 minutes from the use). `mevr galaxy use` calls the console's own
+use, as A at it, for tests. **Seen**: a save standing Shepard 1.5 m from the console (written from the transmission's save),
+the console used twice: Joker's "incoming transmission" line, Hackett's call, the map after 13 s; the hold took the view
+22 ms into the cinematic, the map's first frame was the world (`[VRSTATE] gm 9 alive -> VR`), the judge found nothing.
+
+**A cut at 1.2 m.** The same two runs opened the call with a cut first: the opening rule said stay (Shepard's mark 1.28 m from
+where the player stood, in sight), but putting Shepard back there was refused (`SetLocation`, the console's geometry), and the
+fallback was the stage's placement under a dip, a cut within one space. Now a refused put-back is a walk-in by the view
+(`cw::WalkInFacts::putRefused`, `DecideWalkIn`; with `worldWalkInWay = body` still the cut): Shepard stands at his mark,
+hidden, and the view walks to him. Seen in both rounds: `opening: walk in (1.2 m to the mark, view)`, no dip. The guided walk
+didn't reach him there (people within the clearance of the mark, the hologram's actor among them), so the player stays where
+he stood for the 8 s call, which nothing in the owner's rules asks to change.
+
+**The surveyor (item 15).** Run with a replayed recording at rest (head straight, both controllers tracked low at the sides,
+no inputs; arm IK `driving`, the torso `first person: the whole body under the view`): snapshots at 6, 12 and 17 s show the
+storeroom from Shepard's place, no torso in front. Simon is out of sight behind the crates 8 m ahead, as the scene stages him
+hiding. The first pass's view inside the torso was the fake headset without controllers (no body follower), the artefact
+Chellik's bump showed (item 7's note); the judge's `body-strayed` 2.2 m is the opening's record of where the stage animation
+carries his head, not what the eyes see.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3072,3 +3112,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 11:50, **item 12: coverage counted** (the list's item 12): 108 of 290 reachable scenes played in some run; the next sampled pass (52 scenes, 14 levels) is ready for after the owner's audit.
 - 2026-11-11 12:01, **item 11 done: the ending's other branch** ("The scripted walks, named"): the final cutscene's `Interp_2` takes conditional F1289 (plot integer 46 over 47); from a save with 46 = 18 it played held in first person, 16.9 s, one dip at the cut 203 m into the tower; all 21 scripted walks seen. The platform under Shepard is pure black from his eyes (not the near plane, not culling: measured), [verify] in the headset.
 - 2026-11-11 14:30, **item 12: the coverage pass from saves** ("The coverage pass from saves"): 16 conversations played in the world and 7 bark scenes heard (131 of 290 now); a Halcyon fault fixed (its first-person table full after 16 loads without the pause menu: the third-person camera), seen fixed after 17 loads; items 15-17 new.
+- 2026-11-11 15:20, **items 15 and 16 done** ("Hackett's call and the surveyor, run again"): the flash after Hackett's call fixed (the console's use holds through the call it plays; seen twice through the real path), a refused put-back walks by the view instead of a cut; the surveyor's torso was the fake headset without controllers.

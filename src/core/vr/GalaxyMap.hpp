@@ -64,6 +64,31 @@ private:
     std::uint64_t cineUntil_ = 0;
 };
 
+// The console's use (A at it, or our pick) opens the map, and the map's opening cinematic (6) is held as the map's while the
+// use is recent. A use that first plays a pending conversation (Hackett's transmission, 11-13 s) opens the map only after it:
+// the window stays open while a conversation (5) begun inside it plays, and runs its 4 s from that conversation's end, so the
+// opening after the call is held too and the map's first frame doesn't fall to the flat panel (research/69 "The flash after
+// Hackett's call", 2026-11-11). At most 3 minutes from the use itself.
+class ConsoleUse {
+public:
+    static constexpr std::uint64_t kWindowMs = 4000;
+    static constexpr std::uint64_t kMaxMs = 180000;
+    void Used(std::uint64_t nowMs) { usedMs_ = lastMs_ = nowMs; }
+    bool Holds(int mode, std::uint64_t nowMs) {
+        if (usedMs_ == 0 || nowMs - usedMs_ >= kMaxMs || nowMs - lastMs_ >= kWindowMs) {
+            return false;
+        }
+        if (mode == 5) {
+            lastMs_ = nowMs;  // the conversation the use began: the window runs from its end
+        }
+        return true;
+    }
+
+private:
+    std::uint64_t usedMs_ = 0;
+    std::uint64_t lastMs_ = 0;
+};
+
 // ---- Settings ([Galaxy] in <GAME>MEVR.ini, parsed by the mod) -------------------------------------------------------
 struct Settings {
     bool hologram = true;     // hologram: our own hologram of the map (core/vr/GalaxyHologram, research/51 section 8) on a table

@@ -584,8 +584,9 @@ switching frameworks.
   view walks", 2026-11-10, on the branch until the owner's headset test): Shepard stays where the stage has him, hidden,
   and only the held view walks to him (no pawn move, so no touch and no trigger guard); the two are one again on arrival;
   auto takes it when a moment's walk was still on its way as the conversation began (putting Shepard back from the podium
-  then ended the council's hearing in its first tick in 9 of 16 runs: "The hearing that ended at once") or when the mark
-  stands inside a trigger. The council's hearing: no cut, 21 m to the podium, 4 of 4. A moment's view is held in the
+  then ended the council's hearing in its first tick in 9 of 16 runs: "The hearing that ended at once"), when the mark
+  stands inside a trigger, or when putting Shepard back where the player stood is refused (`SetLocation`; the cut until
+  2026-11-11, Hackett's call at the galaxy console). The council's hearing: no cut, 21 m to the podium, 4 of 4. A moment's view is held in the
   cinematic mode too (it was never rendered before: found by the first snapshots of one; **check what the eyes show with a
   snapshot, not a log line**), and where the script turns its black screen on during a held moment the mod dips from black
   in its place **only if the black screen covered a change in the player's view** (`cw::CoveredChanges`: someone shown in
@@ -786,9 +787,12 @@ switching frameworks.
   much, as the full screen's starfield did, 0 see-through): two scene captures from the map camera (`game/SceneCaptureRig`,
   CineScreen's parallel cameras and crop), its Flash layer on the UI panel at the same place, the view held at Shepard's at render
   time only (`[MEVR]` seam `MevrBridge::GalaxyViewSwapBegin/End` around the main view's `CalcSceneView`). Tools: `mevr galaxy dump|where|pick|click|
-  press|trace|input|movie|invoke|var|aim`, `mevr props`/`setprop`, `tools/make-galaxy-pick-recording.py` (`--world`, `--snapshot`,
+  press|trace|input|movie|invoke|var|aim|use` (`use`: the console's own use, as A at it), `mevr props`/`setprop`, `tools/make-galaxy-pick-recording.py` (`--world`, `--snapshot`,
   `--panel-uv`), offline look `mevr-galaxy-preview`. Logs `galaxy hologram:`; snapshot `"galaxyHologram"` (objects' places), layers
   `galaxy-left`/`-right`.
+  **A use that plays a call first** (Hackett's transmission, then the map; research/69 "Hackett's call and the surveyor, run
+  again", 2026-11-11): the console's 4 s window holding the map's opening stays open while a conversation it began plays
+  (`vr::galaxy_map::ConsoleUse`), else the map's first frame fell to the flat panel.
   **Travel/arrival return (2026-11-08, research/51 section 8.4):** the table reservation survives modes 8/5/6 while its
   captures pause; only mode 9 resumes it (the closing 0/6 bridge is separate). Re-project the console from the saved CIC
   frame, never the map/cinematic POV. A world/controller change discards the reference. All four levels keep the window

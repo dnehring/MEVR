@@ -38,5 +38,8 @@ void Shutdown(Link const& link, bool exiting);
 std::string ViewOverride(bool on, float yawDeg, float pitchDeg, float distanceUnits);
 std::string ShowFlash(bool visible);
 std::string HoldWrites(bool on);
+// `mevr galaxy use`: the console's own use (OnArtPlaceableUsed with the player's pawn), as A pressed at it does; for tests of
+// what a use starts (a pending transmission, then the map). Game thread (the console request runs there).
+std::string UseConsole();
 
 } // namespace mevr::game::galaxy_map

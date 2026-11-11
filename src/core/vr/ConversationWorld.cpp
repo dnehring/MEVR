@@ -800,7 +800,7 @@ WalkInWay DecideWalkIn(WalkInFacts const& facts, WalkInRule rule) {
     if (rule == WalkInRule::View) {
         return WalkInWay::View;
     }
-    return facts.midMoment || facts.markBehindTrigger ? WalkInWay::View : WalkInWay::Body;
+    return facts.midMoment || facts.markBehindTrigger || facts.putRefused ? WalkInWay::View : WalkInWay::Body;
 }
 
 WalkInRule ParseWalkInRule(std::string_view text, WalkInRule fallback) {

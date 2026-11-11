@@ -645,6 +645,9 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         if (sub == "where") {
             return galaxy_dump::Pick(-1, false);
         }
+        if (sub == "use") {
+            return galaxy_map::UseConsole();
+        }
         if (sub == "aim") {
             int index = -1;
             words >> index;

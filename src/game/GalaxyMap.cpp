@@ -110,7 +110,7 @@ struct Console {
     ue3::Object* openingDelay = nullptr;   // the sequence's opening wait (BioSeqAct_Delay_0)
     float openingOriginalS = 0.0f;
     bool openingShortened = false;
-    std::uint64_t usedMs = 0;              // the console was used (OnArtPlaceableUsed: A pressed at it, or our pick)
+    vr::galaxy_map::ConsoleUse use;        // the console was used (OnArtPlaceableUsed: A pressed at it, or our pick)
 };
 Console gConsole;
 
@@ -1021,7 +1021,7 @@ void ShortenOpening(bool shorten) {
 // opening (game mode 6) is held like a pick's.
 void OnConsoleUsed(ue3::Object* behavior, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     if (behavior != nullptr && behavior == gConsole.behavior) {
-        gConsole.usedMs = GetTickCount64();
+        gConsole.use.Used(GetTickCount64());
     }
 }
 
@@ -1285,7 +1285,8 @@ void Tick(Link const& link) {
     // closing cutscene after it (both are the game's camera flying between the CIC and the map's scene).
     std::uint8_t const modeNow = mode ? *mode : 255;
     bool const closing = gHold.closing.Update(modeNow, gHold.active, now);
-    bool const used = gConsole.usedMs != 0 && now - gConsole.usedMs < 4000;  // the console's use (A, or our pick) opens the map
+    // The console's use (A, or our pick) opens the map; a pending transmission it plays first keeps the window (ConsoleUse).
+    bool const used = gConsole.use.Holds(static_cast<int>(static_cast<std::int8_t>(modeNow)), now);
     bool const opening = (gOpen.pending || used) && modeNow == 6;
     bool const holding = inWorld && gHold.haveView && gHold.footFrame && mode && (*mode == kGalaxyMode || opening || closing);
     if (modeNow != kGalaxyMode) {
@@ -1516,6 +1517,15 @@ std::string ViewOverride(bool on, float yawDeg, float pitchDeg, float distanceUn
     gView.applied = 0;
     return std::format("galaxy view: orbiting the map's centre at yaw {:.0f}, pitch {:.0f}, {:.0f} units (while the map is open)", gView.yawDeg,
                        gView.pitchDeg, gView.distance);
+}
+
+std::string UseConsole() {
+    ue3::Object* const controller = player::Controller();
+    if (controller == nullptr || !FindConsole()) {
+        return "galaxy use: no player, or no galaxy map console in this level";
+    }
+    bool const used = OpenMap(controller);
+    return std::format("galaxy use: OnArtPlaceableUsed on the console {}", used ? "called (as A pressed at it)" : "couldn't be called");
 }
 
 std::string HoldWrites(bool on) {

@@ -289,6 +289,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   black); the double homicide in Port Hanshan after talking to Anoleis: one dip to the crime scene and you face it (not a wall);
   Feros's first creeper on foot: you walk after Shepard, no cut. Look for a flash of the screen at a scene's start, and where
   you face after any dip.
+- [ ] **Hackett's call at the galaxy map** (2026-11-11, research/69 "Hackett's call and the surveyor, run again"; fake headset):
+  use the CIC's console with a transmission pending (after a mission): Joker's line and Hackett's call play where you stand,
+  no cut; when the map opens after it, no flash of the flat screen and no double blink.
 - [ ] **First person after many loads** (2026-11-11, research/69 "The coverage pass from saves"; fake headset): quickload
   20 times in a row without opening the pause menu (die and reload, or F9): the view on foot stays at your eyes, never behind
   Shepard. Halcyon's log says `[FPCAM] owned table full: N dead entries of earlier levels dropped` once you pass 16.

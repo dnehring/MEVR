@@ -512,6 +512,8 @@ void TestSceneRules() {
             CHECK(cw::DecideWalkIn({false, true}, WR::Auto) == W::View);   // the mark stands inside a trigger
             CHECK(cw::DecideWalkIn({true, true}, WR::Body) == W::Body);    // by the setting
             CHECK(cw::DecideWalkIn({}, WR::View) == W::View);
+            CHECK(cw::DecideWalkIn({false, false, true}, WR::Auto) == W::View);  // put back refused: the view walks, no cut
+            CHECK(cw::DecideWalkIn({false, false, true}, WR::Body) == W::Body);  // the setting's body walk (the caller cuts)
             CHECK(cw::ParseWalkInRule("View", WR::Auto) == WR::View);
             CHECK(cw::ParseWalkInRule(" body ", WR::Auto) == WR::Body);
             CHECK(cw::ParseWalkInRule("auto", WR::Body) == WR::Auto);

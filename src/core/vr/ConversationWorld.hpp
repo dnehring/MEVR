@@ -445,6 +445,8 @@ enum class WalkInWay : std::uint8_t { Body, View };
 struct WalkInFacts {
     bool midMoment = false;          // the conversation began while a moment's walk was on its way
     bool markBehindTrigger = false;  // the mark is inside a trigger that where the player stands is outside of
+    bool putRefused = false;         // Shepard couldn't be put back where the player stood (SetLocation refused: Hackett's call
+                                     // at the galaxy map, 2026-11-11): the view walks instead of a cut within one space
 };
 WalkInWay DecideWalkIn(WalkInFacts const& facts, WalkInRule rule);
 WalkInRule ParseWalkInRule(std::string_view text, WalkInRule fallback);

@@ -2815,9 +2815,10 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
             }
         }
     }
-    if (cw::DecideWalkIn(way, gSettings.walkInWay) == cw::WalkInWay::View) {
-        // Nothing of Shepard's is moved: he stands where the stage has him, hidden, and the player's view stays where it
-        // was. The walk (MovePlayer) moves the view to him and makes the two one again there.
+    // The view walks: nothing of Shepard's is moved, he stands where the stage has him, hidden, and the player's view stays
+    // where it was; the walk (MovePlayer) moves the view to him and makes the two one again there. Taken by the rule below,
+    // or when putting him back was refused (the walk-in by the body's fallback, no cut within one space).
+    auto const viewWalks = [&](std::string const& why) {
         for (Stay& st : gStay) {
             if (st.actor == pawn) {
                 st.place = mark;
@@ -2840,11 +2841,13 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
         HidePawn(pawn, true);
         log::Info("convo: the opening: no cut and nothing moved; the player stays at {} facing {:.0f} deg and his view walks to Shepard's mark {} "
                   "({:.2f} m); Shepard stands there{} ({})", F(gC.hold), YawDeg(gC.holdRotation), F(mark),
-            std::hypot(mark.x - back.x, mark.y - back.y) / kUnitsPerMeter, gC.hidPawn ? ", hidden until the player arrives" : "",
-            midMoment ? "a moment's walk was still on its way: putting him back ended the council's hearing"
-                      : way.markBehindTrigger ? std::format("his mark stands inside {}, which a walk of his body would stop at", behind)
-                                              : std::string("[Cinematics] worldWalkInWay = view"));
+            std::hypot(mark.x - back.x, mark.y - back.y) / kUnitsPerMeter, gC.hidPawn ? ", hidden until the player arrives" : "", why);
         return true;
+    };
+    if (cw::DecideWalkIn(way, gSettings.walkInWay) == cw::WalkInWay::View) {
+        return viewWalks(midMoment ? "a moment's walk was still on its way: putting him back ended the council's hearing"
+                                   : way.markBehindTrigger ? std::format("his mark stands inside {}, which a walk of his body would stop at", behind)
+                                                           : std::string("[Cinematics] worldWalkInWay = view"));
     }
     gC.walkInWay = opening == cw::Opening::WalkIn ? "body" : "-";
     ik::Vec3 const lift = back - stood;
@@ -2857,6 +2860,11 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
         }
     }
     if (!put) {
+        way.putRefused = true;
+        if (cw::DecideWalkIn(way, gSettings.walkInWay) == cw::WalkInWay::View) {
+            gC.opening = cw::Opening::WalkIn;
+            return viewWalks("putting him back where the player stood was refused (SetLocation): the view walks instead of a cut");
+        }
         log::Info("convo: the opening: Shepard could not be put back where he stood (SetLocation refused): the cut after all");
         gC.opening = cw::Opening::Cut;
         return false;

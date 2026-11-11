@@ -84,5 +84,28 @@ int RunTableReturnTests() {
     CHECK(entry.Hold(true, 1010));
     entry.AcceptWorldUi();
     CHECK(!entry.Hold(true, 1011));
+
+    // The console's use: 4 s as before; a conversation the use began keeps it, and its 4 s run from the conversation's end.
+    gm::ConsoleUse use;
+    CHECK(!use.Holds(6, 1000));               // never used
+    use.Used(10000);
+    CHECK(use.Holds(6, 12000));               // the map's opening right after the use
+    CHECK(!use.Holds(6, 14001));              // 4 s later, nothing kept it
+    gm::ConsoleUse call;
+    call.Used(20000);
+    for (std::uint64_t t = 20500; t <= 33000; t += 500) CHECK(call.Holds(5, t));  // Hackett's call, 13 s
+    CHECK(call.Holds(6, 34000));              // the map's opening after the call
+    CHECK(call.Holds(6, 36900));
+    CHECK(!call.Holds(6, 37001));             // 4 s after the call's last tick
+    gm::ConsoleUse late;
+    late.Used(50000);
+    CHECK(!late.Holds(5, 55000));             // a conversation that begins after the window isn't the use's
+    gm::ConsoleUse capped;
+    capped.Used(1000);
+    std::uint64_t t = 1000;
+    for (; t < 1000 + gm::ConsoleUse::kMaxMs + 2000; t += 1000) {
+        if (!capped.Holds(5, t)) break;
+    }
+    CHECK(t >= 1000 + gm::ConsoleUse::kMaxMs && t < 1000 + gm::ConsoleUse::kMaxMs + 1000);  // never past 3 minutes
     return failures;
 }
