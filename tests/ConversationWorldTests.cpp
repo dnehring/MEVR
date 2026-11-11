@@ -681,6 +681,11 @@ void TestWalkStep() {
     CHECK(Close(cw::StepTowardMark({}, {300.0, 0.0, 0.0}, 140.0, 0.0).place.x, 0.0));
     CHECK(Close(cw::StepTowardMark({}, {300.0, 0.0, 0.0}, 0.0, 0.1).place.x, 0.0));
     CHECK(Close(cw::StepTowardMark({}, {0.0, 0.0, -100.0}, 140.0, 0.1).place.z, -14.0));
+    // The AI's enable counters: raised to exactly 1 for a walk, never touched when already on.
+    CHECK(cw::AiEnableDeficit(1) == 0);
+    CHECK(cw::AiEnableDeficit(3) == 0);
+    CHECK(cw::AiEnableDeficit(0) == 1);
+    CHECK(cw::AiEnableDeficit(-2) == 3);  // switched off three times: 1 after the walk's rise, -2 again after it
 }
 
 void TestLatest() {

@@ -21,6 +21,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   stand and watch. Your own body, the floor under you and people standing close no longer vanish from shot to shot.
   Voices come from where people stand when they are near you (within 8 m) and stay with them as you turn your head;
   someone far across a hall, like the Council, still sounds from the middle.
+  When a scene moves someone to another spot during a conversation, they now walk there with their own walk (turning,
+  stepping, stopping) instead of jumping.
   A preview: off unless you choose it.
 
 ## 0.2.0 (2026-11-09)

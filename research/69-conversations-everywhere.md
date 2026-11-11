@@ -50,16 +50,13 @@ The owner: "The ultimate goal is to get the dialogue system complete." Everythin
 (`[Cinematics] conversations = world`) unless marked. "Built" means in the tree, compiled in all three configurations, tested
 offline and, where said, run on the fake headset; nothing on this list has been seen in a real headset unless marked.
 
-**In progress**
-
-1. **People walk to their marks** (this session, next; the owner: more valuable than the audio). The stage puts the owner,
-   the squad and the other speakers on its nodes at the start (`ABioStage::PlaceActors`) and lines move them between nodes
-   (`BioEvtSysTrackSetFacing`); in the world mode the first are accepted as teleports (up to 3 m without a dip, more is a
-   cut) and the second withheld at the source. Wanted: whoever the scene wants elsewhere walks there with the game's own
-   locomotion, never the player; the squad too. The off-by-default prototype (`worldWalk`, research/59 "Walking to marks")
-   learns marks from undone teleports and so turns the source hook off; it was never run in the game.
-
 **Built, waiting for the owner's headset pass** (`notes/headset-checklist.md` has each, with what to look for)
+
+1. **People walk to their marks** (2026-11-11, "People walking to their marks" below; the owner: more valuable than the
+   audio). A mark the stage asks for during a line is walked to by the game's own AI and locomotion (`worldWalk = 1`, now the
+   default with the world mode), the player never; seen on the fake headset (Anderson mid-stride in the medical bay). Open:
+   why the AI doesn't move C-Sec's Wrex (he stays put), and the squad's own marks (henchmen use `BioAI_Henchman`, which asks
+   `AllowsHenchmenMovement`: answered too, not yet seen walking).
 
 2. The body in conversations and scripted walks (near plane, culling pad, the body with the player, standing legs).
 3. The walkway's blink only for changes within 8 m; the 1.5 s trust over game-thread stalls.
@@ -1814,6 +1811,78 @@ first), and asks for its output limiter (`ALC_OUTPUT_LIMITER_SOFT`, off by defau
 councillor -26.3 dB a channel, as with Creative's; Anderson's line 4.1 dB right, 0.92 ms; the loudest sample of the
 scene 0.75 of full scale, none clipped.
 
+### People walking to their marks (2026-11-10 23:30 to 2026-11-11 02:00, fake headset; in the tree, off by default)
+
+Item 1 of "What remains". The stage's moves between marks during lines come through `UBioConversation::SetPositionRotator`
+(item 4's source hook), which withholds them; each withheld ask for a place more than 0.3 m away is now logged (`convo: at N s
+the stage asks X onto a mark N m away (N asks for it so far; Y speaking): withheld`) and, with `worldWalk`, becomes a mark the
+person walks to. What the asks are, over the walk runs: single lasting moves of 1.5 to 3 m (the medical bay's wake-up scene:
+Ashley 2.91 m, a crew member 1.50 / 1.72 / 2.63 m, asked again at each later line for the same mark; C-Sec's Wrex 2.22 m;
+the salarian at Noveria 9.06 / 9.47 m), and the player's own pawn (always kept). Whoever the stage asks back onto where it
+already stands before its walk began drops its pending walk (the earlier mark was the camera's).
+
+**The game's AI, and the four things that held it** (read with Ghidra and Legendary Explorer's decompiler, through
+`conversation-scan --script Class.Function | grep:<text>`, which now also prints enums and greps every function of a package;
+the game's code stays out of the repository):
+
+1. **The AI's enable counters.** `BioAiController.PushMoveToPoint`'s native (exec `0xB7B690`, the controller's vtable slot
+   `+0xAD8` = `0xC60670`) returns no move unless slot `+0xA50` (`0xC677C0`, `CanUseStack`) says yes: the pawn's behaviour
+   (`Actor.oBioComponent`, a `BioEpicPawnBehavior`) must have `m_nALLEnabled > 0` and `m_nStackEnabled > 0`. They are
+   counters: `AbilityEnable(bEnable, DT_AI, subtype)` (`0x9E6770`, names `ALL`, `Queue`, `Stack`, `CombatTransition`) counts
+   them down and up, and fires `DoDisabledEvent`/`DoEnabledEvent` on the way through 0 (the controller's `OnAbilityEnabled`
+   only tells the squad). At C-Sec seven people start with `ALL` at 0 (Wrex and the officers of `WrexHasseledByOfficer`;
+   that sequence's own `BioSeqAct_AbilityEnable` actions name the subtype `None`, which matches nothing, so they come from the
+   pawns' own setup). A walk raises a counter that is at or below 0 to exactly 1 (`cw::AiEnableDeficit`, unit-tested) and
+   lowers it by as much after, so any change the game made meanwhile stands.
+2. **The conversation's ban on AI movement.** `BioAiController.ShouldCancelMove` asks `DoesGameModeAllowMovement`, which is
+   false in the conversation mode (`SFXGameModeManager.AllowsAIMovement`, bit 8 of the active mode's flags; the game's own
+   `BioAI_Ambient` answers true). `engine/call_function`'s answer handler says true for a walker's controller. Measured: never
+   asked; only the Kismet movement state (`BioSeqAct_Movement`) asks it, not the move-to-point state. Kept as a guard.
+3. **The paused speed.** The conversation pauses its people's controllers (`PauseController`: `SetDesiredSpeed(0, true)`),
+   and the move-to-point state never raises the speed (normally `AdjustGroundSpeed` does once the pawn accelerates, which it
+   can't at speed 0): `BioPawn.SetDesiredSpeed(1, false)` each tick of a walk (`0xAA0090`: the behaviour's
+   `m_fDesiredMaxSpeed`; the pawn's speed state, `0xAA1260`, forces a standing pawn's `DesiredSpeed` to 0 while that is 0),
+   0 again after it, as the state's own `Cleanup`.
+4. **The gesture mode, the one that mattered.** With 1 to 3 done the controller sat in `BioSeqAct_MoveToPoint` with the
+   latent move running (the engine asked the state's `GetNextPredictedMoveLocation` every tick) and the pawn still never
+   accelerated. Its animation tree (dumped with `worldWalkLog`) showed why: the top node, `Actions`
+   (`BioAnimNodeBlendByAction`), had child 10 `Gestures` at weight 1 and child 0 `Posture`, where the locomotion lives
+   (`CombatMode > NonCombat > EX_Posture > Standing > MoveStart > SkidTurn > MoveStop`), at 0. The node's update (`0xBFD3C0`)
+   picks `Gestures` whenever `BioPawn.m_bInGestures` is set, and a conversation's gesture track sets it natively for each actor
+   it animates (`0xC904A0`, when the actor's gesture starts and the flag is clear). A walker leaves the gesture mode for its
+   walk (`m_bInGestures` cleared, journalled, `worldWalkGestures = 1`); the next gesture the scene gives it puts it back, the
+   track's own way. Then the AI walks it with the game's locomotion: start, walk cycle, stop.
+
+**What it looks like in numbers** (`worldWalkLog = 1`: the walker's ankles in its mesh's space ten times a second for 3 s,
+after a `ForceSkelUpdate`, so the view's direction doesn't matter; `convo: walk: gait ...`):
+
+| Walk | Ankles over the walk | Speed | End |
+|---|---|---|---|
+| Slide (`worldWalk = 2`), gesture mode on or off | still: L (-7, -9, 11), R (-7, 10, 11) every sample | 0 (the engine zeroes the slide's velocity between ticks) | on the mark, gliding |
+| AI, gesture mode on | still | 0 | never moved (deadline) |
+| AI, gesture mode off (wake-up scene) | alternate: 29, 66, 73, 28, 31, 55, 45 units apart; forward reach -47 to +30 | 197-389 at the start step, then 130 (`WalkSpeed`) | 0.18-0.27 m from the mark |
+
+Six AI walks in the wake-up scene with the arrival rule below: five arrived 0.24-0.25 m from their marks in 0.7-2.0 s,
+one ended 1 m short at its deadline and finished on the stage's next ask for the same mark. **Seen** (the head held 40
+degrees left of the held view by a replayed recording, `make-look-recording.py --yaw`, and the game's camera at the player's
+place, `worldCamera = 1`, for that run only): Anderson mid-stride, one heel lifted, arms swinging, walking away to his mark,
+and 0.4 s later standing on it, feet together (`2026-11-11_02-00-00-395` and `-797`). With the defaults (`worldCamera = 0`):
+four of five walks arrived; one took the long way round the bed (to 1.2 m past the mark at its deadline) and came back on
+the next ask; one stopped 0.7 m short. **C-Sec's Wrex** (his `ALL` counter raised from 0) entered the move state with speed 1
+and out of the gesture mode, yet his move timed out without the state's loop running (`MoveTimer` -9.7, the state's
+`vMoveTarget` never set). Why is open. A walk the AI hasn't moved 8 units in 2 s (1 s cut the bed path short) leaves the
+person where it got to: a 2 m glide with planted feet looked worse than staying (the slide's gait, above), and that mark
+isn't tried again in the conversation (the stage asks again at every line: without that Wrex restarted every 4 s).
+
+**The rules now** (`game/ConversationWorld`, `worldWalk = 1`, the default with the world mode since this round): an AI walk
+arrives within 0.25 m on the floor (the move's own tolerance is 0.20; the stage's mark lies 0.83 m lower than the pawn's
+centre, so a 3D distance never closed), then turns to the facing the stage gave with the mark; its deadline is twice the
+walk's time plus 5 s (paths go round things); the AI's counters, its speed and the answered question are let go at any end.
+An AI that can't take the walk at all (no `BioAiController`, no behaviour) also leaves the person where it stands.
+`worldWalkLog = 1` adds the gait trace, the walker's properties, its controller's state, its animation tree (all to
+`%LOCALAPPDATA%\MEVR\walk-probe`) and a 4 s call trace of the move state's calls. The CallFunction hook goes in when AI walks
+are wanted (`WantsScriptHook`). `mevr vslot <n> <hex>` prints the exe address of an object's vtable slot (research).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -2128,3 +2197,9 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   source in the release), and the host detours the router's 93 functions to it, all at once, at the start of attach
   (the import slots alone were not the game's route; one by one, the game won the race). The same 0.9 ms between the
   ears as with the DLL replaced. Everything the game positions now gets it; gunfire not measured in combat yet.
+- 2026-11-10 23:30 to 2026-11-11 02:20, **people walk to their marks** ("People walking to their marks"; item 1). The
+  game's AI walks a person to a mark the stage asks for once four holds are lifted for that walker: its AI enable
+  counters, the conversation's ban on AI movement, its paused speed and, the one that mattered, the gesture mode, whose
+  animation node plays gestures over the locomotion branch. Measured by the walker's ankles (30-70 units apart in turn at
+  130 u/s) and seen in snapshots (Anderson mid-stride, then on his mark); five of six walks in the medical bay arrive within
+  0.25 m. C-Sec's Wrex isn't moved by the AI and stays put. `worldWalk = 1` is the world mode's default now.

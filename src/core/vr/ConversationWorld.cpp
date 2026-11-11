@@ -911,6 +911,10 @@ double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, 
     return MarkDistance(actual, {standing.x + along * delta.x, standing.y + along * delta.y, standing.z + along * delta.z});
 }
 
+int AiEnableDeficit(int counter) {
+    return counter > 0 ? 0 : 1 - counter;
+}
+
 WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double dtS) {
     double const distance = MarkDistance(standing, mark);
     if (distance <= 1e-6) {

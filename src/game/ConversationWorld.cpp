@@ -8,14 +8,17 @@
 #include "core/ik/Rigid.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
+#include "engine/CallFunction.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/ConversationHooks.hpp"
 #include "engine/VoicePlace.hpp"
 #include "game/AuthoredMoment.hpp"
+#include "game/CallTrace.hpp"
 #include "engine/SettingsFile.hpp"
 #include "engine/Skeleton.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/ConsoleRequest.hpp"
+#include "game/GalaxyDump.hpp"
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
@@ -106,12 +109,47 @@ ue3::ClassRef gTurnPawnClass{"SFXGame.BioPawn"};
 ue3::FunctionRef gTrace{"Engine.Actor.Trace"};  // the floor under an arc seat (Part B)
 ue3::FieldRef gWalkController{"Engine.Pawn", "Controller"};
 ue3::FieldRef gWalkVelocity{"Engine.Actor", "Velocity"};
+// The engine's own walking (worldWalk = 3): the pawn's acceleration toward the mark at walking pace, its physics doing the
+// rest (research/69 "Walking to marks": the conversation mode forbids AI movement, bAllowAIMovement).
+ue3::FieldRef gWalkAcceleration{"Engine.Actor", "Acceleration"};
+ue3::FieldRef gWalkPhysics{"Engine.Actor", "Physics"};
+ue3::FieldRef gWalkAccelRate{"Engine.Pawn", "AccelRate"};
+ue3::FieldRef gWalkIsWalking{"Engine.Pawn", "bIsWalking"};
 ue3::ClassRef gWalkPawnClass{"Engine.Pawn"};
 ue3::ClassRef gWalkAiClass{"SFXGame.BioAiController"};
 ue3::FunctionRef gPushMove{"SFXGame.BioAiController.PushMoveToPoint"};
 // Terminate only the movement action we pushed, never clear the actor's other AI actions.
 ue3::ClassRef gMoveDataClass{"SFXGame.BioSeqData_MoveToPoint"};
 ue3::FieldRef gMoveTerminate{"SFXGame.BioSeqData_MoveToPoint", "Terminate"};
+// The AI's own walk in a conversation (research/69 "Walking to marks", 2026-11-11). The game's move is refused unless the pawn's
+// AI is enabled (PushMoveToPoint's native asks BioAiController.CanUseStack: the behaviour's m_nALLEnabled and m_nStackEnabled
+// counters above 0; the levels start some people with their AI off, C-Sec's Wrex and officers among them), and a pushed move is
+// cancelled every tick while the game mode forbids AI movement (ShouldCancelMove asks DoesGameModeAllowMovement, false in the
+// conversation mode; the game's own BioAI_Ambient answers true). For a walker only: its counters raised to 1 for the walk and
+// lowered by as much after it, its controller's question answered true while it walks.
+ue3::FieldRef gBioComponent{"Engine.Actor", "oBioComponent"};
+ue3::ClassRef gEpicBehaviorClass{"SFXGame.BioEpicPawnBehavior"};
+ue3::FieldRef gAiAllEnabled{"SFXGame.BioEpicPawnBehavior", "m_nALLEnabled"};
+ue3::FieldRef gAiStackEnabled{"SFXGame.BioEpicPawnBehavior", "m_nStackEnabled"};
+ue3::FunctionRef gAllowMovement{"SFXGame.BioAiController.DoesGameModeAllowMovement"};
+ue3::FunctionRef gAllowMovementHenchman{"SFXGame.BioAI_Henchman.DoesGameModeAllowMovement"};
+// ... and the conversation pauses its people's controllers (BioAiController.PauseController: the pawn's desired speed forced to
+// 0), while the move state never raises it (normally AdjustGroundSpeed does, once the pawn accelerates): the walker's own
+// BioPawn.SetDesiredSpeed(1) while it walks, 0 again after it (as the move state's Cleanup).
+ue3::FunctionRef gSetDesiredSpeed{"SFXGame.BioPawn.SetDesiredSpeed"};
+// ... and the body's animation: a conversation's gesture track puts each actor it animates in the gesture mode
+// (BioPawn.m_bInGestures, set natively when its gesture starts, 0xC904A0), and the animation tree's top action node then plays
+// the gestures instead of the posture branch, where locomotion lives (BioAnimNodeBlendByAction's update, 0xBFD3C0: child 10
+// "Gestures" over child 0 "Posture"). A walker leaves the gesture mode for its walk; the next gesture the scene gives it
+// puts it back (the track's own start, as it does after any gesture mode ended).
+ue3::FieldRef gInGestures{"SFXGame.BioPawn", "m_bInGestures"};
+bool gAllowAnswerable = false;                  // the answer handler is registered (TryStartup, before the CallFunction hook)
+std::vector<ue3::Object*> gWalkingControllers;  // controllers walking one of ours: the game mode's movement ban doesn't cancel it
+int gAllowAnswers = 0;                           // times the question was answered for a walker (logged at each walk's end)
+int gAiStalled = 0;                              // AI walks the game's AI couldn't make (unavailable, or no move in 2 s): they stayed
+constexpr double kAiArriveUnits = 25.0;          // an AI walk arrives within the move's own tolerance (20) and a little
+constexpr double kAiStallS = 2.0;                // ... and slides the rest when it hasn't moved 8 units in this long (a path
+                                                 // around a bed paused 1 s in the wake-up scene, 2026-11-11)
 
 // Walking and the level's triggers (research/69 item 5): Actor.SetLocation is UWorld::FarMoveActor, which begins and ends touches
 // like any move, so a step may not change which triggers Shepard's cylinder overlaps.
@@ -166,7 +204,7 @@ struct Settings {
     bool moveTriggers = true;          // the walk never changes which triggers Shepard touches (worldMoveTriggers)
     int autoScreen = 1;                // a scene found at run time to be no place for the player: 0 off, 1 logged only, 2 shown on
                                        // the 3D screen (worldAutoScreen = off | log | on; research/69 item 3)
-    int walk = 0;                     // prototype: 0 off, 1 AI (slide fallback), 2 slide (worldWalk)
+    int walk = 1;                     // 0 off, 1 the game's AI (default since 2026-11-11), 2 slide, 3 the engine's walking physics
     float walkSettleS = 2.5f;
     float walkMinM = 0.5f;
     float walkSpeedMS = 1.4f;
@@ -187,6 +225,9 @@ struct Settings {
     // this share of what its strength leaves (worldLookReach; 0: the game's strengths for everyone).
     float lookReach = 0.4f;
     bool turnLog = false;              // worldTurnLog = 1: each looking or turning person's yaw twice a second
+    bool walkGestures = true;          // worldWalkGestures = 0: a walker keeps the conversation's gesture mode (no walk cycle)
+    bool walkLog = false;              // worldWalkLog = 1: 1 s into an AI walk, the walker's and its controller's properties
+                                       // to %LOCALAPPDATA%\MEVR\walk-probe (research/69 "Walking to marks")
     // Where the voices come from (worldVoices = spatial | game; research/69 "The voices, placed"; cw::PlaceVoice): a speaker
     // within worldVoiceWithinM of the player (kept to worldVoiceKeepM) is heard from where their head is; one further away
     // is left to the game's centred mix (the Council across its chamber: an intercom). The audio engine only pans, so the
@@ -311,7 +352,7 @@ void RefreshSettings() {
     s.wheelWidthM = number("wheelWidthM", s.wheelWidthM, 0.15f, 1.5f);
     s.wheelDistanceM = number("wheelDistanceM", s.wheelDistanceM, 0.05f, 0.8f);
     s.stay = number("worldStay", 1.0f, 0.0f, 1.0f) != 0.0f;
-    s.walk = static_cast<int>(number("worldWalk", 0.0f, 0.0f, 2.0f));
+    s.walk = static_cast<int>(number("worldWalk", 1.0f, 0.0f, 3.0f));
     s.walkSettleS = number("worldWalkSettleS", s.walkSettleS, 0.0f, 60.0f);
     s.walkMinM = number("worldWalkMinM", s.walkMinM, 0.0f, 6.0f);
     s.walkSpeedMS = number("worldWalkSpeedMS", s.walkSpeedMS, 0.1f, 3.0f);
@@ -320,6 +361,8 @@ void RefreshSettings() {
         s.turnRule = cw::ParseTurnRule(*text, cw::TurnRule::Roles);
     }
     s.turnLog = number("worldTurnLog", 0.0f, 0.0f, 1.0f) != 0.0f;
+    s.walkLog = number("worldWalkLog", 0.0f, 0.0f, 1.0f) != 0.0f;
+    s.walkGestures = number("worldWalkGestures", 1.0f, 0.0f, 1.0f) != 0.0f;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldVoices")) {
         std::string const v = ini::Lower(ini::Trim(*text));
         s.voices = !(v == "game" || v == "off" || v == "0" || v == "centre" || v == "center");
@@ -828,10 +871,25 @@ struct Stay {
     ik::Vec3 place;
     double shownYaw = 0.0;
     int kept = 0;
+    int marksAsked = 0;            // the stage's asks to move it onto another mark (withheld at the source), this conversation
     cw::MarkWalk walk;
-    int method = 0;               // the method chosen for this walk (1 AI, 2 slide)
+    int method = 0;               // the method chosen for this walk (1 AI, 2 slide, 3 the engine's walking)
+    std::optional<double> walkFacing;  // the facing the stage gave with the mark (applied at the ask): taken on arrival
+    std::optional<bool> wasWalking;    // Pawn.bIsWalking before a walk of method 3, put back after it
+    ik::Vec3 progressFrom;             // method 3: where it stood at the last progress check, and when
+    double progressS = 0.0;
     int requestedMethod = 0;      // detect a live setting change even after falling back to slide
     ue3::Object* moveAction = nullptr;
+    ue3::Object* walkBehavior = nullptr;    // method 1: the behaviour whose AI counters the walk raised, by how much,
+    int allRaised = 0;
+    int stackRaised = 0;
+    ue3::Object* walkController = nullptr;  // ... and the controller whose movement question is answered while it walks
+    int answersAtStart = 0;
+    std::optional<ik::Vec3> aiRefused;      // a mark the game's AI couldn't walk it to: not tried again this conversation
+    double probeS = 0.0;                    // worldWalkLog: when this walk's properties are written (0: written or none)
+    double gaitS = 0.0;                     // ... the next line of its gait trace, and when the walk began
+    double gaitStartS = 0.0;
+    int gesturesLeft = 0;                   // times this walk took the walker out of the gesture mode
     double deadlineS = 0.0;
     double speedUnitsPerS = 0.0;
     bool tracked = false;  // a matinee's move track moves this actor (an authored walk): never undone
@@ -863,19 +921,43 @@ std::vector<Stay> gStay;
 std::uint64_t gStayMs = 0;
 bool gInWorldForStay = false;  // set by Tick: the world view is up
 
+std::string ShortName(ue3::Object const* o);
+double Seconds();
+cw::Vec3 WalkPoint(ik::Vec3 v);
+
 // The game's own placement function asks (engine/ConversationHooks; research/69 item 4): after the accepted opening a person of
 // this conversation is not put on a stage mark; the call's facing still applies. Called on the game thread from inside the
-// conversation's code: it reads the mod's own state and nothing of the engine. Not with the walk-to-marks prototype, which
-// learns each mark from the jump.
+// conversation's code: it reads the mod's own state and nothing of the engine. Each ask for another place is logged and, with
+// walking to marks on (worldWalk), becomes the mark the person walks to (research/69 "Walking to marks").
 bool KeepAtSource(void const* conversation, void const* actor, float const* location) {
-    if (!gC.on || !gC.world || !gInWorldForStay || !gSettings.stay || !gSettings.staySource || gSettings.walk != 0 || !gC.openingDone ||
+    if (!gC.on || !gC.world || !gInWorldForStay || !gSettings.stay || !gSettings.staySource || !gC.openingDone ||
         conversation != gC.object) {
         return false;
     }
-    for (Stay const& st : gStay) {
+    for (Stay& st : gStay) {
         if (st.actor == actor) {
             ++gC.sourceKept;
-            gC.sourceFarUnits = std::max(gC.sourceFarUnits, std::hypot(location[0] - st.place.x, location[1] - st.place.y));
+            double const away = std::hypot(location[0] - st.place.x, location[1] - st.place.y);
+            gC.sourceFarUnits = std::max(gC.sourceFarUnits, away);
+            ik::Vec3 const mark{location[0], location[1], location[2]};
+            // Asked again for the mark it is already walking to or waiting for: nothing new.
+            bool const same = st.walk.Phase() != cw::WalkPhase::Idle &&
+                std::hypot(location[0] - st.walk.Wanted().x, location[1] - st.walk.Wanted().y) < 30.0;
+            if (away > 30.0 && !same) {
+                ++st.marksAsked;
+                bool const refused = st.aiRefused && std::hypot(location[0] - st.aiRefused->x, location[1] - st.aiRefused->y) < 30.0;
+                log::Info("convo: at {:.1f} s the stage asks {} onto a mark {:.2f} m away ({} ask{} for it so far; {} speaking): withheld{}",
+                    Seconds(), st.name, away / kUnitsPerMeter, st.marksAsked, st.marksAsked == 1 ? "" : "s", ShortName(gC.speaker),
+                    gSettings.walk == 0 ? "" : refused ? " (the game's AI couldn't walk it there before)" : ", a mark to walk to");
+                if (gSettings.walk != 0 && !refused) {
+                    st.walk.Jump(WalkPoint(mark), WalkPoint(st.place), static_cast<double>(GetTickCount64()) / 1000.0,
+                        gSettings.walkMinM * kUnitsPerMeter);
+                }
+            } else if (away <= 30.0 && st.walk.Phase() == cw::WalkPhase::Waiting) {
+                // Asked back onto where it stands before its walk began: the earlier mark was the camera's, not a move.
+                st.walk.End();
+                log::Info("convo: at {:.1f} s the stage asks {} back onto where it stands: its pending walk dropped", Seconds(), st.name);
+            }
             return true;
         }
     }
@@ -1020,10 +1102,63 @@ bool WalkVelocity(ue3::Object* actor, ik::Vec3 velocity) {
     return true;
 }
 
+// A counter of the AI's enables raised to 1 for a walk (journalled); returns by how much.
+int RaiseAiCounter(ue3::FieldRef& field, ue3::Object* behavior) {
+    std::int32_t* const value = field.In<std::int32_t>(behavior);
+    int const by = value != nullptr ? cw::AiEnableDeficit(*value) : 0;
+    if (by == 0) {
+        return 0;
+    }
+    *value += by;
+    write_journal::Wrote("ConversationWorld.aiEnabled", value, sizeof(*value));
+    return by;
+}
+
+void LowerAiCounter(ue3::FieldRef& field, ue3::Object* behavior, int by) {
+    std::int32_t* const value = by > 0 ? field.In<std::int32_t>(behavior) : nullptr;
+    if (value == nullptr) {
+        return;
+    }
+    *value -= by;  // by what the walk added: any change the game made meanwhile stands
+    write_journal::Wrote("ConversationWorld.aiEnabled", value, sizeof(*value));
+}
+
+// BioPawn.SetDesiredSpeed(speed, bForce) on a walker (game thread).
+bool SetWalkerSpeed(ue3::Object* pawn, float speed, bool force) {
+    ue3::Function* const f = gSetDesiredSpeed.Get();
+    if (f == nullptr || pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gTurnPawnClass.Get() == nullptr || !ue3::IsA(pawn, gTurnPawnClass)) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), f);
+    return p.Valid() && p.Set("fDesiredSpeed", speed) && p.SetBool("bForce", force) && ue3::runtime::Call(pawn, f, p);
+}
+
+// The walk's hold on the AI let go: its counters as the level had them, its controller no longer answered for.
+void ReleaseAi(Stay& st) {
+    if (st.walkController != nullptr) {
+        SetWalkerSpeed(st.actor, 0.0f, false);  // as the move state's own Cleanup
+    }
+    if (st.walkBehavior != nullptr && ue3::runtime::IsAlive(st.walkBehavior) && ue3::IsA(st.walkBehavior, gEpicBehaviorClass)) {
+        LowerAiCounter(gAiAllEnabled, st.walkBehavior, st.allRaised);
+        LowerAiCounter(gAiStackEnabled, st.walkBehavior, st.stackRaised);
+        if (st.allRaised + st.stackRaised > 0) {
+            log::Info("convo: walk: {}'s AI switched off again as the level had it", st.name);
+        }
+    }
+    if (st.walkController != nullptr) {
+        std::erase(gWalkingControllers, st.walkController);
+        log::Info("convo: walk: the game mode's ban on AI movement answered {} times for {}", gAllowAnswers - st.answersAtStart, st.name);
+    }
+    st.walkBehavior = nullptr;
+    st.walkController = nullptr;
+    st.allRaised = st.stackRaised = 0;
+}
+
 void EndWalk(Stay& st, char const* event, char const* why) {
     if (st.walk.Phase() == cw::WalkPhase::Idle) {
         return;
     }
+    ReleaseAi(st);
     bool const running = st.walk.Phase() == cw::WalkPhase::Walking;
     if (st.moveAction != nullptr && ue3::runtime::IsAlive(st.moveAction) && ue3::IsA(st.moveAction, gMoveDataClass)) {
         if (!gMoveTerminate.WriteBool(st.moveAction, true)) {  // FieldRef journals the bitfield write
@@ -1032,12 +1167,22 @@ void EndWalk(Stay& st, char const* event, char const* why) {
     }
     if (running && ue3::runtime::IsAlive(st.actor)) {
         WalkVelocity(st.actor, {});
+        if (st.method == 3) {
+            if (ue3::Vector* const accel = gWalkAcceleration.In<ue3::Vector>(st.actor)) {
+                *accel = {};
+                write_journal::Wrote("ConversationWorld.walkAcceleration", accel, sizeof(*accel));
+            }
+            if (st.wasWalking) {
+                gWalkIsWalking.WriteBool(st.actor, *st.wasWalking);  // journalled by FieldRef
+            }
+        }
+        st.wasWalking.reset();
         if (auto const at = player::Location(st.actor)) {
             st.place = V(*at);
         }
     }
     log::Info("convo: walk: {} {} at {} ({}, {})", event, st.name, F(st.place),
-        running ? (st.method == 1 ? "ai" : "slide") : "pending", why);
+        running ? (st.method == 1 ? "ai" : st.method == 3 ? "the engine's walking" : "slide") : "pending", why);
     st.moveAction = nullptr;
     st.walk.End();
 }
@@ -1064,17 +1209,189 @@ char const* StartAiWalk(Stay& st) {
     if (!p.Valid() || !p.Set("vLoc", EnginePoint(WalkPoint(st.walk.Wanted()))) || !p.Set("PointTolerance", 10.0f) ||
         !p.SetBool("bWalking", true) || !p.SetBool("bRequiresPrecisionMovement", true) || p.ReturnSpec() == nullptr ||
         p.ReturnSpec()->size != static_cast<std::int32_t>(sizeof(ue3::Object*))) return "PushMoveToPoint parameter lookup failed";
-    if (!ue3::runtime::Call(ai, fn, p)) return "PushMoveToPoint call failed";
-    st.moveAction = p.Return<ue3::Object*>().value_or(nullptr);
-    if (st.moveAction == nullptr || !ue3::runtime::IsAlive(st.moveAction)) {
-        st.moveAction = nullptr;
-        return "PushMoveToPoint returned no live move action";
+    ue3::Object* const behavior = gBioComponent.Read<ue3::Object*>(st.actor).value_or(nullptr);
+    if (behavior == nullptr || !ue3::runtime::IsAlive(behavior) || gEpicBehaviorClass.Get() == nullptr ||
+        !ue3::IsA(behavior, gEpicBehaviorClass) || gAiAllEnabled.Get() == nullptr || gAiStackEnabled.Get() == nullptr) {
+        return "no BioEpicPawnBehavior with the AI's enable counters";
     }
-    if (!ue3::IsA(st.moveAction, gMoveDataClass)) {
-        st.moveAction = nullptr;
-        return "PushMoveToPoint returned an unexpected action class";
+    if (!gAllowAnswerable || !engine::call_function::Installed()) {
+        return "the game mode's ban on AI movement can't be answered (no CallFunction hook)";
     }
-    return nullptr;
+    // The AI's hold for the walk, before the move is asked (its native checks the counters at once).
+    st.walkBehavior = behavior;
+    int const allWas = gAiAllEnabled.Read<std::int32_t>(behavior).value_or(0);
+    int const stackWas = gAiStackEnabled.Read<std::int32_t>(behavior).value_or(0);
+    st.allRaised = RaiseAiCounter(gAiAllEnabled, behavior);
+    st.stackRaised = RaiseAiCounter(gAiStackEnabled, behavior);
+    st.walkController = ai;
+    st.answersAtStart = gAllowAnswers;
+    gWalkingControllers.push_back(ai);
+    if (st.allRaised + st.stackRaised > 0) {
+        log::Info("convo: walk: {}'s AI switched on for the walk (the level had it off: ALL {}, Stack {})", st.name, allWas, stackWas);
+    }
+    char const* why = nullptr;
+    if (!ue3::runtime::Call(ai, fn, p)) {
+        why = "PushMoveToPoint call failed";
+    } else {
+        st.moveAction = p.Return<ue3::Object*>().value_or(nullptr);
+        if (st.moveAction == nullptr || !ue3::runtime::IsAlive(st.moveAction)) {
+            why = "PushMoveToPoint returned no live move action";
+        } else if (!ue3::IsA(st.moveAction, gMoveDataClass)) {
+            why = "PushMoveToPoint returned an unexpected action class";
+        }
+    }
+    if (why != nullptr) {
+        st.moveAction = nullptr;
+        ReleaseAi(st);
+    }
+    return why;
+}
+
+// worldWalkLog: whether a walker's legs walk. Its ankles in its mesh's own space ten times a second for the walk's first
+// 3 s: a walk cycle swings them forward and back in turn (tens of units), a glide in a standing pose keeps them still.
+std::map<ue3::Object const*, std::pair<int, int>> gAnkleBones;  // skeletal mesh asset -> its left and right ankle (-1: none)
+ue3::FunctionRef gForceSkelUpdate{"Engine.SkeletalMeshComponent.ForceSkelUpdate"};  // a mesh out of view isn't posed by itself
+void TraceGait(Stay& st, double nowS, double startS) {
+    ue3::Object* const mesh = player::Mesh(st.actor);
+    ue3::Object* const asset = mesh != nullptr ? player::SkeletalMesh(mesh) : nullptr;
+    if (asset == nullptr) {
+        return;
+    }
+    auto it = gAnkleBones.find(asset);
+    if (it == gAnkleBones.end()) {
+        std::pair<int, int> bones{-1, -1};
+        if (auto const skeleton = engine::skeleton::ReadRefSkeleton(mesh)) {
+            for (std::size_t i = 0; i < skeleton->names.size(); ++i) {
+                std::string const name = ini::Lower(skeleton->names[i]);
+                if (name == "leftankle") bones.first = static_cast<int>(i);
+                if (name == "rightankle") bones.second = static_cast<int>(i);
+            }
+        }
+        it = gAnkleBones.emplace(asset, bones).first;
+    }
+    if (ue3::Function* const force = gForceSkelUpdate.Get()) {
+        ue3::Params parms(ue3::runtime::Get(), force);
+        ue3::runtime::Call(mesh, force, parms);  // the pose as of now, wherever the view points (game thread)
+    }
+    auto const bases = engine::skeleton::SpaceBases(mesh);
+    auto at = [&](int bone) -> std::optional<ik::Vec3> {
+        if (bone < 0 || static_cast<std::size_t>(bone) >= bases.size()) return std::nullopt;
+        return engine::skeleton::ToTransform(bases[static_cast<std::size_t>(bone)]).translation;
+    };
+    auto const left = at(it->second.first);
+    auto const right = at(it->second.second);
+    auto const velocity = gWalkVelocity.Read<ue3::Vector>(st.actor);
+    if (!left || !right) {
+        return;
+    }
+    log::Info("convo: walk: gait {} +{:.1f} s: ankles L ({:.0f}, {:.0f}, {:.0f}) R ({:.0f}, {:.0f}, {:.0f}), apart {:.0f}; speed {:.0f} u/s",
+        st.name, nowS - startS, left->x, left->y, left->z, right->x, right->y, right->z, ik::Length(*left - *right),
+        velocity ? std::hypot(velocity->x, velocity->y) : -1.0);
+}
+
+// worldWalkLog: the walker's animation tree as it stands (each blend's children and weights, each sequence's animation, rate
+// and time), as text: what the conversation has the body play while it is moved.
+ue3::ClassRef gTreeBlendBase{"Engine.AnimNodeBlendBase"};
+ue3::ClassRef gTreeSequence{"Engine.AnimNodeSequence"};
+ue3::FieldRef gTreeAnimations{"Engine.SkeletalMeshComponent", "Animations"};
+ue3::FieldRef gTreeNodeName{"Engine.AnimNode", "NodeName"};
+ue3::FieldRef gTreeChildren{"Engine.AnimNodeBlendBase", "Children"};
+ue3::FieldRef gTreeChildName{gTreeChildren, "Name"};
+ue3::FieldRef gTreeChildAnim{gTreeChildren, "Anim"};
+ue3::FieldRef gTreeChildWeight{gTreeChildren, "Weight"};
+ue3::FieldRef gTreeSeqName{"Engine.AnimNodeSequence", "AnimSeqName"};
+ue3::FieldRef gTreeSeqRate{"Engine.AnimNodeSequence", "Rate"};
+ue3::FieldRef gTreeSeqTime{"Engine.AnimNodeSequence", "CurrentTime"};
+ue3::FieldRef gTreeSeqPlaying{"Engine.AnimNodeSequence", "bPlaying"};
+void DumpTree(ue3::Object* node, int depth, std::vector<ue3::Object const*>& seen, std::string& out) {
+    if (node == nullptr || depth > 24 || seen.size() > 400 || std::find(seen.begin(), seen.end(), node) != seen.end()) {
+        return;
+    }
+    seen.push_back(node);
+    ue3::Reflection& r = ue3::runtime::Get();
+    auto text = [&](std::optional<ue3::Name> n) { return n ? r.ToString(*n) : std::string("?"); };
+    std::string const name = text(gTreeNodeName.Read<ue3::Name>(node));
+    std::string const pad(static_cast<std::size_t>(depth) * 2, ' ');
+    std::string const cls = r.ToString(r.NameOf(r.ClassOf(node)));
+    if (ue3::IsA(node, gTreeSequence)) {
+        out += std::format("{}{} [{}] seq {} rate {:.2f} t {:.2f} {}\n", pad, name, cls, text(gTreeSeqName.Read<ue3::Name>(node)),
+            gTreeSeqRate.Read<float>(node).value_or(-1.0f), gTreeSeqTime.Read<float>(node).value_or(-1.0f),
+            gTreeSeqPlaying.ReadBool(node).value_or(false) ? "playing" : "stopped");
+        return;
+    }
+    out += std::format("{}{} [{}]\n", pad, name, cls);
+    if (!ue3::IsA(node, gTreeBlendBase)) {
+        return;
+    }
+    if (std::optional<ue3::Elements> const children = gTreeChildren.ElementsOf(node, 64)) {
+        for (std::int32_t i = 0; i < children->count; ++i) {
+            float const weight = gTreeChildWeight.Read<float>(children->At(i)).value_or(-1.0f);
+            std::string const child = text(gTreeChildName.Read<ue3::Name>(children->At(i)));
+            out += std::format("{}  - child {} '{}' weight {:.2f}\n", pad, i, child, weight);
+            if (weight > 0.001f || i == 0) {  // what shows (an additive node's base input reads weight 0 and always shows)
+                DumpTree(gTreeChildAnim.Read<ue3::Object*>(children->At(i)).value_or(nullptr), depth + 2, seen, out);
+            }
+        }
+    }
+}
+
+// worldWalkLog: what holds an AI walk still, 1 s in: the controller's state and both objects' properties, to a file each.
+ue3::FunctionRef gGetStateName{"Core.Object.GetStateName"};
+void ProbeWalk(Stay& st) {
+    st.probeS = 0.0;
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::string state = "?";
+    if (ue3::Function* const f = gGetStateName.Get(); f != nullptr && st.walkController != nullptr && r.IsAlive(st.walkController)) {
+        ue3::Params p(r, f);
+        if (p.Valid() && ue3::runtime::Call(st.walkController, f, p)) {
+            state = r.ToString(p.Return<ue3::Name>().value_or(ue3::Name{}));
+        }
+    }
+    wchar_t buffer[MAX_PATH] = {};
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
+        return;
+    }
+    std::filesystem::path const folder = std::filesystem::path(buffer) / L"MEVR" / L"walk-probe";
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    auto write = [&](ue3::Object* o, char const* what) {
+        if (o == nullptr || !r.IsAlive(o)) {
+            return;
+        }
+        std::filesystem::path const file = folder / std::format("{}-{}-{}.json", st.name, what, GetTickCount64());
+        if (FILE* out = _wfopen(file.c_str(), L"wb")) {
+            std::string const text = galaxy_dump::Props(o);
+            std::fwrite(text.data(), 1, text.size(), out);
+            std::fclose(out);
+        }
+    };
+    write(st.actor, "pawn");
+    write(st.walkController, "controller");
+    write(st.walkBehavior, "behavior");
+    if (ue3::Object* const mesh = player::Mesh(st.actor)) {
+        std::string tree;
+        std::vector<ue3::Object const*> seen;
+        DumpTree(gTreeAnimations.Read<ue3::Object*>(mesh).value_or(nullptr), 0, seen, tree);
+        std::filesystem::path const file = folder / std::format("{}-tree-{}.txt", st.name, GetTickCount64());
+        if (FILE* out = _wfopen(file.c_str(), L"wb")) {
+            std::fwrite(tree.data(), 1, tree.size(), out);
+            std::fclose(out);
+        }
+    }
+    log::Info("convo: walk: {} 1 s into its AI walk: the controller's state {}, the properties in {}", st.name, state, ini::Utf8(folder));
+}
+
+// BioAiController.DoesGameModeAllowMovement (and the henchman's): true for a controller walking one of ours, so the game's
+// ShouldCancelMove keeps its move in the conversation mode. Game thread (the script VM).
+bool OnAllowMovement(ue3::Object* context, ue3::Function* /*function*/, ue3::Function* /*caller*/, std::uint8_t* /*locals*/,
+    void* result) {
+    if (result == nullptr || gWalkingControllers.empty() ||
+        std::find(gWalkingControllers.begin(), gWalkingControllers.end(), context) == gWalkingControllers.end()) {
+        return false;
+    }
+    *static_cast<std::uint32_t*>(result) = 1;
+    ++gAllowAnswers;
+    return true;
 }
 
 // Advances a walk and returns whether its travel heading owns the turn this frame.
@@ -1091,29 +1408,117 @@ bool WalkToMark(Stay& st, ik::Vec3 previousKept, double nowS, double dt, double&
             st.speedUnitsPerS = gSettings.walkSpeedMS * kUnitsPerMeter;
             double const distance = Dist(st.place, WalkPoint(st.walk.Wanted()));
             st.deadlineS = nowS + distance / st.speedUnitsPerS + 3.0;
+            if (gSettings.walk == 1) {
+                st.deadlineS += distance / st.speedUnitsPerS + 2.0;  // the AI's path may go round things, and it starts and stops
+            }
             if (st.method == 1) {
+                st.progressFrom = st.place;  // a walk the AI doesn't move within a second slides the rest (below)
+                st.progressS = nowS;
                 if (char const* why = StartAiWalk(st)) {
-                    st.method = 2;
-                    log::Info("convo: walk: {} ai unavailable: {}; falling back to slide for this walk", st.name, why);
+                    // A glide with the feet planted looks worse than staying: the person keeps its place (worldWalk = 2 slides).
+                    log::Info("convo: walk: {} ai unavailable: {}; it stays where it stands", st.name, why);
+                    ++gAiStalled;
+                    st.aiRefused = WalkPoint(st.walk.Wanted());
+                    st.walk.End();
+                    return false;
+                } else if (gSettings.walkLog) {
+                    st.probeS = nowS + 1.0;  // (the slide too, below)
+                    log::Info("convo: walk: {}", call_trace::Start(4.0, {"InitState", "PointReachable", "FindPathTo", "GetNextPathNode",
+                        "PrecisionMoveTo", "ReachedDestination", "GetMoveTolerance", "NeedPrecisionMovement", "LeaderCanITeleport",
+                        "HandleTeleport", "CanUseStack", "PopState", "MoveTo"}));
                 }
             }
+            if (st.method == 3) {
+                // The engine walks it: a pawn on the ground (PHYS_Walking) with an acceleration field. Its facing as the stage
+                // left it (the withheld placement applied it) is where it ends up.
+                auto const physics = gWalkPhysics.Read<std::uint8_t>(st.actor);
+                if (!physics || *physics != 1 || gWalkAcceleration.In<ue3::Vector>(st.actor) == nullptr) {
+                    st.method = 2;
+                    log::Info("convo: walk: {} not on the ground under the engine's walking (physics {}): sliding instead", st.name,
+                        physics ? static_cast<int>(*physics) : -1);
+                } else {
+                    st.wasWalking = gWalkIsWalking.ReadBool(st.actor);
+                    gWalkIsWalking.WriteBool(st.actor, true);  // the walking pace (GroundSpeed x WalkingPct)
+                    st.progressFrom = st.place;
+                    st.progressS = nowS;
+                }
+            }
+            if (auto const rot = player::Rotation(st.actor)) {
+                st.walkFacing = YawDeg(*rot);
+            }
             ++gC.walks;
+            st.gesturesLeft = 0;
+            st.gaitStartS = nowS;
+            st.gaitS = gSettings.walkLog ? nowS : 0.0;
+            if (gSettings.walkLog && st.probeS == 0.0) {
+                st.probeS = nowS + 1.0;
+            }
             log::Info("convo: walk: start {} from {} to {}, {:.2f} m, method {}", st.name, F(st.place),
-                F(WalkPoint(st.walk.Wanted())), distance / kUnitsPerMeter, st.method == 1 ? "ai" : "slide");
+                F(WalkPoint(st.walk.Wanted())), distance / kUnitsPerMeter, st.method == 1 ? "ai" : st.method == 3 ? "the engine's walking" : "slide");
         } else if (st.walk.Phase() == cw::WalkPhase::Idle) {
             log::Info("convo: walk: cancel {} pending mark: already within worldWalkMinM", st.name);
         }
     }
     if (st.walk.Phase() != cw::WalkPhase::Walking) return false;
+    if (gSettings.walkGestures && gTurnPawnClass.Get() != nullptr && ue3::IsA(st.actor, gTurnPawnClass) &&
+        gInGestures.ReadBool(st.actor).value_or(false)) {
+        gInGestures.WriteBool(st.actor, false);  // journalled by FieldRef
+        if (st.gesturesLeft++ == 0) {
+            log::Info("convo: walk: {} leaves the conversation's gesture mode for its walk (its legs walk)", st.name);
+        }
+    }
+    if (gSettings.walkLog && st.gaitS > 0.0 && nowS >= st.gaitS) {
+        TraceGait(st, nowS, st.gaitStartS);
+        st.gaitS = nowS - st.gaitStartS < 3.0 ? nowS + 0.1 : 0.0;
+    }
+    if (st.method == 1 && st.walkController != nullptr) {
+        SetWalkerSpeed(st.actor, 1.0f, false);  // the paused controller's speed, each tick (the game may zero it again)
+    }
+    if (st.probeS > 0.0 && nowS >= st.probeS) {
+        ProbeWalk(st);
+    }
     ik::Vec3 const mark = WalkPoint(st.walk.Wanted());
+    if (st.method == 1) {
+        // The game's AI walks it (its own locomotion: start, walk cycle, stop). Its place is what the AI made; it arrives within
+        // the move's own tolerance (20 units, the state's GetMoveTolerance), measured on the floor (the stage's mark lies lower).
+        auto const actual = player::Location(st.actor);
+        if (!actual) {
+            EndWalk(st, "end", "actor location lookup failed");
+            return false;
+        }
+        st.place = V(*actual);
+        double const flat = std::hypot(mark.x - st.place.x, mark.y - st.place.y);
+        if (flat <= kAiArriveUnits) {
+            EndWalk(st, "arrival", std::format("reached the mark by the game's AI, {:.2f} m from it", flat / kUnitsPerMeter).c_str());
+            if (st.walkFacing) {
+                st.facingGoal = *st.walkFacing;  // the stage's facing for the mark, as a turn
+            }
+            return false;
+        }
+        if (nowS - st.progressS >= kAiStallS) {
+            if (std::hypot(st.place.x - st.progressFrom.x, st.place.y - st.progressFrom.y) < 8.0) {
+                // The AI holds still (C-Sec's Wrex, 2026-11-11: its move timed out without its loop running): it stays where it
+                // got to, as a glide with planted feet would look worse.
+                ++gAiStalled;
+                st.aiRefused = mark;
+                EndWalk(st, "end", std::format("the game's AI didn't move it 8 units in {:.1f} s; it stays here", nowS - st.progressS).c_str());
+                return false;
+            }
+            st.progressFrom = st.place;
+            st.progressS = nowS;
+        }
+    }
     ik::Vec3 const travel = mark - st.place;
-    if (Dist(st.place, mark) <= (st.method == 1 ? 10.0 : 0.01)) {
+    if (st.method == 2 && Dist(st.place, mark) <= 0.01) {
         // The AI has a small point tolerance; settle its last centimetres onto the exact mark if collision permits it.
         if (PutAt(st.actor, mark)) {
             auto const actual = player::Location(st.actor);
             if (actual) st.place = V(*actual);
             if (Dist(st.place, mark) <= 0.01) {
                 EndWalk(st, "arrival", "reached the mark");
+                if (st.method == 1 && st.walkFacing) {
+                    st.facingGoal = *st.walkFacing;  // the stage's facing for the mark, as a turn
+                }
                 return false;
             }
         }
@@ -1123,6 +1528,51 @@ bool WalkToMark(Stay& st, ik::Vec3 previousKept, double nowS, double dt, double&
         return false;
     }
     if (std::hypot(travel.x, travel.y) > 0.01) heading = std::atan2(travel.y, travel.x) * kRadToDeg;
+    if (st.method == 3) {
+        // The engine walks it: acceleration along the floor toward the mark each tick; its place is what the physics made.
+        auto const actual = player::Location(st.actor);
+        if (!actual) {
+            EndWalk(st, "end", "actor location lookup failed");
+            return false;
+        }
+        st.place = V(*actual);
+        double const flat = std::hypot(mark.x - st.place.x, mark.y - st.place.y);
+        if (flat <= 25.0) {
+            EndWalk(st, "arrival", "reached the mark (the engine's walking)");
+            if (st.walkFacing) {
+                st.facingGoal = *st.walkFacing;  // the stage's facing for the mark, as a turn
+            }
+            return false;
+        }
+        if (nowS - st.progressS >= 0.75) {
+            if (Dist(st.place, st.progressFrom) < 8.0) {
+                // Nothing moves it (blocked, or its own code holds it): the rest by sliding.
+                log::Info("convo: walk: {} didn't move under the engine's walking in {:.2f} s ({:.0f} units): sliding the rest", st.name,
+                    nowS - st.progressS, Dist(st.place, st.progressFrom));
+                if (ue3::Vector* const accel = gWalkAcceleration.In<ue3::Vector>(st.actor)) {
+                    *accel = {};
+                    write_journal::Wrote("ConversationWorld.walkAcceleration", accel, sizeof(*accel));
+                }
+                if (st.wasWalking) {
+                    gWalkIsWalking.WriteBool(st.actor, *st.wasWalking);
+                    st.wasWalking.reset();
+                }
+                st.method = 2;
+                return true;
+            }
+            st.progressFrom = st.place;
+            st.progressS = nowS;
+        }
+        double const rate = static_cast<double>(gWalkAccelRate.Read<float>(st.actor).value_or(2048.0f));
+        if (ue3::Vector* const accel = gWalkAcceleration.In<ue3::Vector>(st.actor)) {
+            accel->x = static_cast<float>((mark.x - st.place.x) / flat * rate);
+            accel->y = static_cast<float>((mark.y - st.place.y) / flat * rate);
+            accel->z = 0.0f;
+            write_journal::Wrote("ConversationWorld.walkAcceleration", accel, sizeof(*accel));
+        }
+        gWalkIsWalking.WriteBool(st.actor, true);
+        return true;
+    }
     if (st.method == 2 && dt > 0.0) {
         // Velocity can also be integrated by the engine between camera updates. Step from the previous DRAWN/kept place,
         // so that engine motion and our SetLocation together advance one speed * dt, rather than doubling the slide speed.
@@ -3602,6 +4052,17 @@ void TryStartup() {
         return;
     }
     engine::process_event::AddPostHandler(update, &OnUpdateCamera);
+    // The AI's walk to a mark: the game mode's movement ban answered for walkers (before the CallFunction hook goes in).
+    ue3::Reflection& reflection = ue3::runtime::Get();
+    for (ue3::Function* const f : {gAllowMovement.Get(), gAllowMovementHenchman.Get()}) {
+        if (f != nullptr && reflection.Parameters(f).size() == 1 && reflection.ParmsSize(f) == 4) {  // only the bool return value
+            engine::call_function::AddAnswerHandler(f, &OnAllowMovement);
+            gAllowAnswerable = true;
+        }
+    }
+    if (!gAllowAnswerable) {
+        log::Warn("convo: BioAiController.DoesGameModeAllowMovement not found (or has parameters): walks to marks slide");
+    }
 }
 
 // A scene whose shots are framed from far off is composed for a camera somewhere else (research/59's survey: the framed set
@@ -3623,6 +4084,10 @@ void CheckFarShots() {
 
 bool WantsHooks() {
     return CurrentMode() == cw::Mode::World;
+}
+
+bool WantsScriptHook() {
+    return gAllowAnswerable && gSettings.stay && gSettings.walk == 1 && CurrentMode() == cw::Mode::World;
 }
 
 void Tick(double deltaSeconds, Link const& link) {
@@ -3942,6 +4407,10 @@ std::string StatusJson() {
 void LogStats() {
     if (gInWorld) {
         log::Info("convo: in the world for {} ticks (conversation {}, {} shots so far)", gWorldTicks, gC.number, gC.shots);
+    }
+    if (gAiStalled != 0) {
+        log::Info("convo: walk: {} walks to a mark the game's AI couldn't make since the last line like this (they stayed)", gAiStalled);
+        gAiStalled = 0;
     }
     if (engine::voice_place::Installed()) {
         engine::voice_place::Stats const v = engine::voice_place::Take();

@@ -27,6 +27,9 @@ void TryStartup();
 void Tick(double deltaSeconds, Link const& link);
 // The world mode is asked for: the conversation hooks (engine/ConversationHooks; research/69) should go in.
 bool WantsHooks();
+// ... and people walk to their marks by the game's AI (worldWalk = 1): the CallFunction hook should go in too (its answer to
+// BioAiController.DoesGameModeAllowMovement; research/69 "Walking to marks").
+bool WantsScriptHook();
 // A conversation is shown in the world now (arm IK keeps Shepard's arms on the controllers as on foot).
 bool InWorld();
 // A matinee's move of the player's pawn is to be withheld (worldMoments = walk; research/69 "Authored scenes"): asked from

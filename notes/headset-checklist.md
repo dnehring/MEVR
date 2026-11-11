@@ -209,12 +209,13 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   sense of place without competing with it (too bright or too dark: `[Cinematics] backdropBrightness`, live; off: `backdrop = 0`).
   Entering and leaving a cutscene or conversation: a short dip from black instead of a hard cut, smooth, not too long or too
   short (`[Cinematics] fadeS`, 0.35 s, live; 0 off).
-- [ ] **Walking to marks prototype** (built 2026-11-06, session: codex/convo-walk; First person itself QA-approved 2026-11-07,
-  research/59): with conversations in the world and
-  `worldStay = 1`, try `worldWalk = 1` (AI/slide fallback) and `2` (slide). Lasting marks should wait 2.5 s then walk; bouncing
-  marks and observed returns should cancel; Shepard stays kept. Check locomotion/gestures, turns, collision/timeout, no drawn
-  jumps, and no stale velocity or AI move on disable/end. Native returns exactly at the already-kept place cannot be detected
-  by position sampling alone. Still off by default; NOT yet checked in the game. (research/59 "Walking to marks (prototype)")
+- [ ] **People walk to their marks** (2026-11-11, research/69 "People walking to their marks"; `[Cinematics] worldWalk = 1`, the
+  default with First person): in the medical bay scene on the Normandy (Anderson, Ashley), when the scene moves someone to
+  another place they turn and walk there with their own walk, not a slide or a jump, and stop on it; seen on the fake headset
+  (Anderson mid-stride, then standing on his mark; the ankles alternate 30-70 units apart at 130 u/s). Watch for: gestures
+  coming back on their next line, a walker turning to face the scene once there, anyone walking through a bed or a person,
+  and C-Sec's Wrex, whom the game's AI does not move (he stays where he stands; the log says `the game's AI didn't move it`).
+  `worldWalk = 0` off, `2` the old slide.
 - [ ] **Walking during conversations** (built 2026-11-09; checked on the fake headset with `mevr convo walk`: 5.47 m during the
   Garrus wheel conversation, nobody snapped; the squad stays put; a 0.7 m clearance around people built after it, unchecked:
   walk straight at Garrus and you should go around him; research/59 "Walking during conversations";

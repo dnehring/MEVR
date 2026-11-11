@@ -137,6 +137,10 @@ struct WalkStep {
     bool arrived = false;
 };
 WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double dtS);
+// The AI's walk to a mark (research/69 "Walking to marks"): the game's AI acts only with its enable counters above 0
+// (BioEpicPawnBehavior's m_nALLEnabled, m_nStackEnabled: each switch-off counts down, each switch-on up, so -1 means switched
+// off twice). How much a counter must rise for the walk: 0 when it is already on; lowered by as much after the walk.
+int AiEnableDeficit(int counter);
 // Distance outside the segment a walk could have covered since the last observation; tolerates collision stopping short.
 double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, double elapsedS);
 

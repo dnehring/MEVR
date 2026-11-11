@@ -762,6 +762,15 @@ void CheckFields() {
     CheckField("SFXGame.BioLookAt", "m_oTarget", SDK_FIELD(UBioLookAt, m_oTarget));
     CheckField("SFXGame.BioLookAt", "m_nRank", SDK_FIELD(UBioLookAt, m_nRank));
     CheckField("SFXGame.BioLookAt", "m_Controllers", SDK_FIELD(UBioLookAt, m_Controllers));
+    // game/ConversationWorld's walk to a mark by the engine's walking (research/69 "Walking to marks"; Acceleration and
+    // Physics have rows above).
+    CheckField("Engine.Pawn", "AccelRate", SDK_FIELD(APawn, AccelRate));
+    CheckField("Engine.Pawn", "bIsWalking", SDK_BOOL(APawn, bIsWalking));
+    // ... and by the AI: the behaviour's AI enable counters the walk raises (BioAiController.CanUseStack reads them).
+    CheckField("Engine.Actor", "oBioComponent", SDK_FIELD(AActor, oBioComponent));
+    CheckField("SFXGame.BioPawn", "m_bInGestures", SDK_BOOL(ABioPawn, m_bInGestures));  // ... and its legs (out of the gesture mode)
+    CheckField("SFXGame.BioEpicPawnBehavior", "m_nALLEnabled", SDK_FIELD(UBioEpicPawnBehavior, m_nALLEnabled));
+    CheckField("SFXGame.BioEpicPawnBehavior", "m_nStackEnabled", SDK_FIELD(UBioEpicPawnBehavior, m_nStackEnabled));
     CheckField("SFXGame.BioLookAt", "m_Definition", SDK_FIELD(UBioLookAt, m_Definition));
     CheckField("SFXGame.BioPawnLookAtController", "mc_pDefinition", SDK_FIELD(UBioPawnLookAtController, mc_pDefinition));
     CheckField("SFXGame.BioLookAtDefinition", "BoneDefinitions", SDK_FIELD(UBioLookAtDefinition, BoneDefinitions));
@@ -1404,6 +1413,10 @@ void CheckFunctions() {
         "SFXGame.BioPlayerController.SquadOrderUsePower",  // power orders and the acknowledgement (research/54, 2026-11-05)
         "SFXGame.BioAiController.AddUsePower",
         "SFXGame.BioAiController.PushMoveToPoint",  // game/SquadPlace: the squadmate walked to the arc's point
+        "SFXGame.BioAiController.DoesGameModeAllowMovement",  // game/ConversationWorld: answered for a walk to a mark
+        "SFXGame.BioAI_Henchman.DoesGameModeAllowMovement",
+        "Core.Object.GetStateName",  // game/ConversationWorld: worldWalkLog's probe of a walker's controller
+        "SFXGame.BioPawn.SetDesiredSpeed",  // ... and a walker's speed under a paused controller
         "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
         "SFXGame.BioPawn.PlaySoundSet",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",

@@ -391,6 +391,9 @@ void EnsureConversationHooks() {
         gConversationHooked = engine::conversation_hooks::Install(*gInit);
         gVoicePlaceHooked = engine::voice_place::Install(*gInit);  // the speakers' voices from where they stand
     }
+    if (game::conversation_world::WantsScriptHook()) {
+        EnsureCallFunctionHook();  // a walk to a mark answers the game mode's ban on AI movement in the script hook
+    }
 }
 
 // The selection update runs once a tick on the player controller; its hook goes in once A's gaze is first wanted

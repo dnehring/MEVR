@@ -453,7 +453,16 @@ switching frameworks.
   (`worldArrange`, `worldArcM` 2.5, `worldViewDeg` 60: the conversation's people and the squad checked with `cw::InView` and the
   shots' line of sight; those out of view seated on an arc around the player centred on the owner, `cw::ArcSeats`, on the floor,
   facing the player). The Citadel arrival had put the player and squad at the spawn point.
-  Walking to lasting marks is an off-by-default prototype (`worldWalk = 0|1|2`: off/AI/slide; settle 2.5 s, minimum 0.5 m, speed 1.4 m/s); see research/59 "Walking to marks (prototype)" for settings and open game checks.
+  **People walk to their marks with the game's own AI** (`worldWalk = 1`, the default with the world mode since 2026-11-11;
+  research/69 "People walking to their marks"; `0` off, `2` the old slide): a mark the stage asks for during a line (withheld at
+  the source, logged `the stage asks X onto a mark`) is walked to after 2.5 s by `BioAiController.PushMoveToPoint`, once four
+  holds are lifted for that walker only: its AI enable counters (`m_nALLEnabled`/`m_nStackEnabled`, raised to 1 and lowered by
+  as much after, `cw::AiEnableDeficit`), the conversation's ban on AI movement (`DoesGameModeAllowMovement` answered true),
+  its paused speed (`BioPawn.SetDesiredSpeed(1)`), and **the gesture mode** (`BioPawn.m_bInGestures` cleared: while set the
+  animation tree's `Actions` node plays `Gestures` over `Posture`, where locomotion lives; the scene's next gesture sets it
+  again). Arrives within 0.25 m on the floor, then turns to the stage's facing; an AI that doesn't move it 8 units in 2 s
+  leaves it where it stands (C-Sec's Wrex). `worldWalkLog = 1`: the walker's gait (ankles), properties, controller state and
+  animation tree to `%LOCALAPPDATA%\MEVR\walk-probe`. Seen on the fake headset (Anderson mid-stride in the medical bay).
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
   Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
   `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into

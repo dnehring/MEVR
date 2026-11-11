@@ -7,7 +7,8 @@ survey): replayed in a loop, every direction is in view for the same share of a 
     python tools/make-look-recording.py out.mevrrec [seconds] [hz] [--sweep YAW] [--pitch DEG] [--eye-height M]
 
 seconds: one full turn (default 20). --sweep YAW: back and forth between -YAW and +YAW degrees instead of a full turn (one
-there-and-back per `seconds`). --pitch: the head pitched DEG degrees (+ up). --eye-height: the head's height in tracking
+there-and-back per `seconds`). --yaw DEG: the head held DEG degrees to the right (+) the whole time, looking at one
+thing (e.g. someone walking in a scene). --pitch: the head pitched DEG degrees (+ up). --eye-height: the head's height in tracking
 space (default 0: the fake headset's floor is at the head)."""
 import math
 import struct
@@ -37,9 +38,10 @@ def option(name, default):
 
 def main():
     sweep = option("--sweep", 0.0)
+    fixed = option("--yaw", float("nan"))
     pitch = option("--pitch", 0.0)
     eye_h = option("--eye-height", 0.0)
-    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--sweep", "--pitch", "--eye-height")}
+    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--sweep", "--pitch", "--eye-height", "--yaw")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -56,7 +58,10 @@ def main():
     for i in range(n):
         t = i / hz
         phase = t / seconds
-        yaw = sweep * math.sin(2.0 * math.pi * phase) if sweep > 0.0 else 360.0 * phase
+        if not math.isnan(fixed):
+            yaw = fixed
+        else:
+            yaw = sweep * math.sin(2.0 * math.pi * phase) if sweep > 0.0 else 360.0 * phase
         head = head_orientation(yaw, pitch)
         right = (math.cos(math.radians(yaw)), 0.0, math.sin(math.radians(yaw)))  # the head's right, laid flat
         eyes = [(*head, side * ipd / 2 * right[0], eye_h, side * ipd / 2 * right[2]) for side in (-1, 1)]
@@ -70,7 +75,8 @@ def main():
         f.write(HEADER.pack(MAGIC, 1, HEADER.size, FRAME.size, 0, int(time.time() * 1000)))
         for frame in frames:
             f.write(frame)
-    print(f"{out}: {n} frames, {seconds} s at {hz} Hz, {'sweep +-%g deg' % sweep if sweep > 0 else 'a full turn'}, pitch {pitch:g}")
+    turn = ('held at %g deg' % fixed) if not math.isnan(fixed) else ('sweep +-%g deg' % sweep if sweep > 0 else 'a full turn')
+    print(f"{out}: {n} frames, {seconds} s at {hz} Hz, {turn}, pitch {pitch:g}")
     return 0
 
 

@@ -948,6 +948,22 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         }
         return std::format("{} instances{}", total, out);
     }
+    if (verb == "vslot") {
+        // `mevr vslot <n> <hex offset>`: for object n of `find`'s list (after `mevr instances`), the function its C++ vtable
+        // holds at that byte offset, as exe+RVA (reading a native's virtual call: research/69 "Walking to marks").
+        std::size_t index = 0;
+        std::string offsetText;
+        words >> index >> offsetText;
+        if (index >= gFound.size() || offsetText.empty()) {
+            return std::string("usage: mevr vslot <n of mevr instances> <hex byte offset>");
+        }
+        std::size_t const offset = std::stoull(offsetText, nullptr, 16);
+        auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+        void* const* const vtable = *reinterpret_cast<void* const* const*>(gFound[index]);
+        auto const fn = reinterpret_cast<std::uintptr_t>(vtable[offset / sizeof(void*)]);
+        return std::format("{}: vtable exe+0x{:X}, slot +0x{:X} = exe+0x{:X}", ue3::runtime::Get().FullName(gFound[index]),
+            reinterpret_cast<std::uintptr_t>(vtable) - base, offset, fn - base);
+    }
     if (verb == "classes") {
         // `mevr classes <text>`: the loaded script classes whose name holds the text (case-insensitive), each with its parent;
         // each class's default object goes on `find`'s list (for `props` and `funcs`). Auditing the game's UIs (research/53).
