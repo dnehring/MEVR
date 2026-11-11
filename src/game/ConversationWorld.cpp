@@ -184,6 +184,8 @@ ue3::FieldRef gHiddenActors{"Engine.PlayerController", "HiddenActors"};
 // The near plane a conversation's camera carries (research/69 "The first shot").
 ue3::FieldRef gBodyLocalPlayer{"Engine.PlayerController", "Player"};
 ue3::FieldRef gBodyNearClip{"Engine.LocalPlayer", "NearClipPlane"};
+ue3::FieldRef gCameraViewTarget{"Engine.Camera", "ViewTarget"};          // what the game's camera looks from (the player's, or a
+ue3::FieldRef gCameraViewTargetActor{gCameraViewTarget, "Target"};       // matinee's camera actor in game mode 0: Chellik's bump)
 ue3::ClassRef gConvCameraClass{"SFXGame.BioCameraBehaviorConversation"};
 ue3::FieldRef gConvCameraNear{"SFXGame.BioCameraBehaviorConversation", "m_fNearPlane"};
 ue3::FieldRef gConvCameraFov{"SFXGame.BioCameraBehaviorConversation", "CAMERA_FOV"};
@@ -625,9 +627,18 @@ struct PovAt {
 };
 PovAt gPov;
 
+// A matinee's camera on foot: the game's camera looking from a camera actor in game mode 0 (set by the camera post-handler).
+struct DirectedCamera {
+    bool on = false;
+    ue3::Object* target = nullptr;  // (compared only, never used)
+    std::uint64_t ms = 0;           // the last camera update with it
+};
+DirectedCamera gDirected;
+
 void KeepInPlace(ue3::Object* pawn);
 bool KeepsTheLiveConversation(ue3::Object* controller);
 ue3::Object* ConversationNow(ue3::Object* controller);
+bool MomentHeld();  // a moment's view is up (provisional too)
 
 // The game's own camera at the player's place (worldCamera; the owner's QA, 2026-11-06): the host's swap held the main view's build
 // only, so the engine's culling and texture streaming still followed the director's camera (in the comm room 5-9 m away behind
@@ -664,6 +675,28 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     }
     auto const mode = player::GameMode(controller);
     if (mode && *mode == 0) {
+        // A matinee's own camera on foot (its director track sets the view target to a camera actor without the cinematic mode:
+        // Chellik's bump on the Citadel, 2026-11-11): no view of the player's. Taken for one until then, it was what the
+        // conversation after it opened from: the player's eyes 1.6 m behind Shepard for the whole scene. A moment holds the view
+        // (TickMoment); its POV's addresses serve the render-time hold, the on-foot record is the moment's.
+        ue3::Object* const target = gCameraViewTargetActor.Read<ue3::Object*>(gCameraViewTarget.Address(camera)).value_or(nullptr);
+        bool const directed = target != nullptr && target != controller && target != player::Pawn(controller);
+        if (directed != gDirected.on || (directed && target != gDirected.target)) {
+            log::Info("moment: on foot the game's camera {}", directed ? "is a matinee's: " + ue3::runtime::FullName(target) + " (no view of the player's)"
+                                                                       : std::string("is the player's again"));
+        }
+        gDirected.on = directed;
+        gDirected.target = directed ? target : nullptr;
+        if (directed) {
+            gDirected.ms = GetTickCount64();
+        }
+        if (directed || MomentHeld()) {
+            gPov.location = reinterpret_cast<float*>(pov->location);
+            gPov.rotation = pov->rotation;
+            gPov.fov = pov->fov;
+            gPov.pointerMs = GetTickCount64();
+            return;
+        }
         gFoot.location = *pov->location;
         gFoot.rotation = *pov->rotation;
         // Store the corrected base, not the raw animated camera. Common framing is still applied by the held render.
@@ -2637,7 +2670,14 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     // made no difference), and in none of the 4 that left him where the stage had him (2026-11-10, research/69 "The
     // hearing that ended at once"). So such an opening is walked by the view (below); with worldWalkInWay = body it is
     // the stage's placement (a cut).
-    bool const midMoment = gMomentEnded.pending && GetTickCount64() - gMomentEnded.ms < 1000;
+    // ... or while a matinee's track still moves him (Chellik's bump on the Citadel, 2026-11-11: the conversation began half
+    // a second before the track let him go, the stay opening put the view at his last place on foot, and the track carried
+    // his body 1.7 m on).
+    bool const trackMoving = authored_moment::TrackMoves(pawn);
+    bool const midMoment = (gMomentEnded.pending && GetTickCount64() - gMomentEnded.ms < 1000) || trackMoving;
+    if (trackMoving) {
+        log::Info("convo: the opening: a matinee's track still moves Shepard: taken as a moment on its way");
+    }
     cw::Opening opening = cw::DecideOpening(facts, gSettings.opening);
     if (midMoment && gSettings.walkInWay == cw::WalkInRule::Body && opening != cw::Opening::Cut) {
         opening = cw::Opening::Cut;
@@ -3551,6 +3591,7 @@ struct MomentView {
     std::optional<ik::Vec3> wanted; // where the script wants him (its teleport's destination in the same space): he walks there
     int dips = 0;                    // dips from black in place of the script's black screens
     bool provisional = false;        // begun at the cinematic switch (MomentMayStart): no track has moved Shepard yet
+    bool onFoot = false;             // begun in game mode 0 under a matinee's own camera (gDirected), not the cinematic mode
     bool viewWalk = false;           // the script moved Shepard within the same space: he stays there, the view walks to him
     std::optional<ik::Vec3> trackAt; // where the withheld track has him
     bool trackEnded = false;
@@ -3563,6 +3604,10 @@ struct MomentView {
 };
 MomentView gMoment;
 std::uint32_t gMoments = 0;
+
+bool MomentHeld() {
+    return gMoment.on;
+}
 
 bool FootFresh(std::uint64_t now) {
     return gFoot.have && now >= gFoot.ms && now - gFoot.ms < 3000;
@@ -3648,9 +3693,14 @@ void BeginMomentView(ik::Vec3 const& pawnAt, std::uint64_t now, bool provisional
     gC.holdFrom = "the view on foot";
     gTrail.clear();
     if (gSettings.momentView && !gSettings.momentCarry) {
-        gC.detached = true;        // the pawn is the script's from the first tick; the view stays the player's
-        gC.detachedAt = pawnAt;
+        // The pawn is the script's from the first tick; the view stays the player's, where the player stood (a moment seen on
+        // foot begins a tick after its track's first move, which had already taken Shepard 2 m on at Chellik's bump: the view
+        // went with him, 2026-11-11).
+        gC.hold = V(gFoot.location);
+        gC.detached = true;
+        gC.detachedAt = V(gFoot.pawn);
         gC.noJoin = true;
+        TrailAdd(V(gFoot.pawn));
         TrailAdd(pawnAt);
     }
 }
@@ -3704,17 +3754,22 @@ void Arm(Link const& link, bool armed) {
 bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t> mode, double deltaSeconds) {
     std::uint64_t const now = GetTickCount64();
     bool const cinematic = mode && *mode == 6;
+    // A matinee's own camera on foot is the cinematic mode's equal: its track walks Shepard while the game's camera shows him
+    // from behind, letterboxed, in the player's eyes (Chellik's bump, 2026-11-11; research/69 "A moment on foot").
+    bool const directed = mode && *mode == 0 && gDirected.on && now - gDirected.ms < 500;
     if (!gSettings.moments || CurrentMode() != cw::Mode::World || link.publish == nullptr || pawn == nullptr || !ue3::runtime::IsAlive(pawn)) {
         return false;
     }
     if (!gMoment.on) {
         std::uint64_t const track = authored_moment::LastPlayerTrackMs();
         auto const at = player::Location(pawn);
-        if (!cinematic || track == 0 || now - track > 500 || !FootFresh(now) || !at) {
+        if (!(cinematic || directed) || track == 0 || now - track > 500 || !FootFresh(now) || !at) {
             return false;
         }
         BeginMomentView(V(*at), now, false);
-        log::Info("moment: a matinee walks Shepard: held in first person at {} facing {:.0f} deg; {}", F(gC.hold), YawDeg(gC.holdRotation),
+        gMoment.onFoot = directed;
+        log::Info("moment: a matinee walks Shepard{}: held in first person at {} facing {:.0f} deg; {}",
+            directed ? " with its own camera on foot (no cinematic mode)" : "", F(gC.hold), YawDeg(gC.holdRotation),
             gSettings.momentCarry ? "the track carries him, the view goes with him"
             : gSettings.momentView ? "the track moves his pawn, hidden; the view is the player's and walks to him"
             : "its move of him is withheld, the stick walks him");
@@ -3733,7 +3788,7 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
             return false;
         }
     }
-    if (cinematic) {
+    if (cinematic || directed) {
         gMoment.cinematicMs = now;
     } else if (!(mode && *mode == 0 && now - gMoment.cinematicMs < 1000)) {
         return false;  // the cinematic mode is over (the caller ends the view)
@@ -4306,7 +4361,8 @@ void Tick(double deltaSeconds, Link const& link) {
         return;
     }
     if (gMoment.on) {
-        EndMomentView(link, conv != nullptr ? "a conversation began" : "the cinematic mode ended", conv == nullptr);
+        EndMomentView(link, conv != nullptr ? "a conversation began" : gMoment.onFoot ? "the matinee's camera let go" : "the cinematic mode ended",
+            conv == nullptr);
     }
     if (conv == nullptr) {
         End(mode && *mode == kModeConversation ? "no conversation object" : "the game left its conversation mode");

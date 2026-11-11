@@ -89,6 +89,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     **First sample run 2026-11-11** ("Moments from saves, first sample" below): 4 moments, 2 played (the geth intro on Feros
     in first person, carried 5 m after one dip; Chellik's bump led into Jenna's contact with Shepard's body up to 1.73 m from the
     view), 2 saves didn't come up on foot (Noveria's Benezia phase 2, Liara's intro on Therum).
+    **Second run 2026-11-11 05:00-05:23** ("A moment on foot" below): 91 and 92 start as their saves load (the runner drives them
+    now); Liara's 10 lines play in first person; **Chellik's bump was a matinee with its own cameras in game mode 0**, shown in the
+    eyes letterboxed and third person, and taken for the player's view by the conversation after it: now held in first person
+    like a cinematic moment, nothing found by the judge. 17 moments are still unrun.
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
     its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
     world to confirm the list.
@@ -1957,7 +1961,45 @@ validation-saves-moments.json`; `saves --remove --manifest ...` deletes them) an
 | 93 | The geth intro (Feros, a touch) | played in first person: the script moved Shepard at its start (one dip, "the script moved Shepard to another place"), the view carried 5.0 m with him, nobody walked (no stick in the run) |
 
 Open: why 91 and 92 don't come up on foot (a load into a cinematic or the Mako, as slot 84 with its flag?), and Shepard's 1.73 m
-stray after Chellik's bump (the moment's own move of Shepard, then the conversation's stay).
+stray after Chellik's bump (the moment's own move of Shepard, then the conversation's stay). Both answered in "A moment on foot".
+
+### A moment on foot (2026-11-11 05:00-05:23, fake headset; item 11)
+
+**91 and 92 start as their saves load.** Their trigger is at the player's spot, so the scene began during the load and the
+runner, waiting for the player on foot, gave up. `conversation-from-save.ps1` now takes a scene that is already in the
+conversation or cinematic mode as begun by itself and drives it. Liara's intro (92) then played: 10 lines, a walk-in by the
+view of 4.1 m, nothing found. Benezia's phase 2 (91) goes to the 3D screen as before (its conversation and the cutscene after it).
+
+**Chellik's bump is a moment without the cinematic mode.** The judge's 1.73-1.82 m `body-strayed` came from the opening's record of
+the player's view on foot: 1.64 m behind Shepard's pawn. Snapshots during the bump (4 s after the use) showed why: the eyes held
+a **third-person, letterboxed shot of Shepard from behind**. The bump's matinee has a director track whose camera actors
+(`BIOA_STA60_05A_DSG...CameraActor_10`, `_11`, `_12`, cut between) become the player camera's view target **in game mode 0**,
+while its move track walks Shepard 2.9 m in 8 s. The moments were held only in the cinematic mode (6), so Halcyon showed
+the matinee camera as gameplay. The on-foot record (`gFoot`, taken every camera update in mode 0) took that camera for the
+player's eyes, and the conversation that began as the track let go opened from it. Its view walk joined Shepard with the camera's
+offset kept, which left the view 1.6 m behind him for the scene. In the conversation, Shepard's body stood in the view
+1.7 m ahead; with tracked hands (a replayed recording) the body follower takes it under the player as designed.
+
+The fix, in three parts:
+
+- **The camera post-handler reads the camera's view target** (`Engine.Camera.ViewTarget.Target`, a member of the struct; a
+  nested `FieldRef` is read from the struct's address, not the object's). In game mode 0 with a target that is neither the
+  player's controller nor his pawn, it records no view on foot. While such a camera or a moment holds, it keeps only the POV's
+  addresses for the render-time hold. Log `moment: on foot the game's camera is a matinee's: <camera actor>` and `... the
+  player's again`.
+- **A moment begins in game mode 0 too**: a track moving Shepard while a matinee's camera has the view
+  (`moment: a matinee walks Shepard with its own camera on foot (no cinematic mode)`). It continues while that camera does,
+  plus the usual second, and ends as "the matinee's camera let go" or when a conversation begins. With the view walk (the default),
+  the view starts **where the player stood**: the moment's first tick comes after the track's first move, which had already
+  taken Shepard 2 m on, and the view went with him until this fix.
+- **The host drops the letterbox for it** (`[MEVR]` seam in xr_session.cpp: the `[NOLETTERBOX]` clear also in game mode 0
+  while the mod's state is published, `ConversationInWorld()`; host and mod deploy together).
+
+Seen on the fake headset with a replayed head pitched 25 degrees down and tracked hands (`2026-11-11_05-18-21-126`,
+`05-18-25-164`): the bump in first person, full frame, from the player's place; the conversation after it with the wheel in
+front and no body in the view. Judge: nothing found (a 0.84 m guided view walk, the two one again at 0.6 s). 91 and 92
+unchanged. A matinee camera in game mode 0 that **doesn't** move Shepard (a door's shot, a fly-by) is still shown as
+gameplay; none has been seen yet.
 
 ### The handover between two conversations (2026-11-11 04:20-04:33, fake headset, the launcher's comm room; item 9)
 
@@ -2503,3 +2545,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 04:20, **the starting flags tried in the game** (item 12): Wrex's flag 3684 made the level start Kirrahe's briefing on load; Chorban's 5316 changed nothing. Saves put back; the generator's starting flags are opt-in.
 - 2026-11-11 04:33, **item 9: the handover stray fixed** ("The handover between two conversations"): the ending conversation's keep-in-place undid the next stage's placement of Shepard; it now keeps only for the live conversation.
 - 2026-11-11 04:50, **item 11 sampled** ("Moments from saves, first sample"): 4 moments from new saves 90-93: the geth intro played in first person, Chellik's bump led into a conversation with a 1.73 m stray, two saves didn't come up on foot.
+- 2026-11-11 05:23, **item 11, a moment on foot** ("A moment on foot"): Chellik's bump is a matinee with its own cameras in game mode 0 (third person, letterboxed in the eyes, and the conversation after it opened from that camera: the 1.6-1.8 m stray). The camera's view target now marks it; such a moment is held in first person from where the player stood, without the letterbox (a host seam). Saves 91/92 start as they load (runner fixed); Liara's 10 lines clean.

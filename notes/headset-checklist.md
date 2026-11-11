@@ -322,6 +322,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   so that the view walks and Shepard stays where the script has him. Stand still instead: after 12 s you are carried to the top of the stairs
   (`worldMomentPatienceS`). Look for: the black screen flashing, Anderson vanishing and another one standing at the podium,
   Shepard's legs walking on the spot, and how the hearing reads from the podium (it was made for cameras 38 m away).
+- [ ] **A moment on foot: Chellick's bump** (built 2026-11-11, research/69 "A moment on foot"; seen on the fake headset with a
+  replayed head and hands; host and mod together): on the Citadel's lower wards, use the spot where Chellick bumps into Shepard.
+  You see it from your own eyes, full frame (no black bars, no shot of Shepard from behind); Shepard's body goes with you while
+  the script walks his pawn; the conversation with him opens without a cut, a step away. Look for: a frame of the matinee's
+  camera as it starts or ends, where Chellick bumps (he aims at Shepard's pawn, not at you), and the guided walk's pace.
 - [ ] **Flowing conversations** (built 2026-11-09; two Noveria chains checked as barks on the fake headset, research/59 "Flowing
   conversations" > "In the game"; `[Cinematics] worldFlow = all` with `conversations = world`): in a career that hasn't seen them,
   the walk-up scenes play as barks while you keep walking (Garrus and the Executor arguing at C-Sec, Chellick's opening lines,

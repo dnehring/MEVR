@@ -57,6 +57,7 @@ function Clear-Boxes() {
 if (-not (Get-Process MassEffect1 -ErrorAction SilentlyContinue)) { throw 'the game is not running' }
 
 function Play-Scene([string]$save, [string]$class, [string]$action, [int]$actionInput, [string]$title) {
+    $script:byItself = $false
     Clear-Boxes
     if (-not $NoLoad) {
         $source = $save
@@ -84,12 +85,17 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             Start-Sleep -Seconds 2
             $mode = Mode
             if ($mode -eq '7') { Clear-Boxes; $mode = Mode }
+            # A save that stands the player inside the scene's trigger starts it as it loads (Noveria's Benezia and Therum's
+            # Liara, 2026-11-11): that is the scene, played as the game plays it, not a save that never came up.
+            if ($mode -eq '5' -or $mode -eq '6') { $script:byItself = $true; break }
             $onFoot = $(if ($mode -eq '0') { $onFoot + 1 } else { 0 })
         }
-        if ($onFoot -lt 2) { Say 'the save did not come up on foot in two minutes'; return $false }
+        if ($script:byItself) { Say 'the scene began by itself as the save loaded (its trigger at the player): not fired, driven' }
+        elseif ($onFoot -lt 2) { Say 'the save did not come up on foot in two minutes'; return $false }
         Start-Sleep -Seconds 3
     }
     $began = (Get-Date).AddSeconds(-2).ToString('HH:mm:ss')
+    if (-not $script:byItself) {
     $tail = ($action -split '\.')[-1]
     $listing = Console "mevr instances $class $tail"
     $index = -1
@@ -104,6 +110,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     Say "fired $action (input $actionInput)"
     if ($Walk -gt 0) { Console "mevr convo walk 0 1 $Walk" | Out-Null }
     if ($Replay) { & (Join-Path $tools 'replay.ps1') -Path $Replay -Loop -Inputs *> $null }
+    } else { $started = Get-Date }
 
     $shots = @($Snapshots | Sort-Object)
     $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true

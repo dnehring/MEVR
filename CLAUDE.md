@@ -644,7 +644,12 @@ switching frameworks.
   the place is where he is wanted (it may be what streams the next area in), he walks there or is carried after
   `worldMomentPatienceS`. The council sequence ran so on the fake headset; its hearing opened as a walk-in 21 m from the
   podium until the rule above made it a cut (2026-11-10). Logs `convo: ... the player walks`, `the player walked
-  N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`.
+  N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`. **A moment on foot** (research/69 "A moment on
+  foot", 2026-11-11): a matinee whose director track takes the player camera's view target (`Engine.Camera.ViewTarget.Target`
+  a camera actor) in game mode 0 while its track walks Shepard (Chellik's bump) is held the same way, from where the player
+  stood; the on-foot record never takes such a camera for the player's eyes, and the host's `[NOLETTERBOX]` clear covers game
+  mode 0 while the mod's state is published (a `[MEVR]` seam in xr_session.cpp). Logs `moment: on foot the game's camera is a
+  matinee's: <actor>`, `moment: a matinee walks Shepard with its own camera on foot`.
 - LE1 start and front end on one panel ([research/56](research/56-start-and-front-end.md), `core/vr/PresentationHold`, host
   `plugin/PresentationHold`; three `[MEVR]` seams in xr_session.cpp's decision): from start-up until the first load from the menus
   or 30 frames of a gameplay mode, every other mode is the menu (the flat panel, no second eye): the unreadable byte at start
