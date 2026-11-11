@@ -142,6 +142,13 @@ struct Leg {
     std::uint64_t keys[3] = {};  // RefSkeleton names of the hip, knee and ankle
     ik::Vec3 ankle;
     ik::Vec3 knee;
+    // Standing under the body instead (research/69 "The legs under the player"): the ankle straight under the hip as the
+    // torso left it, `floorUp` above the floor of the animated pose moved with the body (the torso's body shift), the knee
+    // bending forward; `ankle` and `knee` are not read. `weight` blends from the animated leg (0) to that (1): the script's
+    // walk animation plays in place under a player whose view is away from the pawn, and is kept while the view moves.
+    bool stand = false;
+    double floorUp = 9.0;  // the ankle bone's height above the floor (component units)
+    double weight = 1.0;
 };
 
 struct Request {

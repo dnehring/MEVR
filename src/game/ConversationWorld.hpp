@@ -40,6 +40,9 @@ bool MomentViewOn();
 struct BodyAwayState {
     bool on = false;
     double riseUnits = 0.0;
+    // How far the legs stand by leg IK (1) instead of playing the script's walk animation in place (0): 1 while the view
+    // rests, 0 while it moves (the stick, the guided walk), eased; 0 with [Cinematics] worldLegs = walk.
+    double legsStand = 0.0;
 };
 BodyAwayState BodyAway();
 // The script switched the cinematic mode on while the player stood on foot (game/AuthoredMoment's handler, the game thread):

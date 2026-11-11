@@ -188,6 +188,7 @@ ue3::Name gBoundsPawnName;
 void const* gBoundsWorld = nullptr;
 bool gBoundsWarned = false;
 float gBoundsPadLogged = 0.0f;  // the pad last logged (units)
+bool gLegsStood = false;        // the standing legs are on (logged once per stretch)
 bool gHoldScaleLogged = false;
 
 void RestoreBodyBounds() {
@@ -1089,7 +1090,8 @@ void Drive(double deltaSeconds) {
 #if defined(MEVR_GAME_LE1)
     // The view held away from Shepard's pawn (a scripted walk; research/69 "The body stays with the player") is first
     // person whatever the distance to his animated head: his body is drawn where the player stands (the body follower).
-    bool const bodyAway = conversation_world::BodyAway().on;
+    conversation_world::BodyAwayState const away = conversation_world::BodyAway();
+    bool const bodyAway = away.on;
 #else
     bool const bodyAway = false;
 #endif
@@ -1364,6 +1366,29 @@ void Drive(double deltaSeconds) {
         return Stop(std::format("no hand targets (source {})", hand_targets::Name(targets.source)));
     }
     gLastBodyScale = request.bodyScale;
+#if defined(MEVR_GAME_LE1)
+    // The legs stand under the player while the script walks Shepard's actor elsewhere and the view rests (research/69 "The
+    // legs under the player"): the mod's own leg IK, the feet on the player's floor, instead of the walk animation in place.
+    if (away.on && away.legsStand > 0.0 && info->legs[kLeft] && info->legs[kRight]) {
+        for (int side : {kLeft, kRight}) {
+            auto const& chain = info->legs[side];
+            engine::bone_pose::Leg& leg = request.legs[side];
+            leg.enabled = true;
+            leg.stand = true;
+            leg.weight = away.legsStand;
+            leg.chain = *chain;
+            leg.keys[0] = info->bones.keys[chain->upper];
+            leg.keys[1] = info->bones.keys[chain->fore];
+            leg.keys[2] = info->bones.keys[chain->hand];
+        }
+        if (!gLegsStood) {
+            log::Info("arm IK: the legs stand under the player by leg IK while the view is away from the pawn (weight {:.2f})", away.legsStand);
+        }
+        gLegsStood = true;
+    } else {
+        gLegsStood = false;
+    }
+#endif
     engine::bone_pose::Publish(std::move(request));
     gStatus = "driving: " + driven;
     gGunAimed = gunAimed;

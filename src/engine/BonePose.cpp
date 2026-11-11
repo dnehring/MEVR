@@ -427,6 +427,7 @@ void Write(Mesh* self, float deltaTime) {
     // The body's scale (research/58). The animated pose is unscaled (the animation recomposed it): its floor (the lowest
     // bone not kept) and Shepard's eyes above it go to the mod for the factor. The goals are in the scaled world: through the
     // inverse they land where they were meant to once the finished pose is scaled (below, after the fingers).
+    double animatedFloorZ = std::numeric_limits<double>::infinity();  // the lowest bone not kept (the standing legs' floor)
     {
         double floorZ = std::numeric_limits<double>::infinity();
         for (int i = 0; i < count; ++i) {
@@ -434,6 +435,7 @@ void Write(Mesh* self, float deltaTime) {
                 floorZ = (std::min)(floorZ, pose[static_cast<std::size_t>(i)].translation.z);
             }
         }
+        animatedFloorZ = floorZ;
         int const eyeL = request.eyes[0];
         int const eyeR = request.eyes[1];
         if (std::isfinite(floorZ) && eyeL >= 0 && eyeL < count && eyeR >= 0 && eyeR < count) {
@@ -640,6 +642,18 @@ void Write(Mesh* self, float deltaTime) {
         goal.wrist = leg.ankle;
         goal.hasPole = true;
         goal.pole = leg.knee - pose[leg.chain.upper].translation;
+        if (leg.stand) {
+            // Standing: the ankle under the hip on the floor the body stands on now, as far down as the leg reaches.
+            ik::Vec3 const hip = pose[leg.chain.upper].translation;
+            ik::Vec3 const animated = pose[leg.chain.hand].translation;
+            double const length = ik::Length(pose[leg.chain.fore].translation - hip) + ik::Length(animated - pose[leg.chain.fore].translation);
+            double const shiftZ = torso.valid && torso.result.ok ? torso.result.bodyShift.z : 0.0;
+            double const floor = std::isfinite(animatedFloorZ) ? animatedFloorZ + shiftZ + leg.floorUp : hip.z - length * 0.98;
+            ik::Vec3 const stood{hip.x, hip.y, (std::max)(floor, hip.z - length * 0.995)};
+            double const w = std::clamp(leg.weight, 0.0, 1.0);
+            goal.wrist = animated + (stood - animated) * w;
+            goal.pole = body.forward;
+        }
         ik::ArmResult const result = ik::PoseArm(pose, request.parents, leg.chain, side, body, goal);
         if (!result.ok) {
             Reject(result.error);

@@ -194,6 +194,10 @@ struct Settings {
     bool bodyWithPlayer = true;
     // The on-foot near plane kept while the world view is held (worldNearPlane = 1; 0: the director's, which clips what is near).
     bool nearPlane = true;
+    // While the view is away from the pawn the legs stand under the player by leg IK when the view rests, and keep the
+    // script's walk animation while it moves (worldLegs = stand; walk: the animation always). The owner, 2026-11-10: "modify
+    // the legs to see if we can just use the VRIK".
+    bool legsStand = true;
     // `convo: body:` once a second in a scene, every two on foot: the pawn's and his mesh's hidden flags, when they were last
     // rendered and where they are against the view (worldBodyLog = 1; `mevr convo body log on`). A diagnostic: off by default.
     bool bodyLog = false;
@@ -271,6 +275,9 @@ void RefreshSettings() {
     }
     s.camera = number("worldCamera", 0.0f, 0.0f, 1.0f) != 0.0f;
     s.nearPlane = number("worldNearPlane", 1.0f, 0.0f, 1.0f) != 0.0f;
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldLegs")) {
+        s.legsStand = ini::Lower(ini::Trim(*text)) != "walk";
+    }
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldOpening")) {
         s.opening = cw::ParseOpeningRule(*text, cw::OpeningRule::Auto);
         s.openingAccept = s.opening != cw::OpeningRule::Keep;  // accept and auto let the stage's first placements stand, then decide
@@ -2820,6 +2827,11 @@ bool MomentViewOn() {
     return gMoment.on && !gMoment.provisional;
 }
 
+ik::Vec3 gViewAt;            // the held view's place last tick
+bool gViewAtValid = false;
+double gViewSpeed = 0.0;     // the held view's speed over the floor (units a second)
+double gLegsStand = 1.0;     // 1: the legs stand by leg IK; 0: they play the script's walk
+
 BodyAwayState BodyAway() {
     BodyAwayState away;
     if (!gSettings.bodyWithPlayer || !gC.world || !gC.detached || (gMoment.on && gMoment.provisional)) {
@@ -2833,7 +2845,28 @@ BodyAwayState BodyAway() {
     }
     away.on = true;
     away.riseUnits = gC.detachedAt.z - at->z;
+    away.legsStand = gSettings.legsStand ? gLegsStand : 0.0;
     return away;
+}
+
+// The view's speed, and from it how far the legs stand (BodyAwayState::legsStand): every tick of a scene in the world.
+void TrackViewSpeed(double deltaSeconds) {
+    bool const scene = (gC.on && gC.world) || gMoment.on;
+    if (!scene || deltaSeconds <= 0.0) {
+        gViewAtValid = false;
+        gLegsStand = 1.0;
+        return;
+    }
+    double speed = 0.0;
+    if (gViewAtValid) {
+        speed = std::hypot(gC.hold.x - gViewAt.x, gC.hold.y - gViewAt.y) / deltaSeconds;
+    }
+    gViewAt = gC.hold;
+    gViewAtValid = true;
+    gViewSpeed += (speed - gViewSpeed) * (std::min)(1.0, deltaSeconds * 10.0);  // units a second, smoothed over a tenth
+    double const wanted = gViewSpeed < 15.0 ? 1.0 : gViewSpeed > 60.0 ? 0.0 : 1.0 - (gViewSpeed - 15.0) / 45.0;
+    double const step = deltaSeconds * 4.0;  // a quarter of a second from one to the other
+    gLegsStand += std::clamp(wanted - gLegsStand, -step, step);
 }
 
 // The people shown in the player's view (anywhere but behind him, within 30 m), for what a script's black screen covers.
@@ -3115,6 +3148,7 @@ void Tick(double deltaSeconds, Link const& link) {
         }
     }
     ResolveBlack(pawn);
+    TrackViewSpeed(deltaSeconds);
     BodyReport(controller, pawn, mode);
     ue3::Object* const conv = controller != nullptr && mode && *mode == kModeConversation ? ConversationNow(controller) : nullptr;
     // A moment in the world (a matinee that walks Shepard): its own view, until the cinematic mode ends or a conversation begins.
