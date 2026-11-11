@@ -1737,6 +1737,14 @@ head sweeping during the walk to the Council, either driver), the 82% of dialogu
 `engine/VoicePlace` only in a first-person conversation, within 8 m), and the player's own gun (played at the pawn, so at
 the listener).
 
+**The mix's level** (`[Audio] gainDb`, default 3, the owner: "the 3 dB will need a boost in general"): OpenAL Soft's mix
+was 3.1 dB under Creative's (a councillor, unplaced: -29.4 against -26.3 dB a channel). Its only knob is its config's
+`volume-adjust`, so the host writes `%LOCALAPPDATA%\MEVR\openal-soft.ini` at each start and names it in `ALSOFT_CONF` before
+the library loads (its static C runtime copies the environment then; a player's own `%AppData%\alsoft.ini` is read
+first), and asks for its output limiter (`ALC_OUTPUT_LIMITER_SOFT`, off by default for float output). Measured: the
+councillor -26.3 dB a channel, as with Creative's; Anderson's line 4.1 dB right, 0.92 ms; the loudest sample of the
+scene 0.75 of full scale, none clipped.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -28,6 +29,7 @@ constexpr int kAlcDeviceSpecifier = 0x1005;
 constexpr int kAlcHrtfSoft = 0x1992;
 constexpr int kAlcHrtfStatusSoft = 0x1993;
 constexpr int kAlcHrtfSpecifierSoft = 0x1995;
+constexpr int kAlcOutputLimiterSoft = 0x199A;
 
 using tOpenDevice = void* (*)(char const* name);
 using tCreateContext = void* (*)(void* device, int const* attributes);
@@ -41,6 +43,7 @@ tCreateContext gCreateContext = nullptr;
 tGetIntegerv gGetIntegerv = nullptr;
 tGetString gGetString = nullptr;
 Mode gMode = Mode::Hrtf;
+float gGainDb = 3.0f;
 
 std::mutex gDescribeMutex;
 std::string gDescribe = "the game's own OpenAL (not looked at yet)";
@@ -105,13 +108,17 @@ void* CreateContext(void* device, int const* attributes) {
     int theirs = 0;
     for (int i = 0; attributes != nullptr && attributes[i] != 0 && i < 128; i += 2) {
         ++theirs;
-        if (attributes[i] != kAlcHrtfSoft) {
+        if (attributes[i] != kAlcHrtfSoft && (attributes[i] != kAlcOutputLimiterSoft || gGainDb <= 0.0f)) {
             wanted.push_back(attributes[i]);
             wanted.push_back(attributes[i + 1]);
         }
     }
     wanted.push_back(kAlcHrtfSoft);
     wanted.push_back(gMode == Mode::Hrtf ? 1 : 0);
+    if (gGainDb > 0.0f) {
+        wanted.push_back(kAlcOutputLimiterSoft);  // a louder mix never clips (OpenAL Soft's limiter, off for float output)
+        wanted.push_back(1);
+    }
     wanted.push_back(0);
     void* context = gCreateContext(device, wanted.data());
     bool const plain = context == nullptr;
@@ -218,6 +225,31 @@ void Attach(hook::Context& init) {
         SetDescribe("the game's own OpenAL (its device was open before the host attached)");
         return;
     }
+    // The whole mix louder by [Audio] gainDb (default 3): OpenAL Soft's mix is about 3 dB under Creative's (an unplaced
+    // voice: -29.4 against -26.2 dB a channel, 2026-11-10). Its only knob for that is its config's volume-adjust, so the
+    // host writes a config of its own (%LOCALAPPDATA%\MEVR\openal-soft.ini) and names it in ALSOFT_CONF before the library
+    // loads; its statically linked C runtime copies the environment then. A player's own %AppData%\alsoft.ini is read
+    // before it, so only volume-adjust is ours.
+    {
+        wchar_t text[32] = {};
+        GetPrivateProfileStringW(L"Audio", L"gainDb", L"3", text, 32, settings.c_str());
+        if (auto const value = ini::Number(ini::Utf8(std::filesystem::path(text)))) {
+            gGainDb = static_cast<float>(std::clamp(*value, -12.0, 12.0));
+        }
+        wchar_t local[MAX_PATH] = {};
+        if (GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH) > 0) {
+            std::filesystem::path const dir = std::filesystem::path(local) / L"MEVR";
+            std::filesystem::path const conf = dir / L"openal-soft.ini";
+            std::filesystem::create_directories(dir, ec);
+            std::string const body = std::format("# Written by MEVR's host at each start (plugin/OpenAlSoft): [Audio] gainDb in ASI\\LE1MEVR.ini.\n"
+                                                 "[general]\nvolume-adjust = {:.2f}\n", gGainDb);
+            if (FILE* file = _wfopen(conf.c_str(), L"wb")) {
+                std::fwrite(body.data(), 1, body.size(), file);
+                std::fclose(file);
+                SetEnvironmentVariableW(L"ALSOFT_CONF", conf.c_str());
+            }
+        }
+    }
     HMODULE const soft = LoadLibraryExW(dll.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (soft == nullptr) {
         log::Warn("audio: {} didn't load (error {}): the game's own OpenAL", ini::Utf8(dll), GetLastError());
@@ -310,8 +342,9 @@ void Attach(hook::Context& init) {
             log::Info("audio trace: LoadLibraryExW traced ([Audio] trace = 1)");
         }
     }
-    log::Info("audio: the game's OpenAL ({} functions of {}) now goes to {} (HRTF {}): no game file changed{}", created.size(),
-        exports.size(), ini::Utf8(dll), gMode == Mode::Hrtf ? "asked for: [Audio] spatial = hrtf" : "off: [Audio] spatial = soft",
+    log::Info("audio: the game's OpenAL ({} functions of {}) now goes to {} (HRTF {}, the mix {:+.1f} dB: [Audio] gainDb): no game "
+              "file changed{}", created.size(), exports.size(), ini::Utf8(dll),
+        gMode == Mode::Hrtf ? "asked for: [Audio] spatial = hrtf" : "off: [Audio] spatial = soft", gGainDb,
         notInSoft.empty() ? std::string() : std::format("; not in OpenAL Soft, left to the router: {}", notInSoft));
     SetDescribe("OpenAL Soft, the game's device not open yet");
 }

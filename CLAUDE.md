@@ -601,7 +601,9 @@ switching frameworks.
   pinned source release (static C runtime) into `external/openal-soft`; deploy-asi copies it to `ASI\audio`; package-release
   ships it in `payload\audio` with its licences and the source tarball in `licenses\` (LGPL-2.0-or-later; `-NoAudio`); MEVR
   Setup installs, repairs and uninstalls it on the manifest. Logs `audio:` (`[Audio] trace = 1`: every OpenAL/DirectSound
-  library load and who asked). Measured: a voice 77 degrees to the right reaches the left ear 0.9 ms later.
+  library load and who asked). Measured: a voice 77 degrees to the right reaches the left ear 0.9 ms later. `[Audio] gainDb`
+  (3) makes up OpenAL Soft's quieter mix through its `volume-adjust` (a config the host writes to `%LOCALAPPDATA%\MEVR\openal-soft.ini`
+  and names in `ALSOFT_CONF` before loading it) with its limiter on: the same level as the game's own audio, no clipping.
   "In sight" for the opening is three lines (`InSight`).
   **A small placement the game repeats is its own** (`cw::Insists`,
   2026-11-10): keep-in-place undoes a jump once; one of at most 1 m that comes back at the same place the next tick is

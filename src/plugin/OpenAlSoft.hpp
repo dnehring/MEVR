@@ -20,6 +20,7 @@
 //
 //   [Audio] spatial = hrtf (default: headphones, every headset)  | soft (OpenAL Soft without HRTF: loudspeakers)
 //                   | game (the game's own OpenAL)
+//   [Audio] gainDb = 3: the whole mix that much louder (OpenAL Soft's is about 3 dB under Creative's), with its limiter on
 // Read once at attach: a change applies at the next start. LE1 only.
 namespace mevr::hook {
 class Context;

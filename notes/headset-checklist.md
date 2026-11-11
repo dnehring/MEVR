@@ -250,7 +250,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   the game's own mix.
 - [ ] **The game's audio for two ears (OpenAL Soft)** (research/69 "OpenAL Soft as the mod ships it", 2026-11-10; in the
   deployed build, measured only): with headphones, on foot and in fights, do sounds come from where they are, including
-  behind you; does anything sound wrong or missing; is the game 3 to 4 dB quieter than before (louder if so)? A
+  behind you; does anything sound wrong or missing; is the level the same as before (`[Audio] gainDb`, 3, makes up the
+  3 dB OpenAL Soft's mix was under the game's)? A
   conversation: a voice beside you is beside you. `[Audio] spatial = game` in `ASI\LE1MEVR.ini` (next start) is the game's
   own audio to compare; `soft` is OpenAL Soft without the head filters (for loudspeakers).
 - [ ] **Who looks at whom, and nobody pivots** (research/69 "Who attends to whom", 2026-11-10; run in the ceremony on the
