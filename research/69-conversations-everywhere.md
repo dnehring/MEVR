@@ -150,7 +150,8 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     inside the load's black screen and plays on the 3D screen; every run that opened the level played it unnamed. The ending's
     two are left out on purpose: their script updates the end-game statistics and the Tactician achievement and saves the
     character before the matinee (the owner's account and career).
-    **20 of 21 seen, 2026-11-11 11:02** (the ending's first: "The scripted walks, named"); **19 of 21 seen, 2026-11-11 09:38** (the creeper from the Mako on the 3D screen: "The scripted walks, named"); **18 of 21 seen, 2026-11-11 09:27** ("The scripted walks, named"): Noveria's scene after the squad falls, the double homicide,
+    **Done 2026-11-11 12:01: all 21 seen** (the ending's second branch from a save with plot integer 46 over 47, held in first
+    person; its platform black from his eyes, [verify]: "The scripted walks, named"). **20 of 21 seen, 2026-11-11 11:02** (the ending's first: "The scripted walks, named"); **19 of 21 seen, 2026-11-11 09:38** (the creeper from the Mako on the 3D screen: "The scripted walks, named"); **18 of 21 seen, 2026-11-11 09:27** ("The scripted walks, named"): Noveria's scene after the squad falls, the double homicide,
     Feros's transition (screen) and first creeper, Eden Prime's train (from the John01 save) and the gambler. Four faults fixed
     on the way: a flash of the screen while the script fades to black first (`cw::StepProvisional`), a cut that kept the old
     facing and offset, a ride taken for teleports (`cw::IsRideStep`), a moment's first move on foot never judged. Left: the
@@ -2246,6 +2247,24 @@ screen's dip to the world and the cut to his place 557 m off (another compositio
 ending's movie. The script's character save wrote `Char_02.pcsav` (moved aside with the saves' restore). `SeqAct_Interp_2` is
 the other branch of the same cutscene and did not play with this career's choice.
 
+**The ending's other branch** (2026-11-11 11:42-12:01, the same approval): the scan's way to each branch is the same up to one
+check, `BioSeqAct_PMCheckConditional` on the game's conditional function F1289, which (read with the scan's `--script`, kept out
+of the repository) holds when plot integer 46 is larger than plot integer 47; `Interp_1` is its False output, `Interp_2` its
+True. The John02 career has 15 and 17, and `open` resets the plot (both 0): the first branch both ways. A save written from
+John02 on `BIOA_CRD00` with integer 46 set to 18 (`le1-save.py write ... --int 46=18`, in the scratchpad, never in the career)
+and loaded through the fast loop (`conversation-from-save.ps1`, the scene begins as the level loads): the Council-alive
+conversation on the 3D screen (78 s with lines skipped), then `Interp_2` **held in first person** for 16.9 s: the script moved
+Shepard 203 m into the tower (another composition: one dip, facing his way), his pawn stood still there for the whole track
+(path 0 m), then the 3D screen and the ending's movie on the flat panel. Run twice (the second time to measure), the same.
+**Seen in the snapshots: the platform under him is black.** From his eyes looking along his facing, the tower's atrium is
+there and lit, but the bottom third of both eyes is pure black (under 4 of 255) up to a straight edge about 2 m ahead (the two
+eyes' disparity), the platform he stands on, a surface the authored shots (the director's camera 2.6 m in front of him and
+1.2 m lower, looking back at him) never show. Measured, not the known causes: the near plane was the on-foot 10 units
+(`mevr convo body`), and with the game's camera held at the player too (`worldCamera = 1`, so culling and streaming from his
+place) the same 51% of the bottom third stayed black. [verify] in the headset whether it reads as a dark floor or as a hole; if a
+hole, the ending's walk belongs on the 3D screen (a set built for its cameras only). **All 21 of the scripted walks are now
+seen.**
+
 **Eden Prime's train** (`moment_pro10_00_plc_train`, 08:52-09:11): past the prologue, so from the John01 career's own save on Eden
 Prime (22 minutes in, near the tram station), copied into the loaded career as a new file (the Load screen lists only the
 current career's saves) and loaded through the Load screen (`conversation-launch.ps1 pro20_powell -Save VR00_08 -Load menu`,
@@ -2983,3 +3002,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 11:40, **the second Codex pass** ("An adversarial review by a second model"): five more findings on the fixes, all fixed (the handover when Shepard can't be moved, gestures at teardown, a moment judged by its own matinee, a cinematic on load, subtitles switched off).
 - 2026-11-11 11:33, **the handover fix seen, item 7's seat walk seen arriving** ("The handover, run again"): Anderson's conversation opened as a 4.2 m walk-in after the comm room, no cut; Nihlus walked 2 m into a seat by the AI and arrived.
 - 2026-11-11 11:50, **item 12: coverage counted** (the list's item 12): 108 of 290 reachable scenes played in some run; the next sampled pass (52 scenes, 14 levels) is ready for after the owner's audit.
+- 2026-11-11 12:01, **item 11 done: the ending's other branch** ("The scripted walks, named"): the final cutscene's `Interp_2` takes conditional F1289 (plot integer 46 over 47); from a save with 46 = 18 it played held in first person, 16.9 s, one dip at the cut 203 m into the tower; all 21 scripted walks seen. The platform under Shepard is pure black from his eyes (not the near plane, not culling: measured), [verify] in the headset.

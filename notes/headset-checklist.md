@@ -289,6 +289,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   black); the double homicide in Port Hanshan after talking to Anoleis: one dip to the crime scene and you face it (not a wall);
   Feros's first creeper on foot: you walk after Shepard, no cut. Look for a flash of the screen at a scene's start, and where
   you face after any dip.
+- [ ] **The ending's last walk, from Shepard's eyes** (2026-11-11, research/69 "The scripted walks, named", "The ending's other
+  branch"; fake headset): after the Council's conversation on the 3D screen, one dip into the tower and about 15 s in first
+  person before the ending's movie. In the snapshots the platform under you is pure black up to an edge 2 m ahead (the
+  cutscene's cameras never look at it; not the near plane, not culling). Say whether it reads as a dark floor or as a hole
+  you stand over: a hole sends this walk to the 3D screen. Both branches (paragon over renegade or not) behave the same.
 - [ ] **A scripted walk, standing still and walking along** (built and run on the fake headset 2026-11-10, research/69 "The
   script's Shepard, the player's view"): slots 80 and 81. Stand still after using Anderson: no flash as the walk begins;
   after five seconds you are walked the way Shepard went; the scene starts on time whatever you do. Walk along instead:
