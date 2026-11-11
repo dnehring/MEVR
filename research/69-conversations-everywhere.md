@@ -98,12 +98,15 @@ offline and, where said, run on the fake headset; nothing on this list has been 
   head; with HRTF a source at the listener is the least natural. Place the player's weapon's sounds at the gun model
   (`weapon::Current`'s muzzle) through the same hook, if the weapon's audio component is told apart from the pawn's (its
   owner: the weapon actor or the pawn: to find out). **Built 2026-11-11 for the weapon actor; which actor owns the shot's
-  source is [verify] with `mevr voices census`** (below).
+  source is [verify] with `mevr voices census`** (below). **2026-11-11, the census in a fight:** every shot sound there is a
+  one-shot with no owner, placed by the game; if the player's is too, the Gun list never matches it (not fired yet: the
+  launcher's and arena's Shepard carry no drawable gun). Next: pick the player's shot out by its cue and place.
 - **A3. Settings in the menu**: `[Audio] spatial` (Headphones 3D / Speakers / The game's own) and `gainDb` as rows (they apply
   at the next start; the row says so). Players can't be asked to edit the ini. **Built 2026-11-11**: the menu's Sound page.
 - **A4. Measured in combat**: other people's gunfire, explosions and footsteps under OpenAL Soft: the delay between the ears
-  and the balance following the head (`tools/audio-balance.py`); confirm the game positions them at all. **The plan is
-  written** (below); not run.
+  and the balance following the head (`tools/audio-balance.py`); confirm the game positions them at all. **Run
+  2026-11-11** ("To check in the game" item 9): the fight's fire, impacts and footsteps are placed by the game; the balance
+  swings -1.7 to +2.7 dB with the head; the per-window delay and the A/B against `spatial = game` not yet.
 - **A5. An intercom's colour for far voices** (the owner: the Council "a little like an intercom"): with OpenAL Soft the
   EFX filters exist (a band-pass on the source, `AL_DIRECT_FILTER`); whether ISACT's sources can be reached by their AL ids
   from the sound source's update is to find out. Optional. **Read 2026-11-11** (below): the AL ids are reachable, through
@@ -2050,6 +2053,26 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
    from one side to the other as the head turns and the far ear's delay changing side with it; the same with `[Audio] spatial
    = game` (the menu's The game's own, then a restart): the balance swings, the delay stays 0.00 ms. Explosions: a grenade
    (`mevr powerwheel` or the arena's rocket soldiers) in the same recording.
+
+**Run on the fake headset, 2026-11-11 02:30-02:42** (the merged build, `72fc6cb`):
+
+- **6, passed** (the world mode was set in that run, so "without it" is only by the code's path: `EnsureVoicePlaceHook` on
+  foot): OpenAL Soft opened with HRTF, `hooked FISACTSoundSource::Update ... (the census reads AudioComponent.SoundCue at
+  +0x88 and CurrentUseSpatialization at +0x24C)`, `sound place: [Audio] overheard on ...`, and on foot `sound place: on foot:
+  people near the player heard from where they stand`. The reflection rows agree (2316 of 2346, the 30 known vehicle ones off).
+- **7, not reached:** the launcher's `sta20_garrus` fired Garrus's wheel conversation (`GarrusAfterReceiveNormandy`), not the
+  argument (the plot decides which start runs). On foot at C-Sec afterwards, 3 people near were named, and a 15 s census
+  listed 11 sources: ambient beds and the music, nobody speaking. A1 needs a scene with barks on foot.
+- **8, not reached; what the census says about it:** the launcher's and the arena's Shepard carry no weapon the holsters can
+  draw (`mevr weapon assault`: no assault rifle is carried), so the player's gun never fired. But every shot sound in the
+  arena's fight (`snd_xmods.c_snd_assault_generic`, `c_generic_impacts`) is a one-shot with **no owner** (`no owner | ?`),
+  placed by the game: if the player's own shot is played the same way, A2's Gun list (which names the weapon actor) never
+  matches it, and the gun needs its cue picked out by name and place instead. The changelog's gun line is out until then.
+- **9, the first part answered:** the fight's weapon fire, impacts and footsteps are all `placed by the game` (component
+  spatialization 1), so OpenAL Soft renders them for two ears with no work of ours; the shields' cues and the rover's
+  engine are in the centre. A 20 s loopback with the head turning a full circle (`look-circle.mevrrec`): the balance swings
+  -1.7 dB at 3 s to +2.7 dB at 16 s as the row of soldiers passes each side, the whole recording +0.3 dB. The per-window
+  delay and the same with `spatial = game` are not measured yet. The arena's saves were put back (identical to the backup).
 
 ## Log
 
