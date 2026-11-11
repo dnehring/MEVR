@@ -383,6 +383,8 @@ set(MEVR_MOD_SOURCES
     src/engine/ConversationHooks.hpp
     src/engine/BodyBounds.cpp
     src/engine/BodyBounds.hpp
+    src/engine/VoicePlace.cpp
+    src/engine/VoicePlace.hpp
     src/engine/CoverAcquire.cpp
     src/engine/CoverAcquire.hpp
     src/engine/SelectionGaze.cpp
@@ -1270,6 +1272,13 @@ if (MEVR_BUILD_TESTS)
     target_link_libraries(mevr-stack-sampler PRIVATE dbghelp winmm)
     target_compile_definitions(mevr-stack-sampler PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-stack-sampler PRIVATE /W4 /WX /permissive- /utf-8)
+
+    # What the PC plays, recorded to a WAV (tools/audio-loopback, research/69 "The voices, placed"): the game's stereo
+    # balance and level measured without ears (tools/audio-balance.py).
+    add_executable(mevr-audio-loopback tools/audio-loopback/Main.cpp)
+    target_link_libraries(mevr-audio-loopback PRIVATE ole32)
+    target_compile_definitions(mevr-audio-loopback PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-audio-loopback PRIVATE /W4 /WX /permissive- /utf-8)
 
     # How many swapchains the active OpenXR runtime lets a session hold (tools/swapchain-probe, research/21 section 18).
     add_executable(mevr-swapchain-probe tools/swapchain-probe/Main.cpp)

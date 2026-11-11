@@ -27,6 +27,7 @@
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
 #include "engine/BodyBounds.hpp"
+#include "engine/VoicePlace.hpp"
 #include "engine/CoverAcquire.hpp"
 #include "engine/ConversationHooks.hpp"
 #include "engine/SelectionGaze.hpp"
@@ -171,6 +172,7 @@ bool gSelectionHookTried = false;
 bool gSelectionHooked = false;
 bool gConversationHooksTried = false;
 bool gConversationHooked = false;
+bool gVoicePlaceHooked = false;  // the sound source update (engine/VoicePlace): goes in with the conversation hooks
 // `]` is the one switch a player needs: once a VR session runs, every VR feature comes on with
 // it (stereo, 6DOF, hand aim, arm IK), and turning VR off (or quitting from the headset) turns
 // them off. The headset sleeping doesn't count as off. Within a session the feature keys switch
@@ -387,6 +389,7 @@ void EnsureConversationHooks() {
     if (!gConversationHooksTried && game::conversation_world::WantsHooks()) {
         gConversationHooksTried = true;
         gConversationHooked = engine::conversation_hooks::Install(*gInit);
+        gVoicePlaceHooked = engine::voice_place::Install(*gInit);  // the speakers' voices from where they stand
     }
 }
 
@@ -1509,6 +1512,11 @@ MEVR_MOD_API void MevrModShutdown() {
         removed(engine::conversation_hooks::Uninstall(*gInit, !exiting),
             "the conversation hooks couldn't be removed, or a call was still inside one");
     }
+    if (gInit && gVoicePlaceHooked) {
+        removed(engine::voice_place::Uninstall(*gInit, !exiting),
+            "the sound source hook couldn't be removed, or a call was still inside it");
+    }
+    gVoicePlaceHooked = false;
     gConversationHooksTried = gConversationHooked = false;
     game::power_wheel::Shutdown(PowerWheelLink());  // the host's wheel closed
     game::galaxy_map::Shutdown(GalaxyMapLink(), exiting);  // the host forgets the hologram; the window's captures go

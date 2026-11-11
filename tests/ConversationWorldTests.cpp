@@ -350,6 +350,41 @@ void TestSceneRules() {
             cw::LookLink const stiff[] = {{1.0, 10.0}};
             CHECK(std::abs(cw::HeadShortDeg(40.0, stiff) - 30.0) < 1e-9);  // a link never turns past its limit
         }
+        // Where a voice comes from: near speakers from their heads, far ones left to the game's centred mix.
+        {
+            cw::VoiceLimits const lim;  // placed within 8 m (kept to 10); full level within 2 m, 3 dB a doubling, at most 6
+            cw::Vec3 const ear{0.0, 0.0, 170.0};
+            // Anderson, 1.8 m to the right: placed at his head, at the game's level.
+            cw::VoiceState anderson;
+            cw::VoiceAt const beside = cw::PlaceVoice(anderson, ear, {0.0, 180.0, 170.0}, lim);
+            CHECK(beside.placed && std::abs(beside.at.y - 180.0) < 1e-9 && std::abs(beside.at.x) < 1e-9 && std::abs(beside.distanceUnits - 180.0) < 1e-9);
+            CHECK(beside.gain == 1.0);
+            // Someone 4 m ahead: 3 dB quieter; 8 m: 6 dB; never more.
+            cw::VoiceState far4;
+            cw::VoiceAt const ahead = cw::PlaceVoice(far4, ear, {400.0, 0.0, 170.0}, lim);
+            CHECK(ahead.placed && std::abs(ahead.at.x - 400.0) < 1e-9 && std::abs(20.0 * std::log10(ahead.gain) + 3.0) < 1e-6);
+            CHECK(std::abs(20.0 * std::log10(cw::PlaceVoice(far4, ear, {800.0, 0.0, 170.0}, lim).gain) + 6.0) < 1e-6);
+            cw::VoiceLimits wide = lim;
+            wide.withinUnits = wide.keepUnits = 5000.0;
+            cw::VoiceState far30;
+            CHECK(std::abs(20.0 * std::log10(cw::PlaceVoice(far30, ear, {3000.0, 0.0, 170.0}, wide).gain) + 6.0) < 1e-6);
+            wide.falloffDb = 0.0;
+            CHECK(cw::PlaceVoice(far30, ear, {3000.0, 0.0, 170.0}, wide).gain == 1.0);
+            // A councillor, 17 m away: the game's own mix (the intercom).
+            cw::VoiceState council;
+            CHECK(!cw::PlaceVoice(council, ear, {1700.0, 100.0, 270.0}, lim).placed);
+            // A step back mid-line changes nothing: placed at 7.5 m stays placed at 9.5, lets go past 10, comes back within 8.
+            cw::VoiceState walker;
+            CHECK(cw::PlaceVoice(walker, ear, {750.0, 0.0, 170.0}, lim).placed);
+            CHECK(cw::PlaceVoice(walker, ear, {950.0, 0.0, 170.0}, lim).placed);
+            CHECK(!cw::PlaceVoice(walker, ear, {1050.0, 0.0, 170.0}, lim).placed);
+            CHECK(!cw::PlaceVoice(walker, ear, {900.0, 0.0, 170.0}, lim).placed);
+            CHECK(cw::PlaceVoice(walker, ear, {790.0, 0.0, 170.0}, lim).placed);
+            // At the listener's own place, and a place that is no number.
+            cw::VoiceState onTheSpot;
+            CHECK(cw::PlaceVoice(onTheSpot, ear, ear, lim).placed);
+            CHECK(!cw::PlaceVoice(onTheSpot, ear, {std::nan(""), 0.0, 0.0}, lim).placed && !onTheSpot.placed);
+        }
         // The wheel's stick is not the walk's until it has been let go.
         {
             cw::StickLatch latch;

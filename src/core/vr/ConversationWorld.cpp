@@ -554,6 +554,30 @@ double StrongerLink(double strength, double gain) {
     return s + (1.0 - s) * std::clamp(gain, 0.0, 1.0);
 }
 
+VoiceAt PlaceVoice(VoiceState& state, Vec3 const& listener, Vec3 const& head, VoiceLimits const& limits) {
+    VoiceAt out;
+    Vec3 const to{head.x - listener.x, head.y - listener.y, head.z - listener.z};
+    double const d = std::hypot(to.x, to.y, to.z);
+    out.distanceUnits = d;
+    if (!std::isfinite(d)) {
+        state.placed = false;
+        return out;
+    }
+    double const keep = std::max(limits.withinUnits, limits.keepUnits);
+    state.placed = d <= (state.placed ? keep : limits.withinUnits);
+    out.placed = state.placed;
+    if (!out.placed) {
+        return out;
+    }
+    out.at = head;
+    double const full = std::max(1.0, limits.nearUnits);
+    if (d > full && limits.falloffDb > 0.0) {
+        double const quieter = std::min(limits.falloffDb * std::log2(d / full), std::max(0.0, limits.floorDb));
+        out.gain = std::pow(10.0, -quieter / 20.0);
+    }
+    return out;
+}
+
 bool StickWalks(StickLatch& latch, bool wheelUp, double magnitude, double releasedBelow) {
     if (wheelUp) {
         latch.held = true;

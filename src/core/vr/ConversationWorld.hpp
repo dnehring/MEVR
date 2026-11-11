@@ -291,6 +291,32 @@ struct LookLink {
 double HeadShortDeg(double offDeg, std::span<LookLink const> links);
 double StrongerLink(double strength, double gain);
 
+// Where a speaker's voice comes from (research/69 "The voices, placed"; the owner, 2026-11-10: "for the council we would
+// expect it to sound a little like an intercom. But for other scenes it should be spatial"). The game plays most dialogue
+// in the centre, wherever the speaker stands. Someone who speaks within `withinUnits` of the listener (kept until past
+// `keepUnits`, so a step back mid-line changes nothing) is heard from where their head is; someone further away is left
+// as the game mixes it: in the centre and at full level, a voice carried across a hall. The audio engine only pans a
+// placed voice (measured: one 8.6 m away is as loud as the centred mix), so the loudness is ours: full within `nearUnits`,
+// then `falloffDb` quieter for each doubling of the distance, at most `floorDb` quieter (half the law of the open air:
+// a conversation stays a conversation).
+struct VoiceLimits {
+    double withinUnits = 800.0;
+    double keepUnits = 1000.0;
+    double nearUnits = 200.0;
+    double falloffDb = 3.0;
+    double floorDb = 6.0;
+};
+struct VoiceState {
+    bool placed = false;
+};
+struct VoiceAt {
+    bool placed = false;        // false: the game's own mix (the centre)
+    Vec3 at;                    // where the voice is put: the speaker's head (placed only)
+    double gain = 1.0;          // times the game's volume (placed only)
+    double distanceUnits = 0.0; // the speaker's head from the listener
+};
+VoiceAt PlaceVoice(VoiceState& state, Vec3 const& listener, Vec3 const& head, VoiceLimits const& limits = {});
+
 // The left stick steers the conversation wheel while it is up, and is still where it picked the reply as the wheel closes:
 // it walks again only once it has been let go (the owner's headset session, 2026-11-10: Shepard lurched half a metre in the
 // reply's direction after every pick). True: the stick may walk the player this tick.

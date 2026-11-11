@@ -10,6 +10,7 @@
 #include "core/vr/HostView.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/ConversationHooks.hpp"
+#include "engine/VoicePlace.hpp"
 #include "game/AuthoredMoment.hpp"
 #include "engine/SettingsFile.hpp"
 #include "engine/Skeleton.hpp"
@@ -186,6 +187,18 @@ struct Settings {
     // this share of what its strength leaves (worldLookReach; 0: the game's strengths for everyone).
     float lookReach = 0.4f;
     bool turnLog = false;              // worldTurnLog = 1: each looking or turning person's yaw twice a second
+    // Where the voices come from (worldVoices = spatial | game; research/69 "The voices, placed"; cw::PlaceVoice): a speaker
+    // within worldVoiceWithinM of the player (kept to worldVoiceKeepM) is heard from where their head is; one further away
+    // is left to the game's centred mix (the Council across its chamber: an intercom). The audio engine only pans, so the
+    // loudness is ours: full within worldVoiceNearM, worldVoiceFalloffDb quieter per doubling of the distance, at most
+    // worldVoiceFloorDb; worldVoiceGain: times that.
+    bool voices = true;
+    float voiceWithinM = 8.0f;
+    float voiceKeepM = 10.0f;
+    float voiceNearM = 2.0f;
+    float voiceFalloffDb = 3.0f;
+    float voiceFloorDb = 6.0f;
+    float voiceGain = 1.0f;
     // (60 and 25 until 2026-11-10 evening: the chain's own reach is about 84 degrees, the head taking all but the eyes' 25,
     // and people who stand side by side talk with their heads turned.)
     float turnComfortDeg = 80.0f;      // the look-at chain's business up to here (worldTurnComfortDeg)
@@ -307,6 +320,16 @@ void RefreshSettings() {
         s.turnRule = cw::ParseTurnRule(*text, cw::TurnRule::Roles);
     }
     s.turnLog = number("worldTurnLog", 0.0f, 0.0f, 1.0f) != 0.0f;
+    if (auto const text = ini::Get(loaded.file, "Cinematics", "worldVoices")) {
+        std::string const v = ini::Lower(ini::Trim(*text));
+        s.voices = !(v == "game" || v == "off" || v == "0" || v == "centre" || v == "center");
+    }
+    s.voiceWithinM = number("worldVoiceWithinM", s.voiceWithinM, 0.0f, 1000.0f);
+    s.voiceKeepM = number("worldVoiceKeepM", s.voiceKeepM, 0.0f, 1000.0f);
+    s.voiceNearM = number("worldVoiceNearM", s.voiceNearM, 0.1f, 100.0f);
+    s.voiceFalloffDb = number("worldVoiceFalloffDb", s.voiceFalloffDb, 0.0f, 12.0f);
+    s.voiceFloorDb = number("worldVoiceFloorDb", s.voiceFloorDb, 0.0f, 40.0f);
+    s.voiceGain = number("worldVoiceGain", s.voiceGain, 0.0f, 4.0f);
     s.turnWithinM = number("worldTurnWithinM", s.turnWithinM, 0.0f, 100.0f);
     s.turnHomeS = number("worldTurnHomeS", s.turnHomeS, -1.0f, 600.0f);
     s.glanceDeg = number("worldGlanceDeg", s.glanceDeg, 0.0f, 180.0f);
@@ -697,6 +720,8 @@ struct Convo {
     int turnsSlid = 0;           // ... and by an eased turn of ours (the game's refused, or did not move the body)
     int facingsHeld = 0;         // facings the stage set at once mid-conversation, put back (they were for its mark)
     int facingsEased = 0;        // ... and those of people with nobody to look at, taken as a turn instead of at once
+    int voicesPlaced = 0;        // people whose voice was heard from where they stand (cw::PlaceVoice) ...
+    int voicesFar = 0;           // ... and people too far for it: the game's centred mix (the intercom)
     int reaches = 0;             // look-at chains of the pair given the further reach (worldLookReach)
     int looksRefused = 0;        // looks of ours the game refused (a look-at of its own held the pawn's at a higher rank)
     int turnsHome = 0;           // bodies that went back to the facing the scene composed after their lines with the player
@@ -1403,6 +1428,75 @@ ue3::Object* RoleLook(Stay& st, ue3::Object* listed, ue3::Object* speaker, ue3::
     }
     mayTurn = bodyFor(st.lookOurs);
     return st.lookOurs;
+}
+
+// The speakers' voices from where they stand (engine/VoicePlace; cw::PlaceVoice): everyone of the conversation but the
+// player, each tick of a conversation in the world.
+struct VoiceOf {
+    cw::VoiceState state;
+    int logged = -1;  // -1 nothing yet, 0 far, 1 placed
+};
+std::map<ue3::Object*, VoiceOf> gVoices;
+bool gVoicesSet = false;
+
+void ClearVoices() {
+    if (gVoicesSet) {
+        engine::voice_place::Set(nullptr, 0);
+        gVoicesSet = false;
+    }
+    gVoices.clear();
+}
+
+void PublishVoices(ue3::Object* pawn) {
+    if (!gC.on || !gC.world || !gInWorldForStay || !gSettings.voices || !engine::voice_place::Installed()) {
+        ClearVoices();
+        return;
+    }
+    cw::VoiceLimits limits;
+    limits.withinUnits = gSettings.voiceWithinM * kUnitsPerMeter;
+    limits.keepUnits = gSettings.voiceKeepM * kUnitsPerMeter;
+    limits.nearUnits = gSettings.voiceNearM * kUnitsPerMeter;
+    limits.falloffDb = gSettings.voiceFalloffDb;
+    limits.floorDb = gSettings.voiceFloorDb;
+    cw::Vec3 const ear{gC.hold.x, gC.hold.y, gC.hold.z};
+    engine::voice_place::Voice voices[engine::voice_place::kMaxVoices];
+    int count = 0;
+    for (Tracked const& t : gC.actors) {
+        if (t.actor == nullptr || t.actor == pawn || t.actor == gC.playerPawn || !ue3::runtime::IsAlive(t.actor) || !player::IsBioPawn(t.actor)) {
+            continue;
+        }
+        auto const head = HeadOf(t.actor);
+        auto const place = player::Location(t.actor);
+        if (!head && !place) {
+            continue;
+        }
+        ik::Vec3 const mouth = head ? head->at : V(*place) + ik::Vec3{0.0, 0.0, 70.0};
+        VoiceOf& voice = gVoices[t.actor];
+        cw::VoiceAt const at = cw::PlaceVoice(voice.state, ear, {mouth.x, mouth.y, mouth.z}, limits);
+        if (voice.logged != (at.placed ? 1 : 0)) {
+            if (voice.logged == -1) {
+                ++(at.placed ? gC.voicesPlaced : gC.voicesFar);
+            }
+            voice.logged = at.placed ? 1 : 0;
+            if (at.placed) {
+                log::Info("convo: at {:.1f} s {}'s voice comes from where it stands ({:.1f} m from the player, {:.1f} dB for the distance)",
+                    Seconds(), t.name, at.distanceUnits / kUnitsPerMeter, 20.0 * std::log10(std::max(at.gain, 1e-6)));
+            } else {
+                log::Info("convo: at {:.1f} s {}'s voice is left to the game's mix ({:.1f} m from the player, past the {:.0f} m a voice is "
+                          "placed within: the centre, an intercom)", Seconds(), t.name, at.distanceUnits / kUnitsPerMeter, gSettings.voiceWithinM);
+            }
+        }
+        if (at.placed && count < engine::voice_place::kMaxVoices) {
+            engine::voice_place::Voice& v = voices[count++];
+            v.actor = t.actor;
+            v.at[0] = static_cast<float>(at.at.x);
+            v.at[1] = static_cast<float>(at.at.y);
+            v.at[2] = static_cast<float>(at.at.z);
+            v.gain = static_cast<float>(at.gain) * gSettings.voiceGain;
+        }
+    }
+    engine::voice_place::Set(voices, count);
+    gVoicesSet = true;
 }
 
 void KeepInPlace(ue3::Object* pawn) {
@@ -2548,6 +2642,7 @@ void End(char const* why) {
         return;
     }
     ReleaseLooks(why);
+    ClearVoices();
     gTrail.clear();
     EndWalks(why);
     if (gC.detached && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
@@ -2615,7 +2710,8 @@ void End(char const* why) {
               "\"trackWalks\": {}, \"trackHeld\": {}, \"yielded\": {}, \"guidedM\": {:.2f}, \"walkInWay\": \"{}\", \"arrived\": {}, "
               "\"bodyTurns\": {}, \"gameTurns\": {}, \"turnsSlid\": {}, \"facingsHeld\": {}, \"wheelSticks\": {}, \"lookWide\": {}, "
               "\"lookMaxDeg\": {:.0f}, \"headShortDeg\": {:.0f}, \"facingsEased\": {}, \"looksSet\": {}, \"glances\": {}, \"heardOnly\": {}, "
-              "\"looksGame\": {}, \"turnsHome\": {}, \"reaches\": {}, \"looksRefused\": {}, \"entries\": [{}]}}",
+              "\"looksGame\": {}, \"turnsHome\": {}, \"reaches\": {}, \"looksRefused\": {}, \"voicesPlaced\": {}, \"voicesFar\": {}, "
+              "\"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
         gC.shotKinds.count("over Shepard's shoulder") != 0 ? gC.shotKinds.at("over Shepard's shoulder") : 0,
@@ -2623,7 +2719,7 @@ void End(char const* why) {
         gC.letGo, gC.reanchors, maxMove / kUnitsPerMeter, gC.eyeToViewMax / kUnitsPerMeter, gC.shotsFar, gC.cameraFarM, gC.walks, gC.openingMoves, gC.arranged,
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
-        gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, entryPath);
+        gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }
@@ -3546,6 +3642,7 @@ void Tick(double deltaSeconds, Link const& link) {
         }
     }
     ResolveBlack(pawn);
+    PublishVoices(pawn);
     TrackViewSpeed(deltaSeconds);
     BodyReport(controller, pawn, mode);
     ue3::Object* const conv = controller != nullptr && mode && *mode == kModeConversation ? ConversationNow(controller) : nullptr;
@@ -3846,9 +3943,18 @@ void LogStats() {
     if (gInWorld) {
         log::Info("convo: in the world for {} ticks (conversation {}, {} shots so far)", gWorldTicks, gC.number, gC.shots);
     }
+    if (engine::voice_place::Installed()) {
+        engine::voice_place::Stats const v = engine::voice_place::Take();
+        if (v.voices != 0 || v.placed != 0 || v.offThread != 0 || v.faults != 0) {
+            log::Info("convo: voices: {} people's voices placed now; {} of {} sound source updates placed this period{}{}", v.voices, v.placed,
+                v.updates, v.offThread != 0 ? std::format("; {} seen on another thread and left alone", v.offThread) : "",
+                v.faults != 0 ? std::format("; {} faults in the hook (after three it places nothing)", v.faults) : "");
+        }
+    }
 }
 
 void Shutdown(Link const& link) {
+    ClearVoices();
     engine::conversation_hooks::SetKeepProvider(nullptr);
     End("the mod unloads");
     StopWorld(link, "the mod unloads");

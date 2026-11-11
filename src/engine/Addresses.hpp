@@ -64,6 +64,9 @@ inline constexpr std::uint32_t kUpdateSkelPose = 0x592440;
 inline constexpr std::uint32_t kSkelUpdateBounds = 0x58EEC0;
 // UPrimitiveComponent's hand-over of its Bounds to its Umbra object (the box as the object's matrix): UpdateBounds ends with it.
 inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0x25CFE0;
+// FISACTSoundSource::Update: a playing source's volume, pitch, relative flag and position sent to ISACT each frame
+// (engine/VoicePlace; research/69 "The voices, placed").
+inline constexpr std::uint32_t kSoundSourceUpdate = 0x7BA90;
 // BioPawn's cover acquisition test and its cover trace (engine/CoverAcquire; research/23).
 inline constexpr std::uint32_t kTryAcquireCover = 0xAB1430;
 inline constexpr std::uint32_t kCoverTrace = 0xAA92F0;
@@ -134,6 +137,8 @@ inline constexpr Entry kTable[] = {
         "40 55 53 48 8D AC 24 08 FF FF FF 48 81 EC F8 01", 0, 0, "mod (body bounds)"},
     {"UPrimitiveComponent::UpdateUmbraBounds", kPrimitiveUmbraBounds, Kind::Function,
         "40 53 48 81 EC C0 00 00 00 48 83 B9 10 02 00 00", 0, 0, "mod (body bounds)"},
+    {"FISACTSoundSource::Update", kSoundSourceUpdate, Kind::Function,
+        "48 8B C4 55 41 54 41 55 41 56 41 57 48 8D A8 A8 FD FF FF 48", 0, 0, "mod (voices placed)"},
     {"ABioPawn::TryAcquireCover", kTryAcquireCover, Kind::Function, "48 8B C4 55 56 57 48 8D 68 A1 48 81 EC B0 00 00", 0, 0,
         "mod (cover)"},
     {"ABioPawn::CoverTrace", kCoverTrace, Kind::Function, "48 8B C4 48 89 58 08 48 89 70 10 55 57 41 56 48 8D A8 A8 FE", 0, 0,
@@ -240,6 +245,7 @@ inline constexpr std::uint32_t kViewportDrawEnd = 0x6D2C99;
 inline constexpr std::uint32_t kUpdateSkelPose = 0;
 inline constexpr std::uint32_t kSkelUpdateBounds = 0;
 inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0;
+inline constexpr std::uint32_t kSoundSourceUpdate = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
 inline constexpr std::uint32_t kUpdateSelection = 0;
@@ -276,6 +282,7 @@ inline constexpr std::uint32_t kViewportDrawEnd = 0x6D40DB;
 inline constexpr std::uint32_t kUpdateSkelPose = 0;
 inline constexpr std::uint32_t kSkelUpdateBounds = 0;
 inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0;
+inline constexpr std::uint32_t kSoundSourceUpdate = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
 inline constexpr std::uint32_t kUpdateSelection = 0;
