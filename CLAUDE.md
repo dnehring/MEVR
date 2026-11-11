@@ -597,7 +597,11 @@ switching frameworks.
   (`cw::StickWalks`: still out as the wheel closed, it walked Shepard half a metre after every reply). **The fast loop is scenes from validation saves** (`tools/conversation-from-save.ps1 -All`, research/69 "The script's
   Shepard, the player's view; the fast loop", 2026-11-10): each save loaded through the loaded career's quicksave, its
   scene's first action fired, the stretch of log judged: ten scenes in nine minutes, no restart; **the runner's `open` resets
-  the plot**, so a scene behind plot checks is only itself from a save. What it brought: **a scripted walk's Shepard is the
+  the plot**, so a scene behind plot checks is only itself from a save. Since 2026-11-11 (research/69 "The coverage pass from
+  saves") it finalizes a landing's squad screen, streams a chunk in by its named plot state (`actions` rows' `streamStates`),
+  and tells a bark scene by its voice (`mevr voices census`, rows' `barks`); **after 16 loads without the pause menu Halcyon's
+  first-person table was full and the camera third person** (`[MEVR]` `FpPruneDeadOwned` in head_aim.cpp drops the dead
+  entries now; look at the snapshots, not only the judge). What it brought: **a scripted walk's Shepard is the
   script's** (`worldMoments = view`, the default: the track moves his pawn, hidden, through every trigger; the view stays
   the player's, walks by the stick or guided along the way the pawn went, `cw::TrailTarget`, and joins it at rest; with the
   move withheld the Spectre ceremony never began for a player who stood still); **no flash of the 3D screen at a scene's

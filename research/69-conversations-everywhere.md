@@ -188,6 +188,13 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     the career until the run); 5 have no placed owner or originator to stand the player by (Therum's elevator ride, Hackett's
     transmission, the Citadel's cab, Bring Down the Sky's batarians, the combat banter), and `actions` finds every scene's first
     action in the plan. About an hour and a quarter, after the owner's audit.
+    **Run 2026-11-11 12:45-14:28** (the owner: "Run the 47 scene coverage pass now"; "The coverage pass from saves" below): 16
+    conversations played in the world and judged, 7 bark scenes heard playing; **131 of 290 reachable scenes played** in some
+    run now. On the way, **a Halcyon fault behind the eyes**: after 16 save loads without the pause menu its first-person table
+    was full and the camera stayed the game's third-person one, 2 m behind Shepard; fixed (dead entries dropped), and seen fixed
+    after 17 loads. The loop now finalizes a landing's squad screen, streams a chunk in by its plot state, and tells barks by
+    their voice. Still not started: 4 saves on uncharted worlds (they start a landing), 4 chunks whose state doesn't stream
+    them, 8 starts behind plot conditions a save doesn't set, 3 flowed and 4 voiceless (popup text) scenes not confirmed.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify]. **Narrowed 2026-11-11** ("The subtitle of a line played as a bark" below): a flowed scene's
     lines behave exactly like the game's own barks: the line's text is built, nothing is drawn, in this profile (its subtitle
@@ -198,6 +205,17 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     headset is the owner's to judge.
 14. **Bodies that must turn slide** (no turn-on-the-spot animation exists for these people; rare now). Accepted unless the
     headset says otherwise.
+15. **A stage animation that carries Shepard's head away from his pawn** (new 2026-11-11, "The coverage pass from saves"):
+    Bring Down the Sky's surveyor (`prc1_surveyor`): Shepard's head bone stands 2 m from his pawn as the scene starts, the
+    opening cuts (his mark out of sight), and the view, following the head bone's jumps, ends inside his torso (a snapshot at
+    8 s: the back of his armour fills the lower half). Find what moves the skeleton (root motion or a stage offset) before
+    choosing the view's anchor there.
+16. **A flash of the flat panel at a transmission's end** (new 2026-11-11, same section): Hackett's call in the comm room
+    (`sp111_transmission`, 13 s): the cinematic's flat panel shown for 0.05 s with two dips as it ended. [verify] what
+    switches there (the judge's `flash`).
+17. **Scenes on uncharted worlds from a save** (harness, 2026-11-11): a save written on foot on an uncharted world loads into
+    the landing (the squad screen, then the drop's cinematic, which didn't end in two minutes); four sampled scenes need a
+    save made after the landing, or the runner's `open` and `mevr vehicle party` (research/47 "Reaching the Mako").
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -2594,6 +2612,50 @@ it back. Two live toggles for the mod's lists: People around you (`overheard`), 
 (`sound place tests: ok`, the menu's new checks in `TestMenuSettings`), `check-spdx` passes, two new ReflectCheck rows
 (`AudioComponent.SoundCue`, `CurrentUseSpatialization`), and the menu preview shows the page in its three states.
 
+### The coverage pass from saves (2026-11-11 12:45-14:28; the owner: "Run the 47 scene coverage pass now. I can't do the audit until much later")
+
+**The pass** (`conversation-from-save.ps1 -All` over the 47 saves written for the next sample, players' build, fake headset,
+saves and inis backed up and restored, `-EndAfter 25`, a snapshot 8 s into each scene): 13 played in the world and were judged,
+33 didn't start (21 "nothing came of the action", 8 chunks not loaded, 4 saves that never came up on foot), 5 had no save.
+Snapshots of the 13: five showed **Shepard's headless body about 2 m in front of the eyes**, seen from behind (Avina,
+Samesh, Septimus, the asari scientist, the surveyor). The mod's own lines told why for three: the view on foot each opening
+took was the game's third-person camera, 2 m behind his pawn along his facing (the explore mode's offset 200, 0, 40), not the
+eye the first-person camera puts 0.5 m ahead of him in the earlier scenes.
+
+**A Halcyon fault: the first-person table fills.** Halcyon's first person writes its offset into each camera-mode object it
+"owns" (`head_aim.cpp`, `FpOwnAndWrite`), in a table of 16. Every save load makes new camera-mode objects; the old entries
+die with the level, but were dropped only when the same mode was written again (never) or by the restore-all of the pause
+menu (game mode 7). Halcyon's log: a new mode owned at almost every load, the table full at 13:10:30, no first-person write
+after it until the next pause menu. A player loading 16 saves without opening the pause menu (quickloads after deaths)
+would get the third-person camera on foot from then on. **Fix** (a `[MEVR]` seam in `head_aim.cpp`, `FpPruneDeadOwned`): a
+full table first drops its dead entries, by the same deep-liveness check the write path uses (no restore for a dead
+entry). **Seen**: a second run loaded 17 saves in one game, then the three Citadel scenes: `[FPCAM] owned table full: 16
+dead entries of earlier levels dropped`, all three opened at Shepard's eyes (snapshots: Avina and the keeper ahead, Samesh
+facing the player, Septimus's back room), the judge found nothing.
+
+**The loop's gaps, closed** (`conversation-from-save.ps1`; `conversation-sweep.py actions` gives each scene's streaming states
+and whether it plays as barks):
+- **A landing's squad screen**: a save on foot on an uncharted world loads into PartySelect; the loop calls the screen's own
+  FinalizeParty (`mevr vehicle party`) and counts the Mako's mode as loaded. The landing then plays its drop cinematic (mode
+  6), which didn't end in two minutes for two of them, and the last left the game with no pawn: such saves need writing
+  after the landing (item 17).
+- **A chunk shown under a plot state**: when the action isn't loaded, the scene's named streaming states are turned on one
+  by one (`mevr stream state <name> on`). The Normandy's Feros huddle (`stream_huddle`) and Ashley's wake-up talk
+  (`stream_wakeup2`) streamed and played, Feros's colony (`JumpTo20`) streamed; Virmire's `SS_VIRMIRE_PART2`, the Normandy's
+  airlock and locker states and Feros's `PostThorian` bunker did not bring their action in.
+- **Barks**: an ambient or flowed scene has no conversation mode to wait for; the loop starts a voice census (`mevr voices
+  census 14`) as it fires and counts the census lines whose cue is the conversation's: 7 heard playing (Noveria's interview,
+  Virmire's two salarian prisoners, Eden Prime's farmer, the Presidium's employees, the asteroid's prisoner, Feros's
+  Calantha Blake). The popup texts and the news videos have no voice to hear; three flowed scenes (Ashley on Virmire, the
+  Ilos elevator comment, Major Kyle) and two Feros ambients streamed in by `JumpTo20` were not heard (their start's plot
+  conditional, [verify]).
+
+**What the judge found in the scenes that played** (16 conversations): the surveyor (item 15), Hackett's transmission
+(item 16), two 63-degree body turns (Ashley on Eden Prime, Tevos on the Normandy's call, both by the re-face rule, the second before
+the player has walked in: the owner's re-face question, notes/headset-checklist.md), Shepard moving as his own line began in
+two short scenes (`reply-move`, no stick involved: the stage's placement, [verify]). Everything else: nothing found.
+**Coverage: 131 of 290 reachable scenes played** in some run (108 before, 16 conversations and 7 bark scenes new).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3009,3 +3071,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 11:33, **the handover fix seen, item 7's seat walk seen arriving** ("The handover, run again"): Anderson's conversation opened as a 4.2 m walk-in after the comm room, no cut; Nihlus walked 2 m into a seat by the AI and arrived.
 - 2026-11-11 11:50, **item 12: coverage counted** (the list's item 12): 108 of 290 reachable scenes played in some run; the next sampled pass (52 scenes, 14 levels) is ready for after the owner's audit.
 - 2026-11-11 12:01, **item 11 done: the ending's other branch** ("The scripted walks, named"): the final cutscene's `Interp_2` takes conditional F1289 (plot integer 46 over 47); from a save with 46 = 18 it played held in first person, 16.9 s, one dip at the cut 203 m into the tower; all 21 scripted walks seen. The platform under Shepard is pure black from his eyes (not the near plane, not culling: measured), [verify] in the headset.
+- 2026-11-11 14:30, **item 12: the coverage pass from saves** ("The coverage pass from saves"): 16 conversations played in the world and 7 bark scenes heard (131 of 290 now); a Halcyon fault fixed (its first-person table full after 16 loads without the pause menu: the third-person camera), seen fixed after 17 loads; items 15-17 new.

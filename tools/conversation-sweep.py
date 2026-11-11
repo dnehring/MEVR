@@ -729,9 +729,14 @@ def actions(argv):
     rows = []
     for i, entry in enumerate(listing):
         s = known.get(entry['scene'])
+        # The named streaming states the scene's chunk is shown under (the loop streams them in when the action is not loaded:
+        # a save stands the player at the scene but carries the plot's states of the level it was written from), and whether
+        # it plays as barks (ambient, or flowed by the mod): no conversation mode to wait for, its voice is the sign.
+        shape = ((s or {}).get('shape') or '').split(' |')[0]
         rows.append({'slot': first + i, 'scene': entry['scene'], 'title': entry.get('title', entry['scene']),
                      'class': (s or {}).get('actionClass') or 'BioSeqAct_StartConversation', 'tail': (s or {}).get('actionTail'),
-                     'input': int((s or {}).get('actionInput') or 0)})
+                     'input': int((s or {}).get('actionInput') or 0), 'streamStates': (s or {}).get('streamStates') or [],
+                     'barks': shape == 'ambient' or bool((s or {}).get('flowed'))})
     print(json.dumps(rows))
     return 0
 

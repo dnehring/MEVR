@@ -56,7 +56,20 @@ function Clear-Boxes() {
 }
 if (-not (Get-Process MassEffect1 -ErrorAction SilentlyContinue)) { throw 'the game is not running' }
 
-function Play-Scene([string]$save, [string]$class, [string]$action, [int]$actionInput, [string]$title) {
+# The mod's log (the lines since a time): a scene that plays as barks is told by its voice there (the census below).
+function Log-Since([datetime]$since) {
+    $game = Get-Process MassEffect1 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $game) { return @() }
+    $log = Join-Path (Split-Path -Parent $game.Path) 'Logs\LE1MEVR.log'
+    $fs = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
+    try { $text = (New-Object IO.StreamReader($fs)).ReadToEnd() } finally { $fs.Dispose() }
+    $from = $since.ToString('HH:mm:ss')
+    @($text -split "`n" | Where-Object { $_.Length -gt 10 -and $_.Substring(1, 8) -ge $from })
+}
+
+# -states: the named streaming states its chunk is shown under (streamed in when the action isn't loaded); -barks: a scene the
+# game plays as barks (ambient, or flowed by the mod), with no conversation mode to wait for: its voice is the sign it played.
+function Play-Scene([string]$save, [string]$class, [string]$action, [int]$actionInput, [string]$title, [string[]]$states = @(), [bool]$barks = $false) {
     $script:byItself = $false
     Clear-Boxes
     if (-not $NoLoad) {
@@ -87,6 +100,11 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             $mode = Mode
             if ($mode -eq '7') {
                 Clear-Boxes; $mode = Mode
+                # A save on an uncharted world loads into the landing's squad screen (PartySelect, 2026-11-11: four saves
+                # waited on it for two minutes each): the screen's own FinalizeParty, as the player's pick would.
+                if ($mode -eq '7' -and ((Console 'mevr panel') -split "`n" | Where-Object { $_ -match 'PartySelect .*focus true' })) {
+                    Console 'mevr vehicle party' | Out-Null; Say "the landing's squad screen: the party finalized"; Start-Sleep -Seconds 4; $mode = Mode
+                }
                 # Shepard dead as the save loads (Therum's troop drop, 2026-11-11: four minutes on the game's GameOver screen).
                 if ($mode -eq '7' -and ((Console 'mevr panel') -split "`n" | Where-Object { $_ -match 'GameOver .*focus true' })) {
                     Say 'the game is over as the save loads (Shepard died: the GameOver screen)'; return $false
@@ -97,7 +115,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             # A conversation's test waits through a cinematic (mode 6): only its conversation, by name, counts (the second Codex
             # review, 2026-11-11); a scripted walk's test takes the cinematic mode as its scene beginning.
             if ($mode -eq '5' -or ($mode -eq '6' -and (-not $title -or $title.StartsWith('moment_')))) { $script:byItself = $true; break }
-            $onFoot = $(if ($mode -eq '0') { $onFoot + 1 } else { 0 })
+            $onFoot = $(if ($mode -eq '0' -or $mode -eq '1') { $onFoot + 1 } else { 0 })   # the Mako (1) after a landing too
         }
         # Only the scene asked for counts (the Codex review, 2026-11-11: any conversation on load stood in for it). A conversation
         # is told by its name; a scripted walk may follow a conversation of its own, so a moment's run takes what begins.
@@ -121,11 +139,34 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
         $lm = [regex]::Match($line, '^\[(\d+)\]\s+(\S+)\s+(\S+)')
         if ($lm.Success -and $lm.Groups[3].Value.EndsWith($action)) { $index = [int]$lm.Groups[1].Value }
     }
+    # Its chunk is shown only under a streaming state the plot sets (the Normandy's huddle, Feros after the Thorian): the save
+    # carries the states of the level it was written from, so they are turned on one by one until the action is there.
+    foreach ($state in @($states)) {
+        if ($index -ge 0 -or -not $state) { break }
+        Console "mevr stream state $state on" | Out-Null
+        Say "$class ...$action is not loaded: streaming state $state on"
+        for ($w = 0; $w -lt 10 -and $index -lt 0; $w++) {
+            Start-Sleep -Seconds 2
+            foreach ($line in (Console "mevr instances $class $tail") -split "`n") {
+                $lm = [regex]::Match($line, '^\[(\d+)\]\s+(\S+)\s+(\S+)')
+                if ($lm.Success -and $lm.Groups[3].Value.EndsWith($action)) { $index = [int]$lm.Groups[1].Value }
+            }
+        }
+    }
     if ($index -lt 0) { Say "$class ...$action is not loaded"; return $false }
     $started = Get-Date
     if ($Before) { Console $Before | Out-Null }   # e.g. a call trace that must cover the scene's first frames
+    if ($barks) { Console 'mevr voices census 14' | Out-Null }   # every sound source and its cue for 14 s
     Console "mevr activate $index $actionInput" | Out-Null
     Say "fired $action (input $actionInput)"
+    if ($barks) {
+        # Barks: no conversation mode. Its lines are told by their cues in the census (the conversation's package name).
+        Start-Sleep -Seconds 17
+        $name = ($title -replace '_dlg$', '').ToLowerInvariant()
+        $heard = @(Log-Since $started | Where-Object { $_ -match 'voice census:   ' -and $_.ToLowerInvariant().Contains($name) })
+        if ($heard.Count -gt 0) { Say ("played as barks: {0} of its lines heard (the voice census)" -f $heard.Count); return $true }
+        Say 'played as barks? none of its lines heard in 14 s (the voice census)'; return $false
+    }
     } else { $started = Get-Date }
     # The test's inputs whichever way the scene began (they were skipped for a scene that started by itself).
     if ($Walk -gt 0) { Console "mevr convo walk 0 1 $Walk" | Out-Null }
@@ -179,7 +220,7 @@ if ($All) {
         Write-Output ''
         Write-Output ("=== slot {0}: {1}" -f $row.slot, $row.title)
         if (-not $row.tail) { Say 'no plan knows its starting action: skipped'; $failed += $row.slot; continue }
-        $result = Play-Scene ("{0}_{1}" -f $Career, $row.slot) $row.class $row.tail ([int]$row.input) $row.scene
+        $result = Play-Scene ("{0}_{1}" -f $Career, $row.slot) $row.class $row.tail ([int]$row.input) $row.scene @($row.streamStates) ([bool]$row.barks)
         $result | Where-Object { $_ -isnot [bool] }
         if (@($result)[-1] -ne $true) { $failed += $row.slot }
         $done++
