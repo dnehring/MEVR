@@ -708,6 +708,16 @@ void TestWalkStep() {
     CHECK(!cw::WalkWorthIt(95.0, 179.0, 150.0, 60.0));   // the ceremony's step back
     CHECK(!cw::WalkWorthIt(80.0, -90.0, 150.0, 60.0));   // a step aside
     CHECK(cw::WalkWorthIt(80.0, 350.0, 150.0, 60.0));    // -10 degrees, wrapped
+    // A flowed line's subtitle: a new line at once, the same one again every 0.25 s, nothing when off or with subtitles hidden.
+    cw::BarkSubtitleState subs;
+    CHECK(cw::ShowBarkSubtitle(subs, true, 0, 7, 10.0, 0.25));
+    CHECK(!cw::ShowBarkSubtitle(subs, true, 0, 7, 10.1, 0.25));
+    CHECK(cw::ShowBarkSubtitle(subs, true, 0, 7, 10.3, 0.25));
+    CHECK(cw::ShowBarkSubtitle(subs, true, 0, 9, 10.31, 0.25));   // the next line at once
+    CHECK(!cw::ShowBarkSubtitle(subs, true, 1, 9, 11.0, 0.25));   // the player's option hides subtitles
+    CHECK(!cw::ShowBarkSubtitle(subs, false, 0, 9, 11.0, 0.25));  // the setting off
+    CHECK(!cw::ShowBarkSubtitle(subs, true, 0, 0, 11.0, 0.25));   // no text
+    CHECK(cw::ShowBarkSubtitle(subs, true, 0, 9, 11.0, 0.25));    // back: at once
 }
 
 void TestLatest() {

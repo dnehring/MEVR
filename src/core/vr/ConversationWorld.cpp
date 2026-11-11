@@ -951,6 +951,19 @@ double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, 
     return MarkDistance(actual, {standing.x + along * delta.x, standing.y + along * delta.y, standing.z + along * delta.z});
 }
 
+bool ShowBarkSubtitle(BarkSubtitleState& state, bool enabled, int subtitlesOption, std::uint64_t textHash, double nowS, double everyS) {
+    if (!enabled || subtitlesOption != 0 || textHash == 0) {
+        state = {};
+        return false;
+    }
+    if (state.text != textHash || state.shownS < 0.0 || nowS - state.shownS >= everyS || nowS < state.shownS) {
+        state.text = textHash;
+        state.shownS = nowS;
+        return true;
+    }
+    return false;
+}
+
 int AiEnableDeficit(int counter) {
     return counter > 0 ? 0 : 1 - counter;
 }

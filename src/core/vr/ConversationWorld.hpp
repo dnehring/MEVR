@@ -145,6 +145,17 @@ int AiEnableDeficit(int counter);
 // people up to 179 degrees to walk a step and turned them back, a pivot the owner doesn't want): a long way (at least
 // `longUnits`), or a step no more than `stepOffDeg` off where the person faces. Else it keeps its place, as before walking.
 bool WalkWorthIt(double distanceUnits, double offFacingDeg, double longUnits, double stepOffDeg);
+
+// A flowed scene's line on screen (research/69 "The subtitle of a line played as a bark", 2026-11-11): the game builds an
+// ambient line's text and draws none, so a walk-up scene that was a subtitled conversation lost its subtitles. The mod hands the
+// line's text to the game's own subtitle display again and again with a short life while the line plays, so it goes when the
+// line does. When to hand it over: the setting on, the player's subtitle option showing subtitles (0, as the game's own
+// conversations take it), a line with text; a new line at once, the same one every `everyS`.
+struct BarkSubtitleState {
+    std::uint64_t text = 0;  // the line shown (a hash; 0 none)
+    double shownS = -1.0;    // when it was last handed over
+};
+bool ShowBarkSubtitle(BarkSubtitleState& state, bool enabled, int subtitlesOption, std::uint64_t textHash, double nowS, double everyS);
 // Distance outside the segment a walk could have covered since the last observation; tolerates collision stopping short.
 double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, double elapsedS);
 

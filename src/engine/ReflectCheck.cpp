@@ -829,6 +829,10 @@ void CheckFields() {
     CheckField("SFXGame.BioConversation", "m_aFSPrevPositions", SDK_FIELD(UBioConversation, m_aFSPrevPositions));
     CheckField("SFXGame.BioConversation", "m_sCurrentSubTitle", SDK_FIELD(UBioConversation, m_sCurrentSubTitle));
     CheckField("SFXGame.BioConversation", "m_nCurrentEntry", SDK_FIELD(UBioConversation, m_nCurrentEntry));
+    CheckField("SFXGame.BioConversation", "m_sCurrentSubTitle", SDK_FIELD(UBioConversation, m_sCurrentSubTitle));  // game/ConversationFlow: a flowed line's subtitle
+    CheckField("SFXGame.BioConversation", "m_nSubtitlesMode", SDK_FIELD(UBioConversation, m_nSubtitlesMode));
+    CheckField("SFXGame.BioWorldInfo", "m_Subtitles", SDK_FIELD(ABioWorldInfo, m_Subtitles));
+    CheckField("SFXGame.BioSubtitles", "m_CurrentRenderMode", SDK_FIELD(UBioSubtitles, m_CurrentRenderMode));
     CheckField("SFXGame.BioConversation", "bUseFixedCameras", SDK_BOOL(UBioConversation, bUseFixedCameras));
     // game/ConversationFlow (research/59 "Flowing conversations"): the chain starts' entries flagged ambient before the level's
     // script starts them, the live conversation's interrupt range.
@@ -1422,6 +1426,7 @@ void CheckFunctions() {
         "Core.Object.GetStateName",  // game/ConversationWorld: worldWalkLog's probe of a walker's controller
         "SFXGame.BioPawn.SetDesiredSpeed",  // ... and a walker's speed under a paused controller
         "SFXGame.BioActorBehavior.AbilityEnable",  // ... and its AI switched on the game's way
+        "SFXGame.BioSubtitles.DisplaySubtitle",  // game/ConversationFlow: a flowed line's subtitle
         "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
         "SFXGame.BioPawn.PlaySoundSet",
         "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel",
@@ -1842,6 +1847,8 @@ void CheckParams() {
     PARAM(UBioActorBehavior_execAbilityEnable_Parms, "SFXGame.BioActorBehavior.AbilityEnable", nmSubType);
     PARAM(ABioPawn_execSetDesiredSpeed_Parms, "SFXGame.BioPawn.SetDesiredSpeed", fDesiredSpeed);
     PARAM(ABioPawn_execSetDesiredSpeed_Parms, "SFXGame.BioPawn.SetDesiredSpeed", bForce);
+    PARAM(UBioSubtitles_execDisplaySubtitle_Parms, "SFXGame.BioSubtitles.DisplaySubtitle", sSubtitle);
+    PARAM(UBioSubtitles_execDisplaySubtitle_Parms, "SFXGame.BioSubtitles.DisplaySubtitle", fDuration);
     PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", Damage);
     PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", HitLocation);
     PARAM(UBioActorBehavior_execTakeDamage_Parms, "SFXGame.BioActorBehavior.TakeDamage", DamageType);

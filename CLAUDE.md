@@ -506,7 +506,11 @@ switching frameworks.
   game"): Noveria's Juleth ambush and Olar execution played as barks on foot, no camera cut; a chain start plays only when the
   game's start choice reaches it (its plot conditional, and no unconditional start before it: `sta30_krogan_cutscene`'s never
   does); the ambient subtitle on the HUD is [verify]. `worldFlowLeashM` (-1 never, metres) sets the live chain's interrupt range;
-  `mevr convo flow [list | rescan | restore]`; logs `convo flow:`. **The player walks during a conversation** (research/59
+  `mevr convo flow [list | rescan | restore]`; logs `convo flow:`. **A flowed line keeps its subtitle** (`worldFlowSubtitles`,
+  default 1; research/69 "Subtitles for flowed lines"): the game draws none for ambient lines, so with the player's subtitle option
+  on (the conversation's `m_nSubtitlesMode` 0) the line's text goes to `BioSubtitles.DisplaySubtitle` every 0.25 s with a 0.6 s
+  life, in the bottom render mode (3, journalled, put back after the scene): the ambient mode's text stayed in the eye images,
+  6 pixels tall; the bottom one reaches the HUD panel. **The player walks during a conversation** (research/59
   "Walking during conversations", 2026-11-09, the owner's ambitious route; `worldMove = 1` default with the world mode,
   `worldMoveLeashM` 3.0, `worldMoveSpeedMS` 1.4): after the opening and while the wheel is down (its stick is
   the wheel's) the left stick moves Shepard's pawn along the head's facing inside a leash around the owner (`cw::StepPlayer`: slides

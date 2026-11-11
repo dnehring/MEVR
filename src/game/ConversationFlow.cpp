@@ -10,6 +10,7 @@
 #include "engine/SettingsFile.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
+#include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
 
 #include <Windows.h>
@@ -18,9 +19,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <format>
+#include <functional>
 #include <map>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace mevr::game::conversation_flow {
@@ -52,6 +55,11 @@ ue3::FieldRef gConvRange{"SFXGame.BioConversation", "m_fInterruptRange"};
 ue3::FieldRef gConvCurrentEntry{"SFXGame.BioConversation", "m_nCurrentEntry"};
 ue3::FieldRef gKismetStart{"SFXGame.BioConversation", "m_pKismetStart"};
 ue3::FunctionRef gForceActivate{"Engine.SequenceOp.ForceActivateInput"};
+ue3::FieldRef gConvSubtitle{"SFXGame.BioConversation", "m_sCurrentSubTitle"};      // the line's text, the speaker's name first
+ue3::FieldRef gConvSubtitlesOption{"SFXGame.BioConversation", "m_nSubtitlesMode"};  // the player's subtitle option at its start
+ue3::FieldRef gWorldSubtitles{"SFXGame.BioWorldInfo", "m_Subtitles"};               // what the conversation GUI draws
+ue3::FunctionRef gDisplaySubtitle{"SFXGame.BioSubtitles.DisplaySubtitle"};
+ue3::FieldRef gSubtitlesMode{"SFXGame.BioSubtitles", "m_CurrentRenderMode"};       // ESubtitlesRenderMode (3 bottom, 4 ambient)
 ue3::FieldRef gWorldRange{"SFXGame.BioWorldInfo", "m_fConversationInterruptDistance"};  // the world's default (BIOGame.ini), used when the start's is 0
 // The streaming levels (as `mevr stream chunks` reads them): a chunk loaded or shown is when new start actions appear.
 ue3::FieldRef gStreamingLevels{"Engine.WorldInfo", "StreamingLevels"};
@@ -67,6 +75,7 @@ struct Settings {
     float leashM = 0.0f;  // worldFlowLeashM: 0 the game's interrupt range, -1 never interrupted, else metres from the speaker
     bool protect = true;  // worldFlowProtect: a flowed scene is protected from other conversations at all (research/69 item 1)
     cw::NewcomerRule newcomers = cw::NewcomerRule::Hold;  // worldFlowNewcomers = hold | refuse | through: another level scene during one
+    bool subtitles = true;  // worldFlowSubtitles: a flowed line's subtitle through the game's display (the game draws none for barks)
     bool Active() const { return world && flow; }
 };
 Settings gSettings;
@@ -96,6 +105,9 @@ void RefreshSettings() {
     }
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldFlowNewcomers")) {
         s.newcomers = cw::ParseNewcomerRule(*text, s.newcomers);
+    }
+    if (auto const v = ini::GetNumber(loaded.file, "Cinematics", "worldFlowSubtitles")) {
+        s.subtitles = *v != 0.0;
     }
     std::string const text = std::format("worldFlow = {} ({}), worldFlowLeashM = {}, during a flowed scene barks are {} and other scenes {}",
         s.flow ? "all" : "off", s.world ? "conversations = world: active" : "not the world mode: inactive",
@@ -479,6 +491,8 @@ void WatchLive() {
 // mode 0, where conversation_world sees no conversation and writes no summary. The entries it passed through, in order,
 // what came after it (the level's follow-up: often the same conversation again, as a conversation), and what was refused or
 // held over it. Whether the entries are a whole play of the chain is the judge's to say: it has the conversation's graph.
+void RestoreMode();
+
 struct ChainRun {
     ue3::Object* conv = nullptr;
     std::string key;
@@ -504,6 +518,74 @@ void EndChain(ue3::Object* next, char const* why) {
         follows && gConvAmbient.ReadBool(next).value_or(false) ? "true" : "false", gBarksRefused - gChain.barks, gScenesHeld - gChain.held,
         gScenesRefused - gChain.refused);
     gChain = {};
+    RestoreMode();
+}
+
+// A flowed line's subtitle, through the game's own display (BioSubtitles, which the conversation GUI shows as it shows a
+// conversation's): handed over every 0.25 s with a 0.6 s life while the line plays, so it goes with the line (research/69 "The
+// subtitle of a line played as a bark").
+cw::BarkSubtitleState gBarkSubtitle;
+std::uint32_t gSubtitleLines = 0;
+bool gToldNoSubtitles = false;
+// The render mode: the game sets ambient (4) for a bark, which its GUI draws in the middle of the screen, where in VR it stayed
+// in the eye images as head-locked text 6 pixels tall; bottom (3) is drawn in the GUI's movie, so it reaches the HUD panel with
+// the rest of the game's UI (2026-11-11, snapshots 06-22-14 and 06-24-19). Set for the scene, the game's put back after it.
+ue3::Object* gModeObject = nullptr;
+std::uint8_t gModeWas = 0;
+void BottomMode(ue3::Object* subtitles) {
+    std::uint8_t* const mode = gSubtitlesMode.In<std::uint8_t>(subtitles);
+    if (mode == nullptr || *mode == 3) {
+        return;
+    }
+    if (gModeObject != subtitles) {
+        gModeObject = subtitles;
+        gModeWas = *mode;
+    }
+    *mode = 3;
+    write_journal::Wrote("ConversationFlow.subtitleMode", mode, sizeof(*mode));
+}
+void RestoreMode() {
+    if (gModeObject != nullptr && ue3::runtime::IsAlive(gModeObject)) {
+        if (std::uint8_t* const mode = gSubtitlesMode.In<std::uint8_t>(gModeObject); mode != nullptr && *mode == 3) {
+            *mode = gModeWas;  // (not ours any more if the game has set another since)
+            write_journal::Wrote("ConversationFlow.subtitleMode", mode, sizeof(*mode));
+        }
+    }
+    gModeObject = nullptr;
+    gBarkSubtitle = {};
+}
+void ShowSubtitle(ue3::Object* conv, ue3::Object* world) {
+    ue3::FString const* const text = conv != nullptr ? gConvSubtitle.In<ue3::FString>(conv) : nullptr;
+    std::wstring_view const view = text != nullptr ? std::wstring_view(text->Chars()) : std::wstring_view();
+    std::uint64_t const hash = view.empty() ? 0 : static_cast<std::uint64_t>(std::hash<std::wstring_view>{}(view)) | 1u;
+    int const option = conv != nullptr ? gConvSubtitlesOption.Read<std::int32_t>(conv).value_or(1) : 1;
+    std::uint64_t const before = gBarkSubtitle.text;
+    double const nowS = static_cast<double>(GetTickCount64()) / 1000.0;
+    if (!cw::ShowBarkSubtitle(gBarkSubtitle, gSettings.subtitles, option, hash, nowS, 0.25)) {
+        return;
+    }
+    ue3::Object* const subtitles = world != nullptr ? gWorldSubtitles.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+    ue3::Function* const fn = gDisplaySubtitle.Get();
+    if (subtitles == nullptr || !ue3::runtime::IsAlive(subtitles) || fn == nullptr || !ue3::memory::Ready()) {
+        if (!gToldNoSubtitles) {
+            gToldNoSubtitles = true;
+            log::Warn("convo flow: a flowed line's subtitle can't be shown (no subtitle display, DisplaySubtitle or allocator)");
+        }
+        return;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    ue3::memory::OwnedString owned{std::wstring(view)};
+    if (!owned.Valid() || !p.Valid() || !p.Set("sSubtitle", owned.Get()) || !p.Set("fDuration", 0.6f)) {
+        return;
+    }
+    BottomMode(subtitles);
+    ue3::runtime::Call(subtitles, fn, p);
+    if (gBarkSubtitle.text != before) {
+        if (gSubtitleLines++ == 0 || gSubtitleLines % 50 == 0) {
+            log::Info("convo flow: {}'s line shown as a subtitle (the game draws none for barks): '{}' ({} lines so far)", gChain.key,
+                ue3::memory::Narrow(owned.Get()), gSubtitleLines);
+        }
+    }
 }
 
 void WatchChain() {
@@ -519,6 +601,7 @@ void WatchChain() {
             if (entry && *entry >= 0 && (gChain.entries.empty() || gChain.entries.back() != *entry)) {
                 gChain.entries.push_back(*entry);
             }
+            ShowSubtitle(OurScene(conv) != nullptr ? conv : nullptr, world);  // (a line the game made ambient itself: its own way)
             return;
         }
     }

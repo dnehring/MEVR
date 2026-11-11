@@ -336,7 +336,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   Udina and Anderson's arrival lines, Joker's first line), then the wheel conversation starts as First person has it. Look for
   the log's `convo flow: ... plays as barks`, **the subtitle on the HUD panel (none showed in the fake headset's frames, and none for the game's own barks either
   there: research/69 "The subtitle of a line played as a bark"; with your subtitles on, compare a bark of the game's own, people
-  talking as you pass, with a flowed scene)**, no camera cut, the people standing where the level left them (the stage's
+  talking as you pass, with a flowed scene)**; since 2026-11-11 a flowed scene's lines are subtitled on the HUD panel above the
+  health arc (research/69 "Subtitles for flowed lines"): say whether they are big enough to read, no camera cut, the people standing where the level left them (the stage's
   placement is skipped), the scene ending early if you walk off beyond 25 m. `worldFlow = off` puts the game's flags back live;
   `mevr convo flow` lists them.
 ### The omni-tool menu on the wrist

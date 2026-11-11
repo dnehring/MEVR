@@ -120,6 +120,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     subtitle on the HUD is [verify]. **Narrowed 2026-11-11** ("The subtitle of a line played as a bark" below): a flowed scene's
     lines behave exactly like the game's own barks: the line's text is built, nothing is drawn, in this profile (its subtitle
     option at the game's default, 0). What the owner sees with subtitles on is the headset's question.
+    **Built 2026-11-11** ("Subtitles for flowed lines" below): the same profile draws the ordinary conversation's subtitle (seen),
+    so a flowed scene lost the subtitles it had as a conversation. The mod now hands each flowed line to the game's own subtitle
+    display, in the bottom style, which reaches the HUD panel (seen); `worldFlowSubtitles = 0` turns it off. Legibility in the
+    headset is the owner's to judge.
 14. **Bodies that must turn slide** (no turn-on-the-spot animation exists for these people; rare now). Accepted unless the
     headset says otherwise.
 
@@ -2024,6 +2028,30 @@ nothing there is not walked (`convo: walk: X ai unavailable: its animation tree 
 by gestures only); it stays where it stands`). Run again: both stay at the window, posed, through the conversation
 (`06-10-44-423`). A tree with no action node at all is walked as before.
 
+### Subtitles for flowed lines (2026-11-11 06:10-06:26, fake headset, Noveria's ICE60_06; item 13)
+
+**The profile shows subtitles.** In Han Olar's conversation (not ambient) his line is drawn on the speaker's subtitle quad
+(`2026-11-11_05-55-31-205`, `06-10-44-423`). So the profile's option 0 means subtitles on, and a flowed scene, a conversation
+with subtitles before our flags, now played its lines with none. (The empty `BioSubtitles` of the section below was read through
+an unfiltered instance listing, whose first object is not the level's; read through
+`BIOA_ICE00.TheWorld.PersistentLevel.BioWorldInfo_0`, the object holds what is shown.)
+
+**How the game shows a subtitle.** The conversation GUI's `BioSFHandler_Conversation.Update` (script) shows the world's
+`BioSubtitles.m_sSubtitle` whenever `HasSubtitle` holds (0xB67F70: a non-empty text and a render mode other than none). It
+passes the movie a placement: 0 for the bottom mode (3), 5 for the load screen, 2 in a conversation or for an alert, else 1.
+For an ambient line the game sets the mode to ambient (4) at the conversation's start and never fills the text.
+
+**Built** (`game/ConversationFlow`, rule `cw::ShowBarkSubtitle`, unit-tested; `[Cinematics] worldFlowSubtitles`, default 1):
+while a flowed line plays (the line is one we flagged) and the conversation's `m_nSubtitlesMode` (the player's option 5, read at
+its start) is 0, its `m_sCurrentSubTitle` (the game's text, the speaker's name first) is handed to
+`BioSubtitles.DisplaySubtitle` with a 0.6 s life, again every 0.25 s, so it goes with the line. The first try, in the ambient
+mode, drew the text in the middle of the screen, where in VR it stayed in the eye images as head-locked text 6 pixels tall
+(`06-22-14-907`). The bottom mode (3) is drawn in the GUI's movie and reaches the HUD panel with the rest of the game's UI, above
+the health arc (`06-24-19-375`, `06-25-40-580` .. `06-25-46-585`: both lines, in turn). So the mod sets that mode for the scene
+(journalled) and puts the game's back when it ends (read after: 4, the text empty). Log `convo flow: <scene>'s line shown as a
+subtitle`. Not seen: the size in the headset (the HUD's own text size), and a profile with subtitles off (option other than 0:
+nothing shown, by the rule).
+
 ### The subtitle of a line played as a bark (2026-11-11 05:49-05:56, fake headset, Noveria's ICE60_06; item 13)
 
 `conversation-launch.ps1 ice60_trig12_olar_execution` (a chain start the flow table flags), then its start action fired again
@@ -2624,3 +2652,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 05:42, **item 11, a moment after a conversation** ("A moment after a conversation"): Benezia's intro plays in first person after her conversation (the ended conversation leaves its held place as the place on foot; the host stays armed for the track's first move); the guide waits at the mark while a track holds Shepard (it had stepped in place for 12 s); the runner judges self-started scenes from the load and stops at GameOver.
 - 2026-11-11 05:56, **item 13 narrowed** ("The subtitle of a line played as a bark"): a flowed scene's lines and the game's own barks are alike (text built, nothing drawn, the profile's subtitle option 0, the game's default); the headset question is what the owner sees with subtitles on.
 - 2026-11-11 06:11, **items 1 and 7: people animated by gestures only** ("People animated by gestures only"): two seat walks arrived at Han Olar's in their reference pose (their tree has no walk); such people now keep their place, posed.
+- 2026-11-11 06:26, **item 13 built** ("Subtitles for flowed lines"): this profile shows conversation subtitles, so flowed lines lost theirs; the mod hands each to the game's subtitle display in the bottom style, which reaches the HUD panel (seen); the game's mode put back after.
