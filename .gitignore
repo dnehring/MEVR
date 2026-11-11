@@ -104,5 +104,6 @@ concept/assets/hull reconstruction/assembled/*
 # The voice orders' prebuilt library and models (tools/fetch-voice.ps1; research/54): never in the repository.
 external/moonshine-voice/
 external/llama-cpp/
+external/openal-soft/
 models/
 .venv-voice/

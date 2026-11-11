@@ -318,7 +318,9 @@ Logs written by hand can contain your Windows user name in file paths: replace i
 - **Overlord** by Aeka0 (GPL-3.0): parts of the arm IK, two-hand aim, support grip and sight assist.
 - **Libraries:** MinHook (BSD-2-Clause), Dear ImGui (MIT), RmlUi (MIT, with its bundled containers' MIT notices),
   FreeType (FreeType License), the Khronos OpenXR loader (Apache-2.0) with jsoncpp (public domain / MIT), AMD
-  FidelityFX FSR 1 (MIT). Their licence texts are in the `licenses` folder.
+  FidelityFX FSR 1 (MIT), OpenAL Soft (LGPL-2.0-or-later: the game's 3D audio for headphones, installed in
+  `ASI\audio`; built unmodified from its source release, which is in the `licenses` folder as
+  `openal-soft-<its version>.tar.bz2`). Their licence texts are in the `licenses` folder.
 - **Fonts:** Rajdhani and Titillium Web (SIL OFL 1.1; their licences are in `licenses` and `payload\fonts`).
 - **Not included:** LExSDKv2 (no licence given). This build runs on our own reflection layer; LExSDKv2 was the
   prior art it was checked against during development.

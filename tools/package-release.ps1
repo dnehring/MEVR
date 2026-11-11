@@ -23,6 +23,11 @@
 #                           (tools/fetch-voice.ps1 -Models @(), 26 MB), and llama.cpp's headers (-Llm -NoBaseModel), without
 #                           which the host has no model tier: it refuses a host project without core/voice/Llm.cpp.
 #                           -NoVoice leaves both out.
+#     payload\audio\*       OpenAL Soft (research/69 "Real 3D audio"): soft_oal.dll, built from its pinned source release by
+#                           tools/fetch-openal-soft.ps1 (run first if external\openal-soft is missing), with its licence
+#                           texts. MEVR Setup puts it in ASI\audio; the host points the game's OpenAL imports at it (no game
+#                           file replaced). It is LGPL-2.0-or-later: the source it was built from goes in licenses\
+#                           (openal-soft-<version>.tar.bz2), the same place as the binary. -NoAudio leaves it out.
 #   dist\MEVR-<version>-symbols\
 #     *.pdb and the binaries they match (LE1MEVR.asi, bink2w64.dll, MEVR-Setup.exe, MEVR-Voice.dll), to symbolise the stacks in players'
 #     crash reports. Kept next to the players' folder, never inside it (the binaries name their PDB without a path:
@@ -57,7 +62,8 @@ param(
     [switch]$LexSdkPermission,
     [string]$CockpitPackage = '',
     [switch]$NoCockpit,
-    [switch]$NoVoice
+    [switch]$NoVoice,
+    [switch]$NoAudio
 )
 
 $ErrorActionPreference = 'Stop'
@@ -223,6 +229,20 @@ $licences = [ordered]@{
 }
 # MEVR-Voice.dll carries Moonshine Voice's static library (MIT, its LICENSE with its own third-party notices).
 if (-not $NoVoice) { $licences['MoonshineVoice-MIT.txt'] = 'external\moonshine-voice\LICENSE' }
+# OpenAL Soft (research/69): built from its pinned source release once (tools/fetch-openal-soft.ps1), its licence texts and
+# that source shipped with it (LGPL-2.0-or-later: the source from the same place as the binary).
+$soft = Join-Path $repo 'external\openal-soft'
+if (-not $NoAudio) {
+    if (-not (Test-Path (Join-Path $soft 'soft_oal.dll'))) {
+        Invoke-Native { & (Join-Path $repo 'tools\fetch-openal-soft.ps1') }
+        if (-not (Test-Path (Join-Path $soft 'soft_oal.dll'))) { throw 'tools/fetch-openal-soft.ps1 failed: no OpenAL Soft (or pass -NoAudio)' }
+    }
+    $softVersion = (Get-Content (Join-Path $soft 'VERSION.txt') -Raw).Trim()
+    $licences['OpenAL-Soft-LGPL-2.0.txt'] = 'external\openal-soft\COPYING'
+    $licences['OpenAL-Soft-pffft.txt'] = 'external\openal-soft\LICENSE-pffft'
+    $licences['OpenAL-Soft-BSD-3-Clause.txt'] = 'external\openal-soft\BSD-3Clause'
+    $licences["openal-soft-$softVersion.tar.bz2"] = "external\openal-soft\openal-soft-$softVersion.tar.bz2"
+}
 foreach ($source in $licences.Values) {
     if (-not (Test-Path (Join-Path $repo $source))) { throw "Licence text missing: $source (fill external\ and third_party\ first)" }
 }
@@ -248,6 +268,16 @@ if ($NoVoice) {
     $voiceDir = Join-Path $payload 'voice'
     New-Item -ItemType Directory -Force $voiceDir | Out-Null
     Copy-Item (Join-Path $out 'MEVR-Voice.dll') $voiceDir  # not onnxruntime.dll: the setup downloads it (install/Voice)
+}
+if ($NoAudio) {
+    Write-Warning "No OpenAL Soft (-NoAudio): players of this package hear the game's own OpenAL (panning only)."
+} else {
+    $audioDir = Join-Path $payload 'audio'
+    New-Item -ItemType Directory -Force $audioDir | Out-Null
+    foreach ($f in 'soft_oal.dll', 'COPYING', 'LICENSE-pffft', 'BSD-3Clause', 'README.md') {
+        Copy-Item (Join-Path $soft $f) $audioDir
+    }
+    Write-Output "OpenAL Soft ${softVersion}: payload\audio"
 }
 if (-not $NoCockpit) {
     if (-not $CockpitPackage) { $CockpitPackage = Join-Path $repo 'build\cockpit-hull\BIOG_MEVR_Cockpit.pcc' }

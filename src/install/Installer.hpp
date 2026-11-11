@@ -23,7 +23,9 @@ namespace mevr::install {
 // documents and the setup's own), and optionally payload\cockpit\ (the Mako's cockpit: BIOG_MEVR_Cockpit.pcc and cockpit.txt;
 // research/47): the package goes in CookedPCConsole with its entry in PCConsoleTOC.bin, the script in ASI\cockpit; and
 // optionally payload\voice\MEVR-Voice.dll (the voice orders' recognizer interface, research/54), which goes in ASI\voice with
-// the mod; what it needs besides is optional content the setup downloads (install/Voice, research/33 section 14).
+// the mod; what it needs besides is optional content the setup downloads (install/Voice, research/33 section 14); and
+// optionally payload\audio\ (OpenAL Soft: soft_oal.dll and its licence texts, research/69 "Real 3D audio"), which goes in
+// ASI\audio, where the host loads it for the game's audio: no game file is replaced.
 struct Payload {
     std::filesystem::path dir;
     bool Valid() const;
@@ -36,6 +38,8 @@ struct Payload {
     bool HasCockpit() const;
     std::filesystem::path VoiceDll() const { return dir / L"voice" / L"MEVR-Voice.dll"; }
     bool HasVoice() const;
+    std::filesystem::path Audio() const { return dir / L"audio"; }
+    bool HasAudio() const;
 };
 // `exeDir`\payload, or `exeDir` itself if it holds the files. nullopt when neither does (the copy installed in the
 // game's ASI folder has no payload: it can uninstall and add packs, not install or repair).

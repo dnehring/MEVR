@@ -296,7 +296,12 @@ void AdoptOurFiles(Transaction& tx, Payload const& payload, fs::path const& setu
     std::error_code ec;
     std::vector<std::string> targets{paths::kModAsi};
     tx.RecordDir(paths::kAsi);  // before its subfolders: they're removed first (newest first)
-    for (auto const& [from, to] : {std::pair{payload.Fonts(), std::string(paths::kAsi) + "/fonts"}, std::pair{payload.Menu(), std::string(paths::kAsi) + "/menu"}}) {
+    std::vector<std::pair<fs::path, std::string>> trees{{payload.Fonts(), std::string(paths::kAsi) + "/fonts"},
+        {payload.Menu(), std::string(paths::kAsi) + "/menu"}};
+    if (payload.HasAudio()) {
+        trees.emplace_back(payload.Audio(), std::string(paths::kAsi) + "/audio");
+    }
+    for (auto const& [from, to] : trees) {
         tx.RecordDir(to);
         for (auto const& entry : fs::recursive_directory_iterator(from, ec)) {
             std::string const rel = to + "/" + detect::Utf8(entry.path().lexically_relative(from).generic_wstring());
@@ -378,6 +383,11 @@ bool InstallVoiceDll(Transaction& tx, Payload const& payload) {
 bool Payload::HasVoice() const {
     std::error_code ec;
     return fs::exists(VoiceDll(), ec);
+}
+
+bool Payload::HasAudio() const {
+    std::error_code ec;
+    return fs::exists(Audio() / L"soft_oal.dll", ec);
 }
 
 bool Payload::HasCockpit() const {
@@ -508,6 +518,10 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
     ok = ok && tx.CopyIn(payload.Asi(), paths::kModAsi);
     ok = ok && CopyTree(tx, payload.Fonts(), std::string(paths::kAsi) + "/fonts");
     ok = ok && CopyTree(tx, payload.Menu(), std::string(paths::kAsi) + "/menu");
+    // OpenAL Soft (research/69 "Real 3D audio"): only into our ASI folder; the host points the game's imports at it.
+    if (payload.HasAudio()) {
+        ok = ok && CopyTree(tx, payload.Audio(), std::string(paths::kAsi) + "/audio");
+    }
     ok = ok && InstallCockpit(tx, payload);
     ok = ok && InstallVoiceDll(tx, payload);
     if (ok && !options.setupExe.empty() && fs::exists(options.setupExe, ec) &&
@@ -744,6 +758,8 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
             source = payload.Fonts() / fs::path(detect::Wide(path.substr(std::string(paths::kAsi).size() + 7)));
         } else if (path.rfind(std::string(paths::kAsi) + "/menu/", 0) == 0) {
             source = payload.Menu() / fs::path(detect::Wide(path.substr(std::string(paths::kAsi).size() + 6)));
+        } else if (path.rfind(std::string(paths::kAsi) + "/audio/", 0) == 0) {
+            source = payload.Audio() / fs::path(detect::Wide(path.substr(std::string(paths::kAsi).size() + 7)));
         } else if (path == voice::kDll) {
             source = payload.VoiceDll();
         }
@@ -773,6 +789,9 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
     };
     ok = missingFromTree(payload.Fonts(), std::string(paths::kAsi) + "/fonts") && ok;
     ok = missingFromTree(payload.Menu(), std::string(paths::kAsi) + "/menu") && ok;
+    if (payload.HasAudio()) {  // an install from before OpenAL Soft gets it now
+        ok = missingFromTree(payload.Audio(), std::string(paths::kAsi) + "/audio") && ok;
+    }
     ok = InstallCockpit(tx, payload) && ok;
     // An install from before the voice orders gets their DLL now (their downloads stay optional content).
     if (payload.HasVoice() && tx.Data().Find(voice::kDll) == nullptr) {

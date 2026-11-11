@@ -731,6 +731,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/GameThreadCalls.hpp
     src/plugin/Halcyon.cpp
     src/plugin/Halcyon.hpp
+    src/plugin/OpenAlSoft.cpp
+    src/plugin/OpenAlSoft.hpp
     src/plugin/HalcyonBridge.cpp
     src/plugin/FloorLock.cpp
     src/plugin/HalcyonOverlays.cpp

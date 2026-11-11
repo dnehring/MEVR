@@ -22,6 +22,7 @@
 
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/GamePointer.hpp"
+#include "plugin/OpenAlSoft.hpp"
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/Halcyon.hpp"
@@ -174,13 +175,17 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     mevr::host::crash::Install();
     // Research dump of the decrypted code, before our or Halcyon's hooks patch any of it.
     mevr::engine::code_dump::SaveOnce();
+    // Hook names: "<owner>_<name>", as before stage 4 ("LE1MEVR_UGameEngine::Tick").
+    static mevr::hook::Context init{InterfacePtr, MEVR_GAME_NAME_A "MEVR"};
+#if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
+    // Before the game opens its audio device: its OpenAL to OpenAL Soft (research/69 "Real 3D audio"). Quick (a library
+    // load and a few dozen detours), so Halcyon's dxgi hooks still come before the game makes its device.
+    mevr::host::openal_soft::Attach(init);
+#endif
 #if defined(MEVR_WITH_HALCYON)
     // Before anything else: it has to hook the system dxgi.dll before the game creates its device.
     mevr::host::halcyon::Attach();
 #endif
-
-    // Hook names: "<owner>_<name>", as before stage 4 ("LE1MEVR_UGameEngine::Tick").
-    static mevr::hook::Context init{InterfacePtr, MEVR_GAME_NAME_A "MEVR"};
     if (InterfacePtr == nullptr) {
         mevr::log::Warn("no SPI interface from the loader: hooking with our own MinHook");
     }

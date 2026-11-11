@@ -1794,6 +1794,59 @@ void TestVoice() {
 // A file another process holds for a moment, as antivirus does right after a write (the installer's record failed 3 installs
 // in about 80 that way, error 5, 2026-11-06): the write over it waits and goes through once it's let go. A read-only one fails
 // at once, with no wait.
+// OpenAL Soft (research/69 "Real 3D audio"): payload\audio goes to ASI\audio only (no game file replaced), Repair puts a
+// deleted file back, an install from before it gets it, Uninstall takes it and its folder out. A payload without it
+// installs as before.
+void TestAudio() {
+    using namespace mevr::install;
+    fs::path const base = mevr::tests::TempRoot() / L"mevr-install-audio";
+    fs::path const root = base / L"Mass Effect Legendary Edition";
+    if (detect::GameRunningIn(root)) {
+        return;
+    }
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    Layout const layout{root};
+    fs::path const without = base / L"payload-old";
+    fs::path const with = base / L"payload";
+    for (fs::path const& dir : {without, with}) {
+        Write(dir / L"LE1MEVR.asi", "ASI");
+        Write(dir / L"bink2w64.dll", "our loader");
+        Write(dir / L"fonts" / L"A.ttf", "font");
+        Write(dir / L"menu" / L"main.rml", "<rml/>");
+    }
+    Write(with / L"audio" / L"soft_oal.dll", "OpenAL Soft");
+    Write(with / L"audio" / L"COPYING", "LGPL");
+    Write(layout.Win64() / L"MassEffect1.exe", "exe");
+    Write(layout.Win64() / L"bink2w64.dll", "a proxy");  // as the other tests: another proxy in front of RAD's
+    Write(layout.Win64() / L"bink2w64_original.dll", "RAD original");
+    Write(layout.Win64() / L"OpenAL32.dll", "Creative's router");
+    ICHECK(!Payload{without}.HasAudio() && Payload{with}.HasAudio());
+    InstallOptions options;
+    options.ignoreVersion = true;
+    options.choices.target = settings::TargetFor("performance", 0, 0);
+    fs::path const dll = layout.Asi() / L"audio" / L"soft_oal.dll";
+    // An install from before OpenAL Soft: no audio folder; the repair with this release's payload adds it.
+    ICHECK(Ok(Install(layout, Payload{without}, options)));
+    ICHECK(!fs::exists(layout.Asi() / L"audio"));
+    ICHECK(Ok(Repair(layout, Payload{with})));
+    ICHECK(Read(dll) == "OpenAL Soft" && Read(layout.Asi() / L"audio" / L"COPYING") == "LGPL");
+    // Deleted by hand: Repair brings it back. The game's own OpenAL is never touched.
+    fs::remove(dll, ec);
+    ICHECK(Ok(Repair(layout, Payload{with})));
+    ICHECK(Read(dll) == "OpenAL Soft");
+    ICHECK(Read(layout.Win64() / L"OpenAL32.dll") == "Creative's router");
+    ICHECK(Ok(Uninstall(layout, false, {})));
+    ICHECK(!fs::exists(layout.Asi() / L"audio"));
+    ICHECK(Read(layout.Win64() / L"OpenAL32.dll") == "Creative's router");
+    // A fresh install with it, then out again.
+    ICHECK(Ok(Install(layout, Payload{with}, options)));
+    ICHECK(Read(dll) == "OpenAL Soft");
+    ICHECK(Ok(Uninstall(layout, false, {})));
+    ICHECK(!fs::exists(layout.Asi() / L"audio") && Read(layout.Win64() / L"OpenAL32.dll") == "Creative's router");
+    fs::remove_all(base, ec);
+}
+
 void TestBusyFile() {
     fs::path const dir = mevr::tests::TempRoot() / L"mevr-busy-file";
     std::error_code ec;
@@ -1853,5 +1906,6 @@ void RunInstallTests(int& failures) {
     TestToc();
     TestFirstRunInstall();
     TestVoice();
+    TestAudio();
     TestBusyFile();
 }

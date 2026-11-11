@@ -150,6 +150,27 @@ if (Test-Path $voiceDll) {
         }
     }
 }
+# OpenAL Soft (research/69 "Real 3D audio"): soft_oal.dll and its licence texts in ASI\audio, where the host loads it at
+# attach and points the game's OpenAL imports at it (plugin/OpenAlSoft; [Audio] spatial). Built by
+# tools/fetch-openal-soft.ps1 into external\openal-soft; without it the game keeps its own OpenAL. The game must be closed.
+if ($Game -eq 'LE1') {
+    $softSrc = Join-Path $PSScriptRoot '..\external\openal-soft'
+    if (Test-Path (Join-Path $softSrc 'soft_oal.dll')) {
+        $audioDir = Join-Path $asiDir 'audio'
+        New-Item -ItemType Directory -Force $audioDir | Out-Null
+        try {
+            foreach ($f in 'soft_oal.dll', 'soft_oal.pdb', 'COPYING', 'LICENSE-pffft', 'BSD-3Clause', 'README.md') {
+                $from = Join-Path $softSrc $f
+                if (Test-Path $from) { Copy-Item $from $audioDir -Force }
+            }
+            Write-Output "OpenAL Soft: $audioDir ($((Get-Content (Join-Path $softSrc 'VERSION.txt') -ErrorAction SilentlyContinue)))"
+        } catch {
+            Write-Warning "Couldn't copy OpenAL Soft into ASI\audio (is the game running?): the loaded one stays"
+        }
+    } else {
+        Write-Output "OpenAL Soft: not built (tools/fetch-openal-soft.ps1); the game keeps its own OpenAL"
+    }
+}
 # MEVR Setup next to the ASI, as the players' install puts it: the in-game Diagnostics > Report a problem (and the
 # menu's Optional content) start ASI\MEVR-Setup.exe. Skipped while it runs (it holds its own exe open).
 $setupExe = Join-Path $out 'MEVR-Setup.exe'
