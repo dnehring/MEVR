@@ -459,7 +459,8 @@ switching frameworks.
   point. In an opening without a cut, the conversation's people out of view within `worldSeatWalkMaxM` (8 m) walk into their
   seats with the AI instead (`PlanSeatWalks`).
   **People walk to their marks with the game's own AI** (`worldWalk = 1`, the default with the world mode since 2026-11-11;
-  research/69 "People walking to their marks"; `0` off, `2` the old slide): a mark the stage asks for during a line (withheld at
+  research/69 "People walking to their marks"; `0` off, `2` the old slide, `3` the engine's walking, which moves nobody: measured,
+  it falls back to the slide): a mark the stage asks for during a line (withheld at
   the source, logged `the stage asks X onto a mark`) is walked to after 2.5 s by `BioAiController.PushMoveToPoint`, once four
   holds are lifted for that walker only: its AI enable counters (`m_nALLEnabled`/`m_nStackEnabled`, raised to 1 and lowered by
   as much after, `cw::AiEnableDeficit`), the conversation's ban on AI movement (`DoesGameModeAllowMovement` answered true),

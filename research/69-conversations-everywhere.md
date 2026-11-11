@@ -58,7 +58,8 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    Wrex, who didn't walk, was hidden in the test's plot state (not a limit of play). Open: the squad's own marks (henchmen use
    `BioAI_Henchman`, which asks `AllowsHenchmenMovement`: answered too, not yet seen walking).
    The other ways stay test options, never defaults: `worldWalk = 3` (the engine's walking physics, an acceleration toward the
-   mark) was superseded by the AI's walk, which the snapshots proved; `2` is the old slide. Since 2026-11-11 nobody whose animation
+   mark) **moves nobody** (measured 2026-11-11 07:21-07:25 in the wake-up scene: four walks, 0 units in 0.75 s each, all fell
+   back to the slide, ankles still; the table in "People walking to their marks"); `2` is the old slide. Since 2026-11-11 nobody whose animation
    tree has no walk is walked ("People animated by gestures only").
 
 2. The body in conversations and scripted walks (near plane, culling pad, the body with the player, standing legs).
@@ -1933,6 +1934,7 @@ after a `ForceSkelUpdate`, so the view's direction doesn't matter; `convo: walk:
 | Slide (`worldWalk = 2`), gesture mode on or off | still: L (-7, -9, 11), R (-7, 10, 11) every sample | 0 (the engine zeroes the slide's velocity between ticks) | on the mark, gliding |
 | AI, gesture mode on | still | 0 | never moved (deadline) |
 | AI, gesture mode off (wake-up scene) | alternate: 29, 66, 73, 28, 31, 55, 45 units apart; forward reach -47 to +30 | 197-389 at the start step, then 130 (`WalkSpeed`) | 0.18-0.27 m from the mark |
+| The engine's walking (`worldWalk = 3`; 2026-11-11, four walks in the wake-up scene) | still: L (-7, -9, 11), R (-7, 10, 11) | 0: the acceleration moved nobody in 0.75 s | the slide's fallback: on the mark, gliding |
 
 Six AI walks in the wake-up scene with the arrival rule below: five arrived 0.24-0.25 m from their marks in 0.7-2.0 s,
 one ended 1 m short at its deadline and finished on the stage's next ask for the same mark. **Seen** (the head held 40
@@ -2699,3 +2701,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 06:26, **item 13 built** ("Subtitles for flowed lines"): this profile shows conversation subtitles, so flowed lines lost theirs; the mod hands each to the game's subtitle display in the bottom style, which reaches the HUD panel (seen); the game's mode put back after.
 - 2026-11-11 06:58, **item 4 and 11: Virmire and the cockpit** ("Virmire and the cockpit"): Virmire's deployment and its scenes judged clean; the re-facing rule turned Joker in his seat 134 degrees: no re-facing while the player stands at Shepard's mark or for someone seated (`cw::MayReface`).
 - 2026-11-11 07:13, **item 11, Therum** ("Virmire and the cockpit"): the troop drop held in first person, clean; the krogan's entrance on the screen by rule, her conversation in the world; 10 of the 21 moments seen.
+- 2026-11-11 07:25, **item 1: `worldWalk = 3` measured** ("People walking to their marks", its table): the engine's walking moved nobody in four walks of the wake-up scene; each fell back to the slide. The AI's walk (`1`) is the only one that animates.
