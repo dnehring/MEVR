@@ -86,6 +86,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
     its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
     world to confirm the list.
+    **Slot 84, 2026-11-11:** it does start: the trace shows the game updating `jug20_wrex_dlg` every tick, but as Wrex's ambient
+    line. A conversation begins with the first starting entry whose conditional holds (`starting` 0, 1, 6: entry 0, the scene,
+    needs conditional 3684; entry 1 is ambient, conditional 3015; entry 6 has none), and the save doesn't satisfy 3684. Firing the
+    chain from its first op (the use event's plot check) or past it (`OverrideStagePlacement`) changes nothing. The save
+    generator sets the plot the script checks on the way to the action, not the starting entry's conditional; conditional
+    3684 isn't among `PlotManager.pcc`'s functions, so where LE1 keeps its conditionals is the next thing to find.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify].
 14. **Bodies that must turn slide** (no turn-on-the-spot animation exists for these people; rare now). Accepted unless the
@@ -2447,3 +2453,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   builds and the tests pass; the in-game checks are items 6 to 9 of "To check in the game".
 - 2026-11-11 02:40-03:45, **groups composed, Wrex explained, steps kept** ("The composition of groups", "Why C-Sec's people didn't walk", "The validation saves, run"): seats face the group's middle, the squad beside the player, walk-ins to seats; walkers' AI switched on through the game's AbilityEnable (`engine/NameLookup`); C-Sec's Wrex was hidden in the test's plot state; steps back or aside aren't walked; a failed walk restores the gesture mode.
 - 2026-11-11 03:50, **item 10 decided** ("Which scenes have no place for the player"): of 100 scenes seen in the world, the far-shots rule named two that play well in first person; the presence rules now send scenes to the 3D screen by default (`worldAutoScreen = on`), the far shots only log.
+- 2026-11-11 04:00, **slot 84 read** (item 12): Wrex's scene starts from its save as his ambient line (its first starting entry needs conditional 3684, which the save doesn't set); the save generator needs the starting entries' conditionals.
