@@ -163,7 +163,7 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Conversations and cutscenes</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc">First person (preview): you stand where Shepard stands and can walk. In VR: the director's camera moves you. 3D screen: its shots on a big screen with depth. Flat screen: without depth.</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc">First person (experimental): you stand where Shepard stands and can walk. In VR: the director's camera moves you. 3D screen: its shots on a big screen with depth. Flat screen: without depth.</div></div>
 				<div class="seg"><button class="segb" data-class-on="cine_convo == 'world'" data-event-click="pick('cine_convo','world')">First person</button><button class="segb" data-class-on="cine_convo == 'vr'" data-event-click="pick('cine_convo','vr')">In VR</button><button class="segb" data-class-on="cine_convo == 'screen'" data-event-click="pick('cine_convo','screen')">3D screen</button><button class="segb" data-class-on="cine_convo == 'flat'" data-event-click="pick('cine_convo','flat')">Flat screen</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Cutscenes</div><div class="rdesc">The same choice for cutscenes.</div></div>
 				<div class="seg"><button class="segb" data-class-on="cine_cut == 'vr'" data-event-click="pick('cine_cut','vr')">In VR</button><button class="segb" data-class-on="cine_cut == 'screen'" data-event-click="pick('cine_cut','screen')">3D screen</button><button class="segb" data-class-on="cine_cut == 'flat'" data-event-click="pick('cine_cut','flat')">Flat screen</button></div></div>

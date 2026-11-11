@@ -67,6 +67,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 4. Who looks at whom by part in the line; bodies turning only for the player and back; the pair's head reach.
 5. Voices placed within 8 m; the game's audio through OpenAL Soft for two ears at the game's own level.
 6. Then: First person stops being a labelled preview (the owner's call; one button in `assets/menu/main.rml`).
+   **Decided 2026-11-11 by the owner:** "We can release this feature as experimental. I'll do the audit later today." The
+   menu's row now says First person (experimental), still off unless chosen (the 3D screen the default); the owner's headset
+   audit of items 2-6 and 13 follows. An adversarial review of the day's changes by a second model (Codex, read-only) was asked
+   for at the same time.
 
 **Open, in the order they matter**
 
@@ -141,7 +145,7 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     inside the load's black screen and plays on the 3D screen; every run that opened the level played it unnamed. The ending's
     two are left out on purpose: their script updates the end-game statistics and the Tactician achievement and saves the
     character before the matinee (the owner's account and career).
-    **19 of 21 seen, 2026-11-11 09:38** (the creeper from the Mako on the 3D screen: "The scripted walks, named"); **18 of 21 seen, 2026-11-11 09:27** ("The scripted walks, named"): Noveria's scene after the squad falls, the double homicide,
+    **20 of 21 seen, 2026-11-11 11:02** (the ending's first: "The scripted walks, named"); **19 of 21 seen, 2026-11-11 09:38** (the creeper from the Mako on the 3D screen: "The scripted walks, named"); **18 of 21 seen, 2026-11-11 09:27** ("The scripted walks, named"): Noveria's scene after the squad falls, the double homicide,
     Feros's transition (screen) and first creeper, Eden Prime's train (from the John01 save) and the gambler. Four faults fixed
     on the way: a flash of the screen while the script fades to black first (`cw::StepProvisional`), a cut that kept the old
     facing and offset, a ride taken for teleports (`cw::IsRideStep`), a moment's first move on foot never judged. Left: the
@@ -2079,6 +2083,26 @@ nothing there is not walked (`convo: walk: X ai unavailable: its animation tree 
 by gestures only); it stays where it stands`). Run again: both stay at the window, posed, through the conversation
 (`06-10-44-423`). A tree with no action node at all is walked as before.
 
+### An adversarial review by a second model (2026-11-11 10:15-11:05; Codex, read-only)
+
+The owner asked for adversarial code reviews by a Codex process at extra-high reasoning. It read `git diff 7c89c3a..dd5b9d2`
+(the day's 29 commits, 37 files) with the surrounding code, without building or running anything, and found no off-thread
+script call, data race or unjournalled engine write. Its eleven findings, each checked against the code here:
+
+| # | Finding | Verdict | Fix |
+|---|---|---|---|
+| 1 | `mevr vslot` read a kept object after a level change, and a hand-typed offset past the vtable | real (a diagnostic) | alive check, parsed offset (aligned, under 0x2000), the read under SEH |
+| 2 | a stage asking another mark mid-walk retargeted the walk without ending the AI move or lowering the AI counters it raised (the next start recorded nothing to lower: the AI stayed on) | real | the walk ends first; `EndWalk` lets go of what it owns whatever the phase |
+| 3 | at a handover the next stage could move Shepard before the old conversation ended, and the place on foot paired the old held view with his new place (the next scene measured no move) | real in principle | the feet that go with the held view are where the old conversation kept him |
+| 4 | the guide waiting at a mark the track still holds set "progressed" and then `stop()` cleared it: after 2 s it gave up for good | real | progress set after `stop()` |
+| 5 | the gesture mode a walk clears came back only when the AI stalled | real | put back however the walk ends |
+| 6 | the flowed subtitles' render mode stayed bottom when the setting went off mid-scene | real | `Restore` puts the mode back too |
+| 7 | in a crowd past the overheard list's cap, someone left out who starts speaking could never count as heard | real | the hook notes the owners of centred sources no list names; the module keeps those nearby |
+| 8 | the runner took the Mako's game mode 1 for a scene that had begun (the fallback past the checks never fired; the record said played) | real (found here too, the creeper) | modes judged against the mode before the fire; "played" for a moment needs its track |
+| 9 | the save runner took any conversation that began on load for the scene asked | real | the conversation's name must match |
+| 10 | a scene that began by itself skipped `-Walk` and `-Replay` | real | both applied either way |
+| 11 | the seven-people bound of the seat search was not pinned by a test | real | seven reassign, eight keep the seat order |
+
 ### The scripted walks, named (2026-11-11 08:13-, fake headset, the sweep runner; item 11)
 
 `moment: a matinee's move track takes Shepard from ... : <path>` now names the matinee: the move track's instance lives in an
@@ -2114,9 +2138,9 @@ script's teleport of 8.9 m at its end was in sight (the same space: no cut); the
 Mako** (`moment_war40_11_dsg_in_vehicle`): its script teleports Shepard 18 m and then waits for him to leave the Mako
 (`BioSeqAct_ExitVehicle`); on foot that never completes, so its matinee never came: to see it, drive the Mako there.
 
-**Seen now: 19 of the 21** (with Eden Prime's train, the gambler and the creeper from the Mako, below) (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
+**Seen now: 20 of the 21** (with Eden Prime's train, the gambler, the creeper from the Mako and the ending's first, below) (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
 scene after the squad falls, the Feros transition on the screen, the first creeper on foot, the double homicide: below). Left:
-the ending's two (left out: the account and the career; the owner asked).
+the ending's second (`SeqAct_Interp_2`, the other branch of the final cutscene: this career's choice plays the first).
 
 **Noveria's double homicide** (`moment_ice20_03a`): opening `BIOA_ICE00` leaves Shepard on the docked Normandy, the moment had no
 place (its event is the chunk's load, no originator), so he stayed there and the chunk streamed out again once the runner let
@@ -2163,6 +2187,14 @@ the cinematic mode came all the same), the cinematic mode began with Shepard at 
 held only from on foot: `MomentMayStart` needs a fresh view on foot) for 10 s, then the script's black screen and the world;
 no track took Shepard. From the Mako the screen is the design; whether the scene should open in the cockpit's view instead is
 the owner's to judge.
+
+**The ending** (`BIOA_CRD00`, 10:52-11:02, the owner: "Yes you can run the two"): opening the level runs its script at once
+(the end-game statistics, the achievement step, then the Council-alive conversation); the first run ended that conversation
+(the runner's `-EndUnplanned`) and nothing followed; run again with it played: the conversation on the 3D screen (a set piece,
+151 s), then the final cutscene's walk (`Cutscene_end90_final_cutscene_dlg.SeqAct_Interp_1`) held in first person 15 s: the
+screen's dip to the world and the cut to his place 557 m off (another composition) 240 ms apart, then the 3D screen and the
+ending's movie. The script's character save wrote `Char_02.pcsav` (moved aside with the saves' restore). `SeqAct_Interp_2` is
+the other branch of the same cutscene and did not play with this career's choice.
 
 **Eden Prime's train** (`moment_pro10_00_plc_train`, 08:52-09:11): past the prologue, so from the John01 career's own save on Eden
 Prime (22 minutes in, near the tram station), copied into the loaded career as a new file (the Load screen lists only the
@@ -2894,3 +2926,6 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 09:27, **item 11: the gambler** ("The scripted walks, named"): moments now carry their chunk's named streaming states (the gambler's `stream_schellsToss`); played clean from the Flux door. 18 of 21 seen; left: the ending's two (the owner's call) and the creeper from the Mako.
 - 2026-11-11 09:38, **item 11: the creeper from the Mako** ("The scripted walks, named"): the runner puts Shepard in a vehicle first (`enterVehicle`); from the Mako the scene goes to the 3D screen (moments are held from on foot). 19 of 21 seen; left: the ending's two (the owner's call).
 - 2026-11-11 09:53, **item 7: no seat walk in two more scenes** (the list's item 7): openings without a cut rarely leave someone out of view within 8 m; the medical bay's mid-scene AI walks arrived again.
+- 2026-11-11 10:15, **item 6: released as experimental** (the owner): the menu says First person (experimental); the ending's two scripted walks approved to run; a Codex adversarial review of 7c89c3a..HEAD started.
+- 2026-11-11 11:02, **item 11: the ending** ("The scripted walks, named"): its first scripted walk held in first person after the Council's conversation; 20 of 21 seen (the second is the other ending's branch).
+- 2026-11-11 11:05, **the Codex review** ("An adversarial review by a second model"): eleven findings, all real on checking; all fixed (walk retarget and gesture mode, the guide's wait, the handover's place on foot, the flowed subtitle mode, a crowd's speakers, three tooling faults, `mevr vslot`, a test bound).

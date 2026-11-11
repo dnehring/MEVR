@@ -998,6 +998,7 @@ struct Stay {
     double turnAskedS = 0.0;       // ... when,
     double turnUntilS = 0.0;       // ... and until when it is the game's (0: none on its way)
 };
+void EndWalk(Stay& st, char const* event, char const* why);
 std::vector<Stay> gStay;
 std::uint64_t gStayMs = 0;
 bool gInWorldForStay = false;  // set by Tick: the world view is up
@@ -1039,6 +1040,10 @@ bool KeepAtSource(void const* conversation, void const* actor, float const* loca
                            : std::string(", a mark to walk to"));
                 if (gSettings.walk != 0 && !refused && !step) {
                     st.seatYaw.reset();  // the stage's own mark: its facing, not a seat's
+                    // A walk under way to another mark ends first: its AI move terminated and the counters it raised put back
+                    // (retargeted in place, the next start found them raised, recorded nothing to lower, and the AI stayed on;
+                    // the Codex review, 2026-11-11).
+                    EndWalk(st, "retarget", "the stage asks another mark");
                     st.walk.Jump(WalkPoint(mark), WalkPoint(st.place), static_cast<double>(GetTickCount64()) / 1000.0,
                         gSettings.walkMinM * kUnitsPerMeter);
                 }
@@ -1280,9 +1285,24 @@ void ReleaseAi(Stay& st) {
 
 void EndWalk(Stay& st, char const* event, char const* why) {
     if (st.walk.Phase() == cw::WalkPhase::Idle) {
+        // Nothing under way, but whatever a walk still holds is let go (its AI counters, its move): ownership, not the phase.
+        if (st.walkController != nullptr || st.walkBehavior != nullptr || st.moveAction != nullptr) {
+            ReleaseAi(st);
+            if (st.moveAction != nullptr && ue3::runtime::IsAlive(st.moveAction) && ue3::IsA(st.moveAction, gMoveDataClass)) {
+                gMoveTerminate.WriteBool(st.moveAction, true);  // FieldRef journals the bitfield write
+            }
+            st.moveAction = nullptr;
+        }
         return;
     }
     ReleaseAi(st);
+    // The gesture mode the walk took away comes back however the walk ends (arrival, a stall, a cancel): left to the scene's
+    // next gesture, a person whose gesture went on stayed out of its gesture branch (the Codex review, 2026-11-11).
+    if (st.gesturesLeft > 0 && ue3::runtime::IsAlive(st.actor) && !gInGestures.ReadBool(st.actor).value_or(true)) {
+        gInGestures.WriteBool(st.actor, true);  // journalled by FieldRef
+        log::Info("convo: walk: {} back in the conversation's gesture mode", st.name);
+    }
+    st.gesturesLeft = 0;
     bool const running = st.walk.Phase() == cw::WalkPhase::Walking;
     if (st.moveAction != nullptr && ue3::runtime::IsAlive(st.moveAction) && ue3::IsA(st.moveAction, gMoveDataClass)) {
         if (!gMoveTerminate.WriteBool(st.moveAction, true)) {  // FieldRef journals the bitfield write
@@ -1680,10 +1700,6 @@ bool WalkToMark(Stay& st, ik::Vec3 previousKept, double nowS, double dt, double&
                 // got to, as a glide with planted feet would look worse.
                 ++gAiStalled;
                 st.aiRefused = mark;
-                if (st.gesturesLeft > 0 && ue3::runtime::IsAlive(st.actor)) {
-                    gInGestures.WriteBool(st.actor, true);  // it never walked: its gestures back (journalled by FieldRef)
-                    log::Info("convo: walk: {} back in the conversation's gesture mode (it didn't walk)", st.name);
-                }
                 EndWalk(st, "end", std::format("the game's AI didn't move it 8 units in {:.1f} s; it stays here", nowS - st.progressS).c_str());
                 return false;
             }
@@ -3356,8 +3372,9 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         double const left = std::hypot(gC.wantedMark->x - at->x, gC.wantedMark->y - at->y);
         double const stepUnits = gSettings.moveSpeedMS * kUnitsPerMeter * std::clamp(dt, 0.0, 0.1);
         if (gC.detached && gC.noJoin && left <= 15.0) {
-            gC.guideProgressed = true;  // where it should be: waiting, not blocked
             stop();
+            gC.guideProgressed = true;  // where it should be: waiting, not blocked (after stop(), which clears it: else the
+                                        // guide gave up after two seconds of waiting and never followed on; the Codex review, 2026-11-11)
             return;
         }
         if (stepUnits > 0.0 && left < stepUnits) {
@@ -3597,6 +3614,7 @@ void End(char const* why) {
     ClearVoices();
     gTrail.clear();
     EndWalks(why);
+    bool const broughtToView = gC.detached;  // below: Shepard is put where the player's view is
     if (gC.detached && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
         // The view never reached him and the game now takes its camera back to his pawn: rather than the player's view
         // jumping to the mark, Shepard comes to where the player is (the conversation is over: an ordinary move of his).
@@ -3615,10 +3633,23 @@ void End(char const* why) {
     // minute old, so no moment began and the walk played on the 3D screen.
     if (gC.world && gInWorld && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
         if (auto const at = player::Location(gC.playerPawn)) {
+            // The feet that go with the held view: where this conversation kept Shepard (or where the player stands, if the
+            // view had walked off and he was just brought there). At a handover the next stage may already have put him on its
+            // mark this tick; paired with that place, the next scene measured no move at all and left the view where it was
+            // with Shepard elsewhere (the Codex review, 2026-11-11).
+            ue3::Vector feet = *at;
+            if (!broughtToView) {
+                auto const kept = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == gC.playerPawn; });
+                if (kept != gStay.end() && Dist(kept->place, V(*at)) > kJumpUnits) {
+                    feet = EnginePoint(kept->place);
+                    log::Info("convo: Shepard was moved {:.2f} m as the conversation ended (a next stage's mark): the view's place on foot "
+                              "keeps the feet this conversation had him at", Dist(kept->place, V(*at)) / kUnitsPerMeter);
+                }
+            }
             gFoot.location = EnginePoint(gC.hold);
             gFoot.rotation = gC.holdRotation;
             gFoot.fov = gC.holdFov;
-            gFoot.pawn = *at;
+            gFoot.pawn = feet;
             gFoot.have = true;
             gFoot.ms = GetTickCount64();
         }

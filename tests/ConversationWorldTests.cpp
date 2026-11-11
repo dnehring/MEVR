@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <span>
 #include <string_view>
+#include <tuple>
 
 namespace {
 
@@ -106,8 +107,29 @@ void TestArrangement() {
     // The player's own look never counts: A looking at the player from seat 0 turns about 32 degrees, the player's turn is free.
     double const atPlayer = cw::PairLookCost(members, toSeat, arc, {0, 1, 2}, {{0, 2, 1}}, 60.0);
     CHECK(atPlayer > 25.0 && atPlayer < 40.0);
-    // Fewer seats than people: the last has none; too many to try every order: the seat order.
+    // Fewer seats than people: the last has none.
     CHECK((cw::SeatsForPairs(members, toSeat, {arc[0], arc[1]}, ac, 60.0) == std::vector<int>{0, 1, -1}));
+    // Seven to seat is still searched in every order (the pair across instead of side by side); eight keep the seat order even
+    // with a cheaper one there (the Codex review, 2026-11-11: the bound was not pinned).
+    auto const crowd = [&](int n) {
+        std::vector<cw::ArcSeat> seats = cw::ArcSeats(player, {300.0, 0.0, 100.0}, n, 250.0, 25.0, 90.0);
+        cw::FaceToward(seats, cw::GroupMiddle(player, {300.0, 0.0, 100.0}, seats));
+        std::vector<cw::GroupMember> people{{player, 0.0, false}, {{300.0, 0.0, 100.0}, 180.0, true}};
+        std::vector<int> seated, order;
+        for (int i = 0; i < n; ++i) {
+            seated.push_back(static_cast<int>(people.size()));
+            order.push_back(i);
+            people.push_back({});
+        }
+        std::vector<cw::TalkPair> const pair{{seated[0], seated[2], 10}};  // seats 0 and 2: both on the right, side by side
+        std::vector<int> const chosen = cw::SeatsForPairs(people, seated, seats, pair, 60.0);
+        return std::tuple{chosen, order, cw::PairLookCost(people, seated, seats, chosen, pair, 60.0),
+            cw::PairLookCost(people, seated, seats, order, pair, 60.0)};
+    };
+    auto const [seven, sevenOrder, sevenCost, sevenOrderCost] = crowd(7);
+    CHECK(seven != sevenOrder && sevenCost < sevenOrderCost);
+    auto const [eight, eightOrder, eightCost, eightOrderCost] = crowd(8);
+    CHECK(eight == eightOrder && eightCost == eightOrderCost);
 }
 
 void TestSetPieces() {

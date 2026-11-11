@@ -41,6 +41,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <filesystem>
 #include <format>
@@ -49,6 +50,8 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <vector>
 
@@ -557,6 +560,18 @@ std::string Streams(ue3::Object* pawn, std::istringstream& words) {
 }
 
 std::vector<ue3::Object*> gFound;  // `mevr find`'s list, for `use` and `activate`
+
+// An object's C++ vtable and the function at a byte offset in it, read under SEH (`mevr vslot`: a hand-typed offset).
+bool ReadVtableSlot(void const* object, std::size_t offset, std::uintptr_t& vtable, std::uintptr_t& fn) {
+    __try {
+        void* const* const table = *static_cast<void* const* const*>(object);
+        vtable = reinterpret_cast<std::uintptr_t>(table);
+        fn = reinterpret_cast<std::uintptr_t>(table[offset / sizeof(void*)]);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
 ue3::ClassRef gActorClassRef{"Engine.Actor"};
 ue3::FieldRef gEventOriginator{"Engine.SequenceEvent", "Originator"};
 
@@ -965,12 +980,23 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         if (index >= gFound.size() || offsetText.empty()) {
             return std::string("usage: mevr vslot <n of mevr instances> <hex byte offset>");
         }
-        std::size_t const offset = std::stoull(offsetText, nullptr, 16);
+        // A kept object may be gone (a level changed since `instances`), and the offset is typed by hand: alive, parsed without
+        // throwing, aligned and within a vtable's reach, read under SEH (the Codex review, 2026-11-11).
+        std::size_t offset = 0;
+        std::string_view const hex = std::string_view(offsetText).substr(offsetText.starts_with("0x") || offsetText.starts_with("0X") ? 2 : 0);
+        if (std::from_chars(hex.data(), hex.data() + hex.size(), offset, 16).ec != std::errc{} || offset % sizeof(void*) != 0 || offset >= 0x2000) {
+            return std::string("mevr vslot: the offset is a hex byte offset, a multiple of 8, under 0x2000");
+        }
+        if (!ue3::runtime::IsAlive(gFound[index])) {
+            return std::format("mevr vslot: object {} is gone (mevr instances again)", index);
+        }
         auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-        void* const* const vtable = *reinterpret_cast<void* const* const*>(gFound[index]);
-        auto const fn = reinterpret_cast<std::uintptr_t>(vtable[offset / sizeof(void*)]);
+        std::uintptr_t vtable = 0, fn = 0;
+        if (!ReadVtableSlot(gFound[index], offset, vtable, fn)) {
+            return std::format("mevr vslot: object {}'s vtable slot +0x{:X} can't be read", index, offset);
+        }
         return std::format("{}: vtable exe+0x{:X}, slot +0x{:X} = exe+0x{:X}", ue3::runtime::Get().FullName(gFound[index]),
-            reinterpret_cast<std::uintptr_t>(vtable) - base, offset, fn - base);
+            vtable - base, offset, fn - base);
     }
     if (verb == "classes") {
         // `mevr classes <text>`: the loaded script classes whose name holds the text (case-insensitive), each with its parent;

@@ -55,6 +55,9 @@ void Set(Publisher publisher, Voice const* voices, int count);
 // The actors of a publisher's list whose sources were placed since the last call (at most `max`, each once): who spoke.
 // Game thread.
 int TakeHeard(Publisher publisher, void const** out, int max);
+// The owners of sources the game left in the centre that no list names, since the last call (each once, at most `max`): who may
+// be speaking outside the lists (a crowd past a list's cap). The caller keeps only actors it knows. Game thread.
+int TakeHeardUnnamed(void const** out, int max);
 
 struct Stats {
     unsigned updates = 0;     // source updates seen since the last Take

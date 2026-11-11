@@ -425,6 +425,9 @@ function RunScene([string]$map, $scene, $streamed) {
         Say "   into a vehicle first: $(($entered -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -Last 1))"
         Start-Sleep -Seconds 4
     }
+    # The game mode before the fire: a scene marked `enterVehicle` starts in the Mako's mode 1, which is not a sign that anything
+    # began (the Codex review, 2026-11-11: the fallback past the plot checks never fired, and the record said "played").
+    $modeBefore = (State).mode
     $mark = LogMark
     $t0 = Get-Date
     $fired = 'action'
@@ -453,7 +456,7 @@ function RunScene([string]$map, $scene, $streamed) {
             while ((Get-Date) -lt $until -and -not $moved) {
                 Start-Sleep -Seconds 1
                 $st = State
-                if ($st.convo -or $st.mode -ne 0) { $moved = $true }
+                if ($st.convo -or ($st.mode -ne 0 -and $st.mode -ne $modeBefore)) { $moved = $true }
             }
             if (-not $moved) {
                 $op = $chain[$last + 1]
@@ -582,7 +585,8 @@ function RunScene([string]$map, $scene, $streamed) {
     $record.notes = @($window | Select-String -Pattern 'convo flow: .*(held|refused|fired again|let through)|convo: .*(no place for the player|goes to the 3D screen|set piece)' | ForEach-Object { $_.Line.Substring([math]::Min(15, $_.Line.Length)) } | Select-Object -First 12)
     if (Dead) { $record.outcome = $(if (Running) { 'hang' } else { 'crash' }); $record.detail = 'during the scene' }
     elseif ($mine -or $flow) { $record.outcome = 'played' }
-    elseif ($scene.moment -and @($record.modes | Where-Object { $_ -ne 0 }).Count -gt 0) { $record.outcome = 'played' }
+    elseif ($scene.moment -and (@(LogSince $mark) -match "matinee's move track takes Shepard")) { $record.outcome = 'played' }
+    elseif ($scene.moment -and @($record.modes | Where-Object { $_ -ne 0 -and $_ -ne $modeBefore }).Count -gt 0) { $record.outcome = 'played (no track took Shepard)' }
     else { $record.outcome = 'no conversation' }
     return $record
 }

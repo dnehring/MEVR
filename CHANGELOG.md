@@ -14,7 +14,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   next start).
 - **People talking near you sound from where they stand**, on foot too: a conversation you overhear, people arguing in
   front of you, a squadmate's remark, no longer play inside your head. It can be turned off on the Sound page.
-- **Conversations in first person (preview).** Comfort > Conversations has a fourth choice: you stand where Shepard
+- **Conversations in first person (experimental).** Comfort > Conversations has a fourth choice: you stand where Shepard
   stands, people stay where they are, and you can walk during the conversation. A scene opens without a cut when it is
   where you already stand or a short walk away; leave the stick alone and you are walked there after a few seconds.
   Scenes made for the camera, and scenes Shepard isn't in (a voice far away, out of sight), go to the 3D screen. People no longer swivel on the spot toward whoever speaks:
@@ -32,7 +32,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   When people are brought round into view at a scene's start, those who talk to each other stand where they can see each
   other. A scripted scene that fades to black before it moves you no longer flashes the cinema screen first, and a cut to
   another place inside one leaves you facing the scene. Riding Eden Prime's tram, you ride along.
-  A preview: off unless you choose it.
+  Experimental: off unless you choose it.
 
 ## 0.2.0 (2026-11-09)
 

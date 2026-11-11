@@ -97,6 +97,14 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             if ($mode -eq '5' -or $mode -eq '6') { $script:byItself = $true; break }
             $onFoot = $(if ($mode -eq '0') { $onFoot + 1 } else { 0 })
         }
+        # Only the scene asked for counts (the Codex review, 2026-11-11: any conversation on load stood in for it). A conversation
+        # is told by its name; a scripted walk may follow a conversation of its own, so a moment's run takes what begins.
+        if ($script:byItself -and $title -and -not $title.StartsWith('moment_')) {
+            $now = Console 'mevr convo'
+            if ((Mode) -eq '5' -and $now -notmatch [regex]::Escape($title)) {
+                Say "another scene began as the save loaded ($([regex]::Match($now, 'BioConversation (\S+)').Groups[1].Value)): not $title"; return $false
+            }
+        }
         if ($script:byItself) { Say 'the scene began by itself as the save loaded (its trigger at the player): not fired, driven' }
         elseif ($onFoot -lt 2) { Say 'the save did not come up on foot in two minutes'; return $false }
         Start-Sleep -Seconds 3
@@ -116,9 +124,10 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     if ($Before) { Console $Before | Out-Null }   # e.g. a call trace that must cover the scene's first frames
     Console "mevr activate $index $actionInput" | Out-Null
     Say "fired $action (input $actionInput)"
+    } else { $started = Get-Date }
+    # The test's inputs whichever way the scene began (they were skipped for a scene that started by itself).
     if ($Walk -gt 0) { Console "mevr convo walk 0 1 $Walk" | Out-Null }
     if ($Replay) { & (Join-Path $tools 'replay.ps1') -Path $Replay -Loop -Inputs *> $null }
-    } else { $started = Get-Date }
 
     $shots = @($Snapshots | Sort-Object)
     $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true

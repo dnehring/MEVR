@@ -224,6 +224,16 @@ void TickOverheard(ue3::Object* pawn, ik::Vec3 const& ear) {
         nearby.push_back({reinterpret_cast<std::uint64_t>(p), {head.x, head.y, head.z}});
     }
     double const now = Seconds();
+    // Someone near who isn't on the list (a crowd past its cap) and was heard in the centre: speaking, so named first next time
+    // (else only those already named could ever count as heard; the Codex review, 2026-11-11).
+    void const* unnamed[vp::kMaxPerPublisher] = {};
+    int const nUnnamed = vp::TakeHeardUnnamed(unnamed, vp::kMaxPerPublisher);
+    for (int i = 0; i < nUnnamed; ++i) {
+        auto const id = reinterpret_cast<std::uint64_t>(unnamed[i]);
+        if (std::any_of(nearby.begin(), nearby.end(), [&](sp::Candidate const& c) { return c.id == id; })) {
+            gOverheard.Heard(id, Seconds());
+        }
+    }
     // Who spoke since the last tick (the hook placed one of their sources): they are named first in a crowd.
     void const* heard[vp::kMaxPerPublisher] = {};
     int const nHeard = vp::TakeHeard(vp::Publisher::Overheard, heard, vp::kMaxPerPublisher);

@@ -289,7 +289,12 @@ void Rescan(char const* why) {
 }
 
 // Puts every flag we set back (the mod unloads, the setting goes off).
+void RestoreMode();
+
 void Restore(char const* why) {
+    // The subtitles' render mode too: set for a flowed scene, it was put back only at the scene's end, which no longer comes once
+    // the setting is off or the mod unloads (the Codex review, 2026-11-11). Nothing when nothing was set.
+    RestoreMode();
     if (gFlipped.empty()) {
         return;
     }

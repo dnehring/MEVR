@@ -412,7 +412,7 @@ switching frameworks.
   `setConversationWorld`; `core/vr/ConversationWorld`, `game/ConversationWorld`, host `plugin/ConversationWorld`; **off by default**,
   `[Cinematics] conversations = world`, live): in game mode 5 the player stands at Shepard's place (the view on foot if fresh, else
   his head bone + the first-person eye offset, facing his pawn), head tracked, both eyes, full rate; the place follows his head
-  bone's jumps past 0.8 m that last 3 ticks (`FollowHeadSettled`); the menu's Comfort > Conversations offers it as **First person (preview)** again since 2026-11-10 (the button was out from 2026-11-07, the owner: not ready for the release; back as a labelled preview after research/69's rounds, the default still the 3D screen; the owner's call, one button in `assets/menu/main.rml`). The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
+  bone's jumps past 0.8 m that last 3 ticks (`FollowHeadSettled`); the menu's Comfort > Conversations offers it as **First person (experimental)** since 2026-11-11 (the owner: "We can release this feature as experimental"; a labelled preview from 2026-11-10, out of the menu 2026-11-07 to 2026-11-10; the default still the 3D screen; one row's text in `assets/menu/main.rml`). The mod holds it at render time through the galaxy map's `CalcSceneView` swap and
   `view_anchor::Hold` (arm IK, body follow); `MevrBridge::ConversationInWorld` in five `[MEVR]` seams in xr_session.cpp (not a cine,
   the second eye's gate as gameplay, the conversation movie's authored layout, the cine capture boundary: else the UI stays in the
   eyes, `[NOLETTERBOX]`: else a 16:9 band) and one in head_aim.cpp (the first-person hides). The conversation movie goes to the
@@ -467,8 +467,8 @@ switching frameworks.
   holds are lifted for that walker only: its AI enable counters (`m_nALLEnabled`/`m_nStackEnabled`, raised to 1 and lowered by
   as much after, `cw::AiEnableDeficit`), the conversation's ban on AI movement (`DoesGameModeAllowMovement` answered true),
   its paused speed (`BioPawn.SetDesiredSpeed(1)`), and **the gesture mode** (`BioPawn.m_bInGestures` cleared: while set the
-  animation tree's `Actions` node plays `Gestures` over `Posture`, where locomotion lives; the scene's next gesture sets it
-  again). Only marks 1.5 m or more away, or steps within 60 degrees of the person's facing, are walked (`cw::WalkWorthIt`: a step
+  animation tree's `Actions` node plays `Gestures` over `Posture`, where locomotion lives; put back however the walk ends,
+  and a walk the stage retargets ends first, its AI move and counters let go: the Codex review, 2026-11-11). Only marks 1.5 m or more away, or steps within 60 degrees of the person's facing, are walked (`cw::WalkWorthIt`: a step
   back or aside keeps its place). Arrives within 0.25 m on the floor, then turns to the stage's facing; an AI that doesn't move it 8 units in 2 s
   leaves it where it stands (its gesture mode put back); a hidden person (C-Sec's Wrex where the plot hasn't reached his scene) is never walked,
   nor anyone whose animation tree has nothing under the action node's `Posture` (people animated by gestures only: out of the

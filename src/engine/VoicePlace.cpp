@@ -70,6 +70,9 @@ struct Heard {
 SRWLOCK gLock = SRWLOCK_INIT;
 List gLists[kPublishers];
 Heard gHeard[kPublishers];
+// Owners of sources the game left in the centre that no list names (the Codex review, 2026-11-11): in a crowd past the overheard
+// list's cap, someone left out of it who starts speaking is noticed here, so the module can name him before silent neighbours.
+Heard gHeardUnnamed;
 std::atomic<int> gTotal{0};  // actors named, all lists
 std::atomic<DWORD> gNamingThread{0};
 
@@ -155,6 +158,7 @@ struct Placed {
     bool entity = false;
     int publisher = -1;
     void const* actor = nullptr;
+    void const* unnamed = nullptr;  // the owner of a centred source no list names (TakeHeardUnnamed)
     int census = -1;           // the census entry of this source (-1: none)
     float at[3] = {};
     float volume = 0.0f;
@@ -226,6 +230,9 @@ void PlaceGuarded(void* source, bool census, Placed& placed) {
         }
         ReleaseSRWLockShared(&gLock);
         if (publisher < 0) {
+            if (!spatialized) {
+                placed.unnamed = owner;  // centred and nobody's: who may be speaking outside the lists
+            }
             return;
         }
         if (voice.centredOnly && spatialized) {
@@ -300,6 +307,17 @@ void Place(void* source) {
         gAllLeftPlaced.fetch_add(1, std::memory_order_relaxed);
     }
     if (!placed.done) {
+        if (placed.unnamed != nullptr) {
+            AcquireSRWLockExclusive(&gLock);
+            bool known = false;
+            for (int i = 0; i < gHeardUnnamed.count && !known; ++i) {
+                known = gHeardUnnamed.actors[i] == placed.unnamed;
+            }
+            if (!known && gHeardUnnamed.count < kMaxPerPublisher) {
+                gHeardUnnamed.actors[gHeardUnnamed.count++] = placed.unnamed;
+            }
+            ReleaseSRWLockExclusive(&gLock);
+        }
         return;
     }
     if (placed.census >= 0) {
@@ -431,6 +449,20 @@ void Set(Publisher publisher, Voice const* voices, int count) {
     }
     gTotal.store(total, std::memory_order_relaxed);
     ReleaseSRWLockExclusive(&gLock);
+}
+
+int TakeHeardUnnamed(void const** out, int max) {
+    if (out == nullptr || max <= 0) {
+        return 0;
+    }
+    AcquireSRWLockExclusive(&gLock);
+    int const n = std::min(gHeardUnnamed.count, max);
+    for (int i = 0; i < n; ++i) {
+        out[i] = gHeardUnnamed.actors[i];
+    }
+    gHeardUnnamed.count = 0;
+    ReleaseSRWLockExclusive(&gLock);
+    return n;
 }
 
 int TakeHeard(Publisher publisher, void const** out, int max) {
