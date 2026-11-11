@@ -99,6 +99,11 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    the batarian, and seats are planned for the conversation's people only; Ashley is squad (squadmates outside the conversation
    have no walk). No seat walk. The scenes that would show one (an opening without a cut, someone of the conversation out of view
    within 8 m, a person the AI walks) have not turned up in any sampled run; this is for the owner's play or a scene he names.
+   **Seen arriving 2026-11-11 11:31** (the comm room's handover to Anderson, fake headset; "The handover, run again" below): the
+   handover now opened Anderson's conversation without a cut, Nihlus stood out of view 0.8 m behind the player, was given a seat
+   in view and walked there with the game's AI (1.96 m in 1.3 s, his place moving 0.1-0.4 m a tenth of a second: a walk, not a
+   slide), arrived 0.25 m from it and went back into the conversation's gesture mode; 5.7 s later his body re-faced the player
+   (90 degrees off for a second). No snapshot of the second-long walk itself: [verify] its look in the headset.
 8. **The pause and floor marker**: when the player is wanted at a mark the guided walk can't reach (inside a trigger, the
    way blocked, too far), hold the conversation and show a marker on the floor; it goes on when the player stands there.
    Today such a scene is a cut or stays put.
@@ -2132,6 +2137,15 @@ two of them in the fixes themselves, all fixed:
 | 4 | the save runner took a cinematic on load (mode 6) for a conversation's scene | a conversation's test waits through it; only its conversation, by name, counts |
 | 5 | flowed subtitles switched off mid-scene left their render mode set | put back when the option is off, at once |
 
+**The handover, run again** (11:30-11:33, the dev build on the fake headset, `conversation-launch.ps1 nor10_comm_room -World on`):
+the comm room's conversation (a stay, 9 lines) handed over to Anderson's as before; at the handover `Shepard was moved 4.18 m as
+the conversation ended (a next stage's mark): the view's place on foot keeps the feet this conversation had him at`, so
+Anderson's opened as a **walk-in of 4.2 m in the same room, no cut** (until the fix it was taken from the head bone, a
+re-placement); the player was guided 2.7 m, Shepard's head never more than 0.57 m from the view, the one dip at the end the
+script's move to the next part of the ship. Nihlus's seat walk arrived (item 7). The judge counted body turns of 160-180
+degrees (Nihlus in both conversations, Anderson in his): the re-facing rule for a player who walks in from behind them, as
+designed; whether that much turning is wanted is the owner's audit.
+
 ### The scripted walks, named (2026-11-11 08:13-, fake headset, the sweep runner; item 11)
 
 `moment: a matinee's move track takes Shepard from ... : <path>` now names the matinee: the move track's instance lives in an
@@ -2960,3 +2974,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 11:05, **the Codex review** ("An adversarial review by a second model"): eleven findings, all real on checking; all fixed (walk retarget and gesture mode, the guide's wait, the handover's place on foot, the flowed subtitle mode, a crowd's speakers, three tooling faults, `mevr vslot`, a test bound).
 - 2026-11-11 11:15, **the saves and their tests** ("The saves and their tests"): `tools/save-dictionary.py` maps every save to the scene it was written for (or the scenes near it), with the command that plays it.
 - 2026-11-11 11:40, **the second Codex pass** ("An adversarial review by a second model"): five more findings on the fixes, all fixed (the handover when Shepard can't be moved, gestures at teardown, a moment judged by its own matinee, a cinematic on load, subtitles switched off).
+- 2026-11-11 11:33, **the handover fix seen, item 7's seat walk seen arriving** ("The handover, run again"): Anderson's conversation opened as a 4.2 m walk-in after the comm room, no cut; Nihlus walked 2 m into a seat by the AI and arrived.
