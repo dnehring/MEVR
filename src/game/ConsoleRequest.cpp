@@ -32,6 +32,7 @@
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/PowerWheel.hpp"
+#include "game/SoundPlace.hpp"
 #include "game/Spectator.hpp"
 #include "game/Throwables.hpp"
 #include "game/Vent.hpp"
@@ -863,6 +864,13 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
             return conversation_flow::Command(trimmed.size() > 4 ? trimmed.substr(4) : std::string());  // `mevr convo flow [list|rescan|restore]`
         }
         return conversation_world::Command(rest);
+    }
+    if (verb == "voices") {
+        // `mevr voices [status | census [seconds] | overheard on|off | gun on|off]`: where sounds come from on foot (research/69 A1,
+        // A2); the census lists every sound source's owner, cue and whether the game placed it.
+        std::string rest;
+        std::getline(words, rest);
+        return sound_place::Command(rest);
     }
     if (verb == "body") {
         // `mevr body`: Shepard's drawn dimensions against the player's (research/58, the body's scale).

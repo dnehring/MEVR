@@ -96,19 +96,33 @@ offline and, where said, run on the fake headset; nothing on this list has been 
   head. `engine/VoicePlace` places by the audio component's owner; it needs a second publisher (today only
   `game/ConversationWorld` names voices, and `Set` replaces the whole list) and an on-foot module naming nearby speaking
   pawns with their head places, under the same 8 m rule (`cw::PlaceVoice`). Not during cutscenes on the 3D screen.
+  **Built 2026-11-11, offline** ("The audio list: A1, A2, A3 built; A5 read; A4's plan" below): `game/SoundPlace`.
 - **A2. The player's own gun from his hand**: the game plays it at the pawn, which is the listener, so it sounds inside the
   head; with HRTF a source at the listener is the least natural. Place the player's weapon's sounds at the gun model
   (`weapon::Current`'s muzzle) through the same hook, if the weapon's audio component is told apart from the pawn's (its
-  owner: the weapon actor or the pawn: to find out).
+  owner: the weapon actor or the pawn: to find out). **Built 2026-11-11 for the weapon actor; which actor owns the shot's
+  source is [verify] with `mevr voices census`** (below).
 - **A3. Settings in the menu**: `[Audio] spatial` (Headphones 3D / Speakers / The game's own) and `gainDb` as rows (they apply
-  at the next start; the row says so). Players can't be asked to edit the ini.
+  at the next start; the row says so). Players can't be asked to edit the ini. **Built 2026-11-11**: the menu's Sound page.
 - **A4. Measured in combat**: other people's gunfire, explosions and footsteps under OpenAL Soft: the delay between the ears
-  and the balance following the head (`tools/audio-balance.py`); confirm the game positions them at all.
+  and the balance following the head (`tools/audio-balance.py`); confirm the game positions them at all. **The plan is
+  written** (below); not run.
 - **A5. An intercom's colour for far voices** (the owner: the Council "a little like an intercom"): with OpenAL Soft the
   EFX filters exist (a band-pass on the source, `AL_DIRECT_FILTER`); whether ISACT's sources can be reached by their AL ids
-  from the sound source's update is to find out. Optional.
+  from the sound source's update is to find out. Optional. **Read 2026-11-11** (below): the AL ids are reachable, through
+  ISACT's own OpenAL layer in the exe; nothing built.
 - **A6. Signing**: SignPath signs only binaries whose product name is "MEVR"; `soft_oal.dll` says "OpenAL Soft" (a second
   `pe-file-set` in `.signpath/artifact-configuration.xml`, the owner's process).
+
+  **A6, the note (2026-11-11; the file is not changed).** `soft_oal.dll` is built by `tools/fetch-openal-soft.ps1` from
+  OpenAL Soft's own source with its own version resource, whose product name is "OpenAL Soft", and that is right: it is
+  their library, unmodified, under the LGPL. `.signpath/artifact-configuration.xml` has one `pe-file-set` with
+  `product-name="MEVR"` and the release's `product-version`, which lists our four binaries; SignPath refuses a file in a set
+  whose product name or version doesn't match. To sign OpenAL Soft too, the configuration would need a second `pe-file-set`
+  with `product-name="OpenAL Soft"` and its own version (1.25.2, not the release's parameter) that includes
+  `audio/soft_oal.dll`, and `release.yml`'s upload for signing would have to carry the DLL (today it uploads our four).
+  Whether SignPath Foundation's terms let an open-source project sign a third party's unmodified binary under its
+  certificate is the owner's question for SignPath; until then the DLL ships unsigned beside the signed ones, as it does now.
 
 **Release housekeeping**: the branch is on local main (fceeaf9); the owner pushes; the game slot is still held by this
 session (`tools/game-slot.ps1 return` when the in-game work is done).
@@ -1814,6 +1828,107 @@ first), and asks for its output limiter (`ALC_OUTPUT_LIMITER_SOFT`, off by defau
 councillor -26.3 dB a channel, as with Creative's; Anderson's line 4.1 dB right, 0.92 ms; the loudest sample of the
 scene 0.75 of full scale, none clipped.
 
+### The audio list: A1, A2, A3 built; A5 read; A4's plan (2026-11-11, an agent in a worktree; offline only, not run in the game)
+
+Addresses are RVAs in `MassEffect1.exe` 2.0.0.48602, read in Ghidra (the shared project through its MCP server).
+
+**The hook takes more than one list** (`engine/VoicePlace`). Three publishers, each with its own list replaced whole by its
+`Set`: the first-person conversation (`game/ConversationWorld`, unchanged: the old `Set(voices, count)` is its list), the
+people near the player on foot, and the player's gun (both `game/SoundPlace`). A source whose owner two lists name is placed
+by the first. A voice can now say **"centred sources only"**: the hook then leaves alone any source of that actor that the
+game placed itself. How the hook tells (read again in `FISACTSoundSource::Update`, 0x7BA90): the wave instance's int at
++0x78 is what the update reads to choose between the wave's place in the world (not 0) and the listener's front (0), and the
+update clears it itself where it forces a cue to the front (a sound group of its own, checked against the cue's
+`SoundGroup` at the cue's +0xC8; a speaker channel at the wave's +0x40). Read after the game's update, 0 is a source the
+game left in the centre: the 82% of dialogue cues. The "relative to the listener" flag the update sends is close to it but
+not the same (1 also for a wave given an offset from the listener at its +0x44, sent turned into the listener's frame), so
+the hook reads the int itself. `Take` keeps its meaning for the conversation's heartbeat line; a second reader
+uses `SinceInstall` (never reset). `TakeHeard` says which actors of a list had a source placed since the last call (who
+spoke). The hook now goes in when either the conversation's world mode or `game/SoundPlace` wants it (`EnsureVoicePlaceHook`
+in `mod/Mod.cpp`): **with the defaults, for every player on foot**, no longer only with the first-person conversations.
+
+**A1, people near the player** (`game/SoundPlace`, the rule `core/vr/SoundPlace`, unit-tested in `tests/SoundPlaceTests.cpp`;
+`[Audio] overheard = 1` default, `overheardWithinM` 8, `overheardKeepM` 10, `overheardNearM` 2, `overheardFalloffDb` 3,
+`overheardFloorDb` 6, `overheardGain` 1, `overheardMax` 16). Game mode 0 only, and only while the view is the player's
+(not `InWorld`, not a moment's view, not the body away from the pawn); the listener is the player camera's POV. Each tick
+every `SFXGame.BioPawn` in `WorldInfo.PawnList` within 12.5 m of the listener (the keep radius plus 2.5 m for the head above
+the feet), visible, alive and not the player's own pawn, is a candidate at its head bone (as `game/ConversationWorld`'s
+`HeadOf`, else its place plus 70 units), judged by the conversation's own `cw::PlaceVoice` (within 8 m, kept to 10, full
+within 2 m, 3 dB quieter a doubling, at most 6). At most 16 are named, **those heard in the last 2 s first** (the hook's
+`TakeHeard`), then the nearest: so in a crowd the speakers always have a place. They are named "centred sources only", so
+their barks with a falloff of their own, their footsteps and their gunfire keep the game's mix. Who speaks is not looked up in
+the conversation objects at all: a centred source owned by a pawn near the player is that pawn's voice (a flowed chain, an
+ambient conversation, a `BioSeqAct_FaceOnlyVO`, a squadmate's banter); Shepard's own lines stay in the centre (his pawn is
+never named). Logs `sound place:` (`... speaks from where it stands (N m from the player ...)`, once in 10 s a person; the
+heartbeat's `N people near named now; this period M source updates placed for them (K of theirs the game placed itself, left
+alone)`); snapshot `"mod"."soundPlace"`; `mevr voices [status | overheard on|off | gun on|off]`.
+
+**A2, the player's gun: what was found.**
+- `SFXGame.BioWeaponRanged.oAudioComponent` (+0x4B0) is an editable component of the weapon class (CPF_Edit, ExportObject,
+  Component, EditInline): every weapon actor gets its own instance, so its `ActorComponent.Owner` is the weapon actor, not
+  Shepard's pawn. A sound played on it can be told apart by its owner.
+- `BioWeaponRanged.PlayWeaponSound(name)` (native, its exec 0xB72C90, the virtual at the weapon vtable's +0x8E0 = 0xC5ED10)
+  does **not** play on the weapon: it hands the name to the local player controller's GUI manager
+  (`PlayerController.m_oCachedScaleFormManager`, +0x740, its vtable's +0x348): a UI sound (the overheat warnings,
+  `PlayOverheatSound`, `PlayShootingWhileOverheatedSound`), with no place to give.
+- The shot itself: the native fire tick (`TickFire`, 0xC621E0) plays nothing; the shot's sound comes from the script events
+  `BioWeaponRanged.FireOn`/`FireOff` (and `HasLoopingFire`, `m_nFireSound` at +0x4D0, the item's `BioWeaponSoundsSet`
+  `m_oSounds`: labelled sets of cues), whose bytecode was not read. `Actor.PlaySound` (0x505490, the body 0x4FC240) makes a
+  component owned by whichever actor it is called on. So whether the gunfire's source belongs to the weapon (its
+  `oAudioComponent`, or `PlaySound` on the weapon) or to the pawn (an animation's sound notify, `PlaySound` on the
+  instigator) is not settled offline.
+- **Built:** the gun's list names the held weapon actor (`weapon::HeldObject`, a verified `BioWeaponRanged` in the right
+  hand) at its drawn muzzle (`weapon::CurrentAsDrawn`: where the visible gun is, kick included), every source of it (`[Audio]
+  gun = 1` default; on foot only). If the weapon owns the shot, it comes from the gun; if the pawn does, nothing changes.
+  **`mevr voices census [seconds]`** settles it in one look: for that long the hook records every distinct owner and audio
+  component a source belongs to, with its cue (`AudioComponent.SoundCue`), whether the game placed it, its component's
+  `CurrentUseSpatialization`, how many updates, and whose list placed it; the log's `voice census:` lines name them and tag
+  `[the player's pawn]` and `[the player's weapon]`. If the shot turns out to be the pawn's, the next step is to tell its cue
+  apart among the pawn's sources (by the cue's sound group or name, which the census prints), not built.
+
+**A3, the menu's Sound page** (`assets/menu/main.rml`, a new rail section with a loudspeaker icon; schema
+`core/vr/MenuSettings`, mapping `plugin/MainMenuSettings`; offline look `mevr-menu-preview`'s `section-sound*.png`):
+"Sound for" (Headphones 3D / Speakers / The game's own: `[Audio] spatial = hrtf | soft | game`), Loudness (`gainDb`, 0 to
++9 dB, a slider; off with The game's own), a line saying what plays now (`openal_soft::Describe`) and a note
+(`menu_settings::AudioNote`, unit-tested): "In use now", "Applies when the game next starts" (both host keys are read once at
+attach; `openal_soft::Running`/`RunningGainDb` say what attach did), or, with the DLL missing, that MEVR Setup's Repair puts
+it back. Two live toggles for the mod's lists: People around you (`overheard`), Your gun (`gun`). The host's own reader of
+`spatial` and the menu's agree word for word (`AudioSpatialChoice`).
+
+**A5, the AL source behind an ISACT voice (read, nothing built).**
+- The sound source (`FISACTSoundSource`) holds only ISACT handles (an entity at +0x44, a stream at +0x4C), never an AL id.
+- ISACT's OpenAL layer is linked into the exe (its own messages name `CAudioOALSource` and `CAudioOALListener`). Its init
+  (0x7CC80) opens the device and makes the context current with `alcMakeContextCurrent` (process-wide), sets the inverse
+  clamped distance model, and asks `alIsExtensionPresent` for "EAX-RAM" and "EAX4.0" or "EAX4.0Emulated" (then `EAXSet`/`EAXGet`
+  through `alGetProcAddress`, kept at 0x16B26B8/0x16B26C0). Its voices are a table of up to 256 `CAudioOALSource` pointers at
+  0x16B2800 (zeroed by the init; the count the stream code checks at 0x16B3000), each with **`m_uiSource`, the AL source id,
+  at +0xB4** (its last position at +0x40, a mode at +0x7C, the state at +0x84). The voice's `SetPosition` is 0x826B0
+  (driver, voice index, position: `alSourcefv(m_uiSource, AL_POSITION, ...)` when it changed); `ProcessStreamSource` 0x7EF40.
+- The layer has no filter call: its messages cover state, gain, pitch, mode, position, velocity, orientation, distances,
+  cones and buffers. Occlusion and obstruction ("ToggleISACTOcclusionMode - Occlusion Filter / Obstruction Filter", 0x74610)
+  go through EAX.
+- From an FISACTSoundSource to its voice: the entity's own structures (not read) pick the voice, and one entity may drive
+  several voices (layers). The practical route needs none of them: while `engine/VoicePlace` re-sends a source's position
+  through the ISACT interface, a hook on 0x826B0 sees the voice index (or indices) that very call reaches; the table gives
+  `m_uiSource`.
+- EFX is reachable: the host loaded `ASI\audio\soft_oal.dll` itself and every OpenAL call of the game's goes to it; OpenAL
+  Soft exports `alGenFilters`, `alFilteri`, `alFilterf`, `alDeleteFilters`, and every device of it has `ALC_EXT_EFX`. The game's
+  context is current process-wide, so a call on the game thread reaches it. The colour: one filter, `AL_FILTER_TYPE`
+  (0x8001) = `AL_FILTER_BANDPASS` (3), `AL_BANDPASS_GAIN` 1, `GAINLF` and `GAINHF` (2, 3) about 0.3 (-10 dB under 250 Hz and
+  over 5 kHz: a telephone's band, roughly), set with `alSourcei(id, AL_DIRECT_FILTER` 0x20005`, filter)`.
+- **Risks to measure before building it:** OpenAL Soft's EAX emulation (if ISACT takes its "EAX4.0" path under OpenAL Soft,
+  [verify]: log `alIsExtensionPresent`'s answers) drives the same per-source direct filter for occlusion, so ours could be
+  overwritten by an EAX commit or override its occlusion; ISACT reuses voices, so a filtered voice must be given
+  `AL_FILTER_NULL` back the first update it plays someone else (keep the set of voices filtered this frame, clear the rest);
+  with Creative's router (`spatial = game`) nothing of this is reachable the same way. New addresses (0x826B0, the table)
+  need rows in `engine/Addresses.hpp` with patterns.
+
+**A4, the plan (not run).** In "To check in the game" below, with A1's and A2's.
+
+**Offline evidence:** all three configurations build (`build`, `build-mono`, `build-trilogy`, /W4 /WX), `ctest` passes
+(`sound place tests: ok`, the menu's new checks in `TestMenuSettings`), `check-spdx` passes, two new ReflectCheck rows
+(`AudioComponent.SoundCue`, `CurrentUseSpatialization`), and the menu preview shows the page in its three states.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -1830,6 +1945,42 @@ In this order, on the fake headset, when the game folder is free (saves backed u
    it, and the banter's start `fired again` a second after the wheel conversation ends. Then the six chains left out play as
    conversations again.
 5. Item 3: the survey with `worldAutoScreen = log`; read which scenes each rule names.
+
+The audio list (A1, A2, A4; host and mod from the same build: the menu's Sound page is the host's, `game/SoundPlace` the mod's;
+OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for every A/B, as in "The voices, placed"):
+
+6. **The hook goes in on foot without the world mode**: with `[Cinematics] conversations` not `world`, the log has `hooked
+   FISACTSoundSource::Update at ... (ActorComponent.Owner at +0x..; the census reads AudioComponent.SoundCue at +0x88 and
+   CurrentUseSpatialization at +0x24C)`, then `sound place: [Audio] overheard on (...), gun on` and, on foot, `sound place: on
+   foot: people near the player heard from where they stand, the gun from its muzzle`; `reflect:` shows the two new rows agree.
+7. **A1, the Garrus argument at C-Sec on foot**: `tools/conversation-launch.ps1 sta70_garrus -World on` (the world mode
+   makes its argue chain play as barks on foot: `convo flow:`). Expect `voice place: the first source placed for the people
+   near the player: ...` and `sound place: BioPawn_N speaks from where it stands (x.x m from the player ...)` for Garrus and
+   the Executor, and the heartbeat's `sound place: 2 people near named now; this period M source updates placed for them`.
+   During the argument `tools/console.ps1 "mevr voices census 15"`: Garrus' and the Executor's facial components `in the
+   centre (component spatialization 0) ... placed for the people near the player`; anything of theirs `placed by the game`
+   is `left alone`. **Measured:** `build\Release\mevr-audio-loopback.exe a1-on.wav 15` with the head turned so Garrus is about
+   80 degrees to one side, then `python tools/audio-balance.py a1-on.wav --from <s> --to <s>` over his lines: the balance
+   several dB toward his side and, with Headphones 3D, the far ear 0.5 to 0.9 ms later; then `tools/console.ps1 "mevr voices
+   overheard off"` and the same lines again (the launcher once more) for `a1-off.wav`: 0 dB, 0.00 ms (the centre, as before).
+   The head turned round flips the sign. A walk away past 10 m: `sound place:` names nobody, the voice back in the centre.
+8. **A2, the player's gun**: on foot with a gun drawn (any career save on foot; the power arena below works too), `tools/
+   console.ps1 "mevr voices census 10"` and fire within those 10 s (a replay with `-Inputs` of a recording that pulls the
+   right trigger, or `tools/console.ps1 "StartFire" ... "StopFire"` if LE1's controller has that exec [verify]). Read the
+   `voice census:` lines for a weapon-fire cue: **tagged `[the player's weapon]` and `placed for the player's gun`**: A2 works,
+   and `sound place: a sound of the player's gun was placed at its muzzle: its audio component belongs to the weapon actor`
+   is in the log; **tagged `[the player's pawn]`**: the shot is the pawn's, A2 needs the cue told apart (note the cue and
+   group the census prints). Measured (only in the first case): `mevr-audio-loopback.exe a2-on.wav 10` while firing, `audio-
+   balance.py` over the shots: on the fake headset the gun hangs where the animation holds it, right of the eyes, so the
+   shots lean right (a few dB, the left ear later); `mevr voices gun off` and again: 0 dB, 0.00 ms.
+9. **A4, combat under OpenAL Soft**: `tools/power-arena.ps1 -Row` (a row of soldiers ahead that fight; it opens UNC20 and
+   autosaves into the career: `tools/power-arena.ps1 -Restore` after the game is closed). `tools/console.ps1 "mevr voices
+   census 10"` during the fight: the soldiers' weapon, footstep and impact sources `placed by the game` (they are positioned
+   at all: the first question of A4). Then a loopback of 20 s under a replayed head turning a full circle
+   (`tools/make-look-recording.py`, `tools/replay.ps1 -Loop`): `audio-balance.py --window 0.5` shows the balance swinging
+   from one side to the other as the head turns and the far ear's delay changing side with it; the same with `[Audio] spatial
+   = game` (the menu's The game's own, then a restart): the balance swings, the delay stays 0.00 ms. Explosions: a grenade
+   (`mevr powerwheel` or the arena's rocket soldiers) in the same recording.
 
 ## Log
 
@@ -2128,3 +2279,10 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   source in the release), and the host detours the router's 93 functions to it, all at once, at the start of attach
   (the import slots alone were not the game's route; one by one, the game won the race). The same 0.9 ms between the
   ears as with the DLL replaced. Everything the game positions now gets it; gunfire not measured in combat yet.
+- 2026-11-11, **the audio list, offline** (an agent in a worktree; no game): `engine/VoicePlace` takes three lists (the
+  conversation's unchanged, people near the player, the player's gun) and a "centred sources only" voice; `game/SoundPlace`
+  names the people within 8 m on foot (those heard first) and the held weapon at its muzzle; `mevr voices census` tells which
+  actor owns a sound; the menu's Sound page sets `[Audio] spatial`, `gainDb`, `overheard`, `gun`. Read: the weapon's own audio
+  component is the weapon actor's, `PlayWeaponSound` is a GUI sound, the shot's owner is [verify]; ISACT's AL source ids sit
+  in its own OpenAL layer in the exe (a table of 256 voices, `m_uiSource` at +0xB4), reachable for an EFX band-pass. All three
+  builds and the tests pass; the in-game checks are items 6 to 9 of "To check in the game".

@@ -604,6 +604,17 @@ switching frameworks.
   library load and who asked). Measured: a voice 77 degrees to the right reaches the left ear 0.9 ms later. `[Audio] gainDb`
   (3) makes up OpenAL Soft's quieter mix through its `volume-adjust` (a config the host writes to `%LOCALAPPDATA%\MEVR\openal-soft.ini`
   and names in `ALSOFT_CONF` before loading it) with its limiter on: the same level as the game's own audio, no clipping.
+  **On foot too: people near the player and his gun** (research/69 "The audio list", 2026-11-11, offline; [verify] in the
+  game): `engine/VoicePlace` takes three lists (`voice_place::Publisher`: the conversation's, whose old `Set(voices, count)` is
+  unchanged; `Overheard`; `Gun`) and a voice may be "centred sources only" (the wave's +0x78 after the game's update: 0 is a cue
+  the game left in the centre; its own placed sounds stay its mix). `game/SoundPlace` (rule `core/vr/SoundPlace`, unit-tested),
+  game mode 0 with the view the player's: every visible BioPawn but the player's within reach named at its head under
+  `cw::PlaceVoice` (`[Audio] overheard`, `overheardWithinM` 8 ...; at most 16, those heard in the last 2 s first), and the held
+  weapon actor at its drawn muzzle (`[Audio] gun`; the weapon's own `oAudioComponent` is the weapon actor's; which actor owns the
+  shot's source is [verify]: **`mevr voices census [s]`** logs every source's owner, cue and whether the game placed it). The
+  hook now goes in for every player on foot (`EnsureVoicePlaceHook`). The menu's **Sound** page sets `[Audio] spatial`,
+  `gainDb` (the host's: "Applies when the game next starts") and the mod's `overheard`, `gun`. Logs `sound place:`, `voice
+  census:`; snapshot `"mod"."soundPlace"`.
   "In sight" for the opening is three lines (`InSight`).
   **A small placement the game repeats is its own** (`cw::Insists`,
   2026-11-10): keep-in-place undoes a jump once; one of at most 1 m that comes back at the same place the next tick is

@@ -79,6 +79,7 @@ std::string FormatValue(Format format, float value) {
     case Format::SignedMeters2: return Signed(value, 2, " m");
     case Format::Signed0: return Signed(value, 0, "");
     case Format::Centimeters1: return Plain(value, 1, " cm");
+    case Format::SignedDecibels: return Signed(value, 0, " dB");
     }
     return Plain(value, 2, "");
 }
@@ -304,6 +305,14 @@ std::vector<Field> const& Schema() {
         {"voice_key", Type::Text, 0, "(none)"},                      // [Voice] key by name
         {"voice_key_wait", Type::Flag, 0},                           // waiting for the key to press
         {"ear_cue", Type::Number, 40, "", 0, 100, F::Percent},       // [Voice] earCueStrength x 100 (the mod's)
+        // Sound (research/69 A3): [Audio] in <GAME>MEVR.ini. spatial and gainDb are the host's, read once when the game starts
+        // (plugin/OpenAlSoft); overheard and gun the mod's, live (game/SoundPlace).
+        {"audio_spatial", Type::Choice, 0, "hrtf"},                                                       // [Audio] spatial
+        {"audio_gain", Type::Number, kAudioGainDefaultDb, "", kAudioGainMinDb, kAudioGainMaxDb, F::SignedDecibels},  // [Audio] gainDb
+        {"audio_now", Type::Text, 0, ""},                            // what the game's audio runs on now (openal_soft::Describe)
+        {"audio_note", Type::Text, 0, "Applies when the game next starts"},  // AudioNote
+        {"audio_overheard", Type::Flag, 1},                          // [Audio] overheard: people near the player from where they stand
+        {"audio_gun", Type::Flag, 1},                                // [Audio] gun: the player's gun from the gun
     };
     return fields;
 }
@@ -771,6 +780,28 @@ int VoiceKeyFromPress(int vk, int menuKey) {
         break;
     }
     return vk == menuKey ? 0 : vk;
+}
+
+std::string AudioSpatialChoice(std::string_view value) {
+    std::string const v = Lower(Trim(value));
+    if (v == "game" || v == "off" || v == "0" || v == "creative") {
+        return "game";
+    }
+    if (v == "soft" || v == "pan" || v == "speakers") {
+        return "soft";
+    }
+    return "hrtf";
+}
+
+std::string AudioNote(std::string_view chosen, float chosenGainDb, std::string_view running, float runningGainDb, bool softInstalled) {
+    std::string const want = AudioSpatialChoice(chosen);
+    std::string const now = AudioSpatialChoice(running);
+    if (want != "game" && !softInstalled) {
+        return "OpenAL Soft isn't installed, so the game's own sound plays: MEVR Setup's Repair puts it back";
+    }
+    bool const gainMatters = want != "game";
+    bool const same = want == now && (!gainMatters || std::abs(chosenGainDb - runningGainDb) < 0.05f);
+    return same ? "In use now" : "Applies when the game next starts";
 }
 
 void PendingWrites::Put(std::string section, std::string key, std::string value, std::uint64_t dueMs) {

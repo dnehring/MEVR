@@ -18,6 +18,7 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
+#include "plugin/OpenAlSoft.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/ReportRequest.hpp"
 #include "plugin/SetupRequest.hpp"
@@ -260,7 +261,7 @@ void Settings::Read(menu::Values& v) {
         // A section missing here makes its rows snap back to their defaults after a write (the Hacking row's bug, f1f8d8b).
         for (wchar_t const* s : {L"Hands", L"Holsters", L"Controls", L"Throwables", L"Sights", L"Camera", L"Arms", L"Menu", L"Comfort",
                                  L"Upscale", L"Cinematics", L"WorldUi", L"Galaxy", L"Hud", L"Interact", L"Vent", L"Mako", L"Cockpit",
-                                 L"Squad", L"Performance", L"SystemSettings", L"Voice", L"Display", L"PowerWheel"}) {
+                                 L"Squad", L"Performance", L"SystemSettings", L"Voice", L"Display", L"PowerWheel", L"Audio"}) {
             ini.sections[Narrow(s)] = ReadSection(path, s);
         }
     }
@@ -533,6 +534,22 @@ void Settings::Read(menu::Values& v) {
     v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, true);
 #endif
     ReadVoice(v, ini.Num("Voice", "enabled", 1.0f) != 0.0f, ini.Text("Voice", "model", "tiny"), ini.Num("Voice", "earCueStrength", 0.4f));
+    // Sound (research/69 A3): [Audio] spatial and gainDb are read once when the game starts (plugin/OpenAlSoft), so the note says
+    // whether the file's choice is what plays now; overheard and gun are the mod's and live (game/SoundPlace).
+    {
+        std::string const spatial = ms::AudioSpatialChoice(ini.Text("Audio", "spatial", "hrtf"));
+        float const gain = ini.Num("Audio", "gainDb", ms::kAudioGainDefaultDb);
+        v.texts["audio_spatial"] = spatial;
+        v.numbers["audio_gain"] = std::clamp(std::round(gain), ms::kAudioGainMinDb, ms::kAudioGainMaxDb);
+        v.texts["audio_now"] = openal_soft::Describe();
+        v.texts["audio_note"] = ms::AudioNote(spatial, gain, openal_soft::Running(), openal_soft::RunningGainDb(), openal_soft::Installed());
+        auto const on = [&](char const* key) {
+            std::string const text = Lower(ini.Text("Audio", key, "1"));
+            return !(text == "0" || text == "off" || text == "false" || text == "no" || text == "game");
+        };
+        flag("audio_overheard", on("overheard"));
+        flag("audio_gun", on("gun"));
+    }
 }
 
 // The Voice page (research/54 "The menu's Voice page"): the recognizer's state from the host (plugin/Voice), the microphones it
@@ -762,6 +779,15 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
                                          : "the menu: microphone " + view.devices[static_cast<std::size_t>(std::atoi(pick.c_str()))]);
     } else if (key == "ear_cue") {
         Put("Voice", "earCueStrength", fixed(v.Number("ear_cue") / 100.0f, 2), final);  // the mod re-reads it
+    } else if (key == "audio_spatial") {
+        // The host reads it once when the game starts (plugin/OpenAlSoft): the row's note says so.
+        Put("Audio", "spatial", ms::AudioSpatialChoice(v.Text("audio_spatial")), true);
+    } else if (key == "audio_gain") {
+        Put("Audio", "gainDb", fixed(std::round(v.Number("audio_gain")), 0), final);
+    } else if (key == "audio_overheard") {
+        Put("Audio", "overheard", onOff("audio_overheard"), true);  // the mod re-reads it (game/SoundPlace)
+    } else if (key == "audio_gun") {
+        Put("Audio", "gun", onOff("audio_gun"), true);
     } else if (key == "fingers") {
         Put("Hands", "fingers", onOff("fingers"), true);
     } else if (key == "vent") {

@@ -32,5 +32,11 @@ namespace mevr::host::openal_soft {
 void Attach(hook::Context& init);
 // What the game's audio runs on, for the log's status lines and reports.
 std::string Describe();
+// For the menu's Sound page (research/69 A3): what plays since attach as [Audio] spatial's word ("hrtf", "soft", or "game" also
+// when OpenAL Soft was asked for and not used), the mix's level OpenAL Soft was given, and whether ASI\audio\soft_oal.dll was
+// there at attach.
+std::string Running();
+float RunningGainDb();
+bool Installed();
 
 } // namespace mevr::host::openal_soft

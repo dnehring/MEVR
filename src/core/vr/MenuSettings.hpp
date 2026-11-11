@@ -48,6 +48,7 @@ enum class Format {
     SignedMeters2,   // "+0.12 m"
     Signed0,         // "+40" (a nudge from the standard place, 0 reads plain)
     Centimeters1,    // "6.8 cm"
+    SignedDecibels,  // "+3 dB" (0 reads plain)
 };
 std::string FormatValue(Format format, float value);
 
@@ -213,6 +214,20 @@ std::string VoiceStatusText(VoiceStatusInput const& in);
 // The hold-to-talk key's value from a key the player pressed (`vk`): 0 for keys that can't be one (the mouse buttons, Escape,
 // the menu's own key `menuKey`, the test loop's End and Home), else vk.
 int VoiceKeyFromPress(int vk, int menuKey);
+
+// ---- Sound (the Sound page: [Audio] in <GAME>MEVR.ini; the host's plugin/OpenAlSoft, the mod's game/SoundPlace) ----------
+// The 3D sound row's chip, as plugin/OpenAlSoft reads [Audio] spatial: "game" for game, off, 0 or creative; "soft" for soft,
+// pan or speakers; anything else (hrtf by default) "hrtf".
+std::string AudioSpatialChoice(std::string_view value);
+// The menu's range for [Audio] gainDb (the host takes -12..12), and what the file's value shows as.
+inline constexpr float kAudioGainMinDb = 0.0f;
+inline constexpr float kAudioGainMaxDb = 9.0f;
+inline constexpr float kAudioGainDefaultDb = 3.0f;
+// The row's note: whether what the file asks for is what plays now (both are read once when the game starts). `running` is
+// the chip of what plays ("game" also when OpenAL Soft was asked for but could not be used), `runningGainDb` the level it plays
+// at (ignored when the game's own OpenAL plays: it has none of ours); `softInstalled`: ASI\audio\soft_oal.dll was there at
+// the start (without it the first two chips can't apply).
+std::string AudioNote(std::string_view chosen, float chosenGainDb, std::string_view running, float runningGainDb, bool softInstalled);
 
 // ---- Settings-file edits -------------------------------------------------------------------------------------
 // Edits on their way to an ini file: one per (section, key), the latest value wins, each written when it's due

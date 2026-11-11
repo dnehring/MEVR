@@ -885,6 +885,9 @@ void CheckFields() {
     CheckField("Engine.Weapon", "Mesh", SDK_FIELD(AWeapon, Mesh));
     CheckField("Engine.Projectile", "Speed", SDK_FIELD(AProjectile, Speed));
     CheckField("Engine.ActorComponent", "Owner", SDK_FIELD(UActorComponent, Owner));
+    // engine/VoicePlace's census (research/69 A2): each sound source's cue, and whether its component spatializes.
+    CheckField("Engine.AudioComponent", "SoundCue", SDK_FIELD(UAudioComponent, SoundCue));
+    CheckField("Engine.AudioComponent", "CurrentUseSpatialization", SDK_FIELD(UAudioComponent, CurrentUseSpatialization), true);
     CheckField("Engine.PrimitiveComponent", "LocalToWorld", SDK_FIELD(UPrimitiveComponent, LocalToWorld), true);
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
     CheckField("Engine.SkeletalMeshComponent", "AnimTreeTemplate", SDK_FIELD(USkeletalMeshComponent, AnimTreeTemplate));

@@ -10321,6 +10321,26 @@ void TestMenuSettings() {
     CHECK(ms::FormatValue(ms::Format::Times2, 1.0f) == "1.00\xC3\x97");
     CHECK(ms::FormatValue(ms::Format::Meters1, 1.6f) == "1.6 m");
     CHECK(ms::FormatValue(ms::Format::SignedMeters2, 0.125f) == "+0.13 m");
+    CHECK(ms::FormatValue(ms::Format::SignedDecibels, 3.0f) == "+3 dB");
+    CHECK(ms::FormatValue(ms::Format::SignedDecibels, 0.0f) == "0 dB");
+    CHECK(ms::FormatValue(ms::Format::SignedDecibels, -2.0f) == "-2 dB");
+    // The Sound page (research/69 A3): [Audio] spatial's words as plugin/OpenAlSoft reads them, and the row's note.
+    CHECK(ms::AudioSpatialChoice("hrtf") == "hrtf");
+    CHECK(ms::AudioSpatialChoice("") == "hrtf");             // missing: the host's default
+    CHECK(ms::AudioSpatialChoice(" Speakers ") == "soft");
+    CHECK(ms::AudioSpatialChoice("pan") == "soft");
+    CHECK(ms::AudioSpatialChoice("off") == "game");
+    CHECK(ms::AudioSpatialChoice("creative") == "game");
+    CHECK(ms::AudioSpatialChoice("sideways") == "hrtf");     // unknown: what the host plays then
+    CHECK(ms::AudioNote("hrtf", 3.0f, "hrtf", 3.0f, true) == "In use now");
+    CHECK(ms::AudioNote("soft", 3.0f, "hrtf", 3.0f, true) == "Applies when the game next starts");
+    CHECK(ms::AudioNote("hrtf", 6.0f, "hrtf", 3.0f, true) == "Applies when the game next starts");  // a new level
+    CHECK(ms::AudioNote("game", 6.0f, "game", 0.0f, true) == "In use now");  // the game's own has no level of ours
+    CHECK(ms::AudioNote("game", 3.0f, "hrtf", 3.0f, true) == "Applies when the game next starts");
+    CHECK(ms::AudioNote("hrtf", 3.0f, "game", 0.0f, false).find("isn't installed") != std::string::npos);
+    CHECK(ms::AudioNote("game", 3.0f, "game", 0.0f, false) == "In use now");  // nothing to install for the game's own
+    CHECK(ms::Find("audio_gain") != nullptr && ms::Find("audio_gain")->number == ms::kAudioGainDefaultDb);
+    CHECK(ms::Find("audio_spatial") != nullptr && std::string_view(ms::Find("audio_spatial")->text) == "hrtf");
     CHECK(ms::FormatValue(ms::Format::Fixed1, std::numeric_limits<float>::infinity()) == "?");
 
     // The render resolution ladder (MELE-VR.bat's tiers, Halcyon's near-square height).
@@ -11838,6 +11858,8 @@ int RunCameraDiagnosticTests();
 int RunLandmarkTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
+// tests/SoundPlaceTests.cpp: where sounds come from on foot (research/69 A1).
+int RunSoundPlaceTests();
 int RunGuiEventsTests();
 int RunOmniPadTests();
 int RunTableReturnTests();
@@ -12014,6 +12036,7 @@ int main() {
     gFailures += RunCameraDiagnosticTests();
     gFailures += RunLandmarkTests();
     gFailures += RunConversationWorldTests();
+    gFailures += RunSoundPlaceTests();
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();
     gFailures += RunTableReturnTests();

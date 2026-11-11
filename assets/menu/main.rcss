@@ -192,6 +192,7 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 .i-sliders { decorator: icon(sliders); }
 .i-guide { decorator: icon(guide); }
 .i-mic { decorator: icon(mic); }
+.i-sound { decorator: icon(sound); }
 
 .content {
 	flex: 1 1 auto;
