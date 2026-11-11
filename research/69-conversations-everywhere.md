@@ -182,6 +182,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     script runs the end-game statistics and saves the character as they open): 52 scenes in 14 levels
     (`%LOCALAPPDATA%\MEVR\sweep\plan-next-sample.json`, the list of the 182 in `never-played.json`), about two hours with
     `tools/conversation-sweep.ps1 -Plan <it> -Pace opening -EndUnplanned` once the game is free after the owner's audit.
+    **Prepared from saves, 2026-11-11 12:15:** the runner's `open` resets the plot, so the pass goes through the fast loop instead
+    (`conversation-from-save.ps1 -All`, about a minute and a half a scene with `-EndAfter 25`): `conversation-sweep.py saves`
+    wrote 47 of the 52 (slots 100-151 from John02's own save 21, the plot each scene's way and starting entry check; kept outside
+    the career until the run); 5 have no placed owner or originator to stand the player by (Therum's elevator ride, Hackett's
+    transmission, the Citadel's cab, Bring Down the Sky's batarians, the combat banter), and `actions` finds every scene's first
+    action in the plan. About an hour and a quarter, after the owner's audit.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify]. **Narrowed 2026-11-11** ("The subtitle of a line played as a bark" below): a flowed scene's
     lines behave exactly like the game's own barks: the line's text is built, nothing is drawn, in this profile (its subtitle
