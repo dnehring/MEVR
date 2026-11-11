@@ -260,6 +260,11 @@ struct Covered {
     int Total() const { return gone + moved + appeared; }
 };
 Covered CoveredChanges(std::span<Seen const> before, std::span<Seen const> after, double movedUnits = 150.0);
+// How near the nearest of those changes is to `eye` (units; infinity: no change): someone gone or moved counts from where
+// they stood, someone new from where they stand. A blink is worth it for a change near the player; people appearing at the
+// far end of a hall are not (the owner, 2026-11-10: the blink on the Council's walkway, in the middle of his own walk,
+// "wasn't that comfortable"; what it covered was the Council appearing 20 m ahead).
+double NearestChange(std::span<Seen const> before, std::span<Seen const> after, Vec3 const& eye, double movedUnits = 150.0);
 
 // The way Shepard went (research/69 "The script's Shepard, the player's view"): while the player's view walks to a pawn the
 // script moved, the guided walk follows the places the pawn passed through (stairs, a walkway between railings) instead of

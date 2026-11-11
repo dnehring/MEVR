@@ -524,6 +524,26 @@ Covered CoveredChanges(std::span<Seen const> before, std::span<Seen const> after
     return covered;
 }
 
+double NearestChange(std::span<Seen const> before, std::span<Seen const> after, Vec3 const& eye, double movedUnits) {
+    double nearest = std::numeric_limits<double>::infinity();
+    auto const from = [&](Vec3 const& at) { return std::hypot(at.x - eye.x, at.y - eye.y, at.z - eye.z); };
+    for (Seen const& was : before) {
+        auto const now = std::find_if(after.begin(), after.end(), [&](Seen const& s) { return s.id == was.id; });
+        if (now == after.end() || std::hypot(now->at.x - was.at.x, now->at.y - was.at.y, now->at.z - was.at.z) > movedUnits) {
+            nearest = (std::min)(nearest, from(was.at));
+            if (now != after.end()) {
+                nearest = (std::min)(nearest, from(now->at));  // moved: where they stand now counts too
+            }
+        }
+    }
+    for (Seen const& now : after) {
+        if (std::none_of(before.begin(), before.end(), [&](Seen const& s) { return s.id == now.id; })) {
+            nearest = (std::min)(nearest, from(now.at));
+        }
+    }
+    return nearest;
+}
+
 std::optional<Vec3> TrailTarget(std::span<Vec3 const> trail, Vec3 const& at, double aheadUnits) {
     if (trail.empty()) {
         return std::nullopt;

@@ -321,6 +321,14 @@ void TestSceneRules() {
             cw::Seen const more[] = {anderson, udina, {3, {0.0, 0.0, 0.0}}};          // someone put into the view
             CHECK(cw::CoveredChanges(before, more).appeared == 1 && cw::CoveredChanges(before, more).gone == 0);
             CHECK(cw::CoveredChanges({}, {}).Total() == 0);
+            // How near the change is: the Council appearing 20 m ahead is far, someone put beside the player is near.
+            cw::Vec3 const eye{0.0, 0.0, 0.0};
+            CHECK(std::isinf(cw::NearestChange(before, stepped, eye)));
+            cw::Seen const council[] = {anderson, udina, {7, {2000.0, 0.0, 0.0}}, {8, {2100.0, 100.0, 0.0}}};
+            CHECK(std::fabs(cw::NearestChange(before, council, eye) - 2000.0) < 1e-9);
+            CHECK(std::fabs(cw::NearestChange(before, more, eye)) < 1e-9);
+            CHECK(std::fabs(cw::NearestChange(before, gone, eye) - std::hypot(100.0, 0.0)) < 150.0);  // Anderson, from where he stood
+            CHECK(cw::NearestChange(before, moved, eye) <= std::hypot(100.0, 900.0));
         }
         // The guided walk follows the way Shepard went, not the straight line to him.
         {

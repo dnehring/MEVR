@@ -194,6 +194,10 @@ struct Settings {
     bool bodyWithPlayer = true;
     // The on-foot near plane kept while the world view is held (worldNearPlane = 1; 0: the director's, which clips what is near).
     bool nearPlane = true;
+    // The script's black screen during a held moment becomes a dip from black only when what it covered is within this
+    // far of the player (worldDipWithinM, metres; negative: any change in view, the rule until 2026-11-10). People shown at
+    // the far end of a hall appear without a blink.
+    float dipWithinM = 8.0f;
     // While the view is away from the pawn the legs stand under the player by leg IK when the view rests, and keep the
     // script's walk animation while it moves (worldLegs = stand; walk: the animation always). The owner, 2026-11-10: "modify
     // the legs to see if we can just use the VRIK".
@@ -275,6 +279,7 @@ void RefreshSettings() {
     }
     s.camera = number("worldCamera", 0.0f, 0.0f, 1.0f) != 0.0f;
     s.nearPlane = number("worldNearPlane", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.dipWithinM = number("worldDipWithinM", 8.0f, -1.0f, 1000.0f);
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldLegs")) {
         s.legsStand = ini::Lower(ini::Trim(*text)) != "walk";
     }
@@ -2920,14 +2925,24 @@ void ResolveBlack(ue3::Object* pawn) {
         return;
     }
     std::uint64_t const now = GetTickCount64();
-    cw::Covered const covered = cw::CoveredChanges(gBlack.before, PeopleInView(pawn, gBlack.eye, gBlack.facing));
-    if (covered.Total() > 0) {
+    std::vector<cw::Seen> const after = PeopleInView(pawn, gBlack.eye, gBlack.facing);
+    cw::Covered const covered = cw::CoveredChanges(gBlack.before, after);
+    double const nearestM = cw::NearestChange(gBlack.before, after, {gBlack.eye.x, gBlack.eye.y, gBlack.eye.z}) / kUnitsPerMeter;
+    if (covered.Total() > 0 && gSettings.dipWithinM >= 0.0f && nearestM > gSettings.dipWithinM) {
+        if (now - gBlack.ms > 300) {
+            log::Info("moment: the script's black screen covered a change in view, but none of it near the player ({} gone, {} "
+                      "moved at once, {} new; the nearest {:.1f} m away, worldDipWithinM {:.0f}): no dip",
+                covered.gone, covered.moved, covered.appeared, nearestM, gSettings.dipWithinM);
+            gBlack = {};
+        }
+    } else if (covered.Total() > 0) {
         ++gC.cut;  // published with the view's state: the host dips from black on a change
         if (gMoment.on) {
             ++gMoment.dips;
         }
-        log::Info("moment: the script's black screen covered a change in view ({} of {} people gone, {} moved at once, {} new): a dip from "
-                  "black in its place", covered.gone, gBlack.before.size(), covered.moved, covered.appeared);
+        log::Info("moment: the script's black screen covered a change in view ({} of {} people gone, {} moved at once, {} new; the "
+                  "nearest {:.1f} m from the player): a dip from black in its place", covered.gone, gBlack.before.size(), covered.moved,
+            covered.appeared, nearestM);
         gBlack = {};
     } else if (now - gBlack.ms > 300) {
         log::Info("moment: the script's black screen covered nothing in view ({} people, none gone, moved or new in 0.3 s): no dip",
