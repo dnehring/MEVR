@@ -560,6 +560,14 @@ void RestoreMode() {
     gBarkSubtitle = {};
 }
 void ShowSubtitle(ue3::Object* conv, ue3::Object* world) {
+    if (!gSettings.subtitles) {
+        // Switched off during a flowed scene: the render mode set for it goes back now, not at the scene's end (the second
+        // Codex review, 2026-11-11). Nothing when nothing was set.
+        if (gModeObject != nullptr) {
+            RestoreMode();
+        }
+        return;
+    }
     ue3::FString const* const text = conv != nullptr ? gConvSubtitle.In<ue3::FString>(conv) : nullptr;
     std::wstring_view const view = text != nullptr ? std::wstring_view(text->Chars()) : std::wstring_view();
     std::uint64_t const hash = view.empty() ? 0 : static_cast<std::uint64_t>(std::hash<std::wstring_view>{}(view)) | 1u;

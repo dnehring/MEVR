@@ -584,9 +584,19 @@ function RunScene([string]$map, $scene, $streamed) {
     }
     $record.notes = @($window | Select-String -Pattern 'convo flow: .*(held|refused|fired again|let through)|convo: .*(no place for the player|goes to the 3D screen|set piece)' | ForEach-Object { $_.Line.Substring([math]::Min(15, $_.Line.Length)) } | Select-Object -First 12)
     if (Dead) { $record.outcome = $(if (Running) { 'hang' } else { 'crash' }); $record.detail = 'during the scene' }
+    # A moment is judged by its own matinee before any conversation around it (the second Codex review, 2026-11-11: a
+    # prerequisite conversation's summary, or another matinee's move of Shepard, made an unplayed moment "played"). The
+    # moment's line names the matinee playing (game/AuthoredMoment): it must be the plan's.
+    elseif ($scene.moment) {
+        $tookLines = @(@(LogSince $mark) -match "matinee's move track takes Shepard")
+        $matineeTail = ($scene.matinee -split '\.')[-1]
+        $ours = @($tookLines | Where-Object { $scene.matinee -and $_ -match ([regex]::Escape(($scene.matinee -replace '^.*?(\w+\.SeqAct_Interp_\d+)$', '$1'))) })
+        if ($ours.Count -gt 0) { $record.outcome = 'played' }
+        elseif ($tookLines.Count -gt 0) { $record.outcome = 'another matinee moved Shepard'; $record.detail = "not $matineeTail" }
+        elseif (@($record.modes | Where-Object { $_ -ne 0 -and $_ -ne $modeBefore }).Count -gt 0) { $record.outcome = 'played (no track took Shepard)' }
+        else { $record.outcome = 'not played' }
+    }
     elseif ($mine -or $flow) { $record.outcome = 'played' }
-    elseif ($scene.moment -and (@(LogSince $mark) -match "matinee's move track takes Shepard")) { $record.outcome = 'played' }
-    elseif ($scene.moment -and @($record.modes | Where-Object { $_ -ne 0 -and $_ -ne $modeBefore }).Count -gt 0) { $record.outcome = 'played (no track took Shepard)' }
     else { $record.outcome = 'no conversation' }
     return $record
 }

@@ -999,6 +999,7 @@ struct Stay {
     double turnUntilS = 0.0;       // ... and until when it is the game's (0: none on its way)
 };
 void EndWalk(Stay& st, char const* event, char const* why);
+bool gTearingDown = false;  // End is ending the conversation's walks: its own teardown decides the gesture mode
 std::vector<Stay> gStay;
 std::uint64_t gStayMs = 0;
 bool gInWorldForStay = false;  // set by Tick: the world view is up
@@ -1298,7 +1299,9 @@ void EndWalk(Stay& st, char const* event, char const* why) {
     ReleaseAi(st);
     // The gesture mode the walk took away comes back however the walk ends (arrival, a stall, a cancel): left to the scene's
     // next gesture, a person whose gesture went on stayed out of its gesture branch (the Codex review, 2026-11-11).
-    if (st.gesturesLeft > 0 && ue3::runtime::IsAlive(st.actor) && !gInGestures.ReadBool(st.actor).value_or(true)) {
+    // Not while the conversation itself ends: the game's teardown may have ended the gesture, and putting the flag back then
+    // would leave the person in the gesture branch, with no locomotion, after the scene (the second Codex review, 2026-11-11).
+    if (!gTearingDown && st.gesturesLeft > 0 && ue3::runtime::IsAlive(st.actor) && !gInGestures.ReadBool(st.actor).value_or(true)) {
         gInGestures.WriteBool(st.actor, true);  // journalled by FieldRef
         log::Info("convo: walk: {} back in the conversation's gesture mode", st.name);
     }
@@ -3613,12 +3616,17 @@ void End(char const* why) {
     ReleaseLooks(why);
     ClearVoices();
     gTrail.clear();
+    gTearingDown = true;  // the walks end with the conversation: no gesture mode put back (EndWalk)
     EndWalks(why);
-    bool const broughtToView = gC.detached;  // below: Shepard is put where the player's view is
+    gTearingDown = false;
+    bool broughtToView = false;               // below: Shepard put where the player's view is
+    bool const viewAway = gC.detached;        // the view had walked off from him
+    ik::Vec3 const viewFeet = gC.detachedAt;  // the feet under the held view then
     if (gC.detached && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
         // The view never reached him and the game now takes its camera back to his pawn: rather than the player's view
         // jumping to the mark, Shepard comes to where the player is (the conversation is over: an ordinary move of his).
         bool const put = PutAt(gC.playerPawn, gC.detachedAt);
+        broughtToView = put;
         log::Info("convo: the conversation ended with the player's view {:.2f} m from Shepard: {}", [&] {
                 auto const at = player::Location(gC.playerPawn);
                 return at ? Dist(V(*at), gC.detachedAt) / kUnitsPerMeter : 0.0;
@@ -3638,7 +3646,11 @@ void End(char const* why) {
             // mark this tick; paired with that place, the next scene measured no move at all and left the view where it was
             // with Shepard elsewhere (the Codex review, 2026-11-11).
             ue3::Vector feet = *at;
-            if (!broughtToView) {
+            if (viewAway && !broughtToView) {
+                // He could not be brought to the view: the view's own feet go with it, so the next scene measures how far he
+                // is (the second Codex review, 2026-11-11: paired with his place, the handover fault came back).
+                feet = EnginePoint(viewFeet);
+            } else if (!broughtToView) {
                 auto const kept = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == gC.playerPawn; });
                 if (kept != gStay.end() && Dist(kept->place, V(*at)) > kJumpUnits) {
                     feet = EnginePoint(kept->place);

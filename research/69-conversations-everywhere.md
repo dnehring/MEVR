@@ -2121,6 +2121,17 @@ script call, data race or unjournalled engine write. Its eleven findings, each c
 | 10 | a scene that began by itself skipped `-Walk` and `-Replay` | real | both applied either way |
 | 11 | the seven-people bound of the seat search was not pinned by a test | real | seven reassign, eight keep the seat order |
 
+**A second pass over the fixes** (`dd5b9d2..dcc8087`, 11:05-11:40): no new crash, threading or journalling finding; five more,
+two of them in the fixes themselves, all fixed:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | the handover fix took Shepard as brought to the view even when that move was refused, and paired the view with his new place again | whether he came is what the move returned; if not, the view's own feet go with it |
+| 2 | (suspected) putting the gesture mode back while the conversation itself ends could leave a person in the gesture branch, with no locomotion, after the scene | not while the conversation is torn down (the game's teardown decides) |
+| 3 | a prerequisite conversation's summary, or another matinee's move of Shepard, still made a moment "played" | a moment is judged by its own matinee first (the moment's line names it); another one is "another matinee moved Shepard" |
+| 4 | the save runner took a cinematic on load (mode 6) for a conversation's scene | a conversation's test waits through it; only its conversation, by name, counts |
+| 5 | flowed subtitles switched off mid-scene left their render mode set | put back when the option is off, at once |
+
 ### The scripted walks, named (2026-11-11 08:13-, fake headset, the sweep runner; item 11)
 
 `moment: a matinee's move track takes Shepard from ... : <path>` now names the matinee: the move track's instance lives in an
@@ -2948,3 +2959,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 11:02, **item 11: the ending** ("The scripted walks, named"): its first scripted walk held in first person after the Council's conversation; 20 of 21 seen (the second is the other ending's branch).
 - 2026-11-11 11:05, **the Codex review** ("An adversarial review by a second model"): eleven findings, all real on checking; all fixed (walk retarget and gesture mode, the guide's wait, the handover's place on foot, the flowed subtitle mode, a crowd's speakers, three tooling faults, `mevr vslot`, a test bound).
 - 2026-11-11 11:15, **the saves and their tests** ("The saves and their tests"): `tools/save-dictionary.py` maps every save to the scene it was written for (or the scenes near it), with the command that plays it.
+- 2026-11-11 11:40, **the second Codex pass** ("An adversarial review by a second model"): five more findings on the fixes, all fixed (the handover when Shepard can't be moved, gestures at teardown, a moment judged by its own matinee, a cinematic on load, subtitles switched off).

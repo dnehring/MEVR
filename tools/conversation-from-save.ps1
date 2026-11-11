@@ -94,7 +94,9 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             }
             # A save that stands the player inside the scene's trigger starts it as it loads (Noveria's Benezia and Therum's
             # Liara, 2026-11-11): that is the scene, played as the game plays it, not a save that never came up.
-            if ($mode -eq '5' -or $mode -eq '6') { $script:byItself = $true; break }
+            # A conversation's test waits through a cinematic (mode 6): only its conversation, by name, counts (the second Codex
+            # review, 2026-11-11); a scripted walk's test takes the cinematic mode as its scene beginning.
+            if ($mode -eq '5' -or ($mode -eq '6' -and (-not $title -or $title.StartsWith('moment_')))) { $script:byItself = $true; break }
             $onFoot = $(if ($mode -eq '0') { $onFoot + 1 } else { 0 })
         }
         # Only the scene asked for counts (the Codex review, 2026-11-11: any conversation on load stood in for it). A conversation
