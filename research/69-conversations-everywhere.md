@@ -1433,6 +1433,40 @@ per-tick component update and a `bUpdateSkelWhenNotRendered` write (the flag is 
 **Open:** the legs under a standing player during a scripted walk (the script's walk animation plays in place; a
 standing graft); the same check on foot with a look-around (the pad is on there too); everything in a real headset.
 
+#### The legs under the player, the walkway's blink, a stall of the game thread (2026-11-10, 18:10-18:30, fake headset)
+
+The owner: "modify the legs to see if we can just use the VRIK and then proceed to the other items on the list".
+
+**The legs** (`worldLegs = stand | walk`, default stand). While the view is away from the pawn the matinee plays its walk
+(`EX_Walk`) on the body that now stands with the player. The pose writer already had a leg solve (the Mako's seated
+driver: the same two-bone solve as an arm, `bone_pose::Leg`); it takes a standing goal now (`Leg::stand`): the ankle
+straight under the hip as the torso left it, 9 units above the floor of the animated pose moved by the torso's body shift
+(so on the player's floor, not the pawn's), the knee bending forward, blended by `weight`. `game/ConversationWorld` gives
+the weight from the held view's speed (`BodyAwayState::legsStand`: 1 under 15 units a second, 0 over 60, eased over a
+quarter of a second): **at rest the legs stand by leg IK, while the view moves (the stick, the guided walk) they keep the
+script's walk**, which then looks like walking. Run in the ceremony at 65 and 80 degrees down, both ways: the body is
+whole either way; with `walk` a knee swings into view under the chest plate at rest, with `stand` none does. **From the
+first-person eye the chest armour hides nearly all of the legs**, so this was not judged from outside (the spectator camera
+could: not done); [verify] in the headset, leaning forward.
+
+**The walkway's blink** (`worldDipWithinM`, default 8; negative: the old rule). The script's black screen became a dip
+whenever anything in view changed; in the ceremony that is the Council appearing at the far end (1 gone, 9 new), in the
+middle of the owner's own walk. `cw::NearestChange` (unit-tested) says how near the nearest person gone, moved or new is,
+and the dip is taken only within 8 m. The ceremony from its save: **walking along (13.6 m by the stick): the nearest change
+10.1 m away, no dip**; standing at the stairs: 7.3 m, the dip stays. People appearing 10 m and more away now pop in without
+a blink: whether that reads better than the blink is the owner's to judge.
+
+**A stall of the game thread** (the 0.1 s of 3D screen when the controllers lost tracking mid-conversation): the host
+trusted the mod's world state for 300 ms; it is 1.5 s now (`plugin/ConversationWorld` `kFreshMs`; the mod itself says when
+a scene ends, so the longer trust only bridges stalls). Built; not reproduced (the fake headset's controllers never drop).
+
+**Not done of the list, and what each needs:** bodies that re-face still slide (the game's turn in place does nothing in
+a conversation; a turn animation would have to be played on the body: a node in the AnimTree to find); heads reach about
+half way (the look-at definition's strengths: how they combine is not read); the comm room's start after a load (not in
+the validation saves: the launcher's Normandy case); slot 84 and Chorban's conditional (the test harness, not the player);
+spatial voices (the hook is known, "The voices"; nothing can be judged by snapshot, only by ear); the composition rule,
+people walking to their marks, the pause and floor marker.
+
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"
@@ -1750,3 +1784,7 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   view offset and hands Umbra the padded box. The ceremony from its save, facing forward: arms, hands and chest through
   the scripted walk (the body walks with the player while Shepard's actor goes ahead) and at the podium on every line.
   Open: the legs' walk animation under a standing player, the on-foot look-around, a real headset.
+- 2026-11-10, 18:10-18:30, **the legs, the walkway's blink, a stall** ("The legs under the player, the walkway's blink").
+  Legs: the writer's own leg IK stands them under a player whose view rests and leaves the script's walk while the view
+  moves. The blink: only for a change within 8 m (walking along the walkway: none). The host trusts the mod's state 1.5 s.
+  Not judged from outside (the chest hides the legs from the eye); the rest of the list is named there with what it needs.

@@ -258,6 +258,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   design), whether the guided walk reaches the podium, the blur gone from people during the walk.
 - [ ] **No flash as a conversation begins** (the same note): any ordinary conversation from on foot (slots 85, 87, 89):
   until 2026-11-10 the 3D screen showed for an eighth of a second at every start.
+- [ ] **The legs in a scripted walk and the walkway's blink** (research/69 "The legs under the player, the walkway's
+  blink", 2026-11-10): slot 81. Stand still after using Anderson and lean forward to see your legs: they should stand
+  (not walk in place); once you are walked or walk yourself they walk. Walk along with the stick: no blink on the walkway
+  as the Council appears ahead (it pops in); is that better than the blink? (`worldDipWithinM = -1` is the old blink.)
 - [ ] **Your own body in a conversation and a scripted walk** (research/69 "The first shot" and "The body that stayed
   culled", 2026-11-10; fixed on the fake headset): look down at yourself during an ordinary conversation (slots 87, 89), on
   the walk to the Council and at the podium (slot 81), from several head angles and standing off your room's centre: arms,

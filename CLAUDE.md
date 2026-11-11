@@ -334,6 +334,11 @@ switching frameworks.
   `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
   hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
   and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.
+  **In a scripted walk the body is the player's** (`worldBody = player`, research/69 "The body in scenes in the world" and
+  "The legs under the player"): the body follower slides Shepard's bones to where the player stands while the script moves
+  his actor, the legs stand by the writer's leg IK while the view rests and keep the script's walk while it moves
+  (`worldLegs = stand | walk`, `bone_pose::Leg::stand`), and a script's black screen is a dip from black only for a change
+  within `worldDipWithinM` (8 m; `cw::NearestChange`).
   **The player's body boxes are padded for the culling camera** (`engine/BodyBounds`, 2026-11-10, research/69 "The body that
   stayed culled", gotchas/culling-camera-ahead-of-the-eye): the engine culls with the game's camera and Halcyon draws the eye
   behind it by the render-side view offset (0.43 m with the shipped "view back" framing, GPU matrices only), so Umbra's frustum

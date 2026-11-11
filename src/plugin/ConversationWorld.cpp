@@ -17,7 +17,10 @@ namespace {
 
 namespace cw = mevr::vr::conversation_world;
 
-constexpr std::uint64_t kFreshMs = 300;   // the mod sends every tick
+// The mod sends every tick; its word stands this long without another. 300 ms until 2026-11-10: a stall of the game thread
+// (the owner's session, the controllers losing tracking mid-conversation) then showed the 3D screen for a tenth of a second and
+// dipped twice. The mod says so itself when a scene ends, so a longer trust only bridges stalls.
+constexpr std::uint64_t kFreshMs = 1500;
 constexpr std::uint64_t kGraceMs = 250;   // the game's mode changes a tick before the mod's state does (as GalaxyHeld)
 
 std::atomic<std::uint64_t> gLastActiveMs{0};
