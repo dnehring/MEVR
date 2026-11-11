@@ -414,11 +414,13 @@ def plan(argv):
 def moment_scenes(path):
     """The level-script matinees that move the player by a track, outside animated cutscenes, per level: the scenes of the
     moments plan (and of the validation saves)."""
-    levels, rows = {}, []
+    levels, rows, volume_rows = {}, [], []
     for line in open(path, encoding='utf-8'):
         if '"kind":"level"' in line:
             r = json.loads(line)
             levels[r['package']] = r['streaming']
+        elif '"kind":"volume"' in line:
+            volume_rows.append(json.loads(line))
         elif '"kind":"matinee"' in line and '"via"' in line:
             r = json.loads(line)
             if 'ANIMCUTSCENE' in r['path'].upper() or 'Node_Data_Sequence' in r['path'] or '_LOC_' in r['package'].upper():
@@ -429,6 +431,13 @@ def moment_scenes(path):
     roots, roots_of = cs.level_roots(levels)
     ways = stream_ways(path)
     by_map = collections.defaultdict(list)
+    # How each level's volumes stream a moment's chunk, as the catalogue has it for conversation starts: a chunk shown only under
+    # a named streaming state the plot sets (the gambler's `stream_schellsToss`) is streamed with that state on, else it streamed
+    # out again once the runner let its volume go (research/69 "The scripted walks, named").
+    volumes = collections.defaultdict(list)
+    for v in volume_rows:
+        for root in roots_of(v['package']):
+            volumes[root].append(v)
     # A moment whose way begins with a conversation and has no placed originator (its event is the level's load: Noveria's
     # double homicide, behind Anoleis's conversation) is stood at that conversation's owner (research/69 "The scripted walks,
     # named"): with no place Shepard stayed where `open` left him and the chunk streamed out again.
@@ -459,10 +468,12 @@ def moment_scenes(path):
             'chain': [dict({'tail': re.sub(r'^.*Main_Sequence[.]', '', c['op']), 'class': c['class'], 'input': c['input']},
                            **{k: c[k] for k in ('out', 'plot') if k in c}) for c in via.get('chain', [])],
             'ownerAt': via.get('originatorAt'), 'ownerYaw': via.get('originatorYaw') or 0, 'ownerClass': via.get('originatorClass'),
-            'stageAt': None, 'touchShows': True, 'streamStates': [],
+            'stageAt': None,
             'kind': 'moment', 'verdict': 'moment', 'tier': 'C', 'shape': 'moment', 'flowed': False, 'flowEntries': [], 'risks': ['shepard-walk'],
             'sweep': 'moment', 'streamVia': ways.get(mp, {}).get(chunk_of(r['package']), []),
         })
+        shows = cs.streaming(volumes.get(mp, []), chunk, mp)
+        by_map[mp][-1]['touchShows'], by_map[mp][-1]['streamStates'] = shows[0], sorted(shows[2])
     return by_map
 
 

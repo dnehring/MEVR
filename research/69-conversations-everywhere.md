@@ -129,6 +129,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     inside the load's black screen and plays on the 3D screen; every run that opened the level played it unnamed. The ending's
     two are left out on purpose: their script updates the end-game statistics and the Tactician achievement and saves the
     character before the matinee (the owner's account and career).
+    **18 of 21 seen, 2026-11-11 09:27** ("The scripted walks, named"): Noveria's scene after the squad falls, the double homicide,
+    Feros's transition (screen) and first creeper, Eden Prime's train (from the John01 save) and the gambler. Four faults fixed
+    on the way: a flash of the screen while the script fades to black first (`cw::StepProvisional`), a cut that kept the old
+    facing and offset, a ride taken for teleports (`cw::IsRideStep`), a moment's first move on foot never judged. Left: the
+    ending's two (opening the level runs the end-game statistics, achievement and character save: the owner's call) and the
+    creeper from the Mako (its script waits for Shepard to leave the Mako there).
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
     its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
     world to confirm the list.
@@ -2096,9 +2102,9 @@ script's teleport of 8.9 m at its end was in sight (the same space: no cut); the
 Mako** (`moment_war40_11_dsg_in_vehicle`): its script teleports Shepard 18 m and then waits for him to leave the Mako
 (`BioSeqAct_ExitVehicle`); on foot that never completes, so its matinee never came: to see it, drive the Mako there.
 
-**Seen now: 17 of the 21** (with Eden Prime's train, below; 09:11) (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
+**Seen now: 18 of the 21** (with Eden Prime's train and the gambler, below) (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
 scene after the squad falls, the Feros transition on the screen, the first creeper on foot, the double homicide: below). Left:
-the ending's two (left out: the account and the career), the gambler (its chunk not kept: below), the creeper from the Mako (its script waits for
+the ending's two (left out: the account and the career; the owner asked), the creeper from the Mako (its script waits for
 Shepard to leave the Mako there).
 
 **Noveria's double homicide** (`moment_ice20_03a`): opening `BIOA_ICE00` leaves Shepard on the docked Normandy, the moment had no
@@ -2122,8 +2128,21 @@ where the player looks round anyway.
 
 **The gambler on the Citadel** (`moment_sta60_07toss`, a remote event: no originator, no conversation first): the runner now stands
 such a moment in the streaming volume that brought its chunk in; at the volume's own place (-10144, 5824, -30416) the chunk
-streamed out again 4 s later (the place is the brush's pivot, not inside it). Not reached; the next way is the remote event's
-activator (the scan's sequence records) and its trigger's place.
+streamed out again 4 s later (the place is the brush's pivot, not inside it). The level's script, read with
+`conversation-scan --sequence` (local, game data): entering Flux (`BioTriggerVolume_1`, the casino's door) checks two plot
+conditionals (802 "Time for the cutscene?", 1409 for the Destiny Ascension variant), turns the named streaming state
+`stream_schellsToss` on (or `stream_schellsTossDestiny`), blacks the screen, and once that streaming is done fires
+`re_schellsToss`, which starts the cutscene. The chunk shows only under that state, so the plan now gives a moment the named
+states its chunk needs, as the catalogue does for conversation starts (`conversation-sweep.py moments`: the gambler
+`stream_schellsToss`, the Feros transition `ThorianControlled`, the council's `stream_council`), and the runner turns one on
+before it streams. A moment fired by another sequence's remote event still has no place of its own (the scan does not link a
+remote event to its activator's trigger): the gambler's run stands Shepard at the Flux door by hand.
+**Run 09:25-09:27** (`-Maps BIOA_STA00 -EndUnplanned`, the wake-up conversation that plays by itself ended): the chunk streamed
+and stayed, `CD_Gambler_Cutscene` fired; held in first person 219 ms after the cinematic switch (no flash), the script moved
+Shepard 6.1 m in sight (the same space: no cut), the player was guided 6.0 m and reached him; 22 s, no dip. The snapshot 4 s in:
+Flux's stairwell from the player's eyes, and Shepard's own body standing at his mark 6 m ahead: on the fake headset arm IK draws
+no arms (no tracked controllers), so the body follower that puts his body under the player (`worldBody = player`) never runs;
+[verify] in the headset that the body walks with the player there.
 
 **Eden Prime's train** (`moment_pro10_00_plc_train`, 08:52-09:11): past the prologue, so from the John01 career's own save on Eden
 Prime (22 minutes in, near the tram station), copied into the loaded career as a new file (the Load screen lists only the
@@ -2852,3 +2871,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 08:13, **item 11: the moment line names its matinee**: the Normandy's moment is the prologue's opening as `BIOA_PRO00` loads (a placement, on the 3D screen); the other prologue placements are the opening fly-by (`BIOA_GLO00_A_Opening_Flyby_CIN`), not one of the 21.
 - 2026-11-11 08:47, **item 11: six more moments run** ("The scripted walks, named"): Noveria's scene after the squad falls (fixed: no flash of the screen while the script's black screen comes first, `cw::StepProvisional`), the double homicide (fixed: a cut faces Shepard's way, the view's offset turned), Feros's transition (screen) and first creeper (clean); the creeper from the Mako and the gambler not reached. 16 of 21 seen.
 - 2026-11-11 09:11, **item 11: Eden Prime's train** ("The scripted walks, named"): from the John01 career's Eden Prime save; a ride now carries the view (`cw::IsRideStep`) and a moment's first move on foot is judged like any other. 17 of 21 seen.
+- 2026-11-11 09:27, **item 11: the gambler** ("The scripted walks, named"): moments now carry their chunk's named streaming states (the gambler's `stream_schellsToss`); played clean from the Flux door. 18 of 21 seen; left: the ending's two (the owner's call) and the creeper from the Mako.
