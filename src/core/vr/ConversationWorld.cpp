@@ -176,6 +176,10 @@ std::vector<ArcSeat> SquadSeats(Vec3 const& player, double facingYawDeg, Vec3 co
     return seats;
 }
 
+bool IsRideStep(double stepUnits, double previousStepUnits, double jumpUnits, double maxRideUnits) {
+    return stepUnits > jumpUnits && stepUnits <= maxRideUnits && previousStepUnits > 0.01 && previousStepUnits <= maxRideUnits;
+}
+
 Provisional StepProvisional(bool trackMoved, bool cameraOfItsOwn, double sinceSwitchS, double graceS, double maxS) {
     if (trackMoved) {
         return Provisional::Moment;

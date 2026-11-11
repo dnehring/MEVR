@@ -86,7 +86,7 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 8. **The pause and floor marker**: when the player is wanted at a mark the guided walk can't reach (inside a trigger, the
    way blocked, too far), hold the conversation and show a marker on the floor; it goes on when the player stands there.
    Today such a scene is a cut or stays put.
-   **Decided 2026-11-11 by the owner:** "if it's necessary for me to be in a certain location then we should create a mini
+   **Done 2026-11-11: decided by the owner, nothing to build** ("Is the player's place ever necessary" below): "if it's necessary for me to be in a certain location then we should create a mini
    floor marker to indicate where I need to stand. I do doubt it's necessary." No pause; a small marker only where the place
    is necessary. **Not built: nothing has shown it necessary** ("Is the player's place ever necessary" below): of 37 walk-ins
    logged since the view walk (2026-11-10), 29 arrived, 2 were blocked (the Garrus argument at C-Sec at its start, now a flowed
@@ -2096,10 +2096,10 @@ script's teleport of 8.9 m at its end was in sight (the same space: no cut); the
 Mako** (`moment_war40_11_dsg_in_vehicle`): its script teleports Shepard 18 m and then waits for him to leave the Mako
 (`BioSeqAct_ExitVehicle`); on foot that never completes, so its matinee never came: to see it, drive the Mako there.
 
-**Seen now: 16 of the 21** (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
+**Seen now: 17 of the 21** (with Eden Prime's train, below; 09:11) (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
 scene after the squad falls, the Feros transition on the screen, the first creeper on foot, the double homicide: below). Left:
-the ending's two (left out: the account and the career), the gambler (its chunk not kept: below), the creeper from the Mako, Eden Prime's train
-(after the prologue; the John01 career has a save on Eden Prime 22 minutes in, 33 m from the train fight's trigger).
+the ending's two (left out: the account and the career), the gambler (its chunk not kept: below), the creeper from the Mako (its script waits for
+Shepard to leave the Mako there).
 
 **Noveria's double homicide** (`moment_ice20_03a`): opening `BIOA_ICE00` leaves Shepard on the docked Normandy, the moment had no
 place (its event is the chunk's load, no originator), so he stayed there and the chunk streamed out again once the runner let
@@ -2123,7 +2123,29 @@ where the player looks round anyway.
 **The gambler on the Citadel** (`moment_sta60_07toss`, a remote event: no originator, no conversation first): the runner now stands
 such a moment in the streaming volume that brought its chunk in; at the volume's own place (-10144, 5824, -30416) the chunk
 streamed out again 4 s later (the place is the brush's pivot, not inside it). Not reached; the next way is the remote event's
-activator (the scan's sequence records) and its trigger's place. **Noveria after the squad falls, again**:
+activator (the scan's sequence records) and its trigger's place.
+
+**Eden Prime's train** (`moment_pro10_00_plc_train`, 08:52-09:11): past the prologue, so from the John01 career's own save on Eden
+Prime (22 minutes in, near the tram station), copied into the loaded career as a new file (the Load screen lists only the
+current career's saves) and loaded through the Load screen (`conversation-launch.ps1 pro20_powell -Save VR00_08 -Load menu`,
+Shepard in front of Powell, the dockworker by the tram). The scene is the train's arrival at the far station (`train.SeqAct_Interp_1`,
+"Train arriving at the far station"): after the Saren cutscene the remote event `re_SarenCutsceneDone` fades in
+(`BioSeqAct_BlackScreen_0`) and the matinee carries Shepard, Ashley and Kaidan on the tram under its own cameras, no cinematic
+mode: a moment on foot. Fired at that fade-in, it showed two faults:
+
+- **A ride taken for teleports.** The track carries Shepard 0.30-0.45 m a tick for 11 s; each step is past a jump (30 units), so
+  each was a move in the same space: the view stayed and the guided walk set off after him (50 log lines a second). **Fix**
+  (`cw::IsRideStep`, unit-tested): a step past a jump that follows another step the tick before (both under 2 m) is motion, and
+  the view rides with him (log `moment: the track carries Shepard N m a tick, tick after tick: a ride`; the view summary's `rideM`).
+- **The first move never judged.** A moment seen on foot begins a tick after its track's first move, and took that place as
+  where Shepard was: the first key put him 1,141 m off (the test stood him at Powell, not on the tram), the view stayed at
+  Powell and was guided toward a mark a kilometre away. **Fix**: his place before that move is the moment's first, so the same
+  tick's step logic judges it: here another composition (out of sight), the view going with him under a dip.
+
+Run again (09:10): the 1,141 m move a cut to the far station (facing 90 degrees, his way), the ride carried the view, the
+script's jump to the stage 1.8 m in sight (no cut), its black screen a dip in its place (a person new 1.1 m away: the rule).
+The snapshot 2 s in: the far station's tracks and the spaceport's tower from the player's eyes. A player boards the tram at
+the near station, so the first cut is the test's; the ride and the arrival are play's. **Noveria after the squad falls, again**:
 `held in first person ... since the cinematic mode began 3203 ms ago (no flash of the screen)`: no 3D screen, no fade; the
 script's own black screen covered only the move in sight (no dip of ours); the player guided 8.6 m and arrived (`dips 0`).
 The snapshot 3 s in: the corridor from the player's eyes.
@@ -2829,3 +2851,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 08:30, **item 7: seats for the pairs** ("Seats for the pairs"): people brought into view take the seats that let those who talk to each other look at each other; seen in Joker's cockpit scene; a refused seat is swapped.
 - 2026-11-11 08:13, **item 11: the moment line names its matinee**: the Normandy's moment is the prologue's opening as `BIOA_PRO00` loads (a placement, on the 3D screen); the other prologue placements are the opening fly-by (`BIOA_GLO00_A_Opening_Flyby_CIN`), not one of the 21.
 - 2026-11-11 08:47, **item 11: six more moments run** ("The scripted walks, named"): Noveria's scene after the squad falls (fixed: no flash of the screen while the script's black screen comes first, `cw::StepProvisional`), the double homicide (fixed: a cut faces Shepard's way, the view's offset turned), Feros's transition (screen) and first creeper (clean); the creeper from the Mako and the gambler not reached. 16 of 21 seen.
+- 2026-11-11 09:11, **item 11: Eden Prime's train** ("The scripted walks, named"): from the John01 career's Eden Prime save; a ride now carries the view (`cw::IsRideStep`) and a moment's first move on foot is judged like any other. 17 of 21 seen.

@@ -657,7 +657,8 @@ switching frameworks.
   path, inside its `SeqAct_Interp`: which of `conversation-sweep.py moments`' 21 it is). After the cinematic switch the view
   waits for a track up to 6 s while the game's camera is still the player's (the script's delays and black screens before its
   matinee: Noveria's scene after the squad falls, 3.3 s), and lets go after 0.25 s once a camera of the scene's own has the view
-  (`cw::StepProvisional`); a cut to another composition inside a moment faces Shepard's way there. The council sequence ran so on the fake headset; its hearing opened as a walk-in 21 m from the
+  (`cw::StepProvisional`); a cut to another composition inside a moment faces Shepard's way there; steps past a jump tick
+  after tick are a ride and carry the view (Eden Prime's tram, `cw::IsRideStep`); a moment seen on foot judges its track's first move. The council sequence ran so on the fake headset; its hearing opened as a walk-in 21 m from the
   podium until the rule above made it a cut (2026-11-10). Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`. **A moment on foot** (research/69 "A moment on
   foot", 2026-11-11): a matinee whose director track takes the player camera's view target (`Engine.Camera.ViewTarget.Target`

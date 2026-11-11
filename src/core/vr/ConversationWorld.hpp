@@ -195,6 +195,11 @@ std::vector<ArcSeat> SquadSeats(Vec3 const& player, double facingYawDeg, Vec3 co
 // wait the 3D screen came and went under two dips in one space. It waits on while nothing of the cutscene's own is shown (the
 // game's camera still the player's), up to `maxS`; a camera of its own (a director's shot: the krogan's entrance on Therum)
 // ends it after `graceS`, as before.
+// A ride (2026-11-11, Eden Prime's tram arriving at the far station: its track carries Shepard 0.3-0.45 m a tick for 11 s): a
+// step of the script's longer than a jump (`jumpUnits`) that follows another step the tick before, both no longer than
+// `maxRideUnits`, is motion, not a teleport: the view rides with him. A lone step past a jump stays a teleport (the same space
+// or another composition, cw::DecideOpening).
+bool IsRideStep(double stepUnits, double previousStepUnits, double jumpUnits, double maxRideUnits = 200.0);
 enum class Provisional { Wait, Moment, NotOne };
 Provisional StepProvisional(bool trackMoved, bool cameraOfItsOwn, double sinceSwitchS, double graceS = 0.25, double maxS = 6.0);
 

@@ -3886,6 +3886,9 @@ struct MomentView {
     std::uint64_t wantedMs = 0;     // ... since when
     int arrivals = 0;               // times he got there (walked, or carried after the wait)
     double carriedUnits = 0.0;
+    double lastStepUnits = 0.0;      // the script's step of Shepard the tick before (0: none): a ride's (cw::IsRideStep)
+    double rideUnits = 0.0;          // how far a ride carried the view
+    bool rideLogged = false;
     int putBack = 0;                // the script's moves of him undone (the same space)
     int cuts = 0;                   // ... accepted under a dip (another composition)
     std::uint32_t number = 0;
@@ -3932,8 +3935,8 @@ void EndMomentView(Link const& link, char const* why, bool stopWorld) {
         why, static_cast<double>(GetTickCount64() - gMoment.startMs) / 1000.0, gC.movedUnits / kUnitsPerMeter,
         gMoment.carriedUnits / kUnitsPerMeter, gMoment.putBack, gMoment.arrivals, gMoment.cuts);
     log::Info("moment: view summary {{\"seconds\": {:.1f}, \"walkedM\": {:.2f}, \"carriedM\": {:.2f}, \"sameSpace\": {}, \"arrivals\": {}, \"dips\": {}, "
-              "\"why\": \"{}\"}}", static_cast<double>(GetTickCount64() - gMoment.startMs) / 1000.0, gC.movedUnits / kUnitsPerMeter,
-        gMoment.carriedUnits / kUnitsPerMeter, gMoment.putBack, gMoment.arrivals, gMoment.cuts, why);
+              "\"rideM\": {:.2f}, \"why\": \"{}\"}}", static_cast<double>(GetTickCount64() - gMoment.startMs) / 1000.0, gC.movedUnits / kUnitsPerMeter,
+        gMoment.carriedUnits / kUnitsPerMeter, gMoment.putBack, gMoment.arrivals, gMoment.cuts, gMoment.rideUnits / kUnitsPerMeter, why);
     if (ue3::Object* const controller = player::Controller()) {
         if (ue3::Object* const pawn = player::Pawn(controller); pawn != nullptr && gC.moving && ue3::runtime::IsAlive(pawn)) {
             WalkVelocity(pawn, {});
@@ -3990,6 +3993,11 @@ void BeginMomentView(ik::Vec3 const& pawnAt, std::uint64_t now, bool provisional
         gC.noJoin = true;
         TrailAdd(V(gFoot.pawn));
         TrailAdd(pawnAt);
+        // His place before that first move: the tick's own step logic then judges the move like any other (the same space: the
+        // view walks to him; another composition: the view goes with him under a dip). Taken as already made, Eden Prime's
+        // tram arrival (its first key 1,141 m from where the test stood him) left the view behind, guided toward a mark a
+        // kilometre away (2026-11-11).
+        gMoment.pawnAt = V(gFoot.pawn);
     }
 }
 
@@ -4095,10 +4103,26 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
     // putting him back at its end (a jump).
     if (auto const at = player::Location(pawn)) {
         ik::Vec3 const here = V(*at);
-        if (double const d = Dist(here, gMoment.pawnAt); d > 0.01 && d <= kJumpUnits) {
-            if (!gC.detached) {  // (detached: the view is the player's own, wherever the pawn is moved)
+        double const step = Dist(here, gMoment.pawnAt);
+        // A ride (Eden Prime's tram: 0.3-0.45 m a tick): steps past a jump, one after another, carry the view with him, detached
+        // or not (the player can't walk after a train); a lone step past a jump is a teleport (below).
+        bool const ride = cw::IsRideStep(step, gMoment.lastStepUnits, kJumpUnits);
+        gMoment.lastStepUnits = step > 0.01 ? step : 0.0;
+        if (step > 0.01 && (step <= kJumpUnits || ride)) {
+            if (!gC.detached || ride) {  // (detached on foot: the view is the player's own, wherever the pawn is moved)
                 gC.hold = gC.hold + (here - gMoment.pawnAt);
-                gMoment.carriedUnits += d;
+                if (gC.detached) {
+                    gC.detachedAt = gC.detachedAt + (here - gMoment.pawnAt);
+                }
+                gMoment.carriedUnits += step;
+            }
+            if (ride) {
+                gMoment.rideUnits += step;
+                if (!gMoment.rideLogged) {
+                    gMoment.rideLogged = true;
+                    log::Info("moment: the track carries Shepard {:.2f} m a tick, tick after tick: a ride, the view rides with him{}", step / kUnitsPerMeter,
+                        gC.detached ? " (kept where it is beside him)" : "");
+                }
             }
             gMoment.pawnAt = here;
         }

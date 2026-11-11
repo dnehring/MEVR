@@ -736,6 +736,13 @@ void TestWalkStep() {
     CHECK(!cw::WalkWorthIt(95.0, 179.0, 150.0, 60.0));   // the ceremony's step back
     CHECK(!cw::WalkWorthIt(80.0, -90.0, 150.0, 60.0));   // a step aside
     CHECK(cw::WalkWorthIt(80.0, 350.0, 150.0, 60.0));    // -10 degrees, wrapped
+    // A ride: 40 units a tick after 38 the tick before is motion (the tram); the same step after a still tick is a teleport; a
+    // walk's steps are under a jump anyway; a 1,141 m jump is never a ride, nor a step right after it.
+    CHECK(cw::IsRideStep(40.0, 38.0, 30.0));
+    CHECK(!cw::IsRideStep(40.0, 0.0, 30.0));
+    CHECK(!cw::IsRideStep(4.0, 4.0, 30.0));
+    CHECK(!cw::IsRideStep(114154.0, 40.0, 30.0));
+    CHECK(!cw::IsRideStep(40.0, 114154.0, 30.0));
     // A provisional moment: a track makes it one at any time; the first quarter second always waits; after it a camera of the
     // cutscene's own ends it (the krogan's entrance), the player's own camera waits on (Noveria's black screen and move, 3.3 s)
     // until 6 s.
