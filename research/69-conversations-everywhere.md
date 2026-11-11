@@ -946,7 +946,7 @@ conversation, at strengths 1, 0.55, 0.25 and 0.125. That is the twist the owner 
 conversation's own look-at list drives it. The game also has a turn on the spot of its own:
 `BioPawn.RequestTurnInPlace(rotation)` (a final native, `m_bTurnInPlaceRequested`), and Kismet's `BioSeqAct_TurnTowards`.
 
-**The rule now** (`[Cinematics] worldTurn = look | always | off`, default look; `cw::StepAttention`, unit-tested):
+**The rule then** (`[Cinematics] worldTurn = look | always | off`; `cw::StepAttention`, unit-tested; since the evening `roles` is the default: "Who attends to whom" below):
 
 - A body keeps the facing the scene composed: the stage's opening placement and facing (accepted as before), an arc seat's
   facing, or how the person stood when the conversation began. Whoever the game's look-at list gives nobody to look at is
@@ -1467,6 +1467,98 @@ the validation saves: the launcher's Normandy case); slot 84 and Chorban's condi
 spatial voices (the hook is known, "The voices"; nothing can be judged by snapshot, only by ear); the composition rule,
 people walking to their marks, the pause and floor marker.
 
+### Who attends to whom: looks by each person's part in the line (2026-11-10, 18:40-19:25, fake headset; in the tree)
+
+The owner: "Let's do the turns and head reach. When I think about the scene, when Udina speaks there's no reason that
+Anderson would need to face him as much, so I'm curious how we'd handle that for a scalable rule."
+
+**What was there.** `worldTurn = look` read the conversation's own look-at list (`BioConversation.m_LookAtList`) and turned
+a body only for whoever the list gave a target. In every staged scene of the passes the list's entries have no targets
+(the ceremony, Avina, Wrex at Fist's: `who looks at whom: ... -> none` throughout), so the rule did nothing there: nobody
+looked at anybody except by an authored look-at track, and nobody's body turned. The look-at chain's own target is on the
+pawn (`BioPawn.m_oLookAtData`, a `BioLookAt`: `m_oTarget`, `m_nRank`, a controller per link), not in that list.
+
+**The game has this rule itself, switched off in staged scenes** (read from the code by a subagent in the isolated Ghidra
+project; addresses in `tools/ghidra/symbols-le1.csv`). `UBioConversation::UpdateFacing` (`0xC88160`, at each entry line
+and each reply) gives the speaker the listener to look at after 0.5 s and everyone else the speaker after 0.6 to 1.15 s,
+within 5 m of the speaker (`BioWorldInfo.m_fLookAtNoticeMaxRange`), and `UpdateLookAtTargets` (`0xC88620`, every
+conversation tick) hands each to `BioPawn.SetLookAtTarget` when its delay is up. It runs only without a stage, or with
+`m_bEnableLookAtWithStage` and the stage's and the start action's `m_bLookAtActive` set. An authored look-at track
+(`BioEvtSysTrackLookAt`, applier `0x9F9D50`) cancels the pawn's entry and sets or clears its target itself; it reads only
+the key's tag, duration and enabled bit (the three weights and the eyes/head/torso bits are never read).
+`SetLookAtTarget` (`0xAA02A0`) refuses a rank below the one held; every caller of the game's passes 99999 except its
+look at the player in passing (rank 1 or 2). The cinematic game mode clears every look-at each tick (`bAllowLookAt`), the
+conversation mode does not.
+
+**The rule now** (`worldTurn = roles`, the default; `cw::RoleOf`, `PartnerOf`, `AttendAs`, unit-tested; game side
+`RoleLook` in `game/ConversationWorld`). The game names each line's speaker and whom they speak to (`m_pSpeaker`,
+`m_pListener`; a line of someone else's without a listener is taken as spoken to the player). Everyone else in the scene
+is a bystander. No data per scene:
+
+| Part in the line | Looks (the game's own look-at chain: eyes, head, neck, chest) | Body |
+|---|---|---|
+| The speaker, and the one spoken to | at each other, 0.15 s into the line; not when the other is more than 120 degrees off and the body cannot turn (the head would crank over the shoulder) | may re-face, see below |
+| A bystander | at the speaker only where a glance reaches: the speaker within `worldGlanceDeg` (70) of the body's facing, kept to 85; 0.45 to 1.05 s into the line, each at their own moment | never turns: it keeps the facing the scene composed |
+
+A look-at target the game itself gives (the conversation's list, an authored track) stands in place of the part's
+(`looks at ... by the game's own look-at: left to it`). Ours are given through the game's `SetLookAtTarget` at rank 100
+(`worldLookRank`): above the game's passing look at the player, below everything authored; a refused one is read back and
+asked again every half second. They are taken back at the conversation's end (only where the pawn still looks at ours).
+
+**Bodies: only for the player, only near, only past the chain's reach, and back afterwards.** The first version let
+either of the pair re-face: at the ceremony's first line Udina turned 120 degrees toward a player 8 m behind him and
+stood with his back to the Council for the rest of the scene. The scene composed everyone but the player, so:
+
+- a body re-faces only as one of the pair, only toward the player, only while the player stands within
+  `worldTurnWithinM` (4 m);
+- only when he has been more than `worldTurnComfortDeg` off its facing for a second, now 80 (60 until today), and only
+  until he is `worldTurnSettleDeg` off, now 40 (25): people who stand side by side talk with their heads turned;
+- `worldTurnHomeS` (3 s) after its last line with the player it goes back to the facing the scene composed (`goes back to
+  the facing the scene composed`, the summary's `turnsHome`).
+
+**How far a head turns** (`0xC0D670`, `0xC1F7B0`, `0xC0BEC0`, read). Each link of the chain turns its bone toward the
+target by its definition's `m_fConversationStrength` times what the links before it left, that remainder taken as at most
+the link's limit; the strength path is always on (not only in conversations), a target outside `ValidTargetAngleRange`
+(135 degrees) is pulled to the zone's edge, a bone at its limit stays there. With the humanoid definition (chest 0.125,
+neck 0.25, head 0.55, all limited to 50 degrees; the eyes 25) the head is left a third of the way short of someone 79
+degrees aside (`cw::HeadShortDeg`: 33; measured 21 to 36), more than the eyes cover past about 71 degrees: the "heads
+reach about half way" of the earlier notes is the definition, a glance. For a bystander that is right. **For the pair it
+is now stronger** (`worldLookReach` 0.4, 0: off; `ApplyReach`): the strength is read through each controller's pointer
+into the appearance's shared definition (`mc_pDefinition`) every frame, so the controllers of one of the pair are pointed
+at copies of ours with 0.4 of the rest added (0.125, 0.25, 0.55 become 0.47, 0.55, 0.73), journalled, and put back when
+the person is a bystander again, when the game makes new controllers, and at the end. No weight on the pawn or the
+look-at data exists for this, and the track's weights are dead data.
+
+**Why a body did not turn at all, and why half way.** Two faults of the eased turn found on the way: (1) a rotation set
+with `Actor.SetRotation` is turned back by the pawn's own physics toward its `DesiredRotation` within the tick (the
+ceremony's Anderson: 6 s of "turning" at 180 degrees), so the eased turn now also sets the desired rotation
+(`BioPawn.SetDesiredRotation`); (2) steps under a degree were not applied and the kept facing started over from the
+body's every tick, so at 90 frames a second a turn stopped half way (at 159 degrees on the way from 180 to 128). **The game has no turn on the
+spot for these people** (`RequestTurnInPlace` `0xA9F510`: it primes the move-start animation's state machine, which
+needs walking physics, a controller and `m_bEnableStartAnim`, and then snaps the rotation in one tick; the turn blend
+nodes belong to a combat-only body turn, `0xAA50A0`; `SetDesiredRotation` alone turned nobody in 0.8 s): `worldTurnWay =
+slide` is the default, at 60 degrees a second (120 before), and the rule above makes it rare.
+
+**In the game (the Spectre ceremony from its save, slot 81; Anderson is `BioPawn_9`, 1.8 m to the player's right and 77
+degrees off him, Udina `BioPawn_7` 1.6 m ahead with his back to both, the Council 17 m ahead):**
+
+| Line | Before (`look`) | Now |
+|---|---|---|
+| A councillor speaks to the player | nobody looks | Anderson and Udina glance at the councillor (3 to 9 degrees), the other councillors do not (90 degrees off each other) |
+| Anderson speaks to the player | nothing | his head and chest turn to the player (head 12 degrees off after 1.5 s; 31 to 36 with the game's strengths), his feet stay; the councillors glance at him; Udina, 147 degrees off him, "hears ...: no look, its body stays" |
+| The player speaks | nothing | the one spoken to looks at the player; Udina hears (126 degrees) |
+| Body turns | 0 | 0 (`bodyTurns` 0, `looksSet` 38, `glances` 33, `heardOnly` 25, `reaches` 6, `looksRefused` 0) |
+
+With `worldTurnComfortDeg = 60` (to exercise it): Anderson's body turned 37 degrees in 1.5 s for his lines with the
+player, stayed through the reply and his next line, and went back 3.0 s after the last. Pictures: Anderson's feet toward
+the Council, his chest and head toward the player; Udina's back.
+
+**Not done, and not known:** a turn animation (none exists to borrow; a body turn is still a slide, now rare and slow);
+whether the pair's stronger chest twist reads well on every skeleton (asari, turians, krogan have their own definitions:
+three in the game; the copies are made per controller whatever the definition); scenes with authored look-at tracks (none
+in this pass: `looksGame` 0); the comm room (its people turned 13 times in the owner's session under the old rule);
+squadmates behind the player. `worldTurnLog = 1` prints each looking or turning person's yaw twice a second.
+
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
 The owner: "is there anything we can do to make it sound more like spatial audio?"
@@ -1788,3 +1880,10 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   Legs: the writer's own leg IK stands them under a player whose view rests and leaves the script's walk while the view
   moves. The blink: only for a change within 8 m (walking along the walkway: none). The host trusts the mod's state 1.5 s.
   Not judged from outside (the chest hides the legs from the eye); the rest of the list is named there with what it needs.
+- 2026-11-10, 18:40-19:25, **who attends to whom** ("Who attends to whom"; the owner: when Udina speaks Anderson need not
+  face him). `worldTurn = roles`: the speaker and the one spoken to look at each other, a bystander glances at the speaker
+  only within 70 degrees and never turns its body, a body re-faces only for the player within 4 m and past 80 degrees and
+  goes back afterwards; the pair's look-at chains reach further (`worldLookReach`). The game has the same rule built in,
+  off in staged scenes. Ceremony: 0 body turns, 38 looks, Anderson's head 12 degrees short of the player at 77 (31 to 36
+  before), Udina keeps his back to a speaker behind him. Two faults of the eased turn fixed (the pawn's physics turned it
+  back; it stopped half way at 90 frames a second). No turn animation exists to borrow.

@@ -214,3 +214,12 @@ rva,name,kind,comment
 0x638E20,UPhysicsAsset::CalcAABB_guess,func,research/69: the box of the bodies at the bones; tests bConsiderAllBodiesForBounds (+0x438 bit 2)
 0x25CFE0,UPrimitiveComponent::UpdateUmbraBounds_guess,func,research/69: with an Umbra object (+0x210): a unit box scaled to Bounds as the object's matrix; 0xD43030 gives it to Umbra
 0xD43030,UmbraObject::setObjectToCellMatrix_guess,func,research/69: called by 0x25CFE0 with the box matrix
+0xAA02A0,ABioPawn::SetLookAtTarget_impl,func,research/69: pawn vtable +0xC40; refuses a rank below m_nRank or an unchanged target; None eases the controllers out
+0xC0D670,UBioPawnLookAtController::CalculateNewBoneTransforms,func,research/69: the capped look-at rotation blended with the ref pose by m_fConversationStrength (through mc_pDefinition)
+0xC1F7B0,UBioPawnLookAtController::TickSkelControl,func,research/69: the target bone of the target pawn; ValidTargetAngleRange pulls a target to the zone's edge
+0xC0BEC0,UBioPawnLookAtController::ApplyLimits_guess,func,research/69: yaw to m_fLimit and pitch to m_fUpDownLimit from the ref-pose direction
+0xC88160,UBioConversation::UpdateFacing,func,research/69: the speaker looks at the listener and everyone else at the speaker (into m_LookAtList); gated by the stage's and start action's m_bLookAtActive
+0xC88620,UBioConversation::UpdateLookAtTargets,func,research/69: each tick: SetLookAtTarget(target 0 99999) as a list entry's delay expires
+0x9F9D50,UBioEvtSysTrackLookAt::ApplyKey_guess,func,research/69: cancels the pawn's list entry; SetLookAtTarget(actor by tag or None 0 99999); reads only tag duration and bEnabled
+0xA9F510,ABioPawn::RequestTurnInPlace_impl,func,research/69: true before anything turns; primes the move-start animation state machine (0xAA1260) which snaps Rotation to DesiredRotation
+0xA9FF30,ABioPawn::SetDesiredRotation_impl,func,research/69: pawn vtable +0xBD0; writes the pawn's and controller's DesiredRotation when the start/skid/stop states allow

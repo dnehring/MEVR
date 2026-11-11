@@ -424,11 +424,19 @@ switching frameworks.
   are kept where they stand** (`worldStay = 1`; research/59 "Keeping people in place"): the placements are native, so a jump past
   30 units in a frame (under 6 m) is undone with `Actor.SetLocation` in the `Camera.UpdateCamera` post-handler (before the draw: 0 of
   25 seen in a drawn frame), bodies keep the facing the scene composed while the game's own look-at chain (eyes 25, head, neck and chest 50
-  degrees each; `HMM_PLR_lookAt_Def`) turns toward whom the game's look-at list has them look at, and re-face only when that
-  one stays more than 60 degrees off for a second, then by `BioPawn.RequestTurnInPlace` or an eased turn (`worldTurn = look
-  | always | off`, `cw::StepAttention`, research/69 "Who turns, and how", 2026-11-10, the owner: everyone pivoting toward
-  each speaker looked unnatural; never toward "the speaker" by default: the councillors swung 170 degrees; [verify] in the
-  game), and the player's place follows Shepard's
+  degrees each; `HMM_PLR_lookAt_Def`) does the looking, **by each person's part in the line** (`worldTurn = roles | look |
+  always | off`, default roles; `cw::RoleOf`/`AttendAs`, research/69 "Who attends to whom", 2026-11-10, the owner: everyone
+  pivoting toward each speaker looked unnatural, and when Udina speaks Anderson need not face him): the speaker and the one
+  spoken to (`m_pSpeaker`, `m_pListener`) look at each other, a bystander glances at the speaker only within
+  `worldGlanceDeg` (70) of its facing and never turns its body; targets go through the game's `BioPawn.SetLookAtTarget` at
+  rank 100 (the game's own, authored tracks among them, are 99999 and stand; the pawn's target is `m_oLookAtData.m_oTarget`,
+  the conversation's `m_LookAtList` is empty in staged scenes); the pair's chains reach further (`worldLookReach` 0.4: each
+  controller's `mc_pDefinition` pointed at a copy with a stronger `m_fConversationStrength`, journalled, put back); a body
+  re-faces only for the player, within `worldTurnWithinM` (4 m), past `worldTurnComfortDeg` (80) for a second, to
+  `worldTurnSettleDeg` (40), and goes back `worldTurnHomeS` (3 s) after its last line with him, by an eased turn that also
+  sets the pawn's desired rotation (else its physics turns it back; LE1 has no turn-on-the-spot animation for these people:
+  `RequestTurnInPlace` does nothing for them). `worldTurnLog = 1` traces yaws. Checked in the ceremony on the fake headset:
+  0 body turns, the speaker's head 12 degrees short of the player at 77. The player's place follows Shepard's
   head bone only when a jump lasts 3 ticks (`FollowHeadSettled`). **The director's near plane is kept off the player's view**
   (`worldNearPlane = 1`, 2026-11-10, research/69 "The first shot", gotchas/conversation-camera-near-plane: a conversation's camera
   writes `LocalPlayer.NearClipPlane` per shot, 0.3 to 2.8 m, which from the player's eyes removed the floor underfoot, the
