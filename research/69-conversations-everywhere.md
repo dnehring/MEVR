@@ -2083,6 +2083,24 @@ nothing there is not walked (`convo: walk: X ai unavailable: its animation tree 
 by gestures only); it stays where it stands`). Run again: both stay at the window, posed, through the conversation
 (`06-10-44-423`). A tree with no action node at all is walked as before.
 
+### The saves and their tests (2026-11-11 11:15; the owner: "a dictionary mapping all of the saves to their respective dialogue tests")
+
+`tools/save-dictionary.py` reads every `.pcsav` under the Save folder (`tools/le1-save.py`) and says what each is for. A
+validation save stands Shepard where `conversation-sweep.py saves` puts him for one scene (in front of its owner or trigger, facing
+it, on its level): matched within half a metre and two degrees against every scene of the scan, the scene is named; several
+scenes can start at one place (Anderson starts the walk to the Council and the Spectre ceremony; Avina's keeper and her
+triggers), so the list the save was written from decides (`--list file@firstSlot`: the headset sample from 80, the moments
+sample from 90, now `tools/conversation-moments-sample.json`) and the others are named. A career's own save lists the scenes
+whose owner or trigger stands within 40 m of it. Each entry carries the command that plays it (`conversation-from-save.ps1 -All
+-List save-dictionary-list-<career>.json -FirstSlot 80 -Only <slot>`, or `conversation-launch.ps1 <scene> -Save <file>`). Output in
+`%LOCALAPPDATA%\MEVR` (`save-dictionary.md`, `.json`, the slot lists): the player's saves, never the repository.
+
+On this machine (27 files): John02_80 to 93 are the fourteen validation saves (80 the walk to the Council, 81 the Spectre
+ceremony, 82 Opold, 83 Anoleis, 84 Wrex on Virmire, 85 Chorban, 86 Benezia, 87 Wrex at Fist's, 88 Kirrahe's camp, 89 Avina, 90
+Chellik's bump, 91 Benezia's phase 2, 92 Liara's intro, 93 the geth intro), all from John02_21 (the Citadel); John01_03 and its
+autosave stand 12.6 m from Powell on Eden Prime (the train's test); John00's saves are the Citadel and the ending; VR00's the
+Mako on UNC20; `Char_01` is a character export.
+
 ### An adversarial review by a second model (2026-11-11 10:15-11:05; Codex, read-only)
 
 The owner asked for adversarial code reviews by a Codex process at extra-high reasoning. It read `git diff 7c89c3a..dd5b9d2`
@@ -2929,3 +2947,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 10:15, **item 6: released as experimental** (the owner): the menu says First person (experimental); the ending's two scripted walks approved to run; a Codex adversarial review of 7c89c3a..HEAD started.
 - 2026-11-11 11:02, **item 11: the ending** ("The scripted walks, named"): its first scripted walk held in first person after the Council's conversation; 20 of 21 seen (the second is the other ending's branch).
 - 2026-11-11 11:05, **the Codex review** ("An adversarial review by a second model"): eleven findings, all real on checking; all fixed (walk retarget and gesture mode, the guide's wait, the handover's place on foot, the flowed subtitle mode, a crowd's speakers, three tooling faults, `mevr vslot`, a test bound).
+- 2026-11-11 11:15, **the saves and their tests** ("The saves and their tests"): `tools/save-dictionary.py` maps every save to the scene it was written for (or the scenes near it), with the command that plays it.

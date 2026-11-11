@@ -558,6 +558,8 @@ switching frameworks.
   (the owner, 2026-11-09): `plan --sample --per-place 1 --reach <reach-scenes.jsonl>` takes every authored scene, a few of
   each other shape and of each level's place risks (133 of 290); `canary` writes the canary plan from
   `tools/conversation-canary.json` (run it before a pass; its broken run must fail); `conversation-sweep.ps1 -Pace opening` ends a scene once its opening has settled (the owner: only the transition matters);
+  `tools/save-dictionary.py` says which scene each save on the machine was written for (or which scenes stand near a career's
+  save) and the command that plays it (`%LOCALAPPDATA%\MEVR\save-dictionary.md`; research/69 "The saves and their tests");
   `conversation-sweep.py saves` writes validation saves for the headset, the player in front of each scene of
   `tools/conversation-headset-sample.json` before it starts with the plot its script checks set (the scan's chain records each
   plot check and the output taken; `--remove` deletes them); a rewritten career save loads into a level the career never visited (Therum's battlemaster scene from John02 through

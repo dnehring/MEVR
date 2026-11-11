@@ -1,0 +1,9 @@
+{
+ "about": "SPDX-License-Identifier: MIT. Scripted walks (moments) to play from saves (research/69 'Moments from saves, first sample'): tools/conversation-sweep.py saves --first-slot 90 writes a save in front of each; tools/save-dictionary.py maps the saves back to them.",
+ "scenes": [
+  {"scene": "moment_sta60_05a_dsg_chellik_bump_cutscene", "title": "Citadel: Chellik bumps into Shepard (a use)"},
+  {"scene": "moment_ice60_12_dsg_phase_2", "title": "Noveria: Benezia, phase 2 (a touch)"},
+  {"scene": "moment_lav70_06_dsg_cd_lav70_06_liara_intro", "title": "Therum: Liara's intro (a touch)"},
+  {"scene": "moment_war20_02a_dsg_gethintro", "title": "Feros: the geth intro (a touch)"}
+ ]
+}
