@@ -26,6 +26,7 @@
 #include "engine/BonePose.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/CodeDump.hpp"
+#include "engine/BodyBounds.hpp"
 #include "engine/CoverAcquire.hpp"
 #include "engine/ConversationHooks.hpp"
 #include "engine/SelectionGaze.hpp"
@@ -162,6 +163,7 @@ bool gCallFunctionHooked = false;  // installed the first time hand aim is turne
 bool gHandAimAvailable = false;
 bool gBonePoseTried = false;  // the arm writeback hook goes in the first time arm IK is turned on
 bool gBonePoseHooked = false;
+bool gBodyBoundsHooked = false;  // the player's body bounds padded (engine/BodyBounds): goes in with the arm writeback
 // The cover test hook (engine/cover_acquire) goes in the first time noCover is wanted (game/posture).
 bool gCoverHookTried = false;
 bool gCoverHooked = false;
@@ -364,6 +366,7 @@ void EnsureBonePoseHook() {
     if (!gBonePoseTried) {
         gBonePoseTried = true;
         gBonePoseHooked = engine::bone_pose::Install(*gInit);
+        gBodyBoundsHooked = engine::body_bounds::Install(*gInit);
     }
 }
 
@@ -1446,6 +1449,11 @@ MEVR_MOD_API void MevrModShutdown() {
         removed(engine::bone_pose::Uninstall(*gInit, !exiting),
             "the UpdateSkelPose hook couldn't be removed, or a call was still inside it");
     }
+    if (gInit && gBodyBoundsHooked) {
+        removed(engine::body_bounds::Uninstall(*gInit, !exiting),
+            "the UpdateBounds hook couldn't be removed, or a call was still inside it");
+    }
+    gBodyBoundsHooked = false;
     game::vr_cover::Shutdown();  // a cover normal still held, back
     game::posture::Shutdown(exiting);  // stands Shepard up from a crouch of ours; stops refusing cover
     if (gInit && gCoverHooked) {

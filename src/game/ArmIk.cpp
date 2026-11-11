@@ -19,6 +19,7 @@
 #include "game/Fingers.hpp"
 #include "game/GunKick.hpp"
 #include "game/HandCalibration.hpp"
+#include "engine/BodyBounds.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/Engine.hpp"
 #include "engine/Skeleton.hpp"
@@ -186,6 +187,7 @@ ue3::Object* gBoundsPawn = nullptr;
 ue3::Name gBoundsPawnName;
 void const* gBoundsWorld = nullptr;
 bool gBoundsWarned = false;
+float gBoundsPadLogged = 0.0f;  // the pad last logged (units)
 bool gHoldScaleLogged = false;
 
 void RestoreBodyBounds() {
@@ -202,6 +204,7 @@ void RestoreBodyBounds() {
             }
         }
     }
+    engine::body_bounds::Pad(nullptr, 0, 0.0f);
     gBoundsWrites.clear();
     gBoundsPawn = nullptr;
     gBoundsWorld = nullptr;
@@ -235,12 +238,33 @@ void ProtectBodyBounds(Body const& body) {
         if (!*original) gAllBodyBounds.WriteBool(mesh, true); // preserves adjacent bits, journalled
     };
     protect(body.mesh);
+    void const* padded[engine::body_bounds::kMaxMeshes] = {body.mesh};
+    int paddedCount = 1;
     if (auto const components = gBodyComponents.ElementsOf(body.pawn)) {
         for (int i = 0; i < components->count; ++i) {
             auto* const mesh = *static_cast<ue3::Object**>(components->At(i));
             if (mesh != nullptr && ue3::runtime::IsAlive(mesh) && ue3::IsA(mesh, gSkeletalComponent) &&
-                engine::skeleton::PoseParent(mesh) == body.mesh) protect(mesh);
+                engine::skeleton::PoseParent(mesh) == body.mesh) {
+                protect(mesh);
+                if (paddedCount < engine::body_bounds::kMaxMeshes) padded[paddedCount++] = mesh;
+            }
         }
+    }
+    // The engine culls with the game's camera, and the eye is drawn behind it by the render-side view offset (the "view
+    // back" framing and the lean, GPU matrices only): the body's boxes grow by that distance, so a body the eye can see is
+    // never outside the culling frustum (engine/BodyBounds; research/69 "The culling camera is ahead of the eye").
+    vr::host_view::State const view = vr::host_view::Latest();
+    float pad = 0.0f;
+    if (view.valid) {
+        pad = std::min(150.0f, std::sqrt(view.offsetForward * view.offsetForward + view.offsetRight * view.offsetRight +
+                                         view.offsetUp * view.offsetUp) + 15.0f);
+    }
+    engine::body_bounds::Pad(padded, paddedCount, pad);
+    if (engine::body_bounds::Installed() && pad > 0.0f && std::fabs(pad - gBoundsPadLogged) > 20.0f) {
+        log::Info("body bounds: the body's boxes are padded by {:.0f} units: the culling camera is that far from the eye "
+                  "(the view offset {:.0f}/{:.0f}/{:.0f} forward/right/up), {} meshes",
+            pad, view.offsetForward, view.offsetRight, view.offsetUp, paddedCount);
+        gBoundsPadLogged = pad;
     }
 }
 

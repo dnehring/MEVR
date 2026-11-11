@@ -381,6 +381,8 @@ set(MEVR_MOD_SOURCES
     src/engine/CodeDump.hpp
     src/engine/ConversationHooks.cpp
     src/engine/ConversationHooks.hpp
+    src/engine/BodyBounds.cpp
+    src/engine/BodyBounds.hpp
     src/engine/CoverAcquire.cpp
     src/engine/CoverAcquire.hpp
     src/engine/SelectionGaze.cpp

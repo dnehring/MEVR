@@ -121,6 +121,7 @@ ue3::FieldRef gCompIgnoreMembership{"Engine.PrimitiveComponent", "bIgnoreHiddenA
 ue3::FieldRef gCompLastRender{"Engine.PrimitiveComponent", "LastRenderTime"};
 ue3::FieldRef gCompBounds{"Engine.PrimitiveComponent", "Bounds"};
 ue3::FieldRef gCompBoundsOrigin{gCompBounds, "Origin"};
+ue3::FieldRef gCompBoundsExtent{gCompBounds, "BoxExtent"};
 ue3::FieldRef gActorLastRender{"Engine.Actor", "LastRenderTime"};
 ue3::FieldRef gWorldSeconds{"Engine.WorldInfo", "TimeSeconds"};
 ue3::FieldRef gHiddenActors{"Engine.PlayerController", "HiddenActors"};
@@ -2907,6 +2908,54 @@ void ResolveBlack(ue3::Object* pawn) {
 std::optional<bool> gBodyLogOverride;  // `mevr convo body log on|off`
 std::uint64_t gBodyLogMs = 0;
 
+// The renderer's own copy of a mesh's box (research/69 "The culling camera is ahead of the eye"): the scene info behind the
+// component (the pointer right after Bounds) holds the bounds it was last sent. Its layout isn't reflected, so the copy is
+// looked for: seven floats that read as a box within 60 m of the component's (an origin, positive extents, a radius that
+// holds them). A guarded read; a diagnostic only.
+bool CopyGuarded(void const* from, void* to, std::size_t bytes) {
+    __try {
+        std::memcpy(to, from, bytes);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+std::string RendererBox(void const* componentBounds, ik::Vec3 const& origin) {
+    void const* info = nullptr;
+    if (!CopyGuarded(static_cast<std::uint8_t const*>(componentBounds) + 0x1C, &info, sizeof(info)) || info == nullptr) {
+        return "no scene info";
+    }
+    float words[0x180 / 4] = {};
+    if (!CopyGuarded(info, words, sizeof(words))) {
+        return "scene info unreadable";
+    }
+    std::string found;
+    int count = 0;
+    for (std::size_t i = 0; i + 7 <= std::size(words) && count < 3; ++i) {
+        float const* const f = words + i;
+        bool finite = true;
+        for (int k = 0; k < 7; ++k) {
+            finite = finite && std::isfinite(f[k]);
+        }
+        if (!finite || f[3] < 5.0f || f[4] < 5.0f || f[5] < 5.0f || f[3] > 2000.0f || f[4] > 2000.0f || f[5] > 2000.0f) {
+            continue;
+        }
+        float const corner = std::sqrt(f[3] * f[3] + f[4] * f[4] + f[5] * f[5]);
+        if (f[6] < corner * 0.5f || f[6] > corner * 2.5f) {
+            continue;
+        }
+        ik::Vec3 const at{f[0], f[1], f[2]};
+        if (Dist(at, origin) > 6000.0) {
+            continue;
+        }
+        found += std::format("{}+0x{:X}: at {} extent ({:.0f}, {:.0f}, {:.0f}), {:.2f} m from the component's", count ? "; " : "",
+            i * 4, F(at), f[3], f[4], f[5], Dist(at, origin) / kUnitsPerMeter);
+        ++count;
+    }
+    return count ? found : std::string("none found");
+}
+
 std::string BodyLine(ue3::Object* controller, ue3::Object* pawn, std::optional<std::uint8_t> mode) {
     if (pawn == nullptr || !ue3::runtime::IsAlive(pawn)) {
         return "convo: body: no pawn";
@@ -2926,11 +2975,16 @@ std::string BodyLine(ue3::Object* controller, ue3::Object* pawn, std::optional<s
     if (meshOk) {
         void const* const bounds = gCompBounds.Address(mesh);
         auto const origin = bounds != nullptr ? gCompBoundsOrigin.Read<ue3::Vector>(bounds) : std::nullopt;
+        auto const extent = bounds != nullptr ? gCompBoundsExtent.Read<ue3::Vector>(bounds) : std::nullopt;
         meshText = std::format("hiddenGame {} ownerNoSee {} onlyOwnerSee {} ignoreOwnerHidden {} ignoreMembership {}, rendered {:.2f} s ago, "
-                               "bounds at {} ({:.2f} m from the view)",
+                               "bounds at {} extent {} ({:.2f} m from the view)",
             flag(gCompHiddenGame, mesh), flag(gCompOwnerNoSee, mesh), flag(gCompOnlyOwnerSee, mesh), flag(gCompIgnoreOwnerHidden, mesh),
             flag(gCompIgnoreMembership, mesh), now - gCompLastRender.Read<float>(mesh).value_or(0.0f),
-            origin ? F(V(*origin)) : std::string("?"), origin ? Dist(V(*origin), view) / kUnitsPerMeter : -1.0);
+            origin ? F(V(*origin)) : std::string("?"), extent ? F(V(*extent)) : std::string("?"),
+            origin ? Dist(V(*origin), view) / kUnitsPerMeter : -1.0);
+        if (bounds != nullptr && origin) {
+            meshText += "; the renderer's box " + RendererBox(bounds, V(*origin));
+        }
     }
     int listed = 0;
     bool inList = false;

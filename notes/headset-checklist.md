@@ -258,10 +258,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   design), whether the guided walk reaches the podium, the blur gone from people during the walk.
 - [ ] **No flash as a conversation begins** (the same note): any ordinary conversation from on foot (slots 85, 87, 89):
   until 2026-11-10 the 3D screen showed for an eighth of a second at every start.
-- [ ] **Your own body in a conversation** (research/69 "The body in scenes in the world", 2026-11-10; open): on the fake
-  headset no body is drawn in any scene in the world, looking down with the hands up, while on foot it is. In the headset:
-  look down at yourself during an ordinary conversation, on an NPC's line and on your own: is the body there, and does it
-  come and go with who speaks?
+- [ ] **Your own body in a conversation and a scripted walk** (research/69 "The first shot" and "The body that stayed
+  culled", 2026-11-10; fixed on the fake headset): look down at yourself during an ordinary conversation (slots 87, 89), on
+  the walk to the Council and at the podium (slot 81), from several head angles and standing off your room's centre: arms,
+  hands and chest should be there throughout, the floor under you and Udina beside you too. Also on foot: glance down
+  about 45 degrees with your arms at your sides, then raise your hands. Look for: the legs walking in place under you
+  during the scripted walk (not fixed yet).
 - [ ] **A walk-in you don't walk** (built 2026-11-10, research/69 "The guided walk-in"; on the fake headset Virmire's first
   conversation walked the player 5.3 m toward a 7.1 m mark; `[Cinematics] worldWalkInS = 5`, -1 never): start a conversation
   from a few metres away and leave the stick alone: after five seconds you should be walked to Shepard's place at walking

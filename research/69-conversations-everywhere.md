@@ -1379,7 +1379,7 @@ now** (the key stays). Why the hold and the lever disagree is not read: **[verif
 The point 3 of phase A (the body 0.6 m ahead, arms down) is gone with the same two changes: that was a body that had
 not been posed because it was never drawn.
 
-**Still open: the body in the ceremony.** With all of the above, during the scripted walk the mesh is rendered and its
+**Still open then, solved in the next section: the body in the ceremony.** With all of the above, during the scripted walk the mesh is rendered and its
 bounds are at the player (way 2's slide: `bounds 1.1 m from the view` with the pawn 17 m away) but no arm shows in the
 look-down pictures; and from the conversation's first tick at the podium it is not rendered at all (flags clear, plane
 10, lever on or off, the director near or far), through the walk-in by the view and after the view has joined Shepard.
@@ -1390,6 +1390,48 @@ which mesh), and way 2 switched off (`worldBody = hidden`) to see whether the bo
 
 Built: the mod (hot-reloaded through these runs) and, after the commit, the players' build; mevr-tests 24 of 24. Not built: the trilogy build;
 branch only.
+
+#### The body that stayed culled: the culling camera is ahead of the eye (2026-11-10, 17:00-18:00, fake headset; fixed, in the tree)
+
+The owner: "Keep going" (the body in the ceremony). What it was not, each tried in the ceremony from its save (slot 81) with
+the head 50 degrees down, facing forward: the director's far camera (the game camera held at the player: same), the Umbra
+eye-matrix lever (off: same), Umbra's occlusion test and the engine's own occlusion queries (off: same), way 2's bone slide
+(`worldBody = hidden`: the body was missing at the podium all the same), a stale box in the renderer (the component update
+forced every tick: same; the scene's copy of the bounds, read out of the scene info at +0x54, was the component's).
+
+**What it was.** Head directions at the podium, the same conversation: yaw 0 with the pitch at -50, -35, -20: not rendered;
+pitch -65, -80: rendered; pitch -50 with the yaw at 30, -30, 60, 90 or 180: rendered; and rendered facing forward again
+after one look back. A frustum test, against a small box just behind the frustum's lower plane. The engine culls with the
+game's camera (Umbra's camera is set from the scene view's CPU matrices in `BeginRenderingViewFamily`, `0x7655A0`), and
+Halcyon draws the eye behind it: its render-side view offset (the camera offset, the "view back" framing
+`flatScreenDistance = 0.674` of the shipped settings, the lean) is in the GPU matrices only: **the eye is 0.43 m behind and
+0.18 m below the culling camera** (`hostView.offsetUU` -43/-4/-18). From there the body's box (the physics bodies' box,
+27 x 32 x 92 units around the pawn, directly under the eye) lay 4 units behind the lower plane when it was culled and 3
+units inside it when a look back had changed the pose. So the player's own body, the nearest thing there is, was the one
+thing the culling camera could not see; in the two ordinary conversations it had happened to stay inside. On foot the same
+geometry holds (the earlier "the arms and gun dropped out after a look up and back" may be this).
+
+**The fix** (`engine/BodyBounds`, mod only): `USkeletalMeshComponent::UpdateBounds` (`0x58EEC0`, vtable slot +0x368; the
+box of the physics bodies, `0x638E20`) is post-hooked; for the player's body mesh and its pose followers (five meshes; named
+each tick by `game/ArmIk`'s `ProtectBodyBounds`) the box and sphere grow by the view offset's length plus 15 units (62 here)
+and **Umbra's own box is made again from the padded bounds** by the engine's function for it (`0x25CFE0`, the last call of
+`UpdateBounds`: a unit box scaled to the extents, given to Umbra, `0xD43030`). Padding `Bounds` alone did nothing: Umbra
+tests the box it was handed inside `UpdateBounds`, not the scene's copy. A box that holds the culling camera cannot be
+outside its frustum.
+
+**By picture and by the log, the head 50 degrees down, facing forward:**
+
+| Scene | Before | With the pad |
+|---|---|---|
+| The ceremony's scripted walk (slot 81) | rendered for 12 s, then not; no arm in any picture | arms, hands and chest on the stairs and the walkway; the body walks with the player while Shepard's actor is 10 to 17 m ahead (way 2, now seen working) |
+| The podium, the Council's lines | not rendered for the whole conversation | rendered at every sample; arms, hands and chest, Udina beside the player |
+| Avina (slot 89), Wrex at Fist's (slot 87) | rendered | rendered at all 42 and 48 samples |
+
+The body line now also prints the box's size and the renderer's copy (`the renderer's box +0x54: ...`). Removed again: the
+per-tick component update and a `bUpdateSkelWhenNotRendered` write (the flag is already set on the player's mesh).
+
+**Open:** the legs under a standing player during a scripted walk (the script's walk animation plays in place; a
+standing graft); the same check on foot with a look-around (the pad is on there too); everything in a real headset.
 
 ### The voices (2026-11-10: read from the code and the packages by a research agent; nothing built, nothing run)
 
@@ -1701,3 +1743,10 @@ In this order, on the fake headset, when the game folder is free (saves backed u
   hold (`worldCamera`) is off by default: it was built for this symptom, did not cure it, and with the Umbra eye-matrix
   lever culled the body. Two ordinary conversations now show arms, hands and chest on every line. **Open:** the body in
   the ceremony (the scripted walk and the podium after it). Mod built; the other builds and the tests not run; branch only.
+- 2026-11-10, 17:00-18:00, **the body in the ceremony, found and fixed** ("The body that stayed culled"). The engine
+  culls with the game's camera and Halcyon draws the eye 0.43 m behind it (the "view back" framing lives in the GPU
+  matrices only): Umbra's frustum missed the body's tight box right under the eye at some head angles (facing the Council
+  and looking down 50 degrees: never; 30 degrees aside: always). `engine/BodyBounds` pads the player's body boxes by the
+  view offset and hands Umbra the padded box. The ceremony from its save, facing forward: arms, hands and chest through
+  the scripted walk (the body walks with the player while Shepard's actor goes ahead) and at the podium on every line.
+  Open: the legs' walk animation under a standing player, the on-foot look-around, a real headset.

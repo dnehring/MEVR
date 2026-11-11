@@ -210,3 +210,7 @@ rva,name,kind,comment
 0xCB0040,USFXCameraMode::DoCameraCollisionNative_impl,func,research/69: body of execDoCameraCollisionNative (0xB8F200): fills PlayerController.HiddenActors (+0x5C8) in gameplay camera modes
 0xCB7A40,ASFXCameraNativeBase::ResetHiddenActors_impl,func,research/69: empties the controller's HiddenActors (camera +0x4B8 is the controller)
 0xCB9BF0,ASFXCameraNativeBase::TraceCamera_impl,func,research/69: the camera's aim trace (not a hide)
+0x58EEC0,USkeletalMeshComponent::UpdateBounds,func,research/69: vtable slot +0x368; the physics bodies' box (0x638E20) into Bounds (+0x8C); ends with the Umbra hand-over 0x25CFE0
+0x638E20,UPhysicsAsset::CalcAABB_guess,func,research/69: the box of the bodies at the bones; tests bConsiderAllBodiesForBounds (+0x438 bit 2)
+0x25CFE0,UPrimitiveComponent::UpdateUmbraBounds_guess,func,research/69: with an Umbra object (+0x210): a unit box scaled to Bounds as the object's matrix; 0xD43030 gives it to Umbra
+0xD43030,UmbraObject::setObjectToCellMatrix_guess,func,research/69: called by 0x25CFE0 with the box matrix

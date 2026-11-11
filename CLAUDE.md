@@ -334,6 +334,13 @@ switching frameworks.
   `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
   hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
   and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.
+  **The player's body boxes are padded for the culling camera** (`engine/BodyBounds`, 2026-11-10, research/69 "The body that
+  stayed culled", gotchas/culling-camera-ahead-of-the-eye): the engine culls with the game's camera and Halcyon draws the eye
+  behind it by the render-side view offset (0.43 m with the shipped "view back" framing, GPU matrices only), so Umbra's frustum
+  missed the body right under the eye at some head angles (a whole conversation at the Council's podium); a post-hook on
+  `USkeletalMeshComponent::UpdateBounds` (`0x58EEC0`) grows the body's and its pose followers' boxes by the offset's length
+  plus 15 units and calls the engine's Umbra hand-over (`0x25CFE0`) again (padding `Bounds` alone leaves Umbra the tight box).
+  Log `body bounds: the body's boxes are padded`.
   Independently of floor lock, ArmIk sets `bConsiderAllBodiesForBounds` on the driven player body and its pose followers,
   through journalled masked reflection writes; rechecks new pawns/meshes and restores changed live components at unload.
   Logs `body bounds:` once per pawn/mesh; `floor lock: world UI hold start` shows raw/base/common/IK Z and their delta;
