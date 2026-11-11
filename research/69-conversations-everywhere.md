@@ -83,6 +83,13 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    **Seats for the pairs built 2026-11-11** ("Seats for the pairs" below): the seats go to people in the order that lets those
    who talk to each other look at each other (every line's speaker and listener); seen in Joker's cockpit scene, with a refused
    seat now swapped. Open: the squad's walk, and a seat walk by someone who can walk.
+   **2026-11-11 09:46-09:53, two more tries for a seat walk** (`-Only ice20_anoleis,sta60_black_market`): Anoleis's office opened
+   without a cut (a 2.8 m walk-in), but its one person out of view stood 18.4 m from a seat (`worldSeatWalkMaxM` 8: it stays);
+   the black market's people were all in view (a 5.7 s scene). A seat walk needs an opening without a cut and someone of the
+   conversation out of view within 8 m: in every sampled log since the AI walk became the default only C-Sec has it (whose
+   people the AI doesn't move). The walk itself is item 1's path (`PushMoveToPoint` with the four holds lifted): in the same
+   run the medical bay's people walked 3.0, 1.7 and 2.2 m to the stage's marks and arrived 0.24 m from them (one more walk
+   the AI didn't take up: that person stayed). A seat walk arriving is still unseen.
 8. **The pause and floor marker**: when the player is wanted at a mark the guided walk can't reach (inside a trigger, the
    way blocked, too far), hold the conversation and show a marker on the floor; it goes on when the player stands there.
    Today such a scene is a cut or stays put.
@@ -2881,3 +2888,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 09:11, **item 11: Eden Prime's train** ("The scripted walks, named"): from the John01 career's Eden Prime save; a ride now carries the view (`cw::IsRideStep`) and a moment's first move on foot is judged like any other. 17 of 21 seen.
 - 2026-11-11 09:27, **item 11: the gambler** ("The scripted walks, named"): moments now carry their chunk's named streaming states (the gambler's `stream_schellsToss`); played clean from the Flux door. 18 of 21 seen; left: the ending's two (the owner's call) and the creeper from the Mako.
 - 2026-11-11 09:38, **item 11: the creeper from the Mako** ("The scripted walks, named"): the runner puts Shepard in a vehicle first (`enterVehicle`); from the Mako the scene goes to the 3D screen (moments are held from on foot). 19 of 21 seen; left: the ending's two (the owner's call).
+- 2026-11-11 09:53, **item 7: no seat walk in two more scenes** (the list's item 7): openings without a cut rarely leave someone out of view within 8 m; the medical bay's mid-scene AI walks arrived again.
