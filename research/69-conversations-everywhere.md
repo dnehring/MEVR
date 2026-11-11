@@ -129,7 +129,7 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     inside the load's black screen and plays on the 3D screen; every run that opened the level played it unnamed. The ending's
     two are left out on purpose: their script updates the end-game statistics and the Tactician achievement and saves the
     character before the matinee (the owner's account and career).
-    **18 of 21 seen, 2026-11-11 09:27** ("The scripted walks, named"): Noveria's scene after the squad falls, the double homicide,
+    **19 of 21 seen, 2026-11-11 09:38** (the creeper from the Mako on the 3D screen: "The scripted walks, named"); **18 of 21 seen, 2026-11-11 09:27** ("The scripted walks, named"): Noveria's scene after the squad falls, the double homicide,
     Feros's transition (screen) and first creeper, Eden Prime's train (from the John01 save) and the gambler. Four faults fixed
     on the way: a flash of the screen while the script fades to black first (`cw::StepProvisional`), a cut that kept the old
     facing and offset, a ride taken for teleports (`cw::IsRideStep`), a moment's first move on foot never judged. Left: the
@@ -2102,10 +2102,9 @@ script's teleport of 8.9 m at its end was in sight (the same space: no cut); the
 Mako** (`moment_war40_11_dsg_in_vehicle`): its script teleports Shepard 18 m and then waits for him to leave the Mako
 (`BioSeqAct_ExitVehicle`); on foot that never completes, so its matinee never came: to see it, drive the Mako there.
 
-**Seen now: 18 of the 21** (with Eden Prime's train and the gambler, below) (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
+**Seen now: 19 of the 21** (with Eden Prime's train, the gambler and the creeper from the Mako, below) (the 10 before, the krogan's entrance on the screen, the Normandy's opening on the screen, Noveria's
 scene after the squad falls, the Feros transition on the screen, the first creeper on foot, the double homicide: below). Left:
-the ending's two (left out: the account and the career; the owner asked), the creeper from the Mako (its script waits for
-Shepard to leave the Mako there).
+the ending's two (left out: the account and the career; the owner asked).
 
 **Noveria's double homicide** (`moment_ice20_03a`): opening `BIOA_ICE00` leaves Shepard on the docked Normandy, the moment had no
 place (its event is the chunk's load, no originator), so he stayed there and the chunk streamed out again once the runner let
@@ -2143,6 +2142,15 @@ Shepard 6.1 m in sight (the same space: no cut), the player was guided 6.0 m and
 Flux's stairwell from the player's eyes, and Shepard's own body standing at his mark 6 m ahead: on the fake headset arm IK draws
 no arms (no tracked controllers), so the body follower that puts his body under the player (`worldBody = player`) never runs;
 [verify] in the headset that the body walks with the player there.
+
+**Feros's first creeper from the Mako** (`moment_war40_11_dsg_in_vehicle`, 09:35-09:38): Feros has a Mako loaded
+(`BIOA_WAR40V_00_DSG`'s `BioVehicleWheeled_1`); the runner now puts Shepard in the level's nearest vehicle before firing a scene
+marked `enterVehicle`. Its fallback past the plot checks waits for the game mode to leave 0, which the Mako's mode 1 already
+has, so it never fired; started by hand (an object inside `In_Vehicle`, `ref_IsTag_Henchman`, by a loose match: the switch to
+the cinematic mode came all the same), the cinematic mode began with Shepard at the wheel: **the 3D screen at once** (a moment is
+held only from on foot: `MomentMayStart` needs a fresh view on foot) for 10 s, then the script's black screen and the world;
+no track took Shepard. From the Mako the screen is the design; whether the scene should open in the cockpit's view instead is
+the owner's to judge.
 
 **Eden Prime's train** (`moment_pro10_00_plc_train`, 08:52-09:11): past the prologue, so from the John01 career's own save on Eden
 Prime (22 minutes in, near the tram station), copied into the loaded career as a new file (the Load screen lists only the
@@ -2872,3 +2880,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 08:47, **item 11: six more moments run** ("The scripted walks, named"): Noveria's scene after the squad falls (fixed: no flash of the screen while the script's black screen comes first, `cw::StepProvisional`), the double homicide (fixed: a cut faces Shepard's way, the view's offset turned), Feros's transition (screen) and first creeper (clean); the creeper from the Mako and the gambler not reached. 16 of 21 seen.
 - 2026-11-11 09:11, **item 11: Eden Prime's train** ("The scripted walks, named"): from the John01 career's Eden Prime save; a ride now carries the view (`cw::IsRideStep`) and a moment's first move on foot is judged like any other. 17 of 21 seen.
 - 2026-11-11 09:27, **item 11: the gambler** ("The scripted walks, named"): moments now carry their chunk's named streaming states (the gambler's `stream_schellsToss`); played clean from the Flux door. 18 of 21 seen; left: the ending's two (the owner's call) and the creeper from the Mako.
+- 2026-11-11 09:38, **item 11: the creeper from the Mako** ("The scripted walks, named"): the runner puts Shepard in a vehicle first (`enterVehicle`); from the Mako the scene goes to the 3D screen (moments are held from on foot). 19 of 21 seen; left: the ending's two (the owner's call).

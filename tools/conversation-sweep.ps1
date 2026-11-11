@@ -417,6 +417,14 @@ function RunScene([string]$map, $scene, $streamed) {
     if ($s.mode -ne 0) { if (-not (Settle $map 30)) { $record.outcome = 'not reached'; $record.detail = "not in gameplay before firing (game mode $($s.mode))"; return $record } }
     $index = FindAction $scene
     if ($null -eq $index) { $record.outcome = 'action not loaded'; $record.detail = 'gone after Shepard was placed'; return $record }
+    # A scene that starts only with Shepard at the wheel (Feros's first creeper from the Mako: its script teleports the vehicle
+    # and waits for him to leave it; research/69 "The scripted walks, named"): the plan's `enterVehicle` puts him in the level's
+    # nearest vehicle just before the start is fired.
+    if ($scene.enterVehicle) {
+        $entered = Console 'mevr vehicle enter'
+        Say "   into a vehicle first: $(($entered -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -Last 1))"
+        Start-Sleep -Seconds 4
+    }
     $mark = LogMark
     $t0 = Get-Date
     $fired = 'action'
