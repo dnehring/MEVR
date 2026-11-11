@@ -86,6 +86,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     player" below): the presence rules act by default (`on`), the far shots only log.
 11. **Authored moments beyond the council walk**: 21 level-script matinees walk Shepard (`conversation-sweep.py moments`);
     only the walk to the Council has been run. Run the rest from saves as a sampled set.
+    **First sample run 2026-11-11** ("Moments from saves, first sample" below): 4 moments, 2 played (the geth intro on Feros
+    in first person, carried 5 m after one dip; Chellik's bump led into Jenna's contact with Shepard's body up to 1.73 m from the
+    view), 2 saves didn't come up on foot (Noveria's Benezia phase 2, Liara's intro on Therum).
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
     its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
     world to confirm the list.
@@ -1939,6 +1942,23 @@ person whose walk fails isn't left in its standing pose. The other bodies the se
 ceremony's 79-86 degree turns, Benezia's 140) are the re-face-for-the-player rule ("Who attends to whom"), not walking: the same
 before and after.
 
+### Moments from saves, first sample (2026-11-11 04:40-04:50, fake headset; item 11)
+
+Four of the 21 moments (`conversation-sweep.py moments`), one per level, each started by a use or a touch at a placed spot, written
+as validation saves into slots 90-93 of the test career (`conversation-sweep.py saves ... --first-slot 90 --manifest
+validation-saves-moments.json`; `saves --remove --manifest ...` deletes them) and played with `conversation-from-save.ps1 -All
+-FirstSlot 90 -List <the list>`:
+
+| Slot | Moment | Result |
+|---|---|---|
+| 90 | Chellik bumps into Shepard (Citadel, a use) | fired; it led into `sta60_trig_02_jennas_contact_dlg` (3 lines, a stay), where the judge found Shepard's head up to 1.73 m from the view |
+| 91 | Benezia, phase 2 (Noveria, a touch) | the save didn't come up on foot in two minutes |
+| 92 | Liara's intro (Therum, a touch) | the save didn't come up on foot in two minutes |
+| 93 | The geth intro (Feros, a touch) | played in first person: the script moved Shepard at its start (one dip, "the script moved Shepard to another place"), the view carried 5.0 m with him, nobody walked (no stick in the run) |
+
+Open: why 91 and 92 don't come up on foot (a load into a cinematic or the Mako, as slot 84 with its flag?), and Shepard's 1.73 m
+stray after Chellik's bump (the moment's own move of Shepard, then the conversation's stay).
+
 ### The handover between two conversations (2026-11-11 04:20-04:33, fake headset, the launcher's comm room; item 9)
 
 `conversation-launch.ps1 nor10_comm_room -World on`, both conversations driven to their ends, judged by `conversation-session.py`.
@@ -2482,3 +2502,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 04:30, **the starting entries' plot flags** (item 12): an entry's conditional is a plot flag unless `bFireConditional`; the scan records it, the save generator sets the scene's entry flag; slots 84 and 85 got theirs (in-game check pending).
 - 2026-11-11 04:20, **the starting flags tried in the game** (item 12): Wrex's flag 3684 made the level start Kirrahe's briefing on load; Chorban's 5316 changed nothing. Saves put back; the generator's starting flags are opt-in.
 - 2026-11-11 04:33, **item 9: the handover stray fixed** ("The handover between two conversations"): the ending conversation's keep-in-place undid the next stage's placement of Shepard; it now keeps only for the live conversation.
+- 2026-11-11 04:50, **item 11 sampled** ("Moments from saves, first sample"): 4 moments from new saves 90-93: the geth intro played in first person, Chellik's bump led into a conversation with a 1.73 m stray, two saves didn't come up on foot.
