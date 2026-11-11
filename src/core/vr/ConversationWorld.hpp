@@ -189,6 +189,38 @@ void FaceToward(std::vector<ArcSeat>& seats, Vec3 const& middle);
 std::vector<ArcSeat> SquadSeats(Vec3 const& player, double facingYawDeg, Vec3 const& lookAt, int count, double lateralUnits,
     double backUnits);
 
+// Seats for the pairs (research/69 item 7, "Seats for the pairs", 2026-11-11). Who talks to whom: a line's two ends as the
+// conversation numbers them (its speaker and listener: -2 the player, -1 the owner, 0.. its speaker list); each pair of different
+// people once, with the number of lines either way, the most talkative first.
+struct LineEnds {
+    int speaker = 0;
+    int listener = 0;
+};
+struct TalkPair {
+    int a = 0;  // a < b
+    int b = 0;
+    int lines = 0;
+};
+std::vector<TalkPair> CountPairs(std::vector<LineEnds> const& lines);
+// Someone in the arrangement: standing where it is (the player, the owner, people already in view: `at`, `yawDeg`) or one of
+// those to be seated (its place and facing are then the seat's). `looks` false for one whose look doesn't count (the player:
+// the head is the player's own).
+struct GroupMember {
+    Vec3 at;
+    double yawDeg = 0.0;
+    bool looks = true;
+};
+// Which seat each of `seated` (indices into `members`) takes, the seats' facings as given: the order in which the pairs (over
+// `members`' indices) can look at each other most easily, each line counting its turn away from the person's facing, and four
+// times over beyond `reachDeg` (what the game's look-at chain reaches). On a tie the seat order stands, so with no pairs among
+// them nothing changes. Every order is tried for up to 7 people; more keep the seat order. The result: seat index per seated
+// member (-1 when there are fewer seats than people).
+std::vector<int> SeatsForPairs(std::vector<GroupMember> const& members, std::vector<int> const& seated,
+    std::vector<ArcSeat> const& seats, std::vector<TalkPair> const& pairs, double reachDeg);
+// The cost SeatsForPairs weighs (lower is easier), for logging the choice: `seatOf` as SeatsForPairs returns it.
+double PairLookCost(std::vector<GroupMember> const& members, std::vector<int> const& seated, std::vector<ArcSeat> const& seats,
+    std::vector<int> const& seatOf, std::vector<TalkPair> const& pairs, double reachDeg);
+
 // The set pieces (research/59 "The scan", "Marking the rest"): the 21 conversations whose lines are a quarter or more authored
 // camera work (a director track or a moving camera: Saren, Sovereign, the Council, Anderson's briefing...) or where the game walks
 // Shepard himself (the Council endings, Kirrahe): composed for a camera elsewhere, or moving the player's place.

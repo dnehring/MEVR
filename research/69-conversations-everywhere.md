@@ -80,9 +80,20 @@ offline and, where said, run on the fake headset; nothing on this list has been 
    **Seat walks seen arriving 2026-11-11** ("People animated by gestures only" below): at Han Olar's on Noveria two
    bystanders walked 7.6 and 8 m into seats and arrived, **in their reference pose**: their animation tree has no walk. Such
    people now keep their place (seen: the two stay at the window, posed). A seat walk by someone who can walk is still to see.
+   **Seats for the pairs built 2026-11-11** ("Seats for the pairs" below): the seats go to people in the order that lets those
+   who talk to each other look at each other (every line's speaker and listener); seen in Joker's cockpit scene, with a refused
+   seat now swapped. Open: the squad's walk, and a seat walk by someone who can walk.
 8. **The pause and floor marker**: when the player is wanted at a mark the guided walk can't reach (inside a trigger, the
    way blocked, too far), hold the conversation and show a marker on the floor; it goes on when the player stands there.
    Today such a scene is a cut or stays put.
+   **Decided 2026-11-11 by the owner:** "if it's necessary for me to be in a certain location then we should create a mini
+   floor marker to indicate where I need to stand. I do doubt it's necessary." No pause; a small marker only where the place
+   is necessary. **Not built: nothing has shown it necessary** ("Is the player's place ever necessary" below): of 37 walk-ins
+   logged since the view walk (2026-11-10), 29 arrived, 2 were blocked (the Garrus argument at C-Sec at its start, now a flowed
+   scene; Wrex on Virmire 18 m short of a 29 m mark), the rest ended before arriving, and every conversation ran on wherever
+   the player stood (nothing ejects a conversation by distance; with the view walk Shepard's pawn stays on his mark, so the
+   triggers there are touched). Built the day a scene needs the player's place (one that waits for him, or a mark whose
+   trigger only the player's own pawn can touch).
 9. **The comm room's conversation after a load**: it opens on the 3D screen for a moment and Shepard strays 2.2 m (the
    launcher's Normandy case; not in the validation saves: needs a reproduction first).
    **Shepard's stray found and fixed 2026-11-11** ("The handover between two conversations" below): the comm room hands
@@ -112,6 +123,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     council walk, the Spectre ceremony, Virmire's deployment, the troop drop, the krogan's entrance); left: the ending's two,
     Noveria's double homicide and Death-started scene, the Normandy's and the gambler's remote events, Eden Prime's train and
     the Feros tower's two (all behind a plot point or a start the runner can't make yet).
+    **2026-11-11 08:13** ("The scripted walks, named" below): the moment's first line now names its matinee (the track
+    instance's path: its group instance lives in the `SeqAct_Interp` playing it). The Normandy's (`BIOA_NOR10_13_LAY`'s
+    `SeqAct_Interp_1`) is the prologue's opening as `BIOA_PRO00` loads: it places Shepard 34.7 m away (no walk: path 0 m)
+    inside the load's black screen and plays on the 3D screen; every run that opened the level played it unnamed. The ending's
+    two are left out on purpose: their script updates the end-game statistics and the Tactician achievement and saves the
+    character before the matinee (the owner's account and career).
 12. **Coverage and the test harness**: about 120 of 290 reachable scenes sampled; slot 84 (Wrex on Virmire) doesn't start from
     its save; Chorban's scene needs its plot flag set in its save; the 15 set pieces on the 3D screen have not been seen in the
     world to confirm the list.
@@ -2044,6 +2061,58 @@ nothing there is not walked (`convo: walk: X ai unavailable: its animation tree 
 by gestures only); it stays where it stands`). Run again: both stay at the window, posed, through the conversation
 (`06-10-44-423`). A tree with no action node at all is walked as before.
 
+### The scripted walks, named (2026-11-11 08:13-, fake headset, the sweep runner; item 11)
+
+`moment: a matinee's move track takes Shepard from ... : <path>` now names the matinee: the move track's instance lives in an
+`InterpGroupInst` inside the `SeqAct_Interp` that plays it, so its path is the matinee's (`AuthoredMoment`, the hook's
+`instance`, named on the game thread with `IsAlive` first). Opening `BIOA_PRO00` plays three before Joker's scene:
+
+| Matinee | What it is | Shown |
+|---|---|---|
+| `BIOA_NOR10_13_LAY ... SeqAct_Interp_1` (the plan's `moment_nor10_13_lay_seqact_interp_1`) | the prologue's opening as the level loads: Shepard placed 34.7 m away (path 0 m) inside the load's black screen, 38.7 s, modes 8 then 6 | the 3D screen (it starts under the front end's rule, a load from the menus) |
+| `BIOA_GLO00_A_Opening_Flyby_CIN ... SeqAct_Interp_1` (two more after it) | the opening fly-by: Shepard placed 380 m away, 6-13 s each | the 3D screen; not one of the 21 (a cinematic level's) |
+
+Neither walks Shepard: they are the game's opening cutscene, and the screen is right for them.
+
+### Seats for the pairs (2026-11-11 07:40-08:30, offline and on the fake headset; item 7)
+
+The arc's seats went to the people brought into view in the order they were tracked. Now (`cw::CountPairs`, `cw::SeatsForPairs`,
+unit-tested; `game/ConversationWorld`'s `SeatsByPairs`) the order is the one in which the people who talk to each other can look
+at each other most easily: every line of the conversation counts (each entry's `nSpeakerIndex` and `nListenerIndex`, each
+reply's listener with the player speaking; indices -2 the player, -1 the owner, 0.. `m_SpeakerList`'s `aSpeaker`), each person's
+turn away from its seat's facing toward its partner costs its angle, four times over past `worldGlanceDeg` (70, what the look-at
+chain reaches), the player's own turn costs nothing (the head is his), and every order of up to 7 people is tried; a tie keeps
+the seat order. Log `convo: seats for the pairs (<pairs> lines): <who> seat <n> (the look's cost a -> b)`.
+
+**The data** (the scan now records each line's listener, `tools/conversation-scan`): of 12,907 entries, 12,114 are said to the
+player (-2), 375 to the owner, 418 to someone on the speaker list; 784 lines in 99 conversations pass between two other people
+(most of them ambient: the market's buyer and seller, the Wards' couples; staged ones: Anderson and Udina in the Council's
+ending, 26 lines; Kaidan and Ashley at Kirrahe's briefing, 10; Joker and Kaidan in the cockpit, 12). A reply's listener is -3
+in 10,912 of 11,238 replies: "whoever spoke before", left out (the entry it answers already pairs them).
+
+**In the game, Joker's cockpit scene** (it plays by itself as `BIOA_PRO00` opens the prologue; a cut opening, four people
+brought into view): the pairs Joker~Kaidan 13, the player~a crewman 4 and five of one line; the new order lowered the look's
+cost from 7541 to 5932. Two faults showed: Joker is both the owner and on the speaker list, so his pair with Kaidan came twice
+(now merged after the indices are mapped to people), and one person's new seat was refused by the engine (`SetLocation`'s
+encroachment check: 10 of 159 seat placements in the sweeps before were refused too, where the old order put them). **A refused
+seat is now swapped** with someone of the same kind already placed, when both moves are taken (log `convo: X's seat n was
+refused: it takes Y's seat m`). The judge: the opening's dip (a cut, as before) and two bodies turned 90 and 79 degrees by the
+arrangement (104 and 115 in the run before the rule; the look-at rule turned nobody). **Run again with both fixes**
+(08:15:56): Kaidan stood in view at the opening this time (three to seat; cost 1210 -> 1052); the crewman's new seat was
+refused again and swapped (`BioInert_2's seat 1 was refused: it takes BioPawn_4's seat 3`): all three placed, none refused.
+
+### Is the player's place ever necessary (2026-11-11 08:05, from the sweep logs; item 8)
+
+The owner's rule for item 8: a small floor marker only where the player must stand somewhere. Every scene shown in the world
+since the summary carries `arrived` (the view walk's day, 2026-11-10) was read from `%LOCALAPPDATA%\MEVR\sweep\*\logs`: 291
+scenes in the world opened as 127 walk-ins, 117 cuts and 47 stays; of the 37 walk-ins with the field, **29 arrived** (the
+council's hearing 21.4-21.7 m by the view walk four times, Wrex at C-Sec 2.9 m twelve times), **2 were blocked** (the Garrus
+argument at C-Sec at once, 3.65 m, a flowed scene now; Wrex on Virmire with the body walk, stopped 18 m short of a 29.3 m mark)
+and the rest ended before arriving (Kirrahe's check-in 8.2 of 10.4 m in a 10.8 s scene; the deployment 7.6 of 7.5 m; the
+Spectre ceremony's, 2.6 of 21.4 m, twice). In none did the scene wait for the player or go wrong for
+his absence: conversations are ended by nothing at a distance (the interrupt range is ambient-only), and with the view walk
+Shepard's own pawn stays on his mark, so a trigger there is touched by him. **Nothing to build until a scene needs the place.**
+
 ### Virmire and the cockpit (2026-11-11 06:40-06:58, fake headset, the sweep runner; items 4, 7 and 11)
 
 `conversation-sweep.ps1 -Plan moments.json -Maps <level> -Only <moment> -Pace shepard`, judged by `conversation-session.py`.
@@ -2702,3 +2771,6 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 06:58, **item 4 and 11: Virmire and the cockpit** ("Virmire and the cockpit"): Virmire's deployment and its scenes judged clean; the re-facing rule turned Joker in his seat 134 degrees: no re-facing while the player stands at Shepard's mark or for someone seated (`cw::MayReface`).
 - 2026-11-11 07:13, **item 11, Therum** ("Virmire and the cockpit"): the troop drop held in first person, clean; the krogan's entrance on the screen by rule, her conversation in the world; 10 of the 21 moments seen.
 - 2026-11-11 07:25, **item 1: `worldWalk = 3` measured** ("People walking to their marks", its table): the engine's walking moved nobody in four walks of the wake-up scene; each fell back to the slide. The AI's walk (`1`) is the only one that animates.
+- 2026-11-11 08:05, **item 8 decided by the owner** ("Is the player's place ever necessary"): a small floor marker only where the player's place is necessary; nothing in the logs shows it is (37 walk-ins: 29 arrived, 2 blocked, no scene waited), so nothing is built.
+- 2026-11-11 08:30, **item 7: seats for the pairs** ("Seats for the pairs"): people brought into view take the seats that let those who talk to each other look at each other; seen in Joker's cockpit scene; a refused seat is swapped.
+- 2026-11-11 08:13, **item 11: the moment line names its matinee**: the Normandy's moment is the prologue's opening as `BIOA_PRO00` loads (a placement, on the 3D screen); the other prologue placements are the opening fly-by (`BIOA_GLO00_A_Opening_Flyby_CIN`), not one of the 21.

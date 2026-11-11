@@ -76,6 +76,7 @@ void RefreshSettings() {
 std::atomic<void const*> gPawnForHook{nullptr};  // the player's pawn, set each tick
 std::atomic<unsigned> gTrackCalls{0};            // calls for the player's pawn since the hook went in
 std::atomic<void const*> gTrackSeen{nullptr};    // the last track that moved him
+std::atomic<void const*> gTrackInstSeen{nullptr};  // its instance (inside the SeqAct_Interp that plays it: names the matinee)
 
 std::atomic<std::uint64_t> gTrackMs{0};          // when the last call for him came
 
@@ -110,6 +111,7 @@ bool OnMoveTrack(void const* actor, void const* track, void const* instance, flo
     if (actor != nullptr && actor == gPawnForHook.load(std::memory_order_relaxed)) {
         gTrackCalls.fetch_add(1, std::memory_order_relaxed);
         gTrackSeen.store(track, std::memory_order_relaxed);
+        gTrackInstSeen.store(instance, std::memory_order_relaxed);
         gTrackMs.store(GetTickCount64(), std::memory_order_relaxed);
         // worldMoments = walk: the player walks it himself (game/ConversationWorld holds the view and moves him). Where
         // the track has him is kept: the script counts on him being there when the matinee ends.
@@ -354,8 +356,12 @@ void Tick() {
             gM.from = gHavePawnAt ? gPawnAt : V(*at);
             gM.last = gM.from;
             auto const mode = player::GameMode(controller);
-            log::Info("moment: a matinee's move track takes Shepard from {} (game mode {}, his pawn {})", F(gM.from), mode ? static_cast<int>(*mode) : -1,
-                gActorHidden.ReadBool(pawn).value_or(false) ? "hidden" : "shown");
+            // The track instance's path names the matinee (its group instance lives in the SeqAct_Interp that plays it): which
+            // of research/69's 21 moments this is (item 11).
+            auto* const inst = static_cast<ue3::Object*>(const_cast<void*>(gTrackInstSeen.load(std::memory_order_relaxed)));
+            std::string const matinee = inst != nullptr && ue3::runtime::IsAlive(inst) ? ue3::runtime::FullName(inst) : std::string("?");
+            log::Info("moment: a matinee's move track takes Shepard from {} (game mode {}, his pawn {}): {}", F(gM.from), mode ? static_cast<int>(*mode) : -1,
+                gActorHidden.ReadBool(pawn).value_or(false) ? "hidden" : "shown", matinee);
         }
         gM.lastCallMs = now;
         Vec const here = V(*at);

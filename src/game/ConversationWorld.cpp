@@ -63,6 +63,13 @@ ue3::FieldRef gConvPlayer{"SFXGame.BioConversation", "m_pConversationPlayer"};
 ue3::FieldRef gStage{"SFXGame.BioConversation", "m_stage"};
 ue3::FieldRef gSpeakerList{"SFXGame.BioConversation", "m_SpeakerList"};
 ue3::FieldRef gSpeakerActor{gSpeakerList, "aSpeaker"};
+// Who says each line to whom (item 7, the seats for the pairs): -2 the player, -1 the owner, 0.. m_SpeakerList; a reply's
+// speaker is the player, its listener -3 when it is whoever spoke before (left out).
+ue3::FieldRef gPairEntries{"SFXGame.BioConversation", "m_EntryList"};
+ue3::FieldRef gPairEntrySpeaker{gPairEntries, "nSpeakerIndex"};
+ue3::FieldRef gPairEntryListener{gPairEntries, "nListenerIndex"};
+ue3::FieldRef gPairReplies{"SFXGame.BioConversation", "m_ReplyList"};
+ue3::FieldRef gPairReplyListener{gPairReplies, "nListenerIndex"};
 ue3::FieldRef gLookAtList{"SFXGame.BioConversation", "m_LookAtList"};
 ue3::FieldRef gLookActor{gLookAtList, "pActor"};
 ue3::FieldRef gLookTarget{gLookAtList, "pLookAtTarget"};
@@ -2848,6 +2855,134 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     return true;
 }
 
+// The person a conversation's index names: -2 the player, -1 the owner, 0.. its speaker list's actor (null if not resolved).
+ue3::Object* PersonOfIndex(ue3::Object* conv, ue3::Object* pawn, int index) {
+    if (index == -2) {
+        return pawn;
+    }
+    if (index == -1) {
+        return gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
+    }
+    auto const list = gSpeakerList.ElementsOf(conv, 64);
+    if (index < 0 || !list || index >= list->count) {
+        return nullptr;
+    }
+    return gSpeakerActor.Read<ue3::Object*>(list->At(index)).value_or(nullptr);
+}
+
+// Seats for the pairs (item 7, research/69 "Seats for the pairs"): the arc's seats, already facing the group's middle, given to
+// the people brought into view in the order that lets those who talk to each other (every line of the conversation, its speaker
+// and listener) look at each other within the look's reach (worldGlanceDeg) most easily; the seat order on a tie.
+// `numbers`: each person's seat in the arc's own numbering (1 the first seat ArcSeats made), for the log.
+std::vector<cw::ArcSeat> SeatsByPairs(ue3::Object* conv, ue3::Object* pawn, std::vector<std::pair<ue3::Object*, std::string>> const& out,
+    std::vector<cw::ArcSeat> const& seats, std::vector<int>& numbers) {
+    numbers.clear();
+    for (std::size_t k = 0; k < out.size() && k < seats.size(); ++k) {
+        numbers.push_back(static_cast<int>(k) + 1);
+    }
+    if (out.size() < 2 || seats.size() < out.size()) {
+        return seats;
+    }
+    std::vector<cw::LineEnds> lines;
+    if (auto const entries = gPairEntries.ElementsOf(conv, 4096)) {
+        for (std::int32_t i = 0; i < entries->count; ++i) {
+            auto const s = gPairEntrySpeaker.Read<std::int32_t>(entries->At(i));
+            auto const l = gPairEntryListener.Read<std::int32_t>(entries->At(i));
+            if (s && l) {
+                lines.push_back({*s, *l});
+            }
+        }
+    }
+    if (auto const replies = gPairReplies.ElementsOf(conv, 4096)) {
+        for (std::int32_t i = 0; i < replies->count; ++i) {
+            if (auto const l = gPairReplyListener.Read<std::int32_t>(replies->At(i))) {
+                lines.push_back({-2, *l});
+            }
+        }
+    }
+    std::vector<cw::TalkPair> const byIndex = cw::CountPairs(lines);
+    // The members: the player (its look is the player's own), everyone else of the conversation where they stand, the people to seat.
+    std::vector<ue3::Object*> actors;
+    std::vector<cw::GroupMember> members;
+    auto const add = [&](ue3::Object* a, cw::GroupMember const& m) {
+        actors.push_back(a);
+        members.push_back(m);
+    };
+    add(pawn, {{gC.hold.x, gC.hold.y, gC.hold.z}, YawDeg(gC.holdRotation), false});
+    auto const seatedOne = [&](ue3::Object* a) {
+        return std::any_of(out.begin(), out.end(), [&](auto const& pr) { return pr.first == a; });
+    };
+    for (Tracked const& t : gC.actors) {
+        if (t.actor == nullptr || t.actor == pawn || seatedOne(t.actor) || !ue3::runtime::IsAlive(t.actor)) {
+            continue;
+        }
+        auto const at = player::Location(t.actor);
+        auto const rot = player::Rotation(t.actor);
+        if (at && rot) {
+            add(t.actor, {{at->x, at->y, at->z}, YawDeg(*rot), true});
+        }
+    }
+    std::vector<int> seated;
+    for (auto const& [actor, name] : out) {
+        seated.push_back(static_cast<int>(members.size()));
+        add(actor, {});
+    }
+    auto const memberOf = [&](ue3::Object* a) -> int {
+        auto const it = a != nullptr ? std::find(actors.begin(), actors.end(), a) : actors.end();
+        return it == actors.end() ? -1 : static_cast<int>(it - actors.begin());
+    };
+    std::vector<cw::TalkPair> pairs;
+    std::string said;
+    for (cw::TalkPair const& p : byIndex) {
+        int const a = memberOf(PersonOfIndex(conv, pawn, p.a));
+        int const b = memberOf(PersonOfIndex(conv, pawn, p.b));
+        bool const involvesSeated = std::find(seated.begin(), seated.end(), a) != seated.end() ||
+                                    std::find(seated.begin(), seated.end(), b) != seated.end();
+        if (a < 0 || b < 0 || a == b || !involvesSeated) {
+            continue;  // someone not in the scene, or a pair the seats can't change
+        }
+        // Two of the conversation's indices can name one person (the owner is also on its speaker list: Joker): one pair.
+        auto const same = std::find_if(pairs.begin(), pairs.end(), [&](cw::TalkPair const& q) { return q.a == std::min(a, b) && q.b == std::max(a, b); });
+        if (same != pairs.end()) {
+            same->lines += p.lines;
+        } else {
+            pairs.push_back({std::min(a, b), std::max(a, b), p.lines});
+        }
+    }
+    std::stable_sort(pairs.begin(), pairs.end(), [](cw::TalkPair const& l, cw::TalkPair const& r) { return l.lines > r.lines; });
+    for (cw::TalkPair const& p : pairs) {
+        if (said.size() < 200) {
+            auto const named = [&](int m) { return m == 0 ? std::string("you") : ShortName(actors[static_cast<std::size_t>(m)]); };
+            said += std::format("{}{}~{} {}", said.empty() ? "" : ", ", named(p.a), named(p.b), p.lines);
+        }
+    }
+    double const reach = gSettings.glanceDeg;
+    std::vector<int> const seatOf = cw::SeatsForPairs(members, seated, seats, pairs, reach);
+    std::vector<int> inOrder(seated.size());
+    for (std::size_t k = 0; k < inOrder.size(); ++k) {
+        inOrder[k] = static_cast<int>(k);
+    }
+    if (seatOf == inOrder) {
+        if (!pairs.empty()) {
+            log::Info("convo: seats for the pairs ({} lines): the seat order already suits them", said);
+        }
+        return seats;
+    }
+    double const before = cw::PairLookCost(members, seated, seats, inOrder, pairs, reach);
+    double const after = cw::PairLookCost(members, seated, seats, seatOf, pairs, reach);
+    std::vector<cw::ArcSeat> chosen;
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        chosen.push_back(seats[static_cast<std::size_t>(seatOf[k])]);
+        numbers[k] = seatOf[k] + 1;
+    }
+    std::string moved;
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        moved += std::format("{}{} seat {}", k == 0 ? "" : ", ", out[k].second, seatOf[k] + 1);
+    }
+    log::Info("convo: seats for the pairs ({} lines): {} (the look's cost {:.0f} -> {:.0f})", said, moved, before, after);
+    return chosen;
+}
+
 // An opening without a cut (item 7): the conversation's people out of the player's view are given seats in view (the arc, facing
 // the group's middle), which they walk to with the game's AI when their walk state exists (the tick's loop). Nobody jumps.
 void PlanSeatWalks(ue3::Object* conv, ue3::Object* pawn) {
@@ -2885,6 +3020,8 @@ void PlanSeatWalks(ue3::Object* conv, ue3::Object* pawn) {
     if (gSettings.faceMiddle) {
         cw::FaceToward(seats, middle);
     }
+    std::vector<int> numbers;
+    seats = SeatsByPairs(conv, pawn, out, seats, numbers);
     for (std::size_t i = 0; i < out.size() && i < seats.size(); ++i) {
         auto const at = player::Location(out[i].first);
         ik::Vec3 seat{seats[i].at.x, seats[i].at.y, at ? at->z : gC.hold.z};
@@ -2901,7 +3038,7 @@ void PlanSeatWalks(ue3::Object* conv, ue3::Object* pawn) {
             continue;
         }
         gC.seatWalks.push_back({out[i].first, seat, seats[i].yawDeg});
-        log::Info("convo: {} is out of view; seat {} at {} ({:.1f} m from you) to walk to", out[i].second, i + 1, F(seat),
+        log::Info("convo: {} is out of view; seat {} at {} ({:.1f} m from you) to walk to", out[i].second, numbers[i], F(seat),
             Dist(seat, gC.hold) / kUnitsPerMeter);
     }
 }
@@ -2996,29 +3133,81 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
         if (gSettings.faceMiddle) {
             cw::FaceToward(seats, middle);
         }
+        std::vector<int> numbers;
+        seats = SeatsByPairs(conv, pawn, out, seats, numbers);
         std::vector<cw::ArcSeat> const beside = cw::SquadSeats(player, facing, middle, static_cast<int>(outSquad.size()),
             gSettings.squadSideM * kUnitsPerMeter, gSettings.squadBackM * kUnitsPerMeter);
         std::vector<std::string> kinds(out.size(), "brought into view");
         for (std::size_t i = 0; i < outSquad.size() && i < beside.size(); ++i) {
             out.push_back(outSquad[i]);
             seats.push_back(beside[i]);
+            numbers.push_back(static_cast<int>(i) + 1);
             kinds.push_back("beside you");
         }
-        for (std::size_t i = 0; i < out.size() && i < seats.size(); ++i) {
-            auto const [actor, name] = out[i];
-            auto const at = player::Location(actor);
+        // Where person i stands at a seat: the seat's floor, at the person's own height above the floor where it stands now.
+        auto const placeAt = [&](std::size_t i, cw::ArcSeat const& s) -> std::optional<ik::Vec3> {
+            auto const at = player::Location(out[i].first);
             if (!at) {
-                continue;
+                return std::nullopt;
             }
-            ik::Vec3 seat{seats[i].at.x, seats[i].at.y, at->z};
+            ik::Vec3 seat{s.at.x, s.at.y, at->z};
             auto const floorHere = FloorZ(pawn, V(*at));
             auto const floorThere = FloorZ(pawn, seat);
             if (!floorThere) {
-                log::Info("convo: no floor under the seat for {} at {}: left where it is", name, F(seat));
-                continue;
+                return std::nullopt;
             }
             seat.z = *floorThere + (floorHere ? at->z - *floorHere : 0.0);
-            bool const put = PutAt(actor, seat);
+            return seat;
+        };
+        std::size_t const count = std::min(out.size(), seats.size());
+        std::vector<std::optional<ik::Vec3>> where(count);
+        std::vector<bool> put(count, false);
+        for (std::size_t i = 0; i < count; ++i) {
+            where[i] = placeAt(i, seats[i]);
+            if (!where[i]) {
+                log::Info("convo: no floor under the seat for {} at ({:.0f}, {:.0f}): left where it is", out[i].second, seats[i].at.x, seats[i].at.y);
+                continue;
+            }
+            put[i] = PutAt(out[i].first, *where[i]);
+        }
+        // A place the engine refuses (SetLocation's encroachment check; 10 of 159 placements in the sweeps before 2026-11-11):
+        // the seat is swapped with someone of the same kind already placed, when both moves are taken (item 7, the pairs'
+        // seats changed whose spot that was).
+        for (std::size_t i = 0; i < count; ++i) {
+            if (put[i] || !where[i]) {
+                continue;
+            }
+            for (std::size_t j = 0; j < count && !put[i]; ++j) {
+                if (j == i || !put[j] || kinds[j] != kinds[i]) {
+                    continue;
+                }
+                auto const jThere = placeAt(j, seats[i]);
+                auto const back = player::Location(out[j].first);
+                if (!jThere || !back || !PutAt(out[j].first, *jThere)) {
+                    continue;
+                }
+                auto const iThere = placeAt(i, seats[j]);
+                if (iThere && PutAt(out[i].first, *iThere)) {
+                    log::Info("convo: {}'s seat {} was refused: it takes {}'s seat {}, {} takes its", out[i].second, numbers[i], out[j].second,
+                        numbers[j], out[j].second);
+                    std::swap(seats[i], seats[j]);
+                    std::swap(numbers[i], numbers[j]);
+                    where[i] = iThere;
+                    where[j] = jThere;
+                    put[i] = true;
+                } else if (!PutAt(out[j].first, V(*back))) {
+                    std::swap(seats[i], seats[j]);  // j couldn't go back: it keeps i's seat, i stays refused at j's
+                    std::swap(numbers[i], numbers[j]);
+                    where[j] = jThere;
+                    where[i] = iThere;
+                }
+            }
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!where[i]) {
+                continue;
+            }
+            ue3::Object* const actor = out[i].first;
             FaceYaw(actor, seats[i].yawDeg);
             auto it = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == actor; });
             if (it != gStay.end()) {
@@ -3027,10 +3216,10 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
                 }
                 it->shownYaw = seats[i].yawDeg;
             }
-            if (put) ++gC.arranged;
-            log::Info("convo: {} {}: seat {} at {} ({:.1f} m from you), facing {:.0f} deg{}{}", name, kinds[i], i + 1, F(seat),
-                Dist(seat, gC.hold) / kUnitsPerMeter, seats[i].yawDeg, gSettings.faceMiddle ? " (the group's middle)" : " (you)",
-                put ? "" : " (SetLocation refused)");
+            if (put[i]) ++gC.arranged;
+            log::Info("convo: {} {}: seat {} at {} ({:.1f} m from you), facing {:.0f} deg{}{}", out[i].second, kinds[i], numbers[i], F(*where[i]),
+                Dist(*where[i], gC.hold) / kUnitsPerMeter, seats[i].yawDeg, gSettings.faceMiddle ? " (the group's middle)" : " (you)",
+                put[i] ? "" : " (SetLocation refused)");
         }
     }
     if (moved > 0.05 || gC.arranged > 0) {

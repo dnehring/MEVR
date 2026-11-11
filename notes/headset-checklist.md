@@ -220,6 +220,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   is brought into view, they stand turned in toward the group (not square to you); a squadmate who isn't in the
   conversation stands beside you, about 1 m to the side; in a scene that opens without a cut, someone out of view within
   8 m walks into the group instead of appearing. Watch for anyone placed inside furniture or facing away from the speaker.
+  Since 2026-11-11 those brought into view take the seats that let the people who talk to each other see each other
+  (research/69 "Seats for the pairs"): in Joker's cockpit scene Kaidan, who talks with Joker, should be where he can look at
+  him without twisting.
 - [ ] **Walking during conversations** (built 2026-11-09; checked on the fake headset with `mevr convo walk`: 5.47 m during the
   Garrus wheel conversation, nobody snapped; the squad stays put; a 0.7 m clearance around people built after it, unchecked:
   walk straight at Garrus and you should go around him; research/59 "Walking during conversations";

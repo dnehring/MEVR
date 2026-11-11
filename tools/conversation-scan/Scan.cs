@@ -147,6 +147,8 @@ internal static class Scan
                 ["ambient"] = isAmbient,
                 ["nonText"] = node.GetProp<BoolProperty>("bNonTextLine")?.Value == true,
                 ["speaker"] = node.GetProp<IntProperty>("nSpeakerIndex")?.Value ?? -1,
+                // Who the line is said to (research/69 item 7, seats for the pairs): its index as the speaker's (-1 the owner, 0.. m_SpeakerList).
+                ["listener"] = node.GetProp<IntProperty>("nListenerIndex")?.Value ?? -1,
                 ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,
                 ["conditional"] = node.GetProp<IntProperty>("nConditionalFunc")?.Value ?? -1,  // -1: none (a start entry always eligible)
                 // What the id is (research/69 item 12): bFireConditional set, a conditional function (BioAutoConditionals.F<id> in
@@ -166,6 +168,7 @@ internal static class Scan
             replyNodes.Add(new Dictionary<string, object>
             {
                 ["type"] = node.GetProp<EnumProperty>("ReplyType")?.Value.Instanced ?? "REPLY_STANDARD",
+                ["listener"] = node.GetProp<IntProperty>("nListenerIndex")?.Value ?? -1,
                 ["ambient"] = node.GetProp<BoolProperty>("bAmbient")?.Value == true,
                 ["nonText"] = node.GetProp<BoolProperty>("bNonTextLine")?.Value == true,
                 ["text"] = node.GetProp<IntProperty>("srText")?.Value ?? 0,

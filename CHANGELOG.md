@@ -29,6 +29,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   bumping into you on the Citadel) is seen from your own eyes too, instead of from behind Shepard with black bars, and so is
   a scripted walk that follows a conversation at once (Benezia's entrance on Noveria), instead of the cinema screen.
   Scenes that play out around you as you walk keep their subtitles (when the game's subtitles are on).
+  When people are brought round into view at a scene's start, those who talk to each other stand where they can see each
+  other.
   A preview: off unless you choose it.
 
 ## 0.2.0 (2026-11-09)

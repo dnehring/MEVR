@@ -80,6 +80,34 @@ void TestArrangement() {
     CHECK(Close(squad[2].at.y, -200.0, 1e-6));
     CHECK(squad[0].yawDeg > 0.0 && squad[0].yawDeg < 90.0);      // toward the middle ahead, turned in
     CHECK(cw::SquadSeats(player, 0.0, {200.0, 0.0, 100.0}, 0, 100.0, 30.0).empty());
+    // Who talks to whom (item 7, "Seats for the pairs"): each pair once, both ways counted, a line to oneself or to an open end
+    // (a reply's -3) left out, the most talkative first and ties in the order met.
+    std::vector<cw::TalkPair> const talk = cw::CountPairs({{-1, -2}, {-1, -2}, {0, 1}, {1, 0}, {0, 0}, {0, -3}, {2, -2}});
+    CHECK(talk.size() == 3);
+    CHECK(talk[0].a == -2 && talk[0].b == -1 && talk[0].lines == 2);
+    CHECK(talk[1].a == 0 && talk[1].b == 1 && talk[1].lines == 2);
+    CHECK(talk[2].a == -2 && talk[2].b == 2 && talk[2].lines == 1);
+    // Three to seat on the arc (seat 0 right, seat 1 left, seat 2 further right), facing the group's middle. Members: the player
+    // (its look not counted), the owner 3 m ahead facing it, then A, B and C to seat.
+    std::vector<cw::ArcSeat> arc = cw::ArcSeats(player, {300.0, 0.0, 100.0}, 3, 250.0, 25.0, 60.0);
+    cw::FaceToward(arc, cw::GroupMiddle(player, {300.0, 0.0, 100.0}, arc));
+    std::vector<cw::GroupMember> const members{{player, 0.0, false}, {{300.0, 0.0, 100.0}, 180.0, true}, {}, {}, {}};
+    std::vector<int> const toSeat{2, 3, 4};
+    // No pairs among them: the seat order stands.
+    CHECK((cw::SeatsForPairs(members, toSeat, arc, {}, 60.0) == std::vector<int>{0, 1, 2}));
+    // A and C talk ten lines: in the seat order they sit side by side on the right, both facing the middle, and A would turn
+    // 110 degrees to look at C; across the arc (A left, C further right) each turns under 5.
+    std::vector<cw::TalkPair> const ac{{2, 4, 10}};
+    std::vector<int> const chosen = cw::SeatsForPairs(members, toSeat, arc, ac, 60.0);
+    CHECK((chosen == std::vector<int>{1, 0, 2}));
+    double const before = cw::PairLookCost(members, toSeat, arc, {0, 1, 2}, ac, 60.0);
+    double const after = cw::PairLookCost(members, toSeat, arc, chosen, ac, 60.0);
+    CHECK(before > 2500.0 && after < 100.0);
+    // The player's own look never counts: A looking at the player from seat 0 turns about 32 degrees, the player's turn is free.
+    double const atPlayer = cw::PairLookCost(members, toSeat, arc, {0, 1, 2}, {{0, 2, 1}}, 60.0);
+    CHECK(atPlayer > 25.0 && atPlayer < 40.0);
+    // Fewer seats than people: the last has none; too many to try every order: the seat order.
+    CHECK((cw::SeatsForPairs(members, toSeat, {arc[0], arc[1]}, ac, 60.0) == std::vector<int>{0, 1, -1}));
 }
 
 void TestSetPieces() {

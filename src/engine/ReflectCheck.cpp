@@ -1288,6 +1288,14 @@ void CheckPaths() {
     CheckElement("SFXGame.BioBaseSquad", "Members", sizeof(FMemberData));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "SquadMember"}, SDK_AT(offsetof(FMemberData, SquadMember), 8));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "eSwitchWeapon"}, SDK_AT(offsetof(FMemberData, eSwitchWeapon), 1));
+    // game/ConversationWorld (research/69 item 7, "Seats for the pairs"): who says each line to whom, and who the indices name.
+    CheckElement("SFXGame.BioConversation", "m_SpeakerList", sizeof(FBioDialogSpeaker));
+    CheckPath("SFXGame.BioConversation", {"m_SpeakerList", "aSpeaker"}, SDK_AT(offsetof(FBioDialogSpeaker, aSpeaker), 8));
+    CheckElement("SFXGame.BioConversation", "m_EntryList", sizeof(FBioDialogEntryNode));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "nSpeakerIndex"}, SDK_AT(offsetof(FBioDialogEntryNode, nSpeakerIndex), 4));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "nListenerIndex"}, SDK_AT(offsetof(FBioDialogEntryNode, nListenerIndex), 4));
+    CheckElement("SFXGame.BioConversation", "m_ReplyList", sizeof(FBioDialogReplyNode));
+    CheckPath("SFXGame.BioConversation", {"m_ReplyList", "nListenerIndex"}, SDK_AT(offsetof(FBioDialogReplyNode, nListenerIndex), 4));
 }
 
 // Stage 3: engine/skeleton's fields as it resolved them through our layer (TryStartup), against research/14's

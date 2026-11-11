@@ -176,6 +176,92 @@ std::vector<ArcSeat> SquadSeats(Vec3 const& player, double facingYawDeg, Vec3 co
     return seats;
 }
 
+std::vector<TalkPair> CountPairs(std::vector<LineEnds> const& lines) {
+    std::vector<TalkPair> pairs;
+    for (LineEnds const& line : lines) {
+        if (line.speaker == line.listener || line.speaker < -2 || line.listener < -2) {
+            continue;  // to oneself, or an end the conversation leaves open (a reply's -3: whoever spoke before)
+        }
+        int const a = std::min(line.speaker, line.listener);
+        int const b = std::max(line.speaker, line.listener);
+        auto it = std::find_if(pairs.begin(), pairs.end(), [&](TalkPair const& p) { return p.a == a && p.b == b; });
+        if (it == pairs.end()) {
+            pairs.push_back({a, b, 1});
+        } else {
+            ++it->lines;
+        }
+    }
+    std::stable_sort(pairs.begin(), pairs.end(), [](TalkPair const& l, TalkPair const& r) { return l.lines > r.lines; });
+    return pairs;
+}
+
+namespace {
+// Where member m stands and faces under `seatOf` (a seated member at its seat; one without a seat where it is).
+GroupMember MemberAt(std::vector<GroupMember> const& members, std::vector<int> const& seated, std::vector<ArcSeat> const& seats,
+    std::vector<int> const& seatOf, int m) {
+    GroupMember g = members[static_cast<std::size_t>(m)];
+    for (std::size_t k = 0; k < seated.size(); ++k) {
+        if (seated[k] == m && k < seatOf.size() && seatOf[k] >= 0 && static_cast<std::size_t>(seatOf[k]) < seats.size()) {
+            g.at = seats[static_cast<std::size_t>(seatOf[k])].at;
+            g.yawDeg = seats[static_cast<std::size_t>(seatOf[k])].yawDeg;
+        }
+    }
+    return g;
+}
+// One person's turn toward another: its angle off the facing, four times over past the reach.
+double LookCost(GroupMember const& from, Vec3 const& to, double reachDeg) {
+    if (!from.looks || std::hypot(to.x - from.at.x, to.y - from.at.y) < 1.0) {
+        return 0.0;
+    }
+    double const off = std::abs(Wrap180(BearingDeg(from.at, to) - from.yawDeg));
+    return off + 3.0 * std::max(0.0, off - reachDeg);
+}
+} // namespace
+
+double PairLookCost(std::vector<GroupMember> const& members, std::vector<int> const& seated, std::vector<ArcSeat> const& seats,
+    std::vector<int> const& seatOf, std::vector<TalkPair> const& pairs, double reachDeg) {
+    double cost = 0.0;
+    int const n = static_cast<int>(members.size());
+    for (TalkPair const& p : pairs) {
+        if (p.a < 0 || p.b < 0 || p.a >= n || p.b >= n || p.a == p.b || p.lines <= 0) {
+            continue;
+        }
+        GroupMember const a = MemberAt(members, seated, seats, seatOf, p.a);
+        GroupMember const b = MemberAt(members, seated, seats, seatOf, p.b);
+        cost += p.lines * (LookCost(a, b.at, reachDeg) + LookCost(b, a.at, reachDeg));
+    }
+    return cost;
+}
+
+std::vector<int> SeatsForPairs(std::vector<GroupMember> const& members, std::vector<int> const& seated,
+    std::vector<ArcSeat> const& seats, std::vector<TalkPair> const& pairs, double reachDeg) {
+    std::vector<int> seatOf(seated.size(), -1);
+    for (std::size_t k = 0; k < seated.size() && k < seats.size(); ++k) {
+        seatOf[k] = static_cast<int>(k);
+    }
+    if (seated.size() < 2 || seats.size() < seated.size() || seats.size() > 7) {
+        return seatOf;  // nothing to choose, or too many to try every order
+    }
+    // Every assignment of the first seats.size() seats, in lexicographic order from the seat order itself: a strictly lower
+    // cost replaces the best, so a tie keeps the earlier (the seat order first).
+    std::vector<int> order(seats.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        order[i] = static_cast<int>(i);
+    }
+    std::vector<int> best = seatOf;
+    double bestCost = PairLookCost(members, seated, seats, best, pairs, reachDeg);
+    std::vector<int> trial(seated.size());
+    do {
+        std::copy_n(order.begin(), seated.size(), trial.begin());
+        double const cost = PairLookCost(members, seated, seats, trial, pairs, reachDeg);
+        if (cost < bestCost - 1e-9) {
+            bestCost = cost;
+            best = trial;
+        }
+    } while (std::next_permutation(order.begin(), order.end()));
+    return best;
+}
+
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.

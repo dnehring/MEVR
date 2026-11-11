@@ -454,7 +454,9 @@ switching frameworks.
   Shepard's mark facing the owner under a dip from black (`cw::State::cut`, `Fade::Cut`), and **everyone is brought into view**
   (`worldArrange`, `worldArcM` 2.5, `worldViewDeg` 60: the conversation's people and the squad checked with `cw::InView` and the
   shots' line of sight; those out of view seated on an arc around the player centred on the owner, `cw::ArcSeats`, on the floor,
-  facing the group's middle, `worldFaceMiddle`; squadmates outside the conversation beside the player, `cw::SquadSeats`,
+  facing the group's middle, `worldFaceMiddle`, each in the seat that lets the pairs who talk to each other look at each other
+  within `worldGlanceDeg` most easily: every line's speaker and listener from `m_EntryList`/`m_ReplyList`, `cw::CountPairs`,
+  `cw::SeatsForPairs`, log `convo: seats for the pairs`, research/69 "Seats for the pairs"; squadmates outside the conversation beside the player, `cw::SquadSeats`,
   `worldSquadBeside`; research/69 "The composition of groups"). The Citadel arrival had put the player and squad at the spawn
   point. In an opening without a cut, the conversation's people out of view within `worldSeatWalkMaxM` (8 m) walk into their
   seats with the AI instead (`PlanSeatWalks`).
@@ -651,7 +653,8 @@ switching frameworks.
   seams: host and mod deploy together), its move of him withheld through `engine/ConversationHooks`' pre-hook on
   `AActor::MoveWithInterpMoveTrack` (0x4B75F0) or followed (carry); a script's teleport within the same space is not cut:
   the place is where he is wanted (it may be what streams the next area in), he walks there or is carried after
-  `worldMomentPatienceS`. The council sequence ran so on the fake headset; its hearing opened as a walk-in 21 m from the
+  `worldMomentPatienceS`. `moment: a matinee's move track takes Shepard ... : <path>` names the matinee (the track instance's
+  path, inside its `SeqAct_Interp`: which of `conversation-sweep.py moments`' 21 it is). The council sequence ran so on the fake headset; its hearing opened as a walk-in 21 m from the
   podium until the rule above made it a cut (2026-11-10). Logs `convo: ... the player walks`, `the player walked
   N m ... people in the way N`; the summary's `playerWalkedM`, `clearHits`. **A moment on foot** (research/69 "A moment on
   foot", 2026-11-11): a matinee whose director track takes the player camera's view target (`Engine.Camera.ViewTarget.Target`
