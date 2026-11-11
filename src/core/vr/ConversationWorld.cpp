@@ -955,6 +955,10 @@ int AiEnableDeficit(int counter) {
     return counter > 0 ? 0 : 1 - counter;
 }
 
+bool WalkWorthIt(double distanceUnits, double offFacingDeg, double longUnits, double stepOffDeg) {
+    return distanceUnits >= longUnits || std::abs(Wrap180(offFacingDeg)) <= stepOffDeg;
+}
+
 WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double dtS) {
     double const distance = MarkDistance(standing, mark);
     if (distance <= 1e-6) {

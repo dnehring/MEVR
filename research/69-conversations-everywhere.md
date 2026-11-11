@@ -1909,6 +1909,17 @@ the move; the pawns differed in `bHidden`: Wrex (`BioPawn_0` of `STA30_01_DSG`) 
 the plot reset, so the standoff (`WrexHasseledByOfficer`) isn't due and its people are hidden; the game runs no state code for
 them. Not a limit of real play. A hidden person is now never walked or given a seat (`it is hidden`).
 
+**The validation saves, run (2026-11-11 03:16-03:43, `tools/conversation-from-save.ps1 -All`, the plot each save set):** nine of
+ten scenes started (slot 84, Wrex on Virmire, still doesn't). Walks in them: the Spectre ceremony's officials were asked 0.78-
+0.95 m steps, and the AI turned BioPawn_7 179 degrees to walk his step back and turned him round again; Benezia's mark at Noveria
+(2 m) wasn't walked (the AI didn't move her: she stays). New rules from it: **a mark is walked only if it is 1.5 m or more away,
+or a step within 60 degrees of where the person faces** (`cw::WalkWorthIt`, unit-tested; `worldWalkLongM`, `worldWalkStepDeg`):
+a step back or aside keeps its place, logged `(a step N deg off its facing: it keeps its place)`; re-run, BioPawn_7 kept his
+place at all eight asks. **A walk the AI never made puts the gesture mode back** (`back in the conversation's gesture mode`), so a
+person whose walk fails isn't left in its standing pose. The other bodies the session judge flags as pivots in these scenes (the
+ceremony's 79-86 degree turns, Benezia's 140) are the re-face-for-the-player rule ("Who attends to whom"), not walking: the same
+before and after.
+
 ### The composition of groups, first part (2026-11-11 02:40-03:00, fake headset; item 7)
 
 The opening's arrangement (Part B: people out of the player's view seated on an arc in view) seated everyone facing the
@@ -2415,3 +2426,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   component is the weapon actor's, `PlayWeaponSound` is a GUI sound, the shot's owner is [verify]; ISACT's AL source ids sit
   in its own OpenAL layer in the exe (a table of 256 voices, `m_uiSource` at +0xB4), reachable for an EFX band-pass. All three
   builds and the tests pass; the in-game checks are items 6 to 9 of "To check in the game".
+- 2026-11-11 02:40-03:45, **groups composed, Wrex explained, steps kept** ("The composition of groups", "Why C-Sec's people didn't walk", "The validation saves, run"): seats face the group's middle, the squad beside the player, walk-ins to seats; walkers' AI switched on through the game's AbilityEnable (`engine/NameLookup`); C-Sec's Wrex was hidden in the test's plot state; steps back or aside aren't walked; a failed walk restores the gesture mode.

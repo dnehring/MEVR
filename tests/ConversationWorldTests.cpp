@@ -702,6 +702,12 @@ void TestWalkStep() {
     CHECK(cw::AiEnableDeficit(3) == 0);
     CHECK(cw::AiEnableDeficit(0) == 1);
     CHECK(cw::AiEnableDeficit(-2) == 3);  // switched off three times: 1 after the walk's rise, -2 again after it
+    // A mark worth walking: far (1.5 m), or a step ahead (within 60 degrees); a step back or aside keeps its place.
+    CHECK(cw::WalkWorthIt(200.0, 180.0, 150.0, 60.0));
+    CHECK(cw::WalkWorthIt(90.0, 30.0, 150.0, 60.0));
+    CHECK(!cw::WalkWorthIt(95.0, 179.0, 150.0, 60.0));   // the ceremony's step back
+    CHECK(!cw::WalkWorthIt(80.0, -90.0, 150.0, 60.0));   // a step aside
+    CHECK(cw::WalkWorthIt(80.0, 350.0, 150.0, 60.0));    // -10 degrees, wrapped
 }
 
 void TestLatest() {

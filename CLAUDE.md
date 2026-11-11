@@ -463,8 +463,9 @@ switching frameworks.
   as much after, `cw::AiEnableDeficit`), the conversation's ban on AI movement (`DoesGameModeAllowMovement` answered true),
   its paused speed (`BioPawn.SetDesiredSpeed(1)`), and **the gesture mode** (`BioPawn.m_bInGestures` cleared: while set the
   animation tree's `Actions` node plays `Gestures` over `Posture`, where locomotion lives; the scene's next gesture sets it
-  again). Arrives within 0.25 m on the floor, then turns to the stage's facing; an AI that doesn't move it 8 units in 2 s
-  leaves it where it stands; a hidden person (C-Sec's Wrex where the plot hasn't reached his scene) is never walked. `worldWalkLog = 1`: the walker's gait (ankles), properties, controller state and
+  again). Only marks 1.5 m or more away, or steps within 60 degrees of the person's facing, are walked (`cw::WalkWorthIt`: a step
+  back or aside keeps its place). Arrives within 0.25 m on the floor, then turns to the stage's facing; an AI that doesn't move it 8 units in 2 s
+  leaves it where it stands (its gesture mode put back); a hidden person (C-Sec's Wrex where the plot hasn't reached his scene) is never walked. `worldWalkLog = 1`: the walker's gait (ankles), properties, controller state and
   animation tree to `%LOCALAPPDATA%\MEVR\walk-probe`. Seen on the fake headset (Anderson mid-stride in the medical bay).
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
   Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):

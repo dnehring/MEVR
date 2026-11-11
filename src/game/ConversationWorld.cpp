@@ -271,6 +271,8 @@ struct Settings {
     double squadSideM = 1.0;           // ... that far to each side (worldSquadSideM)
     double squadBackM = 0.3;           // ... and that far behind the player's place (worldSquadBackM)
     double seatWalkMaxM = 8.0;         // an opening without a cut: people out of view within this walk into seats (worldSeatWalkMaxM)
+    double walkLongM = 1.5;            // a mark at least this far is walked whatever its direction (worldWalkLongM)
+    double walkStepDeg = 60.0;         // ... a nearer one only within this of the person's facing (worldWalkStepDeg)
     float arcM = 2.5f;                 // the seats' distance from the player (worldArcM)
     float viewDeg = 60.0f;             // half the view's angle a person must be within (worldViewDeg)
     bool move = true;                  // the left stick walks Shepard during the conversation while the wheel is down (worldMove)
@@ -411,6 +413,8 @@ void RefreshSettings() {
     s.squadSideM = number("worldSquadSideM", 1.0f, 0.5f, 3.0f);
     s.squadBackM = number("worldSquadBackM", 0.3f, -1.0f, 2.0f);
     s.seatWalkMaxM = number("worldSeatWalkMaxM", 8.0f, 0.0f, 30.0f);
+    s.walkLongM = number("worldWalkLongM", 1.5f, 0.0f, 10.0f);
+    s.walkStepDeg = number("worldWalkStepDeg", 60.0f, 0.0f, 180.0f);
     s.arcM = number("worldArcM", s.arcM, 1.2f, 6.0f);
     s.viewDeg = number("worldViewDeg", s.viewDeg, 20.0f, 90.0f);
     s.move = number("worldMove", 1.0f, 0.0f, 1.0f) != 0.0f;
@@ -966,10 +970,17 @@ bool KeepAtSource(void const* conversation, void const* actor, float const* loca
             if (away > 30.0 && !same) {
                 ++st.marksAsked;
                 bool const refused = st.aiRefused && std::hypot(location[0] - st.aiRefused->x, location[1] - st.aiRefused->y) < 30.0;
+                // A step back or aside isn't walked (a turn to walk it and back: a pivot); far marks and steps ahead are.
+                double const toMark = std::atan2(location[1] - st.place.y, location[0] - st.place.x) * kRadToDeg;
+                bool const step = gSettings.walk == 1 &&
+                    !cw::WalkWorthIt(away, toMark - st.shownYaw, gSettings.walkLongM * kUnitsPerMeter, gSettings.walkStepDeg);
                 log::Info("convo: at {:.1f} s the stage asks {} onto a mark {:.2f} m away ({} ask{} for it so far; {} speaking): withheld{}",
                     Seconds(), st.name, away / kUnitsPerMeter, st.marksAsked, st.marksAsked == 1 ? "" : "s", ShortName(gC.speaker),
-                    gSettings.walk == 0 ? "" : refused ? " (the game's AI couldn't walk it there before)" : ", a mark to walk to");
-                if (gSettings.walk != 0 && !refused) {
+                    gSettings.walk == 0 ? std::string()
+                    : refused          ? std::string(" (the game's AI couldn't walk it there before)")
+                    : step ? std::format(" (a step {:.0f} deg off its facing: it keeps its place)", std::abs(std::remainder(toMark - st.shownYaw, 360.0)))
+                           : std::string(", a mark to walk to"));
+                if (gSettings.walk != 0 && !refused && !step) {
                     st.seatYaw.reset();  // the stage's own mark: its facing, not a seat's
                     st.walk.Jump(WalkPoint(mark), WalkPoint(st.place), static_cast<double>(GetTickCount64()) / 1000.0,
                         gSettings.walkMinM * kUnitsPerMeter);
@@ -1572,6 +1583,10 @@ bool WalkToMark(Stay& st, ik::Vec3 previousKept, double nowS, double dt, double&
                 // got to, as a glide with planted feet would look worse.
                 ++gAiStalled;
                 st.aiRefused = mark;
+                if (st.gesturesLeft > 0 && ue3::runtime::IsAlive(st.actor)) {
+                    gInGestures.WriteBool(st.actor, true);  // it never walked: its gestures back (journalled by FieldRef)
+                    log::Info("convo: walk: {} back in the conversation's gesture mode (it didn't walk)", st.name);
+                }
                 EndWalk(st, "end", std::format("the game's AI didn't move it 8 units in {:.1f} s; it stays here", nowS - st.progressS).c_str());
                 return false;
             }

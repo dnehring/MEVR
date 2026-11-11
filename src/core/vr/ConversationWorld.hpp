@@ -141,6 +141,10 @@ WalkStep StepTowardMark(Vec3 standing, Vec3 mark, double speedUnitsPerS, double 
 // (BioEpicPawnBehavior's m_nALLEnabled, m_nStackEnabled: each switch-off counts down, each switch-on up, so -1 means switched
 // off twice). How much a counter must rise for the walk: 0 when it is already on; lowered by as much after the walk.
 int AiEnableDeficit(int counter);
+// Whether a mark is worth a walk by the AI (2026-11-11, the validation saves: the Spectre ceremony's 0.8-0.95 m asks turned
+// people up to 179 degrees to walk a step and turned them back, a pivot the owner doesn't want): a long way (at least
+// `longUnits`), or a step no more than `stepOffDeg` off where the person faces. Else it keeps its place, as before walking.
+bool WalkWorthIt(double distanceUnits, double offFacingDeg, double longUnits, double stepOffDeg);
 // Distance outside the segment a walk could have covered since the last observation; tolerates collision stopping short.
 double BeyondWalk(Vec3 standing, Vec3 actual, Vec3 mark, double speedUnitsPerS, double elapsedS);
 
