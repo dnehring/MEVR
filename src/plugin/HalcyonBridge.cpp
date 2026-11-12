@@ -849,6 +849,14 @@ void RecordClearDepthStencilView(ID3D11DeviceContext* context, ID3D11DepthStenci
     mevr::host::draw_replay::NoteClearDepthStencilView(context, view, flags, depth, stencil);
 }
 
+void NotePixelShaderCreated(ID3D11PixelShader* shader, const void* bytecode, SIZE_T length) noexcept {
+    __try {
+        mevr::host::draw_replay::NotePixelShader(shader, bytecode, static_cast<std::size_t>(length));
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        // The game's bytecode is read bounds-checked; a fault here must never fail the game's shader creation.
+    }
+}
+
 } // namespace MELEVR::MevrBridge
 
 // ---- The constant eye (research/38 B) ----------------------------------------------------------------------------

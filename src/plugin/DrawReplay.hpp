@@ -50,6 +50,16 @@ struct ViewLayout {
 void SetViewLayout(ViewLayout const& layout);
 // Whether the substitution carries the inverse matrix pair as well (default on; [Performance] replayInverse).
 void SetInversePair(bool on);
+
+// research/37, "The right eye's shadows" (2026-11-11): passes that rebuild a position from the depth buffer take one
+// CPU-built matrix (ScreenToShadowMatrix, ScreenToWorld) made from the first eye's view, which no substitution key
+// matches, so the second eye's character shadows slid with the head. Every pixel shader the game creates is read for
+// those constants (its bytecode's reflection; Halcyon's CreatePixelShader hook, a [MEVR] seam), and before a replayed
+// draw with such a shader its constant buffer is rewritten with the second eye's version (core/vr/ScreenMatrix), the
+// first eye's bytes put back at the replay's end. Any thread; cheap for shaders without them.
+void NotePixelShader(void* shader, void const* bytecode, std::size_t size);
+// [Performance] replayScreenMatrices (default on).
+void SetScreenMatrices(bool on);
 // The draws stream `stream` (0 or 1) recorded this frame so far.
 unsigned RecordedDraws(int stream);
 
@@ -140,6 +150,10 @@ struct Stats {
     std::uint64_t tailDiscardFrames = 0, tailDiscards = 0, mapsSkipped = 0;   // large dynamic buffers: discards inside the tail, maps not copied
     std::uint64_t shadowCopies = 0;   // of those discards, the ones shadowed (a GPU copy each)
     std::uint64_t eyeScissorRects = 0, eyeScissorReissued = 0, eyeScissorExempt = 0, eyeScissorUnchanged = 0;   // the shown-columns scissor
+    // The second eye's screen-space matrices: pixel shaders known to take one (shadow, world), draws whose constants
+    // were rewritten, draws where the buffer's upload wasn't in the tail (left as the first eye's).
+    std::uint64_t screenShaders = 0, screenShadowShaders = 0, screenWorldShaders = 0, screenPatched = 0, screenMissed = 0;
+    std::string screenModel;     // the self-check: whether the first eye's ScreenToWorld matches the assumed form
     std::uint64_t held = 0;      // references the recording took this period (first sightings: AddRef)
     std::uint64_t heldSet = 0;   // the held set's size (released when unseen for 60 frames)
     std::string lastBlocker;

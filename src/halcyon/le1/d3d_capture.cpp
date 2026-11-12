@@ -6165,6 +6165,7 @@ HRESULT STDMETHODCALLTYPE CreatePixelShaderHook(ID3D11Device* device, const void
     {
         const SIZE_T hashBytes = (std::min)(bytecodeLength, static_cast<SIZE_T>(0xffffffffu));
         RecordPsHash(*pixelShader, HashBytes(shaderBytecode, static_cast<UINT>(hashBytes)));
+        MELEVR::MevrBridge::NotePixelShaderCreated(*pixelShader, shaderBytecode, bytecodeLength);  // [MEVR] research/37
     }
     return hr;
 }

@@ -743,6 +743,10 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/CalibrationDraw.hpp
     src/plugin/DrawReplay.cpp
     src/plugin/DrawReplay.hpp
+    src/core/d3d11/ShaderReflect.cpp
+    src/core/d3d11/ShaderReflect.hpp
+    src/core/vr/ScreenMatrix.cpp
+    src/core/vr/ScreenMatrix.hpp
     src/core/CallQueue.hpp
     src/plugin/GamePointer.cpp
     src/plugin/GamePointer.hpp
@@ -1013,6 +1017,9 @@ if (MEVR_BUILD_TESTS)
         tests/CalibrationWeaponTests.cpp
         tests/CameraDiagnosticTests.cpp
         tests/LandmarkTests.cpp
+        tests/ScreenMatrixTests.cpp
+        src/core/d3d11/ShaderReflect.cpp
+        src/core/vr/ScreenMatrix.cpp
         tests/ConversationWorldTests.cpp
         tests/SoundPlaceTests.cpp
         tests/GuiEventsTests.cpp
@@ -1133,7 +1140,7 @@ if (MEVR_BUILD_TESTS)
         src/game/HeadSim.cpp
     )
     target_include_directories(mevr-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(mevr-tests PRIVATE mevr-install mevr-minhook OpenXR::headers windowscodecs ole32)
+    target_link_libraries(mevr-tests PRIVATE mevr-install mevr-minhook OpenXR::headers windowscodecs ole32 d3dcompiler)
     target_compile_definitions(mevr-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     # core/gfx's TrueType fonts are checked by loading them with FreeType (the menu's font engine), when it's built.
@@ -1143,6 +1150,7 @@ if (MEVR_BUILD_TESTS)
     endif ()
     add_test(NAME mevr-tests COMMAND mevr-tests)
     add_executable(mevr-draw-replay-tests tests/DrawReplayGpuTests.cpp src/plugin/DrawReplay.cpp
+        src/core/d3d11/ShaderReflect.cpp src/core/vr/ScreenMatrix.cpp
         src/core/Hook.cpp src/core/Ini.cpp src/core/Log.cpp)
     target_include_directories(mevr-draw-replay-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(mevr-draw-replay-tests PRIVATE mevr-minhook d3d11 d3dcompiler)

@@ -1597,7 +1597,13 @@ Use it to check VR changes yourself instead of asking the user what they see
   is draw-bound; research/37's 2026-10-26 section, with the vtable re-entrancy lesson); while no record of
   pass 1's view matches the rendered one for 3 frames (the intro's cine camera after a level load: a view edited after
   pass 0 recorded it) the host clears `g_oneDrawStereo` and Halcyon's second Draw resumes until 30 frames match again
-  (log `one Draw: ... Halcyon's second Draw resumes`, the levers line's `its health:`); **the engine's 4 MB dynamic
+  (log `one Draw: ... Halcyon's second Draw resumes`, the levers line's `its health:`); **the second eye's screen-space
+  matrices** (research/37 "the right eye's shadows slide with the head", 2026-11-11; `replayScreenMatrices`, default 1):
+  `ScreenToShadowMatrix` and `ScreenToWorld` are CPU-built from the first eye's view (`S x Inv(TVP) x R`), so every pixel
+  shader the game creates is read for them (its RDEF, `core/d3d11/ShaderReflect`; `[MEVR]` seam in Halcyon's
+  CreatePixelShader hook, `MevrBridge::NotePixelShaderCreated`) and the replay rewrites them before such a draw with
+  `C x M1` (`core/vr/ScreenMatrix`, unit-tested, and a WARP replay test), the first eye's bytes put back after; the levers
+  line's `screen-space matrices:` counts and its ScreenToWorld self-check; **the engine's 4 MB dynamic
   vertex and index rings wrap (a DISCARD map) inside the recorded tail** on 4-5% of quiet frames and far more in combat,
   and the draws before the wrap would read the post-wrap contents in the replay (the strobing right eye of the first
   headset session: the fog quad drawn from garbage): the recorder copies such a buffer on the GPU into a shadow just

@@ -660,3 +660,33 @@ and the arms stayed, walking around too. So `oneDrawWindow = 0` is the default n
 drops whole meshes is open (its depth and its queries, the eye's own matrix put into Umbra's queries by umbraEyeMatrix
 against a depth drawn on the symmetric window?): [verify] with the levers line before changing it back.
 
+
+## 2026-11-11, the owner's QA: the right eye's shadows slide with the head
+
+In the Citadel (Quest 3 over Virtual Desktop, `sharePass = 5`) the owner saw character shadows drawn well in the left eye
+and moving with the head in the right; their stick-tap snapshot at 22:39 shows it: a person's shadow on the walkway in
+the left eye's world image, a long curved streak in the right eye's. These are character shadows (`LightEnvironmentShadows`,
+on in the shipped settings), not `DynamicShadows` (False in BIOEngine.ini at the time). Item 1 of the review above: UE3
+builds every pass that rebuilds a position from the depth buffer as one CPU-side matrix, `ScreenToShadowMatrix` for the
+shadow projections, `ScreenToWorld` for the fog and modulated shadows, as `S x Inv(TVP) x R` (S the screen-to-clip rows
+(1,0,0,0) (0,1,0,0) (0,0,P22,1) (0,0,P32,0)); no substitution key matches that product, so the second eye rebuilt its
+pixels through the first eye's view.
+
+**The fix** (`core/vr/ScreenMatrix`, `core/d3d11/ShaderReflect`, `plugin/DrawReplay`; `[Performance] replayScreenMatrices`,
+default 1): the game's shaders keep their reflection (GlobalShaderCache-PC-D3D-SM5.bin: 350 shaders with RDEF, 56 with
+`ScreenToShadowMatrix`, 96 mentions of `ScreenToWorld`), so every pixel shader the game creates is read for those two
+4x4 constants (a `[MEVR]` seam in Halcyon's CreatePixelShader hook, `MevrBridge::NotePixelShaderCreated`); during the
+replay the pixel stage's shader and constant buffers are followed, and before a draw with such a shader its constant
+buffer's last upload gets `C x M1` and goes to the GPU again, with
+`C = S2 x Inv(T(pvt2 - pvt1) x TVP2) x TVP1 x Inv(S1)` (the second eye's input to its clip space, back to the first eye's
+translated space, to the first eye's clip and input), which holds for any R; the first eye's bytes are put back at the
+replay's end as for the substitution (176e0b7). S comes from the view-projection itself (its z column is P22 times its w
+column, plus P32 in the last row). Offline: a synthetic pair of eyes puts the second eye's shadow coordinate within
+1.2e-5 (0.84 off with the first eye's matrix); a WARP test records and replays a draw through both upload routes and
+reads the pixel back. The levers line now reports the shaders found, the draws corrected per replay, the draws left
+as the first eye's (an upload before the tail), and a self-check that the first eye's `ScreenToWorld` has the assumed
+form ("S x Inv(TVP) (translated world), off by ..."). Not covered: `ScreenToView` (the ambient occlusion's, the eye's
+own projection; each eye's projections differ only by their off-centre terms) and constants of VS-side passes.
+[verify] in the game: the self-check line, the counts, snapshots of both eyes at the Citadel's walkway, then the cost of
+character shadows with the right eye correct (keep them, or a native guard to turn them off: the owner's call by the
+measurement).

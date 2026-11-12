@@ -4,6 +4,8 @@
 #include "core/Hook.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/d3d11/ShaderReflect.hpp"
+#include "core/vr/ScreenMatrix.hpp"
 
 #include <d3d11.h>
 #include <Windows.h>
@@ -22,8 +24,12 @@
 #include <intrin.h>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -1519,6 +1525,80 @@ void Transpose(float const* m, float* out) {
         }
     }
 }
+// ---- The second eye's screen-space matrices (research/37, "The right eye's shadows", 2026-11-11) -------------------
+// The pixel shaders that take ScreenToShadowMatrix or ScreenToWorld (a 4x4 each, CPU-built from the first eye's view:
+// core/vr/ScreenMatrix), by shader object, sorted; replaced whole (copy on write) when a shader is created.
+namespace screen_matrix = mevr::vr::screen_matrix;
+struct ScreenVar {
+    std::uint32_t slot = 0, offset = 0;
+    bool rows = true;    // stored as the engine's rows (else transposed)
+    bool world = false;  // ScreenToWorld (the self-check's subject), else ScreenToShadowMatrix
+};
+struct ScreenShader {
+    void* shader = nullptr;
+    std::uint8_t count = 0;
+    ScreenVar vars[4];
+};
+using ScreenShaders = std::vector<ScreenShader>;
+std::mutex gScreenShadersMutex;
+std::shared_ptr<ScreenShaders const> gScreenShaders = std::make_shared<ScreenShaders const>();
+std::atomic<std::uint64_t> gScreenShaderCount{0}, gScreenShadowShaders{0}, gScreenWorldShaders{0};
+std::atomic<std::uint64_t> gScreenPatched{0}, gScreenMissed{0};
+std::atomic<bool> gScreenMatricesOn{true};
+// This replay's C (render thread; built with the substitution), and the self-check's two candidate forms of the first
+// eye's ScreenToWorld: S1 x Inv(TVP1) (translated world) and S1 x Inv(TVP1) x T(-pvt1) (world).
+std::optional<screen_matrix::Mat4> gScreenFix;
+std::optional<screen_matrix::Mat4> gScreenModelTranslated, gScreenModelWorld;
+std::string gScreenModelVerdict;   // set once, under gScreenShadersMutex
+bool gScreenModelChecked = false;
+
+bool WantScreenMatrix(std::string_view name) {
+    return name == "ScreenToShadowMatrix" || name == "ScreenToWorld";
+}
+
+std::shared_ptr<ScreenShaders const> ScreenShadersNow() {
+    std::lock_guard<std::mutex> const lock(gScreenShadersMutex);
+    return gScreenShaders;
+}
+
+ScreenShader const* FindScreenShader(ScreenShaders const& all, void* shader) {
+    auto const it = std::lower_bound(all.begin(), all.end(), shader,
+        [](ScreenShader const& s, void* p) { return s.shader < p; });
+    return it != all.end() && it->shader == shader ? &*it : nullptr;
+}
+
+// The correction and the self-check's forms for this replay's views (both as uploaded, rows).
+void BuildScreenFix(float const* tvp1, float const* tvp2, float const* pvt1, float const* pvt2) {
+    screen_matrix::Mat4 a{}, b{};
+    std::memcpy(a.data(), tvp1, 64);
+    std::memcpy(b.data(), tvp2, 64);
+    gScreenFix = screen_matrix::SecondEyeCorrection(a, b, pvt1, pvt2);
+    auto const s1 = screen_matrix::ScreenToClip(a);
+    auto const inv1 = screen_matrix::Inverse(a);
+    if (s1 && inv1) {
+        gScreenModelTranslated = screen_matrix::Multiply(*s1, *inv1);
+        screen_matrix::Mat4 back{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -pvt1[0], -pvt1[1], -pvt1[2], 1};
+        gScreenModelWorld = screen_matrix::Multiply(*gScreenModelTranslated, back);
+    } else {
+        gScreenModelTranslated.reset();
+        gScreenModelWorld.reset();
+    }
+}
+
+// The largest difference relative to the matrix's own size, `m` as uploaded (rows or transposed).
+float ScreenModelDiff(screen_matrix::Mat4 const& model, float const* m, bool rows) {
+    float scale = 1e-6f, diff = 0.0f;
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            float const want = model[r * 4 + c];
+            float const got = rows ? m[r * 4 + c] : m[c * 4 + r];
+            scale = std::fmax(scale, std::fabs(want));
+            diff = std::fmax(diff, std::fabs(want - got));
+        }
+    }
+    return diff / scale;
+}
+
 bool NearIdentity(float const* a, float const* b) {  // a x b ~ I
     for (int r = 0; r < 4; ++r) {
         for (int c = 0; c < 4; ++c) {
@@ -1629,6 +1709,9 @@ struct Substitution {
         if (t[0] == 0.0f && t[1] == 0.0f && t[2] == 0.0f && std::memcmp(tvp1, tvp2, 64) == 0) {
             return;  // the same view: nothing to move
         }
+        if (!gScreenFix) {
+            BuildScreenFix(tvp1, tvp2, pvt1, pvt2);   // the first view's (one a frame in practice)
+        }
         float sub[16], tvp1T[16], subT[16];
         TranslateRows(tvp2, t, sub);
         AddMatrix(tvp1, sub, "translated view-projection");
@@ -1678,6 +1761,7 @@ struct Substitution {
     void Build(ViewFields const& first, ViewFields const& second) {
         entries.clear();
         matrices.clear();
+        gScreenFix.reset();
         if (first.bytes.size() != second.bytes.size() || first.perView == 0) {
             return;
         }
@@ -1951,6 +2035,180 @@ void RestoreConstants(ID3D11DeviceContext* c) {
                   "the engine re-uploads only what it changed itself)", t_constantRestore.size());
     }
     t_constantRestore.clear();
+}
+
+// The replay's view of the pixel stage for the screen-space matrices (render thread): its shader, its constant buffers,
+// and each constant buffer's last upload in this replay (pointing into the recording, replayed once, changed in place).
+struct ScreenUpload {
+    std::uint8_t* data = nullptr;
+    std::uint32_t size = 0, subresource = 0;
+    bool map = false, patched = false;
+    UpdateArgs const* update = nullptr;   // the UpdateSubresource's arguments (box, pitches), else a map
+};
+constexpr unsigned kPsBuffers = D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT;
+struct ScreenTrack {
+    bool on = false;
+    std::shared_ptr<ScreenShaders const> shaders;
+    void* ps = nullptr;
+    void* cb[kPsBuffers] = {};
+    std::unordered_map<void*, ScreenUpload> uploads;
+};
+thread_local ScreenTrack t_screen;
+
+// Before the tail: on only with a correction for these views and shaders to apply it to; the stage as it stands.
+void ScreenBegin(ID3D11DeviceContext* c) {
+    t_screen.uploads.clear();
+    t_screen.ps = nullptr;
+    std::fill(std::begin(t_screen.cb), std::end(t_screen.cb), nullptr);
+    t_screen.shaders = ScreenShadersNow();
+    t_screen.on = gScreenMatricesOn.load(std::memory_order_relaxed) && gScreenFix.has_value() && !t_screen.shaders->empty();
+    if (!t_screen.on) {
+        return;
+    }
+    ID3D11PixelShader* ps = nullptr;
+    c->PSGetShader(&ps, nullptr, nullptr);
+    t_screen.ps = ps;
+    if (ps != nullptr) {
+        ps->Release();   // only compared, never used
+    }
+    ID3D11Buffer* buffers[kPsBuffers] = {};
+    c->PSGetConstantBuffers(0, kPsBuffers, buffers);
+    for (unsigned i = 0; i < kPsBuffers; ++i) {
+        t_screen.cb[i] = buffers[i];
+        if (buffers[i] != nullptr) {
+            buffers[i]->Release();
+        }
+    }
+}
+
+// Every entry before it is issued: the pixel stage's shader and constant buffers.
+void ScreenNoteState(Header const& h, std::uint8_t const* body) {
+    if (h.stage != 1) {   // PS
+        return;
+    }
+    auto const* const p = reinterpret_cast<Pointers const*>(body);
+    if (h.op == Op::SetShader) {
+        t_screen.ps = p->ptrs[0];
+    } else if (h.op == Op::SetConstantBuffers) {
+        for (unsigned i = 0; i < h.n && p->start + i < kPsBuffers; ++i) {
+            t_screen.cb[p->start + i] = p->ptrs[i];
+        }
+    }
+}
+
+// After an upload is issued: the buffer's newest bytes in this replay.
+void ScreenNoteUpload(Header const& h, std::uint8_t const* body) {
+    if (h.op == Op::Unmap) {
+        auto const* const a = reinterpret_cast<UnmapArgs const*>(body);
+        if (a->kind != 1 || a->dataSize == 0) {
+            return;
+        }
+        ScreenUpload& u = t_screen.uploads[a->resource];
+        u = ScreenUpload{const_cast<std::uint8_t*>(reinterpret_cast<std::uint8_t const*>(a + 1)), a->dataSize, a->subresource, true,
+                         false, nullptr};
+    } else if (h.op == Op::UpdateSubresource) {
+        auto const* const a = reinterpret_cast<UpdateArgs const*>(body);
+        if (a->kind != 1 || a->dataSize == 0) {
+            return;
+        }
+        ScreenUpload& u = t_screen.uploads[a->resource];
+        u = ScreenUpload{const_cast<std::uint8_t*>(reinterpret_cast<std::uint8_t const*>(a + 1)), a->dataSize, a->subresource, false,
+                         false, a};
+    }
+}
+
+// The self-check, once a session: which form the first eye's ScreenToWorld has. Logged; the correction holds for any
+// composite S1 x Inv(TVP1) x R, so a mismatch says the assumed S is wrong (and so the correction).
+void ScreenCheckModel(float const* m, bool rows) {
+    if (gScreenModelChecked || !gScreenModelTranslated || !gScreenModelWorld) {
+        return;
+    }
+    gScreenModelChecked = true;
+    float const translated = ScreenModelDiff(*gScreenModelTranslated, m, rows);
+    float const world = ScreenModelDiff(*gScreenModelWorld, m, rows);
+    std::string verdict = translated < 1e-3f ? std::format("S x Inv(TVP) (translated world), off by {:.1e}", translated)
+                        : world < 1e-3f      ? std::format("S x Inv(TVP) x T(-pvt) (world), off by {:.1e}", world)
+                                             : std::format("NEITHER assumed form (off by {:.2e} and {:.2e}): the correction may be wrong", translated, world);
+    log::Info("draw replay: the first eye's ScreenToWorld ({}) is {}", rows ? "rows" : "transposed", verdict);
+    std::lock_guard<std::mutex> const lock(gScreenShadersMutex);
+    gScreenModelVerdict = std::move(verdict);
+}
+
+// Before a replayed draw whose pixel shader takes a screen-space matrix: its constant buffer's last upload gets the
+// second eye's matrices (once per upload) and goes to the GPU again; the first eye's bytes are put back at the end.
+void ScreenBeforeDraw(ID3D11DeviceContext* c) {
+    if (!t_screen.on || t_screen.ps == nullptr) {
+        return;
+    }
+    ScreenShader const* const s = FindScreenShader(*t_screen.shaders, t_screen.ps);
+    if (s == nullptr) {
+        return;
+    }
+    for (std::uint8_t i = 0; i < s->count; ++i) {
+        std::uint32_t const slot = s->vars[i].slot;
+        bool seenSlot = false;
+        for (std::uint8_t j = 0; j < i; ++j) {
+            seenSlot = seenSlot || s->vars[j].slot == slot;
+        }
+        if (seenSlot) {
+            continue;   // a buffer with several of them: patched together below
+        }
+        void* const buffer = slot < kPsBuffers ? t_screen.cb[slot] : nullptr;
+        auto const found = buffer != nullptr ? t_screen.uploads.find(buffer) : t_screen.uploads.end();
+        if (found == t_screen.uploads.end()) {
+            gScreenMissed.fetch_add(1, std::memory_order_relaxed);   // uploaded before the tail: the first eye's stands
+            continue;
+        }
+        ScreenUpload& u = found->second;
+        if (u.patched) {
+            continue;
+        }
+        std::vector<std::uint8_t> const original(u.data, u.data + u.size);
+        bool any = false;
+        for (std::uint8_t k = i; k < s->count; ++k) {
+            ScreenVar const& v = s->vars[k];
+            if (v.slot != slot || v.offset + 64 > u.size) {
+                continue;
+            }
+            float m[16];
+            std::memcpy(m, u.data + v.offset, 64);
+            if (v.world) {
+                ScreenCheckModel(m, v.rows);
+            }
+            screen_matrix::Apply(*gScreenFix, m, v.rows);
+            std::memcpy(u.data + v.offset, m, 64);
+            any = true;
+        }
+        u.patched = true;
+        if (!any) {
+            continue;
+        }
+        auto* const resource = static_cast<ID3D11Resource*>(buffer);
+        // The first eye's bytes for the replay's end, unless the substitution already noted them (its entry holds them).
+        bool const noted = std::any_of(t_constantRestore.begin(), t_constantRestore.end(),
+            [&](ConstantRestore const& r) { return r.resource == resource && r.subresource == u.subresource; });
+        if (!noted) {
+            NoteConstantUpload(resource, u.subresource, u.map, u.update != nullptr && u.update->hasBox != 0,
+                u.update != nullptr ? &u.update->box : nullptr, u.update != nullptr ? u.update->rowPitch : 0,
+                u.update != nullptr ? u.update->depthPitch : 0, original.data(), original.size(), true);
+        }
+        if (u.map) {
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            HRESULT const hr = Live<HRESULT(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_MAP, UINT,
+                D3D11_MAPPED_SUBRESOURCE*)>(kMap)(c, resource, u.subresource, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+            if (FAILED(hr) || mapped.pData == nullptr) {
+                gScreenMissed.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            std::memcpy(mapped.pData, u.data, u.size);
+            Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT)>(kUnmap)(c, resource, u.subresource);
+        } else {
+            Live<void(STDMETHODCALLTYPE*)(ID3D11DeviceContext*, ID3D11Resource*, UINT, D3D11_BOX const*, void const*, UINT, UINT)>(
+                kUpdateSubresource)(c, resource, u.subresource, u.update->hasBox != 0 ? &u.update->box : nullptr, u.data,
+                u.update->rowPitch, u.update->depthPitch);
+        }
+        gScreenPatched.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 bool Issue(ID3D11DeviceContext* c, Header const& h, std::uint8_t const* body, bool& skipped) {
@@ -2664,6 +2922,7 @@ int Replay(ViewFields const& first, ViewFields const& second, bool rightHalf) {
     unsigned entryIndex = s.tailEntries;
     Cursor cursor = TailOf(s);
     std::uint64_t issued = 0;
+    ScreenBegin(gContext);
     while (cursor.Next()) {
         while (nextSwitch < s.shadows.size() && s.shadows[nextSwitch].atEntry <= entryIndex) {
             void* const resource = s.shadows[nextSwitch++].resource;
@@ -2676,18 +2935,32 @@ int Replay(ViewFields const& first, ViewFields const& second, bool rightHalf) {
             }
         }
         bool skipped = false;
+        if (t_screen.on) {
+            ScreenNoteState(*cursor.header, cursor.body);
+            Op const op = cursor.header->op;
+            if (op == Op::DrawIndexed || op == Op::Draw || op == Op::DrawIndexedInstanced || op == Op::DrawInstanced) {
+                ScreenBeforeDraw(gContext);
+            }
+        }
         if (!Issue(gContext, *cursor.header, cursor.body, skipped)) {
             gFailures.fetch_add(1, std::memory_order_relaxed);
             log::Warn("draw replay: entry {} ({}) couldn't be re-issued; the replay is off for the session",
                 issued, kOpNames[static_cast<unsigned>(cursor.header->op)]);
             t_rightHalf = false;
             t_shadowSub.clear();
+            t_screen.on = false;
+            t_screen.uploads.clear();
             RestoreConstants(gContext);
             return 3;
+        }
+        if (t_screen.on) {
+            ScreenNoteUpload(*cursor.header, cursor.body);
         }
         ++issued;
         ++entryIndex;
     }
+    t_screen.on = false;
+    t_screen.uploads.clear();
     t_shadowSub.clear();
     t_rightHalf = false;
     RestoreConstants(gContext);
@@ -2968,6 +3241,59 @@ void SetInversePair(bool on) {
     gInversePair.store(on, std::memory_order_relaxed);
 }
 
+void SetScreenMatrices(bool on) {
+    gScreenMatricesOn.store(on, std::memory_order_relaxed);
+}
+
+void NotePixelShader(void* shader, void const* bytecode, std::size_t size) {
+    if (shader == nullptr) {
+        return;
+    }
+    ScreenShader found{};
+    found.shader = shader;
+    bool shadow = false, world = false;
+    for (mevr::d3d11::reflect::Variable const& v : mevr::d3d11::reflect::Variables(bytecode, size, &WantScreenMatrix)) {
+        if (found.count == std::size(found.vars) || v.size < 64 || v.rows != 4 || v.columns != 4 ||
+            (v.varClass != 2 && v.varClass != 3)) {
+            continue;
+        }
+        ScreenVar& out = found.vars[found.count++];
+        out.slot = v.slot;
+        out.offset = v.offset;
+        out.rows = v.varClass == 2;
+        out.world = v.name == "ScreenToWorld";
+        shadow = shadow || !out.world;
+        world = world || out.world;
+    }
+    std::lock_guard<std::mutex> const lock(gScreenShadersMutex);
+    ScreenShaders const& now = *gScreenShaders;
+    bool const listed = FindScreenShader(now, shader) != nullptr;
+    if (!listed && found.count == 0) {
+        return;   // most shaders: nothing to do (an address freed and reused for a plain shader isn't listed)
+    }
+    auto next = std::make_shared<ScreenShaders>();
+    next->reserve(now.size() + 1);
+    for (ScreenShader const& s : now) {
+        if (s.shader != shader) {
+            next->push_back(s);
+        }
+    }
+    if (found.count != 0) {
+        next->insert(std::lower_bound(next->begin(), next->end(), shader,
+                         [](ScreenShader const& s, void* p) { return s.shader < p; }),
+                     found);
+        std::uint64_t const n = gScreenShaderCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        gScreenShadowShaders.fetch_add(shadow ? 1 : 0, std::memory_order_relaxed);
+        gScreenWorldShaders.fetch_add(world ? 1 : 0, std::memory_order_relaxed);
+        if (n <= 2) {
+            log::Info("draw replay: pixel shader {} takes {} (b{} +{}, {}): the second eye's copy is corrected in the replay",
+                shader, found.vars[0].world ? "ScreenToWorld" : "ScreenToShadowMatrix", found.vars[0].slot, found.vars[0].offset,
+                found.vars[0].rows ? "rows" : "transposed");
+        }
+    }
+    gScreenShaders = std::move(next);
+}
+
 void SetViewLayout(ViewLayout const& layout) {
     gLayout = layout;
     gInverseChecked = 0;
@@ -3029,6 +3355,15 @@ Stats TakeStats() {
     s.eyeScissorUnchanged = gEyeScissorUnchanged.exchange(0, std::memory_order_relaxed);
     s.held = gHeldTotal.exchange(0, std::memory_order_relaxed);
     s.heldSet = gHeldSetSize.load(std::memory_order_relaxed);
+    s.screenShaders = gScreenShaderCount.load(std::memory_order_relaxed);
+    s.screenShadowShaders = gScreenShadowShaders.load(std::memory_order_relaxed);
+    s.screenWorldShaders = gScreenWorldShaders.load(std::memory_order_relaxed);
+    s.screenPatched = gScreenPatched.exchange(0, std::memory_order_relaxed);
+    s.screenMissed = gScreenMissed.exchange(0, std::memory_order_relaxed);
+    {
+        std::lock_guard<std::mutex> const screenLock(gScreenShadersMutex);
+        s.screenModel = gScreenModelVerdict;
+    }
     std::lock_guard<std::mutex> const lock(gBlockerMutex);
     s.lastBlocker = gLastBlocker;
     return s;

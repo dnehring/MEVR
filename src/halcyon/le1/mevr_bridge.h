@@ -426,6 +426,9 @@ void RecordUpdateSubresource(ID3D11DeviceContext* context, ID3D11Resource* resou
     D3D11_BOX const* box, void const* data, UINT rowPitch, UINT depthPitch);
 void RecordClearDepthStencilView(ID3D11DeviceContext* context, ID3D11DepthStencilView* view, UINT flags, FLOAT depth,
     UINT8 stencil);
+// [MEVR] Every pixel shader the game creates (d3d_capture.cpp's CreatePixelShader hook): the draw replay reads its
+// reflection for the screen-space matrices it must correct for the second eye (research/37, "The right eye's shadows").
+void NotePixelShaderCreated(ID3D11PixelShader* shader, const void* bytecode, SIZE_T length) noexcept;
 
 // Present thread, at the end of RunFrame: whether to call xrWaitFrame for the next frame there, before the
 // game renders it (research/22), rather than at the next Present. [Performance] earlyFrameWait in

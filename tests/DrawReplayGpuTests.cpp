@@ -3,12 +3,14 @@
 #include "plugin/DrawReplay.hpp"
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "core/vr/ScreenMatrix.hpp"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -205,6 +207,165 @@ void Counters(ID3D11Device* device, ID3D11DeviceContext* context) {
     replay::OnPresentEnd();
     std::cout << "PASS: unsupported-command eligibility guard retained\n";
 }
+// research/37, "The right eye's shadows": a pixel shader taking ScreenToShadowMatrix, recorded with the first eye's
+// matrix and replayed for a second eye, must draw with the corrected matrix, and the buffer must hold the first eye's
+// bytes again afterwards. Both upload routes (UpdateSubresource on a default buffer, Map on a dynamic one).
+void ScreenMatrices(ID3D11Device* device, ID3D11DeviceContext* context, bool dynamic) {
+    namespace sm = mevr::vr::screen_matrix;
+    // Two eyes 6.4 units apart with mirrored off-centre projections (as tests/ScreenMatrixTests.cpp).
+    auto proj = [](float l, float r, float d, float u, float n) {
+        return sm::Mat4{2.0f / (r - l), 0, 0, 0, 0, 2.0f / (u - d), 0, 0, -(r + l) / (r - l), -(u + d) / (u - d), 1, 1, 0, 0, -n, 0};
+    };
+    sm::Mat4 const basis{0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1};
+    float const cy = std::cos(0.6f), sy = std::sin(0.6f);
+    sm::Mat4 const yaw{cy, sy, 0, 0, -sy, cy, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    sm::Mat4 const rot = sm::Multiply(yaw, basis);
+    sm::Mat4 const tvp1 = sm::Multiply(rot, proj(-1.2f, 0.9f, -1.0f, 1.0f, 10.0f));
+    sm::Mat4 const tvp2 = sm::Multiply(rot, proj(-0.9f, 1.2f, -1.0f, 1.0f, 10.0f));
+    float const pvt1[3] = {1000.0f - 3.2f * rot[0], -2000.0f - 3.2f * rot[4], -300.0f};
+    float const pvt2[3] = {1000.0f + 3.2f * rot[0], -2000.0f + 3.2f * rot[4], -300.0f};
+    auto const inv1 = sm::Inverse(tvp1);
+    auto const inv2 = sm::Inverse(tvp2);
+    Check(inv1 && inv2, "invert the views");
+    // The view bytes the replay compares: TVP at +0, its inverse at +64, the pre-view translation at +128.
+    auto fields = [](sm::Mat4 const& tvp, sm::Mat4 const& inv, float const* pvt) {
+        replay::ViewFields f;
+        f.perView = 144;
+        f.views = 1;
+        f.bytes.assign(144, 0);
+        std::memcpy(f.bytes.data(), tvp.data(), 64);
+        std::memcpy(f.bytes.data() + 64, inv.data(), 64);
+        std::memcpy(f.bytes.data() + 128, pvt, 12);
+        return f;
+    };
+    replay::ViewLayout layout;
+    layout.translatedViewProjection = 0;
+    layout.invTranslatedViewProjection = 64;
+    layout.preViewTranslation = 128;
+    replay::SetViewLayout(layout);
+    replay::ViewFields const first = fields(tvp1, *inv1, pvt1);
+    replay::ViewFields const second = fields(tvp2, *inv2, pvt2);
+
+    // The first eye's ScreenToShadowMatrix: an arbitrary R behind S1 x Inv(TVP1).
+    auto const s1 = sm::ScreenToClip(tvp1);
+    Check(s1.has_value(), "S1");
+    sm::Mat4 const r{0.002f, 0.0003f, 0, 0, 0, -0.002f, 0.0001f, 0, 0.0004f, 0, 0.0001f, 0, 0.5f, 0.5f, 0.01f, 1};
+    sm::Mat4 const m1 = sm::Multiply(sm::Multiply(*s1, *inv1), r);
+
+    char const* const vsText = "float4 main(uint id : SV_VertexID) : SV_Position {"
+                               " float2 p = float2(id & 2, (id << 1) & 2); return float4(p * 2 - 1, 0.5, 1); }";   // clockwise
+    char const* const psText = "float4 Input; row_major float4x4 ScreenToShadowMatrix;"
+                               " float4 main(float4 p : SV_Position) : SV_Target { return mul(Input, ScreenToShadowMatrix); }";
+    ComPtr<ID3DBlob> vsCode, psCode, errors;
+    Hr(D3DCompile(vsText, std::strlen(vsText), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &vsCode, &errors), "compile VS");
+    Hr(D3DCompile(psText, std::strlen(psText), nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0, &psCode, &errors), "compile PS");
+    ComPtr<ID3D11VertexShader> vs;
+    ComPtr<ID3D11PixelShader> ps;
+    Hr(device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vs), "create VS");
+    Hr(device->CreatePixelShader(psCode->GetBufferPointer(), psCode->GetBufferSize(), nullptr, &ps), "create PS");
+    replay::NotePixelShader(ps.Get(), psCode->GetBufferPointer(), psCode->GetBufferSize());
+
+    // The constant buffer: Input at +0, the matrix at +16 (as the compiler lays out $Globals).
+    float constants[20]{};
+    float const input[4] = {0.3f, -0.2f, 250.0f, 1.0f};   // the second eye's (x z, y z, z, 1)
+    std::memcpy(constants, input, 16);
+    std::memcpy(constants + 4, m1.data(), 64);
+    D3D11_BUFFER_DESC cbDesc{};
+    cbDesc.ByteWidth = sizeof(constants);
+    cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbDesc.Usage = dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
+    cbDesc.CPUAccessFlags = dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
+    ComPtr<ID3D11Buffer> cb;
+    Hr(device->CreateBuffer(&cbDesc, nullptr, &cb), "create constant buffer");
+
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = td.Height = td.MipLevels = td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    td.SampleDesc.Count = 1;
+    td.BindFlags = D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> target;
+    ComPtr<ID3D11RenderTargetView> rtv;
+    Hr(device->CreateTexture2D(&td, nullptr, &target), "create target");
+    Hr(device->CreateRenderTargetView(target.Get(), nullptr, &rtv), "create RTV");
+    auto readPixel = [&] {
+        D3D11_TEXTURE2D_DESC sd = td;
+        sd.Usage = D3D11_USAGE_STAGING;
+        sd.BindFlags = 0;
+        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Texture2D> staging;
+        Hr(device->CreateTexture2D(&sd, nullptr, &staging), "create pixel readback");
+        context->CopyResource(staging.Get(), target.Get());
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        Hr(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped), "map pixel");
+        std::array<float, 4> px{};
+        std::memcpy(px.data(), mapped.pData, sizeof(px));
+        context->Unmap(staging.Get(), 0);
+        return px;
+    };
+
+    D3D11_VIEWPORT const vp{0, 0, 1, 1, 0, 1};
+    replay::BeginRecording(0);
+    replay::MarkTail();
+    context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+    context->RSSetViewports(1, &vp);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->IASetInputLayout(nullptr);
+    context->VSSetShader(vs.Get(), nullptr, 0);
+    context->PSSetShader(ps.Get(), nullptr, 0);
+    context->PSSetConstantBuffers(0, 1, cb.GetAddressOf());
+    if (dynamic) {
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        Hr(context->Map(cb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped), "map constants");
+        std::memcpy(mapped.pData, constants, sizeof(constants));
+        context->Unmap(cb.Get(), 0);
+    } else {
+        context->UpdateSubresource(cb.Get(), 0, nullptr, constants, 0, 0);
+    }
+    context->Draw(3, 0);
+    replay::EndRecording();
+
+    float const zero[4]{};
+    context->ClearRenderTargetView(rtv.Get(), zero);
+    std::string why;
+    Check(replay::TailReplayable(&why), why.c_str());
+    Check(replay::Replay(first, second) == 0, "replay with the second eye's view");
+    std::array<float, 4> const got = readPixel();
+    replay::Stats const stats = replay::TakeStats();
+    std::cout << "screen matrices: patched " << stats.screenPatched << ", missed " << stats.screenMissed << ", replayed draws "
+              << stats.replayedDraws << ", pixel " << got[0] << " " << got[1] << " " << got[2] << " " << got[3] << "\n";
+
+    auto const c = sm::SecondEyeCorrection(tvp1, tvp2, pvt1, pvt2);
+    Check(c.has_value(), "correction");
+    sm::Mat4 m2 = m1;
+    sm::Apply(*c, m2.data(), true);
+    for (int k = 0; k < 4; ++k) {
+        float const want = input[0] * m2[k] + input[1] * m2[4 + k] + input[2] * m2[8 + k] + input[3] * m2[12 + k];
+        float const first1 = input[0] * m1[k] + input[1] * m1[4 + k] + input[2] * m1[8 + k] + input[3] * m1[12 + k];
+        if (k == 0) {
+            std::cout << "  want " << want << ", the first eye's " << first1 << "\n";
+        }
+        Check(std::fabs(got[k] - want) <= 1e-3f * (1.0f + std::fabs(want)), "the replayed draw used the second eye's matrix");
+        if (k == 0) {
+            Check(std::fabs(want - first1) > 1e-3f, "the test's eyes differ enough to tell");
+        }
+    }
+    // The engine's buffer holds the first eye's bytes again (it re-uploads only what it changed itself).
+    D3D11_BUFFER_DESC rd = cbDesc;
+    rd.Usage = D3D11_USAGE_STAGING;
+    rd.BindFlags = 0;
+    rd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Buffer> back;
+    Hr(device->CreateBuffer(&rd, nullptr, &back), "create constants readback");
+    context->CopyResource(back.Get(), cb.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    Hr(context->Map(back.Get(), 0, D3D11_MAP_READ, 0, &mapped), "map constants readback");
+    bool const restored = std::memcmp(mapped.pData, constants, sizeof(constants)) == 0;
+    context->Unmap(back.Get(), 0);
+    Check(restored, "the first eye's constants put back after the replay");
+    Check(stats.screenPatched == 1 && stats.screenShadowShaders >= 1, "one draw corrected, the shader known");
+    replay::OnPresentEnd();
+    std::cout << "PASS: second-eye ScreenToShadowMatrix through " << (dynamic ? "Map" : "UpdateSubresource") << "\n";
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -220,6 +381,8 @@ int main(int argc, char** argv) {
         Check(replay::Attach(context.Get(), &hooks), "attach recorder");
         IndirectAndClear(device.Get(), context.Get());
         Counters(device.Get(), context.Get());
+        ScreenMatrices(device.Get(), context.Get(), false);
+        ScreenMatrices(device.Get(), context.Get(), true);
         std::cout << (hardware ? "Hardware" : "WARP") << " replay checks passed\n";
         return 0;
     } catch (std::exception const& e) {

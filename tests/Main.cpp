@@ -11932,6 +11932,7 @@ int RunLandmarkTests();
 int RunScriptMatchTests();
 // tests/ThespianTests.cpp: Thespian mode's turn rules (core/vr/Thespian, research/70).
 int RunThespianTests();
+int RunScreenMatrixTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
 // tests/SoundPlaceTests.cpp: where sounds come from on foot (research/69 A1).
@@ -12115,6 +12116,7 @@ int main() {
     gFailures += RunLandmarkTests();
     gFailures += RunScriptMatchTests();
     gFailures += RunThespianTests();
+    gFailures += RunScreenMatrixTests();
     gFailures += RunConversationWorldTests();
     gFailures += RunSoundPlaceTests();
     gFailures += RunGuiEventsTests();

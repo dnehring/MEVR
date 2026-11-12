@@ -2165,6 +2165,13 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
                 per(d.mapsCopied, d.recorded), per(d.mapCopyBytes, d.recorded) / 1024.0, d.mapCopyMs / static_cast<double>(d.recorded),
                 per(d.mapsSkipped, d.recorded), d.tailDiscardFrames, d.tailDiscards, d.shadowCopies, per(d.held, frames), d.heldSet);
         }
+        if (d.replays != 0) {
+            // research/37, "The right eye's shadows": the second eye's ScreenToShadowMatrix / ScreenToWorld.
+            share += std::format("; screen-space matrices: {} pixel shaders take one ({} shadow, {} world), {:.1f} draws a replay "
+                                 "corrected, {:.1f} left as the first eye's{}",
+                d.screenShaders, d.screenShadowShaders, d.screenWorldShaders, per(d.screenPatched, d.replays),
+                per(d.screenMissed, d.replays), d.screenModel.empty() ? "" : std::format(" (ScreenToWorld is {})", d.screenModel));
+        }
         if (d.eyeScissorRects != 0 || d.eyeScissorExempt != 0) {
             share += std::format("; eye scissor: {:.0f} rects a frame resolved ({:.0f} unchanged, not set), {:.0f} set again, {:.0f} exempt (the queries)",
                 per(d.eyeScissorRects, frames), per(d.eyeScissorUnchanged, frames), per(d.eyeScissorReissued, frames), per(d.eyeScissorExempt, frames));
@@ -2437,6 +2444,7 @@ void Tick() {
             ApplyAffinity(pCores != 0);
         }
         draw_replay::SetInversePair(readInt(L"replayInverse", 1) != 0);
+        draw_replay::SetScreenMatrices(readInt(L"replayScreenMatrices", 1) != 0);
         {
             int const scissorRaw = readInt(L"eyeScissor", 0);
             int const scissor = scissorRaw < 0 ? 0 : (scissorRaw > 3 ? 3 : scissorRaw);
