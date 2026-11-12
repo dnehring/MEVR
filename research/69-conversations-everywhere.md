@@ -266,6 +266,9 @@ merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "T
   and the balance following the head (`tools/audio-balance.py`); confirm the game positions them at all. **Run
   2026-11-11** ("To check in the game" item 9): the fight's fire, impacts and footsteps are placed by the game; the balance
   swings -1.7 to +2.7 dB with the head; the per-window delay and the A/B against `spatial = game` not yet.
+  **Done 2026-11-11 18:05** ("A4: combat for two ears, measured"): under OpenAL Soft the fight's sounds reach the ears with
+  a real delay between them (up to 0.83 ms, changing side as the head turns, 10 of 21 seconds); the game's own OpenAL pans
+  them by level alone (0.00 ms wherever both ears hear the sound, up to 20 dB apart).
 - **A5. An intercom's colour for far voices** (the owner: the Council "a little like an intercom"): with OpenAL Soft the
   EFX filters exist (a band-pass on the source, `AL_DIRECT_FILTER`); whether ISACT's sources can be reached by their AL ids
   from the sound source's update is to find out. Optional. **Read 2026-11-11** (below): the AL ids are reachable, through
@@ -2786,6 +2789,26 @@ snap inspection, the player walking in from behind: the owner's re-face question
 streamed (the Wards' market), another scene began as one save loaded, 2 without a save.
 **Coverage: 172 of 290 reachable scenes played** in some run (154 before, 18 new).
 
+### A4: combat for two ears, measured (2026-11-11 17:50-18:05)
+
+The arena's row of 15 fighting soldiers 20 m ahead (`tools/power-arena.ps1 -Row`, UNC20, the players' build), a census of
+the sources, and 22 s of what the PC plays (`mevr-audio-loopback`) under the head replayed turning a full circle
+(`look-circle.mevrrec`); once with `[Audio] spatial = hrtf` (the default: `audio: the game's OpenAL (93 functions of 93) now
+goes to ...soft_oal.dll`), once with `spatial = game` after a restart (`audio: the game's own OpenAL`). Per second (a scratch
+script over `tools/audio-balance.py`'s own `ear_delay`: the shift of the right channel against the left at which the two
+are most alike below 1.5 kHz):
+
+- **OpenAL Soft (HRTF)**: the delay between the ears non-zero in 10 of 21 seconds, from -0.83 to +0.33 ms, changing side as
+  the head turns, the channels more alike at that shift than at none (0.51-0.87 against 0.29-0.80): an interaural delay, as
+  a head gives. The balance swings gently, -2.5 to +1.6 dB (the far ear hears the sound too, later and duller).
+- **The game's own**: 0.00-0.04 ms in every second where both ears hear the same sound (alike 0.47-0.91 at zero): plain
+  panning. Its few loud one-sided seconds swing the balance to +16, +15 and -20 dB, the other channel nearly silent there
+  (alike 0.09: their "delay" means nothing).
+
+So OpenAL Soft turns the game's placed sounds (the census: the fight's fire, impacts and footsteps are placed by the game)
+into sounds for two ears, and the game's own audio only pans them. The saves were put back from the backup (identical to
+the morning's, file for file), `[Audio] spatial` back to the default.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3206,3 +3229,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 16:10, **item 12: the third sampled pass** ("The third sampled pass"): 17 conversations in the world and 6 bark scenes (154 of 290 now); the transmissions' end flash was the harness firing them directly (through the console's use: none); item 18 new (openings from a view at Shepard's hips, generated saves).
 - 2026-11-11 17:20, **item 18 done: the camera that fell to Shepard's knees** ("The camera that fell to Shepard's knees"): the game's camera collision pulled the first-person camera to its hook (the view behind his knees) whenever something stood just ahead of his face; off in first person on foot now (`game/CameraCollision`), seen at the three spots.
 - 2026-11-11 17:55, **item 12: the fourth sampled pass** ("The fourth sampled pass"): 14 conversations in the world and 4 bark scenes (172 of 290 now); every opening from the first-person eye after the camera-collision fix; nothing new found.
+- 2026-11-11 18:05, **A4 done** ("A4: combat for two ears, measured"): the fight under OpenAL Soft has a real delay between the ears (to 0.83 ms, following the head), the game's own audio pans by level only (0.00 ms); A/B with a restart.
