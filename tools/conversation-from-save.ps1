@@ -12,7 +12,8 @@
 #       [-Plans a.json,b.json] [-Only 80,81] [-EndAfter 25] [-Seconds 150]
 #
 # -EndAfter N: a conversation is ended N seconds in (only the opening matters). -Walk N: the left stick held forward for N
-# seconds from the start (a player who walks along; `mevr convo walk`). -Replay: a recording replayed in a loop with its
+# seconds from the start (a player who walks along; `mevr convo walk`). -WanderAt N: N seconds into a conversation (the wheel
+# down) the stick sideways for 3 s, then standing (the conversational circle gathers round again). -Replay: a recording replayed in a loop with its
 # inputs from the moment the scene is fired until it is over (a real stick and buttons: tools/make-walk-recording.py). -All: every scene of the list from its numbered
 # save (the saves `conversation-sweep.py saves` wrote), each one's action from the plans (`conversation-sweep.py actions`).
 #
@@ -29,6 +30,7 @@ param(
     [ValidateSet('skip', 'full')] [string]$Pace = 'skip',
     [int[]]$Snapshots = @(),
     [int]$Walk = 0,
+    [int]$WanderAt = 0,
     [string]$Replay = '',
     [string]$Before = '',
     [switch]$NoLoad,
@@ -180,7 +182,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     if ($Replay) { & (Join-Path $tools 'replay.ps1') -Path $Replay -Loop -Inputs *> $null }
 
     $shots = @($Snapshots | Sort-Object)
-    $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true
+    $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false
     while (((Get-Date) - $started).TotalSeconds -lt $Seconds) {
         Start-Sleep -Milliseconds 1500
         $elapsed = ((Get-Date) - $started).TotalSeconds
@@ -204,7 +206,15 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
                 continue
             }
             $key = "$($Matches[1])/$($Matches[4])"
-            if ($Matches[5] -eq 'up') {
+            $wheelUp = $Matches[5] -eq 'up'
+            if ($WanderAt -gt 0 -and -not $wandered -and -not $wheelUp -and ((Get-Date) - $convoSince).TotalSeconds -ge $WanderAt) {
+                # A player who wanders off mid-conversation: the stick sideways for 3 s (about 2.7 m at the conversation's
+                # walking pace), then standing still: the conversational circle should gather round again.
+                Console 'mevr convo walk 1 0 3' | Out-Null
+                Say ("wandered off: the stick to the right for 3 s, {0:0} s into the conversation" -f ((Get-Date) - $convoSince).TotalSeconds)
+                $wandered = $true
+            }
+            if ($wheelUp) {
                 Console 'mevr convo pick 0' | Out-Null
             } elseif ($Pace -eq 'skip' -and $key -eq $lastKey) {
                 Console 'mevr convo skip' | Out-Null   # a line two seconds in is skipped; a new line gets its two seconds first

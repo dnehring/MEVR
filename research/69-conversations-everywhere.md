@@ -312,6 +312,14 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     (`cw::DecideOpening`): when the stage's first placements take the player's mark and the conversation's owner (or most of its
     people) beyond a walk, it is another composition: a cut, the stage's placements accepted under the dip, everyone on their
     marks. Then Kirrahe's camp (item 20) can be run in the world from the landing.
+28. **The conversational circle** (the owner's design, 2026-11-11 23:30; "The conversational circle" below; supersedes the
+    opening-time seats of item 7 and the guided walk-in): people stay where they stand until they engage; whoever first speaks or
+    is spoken to walks slowly into a circle with the player; silent ones stay; the circle gathers round the player again after the
+    player has walked off and stood; scenes whose authored places matter are staged (their marks walked to, the opening under a
+    dip); the player keeps the place where the conversation began, walks freely (slower) except while the wheel is up, and is
+    never walked by the game; the game's own animation (nods, gestures) is kept. **Built 2026-11-11** (`cw::MakeCircle`,
+    `cw::JoinCircle`, `cw::ShouldRegather`, `cw::IsStagedScene`, unit-tested; `game/ConversationWorld` `StepCircle`);
+    [verify] in the headset.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -2957,7 +2965,47 @@ Anoleis, Kirrahe on the screen and, after a restart with `worldSetPieces = world
 - **Kirrahe's arrival in first person** (22:57, `worldSetPieces = world`, the set pieces back on the screen at 22:59 for the
   rest of the session): item 27.
 
+### The conversational circle (2026-11-11 23:05-; item 28)
 
+**What the owner asked for**, after the first full headset session (Kirrahe's planning talk in first person: the player walked
+by the game for 7.8 m, frozen while the wheel was up, people seated and teleported around): "I don't understand why we can't just
+maintain our current position where we engage the conversation unless the conversation actually requires physical movement. And
+if it does, then I should be able to completely move around. I should never be forced to be stationary." Then: "I'm fine with
+restricting movement while the dialogue wheel is up, I'd even consider making the movement slower in speed to persuade the user
+to not move. ... I don't want static rules. Each scene is different. I understand the squad being stationary if they aren't
+talking but if they ever engage then they should slowly walk up to form a conversational circle. This needs to feel organic ...
+I know for some scenes the composition requires some NPC's to be in certain locations (speech in virmire by the captain)." And,
+approving the design: "if we have to do the black fade in/out I recognize that it's acceptable for now", and "if the game
+specifically programs in animations for things like head movements (nods for the council) or arm gestures, those must be retained."
+
+**Why the earlier design wasn't this.** It was built around a scene's first frame: at an opening without a cut, everyone of the
+conversation out of view was given a seat on an arc in front of the player and walked or (before the AI walk worked, this
+morning) placed there at once (item 7), and a walk-in left the player "wanted" at Shepard's mark and walked there by the game after
+5 s (the guided walk). Placing people was the only tool until the game's AI could be made to walk people in a conversation;
+once it could, it was bolted onto the opening-time seats instead of a design around who speaks. Both were made defaults on log
+measures without the owner's review.
+
+**Built** (`[Cinematics]` in `ASI\LE1MEVR.ini`):
+- `worldCircle = 1` (default): `cw::MakeCircle` forms a circle round the player's place, toward the first person engaged, with as
+  many places as the conversation has people in the scene (Shepard's the player's), `worldCircleGapM` 1.1 m of rim each (1.5 m
+  across at the least). When a person first speaks or is spoken to (the game's `m_pSpeaker`/`m_pListener`; a line with no
+  listener is spoken to the player), `cw::JoinCircle` gives it the free place nearest its own bearing (nobody crosses the
+  circle); the one spoken to stays where it stands within `worldCircleNearM` 2.5 m of the player, anyone a step (0.6 m) from
+  its place joins where it stands, anyone farther than `worldCircleMaxWalkM` 12 m stays out. The walk is the game's own AI walk
+  (`WalkToMark`, method 1: `PushMoveToPoint`, the walk animation, the conversation's gesture mode back on arrival, facing the
+  circle's middle), walkers set off `worldCircleStaggerS` 0.6 s apart. The stage's own marks are not walked to in a circle scene
+  (its marks are the camera's composition). `cw::ShouldRegather`: the player `worldCircleRegatherM` 2.5 m from where it formed and
+  still for `worldCircleStillS` 2 s: the circle forms again round the player, nearest people first. Logs `convo: circle:`;
+  the summary's `circleJoined`, `circleWalked`, `circleOut`, `circleRegathers`.
+- Staged scenes (`cw::IsStagedScene`: Kirrahe's camp; `worldStaged` adds keys): no circle; the opening accepts the stage's
+  placements and puts the player at Shepard's mark under a dip; mid-scene marks are walked to as before. Log `convo: a staged scene`.
+- The player: `worldWalkInS = -1` (never guided; the owner's setting since 22:59 made the default), `worldMoveSpeedMS` 0.9 (1.4),
+  `worldMoveLeashM` 6 (3); the wheel still takes the stick while it is up (the owner: acceptable).
+- The game's animation kept: `worldLookReach = 0` (0.4: the pair's stronger look-at chain pulled heads off their authored nods);
+  people leave the conversation's gesture mode only while they walk (as before); `worldArrange = 0` (the opening-time seats off).
+- Tests: `tools/conversation-from-save.ps1 -WanderAt N` sidesteps the player 3 s with the stick N s into a conversation.
+
+## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
 
@@ -3383,3 +3431,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 23:00, **item 19: the hearing that went third person** (the owner's first slot-80 run in the headset): a hidden Shepard's unposed head bone "jumped" as the hearing opened and the view followed it to 4 m behind him; fixed (`cw::HeadFollowFor`), [verify] in the headset.
 - 2026-11-11 23:20, **items 20-22 from the owner's slot-88 run** ("Kirrahe's camp"): Kirrahe's scene wanted in first person; the game's black screen on foot shows as a black panel; slot 88 lacked plot 3039, so Kirrahe's arrival content played and the speech never started after the planning talk (save fixed).
 - 2026-11-11 23:40, **items 23-27 from the owner's session** ("The owner's session, judged"): the wheel's band fixed; judder at the director's cuts measured; the right stick in conversations, tests that walk with the stick, and a dip for scenes that relocate their cast to build.
+- 2026-11-11 23:50, **item 28: the conversational circle** (the owner's design): built and unit-tested; the guided walk, the opening-time seats and the stronger look-at chain off by default; first run on the fake headset under way.

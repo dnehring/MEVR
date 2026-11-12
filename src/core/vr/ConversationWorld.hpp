@@ -258,6 +258,70 @@ bool IsSetPiece(std::string_view name);
 // The conversation's key in the tables above: the object's own name, lower case, without its "_dlg"/"_d" suffix
 // ("BioConversation sta70_garrus_D.sta70_garrus_dlg" -> "sta70_garrus").
 std::string ConversationKey(std::string_view name);
+// The scenes whose authored places matter (the owner, 2026-11-11: "for some scenes the composition requires some NPC's to be in
+// certain locations (speech in virmire by the captain)"): their opening accepts the stage's placements under a dip (the player
+// at Shepard's mark: "if we have to do the black fade in/out I recognize that it's acceptable for now"), people walk to the
+// stage's marks, and no conversational circle forms. `extra`: more keys, comma separated ([Cinematics] worldStaged).
+bool IsStagedScene(std::string_view name, std::string_view extra = {});
+
+// ---- The conversational circle (research/69 "The conversational circle", the owner's design, 2026-11-11) ----------------------
+// "I understand the squad being stationary if they aren't talking but if they ever engage then they should slowly walk up to
+// form a conversational circle. This needs to feel organic." Nobody moves at a scene's start; a person joins when it first
+// speaks or is spoken to, and walks (the game's AI and walk) to a spot on a circle with the player, the player's own place one
+// point of it; those standing don't shuffle; the circle re-gathers around the player when the player has walked off and stood
+// still. Units are Unreal units, angles degrees about +Z (yaw), all on the horizontal plane (z is the caller's).
+struct CircleSettings {
+    double gapUnits = 110.0;         // a person's share of the circle's rim (shoulder to shoulder with a little room)
+    double minRadiusUnits = 75.0;    // two people 1.5 m apart at the least
+    double maxRadiusUnits = 220.0;
+    double ownerNearUnits = 250.0;   // the first one engaged, nearer the player than this, stays where it stands
+    double arriveUnits = 60.0;       // nearer its spot than this: no walk, it joins where it stands
+    double maxWalkUnits = 1200.0;    // farther than this from its spot: it stays where it is (not a walk to start mid-line)
+    double regatherUnits = 250.0;    // the player this far from where the circle formed ...
+    double stillSeconds = 2.0;       // ... and standing still this long: the circle re-gathers around the player
+    double staggerSeconds = 0.6;     // walkers set off one after another, not in step
+};
+struct ConversationCircle {
+    bool made = false;
+    Vec3 player;           // where the player stood when it formed
+    Vec3 centre;
+    double radius = 0.0;
+    double playerDeg = 0.0;  // the player's place on it
+    int people = 2;          // the places round it (the player's included): evenly spaced
+    struct Member {
+        int id = 0;
+        double angleDeg = 0.0;
+    };
+    std::vector<Member> members;  // those who joined, by the caller's ids
+};
+// The radius for `people` (the player included): `gapUnits` of rim each, within the settings' bounds.
+double CircleRadius(int people, CircleSettings const& s);
+// A circle with the player at `player` and its centre toward `anchor` (the one the player talks to).
+ConversationCircle MakeCircle(Vec3 const& player, Vec3 const& anchor, int people, CircleSettings const& s);
+struct CircleSpot {
+    Vec3 at;                 // where it stands in the circle (z: `from`'s)
+    double angleDeg = 0.0;
+    double faceYawDeg = 0.0; // toward the centre
+    double walkUnits = 0.0;  // from `from` to `at`
+    bool walk = false;       // false: it joins where it stands (near enough), or stays out (tooFar)
+    bool tooFar = false;     // not a member: too far for a walk
+    bool already = false;    // a member before this call: nothing changes
+};
+// A spot for `id`, standing at `from`: of the circle's evenly spaced places (the player's one of them), the free one nearest its
+// own bearing from the centre, so nobody crosses the circle (beyond the places it was made for: a gap from everyone). `first`
+// (the one the player talks to) stays where it stands when within ownerNearUnits of the player; anyone nearer its place than
+// arriveUnits joins where it stands; farther than maxWalkUnits it stays out.
+CircleSpot JoinCircle(ConversationCircle& circle, int id, Vec3 const& from, bool first, CircleSettings const& s);
+// Whether the circle should re-gather around the player: `player` moved past regatherUnits from where it formed and has stood
+// (moved under 10 units) for stillSeconds. Call once a tick with the tick's seconds.
+struct RegatherState {
+    Vec3 last;
+    double stillFor = 0.0;
+    bool have = false;
+};
+bool ShouldRegather(RegatherState& state, ConversationCircle const& circle, Vec3 const& player, double dt, CircleSettings const& s);
+// The n-th walker's head start (0 for the first): they set off one after another.
+double StaggerSeconds(int order, CircleSettings const& s);
 
 // ---- Flowing conversations (research/59 "Flowing conversations", 2026-11-09) ---------------------------------------------------
 // A conversation's play from a start entry that can never reach a dialogue wheel (a scene watched: Garrus arguing with the

@@ -299,6 +299,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **Long dialogue choices** (2026-11-11, research/69 item 23; built, not yet run in the game): a wheel with long replies
   (the hearing's "The Council won't help us.") shows each reply whole on the wheel, the same text size as before, and no stray
   letters elsewhere in view.
+- [ ] **The conversational circle** (2026-11-11, research/69 item 28 "The conversational circle"; the owner's design; built,
+  run on the fake headset only): start any conversation where you stand (slots 85, 87, 83): you stay there, nobody is moved at the
+  start; whoever speaks or is spoken to walks over at a walking pace and stands in a circle with you, facing its middle; anyone
+  who never speaks stays put. Walk a few metres off and stand: they gather round you again after about two seconds. Your walk is a
+  little slower than on foot and stops while the wheel is up; nothing ever walks you. Nods and gestures play as the game has them.
+  Kirrahe's camp (slot 88, first person needs `worldSetPieces = world`) is a staged scene: a fade to the scene's own places.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.

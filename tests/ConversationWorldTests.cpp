@@ -685,6 +685,70 @@ void TestFollowHead() {
     CHECK(cw::HeadFollowFor(false, false, false, 88.0, kStay) == cw::HeadFollow::Follow);
 }
 
+// The conversational circle (research/69 "The conversational circle", the owner's design, 2026-11-11).
+void TestCircle() {
+    cw::CircleSettings const s;
+    // The radius: a person's share of the rim each, within bounds.
+    CHECK(Close(cw::CircleRadius(2, s), 75.0));
+    CHECK(Close(cw::CircleRadius(6, s), 6.0 * 110.0 / (2.0 * 3.14159265358979323846), 1e-6));
+    CHECK(Close(cw::CircleRadius(40, s), 220.0));
+    // Two people: the player at the origin, the one spoken to 4 m along +X (too far: it walks up, opposite the player).
+    cw::ConversationCircle two = cw::MakeCircle({0.0, 0.0, 0.0}, {400.0, 0.0, 0.0}, 2, s);
+    CHECK(two.made && Close(two.centre.x, 75.0) && Close(two.centre.y, 0.0) && Close(std::abs(two.playerDeg), 180.0));
+    cw::CircleSpot const owner = cw::JoinCircle(two, 1, {400.0, 0.0, 10.0}, true, s);
+    CHECK(owner.walk && Close(owner.at.x, 150.0) && Close(owner.at.y, 0.0) && Close(owner.at.z, 10.0));
+    CHECK(Close(owner.walkUnits, 250.0) && Close(std::abs(owner.faceYawDeg), 180.0));  // faces the centre, toward the player
+    // Joining twice changes nothing.
+    CHECK(cw::JoinCircle(two, 1, {150.0, 0.0, 10.0}, true, s).already);
+    // The one spoken to, already within 2.5 m: it stays where it is.
+    cw::ConversationCircle near = cw::MakeCircle({0.0, 0.0, 0.0}, {180.0, 40.0, 0.0}, 2, s);
+    cw::CircleSpot const stays = cw::JoinCircle(near, 1, {180.0, 40.0, 0.0}, true, s);
+    CHECK(!stays.walk && !stays.tooFar && Close(stays.at.x, 180.0) && near.members.size() == 1);
+    // Four people: places every 90 degrees from the player's. The owner (in front) holds the opposite one; a squadmate standing
+    // off to the left (+Y) takes the left place, one to the right the right place: nobody crosses the circle.
+    cw::ConversationCircle four = cw::MakeCircle({0.0, 0.0, 0.0}, {200.0, 0.0, 0.0}, 4, s);
+    cw::JoinCircle(four, 1, {200.0, 0.0, 0.0}, true, s);
+    cw::CircleSpot const left = cw::JoinCircle(four, 2, {-100.0, 500.0, 0.0}, false, s);
+    CHECK(left.walk && Close(left.at.x, four.centre.x, 1e-6) && left.at.y > 0.0 && Close(left.at.y, four.radius, 1e-6));
+    cw::CircleSpot const right = cw::JoinCircle(four, 3, {50.0, -300.0, 0.0}, false, s);
+    CHECK(right.walk && right.at.y < 0.0 && Close(right.at.y, -four.radius, 1e-6));
+    // A fifth, beyond the places the circle was made for: a free place a gap from everyone, never on another's.
+    cw::CircleSpot const extra = cw::JoinCircle(four, 4, {300.0, 300.0, 0.0}, false, s);
+    for (auto const& m : four.members) {
+        if (m.id != 4) {
+            CHECK(std::abs(std::remainder(extra.angleDeg - m.angleDeg, 360.0)) > 1.0);
+        }
+    }
+    // Someone a step from its place joins where it stands; someone across the level stays out.
+    cw::ConversationCircle three = cw::MakeCircle({0.0, 0.0, 0.0}, {150.0, 0.0, 0.0}, 3, s);
+    cw::JoinCircle(three, 1, {150.0, 0.0, 0.0}, true, s);
+    cw::Vec3 const place{three.centre.x + three.radius * std::cos(60.0 * 3.14159265358979323846 / 180.0),
+        three.centre.y + three.radius * std::sin(60.0 * 3.14159265358979323846 / 180.0), 0.0};
+    cw::CircleSpot const close = cw::JoinCircle(three, 2, {place.x + 20.0, place.y, 0.0}, false, s);
+    CHECK(!close.walk && !close.tooFar && Close(close.at.x, place.x + 20.0));
+    cw::CircleSpot const far = cw::JoinCircle(three, 3, {5000.0, 0.0, 0.0}, false, s);
+    CHECK(far.tooFar && !far.walk && three.members.size() == 2);
+    // Re-gathering: only once the player has walked off past 2.5 m and stood still 2 s.
+    cw::RegatherState rs;
+    CHECK(!cw::ShouldRegather(rs, two, {0.0, 0.0, 0.0}, 0.1, s));
+    for (int i = 0; i < 40; ++i) {
+        CHECK(!cw::ShouldRegather(rs, two, {0.0, 0.0, 0.0}, 0.1, s));  // still, but where it formed
+    }
+    CHECK(!cw::ShouldRegather(rs, two, {300.0, 0.0, 0.0}, 0.1, s));     // walking away
+    bool regathered = false;
+    for (int i = 0; i < 25 && !regathered; ++i) {
+        regathered = cw::ShouldRegather(rs, two, {300.0, 0.0, 0.0}, 0.1, s);
+    }
+    CHECK(regathered && rs.stillFor >= 2.0);
+    // Walkers set off one after another.
+    CHECK(cw::StaggerSeconds(0, s) == 0.0 && Close(cw::StaggerSeconds(2, s), 1.2));
+    // The scenes whose authored places matter: Kirrahe's camp, and any named in [Cinematics] worldStaged.
+    CHECK(cw::IsStagedScene("BioConversation jug20_sal_captainkirrahe_D.jug20_sal_captainkirrahe_dlg"));
+    CHECK(!cw::IsStagedScene("sta20_avina_keeper_dlg"));
+    CHECK(cw::IsStagedScene("sta20_avina_keeper_dlg", " nor10_comm_room , sta20_avina_keeper"));
+    CHECK(!cw::IsStagedScene("sta20_avina_keeper_dlg", "nor10_comm_room,"));
+}
+
 void TestMarkWalk() {
     cw::Vec3 const standing{100.0, 200.0, 50.0};
     cw::Vec3 const mark{250.0, 200.0, 50.0};
@@ -853,6 +917,7 @@ int RunConversationWorldTests() {
     TestCrops();
     TestSubtitlePoint();
     TestFollowHead();
+    TestCircle();
     TestMarkWalk();
     TestWalkStep();
     TestLatest();

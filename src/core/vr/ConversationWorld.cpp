@@ -276,6 +276,179 @@ std::vector<int> SeatsForPairs(std::vector<GroupMember> const& members, std::vec
     return best;
 }
 
+bool IsStagedScene(std::string_view name, std::string_view extra) {
+    // Kirrahe's camp on Virmire: his arrival relocates everyone onto the stage by the tents, and his speech stands his men before
+    // him (the owner's headset run, 2026-11-11, research/69 items 20, 27).
+    static constexpr std::string_view kStaged[] = {"jug20_sal_captainkirrahe"};
+    std::string const key = ConversationKey(name);
+    if (std::find(std::begin(kStaged), std::end(kStaged), key) != std::end(kStaged)) {
+        return true;
+    }
+    while (!extra.empty()) {
+        std::size_t const comma = extra.find(',');
+        std::string_view item = extra.substr(0, comma);
+        extra = comma == std::string_view::npos ? std::string_view{} : extra.substr(comma + 1);
+        while (!item.empty() && (item.front() == ' ' || item.front() == '\t')) {
+            item.remove_prefix(1);
+        }
+        while (!item.empty() && (item.back() == ' ' || item.back() == '\t')) {
+            item.remove_suffix(1);
+        }
+        if (!item.empty() && ConversationKey(item) == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+namespace {
+constexpr double kPi = 3.14159265358979323846;
+Vec3 OnCircle(ConversationCircle const& c, double deg, double z) {
+    double const r = deg * kPi / 180.0;
+    return {c.centre.x + c.radius * std::cos(r), c.centre.y + c.radius * std::sin(r), z};
+}
+} // namespace
+
+double CircleRadius(int people, CircleSettings const& s) {
+    double const n = static_cast<double>(std::max(2, people));
+    return std::clamp(n * s.gapUnits / (2.0 * kPi), s.minRadiusUnits, std::max(s.minRadiusUnits, s.maxRadiusUnits));
+}
+
+ConversationCircle MakeCircle(Vec3 const& player, Vec3 const& anchor, int people, CircleSettings const& s) {
+    ConversationCircle c;
+    c.made = true;
+    c.player = player;
+    c.people = std::max(2, people);
+    c.radius = CircleRadius(people, s);
+    double dx = anchor.x - player.x;
+    double dy = anchor.y - player.y;
+    double const len = std::hypot(dx, dy);
+    if (len < 1e-6) {
+        dx = 1.0;
+        dy = 0.0;
+    } else {
+        dx /= len;
+        dy /= len;
+    }
+    c.centre = {player.x + dx * c.radius, player.y + dy * c.radius, player.z};
+    c.playerDeg = BearingDeg(c.centre, player);
+    return c;
+}
+
+CircleSpot JoinCircle(ConversationCircle& circle, int id, Vec3 const& from, bool first, CircleSettings const& s) {
+    CircleSpot spot;
+    for (ConversationCircle::Member const& m : circle.members) {
+        if (m.id == id) {
+            spot.already = true;
+            spot.angleDeg = m.angleDeg;
+            spot.at = from;
+            spot.faceYawDeg = BearingDeg(from, circle.centre);
+            return spot;
+        }
+    }
+    double const bearing = BearingDeg(circle.centre, from);
+    double const fromPlayer = std::hypot(from.x - circle.player.x, from.y - circle.player.y);
+    if (first && fromPlayer <= s.ownerNearUnits) {
+        // The one the player talks to, already near: it is where the conversation is; it stays.
+        spot.at = from;
+        spot.angleDeg = bearing;
+        spot.faceYawDeg = BearingDeg(from, circle.player);
+        circle.members.push_back({id, bearing});
+        return spot;
+    }
+    // The gap between two people on the rim, as an angle.
+    double const half = std::clamp(s.gapUnits / (2.0 * std::max(circle.radius, 1.0)), 0.0, 1.0);
+    double const gapDeg = 2.0 * std::asin(half) * 180.0 / kPi;
+    auto const isFree = [&](double deg) {
+        if (std::abs(Wrap180(deg - circle.playerDeg)) < gapDeg) {
+            return false;
+        }
+        for (ConversationCircle::Member const& m : circle.members) {
+            if (std::abs(Wrap180(deg - m.angleDeg)) < gapDeg) {
+                return false;
+            }
+        }
+        return true;
+    };
+    // The circle's own places: the player's and `people - 1` more, evenly round it. A newcomer takes the free one nearest its
+    // own bearing (so nobody crosses the circle); one already standing there (it joined where it stood) holds the nearest.
+    int const people = std::max(2, circle.people);
+    double const spacing = 360.0 / people;
+    double chosen = 0.0;
+    bool found = false;
+    double best = 1e9;
+    for (int k = 1; k < people; ++k) {
+        double const deg = circle.playerDeg + k * spacing;
+        bool taken = false;
+        for (ConversationCircle::Member const& m : circle.members) {
+            if (std::abs(Wrap180(deg - m.angleDeg)) < spacing * 0.5) {
+                taken = true;
+                break;
+            }
+        }
+        double const off = std::abs(Wrap180(deg - bearing));
+        if (!taken && off < best) {
+            best = off;
+            chosen = deg;
+            found = true;
+        }
+    }
+    if (!found) {
+        // More people than the circle was made for: the free place nearest its bearing, a gap from everyone.
+        chosen = bearing;
+        for (int step = 0; step <= 36; ++step) {
+            double const off = 5.0 * step;
+            if (isFree(bearing + off)) {
+                chosen = bearing + off;
+                break;
+            }
+            if (step > 0 && isFree(bearing - off)) {
+                chosen = bearing - off;
+                break;
+            }
+        }
+    }
+    chosen = Wrap180(chosen);
+    Vec3 const at = OnCircle(circle, chosen, from.z);
+    double const walk = std::hypot(at.x - from.x, at.y - from.y);
+    if (walk > s.maxWalkUnits) {
+        spot.tooFar = true;
+        spot.at = from;
+        spot.walkUnits = walk;
+        return spot;
+    }
+    if (walk < s.arriveUnits) {
+        spot.at = from;
+        spot.angleDeg = bearing;
+        spot.faceYawDeg = BearingDeg(from, circle.centre);
+        circle.members.push_back({id, bearing});
+        return spot;
+    }
+    spot.at = at;
+    spot.angleDeg = chosen;
+    spot.faceYawDeg = BearingDeg(at, circle.centre);
+    spot.walkUnits = walk;
+    spot.walk = true;
+    circle.members.push_back({id, chosen});
+    return spot;
+}
+
+bool ShouldRegather(RegatherState& state, ConversationCircle const& circle, Vec3 const& player, double dt, CircleSettings const& s) {
+    if (!state.have || std::hypot(player.x - state.last.x, player.y - state.last.y) > 10.0) {
+        state.last = player;
+        state.have = true;
+        state.stillFor = 0.0;
+        return false;
+    }
+    state.stillFor += std::max(0.0, dt);
+    return circle.made && state.stillFor >= s.stillSeconds &&
+           std::hypot(player.x - circle.player.x, player.y - circle.player.y) > s.regatherUnits;
+}
+
+double StaggerSeconds(int order, CircleSettings const& s) {
+    return std::max(0, order) * s.staggerSeconds;
+}
+
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.

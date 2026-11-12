@@ -587,6 +587,12 @@ switching frameworks.
   the council's podium is 13 m past one). **A walk-in can be walked by the view alone** (`worldWalkInWay = auto | body | view`, `cw::DecideWalkIn`, research/69 "The
   view walks", 2026-11-10, on the branch until the owner's headset test): Shepard stays where the stage has him, hidden,
   and only the held view walks to him (no pawn move, so no touch and no trigger guard); the two are one again on arrival;
+  **since 2026-11-11 the conversational circle replaces the opening-time seats and the guided walk** (research/69 item 28, the
+  owner's design): `worldCircle = 1`: people stay put until they first speak or are spoken to, then walk with the game's AI into
+  a circle with the player (`cw::MakeCircle`/`JoinCircle`, the nearest free place, nobody crossing), which gathers round the
+  player again after the player walks off and stands (`cw::ShouldRegather`); staged scenes (`cw::IsStagedScene`, `worldStaged`:
+  Kirrahe's camp) keep their marks, the opening under a dip; `worldWalkInS = -1`, `worldArrange = 0`, `worldLookReach = 0`
+  (the game's nods kept), `worldMoveSpeedMS` 0.9, `worldMoveLeashM` 6; logs `convo: circle:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
   (`cw::HeadFollowFor`; research/69 "The hearing that went third person": the owner's slot-80 run ended 4 m behind him);
   auto takes it when a moment's walk was still on its way as the conversation began (putting Shepard back from the podium
