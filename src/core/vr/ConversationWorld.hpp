@@ -363,6 +363,10 @@ struct FormationSpot {
 };
 std::vector<FormationSpot> SquadFormation(Vec3 const& player, Vec3 const& lookAt, int count, double sideUnits, double backUnits,
     std::uint32_t seed);
+// Which spot each squadmate takes: the assignment with the least walking in all (each on its own side; nobody crosses behind
+// the player to the other: Khalisah's interview, 2026-11-12, seen from above). `result[i]` is the spot of the one at `from[i]`.
+// Up to 6 people by trying every order; beyond that in the order given.
+std::vector<int> AssignSpots(std::vector<Vec3> const& from, std::vector<FormationSpot> const& spots);
 
 // ---- Flowing conversations (research/59 "Flowing conversations", 2026-11-09) ---------------------------------------------------
 // A conversation's play from a start entry that can never reach a dialogue wheel (a scene watched: Garrus arguing with the

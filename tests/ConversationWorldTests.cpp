@@ -789,6 +789,15 @@ void TestCircle() {
     // The same seed, the same formation; another seed, another.
     CHECK(Close(cw::SquadFormation({0.0, 0.0, 0.0}, {300.0, 0.0, 0.0}, 2, 170.0, 50.0, 7u)[0].at.x, squad[0].at.x));
     CHECK(!Close(cw::SquadFormation({0.0, 0.0, 0.0}, {300.0, 0.0, 0.0}, 2, 170.0, 50.0, 8u)[0].at.x, squad[0].at.x));
+    // Each squadmate takes the spot on its own side: one standing behind-left and one behind-right of the player keep their sides
+    // (Khalisah's interview, 2026-11-12: by index they swapped, crossing behind the player).
+    if (squad.size() == 2) {
+        std::vector<int> const sides = cw::AssignSpots({{-110.0, -60.0, 0.0}, {-110.0, 60.0, 0.0}}, squad);
+        CHECK(sides.size() == 2 && sides[0] == 1 && sides[1] == 0);  // the one on the left (-Y) takes the left spot
+        std::vector<int> const kept = cw::AssignSpots({{-50.0, 160.0, 0.0}, {-50.0, -160.0, 0.0}}, squad);
+        CHECK(kept.size() == 2 && kept[0] == 0 && kept[1] == 1);
+    }
+    CHECK(cw::AssignSpots({}, squad).empty());
     // Walkers set off one after another.
     CHECK(cw::StaggerSeconds(0, s) == 0.0 && Close(cw::StaggerSeconds(2, s), 1.2));
     // The scenes whose authored places matter: Kirrahe's camp, and any named in [Cinematics] worldStaged.

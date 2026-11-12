@@ -1289,6 +1289,9 @@ void CheckPaths() {
     CheckElement("SFXGame.BioBaseSquad", "Members", sizeof(FMemberData));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "SquadMember"}, SDK_AT(offsetof(FMemberData, SquadMember), 8));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "eSwitchWeapon"}, SDK_AT(offsetof(FMemberData, eSwitchWeapon), 1));
+    // game/ConversationWorld: the squad's formation held quietly (research/69 "The squad's formation, held").
+    CheckPath("SFXGame.BioBaseSquad", {"Members", "vHoldPosition"}, SDK_AT(offsetof(FMemberData, vHoldPosition), 12));
+    CheckPath("SFXGame.BioBaseSquad", {"Members", "eFormation"}, SDK_AT(offsetof(FMemberData, eFormation), 1));
     // game/ConversationWorld (research/69 item 7, "Seats for the pairs"): who says each line to whom, and who the indices name.
     CheckElement("SFXGame.BioConversation", "m_SpeakerList", sizeof(FBioDialogSpeaker));
     CheckPath("SFXGame.BioConversation", {"m_SpeakerList", "aSpeaker"}, SDK_AT(offsetof(FBioDialogSpeaker, aSpeaker), 8));

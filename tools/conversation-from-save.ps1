@@ -7,13 +7,17 @@
 #
 #   tools/conversation-from-save.ps1 -Save John02_81 -Action PlayerBecomesSpectre.BioSeqAct_PMCheckState_2
 #       [-Class BioSeqAct_PMCheckState] [-ActionInput 0] [-Seconds 300] [-EndAfter 0] [-Pace skip|full] [-Snapshots 20,45]
-#       [-Walk 18] [-Replay rec.mevrrec] [-Before "mevr calltrace 20 hidden"] [-NoLoad]
+#       [-Walk 18] [-Replay rec.mevrrec] [-Before "mevr calltrace 20 hidden"] [-NoLoad] [-Stances] [-Chunk STA30_02A]
 #   tools/conversation-from-save.ps1 -All -Career John02 [-FirstSlot 80] [-List tools/conversation-headset-sample.json]
 #       [-Plans a.json,b.json] [-Only 80,81] [-EndAfter 25] [-Seconds 150]
 #
 # -EndAfter N: a conversation is ended N seconds in (only the opening matters). -Walk N: the left stick held forward for N
 # seconds from the start (a player who walks along; `mevr convo walk`). -WanderAt N: N seconds into a conversation (the wheel
-# down) the stick sideways for 3 s, then standing (the conversational circle gathers round again). -Replay: a recording replayed in a loop with its
+# down) the stick sideways for 3 s, then standing (the conversational circle gathers round again). -Stances: the scene from above
+# (research/69 "Stances from above"; `mevr convo stances on`): after its opening, each walk and its end, drawn by
+# tools/conversation-stance.py into a sheet per conversation; a scene where nothing will move (`mevr convo ahead`: nobody walking,
+# nobody of the dialogue who would walk in, and the scan knows no stage walk in it) is ended once its stance is written.
+# -Replay: a recording replayed in a loop with its
 # inputs from the moment the scene is fired until it is over (a real stick and buttons: tools/make-walk-recording.py). -All: every scene of the list from its numbered
 # save (the saves `conversation-sweep.py saves` wrote), each one's action from the plans (`conversation-sweep.py actions`).
 #
@@ -39,7 +43,9 @@ param(
     [int]$FirstSlot = 80,
     [string]$List = '',
     [string[]]$Plans = @(),
-    [int[]]$Only = @()
+    [int[]]$Only = @(),
+    [switch]$Stances,
+    [string]$Chunk = ''
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
@@ -57,6 +63,24 @@ function Clear-Boxes() {
     }
 }
 if (-not (Get-Process MassEffect1 -ErrorAction SilentlyContinue)) { throw 'the game is not running' }
+
+# The scan's stage walks per conversation (its actorMove: lines on which the stage moves someone; tools/conversation-scan.py), so
+# -Stances never ends a scene a stage walk is still to come in. Made once from the scan's records into %LOCALAPPDATA%\MEVR.
+$stageWalks = @{}
+if ($Stances) {
+    $scanData = Join-Path $env:LOCALAPPDATA 'MEVR\scan-all.jsonl'
+    $scanCsv = Join-Path $env:LOCALAPPDATA 'MEVR\conversation-scan.csv'
+    if ((Test-Path $scanData) -and (-not (Test-Path $scanCsv) -or (Get-Item $scanCsv).LastWriteTime -lt (Get-Item $scanData).LastWriteTime)) {
+        & python -I (Join-Path $tools 'conversation-scan.py') $scanData --csv $scanCsv | Out-Null
+    }
+    if (Test-Path $scanCsv) { Import-Csv $scanCsv | ForEach-Object { $stageWalks[$_.conversation] = [int]$_.actorMove } }
+}
+# The scan's key of a conversation's name ("BioConversation sta30_khalisah_D.sta30_khalisah_dlg" -> sta30_khalisah).
+function Conversation-Key([string]$name) {
+    $k = ($name -split '[. ]')[-1].ToLowerInvariant()
+    foreach ($suffix in '_dlg', '_d') { if ($k.Length -gt $suffix.Length -and $k.EndsWith($suffix)) { $k = $k.Substring(0, $k.Length - $suffix.Length) } }
+    $k
+}
 
 # The mod's log (the lines since a time): a scene that plays as barks is told by its voice there (the census below).
 function Log-Since([datetime]$since) {
@@ -155,6 +179,30 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             }
         }
     }
+    # -Chunk: a chunk a streaming volume's plain state shows (the save stands outside it): that volume touched, as the player's
+    # walk in would (tools/conversation-launch.ps1's way; never `streamlevelin`).
+    if ($index -lt 0 -and $Chunk) {
+        $chunkRe = "(^|_)$([regex]::Escape($Chunk))(_|$)"
+        $volume = $null; $current = $null
+        foreach ($line in ((Console 'mevr stream list') -split "`n")) {
+            $m = [regex]::Match($line, '^\[(\d+)\] (\S+) at ')
+            if ($m.Success) { $current = $m.Groups[2].Value; continue }
+            $st = [regex]::Match($line, '^\s*state (\S+) \(in [^)]*\): visible ([^;]*);')
+            if ($current -and $st.Success -and ($st.Groups[1].Value -in 'None', 'Default') -and @(($st.Groups[2].Value -split ',') -match $chunkRe)) { $volume = $current; break }
+        }
+        if ($volume) {
+            Console "mevr stream touch $volume" | Out-Null
+            Say "$class ...$action is not loaded: $volume touched (it shows $Chunk)"
+            for ($w = 0; $w -lt 15 -and $index -lt 0; $w++) {
+                Start-Sleep -Seconds 2
+                foreach ($line in (Console "mevr instances $class $tail") -split "`n") {
+                    $lm = [regex]::Match($line, '^\[(\d+)\]\s+(\S+)\s+(\S+)')
+                    if ($lm.Success -and $lm.Groups[3].Value.EndsWith($action)) { $index = [int]$lm.Groups[1].Value }
+                }
+            }
+            if ($index -ge 0) { Start-Sleep -Seconds 3 }   # its floor and people shown before anything is fired
+        } else { Say "no streaming volume's plain state shows $Chunk" }
+    }
     if ($index -lt 0) { Say "$class ...$action is not loaded"; return $false }
     $started = Get-Date
     if ($Before) { Console $Before | Out-Null }   # e.g. a call trace that must cover the scene's first frames
@@ -180,9 +228,10 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     # The test's inputs whichever way the scene began (they were skipped for a scene that started by itself).
     if ($Walk -gt 0) { Console "mevr convo walk 0 1 $Walk" | Out-Null }
     if ($Replay) { & (Join-Path $tools 'replay.ps1') -Path $Replay -Loop -Inputs *> $null }
+    if ($Stances) { Console 'mevr convo stances on' | Out-Null }
 
     $shots = @($Snapshots | Sort-Object)
-    $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false
+    $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false; $judged = @{}
     while (((Get-Date) - $started).TotalSeconds -lt $Seconds) {
         Start-Sleep -Milliseconds 1500
         $elapsed = ((Get-Date) - $started).TotalSeconds
@@ -207,6 +256,24 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             }
             $key = "$($Matches[1])/$($Matches[4])"
             $wheelUp = $Matches[5] -eq 'up'
+            $number = $Matches[1]; $convName = $Matches[2]
+            if ($Stances -and -not $judged.ContainsKey($number) -and ((Get-Date) - $convoSince).TotalSeconds -ge 4) {
+                # Once its opening has settled and nobody walks any more: does anything still have to move in this scene?
+                $ahead = Console 'mevr convo ahead'
+                $walksNow = $ahead -match ' now '
+                if (-not $walksNow -or ((Get-Date) - $convoSince).TotalSeconds -ge 40) {
+                    $judged[$number] = $true
+                    $stage = $stageWalks[(Conversation-Key $convName)]
+                    if ($ahead -match 'movement ahead: none' -and -not ($stage -gt 0)) {
+                        $written = Console 'mevr convo stance settled'
+                        Console 'mevr convo end' | Out-Null
+                        Say ("nothing moves in this scene from here on: its stance written ({0}), the scene ended" -f ([regex]::Match($written, 'stances\\([^ ]+)').Groups[1].Value))
+                        $convoSince = $null
+                        continue
+                    }
+                    Say ("played on: {0}{1}" -f ($ahead -replace '^convo: ', ''), $(if ($stage -gt 0) { "; the stage walks someone on $stage lines (the scan)" } else { '' }))
+                }
+            }
             if ($WanderAt -gt 0 -and -not $wandered -and -not $wheelUp -and ((Get-Date) - $convoSince).TotalSeconds -ge $WanderAt) {
                 # A player who wanders off mid-conversation: the stick sideways for 3 s (about 2.7 m at the conversation's
                 # walking pace), then standing still: the conversational circle should gather round again.
@@ -224,6 +291,10 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     }
     if ($Replay) { & (Join-Path $tools 'replay.ps1') -Stop *> $null }
     & python -I (Join-Path $tools 'conversation-session.py') --since $began | Select-Object -Skip 1
+    if ($Stances) {
+        Start-Sleep -Seconds 1   # the end's stance
+        & python -I (Join-Path $tools 'conversation-stance.py') --since ((Get-Date -Format 'yyyy-MM-dd') + 'T' + $began) | ForEach-Object { Say "from above: $_" }
+    }
     return $ok
 }
 

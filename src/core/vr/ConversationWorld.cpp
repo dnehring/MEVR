@@ -584,6 +584,36 @@ std::vector<FormationSpot> SquadFormation(Vec3 const& player, Vec3 const& lookAt
     return out;
 }
 
+std::vector<int> AssignSpots(std::vector<Vec3> const& from, std::vector<FormationSpot> const& spots) {
+    std::size_t const n = std::min(from.size(), spots.size());
+    std::vector<int> order(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        order[i] = static_cast<int>(i);
+    }
+    if (n < 2 || n > 6) {
+        return order;
+    }
+    auto const cost = [&](std::vector<int> const& o) {
+        double sum = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            Vec3 const& a = from[i];
+            Vec3 const& b = spots[static_cast<std::size_t>(o[i])].at;
+            sum += std::hypot(a.x - b.x, a.y - b.y);
+        }
+        return sum;
+    };
+    std::vector<int> best = order;
+    double bestCost = cost(order);
+    while (std::next_permutation(order.begin(), order.end())) {
+        double const c = cost(order);
+        if (c < bestCost - 1e-6) {
+            bestCost = c;
+            best = order;
+        }
+    }
+    return best;
+}
+
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.

@@ -322,6 +322,16 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     [verify] in the headset. **Second design 2026-11-12** after the owner's answers (the owner stays, early walk-ins read ahead
     in the dialogue, a 4 m boundary, the right stick turns, staged scenes keep their facings; "The conversational circle" below):
     validated on the fake headset except the squad's formation, which the AI doesn't walk reliably yet (off by default).
+    **The squad's formation, held (2026-11-12, "The squad's formation, held" below)**: the conversation's start had moved the squad
+    onto the stage's marks beside Shepard's mark, 6-8 m from a player who stays where he began; a squadmate that stood with him is
+    put back before anything is drawn, takes the spot on its own side (`cw::AssignSpots`) and walks there held by the squad's own
+    HOLD formation (written quietly into its member data), or is put there under a cut's dip; released at the end. Validated on the
+    fake headset (Khalisah's interview, the embassy, Anderson's office): `worldSquadGather` **on by default**.
+29. **Stances from above** (the owner, 2026-11-12: "capture the conversational stances from a top/bottom view so that we can more
+    easily judge the conversations. If the conversation doesn't require any mid scene movement then those can be skipped early
+    after capturing the screenshot"; "Stances from above" below): **built** (`mevr convo stance`, `worldStances`,
+    `tools/conversation-stance.py`, `tools/conversation-from-save.ps1 -Stances`); a plan view drawn from the game's places and a ray
+    scan of the room, not a render (a camera above the room would see its ceiling, and Umbra culls from the camera).
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3054,6 +3064,75 @@ owner's rules:
   right stick (no controllers on the fake headset). The embassy scene (Udina and Anderson, ten people) wasn't loaded from that
   save.
 
+### The squad's formation, held (2026-11-12 09:20-09:43, fake headset; item 28)
+
+The first try (00:12) stalled: Garrus walked 2.8 m of 6.9 and stopped, Tali 1.6 m the wrong way. Read again with the log, both
+had been moved by **the conversation's start itself**: between the start action and the first tick of the scene the game put
+them onto the stage's marks next to Shepard's mark (Garrus 6.2 m, Tali 7.6 m from where they stood beside the player; the
+conversation's own saved places, `m_aFSPrevPositions`, were empty). Khalisah's opening is a view walk-in, so the player stays
+5.7 m from that mark and the formation round him sent them all the way back, while their own follow logic (BioAI_Henchman, its
+AI switched on for the walk) pulled toward Shepard's pawn, hidden at his mark.
+
+Built:
+- **Put back**: the on-foot record keeps the squad's places every camera update (`Foot::squad`); when a conversation in the world
+  that isn't staged begins, a squadmate the start moved more than a metre is put back where it stood (`PutBackSquad`, before
+  anything is tracked or drawn), if it stood with the player: within 10 m of Shepard, within 2 m of his height, on a floor.
+- **Held**: the squad's own HOLD formation for each walker, written into `BioBaseSquad.Members[i]` (`vHoldPosition`, then
+  `eFormation` = 2), as `SetMemberHoldPosition` and `SetSquadFollowFormation(HOLD)` leave them but without the calls: the formation
+  call runs `BioSquadPlayer.OnSetSquadFollowFormation`, whose chatter makes the squadmate answer the order out loud (research/54's
+  trace). Their follow logic then walks to the formation spot with our `PushMoveToPoint`. What the member data had is kept and
+  written back when the conversation ends (`ReleaseSquad`; also when the mod unloads). Journalled; ReflectCheck rows for both fields.
+- **Under a cut** (the opening dips to Shepard's mark): the squad is put at its spots at once, facing the owner, nobody seen
+  walking.
+- **Each on its own side** (`cw::AssignSpots`, unit-tested): the assignment with the least walking; by index the two had swapped
+  sides, crossing behind the player (seen from above, below).
+
+Runs (the owner's John00_96: Garrus and Tali; Pace full; the stick untouched):
+- Khalisah's interview (09:25, before the side rule): put back 6.2 and 7.6 m; walked 2.1 and 2.4 m with the AI and arrived 0.25
+  and 0.24 m from their spots 2.5-3 s in; released when the scene ended. Their sides swapped.
+- The embassy (Udina's "Krogan on Virmire!") and Anderson's office (09:37): both openings cuts (6.5 and 5.8 m to the mark); the
+  squad put at its spots under the dip, 1.2-2.8 m from where the start had them. In this run the squad's place on foot was 125 m
+  under the Presidium's floor (the runner's touch of the embassy's streaming volume had dropped them), and the put-back used it:
+  the 10 m / 2 m / floor guard since.
+- Khalisah's interview again (09:42, the side rule, the formation on by default with nothing in the file): Garrus walked 1.7 m to
+  his own side and arrived 0.24 m from the spot; Tali stood 0.9 m from hers and stayed.
+- Not judged: **in this save Khalisah, Udina and Anderson are hidden by the plot** (`bHidden`: the save is before those beats), so
+  each scene played to nobody; the squad's places are right, the composition with them present needs saves at those beats. The
+  session judge's "pivot" counts a squadmate's turn under the dip (170 degrees), which nobody sees.
+
+### Stances from above (2026-11-12 09:10-09:45; item 29)
+
+The owner: "capture the conversational stances from a top/bottom view so that we can more easily judge the conversations. If the
+conversation doesn't require any mid scene movement then those can be skipped early after capturing the screenshot."
+
+A real top-down render was weighed and set aside: a camera above the room sees the ceiling (a near plane past it would cut it,
+but Umbra culls from the camera, and the roof occludes the room), and an overhead held view on the fake headset covers a couple
+of metres. So the mod writes the scene as data and a tool draws it:
+- **The record** (`mevr convo stance [tag]`; with `mevr convo stances on` or `[Cinematics] worldStances = 1` by itself 2 s after
+  the opening, after each walk ends (at most one a second) and at the conversation's end): the conversation, the line, the
+  player's held place and facing, the boundary, everyone tracked (name from the subtitles' "Name: ..." or the squad's, place,
+  facing, head, place at the start, speaker or spoken to, owner, squad, hidden, whether it can walk, its walk, its held place,
+  whom it looks at), the circle, and two ray scans from the group's middle (knee 0.45 m and chest 1.3 m above its floor, every 2
+  degrees, 12 m; level geometry only): about 360 traces in one tick, only when asked. `%LOCALAPPDATA%\MEVR\stances\<stamp>-<number>-
+  <conversation>-<tag>.json`.
+- **What still has to move** (`mevr convo ahead`, also in each record): people walking now or about to; the squad's formation not
+  yet asked for; people of the dialogue reachable from the current line (any branch, `cw::UpcomingPeople` without a depth limit)
+  who stand beyond the talking range, can walk, haven't joined and aren't the owner.
+- **The drawing** (`tools/conversation-stance.py [--since <time>] [files]`, Pillow): a sheet per conversation, a panel per moment
+  turned so the player looks up the page; 40 px a metre, or less to fit everyone within 8 m (further ones pinned to the edge with
+  their distance); walls dark, low things tan; the walking boundary dashed; facings, speaker and listener rings, gazes (a look at
+  Shepard drawn to the player), walks with their ends, held places, each one's start.
+- **The runner** (`tools/conversation-from-save.ps1 -Stances`): turns the stances on, and 4 s into a conversation, once nobody
+  walks (or at 40 s), asks `mevr convo ahead`; if nothing moves from there and the scan has no stage walk in the conversation (its
+  `actorMove`; `%LOCALAPPDATA%\MEVR\conversation-scan.csv`, made from `scan-all.jsonl` when older), it writes a `settled` stance and
+  ends the scene; at the end it draws the sheets. `-Chunk <name>` streams a chunk in by touching the volume whose plain state shows
+  it, when the save stands outside it.
+
+In the runs: Anoleis, Chorban and Avina (John02_83, 85, 89) and Khalisah, Udina and Anderson ended 8-13 s in, each with its opening
+and settled stances; Khalisah's first sheet showed the squad crossing behind the player (the side rule), Chorban's the stage's
+mark Shepard's body was put back from (now left out of the drawing), Anoleis's a guard 12 m behind the player, which had shrunk
+the drawing (the 8 m fit).
+
 ### The staged scenes (2026-11-12; for the owner's review)
 
 From the scan's 491 conversations (`conversation-scan.py --csv`), the ones that look like "the council or the virmire speech": a
@@ -3495,3 +3574,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 23:40, **items 23-27 from the owner's session** ("The owner's session, judged"): the wheel's band fixed; judder at the director's cuts measured; the right stick in conversations, tests that walk with the stick, and a dip for scenes that relocate their cast to build.
 - 2026-11-11 23:50, **item 28: the conversational circle** (the owner's design): built and unit-tested; the guided walk, the opening-time seats and the stronger look-at chain off by default; first run on the fake headset under way.
 - 2026-11-12 00:30, **item 28, second design** (the owner's answers): built and validated on the fake headset for eight scenes; the squad's formation off by default (the AI walk stalls or follows Shepard's pawn); the staged list for the owner's review.
+- 2026-11-12 09:45, **item 28, the squad's formation held** (put back before the scene is drawn, each on its own side, the squad's own HOLD formation written quietly, placed under a cut's dip): validated on the fake headset, on by default; **item 29, stances from above** built (`mevr convo stance`, `tools/conversation-stance.py`, the runner's `-Stances` that ends a scene once nothing will move).

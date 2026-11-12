@@ -306,6 +306,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   with the right stick (your comfort setting: snap or smooth; never tried with controllers). Nods and gestures as the game has them.
   Staged: the Council's hearing (slot 80) and Kirrahe's camp (slot 88, now in first person) open with a short fade to the scene's
   own places and nobody turns toward you. Also: the staged list in research/69 "The staged scenes" (which scenes should be staged).
+  Your squad (2026-11-12, research/69 "The squad's formation, held"; fake headset): start a conversation with squadmates near you
+  (your own career's saves: any NPC on the Citadel): they stay with you, stroll a step or two to your left and right, a little
+  behind, and face whoever you talk to; no squadmate says "on it" or similar; after the conversation they follow you again.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.

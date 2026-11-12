@@ -121,6 +121,18 @@ ue3::FieldRef gLinkStrength{gBoneDefinitions, "m_fConversationStrength"};
 ue3::FunctionRef gSetDesiredRotation{"SFXGame.BioPawn.SetDesiredRotation"};
 ue3::ClassRef gTurnPawnClass{"SFXGame.BioPawn"};
 ue3::FunctionRef gTrace{"Engine.Actor.Trace"};  // the floor under an arc seat (Part B)
+// The squad's formation, held quietly (research/69 "The squad's formation, held", 2026-11-12): each squadmate's hold place and
+// the HOLD formation written into the squad's own member data (BioBaseSquad.Members), where SetMemberHoldPosition and
+// SetSquadFollowFormation leave them, without the calls: the formation's call runs BioSquadPlayer.OnSetSquadFollowFormation, which
+// makes the squadmate answer the order out loud (research/54's trace). The henchman's follow logic then walks to the hold place
+// instead of after Shepard's pawn (which a view walk-in leaves hidden at his mark: Tali walked off after it, 2026-11-12).
+ue3::FieldRef gSquadBehavior{"SFXGame.BioPawn", "m_oBehavior"};
+ue3::FieldRef gBehaviorSquad{"SFXGame.BioEpicPawnBehavior", "Squad"};
+ue3::FieldRef gSquadMembers{"SFXGame.BioBaseSquad", "Members"};
+ue3::FieldRef gSquadMemberPawn{gSquadMembers, "SquadMember"};
+ue3::FieldRef gSquadMemberHold{gSquadMembers, "vHoldPosition"};
+ue3::FieldRef gSquadMemberFormation{gSquadMembers, "eFormation"};
+constexpr std::uint8_t kFormationHold = 2;  // BioBaseSquad.EFollowFormation: BIO_FOLLOWFORMATION_HOLD
 ue3::FieldRef gWalkController{"Engine.Pawn", "Controller"};
 ue3::FieldRef gWalkVelocity{"Engine.Actor", "Velocity"};
 // The engine's own walking (worldWalk = 3): the pawn's acceleration toward the mark at walking pace, its physics doing the
@@ -246,6 +258,8 @@ struct Settings {
     float lookReach = 0.0f;
     bool turnLog = false;              // worldTurnLog = 1: each looking or turning person's yaw twice a second
     bool walkGestures = true;          // worldWalkGestures = 0: a walker keeps the conversation's gesture mode (no walk cycle)
+    bool stances = false;              // worldStances = 1: the scene from above written after its opening, each walk and at
+                                       // its end (`mevr convo stance`; research/69 "Stances from above")
     bool walkLog = false;              // worldWalkLog = 1: 1 s into an AI walk, the walker's and its controller's properties
                                        // to %LOCALAPPDATA%\MEVR\walk-probe (research/69 "Walking to marks")
     // Where the voices come from (worldVoices = spatial | game; research/69 "The voices, placed"; cw::PlaceVoice): a speaker
@@ -299,7 +313,7 @@ struct Settings {
     // arrives reliably: on the fake headset (2026-11-12, Khalisah from the owner's John00_96) the AI walk took Garrus 2.8 m of
     // 6.9 and Tali 1.6 m the wrong way, toward Shepard's pawn left at his mark by a walk-in by the view (henchmen follow the
     // pawn). Next: the squad's own HOLD formation at each place (game/SquadOrders' way), released at the end (research/69 item 28).
-    bool squadGather = false;
+    bool squadGather = true;
     float squadGatherSideM = 1.7f;
     float squadGatherBackM = 0.5f;
     bool stickTurns = true;            // the right stick turns the player in a conversation, as [Comfort] turn says (worldStickTurns)
@@ -359,6 +373,7 @@ struct Settings {
     float wheelCrop[4] = {};
 };
 Settings gSettings;
+std::optional<bool> gStancesOverride;  // `mevr convo stances on|off` over worldStances
 std::uint64_t gSettingsMs = 0;
 std::string gSettingsText;
 std::optional<cw::Mode> gModeOverride;  // `mevr convo world on|off|screen|vr` (tests); not saved
@@ -412,6 +427,7 @@ void RefreshSettings() {
     }
     s.turnLog = number("worldTurnLog", 0.0f, 0.0f, 1.0f) != 0.0f;
     s.walkLog = number("worldWalkLog", 0.0f, 0.0f, 1.0f) != 0.0f;
+    s.stances = number("worldStances", 0.0f, 0.0f, 1.0f) != 0.0f;
     s.walkGestures = number("worldWalkGestures", 1.0f, 0.0f, 1.0f) != 0.0f;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldVoices")) {
         std::string const v = ini::Lower(ini::Trim(*text));
@@ -462,7 +478,7 @@ void RefreshSettings() {
     s.circleSettings.ownerAlwaysStays = number("worldCircleOwnerStays", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.circleSettings.regather = number("worldCircleRegather", 0.0f, 0.0f, 1.0f) != 0.0f;
     s.lookahead = static_cast<int>(number("worldCircleLookahead", 4.0f, 0.0f, 12.0f));
-    s.squadGather = number("worldSquadGather", 0.0f, 0.0f, 1.0f) != 0.0f;
+    s.squadGather = number("worldSquadGather", 1.0f, 0.0f, 1.0f) != 0.0f;  // on since 2026-11-12 (held by the HOLD formation)
     s.squadGatherSideM = number("worldSquadGatherSideM", s.squadGatherSideM, 0.5f, 5.0f);
     s.squadGatherBackM = number("worldSquadGatherBackM", s.squadGatherBackM, -2.0f, 5.0f);
     s.stickTurns = number("worldStickTurns", 1.0f, 0.0f, 1.0f) != 0.0f;
@@ -661,6 +677,12 @@ struct Foot {
     ue3::Rotator rotation{};
     float fov = 90.0f;
     ue3::Vector pawn{};                              // Shepard's pawn at that camera update
+    struct Squadmate {
+        ue3::Object* pawn = nullptr;
+        ue3::Vector at{};
+        ue3::Rotator rotation{};
+    };
+    std::vector<Squadmate> squad;                    // the squad at that camera update (its place before a stage moves it)
     std::optional<engine::TrackingFrame> frame;      // the room as that view maps it
     vr::host_view::State floorView;
     std::uint64_t ms = 0;                            // when
@@ -703,6 +725,8 @@ DirectedCamera gDirected;
 bool gOwnCamera = false;
 
 void KeepInPlace(ue3::Object* pawn);
+void StanceTick(ue3::Object* pawn);
+std::string WriteStance(std::string const& tag);
 bool KeepsTheLiveConversation(ue3::Object* controller);
 ue3::Object* ConversationNow(ue3::Object* controller);
 bool MomentHeld();  // a moment's view is up (provisional too)
@@ -778,6 +802,14 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         gFoot.fov = *pov->fov;
         if (auto const p = player::Location(player::Pawn(controller))) {
             gFoot.pawn = *p;
+        }
+        gFoot.squad.clear();
+        for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+            auto const at = m.pawn != nullptr ? player::Location(m.pawn) : std::nullopt;
+            auto const rot = m.pawn != nullptr ? player::Rotation(m.pawn) : std::nullopt;
+            if (at && rot) {
+                gFoot.squad.push_back({m.pawn, *at, *rot});
+            }
         }
         gFoot.have = true;
         gFoot.ms = GetTickCount64();
@@ -928,6 +960,20 @@ struct Convo {
     bool graphRead = false;
     bool squadGathered = false; // the squad's formation asked for (once a conversation)
     int squadWalked = 0;
+    int squadPutBack = 0;       // squadmates the conversation's start had moved, put back where they stood
+    int squadPlaced = 0;        // ... put straight into the formation under the opening's dip
+    int squadHeld = 0;          // squadmates held at their places by the squad's HOLD formation
+    struct SquadHold {
+        ue3::Object* pawn = nullptr;
+        std::uint8_t formation = 0;  // what the squad's member data had before
+        ue3::Vector hold{};
+    };
+    std::vector<SquadHold> squadHolds;  // put back at the end
+    std::map<ue3::Object*, std::string> names;  // each speaker's name as its subtitles give it ("Khalisah Al-Jilani: ...")
+    bool stanceOpening = false;  // the scene from above after its opening (worldStances), written
+    std::string stanceWanted;    // ... after a walk ended: its tag, written at most once a second
+    double stanceAtS = -10.0;    // when the last one was written (the conversation's seconds)
+    int stances = 0;
     std::vector<ue3::Object*> squadOnly; // squadmates tracked for the formation only (not people of the conversation)
     std::optional<ik::Vec3> boundaryAt;  // where the conversation began for the player: the walk's boundary is around it
     vr::comfort::SnapTurn snap;          // the right stick's turn
@@ -1417,6 +1463,9 @@ void EndWalk(Stay& st, char const* event, char const* why) {
     }
     log::Info("convo: walk: {} {} at {} ({}, {})", event, st.name, F(st.place),
         running ? (st.method == 1 ? "ai" : st.method == 3 ? "the engine's walking" : "slide") : "pending", why);
+    if (running && !gTearingDown && (std::string_view(event) == "arrival" || std::string_view(event) == "end")) {
+        gC.stanceWanted = std::format("after-{}-walk", st.name);
+    }
     st.moveAction = nullptr;
     st.walk.End();
 }
@@ -2250,6 +2299,7 @@ bool KeepsTheLiveConversation(ue3::Object* controller) {
 // the circle forms around the player's place toward the first one engaged and gathers round the player again after the player
 // has walked off and stood. Rules: cw::MakeCircle, cw::JoinCircle, cw::ShouldRegather (unit-tested).
 std::optional<double> FloorZ(ue3::Object* tracer, ik::Vec3 const& at);
+bool FaceYaw(ue3::Object* actor, double yawDeg);
 
 bool CircleOn() {
     return gSettings.circle && gC.on && gC.world && !gC.staged && gC.openingDone && gSettings.walk == 1 && gSettings.stay;
@@ -2354,10 +2404,125 @@ void WalkIntoCircle(Stay& st, ue3::Object* pawn, cw::CircleSpot const& spot, dou
         spot.walkUnits / kUnitsPerMeter, delay > 0.0 ? std::format(" after {:.1f} s", delay) : std::string(), spot.angleDeg, spot.faceYawDeg);
 }
 
+// ---- The squad's formation, held (research/69 "The squad's formation, held", 2026-11-12) -----------------------------------------
+// The player's squad object (Shepard's behaviour's squad), or null.
+ue3::Object* PlayerSquad(ue3::Object* pawn) {
+    ue3::Object* const behavior = pawn != nullptr ? gSquadBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    ue3::Object* const squad = behavior != nullptr ? gBehaviorSquad.Read<ue3::Object*>(behavior).value_or(nullptr) : nullptr;
+    return squad != nullptr && ue3::runtime::IsAlive(squad) ? squad : nullptr;
+}
+
+// The squad's member data for this squadmate (BioBaseSquad.Members[i], found by its pawn), or null.
+void* SquadEntry(ue3::Object* squad, ue3::Object* member) {
+    if (squad == nullptr || member == nullptr) {
+        return nullptr;
+    }
+    if (auto const members = gSquadMembers.ElementsOf(squad, 16)) {
+        for (std::int32_t i = 0; i < members->count; ++i) {
+            void* const entry = const_cast<void*>(members->At(i));
+            if (gSquadMemberPawn.Read<ue3::Object*>(entry).value_or(nullptr) == member) {
+                return entry;
+            }
+        }
+    }
+    return nullptr;
+}
+
+// Holds a squadmate at a place by the squad's own HOLD formation, written quietly (above); what was there before is kept for the
+// end of the conversation. False: no squad, or this squadmate isn't in its member data.
+bool HoldSquadmate(ue3::Object* pawn, Stay const& st, ik::Vec3 const& at) {
+    void* const entry = SquadEntry(PlayerSquad(pawn), st.actor);
+    ue3::Vector* const hold = entry != nullptr ? gSquadMemberHold.In<ue3::Vector>(entry) : nullptr;
+    std::uint8_t* const formation = entry != nullptr ? gSquadMemberFormation.In<std::uint8_t>(entry) : nullptr;
+    if (hold == nullptr || formation == nullptr) {
+        log::Info("convo: squad: {} isn't in the squad's member data: its own follow logic stays", st.name);
+        return false;
+    }
+    if (std::none_of(gC.squadHolds.begin(), gC.squadHolds.end(), [&](Convo::SquadHold const& h) { return h.pawn == st.actor; })) {
+        gC.squadHolds.push_back({st.actor, *formation, *hold});
+        ++gC.squadHeld;
+    }
+    *hold = EnginePoint(at);
+    write_journal::Wrote("ConversationWorld.squadHoldPosition", hold, sizeof(*hold));
+    *formation = kFormationHold;
+    write_journal::Wrote("ConversationWorld.squadFormation", formation, sizeof(*formation));
+    return true;
+}
+
+// The squad's formations as they were before the conversation (FOLLOW, as a rule): their follow logic takes them on.
+void ReleaseSquad(char const* why) {
+    if (gC.squadHolds.empty()) {
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const squad = PlayerSquad(controller != nullptr ? player::BioPawn(controller) : nullptr);
+    int released = 0;
+    for (Convo::SquadHold const& h : gC.squadHolds) {
+        void* const entry = ue3::runtime::IsAlive(h.pawn) ? SquadEntry(squad, h.pawn) : nullptr;
+        ue3::Vector* const hold = entry != nullptr ? gSquadMemberHold.In<ue3::Vector>(entry) : nullptr;
+        std::uint8_t* const formation = entry != nullptr ? gSquadMemberFormation.In<std::uint8_t>(entry) : nullptr;
+        if (hold == nullptr || formation == nullptr) {
+            continue;
+        }
+        *hold = h.hold;
+        write_journal::Wrote("ConversationWorld.squadHoldPosition (put back)", hold, sizeof(*hold));
+        *formation = h.formation;
+        write_journal::Wrote("ConversationWorld.squadFormation (put back)", formation, sizeof(*formation));
+        ++released;
+    }
+    log::Info("convo: squad: {} of {} squadmates back on their own formation ({})", released, gC.squadHolds.size(), why);
+    gC.squadHolds.clear();
+}
+
+// The conversation's start moves the squad onto the stage's marks beside Shepard's (Khalisah's interview, 2026-11-12: Garrus and
+// Tali 6 m from where they stood next to the player, who stays where the conversation began): each squadmate the start moved
+// more than a metre is put back where it stood on foot, before anything of the scene is drawn. It joins the formation from there.
+// Only a squadmate that was with the player: within 10 m of Shepard on foot, at his height, on a floor (a test's streaming once
+// dropped the squad 125 m under the Presidium, 2026-11-12: put back there, they would have stood in the void).
+void PutBackSquad(ue3::Object* pawn, ue3::Object* owner) {
+    bool const footFresh = gFoot.have && gC.startMs >= gFoot.ms && gC.startMs - gFoot.ms < 5000;
+    if (!footFresh) {
+        return;
+    }
+    for (Foot::Squadmate const& m : gFoot.squad) {
+        if (m.pawn == nullptr || m.pawn == pawn || m.pawn == owner || !ue3::runtime::IsAlive(m.pawn) ||
+            gActorHidden.ReadBool(m.pawn).value_or(false) || authored_moment::TrackMoves(m.pawn)) {
+            continue;
+        }
+        auto const now = player::Location(m.pawn);
+        if (!now) {
+            continue;
+        }
+        double const moved = Dist(V(*now), V(m.at));
+        if (moved < 100.0) {
+            continue;
+        }
+        double const fromShepard = std::hypot(m.at.x - gFoot.pawn.x, m.at.y - gFoot.pawn.y);
+        double const belowShepard = std::abs(m.at.z - gFoot.pawn.z);
+        if (fromShepard > 1000.0 || belowShepard > 200.0 || !FloorZ(pawn, V(m.at))) {
+            log::Info("convo: squad: the conversation's start moved {} {:.1f} m; it was not with the player ({:.1f} m from Shepard, "
+                      "{:.1f} m above or below him{}): left where the start put it", ShortName(m.pawn), moved / kUnitsPerMeter,
+                fromShepard / kUnitsPerMeter, belowShepard / kUnitsPerMeter, FloorZ(pawn, V(m.at)) ? "" : ", no floor there");
+            continue;
+        }
+        bool const put = PutAt(m.pawn, V(m.at));
+        if (put) {
+            FaceYaw(m.pawn, YawDeg(m.rotation));
+            if (auto const rot = player::Rotation(m.pawn)) {
+                SetDesired(m.pawn, *rot, YawDeg(m.rotation), true);
+            }
+            ++gC.squadPutBack;
+        }
+        log::Info("convo: squad: the conversation's start moved {} {:.1f} m (to {}): {}", ShortName(m.pawn), moved / kUnitsPerMeter,
+            F(V(*now)), put ? std::format("put back where it stood, {}", F(V(m.at))) : std::string("it could not be put back"));
+    }
+}
+
 // The squad's relaxed formation (worldSquadGather; cw::SquadFormation): once a conversation, after its opening, each squadmate
-// not already within a metre of its place walks there with the game's AI, one after another, and faces the conversation.
-// In every conversation in the world but the staged ones, the ones the player only watches too (the owner: "the squad should
-// have a relaxed formation").
+// not already within a metre of its place walks there with the game's AI, one after another, and faces the conversation; the
+// squad's HOLD formation at that place keeps its own follow logic from taking it elsewhere (Shepard's pawn, hidden at his mark
+// in a view walk-in). After a cut (the opening's dip) they are put there at once. In every conversation in the world but the
+// staged ones, the ones the player only watches too (the owner: "the squad should have a relaxed formation").
 void GatherSquad(ue3::Object* pawn, double nowS) {
     if (gC.squadGathered || !gSettings.squadGather) {
         return;
@@ -2384,9 +2549,15 @@ void GatherSquad(ue3::Object* pawn, double nowS) {
     ik::Vec3 const look = ownerAt ? V(*ownerAt) : gC.hold + YawForward(YawDeg(gC.holdRotation)) * 300.0;
     std::vector<cw::FormationSpot> const spots = cw::SquadFormation(player, {look.x, look.y, look.z}, static_cast<int>(members.size()),
         gSettings.squadGatherSideM * kUnitsPerMeter, gSettings.squadGatherBackM * kUnitsPerMeter, gC.number);
-    for (std::size_t i = 0; i < members.size() && i < spots.size(); ++i) {
+    bool const underDip = gC.opening == cw::Opening::Cut;  // the opening put the player at Shepard's mark under a dip, just now
+    std::vector<cw::Vec3> from;
+    for (Stay const* st : members) {
+        from.push_back({st->place.x, st->place.y, st->place.z});
+    }
+    std::vector<int> const assigned = cw::AssignSpots(from, spots);  // each on its own side, the least walking in all
+    for (std::size_t i = 0; i < members.size() && i < assigned.size(); ++i) {
         Stay& st = *members[i];
-        cw::FormationSpot const& spot = spots[i];
+        cw::FormationSpot const& spot = spots[static_cast<std::size_t>(assigned[i])];
         double const away = std::hypot(spot.at.x - st.place.x, spot.at.y - st.place.y);
         std::string notWalker;
         if (away < 100.0) {
@@ -2410,12 +2581,28 @@ void GatherSquad(ue3::Object* pawn, double nowS) {
         }
         at.z = *floorThere + (floorHere ? st.place.z - *floorHere : 0.0);
         EndWalk(st, "retarget", "the squad gathers");
+        bool const held = HoldSquadmate(pawn, st, at);
+        if (underDip && PutAt(st.actor, at)) {
+            // The opening's cut: nobody sees the squad arrive, they are simply there.
+            FaceYaw(st.actor, spot.faceYawDeg);
+            if (auto const rot = player::Rotation(st.actor)) {
+                SetDesired(st.actor, *rot, spot.faceYawDeg, true);
+            }
+            if (auto const now = player::Location(st.actor)) {
+                st.place = V(*now);
+            }
+            st.shownYaw = spot.faceYawDeg;
+            ++gC.squadPlaced;
+            log::Info("convo: squad: {} is put at its place beside you under the opening's dip ({:.1f} m; facing {:.0f} deg){}", st.name,
+                away / kUnitsPerMeter, spot.faceYawDeg, held ? ", held there by the squad's HOLD formation" : "");
+            continue;
+        }
         st.seatYaw = spot.faceYawDeg;
         st.walk.Jump(WalkPoint(at), WalkPoint(st.place), nowS - gSettings.walkSettleS - 0.1 + spot.delaySeconds,
             gSettings.walkMinM * kUnitsPerMeter);
         ++gC.squadWalked;
-        log::Info("convo: squad: {} walks {:.1f} m to its place beside you after {:.1f} s (facing {:.0f} deg)", st.name,
-            away / kUnitsPerMeter, spot.delaySeconds, spot.faceYawDeg);
+        log::Info("convo: squad: {} walks {:.1f} m to its place beside you after {:.1f} s (facing {:.0f} deg){}", st.name,
+            away / kUnitsPerMeter, spot.delaySeconds, spot.faceYawDeg, held ? ", held there by the squad's HOLD formation" : "");
     }
 }
 
@@ -2589,6 +2776,7 @@ void KeepInPlace(ue3::Object* pawn) {
     }
     ue3::Object* const speakerNow = speaker == pawn || speaker == gC.playerPawn ? playerPawn : speaker;
     StepCircle(pawn, speakerNow, listener, nowS, dt);
+    StanceTick(pawn);
     for (Tracked const& t : gC.actors) {
         auto it = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == t.actor; });
         if (t.actor == nullptr || !ue3::runtime::IsAlive(t.actor)) {
@@ -4054,6 +4242,9 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
         log::Info("convo: the player's place: {} at {} facing {:.0f} deg{}", gC.holdFrom, F(gC.hold), YawDeg(gC.holdRotation),
             head ? std::format(" ({:.2f} m from Shepard's head bone)", Dist(gC.hold, head->at) / kUnitsPerMeter) : std::string());
     }
+    if (gC.world && !gC.staged && gSettings.squadGather) {
+        PutBackSquad(pawn, gOwner.Read<ue3::Object*>(conv).value_or(nullptr));
+    }
     Track(pawn);
     Track(gOwner.Read<ue3::Object*>(conv).value_or(nullptr));
     if (auto const list = gSpeakerList.ElementsOf(conv, 64)) {
@@ -4089,12 +4280,16 @@ void End(char const* why) {
     if (!gC.on) {
         return;
     }
+    if ((gSettings.stances || gStancesOverride.value_or(false)) && gC.world && Seconds() - gC.stanceAtS > 2.0) {
+        log::Info("convo: {}", WriteStance("end"));
+    }
     ReleaseLooks(why);
     ClearVoices();
     gTrail.clear();
     gTearingDown = true;  // the walks end with the conversation: no gesture mode put back (EndWalk)
     EndWalks(why);
     gTearingDown = false;
+    ReleaseSquad(why);
     bool broughtToView = false;               // below: Shepard put where the player's view is
     bool const viewAway = gC.detached;        // the view had walked off from him
     ik::Vec3 const viewFeet = gC.detachedAt;  // the feet under the held view then
@@ -4196,7 +4391,8 @@ void End(char const* why) {
               "\"lookMaxDeg\": {:.0f}, \"headShortDeg\": {:.0f}, \"facingsEased\": {}, \"looksSet\": {}, \"glances\": {}, \"heardOnly\": {}, "
               "\"looksGame\": {}, \"turnsHome\": {}, \"reaches\": {}, \"looksRefused\": {}, \"voicesPlaced\": {}, \"voicesFar\": {}, "
               "\"staged\": {}, \"circleJoined\": {}, \"circleWalked\": {}, \"circleOut\": {}, \"circleRegathers\": {}, "
-              "\"circleEarly\": {}, \"circleStill\": {}, \"squadWalked\": {}, \"turnedDeg\": {:.0f}, "
+              "\"circleEarly\": {}, \"circleStill\": {}, \"squadWalked\": {}, \"squadPutBack\": {}, \"squadPlaced\": {}, "
+              "\"squadHeld\": {}, \"turnedDeg\": {:.0f}, "
               "\"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
@@ -4207,7 +4403,7 @@ void End(char const* why) {
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
         gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar,
         gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers,
-        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.turnedDeg, entryPath);
+        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.turnedDeg, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }
@@ -4235,6 +4431,9 @@ void Sample(ue3::Object* conv, ue3::Object* controller, ue3::Object* pawn, ik::V
     std::string const subtitle = Utf8(gSubtitle.In<ue3::FString>(conv));
     if (subtitle != gC.subtitle) {
         gC.subtitle = subtitle;
+        if (std::size_t const colon = subtitle.find(": "); speaker != nullptr && colon != std::string::npos && colon > 0 && colon < 48) {
+            gC.names[speaker] = subtitle.substr(0, colon);
+        }
         if (!subtitle.empty()) {
             ++gC.lines;
             ++gC.speakers[ShortName(speaker)];
@@ -4830,6 +5029,287 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
     SetStatus(std::format("{{\"on\": true, \"world\": true, \"moment\": {}, \"held\": [{:.1f}, {:.1f}, {:.1f}], \"putBack\": {}, \"cuts\": {}}}",
         gMoment.number, gC.hold.x, gC.hold.y, gC.hold.z, gMoment.putBack, gMoment.cuts));
     return true;
+}
+
+// ---- Stances from above (research/69 "Stances from above", 2026-11-12; the owner: "capture the conversational stances from a
+// top/bottom view so that we can more easily judge the conversations") --------------------------------------------------------
+// `mevr convo stance [tag]`, or by itself with `mevr convo stances on` / [Cinematics] worldStances = 1 (after the opening, after
+// each walk, at the end): where everyone stands, faces and looks, who walks where, the circle, the squad's held places, the
+// player's boundary, and a scan of what stands around them (rays at knee and chest height) to
+// %LOCALAPPDATA%\MEVR\stances\<stamp>-<number>-<conversation>-<tag>.json; tools/conversation-stance.py draws them from above.
+// `mevr convo ahead`: what still has to move in this scene (people walking now; people of the dialogue who would walk in when
+// their lines come; the squad's formation not yet asked for), so a test can stop a scene where nothing will.
+std::string JsonText(std::string_view s) {
+    std::string out;
+    for (char c : s) {
+        if (c == '"' || c == '\\') {
+            out.push_back('\\');
+            out.push_back(c);
+        } else if (static_cast<unsigned char>(c) < 32) {
+            out.push_back(' ');
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+std::string P3(ik::Vec3 const& v) {
+    return std::format("[{:.0f}, {:.0f}, {:.0f}]", v.x, v.y, v.z);
+}
+
+std::string DisplayName(ue3::Object* actor) {
+    if (auto const it = gC.names.find(actor); it != gC.names.end()) {
+        return it->second;
+    }
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+        if (m.pawn == actor && !m.name.empty()) {
+            return m.name;
+        }
+    }
+    if (actor != nullptr && (actor == gC.playerPawn)) {
+        return "Shepard";
+    }
+    return ShortName(actor);
+}
+
+// The distance (units) a level-geometry ray goes before it hits something, or -1.
+double RayUnits(ue3::Object* tracer, ik::Vec3 const& from, ik::Vec3 const& to) {
+    ue3::Function* const fn = gTrace.Get();
+    if (fn == nullptr || tracer == nullptr) {
+        return -1.0;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    if (!p.Valid()) {
+        return -1.0;
+    }
+    p.Set("TraceStart", EnginePoint(from));
+    p.Set("TraceEnd", EnginePoint(to));
+    p.SetBool("bTraceActors", false);
+    if (!ue3::runtime::Call(tracer, fn, p) || p.Return<ue3::Object*>().value_or(nullptr) == nullptr) {
+        return -1.0;
+    }
+    auto const hit = p.Get<ue3::Vector>("HitLocation");
+    return hit ? Dist(V(*hit), from) : -1.0;
+}
+
+struct Ahead {
+    std::vector<std::string> now;    // walking (or about to) now
+    std::vector<std::string> later;  // would walk when their lines come
+};
+
+Ahead MovementAhead(ue3::Object* pawn) {
+    Ahead out;
+    ik::Vec3 const player = gC.hold;
+    for (Stay const& st : gStay) {
+        if (st.walk.Phase() == cw::WalkPhase::Walking) {
+            out.now.push_back(std::format("{} walks ({:.1f} m to go)", DisplayName(st.actor), Dist(st.place, WalkPoint(st.walk.Wanted())) / kUnitsPerMeter));
+        } else if (st.walk.Phase() == cw::WalkPhase::Waiting) {
+            out.now.push_back(std::format("{} sets off soon", DisplayName(st.actor)));
+        }
+    }
+    if (!CircleOn()) {
+        return out;  // staged (the stage's own places), or not in the world: nobody is walked by the circle
+    }
+    if (gSettings.squadGather && !gC.squadGathered) {
+        out.now.push_back("the squad's formation");
+    }
+    ue3::Object* const conv = gC.object;
+    if (!gC.graphRead) {
+        gC.graphRead = true;
+        gC.graph = ReadGraph(conv);
+    }
+    int const entry = gCurrentEntry.Read<int>(conv).value_or(-1);
+    ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
+    cw::CircleSettings const& cs = gSettings.circleSettings;
+    for (cw::Upcoming const& u : cw::UpcomingPeople(gC.graph, entry, 100000)) {
+        ue3::Object* const actor = PersonOfIndex(conv, pawn, u.index);
+        if (actor == nullptr || actor == pawn || actor == gC.playerPawn || !ue3::runtime::IsAlive(actor) ||
+            gActorHidden.ReadBool(actor).value_or(false) || (actor == owner && cs.ownerAlwaysStays)) {
+            continue;
+        }
+        auto const st = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& s) { return s.actor == actor; });
+        if (st == gStay.end() || st->walk.Phase() != cw::WalkPhase::Idle) {
+            continue;
+        }
+        bool const joined = std::any_of(gC.circle.members.begin(), gC.circle.members.end(),
+            [&](cw::ConversationCircle::Member const& m) { return m.id < static_cast<int>(gC.circleActors.size()) && gC.circleActors[m.id] == actor; });
+        double const away = std::hypot(st->place.x - player.x, st->place.y - player.y);
+        std::string notWalker;
+        if (joined || away <= cs.inRangeUnits || away > cs.maxWalkUnits || !CanWalk(*st, notWalker)) {
+            continue;
+        }
+        out.later.push_back(std::format("{} ({} lines on, {:.1f} m away)", DisplayName(actor), u.linesAway, away / kUnitsPerMeter));
+    }
+    return out;
+}
+
+std::string AheadLine(Ahead const& a) {
+    if (a.now.empty() && a.later.empty()) {
+        return "movement ahead: none";
+    }
+    std::string out = "movement ahead:";
+    for (std::string const& s : a.now) {
+        out += " now " + s + ";";
+    }
+    for (std::string const& s : a.later) {
+        out += " later " + s + ";";
+    }
+    out.pop_back();
+    return out;
+}
+
+std::string WriteStance(std::string const& tag) {
+    if (!gC.on || gC.object == nullptr) {
+        return "stance: no conversation";
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
+    ue3::Object* const tracer = pawn != nullptr ? pawn : gC.playerPawn;
+    ue3::Object* const conv = gC.object;
+    ue3::Object* const speaker = gSpeaker.Read<ue3::Object*>(conv).value_or(nullptr);
+    ue3::Object* const listener = gListener.Read<ue3::Object*>(conv).value_or(nullptr);
+    ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
+    ik::Vec3 const player = gC.hold;
+    double const playerYaw = YawDeg(gC.holdRotation);
+    std::string people;
+    ik::Vec3 sum = player;
+    int counted = 1;
+    for (Tracked const& t : gC.actors) {
+        if (t.actor == nullptr || !ue3::runtime::IsAlive(t.actor)) {
+            continue;
+        }
+        auto const at = player::Location(t.actor);
+        auto const rot = player::Rotation(t.actor);
+        if (!at || !rot) {
+            continue;
+        }
+        bool const isShepard = t.actor == gC.playerPawn || t.actor == pawn;
+        auto const st = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& s) { return s.actor == t.actor; });
+        std::string walk = "null";
+        if (st != gStay.end() && st->walk.Phase() != cw::WalkPhase::Idle) {
+            walk = std::format("{{\"phase\": \"{}\", \"to\": {}}}", st->walk.Phase() == cw::WalkPhase::Walking ? "walking" : "waiting",
+                P3(WalkPoint(st->walk.Wanted())));
+        }
+        auto const head = HeadOf(t.actor);
+        bool const squad = IsSquad(t.actor);
+        std::string role = t.actor == speaker || (isShepard && (speaker == pawn || speaker == gC.playerPawn)) ? "speaker"
+                         : t.actor == listener || (isShepard && (listener == pawn || listener == gC.playerPawn)) ? "listener" : "bystander";
+        std::string hold = "null";
+        for (Convo::SquadHold const& h : gC.squadHolds) {
+            if (h.pawn == t.actor) {
+                if (void* const entry = SquadEntry(PlayerSquad(pawn), t.actor)) {
+                    if (auto const heldAt = gSquadMemberHold.Read<ue3::Vector>(entry)) {
+                        hold = P3(V(*heldAt));
+                    }
+                }
+            }
+        }
+        std::string notWalker;
+        bool const walker = st != gStay.end() && CanWalk(*st, notWalker);
+        people += std::format("{}\n  {{\"name\": \"{}\", \"id\": \"{}\", \"at\": {}, \"yaw\": {:.0f}, \"head\": {}, \"start\": {}, "
+                              "\"role\": \"{}\", \"owner\": {}, \"squad\": {}, \"shepard\": {}, \"hidden\": {}, \"walks\": {}, "
+                              "\"walk\": {}, \"held\": {}, \"looksAt\": \"{}\"}}",
+            people.empty() ? "" : ",", JsonText(DisplayName(t.actor)), JsonText(t.name), P3(V(*at)), YawDeg(*rot),
+            head ? P3(head->at) : std::string("null"), P3(t.start), role, t.actor == owner ? "true" : "false", squad ? "true" : "false",
+            isShepard ? "true" : "false", gActorHidden.ReadBool(t.actor).value_or(false) ? "true" : "false",
+            walker ? "true" : "false", walk, hold,
+            st != gStay.end() && st->lookOurs != nullptr ? JsonText(DisplayName(st->lookOurs)) : std::string());
+        if (!isShepard && Dist(V(*at), player) < 1500.0) {
+            sum = sum + V(*at);
+            ++counted;
+        }
+    }
+    // What stands around them: rays from the middle of the group at knee and chest height, every 2 degrees, out to 12 m.
+    ik::Vec3 const middle = sum * (1.0 / counted);
+    double const floor = FloorZ(tracer, {middle.x, middle.y, player.z}).value_or(player.z - 160.0);
+    std::string walls;
+    constexpr double kHeights[] = {45.0, 130.0};
+    constexpr int kRays = 180;
+    constexpr double kReach = 1200.0;
+    for (double h : kHeights) {
+        std::string ray;
+        for (int i = 0; i < kRays; ++i) {
+            double const a = i * (360.0 / kRays) / kRadToDeg;
+            ik::Vec3 const from{middle.x, middle.y, floor + h};
+            ik::Vec3 const to = from + ik::Vec3{std::cos(a), std::sin(a), 0.0} * kReach;
+            double const d = RayUnits(tracer, from, to);
+            ray += std::format("{}{:.0f}", i == 0 ? "" : ",", d);
+        }
+        walls += std::format("{}{{\"heightM\": {:.2f}, \"units\": [{}]}}", walls.empty() ? "" : ", ", h / kUnitsPerMeter, ray);
+    }
+    std::string circle = "null";
+    if (gC.circle.made) {
+        std::string members;
+        for (cw::ConversationCircle::Member const& m : gC.circle.members) {
+            double const a = m.angleDeg / kRadToDeg;
+            ik::Vec3 const at{gC.circle.centre.x + std::cos(a) * gC.circle.radius, gC.circle.centre.y + std::sin(a) * gC.circle.radius, gC.circle.centre.z};
+            ue3::Object* const actor = m.id < static_cast<int>(gC.circleActors.size()) ? gC.circleActors[m.id] : nullptr;
+            members += std::format("{}{{\"name\": \"{}\", \"at\": {}}}", members.empty() ? "" : ", ", JsonText(DisplayName(actor)), P3(at));
+        }
+        circle = std::format("{{\"centre\": {}, \"radius\": {:.0f}, \"people\": {}, \"members\": [{}]}}",
+            P3({gC.circle.centre.x, gC.circle.centre.y, gC.circle.centre.z}), gC.circle.radius, gC.circle.people, members);
+    }
+    Ahead const ahead = MovementAhead(pawn);
+    std::string aheadNow, aheadLater;
+    for (std::string const& s : ahead.now) aheadNow += std::format("{}\"{}\"", aheadNow.empty() ? "" : ", ", JsonText(s));
+    for (std::string const& s : ahead.later) aheadLater += std::format("{}\"{}\"", aheadLater.empty() ? "" : ", ", JsonText(s));
+    ik::Vec3 const boundary = gC.boundaryAt.value_or(player);
+    std::string const json = std::format(
+        "{{\"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, \"staged\": {}, \"opening\": \"{}\", "
+        "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f},\n"
+        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}}},\n"
+        "\"people\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
+        "\"ahead\": {{\"now\": [{}], \"later\": [{}]}}}}\n",
+        JsonText(gC.name), gC.number, JsonText(tag), Seconds(), gC.staged ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-",
+        gCurrentEntry.Read<int>(conv).value_or(-1), JsonText(gC.subtitle), kUnitsPerMeter,
+        P3(player), playerYaw, P3(boundary), gSettings.moveLeashM, floor,
+        people, circle, P3(middle), floor, kReach, walls, aheadNow, aheadLater);
+    wchar_t buffer[MAX_PATH] = {};
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
+        return "stance: no LOCALAPPDATA";
+    }
+    std::filesystem::path const folder = std::filesystem::path(buffer) / L"MEVR" / L"stances";
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    std::string safeName = gC.name.substr(gC.name.rfind('.') == std::string::npos ? 0 : gC.name.rfind('.') + 1);
+    std::string safeTag = tag;
+    for (std::string* s : {&safeName, &safeTag}) {
+        for (char& c : *s) {
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-') c = '_';
+        }
+    }
+    std::filesystem::path const file = folder / std::format("{:04}-{:02}-{:02}_{:02}-{:02}-{:02}-{:03}-{}-{}-{}.json", t.wYear, t.wMonth, t.wDay,
+        t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, gC.number, safeName, safeTag);
+    FILE* out = _wfopen(file.c_str(), L"wb");
+    if (out == nullptr) {
+        return "stance: could not write " + ini::Utf8(file);
+    }
+    std::fwrite(json.data(), 1, json.size(), out);
+    std::fclose(out);
+    gC.stanceAtS = Seconds();
+    ++gC.stances;
+    return std::format("stance: {} ({}); {}", ini::Utf8(file), tag, AheadLine(ahead));
+}
+
+void StanceTick(ue3::Object* /*pawn*/) {
+    if (!(gSettings.stances || gStancesOverride.value_or(false)) || !gC.world || !gC.openingDone) {
+        return;
+    }
+    double const now = Seconds();
+    if (!gC.stanceOpening && now >= 2.0) {
+        gC.stanceOpening = true;
+        gC.stanceWanted.clear();
+        log::Info("convo: {}", WriteStance("opening"));
+        return;
+    }
+    if (!gC.stanceWanted.empty() && now - gC.stanceAtS >= 1.0) {
+        std::string const tag = gC.stanceWanted;
+        gC.stanceWanted.clear();
+        log::Info("convo: {}", WriteStance(tag));
+    }
 }
 
 } // namespace
@@ -5496,6 +5976,29 @@ std::string Command(std::string const& rest) {
         return std::format("convo: {} called {}{}", verb == "pick" ? std::format("SelectConversationEntry({})", location) : "SkipConversation",
             called, parms.ReturnBool() ? std::format(", returned {}", *parms.ReturnBool()) : std::string());
     }
+    if (verb == "stance") {
+        std::string tag;
+        words >> tag;
+        return "convo: " + WriteStance(tag.empty() ? std::string("asked") : tag);
+    }
+    if (verb == "stances") {
+        std::string what;
+        words >> what;
+        if (what == "file") {
+            gStancesOverride.reset();
+        } else {
+            gStancesOverride = what != "off";
+        }
+        return std::format("convo: stances from above are {} (after the opening, each walk and at the end; %LOCALAPPDATA%\\MEVR\\stances)",
+            gSettings.stances || gStancesOverride.value_or(false) ? "written" : "not written");
+    }
+    if (verb == "ahead") {
+        if (!gC.on) {
+            return "convo: no conversation";
+        }
+        ue3::Object* const controller = player::Controller();
+        return "convo: " + AheadLine(MovementAhead(controller != nullptr ? player::BioPawn(controller) : nullptr));
+    }
     if (verb == "end") {
         // The conversation's own end (tests: a survey's conversation that loops past its time).
         if (!gC.on || gC.object == nullptr || !ue3::runtime::IsAlive(gC.object) || gEndConversation.Get() == nullptr) {
@@ -5519,7 +6022,7 @@ std::string Command(std::string const& rest) {
         }
         return out;
     }
-    return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end]";
+    return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | stance [tag] | stances on|off|file | ahead]";
 }
 
 std::string StatusJson() {

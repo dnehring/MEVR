@@ -41,6 +41,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   (more slowly, within a few metres, not while choosing a reply) and turn with the right stick. Staged scenes (the Council,
   Kirrahe's camp on Virmire, now in first person) keep their own places, with a short fade to put you where the scene needs you.
   Nods and gestures play as the game has them.
+- **Your squad gathers beside you in conversations** (first person): instead of being moved to the scene's marks next to where
+  Shepard's script wanted him, your squadmates stay with you and stroll into a loose formation at your sides, each on their own
+  side, facing whoever you talk to. When a scene needs a short fade, they are simply there when it clears. They follow you again
+  when the conversation ends, without a word.
 - **Long dialogue choices are shown whole** in first-person conversations: the end of a long reply was cut off the wheel and
   floated elsewhere in view.
 - **The view stays at your eyes beside walls.** Standing close to a wall, a pillar or someone in front of you could drop the

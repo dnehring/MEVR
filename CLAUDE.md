@@ -596,9 +596,19 @@ switching frameworks.
   **second design (2026-11-12, the owner's answers)**: the owner stays (`worldCircleOwnerStays`), the circle forms only once the
   player is in the exchange (`cw::PlayerSoon`), people within 3.5 m join where they stand, whoever takes part within 4 lines sets
   off early (`cw::UpcomingPeople` over the dialogue's graph, `worldCircleLookahead`), non-walkers (not PHYS_Walking, seated) never
-  walk, the boundary `worldMoveLeashM` 4 m is around where the conversation began, the right stick turns (`[Comfort] turn`); the
-  squad's formation (`cw::SquadFormation`, `worldSquadGather`) is off until the AI walks it reliably; logs `convo: circle:`,
-  `convo: squad:`;
+  walk, the boundary `worldMoveLeashM` 4 m is around where the conversation began, the right stick turns (`[Comfort] turn`);
+  **the squad's formation** (`cw::SquadFormation`, `worldSquadGather`, on since 2026-11-12, research/69 "The squad's formation,
+  held"): the conversation's start moves the squad onto the stage's marks, so a squadmate that stood with the player (within 10 m
+  of Shepard, at his height, on a floor) is put back before anything is drawn; each takes the spot on its own side
+  (`cw::AssignSpots`) and walks there with the AI, held by the squad's own HOLD formation written quietly into
+  `BioBaseSquad.Members` (`vHoldPosition`, `eFormation`: the `SetSquadFollowFormation` call makes the squadmate answer out loud),
+  or is put there under a cut's dip; the old formation is put back at the end. **Stances from above** (research/69 "Stances from
+  above"; the owner: judge conversations from a top view): `mevr convo stance [tag]` (or `mevr convo stances on`,
+  `worldStances = 1`: after the opening, each walk, the end) writes everyone's place, facing, gaze, walk, held place, the circle,
+  the boundary and a ray scan of walls and furniture to `%LOCALAPPDATA%\MEVR\stances`; `tools/conversation-stance.py` draws a sheet
+  per conversation; `mevr convo ahead` says what still has to move, and `tools/conversation-from-save.ps1 -Stances` ends a scene
+  once nothing will (the scan's stage walks too; `-Chunk` streams a chunk in by its volume); logs `convo: circle:`,
+  `convo: squad:`, `convo: stance:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
   (`cw::HeadFollowFor`; research/69 "The hearing that went third person": the owner's slot-80 run ended 4 m behind him);
   auto takes it when a moment's walk was still on its way as the conversation began (putting Shepard back from the podium
