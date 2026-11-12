@@ -258,6 +258,27 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     to Shepard there and left it 4 m behind and 2 m above his body for the whole hearing. **Fixed 2026-11-11 23:00**
     (`cw::HeadFollowFor`, unit-tested): his head bone never moves the view while the view walks to a hidden Shepard, and is not
     read for 1.5 s after he is shown again. [verify] slot 80 again in the headset, walking during Anderson's walk.
+20. **Kirrahe's camp in first person** (the owner, 2026-11-11 22:43, slot 88: "nothing about that scene ... should have just
+    been third person. That one could have been fully supported in the first person experience"; "Kirrahe's camp" below):
+    `jug20_sal_captainkirrahe` is on the set-piece list (`cw::IsSetPiece`) because the game walks Shepard in it: a move track
+    of its own takes him 6.3 m in the conversation's first 4.5 s, and a node's script teleports the party 16.5 m onto the
+    stage. Both are things the world mode now handles (a track's move of Shepard during a conversation, a teleport within
+    one space). Next: run it in the world on the fake headset (`worldSetPieces = world`, slot 88), then add it to the scan's
+    `SEEN_IN_WORLD` and regenerate the list.
+21. **The game's black screen on foot is a black panel in front of the player** (same run; "Kirrahe's camp" below): a script's
+    `BioSeqAct_BlackScreen` that turns black on while the player is on foot and no moment is held goes, like all of the game's
+    UI, to the body-locked HUD panel: a 1.3 m black square 1.5 m ahead, with holes where the panel's crops are cut out (the
+    use prompt, the wrist status), and the use prompt's quad a black bar beside it ("there's black boxes where I'm looking").
+    In the game it is the whole screen. Decide: while it is up on foot, the transition fade's black over the whole view
+    (as the game means it), the panel as now, or nothing. Here it never came down only because of item 22.
+22. **Slot 88's plot was not the scene's** (harness; "Kirrahe's camp" below): Kirrahe's script plays the speech to his troops
+    after the planning conversation only with plot 3039 ("Mission started") and the squadmate sent (3825/3826, which the
+    conversation sets); the generator set the flags on the way into the scene (3953 "Talked To Captain", 3015 "Wrex Success")
+    but not 3039, which the conversation's first starting entry also wants. So the first use played his arrival content
+    (staged for an arrival that never happened: Kirrahe 11 m from his mark, the camera framing grass on his lines, "he actually
+    disappeared"), the second the planning one, whose last node faded to black for a speech that could not start ("it's also
+    paused"). **Fixed in the save 2026-11-11 23:20**: John02_88 rewritten with 3039 set (time kept). [verify] in the game. The
+    generator should also set the flags a scene's own follow-up checks (the outputs after its `BioSeqAct_StartConversation`).
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -2864,7 +2885,29 @@ one log line `convo: ... Shepard's head bone reads N m from where it was while h
 1.5 s after the view reaches him and he is shown again (the settle every put-back already had). After an opening without a cut
 the 6 m rule for a scripted entrance is unchanged. Not yet run in the game: the owner was playing.
 
+### Kirrahe's camp (2026-11-11 22:43-22:46; items 20-22)
 
+The owner's run of slot 88 in the headset (Virmire, Kirrahe's camp; the scene is a set piece, so on the 3D screen). From the
+mod's log and the owner's two snapshots (22:43:25 on the screen, 22:44:41 on foot after it), and the level's script read
+offline (`conversation-scan --sequence BIOA_JUG20_08_DSG:jug20_sal_captainkirrahe_dlg`; game data, not kept):
+
+- **First use, 22:43:12 (33.5 s):** the save stood the player 4 m in front of Kirrahe at his idle spot, 14 m from the stage.
+  The script took the route for a player who has talked to him and settled Wrex (its plot checks 3953, 3015, both set by the
+  generator) and started the conversation, whose starting entries chose the arrival content (entry 0 wants plot 3039,
+  "Mission started", clear in the save). That content is staged for the arrival: a move track walked Shepard 6.3 m, the
+  party was teleported 16.5 m onto the stage, and Kirrahe stood 11-17 m from where his shots look until a node's script
+  (`kirraheTP`) teleported him at 31.1 s. His lines were cutaways onto empty ground (the snapshot: grass and a leg).
+  The mod changed nothing in it (`kept 0`, `sourceKept 0`, `trackHeld 0`: a set piece is the game's own).
+- **Second use, 22:44:00 (24.1 s):** the planning conversation (Kaidan sent with Kirrahe). Its last node's own script turned the
+  black screen on (`jug20_sal_captainkirrahe_N ... BioSeqAct_BlackScreen_8`, fade to black) for the speech, which the level
+  script starts only through plot 3039 and the squadmate sent: with 3039 clear, nothing followed. The black screen stayed up
+  until the game was closed at 22:46; on foot, the game's UI goes to the HUD panel, so it showed as a black square ahead with
+  the panel's crop holes in it, and the use prompt's quad as a black bar (`-hud.png` black, `-label.png`).
+
+So items 20-22: the scene itself is a candidate for the world (the owner's call, made); the black screen's look on foot is
+open; the stuck speech and the missing Kirrahe were the save's plot, fixed in the save.
+
+## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
 
@@ -3288,3 +3331,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 18:12, **item 17 done: uncharted worlds from a save** ("Uncharted worlds from a save"): plot 5470 "Has the Rover Landed?" decides the landing; the generator sets it; both asteroid scenes loaded on foot and played.
 - 2026-11-11 18:45, **item 12: the fifth sampled pass** (one untried scene per chunk): 15 conversations in the world and 3 bark scenes (190 of 290 now), every opening a stay or a walk-in from the eye, nothing new found.
 - 2026-11-11 23:00, **item 19: the hearing that went third person** (the owner's first slot-80 run in the headset): a hidden Shepard's unposed head bone "jumped" as the hearing opened and the view followed it to 4 m behind him; fixed (`cw::HeadFollowFor`), [verify] in the headset.
+- 2026-11-11 23:20, **items 20-22 from the owner's slot-88 run** ("Kirrahe's camp"): Kirrahe's scene wanted in first person; the game's black screen on foot shows as a black panel; slot 88 lacked plot 3039, so Kirrahe's arrival content played and the speech never started after the planning talk (save fixed).

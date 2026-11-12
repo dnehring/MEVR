@@ -293,6 +293,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   yet run in the game): slot 80, use Anderson and walk with the stick while he walks up. When the hearing begins you should
   stay in first person (no view of Shepard's back from above), walk or be walked to the podium, and find your body under you
   there. The log line `Shepard's head bone reads ... not followed` says the fix acted.
+- [ ] **Kirrahe's speech, slot 88 again** (2026-11-11, research/69 "Kirrahe's camp"; the save fixed, not yet loaded): use Kirrahe:
+  the planning conversation should play first (Kirrahe on the stage, not missing from his shots), then the speech to his troops
+  with its music, and the screen should not stay black afterwards. Still on the 3D screen until item 20 is run in the world.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.
