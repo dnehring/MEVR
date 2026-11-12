@@ -279,6 +279,39 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     disappeared"), the second the planning one, whose last node faded to black for a speech that could not start ("it's also
     paused"). **Fixed in the save 2026-11-11 23:20**: John02_88 rewritten with 3039 set (time kept). [verify] in the game. The
     generator should also set the flags a scene's own follow-up checks (the outputs after its `BioSeqAct_StartConversation`).
+    **22:57, the owner again with the fixed save**: the first use still played the arrival content (with 3039 set): the
+    conversation picks its arrival entries first whatever 3039 says, and the planning comes on the second use. So the arrival
+    talk is only right from the landing (the Mako reaching the camp: the level script's `SeqEvent_Touch` on `BioTriggerVolume_0`
+    while driving, which fades out, takes the player out of the vehicle and stages everyone); a save on foot by Kirrahe can test
+    the planning talk and the speech (second use), not the arrival.
+23. **The dialogue wheel cut long replies** (the owner, 2026-11-11; "The owner's session, judged" below): the wheel's band
+    ended at stage x 950 and "The Council won't help us." lost "us.", which stayed on the HUD panel as stray letters. **Fixed
+    2026-11-11 23:40** (`cw::DefaultWheelCrop` 100..1180, `cw::WheelQuadWidth` keeps the text's size; host). [verify] in the
+    headset.
+24. **Head movement judders in conversations** (the owner: "when I move my head, everything kind of jitters"; same section):
+    the frame rate held 89-90 fps, but a frame of 40-90 ms of GPU time came within a second or two of most of the director's
+    camera cuts (the hearing: 9 such frames in 170 s; in 40-76% of two-second windows in conversations against 15% walking on
+    Virmire). A cut is hidden in the flat game; in first person the view doesn't cut, so each is a visible stall. Suspect: the
+    culling and streaming camera jumps with the director's (`worldCamera = 0`, the default since 2026-11-10). Next: measure a
+    conversation's cut frames with `worldCamera = 1` against 0 on the fake headset (`tools/perf-probe.ps1`), and what in the
+    frame costs the time.
+25. **The right stick doesn't turn in a first-person conversation** (the owner; same section): the left stick is the wheel's and
+    walks; the right stick does nothing (`[Comfort] turn` applies on foot only, and the game's conversation camera takes no
+    turn). Build: the right stick turns the held view in a world conversation as `[Comfort] turn` says (snap, or smooth at the
+    explore turn's rate), the body following as on foot.
+26. **The tests must walk like a player** (the owner: "our testing system also needs to simulate left analog movement ... yours
+    are just relying on an auto movement system"): every run so far left the stick alone and let the guided walk or nothing
+    move the player; the hearing's fault (item 19) needed the stick during Anderson's walk. The from-save runner drives the left
+    stick (`mevr convo walk`, or a replayed recording with `-Inputs`) at a scene's start, during a moment's walk and away from
+    the speaker mid-conversation, and plays each scene to the player's control back (black screen down, game mode 0).
+27. **A scene that relocates its whole cast needs its dip** (the owner, Kirrahe's arrival in first person, 22:57: "I'm fine if
+    we need to do a temporary black fade to be able to support the scene properly, but right now it's just kind of not playable
+    at all"; same section): the stage asked the player onto a mark 16.4 m away and the opening chose a walk-in to a nearer mark
+    (11.1 m, where a move track had put Shepard), withheld every placement, and the guided walk was blocked 8.7 m short; Kirrahe
+    and the squad stayed where they stood, the shots framed empty marks, and nobody could get anywhere. Rule to build
+    (`cw::DecideOpening`): when the stage's first placements take the player's mark and the conversation's owner (or most of its
+    people) beyond a walk, it is another composition: a cut, the stage's placements accepted under the dip, everyone on their
+    marks. Then Kirrahe's camp (item 20) can be run in the world from the landing.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -2907,7 +2940,24 @@ offline (`conversation-scan --sequence BIOA_JUG20_08_DSG:jug20_sal_captainkirrah
 So items 20-22: the scene itself is a candidate for the world (the owner's call, made); the black screen's look on foot is
 open; the stuck speech and the missing Kirrahe were the save's plot, fixed in the save.
 
-## To check in the game
+### The owner's session, judged (2026-11-11 22:33-22:59; items 23-27)
+
+The rest of the owner's first headset session after the fixes of the day (Virtual Desktop; the hearing, Anderson after it,
+Anoleis, Kirrahe on the screen and, after a restart with `worldSetPieces = world`, Kirrahe's arrival in first person):
+
+- **The wheel's band** (item 23): the snapshot at 22:38:51 shows the wheel quad ending at "The Council won't help" and "us."
+  floating to the right of it, on the HUD panel. The band was 330..950 of the 1280 stage; the reply began at 738.
+- **Frame timing in conversations** (item 24, Halcyon's `[PRESENTHZ]`/`[GPU]` lines, two-second windows): fps 82.5-90 in the
+  hearing, 89-90 on foot on Virmire; windows with a GPU frame over 25 ms: hearing 34 of 85, Anderson 19 of 25, Anoleis 16 of
+  25, Kirrahe on the screen 8 of 15, Virmire on foot 6 of 40 (the Citadel on foot, with its loads, 24 of 40). The hearing's
+  frames over 40 ms (41-90 ms) at 22:35:01, :21, :23, :27, :41, :45, 22:36:01, 22:37:01, :15 against its cuts at 22:35:00,
+  :20, :23, :27, :38, ... 22:37:01, :13: most within two seconds of a cut. One Draw stayed healthy (one scene render a frame).
+- **The third-person Anderson conversation after the hearing** (22:38, two snapshots): the view still 3-4 m behind and above
+  Shepard: the hearing's bad place handed on to the next conversation; item 19's fix removes it at the source.
+- **Kirrahe's arrival in first person** (22:57, `worldSetPieces = world`, the set pieces back on the screen at 22:59 for the
+  rest of the session): item 27.
+
+
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
 
@@ -3332,3 +3382,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 18:45, **item 12: the fifth sampled pass** (one untried scene per chunk): 15 conversations in the world and 3 bark scenes (190 of 290 now), every opening a stay or a walk-in from the eye, nothing new found.
 - 2026-11-11 23:00, **item 19: the hearing that went third person** (the owner's first slot-80 run in the headset): a hidden Shepard's unposed head bone "jumped" as the hearing opened and the view followed it to 4 m behind him; fixed (`cw::HeadFollowFor`), [verify] in the headset.
 - 2026-11-11 23:20, **items 20-22 from the owner's slot-88 run** ("Kirrahe's camp"): Kirrahe's scene wanted in first person; the game's black screen on foot shows as a black panel; slot 88 lacked plot 3039, so Kirrahe's arrival content played and the speech never started after the planning talk (save fixed).
+- 2026-11-11 23:40, **items 23-27 from the owner's session** ("The owner's session, judged"): the wheel's band fixed; judder at the director's cuts measured; the right stick in conversations, tests that walk with the stick, and a dip for scenes that relocate their cast to build.

@@ -617,6 +617,14 @@ void TestCrops() {
     // A frame wider than 16:9 (the stage taller than the frame): the band clipped to the frame, never negative.
     auto const wide = cw::DefaultWheelCrop(2000, 500);
     CHECK(wide.y >= 0.0f && wide.y + wide.height <= 1.0001f);
+    // The replies' whole text (the owner's run, 2026-11-11): "The Council won't help us." ended past stage x 970, and a reply of
+    // about 45 characters reaches 540 px from the centre on either side.
+    CHECK(wheel.x * 1280.0 <= 100.5 && (wheel.x + wheel.width) * 1280.0 >= 1179.5);
+    CHECK((wheel.x + wheel.width) * 1280.0 > 975.0);
+    // The quad keeps the text's size: [Cinematics] wheelWidthM is the ring's 620 stage px, so this band is 1080/620 of it.
+    CHECK(Close(cw::WheelQuadWidth(0.40f, wheel.width), 0.40 * 1080.0 / 620.0, 1e-4));
+    CHECK(Close(cw::WheelQuadWidth(0.40f, 620.0f / 1280.0f), 0.40, 1e-5));
+    CHECK(cw::WheelQuadWidth(0.40f, 0.0f) == 0.0f && cw::WheelQuadWidth(0.0f, wheel.width) == 0.0f);
 }
 
 void TestSubtitlePoint() {

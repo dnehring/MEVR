@@ -79,8 +79,13 @@ char const* Name(Mode mode);
 // the wheel's rows at stage y 590..680, a one-row line at 564..575.
 // The subtitle's band: the line (up to three rows) above the wheel.
 interact::Rect DefaultSubtitleCrop(std::uint32_t width, std::uint32_t height);
-// The wheel's band around its centre (the six replies' text reaches about 260 stage px to each side of the ring).
+// The wheel's band around its centre: the ring and the six replies' text, up to about 45 characters a reply (540 stage px to each
+// side of the centre).
 interact::Rect DefaultWheelCrop(std::uint32_t width, std::uint32_t height);
+// The wheel quad's width in metres for a band `cropWidth` of the frame wide (interact::Rect's units): `wheelWidthM`
+// ([Cinematics] wheelWidthM) is the width of the ring's 620 stage px, so a wider band shows its text at the same size. 0 if
+// either is not positive.
+float WheelQuadWidth(float wheelWidthM, float cropWidth);
 
 // ---- Placement -----------------------------------------------------------------------------------------------------------------
 // Where the subtitle goes for a speaker: `belowM` under the face (the head bone), moved `towardM` toward the eyes so it isn't

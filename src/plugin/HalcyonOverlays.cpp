@@ -1910,11 +1910,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                                                            : cwv::DefaultSubtitleCrop(gPanel.width, gPanel.height),
                                               gPanel.width, gPanel.height)
                                         : il::Pixels{};
-    il::Pixels const convoWheelPx = convo ? il::ToPixels(convo->wheelCrop[2] > 0.0f && convo->wheelCrop[3] > 0.0f
-                                                             ? il::Rect{convo->wheelCrop[0], convo->wheelCrop[1], convo->wheelCrop[2], convo->wheelCrop[3]}
-                                                             : cwv::DefaultWheelCrop(gPanel.width, gPanel.height),
-                                                gPanel.width, gPanel.height)
-                                          : il::Pixels{};
+    il::Rect const convoWheelRect = convo && convo->wheelCrop[2] > 0.0f && convo->wheelCrop[3] > 0.0f
+        ? il::Rect{convo->wheelCrop[0], convo->wheelCrop[1], convo->wheelCrop[2], convo->wheelCrop[3]}
+        : cwv::DefaultWheelCrop(gPanel.width, gPanel.height);
+    il::Pixels const convoWheelPx = convo ? il::ToPixels(convoWheelRect, gPanel.width, gPanel.height) : il::Pixels{};
     if (convoSubtitleWanted && convoSubPx.width > 0) {
         hudMasks.Add(convoSubPx.x, convoSubPx.y, convoSubPx.width, convoSubPx.height);
     }
@@ -2123,19 +2122,22 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             std::snprintf(line, sizeof line,
                 "[MEVR-CONVO] the dialogue wheel %.2f m from %s, at (%.2f, %.2f, %.2f) m, %.2f m wide; the UI's part (%u, %u) %ux%u of %ux%u (%s)",
                 convo->wheelDistanceM, from, gConvoUi.wheelPose.position.x, gConvoUi.wheelPose.position.y, gConvoUi.wheelPose.position.z,
-                convo->wheelWidthM, convoWheelPx.x, convoWheelPx.y, convoWheelPx.width, convoWheelPx.height, gPanel.width, gPanel.height,
+                std::clamp(cwv::WheelQuadWidth(convo->wheelWidthM, convoWheelRect.width), 0.15f, 3.0f), convoWheelPx.x, convoWheelPx.y,
+                convoWheelPx.width, convoWheelPx.height, gPanel.width, gPanel.height,
                 convo->wheelCrop[2] > 0.0f ? "[Cinematics] wheelCrop" : "the default band");
             LogBoth(line);
         }
         gConvoUi.wheelShown = true;
         gConvoUi.conversation = convo->conversation;
-        UINT const factor = std::clamp<UINT>(static_cast<UINT>(std::lround(convoWheelPx.width / 1024.0)), 1u, 4u);
+        // At most 2048 px wide (the band is ~3240 px of a 3840 frame since it holds the replies' whole text): the text keeps the
+        // 1.5 image px a stage px it had in the narrower band.
+        UINT const factor = std::clamp<UINT>((convoWheelPx.width + 2047u) / 2048u, 1u, 4u);
         std::uint32_t const width = std::max<std::uint32_t>(convoWheelPx.width / factor, 16);
         std::uint32_t const height = std::max<std::uint32_t>(convoWheelPx.height / factor, 16);
         if (EnsureSwapchain(gWheelSwapchain, width, height, "conversation wheel", "wheel") &&
             Blit(context, device.Get(), gWheelSwapchain, {convoWheelPx.x, convoWheelPx.y, convoWheelPx.width, convoWheelPx.height}, factor,
                 Masks{}, frame.floatWhiteScale) != nullptr) {
-            float const quadWidth = std::clamp(convo->wheelWidthM, 0.15f, 1.5f);
+            float const quadWidth = std::clamp(cwv::WheelQuadWidth(convo->wheelWidthM, convoWheelRect.width), 0.15f, 3.0f);
             gWheelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
             gWheelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
             gWheelQuad.space = static_cast<XrSpace>(frame.appSpace);

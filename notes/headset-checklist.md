@@ -296,6 +296,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **Kirrahe's speech, slot 88 again** (2026-11-11, research/69 "Kirrahe's camp"; the save fixed, not yet loaded): use Kirrahe:
   the planning conversation should play first (Kirrahe on the stage, not missing from his shots), then the speech to his troops
   with its music, and the screen should not stay black afterwards. Still on the 3D screen until item 20 is run in the world.
+- [ ] **Long dialogue choices** (2026-11-11, research/69 item 23; built, not yet run in the game): a wheel with long replies
+  (the hearing's "The Council won't help us.") shows each reply whole on the wheel, the same text size as before, and no stray
+  letters elsewhere in view.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.

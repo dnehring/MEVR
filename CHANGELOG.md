@@ -35,6 +35,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   Experimental: off unless you choose it.
 - **The Council's hearing stays first person when you walk along with Anderson.** Walking during his walk up the stairs
   could leave the view behind and above Shepard for the whole hearing. You now stay at your own eyes and walk on to the podium.
+- **Long dialogue choices are shown whole** in first-person conversations: the end of a long reply was cut off the wheel and
+  floated elsewhere in view.
 - **The view stays at your eyes beside walls.** Standing close to a wall, a pillar or someone in front of you could drop the
   view to Shepard's knees, behind his legs (the game's own camera pulling itself in). It now stays where your eyes are.
 - **Hackett's calls at the galaxy map**: the map that opens after a call no longer flashes the flat screen, and the call

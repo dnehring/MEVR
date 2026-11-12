@@ -974,9 +974,21 @@ interact::Rect DefaultSubtitleCrop(std::uint32_t width, std::uint32_t height) {
 }
 
 interact::Rect DefaultWheelCrop(std::uint32_t width, std::uint32_t height) {
-    // The ring centred on (640, 643), its rows at stage y 590..680 (measured), the replies' text up to about 260 stage px to
-    // each side of it.
-    return StageBand(width, height, 330.0f, 950.0f, 586.0f, 712.0f);
+    // The ring centred on (640, 643), its rows at stage y 590..680 (measured). The replies' text runs from the ring's arms outward,
+    // about 9.6 stage px a character: "The Council won't help us." began at 738 and ended past 970 (the owner's headset run,
+    // 2026-11-11: the band then ended at 950 and the rest, "us.", stayed on the HUD panel). 540 px to each side holds a reply of
+    // about 45 characters.
+    return StageBand(width, height, 100.0f, 1180.0f, 586.0f, 712.0f);
+}
+
+float WheelQuadWidth(float wheelWidthM, float cropWidth) {
+    // wheelWidthM is the width of the ring's 620 stage px (330..950, the band until 2026-11-11): the text keeps its size however
+    // wide the band is.
+    constexpr float kRingBand = 620.0f / kStageWidth;
+    if (!(cropWidth > 0.0f) || !(wheelWidthM > 0.0f)) {
+        return 0.0f;
+    }
+    return wheelWidthM * cropWidth / kRingBand;
 }
 
 bool SubtitlePoint(XrVector3f const& face, XrVector3f const& eyes, float belowM, float towardM, XrVector3f& out) {
