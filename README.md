@@ -104,11 +104,11 @@ The full list is in the [changelog](CHANGELOG.md); every button and gesture is i
 - **Not code-signed yet:** SmartScreen or antivirus warnings (see [Get started](#get-started)).
 
 More symptoms and fixes: [Troubleshooting](docs/troubleshooting.md) (your AI assistant can read it too). Still stuck?
-Ask on [Discord](https://discord.gg/flat2vr).
+Ask in the [MEVR thread on Discord](https://discord.com/channels/747967102895390741/1568594747591884841) ([join the server](https://discord.gg/flat2vr) first).
 
 ## Report a problem
 
-**Having trouble? Join the [Flat2VR Discord](https://discord.gg/flat2vr) and ask in the MEVR channel.**
+**Having trouble? Join the [Flat2VR Discord](https://discord.gg/flat2vr), then post in the [MEVR thread](https://discord.com/channels/747967102895390741/1568594747591884841).**
 Ask there first: other players and the developer can often help right away, and it's the quickest way to find out
 whether a problem is already known.
 
