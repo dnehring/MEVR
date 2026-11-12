@@ -289,6 +289,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   black); the double homicide in Port Hanshan after talking to Anoleis: one dip to the crime scene and you face it (not a wall);
   Feros's first creeper on foot: you walk after Shepard, no cut. Look for a flash of the screen at a scene's start, and where
   you face after any dip.
+- [ ] **The hearing after walking with Anderson** (2026-11-11, research/69 "The hearing that went third person"; built, not
+  yet run in the game): slot 80, use Anderson and walk with the stick while he walks up. When the hearing begins you should
+  stay in first person (no view of Shepard's back from above), walk or be walked to the podium, and find your body under you
+  there. The log line `Shepard's head bone reads ... not followed` says the fix acted.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.

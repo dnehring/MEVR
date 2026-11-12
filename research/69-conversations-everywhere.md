@@ -252,6 +252,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     between them, and Halcyon's first person puts the explore mode's camera 0.5 m ahead of that bone; now cleared in first
     person on foot (`game/CameraCollision`, `[Game] cameraCollision`): the three saves' camera 1.82-1.83 m. Two of the spots
     also stand Shepard against a pillar and crates (the generator's place), which keeps their openings' "out of sight" cuts.
+19. **The council's hearing went third person in the headset** (new 2026-11-11 22:35, the owner's first slot-80 run; "The hearing
+    that went third person" below): with the player walking during Anderson's walk, the hearing opened as a walk-in by the view,
+    and in its first tick Shepard's hidden, unposed head bone "jumped" 21.5 m and 17 m; the follower took it, joined the view
+    to Shepard there and left it 4 m behind and 2 m above his body for the whole hearing. **Fixed 2026-11-11 23:00**
+    (`cw::HeadFollowFor`, unit-tested): his head bone never moves the view while the view walks to a hidden Shepard, and is not
+    read for 1.5 s after he is shown again. [verify] slot 80 again in the headset, walking during Anderson's walk.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -2833,7 +2839,32 @@ foot, no squad screen, and played as the game plays them (their lines heard by t
 save loads into the game-over screen: Shepard dies where the save stands him, beside a hostile squad (the generator stands
 the player in front of the scene's originator; here that is a combat squad), the place's fault, not the landing's.
 
-## To check in the game
+### The hearing that went third person (2026-11-11 22:34-22:36; item 19)
+
+The owner's first run of slot 80 in the headset (Virtual Desktop, the players' build of 528b84be with today's fixes). Anderson's
+walk held in first person as designed, and the owner walked with the stick during it (6.46 m in 7.6 s; the fake-headset runs
+of this slot had nobody at the stick). At 22:34:56.958 the hearing began and opened as a walk-in by the view (Shepard's mark
+17.85 m away, a moment's walk still on its way: `cw::DecideWalkIn`'s rule), Shepard hidden on his mark. Its log then shows:
+
+- the opening read Shepard's head bone 3.9 m from his pawn and 0.09 m above its centre (a hidden mesh is not posed: the bone
+  holds whatever pose it had);
+- in the same tick (0.0 s) the head-bone follower saw it "jump" 21.51 m, past the 6 m a scene without a cut still follows (a
+  scripted entrance), moved the player's place there, and cleared the wanted mark, so the view-walk joined Shepard at once
+  ("was put on Shepard, 0.06 m walked");
+- 0.1 s later a second "jump" of 17.04 m moved the place to (-8674, -7030, 62369), 4.1 m from his pawn and 2.2 m above it.
+
+From there the held view stayed that far from Shepard's head bone, so arm IK and the body follower took it as third person
+("torso: head off the view (third person: the hips turn)" every 2 s to the end of the log) and the owner saw Shepard's body in
+front of and below the view for the whole hearing: "I am not even in first person". Halcyon showed the world in VR throughout
+(`[VRSTATE] gm 5 alive -> VR`): it was the mod's held place, not the presentation.
+
+**Fix** (`cw::HeadFollowFor`, unit-tested; `game/ConversationWorld`): Shepard's head bone may move the player's place only
+when his mesh is posed and his own: never while the view walks to him with his pawn hidden (the anchor takes the bone's place,
+one log line `convo: ... Shepard's head bone reads N m from where it was while his pawn is hidden ...: not followed`), and for
+1.5 s after the view reaches him and he is shown again (the settle every put-back already had). After an opening without a cut
+the 6 m rule for a scripted entrance is unchanged. Not yet run in the game: the owner was playing.
+
+
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
 
@@ -3256,3 +3287,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 18:05, **A4 done** ("A4: combat for two ears, measured"): the fight under OpenAL Soft has a real delay between the ears (to 0.83 ms, following the head), the game's own audio pans by level only (0.00 ms); A/B with a restart.
 - 2026-11-11 18:12, **item 17 done: uncharted worlds from a save** ("Uncharted worlds from a save"): plot 5470 "Has the Rover Landed?" decides the landing; the generator sets it; both asteroid scenes loaded on foot and played.
 - 2026-11-11 18:45, **item 12: the fifth sampled pass** (one untried scene per chunk): 15 conversations in the world and 3 bark scenes (190 of 290 now), every opening a stay or a walk-in from the eye, nothing new found.
+- 2026-11-11 23:00, **item 19: the hearing that went third person** (the owner's first slot-80 run in the headset): a hidden Shepard's unposed head bone "jumped" as the hearing opened and the view followed it to 4 m behind him; fixed (`cw::HeadFollowFor`), [verify] in the headset.

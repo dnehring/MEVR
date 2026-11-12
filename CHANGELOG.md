@@ -33,6 +33,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   other. A scripted scene that fades to black before it moves you no longer flashes the cinema screen first, and a cut to
   another place inside one leaves you facing the scene. Riding Eden Prime's tram, you ride along.
   Experimental: off unless you choose it.
+- **The Council's hearing stays first person when you walk along with Anderson.** Walking during his walk up the stairs
+  could leave the view behind and above Shepard for the whole hearing. You now stay at your own eyes and walk on to the podium.
 - **The view stays at your eyes beside walls.** Standing close to a wall, a pillar or someone in front of you could drop the
   view to Shepard's knees, behind his legs (the game's own camera pulling itself in). It now stays where your eyes are.
 - **Hackett's calls at the galaxy map**: the map that opens after a call no longer flashes the flat screen, and the call

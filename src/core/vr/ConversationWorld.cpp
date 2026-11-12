@@ -1015,6 +1015,16 @@ bool FollowHeadSettled(FollowState& state, Vec3 const& headNow, double threshold
     return true;
 }
 
+HeadFollow HeadFollowFor(bool settling, bool viewWalksToHim, bool openedWithoutCut, double moveUnits, double stayMaxUnits) {
+    if (settling || viewWalksToHim) {
+        return HeadFollow::Anchor;
+    }
+    if (openedWithoutCut && moveUnits < stayMaxUnits) {
+        return HeadFollow::Anchor;
+    }
+    return HeadFollow::Follow;
+}
+
 namespace {
 double MarkDistance(Vec3 a, Vec3 b) {
     return std::hypot(a.x - b.x, a.y - b.y, a.z - b.z);

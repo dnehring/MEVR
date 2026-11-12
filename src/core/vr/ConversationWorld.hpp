@@ -111,6 +111,15 @@ struct FollowState {
     int away = 0;  // calls in a row past the threshold
 };
 bool FollowHeadSettled(FollowState& state, Vec3 const& headNow, double threshold, int settle);
+// What Shepard's head bone may do to the player's place this tick (research/69 "The hearing that went third person",
+// 2026-11-11). Anchor: the anchor takes the bone's place and the view stays the player's. Follow: a lasting jump moves the
+// place (FollowHeadSettled). The bone is no measure while his mesh catches up after the mod moved or showed him (`settling`),
+// nor while the player's view walks to him with his pawn hidden (`viewWalksToHim`: a hidden mesh is not posed; in the council's
+// hearing it read 3.9 m from his pawn and then "jumped" 21.5 m and 17 m, and following that put the view 4 m behind and 2 m
+// above his body: third person for the whole hearing), nor, after an opening without a cut, for moves under `stayMaxUnits`
+// (his own gestures and steps). `moveUnits`: the bone's distance from the anchor.
+enum class HeadFollow { Anchor, Follow };
+HeadFollow HeadFollowFor(bool settling, bool viewWalksToHim, bool openedWithoutCut, double moveUnits, double stayMaxUnits);
 
 // ---- Walking to lasting stage marks (prototype) ------------------------------------------------------------------------------
 // Positions/distances are in Unreal units; times are monotonic seconds. Each observed native placement is a NEW request,

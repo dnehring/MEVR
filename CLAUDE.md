@@ -587,6 +587,8 @@ switching frameworks.
   the council's podium is 13 m past one). **A walk-in can be walked by the view alone** (`worldWalkInWay = auto | body | view`, `cw::DecideWalkIn`, research/69 "The
   view walks", 2026-11-10, on the branch until the owner's headset test): Shepard stays where the stage has him, hidden,
   and only the held view walks to him (no pawn move, so no touch and no trigger guard); the two are one again on arrival;
+  while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
+  (`cw::HeadFollowFor`; research/69 "The hearing that went third person": the owner's slot-80 run ended 4 m behind him);
   auto takes it when a moment's walk was still on its way as the conversation began (putting Shepard back from the podium
   then ended the council's hearing in its first tick in 9 of 16 runs: "The hearing that ended at once"), when the mark
   stands inside a trigger, or when putting Shepard back where the player stood is refused (`SetLocation`; the cut until

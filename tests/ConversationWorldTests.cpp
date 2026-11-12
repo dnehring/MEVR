@@ -662,6 +662,19 @@ void TestFollowHead() {
     // settle 0 or 1: at once.
     cw::FollowState now{place, anchor, 0};
     CHECK(cw::FollowHeadSettled(now, {95.0, -35.0, 130.0}, 40.0, 0));
+
+    // What the head bone may do to the player's place (research/69 "The hearing that went third person").
+    constexpr double kStay = 600.0;
+    // The council's hearing: the view walks to a hidden Shepard; his unposed mesh "jumps" 21.5 m: not followed.
+    CHECK(cw::HeadFollowFor(false, true, true, 2151.0, kStay) == cw::HeadFollow::Anchor);
+    CHECK(cw::HeadFollowFor(false, true, false, 2151.0, kStay) == cw::HeadFollow::Anchor);  // whatever the opening
+    // His mesh catching up after he was moved or shown again: never.
+    CHECK(cw::HeadFollowFor(true, false, false, 2151.0, kStay) == cw::HeadFollow::Anchor);
+    // After an opening without a cut: his own moves under 6 m are his, a scripted entrance past it is followed.
+    CHECK(cw::HeadFollowFor(false, false, true, 88.0, kStay) == cw::HeadFollow::Anchor);
+    CHECK(cw::HeadFollowFor(false, false, true, 600.0, kStay) == cw::HeadFollow::Follow);
+    // After a cut: every move is offered to the follower (it takes only lasting ones past its threshold).
+    CHECK(cw::HeadFollowFor(false, false, false, 88.0, kStay) == cw::HeadFollow::Follow);
 }
 
 void TestMarkWalk() {

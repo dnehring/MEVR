@@ -914,6 +914,7 @@ struct Convo {
     bool hidPawn = false;       // the mod hid Shepard's pawn (shown again on arrival and at the end)
     bool noJoin = false;        // a moment's track is moving the pawn: the view does not join it until it rests
     bool arrived = false;       // the view reached Shepard and the two are one again
+    bool hiddenHeadLogged = false;  // a hidden Shepard's head bone read far off, not followed (logged once a conversation)
     char const* walkInWay = "-";
     bool guideProgressed = false;
     bool guideLogged = false;
@@ -3329,6 +3330,8 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
             gC.wantedMark.reset();
             gTrail.clear();
             HidePawn(pawn, false);
+            // Shown again, his mesh is posed from the next tick: its catching up is no jump of his (cw::HeadFollowFor).
+            gC.settleUntilMs = GetTickCount64() + 1500;
             log::Info("convo: at {:.1f} s the player's view {} Shepard ({:.2f} m walked, {:.2f} m of it guided): the two are one again, his body "
                       "under the player", Seconds(), gC.arrived ? "reached" : "was put on", gC.movedUnits / kUnitsPerMeter,
                 gC.guidedUnits / kUnitsPerMeter);
@@ -4777,36 +4780,42 @@ void Tick(double deltaSeconds, Link const& link) {
     auto const shepardHead = HeadOf(pawn);
     // Settled over 3 ticks: a pawn put back (people kept in place) drags his mesh there and back within a tick.
     constexpr int kSettleTicks = 3;
-    if (shepardHead && gC.settleUntilMs != 0) {
-        if (GetTickCount64() < gC.settleUntilMs) {
+    // What his head bone may do to the player's place (cw::HeadFollowFor): nothing while his mesh settles, while the view walks
+    // to him with his pawn hidden (a hidden mesh is not posed: the council's hearing, 2026-11-11), nor after an opening without
+    // a cut for moves under 6 m (the hearing's animation moved it 0.88 m twice and the view went with it, 2026-11-10); a move
+    // past 6 m there (the script put him elsewhere: a scripted entrance), or any lasting jump after a cut, is followed.
+    bool const settleEnds = shepardHead && gC.settleUntilMs != 0 && GetTickCount64() >= gC.settleUntilMs;
+    if (settleEnds) {
+        gC.settleUntilMs = 0;
+        gC.eyeToViewMax = 0.0;  // measured from here on: before, the stage had him at the mark and his mesh elsewhere
+    } else if (shepardHead && (gC.settleUntilMs != 0 || (gC.anchorHead && gSettings.follow))) {
+        bool const settling = gC.settleUntilMs != 0;
+        double const move = gC.anchorHead ? Dist(shepardHead->at, *gC.anchorHead) : 0.0;
+        cw::HeadFollow const rule = cw::HeadFollowFor(settling, gC.detached, gC.opening != cw::Opening::Cut, move, kStayMaxUnits);
+        if (rule == cw::HeadFollow::Anchor) {
+            if (gC.detached && !settling && move >= kStayMaxUnits && !gC.hiddenHeadLogged) {
+                gC.hiddenHeadLogged = true;
+                log::Info("convo: at {:.1f} s Shepard's head bone reads {:.2f} m from where it was while his pawn is hidden and the "
+                          "player's view walks to him: not followed (a hidden mesh is not posed)", Seconds(), move / kUnitsPerMeter);
+            }
             gC.anchorHead = shepardHead->at;
             gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, {shepardHead->at.x, shepardHead->at.y, shepardHead->at.z}, 0};
-        } else {
-            gC.settleUntilMs = 0;
-            gC.eyeToViewMax = 0.0;  // measured from here on: before, the stage had him at the mark and his mesh elsewhere
-        }
-    } else if (shepardHead && gC.anchorHead && gSettings.follow && gC.opening != cw::Opening::Cut &&
-               Dist(shepardHead->at, *gC.anchorHead) < kStayMaxUnits) {
-        // After an opening without a cut the player's place is his own: Shepard's body is where the player walked him, and what
-        // his head bone does there (the hearing's animation moved it 0.88 m twice and the view went with it, 2026-11-10) is not
-        // the player's move. Only a move past 6 m (the script put him elsewhere: a scripted entrance) is followed, below.
-        gC.anchorHead = shepardHead->at;
-        gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, {shepardHead->at.x, shepardHead->at.y, shepardHead->at.z}, 0};
-    } else if (shepardHead && gC.anchorHead && gSettings.follow) {
-        ik::Vec3 const a = *gC.anchorHead;
-        ik::Vec3 const& h = shepardHead->at;
-        if (cw::FollowHeadSettled(gC.follow, {h.x, h.y, h.z}, kReanchorUnits, kSettleTicks)) {
-            log::Info("convo: at {:.1f} s Shepard's head bone JUMPED {:.2f} m: the player's place moves with it to ({:.0f}, {:.0f}, {:.0f})",
-                Seconds(), Dist(h, a) / kUnitsPerMeter, gC.follow.place.x, gC.follow.place.y, gC.follow.place.z);
-            gC.hold = {gC.follow.place.x, gC.follow.place.y, gC.follow.place.z};
-            gC.anchorHead = h;
-            if (auto const mark = player::Location(pawn)) {
-                gC.composedAt = V(*mark);  // the script's new place for him: the composition from here
-            }
-            ++gC.reanchors;
-            if (gC.opening != cw::Opening::Cut) {
-                ++gC.cut;  // the script moved him to another place in a scene that had no cut so far: under a dip
-                gC.wantedMark.reset();
+        } else {  // (Follow: not settling, so there is an anchor and following is on)
+            ik::Vec3 const a = *gC.anchorHead;
+            ik::Vec3 const& h = shepardHead->at;
+            if (cw::FollowHeadSettled(gC.follow, {h.x, h.y, h.z}, kReanchorUnits, kSettleTicks)) {
+                log::Info("convo: at {:.1f} s Shepard's head bone JUMPED {:.2f} m: the player's place moves with it to ({:.0f}, {:.0f}, {:.0f})",
+                    Seconds(), Dist(h, a) / kUnitsPerMeter, gC.follow.place.x, gC.follow.place.y, gC.follow.place.z);
+                gC.hold = {gC.follow.place.x, gC.follow.place.y, gC.follow.place.z};
+                gC.anchorHead = h;
+                if (auto const mark = player::Location(pawn)) {
+                    gC.composedAt = V(*mark);  // the script's new place for him: the composition from here
+                }
+                ++gC.reanchors;
+                if (gC.opening != cw::Opening::Cut) {
+                    ++gC.cut;  // the script moved him to another place in a scene that had no cut so far: under a dip
+                    gC.wantedMark.reset();
+                }
             }
         }
     }
