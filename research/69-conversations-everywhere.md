@@ -199,6 +199,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     different chunks and every Normandy transmission: 17 conversations played in the world, 6 bark scenes heard; **154 of 290
     reachable scenes played** now. Every level and kind has been sampled; what is left untried is mostly staged scenes of
     the Citadel (43), Noveria (16) and Feros (8), the kinds already seen.
+    **Fourth pass 2026-11-11 17:22-17:48** ("The fourth sampled pass" below), after the camera-collision fix: 29 untried
+    scenes (12 of the Citadel's staged ones, 6 of Noveria's, 4 of Feros's...): 14 conversations in the world, 4 bark scenes
+    heard; **172 of 290 reachable scenes played**. Every opening began from the first-person eye; nothing new found.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify]. **Narrowed 2026-11-11** ("The subtitle of a line played as a bark" below): a flowed scene's
     lines behave exactly like the game's own barks: the line's text is built, nothing is drawn, in this profile (its subtitle
@@ -2767,6 +2770,22 @@ the generator's place, a few centimetres from the person's own mark through geom
 cut because his mark is out of sight from there, which is the rule. [verify] in the headset: walking face-first into a wall,
 a squadmate crossing close in front: the view stays at the eyes.
 
+### The fourth sampled pass (2026-11-11 17:22-17:48)
+
+29 of the 91 scenes still untried (`%LOCALAPPDATA%\MEVR\sweep\untried-after-third.json`), one per chunk: 12 staged scenes of
+the Citadel, 6 of Noveria, 4 of Feros, 2 of the Normandy and one of each other kind; 27 saves (two scenes have no placed
+owner), slots 300-328, the players' build with the camera-collision fix (item 18). **Played**: 14 conversations in the
+world (Noveria's Maeko twice, Mallen Ecalis, the assault's end, Hanolar, Alestia; the Presidium's turian preacher, the
+family's argument, the emporium, Garrus at C-Sec, the snap inspection, Girard; Feros's Hana Murakami and the gunman), 4 bark
+scenes heard. **The openings**: 16, all from the first-person eye (0.5 m ahead, 0.9 m up of the pawn; none from a view at
+his hips, which three of 50 had before the fix); stays at 0.9-1.3 m, walk-ins at 1.8-4.7 m (one by the view, through a
+plot state streamed in), one cut at 15.9 m (Hana Murakami's mark, by the rule). **The eyes** (a snapshot 8 s in): all 14 at
+eye height, the speaker in view in most; no torso or legs in front. **The judge**: a 133-degree re-face by the rule (the
+snap inspection, the player walking in from behind: the owner's re-face question) and a 0.92 m `body-strayed` at a stay
+(the fake headset's missing body follower). Not started: 2 barks not heard, 4 starts behind plot checks, 1 chunk no state
+streamed (the Wards' market), another scene began as one save loaded, 2 without a save.
+**Coverage: 172 of 290 reachable scenes played** in some run (154 before, 18 new).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3186,3 +3205,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 15:20, **items 15 and 16 done** ("Hackett's call and the surveyor, run again"): the flash after Hackett's call fixed (the console's use holds through the call it plays; seen twice through the real path), a refused put-back walks by the view instead of a cut; the surveyor's torso was the fake headset without controllers.
 - 2026-11-11 16:10, **item 12: the third sampled pass** ("The third sampled pass"): 17 conversations in the world and 6 bark scenes (154 of 290 now); the transmissions' end flash was the harness firing them directly (through the console's use: none); item 18 new (openings from a view at Shepard's hips, generated saves).
 - 2026-11-11 17:20, **item 18 done: the camera that fell to Shepard's knees** ("The camera that fell to Shepard's knees"): the game's camera collision pulled the first-person camera to its hook (the view behind his knees) whenever something stood just ahead of his face; off in first person on foot now (`game/CameraCollision`), seen at the three spots.
+- 2026-11-11 17:55, **item 12: the fourth sampled pass** ("The fourth sampled pass"): 14 conversations in the world and 4 bark scenes (172 of 290 now); every opening from the first-person eye after the camera-collision fix; nothing new found.
