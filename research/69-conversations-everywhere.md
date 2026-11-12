@@ -231,6 +231,11 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 17. **Scenes on uncharted worlds from a save** (harness, 2026-11-11): a save written on foot on an uncharted world loads into
     the landing (the squad screen, then the drop's cinematic, which didn't end in two minutes); four sampled scenes need a
     save made after the landing, or the runner's `open` and `mevr vehicle party` (research/47 "Reaching the Mako").
+    **Done 2026-11-11 18:12** ("Uncharted worlds from a save"): the shared world-load script checks plot 5470 ("Has the Rover
+    Landed?") as the exterior loads and plays the landing when it is clear; the generator sets it on an uncharted world
+    (`conversation-sweep.py`'s `level_plot`, tested). Both asteroid scenes then loaded on foot and played (their lines heard);
+    the third save (`sp114_triggers`, UNC17) loads to the game-over screen: Shepard dies where it stands him (beside a hostile
+    squad), the place, not the landing.
 18. **An opening that starts from a view at Shepard's hips** (new 2026-11-11, "The third sampled pass"): in 3 of about 50
     openings from generated saves (the surveyor, twice; Noveria's guards; Garrus in the Normandy's hold) the view on foot the
     opening took stood at the pawn's place, 0.26 m below its centre, instead of the first-person eye (0.5 m ahead, 0.9 m up),
@@ -2809,6 +2814,21 @@ So OpenAL Soft turns the game's placed sounds (the census: the fight's fire, imp
 into sounds for two ears, and the game's own audio only pans them. The saves were put back from the backup (identical to
 the morning's, file for file), `[Audio] spatial` back to the default.
 
+### Uncharted worlds from a save (2026-11-11 18:00-18:12; item 17)
+
+Saves written on foot on an uncharted world loaded into the landing (the squad screen, then the rover's drop, which
+didn't end), while saves inside Bring Down the Sky's facility loaded normally. Read in the asteroid's scripts (the scan's
+`--sequence`, kept out of the repository): the shared `REF_UNCWorldLoad` (in `BIOA_UNC52_00_DSG`) waits for the exterior
+layer's `UNC_ExteriorLayerLoaded`, then checks plot bool 5470 "Has the Rover Landed?": true, the player gets input and the
+world runs (effects, hazards); false, it stops the loading movie, blacks the screen and shows the squad selection, and the
+rover's cutscene follows (transition 3862 "Rover Has Landed" sets it then; leaving the world clears it again, transition
+3863). The interiors stream another way, which is why the facility's saves were spared. The generated saves come from a
+Citadel save, where 5470 is clear. **Fix** (harness): `conversation-sweep.py saves` sets 5470 on any `BIOA_UNC*` level
+(`level_plot`, a test in `tests/ConversationSweepTests.py`). **Run**: Bring Down the Sky's radio and diary saves loaded on
+foot, no squad screen, and played as the game plays them (their lines heard by the voice census); UNC17's `sp114_triggers`
+save loads into the game-over screen: Shepard dies where the save stands him, beside a hostile squad (the generator stands
+the player in front of the scene's originator; here that is a combat squad), the place's fault, not the landing's.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3230,3 +3250,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 17:20, **item 18 done: the camera that fell to Shepard's knees** ("The camera that fell to Shepard's knees"): the game's camera collision pulled the first-person camera to its hook (the view behind his knees) whenever something stood just ahead of his face; off in first person on foot now (`game/CameraCollision`), seen at the three spots.
 - 2026-11-11 17:55, **item 12: the fourth sampled pass** ("The fourth sampled pass"): 14 conversations in the world and 4 bark scenes (172 of 290 now); every opening from the first-person eye after the camera-collision fix; nothing new found.
 - 2026-11-11 18:05, **A4 done** ("A4: combat for two ears, measured"): the fight under OpenAL Soft has a real delay between the ears (to 0.83 ms, following the head), the game's own audio pans by level only (0.00 ms); A/B with a restart.
+- 2026-11-11 18:12, **item 17 done: uncharted worlds from a save** ("Uncharted worlds from a save"): plot 5470 "Has the Rover Landed?" decides the landing; the generator sets it; both asteroid scenes loaded on foot and played.

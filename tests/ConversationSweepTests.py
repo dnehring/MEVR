@@ -329,6 +329,9 @@ def main():
         # The validation saves: the player in front of the scene before it starts, the plot as its script's checks want it.
         check(sweep.plot_for(ms[0]['chain']) == ({4398: 0}, []), f"the plot a scene's way wants: {sweep.plot_for(ms[0]['chain'])}")
         check(sweep.plot_for([{'class': 'BioSeqAct_PMCheckConditional', 'out': 'True', 'plot': 77}])[1] != [], 'a conditional cannot be set: named')
+        check(sweep.level_plot('BIOA_UNC52') == {5470: 1} and sweep.level_plot('bioa_unc17') == {5470: 1},
+              'on an uncharted world the rover has landed (else the landing plays as the save loads)')
+        check(sweep.level_plot('BIOA_STA00') == {} and sweep.level_plot(None) == {}, 'nothing for any other level')
         place, face = sweep.stand_before([9000.0, 100.0, 0.0], 0.0, 4.0)
         check(place == [9400.0, 100.0, 20.0] and face == 180.0, f'4 m in front of someone facing +X, looking back at him: {place} {face}')
         place, face = sweep.stand_before([0.0, 0.0, 0.0], 90.0, 2.0)

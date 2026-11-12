@@ -502,6 +502,13 @@ def moments(argv):
 # ---- validation saves ------------------------------------------------------------------------------------------------------------
 
 _CONVERSATIONS = {}
+UNC_ROVER_LANDED = 5470  # plot bool "Has the Rover Landed?" (set by transition 3862 "Rover Has Landed"), REF_UNCWorldLoad
+
+
+def level_plot(level):
+    """The plot a save on that level needs to load as a player's save does: on an uncharted world, the rover has landed
+    (else the world-load script plays the landing wherever the player stands; research/69 item 17)."""
+    return {UNC_ROVER_LANDED: 1} if (level or '').upper().startswith('BIOA_UNC') else {}
 
 
 def starting_plot(scan_path, name):
@@ -660,6 +667,11 @@ def saves(argv):
         else:
             row['startingFlags'] = starting_plot(scan_path, name)[0]  # listed in the table, not written
         plot.update({int(k): int(v) for k, v in (item.get('plot') or {}).items()})
+        # An uncharted world: the shared world-load script (REF_UNCWorldLoad) checks "Has the Rover Landed?" (plot 5470) as
+        # the exterior layer loads; false, it plays the landing (the squad screen, the rover's drop) wherever the save stands
+        # the player. A save made on foot there has it set (research/69 item 17, 2026-11-11: four saves started a landing).
+        for k, v in level_plot(level).items():
+            plot.setdefault(k, v)
         place, face = stand_before(at, yaw, float(item.get('approachM', approach)))
         out = os.path.join(out_dir, f"{career}_{slot:02d}.pcsav")
         row['starts'] = ('when you use it' if event and 'OnPlayerActivate' in event else 'when you walk in (a trigger)' if event and 'Touch' in event
