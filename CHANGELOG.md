@@ -35,11 +35,12 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   Experimental: off unless you choose it.
 - **The Council's hearing stays first person when you walk along with Anderson.** Walking during his walk up the stairs
   could leave the view behind and above Shepard for the whole hearing. You now stay at your own eyes and walk on to the podium.
-- **Conversations gather around you** (first person, experimental): a conversation happens where you start it; nobody is
-  moved at the start and nothing walks you anywhere. Whoever speaks to you, or is spoken to, walks over and joins a circle with
-  you; people who don't take part stay where they are. Walk off and stop, and they gather round you again. You can walk during a
-  conversation (a little slower than usual) except while choosing a reply. Scenes whose staging matters (Kirrahe's speech on
-  Virmire) keep their own places, with a short fade if you have to be somewhere else. Nods and gestures play as the game has them.
+- **Conversations happen where you start them** (first person, experimental): nothing walks you anywhere, and the person you
+  talk to stays where they are. Others who take part walk over to join you, setting off a few lines before they speak; people
+  who don't take part, or can't walk (a hologram, someone seated), stay put. You can walk around a little during a conversation
+  (more slowly, within a few metres, not while choosing a reply) and turn with the right stick. Staged scenes (the Council,
+  Kirrahe's camp on Virmire, now in first person) keep their own places, with a short fade to put you where the scene needs you.
+  Nods and gestures play as the game has them.
 - **Long dialogue choices are shown whole** in first-person conversations: the end of a long reply was cut off the wheel and
   floated elsewhere in view.
 - **The view stays at your eyes beside walls.** Standing close to a wall, a pillar or someone in front of you could drop the

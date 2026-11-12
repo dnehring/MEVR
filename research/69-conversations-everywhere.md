@@ -319,7 +319,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     dip); the player keeps the place where the conversation began, walks freely (slower) except while the wheel is up, and is
     never walked by the game; the game's own animation (nods, gestures) is kept. **Built 2026-11-11** (`cw::MakeCircle`,
     `cw::JoinCircle`, `cw::ShouldRegather`, `cw::IsStagedScene`, unit-tested; `game/ConversationWorld` `StepCircle`);
-    [verify] in the headset.
+    [verify] in the headset. **Second design 2026-11-12** after the owner's answers (the owner stays, early walk-ins read ahead
+    in the dialogue, a 4 m boundary, the right stick turns, staged scenes keep their facings; "The conversational circle" below):
+    validated on the fake headset except the squad's formation, which the AI doesn't walk reliably yet (off by default).
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3005,6 +3007,66 @@ measures without the owner's review.
   people leave the conversation's gesture mode only while they walk (as before); `worldArrange = 0` (the opening-time seats off).
 - Tests: `tools/conversation-from-save.ps1 -WanderAt N` sidesteps the player 3 s with the stick N s into a conversation.
 
+**First run on the fake headset (23:26-23:31, four saves)**: Anoleis (behind his desk) walked 4.3 m round it to the player;
+Chorban joined where he stood; Avina, a hologram on a kiosk, was walked 2 m off her pedestal and bobbed up and down, 86
+placements in drawn frames (the AI's move against the game's own placement of her); at Fist's (Wrex and the bouncer arguing, the
+player watching) nothing moved. Then the owner asked to align before more building.
+
+**The owner's answers (2026-11-11, late)**, to eight questions: (1) the one the player talks to "stays put unless something in the
+scene requires dynamic movement"; (2) in a scene the player only watches, "the squad should have a relaxed formation"; (3) "squad
+should be gathered", made to look natural; (4) "the conversation should continue as they get close enough to be in range. We
+shouldn't accept long pauses"; (5) "we should need a max boundary to make sure we can't just wander off"; (6) distance: open;
+(7) "Staged scenes are like the council or the virmire speech", the list to be found in the records; (8) "Right stick should
+function"; and: someone "necessary via walk up" should "start walking much before their line, ideally a few seconds gap so it
+feels natural". Defaults taken for what was left open: a 4 m boundary, talking range 3.5 m, the squad 1.7 m to the side and 0.5 m
+back.
+
+**Built (second design, 2026-11-12)**: the owner stays (`worldCircleOwnerStays`), the circle round the player toward the owner,
+formed only once the player speaks or is spoken to now or within the lines read ahead (`cw::PlayerSoon`: people talking among
+themselves move nobody); anyone within 3.5 m of the player joins where it stands (`worldCircleInRangeM`); whoever speaks or is
+spoken to within the next 4 lines (`worldCircleLookahead`, any branch: `cw::UpcomingPeople` over the conversation's
+`m_EntryList`/`ReplyListNew`/`m_ReplyList.EntryList`) sets off now, so it is near by its line; nobody who isn't on the ground
+or is seated is walked (`CanWalk`: `Physics` PHYS_Walking, the head bone 0.62 m above its place; Avina); the squad gathers at the
+start in a relaxed formation (`cw::SquadFormation`: one each side 1.7 m out and 0.5 m back, varied a little, setting off 0.9 s
+apart, facing the owner; `worldSquadGather`, its squadmates tracked for it; they keep it: the stage's marks for them are not
+walked); everyone else still walks to a stage mark that is a real move (item 1); no re-gathering (`worldCircleRegather = 0`): the
+boundary `worldMoveLeashM` 4 m is around where the conversation began for the player; the right stick turns the held view as
+`[Comfort] turn` says (snap or smooth; [verify]: no controllers on the fake headset). Logs `convo: circle:`, `convo: squad:`,
+`the right stick turns you`; the summary's `circleEarly`, `circleStill`, `squadWalked`, `turnedDeg`.
+
+**Validated on the fake headset (2026-11-11 23:56 to 2026-11-12 00:15)**, eight scenes at full pace with the stick: forward 3 s
+at each start and during Anderson's walk, sideways 3 s ten seconds into each conversation (`-Walk 3 -WanderAt 10`). Against the
+owner's rules:
+- The one the player talks to stays put: Anoleis (5.4 m away, behind his desk) and Avina (3.5 m, a hologram) stayed; Chorban
+  (2.2 m) too. No drawn jumps anywhere (Avina's 86 gone).
+- Nothing walks the player: `guidedM` 0 in every scene; the player's own stick walks of 0.8-5.4 m all went through.
+- People talking among themselves move nobody: at Fist's (Wrex and the bouncer) the circle formed only when a line reached the
+  player, and nobody walked.
+- Staged scenes: the hearing and Kirrahe's camp opened with the stage's placements and a dip, no circle. At the hearing the
+  re-face rule still turned Udina and Anderson 115-124 degrees four times: staged scenes now keep the scene's facings (no body
+  turns for the player there).
+- The squad's formation, from the owner's own Citadel save (John00_96: Garrus and Tali; Khalisah's interview): both set off 0.6 s
+  and 1.7 s in, but the AI walk took Garrus 2.8 m of 6.9 and stopped, and Tali walked 1.6 m the other way and gave up: Khalisah's
+  opening walked the player's view only (his mark inside a trigger), so Shepard's pawn stood at his mark 5.7 m from the player and
+  the henchmen's follow pulled toward it. **`worldSquadGather` is off by default** until it arrives reliably: next, the squad's own
+  HOLD formation at each place (game/SquadOrders' `GiveAt` way, without its acknowledgements), released at the end.
+- Not exercised: early walk-ins (nobody out of range in these scenes), the boundary's edge (the walks stayed within 4 m), the
+  right stick (no controllers on the fake headset). The embassy scene (Udina and Anderson, ten people) wasn't loaded from that
+  save.
+
+### The staged scenes (2026-11-12; for the owner's review)
+
+From the scan's 491 conversations (`conversation-scan.py --csv`), the ones that look like "the council or the virmire speech": a
+council, a ceremony, a speech or a briefing to a group, or a scene whose camera work is authored. Staged now (`cw::IsStagedScene`):
+Kirrahe's camp (`jug20_sal_captainkirrahe`, off the 3D screen's list since 2026-11-12: the scan's `STAGED_IN_WORLD`), the
+Council's hearing (`sta90_council_saren`), the Spectre induction (`sta90_council_spectre_induction`), the grounding of the
+Normandy (`sta90_grounded`), the ending's Council and choice (`end90_council_alive`, `end90_council_dead`, `end90_choice`; the first
+two on the 3D screen as set pieces). Candidates for the owner to judge (each a group composed for the camera): Anderson's briefing
+in the comm room (`nor10_captain`), the approach to Ilos (`nor20_ilos_approach`), the archive door (`los10_trig_door00`), Vigil
+(`los40_watcher`), Benezia and the rachni queen (`ice60_matriarch`, `ice60_rachniqueen`), the Thorian (`war30_thorianasari`), the
+mission debriefs in the comm room (`nor20_*_done`: the Council's holograms), Udina and Anderson at the embassy
+(`sta20_human_ambassador_enter`). `[Cinematics] worldStaged` adds any of them without a build.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3432,3 +3494,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 23:20, **items 20-22 from the owner's slot-88 run** ("Kirrahe's camp"): Kirrahe's scene wanted in first person; the game's black screen on foot shows as a black panel; slot 88 lacked plot 3039, so Kirrahe's arrival content played and the speech never started after the planning talk (save fixed).
 - 2026-11-11 23:40, **items 23-27 from the owner's session** ("The owner's session, judged"): the wheel's band fixed; judder at the director's cuts measured; the right stick in conversations, tests that walk with the stick, and a dip for scenes that relocate their cast to build.
 - 2026-11-11 23:50, **item 28: the conversational circle** (the owner's design): built and unit-tested; the guided walk, the opening-time seats and the stronger look-at chain off by default; first run on the fake headset under way.
+- 2026-11-12 00:30, **item 28, second design** (the owner's answers): built and validated on the fake headset for eight scenes; the squad's formation off by default (the AI walk stalls or follows Shepard's pawn); the staged list for the owner's review.

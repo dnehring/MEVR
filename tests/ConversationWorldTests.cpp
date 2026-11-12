@@ -144,9 +144,12 @@ void TestSetPieces() {
     CHECK(!cw::IsSetPiece("BioConversation nor10_comm_room_d.nor10_comm_room_dlg"));
     CHECK(!cw::IsSetPiece("nor10_captain") && !cw::IsSetPiece("nor20_ilos_approach") && !cw::IsSetPiece("los10_trig_door00"));
     CHECK(!cw::IsSetPiece("sta60_wrex_at_fists"));
+    // Kirrahe's camp plays in first person since 2026-11-11, staged (the owner's wish).
+    CHECK(!cw::IsSetPiece("jug20_sal_captainkirrahe_dlg") && cw::IsStagedScene("jug20_sal_captainkirrahe_dlg"));
+    CHECK(cw::IsStagedScene("sta90_council_saren") && cw::IsStagedScene("sta90_council_spectre_induction"));
     CHECK(!cw::IsSetPiece("BioConversation nor20_medbay_d.nor20_medbay_dlg"));  // the medical bay stays in the world
     CHECK(cw::IsSetPiece("end90_council_alive_dlg"));                           // Shepard walked by the game
-    CHECK(cw::IsSetPiece("BioConversation jug20_sal_captainkirrahe_D.jug20_sal_captainkirrahe_dlg"));
+    CHECK(!cw::IsSetPiece("BioConversation jug20_sal_captainkirrahe_D.jug20_sal_captainkirrahe_dlg"));  // staged, in first person
     CHECK(!cw::IsSetPiece("end90_saren2_dlg"));                                 // an NPC's walk: in the world, to check
     CHECK(!cw::IsSetPiece("nor10_captain_extra"));
     CHECK(!cw::IsSetPiece(""));
@@ -692,14 +695,23 @@ void TestCircle() {
     CHECK(Close(cw::CircleRadius(2, s), 75.0));
     CHECK(Close(cw::CircleRadius(6, s), 6.0 * 110.0 / (2.0 * 3.14159265358979323846), 1e-6));
     CHECK(Close(cw::CircleRadius(40, s), 220.0));
-    // Two people: the player at the origin, the one spoken to 4 m along +X (too far: it walks up, opposite the player).
-    cw::ConversationCircle two = cw::MakeCircle({0.0, 0.0, 0.0}, {400.0, 0.0, 0.0}, 2, s);
+    // The one the player talks to stays put however far (the owner: the player walked up to it), unless the setting says else.
+    cw::ConversationCircle ownerStays = cw::MakeCircle({0.0, 0.0, 0.0}, {400.0, 0.0, 0.0}, 2, s);
+    cw::CircleSpot const put = cw::JoinCircle(ownerStays, 1, {400.0, 0.0, 10.0}, true, s);
+    CHECK(!put.walk && !put.tooFar && Close(put.at.x, 400.0) && ownerStays.members.size() == 1);
+    // With ownerAlwaysStays off: two people, the one spoken to 4 m along +X, too far: it walks up, opposite the player.
+    cw::CircleSettings walks = s;
+    walks.ownerAlwaysStays = false;
+    cw::ConversationCircle two = cw::MakeCircle({0.0, 0.0, 0.0}, {400.0, 0.0, 0.0}, 2, walks);
     CHECK(two.made && Close(two.centre.x, 75.0) && Close(two.centre.y, 0.0) && Close(std::abs(two.playerDeg), 180.0));
-    cw::CircleSpot const owner = cw::JoinCircle(two, 1, {400.0, 0.0, 10.0}, true, s);
+    cw::CircleSpot const owner = cw::JoinCircle(two, 1, {400.0, 0.0, 10.0}, true, walks);
     CHECK(owner.walk && Close(owner.at.x, 150.0) && Close(owner.at.y, 0.0) && Close(owner.at.z, 10.0));
     CHECK(Close(owner.walkUnits, 250.0) && Close(std::abs(owner.faceYawDeg), 180.0));  // faces the centre, toward the player
     // Joining twice changes nothing.
-    CHECK(cw::JoinCircle(two, 1, {150.0, 0.0, 10.0}, true, s).already);
+    CHECK(cw::JoinCircle(two, 1, {150.0, 0.0, 10.0}, true, walks).already);
+    // Someone else already within talking range (3.5 m) joins where it stands.
+    cw::CircleSpot const inRange = cw::JoinCircle(ownerStays, 2, {100.0, 250.0, 0.0}, false, s);
+    CHECK(!inRange.walk && Close(inRange.at.y, 250.0));
     // The one spoken to, already within 2.5 m: it stays where it is.
     cw::ConversationCircle near = cw::MakeCircle({0.0, 0.0, 0.0}, {180.0, 40.0, 0.0}, 2, s);
     cw::CircleSpot const stays = cw::JoinCircle(near, 1, {180.0, 40.0, 0.0}, true, s);
@@ -710,7 +722,7 @@ void TestCircle() {
     cw::JoinCircle(four, 1, {200.0, 0.0, 0.0}, true, s);
     cw::CircleSpot const left = cw::JoinCircle(four, 2, {-100.0, 500.0, 0.0}, false, s);
     CHECK(left.walk && Close(left.at.x, four.centre.x, 1e-6) && left.at.y > 0.0 && Close(left.at.y, four.radius, 1e-6));
-    cw::CircleSpot const right = cw::JoinCircle(four, 3, {50.0, -300.0, 0.0}, false, s);
+    cw::CircleSpot const right = cw::JoinCircle(four, 3, {50.0, -420.0, 0.0}, false, s);
     CHECK(right.walk && right.at.y < 0.0 && Close(right.at.y, -four.radius, 1e-6));
     // A fifth, beyond the places the circle was made for: a free place a gap from everyone, never on another's.
     cw::CircleSpot const extra = cw::JoinCircle(four, 4, {300.0, 300.0, 0.0}, false, s);
@@ -728,18 +740,55 @@ void TestCircle() {
     CHECK(!close.walk && !close.tooFar && Close(close.at.x, place.x + 20.0));
     cw::CircleSpot const far = cw::JoinCircle(three, 3, {5000.0, 0.0, 0.0}, false, s);
     CHECK(far.tooFar && !far.walk && three.members.size() == 2);
-    // Re-gathering: only once the player has walked off past 2.5 m and stood still 2 s.
-    cw::RegatherState rs;
-    CHECK(!cw::ShouldRegather(rs, two, {0.0, 0.0, 0.0}, 0.1, s));
+    // Re-gathering (off by default: the player has a boundary instead): only once the player has walked off past 2.5 m and
+    // stood still 2 s.
+    cw::RegatherState rsOff;
     for (int i = 0; i < 40; ++i) {
-        CHECK(!cw::ShouldRegather(rs, two, {0.0, 0.0, 0.0}, 0.1, s));  // still, but where it formed
+        CHECK(!cw::ShouldRegather(rsOff, two, {300.0, 0.0, 0.0}, 0.1, s));
     }
-    CHECK(!cw::ShouldRegather(rs, two, {300.0, 0.0, 0.0}, 0.1, s));     // walking away
+    cw::CircleSettings follows = s;
+    follows.regather = true;
+    cw::RegatherState rs;
+    CHECK(!cw::ShouldRegather(rs, two, {0.0, 0.0, 0.0}, 0.1, follows));
+    for (int i = 0; i < 40; ++i) {
+        CHECK(!cw::ShouldRegather(rs, two, {0.0, 0.0, 0.0}, 0.1, follows));  // still, but where it formed
+    }
+    CHECK(!cw::ShouldRegather(rs, two, {300.0, 0.0, 0.0}, 0.1, follows));     // walking away
     bool regathered = false;
     for (int i = 0; i < 25 && !regathered; ++i) {
-        regathered = cw::ShouldRegather(rs, two, {300.0, 0.0, 0.0}, 0.1, s);
+        regathered = cw::ShouldRegather(rs, two, {300.0, 0.0, 0.0}, 0.1, follows);
     }
     CHECK(regathered && rs.stillFor >= 2.0);
+    // Who speaks soon: entry 0 (the owner, -1, to the player) -> reply 0 -> entry 1 (Ashley, index 1, to Kaidan, index 2)
+    // -> reply 1 -> entry 2 (Kaidan to the player); entry 0 -> reply 2 -> entry 3 (Wrex, index 3).
+    cw::DialogGraph g;
+    g.entries = {{-1, -2, {0, 2}}, {1, 2, {1}}, {2, -2, {}}, {3, -1, {}}};
+    g.replyEntries = {{1}, {2}, {3}};
+    std::vector<cw::Upcoming> const soon2 = cw::UpcomingPeople(g, 0, 2);
+    CHECK(soon2.size() == 4);  // Ashley, Kaidan, Wrex and the owner (spoken to by Wrex), two lines away
+    CHECK(soon2.size() == 4 && soon2[0].linesAway == 2);
+    std::vector<cw::Upcoming> const soon4 = cw::UpcomingPeople(g, 0, 4);
+    auto const kaidan = std::find_if(soon4.begin(), soon4.end(), [](cw::Upcoming const& u) { return u.index == 2; });
+    CHECK(kaidan != soon4.end() && kaidan->linesAway == 2);  // spoken to two lines away (before speaking four lines away)
+    CHECK(cw::UpcomingPeople(g, 0, 1).empty());                // the next line is the player's reply
+    CHECK(cw::UpcomingPeople(g, 99, 4).empty() && cw::UpcomingPeople(g, 0, 0).empty());
+    CHECK(cw::PlayerSoon(g, 0, 1));                            // a reply next
+    CHECK(!cw::PlayerSoon(g, 3, 4));                           // Wrex to the owner, then nothing
+    CHECK(cw::PlayerSoon(g, 2, 0));                            // Kaidan speaks to the player now
+    // The squad's relaxed formation: the player at the origin looking along +X at someone 3 m away; two squadmates, one each
+    // side about 1.7 m out and a little behind, facing about toward the one spoken to, setting off at different moments.
+    std::vector<cw::FormationSpot> const squad = cw::SquadFormation({0.0, 0.0, 0.0}, {300.0, 0.0, 0.0}, 2, 170.0, 50.0, 7u);
+    CHECK(squad.size() == 2);
+    if (squad.size() == 2) {
+        CHECK(squad[0].at.y > 120.0 && squad[1].at.y < -120.0);           // right (+Y) and left
+        CHECK(squad[0].at.x < 0.0 && squad[1].at.x < 0.0 && squad[0].at.x > -100.0);  // a little behind
+        CHECK(std::abs(squad[0].at.y + squad[1].at.y) > 0.1);             // not mirror images
+        CHECK(squad[0].delaySeconds >= 0.5 && squad[1].delaySeconds > squad[0].delaySeconds + 0.4);
+        CHECK(std::abs(std::remainder(squad[0].faceYawDeg - std::atan2(-squad[0].at.y, 300.0 - squad[0].at.x) * 57.29577951308232, 360.0)) <= 8.5);
+    }
+    // The same seed, the same formation; another seed, another.
+    CHECK(Close(cw::SquadFormation({0.0, 0.0, 0.0}, {300.0, 0.0, 0.0}, 2, 170.0, 50.0, 7u)[0].at.x, squad[0].at.x));
+    CHECK(!Close(cw::SquadFormation({0.0, 0.0, 0.0}, {300.0, 0.0, 0.0}, 2, 170.0, 50.0, 8u)[0].at.x, squad[0].at.x));
     // Walkers set off one after another.
     CHECK(cw::StaggerSeconds(0, s) == 0.0 && Close(cw::StaggerSeconds(2, s), 1.2));
     // The scenes whose authored places matter: Kirrahe's camp, and any named in [Cinematics] worldStaged.

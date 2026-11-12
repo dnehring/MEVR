@@ -6,6 +6,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/vr/Comfort.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "engine/CallFunction.hpp"
@@ -20,6 +21,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/ConsoleRequest.hpp"
 #include "game/GalaxyDump.hpp"
+#include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
@@ -70,6 +72,10 @@ ue3::FieldRef gPairEntrySpeaker{gPairEntries, "nSpeakerIndex"};
 ue3::FieldRef gPairEntryListener{gPairEntries, "nListenerIndex"};
 ue3::FieldRef gPairReplies{"SFXGame.BioConversation", "m_ReplyList"};
 ue3::FieldRef gPairReplyListener{gPairReplies, "nListenerIndex"};
+// The dialogue's graph (the look ahead: who speaks within the next lines, research/69 item 28).
+ue3::FieldRef gEntryReplies{gPairEntries, "ReplyListNew"};
+ue3::FieldRef gEntryReplyIndex{gEntryReplies, "nIndex"};
+ue3::FieldRef gReplyEntries{gPairReplies, "EntryList"};
 ue3::FieldRef gLookAtList{"SFXGame.BioConversation", "m_LookAtList"};
 ue3::FieldRef gLookActor{gLookAtList, "pActor"};
 ue3::FieldRef gLookTarget{gLookAtList, "pLookAtTarget"};
@@ -287,6 +293,16 @@ struct Settings {
     bool circle = true;
     cw::CircleSettings circleSettings;
     std::string staged;                // worldStaged: more staged scenes, conversation keys, comma separated
+    int lookahead = 4;                 // lines read ahead for who speaks soon: they set off early (worldCircleLookahead)
+    // The squad gathers in a relaxed formation beside and a little behind the player at a conversation's start (worldSquadGather;
+    // the owner, 2026-11-11: "the squad should have a relaxed formation", "squad should be gathered"). Off by default until it
+    // arrives reliably: on the fake headset (2026-11-12, Khalisah from the owner's John00_96) the AI walk took Garrus 2.8 m of
+    // 6.9 and Tali 1.6 m the wrong way, toward Shepard's pawn left at his mark by a walk-in by the view (henchmen follow the
+    // pawn). Next: the squad's own HOLD formation at each place (game/SquadOrders' way), released at the end (research/69 item 28).
+    bool squadGather = false;
+    float squadGatherSideM = 1.7f;
+    float squadGatherBackM = 0.5f;
+    bool stickTurns = true;            // the right stick turns the player in a conversation, as [Comfort] turn says (worldStickTurns)
     bool faceMiddle = true;            // ... the seated facing the group's middle, not the player (worldFaceMiddle; item 7)
     bool squadBeside = true;           // ... the squad seated beside the player rather than on the arc (worldSquadBeside)
     double squadSideM = 1.0;           // ... that far to each side (worldSquadSideM)
@@ -328,9 +344,9 @@ struct Settings {
     bool bodyLog = false;
     float momentPatienceS = 12.0f;     // walk: how long the script waits for him where it wants him before he is carried there
     float momentCarryMS = 3.0f;        // the speed he is carried at to where the script wants him (worldMomentCarryMS)
-    // How far from the conversation's owner the walk may go (worldMoveLeashM; 3 until 2026-11-11, the owner: "I should never be
-    // forced to be stationary"; the circle comes with the player).
-    float moveLeashM = 6.0f;
+    // How far from where the conversation began the walk may go (worldMoveLeashM; until 2026-11-11 3 m around the owner). The
+    // owner: "I think we should need a max boundary to make sure we can't just wander off."
+    float moveLeashM = 4.0f;
     // The walk's speed at full deflection (worldMoveSpeedMS; 1.4 until 2026-11-11: the owner asked for slower walking in a
     // conversation, "to persuade the user to not move").
     float moveSpeedMS = 0.9f;
@@ -442,6 +458,14 @@ void RefreshSettings() {
     s.circleSettings.regatherUnits = number("worldCircleRegatherM", 2.5f, 0.5f, 50.0f) * kUnits;
     s.circleSettings.stillSeconds = number("worldCircleStillS", 2.0f, 0.0f, 30.0f);
     s.circleSettings.staggerSeconds = number("worldCircleStaggerS", 0.6f, 0.0f, 10.0f);
+    s.circleSettings.inRangeUnits = number("worldCircleInRangeM", 3.5f, 0.0f, 20.0f) * kUnits;
+    s.circleSettings.ownerAlwaysStays = number("worldCircleOwnerStays", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.circleSettings.regather = number("worldCircleRegather", 0.0f, 0.0f, 1.0f) != 0.0f;
+    s.lookahead = static_cast<int>(number("worldCircleLookahead", 4.0f, 0.0f, 12.0f));
+    s.squadGather = number("worldSquadGather", 0.0f, 0.0f, 1.0f) != 0.0f;
+    s.squadGatherSideM = number("worldSquadGatherSideM", s.squadGatherSideM, 0.5f, 5.0f);
+    s.squadGatherBackM = number("worldSquadGatherBackM", s.squadGatherBackM, -2.0f, 5.0f);
+    s.stickTurns = number("worldStickTurns", 1.0f, 0.0f, 1.0f) != 0.0f;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldStaged")) {
         s.staged = *text;
     }
@@ -898,6 +922,17 @@ struct Convo {
     int circleOut = 0;          // too far to walk: stayed out
     std::vector<int> circleOutIds;
     int circleRegathers = 0;
+    int circleEarly = 0;        // walks begun by the look ahead (before the walker's line)
+    int circleStill = 0;        // engaged people who can't walk (not on the ground, seated): left where they are
+    cw::DialogGraph graph;      // the conversation's lines, read once (the look ahead)
+    bool graphRead = false;
+    bool squadGathered = false; // the squad's formation asked for (once a conversation)
+    int squadWalked = 0;
+    std::vector<ue3::Object*> squadOnly; // squadmates tracked for the formation only (not people of the conversation)
+    std::optional<ik::Vec3> boundaryAt;  // where the conversation began for the player: the walk's boundary is around it
+    vr::comfort::SnapTurn snap;          // the right stick's turn
+    vr::comfort::YawUnits turnUnits;
+    double turnedDeg = 0.0;
     int seatWalked = 0;
     std::uint32_t cut = 0;       // the host dips from black when it changes
     // The player's place for this conversation: the view on foot if it was Shepard's just now, else his eyes from his head bone
@@ -1053,6 +1088,7 @@ std::string ShortName(ue3::Object const* o);
 double Seconds();
 cw::Vec3 WalkPoint(ik::Vec3 v);
 bool CircleOn();
+bool IsSquad(ue3::Object const* actor);
 
 // The game's own placement function asks (engine/ConversationHooks; research/69 item 4): after the accepted opening a person of
 // this conversation is not put on a stage mark; the call's facing still applies. Called on the game thread from inside the
@@ -1079,12 +1115,14 @@ bool KeepAtSource(void const* conversation, void const* actor, float const* loca
                 double const toMark = std::atan2(location[1] - st.place.y, location[0] - st.place.x) * kRadToDeg;
                 bool const step = gSettings.walk == 1 &&
                     !cw::WalkWorthIt(away, toMark - st.shownYaw, gSettings.walkLongM * kUnitsPerMeter, gSettings.walkStepDeg);
-                // In a conversational circle the stage's marks are the camera's composition, not where people stand: it keeps its place.
-                bool const circle = CircleOn();
+                // The squad keeps its relaxed formation in a conversation of the circle (the stage's marks for it are the camera's
+                // composition); anyone else walks to a mark that is a real move (the owner: people stay put "unless something in
+                // the scene requires dynamic movement").
+                bool const circle = CircleOn() && IsSquad(st.actor);
                 log::Info("convo: at {:.1f} s the stage asks {} onto a mark {:.2f} m away ({} ask{} for it so far; {} speaking): withheld{}",
                     Seconds(), st.name, away / kUnitsPerMeter, st.marksAsked, st.marksAsked == 1 ? "" : "s", ShortName(gC.speaker),
                     gSettings.walk == 0 ? std::string()
-                    : circle           ? std::string(" (the conversational circle: it keeps its place)")
+                    : circle           ? std::string(" (the squad keeps its place beside you)")
                     : refused          ? std::string(" (the game's AI couldn't walk it there before)")
                     : step ? std::format(" (a step {:.0f} deg off its facing: it keeps its place)", std::abs(std::remainder(toMark - st.shownYaw, 360.0)))
                            : std::string(", a mark to walk to"));
@@ -2226,15 +2264,76 @@ int CircleId(ue3::Object* actor) {
     return static_cast<int>(gC.circleActors.size()) - 1;
 }
 
-// The circle's places: the conversation's people who are in the scene (Shepard's is the player's place).
+// The circle's places: the conversation's people who are in the scene (Shepard's is the player's place); squadmates tracked only
+// for the squad's formation are not on it.
 int CirclePeople() {
     int n = 0;
     for (Tracked const& t : gC.actors) {
-        if (t.actor != nullptr && ue3::runtime::IsAlive(t.actor) && !gActorHidden.ReadBool(t.actor).value_or(false)) {
+        if (t.actor != nullptr && ue3::runtime::IsAlive(t.actor) && !gActorHidden.ReadBool(t.actor).value_or(false) &&
+            std::find(gC.squadOnly.begin(), gC.squadOnly.end(), t.actor) == gC.squadOnly.end()) {
             ++n;
         }
     }
     return std::max(2, n);
+}
+
+bool IsSquad(ue3::Object const* actor) {
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+        if (m.pawn != nullptr && m.pawn == actor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+ue3::Object* PersonOfIndex(ue3::Object* conv, ue3::Object* pawn, int index);
+
+// The conversation's lines as a graph (cw::DialogGraph): each entry's speaker, listener and replies; each reply's entries.
+cw::DialogGraph ReadGraph(ue3::Object* conv) {
+    cw::DialogGraph graph;
+    if (auto const entries = gPairEntries.ElementsOf(conv, 4096)) {
+        for (std::int32_t i = 0; i < entries->count; ++i) {
+            void const* const node = entries->At(i);
+            cw::DialogGraph::Entry e;
+            e.speaker = gPairEntrySpeaker.Read<std::int32_t>(node).value_or(-1);
+            e.listener = gPairEntryListener.Read<std::int32_t>(node).value_or(-1);
+            if (auto const replies = gEntryReplies.ElementsOf(node, 64)) {
+                for (std::int32_t r = 0; r < replies->count; ++r) {
+                    if (auto const index = gEntryReplyIndex.Read<std::int32_t>(replies->At(r))) {
+                        e.replies.push_back(*index);
+                    }
+                }
+            }
+            graph.entries.push_back(std::move(e));
+        }
+    }
+    if (auto const replies = gPairReplies.ElementsOf(conv, 4096)) {
+        for (std::int32_t i = 0; i < replies->count; ++i) {
+            std::vector<int> next;
+            if (auto const list = gReplyEntries.ElementsOf(replies->At(i), 64); list && list->stride == static_cast<std::int32_t>(sizeof(std::int32_t))) {
+                for (std::int32_t k = 0; k < list->count; ++k) {
+                    next.push_back(*static_cast<std::int32_t const*>(list->At(k)));
+                }
+            }
+            graph.replyEntries.push_back(std::move(next));
+        }
+    }
+    return graph;
+}
+
+// Whether the game's AI can walk this person into place: on the ground (PHYS_Walking) and standing (its head bone at least
+// 0.62 m above its place, the seated rule of cw::MayReface). `why`: what it is instead.
+bool CanWalk(Stay const& st, std::string& why) {
+    if (auto const physics = gWalkPhysics.Read<std::uint8_t>(st.actor); physics && *physics != 1) {
+        why = std::format("not on the ground (its physics {})", static_cast<int>(*physics));
+        return false;
+    }
+    auto const head = HeadOf(st.actor);
+    if (head && head->at.z - st.place.z < 62.0) {
+        why = std::format("seated (its head {:.2f} m above its place)", (head->at.z - st.place.z) / kUnitsPerMeter);
+        return false;
+    }
+    return true;
 }
 
 void WalkIntoCircle(Stay& st, ue3::Object* pawn, cw::CircleSpot const& spot, double nowS, int order, char const* why) {
@@ -2255,18 +2354,131 @@ void WalkIntoCircle(Stay& st, ue3::Object* pawn, cw::CircleSpot const& spot, dou
         spot.walkUnits / kUnitsPerMeter, delay > 0.0 ? std::format(" after {:.1f} s", delay) : std::string(), spot.angleDeg, spot.faceYawDeg);
 }
 
+// The squad's relaxed formation (worldSquadGather; cw::SquadFormation): once a conversation, after its opening, each squadmate
+// not already within a metre of its place walks there with the game's AI, one after another, and faces the conversation.
+// In every conversation in the world but the staged ones, the ones the player only watches too (the owner: "the squad should
+// have a relaxed formation").
+void GatherSquad(ue3::Object* pawn, double nowS) {
+    if (gC.squadGathered || !gSettings.squadGather) {
+        return;
+    }
+    ue3::Object* const owner = gOwner.Read<ue3::Object*>(gC.object).value_or(nullptr);
+    std::vector<Stay*> members;
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+        if (m.pawn == nullptr || m.pawn == pawn || m.pawn == owner || !ue3::runtime::IsAlive(m.pawn) ||
+            gActorHidden.ReadBool(m.pawn).value_or(false)) {
+            continue;
+        }
+        auto const st = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& s) { return s.actor == m.pawn; });
+        if (st == gStay.end()) {
+            return;  // its state comes with the next tick of ours
+        }
+        members.push_back(&*st);
+    }
+    gC.squadGathered = true;
+    if (members.empty()) {
+        return;
+    }
+    cw::Vec3 const player{gC.hold.x, gC.hold.y, gC.hold.z};
+    auto const ownerAt = owner != nullptr && owner != pawn && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
+    ik::Vec3 const look = ownerAt ? V(*ownerAt) : gC.hold + YawForward(YawDeg(gC.holdRotation)) * 300.0;
+    std::vector<cw::FormationSpot> const spots = cw::SquadFormation(player, {look.x, look.y, look.z}, static_cast<int>(members.size()),
+        gSettings.squadGatherSideM * kUnitsPerMeter, gSettings.squadGatherBackM * kUnitsPerMeter, gC.number);
+    for (std::size_t i = 0; i < members.size() && i < spots.size(); ++i) {
+        Stay& st = *members[i];
+        cw::FormationSpot const& spot = spots[i];
+        double const away = std::hypot(spot.at.x - st.place.x, spot.at.y - st.place.y);
+        std::string notWalker;
+        if (away < 100.0) {
+            log::Info("convo: squad: {} is already beside you ({:.1f} m from its place in the formation)", st.name, away / kUnitsPerMeter);
+            continue;
+        }
+        if (away > 1500.0) {
+            log::Info("convo: squad: {} is {:.1f} m from its place beside you: too far, it stays where it is", st.name, away / kUnitsPerMeter);
+            continue;
+        }
+        if (st.tracked || authored_moment::TrackMoves(st.actor) || !CanWalk(st, notWalker)) {
+            log::Info("convo: squad: {} stays where it is ({})", st.name, notWalker.empty() ? "an authored walk moves it" : notWalker);
+            continue;
+        }
+        ik::Vec3 at{spot.at.x, spot.at.y, st.place.z};
+        auto const floorHere = FloorZ(pawn, st.place);
+        auto const floorThere = FloorZ(pawn, at);
+        if (!floorThere) {
+            log::Info("convo: squad: no floor at {}'s place beside you: it stays where it is", st.name);
+            continue;
+        }
+        at.z = *floorThere + (floorHere ? st.place.z - *floorHere : 0.0);
+        EndWalk(st, "retarget", "the squad gathers");
+        st.seatYaw = spot.faceYawDeg;
+        st.walk.Jump(WalkPoint(at), WalkPoint(st.place), nowS - gSettings.walkSettleS - 0.1 + spot.delaySeconds,
+            gSettings.walkMinM * kUnitsPerMeter);
+        ++gC.squadWalked;
+        log::Info("convo: squad: {} walks {:.1f} m to its place beside you after {:.1f} s (facing {:.0f} deg)", st.name,
+            away / kUnitsPerMeter, spot.delaySeconds, spot.faceYawDeg);
+    }
+}
+
 void StepCircle(ue3::Object* pawn, ue3::Object* speakerNow, ue3::Object* listener, double nowS, double dt) {
     if (!CircleOn()) {
         return;
     }
+    GatherSquad(pawn, nowS);
     ue3::Object* const playerPawn = gC.playerPawn != nullptr ? gC.playerPawn : pawn;
     cw::Vec3 const player{gC.hold.x, gC.hold.y, gC.hold.z};
     cw::CircleSettings const& cs = gSettings.circleSettings;
     auto const stayOf = [&](ue3::Object* a) {
         return std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == a; });
     };
+    ue3::Object* const conv = gC.object;
+    if (!gC.graphRead) {
+        gC.graphRead = true;
+        gC.graph = ReadGraph(conv);
+        log::Info("convo: circle: the dialogue read for the look ahead: {} lines of others', {} of the player's ({} lines ahead)",
+            gC.graph.entries.size(), gC.graph.replyEntries.size(), gSettings.lookahead);
+    }
+    int const entry = gCurrentEntry.Read<int>(conv).value_or(-1);
+    // People talking among themselves move for nobody (Wrex and Fist's bouncer, with the player watching): the circle forms only
+    // once the player speaks or is spoken to, now or within the lines read ahead.
+    bool const involved = speakerNow == playerPawn || listener == playerPawn || cw::PlayerSoon(gC.graph, entry, gSettings.lookahead);
+    if (!gC.circle.made) {
+        if (!involved) {
+            return;
+        }
+        // Round the player's place toward the one the player talks to (the owner), who stays where it is (the player walked up
+        // to it): it is the first member.
+        ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
+        ue3::Object* const anchor = owner != nullptr && owner != playerPawn && owner != pawn && ue3::runtime::IsAlive(owner) ? owner
+            : speakerNow != playerPawn ? speakerNow : listener;
+        auto const anchorSt = anchor != nullptr ? stayOf(anchor) : gStay.end();
+        if (anchorSt == gStay.end()) {
+            return;  // not seen in a tick of ours yet
+        }
+        gC.circle = cw::MakeCircle(player, {anchorSt->place.x, anchorSt->place.y, anchorSt->place.z}, CirclePeople(), cs);
+        gC.regather = {};
+        cw::JoinCircle(gC.circle, CircleId(anchor), {anchorSt->place.x, anchorSt->place.y, anchorSt->place.z}, true, cs);
+        ++gC.circleJoined;
+        log::Info("convo: circle: formed round you toward {} ({:.1f} m away, who stays where it is) at {:.1f} s: {} places, {:.1f} m across",
+            anchorSt->name, std::hypot(anchorSt->place.x - player.x, anchorSt->place.y - player.y) / kUnitsPerMeter, Seconds(),
+            gC.circle.people, 2.0 * gC.circle.radius / kUnitsPerMeter);
+    }
+    // Who joins now: whoever speaks or is spoken to, and whoever will within the lines read ahead (they set off early, so they
+    // are near by their line).
+    struct Wanted {
+        ue3::Object* actor;
+        std::string why;
+        bool early;
+    };
+    std::vector<Wanted> wanted;
+    wanted.push_back({speakerNow, "speaks", false});
+    wanted.push_back({listener, "is spoken to", false});
+    for (cw::Upcoming const& u : cw::UpcomingPeople(gC.graph, entry, gSettings.lookahead)) {
+        wanted.push_back({PersonOfIndex(conv, pawn, u.index), std::format("takes part {} line{} from now", u.linesAway,
+                                                                        u.linesAway == 1 ? "" : "s"), true});
+    }
     int order = 0;
-    for (ue3::Object* const a : {speakerNow, listener}) {
+    for (Wanted const& w : wanted) {
+        ue3::Object* const a = w.actor;
         if (a == nullptr || a == playerPawn || a == pawn || !ue3::runtime::IsAlive(a) || gActorHidden.ReadBool(a).value_or(false)) {
             continue;
         }
@@ -2278,32 +2490,39 @@ void StepCircle(ue3::Object* pawn, ue3::Object* speakerNow, ue3::Object* listene
         if (std::find(gC.circleOutIds.begin(), gC.circleOutIds.end(), id) != gC.circleOutIds.end()) {
             continue;
         }
-        if (!gC.circle.made) {
-            gC.circle = cw::MakeCircle(player, {st->place.x, st->place.y, st->place.z}, CirclePeople(), cs);
-            gC.regather = {};
-            log::Info("convo: circle: formed round you toward {} at {:.1f} s: {} places, {:.1f} m across", st->name, Seconds(),
-                gC.circle.people, 2.0 * gC.circle.radius / kUnitsPerMeter);
-        }
-        bool const first = gC.circle.members.empty();
-        cw::CircleSpot const spot = cw::JoinCircle(gC.circle, id, {st->place.x, st->place.y, st->place.z}, first, cs);
-        if (spot.already) {
+        cw::ConversationCircle trial = gC.circle;
+        cw::CircleSpot const preview = cw::JoinCircle(trial, id, {st->place.x, st->place.y, st->place.z}, false, cs);
+        if (preview.already) {
             continue;
         }
-        char const* const why = a == speakerNow ? "speaks" : "is spoken to";
+        std::string notWalker;
+        if (preview.walk && !CanWalk(*st, notWalker)) {
+            // A hologram on its kiosk (Avina), someone seated: it takes part where it is (2026-11-11: the circle walked Avina off
+            // her pedestal and she bobbed up and down, 86 placements in drawn frames).
+            gC.circleOutIds.push_back(id);
+            ++gC.circleStill;
+            log::Info("convo: circle: {} {}, but it is {}: it takes part where it is", st->name, w.why, notWalker);
+            continue;
+        }
+        cw::CircleSpot const spot = cw::JoinCircle(gC.circle, id, {st->place.x, st->place.y, st->place.z}, false, cs);
         if (spot.tooFar) {
             gC.circleOutIds.push_back(id);
             ++gC.circleOut;
-            log::Info("convo: circle: {} {} {:.1f} m from its place in the circle: too far to walk in, it stays where it is", st->name, why,
-                spot.walkUnits / kUnitsPerMeter);
+            log::Info("convo: circle: {} {} {:.1f} m from its place in the circle: too far to walk in, it stays where it is", st->name,
+                w.why, spot.walkUnits / kUnitsPerMeter);
             continue;
         }
         ++gC.circleJoined;
         if (!spot.walk || st->tracked || authored_moment::TrackMoves(a)) {
-            log::Info("convo: circle: {} {} and joins where it stands{}", st->name, why,
-                st->tracked || authored_moment::TrackMoves(a) ? " (an authored walk moves it)" : "");
+            log::Info("convo: circle: {} {} and joins where it stands ({:.1f} m from you{})", st->name, w.why,
+                std::hypot(st->place.x - player.x, st->place.y - player.y) / kUnitsPerMeter,
+                st->tracked || authored_moment::TrackMoves(a) ? ", an authored walk moves it" : "");
             continue;
         }
-        WalkIntoCircle(*st, pawn, spot, nowS, order++, why);
+        if (w.early) {
+            ++gC.circleEarly;
+        }
+        WalkIntoCircle(*st, pawn, spot, nowS, order++, w.why.c_str());
     }
     // The player walked off and stood: the circle gathers round the player again, nearest first.
     if (gC.circle.made && !gC.circle.members.empty() && cw::ShouldRegather(gC.regather, gC.circle, player, dt, cs)) {
@@ -2327,7 +2546,7 @@ void StepCircle(ue3::Object* pawn, ue3::Object* speakerNow, ue3::Object* listene
         int k = 0;
         for (auto const& [distance, id] : byDistance) {
             auto const st = stayOf(gC.circleActors[static_cast<std::size_t>(id)]);
-            bool const first = gC.circle.members.empty();
+            bool const first = gC.circleActors[static_cast<std::size_t>(id)] == gOwner.Read<ue3::Object*>(gC.object).value_or(nullptr);
             cw::CircleSpot const spot = cw::JoinCircle(gC.circle, id, {st->place.x, st->place.y, st->place.z}, first, cs);
             if (spot.walk && !st->tracked) {
                 WalkIntoCircle(*st, pawn, spot, nowS, k++, "gathers round you");
@@ -2513,6 +2732,15 @@ void KeepInPlace(ue3::Object* pawn) {
                 if (std::hypot(to.x, to.y) > 20.0) {
                     lookBearing = std::atan2(to.y, to.x) * kRadToDeg;
                 }
+            }
+        }
+        // A staged scene's facings are authored (the Council on its platforms, Kirrahe before his men): no body turns for the
+        // player there (the validation of 2026-11-12: four turns of Udina and Anderson at the hearing, 115-124 degrees).
+        if (mayTurn && other == playerPawn && gC.staged) {
+            mayTurn = false;
+            if (!st.refaceHeldLogged) {
+                st.refaceHeldLogged = true;
+                log::Info("convo: {}'s body keeps the scene's facing for the player: a staged scene", t.name);
             }
         }
         // Not while the player stands where the stage composed Shepard, and never for someone seated (cw::MayReface).
@@ -3456,7 +3684,40 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
 std::uint32_t gCutBase = 0;
 bool gMomentWalk = false;  // a moment's view is up (set by TickMoment): the walk's trigger guard stands down
 
+// The right stick turns the player in a conversation in the world (the owner, 2026-11-11: "Right stick should function"), as
+// [Comfort] turn says on foot: snap by its flicks, else smooth at its turn speed. The held view's yaw turns; the body follows
+// under it (body follow), the stage is the game's.
+void TurnPlayer(double dt) {
+    if (!gSettings.stickTurns || !gC.on || !gC.world || !gC.openingDone) {
+        return;
+    }
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    if (!controllers.active) {
+        return;
+    }
+    vr::comfort::Settings const comfort = hand_calibration::GetComfort();
+    float const x = controllers.right.stickX;
+    double degrees = 0.0;
+    bool const snap = comfort.turn == vr::comfort::TurnStyle::Snap;
+    if (snap) {
+        degrees = vr::comfort::StepSnap(gC.snap, x, static_cast<double>(GetTickCount64()) / 1000.0, comfort);
+    } else {
+        degrees = vr::comfort::SmoothTurnDegrees(x, std::clamp(dt, 0.0, 0.1), comfort);
+    }
+    if (degrees == 0.0) {
+        return;
+    }
+    int const units = gC.turnUnits.Take(degrees);
+    if (gC.turnedDeg == 0.0) {
+        log::Info("convo: at {:.1f} s the right stick turns you ({}{})", Seconds(), snap ? "snap, " : "smooth, ",
+            snap ? std::format("{:.0f} deg a flick", comfort.snapDegrees) : std::format("{:.0f} deg/s", comfort.turnSpeed));
+    }
+    gC.turnedDeg += degrees;
+    gC.holdRotation.yaw += units;
+}
+
 void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::State const& view, double dt) {
+    TurnPlayer(dt);
     auto stop = [&] {
         gC.guideProgressed = false;
         if (gC.moving) {
@@ -3557,7 +3818,13 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     // leash is then around the next place on that way: around the mark itself it lets a step through only if it brings the
     // player nearer, and the way there often starts off sideways (the guide stood still for its two seconds and gave up).
     std::optional<cw::Vec3> const along = guided && gC.detached ? cw::TrailTarget(gTrail, cw::Vec3{at->x, at->y, at->z}) : std::nullopt;
-    ik::Vec3 const anchor = along ? ik::Vec3{along->x, along->y, along->z} : gC.wantedMark ? *gC.wantedMark : ownerAt ? V(*ownerAt) : gC.hold;
+    // The boundary (worldMoveLeashM) is around where the conversation began for the player (the owner: "a max boundary to make
+    // sure we can't just wander off"); a guided walk-in (worldWalkInS, off by default) keeps its way to Shepard's mark.
+    if (!gC.boundaryAt) {
+        gC.boundaryAt = V(*at);
+    }
+    (void)ownerAt;
+    ik::Vec3 const anchor = along ? ik::Vec3{along->x, along->y, along->z} : guided && gC.wantedMark ? *gC.wantedMark : *gC.boundaryAt;
     // Where the player faces: the head in the world through the held frame; without a VR view (a flat game), the held view's yaw.
     double headYaw = YawDeg(gC.holdRotation);
     if (guided) {
@@ -3794,6 +4061,16 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
             Track(gSpeakerActor.Read<ue3::Object*>(list->At(i)).value_or(nullptr));
         }
     }
+    // The squad, for its relaxed formation (GatherSquad): squadmates who aren't people of the conversation are tracked too.
+    if (gC.world && !gC.staged && gSettings.squadGather) {
+        for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+            if (m.pawn == nullptr || std::any_of(gC.actors.begin(), gC.actors.end(), [&](Tracked const& t) { return t.actor == m.pawn; })) {
+                continue;
+            }
+            Track(m.pawn);
+            gC.squadOnly.push_back(m.pawn);
+        }
+    }
     // Where the stage put actors from (the conversation saved their places before it moved them).
     if (auto const saved = gSavedPositions.ElementsOf(conv, 64)) {
         for (std::int32_t i = 0; i < saved->count; ++i) {
@@ -3919,6 +4196,7 @@ void End(char const* why) {
               "\"lookMaxDeg\": {:.0f}, \"headShortDeg\": {:.0f}, \"facingsEased\": {}, \"looksSet\": {}, \"glances\": {}, \"heardOnly\": {}, "
               "\"looksGame\": {}, \"turnsHome\": {}, \"reaches\": {}, \"looksRefused\": {}, \"voicesPlaced\": {}, \"voicesFar\": {}, "
               "\"staged\": {}, \"circleJoined\": {}, \"circleWalked\": {}, \"circleOut\": {}, \"circleRegathers\": {}, "
+              "\"circleEarly\": {}, \"circleStill\": {}, \"squadWalked\": {}, \"turnedDeg\": {:.0f}, "
               "\"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
@@ -3928,7 +4206,8 @@ void End(char const* why) {
         gC.movedUnits / kUnitsPerMeter, gC.leashHits, gC.clearHits, gC.moveRefused, gC.triggerHits, gC.sourceKept, gC.absentWhy,
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
         gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar,
-        gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers, entryPath);
+        gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers,
+        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.turnedDeg, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }

@@ -280,6 +280,12 @@ struct CircleSettings {
     double regatherUnits = 250.0;    // the player this far from where the circle formed ...
     double stillSeconds = 2.0;       // ... and standing still this long: the circle re-gathers around the player
     double staggerSeconds = 0.6;     // walkers set off one after another, not in step
+    // The owner's answers (2026-11-11 late): the one the player talks to "stays put unless something in the scene requires
+    // dynamic movement" (the player walked up to them); the player has a boundary instead of a circle that follows (no
+    // re-gathering by default); someone already within talking range joins where they stand.
+    bool ownerAlwaysStays = true;
+    double inRangeUnits = 350.0;
+    bool regather = false;
 };
 struct ConversationCircle {
     bool made = false;
@@ -322,6 +328,41 @@ struct RegatherState {
 bool ShouldRegather(RegatherState& state, ConversationCircle const& circle, Vec3 const& player, double dt, CircleSettings const& s);
 // The n-th walker's head start (0 for the first): they set off one after another.
 double StaggerSeconds(int order, CircleSettings const& s);
+
+// ---- Who speaks soon (the owner: someone "necessary via walk up" should "start walking much before their line, ideally a few
+// seconds gap so it feels natural") ---------------------------------------------------------------------------------------------
+// A conversation's graph: each entry (an NPC's line) with its speaker and listener (indices into the speaker list; -1 the
+// owner, -2 the player) and the replies it leads to; each reply (the player's line) with the entries it leads to.
+struct DialogGraph {
+    struct Entry {
+        int speaker = -1;
+        int listener = -1;
+        std::vector<int> replies;
+    };
+    std::vector<Entry> entries;
+    std::vector<std::vector<int>> replyEntries;
+};
+struct Upcoming {
+    int index = 0;       // the speaker list index (-1 the owner)
+    int linesAway = 0;   // lines until it speaks or is spoken to (1: the next line)
+};
+// The people (not the player) who speak or are spoken to within `depth` lines after entry `entry`, on any branch, each with the
+// nearest line; a reply counts as a line. Sorted by linesAway, then index.
+std::vector<Upcoming> UpcomingPeople(DialogGraph const& graph, int entry, int depth);
+// Whether the player speaks (a reply) or is spoken to within `depth` lines after `entry`.
+bool PlayerSoon(DialogGraph const& graph, int entry, int depth);
+
+// ---- The squad's relaxed formation (the owner: "the squad should have a relaxed formation", "squad should be gathered") ------
+// At a conversation's start the squad gathers loosely beside and a little behind the player, facing the conversation: one to
+// each side `sideUnits` out and `backUnits` back, a third further back on the right, each place and start time varied a
+// little (`seed`), so nobody arrives in step or on a grid. The first of them sets off after about half a second.
+struct FormationSpot {
+    Vec3 at;
+    double faceYawDeg = 0.0;
+    double delaySeconds = 0.0;
+};
+std::vector<FormationSpot> SquadFormation(Vec3 const& player, Vec3 const& lookAt, int count, double sideUnits, double backUnits,
+    std::uint32_t seed);
 
 // ---- Flowing conversations (research/59 "Flowing conversations", 2026-11-09) ---------------------------------------------------
 // A conversation's play from a start entry that can never reach a dialogue wheel (a scene watched: Garrus arguing with the

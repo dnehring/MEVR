@@ -277,9 +277,14 @@ std::vector<int> SeatsForPairs(std::vector<GroupMember> const& members, std::vec
 }
 
 bool IsStagedScene(std::string_view name, std::string_view extra) {
-    // Kirrahe's camp on Virmire: his arrival relocates everyone onto the stage by the tents, and his speech stands his men before
-    // him (the owner's headset run, 2026-11-11, research/69 items 20, 27).
-    static constexpr std::string_view kStaged[] = {"jug20_sal_captainkirrahe"};
+    // The owner, 2026-11-11: "Staged scenes are like the council or the virmire speech." Kirrahe's camp on Virmire (his arrival
+    // relocates everyone onto the stage by the tents, his speech stands his men before him: research/69 items 20, 27); the
+    // Council's hearing, the Spectre induction and the grounding of the Normandy; the ending's Council and choice (on the 3D
+    // screen as set pieces unless worldSetPieces = world). Candidates for more: research/69 "The staged scenes".
+    static constexpr std::string_view kStaged[] = {
+        "jug20_sal_captainkirrahe", "sta90_council_saren", "sta90_council_spectre_induction", "sta90_grounded",
+        "end90_council_alive", "end90_council_dead", "end90_choice",
+    };
     std::string const key = ConversationKey(name);
     if (std::find(std::begin(kStaged), std::end(kStaged), key) != std::end(kStaged)) {
         return true;
@@ -348,8 +353,9 @@ CircleSpot JoinCircle(ConversationCircle& circle, int id, Vec3 const& from, bool
     }
     double const bearing = BearingDeg(circle.centre, from);
     double const fromPlayer = std::hypot(from.x - circle.player.x, from.y - circle.player.y);
-    if (first && fromPlayer <= s.ownerNearUnits) {
-        // The one the player talks to, already near: it is where the conversation is; it stays.
+    if ((first && (s.ownerAlwaysStays || fromPlayer <= s.ownerNearUnits)) || (!first && fromPlayer <= s.inRangeUnits)) {
+        // The one the player talks to (the player walked up to it), or someone already within talking range: it is where the
+        // conversation is; it stays.
         spot.at = from;
         spot.angleDeg = bearing;
         spot.faceYawDeg = BearingDeg(from, circle.player);
@@ -434,6 +440,9 @@ CircleSpot JoinCircle(ConversationCircle& circle, int id, Vec3 const& from, bool
 }
 
 bool ShouldRegather(RegatherState& state, ConversationCircle const& circle, Vec3 const& player, double dt, CircleSettings const& s) {
+    if (!s.regather) {
+        return false;
+    }
     if (!state.have || std::hypot(player.x - state.last.x, player.y - state.last.y) > 10.0) {
         state.last = player;
         state.have = true;
@@ -449,16 +458,143 @@ double StaggerSeconds(int order, CircleSettings const& s) {
     return std::max(0, order) * s.staggerSeconds;
 }
 
+namespace {
+// Breadth-first over the graph from entry `entry`: `visit(isReply, node, lines)` for every node within `depth` lines.
+template <class Visit>
+void WalkGraph(DialogGraph const& graph, int entry, int depth, Visit&& visit) {
+    if (entry < 0 || entry >= static_cast<int>(graph.entries.size()) || depth <= 0) {
+        return;
+    }
+    std::vector<int> seenEntry(graph.entries.size(), -1);
+    std::vector<int> seenReply(graph.replyEntries.size(), -1);
+    struct Node {
+        bool reply;
+        int index;
+        int lines;
+    };
+    std::vector<Node> queue{{false, entry, 0}};
+    seenEntry[static_cast<std::size_t>(entry)] = 0;
+    for (std::size_t q = 0; q < queue.size(); ++q) {
+        Node const node = queue[q];
+        if (node.lines > 0) {
+            visit(node.reply, node.index, node.lines);
+        }
+        if (node.lines >= depth) {
+            continue;
+        }
+        if (!node.reply) {
+            for (int r : graph.entries[static_cast<std::size_t>(node.index)].replies) {
+                if (r >= 0 && r < static_cast<int>(seenReply.size()) && seenReply[static_cast<std::size_t>(r)] < 0) {
+                    seenReply[static_cast<std::size_t>(r)] = node.lines + 1;
+                    queue.push_back({true, r, node.lines + 1});
+                }
+            }
+        } else {
+            for (int e : graph.replyEntries[static_cast<std::size_t>(node.index)]) {
+                if (e >= 0 && e < static_cast<int>(seenEntry.size()) && seenEntry[static_cast<std::size_t>(e)] < 0) {
+                    seenEntry[static_cast<std::size_t>(e)] = node.lines + 1;
+                    queue.push_back({false, e, node.lines + 1});
+                }
+            }
+        }
+    }
+}
+} // namespace
+
+std::vector<Upcoming> UpcomingPeople(DialogGraph const& graph, int entry, int depth) {
+    std::vector<Upcoming> out;
+    auto const note = [&](int index, int lines) {
+        if (index == -2 || index < -1) {
+            return;  // the player
+        }
+        for (Upcoming& u : out) {
+            if (u.index == index) {
+                u.linesAway = std::min(u.linesAway, lines);
+                return;
+            }
+        }
+        out.push_back({index, lines});
+    };
+    WalkGraph(graph, entry, depth, [&](bool reply, int node, int lines) {
+        if (!reply) {
+            DialogGraph::Entry const& e = graph.entries[static_cast<std::size_t>(node)];
+            note(e.speaker, lines);
+            note(e.listener, lines);
+        }
+    });
+    std::sort(out.begin(), out.end(), [](Upcoming const& a, Upcoming const& b) {
+        return a.linesAway != b.linesAway ? a.linesAway < b.linesAway : a.index < b.index;
+    });
+    return out;
+}
+
+bool PlayerSoon(DialogGraph const& graph, int entry, int depth) {
+    bool soon = false;
+    WalkGraph(graph, entry, depth, [&](bool reply, int node, int) {
+        if (reply) {
+            soon = true;
+        } else {
+            DialogGraph::Entry const& e = graph.entries[static_cast<std::size_t>(node)];
+            soon = soon || e.listener == -2 || e.speaker == -2;
+        }
+    });
+    if (entry >= 0 && entry < static_cast<int>(graph.entries.size())) {
+        DialogGraph::Entry const& now = graph.entries[static_cast<std::size_t>(entry)];
+        soon = soon || now.listener == -2 || now.speaker == -2;
+    }
+    return soon;
+}
+
+std::vector<FormationSpot> SquadFormation(Vec3 const& player, Vec3 const& lookAt, int count, double sideUnits, double backUnits,
+    std::uint32_t seed) {
+    std::vector<FormationSpot> out;
+    double dx = lookAt.x - player.x;
+    double dy = lookAt.y - player.y;
+    double const len = std::hypot(dx, dy);
+    if (len < 1e-6) {
+        dx = 1.0;
+        dy = 0.0;
+    } else {
+        dx /= len;
+        dy /= len;
+    }
+    // Unreal's right of a forward (x, y) on the floor: (-y, x).
+    double const rx = -dy;
+    double const ry = dx;
+    // A small deterministic variation per place: no two squads stand or set off alike.
+    std::uint32_t state = seed * 2654435761u + 0x9E3779B9u;
+    auto const vary = [&](double spread) {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        return (static_cast<double>(state % 10001u) / 10000.0 * 2.0 - 1.0) * spread;
+    };
+    for (int i = 0; i < count; ++i) {
+        double side = i % 2 == 0 ? 1.0 : -1.0;              // right, left, right...
+        double const row = static_cast<double>(i / 2);      // a third (and fourth) further back
+        double const across = sideUnits + vary(0.15 * sideUnits) - row * 0.25 * sideUnits;
+        double const back = backUnits * (1.0 + row) + vary(0.3 * backUnits) + row * 40.0;
+        Vec3 at{player.x + rx * side * across - dx * back, player.y + ry * side * across - dy * back, player.z};
+        FormationSpot spot;
+        spot.at = at;
+        spot.faceYawDeg = BearingDeg(at, lookAt) + vary(8.0);
+        spot.delaySeconds = 0.5 + 0.9 * i + std::abs(vary(0.4));
+        out.push_back(spot);
+    }
+    return out;
+}
+
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.
     // Since 2026-11-10 (research/69 "Set pieces in the world") without the six framed conversations that were played in first
     // person and had a place for the player (the scan's SEEN_IN_WORLD: the council hearing, the comm room with Anderson and
     // Nihlus, the approach to Ilos, the archive door, Wrex at Fist's): their cameras were all that was authored.
+    // Since 2026-11-11 without Kirrahe's camp (the scan's STAGED_IN_WORLD: the owner wants it in first person, a staged scene).
     static constexpr std::string_view kSetPieces[] = {
-        "end90_council_alive", "end90_council_dead", "end90_saren", "jug20_sal_captainkirrahe", "jug70_sovereign",
-        "nor20_empty_locker", "nor20_ilos_open", "nor20_leaving_oculon", "nor20_start_kaidan", "nor20_start_liara",
-        "prc1_cutscene_discovered", "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "war30_trig_01_entry",
+        "end90_council_alive", "end90_council_dead", "end90_saren", "jug70_sovereign", "nor20_empty_locker",
+        "nor20_ilos_open", "nor20_leaving_oculon", "nor20_start_kaidan", "nor20_start_liara", "prc1_cutscene_discovered",
+        "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "war30_trig_01_entry",
     };
     std::string const key = ConversationKey(name);
     return std::find(std::begin(kSetPieces), std::end(kSetPieces), key) != std::end(kSetPieces);

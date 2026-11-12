@@ -1297,6 +1297,10 @@ void CheckPaths() {
     CheckPath("SFXGame.BioConversation", {"m_EntryList", "nListenerIndex"}, SDK_AT(offsetof(FBioDialogEntryNode, nListenerIndex), 4));
     CheckElement("SFXGame.BioConversation", "m_ReplyList", sizeof(FBioDialogReplyNode));
     CheckPath("SFXGame.BioConversation", {"m_ReplyList", "nListenerIndex"}, SDK_AT(offsetof(FBioDialogReplyNode, nListenerIndex), 4));
+    // The dialogue's graph (game/ConversationWorld's look ahead: who speaks within the next lines, research/69 item 28).
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "ReplyListNew"}, SDK_AT(offsetof(FBioDialogEntryNode, ReplyListNew), 16));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "ReplyListNew", "nIndex"}, SDK_AT(offsetof(FBioDialogReplyListDetails, nIndex), 4));
+    CheckPath("SFXGame.BioConversation", {"m_ReplyList", "EntryList"}, SDK_AT(offsetof(FBioDialogReplyNode, EntryList), 16));
 }
 
 // Stage 3: engine/skeleton's fields as it resolved them through our layer (TryStartup), against research/14's

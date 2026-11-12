@@ -590,9 +590,15 @@ switching frameworks.
   **since 2026-11-11 the conversational circle replaces the opening-time seats and the guided walk** (research/69 item 28, the
   owner's design): `worldCircle = 1`: people stay put until they first speak or are spoken to, then walk with the game's AI into
   a circle with the player (`cw::MakeCircle`/`JoinCircle`, the nearest free place, nobody crossing), which gathers round the
-  player again after the player walks off and stands (`cw::ShouldRegather`); staged scenes (`cw::IsStagedScene`, `worldStaged`:
-  Kirrahe's camp) keep their marks, the opening under a dip; `worldWalkInS = -1`, `worldArrange = 0`, `worldLookReach = 0`
-  (the game's nods kept), `worldMoveSpeedMS` 0.9, `worldMoveLeashM` 6; logs `convo: circle:`;
+  player again after the player walks off and stands (`cw::ShouldRegather`, off by default since the second design); staged
+  scenes (`cw::IsStagedScene`, `worldStaged`: Kirrahe's camp, the Council's scenes, the ending's) keep their marks and facings, the
+  opening under a dip; `worldWalkInS = -1`, `worldArrange = 0`, `worldLookReach = 0` (the game's nods kept), `worldMoveSpeedMS` 0.9;
+  **second design (2026-11-12, the owner's answers)**: the owner stays (`worldCircleOwnerStays`), the circle forms only once the
+  player is in the exchange (`cw::PlayerSoon`), people within 3.5 m join where they stand, whoever takes part within 4 lines sets
+  off early (`cw::UpcomingPeople` over the dialogue's graph, `worldCircleLookahead`), non-walkers (not PHYS_Walking, seated) never
+  walk, the boundary `worldMoveLeashM` 4 m is around where the conversation began, the right stick turns (`[Comfort] turn`); the
+  squad's formation (`cw::SquadFormation`, `worldSquadGather`) is off until the AI walks it reliably; logs `convo: circle:`,
+  `convo: squad:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
   (`cw::HeadFollowFor`; research/69 "The hearing that went third person": the owner's slot-80 run ended 4 m behind him);
   auto takes it when a moment's walk was still on its way as the conversation began (putting Shepard back from the podium

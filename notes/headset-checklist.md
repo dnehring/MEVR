@@ -299,12 +299,13 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **Long dialogue choices** (2026-11-11, research/69 item 23; built, not yet run in the game): a wheel with long replies
   (the hearing's "The Council won't help us.") shows each reply whole on the wheel, the same text size as before, and no stray
   letters elsewhere in view.
-- [ ] **The conversational circle** (2026-11-11, research/69 item 28 "The conversational circle"; the owner's design; built,
-  run on the fake headset only): start any conversation where you stand (slots 85, 87, 83): you stay there, nobody is moved at the
-  start; whoever speaks or is spoken to walks over at a walking pace and stands in a circle with you, facing its middle; anyone
-  who never speaks stays put. Walk a few metres off and stand: they gather round you again after about two seconds. Your walk is a
-  little slower than on foot and stops while the wheel is up; nothing ever walks you. Nods and gestures play as the game has them.
-  Kirrahe's camp (slot 88, first person needs `worldSetPieces = world`) is a staged scene: a fade to the scene's own places.
+- [ ] **Conversations where you start them** (2026-11-12, research/69 item 28 "The conversational circle", second design; run on
+  the fake headset): any conversation (slots 83, 85, 87, 89): you stay where you started it, the person you talk to stays where
+  they are, nothing walks you. Someone who takes part later walks over a few lines before speaking; Avina (the hologram) and anyone
+  seated never move. Walk around: slower than on foot, at most about 4 m from where you started, not while the wheel is up. Turn
+  with the right stick (your comfort setting: snap or smooth; never tried with controllers). Nods and gestures as the game has them.
+  Staged: the Council's hearing (slot 80) and Kirrahe's camp (slot 88, now in first person) open with a short fade to the scene's
+  own places and nobody turns toward you. Also: the staged list in research/69 "The staged scenes" (which scenes should be staged).
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.
