@@ -202,6 +202,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     **Fourth pass 2026-11-11 17:22-17:48** ("The fourth sampled pass" below), after the camera-collision fix: 29 untried
     scenes (12 of the Citadel's staged ones, 6 of Noveria's, 4 of Feros's...): 14 conversations in the world, 4 bark scenes
     heard; **172 of 290 reachable scenes played**. Every opening began from the first-person eye; nothing new found.
+    **Fifth pass 2026-11-11 18:14-18:41** (one untried scene per chunk, 31): 15 conversations in the world, 3 bark scenes
+    heard; **190 of 290 reachable scenes played**; every opening a stay or a walk-in from the first-person eye, no cut;
+    nothing new found (two `reply-move`, a 95-degree re-face by the rule, a 0.96 m `body-strayed` on the fake headset).
+    Left untried: 31 scenes in chunks already sampled.
 13. **Flowed (ambient) scenes**: the presence rules (barks refused, newcomers held) were seen at C-Sec once; the ambient
     subtitle on the HUD is [verify]. **Narrowed 2026-11-11** ("The subtitle of a line played as a bark" below): a flowed scene's
     lines behave exactly like the game's own barks: the line's text is built, nothing is drawn, in this profile (its subtitle
@@ -3251,3 +3255,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 17:55, **item 12: the fourth sampled pass** ("The fourth sampled pass"): 14 conversations in the world and 4 bark scenes (172 of 290 now); every opening from the first-person eye after the camera-collision fix; nothing new found.
 - 2026-11-11 18:05, **A4 done** ("A4: combat for two ears, measured"): the fight under OpenAL Soft has a real delay between the ears (to 0.83 ms, following the head), the game's own audio pans by level only (0.00 ms); A/B with a restart.
 - 2026-11-11 18:12, **item 17 done: uncharted worlds from a save** ("Uncharted worlds from a save"): plot 5470 "Has the Rover Landed?" decides the landing; the generator sets it; both asteroid scenes loaded on foot and played.
+- 2026-11-11 18:45, **item 12: the fifth sampled pass** (one untried scene per chunk): 15 conversations in the world and 3 bark scenes (190 of 290 now), every opening a stay or a walk-in from the eye, nothing new found.
