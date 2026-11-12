@@ -541,8 +541,11 @@ vr::world_ui::Settings GetWorldUi();
 // [Game] (research/47 "Why the Mako wouldn't let Shepard out"): the game's own behaviour around VR.
 //   pauseUnfocused  1: the game freezes the world while its window has no focus, as ME1 does; 0 (the default since
 //                   2026-11-05, the owner's dev setting): it runs on (game/FocusPause)
+//   cameraCollision 1: the game's camera collision in first person too; 0 (the default, 2026-11-11): off while the view is
+//                   head-tracked on foot (game/CameraCollision: it dropped the view to Shepard's knees beside walls)
 struct Game {
     bool pauseUnfocused = false;
+    bool cameraCollision = false;
 };
 Game GetGame();
 

@@ -234,6 +234,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     and each opening cut (Shepard's mark "out of sight" from there, 2.4-6.1 m away). The floor lock had no floor under him
     (`pawnFloorZ` 0) at the guards. Probably the generator's place (a spot the pawn doesn't stand on as a player would),
     [verify]: what the game's camera is in those saves before the scene, and whether a player standing there ever sees it.
+    **Done 2026-11-11 17:20** ("The camera that fell to Shepard's knees"): **the game's camera collision, in first person**: on
+    foot before any scene the eyes were behind his knees looking at his legs, the camera 0.62 m above the floor (1.79 m 1.5 m
+    away). Each camera mode pulls the camera toward its hook (the Camera bone at the pawn's centre) when anything stands
+    between them, and Halcyon's first person puts the explore mode's camera 0.5 m ahead of that bone; now cleared in first
+    person on foot (`game/CameraCollision`, `[Game] cameraCollision`): the three saves' camera 1.82-1.83 m. Two of the spots
+    also stand Shepard against a pillar and crates (the generator's place), which keeps their openings' "out of sight" cuts.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -2732,6 +2738,35 @@ ambient or flowed scenes not heard, 4 chunks their named states didn't stream (t
 
 **Coverage: 154 of 290 reachable scenes played** in some run (131 before, 23 new).
 
+### The camera that fell to Shepard's knees (2026-11-11 16:06-17:20; item 18)
+
+**What the eyes showed.** The three saves whose openings had started from a view at Shepard's hips (Noveria's guards, Garrus
+in the Normandy's hold, the asteroid's surveyor) were loaded and looked at on foot, before any scene: in all three the eyes
+stood behind his knees, looking at his legs from behind; the game's camera 0.62 m above the floor under him (1.79 m in the
+other openings of the pass). Not the mod's posture (standing, not crouched, by the game too), not the camera mode (Explore,
+Halcyon's first-person offset written), not the small drop as a generated save loads (rewritten at the settled height: the
+same 0.62 m). Bound to the spot: at the guards' spot 0.62 m, moved 1.5 m along his facing 1.79 m, moved back 0.62 m again.
+
+**The cause.** The mod's camera probe gave it in numbers: the explore mode's own formula put the camera 0.5 m ahead of its
+hook (the Camera bone, at the pawn's centre) at head height, and the game's camera stood at the bone, 0.26 m below the
+centre, 1.3 m from where the mode wanted it. Every camera mode carries `SFXCameraMode.bCollisionEnabled`; with it set,
+`SFXPlayerCamera.UpdateCameraMode` calls the mode's `DoCameraCollision`, which pulls the camera back toward the hook when
+anything lies between them. For the game's third-person camera that keeps walls out of the shot; in Halcyon's first person
+the camera point is just ahead of the face, so anything there (a wall, a pillar, someone close in front) drops the view
+1.2 m to the hook, and Halcyon draws the eye 0.43 m behind that: behind the knees. A player can meet it walking up to a wall
+or with someone right in front.
+
+**Fix** (`game/CameraCollision`, mod side, hot-reloaded; `[Game] cameraCollision`, default 0): while the view is
+head-tracked on foot, the player camera's current mode (and an interpolation's target) of the classes Halcyon puts in
+first person (Explore, ExploreStorm, Combat, CombatStorm, TightAim; never Vehicle, Sniper or HipAim) has its collision
+cleared, journalled (`CameraCollision.bCollisionEnabled`), and put back once the view isn't head-tracked or the mod unloads
+(a level's modes die with it; a conversation or a menu keeps what was cleared). Reflection row in `engine/ReflectCheck`.
+**Seen**: the three saves again: the camera 1.82, 1.83, 1.83 m above the floor, the guards' view a normal first-person one
+down the corridor. The other two spots stand Shepard against a pillar and inside crates (the eyes see the pillar, and black):
+the generator's place, a few centimetres from the person's own mark through geometry it can't see; their openings still
+cut because his mark is out of sight from there, which is the rule. [verify] in the headset: walking face-first into a wall,
+a squadmate crossing close in front: the view stays at the eyes.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3150,3 +3185,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 14:30, **item 12: the coverage pass from saves** ("The coverage pass from saves"): 16 conversations played in the world and 7 bark scenes heard (131 of 290 now); a Halcyon fault fixed (its first-person table full after 16 loads without the pause menu: the third-person camera), seen fixed after 17 loads; items 15-17 new.
 - 2026-11-11 15:20, **items 15 and 16 done** ("Hackett's call and the surveyor, run again"): the flash after Hackett's call fixed (the console's use holds through the call it plays; seen twice through the real path), a refused put-back walks by the view instead of a cut; the surveyor's torso was the fake headset without controllers.
 - 2026-11-11 16:10, **item 12: the third sampled pass** ("The third sampled pass"): 17 conversations in the world and 6 bark scenes (154 of 290 now); the transmissions' end flash was the harness firing them directly (through the console's use: none); item 18 new (openings from a view at Shepard's hips, generated saves).
+- 2026-11-11 17:20, **item 18 done: the camera that fell to Shepard's knees** ("The camera that fell to Shepard's knees"): the game's camera collision pulled the first-person camera to its hook (the view behind his knees) whenever something stood just ahead of his face; off in first person on foot now (`game/CameraCollision`), seen at the three spots.

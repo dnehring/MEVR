@@ -339,6 +339,10 @@ switching frameworks.
   his actor, the legs stand by the writer's leg IK while the view rests and keep the script's walk while it moves
   (`worldLegs = stand | walk`, `bone_pose::Leg::stand`), and a script's black screen is a dip from black only for a change
   within `worldDipWithinM` (8 m; `cw::NearestChange`).
+  **The game's camera collision is off in first person** (`game/CameraCollision`, `[Game] cameraCollision`, research/69 "The
+  camera that fell to Shepard's knees", 2026-11-11): each camera mode's `bCollisionEnabled` pulled the first-person camera
+  (0.5 m ahead of the Camera bone) back to the bone when anything stood just ahead of the face, and Halcyon drew the eye
+  behind the knees; cleared on the current explore/combat mode while the view is head-tracked on foot, journalled, put back.
   **The player's body boxes are padded for the culling camera** (`engine/BodyBounds`, 2026-11-10, research/69 "The body that
   stayed culled", gotchas/culling-camera-ahead-of-the-eye): the engine culls with the game's camera and Halcyon draws the eye
   behind it by the render-side view offset (0.43 m with the shipped "view back" framing, GPU matrices only), so Umbra's frustum

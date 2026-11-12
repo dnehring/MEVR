@@ -496,6 +496,8 @@ set(MEVR_MOD_SOURCES
     src/game/Holsters.hpp
     src/game/FocusPause.cpp
     src/game/FocusPause.hpp
+    src/game/CameraCollision.cpp
+    src/game/CameraCollision.hpp
     src/game/MenuPause.cpp
     src/game/MenuPause.hpp
     src/game/Player.cpp

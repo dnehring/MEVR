@@ -69,6 +69,7 @@
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/FocusPause.hpp"
+#include "game/CameraCollision.hpp"
 #include "game/MenuPause.hpp"
 #include "game/Posture.hpp"
 #include "game/VrCover.hpp"
@@ -332,6 +333,7 @@ void TryInstallScriptHooks() {
     game::mako_controls::TryStartup();  // the Mako's physical lever and stick (research/46: the SetInputs handlers)
     game::cockpit_probe::TryStartup();  // the cockpit riding in the Mako (research/47: a camera-update handler, inert until asked)
     game::focus_pause::TryStartup();  // [Game] pauseUnfocused (research/47: a BioWorldInfo.Tick handler)
+    game::camera_collision::TryStartup();  // [Game] cameraCollision (research/69: the camera pulled to Shepard's knees)
     game::galaxy_dump::TryStartup();  // the galaxy map's Flash calls, traced on request (research/51 section 8)
     game::world_ui::TryStartup();  // the camera-update handler that holds Shepard's view while a game screen stands in the room
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
@@ -1030,7 +1032,7 @@ void PublishStatus() {
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
         "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
-        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}, \"sprint\": {}, \"soundPlace\": {}}}",
+        "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}, \"sprint\": {}, \"soundPlace\": {}, \"cameraCollision\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
         NoHeadset() ? "true" : "false", game::arm_ik::Enabled() ? "true" : "false", json::JsonString(game::arm_ik::Status()),
         json::JsonString(game::arm_ik::HandSource()), game::arm_ik::RightHandAimsGun() ? "true" : "false",
@@ -1043,7 +1045,7 @@ void PublishStatus() {
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
         game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson(), game::body_scale::StatusJson(),
-        game::conversation_world::StatusJson(), game::sprint::StatusJson(), game::sound_place::StatusJson());
+        game::conversation_world::StatusJson(), game::sprint::StatusJson(), game::sound_place::StatusJson(), game::camera_collision::StatusJson());
     gHost->setStatus(status.c_str());
 }
 
@@ -1390,6 +1392,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::support_grip::Tick(deltaSeconds, game::arm_ik::SupportRequested());
         PublishSupportGrip();
         game::camera_probe::Tick();
+        game::camera_collision::Tick();  // the game's camera collision off in first person on foot (research/69)
         // The weapon drawn, like exploring (research/38): the stance for the next pose, the speed ramp, draw rates.
         game::combat_stance::Tick(deltaSeconds, CombatStanceLink());
         game::sprint::Tick(deltaSeconds, CombatStanceLink().headTrackedView);
@@ -1596,6 +1599,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::body_calibration::Shutdown();
     game::menu_pause::Shutdown(exiting);  // unpauses the game if the main menu paused it
     game::focus_pause::Shutdown();
+    game::camera_collision::Shutdown();
     game::game_menu_request::Shutdown();
     game::game_art::Shutdown();
     game::holo_probe::Shutdown();  // the experiment's copy destroyed

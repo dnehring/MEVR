@@ -1090,6 +1090,7 @@ void CheckFields() {
     CheckField("SFXGame.SFXCameraMode", "LastHookPos", SDK_FIELD(USFXCameraMode, LastHookPos));
     CheckField("SFXGame.SFXCameraMode", "HookName", SDK_FIELD(USFXCameraMode, HookName));
     CheckField("SFXGame.SFXCameraMode", "bFirstPerson", SDK_BOOL(USFXCameraMode, bFirstPerson));
+    CheckField("SFXGame.SFXCameraMode", "bCollisionEnabled", SDK_BOOL(USFXCameraMode, bCollisionEnabled));  // game/CameraCollision
     CheckField("SFXGame.SFXCameraInput", "MaxCameraRotationSpeed", SDK_FIELD(USFXCameraInput, MaxCameraRotationSpeed));
     CheckField("SFXGame.SFXCameraInput", "CameraSensitivity", SDK_FIELD(USFXCameraInput, CameraSensitivity));
     CheckField("SFXGame.SFXCameraInput", "TimeToReachFullSpeed", SDK_FIELD(USFXCameraInput, TimeToReachFullSpeed));

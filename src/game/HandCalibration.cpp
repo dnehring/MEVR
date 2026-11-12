@@ -844,7 +844,10 @@ constexpr char const* kGameBlock =
     "; The game's own behaviour around VR. pauseUnfocused: 1 = the game freezes everything but you while its window\n"
     "; doesn't have the focus, as Mass Effect does (a click beside the window or the headset's dashboard can do that);\n"
     "; 0 = it runs on (the default: in VR the window often isn't in front).\n"
-    "pauseUnfocused = 0\n";
+    "pauseUnfocused = 0\n"
+    "; cameraCollision: 1 = the game pulls its camera in when a wall stands between it and Shepard, in first person too;\n"
+    "; 0 = not while you see through Shepard's eyes on foot (the default: the view dropped to his knees beside walls).\n"
+    "cameraCollision = 0\n";
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -2257,6 +2260,9 @@ Game ReadGame(Ini const& ini) {
     if (Number(ini, "Game", "pauseUnfocused", value)) {
         g.pauseUnfocused = value != 0.0;
     }
+    if (Number(ini, "Game", "cameraCollision", value)) {
+        g.cameraCollision = value != 0.0;
+    }
     return g;
 }
 
@@ -3392,7 +3398,9 @@ void Refresh() {
         log::Info("world ui: settings: {}", text);
     }
     gGame = ReadGame(ini);
-    if (std::string const text = gGame.pauseUnfocused ? "the game pauses while its window has no focus" : "the game runs on without focus"; text != gGameText) {
+    if (std::string const text = std::string(gGame.pauseUnfocused ? "the game pauses while its window has no focus" : "the game runs on without focus") +
+            (gGame.cameraCollision ? ", its camera collision kept in first person" : ", no camera collision in first person");
+        text != gGameText) {
         gGameText = text;
         log::Info("game: settings: {}", text);
     }

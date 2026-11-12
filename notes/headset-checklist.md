@@ -289,6 +289,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   black); the double homicide in Port Hanshan after talking to Anoleis: one dip to the crime scene and you face it (not a wall);
   Feros's first creeper on foot: you walk after Shepard, no cut. Look for a flash of the screen at a scene's start, and where
   you face after any dip.
+- [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
+  walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
+  your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.
 - [ ] **Hackett's call at the galaxy map** (2026-11-11, research/69 "Hackett's call and the surveyor, run again"; fake headset):
   use the CIC's console with a transmission pending (after a mission): Joker's line and Hackett's call play where you stand,
   no cut; when the map opens after it, no flash of the flat screen and no double blink.
