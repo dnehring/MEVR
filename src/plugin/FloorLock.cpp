@@ -8,6 +8,9 @@
 #include "halcyon/le1/vr_menu.h"
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Calibration.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/MainMenu.hpp"
+#endif
 #include "plugin/MevrMenu.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "core/Breadcrumbs.hpp"
@@ -22,6 +25,7 @@ namespace {
 namespace fl = vr::floor_lock;
 std::mutex gMutex;
 bool gEnabled = true;
+float gManualHeight = 0.0f; // gMutex
 fl::PawnSample gPawn;
 struct Pending {
     vr::host_view::State view;
@@ -48,6 +52,11 @@ void SetPawn(fl::PawnSample const* sample) {
     gPawn = sample != nullptr ? *sample : fl::PawnSample{};
 }
 
+void SetManualHeight(float meters) {
+    std::lock_guard lock(gMutex);
+    gManualHeight = meters;
+}
+
 void RefreshSettings() {
     auto const& path = MELEVR::MevrBridge::SettingsPath();
     // Held world views carry the corrected base too; an explicit 0 keeps the legacy path.
@@ -69,9 +78,14 @@ void Queue(vr::host_view::State const& view, vr::floor::State const& floor, bool
     p.arm = MELEVR::RenderHook::GetHeadArmSeq();
     p.context.world = view.valid && ordinaryWorld;
     p.context.firstPerson = MELEVR::Config::Get().fpEnabled && MELEVR::HeadAim::FirstPersonOwnsAny();
-    p.context.menu = MELEVR::Menu::IsOpen() || MELEVR::MevrBridge::MainMenuOpen() || calibration::Active();
+    bool menuBlocks = MELEVR::MevrBridge::MainMenuOpen();
+#if defined(MEVR_WITH_MAIN_MENU)
+    menuBlocks = menuBlocks && !main_menu::LiveAdjusting();
+#endif
+    p.context.menu = MELEVR::Menu::IsOpen() || menuBlocks || calibration::Active();
     std::lock_guard lock(gMutex);
     p.context.enabled = gEnabled;
+    p.context.heightOffsetM = gManualHeight;
     p.sequence = ++gSequence;
     gPending = p;
     if (!gEnabled) vr::host_view::Publish(p.view, p.view.timeMs); // legacy publication point, no corrected centre
@@ -81,6 +95,7 @@ void Reset() {
     std::lock_guard lock(gMutex);
     gPending = {};
     gPawn = {};
+    gManualHeight = 0.0f;
     vr::host_view::Reset();
 }
 
@@ -146,11 +161,12 @@ float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float fo
         auto number = [](double v) { return std::isfinite(v) ? std::format("{:.6f}", v) : std::string("null"); };
         std::string const status = std::format("{{\"enabled\": {}, \"active\": {}, \"rawCameraZ\": {}, \"pawnFloorZ\": {}, "
             "\"stageEyeM\": {}, \"correction\": {}, \"centreZ\": {}, \"floorSequence\": {}, \"floorTimeMs\": {}, \"unitsPerMeter\": {}, "
-            "\"finalEyeM\": {}, \"viewArm\": {}, \"source\": \"{}\", \"seated\": {}, \"standingEyeM\": {}}}",
+            "\"finalEyeM\": {}, \"viewArm\": {}, \"source\": \"{}\", \"seated\": {}, \"standingEyeM\": {}, \"heightOffsetM\": {}}}",
             gPair.context.enabled, view.floorLocked, number(rawCameraZ), number(view.pawnFloorZ), number(view.stageEyeM),
             number(view.floorCorrection), number(view.centreZ), view.floorSequence, gPair.floor.timeMs, number(view.unitsPerMeter),
             view.unitsPerMeter > 0.0f ? number((view.centreZ - view.pawnFloorZ) / view.unitsPerMeter) : "null",
-            gPair.arm, vr::floor::Name(gPair.floor.source), gPair.context.pawn.seated, number(gPair.context.pawn.standingEyeM));
+            gPair.arm, vr::floor::Name(gPair.floor.source), gPair.context.pawn.seated, number(gPair.context.pawn.standingEyeM),
+            number(gPair.context.heightOffsetM));
         std::lock_guard lock(gMutex);
         gStatus = status;
     } else if (gPair.context.enabled) {

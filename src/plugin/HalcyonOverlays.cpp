@@ -2795,7 +2795,27 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         menu.projectionPose.position = ToVec(frame.projectionPosition[0]);
         menu.projectionFov = {frame.projectionFov[0][0], frame.projectionFov[0][1], frame.projectionFov[0][2], frame.projectionFov[0][3]};
         if (XrCompositionLayerQuad const* layer = mevr::host::main_menu::Layer(menu); layer != nullptr && capacity > 0) {
-            count = 0;
+            if (!mevr::host::main_menu::LiveAdjusting()) count = 0;
+            else {
+                mevr::host::calibration::Frame markers;
+                markers.session = session;
+                markers.appSpace = menu.appSpace;
+                markers.context = context;
+                markers.device = device.Get();
+                markers.worldFrame = frame.worldFrame;
+                markers.menuOpen = frame.menuOpen;
+                markers.headValid = menu.headValid;
+                markers.head = menu.head;
+                for (int e = 0; e < 2; ++e) markers.eyes[e] = ToVec(frame.eyePosition[e]);
+                XrCompositionLayerQuad const* refs[2]{};
+                unsigned const added = mevr::host::calibration::ManualMarkerLayers(markers,
+                    mevr::host::main_menu::LiveSelectedHand(), refs, capacity - 1);
+                mevr::host::main_menu::NoteLiveMarkers(added == 2);
+                // Reserve the paired references and the live panel; game-world hands remain in the projection.
+                count = std::min(count, capacity - added - 1);
+                for (unsigned i = 0; i < added; ++i) layersOut[count++] = refs[i];
+            }
+            if (count >= capacity) count = capacity - 1; // live controls always retain a layer slot
             layersOut[count++] = layer;
         }
     }

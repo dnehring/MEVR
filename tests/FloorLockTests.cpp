@@ -97,6 +97,25 @@ int RunFloorLockTests() {
     seated.pawn.seated = true;
     auto const translated = fl::Correct(seated, Sample(0.9f), 1000, 1355, -74.5, 100, lowered);
     CHECK(translated.active && Close(translated.centreZ, seated.pawn.floorZ + 147.0));
+    seated.heightOffsetM = 0.12;
+    auto const raised = fl::Correct(seated, Sample(0.9f), 1000, 1355, -74.5, 100, lowered);
+    CHECK(raised.active && Close(raised.centreZ - translated.centreZ, 12.0));
+    CHECK(Close(raised.correction - translated.correction, 12.0));
+    // A manual delta is reapplied, never accumulated; no-floor seated tracking uses the same delta.
+    CHECK(Close(fl::Correct(seated, {}, 1000, 1355, -74.5, 100, lowered).centreZ, raised.centreZ));
+    CHECK(Close(fl::Correct(seated, {}, 1000, 1355, -74.5, 100, lowered).centreZ, raised.centreZ));
+    seated.heightOffsetM = 0.0;
+    CHECK(Close(fl::Correct(seated, {}, 1000, 1355, -74.5, 100, lowered).centreZ, translated.centreZ));
+    auto trimmedStanding = Ordinary();
+    auto const standingBase = fl::Correct(trimmedStanding, Sample(), 1000, 1300, 0, 100);
+    trimmedStanding.heightOffsetM = -0.08;
+    CHECK(Close(fl::Correct(trimmedStanding, Sample(), 1000, 1300, 0, 100).centreZ, standingBase.centreZ - 8));
+    trimmedStanding.heightOffsetM = NAN;
+    CHECK(Close(fl::Correct(trimmedStanding, Sample(), 1000, 1300, 0, 100).centreZ, standingBase.centreZ));
+    trimmedStanding.heightOffsetM = 50;
+    CHECK(Close(fl::Correct(trimmedStanding, Sample(), 1000, 1300, 0, 100).centreZ, standingBase.centreZ + 50));
+    trimmedStanding.menu = true;
+    CHECK(!fl::Correct(trimmedStanding, Sample(), 1000, 1300, 0, 100).active);
     CHECK(!fl::Correct(seated, Sample(0.9f), 1000, 1355, -74.5, 100).active); // never use low floor as standing
     CHECK(motion.Eye(Position::Seated, 1.67, 0.9, 0.0, 1, 1) == 1.67); // recenter seated neutral
     CHECK(motion.Eye(Position::Seated, 1.67, 1.2, 0.0, 2, 1) == 1.67); // new session

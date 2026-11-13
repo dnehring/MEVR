@@ -393,3 +393,179 @@ Guide tests retain L3 and remove physical-crouch advice when seated. PNGs are un
 `panel-crouch.png`, `panel-stand.png`, `panel-stand-seated.png`; menu `section-body.png`, `section-body-seated.png`.
 The look tools used the Windows Bahnschrift font fallback; these are offline UI checks, not runtime/headset evidence.
 Full game build, deployment and headset acceptance stay with the owner; see `notes/headset-checklist.md` for both positions.
+
+## 12. Manual calibration over the measured result (2026-11-12)
+
+Body & calibration > Advanced calibration > Show reveals the manual overrides, collapsed by default.
+This dropdown uses menu-local state and does not alter saved offsets when hidden. The overrides add height (-50 to +50 cm, 1 cm steps) and independent left/right
+controller translation (out/up/forward, +/-15 cm, 0.5 cm steps) and rotation (pitch/yaw/roll, +/-45 degrees,
+1 degree steps). Resume to inspect the result in the world. Seated players first choose Seated and recenter in their
+comfortable posture. The existing shared `[Hands] handPitch/handYaw/handRoll` controls remain under Hand model,
+now labelled Empty-hand angles: these model-only trims do not change held-gun aim.
+
+New deltas live in `[ManualCalibration.<key>]`, with the same headset/controller key as the guided run but a separate
+section. Keys: `heightOffsetM`, `leftOutM`, `leftUpM`, `leftForwardM`, `leftPitchDeg`, `leftYawDeg`, `leftRollDeg`,
+and the matching `right*` keys. Missing/invalid values are zero; finite values clamp to the menu limits. The controls
+work before a full calibration exists, once the profile is known. They save through the menu's existing delayed,
+key-by-key writer and overlay pending writes on reads. Reset offsets writes only these thirteen values to zero;
+the guided save's section replacement cannot erase them. `[Calibration] use = 0` disables measured results, not
+these explicit manual corrections. A new run measures raw controllers, so it never bakes manual deltas into its solve.
+
+`core/vr/ManualCalibration.hpp` applies a rigid transform in each raw grip's axes before HalcyonBridge publishes
+gameplay controllers. Positions use +out/+up/+forward, with left outward mirrored. Positive pitch tilts down,
+yaw turns outward, and roll tilts the top outward; these are controller-local axes, not head/world axes.
+The aim pose undergoes the same rigid transform about the original grip, retaining its relative position and
+orientation. The host and mod therefore consume the same corrected grip/aim for hands, calibrated and fallback aim,
+reticles and interactions. Calibration, the menu pointer and recordings retain raw poses. Zero corrections return
+the original poses exactly. The host caches the profile's values for 250 ms and reloads immediately on profile change.
+
+Height is latched with the stereo pair in `floor_lock::Context`, then added after the standing/seated eye-height solve.
+The corrected centre is published to the existing hand/view anchor; head and controllers keep their relative placement.
+It does not overwrite standing height, crouch thresholds or body-scale measurements. Floor-lock eligibility still applies:
+on-foot first person with a fresh pawn floor; standing needs runtime floor tracking, seated also supports LOCAL-only
+head motion once the standing-body reference is known. Cover, vehicles, cinematics, flat screens and menus retain their
+existing camera paths. `floorLock.heightOffsetM` in snapshots records the latched delta.
+
+Offline checks cover identity, translation in a rotated grip frame, pitch/yaw/roll signs and left mirroring,
+independent hands, rigid aim/grip relationships, input/timestamp preservation, invalid tracking, finite bounds,
+schema limits and centimetre formatting. Floor-lock tests cover standing/seated deltas, no-floor seated motion,
+reset, non-accumulation and gates. Menu preview includes the scrolled Body page. Physical-headset acceptance of
+hands, guns, two-handed support, holsters and seated height remains pending in `notes/headset-checklist.md`.
+
+**Verified offline:** Release `MEVR-LE1` (monolithic), `MEVR-LE2` and `MEVR-LE3` compiled successfully;
+`mevr-tests` passed after replacing an ill-conditioned near-zero quaternion-angle assertion with a basis-vector
+comparison. The actual RmlUi renderer produced the right, left and untracked states without binding errors:
+`scratch/manual-calibration-2026-11-12/section-body-manual-{right,left,untracked}.png`; `section-body-3.png`
+shows Reset offsets and the retained model-angle controls. These are diagnostic previews with sample values,
+not evidence of in-game alignment. No deployment or live-game changes were made.
+
+All 25 CTest cases passed across the suite run and targeted reruns. The initial run also exposed a stale
+`MEVR-Setup.exe` (0.1.1 versus source 0.2.0); rebuilding `mevr-test-programs` resolved both installer-test
+version failures. `git diff --check` and `tools/check-spdx.py` passed.
+
+## 13. Guided aiming visuals and personal rifle pose (2026-11-12)
+
+Rifle calibration retains its two independent orbs. The pickup positions only make the orbs easy to find;
+a held orb follows that hand's grab point, and releasing/re-grabbing during aiming does not impose a new pickup
+location. The prompts now explicitly ask for the player's comfortable hand spacing and wrist angles. No generic
+rifle mesh, stock, foregrip, sights or aiming dot is shown during capture. The existing broad pose checks remain
+(right hand near the cheek, separated hands pointing roughly toward the target); they do not prescribe a gun length
+or wrist rotation. The solver still measures trim, sight line, foregrip, left trim, hands line and stock from the
+actual samples. The final check uses the solved sight-line dot. Regression cases exercise short and long personal
+hand spacing with different support-wrist angles and confirm the measured poses are retained.
+
+For the one-handed pistol only, `CalibrationWeapon.hpp` builds an original procedural, sightless silhouette.
+`CalibrationDraw::DrawWeapon` projects its faces separately for each eye into transparent eye-only OpenXR quads.
+The preview follows the raw controller aim orientation and grip grab point, never a target or partial solution.
+Only the final check uses the solved orientation. The handle is orange before pickup, cyan while held. Capture
+requires both eye pictures to submit; failure leaves an orb fallback and a waiting message. The renderer clips
+near/edge planes before perspective division and fades surfaces close to the eye. No new game assets are required.
+
+The rifle-model experiment was removed: even a sightless generic rifle can bias the player's pose toward its
+geometry. A visible pistol remains a separate one-hand reference. Headset validation is still required for the
+pistol's apparent alignment, stereo comfort, and the rifle's natural pose across different in-game weapons.
+
+**Verified offline:** the final `MEVR-LE1` monolithic Release target, `mevr-tests` and
+`mevr-calibration-preview` built successfully. The `mevr-tests` CTest case passed, including personal rifle pose
+and pistol projection/clipping checks. The preview used the shipped Rajdhani/Titillium fonts; inspected
+`panel-rifle-aim-hold.png`, `eye-rifle-aim.png` and `eye-pistol-aim.png` under
+`scratch/calibration-personal-pose-2026-11-12/`. Rifle instructions fit and the capture scene retains the hand orb
+with no rifle model; the pistol silhouette leaves the target visible in the sample pose. These are diagnostic
+renders, not headset evidence. Scoped `git diff --check` and the SPDX check passed. Nothing was deployed.
+
+## 14. Live controller overrides (2026-11-12)
+
+Body & calibration > Advanced calibration > Show keeps the entry hidden by default. Choose Left or Right,
+then Adjust live. The full menu becomes a compact panel on the opposite side, with transparent space around
+it so the selected hand and currently held weapon can be inspected in the game world. Height stays in the
+advanced dropdown; live mode edits only the selected hand's six offsets.
+
+Use the opposite controller: horizontal stick changes the selected value, a vertical flick selects another
+axis, trigger holds fine adjustment (one fifth speed), stick click zeros that axis. The opposite controller's
+primary face button (X on left, A on right) applies the draft; its secondary (Y/B) cancels. Both return to the
+advanced menu. Holding both sticks cancels to the menu. The selected hand's buttons cannot edit or finish the
+session. These controls require a controller with a stick and primary/secondary face actions.
+
+The in-memory draft starts from persisted offsets after flushing pending slider writes. HalcyonBridge uses
+it on the next controller publication, bypassing the settings polling delay. No draft values are written until
+Done, which uses the existing per-key writer for just that hand in its original controller profile. Cancel,
+profile/session changes, leaving the on-foot world, or inability to show the panel discard the draft. Normal
+menu save-error reporting applies on Done. Releasing controls arms entry and re-arms after tracking loss;
+stale controller samples pause changes. Delta time, speeds and all values are bounded. Live editing defaults
+to Pitch, with 12 degrees/second or 3 cm/second at full stick; fine mode is 2.4 degrees/second or 0.6 cm/second.
+
+The normal menu remains the input owner. Live mode clears buttons, triggers, grips and sticks before publishing
+corrected poses to the mod, and keeps the real XInput pad neutral. It temporarily releases the menu's pause so
+hand/weapon IK can update; floor lock remains active to retain normal alignment. The calibration flag suppresses
+physical crouch and explicit holster, throw/melee and support-grip gates prevent pose-driven interactions.
+The world continues to run; this is an on-foot fitting tool. Saved pause preference resumes on returning to the
+menu. The other hand's offsets, height and guided measurements are unchanged.
+
+`core/vr/LiveCalibration.hpp` contains the input/draft state machine and pose-only filter. MainMenu owns its
+lifetime, drawing and commit/cancel. Snapshots include `mainMenu.liveAdjustment` with target, axis, value and
+arming state. The normal settings UI and overlay renderer are reused; no external or generated art is needed.
+Physical-headset confirmation of real hand/weapon alignment, comfort, and all runtime exit paths remains pending.
+
+**Offline verification:** final monolithic `MEVR-LE1` Release, `mevr-tests` and menu preview built successfully.
+The `mevr-tests` CTest case passed after the final lost-target cancellation change. Cases cover opposite-hand
+ownership, opening/recovery release gates, temporary values, axis flicks, fine speed, bounds/long frames,
+reset, Done/Cancel, Cancel with lost target tracking, and pose preservation with gameplay inputs removed.
+The real RmlUi renderer produced both side placements and the tracking-loss state with no binding/style errors:
+`scratch/live-calibration-2026-11-12/live-adjust-{right,left,tracking-lost}.png`. The inspected panel fits within
+650 x 495 pixels at (20,310) or (770,310) on the transparent 1440 x 900 canvas. These are offline UI previews
+with a stand-in world, not runtime hand-alignment evidence. Scoped diff whitespace and SPDX checks passed.
+No deployment or live-game test was performed; the headset checklist retains runtime acceptance.
+
+## 15. Raw controller references during live adjustment (2026-11-12)
+
+Live adjustment adds orange (selected hand) and cyan (other hand) reference markers at the raw OpenXR grip
+origins, alongside the corrected Shepard hands in the game projection. Each is an original rounded controller guide with a faint shell, contour lines, thumb controls and a curved
+trigger. A bright cross marks the raw grip origin and a short arrow indicates controller forward. The faint
+shell leaves the game hand readable. These are tracking references, not a precise palm or fingertip estimate. They do not use
+manual deltas, guided hand trims or a weapon's geometry. Changing offsets therefore moves the game hand relative
+to the reference, while rotating the real controller rotates its reference too. No mirror is included.
+
+`core/vr/CalibrationMarkers.hpp` builds only from raw tracked grip poses. Invalid hands are omitted individually;
+inactive/stale input, absent head/world view, leaving live mode, and the renderer menu suppress the layers. The
+existing clipped per-eye projection renders both references into two transparent stereo canvases, reusing the
+guided pistol's resources because the two modes cannot overlap. Both eye images must submit or neither is added.
+The overlay reserves the pair plus the live panel; the panel reports when references are unavailable. Near-eye
+surfaces fade using the existing projection's near clip to avoid filling the view. The markers remain overlays,
+so they are readable over the game hand rather than being depth-occluded by it.
+
+Offline marker screenshots deliberately contain only the reference geometry and a synthetic environment.
+They cannot demonstrate Shepard's hands or confirm physical headset alignment; those checks remain on the
+headset checklist. The full-body mirror remains deferred.
+
+**Verified offline:** monolithic Release `MEVR-LE1`, `mevr-tests`, menu preview and calibration preview built.
+The `mevr-tests` CTest case passed, including marker position/orientation, selection-only colour change,
+independent tracking validity and invalid-input checks. Inspected both eye projections of the references and
+the live-panel colour key under `scratch/live-controller-markers-2026-11-12/`; the expanded panel fits at
+650 x 553 pixels and the renderer reported no binding/style errors. Scoped diff whitespace and SPDX checks
+passed. This remains source/build and offline visual evidence only: no deployment, headset check or measured
+runtime frame-cost comparison was performed.
+
+## 16. Controller starting points and refined reference visuals (2026-11-12)
+
+The reference geometry is a generic controller silhouette, not a measured model of Quest, Index or Sense.
+It has rounded tapered grip contours, a faint shell, thumb-stick/button outlines, a trigger curve and a precise
+origin cross/forward arrow. The shader-free CPU projection now preserves source opacity before near-eye fade;
+opaque pistol geometry is unaffected. The shape is visual guidance only and never enters the calibration solve.
+
+There is no verified per-controller pitch/yaw/roll preset library in this repository. The baseline is the runtime's
+OpenXR grip/aim poses plus any saved guided calibration for the headset/controller key. `ArmIk` uses the measured
+weapon stance when available, otherwise the valid runtime aim pose. Its legacy Touch-reference fallback is only
+used without aim tracking; it must not be added again as a manual pitch correction. The shared 90-degree empty-hand
+pitch is a model-frame default, not a hardware preset. Runtime grip/aim semantics are specified by
+[Khronos OpenXR](https://registry.khronos.org/OpenXR/specs/1.1-khr/html/xrspec.html#semantic-paths).
+
+Advanced calibration now offers Use baseline for the selected hand. It zeros just that hand's six manual deltas,
+retains height, the other hand and all guided measurements, and invalidates the host's offset cache immediately.
+This is a return to the existing measured/runtime baseline, not a claim of validated universal hardware alignment.
+A device-specific preset would need headset verification for the actual controller/runtime mapping before being
+labelled known-good; emulated interaction-profile names alone are not enough to establish that.
+
+**Verified offline:** monolithic Release LE1 and both preview tools built; the `mevr-tests` CTest case passed,
+including raw-reference transforms and preservation of source opacity through projection. Inspected both eye
+reference images, live-panel legend and selected-hand baseline row under `scratch/controller-guides-2026-11-12/`.
+The menu preview reported no binding/style errors. No deployment or physical-headset acceptance was performed.

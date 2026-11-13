@@ -10,7 +10,19 @@
 	what each key drives is in plugin/MainMenuSettings.cpp. Rows marked "soon" show what's planned and do nothing yet.
 	Edit while the game runs: the menu reloads this file within a second of a save.
 -->
-<body data-model="menu">
+<body data-model="menu" data-class-live="manual_live">
+
+<div class="live-panel" id="manual-live-panel" data-class-target-left="manual_live_left">
+	<div class="live-title">{{manual_live_title}}</div>
+	<div class="live-status">{{manual_live_status}}</div>
+	<div class="live-axis">{{manual_live_axis}}</div>
+	<div class="live-value">{{manual_live_value}}</div>
+	<div class="live-marker-key" data-if="manual_markers"><span class="marker-selected">Orange: selected controller</span> / <span class="marker-other">Cyan: other</span><br/>Generic shape; cross marks raw grip, arrow points forward.</div>
+	<div class="live-marker-key" data-if="!manual_markers">Controller references unavailable.</div>
+	<div class="live-help">Opposite stick: left / right adjusts<br/>Up / down chooses an axis<br/>Hold trigger for fine adjustment<br/>Click stick to reset this axis</div>
+	<div class="live-controls">{{manual_live_controls}}</div>
+	<div class="live-note">Done saves. Cancel restores the starting offsets.<br/>The world stays live; movement and actions are blocked.</div>
+</div>
 
 <div class="top">
 	<div class="brand">
@@ -346,9 +358,43 @@
 			<div class="row"><div class="rl"><div class="rlab">Measure arms only</div><div class="rdesc">Arms straight out to the sides (a T), then pull either trigger</div><div class="note" data-if="measure_msg != ''">{{measure_msg}}</div></div>
 				<button class="btn" data-event-click="cmd('measure')"><div class="sweep"/><span>Measure</span><div class="tick"/></button></div>
 		</div>
+		<div class="group" id="manual-calibration">
+			<div class="row"><div class="rl"><div class="rlab">Advanced calibration</div><div class="rdesc">Optional manual height and controller overrides.</div></div>
+				<button class="btn" id="manual-calibration-toggle" data-event-click="manual_expanded = !manual_expanded"><div class="sweep"/><span data-if="!manual_expanded">Show</span><span data-if="manual_expanded">Hide</span><div class="tick"/></button></div>
+			<div data-if="manual_expanded">
+				<div class="hint">Fine-tune the automatic result for this headset and controller setup. Changes save automatically; resume to check them in the world. Start with height, then adjust one hand at a time.</div>
+				<div class="note" data-if="!position_known">Available once your controllers are tracked.</div>
+				<div class="note" data-if="cal_running">Finish or cancel the guided calibration before adjusting offsets.</div>
+				<div data-class-disabled="!manual_ready">
+					<div class="srow d"><div class="sl"><div class="slab">Height offset</div><div class="rdesc">Positive raises your view and hands together on foot. Seated: sit comfortably and recenter first.</div></div><input type="range" min="-0.5" max="0.5" step="0.01" data-value="manual_height"/><div class="sval">{{manual_height_text}}</div></div>
+					<div class="row"><div class="rl"><div class="rlab">Controller to adjust</div><div class="rdesc">Moves and rotates this hand and its aim together. Position follows the controller's own axes, even as you turn it.</div></div><div class="seg"><button class="segb" data-class-on="manual_hand == 'left'" data-event-click="manual_hand = 'left'">Left</button><button class="segb" data-class-on="manual_hand == 'right'" data-event-click="manual_hand = 'right'">Right</button></div></div>
+					<div class="row"><div class="rl"><div class="rlab">Adjust this hand live</div><div class="rdesc">Keep this hand in view. Use the opposite controller to adjust its position and angles in real time.</div></div><button class="btn" data-event-click="cmd('manual_live')"><div class="sweep"/><span>Adjust live</span><div class="tick"/></button></div>
+					<div class="row" id="manual-baseline"><div class="rl"><div class="rlab">This hand's starting point</div><div class="rdesc">Guided calibration when available; otherwise the runtime's controller poses. Clear this hand's manual overrides to return to that baseline.</div></div><button class="btn" data-event-click="cmd('manual_baseline')"><div class="sweep"/><span>Use baseline</span><div class="tick"/></button></div>
+					<div class="note" data-if="manual_live_note != ''">{{manual_live_note}}</div>
+					<div data-if="manual_hand == 'right'">
+						<div class="srow"><div class="slab">Out / in</div><input type="range" min="-0.15" max="0.15" step="0.005" data-value="manual_right_out"/><div class="sval">{{manual_right_out_text}}</div></div>
+						<div class="srow"><div class="slab">Up / down</div><input type="range" min="-0.15" max="0.15" step="0.005" data-value="manual_right_up"/><div class="sval">{{manual_right_up_text}}</div></div>
+						<div class="srow"><div class="slab">Forward / back</div><input type="range" min="-0.15" max="0.15" step="0.005" data-value="manual_right_forward"/><div class="sval">{{manual_right_forward_text}}</div></div>
+						<div class="srow"><div class="slab">Controller pitch</div><input type="range" min="-45" max="45" step="1" data-value="manual_right_pitch"/><div class="sval">{{manual_right_pitch_text}}</div></div>
+						<div class="srow"><div class="slab">Controller yaw</div><input type="range" min="-45" max="45" step="1" data-value="manual_right_yaw"/><div class="sval">{{manual_right_yaw_text}}</div></div>
+						<div class="srow"><div class="slab">Controller roll</div><input type="range" min="-45" max="45" step="1" data-value="manual_right_roll"/><div class="sval">{{manual_right_roll_text}}</div></div>
+					</div>
+					<div data-if="manual_hand == 'left'">
+						<div class="srow"><div class="slab">Out / in</div><input type="range" min="-0.15" max="0.15" step="0.005" data-value="manual_left_out"/><div class="sval">{{manual_left_out_text}}</div></div>
+						<div class="srow"><div class="slab">Up / down</div><input type="range" min="-0.15" max="0.15" step="0.005" data-value="manual_left_up"/><div class="sval">{{manual_left_up_text}}</div></div>
+						<div class="srow"><div class="slab">Forward / back</div><input type="range" min="-0.15" max="0.15" step="0.005" data-value="manual_left_forward"/><div class="sval">{{manual_left_forward_text}}</div></div>
+						<div class="srow"><div class="slab">Controller pitch</div><input type="range" min="-45" max="45" step="1" data-value="manual_left_pitch"/><div class="sval">{{manual_left_pitch_text}}</div></div>
+						<div class="srow"><div class="slab">Controller yaw</div><input type="range" min="-45" max="45" step="1" data-value="manual_left_yaw"/><div class="sval">{{manual_left_yaw_text}}</div></div>
+						<div class="srow"><div class="slab">Controller roll</div><input type="range" min="-45" max="45" step="1" data-value="manual_left_roll"/><div class="sval">{{manual_left_roll_text}}</div></div>
+					</div>
+					<div class="hint">Positive position moves outward, up or forward. Positive pitch tilts down; yaw turns outward; roll tilts the top outward. Start with small changes.</div>
+					<div class="row"><div class="rl"><div class="rlab">Reset manual calibration</div><div class="rdesc">Zero the height and both controller offsets. Your automatic measurements and empty-hand model angles are kept.</div></div><button class="btn" data-event-click="cmd('manual_reset')"><div class="sweep"/><span>Reset offsets</span><div class="tick"/></button></div>
+				</div>
+			</div>
+		</div>
 		<div class="group">
-			<div class="gtitle"><span>Fine adjustments</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Hand angle trims</div><div class="rdesc">Small corrections on top of the calibration, the same for both hands</div></div>
+			<div class="gtitle"><span>Hand model</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Empty-hand angles</div><div class="rdesc">Extra model corrections for empty hands only, mirrored for the left. Shared across controller setups; held-gun aim is unchanged.</div></div>
 				<button class="btn" data-event-click="fine = !fine"><div class="sweep"/><span data-if="!fine">Show</span><span data-if="fine">Hide</span><div class="tick"/></button></div>
 			<div data-if="fine">
 				<div class="srow"><div class="slab">Pitch</div><input type="range" min="-30" max="30" step="1" data-value="trim_pitch"/><div class="sval">{{trim_pitch_text}}</div></div>

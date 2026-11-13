@@ -9965,6 +9965,21 @@ void TestCalibration() {
     CHECK(cal::DirectionAngleDeg(r.handsLine, Unit3(foregrip)) < 1.2f);
     CHECK(r.handsSpreadDeg < 1.5f);
     CHECK(std::abs(r.eyeRelief - 0.13f) < 0.01f);
+    // Personal hand spacing and wrist angles are measured, never fitted to a generic rifle mesh.
+    for (float span : {0.18f, 0.46f}) {
+        XrVector3f const personalForegrip{-0.025f, -0.025f, -span};
+        XrQuaternionf const personalLeftTrim = AxisAngle(0, 0, 1, span < 0.3f ? 40.0 : 95.0);
+        auto const personal = SyntheticAims(head, 0.0, 1, rifleTrim, {0.0f, 0.045f, 0.0f}, 0.08f,
+            0.0, 0.0, true, personalForegrip, personalLeftTrim, 23u);
+        cal::Stance const solved = cal::Solve(personal);
+        CHECK(solved.valid && solved.hasLeft);
+        CHECK(Len3(Sub3v(solved.foregrip, personalForegrip)) < 0.001f);
+        CHECK(cal::AngleDeg(solved.leftTrim, personalLeftTrim) < 0.1f);
+        for (auto const& a : personal) {
+            CHECK(cal::CheckRifleAim(a.head, a.right.position, a.left.position, a.target).problem == cal::AimProblem::None);
+            CHECK(cal::DirectionAngleDeg(cal::SightLine(a.right, solved).direction, Unit3(Sub3v(a.target, a.eyes[1]))) < 0.1f);
+        }
+    }
     // The stock: the right grip below the eyes, a little to the right, just ahead (the head's level frame).
     XrVector3f stock{};
     for (cal::AimSample const& a : rifle) {
@@ -11909,6 +11924,8 @@ int RunSquadPlaceTests();
 int RunBodyScaleTests();
 int RunBodySlotsSeatedTests();
 int RunFloorLockTests();
+int RunManualCalibrationTests();
+int RunCalibrationWeaponTests();
 int RunCameraDiagnosticTests();
 int RunLandmarkTests();
 // tests/ScriptMatchTests.cpp: Thespian mode's matcher (core/voice/ScriptMatch, research/70).
@@ -12092,6 +12109,8 @@ int main() {
     gFailures += RunBodyScaleTests();
     gFailures += RunBodySlotsSeatedTests();
     gFailures += RunFloorLockTests();
+    gFailures += RunManualCalibrationTests();
+    gFailures += RunCalibrationWeaponTests();
     gFailures += RunCameraDiagnosticTests();
     gFailures += RunLandmarkTests();
     gFailures += RunScriptMatchTests();

@@ -32,7 +32,8 @@ Result Correct(Context const& c, floor::State const& s, std::uint64_t nowMs,
         return out;
     }
     out.active = true;
-    out.centreZ = c.pawn.floorZ + unitsPerMeter * (c.pawn.seated ? *seatedEyeM : static_cast<double>(s.eyeHeight));
+    double const trim = std::isfinite(c.heightOffsetM) ? std::clamp(c.heightOffsetM, -0.5, 0.5) : 0.0;
+    out.centreZ = c.pawn.floorZ + unitsPerMeter * ((c.pawn.seated ? *seatedEyeM : static_cast<double>(s.eyeHeight)) + trim);
     out.correction = out.centreZ - (rawCameraZ + commonWorldZ);
     return out;
 }

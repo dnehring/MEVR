@@ -472,6 +472,10 @@ int main(int argc, char** argv) {
     model.SetText("audio_note", ms::AudioNote("hrtf", 3.0f, "hrtf", 3.0f, true));
     // Each section's lower part (the pages scroll): one more picture per screenful.
     model.SetText("section", "body");
+    model.SetNumber("position_known", 1);
+    model.SetNumber("manual_ready", 1);
+    model.SetNumber("manual_height", 0.12f);
+    model.SetNumber("manual_right_pitch", -5);
     model.SetText("play_position", "seated");
     model.SetText("t_crouch", "Off");
     frames(20);
@@ -494,9 +498,65 @@ int main(int argc, char** argv) {
         }
         content->SetScrollTop(0.0f);
     };
-    for (char const* section : {"guide", "comfort", "controls", "voice", "display", "hud"}) {
+    for (char const* section : {"guide", "comfort", "controls", "voice", "body", "display", "hud"}) {
         scrolled(section);
     }
+    model.SetText("section", "body");
+    model.SetText("play_position", "seated");
+    frames(10);
+    if (auto* panel = element("manual-calibration")) panel->ScrollIntoView(true);
+    frames(10);
+    save("section-body-manual-collapsed");
+    if (auto* toggle = element("manual-calibration-toggle")) toggle->Click();
+    frames(10);
+    if (auto* panel = element("manual-calibration")) panel->ScrollIntoView(true);
+    frames(10);
+    save("section-body-manual-right");
+    if (auto* panel = element("manual-baseline")) panel->ScrollIntoView(true);
+    frames(10);
+    save("section-body-manual-baseline");
+    if (auto* panel = element("manual-calibration")) panel->ScrollIntoView(true);
+    model.SetText("manual_hand", "left");
+    model.SetNumber("manual_left_up", 0.025f);
+    frames(10);
+    save("section-body-manual-left");
+    model.SetNumber("manual_ready", 0);
+    model.SetNumber("position_known", 0);
+    frames(10);
+    save("section-body-manual-untracked");
+    model.SetNumber("manual_ready", 1);
+    model.SetNumber("position_known", 1);
+    model.SetText("manual_hand", "right");
+    if (auto* toggle = element("manual-calibration-toggle")) toggle->Click();
+    frames(10);
+    save("section-body-manual-closed-again");
+    model.SetNumber("manual_live", 1);
+    model.SetNumber("manual_markers", 1);
+    model.SetText("manual_live_title", "Adjust RIGHT hand");
+    model.SetText("manual_live_axis", "Pitch");
+    model.SetText("manual_live_value", "-5.0 deg");
+    model.SetText("manual_live_status", "Hold the selected hand naturally and watch it move.");
+    model.SetText("manual_live_controls", "LEFT controller: X = Done / Y = Cancel");
+    frames(10);
+    save("live-adjust-right");
+    model.SetNumber("manual_live_left", 1);
+    model.SetText("manual_live_title", "Adjust LEFT hand");
+    model.SetText("manual_live_axis", "Up / down");
+    model.SetText("manual_live_value", "+2.5 cm");
+    model.SetText("manual_live_controls", "RIGHT controller: A = Done / B = Cancel");
+    frames(10);
+    save("live-adjust-left");
+    if (auto* panel = element("manual-live-panel")) {
+        auto const at = panel->GetAbsoluteOffset(Rml::BoxArea::Border);
+        std::printf("live panel: left %.0f top %.0f width %.0f height %.0f\n", at.x, at.y, panel->GetOffsetWidth(), panel->GetOffsetHeight());
+    }
+    model.SetText("manual_live_status", "Tracking lost: adjustments paused.");
+    model.SetNumber("manual_markers", 0);
+    frames(10);
+    save("live-adjust-tracking-lost");
+    model.SetNumber("manual_live", 0);
+    model.SetText("play_position", "standing");
+    if (auto* content = element("content")) content->SetScrollTop(0);
     // The Voice page's states (research/54 "The menu's Voice page"): speaking (the bar past the mark), quiet, a restart after a new
     // microphone, and a game without the voice download.
     model.SetText("section", "voice");

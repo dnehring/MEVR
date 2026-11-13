@@ -18,6 +18,7 @@
 #include "core/Log.hpp"
 #include "core/vr/GameMenuRequest.hpp"
 #include "core/vr/MenuPointer.hpp"
+#include "core/vr/LiveCalibration.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/Colour.hpp"
@@ -75,6 +76,7 @@ constexpr float kDeadBandPx = 1.5f;
 
 // ---- Any thread -----------------------------------------------------------------------------------------------
 std::atomic<bool> gOpen{false};
+std::atomic<bool> gLiveAdjusting{false};
 std::atomic<bool> gPauseWanted{false};
 vr::game_menu::Slot gGameRequest;  // what the Game menu or Holster button asked the mod to do (HostServices v19), not yet taken
 std::mutex gPadMutex;
@@ -153,6 +155,81 @@ struct State {
     double lastCpuMs = -1.0, lastGpuMs = -1.0, lastRendersPerSecond = 0.0;
 };
 State g;
+vr::live_calibration::Session gLiveEdit;
+std::string gLiveProfile;
+
+void EndLive(bool save, char const* reason) {
+    if (!gLiveAdjusting.exchange(false)) return;
+    calibration::SetManualPreviewActive(false);
+    if (save && gLiveProfile == calibration::ProfileKey()) {
+        menu::Values values = g.model->Get();
+        std::size_t const first = gLiveEdit.target == 0 ? 1u : 7u;
+        for (std::size_t i = first; i < first + 6; ++i) {
+            auto const& f = vr::manual_calibration::kFields[i];
+            values.numbers[f.menu] = gLiveEdit.draft.values[i];
+            g.settings->Write(f.menu, values, true);
+        }
+    }
+    calibration::InvalidateManualAdjustments();
+    g.model->SetNumber("manual_live", 0);
+    g.model->SetText("manual_live_note", reason);
+    g.model->Refresh();
+    gPauseWanted.store(g.settings->PauseWanted());
+    g.placed = false;
+    g.needRender = true;
+    g.trigger[0] = g.trigger[1] = g.aHeld = g.bHeld = true;
+    g.navDir = -1;
+    log::Info("live calibration: {}", reason);
+}
+
+void BeginLive(Frame const& frame) {
+    if (!frame.worldFrame || !frame.headValid || frame.gameMode != 0 || !g.live.active || GetTickCount64() - g.live.timeMs > 250 ||
+        !g.live.left.gripValid || !g.live.right.gripValid || calibration::Running() || calibration::ProfileKey().empty()) {
+        g.model->SetText("manual_live_note", "Start on foot with the headset and both controllers tracked.");
+        return;
+    }
+    g.settings->Closed(); // flush any sliders before taking the rollback baseline
+    calibration::InvalidateManualAdjustments();
+    gLiveProfile = calibration::ProfileKey();
+    gLiveEdit.Begin(calibration::ManualAdjustments(), g.model->Get().Text("manual_hand") == "left" ? 0 : 1);
+    gLiveAdjusting.store(true);
+    calibration::SetManualPreviewActive(true);
+    gPauseWanted.store(false); // the world must tick to show the real hands and held weapon
+    g.model->SetNumber("manual_live", 1);
+    g.model->SetNumber("manual_markers", 0);
+    g.model->SetNumber("manual_live_left", gLiveEdit.target == 0 ? 1.0f : 0.0f);
+    g.model->SetText("manual_live_title", gLiveEdit.target == 0 ? "Adjust LEFT hand" : "Adjust RIGHT hand");
+    g.model->SetText("manual_live_controls", gLiveEdit.Editor() == 0 ? "LEFT controller: X = Done / Y = Cancel" : "RIGHT controller: A = Done / B = Cancel");
+    g.model->SetText("manual_live_axis", "Pitch");
+    g.model->SetText("manual_live_value", std::format("{:+.1f} deg", gLiveEdit.draft.values[gLiveEdit.Index()]));
+    g.model->SetText("manual_live_status", "Release the adjusting controller's stick, trigger and buttons.");
+    g.ui->Context()->ProcessMouseLeave();
+    g.hit = g.wasHit = g.pressing = false;
+    g.submitted = false;
+    g.needRender = true;
+}
+
+void TickLive(Frame const& frame, float dt) {
+    if (!gLiveAdjusting.load()) return;
+    if (gLiveProfile != calibration::ProfileKey() || !frame.worldFrame || frame.gameMode != 0 || calibration::Running()) {
+        EndLive(false, "Live adjustment cancelled: the controller setup or game view changed.");
+        return;
+    }
+    bool const eligible = frame.headValid && GetTickCount64() - g.live.timeMs <= 250 && g.submitted;
+    bool const tracked = eligible && g.live.active && g.live.left.gripValid && g.live.right.gripValid;
+    auto const action = gLiveEdit.Tick(g.live, dt, eligible);
+    if (action != vr::live_calibration::Action::None) {
+        EndLive(action == vr::live_calibration::Action::Done,
+            action == vr::live_calibration::Action::Done ? "Live offsets applied. Check the save status below." : "Live adjustment cancelled; starting offsets restored.");
+        return;
+    }
+    auto const i = gLiveEdit.Index();
+    g.model->SetText("manual_live_axis", vr::live_calibration::kAxes[gLiveEdit.axis]);
+    g.model->SetText("manual_live_value", vr::manual_calibration::kFields[i].angle ?
+        std::format("{:+.1f} deg", gLiveEdit.draft.values[i]) : std::format("{:+.1f} cm", gLiveEdit.draft.values[i] * 100));
+    g.model->SetText("manual_live_status", !tracked ? "Tracking lost: adjustments paused." : !gLiveEdit.armed ?
+        "Release the adjusting controller's stick, trigger and buttons." : "Hold the selected hand naturally and watch it move.");
+}
 std::atomic<bool> gRecentered{false};
 // The watchdog's clocks (Present thread): the last VR frame that asked for our layers, and the last one that drew the
 // open menu (set at the opening too).
@@ -684,9 +761,10 @@ void AskTheMod(vr::game_menu::Action action) {
     }
 }
 
-void AfterCommand(After after) {
+void AfterCommand(After after, Frame const& frame) {
     switch (after) {
     case After::Nothing: return;
+    case After::LiveAdjust: BeginLive(frame); return;
     case After::Close: SetOpen(false, "Resume"); return;
     case After::GameStart:
         SetOpen(false, "Game menu");
@@ -777,15 +855,27 @@ bool IsOpen() {
     return gOpen.load(std::memory_order_relaxed);
 }
 
+bool LiveAdjusting() { return gLiveAdjusting.load(std::memory_order_relaxed); }
+
+vr::manual_calibration::Settings PreviewAdjustments(vr::manual_calibration::Settings const& saved) {
+    return LiveAdjusting() && gLiveProfile == calibration::ProfileKey() ? gLiveEdit.draft : saved;
+}
+
+int LiveSelectedHand() { return gLiveEdit.target; }
+void NoteLiveMarkers(bool submitted) {
+    if (g.model != nullptr) g.model->SetNumber("manual_markers", submitted ? 1.0f : 0.0f);
+}
+
 std::uint32_t ModFlags() {
     std::uint32_t const rail = omni_rail::Shown() ? kOmniRailOpen : 0u;  // the omni-tool's rail: the game's omni-tool on the arm
     if (!gOpen.load(std::memory_order_relaxed)) {
         return rail;
     }
-    return kMainMenuOpen | (gPauseWanted.load(std::memory_order_relaxed) ? kMainMenuPause : 0u) | rail;
+    return kMainMenuOpen | (!LiveAdjusting() && gPauseWanted.load(std::memory_order_relaxed) ? kMainMenuPause : 0u) | rail;
 }
 
 void SetOpen(bool open, char const* why) {
+    if (!open) EndLive(false, "Live adjustment cancelled; starting offsets restored.");
     if (open == gOpen.load()) {
         return;
     }
@@ -836,11 +926,18 @@ void SetOpen(bool open, char const* why) {
 }
 
 void Toggle(char const* why) {
+    if (LiveAdjusting()) {
+        EndLive(false, "Live adjustment cancelled; starting offsets restored.");
+        return;
+    }
     SetOpen(!gOpen.load(), why);
 }
 
 void NoteControllers(vr::controllers::State const& live) {
     g.live = live;
+    if (LiveAdjusting() && gLiveProfile != calibration::ProfileKey()) {
+        EndLive(false, "Live adjustment cancelled: the controller setup changed.");
+    }
 }
 
 vr::game_menu::Action TakeGameRequest() {
@@ -885,6 +982,7 @@ void Recentered() {
 XrCompositionLayerQuad const* Layer(Frame const& frame) {
     gLastLayerMs = GetTickCount64();
     if (frame.session != g.session) {
+        EndLive(false, "Live adjustment cancelled: the VR session changed.");
         swapchains::Forget(g.swapchain.handle);
         g.swapchain = {};  // the old session's swapchain died with it
         g.session = frame.session;
@@ -929,7 +1027,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (now - g.lastRefreshMs >= kRefreshEveryMs) {
         g.lastRefreshMs = now;
         g.model->Refresh();
-        gPauseWanted.store(g.settings->PauseWanted());
+        gPauseWanted.store(!LiveAdjusting() && g.settings->PauseWanted());
     }
     if (now - g.lastLevelMs >= 33 && g.model->Get().Text("section") == "voice") {
         // The microphone's level (research/54 "The menu's Voice page"): a meter's quick rise and slow fall, in whole percents
@@ -944,14 +1042,18 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.model->SetNumber("voice_heard", now < g.heardUntilMs ? 1.0f : 0.0f);
     }
     g.settings->Tick(g.live, frame.headValid, frame.head.position);
-    g.model->SetUserInput(true);  // only the player's input changes a setting through a slider
-    Pointer(context, dt);
-    Pad(context, now);
-    g.model->SetUserInput(false);
+    if (LiveAdjusting()) {
+        TickLive(frame, dt);
+    } else {
+        g.model->SetUserInput(true);  // only the player's input changes a setting through a slider
+        Pointer(context, dt);
+        Pad(context, now);
+        g.model->SetUserInput(false);
+    }
     if (!gOpen.load()) {
         return nullptr;  // B closed it
     }
-    AfterCommand(g.settings->TakeAfter());
+    AfterCommand(g.settings->TakeAfter(), frame);
     if (!gOpen.load()) {
         return nullptr;
     }
@@ -960,7 +1062,14 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.context->Begin(g.disjoint.Get());
         g.context->End(g.gpuBegin.Get());
     }
-    UpdateBackdrop(frame, now);
+    if (LiveAdjusting()) {
+        if (g.tapSwapchain != XR_NULL_HANDLE) {
+            testloop::SetReleaseTap(XR_NULL_HANDLE, nullptr);
+            g.tapSwapchain = XR_NULL_HANDLE;
+        }
+    } else {
+        UpdateBackdrop(frame, now);
+    }
     if (g.model->Get().Text("section") == "display") {
         g.strips->Update(g.context.Get(), g.settings->PreviewColour());
     }
@@ -974,8 +1083,8 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (g.needRender || !g.submitted) {
         g.needRender = false;
         g.ui->GetRenderer()->Render(g.context.Get(), context, g.canvasRtv.Get(), kWidth, kHeight);
-        if (Submit()) {
-            g.submitted = true;
+        g.submitted = Submit();
+        if (g.submitted) {
             ++g.renders;
         }
     }
@@ -985,6 +1094,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.gpuPending = true;
     }
     if (!g.submitted) {
+        EndLive(false, "Live adjustment cancelled: its panel could not be displayed.");
         return nullptr;
     }
     g.quad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
@@ -1016,13 +1126,15 @@ std::string StatusJson() {
     namespace json = vr::test_request;
     return std::format("{{\"open\": {}, \"ready\": {}, \"pose\": [{}, {}, {}], \"sizeM\": [{}, {}], \"pointer\": {{\"hit\": {}, \"x\": {}, "
                        "\"y\": {}, \"hand\": \"{}\", \"pressing\": {}}}, \"section\": {}, \"pause\": {}, \"cpuMs\": {}, \"gpuMs\": {}, "
-                       "\"rendersPerSecond\": {}}}",
+                       "\"rendersPerSecond\": {}, \"liveAdjustment\": {{\"active\": {}, \"target\": {}, \"axis\": {}, \"armed\": {}, \"value\": {}}}}}",
         gOpen.load() ? "true" : "false", g.ready ? "true" : "false", json::JsonNumber(g.pose.position.x), json::JsonNumber(g.pose.position.y),
         json::JsonNumber(g.pose.position.z), json::JsonNumber(g.width), json::JsonNumber(g.height), g.hit ? "true" : "false",
         json::JsonNumber(g.x), json::JsonNumber(g.y), g.hand == 0 ? "left" : "right", g.pressing ? "true" : "false",
         json::JsonString(g.model != nullptr ? g.model->Get().Text("section") : std::string()),
         gPauseWanted.load() ? "true" : "false", g.lastCpuMs >= 0.0 ? json::JsonNumber(g.lastCpuMs) : std::string("null"),
-        g.lastGpuMs >= 0.0 ? json::JsonNumber(g.lastGpuMs) : std::string("null"), json::JsonNumber(g.lastRendersPerSecond));
+        g.lastGpuMs >= 0.0 ? json::JsonNumber(g.lastGpuMs) : std::string("null"), json::JsonNumber(g.lastRendersPerSecond),
+        LiveAdjusting() ? "true" : "false", gLiveEdit.target, gLiveEdit.axis, gLiveEdit.armed ? "true" : "false",
+        json::JsonNumber(gLiveEdit.draft.values[gLiveEdit.Index()]));
 }
 
 } // namespace mevr::host::main_menu

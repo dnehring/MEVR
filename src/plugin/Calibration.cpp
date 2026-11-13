@@ -79,6 +79,8 @@ Summary gSummary;
 std::string gSystem;
 std::string gProfile;
 std::string gKey;
+bool gManualDirty = true;
+std::atomic<bool> gManualPreview{false};
 std::string gLabel;
 bool gKeyChecked = false;     // the ini was read for gKey: calibrated / prompted
 bool gKeyCalibrated = false;
@@ -129,6 +131,7 @@ struct Run {
     cal::Stillness still;
     float held = 0.0f;
     std::string status;
+    bool weaponVisible = false; // both pistol eye pictures submitted last frame; no invisible-pistol captures
     bool statusWarn = false;
     std::string boardHint;        // the reason, short, across the board's top (where the player looks)
     bool boardHintWarn = false;
@@ -288,7 +291,7 @@ void RecordPrompted() {
     gKeyPrompted = true;
 }
 
-// ---- GPU: our ImGui context, two canvases, five swapchains ----------------------------------------------------
+// ---- GPU: our ImGui context, canvases and swapchains ----------------------------------------------------------
 
 struct Canvas {
     ComPtr<ID3D11Texture2D> texture;
@@ -303,6 +306,7 @@ struct Gpu {
     draw::Fonts fonts;
     Canvas panel;
     Canvas board;
+    Canvas weapon;
     bool failed = false;
 };
 Gpu gGpu;
@@ -316,7 +320,8 @@ struct Swapchain {
     std::uint64_t failedMs = 0;  // when it failed: tried again when plugin/Swapchains says (2 s, or once room was freed)
     bool filled = false;  // a static picture, already in every image
 };
-enum SwapchainId { kPanelChain = 0, kBoardChain, kOrbActiveChain, kOrbHeldChain, kDotChain, kMarkerChain, kChains };
+enum SwapchainId { kPanelChain = 0, kBoardChain, kOrbActiveChain, kOrbHeldChain, kDotChain, kMarkerChain,
+    kWeaponLeftChain, kWeaponRightChain, kChains };
 std::array<Swapchain, kChains> gChains;
 XrSession gSession = XR_NULL_HANDLE;
 std::array<XrCompositionLayerQuad, 6> gQuads{};
@@ -427,6 +432,8 @@ char const* ChainName(int id) {
     case kOrbHeldChain: return "calibration-orb-held";
     case kDotChain: return "calibration-dot";
     case kMarkerChain: return "calibration-hand";
+    case kWeaponLeftChain: return "calibration-weapon-left";
+    case kWeaponRightChain: return "calibration-weapon-right";
     default: return "calibration-?";
     }
 }
@@ -639,6 +646,7 @@ void Enter(Step step, XrPosef const& head) {
     gRun.held = 0.0f;
     gRun.lastHeld = 0.0f;
     gRun.status.clear();
+    gRun.weaponVisible = false;
     gRun.statusWarn = false;
     gRun.boardHint.clear();
     gRun.noteUntil = 0;
@@ -697,6 +705,34 @@ XrVector3f GrabAt(int hand) {
 
 cal::BodyMeasures Body() {
     return {gRun.armLength, gRun.shoulderWidth};
+}
+
+std::optional<vr::calibration_weapon::Model> WeaponModel(Step step) {
+    // Rifle orbs deliberately impose no gun geometry: the player chooses both hand positions and wrist angles.
+    bool const check = step == Step::Check;
+    bool const grab = step == Step::PistolGrab;
+    if (!check && !grab && step != Step::PistolAim) return std::nullopt;
+    auto const& right = gControllers.right;
+    auto const& left = gControllers.left;
+    bool const rightHeld = gControllers.active && right.gripValid && Squeezed(right, gRun.rightHeld);
+    bool const leftHeld = gControllers.active && left.gripValid && Squeezed(left, false);
+    if (check && (!rightHeld || (leftHeld && gRun.rifle.valid))) return std::nullopt;
+    vr::calibration_weapon::Model model;
+    model.rightHeld = grab ? gRun.rightHeld : rightHeld;
+    if (grab && !gRun.rightHeld) {
+        model.pose = {cal::YawRotation(gRun.anchor.yaw), cal::OrbRest(gRun.stepAnchor, cal::Orb::Pistol, Body())};
+    } else {
+        if (!gControllers.active || !right.gripValid) return std::nullopt;
+        model.pose = {right.aimValid ? right.aim.orientation : right.grip.orientation, GrabAt(1)};
+        // Only the final check displays the newly solved frame. Capture previews never point at the target
+        // or use a partial solve (that would train later samples to match an earlier guessed alignment).
+        if (check) {
+            auto const& stance = gRun.pistol;
+            if (!stance.valid) return std::nullopt;
+            model.pose.orientation = cal::GunOrientation(right.grip.orientation, stance);
+        }
+    }
+    return model;
 }
 
 // One frame of holding still for the step; true once held long enough.
@@ -886,6 +922,10 @@ void StepAim(bool rifle, XrPosef const& head, XrVector3f const eyes[2], float dt
         why = "The controllers aren't tracked";
         board = "CONTROLLERS NOT TRACKED";
         logWhy = "untracked";
+    } else if (!rifle && !gRun.weaponVisible) {
+        why = "The training weapon isn't visible. Wait, or Skip to keep your previous aim.";
+        board = "WAITING FOR TRAINING WEAPON";
+        logWhy = "weapon not visible";
     } else if (!gRun.rightHeld || (rifle && !gRun.leftHeld)) {
         why = !rifle             ? "Squeeze the right grip: hold the pistol"
             : !gRun.rightHeld && !gRun.leftHeld ? "Squeeze both grips: hold the rifle"
@@ -913,11 +953,11 @@ void StepAim(bool rifle, XrPosef const& head, XrVector3f const eyes[2], float dt
             board = "HOLD THE PISTOL OUT";
             break;
         case cal::AimProblem::NotShouldered:
-            why = "Bring the stock to your shoulder: right hand by your cheek";
-            board = "STOCK TO YOUR SHOULDER";
+            why = "Bring your right hand near your cheek in your natural rifle pose";
+            board = "RIGHT HAND NEAR YOUR CHEEK";
             break;
         case cal::AimProblem::HandsTooClose:
-            why = "Left hand further out along the rifle";
+            why = "Move your left hand farther forward for a two-handed pose";
             board = "LEFT HAND FURTHER OUT";
             break;
         case cal::AimProblem::NotPointing:
@@ -1043,7 +1083,7 @@ void StepGrab(bool rifle, XrPosef const& head) {
         return d > reach ? std::optional<float>(d) : std::nullopt;
     };
     if (auto const d = !gRun.rightHeld ? short_(1, rear, cal::kGrabReach) : std::nullopt) {
-        gRun.status = std::format("Right hand: the orb is {:.0f} cm away (the ring is your hand)", *d * 100.0f);
+        gRun.status = std::format("Right hand: the {} is {:.0f} cm away (the ring is your hand)", rifle ? "orb" : "handle", *d * 100.0f);
         gRun.statusWarn = true;
         return;
     }
@@ -1052,10 +1092,10 @@ void StepGrab(bool rifle, XrPosef const& head) {
         gRun.statusWarn = true;
         return;
     }
-    gRun.status = rifle ? (gRun.rightHeld ? "Now the far orb with your left grip"
-                                          : gRun.leftHeld ? "Now the near orb with your right grip"
-                                                          : "Squeeze each grip at its orb")
-                        : "Squeeze the right grip at the orb";
+    gRun.status = rifle ? (gRun.rightHeld ? "Now take the far orange orb with your left hand"
+                                          : gRun.leftHeld ? "Now take the near orange orb with your right hand"
+                                                          : "Squeeze each grip at its orange orb")
+                        : "Squeeze the right grip at the orange handle";
 }
 
 void StepBody(XrPosef const& head, float dt) {
@@ -1656,7 +1696,7 @@ void HostStateOut(vr::calibration::HostState* out) {
     std::lock_guard lock(gStateMutex);
     *out = gHost;
     out->size = sizeof(vr::calibration::HostState);
-    out->flags = Active() ? vr::calibration::kCalibrating : 0u;
+    out->flags = Active() || gManualPreview.load() ? vr::calibration::kCalibrating : 0u;
 }
 
 bool Running() {
@@ -1811,7 +1851,7 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
     if (!EnsureGpu(frame.device, frame.context)) {
         return 0;
     }
-    Step const step = gRun.step;
+    Step step = gRun.step;
     bool const aiming = step == Step::PistolAim || step == Step::RifleAim || step == Step::Check;
     float const panelHeight = cal::kPanelWidth * static_cast<float>(draw::kPanelHeight) / static_cast<float>(draw::kPanelWidth);
     XrPosef const panelPose = cal::PanelPose(gRun.anchor, aiming);
@@ -1828,6 +1868,7 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
             return 0;
         }
         view = PanelFor(gRun.step, now);  // the press may have changed the step
+        step = gRun.step;
         view.pointer = p.on;
         view.pointerX = p.x;
         view.pointerY = p.y;
@@ -1864,7 +1905,32 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
             Say("The targets can't be shown (the headset's runtime has no room for another layer). Skip: your last aims are kept.", true);
         }
     }
-    // The orbs: waiting at their rest (orange), or in the hand that holds them (pale), at its grab point. A hand without
+    // A real stereo shape in the hand, without a sight picture during capture. Submit both eyes or neither;
+    // leave a slot for the instruction panel. No weapon assets, engine writes or extra game-thread work.
+    namespace weapon = vr::calibration_weapon;
+    gRun.weaponVisible = false;
+    if (auto const model = WeaponModel(step); model && count + 3 <= capacity && count + 3 <= gQuads.size()) {
+        bool ready = gGpu.weapon.texture != nullptr || MakeCanvas(frame.device, weapon::kPixels, weapon::kPixels, gGpu.weapon);
+        ready = ready && EnsureChain(kWeaponLeftChain, weapon::kPixels, weapon::kPixels) &&
+            EnsureChain(kWeaponRightChain, weapon::kPixels, weapon::kPixels);
+        XrCompositionLayerQuad eyes[2]{};
+        for (int e = 0; e < 2 && ready; ++e) {
+            XrPosef const eye{head.orientation, frame.eyes[e]};
+            int const id = e == 0 ? kWeaponLeftChain : kWeaponRightChain;
+            Render(frame.context, gGpu.weapon, dt, [&](ImDrawList* dl) { draw::DrawWeapon(dl, *model, eye); });
+            ready = Submit(frame.context, id, gGpu.weapon);
+            if (ready) {
+                eyes[e] = Quad(frame.appSpace, id, weapon::CanvasPose(eye), 2 * weapon::kHalfSizeM, 2 * weapon::kHalfSizeM);
+                eyes[e].eyeVisibility = e == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
+            }
+        }
+        if (ready) {
+            add(eyes[0]);
+            add(eyes[1]);
+            gRun.weaponVisible = true;
+        }
+    }
+    // Rifle orbs, plus a pistol fallback if its picture cannot be submitted (pistol capture waits until it can). A hand without
     // its orb shows a ring at its grab point instead: Shepard's hands don't follow the controllers while this runs, so
     // that ring is all there is to judge an orb's distance against (research/25 section 8). Constant sizes: a quad
     // that grows and shrinks reads as coming and going.
@@ -1872,6 +1938,7 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
     // that close it would fill the view or need crossed eyes.
     auto const nearEyes = [&](XrVector3f const& at) { return Distance(at, head.position) < kNearEyes; };
     auto const orb = [&](bool held, XrVector3f const& at) {
+        if (gRun.weaponVisible) return;
         if (held && nearEyes(at)) {
             return;
         }
@@ -1943,6 +2010,32 @@ unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned
     return count;
 }
 
+unsigned ManualMarkerLayers(Frame const& frame, int selectedHand, XrCompositionLayerQuad const** out, unsigned capacity) {
+    namespace w = vr::calibration_weapon;
+    if (!gManualPreview.load() || gRunning.load() || !frame.worldFrame || !frame.headValid || frame.menuOpen ||
+        !gControllers.active || Now() - gControllers.timeMs > 250 || capacity < 2 || out == nullptr ||
+        frame.session == XR_NULL_HANDLE || frame.appSpace == XR_NULL_HANDLE || frame.context == nullptr || frame.device == nullptr) return 0;
+    if (!gControllers.left.gripValid && !gControllers.right.gripValid) return 0;
+    if (frame.session != gSession) ForgetSession(frame.session);
+    if (!EnsureGpu(frame.device, frame.context)) return 0;
+    if (!gGpu.weapon.texture && !MakeCanvas(frame.device, w::kPixels, w::kPixels, gGpu.weapon)) return 0;
+    // The guided pistol and live manual editor are mutually exclusive, so reuse the stereo canvas/swapchains.
+    if (!EnsureChain(kWeaponLeftChain, w::kPixels, w::kPixels) || !EnsureChain(kWeaponRightChain, w::kPixels, w::kPixels)) return 0;
+    static std::array<XrCompositionLayerQuad, 2> quads;
+    for (int e = 0; e < 2; ++e) {
+        XrPosef const eye{frame.head.orientation, frame.eyes[e]};
+        int const id = e == 0 ? kWeaponLeftChain : kWeaponRightChain;
+        Render(frame.context, gGpu.weapon, 1.0f / 90.0f,
+            [&](ImDrawList* dl) { draw::DrawControllerMarkers(dl, gControllers, selectedHand, eye); });
+        if (!Submit(frame.context, id, gGpu.weapon)) return 0; // show both eyes or neither
+        quads[e] = Quad(frame.appSpace, id, w::CanvasPose(eye), 2 * w::kHalfSizeM, 2 * w::kHalfSizeM);
+        quads[e].eyeVisibility = e == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
+    }
+    out[0] = &quads[0];
+    out[1] = &quads[1];
+    return 2;
+}
+
 std::string StatusJson() {
     namespace json = vr::test_request;
     std::string const anchor = std::format("{{\"eyes\": [{}, {}, {}], \"yawDeg\": {}}}", json::JsonNumber(gRun.anchor.eyes.x),
@@ -1957,11 +2050,39 @@ std::string StatusJson() {
     };
     return std::format("{{\"running\": {}, \"active\": {}, \"step\": {}, \"target\": {}, \"held\": {}, \"anchor\": {}, \"key\": {}, "
                        "\"pistolSamples\": {}, \"rifleSamples\": {}, \"pistol\": {}, \"rifle\": {}, \"rightHeld\": {}, \"leftHeld\": {}, "
-                       "\"prompt\": {}}}",
+                       "\"prompt\": {}, \"weaponVisible\": {}}}",
         gRunning.load() ? "true" : "false", Active() ? "true" : "false", json::JsonString(StepName(gRun.step)), gRun.target,
         json::JsonNumber(gRun.held), anchor, json::JsonString(gKey), gRun.pistolAims.Count(), gRun.rifleAims.Count(),
         stance(gRun.pistol), stance(gRun.rifle), gRun.rightHeld ? "true" : "false", gRun.leftHeld ? "true" : "false",
-        gPrompt.shown ? "true" : "false");
+        gPrompt.shown ? "true" : "false", gRun.weaponVisible ? "true" : "false");
+}
+
+std::string const& ProfileKey() { return gKey; }
+void InvalidateManualAdjustments() { gManualDirty = true; }
+void SetManualPreviewActive(bool active) { gManualPreview.store(active); }
+
+vr::manual_calibration::Settings ManualAdjustments() {
+    namespace manual = vr::manual_calibration;
+    static std::string key;
+    static std::uint64_t nextRead = 0;
+    static manual::Settings settings;
+    auto const now = GetTickCount64();
+    if (gManualDirty || key != gKey || now >= nextRead) {
+        gManualDirty = false;
+        key = gKey;
+        nextRead = now + 250;
+        settings = {};
+        if (!key.empty()) {
+            auto const section = manual::Section(key);
+            for (std::size_t i = 0; i < manual::kFields.size(); ++i) {
+                auto const& f = manual::kFields[i];
+                if (auto const n = ini::Number(ReadIni(section, f.ini))) {
+                    settings.values[i] = manual::Bounded(static_cast<float>(*n), f.limit);
+                }
+            }
+        }
+    }
+    return settings;
 }
 
 Summary GetSummary() {

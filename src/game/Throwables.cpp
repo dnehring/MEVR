@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/Throwables.hpp"
+#include "game/BodyCalibration.hpp"
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
@@ -1168,7 +1169,7 @@ void Tick(double deltaSeconds, Link const& link) {
         return;
     }
     vr::controllers::State const controllers = vr::controllers::Latest();
-    if (!controllers.active) {
+    if (!controllers.active || body_calibration::Calibrating()) {
         Inactive("the controllers aren't active", link);
         return;
     }

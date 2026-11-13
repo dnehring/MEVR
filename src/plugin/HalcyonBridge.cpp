@@ -24,6 +24,7 @@
 #include "halcyon/le1/le1_game.h"
 #include "halcyon/le1/render_hook.h"
 #include "plugin/Calibration.hpp"
+#include "core/vr/LiveCalibration.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/GamePointer.hpp"
@@ -378,7 +379,17 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
 #if defined(MEVR_WITH_MAIN_MENU)
     mevr::host::main_menu::NoteControllers(state);
 #endif
-    mevr::vr::controllers::Publish(mevr::host::calibration::Active() || menuTakes ? mevr::host::calibration::Hidden(state) : state);
+    auto manual = mevr::host::calibration::ManualAdjustments();
+    bool liveAdjustment = false;
+#if defined(MEVR_WITH_MAIN_MENU)
+    liveAdjustment = mevr::host::main_menu::LiveAdjusting();
+    manual = mevr::host::main_menu::PreviewAdjustments(manual);
+#endif
+    mevr::host::floor_lock::SetManualHeight(manual.Height());
+    auto published = mevr::host::calibration::Active() || (menuTakes && !liveAdjustment) ? mevr::host::calibration::Hidden(state)
+        : mevr::vr::manual_calibration::Apply(state, manual);
+    if (liveAdjustment) published = mevr::vr::live_calibration::PosesOnly(published);
+    mevr::vr::controllers::Publish(published);
     TickCameraAlign();
     if (state.active && state.right.aimValid) {
         gRightAimTrackedMs.store(GetTickCount64(), std::memory_order_relaxed);

@@ -5,6 +5,7 @@
 #include "plugin/CalibrationDraw.hpp"
 
 #include "core/vr/Calibration.hpp"
+#include "core/vr/CalibrationMarkers.hpp"
 
 #include <Windows.h>
 
@@ -143,6 +144,30 @@ bool Accent(int id) {
 
 // ---- Words -----------------------------------------------------------------------------------------------
 
+static void DrawFaces(ImDrawList* dl, std::vector<vr::calibration_weapon::Face> const& faces, XrPosef const& eye) {
+    namespace weapon = vr::calibration_weapon;
+    for (auto const& poly : weapon::Project(faces, eye)) {
+        std::vector<ImVec2> points;
+        float area = 0;
+        for (std::size_t i = 0; i < poly.points.size(); ++i) {
+            auto const a = poly.points[i];
+            auto const b = poly.points[(i + 1) % poly.points.size()];
+            area += a.x * b.y - b.x * a.y;
+            points.push_back({a.x * weapon::kPixels, a.y * weapon::kPixels});
+        }
+        if (area < 0) std::reverse(points.begin(), points.end());
+        dl->AddConvexPolyFilled(points.data(), static_cast<int>(points.size()), poly.colour);
+    }
+}
+
+void DrawWeapon(ImDrawList* dl, vr::calibration_weapon::Model const& model, XrPosef const& eye) {
+    DrawFaces(dl, vr::calibration_weapon::Build(model), eye);
+}
+
+void DrawControllerMarkers(ImDrawList* dl, vr::controllers::State const& raw, int selected, XrPosef const& eye) {
+    DrawFaces(dl, vr::calibration_markers::Build(raw, selected), eye);
+}
+
 ScreenText TextFor(Screen screen) {
     switch (screen) {
     case Screen::Prompt:
@@ -157,13 +182,13 @@ ScreenText TextFor(Screen screen) {
     case Screen::Forward: return {"BOTH ARMS STRAIGHT AHEAD", "Level with your shoulders, a shoulder-width apart, wrists straight.", 2};
     case Screen::Crouch: return {"CROUCH DOWN", "As low as you would go to hide behind cover. Seated player? Choose I play seated to skip this.", 3};
     case Screen::PistolGrab:
-        return {"TAKE THE PISTOL", "Squeeze the right grip at the orange orb (the ring is your hand), and keep it squeezed.", 4};
-    case Screen::PistolAim: return {"AIM AT THE LIT TARGET", "Aim the pistol the way you naturally would, and keep it on the target.", 4};
+        return {"TAKE THE PISTOL", "Squeeze the right grip at the orange pistol handle. The cyan ring marks your hand; keep the grip squeezed.", 4};
+    case Screen::PistolAim: return {"AIM AT THE LIT TARGET", "Aim the sightless training pistol naturally. Hold steady; the aiming dot appears only in the final check.", 4};
     case Screen::RifleGrab:
-        return {"TAKE THE RIFLE", "Right grip on the near orb, left grip on the far one; the rings show your hands. Keep both squeezed.", 5};
+        return {"TAKE THE RIFLE ORBS", "Right grip at the near orb, left at the far orb. Then move both hands freely: the orbs mark your hands, not a fixed rifle.", 5};
     case Screen::RifleAim:
-        return {"SHOULDER IT, AIM AT THE LIT TARGET",
-            "Right hand at your shoulder by your cheek, left hand out where you hold a foregrip. Look along it at the target.", 5};
+        return {"FIND YOUR NATURAL RIFLE AIM",
+            "Aim an imaginary rifle at the lit target. Choose comfortable hand spacing and wrist angles, right hand near your cheek. Hold steady; weapons will follow this pose.", 5};
     case Screen::Check:
         return {"CHECK YOUR AIM", "Squeeze the right grip (pistol) or both grips (rifle) and aim: the red dot should sit on the target.", 6};
     case Screen::Saved: return {"SAVED", "Calibrated for these controllers. The guns follow it from now on.", 6};

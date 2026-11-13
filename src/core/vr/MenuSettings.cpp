@@ -79,6 +79,7 @@ std::string FormatValue(Format format, float value) {
     case Format::SignedMeters2: return Signed(value, 2, " m");
     case Format::Signed0: return Signed(value, 0, "");
     case Format::Centimeters1: return Plain(value, 1, " cm");
+    case Format::SignedCentimeters1: return Signed(value * 100.0f, 1, " cm");
     case Format::SignedDecibels: return Signed(value, 0, " dB");
     }
     return Plain(value, 2, "");
@@ -169,6 +170,31 @@ std::vector<Field> const& Schema() {
         {"play_position", Type::Choice, 0, "standing"},
         {"position_known", Type::Flag, 0},
         {"cal_running", Type::Flag, 0},
+        {"manual_hand", Type::Choice, 0, "right", 0, 1, F::None, true},
+        {"manual_expanded", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"manual_live", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"manual_markers", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"manual_live_left", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"manual_live_title", Type::Text, 0, "", 0, 1, F::None, true},
+        {"manual_live_axis", Type::Text, 0, "", 0, 1, F::None, true},
+        {"manual_live_value", Type::Text, 0, "", 0, 1, F::None, true},
+        {"manual_live_controls", Type::Text, 0, "", 0, 1, F::None, true},
+        {"manual_live_status", Type::Text, 0, "", 0, 1, F::None, true},
+        {"manual_live_note", Type::Text, 0, "", 0, 1, F::None, true},
+        {"manual_ready", Type::Flag, 0},
+        {"manual_height", Type::Number, 0, "", -0.5f, 0.5f, F::SignedCentimeters1},
+        {"manual_left_out", Type::Number, 0, "", -0.15f, 0.15f, F::SignedCentimeters1},
+        {"manual_left_up", Type::Number, 0, "", -0.15f, 0.15f, F::SignedCentimeters1},
+        {"manual_left_forward", Type::Number, 0, "", -0.15f, 0.15f, F::SignedCentimeters1},
+        {"manual_left_pitch", Type::Number, 0, "", -45.0f, 45.0f, F::SignedDegrees},
+        {"manual_left_yaw", Type::Number, 0, "", -45.0f, 45.0f, F::SignedDegrees},
+        {"manual_left_roll", Type::Number, 0, "", -45.0f, 45.0f, F::SignedDegrees},
+        {"manual_right_out", Type::Number, 0, "", -0.15f, 0.15f, F::SignedCentimeters1},
+        {"manual_right_up", Type::Number, 0, "", -0.15f, 0.15f, F::SignedCentimeters1},
+        {"manual_right_forward", Type::Number, 0, "", -0.15f, 0.15f, F::SignedCentimeters1},
+        {"manual_right_pitch", Type::Number, 0, "", -45.0f, 45.0f, F::SignedDegrees},
+        {"manual_right_yaw", Type::Number, 0, "", -45.0f, 45.0f, F::SignedDegrees},
+        {"manual_right_roll", Type::Number, 0, "", -45.0f, 45.0f, F::SignedDegrees},
         {"cal_status", Type::Text, 0, "Not calibrated for these controllers yet"},
         {"cal_action", Type::Text, 0, "Start calibration"},
         {"t_stand", Type::Text, 0, "\xE2\x80\x93"},

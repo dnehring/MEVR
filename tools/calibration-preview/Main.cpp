@@ -445,27 +445,71 @@ int main(int argc, char** argv) {
         return Layer{cal::PanelPose(anchor, aiming), cal::kPanelWidth, panelHeight, &panels[shot]};
     };
     Layer const boardLayer{cal::BoardPose(anchor), cal::kBoardSize, cal::kBoardSize, &boardImage};
+    namespace weapon = mevr::vr::calibration_weapon;
+    auto weaponImage = [&](weapon::Model const& model, XrPosef const& from) {
+        return RenderCanvas(gpu, weapon::kPixels, weapon::kPixels, [&](ImDrawList* dl) { draw::DrawWeapon(dl, model, from); });
+    };
+    auto weaponLayer = [&](composite::Image const& picture, XrPosef const& from) {
+        return Layer{weapon::CanvasPose(from), 2 * weapon::kHalfSizeM, 2 * weapon::kHalfSizeM, &picture};
+    };
+    {
+        weapon::Model model;
+        model.pose = {cal::YawRotation(-0.8f), {0, 1.55f, -0.75f}};
+        auto const picture = weaponImage(model, eye);
+        Save(out / "weapon-pistol.png", Over(picture, backdrop));
+    }
     // Standing: the panel straight ahead.
+    // Live-editor reference markers only. These diagnostic scenes do not contain Shepard's game mesh.
+    {
+        mevr::vr::controllers::State raw;
+        raw.active = raw.left.gripValid = raw.right.gripValid = true;
+        raw.left.grip = {cal::Multiply(cal::YawRotation(0.4f), AxisRotation({1,0,0}, 0.25f)), {-0.18f, 1.44f, -0.5f}};
+        raw.right.grip = {cal::Multiply(cal::YawRotation(-0.4f), AxisRotation({1,0,0}, -0.25f)), {0.2f, 1.44f, -0.5f}};
+        auto picture = [&](int selected, XrPosef const& from) {
+            return RenderCanvas(gpu, weapon::kPixels, weapon::kPixels,
+                [&](ImDrawList* dl) { draw::DrawControllerMarkers(dl, raw, selected, from); });
+        };
+        auto const right = picture(1, eye);
+        EyeView(out / "live-markers-right-eye.png", eye, {weaponLayer(right, eye)});
+        auto otherEye = eye;
+        otherEye.position.x -= 0.064f;
+        auto const left = picture(1, otherEye);
+        EyeView(out / "live-markers-left-eye.png", otherEye, {weaponLayer(left, otherEye)});
+        auto const selectedLeft = picture(0, eye);
+        EyeView(out / "live-markers-selected-left.png", eye, {weaponLayer(selectedLeft, eye)});
+    }
     EyeView(out / "eye-stand.png", eye, {panelLayer(1, false)});
-    // The pistol orb waiting, the panel ahead.
+    // The training pistol waiting, the panel ahead.
     {
         XrVector3f const rest = cal::OrbRest(anchor, cal::Orb::Pistol);
+        weapon::Model model;
+        model.pose.position = rest;
+        auto const picture = weaponImage(model, eye);
         EyeView(out / "eye-pistol-grab.png", eye,
-            {panelLayer(pistolGrabShot, false), {cal::Billboard(rest, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
+            {weaponLayer(picture, eye), panelLayer(pistolGrabShot, false)});
     }
-    // Aiming the pistol at the second target (upper left): looking at it, the orb in the hand on the line of sight.
+    // Aiming the pistol at the second target (upper left), with the eyes just above its slide.
     {
         XrPosef look = eye;
         XrVector3f const target = cal::TargetPosition(anchor, 1);
         look.orientation = *cal::LookRotation({target.x - eye.position.x, target.y - eye.position.y, target.z - eye.position.z});
         XrVector3f const toTarget{target.x - eye.position.x, target.y - eye.position.y, target.z - eye.position.z};
         float const length = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z);
-        XrVector3f const hand{eye.position.x + toTarget.x / length * 0.5f, eye.position.y + toTarget.y / length * 0.5f - 0.07f,
+        XrVector3f const hand{eye.position.x + toTarget.x / length * 0.5f, eye.position.y + toTarget.y / length * 0.5f - 0.11f,
             eye.position.z + toTarget.z / length * 0.5f};
+        weapon::Model model;
+        model.pose = {look.orientation, hand};
+        model.rightHeld = true;
+        auto const picture = weaponImage(model, look);
         EyeView(out / "eye-pistol-aim.png", look,
-            {boardLayer, panelLayer(pistolAimShot, true), {cal::Billboard(hand, look.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
+            {boardLayer, weaponLayer(picture, look), panelLayer(pistolAimShot, true)});
+        auto const ahead = weaponImage(model, eye);
         EyeView(out / "eye-pistol-aim-ahead.png", eye,
-            {boardLayer, panelLayer(pistolAimShot, true), {cal::Billboard(hand, eye.position), cal::kOrbSize, cal::kOrbSize, &orbActive}});
+            {boardLayer, weaponLayer(ahead, eye), panelLayer(pistolAimShot, true)});
+        auto leftEye = look;
+        leftEye.position.x -= 0.064f;
+        auto const other = weaponImage(model, leftEye);
+        EyeView(out / "eye-pistol-aim-left.png", leftEye, {boardLayer, weaponLayer(other, leftEye), panelLayer(pistolAimShot, true)});
     }
     // Both rifle orbs waiting (placed for the user's measured arms), each hand's ring short of its orb; then the right
     // orb in the hand and the left hand reaching.
@@ -498,8 +542,8 @@ int main(int argc, char** argv) {
         XrVector3f const rightHand{eye.position.x + 0.03f, eye.position.y - 0.10f, eye.position.z};
         XrVector3f const leftHand{rightHand.x + d.x * 0.27f - 0.04f, rightHand.y + d.y * 0.27f - 0.04f, rightHand.z + d.z * 0.27f};
         EyeView(out / "eye-rifle-aim.png", look,
-            {board2, panelLayer(rifleAimShot, true), {cal::Billboard(rightHand, look.position), cal::kHeldOrbSize, cal::kHeldOrbSize, &orb},
-                {cal::Billboard(leftHand, look.position), cal::kHeldOrbSize, cal::kHeldOrbSize, &orb}});
+            {board2, panelLayer(rifleAimShot, true),
+                {cal::Billboard(leftHand, look.position), cal::kHeldOrbSize, cal::kHeldOrbSize, &orb}}); // cheek orb hidden, as in runtime
     }
     // The check: the dot on the centre target, the panel at the lower left.
     {

@@ -3,6 +3,7 @@
 
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/ManualCalibration.hpp"
 
 #include <openxr/openxr.h>
 
@@ -53,6 +54,11 @@ void SetSystem(std::string const& systemName);
 void SetProfile(std::string const& interactionProfile);
 // Each frame, after the controller sync and the test loop (a replay's controllers stand in for live ones).
 void NoteControllers(vr::controllers::State const& state);
+// Present thread. Cached for 250 ms, refreshed immediately on a controller-profile change.
+vr::manual_calibration::Settings ManualAdjustments();
+std::string const& ProfileKey(); // Present thread, no settings IO
+void InvalidateManualAdjustments();
+void SetManualPreviewActive(bool active); // interaction/crouch suppression, without hiding tracked poses
 // Each frame: the session has input focus (the headset is worn; or a replay drives the inputs). The first-run prompt's
 // delay and its timeout count only then, so a headset left on a desk doesn't use them up.
 void NoteFocused(bool focused);
@@ -80,6 +86,8 @@ struct Frame {
 // OverlayLayers, every frame: the sequence's quads (or the prompt's), at most `capacity`. While Active() they
 // are the only MEVR quads.
 unsigned Layers(Frame const& frame, XrCompositionLayerQuad const** out, unsigned capacity);
+// Live manual mode only: two stereo canvases of raw controller reference markers; no corrected poses/weapon constraints.
+unsigned ManualMarkerLayers(Frame const& frame, int selectedHand, XrCompositionLayerQuad const** out, unsigned capacity);
 // Recentering re-origined the app space: the layout is placed afresh in front of the head.
 void Recentered();
 // For snapshots (plugin/TestLoop).

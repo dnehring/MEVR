@@ -237,6 +237,7 @@ std::optional<double> CalibratedForegripDistance() {
 bool gNearCalibrated = false;  // the last distance came from the calibrated point (logged with the hold)
 
 void Tick(double deltaSeconds, bool requested) {
+    requested = requested && !body_calibration::Calibrating();
     gRequested = requested;
     hand_calibration::Refresh();  // at most once a second; arm IK may be off
     hand_calibration::Controls const controls = hand_calibration::GetControls();

@@ -32,6 +32,7 @@ struct Context {
     bool galaxyCamera = false;
     bool menu = false;
     PawnSample pawn;
+    double heightOffsetM = 0.0; // manual view delta, applied after the standing/seated height solve
 };
 
 bool Applies(Context const& context);

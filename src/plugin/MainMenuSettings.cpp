@@ -379,6 +379,15 @@ void Settings::Read(menu::Values& v) {
     v.texts["play_position"] = cal.seated ? "seated" : "standing";
     flag("position_known", !cal.key.empty());
     flag("cal_running", cal.running);
+    flag("manual_ready", !cal.key.empty() && !cal.running);
+    std::string const manualSection = vr::manual_calibration::Section(cal.key);
+    if (!path.empty() && !cal.key.empty()) {
+        ini.sections[manualSection] = ReadSection(path, Wide(manualSection).c_str());
+    }
+    for (auto const& f : vr::manual_calibration::kFields) {
+        v.numbers[f.menu] = cal.key.empty() ? 0.0f
+            : vr::manual_calibration::Bounded(ini.Num(manualSection.c_str(), f.ini, 0.0f), f.limit);
+    }
     flag("calibrated", cal.calibrated);
     std::string const controllers = ms::ControllersLabel(cal.device);
     v.texts["cal_status"] = cal.running      ? std::format("Calibrating now (step: {})", cal.step)
@@ -736,6 +745,15 @@ void Settings::ClearCullTenths() {
 }
 
 void Settings::Write(std::string const& key, menu::Values const& v, bool final) {
+    for (auto const& f : vr::manual_calibration::kFields) {
+        if (key != f.menu) continue;
+        auto const cal = calibration::GetSummary();
+        if (!cal.key.empty() && !cal.running) {
+            auto const section = vr::manual_calibration::Section(cal.key);
+            Put(section.c_str(), f.ini, std::format("{:.3f}", vr::manual_calibration::Bounded(v.Number(key), f.limit)), final);
+        }
+        return;
+    }
     auto onOff = [&](char const* k) { return std::string(v.Flag(k) ? "1" : "0"); };
     auto fixed = [&](float value, int decimals) { return std::format("{:.{}f}", value, decimals); };
     MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
@@ -1088,7 +1106,31 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
 
 void Settings::Command(std::string const& name, std::string const& argument, menu::Values& v) {
     log::Info("main menu: {}{}{}", name, argument.empty() ? "" : " ", argument);
-    if (name == "steamvr_smoothing") {
+    if (name == "manual_reset") {
+        auto const cal = calibration::GetSummary();
+        if (!cal.key.empty() && !cal.running) {
+            auto const section = vr::manual_calibration::Section(cal.key);
+            for (auto const& f : vr::manual_calibration::kFields) {
+                v.numbers[f.menu] = 0.0f;
+                Put(section.c_str(), f.ini, "0", true);
+            }
+        }
+    } else if (name == "manual_baseline") {
+        auto const cal = calibration::GetSummary();
+        if (!cal.key.empty() && !cal.running) {
+            auto const section = vr::manual_calibration::Section(cal.key);
+            std::size_t const first = v.Text("manual_hand") == "left" ? 1u : 7u;
+            for (std::size_t i = first; i < first + 6; ++i) {
+                auto const& f = vr::manual_calibration::kFields[i];
+                v.numbers[f.menu] = 0;
+                Put(section.c_str(), f.ini, "0", true);
+            }
+            calibration::InvalidateManualAdjustments();
+            v.texts["manual_live_note"] = "This hand's manual overrides are zero. Guided calibration and runtime poses remain in use.";
+        }
+    } else if (name == "manual_live") {
+        if (v.Flag("manual_ready")) after_ = After::LiveAdjust;
+    } else if (name == "steamvr_smoothing") {
         // Clicking a selected chip retries a failed request or restores a choice changed in SteamVR's dashboard.
         if ((argument == "steamvr" || argument == "off") &&
             Lower(colour::GetMenuState().runtime).find("steamvr") != std::string::npos) {

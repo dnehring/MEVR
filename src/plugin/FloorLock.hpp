@@ -8,6 +8,7 @@
 
 namespace mevr::host::floor_lock {
 void SetPawn(vr::floor_lock::PawnSample const* sample);
+void SetManualHeight(float meters); // Present thread; latched with each stereo pair
 void RefreshSettings(); // game thread, once a second
 bool Enabled();
 void Queue(vr::host_view::State const& view, vr::floor::State const& floor, bool ordinaryWorld);

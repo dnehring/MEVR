@@ -1009,6 +1009,8 @@ if (MEVR_BUILD_TESTS)
         tests/BodyScaleTests.cpp
         tests/BodySlotsSeatedTests.cpp
         tests/FloorLockTests.cpp
+        tests/ManualCalibrationTests.cpp
+        tests/CalibrationWeaponTests.cpp
         tests/CameraDiagnosticTests.cpp
         tests/LandmarkTests.cpp
         tests/ConversationWorldTests.cpp

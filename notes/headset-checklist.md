@@ -1,6 +1,37 @@
 <!-- SPDX-License-Identifier: MIT -->
 # What still needs testing in the headset
 
+- [ ] 2026-11-12 live controller overrides (research/25 section 14): under the collapsed Advanced calibration
+  group choose each hand in turn, enter Adjust live, and use only the opposite controller. Confirm the real hand
+  and held gun stay visible and update immediately for all six axes, with trigger fine adjustment and stick-click
+  reset. Verify menu pause temporarily releases and returns, no movement/firing/holstering/melee occurs, and floor
+  lock remains aligned seated and standing. Check Done persistence after restart versus Cancel rollback, untouched
+  other-hand/height/guided values, tracking loss with held input, profile/session changes, world-mode changes,
+  renderer failure and both-stick cancel. Confirm the panel sits clear of the selected hand in both eyes. Do not
+  treat the offline preview's stand-in background as an in-game screenshot.
+  Controller references: orange follows the selected raw grip, cyan the other; changing manual offsets moves
+  Shepard's hand relative to the reference without moving the reference. Rotate wrists to inspect the rounded
+  grip, thumb controls and forward arrow; the generic shell must not look like a required hand placement. Then
+  look close/away, lose tracking independently, and leave live mode: no stale marker or remaining marker layer.
+  Confirm stereo depth, readability without covering hands, frame cost, and the unavailable message on layer failure.
+  Use baseline: with nonzero offsets on both hands and height, reset each selected hand in turn. Only its six manual
+  values should zero immediately and remain zero after restart; height, other hand and guided measurements stay intact.
+  Compare guided versus uncalibrated runtime alignment on real controllers before proposing hardware pitch presets.
+
+- [ ] 2026-11-12 guided aiming visuals (research/25 section 13): sightless pistol pickup, stereo alignment in each
+  eye, steady capture and final dot; rendering failure must not capture an invisible pistol. Rifle pickup remains
+  two independent orbs: move each freely after grabbing, choose comfortable spacing and wrist angles, capture all
+  targets, then compare several in-game rifles. No generic stock/foregrip or sight forces a pose during capture.
+  Check seated and standing, release/re-grab, near-cheek orb suppression and redo/skip. Confirm no sights or aiming
+  dot during capture, and the final dot follows the saved personal pose.
+
+- [ ] 2026-11-12 manual calibration (research/25 section 12): seated, recenter comfortably, then try +/- 10 cm
+  height and confirm view/hands move together without changing physical crouch or measured body proportions.
+  Adjust each controller's position and pitch/yaw/roll independently, holstered, pistol, rifle and two-handed grip;
+  check aim/reticle, support grip, holsters and wrist UI. Turn/tilt the controllers to check local offset directions.
+  Reset offsets, restart, change controller profile, and rerun guided calibration: measured results stay separate,
+  manual values persist per setup, reset leaves no residual shift. Check standing and seated with no floor tracking.
+
 - [ ] 2026-11-09 Shepard's saved standing height (galaxy-labels; research/58 section 8): load a save, stand holstered a
   second (log `measured Shepard's standing eye ... saved`), then load again: the log names the saved value and Shepard is
   your size from the first frame, no slow resize. Swap armour (a new mesh: measured once). Seated: the same without standing.

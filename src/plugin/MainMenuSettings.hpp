@@ -34,6 +34,7 @@ enum class After {
     GameStart,      // close, then the mod opens the game's pause menu (ShowMenuGui; HostServices v19, game/GameMenuRequest)
     GameBack,       // close, then the mod holsters a drawn weapon (SFXGameModeDefault.TryHolster, on foot)
     Calibrate,      // close, then start the guided calibration
+    LiveAdjust,     // compact live panel; selected hand stays visible
     Classic,        // close, then open Halcyon's menu
     Align,          // close, then arm the camera alignment (left trigger)
     Snapshot,       // close, then take a snapshot a second later

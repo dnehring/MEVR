@@ -2,6 +2,8 @@
 #pragma once
 
 #include "imgui.h"
+#include "core/vr/CalibrationWeapon.hpp"
+#include "core/vr/Controllers.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -129,6 +131,9 @@ struct BoardView {
 };
 // The board's canvas: kBoardSize square for vr::calibration::kBoardSize meters, the targets at kTargetX/Y.
 void DrawBoard(ImDrawList* dl, Fonts const& fonts, BoardView const& view);
+// Sightless 3D training weapon, projected independently for each eye into a transparent square canvas.
+void DrawWeapon(ImDrawList* dl, vr::calibration_weapon::Model const& model, XrPosef const& eye);
+void DrawControllerMarkers(ImDrawList* dl, vr::controllers::State const& raw, int selected, XrPosef const& eye);
 
 // Premultiplied sRGB RGBA8 (0xAABBGGRR), what the quads' SRGB swapchains take: an orb (`active`: the
 // orange one to grab; else the cyan one in the hand), the check dot.

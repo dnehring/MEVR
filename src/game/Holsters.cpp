@@ -827,7 +827,7 @@ void Tick(double deltaSeconds, Link const& link) {
         Inactive("no head-tracked world view (menu, flat screen or VR off)", link);
         return;
     }
-    if (!controllers.active || !right.gripValid) {
+    if (!controllers.active || !right.gripValid || body_calibration::Calibrating()) {
         Inactive("the right controller isn't tracked", link);
         return;
     }

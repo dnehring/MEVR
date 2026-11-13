@@ -3,6 +3,7 @@
 
 #include "core/vr/Controllers.hpp"
 #include "core/vr/GameMenuRequest.hpp"
+#include "core/vr/ManualCalibration.hpp"
 
 #include <Windows.h>
 #include <Xinput.h>
@@ -29,10 +30,14 @@ struct ID3D11DeviceContext;
 //
 // Closed, it costs nothing: no RmlUi update, no rendering, no swapchain, no layer; its textures stay allocated
 // after the first opening. Present thread unless noted.
+// Advanced calibration's live mode keeps the menu as input owner but publishes corrected poses without buttons,
+// unpauses the world for hand/weapon IK, and draws only a compact panel. Done commits, Cancel discards the draft.
 namespace mevr::host::main_menu {
 
 // ---- Any thread -----------------------------------------------------------------------------------------------
 bool IsOpen();
+// Live editing reserves input but keeps corrected hand poses and floor lock visible.
+bool LiveAdjusting();
 // HostServices v16: kMainMenuOpen, and kMainMenuPause when the player wants the game paused while it's open.
 std::uint32_t ModFlags();
 
@@ -43,6 +48,10 @@ void Toggle(char const* why);
 // After the controller sync (HalcyonBridge OnFrameBegun): the live controllers, before everything else is shown them
 // hidden while the menu is open.
 void NoteControllers(vr::controllers::State const& live);
+int LiveSelectedHand();
+void NoteLiveMarkers(bool submitted);
+// Present thread: draft replaces persisted offsets until Done/Cancel.
+vr::manual_calibration::Settings PreviewAdjustments(vr::manual_calibration::Settings const& saved);
 // HostServices v19 (any thread; the mod's tick): what the menu's Game menu or Holster button asked for, once (None:
 // nothing waiting). The mod calls the game's own function on the game thread (game/GameMenuRequest, research/28).
 vr::game_menu::Action TakeGameRequest();

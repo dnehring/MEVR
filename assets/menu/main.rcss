@@ -25,6 +25,26 @@ body {
 }
 
 /* ---- Top bar ------------------------------------------------------------------------------------------- */
+.live-panel { display: none; }
+body.live { decorator: none; }
+body.live .top, body.live .main, body.live .hints, body.live #pointer { display: none; }
+body.live .live-panel {
+	display: block; position: absolute; left: 20dp; top: 310dp; width: 650dp;
+	padding: 24dp; box-sizing: border-box;
+	decorator: chamfer(16dp #142332 #08121D rgba(124,203,242,75%) rgba(124,203,242,30%) 1dp);
+}
+body.live .live-panel.target-left { left: 770dp; }
+.live-title { font-family: Rajdhani; font-weight: 700; font-size: 36dp; color: #7CCBF2; }
+.live-status { font-size: 22dp; margin-top: 6dp; min-height: 60dp; }
+.live-axis { font-size: 28dp; margin-top: 10dp; }
+.live-value { font-family: Rajdhani; font-weight: 700; font-size: 48dp; color: #FF8F3F; }
+.live-marker-key { font-size: 18dp; line-height: 25dp; margin-top: 8dp; color: #AEB4B9; }
+.marker-selected { color: #FF8F3F; }
+.marker-other { color: #7CCBF2; }
+.live-help { font-size: 22dp; line-height: 30dp; margin-top: 8dp; }
+.live-controls { font-size: 24dp; margin-top: 18dp; color: #7CCBF2; }
+.live-note { font-size: 18dp; line-height: 25dp; margin-top: 12dp; color: #AEB4B9; }
+
 .top {
 	height: 96dp;
 	flex: 0 0 auto;

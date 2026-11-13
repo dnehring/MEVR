@@ -48,6 +48,7 @@ enum class Format {
     SignedMeters2,   // "+0.12 m"
     Signed0,         // "+40" (a nudge from the standard place, 0 reads plain)
     Centimeters1,    // "6.8 cm"
+    SignedCentimeters1, // "+0.5 cm", input in meters
     SignedDecibels,  // "+3 dB" (0 reads plain)
 };
 std::string FormatValue(Format format, float value);

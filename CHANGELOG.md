@@ -33,6 +33,22 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   the toxin cure) were pushed off the HUD, out of sight. They now show where the game puts them. Headset verification
   pending.
 
+- **Live controller adjustment.** Under Body & calibration > Advanced calibration, select a hand and choose
+  Adjust live. Use the opposite controller's stick to fine-tune its position and angles while viewing the hand
+  or held weapon. Trigger gives fine control; Done applies the offsets and Cancel restores the starting values.
+  Rounded, translucent orange and cyan controller guides show raw grip positions and forward directions beside
+  the corrected hands. Use baseline clears the selected hand's manual offsets to return to guided/runtime alignment.
+  Physical-headset verification pending.
+
+- **Clearer guided aiming calibration.** A sightless training pistol provides a visible one-hand reference.
+  Rifle calibration keeps the free-moving hand orbs, with instructions to choose your own hand spacing and wrist
+  angles so weapons follow your natural pose. The aiming dot appears in the final check. Headset verification pending.
+
+- **Manual calibration.** Body & calibration now offers height offset and separate left/right controller
+  position, pitch, yaw and roll adjustments. They save alongside the automatic calibration for each headset/controller
+  setup; Reset offsets returns them to zero without erasing the measured calibration. These controls are hidden
+  under Advanced calibration until you choose Show. Headset verification pending.
+
 - **3D audio for headphones.** Every sound the game places in the world (gunfire, footsteps, explosions, voices near
   you) now reaches your ears as it would from where it is, including from behind, instead of only being panned left and
   right. It comes from OpenAL Soft, which MEVR Setup installs in the mod's own folder; no game file is changed.
