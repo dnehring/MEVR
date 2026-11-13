@@ -615,10 +615,14 @@ switching frameworks.
   where the eyes are drawn, not the held place** (research/69 "Heads at the drawn eyes", the audit of 2026-11-12): `gC.hold` is
   the game's camera and the host draws the eyes 0.43 m behind and 0.18 m below it (its view offset), so `PlayerEyes()` (the tick
   frame's `headWorld`) is what the eyes stand-in, the re-face rule, the circle and the squad's formation take as the player, an
-  opening's place from Shepard's head bone subtracts the offset (`FlatViewOffset()`; the eyes had stood 0.34-0.37 m behind his
-  head in every staged scene's cut), and the right stick's turn (`TurnBy`) goes round the eyes (it swung them 0.85 m for a half
-  turn); a facing the stage sets at once toward Shepard's body while the eyes stand in for him is turned to the player's eyes
-  (`StageFacingForPlayer`, the summary's `facingsToEyes`: Girard's body faced the hidden mark); the records carry
+  opening's place from Shepard's head bone subtracts the offset (`FlatViewOffset()`, the last first-person view's offset,
+  `gViewOffsetSeen`: the frame on screen as a scene opens can be another's; the eyes then checked once 0.3-1.3 s in,
+  `gC.eyesMeant`; they had stood 0.34-0.75 m behind his head in staged scenes' cuts), and the right stick's turn (`TurnBy`)
+  goes round the eyes (it swung them 0.85 m for a half turn); a facing the stage sets at once toward Shepard's body while the
+  eyes stand in for him is turned to the player's eyes (`StageFacingForPlayer`, the summary's `facingsToEyes`: Girard's body
+  faced the hidden mark); in a moment the stand-in runs over everyone shown within 20 m (`EyesPeople`, `NearPawns`; nobody in
+  the six moments run had a look-at target: their faces are the matinee's) and the records follow it (`moment-begin`,
+  `moment` every 1.5 s, `moment-end`; `mevr convo eyes on|off` for an A/B); the records carry
   `player.eyes`, `bodyFromEyesM`, and `conversation-stance.py --audit` tabulates looks at the player against looks at his body;
   `conversation-from-save.ps1 -Lines N` (a stance per line), `-TurnAt N` (`mevr convo turn <deg>`); **a staged scene's
   new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a
@@ -1428,6 +1432,11 @@ switching frameworks.
 Use it to check VR changes yourself instead of asking the user what they see
 (`src/plugin/TestLoop.hpp`; host side, so changes need a redeploy). Everything lives in
 `%LOCALAPPDATA%\MEVR`; the log lines start with `test loop:`.
+- **An unattended run in the game: `tools/fake-headset-session.ps1`** (skill `fake-headset-run`): deploys, backs up the saves and
+  inis, fake headset on, launches through Steam, waits for a player, dot-sources your run script, and always puts everything
+  back (saves the run made moved aside, never deleted); `%LOCALAPPDATA%\MEVR\sessions\<stamp>-<tag>`. Land a worktree's commit
+  with `python tools/land-on-main.py <main> <commit>` (compare-and-swap; another session's edits in the main checkout merged
+  three-way). First-person scenes are judged from above with the skill `first-person-scene-audit`.
 - **Repeatable cafeteria QA:** [tools/qa-cafeteria/README.md](tools/qa-cafeteria/README.md) documents the checked
   CIC-to-mess-table walk, High/Current workload, clean turn capture and backup/restore runner. Use `run.ps1 -Plan`
   first, coordinate exclusive native-session ownership, and supply the reviewed ASI hash. Sources generate their

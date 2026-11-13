@@ -431,7 +431,7 @@ def print_audit(groups):
     print("| Scene | Opening | Shepard's head from your eyes (m) | Looks meant for you | Face at you | Face at his body | Face elsewhere "
           "| Face off your eyes (median, deg) | Aim off your eyes (median, deg) | Aims at his body | Worst face |")
     print('|---|---|---|---|---|---|---|---|---|---|---|')
-    for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
+    for (day, number, name, _part), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
         stances.sort(key=lambda s: s['_file'])
         first = stances[0]
         gaps = [g for g in (body_gap(s) for s in stances) if g is not None]
@@ -521,11 +521,25 @@ def main(argv):
             print(f'skipped {f}: {e}')
             continue
         st['_file'] = f
-        groups.setdefault((os.path.basename(f)[:10], st['number'], st['conversation']), []).append(st)
+        # A moment's first record may come before its matinee is named: moments go by their number alone.
+        name = 'moment' if st.get('opening') == 'moment' else st['conversation']
+        groups.setdefault((os.path.basename(f)[:10], st['number'], name), []).append(st)
+    # The numbers start again with each game (a moment's at 900001): a group's records more than two minutes apart are two runs.
+    split = {}
+    for key, stances in groups.items():
+        stances.sort(key=lambda s: s['_file'])
+        part, last = 0, None
+        for st in stances:
+            stamp = datetime.datetime.strptime(os.path.basename(st['_file'])[:23], '%Y-%m-%d_%H-%M-%S-%f')
+            if last is not None and (stamp - last).total_seconds() > 120:
+                part += 1
+            last = stamp
+            split.setdefault(key + (part,), []).append(st)
+    groups = {(k[0], k[1], stances[-1]['conversation'], k[3]): stances for k, stances in split.items()}
     if audit:
         return print_audit(groups)
     if heads:
-        for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
+        for (day, number, name, _part), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
             stances.sort(key=lambda s: s['_file'])
             first = stances[0]
             gaps = [g for g in (body_gap(s) for s in stances) if g is not None]
@@ -546,7 +560,7 @@ def main(argv):
                       f"{' (his head %.2f m from your eyes)' % gap if gap is not None else ''}: " + '; '.join(cells))
         return 0
     os.makedirs(out, exist_ok=True)
-    for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
+    for (day, number, name, _part), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
         stances.sort(key=lambda s: (s['_file']))
         if len(stances) > 40:
             # A long scene: the start, every dip and walk, and an even spread of the rest, 40 panels at most.

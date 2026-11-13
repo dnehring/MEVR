@@ -159,6 +159,7 @@ struct Moment {
     int teleports = 0;
     int blackScreens = 0;
     int number = 0;
+    std::string matinee;     // the track instance's path (its SeqAct_Interp: which moment)
 };
 Moment gM;
 unsigned gCallsSeen = 0;
@@ -361,6 +362,7 @@ void Tick() {
             // of research/69's 21 moments this is (item 11).
             auto* const inst = static_cast<ue3::Object*>(const_cast<void*>(gTrackInstSeen.load(std::memory_order_relaxed)));
             std::string const matinee = inst != nullptr && ue3::runtime::IsAlive(inst) ? ue3::runtime::FullName(inst) : std::string("?");
+            gM.matinee = matinee;
             log::Info("moment: a matinee's move track takes Shepard from {} (game mode {}, his pawn {}): {}", F(gM.from), mode ? static_cast<int>(*mode) : -1,
                 gActorHidden.ReadBool(pawn).value_or(false) ? "hidden" : "shown", matinee);
         }
@@ -412,6 +414,18 @@ bool PlayerTrackPlace(float place[3], std::uint64_t* ms) {
 
 std::uint64_t LastPlayerTrackMs() {
     return gTrackMs.load(std::memory_order_relaxed);
+}
+
+std::string PlayerTrackMatinee() {
+    // "<sequence>.SeqAct_Interp_N" out of the track instance's full name; the whole name if it has no SeqAct_Interp.
+    std::string const& n = gM.matinee;
+    std::size_t const at = n.find("SeqAct_Interp");
+    if (n.empty() || n == "?" || at == std::string::npos) {
+        return n == "?" ? std::string() : n;
+    }
+    std::size_t const end = n.find('.', at);
+    std::size_t const before = at >= 2 ? n.rfind('.', at - 2) : std::string::npos;
+    return n.substr(before == std::string::npos ? 0 : before + 1, (end == std::string::npos ? n.size() : end) - (before == std::string::npos ? 0 : before + 1));
 }
 
 std::string Command(std::string const&) {

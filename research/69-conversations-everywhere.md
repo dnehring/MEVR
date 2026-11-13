@@ -351,7 +351,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     behind and 0.18 m below the held place, the game's camera); fixed: an opening that cuts to Shepard's mark put the eyes
     0.34-0.37 m behind his head (every staged scene: the Council, Kirrahe's camp at Virmire's start), the right stick's turn
     swung them up to 0.85 m off, the eyes stand-in, the re-face rule, the circle and the squad's formation took the held place;
-    and in a walk-in by the view the stage's facing toward Shepard's hidden body is turned to the player's eyes.
+    and in a walk-in by the view the stage's facing toward Shepard's hidden body is turned to the player's eyes. The moments
+    (scripted walks) audited too, their records and the stand-in extended to them: nobody in them looks at Shepard through the
+    look-at system; an opening that read the frame from before the world view (Benezia after phase 2) fixed with the last
+    first-person view's offset and a check of the eyes after the opening.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3305,10 +3308,40 @@ degrees away (54 in every earlier run: authored). Open: Garrus's look at Shepard
 1.8 s of his formation walk and just after, the records show it on Shepard's body (15-21 degrees off it, 94-100 off the player),
 and the log has no refusal: something of the walk sets it between our ticks [verify].
 
-Not covered by this audit: the moments themselves (a scripted walk's view held away from the pawn the track walks: no records
-in a moment); scenes on the 3D screen (no first-person eyes); flowed scenes on foot (Shepard's body is the player's there); the
-arrival half of Virmire's start and Wrex on Virmire's beach (did not start from these saves). The face axis is the head bone's
-first axis, no face for a hanar (Opold: 90 degrees throughout, the game's aim on the player).
+Not covered by this audit: scenes on the 3D screen (no first-person eyes); flowed scenes on foot (Shepard's body is the player's
+there); the arrival half of Virmire's start and Wrex on Virmire's beach (did not start from these saves). The face axis is the
+head bone's first axis, no face for a hanar (Opold: 90 degrees throughout, the game's aim on the player).
+
+**The moments (20:00-20:15; the owner: "Yes please", extend the records to the scripted walks).** A moment tracks nobody, so its
+records take everyone shown within 20 m and Shepard's pawn where the track has him (`moment-begin`, `moment` every 1.5 s,
+`moment-end`; named by the matinee, `moment_<sequence>_SeqAct_Interp_N`, from `authored_moment::PlayerTrackMatinee`), and the eyes
+stand-in runs in a moment too (`StepEyes` over the people near: `NearPawns`, `EyesPeople`). Run from the John02 saves twice, the
+stand-in off (`mevr convo eyes off`, the runner's `-Before`) and on:
+
+| Moment | Shepard's head from the eyes | Who is near, and their looks |
+|---|---|---|
+| Anderson's walk to the Council (80, `SarenCouncil`) | 1.8 m at the start, 6.9 m at the end (the player stood still) | Anderson: no look-at target at all; his face follows the walk (11 degrees off the hidden pawn at the start, then up the stairs) |
+| Becoming a Spectre (81, `PlayerBecomesSpectre`) | 2.0 to 17.5 m | Anderson and Udina: no look-at targets (one with an empty target at rank 99999 at the end); faces up the stairs |
+| Chellik bumps into Shepard (90, on foot) | 2.4-3.3 m | nine bystanders, none with a look-at target |
+| Liara's intro (92, `CD_LAV70_06_Liara_Intro`) | 3.6-6.5 m | Liara: no look-at target; her face (the matinee's animation) 7-21 degrees off the player, 1-14 off the hidden pawn |
+| The geth intro on Feros (93, `GethIntro`) | 0.09-0.16 m (another composition: the view goes with him under a dip) | one, no look-at target |
+| Benezia, phase 2 (91) | - | started her conversation, not a moment |
+
+**In a moment nobody looks at Shepard through the look-at system**: the people's `m_oLookAtData` has no target (the conversation
+gives them theirs); where a face is turned toward the hidden pawn, it is the matinee's own animation (Liara), and the player and
+the pawn are a few degrees apart from her. So there is no look to move; the stand-in in a moment is a guard for one that sets a
+look at Shepard (none of these six). What a player standing still sees is the scene walking away from him with Shepard's hidden
+pawn (Anderson up the Council's stairs, 7 to 17 m): by the owner's rule nothing walks the player; he walks along with the stick.
+
+The same run found one more cut that put the eyes behind Shepard's head: **Benezia's conversation after phase 2** (a scene that
+starts as its save loads), 0.50-0.75 m all along. The opening had placed the eyes with the host's view offset of the frame on
+screen, which was still the frame from before the world view: 0.39 m forward (0.44 m back from the next frames on). Now the
+offset is the one of the last first-person view (on foot or held: `gViewOffsetSeen`, `NoteViewOffset`), and for 0.3-1.3 s after
+an opening at Shepard's mark the drawn eyes are checked against the place meant for them: more than 15 cm off, the held place
+follows them, once, under a dip (`gC.eyesMeant`; log `the opening's eyes were drawn N m from Shepard's mark`). Run again
+(20:14-20:19, `tools/fake-headset-session.ps1`, Benezia's scene first after the launch): his head 0.06 m from the eyes after the
+dip (the cached offset right, no correction needed), then 0.29-0.32 m as his own pose leans forward (Benezia's face 8-16 degrees
+off both); the council's hearing 0.10-0.11 m, Virmire 0.09-0.10 m.
 
 ### The staged scenes (2026-11-12; for the owner's review)
 
@@ -3755,3 +3788,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-12 17:45, **item 30, heads that look past the player** (the owner's question): measured with head directions in the stances (Girard looked at Shepard's body left on his mark), fixed with a look-at target at the player's eyes (`worldLookEyes`); the squad saves from the owner's Citadel save (`%LOCALAPPDATA%\MEVR\squad-saves`).
 - 2026-11-12 18:20, **item 31, Virmire's start from above**: the stances follow a whole scene; a staged scene's moves under the script's black screen are taken at once; Shepard is walked to his new mark by a simulated left stick (the owner), never moved.
 - 2026-11-12 19:35, **item 32, heads at the drawn eyes** (the owner: an audit of every kind of conversation for heads facing Shepard's hidden body): the player is where the host draws the eyes, 0.43 m behind the held place; staged openings put the eyes 0.34-0.37 m behind his head (Virmire, the Council), the right stick's turn swung them 0.85 m, the eyes stand-in, re-face rule, circle and formation took the held place, and a stage's facing at the hidden body in a walk-in by the view: all fixed and run again on the fake headset (`--audit`).
+- 2026-11-12 20:30, **item 32, the moments audited**: stance records and the eyes stand-in in scripted walks (nobody there looks at Shepard through the look-at system: the faces are the matinees'); Benezia's cut after phase 2 placed the eyes with a stale view offset (0.74 m behind his head): the last first-person view's offset and a check after the opening; `tools/fake-headset-session.ps1`, `tools/land-on-main.py` and the skills `fake-headset-run`, `first-person-scene-audit` (the owner: author skills that make this process more efficient).

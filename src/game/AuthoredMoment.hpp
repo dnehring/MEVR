@@ -21,6 +21,8 @@ bool TrackMoves(void const* actor, std::uint64_t withinMs = 300);
 bool PlayerTrackPlace(float place[3], std::uint64_t* ms);
 // When a move track last moved (or would have moved) the player's pawn, in GetTickCount64 milliseconds; 0 never.
 std::uint64_t LastPlayerTrackMs();
+// The matinee of the last moment that moved the player's pawn: "<sequence>.SeqAct_Interp_N" (empty if none).
+std::string PlayerTrackMatinee();
 // `mevr moment`: what is being watched and the last moment's numbers.
 std::string Command(std::string const& rest);
 void LogStats();
