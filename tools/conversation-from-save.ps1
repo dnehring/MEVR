@@ -24,7 +24,14 @@
 # -Probe 'seconds:console line': the line run that many seconds after the scene is fired and its output printed (the runner
 # owns console.request, so a probe from another script would race it).
 # -Replay: a recording replayed in a loop with its
-# inputs from the moment the scene is fired until it is over (a real stick and buttons: tools/make-walk-recording.py). -All: every scene of the list from its numbered
+# inputs from the moment the scene is fired until it is over (a real stick and buttons: tools/make-walk-recording.py).
+# The audit's own (tools/conversation-audit.ps1; research/69 "Broken runs the audit must catch"): -Key <scene> names the scene in
+# its snapshots and report; -SnapshotEvery N asks for an eye snapshot every N seconds and 4 s into each conversation, without
+# waiting (tagged a-<key>-<seconds>: tools/audit-report.py's contact sheet); -Expect 'seconds:console line=>regex' runs the line
+# then and says whether its output matches (a scene's own expectation: the council in the chamber during the walk); -After runs
+# a console line once the scene is over (a broken run's switch put back); -Report <file> appends the scene's record as one JSON
+# line (expectations, the live audit's rules and totals, the snapshots asked, the hands replayed: -HandsPlan; a broken run's
+# -MustFind rules). -All: every scene of the list from its numbered
 # save (the saves `conversation-sweep.py saves` wrote), each one's action from the plans (`conversation-sweep.py actions`).
 #
 # The game must be running with a career loaded (any). The save's bytes go over that career's own quicksave (the game
@@ -55,10 +62,19 @@ param(
     [int[]]$Only = @(),
     [switch]$Stances,
     [string]$Chunk = '',
-    [string]$SaveDir = ''
+    [string]$SaveDir = '',
+    [string]$Key = '',
+    [int]$SnapshotEvery = 0,
+    [string[]]$Expect = @(),
+    [string]$After = '',
+    [string]$Report = '',
+    [string]$HandsPlan = '',
+    [string[]]$MustFind = @(),
+    [string]$Breaks = ''
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
+. (Join-Path $tools 'common.ps1')
 $saveRoot = Join-Path $env:USERPROFILE 'Documents\BioWare\Mass Effect Legendary Edition\Save\ME1'
 function Console([string]$line) { (& (Join-Path $tools 'console.ps1') $line) -join "`n" }
 function Say([string]$text) { Write-Output ("{0} {1}" -f (Get-Date -Format HH:mm:ss), $text) }
@@ -241,6 +257,19 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     if ($Stances) { Console 'mevr convo stances on' | Out-Null }
 
     $shots = @($Snapshots | Sort-Object)
+    # The audit's snapshots (-SnapshotEvery) and expectations (-Expect), asked from the loop below.
+    $shotKey = ($(if ($Key) { $Key } else { $title }) -replace '[^A-Za-z0-9]+', '')
+    $nextShot = $(if ($SnapshotEvery -gt 0) { [double]$SnapshotEvery / 2 } else { [double]::MaxValue })
+    $shotsAsked = @(); $convoShots = @{}
+    $expects = @($Expect | Where-Object { $_ } | ForEach-Object {
+        $i = $_.IndexOf(':'); $rest = $_.Substring($i + 1); $j = $rest.IndexOf('=>')
+        [pscustomobject]@{ At = [double]$_.Substring(0, $i); Line = $rest.Substring(0, $j).Trim(); Want = $rest.Substring($j + 2).Trim() } } | Sort-Object At)
+    $expectResults = @()
+    function Ask-Snapshot([double]$at, [string]$why) {
+        $tag = 'a-{0}-{1:000}' -f $shotKey, [int]$at
+        Write-MevrRequest 'snapshot.request' "count=1 interval=1 delay=0 tag=$tag" | Out-Null
+        $script:shotsAsked += [pscustomobject]@{ tag = $tag; at = [math]::Round($at, 1); why = $why }
+    }
     $probes = @($Probe | ForEach-Object { $i = $_.IndexOf(':'); [pscustomobject]@{ At = [double]$_.Substring(0, $i); Line = $_.Substring($i + 1) } } | Sort-Object At)
     $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false; $judged = @{}; $turnStep = 0; $linesSeen = 0
     while (((Get-Date) - $started).TotalSeconds -lt $Seconds) {
@@ -251,6 +280,15 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             (Console $probes[0].Line) -split "`n" | ForEach-Object { Write-Output "    $_" }
             $probes = @($probes | Select-Object -Skip 1)
         }
+        while ($expects.Count -gt 0 -and $elapsed -ge $expects[0].At) {
+            $out = Console $expects[0].Line
+            $met = $out -match $expects[0].Want
+            Say ("expect at {0:0.0} s: {1}: {2} => {3}" -f $elapsed, $(if ($met) { 'met' } else { 'FAILED' }), $expects[0].Line, $expects[0].Want)
+            if (-not $met) { $out -split "`n" | Select-Object -First 16 | ForEach-Object { Write-Output "    $_" } }
+            $expectResults += [pscustomobject]@{ at = [math]::Round($elapsed, 1); line = $expects[0].Line; want = $expects[0].Want; met = [bool]$met }
+            $expects = @($expects | Select-Object -Skip 1)
+        }
+        if ($elapsed -ge $nextShot) { Ask-Snapshot $elapsed 'every'; $nextShot += $SnapshotEvery }
         if ($shots.Count -gt 0 -and $elapsed -ge $shots[0]) {
             & (Join-Path $tools 'snapshot.ps1') -Tag ("save-{0:000}" -f [int]$shots[0]) *> $null
             Say ("snapshot at {0:0} s" -f $elapsed)
@@ -273,6 +311,10 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             $key = "$($Matches[1])/$($Matches[4])"
             $wheelUp = $Matches[5] -eq 'up'
             $number = $Matches[1]; $convName = $Matches[2]; $entry = $Matches[4]
+            if ($SnapshotEvery -gt 0 -and -not $convoShots.ContainsKey($number) -and ((Get-Date) - $convoSince).TotalSeconds -ge 4) {
+                $convoShots[$number] = $true
+                Ask-Snapshot $elapsed 'a conversation 4 s in'
+            }
             if ($Stances -and $Lines -gt 0 -and $linesSeen -lt $Lines -and $key -ne $lastKey -and -not $wheelUp -and $entry -ne '-1') {
                 $linesSeen++
                 Console "mevr convo stance line-$entry" | Out-Null   # whom the heads turn to on this line
@@ -319,6 +361,25 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
         } else { $convoSince = $null }
     }
     if ($Replay) { & (Join-Path $tools 'replay.ps1') -Stop *> $null }
+    if ($After) { Console $After | Out-Null }
+    foreach ($e in $expects) { $expectResults += [pscustomobject]@{ at = $null; line = $e.Line; want = $e.Want; met = $null } }
+    if ($Report) {
+        # The scene's record for tools/audit-report.py: what was measured, and what was not.
+        $logLines = @(Log-Since $started)
+        $tripped = @($logLines | ForEach-Object { if ($_ -match 'convo: audit: ([a-z-]+): (.*)$') { [pscustomobject]@{ rule = $Matches[1]; detail = $Matches[2].Trim() } } })
+        $summaries = @($logLines | ForEach-Object {
+            if ($_ -match 'convo: summary (\{.*\})\s*$') {
+                try { $j = $Matches[1] | ConvertFrom-Json; [pscustomobject]@{ name = $j.name; seconds = $j.seconds; world = $j.world; opening = $j.opening; audit = $j.audit } } catch { }
+            } })
+        $record = [ordered]@{
+            key = $Key; title = $title; started = $started.ToString('yyyy-MM-ddTHH:mm:ss'); ended = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+            ok = $ok; hands = $HandsPlan; before = $Before; breaks = $Breaks; mustFind = @($MustFind | Where-Object { $_ })
+            snapshots = $shotsAsked; expectations = $expectResults; tripped = $tripped; summaries = $summaries
+            stickLatched = [bool]($logLines | Where-Object { $_ -match 'the stick is still out' })
+            moments = @($logLines | Where-Object { $_ -match 'moment: a matinee.s move track takes Shepard' }).Count
+        }
+        ($record | ConvertTo-Json -Depth 8 -Compress) | Add-Content -LiteralPath $Report -Encoding UTF8
+    }
     & python -I (Join-Path $tools 'conversation-session.py') --since $began | Select-Object -Skip 1
     if ($Stances) {
         Start-Sleep -Seconds 1   # the end's stance

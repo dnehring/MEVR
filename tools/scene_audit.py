@@ -19,12 +19,14 @@ TOO_CLOSE_M = 0.5      # a person's centre this near the eyes
 SQUAD_BEHIND_DEG = 150.0
 WALK_PAUSES = 4        # a scripted walk that paused this often: the player's pace and the walk's do not match
 WALK_LEFT_M = 5.0      # a walk with someone beside Shepard this far from the player and not paused: the pause did not hold
+HANDS_OFF_M = 0.3      # a drawn wrist this far from its controller's grip (player.hands, arm_ik::MeasureHands): the body is not
+                       # where the player is (research/69 "Seeing the body in the audit")
 
 # Never excused by a baseline: Shepard's body away from the player's eyes. The council hearing's 0.70 m "known opening
 # transient" went into the first baseline (2026-11-12), and in the owner's headset session the same opening left the body up to
 # 5.7 m away for 225 of the hearing's 227 seconds (2026-11-13, research/69 "The body that stayed at the mark"): a baseline
 # compares a run with the last one, it is no judgement of what the player sees.
-ABSOLUTE = ('eyes-off-body',)
+ABSOLUTE = ('eyes-off-body', 'hands-off-controllers')
 
 RULES = {
     'look-at-body': (3, "a look meant for the player lands on Shepard's hidden body"),
@@ -35,7 +37,18 @@ RULES = {
     'squad-behind': (1, 'a squadmate stands right behind the player'),
     'walk-pauses': (1, 'a scripted walk paused again and again'),
     'walk-left-behind': (3, 'a scripted walk with someone beside Shepard went on without the player'),
+    'hands-off-controllers': (3, "Shepard's drawn hands stand away from the player's controllers: his body is not where the player is"),
 }
+
+
+def hands_off(st):
+    """The drawn wrists' distance from the controllers, the larger of the two (metres), when both were measured (records since
+    2026-11-13: `player.hands`, arm_ik::MeasureHands); else None."""
+    hands = st['player'].get('hands') or {}
+    sides = [hands.get('left'), hands.get('right')]
+    if not all(isinstance(h, dict) and h.get('fromGripM') is not None for h in sides):
+        return None
+    return max(h['fromGripM'] for h in sides)
 
 
 def body_gap(st):
@@ -162,7 +175,12 @@ def findings(records):
     off_run = {}
     behind_run = {}
     gap_records = []
+    hands_run = 0
     for st, ok in zip(records, settled):
+        off = hands_off(st)
+        hands_run = hands_run + 1 if ok and off is not None and off >= HANDS_OFF_M else 0
+        if hands_run >= 2:
+            add('hands-off-controllers', st, 'Shepard', f"his drawn hands {off:.2f} m from the controllers, two records running")
         gap = body_gap(st)
         player = st['player']
         for p in st['people']:
@@ -231,6 +249,7 @@ def numbers(records):
         'gapP90M': round(gaps[int(0.9 * (len(gaps) - 1))], 2) if gaps else None,
         'looksMeant': meant, 'atYou': at_you, 'atBody': at_body,
         'faceOffMedianDeg': offs[len(offs) // 2] if offs else None,
+        'handsOffMaxM': max((o for st, ok in zip(records, settled) if ok and (o := hands_off(st)) is not None), default=None),
         'findings': sorted({f['rule'] for f in findings(records)}),
     }
 

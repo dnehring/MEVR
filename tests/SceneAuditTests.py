@@ -103,5 +103,24 @@ again = sa.compare(cut_base, {'test_dlg': sa.numbers(cut)})
 check(any('never excused' in w for _, w in again), f'eyes-off-body in the baseline still fails: {again}')
 check(any('whatever the baseline' in w for _, w in again), f'a 90th-percentile gap of 0.3 m or more still fails: {again}')
 
+# The drawn hands against the controllers (research/69 "Seeing the body in the audit", 2026-11-13): two settled records with a
+# wrist 0.3 m or more off are a finding, never excused by a baseline; one is not; records without the measure are not judged.
+def with_hands(st, left, right):
+    st['player']['hands'] = {'firstPerson': True, 'left': {'fromGripM': left, 'inView': True},
+                             'right': {'fromGripM': right, 'inView': True}}
+    return st
+
+
+left_behind = [with_hands(record(t, 'moment', 0.0, [], opening='moment'), 0.07, 3.85) for t in (0.0, 1.5, 3.0, 4.5)]
+check('hands-off-controllers' in rules(left_behind), 'a body left behind (its hands 3.85 m off) is hands-off-controllers')
+check('hands-off-controllers' not in rules(left_behind[:2]), 'one settled record off is not enough (the first is before the scene settled)')
+held = [with_hands(record(t, 'moment', 0.0, [], opening='moment'), 0.07, 0.08) for t in (0.0, 1.5, 3.0, 4.5)]
+check('hands-off-controllers' not in rules(held), 'hands on the controllers are no finding')
+check('hands-off-controllers' not in rules([record(t, 'moment', 0.0, [], opening='moment') for t in (0.0, 1.5, 3.0, 4.5)]),
+      'records without the measure are not judged')
+lb_base = {'test_dlg': sa.numbers(left_behind)}
+check(any('hands-off-controllers again' in w for _, w in sa.compare(lb_base, {'test_dlg': sa.numbers(left_behind)})),
+      'hands-off-controllers in the baseline still fails')
+
 print(f"scene audit tests: {'ok' if not failures else f'{len(failures)} FAILED'}")
 sys.exit(1 if failures else 0)

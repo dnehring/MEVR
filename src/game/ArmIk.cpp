@@ -1454,6 +1454,56 @@ std::optional<ik::Vec3> AnimatedHeadComponent() {
     return gLastBodyScale.Active() ? ik::body_scale::Apply(gLastBodyScale, *animated) : *animated;
 }
 
+std::optional<HandsPlaced> MeasureHands() {
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    auto const frame = view_anchor::Current();
+    auto const body = PlayerBody();
+    if (!controllers.active || !frame || !body) {
+        return std::nullopt;
+    }
+    SkeletonInfo const* const info = Skeleton(body->mesh);
+    if (info == nullptr || static_cast<int>(engine::skeleton::SpaceBases(body->mesh).size()) != info->boneCount) {
+        return std::nullopt;
+    }
+    XrPosef const& head = frame->head;
+    ik::Quat const toHead = ik::Conjugate({head.orientation.x, head.orientation.y, head.orientation.z, head.orientation.w});
+    HandsPlaced out;
+    for (int side : {kLeft, kRight}) {
+        vr::controllers::Hand const& tracked = side == kLeft ? controllers.left : controllers.right;
+        auto const& chain = info->arms[side];
+        if (!tracked.gripValid || !chain || chain->hand < 0) {
+            continue;
+        }
+        auto const world = engine::skeleton::BoneLocation(body->mesh, chain->hand, engine::skeleton::Space::World);
+        if (!world) {
+            continue;
+        }
+        XrVector3f const wrist = engine::ToTracking(*frame, *world);
+        XrVector3f const& grip = tracked.grip.position;
+        out.valid[side] = true;
+        out.fromGripM[side] = std::hypot(wrist.x - grip.x, wrist.y - grip.y, wrist.z - grip.z);
+        // In the head's own axes (OpenXR: -Z ahead, +X right, +Y up): inside 45 degrees each way.
+        ik::Vec3 const v = ik::Rotate(toHead, {wrist.x - head.position.x, wrist.y - head.position.y, wrist.z - head.position.z});
+        out.inView[side] = v.z < -0.05 && std::abs(v.x) <= -v.z && std::abs(v.y) <= -v.z;
+    }
+    if (!out.valid[kLeft] && !out.valid[kRight]) {
+        return std::nullopt;
+    }
+    return out;
+}
+
+std::string HandsJson() {
+    auto const h = MeasureHands();
+    if (!h) {
+        return "null";
+    }
+    auto side = [&](int s) {
+        return h->valid[s] ? std::format("{{\"fromGripM\": {:.2f}, \"inView\": {}}}", h->fromGripM[s], h->inView[s] ? "true" : "false")
+                           : std::string("null");
+    };
+    return std::format("{{\"firstPerson\": {}, \"left\": {}, \"right\": {}}}", FirstPerson() ? "true" : "false", side(kLeft), side(kRight));
+}
+
 bool Enabled() {
     return gEnabled;
 }

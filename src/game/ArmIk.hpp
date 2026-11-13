@@ -3,6 +3,7 @@
 
 #include "core/ik/Ik.hpp"
 
+#include <array>
 #include <optional>
 #include <string>
 
@@ -43,6 +44,21 @@ bool FirstPerson();
 // takes this one: his drawn head is where our body follower put it, under the player (research/69 "The body that stayed at
 // the mark", 2026-11-13).
 std::optional<ik::Vec3> AnimatedHeadComponent();
+// Where Shepard's drawn hands are against the player's controllers (research/69 "Seeing the body in the audit", 2026-11-13):
+// each drawn wrist (the last posed pose) taken into tracking space through the view's frame (view_anchor), its distance from
+// that controller's grip, and whether it lies inside the head's view (45 degrees up, down and to each side of its forward:
+// the fake headset's field). In first person the wrist sits 7 units behind the grip; a body left behind (arm IK's third
+// person, the council hearing's 3.85 m) puts it metres away. The audit's placement measure, independent of arm IK's own
+// verdict. Game thread.
+struct HandsPlaced {
+    std::array<bool, 2> valid{};        // left, right: a tracked controller and a drawn wrist read
+    std::array<double, 2> fromGripM{};  // the drawn wrist from its controller's grip, metres
+    std::array<bool, 2> inView{};       // the drawn wrist inside the head's view
+};
+// Nullopt without tracked controllers, a view frame or a posed player mesh.
+std::optional<HandsPlaced> MeasureHands();
+// The snapshot's "hands": MeasureHands as JSON, or null.
+std::string HandsJson();
 bool Toggle();
 void SetEnabled(bool on);
 bool Enabled();

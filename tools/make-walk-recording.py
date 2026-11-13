@@ -2,11 +2,13 @@
 """Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, see tools/mevrrec.py) of a player standing still in the
 room and walking Shepard with the left stick: forward, strafing right, backing up, strafing left, then standing, each for
 `segment` seconds, in a loop. The head looks ahead (or turned --yaw degrees in the room, as after turning in place) and
-can look down (--pitch) so the eye snapshots show the legs; both hands are held in front of the chest. For the legs
+can look down (--pitch) so the eye snapshots show the legs; both hands are held in front of the chest (--hands view: up in
+front of the eyes, inside the view, so every eye snapshot shows Shepard's drawn hands where the controllers are: the audit's
+check of the body's place, research/69 "Seeing the body in the audit"). For the legs
 keeping the run (research/29 "The legs keep the run"): replay it with its inputs on the fake headset,
 
     python tools/make-walk-recording.py out.mevrrec [segment] [hz] [--yaw DEG] [--pitch DEG] [--eye-height M] [--stick S] [--grip]
-        [--plan forward:14,stand:600]
+        [--plan forward:14,stand:600] [--hands chest|view]
     tools/replay.ps1 -Path out.mevrrec -Loop -Inputs
 
 segment: seconds per stick direction (default 3). --yaw: the head (and the hands) turned DEG degrees right in the room.
@@ -16,7 +18,8 @@ game's 0.70). --grip: the right grip held all the way (a gun drawn with `mevr we
 segments by name and seconds instead of the loop of five (forward, strafe right, back, strafe left, stand): `stand:600` is a
 player standing with tracked hands (an audit run's hands, tools/conversation-audit.ps1); `forward:14,stand:600` one who walks
 with a scripted walk and keeps the stick pushed through its cut (the council hearing, research/69 "The body that stayed at the
-mark")."""
+mark"). --hands: chest (default, 0.35 m under the eyes and 0.30 m ahead: below a 45-degree view) or view (0.20 m under
+the eyes and 0.40 m ahead, 0.15 m to each side: 27 degrees down, 21 to the side)."""
 import math
 import struct
 import sys
@@ -53,7 +56,11 @@ def main():
     eye_h = option("--eye-height", 0.0)
     stick = option("--stick", 0.9)
     grip = 1.0 if "--grip" in sys.argv else 0.0
-    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan")}
+    hands = sys.argv[sys.argv.index("--hands") + 1] if "--hands" in sys.argv else "chest"
+    if hands not in ("chest", "view"):
+        print("--hands chest|view")
+        return 2
+    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -73,8 +80,9 @@ def main():
         return (r * right[0] + f * ahead[0], eye_h + u, r * right[2] + f * ahead[2])
 
     eyes = [(*head, side * ipd / 2 * right[0], eye_h, side * ipd / 2 * right[2]) for side in (-1, 1)]
-    left_hand = (*hand_q, *at(-0.15, -0.35, 0.30))
-    right_hand = (*hand_q, *at(0.15, -0.35, 0.30))
+    down, ahead_m = (0.20, 0.40) if hands == "view" else (0.35, 0.30)
+    left_hand = (*hand_q, *at(-0.15, -down, ahead_m))
+    right_hand = (*hand_q, *at(0.15, -down, ahead_m))
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
     by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS}
     if "--plan" in sys.argv:
@@ -96,7 +104,7 @@ def main():
                                valid, 0.0, grip, 0.0, 0.0, *right_hand, *right_hand))
     starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
     plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))
-    print(f"{out}: {n} frames at {hz:g} Hz: {plan}; head yaw {yaw:g}, pitch {pitch:g}, stick {stick:g}"
+    print(f"{out}: {n} frames at {hz:g} Hz: {plan}; head yaw {yaw:g}, pitch {pitch:g}, stick {stick:g}, hands {hands}"
           f"{', right grip held' if grip else ''}")
     return 0
 

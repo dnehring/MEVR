@@ -979,6 +979,13 @@ struct Convo {
         double gapOverS = 0.0;       // ... time at BODY_AWAY (0.3 m) or more
         double sampledS = 0.0;       // the time sampled (what gapOverS is out of)
         double thirdPersonS = 0.0;   // arm IK driving with tracked controllers, but by Shepard's head, not in the view's frame
+        // Where the drawn hands are (arm_ik::MeasureHands; research/69 "Seeing the body in the audit"): what the body rules
+        // stand on. Without arm IK driving nothing of the body was measured (the fake headset without a recording's hands).
+        double armDrivenS = 0.0;     // arm IK driving the body
+        double handsSampledS = 0.0;  // ... with both drawn wrists and controllers read
+        double handsOffS = 0.0;      // ... a drawn wrist 0.3 m or more from its controller's grip
+        double handsOffMaxM = 0.0;
+        double handsInViewS = 0.0;   // ... both drawn wrists inside the head's view
         double lookAtBodyS = 0.0;    // time someone's look target was Shepard with his head half a metre or more away
         struct Face {                // faces of looks meant for the player, per person: their angle off the eyes
             double sum = 0.0;
@@ -2986,6 +2993,10 @@ std::vector<ue3::Object*> NearPawns(ik::Vec3 const& at, double units, std::size_
 }
 
 bool MomentHeld();
+// Broken runs the audit must catch (research/69 "Broken runs the audit must catch", tools/conversation-audit-set.json's
+// `canaries`): each brings a fixed bug back for the process, until switched on again or the mod reloads. Never set otherwise.
+bool gBodyAwayOldRule = false;  // `mevr convo bodyaway off`: the body follower only for a view held away (item 35's bug back)
+bool gShowEarlyOff = false;     // `mevr convo showearly off`: the council's chamber empty during the walk (item 36's bug back)
 std::optional<bool> gEyesOverride;  // `mevr convo eyes on|off`: the stand-in switched for an A/B (tests); unset: worldLookEyes
 
 // Whose looks the eyes stand-in takes: the conversation's people, else (a moment: the track walks Shepard's hidden pawn while
@@ -3234,10 +3245,32 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
     // world, arm IK places the body in the player's view; a second of it placing the body by Shepard's head instead (its third
     // person) is a finding. The council hearing spent 4.5 minutes so in the owner's session, which no unattended run could see:
     // the fake headset has no controllers (an audit run replays a recording's hands now).
-    if (arm_ik::Status().starts_with("driving") && !arm_ik::FirstPerson()) {
+    bool const driving = arm_ik::Status().starts_with("driving");
+    if (driving && !arm_ik::FirstPerson()) {
         a.thirdPersonS += dt;
         if (a.thirdPersonS >= 1.0) {
             trip("body-third-person", std::format("arm IK placed the body by Shepard's head, not in the player's view, for {:.1f} s", a.thirdPersonS));
+        }
+    }
+    // The body where the player can see it (research/69 "Seeing the body in the audit", 2026-11-13): each drawn wrist against
+    // its controller in the player's own frame. In first person it sits 7 units behind the grip; a body left at the mark puts
+    // it metres away whatever arm IK says of itself (its own verdict is the rule above).
+    if (driving) {
+        a.armDrivenS += dt;
+        if (auto const hands = arm_ik::MeasureHands(); hands && hands->valid[0] && hands->valid[1]) {
+            a.handsSampledS += dt;
+            double const off = std::max(hands->fromGripM[0], hands->fromGripM[1]);
+            a.handsOffMaxM = std::max(a.handsOffMaxM, off);
+            if (off >= 0.3) {
+                a.handsOffS += dt;
+                if (a.handsOffS >= 1.0) {
+                    trip("hands-off-controllers", std::format("Shepard's drawn hands {:.2f} and {:.2f} m from the controllers for {:.1f} s",
+                        hands->fromGripM[0], hands->fromGripM[1], a.handsOffS));
+                }
+            }
+            if (hands->inView[0] && hands->inView[1]) {
+                a.handsInViewS += dt;
+            }
         }
     }
     // The facing the scene gave the player: the held yaw without his own turns (the right stick's; a speaker behind a player who
@@ -5040,10 +5073,11 @@ void End(char const* why) {
     }
     // How long the body findings lasted (a rule's own line comes once, at its first second: the hearing's said 1.1 s of what
     // were 225 of 227, 2026-11-13).
-    if (gC.world && (gC.audit.gapOverS >= 2.0 || gC.audit.thirdPersonS >= 2.0)) {
+    if (gC.world && (gC.audit.gapOverS >= 2.0 || gC.audit.thirdPersonS >= 2.0 || gC.audit.handsOffS >= 2.0)) {
         log::Info("convo: audit totals: Shepard's head bone 0.3 m or more from the player's eyes for {:.1f} of {:.1f} s sampled (at most "
-                  "{:.2f} m); the body placed by his head, not in the player's view, for {:.1f} s",
-            gC.audit.gapOverS, gC.audit.sampledS, gC.audit.gapMaxM, gC.audit.thirdPersonS);
+                  "{:.2f} m); the body placed by his head, not in the player's view, for {:.1f} s; the drawn hands 0.3 m or more "
+                  "from the controllers for {:.1f} s (at most {:.2f} m)",
+            gC.audit.gapOverS, gC.audit.sampledS, gC.audit.gapMaxM, gC.audit.thirdPersonS, gC.audit.handsOffS, gC.audit.handsOffMaxM);
     }
     log::Info("convo: summary {{\"name\": \"{}\", \"why\": \"{}\", \"seconds\": {:.1f}, \"stage\": {}, \"actors\": {}, \"lines\": {}, "
               "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
@@ -5076,9 +5110,11 @@ void End(char const* why) {
             return std::format("{{\"gapMaxM\": {:.2f}, \"gapOverS\": {:.1f}, \"lookAtBodyS\": {:.1f}, \"faceOffMeanDeg\": {:.0f}, "
                                "\"faceOffMaxDeg\": {:.0f}, \"faceOver35\": {}, \"faceSamples\": {}, \"faceAxisUnknown\": {}, "
                                "\"speakerBehindS\": {:.1f}, \"closeMinM\": {:.2f}, \"sampledS\": {:.1f}, \"thirdPersonS\": {:.1f}, "
-                               "\"tripped\": \"{}\"}}",
+                               "\"armDrivenS\": {:.1f}, \"handsSampledS\": {:.1f}, \"handsOffS\": {:.1f}, \"handsOffMaxM\": {:.2f}, "
+                               "\"handsInViewS\": {:.1f}, \"tripped\": \"{}\"}}",
                 gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS, faces.n != 0 ? faces.sum / faces.n : 0.0, faces.maxDeg,
                 faces.over35, faces.n, unknown, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.sampledS, gC.audit.thirdPersonS,
+                gC.audit.armDrivenS, gC.audit.handsSampledS, gC.audit.handsOffS, gC.audit.handsOffMaxM, gC.audit.handsInViewS,
                 gC.audit.tripped);
         }()
                  : std::string("null"),
@@ -5515,7 +5551,7 @@ bool SetActorHidden(ue3::Object* actor, bool hide) {
 }
 
 void StepShownEarly() {
-    if (!gSettings.showEarly || (gEarly.checked && gEarly.entry == nullptr) || gEarly.peopleDone) {
+    if (!gSettings.showEarly || gShowEarlyOff || (gEarly.checked && gEarly.entry == nullptr) || gEarly.peopleDone) {
         return;
     }
     if (!gEarly.checked) {
@@ -6383,7 +6419,8 @@ std::string WriteStance(std::string const& tag) {
         "{{\"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, \"staged\": {}, \"opening\": \"{}\", "
         "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f}, \"walkAlong\": {},\n"
         "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"eyes\": {}, \"eyesDrawn\": {}, \"bodyFromEyesM\": {}, \"detached\": {}, \"turnedDeg\": {:.0f}, "
-        "\"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, \"steering\": {}}},\n"
+        "\"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, \"steering\": {}, "
+        "\"armIk\": \"{}\", \"hands\": {}}},\n"
         "\"people\": [{}],\n\"others\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
         "\"ahead\": {{\"now\": [{}], \"later\": [{}]}}}}\n",
         JsonText(name), gC.number, JsonText(tag), Seconds(), gC.staged ? "true" : "false", moment ? "moment" : gC.world ? cw::Name(gC.opening) : "-",
@@ -6396,6 +6433,7 @@ std::string WriteStance(std::string const& tag) {
         shepardHead ? std::format("{:.2f}", std::hypot(shepardHead->at.x - eyes.x, shepardHead->at.y - eyes.y) / kUnitsPerMeter) : std::string("null"),
         gC.detached ? "true" : "false", gC.turnedDeg, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
         gC.sceneWants ? P3(*gC.sceneWants) : std::string("null"), gC.steerTo ? "true" : "false",
+        JsonText(arm_ik::Status().substr(0, 40)), arm_ik::HandsJson(),
         people, others, circle, P3(middle), floor, kReach, walls, aheadNow, aheadLater);
     wchar_t buffer[MAX_PATH] = {};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
@@ -6549,7 +6587,7 @@ BodyAwayState BodyAway() {
     // first tick put it 2.5 m off, it fell to the third person and never came back, and Shepard's body stood where the stage
     // had him, up to 5.7 m from the player, for the whole hearing and the two conversations after it (the owner's session,
     // research/69 "The body that stayed at the mark").
-    bool const scene = gC.detached || (gC.on && gInWorld);
+    bool const scene = gC.detached || (gC.on && gInWorld && !gBodyAwayOldRule);
     if (!gSettings.bodyWithPlayer || !gC.world || !scene || (gMoment.on && gMoment.provisional)) {
         return away;
     }
@@ -7254,6 +7292,21 @@ std::string Command(std::string const& rest) {
         }
         return std::format("convo: following Shepard's walk in a moment: {}", gFollowShepard ? "on" : "off");
     }
+    if (verb == "bodyaway" || verb == "showearly") {
+        // Broken runs (tools/conversation-audit.ps1 -Canaries): a fixed bug brought back, so the audit shows it can catch it.
+        std::string w;
+        words >> w;
+        bool& broken = verb == "bodyaway" ? gBodyAwayOldRule : gShowEarlyOff;
+        if (w == "off" || w == "on") {
+            broken = w == "off";
+            log::Info("convo: {} {} ({})", verb, w, broken ? "a fixed bug brought back for a broken run" : "as built");
+        } else if (!w.empty()) {
+            return std::format("usage: mevr convo {} [on | off]", verb);
+        }
+        return verb == "bodyaway"
+            ? std::format("convo: the body with the player in every conversation in the world: {}", broken ? "off (only a view held away: the old rule)" : "on")
+            : std::format("convo: a scene shown as the walk to it begins: {}", broken ? "off (the script's black screen shows it)" : "on (worldShowEarly)");
+    }
     if (verb == "eyes") {
         // Tests (A/B): the eyes stand-in off, or back to worldLookEyes.
         std::string w;
@@ -7330,7 +7383,7 @@ std::string Command(std::string const& rest) {
         return out;
     }
     return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | stance [tag] | stances on|off|file | ahead | "
-           "goto [x y] | turn <deg> | eyes [on|off] | follow [on|off]]";
+           "goto [x y] | turn <deg> | eyes [on|off] | follow [on|off] | bodyaway|showearly [on|off]]";
 }
 
 std::string StatusJson() {
