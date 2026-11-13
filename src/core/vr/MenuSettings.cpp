@@ -107,6 +107,9 @@ std::vector<Field> const& Schema() {
         {"vignette_when", Type::Choice, 0, "turn"},
         {"walk", Type::Choice, 0, "head"},
         {"crouch", Type::Flag, 1},
+        // [Comfort] screenShake (0, 0.3, 1) and viewShake (game/CameraShake, research/71).
+        {"screen_shake", Type::Choice, 0, "off"},
+        {"view_shake", Type::Flag, 0},
         {"pause", Type::Flag, 1},
         // Comfort: conversations and cutscenes (research/52), each in VR (Halcyon's), on the 3D cinema screen, or the flat screen.
         {"cine_convo", Type::Choice, 0, "screen"},

@@ -160,6 +160,10 @@
 				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button></div></div>
 			<div class="row" data-class-disabled="play_position == 'seated'"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you. Seated play turns this off; L3 still toggles crouch.</div></div>
 				<button class="tog" data-class-on="crouch" data-event-click="toggle('crouch')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Camera shake</div><div class="rdesc">The game shakes the view when you fire and when the Mako's jets or boost fire. Off holds the world still.</div></div>
+				<div class="seg"><button class="segb" data-class-on="screen_shake == 'off'" data-event-click="pick('screen_shake','off')">Off</button><button class="segb" data-class-on="screen_shake == 'low'" data-event-click="pick('screen_shake','low')">Low</button><button class="segb" data-class-on="screen_shake == 'full'" data-event-click="pick('screen_shake','full')">Full</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Running sway</div><div class="rdesc">The game sways the view with Shepard's run and sprint, shots and blasts. Off keeps your view where your head puts it.</div></div>
+				<button class="tog" data-class-on="view_shake" data-event-click="toggle('view_shake')"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Conversations and cutscenes</span><div class="gline"/></div>

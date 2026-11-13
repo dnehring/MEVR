@@ -7,6 +7,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **No more camera shake in VR.** Firing no longer shakes the world around you, nor do the Mako's jump jets and
+  boost; running and sprinting no longer sway your view with Shepard's stride. Both are on the menu's Comfort page
+  (Camera shake: Off, Low, Full; Running sway) if you want the game's effects back. Headset verification pending.
 - **First-person conversations (experimental): scripted walks wait for you.** When Anderson (or your squad) walks beside
   Shepard and you fall about 3 m behind, the walk and its lines wait until you catch up, instead of the scene going on
   without you. You can also walk the whole way now: the conversation's 4 m boundary no longer stops you a few steps into

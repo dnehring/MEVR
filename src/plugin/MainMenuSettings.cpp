@@ -280,6 +280,11 @@ void Settings::Read(menu::Values& v) {
     // brings back Halcyon's "look left, move right" bug), so a file with it off shows no chip until Where I look is picked.
     v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : c.moveFollowsHead ? "head" : "body";
     flag("crouch", ini.Num("Hands", "physicalCrouch", 1.0f) != 0.0f);
+    {
+        float const shake = ini.Num("Comfort", "screenShake", 0.0f);  // game/CameraShake (research/71)
+        v.texts["screen_shake"] = shake <= 0.0f ? "off" : shake >= 1.0f ? "full" : "low";
+    }
+    flag("view_shake", ini.Num("Comfort", "viewShake", 0.0f) != 0.0f);
     // Movement is always life-size (the owner, 2026-11-06: Halcyon's lean gain is 2 whatever a profile says, vr_config's
     // [MEVR] seam); no row for it.
     flag("pause", ini.Num("Menu", "pause", 1.0f) != 0.0f);
@@ -822,6 +827,11 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         }
     } else if (key == "crouch") {
         Put("Hands", "physicalCrouch", onOff("crouch"), true);
+    } else if (key == "screen_shake") {
+        std::string const shake = v.Text("screen_shake");
+        Put("Comfort", "screenShake", shake == "full" ? "1" : shake == "low" ? "0.3" : "0", true);
+    } else if (key == "view_shake") {
+        Put("Comfort", "viewShake", onOff("view_shake"), true);
     } else if (key == "pause") {
         Put("Menu", "pause", onOff("pause"), true);
         pause_ = v.Flag("pause");

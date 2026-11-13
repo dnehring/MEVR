@@ -339,6 +339,12 @@ switching frameworks.
   his actor, the legs stand by the writer's leg IK while the view rests and keep the script's walk while it moves
   (`worldLegs = stand | walk`, `bone_pose::Leg::stand`), and a script's black screen is a dip from black only for a change
   within `worldDipWithinM` (8 m; `cw::NearestChange`).
+  **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
+  and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/
+  `BoostShake`: `TheShake`'s amplitudes scaled at the source by `[Comfort] screenShake`, 0 by default, originals put back)
+  and the body's camera shakes (the AnimTree's `CameraShake` nodes, types Run, Rifle...: `SFXCameraMode.bIsCameraShakeEnabled`
+  cleared on the first-person on-foot modes unless `[Comfort] viewShake = 1`); the menu's Comfort > Movement rows Camera
+  shake and Running sway. Log `camera shake:`; snapshot `"mod"."cameraShake"`; `mevr shake [screen <0..1> | view on|off]`.
   **The game's camera collision is off in first person** (`game/CameraCollision`, `[Game] cameraCollision`, research/69 "The
   camera that fell to Shepard's knees", 2026-11-11): each camera mode's `bCollisionEnabled` pulled the first-person camera
   (0.5 m ahead of the Camera bone) back to the bone when anything stood just ahead of the face, and Halcyon drew the eye

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/ConsoleRequest.hpp"
+#include "game/CameraShake.hpp"
 #include "game/BodyProbe.hpp"
 #include "game/ConversationWorld.hpp"
 #include "game/ConversationFlow.hpp"
@@ -1418,6 +1419,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::Command(rest);  // the in-game cockpit's experiment (research/47)
     }
+    if (verb == "shake") {
+        std::string rest;
+        std::getline(words, rest);
+        return camera_shake::Command(rest);  // the game's camera shakes in VR (research/71)
+    }
     if (verb == "vent") {
         std::string rest;
         std::getline(words, rest);
@@ -1433,7 +1439,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return cockpit_probe::VehicleCommand(rest);  // what a console `open <map>` produced; `enter` gets in
     }
-    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch|chunks|states|state | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ... | mevr inv ... | mevr guimouse | mevr guikey ... | mevr uiworld");
+    return std::string("unknown: mevr loc | mevr setloc X Y Z | mevr density [cellUU] | mevr crowd [cellUU] | mevr stream list|touch|chunks|states|state | mevr weapon <pistol|shotgun|assault|sniper> | mevr vent heat|rack|part | mevr kick [recoilDeg] [shots] [ms] | mevr shake [screen <0..1> | view on|off] | mevr cockpit ... | mevr vehicle [enter] | mevr spectator ... | mevr omni <screen> | mevr holo ... | mevr inv ... | mevr guimouse | mevr guikey ... | mevr uiworld");
 }
 
 ue3::Function* FindConsoleCommand() {

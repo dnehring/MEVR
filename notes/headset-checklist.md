@@ -571,6 +571,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   right. (research/21 sections 9-10)
 
 ## 4. Moving and comfort (session: VR mod for Mass Effect Legendary Edition)
+- [ ] Camera shake (research/71, built 2026-11-12, not yet run in the game): firing a rifle and a shotgun, and the Mako's
+  jets, with Comfort > Camera shake Off: does the world stay still? Low: a slight shake, not uncomfortable? Running and
+  sprinting with Running sway off: no sideways sway or roll of the view? If the sprint still sways, research/71 section
+  3.4 says what to check next.
 - [ ] Crouch for real in combat: does the view drop below your own eyes (the floor seems to jump up)? Walk into walls:
   no cover snap. (research/23, research/38 B)
 - [ ] VR cover: crouched behind a crate with enemies in front on Normal, do their hits stop hurting, and do they hurt again

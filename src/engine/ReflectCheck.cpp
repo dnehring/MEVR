@@ -647,6 +647,7 @@ void CheckClasses() {
     // game/mako (research/44): the Mako's turret aimed by the controller.
     CheckClass<ABioVehicleBase>("SFXGame.BioVehicleBase");
     CheckClass<ABioVehicleWheeled>("SFXGame.BioVehicleWheeled");
+    CheckClass<USFXCameraShakeBase>("SFXGame.SFXCameraShakeBase");  // game/CameraShake
     CheckClass<UDamageType>("Engine.DamageType");  // `mevr vehicle damage`
     CheckClass<UBioSFHandler_GameOver>("SFXGame.BioSFHandler_GameOver");  // `mevr vehicle resume`
     CheckClass<UBioVehicleBehaviorBase>("SFXGame.BioVehicleBehaviorBase");
@@ -1098,6 +1099,16 @@ void CheckFields() {
     CheckField("SFXGame.SFXCameraMode", "HookName", SDK_FIELD(USFXCameraMode, HookName));
     CheckField("SFXGame.SFXCameraMode", "bFirstPerson", SDK_BOOL(USFXCameraMode, bFirstPerson));
     CheckField("SFXGame.SFXCameraMode", "bCollisionEnabled", SDK_BOOL(USFXCameraMode, bCollisionEnabled));  // game/CameraCollision
+    // game/CameraShake (research/71): the body's camera shakes per mode, the guns' and the Mako's screen shakes.
+    CheckField("SFXGame.SFXCameraMode", "bIsCameraShakeEnabled", SDK_BOOL(USFXCameraMode, bIsCameraShakeEnabled));
+    CheckField("SFXGame.SFXWeaponStatsBase", "FiringShake", SDK_FIELD(USFXWeaponStatsBase, FiringShake));
+    CheckField("SFXGame.SFXWeaponStatsBase", "TightAimFiringShake", SDK_FIELD(USFXWeaponStatsBase, TightAimFiringShake));
+    CheckField("SFXGame.BioVehicleWheeled", "JumpShake", SDK_FIELD(ABioVehicleWheeled, JumpShake));
+    CheckField("SFXGame.BioVehicleWheeled", "BoostShake", SDK_FIELD(ABioVehicleWheeled, BoostShake));
+    CheckField("SFXGame.SFXCameraShakeBase", "TheShake", SDK_FIELD(USFXCameraShakeBase, TheShake));
+    CheckPath("SFXGame.SFXCameraShakeBase", {"TheShake", "RotAmplitude"}, SDK_AT(offsetof(FScreenShakeStruct, RotAmplitude), 12));
+    CheckPath("SFXGame.SFXCameraShakeBase", {"TheShake", "LocAmplitude"}, SDK_AT(offsetof(FScreenShakeStruct, LocAmplitude), 12));
+    CheckPath("SFXGame.SFXCameraShakeBase", {"TheShake", "FOVAmplitude"}, SDK_AT(offsetof(FScreenShakeStruct, FOVAmplitude), 4));
     CheckField("SFXGame.SFXCameraInput", "MaxCameraRotationSpeed", SDK_FIELD(USFXCameraInput, MaxCameraRotationSpeed));
     CheckField("SFXGame.SFXCameraInput", "CameraSensitivity", SDK_FIELD(USFXCameraInput, CameraSensitivity));
     CheckField("SFXGame.SFXCameraInput", "TimeToReachFullSpeed", SDK_FIELD(USFXCameraInput, TimeToReachFullSpeed));
