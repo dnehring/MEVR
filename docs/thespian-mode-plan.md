@@ -7,8 +7,9 @@ existing conversation code; what has not been seen in the running game is marked
 **Status (2026-11-13):** built through phase 4 and run in the game on the fake headset with a synthetic voice; off by
 default (`[Thespian] on`, the menu's Voice page). What was built, how it differs from this plan, the measurements and the
 checks still open are in [research/70](../research/70-thespian-mode.md) (section 8, the guide, and section 9, the log).
-Left: phase 5, the owner's acceptance in the headset (notes/headset-checklist.md, "Thespian mode"); the "said in your
-own words" tier is not built (the alignment decides between a wheel's few, differently worded replies). Differences
+The plot after spoken replies equals the plot after the same replies by stick (two conversations, saves compared).
+Left: phase 5, the owner's acceptance in the headset with a real microphone (notes/headset-checklist.md, "Thespian
+mode"), which only the owner can do; the "said in your own words" tier is not built (the alignment decides between a wheel's few, differently worded replies). Differences
 from the plan below: the panel is rows after the owner's concept art (3.5), rows never grow or move, there is no hover
 from gaze yet, and on the 3D screen the panel stands under the screen while the game's wheel stays on it.
 

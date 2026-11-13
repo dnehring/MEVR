@@ -400,7 +400,8 @@ and refusals (not yet in the snapshot's `"mod"` block).
 - (i) A wheel with investigate topics: `say` a topic's line from the main level takes it (no sub-menu step), and the
   next wheel is the main one.
 - (j) The plot after a typed commit equals the plot after the same pick by stick: quicksave after each way and compare
-  with `python tools/le1-save.py diff`.
+  with `python tools/le1-save.py diff`. **Done 2026-11-13: equal** (section 9). The stick's side is
+  `mevr thespian stick <position>`: `SelectConversationEntry` on the wheel location that holds the card's category.
 
 Check: scenes from validation saves (`tools/conversation-from-save.ps1`); in each, `cards`, then one card's line, then
 (next wheel) a label, then nonsense (must refuse).
@@ -550,3 +551,15 @@ Not built: the hover look from gaze or a pointer (the `hover` class exists; noth
   words are dropped after `staleMs`. The game's own wheel stays visible on the HUD panel behind the panel's top edge
   (the stick's pick needs it). Open for the headset: whether the panel reads as square to the eyes (in the snapshot's
   wide projection it looks skewed at the image's corner), its height, and a real microphone.
+- **2026-11-13, (j) the plot against a stick pick: equal.** Avina (save 89) and Anoleis (save 83), each played twice
+  from the same save to the conversation's end, a quicksave after each: once with `mevr thespian say <the line>` on
+  every wheel (QueueReply, the line skipped and silenced), once with `mevr thespian stick <position>` for the same
+  cards (the handler's `SelectConversationEntry(5)` / `(0)`, Shepard's line skipped by hand). `python tools/le1-save.py
+  diff`: **0 booleans, 0 integers, 0 floats** differ in both; only the map's saved level bytes (which differ between
+  any two saves). Two conversations, four replies; a reply whose line fires a plot effect at its END is the case a
+  skip could touch, and the player's own skip has the same path.
+- **2026-11-13, a commit of mine broke main for an hour**: 9d19da39 staged my hunks of files other sessions edit with a
+  zero-context patch (`git apply --unidiff-zero` in a temporary index), which lands hunks lines off when the other
+  session's uncommitted hunks stand above them: two source lines after CMakeLists.txt's last `endif`. Put right in
+  b07cdc10. For next time: build each shared file's blob from the working copy with the others' hunks taken out by the
+  working copy's own line numbers (never a zero-context apply onto HEAD), and compare its lines with the last commit's.

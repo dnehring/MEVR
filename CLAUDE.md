@@ -1310,7 +1310,9 @@ switching frameworks.
   line and head) as one quad 0.90 m wide, 1 m from the eyes, under the line of sight to the speaker (ahead of the head
   on the 3D screen), placed once per wheel, its rows `vr::thespian::RowsRml`'s markup; the first-person wheel quad at the
   hand stands down for it. Console `mevr thespian [cards | watch on|off | say <words> | pick <position> | on | off | auto |
-  status | feed <wav>]` (`feed`: a WAV heard in the microphone's place by the open listen, the test without a voice);
+  status | feed <wav> | stick <position>]` (`feed`: a WAV heard in the microphone's place by the open listen, the test
+  without a voice; `stick`: the card taken as the stick takes it; the plot after spoken replies equalled the stick's in two
+  conversations, saves compared);
   logs `thespian:`, `thespian panel:`; offline look `mevr-menu-preview`'s `thespian-*.png`. Offline tools (phase 0):
   `tools/conversation-scan --wheels` / `--vo-extract`, `tools/thespian-census.py` (3,072 wheels, 4,493 distinct lines,
   none said without a wheel), `mevr-thespian-bench` (text: 11,771 of 11,774 right, 0 wrong), `tools/thespian-vo-bench.py`
