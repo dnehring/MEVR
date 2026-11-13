@@ -468,6 +468,8 @@ set(MEVR_MOD_SOURCES
     src/game/HandTargets.hpp
     src/game/HeadSim.cpp
     src/game/HeadSim.hpp
+    src/game/Thespian.cpp
+    src/game/Thespian.hpp
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
     src/game/HudPieces.cpp

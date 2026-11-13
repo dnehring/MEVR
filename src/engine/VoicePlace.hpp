@@ -44,8 +44,9 @@ enum class Publisher : std::uint8_t {
     Conversation = 0,  // game/ConversationWorld: everyone of a first-person conversation but the player
     Overheard = 1,     // game/SoundPlace: people speaking near the player on foot (centred sources only)
     Gun = 2,           // game/SoundPlace: the player's own weapon, at the gun model
+    Thespian = 3,      // game/Thespian: the player's pawn with gain 0 while a spoken reply's recording would play
 };
-inline constexpr int kPublishers = 3;
+inline constexpr int kPublishers = 4;
 inline constexpr int kMaxPerPublisher = 32;  // what one list may hold (Set clamps; the conversation's own stays kMaxVoices)
 char const* Name(Publisher publisher);
 // Who is placed from now on (count 0: nobody; the game's own mix). Game thread. The conversation's list (game/ConversationWorld).

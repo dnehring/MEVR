@@ -1278,7 +1278,7 @@ switching frameworks.
   `plugin/Voice`'s worker. Logs `voice:`, `voice model:`, `squad orders: ... answered`; snapshots `"voice"` (host), `"mod"."voice"`,
   `"mod"."squadAck"`. Run in the game on the fake headset with a file feed (research/54 "In the game"); a real microphone and the
   fine-tuned model's answers in play are the checklist's (section 1).
-- LE1 Thespian mode, **planned, phase 0 done** ([docs/thespian-mode-plan.md](docs/thespian-mode-plan.md),
+- LE1 Thespian mode, **planned; phase 0 done, the typed commit built** ([docs/thespian-mode-plan.md](docs/thespian-mode-plan.md),
   [research/70](research/70-thespian-mode.md): the log and the step-by-step implementation guide; 2026-11-12, the owner): in a
   conversation the replies stand as script cards, the player reads one aloud with an open microphone, the reply is taken by
   the game's own pick and Shepard's recording is skipped. Built so far, offline only: `core/voice/ScriptMatch` (which card is
@@ -1287,7 +1287,13 @@ switching frameworks.
   label, category and recording length) and `--vo-extract` (Shepard's recordings as WAV), `tools/thespian-census.py` (3,072
   wheels, 4,493 distinct Shepard lines, none said without a wheel), `mevr-thespian-bench` (every wheel, text) and
   `tools/thespian-vo-bench.py` (the recognizer over the recordings, then the matcher). Their outputs are game text and audio:
-  `scratch/thespian/` only. Nothing in the game yet; the next step is research/70 section 8 step 1.
+  `scratch/thespian/` only. **In the mod, by console only** (`game/Thespian`, research/70 section 8 steps 1-2, built
+  2026-11-12, [verify] in the game): `mevr thespian [cards | watch on|off | say <words> | pick <position>]` reads the live
+  wheel as cards (every reply function of `BioConversation` takes a position in `m_lstCurrentReplyIndices`; investigate
+  topics are in that list, category 5; GUI style 4 is an unavailable reply), takes a card as the wheel does
+  (`BioConversation.QueueReply(position)`: no wheel location, no sub-menu), silences Shepard's recording
+  (`voice_place::Publisher::Thespian`, gain 0) and skips it with `SkipNode()` when the speaker becomes the player; log
+  `thespian:`. No microphone and no panel yet; the next step is the in-game check of steps 1-2, then step 3.
 - LE1 power wheel at the left hand ([research/55](research/55-hand-cast-powers.md), HostServices v28 `setPowerWheel`, v29 `setPowerLock`; `core/vr/PowerWheel`,
   `game/PowerWheel`, host `plugin/PowerWheel` + `PowerWheelDraw` + `PowerIcons` + `Glow`; `[PowerWheel]` in `ASI\LE1MEVR.ini`, appended by
   the module itself): on foot in VR, X held opens it at the left palm, fixed in the room, facing the eyes, with the player's mappable

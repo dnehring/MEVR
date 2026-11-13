@@ -6907,6 +6907,16 @@ bool InWorld() {
     return gInWorld;
 }
 
+ue3::Object* LiveConversation() {
+    ue3::Object* const controller = player::Controller();
+    return controller != nullptr ? ConversationNow(controller) : nullptr;
+}
+
+ue3::Object* LiveWheelHandler() {
+    ue3::Object* const controller = player::Controller();
+    return controller != nullptr ? WheelHandler(controller) : nullptr;
+}
+
 std::string Command(std::string const& rest) {
     std::istringstream words(rest);
     std::string verb;

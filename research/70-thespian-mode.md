@@ -280,83 +280,130 @@ Build in this order. After each step: `cmake --build build --config Release --ta
 host too where the step says so, `build/Release/mevr-tests.exe`, and the in-game check the step names (the skill
 `fake-headset-run` and `tools/conversation-from-save.ps1` play scenes without a person).
 
-### Step 1. Read the live wheel (mod only; no behaviour change)
+### Step 1. Read the live wheel (mod only; no behaviour change) - **built 2026-11-12, [verify] in the game**
 
-New files `src/game/Thespian.hpp/.cpp`, namespace `mevr::game::thespian`. Add them to the mod's source list in
-`CMakeLists.txt` next to `src/game/Voice.cpp`. Call `thespian::Tick(deltaSeconds)` from `src/mod/Mod.cpp` right after
-`game::conversation_world::Tick(...)`.
+Files: `src/game/Thespian.hpp/.cpp`, namespace `mevr::game::thespian`, in the mod's source list in `CMakeLists.txt`
+after `src/game/Voice.hpp`. `thespian::Tick(deltaSeconds)` runs in `src/mod/Mod.cpp` right after
+`game::conversation_world::Tick(...)`; `thespian::Shutdown()` beside `sound_place::Shutdown()`. The live conversation
+and the wheel's handler come from two accessors added to `game/ConversationWorld.hpp`: `LiveConversation()`
+(`BioWorldInfo.m_oCurrentConversation`) and `LiveWheelHandler()` (the conversation movie's `BioSFHandler_Conversation`).
+The console verb is `thespian` in `src/game/ConsoleRequest.cpp`.
 
-Names to resolve (each needs a `ReflectCheck` row; the classes and the first two fields have rows already, see
-`engine/ReflectCheck.cpp` near "BioSFHandler_Conversation"):
+**What the wheel handler's script says** (`BioSFHandler_Conversation`, decompiled locally with Legendary Explorer and
+read, 2026-11-12; nothing of it is in the repository). These settle questions (a) to (d) of the first draft of this
+step without the game:
+
+- (a) **Every reply function of `BioConversation` takes a POSITION in `m_lstCurrentReplyIndices`** (0 .. count-1), not
+  the reply's index in `m_ReplyList`: `GetReplyText(nIndex, bParse)`, `GetReplyParaphraseText(nIndex)`,
+  `GetReplyCategory(nIndex)`, `GetReplyGUIStyle(nIndex)`. `GetNumReplies()` is that array's length. The element's value
+  is the index into `m_ReplyList` (needed only to read the node's `bUnskippable`). Never call them with a position the
+  list does not have.
+- (b) **The investigate topics are in the current list**, each with category 5 (`kCategoryInvestigate`). With two or
+  more of them the main wheel shows one "Investigate" slot (the handler's `m_srTextInvestigate`) that opens the
+  sub-menu; with exactly one the topic stands on the main wheel itself. For us they are ordinary cards.
+- (c) **A wheel location holds a category, not a reply.** `m_aReplyLocations[location]` is a category;
+  `SelectConversationEntry(location)` takes the FIRST current reply with that category (in the sub-menu:
+  `GetInvestigateReplyFromWheelLocation`), refuses GUI style 4, handles the sub-menu switch
+  (`ChangeConversationMenu`), and then calls **`BioConversation.QueueReply(position)`**. If that returns false it
+  calls `BioWorldInfo.EndCurrentConversation()`. So a pick, whatever the slot, ends in `QueueReply(position)`: Thespian
+  calls it directly and needs neither wheel locations nor the sub-menu. Consequence: a second non-investigate reply
+  with a category an earlier one has can't be picked on the wheel; it is "shadowed" and is no card.
+- (d) **An unavailable reply** (a charm or intimidate without the skill) is in the list with
+  `GetReplyGUIStyle(position) == 4` (`GUI_STYLE_ILLEGAL`); the handler plays its error sound and takes nothing. It is
+  no card.
+- The handler's `Update` shows the wheel while the conversation's `NeedToDisplayReplies()` holds and hides it
+  otherwise. Its GUI command 2 is `SelectConversationEntry` followed by `SkipNode()` on the conversation (a pick made
+  while the other person still talks cuts the rest of that line); command 4 selects without the skip. The handler's
+  `SkipConversation()` is `m_oCurrentConversation.SkipNode()`.
+
+Names the module resolves (each has a `ReflectCheck` row, `engine/ReflectCheck.cpp` under "game/Thespian"):
 
 ```cpp
-ue3::FieldRef    gCurrentConversation{"SFXGame.BioWorldInfo", "m_oCurrentConversation"};          // in ConversationWorld.cpp too
-ue3::FieldRef    gCurrentReplies{"SFXGame.BioConversation", "m_lstCurrentReplyIndices"};          // TArray<int>
-ue3::FunctionRef gGetReplyText{"SFXGame.BioConversation.GetReplyText"};                // (int nIndex, bool bParse) -> FString
-ue3::FunctionRef gGetReplyParaphrase{"SFXGame.BioConversation.GetReplyParaphraseText"}; // (int nIndex) -> FString
-ue3::FunctionRef gGetReplyCategory{"SFXGame.BioConversation.GetReplyCategory"};        // (int nIndex) -> int
-ue3::FunctionRef gGetReplyGuiStyle{"SFXGame.BioConversation.GetReplyGUIStyle"};        // (int nIndex) -> byte
-ue3::FieldRef    gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel"};
-ue3::FieldRef    gSlotsUsed{"SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed"};                 // byte[6]
-ue3::FieldRef    gReplyLocations{"SFXGame.BioSFHandler_Conversation", "m_aReplyLocations"};       // int[6]
-ue3::FieldRef    gInvestigateLocations{"SFXGame.BioSFHandler_Conversation", "m_aInvestigateLocations"};  // int[6]
-ue3::FieldRef    gInvestigateShown{"SFXGame.BioSFHandler_Conversation", "m_bDisplayInvestigateSubMenu"};
-ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry"};  // (byte nWheelLocation) -> bool
-ue3::FunctionRef gSkipConversation{"SFXGame.BioSFHandler_Conversation.SkipConversation"};
+ue3::FieldRef    gCurrentReplies{"SFXGame.BioConversation", "m_lstCurrentReplyIndices"};   // TArray<int>
+ue3::FieldRef    gReplyList{"SFXGame.BioConversation", "m_ReplyList"};  ue3::FieldRef gReplyUnskippable{gReplyList, "bUnskippable"};
+ue3::FunctionRef gGetReplyText{"SFXGame.BioConversation.GetReplyText"};                    // (int nIndex, bool bParse) -> string
+ue3::FunctionRef gGetReplyParaphrase{"SFXGame.BioConversation.GetReplyParaphraseText"};    // (int nIndex) -> string
+ue3::FunctionRef gGetReplyCategory{"SFXGame.BioConversation.GetReplyCategory"};            // (int nIndex) -> int
+ue3::FunctionRef gGetReplyGuiStyle{"SFXGame.BioConversation.GetReplyGUIStyle"};            // (int nIndex) -> byte
+ue3::FunctionRef gQueueReply{"SFXGame.BioConversation.QueueReply"};                        // (int nReply) -> bool
+ue3::FunctionRef gSkipNode{"SFXGame.BioConversation.SkipNode"};                            // () -> bool
+ue3::FunctionRef gEndCurrentConversation{"SFXGame.BioWorldInfo.EndCurrentConversation"};
+// state: BioConversation m_pSpeaker, m_pConversationPlayer, m_nCurrentEntry, m_nSelectedReply, m_nDelayedReplyChoice,
+//        m_fRemainingVOLength, m_fShowRepliesOffset; BioSFHandler_Conversation m_bDisplayingWheel, m_bDisplayInvestigateSubMenu
 ```
 
-How to get the objects: the conversation as `ConversationWorld.cpp` does (the world info's `m_oCurrentConversation`);
-the handler with that file's `WheelHandler(player::Controller())` (make it a declared function in
-`ConversationWorld.hpp` instead of copying it). A string a script function returns is read as
-`game/ConsoleRequest.cpp` does: `ue3::FString s = parms.Return<ue3::FString>().value_or({}); std::string text =
-ue3::memory::Narrow(s); ue3::memory::FreeString(s);`.
+A card (`ReadLive()`), one per position: `position`, `reply` (the element's value), `category`, `style`, `label`
+(`GetReplyParaphraseText`), `line` (`GetReplyText(position, true)`: tokens resolved, as the subtitle shows it),
+`unskippable`, and `candidate`: false for style 4 ("unavailable"), for a non-investigate reply whose category an
+earlier position has ("shadowed"), and for a reply with neither label nor line ("nothing to say").
 
-Console command: in `src/game/ConsoleRequest.cpp` add the verb `thespian` beside `convo` (`mevr thespian cards`): while
-`m_bDisplayingWheel` is set, print for every element `i` of `m_lstCurrentReplyIndices`: `i`, the value, and
-`GetReplyText(x, true)`, `GetReplyParaphraseText(x)`, `GetReplyCategory(x)`, `GetReplyGUIStyle(x)` **called once with
-`x = i` and once with `x = the element's value`**; then `m_aReplyLocations[0..5]`, `m_aInvestigateLocations[0..5]`,
-`m_bSlotsUsed[0..5]`, `m_bDisplayInvestigateSubMenu`.
+Commands (`tools/console.ps1 "mevr thespian ..."`):
 
-**[verify] with that dump** (play three wheels: one plain, one with investigate topics, one with a charm option; e.g.
-`tools/conversation-from-save.ps1` on a Citadel save, then `tools/console.ps1 "mevr thespian cards"`), and write the
-answers here:
+| command | what it does |
+|---|---|
+| `mevr thespian` or `mevr thespian cards` | the live wheel: `thespian: wheel up, N replies; show-replies offset X s, the current line's recording has Y s left; investigate sub-menu on/off`, then a line per position: `[pos] reply R category C style S [unskippable] [NOT A CARD: why]: "label" -> "line"` |
+| `mevr thespian watch on` / `off` | the same dump written to the log each time a wheel comes up (for unattended runs) |
+| `mevr thespian say <words>` | step 2 |
+| `mevr thespian pick <position>` | step 2, without the matcher |
 
-- (a) Do the `GetReply*` functions take the position in `m_lstCurrentReplyIndices` or the reply's index in
-  `m_ReplyList`? (The one that returns the lines the wheel shows is the right one.)
-- (b) Are the investigate topics in `m_lstCurrentReplyIndices` while the main wheel is shown? (Expected: yes.)
-- (c) What do `m_aReplyLocations[loc]` and `m_aInvestigateLocations[loc]` hold: a position in the current list, a reply
-  index, or -1 for an unused location?
-- (d) Is an unavailable charm/intimidate reply in the list, and how is it marked (the reply node's `bIllegal`, or a
-  GUI style)? An unavailable reply must not become a card.
-- (e) How long before the other person's line ends does `m_bDisplayingWheel` turn on
-  (`BioConversation.m_fShowRepliesOffset`, `m_fRemainingVOLength`)? Log both once per wheel.
+**[verify] in the game** (the answers go in section 9):
 
-### Step 2. Commit by typing (mod only)
+- (a2) That the dump's labels and lines are the ones the wheel shows (confirms (a) live): compare `cards` with a
+  snapshot of the wheel on a plain wheel, one with investigate topics and one with a charm option.
+- (e) How long before the other person's line ends the wheel comes up: the `cards` line's two numbers
+  (`m_fShowRepliesOffset`, `m_fRemainingVOLength`) with `watch on`.
 
-`mevr thespian say <words>`: build a `script_match::Wheel` from the live cards (label and line as read in step 1; skip
-unavailable replies), `Match(words, true)`, and if `decided`: commit the leader.
+### Step 2. Commit by typing (mod only) - **built 2026-11-12, [verify] in the game**
 
-Commit = the same call as `mevr convo pick` (`ConversationWorld.cpp`, verb "pick"): `SelectConversationEntry(location)`
-on the handler, **only while `m_bDisplayingWheel` is set and `m_bSlotsUsed[location]` is non-zero** (a pick at any other
-moment crashed the game on 2026-11-06). The location comes from step 1's answer (c). For an investigate card while the
-main wheel is shown: first the location that opens the sub-menu (the one whose reply location answers to "Investigate";
-answer (c) tells how to find it), wait until `m_bDisplayInvestigateSubMenu` is set (next tick), then the topic's
-location from `m_aInvestigateLocations`.
+`mevr thespian say <words>`: a `script_match::Wheel` from the candidate cards (label and line), `Match(words, true)`
+(final: the turn is over). Not decided: nothing is taken; the reply is
+`thespian: "<words>" decides no card (leader [pos] "label", margin M; scores [pos] s, ...)`. Decided: `Commit`.
 
-Then, on the next tick in which the conversation's speaker is the player's pawn (`BioConversation.m_pSpeaker`) and the
-wheel is down: call `SkipConversation()` on the handler once, unless the reply is unskippable (the reply node's
-`bUnskippable`; then leave the line playing). Name the player's pawn to `engine/VoicePlace` with gain 0 from the commit
-until the speaker is no longer the player (add a publisher `Thespian` to `voice_place::Publisher`, placed first in the
-order, `centredOnly = false`), so no part of the recording is heard. **[verify]** with `build/Release/mevr-audio-loopback.exe`
-that the recording is silent and that the next line starts within two frames of the skip; log the time from the commit
-to `m_pSpeaker` changing.
+`Commit(live, position, how)` does what the handler's pick does, no more:
 
-Log one line per commit: `thespian: "<words>" -> card <n> "<label>" (score, margin, by label or line), location <l>,
-skipped|played (unskippable)`.
+1. Only while `m_bDisplayingWheel` is set (a pick between lines crashed the game on 2026-11-06, research/59) and only
+   a candidate card.
+2. `BioConversation.QueueReply(position)` through `ue3::runtime::Call`.
+3. If `m_bDisplayInvestigateSubMenu` was set, clear it (journalled `Thespian.investigateSubMenu`), so the next wheel
+   opens on the main level.
+4. `QueueReply` returned false: `BioWorldInfo.EndCurrentConversation()`, as the handler does; a warning is logged.
+5. Else a pending commit starts: `thespian: <how> -> position P (reply R) "label" queued; its line is skipped when it
+   starts` (or `; its line is unskippable and plays`).
 
-Check: ten scenes from validation saves; in each, type one card's line, then a label, then nonsense (must refuse). The
-plot after a typed commit must equal the plot after the same pick by stick: save both ways and compare with
-`python tools/le1-save.py diff`.
+The pending commit (`TickPending`, every tick until the next speaker, 15 s at most):
+
+- Names the conversation's player actor (`m_pConversationPlayer`) to `engine/VoicePlace` with gain 0
+  (`voice_place::Publisher::Thespian`, the fourth list; `kPublishers = 4`), so Shepard's recording is silent from the
+  commit on. Needs the voice-place hook installed (it is for every player on foot and in first-person conversations).
+- In the first tick in which `m_pSpeaker == m_pConversationPlayer` and the wheel is down: `SkipNode()` once, unless the
+  reply's node is `bUnskippable`. Log `thespian: +N ms: Shepard's line started: SkipNode skipped it | was refused`.
+- When the speaker is no longer the player: `thespian: +N ms: the next line began; the commit of position P is done
+  (skipped|played; Shepard's recording was silenced | no source of Shepard's was seen playing)`, the voice list is
+  cleared.
+- Meanwhile every change of (wheel, speaker, entry, selected reply, delayed reply) is one log line
+  `thespian: +N ms: wheel down, speaker the player, entry E, selected reply S, delayed reply D; recording left X s`:
+  the trace that answers the [verify] items below.
+
+`mevr thespian pick <position>` is the same commit without the matcher. `StatusJson()` counts wheels, commits, skips
+and refusals (not yet in the snapshot's `"mod"` block).
+
+**[verify] in the game** (the trace settles each; write the answers in section 9):
+
+- (f) `m_pSpeaker == m_pConversationPlayer` while Shepard's reply line plays (the skip's trigger). If the trace never
+  shows "speaker the player" after a commit, find what marks the reply's line (`m_nSelectedReply` or the entry
+  changing) and trigger on that.
+- (g) `SkipNode()` then returns true and the next entry starts at once (the time from "Shepard's line started" to "the
+  next line began" should be a tick or two); nothing of the line's plot effects is lost (the plot check below).
+- (h) Shepard's source is owned by the player's actor, so the gain-0 voice silences it: the "done" line says
+  `Shepard's recording was silenced`, and `build/Release/mevr-audio-loopback.exe out.wav 6` over the commit with
+  `python tools/audio-balance.py out.wav` shows no speech between the commit and the answer.
+- (i) A wheel with investigate topics: `say` a topic's line from the main level takes it (no sub-menu step), and the
+  next wheel is the main one.
+- (j) The plot after a typed commit equals the plot after the same pick by stick: quicksave after each way and compare
+  with `python tools/le1-save.py diff`.
+
+Check: scenes from validation saves (`tools/conversation-from-save.ps1`); in each, `cards`, then one card's line, then
+(next wheel) a label, then nonsense (must refuse).
 
 ### Step 3. The open microphone (voice DLL and host; host and `ASI\voice` deploy together)
 
@@ -419,3 +466,9 @@ Settings and the menu's Voice page rows (`[Thespian] on`, `strictness`, `handPic
   is a wheel grouping; 746 same-line pairs with one outcome; Shepard's recordings are per-conversation Ogg banks with
   both voices. Results: text, whole line 11,771 of 11,774 right, 0 wrong; speech, small model with per-wheel key terms
   1,192 of 1,200 right, 8 undecided, 0 wrong. Builds: `mevr-tests` passes, `build-trilogy` builds.
+- **2026-11-12, later.** Steps 1 and 2 built, mod only (`src/game/Thespian`; console `mevr thespian`). The wheel
+  handler's script, read offline, settled the first draft's questions (a) to (d): the reply functions take a position
+  in the current list; investigate topics are in that list (category 5); a wheel location holds a category and a pick
+  ends in `BioConversation.QueueReply(position)`; an unavailable reply has GUI style 4. So a commit is `QueueReply`
+  directly, with no wheel location and no sub-menu step. Builds: `MEVR-LE1-mod`, `mevr-tests` pass, `build-trilogy`
+  builds. Nothing run in the game yet: (a2) and (e) to (j) are open.

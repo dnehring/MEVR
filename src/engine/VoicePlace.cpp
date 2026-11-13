@@ -362,6 +362,7 @@ char const* Name(Publisher publisher) {
     case Publisher::Conversation: return "the conversation";
     case Publisher::Overheard: return "the people near the player";
     case Publisher::Gun: return "the player's gun";
+    case Publisher::Thespian: return "Thespian mode (Shepard's recording silenced)";
     }
     return "?";
 }

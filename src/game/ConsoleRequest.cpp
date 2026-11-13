@@ -34,6 +34,7 @@
 #include "game/PowerWheel.hpp"
 #include "game/SoundPlace.hpp"
 #include "game/Spectator.hpp"
+#include "game/Thespian.hpp"
 #include "game/Throwables.hpp"
 #include "game/Vent.hpp"
 #include "core/WriteJournal.hpp"
@@ -871,6 +872,13 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string rest;
         std::getline(words, rest);
         return authored_moment::Command(rest);
+    }
+    if (verb == "thespian") {
+        // `mevr thespian [cards | watch on|off | say <words> | pick <position>]`: the live dialogue wheel as script cards, and
+        // a reply taken by what a player would say (research/70).
+        std::string rest;
+        std::getline(words, rest);
+        return thespian::Command(rest);
     }
     if (verb == "convo") {
         // `mevr convo [dump | world on|off|screen|vr | pick | skip | end]`: the conversation now (research/59), or how the next one

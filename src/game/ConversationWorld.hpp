@@ -5,6 +5,10 @@
 
 #include <string>
 
+namespace mevr::ue3 {
+struct Object;
+}
+
 // LE1 conversations in the world, first person (research/59, the game's side; core/vr/ConversationWorld.hpp). Through our
 // reflection layer: the live conversation (BioWorldInfo.m_oCurrentConversation: its speaker, listener, stage, speaker list,
 // look-at list, the actors' saved places) and the dialogue wheel's handler.
@@ -65,6 +69,10 @@ bool MomentDip();
 void ScriptBlackScreen(int action);
 // `mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | walk <x> <y> [seconds] | off]`.
 std::string Command(std::string const& rest);
+// The live conversation (BioWorldInfo.m_oCurrentConversation) and the dialogue wheel's handler (the conversation movie's
+// BioSFHandler_Conversation), or null; for game/Thespian. Game thread.
+ue3::Object* LiveConversation();
+ue3::Object* LiveWheelHandler();
 std::string StatusJson();
 void LogStats();
 void Shutdown(Link const& link);

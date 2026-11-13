@@ -84,6 +84,7 @@
 #include "game/AuthoredMoment.hpp"
 #include "game/ConversationFlow.hpp"
 #include "game/SoundPlace.hpp"
+#include "game/Thespian.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/Spectator.hpp"
@@ -1428,6 +1429,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
         game::sound_place::Tick(deltaSeconds);  // on foot: people near the player and the gun heard from where they are (research/69 A1, A2)
+        game::thespian::Tick(deltaSeconds);  // after the conversation's: the live wheel as script cards (research/70)
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1548,6 +1550,7 @@ MEVR_MOD_API void MevrModShutdown() {
             "the conversation hooks couldn't be removed, or a call was still inside one");
     }
     if (gInit && gVoicePlaceHooked) {
+    game::thespian::Shutdown();                                   // Shepard's voice no longer silenced
         removed(engine::voice_place::Uninstall(*gInit, !exiting),
             "the sound source hook couldn't be removed, or a call was still inside it");
     }

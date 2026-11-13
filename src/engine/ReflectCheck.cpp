@@ -853,6 +853,13 @@ void CheckFields() {
     CheckField("SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed", SDK_FIELD(UBioSFHandler_Conversation, m_bSlotsUsed));
     CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
     CheckField("Engine.SequenceEvent", "Originator", SDK_FIELD(USequenceEvent, Originator));
+    // game/Thespian (research/70): the live wheel's replies and the conversation's state around a commit.
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayInvestigateSubMenu", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayInvestigateSubMenu));
+    CheckField("SFXGame.BioConversation", "m_lstCurrentReplyIndices", SDK_FIELD(UBioConversation, m_lstCurrentReplyIndices));
+    CheckField("SFXGame.BioConversation", "m_nSelectedReply", SDK_FIELD(UBioConversation, m_nSelectedReply));
+    CheckField("SFXGame.BioConversation", "m_nDelayedReplyChoice", SDK_FIELD(UBioConversation, m_nDelayedReplyChoice));
+    CheckField("SFXGame.BioConversation", "m_fRemainingVOLength", SDK_FIELD(UBioConversation, m_fRemainingVOLength));
+    CheckField("SFXGame.BioConversation", "m_fShowRepliesOffset", SDK_FIELD(UBioConversation, m_fShowRepliesOffset));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));
     CheckField("Engine.Pawn", "Mesh", SDK_FIELD(APawn, Mesh));
     CheckField("Engine.Pawn", "Weapon", SDK_FIELD(APawn, Weapon));
@@ -1321,6 +1328,7 @@ void CheckPaths() {
 // Stage 3: engine/skeleton's fields as it resolved them through our layer (TryStartup), against research/14's
 // LE1 offsets, which it read at until stage 3 (its static_asserts against LExSDKv2 before that).
 void CheckSkeleton() {
+    CheckPath("SFXGame.BioConversation", {"m_ReplyList", "bUnskippable"}, SDK_BOOL(FBioDialogReplyNode, bUnskippable));  // game/Thespian
     skeleton::TryStartup();  // resolves them now (once; the skeleton probe starts it again later)
     skeleton::Fields const f = skeleton::ResolvedFields();
     struct Item {
@@ -1395,6 +1403,13 @@ void CheckFunctions() {
         "Engine.Pawn.GetWeaponStartTraceLocation",
         "SFXGame.BioPlayerController.GetAdjustedAimFor",
         "Engine.Actor.Trace",
+        "SFXGame.BioConversation.GetReplyText",                  // game/Thespian (research/70): the live wheel as script cards
+        "SFXGame.BioConversation.GetReplyParaphraseText",
+        "SFXGame.BioConversation.GetReplyCategory",
+        "SFXGame.BioConversation.GetReplyGUIStyle",
+        "SFXGame.BioConversation.QueueReply",                    // ... a reply taken as a wheel pick takes it
+        "SFXGame.BioConversation.SkipNode",                      // ... Shepard's recording of it skipped
+        "SFXGame.BioWorldInfo.EndCurrentConversation",
         "Engine.Actor.FastTrace",
         "Engine.SkeletalMeshComponent.HideBone",  // game/scope_parts (research/21 section 14)
         "Engine.SkeletalMeshComponent.UnHideBone",
@@ -1710,6 +1725,18 @@ void CheckParams() {
     PARAM(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember", nIndex);
     PARAM(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember", ReturnValue);
     PARAM(ABioBaseSquad_execGetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.GetMemberSwitchWeapon", nIndex);
+    PARAM(UBioConversation_execGetReplyText_Parms, "SFXGame.BioConversation.GetReplyText", nIndex);
+    PARAM(UBioConversation_execGetReplyText_Parms, "SFXGame.BioConversation.GetReplyText", bParse);
+    PARAM(UBioConversation_execGetReplyText_Parms, "SFXGame.BioConversation.GetReplyText", ReturnValue);
+    PARAM(UBioConversation_execGetReplyParaphraseText_Parms, "SFXGame.BioConversation.GetReplyParaphraseText", nIndex);
+    PARAM(UBioConversation_execGetReplyParaphraseText_Parms, "SFXGame.BioConversation.GetReplyParaphraseText", ReturnValue);
+    PARAM(UBioConversation_execGetReplyCategory_Parms, "SFXGame.BioConversation.GetReplyCategory", nIndex);
+    PARAM(UBioConversation_execGetReplyCategory_Parms, "SFXGame.BioConversation.GetReplyCategory", ReturnValue);
+    PARAM(UBioConversation_execGetReplyGUIStyle_Parms, "SFXGame.BioConversation.GetReplyGUIStyle", nIndex);
+    PARAM(UBioConversation_execGetReplyGUIStyle_Parms, "SFXGame.BioConversation.GetReplyGUIStyle", ReturnValue);
+    PARAM(UBioConversation_execQueueReply_Parms, "SFXGame.BioConversation.QueueReply", nReply);
+    PARAM(UBioConversation_execQueueReply_Parms, "SFXGame.BioConversation.QueueReply", ReturnValue);
+    PARAM(UBioConversation_execSkipNode_Parms, "SFXGame.BioConversation.SkipNode", ReturnValue);
     PARAM(ABioBaseSquad_execGetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.GetMemberSwitchWeapon", ReturnValue);
     PARAM(ABioBaseSquad_execSetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.SetMemberSwitchWeapon", nIndex);
     PARAM(ABioBaseSquad_execSetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.SetMemberSwitchWeapon", eWeapon);
