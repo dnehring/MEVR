@@ -22,6 +22,7 @@ Settings Clamped(Settings const& s) {
     out.convergeM = Within(s.convergeM, kMinConvergeM, kMaxConvergeM, d.convergeM);
     out.backdropBrightness = Within(s.backdropBrightness, 0.0f, 3.0f, d.backdropBrightness);
     out.fadeS = Within(s.fadeS, 0.0f, 2.0f, d.fadeS);
+    out.uiForwardM = Within(s.uiForwardM, 0.0f, kMaxUiForwardM, d.uiForwardM);
     if (!std::isfinite(s.aspect) || s.aspect < 0.0f) {
         out.aspect = d.aspect;
     } else if (s.aspect > 0.0f) {
@@ -92,6 +93,34 @@ Frame Plan(Settings const& s, float ipdM, float unitsPerMeter, float halfH) {
     float const upm = unitsPerMeter > 0.0f && std::isfinite(unitsPerMeter) ? unitsPerMeter : 0.0f;
     f.baselineUU = BaselineUU(f.crop, c.convergeM * upm, halfH);
     return f;
+}
+
+UiPlace PlaceUi(float const screen[3], float const eyes[3], float forwardM) {
+    UiPlace out;
+    float to[3] = {eyes[0] - screen[0], eyes[1] - screen[1], eyes[2] - screen[2]};
+    float const d = std::sqrt(to[0] * to[0] + to[1] * to[1] + to[2] * to[2]);
+    float const f = std::isfinite(forwardM) ? std::clamp(forwardM, 0.0f, kMaxUiForwardM) : 0.0f;
+    if (!std::isfinite(d) || d < f + 0.25f) {
+        return out;
+    }
+    for (int i = 0; i < 3; ++i) {
+        out.position[i] = screen[i] + to[i] / d * f;
+    }
+    out.scale = (d - f) / d;
+    out.valid = true;
+    return out;
+}
+
+UiPart UiPartShown(float crop, float v0, float v1) {
+    UiPart part;
+    float const c = std::isfinite(crop) ? std::clamp(crop, 0.0f, 0.25f) : 0.0f;
+    part.u0 = 0.5f * c;
+    part.u1 = 1.0f - 0.5f * c;
+    if (std::isfinite(v0) && std::isfinite(v1) && v0 >= 0.0f && v1 <= 1.0f && v1 - v0 > 0.01f) {
+        part.v0 = v0;
+        part.v1 = v1;
+    }
+    return part;
 }
 
 } // namespace mevr::vr::cine_screen

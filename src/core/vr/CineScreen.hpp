@@ -31,9 +31,10 @@ struct Settings {
     float distanceM = 3.5f;      // distanceM: how far ahead the screen stands when a scene starts
     float widthM = 2.9f;         // widthM: the screen's width
     float depth = 0.010f;        // depth: infinity's disparity, a fraction of the screen's width (0 = flat, at the screen)
-    float convergeM = 1.2f;      // convergeM: the scene distance that lands on the screen plane (metres of the scene). LE1's
+    float convergeM = 0.8f;      // convergeM: the scene distance that lands on the screen plane (metres of the scene). LE1's
                                  // close-ups put the camera ~0.85 m from a face: at 2.5 m one came 1.9 degrees out of the
-                                 // screen, at 1.2 m 0.5 (research/52, measured)
+                                 // screen, at 1.2 m 0.5 (research/52, measured). 0.8 since 2026-11-12 ("Cross-eyed"): an
+                                 // over-the-shoulder shot's foreground head came 1.33 degrees out at 1.2, cut by the frame
     float aspect = 16.0f / 9.0f; // aspect: the screen's shape (width / height): the eye image's middle band of that shape, the
                                  // director's 16:9 frame (UE3's lens is horizontal: a taller render only adds sky and floor);
                                  // 0 = the whole, nearly square image (the owner in the PS VR2, 2026-11-06: "more cinematic")
@@ -46,6 +47,11 @@ struct Settings {
     float backdropBrightness = 1.0f;  // backdropBrightness: 1 the default dimness, 0..3
     float fadeS = 0.35f;              // fadeS: the dip from black when the view changes between the world and a cinematic
                                       // (core/vr/TransitionFade; 0 off, at most 2 s)
+    // The game's UI (the dialogue wheel, subtitles, the title's menus) is drawn identically in both eye renders, so the crop put it
+    // at the far depth, behind the faces and shoulders it is drawn over (research/52 "Cross-eyed"). uiLayer: it goes to a layer of
+    // its own instead (the HUD panel), `uiForwardM` in front of the screen, the same size to the eye; 0: in the eye images.
+    bool uiLayer = true;
+    float uiForwardM = 0.5f;          // uiForwardM: how far in front of the screen the UI stands, 0..1.5 m
 };
 
 inline constexpr float kMinDistanceM = 1.0f;
@@ -59,6 +65,7 @@ inline constexpr float kMaxAspect = 3.0f;
 // 24-67 degrees; the first frame of a conversation still reports the gameplay window (the headset's 123 degrees), which set the
 // cameras 6.5 units apart for that frame (the owner, cross-eyed at a conversation's start, 2026-11-06).
 inline constexpr float kMaxLensHalfH = 0.6981317f;
+inline constexpr float kMaxUiForwardM = 1.5f;
 inline constexpr float kMinConvergeM = 0.5f;
 inline constexpr float kMaxConvergeM = 20.0f;
 inline constexpr float kDefaultIpdM = 0.064f;
@@ -107,5 +114,24 @@ struct Frame {
     bool depthCapped = false;  // the settings asked for more than MaxDepth
 };
 Frame Plan(Settings const& s, float ipdM, float unitsPerMeter, float halfH);
+
+// ---- The game's UI on a layer of its own (research/52 "Cross-eyed") -------------------------------------------------
+// Where the UI's quad stands: `forwardM` from the screen toward the eyes, along the line from the screen's centre to them, and
+// scaled so it covers the same angle as it would on the screen. `screen` and `eyes` in one space (metres). Invalid when the eyes
+// are within forwardM + 0.25 m of the screen.
+struct UiPlace {
+    bool valid = false;
+    float position[3] = {0.0f, 0.0f, 0.0f};
+    float scale = 1.0f;   // of the screen's width and height
+};
+UiPlace PlaceUi(float const screen[3], float const eyes[3], float forwardM);
+
+// The part of the UI image (the game's whole window) that the screen shows: the columns the two eyes' crops show on average
+// (the left eye drops `crop` of the width on its left, the right eye on its right: the UI, at the same pixel in both, then
+// lands on the average), and the shown band's rows `v0`..`v1` (fractions of the height).
+struct UiPart {
+    float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
+};
+UiPart UiPartShown(float crop, float v0, float v1);
 
 } // namespace mevr::vr::cine_screen

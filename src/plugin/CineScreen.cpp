@@ -60,7 +60,8 @@ bool Same(cs::Settings const& a, cs::Settings const& b) {
     return a.conversations == b.conversations && a.cutscenes == b.cutscenes && a.frontEnd == b.frontEnd && a.distanceM == b.distanceM &&
            a.widthM == b.widthM &&
            a.depth == b.depth && a.convergeM == b.convergeM && a.aspect == b.aspect && a.fullRate == b.fullRate &&
-           a.backdrop == b.backdrop && a.backdropBrightness == b.backdropBrightness && a.fadeS == b.fadeS;
+           a.backdrop == b.backdrop && a.backdropBrightness == b.backdropBrightness && a.fadeS == b.fadeS &&
+           a.uiLayer == b.uiLayer && a.uiForwardM == b.uiForwardM;
 }
 
 // Under gMutex.
@@ -94,6 +95,8 @@ void RefreshSettings(std::uint64_t now) {
         s.backdrop = GetPrivateProfileIntW(L"Cinematics", L"backdrop", s.backdrop ? 1 : 0, path.c_str()) != 0;
         s.backdropBrightness = ReadFloat(L"backdropBrightness", s.backdropBrightness, path);
         s.fadeS = ReadFloat(L"fadeS", s.fadeS, path);
+        s.uiLayer = GetPrivateProfileIntW(L"Cinematics", L"uiLayer", s.uiLayer ? 1 : 0, path.c_str()) != 0;
+        s.uiForwardM = ReadFloat(L"uiForwardM", s.uiForwardM, path);
     }
     s = cs::Clamped(s);
     if (!gSettingsLogged || !Same(s, gSettings)) {
@@ -102,14 +105,16 @@ void RefreshSettings(std::uint64_t now) {
         mevr::log::Info("cine screen: [Cinematics] conversations = {}, cutscenes = {} (on the 3D screen while Halcyon's VR conversations / "
                         "cutscenes are on; off: in VR as before), frontEnd = {} (the title and its menus); the screen {:.2f} m wide at "
                         "{:.2f} m, depth {:.2f}% of its width "
-                        "(at most {:.2f}% for a 64 mm eye distance), the scene {:.2f} m away on the screen plane, {}, {}, {}",
+                        "(at most {:.2f}% for a 64 mm eye distance), the scene {:.2f} m away on the screen plane, {}, {}, {}, {}",
             s.conversations ? 1 : 0, s.cutscenes ? 1 : 0, s.frontEnd ? 1 : 0, s.widthM, s.distanceM, s.depth * 100.0f,
             cs::MaxDepth(s.widthM, cs::kDefaultIpdM) * 100.0f, s.convergeM,
             s.aspect > 0.0f ? std::format("the eye image's middle band at {:.2f}:1 (aspect)", s.aspect)
                             : std::string("the whole eye image (aspect = 0)"),
             s.fullRate ? "at the headset's rate (fullRate)" : "at Halcyon's cinematic cap, half the display rate (fullRate = 0)",
             s.backdrop ? std::format("a floor and a horizon around it (backdrop, brightness {:.2f})", s.backdropBrightness)
-                       : std::string("in the dark (backdrop = 0)"));
+                       : std::string("in the dark (backdrop = 0)"),
+            s.uiLayer ? std::format("the game's UI on a layer {:.2f} m in front of the screen (uiLayer)", s.uiForwardM)
+                      : std::string("the game's UI in the eye images, at the far depth (uiLayer = 0)"));
     }
     gSettings = s;
 }
@@ -139,11 +144,12 @@ std::string StatusJson() {
     bool const active = gSubmitMs != 0 && now - gSubmitMs < kActiveForMs;
     auto j = [](float v) { return std::isfinite(v) ? std::format("{:.5g}", v) : std::string("null"); };
     return std::format("{{\"active\": {}, \"kind\": \"{}\", \"sceneFrames\": {}, \"settings\": {{\"conversations\": {}, \"cutscenes\": {}, "
-                       "\"distanceM\": {}, \"widthM\": {}, \"depth\": {}, \"convergeM\": {}, \"aspect\": {}, \"fullRate\": {}}}, \"plan\": {{\"valid\": {}, \"depth\": {}, "
+                       "\"distanceM\": {}, \"widthM\": {}, \"depth\": {}, \"convergeM\": {}, \"aspect\": {}, \"fullRate\": {}, \"uiLayer\": {}, "
+                       "\"uiForwardM\": {}}}, \"plan\": {{\"valid\": {}, \"depth\": {}, "
                        "\"crop\": {}, \"baselineUU\": {}, \"halfHDeg\": {}, \"ipdM\": {}, \"depthCapped\": {}}}, \"heightM\": {}}}",
         active ? "true" : "false", gSubmitConversation ? "conversation" : "cutscene", gSceneFrames, gSettings.conversations ? "true" : "false",
         gSettings.cutscenes ? "true" : "false", j(gSettings.distanceM), j(gSettings.widthM), j(gSettings.depth), j(gSettings.convergeM),
-        j(gSettings.aspect), gSettings.fullRate ? "true" : "false",
+        j(gSettings.aspect), gSettings.fullRate ? "true" : "false", gSettings.uiLayer ? "true" : "false", j(gSettings.uiForwardM),
         gPlanned ? "true" : "false", j(gFrame.depth), j(gFrame.crop), j(gFrame.baselineUU), j(gFrameHalfH * 57.29578f), j(gFrameIpdM),
         gFrame.depthCapped ? "true" : "false", j(gHeightM));
 }
@@ -152,6 +158,12 @@ bool FrontEndWanted() noexcept {
     std::lock_guard lock(gMutex);
     RefreshSettings(GetTickCount64());
     return gSettings.frontEnd;
+}
+
+UiLayer UiLayerWanted() noexcept {
+    std::lock_guard lock(gMutex);
+    RefreshSettings(GetTickCount64());
+    return {gSettings.uiLayer, gSettings.uiForwardM};
 }
 
 float FadeSeconds() noexcept {
@@ -235,6 +247,27 @@ void NoteCineScreenSubmit(bool conversation, float heightM) noexcept {
         host::gSummaryMs = now;
         host::gMinBaseline = host::gMaxBaseline = b;
     }
+}
+
+void CineScreenPointerPlane(PanelPose* placed, float* width, float* height, float const headPosition[3]) noexcept {
+    if (placed == nullptr || width == nullptr || height == nullptr || headPosition == nullptr || !HudPanelArmed()) {
+        return;   // the UI is in the eye images (or nowhere yet): the pointer stays on the screen's plane
+    }
+    mevr::host::cine_screen::UiLayer const layer = mevr::host::cine_screen::UiLayerWanted();
+    if (!layer.on) {
+        return;
+    }
+    float const origin[3] = {0.0f, 0.0f, 0.0f};
+    mevr::vr::cine_screen::UiPlace const at =
+        mevr::vr::cine_screen::PlaceUi(placed->position, placed->headLocked ? origin : headPosition, layer.forwardM);
+    if (!at.valid) {
+        return;
+    }
+    for (int i = 0; i < 3; ++i) {
+        placed->position[i] = at.position[i];
+    }
+    *width *= at.scale;
+    *height *= at.scale;
 }
 
 } // namespace MELEVR::MevrBridge

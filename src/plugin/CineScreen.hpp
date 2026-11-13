@@ -30,6 +30,14 @@ struct Backdrop {
 };
 Backdrop BackdropWanted() noexcept;
 
+// [Cinematics] uiLayer and uiForwardM, for plugin/HalcyonOverlays: the game's UI on a layer of its own in front of the screen
+// instead of in the eye images, where the crop put it behind the scene it covers (research/52 "Cross-eyed").
+struct UiLayer {
+    bool on = true;
+    float forwardM = 0.5f;
+};
+UiLayer UiLayerWanted() noexcept;
+
 // [Cinematics] fadeS, for plugin/TransitionFade (0: no fades).
 float FadeSeconds() noexcept;
 

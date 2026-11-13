@@ -400,8 +400,13 @@ switching frameworks.
   owner's first headset trial, 2026-11-06, research/52 "In the headset"). Each eye drops `depth / (1 + depth)` of its width on
   opposite sides, which puts infinity `depth` (1.0% of the width; 1.5% was cross-eyed) behind the screen; the cameras' distance
   follows each shot's lens (planned at most 80 degrees: a conversation's first frame reports the gameplay window) so the scene
-  `convergeM` (1.2 m at 100 units per metre) away lands on the plane; infinity's disparity is capped at 80% of the eye distance
-  (`core/vr/CineScreen`, unit-tested). The screen shows the eye image's middle 16:9 band (`aspect`; 0 = the whole, nearly
+  `convergeM` (0.8 m at 100 units per metre; 1.2 until 2026-11-12) away lands on the plane; infinity's disparity is capped at 80%
+  of the eye distance (`core/vr/CineScreen`, unit-tested); the render hook scales the cameras' spacing to the lens the frame is
+  drawn with (`MetricPass::lensTan`, `ScreenLensScale`: the plan knows only the previous frame's lens, so a scene's start used
+  gameplay's). **The game's UI stands on its own layer** (`uiLayer`, `uiForwardM` 0.5 m in front of the screen: the HUD panel,
+  cut to the band, `OverlayFrame::screen*`; the game pointer on that plane, `CineScreenPointerPlane`): in the eye images the
+  crop put the wheel and subtitles behind the faces they cover, which crossed the eyes (research/52 "Cross-eyed", measured with
+  `tools/cine-screen-check.py`). The screen shows the eye image's middle 16:9 band (`aspect`; 0 = the whole, nearly
   square image) and runs at the headset's rate (`fullRate`; 0 = Halcyon's `cineFpsCap`, half the display rate). `[MEVR]` seams
   in xr_session.cpp (decision, park, projection, lean, plan, submit, the pace, and the conversation movie at its authored size
   instead of Halcyon's half-size VR layout: the wheel 1.75x larger); host `plugin/CineScreen`. Logs `cine screen:`, `[VRSTATE]

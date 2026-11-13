@@ -201,6 +201,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   test rig ignored it.) This is also the first headset check of clicks on any flat menu. (research/51 section 8)
 - [ ] From the console: are the map's labels readable, and does the disc's near edge draw over the console? (research/51
   section 8.1)
+- [ ] The 3D screen without crossed eyes (2026-11-12, research/52 "Cross-eyed"; players reported it): the dialogue wheel,
+  subtitles and the title's menus now stand 0.5 m in front of the screen (`[Cinematics] uiLayer`, `uiForwardM`, live), and
+  over-the-shoulder shots no longer come out of it (`convergeM` 0.8). Read the wheel over Shepard's shoulder (Avina on the
+  Citadel): it should look in front of the shoulder, with no doubling. Faces should still look round, not cardboard (if flat:
+  `convergeM = 1.0`). Pick a reply with the pointer on the title's menus: the dot should land on the button you aim at.
 - [ ] A conversation and a cutscene on the 3D screen at the new defaults (2.9 m wide at 3.5 m, depth 1.0%, 16:9, the
   headset's full rate; research/52 "In the headset"): no cross-eyed strain (also at a conversation's first second), subtitles
   inside the 16:9 frame (if cut: `[Cinematics] aspect = 0`, live), camera pans smooth at 90 (if they stutter: `fullRate = 0`,

@@ -5234,6 +5234,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                 mevrPasses[p].p8 = mevrPlan.passTerms[p][2];
                 mevrPasses[p].p9 = mevrPlan.passTerms[p][3];
                 for (int k = 0; k < 4; ++k) mevrPasses[p].tan[k] = mevrPlan.passTan[p][k];
+                mevrPasses[p].lensTan = mevrPlan.lensTan;         // [MEVR] the 3D screen: rescaled to the drawn lens
+                mevrPasses[p].lensTanMax = mevrPlan.lensTanMax;
             }
             MELEVR::RenderHook::SetSfrMetric(mevrPlan.mode, mevrPlan.pass0Eye, mevrPasses);
         }
@@ -5970,6 +5972,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         quad.pose.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
         quad.pose.position = {placed.position[0], placed.position[1], placed.position[2]};
     };
+    MELEVR::MevrBridge::OverlayFrame mevrScreenFrame;   // [MEVR] the 3D screen's place for the overlays (research/52)
     // The head-locked per-eye QUAD path for cine was removed 2026-08-02. A VR cine now submits on
     // the normal projection layer with the [VRCINE FILL] window, which is what ME2 and ME3 do; the
     // quad path was an ME1 invention that declared no FOV and so could never carry the fill model.
@@ -6077,8 +6080,26 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         const float crop = screenNow.crop > 0.0f && screenNow.crop < 0.25f ? screenNow.crop : 0.0f;
         const float shownRows = screenNow.rect[0][3] > 0 ? static_cast<float>(screenNow.rect[0][3]) : static_cast<float>(g_eyes[0].height);
         const float wholeHeightM = g_eyes[0].height > 0 ? heightM * static_cast<float>(g_eyes[0].height) / shownRows : heightM;
-        MELEVR::MevrBridge::OnFlatQuad(kind, mevrHeadQ, mevrHeadP, placed, screenNow.widthM / (1.0f - crop), wholeHeightM, headValid);
+        MELEVR::MevrBridge::PanelPose pointerPlaced = placed;   // [MEVR] research/52: on the UI layer's plane when it is up
+        float pointerWidthM = screenNow.widthM / (1.0f - crop), pointerHeightM = wholeHeightM;
+        MELEVR::MevrBridge::CineScreenPointerPlane(&pointerPlaced, &pointerWidthM, &pointerHeightM, mevrHeadP);
+        MELEVR::MevrBridge::OnFlatQuad(kind, mevrHeadQ, mevrHeadP, pointerPlaced, pointerWidthM, pointerHeightM, headValid);
         MELEVR::MevrBridge::NoteCineScreenSubmit(inConversationMode, heightM);
+        // [MEVR] research/52 "Cross-eyed": the screen's place for the game's UI layer in front of it (HalcyonOverlays).
+        mevrScreenFrame.screenActive = true;
+        mevrScreenFrame.screenSpace = placed.space;
+        mevrScreenFrame.screenHeadLocked = placed.headLocked;
+        for (int i = 0; i < 4; ++i) mevrScreenFrame.screenOrientation[i] = placed.orientation[i];
+        for (int i = 0; i < 3; ++i) mevrScreenFrame.screenPosition[i] = placed.position[i];
+        mevrScreenFrame.screenWidthM = screenNow.widthM;
+        mevrScreenFrame.screenHeightM = heightM;
+        mevrScreenFrame.screenCrop = crop;
+        if (g_eyes[0].height > 0 && screenNow.rect[0][3] > 0)
+        {
+            mevrScreenFrame.screenRows[0] = static_cast<float>(screenNow.rect[0][1]) / static_cast<float>(g_eyes[0].height);
+            mevrScreenFrame.screenRows[1] = static_cast<float>(screenNow.rect[0][1] + screenNow.rect[0][3]) /
+                                            static_cast<float>(g_eyes[0].height);
+        }
     }
     else if (submitted)
     {
@@ -6138,6 +6159,19 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
         mevrFrame.projectionValid = submitted && !forceFlatCine;
         mevrFrame.pairArm = g_sfrPairArmThisFrame;   // [MEVR] research/39: which Draw the submitted pair (and the scope capture) came from
+        if (mevrScreenFrame.screenActive)   // [MEVR] research/52 "Cross-eyed": the 3D screen's place for its UI layer
+        {
+            mevrFrame.screenActive = true;
+            mevrFrame.screenSpace = mevrScreenFrame.screenSpace;
+            mevrFrame.screenHeadLocked = mevrScreenFrame.screenHeadLocked;
+            for (int i = 0; i < 4; ++i) mevrFrame.screenOrientation[i] = mevrScreenFrame.screenOrientation[i];
+            for (int i = 0; i < 3; ++i) mevrFrame.screenPosition[i] = mevrScreenFrame.screenPosition[i];
+            mevrFrame.screenWidthM = mevrScreenFrame.screenWidthM;
+            mevrFrame.screenHeightM = mevrScreenFrame.screenHeightM;
+            mevrFrame.screenCrop = mevrScreenFrame.screenCrop;
+            mevrFrame.screenRows[0] = mevrScreenFrame.screenRows[0];
+            mevrFrame.screenRows[1] = mevrScreenFrame.screenRows[1];
+        }
         const void* mevrQuads[12] = {};   // [MEVR] HUD panel, reticle, sight (two), squad menu, wheel, label, wrist and gun pieces, the Mako's lever and stick, the cockpit's radar
         const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 12);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 3; ++i)   // [MEVR] room for the menu, the placeholder, the fade

@@ -177,7 +177,11 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
             float const dz = in.eyePosition[1][2] - in.eyePosition[0][2];
             ipdM = std::sqrt(dx * dx + dy * dy + dz * dz);
         }
-        mevr::vr::cine_screen::Frame const frame = mevr::host::cine_screen::PlanFrame(in.cpuHalfH, ipdM,
+        // The lens is the previous frame's render: the render hook scales the offsets to the lens it draws with (a cut, a
+        // scene's start from gameplay: research/52 "Cross-eyed"). Unknown, it is planned at the largest lens and scaled.
+        float const maxHalfH = mevr::vr::cine_screen::kMaxLensHalfH;
+        float const planHalfH = in.cpuHalfH > 0.0f ? std::min(in.cpuHalfH, maxHalfH) : maxHalfH;
+        mevr::vr::cine_screen::Frame const frame = mevr::host::cine_screen::PlanFrame(planHalfH, ipdM,
             mevr::vr::cine_screen::kSceneUnitsPerMeter);   // convergeM is a distance in the scene, at its own scale
         out->mode = 1;
         out->pass0Eye = 0;
@@ -185,6 +189,8 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
         out->passOffsetUU[1][0] = 0.5f * frame.baselineUU;
         out->ipdM = ipdM;
         out->ipdUU = frame.baselineUU;
+        out->lensTan = frame.baselineUU > 0.0f ? std::tan(planHalfH) : 0.0f;
+        out->lensTanMax = std::tan(maxHalfH);
         std::lock_guard lock(gMutex);
         gStatus.planned = true;
         gStatus.plan = *out;

@@ -7706,6 +7706,29 @@ void TestCineScreen() {
     odd.convergeM = 0.0f;
     auto const k = cs::Clamped(odd);
     CHECK(k.distanceM == cs::kMaxDistanceM && k.widthM == cs::Settings{}.widthM && k.depth == 0.0f && k.convergeM == cs::kMinConvergeM);
+    odd.uiForwardM = 9.0f;
+    CHECK(cs::Clamped(odd).uiForwardM == cs::kMaxUiForwardM);
+    // The game's UI on a layer of its own (research/52 "Cross-eyed"): 0.5 m in front of a screen 3.5 m ahead, toward the eyes,
+    // as large to them as on the screen; at its plane with 0; nothing when the eyes are at the screen.
+    CHECK(cs::Settings{}.uiLayer && NearD(cs::Settings{}.convergeM, 0.8f, 1e-6));
+    float const screenAt[3] = {0.2f, -0.1f, -3.5f};
+    float const eyesAt[3] = {0.2f, -0.1f, 0.0f};
+    cs::UiPlace const ui = cs::PlaceUi(screenAt, eyesAt, 0.5f);
+    CHECK(ui.valid && NearD(ui.position[2], -3.0f, 1e-5) && NearD(ui.position[0], 0.2f, 1e-6) && NearD(ui.scale, 3.0f / 3.5f, 1e-5));
+    cs::UiPlace const flat = cs::PlaceUi(screenAt, eyesAt, 0.0f);
+    CHECK(flat.valid && NearD(flat.position[2], -3.5f, 1e-6) && NearD(flat.scale, 1.0f, 1e-6));
+    float const close[3] = {0.2f, -0.1f, -3.6f};
+    CHECK(!cs::PlaceUi(screenAt, close, 0.5f).valid);
+    // An eye 3.2 cm to the side sees the layer's centre and the screen's at different angles: the layer is nearer (crossed).
+    float const leftEye[3] = {0.168f, -0.1f, 0.0f};
+    float const towardLayer = (ui.position[0] - leftEye[0]) / (leftEye[2] - ui.position[2]);
+    float const towardScreen = (screenAt[0] - leftEye[0]) / (leftEye[2] - screenAt[2]);
+    CHECK(towardLayer > towardScreen);
+    // The part of the window shown: the crops' average columns and the band's rows; a bad band keeps the whole height.
+    cs::UiPart const part = cs::UiPartShown(0.02f, 0.21875f, 0.78125f);
+    CHECK(NearD(part.u0, 0.01f, 1e-6) && NearD(part.u1, 0.99f, 1e-6) && NearD(part.v0, 0.21875f, 1e-6) && NearD(part.v1, 0.78125f, 1e-6));
+    cs::UiPart const whole = cs::UiPartShown(std::numeric_limits<float>::quiet_NaN(), 0.5f, 0.4f);
+    CHECK(whole.u0 == 0.0f && whole.u1 == 1.0f && whole.v0 == 0.0f && whole.v1 == 1.0f);
 }
 
 void TestOmniRail() {

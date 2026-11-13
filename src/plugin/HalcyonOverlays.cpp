@@ -41,6 +41,8 @@
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/CineScreen.hpp"
+#include "core/vr/CineScreen.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/ConversationWorld.hpp"
@@ -748,6 +750,7 @@ std::uint64_t gLastFrameMs = 0;
 XrCompositionLayerQuad gPanelQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 XrCompositionLayerQuad gReticleQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 bool gLoggedPanel = false;
+bool gScreenUiShown = false;   // the 3D screen's UI is on its own layer (research/52 "Cross-eyed")
 bool gLoggedReticle = false;
 bool gLoggedFallback = false;
 bool gProbedPanel = false;
@@ -1812,7 +1815,12 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     mevr::host::conversation_world::NoteFrame(frame.gameMode);
     std::optional<mevr::vr::conversation_world::State> const convo =
         gLastGameMode == 5 ? mevr::host::conversation_world::Current() : std::nullopt;
-    bool const uiToPanel = gameplay || galaxyUi || worldUi || worldUiPending || convo.has_value();
+    // The 3D cinema screen (research/52 "Cross-eyed"): its UI (the dialogue wheel, subtitles, the title's menus) goes to the panel,
+    // which stands just in front of the screen. In the eye images the screen's crop put it at the far depth, behind the faces and
+    // shoulders it is drawn over (0.4-0.6 degrees, measured), so reading the wheel crossed the eyes.
+    mevr::host::cine_screen::UiLayer const screenUiWanted = mevr::host::cine_screen::UiLayerWanted();
+    bool const screenUi = frame.screenActive && screenUiWanted.on && frame.screenWidthM > 0.0f && frame.screenHeightM > 0.0f;
+    bool const uiToPanel = gameplay || galaxyUi || worldUi || worldUiPending || convo.has_value() || screenUi;
 
     // The game's own crosshair marks the screen centre (the head), not the gun: hidden while our
     // hand reticle stands in for it. The HUD movie keeps its authored layout on the panel (Halcyon's
@@ -1967,10 +1975,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     }
     gPanelBackdrop = worldShown ? std::max(worldShown->backdrop, 1.0f / 256.0f) : 0.0f;
     gPanelFigure = worldShown && device != nullptr ? mevr::host::ui_world_figure::ForFrame(device.Get(), gPanelBackdrop) : std::nullopt;
-    if (frame.worldFrame && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr &&
+    if ((frame.worldFrame || screenUi) && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr &&
         (!worldUiPending || worldUi) && (!worldUi || worldShown)) {
         gPanelDrawsLastFrame.store(draws, std::memory_order_relaxed);
-        if (RenderPanel(context, device.Get(), frame.floatWhiteScale, worldUi ? Masks{} : hudMasks)) {
+        if (RenderPanel(context, device.Get(), frame.floatWhiteScale, worldUi || screenUi ? Masks{} : hudMasks)) {
             tPanelPresent.stage = 1; // the swapchain now contains this game's complete panel
             float const width = std::clamp(cfg.hudPanelWidthM, 0.3f, 4.0f);
             gPanelQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
@@ -2008,6 +2016,36 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                     mevr::host::game_pointer::HoldOffForPuzzle();  // its first frame forgets the quad at once
                 }
             }
+            if (screenUi) {
+                // The part of the window the screen shows (the crops' average columns, the band's rows), on a quad `forwardM` in
+                // front of the screen toward the eyes, as large to the eye as on the screen: no disparity of its own, so it sits
+                // nearer than the scene behind it.
+                namespace cs = mevr::vr::cine_screen;
+                float const origin[3] = {0.0f, 0.0f, 0.0f};
+                cs::UiPlace const at = cs::PlaceUi(frame.screenPosition, frame.screenHeadLocked ? origin : frame.headPosition,
+                    screenUiWanted.forwardM);
+                cs::UiPart const part = cs::UiPartShown(frame.screenCrop, frame.screenRows[0], frame.screenRows[1]);
+                auto const sw = static_cast<float>(gPanelSwapchain.width);
+                auto const sh = static_cast<float>(gPanelSwapchain.height);
+                gPanelQuad.subImage.imageRect = {{static_cast<int32_t>(part.u0 * sw), static_cast<int32_t>(part.v0 * sh)},
+                    {std::max<int32_t>(1, static_cast<int32_t>((part.u1 - part.u0) * sw)),
+                        std::max<int32_t>(1, static_cast<int32_t>((part.v1 - part.v0) * sh))}};
+                gPanelQuad.space = frame.screenSpace != nullptr ? static_cast<XrSpace>(frame.screenSpace) : static_cast<XrSpace>(frame.appSpace);
+                gPanelQuad.pose.orientation = ToQuat(frame.screenOrientation);
+                gPanelQuad.pose.position = ToVec(at.valid ? at.position : frame.screenPosition);
+                float const scale = at.valid ? at.scale : 1.0f;
+                gPanelQuad.size = {frame.screenWidthM * scale, frame.screenHeightM * scale};
+                if (!gScreenUiShown) {
+                    char line[320];
+                    std::snprintf(line, sizeof line,
+                        "[MEVR-HUD] the 3D screen's UI on its own layer %.2f m in front of the screen (%.2f x %.2f m%s); the UI's part "
+                        "u %.3f..%.3f v %.3f..%.3f of %ux%u", at.valid ? screenUiWanted.forwardM : 0.0f, gPanelQuad.size.width,
+                        gPanelQuad.size.height, frame.screenHeadLocked ? ", head-locked" : "", part.u0, part.u1, part.v0, part.v1,
+                        gPanel.width, gPanel.height);
+                    LogBoth(line);
+                }
+                gScreenUiShown = true;
+            }
             if (galaxyUi) {
                 float const uiWidth = mevr::host::galaxy_hologram::UiPanelWidthM(kGalaxyUiWidthM);
                 gPanelQuad.pose = mevr::host::galaxy_hologram::UiPanelPose(ToVec(frame.headPosition));
@@ -2041,6 +2079,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 gNextPanelLogMs = now + 30000;
             }
         }
+    }
+    if (gScreenUiShown && !(screenUi && panelShown)) {
+        gScreenUiShown = false;
+        LogBoth("[MEVR-HUD] the 3D screen's UI layer is gone");
     }
     // The prompt's part of the UI on a quad at the object, facing the eyes, the same angular size at any distance.
     if (labelWanted && panelShown && labelPx.width > 0 && count < capacity) {
@@ -2295,11 +2337,12 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     tPanelPresent.shown = panelShown;
     // Next frame's UI goes to the panel only if this one showed it (or nothing went there yet, so
     // the texture can be made), and the panel works.
-    bool const armNext = engaged && uiToPanel && (frame.worldFrame || worldUiPending || worldUi) &&
+    bool const armNext = engaged && uiToPanel && (frame.worldFrame || worldUiPending || worldUi || screenUi) &&
         (panelShown || gPanel.texture == nullptr || worldUiPending || worldUi);
     mevr::host::world_ui::RedirectReady(worldUi && panelShown && draws > 0 && gArmed.load(std::memory_order_acquire));
     if (armNext != gArmed.load(std::memory_order_relaxed)) {
         mevr::log::Info("overlays: game UI goes to {}", !armNext ? "the eye images" : galaxyUi ? "a panel over the galaxy hologram's table"
+                                                                                                : screenUi ? "a layer in front of the 3D screen"
                                                                                                 : worldUi ? "a screen standing in the room"
                                                                                                 : "the body-locked HUD panel");
         gPanelNeedsClear = true;

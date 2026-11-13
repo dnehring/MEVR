@@ -230,6 +230,24 @@ already takes the UI elsewhere); the cameras' spacing scaled to the lens of the 
 sees that projection); and less pop-out for over-the-shoulder foregrounds (a nearer `convergeM`, or a limit from the frame's
 nearest depth), which is a default the owner decides.
 
+**Built and measured (2026-11-12, the owner: "Also less pop-out")**, the same scenes on the fake headset (session
+`2026-11-12_21-38-*-cinefix`):
+
+- **The UI on its own layer** (`[Cinematics] uiLayer = 1`, `uiForwardM` 0.5): while the screen is up the HUD panel takes the
+  game's UI (`HalcyonOverlays`, `OverlayFrame::screen*` from the submit) and stands 0.5 m in front of the screen toward the eyes,
+  scaled to cover the same angle (`cine_screen::PlaceUi`), cut to the part the screen shows (the crops' average columns, the
+  band's rows: `UiPartShown`); the game pointer's quad moves onto that plane (`CineScreenPointerPlane`). The dialogue wheel in
+  Avina's conversation triangulates from both composited eyes at **3.08 m (before: 6.15 m)**, over a shoulder now at the
+  screen plane; the far railing stays at 6.66 m. Log `[MEVR-HUD] the 3D screen's UI on its own layer`.
+- **convergeM 0.8** (was 1.2): nothing in front of the screen in any snapshot of the three scenes: Kirrahe's camp nearest
+  **+0.20 degrees** (before -0.59 at the edge), Avina's **+0.04** (before -1.33); the far scene at +0.47 as before. Faces sit a
+  little further behind the screen and are a third less deep (the spacing scales with convergeM).
+- **The drawn lens**: `ApplyMetricEyeOffset` scales the planned spacing by the frame's own lens over the planned one
+  (`ScreenLensScale`, `MetricPass::lensTan`; log `[MEVR-STEREO] 3D screen: the cameras' spacing xN`). The title's camera flight
+  narrows its lens by 0.8 a frame for ~20 frames at start-up (it read 0.0 degrees in the first run's log too): followed.
+- The tool's UI test (pixels identical in both renders) also fires on translucent near content over the far scene (Avina's
+  hologram over the railing): read its flags with the picture.
+
 ## The dialogue wheel at its authored size (2026-11-04)
 
 A `[MEVR]` seam in `xr_session.cpp` gives the conversation movie the identity transform (`Pchud::SetConvoTransform(true, 1,

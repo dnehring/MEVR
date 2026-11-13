@@ -125,6 +125,9 @@ struct MetricPass
     float offsetUU[3] = {0.0f, 0.0f, 0.0f};   // camera right, up, forward (game units), from the lean's eye centre
     float p0 = 1.0f, p5 = 1.0f, p8 = 0.0f, p9 = 0.0f;   // off-centre projection terms (mode 2), for w = z
     float tan[4] = {0.0f, 0.0f, 0.0f, 0.0f};  // that frustum's left, right, up, down tangents (mode 2)
+    // [MEVR] the 3D cinema screen (mode 1): the lens the offset was planned for, as tan(half angle), and the largest
+    // one planned; the pass scales its offset to the lens it renders with (research/52 "Cross-eyed"). 0: as given.
+    float lensTan = 0.0f, lensTanMax = 0.0f;
 };
 // mode 0: upstream (ApplyReplayProofOffsetSEH's +-halfEye along the body's right). 1: each pass from its eye's
 // real offset, Halcyon's symmetric projection. 2: as 1, plus each eye's own off-centre frustum written into the

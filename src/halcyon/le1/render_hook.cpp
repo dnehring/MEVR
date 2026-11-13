@@ -6,6 +6,7 @@
 
 #include <Windows.h>
 
+#include <algorithm>   // [MEVR] std::clamp (the 3D screen's lens scale)
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -1949,6 +1950,29 @@ namespace
 // offset from the eye centre (the lean already moved it there), along the pre-look camera axes, the same edit
 // (ViewOrigin + PreViewTranslation) upstream makes. The main pass latches the frame's slot. Returns false when
 // metric stereo is off for this frame (the caller then runs upstream's offset).
+// [MEVR] the 3D cinema screen (mode 1, research/52 "Cross-eyed"): the cameras' spacing was planned for the lens of the
+// previous frame's render; this frame's view still holds the game's own projection here (before any FOV override), so the
+// spacing is scaled to the lens it is drawn with: a cut between lenses, or a scene's first frame after gameplay's wide
+// window, no longer gets the old shot's spacing (4-9 times too wide at a scene's start). 1: as planned.
+std::atomic<int> g_screenLensLogs{0};
+float ScreenLensScale(void* fsv, const MELEVR::RenderHook::MetricPass& p) noexcept
+{
+    if (g_metricLatched.mode != 1 || !(p.lensTan > 0.0f)) return 1.0f;
+    float m00 = 0.0f;
+    __try
+    {
+        m00 = *reinterpret_cast<const float*>(reinterpret_cast<const BYTE*>(fsv) + kFsvProjectionMatrix);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return 1.0f;
+    }
+    if (!std::isfinite(m00) || !(m00 > 0.01f)) return 1.0f;
+    float drawn = 1.0f / m00;
+    if (p.lensTanMax > 0.0f && drawn > p.lensTanMax) drawn = p.lensTanMax;
+    return std::clamp(drawn / p.lensTan, 0.02f, 50.0f);
+}
+
 bool ApplyMetricEyeOffset(void* fsv) noexcept
 {
     if (!t_fvcReplay)
@@ -1961,8 +1985,17 @@ bool ApplyMetricEyeOffset(void* fsv) noexcept
     if (!MetricGatesPass()) return true;
     const int pass = t_fvcReplay ? 1 : 0;
     const MELEVR::RenderHook::MetricPass& p = g_metricLatched.passes[pass];
+    const float lensScale = ScreenLensScale(fsv, p);   // [MEVR] the 3D screen: the drawn lens's spacing
+    if (pass == 0 && std::fabs(lensScale - 1.0f) > 0.05f && g_screenLensLogs.fetch_add(1, std::memory_order_relaxed) < 24)
+    {
+        char line[200] = {};
+        sprintf_s(line, "[MEVR-STEREO] 3D screen: the cameras' spacing x%.2f for the lens drawn (planned for tan %.3f)",
+                  lensScale, p.lensTan);
+        LogLine(line);
+    }
     float wx = 0.0f, wy = 0.0f, wz = 0.0f;
-    if (!ApplyViewRelativeOffsetRawSEH(fsv, p.offsetUU[0], p.offsetUU[1], p.offsetUU[2], &wx, &wy, &wz, nullptr, nullptr))
+    if (!ApplyViewRelativeOffsetRawSEH(fsv, p.offsetUU[0] * lensScale, p.offsetUU[1] * lensScale, p.offsetUU[2] * lensScale,
+                                       &wx, &wy, &wz, nullptr, nullptr))
     {
         LogLine("[MEVR-STEREO] eye offset failed: SEH caught a fault");
         return true;
@@ -1970,8 +2003,9 @@ bool ApplyMetricEyeOffset(void* fsv) noexcept
     if (pass == 0)   // [MEVR] research/37 one-Draw: what pass 1 would get, for the host's synthesised second view
     {
         const MELEVR::RenderHook::MetricPass& q = g_metricLatched.passes[1];
-        s_pass1Pending.valid = ReadWorldDeltaRawSEH(fsv, q.offsetUU[0] - p.offsetUU[0], q.offsetUU[1] - p.offsetUU[1],
-                                                    q.offsetUU[2] - p.offsetUU[2], s_pass1Pending.delta);
+        s_pass1Pending.valid = ReadWorldDeltaRawSEH(fsv, (q.offsetUU[0] - p.offsetUU[0]) * lensScale,
+                                                    (q.offsetUU[1] - p.offsetUU[1]) * lensScale,
+                                                    (q.offsetUU[2] - p.offsetUU[2]) * lensScale, s_pass1Pending.delta);
         s_pass1Pending.mode = g_metricLatched.mode;
         s_pass1Pending.p0 = q.p0;
         s_pass1Pending.p5 = q.p5;

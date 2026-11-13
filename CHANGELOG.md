@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **The 3D cinema screen no longer crosses your eyes.** The dialogue wheel, subtitles and the title's menus used to sit
+  deep behind the screen while drawn over faces and shoulders in front of it; they now stand just in front of the
+  screen. Over-the-shoulder shots come out of the screen less, and the first frames of a scene and each camera cut no
+  longer flash with too much depth.
 - **Puzzle instructions back in view.** The Tower of Hanoi puzzle's instructions (and those of the Quasar machines and
   the toxin cure) were pushed off the HUD, out of sight. They now show where the game puts them. Headset verification
   pending.

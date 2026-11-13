@@ -162,6 +162,16 @@ struct OverlayFrame
     // [MEVR] research/39: the head-look arm the submitted pair was rendered with ([CAPTUREPOSE] g_sfrPairArmThisFrame;
     // 0 unknown): which Draw it came from, and so which pose the scope's scene capture rendered (NoteDrawArm).
     std::uint64_t pairArm = 0;
+    // [MEVR] the 3D cinema screen (research/52 "Cross-eyed"): where it stands this frame, so the game's UI can go on a layer of
+    // its own just in front of it instead of the eye images (HalcyonOverlays). screenActive false: no screen this frame.
+    bool screenActive = false;
+    void* screenSpace = nullptr;                       // XrSpace of the pose: the app space, or VIEW while head-locked
+    bool screenHeadLocked = false;
+    float screenOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    float screenPosition[3] = {};
+    float screenWidthM = 0.0f, screenHeightM = 0.0f;
+    float screenCrop = 0.0f;                           // each eye's dropped share of its image's width
+    float screenRows[2] = {0.0f, 1.0f};                // the shown band's rows, fractions of the eye image's height
 };
 
 // [MEVR] research/39: game thread, each Draw's main pass when it latches its pair arm ([POSEEXACT]): the scope capture
@@ -503,6 +513,11 @@ struct StereoPlan
     float passTan[2][4] = {};       // per pass, mode 2: the frustum's left, right, up, down tangents
     float ipdM = 0.0f;              // the runtime's eye distance
     float ipdUU = 0.0f;             // as rendered
+    // The 3D cinema screen (mode 1, research/52 "Cross-eyed"): the tangent of the lens half angle the offsets were planned
+    // for, and the largest one planned (kMaxLensHalfH). The render hook scales the offsets to the lens of the frame it
+    // draws (the plan only knows the previous frame's: a cut, or a scene's start from gameplay). 0: as planned.
+    float lensTan = 0.0f;
+    float lensTanMax = 0.0f;
 };
 // Present thread, once per frame with the view offset (RunFrame): the plan for the next game frame's passes.
 void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept;
@@ -571,6 +586,11 @@ bool HoldPlainVr(bool plainVr, int gameMode, bool worldUi = false) noexcept;
 bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept;
 // Present thread, each frame the two quads are submitted: for the log and the snapshot.
 void NoteCineScreenSubmit(bool conversation, float heightM) noexcept;
+// Present thread, before OnFlatQuad on the screen (research/52 "Cross-eyed"): while the game's UI stands on its own layer in
+// front of the screen ([Cinematics] uiLayer, the HUD panel taking it), the game pointer's quad goes onto that layer's plane, so
+// a ray lands on the menu where it is drawn: `placed` moved toward the eyes (`headPosition` in its space; the origin when
+// head-locked) and `width`/`height` scaled to match. Unchanged otherwise.
+void CineScreenPointerPlane(PanelPose* placed, float* width, float* height, float const headPosition[3]) noexcept;
 // Present thread, with the projection views: what this frame submits. `mode`: what the pair was rendered with
 // (0 upstream's, also the flat screen). Declared poses (position xyz, orientation xyzw) and FOVs per eye.
 void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const declaredOrientation[2][4],
