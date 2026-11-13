@@ -197,6 +197,39 @@ hold and 0.35 s ease now cover), and from the next second on the frames ran at f
 (52, 70, 87, 90 fps over ~6 s after the 10:08 cutscene) came with Halcyon's 45 fps cap letting go (gone with `fullRate`) and a
 combat starting (`StartCombat`). [verify] in the headset after a cutscene that starts a fight.
 
+## "Cross-eyed": measured across shots (2026-11-12)
+
+Players (and the owner, on a Quest) report the 3D screen feels cross-eyed, "as if the IPD were wrong", in conversations,
+cutscenes and the front end. Measured with `tools/cine-screen-check.py` (new: each tile of the left quad image found in the
+right one, the disparity turned into degrees from the screen plane and the distance the eyes fuse it at; pixels both renders
+drew identically, the UI, matched apart from the scene under them) on 34 snapshots of a fake-headset run (session
+`2026-11-12_21-13-47-cinedepth`: Kirrahe's camp, Avina's wheel conversation, Liara's intro; the installed 0.2.0+387e06c5,
+`[Cinematics] conversations = 1`, the owner's 2.9 m screen at 3.5 m, depth 1%) and the owner's Quest snapshot
+`2026-11-11_22-43-25-801`. The comfort rule of thumb is about 1 degree in front of or behind the screen.
+
+- **The geometry is right.** Far content sits at +0.47 degrees (the 1% depth: fused at 6.4 m for 63 mm eyes), the sign is
+  right (left image on the left eye), no vertical disparity (after trimming edge tiles so the search fits), and the theatre's
+  floor triangulates from both eyes' composites to one flat plane 1.9-2.0 m under the eyes from 2.7 to 4.9 m (rays within a
+  few mm). The stars match the infinity mapping of the declared FOVs to the pixel.
+- **The scene is mostly behind the screen**: faces in close-ups at +0.1..+0.3 degrees, the room at +0.4..+0.47. Over-the-shoulder
+  shots bring the foreground out and cut it with the frame: the armour at Kirrahe's camp -0.27..-0.59 degrees at the right edge,
+  **Shepard's head at the top edge in Avina's -1.33 degrees** (fused at 1.5 m), over the limit and a window violation.
+- **The UI lies behind what it covers** (the cause the owner pointed at: "the 3D dialogue options"). Halcyon draws the game's UI
+  once after both passes and mirrors the same draw, same viewport, into the left eye's image (`SfrMirrorUiDrawIntoPass0`), so the
+  wheel and subtitles are identical in both renders; the screen's crop then puts them at the far depth, +0.47 degrees. Over
+  Shepard's shoulder (in front of the screen, -0.1..-0.16) the wheel is 0.6 degrees behind the surface it is drawn on: to read
+  the options the eyes converge at 6.4 m while everything around them says 3.3 m. Six of the 34 snapshots had UI over nearer
+  scene, by 0.4-0.6 degrees. The title's menus are drawn the same way.
+- **Each scene's first frames use the gameplay lens.** The plan reads the lens from the previous frame's render
+  (`GetRenderFovHalfAngles`), so every conversation and cutscene starts with "the cameras 1.99 units apart for a 90.0-degree
+  lens" against 0.21-0.53 for its real shots (4-9 times the parallax: near content far out of the screen for those frames),
+  and every cut between lenses gets one frame with the old shot's spacing.
+
+The fixes these point to: the UI on a layer of its own just in front of the screen instead of in the eye images (the HUD panel
+already takes the UI elsewhere); the cameras' spacing scaled to the lens of the frame being rendered (`ApplyMetricEyeOffset`
+sees that projection); and less pop-out for over-the-shoulder foregrounds (a nearer `convergeM`, or a limit from the frame's
+nearest depth), which is a default the owner decides.
+
 ## The dialogue wheel at its authored size (2026-11-04)
 
 A `[MEVR]` seam in `xr_session.cpp` gives the conversation movie the identity transform (`Pchud::SetConvoTransform(true, 1,
