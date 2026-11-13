@@ -838,6 +838,16 @@ mevr::game::voice::Link VoiceLink() {
     return link;
 }
 
+mevr::game::thespian::Link ThespianLink() {
+    using namespace mevr;
+    game::thespian::Link link;
+    link.voice = VoiceLink();
+    if (MEVR_HOST_HAS(setThespian) && gHost->setThespian != nullptr && gHost->thespianPanelSize == sizeof(vr::thespian::Panel)) {
+        link.setPanel = gHost->setThespian;
+    }
+    return link;
+}
+
 mevr::game::squad_orders::Link SquadOrdersLink() {
     using namespace mevr;
     game::squad_orders::Link link;
@@ -1432,7 +1442,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
         game::sound_place::Tick(deltaSeconds);  // on foot: people near the player and the gun heard from where they are (research/69 A1, A2)
-        game::thespian::Tick(deltaSeconds);  // after the conversation's: the live wheel as script cards (research/70)
+        game::thespian::Tick(deltaSeconds, ThespianLink());  // after the conversation's: the dialogue wheel spoken (research/70)
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();

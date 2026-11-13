@@ -610,6 +610,9 @@ std::string ShortName(ue3::Object const* o) {
     return r.NameText(o);
 }
 
+// The room as the held view mapped it in the last tick of a conversation in the world (TickConversation's frame).
+std::optional<engine::TrackingFrame> gRoomFrame;
+
 // The head bone of a pawn's mesh: its world place and axes (cached per skeletal mesh asset).
 struct Head {
     ik::Vec3 at;
@@ -6839,6 +6842,7 @@ void Tick(double deltaSeconds, Link const& link) {
     state.subtitleHeightDeg = gSettings.subtitleHeightDeg;
     std::copy(std::begin(gSettings.subtitleCrop), std::end(gSettings.subtitleCrop), std::begin(state.subtitleCrop));
     std::copy(std::begin(gSettings.wheelCrop), std::end(gSettings.wheelCrop), std::begin(state.wheelCrop));
+    gRoomFrame = frame;  // for PersonHead (game/Thespian's panel)
     // The subtitle under the speaker's face; Shepard's own lines under the one he talks to.
     ue3::Object* face = gC.speaker;
     if (face == pawn || face == nullptr) {
@@ -6915,6 +6919,21 @@ ue3::Object* LiveConversation() {
 ue3::Object* LiveWheelHandler() {
     ue3::Object* const controller = player::Controller();
     return controller != nullptr ? WheelHandler(controller) : nullptr;
+}
+
+bool PersonHead(ue3::Object* actor, double place[3], std::string* name) {
+    auto const head = HeadOf(actor);
+    if (!head || !gRoomFrame) {
+        return false;
+    }
+    XrVector3f const room = engine::ToTracking(*gRoomFrame, engine::UnrealVector{head->at.x, head->at.y, head->at.z});
+    place[0] = static_cast<double>(room.x);
+    place[1] = static_cast<double>(room.y);
+    place[2] = static_cast<double>(room.z);
+    if (name != nullptr) {
+        *name = DisplayName(actor);
+    }
+    return true;
 }
 
 std::string Command(std::string const& rest) {

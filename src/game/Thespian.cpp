@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 #include "game/Thespian.hpp"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/voice/ScriptMatch.hpp"
+#include "core/vr/Thespian.hpp"
+#include "core/vr/Voice.hpp"
+#include "engine/SettingsFile.hpp"
 #include "engine/VoicePlace.hpp"
 #include "game/ConversationWorld.hpp"
 #include "game/Player.hpp"
@@ -25,8 +29,9 @@ namespace mevr::game::thespian {
 
 namespace {
 
-namespace sm = voice::script_match;
+namespace sm = mevr::voice::script_match;
 namespace vp = engine::voice_place;
+namespace th = vr::thespian;
 
 // EReplyCategory and EConvGUIStyles values the wheel handler's script tests (research/70 section 8 step 1).
 constexpr int kCategoryInvestigate = 5;
@@ -44,6 +49,7 @@ ue3::FunctionRef gGetReplyGuiStyle{"SFXGame.BioConversation.GetReplyGUIStyle"}; 
 ue3::FunctionRef gQueueReply{"SFXGame.BioConversation.QueueReply"};                      // (int nReply) -> bool: what a wheel pick ends in
 ue3::FunctionRef gSkipNode{"SFXGame.BioConversation.SkipNode"};                          // () -> bool: the player's skip of the current line
 ue3::FunctionRef gEndCurrentConversation{"SFXGame.BioWorldInfo.EndCurrentConversation"}; // what the handler calls when QueueReply fails
+ue3::FunctionRef gGetEntryText{"SFXGame.BioConversation.GetEntryText"};                  // (optional bool bParse) -> string: the other person's line
 // The conversation's state, for the skip and the trace after a commit.
 ue3::FieldRef gSpeaker{"SFXGame.BioConversation", "m_pSpeaker"};
 ue3::FieldRef gConvPlayer{"SFXGame.BioConversation", "m_pConversationPlayer"};
@@ -84,6 +90,7 @@ struct Pending {
     int reply = -1;
     bool unskippable = false;
     bool skipped = false;
+    int skipTries = 0;
     bool playerSpoke = false;       // the conversation's speaker was the player since the commit
     bool muted = false;
     std::uint64_t atMs = 0;
@@ -92,6 +99,7 @@ struct Pending {
 };
 
 Pending gPending;
+Link gLink;
 bool gWatch = false;
 bool gWheelWasUp = false;
 unsigned gWheels = 0;
@@ -328,15 +336,23 @@ void TickPending() {
     }
     if (playerSpeaks && !wheelUp) {
         gPending.playerSpoke = true;
-        if (!gPending.skipped && !gPending.unskippable) {
-            gPending.skipped = true;  // one try: a refused skip is the game's word (an unskippable moment)
+        // The reply's line plays once m_nSelectedReply names it (seen in the game 2026-11-12: a reply queued while the other
+        // person's last words still played had the player as the speaker a tick before its line began, and a skip then is
+        // refused). A refused skip is tried again for a few ticks, then it is the game's word (an unskippable moment).
+        bool const lineStarted = gSelectedReply.Read<std::int32_t>(conversation).value_or(-1) >= 0;
+        if (lineStarted && !gPending.skipped && !gPending.unskippable && gPending.skipTries < 6) {
+            ++gPending.skipTries;
             bool skipped = false;
             if (ue3::Function* const skip = gSkipNode.Get()) {
                 ue3::Params parms(ue3::runtime::Get(), skip);
                 skipped = ue3::runtime::Call(conversation, skip, parms) && parms.ReturnBool().value_or(false);
             }
+            gPending.skipped = skipped;
             gSkips += skipped ? 1 : 0;
-            log::Info("thespian: +{} ms: Shepard's line started: SkipNode {}", sinceMs, skipped ? "skipped it" : "was refused (the line plays)");
+            if (skipped || gPending.skipTries == 6) {
+                log::Info("thespian: +{} ms: Shepard's line started: SkipNode {} (try {})", sinceMs, skipped ? "skipped it" : "was refused (the line plays)",
+                    gPending.skipTries);
+            }
         }
         return;
     }
@@ -350,12 +366,466 @@ void TickPending() {
     }
 }
 
+
+// ---- The spoken turn (research/70 section 8 steps 3 to 6) -----------------------------------------------------------------
+
+struct ModeSettings {
+    bool on = false;          // [Thespian] on
+    th::Settings turn;        // strictness, endMs, pauseMs
+    bool handSilent = false;  // handPick = silent: a reply picked by hand is skipped and silenced too
+    int keyterms = 12;        // the wheel's rare words given to the recognizer
+};
+ModeSettings gMode;
+std::uint64_t gModeReadMs = 0;
+std::optional<bool> gOnOverride;  // `mevr thespian on|off` (this session)
+std::string gModeText;
+
+void RefreshMode() {
+    std::uint64_t const now = GetTickCount64();
+    if (gModeReadMs != 0 && now - gModeReadMs < 1000) {
+        return;
+    }
+    gModeReadMs = now;
+    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ModeSettings m;
+    auto number = [&](char const* key, double fallback, double lo, double hi) {
+        auto const v = ini::GetNumber(loaded.file, "Thespian", key);
+        return v ? std::clamp(*v, lo, hi) : fallback;
+    };
+    m.on = number("on", 0.0, 0.0, 1.0) >= 0.5;
+    if (auto const text = ini::Get(loaded.file, "Thespian", "strictness")) {
+        m.turn.strictness = th::ParseStrictness(*text, m.turn.strictness);
+    }
+    m.turn.endMs = static_cast<int>(number("endMs", m.turn.endMs, 0.0, 2000.0));
+    m.turn.pauseMs = static_cast<int>(number("pauseMs", m.turn.pauseMs, 200.0, 5000.0));
+    m.turn.staleMs = static_cast<int>(number("staleMs", m.turn.staleMs, 1000.0, 20000.0));
+    if (auto const text = ini::Get(loaded.file, "Thespian", "handPick")) {
+        m.handSilent = ini::Lower(ini::Trim(*text)) == "silent";
+    }
+    m.keyterms = static_cast<int>(number("keyterms", m.keyterms, 0.0, 32.0));
+    if (gOnOverride) {
+        m.on = *gOnOverride;
+    }
+    std::string const text = std::format("{}{}, strictness {}, a line's end {} ms, a pause {} ms, a hand pick {}", m.on ? "on" : "off",
+        gOnOverride ? " (the console's)" : "", th::Name(m.turn.strictness), m.turn.endMs, m.turn.pauseMs,
+        m.handSilent ? "is silenced too" : "plays Shepard's recording");
+    if (text != gModeText) {
+        gModeText = text;
+        log::Info("thespian: the spoken mode is {}", text);
+    }
+    gMode = m;
+}
+
+struct HeardLine {
+    std::uint64_t id = 0;
+    std::string text;
+};
+
+// One wheel's spoken turn.
+struct Turn {
+    bool active = false;             // the wheel is up and the recognizer was asked to listen
+    bool blocked = false;            // this wheel is not for speaking (no cards, not English): the game's wheel alone
+    ue3::Object* conversation = nullptr;
+    std::vector<Card> all;           // every current reply
+    std::vector<int> candidates;     // indices into `all`: the matcher's cards, in order
+    std::optional<sm::Wheel> wheel;
+    std::uint64_t signature = 0;     // of the current reply list (a change is a new wheel)
+    std::vector<HeardLine> lines;    // the open listen's lines so far
+    std::uint64_t listenStart = 0;
+    std::size_t baseLine = 0;        // words before this line, and the first baseWords of it, were dropped (a restart)
+    std::size_t baseWords = 0;
+    std::string text;                // the words that count
+    sm::Result now;                  // the matcher, while speaking
+    sm::Result atEnd;                // the matcher, the player has stopped
+    th::State state;
+    th::Output out;
+    std::uint64_t startedMs = 0;
+    std::uint64_t firstWordMs = 0;
+    std::string speaker;
+    bool anchored = false;
+    double speakerHead[3] = {};
+    std::string heard;               // the other person's last line
+};
+Turn gTurn;
+std::uint32_t gPanelSerial = 0;
+bool gPanelShown = false;
+std::uint64_t gOurListens[4] = {};
+unsigned gOurListenAt = 0;
+unsigned gSpoken = 0, gSpokenCommits = 0, gUnsure = 0, gStoodDown = 0;
+std::string gLastHeard;
+bool gToldNoRecognizer = false;
+vr::voice::State gVoice;
+
+void NoteOurListen(std::uint64_t startMs) {
+    if (startMs == 0) {
+        return;
+    }
+    for (std::uint64_t const known : gOurListens) {
+        if (known == startMs) {
+            return;
+        }
+    }
+    gOurListens[gOurListenAt++ % 4] = startMs;
+}
+
+std::uint64_t Signature(ue3::Object* conversation) {
+    auto const* const current = gCurrentReplies.In<ue3::TArray<std::int32_t>>(conversation);
+    if (current == nullptr || current->data == nullptr || current->count <= 0 || current->count > kMaxCards) {
+        return 0;
+    }
+    std::uint64_t h = 1469598103934665603ull;
+    for (std::int32_t i = 0; i < current->count; ++i) {
+        h = (h ^ static_cast<std::uint64_t>(static_cast<std::uint32_t>(current->data[i]))) * 1099511628211ull;
+    }
+    return h ^ static_cast<std::uint64_t>(current->count);
+}
+
+std::vector<std::string> SpaceWords(std::string const& text) {
+    std::vector<std::string> out;
+    std::istringstream in(text);
+    for (std::string w; in >> w;) {
+        out.push_back(w);
+    }
+    return out;
+}
+
+// The words that count: the listen's lines from the restart's baseline on.
+std::string Counted() {
+    std::string out;
+    for (std::size_t i = gTurn.baseLine; i < gTurn.lines.size(); ++i) {
+        std::vector<std::string> const words = SpaceWords(gTurn.lines[i].text);
+        for (std::size_t w = i == gTurn.baseLine ? std::min(gTurn.baseWords, words.size()) : 0; w < words.size(); ++w) {
+            out += (out.empty() ? "" : " ") + words[w];
+        }
+    }
+    return out;
+}
+
+void Rebase() {
+    if (gTurn.lines.empty()) {
+        gTurn.baseLine = 0;
+        gTurn.baseWords = 0;
+    } else {
+        gTurn.baseLine = gTurn.lines.size() - 1;
+        gTurn.baseWords = SpaceWords(gTurn.lines.back().text).size();
+    }
+    gTurn.text.clear();
+    gTurn.now = {};
+    gTurn.atEnd = {};
+    gTurn.firstWordMs = 0;
+}
+
+th::Match Reduce(sm::Result const& r, bool words) {
+    th::Match m;
+    m.words = words;
+    m.leader = r.leader;
+    m.decided = r.decided;
+    if (r.leader >= 0 && static_cast<std::size_t>(r.leader) < r.cards.size()) {
+        sm::CardState const& c = r.cards[static_cast<std::size_t>(r.leader)];
+        m.reachedEnd = c.reachedEnd;
+        m.coverage = c.coverage;
+        m.byLabel = c.byLabel;
+    }
+    return m;
+}
+
+// English enough to read aloud to an English recognizer: the cards' words hold some of the language's commonest.
+bool LooksEnglish(std::vector<Card> const& all, std::vector<int> const& candidates) {
+    int words = 0, stops = 0;
+    for (int const i : candidates) {
+        for (std::string const& w : sm::Tokens(all[static_cast<std::size_t>(i)].line + " " + all[static_cast<std::size_t>(i)].label)) {
+            ++words;
+            stops += sm::IsStopWord(w) ? 1 : 0;
+        }
+    }
+    return words < 12 || stops * 12 >= words;
+}
+
+void SendPanel(Link const& link, bool shown) {
+    if (link.setPanel == nullptr || (!shown && !gPanelShown)) {
+        return;
+    }
+    th::Panel panel;
+    panel.shown = shown ? 1 : 0;
+    if (shown) {
+        panel.mic = static_cast<std::uint8_t>(gTurn.out.mic);
+        panel.level = gVoice.level;
+        panel.serial = gPanelSerial;
+        panel.anchored = gTurn.anchored ? 1 : 0;
+        for (int i = 0; i < 3; ++i) {
+            panel.speakerHead[i] = static_cast<float>(gTurn.speakerHead[i]);
+        }
+        strncpy_s(panel.speaker, gTurn.speaker.c_str(), _TRUNCATE);
+        strncpy_s(panel.heard, gTurn.heard.c_str(), _TRUNCATE);
+        int const leader = gTurn.out.leader;
+        bool const committed = gTurn.out.phase == th::Phase::Committed;
+        // Rows: the wheel's replies first, then the investigate topics; unavailable replies shown greyed; the rest left out.
+        for (int pass = 0; pass < 2; ++pass) {
+            for (std::size_t a = 0; a < gTurn.all.size() && panel.cardCount < th::kMaxCards; ++a) {
+                Card const& c = gTurn.all[a];
+                bool const investigate = c.category == kCategoryInvestigate;
+                if (investigate != (pass == 1) || (!c.candidate && c.style != kStyleIllegal)) {
+                    continue;
+                }
+                th::PanelCard& row = panel.cards[panel.cardCount++];
+                panel.mainCount += pass == 0 ? 1 : 0;
+                strncpy_s(row.label, c.label.c_str(), _TRUNCATE);
+                strncpy_s(row.line, c.line.c_str(), _TRUNCATE);
+                row.tone = static_cast<std::uint8_t>(th::ToneOf(c.category, c.style));
+                auto const it = std::find(gTurn.candidates.begin(), gTurn.candidates.end(), static_cast<int>(a));
+                if (it == gTurn.candidates.end()) {
+                    row.look = static_cast<std::uint8_t>(th::Look::Unavailable);
+                    continue;
+                }
+                int const card = static_cast<int>(it - gTurn.candidates.begin());
+                row.look = static_cast<std::uint8_t>(card == leader ? (committed ? th::Look::Committed : th::Look::Leading) : leader >= 0 ? th::Look::Dim : th::Look::Idle);
+                if (card == leader && static_cast<std::size_t>(card) < gTurn.now.cards.size() && !c.line.empty()) {
+                    sm::CardState const& st = gTurn.now.cards[static_cast<std::size_t>(card)];
+                    for (std::size_t w = 0; w < st.lit.size() && w < 64; ++w) {
+                        row.lit |= st.lit[w] != 0 ? (1ull << w) : 0ull;
+                    }
+                    if (st.frontier + 1 < static_cast<int>(st.lit.size())) {
+                        row.next = static_cast<std::int16_t>(st.frontier + 1);
+                    }
+                }
+            }
+        }
+    }
+    link.setPanel(&panel);
+    gPanelShown = shown;
+}
+
+void EndTurn(Link const& link, char const* why) {
+    if (!gTurn.active) {
+        return;
+    }
+    if (link.voice.setListen != nullptr) {
+        link.voice.setListen(0);
+    }
+    log::Info("thespian: the turn is over ({}; {:.1f} s, heard \"{}\")", why, static_cast<double>(GetTickCount64() - gTurn.startedMs) / 1000.0, gTurn.text);
+    bool const blocked = gTurn.blocked;
+    gTurn = {};
+    gTurn.blocked = blocked;
+}
+
+void BeginTurn(Link const& link, Live const& live) {
+    gTurn = {};
+    gTurn.conversation = live.conversation;
+    gTurn.signature = Signature(live.conversation);
+    gTurn.all = live.cards;
+    std::vector<sm::Card> cards;
+    for (std::size_t i = 0; i < gTurn.all.size(); ++i) {
+        if (gTurn.all[i].candidate) {
+            gTurn.candidates.push_back(static_cast<int>(i));
+            cards.push_back({gTurn.all[i].label, gTurn.all[i].line});
+        }
+    }
+    if (cards.empty() || !LooksEnglish(gTurn.all, gTurn.candidates)) {
+        gTurn.blocked = true;
+        ++gStoodDown;
+        log::Info("thespian: this wheel is not for speaking ({}): the game's wheel alone", cards.empty() ? "no reply to read" : "its text isn't English");
+        return;
+    }
+    gTurn.wheel.emplace(cards);
+    gTurn.active = true;
+    gTurn.startedMs = GetTickCount64();
+    ++gSpoken;
+    ++gPanelSerial;
+    // The other person: whoever spoke last (the wheel's line), for the panel's header and place.
+    ue3::Object* const speaker = gSpeaker.Read<ue3::Object*>(live.conversation).value_or(nullptr);
+    ue3::Object* const playerActor = gConvPlayer.Read<ue3::Object*>(live.conversation).value_or(nullptr);
+    if (speaker != nullptr && speaker != playerActor && conversation_world::InWorld()) {
+        gTurn.anchored = conversation_world::PersonHead(speaker, gTurn.speakerHead, &gTurn.speaker);
+    }
+    if (ue3::Function* const f = gGetEntryText.Get()) {
+        ue3::Params parms(ue3::runtime::Get(), f);
+        parms.SetBool("bParse", true);
+        if (ue3::runtime::Call(live.conversation, f, parms)) {
+            ue3::FString returned = parms.Return<ue3::FString>().value_or(ue3::FString{});
+            gTurn.heard = ue3::memory::Narrow(returned);
+            ue3::memory::FreeString(returned);
+        }
+    }
+    std::string terms;
+    for (std::string const& t : gTurn.wheel->Keyterms(gMode.keyterms)) {
+        terms += (terms.empty() ? "" : ",") + t;
+    }
+    if (link.voice.setKeyterms != nullptr && !terms.empty()) {
+        link.voice.setKeyterms(terms.c_str());
+    }
+    if (link.voice.setListen != nullptr) {
+        link.voice.setListen(2);  // the open listen: no ducking, until we end it
+    }
+    log::Info("thespian: a wheel to speak: {} cards of {} replies; key terms \"{}\"; the other's line has {:.2f} s left", cards.size(), gTurn.all.size(), terms,
+        gRemainingVo.Read<float>(live.conversation).value_or(-1.0f));
+}
+
+void TakeLines(Link const& link) {
+    if (link.voice.takeLine == nullptr) {
+        return;
+    }
+    vr::voice::Line line;
+    bool changed = false;
+    while (link.voice.takeLine(&line)) {
+        if (line.listenStartMs != gTurn.listenStart) {
+            // A listen that isn't this turn's (the radio's last words, an earlier wheel's): not ours to read.
+            if (gVoice.open == 0 || line.listenStartMs != gVoice.listenStartMs) {
+                continue;
+            }
+            gTurn.listenStart = line.listenStartMs;
+            gTurn.lines.clear();
+            gTurn.baseLine = 0;
+            gTurn.baseWords = 0;
+        }
+        NoteOurListen(line.listenStartMs);
+        if (line.endOfListen != 0) {
+            continue;
+        }
+        auto it = std::find_if(gTurn.lines.begin(), gTurn.lines.end(), [&](HeardLine const& h) { return h.id == line.id; });
+        if (it == gTurn.lines.end()) {
+            gTurn.lines.push_back({line.id, line.text});
+        } else {
+            it->text = line.text;
+        }
+        changed = true;
+    }
+    if (!changed) {
+        return;
+    }
+    std::string const text = Counted();
+    if (text == gTurn.text) {
+        return;
+    }
+    gTurn.text = text;
+    gLastHeard = text;
+    if (gTurn.firstWordMs == 0 && !text.empty()) {
+        gTurn.firstWordMs = GetTickCount64();
+    }
+    gTurn.now = gTurn.wheel->Match(text, false);
+    gTurn.atEnd = gTurn.wheel->Match(text, true);
+}
+
+void TickTurn(double deltaSeconds, Link const& link) {
+    RefreshMode();
+    bool ready = false;
+    gVoice = {};
+    if (link.voice.has && link.voice.state != nullptr) {
+        link.voice.state(&gVoice);
+        ready = gVoice.status == static_cast<std::uint8_t>(vr::voice::Status::Ready);
+        if (gVoice.open != 0) {
+            NoteOurListen(gVoice.listenStartMs);
+        }
+    }
+    ue3::Object* const conversation = conversation_world::LiveConversation();
+    ue3::Object* const handler = conversation != nullptr ? conversation_world::LiveWheelHandler() : nullptr;
+    bool const up = handler != nullptr && gDisplayingWheel.ReadBool(handler).value_or(false);
+    if (!up) {
+        gTurn.blocked = false;
+    }
+    if (gMode.on && up && !ready && !gToldNoRecognizer) {
+        gToldNoRecognizer = true;
+        log::Info("thespian: the spoken mode is on but there is no recognizer ({}): the game's wheel alone",
+            !link.voice.has ? "the host has no voice services" : gVoice.error[0] != '\0' ? gVoice.error : "not loaded");
+    }
+    bool const want = gMode.on && ready && up && !gPending.active;
+    if (gTurn.active && (!want || conversation != gTurn.conversation || Signature(conversation) != gTurn.signature)) {
+        // The wheel went down without us: a pick by hand. With handPick = silent its line is skipped and silenced too.
+        bool const byHand = !up && gMode.on && !gPending.active && conversation == gTurn.conversation;
+        EndTurn(link, !up ? "the wheel went down: a pick by hand" : !gMode.on ? "the mode went off" : !ready ? "the recognizer went away" : "another wheel");
+        if (byHand && gMode.handSilent && conversation != nullptr) {
+            gPending = {};
+            gPending.active = true;
+            gPending.conversation = conversation;
+            gPending.atMs = GetTickCount64();
+            auto const replies = gReplyList.ElementsOf(conversation);
+            std::int32_t const selected = gSelectedReply.Read<std::int32_t>(conversation).value_or(-1);
+            void* const node = replies && selected >= 0 ? replies->At(selected) : nullptr;
+            gPending.reply = selected;
+            gPending.unskippable = node == nullptr || gReplyUnskippable.ReadBool(node).value_or(true);  // unknown: silenced, not skipped
+            log::Info("thespian: a pick by hand (reply {}): silenced{}", selected, gPending.unskippable ? "" : " and skipped when it starts");
+        }
+    }
+    if (want && !gTurn.active && !gTurn.blocked) {
+        if (auto const live = ReadLive(); live && live->wheelUp) {
+            BeginTurn(link, *live);
+        }
+    }
+    if (gTurn.active) {
+        TakeLines(link);
+        th::Input in;
+        in.wheelUp = true;
+        in.otherSpeaking = gRemainingVo.Read<float>(conversation).value_or(0.0f) > 0.05f;
+        in.silentMs = gVoice.open != 0 ? gVoice.silentMs : 0;
+        // No commit before the open listen runs (the quiet clock is its own).
+        // Words: something other than the commonest words alone (the recognizer writes "you" for a quiet room now and
+        // then, seen in the game 2026-11-13), unless they are a reply themselves.
+        bool words = false;
+        for (std::string const& w : sm::Tokens(gTurn.text)) {
+            words = words || !sm::IsStopWord(w);
+        }
+        words = words || gTurn.now.decided || gTurn.atEnd.decided;
+        in.now = Reduce(gTurn.now, words);
+        in.atEnd = Reduce(gTurn.atEnd, words);
+        in.dt = deltaSeconds;
+        th::Phase const before = gTurn.state.phase;
+        gTurn.out = th::Step(gTurn.state, gMode.turn, in);
+        if (gTurn.out.restart) {
+            if (!gTurn.text.empty()) {
+                ++gUnsure;
+                log::Info("thespian: \"{}\" was dropped ({})", gTurn.text, in.otherSpeaking || before == th::Phase::Off ? "a new turn" : "nobody could place it");
+            }
+            Rebase();
+        }
+        if (gTurn.out.phase != before && gTurn.out.phase == th::Phase::Leading && gTurn.out.leader >= 0) {
+            Card const& c = gTurn.all[static_cast<std::size_t>(gTurn.candidates[static_cast<std::size_t>(gTurn.out.leader)])];
+            log::Info("thespian: leading [{}] \"{}\" after \"{}\" ({} ms into the speech)", c.position, c.label, gTurn.text,
+                gTurn.firstWordMs != 0 ? GetTickCount64() - gTurn.firstWordMs : 0);
+        }
+        if (gTurn.out.commit >= 0 && static_cast<std::size_t>(gTurn.out.commit) < gTurn.candidates.size()) {
+            Card const& c = gTurn.all[static_cast<std::size_t>(gTurn.candidates[static_cast<std::size_t>(gTurn.out.commit)])];
+            sm::Result const& r = in.now.decided && in.now.leader == gTurn.out.commit ? gTurn.now : gTurn.atEnd;
+            sm::CardState const& st = r.cards[static_cast<std::size_t>(gTurn.out.commit)];
+            std::string const how = std::format("spoken \"{}\" (by its {}, {:.0f}% of the line{}, quiet {} ms, {} ms after the first word)", gTurn.text,
+                st.byLabel ? "label" : "line", st.coverage * 100.0f, st.reachedEnd ? ", read to its end" : "", in.silentMs,
+                gTurn.firstWordMs != 0 ? GetTickCount64() - gTurn.firstWordMs : 0);
+            Live live;
+            live.conversation = conversation;
+            live.handler = handler;
+            live.wheelUp = true;
+            live.cards = gTurn.all;
+            ++gSpokenCommits;
+            SendPanel(link, true);  // the committed row's flash
+            Commit(live, c.position, how);
+            EndTurn(link, "a reply was taken");
+        }
+    }
+    SendPanel(link, gTurn.active);
+}
+
 }  // namespace
 
-void Tick(double) {
+bool OwnsMicrophone() {
+    return gTurn.active;
+}
+
+bool OwnsListen(std::uint64_t listenStartMs) {
+    if (listenStartMs == 0) {
+        return false;
+    }
+    for (std::uint64_t const known : gOurListens) {
+        if (known == listenStartMs) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Tick(double deltaSeconds, Link const& link) {
+    gLink = link;
     if (gPending.active) {
         TickPending();
     }
+    TickTurn(deltaSeconds, link);
     // A wheel coming up: counted, and listed while watching.
     ue3::Object* const handler = conversation_world::LiveWheelHandler();
     bool const up = handler != nullptr && gDisplayingWheel.ReadBool(handler).value_or(false);
@@ -380,6 +850,28 @@ std::string Command(std::string const& rest) {
         gWatch = value != "off" && value != "0";
         return std::format("thespian: watching {} (the cards are logged whenever a wheel comes up)", gWatch ? "on" : "off");
     }
+    if (verb == "on" || verb == "off" || verb == "auto") {
+        gOnOverride = verb == "auto" ? std::nullopt : std::optional<bool>(verb == "on");
+        gModeReadMs = 0;
+        RefreshMode();
+        return "thespian: the spoken mode is " + gModeText;
+    }
+    if (verb == "status") {
+        return std::format("thespian: the spoken mode is {}; recognizer {} ({}), open listen {}, quiet {} ms, level {:.3f}; turn {} (phase {}), heard \"{}\"; "
+                           "{} wheels, {} spoken turns, {} taken by voice, {} dropped, {} wheels not for speaking; last: {}",
+            gModeText, gVoice.status, gVoice.model, gVoice.open != 0 ? "yes" : "no", gVoice.silentMs, gVoice.level, gTurn.active ? "active" : gTurn.blocked ? "blocked" : "none",
+            static_cast<int>(gTurn.state.phase), gTurn.active ? gTurn.text : gLastHeard, gWheels, gSpoken, gSpokenCommits, gUnsure, gStoodDown, gLast);
+    }
+    if (verb == "feed") {
+        std::string path;
+        std::getline(words, path);
+        path = ini::Trim(path);
+        if (gLink.voice.command == nullptr) {
+            return "thespian: the host has no voice services";
+        }
+        gLink.voice.command(("wav " + path).c_str());
+        return std::format("thespian: fed {} to the recognizer ({})", path, gVoice.open != 0 ? "into the open listen" : "no open listen: as a listen of its own");
+    }
     auto const live = ReadLive();
     if (!live) {
         return "thespian: no conversation";
@@ -395,17 +887,21 @@ std::string Command(std::string const& rest) {
     if (verb == "say") {
         std::string said;
         std::getline(words, said);
-        return Say(*live, said);
+        return Say(*live, ini::Trim(said));
     }
-    return "thespian: cards | watch on|off | say <words> | pick <position>";
+    return "thespian: cards | watch on|off | say <words> | pick <position> | on | off | auto | status | feed <wav>";
 }
 
 std::string StatusJson() {
-    return std::format("{{\"wheels\": {}, \"commits\": {}, \"skips\": {}, \"refused\": {}, \"pending\": {}, \"watch\": {}}}", gWheels, gCommits,
-        gSkips, gRefused, gPending.active ? "true" : "false", gWatch ? "true" : "false");
+    return std::format("{{\"on\": {}, \"wheels\": {}, \"commits\": {}, \"skips\": {}, \"refused\": {}, \"pending\": {}, \"watch\": {}, \"turn\": {}, "
+                       "\"phase\": {}, \"spokenTurns\": {}, \"spokenCommits\": {}, \"dropped\": {}, \"notForSpeaking\": {}}}",
+        gMode.on ? "true" : "false", gWheels, gCommits, gSkips, gRefused, gPending.active ? "true" : "false", gWatch ? "true" : "false",
+        gTurn.active ? "true" : "false", static_cast<int>(gTurn.state.phase), gSpoken, gSpokenCommits, gUnsure, gStoodDown);
 }
 
 void Shutdown() {
+    EndTurn(gLink, "the mod is unloading");
+    SendPanel(gLink, false);
     ClearMute();
     gPending = {};
 }

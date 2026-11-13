@@ -20,6 +20,10 @@
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/MakoControls.hpp"
 #include "core/vr/InteractLabel.hpp"
+#include "core/vr/Thespian.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/Thespian.hpp"
+#endif
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/GalaxyHologram.hpp"
@@ -376,6 +380,10 @@ HostServices WithPowerWheel(HostServices services) {
     services.floorLockSampleSize = static_cast<std::uint32_t>(sizeof(vr::floor_lock::PawnSample));
     services.setFloorLockSample = &floor_lock::SetPawn;
     services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
+#if defined(MEVR_WITH_MAIN_MENU)
+    services.thespianPanelSize = static_cast<std::uint32_t>(sizeof(vr::thespian::Panel));  // v39: Thespian mode's panel (research/70)
+    services.setThespian = &thespian::SetPanel;
+#endif
     return services;
 }
 HostServices const gServices = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithCrashBreadcrumbs({kHostServicesVersion, kHostLog, &HostControllers, &HostView, &HostSetHandAim,

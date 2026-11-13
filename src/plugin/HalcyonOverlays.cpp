@@ -56,6 +56,7 @@
 #include "plugin/MainMenu.hpp"
 #include "plugin/OmniPad.hpp"
 #include "plugin/OmniToolRail.hpp"
+#include "plugin/Thespian.hpp"
 #endif
 #include "plugin/MevrMenu.hpp"
 #include "plugin/PerfProbe.hpp"
@@ -1912,7 +1913,13 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool const convoAllowed = convo && engaged && frame.worldFrame && !frame.menuOpen && frame.headValid && gPanel.texture != nullptr &&
         gPanel.tintSrv != nullptr && device != nullptr;
     bool const convoSubtitleWanted = convoAllowed && convo->subtitle != 0 && !gLabelSwapchain.Refused();
-    bool const convoWheelWanted = convoAllowed && convo->wheel != 0 && !gWheelSwapchain.Refused();
+    // Not while Thespian mode's panel stands (research/70): the replies are its rows; the game's wheel stays on the HUD panel.
+#if defined(MEVR_WITH_MAIN_MENU)
+    bool const thespianPanel = mevr::host::thespian::Shown();
+#else
+    bool const thespianPanel = false;
+#endif
+    bool const convoWheelWanted = convoAllowed && convo->wheel != 0 && !gWheelSwapchain.Refused() && !thespianPanel;
     il::Pixels const convoSubPx = convo ? il::ToPixels(convo->subtitleCrop[2] > 0.0f && convo->subtitleCrop[3] > 0.0f
                                                            ? il::Rect{convo->subtitleCrop[0], convo->subtitleCrop[1], convo->subtitleCrop[2], convo->subtitleCrop[3]}
                                                            : cwv::DefaultSubtitleCrop(gPanel.width, gPanel.height),
@@ -2750,6 +2757,20 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         if (pieces.bodyValid) padFrame.body = mevr::vr::omni_rail::Body{pieces.leftWrist, pieces.leftElbow, pieces.rightIndex1, pieces.rightIndex2};
         padFrame.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();
         if (XrCompositionLayerQuad const* layer = mevr::host::omni_pad::Layer(padFrame); layer != nullptr && count < capacity) {
+            layersOut[count++] = layer;
+        }
+    }
+    // ---- Thespian mode's panel (plugin/Thespian, research/70): the replies as rows to read aloud, under the speaker ----
+    {
+        mevr::host::thespian::Frame panelFrame;
+        panelFrame.session = session;
+        panelFrame.appSpace = static_cast<XrSpace>(frame.appSpace);
+        panelFrame.device = device.Get();
+        panelFrame.context = context;
+        panelFrame.head.orientation = ToQuat(frame.headOrientation);
+        panelFrame.head.position = ToVec(frame.headPosition);
+        panelFrame.othersOwnInput = frame.menuOpen || mevr::host::main_menu::IsOpen() || mevr::host::calibration::Active();
+        if (XrCompositionLayerQuad const* layer = mevr::host::thespian::Layer(panelFrame); layer != nullptr && count < capacity) {
             layersOut[count++] = layer;
         }
     }

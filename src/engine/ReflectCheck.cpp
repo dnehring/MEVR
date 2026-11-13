@@ -1421,6 +1421,12 @@ void CheckFunctions() {
         "SFXGame.BioConversation.QueueReply",                    // ... a reply taken as a wheel pick takes it
         "SFXGame.BioConversation.SkipNode",                      // ... Shepard's recording of it skipped
         "SFXGame.BioWorldInfo.EndCurrentConversation",
+        "SFXGame.BioConversation.GetEntryText",                  // ... the other person's line, for the panel's header
+        "SFXGame.BioConversation.EndConversation",               // ... mevr convo end
+        "SFXGame.BioPawn.GetWeaponStartTraceLocation",
+        "Engine.Pawn.GetWeaponStartTraceLocation",
+        "SFXGame.BioPlayerController.GetAdjustedAimFor",
+        "Engine.Actor.Trace",
         "Engine.Actor.FastTrace",
         "Engine.SkeletalMeshComponent.HideBone",  // game/scope_parts (research/21 section 14)
         "Engine.SkeletalMeshComponent.UnHideBone",
@@ -1743,6 +1749,13 @@ void CheckParams() {
     PARAM(UBioConversation_execGetReplyParaphraseText_Parms, "SFXGame.BioConversation.GetReplyParaphraseText", ReturnValue);
     PARAM(UBioConversation_execGetReplyCategory_Parms, "SFXGame.BioConversation.GetReplyCategory", nIndex);
     PARAM(UBioConversation_execGetReplyCategory_Parms, "SFXGame.BioConversation.GetReplyCategory", ReturnValue);
+    PARAM(UBioConversation_execGetEntryText_Parms, "SFXGame.BioConversation.GetEntryText", bParse);
+    PARAM(UBioConversation_execGetEntryText_Parms, "SFXGame.BioConversation.GetEntryText", ReturnValue);
+    PARAM(AActor_execDestroy_Parms, "Engine.Actor.Destroy", ReturnValue);
+    PARAM(ABioBaseSquad_execGetSquadSize_Parms, "SFXGame.BioBaseSquad.GetSquadSize", ReturnValue);
+    PARAM(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember", nIndex);
+    PARAM(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember", ReturnValue);
+    PARAM(ABioBaseSquad_execGetMemberSwitchWeapon_Parms, "SFXGame.BioBaseSquad.GetMemberSwitchWeapon", nIndex);
     PARAM(UBioConversation_execGetReplyGUIStyle_Parms, "SFXGame.BioConversation.GetReplyGUIStyle", nIndex);
     PARAM(UBioConversation_execGetReplyGUIStyle_Parms, "SFXGame.BioConversation.GetReplyGUIStyle", ReturnValue);
     PARAM(UBioConversation_execQueueReply_Parms, "SFXGame.BioConversation.QueueReply", nReply);

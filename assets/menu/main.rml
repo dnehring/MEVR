@@ -294,6 +294,16 @@
 			<div class="info"><div class="ico i-info"/><span>Now: {{audio_now}}</span></div>
 		</div>
 		<div class="group">
+		<!-- Thespian mode (research/70): [Thespian] on, strictness, handPick; the mod's, live. -->
+		<div class="group">
+			<div class="gtitle"><span>Thespian mode (experimental)</span><div class="gline"/></div>
+			<div class="row" data-class-disabled="!voice_on"><div class="rl"><div class="rlab">Speak Shepard's lines</div><div class="rdesc">In a conversation the replies stand as a script: read one aloud, or say its short label, and it is taken. Shepard's recorded voice is skipped. The microphone listens only while the replies are up. English game text only.</div></div>
+				<button class="tog" data-class-on="thespian_on" data-event-click="toggle('thespian_on')"><div class="knob"/></button></div>
+			<div class="row" data-class-disabled="!voice_on || !thespian_on"><div class="rl"><div class="rlab">How much of the line</div><div class="rdesc">Relaxed: enough words to tell the replies apart. Performer: half the line, or its label. Method: the whole line.</div></div>
+				<div class="seg"><button class="segb" data-class-on="thespian_strictness == 'relaxed'" data-event-click="pick('thespian_strictness','relaxed')">Relaxed</button><button class="segb" data-class-on="thespian_strictness == 'performer'" data-event-click="pick('thespian_strictness','performer')">Performer</button><button class="segb" data-class-on="thespian_strictness == 'method'" data-event-click="pick('thespian_strictness','method')">Method</button></div></div>
+			<div class="row" data-class-disabled="!voice_on || !thespian_on"><div class="rl"><div class="rlab">A reply picked by hand</div><div class="rdesc">With the stick or the pointer instead of your voice: Shepard says it, or it passes in silence.</div></div>
+				<div class="seg"><button class="segb" data-class-on="thespian_hand == 'voice'" data-event-click="pick('thespian_hand','voice')">Shepard's voice</button><button class="segb" data-class-on="thespian_hand == 'silent'" data-event-click="pick('thespian_hand','silent')">Silent</button></div></div>
+		</div>
 			<div class="gtitle"><span>Where sounds come from</span><div class="gline"/></div>
 			<div class="row"><div class="rl"><div class="rlab">People around you</div><div class="rdesc">People talking within a few steps of you are heard from where they stand, not inside your head. Off: as the game mixes them.</div></div>
 				<button class="tog" data-class-on="audio_overheard" data-event-click="toggle('audio_overheard')"><div class="knob"/></button></div>

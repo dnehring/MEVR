@@ -73,6 +73,10 @@ std::string Command(std::string const& rest);
 // BioSFHandler_Conversation), or null; for game/Thespian. Game thread.
 ue3::Object* LiveConversation();
 ue3::Object* LiveWheelHandler();
+// A person's head bone in the room (the host's app space, metres: what its quads are placed in) and the name the records
+// call them by; false without a head or while no conversation is held in the world. For game/Thespian (its panel stands
+// under the line of sight to the speaker).
+bool PersonHead(ue3::Object* actor, double place[3], std::string* name);
 std::string StatusJson();
 void LogStats();
 void Shutdown(Link const& link);

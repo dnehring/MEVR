@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace mevr::voice::script_match {
@@ -81,6 +82,9 @@ std::vector<std::string> Tokens(std::string_view text);
 // The same, with each word as it is written in the text (capitals kept): what the teleprompter draws. Same count and order
 // as Tokens.
 std::vector<std::string> DisplayWords(std::string_view text);
+// Where each of those words stands in the text: (first byte, one past the last). What is between two words (spaces,
+// punctuation) belongs to neither; the teleprompter draws it unlit.
+std::vector<std::pair<std::size_t, std::size_t>> WordSpans(std::string_view text);
 bool IsStopWord(std::string_view word);
 // A word's consonant skeleton, for words that are spelled differently and sound alike ("saren", "sarin": "SRN").
 std::string SoundKey(std::string_view word);

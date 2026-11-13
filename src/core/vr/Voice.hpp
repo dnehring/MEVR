@@ -56,6 +56,10 @@ struct State {
     char device[96]{};
     char model[32]{};
     char error[128]{};
+    // Thespian mode's open listen (research/70 section 8 step 3; the DLL's interface v3).
+    std::uint32_t silentMs = 0;  // since the last chunk of sound over the speech level (the microphone's, or a fed file's), or the listen's start
+    std::uint8_t open = 0;       // the listen is an open one (MevrVoiceListen(2)): not ducked, ended only by the caller
+    std::uint8_t pad[3]{};
 };
 
 }  // namespace mevr::vr::voice

@@ -144,6 +144,12 @@ std::vector<std::string> DisplayWords(std::string_view text) {
     return out;
 }
 
+std::vector<std::pair<std::size_t, std::size_t>> WordSpans(std::string_view text) {
+    std::vector<std::pair<std::size_t, std::size_t>> out;
+    for (Piece const& p : Split(text)) out.emplace_back(p.begin, p.end);
+    return out;
+}
+
 bool IsStopWord(std::string_view word) {
     // Function words and fillers, in their normal form (no apostrophes). Not here on purpose: yes, no, not, never and the
     // negative contractions (they tell replies apart), and the question words (what, why, how, who, where, when).

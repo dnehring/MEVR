@@ -11919,6 +11919,8 @@ void TestPowerWheel() {
     CHECK(pw::Angles(0).empty());
     // More entries close the gap down to 34 degrees apart; past a full ring they share it.
     CHECK(approx(pw::StepDeg(10), 34.0f));
+// tests/ThespianTests.cpp: Thespian mode's turn rules (core/vr/Thespian, research/70).
+int RunThespianTests();
     CHECK(approx(pw::StepDeg(12), 30.0f));
     // Tiles narrow so neighbours keep their spacing.
     pw::TileSettings tile;
@@ -12101,6 +12103,7 @@ int main() {
     TestSightSettings();
     TestSightGameOptics();
     TestScopeArt();
+    gFailures += RunThespianTests();
     TestSightGeometry();
     TestScopeMapping();
     TestSightShots();

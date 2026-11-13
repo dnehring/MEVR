@@ -73,6 +73,18 @@ std::uint32_t gPartialMaxMs = 0, gPartialSumMs = 0;
 std::atomic<std::uint32_t> gLoadMs{0};
 std::atomic<float> gLevel{0.0f};
 std::atomic<bool> gKeyHeldUnused{false};
+// The open listen (interface v3) and the silence clock: the time of the last chunk whose level was speech. The speech
+// level is three times a noise floor that falls at once and creeps up (a room's hum never reads as speech for long),
+// at least kSpeechLevel.
+std::atomic<bool> gOpen{false};
+std::atomic<std::uint64_t> gLastLoudMs{0};
+float gNoiseFloor = 0.004f;  // the capture thread's, or the feeder's while a file is fed
+constexpr float kSpeechLevel = 0.012f;
+
+void NoteLevel(float level) {
+    gNoiseFloor = std::min(gNoiseFloor * 1.004f + 0.00001f, std::max(level, 0.0005f));
+    if (level >= std::max(kSpeechLevel, gNoiseFloor * 3.0f)) gLastLoudMs.store(GetTickCount64());
+}
 std::mutex gText;
 std::string gDeviceName;
 std::string gModelName;
@@ -234,7 +246,7 @@ bool EnsureStream() {
 }
 
 // Phase 0 -> 1 (under gMoonshine).
-bool StartListen(bool fromFile) {
+bool StartListen(bool fromFile, bool duck = true) {
     if (!EnsureStream()) return false;
     std::int32_t const err = moonshine_start_stream(gTranscriber.load(), gStream);
     if (err != MOONSHINE_ERROR_NONE) {
@@ -247,9 +259,10 @@ bool StartListen(bool fromFile) {
     }
     gFromFile.store(fromFile);
     gListenStartMs.store(GetTickCount64());
+    gLastLoudMs.store(GetTickCount64());
     gPhase.store(1);
     ++gListens;
-    if (!fromFile) DuckOn();
+    if (!fromFile && duck) DuckOn();
     SetEvent(gWake);
     return true;
 }
@@ -258,6 +271,7 @@ bool StartListen(bool fromFile) {
 void StopStream() {
     if (gStream >= 0) moonshine_stop_stream(gTranscriber.load(), gStream);
     gPhase.store(3);
+    gOpen.store(false);
     DuckOff();
     SetEvent(gWake);
 }
@@ -503,6 +517,7 @@ void CaptureMain() {
             double energy = 0.0;
             for (float const s : mono) energy += static_cast<double>(s) * s;
             gLevel.store(mono.empty() ? 0.0f : static_cast<float>(std::sqrt(energy / static_cast<double>(mono.size()))));
+            if (!gFromFile.load()) NoteLevel(gLevel.load());
             int const phase = gPhase.load();
             if ((phase == 1 || phase == 2) && !gFromFile.load()) {
                 // Added without gMoonshine: the library's calls are thread-safe, and the worker's transcribe (100 ms and more)
@@ -644,7 +659,7 @@ void MevrVoiceShutdown() {
 int MevrVoiceListen(int on) {
     if (gStatus.load() != voice::Status::Ready) return -1;
     gWantedAtMs.store(GetTickCount64());
-    gWanted.store(on != 0 ? 1 : 0);
+    gWanted.store(on == 2 ? 2 : on != 0 ? 1 : 0);
     if (gWake != nullptr) SetEvent(gWake);
     return 0;
 }
@@ -657,13 +672,21 @@ namespace {
 int ApplyListen(int on, std::uint64_t askedMs) {
     int const phase = gPhase.load();
     if (on != 0) {
-        if (phase == 1) return 0;
-        if (phase == 2) {  // squeezed again inside the tail: keep listening
+        bool const open = on == 2;
+        if (phase == 1 || phase == 2) {  // listening, or squeezed again inside the tail: keep listening, as the kind asked for
             gPhase.store(1);
+            gOpen.store(open);
+            if (open) {
+                DuckOff();
+            } else if (!gFromFile.load()) {
+                DuckOn();
+            }
             return 0;
         }
         if (phase != 0) return MOONSHINE_ERROR_BUSY;  // the last final is still on its way
-        return StartListen(false) ? 0 : -1;
+        if (!StartListen(false, !open)) return -1;
+        gOpen.store(open);
+        return 0;
     }
     if (phase != 1) return 0;
     if (gConfig.tailMs <= 0 || gFromFile.load()) {
@@ -696,6 +719,11 @@ void MevrVoiceState(voice::State* out, std::uint32_t size) {
     s.listening = phase == 1 || phase == 2 ? 1 : 0;
     s.draining = phase == 3 ? 1 : 0;
     s.level = gLevel.load();
+    s.open = gOpen.load() && (phase == 1 || phase == 2) ? 1 : 0;
+    {
+        std::uint64_t const loud = gLastLoudMs.load(), nowMs = GetTickCount64();
+        s.silentMs = nowMs > loud ? static_cast<std::uint32_t>(std::min<std::uint64_t>(nowMs - loud, 0xFFFFFFFFull)) : 0;
+    }
     s.transcribeMs = gTranscribeMs.load();
     s.loadMs = gLoadMs.load();
     s.listenStartMs = gListenStartMs.load();
@@ -718,15 +746,23 @@ int MevrVoiceFeedFile(wchar_t const* path) {
         Log(1, std::format("voice: can't read {}: {}", Narrow(path), why));
         return -3;
     }
+    bool intoOpen = false;  // an open listen is running: the file is heard in the microphone's place and the listen goes on
     {
         std::lock_guard<std::mutex> lock(gMoonshine);
-        if (gPhase.load() != 0) return MOONSHINE_ERROR_BUSY;
-        if (!StartListen(true)) return -1;
+        if (gPhase.load() == 1 && gOpen.load() && !gFromFile.load()) {
+            intoOpen = true;
+            gFromFile.store(true);
+        } else {
+            if (gPhase.load() != 0) return MOONSHINE_ERROR_BUSY;
+            if (!StartListen(true)) return -1;
+        }
     }
     if (gFeeder.joinable()) gFeeder.join();
-    Log(0, std::format("voice: feeding {} ({:.2f} s at {} Hz) as one listen", Narrow(path), audio->Seconds(), audio->sampleRate));
-    // Fed in real time, 100 ms at a time, so the partials come as they would from a microphone; then the stop and the tail.
-    gFeeder = std::thread([a = std::move(*audio)]() {
+    Log(0, std::format("voice: feeding {} ({:.2f} s at {} Hz) {}", Narrow(path), audio->Seconds(), audio->sampleRate,
+        intoOpen ? "into the open listen" : "as one listen"));
+    // Fed in real time, 100 ms at a time, so the partials come as they would from a microphone; then the stop and the tail
+    // (an open listen goes on, with the microphone again).
+    gFeeder = std::thread([a = std::move(*audio), intoOpen]() {
         std::size_t const chunk = static_cast<std::size_t>(a.sampleRate / 10);
         for (std::size_t at = 0; at < a.mono.size() && gRunning.load(); at += chunk) {
             std::size_t const n = std::min(chunk, a.mono.size() - at);
@@ -734,10 +770,19 @@ int MevrVoiceFeedFile(wchar_t const* path) {
             if (stream >= 0 && gPhase.load() == 1) {
                 moonshine_transcribe_add_audio_to_stream(gTranscriber.load(), stream, a.mono.data() + at, n, a.sampleRate, 0);
             }
+            double energy = 0.0;
+            for (std::size_t i = 0; i < n; ++i) energy += static_cast<double>(a.mono[at + i]) * a.mono[at + i];
+            float const level = n > 0 ? static_cast<float>(std::sqrt(energy / static_cast<double>(n))) : 0.0f;
+            NoteLevel(level);  // the silence clock hears the file
+            if (intoOpen) gLevel.store(level);  // ... and so does the level the panel shows
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         std::lock_guard<std::mutex> lock(gMoonshine);
-        if (gPhase.load() == 1) StopStream();
+        if (intoOpen) {
+            gFromFile.store(false);
+        } else if (gPhase.load() == 1) {
+            StopStream();
+        }
     });
     return 0;
 }

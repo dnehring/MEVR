@@ -472,6 +472,8 @@ set(MEVR_MOD_SOURCES
     src/game/Thespian.hpp
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
+    src/core/vr/Thespian.cpp
+    src/core/vr/Thespian.hpp
     src/game/HudPieces.cpp
     src/game/ScreenReticle.cpp
     src/game/ScreenReticle.hpp
@@ -708,6 +710,10 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/SquadPlace.hpp
     src/core/vr/SquadParser.cpp
     src/core/vr/SquadParser.hpp
+    src/core/vr/Thespian.cpp
+    src/core/vr/Thespian.hpp
+    src/core/voice/ScriptMatch.cpp
+    src/core/voice/ScriptMatch.hpp
     src/core/vr/SquadRetreat.cpp
     src/core/vr/SquadRetreat.hpp
     src/core/vr/SquadStanding.cpp
@@ -849,7 +855,7 @@ function(mevr_add_plugin game)
         if (MEVR_MAIN_MENU)
             # Our VR main menu (research/28): LE1 only for now, in the host (not hot-reloaded).
             set(with_main_menu ON)
-            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/OmniPad.cpp src/plugin/OmniPad.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
+            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/OmniPad.cpp src/plugin/OmniPad.hpp src/plugin/Thespian.cpp src/plugin/Thespian.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
                 src/plugin/MainMenuSettings.cpp
                 src/plugin/MainMenuSettings.hpp src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/plugin/ReportRequest.cpp
                 src/plugin/ReportRequest.hpp src/plugin/SteamVrSmoothingRequest.cpp src/plugin/SteamVrSmoothingRequest.hpp
@@ -1044,6 +1050,8 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/HandFrame.cpp
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp
+        src/core/vr/Thespian.cpp
+        tests/ThespianTests.cpp
         src/core/ik/Fingers.cpp
         src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp
@@ -1503,3 +1511,5 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
     target_compile_definitions(mevr-menu-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-menu-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 endif ()
+        src/core/vr/Thespian.cpp
+        src/core/voice/ScriptMatch.cpp

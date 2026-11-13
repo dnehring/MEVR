@@ -7,6 +7,12 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Thespian mode (experimental, off by default): speak Shepard's lines.** With it on (the menu's Voice page), a
+  conversation's replies stand as a script in front of you: read one aloud, or just say its short label, and it is
+  taken; the words you have said light up as you go. Shepard's recorded voice is skipped, so the other person answers
+  you. No button: the microphone listens only while the replies are up, on your PC, with the same recognizer as the
+  squad orders. You need not be word-perfect or finish the line (Relaxed, Performer and Method set how much of it
+  counts), and the stick still picks as before. English game text only. Headset verification pending.
 - **No more camera shake in VR.** Firing no longer shakes the world around you, nor do the Mako's jump jets and
   boost; running and sprinting no longer sway your view with Shepard's stride. Both are on the menu's Comfort page
   (Camera shake: Off, Low, Full; Running sway) if you want the game's effects back. Headset verification pending.

@@ -88,10 +88,10 @@ std::vector<std::string> gDevices;
 int gDefaultDevice = -1;
 bool gListed = false;
 std::string gListNote;  // why the list is empty (no DLL...)
-std::atomic<bool> gModListen{false};
+std::atomic<int> gModListen{0};  // 0 no, 1 the radio's push-to-talk, 2 Thespian mode's open listen (no ducking)
 std::atomic<bool> gKeyListen{false};
 std::atomic<std::uint64_t> gRequestListenUntilMs{0};
-bool gListening = false;
+int gListening = 0;  // the last accepted request: 0, 1 or 2
 std::mutex gKeytermsMutex;
 std::string gPendingKeyterms;  // set before the DLL loaded
 std::uint64_t gNextRequestMs = 0;
@@ -356,8 +356,8 @@ void Post(bool start, bool devices, std::string why) {
     }
 }
 
-void Apply(bool listen) {
-    if (gResyncListen.exchange(false)) gListening = false;  // a restarted recognizer listens to nothing yet
+void Apply(int listen) {
+    if (gResyncListen.exchange(false)) gListening = 0;  // a restarted recognizer listens to nothing yet
     if (listen == gListening) return;
     // gListening is the last accepted request, not the desired input. Keep retrying a held input through restart/loading.
     // The DLL then owns an accepted start until phase 3 has drained and StartListen succeeds (see its worker state machine).
@@ -366,13 +366,13 @@ void Apply(bool listen) {
     gFns.state(&state, sizeof state);
     if (state.status != static_cast<std::uint8_t>(vr::voice::Status::Ready)) return;
     static int lastRefused = 0;  // retried every frame while held: one line per new refusal
-    int const err = gFns.listen(listen ? 1 : 0);
+    int const err = gFns.listen(listen);
     if (err == 0) {
         lastRefused = 0;
+        if (listen != 0 && gListening == 0) ++gListens;
         gListening = listen;
-        if (listen) ++gListens;
     } else {
-        if (err != lastRefused) log::Warn("voice: listen {} refused ({})", listen ? "on" : "off", err);
+        if (err != lastRefused) log::Warn("voice: listen {} refused ({})", listen == 2 ? "open" : listen != 0 ? "on" : "off", err);
         lastRefused = err;
         return;
     }
@@ -430,7 +430,8 @@ void OnPresent() {
         }
     }
     bool const request = gRequestListenUntilMs.load() > now;
-    Apply(gModListen.load() || key || request);
+    int const mod = gModListen.load();
+    Apply(key || request || mod == 1 ? 1 : mod == 2 ? 2 : 0);  // the push-to-talk wins over an open listen (it ducks)
     if (gLoaded.load() && now >= gNextLogMs) {
         gNextLogMs = now + 30000;
         vr::voice::State s;
@@ -456,7 +457,7 @@ void Shutdown() {
 }
 
 void SetListen(int on) {
-    gModListen.store(on != 0);
+    gModListen.store(on == 2 ? 2 : on != 0 ? 1 : 0);
 }
 
 bool TakeLine(vr::voice::Line* out) {

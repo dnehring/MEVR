@@ -4,9 +4,13 @@
 A plan, 2026-11-12 (the owner's idea of the same day). Facts about the game are from the class layouts and the mod's
 existing conversation code; what has not been seen in the running game is marked **[verify]**.
 
-**Status:** phase 0 (the data and the matcher, offline) is done; its findings, numbers and the step-by-step
-implementation guide for the phases after it are in [research/70](../research/70-thespian-mode.md). Nothing runs in the
-game yet. Two things phase 0 changed in this plan are marked "Phase 0:" below.
+**Status (2026-11-13):** built through phase 4 and run in the game on the fake headset with a synthetic voice; off by
+default (`[Thespian] on`, the menu's Voice page). What was built, how it differs from this plan, the measurements and the
+checks still open are in [research/70](../research/70-thespian-mode.md) (section 8, the guide, and section 9, the log).
+Left: phase 5, the owner's acceptance in the headset (notes/headset-checklist.md, "Thespian mode"); the "said in your
+own words" tier is not built (the alignment decides between a wheel's few, differently worded replies). Differences
+from the plan below: the panel is rows after the owner's concept art (3.5), rows never grow or move, there is no hover
+from gaze yet, and on the 3D screen the panel stands under the screen while the game's wheel stays on it.
 
 ## 1. The experience
 

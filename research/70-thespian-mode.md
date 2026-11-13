@@ -405,81 +405,94 @@ and refusals (not yet in the snapshot's `"mod"` block).
 Check: scenes from validation saves (`tools/conversation-from-save.ps1`); in each, `cards`, then one card's line, then
 (next wheel) a label, then nonsense (must refuse).
 
-### Step 3. The open microphone (voice DLL and host; host and `ASI\voice` deploy together)
+### Step 3. The open microphone (voice DLL, host, mod) - **built 2026-11-13**
 
-`src/voice/VoiceApi.h`: `MEVR_VOICE_API_VERSION 3`. Add to the state struct (`core/vr/Voice.hpp` `State`):
-`std::uint32_t silentMs` (time since the last chunk whose level was over the speech threshold; the capture thread
-already computes the level per chunk) and `std::uint8_t open` (an open listen is running). Add `int MevrVoiceListenOpen(int on)`:
-like `MevrVoiceListen(1)` but the stream is not closed by the library's own line splits and has no tail timer; it ends
-only at `MevrVoiceListenOpen(0)`. Partials keep coming every `intervalMs` as today. The recognizer stays on one thread.
+The recognizer's listen was already "open" in everything but name: it runs until told to stop and the mod joins its
+lines. What Thespian mode needed more, and got (`MEVR_VOICE_API_VERSION 3`; host and `ASI\voice` deploy together):
 
-Host (`src/plugin/Voice.cpp`): pass the mod's request through (`HostServices`, next version: `setThespianListen(bool)`,
-or a mode argument on the existing listen request) and publish `silentMs` in the voice state the mod already reads.
+- `MevrVoiceListen(2)` (`src/voice/Voice.cpp` `ApplyListen`): the same stream **without ducking the game's audio** (the
+  other person is still talking when the wheel comes up). `1` (the radio's push-to-talk) wins over `2` and ducks; `0`
+  ends either. The host passes the mode through (`plugin/Voice.cpp` `SetListen(int)`, `Apply(int)`: 0, 1 or 2); the mod
+  asks with the existing `HostServices::setVoiceListen(2)`.
+- `vr::voice::State` grew at its end (`core/vr/Voice.hpp`): `silentMs`, the time since the last chunk of sound at
+  speech level, and `open`. The DLL's `NoteLevel(level)` keeps the clock: speech is a chunk whose RMS is at least
+  `max(0.012, 3 x noise floor)`; the floor falls to the level at once and creeps up 0.4% a chunk. The clock starts at the
+  listen's start.
+- **A file fed during an open listen is heard in the microphone's place** (`MevrVoiceFeedFile`: the microphone's chunks
+  are left out while it plays, its own chunks drive the level and the quiet clock, and the listen goes on after it). That
+  is the whole test path without a voice: `mevr thespian feed <wav>`.
 
-Mod (`game/Thespian`): while the wheel is up and the mode is on, ask for the open listen; set the wheel's key terms
-(`Wheel::Keyterms(12)` joined with commas, through the link `game/Voice.cpp` uses for `setKeyterms`); feed every
-partial and final line's text (all lines of the listen joined with a space, as `game/Voice.cpp` joins them) to the
-matcher.
+Mod (`game/Thespian.cpp`, "The spoken turn"): when a wheel comes up with the mode on and the recognizer ready,
+`BeginTurn` reads the cards once, builds the matcher's `Wheel`, sends its `Keyterms(12)` to the recognizer and asks for
+the open listen; `TakeLines` keeps the listen's lines by id (a partial replaces its line), joins them, and matches the
+joined text twice whenever it changes (`final = false` and `final = true`). `game/Voice` stands down meanwhile
+(`thespian::OwnsMicrophone()`: no line taken, no roster key terms; they are sent again after) and never reads a line of a
+listen Thespian opened (`thespian::OwnsListen(listenStartMs)`), so Shepard's line is never parsed as a squad order.
 
-### Step 4. The turn's rules (`src/core/vr/Thespian.hpp/.cpp`, unit-tested in `tests/ThespianTests.cpp`)
+### Step 4. The turn's rules (`src/core/vr/Thespian.hpp/.cpp`, `tests/ThespianTests.cpp`) - **built 2026-11-13**
 
-A pure state machine, no engine: inputs per tick are `wheelUp`, the matcher's `Result` for the current transcript,
-`silentMs`, `otherStillSpeaking` (the other person's line has not ended), the strictness, the clock. States: `Off`,
-`Armed` (wheel up, nothing heard), `Hearing` (speech, no leader), `Leading` (a decided leader), `Committed`. Commit
-rules (settings in `[Thespian]`):
+`th::Step(State&, Settings, Input) -> Output`, a pure function called every tick while a wheel is up. Input: `wheelUp`,
+`otherSpeaking` (`BioConversation.m_fRemainingVOLength > 0.05`: the wheel comes up about 2.5 s before the other person's
+line ends, measured), `silentMs`, the matcher's two answers reduced to `Match {words, leader, decided, reachedEnd,
+coverage, byLabel}`, `dt`. Output: `phase` (Off, Armed, Hearing, Leading, Committed), `mic` (Off, Armed, Hearing,
+Understood, Unsure), `commit` (a card, this tick), `leader` (the row to light), `restart` (drop the words so far).
 
-| Situation | Commit when |
+| Situation | What happens |
 |---|---|
-| The leader is decided and `reachedEnd` | `silentMs >= endMs` (default 200) |
-| The leader is decided, not at the end | `silentMs >= pauseMs` (default 900) and the strictness allows it |
-| Not decided while speaking | at `silentMs >= pauseMs` ask the matcher once more with `final = true`; commit if that decides and the strictness allows it; else stay `Hearing` (and ask tier 2 if built) |
-| Words heard only while the other person still spoke | never; they count once speech continues after that line's end |
+| The wheel comes up | Armed; `restart` (a fresh transcript) |
+| Words, no card decided | Hearing |
+| A card decided | Leading (its row lit); nothing taken while speech goes on |
+| Decided, the line's end reached, quiet >= `endMs` (200), the strictness allows it | **commit** |
+| Quiet >= `pauseMs` (900) and the matcher asked "the player has stopped" is decided and allowed | **commit** |
+| Quiet >= `pauseMs`, nothing to take | the mark says "Didn't catch that" for 2 s; listening goes on |
+| Quiet >= `staleMs` (3500), nothing to take | `restart`: the words are dropped |
+| The other person still speaks | never a commit; a decided line stands and is taken once their line has ended |
+| Their line ends with words heard and no card decided | `restart` (their voice in the microphone, an aside) |
+| After a commit | Committed until the wheel goes down; still up after 3 s: Armed again with a fresh transcript |
 
-Strictness: `relaxed` (decided is enough), `performer` (default: decided and `coverage >= 0.5`, or matched by label),
-`method` (decided and `coverage >= 0.9`). After a commit the machine ignores input until the wheel has gone down and
-come up again.
+Strictness (`Allows`): `relaxed` decided; `performer` decided and (coverage >= 0.5 or matched by the label); `method`
+decided and coverage >= 0.9. A restart does not close the stream: the mod notes how many lines there are and how many
+words the last one has (`Rebase`), and only what comes after counts (`Counted`).
 
-### Step 5. The teleprompter (host; host and mod deploy together)
+### Step 5. The teleprompter (host; host and mod deploy together) - **built 2026-11-13**
 
-`core/vr/Thespian.hpp` also defines the struct the mod sends each tick (`HostServices::setThespian`): up to 12 cards,
-each with label (96 chars), line (512 chars), category, style, `lit` frontier (word index), state (idle, leading,
-committed, unavailable); the microphone's state (off, armed, hearing, understood, unsure) and level. Size-checked like
-`world_ui::State`.
+The panel the mod sends each tick is `vr::thespian::Panel` (`core/vr/Thespian.hpp`; HostServices v39 `setThespian`,
+`thespianPanelSize`): `shown`, `mic`, `level`, `serial` (a new wheel), `anchored` + `speakerHead` (the other person's head
+bone **in app space, metres**, converted by the mod with `engine::ToTracking`; only in a first-person conversation),
+`speaker`, `heard` (`BioConversation.GetEntryText(true)`), and up to 12 `PanelCard {label, line, tone, look, lit (a bit
+per word of the line), next}`, the wheel's replies first (`mainCount`), then the investigate topics; an unavailable reply
+is a greyed row, shadowed and empty ones are left out.
 
-Host: `src/plugin/Thespian.cpp` + `ThespianDraw.cpp`, a third RmlUi context (`menu::Ui`, as `plugin/OmniToolRail` is
-the second), `assets/menu/thespian.rml` / `.rcss`, one swapchain from `plugin/Swapchains` (evictable). Placement: the
-conversation wheel's quad (`conversation_world::State::wheelHand`, `wheelWidthM`, `wheelDistanceM`); while the mode is
-on, the host does not draw the wheel's crop. Layout as the plan's section 3.5. Offline look first: add its states to
-`mevr-menu-preview`.
+Shared by the host and the offline preview (`core/vr/Thespian.cpp`): `RowsRml(panel)` (the rows' markup: `div.row <tone>
+<look> [topic]` > `div.tag` > `div.label`, `div.bar`, `div.line` with one `span` per word, `said` / `next` / none; what
+stands before a word is inside its span, because the renderer drops a text node of spaces alone), `PromptText`,
+`MicClass`, `PlacePanel(eyes, headForward, hasSpeaker, speakerHead, heightM)`.
 
-**The layout is the owner's concept art** (2026-11-12; described in the plan's section 3.5, the picture local at
-`scratch/thespian/concept-ux-2026-11-12.png`). Build the document as these blocks, top to bottom, in one panel:
+Host: `src/plugin/Thespian.hpp/.cpp` (namespace `mevr::host::thespian`; the pattern is `plugin/OmniPad`): a third RmlUi
+context on `assets/menu/thespian.rml` / `.rcss`, a 1280 x 880 canvas, one evictable swapchain ("thespian panel",
+snapshot layer `thespian`), the quad cut to the panel's own height, 0.90 m wide, 1.0 m from the eyes, its top edge 15
+degrees under the line to the speaker's head (14 under the horizon without one), facing the eyes, placed once per wheel.
+It redraws only when something it shows changed (the level in steps of 4%). The taken row's flash stays 250 ms after the
+mod's panel is gone. It takes no input. While it stands, the first-person mode's wheel quad at the hand is not drawn
+(`HalcyonOverlays`: `convoWheelWanted ... && !thespianPanel`); on the 3D screen the game's wheel stays on the screen's UI
+layer and the panel stands below it. Offline look: `build\Release\mevr-menu-preview.exe <folder>` writes
+`thespian-idle|hover|leading|committed|unsure|topics.png`.
 
-1. `header`: left, the speaker's name (and nothing where the game has none); right, the other person's current line
-   (the subtitle's text; the mod sends it in the struct: add `speaker` 64 chars and `heard` 512 chars).
-2. `rows`: one `row` per card in the current list's order, main replies first, then a divider and the investigate
-   topics in smaller type. Each row: `tag` (the label, coloured by tone: a class from category and style, `agree`,
-   `default`, `disagree`, `investigate`, `charm`, `intimidate`, `unavailable`), a divider, `line` (the script as
-   one `span` per word, so the lit frontier is a class change on spans: `said`, `next`, the rest plain).
-   Row states as classes: `idle`, `hover` (gaze or pointer), `leading` (outline and glow; the other rows get `dim`),
-   `committed` (a 0.15 s flash before the panel folds), `unavailable`.
-3. `footer`: the microphone ring, the prompt text by state (off: hidden; armed: "Read a line aloud"; hearing:
-   "Listening..." with the waveform driven by the level; understood: the row's label; unsure: "Didn't catch that"),
-4. `hints`: one line, "Or choose with the stick and A".
+Not built: the hover look from gaze or a pointer (the `hover` class exists; nothing sets it), a curved panel.
 
-Size and place: 0.90 m wide at 1.0 m from the eyes, its top edge 15 degrees below the line from the eyes to the
-speaker's head (so the face is never covered), tilted back 20 degrees; fixed in the room once per wheel, as the wheel's
-quad is. Flat first; a curved panel (`XR_KHR_composition_layer_cylinder`) only if the runtime lists the extension
-[verify], never required. Rows never move while a row leads. `mevr-menu-preview` states to render: four rows idle,
-one hovered, one leading with half its words said, committed, eight rows with investigate topics, an unavailable
-charm row, the microphone's four states.
+### Step 6. The rest - **built 2026-11-13, except tier 2**
 
-### Step 6. The rest
-
-Settings and the menu's Voice page rows (`[Thespian] on`, `strictness`, `handPick = voice | silent`, `endMs`,
-`pauseMs`); a hand pick (stick or pointer) while the mode is on plays Shepard's recording as the game does; the stand-downs
-(no recognizer, the game's text not English: compare a known string id's text with its English text); tier 2 if section
-7.1 found one worth shipping; the changelog and the controller guide's text.
+- Settings, `[Thespian]` in `ASI\LE1MEVR.ini`, read by the mod every second: `on` (0), `strictness` (performer),
+  `endMs` (200), `pauseMs` (900), `staleMs` (3500), `handPick` (voice | silent), `keyterms` (12). The menu's Voice page
+  has the group "Thespian mode (experimental)": Speak Shepard's lines, How much of the line, A reply picked by hand
+  (`core/vr/MenuSettings` `thespian_on`, `thespian_strictness`, `thespian_hand`; `plugin/MainMenuSettings`).
+- A pick by hand while the mode listens ends the turn; Shepard's recording plays as ever, or with `handPick = silent`
+  it is silenced and skipped like a spoken one.
+- Stand-downs, each with one log line: no recognizer (`thespian: the spoken mode is on but there is no recognizer`),
+  a wheel with nothing to read or whose text isn't English (`LooksEnglish`: under one common English word in twelve).
+- Console: `mevr thespian on | off | auto` (this session), `status`, `feed <wav>`.
+- Tier 2 ("said in your own words") is not built: with five to ten differently worded replies the alignment decides
+  (the owner, 2026-11-12), and the label is the short way.
 
 ## 9. Log
 
@@ -494,3 +507,38 @@ Settings and the menu's Voice page rows (`[Thespian] on`, `strictness`, `handPic
   ends in `BioConversation.QueueReply(position)`; an unavailable reply has GUI style 4. So a commit is `QueueReply`
   directly, with no wheel location and no sub-menu step. Builds: `MEVR-LE1-mod`, `mevr-tests` pass, `build-trilogy`
   builds. Nothing run in the game yet: (a2) and (e) to (j) are open.
+- **2026-11-12, night. Steps 1 and 2 in the game** (fake headset, `tools/fake-headset-session.ps1` with a driver script;
+  John02's validation saves 89 Avina and 83 Anoleis; first-person conversations). The [verify] items of steps 1 and 2:
+  - (a2) `cards` shows the wheel's labels and the lines Shepard says. Confirmed against the snapshot's wheel.
+  - (e) **The wheel comes up 2.5 to 3.3 s before the other person's line ends** (`m_fShowRepliesOffset` 2.00 s; the
+    recording had 2.47 to 3.34 s left at each wheel). A player who starts reading at once reads over them: the turn's
+    rules wait for their line's end.
+  - (f) `m_pSpeaker == m_pConversationPlayer` while the reply's line plays: yes. But a reply queued while the other
+    person's last words still play (`m_nDelayedReplyChoice` holds it) has the player as the speaker one tick BEFORE its
+    line begins (`m_nSelectedReply` still -1), and `SkipNode()` then returns false. Fixed: the skip waits for
+    `m_nSelectedReply >= 0` and is tried up to six ticks.
+  - (g) `SkipNode()` on the started line returns true; the next entry's line began 93 to 141 ms after the skip
+    (125 to 172 ms after the commit).
+  - (h) With the skip refused (the bug above) the line played 1.5 and 3.3 s and the log said `Shepard's recording was
+    silenced`: the gain-0 voice on the player's actor does silence it. With the skip working no source of Shepard's is
+    ever seen playing.
+  - (i) An investigate topic's line said from the main wheel took the topic (Anoleis: the next wheel was the topics').
+  - (j) The plot against a stick pick: **not run**. The commit is the call the wheel's own handler makes and the skip is
+    the player's own skip; [verify] with two quicksaves and `python tools/le1-save.py diff` before the mode leaves
+    "experimental".
+  - Typed nonsense was refused on both wheels (scores under 0, no leader or margin 0.12).
+- **2026-11-13. Steps 3 to 6 built; the spoken turn in the game** (the same scenes; a synthetic voice, Windows' own
+  speech synthesizer at 16 kHz, fed into the open listen with `mevr thespian feed`; recognizer `small`):
+  - A whole line: `leading` 1.3 to 1.4 s into the speech; taken at **quiet 203 and 219 ms** after the last word; the
+    other person's line began **125 and 141 ms** after the commit. So the gap from the player's last word to the answer
+    is about 0.35 s. The recognizer wrote "program" as "person" once; the line was still taken (71% of it).
+  - A label alone ("Not interested.", "Goodbye."): taken at quiet 906 and 907 ms (the pause rule), the answer 172 ms
+    later.
+  - A pick by hand (`mevr convo pick`) while the mode listened: the turn ended, the game went on as ever.
+  - Two things the run showed, fixed: the recognizer writes "you" for a quiet room now and then (a transcript of the
+    commonest words alone no longer counts as words, unless it is a reply itself); a conversation's start stalls the
+    game thread over half a second and the host took the panel for gone (its staleness limit is 1.5 s now).
+  - The panel drew the real wheel (the speaker's name and line from the game, four rows with the investigate topic
+    under the divider). Its place in that run was wrong (the mod sent the speaker's head in world units; it sends room
+    metres now).
+  - Builds: `MEVR-LE1`, `MEVR-LE1-mod`, `MEVR-Voice`, `build-mono`, `build-trilogy`; `mevr-tests` pass.

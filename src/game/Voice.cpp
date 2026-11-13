@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "game/Voice.hpp"
 
+#include "game/Thespian.hpp"
+
 #include "core/Log.hpp"
 #include "core/voice/Grammar.hpp"
 #include "core/vr/Controllers.hpp"
@@ -235,6 +237,9 @@ void TakeLines(hand_calibration::Voice const& s) {
     vr::voice::Line line;
     std::uint64_t const now = GetTickCount64();
     while (gLink.takeLine(&line)) {
+        if (thespian::OwnsListen(line.listenStartMs)) {
+            continue;  // the rest of a listen Thespian mode opened: Shepard's line, never a squad order
+        }
         if (line.listenStartMs != gLastListenStart) {
             gLastListenStart = line.listenStartMs;
             gCurrent.clear();
@@ -333,6 +338,12 @@ void Tick(double deltaSeconds, Link const& link) {
         return;
     }
     if (link.state != nullptr) link.state(&gState);
+    if (thespian::OwnsMicrophone()) {
+        // Thespian mode listens (a dialogue wheel is up): the lines and the key terms are its own (research/70).
+        gKeyterms.clear();  // the roster's are sent again after
+        gSinceKeyterms = 2.0;
+        return;
+    }
     UpdateKeyterms(deltaSeconds);
     vr::controllers::State const c = vr::controllers::Latest();
     bool const was = gOwnGrip;

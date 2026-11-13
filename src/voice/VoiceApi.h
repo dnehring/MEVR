@@ -10,7 +10,7 @@
 // from ASI\voice at run time (plugin/Voice), so a game without the DLL or the models runs without voice. Every function is
 // extern "C" and takes plain data; the DLL has its own C runtime and heap, so nothing allocated on one side is freed on the
 // other (the text lives in the caller's structs).
-#define MEVR_VOICE_API_VERSION 2  // 2: MevrVoiceDevices (the menu's microphone picker)
+#define MEVR_VOICE_API_VERSION 3  // 2: MevrVoiceDevices (the menu's microphone picker); 3: the open listen, State::silentMs
 
 struct MevrVoiceConfig {
     int version = MEVR_VOICE_API_VERSION;
@@ -32,6 +32,8 @@ extern "C" {
 __declspec(dllexport) int MevrVoiceStartup(MevrVoiceConfig const* config);
 __declspec(dllexport) void MevrVoiceShutdown();
 // Push-to-talk: 1 opens a stream and feeds the microphone into it, 0 ends it after the tail; the final transcript follows.
+// 2 is the open listen (Thespian mode, research/70): the same stream, the game's audio not ducked; it lasts until 0 or 1.
+// While one is open a fed file (MevrVoiceFeedFile) is heard in the microphone's place and doesn't end the listen.
 __declspec(dllexport) int MevrVoiceListen(int on);
 // The next line update (partial or final), oldest first. 1 if one was written.
 __declspec(dllexport) int MevrVoiceTake(mevr::vr::voice::Line* out, std::uint32_t size);

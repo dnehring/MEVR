@@ -1,0 +1,29 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Thespian mode's panel (research/70 section 8 step 5; the layout is the owner's concept art, docs/thespian-mode-plan.md
+     3.5): the other person's line on top, one row per reply (the wheel's label as a coloured tag, then the whole line, its
+     said words lit), the microphone's mark below. The host (plugin/Thespian) fills "rows" with vr::thespian::RowsRml's markup
+     whenever the cards or the lit words change, and the "thespian" model with the rest. Canvas: 1280 dp wide; the quad is cut
+     to the panel's height. -->
+<rml>
+<head>
+	<title>MEVR Thespian mode</title>
+	<link type="text/rcss" href="thespian.rcss"/>
+</head>
+<body data-model="thespian">
+	<div id="panel" class="panel">
+		<div class="header" data-if="heard != ''">
+			<div class="who" data-if="speaker != ''">{{speaker}}</div>
+			<div class="rule" data-if="speaker != ''"/>
+			<div class="heard">{{heard}}</div>
+		</div>
+		<div id="rows" class="rows"/>
+		<div class="footer" data-attr-class="footer_class">
+			<div class="ring"><div class="mic"/></div>
+			<div class="prompt">{{prompt}}</div>
+			<div class="split"/>
+			<div class="meter"><div class="fill" data-style-width="level_width"/></div>
+		</div>
+		<div class="hints">Read a line or say its label &#8226; or choose with the stick and A</div>
+	</div>
+</body>
+</rml>

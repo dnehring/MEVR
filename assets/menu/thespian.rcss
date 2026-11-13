@@ -1,0 +1,214 @@
+/* SPDX-License-Identifier: MIT */
+/*
+ * Thespian mode's panel (research/70 section 8 step 5), after the owner's concept art: dark blue glass with cyan edges, the
+ * other person's line in a header, one full-width row per reply (a coloured tag with the wheel's label, a divider, the whole
+ * line in large type), the microphone below. The row the player is reading is lit (`leading`): its said words bright, the next
+ * word marked, the others dim; rows never move. Our own shapes: no game art. Edit while the game runs: it reloads within a
+ * second of a save (plugin/Thespian). Decorators (plugin/menu/MenuDecorators): chamfer(...), icon(...).
+ */
+
+body, div { display: block; }
+span { display: inline; }
+
+body {
+	width: 1280dp;
+	font-family: "Titillium Web";
+	font-weight: 600;
+	color: #D8ECF5;
+}
+
+.panel {
+	width: 1192dp;  /* with the padding and the margins: the canvas's 1280 */
+	margin: 12dp 22dp 12dp 22dp;
+	padding: 18dp 22dp 14dp 22dp;
+	display: flex;
+	flex-direction: column;
+	gap: 8dp;
+	decorator: chamfer(34dp rgba(13,30,56,90%) rgba(6,14,30,92%) #57B6E6 #2C6C9C 2dp rgba(110,200,245,20%));
+}
+
+/* ---- The other person's line ---- */
+.header {
+	display: flex;
+	align-items: center;
+	gap: 18dp;
+	padding: 2dp 10dp 10dp 10dp;
+	border-bottom: 2dp rgba(96,170,220,40%);
+}
+.who {
+	flex: 0 0 auto;
+	max-width: 300dp;
+	font-family: Rajdhani;
+	font-weight: 700;
+	font-size: 34dp;
+	line-height: 36dp;
+	color: #FFFFFF;
+	font-effect: glow(1dp 5dp 0dp 0dp rgba(110,200,245,45%));
+}
+.rule {
+	flex: 0 0 auto;
+	width: 3dp;
+	height: 44dp;
+	background-color: #F0A03C;
+}
+.heard {
+	flex: 1 1 auto;
+	font-size: 25dp;
+	line-height: 30dp;
+	color: #CFE2EE;
+}
+
+/* ---- The replies ---- */
+.rows {
+	display: flex;
+	flex-direction: column;
+	gap: 7dp;
+}
+.row {
+	display: flex;
+	align-items: center;
+	gap: 16dp;
+	min-height: 62dp;
+	padding: 6dp 18dp 6dp 16dp;
+	decorator: chamfer(16dp rgba(26,48,84,78%) rgba(15,29,56,78%) rgba(110,170,220,60%) rgba(60,104,150,60%) 2dp);
+}
+.row.topic { min-height: 48dp; padding: 3dp 18dp 3dp 16dp; }
+.tag {
+	flex: 0 0 auto;
+	width: 300dp;
+	display: flex;
+	align-items: center;
+	gap: 12dp;
+}
+.mark {
+	flex: 0 0 auto;
+	width: 14dp;
+	height: 14dp;
+	border-radius: 7dp;
+	background-color: #D8ECF5;
+}
+.label {
+	flex: 1 1 auto;
+	font-family: Rajdhani;
+	font-weight: 700;
+	font-size: 27dp;
+	line-height: 29dp;
+}
+.row.topic .label { font-size: 23dp; line-height: 25dp; }
+.bar {
+	flex: 0 0 auto;
+	width: 2dp;
+	height: 38dp;
+	background-color: rgba(120,180,225,55%);
+}
+.line {
+	flex: 1 1 auto;
+	font-size: 29dp;
+	line-height: 34dp;
+	color: #F2F8FC;
+}
+.row.topic .line { font-size: 24dp; line-height: 28dp; }
+
+/* The tone: the tag's colour (the wheel's side, the investigate topics, charm and intimidate). */
+.row.default .label { color: #D8ECF5; }
+.row.agree .label { color: #62BEFF; }       .row.agree .mark { background-color: #62BEFF; }
+.row.disagree .label { color: #FF8A4F; }    .row.disagree .mark { background-color: #FF8A4F; }
+.row.investigate .label { color: #6FE3E8; } .row.investigate .mark { background-color: #6FE3E8; }
+.row.charm .label { color: #4F9BFF; }       .row.charm .mark { background-color: #4F9BFF; }
+.row.intimidate .label { color: #FF5252; }  .row.intimidate .mark { background-color: #FF5252; }
+.row.charm .bar { background-color: #4F9BFF; }
+.row.intimidate .bar { background-color: #FF5252; }
+
+/* The row's state. */
+.row.hover {
+	decorator: chamfer(16dp rgba(36,66,112,84%) rgba(20,40,76,84%) #9AD4F6 #5A94C4 2dp rgba(150,210,240,22%));
+}
+.row.leading {
+	decorator: chamfer(16dp rgba(24,74,120,92%) rgba(12,44,84,92%) #7FE4FF #38B6E8 3dp rgba(110,225,255,55%));
+}
+.row.leading .line { color: rgba(214,232,244,62%); }
+.row.leading .line span.said { color: #FFFFFF; font-effect: glow(1dp 4dp 0dp 0dp rgba(120,225,255,60%)); }
+.row.leading .line span.next { color: #FFD27A; }
+.row.committed {
+	decorator: chamfer(16dp #2C9CD0 #1870A8 #D8F6FF #8FE2FF 3dp rgba(170,240,255,70%));
+}
+.row.committed .line, .row.committed .label { color: #FFFFFF; }
+.row.dim { opacity: 0.45; }
+.row.off { opacity: 0.35; }
+.row.off .label, .row.off .line { color: #8A99A6; }
+.row.off .mark { background-color: #6A7A86; }
+
+.divider {
+	height: 2dp;
+	margin: 3dp 60dp 3dp 60dp;
+	background-color: rgba(111,227,232,35%);
+}
+
+/* ---- The microphone ---- */
+.footer {
+	display: flex;
+	align-items: center;
+	gap: 18dp;
+	margin-top: 4dp;
+	padding: 8dp 14dp 4dp 14dp;
+	border-top: 2dp rgba(96,170,220,40%);
+}
+.ring {
+	flex: 0 0 auto;
+	width: 56dp;
+	height: 56dp;
+	border-radius: 28dp;
+	border: 3dp #5FD6F2;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.mic {
+	width: 34dp;
+	height: 34dp;
+	color: #BFF2FF;
+	decorator: icon(mic);
+}
+.prompt {
+	flex: 0 0 auto;
+	min-width: 330dp;
+	font-family: Rajdhani;
+	font-weight: 700;
+	font-size: 32dp;
+	line-height: 34dp;
+	color: #E6F6FC;
+}
+.split {
+	flex: 0 0 auto;
+	width: 2dp;
+	height: 36dp;
+	background-color: rgba(120,180,225,55%);
+}
+.meter {
+	flex: 1 1 auto;
+	height: 10dp;
+	border-radius: 5dp;
+	background-color: rgba(70,120,160,35%);
+}
+.fill {
+	height: 10dp;
+	border-radius: 5dp;
+	background-color: #5FD6F2;
+}
+.footer.hearing .ring { border-color: #9BF0FF; box-shadow: #5FD6F2 0dp 0dp 14dp 2dp; }
+.footer.hearing .prompt { color: #9BF0FF; }
+.footer.understood .ring { border-color: #8CFFB4; }
+.footer.understood .prompt, .footer.understood .mic { color: #8CFFB4; }
+.footer.understood .fill { background-color: #8CFFB4; }
+.footer.unsure .ring { border-color: #FFB05A; }
+.footer.unsure .prompt, .footer.unsure .mic { color: #FFB05A; }
+
+.footer.more .ring { border-color: #FFD27A; }
+.footer.more .prompt, .footer.more .mic { color: #FFD27A; }
+
+.hints {
+	text-align: center;
+	font-size: 19dp;
+	line-height: 22dp;
+	color: rgba(160,196,220,70%);
+}

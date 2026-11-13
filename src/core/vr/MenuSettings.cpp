@@ -336,6 +336,10 @@ float Clamp(Field const& field, float value) {
     if (field.type == Type::Flag) {
         return value != 0.0f ? 1.0f : 0.0f;
     }
+        // Thespian mode (research/70): the mod's, live.
+        {"thespian_on", Type::Flag, 0},                              // [Thespian] on
+        {"thespian_strictness", Type::Choice, 0, "performer"},       // [Thespian] strictness = relaxed | performer | method
+        {"thespian_hand", Type::Choice, 0, "voice"},                 // [Thespian] handPick = voice | silent
     if (field.type != Type::Number) {
         return value;
     }

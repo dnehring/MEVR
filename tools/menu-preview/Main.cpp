@@ -31,6 +31,7 @@
 #include "core/vr/MenuSettings.hpp"
 #include "core/vr/PerformanceModes.hpp"
 #include "core/vr/OmniRail.hpp"
+#include "core/vr/Thespian.hpp"
 #include "core/vr/OmniPower.hpp"
 #include "plugin/menu/MenuBackdrop.hpp"
 #include "plugin/menu/MenuModel.hpp"
@@ -982,3 +983,117 @@ int main(int argc, char** argv) {
     ui.Shutdown();
     return 0;
 }
+
+    // Thespian mode's panel (research/70 section 8 step 5): thespian.rml in a context of its own as the host makes it
+    // (plugin/Thespian), its rows from vr::thespian::RowsRml. thespian-idle.png: four replies, nothing said; -hover: the
+    // pointer on a row; -leading: a row read half-way; -committed; -topics: eight rows with investigate topics and an
+    // unavailable charm; -unsure: the "Didn't catch that" mark. The sample lines are ours, not the game's.
+    {
+        namespace th = mevr::vr::thespian;
+        constexpr int tw = th::kCanvasWidth, thh = th::kCanvasHeight;
+        mevr::menu::Ui thUi;
+        mevr::menu::UiSetup thSetup = setup;
+        thSetup.document = L"thespian.rml";
+        thSetup.width = tw;
+        thSetup.height = thh;
+        Rml::String speaker, heard, prompt, footerClass = "footer", levelWidth = "0%";
+        Rml::DataModelHandle handle;
+        Target thTarget;
+        bool ok = thUi.Init(thSetup) && MakeTarget(device.Get(), tw, thh, thTarget);
+        if (ok) {
+            Rml::DataModelConstructor ctor = thUi.Context()->CreateDataModel("thespian");
+            ok = static_cast<bool>(ctor);
+            if (ok) {
+                ctor.Bind("speaker", &speaker);
+                ctor.Bind("heard", &heard);
+                ctor.Bind("prompt", &prompt);
+                ctor.Bind("footer_class", &footerClass);
+                ctor.Bind("level_width", &levelWidth);
+                handle = ctor.GetModelHandle();
+                ok = thUi.LoadDocument();
+            }
+        }
+        if (!ok) {
+            std::fprintf(stderr, "the Thespian panel's document didn't load\n");
+            return 1;
+        }
+        std::vector<std::uint32_t> const dark(static_cast<std::size_t>(tw) * thh, 0xFF30241Cu);
+        auto card = [](th::Panel& p, char const* label, char const* line, th::Tone tone, th::Look look) -> th::PanelCard& {
+            th::PanelCard& c = p.cards[p.cardCount++];
+            std::snprintf(c.label, sizeof c.label, "%s", label);
+            std::snprintf(c.line, sizeof c.line, "%s", line);
+            c.tone = static_cast<std::uint8_t>(tone);
+            c.look = static_cast<std::uint8_t>(look);
+            return c;
+        };
+        auto shot = [&](std::string const& name, th::Panel const& p) {
+            speaker = p.speaker;
+            heard = p.heard;
+            prompt = th::PromptText(p);
+            footerClass = std::string("footer ") + th::MicClass(static_cast<th::Mic>(p.mic));
+            levelWidth = std::to_string(static_cast<int>(std::clamp(p.level * 6.0f, 0.0f, 1.0f) * 100.0f)) + "%";
+            for (char const* v : {"speaker", "heard", "prompt", "footer_class", "level_width"}) handle.DirtyVariable(v);
+            if (Rml::Element* const rows = thUi.Document()->GetElementById("rows")) {
+                rows->SetInnerRML(th::RowsRml(p));
+            }
+            for (int i = 0; i < 20; ++i) {
+                gClock += 1.0 / 72.0;
+                thUi.Render(context.Get(), thTarget.rtv.Get());
+            }
+            Rml::Element* const panel = thUi.Document()->GetElementById("panel");
+            std::vector<std::uint32_t> const pixels = ReadBack(context.Get(), thTarget, tw, thh);
+            std::string error;
+            if (!mevr::png::Write(output / (name + ".png"), tw, thh, Over(pixels, dark).data(), &error)) {
+                std::fprintf(stderr, "%s: %s\n", name.c_str(), error.c_str());
+            } else {
+                std::printf("wrote %s (the panel is %.0f dp tall)\n", (output / (name + ".png")).string().c_str(),
+                    panel != nullptr ? panel->GetOffsetHeight() : 0.0f);
+            }
+        };
+        auto four = [&](th::Look first, th::Look second, th::Look rest) {
+            th::Panel p;
+            p.mainCount = 4;
+            std::snprintf(p.speaker, sizeof p.speaker, "%s", "Officer Varek");
+            std::snprintf(p.heard, sizeof p.heard, "%s", "Before we go any further, Commander: explain to me why you are digging into this.");
+            card(p, "Let's talk.", "I'm not here to start a fight. Tell me what happened.", th::Tone::Agree, first);
+            card(p, "The missing patrol?", "If this is about the missing patrol, I need names and a timeline.", th::Tone::Investigate, second);
+            card(p, "Start talking.", "You're holding something back. Start talking now.", th::Tone::Disagree, rest);
+            card(p, "Goodbye.", "", th::Tone::Default, rest);
+            return p;
+        };
+        thUi.Context()->ProcessMouseMove(-50, -50, 0);
+        th::Panel idle = four(th::Look::Idle, th::Look::Idle, th::Look::Idle);
+        idle.mic = static_cast<std::uint8_t>(th::Mic::Armed);
+        shot("thespian-idle", idle);
+        th::Panel hover = four(th::Look::Idle, th::Look::Hover, th::Look::Idle);
+        hover.mic = static_cast<std::uint8_t>(th::Mic::Armed);
+        shot("thespian-hover", hover);
+        th::Panel leading = four(th::Look::Dim, th::Look::Leading, th::Look::Dim);
+        leading.cards[1].lit = 0b0111111;
+        leading.cards[1].next = 6;
+        leading.mic = static_cast<std::uint8_t>(th::Mic::Hearing);
+        leading.level = 0.09f;
+        shot("thespian-leading", leading);
+        th::Panel committed = four(th::Look::Dim, th::Look::Committed, th::Look::Dim);
+        committed.cards[1].lit = 0xFFFF;
+        committed.mic = static_cast<std::uint8_t>(th::Mic::Understood);
+        shot("thespian-committed", committed);
+        th::Panel unsure = four(th::Look::Idle, th::Look::Idle, th::Look::Idle);
+        unsure.mic = static_cast<std::uint8_t>(th::Mic::Unsure);
+        unsure.level = 0.02f;
+        shot("thespian-unsure", unsure);
+        th::Panel topics;
+        std::snprintf(topics.heard, sizeof topics.heard, "%s", "What else do you want to know?");
+        topics.mainCount = 4;
+        card(topics, "I'll help.", "You have my word. I'll look into it.", th::Tone::Agree, th::Look::Idle);
+        card(topics, "Trust me.", "You can trust me with this. I've done it before.", th::Tone::Charm, th::Look::Unavailable);
+        card(topics, "Not my problem.", "That is not my problem.", th::Tone::Disagree, th::Look::Idle);
+        card(topics, "Talk, or else.", "Tell me now, or this gets unpleasant.", th::Tone::Intimidate, th::Look::Idle);
+        card(topics, "The colony", "Tell me about the colony.", th::Tone::Investigate, th::Look::Idle);
+        card(topics, "The ruins", "What did they find in the ruins?", th::Tone::Investigate, th::Look::Idle);
+        card(topics, "Your orders", "Who gave you your orders?", th::Tone::Investigate, th::Look::Idle);
+        card(topics, "The signal", "Where did the signal come from, and when did it stop?", th::Tone::Investigate, th::Look::Idle);
+        topics.mic = static_cast<std::uint8_t>(th::Mic::Armed);
+        shot("thespian-topics", topics);
+        thUi.Shutdown();
+    }

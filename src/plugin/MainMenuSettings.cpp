@@ -554,6 +554,13 @@ void Settings::Read(menu::Values& v) {
         };
         flag("audio_overheard", on("overheard"));
         flag("audio_gun", on("gun"));
+    // Thespian mode (research/70): the mod reads [Thespian] every second.
+    v.numbers["thespian_on"] = ini.Num("Thespian", "on", 0.0f) != 0.0f ? 1.0f : 0.0f;
+    {
+        std::string const strictness = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "strictness", "performer")));
+        v.texts["thespian_strictness"] = strictness == "relaxed" || strictness == "method" ? strictness : std::string("performer");
+        v.texts["thespian_hand"] = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "handPick", "voice"))) == "silent" ? "silent" : "voice";
+    }
     }
 }
 
@@ -808,6 +815,12 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "interact_label") {
         Put("Interact", "label", onOff("interact_label"), true);
     } else if (key == "scope_grade") {
+    } else if (key == "thespian_on") {
+        Put("Thespian", "on", onOff("thespian_on"), true);  // the mod re-reads [Thespian] every second
+    } else if (key == "thespian_strictness") {
+        Put("Thespian", "strictness", v.Text("thespian_strictness"), true);
+    } else if (key == "thespian_hand") {
+        Put("Thespian", "handPick", v.Text("thespian_hand"), true);
         Put("Sights", "scopeCapturePost", onOff("scope_grade"), true);  // the mod applies it to the next scope capture it makes
     } else if (key == "turn") {
         Put("Comfort", "turn", v.Text("turn") == "snap" ? "snap" : "game", true);
