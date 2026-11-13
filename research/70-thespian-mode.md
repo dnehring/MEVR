@@ -727,6 +727,11 @@ reading each line with the names spelled to sound off, fed with `mevr thespian f
   first, though all three are one reply. That may be what read as a wrong alignment; the colours are the replies'
   categories, and the points come from a reply's plot transition (#14's agree reply carries 4029), so which pick felt
   Renegade stays the owner's to say. Fixed in b24c5d40 (`ReplyNode`).
+- **The run again with b24c5d40** (`sessions\2026-11-13_13-16-28-thespian-merge`): the cards carry the replies the census
+  has (the first wheel's 9, #10's 12, #14's 16, #19's 22); the panel shows #10 as two rows ("Insults? Typical. / See? He
+  hates us!" in the neutral colour, "You'll pay!" orange) and #19 as one row with its three labels. A label said alone
+  ("What's the point?") took its own position 1, reply 22. The forced end again left the game running; the exit crash at
+  the session tool's quit again (13:21:08).
 
 ### Left
 
