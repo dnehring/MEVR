@@ -30,8 +30,11 @@ def main(argv):
     here = os.getcwd()
     first = git(here, 'worktree', 'list', '--porcelain').stdout.decode().splitlines()[0]
     repo = first.split(' ', 1)[1]
-    old = git(repo, 'rev-parse', argv[1]).stdout.decode().strip()
-    new = git(repo, 'rev-parse', argv[2]).stdout.decode().strip()
+    # Revisions as the worktree it runs in names them (its HEAD is its own branch, not main).
+    old = git(here, 'rev-parse', '--verify', argv[1] + '^{commit}').stdout.decode().strip()
+    new = git(here, 'rev-parse', '--verify', argv[2] + '^{commit}').stdout.decode().strip()
+    if old == new:
+        raise SystemExit(f'{argv[2]} is {old[:8]}: nothing to land')
     head = git(repo, 'rev-parse', 'refs/heads/main').stdout.decode().strip()
     if old != head:
         raise SystemExit(f'main is at {head[:8]}, not {old[:8]}: not landing (rebase onto it first)')
@@ -40,6 +43,8 @@ def main(argv):
     if git(repo, 'diff', '--cached', '--quiet', check=False).returncode != 0:
         raise SystemExit('the main checkout has staged changes: not landing')
     files = git(repo, 'diff', '--name-only', old, new).stdout.decode().split()
+    if not files:
+        raise SystemExit(f'{new[:8]} changes no file against {old[:8]}: nothing to land')
     plan = {}
     for f in files:
         path = os.path.join(repo, *f.split('/'))
