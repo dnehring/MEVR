@@ -153,22 +153,40 @@ std::optional<T> CallNumber(ue3::Object* conversation, ue3::FunctionRef& functio
     return parms.Return<T>();
 }
 
-// The live wheel as cards, or nullopt without a conversation. The reply functions are only called for positions the
-// current list has (a call for a reply that isn't there read an empty list inside the script and ended the game once,
-// research/59).
+// The live wheel as cards, or nullopt without a conversation. The reply functions (natives that read the conversation's
+// lists) are only called while the wheel is shown, on a conversation with a current line, for positions the current
+// list has, whose replies are all in the reply list: a call for a reply that isn't there read an empty list inside the
+// script and ended the game once (research/59), and a call just after a conversation was ended from the console read a
+// list the end had taken away and ended it twice (2026-11-13, `mevr convo end` with the mode on; research/70 section 10).
 std::optional<Live> ReadLive() {
     Live live;
     live.conversation = conversation_world::LiveConversation();
-    if (live.conversation == nullptr) {
+    if (live.conversation == nullptr || !ue3::runtime::IsAlive(live.conversation)) {
         return std::nullopt;
     }
     live.handler = conversation_world::LiveWheelHandler();
     live.wheelUp = live.handler != nullptr && gDisplayingWheel.ReadBool(live.handler).value_or(false);
     auto const* const current = gCurrentReplies.In<ue3::TArray<std::int32_t>>(live.conversation);
-    if (current == nullptr || current->data == nullptr || current->count <= 0 || current->count > kMaxCards) {
+    if (!live.wheelUp || current == nullptr || current->data == nullptr || current->count <= 0 || current->count > kMaxCards) {
         return live;
     }
+    static int told = 0;
+    std::int32_t const entry = gCurrentEntry.Read<std::int32_t>(live.conversation).value_or(-1);
     auto const replies = gReplyList.ElementsOf(live.conversation);
+    bool whole = entry >= 0 && replies.has_value();
+    for (std::int32_t i = 0; whole && i < current->count; ++i) {
+        whole = replies->At(current->data[i]) != nullptr;
+    }
+    if (!whole) {
+        // A wheel on a conversation without its current line or with replies its list doesn't hold: it is changing under
+        // us (being ended). Not read.
+        if (told < 5) {
+            ++told;
+            log::Info("thespian: a wheel without its lists (current line {}, {} replies in the list): not read", entry, replies ? replies->count : -1);
+        }
+        live.wheelUp = false;
+        return live;
+    }
     bool categorySeen[16] = {};
     for (std::int32_t i = 0; i < current->count; ++i) {
         Card card;
@@ -491,6 +509,15 @@ bool gPanelShown = false;
 std::uint64_t gOurListens[4] = {};
 unsigned gOurListenAt = 0;
 unsigned gSpoken = 0, gSpokenCommits = 0, gUnsure = 0, gDoubts = 0, gStoodDown = 0;
+// The wheel as it stood the last ticks (TickTurn): a turn begins only on one that held still for kSteadyTicks.
+struct Steady {
+    ue3::Object* conversation = nullptr;
+    std::int32_t entry = -1;
+    std::uint64_t signature = 0;
+    int ticks = 0;
+};
+Steady gSteady;
+constexpr int kSteadyTicks = 3;
 std::string gLastHeard;
 bool gToldNoRecognizer = false;
 vr::voice::State gVoice;
@@ -821,7 +848,21 @@ void TickTurn(double deltaSeconds, Link const& link) {
             log::Info("thespian: a pick by hand (reply {}): silenced{}", selected, gPending.unskippable ? "" : " and skipped when it starts");
         }
     }
+    // A wheel is read only once it has stood for a few ticks on the same conversation, line and replies: an ending
+    // conversation (the console's `mevr convo end`, the runners' early ends) can show a wheel for a tick while it takes
+    // its lists away.
     if (want && !gTurn.active && !gTurn.blocked) {
+        std::int32_t const entry = gCurrentEntry.Read<std::int32_t>(conversation).value_or(-1);
+        std::uint64_t const signature = Signature(conversation);
+        if (conversation == gSteady.conversation && entry == gSteady.entry && signature == gSteady.signature) {
+            ++gSteady.ticks;
+        } else {
+            gSteady = {conversation, entry, signature, 1};
+        }
+    } else {
+        gSteady = {};
+    }
+    if (want && !gTurn.active && !gTurn.blocked && gSteady.entry >= 0 && gSteady.signature != 0 && gSteady.ticks >= kSteadyTicks) {
         if (auto const live = ReadLive(); live && live->wheelUp) {
             BeginTurn(link, *live);
         }
