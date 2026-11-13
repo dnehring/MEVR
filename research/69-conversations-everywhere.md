@@ -3387,6 +3387,20 @@ nothing was built for conversations; a scene where people walk off while talking
 
 Not run in the game yet: the other session (VR performance) had the game when it was built.
 
+**The default mode keeps the game's behaviour** (the owner, 2026-11-12 21:40: "our changes to where Shepard is standing should
+only apply when we're doing first person mode. when we're doing the default we need to ensure it maintains existing behavior").
+Read in the code: everything that places, hides, shows or turns anyone, or holds a script, is behind the first-person mode
+(`conversations = world`, `gC.world`): the stage's placement hook is installed only in it (`SetKeepProvider`) and its provider
+checks again; the conversation's tick returns before any of it otherwise (`world` false: `StopWorld`); `Begin` only records
+(its squad put-back behind `gC.world`); the opening, the circle, the squad's formation, the eyes stand-in, the facing rule, the
+turn and the walk-along all run in the world mode's tick or a moment, and a moment begins only in it (`TickMoment`,
+`MomentMayStart`); the matinee's move of Shepard is held only there (`MomentWithholds`); the flowed scenes need it
+(`ConversationFlow`'s `Active()`), so do the black screen's dips (`MomentDip`), the staged relocation (`ScriptBlackScreen`) and
+the voices (`PublishVoices`). `HidePawn` only ever shows a pawn it hid itself (a pawn the scene hides stays hidden), and with
+`worldBody = player` it hides nothing: the body follower draws Shepard where the player stands (`BodyAway`, first person only).
+An in-game check on the 3D screen (Chorban, Anoleis, the Council, Girard; no `withheld`, `put back`, `eyes:`, `squad:` lines
+expected) waits for the game.
+
 ### The staged scenes (2026-11-12; for the owner's review)
 
 From the scan's 491 conversations (`conversation-scan.py --csv`), the ones that look like "the council or the virmire speech": a
