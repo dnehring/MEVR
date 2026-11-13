@@ -1529,7 +1529,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   inis, fake headset on, launches through Steam, waits for a player, dot-sources your run script, and always puts everything
   back (saves the run made moved aside, never deleted); `%LOCALAPPDATA%\MEVR\sessions\<stamp>-<tag>`. Land a worktree's commit
   with `python tools/land-on-main.py <main> <commit>` (compare-and-swap; another session's edits in the main checkout merged
-  three-way). First-person scenes are judged from above with the skill `first-person-scene-audit`.
+  three-way). Worktrees whose work is on main stay on disk with their builds (1-6 GB each; H: filled up on 2026-11-13):
+  `python tools/clean-worktrees.py` lists the finished ones (clean, on main, idle 12 h), `--apply` removes them.
+  First-person scenes are judged from above with the skill `first-person-scene-audit`.
 - **Repeatable cafeteria QA:** [tools/qa-cafeteria/README.md](tools/qa-cafeteria/README.md) documents the checked
   CIC-to-mess-table walk, High/Current workload, clean turn capture and backup/restore runner. Use `run.ps1 -Plan`
   first, coordinate exclusive native-session ownership, and supply the reviewed ASI hash. Sources generate their
