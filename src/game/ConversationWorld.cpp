@@ -114,6 +114,9 @@ ue3::FunctionRef gSetLookAt{"SFXGame.BioPawn.SetLookAtTarget"};
 ue3::FieldRef gLookControllers{"SFXGame.BioLookAt", "m_Controllers"};
 ue3::FieldRef gLookDefinition{"SFXGame.BioLookAt", "m_Definition"};
 ue3::FieldRef gControllerDefinition{"SFXGame.BioPawnLookAtController", "mc_pDefinition"};
+// Where a look-at controller aims, in the world (SkelControlLookAt.TargetLocation; the stances from above: does a head aim at
+// the player or at Shepard's body left on his mark).
+ue3::FieldRef gLookTargetLocation{"Engine.SkelControlLookAt", "TargetLocation"};
 ue3::FieldRef gBoneDefinitions{"SFXGame.BioLookAtDefinition", "BoneDefinitions"};
 ue3::FieldRef gLinkStrength{gBoneDefinitions, "m_fConversationStrength"};
 // The facing a pawn's own physics turns it to (Actor.DesiredRotation, by BioPawn.SetDesiredRotation): a rotation set without
@@ -251,6 +254,8 @@ struct Settings {
     // (Rank: the game's own look-ats, authored tracks among them, are given at 99999 and a lower rank is refused while
     // one holds; its look at the player in passing is rank 1 or 2. Ours sits between.)
     int lookRank = 100;
+    bool lookEyes = true;              // worldLookEyes: heads that would turn to Shepard's body, left on a mark away from the
+                                       // player, turn to the player's eyes (research/69 "Heads that look past the player")
     // The speaker's and the spoken-to's heads reach further than the game's glance: each link of their look-at chain gets
     // this share of what its strength leaves (worldLookReach; 0: the game's strengths for everyone). 0 by default since
     // 2026-11-11 (the owner: authored head movements, "nods for the council", and gestures "must be retained"; a stronger
@@ -444,6 +449,7 @@ void RefreshSettings() {
     s.glanceDeg = number("worldGlanceDeg", s.glanceDeg, 0.0f, 180.0f);
     s.glanceKeepDeg = number("worldGlanceKeepDeg", s.glanceKeepDeg, 0.0f, 180.0f);
     s.lookRank = static_cast<int>(number("worldLookRank", static_cast<float>(s.lookRank), 0.0f, 99999.0f));
+    s.lookEyes = number("worldLookEyes", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.lookReach = number("worldLookReach", s.lookReach, 0.0f, 1.0f);
     s.turnComfortDeg = number("worldTurnComfortDeg", s.turnComfortDeg, 5.0f, 180.0f);
     s.turnSettleDeg = number("worldTurnSettleDeg", s.turnSettleDeg, 0.0f, 90.0f);
@@ -974,6 +980,8 @@ struct Convo {
     std::string stanceWanted;    // ... after a walk ended: its tag, written at most once a second
     double stanceAtS = -10.0;    // when the last one was written (the conversation's seconds)
     int stances = 0;
+    int eyesSwapped = 0;         // the game's own looks at Shepard turned to the player's eyes (his body away from the player)
+    int eyesRefused = 0;
     std::vector<ue3::Object*> squadOnly; // squadmates tracked for the formation only (not people of the conversation)
     std::optional<ik::Vec3> boundaryAt;  // where the conversation began for the player: the walk's boundary is around it
     vr::comfort::SnapTurn snap;          // the right stick's turn
@@ -1983,8 +1991,26 @@ bool RequestTurn(ue3::Object* actor, ue3::Rotator const& now, double yawDeg) {
     return p.ReturnBool().value_or(false);
 }
 
-// The game's own look-at target on a pawn (BioPawn.m_oLookAtData's target); nullptr: none.
-ue3::Object* GameLookTarget(ue3::Object* actor) {
+// ---- Heads that look past the player (research/69 "Heads that look past the player", 2026-11-12; the owner: "Are there
+// conflicts with where their heads are pointed during conversation?") -------------------------------------------------------
+// A head's look-at chain (BioPawnLookAtController) aims at its target's head bone. Where the player's view and Shepard's body are
+// one (most scenes) that is the player's eyes; in a walk-in by the view (Khalisah's interview, Girard: his mark inside a trigger)
+// Shepard's body stays on his mark, metres from the player, and every head the game or our own rules turn to "Shepard" looked
+// at the empty mark: Khalisah's body re-faced the player while her head stayed 83 degrees off him (2026-11-12). While his body is
+// away, a look-at target of the game's own kind (SFXGame.BioLookAtTarget, spawned once, kept at the player's eyes) takes his
+// place: our looks at the player are given to it, the game's own looks at Shepard are moved to it at their own rank, and they go
+// back to him when his body is with the player again or the conversation ends. GameLookTarget reports it as the player.
+ue3::ClassRef gEyesClass{"SFXGame.BioLookAtTarget"};
+ue3::FunctionRef gActorSpawn{"Engine.Actor.Spawn"};
+ue3::FunctionRef gActorDestroy{"Engine.Actor.Destroy"};
+ue3::FieldRef gActorStatic{"Engine.Actor", "bStatic"};
+ue3::FieldRef gActorNoDelete{"Engine.Actor", "bNoDelete"};
+ue3::Object* gEyes = nullptr;     // the target at the player's eyes (alive across conversations, made again after a level change)
+bool gEyesOn = false;             // this tick: Shepard's body is away and the eyes stand in for him
+bool gEyesFailed = false;         // could not be made (logged once)
+std::map<ue3::Object*, bool> gEyesLogged;  // whose look was moved (logged once a conversation)
+
+ue3::Object* RawLookTarget(ue3::Object* actor) {
     ue3::Object* const data = gPawnLookData.Read<ue3::Object*>(actor).value_or(nullptr);
     if (data == nullptr || !ue3::runtime::IsAlive(data)) {
         return nullptr;
@@ -1992,20 +2018,116 @@ ue3::Object* GameLookTarget(ue3::Object* actor) {
     return gLookDataTarget.Read<ue3::Object*>(data).value_or(nullptr);
 }
 
+bool IsShepardPawn(ue3::Object const* o) {
+    if (o == nullptr) {
+        return false;
+    }
+    if (o == gC.playerPawn) {
+        return true;
+    }
+    ue3::Object* const controller = player::Controller();
+    return controller != nullptr && o == player::Pawn(controller);
+}
+
+// The game's own look-at target on a pawn (BioPawn.m_oLookAtData's target); nullptr: none. The player's eyes read as Shepard.
+ue3::Object* GameLookTarget(ue3::Object* actor) {
+    ue3::Object* const target = RawLookTarget(actor);
+    if (target != nullptr && target == gEyes) {
+        return gC.playerPawn;
+    }
+    return target;
+}
+
 // The game's own function gives `actor` a look-at target (nullptr: none): its look-at chain turns the eyes, head, neck and
 // chest. On the game thread.
-bool SetLook(ue3::Object* actor, ue3::Object* target) {
+bool SetLookRanked(ue3::Object* actor, ue3::Object* target, std::int32_t rank) {
     ue3::Function* const fn = gSetLookAt.Get();
     if (fn == nullptr || actor == nullptr || !ue3::runtime::IsAlive(actor)) {
         return false;
     }
     ue3::Params p(ue3::runtime::Get(), fn);
-    if (!p.Valid() || !p.Set("oTarget", target) || !p.Set("a_eTransition", std::uint8_t{0}) ||
-        !p.Set("nRank", static_cast<std::int32_t>(gSettings.lookRank))) {
+    if (!p.Valid() || !p.Set("oTarget", target) || !p.Set("a_eTransition", std::uint8_t{0}) || !p.Set("nRank", rank)) {
         return false;
     }
     ue3::runtime::Call(actor, fn, p);
     return true;
+}
+
+bool SetLook(ue3::Object* actor, ue3::Object* target) {
+    if (gEyesOn && gEyes != nullptr && IsShepardPawn(target)) {
+        target = gEyes;  // Shepard's body is away from the player: his eyes are the player's
+    }
+    return SetLookRanked(actor, target, static_cast<std::int32_t>(gSettings.lookRank));
+}
+
+// The target at the player's eyes, made once (Actor.Spawn on the player controller; the class's bStatic/bNoDelete defaults
+// cleared for the call, as game/ScopeCapture does). Null if it can't be made.
+ue3::Object* EnsureEyes() {
+    if (gEyes != nullptr && ue3::runtime::IsAlive(gEyes) && ue3::IsA(gEyes, gEyesClass)) {
+        return gEyes;
+    }
+    gEyes = nullptr;
+    if (gEyesFailed) {
+        return nullptr;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Class* const cls = gEyesClass.Get();
+    if (controller == nullptr || cls == nullptr || gActorSpawn.Get() == nullptr) {
+        gEyesFailed = true;
+        log::Warn("convo: eyes: no BioLookAtTarget class or Actor.Spawn: heads keep looking at Shepard's body");
+        return nullptr;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* defaults = nullptr;
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n && defaults == nullptr; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.ClassOf(o) == cls && (r.FlagsOf(o) & 0x200) != 0) {  // RF_ClassDefaultObject
+            defaults = o;
+        }
+    }
+    bool const wasStatic = defaults != nullptr && gActorStatic.ReadBool(defaults).value_or(false);
+    bool const wasNoDelete = defaults != nullptr && gActorNoDelete.ReadBool(defaults).value_or(false);
+    if (wasStatic) gActorStatic.WriteBool(defaults, false);      // journalled by FieldRef
+    if (wasNoDelete) gActorNoDelete.WriteBool(defaults, false);
+    ue3::Params p(r, gActorSpawn.Get());
+    p.Set("SpawnClass", cls);
+    p.Set("SpawnOwner", controller);
+    p.Set("SpawnLocation", EnginePoint(gC.hold));
+    p.SetBool("bNoCollisionFail", true);
+    ue3::runtime::Call(controller, gActorSpawn.Get(), p);
+    if (wasStatic) gActorStatic.WriteBool(defaults, true);
+    if (wasNoDelete) gActorNoDelete.WriteBool(defaults, true);
+    ue3::Object* const made = p.Return<ue3::Object*>().value_or(nullptr);
+    if (made == nullptr || !ue3::IsA(made, gEyesClass)) {
+        gEyesFailed = true;
+        log::Warn("convo: eyes: Actor.Spawn made no BioLookAtTarget (defaults{}{}): heads keep looking at Shepard's body",
+            wasStatic ? " bStatic" : "", wasNoDelete ? " bNoDelete" : "");
+        return nullptr;
+    }
+    gEyes = made;
+    log::Info("convo: eyes: a look-at target made for the player's eyes ({})", ShortName(made));
+    return gEyes;
+}
+
+// Every look at the eyes back to Shepard, at its own rank (his body is with the player again, or the scene ends).
+void GiveBackEyes(char const* why) {
+    if (gEyes == nullptr) {
+        return;
+    }
+    int given = 0;
+    for (Stay const& st : gStay) {
+        if (st.actor == nullptr || !ue3::runtime::IsAlive(st.actor) || RawLookTarget(st.actor) != gEyes) {
+            continue;
+        }
+        ue3::Object* const data = gPawnLookData.Read<ue3::Object*>(st.actor).value_or(nullptr);
+        std::int32_t const rank = data != nullptr ? gLookDataRank.Read<std::int32_t>(data).value_or(gSettings.lookRank) : gSettings.lookRank;
+        if (gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn) && SetLookRanked(st.actor, gC.playerPawn, rank)) {
+            ++given;
+        }
+    }
+    if (given != 0) {
+        log::Info("convo: eyes: {} look{} at the player's eyes given back to Shepard ({})", given, given == 1 ? "" : "s", why);
+    }
 }
 
 // The game's strengths back on a look-at chain we gave a further reach (the controllers still alive and still on our copies).
@@ -2606,6 +2728,51 @@ void GatherSquad(ue3::Object* pawn, double nowS) {
     }
 }
 
+// Each tick before the looks: whether Shepard's body stands away from the player's view (his head bone over a metre from the
+// held eyes), and if so the eyes at the player's, the game's own looks at Shepard moved to them at their rank.
+void StepEyes() {
+    bool away = false;
+    if (gSettings.lookEyes && gC.world && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
+        auto const head = HeadOf(gC.playerPawn);
+        auto const at = head ? std::optional<ik::Vec3>{head->at} : [&]() -> std::optional<ik::Vec3> {
+            auto const p = player::Location(gC.playerPawn);
+            return p ? std::optional<ik::Vec3>{V(*p)} : std::nullopt;
+        }();
+        away = at && std::hypot(at->x - gC.hold.x, at->y - gC.hold.y) > 100.0;
+    }
+    if (!away) {
+        if (gEyesOn) {
+            gEyesOn = false;
+            GiveBackEyes("Shepard's body is with the player again");
+        }
+        return;
+    }
+    ue3::Object* const eyes = EnsureEyes();
+    if (eyes == nullptr) {
+        gEyesOn = false;
+        return;
+    }
+    PutAt(eyes, gC.hold);
+    if (!gEyesOn) {
+        gEyesOn = true;
+        log::Info("convo: eyes: Shepard's body stands away from the player's view: heads that look at him look at the player's eyes");
+    }
+    for (Stay const& st : gStay) {
+        if (st.actor == nullptr || IsShepardPawn(st.actor) || !ue3::runtime::IsAlive(st.actor) || !IsShepardPawn(RawLookTarget(st.actor))) {
+            continue;
+        }
+        ue3::Object* const data = gPawnLookData.Read<ue3::Object*>(st.actor).value_or(nullptr);
+        std::int32_t const rank = data != nullptr ? gLookDataRank.Read<std::int32_t>(data).value_or(gSettings.lookRank) : gSettings.lookRank;
+        bool const moved = SetLookRanked(st.actor, eyes, rank) && RawLookTarget(st.actor) == eyes;
+        moved ? ++gC.eyesSwapped : ++gC.eyesRefused;
+        if (!gEyesLogged.contains(st.actor)) {
+            gEyesLogged[st.actor] = moved;
+            log::Info("convo: eyes: at {:.1f} s {}'s look at Shepard (rank {}) {}", Seconds(), st.name, rank,
+                moved ? "moved to the player's eyes" : "could not be moved (the game kept its own)");
+        }
+    }
+}
+
 void StepCircle(ue3::Object* pawn, ue3::Object* speakerNow, ue3::Object* listener, double nowS, double dt) {
     if (!CircleOn()) {
         return;
@@ -2775,6 +2942,7 @@ void KeepInPlace(ue3::Object* pawn) {
         listener = playerPawn;
     }
     ue3::Object* const speakerNow = speaker == pawn || speaker == gC.playerPawn ? playerPawn : speaker;
+    StepEyes();
     StepCircle(pawn, speakerNow, listener, nowS, dt);
     StanceTick(pawn);
     for (Tracked const& t : gC.actors) {
@@ -4283,6 +4451,11 @@ void End(char const* why) {
     if ((gSettings.stances || gStancesOverride.value_or(false)) && gC.world && Seconds() - gC.stanceAtS > 2.0) {
         log::Info("convo: {}", WriteStance("end"));
     }
+    if (gEyesOn) {
+        gEyesOn = false;
+        GiveBackEyes(why);
+    }
+    gEyesLogged.clear();
     ReleaseLooks(why);
     ClearVoices();
     gTrail.clear();
@@ -4392,7 +4565,7 @@ void End(char const* why) {
               "\"looksGame\": {}, \"turnsHome\": {}, \"reaches\": {}, \"looksRefused\": {}, \"voicesPlaced\": {}, \"voicesFar\": {}, "
               "\"staged\": {}, \"circleJoined\": {}, \"circleWalked\": {}, \"circleOut\": {}, \"circleRegathers\": {}, "
               "\"circleEarly\": {}, \"circleStill\": {}, \"squadWalked\": {}, \"squadPutBack\": {}, \"squadPlaced\": {}, "
-              "\"squadHeld\": {}, \"turnedDeg\": {:.0f}, "
+              "\"squadHeld\": {}, \"eyesSwapped\": {}, \"eyesRefused\": {}, \"turnedDeg\": {:.0f}, "
               "\"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
@@ -4403,7 +4576,7 @@ void End(char const* why) {
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
         gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar,
         gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers,
-        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.turnedDeg, entryPath);
+        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.turnedDeg, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }
@@ -5207,14 +5380,50 @@ std::string WriteStance(std::string const& tag) {
         }
         std::string notWalker;
         bool const walker = st != gStay.end() && CanWalk(*st, notWalker);
+        // The head: where its face points (the head bone's first axis: 12 degrees off Shepard's eyes for Khalisah looking at
+        // him, 2026-11-10's log), the game's own look-at target and where its look-at chain aims in the world, and how far the
+        // face is off the player's eyes and off Shepard's head when his body stands away from the player.
+        std::string heading = "null";
+        if (head) {
+            ik::Vec3 const f = head->axis[0];
+            double const toYou = AngleDeg(f, player - head->at);
+            heading = std::format("{{\"yaw\": {:.0f}, \"pitch\": {:.0f}, \"toYouDeg\": {:.0f}", std::atan2(f.y, f.x) * kRadToDeg,
+                std::atan2(f.z, std::hypot(f.x, f.y)) * kRadToDeg, toYou);
+            if (!isShepard && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
+                if (auto const shepHead = HeadOf(gC.playerPawn); shepHead && Dist(shepHead->at, player) > 100.0) {
+                    heading += std::format(", \"toShepardDeg\": {:.0f}", AngleDeg(f, shepHead->at - head->at));
+                }
+            }
+            heading += "}";
+        }
+        std::string gameLook = "null";
+        if (!isShepard) {
+            ue3::Object* const lookData = gPawnLookData.Read<ue3::Object*>(t.actor).value_or(nullptr);
+            if (lookData != nullptr && ue3::runtime::IsAlive(lookData)) {
+                ue3::Object* const target = gLookDataTarget.Read<ue3::Object*>(lookData).value_or(nullptr);
+                std::string aim = "null";
+                if (auto const controllers = gLookControllers.ElementsOf(lookData, 32);
+                    controllers && controllers->count > 0 && controllers->stride == static_cast<std::int32_t>(sizeof(void*))) {
+                    ue3::Object* const link = *static_cast<ue3::Object**>(controllers->At(controllers->count - 1));
+                    if (link != nullptr && ue3::runtime::IsAlive(link)) {
+                        if (auto const p = gLookTargetLocation.Read<ue3::Vector>(link)) {
+                            aim = P3(V(*p));
+                        }
+                    }
+                }
+                gameLook = std::format("{{\"target\": \"{}\", \"rank\": {}, \"aim\": {}}}",
+                    target != nullptr ? JsonText(target == gEyes ? std::string("you") : target == gC.playerPawn || target == pawn ? std::string("Shepard") : DisplayName(target)) : std::string(),
+                    gLookDataRank.Read<std::int32_t>(lookData).value_or(0), aim);
+            }
+        }
         people += std::format("{}\n  {{\"name\": \"{}\", \"id\": \"{}\", \"at\": {}, \"yaw\": {:.0f}, \"head\": {}, \"start\": {}, "
                               "\"role\": \"{}\", \"owner\": {}, \"squad\": {}, \"shepard\": {}, \"hidden\": {}, \"walks\": {}, "
-                              "\"walk\": {}, \"held\": {}, \"looksAt\": \"{}\"}}",
+                              "\"walk\": {}, \"held\": {}, \"looksAt\": \"{}\", \"face\": {}, \"gameLook\": {}}}",
             people.empty() ? "" : ",", JsonText(DisplayName(t.actor)), JsonText(t.name), P3(V(*at)), YawDeg(*rot),
             head ? P3(head->at) : std::string("null"), P3(t.start), role, t.actor == owner ? "true" : "false", squad ? "true" : "false",
             isShepard ? "true" : "false", gActorHidden.ReadBool(t.actor).value_or(false) ? "true" : "false",
             walker ? "true" : "false", walk, hold,
-            st != gStay.end() && st->lookOurs != nullptr ? JsonText(DisplayName(st->lookOurs)) : std::string());
+            st != gStay.end() && st->lookOurs != nullptr ? JsonText(DisplayName(st->lookOurs)) : std::string(), heading, gameLook);
         if (!isShepard && Dist(V(*at), player) < 1500.0) {
             sum = sum + V(*at);
             ++counted;
@@ -5258,12 +5467,12 @@ std::string WriteStance(std::string const& tag) {
     std::string const json = std::format(
         "{{\"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, \"staged\": {}, \"opening\": \"{}\", "
         "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f},\n"
-        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}}},\n"
+        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}}},\n"
         "\"people\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
         "\"ahead\": {{\"now\": [{}], \"later\": [{}]}}}}\n",
         JsonText(gC.name), gC.number, JsonText(tag), Seconds(), gC.staged ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-",
         gCurrentEntry.Read<int>(conv).value_or(-1), JsonText(gC.subtitle), kUnitsPerMeter,
-        P3(player), playerYaw, P3(boundary), gSettings.moveLeashM, floor,
+        P3(player), playerYaw, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
         people, circle, P3(middle), floor, kReach, walls, aheadNow, aheadLater);
     wchar_t buffer[MAX_PATH] = {};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
@@ -6049,6 +6258,11 @@ void LogStats() {
 }
 
 void Shutdown(Link const& link) {
+    if (gEyes != nullptr && ue3::runtime::IsAlive(gEyes) && gActorDestroy.Get() != nullptr) {
+        ue3::Params p(ue3::runtime::Get(), gActorDestroy.Get());
+        ue3::runtime::Call(gEyes, gActorDestroy.Get(), p);
+    }
+    gEyes = nullptr;
     ClearVoices();
     engine::conversation_hooks::SetKeepProvider(nullptr);
     End("the mod unloads");

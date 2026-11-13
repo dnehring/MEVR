@@ -331,7 +331,14 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     easily judge the conversations. If the conversation doesn't require any mid scene movement then those can be skipped early
     after capturing the screenshot"; "Stances from above" below): **built** (`mevr convo stance`, `worldStances`,
     `tools/conversation-stance.py`, `tools/conversation-from-save.ps1 -Stances`); a plan view drawn from the game's places and a ray
-    scan of the room, not a render (a camera above the room would see its ceiling, and Umbra culls from the camera).
+    scan of the room, not a render (a camera above the room would see its ceiling, and Umbra culls from the camera). Since
+    the owner's question (item 30) each face's direction and where the game's look-at aims it are in it too.
+30. **Heads that look past the player** (the owner, 2026-11-12, of the drawings' "you" and "Shepard": "Are there conflicts
+    with where their heads are pointed during conversation? I noticed weird behaviors like that in some missions like virmire
+    intro"; "Heads that look past the player" below): in a walk-in by the view Shepard's body stays on his mark and every look at
+    "Shepard" (the game's own at rank 99999, and ours) aimed at it, metres from the player: Girard's face 7-16 degrees off the
+    empty mark and 58-78 off the player. **Fixed**: a look-at target of the game's own kind kept at the player's eyes takes
+    Shepard's place while his body is away (`worldLookEyes`); Girard's face 12-27 degrees off the player since.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3133,6 +3140,37 @@ and settled stances; Khalisah's first sheet showed the squad crossing behind the
 mark Shepard's body was put back from (now left out of the drawing), Anoleis's a guard 12 m behind the player, which had shrunk
 the drawing (the 8 m fit).
 
+### Heads that look past the player (2026-11-12 17:20-17:40, fake headset; item 30)
+
+The owner asked why the drawings show both "you" and "Shepard", and whether heads point the wrong way. They are one place in
+most scenes; they part in a walk-in by the view (the opening's `view` way: Shepard's mark inside a trigger, or a moment still
+carrying him, where putting his body back where the player stood is refused or ended a scene; research/69 "The view walks"):
+his body stays on the mark and only the player's view stays where the conversation began, and with the owner's rule (nothing
+walks the player) they never join. A head's look-at chain (`BioPawnLookAtController`: `m_pTargetActor`, `m_pTargetMesh`,
+`m_nTargetBoneIndex`, aiming its `SkelControlLookAt.TargetLocation` at the target's head bone) then aims every look at
+"Shepard" at the mark: the game's own (the conversation's, rank 99999, for most speakers) and ours (the pair's and a bystander's
+glance give `BioPawn.SetLookAtTarget(Shepard's pawn)`). The stances now carry each face's direction (the head bone's first axis),
+how far it is off the player's eyes and off Shepard's head, the game's target and rank and where its last link aims.
+
+Measured (eleven Citadel scenes from the owner's John00_96 with Garrus and Tali; `%LOCALAPPDATA%\MEVR\squad-saves`, written by
+`conversation-sweep.py saves --base`; eight started, three stopped at plot checks): where Shepard's body is with the player (0.5 m
+from the view, the eye ahead of the head bone; seven scenes) whoever talks to the player looks at him, 3-19 degrees off his eyes
+(Zabaleta, Chorban, Avina, Dr. Michel, the preacher's C-Sec officer 13-35). At Girard's (a walk-in by the view, the body 3.4 m from
+the view) Girard's face pointed 7-16 degrees off the empty mark and 58-78 off the player, and Garrus's too, 5-7 off it.
+
+Built (`StepEyes`, `worldLookEyes = 1`): while Shepard's head bone is over a metre (flat) from the player's held eyes, a
+`SFXGame.BioLookAtTarget` (the game's own look-at target actor; spawned once on the player controller, its class's
+`bStatic`/`bNoDelete` defaults cleared for the call as game/ScopeCapture does; destroyed when the mod unloads) is kept at the
+player's eyes each tick; our looks at the player go to it, and each person whose game target is Shepard's pawn gets it through
+`SetLookAtTarget` at the rank it had (99999 replaced 99999: not refused once); when his body is with the player again or the
+conversation ends, every look at it goes back to Shepard at its rank. `GameLookTarget` reads it as the player, so the look rules
+and the re-face rule are unchanged. Logs `convo: eyes:`; the summary's `eyesSwapped`, `eyesRefused`.
+
+In the game (17:36): Girard's look moved to the eyes 0.5 s in (6 moves, 0 refused); his face 12-27 degrees off the player and
+50-63 off the mark (one later line's own gesture turned it 54 degrees away); Zabaleta and Chorban unchanged (no move: his body
+with the player). `tools/conversation-stance.py --heads` lists whom each face points at, by the game's target where the face points
+at its aim (Garrus at Girard, who stands by the mark, was first read as looking at the mark).
+
 ### The staged scenes (2026-11-12; for the owner's review)
 
 From the scan's 491 conversations (`conversation-scan.py --csv`), the ones that look like "the council or the virmire speech": a
@@ -3575,3 +3613,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-11 23:50, **item 28: the conversational circle** (the owner's design): built and unit-tested; the guided walk, the opening-time seats and the stronger look-at chain off by default; first run on the fake headset under way.
 - 2026-11-12 00:30, **item 28, second design** (the owner's answers): built and validated on the fake headset for eight scenes; the squad's formation off by default (the AI walk stalls or follows Shepard's pawn); the staged list for the owner's review.
 - 2026-11-12 09:45, **item 28, the squad's formation held** (put back before the scene is drawn, each on its own side, the squad's own HOLD formation written quietly, placed under a cut's dip): validated on the fake headset, on by default; **item 29, stances from above** built (`mevr convo stance`, `tools/conversation-stance.py`, the runner's `-Stances` that ends a scene once nothing will move).
+- 2026-11-12 17:45, **item 30, heads that look past the player** (the owner's question): measured with head directions in the stances (Girard looked at Shepard's body left on his mark), fixed with a look-at target at the player's eyes (`worldLookEyes`); the squad saves from the owner's Citadel save (`%LOCALAPPDATA%\MEVR\squad-saves`).

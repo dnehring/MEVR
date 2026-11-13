@@ -1289,6 +1289,10 @@ void CheckPaths() {
     CheckElement("SFXGame.BioBaseSquad", "Members", sizeof(FMemberData));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "SquadMember"}, SDK_AT(offsetof(FMemberData, SquadMember), 8));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "eSwitchWeapon"}, SDK_AT(offsetof(FMemberData, eSwitchWeapon), 1));
+    // game/ConversationWorld: the player's eyes as a look-at target (research/69 "Heads that look past the player").
+    CheckClass<ABioLookAtTarget>("SFXGame.BioLookAtTarget");
+    // game/ConversationWorld: where a look-at controller aims (the stances from above).
+    CheckField("Engine.SkelControlLookAt", "TargetLocation", SDK_FIELD(USkelControlLookAt, TargetLocation));
     // game/ConversationWorld: the squad's formation held quietly (research/69 "The squad's formation, held").
     CheckPath("SFXGame.BioBaseSquad", {"Members", "vHoldPosition"}, SDK_AT(offsetof(FMemberData, vHoldPosition), 12));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "eFormation"}, SDK_AT(offsetof(FMemberData, eFormation), 1));

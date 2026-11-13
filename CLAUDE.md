@@ -607,8 +607,12 @@ switching frameworks.
   `worldStances = 1`: after the opening, each walk, the end) writes everyone's place, facing, gaze, walk, held place, the circle,
   the boundary and a ray scan of walls and furniture to `%LOCALAPPDATA%\MEVR\stances`; `tools/conversation-stance.py` draws a sheet
   per conversation; `mevr convo ahead` says what still has to move, and `tools/conversation-from-save.ps1 -Stances` ends a scene
-  once nothing will (the scan's stage walks too; `-Chunk` streams a chunk in by its volume); logs `convo: circle:`,
-  `convo: squad:`, `convo: stance:`;
+  once nothing will (the scan's stage walks too; `-Chunk` streams a chunk in by its volume; `--heads`: whom each face points at);
+  **heads look at the player, not at Shepard's body** (`worldLookEyes`, research/69 "Heads that look past the player"): in a
+  walk-in by the view his body stays on its mark and every look at "Shepard" (the game's at rank 99999, ours) aimed there, so
+  while his head bone is over a metre from the view a `SFXGame.BioLookAtTarget` kept at the player's eyes takes his place
+  (`StepEyes`; looks moved at their own rank and given back after; `GameLookTarget` reads it as the player); logs `convo: circle:`,
+  `convo: squad:`, `convo: stance:`, `convo: eyes:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
   (`cw::HeadFollowFor`; research/69 "The hearing that went third person": the owner's slot-80 run ended 4 m behind him);
   auto takes it when a moment's walk was still on its way as the conversation began (putting Shepard back from the podium

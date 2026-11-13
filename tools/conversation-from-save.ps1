@@ -9,7 +9,7 @@
 #       [-Class BioSeqAct_PMCheckState] [-ActionInput 0] [-Seconds 300] [-EndAfter 0] [-Pace skip|full] [-Snapshots 20,45]
 #       [-Walk 18] [-Replay rec.mevrrec] [-Before "mevr calltrace 20 hidden"] [-NoLoad] [-Stances] [-Chunk STA30_02A]
 #   tools/conversation-from-save.ps1 -All -Career John02 [-FirstSlot 80] [-List tools/conversation-headset-sample.json]
-#       [-Plans a.json,b.json] [-Only 80,81] [-EndAfter 25] [-Seconds 150]
+#       [-Plans a.json,b.json] [-Only 80,81] [-EndAfter 25] [-Seconds 150] [-SaveDir <folder of the list's saves>]
 #
 # -EndAfter N: a conversation is ended N seconds in (only the opening matters). -Walk N: the left stick held forward for N
 # seconds from the start (a player who walks along; `mevr convo walk`). -WanderAt N: N seconds into a conversation (the wheel
@@ -45,7 +45,8 @@ param(
     [string[]]$Plans = @(),
     [int[]]$Only = @(),
     [switch]$Stances,
-    [string]$Chunk = ''
+    [string]$Chunk = '',
+    [string]$SaveDir = ''
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
@@ -308,7 +309,9 @@ if ($All) {
         Write-Output ''
         Write-Output ("=== slot {0}: {1}" -f $row.slot, $row.title)
         if (-not $row.tail) { Say 'no plan knows its starting action: skipped'; $failed += $row.slot; continue }
-        $result = Play-Scene ("{0}_{1}" -f $Career, $row.slot) $row.class $row.tail ([int]$row.input) $row.scene @($row.streamStates) ([bool]$row.barks)
+        $saveName = "{0}_{1}" -f $Career, $row.slot
+        if ($SaveDir) { $saveName = Join-Path $SaveDir "$saveName.pcsav" }   # saves kept outside the careers' folders
+        $result = Play-Scene $saveName $row.class $row.tail ([int]$row.input) $row.scene @($row.streamStates) ([bool]$row.barks)
         $result | Where-Object { $_ -isnot [bool] }
         if (@($result)[-1] -ne $true) { $failed += $row.slot }
         $done++

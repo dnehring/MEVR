@@ -45,6 +45,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   Shepard's script wanted him, your squadmates stay with you and stroll into a loose formation at your sides, each on their own
   side, facing whoever you talk to. When a scene needs a short fade, they are simply there when it clears. They follow you again
   when the conversation ends, without a word.
+- **People look at you** in first-person conversations where the scene keeps Shepard's body on its own mark away from you
+  (Girard on the Presidium, Khalisah's interview): their heads used to turn to that empty spot instead of to you.
 - **Long dialogue choices are shown whole** in first-person conversations: the end of a long reply was cut off the wheel and
   floated elsewhere in view.
 - **The view stays at your eyes beside walls.** Standing close to a wall, a pillar or someone in front of you could drop the

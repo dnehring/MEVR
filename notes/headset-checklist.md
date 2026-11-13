@@ -309,6 +309,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   Your squad (2026-11-12, research/69 "The squad's formation, held"; fake headset): start a conversation with squadmates near you
   (your own career's saves: any NPC on the Citadel): they stay with you, stroll a step or two to your left and right, a little
   behind, and face whoever you talk to; no squadmate says "on it" or similar; after the conversation they follow you again.
+  Heads (2026-11-12, research/69 "Heads that look past the player"; fake headset): in Girard's scene (Presidium, a squad save in
+  `%LOCALAPPDATA%\MEVR\squad-saves`, slot 80) Girard looks at your eyes, not at an empty spot beside him.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.

@@ -4,11 +4,14 @@ top/bottom view so that we can more easily judge the conversations").
 
 The mod writes where everyone stands in a first-person conversation (`mevr convo stance [tag]`, or by itself with `mevr convo
 stances on` / [Cinematics] worldStances = 1: after the opening, after each walk, at the end) to %LOCALAPPDATA%\\MEVR\\stances. This
-draws them from above, one sheet per conversation, each moment a panel turned so the player looks up the page:
+draws them from above, one sheet per conversation, each moment a panel turned so the player looks up the page (each face's
+direction in cyan, where the game's look-at aims each head dotted pink; "looks at Shepard's body" names a head turned to
+Shepard's own body left on a mark away from the player):
 
   python tools/conversation-stance.py                      # the conversations of the newest stances (the last hour's)
   python tools/conversation-stance.py --since 2026-11-12T10:00 [--out folder]
   python tools/conversation-stance.py a.json b.json ...
+  python tools/conversation-stance.py --heads [--since ...]  # whom each face points at, per moment, as text (no sheets)
 
 The player is the blue triangle (the view's wedge, the walking boundary dashed round where the conversation began); the owner
 orange, the squad green, others purple, Shepard's own body grey when the view stands elsewhere; a line from each body is its
@@ -42,6 +45,8 @@ OTHER = (130, 70, 170)
 SHEPARD = (150, 150, 150)
 SPEAKER = (220, 30, 30)
 LISTENER = (235, 190, 0)
+FACE = (0, 170, 210)
+AIM = (230, 120, 160)
 TEXT = (30, 30, 30)
 MUTED = (110, 110, 110)
 
@@ -110,6 +115,30 @@ def arrow(d, a, b, fill, width=2, dashed=False):
     ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
     s = 8
     d.polygon([b, (b[0] - ux * s - uy * s * 0.5, b[1] - uy * s + ux * s * 0.5), (b[0] - ux * s + uy * s * 0.5, b[1] - uy * s - ux * s * 0.5)], fill=fill)
+
+
+def looks_at(p, player):
+    """Whom a face points at: the game's look-at target when the face points at where it aims (within 20 degrees), the
+    player within 20, Shepard's body away from the player within 25, else None. (Two people standing close together are told
+    apart by the game's target, not by the angle alone: Garrus looking at Girard beside Shepard's body, 2026-11-12.)"""
+    face = p.get('face') or {}
+    if not face or p.get('hidden') or p.get('shepard') or not p.get('head'):
+        return None
+    look = p.get('gameLook') or {}
+    aim, target = look.get('aim'), look.get('target')
+    if aim and target and math.dist(aim[:2], p['head'][:2]) > 10:
+        a = math.degrees(math.atan2(aim[1] - p['head'][1], aim[0] - p['head'][0]))
+        if abs((face['yaw'] - a + 180) % 360 - 180) < 20:
+            if target == 'you' or target.startswith('BioLookAtTarget'):
+                return 'you'
+            return 'you' if target == 'Shepard' and face.get('toShepardDeg') is None else (
+                "Shepard's body" if target == 'Shepard' else target)
+    you, shep = face.get('toYouDeg'), face.get('toShepardDeg')
+    if you is not None and you < 20:
+        return 'you'
+    if shep is not None and shep < 25:
+        return "Shepard's body"
+    return None
 
 
 def choose_scale(st):
@@ -273,9 +302,22 @@ def draw_panel(st):
         dx, dy = v.direction(p['yaw'])
         tip = (at[0] + dx * (r + 0.35 * m), at[1] + dy * (r + 0.35 * m))
         d.line([at, tip], fill=col if not p.get('hidden') else MUTED, width=3)
+        # Where the face points (cyan) and where the game's look-at aims (pink, dotted): with Shepard's body left on a mark
+        # away from the player, a head the game turns to Shepard looks past the player.
+        face = p.get('face') or {}
+        if face and not p.get('hidden') and not p.get('shepard') and p.get('head'):
+            hp = v(p['head'])
+            fx, fy = v.direction(face['yaw'])
+            d.line([hp, (hp[0] + fx * 0.9 * m, hp[1] + fy * 0.9 * m)], fill=FACE, width=2)
+        aim = (p.get('gameLook') or {}).get('aim')
+        if aim and not p.get('hidden') and not p.get('shepard') and p.get('head') and math.dist(aim[:2], p['head'][:2]) > 10:
+            dashed_line(d, v(p['head']), v(aim), AIM, width=1, dash=3, gap=3)
         label = p['name'] + (' (hidden)' if p.get('hidden') else '') + ('' if p.get('walks', True) else ' (stays)')
         if far is not None:
             label += f' ({far:.1f} m)'
+        whom = looks_at(p, player)
+        if whom:
+            label += f' - looks at {whom}'
         tw = d.textlength(label, font=F_NAME)
         tx = at[0] + r + 5 if at[0] + r + 5 + tw < PANEL - 4 else at[0] - r - 5 - tw
         d.text((tx, at[1] - 8), label, fill=TEXT, font=F_NAME)
@@ -317,7 +359,8 @@ def sheet(stances):
     d.text((MARGIN, 32), 'movement ahead at the last moment: ' + ('; '.join(words) if words else 'none'), fill=MUTED, font=F_SMALL)
     x = MARGIN
     legend = [(PLAYER, 'you'), (OWNER, 'owner'), (SQUAD, 'squad'), (OTHER, 'others'), (SHEPARD, "Shepard's body"),
-              (SPEAKER, 'speaker'), (LISTENER, 'spoken to'), (WALL, 'walls (chest)'), (LOW, 'low things (knee)')]
+              (SPEAKER, 'speaker'), (LISTENER, 'spoken to'), (FACE, 'face points'), (AIM, "the game's look aims"),
+              (WALL, 'walls (chest)'), (LOW, 'low things (knee)')]
     for col, text in legend:
         d.ellipse([x, 54, x + 10, 64], fill=col)
         d.text((x + 14, 50), text, fill=TEXT, font=F_SMALL)
@@ -333,6 +376,8 @@ def main(argv):
     out = folder
     since = None
     files = []
+    heads = '--heads' in argv
+    argv = [a for a in argv if a != '--heads']
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -368,6 +413,24 @@ def main(argv):
             continue
         st['_file'] = f
         groups.setdefault((os.path.basename(f)[:10], st['number'], st['conversation']), []).append(st)
+    if heads:
+        for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
+            stances.sort(key=lambda s: s['_file'])
+            first = stances[0]
+            shep = next((p for p in first['people'] if p.get('shepard')), None)
+            away = math.dist(shep['head'][:2], first['player']['at'][:2]) / 100 if shep and shep.get('head') else 0.0
+            print(f"{name.split('.')[-1]} ({number}; opening {first.get('opening', '-')}; Shepard's body {away:.1f} m from your view"
+                  f"{'; his looks moved to your eyes' if any(s['player'].get('eyesTarget') for s in stances) else ''})")
+            for st in stances:
+                cells = []
+                for p in st['people']:
+                    if p.get('shepard') or p.get('hidden') or not p.get('face'):
+                        continue
+                    f = p['face']
+                    cells.append(f"{p['name']}: {looks_at(p, st['player']['at']) or 'elsewhere'} ({f.get('toYouDeg')} deg off you"
+                                 f"{', %s off his body' % f['toShepardDeg'] if f.get('toShepardDeg') is not None else ''})")
+                print(f"  {st.get('tag', '?')} at {st.get('seconds', 0):.1f} s: " + '; '.join(cells))
+        return 0
     os.makedirs(out, exist_ok=True)
     for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
         stances.sort(key=lambda s: (s['_file']))
