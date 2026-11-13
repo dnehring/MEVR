@@ -673,10 +673,17 @@ std::optional<Head> HeadOf(ue3::Object* actor) {
 // the body follower slides under the player (research/69 "The body that stayed at the mark", 2026-11-13: read drawn, the council
 // hearing's opening took the place our slide had put his body for his mark, 3.5 m from where the stage animated him, and the
 // follower then chased our own writes). The axes stay the drawn head's. Everyone else, and Shepard with nothing written: HeadOf.
+// Broken runs the audit must catch (research/69 "Broken runs the audit must catch", tools/conversation-audit-set.json's
+// `canaries`): each brings a fixed bug back for the process, until switched on again or the mod reloads. Never set otherwise.
+// `mevr convo bodyaway off`: item 35's fix undone whole (the body follower only for a view held away, the player placed by
+// Shepard's drawn head, a stick held through a cut walks at once). The body rule alone brought nothing back (2026-11-13).
+bool gBodyAwayOldRule = false;
+bool gShowEarlyOff = false;     // `mevr convo showearly off`: the council's chamber empty during the walk (item 36's bug back)
+
 std::optional<Head> MarkHeadOf(ue3::Object* actor) {
     std::optional<Head> head = HeadOf(actor);
     ue3::Object* const controller = head ? player::Controller() : nullptr;
-    if (controller == nullptr || actor != player::Pawn(controller)) {
+    if (controller == nullptr || actor != player::Pawn(controller) || gBodyAwayOldRule) {
         return head;
     }
     if (auto const animated = arm_ik::AnimatedHeadComponent()) {
@@ -2993,10 +3000,6 @@ std::vector<ue3::Object*> NearPawns(ik::Vec3 const& at, double units, std::size_
 }
 
 bool MomentHeld();
-// Broken runs the audit must catch (research/69 "Broken runs the audit must catch", tools/conversation-audit-set.json's
-// `canaries`): each brings a fixed bug back for the process, until switched on again or the mod reloads. Never set otherwise.
-bool gBodyAwayOldRule = false;  // `mevr convo bodyaway off`: the body follower only for a view held away (item 35's bug back)
-bool gShowEarlyOff = false;     // `mevr convo showearly off`: the council's chamber empty during the walk (item 36's bug back)
 std::optional<bool> gEyesOverride;  // `mevr convo eyes on|off`: the stand-in switched for an A/B (tests); unset: worldLookEyes
 
 // Whose looks the eyes stand-in takes: the conversation's people, else (a moment: the track walks Shepard's hidden pawn while
@@ -4564,7 +4567,7 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     // Anderson, it walked the player 4 m off Shepard's mark in the hearing's first seconds).
     if (std::uint32_t const cutNow = gCutBase + gC.cut; cutNow != gStickCutSeen) {
         gStickCutSeen = cutNow;
-        if (pushed >= 0.25 && !gC.wheelStick.held) {
+        if (pushed >= 0.25 && !gC.wheelStick.held && !gBodyAwayOldRule) {
             gC.wheelStick.held = true;
             gC.wheelStickNoted = true;  // (not a reply's stick: no "picked the reply" line, not counted as one)
             log::Info("convo: at {:.1f} s the stick is still out ({:.2f}) through a cut: not a walk until it is let go", Seconds(), pushed);
@@ -4961,6 +4964,22 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
     }
 }
 
+// The live audit's totals as JSON: the summary's `audit`, and `mevr convo audit` while a scene still plays (a pass that stops
+// before its conversation ends, Kirrahe's camp at 175 s, wrote no summary: its body "not measured", 2026-11-13).
+std::string AuditJson() {
+    int unknown = 0;
+    Convo::Audit::Face const faces = gC.audit.FaceTotals(&unknown);
+    return std::format("{{\"gapMaxM\": {:.2f}, \"gapOverS\": {:.1f}, \"lookAtBodyS\": {:.1f}, \"faceOffMeanDeg\": {:.0f}, "
+                       "\"faceOffMaxDeg\": {:.0f}, \"faceOver35\": {}, \"faceSamples\": {}, \"faceAxisUnknown\": {}, "
+                       "\"speakerBehindS\": {:.1f}, \"closeMinM\": {:.2f}, \"sampledS\": {:.1f}, \"thirdPersonS\": {:.1f}, "
+                       "\"armDrivenS\": {:.1f}, \"handsSampledS\": {:.1f}, \"handsOffS\": {:.1f}, \"handsOffMaxM\": {:.2f}, "
+                       "\"handsInViewS\": {:.1f}, \"tripped\": \"{}\"}}",
+        gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS, faces.n != 0 ? faces.sum / faces.n : 0.0, faces.maxDeg,
+        faces.over35, faces.n, unknown, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.sampledS, gC.audit.thirdPersonS,
+        gC.audit.armDrivenS, gC.audit.handsSampledS, gC.audit.handsOffS, gC.audit.handsOffMaxM, gC.audit.handsInViewS,
+        gC.audit.tripped);
+}
+
 void End(char const* why) {
     if (!gC.on) {
         return;
@@ -5104,20 +5123,7 @@ void End(char const* why) {
         gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar,
         gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers,
         gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.facingsToEyes, gC.relocated, gC.turnedDeg,
-        gC.world ? [] {
-            int unknown = 0;
-            Convo::Audit::Face const faces = gC.audit.FaceTotals(&unknown);
-            return std::format("{{\"gapMaxM\": {:.2f}, \"gapOverS\": {:.1f}, \"lookAtBodyS\": {:.1f}, \"faceOffMeanDeg\": {:.0f}, "
-                               "\"faceOffMaxDeg\": {:.0f}, \"faceOver35\": {}, \"faceSamples\": {}, \"faceAxisUnknown\": {}, "
-                               "\"speakerBehindS\": {:.1f}, \"closeMinM\": {:.2f}, \"sampledS\": {:.1f}, \"thirdPersonS\": {:.1f}, "
-                               "\"armDrivenS\": {:.1f}, \"handsSampledS\": {:.1f}, \"handsOffS\": {:.1f}, \"handsOffMaxM\": {:.2f}, "
-                               "\"handsInViewS\": {:.1f}, \"tripped\": \"{}\"}}",
-                gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS, faces.n != 0 ? faces.sum / faces.n : 0.0, faces.maxDeg,
-                faces.over35, faces.n, unknown, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.sampledS, gC.audit.thirdPersonS,
-                gC.audit.armDrivenS, gC.audit.handsSampledS, gC.audit.handsOffS, gC.audit.handsOffMaxM, gC.audit.handsInViewS,
-                gC.audit.tripped);
-        }()
-                 : std::string("null"),
+        gC.world ? AuditJson() : std::string("null"),
         entryPath);
     gCutBase += gC.cut;
     gC = {};
@@ -7292,6 +7298,15 @@ std::string Command(std::string const& rest) {
         }
         return std::format("convo: following Shepard's walk in a moment: {}", gFollowShepard ? "on" : "off");
     }
+    if (verb == "audit") {
+        // The live audit so far, as the summary will have it (tools/conversation-from-save.ps1 -Report: a scene still playing
+        // when the runner stops).
+        if (!gC.on) {
+            return "convo: audit: no conversation";
+        }
+        return std::format("convo: audit {{\"name\": \"{}\", \"seconds\": {:.1f}, \"world\": {}, \"audit\": {}}}", JsonText(gC.name),
+            Seconds(), gC.world ? "true" : "false", gC.world ? AuditJson() : std::string("null"));
+    }
     if (verb == "bodyaway" || verb == "showearly") {
         // Broken runs (tools/conversation-audit.ps1 -Canaries): a fixed bug brought back, so the audit shows it can catch it.
         std::string w;
@@ -7304,7 +7319,8 @@ std::string Command(std::string const& rest) {
             return std::format("usage: mevr convo {} [on | off]", verb);
         }
         return verb == "bodyaway"
-            ? std::format("convo: the body with the player in every conversation in the world: {}", broken ? "off (only a view held away: the old rule)" : "on")
+            ? std::format("convo: the body with the player in every conversation in the world: {}", broken
+                    ? "off (item 35's fix undone: only a view held away, placed by the drawn head, the stick through a cut walks)" : "on")
             : std::format("convo: a scene shown as the walk to it begins: {}", broken ? "off (the script's black screen shows it)" : "on (worldShowEarly)");
     }
     if (verb == "eyes") {
@@ -7383,7 +7399,7 @@ std::string Command(std::string const& rest) {
         return out;
     }
     return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | stance [tag] | stances on|off|file | ahead | "
-           "goto [x y] | turn <deg> | eyes [on|off] | follow [on|off] | bodyaway|showearly [on|off]]";
+           "goto [x y] | turn <deg> | eyes [on|off] | follow [on|off] | bodyaway|showearly [on|off] | audit]";
 }
 
 std::string StatusJson() {

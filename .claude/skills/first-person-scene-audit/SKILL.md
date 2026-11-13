@@ -18,6 +18,18 @@ this skill is what to run and how to read it.
    `-Judge <since> -WriteBaseline` from a pass already played. A set entry's `before` is a console line before its scene (the
    scripted walks walk along: `mevr convo follow on`; with the player standing still they wait for him, 120 s). The baseline
    keeps the latest play of each scene since `<since>`, so a pass that only replays a few scenes can replace just those.
+   **Read its first block before the findings** (`tools/audit-report.py`, research/69 "Seeing the body in the audit"): per scene,
+   how long arm IK drove the body, how long Shepard's drawn hands were read, in view and off the controllers, the snapshots'
+   verdicts, the scene's own expectations (`expect` in the set: a console line and a regex, at a time), and the lines starting
+   `NOT MEASURED`: a scene whose body was not measured, or whose expectation failed, makes the run fail whatever the baseline.
+   Then open `contact-sheet.png` in the session folder (`%LOCALAPPDATA%\MEVR\sessions\<stamp>-audit`): every snapshot of every
+   scene, the replayed hands held up in front of the eyes, framed green when both drawn hands are in view and on the
+   controllers, red when not, blue outside a scene. A red frame is a body not where the player is: look at that picture first.
+1b. **The audit's own check: broken runs** (`tools\conversation-audit.ps1 -Canaries -IgnoreSlot`, about 15 minutes, each in a game of
+   its own; research/69 "Broken runs the audit must catch"). Each brings a fixed bug back (`mevr convo bodyaway off`, `mevr convo
+   showearly off`) or takes away what the audit needs (no hands), and must be caught; a `BLIND` line means the audit would pass that
+   bug. Run them after changing the audit, the runner or the set. **Every bug the owner finds that the audit missed becomes a broken
+   run** (a test switch in the mod, an entry in the set's `canaries`) next to its fix.
 2. Any records, any time, no game: `python tools/conversation-stance.py --findings --since <time>` (rules: `tools/scene_audit.py`),
    `--baseline-compare <file>`; `tools\conversation-audit.ps1 -Judge <time>` judges an earlier run again.
 3. A headset session: `python tools/conversation-session.py` lists, per scene, the mod's live audit (`audit:<rule>`: the same rules,

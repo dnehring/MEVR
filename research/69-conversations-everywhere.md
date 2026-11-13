@@ -3611,6 +3611,64 @@ frame. The hearing began on time in every run; the black screen's change detecto
 Anderson), no dip; the hearing's body audit stayed clean (Shepard's head from the eyes at most 0.11 m, `thirdPersonS` 0). Seeing
 Udina and the Council over the edge as you climb is the headset's check.
 
+### Seeing the body in the audit; broken runs the audit must catch (2026-11-13; item 37)
+
+**The owner:** "how can I get better confidence on your audits?", then "we need to ensure that we can always see our body in
+the screenshot to validate placement. So the hands may need to be in front of our player for the sake of visibility". The
+audit had missed both of the owner's slot-80 reports (items 35 and 36): the fake headset had no controllers, so arm IK and the
+body follower never ran; its scripted player stood still where the owner pushed the stick through the fade; no rule looked at
+what is drawn (the empty chamber); a run is compared with the last one, and the hearing's gap was already in the baseline; and
+"0 regressions" was read as "fine" where it meant "nothing new on eight rules".
+
+**Built** (commits on main; `tools/conversation-audit.ps1`, `tools/audit-report.py`, the skill `first-person-scene-audit` 0 and
+1b):
+1. **Where the drawn hands are** (`arm_ik::MeasureHands`): each drawn wrist (the last posed pose, `info->arms[side]->hand`) taken
+   into tracking space through the view's frame (`view_anchor::Current`), its distance from that controller's grip, and whether
+   it lies within 35 degrees of the head's forward, up, down and sideways. In first person the wrist sits 7 units behind the
+   grip (0.07 m measured); a body left at the mark puts it metres away whatever arm IK says of itself. It is in every snapshot
+   (`mod.armIk.hands`: `firstPerson`, `left`/`right` `fromGripM`, `inView`) and every stance record (`player.hands`,
+   `player.armIk`).
+2. **The rule `hands-off-controllers`**: live (`StepAudit`: a drawn wrist 0.3 m or more off for 1 s; the summary's audit has
+   `armDrivenS`, `handsSampledS`, `handsInViewS`, `handsOffS`, `handsOffMaxM`, and `convo: audit totals:` names them) and
+   offline (`scene_audit.py` over records, two settled records running; in `ABSOLUTE`: never excused by a baseline; covers the
+   scripted walks, which the live audit doesn't). Tests in tests/SceneAuditTests.py.
+3. **The replayed hands held up in view** (`make-walk-recording.py --hands view`: the grips 0.25 m ahead, 0.08 m under the eyes,
+   0.09 m to each side, 0.28 m from the eyes, inside `[Hands] reachNearFaceM`'s 0.30, so the arm-length calibration doesn't pull
+   them in). At 0.40 m ahead (the first try) they were reach-scaled 0.16 m low and cut off at the picture's bottom edge, which the
+   45-degree "in view" of the first build still counted as seen: hence 35 degrees.
+4. **Snapshots and a contact sheet**: an eye snapshot every 12 s, 4 s into each conversation and 3 s into each scripted walk
+   (`conversation-from-save.ps1 -SnapshotEvery`, asked without waiting, tagged `a-<scene>-<seconds>`); `audit-report.py` puts
+   each scene's in a row of `contact-sheet.png` in the session folder, framed green (both drawn hands in view and within 0.3 m of
+   the controllers), red (not), grey (not measured) or blue (no scene held the view: the game's own camera after a conversation
+   ended is not judged).
+5. **What was measured, and what was not**: per scene (`-Report`, one JSON line each in the session's `audit-report.jsonl`) the
+   hands replayed, how long arm IK drove the body, the hands' totals, the snapshots' verdicts, the scene's expectations, the rules
+   that tripped, and `NOT MEASURED` lines (arm IK never drove the body, no conversation shown in the world, an expectation never
+   reached, snapshots that never came). A body not measured or a failed expectation fails the run whatever the baseline.
+6. **A scene's own expectations** (the set's `expect`: `seconds:console lines=>regex`): the council's is `mevr convo` and `mevr
+   stream people BIOA_STA70_02council_DSG` 5 s into the walk with Anderson, requiring game mode 6 (still the walk) and the four
+   people `hidden 0`. At 10 s (the first try) it ran in the hearing: the walk lasts 7.5 s, and the hearing shows them itself.
+7. **Broken runs** (`conversation-audit.ps1 -Canaries [-Canary <names>]`, each in a game of its own; the set's `canaries`):
+   a fixed bug brought back by a test switch in the mod (`mevr convo bodyaway off`: item 35's fix undone whole; `mevr convo
+   showearly off`: item 36's), or what the audit needs taken away (no hands). Each must be caught by one of its `mustFind`
+   rules; a run passed clean is `BLIND` and fails.
+
+**Measured** (fake headset; sessions `2026-11-13_14-47-44-audit`, `15-09-38-audit`, `15-21-42-audit` for the set, `14-54-19-canary-body-left-at-the-mark`, `14-57-33-canary-empty-chamber`, `15-00-31-canary-no-hands`, `15-03-42-canary-body-left-at-the-mark` for the broken runs):
+
+| broken run | result |
+|---|---|
+| body left at the mark, body rule alone off | **BLIND**: nothing broke (hands 0.07 m, first person throughout): the placement from Shepard's animated head and the stick held through the cut kept the bug away by themselves. The switch now undoes all three |
+| body left at the mark, the whole fix off | caught: `hands-off-controllers`, `body-third-person`, `eyes-off-body`; 3.89 m (the owner's run A: 3.85), third person for all 11.9 s; 3 of 3 snapshots red, no hands in them, Shepard's body standing about 4 m off |
+| the empty chamber | caught: the expectation failed 5.6 s into the walk |
+| no hands | caught: the body not measured (arm IK 0.0 s of 13.7) |
+
+The set with the hands in view, all ten scenes (over three passes: the first stopped at Benezia's crash, below): arm IK drove the body for all of every scene's time in the world (Kirrahe's camp 173.3 of 175.1 s), both drawn hands in view 100% of it, off the controllers 0.0 s (at most 0.07 m; Anoleis 0.35 m for 0.1 s, at a cut), third person 0.0 s; every in-scene snapshot green (the hands in the lower half of the picture, the scene above them). The council's check met 6.9 s into the walk. Against the baseline two new findings, once each: `too-close` in the walk with Anderson (someone 0.41 m from the eyes 4.6 s in) and one look at Shepard's body in Girard's scene; neither comes from this change (it only reads), the baseline was not rewritten to excuse them. A scene still playing when the runner stops (Kirrahe's camp) wrote no summary and read "not measured" until the runner asked for the live totals (`mevr convo audit`).
+
+**The forced end crashes the game now and then**: the set stopped twice today after Benezia's scene, the game ending 20 ms after
+the runner's `mevr convo end` (`-EndAfter`) in the game's own `BioSubtitles.UpdateSubtitles` (`MassEffect1.exe+0xC87E81`,
+reading freed memory; the mod's last write an AI walk's `Terminate`). A player can't end a conversation that way; the audit
+loses the rest of its pass (a follow-up: investigate `mevr convo end`, or restart the game after a crash and go on).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -4054,3 +4112,6 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   walk with Anderson.
 - 2026-11-13 13:10, **item 36, the council during the walk**: the hearing's level and four of its people (Udina, the councillors)
   shown as the walk with Anderson begins (`cw::ShownEarlyFor`, `worldShowEarly`); the hearing still begins at the walk's end.
+- 2026-11-13 15:30, **item 37, seeing the body in the audit**: the drawn hands against the controllers (`arm_ik::MeasureHands`,
+  `hands-off-controllers`), the audit's hands held up in view, snapshots on a contact sheet, what each scene did not measure,
+  per-scene expectations, and broken runs the audit must catch (all three caught once item 35's switch undid its whole fix).

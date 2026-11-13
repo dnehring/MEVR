@@ -193,10 +193,11 @@ def sheet(session, rows):
     except ImportError:
         print('(no contact sheet: Pillow is not installed)')
         return None
-    tw, th, label_w, pad = 240, 245, 230, 6
-    per_row = max([len(v) for _, v in rows] + [1])
+    tw, th, label_w, pad, wrap = 240, 245, 230, 6, 8   # a scene's snapshots wrap after 8 a row
+    per_row = min(wrap, max([len(v) for _, v in rows] + [1]))
+    lines = [max(1, -(-len(v) // wrap)) for _, v in rows]
     width = label_w + per_row * (tw + pad) + pad
-    height = sum(th + 34 for _ in rows) + pad
+    height = sum(n * (th + 34) for n in lines) + pad
     img = Image.new('RGB', (width, max(height, 60)), (24, 24, 28))
     draw = ImageDraw.Draw(img)
     try:
@@ -208,7 +209,9 @@ def sheet(session, rows):
     for title, verdicts in rows:
         draw.text((pad, y + 4), title, fill=(230, 230, 230), font=font)
         x = label_w
-        for s, verdict, text, d in verdicts:
+        for i, (s, verdict, text, d) in enumerate(verdicts):
+            if i and i % wrap == 0:
+                x, y = label_w, y + th + 34
             left = next((e for e in d.get('eyes', []) if e.get('eye') == 'left'), None)
             path = os.path.join(d['_dir'], left['file']) if left and left.get('file') else None
             if path and os.path.exists(path):

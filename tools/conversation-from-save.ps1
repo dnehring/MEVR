@@ -368,6 +368,8 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
         } else { $convoSince = $null }
     }
     if ($Replay) { & (Join-Path $tools 'replay.ps1') -Stop *> $null }
+    # A conversation still playing as the runner stops wrote no summary yet: its live audit so far (`mevr convo audit`).
+    $auditNow = $(if ($Report) { Console 'mevr convo audit' } else { '' })
     if ($After) { Console $After | Out-Null }
     foreach ($e in $expects) { $expectResults += [pscustomobject]@{ at = $null; line = $e.Line; want = $e.Want; met = $null } }
     if ($Report) {
@@ -378,6 +380,9 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             if ($_ -match 'convo: summary (\{.*\})\s*$') {
                 try { $j = $Matches[1] | ConvertFrom-Json; [pscustomobject]@{ name = $j.name; seconds = $j.seconds; world = $j.world; opening = $j.opening; audit = $j.audit } } catch { }
             } })
+        if ($auditNow -match 'convo: audit (\{.*\})\s*$') {
+            try { $j = $Matches[1] | ConvertFrom-Json; $summaries += [pscustomobject]@{ name = $j.name; seconds = $j.seconds; world = $j.world; opening = 'still playing'; audit = $j.audit } } catch { }
+        }
         $record = [ordered]@{
             key = $SceneKey; title = $title; started = $started.ToString('yyyy-MM-ddTHH:mm:ss'); ended = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
             ok = $ok; hands = $HandsPlan; before = $Before; breaks = $Breaks; mustFind = @($MustFind | Where-Object { $_ })

@@ -30,6 +30,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
+# `powershell -File ... -Only a,b` passes one string "a,b" (2026-11-13: a pass that played nothing): lists split here.
+$Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$Canary = @($Canary | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if (-not $Set) { $Set = Join-Path $tools 'conversation-audit-set.json' }
 if (-not $Baseline) { $Baseline = Join-Path $tools 'conversation-audit-baseline.json' }
 

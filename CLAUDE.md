@@ -350,6 +350,13 @@ switching frameworks.
   hearing's level (`LevelStreaming.bShouldBeVisible`) and unhides Udina and the councillors, not Saren (a hologram only once the
   hearing attaches it) nor the hearing's own Anderson; the hearing still begins at the volume's streaming-done event; a walk
   ended without its conversation puts both back. `mevr stream show <package> [on|off]`, `mevr stream people <package>`.
+  **The audit sees the body** (research/69 "Seeing the body in the audit"): `arm_ik::MeasureHands` (each drawn wrist against
+  its controller in the player's frame, in view within 35 degrees; snapshots' `mod.armIk.hands`, records' `player.hands`), the
+  rule `hands-off-controllers` (live and offline, never excused by a baseline), the replayed hands held up in view
+  (`make-walk-recording.py --hands view`), a snapshot every 12 s on the session's `contact-sheet.png`, and `tools/audit-report.py`'s
+  per-scene "what was measured" with `NOT MEASURED` lines and the set's `expect` checks (both fail a run; `mevr convo audit` prints a scene's live totals while it still plays). **Broken runs**
+  (`conversation-audit.ps1 -Canaries`; test switches `mevr convo bodyaway off`, `mevr convo showearly off`): each must be caught;
+  every bug the owner finds that the audit missed becomes one, next to its fix.
   **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
   and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/
   `BoostShake`: `TheShake`'s amplitudes scaled at the source by `[Comfort] screenShake`, 0 by default, originals put back)
