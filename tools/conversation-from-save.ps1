@@ -63,7 +63,7 @@ param(
     [switch]$Stances,
     [string]$Chunk = '',
     [string]$SaveDir = '',
-    [string]$Key = '',
+    [Alias('Key')] [string]$SceneKey = '',   # (not $Key: the loop's $key, a line's number, would hide it: names ignore case)
     [int]$SnapshotEvery = 0,
     [string[]]$Expect = @(),
     [string]$After = '',
@@ -258,9 +258,10 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
 
     $shots = @($Snapshots | Sort-Object)
     # The audit's snapshots (-SnapshotEvery) and expectations (-Expect), asked from the loop below.
-    $shotKey = ($(if ($Key) { $Key } else { $title }) -replace '[^A-Za-z0-9]+', '')
+    $shotKey = ($(if ($SceneKey) { $SceneKey } else { $title }) -replace '[^A-Za-z0-9]+', '')
+    $momentSince = $null; $momentShot = $false
     $nextShot = $(if ($SnapshotEvery -gt 0) { [double]$SnapshotEvery / 2 } else { [double]::MaxValue })
-    $shotsAsked = @(); $convoShots = @{}
+    $shotsAsked = New-Object System.Collections.ArrayList; $convoShots = @{}
     $expects = @($Expect | Where-Object { $_ } | ForEach-Object {
         $i = $_.IndexOf(':'); $rest = $_.Substring($i + 1); $j = $rest.IndexOf('=>')
         [pscustomobject]@{ At = [double]$_.Substring(0, $i); Line = $rest.Substring(0, $j).Trim(); Want = $rest.Substring($j + 2).Trim() } } | Sort-Object At)
@@ -268,7 +269,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     function Ask-Snapshot([double]$at, [string]$why) {
         $tag = 'a-{0}-{1:000}' -f $shotKey, [int]$at
         Write-MevrRequest 'snapshot.request' "count=1 interval=1 delay=0 tag=$tag" | Out-Null
-        $script:shotsAsked += [pscustomobject]@{ tag = $tag; at = [math]::Round($at, 1); why = $why }
+        [void]$shotsAsked.Add([pscustomobject]@{ tag = $tag; at = [math]::Round($at, 1); why = $why })   # (the caller's list: a nested function's += would make its own)
     }
     $probes = @($Probe | ForEach-Object { $i = $_.IndexOf(':'); [pscustomobject]@{ At = [double]$_.Substring(0, $i); Line = $_.Substring($i + 1) } } | Sort-Object At)
     $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false; $judged = @{}; $turnStep = 0; $linesSeen = 0
@@ -296,6 +297,12 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
         }
         $state = Console 'mevr convo'
         $mode = [regex]::Match($state, 'game mode (-?\d+)').Groups[1].Value
+        # A scripted walk (the cinematic mode, 6) gets its own snapshot 3 s in: the council's walk lasts 7.5 s.
+        if ($mode -eq '6') { if ($null -eq $momentSince) { $momentSince = $elapsed; $momentShot = $false } } else { $momentSince = $null }
+        if ($SnapshotEvery -gt 0 -and $null -ne $momentSince -and -not $momentShot -and $elapsed - $momentSince -ge 3) {
+            $momentShot = $true
+            Ask-Snapshot $elapsed 'a scripted walk 3 s in'
+        }
         $playing = ($state -match 'conversation \d+ \(') -or $mode -eq '6' -or $mode -eq '5'
         if ($playing) { $seen = $true; $quiet = 0 } else { $quiet++ }
         if ($seen -and $quiet -ge 5) { Say ("nothing has played for 7 s: done after {0:0} s" -f $elapsed); break }
@@ -372,9 +379,9 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
                 try { $j = $Matches[1] | ConvertFrom-Json; [pscustomobject]@{ name = $j.name; seconds = $j.seconds; world = $j.world; opening = $j.opening; audit = $j.audit } } catch { }
             } })
         $record = [ordered]@{
-            key = $Key; title = $title; started = $started.ToString('yyyy-MM-ddTHH:mm:ss'); ended = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+            key = $SceneKey; title = $title; started = $started.ToString('yyyy-MM-ddTHH:mm:ss'); ended = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
             ok = $ok; hands = $HandsPlan; before = $Before; breaks = $Breaks; mustFind = @($MustFind | Where-Object { $_ })
-            snapshots = $shotsAsked; expectations = $expectResults; tripped = $tripped; summaries = $summaries
+            snapshots = @($shotsAsked); expectations = $expectResults; tripped = $tripped; summaries = $summaries
             stickLatched = [bool]($logLines | Where-Object { $_ -match 'the stick is still out' })
             moments = @($logLines | Where-Object { $_ -match 'moment: a matinee.s move track takes Shepard' }).Count
         }

@@ -75,7 +75,11 @@ def load_snapshots(folder, since):
 
 
 def snapshot_hands(d):
-    """(verdict, text): 'good' both drawn hands in view and on the controllers, 'bad', or 'none' (not measured)."""
+    """(verdict, text): 'good' both drawn hands in view and on the controllers, 'bad', 'none' (not measured), or 'skip': no
+    scene held the player's view (the game's own camera after a conversation ended: the hearing's forced end, 2026-11-13)."""
+    cw = (d.get('mod') or {}).get('conversationWorld') or {}
+    if not (cw.get('on') and cw.get('world')):
+        return 'skip', 'not in a scene'
     hands = ((d.get('mod') or {}).get('armIk') or {}).get('hands')
     if not hands:
         return 'none', 'hands not measured'
@@ -138,12 +142,15 @@ def judge(record, shots):
     good = sum(1 for _, v, _ in verdicts if v == 'good')
     bad = [(s, text) for s, v, text in verdicts if v == 'bad']
     none = sum(1 for _, v, _ in verdicts if v == 'none')
+    skipped = sum(1 for _, v, _ in verdicts if v == 'skip')
     if asked:
         line = f"  snapshots: {len(got)} of {len(asked)} came; both drawn hands in view and on the controllers in {good}"
         if bad:
             line += f"; not in {len(bad)} (" + ', '.join(f"{s.get('at')} s: {text}" for s, text in bad[:4]) + ')'
         if none:
             line += f"; hands not measured in {none}"
+        if skipped:
+            line += f"; {skipped} outside the scene (not judged)"
         lines.append(line)
         if len(got) < len(asked):
             missing.append(f'{len(asked) - len(got)} snapshots never came')
@@ -196,7 +203,7 @@ def sheet(session, rows):
         font = ImageFont.load_default(size=13)
     except TypeError:
         font = ImageFont.load_default()
-    colours = {'good': (60, 200, 90), 'bad': (230, 60, 50), 'none': (130, 130, 130)}
+    colours = {'good': (60, 200, 90), 'bad': (230, 60, 50), 'none': (130, 130, 130), 'skip': (70, 90, 140)}
     y = pad
     for title, verdicts in rows:
         draw.text((pad, y + 4), title, fill=(230, 230, 230), font=font)

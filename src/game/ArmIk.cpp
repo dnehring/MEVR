@@ -1482,9 +1482,10 @@ std::optional<HandsPlaced> MeasureHands() {
         XrVector3f const& grip = tracked.grip.position;
         out.valid[side] = true;
         out.fromGripM[side] = std::hypot(wrist.x - grip.x, wrist.y - grip.y, wrist.z - grip.z);
-        // In the head's own axes (OpenXR: -Z ahead, +X right, +Y up): inside 45 degrees each way.
+        // In the head's own axes (OpenXR: -Z ahead, +X right, +Y up): inside 35 degrees each way (tan 35 = 0.70), clear of the
+        // picture's edge (a wrist at 43 degrees down was in a 45-degree field, cut off at the snapshot's bottom).
         ik::Vec3 const v = ik::Rotate(toHead, {wrist.x - head.position.x, wrist.y - head.position.y, wrist.z - head.position.z});
-        out.inView[side] = v.z < -0.05 && std::abs(v.x) <= -v.z && std::abs(v.y) <= -v.z;
+        out.inView[side] = v.z < -0.05 && std::abs(v.x) <= -0.70 * v.z && std::abs(v.y) <= -0.70 * v.z;
     }
     if (!out.valid[kLeft] && !out.valid[kRight]) {
         return std::nullopt;

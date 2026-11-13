@@ -6,7 +6,7 @@ tags: [tooling, claude-code]
 status: stable
 timestamp: 2026-11-04T09:00:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-04T09:00:00Z }
-bitten: [2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04, 2026-11-05, 2026-11-05, 2026-11-05, 2026-11-06, 2026-11-13, 2026-11-13]
+bitten: [2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04, 2026-11-05, 2026-11-05, 2026-11-05, 2026-11-06, 2026-11-13, 2026-11-13, 2026-11-13, 2026-11-13]
 ---
 
 # Symptom
@@ -19,6 +19,7 @@ bitten: [2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04, 2026-11-04, 2026-11-05,
 | `error C2001: newline in constant` right after an edit script added a `std::format("...")` with a leading newline escape | inline `python - <<EOF` adding the power lock's scan note to game/PowerWheel.cpp (2026-11-05) |
 | `bash: -c: line 131: unexpected EOF while looking for matching ``'` and nothing edited | an inline `<<'EOF'` edit script whose replacements held C++ format strings with `\\"` (the game pointer's status JSON, 2026-11-05) |
 | `New-Item : Illegal characters in path.` from a PowerShell line an edit script wrote as `'MEVR\audit-hands'` (a BEL character in the file) | an inline `<<'EOF'` edit of tools/conversation-audit.ps1 (2026-11-13) |
+| `cat > script.py <<'EOF'` is no way round it: the C++ pattern's line-ending escape arrived as a real newline (the assert failed) and a PowerShell regex's escaped brace lost its pair (it worked only because Python keeps an unknown escape) | the audit's hands rule and the runner's report, 2026-11-13 |
 
 # Cause
 

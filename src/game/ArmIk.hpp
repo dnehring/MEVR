@@ -46,8 +46,8 @@ bool FirstPerson();
 std::optional<ik::Vec3> AnimatedHeadComponent();
 // Where Shepard's drawn hands are against the player's controllers (research/69 "Seeing the body in the audit", 2026-11-13):
 // each drawn wrist (the last posed pose) taken into tracking space through the view's frame (view_anchor), its distance from
-// that controller's grip, and whether it lies inside the head's view (45 degrees up, down and to each side of its forward:
-// the fake headset's field). In first person the wrist sits 7 units behind the grip; a body left behind (arm IK's third
+// that controller's grip, and whether it lies inside the head's view (35 degrees up, down and to each side of its forward:
+// clear of the edge of the fake headset's 45-degree field). In first person the wrist sits 7 units behind the grip; a body left behind (arm IK's third
 // person, the council hearing's 3.85 m) puts it metres away. The audit's placement measure, independent of arm IK's own
 // verdict. Game thread.
 struct HandsPlaced {

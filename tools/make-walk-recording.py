@@ -18,8 +18,10 @@ game's 0.70). --grip: the right grip held all the way (a gun drawn with `mevr we
 segments by name and seconds instead of the loop of five (forward, strafe right, back, strafe left, stand): `stand:600` is a
 player standing with tracked hands (an audit run's hands, tools/conversation-audit.ps1); `forward:14,stand:600` one who walks
 with a scripted walk and keeps the stick pushed through its cut (the council hearing, research/69 "The body that stayed at the
-mark"). --hands: chest (default, 0.35 m under the eyes and 0.30 m ahead: below a 45-degree view) or view (0.20 m under
-the eyes and 0.40 m ahead, 0.15 m to each side: 27 degrees down, 21 to the side)."""
+mark"). --hands: chest (default, 0.35 m under the eyes and 0.30 m ahead: below a 45-degree view) or view (0.08 m under
+the eyes, 0.25 m ahead and 0.09 m to each side: 0.28 m from the eyes, inside [Hands] reachNearFaceM's 0.30, so the drawn hands
+sit on the controllers unscaled by the arm-length calibration; the wrists, 7 cm behind the grips, 24 degrees down and 27 to
+the side). At 0.40 m ahead the hands were reach-scaled 0.16 m low, cut off at the snapshot's bottom edge (2026-11-13)."""
 import math
 import struct
 import sys
@@ -80,9 +82,9 @@ def main():
         return (r * right[0] + f * ahead[0], eye_h + u, r * right[2] + f * ahead[2])
 
     eyes = [(*head, side * ipd / 2 * right[0], eye_h, side * ipd / 2 * right[2]) for side in (-1, 1)]
-    down, ahead_m = (0.20, 0.40) if hands == "view" else (0.35, 0.30)
-    left_hand = (*hand_q, *at(-0.15, -down, ahead_m))
-    right_hand = (*hand_q, *at(0.15, -down, ahead_m))
+    side_m, down, ahead_m = (0.09, 0.08, 0.25) if hands == "view" else (0.15, 0.35, 0.30)
+    left_hand = (*hand_q, *at(-side_m, -down, ahead_m))
+    right_hand = (*hand_q, *at(side_m, -down, ahead_m))
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
     by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS}
     if "--plan" in sys.argv:
