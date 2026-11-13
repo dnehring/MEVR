@@ -928,6 +928,7 @@ struct Convo {
     int turnsSlid = 0;           // ... and by an eased turn of ours (the game's refused, or did not move the body)
     int facingsHeld = 0;         // facings the stage set at once mid-conversation, put back (they were for its mark)
     int facingsEased = 0;        // ... and those of people with nobody to look at, taken as a turn instead of at once
+    int facingsToEyes = 0;       // ... aimed at Shepard's body away from the player: turned to the player's eyes instead
     int voicesPlaced = 0;        // people whose voice was heard from where they stand (cw::PlaceVoice) ...
     int voicesFar = 0;           // ... and people too far for it: the game's centred mix (the intercom)
     int reaches = 0;             // look-at chains of the pair given the further reach (worldLookReach)
@@ -2039,6 +2040,28 @@ ue3::Object* gEyes = nullptr;     // the target at the player's eyes (alive acro
 bool gEyesOn = false;             // this tick: Shepard's body is away and the eyes stand in for him
 bool gEyesFailed = false;         // could not be made (logged once)
 std::map<ue3::Object*, bool> gEyesLogged;  // whose look was moved (logged once a conversation)
+// Where the player's eyes are drawn this tick: the held place moved by the host's render-side view offset (Halcyon's camera
+// offset, the "view back" framing and the lean: 0.43 m behind and 0.18 m below the held place with the shipped settings) and
+// the head's tracking, as the tick's frame maps it (the frame arm IK and body follow put the body under). Not the held place:
+// that is the game's camera, which the engine culls with (research/69 "Heads at the drawn eyes", 2026-11-12).
+std::optional<ik::Vec3> gDrawnEyes;
+
+ik::Vec3 PlayerEyes() {
+    return gDrawnEyes.value_or(gC.hold);  // (before the host shows the world: the held place)
+}
+
+// The host's view offset from the held place to the drawn eyes, flat, along the held view's axes as they are now
+// (engine::FromCameraView): 0.43 m back with the shipped settings; zero without a host view. A place meant for the eyes is
+// held at that place minus this.
+ik::Vec3 FlatViewOffset() {
+    vr::host_view::State const view = vr::host_view::Latest();
+    if (!view.valid) {
+        return {};
+    }
+    auto const b = engine::ToBasis(engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll});
+    return {b.forward.x * view.offsetForward + b.right.x * view.offsetRight + b.up.x * view.offsetUp,
+        b.forward.y * view.offsetForward + b.right.y * view.offsetRight + b.up.y * view.offsetUp, 0.0};
+}
 
 ue3::Object* RawLookTarget(ue3::Object* actor) {
     ue3::Object* const data = gPawnLookData.Read<ue3::Object*>(actor).value_or(nullptr);
@@ -2275,7 +2298,7 @@ ue3::Object* RoleLook(Stay& st, ue3::Object* listed, ue3::Object* speaker, ue3::
     // Its body may re-face only as one of the pair, only toward the player, only while he stands near: everyone else was
     // placed and faced by the scene (the ceremony's first line turned Udina right round toward a player 8 m behind him).
     auto const bodyFor = [&](ue3::Object const* whom) {
-        ik::Vec3 const to = gC.hold - st.place;
+        ik::Vec3 const to = PlayerEyes() - st.place;
         return role != cw::Role::Bystander && whom == player && std::hypot(to.x, to.y) <= gSettings.turnWithinM * kUnitsPerMeter;
     };
     mayTurn = false;
@@ -2696,7 +2719,7 @@ void GatherSquad(ue3::Object* pawn, double nowS) {
     if (members.empty()) {
         return;
     }
-    cw::Vec3 const player{gC.hold.x, gC.hold.y, gC.hold.z};
+    cw::Vec3 const player{PlayerEyes().x, PlayerEyes().y, PlayerEyes().z};  // the player: the drawn eyes, not the game's camera
     auto const ownerAt = owner != nullptr && owner != pawn && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
     ik::Vec3 const look = ownerAt ? V(*ownerAt) : gC.hold + YawForward(YawDeg(gC.holdRotation)) * 300.0;
     std::vector<cw::FormationSpot> const spots = cw::SquadFormation(player, {look.x, look.y, look.z}, static_cast<int>(members.size()),
@@ -2761,6 +2784,25 @@ void GatherSquad(ue3::Object* pawn, double nowS) {
 // The simulated left stick (the owner, 2026-11-12): toward a place, through the player's own walk step (the conversation's pace,
 // the boundary, floors, walls, people, triggers). The player's own stick, or `mevr convo walk`, takes over at once; it stops on
 // the place, or when it has not come nearer for two seconds (blocked). Never turns the player.
+// A facing the stage set at once that points at Shepard's body (within 20 degrees) while his body stands away from the player
+// (the eyes stand in for him): the yaw toward the player's eyes instead, if that differs by 10 degrees or more.
+std::optional<double> StageFacingForPlayer(Stay const& st, double yawDeg) {
+    if (!gEyesOn || gC.playerPawn == nullptr || st.actor == gC.playerPawn || !ue3::runtime::IsAlive(gC.playerPawn)) {
+        return std::nullopt;
+    }
+    auto const head = HeadOf(gC.playerPawn);
+    if (!head) {
+        return std::nullopt;
+    }
+    ik::Vec3 const eyes = PlayerEyes();
+    double const toBody = std::atan2(head->at.y - st.place.y, head->at.x - st.place.x) * kRadToDeg;
+    double const toEyes = std::atan2(eyes.y - st.place.y, eyes.x - st.place.x) * kRadToDeg;
+    if (std::abs(YawDiffDeg(yawDeg, toBody)) > 20.0 || std::abs(YawDiffDeg(toEyes, toBody)) < 10.0) {
+        return std::nullopt;
+    }
+    return toEyes;
+}
+
 void StartSteer(char const* why, std::optional<ik::Vec3> to = std::nullopt) {
     if (!to) {
         to = gC.sceneWants;
@@ -2783,8 +2825,10 @@ void StartSteer(char const* why, std::optional<ik::Vec3> to = std::nullopt) {
         left / kUnitsPerMeter, F(*to));
 }
 
-// Each tick before the looks: whether Shepard's body stands away from the player's view (his head bone over a metre from the
-// held eyes), and if so the eyes at the player's, the game's own looks at Shepard moved to them at their rank.
+// Each tick before the looks: whether Shepard's body stands away from the player's eyes (his head bone half a metre from where
+// they are drawn, flat; with him again under 0.35 m), and if so the eyes at the player's, the game's own looks at Shepard moved
+// to them at their rank. Measured from the drawn eyes, not the held place (the game's camera, 0.43 m ahead of them): with his
+// body under the player his head bone is 0.07-0.17 m from the eyes (research/69 "Heads at the drawn eyes").
 void StepEyes() {
     bool away = false;
     if (gSettings.lookEyes && gC.world && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
@@ -2793,7 +2837,8 @@ void StepEyes() {
             auto const p = player::Location(gC.playerPawn);
             return p ? std::optional<ik::Vec3>{V(*p)} : std::nullopt;
         }();
-        away = at && std::hypot(at->x - gC.hold.x, at->y - gC.hold.y) > 100.0;
+        ik::Vec3 const eyes = PlayerEyes();
+        away = at && std::hypot(at->x - eyes.x, at->y - eyes.y) > (gEyesOn ? 35.0 : 50.0);
     }
     if (!away) {
         if (gEyesOn) {
@@ -2807,7 +2852,7 @@ void StepEyes() {
         gEyesOn = false;
         return;
     }
-    PutAt(eyes, gC.hold);
+    PutAt(eyes, PlayerEyes());  // where the player's eyes are drawn (with the head's tracking), not the game's camera
     if (!gEyesOn) {
         gEyesOn = true;
         log::Info("convo: eyes: Shepard's body stands away from the player's view: heads that look at him look at the player's eyes");
@@ -2834,7 +2879,7 @@ void StepCircle(ue3::Object* pawn, ue3::Object* speakerNow, ue3::Object* listene
     }
     GatherSquad(pawn, nowS);
     ue3::Object* const playerPawn = gC.playerPawn != nullptr ? gC.playerPawn : pawn;
-    cw::Vec3 const player{gC.hold.x, gC.hold.y, gC.hold.z};
+    cw::Vec3 const player{PlayerEyes().x, PlayerEyes().y, PlayerEyes().z};  // the player: the drawn eyes, not the game's camera
     cw::CircleSettings const& cs = gSettings.circleSettings;
     auto const stayOf = [&](ue3::Object* a) {
         return std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == a; });
@@ -3164,7 +3209,7 @@ void KeepInPlace(ue3::Object* pawn) {
         if (!walking && other != nullptr && ue3::runtime::IsAlive(other)) {
             bool const atPlayer = other == playerPawn;
             if (auto const o = player::Location(other); o || atPlayer) {
-                ik::Vec3 const to = (atPlayer ? gC.hold : V(*o)) - st.place;
+                ik::Vec3 const to = (atPlayer ? PlayerEyes() : V(*o)) - st.place;  // the player's eyes, not the game's camera
                 if (std::hypot(to.x, to.y) > 20.0) {
                     lookBearing = std::atan2(to.y, to.x) * kRadToDeg;
                 }
@@ -3214,7 +3259,7 @@ void KeepInPlace(ue3::Object* pawn) {
                 bool const atPlayer = other == pawn || other == gC.playerPawn;
                 auto const theirs = atPlayer ? std::nullopt : HeadOf(other);
                 auto const theirPlace = player::Location(other);
-                ik::Vec3 const to = (atPlayer ? gC.hold : theirs ? theirs->at : theirPlace ? V(*theirPlace) + ik::Vec3{0.0, 0.0, 70.0} : gC.hold) - head->at;
+                ik::Vec3 const to = (atPlayer ? PlayerEyes() : theirs ? theirs->at : theirPlace ? V(*theirPlace) + ik::Vec3{0.0, 0.0, 70.0} : PlayerEyes()) - head->at;
                 double const bodyOff = std::abs(YawDiffDeg(*lookBearing, actualYaw));
                 double const headOff = AngleDeg(head->axis[0], to);
                 gC.reachMaxBody = std::max(gC.reachMaxBody, bodyOff);
@@ -3261,6 +3306,15 @@ void KeepInPlace(ue3::Object* pawn) {
                 st.shownYaw = actualYaw;
             } else if (gradual) {
                 st.shownYaw = actualYaw;
+            } else if (auto const forPlayer = StageFacingForPlayer(st, actualYaw)) {
+                // The stage turned it to Shepard while his body stands away from the player (the eyes stand in for him): the
+                // facing was meant for the player (Girard turned to Shepard's mark 2 m from him, with the player 3.9 m away and
+                // 69 degrees off it, his head 11-34 degrees short of the player; research/69 "Heads at the drawn eyes").
+                st.facingGoal = *forPlayer;
+                st.away = false;
+                ++gC.facingsToEyes;
+                log::Info("convo: at {:.1f} s the stage turns {} to Shepard's body, away from the player: to the player's eyes instead "
+                          "({:.0f} deg, not {:.0f})", Seconds(), t.name, *forPlayer, actualYaw);
             } else if (!bearing || std::abs(YawDiffDeg(*bearing, actualYaw)) <= gSettings.turnComfortDeg) {
                 // The stage's facing for someone whose body is not ours to turn (nobody to look at, a bystander), or one that
                 // leaves the one it looks at within the look-at chain's reach: the scene's own (Udina turning to the council),
@@ -3892,7 +3946,7 @@ void PlanSeatWalks(ue3::Object* conv, ue3::Object* pawn) {
         return;
     }
     ik::Vec3 const centre = ownerAt ? *ownerAt : gC.hold + YawForward(facing) * 250.0;
-    cw::Vec3 const player{gC.hold.x, gC.hold.y, gC.hold.z};
+    cw::Vec3 const player{PlayerEyes().x, PlayerEyes().y, PlayerEyes().z};  // the player: the drawn eyes, not the game's camera
     std::vector<cw::ArcSeat> seats = cw::ArcSeats(player, {centre.x, centre.y, centre.z}, static_cast<int>(out.size()),
         gSettings.arcM * kUnitsPerMeter, 25.0, gSettings.viewDeg);
     cw::Vec3 const middle = cw::GroupMiddle(player, {centre.x, centre.y, centre.z}, seats);
@@ -3943,16 +3997,18 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
     if (head) {
         double const yaw = ownerAt ? std::atan2(ownerAt->y - head->at.y, ownerAt->x - head->at.x) * kRadToDeg : rot ? YawDeg(*rot) : 0.0;
         ik::Vec3 const& e = gFoot.eyeFromHead;
-        gC.hold = head->at + YawForward(yaw) * e.x + YawRight(yaw) * e.y + ik::Vec3{0.0, 0.0, e.z};
         gC.holdRotation = {0, ToUnits(yaw), 0};
+        // `e` is where the eyes are drawn from his head bone; the held place is the game's camera, which the host draws the
+        // eyes 0.43 m behind: held there, the eyes stood 0.37 m behind his head at the council's hearing (2026-11-12).
+        gC.hold = head->at + YawForward(yaw) * e.x + YawRight(yaw) * e.y + ik::Vec3{0.0, 0.0, e.z} - FlatViewOffset();
         gC.holdFrom = "Shepard's mark (the opening accepted)";
         gC.anchorHead = head->at;
-        gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, {head->at.x, head->at.y, head->at.z}, 0};
         auto const view = vr::host_view::Latest();
         if (view.valid && view.floorLocked) {
             auto const basis = engine::ToBasis(engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll});
             gC.hold.z = view.centreZ - (basis.forward.z * view.offsetForward + basis.right.z * view.offsetRight + basis.up.z * view.offsetUp);
         }
+        gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, {head->at.x, head->at.y, head->at.z}, 0};
     }
     double const moved = Dist(before, gC.hold) / kUnitsPerMeter;
     log::Info("convo: the opening ended after {:.1f} s: {} placements accepted; the player's place {} at {} facing {:.0f} deg{} ({:.2f} m from where it was)",
@@ -4007,7 +4063,7 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
     }
     if (!out.empty() || !outSquad.empty()) {
         ik::Vec3 const centre = ownerAt ? *ownerAt : gC.hold + YawForward(facing) * 250.0;
-        cw::Vec3 const player{gC.hold.x, gC.hold.y, gC.hold.z};
+        cw::Vec3 const player{PlayerEyes().x, PlayerEyes().y, PlayerEyes().z};  // the player: the drawn eyes, not the game's camera
         std::vector<cw::ArcSeat> seats = cw::ArcSeats(player, {centre.x, centre.y, centre.z}, static_cast<int>(out.size()),
             gSettings.arcM * kUnitsPerMeter, 25.0, halfAngle);
         // The group's middle (the player, the owner and the arc's seats): the seated face it, as people standing together do.
@@ -4123,6 +4179,21 @@ bool gMomentWalk = false;  // a moment's view is up (set by TickMoment): the wal
 // The right stick turns the player in a conversation in the world (the owner, 2026-11-11: "Right stick should function"), as
 // [Comfort] turn says on foot: snap by its flicks, else smooth at its turn speed. The held view's yaw turns; the body follows
 // under it (body follow), the stage is the game's.
+// About the player's eyes, as on foot: the host draws them at the held place moved by its view offset along the held view's
+// axes (0.43 m behind it with the shipped settings), so turning the held place alone swung the eyes round it, 0.86 m for a half
+// turn, away from Shepard's body and from every look at him (research/69 "Heads at the drawn eyes").
+void TurnBy(double degrees) {
+    ik::Vec3 const before = FlatViewOffset();
+    int const units = gC.turnUnits.Take(degrees);
+    gC.turnedDeg += degrees;
+    gC.holdRotation.yaw += units;
+    // The eyes stay, and with them the feet under them (the pawn, or a view's own that walks alone): the held place goes round
+    // them.
+    ik::Vec3 const shift = before - FlatViewOffset();
+    gC.hold = gC.hold + shift;
+    gC.follow.place = {gC.follow.place.x + shift.x, gC.follow.place.y + shift.y, gC.follow.place.z};
+}
+
 void TurnPlayer(double dt) {
     if (!gSettings.stickTurns || !gC.on || !gC.world || !gC.openingDone) {
         return;
@@ -4143,13 +4214,11 @@ void TurnPlayer(double dt) {
     if (degrees == 0.0) {
         return;
     }
-    int const units = gC.turnUnits.Take(degrees);
     if (gC.turnedDeg == 0.0) {
         log::Info("convo: at {:.1f} s the right stick turns you ({}{})", Seconds(), snap ? "snap, " : "smooth, ",
             snap ? std::format("{:.0f} deg a flick", comfort.snapDegrees) : std::format("{:.0f} deg/s", comfort.turnSpeed));
     }
-    gC.turnedDeg += degrees;
-    gC.holdRotation.yaw += units;
+    TurnBy(degrees);
 }
 
 void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::State const& view, double dt) {
@@ -4496,8 +4565,9 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
             auto const rot = player::Rotation(pawn);
             double const yaw = rot ? YawDeg(*rot) : 0.0;
             ik::Vec3 const& e = gFoot.eyeFromHead;
-            gC.hold = head->at + YawForward(yaw) * e.x + YawRight(yaw) * e.y + ik::Vec3{0.0, 0.0, e.z};
             gC.holdRotation = {0, rot ? rot->yaw : 0, 0};
+            // The eyes there (`e` is the drawn eyes' place from his head bone): the held place is the game's camera, ahead of them.
+            gC.hold = head->at + YawForward(yaw) * e.x + YawRight(yaw) * e.y + ik::Vec3{0.0, 0.0, e.z} - FlatViewOffset();
             gC.holdFov = gFoot.have ? gFoot.fov : 90.0f;
             gC.holdFrom = "Shepard's head bone";
             // No recent on-foot POV: use the same cylinder-floor eye reference if it is available, retaining XY staging.
@@ -4568,6 +4638,7 @@ void End(char const* why) {
         GiveBackEyes(why);
     }
     gEyesLogged.clear();
+    gDrawnEyes.reset();
     ReleaseLooks(why);
     ClearVoices();
     gTrail.clear();
@@ -4677,7 +4748,7 @@ void End(char const* why) {
               "\"looksGame\": {}, \"turnsHome\": {}, \"reaches\": {}, \"looksRefused\": {}, \"voicesPlaced\": {}, \"voicesFar\": {}, "
               "\"staged\": {}, \"circleJoined\": {}, \"circleWalked\": {}, \"circleOut\": {}, \"circleRegathers\": {}, "
               "\"circleEarly\": {}, \"circleStill\": {}, \"squadWalked\": {}, \"squadPutBack\": {}, \"squadPlaced\": {}, "
-              "\"squadHeld\": {}, \"eyesSwapped\": {}, \"eyesRefused\": {}, \"relocated\": {}, \"turnedDeg\": {:.0f}, "
+              "\"squadHeld\": {}, \"eyesSwapped\": {}, \"eyesRefused\": {}, \"facingsToEyes\": {}, \"relocated\": {}, \"turnedDeg\": {:.0f}, "
               "\"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
@@ -4688,7 +4759,7 @@ void End(char const* why) {
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
         gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar,
         gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers,
-        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.relocated, gC.turnedDeg, entryPath);
+        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.facingsToEyes, gC.relocated, gC.turnedDeg, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }
@@ -5456,7 +5527,11 @@ std::string WriteStance(std::string const& tag) {
     ue3::Object* const listener = gListener.Read<ue3::Object*>(conv).value_or(nullptr);
     ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
     ik::Vec3 const player = gC.hold;
+    ik::Vec3 const eyes = PlayerEyes();
     double const playerYaw = YawDeg(gC.holdRotation);
+    // Shepard's head bone: where every look at "Shepard" aims (the game's, rank 99999, and ours) unless the eyes stand in.
+    std::optional<Head> const shepardHead =gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn) ? HeadOf(gC.playerPawn)
+                                                                                                          : std::nullopt;
     std::string people;
     ik::Vec3 sum = player;
     int counted = 1;
@@ -5495,16 +5570,15 @@ std::string WriteStance(std::string const& tag) {
         // The head: where its face points (the head bone's first axis: 12 degrees off Shepard's eyes for Khalisah looking at
         // him, 2026-11-10's log), the game's own look-at target and where its look-at chain aims in the world, and how far the
         // face is off the player's eyes and off Shepard's head when his body stands away from the player.
+        // "You" is where the player's eyes are drawn (`eyes`), not the held place (the game's camera, 0.43 m ahead of them).
         std::string heading = "null";
         if (head) {
             ik::Vec3 const f = head->axis[0];
-            double const toYou = AngleDeg(f, player - head->at);
-            heading = std::format("{{\"yaw\": {:.0f}, \"pitch\": {:.0f}, \"toYouDeg\": {:.0f}", std::atan2(f.y, f.x) * kRadToDeg,
-                std::atan2(f.z, std::hypot(f.x, f.y)) * kRadToDeg, toYou);
-            if (!isShepard && gC.playerPawn != nullptr && ue3::runtime::IsAlive(gC.playerPawn)) {
-                if (auto const shepHead = HeadOf(gC.playerPawn); shepHead && Dist(shepHead->at, player) > 100.0) {
-                    heading += std::format(", \"toShepardDeg\": {:.0f}", AngleDeg(f, shepHead->at - head->at));
-                }
+            double const toYou = AngleDeg(f, eyes - head->at);
+            heading = std::format("{{\"yaw\": {:.0f}, \"pitch\": {:.0f}, \"toYouDeg\": {:.0f}, \"toHeldDeg\": {:.0f}",
+                std::atan2(f.y, f.x) * kRadToDeg, std::atan2(f.z, std::hypot(f.x, f.y)) * kRadToDeg, toYou, AngleDeg(f, player - head->at));
+            if (!isShepard && shepardHead) {
+                heading += std::format(", \"toShepardDeg\": {:.0f}", AngleDeg(f, shepardHead->at - head->at));
             }
             heading += "}";
         }
@@ -5571,7 +5645,7 @@ std::string WriteStance(std::string const& tag) {
             }
         }
     }
-    gC.stancePlayer = player;
+    gC.stancePlayer = eyes;
     // What stands around them: rays from the middle of the group at knee and chest height, every 2 degrees, out to 12 m.
     ik::Vec3 const middle = sum * (1.0 / counted);
     double const floor = FloorZ(tracer, {middle.x, middle.y, player.z}).value_or(player.z - 160.0);
@@ -5610,12 +5684,15 @@ std::string WriteStance(std::string const& tag) {
     std::string const json = std::format(
         "{{\"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, \"staged\": {}, \"opening\": \"{}\", "
         "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f},\n"
-        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, \"steering\": {}}},\n"
+        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"eyes\": {}, \"eyesDrawn\": {}, \"bodyFromEyesM\": {}, \"detached\": {}, \"turnedDeg\": {:.0f}, "
+        "\"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, \"steering\": {}}},\n"
         "\"people\": [{}],\n\"others\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
         "\"ahead\": {{\"now\": [{}], \"later\": [{}]}}}}\n",
         JsonText(gC.name), gC.number, JsonText(tag), Seconds(), gC.staged ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-",
         gCurrentEntry.Read<int>(conv).value_or(-1), JsonText(gC.subtitle), kUnitsPerMeter,
-        P3(player), playerYaw, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
+        P3(player), playerYaw, P3(eyes), gDrawnEyes ? "true" : "false",
+        shepardHead ? std::format("{:.2f}", std::hypot(shepardHead->at.x - eyes.x, shepardHead->at.y - eyes.y) / kUnitsPerMeter) : std::string("null"),
+        gC.detached ? "true" : "false", gC.turnedDeg, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
         gC.sceneWants ? P3(*gC.sceneWants) : std::string("null"), gC.steerTo ? "true" : "false",
         people, others, circle, P3(middle), floor, kReach, walls, aheadNow, aheadLater);
     wchar_t buffer[MAX_PATH] = {};
@@ -5652,7 +5729,7 @@ std::string WriteStance(std::string const& tag) {
 std::optional<std::string> MovedSinceStance() {
     std::string who;
     double most = 0.0;
-    if (double const d = Dist(gC.hold, gC.stancePlayer); d > 75.0) {
+    if (double const d = Dist(PlayerEyes(), gC.stancePlayer); d > 75.0) {
         who = "you";
         most = d;
     }
@@ -6237,6 +6314,9 @@ void Tick(double deltaSeconds, Link const& link) {
     if (frame) {
         view_anchor::Hold(frame, gFoot.floorView);
         gHeld = true;
+        gDrawnEyes = ik::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z};
+    } else {
+        gDrawnEyes.reset();
     }
     if (shepardHead && !gC.detached) {  // (while the view walks to him the distance is the walk's, not a fault)
         gC.eyeToViewMax = std::max(gC.eyeToViewMax, Dist(shepardHead->at, eyes));
@@ -6416,6 +6496,21 @@ std::string Command(std::string const& rest) {
         return std::format("convo: stances from above are {} (after the opening, each walk and at the end; %LOCALAPPDATA%\\MEVR\\stances)",
             gSettings.stances || gStancesOverride.value_or(false) ? "written" : "not written");
     }
+    if (verb == "turn") {
+        // Tests: the right stick's turn without controllers (`turn <degrees>`, + to the right), as one snap flick.
+        std::string d;
+        words >> d;
+        auto const degrees = ini::Number(d);
+        if (!degrees) {
+            return "usage: mevr convo turn <degrees>";
+        }
+        if (!gC.on || !gC.world || !gC.openingDone) {
+            return "convo: no conversation in the world past its opening";
+        }
+        ik::Vec3 const before = PlayerEyes();
+        TurnBy(*degrees);
+        return std::format("convo: turned {:.0f} deg (in all {:.0f}); the eyes were at {}", *degrees, gC.turnedDeg, F(before));
+    }
     if (verb == "goto") {
         // Tests: the simulated stick toward the scene's wanted mark for Shepard (`goto`), or a point (`goto <x> <y>`).
         if (!gC.on) {
@@ -6462,7 +6557,8 @@ std::string Command(std::string const& rest) {
         }
         return out;
     }
-    return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | stance [tag] | stances on|off|file | ahead]";
+    return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | stance [tag] | stances on|off|file | ahead | "
+           "goto [x y] | turn <deg>]";
 }
 
 std::string StatusJson() {

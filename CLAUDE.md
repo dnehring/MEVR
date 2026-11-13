@@ -610,8 +610,17 @@ switching frameworks.
   once nothing will (the scan's stage walks too; `-Chunk` streams a chunk in by its volume; `--heads`: whom each face points at);
   **heads look at the player, not at Shepard's body** (`worldLookEyes`, research/69 "Heads that look past the player"): in a
   walk-in by the view his body stays on its mark and every look at "Shepard" (the game's at rank 99999, ours) aimed there, so
-  while his head bone is over a metre from the view a `SFXGame.BioLookAtTarget` kept at the player's eyes takes his place
-  (`StepEyes`; looks moved at their own rank and given back after; `GameLookTarget` reads it as the player); **a staged scene's
+  while his head bone is half a metre (flat) from the player's drawn eyes a `SFXGame.BioLookAtTarget` kept at them takes his place
+  (`StepEyes`; looks moved at their own rank and given back after; `GameLookTarget` reads it as the player); **the player is
+  where the eyes are drawn, not the held place** (research/69 "Heads at the drawn eyes", the audit of 2026-11-12): `gC.hold` is
+  the game's camera and the host draws the eyes 0.43 m behind and 0.18 m below it (its view offset), so `PlayerEyes()` (the tick
+  frame's `headWorld`) is what the eyes stand-in, the re-face rule, the circle and the squad's formation take as the player, an
+  opening's place from Shepard's head bone subtracts the offset (`FlatViewOffset()`; the eyes had stood 0.34-0.37 m behind his
+  head in every staged scene's cut), and the right stick's turn (`TurnBy`) goes round the eyes (it swung them 0.85 m for a half
+  turn); a facing the stage sets at once toward Shepard's body while the eyes stand in for him is turned to the player's eyes
+  (`StageFacingForPlayer`, the summary's `facingsToEyes`: Girard's body faced the hidden mark); the records carry
+  `player.eyes`, `bodyFromEyesM`, and `conversation-stance.py --audit` tabulates looks at the player against looks at his body;
+  `conversation-from-save.ps1 -Lines N` (a stance per line), `-TurnAt N` (`mevr convo turn <deg>`); **a staged scene's
   new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a
   second after the script's black screen (`ScriptBlackScreen`, from game/AuthoredMoment) are taken at once (put on the mark by us
   where the game's call moved nobody); **Shepard is never moved** (the owner): a simulated left stick walks the player to his new

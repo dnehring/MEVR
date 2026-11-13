@@ -314,6 +314,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   Virmire's start (2026-11-12, research/69 "Virmire's start from above"; `%LOCALAPPDATA%\MEVR\squad-saves\John02_70.pcsav`, Kirrahe
   in front of you): after the planning the screen goes black; when it clears Kaidan and Ashley stand beside you and Kirrahe walks
   out to his troops behind you; you are walked half a metre as if by your stick (push yours to take over); turn round to watch.
+  Eyes (2026-11-12, research/69 "Heads at the drawn eyes"; fake headset): in Virmire's start and at the Council's hearing,
+  Kirrahe and the councillors look you in the eye, not just past you, and nothing of Shepard's own body is in front of your
+  face; turn with the right stick during any conversation: you turn on the spot, not round a point in front of you.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.

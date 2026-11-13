@@ -346,6 +346,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     screen are taken at once (Kaidan and Ashley had walked 10 m across the camp during Kirrahe's speech); Shepard is never moved:
     a simulated left stick walks the player to his new mark, the player's own stick taking over. Built and run on the fake
     headset; the stances follow a whole scene (its start, each dip, each change of place or facing).
+32. **Heads at the drawn eyes** (the owner, 2026-11-12: audit every kind of conversation for heads facing Shepard's hidden body
+    instead of the player; "Heads at the drawn eyes: the audit" below): the player is where the host draws the eyes (0.43 m
+    behind and 0.18 m below the held place, the game's camera); fixed: an opening that cuts to Shepard's mark put the eyes
+    0.34-0.37 m behind his head (every staged scene: the Council, Kirrahe's camp at Virmire's start), the right stick's turn
+    swung them up to 0.85 m off, the eyes stand-in, the re-face rule, the circle and the squad's formation took the held place;
+    and in a walk-in by the view the stage's facing toward Shepard's hidden body is turned to the player's eyes.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3213,6 +3219,97 @@ looking at Kirrahe, Kirrahe walking out to 7 m in front of his troops (8 m) - be
 (the scene turns Shepard 155 degrees there; the player turns himself). Not seen: the arrival content (Kirrahe meeting the party
 on the beach, plot 3039's other branch) did not play from this save.
 
+### Heads at the drawn eyes: the audit (2026-11-12 19:00-, fake headset; item 32)
+
+The owner: with the overhead records, "run an audit over the different categories of conversations to see if we have this as a
+type of regression where the other scenes would have these types of strange interactions where we weren't facing the actual
+player Shepard, we were still facing the old avatar Shepard that is supposed to be hidden".
+
+**What "the player" was.** Every record, the eyes stand-in and the look and re-face rules took the player at the held place,
+`gC.hold`. That is the game's camera (the culling camera); the host draws the eyes at it moved by its render-side view offset
+(the camera offset, the "view back" framing, the lean; research/69 "The body that stayed culled"). Measured in every record of
+this audit: **the drawn eyes are 43 units behind and 18-19 below the held place**, along the held view's axes. The records now
+carry the drawn eyes (`player.eyes`, the tick's own frame, the one arm IK and body follow put the body under:
+`engine::FromCameraView`'s `headWorld`), how far Shepard's head bone is from them (`bodyFromEyesM`), whether the view walks
+apart from the body (`detached`) and the turn so far; each face's angle is taken from the drawn eyes (`toYouDeg`; the held
+place's `toHeldDeg` kept) and from his head bone always (`toShepardDeg`). `conversation-stance.py --audit` tabulates per scene
+the looks meant for the player (the game's look-at target Shepard or the eyes stand-in): the face at the player, at his body
+(his head bone 0.3 m or more from the eyes and the face nearer it), elsewhere. `conversation-from-save.ps1 -Lines N` writes a
+stance at each of a conversation's first N lines; `-TurnAt N` turns the player 90, 90 and -180 degrees as the right stick would
+(`mevr convo turn <deg>`), a stance after each.
+
+**Run 1 (19:02-19:20, the build as it was, the new measure):** one scene of each kind from the validation saves.
+
+| Scene (kind) | Shepard's head from the drawn eyes | Faces meant for the player |
+|---|---|---|
+| Opold, Noveria (a plain stage; stay) | 0.07-0.08 m | his face axis 90 degrees off throughout: a hanar's head bone axis is no face (the game's aim points at the player) |
+| Benezia's death, Noveria (a trigger's scene; walk-in) | 0.07-0.17 m | her own dying animation turns her head; not at the body |
+| Wrex at Fist's (framed, in the world) | 0.09-0.35 m | none meant for the player |
+| Avina (the baseline; walk-in) | 0.06-0.07 m | 7 of 7 at the player, median 6 degrees off the eyes |
+| Chorban (a wheel conversation) | 0.07-0.09 m | 3 of 3 at the player |
+| Dr. Michel, Zabaleta (the squad, Garrus and Tali) | 0.06-0.09 m | 16 of 16 at the player, median 8-9 degrees |
+| **Anoleis, turned by the right stick** | 0.07 m, **0.68 m after 90 degrees, 0.92 m after 180** | 3 of 9 at the body (far: 6-7 degrees either way) |
+| **Girard (a walk-in by the view: the body on its mark)** | 3.7-4.4 m (the stand-in on) | 13 of 14 at the stand-in, **median 27 degrees off the eyes** |
+| **The council's hearing (a cut, staged)** | **0.30-0.97 m; 0.37 m in front of the eyes all hearing** | 13 of 13 nearer the body (councillors 10 m away: 13 degrees) |
+| **Becoming a Spectre (a cut, staged)** | **0.33-0.44 m** | 3 of 4 nearer the body |
+| **Virmire, Kirrahe's camp (a cut, staged)** | **0.34-0.35 m from the opening on** | Kirrahe 3-13 degrees off the body, 8-18 off the eyes; Ashley 6-10 and 7-11 |
+| Wrex on the beach, Virmire | - | did not start (a plot check) |
+
+So in scenes where the player stays or walks in with the body (put back where he stood), **a look at Shepard is a look at the
+player**: his head bone is 6-9 cm from the drawn eyes (the eyes ahead of it), body follow keeps it there. Three faults put the
+eyes away from his head:
+
+1. **An opening that cuts to Shepard's mark** (every staged scene: the Council, Kirrahe's camp; the opening's `Cut`) placed the
+   held place at his head bone plus the eyes' offset from it (`gFoot.eyeFromHead`, arm IK's measure of the drawn eyes) and
+   corrected its height for the host's offset but not its 0.43 m back: **the player's eyes stood 0.34-0.37 m behind his head**,
+   inside his back, and every look at him passed 8-18 degrees beside the player at Kirrahe's distance. This is the owner's
+   "weird behaviours ... like the Virmire intro".
+2. **The right stick's turn** turned the held place about itself, so the eyes swung round it on the offset's radius: 0.61 m for
+   90 degrees, 0.85 m for 180 (measured), and Shepard's body, which body follow keeps under the eyes within 0.75 m, fell behind.
+3. **The eyes stand-in** (item 30) stood at the held place: 0.43 m ahead of and 0.18 m above the eyes; Girard's face 7-28 degrees
+   off the eyes. And the body re-face rule, the conversational circle and the squad's formation took the player there too: the
+   circle round a point 0.43 m in front of him.
+
+Built (`game/ConversationWorld`):
+- **`PlayerEyes()`**: the tick frame's `headWorld` (the held place before the host shows the world); the eyes stand-in stands
+  there, and "Shepard's body is away" is his head bone half a metre (flat) from it, with him again under 0.35 m (`StepEyes`; the
+  metre from the held place before); the re-face rule's bearing and distance, the circle (`MakeCircle`, `ShouldRegather`), the
+  squad's formation and the old arc seats take the player there.
+- **`FlatViewOffset()`**: the host's offset along the held view's axes, flat. An opening's place from Shepard's head bone (a cut:
+  `FinishOpening`; the start's fallback without a fresh view on foot) is his head bone plus `gFoot.eyeFromHead` minus it, so the
+  drawn eyes land where the eyes' offset says.
+- **`TurnBy`**: the right stick's turn moves the held place round the eyes by the offset's change (and the jump follower's
+  place with it); the eyes and the feet under them stay.
+- Run 2 (19:18-19:29, the fixes above) showed one fault left, a body's, not a look's: at Girard's (the walk-in by the view) the
+  stage's facing track turns Girard to Shepard's body on its mark (2 m from him, 0-2 degrees off it) with the player 3.9 m away
+  and 69 degrees off, inside the re-face rule's 80 degrees, so his head reached 35-58 degrees of it and stayed 11-34 short: his
+  body faced the hidden Shepard. **A facing the stage sets at once that points at Shepard's body (within 20 degrees) while the
+  eyes stand in for him is turned to the player's eyes instead** (`StageFacingForPlayer`; an eased turn, as the stage's own
+  facings are; the summary's `facingsToEyes`; log `the stage turns X to Shepard's body, away from the player: to the player's
+  eyes instead`).
+
+**Run 2 (the same scenes, the fixes but the last):**
+
+| Scene | Shepard's head from the drawn eyes | Faces meant for the player |
+|---|---|---|
+| Anoleis, turned 90, 90, -180 | 0.07-0.08 m through the turns (the eyes at the same point to the unit) | 9 of 9 at the player, median 6 degrees |
+| Zabaleta with Garrus and Tali, turned the same | 0.08-0.09 m (the eyes unmoved) | 16 of 16, median 9 |
+| Virmire, Kirrahe's camp | **0.09-0.11 m** (0.53 for a moment at the opening's dip) | 16 of 16 at the player; Kirrahe 8-17 degrees off the eyes, as in plain scenes |
+| The council's hearing | **0.10-0.14 m**; 0.47-0.60 for half a second at the cut | 9 of 13 at the player, 2 in that half second |
+| Girard (before the facing rule) | 3.7 m (the stand-in on) | 12 of 13 at the stand-in at the eyes; his body faced Shepard's mark: 27 degrees median off |
+
+**Run 3 (19:29-19:33, Girard with the facing rule):** the stage turned Girard to Shepard's body 1.4 s in and the rule turned him
+to the player instead (`-163 deg, not 266`); from then on his body faced the player (0-2 degrees off it, 20 at the start) and his
+face was 7-14 degrees off the player's eyes, median 14 over the scene (27 before); one line's own gesture turns his head 85
+degrees away (54 in every earlier run: authored). Open: Garrus's look at Shepard went to the stand-in only at 3.8 s; for the
+1.8 s of his formation walk and just after, the records show it on Shepard's body (15-21 degrees off it, 94-100 off the player),
+and the log has no refusal: something of the walk sets it between our ticks [verify].
+
+Not covered by this audit: the moments themselves (a scripted walk's view held away from the pawn the track walks: no records
+in a moment); scenes on the 3D screen (no first-person eyes); flowed scenes on foot (Shepard's body is the player's there); the
+arrival half of Virmire's start and Wrex on Virmire's beach (did not start from these saves). The face axis is the head bone's
+first axis, no face for a hanar (Opold: 90 degrees throughout, the game's aim on the player).
+
 ### The staged scenes (2026-11-12; for the owner's review)
 
 From the scan's 491 conversations (`conversation-scan.py --csv`), the ones that look like "the council or the virmire speech": a
@@ -3657,3 +3754,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-12 09:45, **item 28, the squad's formation held** (put back before the scene is drawn, each on its own side, the squad's own HOLD formation written quietly, placed under a cut's dip): validated on the fake headset, on by default; **item 29, stances from above** built (`mevr convo stance`, `tools/conversation-stance.py`, the runner's `-Stances` that ends a scene once nothing will move).
 - 2026-11-12 17:45, **item 30, heads that look past the player** (the owner's question): measured with head directions in the stances (Girard looked at Shepard's body left on his mark), fixed with a look-at target at the player's eyes (`worldLookEyes`); the squad saves from the owner's Citadel save (`%LOCALAPPDATA%\MEVR\squad-saves`).
 - 2026-11-12 18:20, **item 31, Virmire's start from above**: the stances follow a whole scene; a staged scene's moves under the script's black screen are taken at once; Shepard is walked to his new mark by a simulated left stick (the owner), never moved.
+- 2026-11-12 19:35, **item 32, heads at the drawn eyes** (the owner: an audit of every kind of conversation for heads facing Shepard's hidden body): the player is where the host draws the eyes, 0.43 m behind the held place; staged openings put the eyes 0.34-0.37 m behind his head (Virmire, the Council), the right stick's turn swung them 0.85 m, the eyes stand-in, re-face rule, circle and formation took the held place, and a stage's facing at the hidden body in a walk-in by the view: all fixed and run again on the fake headset (`--audit`).

@@ -50,6 +50,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Scenes that rearrange everyone behind a fade** (Kirrahe's speech on Virmire): the others are in their new places when the
   fade clears instead of walking there in front of you, and you are walked the step or two to where the scene wants you, as if
   with your own stick (push it to take over); you are never moved by force.
+- **People in first-person conversations look you in the eye in scripted scenes too.** In scenes that open at Shepard's own
+  spot (the Council, Kirrahe's camp on Virmire) your eyes were placed a third of a metre behind Shepard's, so everyone talking
+  to you looked just past you, at where his hidden head was. Turning with the right stick no longer swings you round a point in
+  front of you, and people who join the conversation stand round you, not round a spot half a metre ahead.
 - **Long dialogue choices are shown whole** in first-person conversations: the end of a long reply was cut off the wheel and
   floated elsewhere in view.
 - **The view stays at your eyes beside walls.** Standing close to a wall, a pillar or someone in front of you could drop the

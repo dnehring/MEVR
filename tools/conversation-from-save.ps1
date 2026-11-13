@@ -13,7 +13,10 @@
 #
 # -EndAfter N: a conversation is ended N seconds in (only the opening matters). -Walk N: the left stick held forward for N
 # seconds from the start (a player who walks along; `mevr convo walk`). -WanderAt N: N seconds into a conversation (the wheel
-# down) the stick sideways for 3 s, then standing (the conversational circle gathers round again). -Stances: the scene from above
+# down) the stick sideways for 3 s, then standing (the conversational circle gathers round again). -TurnAt N: N seconds into a
+# conversation (the wheel down) the player turned as by the right stick (`mevr convo turn`): 90 degrees, 90 more, then back,
+# 2 s apart, a stance after each (with -Stances; the early end waits for them). -Lines N (with -Stances): a stance at each of a
+# conversation's first N lines (whom each head turns to as the lines change), the early end only after them. -Stances: the scene from above
 # (research/69 "Stances from above"; `mevr convo stances on`): after its opening, each walk and its end, drawn by
 # tools/conversation-stance.py into a sheet per conversation; a scene where nothing will move (`mevr convo ahead`: nobody walking,
 # nobody of the dialogue who would walk in, and the scan knows no stage walk in it) is ended once its stance is written.
@@ -35,6 +38,8 @@ param(
     [int[]]$Snapshots = @(),
     [int]$Walk = 0,
     [int]$WanderAt = 0,
+    [int]$TurnAt = 0,
+    [int]$Lines = 0,
     [string]$Replay = '',
     [string]$Before = '',
     [switch]$NoLoad,
@@ -232,7 +237,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     if ($Stances) { Console 'mevr convo stances on' | Out-Null }
 
     $shots = @($Snapshots | Sort-Object)
-    $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false; $judged = @{}
+    $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false; $judged = @{}; $turnStep = 0; $linesSeen = 0
     while (((Get-Date) - $started).TotalSeconds -lt $Seconds) {
         Start-Sleep -Milliseconds 1500
         $elapsed = ((Get-Date) - $started).TotalSeconds
@@ -257,8 +262,21 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             }
             $key = "$($Matches[1])/$($Matches[4])"
             $wheelUp = $Matches[5] -eq 'up'
-            $number = $Matches[1]; $convName = $Matches[2]
-            if ($Stances -and -not $judged.ContainsKey($number) -and ((Get-Date) - $convoSince).TotalSeconds -ge 4) {
+            $number = $Matches[1]; $convName = $Matches[2]; $entry = $Matches[4]
+            if ($Stances -and $Lines -gt 0 -and $linesSeen -lt $Lines -and $key -ne $lastKey -and -not $wheelUp -and $entry -ne '-1') {
+                $linesSeen++
+                Console "mevr convo stance line-$entry" | Out-Null   # whom the heads turn to on this line
+            }
+            if ($TurnAt -gt 0 -and $turnStep -lt 3 -and -not $wheelUp -and ((Get-Date) - $convoSince).TotalSeconds -ge ($TurnAt + 2 * $turnStep)) {
+                # The right stick's turn: does the player's eye stay where it was, and Shepard's body under it?
+                $degrees = @(90, 90, -180)[$turnStep]
+                $turned = Console "mevr convo turn $degrees"
+                Start-Sleep -Milliseconds 700
+                if ($Stances) { Console ("mevr convo stance turned-{0}" -f @(90, 180, 0)[$turnStep]) | Out-Null }
+                Say ("turned {0} deg as by the right stick: {1}" -f $degrees, ($turned -replace '^convo: ', ''))
+                $turnStep++
+            }
+            if ($Stances -and -not $judged.ContainsKey($number) -and ($TurnAt -eq 0 -or $turnStep -ge 3) -and ($Lines -eq 0 -or $linesSeen -ge $Lines) -and ((Get-Date) - $convoSince).TotalSeconds -ge 4) {
                 # Once its opening has settled and nobody walks any more: does anything still have to move in this scene?
                 $ahead = Console 'mevr convo ahead'
                 $walksNow = $ahead -match ' now '

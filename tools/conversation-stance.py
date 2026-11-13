@@ -12,6 +12,11 @@ Shepard's own body left on a mark away from the player):
   python tools/conversation-stance.py --since 2026-11-12T10:00 [--out folder]
   python tools/conversation-stance.py a.json b.json ...
   python tools/conversation-stance.py --heads [--since ...]  # whom each face points at, per moment, as text (no sheets)
+  python tools/conversation-stance.py --audit [--since ...]  # per scene: looks at the player against looks at Shepard's body
+
+"You" is where the player's eyes are drawn (the record's `player.eyes`: the held place moved by the host's render-side view
+offset, 0.43 m behind and 0.18 m below it with the shipped settings, and the head's tracking); records written before
+2026-11-12 19:00 have only the held place, the game's camera.
 
 The player is the blue triangle (the view's wedge, the walking boundary dashed round where the conversation began); the owner
 orange, the squad green, others purple, Shepard's own body grey when the view stands elsewhere; a line from each body is its
@@ -117,13 +122,29 @@ def arrow(d, a, b, fill, width=2, dashed=False):
     d.polygon([b, (b[0] - ux * s - uy * s * 0.5, b[1] - uy * s + ux * s * 0.5), (b[0] - ux * s + uy * s * 0.5, b[1] - uy * s - ux * s * 0.5)], fill=fill)
 
 
-def looks_at(p, player):
+BODY_AWAY_M = 0.3  # Shepard's head bone this far (flat) from the player's drawn eyes: a look at him is no longer at the player
+
+
+def body_gap(st):
+    """How far (m, flat) Shepard's head bone stands from the player's eyes: the record's own measure, else (older records:
+    the held place) from the people's list."""
+    gap = st['player'].get('bodyFromEyesM')
+    if gap is not None:
+        return gap
+    shep = next((q for q in st['people'] if q.get('shepard') and q.get('head')), None)
+    return math.dist(shep['head'][:2], st['player']['at'][:2]) / 100 if shep else None
+
+
+def looks_at(p, st):
     """Whom a face points at: the game's look-at target when the face points at where it aims (within 20 degrees), the
-    player within 20, Shepard's body away from the player within 25, else None. (Two people standing close together are told
-    apart by the game's target, not by the angle alone: Garrus looking at Girard beside Shepard's body, 2026-11-12.)"""
+    player within 20, Shepard's body away from the player within 25 (and nearer it than the player), else None. (Two people
+    standing close together are told apart by the game's target, not by the angle alone: Garrus looking at Girard beside
+    Shepard's body, 2026-11-12.) A look at Shepard is a look at the player while his head bone is with the player's eyes."""
     face = p.get('face') or {}
     if not face or p.get('hidden') or p.get('shepard') or not p.get('head'):
         return None
+    gap = body_gap(st)
+    away = gap is not None and gap >= (BODY_AWAY_M if st['player'].get('eyes') else 1.0)
     look = p.get('gameLook') or {}
     aim, target = look.get('aim'), look.get('target')
     if aim and target and math.dist(aim[:2], p['head'][:2]) > 10:
@@ -131,12 +152,13 @@ def looks_at(p, player):
         if abs((face['yaw'] - a + 180) % 360 - 180) < 20:
             if target == 'you' or target.startswith('BioLookAtTarget'):
                 return 'you'
-            return 'you' if target == 'Shepard' and face.get('toShepardDeg') is None else (
-                "Shepard's body" if target == 'Shepard' else target)
+            if target == 'Shepard':
+                return "Shepard's body" if away else 'you'
+            return target
     you, shep = face.get('toYouDeg'), face.get('toShepardDeg')
     if you is not None and you < 20:
         return 'you'
-    if shep is not None and shep < 25:
+    if away and shep is not None and shep < 25 and (you is None or shep < you):
         return "Shepard's body"
     return None
 
@@ -144,7 +166,7 @@ def looks_at(p, player):
 def choose_scale(st):
     """Pixels per unit: 40 px a metre unless someone within 8 m would fall off the panel (further ones are pinned to its edge)."""
     upm = st.get('unitsPerMeter', 100)
-    player = st['player']['at']
+    player = st['player'].get('eyes') or st['player']['at']  # the drawn eyes (older records: the held place)
     yaw = st['player']['yaw']
     probe = View(player, yaw, 1.0, (0, 0))
     worst = 0.0
@@ -179,7 +201,7 @@ def draw_panel(st):
     img = Image.new('RGB', (PANEL, PANEL + HEAD), BG)
     d = ImageDraw.Draw(img)
     upm = st.get('unitsPerMeter', 100)
-    player = st['player']['at']
+    player = st['player'].get('eyes') or st['player']['at']  # the drawn eyes (older records: the held place)
     yaw = st['player']['yaw']
     scale = choose_scale(st)
     origin = (PANEL / 2, HEAD + PANEL * 0.62)
@@ -324,7 +346,7 @@ def draw_panel(st):
         label = p['name'] + (' (hidden)' if p.get('hidden') else '') + ('' if p.get('walks', True) else ' (stays)')
         if far is not None:
             label += f' ({far:.1f} m)'
-        whom = looks_at(p, player)
+        whom = looks_at(p, st)
         if whom:
             label += f' - looks at {whom}'
         tw = d.textlength(label, font=F_NAME)
@@ -390,13 +412,81 @@ def sheet(stances):
     return img
 
 
+def angle(origin, a, b):
+    """Degrees between origin->a and origin->b."""
+    u = [a[i] - origin[i] for i in range(3)]
+    v = [b[i] - origin[i] for i in range(3)]
+    nu, nv = math.hypot(*u), math.hypot(*v)
+    if nu < 1e-6 or nv < 1e-6:
+        return 0.0
+    return math.degrees(math.acos(max(-1.0, min(1.0, sum(u[i] * v[i] for i in range(3)) / (nu * nv)))))
+
+
+def print_audit(groups):
+    """Per scene: how often a face meant for the player (its game look-at target Shepard or the eyes) points at the player's
+    drawn eyes, and how often at Shepard's head bone left away from them (research/69 "Heads at the drawn eyes"); and where the
+    game's look-at chain aims (its last link's target, a point along the look, not on the target): its angle off the drawn
+    eyes from the looker's head, and how often it is nearer his head bone (by 5 degrees) than the eyes while he stands away.
+    The aim does not depend on the skeleton (a hanar's head bone axis is no face: Opold)."""
+    print("| Scene | Opening | Shepard's head from your eyes (m) | Looks meant for you | Face at you | Face at his body | Face elsewhere "
+          "| Face off your eyes (median, deg) | Aim off your eyes (median, deg) | Aims at his body | Worst face |")
+    print('|---|---|---|---|---|---|---|---|---|---|---|')
+    for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
+        stances.sort(key=lambda s: s['_file'])
+        first = stances[0]
+        gaps = [g for g in (body_gap(s) for s in stances) if g is not None]
+        meant = at_you = at_body = other = aims_body = 0
+        offs = []
+        aims = []
+        worst = (0, '')
+        for st in stances:
+            eyes = st['player'].get('eyes') or st['player']['at']
+            shep = next((q['head'] for q in st['people'] if q.get('shepard') and q.get('head')), None)
+            for p in st['people']:
+                f = p.get('face')
+                if p.get('shepard') or p.get('hidden') or not f or not p.get('head'):
+                    continue
+                target = (p.get('gameLook') or {}).get('target') or ''
+                if not (target in ('Shepard', 'you') or target.startswith('BioLookAtTarget')):
+                    continue
+                meant += 1
+                aim = (p.get('gameLook') or {}).get('aim')
+                if aim and math.dist(aim, p['head']) > 10:
+                    off_eyes = angle(p['head'], aim, eyes)
+                    aims.append(off_eyes)
+                    if shep and (body_gap(st) or 0) >= BODY_AWAY_M and angle(p['head'], aim, shep) + 5 < off_eyes:
+                        aims_body += 1
+                whom = looks_at(p, st)
+                if whom == 'you':
+                    at_you += 1
+                elif whom == "Shepard's body":
+                    at_body += 1
+                else:
+                    other += 1
+                if f.get('toYouDeg') is not None:
+                    offs.append(f['toYouDeg'])
+                    if f['toYouDeg'] > worst[0]:
+                        worst = (f['toYouDeg'], f"{p['name']} {f['toYouDeg']} deg at {st.get('seconds', 0):.0f} s ({st.get('tag', '?')})")
+        offs.sort()
+        aims.sort()
+        median = offs[len(offs) // 2] if offs else None
+        aim_median = f"{aims[len(aims) // 2]:.0f}" if aims else '-'
+        opening = stances[-1].get('opening', '-') + (', staged' if first.get('staged') else '') + \
+            (', the view apart' if any(s['player'].get('detached') for s in stances) else '') + \
+            (', turned' if any(s['player'].get('turnedDeg') for s in stances) else '')
+        print(f"| {name.split('.')[-1]} ({number}) | {opening} | {min(gaps, default=0):.2f}-{max(gaps, default=0):.2f} | {meant} | "
+              f"{at_you} | {at_body} | {other} | {median if median is not None else '-'} | {aim_median} | {aims_body} | {worst[1] or '-'} |")
+    return 0
+
+
 def main(argv):
     folder = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'MEVR', 'stances')
     out = folder
     since = None
     files = []
     heads = '--heads' in argv
-    argv = [a for a in argv if a != '--heads']
+    audit = '--audit' in argv
+    argv = [a for a in argv if a not in ('--heads', '--audit')]
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -432,13 +522,16 @@ def main(argv):
             continue
         st['_file'] = f
         groups.setdefault((os.path.basename(f)[:10], st['number'], st['conversation']), []).append(st)
+    if audit:
+        return print_audit(groups)
     if heads:
         for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
             stances.sort(key=lambda s: s['_file'])
             first = stances[0]
-            shep = next((p for p in first['people'] if p.get('shepard')), None)
-            away = math.dist(shep['head'][:2], first['player']['at'][:2]) / 100 if shep and shep.get('head') else 0.0
-            print(f"{name.split('.')[-1]} ({number}; opening {first.get('opening', '-')}; Shepard's body {away:.1f} m from your view"
+            gaps = [g for g in (body_gap(s) for s in stances) if g is not None]
+            print(f"{name.split('.')[-1]} ({number}; opening {stances[-1].get('opening', '-')}{'; staged' if first.get('staged') else ''}; "
+                  f"Shepard's head {min(gaps, default=0):.2f}-{max(gaps, default=0):.2f} m from your "
+                  f"{'eyes' if first['player'].get('eyes') else 'view (the held place)'}"
                   f"{'; his looks moved to your eyes' if any(s['player'].get('eyesTarget') for s in stances) else ''})")
             for st in stances:
                 cells = []
@@ -446,9 +539,11 @@ def main(argv):
                     if p.get('shepard') or p.get('hidden') or not p.get('face'):
                         continue
                     f = p['face']
-                    cells.append(f"{p['name']}: {looks_at(p, st['player']['at']) or 'elsewhere'} ({f.get('toYouDeg')} deg off you"
+                    cells.append(f"{p['name']}: {looks_at(p, st) or 'elsewhere'} ({f.get('toYouDeg')} deg off you"
                                  f"{', %s off his body' % f['toShepardDeg'] if f.get('toShepardDeg') is not None else ''})")
-                print(f"  {st.get('tag', '?')} at {st.get('seconds', 0):.1f} s: " + '; '.join(cells))
+                gap = body_gap(st)
+                print(f"  {st.get('tag', '?')} at {st.get('seconds', 0):.1f} s"
+                      f"{' (his head %.2f m from your eyes)' % gap if gap is not None else ''}: " + '; '.join(cells))
         return 0
     os.makedirs(out, exist_ok=True)
     for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
