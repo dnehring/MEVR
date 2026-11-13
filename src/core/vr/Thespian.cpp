@@ -113,8 +113,16 @@ Output Step(State& state, Settings const& settings, Input const& in) {
         }
         if (in.silentMs >= pauseMs) {
             state.unsureLeft = settings.unsureS;  // quiet, and no card can be taken: say so, keep listening
+            state.doubt = false;
         }
-        if (in.silentMs >= static_cast<std::uint32_t>(std::max(settings.staleMs, settings.pauseMs))) {
+        if (in.silentMs >= pauseMs && in.atEnd.doubtful) {
+            // A card would be taken but for a word only heard alike: never a guess. The words are dropped so the player's
+            // second reading (or the label) stands alone.
+            state.doubt = true;
+            state.phase = Phase::Armed;
+            out.restart = true;
+            out.leader = -1;
+        } else if (in.silentMs >= static_cast<std::uint32_t>(std::max(settings.staleMs, settings.pauseMs))) {
             // Words nobody could place, and a long quiet: they would only weigh on what is said next.
             state.phase = Phase::Armed;
             out.restart = true;
@@ -123,7 +131,8 @@ Output Step(State& state, Settings const& settings, Input const& in) {
     }
 
     out.phase = state.phase;
-    out.mic = state.unsureLeft > 0.0f ? (state.phase == Phase::Leading ? Mic::More : Mic::Unsure) : state.phase == Phase::Armed ? Mic::Armed : Mic::Hearing;
+    out.mic = state.unsureLeft > 0.0f ? (state.phase == Phase::Leading ? Mic::More : state.doubt ? Mic::Doubt : Mic::Unsure)
+                                       : state.phase == Phase::Armed ? Mic::Armed : Mic::Hearing;
     return out;
 }
 
@@ -237,6 +246,7 @@ char const* MicClass(Mic mic) {
     case Mic::Understood: return "understood";
     case Mic::Unsure: return "unsure";
     case Mic::More: return "more";
+    case Mic::Doubt: return "unsure";
     }
     return "";
 }
@@ -248,6 +258,7 @@ std::string PromptText(Panel const& panel) {
     case Mic::Hearing: return "Listening...";
     case Mic::Unsure: return "Didn't catch that";
     case Mic::More: return "Keep reading...";
+    case Mic::Doubt: return "Not sure which: read it again or say its label";
     case Mic::Understood:
         for (std::size_t i = 0; i < std::min<std::size_t>(panel.cardCount, kMaxCards); ++i) {
             if (static_cast<Look>(panel.cards[i].look) == Look::Committed || static_cast<Look>(panel.cards[i].look) == Look::Leading) {

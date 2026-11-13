@@ -47,6 +47,47 @@ void TestWords() {
     CHECK(!sm::SameWord("then", "than") && !sm::SameWord("them", "they") && !sm::SameWord("yes", "no"));
     CHECK(!sm::SameWord("geth", "council") && !sm::SameWord("help", "kill"));
     CHECK(sm::Similarity("protheans", "prothians") > 0.85f && sm::Similarity("abc", "xyz") == 0.0f);
+
+    // How surely: as written, heard alike, one sound apart (the recognizer's guesses at names, from a headset session).
+    CHECK(sm::WordQuality("saren", "saren") == sm::Quality::Exact && sm::WordQuality("rushed", "rush") == sm::Quality::Exact);
+    CHECK(sm::WordQuality("sarin", "saren") == sm::Quality::Close && sm::WordQuality("prothians", "protheans") == sm::Quality::Close);
+    CHECK(sm::WordQuality("cairns", "saren's") == sm::Quality::Loose);
+    CHECK(sm::WordQuality("sister", "history") == sm::Quality::Loose);
+    CHECK(sm::WordQuality("help", "kill") == sm::Quality::None && sm::WordQuality("council", "counsel") != sm::Quality::None);
+    CHECK(sm::WordQuality("then", "than") == sm::Quality::None);  // function words only as written
+
+    // The game's names, as written.
+    CHECK(sm::IsGameName("Saren") && sm::IsGameName("Eden") && sm::IsGameName("Prime") && sm::IsGameName("Benezia"));
+    CHECK(!sm::IsGameName("saren") && !sm::IsGameName("Hello") && !sm::IsGameName(""));
+}
+
+void TestDoubt() {
+    // The lead rests on one word heard only alike ("sister" for "history"): nothing is decided, and the doubt names it.
+    sm::Wheel const wheel({{"How do you know him?", "Tell me about this history between you."}, {"The Citadel?", "Tell me about the Citadel."}});
+    sm::Result r = wheel.Match("tell me about the sister between you", true);
+    CHECK(r.decided);  // "between you" is heard as written: the lead holds without the doubtful word
+    r = wheel.Match("tell me about the sister", true);
+    CHECK(!r.decided && r.doubtful && r.leader == 0 && r.doubtHeard == "sister" && r.doubtWord == "history");
+    r = wheel.Match("tell me about this history", true);
+    CHECK(r.decided && !r.doubtful && r.leader == 0);
+
+    // A name heard alike and clearly nearer the leader's word than anything on the other card: decided.
+    sm::Wheel const names({{"Saren?", "What do you know about Saren?", 1}, {"Benezia?", "What do you know about Benezia?", 2}});
+    r = names.Match("what do you know about sarin", true);
+    CHECK(r.decided && !r.doubtful && r.leader == 0);
+    // A name heard one sound off: not enough to choose between two cards that differ only by it.
+    r = names.Match("what do you know about cairns", true);
+    CHECK(!r.decided);
+    // The headset session's lines: the misheard names are not what tells the cards apart there.
+    sm::Wheel const council({{"Insults? Typical.", "Saren despises humanity. That's why he attacked Eden Prime!", 12},
+        {"You'll pay!", "You can expect me to kill you the next time we meet.", 11},
+        {"See? He hates us!", "Saren despises humanity. That's why he attacked Eden Prime!", 12}});
+    r = council.Match("Saren despises humanity that's why he attacked Eden farm", true);
+    CHECK(r.decided && council.Group(r.leader) == 0);
+    sm::Wheel const hiding({{"Quit protecting him!", "Saren's hiding behind his position as a Spectre. You need to open your eyes!", 16},
+        {"You arrogant bastard!", "You can't hide behind the Council forever!", 18}, {"I'll find proof!", "You can't hide behind the Council forever!", 18}});
+    r = hiding.Match("Cairns hiding behind his position as a spectre, you need to open", true);
+    CHECK(r.decided && r.leader == 0 && !r.doubtful);
 }
 
 sm::Wheel Investigate() {
@@ -182,6 +223,23 @@ void TestGroupsAndMenus() {
     sm::Wheel const one({{"Goodbye.", "I'll be back when I know more."}});
     r = one.Match("I'll be back when I know", false);
     CHECK(r.decided && r.leader == 0 && r.runnerUp == -1);
+
+    // With reply numbers: three labels, one reply (the Council's hearing): one choice whichever label is said.
+    std::string const breath = "You've made your decision. I won't waste my breath.";
+    sm::Wheel const three({{"You won't see the truth.", breath, 22}, {"What's the point?", breath, 22}, {"No.", breath, 22}});
+    CHECK(three.Group(0) == 0 && three.Group(1) == 0 && three.Group(2) == 0);
+    r = three.Match("you've made your decision I won't waste my breath", true);
+    CHECK(r.decided && r.leader == 0 && r.runnerUp == -1);
+    // Different replies whose lines are a word apart are two choices: the line can't tell them apart, the label can.
+    sm::Wheel const apart({{"I had to.", "I needed to get to Peak 15.", 5}, {"It was faster.", "I need to get to Peak 15.", 6}});
+    CHECK(apart.Group(1) == 1);
+    r = apart.Match("I need to get to peak fifteen", true);
+    CHECK(!r.decided);
+    r = apart.Match("it was faster", true);
+    CHECK(r.decided && r.leader == 1);
+    // ... and word for word the same line under two replies is still one choice (the game shows one of them at a time).
+    sm::Wheel const twin({{"How?", "Just tell me how.", 62}, {"How?", "Just tell me how.", 64}});
+    CHECK(twin.Group(1) == 0);
 }
 
 void TestKeyterms() {
@@ -196,6 +254,22 @@ void TestKeyterms() {
     std::vector<std::string> const names = lore.Keyterms(8);
     CHECK(names.size() == 2);
     CHECK(names.size() == 2 && names[0] == "rachni" && names[1] == "Saren");
+
+    // A name that starts a sentence is a name (the game's names, generated from its lines), and one of several words is
+    // one term: the hearing's wheel gave the recognizer nothing before ("Saren despises humanity.").
+    sm::Wheel const hearing({{"Insults? Typical.", "Saren despises humanity. That's why he attacked Eden Prime!"},
+        {"You'll pay!", "You can expect me to kill you the next time we meet."}});
+    std::vector<std::string> const said = hearing.Keyterms(8);
+    CHECK(said.size() == 2 && said[0] == "Saren" && said[1] == "Eden Prime");
+    // A possessive inside a name stays; an ordinary word at a sentence's start is no name.
+    sm::Wheel const hope({{"Zhu's Hope", "We need to get to Zhu's Hope."}, {"Tell him.", "Tell Anderson I said hello."}});
+    std::vector<std::string> const places = hope.Keyterms(8);
+    CHECK(places.size() == 2 && places[0] == "Zhu's Hope" && places[1] == "Anderson");
+    // A name the game doesn't list counts at a sentence's start when the other person's line names it.
+    sm::Wheel const stranger({{"Where?", "Valdor is late."}, {"Leave.", "I should go."}});
+    CHECK(stranger.Keyterms(8).empty());
+    std::vector<std::string> const met = stranger.Keyterms(8, "Have you seen Valdor today?");
+    CHECK(met.size() == 1 && met[0] == "Valdor");
 }
 
 }  // namespace
@@ -203,6 +277,7 @@ void TestKeyterms() {
 int RunScriptMatchTests() {
     gFailures = 0;
     TestWords();
+    TestDoubt();
     TestChoiceWhileSpeaking();
     TestChoiceAtTheEnd();
     TestGroupsAndMenus();

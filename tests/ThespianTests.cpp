@@ -172,6 +172,35 @@ void TestCommitNotTaken() {
     CHECK(out.phase == th::Phase::Armed && out.restart && out.commit < 0);
 }
 
+void TestDoubt() {
+    // A line read to its end whose telling word was only heard alike: nothing taken, "Not sure which", and the words are
+    // dropped at the pause so the second reading stands alone.
+    th::Settings const settings;
+    th::State state;
+    th::Step(state, settings, In(true, 5000));
+    th::Match doubt = Heard(0, false, true, 0.8f);
+    doubt.doubtful = true;
+    th::Output out = th::Step(state, settings, In(true, 300, doubt, doubt));
+    CHECK(out.commit < 0 && out.mic == th::Mic::Hearing && !out.restart);
+    out = th::Step(state, settings, In(true, 950, doubt, doubt));
+    CHECK(out.commit < 0 && out.restart && out.mic == th::Mic::Doubt);
+    // The mark stays while the player reads again; the second reading is taken.
+    out = th::Step(state, settings, In(true, 2000));
+    CHECK(out.mic == th::Mic::Doubt && out.commit < 0);
+    th::Match const clear = Heard(0, true, true, 1.0f);
+    out = th::Step(state, settings, In(true, 250, clear, clear));
+    CHECK(out.commit == 0);
+    // An undecided reading without a doubt is the old "Didn't catch that", kept until the stale time.
+    th::State other;
+    th::Step(other, settings, In(true, 5000));
+    th::Match const vague = Heard(1, false, false, 0.2f);
+    out = th::Step(other, settings, In(true, 950, vague, vague));
+    CHECK(out.mic == th::Mic::Unsure && !out.restart);
+    th::Panel panel;
+    panel.mic = static_cast<std::uint8_t>(th::Mic::Doubt);
+    CHECK(th::PromptText(panel).starts_with("Not sure which") && std::string(th::MicClass(th::Mic::Doubt)) == "unsure");
+}
+
 void TestTones() {
     CHECK(th::ToneOf(0, 0) == th::Tone::Default);
     CHECK(th::ToneOf(1, 0) == th::Tone::Agree && th::ToneOf(3, 0) == th::Tone::Agree);
@@ -234,6 +263,7 @@ int RunThespianTests() {
     TestPartWay();
     TestOtherSpeaking();
     TestCommitNotTaken();
+    TestDoubt();
     TestTones();
     return gFailures;
 }

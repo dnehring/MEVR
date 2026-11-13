@@ -307,7 +307,7 @@ std::string Say(Live const& live, std::string const& words) {
     std::vector<int> positions;
     for (Card const& c : live.cards) {
         if (c.candidate) {
-            cards.push_back({c.label, c.line});
+            cards.push_back({c.label, c.line, c.reply});
             positions.push_back(c.position);
         }
     }
@@ -322,9 +322,9 @@ std::string Say(Live const& live, std::string const& words) {
     }
     if (!r.decided) {
         ++gRefused;
-        gLast = std::format("thespian: \"{}\" decides no card (leader {}, margin {:.2f}; scores {})", words,
+        gLast = std::format("thespian: \"{}\" decides no card (leader {}, margin {:.2f}; scores {}){}", words,
             r.leader >= 0 ? std::format("[{}] \"{}\"", positions[static_cast<std::size_t>(r.leader)], cards[static_cast<std::size_t>(r.leader)].label) : std::string("none"),
-            r.margin, scores);
+            r.margin, scores, r.doubtful ? std::format("; not sure: \"{}\" was only heard like \"{}\"", r.doubtHeard, r.doubtWord) : std::string());
         log::Info("{}", gLast);
         return gLast;
     }
@@ -490,7 +490,7 @@ std::uint32_t gPanelSerial = 0;
 bool gPanelShown = false;
 std::uint64_t gOurListens[4] = {};
 unsigned gOurListenAt = 0;
-unsigned gSpoken = 0, gSpokenCommits = 0, gUnsure = 0, gStoodDown = 0;
+unsigned gSpoken = 0, gSpokenCommits = 0, gUnsure = 0, gDoubts = 0, gStoodDown = 0;
 std::string gLastHeard;
 bool gToldNoRecognizer = false;
 vr::voice::State gVoice;
@@ -565,6 +565,7 @@ th::Match Reduce(sm::Result const& r, bool words) {
         m.coverage = c.coverage;
         m.byLabel = c.byLabel;
     }
+    m.doubtful = r.doubtful;
     return m;
 }
 
@@ -600,6 +601,10 @@ void SendPanel(Link const& link, bool shown) {
         int const leader = gTurn.out.leader;
         bool const committed = gTurn.out.phase == th::Phase::Committed;
         // Rows: the wheel's replies first, then the investigate topics; unavailable replies shown greyed; the rest left out.
+        // Replies that lead to the same reply (one line under two or three labels: the game's choice is the same whichever
+        // label is taken) are one row with their labels together, coloured only when they agree.
+        int rowReply[th::kMaxCards];
+        std::fill(std::begin(rowReply), std::end(rowReply), -1);
         for (int pass = 0; pass < 2; ++pass) {
             for (std::size_t a = 0; a < gTurn.all.size() && panel.cardCount < th::kMaxCards; ++a) {
                 Card const& c = gTurn.all[a];
@@ -607,17 +612,37 @@ void SendPanel(Link const& link, bool shown) {
                 if (investigate != (pass == 1) || (!c.candidate && c.style != kStyleIllegal)) {
                     continue;
                 }
-                th::PanelCard& row = panel.cards[panel.cardCount++];
-                panel.mainCount += pass == 0 ? 1 : 0;
-                strncpy_s(row.label, c.label.c_str(), _TRUNCATE);
-                strncpy_s(row.line, c.line.c_str(), _TRUNCATE);
-                row.tone = static_cast<std::uint8_t>(th::ToneOf(c.category, c.style));
                 auto const it = std::find(gTurn.candidates.begin(), gTurn.candidates.end(), static_cast<int>(a));
-                if (it == gTurn.candidates.end()) {
+                bool const candidate = it != gTurn.candidates.end();
+                std::uint8_t const tone = static_cast<std::uint8_t>(th::ToneOf(c.category, c.style));
+                std::size_t at = panel.cardCount;
+                for (std::size_t k = 0; candidate && c.reply >= 0 && k < panel.cardCount; ++k) {
+                    if (rowReply[k] == c.reply) {
+                        at = k;
+                    }
+                }
+                bool const fresh = at == panel.cardCount;
+                th::PanelCard& row = panel.cards[at];
+                if (fresh) {
+                    ++panel.cardCount;
+                    panel.mainCount += pass == 0 ? 1 : 0;
+                    strncpy_s(row.label, c.label.c_str(), _TRUNCATE);
+                    strncpy_s(row.line, c.line.c_str(), _TRUNCATE);
+                    row.tone = tone;
+                    rowReply[at] = candidate ? c.reply : -1;
+                } else {
+                    strncat_s(row.label, " / ", _TRUNCATE);
+                    strncat_s(row.label, c.label.c_str(), _TRUNCATE);
+                    row.tone = row.tone == tone ? tone : static_cast<std::uint8_t>(th::Tone::Default);
+                }
+                if (!candidate) {
                     row.look = static_cast<std::uint8_t>(th::Look::Unavailable);
                     continue;
                 }
                 int const card = static_cast<int>(it - gTurn.candidates.begin());
+                if (!fresh && card != leader) {
+                    continue;  // a merged row takes its look from its first reply, or from whichever of them leads
+                }
                 row.look = static_cast<std::uint8_t>(card == leader ? (committed ? th::Look::Committed : th::Look::Leading) : leader >= 0 ? th::Look::Dim : th::Look::Idle);
                 if (card == leader && static_cast<std::size_t>(card) < gTurn.now.cards.size() && !c.line.empty()) {
                     sm::CardState const& st = gTurn.now.cards[static_cast<std::size_t>(card)];
@@ -663,7 +688,7 @@ void BeginTurn(Link const& link, Live const& live) {
     for (std::size_t i = 0; i < gTurn.all.size(); ++i) {
         if (gTurn.all[i].candidate) {
             gTurn.candidates.push_back(static_cast<int>(i));
-            cards.push_back({gTurn.all[i].label, gTurn.all[i].line});
+            cards.push_back({gTurn.all[i].label, gTurn.all[i].line, gTurn.all[i].reply});
         }
     }
     if (cards.empty() || !LooksEnglish(gTurn.all, gTurn.candidates)) {
@@ -693,7 +718,7 @@ void BeginTurn(Link const& link, Live const& live) {
         }
     }
     std::string terms;
-    for (std::string const& t : gTurn.wheel->Keyterms(gMode.keyterms)) {
+    for (std::string const& t : gTurn.wheel->Keyterms(gMode.keyterms, gTurn.heard)) {
         terms += (terms.empty() ? "" : ",") + t;
     }
     if (link.voice.setKeyterms != nullptr && !terms.empty()) {
@@ -831,7 +856,13 @@ void TickTurn(double deltaSeconds, Link const& link) {
         th::Phase const before = gTurn.state.phase;
         gTurn.out = th::Step(gTurn.state, gMode.turn, in);
         if (gTurn.out.restart) {
-            if (!gTurn.text.empty()) {
+            if (!gTurn.text.empty() && gTurn.out.mic == th::Mic::Doubt) {
+                ++gDoubts;
+                std::size_t const lead = static_cast<std::size_t>((std::max)(gTurn.atEnd.leader, 0));
+                Card const& c = gTurn.all[static_cast<std::size_t>(gTurn.candidates[(std::min)(lead, gTurn.candidates.size() - 1)])];
+                log::Info("thespian: not sure which: \"{}\" would be [{}] \"{}\" but \"{}\" was only heard like \"{}\"; the words are dropped for a second reading",
+                    gTurn.text, c.position, c.label, gTurn.atEnd.doubtHeard, gTurn.atEnd.doubtWord);
+            } else if (!gTurn.text.empty()) {
                 ++gUnsure;
                 log::Info("thespian: \"{}\" was dropped ({})", gTurn.text, in.otherSpeaking || before == th::Phase::Off ? "a new turn" : "nobody could place it");
             }
@@ -923,9 +954,9 @@ std::string Command(std::string const& rest) {
     }
     if (verb == "status") {
         return std::format("thespian: the spoken mode is {}; recognizer {} ({}), open listen {}, quiet {} ms, level {:.3f}; turn {} (phase {}), heard \"{}\"; "
-                           "{} wheels, {} spoken turns, {} taken by voice, {} dropped, {} wheels not for speaking; last: {}",
+                           "{} wheels, {} spoken turns, {} taken by voice, {} dropped, {} not sure which, {} wheels not for speaking; last: {}",
             gModeText, gVoice.status, gVoice.model, gVoice.open != 0 ? "yes" : "no", gVoice.silentMs, gVoice.level, gTurn.active ? "active" : gTurn.blocked ? "blocked" : "none",
-            static_cast<int>(gTurn.state.phase), gTurn.active ? gTurn.text : gLastHeard, gWheels, gSpoken, gSpokenCommits, gUnsure, gStoodDown, gLast);
+            static_cast<int>(gTurn.state.phase), gTurn.active ? gTurn.text : gLastHeard, gWheels, gSpoken, gSpokenCommits, gUnsure, gDoubts, gStoodDown, gLast);
     }
     if (verb == "wheel") {
         // Tests without controllers: the game's wheel shown (as the stick does) or hidden again.
@@ -998,9 +1029,9 @@ std::string Command(std::string const& rest) {
 
 std::string StatusJson() {
     return std::format("{{\"on\": {}, \"wheels\": {}, \"commits\": {}, \"skips\": {}, \"refused\": {}, \"pending\": {}, \"watch\": {}, \"turn\": {}, "
-                       "\"phase\": {}, \"spokenTurns\": {}, \"spokenCommits\": {}, \"dropped\": {}, \"notForSpeaking\": {}}}",
+                       "\"phase\": {}, \"spokenTurns\": {}, \"spokenCommits\": {}, \"dropped\": {}, \"notSure\": {}, \"notForSpeaking\": {}}}",
         gMode.on ? "true" : "false", gWheels, gCommits, gSkips, gRefused, gPending.active ? "true" : "false", gWatch ? "true" : "false",
-        gTurn.active ? "true" : "false", static_cast<int>(gTurn.state.phase), gSpoken, gSpokenCommits, gUnsure, gStoodDown);
+        gTurn.active ? "true" : "false", static_cast<int>(gTurn.state.phase), gSpoken, gSpokenCommits, gUnsure, gDoubts, gStoodDown);
 }
 
 void Shutdown() {

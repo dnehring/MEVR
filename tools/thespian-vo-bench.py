@@ -68,13 +68,15 @@ def main():
     ap.add_argument("--bench", default="build/Release/mevr-voice-bench.exe")
     ap.add_argument("--matcher", default="build/Release/mevr-thespian-bench.exe")
     ap.add_argument("--batch", type=int, default=60)
+    ap.add_argument("--tag", default="", help="added to the kept transcripts' name: a fresh run beside an older one "
+                                              "(e.g. -names for the key terms with sentence-start names, 2026-11-13)")
     args = ap.parse_args()
 
     vo = pathlib.Path(args.vo)
     manifest = [l.rstrip("\n").split("\t") for l in open(vo / "manifest.tsv", encoding="utf-8") if l.strip()]
     if args.limit:
         manifest = manifest[:args.limit]
-    tag = args.arch + ("-keyterms" if args.keyterms != "none" else "")
+    tag = args.arch + ("-keyterms" if args.keyterms != "none" else "") + args.tag
     kept = vo / f"transcripts-{tag}.tsv"
     heard = {}
     timing = {}

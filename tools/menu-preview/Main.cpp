@@ -1044,7 +1044,8 @@ int main(int argc, char** argv) {
     // Thespian mode's panel (research/70 section 8 step 5): thespian.rml in a context of its own as the host makes it
     // (plugin/Thespian), its rows from vr::thespian::RowsRml. thespian-idle.png: four replies, nothing said; -hover: the
     // pointer on a row; -leading: a row read half-way; -committed; -topics: eight rows with investigate topics and an
-    // unavailable charm; -unsure: the "Didn't catch that" mark. The sample lines are ours, not the game's.
+    // unavailable charm; -unsure: the "Didn't catch that" mark; -doubt: "Not sure which", with two labels of one reply in
+    // one row. The sample lines are ours, not the game's.
     {
         namespace th = mevr::vr::thespian;
         constexpr int tw = th::kCanvasWidth, thh = th::kCanvasHeight;
@@ -1139,6 +1140,18 @@ int main(int argc, char** argv) {
         unsure.mic = static_cast<std::uint8_t>(th::Mic::Unsure);
         unsure.level = 0.02f;
         shot("thespian-unsure", unsure);
+        // Two labels that lead to one reply are one row (game/Thespian merges them), and a reading whose telling word was
+        // only heard alike says "Not sure which" (Mic::Doubt).
+        th::Panel doubt;
+        doubt.mainCount = 3;
+        std::snprintf(doubt.speaker, sizeof doubt.speaker, "%s", "Officer Varek");
+        std::snprintf(doubt.heard, sizeof doubt.heard, "%s", "Which of the two do you want to see first?");
+        card(doubt, "The last entry. / Skip ahead.", "Play the last entry.", th::Tone::Default, th::Look::Idle);
+        card(doubt, "The first entry.", "Play the first entry.", th::Tone::Default, th::Look::Idle);
+        card(doubt, "Goodbye.", "", th::Tone::Default, th::Look::Idle);
+        doubt.mic = static_cast<std::uint8_t>(th::Mic::Doubt);
+        doubt.level = 0.02f;
+        shot("thespian-doubt", doubt);
         th::Panel topics;
         std::snprintf(topics.heard, sizeof topics.heard, "%s", "What else do you want to know?");
         topics.mainCount = 4;

@@ -15,6 +15,10 @@
 //             whether a wrong card was ever decided on the way, and the outcome at the end of the line (final)
 //   noisy     the same with a simulated recognizer: each word replaced by a random word with probability --noise and
 //             dropped with probability --drop (only with --noise or --drop)
+//   sound-alike --soundalike p: each content word, with probability p, heard as another word of the game's lines that only
+//             sounds or looks like it (ScriptMatch's Close or Loose): the recognizer's guesses at names, at their worst
+// Cards are grouped by their reply (column 3), as the game does; --replies 0 leaves the reply numbers out (grouped by
+// their lines, as before 2026-11-13).
 //   half      the player stops half-way through the line (final): right, undecided or wrong
 //   label     the card's label alone as the transcript (final)
 //   foreign   lines of other wheels as the transcript (--foreign per wheel; not ones that are a line or a label of this
@@ -52,10 +56,12 @@ struct Tally {
     int right = 0;
     int undecided = 0;
     int wrong = 0;
+    int doubtful = 0;  // of the undecided: held back by the doubt rule (a word only heard alike)
     void Add(sm::Result const& r, sm::Wheel const& wheel, int expected) {
         ++total;
         if (!r.decided) {
             ++undecided;
+            doubtful += r.doubtful ? 1 : 0;
         } else if (expected >= 0 && wheel.Group(r.leader) == wheel.Group(expected)) {
             ++right;
         } else {
@@ -64,8 +70,8 @@ struct Tally {
     }
     void Print(char const* name) const {
         double const n = total > 0 ? total : 1;
-        std::printf("%-34s %6d   right %6d (%5.1f%%)   undecided %5d (%5.1f%%)   wrong %4d (%5.2f%%)\n", name, total, right,
-            100.0 * right / n, undecided, 100.0 * undecided / n, wrong, 100.0 * wrong / n);
+        std::printf("%-34s %6d   right %6d (%5.1f%%)   undecided %5d (%5.1f%%)   wrong %4d (%5.2f%%)   not sure which %d\n", name, total, right,
+            100.0 * right / n, undecided, 100.0 * undecided / n, wrong, 100.0 * wrong / n, doubtful);
     }
 };
 
@@ -86,6 +92,36 @@ std::string Join(std::vector<std::string> const& words, std::size_t count) {
     for (std::size_t i = 0; i < count && i < words.size(); ++i) {
         if (i > 0) out += ' ';
         out += words[i];
+    }
+    return out;
+}
+
+// The words of a line with some content words heard as another word of the game that only sounds or looks like it (Close
+// or Loose, never the word itself): the recognizer's guesses at names, at their worst.
+std::vector<std::string> SoundAlike(std::vector<std::string> const& words, std::vector<std::string> const& vocabulary, double rate,
+    std::map<std::string, std::vector<std::string>>& cache, std::mt19937& rng) {
+    std::uniform_real_distribution<double> chance(0.0, 1.0);
+    std::vector<std::string> out;
+    for (std::string const& w : words) {
+        if (sm::IsStopWord(w) || chance(rng) >= rate) {
+            out.push_back(w);
+            continue;
+        }
+        auto it = cache.find(w);
+        if (it == cache.end()) {
+            std::vector<std::string> alike;
+            for (std::string const& v : vocabulary) {
+                sm::Quality const q = sm::WordQuality(v, w);
+                if (q == sm::Quality::Close || q == sm::Quality::Loose) alike.push_back(v);
+            }
+            it = cache.emplace(w, std::move(alike)).first;
+        }
+        if (it->second.empty()) {
+            out.push_back(w);
+        } else {
+            std::uniform_int_distribution<std::size_t> pick(0, it->second.size() - 1);
+            out.push_back(it->second[pick(rng)]);
+        }
     }
     return out;
 }
@@ -166,14 +202,20 @@ int main(int argc, char** argv) {
     }
     double noise = 0.0;
     double drop = 0.0;
+    double soundAlike = 0.0;
+    bool replies = true;
     unsigned seed = 1;
     int foreign = 3;
     int keep = 12;
     std::string utterances;
     std::string keytermsOut;
+    std::string alikeOutPath;  // --soundalike-out: the sound-alike transcripts, as --utterances rows (for an A/B)
     for (int i = 2; i + 1 < argc; i += 2) {
         std::string const key = argv[i];
         if (key == "--noise") noise = std::atof(argv[i + 1]);
+        else if (key == "--soundalike") soundAlike = std::atof(argv[i + 1]);
+        else if (key == "--soundalike-out") alikeOutPath = argv[i + 1];
+        else if (key == "--replies") replies = std::atoi(argv[i + 1]) != 0;
         else if (key == "--drop") drop = std::atof(argv[i + 1]);
         else if (key == "--seed") seed = static_cast<unsigned>(std::atoi(argv[i + 1]));
         else if (key == "--foreign") foreign = std::atoi(argv[i + 1]);
@@ -199,7 +241,7 @@ int main(int argc, char** argv) {
                 byId[f[0]] = cases.size();
                 cases.push_back({f[0], {}});
             }
-            cases[byId[f[0]]].cards.push_back({f[5], f[6]});
+            cases[byId[f[0]]].cards.push_back({f[5], f[6], replies ? std::atoi(f[2].c_str()) : -1});
         }
     }
     std::vector<sm::Wheel> wheels;
@@ -228,8 +270,15 @@ int main(int argc, char** argv) {
         return 0;
     }
     std::mt19937 rng(seed);
+    std::vector<std::string> vocabulary(pool.begin(), pool.end());
+    std::sort(vocabulary.begin(), vocabulary.end());
+    vocabulary.erase(std::unique(vocabulary.begin(), vocabulary.end()), vocabulary.end());
+    std::map<std::string, std::vector<std::string>> alikeCache;
+    std::ofstream alikeOut;
+    if (!alikeOutPath.empty()) alikeOut.open(alikeOutPath, std::ios::binary);
     ReadStats read;
     ReadStats noisy;
+    ReadStats alike;
     Tally half;
     Tally label;
     Tally foreignTally;
@@ -249,6 +298,11 @@ int main(int argc, char** argv) {
             if (noise > 0.0 || drop > 0.0) {
                 std::vector<std::string> const heard = Noisy(said, pool, noise, drop, rng);
                 if (!heard.empty()) Read(wheel, wc, c, heard, noisy, keep);
+            }
+            if (soundAlike > 0.0) {
+                std::vector<std::string> const heard = SoundAlike(said, vocabulary, soundAlike, alikeCache, rng);
+                Read(wheel, wc, c, heard, alike, keep);
+                if (alikeOut.is_open() && heard != said) alikeOut << wc.id << '\t' << c << '\t' << Join(heard, heard.size()) << '\n';
             }
         }
         std::uniform_int_distribution<std::size_t> pick(0, everyLine.size() - 1);
@@ -272,6 +326,10 @@ int main(int argc, char** argv) {
     if (noisy.atEnd.total > 0) {
         std::printf("\n");
         PrintRead(std::format("noisy ({:.0f}% wrong, {:.0f}% dropped)", noise * 100.0, drop * 100.0).c_str(), noisy);
+    }
+    if (alike.atEnd.total > 0) {
+        std::printf("\n");
+        PrintRead(std::format("sound-alike ({:.0f}% of content words)", soundAlike * 100.0).c_str(), alike);
     }
     std::printf("\n");
     half.Print("half: stopped half-way");

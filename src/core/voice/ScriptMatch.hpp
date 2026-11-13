@@ -11,16 +11,18 @@
 //   1. Both are split into words (Tokens): lower case, letters, digits and apostrophes; everything else separates.
 //   2. A word weighs 1, a stop word (the, a, to, you, is, um...) 0.25 (IsStopWord).
 //   3. The transcript is aligned with the card's line by the heaviest common subsequence (words in the same order; any
-//      number of words skipped on either side). Two words are the same (SameWord) when their normal forms are equal
-//      (apostrophes dropped, "2" as "two"), their stems are equal ("rushed"/"rush"), their spellings are close
-//      (similarity 0.75 or more, both five letters or longer) or they sound alike (SoundKey: "Sarin"/"Saren"). The
-//      transcript's last word also counts when it is the first three or more letters of the script's word: a partial
-//      transcript often ends inside a word ("my name's shep").
+//      number of words skipped on either side). Two words are the same (Compare) when their normal forms are equal
+//      (apostrophes dropped, "2" as "two") or their stems are ("rushed"/"rush"): Exact; when their spellings are close
+//      (similarity 0.75 or more, both five letters or longer) or they sound alike (SoundKey equal: "Sarin"/"Saren"):
+//      Close; when their consonant skeletons are one sound apart and their spellings at least half alike ("Cairns" for
+//      "Saren's", "sister" for "history"): Loose. The transcript's last word also counts (Close) when it is the first
+//      three or more letters of the script's word: a partial transcript often ends inside a word ("my name's shep").
 //   4. score = the matched words' weight - 0.5 x the weight of the transcript's words the line doesn't hold.
 //      The same against the label; the card's score is the better of the two.
 // How the cards are compared (Wheel::Match):
-//   - Cards with the same line (ME1 often offers one line under two labels) are one group; the choice is between groups.
-//     Lines that differ by a word's form or a word or two ("I need to..." / "I needed to...") are one group too.
+//   - Cards that lead to the same reply (Card::reply; ME1 often offers one line under two or three labels) are one group;
+//     the choice is between groups. Without reply numbers, cards with nearly the same line ("I need to..." / "I needed
+//     to...") are one group. Cards with different replies are one group only when their lines are word for word the same.
 //   - While the player speaks (final = false) a group is "decided" when it has enough evidence (two content words, or most
 //     of a short script), its score is at least 0.5 (more of the card was said than of anything else) and it leads the
 //     runner-up by 1.2 (a content word the other doesn't have, plus its penalty there).
@@ -28,6 +30,9 @@
 //     (at most 1): the card whose whole line was said wins over a longer one that only starts the same way ("Yes." against
 //     "Yes, I'll help you."), and a lead of 0.6 is enough.
 //   - A script of one or two words ("Goodbye.") is decided only at the end and only when it is all that was said.
+//   - Never on a misheard word (Result::doubtful): when the lead over the runner-up rests on words that were only heard
+//     alike (Close or Loose), the lead must hold with them heard as nothing, unless each was heard Close and is clearly
+//     nearer the leader's word than any word of the runner-up's. Otherwise nothing is decided: "Not sure which".
 #pragma once
 
 #include <cstdint>
@@ -51,11 +56,14 @@ struct Settings {
     float missingCap = 2.0f;            // ...counted up to this much weight (stopping part-way must stay possible)
     float sameLine = 0.85f;             // two lines sharing this much of the heavier one's weight, in order, are one group
     int shortScriptWords = 2;           // scripts this short are decided only at the end, said alone
+    float looseSpelling = 0.5f;         // a Loose match's spellings must be at least this alike
+    float clearGap = 0.2f;              // a Close word must be this much more like the leader's word than the runner-up's
 };
 
 struct Card {
     std::string label;  // the wheel's short text ("The geth?"); may be empty
     std::string line;   // what Shepard says; empty for a menu card (the label is the script then)
+    int reply = -1;     // the reply it leads to (the game's reply index): cards with the same are one choice; -1 unknown
 };
 
 struct CardState {
@@ -74,6 +82,9 @@ struct Result {
     int runnerUp = -1;      // the best card of the next group; -1: there is none
     float margin = 0.0f;    // the leader's score minus the runner-up's (the leader's score when alone)
     bool decided = false;   // the leader may be shown as the choice, and committed at an end
+    bool doubtful = false;  // the leader would be decided, but its lead rests on a word that may have been misheard
+    std::string doubtHeard; // ... that word as the recognizer wrote it ("cairns")
+    std::string doubtWord;  // ... and the leader's word it was taken for, as written ("Saren's")
     std::vector<CardState> cards;
 };
 
@@ -90,8 +101,13 @@ bool IsStopWord(std::string_view word);
 std::string SoundKey(std::string_view word);
 // 1 - edit distance / the longer length.
 float Similarity(std::string_view a, std::string_view b);
-// The recognizer's word `said` is the script's word `want` (rule 3 above). Both lower case, as Tokens gives them.
+// The recognizer's word `said` is the script's word `want` (rule 3 above, any quality). Both lower case, as Tokens gives them.
 bool SameWord(std::string_view said, std::string_view want, float similarity = 0.75f);
+// How surely two words are one (rule 3 above): None, then Loose < Close < Exact.
+enum class Quality : std::uint8_t { None = 0, Loose = 1, Close = 2, Exact = 3 };
+Quality WordQuality(std::string_view said, std::string_view want);
+// A name of the game's (core/voice/GameNames.inc, generated from LE1's lines), as written: "Saren", "Eden", "Prime".
+bool IsGameName(std::string_view written);
 
 // A word ready to compare: computed once per script and once per transcript, not per comparison.
 struct Word {
@@ -104,6 +120,7 @@ struct Word {
 };
 Word MakeWord(std::string_view token, float stopWeight = 0.25f);
 bool Same(Word const& said, Word const& want, float similarity = 0.75f);  // SameWord on prepared words
+Quality Compare(Word const& said, Word const& want, float similarity = 0.75f, float looseSpelling = 0.5f);
 
 class Wheel {
 public:
@@ -117,9 +134,12 @@ public:
     // The line's words as written (the label's for a menu card): what CardState::lit and frontier index.
     std::vector<std::string> const& Words(int card) const { return display_[static_cast<std::size_t>(card)]; }
     int Group(int card) const { return group_[static_cast<std::size_t>(card)]; }
-    // The cards' names and rare words for the recognizer's key-term bias, most distinctive first, at most `count`:
-    // words written with a capital inside a sentence ("Saren", "Protheans", "Feros").
-    std::vector<std::string> Keyterms(int count) const;
+    // The cards' names and rare words for the recognizer's key-term bias, most distinctive first, at most `count`: names
+    // as the cards write them, a name of several words as one term ("Eden Prime", "Matriarch Benezia"), a possessive's
+    // name without its 's. A capitalised word is a name inside a sentence, and at a sentence's start when it is a name
+    // elsewhere on the wheel, in `context` (the other person's line) or in the game's names (IsGameName): "Saren
+    // despises humanity." Plus the setting's own words written small ("geth", "rachni").
+    std::vector<std::string> Keyterms(int count, std::string_view context = {}) const;
 
 private:
     struct Script {
@@ -131,8 +151,13 @@ private:
         float penalty = 0.0f;
         int frontier = -1;
         std::vector<std::uint8_t> lit;
+        std::vector<int> pair;          // per transcript word: the script word it was matched to, -1 none
+        std::vector<Quality> quality;   // per transcript word: how surely (None when unmatched)
     };
-    Aligned Align(std::vector<Word> const& said, Script const& script) const;
+    // `least`: the weakest match that counts (Loose: all; Exact: only words heard as written).
+    Aligned Align(std::vector<Word> const& said, Script const& script, Quality least = Quality::Loose) const;
+    // The doubt rule (the header's last rule) for a decided leader against its runner-up.
+    bool Doubtful(std::vector<Word> const& said, Result const& result, bool final, std::string& heard, std::string& word) const;
     Script MakeScript(std::string_view text) const;
 
     Settings settings_;

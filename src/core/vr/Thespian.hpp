@@ -35,8 +35,9 @@ enum class Phase : std::uint8_t {
     Leading = 3,    // a card is decided: its row is lit
     Committed = 4,  // a reply was taken; nothing more until the wheel has gone down
 };
-// More: a row is lit but too little of it was said for the strictness ("Keep reading").
-enum class Mic : std::uint8_t { Off = 0, Armed = 1, Hearing = 2, Understood = 3, Unsure = 4, More = 5 };
+// More: a row is lit but too little of it was said for the strictness ("Keep reading"). Doubt: a row would be taken but
+// a word that tells it from another was only heard alike ("Not sure which"): the words are dropped for a fresh reading.
+enum class Mic : std::uint8_t { Off = 0, Armed = 1, Hearing = 2, Understood = 3, Unsure = 4, More = 5, Doubt = 6 };
 
 struct Settings {
     int endMs = 200;     // quiet after a line read to its end
@@ -55,6 +56,7 @@ struct Match {
     bool reachedEnd = false;  // one of its line's last two words was said
     float coverage = 0.0f;    // the share of its line said, 0..1
     bool byLabel = false;     // matched by the wheel's label, not the line
+    bool doubtful = false;    // it would be decided but for a word only heard alike (ScriptMatch's Result::doubtful)
 };
 
 struct Input {
@@ -78,6 +80,7 @@ struct State {
     Phase phase = Phase::Off;
     bool otherSpoke = false;   // the other person was speaking last tick
     float unsureLeft = 0.0f;   // the "Didn't catch that" mark's time left
+    bool doubt = false;        // ... and it says "Not sure which" (Mic::Doubt)
     float committedS = 0.0f;   // since the commit
     int committed = -1;
 };
