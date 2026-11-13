@@ -368,6 +368,29 @@ std::vector<FormationSpot> SquadFormation(Vec3 const& player, Vec3 const& lookAt
 // Up to 6 people by trying every order; beyond that in the order given.
 std::vector<int> AssignSpots(std::vector<Vec3> const& from, std::vector<FormationSpot> const& spots);
 
+// ---- Walking along (research/69 "Walking along", 2026-11-12; the owner: "ideally we would know that Shepard should be walking
+// alongside some of the other characters. If we fall too behind the conversation should likely pause") ---------------------------
+// A scripted walk (a matinee walking Shepard's hidden pawn while the view stays the player's) with someone walking beside him
+// pauses while the player's eyes are more than `pauseUnits` from where it has Shepard, at the end of a line if one is playing,
+// and goes on once they are back within `resumeUnits`, when nobody walks beside him any more, or after `maxPauseS` (then it does
+// not pause again).
+struct WalkAlongSettings {
+    double pauseUnits = 300.0;
+    double resumeUnits = 150.0;
+    double maxPauseS = 120.0;  // 0: no limit
+};
+struct WalkAlongState {
+    bool paused = false;
+    bool waitingLine = false;  // behind, but a line is playing: the pause comes at its end
+    bool gaveUp = false;       // a pause ran out: no more this walk
+    double pausedS = 0.0;      // this pause so far
+    double pausedTotalS = 0.0;
+    int pauses = 0;
+};
+enum class WalkAlongStep { Nothing, Pause, Resume, WaitLine };
+WalkAlongStep StepWalkAlong(WalkAlongState& state, double gapUnits, int companions, bool linePlaying, double dt,
+    WalkAlongSettings const& settings);
+
 // ---- Flowing conversations (research/59 "Flowing conversations", 2026-11-09) ---------------------------------------------------
 // A conversation's play from a start entry that can never reach a dialogue wheel (a scene watched: Garrus arguing with the
 // Executor, Udina's arrival, the trigger lines on a walk up) is a chain. The game plays a start whose first entry is flagged

@@ -322,6 +322,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   Eyes (2026-11-12, research/69 "Heads at the drawn eyes"; fake headset): in Virmire's start and at the Council's hearing,
   Kirrahe and the councillors look you in the eye, not just past you, and nothing of Shepard's own body is in front of your
   face; turn with the right stick during any conversation: you turn on the spot, not round a point in front of you.
+  Walking along (2026-11-12, research/69 "Walking along"; fake headset pending): in Anderson's walk to the Council (John02 slot
+  80), stand still: once he is 3 m ahead the walk stops and waits; walk up to him and it goes on. Walk along with him: it never
+  stops.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.

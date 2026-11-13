@@ -614,6 +614,39 @@ std::vector<int> AssignSpots(std::vector<Vec3> const& from, std::vector<Formatio
     return best;
 }
 
+WalkAlongStep StepWalkAlong(WalkAlongState& state, double gapUnits, int companions, bool linePlaying, double dt,
+    WalkAlongSettings const& settings) {
+    if (state.paused) {
+        state.pausedS += dt;
+        state.pausedTotalS += dt;
+        if (gapUnits <= settings.resumeUnits || companions == 0) {
+            state.paused = false;
+            return WalkAlongStep::Resume;
+        }
+        if (settings.maxPauseS > 0.0 && state.pausedS >= settings.maxPauseS) {
+            state.paused = false;
+            state.gaveUp = true;
+            return WalkAlongStep::Resume;
+        }
+        return WalkAlongStep::Nothing;
+    }
+    if (state.gaveUp || companions == 0 || gapUnits <= settings.pauseUnits) {
+        state.waitingLine = false;
+        return WalkAlongStep::Nothing;
+    }
+    if (linePlaying) {
+        // A line is not cut off: the walk pauses at its end.
+        bool const first = !state.waitingLine;
+        state.waitingLine = true;
+        return first ? WalkAlongStep::WaitLine : WalkAlongStep::Nothing;
+    }
+    state.waitingLine = false;
+    state.paused = true;
+    state.pausedS = 0.0;
+    ++state.pauses;
+    return WalkAlongStep::Pause;
+}
+
 bool IsSetPiece(std::string_view name) {
     // tools/conversation-scan.py --list framed, over the game's packages (2026-11-06).
     // tools/conversation-scan.py --set-pieces (research/59 "Marking the rest", 2026-11-09): framed, or Shepard walked by the game.

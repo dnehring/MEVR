@@ -23,6 +23,8 @@ bool PlayerTrackPlace(float place[3], std::uint64_t* ms);
 std::uint64_t LastPlayerTrackMs();
 // The matinee of the last moment that moved the player's pawn: "<sequence>.SeqAct_Interp_N" (empty if none).
 std::string PlayerTrackMatinee();
+// The move track instance that last moved the player's pawn (inside the SeqAct_Interp playing it; null if none). Game thread.
+void* PlayerTrackInstance();
 // `mevr moment`: what is being watched and the last moment's numbers.
 std::string Command(std::string const& rest);
 void LogStats();

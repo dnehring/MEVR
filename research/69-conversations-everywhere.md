@@ -355,6 +355,9 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     (scripted walks) audited too, their records and the stand-in extended to them: nobody in them looks at Shepard through the
     look-at system; an opening that read the frame from before the world view (Benezia after phase 2) fixed with the last
     first-person view's offset and a check of the eyes after the opening.
+33. **Walking along** (the owner, 2026-11-12: Shepard walks alongside others in scripted walks; "If we fall too behind the
+    conversation should likely pause"; "Walking along" below): a scripted walk with someone beside Shepard pauses while the
+    player is more than 3 m behind (at a line's end), on again within 1.5 m. Built and unit-tested; [verify] in the game.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3345,6 +3348,44 @@ follows them, once, under a dip (`gC.eyesMeant`; log `the opening's eyes were dr
 (20:14-20:19, `tools/fake-headset-session.ps1`, Benezia's scene first after the launch): his head 0.06 m from the eyes after the
 dip (the cached offset right, no correction needed), then 0.29-0.32 m as his own pose leans forward (Benezia's face 8-16 degrees
 off both); the council's hearing 0.10-0.11 m, Virmire 0.09-0.10 m.
+
+### Walking along (2026-11-12 21:00-, item 33)
+
+The owner: "How do we handle the walking types of scenes? ideally we would know that shepherd should be walking alongside some
+of the other characters. If we fall too behind the conversation should likely pause"; then, offered a pause at about 3 m behind
+or a slow-down first: "Yes, build it" (the pause).
+
+**The scripted walks, from the scan** (`conversation-sweep.py moments` over `sweep\scan.jsonl`: the 21 level-script matinees
+that move the player by a track outside animated cutscenes; each matinee's groups with a move track, and its voice tracks):
+someone walks beside Shepard in 10 (Anderson, the matinee's "Captain", in both Council walks; the squad, "hench1/2", in eight
+others: Virmire's deployment, the Feros transition, the gambler, Noveria's double homicide...); in the rest the others who move
+go their own way (Benezia's guards, geth, troopers) or nobody moves. 16 play sound during the walk, 7 of them with FaceFX (people
+talking as they walk); the two Council walks are silent.
+
+**How they played until now**: the track walks Shepard's hidden pawn, the view stays the player's; the player walks along with
+the stick (the view joins the pawn when it rests) or the scene goes on without him (Anderson 7 m away at the Council walk's end,
+17 m at the Spectre's), and the conversation after it cuts the player to Shepard's mark.
+
+Built (`game/ConversationWorld`, rule `cw::StepWalkAlong` in core/vr/ConversationWorld, unit-tested):
+- **Who walks beside Shepard** is read live from the matinee walking him (the move track instance's `SeqAct_Interp`,
+  `authored_moment::PlayerTrackInstance`): every group actor of it, a person, with a move track, within 5 m of where the track has
+  Shepard. No per-scene data: every walk is covered.
+- **The pause**: with someone beside him, when the player's eyes are more than `worldWalkAlongPauseM` (3) from where the track has
+  Shepard, the matinee's own `bPaused` is set (its tracks, camera and events wait); a line playing (a sound track's audio
+  `BioIsPlaying`, or a person's `IsPlayingFaceFXAnim`) is not cut: the pause comes at its end. It goes on when the player is
+  back within `worldWalkAlongResumeM` (1.5), when nobody walks beside him any more, or after `worldWalkAlongMaxS` (120 s; then
+  not again that walk). The view never joins a paused walk (`gC.noJoin`): the track would carry the player when it went on.
+  Released at the moment's end and when the mod unloads. `worldWalkAlong = 0` turns it off. Logs `moment: walk along:`; the
+  moment records' `walkAlong` (paused, the gap, who is beside him, a line, the pauses).
+- Tests: `mevr convo follow on|off` (the simulated stick follows Shepard's walk in a moment, a player walking along).
+
+**Conversations**: holding the next line while the player falls behind was offered too; every record of the day was checked
+for a speaker more than 6 m from the player's eyes: five conversations, all distances the scenes are built with (the councillors
+on their platforms 18 m, Kirrahe before his troops, Benezia across the room, Liara in her bubble), none a group walking away. In
+the first-person design the group gathers round the player (the circle) or the player stands at Shepard's mark (staged), so
+nothing was built for conversations; a scene where people walk off while talking would be the case for it.
+
+Not run in the game yet: the other session (VR performance) had the game when it was built.
 
 ### The staged scenes (2026-11-12; for the owner's review)
 

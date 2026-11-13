@@ -416,6 +416,10 @@ std::uint64_t LastPlayerTrackMs() {
     return gTrackMs.load(std::memory_order_relaxed);
 }
 
+void* PlayerTrackInstance() {
+    return const_cast<void*>(gTrackInstSeen.load(std::memory_order_relaxed));
+}
+
 std::string PlayerTrackMatinee() {
     // "<sequence>.SeqAct_Interp_N" out of the track instance's full name; the whole name if it has no SeqAct_Interp.
     std::string const& n = gM.matinee;

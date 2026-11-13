@@ -256,6 +256,11 @@ struct Settings {
     int lookRank = 100;
     bool lookEyes = true;              // worldLookEyes: heads that would turn to Shepard's body, left on a mark away from the
                                        // player, turn to the player's eyes (research/69 "Heads that look past the player")
+    // A scripted walk with someone beside Shepard waits for a player who falls behind (worldWalkAlong; research/69 "Walking
+    // along", the owner 2026-11-12): paused past worldWalkAlongPauseM, on again within worldWalkAlongResumeM, at most
+    // worldWalkAlongMaxS a pause (0: no limit).
+    bool walkAlong = true;
+    cw::WalkAlongSettings walkAlongSettings;
     // The speaker's and the spoken-to's heads reach further than the game's glance: each link of their look-at chain gets
     // this share of what its strength leaves (worldLookReach; 0: the game's strengths for everyone). 0 by default since
     // 2026-11-11 (the owner: authored head movements, "nods for the council", and gestures "must be retained"; a stronger
@@ -450,6 +455,10 @@ void RefreshSettings() {
     s.glanceKeepDeg = number("worldGlanceKeepDeg", s.glanceKeepDeg, 0.0f, 180.0f);
     s.lookRank = static_cast<int>(number("worldLookRank", static_cast<float>(s.lookRank), 0.0f, 99999.0f));
     s.lookEyes = number("worldLookEyes", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.walkAlong = number("worldWalkAlong", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.walkAlongSettings.pauseUnits = number("worldWalkAlongPauseM", 3.0f, 0.5f, 30.0f) * kUnitsPerMeter;
+    s.walkAlongSettings.resumeUnits = std::min(number("worldWalkAlongResumeM", 1.5f, 0.2f, 30.0f) * kUnitsPerMeter, s.walkAlongSettings.pauseUnits);
+    s.walkAlongSettings.maxPauseS = number("worldWalkAlongMaxS", 120.0f, 0.0f, 3600.0f);
     s.lookReach = number("worldLookReach", s.lookReach, 0.0f, 1.0f);
     s.turnComfortDeg = number("worldTurnComfortDeg", s.turnComfortDeg, 5.0f, 180.0f);
     s.turnSettleDeg = number("worldTurnSettleDeg", s.turnSettleDeg, 0.0f, 90.0f);
@@ -2831,8 +2840,16 @@ void StartSteer(char const* why, std::optional<ik::Vec3> to = std::nullopt) {
     if (!to) {
         to = gC.sceneWants;
     }
-    ue3::Object* const shep = gC.playerPawn;
-    auto const at = shep != nullptr && ue3::runtime::IsAlive(shep) ? player::Location(shep) : std::nullopt;
+    ue3::Object* const shep = ShepardPawn();
+    // From the player's feet: a view that walks apart from the body (a moment, a walk-in by the view) has its own.
+    std::optional<ik::Vec3> at;
+    if (gC.detached) {
+        at = gC.detachedAt;
+    } else if (shep != nullptr && ue3::runtime::IsAlive(shep)) {
+        if (auto const p = player::Location(shep)) {
+            at = V(*p);
+        }
+    }
     if (!to || !at) {
         return;
     }
@@ -5049,6 +5066,174 @@ struct MomentView {
     std::string matinee;             // its matinee once named (authored_moment forgets it when the track ends)
 };
 MomentView gMoment;
+
+// ---- Walking along (research/69 "Walking along", 2026-11-12; the owner: "ideally we would know that Shepard should be walking
+// alongside some of the other characters. If we fall too behind the conversation should likely pause") ---------------------------
+// A scripted walk moves Shepard's hidden pawn while the view stays the player's. When someone the matinee also moves walks within
+// 5 m of where it has him (Anderson up the Council's stairs, the squad), and the player's eyes fall worldWalkAlongPauseM behind,
+// the matinee pauses (its own bPaused: its tracks, camera and events wait) at the end of the line if one is playing (a sound
+// track's audio playing, or someone's FaceFX), and goes on once the player is back within worldWalkAlongResumeM.
+ue3::ClassRef gSeqInterpClass{"Engine.SeqAct_Interp"};
+ue3::FieldRef gInterpPaused{"Engine.SeqAct_Interp", "bPaused"};
+ue3::FieldRef gInterpIsPlaying{"Engine.SeqAct_Interp", "bIsPlaying"};
+ue3::FieldRef gInterpGroupInst{"Engine.SeqAct_Interp", "GroupInst"};
+ue3::FieldRef gGroupInstActor{"Engine.InterpGroupInst", "GroupActor"};
+ue3::FieldRef gGroupInstTracks{"Engine.InterpGroupInst", "TrackInst"};
+ue3::ClassRef gTrackInstMoveClass{"Engine.InterpTrackInstMove"};
+ue3::ClassRef gTrackInstSoundClass{"Engine.InterpTrackInstSound"};
+ue3::FieldRef gSoundTrackAudio{"Engine.InterpTrackInstSound", "PlayAudioComp"};
+ue3::FunctionRef gAudioIsPlaying{"Engine.AudioComponent.BioIsPlaying"};
+ue3::FunctionRef gFaceFxPlaying{"Engine.SkeletalMeshComponent.IsPlayingFaceFXAnim"};
+
+struct WalkAlong {
+    ue3::Object* matinee = nullptr;  // the SeqAct_Interp walking Shepard (the moment's first)
+    bool pausedByUs = false;
+    cw::WalkAlongState state;
+    int companions = 0;              // last tick
+    bool line = false;
+    double gapUnits = 0.0;
+    std::vector<std::string> beside; // who walked beside him (logged once)
+};
+WalkAlong gWalkAlong;
+bool gFollowShepard = false;          // `mevr convo follow on`: in a moment the simulated stick follows Shepard's pawn (tests)
+std::uint64_t gFollowMs = 0;
+
+bool CallBool(ue3::Object* object, ue3::FunctionRef& fn) {
+    ue3::Function* const f = fn.Get();
+    if (f == nullptr || object == nullptr || !ue3::runtime::IsAlive(object)) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), f);
+    if (!p.Valid()) {
+        return false;
+    }
+    ue3::runtime::Call(object, f, p);
+    return p.Return<bool>().value_or(false);
+}
+
+void PauseWalk(bool paused, std::string const& why) {
+    ue3::Object* const seq = gWalkAlong.matinee;
+    if (seq == nullptr || !ue3::runtime::IsAlive(seq)) {
+        gWalkAlong.pausedByUs = false;
+        return;
+    }
+    if (gInterpPaused.WriteBool(seq, paused)) {
+        gWalkAlong.pausedByUs = paused;
+        log::Info("moment: walk along: {} ({})", paused ? "the walk pauses" : "the walk goes on", why);
+    } else {
+        log::Warn("moment: walk along: could not {} the matinee (bPaused not written)", paused ? "pause" : "resume");
+    }
+}
+
+// The moment ends, the setting goes off, the mod unloads: a walk we paused goes on.
+void ReleaseWalkAlong(char const* why) {
+    if (gWalkAlong.pausedByUs) {
+        PauseWalk(false, why);
+    }
+    if (gWalkAlong.state.pauses != 0) {
+        log::Info("moment: walk along: {} pause{} of {:.1f} s in all{}", gWalkAlong.state.pauses, gWalkAlong.state.pauses == 1 ? "" : "s",
+            gWalkAlong.state.pausedTotalS, gWalkAlong.state.gaveUp ? "; one ran out (worldWalkAlongMaxS): no more this walk" : "");
+    }
+    gWalkAlong = {};
+}
+
+// Each tick of a moment's view.
+void StepWalkAlongTick(double dt) {
+    if (!gSettings.walkAlong || !gMoment.on || gMoment.provisional) {
+        if (gWalkAlong.pausedByUs) {
+            ReleaseWalkAlong(!gSettings.walkAlong ? "worldWalkAlong is off" : "no moment");
+        }
+        return;
+    }
+    if (gWalkAlong.matinee == nullptr) {
+        auto* const inst = static_cast<ue3::Object*>(authored_moment::PlayerTrackInstance());
+        ue3::Class* const cls = gSeqInterpClass.Get();
+        if (inst == nullptr || cls == nullptr || !ue3::runtime::IsAlive(inst)) {
+            return;
+        }
+        gWalkAlong.matinee = ue3::runtime::Get().OuterOfA(inst, cls);
+        if (gWalkAlong.matinee == nullptr) {
+            return;
+        }
+    }
+    ue3::Object* const seq = gWalkAlong.matinee;
+    if (!ue3::runtime::IsAlive(seq)) {
+        gWalkAlong.matinee = nullptr;
+        gWalkAlong.pausedByUs = false;
+        return;
+    }
+    ue3::Object* const shep = ShepardPawn();
+    int companions = 0;
+    bool line = false;
+    std::vector<std::string> beside;
+    if (auto const groups = gInterpGroupInst.ElementsOf(seq, 64); groups && groups->stride == static_cast<std::int32_t>(sizeof(void*))) {
+        for (std::int32_t i = 0; i < groups->count; ++i) {
+            ue3::Object* const group = *static_cast<ue3::Object**>(groups->At(i));
+            if (group == nullptr || !ue3::runtime::IsAlive(group)) {
+                continue;
+            }
+            bool moves = false;
+            if (auto const tracks = gGroupInstTracks.ElementsOf(group, 64); tracks && tracks->stride == static_cast<std::int32_t>(sizeof(void*))) {
+                for (std::int32_t k = 0; k < tracks->count; ++k) {
+                    ue3::Object* const track = *static_cast<ue3::Object**>(tracks->At(k));
+                    if (track == nullptr || !ue3::runtime::IsAlive(track)) {
+                        continue;
+                    }
+                    if (ue3::IsA(track, gTrackInstMoveClass)) {
+                        moves = true;
+                    } else if (!line && ue3::IsA(track, gTrackInstSoundClass)) {
+                        ue3::Object* const audio = gSoundTrackAudio.Read<ue3::Object*>(track).value_or(nullptr);
+                        line = audio != nullptr && CallBool(audio, gAudioIsPlaying);
+                    }
+                }
+            }
+            ue3::Object* const actor = gGroupInstActor.Read<ue3::Object*>(group).value_or(nullptr);
+            if (actor == nullptr || IsShepardPawn(actor) || actor == shep || !ue3::runtime::IsAlive(actor) || !player::IsBioPawn(actor)) {
+                continue;
+            }
+            if (!line) {
+                line = CallBool(player::Mesh(actor), gFaceFxPlaying);
+            }
+            auto const at = player::Location(actor);
+            if (moves && at && std::hypot(at->x - gMoment.pawnAt.x, at->y - gMoment.pawnAt.y) <= 500.0) {
+                ++companions;
+                beside.push_back(ShortName(actor));
+            }
+        }
+    }
+    if (!gInterpIsPlaying.ReadBool(seq).value_or(false) && !gWalkAlong.pausedByUs) {
+        companions = 0;  // the matinee is over
+    }
+    if (companions != 0 && gWalkAlong.beside.empty()) {
+        gWalkAlong.beside = beside;
+        std::string names;
+        for (std::string const& n : beside) {
+            names += (names.empty() ? "" : ", ") + n;
+        }
+        log::Info("moment: walk along: {} walk{} beside Shepard: the walk waits for a player {:.1f} m behind", names, companions == 1 ? "s" : "",
+            gSettings.walkAlongSettings.pauseUnits / kUnitsPerMeter);
+    }
+    ik::Vec3 const eyes = PlayerEyes();
+    double const gap = std::hypot(eyes.x - gMoment.pawnAt.x, eyes.y - gMoment.pawnAt.y);
+    gWalkAlong.companions = companions;
+    gWalkAlong.line = line;
+    gWalkAlong.gapUnits = gap;
+    switch (cw::StepWalkAlong(gWalkAlong.state, gap, companions, line, std::clamp(dt, 0.0, 0.25), gSettings.walkAlongSettings)) {
+    case cw::WalkAlongStep::Pause:
+        PauseWalk(true, std::format("the player is {:.1f} m behind Shepard, {} beside him", gap / kUnitsPerMeter, companions));
+        break;
+    case cw::WalkAlongStep::Resume:
+        PauseWalk(false, gWalkAlong.state.gaveUp ? std::format("{:.0f} s paused: worldWalkAlongMaxS", gWalkAlong.state.pausedS)
+                         : companions == 0 ? std::string("nobody walks beside Shepard any more")
+                                           : std::format("the player caught up, {:.1f} m from Shepard", gap / kUnitsPerMeter));
+        break;
+    case cw::WalkAlongStep::WaitLine:
+        log::Info("moment: walk along: the player is {:.1f} m behind; a line is playing: the walk pauses at its end", gap / kUnitsPerMeter);
+        break;
+    case cw::WalkAlongStep::Nothing:
+        break;
+    }
+}
 std::uint32_t gMoments = 0;
 
 bool MomentHeld() {
@@ -5104,6 +5289,7 @@ void EndMomentView(Link const& link, char const* why, bool stopWorld) {
     }
     gEyesLogged.clear();
     gDrawnEyes.reset();
+    ReleaseWalkAlong("the moment ended");
     if (ue3::Object* const controller = player::Controller()) {
         if (ue3::Object* const pawn = player::Pawn(controller); pawn != nullptr && gC.moving && ue3::runtime::IsAlive(pawn)) {
             WalkVelocity(pawn, {});
@@ -5363,7 +5549,8 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
         gC.wantedMark = gMoment.pawnAt;
         TrailAdd(gMoment.pawnAt);
         std::uint64_t const track = authored_moment::LastPlayerTrackMs();
-        gC.noJoin = track != 0 && now >= track && now - track <= 500;
+        // (a walk we paused rests too, but goes on: the view never joins it there, or the track would carry the player)
+        gC.noJoin = (track != 0 && now >= track && now - track <= 500) || gWalkAlong.pausedByUs;
         if (!gMoment.viewWalk) {
             gMoment.viewWalk = true;
             gMoment.wanted = gMoment.pawnAt;
@@ -5460,6 +5647,11 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
         // The track walks Shepard's pawn, hidden, while the view stays the player's: every look at him follows the pawn
         // (research/69 "Heads at the drawn eyes": the moments).
         StepEyes();
+        StepWalkAlongTick(deltaSeconds);
+        if (gFollowShepard && GetTickCount64() - gFollowMs >= 500) {
+            gFollowMs = GetTickCount64();
+            StartSteer("following Shepard's walk (mevr convo follow)", gMoment.pawnAt);
+        }
         if (gSettings.stances || gStancesOverride.value_or(false)) {
             if (!gC.stanceBegin) {
                 gC.stanceBegin = true;
@@ -5815,13 +6007,17 @@ std::string WriteStance(std::string const& tag) {
     ik::Vec3 const boundary = gC.boundaryAt.value_or(player);
     std::string const json = std::format(
         "{{\"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, \"staged\": {}, \"opening\": \"{}\", "
-        "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f},\n"
+        "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f}, \"walkAlong\": {},\n"
         "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"eyes\": {}, \"eyesDrawn\": {}, \"bodyFromEyesM\": {}, \"detached\": {}, \"turnedDeg\": {:.0f}, "
         "\"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, \"steering\": {}}},\n"
         "\"people\": [{}],\n\"others\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
         "\"ahead\": {{\"now\": [{}], \"later\": [{}]}}}}\n",
         JsonText(name), gC.number, JsonText(tag), Seconds(), gC.staged ? "true" : "false", moment ? "moment" : gC.world ? cw::Name(gC.opening) : "-",
         conv != nullptr ? gCurrentEntry.Read<int>(conv).value_or(-1) : -1, JsonText(gC.subtitle), kUnitsPerMeter,
+        moment ? std::format("{{\"paused\": {}, \"gapM\": {:.2f}, \"beside\": {}, \"line\": {}, \"pauses\": {}, \"pausedS\": {:.1f}}}",
+                     gWalkAlong.pausedByUs ? "true" : "false", gWalkAlong.gapUnits / kUnitsPerMeter, gWalkAlong.companions,
+                     gWalkAlong.line ? "true" : "false", gWalkAlong.state.pauses, gWalkAlong.state.pausedTotalS)
+               : std::string("null"),
         P3(player), playerYaw, P3(eyes), gDrawnEyes ? "true" : "false",
         shepardHead ? std::format("{:.2f}", std::hypot(shepardHead->at.x - eyes.x, shepardHead->at.y - eyes.y) / kUnitsPerMeter) : std::string("null"),
         gC.detached ? "true" : "false", gC.turnedDeg, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
@@ -6646,6 +6842,17 @@ std::string Command(std::string const& rest) {
         return std::format("convo: stances from above are {} (after the opening, each walk and at the end; %LOCALAPPDATA%\\MEVR\\stances)",
             gSettings.stances || gStancesOverride.value_or(false) ? "written" : "not written");
     }
+    if (verb == "follow") {
+        // Tests: in a scripted walk the simulated left stick follows Shepard's pawn (a player walking along), or not.
+        std::string w;
+        words >> w;
+        if (w == "on" || w == "off") {
+            gFollowShepard = w == "on";
+        } else if (!w.empty()) {
+            return "usage: mevr convo follow [on | off]";
+        }
+        return std::format("convo: following Shepard's walk in a moment: {}", gFollowShepard ? "on" : "off");
+    }
     if (verb == "eyes") {
         // Tests (A/B): the eyes stand-in off, or back to worldLookEyes.
         std::string w;
@@ -6722,7 +6929,7 @@ std::string Command(std::string const& rest) {
         return out;
     }
     return "usage: mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | stance [tag] | stances on|off|file | ahead | "
-           "goto [x y] | turn <deg> | eyes [on|off]]";
+           "goto [x y] | turn <deg> | eyes [on|off] | follow [on|off]]";
 }
 
 std::string StatusJson() {
@@ -6749,6 +6956,7 @@ void LogStats() {
 }
 
 void Shutdown(Link const& link) {
+    ReleaseWalkAlong("the mod unloads");
     if (gEyes != nullptr && ue3::runtime::IsAlive(gEyes) && gActorDestroy.Get() != nullptr) {
         ue3::Params p(ue3::runtime::Get(), gActorDestroy.Get());
         ue3::runtime::Call(gEyes, gActorDestroy.Get(), p);

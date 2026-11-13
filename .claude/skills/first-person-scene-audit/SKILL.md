@@ -40,7 +40,9 @@ and how to read it.
   -FirstSlot 80 -Only 82,85 -Pace full -Seconds 90 -Stances -Lines 6 [-TurnAt 7] [-WanderAt 9] [-EndAfter 4] [-Before "mevr ..."]`.
   `-Before` runs a console line before each scene (an A/B switch). A static scene ends itself once its `settled` stance is written
   (after `-Lines` and `-TurnAt`).
-- Console: `mevr convo stance|stances on|off|ahead|turn <deg>|goto [x y]|walk x y s|eyes on|off|pick n|skip|end`, `mevr moment`.
+- Console: `mevr convo stance|stances on|off|ahead|turn <deg>|goto [x y]|walk x y s|eyes on|off|follow on|off|pick n|skip|end`,
+  `mevr moment`. In a scripted walk `follow on` is a player walking along (the simulated stick after Shepard's pawn); the
+  moment records' `walkAlong` says whether the walk is paused for the player, the gap, who is beside Shepard, a line playing.
 
 ## 3. The scenes, one per kind (sample; never sweep everything)
 

@@ -1296,6 +1296,14 @@ void CheckPaths() {
     // game/ConversationWorld: the squad's formation held quietly (research/69 "The squad's formation, held").
     CheckPath("SFXGame.BioBaseSquad", {"Members", "vHoldPosition"}, SDK_AT(offsetof(FMemberData, vHoldPosition), 12));
     CheckPath("SFXGame.BioBaseSquad", {"Members", "eFormation"}, SDK_AT(offsetof(FMemberData, eFormation), 1));
+    // game/ConversationWorld: a scripted walk that waits for the player (research/69 "Walking along").
+    CheckField("Engine.SeqAct_Interp", "bPaused", SDK_BOOL(USeqAct_Interp, bPaused));
+    CheckField("Engine.SeqAct_Interp", "bIsPlaying", SDK_BOOL(USeqAct_Interp, bIsPlaying));
+    CheckField("Engine.SeqAct_Interp", "GroupInst", SDK_FIELD(USeqAct_Interp, GroupInst));
+    CheckField("Engine.InterpGroupInst", "GroupActor", SDK_FIELD(UInterpGroupInst, GroupActor));
+    CheckField("Engine.InterpGroupInst", "TrackInst", SDK_FIELD(UInterpGroupInst, TrackInst));
+    CheckField("Engine.InterpTrackInstSound", "PlayAudioComp", SDK_FIELD(UInterpTrackInstSound, PlayAudioComp));
+    CheckClass<UInterpTrackInstMove>("Engine.InterpTrackInstMove");
     // game/ConversationWorld (research/69 item 7, "Seats for the pairs"): who says each line to whom, and who the indices name.
     CheckElement("SFXGame.BioConversation", "m_SpeakerList", sizeof(FBioDialogSpeaker));
     CheckPath("SFXGame.BioConversation", {"m_SpeakerList", "aSpeaker"}, SDK_AT(offsetof(FBioDialogSpeaker, aSpeaker), 8));
@@ -1574,6 +1582,8 @@ void CheckFunctions() {
         "SFXGame.BioPower.IsEnabled",  // the power wheel (research/55)
         "SFXGame.BioPlayerInput.IsCombatEnabled",
         "SFXGame.BioPower.IsRequiredResourceAvailable",  // game/CockpitPanel: the repair's omni-gel
+        "Engine.AudioComponent.BioIsPlaying",  // game/ConversationWorld: a walk pauses at a line's end
+        "Engine.SkeletalMeshComponent.IsPlayingFaceFXAnim",
     };
     for (char const* function : functions) {
         CheckFunction(function);

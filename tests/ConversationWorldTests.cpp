@@ -936,6 +936,53 @@ void TestWalkStep() {
     CHECK(cw::ShowBarkSubtitle(subs, true, 0, 9, 11.0, 0.25));    // back: at once
 }
 
+void TestWalkAlong() {
+    cw::WalkAlongSettings const c;  // pause past 3 m, resume within 1.5 m, 120 s at most
+    // Nobody beside Shepard: a walk of his own never waits.
+    {
+        cw::WalkAlongState s;
+        CHECK(cw::StepWalkAlong(s, 800.0, 0, false, 0.1, c) == cw::WalkAlongStep::Nothing);
+        CHECK(!s.paused);
+    }
+    // Anderson beside him, the player 4 m behind: paused; 2 m behind: still paused (hysteresis); 1 m: on again.
+    {
+        cw::WalkAlongState s;
+        CHECK(cw::StepWalkAlong(s, 250.0, 1, false, 0.1, c) == cw::WalkAlongStep::Nothing);
+        CHECK(cw::StepWalkAlong(s, 400.0, 1, false, 0.1, c) == cw::WalkAlongStep::Pause);
+        CHECK(s.paused && s.pauses == 1);
+        CHECK(cw::StepWalkAlong(s, 200.0, 1, false, 0.1, c) == cw::WalkAlongStep::Nothing);
+        CHECK(cw::StepWalkAlong(s, 100.0, 1, false, 0.1, c) == cw::WalkAlongStep::Resume);
+        CHECK(!s.paused && s.pausedTotalS > 0.15);
+    }
+    // A line playing: the pause waits for its end, said once.
+    {
+        cw::WalkAlongState s;
+        CHECK(cw::StepWalkAlong(s, 400.0, 2, true, 0.1, c) == cw::WalkAlongStep::WaitLine);
+        CHECK(cw::StepWalkAlong(s, 420.0, 2, true, 0.1, c) == cw::WalkAlongStep::Nothing);
+        CHECK(!s.paused && s.waitingLine);
+        CHECK(cw::StepWalkAlong(s, 430.0, 2, false, 0.1, c) == cw::WalkAlongStep::Pause);
+    }
+    // The companions gone (the walk's end): on again.
+    {
+        cw::WalkAlongState s;
+        CHECK(cw::StepWalkAlong(s, 400.0, 1, false, 0.1, c) == cw::WalkAlongStep::Pause);
+        CHECK(cw::StepWalkAlong(s, 400.0, 0, false, 0.1, c) == cw::WalkAlongStep::Resume);
+    }
+    // A pause that runs out goes on and does not come back this walk.
+    {
+        cw::WalkAlongSettings shortPause = c;
+        shortPause.maxPauseS = 1.0;
+        cw::WalkAlongState s;
+        CHECK(cw::StepWalkAlong(s, 400.0, 1, false, 0.1, shortPause) == cw::WalkAlongStep::Pause);
+        cw::WalkAlongStep last = cw::WalkAlongStep::Nothing;
+        for (int i = 0; i < 12 && last != cw::WalkAlongStep::Resume; ++i) {
+            last = cw::StepWalkAlong(s, 400.0, 1, false, 0.1, shortPause);
+        }
+        CHECK(last == cw::WalkAlongStep::Resume && s.gaveUp);
+        CHECK(cw::StepWalkAlong(s, 600.0, 1, false, 0.1, shortPause) == cw::WalkAlongStep::Nothing);
+    }
+}
+
 void TestLatest() {
     cw::Reset();
     CHECK(!cw::Latest().has_value());
@@ -978,6 +1025,7 @@ int RunConversationWorldTests() {
     TestCircle();
     TestMarkWalk();
     TestWalkStep();
+    TestWalkAlong();
     TestLatest();
     std::printf("conversation world tests: %s\n", gFailures == 0 ? "ok" : "FAILED");
     return gFailures;
