@@ -18,6 +18,7 @@
 * [LExSDKv2's generated function wrappers corrupt the UFunction's flags](lexsdk-function-wrappers.md) - `FunctionFlags |= ~0x400` (meant `&=`) sets every flag for good; call ProcessEvent yourself.
 * [Never write Shepard's Camera or God bones](camera-and-god-bones.md) - LE1's camera hangs off them through SpaceBases: the view would follow the body.
 * [ProcessEvent skips every native that has an opcode of its own](process-event-skips-opcode-natives.md) - Trace never hit, Destroy never destroyed, SetLocation and SetOwner did nothing; bitten 2026-10-24, 2026-10-31 and 2026-11-03 under four names.
+* [BioConversation's reply functions read its lists unchecked, so a call without a standing wheel ends the game](conversation-reply-natives-without-a-wheel.md) - A pick between lines (2026-11-06) and Thespian reading a wheel 57-82 ms after `mevr convo end` (twice, 2026-11-13) ended the game inside GetReplyText / SelectConversationEntry; read the reply natives only on a wheel that stands, with its current line and reply nodes there.
 * [The script VM's FFrame is packed on 4 bytes, so its Node is at 0x14 in LE1 and LE2](fframe-packed-on-four-bytes.md) - Every CallFunction skip failed silently for ten days (the game drew the gun however it liked) and the crash report found no script frames.
 
 # Launching and measuring

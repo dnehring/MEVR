@@ -514,6 +514,10 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
       comes back where it always stands and the panel folds away. Shepard's voice plays as ever (or passes silently with
       "Silent"). Does a resting thumb bring it back by accident?
 - [ ] Investigate topics from the main level; a charm or intimidate you don't have is greyed and can't be said.
+- [ ] Names (since 2a7768a8, research/70 section 10): read lines with Saren, Eden Prime, Benezia at the Council hearing
+      (validation save John02 80); does the log's `key terms` list them and the transcript spell them? Labels that share
+      a reply (the hearing's last wheel: three labels, one line) stand as one row. Mumble the one word that tells two
+      similar replies apart: "Not sure which" shows, nothing is taken, and reading it again or saying the label takes it.
 - [ ] The squad's radio (left grip at the ear) still works on foot after a conversation, with its own key terms.
 
 ### Squad orders by gesture (session: Low-latency voice squad commands)

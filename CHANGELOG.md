@@ -21,7 +21,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   taken; the words you have said light up as you go. Shepard's recorded voice is skipped, so the other person answers
   you. No button: the microphone listens only while the replies are up, on your PC, with the same recognizer as the
   squad orders. You need not be word-perfect or finish the line (Relaxed, Performer and Method set how much of it
-  counts), and the stick still picks as before. English game text only. Headset verification pending.
+  counts), and the stick still picks as before. The game's names (Saren, Eden Prime, Benezia...) are listened for
+  wherever they stand in a line, and a reply is never taken when the word that tells it from another was only half
+  heard: the panel says "Not sure which" and you read it again or say its label. Replies that lead to the same answer
+  under different labels show as one row. English game text only. Headset verification pending.
 - **No more camera shake in VR.** Firing no longer shakes the world around you, nor do the Mako's jump jets and
   boost; running and sprinting no longer sway your view with Shepard's stride. Both are on the menu's Comfort page
   (Camera shake: Off, Low, Full; Running sway) if you want the game's effects back. Headset verification pending.

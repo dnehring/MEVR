@@ -21,3 +21,7 @@
 - gotcha: [A library's ONNX Runtime session runs on every core and spins unless told otherwise](gotchas/recognizer-on-every-core.md) (the voice recognizer stalled the game; one thread now).
 * **Create**: [The OpenXR runtime limits a session's swapchains](gotchas/openxr-swapchain-limit.md), after the calibration's targets and then the omni-tool's rail went missing in the same session, with ten other quads.
 * **Update**: [a `cd` in a Bash tool call moves the session](gotchas/bash-cd-moves-the-session.md) and [the Bash tool collapses doubled backslashes](gotchas/bash-heredoc-backslashes.md) bit again.
+
+## 2026-11-13
+* **Create**: [BioConversation's reply functions read its lists unchecked](gotchas/conversation-reply-natives-without-a-wheel.md), after Thespian mode read a wheel just after `mevr convo end` and the game ended twice in another session's runs; the 2026-11-06 pick between lines was the same mechanism.
+* **Update**: [the Bash tool collapses doubled backslashes](gotchas/bash-heredoc-backslashes.md) bit again (an inline edit of the census tool's C++ header lines).

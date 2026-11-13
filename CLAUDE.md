@@ -1319,7 +1319,13 @@ switching frameworks.
   the DLL's clock over a noise floor), one stopped part-way after `pauseMs` (900) if the matcher is sure at the end and
   the strictness allows it (`strictness = relaxed | performer | method`: decided; half the line or the label; nine
   tenths), never on a guess, never while the other person still speaks (`m_fRemainingVOLength`: the wheel comes up about
-  2.5 s before their line ends), talk nobody can place dropped after `staleMs`. **A reply is taken as the wheel takes
+  2.5 s before their line ends), talk nobody can place dropped after `staleMs`. **Never on a misheard word** (research/70
+  section 10, after the owner's first session): cards with the same reply are one choice (`Card::reply`; the panel shows
+  them as one row, the labels joined); words match Exact, Close or Loose (`Quality`: "Cairns" for "Saren's") and a lead
+  that rests on a word only heard alike is not decided (`Result::doubtful`: `Mic::Doubt` "Not sure which: read it again or
+  say its label", the words dropped for a second reading; log `thespian: not sure which:`); the key terms take a name at a
+  sentence's start too (`core/voice/GameNames.inc`, generated: `tools/thespian-census.py --names`) and a name of several
+  words as one term ("Eden Prime"). **A reply is taken as the wheel takes
   it**: `BioConversation.QueueReply(position)` (no wheel location, no sub-menu), only while `m_bDisplayingWheel`; then the
   player's actor is named to `engine/VoicePlace` with gain 0 (`Publisher::Thespian`) and `SkipNode()` is called once
   `m_pSpeaker` is the player and `m_nSelectedReply` names the reply (a tick earlier the skip is refused), unless the

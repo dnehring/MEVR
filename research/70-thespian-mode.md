@@ -296,8 +296,11 @@ step without the game:
 - (a) **Every reply function of `BioConversation` takes a POSITION in `m_lstCurrentReplyIndices`** (0 .. count-1), not
   the reply's index in `m_ReplyList`: `GetReplyText(nIndex, bParse)`, `GetReplyParaphraseText(nIndex)`,
   `GetReplyCategory(nIndex)`, `GetReplyGUIStyle(nIndex)`. `GetNumReplies()` is that array's length. The element's value
-  is the index into `m_ReplyList` (needed only to read the node's `bUnskippable`). Never call them with a position the
-  list does not have.
+  is a place in the current entry's `ReplyListNew`, whose `nIndex` is the reply's index into `m_ReplyList`
+  (**corrected 2026-11-13 in the game**: the hearing's wheel #10 lists 0, 1, 2 where its replies are 12, 11, 12; this
+  note said the value was the index itself; `m_nSelectedReply` is a place too). `game/Thespian`'s `ReplyNode` maps a
+  place to the reply. Never call them with a position the list does not have, nor while the conversation is being
+  ended (section 10).
 - (b) **The investigate topics are in the current list**, each with category 5 (`kCategoryInvestigate`). With two or
   more of them the main wheel shows one "Investigate" slot (the handler's `m_srTextInvestigate`) that opens the
   sub-menu; with exactly one the topic stands on the main wheel itself. For us they are ordinary cards.
@@ -592,3 +595,142 @@ Not built: the hover look from gaze or a pointer (the `hover` class exists; noth
   replies were taken as before with the wheel hidden (a whole line at quiet 219 ms, labels at the pause) and after it was
   shown again. Two things to know: the recognizer's stray "you" in a quiet room was taken together with a label ("you
   Goodbye.", fine), and how the left stick's first push feels in the headset is [verify].
+- **2026-11-13, the owner's first session in the headset; misheard names** (section 10): the mode "working pretty well"
+  but missing game words (Saren, Eden Prime) and one pick felt Renegade where Paragon was meant. Built: names to the
+  recognizer, replies as choices, the doubt rule, sound-alike words (2a7768a8); and a crash guard (57e298c3) after two
+  game crashes in another session's runs.
+
+## 10. Misheard names (2026-11-13, after the owner's first headset session)
+
+**What the owner reported**: the mode works but misses words specific to the game ("Saren", "Eden Prime"), and a
+reply was taken as Renegade where Paragon was meant. Asked whether a training session (the player reads lines; the
+misheard words are mapped to the right ones) is needed.
+
+**What their session's log showed** (10:36 to 10:39: the Council's hearing, `sta90_council_saren_dlg`, then Anderson,
+`sta90_captain_dlg`; the game log was overwritten by later runs, the lines are in this session's transcript). Six spoken
+picks; each took the line that was read:
+
+| Heard | Taken (wheel, position, reply) |
+|---|---|
+| "Saren despises humanity that's why he attacked Eden farm" | #10, 0, reply 12 ("Saren despises humanity. That's why he attacked Eden Prime!"), 87% |
+| "Cairns hiding behind his position as a spectre, you need to open" | #14, 0, reply 16 ("Saren's hiding behind ..."), 76% |
+| "You've made your decision. I won't waste" | #19, 0, reply 22, 79% |
+| "Tell me about the sister between you and me." | captain #2, 0 ("Tell me about this history between you and Saren."), 57% |
+| "What's our next step" | captain #4, 0, 100% |
+| "I should go." | the line itself, 100% |
+
+- On the hearing's wheels several labels lead to one reply: #10's positions 0 (AGREE "Insults? Typical.") and 2 (DEFAULT
+  "See? He hates us!") are both reply 12; #19's three labels are all reply 22. Whatever label the panel showed lit, the
+  game's outcome is the same. #14's AGREE (reply 16) carries transition 4029 (GlobalInt 47 +2; which counter int 47 is:
+  [verify]). Which pick felt Renegade is open (asked the owner).
+- **The cause found**: `Wheel::Keyterms` skipped a capitalised word at a sentence's start (to keep "Tell", "What" out),
+  so "Saren" in "Saren despises humanity." and "Saren's hiding ..." never reached the recognizer on those wheels. Over
+  the census, 1,374 of 3,072 wheels had a name only at a sentence's start (Benezia 50, Saren 37, Sovereign 31, Williams
+  27, Anoleis 26, Feros 23 ...).
+
+**Training (enrollment) is not the first lever.** Reading passages so a dictation model adapts to one voice is the old
+approach; here the recognizer only has to tell 2 to 6 known lines apart, and a misheard word matters only when it is the
+word that tells two cards apart. The order chosen: (1) the names to the recognizer, (2) never decide on a word only heard
+alike, (3) match words by sound; later, if needed: (4) per-player aliases learned from the replies taken (a confusion
+that keeps coming back, used only to match against the cards, never as the transcript), (5) score each card's line
+against the audio in the recognizer's decoder (needs its scores; whether Moonshine's C API gives them: [verify]), (6) no
+fine-tuning of the speech model on a player's voice.
+
+### What was built (2a7768a8, 57e298c3)
+
+1. **Names to the recognizer** (`Wheel::Keyterms(count, context)`, `core/voice/ScriptMatch.cpp`): a capitalised word at
+   a sentence's start is a name when it is one elsewhere on the wheel (capitalised inside a sentence), in `context` (the
+   other person's line, `gTurn.heard`) or in the game's names (`IsGameName`, `src/core/voice/GameNames.inc`: 274 names,
+   generated by `python tools/thespian-census.py scratch/thespian/lines.jsonl --names src/core/voice/GameNames.inc`; a
+   word written with a capital inside a sentence at least twice and four times as often as in lower case: "Prime" is in,
+   once "prime condition"). A run of names with only spaces between is one term ("Eden Prime", "Matriarch Benezia",
+   "Zhu's Hope": Moonshine's key terms take phrases, `moonshine-c-api.h`'s example "Anushka Sharma"). The hearing's
+   wheels gave "Eden,Prime" and "Spectre,Council"; now "Saren,Eden Prime" and "Saren,Spectre,Council". Wheels with any
+   key term: 2,145 before, 2,263 now. Not used: `moonshine_transcriber_set_context` (the library picks a passage's unusual
+   words by its tokenizer; it would need the voice DLL's interface to grow).
+2. **Replies are the choices** (`Card::reply`, the game's reply index; the bench passes the census's): cards with the
+   same reply are one group; different replies are one group only when their lines are word for word the same (the
+   census: identical lines on one wheel lead to the same reply 737 times, to different replies with one outcome 9 times,
+   to different outcomes 3 times, Tartakovsky's plot-conditional twins); lines a word apart under different replies are
+   two choices, so neither is decided by its line and the label tells them apart. The panel shows one row per reply, the
+   labels joined with " / ", coloured only when they agree (`game/Thespian` `SendPanel`).
+3. **How surely two words are one** (`Quality`, `Compare`, `WordQuality`): Exact (as written, a stem, a run-together
+   spelling), Close (spellings 0.75 alike, five letters or more; equal sound keys, four letters or more; a cut last word),
+   Loose, new: sound keys one edit apart (each three or more), spellings at least half alike (`Settings::looseSpelling`
+   0.5), both four letters or more: "cairns" for "saren's", "sister" for "history"; not "farm" for "prime" (0.4).
+4. **The doubt rule** (`Wheel::Doubtful`, run on a decided leader with a runner-up): if the lead holds with only Exact
+   matches, it stands. Otherwise each word heard alike that the runner-up doesn't use must be Close and nearer the
+   leader's word than any content word of the runner-up's by `clearGap` (0.2), with no Close or Loose match there; else
+   `decided = false`, `doubtful = true`, `doubtHeard` / `doubtWord` name it. The turn's rules (`core/vr/Thespian`
+   `Match::doubtful`): at the pause the mark says "Not sure which: read it again or say its label" (`Mic::Doubt`, RCSS
+   class `unsure`) and the words are dropped (`out.restart`) so the second reading stands alone. Log `thespian: not sure
+   which: "<heard>" would be [n] "<label>" but "<word>" was only heard like "<card's word>"`; `mevr thespian status`'s
+   `not sure which` count, `StatusJson`'s `notSure`.
+5. **A crash guard** (57e298c3): two game crashes in another session's runs (11:26 Benezia, 11:33 Liara; the owner's
+   `[Thespian] on = 1`) were the mod calling `BioConversation.GetReplyText` 57 and 82 ms after `mevr convo end`, during a
+   line: the ending conversation showed a wheel for a moment while its lists went away (`MassEffect1.exe+0xC80E72`
+   reading 0x10, `+0xC80BF4` reading a freed block). `ReadLive` calls the reply natives only while the wheel is shown,
+   the conversation has a current line (`m_nCurrentEntry >= 0`) and every current reply is in `m_ReplyList` (else
+   `thespian: a wheel without its lists ...: not read`, five times at most); a turn begins only on a wheel that stood
+   three ticks on the same conversation, line and replies (`gSteady`).
+
+### Measured (2026-11-13)
+
+Commands: `build/Release/mevr-thespian-bench.exe scratch/thespian/cases.tsv --noise 0.15 --drop 0.05` (`--replies 0`:
+the old grouping), `... --foreign 0 --soundalike 0.3 --soundalike-out <file>` and the old binary `--utterances <file>` on
+the same transcripts, `python tools/thespian-vo-bench.py --arch small --keyterms wheel --tag=-names`.
+
+| Test | Before (6eb231a6) | After (2a7768a8) |
+|---|---|---|
+| Whole line, at its end | 11,771 of 11,774 right, 0 wrong | 11,777 of 11,784 right, 7 undecided, 0 wrong |
+| Simulated recognizer (15% wrong, 5% dropped) | 92.0% right, 1 wrong | 91.5% right, 1 wrong (92.0% with `--replies 0`) |
+| The label alone | 96.7% | 96.5% |
+| Another wheel's line (should be refused) | 0.73% accepted | 0.68% accepted |
+| **Sound-alike** (30% of content words heard as another game word that only sounds or looks alike; 7,607 lines) | 95.8% right, **1 wrong**, 2 wrong on the way | **98.0% right, 0 wrong**, 0 on the way, 152 "not sure which" |
+| Shepard's recordings through the recognizer (1,200) | 1,192 right, 8 undecided, 0 wrong | 1,192 right, 8 undecided, 0 wrong |
+| ... word errors, male / female | 3.0% / 4.0% | 2.9% / 3.9% |
+
+- With replies as the choices there are 10 more groups (near-identical lines under different replies); four of them are
+  the new undecided whole lines, by design (the label decides).
+- The old matcher's wrong pick in the sound-alike test: "what spit of word do you do here" taken for "What do you do
+  here?" (`ice60_palon_dlg#18`); the new one holds it. The 152 held back are mostly lines a word apart, the datalog's
+  "Play the last entry." / "Play the first entry." with "list" or "laser" heard.
+- The speech bench's re-run (lines not heard word for word on wheels with key terms): of the 253 re-run with both lists,
+  65 were heard word for word with the old terms, 71 with the new; 11 recordings are on wheels only the new list gives
+  terms, among them "Saren wants both of us dead." heard "Sarah wants ..." without a term and right with it.
+- Offline look: `mevr-menu-preview`'s `thespian-doubt.png` (two labels of one reply in one row; the "Not sure which"
+  footer).
+
+### In the game (fake headset, 2026-11-13)
+
+`%LOCALAPPDATA%\MEVR\sessions\2026-11-13_13-06-31-thespian-names` (build 57e298c3, players' build from a clean worktree;
+John02's validation save 80: Anderson's walk, the hearing, Anderson after it; the 3D screen; Windows' speech synthesizer
+reading each line with the names spelled to sound off, fed with `mevr thespian feed`):
+
+| Wheel | Key terms given | Read (synthesizer) | Heard | Taken |
+|---|---|---|---|---|
+| the hearing's first | Eden Prime | the second card's line | word for word | position 1, right |
+| #10 | Saren,Eden Prime | "Sarin despises humanity. That is why he attacked Eden Prim!" | "**Saren** despises humanity. That is why he attacked Eden Park." | position 0, right (87%) |
+| #14 | Saren,Spectre,Council | "Sarren's hiding behind his position as a Spectre. ..." | "Sarin's hiding behind his position as a spectre." | position 0, right (61%, at the pause) |
+| #19 | (none) | the line | "... I won't waste my time" | position 0 (all three are reply 22) |
+| captain #2 | Council,Saren | "Tell me about this history between you and Sarren." | "... between you and me" | position 0, right (81%) |
+| captain #4 | Council,Saren | "What's our next step?" | word for word | position 0, right |
+
+- "Sarin" was written "Saren" with the key term; "Sarren's" came out "Sarin's" (a Close match, taken); the synthesizer's
+  "Sarren" at a line's end was heard as "me" despite the term. No pick was wrong; no "not sure which" (no wheel there has
+  two lines a misheard word apart).
+- **The forced end** (`mevr convo end` during a line, the mode on; the crash case): the game ran on. It crashed 12 s later
+  as the session tool quit it, at `ntdll.dll+0x1A12D` writing 0x24 from the exe's exit path: the same exit crash the other
+  session's runs show at 12:59 and 13:02 today, not Thespian's.
+- **Found here**: the reply numbers the mod read were places (0, 1, 2), so the panel never merged the rows of one reply:
+  #19 showed one line three times in the agree (blue), disagree (orange) and neutral colours, and reading it took the
+  first, though all three are one reply. That may be what read as a wrong alignment; the colours are the replies'
+  categories, and the points come from a reply's plot transition (#14's agree reply carries 4029), so which pick felt
+  Renegade stays the owner's to say. Fixed in b24c5d40 (`ReplyNode`).
+
+### Left
+
+- The owner's voice in the headset: names at the hearing, a mumbled telling word ("Not sure which"), merged rows
+  (notes/headset-checklist.md, Thespian mode).
+- Which pick felt Renegade; what int 47 counts.
+- (4) and (5) above, only if misheard names still decide or block picks in play.
