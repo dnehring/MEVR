@@ -339,6 +339,13 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     "Shepard" (the game's own at rank 99999, and ours) aimed at it, metres from the player: Girard's face 7-16 degrees off the
     empty mark and 58-78 off the player. **Fixed**: a look-at target of the game's own kind kept at the player's eyes takes
     Shepard's place while his body is away (`worldLookEyes`); Girard's face 12-27 degrees off the player since.
+31. **A staged scene's new composition under its own black screen** (the owner, 2026-11-12: "the more difficult scene like the
+    start of virmire where we start on the beach and then move into a different position ... the overhead view, it will be
+    different throughout the scene"; then: "instead of forcing Shepard to move, can you program a simulated analog stick move to
+    go into the desired position"; "Virmire's start from above" below): the stage's moves of the others under the script's black
+    screen are taken at once (Kaidan and Ashley had walked 10 m across the camp during Kirrahe's speech); Shepard is never moved:
+    a simulated left stick walks the player to his new mark, the player's own stick taking over. Built and run on the fake
+    headset; the stances follow a whole scene (its start, each dip, each change of place or facing).
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3171,6 +3178,41 @@ In the game (17:36): Girard's look moved to the eyes 0.5 s in (6 moves, 0 refuse
 with the player). `tools/conversation-stance.py --heads` lists whom each face points at, by the game's target where the face points
 at its aim (Garrus at Girard, who stands by the mark, was first read as looking at the mark).
 
+### Virmire's start from above (2026-11-12 17:45-18:20, fake headset; item 31)
+
+The scene: Kirrahe's camp on Virmire (`jug20_sal_captainkirrahe`, staged), from slot 88's place with plot 3039 clear (a copy,
+`%LOCALAPPDATA%\MEVR\squad-saves\John02_70.pcsav`): one conversation of 214 s and 41 lines, the planning by the beach (Kaidan sent
+with Kirrahe's men), then at 135 s the script's black screen (`jug20_sal_captainkirrahe_N ... BioSeqAct_BlackScreen_8`, on, and
+`_0`, off, in the same tick) and under it the stage's moves for the speech (Kirrahe 3.7 m, Shepard 0.7 m, Kaidan 9.8 m, Ashley
+10.1 m), then Kirrahe's speech to his troops, his own walk out to them a matinee's track.
+
+**The stances follow a whole scene now**: `begin` (as it starts: the stage's first places, the player where he stood), after each
+dip (`after-dip`), after each walk, and whenever the scene moved since the last one (someone of it a metre away or turned 40
+degrees, at most every 1.5 s, the one who moved most in the tag); everyone else standing within 20 m is in the record
+(`others`: the troops, small dots); a sheet over 9 moments has 4 columns, over 40 an even spread with the start, dips and end.
+
+First run (17:49): the staged rule walked the speech's marks, so after the black screen Kaidan and Ashley walked 10 m across the
+camp for 18 s during the speech, and the player's view kept the planning's facing: Kirrahe 6.4 m behind, the troops 7.5 m behind.
+
+Built:
+- **The script's black screen in a staged scene is the game's own cut to a new composition** (`ScriptBlackScreen`, from
+  game/AuthoredMoment's handler, actions 0 and 2): for the next second each stage placement of the others is let through and, on
+  the next tick, taken where the game's call put it or put on its mark by us (`relocateMark`: the game's call moved nobody,
+  18:06); an actor a matinee's track moves is left to it.
+- **Shepard is never moved** (the owner: "instead of forcing Shepard to move ... a simulated analog stick move"): his mark in that
+  window is recorded (`sceneWants`) and walked to by a **simulated left stick** (`StartSteer`, in `MovePlayer`: the direction to
+  the place in the head's frame, through the player's own walk step: the conversation's pace, the boundary, floors, walls,
+  people, triggers), 0.4 s after the black; the player's own stick (or `mevr convo walk`) takes over at once; it ends on the
+  place or after two seconds without coming nearer; it never turns the player. `mevr convo goto [<x> <y>]` steers in tests.
+  The record's `sceneWants` and `steering`; the sheets draw the place as a blue cross.
+- (A forced move of the view onto his mark and facing under a dip was built first and taken out the same hour, at the owner's word.)
+
+Run (18:11): under the black screen Kaidan and Ashley put on their marks (10.1 and 9.9 m), the simulated stick walked the player
+0.51 m to Shepard's mark in 0.6 s (0.15 m from it); the speech: Kaidan 0.9 m front-right and Ashley 1.3 m left of the player,
+looking at Kirrahe, Kirrahe walking out to 7 m in front of his troops (8 m) - behind the facing the player had in the planning
+(the scene turns Shepard 155 degrees there; the player turns himself). Not seen: the arrival content (Kirrahe meeting the party
+on the beach, plot 3039's other branch) did not play from this save.
+
 ### The staged scenes (2026-11-12; for the owner's review)
 
 From the scan's 491 conversations (`conversation-scan.py --csv`), the ones that look like "the council or the virmire speech": a
@@ -3614,3 +3656,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-12 00:30, **item 28, second design** (the owner's answers): built and validated on the fake headset for eight scenes; the squad's formation off by default (the AI walk stalls or follows Shepard's pawn); the staged list for the owner's review.
 - 2026-11-12 09:45, **item 28, the squad's formation held** (put back before the scene is drawn, each on its own side, the squad's own HOLD formation written quietly, placed under a cut's dip): validated on the fake headset, on by default; **item 29, stances from above** built (`mevr convo stance`, `tools/conversation-stance.py`, the runner's `-Stances` that ends a scene once nothing will move).
 - 2026-11-12 17:45, **item 30, heads that look past the player** (the owner's question): measured with head directions in the stances (Girard looked at Shepard's body left on his mark), fixed with a look-at target at the player's eyes (`worldLookEyes`); the squad saves from the owner's Citadel save (`%LOCALAPPDATA%\MEVR\squad-saves`).
+- 2026-11-12 18:20, **item 31, Virmire's start from above**: the stances follow a whole scene; a staged scene's moves under the script's black screen are taken at once; Shepard is walked to his new mark by a simulated left stick (the owner), never moved.

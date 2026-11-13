@@ -311,6 +311,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   behind, and face whoever you talk to; no squadmate says "on it" or similar; after the conversation they follow you again.
   Heads (2026-11-12, research/69 "Heads that look past the player"; fake headset): in Girard's scene (Presidium, a squad save in
   `%LOCALAPPDATA%\MEVR\squad-saves`, slot 80) Girard looks at your eyes, not at an empty spot beside him.
+  Virmire's start (2026-11-12, research/69 "Virmire's start from above"; `%LOCALAPPDATA%\MEVR\squad-saves\John02_70.pcsav`, Kirrahe
+  in front of you): after the planning the screen goes black; when it clears Kaidan and Ashley stand beside you and Kirrahe walks
+  out to his troops behind you; you are walked half a metre as if by your stick (push yours to take over); turn round to watch.
 - [ ] **The view beside walls** (2026-11-11, research/69 "The camera that fell to Shepard's knees"; fake headset): on foot,
   walk face-first into a wall, stand right in front of a pillar, let a squadmate cross close in front: the view stays at
   your eyes, never drops to Shepard's knees. `[Game] cameraCollision = 1` brings the game's camera collision back to compare.

@@ -239,6 +239,15 @@ def draw_panel(st):
         e = v((player[0] + math.cos(math.radians(yaw + side)) * 3 * upm, player[1] + math.sin(math.radians(yaw + side)) * 3 * upm))
         d.line([pv, e], fill=(170, 195, 240), width=1)
 
+    # Everyone else standing near (not of the conversation): small dots with a facing tick.
+    for o in st.get('others', []):
+        q = v(o['at'])
+        if not (0 <= q[0] <= PANEL and HEAD <= q[1] <= HEAD + PANEL):
+            continue
+        d.ellipse([q[0] - 4, q[1] - 4, q[0] + 4, q[1] + 4], fill=(190, 170, 215))
+        ox, oy = v.direction(o['yaw'])
+        d.line([q, (q[0] + ox * 9, q[1] + oy * 9)], fill=(150, 120, 190), width=2)
+
     people = st.get('people', [])
     by_name = {p['name']: p for p in people}
     # Gazes first (under the bodies).
@@ -322,6 +331,15 @@ def draw_panel(st):
         tx = at[0] + r + 5 if at[0] + r + 5 + tw < PANEL - 4 else at[0] - r - 5 - tw
         d.text((tx, at[1] - 8), label, fill=TEXT, font=F_NAME)
 
+    # Where the scene wants Shepard (a staged scene's new composition): walked to by the simulated stick, never put there.
+    wants = st['player'].get('sceneWants')
+    if wants:
+        q = v(wants)
+        d.line([q[0] - 7, q[1] - 7, q[0] + 7, q[1] + 7], fill=PLAYER, width=3)
+        d.line([q[0] - 7, q[1] + 7, q[0] + 7, q[1] - 7], fill=PLAYER, width=3)
+        d.text((q[0] + 9, q[1] - 6), "the scene's place for you" + (' (walking there)' if st['player'].get('steering') else ''),
+               fill=PLAYER, font=F_SMALL)
+
     # The player on top.
     tri = [(pv[0], pv[1] - 13), (pv[0] - 9, pv[1] + 8), (pv[0] + 9, pv[1] + 8)]
     d.polygon(tri, fill=PLAYER)
@@ -344,7 +362,7 @@ def draw_panel(st):
 def sheet(stances):
     first = stances[0]
     n = len(stances)
-    cols = min(COLS, n)
+    cols = min(COLS if n <= 9 else 4, n)
     rows = (n + cols - 1) // cols
     title_h = 74
     w = cols * PANEL + (cols + 1) * MARGIN
@@ -358,7 +376,8 @@ def sheet(stances):
     words = ahead.get('now', []) + ahead.get('later', [])
     d.text((MARGIN, 32), 'movement ahead at the last moment: ' + ('; '.join(words) if words else 'none'), fill=MUTED, font=F_SMALL)
     x = MARGIN
-    legend = [(PLAYER, 'you'), (OWNER, 'owner'), (SQUAD, 'squad'), (OTHER, 'others'), (SHEPARD, "Shepard's body"),
+    legend = [(PLAYER, 'you'), (OWNER, 'owner'), (SQUAD, 'squad'), (OTHER, 'others'), ((190, 170, 215), 'bystanders'),
+              (SHEPARD, "Shepard's body"),
               (SPEAKER, 'speaker'), (LISTENER, 'spoken to'), (FACE, 'face points'), (AIM, "the game's look aims"),
               (WALL, 'walls (chest)'), (LOW, 'low things (knee)')]
     for col, text in legend:
@@ -434,6 +453,12 @@ def main(argv):
     os.makedirs(out, exist_ok=True)
     for (day, number, name), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
         stances.sort(key=lambda s: (s['_file']))
+        if len(stances) > 40:
+            # A long scene: the start, every dip and walk, and an even spread of the rest, 40 panels at most.
+            keep = [s for s in stances if s.get('tag') in ('begin', 'after-dip', 'opening', 'settled', 'end')]
+            rest = [s for s in stances if s not in keep]
+            step = max(1, len(rest) // max(1, 40 - len(keep)))
+            stances = sorted(keep + rest[::step], key=lambda s: s['_file'])
         stamp = os.path.basename(stances[0]['_file'])[:23]
         path = os.path.join(out, f"{stamp}-{number}-{name.split('.')[-1]}.png")
         sheet(stances).save(path)

@@ -56,6 +56,13 @@ void MomentMayStart();
 // A short dip from black over the moment's held view (the host's transition fade), the view where it is: for what the
 // script covered with its own black screen. False without a moment's view.
 bool MomentDip();
+// The script turned its black screen on (game/AuthoredMoment's handler, the game thread; `action` the BioSeqAct_BlackScreen's).
+// In a staged scene this is the game's own cut to a new composition (Kirrahe's speech on Virmire: everyone onto new marks
+// under it): for the next second the stage's placements of the others are taken at once instead of walked; Shepard is never
+// moved: the mark the scene wants him on is walked to by a simulated left stick, which the player's own stick takes over
+// (the owner, 2026-11-12: "instead of forcing Shepard to move ... a simulated analog stick move"; research/69 "Virmire's start
+// from above").
+void ScriptBlackScreen(int action);
 // `mevr convo [dump | world on|off|screen|vr | pick <0..5> | skip | end | walk <x> <y> [seconds] | off]`.
 std::string Command(std::string const& rest);
 std::string StatusJson();

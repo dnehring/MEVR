@@ -47,6 +47,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   when the conversation ends, without a word.
 - **People look at you** in first-person conversations where the scene keeps Shepard's body on its own mark away from you
   (Girard on the Presidium, Khalisah's interview): their heads used to turn to that empty spot instead of to you.
+- **Scenes that rearrange everyone behind a fade** (Kirrahe's speech on Virmire): the others are in their new places when the
+  fade clears instead of walking there in front of you, and you are walked the step or two to where the scene wants you, as if
+  with your own stick (push it to take over); you are never moved by force.
 - **Long dialogue choices are shown whole** in first-person conversations: the end of a long reply was cut off the wheel and
   floated elsewhere in view.
 - **The view stays at your eyes beside walls.** Standing close to a wall, a pillar or someone in front of you could drop the

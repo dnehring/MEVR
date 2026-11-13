@@ -611,8 +611,13 @@ switching frameworks.
   **heads look at the player, not at Shepard's body** (`worldLookEyes`, research/69 "Heads that look past the player"): in a
   walk-in by the view his body stays on its mark and every look at "Shepard" (the game's at rank 99999, ours) aimed there, so
   while his head bone is over a metre from the view a `SFXGame.BioLookAtTarget` kept at the player's eyes takes his place
-  (`StepEyes`; looks moved at their own rank and given back after; `GameLookTarget` reads it as the player); logs `convo: circle:`,
-  `convo: squad:`, `convo: stance:`, `convo: eyes:`;
+  (`StepEyes`; looks moved at their own rank and given back after; `GameLookTarget` reads it as the player); **a staged scene's
+  new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a
+  second after the script's black screen (`ScriptBlackScreen`, from game/AuthoredMoment) are taken at once (put on the mark by us
+  where the game's call moved nobody); **Shepard is never moved** (the owner): a simulated left stick walks the player to his new
+  mark (`StartSteer` in `MovePlayer`, the player's own walk step; his stick takes over; `mevr convo goto [x y]`); the stances follow
+  a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
+  logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
   (`cw::HeadFollowFor`; research/69 "The hearing that went third person": the owner's slot-80 run ended 4 m behind him);
   auto takes it when a moment's walk was still on its way as the conversation began (putting Shepard back from the podium

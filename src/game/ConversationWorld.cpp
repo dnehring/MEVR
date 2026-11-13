@@ -980,8 +980,21 @@ struct Convo {
     std::string stanceWanted;    // ... after a walk ended: its tag, written at most once a second
     double stanceAtS = -10.0;    // when the last one was written (the conversation's seconds)
     int stances = 0;
+    bool stanceBegin = false;    // the scene from above before its opening (where everyone stood as it began)
+    std::map<ue3::Object*, std::pair<ik::Vec3, double>> stanceSeen;  // places and facings at the last stance
+    ik::Vec3 stancePlayer;
+    std::uint32_t stanceCut = 0; // the dips seen
+    double stanceCutS = -1.0;    // ... the last one's time, until its stance is written
     int eyesSwapped = 0;         // the game's own looks at Shepard turned to the player's eyes (his body away from the player)
     int eyesRefused = 0;
+    double relocateUntilS = -1.0; // a staged scene's new composition under the script's black screen: placements taken until then
+    int relocated = 0;             // people placed at once under it
+    std::optional<ik::Vec3> sceneWants;  // the mark the stage last asked Shepard onto under the script's black screen
+    double steerPendingS = -1.0;   // ... walked to by the simulated stick from this time
+    std::optional<ik::Vec3> steerTo;     // the simulated left stick walks the player there (his own stick takes over)
+    double steerBest = 0.0;        // ... the nearest it has come, and when
+    double steerProgressS = 0.0;
+    double steerWalkedUnits = 0.0;
     std::vector<ue3::Object*> squadOnly; // squadmates tracked for the formation only (not people of the conversation)
     std::optional<ik::Vec3> boundaryAt;  // where the conversation began for the player: the walk's boundary is around it
     vr::comfort::SnapTurn snap;          // the right stick's turn
@@ -1115,6 +1128,8 @@ struct Stay {
     ue3::Object* rolePartner = nullptr;  // ... and at whom
     double traceS = 0.0;           // the next line of the turn trace (worldTurnLog)
     double lookRetryS = 0.0;       // a look the game refused is asked again after this
+    double acceptUntilS = -1.0;    // the stage's placement of it under the script's black screen is taken until then
+    std::optional<ik::Vec3> relocateMark;  // ... the mark it asked: put there by us if the game's own call did not move it
     std::shared_ptr<Reach> reach;  // its look-at chain's links pointed at stronger copies of their definitions (the pair)
     std::optional<double> homeYaw; // the facing the scene composed, while a turn of ours has the body away from it,
     bool away = false;
@@ -1153,7 +1168,22 @@ bool KeepAtSource(void const* conversation, void const* actor, float const* loca
         conversation != gC.object) {
         return false;
     }
+    bool const relocating = gC.staged && Seconds() < gC.relocateUntilS;
     for (Stay& st : gStay) {
+        if (st.actor == actor && relocating && actor == gC.playerPawn) {
+            // Shepard is the player: never put anywhere. Where the scene wants him is walked to by the simulated stick.
+            gC.sceneWants = ik::Vec3{location[0], location[1], location[2]};
+            gC.steerPendingS = Seconds() + 0.4;
+            return true;
+        }
+        if (st.actor == actor && relocating) {
+            // The game's own cut to a new composition (its black screen is up): the stage's place is taken (no walk across the
+            // scene in plain view after the black). The game's own call is let through; where it does not move the person
+            // (Kaidan and Ashley on Virmire, 2026-11-12: nothing moved them), keep-in-place puts it there on the next tick.
+            st.acceptUntilS = Seconds() + 0.6;
+            st.relocateMark = ik::Vec3{location[0], location[1], location[2]};
+            return false;
+        }
         if (st.actor == actor) {
             ++gC.sourceKept;
             double const away = std::hypot(location[0] - st.place.x, location[1] - st.place.y);
@@ -2728,6 +2758,31 @@ void GatherSquad(ue3::Object* pawn, double nowS) {
     }
 }
 
+// The simulated left stick (the owner, 2026-11-12): toward a place, through the player's own walk step (the conversation's pace,
+// the boundary, floors, walls, people, triggers). The player's own stick, or `mevr convo walk`, takes over at once; it stops on
+// the place, or when it has not come nearer for two seconds (blocked). Never turns the player.
+void StartSteer(char const* why, std::optional<ik::Vec3> to = std::nullopt) {
+    if (!to) {
+        to = gC.sceneWants;
+    }
+    ue3::Object* const shep = gC.playerPawn;
+    auto const at = shep != nullptr && ue3::runtime::IsAlive(shep) ? player::Location(shep) : std::nullopt;
+    if (!to || !at) {
+        return;
+    }
+    double const left = std::hypot(to->x - at->x, to->y - at->y);
+    if (left <= 30.0) {
+        log::Info("convo: steer: {} ({:.2f} m away): the player already stands there", why, left / kUnitsPerMeter);
+        return;
+    }
+    gC.steerTo = *to;
+    gC.steerBest = left;
+    gC.steerProgressS = Seconds();
+    gC.steerWalkedUnits = 0.0;
+    log::Info("convo: steer: {} {:.2f} m away at {}: the simulated stick walks the player there (his own stick takes over)", why,
+        left / kUnitsPerMeter, F(*to));
+}
+
 // Each tick before the looks: whether Shepard's body stands away from the player's view (his head bone over a metre from the
 // held eyes), and if so the eyes at the player's, the game's own looks at Shepard moved to them at their rank.
 void StepEyes() {
@@ -2942,6 +2997,10 @@ void KeepInPlace(ue3::Object* pawn) {
         listener = playerPawn;
     }
     ue3::Object* const speakerNow = speaker == pawn || speaker == gC.playerPawn ? playerPawn : speaker;
+    if (gC.steerPendingS >= 0.0 && Seconds() >= gC.steerPendingS) {
+        gC.steerPendingS = -1.0;
+        StartSteer("the scene's new composition wants Shepard there");
+    }
     StepEyes();
     StepCircle(pawn, speakerNow, listener, nowS, dt);
     StanceTick(pawn);
@@ -3011,7 +3070,28 @@ void KeepInPlace(ue3::Object* pawn) {
                     Seconds(), t.name, d / kUnitsPerMeter);
             }
             EndWalk(st, "cancel", "an authored walk took over");
+            st.relocateMark.reset();
             st.place = V(*at);
+            st.shownYaw = YawDeg(*rot);
+            continue;
+        }
+        if (st.relocateMark && (Seconds() > st.acceptUntilS + 0.5 || authored_moment::TrackMoves(t.actor))) {
+            st.relocateMark.reset();  // its moment has passed, or a matinee's track moves it: not a placement of ours
+        }
+        if (st.relocateMark && !isShepard) {
+            // Placed under the script's black screen (a staged scene's new composition): taken where the game's call put it, or
+            // put on the mark by us where it did not move.
+            ik::Vec3 const mark = *st.relocateMark;
+            st.relocateMark.reset();
+            EndWalk(st, "cancel", "placed under the script's black screen");
+            bool const there = std::hypot(at->x - mark.x, at->y - mark.y) <= kJumpUnits;
+            bool const put = there || PutAt(t.actor, mark);
+            auto const placed = player::Location(t.actor);
+            ++gC.relocated;
+            log::Info("convo: at {:.1f} s {} {} {:.2f} m from where it stood, under the script's black screen (the scene's new composition)",
+                Seconds(), t.name, there ? "placed by the game's call" : put ? "put on its mark by us" : "could not be put on its mark",
+                Dist(placed ? V(*placed) : V(*at), st.place) / kUnitsPerMeter);
+            st.place = placed ? V(*placed) : V(*at);
             st.shownYaw = YawDeg(*rot);
             continue;
         }
@@ -4204,8 +4284,40 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         engine::Basis const head = engine::OrientationToWorld(frame, view.head.orientation);
         headYaw = std::atan2(head.forward.y, head.forward.x) * kRadToDeg;
     }
+    if (gC.steerTo) {
+        // The simulated stick: the direction to the place in the head's frame (forward is +Y, right +X), full until the last
+        // step, which ends on it.
+        double const own = controllers.active ? std::hypot(controllers.left.stickX, controllers.left.stickY) : 0.0;
+        ik::Vec3 const to = *gC.steerTo - V(*at);
+        double const left = std::hypot(to.x, to.y);
+        double const stepUnits = gSettings.moveSpeedMS * kUnitsPerMeter * std::clamp(dt, 0.0, 0.1);
+        char const* ended = nullptr;
+        if (own > 0.3 || gWalkOverride.untilMs > GetTickCount64()) {
+            ended = "the player's own stick takes over";
+        } else if (left <= 15.0) {
+            ended = "arrived";
+        } else if (left < gC.steerBest - 5.0) {
+            gC.steerBest = left;
+            gC.steerProgressS = Seconds();
+        } else if (!gC.wheel && Seconds() - gC.steerProgressS > 2.0) {
+            ended = "blocked (no nearer for two seconds: a wall, a person, the boundary or a trigger's edge)";
+        }
+        if (ended != nullptr) {
+            log::Info("convo: steer: {} ({:.2f} m from the place, {:.2f} m walked)", ended, left / kUnitsPerMeter,
+                gC.steerWalkedUnits / kUnitsPerMeter);
+            gC.steerTo.reset();
+        } else if (!gC.wheel) {
+            double const a = (std::atan2(to.y, to.x) * kRadToDeg - headYaw) / kRadToDeg;
+            double const mag = stepUnits > 0.0 && left < stepUnits ? 0.15 + 0.85 * left / stepUnits : 1.0;  // past the dead zone
+            stickX = static_cast<float>(std::sin(a) * mag);
+            stickY = static_cast<float>(std::cos(a) * mag);
+        }
+    }
     cw::PlayerStep const step = cw::StepPlayer(WalkPoint(V(*at)), WalkPoint(anchor), gSettings.moveLeashM * kUnitsPerMeter,
         stickX, stickY, headYaw, gSettings.moveSpeedMS * kUnitsPerMeter, std::clamp(dt, 0.0, 0.1));
+    if (gC.steerTo && step.moved) {
+        gC.steerWalkedUnits += std::hypot(step.place.x - at->x, step.place.y - at->y);
+    }
     if (step.atLeash) {
         ++gC.leashHits;
     }
@@ -4565,7 +4677,7 @@ void End(char const* why) {
               "\"looksGame\": {}, \"turnsHome\": {}, \"reaches\": {}, \"looksRefused\": {}, \"voicesPlaced\": {}, \"voicesFar\": {}, "
               "\"staged\": {}, \"circleJoined\": {}, \"circleWalked\": {}, \"circleOut\": {}, \"circleRegathers\": {}, "
               "\"circleEarly\": {}, \"circleStill\": {}, \"squadWalked\": {}, \"squadPutBack\": {}, \"squadPlaced\": {}, "
-              "\"squadHeld\": {}, \"eyesSwapped\": {}, \"eyesRefused\": {}, \"turnedDeg\": {:.0f}, "
+              "\"squadHeld\": {}, \"eyesSwapped\": {}, \"eyesRefused\": {}, \"relocated\": {}, \"turnedDeg\": {:.0f}, "
               "\"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
@@ -4576,7 +4688,7 @@ void End(char const* why) {
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
         gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar,
         gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers,
-        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.turnedDeg, entryPath);
+        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.relocated, gC.turnedDeg, entryPath);
     gCutBase += gC.cut;
     gC = {};
 }
@@ -5429,6 +5541,37 @@ std::string WriteStance(std::string const& tag) {
             ++counted;
         }
     }
+    // Everyone else standing near (not of the conversation: Kirrahe's troops before his speech), within 20 m of the player.
+    std::string others;
+    if (ue3::Object* const world = tracer != nullptr ? gWorldOfActor.Read<ue3::Object*>(tracer).value_or(nullptr) : nullptr) {
+        int guard = 0, listed = 0;
+        for (ue3::Object* o = gWorldPawns.Read<ue3::Object*>(world).value_or(nullptr); o != nullptr && guard < 512 && listed < 64;
+             o = gNextPawnOf.Read<ue3::Object*>(o).value_or(nullptr), ++guard) {
+            if (o == pawn || o == gC.playerPawn || !player::IsBioPawn(o) || gActorHidden.ReadBool(o).value_or(true) ||
+                std::any_of(gC.actors.begin(), gC.actors.end(), [&](Tracked const& t) { return t.actor == o; })) {
+                continue;
+            }
+            auto const at = player::Location(o);
+            auto const rot = player::Rotation(o);
+            if (!at || !rot || Dist(V(*at), player) > 2000.0) {
+                continue;
+            }
+            others += std::format("{}{{\"name\": \"{}\", \"at\": {}, \"yaw\": {:.0f}}}", others.empty() ? "" : ", ",
+                JsonText(DisplayName(o)), P3(V(*at)), YawDeg(*rot));
+            ++listed;
+        }
+    }
+    gC.stanceSeen.clear();
+    for (Tracked const& t : gC.actors) {
+        if (t.actor != nullptr && ue3::runtime::IsAlive(t.actor)) {
+            auto const at = player::Location(t.actor);
+            auto const rot = player::Rotation(t.actor);
+            if (at && rot) {
+                gC.stanceSeen[t.actor] = {V(*at), YawDeg(*rot)};
+            }
+        }
+    }
+    gC.stancePlayer = player;
     // What stands around them: rays from the middle of the group at knee and chest height, every 2 degrees, out to 12 m.
     ik::Vec3 const middle = sum * (1.0 / counted);
     double const floor = FloorZ(tracer, {middle.x, middle.y, player.z}).value_or(player.z - 160.0);
@@ -5467,13 +5610,14 @@ std::string WriteStance(std::string const& tag) {
     std::string const json = std::format(
         "{{\"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, \"staged\": {}, \"opening\": \"{}\", "
         "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f},\n"
-        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}}},\n"
-        "\"people\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
+        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, \"steering\": {}}},\n"
+        "\"people\": [{}],\n\"others\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
         "\"ahead\": {{\"now\": [{}], \"later\": [{}]}}}}\n",
         JsonText(gC.name), gC.number, JsonText(tag), Seconds(), gC.staged ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-",
         gCurrentEntry.Read<int>(conv).value_or(-1), JsonText(gC.subtitle), kUnitsPerMeter,
         P3(player), playerYaw, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
-        people, circle, P3(middle), floor, kReach, walls, aheadNow, aheadLater);
+        gC.sceneWants ? P3(*gC.sceneWants) : std::string("null"), gC.steerTo ? "true" : "false",
+        people, others, circle, P3(middle), floor, kReach, walls, aheadNow, aheadLater);
     wchar_t buffer[MAX_PATH] = {};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
         return "stance: no LOCALAPPDATA";
@@ -5503,11 +5647,66 @@ std::string WriteStance(std::string const& tag) {
     return std::format("stance: {} ({}); {}", ini::Utf8(file), tag, AheadLine(ahead));
 }
 
+// Whether the scene moved since the last stance: someone of it (or the player) a metre away from where it stood then, or
+// turned 40 degrees; the one who moved most named.
+std::optional<std::string> MovedSinceStance() {
+    std::string who;
+    double most = 0.0;
+    if (double const d = Dist(gC.hold, gC.stancePlayer); d > 75.0) {
+        who = "you";
+        most = d;
+    }
+    for (Tracked const& t : gC.actors) {
+        auto const seen = gC.stanceSeen.find(t.actor);
+        if (t.actor == nullptr || !ue3::runtime::IsAlive(t.actor) || gActorHidden.ReadBool(t.actor).value_or(false)) {
+            continue;
+        }
+        auto const at = player::Location(t.actor);
+        auto const rot = player::Rotation(t.actor);
+        if (!at || !rot) {
+            continue;
+        }
+        if (seen == gC.stanceSeen.end()) {
+            if (most < 1e6) {
+                who = std::format("{}-came", t.name);
+                most = 1e6;  // someone new in the scene
+            }
+            continue;
+        }
+        double const d = Dist(V(*at), seen->second.first);
+        double const turn = std::abs(YawDiffDeg(YawDeg(*rot), seen->second.second));
+        double const score = std::max(d > 75.0 ? d : 0.0, turn > 40.0 ? turn * 2.0 : 0.0);
+        if (score > most) {
+            most = score;
+            who = std::format("{}-{}", t.name, d > 75.0 ? "moved" : "turned");
+        }
+    }
+    return who.empty() ? std::nullopt : std::optional<std::string>{who};
+}
+
 void StanceTick(ue3::Object* /*pawn*/) {
-    if (!(gSettings.stances || gStancesOverride.value_or(false)) || !gC.world || !gC.openingDone) {
+    if (!(gSettings.stances || gStancesOverride.value_or(false)) || !gC.world) {
         return;
     }
     double const now = Seconds();
+    if (!gC.stanceBegin) {
+        gC.stanceBegin = true;  // as the scene began: the stage's first placements, the player where he stood
+        gC.stanceCut = gC.cut;
+        log::Info("convo: {}", WriteStance("begin"));
+        return;
+    }
+    if (!gC.openingDone) {
+        return;
+    }
+    if (gC.cut != gC.stanceCut) {
+        gC.stanceCut = gC.cut;
+        gC.stanceCutS = now;
+    }
+    if (gC.stanceCutS >= 0.0 && now - gC.stanceCutS >= 0.6) {
+        gC.stanceCutS = -1.0;
+        log::Info("convo: {}", WriteStance("after-dip"));
+        return;
+    }
     if (!gC.stanceOpening && now >= 2.0) {
         gC.stanceOpening = true;
         gC.stanceWanted.clear();
@@ -5518,6 +5717,12 @@ void StanceTick(ue3::Object* /*pawn*/) {
         std::string const tag = gC.stanceWanted;
         gC.stanceWanted.clear();
         log::Info("convo: {}", WriteStance(tag));
+        return;
+    }
+    if (now - gC.stanceAtS >= 1.5) {
+        if (auto const moved = MovedSinceStance()) {
+            log::Info("convo: {}", WriteStance(*moved));
+        }
     }
 }
 
@@ -5626,6 +5831,16 @@ struct BlackPending {
     std::vector<cw::Seen> before;
 };
 BlackPending gBlack;
+
+void ScriptBlackScreen(int action) {
+    if (!gC.on || !gC.world || !gC.staged || !gC.openingDone || (action != 0 && action != 2)) {
+        return;
+    }
+    double const now = Seconds();
+    gC.relocateUntilS = now + 1.0;
+    log::Info("convo: at {:.1f} s the script's black screen in a staged scene: the stage's placements of the others for the next "
+              "second are taken at once (a new composition); Shepard's mark is walked to by the simulated stick", now);
+}
 
 bool MomentDip() {
     if (!gMoment.on) {
@@ -6200,6 +6415,22 @@ std::string Command(std::string const& rest) {
         }
         return std::format("convo: stances from above are {} (after the opening, each walk and at the end; %LOCALAPPDATA%\\MEVR\\stances)",
             gSettings.stances || gStancesOverride.value_or(false) ? "written" : "not written");
+    }
+    if (verb == "goto") {
+        // Tests: the simulated stick toward the scene's wanted mark for Shepard (`goto`), or a point (`goto <x> <y>`).
+        if (!gC.on) {
+            return "convo: no conversation";
+        }
+        std::string x, y;
+        words >> x >> y;
+        std::optional<ik::Vec3> to;
+        if (auto const px = ini::Number(x), py = ini::Number(y); px && py) {
+            auto const at = gC.playerPawn != nullptr ? player::Location(gC.playerPawn) : std::nullopt;
+            to = ik::Vec3{*px, *py, at ? at->z : gC.hold.z};
+        }
+        StartSteer("asked (mevr convo goto)", to);
+        return gC.steerTo ? std::format("convo: steer: toward {}", F(*gC.steerTo))
+                          : std::string(gC.sceneWants || to ? "convo: steer: already there" : "convo: steer: no place the scene wants Shepard on");
     }
     if (verb == "ahead") {
         if (!gC.on) {
