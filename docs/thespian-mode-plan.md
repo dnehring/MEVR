@@ -135,6 +135,40 @@ the game's wheel art is cut out while the mode is on, and the game's wheel keeps
 
 Its look is checked offline first, as the menu's is (`mevr-menu-preview` renders of each state).
 
+**The owner's concept art (2026-11-12)** sets the layout; the picture itself is kept locally
+(`scratch/thespian/concept-ux-2026-11-12.png`, not in the repository). What it shows, and what we take from it:
+
+- **One wide glass panel between the hands, below the speaker's face.** The person talking stays fully visible above
+  it; the panel is at chest height, tilted toward the eyes, in our menu's glass look (dark blue glass, cyan edges, cut
+  corners). Taken as is. It replaces "where the wheel's quad stands": same anchor, wider and lower.
+- **A header row:** the speaker's emblem, name and role on the left, the line they just said on the right. Taken: the
+  other person's current subtitle moves into the panel while it is up (name where the game gives one).
+- **One full-width row per reply, stacked:** an icon and a short coloured tag on the left, a divider, the whole line in
+  large white type on the right. Taken, with the game's own data: the tag is the wheel's label (the paraphrase, which is
+  also the short thing a player may say instead of the line), coloured by the reply's tone (below); the line is the
+  script. This replaces "cards in the wheel's arrangement": rows read faster than a ring and every line is visible
+  without unfolding.
+- **One row lit with a bright outline.** In the art it is a selection made first ("Speak selected line"). Ours is not
+  a step the player takes: the lit row is the card the matcher is leading with while the player talks (before that, the
+  row the gaze or the pointer rests on, as a reading aid only). The other rows dim while one leads. The leading row is
+  the teleprompter: its said words bright, the next word marked, the rest dim; **rows stay where they are** (this
+  replaces "the leading card grows", which would move text under the reader's eyes).
+- **A footer bar:** the microphone in a ring, a prompt, a live waveform and "Listening...". Taken as the microphone
+  mark: idle "Read a line aloud", hearing (the waveform moves with the level), understood (the row's colour), "Didn't
+  catch that".
+- **A hint strip under the panel** (speak, select with controller, scroll). Taken as one line of help for the hand
+  pick: the stick or the pointer chooses a row and A takes it (Shepard's recorded voice then plays). No button starts
+  the listening: the microphone is open whenever the panel is up.
+
+Tone colours and icons, from the reply's category and GUI style (the art's four tones are examples, ME1's are these):
+agree and friendly blue (the upper right of the wheel), default white, disagree and hostile red-orange (the lower
+right), investigate cyan with the document icon, charm blue with a mark, intimidate red with a mark, unavailable grey
+and not a row to read.
+
+More rows than fit: the main replies (at most six) are always shown; investigate topics follow under a thin divider in
+smaller type, and past eight rows in all the group scrolls (the art's "Scroll options": the right stick, or the
+pointer). A line longer than two rows of text is cut with an ellipsis until it leads.
+
 ### 3.6 Investigate, flattened
 
 The investigate replies are ordinary replies that the handler files under its sub-menu (phase 0: confirmed in the data,

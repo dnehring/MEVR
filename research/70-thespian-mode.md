@@ -452,6 +452,28 @@ conversation wheel's quad (`conversation_world::State::wheelHand`, `wheelWidthM`
 on, the host does not draw the wheel's crop. Layout as the plan's section 3.5. Offline look first: add its states to
 `mevr-menu-preview`.
 
+**The layout is the owner's concept art** (2026-11-12; described in the plan's section 3.5, the picture local at
+`scratch/thespian/concept-ux-2026-11-12.png`). Build the document as these blocks, top to bottom, in one panel:
+
+1. `header`: left, the speaker's name (and nothing where the game has none); right, the other person's current line
+   (the subtitle's text; the mod sends it in the struct: add `speaker` 64 chars and `heard` 512 chars).
+2. `rows`: one `row` per card in the current list's order, main replies first, then a divider and the investigate
+   topics in smaller type. Each row: `tag` (the label, coloured by tone: a class from category and style, `agree`,
+   `default`, `disagree`, `investigate`, `charm`, `intimidate`, `unavailable`), a divider, `line` (the script as
+   one `span` per word, so the lit frontier is a class change on spans: `said`, `next`, the rest plain).
+   Row states as classes: `idle`, `hover` (gaze or pointer), `leading` (outline and glow; the other rows get `dim`),
+   `committed` (a 0.15 s flash before the panel folds), `unavailable`.
+3. `footer`: the microphone ring, the prompt text by state (off: hidden; armed: "Read a line aloud"; hearing:
+   "Listening..." with the waveform driven by the level; understood: the row's label; unsure: "Didn't catch that"),
+4. `hints`: one line, "Or choose with the stick and A".
+
+Size and place: 0.90 m wide at 1.0 m from the eyes, its top edge 15 degrees below the line from the eyes to the
+speaker's head (so the face is never covered), tilted back 20 degrees; fixed in the room once per wheel, as the wheel's
+quad is. Flat first; a curved panel (`XR_KHR_composition_layer_cylinder`) only if the runtime lists the extension
+[verify], never required. Rows never move while a row leads. `mevr-menu-preview` states to render: four rows idle,
+one hovered, one leading with half its words said, committed, eight rows with investigate topics, an unavailable
+charm row, the microphone's four states.
+
 ### Step 6. The rest
 
 Settings and the menu's Voice page rows (`[Thespian] on`, `strictness`, `handPick = voice | silent`, `endMs`,
