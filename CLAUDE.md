@@ -383,9 +383,15 @@ switching frameworks.
   the stick within `linearWalkS` (0.1 s; the game's 0.67 s each way exploring) and `Pawn.AccelRate` takes a 600 u/s run from a
   standstill in the same time (`vr::combat_stance::WantedRamp`, unit-tested; never slower than the game's; each value put back if
   still ours); log `movement: walking follows the stick`, and `movement: response:` (the speed 0-0.8 s after each stick push or
-  let-go, and the pawn's turn meanwhile) measures it. Measured: the stop at once, full speed by 0.4 s; left (research/38): a
-  0.15 s latency before any push (not the ramp, the turn or `PawnMoveStartTimerThreshold`) and the game's stick mapping (0.5
-  walks at 75 u/s, 0.68 at 120, past 0.70 a full run). `mevr findplayer [pawn|behavior|controller]` puts the player's object at
+  let-go, the pawn's turn meanwhile, the ticks the game's start/stop/skid steps played and the fraction the push set) measures
+  it. **`linearStick = 1`** (2026-11-13, research/38 "The start step and the speed from the push"; the owner: half a push should
+  walk, the VR convention): the speed in proportion to the push, `PlayerTick`'s post sets `BioPawn.SetDesiredSpeed(MoveMag /
+  linearFullAt)` (0.9; MoveMag = |`PlayerInput.RawJoyUp`, `RawJoyRight`|, the push past the game's dead zone) after the game's
+  `PlayerMoveExplore`/`PlayerMoveCombat` (a CallFunction post notes which ran; the walk toggle, crouch, cover, ignored input and
+  the sprint stay the game's); **`startStopAnims = 0`**: `BioPawnBehavior.m_bEnableStartAnim`/`StopAnim`/`SkidAnim` cleared in VR on
+  foot, put back if still ours (the start step held Shepard 0.15-0.19 s after every push, the stop step slid him and rebounded).
+  Measured: a run within 0.1 s of the push, the stop at once; half a push 167 u/s (1.7 m/s; the game's 75), 0.68 267, 0.8 333.
+  `mevr findplayer [pawn|behavior|controller]` puts the player's object at
   `mevr props 0` / `setprop 0` (find, which names every object, ran past the console's 10 s). `drawRate = 6` (D, 1..10; the animation still plays, so every notify fires): the WeaponEquip node's Draw/Holster sequences play faster (their Rate
   while playing). Logs `stance:`, `constant eye:`, `movement:`, `draw:`; snapshot `"stance"`.
 - LE1 comfort ([research/31](research/31-comfort.md), HostServices v17; the menu's Comfort page, `[Comfort]` in

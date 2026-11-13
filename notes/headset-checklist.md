@@ -339,11 +339,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   person before the ending's movie. In the snapshots the platform under you is pure black up to an edge 2 m ahead (the
   cutscene's cameras never look at it; not the near plane, not culling). Say whether it reads as a dark floor or as a hole
   you stand over: a hole sends this walk to the 3D screen. Both branches (paragon over renegade or not) behave the same.
-- [ ] **Walking follows the stick** (research/38 "Linear walking", 2026-11-13; fake headset measured): on foot, push and let
-  go of the left stick: you should stop at once (no coasting) and reach a run within about half a second; a start delay of
-  about 0.15 s is still there (say whether you notice it). A push past about 70% still jumps from a walk to a full run (the
-  game's own; not changed yet). `[Hands] linearWalk = 0` is the old feel, for comparison. In a conversation the walk is
-  1.4 m/s again: say if that's too fast.
+- [ ] **Walking follows the stick** (research/38 "Linear walking" and "The start step and the speed from the push",
+  2026-11-13; fake headset measured): on foot, push and let go of the left stick: you should move at once (no start delay), stop
+  at once (no coasting), and your speed should follow the push (half a push a walk, a full push the run). Say how the legs look
+  when you look down at in-between speeds, and whether a full push in every direction reaches the run (`[Hands] linearFullAt`
+  0.9 lowers it). For comparison: `[Hands] startStopAnims = 1` (the game's start and stop steps), `linearStick = 0` (the game's
+  walk/run jump at 70%), `linearWalk = 0` (the game's ramp). In a conversation the walk is 1.4 m/s again: say if that's too fast.
 - [ ] **A scripted walk, standing still and walking along** (built and run on the fake headset 2026-11-10, research/69 "The
   script's Shepard, the player's view"; walking along since 2026-11-12, "Walking along"): slots 80 and 81. Stand still after
   using Anderson: no flash as the walk begins; nobody walks you any more: once Anderson is 3 m ahead the walk waits. Walk along

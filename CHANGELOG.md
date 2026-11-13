@@ -7,9 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
-- **Walking in VR follows the stick.** On foot, letting go of the stick stops you at once instead of coasting, and you reach
-  full speed sooner (about 0.4 s instead of up to 0.8): the game's third-person speed ramp is replaced in VR. In first-person
-  conversations and scripted walks you walk faster (1.4 m/s), so you keep up with the people you walk with.
+- **Walking in VR follows the stick.** On foot you start moving the moment you push (the game held Shepard for about 0.15 s
+  while a start animation played) and stop the moment you let go, with no coasting; the game's third-person speed ramp and its
+  start, stop and skid steps are replaced in VR. Your speed is in proportion to how far you push: half a push walks, a full
+  push runs (the game made anything under 70% a slow walk and anything past it a full run). In first-person conversations and
+  scripted walks you walk faster (1.4 m/s), so you keep up with the people you walk with.
 - **Thespian mode (experimental, off by default): speak Shepard's lines.** With it on (the menu's Voice page), a
   conversation's replies stand as a script in front of you: read one aloud, or just say its short label, and it is
   taken; the words you have said light up as you go. Shepard's recorded voice is skipped, so the other person answers

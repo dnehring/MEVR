@@ -501,17 +501,72 @@ the pawn turned meanwhile), under replayed walks (`tools/make-walk-recording.py`
 The stop is the change: four times slower than the stick before, about the stick now; at a walk (below) it is 0 within 0.1
 s. A small rebound at 0.4 s (60 u/s) after a run is left, which the game's own code makes (the stop timer's 0.1 s?).
 
-**Not changed: a fixed latency of about 0.15 s before any push moves the pawn**, ramp or not: the same with the pawn turned 0
-or 180 degrees during the push (so not the turn), with the turn rates x4 (1080/1080/2160 by `mevr setprop`), and with
-`PawnMoveStartTimerThreshold` at 0. It sits before the movement code: the input path (the replay's stick through the host's
-XInput hook to the game's input tick) or a start state of the pawn [verify: the game's own pad and the PlayerInput's axes
-against the controller's stick].
+**A fixed latency of about 0.15 s before any push moved the pawn**, ramp or not: the same with the pawn turned 0 or 180
+degrees during the push (so not the turn), with the turn rates x4 (1080/1080/2160 by `mevr setprop`), and with
+`PawnMoveStartTimerThreshold` at 0. **The stick's mapping was not linear either** (out-and-back pushes, linear on): stick 0.5
+walked at 75 u/s, 0.68 at 120, 0.8 and 0.9 ran at 400; a push past 0.7 jumped from a walk to a full run.
 
-**The stick's mapping is not linear either** (out-and-back pushes, linear on): stick 0.5 walks at 75 u/s, 0.68 at 120, 0.8
-and 0.9 run at 400; the game's run threshold is 0.70 (the table above), and below it the speed is far under proportional (0.5
-gives 19% of the run, not 50%). A push past 0.7 jumps from a walk to a full run. Making the speed follow the push needs the
-explore move's speed fraction rewritten (a post-handler on `PlayerMoveExplore`/`PlayerMoveCombat`, or the target the ramp
-moves toward) [verify the field]: next, with the latency, if the owner wants it.
+### The start step and the speed from the push (2026-11-13)
+
+The owner, asked whether to chase the latency and make the speed follow the push: "Is the start delay perceptible? If so,
+then yes. I do think a half analog click should likely do walking, but I would defer with whatever is considered
+conventional." The latency was 0.15-0.19 s from the push to the first movement (above the ~0.1 s at which a response stops
+feeling immediate); the convention of VR games (Half-Life: Alyx, the Unity and Unreal VR templates) is a speed in proportion
+to the push past a dead zone, which also makes half a push a walk.
+
+**Where the stick becomes speed** (the scripts decompiled with `tools/conversation-scan --script` into scratch, Ghidra for the
+natives; findings only, no code kept): `BioPlayerController.PlayerWalking.PlayerMove` calls the native
+`ComputeMovementStickAngle` (`0xBAD960`, its body `0xC73700`: MoveMag = |`PlayerInput.RawJoyUp`, `RawJoyRight`|, the stick past
+the input binding's dead zone, so a push of 0.5 reads 0.375), then `PlayerMoveStorming`, `PlayerMoveCombat` or
+`PlayerMoveExplore`. Those make MoveMag a fraction of the run: past `MoveStickRunThreshold` (0.70) 1, past
+`MoveStickWalkThreshold` (0.65) `WalkSpeed / GroundSpeed` (130/400), below that `MoveMag / 0.65` times it (a crawl), nothing at
+or under `MoveStickIdleThreshold` (0.01); `BioPawn.SetDesiredSpeed(fraction)` (native) sets the target the ramp moves toward
+(`BioPawnBehavior.m_fDesiredMaxSpeed`). Kept as the game's: the walk toggle (`bIsWalking`), a crouch exploring, cover in
+combat, ignored input (`SetDesiredSpeed(1)` and no acceleration) and the sprint.
+
+**Where the latency came from: the start step.** The pawn's native move control (`BioPawn.TickMoveControl`, body `0xAA1260`)
+plays a start animation from a standstill (`CanAnimMoveStart`, `0xA96C10`: `BioPawnBehavior.m_bEnableStartAnim`, the pawn
+walking, its desired speed still near 0 for `PawnMoveStartTimerThreshold`; then `m_eAnimStartState`), a stop animation that
+slides it to a stop at a rate fitted to the animation (`m_bEnableStopAnim`, `m_eAnimStopState`, `m_fMoveStopDSDecelRate`) and a
+skid on a sharp turn (`m_bEnableSkidAnim`, `m_eAnimSkidState`, `m_fSkidDSDecelRate`). The start step holds Shepard while its
+animation leans into the first stride. `BioPawn.m_bEnableStartRootMotion`/`m_bEnableStopRootMotion` say whether the steps move
+him by the animation's root motion.
+
+**Built** (`game/CombatStance`, rules `core/vr/CombatStance`, unit-tested):
+- **`[Hands] linearStick = 1`** (default; `linearFullAt` 0.9): in VR on foot, a CallFunction post on every
+  `PlayerMoveExplore`/`PlayerMoveCombat` notes that one ran, and the `PlayerTick` that ran it (a ProcessEvent post, as
+  view_level's) calls `BioPawn.SetDesiredSpeed(MoveMag / linearFullAt, capped at 1)` on the player's pawn
+  (`vr::combat_stance::LinearSpeed`), except in the game's own cases above (the pawn's `Acceleration` zero counts as ignored
+  input). Full speed at 0.9 of MoveMag because a full push rarely reads 1 in every direction. Logs `movement: the speed
+  follows the push`, `movement: the game's stick thresholds` (read live: idle 0.01, walk 0.65, run 0.70).
+- **`[Hands] startStopAnims = 0`** (default): `m_bEnableStartAnim`, `m_bEnableStopAnim`, `m_bEnableSkidAnim` cleared on the
+  player's behaviour in VR on foot (the game's values kept, put back if still ours when it's off, out of VR, off foot, on a new
+  pawn and at unload); 1 keeps the game's steps. Log `movement: the game's start, stop and skid steps off`. The `movement:
+  response:` line now counts the ticks each step played and the fraction the push set.
+
+**Measured on the fake headset** (Noveria's port, out-and-back replays of 1 s pushes, session `2026-11-13_07-57-37-stick`;
+medians, u/s; the first one or two pushes after each replay starts never move, in every phase, the game's stick included:
+the replay's start, not the walk):
+
+| | 0 s | 0.1 s | 0.2 s | 0.4 s | 0.8 s |
+|---|---|---|---|---|---|
+| Pushed to 0.9, steps off (18 pushes) | 0 | 389 | 389 | 389 | 389 |
+| Pushed to 0.9, the game's steps (18) | 24 | 0 | 56 | 374 | 389 |
+| Let go from 0.9, steps off (17) | 389 | 0 | 0 | 0 | 0 |
+| Let go from 0.9, the game's steps (16) | 389 | 83 | 22 | 61 | 37 |
+
+With the game's steps on, the start step played 216 ticks and the stop step 373 over the phase; off, none. The run comes
+within the first 0.1 s and the stop is at once, with no rebound (the 60 u/s at 0.4 s was the stop step's).
+
+| The push (stick) | MoveMag | Linear: speed | The game's speed |
+|---|---|---|---|
+| 0.5 | 0.375 | 167 u/s (42%, 1.7 m/s) | 75 u/s |
+| 0.68 | 0.6 | 267 u/s (67%) | 120 u/s |
+| 0.8 | 0.75 | 333 u/s (83%) | 400 u/s |
+| 0.9 | 0.875 | 389 u/s (97%) | 400 u/s |
+
+[verify] in the headset: how the legs look in first person at speeds between the walk and the run (the AnimTree blends the
+walk and run cycles by speed), and whether a real stick's full push reads past 0.9 in every direction.
 
 **The conversation walk** (`worldMoveSpeedMS`, research/69) was already linear (the mod's own step: the speed follows the push
 past a 0.15 dead zone, no ramp); its speed is 1.4 m/s again (the owner: "we can increase the speed for the dialogue").
