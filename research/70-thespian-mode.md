@@ -479,6 +479,22 @@ mod's panel is gone. It takes no input. While it stands, the first-person mode's
 layer and the panel stands below it. Offline look: `build\Release\mevr-menu-preview.exe <folder>` writes
 `thespian-idle|hover|leading|committed|unsure|topics.png`.
 
+**The game's own wheel is hidden while the panel stands** (2026-11-13, the owner: "when we have our panel I think we need
+to hide the game's dialogue display"). The wheel is the conversation movie's Flash. The handler (`BioSFHandler_Conversation.Update`,
+read in the decompile) calls `UpdateConversationOptions(conversation)` once when replies are needed (its
+`setConversationOptions`, which shows the wheel) and the movie's `HideWheel` once they no longer are, and in between only
+moves the arrow. So `BeginTurn` calls `oPanel.InvokeMethod("HideWheel")` on the handler's panel (`Engine.BioSFHandler.oPanel`,
+`Engine.BioSFPanel.InvokeMethod`) and never touches `m_bDisplayingWheel`: the handler goes on as if the wheel were up, takes
+the stick as ever, and hides the wheel itself after a pick. The HideWheel also takes the last line's subtitle with it while
+the wheel is up; the panel's header carries that line. **The left stick brings the game's wheel back** (its push past half
+way: the handler's own `UpdateConversationOptions`), and the panel then folds away (`shown = 0`; one set of replies at a
+time, and in first person the game's wheel quad stands where the panel would); the microphone still listens. A turn that
+ends with the wheel still up and nothing taken (the mode off, the recognizer gone, the mod unloading) shows the game's wheel
+again. `[Thespian] hideWheel = 0` keeps the game's wheel. `Panel::gameWheel` (a spare byte, no size change) tells the host;
+`host::thespian::HidesGameWheel()` keeps the first-person wheel quad down only while the game's wheel is hidden. Console:
+`mevr thespian wheel show | hide` (the stick's part without controllers). The panel's hint reads "or move the left stick
+to choose by hand".
+
 Not built: the hover look from gaze or a pointer (the `hover` class exists; nothing sets it), a curved panel.
 
 ### Step 6. The rest - **built 2026-11-13, except tier 2**
@@ -569,3 +585,10 @@ Not built: the hover look from gaze or a pointer (the `hover` class exists; noth
   voice (quiet 203 and 359 ms; the answer 141 ms after the commit). Seen there: "Give me the tour." heard as "Give me
   the." was taken as read to its end (one of its last two words was said, 60% of the line): fine for a four-word line.
   With this, everything that can be checked without a person has been; what is left is the owner's own voice and eyes.
+- **2026-11-13, the game's wheel hidden under the panel** (the owner's request; fake headset, Anoleis in first person
+  and Avina on the 3D screen, snapshots of the eyes): with the panel up neither the game's wheel nor its subtitle shows,
+  in either mode; `wheel show` brings both back (the game's wheel quad in front in first person, the wheel on the 3D
+  screen's UI layer), the panel folds away, and the stick's pick (`mevr thespian stick 0`) takes the reply. Spoken
+  replies were taken as before with the wheel hidden (a whole line at quiet 219 ms, labels at the pause) and after it was
+  shown again. Two things to know: the recognizer's stray "you" in a quiet room was taken together with a label ("you
+  Goodbye.", fine), and how the left stick's first push feels in the headset is [verify].

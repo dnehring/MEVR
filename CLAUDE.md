@@ -1316,8 +1316,11 @@ switching frameworks.
   English. **The host** (`plugin/Thespian`, `assets/menu/thespian.rml` / `.rcss`; the layout is the owner's concept art):
   the panel the mod sends each tick (`vr::thespian::Panel`: rows, lit words, the microphone's mark, the other person's
   line and head) as one quad 0.90 m wide, 1 m from the eyes, under the line of sight to the speaker (ahead of the head
-  on the 3D screen), placed once per wheel, its rows `vr::thespian::RowsRml`'s markup; the first-person wheel quad at the
-  hand stands down for it. Console `mevr thespian [cards | watch on|off | say <words> | pick <position> | on | off | auto |
+  on the 3D screen), placed once per wheel, its rows `vr::thespian::RowsRml`'s markup. **The game's own wheel is hidden
+  while the panel stands** (the movie's Flash `HideWheel` through `oPanel.InvokeMethod`, `m_bDisplayingWheel` untouched, so
+  the handler still takes the stick and hides it after a pick); **the left stick brings it back** (the handler's own
+  `UpdateConversationOptions`) and the panel folds away; a turn ending with nothing taken shows it again (`[Thespian]
+  hideWheel = 0` keeps it; `mevr thespian wheel show|hide`). Console `mevr thespian [cards | watch on|off | say <words> | pick <position> | on | off | auto |
   status | feed <wav> | stick <position>]` (`feed`: a WAV heard in the microphone's place by the open listen, the test
   without a voice; `stick`: the card taken as the stick takes it; the plot after spoken replies equalled the stick's in two
   conversations, saves compared);

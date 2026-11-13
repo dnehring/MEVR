@@ -470,7 +470,9 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
       something that is no reply ("Didn't catch that", nothing taken); cough, talk to someone in the room.
 - [ ] A real microphone's quiet clock: does a noisy room (a fan, the game through speakers) keep it from ever being
       "quiet"? (`mevr thespian status` shows `quiet N ms` and the level.)
-- [ ] Pick with the stick instead: Shepard's voice plays as ever (or passes silently with "Silent").
+- [ ] Pick with the stick instead: the game's wheel is hidden under the panel (Thespian) until the left stick moves; then it
+      comes back where it always stands and the panel folds away. Shepard's voice plays as ever (or passes silently with
+      "Silent"). Does a resting thumb bring it back by accident?
 - [ ] Investigate topics from the main level; a charm or intimidate you don't have is greyed and can't be said.
 - [ ] The squad's radio (left grip at the ear) still works on foot after a conversation, with its own key terms.
 

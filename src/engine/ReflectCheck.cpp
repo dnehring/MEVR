@@ -1418,6 +1418,7 @@ void CheckFunctions() {
         "SFXGame.BioConversation.SkipNode",                      // ... Shepard's recording of it skipped
         "SFXGame.BioWorldInfo.EndCurrentConversation",
         "SFXGame.BioConversation.GetEntryText",                  // ... the other person's line, for the panel's header
+        "SFXGame.BioSFHandler_Conversation.UpdateConversationOptions",  // ... the game's wheel shown again (it was hidden)
         "SFXGame.BioConversation.EndConversation",               // ... mevr convo end
         "SFXGame.BioPawn.GetWeaponStartTraceLocation",
         "Engine.Pawn.GetWeaponStartTraceLocation",
@@ -1747,6 +1748,7 @@ void CheckParams() {
     PARAM(UBioConversation_execSkipNode_Parms, "SFXGame.BioConversation.SkipNode", ReturnValue);
     PARAM(UBioConversation_execGetEntryText_Parms, "SFXGame.BioConversation.GetEntryText", bParse);
     PARAM(UBioConversation_execGetEntryText_Parms, "SFXGame.BioConversation.GetEntryText", ReturnValue);
+    PARAM(UBioSFHandler_Conversation_execUpdateConversationOptions_Parms, "SFXGame.BioSFHandler_Conversation.UpdateConversationOptions", oConversation);
     PARAM(AActor_execDestroy_Parms, "Engine.Actor.Destroy", ReturnValue);
     PARAM(ABioBaseSquad_execGetSquadSize_Parms, "SFXGame.BioBaseSquad.GetSquadSize", ReturnValue);
     PARAM(ABioBaseSquad_execGetMember_Parms, "SFXGame.BioBaseSquad.GetMember", nIndex);

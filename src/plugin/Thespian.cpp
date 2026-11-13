@@ -53,6 +53,7 @@ std::mutex gPanelMutex;
 th::Panel gPanel;              // the mod's last
 std::uint64_t gPanelMs = 0;    // when it came
 std::atomic<bool> gShown{false};
+std::atomic<bool> gHidesWheel{false};
 std::mutex gStatusMutex;
 std::string gStatus = "{\"shown\": false}";
 
@@ -203,6 +204,7 @@ bool Submit() {
 
 void Publish(bool shown) {
     gShown.store(shown, std::memory_order_relaxed);
+    gHidesWheel.store(shown && g.last.gameWheel == 0, std::memory_order_relaxed);
     std::lock_guard lock(gStatusMutex);
     gStatus = std::format("{{\"shown\": {}, \"cards\": {}, \"mic\": \"{}\", \"anchored\": {}, \"pose\": [{:.3f}, {:.3f}, {:.3f}], \"sizeM\": [{:.3f}, {:.3f}], "
                           "\"panels\": {}, \"renders\": {}}}",
@@ -340,6 +342,10 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
 
 bool Shown() {
     return gShown.load(std::memory_order_relaxed);
+}
+
+bool HidesGameWheel() {
+    return gHidesWheel.load(std::memory_order_relaxed);
 }
 
 std::string StatusJson() {

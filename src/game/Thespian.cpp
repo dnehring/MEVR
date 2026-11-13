@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/voice/ScriptMatch.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/Thespian.hpp"
 #include "core/vr/Voice.hpp"
 #include "engine/SettingsFile.hpp"
@@ -62,6 +63,13 @@ ue3::FieldRef gShowRepliesOffset{"SFXGame.BioConversation", "m_fShowRepliesOffse
 ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel"};
 ue3::FieldRef gInvestigateShown{"SFXGame.BioSFHandler_Conversation", "m_bDisplayInvestigateSubMenu"};
 ue3::FieldRef gActorWorldInfo{"Engine.Actor", "WorldInfo"};
+// The game's wheel hidden while the panel stands (2026-11-13, the owner: "hide the game's dialogue display"): the wheel is the
+// conversation movie's Flash; the handler shows it with UpdateConversationOptions (its setConversationOptions) when replies
+// are needed and hides it with the movie's HideWheel when they no longer are. m_bDisplayingWheel is never touched, so the
+// handler goes on as if the wheel were up, takes the stick as ever and hides it itself after a pick.
+ue3::FieldRef gHandlerPanel{"Engine.BioSFHandler", "oPanel"};
+ue3::FunctionRef gInvokeMethod{"Engine.BioSFPanel.InvokeMethod"};                                    // (string sMethodName)
+ue3::FunctionRef gUpdateOptions{"SFXGame.BioSFHandler_Conversation.UpdateConversationOptions"};     // (BioConversation oConversation)
 // `mevr thespian stick`: the wheel's own pick of a card's slot, for the plot comparison (research/70 step 2, (j)).
 ue3::FieldRef gReplyLocations{"SFXGame.BioSFHandler_Conversation", "m_aReplyLocations"};  // int[6]: the category at each wheel location
 ue3::FieldRef gSlotsUsed{"SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed"};            // byte[6]
@@ -207,6 +215,28 @@ std::string Describe(Live const& live) {
             c.unskippable ? " unskippable" : "", c.candidate ? "" : std::format(" NOT A CARD: {}", c.why), c.label, c.line);
     }
     return out;
+}
+
+// The conversation movie's Flash wheel hidden (the movie's own HideWheel).
+bool HideGameWheel(ue3::Object* handler) {
+    ue3::Object* const panel = handler != nullptr ? gHandlerPanel.Read<ue3::Object*>(handler).value_or(nullptr) : nullptr;
+    ue3::Function* const f = gInvokeMethod.Get();
+    if (panel == nullptr || f == nullptr) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), f);
+    ue3::memory::OwnedString name(std::wstring(L"HideWheel"));
+    return p.Valid() && p.Set("sMethodName", name.Get()) && ue3::runtime::Call(panel, f, p);
+}
+
+// ... and shown again as the handler shows it when a wheel comes up (its UpdateConversationOptions). Only while it is up.
+bool ShowGameWheel(ue3::Object* handler, ue3::Object* conversation) {
+    ue3::Function* const f = gUpdateOptions.Get();
+    if (handler == nullptr || conversation == nullptr || f == nullptr || !gDisplayingWheel.ReadBool(handler).value_or(false)) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), f);
+    return p.Valid() && p.Set("oConversation", conversation) && ue3::runtime::Call(handler, f, p);
 }
 
 void ClearMute() {
@@ -375,6 +405,7 @@ void TickPending() {
 
 struct ModeSettings {
     bool on = false;          // [Thespian] on
+    bool hideWheel = true;    // [Thespian] hideWheel: the game's wheel hidden while the panel stands (the stick brings it back)
     th::Settings turn;        // strictness, endMs, pauseMs
     bool handSilent = false;  // handPick = silent: a reply picked by hand is skipped and silenced too
     int keyterms = 12;        // the wheel's rare words given to the recognizer
@@ -407,6 +438,7 @@ void RefreshMode() {
         m.handSilent = ini::Lower(ini::Trim(*text)) == "silent";
     }
     m.keyterms = static_cast<int>(number("keyterms", m.keyterms, 0.0, 32.0));
+    m.hideWheel = number("hideWheel", 1.0, 0.0, 1.0) >= 0.5;
     if (gOnOverride) {
         m.on = *gOnOverride;
     }
@@ -449,6 +481,9 @@ struct Turn {
     bool anchored = false;
     double speakerHead[3] = {};
     std::string heard;               // the other person's last line
+    ue3::Object* handler = nullptr;  // the wheel's handler
+    bool wheelHidden = false;        // the game's wheel is hidden (by us, this turn)
+    bool wheelByHand = false;        // the stick brought it back
 };
 Turn gTurn;
 std::uint32_t gPanelSerial = 0;
@@ -556,6 +591,7 @@ void SendPanel(Link const& link, bool shown) {
         panel.level = gVoice.level;
         panel.serial = gPanelSerial;
         panel.anchored = gTurn.anchored ? 1 : 0;
+        panel.gameWheel = gTurn.wheelHidden ? 0 : 1;
         for (int i = 0; i < 3; ++i) {
             panel.speakerHead[i] = static_cast<float>(gTurn.speakerHead[i]);
         }
@@ -605,6 +641,12 @@ void EndTurn(Link const& link, char const* why) {
     }
     if (link.voice.setListen != nullptr) {
         link.voice.setListen(0);
+    }
+    // A turn that ends with the wheel still up and nothing taken (the mode off, the recognizer gone, the mod unloading):
+    // the game's wheel back, so the player is never left without one. After a commit the handler hides it itself.
+    if (gTurn.wheelHidden && gTurn.state.phase != th::Phase::Committed &&
+        ShowGameWheel(gTurn.handler, conversation_world::LiveConversation())) {
+        log::Info("thespian: the game's wheel is shown again ({})", why);
     }
     log::Info("thespian: the turn is over ({}; {:.1f} s, heard \"{}\")", why, static_cast<double>(GetTickCount64() - gTurn.startedMs) / 1000.0, gTurn.text);
     bool const blocked = gTurn.blocked;
@@ -659,6 +701,11 @@ void BeginTurn(Link const& link, Live const& live) {
     }
     if (link.voice.setListen != nullptr) {
         link.voice.setListen(2);  // the open listen: no ducking, until we end it
+    }
+    gTurn.handler = live.handler;
+    if (gMode.hideWheel) {
+        gTurn.wheelHidden = HideGameWheel(live.handler);
+        log::Info("thespian: the game's wheel {} (the left stick brings it back)", gTurn.wheelHidden ? "is hidden" : "couldn't be hidden");
     }
     log::Info("thespian: a wheel to speak: {} cards of {} replies; key terms \"{}\"; the other's line has {:.2f} s left", cards.size(), gTurn.all.size(), terms,
         gRemainingVo.Read<float>(live.conversation).value_or(-1.0f));
@@ -754,6 +801,16 @@ void TickTurn(double deltaSeconds, Link const& link) {
             BeginTurn(link, *live);
         }
     }
+    if (gTurn.active && gTurn.wheelHidden) {
+        // The left stick (the wheel's) pushed: a choice by hand. The game's wheel comes back; the voice still listens.
+        vr::controllers::State const c = vr::controllers::Latest();
+        float const x = c.active ? c.left.stickX : 0.0f, y = c.active ? c.left.stickY : 0.0f;
+        if (x * x + y * y > 0.25f && ShowGameWheel(handler, conversation)) {
+            gTurn.wheelHidden = false;
+            gTurn.wheelByHand = true;
+            log::Info("thespian: the left stick moved: the game's wheel is shown again, the panel folds away");
+        }
+    }
     if (gTurn.active) {
         TakeLines(link);
         th::Input in;
@@ -798,12 +855,16 @@ void TickTurn(double deltaSeconds, Link const& link) {
             live.wheelUp = true;
             live.cards = gTurn.all;
             ++gSpokenCommits;
-            SendPanel(link, true);  // the committed row's flash
+            if (!gTurn.wheelByHand) {
+                SendPanel(link, true);  // the committed row's flash
+            }
             Commit(live, c.position, how);
             EndTurn(link, "a reply was taken");
         }
     }
-    SendPanel(link, gTurn.active);
+    // The panel folds away once the stick brought the game's wheel back (a pick by hand: one set of replies at a time, and the
+    // game's wheel quad stands where the panel would). The microphone still listens.
+    SendPanel(link, gTurn.active && !gTurn.wheelByHand);
 }
 
 }  // namespace
@@ -866,6 +927,23 @@ std::string Command(std::string const& rest) {
             gModeText, gVoice.status, gVoice.model, gVoice.open != 0 ? "yes" : "no", gVoice.silentMs, gVoice.level, gTurn.active ? "active" : gTurn.blocked ? "blocked" : "none",
             static_cast<int>(gTurn.state.phase), gTurn.active ? gTurn.text : gLastHeard, gWheels, gSpoken, gSpokenCommits, gUnsure, gStoodDown, gLast);
     }
+    if (verb == "wheel") {
+        // Tests without controllers: the game's wheel shown (as the stick does) or hidden again.
+        std::string what;
+        words >> what;
+        if (!gTurn.active) {
+            return "thespian: no spoken turn (the mode off, or no wheel up)";
+        }
+        if (what == "show") {
+            bool const shown = ShowGameWheel(gTurn.handler, conversation_world::LiveConversation());
+            gTurn.wheelHidden = gTurn.wheelHidden && !shown;
+            gTurn.wheelByHand = gTurn.wheelByHand || shown;
+            return std::format("thespian: the game's wheel {}", shown ? "is shown again" : "couldn't be shown");
+        }
+        bool const hidden = HideGameWheel(gTurn.handler);
+        gTurn.wheelHidden = gTurn.wheelHidden || hidden;
+        return std::format("thespian: the game's wheel {}", hidden ? "is hidden" : "couldn't be hidden");
+    }
     if (verb == "feed") {
         std::string path;
         std::getline(words, path);
@@ -915,7 +993,7 @@ std::string Command(std::string const& rest) {
         std::getline(words, said);
         return Say(*live, ini::Trim(said));
     }
-    return "thespian: cards | watch on|off | say <words> | pick <position> | on | off | auto | status | feed <wav>";
+    return "thespian: cards | watch on|off | say <words> | pick <position> | stick <position> | on | off | auto | status | feed <wav> | wheel show|hide";
 }
 
 std::string StatusJson() {

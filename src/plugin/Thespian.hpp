@@ -35,6 +35,8 @@ struct Frame {
 XrCompositionLayerQuad const* Layer(Frame const& frame);
 // The panel went out in the last frame: the game's wheel quad at the hand stands down for it. Any thread.
 bool Shown();
+// ... and the game's own wheel is hidden under it (the mod hid it; the stick hasn't brought it back). Any thread.
+bool HidesGameWheel();
 // For snapshots. Any thread.
 std::string StatusJson();
 

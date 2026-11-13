@@ -12,10 +12,12 @@
 // (core/voice/ScriptMatch), takes the reply through the game's own queue and skips Shepard's recording of it.
 //
 // The spoken turn (research/70 section 8 steps 3 to 6; `[Thespian]` in ASI\LE1MEVR.ini: on (default 0), strictness =
-// relaxed | performer | method, endMs, pauseMs, handPick = voice | silent, keyterms): while a wheel is up the host's
+// relaxed | performer | method, endMs, pauseMs, handPick = voice | silent, keyterms, hideWheel): while a wheel is up the host's
 // recognizer listens openly (no button, the game's audio not ducked), the wheel's rare words are its key terms, every
 // update of the transcript is matched against the cards, the turn's rules (core/vr/Thespian) say when a reply is taken,
-// and the panel (the rows, the lit words, the microphone's mark) goes to the host each tick. Off, or without a
+// and the panel (the rows, the lit words, the microphone's mark) goes to the host each tick; the game's own wheel is
+// hidden meanwhile (its Flash's HideWheel) until the left stick moves, which brings it back for a pick by hand and folds the
+// panel away (the microphone still listens). Off, or without a
 // recognizer, or on a wheel whose text isn't English: nothing changes, the game's wheel works as ever. The console
 // commands work whatever the setting.
 //
@@ -44,6 +46,8 @@ bool OwnsListen(std::uint64_t listenStartMs);
 //   on | off | auto  the spoken mode for this session whatever the file says (auto: the file's again)
 //   status           the mode, the recognizer, the turn's state and what was heard
 //   feed <wav>       a WAV heard in the microphone's place by the open listen (a test without a voice)
+//   stick <position> the card taken as the stick takes it (the handler's SelectConversationEntry)
+//   wheel show|hide  the game's own wheel shown (as the left stick does while the panel stands) or hidden again
 std::string Command(std::string const& rest);
 std::string StatusJson();
 // Lets go of what it holds (the silenced voice); the module may be unloaded after.

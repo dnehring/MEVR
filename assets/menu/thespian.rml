@@ -23,7 +23,7 @@
 			<div class="split"/>
 			<div class="meter"><div class="fill" data-style-width="level_width"/></div>
 		</div>
-		<div class="hints">Read a line or say its label &#8226; or choose with the stick and A</div>
+		<div class="hints">Read a line or say its label &#8226; or move the left stick to choose by hand</div>
 	</div>
 </body>
 </rml>

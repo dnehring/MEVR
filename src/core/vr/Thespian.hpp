@@ -120,7 +120,8 @@ struct Panel {
     float level = 0.0f;          // the microphone's level, 0..1
     std::uint32_t serial = 0;    // changes when the cards' texts do (a new wheel): the host rebuilds its rows
     std::uint8_t anchored = 0;   // speakerHead is valid
-    std::uint8_t pad[3]{};
+    std::uint8_t gameWheel = 0;  // the game's own wheel is shown (the stick brought it back): the host draws it as ever
+    std::uint8_t pad[2]{};
     float speakerHead[3]{};      // the other person's head, world (the panel stands under the line of sight to it)
     char speaker[kSpeakerChars]{};
     char heard[kLineChars]{};    // the other person's last line

@@ -1913,9 +1913,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool const convoAllowed = convo && engaged && frame.worldFrame && !frame.menuOpen && frame.headValid && gPanel.texture != nullptr &&
         gPanel.tintSrv != nullptr && device != nullptr;
     bool const convoSubtitleWanted = convoAllowed && convo->subtitle != 0 && !gLabelSwapchain.Refused();
-    // Not while Thespian mode's panel stands (research/70): the replies are its rows; the game's wheel stays on the HUD panel.
+    // Not while Thespian mode's panel stands with the game's wheel hidden (research/70): the replies are its rows. Once the
+    // left stick brings the game's wheel back (a pick by hand) its quad is drawn as ever.
 #if defined(MEVR_WITH_MAIN_MENU)
-    bool const thespianPanel = mevr::host::thespian::Shown();
+    bool const thespianPanel = mevr::host::thespian::HidesGameWheel();
 #else
     bool const thespianPanel = false;
 #endif
