@@ -40,8 +40,13 @@ constexpr int kStyleIllegal = 4;  // a reply the player can't take (a charm or i
 constexpr int kMaxCards = 32;
 
 // The live conversation's replies. Every Get* function takes a position in m_lstCurrentReplyIndices.
-ue3::FieldRef gCurrentReplies{"SFXGame.BioConversation", "m_lstCurrentReplyIndices"};  // TArray<int>: indices into m_ReplyList
+// TArray<int>: places in the current entry's ReplyListNew (seen in the game 2026-11-13: the hearing's wheel #10 lists 0, 1, 2
+// where its replies are 12, 11, 12), whose nIndex is the reply's index in m_ReplyList.
+ue3::FieldRef gCurrentReplies{"SFXGame.BioConversation", "m_lstCurrentReplyIndices"};
 ue3::FieldRef gReplyList{"SFXGame.BioConversation", "m_ReplyList"};
+ue3::FieldRef gEntryList{"SFXGame.BioConversation", "m_EntryList"};
+ue3::FieldRef gEntryReplies{gEntryList, "ReplyListNew"};
+ue3::FieldRef gEntryReplyIndex{gEntryReplies, "nIndex"};
 ue3::FieldRef gReplyUnskippable{gReplyList, "bUnskippable"};
 ue3::FunctionRef gGetReplyText{"SFXGame.BioConversation.GetReplyText"};                  // (int nIndex, bool bParse) -> string
 ue3::FunctionRef gGetReplyParaphrase{"SFXGame.BioConversation.GetReplyParaphraseText"};  // (int nIndex) -> string
@@ -77,7 +82,7 @@ ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversat
 
 struct Card {
     int position = 0;   // in m_lstCurrentReplyIndices: what every reply function and QueueReply take
-    int reply = -1;     // the element's value: the reply's index in m_ReplyList
+    int reply = -1;     // the reply's index in m_ReplyList (the entry's ReplyListNew[the element's value].nIndex)
     int category = 0;
     int style = 0;
     std::string label;
@@ -119,6 +124,17 @@ unsigned gCommits = 0;
 unsigned gSkips = 0;
 unsigned gRefused = 0;
 std::string gLast = "nothing yet";
+
+// A place in the current entry's ReplyListNew (what m_lstCurrentReplyIndices and m_nSelectedReply hold) as the reply's index
+// in m_ReplyList; -1 when the entry or the place isn't there.
+std::int32_t ReplyNode(ue3::Object* conversation, std::int32_t place) {
+    std::int32_t const entry = gCurrentEntry.Read<std::int32_t>(conversation).value_or(-1);
+    auto const entries = gEntryList.ElementsOf(conversation, 4096);
+    void* const node = entries && entry >= 0 ? entries->At(entry) : nullptr;
+    auto const offered = node != nullptr ? gEntryReplies.ElementsOf(node, 64) : std::nullopt;
+    void* const offer = offered ? offered->At(place) : nullptr;
+    return offer != nullptr ? gEntryReplyIndex.Read<std::int32_t>(offer).value_or(-1) : -1;
+}
 
 std::string CallText(ue3::Object* conversation, ue3::FunctionRef& function, int position, bool withParse) {
     ue3::Function* const f = function.Get();
@@ -173,9 +189,16 @@ std::optional<Live> ReadLive() {
     static int told = 0;
     std::int32_t const entry = gCurrentEntry.Read<std::int32_t>(live.conversation).value_or(-1);
     auto const replies = gReplyList.ElementsOf(live.conversation);
-    bool whole = entry >= 0 && replies.has_value();
+    auto const entries = gEntryList.ElementsOf(live.conversation, 4096);
+    void* const entryNode = entries && entry >= 0 ? entries->At(entry) : nullptr;
+    auto const offered = entryNode != nullptr ? gEntryReplies.ElementsOf(entryNode, 64) : std::nullopt;
+    // Each current place's reply: the entry's ReplyListNew[place].nIndex, which m_ReplyList must hold.
+    std::int32_t nodes[kMaxCards] = {};
+    bool whole = replies.has_value() && offered.has_value();
     for (std::int32_t i = 0; whole && i < current->count; ++i) {
-        whole = replies->At(current->data[i]) != nullptr;
+        void* const offer = offered->At(current->data[i]);
+        nodes[i] = offer != nullptr ? gEntryReplyIndex.Read<std::int32_t>(offer).value_or(-1) : -1;
+        whole = nodes[i] >= 0 && replies->At(nodes[i]) != nullptr;
     }
     if (!whole) {
         // A wheel on a conversation without its current line or with replies its list doesn't hold: it is changing under
@@ -191,7 +214,7 @@ std::optional<Live> ReadLive() {
     for (std::int32_t i = 0; i < current->count; ++i) {
         Card card;
         card.position = i;
-        card.reply = current->data[i];
+        card.reply = nodes[i];
         card.category = CallNumber<std::int32_t>(live.conversation, gGetReplyCategory, i).value_or(0);
         card.style = CallNumber<std::uint8_t>(live.conversation, gGetReplyGuiStyle, i).value_or(0);
         card.label = CallText(live.conversation, gGetReplyParaphrase, i, false);
@@ -841,7 +864,8 @@ void TickTurn(double deltaSeconds, Link const& link) {
             gPending.conversation = conversation;
             gPending.atMs = GetTickCount64();
             auto const replies = gReplyList.ElementsOf(conversation);
-            std::int32_t const selected = gSelectedReply.Read<std::int32_t>(conversation).value_or(-1);
+            // m_nSelectedReply is a place in the current entry's reply list, like m_lstCurrentReplyIndices.
+            std::int32_t const selected = ReplyNode(conversation, gSelectedReply.Read<std::int32_t>(conversation).value_or(-1));
             void* const node = replies && selected >= 0 ? replies->At(selected) : nullptr;
             gPending.reply = selected;
             gPending.unskippable = node == nullptr || gReplyUnskippable.ReadBool(node).value_or(true);  // unknown: silenced, not skipped
