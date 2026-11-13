@@ -11501,6 +11501,19 @@ void TestCombatStance() {
         CHECK(cs::ClampLinearWalkS(0.0) == 0.03 && cs::ClampLinearWalkS(5.0) == 1.0 &&
               cs::ClampLinearWalkS(std::numeric_limits<double>::quiet_NaN()) == cs::kDefaultLinearWalkS);
     }
+    // The speed in proportion to the push (2026-11-13): half a push (MoveMag 0.375 past the game's 0.2 dead zone) is a walk,
+    // the run at 0.9, a diagonal past 1 capped; the game's idle threshold and its stop stand.
+    {
+        auto const about = [](std::optional<double> v, double want) { return v && std::fabs(*v - want) < 1e-9; };
+        CHECK(about(cs::LinearSpeed(0.375, 0.1, 0.9), 0.375 / 0.9));
+        CHECK(about(cs::LinearSpeed(0.9, 0.1, 0.9), 1.0) && about(cs::LinearSpeed(1.4, 0.1, 0.9), 1.0));
+        CHECK(about(cs::LinearSpeed(0.5, 0.1, 1.0), 0.5));
+        CHECK(!cs::LinearSpeed(0.1, 0.1, 0.9) && !cs::LinearSpeed(0.05, 0.1, 0.9) && !cs::LinearSpeed(0.0, 0.0, 0.9));
+        CHECK(!cs::LinearSpeed(std::numeric_limits<double>::quiet_NaN(), 0.1, 0.9) && !cs::LinearSpeed(-0.5, 0.1, 0.9));
+        CHECK(about(cs::LinearSpeed(0.3, std::numeric_limits<double>::quiet_NaN(), 0.6), 0.5));
+        CHECK(cs::ClampLinearFullAt(0.2) == 0.5 && cs::ClampLinearFullAt(2.0) == 1.0 &&
+              cs::ClampLinearFullAt(std::numeric_limits<double>::quiet_NaN()) == cs::kDefaultLinearFullAt);
+    }
 
     // D: the draw rate.
     CHECK(cs::ClampDrawRate(2.0) == 2.0);

@@ -62,6 +62,9 @@ struct Values {
     bool exploreRamp = true;         // [Hands] exploreRamp (research/38 C)
     bool linearWalk = true;          // [Hands] linearWalk (research/38 "Linear walking", 2026-11-12)
     double linearWalkS = vr::combat_stance::kDefaultLinearWalkS;  // [Hands] linearWalkS
+    bool linearStick = true;         // [Hands] linearStick (research/38 "Linear walking", 2026-11-13)
+    double linearFullAt = vr::combat_stance::kDefaultLinearFullAt;  // [Hands] linearFullAt
+    bool startStopAnims = false;     // [Hands] startStopAnims (the game's start, stop and skid steps; off in VR on foot)
     double drawRate = vr::combat_stance::kDefaultDrawRate;  // [Hands] drawRate (research/38 D)
     double holsterRate = vr::combat_stance::kDefaultHolsterRate;  // [Hands] holsterRate
     // [Hands] sprint, sprintStaminaS, sprintRefillS (game/sprint): the faster run by default since 2026-11-06 (the user).
@@ -169,6 +172,10 @@ constexpr char const* kDefaultFile =
     "; sprinting. exploreRamp: 1 = walking with a weapon out speeds up and slows down as gently as exploring.\n"
     "; linearWalk: 1 = in VR on foot your speed follows the stick within linearWalkS seconds (to full speed and to a stop),\n"
     "; instead of the game's third-person ramp (0.67 s each way exploring); 0 = the game's (and exploreRamp above).\n"
+    "; linearStick: 1 = in VR on foot your speed is in proportion to how far you push the stick (half a push walks, the run\n"
+    "; at linearFullAt of a full push); 0 = the game's (a slow walk under 70% of a push, a full run past it).\n"
+    "; startStopAnims: 0 = in VR on foot Shepard starts, stops and turns about at once; 1 = the game's start, stop and skid\n"
+    "; steps (their animation holds him for about 0.15 s before he moves and slides him to a stop).\n"
     "; drawRate: how fast the draw animation plays (1 = the game's own, up to 10); holsterRate: the holster's (up to 20:\n"
     "; the gun leaves your open hand that much sooner). constantEye (read by\n"
     "; the host): 1 = drawing, holstering, aimed fire and sprinting with a weapon out leave your view where it is.\n"
@@ -180,6 +187,9 @@ constexpr char const* kDefaultFile =
     "exploreRamp = 1\n"
     "linearWalk = 1\n"
     "linearWalkS = 0.10\n"
+    "linearStick = 1\n"
+    "linearFullAt = 0.90\n"
+    "startStopAnims = 0\n"
     "drawRate = 6.0\n"
     "holsterRate = 15.0\n"
     "constantEye = 1\n"
@@ -963,6 +973,15 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "linearWalkS", values.linearWalkS)) {
         values.linearWalkS = vr::combat_stance::ClampLinearWalkS(values.linearWalkS);
+    }
+    if (Number(ini, "Hands", "linearStick", flag)) {
+        values.linearStick = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "linearFullAt", values.linearFullAt)) {
+        values.linearFullAt = vr::combat_stance::ClampLinearFullAt(values.linearFullAt);
+    }
+    if (Number(ini, "Hands", "startStopAnims", flag)) {
+        values.startStopAnims = flag != 0.0;
     }
     if (Number(ini, "Hands", "drawRate", values.drawRate)) {
         values.drawRate = vr::combat_stance::ClampDrawRate(values.drawRate);
@@ -2636,7 +2655,7 @@ Sprint GetSprint() {
 
 CombatStance GetCombatStance() {
     return {gValues.exploreStance, gValues.exploreStanceStorm, gValues.exploreRamp, gValues.linearWalk, gValues.linearWalkS, gValues.drawRate,
-        gValues.holsterRate};
+        gValues.holsterRate, gValues.linearStick, gValues.linearFullAt, gValues.startStopAnims};
 }
 
 Fingers GetFingers() {
@@ -3242,6 +3261,10 @@ void Refresh() {
         // The walk linear to the stick in VR (2026-11-12, research/38 "Linear walking").
         {L"Hands", "Hands", L"linearWalk", "linearWalk", L"1"},
         {L"Hands", "Hands", L"linearWalkS", "linearWalkS", L"0.10"},
+        // The speed in proportion to the push and the game's start/stop steps off in VR (2026-11-13, research/38 "Linear walking").
+        {L"Hands", "Hands", L"linearStick", "linearStick", L"1"},
+        {L"Hands", "Hands", L"linearFullAt", "linearFullAt", L"0.90"},
+        {L"Hands", "Hands", L"startStopAnims", "startStopAnims", L"0"},
         {L"Hands", "Hands", L"drawRate", "drawRate", L"6.0"},
         // A faster holster (2026-11-06); also the marker for releaseGrace's move above.
         {L"Hands", "Hands", L"holsterRate", "holsterRate", L"15.0"},
@@ -3473,6 +3496,12 @@ void Refresh() {
         log::Info("hands: walking {} ([Hands] linearWalk = {}, linearWalkS {:.2f}; research/38 \"Linear walking\")",
             values.linearWalk ? std::format("follows the stick within {:.2f} s in VR on foot", values.linearWalkS) : "ramps as the game has it",
             values.linearWalk ? 1 : 0, values.linearWalkS);
+        log::Info("hands: the walk's speed {} ([Hands] linearStick = {}, linearFullAt {:.2f}); the game's start, stop and skid steps {} "
+                  "([Hands] startStopAnims = {})",
+            values.linearStick ? std::format("in proportion to the push in VR on foot, the run at {:.2f}", values.linearFullAt)
+                               : "as the game has it (a walk under 70% of a push, a run past it)",
+            values.linearStick ? 1 : 0, values.linearFullAt, values.startStopAnims ? "kept" : "off in VR on foot",
+            values.startStopAnims ? 1 : 0);
         log::Info("hands: fingers {} ({:.0f} degrees per joint at a full curl, touch sensors {}; research/43)",
             values.fingers ? "follow the controllers" : "off", values.fingerCurlDeg, values.fingerTouch ? "used" : "not used");
     }

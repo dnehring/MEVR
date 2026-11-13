@@ -1189,6 +1189,21 @@ void CheckFields() {
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdDecelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdDecelRate));
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdTacAccelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdTacAccelRate));
     CheckField("SFXGame.BioPawnBehavior", "m_fMaxDesSpdTacDecelRate", SDK_FIELD(UBioPawnBehavior, m_fMaxDesSpdTacDecelRate));
+    // The walk's speed from the push and the game's start, stop and skid steps (game/combat_stance, research/38 "Linear walking").
+    CheckField("SFXGame.BioPawnBehavior", "m_fDesiredMaxSpeed", SDK_FIELD(UBioPawnBehavior, m_fDesiredMaxSpeed));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableStartAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableStartAnim));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableStopAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableStopAnim));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableSkidAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableSkidAnim));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimStartState", SDK_FIELD(UBioPawnBehavior, m_eAnimStartState));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimStopState", SDK_FIELD(UBioPawnBehavior, m_eAnimStopState));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimSkidState", SDK_FIELD(UBioPawnBehavior, m_eAnimSkidState));
+    CheckField("SFXGame.BioPlayerController", "MoveStickIdleThreshold", SDK_FIELD(ABioPlayerController, MoveStickIdleThreshold));
+    CheckField("SFXGame.BioPlayerController", "MoveStickWalkThreshold", SDK_FIELD(ABioPlayerController, MoveStickWalkThreshold));
+    CheckField("SFXGame.BioPlayerController", "MoveStickRunThreshold", SDK_FIELD(ABioPlayerController, MoveStickRunThreshold));
+    CheckField("Engine.PlayerInput", "RawJoyUp", SDK_FIELD(UPlayerInput, RawJoyUp));
+    CheckField("Engine.PlayerInput", "RawJoyRight", SDK_FIELD(UPlayerInput, RawJoyRight));
+    CheckField("Engine.PlayerController", "bIgnoreMoveInput", SDK_FIELD(APlayerController, bIgnoreMoveInput));
+    CheckField("Engine.Pawn", "DesiredSpeed", SDK_FIELD(APawn, DesiredSpeed));
     CheckField("SFXGame.BioEpicPawnBehavior", "Squad", SDK_FIELD(UBioEpicPawnBehavior, Squad));
     CheckField("SFXGame.BioActorBehavior", "ActorGameName", SDK_FIELD(UBioActorBehavior, ActorGameName));
     CheckField("SFXGame.BioActorBehavior", "m_oActorType", SDK_FIELD(UBioActorBehavior, m_oActorType));
@@ -1632,6 +1647,24 @@ void CheckFunctions() {
         Add("function", "PlayerTick (all)", !ours.empty() && ours == sdk, std::format("{} functions", ours.size()),
             std::format("{} functions", sdk.size()));
     });
+    // CombatStance's move set (research/38 "Linear walking"): every PlayerMoveExplore and PlayerMoveCombat.
+    for (char const* name : {"PlayerMoveExplore", "PlayerMoveCombat"}) {
+        Guard("function", std::format("{} (all)", name), [name] {
+            std::vector<std::string> ours;
+            for (ue3::Function* f : R().FindFunctionsNamed(name)) {
+                ours.push_back(R().FullName(f));
+            }
+            std::vector<std::string> sdk;
+            std::wstring const wide(name, name + std::strlen(name));
+            for (UFunction* f : SdkFunctionsNamed(wide.c_str())) {
+                sdk.push_back(SdkFullName(f));
+            }
+            std::sort(ours.begin(), ours.end());
+            std::sort(sdk.begin(), sdk.end());
+            Add("function", std::format("{} (all)", name), !ours.empty() && ours == sdk, std::format("{} functions", ours.size()),
+                std::format("{} functions", sdk.size()));
+        });
+    }
 }
 
 void CheckParams() {

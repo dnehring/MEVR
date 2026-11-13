@@ -118,6 +118,9 @@ struct CombatStance {
     double linearWalkS = 0.1;        // ... seconds to full speed and to a stop
     double drawRate = 6.0;           // the draw animation's rate, 1..10 (D; 1: the game's)
     double holsterRate = 15.0;       // the holster animation's, 1..20
+    bool linearStick = true;         // VR on foot: the speed in proportion to the push (research/38 "Linear walking", 2026-11-13)
+    double linearFullAt = 0.9;       // ... the run at this MoveMag (the push past the game's dead zone)
+    bool startStopAnims = false;     // VR on foot: the game's start, stop and skid steps kept (false: off)
 };
 CombatStance GetCombatStance();
 // [Hands] sprint (game | speed), sprintStaminaS, sprintRefillS: the sprint button as a faster run with a stamina of its own

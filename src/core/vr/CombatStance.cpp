@@ -230,6 +230,17 @@ bool Differs(WalkRamp const& a, WalkRamp const& b) {
            off(a.accelRate, b.accelRate);
 }
 
+double ClampLinearFullAt(double fullAt) {
+    return std::isfinite(fullAt) ? std::clamp(fullAt, 0.5, 1.0) : kDefaultLinearFullAt;
+}
+
+std::optional<double> LinearSpeed(double moveMag, double idleThreshold, double fullAt) {
+    if (!std::isfinite(moveMag) || moveMag <= 0.0 || moveMag <= (std::isfinite(idleThreshold) ? idleThreshold : 0.0)) {
+        return std::nullopt;
+    }
+    return std::min(1.0, moveMag / ClampLinearFullAt(fullAt));
+}
+
 double ClampDrawRate(double rate) {
     return std::isfinite(rate) ? std::clamp(rate, 1.0, kMaxDrawRate) : 1.0;
 }

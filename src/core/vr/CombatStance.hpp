@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 // The weapon drawn, looking and feeling like exploring (research/38): the game-independent parts, unit-tested in
@@ -155,6 +156,17 @@ double ClampLinearWalkS(double seconds);  // [0.03, 1]; NaN: the default
 // The values the walk should have, from the game's own: unchanged when any of the game's is unusable (not set yet).
 WalkRamp WantedRamp(WalkRamp const& game, bool exploreRamp, bool linear, double linearS);
 bool Differs(WalkRamp const& a, WalkRamp const& b);
+
+// The speed from the push (research/38 "Linear walking", 2026-11-13; the owner: "a half analog click should likely do walking",
+// the convention of VR games: the speed in proportion to the push). The game's own (BioPlayerController.PlayerWalking's
+// PlayerMoveExplore/PlayerMoveCombat) takes MoveMag, the left stick's length past its dead zone (|RawJoyUp, RawJoyRight|:
+// a push of 0.5 reads 0.375), and makes it a crawl in proportion up to the walk (130 of 400 units/s) under 0.65, the walk to
+// 0.70 and a full run past it. Linear ([Hands] linearStick): the fraction of the run is MoveMag / fullAt, capped at 1, so
+// half a push walks at about 1.7 m/s and the run comes at `fullAt` (a stick's full push rarely reads 1 in every direction).
+// Nothing at or under the game's idle threshold (its own stop stands); NaN or negative: nothing.
+inline constexpr double kDefaultLinearFullAt = 0.9;
+double ClampLinearFullAt(double fullAt);  // [0.5, 1]; NaN: the default
+std::optional<double> LinearSpeed(double moveMag, double idleThreshold, double fullAt);
 
 // ---- D. Draw delay ----------------------------------------------------------------------------------------------
 
