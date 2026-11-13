@@ -13,6 +13,9 @@ Shepard's own body left on a mark away from the player):
   python tools/conversation-stance.py a.json b.json ...
   python tools/conversation-stance.py --heads [--since ...]  # whom each face points at, per moment, as text (no sheets)
   python tools/conversation-stance.py --audit [--since ...]  # per scene: looks at the player against looks at Shepard's body
+  python tools/conversation-stance.py --findings [--since ...]   # per scene: what the rules found (tools/scene_audit.py)
+  python tools/conversation-stance.py --baseline-write <file> [--since ...]   # each scene's numbers, kept to compare with
+  python tools/conversation-stance.py --baseline-compare <file> [--since ...] # regressions against them (exit code 1 if any)
 
 "You" is where the player's eyes are drawn (the record's `player.eyes`: the held place moved by the host's render-side view
 offset, 0.43 m behind and 0.18 m below it with the shipped settings, and the head's tracking); records written before
@@ -31,7 +34,17 @@ import math
 import os
 import sys
 
+import importlib.util
+
 from PIL import Image, ImageDraw, ImageFont
+
+# The rules and the shared classification (tools/scene_audit.py), by path: `python -I` keeps this folder off sys.path.
+_spec = importlib.util.spec_from_file_location('scene_audit', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scene_audit.py'))
+scene_audit = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(scene_audit)
+body_gap = scene_audit.body_gap
+looks_at = scene_audit.looks_at
+BODY_AWAY_M = scene_audit.BODY_AWAY_M
 
 PANEL = 560
 HEAD = 64
@@ -120,47 +133,6 @@ def arrow(d, a, b, fill, width=2, dashed=False):
     ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
     s = 8
     d.polygon([b, (b[0] - ux * s - uy * s * 0.5, b[1] - uy * s + ux * s * 0.5), (b[0] - ux * s + uy * s * 0.5, b[1] - uy * s - ux * s * 0.5)], fill=fill)
-
-
-BODY_AWAY_M = 0.3  # Shepard's head bone this far (flat) from the player's drawn eyes: a look at him is no longer at the player
-
-
-def body_gap(st):
-    """How far (m, flat) Shepard's head bone stands from the player's eyes: the record's own measure, else (older records:
-    the held place) from the people's list."""
-    gap = st['player'].get('bodyFromEyesM')
-    if gap is not None:
-        return gap
-    shep = next((q for q in st['people'] if q.get('shepard') and q.get('head')), None)
-    return math.dist(shep['head'][:2], st['player']['at'][:2]) / 100 if shep else None
-
-
-def looks_at(p, st):
-    """Whom a face points at: the game's look-at target when the face points at where it aims (within 20 degrees), the
-    player within 20, Shepard's body away from the player within 25 (and nearer it than the player), else None. (Two people
-    standing close together are told apart by the game's target, not by the angle alone: Garrus looking at Girard beside
-    Shepard's body, 2026-11-12.) A look at Shepard is a look at the player while his head bone is with the player's eyes."""
-    face = p.get('face') or {}
-    if not face or p.get('hidden') or p.get('shepard') or not p.get('head'):
-        return None
-    gap = body_gap(st)
-    away = gap is not None and gap >= (BODY_AWAY_M if st['player'].get('eyes') else 1.0)
-    look = p.get('gameLook') or {}
-    aim, target = look.get('aim'), look.get('target')
-    if aim and target and math.dist(aim[:2], p['head'][:2]) > 10:
-        a = math.degrees(math.atan2(aim[1] - p['head'][1], aim[0] - p['head'][0]))
-        if abs((face['yaw'] - a + 180) % 360 - 180) < 20:
-            if target == 'you' or target.startswith('BioLookAtTarget'):
-                return 'you'
-            if target == 'Shepard':
-                return "Shepard's body" if away else 'you'
-            return target
-    you, shep = face.get('toYouDeg'), face.get('toShepardDeg')
-    if you is not None and you < 20:
-        return 'you'
-    if away and shep is not None and shep < 25 and (you is None or shep < you):
-        return "Shepard's body"
-    return None
 
 
 def choose_scale(st):
@@ -479,6 +451,47 @@ def print_audit(groups):
     return 0
 
 
+def print_findings(groups):
+    """What the rules found, per scene (tools/scene_audit.py), the most severe first; a line for a clean scene."""
+    total = 0
+    for (day, number, name, _part), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
+        found = scene_audit.findings(stances)
+        if not stances[-1]['player'].get('eyes'):
+            continue
+        total += len(found)
+        label = f"{name.split('.')[-1]} ({number}; {stances[-1].get('opening', '-')}{', staged' if stances[-1].get('staged') else ''})"
+        if not found:
+            print(f"{label}: clean ({len(stances)} records)")
+            continue
+        print(f"{label}: {len(found)} finding{'s' if len(found) != 1 else ''}")
+        for f in found:
+            print(f"  [{'!' * f['severity']}] {f['rule']}: {f['who']} at {f['at']} s ({f['tag']}): {f['detail']}")
+    print(f"{total} findings")
+    return 0
+
+
+def baseline(groups, write, compare):
+    """Each scene's numbers (the latest run of each), written as a baseline or compared with one."""
+    now = {}
+    for (day, number, name, _part), stances in sorted(groups.items(), key=lambda kv: kv[1][0]['_file']):
+        if stances[-1]['player'].get('eyes'):
+            now[scene_audit.scene_key(stances)] = scene_audit.numbers(stances)
+    if write:
+        with open(write, 'w', encoding='utf-8', newline='\n') as fh:
+            json.dump({'written': datetime.datetime.now().isoformat(timespec='seconds'), 'scenes': now}, fh, indent=1, sort_keys=True)
+            fh.write('\n')
+        print(f"baseline: {len(now)} scenes -> {write}")
+        return 0
+    with open(compare, encoding='utf-8') as fh:
+        base = json.load(fh)['scenes']
+    found = scene_audit.compare(base, now)
+    regressions = [r for r in found if r[1] != 'not played in this run']
+    for key, what in found:
+        print(f"{'REGRESSION' if what != 'not played in this run' else 'note'}: {key}: {what}")
+    print(f"{len(now)} scenes against {len(base)} in the baseline: {len(regressions)} regression{'s' if len(regressions) != 1 else ''}")
+    return 1 if regressions else 0
+
+
 def main(argv):
     folder = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'MEVR', 'stances')
     out = folder
@@ -486,7 +499,9 @@ def main(argv):
     files = []
     heads = '--heads' in argv
     audit = '--audit' in argv
-    argv = [a for a in argv if a not in ('--heads', '--audit')]
+    show_findings = '--findings' in argv
+    argv = [a for a in argv if a not in ('--heads', '--audit', '--findings')]
+    baseline_write = baseline_compare = None
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -496,6 +511,14 @@ def main(argv):
             continue
         if a == '--out':
             out = argv[i + 1]
+            i += 2
+            continue
+        if a == '--baseline-write':
+            baseline_write = argv[i + 1]
+            i += 2
+            continue
+        if a == '--baseline-compare':
+            baseline_compare = argv[i + 1]
             i += 2
             continue
         if os.path.isdir(a):
@@ -512,7 +535,7 @@ def main(argv):
     if not files:
         print('no stances to draw (mevr convo stance, or worldStances = 1)')
         return 1
-    groups = {}
+    stances = []
     for f in sorted(files):
         try:
             with open(f, encoding='utf-8') as fh:
@@ -521,21 +544,12 @@ def main(argv):
             print(f'skipped {f}: {e}')
             continue
         st['_file'] = f
-        # A moment's first record may come before its matinee is named: moments go by their number alone.
-        name = 'moment' if st.get('opening') == 'moment' else st['conversation']
-        groups.setdefault((os.path.basename(f)[:10], st['number'], name), []).append(st)
-    # The numbers start again with each game (a moment's at 900001): a group's records more than two minutes apart are two runs.
-    split = {}
-    for key, stances in groups.items():
-        stances.sort(key=lambda s: s['_file'])
-        part, last = 0, None
-        for st in stances:
-            stamp = datetime.datetime.strptime(os.path.basename(st['_file'])[:23], '%Y-%m-%d_%H-%M-%S-%f')
-            if last is not None and (stamp - last).total_seconds() > 120:
-                part += 1
-            last = stamp
-            split.setdefault(key + (part,), []).append(st)
-    groups = {(k[0], k[1], stances[-1]['conversation'], k[3]): stances for k, stances in split.items()}
+        stances.append(st)
+    groups = scene_audit.group(stances)
+    if show_findings:
+        return print_findings(groups)
+    if baseline_write or baseline_compare:
+        return baseline(groups, baseline_write, baseline_compare)
     if audit:
         return print_audit(groups)
     if heads:

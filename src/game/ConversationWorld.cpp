@@ -938,6 +938,24 @@ struct Convo {
     int facingsHeld = 0;         // facings the stage set at once mid-conversation, put back (they were for its mark)
     int facingsEased = 0;        // ... and those of people with nobody to look at, taken as a turn instead of at once
     int facingsToEyes = 0;       // ... aimed at Shepard's body away from the player: turned to the player's eyes instead
+    // The live audit (research/69 "Auditing scenes by rule"; tools/scene_audit.py's rules, measured each tenth of a second once
+    // the scene settled: 1.5 s after its start or a dip): every play of a scene in the world is judged, in the summary.
+    struct Audit {
+        double nextS = 0.0;          // the next sample
+        double settleUntilS = 1.5;   // not before (a start or a dip resets it)
+        std::uint32_t cutSeen = 0;
+        double gapMaxM = 0.0;        // Shepard's head bone from the drawn eyes, flat, at most (his body with the player)
+        double gapOverS = 0.0;       // ... time at BODY_AWAY (0.3 m) or more
+        double lookAtBodyS = 0.0;    // time someone's look target was Shepard with his head half a metre or more away
+        double faceOffSum = 0.0;     // faces of looks meant for the player: their angle off the eyes
+        int faceOffN = 0;
+        int faceOver35 = 0;
+        double faceOffMaxDeg = 0.0;
+        double speakerBehindS = 0.0; // someone speaking to the player 120 degrees or more from where his body faces
+        double closeMinM = 99.0;     // the nearest person's centre to the eyes
+        std::string tripped;         // the rules logged so far (once each)
+    };
+    Audit audit;
     int voicesPlaced = 0;        // people whose voice was heard from where they stand (cw::PlaceVoice) ...
     int voicesFar = 0;           // ... and people too far for it: the game's centred mix (the intercom)
     int reaches = 0;             // look-at chains of the pair given the further reach (worldLookReach)
@@ -3099,6 +3117,89 @@ void StepCircle(ue3::Object* pawn, ue3::Object* speakerNow, ue3::Object* listene
     }
 }
 
+// The live audit, each tenth of a second of a scene in the world (KeepInPlace). Each rule that trips is logged once
+// (`convo: audit: <rule>`) and, with the stances on, recorded from above (`finding-<rule>`).
+void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
+    Convo::Audit& a = gC.audit;
+    double const now = Seconds();
+    if (gC.cut != a.cutSeen) {
+        a.cutSeen = gC.cut;
+        a.settleUntilS = now + 1.5;
+    }
+    if (now < a.nextS || now < a.settleUntilS || !gC.openingDone || !gDrawnEyes) {
+        return;
+    }
+    double const dt = a.nextS == 0.0 ? 0.1 : std::clamp(now - (a.nextS - 0.1), 0.0, 0.5);
+    a.nextS = now + 0.1;
+    ik::Vec3 const eyes = PlayerEyes();
+    ue3::Object* const shep = ShepardPawn();
+    auto const shepHead = shep != nullptr && ue3::runtime::IsAlive(shep) ? HeadOf(shep) : std::nullopt;
+    double const gap = shepHead ? std::hypot(shepHead->at.x - eyes.x, shepHead->at.y - eyes.y) : 0.0;
+    auto trip = [&](char const* rule, std::string const& detail) {
+        std::string const tag = std::string("|") + rule + "|";
+        if (a.tripped.find(tag) != std::string::npos) {
+            return;
+        }
+        a.tripped += tag;
+        log::Info("convo: audit: {}: {} (at {:.1f} s)", rule, detail, now);
+        if (gSettings.stances || gStancesOverride.value_or(false)) {
+            log::Info("convo: {}", WriteStance(std::string("finding-") + rule));
+        }
+    };
+    if (shepHead && !gC.detached) {
+        a.gapMaxM = std::max(a.gapMaxM, gap / kUnitsPerMeter);
+        if (gap >= 30.0) {
+            a.gapOverS += dt;
+            if (a.gapOverS >= 1.0) {
+                trip("eyes-off-body", std::format("Shepard's head bone {:.2f} m from the player's eyes for {:.1f} s", gap / kUnitsPerMeter, a.gapOverS));
+            }
+        }
+    }
+    double const holdYaw = YawDeg(gC.holdRotation);
+    for (Stay const& st : gStay) {
+        ue3::Object* const actor = st.actor;
+        if (actor == nullptr || IsShepardPawn(actor) || !ue3::runtime::IsAlive(actor) || gActorHidden.ReadBool(actor).value_or(false)) {
+            continue;
+        }
+        if (auto const at = player::Location(actor)) {
+            double const d = std::hypot(at->x - eyes.x, at->y - eyes.y) / kUnitsPerMeter;
+            a.closeMinM = std::min(a.closeMinM, d);
+            if (d < 0.5) {
+                trip("too-close", std::format("{} {:.2f} m from the player's eyes", st.name, d));
+            }
+            if (actor == speaker && (listener == shep || listener == gC.playerPawn)) {
+                double const bearing = std::atan2(at->y - eyes.y, at->x - eyes.x) * kRadToDeg;
+                if (std::abs(YawDiffDeg(bearing, holdYaw)) >= 120.0) {
+                    a.speakerBehindS += dt;
+                    if (a.speakerBehindS >= 1.0) {
+                        trip("speaker-behind", std::format("{} speaks to the player {:.0f} deg from where his body faces", st.name,
+                            std::abs(YawDiffDeg(bearing, holdYaw))));
+                    }
+                }
+            }
+        }
+        ue3::Object* const target = RawLookTarget(actor);
+        bool const atShepard = IsShepardPawn(target);
+        if (!atShepard && !(target != nullptr && target == gEyes)) {
+            continue;
+        }
+        if (atShepard && gap >= 50.0) {
+            a.lookAtBodyS += dt;
+            if (a.lookAtBodyS >= 0.3) {
+                trip("look-at-body", std::format("{}'s look target is Shepard with his head {:.2f} m from the player's eyes", st.name,
+                    gap / kUnitsPerMeter));
+            }
+        }
+        if (auto const head = HeadOf(actor)) {
+            double const off = AngleDeg(head->axis[0], eyes - head->at);
+            a.faceOffSum += off;
+            ++a.faceOffN;
+            a.faceOffMaxDeg = std::max(a.faceOffMaxDeg, off);
+            a.faceOver35 += off > 35.0 ? 1 : 0;
+        }
+    }
+}
+
 void KeepInPlace(ue3::Object* pawn) {
     if (!gC.on || !gInWorldForStay || !gSettings.stay || gSetLocation.Get() == nullptr || gC.object == nullptr ||
         !ue3::runtime::IsAlive(gC.object)) {
@@ -3139,6 +3240,7 @@ void KeepInPlace(ue3::Object* pawn) {
     StepEyes();
     StepCircle(pawn, speakerNow, listener, nowS, dt);
     StanceTick(pawn);
+    StepAudit(speakerNow, listener);
     for (Tracked const& t : gC.actors) {
         auto it = std::find_if(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == t.actor; });
         if (t.actor == nullptr || !ue3::runtime::IsAlive(t.actor)) {
@@ -4842,6 +4944,7 @@ void End(char const* why) {
               "\"staged\": {}, \"circleJoined\": {}, \"circleWalked\": {}, \"circleOut\": {}, \"circleRegathers\": {}, "
               "\"circleEarly\": {}, \"circleStill\": {}, \"squadWalked\": {}, \"squadPutBack\": {}, \"squadPlaced\": {}, "
               "\"squadHeld\": {}, \"eyesSwapped\": {}, \"eyesRefused\": {}, \"facingsToEyes\": {}, \"relocated\": {}, \"turnedDeg\": {:.0f}, "
+              "\"audit\": {}, "
               "\"entries\": [{}]}}",
         gC.name, why, Seconds(), gC.stage ? "true" : "false", gC.actors.size(), gC.lines, gC.speakers.size(), gC.wheelOpenings, gC.shots,
         gC.shotKinds.count("on Shepard") != 0 ? gC.shotKinds.at("on Shepard") : 0, gC.shotKinds.count("on an NPC") != 0 ? gC.shotKinds.at("on an NPC") : 0,
@@ -4852,7 +4955,15 @@ void End(char const* why) {
         gC.autoScreened ? "true" : "false", gC.world ? cw::Name(gC.opening) : "-", gC.markM, gC.cut, gC.trackWalks, gC.trackHeld, gC.yielded, gC.guidedUnits / kUnitsPerMeter, gC.walkInWay, gC.arrived ? "true" : "false",
         gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar,
         gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers,
-        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.facingsToEyes, gC.relocated, gC.turnedDeg, entryPath);
+        gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.facingsToEyes, gC.relocated, gC.turnedDeg,
+        gC.world ? std::format("{{\"gapMaxM\": {:.2f}, \"gapOverS\": {:.1f}, \"lookAtBodyS\": {:.1f}, \"faceOffMeanDeg\": {:.0f}, "
+                               "\"faceOffMaxDeg\": {:.0f}, \"faceOver35\": {}, \"faceSamples\": {}, \"speakerBehindS\": {:.1f}, "
+                               "\"closeMinM\": {:.2f}, \"tripped\": \"{}\"}}",
+                       gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS,
+                       gC.audit.faceOffN != 0 ? gC.audit.faceOffSum / gC.audit.faceOffN : 0.0, gC.audit.faceOffMaxDeg, gC.audit.faceOver35,
+                       gC.audit.faceOffN, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.tripped)
+                 : std::string("null"),
+        entryPath);
     gCutBase += gC.cut;
     gC = {};
 }

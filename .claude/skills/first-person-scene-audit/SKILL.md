@@ -5,9 +5,22 @@ description: Audits LE1's first-person conversations and scripted walks (moments
 
 # Auditing first-person scenes from above
 
-The audits of 2026-11-12 (research/69 "Stances from above", "Heads that look past the player", "Heads at the drawn eyes") are
-the templates. Runs go through the skill **`fake-headset-run`** (`tools/fake-headset-session.ps1`); this skill is what to run
-and how to read it.
+The audits of 2026-11-12 (research/69 "Stances from above", "Heads that look past the player", "Heads at the drawn eyes",
+"Auditing scenes by rule") are the templates. Runs go through the skill **`fake-headset-run`** (`tools/fake-headset-session.ps1`);
+this skill is what to run and how to read it.
+
+## 0. The quick way: the regression set and the rules
+
+1. After a change to game/ConversationWorld (or anything near conversations): `tools\conversation-audit.ps1 -IgnoreSlot` (about
+   12 minutes; `-Long` adds Virmire's 3-minute scene; `-Only <keys>` a few; `-Plan` prints what it would play). It plays the ten
+   scenes of `tools/conversation-audit-set.json`, prints the rules' findings and compares with `tools/conversation-audit-baseline.json`
+   (exit code 1 on a regression). A change judged good: `-WriteBaseline` makes its numbers the baseline (commit it).
+2. Any records, any time, no game: `python tools/conversation-stance.py --findings --since <time>` (rules: `tools/scene_audit.py`),
+   `--baseline-compare <file>`; `tools\conversation-audit.ps1 -Judge <time>` judges an earlier run again.
+3. A headset session: `python tools/conversation-session.py` lists, per scene, the mod's live audit (`audit:<rule>`: the same rules,
+   measured ten times a second in every scene in the world; the summary's `audit`; `convo: audit:` lines).
+4. Only when a rule finds something new, read on: `--heads` for that scene, then its sheet, then (below) the by-eye procedure. A
+   new kind of fault becomes a rule in `tools/scene_audit.py` with a case in tests/SceneAuditTests.py, and a number in `StepAudit`.
 
 ## 1. What the records are
 

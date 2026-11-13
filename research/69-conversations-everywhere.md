@@ -358,6 +358,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
 33. **Walking along** (the owner, 2026-11-12: Shepard walks alongside others in scripted walks; "If we fall too behind the
     conversation should likely pause"; "Walking along" below): a scripted walk with someone beside Shepard pauses while the
     player is more than 3 m behind (at a line's end), on again within 1.5 m. Built and unit-tested; [verify] in the game.
+34. **Auditing scenes by rule** (the owner, 2026-11-12: a better, more efficient way to audit scenes; "Auditing scenes by rule"
+    below): the day's judgements as rules over the records (`tools/scene_audit.py`), a baseline to compare runs with, a
+    regression set of ten scenes (`tools/conversation-audit.ps1`), and the same rules live in every scene's summary. Built and
+    tested offline; [verify] the live numbers in the game.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3400,6 +3404,41 @@ the voices (`PublishVoices`). `HidePawn` only ever shows a pawn it hid itself (a
 `worldBody = player` it hides nothing: the body follower draws Shepard where the player stands (`BodyAway`, first person only).
 An in-game check on the 3D screen (Chorban, Anoleis, the Council, Girard; no `withheld`, `put back`, `eyes:`, `squad:` lines
 expected) waits for the game.
+
+### Auditing scenes by rule (2026-11-12 22:00-, item 34)
+
+The owner, after the audits from above: "I'm just curious if we can have a better/efficient way to audit scenes"; then, offered
+rules over the records, numbers in every scene's summary and a regression set with a baseline: "Yes, build them".
+
+- **The rules** (`tools/scene_audit.py`, `conversation-stance.py --findings`; tests/SceneAuditTests.py, ctest
+  `mevr-scene-audit`), each with a threshold, from what the audits of the day judged by eye: `look-at-body` (a look target
+  Shepard with his head 0.5 m or more from the eyes, once the scene settled: 1.5 s after its start or a dip), `eyes-off-body`
+  (his head 0.3 m or more from the eyes in two settled records, his body with the player), `face-off-you` (a face meant for the
+  player 35 degrees off his eyes two records running; minor in a staged scene, whose facings are its own; a person whose face
+  reads 80-100 degrees in nearly every record has no face axis, a hanar, and is left out), `speaker-behind` (someone speaking to
+  the player 120 degrees or more from his body's facing, twice), `too-close` (a person's centre within 0.5 m of the eyes),
+  `squad-behind` (a squadmate 150 degrees or more round at the opening or the end), `walk-pauses` (a scripted walk that paused 4
+  times or more), `walk-left-behind` (a walk with someone beside Shepard 5 m from the player and not paused). Over the day's 70
+  scenes they found every fault judged by hand (the turn's 0.92 m, the cut's 0.35-0.97 m, Kirrahe's looks), and after the fixes
+  only what was known: the hearing's first two seconds (0.60 m), Udina and Benezia (authored faces), Benezia's own pose (0.32 m),
+  Zabaleta behind the player in the turn test.
+- **A baseline** (`--baseline-write <file>`, `--baseline-compare <file>`: per scene the gap once settled, 90th percentile, the looks
+  meant for the player and where they land, the faces' median angle off the eyes, the rules found; a regression is a new rule, a
+  gap 0.1 m more, a look more on the body, a median 6 degrees more, or no look meant for the player any more; exit code 1).
+  Checked by comparing the runs before the fixes with a baseline of the runs after them: the 12 regressions the fixes had removed.
+- **The regression set** (`tools/conversation-audit-set.json`: ten scenes, one of each kind, from the validation saves) and its
+  runner (`tools/conversation-audit.ps1 [-Long] [-WriteBaseline] [-Only ...] [-Judge <since>] [-Plan]`): through
+  `tools/fake-headset-session.ps1`, records at each of the first four lines, the turn and the wander where the set says, then the
+  findings and the comparison with `tools/conversation-audit-baseline.json` (written by the first good run).
+- **Every play is an audit** (`game/ConversationWorld` `StepAudit`, ten times a second once the scene settled, no ray scans): the
+  same rules measured live in every scene shown in the world; each logged once when it trips (`convo: audit: <rule>: ...`, with a
+  record from above `finding-<rule>` when the stances are on), the totals in the summary's `audit` (`gapMaxM`, `gapOverS`,
+  `lookAtBodyS`, `faceOffMeanDeg`, `faceOffMaxDeg`, `faceOver35`, `faceSamples`, `speakerBehindS`, `closeMinM`, `tripped`);
+  `tools/conversation-session.py` lists them per scene (`audit:<rule>`, and `walk-paused` for a walk that waited), so a headset
+  session is judged by the same rules as an unattended run.
+
+Not run in the game yet (the game was the other session's): the live numbers and the regression set's first run, which writes
+the baseline.
 
 ### The staged scenes (2026-11-12; for the owner's review)
 

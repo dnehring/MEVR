@@ -631,7 +631,12 @@ switching frameworks.
   behind** (`worldWalkAlong`, research/69 "Walking along", the owner): with someone the matinee moves within 5 m of Shepard's
   track place, the matinee's `bPaused` is set while the player's eyes are over `worldWalkAlongPauseM` (3) behind, at a line's
   end (`BioIsPlaying`, `IsPlayingFaceFXAnim`), cleared within `worldWalkAlongResumeM` (1.5) or after `worldWalkAlongMaxS`;
-  `cw::StepWalkAlong`; the view never joins a paused walk; `mevr convo follow on|off` walks along in tests; the records carry
+  `cw::StepWalkAlong`; the view never joins a paused walk; `mevr convo follow on|off` walks along in tests; **scenes are
+  audited by rule** (research/69 "Auditing scenes by rule"): `tools/scene_audit.py`'s rules over the records
+  (`conversation-stance.py --findings`, `--baseline-write|--baseline-compare <file>`; ctest `mevr-scene-audit`), the regression
+  set `tools/conversation-audit.ps1` (`conversation-audit-set.json`, baseline `conversation-audit-baseline.json`), and the same
+  rules live in every scene (`StepAudit`: `convo: audit: <rule>` once, the summary's `audit`; `conversation-session.py` lists
+  them); the records carry
   `player.eyes`, `bodyFromEyesM`, and `conversation-stance.py --audit` tabulates looks at the player against looks at his body;
   `conversation-from-save.ps1 -Lines N` (a stance per line), `-TurnAt N` (`mevr convo turn <deg>`); **a staged scene's
   new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a

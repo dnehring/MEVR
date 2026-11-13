@@ -14,6 +14,10 @@ scene shown in the world (a conversation, or a moment: a matinee that walks Shep
   reply-move   Shepard moved in the half second after one of his own lines began (the wheel's stick walking him)
   drawn-jump   a placement seen in a drawn frame (the summary's "drawn")
   body-strayed Shepard's head bone more than 0.8 m from the player's view (the summary's "eyeToViewM")
+  audit:<rule> the mod's own audit of the scene tripped a rule (research/69 "Auditing scenes by rule", the summary's "audit":
+               eyes-off-body, look-at-body, too-close, speaker-behind), and faces of looks meant for the player 35 degrees
+               or more off the eyes in more than a quarter of the samples (audit:face-off-you)
+  walk-paused  a scripted walk paused for the player (worldWalkAlong), how often and how long
 
 The owner's notes after a headset session name these in his own words; this names them from the logs, the same way for
 every run, so a note can be matched to its cause without reading 3,000 lines. No game needed. The logs are the player's own
@@ -67,6 +71,8 @@ def scenes_of(mod):
             scenes.append(current)
         elif text.startswith('moment: the first-person view of the moment ends') and current and current['kind'] == 'moment':
             current['end'] = t
+        elif text.startswith('moment: walk along: ') and ' pause' in text and ' in all' in text and scenes and scenes[-1]['kind'] == 'moment':
+            scenes[-1]['walkPauses'] = text[len('moment: walk along: '):]
         elif text.startswith('moment: view summary ') and scenes and scenes[-1]['kind'] == 'moment':
             try:
                 scenes[-1]['summary'] = json.loads(text[len('moment: view summary '):])
@@ -164,6 +170,19 @@ def judge(mod, halcyon=()):
             found.append(('drawn-jump', f'{s["summary"]["drawn"]} placements were seen in a drawn frame'))
         if s['summary'].get('eyeToViewM', 0) > 0.8:
             found.append(('body-strayed', f'Shepard\'s head was up to {s["summary"]["eyeToViewM"]:.2f} m from your view'))
+        audit = s['summary'].get('audit') or {}
+        for rule in [r for r in (audit.get('tripped') or '').split('|') if r]:
+            found.append((f'audit:{rule}', {
+                'eyes-off-body': f"Shepard's head bone up to {audit.get('gapMaxM', 0):.2f} m from your eyes, {audit.get('gapOverS', 0):.1f} s at 0.3 m or more",
+                'look-at-body': f"looks meant for you on Shepard's body for {audit.get('lookAtBodyS', 0):.1f} s",
+                'too-close': f"someone {audit.get('closeMinM', 0):.2f} m from your eyes",
+                'speaker-behind': f"someone speaking to you from behind for {audit.get('speakerBehindS', 0):.1f} s",
+            }.get(rule, rule)))
+        if audit.get('faceSamples', 0) >= 10 and audit.get('faceOver35', 0) * 4 > audit['faceSamples']:
+            found.append(('audit:face-off-you', f"faces of looks meant for you 35 degrees or more off your eyes in {audit['faceOver35']} of "
+                          f"{audit['faceSamples']} samples (mean {audit.get('faceOffMeanDeg', 0):.0f}, at most {audit.get('faceOffMaxDeg', 0):.0f})"))
+        if s['kind'] == 'moment' and s.get('walkPauses'):
+            found.append(('walk-paused', s['walkPauses']))
         s['findings'] = found
     return scenes
 

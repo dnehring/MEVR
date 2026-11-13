@@ -1,0 +1,19 @@
+{
+ "about": "The regression set of first-person scenes (research/69 \"Auditing scenes by rule\"): one of each kind, from the validation saves on the owner's machine (tools/save-dictionary.py; %LOCALAPPDATA%\\MEVR). Run with tools/conversation-audit.ps1; compared with tools/conversation-audit-baseline.json.",
+ "lists": {
+  "John02": {"career": "John02", "list": "%LOCALAPPDATA%\\MEVR\\save-dictionary-list-John02.json", "firstSlot": 80},
+  "squad": {"career": "John00", "list": "%LOCALAPPDATA%\\MEVR\\squad-saves\\list.json", "firstSlot": 80, "saveDir": "%LOCALAPPDATA%\\MEVR\\squad-saves"}
+ },
+ "scenes": [
+  {"key": "sta20_chorban_dlg", "kind": "a wheel conversation, a walk-in; turned by the right stick", "from": "John02", "slot": 85, "turnAt": 7},
+  {"key": "ice20_opold_dlg", "kind": "a plain stage, the player stays (a hanar: no face axis)", "from": "John02", "slot": 82},
+  {"key": "ice20_anoleis_dlg", "kind": "a mark across the room; turned by the right stick", "from": "John02", "slot": 83, "turnAt": 7},
+  {"key": "ice60_matriarch_dlg", "kind": "a trigger's scene, a cut (Benezia's death)", "from": "John02", "slot": 86, "endAfter": 20},
+  {"key": "sta60_wrex_at_fists_dlg", "kind": "a framed scene in the world", "from": "John02", "slot": 87},
+  {"key": "sta90_council_saren_dlg", "kind": "a scripted walk with Anderson, then a staged cut (the Council's hearing)", "from": "John02", "slot": 80, "endAfter": 12},
+  {"key": "lav70_asariscientist_dlg", "kind": "a scripted walk with companions and lines (Liara's intro), then a walk-in by the view", "from": "John02", "slot": 92, "endAfter": 8},
+  {"key": "sta30_girard_dlg", "kind": "a walk-in by the view with the squad (the eyes stand-in, the facing rule)", "from": "squad", "slot": 80},
+  {"key": "sta20_zabaleta_dlg", "kind": "the squad's formation; a wander off and back", "from": "squad", "slot": 84, "wanderAt": 9},
+  {"key": "jug20_sal_captainkirrahe_dlg", "kind": "a staged scene with a new composition under the black screen (Virmire)", "save": "%LOCALAPPDATA%\\MEVR\\squad-saves\\John02_70.pcsav", "action": "Plot_CH2_Virmire_Rendezvous_20.jug20_sal_captainkirrahe_dlg.BioSeqAct_StartConversation_1", "class": "BioSeqAct_StartConversation", "seconds": 175, "long": true}
+ ]
+}
