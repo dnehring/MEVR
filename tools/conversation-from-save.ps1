@@ -8,6 +8,7 @@
 #   tools/conversation-from-save.ps1 -Save John02_81 -Action PlayerBecomesSpectre.BioSeqAct_PMCheckState_2
 #       [-Class BioSeqAct_PMCheckState] [-ActionInput 0] [-Seconds 300] [-EndAfter 0] [-Pace skip|full] [-Snapshots 20,45]
 #       [-Walk 18] [-Replay rec.mevrrec] [-Before "mevr calltrace 20 hidden"] [-NoLoad] [-Stances] [-Chunk STA30_02A]
+#       [-Probe '3:mevr stream chunks','7:mevr instances BioPawn STA70']
 #   tools/conversation-from-save.ps1 -All -Career John02 [-FirstSlot 80] [-List tools/conversation-headset-sample.json]
 #       [-Plans a.json,b.json] [-Only 80,81] [-EndAfter 25] [-Seconds 150] [-SaveDir <folder of the list's saves>]
 #
@@ -20,6 +21,8 @@
 # (research/69 "Stances from above"; `mevr convo stances on`): after its opening, each walk and its end, drawn by
 # tools/conversation-stance.py into a sheet per conversation; a scene where nothing will move (`mevr convo ahead`: nobody walking,
 # nobody of the dialogue who would walk in, and the scan knows no stage walk in it) is ended once its stance is written.
+# -Probe 'seconds:console line': the line run that many seconds after the scene is fired and its output printed (the runner
+# owns console.request, so a probe from another script would race it).
 # -Replay: a recording replayed in a loop with its
 # inputs from the moment the scene is fired until it is over (a real stick and buttons: tools/make-walk-recording.py). -All: every scene of the list from its numbered
 # save (the saves `conversation-sweep.py saves` wrote), each one's action from the plans (`conversation-sweep.py actions`).
@@ -42,6 +45,7 @@ param(
     [int]$Lines = 0,
     [string]$Replay = '',
     [string]$Before = '',
+    [string[]]$Probe = @(),
     [switch]$NoLoad,
     [switch]$All,
     [string]$Career = 'John02',
@@ -237,10 +241,16 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     if ($Stances) { Console 'mevr convo stances on' | Out-Null }
 
     $shots = @($Snapshots | Sort-Object)
+    $probes = @($Probe | ForEach-Object { $i = $_.IndexOf(':'); [pscustomobject]@{ At = [double]$_.Substring(0, $i); Line = $_.Substring($i + 1) } } | Sort-Object At)
     $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false; $judged = @{}; $turnStep = 0; $linesSeen = 0
     while (((Get-Date) - $started).TotalSeconds -lt $Seconds) {
         Start-Sleep -Milliseconds 1500
         $elapsed = ((Get-Date) - $started).TotalSeconds
+        while ($probes.Count -gt 0 -and $elapsed -ge $probes[0].At) {
+            Say ("probe at {0:0.0} s: {1}" -f $elapsed, $probes[0].Line)
+            (Console $probes[0].Line) -split "`n" | ForEach-Object { Write-Output "    $_" }
+            $probes = @($probes | Select-Object -Skip 1)
+        }
         if ($shots.Count -gt 0 -and $elapsed -ge $shots[0]) {
             & (Join-Path $tools 'snapshot.ps1') -Tag ("save-{0:000}" -f [int]$shots[0]) *> $null
             Say ("snapshot at {0:0} s" -f $elapsed)
