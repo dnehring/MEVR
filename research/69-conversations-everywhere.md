@@ -357,11 +357,14 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     first-person view's offset and a check of the eyes after the opening.
 33. **Walking along** (the owner, 2026-11-12: Shepard walks alongside others in scripted walks; "If we fall too behind the
     conversation should likely pause"; "Walking along" below): a scripted walk with someone beside Shepard pauses while the
-    player is more than 3 m behind (at a line's end), on again within 1.5 m. Built and unit-tested; [verify] in the game.
+    player is more than 3 m behind (at a line's end), on again within 1.5 m. Run on the fake headset 2026-11-12: both Council
+    walks wait for a player who stands still; walking along, a 4 m wall (the conversation's boundary) fixed; the player's
+    0.9 m/s against the track's 1.2-1.3 (and its stairs) still pauses the walk three times in the Spectre's (the owner's call).
 34. **Auditing scenes by rule** (the owner, 2026-11-12: a better, more efficient way to audit scenes; "Auditing scenes by rule"
     below): the day's judgements as rules over the records (`tools/scene_audit.py`), a baseline to compare runs with, a
-    regression set of ten scenes (`tools/conversation-audit.ps1`), and the same rules live in every scene's summary. Built and
-    tested offline; [verify] the live numbers in the game.
+    regression set of ten scenes (`tools/conversation-audit.ps1`), and the same rules live in every scene's summary. Run in the
+    game 2026-11-12 (three passes): the live numbers in every summary, two false alarms of theirs fixed, the baseline written
+    (12 scenes, 0 regressions against itself); the passes found a crash of ours, a wall in scripted walks and a stuck sidestep.
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3389,7 +3392,19 @@ on their platforms 18 m, Kirrahe before his troops, Benezia across the room, Lia
 the first-person design the group gathers round the player (the circle) or the player stands at Shepard's mark (staged), so
 nothing was built for conversations; a scene where people walk off while talking would be the case for it.
 
-Not run in the game yet: the other session (VR performance) had the game when it was built.
+**In the game (fake headset, 2026-11-12 22:20-23:00; John02 80, 81, 92, 93, `mevr convo follow on|off`).**
+- Standing still: Anderson's walk paused 2.8 s in (the player 3 m behind, Anderson beside Shepard) and stayed paused 75-91 s
+  until the next load; the Spectre's the same; the two touches (Liara's intro, the geth on Feros) have nobody beside Shepard
+  and never paused. Right.
+- Walking along, first try: the follower closed to 1.1 m, fell back to 3.09 m and stuck there. **The walk's boundary**
+  (`worldMoveLeashM`, 4 m around where the scene began for the player: the second design's) held the view in a moment too: a
+  wall 4 m into every scripted walk, for a real player as much as for the test. Fixed: in a moment the boundary is around where
+  the track has Shepard (`gMomentShepardAt`). Then the Spectre's walk: 24 m walked, the ceremony reached in 30 s; Anderson's
+  (8 m, 8 s) never paused.
+- **The pace**: the track walks Shepard at 1.2-1.34 m/s and jumps on two stretches (3.4 and 2.6 m/s, the stairs and the
+  teleport up them), the player's stick at 0.9 (`worldMoveSpeedMS`, the owner's second design). Where the track went 0.9 the
+  follower held 2.0 m behind; the opening pace and the two jumps paused the Spectre's walk three times, 11.9 s in all, for a
+  player at full stick. Open (the owner's call): the stick's speed in a moment matched to the walk's, or the pauses as they are.
 
 **The default mode keeps the game's behaviour** (the owner, 2026-11-12 21:40: "our changes to where Shepard is standing should
 only apply when we're doing first person mode. when we're doing the default we need to ensure it maintains existing behavior").
@@ -3437,8 +3452,34 @@ rules over the records, numbers in every scene's summary and a regression set wi
   `tools/conversation-session.py` lists them per scene (`audit:<rule>`, and `walk-paused` for a walk that waited), so a headset
   session is judged by the same rules as an unattended run.
 
-Not run in the game yet (the game was the other session's): the live numbers and the regression set's first run, which writes
-the baseline.
+**In the game (fake headset, 2026-11-12 22:01-23:06, three passes of the set; sessions `audit`, `walkset`, `walkset3`).**
+- **The live numbers** came in every summary from the first scene (Chorban: the gap at most 0.08 m, faces 7 degrees off on
+  average, 46 samples, nothing tripped). Two false alarms of theirs, fixed: Opold tripped `face-off-you` in 149 of 149 samples
+  (a hanar's head axis, which the offline rules already left out: the faces are now tallied per person and a head reading
+  80-100 degrees in four fifths of ten or more samples is left out, `faceAxisUnknown`); Anoleis tripped `speaker-behind` while
+  the test had turned the player 180 degrees himself (the rule now judges, live and offline, against the facing the scene gave:
+  the held yaw without the right stick's turns, `turnedDeg`).
+- **What the set's first pass taught the set**: Chorban's first reply is "I'm going" (two lines, so its turn never came: Anoleis
+  keeps the turn); the walk along made the Council wait 91 s for the scripted player, who stood still: the set now walks along
+  in its two scripted walks (`before`: `mevr convo follow on`, every other scene with it off), and the Council gets 120 s; its
+  judge printed nothing into a captured log (`Out-Host` bypasses every stream: `Write-Host` now).
+- **Ashley speaking from 140 degrees behind** at Kirrahe's camp (line 63, her stage mark) was in the earlier run too, one
+  record only; the live rule's own record made it two. A staged scene's marks are its own, so `speaker-behind` there is minor,
+  as `face-off-you` was.
+- **Zabaleta's sidestep moved 0.24 m in 3 s**: the squad's formation stands Tali 0.70 m from Shepard, at the walk's clearance,
+  and a step nearer someone already that close was refused whole (374 pushes). `cw::KeepClear` now keeps such a person's
+  distance and lets the step slide round them (unit-tested); the next pass slid past Tali and stopped at `BioTrigger_1`'s edge
+  (the trigger guard, by design: this spot has a trigger beside the player).
+- **A crash of ours** (the second pass, 22:36, as Liara's save loaded after the Council's): the conversation's last record from
+  above listed its bystanders by the world's pawn list, which a level torn down under it leaves with freed pawns, and read
+  0xFFFFFFFFFFFFFFFF through one's `NextPawn` (`WriteStance` from `End`). Every walk of that list in the module goes through
+  `LivePawns` now (it stops at the first entry that is not a live object), and a conversation object freed under the record is
+  no conversation. The third pass loaded the same scene after the same one without a fault. Not ours: quitting the game from
+  inside Kirrahe's scene faults in the game's own `SFXGameModeManager.DisableMode` (a null read at exit, both times).
+- **The baseline** (`tools/conversation-audit-baseline.json`, from the third pass on the final build: 12 scenes, the ten and the
+  two scripted walks before them) holds what is known: Benezia's face (her dying animation, 68 degrees median), the hearing's
+  opening (0.70 m for 1.3 s at 2.5 s, live: the known transient), Ashley's mark, Tali 152 degrees round at Zabaleta's (at the
+  rule's edge: 149.5 in the first pass; she stands where she followed the player in). The pass against it: 0 regressions.
 
 ### The staged scenes (2026-11-12; for the owner's review)
 
@@ -3886,3 +3927,5 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-12 18:20, **item 31, Virmire's start from above**: the stances follow a whole scene; a staged scene's moves under the script's black screen are taken at once; Shepard is walked to his new mark by a simulated left stick (the owner), never moved.
 - 2026-11-12 19:35, **item 32, heads at the drawn eyes** (the owner: an audit of every kind of conversation for heads facing Shepard's hidden body): the player is where the host draws the eyes, 0.43 m behind the held place; staged openings put the eyes 0.34-0.37 m behind his head (Virmire, the Council), the right stick's turn swung them 0.85 m, the eyes stand-in, re-face rule, circle and formation took the held place, and a stage's facing at the hidden body in a walk-in by the view: all fixed and run again on the fake headset (`--audit`).
 - 2026-11-12 20:30, **item 32, the moments audited**: stance records and the eyes stand-in in scripted walks (nobody there looks at Shepard through the look-at system: the faces are the matinees'); Benezia's cut after phase 2 placed the eyes with a stale view offset (0.74 m behind his head): the last first-person view's offset and a check after the opening; `tools/fake-headset-session.ps1`, `tools/land-on-main.py` and the skills `fake-headset-run`, `first-person-scene-audit` (the owner: author skills that make this process more efficient).
+- 2026-11-12 21:50, **item 33, walking along** built (a scripted walk with someone beside Shepard waits for a player 3 m behind); **item 34, auditing scenes by rule** built (rules over the records, a baseline, a regression set, the rules live in every scene).
+- 2026-11-12 23:10, **items 33 and 34 in the game** (three passes on the fake headset): the walks wait for a player who stands still; a 4 m wall in every scripted walk (the conversation's boundary) fixed; the live audit's two false alarms fixed; a sidestep stuck against a squadmate fixed; a crash of ours at a load (the pawn list) fixed; the baseline written (12 scenes). Open: the stick's 0.9 m/s against the walks' 1.2-1.3.

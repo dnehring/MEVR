@@ -25,13 +25,13 @@ def person(name, at, face_to_you, target='Shepard', role='speaker', squad=False,
 
 
 def record(t, tag, gap, people, yaw=0.0, eyes=(0.0, 0.0, 160.0), detached=False, opening='walk in', staged=False, walk=None,
-           conversation='test_dlg', number=1):
+           conversation='test_dlg', number=1, turned=0.0):
     shep = {'name': 'Shepard', 'at': [eyes[0] - gap * 100, eyes[1], 0.0], 'head': [eyes[0] - gap * 100, eyes[1], 165.0],
             'yaw': yaw, 'shepard': True, 'hidden': False, 'role': 'listener'}
     return {'conversation': conversation, 'number': number, 'tag': tag, 'seconds': t, 'opening': opening, 'staged': staged,
             '_file': f'2026-11-12_20-00-{int(t):02d}-{int((t % 1) * 1000):03d}-{number}-{conversation}-{tag}.json',
             'player': {'at': [eyes[0] + 43, eyes[1], eyes[2] + 18], 'yaw': yaw, 'eyes': list(eyes), 'bodyFromEyesM': gap,
-                       'detached': detached},
+                       'detached': detached, 'turnedDeg': turned},
             'people': [shep] + people, 'walkAlong': walk}
 
 
@@ -70,6 +70,10 @@ check(next(f for f in sa.findings(staged_off) if f['rule'] == 'face-off-you')['s
 behind = person('Zabaleta', (-150.0, 0.0), 10)
 check('speaker-behind' in rules([record(0.0, 'begin', 0.08, [behind]), record(2.0, 'opening', 0.08, [behind]), record(4.0, 'line', 0.08, [behind])]),
       'a speaker behind')
+turned_away = [record(t, tag, 0.08, [ahead(10)], yaw=180.0, turned=180.0) for t, tag in ((0.0, 'begin'), (2.0, 'turned-180'), (4.0, 'line'))]
+check('speaker-behind' not in rules(turned_away), 'a speaker behind a player who turned away himself is no finding')
+staged_behind = [dict(record(t, tag, 0.08, [behind]), staged=True) for t, tag in ((0.0, 'begin'), (2.0, 'opening'), (4.0, 'line'))]
+check(next(f for f in sa.findings(staged_behind) if f['rule'] == 'speaker-behind')['severity'] == 1, "a staged scene's own mark behind is minor")
 close = person('Garrus', (30.0, 0.0), 40, target='Chorban', role='bystander', squad=True)
 check('too-close' in rules([record(0.0, 'begin', 0.08, [close]), record(2.0, 'opening', 0.08, [close])]), 'someone 0.3 m from the eyes is too close')
 squad_back = person('Tali', (-120.0, 5.0), 100, target='Chorban', role='bystander', squad=True)

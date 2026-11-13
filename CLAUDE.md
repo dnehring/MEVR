@@ -536,7 +536,8 @@ switching frameworks.
   conversations" > "In the game"): 5.47 m walked during the Garrus wheel conversation at C-Sec, nobody snapped, the conversation
   ran on; the squad stays put. **Not through people** (`worldMoveClearM` 0.7, since the first walk went straight through Garrus):
   a step ending within the clearance of a conversation actor, a squadmate or the owner is pushed out along the line from them
-  (`cw::KeepClear`), so the stick walks around people; [verify] in the game. **The work toward first person for every conversation
+  (`cw::KeepClear`), so the stick walks around people; someone already nearer (the squad's formation stands them 0.7 m off)
+  keeps the distance they stand at and steps slide round them (refused whole, Zabaleta's sidestep moved 0.24 m in 3 s). **The work toward first person for every conversation
   is [research/69](research/69-conversations-everywhere.md)** (2026-11-09; a status table and a log; read it before touching this
   feature): a line's plot effects (its state transition, its Kismet node event) are on the path ambient and full conversations
   share, but an ambient one can be cut short (distance, any other conversation starting) and loses what it didn't reach, so
@@ -631,12 +632,15 @@ switching frameworks.
   behind** (`worldWalkAlong`, research/69 "Walking along", the owner): with someone the matinee moves within 5 m of Shepard's
   track place, the matinee's `bPaused` is set while the player's eyes are over `worldWalkAlongPauseM` (3) behind, at a line's
   end (`BioIsPlaying`, `IsPlayingFaceFXAnim`), cleared within `worldWalkAlongResumeM` (1.5) or after `worldWalkAlongMaxS`;
-  `cw::StepWalkAlong`; the view never joins a paused walk; `mevr convo follow on|off` walks along in tests; **scenes are
+  `cw::StepWalkAlong`; the view never joins a paused walk; in a moment the walk's boundary (`worldMoveLeashM`) is around
+  Shepard's track place (`gMomentShepardAt`; around where the moment began it was a wall 4 m into Anderson's walk);
+  `mevr convo follow on|off` walks along in tests; **scenes are
   audited by rule** (research/69 "Auditing scenes by rule"): `tools/scene_audit.py`'s rules over the records
   (`conversation-stance.py --findings`, `--baseline-write|--baseline-compare <file>`; ctest `mevr-scene-audit`), the regression
   set `tools/conversation-audit.ps1` (`conversation-audit-set.json`, baseline `conversation-audit-baseline.json`), and the same
-  rules live in every scene (`StepAudit`: `convo: audit: <rule>` once, the summary's `audit`; `conversation-session.py` lists
-  them); the records carry
+  rules live in every scene (`StepAudit`: `convo: audit: <rule>` once, the summary's `audit`; faces per person, a head
+  whose axis is no face, a hanar's, left out as `faceAxisUnknown`; "behind" against the facing the scene gave, without the
+  right stick's turns; `conversation-session.py` lists them); the records carry
   `player.eyes`, `bodyFromEyesM`, and `conversation-stance.py --audit` tabulates looks at the player against looks at his body;
   `conversation-from-save.ps1 -Lines N` (a stance per line), `-TurnAt N` (`mevr convo turn <deg>`); **a staged scene's
   new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a
@@ -1657,7 +1661,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   `engine/Legacy` until their layouts exist. Every class, field, function or parameter you resolve
   needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line. `IsAlive` is safe on a
   pointer whose memory the engine gave back (a guarded read of the header, 2026-11-10: a hot reload eight levels after the
-  flow module kept its conversations ended the game); a kept object pointer is still checked with it before every use.
+  flow module kept its conversations ended the game); a kept object pointer is still checked with it before every use. A level torn down under a scene (a save's load) leaves
+  freed pawns in the world's pawn list whose `NextPawn` is garbage: walk it with `LivePawns` (game/ConversationWorld), which
+  stops at the first dead entry (a record's bystander list read 0xFFFFFFFFFFFFFFFF there and ended the game, 2026-11-12).
 - **ProcessEvent skips any native with an opcode of its own** (`UFunction.iNative` != 0: `Trace`, `Destroy`, `SetLocation`, `SetOwner`...):
   `ue3::runtime::Call` clears the index for its call, so always call through it (gotchas/process-event-skips-opcode-natives).
 - **Never call LExSDKv2's generated function wrappers** (e.g. `USceneCaptureComponent::SetFrameRate`).

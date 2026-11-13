@@ -1281,47 +1281,51 @@ ClearStep KeepClear(Vec3 const& place, Vec3 const& next, std::span<Vec3 const> p
         out.moved = std::hypot(next.x - place.x, next.y - place.y) >= 1e-6;
         return out;
     }
+    // Each person's room: the clearance, or for someone already nearer (they walked up, or the squad's formation stood them
+    // there) the distance they stand at now: a step away is taken as it is, a step nearer slides round them at that distance
+    // (it used to be refused whole: Zabaleta's wander with Tali at the clearance's edge moved 0.24 m in 3 s, 2026-11-12).
+    auto const room = [&](Vec3 const& p) { return std::min(clearUnits, std::hypot(place.x - p.x, place.y - p.y)); };
     for (int pass = 0; pass < 4; ++pass) {
         Vec3 const* nearest = nullptr;
-        double nearestDist = clearUnits;
+        double nearestDist = 0.0;
+        double deepest = 1e-6;
         for (Vec3 const& p : people) {
             double const d = std::hypot(out.place.x - p.x, out.place.y - p.y);
-            if (d < nearestDist) {
+            if (room(p) - d > deepest) {
                 nearest = &p;
                 nearestDist = d;
+                deepest = room(p) - d;
             }
         }
         if (nearest == nullptr) {
             break;
         }
         out.held = true;
-        double const before = std::hypot(place.x - nearest->x, place.y - nearest->y);
-        if (before < clearUnits) {
-            // Already that close (the person walked up): a step away is taken as it is, a step nearer is not.
-            if (nearestDist <= before) {
-                out.place = place;
-            }
-            break;
-        }
-        // Push the step's end out to the clearance along the line from the person; the step's part around them stays.
+        // Push the step's end out to the person's room along the line from them; the step's part around them stays.
         double ox = out.place.x - nearest->x, oy = out.place.y - nearest->y;
         if (nearestDist < 1e-6) {
             ox = place.x - nearest->x;  // the step landed on the person: back along the way it came
             oy = place.y - nearest->y;
         }
         double const len = std::hypot(ox, oy);
-        out.place.x = nearest->x + ox / len * clearUnits;
-        out.place.y = nearest->y + oy / len * clearUnits;
+        if (len < 1e-6) {
+            out.place = place;
+            break;
+        }
+        double const r = room(*nearest);
+        out.place.x = nearest->x + ox / len * r;
+        out.place.y = nearest->y + oy / len * r;
     }
-    // Still within someone's clearance after the passes (two people closer together than two clearances: no way between
-    // them): the step is held where it started.
+    // Still within someone's room after the passes (two people closer together than two clearances: no way between them): the
+    // step is held where it started.
     for (Vec3 const& p : people) {
-        double const before = std::hypot(place.x - p.x, place.y - p.y);
-        if (std::hypot(out.place.x - p.x, out.place.y - p.y) < clearUnits - 1e-6 && before >= clearUnits) {
+        double const d = std::hypot(out.place.x - p.x, out.place.y - p.y);
+        if (d < room(p) - 1e-6) {
             out.place = place;
             out.held = true;
             break;
         }
+        out.held = out.held || d < clearUnits - 1e-6;
     }
     out.moved = std::hypot(out.place.x - place.x, out.place.y - place.y) >= 1e-6;
     return out;

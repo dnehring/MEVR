@@ -340,10 +340,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   cutscene's cameras never look at it; not the near plane, not culling). Say whether it reads as a dark floor or as a hole
   you stand over: a hole sends this walk to the 3D screen. Both branches (paragon over renegade or not) behave the same.
 - [ ] **A scripted walk, standing still and walking along** (built and run on the fake headset 2026-11-10, research/69 "The
-  script's Shepard, the player's view"): slots 80 and 81. Stand still after using Anderson: no flash as the walk begins;
-  after five seconds you are walked the way Shepard went; the scene starts on time whatever you do. Walk along instead:
-  no blink on the walkway. Look for: how it feels to have no body while your view is away from Shepard's (the cost of this
-  design), whether the guided walk reaches the podium, the blur gone from people during the walk.
+  script's Shepard, the player's view"; walking along since 2026-11-12, "Walking along"): slots 80 and 81. Stand still after
+  using Anderson: no flash as the walk begins; nobody walks you any more: once Anderson is 3 m ahead the walk waits. Walk along
+  instead: no blink on the walkway, and no wall a few metres in (fixed 2026-11-12). Look for: how it feels to have no body
+  while your view is away from Shepard's (the cost of this design), how often the walk waits for you at full stick (three
+  times in the Spectre's walk on the fake headset: the walk is faster than the stick), the blur gone from people during it.
 - [ ] **No flash as a conversation begins** (the same note): any ordinary conversation from on foot (slots 85, 87, 89):
   until 2026-11-10 the 3D screen showed for an eighth of a second at every start.
 - [ ] **The legs in a scripted walk and the walkway's blink** (research/69 "The legs under the player, the walkway's

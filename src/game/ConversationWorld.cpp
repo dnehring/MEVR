@@ -947,11 +947,32 @@ struct Convo {
         double gapMaxM = 0.0;        // Shepard's head bone from the drawn eyes, flat, at most (his body with the player)
         double gapOverS = 0.0;       // ... time at BODY_AWAY (0.3 m) or more
         double lookAtBodyS = 0.0;    // time someone's look target was Shepard with his head half a metre or more away
-        double faceOffSum = 0.0;     // faces of looks meant for the player: their angle off the eyes
-        int faceOffN = 0;
-        int faceOver35 = 0;
-        double faceOffMaxDeg = 0.0;
-        double speakerBehindS = 0.0; // someone speaking to the player 120 degrees or more from where his body faces
+        struct Face {                // faces of looks meant for the player, per person: their angle off the eyes
+            double sum = 0.0;
+            int n = 0;
+            int over35 = 0;
+            int band = 0;            // ... 80-100 degrees: a head bone whose axis is no face (a hanar: Opold)
+            double maxDeg = 0.0;
+            bool AxisUnknown() const { return n >= 10 && band * 5 >= n * 4; }
+        };
+        std::map<ue3::Object*, Face> faces;
+        Face FaceTotals(int* unknown = nullptr) const {
+            Face t;
+            for (auto const& [who, f] : faces) {
+                if (f.AxisUnknown()) {
+                    if (unknown != nullptr) {
+                        ++*unknown;
+                    }
+                    continue;
+                }
+                t.sum += f.sum;
+                t.n += f.n;
+                t.over35 += f.over35;
+                t.maxDeg = std::max(t.maxDeg, f.maxDeg);
+            }
+            return t;
+        }
+        double speakerBehindS = 0.0; // someone speaking to the player 120 degrees or more from the facing the scene gave him
         double closeMinM = 99.0;     // the nearest person's centre to the eyes
         std::string tripped;         // the rules logged so far (once each)
     };
@@ -2893,18 +2914,35 @@ ue3::Object* ShepardPawn() {
     return controller != nullptr ? player::Pawn(controller) : nullptr;
 }
 
+// The world's pawn list (WorldInfo.PawnList, then each Pawn.NextPawn), live pawns only. A level torn down under a scene (a
+// save's load) leaves freed pawns in it whose NextPawn is garbage, so the walk stops at the first entry that is not a live
+// object: a conversation's last record from above listed its bystanders that way and read 0xFFFFFFFFFFFFFFFF, which ended the
+// game (the regression set's second pass, 2026-11-12 22:36, Liara's scene loading after the Council's).
+std::vector<ue3::Object*> LivePawns(ue3::Object* world) {
+    std::vector<ue3::Object*> out;
+    if (world == nullptr || !ue3::runtime::IsAlive(world)) {
+        return out;
+    }
+    ue3::Object* o = gWorldPawns.Read<ue3::Object*>(world).value_or(nullptr);
+    for (int guard = 0; o != nullptr && guard < 512 && ue3::runtime::IsAlive(o); ++guard) {
+        out.push_back(o);
+        o = gNextPawnOf.Read<ue3::Object*>(o).value_or(nullptr);
+    }
+    return out;
+}
+
+ue3::Object* WorldOf(ue3::Object* actor) {
+    return actor != nullptr && ue3::runtime::IsAlive(actor) ? gWorldOfActor.Read<ue3::Object*>(actor).value_or(nullptr) : nullptr;
+}
+
 // Every person shown within `units` of `at` (not Shepard), at most `max`: a moment's people (it tracks nobody).
 std::vector<ue3::Object*> NearPawns(ik::Vec3 const& at, double units, std::size_t max) {
     std::vector<ue3::Object*> out;
-    ue3::Object* const shep = ShepardPawn();
-    ue3::Object* const world = shep != nullptr && ue3::runtime::IsAlive(shep) ? gWorldOfActor.Read<ue3::Object*>(shep).value_or(nullptr) : nullptr;
-    if (world == nullptr) {
-        return out;
-    }
-    int guard = 0;
-    for (ue3::Object* o = gWorldPawns.Read<ue3::Object*>(world).value_or(nullptr); o != nullptr && guard < 512 && out.size() < max;
-         o = gNextPawnOf.Read<ue3::Object*>(o).value_or(nullptr), ++guard) {
-        if (!ue3::runtime::IsAlive(o) || IsShepardPawn(o) || !player::IsBioPawn(o) || gActorHidden.ReadBool(o).value_or(true)) {
+    for (ue3::Object* const o : LivePawns(WorldOf(ShepardPawn()))) {
+        if (out.size() >= max) {
+            break;
+        }
+        if (IsShepardPawn(o) || !player::IsBioPawn(o) || gActorHidden.ReadBool(o).value_or(true)) {
             continue;
         }
         if (auto const p = player::Location(o); p && Dist(V(*p), at) <= units) {
@@ -3155,7 +3193,9 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
             }
         }
     }
-    double const holdYaw = YawDeg(gC.holdRotation);
+    // The facing the scene gave the player: the held yaw without his own turns (the right stick's; a speaker behind a player who
+    // turned away is his choice, not the composition's).
+    double const holdYaw = YawDeg(gC.holdRotation) - gC.turnedDeg;
     for (Stay const& st : gStay) {
         ue3::Object* const actor = st.actor;
         if (actor == nullptr || IsShepardPawn(actor) || !ue3::runtime::IsAlive(actor) || gActorHidden.ReadBool(actor).value_or(false)) {
@@ -3192,10 +3232,12 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
         }
         if (auto const head = HeadOf(actor)) {
             double const off = AngleDeg(head->axis[0], eyes - head->at);
-            a.faceOffSum += off;
-            ++a.faceOffN;
-            a.faceOffMaxDeg = std::max(a.faceOffMaxDeg, off);
-            a.faceOver35 += off > 35.0 ? 1 : 0;
+            Convo::Audit::Face& f = a.faces[actor];
+            f.sum += off;
+            ++f.n;
+            f.maxDeg = std::max(f.maxDeg, off);
+            f.over35 += off > 35.0 ? 1 : 0;
+            f.band += off >= 80.0 && off <= 100.0 ? 1 : 0;
         }
     }
 }
@@ -4370,6 +4412,9 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
 // the count must not fall back to zero when the next one begins (a moment's dip, then the hearing: a second dip).
 std::uint32_t gCutBase = 0;
 bool gMomentWalk = false;  // a moment's view is up (set by TickMoment): the walk's trigger guard stands down
+// ... and where the track has Shepard (TickMoment, before the player's step): the walk's boundary goes with him there. Around
+// where the moment began it was a wall 4 m into Anderson's walk to the Council (the walk along's first run, 2026-11-12).
+std::optional<ik::Vec3> gMomentShepardAt;
 
 // The right stick turns the player in a conversation in the world (the owner, 2026-11-11: "Right stick should function"), as
 // [Comfort] turn says on foot: snap by its flicks, else smooth at its turn speed. The held view's yaw turns; the body follows
@@ -4524,7 +4569,10 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         gC.boundaryAt = V(*at);
     }
     (void)ownerAt;
-    ik::Vec3 const anchor = along ? ik::Vec3{along->x, along->y, along->z} : guided && gC.wantedMark ? *gC.wantedMark : *gC.boundaryAt;
+    ik::Vec3 const anchor = along                             ? ik::Vec3{along->x, along->y, along->z}
+                            : guided && gC.wantedMark         ? *gC.wantedMark
+                            : gMomentWalk && gMomentShepardAt ? *gMomentShepardAt
+                                                              : *gC.boundaryAt;
     // Where the player faces: the head in the world through the held frame; without a VR view (a flat game), the held view's yaw.
     double headYaw = YawDeg(gC.holdRotation);
     if (guided) {
@@ -4956,12 +5004,15 @@ void End(char const* why) {
         gC.bodyTurns, gC.gameTurns, gC.turnsSlid, gC.facingsHeld, gC.wheelSticks, gC.reachSamples, gC.reachMaxBody, gC.reachWorstHead, gC.facingsEased, gC.looksSet, gC.glances, gC.heardOnly, gC.looksGame, gC.turnsHome, gC.reaches, gC.looksRefused, gC.voicesPlaced, gC.voicesFar,
         gC.staged ? "true" : "false", gC.circleJoined, gC.circleWalked, gC.circleOut, gC.circleRegathers,
         gC.circleEarly, gC.circleStill, gC.squadWalked, gC.squadPutBack, gC.squadPlaced, gC.squadHeld, gC.eyesSwapped, gC.eyesRefused, gC.facingsToEyes, gC.relocated, gC.turnedDeg,
-        gC.world ? std::format("{{\"gapMaxM\": {:.2f}, \"gapOverS\": {:.1f}, \"lookAtBodyS\": {:.1f}, \"faceOffMeanDeg\": {:.0f}, "
-                               "\"faceOffMaxDeg\": {:.0f}, \"faceOver35\": {}, \"faceSamples\": {}, \"speakerBehindS\": {:.1f}, "
-                               "\"closeMinM\": {:.2f}, \"tripped\": \"{}\"}}",
-                       gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS,
-                       gC.audit.faceOffN != 0 ? gC.audit.faceOffSum / gC.audit.faceOffN : 0.0, gC.audit.faceOffMaxDeg, gC.audit.faceOver35,
-                       gC.audit.faceOffN, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.tripped)
+        gC.world ? [] {
+            int unknown = 0;
+            Convo::Audit::Face const faces = gC.audit.FaceTotals(&unknown);
+            return std::format("{{\"gapMaxM\": {:.2f}, \"gapOverS\": {:.1f}, \"lookAtBodyS\": {:.1f}, \"faceOffMeanDeg\": {:.0f}, "
+                               "\"faceOffMaxDeg\": {:.0f}, \"faceOver35\": {}, \"faceSamples\": {}, \"faceAxisUnknown\": {}, "
+                               "\"speakerBehindS\": {:.1f}, \"closeMinM\": {:.2f}, \"tripped\": \"{}\"}}",
+                gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS, faces.n != 0 ? faces.sum / faces.n : 0.0, faces.maxDeg,
+                faces.over35, faces.n, unknown, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.tripped);
+        }()
                  : std::string("null"),
         entryPath);
     gCutBase += gC.cut;
@@ -5362,6 +5413,7 @@ void EndMomentView(Link const& link, char const* why, bool stopWorld) {
             why, static_cast<double>(GetTickCount64() - gMoment.startMs) / 1000.0);
         gMoment = {};
         gMomentWalk = false;
+        gMomentShepardAt.reset();
         gCutBase += gC.cut;
         gC = {};
         if (stopWorld) {
@@ -5419,6 +5471,7 @@ void EndMomentView(Link const& link, char const* why, bool stopWorld) {
     }
     gMoment = {};
     gMomentWalk = false;
+    gMomentShepardAt.reset();
     gCutBase += gC.cut;
     gC = {};
     if (stopWorld) {
@@ -5729,6 +5782,7 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
             }
         }
     }
+    gMomentShepardAt = gMoment.pawnAt;
     std::optional<engine::TrackingFrame> frame;
     vr::host_view::State const view = vr::host_view::Latest();
     if (view.valid && gInWorld) {
@@ -5924,7 +5978,7 @@ std::string WriteStance(std::string const& tag) {
     // A moment (a matinee walking Shepard's hidden pawn while the view stays the player's) has no conversation: its people are
     // everyone shown within 20 m, Shepard's pawn among them where the track has him.
     bool const moment = !gC.on && MomentViewOn();
-    if (!moment && (!gC.on || gC.object == nullptr)) {
+    if (!moment && (!gC.on || gC.object == nullptr || !ue3::runtime::IsAlive(gC.object))) {
         return "stance: no conversation";
     }
     ue3::Object* const controller = player::Controller();
@@ -6052,10 +6106,12 @@ std::string WriteStance(std::string const& tag) {
     }
     // Everyone else standing near (not of the conversation: Kirrahe's troops before his speech), within 20 m of the player.
     std::string others;
-    if (ue3::Object* const world = tracer != nullptr ? gWorldOfActor.Read<ue3::Object*>(tracer).value_or(nullptr) : nullptr) {
-        int guard = 0, listed = 0;
-        for (ue3::Object* o = gWorldPawns.Read<ue3::Object*>(world).value_or(nullptr); o != nullptr && guard < 512 && listed < 64;
-             o = gNextPawnOf.Read<ue3::Object*>(o).value_or(nullptr), ++guard) {
+    {
+        int listed = 0;
+        for (ue3::Object* const o : LivePawns(WorldOf(tracer))) {
+            if (listed >= 64) {
+                break;
+            }
             if (o == pawn || o == shep || !player::IsBioPawn(o) || gActorHidden.ReadBool(o).value_or(true) ||
                 std::any_of(who.begin(), who.end(), [&](Tracked const& t) { return t.actor == o; })) {
                 continue;
@@ -6318,13 +6374,7 @@ void TrackViewSpeed(double deltaSeconds) {
 // The people shown in the player's view (anywhere but behind him, within 30 m), for what a script's black screen covers.
 std::vector<cw::Seen> PeopleInView(ue3::Object* pawn, ik::Vec3 const& eye, double facing) {
     std::vector<cw::Seen> seen;
-    ue3::Object* const world = pawn != nullptr ? gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
-    if (world == nullptr) {
-        return seen;
-    }
-    int guard = 0;
-    for (ue3::Object* p = gWorldPawns.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
-         p = gNextPawnOf.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
+    for (ue3::Object* const p : LivePawns(WorldOf(pawn))) {
         if (p == pawn || !player::IsBioPawn(p) || gActorHidden.ReadBool(p).value_or(true)) {
             continue;
         }

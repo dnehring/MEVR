@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **First-person conversations (experimental): scripted walks wait for you.** When Anderson (or your squad) walks beside
+  Shepard and you fall about 3 m behind, the walk and its lines wait until you catch up, instead of the scene going on
+  without you. You can also walk the whole way now: the conversation's 4 m boundary no longer stops you a few steps into
+  such a walk. And walking during a conversation slides past a squadmate standing close instead of sticking.
 - **The 3D cinema screen no longer crosses your eyes.** The dialogue wheel, subtitles and the title's menus used to sit
   deep behind the screen while drawn over faces and shoulders in front of it; they now stand just in front of the
   screen. Over-the-shoulder shots come out of the screen less, and the first frames of a scene and each camera cut no

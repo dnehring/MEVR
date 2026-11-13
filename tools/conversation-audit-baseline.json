@@ -1,0 +1,157 @@
+{
+ "scenes": {
+  "ice20_anoleis_dlg": {
+   "atBody": 0,
+   "atYou": 9,
+   "faceOffMedianDeg": 6,
+   "findings": [],
+   "gapP90M": 0.08,
+   "looksMeant": 9,
+   "moment": false,
+   "opening": "walk in",
+   "records": 10,
+   "staged": false
+  },
+  "ice20_opold_dlg": {
+   "atBody": 0,
+   "atYou": 0,
+   "faceOffMedianDeg": null,
+   "findings": [],
+   "gapP90M": 0.07,
+   "looksMeant": 4,
+   "moment": false,
+   "opening": "stay",
+   "records": 6,
+   "staged": false
+  },
+  "ice60_matriarch_dlg": {
+   "atBody": 0,
+   "atYou": 1,
+   "faceOffMedianDeg": 68,
+   "findings": [
+    "face-off-you"
+   ],
+   "gapP90M": 0.12,
+   "looksMeant": 3,
+   "moment": false,
+   "opening": "walk in",
+   "records": 8,
+   "staged": false
+  },
+  "jug20_sal_captainkirrahe_dlg": {
+   "atBody": 0,
+   "atYou": 10,
+   "faceOffMedianDeg": 10,
+   "findings": [
+    "speaker-behind"
+   ],
+   "gapP90M": 0.13,
+   "looksMeant": 10,
+   "moment": false,
+   "opening": "cut",
+   "records": 19,
+   "staged": true
+  },
+  "lav70_asariscientist_dlg": {
+   "atBody": 0,
+   "atYou": 3,
+   "faceOffMedianDeg": 9,
+   "findings": [],
+   "gapP90M": null,
+   "looksMeant": 3,
+   "moment": false,
+   "opening": "walk in",
+   "records": 5,
+   "staged": false
+  },
+  "moment_CD_LAV70_06_Liara_Intro_SeqAct_Interp_0": {
+   "atBody": 0,
+   "atYou": 0,
+   "faceOffMedianDeg": null,
+   "findings": [],
+   "gapP90M": null,
+   "looksMeant": 0,
+   "moment": true,
+   "opening": "moment",
+   "records": 7,
+   "staged": false
+  },
+  "moment_SarenCouncil_SeqAct_Interp_0": {
+   "atBody": 0,
+   "atYou": 0,
+   "faceOffMedianDeg": null,
+   "findings": [],
+   "gapP90M": null,
+   "looksMeant": 0,
+   "moment": true,
+   "opening": "moment",
+   "records": 7,
+   "staged": false
+  },
+  "sta20_chorban_dlg": {
+   "atBody": 0,
+   "atYou": 2,
+   "faceOffMedianDeg": 16,
+   "findings": [],
+   "gapP90M": 0.07,
+   "looksMeant": 3,
+   "moment": false,
+   "opening": "walk in",
+   "records": 4,
+   "staged": false
+  },
+  "sta20_zabaleta_dlg": {
+   "atBody": 0,
+   "atYou": 9,
+   "faceOffMedianDeg": 8,
+   "findings": [
+    "squad-behind"
+   ],
+   "gapP90M": 0.08,
+   "looksMeant": 10,
+   "moment": false,
+   "opening": "walk in",
+   "records": 10,
+   "staged": false
+  },
+  "sta30_girard_dlg": {
+   "atBody": 0,
+   "atYou": 12,
+   "faceOffMedianDeg": 16,
+   "findings": [],
+   "gapP90M": null,
+   "looksMeant": 13,
+   "moment": false,
+   "opening": "walk in",
+   "records": 10,
+   "staged": false
+  },
+  "sta60_wrex_at_fists_dlg": {
+   "atBody": 0,
+   "atYou": 0,
+   "faceOffMedianDeg": null,
+   "findings": [],
+   "gapP90M": 0.09,
+   "looksMeant": 0,
+   "moment": false,
+   "opening": "cut",
+   "records": 6,
+   "staged": false
+  },
+  "sta90_council_saren_dlg": {
+   "atBody": 1,
+   "atYou": 3,
+   "faceOffMedianDeg": 11,
+   "findings": [
+    "eyes-off-body"
+   ],
+   "gapP90M": 0.6,
+   "looksMeant": 5,
+   "moment": false,
+   "opening": "cut",
+   "records": 7,
+   "staged": true
+  }
+ },
+ "written": "2026-11-12T23:06:27"
+}

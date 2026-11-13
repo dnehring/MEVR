@@ -29,12 +29,13 @@ if (-not $Baseline) { $Baseline = Join-Path $tools 'conversation-audit-baseline.
 function Expand([string]$path) { [Environment]::ExpandEnvironmentVariables($path) }
 
 function Judge-Run([string]$since) {
-    # Printed to the host: a function's output is its return value, and only the exit code is returned.
+    # Printed to the host (Write-Host, which `*>&1` and Tee-Object also catch; Out-Host bypasses every stream): a function's
+    # output is its return value, and only the exit code is returned.
     $stance = Join-Path $tools 'conversation-stance.py'
     Write-Host "##### findings since $since"
-    & python -I $stance --findings --since $since | Out-Host
+    & python -I $stance --findings --since $since | ForEach-Object { Write-Host $_ }
     if ($WriteBaseline) {
-        & python -I $stance --baseline-write $Baseline --since $since | Out-Host
+        & python -I $stance --baseline-write $Baseline --since $since | ForEach-Object { Write-Host $_ }
         return 0
     }
     if (-not (Test-Path $Baseline)) {
@@ -42,7 +43,7 @@ function Judge-Run([string]$since) {
         return 0
     }
     Write-Host "##### against the baseline ($Baseline)"
-    & python -I $stance --baseline-compare $Baseline --since $since | Out-Host
+    & python -I $stance --baseline-compare $Baseline --since $since | ForEach-Object { Write-Host $_ }
     return $LASTEXITCODE
 }
 
@@ -58,6 +59,10 @@ foreach ($s in $data.scenes) {
     if ($s.endAfter) { $common += " -EndAfter $($s.endAfter)" }
     if ($s.turnAt) { $common += " -TurnAt $($s.turnAt)" }
     if ($s.wanderAt) { $common += " -WanderAt $($s.wanderAt)" }
+    # A console line before the scene (a scripted walk's player walking along: `mevr convo follow on`); every other scene
+    # starts with it off.
+    $before = if ($s.before) { $s.before } else { 'mevr convo follow off' }
+    $common += " -Before '$($before -replace "'", "''")'"
     $lines += "Say '##### $($s.key): $($s.kind -replace "'", "''")'"
     if ($s.save) {
         $lines += "& tools\conversation-from-save.ps1 -Save '$(Expand $s.save)' -Action '$($s.action)' -Class '$($s.class)' $common 2>&1"

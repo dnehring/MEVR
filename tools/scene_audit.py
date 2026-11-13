@@ -107,10 +107,12 @@ def meant_for_you(p):
 
 
 def bearing_off(st, p):
-    """Degrees between where the player's body faces (the held yaw) and the bearing from his eyes to p."""
+    """Degrees between the facing the scene gave the player (the held yaw without his own right-stick turns, `turnedDeg`: a
+    speaker behind a player who turned away is his choice, not the composition's) and the bearing from his eyes to p."""
     e = st['player'].get('eyes') or st['player']['at']
     b = math.degrees(math.atan2(p['at'][1] - e[1], p['at'][0] - e[0]))
-    return abs((b - st['player']['yaw'] + 180) % 360 - 180)
+    facing = st['player']['yaw'] - (st['player'].get('turnedDeg') or 0)
+    return abs((b - facing + 180) % 360 - 180)
 
 
 def settled_flags(records):
@@ -144,8 +146,9 @@ def findings(records):
 
     def add(rule, st, who, detail):
         sev, what = RULES[rule]
-        if rule == 'face-off-you' and staged:
-            sev = 1  # a staged scene's facings are its own (the re-face rule leaves them): Udina beside the player, facing the Council
+        if rule in ('face-off-you', 'speaker-behind') and staged:
+            sev = 1  # a staged scene's facings and marks are its own (the re-face rule leaves them): Udina beside the player, facing
+            # the Council; Ashley speaking from 140 degrees behind at Kirrahe's camp (her mark)
         if not any(f['rule'] == rule and f['who'] == who for f in out):
             out.append({'rule': rule, 'severity': sev, 'what': what, 'at': round(st.get('seconds', 0.0), 1), 'tag': st.get('tag', '?'),
                         'who': who, 'detail': detail})

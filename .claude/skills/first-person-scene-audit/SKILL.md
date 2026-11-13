@@ -14,7 +14,10 @@ this skill is what to run and how to read it.
 1. After a change to game/ConversationWorld (or anything near conversations): `tools\conversation-audit.ps1 -IgnoreSlot` (about
    12 minutes; `-Long` adds Virmire's 3-minute scene; `-Only <keys>` a few; `-Plan` prints what it would play). It plays the ten
    scenes of `tools/conversation-audit-set.json`, prints the rules' findings and compares with `tools/conversation-audit-baseline.json`
-   (exit code 1 on a regression). A change judged good: `-WriteBaseline` makes its numbers the baseline (commit it).
+   (exit code 1 on a regression). A change judged good: `-WriteBaseline` makes its numbers the baseline (commit it); or
+   `-Judge <since> -WriteBaseline` from a pass already played. A set entry's `before` is a console line before its scene (the
+   scripted walks walk along: `mevr convo follow on`; with the player standing still they wait for him, 120 s). The baseline
+   keeps the latest play of each scene since `<since>`, so a pass that only replays a few scenes can replace just those.
 2. Any records, any time, no game: `python tools/conversation-stance.py --findings --since <time>` (rules: `tools/scene_audit.py`),
    `--baseline-compare <file>`; `tools\conversation-audit.ps1 -Judge <time>` judges an earlier run again.
 3. A headset session: `python tools/conversation-session.py` lists, per scene, the mod's live audit (`audit:<rule>`: the same rules,
@@ -107,6 +110,12 @@ this skill is what to run and how to read it.
 - A moment: Shepard's hidden pawn walks the track (the gap grows to many metres while the player stands still); the people near
   have **no look-at target** (`gameLook` null): their faces are the matinee's animation, so "Looks meant for you" is 0 and a face
   "at his body" is the animation's, not a look. The stand-in has nothing to move there (A/B identical, 2026-11-12).
+- The live audit in the summary (`audit`): `gapMaxM` 0.07-0.13, `faceOffMeanDeg` 7-12 in plain scenes; known findings, in the
+  baseline (2026-11-12): Benezia's `face-off-you` (her dying animation, mean 46), the hearing's `eyes-off-body` (0.70 m for
+  1.3 s, 2.5 s in), Ashley's `speaker-behind` at Kirrahe's camp (her stage mark, minor), Tali's `squad-behind` at Zabaleta's
+  (at the rule's edge), Girard's `face-off-you` near the quarter line (his line 38's gesture); `faceAxisUnknown` 1 for Opold.
+- A crash during a load after a scene: read `crash-breadcrumbs.txt` and symbolize it with the deployed PDB (`ASI\LE1MEVR.pdb`,
+  copied before the next deploy overwrites it) by `python tools/resolve-native-symbols.py <copy of the ASI> <rva...>`.
 - A gap of 0.3 m or more that stays after a cut is a placement fault: check the log for `the opening's eyes were drawn` and the
   record's `player.at` against `player.eyes` (they must be the view offset apart, about 44 units back and 18 down).
 

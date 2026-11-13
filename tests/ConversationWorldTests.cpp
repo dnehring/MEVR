@@ -205,6 +205,9 @@ void TestKeepClear() {
     CHECK(c.moved && c.held && Close(c.place.x, 146.0, 1e-6));
     c = cw::KeepClear({160.0, 0.0, 100.0}, {174.0, 0.0, 100.0}, people, 70.0);
     CHECK(!c.moved && c.held && Close(c.place.x, 160.0, 1e-6));
+    // ... and a step nearer and to the side slides round them at the distance they stand (a squadmate at the clearance's edge).
+    c = cw::KeepClear({160.0, 0.0, 100.0}, {166.0, 10.0, 100.0}, people, 70.0);
+    CHECK(c.moved && c.held && Close(std::hypot(c.place.x - 200.0, c.place.y), 40.0, 1e-6) && c.place.y > 5.0);
     // No clearance: free.
     CHECK(cw::KeepClear({120.0, 0.0, 100.0}, {134.0, 0.0, 100.0}, people, 0.0).moved);
     // Two people closer together than two clearances: no way between them, the step is held where it started.
