@@ -97,6 +97,11 @@ check(sa.compare(base, {'test_dlg': sa.numbers(clean)}) == [], 'the same run is 
 worse = sa.compare(base, {'test_dlg': sa.numbers(look)})
 check(any('looks at his body' in w for _, w in worse) or any('new finding' in w for _, w in worse), f'a worse run regresses: {worse}')
 check(sa.compare(base, {}) == [('test_dlg', 'not played in this run')], 'a scene not played is a note')
+# A body away from the eyes is never excused by a baseline that already had it (the council hearing, 2026-11-13).
+cut_base = {'test_dlg': sa.numbers(cut)}
+again = sa.compare(cut_base, {'test_dlg': sa.numbers(cut)})
+check(any('never excused' in w for _, w in again), f'eyes-off-body in the baseline still fails: {again}')
+check(any('whatever the baseline' in w for _, w in again), f'a 90th-percentile gap of 0.3 m or more still fails: {again}')
 
 print(f"scene audit tests: {'ok' if not failures else f'{len(failures)} FAILED'}")
 sys.exit(1 if failures else 0)

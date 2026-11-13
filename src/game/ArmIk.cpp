@@ -1446,6 +1446,14 @@ bool FirstPerson() {
     return gFirstPersonMs != 0 && GetTickCount64() - gFirstPersonMs <= 500;
 }
 
+std::optional<ik::Vec3> AnimatedHeadComponent() {
+    auto const animated = engine::bone_pose::AnimatedHead();
+    if (!animated) {
+        return std::nullopt;
+    }
+    return gLastBodyScale.Active() ? ik::body_scale::Apply(gLastBodyScale, *animated) : *animated;
+}
+
 bool Enabled() {
     return gEnabled;
 }

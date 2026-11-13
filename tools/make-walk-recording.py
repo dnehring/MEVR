@@ -6,12 +6,17 @@ can look down (--pitch) so the eye snapshots show the legs; both hands are held 
 keeping the run (research/29 "The legs keep the run"): replay it with its inputs on the fake headset,
 
     python tools/make-walk-recording.py out.mevrrec [segment] [hz] [--yaw DEG] [--pitch DEG] [--eye-height M] [--stick S] [--grip]
+        [--plan forward:14,stand:600]
     tools/replay.ps1 -Path out.mevrrec -Loop -Inputs
 
 segment: seconds per stick direction (default 3). --yaw: the head (and the hands) turned DEG degrees right in the room.
 --pitch: the head pitched DEG degrees (+ up; -60 shows the legs). --eye-height: the head's height in tracking space
 (default 0: the fake headset's floor is at the head). --stick: the stick's deflection (default 0.9, a run: above the
-game's 0.70). --grip: the right grip held all the way (a gun drawn with `mevr weapon pistol` stays in the hand)."""
+game's 0.70). --grip: the right grip held all the way (a gun drawn with `mevr weapon pistol` stays in the hand). --plan: the
+segments by name and seconds instead of the loop of five (forward, strafe right, back, strafe left, stand): `stand:600` is a
+player standing with tracked hands (an audit run's hands, tools/conversation-audit.ps1); `forward:14,stand:600` one who walks
+with a scripted walk and keeps the stick pushed through its cut (the council hearing, research/69 "The body that stayed at the
+mark")."""
 import math
 import struct
 import sys
@@ -48,7 +53,7 @@ def main():
     eye_h = option("--eye-height", 0.0)
     stick = option("--stick", 0.9)
     grip = 1.0 if "--grip" in sys.argv else 0.0
-    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick")}
+    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -71,17 +76,26 @@ def main():
     left_hand = (*hand_q, *at(-0.15, -0.35, 0.30))
     right_hand = (*hand_q, *at(0.15, -0.35, 0.30))
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
-    per = int(segment * hz)
-    n = per * len(SEGMENTS)
+    by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS}
+    if "--plan" in sys.argv:
+        plan_text = sys.argv[sys.argv.index("--plan") + 1]
+        steps = [(by_name[name.strip()], float(seconds)) for name, seconds in (part.split(":") for part in plan_text.split(","))]
+    else:
+        steps = [(seg, segment) for seg in SEGMENTS]
+    frames = []  # the segment of each frame
+    for seg, seconds in steps:
+        frames += [seg] * int(seconds * hz)
+    n = len(frames)
     with open(out, "wb") as f:
         f.write(HEADER.pack(MAGIC, 1, HEADER.size, FRAME.size, 0, int(time.time() * 1000)))
         for i in range(n):
             t = i / hz
-            _, sx, sy = SEGMENTS[i // per]
+            _, sx, sy = frames[i]
             f.write(FRAME.pack(int(t * 1e9), 3, *eyes[0], *fov, *eyes[1], *fov,
                                valid, 0.0, 0.0, sx * stick, sy * stick, *left_hand, *left_hand,
                                valid, 0.0, grip, 0.0, 0.0, *right_hand, *right_hand))
-    plan = ", ".join(f"{name} {k * segment:g}-{(k + 1) * segment:g} s" for k, (name, _, _) in enumerate(SEGMENTS))
+    starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
+    plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))
     print(f"{out}: {n} frames at {hz:g} Hz: {plan}; head yaw {yaw:g}, pitch {pitch:g}, stick {stick:g}"
           f"{', right grip held' if grip else ''}")
     return 0

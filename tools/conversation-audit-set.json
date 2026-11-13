@@ -1,5 +1,7 @@
 {
  "about": "The regression set of first-person scenes (research/69 \"Auditing scenes by rule\"): one of each kind (a scripted walk with someone beside Shepard is played walking along, `before`: it waits for a player who stands still), from the validation saves on the owner's machine (tools/save-dictionary.py; %LOCALAPPDATA%\\MEVR). Run with tools/conversation-audit.ps1; compared with tools/conversation-audit-baseline.json.",
+ "hands": "stand:600",
+ "handsAbout": "Every scene is played with tracked hands (a recording's, replayed with its inputs: tools/make-walk-recording.py --plan): the fake headset has none, and without them arm IK and the body follower never run (research/69 \"The body that stayed at the mark\"). A scene's own `hands` replaces the set's.",
  "lists": {
   "John02": {"career": "John02", "list": "%LOCALAPPDATA%\\MEVR\\save-dictionary-list-John02.json", "firstSlot": 80},
   "squad": {"career": "John00", "list": "%LOCALAPPDATA%\\MEVR\\squad-saves\\list.json", "firstSlot": 80, "saveDir": "%LOCALAPPDATA%\\MEVR\\squad-saves"}
@@ -10,7 +12,7 @@
   {"key": "ice20_anoleis_dlg", "kind": "a mark across the room; turned by the right stick", "from": "John02", "slot": 83, "turnAt": 7},
   {"key": "ice60_matriarch_dlg", "kind": "a trigger's scene, a cut (Benezia's death)", "from": "John02", "slot": 86, "endAfter": 20},
   {"key": "sta60_wrex_at_fists_dlg", "kind": "a framed scene in the world", "from": "John02", "slot": 87},
-  {"key": "sta90_council_saren_dlg", "kind": "a scripted walk with Anderson, then a staged cut (the Council's hearing)", "from": "John02", "slot": 80, "endAfter": 12, "seconds": 120, "before": "mevr convo follow on"},
+  {"key": "sta90_council_saren_dlg", "kind": "a scripted walk with Anderson, the stick pushed through it and its cut, then a staged cut (the Council's hearing)", "from": "John02", "slot": 80, "endAfter": 12, "seconds": 120, "before": "mevr convo follow on", "hands": "forward:14,stand:300"},
   {"key": "lav70_asariscientist_dlg", "kind": "a scripted walk with companions and lines (Liara's intro), then a walk-in by the view", "from": "John02", "slot": 92, "endAfter": 8, "before": "mevr convo follow on"},
   {"key": "sta30_girard_dlg", "kind": "a walk-in by the view with the squad (the eyes stand-in, the facing rule)", "from": "squad", "slot": 80},
   {"key": "sta20_zabaleta_dlg", "kind": "the squad's formation; a wander off and back", "from": "squad", "slot": 84, "wanderAt": 9},

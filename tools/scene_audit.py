@@ -20,6 +20,12 @@ SQUAD_BEHIND_DEG = 150.0
 WALK_PAUSES = 4        # a scripted walk that paused this often: the player's pace and the walk's do not match
 WALK_LEFT_M = 5.0      # a walk with someone beside Shepard this far from the player and not paused: the pause did not hold
 
+# Never excused by a baseline: Shepard's body away from the player's eyes. The council hearing's 0.70 m "known opening
+# transient" went into the first baseline (2026-11-12), and in the owner's headset session the same opening left the body up to
+# 5.7 m away for 225 of the hearing's 227 seconds (2026-11-13, research/69 "The body that stayed at the mark"): a baseline
+# compares a run with the last one, it is no judgement of what the player sees.
+ABSOLUTE = ('eyes-off-body',)
+
 RULES = {
     'look-at-body': (3, "a look meant for the player lands on Shepard's hidden body"),
     'eyes-off-body': (2, "Shepard's head bone stays away from the player's eyes after the scene settled"),
@@ -240,8 +246,12 @@ def compare(base, now):
         for rule in n['findings']:
             if rule not in b['findings']:
                 out.append((key, f"new finding: {rule} ({RULES[rule][1]})"))
+            elif rule in ABSOLUTE:
+                out.append((key, f"{rule} again ({RULES[rule][1]}): never excused by a baseline"))
         if n['gapP90M'] is not None and (b['gapP90M'] is None or n['gapP90M'] > b['gapP90M'] + 0.1):
             out.append((key, f"Shepard's head from the eyes {b['gapP90M']} -> {n['gapP90M']} m"))
+        elif n['gapP90M'] is not None and n['gapP90M'] >= BODY_AWAY_M:
+            out.append((key, f"Shepard's head from the eyes {n['gapP90M']} m (90th percentile), {BODY_AWAY_M} m or more whatever the baseline"))
         if n['atBody'] > b['atBody']:
             out.append((key, f"looks at his body {b['atBody']} -> {n['atBody']}"))
         if n['faceOffMedianDeg'] is not None and b['faceOffMedianDeg'] is not None and n['faceOffMedianDeg'] > b['faceOffMedianDeg'] + 6:

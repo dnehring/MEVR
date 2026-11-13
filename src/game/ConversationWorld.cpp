@@ -14,6 +14,7 @@
 #include "engine/ConversationHooks.hpp"
 #include "engine/NameLookup.hpp"
 #include "engine/VoicePlace.hpp"
+#include "game/ArmIk.hpp"
 #include "game/AuthoredMoment.hpp"
 #include "game/CallTrace.hpp"
 #include "engine/SettingsFile.hpp"
@@ -658,6 +659,22 @@ std::optional<Head> HeadOf(ue3::Object* actor) {
     return h;
 }
 
+// Shepard's head where the scene has him: for the player's own pawn the animation's head (game/arm_ik), not the drawn one, which
+// the body follower slides under the player (research/69 "The body that stayed at the mark", 2026-11-13: read drawn, the council
+// hearing's opening took the place our slide had put his body for his mark, 3.5 m from where the stage animated him, and the
+// follower then chased our own writes). The axes stay the drawn head's. Everyone else, and Shepard with nothing written: HeadOf.
+std::optional<Head> MarkHeadOf(ue3::Object* actor) {
+    std::optional<Head> head = HeadOf(actor);
+    ue3::Object* const controller = head ? player::Controller() : nullptr;
+    if (controller == nullptr || actor != player::Pawn(controller)) {
+        return head;
+    }
+    if (auto const animated = arm_ik::AnimatedHeadComponent()) {
+        head->at = ik::TransformPoint(engine::skeleton::LocalToWorld(player::Mesh(actor)), *animated);
+    }
+    return head;
+}
+
 // An actor's place for the logs: its head if it has one, else its location.
 std::optional<ik::Vec3> FacePoint(ue3::Object* actor) {
     if (auto const head = HeadOf(actor)) {
@@ -950,6 +967,8 @@ struct Convo {
         std::uint32_t cutSeen = 0;
         double gapMaxM = 0.0;        // Shepard's head bone from the drawn eyes, flat, at most (his body with the player)
         double gapOverS = 0.0;       // ... time at BODY_AWAY (0.3 m) or more
+        double sampledS = 0.0;       // the time sampled (what gapOverS is out of)
+        double thirdPersonS = 0.0;   // arm IK driving with tracked controllers, but by Shepard's head, not in the view's frame
         double lookAtBodyS = 0.0;    // time someone's look target was Shepard with his head half a metre or more away
         struct Face {                // faces of looks meant for the player, per person: their angle off the eyes
             double sum = 0.0;
@@ -2866,7 +2885,7 @@ std::optional<double> StageFacingForPlayer(Stay const& st, double yawDeg) {
     if (!gEyesOn || gC.playerPawn == nullptr || st.actor == gC.playerPawn || !ue3::runtime::IsAlive(gC.playerPawn)) {
         return std::nullopt;
     }
-    auto const head = HeadOf(gC.playerPawn);
+    auto const head = MarkHeadOf(gC.playerPawn);
     if (!head) {
         return std::nullopt;
     }
@@ -2982,7 +3001,10 @@ void StepEyes() {
     bool away = false;
     ue3::Object* const shep = ShepardPawn();
     if (gEyesOverride.value_or(gSettings.lookEyes) && gC.world && shep != nullptr && ue3::runtime::IsAlive(shep)) {
-        auto const head = HeadOf(shep);
+        // (The stage's head, not the drawn one: the body follower draws his body under the player in every scene in the world
+        // since 2026-11-13, and whether the game's looks at "Shepard" read his drawn or his animated head is [verify]; deciding
+        // by the stage's head, the stand-in covers either.)
+        auto const head = MarkHeadOf(shep);
         auto const at = head ? std::optional<ik::Vec3>{head->at} : [&]() -> std::optional<ik::Vec3> {
             auto const p = player::Location(shep);
             return p ? std::optional<ik::Vec3>{V(*p)} : std::nullopt;
@@ -3188,6 +3210,7 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
             log::Info("convo: {}", WriteStance(std::string("finding-") + rule));
         }
     };
+    a.sampledS += dt;
     if (shepHead && !gC.detached) {
         a.gapMaxM = std::max(a.gapMaxM, gap / kUnitsPerMeter);
         if (gap >= 30.0) {
@@ -3195,6 +3218,16 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
             if (a.gapOverS >= 1.0) {
                 trip("eyes-off-body", std::format("Shepard's head bone {:.2f} m from the player's eyes for {:.1f} s", gap / kUnitsPerMeter, a.gapOverS));
             }
+        }
+    }
+    // The body tracking's frame (research/69 "The body that stayed at the mark"): driven by tracked controllers in a scene in the
+    // world, arm IK places the body in the player's view; a second of it placing the body by Shepard's head instead (its third
+    // person) is a finding. The council hearing spent 4.5 minutes so in the owner's session, which no unattended run could see:
+    // the fake headset has no controllers (an audit run replays a recording's hands now).
+    if (arm_ik::Status().starts_with("driving") && !arm_ik::FirstPerson()) {
+        a.thirdPersonS += dt;
+        if (a.thirdPersonS >= 1.0) {
+            trip("body-third-person", std::format("arm IK placed the body by Shepard's head, not in the player's view, for {:.1f} s", a.thirdPersonS));
         }
     }
     // The facing the scene gave the player: the held yaw without his own turns (the right stick's; a speaker behind a player who
@@ -3876,7 +3909,7 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
         ik::Vec3 const mark = V(*markAt);
         facts.markUnits = std::hypot(mark.x - stood.x, mark.y - stood.y);
         facts.riseUnits = mark.z - stood.z;
-        auto const head = HeadOf(pawn);
+        auto const head = MarkHeadOf(pawn);
         facts.sightToMark = InSight(pawn, eyes, head ? head->at : mark + ik::Vec3{0.0, 0.0, 60.0});
         facts.floorAtMark = FloorZ(pawn, mark).has_value();
         if (auto const hidden = gActorHidden.ReadBool(pawn)) {
@@ -3929,7 +3962,7 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     // before the move: read after it, it already has the move in it, and the follower below took the difference for a jump
     // of his and moved the view to the mark after all, 2026-11-09.)
     ik::Vec3 const mark = V(*markAt);
-    auto const headAtMark = HeadOf(pawn);
+    auto const headAtMark = MarkHeadOf(pawn);
     // He goes back at the height he stands at on that floor (as high above it as he is above the mark's floor), not at
     // the recorded height: a record taken while he hung in the air or sank (a test's placement) put him half a metre into
     // the floor, and the engine lifting him out was a jump in a drawn frame. The view goes with that correction.
@@ -4229,7 +4262,7 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
     ue3::Object* const owner = gOwner.Read<ue3::Object*>(conv).value_or(nullptr);
     auto const ownerAt = owner != nullptr && owner != pawn ? FacePoint(owner) : std::nullopt;
     // Part A: the player at Shepard's mark.
-    auto const head = HeadOf(pawn);
+    auto const head = MarkHeadOf(pawn);
     auto const rot = player::Rotation(pawn);
     ik::Vec3 const before = gC.hold;
     if (head) {
@@ -4415,6 +4448,7 @@ void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
 // The dips asked for before the current conversation or moment: the host dips whenever the published count changes, so
 // the count must not fall back to zero when the next one begins (a moment's dip, then the hearing: a second dip).
 std::uint32_t gCutBase = 0;
+std::uint32_t gStickCutSeen = 0;  // the published cut (gCutBase + gC.cut) the walk's stick last saw (MovePlayer)
 bool gMomentWalk = false;  // a moment's view is up (set by TickMoment): the walk's trigger guard stands down
 // ... and where the track has Shepard (TickMoment, before the player's step): the walk's boundary goes with him there. Around
 // where the moment began it was a wall 4 m into Anderson's walk to the Council (the walk along's first run, 2026-11-12).
@@ -4482,6 +4516,17 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     float stickX = 0.0f, stickY = 0.0f;
     vr::controllers::State const controllers = vr::controllers::Latest();
     double const pushed = controllers.active ? std::hypot(controllers.left.stickX, controllers.left.stickY) : 0.0;
+    // After a cut or a dip the view stands somewhere new: a stick still out from before walks again only once it has been let
+    // go, as after a reply's pick (the owner's council hearing, 2026-11-13: pushed through the cut from the walk with
+    // Anderson, it walked the player 4 m off Shepard's mark in the hearing's first seconds).
+    if (std::uint32_t const cutNow = gCutBase + gC.cut; cutNow != gStickCutSeen) {
+        gStickCutSeen = cutNow;
+        if (pushed >= 0.25 && !gC.wheelStick.held) {
+            gC.wheelStick.held = true;
+            gC.wheelStickNoted = true;  // (not a reply's stick: no "picked the reply" line, not counted as one)
+            log::Info("convo: at {:.1f} s the stick is still out ({:.2f}) through a cut: not a walk until it is let go", Seconds(), pushed);
+        }
+    }
     bool const stickWalks = cw::StickWalks(gC.wheelStick, gC.wheel, pushed);  // the wheel's until it has been let go
     if (gC.wheel) {
         // (the stick steers the wheel)
@@ -4801,7 +4846,7 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
     // bone facing where his pawn faces (a conversation straight after a level load or a cutscene: the view on foot is elsewhere).
     {
         auto const nowPawn = player::Location(pawn);
-        auto const head = HeadOf(pawn);
+        auto const head = MarkHeadOf(pawn);
         bool const footFresh = gFoot.have && GetTickCount64() - gFoot.ms < 5000 && nowPawn && Dist(V(*nowPawn), V(gFoot.pawn)) < 300.0;
         if (footFresh) {
             gC.hold = V(gFoot.location) + (V(*nowPawn) - V(gFoot.pawn));
@@ -4983,6 +5028,13 @@ void End(char const* why) {
     for (Tracked const& t : gC.actors) {
         maxMove = std::max(maxMove, t.maxMove);
     }
+    // How long the body findings lasted (a rule's own line comes once, at its first second: the hearing's said 1.1 s of what
+    // were 225 of 227, 2026-11-13).
+    if (gC.world && (gC.audit.gapOverS >= 2.0 || gC.audit.thirdPersonS >= 2.0)) {
+        log::Info("convo: audit totals: Shepard's head bone 0.3 m or more from the player's eyes for {:.1f} of {:.1f} s sampled (at most "
+                  "{:.2f} m); the body placed by his head, not in the player's view, for {:.1f} s",
+            gC.audit.gapOverS, gC.audit.sampledS, gC.audit.gapMaxM, gC.audit.thirdPersonS);
+    }
     log::Info("convo: summary {{\"name\": \"{}\", \"why\": \"{}\", \"seconds\": {:.1f}, \"stage\": {}, \"actors\": {}, \"lines\": {}, "
               "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
               "\"notSeeable\": {}, \"world\": {}, \"kept\": {}, \"drawn\": {}, \"letGo\": {}, \"reanchors\": {}, \"maxMoveM\": {:.2f}, "
@@ -5013,9 +5065,11 @@ void End(char const* why) {
             Convo::Audit::Face const faces = gC.audit.FaceTotals(&unknown);
             return std::format("{{\"gapMaxM\": {:.2f}, \"gapOverS\": {:.1f}, \"lookAtBodyS\": {:.1f}, \"faceOffMeanDeg\": {:.0f}, "
                                "\"faceOffMaxDeg\": {:.0f}, \"faceOver35\": {}, \"faceSamples\": {}, \"faceAxisUnknown\": {}, "
-                               "\"speakerBehindS\": {:.1f}, \"closeMinM\": {:.2f}, \"tripped\": \"{}\"}}",
+                               "\"speakerBehindS\": {:.1f}, \"closeMinM\": {:.2f}, \"sampledS\": {:.1f}, \"thirdPersonS\": {:.1f}, "
+                               "\"tripped\": \"{}\"}}",
                 gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS, faces.n != 0 ? faces.sum / faces.n : 0.0, faces.maxDeg,
-                faces.over35, faces.n, unknown, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.tripped);
+                faces.over35, faces.n, unknown, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.sampledS, gC.audit.thirdPersonS,
+                gC.audit.tripped);
         }()
                  : std::string("null"),
         entryPath);
@@ -6340,7 +6394,14 @@ double gLegsStand = 1.0;     // 1: the legs stand by leg IK; 0: they play the sc
 
 BodyAwayState BodyAway() {
     BodyAwayState away;
-    if (!gSettings.bodyWithPlayer || !gC.world || !gC.detached || (gMoment.on && gMoment.provisional)) {
+    // The view held away from the pawn (a scripted walk, a walk-in by the view), and since 2026-11-13 every conversation shown
+    // in the world: the body is the player's even where the view stands at Shepard's mark. Before, arm IK there kept to its
+    // distance test against his animated head (first person within 0.45 m, third person past 0.75 m): the council hearing's
+    // first tick put it 2.5 m off, it fell to the third person and never came back, and Shepard's body stood where the stage
+    // had him, up to 5.7 m from the player, for the whole hearing and the two conversations after it (the owner's session,
+    // research/69 "The body that stayed at the mark").
+    bool const scene = gC.detached || (gC.on && gInWorld);
+    if (!gSettings.bodyWithPlayer || !gC.world || !scene || (gMoment.on && gMoment.provisional)) {
         return away;
     }
     ue3::Object* const controller = player::Controller();
@@ -6350,7 +6411,7 @@ BodyAwayState BodyAway() {
         return away;
     }
     away.on = true;
-    away.riseUnits = gC.detachedAt.z - at->z;
+    away.riseUnits = gC.detached ? gC.detachedAt.z - at->z : 0.0;  // (at the mark, or walked with the pawn: the pawn's floor)
     away.legsStand = gSettings.legsStand ? gLegsStand : 0.0;
     return away;
 }
@@ -6721,7 +6782,7 @@ void Tick(double deltaSeconds, Link const& link) {
     // The player's place follows Shepard's head bone when it jumps (a stage's placement, a cut to a new mark): re-anchored past
     // kReanchorUnits, never for the head's own small moves (gestures, breathing), which the player's real head replaces.
     constexpr double kReanchorUnits = 80.0;  // 0.4 m: his own steps in the comm room moved the player 4 times (2026-11-06)
-    auto const shepardHead = HeadOf(pawn);
+    auto const shepardHead = MarkHeadOf(pawn);
     // Settled over 3 ticks: a pawn put back (people kept in place) drags his mesh there and back within a tick.
     constexpr int kSettleTicks = 3;
     // What his head bone may do to the player's place (cw::HeadFollowFor): nothing while his mesh settles, while the view walks

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/ik/Ik.hpp"
+
 #include <optional>
 #include <string>
 
@@ -35,6 +37,12 @@ std::optional<double> TorsoYaw();
 // Arm IK placed the controllers in the view's own frame (first person: the view near Shepard's head bone) within the
 // last half second (game/combat_stance, research/38).
 bool FirstPerson();
+// Shepard's head bone as the animation left it, scaled as the writer draws the body, in the mesh's component space: without
+// our writes (the body follower's slide, the spine). Within half a second of the last write; nullopt when nothing is written
+// (the drawn pose is the animation's then). Whatever places the player by Shepard's head (a scene's opening, its follower)
+// takes this one: his drawn head is where our body follower put it, under the player (research/69 "The body that stayed at
+// the mark", 2026-11-13).
+std::optional<ik::Vec3> AnimatedHeadComponent();
 bool Toggle();
 void SetEnabled(bool on);
 bool Enabled();

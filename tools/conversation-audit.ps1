@@ -28,6 +28,18 @@ if (-not $Baseline) { $Baseline = Join-Path $tools 'conversation-audit-baseline.
 
 function Expand([string]$path) { [Environment]::ExpandEnvironmentVariables($path) }
 
+# Tracked hands in every scene (research/69 "The body that stayed at the mark", 2026-11-13): the fake headset has no
+# controllers, so without a recording's hands arm IK and the body follower never run, and the council hearing's body left 5.7 m
+# from the player in the owner's headset was a 1.3 s blip here. The set's `hands` (a scene's own, else the set's) is a
+# tools/make-walk-recording.py --plan, replayed with its inputs from the moment each scene is fired.
+function Hands([string]$plan) {
+    $dir = Join-Path $env:LOCALAPPDATA 'MEVR\audit-hands'
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    $file = Join-Path $dir (($plan -replace '[^A-Za-z0-9]+', '-') + '.mevrrec')
+    if (-not (Test-Path $file)) { & python -I (Join-Path $tools 'make-walk-recording.py') $file --plan $plan | Out-Null }
+    $file
+}
+
 function Judge-Run([string]$since) {
     # Printed to the host (Write-Host, which `*>&1` and Tee-Object also catch; Out-Host bypasses every stream): a function's
     # output is its return value, and only the exit code is returned.
@@ -63,6 +75,8 @@ foreach ($s in $data.scenes) {
     # starts with it off.
     $before = if ($s.before) { $s.before } else { 'mevr convo follow off' }
     $common += " -Before '$($before -replace "'", "''")'"
+    $handsPlan = if ($s.hands) { $s.hands } elseif ($data.hands) { $data.hands } else { '' }
+    if ($handsPlan) { $common += " -Replay '$(Hands $handsPlan)'" }
     $lines += "Say '##### $($s.key): $($s.kind -replace "'", "''")'"
     if ($s.save) {
         $lines += "& tools\conversation-from-save.ps1 -Save '$(Expand $s.save)' -Action '$($s.action)' -Class '$($s.class)' $common 2>&1"
