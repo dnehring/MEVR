@@ -6,7 +6,7 @@ tags: [install, tests, windows, antivirus, flaky]
 status: stable
 timestamp: 2026-11-06T20:30:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-06T20:30:00Z }
-bitten: [2026-11-06, 2026-11-06, 2026-11-06]
+bitten: [2026-11-06, 2026-11-06, 2026-11-06, 2026-11-12]
 ---
 
 # Symptom
@@ -25,6 +25,7 @@ failed Outcome's errors are printed too, and they named the installer's own reco
 | 2026-11-06 morning | two sessions' merges: "an intermittent mevr-tests failure", passed on rerun, the log overwritten by the rerun | - |
 | 2026-11-06 evening | looped on purpose: 3 failures in about 80 runs alone on the machine, all the same check; the two with their errors printed both `MEVR-install.json`, the code shown once: 5 | ~1 in 27 |
 | 2026-11-06 evening | main's own test binary, 1 failure in 2 runs | - |
+| 2026-11-12 | `tools/land-on-main.py` writing a merged file into the main checkout: `OSError: [Errno 22] Invalid argument: '...xr_session.cpp'`; main had moved, the files after it kept the old index (a commit there would have undone the landing) | once |
 
 # Cause
 
@@ -55,6 +56,8 @@ failing check's `its error:` line gives the file and the Windows error.
 - `tests/TestTemp.hpp`: every test's scratch path is under `mevr::tests::TempRoot()`, `%TEMP%\mevr-tests-<pid>`, removed at
   the end of the run. New tests that write files use it, never a fixed name in `%TEMP%`.
 - Measured after the fix: see research/33 "Files busy for a moment".
+- `tools/land-on-main.py`: every merged file's index is set before any is written, each write retried for 5 s, a file still
+  busy named for a hand merge (exit 1), never a crash halfway.
 
 # Citations
 

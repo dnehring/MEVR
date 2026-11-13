@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 
 def git(repo, *a, check=True):
@@ -77,20 +78,31 @@ def main(argv):
     present = [f for f in clean if f not in deleted]
     if present:
         git(repo, 'checkout', new, '--', *present)
-    for f, v in plan.items():
-        if v is None:
-            continue
-        before, merged = v
+    merges = {f: v for f, v in plan.items() if v is not None}
+    if merges:
+        # Every merged file's index first: a write that fails below must not leave later files' index at the old main (a
+        # commit from the main checkout would then undo the landed hunks; 2026-11-12).
+        git(repo, 'reset', '-q', new, '--', *merges)
+    unwritten = []
+    for f, (before, merged) in merges.items():
         path = os.path.join(repo, *f.split('/'))
-        git(repo, 'reset', '-q', new, '--', f)
         if hashlib.sha1(open(path, 'rb').read()).hexdigest() != before:
             print(f'{f}: changed while landing: index updated, working file left as it is (merge the commit\'s hunks by hand)')
             continue
-        open(path, 'wb').write(merged)
+        for attempt in range(10):  # a file another process has open for a moment refuses the write (EINVAL, EACCES)
+            try:
+                with open(path, 'wb') as out:
+                    out.write(merged)
+                break
+            except OSError as e:
+                if attempt == 9:
+                    print(f'{f}: could not write the merged file ({e}): index updated, apply the commit\'s hunks to it by hand')
+                    unwritten.append(f)
+                time.sleep(0.5)
     print('main ->', git(repo, 'rev-parse', '--short', 'refs/heads/main').stdout.decode().strip())
     status = git(repo, 'status', '--short', '--', *files).stdout.decode()
     print(status or '(the landed files match the commit)')
-    return 0
+    return 1 if unwritten else 0
 
 
 if __name__ == '__main__':
