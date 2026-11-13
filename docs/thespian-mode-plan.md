@@ -1,9 +1,12 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Thespian mode: the player speaks Shepard's lines
 
-A plan, 2026-11-12 (the owner's idea of the same day). Nothing here is built. Facts about the game are from the class
-layouts and the mod's existing conversation code; what has not been seen in the running game is marked **[verify]** and
-belongs to phase 0.
+A plan, 2026-11-12 (the owner's idea of the same day). Facts about the game are from the class layouts and the mod's
+existing conversation code; what has not been seen in the running game is marked **[verify]**.
+
+**Status:** phase 0 (the data and the matcher, offline) is done; its findings, numbers and the step-by-step
+implementation guide for the phases after it are in [research/70](../research/70-thespian-mode.md). Nothing runs in the
+game yet. Two things phase 0 changed in this plan are marked "Phase 0:" below.
 
 ## 1. The experience
 
@@ -134,12 +137,17 @@ Its look is checked offline first, as the menu's is (`mevr-menu-preview` renders
 
 ### 3.6 Investigate, flattened
 
-The investigate replies are ordinary replies that the handler files under its sub-menu, so they are candidates from the
-start **[verify that `m_lstCurrentReplyIndices` holds them while the main wheel shows]**. Speaking one commits it
+The investigate replies are ordinary replies that the handler files under its sub-menu (phase 0: confirmed in the data,
+they are the entry's offers with the category `REPLY_CATEGORY_INVESTIGATE`), so they are candidates from the start
+**[verify that `m_lstCurrentReplyIndices` holds them while the main wheel shows]**. Speaking one commits it
 through the handler's own path (open the sub-menu, pick the slot) in consecutive ticks. After the answer the game
 returns to the hub as it always does, and the cards come back with the topics already asked marked.
 
 ### 3.7 Lines Shepard says without a choice
+
+**Phase 0: there are none.** In LE1's 490 conversations no reply that continues by itself has text and no entry is
+spoken by the player (research/70 section 3): every line Shepard says is a picked card. The rest of this section is kept
+only as the record of what was considered.
 
 Some of Shepard's lines are not picked: a reply that continues by itself, or a line the conversation gives the player
 between the other person's. Three ways to handle them, in the order they'd be built:
@@ -263,7 +271,7 @@ report each turn's gap and outcome.
 
 Recommended defaults in bold; none blocks phase 0.
 
-1. Lines Shepard says without a choice, at first: **recorded voice**, then dub-along, or hold for the player?
+1. ~~Lines Shepard says without a choice~~: settled by phase 0, there are none.
 2. A reply picked by hand: **Shepard's recorded voice**, or silence?
 3. How much must be said by default: Relaxed, **Performer**, or Method?
 4. The 3D-screen set pieces: **on, with the panel under the screen**, or first person only?

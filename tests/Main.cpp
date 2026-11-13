@@ -11879,6 +11879,8 @@ int RunBodySlotsSeatedTests();
 int RunFloorLockTests();
 int RunCameraDiagnosticTests();
 int RunLandmarkTests();
+// tests/ScriptMatchTests.cpp: Thespian mode's matcher (core/voice/ScriptMatch, research/70).
+int RunScriptMatchTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
 // tests/SoundPlaceTests.cpp: where sounds come from on foot (research/69 A1).
@@ -12058,6 +12060,7 @@ int main() {
     gFailures += RunFloorLockTests();
     gFailures += RunCameraDiagnosticTests();
     gFailures += RunLandmarkTests();
+    gFailures += RunScriptMatchTests();
     gFailures += RunConversationWorldTests();
     gFailures += RunSoundPlaceTests();
     gFailures += RunGuiEventsTests();

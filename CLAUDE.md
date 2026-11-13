@@ -1265,6 +1265,16 @@ switching frameworks.
   `plugin/Voice`'s worker. Logs `voice:`, `voice model:`, `squad orders: ... answered`; snapshots `"voice"` (host), `"mod"."voice"`,
   `"mod"."squadAck"`. Run in the game on the fake headset with a file feed (research/54 "In the game"); a real microphone and the
   fine-tuned model's answers in play are the checklist's (section 1).
+- LE1 Thespian mode, **planned, phase 0 done** ([docs/thespian-mode-plan.md](docs/thespian-mode-plan.md),
+  [research/70](research/70-thespian-mode.md): the log and the step-by-step implementation guide; 2026-11-12, the owner): in a
+  conversation the replies stand as script cards, the player reads one aloud with an open microphone, the reply is taken by
+  the game's own pick and Shepard's recording is skipped. Built so far, offline only: `core/voice/ScriptMatch` (which card is
+  being read: weighted in-order alignment of the transcript with each card's line and label, groups of same lines, decided
+  while speaking or at the end; unit-tested, `tests/ScriptMatchTests.cpp`); `tools/conversation-scan --wheels` (every line,
+  label, category and recording length) and `--vo-extract` (Shepard's recordings as WAV), `tools/thespian-census.py` (3,072
+  wheels, 4,493 distinct Shepard lines, none said without a wheel), `mevr-thespian-bench` (every wheel, text) and
+  `tools/thespian-vo-bench.py` (the recognizer over the recordings, then the matcher). Their outputs are game text and audio:
+  `scratch/thespian/` only. Nothing in the game yet; the next step is research/70 section 8 step 1.
 - LE1 power wheel at the left hand ([research/55](research/55-hand-cast-powers.md), HostServices v28 `setPowerWheel`, v29 `setPowerLock`; `core/vr/PowerWheel`,
   `game/PowerWheel`, host `plugin/PowerWheel` + `PowerWheelDraw` + `PowerIcons` + `Glow`; `[PowerWheel]` in `ASI\LE1MEVR.ini`, appended by
   the module itself): on foot in VR, X held opens it at the left palm, fixed in the room, facing the eyes, with the player's mappable

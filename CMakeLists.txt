@@ -451,6 +451,8 @@ set(MEVR_MOD_SOURCES
     src/game/Voice.hpp
     src/core/voice/Grammar.cpp
     src/core/voice/Grammar.hpp
+    src/core/voice/ScriptMatch.cpp
+    src/core/voice/ScriptMatch.hpp
     src/core/vr/VoiceGesture.cpp
     src/core/vr/VoiceGesture.hpp
     src/core/vr/Voice.hpp
@@ -1015,6 +1017,8 @@ if (MEVR_BUILD_TESTS)
         tests/VoiceTests.cpp
         src/core/voice/Wav.cpp
         src/core/voice/Grammar.cpp
+        src/core/voice/ScriptMatch.cpp
+        tests/ScriptMatchTests.cpp
         src/core/vr/VoiceGesture.cpp
         tests/CockpitPanelTests.cpp
         src/core/Exe.cpp
@@ -1383,6 +1387,16 @@ if (MEVR_BUILD_TESTS)
         target_compile_definitions(mevr-llm-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
         target_compile_options(mevr-llm-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     endif ()
+
+    # Thespian mode's matcher over every dialogue wheel of the game, offline (research/70): reads the cases
+    # tools/thespian-census.py writes from the conversation scan's line dump.
+    add_executable(mevr-thespian-bench
+        tools/thespian-bench/Main.cpp
+        src/core/voice/ScriptMatch.cpp
+    )
+    target_include_directories(mevr-thespian-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(mevr-thespian-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-thespian-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
     # Every program ctest runs, as one target: CI (.github/workflows) and tools/package-release.ps1 build it before ctest.
     # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.

@@ -19,6 +19,10 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
     <Reference Include="LegendaryExplorerCore"><HintPath>$(LexDir)\LegendaryExplorerCore.dll</HintPath><Private>false</Private></Reference>
+    <!-- The line recordings' decoder (VoExtract.cs): Legendary Explorer ships NAudio.Vorbis. -->
+    <Reference Include="NAudio.Vorbis"><HintPath>$(LexDir)\NAudio.Vorbis.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="NAudio.Core"><HintPath>$(LexDir)\NAudio.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="NVorbis"><HintPath>$(LexDir)\NVorbis.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Serilog"><HintPath>$(LexDir)\Serilog.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
   <ItemGroup>

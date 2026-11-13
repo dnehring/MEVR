@@ -17,6 +17,8 @@ internal static class Program
         if (args.Length < 2)
         {
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> [--lex-dir <Legendary Explorer nightly>] [--only <text>]");
+            Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> --wheels [--only <file text>] [--isb <ISACT folder>]  every line as text (Thespian mode, research/70)");
+            Console.Error.WriteLine("conversation-scan <ISACT folder> <out folder> --vo-extract <list.tsv>  lines' recordings as WAV (Thespian mode's bench, research/70)");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --state-events <id,id,...>   what those state transitions do");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --references <name,name,...>  which level objects point at those conversations");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --class-dump <Class> [--only <file text>]  every object of a class, its properties");
@@ -53,6 +55,16 @@ internal static class Program
             return IntPtr.Zero;
         };
         // In its own method: nothing of LEC may be touched before the resolver above is up.
+        string voExtract = args.SkipWhile(a => a != "--vo-extract").Skip(1).FirstOrDefault();
+        if (voExtract != null)
+        {
+            return VoExtract.Run(args[0], args[1], voExtract);
+        }
+        if (args.Contains("--wheels"))
+        {
+            return Wheels.Run(args[0], args[1], args.SkipWhile(a => a != "--only").Skip(1).FirstOrDefault(),
+                args.SkipWhile(a => a != "--isb").Skip(1).FirstOrDefault());
+        }
         string stateEvents = args.SkipWhile(a => a != "--state-events").Skip(1).FirstOrDefault();
         if (stateEvents != null)
         {
