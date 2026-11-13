@@ -176,6 +176,9 @@ std::atomic<float> g_laserUiScaleX{1.0f};
 std::atomic<float> g_laserUiScaleY{1.0f};
 std::atomic<float> g_laserUiOffsetX{0.0f};
 std::atomic<float> g_laserUiOffsetY{0.0f};
+// [MEVR] the puzzle layouts (BioSeqAct_DUISet{MiraHanoi,Quasar,ToxinCure}Layout) show at the game's own placement.
+std::atomic_bool g_minigameUiLatched{false};
+std::atomic_uintptr_t g_minigameUiPanel{0};
 
 // ---- Combat/squad-bark subtitles (UBioSubtitles): NOT a Scaleform movie - the engine has no position
 // field, only a render-mode enum (m_DefaultRenderMode @0x80, m_CurrentRenderMode @0x81). Values:
@@ -1529,16 +1532,40 @@ void ApplyDesignerUiToLivePanel(void* panel) noexcept
             laser = false;
         }
     }
+    // [MEVR] the puzzle layouts (Mira's Hanoi, Quasar, the toxin cure) get the game's own placement too:
+    // the master offset, tuned for the timer, put the Hanoi puzzle's instructions out of view (a player's
+    // report, 2026-11-12). Bound to the panel instance like the laser latch.
+    bool minigame = g_minigameUiLatched.load(std::memory_order_acquire);
+    if (minigame)
+    {
+        const std::uintptr_t rec = g_minigameUiPanel.load(std::memory_order_relaxed);
+        if (rec == 0)
+        {
+            g_minigameUiPanel.store(panelBits, std::memory_order_relaxed);
+        }
+        else if (rec != panelBits)
+        {
+            g_minigameUiLatched.store(false, std::memory_order_release);
+            g_minigameUiPanel.store(0, std::memory_order_relaxed);
+            LogLine("[MEVR-DESIGNERUI] puzzle layout unlatched (designer panel instance changed)");
+            minigame = false;
+        }
+    }
+    const bool identity = minigame && !laser;
     // Laser controls disabled while latched = apply IDENTITY (actively restores the game's own
     // placement; a plain skip would leave whatever transform was last applied stuck on the panel).
     const bool laserCustom = laser && g_laserUiEnabled.load(std::memory_order_acquire);
-    const float scaleX = laser ? (laserCustom ? g_laserUiScaleX.load(std::memory_order_relaxed) : 1.0f)
+    const float scaleX = identity ? 1.0f
+                       : laser ? (laserCustom ? g_laserUiScaleX.load(std::memory_order_relaxed) : 1.0f)
                                : g_designerUiScaleX.load(std::memory_order_relaxed);
-    const float scaleY = laser ? (laserCustom ? g_laserUiScaleY.load(std::memory_order_relaxed) : 1.0f)
+    const float scaleY = identity ? 1.0f
+                       : laser ? (laserCustom ? g_laserUiScaleY.load(std::memory_order_relaxed) : 1.0f)
                                : g_designerUiScaleY.load(std::memory_order_relaxed);
-    const float offsetX = laser ? (laserCustom ? g_laserUiOffsetX.load(std::memory_order_relaxed) : 0.0f)
+    const float offsetX = identity ? 0.0f
+                        : laser ? (laserCustom ? g_laserUiOffsetX.load(std::memory_order_relaxed) : 0.0f)
                                 : g_designerUiOffsetX.load(std::memory_order_relaxed);
-    const float offsetY = laser ? (laserCustom ? g_laserUiOffsetY.load(std::memory_order_relaxed) : 0.0f)
+    const float offsetY = identity ? 0.0f
+                        : laser ? (laserCustom ? g_laserUiOffsetY.load(std::memory_order_relaxed) : 0.0f)
                                 : g_designerUiOffsetY.load(std::memory_order_relaxed);
     const bool ok = ApplyScaleOffsetToPanel(panel, scaleX, scaleY, offsetX, offsetY);
 
@@ -1727,6 +1754,48 @@ void MaybeLatchLaserLayout(void* context) noexcept
     }
 }
 
+// [MEVR] The puzzle layouts' Kismet actions (Mira's Hanoi, Quasar, the toxin cure): bShow (0xF8 bit 0) set
+// latches the game's own placement for the designer panel, bShow clear lets the master set back. The same
+// interned-name pointer compare as the laser latch, one cache slot per class.
+void MaybeLatchMinigameLayout(void* context) noexcept
+{
+    if (context == nullptr) return;
+    const char* cls = ClassNameSEH(context);
+    if (cls == nullptr) return;
+    static constexpr const char* kNames[] = {"BioSeqAct_DUISetMiraHanoiLayout", "BioSeqAct_DUISetQuasarLayout",
+                                             "BioSeqAct_DUISetToxinCureLayout"};
+    static std::atomic_uintptr_t s_cached[3]{};
+    const std::uintptr_t clsBits = reinterpret_cast<std::uintptr_t>(cls);
+    int which = -1;
+    for (int i = 0; i < 3 && which < 0; ++i)
+    {
+        const std::uintptr_t cached = s_cached[i].load(std::memory_order_relaxed);
+        if (cached == clsBits) which = i;
+    }
+    if (which < 0)
+    {
+        if (std::strncmp(cls, "BioSeqAct_DUISet", 16) != 0) return;
+        for (int i = 0; i < 3 && which < 0; ++i)
+        {
+            if (std::strcmp(cls, kNames[i]) == 0)
+            {
+                s_cached[i].store(clsBits, std::memory_order_relaxed);
+                which = i;
+            }
+        }
+        if (which < 0) return;
+    }
+    uint32_t bits = 0;
+    if (!ReadU32AtSEH(context, 0xF8, &bits)) return;
+    const bool show = (bits & 1u) != 0;
+    if (g_minigameUiLatched.exchange(show, std::memory_order_acq_rel) != show)
+    {
+        g_minigameUiPanel.store(0, std::memory_order_relaxed);
+        LogLine(std::string("[MEVR-DESIGNERUI] puzzle layout ") + (show ? "latched" : "unlatched") + " (" + kNames[which] +
+                (show ? " shown): the game's own placement" : " hidden): the designer master transform again"));
+    }
+}
+
 // ============================ [REFLRATE] ============================
 // THE reflection head-tracking-shake fix (2026-07-15). The REFLLOG evidence run proved the
 // reflection capture camera record is a same-frame, exactly mirror-conjugated copy of the
@@ -1880,6 +1949,7 @@ void __fastcall ProcessEventHook(void* context, void* function, void* params, vo
     ProcessEventFn original = g_originalProcessEvent;
     MaybeDiscoverPanelClass(context);
     MaybeLatchLaserLayout(context);      // [LASERUI] mining-laser designer-UI layout detection
+    MaybeLatchMinigameLayout(context);   // [MEVR] the puzzle layouts at the game's own placement
     MaybeBoostReflectionCaptureRate();   // [REFLRATE] reflection-capture cadence fix
 
     if ((g_nativeSubMove.load(std::memory_order_acquire) ||

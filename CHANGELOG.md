@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Puzzle instructions back in view.** The Tower of Hanoi puzzle's instructions (and those of the Quasar machines and
+  the toxin cure) were pushed off the HUD, out of sight. They now show where the game puts them. Headset verification
+  pending.
+
 - **3D audio for headphones.** Every sound the game places in the world (gunfire, footsteps, explosions, voices near
   you) now reaches your ears as it would from where it is, including from behind, instead of only being panned left and
   right. It comes from OpenAL Soft, which MEVR Setup installs in the mod's own folder; no game file is changed.

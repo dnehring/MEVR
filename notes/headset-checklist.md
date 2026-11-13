@@ -590,6 +590,8 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   The gun's heat strip readable at arm's length; the sniper scope doesn't hide it. (research/41 section 7)
 - [ ] A cutscene running into a conversation, menus over a flat screen: the panel is placed once in front of you.
   (research/15 "World-locked flat panels")
+- [ ] The Tower of Hanoi puzzle (Mira's, likely Noveria's Peak 15), Quasar and the toxin cure: their instructions in view on
+  the HUD panel; the Saren fight's timer still where it was. (research/53 section 5.1, the 2026-11-12 report)
 
 ## 6. Picture and performance (session: VR performance optimization)
 - [ ] Wear the PS VR2 at Eden Prime's heavy spot, on a Presidium walk and in a fight with today's defaults; Claude

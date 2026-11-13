@@ -183,7 +183,13 @@ The galaxy map's pieces made generic (core/vr/WorldUi, game/WorldUi, plugin/Worl
 - **The designer minigames** (Quasar, Mira's Hanoi, the laser, the toxin cure) aren't loaded on UNC20 (no `BioSeqAct_MiniGame`,
   no layout actions). Flux's Quasar machines need the Citadel: `open BIOA_STA00` from this save started the post-Eden Prime
   medbay conversation, and its dialogue wheel takes the choice only through the game's own input (the handler's A did nothing),
-  which the unfocused test rig can't give. To do in the headset, or from a save standing in Flux [verify]. The saves stayed
+  which the unfocused test rig can't give. To do in the headset, or from a save standing in Flux [verify].
+  **A player's report (2026-11-12): the Hanoi puzzle's instructions were out of view.** Halcyon moves the whole designer
+  panel by its master transform (`designerUi*`, offset -358/-288, tuned for the Saren fight's timer) and exempted only the
+  laser layout (`[LASERUI]`), so the Hanoi, Quasar and toxin-cure layouts were pushed up and left off the HUD panel. A
+  `[MEVR]` latch in `pchud.cpp` (`MaybeLatchMinigameLayout`) now gives those three layouts the game's own placement while
+  their `BioSeqAct_DUISet<Layout>Layout` has `bShow` set (log `[MEVR-DESIGNERUI] puzzle layout latched`); the timer keeps the
+  master set. Not yet seen in the game [verify]. The saves stayed
   unchanged. `BioWorldInfo.BioLoadGame(96)` (a load by slot) loaded nothing from the title's
   Normandy: the user's Citadel save is another career's, so a real crate still means the menus.
 
