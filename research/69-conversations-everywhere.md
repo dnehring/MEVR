@@ -3575,6 +3575,42 @@ had just ended with `mevr convo end` (Benezia's, 57 ms after; Liara's), an acces
 crash is a task of its own. A console `mevr thespian off` in a scene's `before` does not help a scene that starts by itself as its
 save loads (the runner skips `before` there).
 
+### The council during the walk (2026-11-13; item 36)
+
+**The owner:** "when we're walking up with Anderson, the council haven't spawned in the assets with like Nihilus or Odina, so
+that's not desirable either" (Udina and the councillors; Nihlus is dead by then). The owner's go-ahead: "Yes, do it".
+
+**Measured** (fake headset, save 80, `conversation-from-save.ps1 -Probe`, sessions `2026-11-13_12-34-11-show`,
+`12-39-09-people`, `12-47-06-early`, `12-51-54-early2`, `12-55-57-early3`, `12-59-29-early4`):
+- `BIOA_STA70_02council_DSG` is loaded (`shouldLoad=1`) but not shown (`shouldShow=0`) all through the walk; the chamber's
+  streaming volume shows it under the walk's black screen.
+- Its 14 pawns are all `bHidden` 1 through the walk (`mevr stream people`): Saren `sta90_saren`, the councillors
+  `sta90_asari_councilor`, `sta90_salarian_councilor`, `sta90_turian_councilor`, Udina `sta90_ambassador`, the hearing's own
+  Anderson `sta90_captain` and eight `sta90_induction_extra_*`. At the hearing the script shows the first six; the extras stay
+  hidden (they are the Spectre induction's).
+- Showing the level by hand (`mevr stream show BIOA_STA70_02council_DSG on`, 4.5 s into the walk) did not begin the hearing early:
+  it began at the walk's end as before (12:36:44.8, the black screens at 44.70 and 44.79). Its start is the level's
+  `BioSeqEvt_ForegroundStreamingDone_0` (volume `streamvol_council`), which the volume's own state change fires, not the level's
+  visibility.
+
+**Built** (`cw::ShownEarlyFor`, unit-tested; `game/ConversationWorld` `StepShownEarly` / `EndShownEarly`; `[Cinematics]
+worldShowEarly = 1`): a table of scenes the script shows only under its black screen. Its one entry: the moment whose move track
+lives in `BIOA_STA70_02captain_DSG`'s `SarenCouncil.SeqAct_Interp_0` shows `BIOA_STA70_02council_DSG` (bShouldBeVisible, journalled)
+and unhides Udina and the three councillors (`Actor.SetHidden`). Saren stays hidden: his pawn is a hologram only once the hearing
+attaches `Hologram_Avatar_VFX` (`BioSeqAct_AttachCrustEffect_0`). The hearing's Anderson stays hidden too, since the walk's
+Anderson (`BIOA_STA70_02captain_DSG` `sta90_captain_cutscene`) still walks beside the player. A walk that ends without its
+conversation hides them and the level again. Logs `moment: <level> shown as the walk begins`, `moment: N of M of the scene's
+people ... shown`, `moment: the scene shown early hands over to its conversation`. Console `mevr stream show <package> [on|off]`,
+`mevr stream people <package>` (tag, hidden, last drawn, place).
+
+**In the game:** 4 of 4 people shown 3-4 s into the walk, `hidden 0`, drawn on their first frame (`drawn 1.21 s ago` 1.2 s
+later), then not drawn again from the stairs: the chamber's front edge stands between them and an eye at the foot of the stairs
+(an eye at 62007 sees that edge, 2.4 m up at 19 m, above the councillors' heads at 36 m), and the replayed walk (and the owner's
+too, the view at (-7328, -7066, 61986) when the hearing began) ends on the stairs. Anderson beside the player was drawn every
+frame. The hearing began on time in every run; the black screen's change detector saw 2 new people (Saren and the hearing's
+Anderson), no dip; the hearing's body audit stayed clean (Shepard's head from the eyes at most 0.11 m, `thirdPersonS` 0). Seeing
+Udina and the Council over the edge as you climb is the headset's check.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -4016,3 +4052,5 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   stick pushed through a cut waits to be let go; the audits replay tracked hands, and a body away from the eyes is never excused
   by a baseline. Fake headset: 3.85 m before, 0.11 m after. Item 36 opened: the council's level is loaded but hidden during the
   walk with Anderson.
+- 2026-11-13 13:10, **item 36, the council during the walk**: the hearing's level and four of its people (Udina, the councillors)
+  shown as the walk with Anderson begins (`cw::ShownEarlyFor`, `worldShowEarly`); the hearing still begins at the walk's end.

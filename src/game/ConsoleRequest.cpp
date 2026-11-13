@@ -414,13 +414,15 @@ std::string StreamShow(ue3::Object* pawn, std::string const& package, std::strin
 // `mevr stream people <package>`: the level's pawns (SFXGame.BioPawn) with their tag, hidden flag and place: who a streaming level
 // would show (research/69 item 36: the hearing's people are hidden until its black screen).
 ue3::FieldRef gActorTag{"Engine.Actor", "Tag"};
-std::string StreamPeople(std::string const& package) {
+std::string StreamPeople(ue3::Object* pawn, std::string const& package) {
     ue3::Reflection& r = ue3::runtime::Get();
     ue3::Class* const pawnClass = r.FindClass("SFXGame.BioPawn");
     if (pawnClass == nullptr || package.empty()) {
         return std::string("usage: mevr stream people <package> (SFXGame.BioPawn not found, or no package named)");
     }
     std::string const prefix = package + ".";
+    ue3::Object* const world = WorldOf(pawn);
+    float const now = world != nullptr ? gWorldTimeSeconds.Read<float>(world).value_or(-1.0f) : -1.0f;
     std::string out;
     int n = 0;
     for (std::int32_t i = 0, count = r.ObjectCount(); i < count; ++i) {
@@ -436,8 +438,11 @@ std::string StreamPeople(std::string const& package) {
         }
         auto const tag = gActorTag.Read<ue3::Name>(o);
         auto const at = player::Location(o);
-        out += std::format("\n{} tag {} hidden {} at {:.0f} {:.0f} {:.0f}", r.NameText(o), tag ? ue3::runtime::NameText(*tag) : std::string("?"),
-            gActorHidden.ReadBool(o).value_or(false) ? 1 : 0, at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
+        float const drawn = gActorLastRender.Read<float>(o).value_or(-1.0f);
+        out += std::format("\n{} tag {} hidden {} drawn {} at {:.0f} {:.0f} {:.0f}", r.NameText(o), tag ? ue3::runtime::NameText(*tag) : std::string("?"),
+            gActorHidden.ReadBool(o).value_or(false) ? 1 : 0,
+            now >= 0.0f && drawn > 0.0f ? std::format("{:.2f} s ago", now - drawn) : std::string("never"),
+            at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
         ++n;
     }
     return std::format("{} pawns in {}{}", n, package, out);
@@ -625,7 +630,7 @@ std::string Streams(ue3::Object* pawn, std::istringstream& words) {
     if (verb == "people") {
         std::string package;
         words >> package;
-        return StreamPeople(package);
+        return StreamPeople(pawn, package);
     }
     if (verb == "show") {
         std::string package, value;

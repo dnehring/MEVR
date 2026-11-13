@@ -345,6 +345,11 @@ switching frameworks.
   `arm_ik::AnimatedHeadComponent`), never the one our body follower slid; a stick pushed through a cut walks only once let go.
   **The audit set replays tracked hands** (its `hands`, `make-walk-recording.py --plan`): without controllers the fake headset
   never runs arm IK; `eyes-off-body` and a 0.3 m gap are never excused by its baseline (`scene_audit.ABSOLUTE`).
+  **A scene the script shows only under its black screen is shown as the walk to it begins** (`cw::ShownEarlyFor`, a table of
+  exceptions; `[Cinematics] worldShowEarly`; research/69 "The council during the walk"): the walk with Anderson shows the
+  hearing's level (`LevelStreaming.bShouldBeVisible`) and unhides Udina and the councillors, not Saren (a hologram only once the
+  hearing attaches it) nor the hearing's own Anderson; the hearing still begins at the volume's streaming-done event; a walk
+  ended without its conversation puts both back. `mevr stream show <package> [on|off]`, `mevr stream people <package>`.
   **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
   and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/
   `BoostShake`: `TheShake`'s amplitudes scaled at the source by `[Comfort] screenShake`, 0 by default, originals put back)

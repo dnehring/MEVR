@@ -11,6 +11,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   Shepard's body could stay several metres from you for the whole hearing and the conversations after it. Your body now
   stands where you do in every first-person conversation, and a stick you are still pushing through a fade no longer walks
   you away from your place until you let go of it. Headset verification pending.
+- **First-person conversations (experimental): the Council is there when you walk up with Anderson.** Udina and the
+  councillors used to appear only when the screen went black at the top of the stairs; they now stand in the chamber as you
+  climb, and the hearing starts as before. Saren's transmission still begins with the hearing. Headset verification pending.
 - **Walking in VR follows the stick.** On foot you start moving the moment you push (the game held Shepard for about 0.15 s
   while a start animation played) and stop the moment you let go, with no coasting; the game's third-person speed ramp and its
   start, stop and skid steps are replaced in VR. Your speed is in proportion to how far you push: half a push walks, a full

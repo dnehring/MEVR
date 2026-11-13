@@ -336,7 +336,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   walks up, and keep pushing through the fade. At the podium your body should be under you, and stay under you through the
   hearing and the two conversations with Anderson after it; the stick should not walk you until you let go of it once. Look
   down and at your hands. The log should have no `arm IK: body anchor: third person` during the scenes, and the summaries
-  `"thirdPersonS": 0.0`. Still open: the Council's chamber is empty during the walk (item 36).
+  `"thirdPersonS": 0.0`. While you climb the stairs behind Anderson, Udina should stand at the podium and the three
+  councillors on their balcony (research/69 "The council during the walk"; Saren appears with the hearing); say whether the
+  chamber still looks empty or anyone pops in.
 - [ ] **Kirrahe's speech, slot 88 again** (2026-11-11, research/69 "Kirrahe's camp"; the save fixed, not yet loaded): use Kirrahe:
   the planning conversation should play first (Kirrahe on the stage, not missing from his shots), then the speech to his troops
   with its music, and the screen should not stay black afterwards. Still on the 3D screen until item 20 is run in the world.
