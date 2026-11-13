@@ -452,6 +452,23 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   size (0.40-1.00 m): which size reads best without turning your head, with the rail beside it? (research/57 section 2, built
   2026-11-05)
 
+### Thespian mode (session: Low-latency voice squad commands; research/70; built 2026-11-13, off by default)
+
+Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[Thespian] on = 1`).
+
+- [ ] The panel: readable at its distance, low enough that the speaker's face is clear, not in the way of the hands;
+      in a first-person conversation and on the 3D screen (there it stands ahead of the head, under the horizon).
+- [ ] Read a whole line: the row lights within a few words, the words light as said, the reply is taken about a
+      quarter second after the last word, Shepard's recording is not heard, the other person answers at once.
+- [ ] Start reading while the other person still talks: nothing is taken until their line has ended.
+- [ ] Say only the label; stop half-way through a long line (taken after about a second with Performer); say
+      something that is no reply ("Didn't catch that", nothing taken); cough, talk to someone in the room.
+- [ ] A real microphone's quiet clock: does a noisy room (a fan, the game through speakers) keep it from ever being
+      "quiet"? (`mevr thespian status` shows `quiet N ms` and the level.)
+- [ ] Pick with the stick instead: Shepard's voice plays as ever (or passes silently with "Silent").
+- [ ] Investigate topics from the main level; a charm or intimidate you don't have is greyed and can't be said.
+- [ ] The squad's radio (left grip at the ear) still works on foot after a conversation, with its own key terms.
+
 ### Squad orders by gesture (session: Low-latency voice squad commands)
 - [ ] Squeeze the left grip with the hand away from the gun's foregrip zone, the grenade slot and a hot receiver, and
   point with it: let go on an enemy group (attack), on the ground past 2 m (move there), near you, on a squadmate or on
@@ -503,23 +520,6 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   objects walk every 2 s is a cost to read in the heartbeat. (`[SquadContext] landmarkRangeM`, `maxLandmarks`)
 - [ ] The microphone's lag over your link: tap a controller on the headset while a recording runs with `mevr voice listen 5`;
   the tap's jolt in the poses against the click in the transcript's word times says how much tail `[Voice] tailMs` needs.
-### Thespian mode (session: Low-latency voice squad commands; research/70; built 2026-11-13, off by default)
-
-Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[Thespian] on = 1`).
-
-- [ ] The panel: readable at its distance, low enough that the speaker's face is clear, not in the way of the hands;
-      in a first-person conversation and on the 3D screen (there it stands ahead of the head, under the horizon).
-- [ ] Read a whole line: the row lights within a few words, the words light as said, the reply is taken about a
-      quarter second after the last word, Shepard's recording is not heard, the other person answers at once.
-- [ ] Start reading while the other person still talks: nothing is taken until their line has ended.
-- [ ] Say only the label; stop half-way through a long line (taken after about a second with Performer); say
-      something that is no reply ("Didn't catch that", nothing taken); cough, talk to someone in the room.
-- [ ] A real microphone's quiet clock: does a noisy room (a fan, the game through speakers) keep it from ever being
-      "quiet"? (`mevr thespian status` shows `quiet N ms` and the level.)
-- [ ] Pick with the stick instead: Shepard's voice plays as ever (or passes silently with "Silent").
-- [ ] Investigate topics from the main level; a charm or intimidate you don't have is greyed and can't be said.
-- [ ] The squad's radio (left grip at the ear) still works on foot after a conversation, with its own key terms.
-
   (research/54 step 3)
 - [ ] The model tier in play (`[Voice] llm`, llama.cpp and the fine-tuned GGUF in `ASI\voice\llm`, `model.gguf` since
   2026-11-05's run1: 93.9% exact on held-out synthetic lines): say something the rules refuse ("Garrus, you know what to do

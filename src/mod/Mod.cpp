@@ -1439,10 +1439,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         EnsureConversationHooks();
         EnsureVoicePlaceHook();
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
+        game::thespian::Tick(deltaSeconds, ThespianLink());  // after the conversation's: the dialogue wheel spoken (research/70)
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
         game::sound_place::Tick(deltaSeconds);  // on foot: people near the player and the gun heard from where they are (research/69 A1, A2)
-        game::thespian::Tick(deltaSeconds, ThespianLink());  // after the conversation's: the dialogue wheel spoken (research/70)
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1557,13 +1557,13 @@ MEVR_MOD_API void MevrModShutdown() {
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
     game::conversation_flow::Shutdown();                          // the conversations' ambient flags put back
     game::authored_moment::Shutdown();                            // the move track's question taken back
+    game::thespian::Shutdown();                                   // Shepard's voice no longer silenced
     game::sound_place::Shutdown();                                // nobody named near the player, the gun neither
     if (gInit && gConversationHooked) {  // after the two modules above took their providers back
         removed(engine::conversation_hooks::Uninstall(*gInit, !exiting),
             "the conversation hooks couldn't be removed, or a call was still inside one");
     }
     if (gInit && gVoicePlaceHooked) {
-    game::thespian::Shutdown();                                   // Shepard's voice no longer silenced
         removed(engine::voice_place::Uninstall(*gInit, !exiting),
             "the sound source hook couldn't be removed, or a call was still inside it");
     }

@@ -62,6 +62,10 @@ ue3::FieldRef gShowRepliesOffset{"SFXGame.BioConversation", "m_fShowRepliesOffse
 ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel"};
 ue3::FieldRef gInvestigateShown{"SFXGame.BioSFHandler_Conversation", "m_bDisplayInvestigateSubMenu"};
 ue3::FieldRef gActorWorldInfo{"Engine.Actor", "WorldInfo"};
+// `mevr thespian stick`: the wheel's own pick of a card's slot, for the plot comparison (research/70 step 2, (j)).
+ue3::FieldRef gReplyLocations{"SFXGame.BioSFHandler_Conversation", "m_aReplyLocations"};  // int[6]: the category at each wheel location
+ue3::FieldRef gSlotsUsed{"SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed"};            // byte[6]
+ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry"};  // (byte nWheelLocation) -> bool
 
 struct Card {
     int position = 0;   // in m_lstCurrentReplyIndices: what every reply function and QueueReply take
@@ -883,6 +887,28 @@ std::string Command(std::string const& rest) {
         int position = -1;
         words >> position;
         return Commit(*live, position, "pick");
+    }
+    if (verb == "stick") {
+        // The reply at a position taken as the stick and A take it: the handler's SelectConversationEntry on the wheel
+        // location that holds the card's category. Shepard's recording plays. Not for investigate topics (a sub-menu).
+        int position = -1;
+        words >> position;
+        auto const it = std::find_if(live->cards.begin(), live->cards.end(), [&](Card const& c) { return c.position == position; });
+        ue3::Function* const select = gSelectEntry.Get();
+        if (!live->wheelUp || it == live->cards.end() || !it->candidate || it->category == kCategoryInvestigate || select == nullptr || live->handler == nullptr) {
+            return "thespian: no stick pick (the wheel isn't up, no such card, or an investigate topic)";
+        }
+        for (int location = 0; location < 6; ++location) {
+            std::int32_t const* const category = gReplyLocations.At<std::int32_t>(live->handler, location);
+            std::uint8_t const* const used = gSlotsUsed.At<std::uint8_t>(live->handler, location);
+            if (category != nullptr && used != nullptr && *used != 0 && *category == it->category) {
+                ue3::Params parms(ue3::runtime::Get(), select);
+                parms.Set("nWheelLocation", static_cast<std::uint8_t>(location));
+                bool const called = ue3::runtime::Call(live->handler, select, parms);
+                return std::format("thespian: the stick's pick of position {} \"{}\": SelectConversationEntry({}) called {}", position, it->label, location, called);
+            }
+        }
+        return std::format("thespian: no wheel location holds category {}", it->category);
     }
     if (verb == "say") {
         std::string said;

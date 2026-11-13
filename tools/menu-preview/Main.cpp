@@ -980,9 +980,6 @@ int main(int argc, char** argv) {
         padShot("pad-held-left");
         padUi.Shutdown();
     }
-    ui.Shutdown();
-    return 0;
-}
 
     // Thespian mode's panel (research/70 section 8 step 5): thespian.rml in a context of its own as the host makes it
     // (plugin/Thespian), its rows from vr::thespian::RowsRml. thespian-idle.png: four replies, nothing said; -hover: the
@@ -1097,3 +1094,6 @@ int main(int argc, char** argv) {
         shot("thespian-topics", topics);
         thUi.Shutdown();
     }
+    ui.Shutdown();
+    return 0;
+}

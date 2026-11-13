@@ -449,10 +449,14 @@ set(MEVR_MOD_SOURCES
     src/core/vr/GuiEvents.hpp
     src/game/Voice.cpp
     src/game/Voice.hpp
+    src/game/Thespian.cpp
+    src/game/Thespian.hpp
     src/core/voice/Grammar.cpp
     src/core/voice/Grammar.hpp
     src/core/voice/ScriptMatch.cpp
     src/core/voice/ScriptMatch.hpp
+    src/core/vr/Thespian.cpp
+    src/core/vr/Thespian.hpp
     src/core/vr/VoiceGesture.cpp
     src/core/vr/VoiceGesture.hpp
     src/core/vr/Voice.hpp
@@ -468,12 +472,8 @@ set(MEVR_MOD_SOURCES
     src/game/HandTargets.hpp
     src/game/HeadSim.cpp
     src/game/HeadSim.hpp
-    src/game/Thespian.cpp
-    src/game/Thespian.hpp
     src/game/HeadTracking.cpp
     src/game/HeadTracking.hpp
-    src/core/vr/Thespian.cpp
-    src/core/vr/Thespian.hpp
     src/game/HudPieces.cpp
     src/game/ScreenReticle.cpp
     src/game/ScreenReticle.hpp
@@ -691,6 +691,10 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/OmniRail.hpp
     src/core/vr/OmniPad.cpp
     src/core/vr/OmniPad.hpp
+    src/core/vr/Thespian.cpp
+    src/core/vr/Thespian.hpp
+    src/core/voice/ScriptMatch.cpp
+    src/core/voice/ScriptMatch.hpp
     src/core/gfx/Raster.cpp
     src/core/gfx/Raster.hpp
     src/core/gfx/Swf.cpp
@@ -710,10 +714,6 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/core/vr/SquadPlace.hpp
     src/core/vr/SquadParser.cpp
     src/core/vr/SquadParser.hpp
-    src/core/vr/Thespian.cpp
-    src/core/vr/Thespian.hpp
-    src/core/voice/ScriptMatch.cpp
-    src/core/voice/ScriptMatch.hpp
     src/core/vr/SquadRetreat.cpp
     src/core/vr/SquadRetreat.hpp
     src/core/vr/SquadStanding.cpp
@@ -1029,6 +1029,8 @@ if (MEVR_BUILD_TESTS)
         src/core/voice/Grammar.cpp
         src/core/voice/ScriptMatch.cpp
         tests/ScriptMatchTests.cpp
+        src/core/vr/Thespian.cpp
+        tests/ThespianTests.cpp
         src/core/vr/VoiceGesture.cpp
         tests/CockpitPanelTests.cpp
         src/core/Exe.cpp
@@ -1050,8 +1052,6 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/HandFrame.cpp
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp
-        src/core/vr/Thespian.cpp
-        tests/ThespianTests.cpp
         src/core/ik/Fingers.cpp
         src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp
@@ -1495,6 +1495,8 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
     add_executable(mevr-menu-preview
         tools/menu-preview/Main.cpp
         src/core/vr/OmniRail.cpp
+        src/core/vr/Thespian.cpp
+        src/core/voice/ScriptMatch.cpp
         src/core/vr/WorldUi.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/GalaxyHologram.cpp
@@ -1511,5 +1513,3 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
     target_compile_definitions(mevr-menu-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-menu-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 endif ()
-        src/core/vr/Thespian.cpp
-        src/core/voice/ScriptMatch.cpp

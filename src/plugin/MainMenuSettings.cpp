@@ -539,6 +539,13 @@ void Settings::Read(menu::Values& v) {
     v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, true);
 #endif
     ReadVoice(v, ini.Num("Voice", "enabled", 1.0f) != 0.0f, ini.Text("Voice", "model", "tiny"), ini.Num("Voice", "earCueStrength", 0.4f));
+    // Thespian mode (research/70): the mod reads [Thespian] every second.
+    v.numbers["thespian_on"] = ini.Num("Thespian", "on", 0.0f) != 0.0f ? 1.0f : 0.0f;
+    {
+        std::string const strictness = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "strictness", "performer")));
+        v.texts["thespian_strictness"] = strictness == "relaxed" || strictness == "method" ? strictness : std::string("performer");
+        v.texts["thespian_hand"] = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "handPick", "voice"))) == "silent" ? "silent" : "voice";
+    }
     // Sound (research/69 A3): [Audio] spatial and gainDb are read once when the game starts (plugin/OpenAlSoft), so the note says
     // whether the file's choice is what plays now; overheard and gun are the mod's and live (game/SoundPlace).
     {
@@ -554,13 +561,6 @@ void Settings::Read(menu::Values& v) {
         };
         flag("audio_overheard", on("overheard"));
         flag("audio_gun", on("gun"));
-    // Thespian mode (research/70): the mod reads [Thespian] every second.
-    v.numbers["thespian_on"] = ini.Num("Thespian", "on", 0.0f) != 0.0f ? 1.0f : 0.0f;
-    {
-        std::string const strictness = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "strictness", "performer")));
-        v.texts["thespian_strictness"] = strictness == "relaxed" || strictness == "method" ? strictness : std::string("performer");
-        v.texts["thespian_hand"] = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "handPick", "voice"))) == "silent" ? "silent" : "voice";
-    }
     }
 }
 
@@ -791,6 +791,12 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
                                          : "the menu: microphone " + view.devices[static_cast<std::size_t>(std::atoi(pick.c_str()))]);
     } else if (key == "ear_cue") {
         Put("Voice", "earCueStrength", fixed(v.Number("ear_cue") / 100.0f, 2), final);  // the mod re-reads it
+    } else if (key == "thespian_on") {
+        Put("Thespian", "on", onOff("thespian_on"), true);  // the mod re-reads [Thespian] every second
+    } else if (key == "thespian_strictness") {
+        Put("Thespian", "strictness", v.Text("thespian_strictness"), true);
+    } else if (key == "thespian_hand") {
+        Put("Thespian", "handPick", v.Text("thespian_hand"), true);
     } else if (key == "audio_spatial") {
         // The host reads it once when the game starts (plugin/OpenAlSoft): the row's note says so.
         Put("Audio", "spatial", ms::AudioSpatialChoice(v.Text("audio_spatial")), true);
@@ -815,12 +821,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "interact_label") {
         Put("Interact", "label", onOff("interact_label"), true);
     } else if (key == "scope_grade") {
-    } else if (key == "thespian_on") {
-        Put("Thespian", "on", onOff("thespian_on"), true);  // the mod re-reads [Thespian] every second
-    } else if (key == "thespian_strictness") {
-        Put("Thespian", "strictness", v.Text("thespian_strictness"), true);
-    } else if (key == "thespian_hand") {
-        Put("Thespian", "handPick", v.Text("thespian_hand"), true);
         Put("Sights", "scopeCapturePost", onOff("scope_grade"), true);  // the mod applies it to the next scope capture it makes
     } else if (key == "turn") {
         Put("Comfort", "turn", v.Text("turn") == "snap" ? "snap" : "game", true);

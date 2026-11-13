@@ -308,6 +308,10 @@ std::vector<Field> const& Schema() {
         {"voice_key", Type::Text, 0, "(none)"},                      // [Voice] key by name
         {"voice_key_wait", Type::Flag, 0},                           // waiting for the key to press
         {"ear_cue", Type::Number, 40, "", 0, 100, F::Percent},       // [Voice] earCueStrength x 100 (the mod's)
+        // Thespian mode (research/70): the mod's, live.
+        {"thespian_on", Type::Flag, 0},                              // [Thespian] on
+        {"thespian_strictness", Type::Choice, 0, "performer"},       // [Thespian] strictness = relaxed | performer | method
+        {"thespian_hand", Type::Choice, 0, "voice"},                 // [Thespian] handPick = voice | silent
         // Sound (research/69 A3): [Audio] in <GAME>MEVR.ini. spatial and gainDb are the host's, read once when the game starts
         // (plugin/OpenAlSoft); overheard and gun the mod's, live (game/SoundPlace).
         {"audio_spatial", Type::Choice, 0, "hrtf"},                                                       // [Audio] spatial
@@ -336,10 +340,6 @@ float Clamp(Field const& field, float value) {
     if (field.type == Type::Flag) {
         return value != 0.0f ? 1.0f : 0.0f;
     }
-        // Thespian mode (research/70): the mod's, live.
-        {"thespian_on", Type::Flag, 0},                              // [Thespian] on
-        {"thespian_strictness", Type::Choice, 0, "performer"},       // [Thespian] strictness = relaxed | performer | method
-        {"thespian_hand", Type::Choice, 0, "voice"},                 // [Thespian] handPick = voice | silent
     if (field.type != Type::Number) {
         return value;
     }
