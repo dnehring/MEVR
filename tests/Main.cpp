@@ -11482,6 +11482,25 @@ void TestCombatStance() {
     CHECK(!cs::RampNeedsWrite(3.0f, 2.0f, 0.0f, 1.5f));  // explore values not set yet: nothing written
     CHECK(!cs::RampNeedsWrite(3.0f, 2.0f, std::numeric_limits<float>::infinity(), 1.5f));
     CHECK(cs::UsableRate(1.5f) && !cs::UsableRate(-1.0f) && !cs::UsableRate(1000.0f));
+    // The walk linear to the stick (research/38 "Linear walking"): every ramp within 0.1 s, never slower than the game's, the
+    // acceleration the fastest run's within the same time; without it the explore ramp for combat; nothing before the game's
+    // values are set.
+    {
+        cs::WalkRamp const game{1.5f, 1.5f, 3.0f, 2.0f, 1500.0f};
+        cs::WalkRamp const linear = cs::WantedRamp(game, true, true, 0.1);
+        CHECK(std::fabs(linear.accel - 10.0f) < 1e-4f && std::fabs(linear.decel - 10.0f) < 1e-4f);
+        CHECK(std::fabs(linear.tacAccel - 10.0f) < 1e-4f && std::fabs(linear.tacDecel - 10.0f) < 1e-4f);
+        CHECK(std::fabs(linear.accelRate - 6000.0f) < 1e-2f && cs::Differs(linear, game));
+        cs::WalkRamp const fast{40.0f, 40.0f, 40.0f, 40.0f, 9000.0f};
+        CHECK(!cs::Differs(cs::WantedRamp(fast, true, true, 0.1), fast));  // never slower than the game's
+        cs::WalkRamp const asExplore = cs::WantedRamp(game, true, false, 0.1);
+        CHECK(asExplore.tacAccel == 1.5f && asExplore.tacDecel == 1.5f && asExplore.accelRate == 1500.0f && asExplore.accel == 1.5f);
+        CHECK(!cs::Differs(cs::WantedRamp(game, false, false, 0.1), game));
+        cs::WalkRamp const unset{0.0f, 1.5f, 3.0f, 2.0f, 1500.0f};
+        CHECK(!cs::Differs(cs::WantedRamp(unset, true, true, 0.1), unset));
+        CHECK(cs::ClampLinearWalkS(0.0) == 0.03 && cs::ClampLinearWalkS(5.0) == 1.0 &&
+              cs::ClampLinearWalkS(std::numeric_limits<double>::quiet_NaN()) == cs::kDefaultLinearWalkS);
+    }
 
     // D: the draw rate.
     CHECK(cs::ClampDrawRate(2.0) == 2.0);

@@ -473,6 +473,49 @@ So the top speeds match. What "feels different":
   one line per mode change: `movement: walking mode CombatZoomed (drawn, the support grip holds the gun (LT)), speed N
   u/s; CombatRun held N s, top speed N u/s`. Nothing about the zoomed walk is changed until those lines are in.
 
+### Linear walking (2026-11-12/13)
+
+The owner: "In general we need to likely modify walking dynamics to make them more linear to the controls. A player noted
+that the acceleration curve was similar to the third person mode and not realistic for VR."
+
+**The chain from the stick to the speed**, read live on the fake headset (Noveria's port, `mevr findplayer behavior` then
+`mevr props 0`): the speed fraction from the stick (`PlayerMoveExplore`, above), the desired speed moving toward it at
+`m_fMaxDesSpd{Accel,Decel}Rate` per second (explore 1.50/1.50, combat `Tac` 3.00/2.00), the velocity following at
+`Pawn.AccelRate` 1500 u/s^2; the behaviour's `PawnMoveStartTimerThreshold` 0.03 s and `PawnMoveStopTimerThreshold` 0.1 s, its
+turn rates `m_fTurnRateHigh`/`Low` 270 and `Combat` 540.
+
+**Built: `[Hands] linearWalk = 1`** (default; `linearWalkS` 0.1): in VR on foot every speed ramp reaches the stick within 0.1 s
+(10 per s, never slower than the game's) and `Pawn.AccelRate` takes a 600 u/s run from a standstill in the same time (6000
+u/s^2; `vr::combat_stance::WantedRamp`, unit-tested); each value put back if still ours when off, out of VR or off foot (a
+moment, a conversation), on a new pawn and at unload; `exploreRamp` applies only with it off. **Measured**: `movement:
+response:` logs the speed 0, 0.1, 0.2, 0.4 and 0.8 s after each push of the left stick from rest and each let-go (with how far
+the pawn turned meanwhile), under replayed walks (`tools/make-walk-recording.py`'s square; an out-and-back of 1 s pushes):
+
+| A run (stick 0.9) | 0 s | 0.1 s | 0.2 s | 0.4 s | 0.8 s |
+|---|---|---|---|---|---|
+| Pushed, the game's ramp (3 pushes) | 0 | 0-2 | 46-185 | 267-410 | 400 |
+| Pushed, linear (40 pushes) | 0 | 0-1 | 35-146 (mostly ~50) | 368-403 | 400 |
+| Let go, the game's ramp | 400 | 353-355 | 55-81 | 147-167 | 57-64 |
+| Let go, linear | 400 | 0-130 (mostly ~100) | 0-23 | 0-65 | 0-40 |
+
+The stop is the change: four times slower than the stick before, about the stick now; at a walk (below) it is 0 within 0.1
+s. A small rebound at 0.4 s (60 u/s) after a run is left, which the game's own code makes (the stop timer's 0.1 s?).
+
+**Not changed: a fixed latency of about 0.15 s before any push moves the pawn**, ramp or not: the same with the pawn turned 0
+or 180 degrees during the push (so not the turn), with the turn rates x4 (1080/1080/2160 by `mevr setprop`), and with
+`PawnMoveStartTimerThreshold` at 0. It sits before the movement code: the input path (the replay's stick through the host's
+XInput hook to the game's input tick) or a start state of the pawn [verify: the game's own pad and the PlayerInput's axes
+against the controller's stick].
+
+**The stick's mapping is not linear either** (out-and-back pushes, linear on): stick 0.5 walks at 75 u/s, 0.68 at 120, 0.8
+and 0.9 run at 400; the game's run threshold is 0.70 (the table above), and below it the speed is far under proportional (0.5
+gives 19% of the run, not 50%). A push past 0.7 jumps from a walk to a full run. Making the speed follow the push needs the
+explore move's speed fraction rewritten (a post-handler on `PlayerMoveExplore`/`PlayerMoveCombat`, or the target the ramp
+moves toward) [verify the field]: next, with the latency, if the owner wants it.
+
+**The conversation walk** (`worldMoveSpeedMS`, research/69) was already linear (the mod's own step: the speed follows the push
+past a 0.15 dead zone, no ramp); its speed is 1.4 m/s again (the owner: "we can increase the speed for the dialogue").
+
 ## D. The draw and holster delay
 
 ### What plays and what gates it

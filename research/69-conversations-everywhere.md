@@ -359,7 +359,8 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     conversation should likely pause"; "Walking along" below): a scripted walk with someone beside Shepard pauses while the
     player is more than 3 m behind (at a line's end), on again within 1.5 m. Run on the fake headset 2026-11-12: both Council
     walks wait for a player who stands still; walking along, a 4 m wall (the conversation's boundary) fixed; the player's
-    0.9 m/s against the track's 1.2-1.3 (and its stairs) still pauses the walk three times in the Spectre's (the owner's call).
+    walk 1.4 m/s again (the owner, 2026-11-13; at 0.9 the Spectre's walk waited three times, 11.9 s; at 1.4 only on its stairs,
+    5.4 s).
 34. **Auditing scenes by rule** (the owner, 2026-11-12: a better, more efficient way to audit scenes; "Auditing scenes by rule"
     below): the day's judgements as rules over the records (`tools/scene_audit.py`), a baseline to compare runs with, a
     regression set of ten scenes (`tools/conversation-audit.ps1`), and the same rules live in every scene's summary. Run in the
@@ -3404,7 +3405,10 @@ nothing was built for conversations; a scene where people walk off while talking
 - **The pace**: the track walks Shepard at 1.2-1.34 m/s and jumps on two stretches (3.4 and 2.6 m/s, the stairs and the
   teleport up them), the player's stick at 0.9 (`worldMoveSpeedMS`, the owner's second design). Where the track went 0.9 the
   follower held 2.0 m behind; the opening pace and the two jumps paused the Spectre's walk three times, 11.9 s in all, for a
-  player at full stick. Open (the owner's call): the stick's speed in a moment matched to the walk's, or the pauses as they are.
+  player at full stick. **The owner: "for the walking speed we can increase the speed for the dialogue"** (2026-11-13):
+  `worldMoveSpeedMS` is 1.4 again (as until 2026-11-11). The Spectre's walk at 1.4: 23.3 s instead of 29.8, the follower within
+  0.8 m wherever the track walks (1.2-1.34 m/s), three pauses of 5.4 s in all, every one at the track's 2.8-2.9 m/s stretches.
+  The on-foot walk's own ramp, "similar to the third person mode", is research/38 "Linear walking".
 
 **The default mode keeps the game's behaviour** (the owner, 2026-11-12 21:40: "our changes to where Shepard is standing should
 only apply when we're doing first person mode. when we're doing the default we need to ensure it maintains existing behavior").
@@ -3929,3 +3933,4 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-12 20:30, **item 32, the moments audited**: stance records and the eyes stand-in in scripted walks (nobody there looks at Shepard through the look-at system: the faces are the matinees'); Benezia's cut after phase 2 placed the eyes with a stale view offset (0.74 m behind his head): the last first-person view's offset and a check after the opening; `tools/fake-headset-session.ps1`, `tools/land-on-main.py` and the skills `fake-headset-run`, `first-person-scene-audit` (the owner: author skills that make this process more efficient).
 - 2026-11-12 21:50, **item 33, walking along** built (a scripted walk with someone beside Shepard waits for a player 3 m behind); **item 34, auditing scenes by rule** built (rules over the records, a baseline, a regression set, the rules live in every scene).
 - 2026-11-12 23:10, **items 33 and 34 in the game** (three passes on the fake headset): the walks wait for a player who stands still; a 4 m wall in every scripted walk (the conversation's boundary) fixed; the live audit's two false alarms fixed; a sidestep stuck against a squadmate fixed; a crash of ours at a load (the pawn list) fixed; the baseline written (12 scenes). Open: the stick's 0.9 m/s against the walks' 1.2-1.3.
+- 2026-11-13 01:00, **item 33, the walk's pace**: the conversation and scripted-walk walk 1.4 m/s again (the owner); the Spectre's walk waits only on its stairs (5.4 s, from 11.9). The on-foot walk linear to the stick: research/38 "Linear walking".

@@ -10,7 +10,8 @@
 //      UpdateSkelPose hook composes the pose (OrderCheck), which "tick as combat, compose as explore" needs.
 //   B. View shift: one eye point for every standing on-foot camera mode (ExploreEye, ConstantEyeOffset,
 //      ConstantEyeApplies).
-//   C. Movement: the combat speed ramp written to the explore values (RampNeedsWrite).
+//   C. Movement: the combat speed ramp written to the explore values (RampNeedsWrite), or the walk linear to the stick in
+//      VR (WantedRamp).
 //   D. Draw delay: the draw and holster animations' play rate (ClampDrawRate, RateNeedsWrite).
 namespace mevr::vr::combat_stance {
 
@@ -132,6 +133,28 @@ bool OffsetMoved(Vec oldOffset, Vec newOffset);
 // (m_fMaxDesSpd{Accel,Decel}Rate). A rate is usable when finite and in (0, 100]; a write is needed when they differ.
 bool UsableRate(float rate);
 bool RampNeedsWrite(float tacAccel, float tacDecel, float exploreAccel, float exploreDecel);
+
+// The walk's response to the stick (research/38 "Linear walking", 2026-11-12; a player: the game's acceleration felt like the
+// third-person game's, not like VR). The game's speed follows the stick through two stages: the pawn's desired speed moves
+// toward the stick's fraction at BioPawnBehavior's m_fMaxDesSpd{Accel,Decel}Rate per second exploring (1.5 each: 0.67 s to
+// full speed and 0.67 s to a stop) and m_fMaxDesSpdTac{Accel,Decel}Rate with a weapon out (3 and 2), and the velocity follows
+// at Engine.Pawn.AccelRate (1500 units/s^2: 0.27 s more to the run's 400 units/s). Linear ([Hands] linearWalk): every ramp
+// reaches the stick within `linearS` (never slower than the game's) and the acceleration takes the fastest run
+// (kLinearTopSpeed, above the sprint's 525) from a standstill within the same time. Without it, exploreRamp gives combat the
+// explore ramp as before.
+struct WalkRamp {
+    float accel = 0.0f;      // per second
+    float decel = 0.0f;
+    float tacAccel = 0.0f;
+    float tacDecel = 0.0f;
+    float accelRate = 0.0f;  // units per second squared
+};
+inline constexpr double kDefaultLinearWalkS = 0.1;
+inline constexpr float kLinearTopSpeed = 600.0f;
+double ClampLinearWalkS(double seconds);  // [0.03, 1]; NaN: the default
+// The values the walk should have, from the game's own: unchanged when any of the game's is unusable (not set yet).
+WalkRamp WantedRamp(WalkRamp const& game, bool exploreRamp, bool linear, double linearS);
+bool Differs(WalkRamp const& a, WalkRamp const& b);
 
 // ---- D. Draw delay ----------------------------------------------------------------------------------------------
 

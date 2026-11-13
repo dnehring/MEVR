@@ -7,6 +7,7 @@
 #include "core/ik/CameraHook.hpp"
 #include "core/ik/PoseGraft.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/Skeleton.hpp"
@@ -76,6 +77,7 @@ ue3::FieldRef gAccelRate{"SFXGame.BioPawnBehavior", "m_fMaxDesSpdAccelRate"};
 ue3::FieldRef gDecelRate{"SFXGame.BioPawnBehavior", "m_fMaxDesSpdDecelRate"};
 ue3::FieldRef gTacAccelRate{"SFXGame.BioPawnBehavior", "m_fMaxDesSpdTacAccelRate"};
 ue3::FieldRef gTacDecelRate{"SFXGame.BioPawnBehavior", "m_fMaxDesSpdTacDecelRate"};
+ue3::FieldRef gPawnAccelRate{"Engine.Pawn", "AccelRate"};
 ue3::FieldRef gPlayerCamera{"Engine.PlayerController", "PlayerCamera"};
 ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode"};
 ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
@@ -163,15 +165,22 @@ bool gLearning = false;        // captures requested this tick
 
 // ---- C: the ramp --------------------------------------------------------------------------------------------------
 
+// The walk's speed ramps (the pawn behaviour's) and acceleration (the pawn's): the game's own values, kept to put back, and ours
+// (cs::WantedRamp).
 struct Ramp {
     ue3::Object* behavior = nullptr;
+    ue3::Object* pawn = nullptr;
     bool written = false;
-    float savedAccel = 0.0f;  // the game's combat ramp before ours
-    float savedDecel = 0.0f;
-    float wroteAccel = 0.0f;
-    float wroteDecel = 0.0f;
+    cs::WalkRamp saved;  // the game's
+    cs::WalkRamp wrote;  // ours
+    int writes = 0;
 };
 Ramp gRamp;
+
+std::string RampText(cs::WalkRamp const& r) {
+    return std::format("explore {:.2f}/{:.2f}, combat {:.2f}/{:.2f} per s, acceleration {:.0f} u/s^2", r.accel, r.decel, r.tacAccel,
+        r.tacDecel, r.accelRate);
+}
 std::string gRampWhy = "not started";
 
 // The walking mode (EWalkingSpeedMode) and speed.
@@ -758,71 +767,165 @@ bool IsPlayersBehavior(ue3::Object* behavior) {
         ue3::runtime::IsAlive(behavior);
 }
 
-// Puts the game's combat ramp back (only if it is still ours: the game may have set its own since).
+struct RampFields {
+    float* accel = nullptr;
+    float* decel = nullptr;
+    float* tacAccel = nullptr;
+    float* tacDecel = nullptr;
+    float* accelRate = nullptr;
+    bool Ok() const { return accel != nullptr && decel != nullptr && tacAccel != nullptr && tacDecel != nullptr && accelRate != nullptr; }
+    cs::WalkRamp Read() const { return {*accel, *decel, *tacAccel, *tacDecel, *accelRate}; }
+};
+
+RampFields FieldsOf(ue3::Object* behavior, ue3::Object* pawn) {
+    RampFields f;
+    if (behavior == nullptr || pawn == nullptr) {
+        return f;
+    }
+    f.accel = gAccelRate.In<float>(behavior);
+    f.decel = gDecelRate.In<float>(behavior);
+    f.tacAccel = gTacAccelRate.In<float>(behavior);
+    f.tacDecel = gTacDecelRate.In<float>(behavior);
+    f.accelRate = gPawnAccelRate.In<float>(pawn);
+    return f;
+}
+
+void Put(float* field, float value, char const* what) {
+    *field = value;
+    write_journal::Wrote(what, field, sizeof(float));
+}
+
+// Puts the game's walk back, each value only if it is still ours (the game may have set its own since).
 void RestoreRamp(char const* why, bool playerCheck) {
     if (gRamp.behavior == nullptr || !gRamp.written) {
         gRamp = {};
         return;
     }
     bool restored = false;
-    if (!playerCheck || IsPlayersBehavior(gRamp.behavior)) {
-        float* const accel = gTacAccelRate.In<float>(gRamp.behavior);
-        float* const decel = gTacDecelRate.In<float>(gRamp.behavior);
-        if (accel != nullptr && decel != nullptr && *accel == gRamp.wroteAccel && *decel == gRamp.wroteDecel) {
-            *accel = gRamp.savedAccel;
-            *decel = gRamp.savedDecel;
-            write_journal::Wrote("CombatStance.ramp(restore)", accel, sizeof(float));
-            write_journal::Wrote("CombatStance.ramp(restore)", decel, sizeof(float));
+    if ((!playerCheck || IsPlayersBehavior(gRamp.behavior)) && ue3::runtime::IsAlive(gRamp.behavior) && gRamp.pawn != nullptr &&
+        ue3::runtime::IsAlive(gRamp.pawn)) {
+        RampFields const f = FieldsOf(gRamp.behavior, gRamp.pawn);
+        if (f.Ok()) {
+            auto const back = [](float* field, float wrote, float saved) {
+                if (*field == wrote) {
+                    Put(field, saved, "CombatStance.ramp(restore)");
+                }
+            };
+            back(f.accel, gRamp.wrote.accel, gRamp.saved.accel);
+            back(f.decel, gRamp.wrote.decel, gRamp.saved.decel);
+            back(f.tacAccel, gRamp.wrote.tacAccel, gRamp.saved.tacAccel);
+            back(f.tacDecel, gRamp.wrote.tacDecel, gRamp.saved.tacDecel);
+            back(f.accelRate, gRamp.wrote.accelRate, gRamp.saved.accelRate);
             restored = true;
         }
     }
-    log::Info("movement: combat walking ramps as the game has it again ({}){}", why,
-        restored ? std::format(": accel {:.2f}, decel {:.2f} per s", gRamp.savedAccel, gRamp.savedDecel) : std::string(" (left as it was)"));
+    log::Info("movement: walking ramps as the game has it again ({}){}", why,
+        restored ? ": " + RampText(gRamp.saved) : std::string(" (left as it was)"));
     gRamp = {};
 }
 
+// The walk's ramps and acceleration (cs::WantedRamp): linear to the stick in VR on foot ([Hands] linearWalk), else combat
+// walking ramps like exploring ([Hands] exploreRamp); the game's own values kept and put back.
 void UpdateRamp(Link const& link, ue3::Object* pawn, bool onFoot) {
     hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
     ue3::Object* const behavior = pawn != nullptr ? gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
-    char const* why = !settings.exploreRamp ? "[Hands] exploreRamp = 0"
-                    : !link.headTrackedView ? "no head-tracked view"
-                    : !onFoot               ? "not on foot"
-                    : behavior == nullptr   ? "no player pawn behaviour"
-                                            : nullptr;
-    gRampWhy = why != nullptr ? why : "explore ramp";
+    char const* why = !settings.exploreRamp && !settings.linearWalk ? "[Hands] exploreRamp = 0 and linearWalk = 0"
+                    : !link.headTrackedView                         ? "no head-tracked view"
+                    : !onFoot                                       ? "not on foot"
+                    : behavior == nullptr                           ? "no player pawn behaviour"
+                                                                    : nullptr;
+    gRampWhy = why != nullptr ? why : settings.linearWalk ? "linear to the stick" : "explore ramp";
     if (why != nullptr) {
         RestoreRamp(why, true);
         return;
     }
-    if (behavior != gRamp.behavior) {
+    if (behavior != gRamp.behavior || pawn != gRamp.pawn) {
         RestoreRamp("the pawn changed", true);
         gRamp.behavior = behavior;
+        gRamp.pawn = pawn;
     }
-    float* const accel = gTacAccelRate.In<float>(behavior);
-    float* const decel = gTacDecelRate.In<float>(behavior);
-    std::optional<float> const exploreAccel = gAccelRate.Read<float>(behavior);
-    std::optional<float> const exploreDecel = gDecelRate.Read<float>(behavior);
-    if (accel == nullptr || decel == nullptr || !exploreAccel || !exploreDecel) {
+    RampFields const f = FieldsOf(behavior, pawn);
+    if (!f.Ok()) {
         gRampWhy = "fields not found";
         return;
     }
-    if (!cs::RampNeedsWrite(*accel, *decel, *exploreAccel, *exploreDecel)) {
+    cs::WalkRamp const now = f.Read();
+    // The game's values: the first time, and each one the game set (or reset) since our write (UpdateDefaultSpeeds).
+    auto const keep = [](float current, float wrote, float& saved) {
+        if (!gRamp.written || current != wrote) {
+            saved = current;
+        }
+    };
+    keep(now.accel, gRamp.wrote.accel, gRamp.saved.accel);
+    keep(now.decel, gRamp.wrote.decel, gRamp.saved.decel);
+    keep(now.tacAccel, gRamp.wrote.tacAccel, gRamp.saved.tacAccel);
+    keep(now.tacDecel, gRamp.wrote.tacDecel, gRamp.saved.tacDecel);
+    keep(now.accelRate, gRamp.wrote.accelRate, gRamp.saved.accelRate);
+    cs::WalkRamp const want = cs::WantedRamp(gRamp.saved, settings.exploreRamp, settings.linearWalk, settings.linearWalkS);
+    if (!cs::Differs(now, want)) {
         return;
     }
-    // The game's values: the first time, or when it set its own since our write (UpdateDefaultSpeeds).
-    if (!gRamp.written || *accel != gRamp.wroteAccel || *decel != gRamp.wroteDecel) {
-        gRamp.savedAccel = *accel;
-        gRamp.savedDecel = *decel;
-    }
-    *accel = *exploreAccel;
-    *decel = *exploreDecel;
-    write_journal::Wrote("CombatStance.ramp", accel, sizeof(float));
-    write_journal::Wrote("CombatStance.ramp", decel, sizeof(float));
+    Put(f.accel, want.accel, "CombatStance.ramp");
+    Put(f.decel, want.decel, "CombatStance.ramp");
+    Put(f.tacAccel, want.tacAccel, "CombatStance.ramp");
+    Put(f.tacDecel, want.tacDecel, "CombatStance.ramp");
+    Put(f.accelRate, want.accelRate, "CombatStance.ramp");
+    ++gRamp.writes;
+    bool const changed = !gRamp.written || cs::Differs(want, gRamp.wrote);
     gRamp.written = true;
-    gRamp.wroteAccel = *accel;
-    gRamp.wroteDecel = *decel;
-    log::Info("movement: combat walking ramps like exploring (accel {:.2f} -> {:.2f}, decel {:.2f} -> {:.2f} per s)", gRamp.savedAccel,
-        *accel, gRamp.savedDecel, *decel);
+    gRamp.wrote = want;
+    if (changed) {
+        log::Info("movement: walking {}: {} (the game's: {}; written {} time{})",
+            settings.linearWalk ? std::format("follows the stick within {:.2f} s", cs::ClampLinearWalkS(settings.linearWalkS))
+                                : std::string("ramps like exploring with a weapon out"),
+            RampText(want), RampText(gRamp.saved), gRamp.writes, gRamp.writes == 1 ? "" : "s");
+    }
+}
+
+// The walk's response, measured (research/38 "Linear walking"): from the left stick pushed to 0.3 or more (from under 0.2) or let
+// go (while moving), the pawn's speed then and 0.1, 0.2, 0.4 and 0.8 s later, logged once the last is in.
+struct Response {
+    bool open = false;
+    bool start = false;
+    double since = 0.0;
+    double stick = 0.0;
+    double lastStick = 0.0;
+    double yawFrom = 0.0;  // the pawn's facing when it began (degrees): how far it turned meanwhile
+    std::array<double, 5> speeds{};
+    std::size_t next = 0;
+};
+Response gResponse;
+constexpr std::array<double, 5> kResponseAt{0.0, 0.1, 0.2, 0.4, 0.8};
+
+void StepResponse(double speed, double yawDeg) {
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    double const stick = controllers.active ? std::hypot(controllers.left.stickX, controllers.left.stickY) : 0.0;
+    Response& r = gResponse;
+    if (!r.open) {
+        bool const start = r.lastStick < 0.2 && stick >= 0.3;
+        bool const stop = r.lastStick >= 0.3 && stick < 0.2 && speed > 20.0;
+        if (start || stop) {
+            r.open = true;
+            r.start = start;
+            r.since = gNow;
+            r.stick = start ? stick : r.lastStick;
+            r.next = 0;
+            r.yawFrom = yawDeg;
+        }
+    }
+    if (r.open) {
+        while (r.next < kResponseAt.size() && gNow - r.since >= kResponseAt[r.next] - 1e-6) {
+            r.speeds[r.next++] = speed;
+        }
+        if (r.next == kResponseAt.size()) {
+            r.open = false;
+            double const turned = std::fabs(std::remainder(yawDeg - r.yawFrom, 360.0));
+            log::Info("movement: response: the stick {} ({:.2f}): speed {:.0f}, {:.0f}, {:.0f}, {:.0f}, {:.0f} u/s at 0, 0.1, 0.2, 0.4, 0.8 s; the pawn "
+                      "turned {:.0f} deg meanwhile ({})",
+                r.start ? "pushed" : "let go", r.stick, r.speeds[0], r.speeds[1], r.speeds[2], r.speeds[3], r.speeds[4], turned, gRampWhy);
+        }
+    }
+    r.lastStick = stick;
 }
 
 // The walking mode and speed, once per change (research/38 C: the zoomed walk).
@@ -830,6 +933,8 @@ void UpdateWalk(ue3::Object* pawn, Link const& link) {
     int const mode = CallByte(pawn, gGetWalkingSpeedMode);
     std::optional<ue3::Vector> const velocity = gVelocity.Read<ue3::Vector>(pawn);
     gSpeed = velocity ? std::sqrt(static_cast<double>(velocity->x) * velocity->x + static_cast<double>(velocity->y) * velocity->y) : 0.0;
+    std::optional<ue3::Rotator> const rotation = player::Rotation(pawn);
+    StepResponse(gSpeed, rotation ? static_cast<double>(rotation->yaw) * 360.0 / 65536.0 : 0.0);
     if (mode == gWalkMode) {
         gWalkTop = std::max(gWalkTop, gSpeed);
         return;
@@ -1052,7 +1157,8 @@ std::string StatusJson() {
         "{{\"exploreStance\": {}, \"active\": {}, \"why\": {}, \"order\": {}, \"confirmations\": {}, \"insideCalls\": {}, "
         "\"combatModeNodes\": {}, \"gameWeights\": [{}, {}], \"composed\": {}, \"overridden\": {}, \"rejected\": {}, \"broken\": {}, "
         "\"cameraMode\": {}, \"drawn\": {}, \"switching\": {}, "
-        "\"ramp\": {{\"enabled\": {}, \"state\": {}, \"written\": {}, \"savedAccel\": {}, \"savedDecel\": {}}}, "
+        "\"ramp\": {{\"enabled\": {}, \"linear\": {}, \"state\": {}, \"written\": {}, \"savedAccel\": {}, \"savedDecel\": {}, "
+        "\"savedAccelRate\": {}, \"wroteAccel\": {}, \"wroteAccelRate\": {}}}, "
         "\"walk\": {{\"mode\": {}, \"speed\": {}}}, "
         "\"draw\": {{\"rate\": {}, \"sequences\": {}, \"written\": {}}}, "
         "\"arms\": {{\"bones\": {}, \"why\": {}, \"learned\": [{}], \"inUse\": {}, \"learning\": {}, \"grafted\": {}, "
@@ -1061,8 +1167,9 @@ std::string StatusJson() {
         json::JsonString(cs::Name(static_cast<cs::OrderCheck::Order>(stats.order))), stats.confirmations, stats.insideCalls,
         gTree.combat.size(), json::JsonNumber(stats.last.startWeights[0]), json::JsonNumber(stats.last.startWeights[1]), stats.applied,
         stats.overridden, stats.rejected, stats.broken ? "true" : "false", json::JsonString(gModeClass), gDrawn ? "true" : "false",
-        gSwitching ? "true" : "false", settings.exploreRamp ? "true" : "false", json::JsonString(gRampWhy), gRamp.written ? "true" : "false",
-        json::JsonNumber(gRamp.savedAccel), json::JsonNumber(gRamp.savedDecel),
+        gSwitching ? "true" : "false", settings.exploreRamp ? "true" : "false", settings.linearWalk ? "true" : "false",
+        json::JsonString(gRampWhy), gRamp.written ? "true" : "false", json::JsonNumber(gRamp.saved.accel), json::JsonNumber(gRamp.saved.decel),
+        json::JsonNumber(gRamp.saved.accelRate), json::JsonNumber(gRamp.wrote.accel), json::JsonNumber(gRamp.wrote.accelRate),
         json::JsonString(gWalkMode >= 0 && gWalkMode < static_cast<int>(std::size(kWalkModes)) ? kWalkModes[gWalkMode] : "unknown"),
         json::JsonNumber(gSpeed), json::JsonNumber(cs::ClampDrawRate(settings.drawRate)), gTree.draws.size() + gTree.holsters.size(),
         gRates.size(), gArms.ok ? gArms.bones.size() : 0, json::JsonString(gArms.ok ? std::string("found") : gArms.why), learned,
@@ -1084,8 +1191,7 @@ void LogStats() {
         gArms.ok ? std::format("{} bones, the combat pose learned for {} weapon type{}{}", gArms.bones.size(), gLearned.size(),
                        gLearned.size() == 1 ? "" : "s", gLearning ? ", learning" : "")
                  : gArms.why,
-        gRampWhy, gRamp.written ? std::format(" (written; the game's accel {:.2f}, decel {:.2f})", gRamp.savedAccel, gRamp.savedDecel)
-                                : std::string(),
+        gRampWhy, gRamp.written ? std::format(" (written {} times; the game's {})", gRamp.writes, RampText(gRamp.saved)) : std::string(),
         gRateWrites);
     gRateWrites = 0;
 }

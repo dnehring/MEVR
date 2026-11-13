@@ -378,7 +378,15 @@ switching frameworks.
   own HookOffset minus the explore eye; crouch modes keep Halcyon's, except while the player is physically crouched
   (the mod's `gamepad::kFlagPhysicalCrouch`, 2026-11-04): then only the real head lowers the view (`[Hands] crouchDrop = 1`:
   the old double drop; research/38 "the physical crouch keeps the eye"). `exploreRamp` (C): the combat speed ramp set to the
-  explore one (restored). `drawRate = 6` (D, 1..10; the animation still plays, so every notify fires): the WeaponEquip node's Draw/Holster sequences play faster (their Rate
+  explore one (restored). **`linearWalk = 1`** (C, default; research/38 "Linear walking", 2026-11-12, a player: the game's
+  acceleration felt like the third-person game's): in VR on foot every speed ramp (`m_fMaxDesSpd{,Tac}{Accel,Decel}Rate`) reaches
+  the stick within `linearWalkS` (0.1 s; the game's 0.67 s each way exploring) and `Pawn.AccelRate` takes a 600 u/s run from a
+  standstill in the same time (`vr::combat_stance::WantedRamp`, unit-tested; never slower than the game's; each value put back if
+  still ours); log `movement: walking follows the stick`, and `movement: response:` (the speed 0-0.8 s after each stick push or
+  let-go, and the pawn's turn meanwhile) measures it. Measured: the stop at once, full speed by 0.4 s; left (research/38): a
+  0.15 s latency before any push (not the ramp, the turn or `PawnMoveStartTimerThreshold`) and the game's stick mapping (0.5
+  walks at 75 u/s, 0.68 at 120, past 0.70 a full run). `mevr findplayer [pawn|behavior|controller]` puts the player's object at
+  `mevr props 0` / `setprop 0` (find, which names every object, ran past the console's 10 s). `drawRate = 6` (D, 1..10; the animation still plays, so every notify fires): the WeaponEquip node's Draw/Holster sequences play faster (their Rate
   while playing). Logs `stance:`, `constant eye:`, `movement:`, `draw:`; snapshot `"stance"`.
 - LE1 comfort ([research/31](research/31-comfort.md), HostServices v17; the menu's Comfort page, `[Comfort]` in
   `ASI\LE1MEVR.ini`): `turn = game` (default, the menu's Smooth) keeps the game's own turn (per-camera-mode
@@ -604,7 +612,7 @@ switching frameworks.
   a circle with the player (`cw::MakeCircle`/`JoinCircle`, the nearest free place, nobody crossing), which gathers round the
   player again after the player walks off and stands (`cw::ShouldRegather`, off by default since the second design); staged
   scenes (`cw::IsStagedScene`, `worldStaged`: Kirrahe's camp, the Council's scenes, the ending's) keep their marks and facings, the
-  opening under a dip; `worldWalkInS = -1`, `worldArrange = 0`, `worldLookReach = 0` (the game's nods kept), `worldMoveSpeedMS` 0.9;
+  opening under a dip; `worldWalkInS = -1`, `worldArrange = 0`, `worldLookReach = 0` (the game's nods kept), `worldMoveSpeedMS` 1.4 (0.9 on 2026-11-11, back to 1.4 on 2026-11-12: the owner, so the scripted walks keep up);
   **second design (2026-11-12, the owner's answers)**: the owner stays (`worldCircleOwnerStays`), the circle forms only once the
   player is in the exchange (`cw::PlayerSoon`), people within 3.5 m join where they stand, whoever takes part within 4 lines sets
   off early (`cw::UpcomingPeople` over the dialogue's graph, `worldCircleLookahead`), non-walkers (not PHYS_Walking, seated) never

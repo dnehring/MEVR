@@ -371,9 +371,10 @@ struct Settings {
     // How far from where the conversation began the walk may go (worldMoveLeashM; until 2026-11-11 3 m around the owner). The
     // owner: "I think we should need a max boundary to make sure we can't just wander off."
     float moveLeashM = 4.0f;
-    // The walk's speed at full deflection (worldMoveSpeedMS; 1.4 until 2026-11-11: the owner asked for slower walking in a
-    // conversation, "to persuade the user to not move").
-    float moveSpeedMS = 0.9f;
+    // The walk's speed at full deflection (worldMoveSpeedMS): 1.4 until 2026-11-11, then 0.9 (the owner asked for slower walking
+    // in a conversation, "to persuade the user to not move"), 1.4 again since 2026-11-12 (the owner: "we can increase the speed
+    // for the dialogue": at 0.9 a player at full stick fell behind the scripted walks' 1.2-1.34 m/s and they waited for him).
+    float moveSpeedMS = 1.4f;
     // A walk-in nobody walks: guided to Shepard's mark after this long without the stick (worldWalkInS; 0 at once, -1 never;
     // cw::StepGuide). Never by default since 2026-11-11 (the owner: being walked by the game is "a terrible experience").
     float walkInS = -1.0f;

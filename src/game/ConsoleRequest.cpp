@@ -676,6 +676,30 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         }
         return std::string("usage: mevr galaxy dump [tag] | click <u> <v> | pick <i> | where | trace on|off | input <event> <value>");
     }
+    if (verb == "findplayer") {
+        // `mevr findplayer [pawn|behavior|controller]`: the player's own object as `mevr find`'s [0], at once (find names every
+        // object in the game and took longer than the console's 10 s; research/38 "Linear walking": `mevr props 0`,
+        // `mevr setprop 0 <field> <value>` on the pawn behaviour's walk values).
+        std::string which;
+        words >> which;
+        ue3::Reflection& r = ue3::runtime::Get();
+        ue3::Object* const playerController = player::Controller();
+        ue3::Object* const playerPawn = playerController != nullptr ? player::BioPawn(playerController) : nullptr;
+        ue3::Object* found = which == "controller" ? playerController : playerPawn;
+        if (which == "behavior" && playerPawn != nullptr) {
+            auto const info = r.PropertyOf(r.ClassOf(playerPawn), "m_oBehavior");
+            found = nullptr;
+            if (info) {
+                std::memcpy(&found, reinterpret_cast<std::uint8_t const*>(playerPawn) + info->offset, sizeof found);
+            }
+        }
+        gFound.clear();
+        if (found == nullptr || !r.IsAlive(found)) {
+            return std::string("mevr findplayer: no such object (usage: mevr findplayer [pawn|behavior|controller])");
+        }
+        gFound.push_back(found);
+        return std::format("1 found\n[0] {}", r.FullName(found));
+    }
     if (verb == "find") {
         // `mevr find <text>`: live objects whose full name holds the text (case-insensitive), numbered for `use` and `activate`
         // (finding the galaxy map's usable object on the Normandy, research/51).

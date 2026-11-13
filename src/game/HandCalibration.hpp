@@ -114,6 +114,8 @@ struct CombatStance {
     bool exploreStance = false;      // the body composes as explore while drawn, the arms as combat (A; off until the headset confirms)
     bool exploreStanceStorm = true;  // ...while sprinting too
     bool exploreRamp = true;         // combat walking ramps like exploring (C)
+    bool linearWalk = true;          // VR on foot: the walk follows the stick within linearWalkS (C, research/38 "Linear walking")
+    double linearWalkS = 0.1;        // ... seconds to full speed and to a stop
     double drawRate = 6.0;           // the draw animation's rate, 1..10 (D; 1: the game's)
     double holsterRate = 15.0;       // the holster animation's, 1..20
 };

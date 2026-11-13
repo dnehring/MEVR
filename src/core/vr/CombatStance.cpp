@@ -198,6 +198,38 @@ bool RampNeedsWrite(float tacAccel, float tacDecel, float exploreAccel, float ex
     return std::fabs(tacAccel - exploreAccel) > 1e-4f || std::fabs(tacDecel - exploreDecel) > 1e-4f;
 }
 
+double ClampLinearWalkS(double seconds) {
+    return std::isfinite(seconds) ? std::clamp(seconds, 0.03, 1.0) : kDefaultLinearWalkS;
+}
+
+WalkRamp WantedRamp(WalkRamp const& game, bool exploreRamp, bool linear, double linearS) {
+    bool const usable = UsableRate(game.accel) && UsableRate(game.decel) && UsableRate(game.tacAccel) && UsableRate(game.tacDecel) &&
+                        std::isfinite(game.accelRate) && game.accelRate > 0.0f && game.accelRate < 1.0e6f;
+    if (!usable) {
+        return game;
+    }
+    WalkRamp out = game;
+    if (linear) {
+        double const s = ClampLinearWalkS(linearS);
+        float const rate = static_cast<float>(1.0 / s);
+        out.accel = std::max(game.accel, rate);
+        out.decel = std::max(game.decel, rate);
+        out.tacAccel = std::max(game.tacAccel, rate);
+        out.tacDecel = std::max(game.tacDecel, rate);
+        out.accelRate = std::max(game.accelRate, static_cast<float>(kLinearTopSpeed / s));
+    } else if (exploreRamp) {
+        out.tacAccel = game.accel;
+        out.tacDecel = game.decel;
+    }
+    return out;
+}
+
+bool Differs(WalkRamp const& a, WalkRamp const& b) {
+    auto const off = [](float x, float y) { return std::fabs(x - y) > 1e-4f * std::max(1.0f, std::fabs(y)); };
+    return off(a.accel, b.accel) || off(a.decel, b.decel) || off(a.tacAccel, b.tacAccel) || off(a.tacDecel, b.tacDecel) ||
+           off(a.accelRate, b.accelRate);
+}
+
 double ClampDrawRate(double rate) {
     return std::isfinite(rate) ? std::clamp(rate, 1.0, kMaxDrawRate) : 1.0;
 }
