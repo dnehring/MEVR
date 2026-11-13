@@ -542,3 +542,11 @@ Not built: the hover look from gaze or a pointer (the `hover` class exists; noth
     under the divider). Its place in that run was wrong (the mod sent the speaker's head in world units; it sends room
     metres now).
   - Builds: `MEVR-LE1`, `MEVR-LE1-mod`, `MEVR-Voice`, `build-mono`, `build-trilogy`; `mevr-tests` pass.
+- **2026-11-13, the run after the fixes** (Anoleis; snapshot of the eyes): the panel stands under the line to Anoleis
+  (5.5 m away), at (0.22, -0.52, -0.83) m from the room's origin, the row being read lit with its said words bright and
+  the next one marked. A whole line: taken at quiet 219 ms, the answer 125 ms later. Talk that is no reply: dropped,
+  nothing taken. Six of ten words of a line, with "an asari" heard as "in a seri": the row lit, **not taken** (just
+  under half the line's weight for `performer`); the mark now says "Keep reading..." in that case (`Mic::More`) and the
+  words are dropped after `staleMs`. The game's own wheel stays visible on the HUD panel behind the panel's top edge
+  (the stick's pick needs it). Open for the headset: whether the panel reads as square to the eyes (in the snapshot's
+  wide projection it looks skewed at the image's corner), its height, and a real microphone.
