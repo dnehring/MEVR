@@ -3664,7 +3664,7 @@ what is drawn (the empty chamber); a run is compared with the last one, and the 
 
 The set with the hands in view, all ten scenes (over three passes: the first stopped at Benezia's crash, below): arm IK drove the body for all of every scene's time in the world (Kirrahe's camp 173.3 of 175.1 s), both drawn hands in view 100% of it, off the controllers 0.0 s (at most 0.07 m; Anoleis 0.35 m for 0.1 s, at a cut), third person 0.0 s; every in-scene snapshot green (the hands in the lower half of the picture, the scene above them). The council's check met 6.9 s into the walk. Against the baseline two new findings, once each: `too-close` in the walk with Anderson (someone 0.41 m from the eyes 4.6 s in) and one look at Shepard's body in Girard's scene; neither comes from this change (it only reads), the baseline was not rewritten to excuse them. A scene still playing when the runner stops (Kirrahe's camp) wrote no summary and read "not measured" until the runner asked for the live totals (`mevr convo audit`).
 
-**The forced end crashes the game now and then**: the set stopped twice today after Benezia's scene, the game ending 20 ms after
+**The forced end crashes the game now and then**: the set stopped after Benezia's scene twice today, both at the runner's forced end: in the morning in Thespian's `GetReplyText` (fixed, 57e298c3), this afternoon (1 of 3 plays) the game ending 20 ms after
 the runner's `mevr convo end` (`-EndAfter`) in the game's own `BioSubtitles.UpdateSubtitles` (`MassEffect1.exe+0xC87E81`,
 reading freed memory; the mod's last write an AI walk's `Terminate`). A player can't end a conversation that way; the audit
 loses the rest of its pass (a follow-up: investigate `mevr convo end`, or restart the game after a crash and go on).
