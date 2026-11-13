@@ -58,6 +58,12 @@ constexpr double kRotToDeg = 360.0 / 65536.0;
 
 // The live conversation (SFXGame.BioWorldInfo.m_oCurrentConversation) and what it holds.
 ue3::FieldRef gActorWorldInfo{"Engine.Actor", "WorldInfo"};
+ue3::FieldRef gWorldStreamingLevels{"Engine.WorldInfo", "StreamingLevels"};  // (cw::ShownEarlyFor's level)
+ue3::FieldRef gStreamingPackage{"Engine.LevelStreaming", "PackageName"};
+ue3::FieldRef gStreamingLoaded{"Engine.LevelStreaming", "LoadedLevel"};
+ue3::FieldRef gStreamingShouldShow{"Engine.LevelStreaming", "bShouldBeVisible"};
+ue3::FieldRef gStreamingVisible{"Engine.LevelStreaming", "bIsVisible"};
+ue3::FieldRef gActorTagName{"Engine.Actor", "Tag"};
 ue3::FieldRef gCurrentConversation{"SFXGame.BioWorldInfo", "m_oCurrentConversation"};
 ue3::FieldRef gSpeaker{"SFXGame.BioConversation", "m_pSpeaker"};
 ue3::FieldRef gListener{"SFXGame.BioConversation", "m_pListener"};
@@ -262,6 +268,9 @@ struct Settings {
     // worldWalkAlongMaxS a pause (0: no limit).
     bool walkAlong = true;
     cw::WalkAlongSettings walkAlongSettings;
+    // A scene the script shows only under its black screen, shown as the walk to it begins (worldShowEarly; research/69 item 36,
+    // cw::ShownEarlyFor's table: the council during the walk with Anderson).
+    bool showEarly = true;
     // The speaker's and the spoken-to's heads reach further than the game's glance: each link of their look-at chain gets
     // this share of what its strength leaves (worldLookReach; 0: the game's strengths for everyone). 0 by default since
     // 2026-11-11 (the owner: authored head movements, "nods for the council", and gestures "must be retained"; a stronger
@@ -458,6 +467,7 @@ void RefreshSettings() {
     s.lookRank = static_cast<int>(number("worldLookRank", static_cast<float>(s.lookRank), 0.0f, 99999.0f));
     s.lookEyes = number("worldLookEyes", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.walkAlong = number("worldWalkAlong", 1.0f, 0.0f, 1.0f) != 0.0f;
+    s.showEarly = number("worldShowEarly", 1.0f, 0.0f, 1.0f) != 0.0f;
     s.walkAlongSettings.pauseUnits = number("worldWalkAlongPauseM", 3.0f, 0.5f, 30.0f) * kUnitsPerMeter;
     s.walkAlongSettings.resumeUnits = std::min(number("worldWalkAlongResumeM", 1.5f, 0.2f, 30.0f) * kUnitsPerMeter, s.walkAlongSettings.pauseUnits);
     s.walkAlongSettings.maxPauseS = number("worldWalkAlongMaxS", 120.0f, 0.0f, 3600.0f);
@@ -5464,6 +5474,140 @@ bool FootFresh(std::uint64_t now) {
     return gFoot.have && now >= gFoot.ms && now - gFoot.ms < 3000;
 }
 
+// ---- A scene shown as the walk to it begins (research/69 item 36, "The council during the walk") ------------------------------
+// The script shows the hearing's level and its people only under the walk's black screen; in first person the player walks up to
+// an empty chamber. While a moment in cw::ShownEarlyFor's table is held, its level is shown (LevelStreaming.bShouldBeVisible, as
+// the chamber's streaming volume would, without the volume's events: the hearing still begins at the volume's touch, measured) and
+// the listed people unhidden (Actor.SetHidden). The hearing's script shows them itself; if the walk ends without a conversation,
+// what this did is put back.
+struct Early {
+    bool checked = false;                 // the moment's track was looked up in the table
+    cw::ShownEarly const* entry = nullptr;
+    ue3::Object* level = nullptr;         // the LevelStreaming whose bShouldBeVisible we wrote (null: none)
+    bool peopleDone = false;
+    std::vector<ue3::Object*> people;     // pawns we unhid
+    std::uint64_t startMs = 0;
+} gEarly;
+
+ue3::Object* StreamingLevelNamed(std::string_view package) {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const info = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    auto const levels = info != nullptr ? gWorldStreamingLevels.ElementsOf(info, 1024) : std::nullopt;
+    if (!levels) {
+        return nullptr;
+    }
+    for (std::int32_t i = 0; i < levels->count; ++i) {
+        ue3::Object* const level = *static_cast<ue3::Object* const*>(levels->At(i));
+        auto const name = level != nullptr ? gStreamingPackage.Read<ue3::Name>(level) : std::nullopt;
+        if (name && ini::Lower(ue3::runtime::NameText(*name)) == ini::Lower(std::string(package))) {
+            return level;
+        }
+    }
+    return nullptr;
+}
+
+bool SetActorHidden(ue3::Object* actor, bool hide) {
+    if (actor == nullptr || !ue3::runtime::IsAlive(actor) || gSetHidden.Get() == nullptr) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), gSetHidden.Get());
+    return p.Valid() && p.SetBool("bNewHidden", hide) && ue3::runtime::Call(actor, gSetHidden.Get(), p);
+}
+
+void StepShownEarly() {
+    if (!gSettings.showEarly || (gEarly.checked && gEarly.entry == nullptr) || gEarly.peopleDone) {
+        return;
+    }
+    if (!gEarly.checked) {
+        std::string const path = authored_moment::PlayerTrackPath();
+        if (path.empty()) {
+            return;  // (the track is named a tick or two into the moment)
+        }
+        gEarly.checked = true;
+        gEarly.entry = cw::ShownEarlyFor(path);
+        gEarly.startMs = GetTickCount64();
+        if (gEarly.entry == nullptr) {
+            return;
+        }
+    }
+    cw::ShownEarly const& e = *gEarly.entry;
+    ue3::Object* const level = StreamingLevelNamed(e.level);
+    if (level == nullptr || gStreamingLoaded.Read<ue3::Object*>(level).value_or(nullptr) == nullptr) {
+        if (GetTickCount64() - gEarly.startMs > 15000) {
+            gEarly.peopleDone = true;
+            log::Info("moment: {} is not loaded 15 s into the walk: the scene is left to the script", e.level);
+        }
+        return;  // not loaded yet: the script's streaming state loads it as the walk begins
+    }
+    if (!gStreamingShouldShow.ReadBool(level).value_or(true)) {
+        if (gStreamingShouldShow.WriteBool(level, true)) {
+            write_journal::Wrote("ConversationWorld.showEarly.level", static_cast<std::uint8_t*>(static_cast<void*>(level)) + gStreamingShouldShow.Get()->offset, 4);
+            gEarly.level = level;
+            log::Info("moment: {} shown as the walk begins {:.1f} s in (the script shows it under its black screen)", e.level,
+                static_cast<double>(GetTickCount64() - gEarly.startMs) / 1000.0);
+        }
+        return;
+    }
+    if (!gStreamingVisible.ReadBool(level).value_or(false)) {
+        return;  // (the engine adds it to the world on its next streaming update)
+    }
+    // Its people: found once by their tags among the level's pawns.
+    gEarly.peopleDone = true;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const pawnClass = r.FindClass("SFXGame.BioPawn");
+    std::string const prefix = ini::Lower(std::string(e.level) + ".");
+    std::string names;
+    int found = 0;
+    for (std::int32_t i = 0, n = pawnClass != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, pawnClass)) {
+            continue;
+        }
+        auto const tag = gActorTagName.Read<ue3::Name>(o);
+        if (!tag || !cw::ShownEarlyTag(e, ue3::runtime::NameText(*tag))) {
+            continue;
+        }
+        std::string const full = ini::Lower(r.FullName(o));
+        std::size_t const space = full.find(' ');
+        if (full.compare(space == std::string::npos ? 0 : space + 1, prefix.size(), prefix) != 0) {
+            continue;
+        }
+        ++found;
+        if (gActorHidden.ReadBool(o).value_or(false) && SetActorHidden(o, false)) {
+            gEarly.people.push_back(o);
+            names += std::format("{}{} ({})", names.empty() ? "" : ", ", ShortName(o), ue3::runtime::NameText(*tag));
+        }
+    }
+    log::Info("moment: {} of {} of the scene's people in {} shown as the walk begins: {}", gEarly.people.size(), found, e.level,
+        names.empty() ? std::string("none (already shown)") : names);
+}
+
+// The moment's view ends: a conversation that began is the scene's (its script shows its people and level itself); else what
+// StepShownEarly did is put back.
+void EndShownEarly(bool conversationBegan) {
+    if (gEarly.entry != nullptr && (gEarly.level != nullptr || !gEarly.people.empty())) {
+        if (conversationBegan) {
+            int shown = 0;
+            for (ue3::Object* const o : gEarly.people) {
+                shown += o != nullptr && ue3::runtime::IsAlive(o) && !gActorHidden.ReadBool(o).value_or(true) ? 1 : 0;
+            }
+            log::Info("moment: the scene shown early hands over to its conversation ({} of {} people we showed still shown)", shown, gEarly.people.size());
+        } else {
+            int hidden = 0;
+            for (ue3::Object* const o : gEarly.people) {
+                hidden += SetActorHidden(o, true) ? 1 : 0;
+            }
+            bool levelBack = false;
+            if (gEarly.level != nullptr && ue3::runtime::IsAlive(gEarly.level) && gStreamingShouldShow.WriteBool(gEarly.level, false)) {
+                write_journal::Wrote("ConversationWorld.showEarly.level", static_cast<std::uint8_t*>(static_cast<void*>(gEarly.level)) + gStreamingShouldShow.Get()->offset, 4);
+                levelBack = true;
+            }
+            log::Info("moment: the walk ended without its conversation: {} people hidden again{}", hidden, levelBack ? ", the level hidden again" : "");
+        }
+    }
+    gEarly = {};
+}
+
 void EndMomentView(Link const& link, char const* why, bool stopWorld) {
     if (gMoment.provisional) {
         // Never a moment: the cinematic mode began and no track moved Shepard. No summary (nothing was shown as one).
@@ -5491,6 +5635,7 @@ void EndMomentView(Link const& link, char const* why, bool stopWorld) {
         }
     }
     gMomentEnded = {GetTickCount64(), pending};
+    EndShownEarly(std::string_view(why) == "a conversation began");
     log::Info("moment: the first-person view of the moment ends ({}) after {:.1f} s: the player walked {:.2f} m and was carried {:.2f} m; "
               "the script's moves of Shepard: {} within the same space (he got there {} times), {} accepted under a dip",
         why, static_cast<double>(GetTickCount64() - gMoment.startMs) / 1000.0, gC.movedUnits / kUnitsPerMeter,
@@ -5542,6 +5687,7 @@ void BeginMomentView(ik::Vec3 const& pawnAt, std::uint64_t now, bool provisional
     gCutBase += gC.cut;
     gC = {};
     gMoment = {};
+    gEarly = {};
     gMoment.on = true;
     gMoment.provisional = provisional;
     gMomentWalk = true;
@@ -5673,6 +5819,9 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
         gMoment.cinematicMs = now;
     } else if (!(mode && *mode == 0 && now - gMoment.cinematicMs < 1000)) {
         return false;  // the cinematic mode is over (the caller ends the view)
+    }
+    if (!gMoment.provisional) {
+        StepShownEarly();  // the scene ahead shown as the walk begins (cw::ShownEarlyFor's table)
     }
     // The script moved Shepard: the track carrying him (small steps: the view goes with him), a teleport, or the matinee
     // putting him back at its end (a jump).
@@ -7209,6 +7358,7 @@ void LogStats() {
 
 void Shutdown(Link const& link) {
     ReleaseWalkAlong("the mod unloads");
+    EndShownEarly(false);
     if (gEyes != nullptr && ue3::runtime::IsAlive(gEyes) && gActorDestroy.Get() != nullptr) {
         ue3::Params p(ue3::runtime::Get(), gActorDestroy.Get());
         ue3::runtime::Call(gEyes, gActorDestroy.Get(), p);

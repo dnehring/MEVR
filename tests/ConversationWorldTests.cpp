@@ -147,6 +147,19 @@ void TestSetPieces() {
     // Kirrahe's camp plays in first person since 2026-11-11, staged (the owner's wish).
     CHECK(!cw::IsSetPiece("jug20_sal_captainkirrahe_dlg") && cw::IsStagedScene("jug20_sal_captainkirrahe_dlg"));
     CHECK(cw::IsStagedScene("sta90_council_saren") && cw::IsStagedScene("sta90_council_spectre_induction"));
+    // The council shown as the walk with Anderson begins (research/69 item 36): by the moment's move track, its own matinee only.
+    {
+        auto const* e = cw::ShownEarlyFor("InterpTrackInstMove BIOA_STA70_02captain_DSG.TheWorld.PersistentLevel.Main_Sequence.SarenCouncil."
+                                          "SeqAct_Interp_0.InterpGroupInst_53.InterpTrackInstMove_13");
+        CHECK(e != nullptr && e->level == "BIOA_STA70_02council_DSG");
+        CHECK(e != nullptr && cw::ShownEarlyTag(*e, "sta90_ambassador") && cw::ShownEarlyTag(*e, "STA90_Turian_Councilor"));
+        CHECK(e != nullptr && !cw::ShownEarlyTag(*e, "sta90_saren") && !cw::ShownEarlyTag(*e, "sta90_captain") && !cw::ShownEarlyTag(*e, ""));
+        CHECK(cw::ShownEarlyFor("InterpTrackInstMove BIOA_STA70_02captain_DSG.TheWorld.PersistentLevel.Main_Sequence.SarenCouncil."
+                                "SeqAct_Interp_01.InterpGroupInst_1.InterpTrackInstMove_2") == nullptr);
+        CHECK(cw::ShownEarlyFor("InterpTrackInstMove BIOA_STA70_02council_DSG.TheWorld.PersistentLevel.Main_Sequence.SarenCouncil."
+                                "SeqAct_Interp_0.InterpGroupInst_1.InterpTrackInstMove_2") == nullptr);
+        CHECK(cw::ShownEarlyFor("") == nullptr && cw::ShownEarlyFor("?") == nullptr);
+    }
     CHECK(!cw::IsSetPiece("BioConversation nor20_medbay_d.nor20_medbay_dlg"));  // the medical bay stays in the world
     CHECK(cw::IsSetPiece("end90_council_alive_dlg"));                           // Shepard walked by the game
     CHECK(!cw::IsSetPiece("BioConversation jug20_sal_captainkirrahe_D.jug20_sal_captainkirrahe_dlg"));  // staged, in first person

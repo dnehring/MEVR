@@ -276,6 +276,60 @@ std::vector<int> SeatsForPairs(std::vector<GroupMember> const& members, std::vec
     return best;
 }
 
+namespace {
+
+bool SameText(std::string_view a, std::string_view b) {
+    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+        return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+    });
+}
+
+bool HasText(std::string_view text, std::string_view part) {
+    if (part.empty() || part.size() > text.size()) {
+        return part.empty();
+    }
+    for (std::size_t i = 0; i + part.size() <= text.size(); ++i) {
+        if (SameText(text.substr(i, part.size()), part)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+ShownEarly const* ShownEarlyFor(std::string_view trackPath) {
+    // The walk with Anderson to the Council (save 80): its matinee is the captain level's SarenCouncil.SeqAct_Interp_0; the hearing
+    // stands in BIOA_STA70_02council_DSG, shown by the chamber's streaming volume (streamvol_council) under the walk's black screen,
+    // its people unhidden there by its own SarenCouncil sequence. Measured 2026-11-13 (research/69 "The council during the walk").
+    static constexpr ShownEarly kTable[] = {
+        {"BIOA_STA70_02captain_DSG", "SarenCouncil.SeqAct_Interp_0", "BIOA_STA70_02council_DSG",
+         {"sta90_ambassador", "sta90_asari_councilor", "sta90_salarian_councilor", "sta90_turian_councilor"}},
+    };
+    for (ShownEarly const& e : kTable) {
+        std::string const level = std::string(e.matineeLevel) + ".TheWorld.PersistentLevel.";
+        std::string const matinee = "." + std::string(e.matinee);
+        std::size_t const at = [&]() -> std::size_t {
+            for (std::size_t i = 0; i + matinee.size() <= trackPath.size(); ++i) {
+                if (SameText(trackPath.substr(i, matinee.size()), matinee)) {
+                    return i + matinee.size();
+                }
+            }
+            return std::string_view::npos;
+        }();
+        // The matinee's name ends there (SeqAct_Interp_0, not SeqAct_Interp_01).
+        bool const whole = at != std::string_view::npos && (at == trackPath.size() || trackPath[at] == '.');
+        if (whole && HasText(trackPath, level)) {
+            return &e;
+        }
+    }
+    return nullptr;
+}
+
+bool ShownEarlyTag(ShownEarly const& entry, std::string_view tag) {
+    return !tag.empty() && std::any_of(entry.tags.begin(), entry.tags.end(), [&](std::string_view t) { return !t.empty() && SameText(t, tag); });
+}
+
 bool IsStagedScene(std::string_view name, std::string_view extra) {
     // The owner, 2026-11-11: "Staged scenes are like the council or the virmire speech." Kirrahe's camp on Virmire (his arrival
     // relocates everyone onto the stage by the tents, his speech stands his men before him: research/69 items 20, 27); the

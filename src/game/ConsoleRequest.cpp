@@ -371,6 +371,78 @@ std::string StreamChunks(ue3::Object* pawn) {
     return out;
 }
 
+// `mevr stream show <package> [on|off]`: a streaming level's bShouldBeVisible written, the engine's level streaming adds it to the
+// world (or takes it out) on its next update, as a streaming volume's state would, without the volume's events (research/69 item
+// 36: the council's chamber shown during the walk with Anderson). Loaded levels only: a hidden level that isn't loaded is left.
+std::string StreamShow(ue3::Object* pawn, std::string const& package, std::string const& value) {
+    bool on = true;
+    if (value == "off" || value == "0" || value == "false") {
+        on = false;
+    } else if (!(value.empty() || value == "on" || value == "1" || value == "true")) {
+        return std::string("usage: mevr stream show <package> [on|off] (mevr stream chunks lists them)");
+    }
+    ue3::Object* const world = WorldOf(pawn);
+    auto const levels = gStreamingLevels.ElementsOf(world);
+    if (!levels || package.empty()) {
+        return std::string("usage: mevr stream show <package> [on|off] (no streaming levels, or no package named)");
+    }
+    auto const lower = [](std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return text;
+    };
+    for (std::int32_t i = 0; i < levels->count; ++i) {
+        ue3::Object* const level = *static_cast<ue3::Object**>(levels->At(i));
+        auto const name = level != nullptr ? gLevelPackage.Read<ue3::Name>(level) : std::nullopt;
+        if (!name || lower(ue3::runtime::NameText(*name)) != lower(package)) {
+            continue;
+        }
+        bool const loaded = gLevelLoaded.Read<ue3::Object*>(level).value_or(nullptr) != nullptr;
+        if (on && !loaded) {
+            return std::format("{} is not loaded: left hidden", package);
+        }
+        bool const was = gLevelShouldShow.ReadBool(level).value_or(false);
+        if (!gLevelShouldShow.WriteBool(level, on)) {
+            return std::format("{}: bShouldBeVisible not written", package);
+        }
+        write_journal::Wrote("ConsoleRequest.streamShow", static_cast<std::uint8_t*>(static_cast<void*>(level)) + gLevelShouldShow.Get()->offset, 4);
+        return std::format("{}: bShouldBeVisible {} -> {} (visible now {})", package, was ? 1 : 0, on ? 1 : 0,
+            gLevelVisible.ReadBool(level).value_or(false) ? 1 : 0);
+    }
+    return std::format("no streaming level {} (mevr stream chunks lists them)", package);
+}
+
+// `mevr stream people <package>`: the level's pawns (SFXGame.BioPawn) with their tag, hidden flag and place: who a streaming level
+// would show (research/69 item 36: the hearing's people are hidden until its black screen).
+ue3::FieldRef gActorTag{"Engine.Actor", "Tag"};
+std::string StreamPeople(std::string const& package) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const pawnClass = r.FindClass("SFXGame.BioPawn");
+    if (pawnClass == nullptr || package.empty()) {
+        return std::string("usage: mevr stream people <package> (SFXGame.BioPawn not found, or no package named)");
+    }
+    std::string const prefix = package + ".";
+    std::string out;
+    int n = 0;
+    for (std::int32_t i = 0, count = r.ObjectCount(); i < count; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, pawnClass)) {
+            continue;
+        }
+        std::string const name = r.FullName(o);
+        std::size_t const space = name.find(' ');
+        std::string const path = space == std::string::npos ? name : name.substr(space + 1);
+        if (path.rfind(prefix, 0) != 0 || name.find("Default__") != std::string::npos) {
+            continue;
+        }
+        auto const tag = gActorTag.Read<ue3::Name>(o);
+        auto const at = player::Location(o);
+        out += std::format("\n{} tag {} hidden {} at {:.0f} {:.0f} {:.0f}", r.NameText(o), tag ? ue3::runtime::NameText(*tag) : std::string("?"),
+            gActorHidden.ReadBool(o).value_or(false) ? 1 : 0, at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
+        ++n;
+    }
+    return std::format("{} pawns in {}{}", n, package, out);
+}
+
 std::string StreamStates(ue3::Object* pawn) {
     ue3::Object* const world = WorldOf(pawn);
     auto const states = gWorldStates.ElementsOf(world);
@@ -550,6 +622,16 @@ std::string Streams(ue3::Object* pawn, std::istringstream& words) {
     if (verb == "chunks") {
         return StreamChunks(pawn);
     }
+    if (verb == "people") {
+        std::string package;
+        words >> package;
+        return StreamPeople(package);
+    }
+    if (verb == "show") {
+        std::string package, value;
+        words >> package >> value;
+        return StreamShow(pawn, package, value);
+    }
     if (verb == "states") {
         return StreamStates(pawn);
     }
@@ -558,7 +640,7 @@ std::string Streams(ue3::Object* pawn, std::istringstream& words) {
         words >> name >> value;
         return StreamState(pawn, name, value, triggers);
     }
-    return std::string("usage: mevr stream list [filter] | mevr stream touch <index|name> | mevr stream chunks | mevr stream states | mevr stream state <StateName> on|off");
+    return std::string("usage: mevr stream list [filter] | mevr stream touch <index|name> | mevr stream chunks | mevr stream show <package> [on|off] | mevr stream people <package> | mevr stream states | mevr stream state <StateName> on|off");
 }
 
 std::vector<ue3::Object*> gFound;  // `mevr find`'s list, for `use` and `activate`

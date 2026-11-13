@@ -5,6 +5,7 @@
 
 #include <openxr/openxr.h>
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -263,6 +264,25 @@ std::string ConversationKey(std::string_view name);
 // at Shepard's mark: "if we have to do the black fade in/out I recognize that it's acceptable for now"), people walk to the
 // stage's marks, and no conversational circle forms. `extra`: more keys, comma separated ([Cinematics] worldStaged).
 bool IsStagedScene(std::string_view name, std::string_view extra = {});
+
+// A scene the script shows only under its black screen, though the player walks up to it in first person (research/69 item 36,
+// "The council during the walk", 2026-11-13: the hearing's level is loaded but hidden, and its people hidden, all through the walk
+// with Anderson; the owner: "the council haven't spawned in the assets ... that's not desirable"): shown as the walk begins. A table
+// of exceptions (research/69 keeps per-scene rules to those): the moment's matinee (the package its move track lives in and its
+// "<sequence>.SeqAct_Interp_N"), the streaming level to show, and the tags of that level's people to show. Who isn't listed stays
+// as the script has them (Saren, a hologram only once the hearing attaches its effect; the hearing's own Anderson, who would stand
+// at the podium while the walk's Anderson still walks beside the player).
+struct ShownEarly {
+    std::string_view matineeLevel;
+    std::string_view matinee;
+    std::string_view level;
+    std::array<std::string_view, 6> tags{};
+};
+// The entry for a moment's move track instance, by its full path ("InterpTrackInstMove <package>.TheWorld.PersistentLevel.
+// Main_Sequence.<sequence>.SeqAct_Interp_N.<group>..." as FullName gives it), or null.
+ShownEarly const* ShownEarlyFor(std::string_view trackPath);
+// Whether `tag` is one of the entry's people (case-insensitive).
+bool ShownEarlyTag(ShownEarly const& entry, std::string_view tag);
 
 // ---- The conversational circle (research/69 "The conversational circle", the owner's design, 2026-11-11) ----------------------
 // "I understand the squad being stationary if they aren't talking but if they ever engage then they should slowly walk up to
