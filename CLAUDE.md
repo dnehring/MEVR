@@ -338,7 +338,13 @@ switching frameworks.
   "The legs under the player"): the body follower slides Shepard's bones to where the player stands while the script moves
   his actor, the legs stand by the writer's leg IK while the view rests and keep the script's walk while it moves
   (`worldLegs = stand | walk`, `bone_pose::Leg::stand`), and a script's black screen is a dip from black only for a change
-  within `worldDipWithinM` (8 m; `cw::NearestChange`).
+  within `worldDipWithinM` (8 m; `cw::NearestChange`). **Since 2026-11-13 in every conversation shown in the world too**
+  (research/69 "The body that stayed at the mark", gotchas/arm-ik-third-person-anchor): `conversation_world::BodyAway` is on there,
+  so arm IK keeps the view's frame (it fell to its third person at the council hearing's opening and the body stayed at the mark
+  for the whole scene); what places the player by Shepard's head reads his animated head (`MarkHeadOf`,
+  `arm_ik::AnimatedHeadComponent`), never the one our body follower slid; a stick pushed through a cut walks only once let go.
+  **The audit set replays tracked hands** (its `hands`, `make-walk-recording.py --plan`): without controllers the fake headset
+  never runs arm IK; `eyes-off-body` and a 0.3 m gap are never excused by its baseline (`scene_audit.ABSOLUTE`).
   **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
   and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/
   `BoostShake`: `TheShake`'s amplitudes scaled at the source by `[Comfort] screenShake`, 0 by default, originals put back)

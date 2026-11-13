@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **First-person conversations (experimental): your body stays with you.** After walking up to the Council with Anderson,
+  Shepard's body could stay several metres from you for the whole hearing and the conversations after it. Your body now
+  stands where you do in every first-person conversation, and a stick you are still pushing through a fade no longer walks
+  you away from your place until you let go of it. Headset verification pending.
 - **Walking in VR follows the stick.** On foot you start moving the moment you push (the game held Shepard for about 0.15 s
   while a start animation played) and stop the moment you let go, with no coasting; the game's third-person speed ramp and its
   start, stop and skid steps are replaced in VR. Your speed is in proportion to how far you push: half a push walks, a full

@@ -3498,6 +3498,83 @@ in the comm room (`nor10_captain`), the approach to Ilos (`nor20_ilos_approach`)
 mission debriefs in the comm room (`nor20_*_done`: the Council's holograms), Udina and Anderson at the embassy
 (`sta20_human_ambassador_enter`). `[Cinematics] worldStaged` adds any of them without a build.
 
+### The body that stayed at the mark (2026-11-13; item 35)
+
+**What the owner saw** (headset session 10:33-10:40, save 80, first person, Thespian mode on): "the walk works out, and when it
+does the fade to black transition and comes back in, I'm now placed where the camera wants me to be, which is fine. However, my
+body is where I was previously walking." And: "this has been a persistent issue that we've had for this scene in particular."
+
+**What the log says** (that session's `LE1MEVR.log`):
+- arm IK went `body anchor: third person (tracking origin at Shepard's animated head), view 254 units from Shepard's animated
+  head bone` on the hearing's first tick (10:34:45.044) and stayed there through the hearing and the two conversations after it
+  (`sta90_captain`, `sta20_captain`) until on foot again at 10:39:25: four and a half minutes in which the body follower made no
+  slide (`torso: third person: the hips turn ... body slid 0.00 m`), so Shepard's body stood where the stage animated him.
+- The hearing's live audit: `gapMaxM` 5.71, `gapOverS` 224.8 of 226.6 s; the rule's own line said "4.59 m ... for 1.1 s",
+  its first second only.
+- The opening: `the player's place: Shepard's head bone at (-9477, ...)` with his pawn at (-9076, ...): his head bone 3.5 m from
+  his pawn. Then `Shepard's head bone JUMPED 4.84 m`, `the opening's eyes were drawn 5.14 m from Shepard's mark: the held place
+  follows`, `JUMPED 0.81 m`. And `the player walks: the stick (-0.08, 1.00)` at 0.0 s: the stick still pushed from the walk,
+  4 m in the first four seconds (`leashHits` 11).
+
+**Why.** The scene's opening placed the player by `HeadOf(pawn)`, which reads the DRAWN bones (SpaceBases after our writes).
+During the walk with Anderson the body follower had slid Shepard's bones to where the player walked (`BodyAway`, "the body stays
+with the player"), so the opening read our own slide as his mark; the follower chased that head as the slide went away; the eyes
+check (`gC.eyesMeant`, made from the same reading) moved the held place back by 4-5 m. Arm IK, deciding its frame by the view's
+distance to Shepard's ANIMATED head (`game/HandTargets`: first person within 45 units, third person past 75), saw 254 units on the
+first tick and fell to its third person; in a conversation nothing brings the view back within 45 units of the stage's head, so it
+never came back. The same anchor fall bit on 2026-11-09 ("weapons very low" after a crouch): gotchas/arm-ik-third-person-anchor.
+
+**Why the audits never saw it.** The fake headset has no controllers: without tracked hands arm IK and the body follower never
+run, so the unattended runs had neither the slide nor the anchor fall. What they did see (0.70 m for 1.3 s at 2.5 s in the
+2026-11-12 passes) went into the baseline as "the hearing's opening, the known transient", and the baseline compares a run only
+with the last one. The scripted player also never kept the stick pushed through the cut.
+
+**Built** (03ba0319):
+- Every conversation shown in the world counts as the view held away from the pawn (`conversation_world::BodyAway`: `gC.detached
+  || (gC.on && gInWorld)`, the rise 0 when not detached): arm IK keeps the view's frame (`hand_targets::Current`'s `inView`) and
+  the body follower puts the body where the player stands, without the 0.75 m limit.
+- The player's place, the head follower, the opening's facts, the put-back and the eyes stand-in read Shepard's ANIMATED head
+  (`MarkHeadOf` over `arm_ik::AnimatedHeadComponent`: `bone_pose::AnimatedHead`, scaled as drawn); `HeadOf` (drawn) stays for
+  what the player sees (the audit's gap, the diagnostics).
+- A stick still pushed through a cut or a dip walks only once let go (`gStickCutSeen` against the published cut; log `convo: at
+  N s the stick is still out (...) through a cut`).
+- The live audit: `body-third-person` (arm IK driving but not in the view's frame for a second), the summary's `sampledS` and
+  `thirdPersonS`, and `convo: audit totals:` at the end when a body finding lasted 2 s or more.
+- `tools/scene_audit.py`: `eyes-off-body` and a 90th-percentile gap of 0.3 m or more are never excused by a baseline
+  (`ABSOLUTE`; tests/SceneAuditTests.py).
+- The audit set replays tracked hands in every scene (the set's `hands`, `tools/make-walk-recording.py --plan stand:600`); the
+  hearing's `forward:14,stand:300` keeps the stick pushed through the walk and its cut.
+- `tools/conversation-from-save.ps1 -Probe 'seconds:console line'`: console lines at times after the fire, from the runner.
+
+**In the game (fake headset, tracked hands replayed):**
+
+| Run (session) | Build | The hearing's opening | Shepard's head from the eyes | Arm IK |
+|---|---|---|---|---|
+| A (`2026-11-13_11-02-49-audit`) | main 7f581977, tracked hands, the stick pushed through the cut | the player at (-9382, -6853), his head bone then `JUMPED 3.63 m`, `eyes were drawn 3.97 m from Shepard's mark` | 7 records at 0.3 m or more, at most 3.85 m (the audit: `eyes-off-body`, 3 regressions against the baseline) | `third person`, 372 then 384 units |
+| B (`2026-11-13_11-06-04-audit`) | 03ba0319 | the player at (-9044, -6994), as the runs without hands had it; `the stick is still out (0.90) through a cut` | at most 0.11 m, 0 s over 0.3 m (`thirdPersonS` 0; 0 findings, 0 regressions) | first person throughout |
+| C (`2026-11-13_11-09-31-probe`) | 03ba0319, the whole sequence, lines skipped | as B | the hearing at most 0.90 m for 0.2 s (one transient), the two conversations after it 0.10 m | first person from the walk's start to the end |
+
+**The council during the walk (run C's probes, `-Probe`):** five seconds into the walk `BIOA_STA70_02council_DSG loaded=1
+visible=0 shouldLoad=1 shouldShow=0`, with all its people loaded (Udina `BioPawn_7` at (-9188, -7087), the councillors
+`BioPawn_3/4/5`, Saren's `BioPawn_1`, the gallery's `BioPawn_11-16/77/79/91`); by 9 s, after the black screen, `visible=1`. The
+level's `SarenCouncil` sequence begins the hearing from `BioSeqEvt_ForegroundStreamingDone_0` (its volume `streamvol_council`)
+through `BioSeqAct_PMCheckState_1` ("Council meeting happened?"); Saren becomes a hologram only then
+(`BioSeqAct_AttachCrustEffect_0`, "Saren is a transmission"), and "Activate all the players" comes after it. So the chamber is
+empty during the walk because its level is loaded and hidden until the volume's touch; showing it early is the next step
+(item 36), with three things to verify: that showing the level does not fire the streaming-done event (the hearing would begin
+mid-walk), what Saren's pawn looks like before his crust effect, and that the hearing still begins at the touch.
+
+**The whole set with tracked hands** (sessions `2026-11-13_11-20-59-audit`, `11-28-50-audit`, `11-34-53-audit`, the fixed build):
+0 regressions in all 12 entries against the 2026-11-12 baseline; the findings left are the known ones (Benezia's dying face,
+`face-off-you`; Ashley's mark at Kirrahe's camp, `speaker-behind`). Shepard's head from the eyes, 90th percentile, 0.09-0.11 m in
+every scene that has one; the hearing 0.10 m (0.6 m in the old baseline). The baseline is rewritten from these passes
+(`-Judge 2026-11-13T11:20:59 -WriteBaseline`). Two of the passes stopped on a crash that is not this change: with the owner's
+`[Thespian] on = 1` (the owner's ini since today), Thespian mode called `BioConversation.GetReplyText` on a conversation the runner
+had just ended with `mevr convo end` (Benezia's, 57 ms after; Liara's), an access violation inside the script function
+(`crash-breadcrumbs.txt` 11:26 and 11:33). The last pass ran with `[Thespian] on = 0` for the run and the owner's 1 put back; the
+crash is a task of its own. A console `mevr thespian off` in a scene's `before` does not help a scene that starts by itself as its
+save loads (the runner skips `before` there).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -3934,3 +4011,8 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-12 21:50, **item 33, walking along** built (a scripted walk with someone beside Shepard waits for a player 3 m behind); **item 34, auditing scenes by rule** built (rules over the records, a baseline, a regression set, the rules live in every scene).
 - 2026-11-12 23:10, **items 33 and 34 in the game** (three passes on the fake headset): the walks wait for a player who stands still; a 4 m wall in every scripted walk (the conversation's boundary) fixed; the live audit's two false alarms fixed; a sidestep stuck against a squadmate fixed; a crash of ours at a load (the pawn list) fixed; the baseline written (12 scenes). Open: the stick's 0.9 m/s against the walks' 1.2-1.3.
 - 2026-11-13 01:00, **item 33, the walk's pace**: the conversation and scripted-walk walk 1.4 m/s again (the owner); the Spectre's walk waits only on its stairs (5.4 s, from 11.9). The on-foot walk linear to the stick: research/38 "Linear walking".
+- 2026-11-13 11:20, **item 35, the body that stayed at the mark** (the owner's council hearing: the body up to 5.7 m away for 225
+  of 227 s): every conversation in the world keeps the body with the player, the player is placed by Shepard's animated head, a
+  stick pushed through a cut waits to be let go; the audits replay tracked hands, and a body away from the eyes is never excused
+  by a baseline. Fake headset: 3.85 m before, 0.11 m after. Item 36 opened: the council's level is loaded but hidden during the
+  walk with Anderson.

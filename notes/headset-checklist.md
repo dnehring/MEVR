@@ -331,10 +331,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   black); the double homicide in Port Hanshan after talking to Anoleis: one dip to the crime scene and you face it (not a wall);
   Feros's first creeper on foot: you walk after Shepard, no cut. Look for a flash of the screen at a scene's start, and where
   you face after any dip.
-- [ ] **The hearing after walking with Anderson** (2026-11-11, research/69 "The hearing that went third person"; built, not
-  yet run in the game): slot 80, use Anderson and walk with the stick while he walks up. When the hearing begins you should
-  stay in first person (no view of Shepard's back from above), walk or be walked to the podium, and find your body under you
-  there. The log line `Shepard's head bone reads ... not followed` says the fix acted.
+- [ ] **The hearing after walking with Anderson** (2026-11-13, research/69 "The body that stayed at the mark"; fake headset
+  with replayed hands: the body within 0.11 m of the eyes, from 3.85 m): slot 80, use Anderson and walk with the stick while he
+  walks up, and keep pushing through the fade. At the podium your body should be under you, and stay under you through the
+  hearing and the two conversations with Anderson after it; the stick should not walk you until you let go of it once. Look
+  down and at your hands. The log should have no `arm IK: body anchor: third person` during the scenes, and the summaries
+  `"thirdPersonS": 0.0`. Still open: the Council's chamber is empty during the walk (item 36).
 - [ ] **Kirrahe's speech, slot 88 again** (2026-11-11, research/69 "Kirrahe's camp"; the save fixed, not yet loaded): use Kirrahe:
   the planning conversation should play first (Kirrahe on the stage, not missing from his shots), then the speech to his troops
   with its music, and the screen should not stay black afterwards. Still on the 3D screen until item 20 is run in the world.
