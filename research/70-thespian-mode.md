@@ -563,3 +563,9 @@ Not built: the hover look from gaze or a pointer (the `hover` class exists; noth
   session's uncommitted hunks stand above them: two source lines after CMakeLists.txt's last `endif`. Put right in
   b07cdc10. For next time: build each shared file's blob from the working copy with the others' hunks taken out by the
   working copy's own line numbers (never a zero-context apply onto HEAD), and compare its lines with the last commit's.
+- **2026-11-13, on the 3D screen** (`mevr convo world screen`; Avina; a snapshot of the eyes): the panel stands
+  squarely under the cinema screen, ahead of the head (`thespian panel: shown at (0.00, -0.40, -0.91) m ... ahead of the
+  head (no speaker in the room)`), the game's own wheel on the screen above it. Both replies were taken by the synthetic
+  voice (quiet 203 and 359 ms; the answer 141 ms after the commit). Seen there: "Give me the tour." heard as "Give me
+  the." was taken as read to its end (one of its last two words was said, 60% of the line): fine for a four-word line.
+  With this, everything that can be checked without a person has been; what is left is the owner's own voice and eyes.
