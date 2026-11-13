@@ -3304,9 +3304,12 @@ Built (`game/ConversationWorld`):
 **Run 3 (19:29-19:33, Girard with the facing rule):** the stage turned Girard to Shepard's body 1.4 s in and the rule turned him
 to the player instead (`-163 deg, not 266`); from then on his body faced the player (0-2 degrees off it, 20 at the start) and his
 face was 7-14 degrees off the player's eyes, median 14 over the scene (27 before); one line's own gesture turns his head 85
-degrees away (54 in every earlier run: authored). Open: Garrus's look at Shepard went to the stand-in only at 3.8 s; for the
-1.8 s of his formation walk and just after, the records show it on Shepard's body (15-21 degrees off it, 94-100 off the player),
-and the log has no refusal: something of the walk sets it between our ticks [verify].
+degrees away (54 in every earlier run: authored). Garrus "at Shepard's body" for 1.8 s of his formation walk was a misreading,
+checked over every record of the day (20:40): his look target in those moments was an unnamed object (`''`, rank 99999), none,
+or Girard, who stands 2 m from Shepard's hidden mark, so a face toward Girard reads as toward the mark by angle; the stand-in
+moved his look at Shepard the first time he had one (3.8 s). **In every record since the drawn eyes were recorded, no look whose
+target was Shepard stayed on his body while it stood half a metre or more from the eyes**, but for the runs before the fixes,
+the A/B pass with the stand-in off, and one record in the half second after a cut.
 
 Not covered by this audit: scenes on the 3D screen (no first-person eyes); flowed scenes on foot (Shepard's body is the player's
 there); the arrival half of Virmire's start and Wrex on Virmire's beach (did not start from these saves). The face axis is the

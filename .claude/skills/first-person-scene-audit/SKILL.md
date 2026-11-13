@@ -70,7 +70,7 @@ and how to read it.
    | a constant 90 degrees for one person | a skeleton whose head bone axis isn't the face (hanar); check the pink aim |
    | one line 50-85 degrees off | the line's own authored gesture (Girard's line 38 in every run) |
    | 0.4-0.6 m for half a second at a cut | the view settling after the opening's dip |
-   | a squadmate on Shepard's body for 1-2 s | its formation walk at the start (open, research/69 item 32) |
+   | someone "at his body" with no look target on Shepard | facing someone who stands near the hidden mark (Garrus toward Girard, 2 m from it): check `gameLook.target`; the real fault is a target `Shepard` while `bodyFromEyesM` is 0.5 or more |
    | someone in their own animation | Benezia dying; seated people |
    | far people "at his body" | 10 m away the eyes and his head are the same bearing: look at the angles, not the label |
    | aim 20-25 degrees off in every scene | the aim is the last link's point along the look, not the target |
