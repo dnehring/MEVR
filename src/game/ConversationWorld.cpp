@@ -107,7 +107,9 @@ ue3::FunctionRef gSkipConversation{"SFXGame.BioSFHandler_Conversation.SkipConver
 // event moves them, call trace 2026-11-06), so a jump is undone after it, in the camera update of the same tick, before the draw.
 ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
 // The survey's `mevr convo end` (research/59 "The survey"): the conversation's own end, for one that loops past its time.
-ue3::FunctionRef gEndConversation{"SFXGame.BioConversation.EndConversation"};
+// `mevr convo end`: the world's own early end (the conversation handler's when a reply can't be queued), never the
+// conversation's EndConversation alone (research/69 item 37, "The forced end").
+ue3::FunctionRef gEndCurrentConversation{"SFXGame.BioWorldInfo.EndCurrentConversation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
 ue3::FunctionRef gRequestTurn{"SFXGame.BioPawn.RequestTurnInPlace"};  // the game's own turn on the spot, with its animation
 // Whom a pawn looks at, as the game has it (the look-at chain's own target), and the game's function that gives it one
@@ -7376,13 +7378,24 @@ std::string Command(std::string const& rest) {
         return "convo: " + AheadLine(MovementAhead(controller != nullptr ? player::BioPawn(controller) : nullptr));
     }
     if (verb == "end") {
-        // The conversation's own end (tests: a survey's conversation that loops past its time).
-        if (!gC.on || gC.object == nullptr || !ue3::runtime::IsAlive(gC.object) || gEndConversation.Get() == nullptr) {
+        // Tests (a survey's conversation that loops past its time, a pass that wants only an opening): ended the way the game
+        // ends one early, BioWorldInfo.EndCurrentConversation (0xB58790: the conversation flagged ended, its EndConversation,
+        // then the world lets go of it, m_oCurrentConversation = None). EndConversation called on the conversation alone left
+        // the world updating it: its next tick read the current reply through lists already gone and the game ended 20 ms
+        // later (MassEffect1.exe+0xC87E81 in 0xC87830, 1 of 3 forced ends of Benezia's scene, 2026-11-13; research/69 item 37).
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const info = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+        ue3::Object* const current = ConversationNow(controller);
+        if (info == nullptr || current == nullptr || gEndCurrentConversation.Get() == nullptr) {
             return "convo: no conversation to end";
         }
-        ue3::Params p(ue3::runtime::Get(), gEndConversation.Get());
-        bool const called = ue3::runtime::Call(gC.object, gEndConversation.Get(), p);
-        return std::format("convo: EndConversation called {}", called);
+        ue3::Params p(ue3::runtime::Get(), gEndCurrentConversation.Get());
+        bool const called = ue3::runtime::Call(info, gEndCurrentConversation.Get(), p);
+        bool const letGo = gCurrentConversation.Read<ue3::Object*>(info).value_or(nullptr) != current;
+        log::Info("convo: mevr convo end: BioWorldInfo.EndCurrentConversation called {}, the world {} the conversation{}", called,
+            letGo ? "let go of" : "still holds", current == gC.object ? "" : " (not the one followed)");
+        return std::format("convo: BioWorldInfo.EndCurrentConversation called {}; the world {} the conversation", called,
+            letGo ? "let go of" : "still holds");
     }
     if (verb == "dump" || verb.empty()) {
         auto const gameMode = player::GameMode(player::Controller());

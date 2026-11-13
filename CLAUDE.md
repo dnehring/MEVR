@@ -521,7 +521,9 @@ switching frameworks.
   nor anyone whose animation tree has nothing under the action node's `Posture` (people animated by gestures only: out of the
   gesture mode they stood in the reference pose; `HasPosture`, research/69 "People animated by gestures only"). `worldWalkLog = 1`: the walker's gait (ankles), properties, controller state and
   animation tree to `%LOCALAPPDATA%\MEVR\walk-probe`. Seen on the fake headset (Anderson mid-stride in the medical bay).
-  `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game).
+  `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game;
+  `end` is the world's own early end, `BioWorldInfo.EndCurrentConversation`: the conversation's `EndConversation` alone left the
+  world updating it, and its next tick crashed now and then, research/69 item 37).
   Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
   `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into
   free 78, stage 171, remote 19, walks 23, **framed 18** (authored camera cuts: the set pieces, Saren, Sovereign, the Council) and

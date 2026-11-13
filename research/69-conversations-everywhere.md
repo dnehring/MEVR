@@ -3664,10 +3664,20 @@ what is drawn (the empty chamber); a run is compared with the last one, and the 
 
 The set with the hands in view, all ten scenes (over three passes: the first stopped at Benezia's crash, below): arm IK drove the body for all of every scene's time in the world (Kirrahe's camp 173.3 of 175.1 s), both drawn hands in view 100% of it, off the controllers 0.0 s (at most 0.07 m; Anoleis 0.35 m for 0.1 s, at a cut), third person 0.0 s; every in-scene snapshot green (the hands in the lower half of the picture, the scene above them). The council's check met 6.9 s into the walk. Against the baseline two new findings, once each: `too-close` in the walk with Anderson (someone 0.41 m from the eyes 4.6 s in) and one look at Shepard's body in Girard's scene; neither comes from this change (it only reads), the baseline was not rewritten to excuse them. A scene still playing when the runner stops (Kirrahe's camp) wrote no summary and read "not measured" until the runner asked for the live totals (`mevr convo audit`).
 
-**The forced end crashes the game now and then**: the set stopped after Benezia's scene twice today, both at the runner's forced end: in the morning in Thespian's `GetReplyText` (fixed, 57e298c3), this afternoon (1 of 3 plays) the game ending 20 ms after
-the runner's `mevr convo end` (`-EndAfter`) in the game's own `BioSubtitles.UpdateSubtitles` (`MassEffect1.exe+0xC87E81`,
-reading freed memory; the mod's last write an AI walk's `Terminate`). A player can't end a conversation that way; the audit
-loses the rest of its pass (a follow-up: investigate `mevr convo end`, or restart the game after a crash and go on).
+**The forced end crashed the game now and then (fixed)**: the set stopped after Benezia's scene twice today, both at the
+runner's forced end (`mevr convo end`, `-EndAfter`): in the morning in Thespian's `GetReplyText` (fixed, 57e298c3), this
+afternoon (1 of 3 plays) 20 ms after it at `MassEffect1.exe+0xC87E81`, reading 0x20880E7FDE4 (the script frames named
+`BioWorldInfo.UpdateConversation`; `BioSubtitles.UpdateSubtitles` above it had already returned). That address is inside the
+conversation's own update (`0xC87830`, what `BioWorldInfo.UpdateConversation` calls each tick on `m_oCurrentConversation`): with
+a current reply (`+0x270` not -1) it reads the reply's number through `m_lstCurrentReplyIndices` (`+0x108`), the entry's reply
+list (`m_EntryList`, `+0xB8`, entry `+0x268`) and `m_ReplyList` (`+0xC8`), and it read a garbage number there. `mevr convo end`
+called `BioConversation.EndConversation` on the conversation alone. The game's own early end, `BioWorldInfo.EndCurrentConversation`
+(`0xB58790`; the conversation handler calls it when a reply can't be queued, an interruption goes through it), flags the
+conversation ended (`0x2000` at `+0x2C0`), calls its `EndConversation`, and then lets go of it (`m_oCurrentConversation` =
+None, `+0xB1C`). Without that last step the world went on updating an ended conversation whose lists were gone. **Fix:** `mevr convo
+end` calls `BioWorldInfo.EndCurrentConversation` on the world info (game thread, console) and logs `convo: mevr convo end:
+BioWorldInfo.EndCurrentConversation called 1, the world let go of the conversation`. Every tool's forced end goes through it
+(conversation-from-save, -sweep, -launch, -survey). **Checked** (session `2026-11-13_15-42-38-forced-ends`, one game): Benezia's scene ended early 8 times and the council's hearing (and the conversation after it) once each, 10 forced ends; every one logged `the world let go of the conversation`, and the game ran on after the last. Before the fix 1 of 3 forced ends of Benezia's scene ended the game. **Not this:** the crash as the session tool quits the game (`ntdll.dll+0x1A12D` writing 0x24, 23 ms after `game exiting (code 0)`, from the exe's exit path through `ucrtbase`), seen again at 15:53:56 after these 10 clean ends, and a null read at `MassEffect1.exe+0x12DF33` 1.4 s after the quit's `exit` with Kirrahe's conversation still playing (15:28:12): both at the quit, after every scene is over.
 
 ## To check in the game
 

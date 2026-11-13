@@ -1431,10 +1431,9 @@ void CheckFunctions() {
         "SFXGame.BioConversation.GetReplyGUIStyle",
         "SFXGame.BioConversation.QueueReply",                    // ... a reply taken as a wheel pick takes it
         "SFXGame.BioConversation.SkipNode",                      // ... Shepard's recording of it skipped
-        "SFXGame.BioWorldInfo.EndCurrentConversation",
+        "SFXGame.BioWorldInfo.EndCurrentConversation",            // ... and mevr convo end (game/ConversationWorld)
         "SFXGame.BioConversation.GetEntryText",                  // ... the other person's line, for the panel's header
         "SFXGame.BioSFHandler_Conversation.UpdateConversationOptions",  // ... the game's wheel shown again (it was hidden)
-        "SFXGame.BioConversation.EndConversation",               // ... mevr convo end
         "SFXGame.BioPawn.GetWeaponStartTraceLocation",
         "Engine.Pawn.GetWeaponStartTraceLocation",
         "SFXGame.BioPlayerController.GetAdjustedAimFor",
