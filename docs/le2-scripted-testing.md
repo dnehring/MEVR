@@ -76,3 +76,24 @@ request, a harmless query, normal load/save/reload, useful captures and verified
 cleanup after both success and interruption. Preserve private original evidence.
 Until these pass, report the bridge and runner as unproven. The current native
 baseline establishes loading and saving only; reload remains pending.
+
+## Implemented transport checkpoint
+
+The [launch adapter](../tools/qa-le2/launch.md) now supports read-only planning and
+one guarded Steam forwarding attempt when installed game-selection support is
+reviewed. Its 18 offline tests passed; native automated selection is not yet
+proven. It binds a process, not a loaded save.
+
+The [control client and codec](../tools/qa-le2/control.md) now bind traffic to the
+owned run, process start, module hashes and a fresh runtime lease. Standalone C++
+checks and 18 Python tests passed, including cross-language wire conformance and
+retained uncertainty after dispatch errors. The separate attachment helper has
+13 passing tests using actual temporary protected sessions with fake process and
+module providers. It requires an already loaded reviewed diagnostic ASI and
+publishes an invitation; it does not deploy or certify a responder.
+
+These changes reuse the protected session and Steam forwarding machinery. They
+are a control connection for the existing host, not a replacement ME2 renderer.
+The next native gate remains a real game-thread handshake and validated state,
+followed by the normal load/save/reload cycle. Three scenario and VR acceptance
+gates remain open.

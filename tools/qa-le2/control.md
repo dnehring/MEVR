@@ -20,6 +20,31 @@ python tools/qa-le2/control.py C:\private\le2-run observe
 python tools/qa-le2/control.py C:\private\le2-run collect
 ```
 
+For a reviewed, already mapped monolithic diagnostic ASI, publish one invitation:
+
+```powershell
+python tools/qa-le2/control-attach.py C:\private\le2-run invite --host C:\game\ASI\LE2MEVR.asi --sha256 REVIEWED_BUILD_SHA256
+```
+
+The path/hash are placeholders for the actual controlled build. This command
+checks the frozen session and mapped module, creates `control/attach-intent.json`,
+then exclusively publishes `MEVR/le2-control.attach.json` under the verified
+desktop user's local application-data directory. Its success means only
+`invitation-published-handshake-pending`; the host must independently validate it
+and publish its identity before `ping` can succeed. Do not fabricate `identity.json`.
+The first producer supports a monolithic host/mod only: both identity hashes and
+paths name that one ASI. A missing consumer times out/fails without enabling one.
+
+After the owned game closes and `session.py reset` reports verified restoration:
+
+```powershell
+python tools/qa-le2/control-attach.py C:\private\le2-run cleanup
+```
+
+Cleanup requires a quiet desktop and a restored session. It removes only an
+invitation byte-identical to this run's preserved intent. It retains another
+owner's invitation, all run-local evidence and any unresolved command history.
+
 `collect` reconciles a late result; it does not resend the request. Both ends must
 explicitly permit native console commands. The initial runtime integration keeps
 them disabled. `--allow-console` only opts the client in; it cannot enable the
@@ -85,6 +110,7 @@ cmake --build local-tools/le2-control-build --config Release
 ctest --test-dir local-tools/le2-control-build -C Release --output-on-failure
 $env:LE2_CONTROL_CPP = (Resolve-Path local-tools/le2-control-build/Release/le2-control-tests.exe).Path
 python -B tools/qa-le2/test-control.py
+python -B tools/qa-le2/test-control-attach.py
 ```
 
 The tests use temporary files and fake peers. They verify exact identity,
