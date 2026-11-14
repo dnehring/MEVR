@@ -654,14 +654,14 @@ void Write(Mesh* self, float deltaTime) {
             goal.wrist = animated + (stood - animated) * w;
             goal.pole = body.forward;
         } else if (leg.planted) {
-            // Planted: the whole body slid by the anchor shift (the hips held over the feet); the foot goes back where the
-            // animation had it, the knee bends toward its animated place.
-            ik::Vec3 const anchorShift = torso.valid && torso.result.ok ? torso.result.anchorShift : ik::Vec3{};
-            if (ik::Length(anchorShift) < 0.01) {
-                continue;   // nothing moved: the leg as animated
+            // Planted: the foot goes back where the idle animation planted it (the body's slide under the view carried it
+            // with the animation's sway), the knee bending toward its place moved the same way.
+            ik::Vec3 const correction = torso.valid && torso.result.ok ? torso.result.feetCorrection : ik::Vec3{};
+            if (ik::Length(correction) < 0.01) {
+                continue;   // nothing to correct: the leg as animated
             }
-            goal.wrist = pose[leg.chain.hand].translation - anchorShift;
-            goal.pole = (pose[leg.chain.fore].translation - anchorShift) - pose[leg.chain.upper].translation;
+            goal.wrist = pose[leg.chain.hand].translation + correction;
+            goal.pole = (pose[leg.chain.fore].translation + correction) - pose[leg.chain.upper].translation;
         }
         ik::ArmResult const result = ik::PoseArm(pose, request.parents, leg.chain, side, body, goal);
         if (!result.ok) {

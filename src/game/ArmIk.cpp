@@ -189,7 +189,7 @@ void const* gBoundsWorld = nullptr;
 bool gBoundsWarned = false;
 float gBoundsPadLogged = 0.0f;  // the pad last logged (units)
 bool gLegsStood = false;        // the standing legs are on (logged once per stretch)
-bool gLegsPlanted = false;      // the feet planted while the hips are held over them (logged once per stretch)
+bool gLegsPlanted = false;      // the feet planted standing still (logged once per stretch)
 bool gHoldScaleLogged = false;
 
 void RestoreBodyBounds() {
@@ -1153,15 +1153,6 @@ void Drive(double deltaSeconds) {
                 ik::InSubtrees(info->bones.parents, std::vector<int>{parent}, info->cameraHooks).empty()) {
                 bones.body = parent;  // LE1: Root (God > Root > LowerBack, Pelvis); Camera hangs off God
             }
-            // The hips held over the feet standing still (research/29 "The idle sway"): the legs' common parent (LE1: Pelvis)
-            // and the ankles.
-            if (info->legs[kLeft] && info->legs[kRight]) {
-                int const hips = info->bones.parents[info->legs[kLeft]->upper];
-                if (hips >= 0 && hips == info->bones.parents[info->legs[kRight]->upper]) {
-                    bones.anchor = hips;
-                    bones.feet = {info->legs[kLeft]->hand, info->legs[kRight]->hand};
-                }
-            }
             engine::bone_pose::Torso& t = request.torso;
             if (body_follow::Fill(targets, *worldToComponent, *frame, body->pawn, bones, deltaSeconds, t.goal)) {
                 t.enabled = true;
@@ -1399,10 +1390,10 @@ void Drive(double deltaSeconds) {
         gLegsStood = false;
     }
 #endif
-    // Standing still the torso holds the hips over the feet (research/29 "The idle sway"): the whole body slides by the
-    // idle animation's sway, and the feet go back where the animation planted them.
+    // Standing still the feet stay where the idle animation planted them (research/72): the body's slide under the view
+    // carried them with the animation's sway; the torso's feet correction puts them back.
     bool const planted = !request.legs[kLeft].enabled && !request.legs[kRight].enabled && request.torso.enabled &&
-                         request.torso.goal.anchorWeight > 0.0 && info->legs[kLeft] && info->legs[kRight];
+                         request.torso.goal.plantWeight > 0.0 && info->legs[kLeft] && info->legs[kRight];
     if (planted) {
         for (int side : {kLeft, kRight}) {
             auto const& chain = info->legs[side];
@@ -1415,8 +1406,8 @@ void Drive(double deltaSeconds) {
             leg.keys[2] = info->bones.keys[chain->hand];
         }
         if (!gLegsPlanted) {
-            log::Info("arm IK: standing still, Shepard's hips are held over his feet (the idle animation's sway taken out) and "
-                      "his feet stay where the animation planted them ([Hands] steadyIdle)");
+            log::Info("arm IK: standing still, Shepard's feet stay where the idle animation planted them while his body stays "
+                      "under the view ([Hands] steadyIdle)");
         }
     }
     gLegsPlanted = planted;

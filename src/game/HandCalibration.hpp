@@ -92,7 +92,7 @@ struct BodyMove {
     double maxMeters = 0.75;   // the body moves at most this far from where the game put it
     bool legsFollowMotion = true;    // moving, the legs keep the pawn's facing (where its run animation points)
     double legsTwistDegrees = 60.0;  // ...and the spine twists at most this far from them (30..90)
-    bool steadyIdle = false;         // standing still, the hips held over the feet (the idle animation's sway out)
+    bool steadyIdle = false;         // standing still, the feet planted where the idle animation put them
 };
 BodyMove GetBodyMove();
 // [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).

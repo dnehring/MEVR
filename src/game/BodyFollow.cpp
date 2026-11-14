@@ -34,8 +34,9 @@ constexpr double kHandsMinMeters = 0.15;
 constexpr double kHandsMaxDegrees = 100.0;
 // With the whole body turning, the spine twists at most this much; the hips take the rest.
 constexpr double kSpineTwistWithBodyDegrees = 30.0;
-// Standing still, the whole body slides at most this far to hold the hips over the feet (the idle sway is about 6 cm).
-constexpr double kMaxAnchorShiftMeters = 0.15;
+// Standing still, the feet go back at most this far to stand where the idle animation planted them (its sway is 2-3 cm,
+// 16 cm in an idle fidget).
+constexpr double kMaxPlantMeters = 0.20;
 // The `torso:` line: at most this often, when the result is this far off the player.
 constexpr std::uint64_t kLogEveryMs = 2000;
 constexpr std::uint64_t kAnchorLogEveryMs = 1000;
@@ -85,7 +86,7 @@ struct Last {
     ik::LegsState legs;
     double speed = 0.0;         // units a second, horizontal; NaN: unreadable
     double legsTwistDeg = 60.0;
-    double anchorWeight = 0.0;  // the hips held over the feet (1 standing still; research/29 "The idle sway")
+    double plantWeight = 0.0;   // the feet planted standing still (1 standing; research/72)
     bool weaponDrawn = false;
 };
 Last gLast;
@@ -413,26 +414,24 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
         gLegs.Reset();
     }
 
-    // Standing still, the hips over the feet (research/29 "The idle sway", 2026-11-14): the idle animation's weight shift
-    // rocks Shepard's pelvis about 6 cm side to side against the whole body's bone every 5-7 s (measured at the
-    // Presidium, `mevr camera trace`), so his hips, spine and shoulders swayed under a player standing still. The torso
-    // slides the whole body to hold the pelvis over the feet, by the part of standing still (the legs' blend toward the
-    // run: 0 standing, 1 moving), and the writer plants the feet where the animation had them (bone_pose's Leg::planted).
-    // Only with the whole body under the view, the legs' motion rule known and the body at the pawn (a scripted walk's
-    // legs stand by their own IK).
-    goal.anchorWeight = 0.0;
-    gLast.anchorWeight = 0.0;
+    // Standing still, the feet planted (research/72, 2026-11-14): LE1's idle animation moves Shepard's Root (at hip height)
+    // 2-3 cm in the mesh's space, 16 cm in an idle fidget, with his feet planted (measured at the Presidium, `mevr camera
+    // trace`). The slide above puts Root under the view whatever the animation did, so the hips stay still and the feet slid
+    // the other way under a player standing still. The torso's feet correction (the body bone's animated offset from the
+    // mesh's origin, its rest) puts them back, by the part of standing still (the legs' blend toward the run: 0 standing, 1
+    // moving), and the writer moves the ankles (bone_pose's Leg::planted). Only with the whole body under the view, the
+    // legs' motion rule known and the body at the pawn (a scripted walk's legs stand by their own IK).
+    goal.plantWeight = 0.0;
+    gLast.plantWeight = 0.0;
     bool away = false;
 #if defined(MEVR_GAME_LE1)
     away = conversation_world::BodyAway().on;
 #endif
-    if (move.steadyIdle && firstPerson && wholeBody && gLast.legsUsed && !away && bones.anchor >= 0 && bones.feet[0] >= 0 &&
-        bones.feet[1] >= 0) {
-        goal.anchor = bones.anchor;
-        goal.feet = bones.feet;
-        goal.anchorWeight = std::clamp(1.0 - gLast.legs.weight, 0.0, 1.0);
-        goal.maxAnchorShift = kMaxAnchorShiftMeters * targets.body.unitsPerMeter * scale;
-        gLast.anchorWeight = goal.anchorWeight;
+    if (move.steadyIdle && firstPerson && wholeBody && gLast.legsUsed && !away) {
+        goal.plantWeight = std::clamp(1.0 - gLast.legs.weight, 0.0, 1.0);
+        goal.bodyRest = {};
+        goal.maxPlant = kMaxPlantMeters * targets.body.unitsPerMeter * scale;
+        gLast.plantWeight = goal.plantWeight;
     }
 
     // The inputs, for the log and the snapshot.

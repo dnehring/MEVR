@@ -81,17 +81,16 @@ struct TorsoGoal {
     double legsWeight = 0.0;
     double legsTurnDegrees = 0.0;
     double legsTwistDegrees = 60.0;
-    // Standing still, the hips over the feet (research/29 "The idle sway", 2026-11-14): the idle animation's weight shift
-    // moves `anchor` (LE1: Pelvis, a child of the body bone beside the spine) about 6 cm side to side against the body
-    // bone every 5-7 s while the feet stay planted, so with the body bone at `bodyAt` the hips, spine and shoulders rocked
-    // under a still player. With `anchorWeight` above 0 the whole body (the `body` subtree, after its turn and slide)
-    // moves horizontally by that weight of the way from `anchor` to the midpoint of `feet` (the ankles, as animated), at
-    // most `maxAnchorShift` units; the writer then puts the ankles back where the animation had them (bone_pose's
-    // Leg::planted), so the feet don't slide with it. Indices outside the body's subtree, or a weight of 0: nothing.
-    int anchor = -1;
-    std::array<int, 2> feet{-1, -1};
-    double anchorWeight = 0.0;
-    double maxAnchorShift = 0.0;
+    // Standing still, the feet planted (research/72, 2026-11-14): LE1's idle animation moves the body bone itself (Root, at
+    // hip height) 2-3 cm in the mesh's space, up to 16 cm in an idle fidget, with the feet planted. With `bodyMoves` the
+    // slide puts that bone at `bodyAt` whatever the animation did, which keeps the hips still and makes the feet slide the
+    // other way. With `plantWeight` above 0 the result's `feetCorrection` is how far each foot must go back to stand where
+    // the animation planted it: the body bone's animated horizontal offset from `bodyRest` (its place at rest in the
+    // mesh's space: the origin for LE1's Root), turned with the body, times the weight, at most `maxPlant` units. The writer
+    // moves the ankles by it (bone_pose's Leg::planted). Without `bodyMoves`: nothing (the body sways with its feet).
+    double plantWeight = 0.0;
+    Vec3 bodyRest;
+    double maxPlant = 0.0;
 };
 
 struct TorsoResult {
@@ -113,10 +112,10 @@ struct TorsoResult {
     Vec3 bodyShift;
     Vec3 wantedBodyShift;
     bool shiftLimited = false;
-    // The hips over the feet (TorsoGoal::anchor): the whole body's extra horizontal slide (component units; part of the
-    // pose, not of bodyShift), and the anchor's distance from the feet's midpoint before it (the animation's sway).
-    Vec3 anchorShift;
-    double anchorOffset = 0.0;
+    // The feet planted (TorsoGoal::plantWeight): how far the ankles go back (component units), and the body bone's
+    // animated horizontal offset from its rest before the weight and the cap (the animation's sway).
+    Vec3 feetCorrection;
+    double bodySway = 0.0;
     // The legs (TorsoGoal::legsWeight): the turn the standing rule alone would have made, and how far the animation had
     // turned the shoulders from the legs (`body.forward`) before anything moved (a combat stance's turn into the gun).
     double standingTurnDegrees = 0.0;

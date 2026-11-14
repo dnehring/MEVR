@@ -317,11 +317,12 @@ switching frameworks.
   backing up (`legsFollowMotion = 0`: the old rule; log `torso: legs:`, snapshot `torso.legs`; replay
   `tools/make-walk-recording.py`'s walk with `-Inputs`). Room-scale (the pawn following real steps past the cap) is
   designed there, not built.
-  **Standing still, the hips over the feet** (research/29 "The idle sway", 2026-11-14; `[Hands] steadyIdle`, off by default
-  until the headset check): the idle animation rocks `Pelvis` (beside `LowerBack` under `Root`) about 6 cm every 5-7 s; the
-  torso slides `Root`'s subtree to hold the pelvis over the animated ankles (`ik::TorsoGoal::anchor`, by 1 - the legs'
-  run blend, at most 0.15 m) and the writer plants the feet (`bone_pose::Leg::planted`). `mevr camera trace <s>` writes
-  the pawn, the game camera and six bones each tick to `%LOCALAPPDATA%\MEVR\camera-trace-*.csv`.
+  **Standing still, the feet planted** (research/72, the skeleton audit, 2026-11-14; `[Hands] steadyIdle`, off by default until
+  the headset check): the idle animation moves `Root` (hip height) 2-3 cm in the mesh's space, 16 cm in a fidget, over planted
+  feet; the slide pins `Root` under the view, so the feet slid; the torso's `feetCorrection` (`Root`'s animated offset from the
+  mesh's origin, turned with the body) and the writer's `bone_pose::Leg::planted` put them back. **Audit the skeleton** with
+  `mevr camera trace <s> [label]` (the pawn, the game camera and 14 bones each tick, `%LOCALAPPDATA%\MEVR\camera-trace-*.csv`),
+  `python tools/skeleton-audit.py` (bones against `Root`, the camera against the pawn) and the run `tools/skeleton-audit.ps1`.
 - LE1 body at the player's size ([research/58](research/58-body-scale.md), floor lock 2026-11-07; `core/ik/BodyScale`,
   `core/vr/FloorLock`, `plugin/FloorLock`, `game/BodyScale`): ordinary on-foot first person puts the common eye centre at
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of

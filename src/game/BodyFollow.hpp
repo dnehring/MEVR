@@ -43,8 +43,6 @@ struct Bones {
     int head = -1;                  // Shepard's head bone (the head's pivot)
     std::array<int, 2> eyes{-1, -1};
     int body = -1;                  // the whole body's bone (LE1: Root), -1: none
-    int anchor = -1;                // the hips (LE1: Pelvis, the legs' parent), held over the feet standing still
-    std::array<int, 2> feet{-1, -1};  // the ankles
 };
 
 // Arm IK, on foot with the controllers followed: this tick's torso goal (component space). False:

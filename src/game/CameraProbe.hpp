@@ -19,9 +19,10 @@ namespace mevr::game::camera_probe {
 void Tick();
 void Shutdown();
 
-// `mevr camera trace <seconds>` (an idle sway report, 2026-11-14): every mod tick for that long, a CSV row in
-// %LOCALAPPDATA%\MEVR\camera-trace-<stamp>.csv: the pawn's place and yaw, its velocity, the game camera's place and
-// rotation, and the Camera, God, Head, Neck, LowerBack and Pelvis bones in the mesh component's space (what the
+// `mevr camera trace <seconds> [label]` (an idle sway report, 2026-11-14; the skeleton audit, research/72): every mod tick
+// for that long, a CSV row in %LOCALAPPDATA%\MEVR\camera-trace-<stamp>[-label].csv: the pawn's place and yaw, its velocity,
+// the game camera's place and rotation, and 14 bones (Camera, God, Root, Pelvis, spine, neck, head, collars, hips, ankles)
+// in the mesh component's space (what the
 // animation does, whatever the pawn does). Standing still with a still head, every change of the camera against the pawn
 // is sway the game puts into the view. Returns the file's path, or why not.
 std::string Command(std::string const& args);

@@ -12,6 +12,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <format>
@@ -26,7 +27,8 @@ namespace {
 
 // `mevr camera trace <seconds>`: one CSV row a mod tick (an idle sway report, 2026-11-14).
 ue3::FieldRef gActorVelocity{"Engine.Actor", "Velocity"};
-constexpr char const* kTraceBones[] = {"Camera", "God", "Head", "Neck", "LowerBack", "Pelvis"};
+constexpr char const* kTraceBones[] = {"Camera", "God", "Root", "Pelvis", "LowerBack", "Chest2", "Neck", "Head", "LeftCollar",
+    "RightCollar", "LeftHip", "RightHip", "LeftAnkle", "RightAnkle"};
 constexpr int kTraceBoneCount = static_cast<int>(sizeof(kTraceBones) / sizeof(kTraceBones[0]));
 struct Trace {
     std::FILE* file = nullptr;
@@ -242,9 +244,12 @@ std::string Command(std::string const& args) {
     std::istringstream words(args);
     std::string sub;
     double seconds = 10.0;
-    words >> sub >> seconds;
+    std::string label;
+    words >> sub >> seconds >> label;
+    label.erase(std::remove_if(label.begin(), label.end(), [](char c) { return !std::isalnum(static_cast<unsigned char>(c)) && c != '-'; }),
+        label.end());
     if (sub != "trace") {
-        return "usage: mevr camera trace <seconds>";
+        return "usage: mevr camera trace <seconds> [label]";
     }
     seconds = std::clamp(seconds, 1.0, 120.0);
     TraceClose("replaced");
@@ -257,8 +262,8 @@ std::string Command(std::string const& args) {
     std::filesystem::create_directories(folder, ec);
     SYSTEMTIME st{};
     GetLocalTime(&st);
-    std::filesystem::path const file = folder / std::format(L"camera-trace-{:04}-{:02}-{:02}_{:02}-{:02}-{:02}.csv", st.wYear,
-        st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    std::filesystem::path const file = folder / std::format(L"camera-trace-{:04}-{:02}-{:02}_{:02}-{:02}-{:02}{}{}.csv", st.wYear,
+        st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, label.empty() ? L"" : L"-", std::wstring(label.begin(), label.end()));
     std::FILE* f = nullptr;
     if (_wfopen_s(&f, file.c_str(), L"w") != 0 || f == nullptr) {
         return "camera: can't write the trace file";

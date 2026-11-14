@@ -361,29 +361,10 @@ walking 2 m forward in the room (`make-walk-recording.py` moves the stick; it ne
 
 ## The idle sway (2026-11-14)
 
-A report relayed by the owner: an idle sway "carried through to our movement/avatar". **Measured** with a new trace
-(`mevr camera trace <seconds>`, `game/CameraProbe`: each mod tick a row of the pawn, the game camera and the Camera, God,
-Head, Neck, LowerBack and Pelvis bones in the mesh component's space, to `%LOCALAPPDATA%\MEVR\camera-trace-<stamp>.csv`;
-summarised by a script reading peak-to-peak and period per axis), the Presidium (John02 slot 89), Shepard standing still,
-holstered, a still head, 20 s:
-
-- **The view doesn't sway.** The game camera against the pawn and the Camera bone: 0.00 cm, 0.00 degrees (the explore
-  posture's `Filter-CameraBone`, research/71 section 3.2, holds it).
-- **The body does.** The pelvis, lower back, neck and head move against the whole body's bone (`Root`) by about 5.7 cm on
-  one horizontal axis every 5-7 s, 2.3 cm on the other and 2.3 cm up and down: the idle animation's weight shift. LE1's
-  skeleton hangs `Pelvis` and `LowerBack` side by side under `Root`, and the body follower slides `Root` under the view, so
-  the hips and spine rock under a player who stands still, and with the hands on the controllers the shoulders and elbows
-  rock instead (the trace ran without tracked hands, so the follower's own lean wasn't in it).
-
-**Built** (`[Hands] steadyIdle`, **off by default until the headset check**): standing still, the torso solver
-(`ik::TorsoGoal::anchor`, `feet`, `anchorWeight`, `maxAnchorShift`; `TorsoResult::anchorShift`, `anchorOffset`; unit test
-`TestIdleSway`) slides the whole body (`Root`'s subtree, after its turn and slide) to hold the pelvis (the legs' common
-parent) over the midpoint of the animated ankles, by the part of standing still (`1 - LegsState::weight`: the legs' blend
-toward the run), at most 0.15 m; the writer then puts each ankle back where the animation had it and bends the knee toward
-its animated place (`bone_pose::Leg::planted`), so the feet don't slide with the body. Not while the view is away from the
-pawn (a scripted walk's legs stand by their own IK), not in third person, not with `legsFollowMotion = 0`. Log `arm IK:
-standing still, Shepard's hips are held over his feet ...` once per stretch.
-
-[verify] in the headset (with `steadyIdle = 1`): standing still and looking down, the hips and shoulders no longer rock and
-the feet don't slide; starting to walk blends back to the game's walk without a jump. The fake headset couldn't show it: the
-run with tracked hands came up with the follower in its third-person mode after the save's scene was ended.
+A report relayed by the owner: an idle sway carried into the avatar. The whole audit is research/72. In short: the idle
+animation moves `Root` itself (at hip height, the whole body's bone) 2-3 cm in the mesh's space, up to 16 cm in an idle
+fidget, over planted feet; the camera doesn't move. The slide above puts `Root` under the view whatever the animation did,
+so in first person the hips stay still and the **feet slide** the other way. `[Hands] steadyIdle` (off by default until the
+headset check) plants them: the torso's `feetCorrection` (`Root`'s animated offset from its rest, turned with the body, by the
+part of standing still), applied by the writer's `Leg::planted`. A first version the same day held the pelvis over the feet
+instead, read from a trace without `Root`; it would have put the sway back into the hips and was replaced.
