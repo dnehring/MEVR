@@ -68,6 +68,19 @@ Inspection of [Legacy.cpp](../src/engine/Legacy.cpp) and pinned SDK
 | Narrow scans the returned pointer to NUL rather than validating FString data/count/capacity and applying the channel output limit. Empty output and conversion failure collapse to the same result. | Validate and bounded-copy the return header/content, then convert with explicit length and distinguish error from empty output. See [WideCharToMultiByte](https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte). |
 | SDK allocation helpers rely on assertions and can record an unchecked allocation result before copying. | Validate the live allocator/pointee/vtable and handle allocation failure before copying; Release assertions are not a runtime guard. This is a failure path, not evidence that the live allocator normally returns null. |
 
+The lifetime findings above are addressed by `ScopedUnionMember`: both union
+strings are constructed, and successful construction is paired with destruction
+on normal return and ordinary C++ unwinding. The packed block is still `0x24`
+bytes, with ReturnValue at `0x14`; FString requires alignment 8 while the block
+uses alignment 4. The guard preserves MSVC's `__unaligned` pointer qualifier
+through construction, storage and destruction. `std::addressof` alone would only
+avoid a warning, not repair alignment. See Microsoft's [C4366 explanation](https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4366?view=msvc-170)
+and [unaligned modifier](https://learn.microsoft.com/en-us/cpp/cpp/unaligned?view=msvc-170).
+The [focused checks](../tests/le2-console-lifetime/README.md) exercise exception
+cleanup and actual SDK empty strings at each valid alignment residue. This proof
+is scoped to the pinned MSVC/SDK; repeat it after either changes. Nonempty engine
+allocation, native dispatch, conversion bounds and fault recovery remain open.
+
 Two suspected issues are **not** defects: `Widen(command).c_str()` remains alive
 while the FString constructor copies it, and the recently corrected Narrow
 buffer includes room for the terminator before resizing. Preserve those facts
