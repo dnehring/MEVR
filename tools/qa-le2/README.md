@@ -10,6 +10,8 @@ ME2 loaded, that a story edit is coherent, or that a VR interaction works.
 Read [save format and recipe details](../../research/le2-save-adapter.md),
 [coverage and remaining work](../../docs/le2-validation-coverage.md), and
 [current evidence](../../research/le2-validation-evidence.md).
+Concrete acquisition leads are in [reload/interrupt fixture research](../../research/le2-fixture-acquisition.md)
+and [Zanethu discovery dependencies](../../research/le2-galaxy-fixture-source.md).
 
 ## 1. Inspect and prepare a private fixture
 

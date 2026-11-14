@@ -36,10 +36,11 @@
     "Establish a native baseline with the same prepared save before accepting VR behavior."
   ],
   "acquisitionTasks": [
+    "Use the naturally reached ProCer reload tutorial as a concrete candidate: BioD_ProCer_100RezRoom contains LS10_Reload_Heatsink, a tutorial-reload event and save action. See research/le2-fixture-acquisition.md; source presence is not a verified pre-reload save.",
     "Capture naturally reached combat and tutorial saves with a known weapon and legal native reload. Record exact save hashes, map, equipped weapon identity, class and DLC prerequisites privately.",
     "Determine how clip and reserve counts are observed in the current LE2 build; normalized state.weapon.loaded and reserve below are a proposed observation interface, not verified SDK offsets.",
     "Record baseline reload event order, reload commit count, interruptions, weapon switch and tutorial dependencies by ordinary play. Do not invent tutorial plot IDs.",
-    "Create a separate private ready binding and pinned recipe for each starting condition; the save adapter currently edits resources and verified scalar plot entries, not weapon ammunition. Obtain ammo states naturally or add a separately verified native setup operation.",
+    "Create a separate private ready binding and pinned recipe for each starting condition. The save adapter can patch existing ammo records, but loaded/reserve interpretation, legal capacity and native effects still need verification; prefer naturally obtained ammo states until then.",
     "For story edits compare naturally obtained before/after saves and inspect native conditions; attach provenance and ordinary progression proof before using a named recipe."
   ],
   "loadProcedure": [

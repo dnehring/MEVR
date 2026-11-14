@@ -109,9 +109,12 @@ The following requirements are **not achieved** at this checkpoint:
    scenario without loading and inspection.
 3. Naturally acquired, verified base fixtures for all three scenarios. Determine
    career/slot discovery through Load Game and bind actual starting conditions.
-4. Verified native conditions and named coherent story recipes. Inspect package
-   logic with Legendary Explorer and compare natural before/after saves. Raw
-   plot primitives alone do not satisfy this requirement.
+4. Complete dependency coverage and named coherent story recipes. [Zanethu source
+   inspection](le2-galaxy-fixture-source.md) now identifies the planet, feature,
+   immediate discovery transition and landing conditions, and the scanner links
+   one interrupt to its node. Natural before/after saves and ordinary progression
+   still need to establish the complete effects. Raw plot primitives alone do not
+   satisfy this requirement.
 5. A verified LE2 runtime observation/input capture producer, or documented manual
    observations tied to raw captures. The normalized state schema is a contract,
    not an implemented in-game exporter. No game-thread debug-control integration

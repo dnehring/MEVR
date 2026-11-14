@@ -36,6 +36,7 @@
     "Establish a native baseline with the same prepared save before accepting VR behavior."
   ],
   "acquisitionTasks": [
+    "Investigate Zanethu in Ploitari, Hourglass Nebula as a discovery candidate. Native source maps BioP_N7Crsh to its landing feature and transition 4551 (4419/5679); inspect research/le2-galaxy-fixture-source.md and validate normal reachability and before/after saves before binding or resetting story state.",
     "Acquire a naturally obtained Normandy/galaxy fixture with accessible scanning and an untouched prospect or anomaly. Record planet/system and discovery state privately, without inventing plot IDs or map names.",
     "Inspect actual save values and create hash-pinned recipes with explicit expected credits, minerals, fuel and probes. Include zero, insufficient, exact and surplus values using baseline-measured travel cost.",
     "Record native probe launch cost, scan-hold behavior, mineral gain, travel fuel cost and anomaly unlock through ordinary play before encoding numeric assertions.",
