@@ -40,7 +40,7 @@ def main():
     check('15 synthetic inspection checks passed' in result.stdout, 'synthetic property invariants')
     for options in (['--game'], ['--game', 'LE3'], ['--game', 'LE1', '--game', 'LE2']):
         run(['unused', 'unused', *options], expected=2)
-    for mode in ('--wheels', '--vo-extract', '--state-events', '--references'):
+    for mode in ('--wheels', '--vo-extract', '--references'):
         run(['unused', 'unused', '--game', 'LE2', mode, 'unused'], expected=2)
     checked.append('invalid game and unsupported LE2 modes rejected')
 
@@ -57,6 +57,21 @@ def main():
         check(untouched.read_text() == 'preserve prior evidence', 'existing output cannot be overwritten')
         run([empty, empty / 'new.txt', '--game', 'LE2'], expected=1)
         check(not (empty / 'new.txt').exists(), 'LE2 output cannot write into package directory')
+        run([empty, root / 'no-selector.json', '--game', 'LE2', '--state-events', '1'], expected=2)
+        for ids in ('', '-1', '1,,2', 'word'):
+            run([empty, root / 'invalid-ids.json', '--game', 'LE2', '--state-events', ids, '--only', 'Startup_INT'], expected=2)
+        checked.append('state-event scope and valid IDs required')
+        no_map = root / 'no-map.json'
+        run([empty, no_map, '--game', 'LE2', '--state-events', '1', '--only', 'Startup_INT'], expected=1)
+        report = json.loads(no_map.read_text())
+        check(report['missingIds'] == [1] and report['errors'] and not report['scopedInspectionComplete'],
+              'missing package produces explicit incomplete state-event report')
+        (empty / 'Broken.pcc').write_bytes(b'SYNTHETIC INVALID PACKAGE')
+        broken = root / 'broken.json'
+        run([empty, broken, '--game', 'LE2', '--state-events', '1', '--only', 'Broken'], expected=1)
+        report = json.loads(broken.read_text())
+        check(report['errors'] and report['missingIds'] == [1] and not report['scopedInspectionComplete'],
+              'package parser errors cannot silently pass state-event lookup')
 
         if args.le2_cooked:
             cooked = Path(args.le2_cooked)
@@ -102,6 +117,29 @@ def main():
             check('native function bool SelectInterruption' in declaration.read_text(),
                   'LE2 script inspection identifies native declaration without inventing a body')
             check(hashlib.sha256(package.read_bytes()).hexdigest() == before, 'inspected package remains unchanged')
+            event_file = root / 'event.json'
+            run([cooked, event_file, '--game', 'LE2', '--state-events', '4551', '--only', 'Startup_INT'])
+            report = json.loads(event_file.read_text())
+            check(report['scopedInspectionComplete'] and not report['missingIds'] and not report['errors']
+                  and report['scope']['mountedCompleteness'] is False and report['scope']['packageSelector'] == 'Startup_INT',
+                  'state-event success explicitly limited to selected directory/package scope')
+            check(len(report['events']) == 1 and report['events'][0]['id'] == 4551,
+                  'requested native state event identified without fixed export-index assumptions')
+            event = report['events'][0]
+            elements = event['elements']
+            check(len(elements) == 2 and all(e['type'] == 'BioStateEventElementBool' for e in elements)
+                  and {e['data']['GlobalBool'] for e in elements} == {4419, 5679}
+                  and all(e['data']['NewState'] is True and e['data']['UseParam'] is False for e in elements),
+                  'event 4551 directly sets only 4419 and 5679 true without parameter substitution')
+            check(event['mapPath'] == 'PlotManagerAuto.StateTransitionMap'
+                  and event['packageSha256'] == hashlib.sha256(Path(event['packageFile']).read_bytes()).hexdigest()
+                  and Path(event['packageFile']).resolve() == (cooked / 'Startup_INT.pcc').resolve(),
+                  'state-event elements bound to actual package bytes and map export')
+            absent = root / 'absent-id.json'
+            run([cooked, absent, '--game', 'LE2', '--state-events', '4551,2147483647', '--only', 'Startup_INT'], expected=1)
+            report = json.loads(absent.read_text())
+            check(report['missingIds'] == [2147483647] and len(report['events']) == 1
+                  and not report['scopedInspectionComplete'], 'partial state-event matches fail explicitly')
 
         if args.le1_cooked:
             output = root / 'le1.jsonl'
@@ -116,6 +154,11 @@ def main():
                 baseline = root / 'baseline.jsonl'
                 run([args.le1_cooked, baseline, *options], scanner=args.baseline_scanner)
                 check(output.read_bytes() == baseline.read_bytes(), 'LE1 output byte-identical to previous scanner')
+                current_events, old_events = root / 'le1-events.txt', root / 'le1-events-old.txt'
+                run([args.le1_cooked, current_events, '--state-events', '188,189'])
+                run([args.le1_cooked, old_events, '--state-events', '188,189'], scanner=args.baseline_scanner)
+                check(current_events.read_bytes() and current_events.read_bytes() == old_events.read_bytes(),
+                      'LE1 state-event text remains byte-identical to previous scanner')
 
     print(json.dumps({'checksPassed': len(checked), 'checks': checked,
                       'le2CorpusChecked': bool(args.le2_cooked), 'le1CorpusChecked': bool(args.le1_cooked),

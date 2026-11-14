@@ -19,8 +19,10 @@ namespace Mevr.ConversationScan;
 
 internal static class StateEvents
 {
-    public static int Run(string cooked, string outPath, string idList)
+    public static int Run(string cooked, string outPath, string idList, string only = null)
     {
+        if (InspectionContext.IsLe2)
+            return Le2StateEvents.Run(cooked, outPath, idList, only);
         InspectionContext.Initialize();
         var wanted = new HashSet<int>(idList.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse));
         using var writer = new StreamWriter(outPath);

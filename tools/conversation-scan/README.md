@@ -28,6 +28,7 @@ conversation-scan <cooked> <new-track.txt> --game LE2 --class-dump BioEvtSysTrac
 conversation-scan <cooked> <new-sequence.txt> --game LE2 --sequence BioD_OmgGrA_112Hangar_LOC_INT:Node_Data_Sequence
 conversation-scan <cooked> <new-reload.txt> --game LE2 --sequence BioD_ProCer_100RezRoom:LS10_Reload_Heatsink
 conversation-scan <cooked> <new-functions.txt> --game LE2 --script grep:Interrupt --only SFXGame
+conversation-scan <cooked> <new-events.json> --game LE2 --state-events 4551 --only Startup_INT
 ```
 
 The default JSONL scan retains existing record kinds and graph adjacency. In LE2 mode it additionally emits:
@@ -47,6 +48,16 @@ Join within the same package hash: `interrupt.interpData` to a cinematic's `mati
 
 `--sequence` additionally includes exact `Node_Data_Sequence` path components for LE2, so conversation interpolation sequences are visible. LE1's level-sequence filtering remains unchanged. LE2 `--class-dump` prints numeric string-reference values and roundtrip float precision. Its generic body deduplication remains; use exact package/language filters when collecting evidence.
 
+## LE2 state-event inspection
+
+`--state-events` requires an explicit nonempty `--only` package-name substring for LE2. It enumerates every `BioStateEventMap` export in matching **top-level** `.pcc` files in the supplied directory, using LegendaryExplorerCore's existing binary converter. It does not apply the LE1 filename heuristic, assume an export index, recursively search DLC, or choose mounted-file precedence. Resolve effective packages before invoking it; [Zanethu source findings](../../research/le2-galaxy-fixture-source.md) explain why this matters.
+
+Unlike LE1's unchanged text output, LE2 emits a JSON report containing `requestedIds`, inspected `packages`, matching `events`, `missingIds`, `duplicateIds`, `errors` and `scopedInspectionComplete`. Each event records the actual package path/hash, map path/export index and concrete element types with their complete serialized fields, including nested element data. It does not reduce an element to a guessed single boolean operation. Duplicate event IDs retain all matches for caller review; no override is selected. `scope.mountedCompleteness` is always false.
+
+Missing IDs, no matching packages, package-game mismatches, parse failures or conversion errors produce a report with `scopedInspectionComplete: false` and exit `1`; invalid IDs or missing `--only` return `2`. Valid IDs are comma-separated nonnegative integers. Exit `0` means all requested IDs were read successfully **within the stated package scope**, not that every mounted dependency or resulting gameplay effect is known. Direct serialized element inspection cannot establish transitive script/journal effects, ordinary progression or runtime acceptance.
+
+The installed base English `Startup_INT.pcc` was checked through this mode. It identifies event 4551 in `PlotManagerAuto.StateTransitionMap` with exactly two boolean elements: 4419 and 5679 become true, both with parameter substitution disabled. No direct 5678 mutation appears in that event. The test also requests an absent ID to verify that a partial match fails, and compares the unchanged LE1 text mode to the previous scanner on existing LE1 events. Synthetic invalid-package and empty-scope tests ensure errors cannot be mistaken for successful lookup. No plot recipe is created by these checks.
+
 ## Verified scope and remaining gaps
 
 The installed English mechanic package produced 90 records, including one conversation, one interrupt, 39 cinematic events and 49 matinees. Every entry retained a nonzero text reference; a Renegade interrupt reply edge was present. The visibility track linked through its interpolation data and cinematic event to an authored node. Its two stored times were approximately 5.429 and 7.4299107 seconds. The ProCer reload sequence exposed both a tutorial-reload event and a save action. These are authored-data observations, not native timing, reachability, save validity or controller acceptance.
@@ -56,7 +67,7 @@ LE1 default/explicit scans of the installed captain scene produced the same 10 r
 Still outside this bounded change:
 
 - External LE2 TLK resolution, localization/DLC mount ordering, duplicate-package precedence and Wwise audio extraction. `--wheels` and `--vo-extract` reject LE2 rather than applying LE1 assumptions.
-- Effective LE2 state-transition map resolution and full dependency/plot recipe reconstruction. `--state-events` and the old LE1-oriented `--references` search reject LE2. Parallel research located a base `Startup_INT.pcc` state-map export and a patched galaxy package; integrating those findings with all applicable mounted DLC maps remains separate work. Script/class/sequence inspection remain available.
+- Automatic mounted LE2 state-map resolution, transitive dependency analysis and coherent plot recipe reconstruction. The new state-event mode requires a supplied directory and package selector; integrating all applicable language/DLC maps remains separate work. The old LE1-oriented `--references` search still rejects LE2.
 - Complete conversation execution semantics. Default/custom interrupt windows, skip behavior, late/early acceptance and selected outcome require runtime observation. A visibility track alone is not a legal-input-window guarantee.
 - LE2 launch/replay support in the existing LE1 automation. Use the protected LE2 session workflow and ordinary progression. Do not invoke native completion functions to claim actual VR input success.
 

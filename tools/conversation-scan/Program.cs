@@ -21,7 +21,7 @@ internal static class Program
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> [--game LE1|LE2] [--lex-dir <Legendary Explorer nightly>] [--only <text>]");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> --wheels [--only <file text>] [--isb <ISACT folder>]  every line as text (Thespian mode, research/70)");
             Console.Error.WriteLine("conversation-scan <ISACT folder> <out folder> --vo-extract <list.tsv>  lines' recordings as WAV (Thespian mode's bench, research/70)");
-            Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --state-events <id,id,...>   what those state transitions do");
+            Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out> --state-events <id,id,...> [--game LE2 --only <package>]   direct serialized state-transition elements");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --references <name,name,...>  which level objects point at those conversations");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --class-dump <Class> [--only <file text>]  every object of a class, its properties");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --script <Class.Function> [--only <file text>]  a script function or state, decompiled (game code: never commit it)");
@@ -38,9 +38,9 @@ internal static class Program
             }
             GameName = args[gameIndex + 1];
         }
-        if (GameName == "LE2" && args.Any(a => a is "--wheels" or "--vo-extract" or "--state-events" or "--references"))
+        if (GameName == "LE2" && args.Any(a => a is "--wheels" or "--vo-extract" or "--references"))
         {
-            Console.Error.WriteLine("LE2 wheels/audio, reference search and state-event-map discovery are not implemented; use the read-only scan, class, script or sequence inspection modes.");
+            Console.Error.WriteLine("LE2 wheels/audio and reference search are not implemented; use the read-only scan, class, script, sequence or scoped state-event inspection modes.");
             return 2;
         }
         string lexDir = args.SkipWhile(a => a != "--lex-dir").Skip(1).FirstOrDefault()
@@ -112,7 +112,7 @@ internal static class Program
         string stateEvents = args.SkipWhile(a => a != "--state-events").Skip(1).FirstOrDefault();
         if (stateEvents != null)
         {
-            return StateEvents.Run(args[0], args[1], stateEvents);
+            return StateEvents.Run(args[0], args[1], stateEvents, args.SkipWhile(a => a != "--only").Skip(1).FirstOrDefault());
         }
         string sequence = args.SkipWhile(a => a != "--sequence").Skip(1).FirstOrDefault();
         if (sequence != null)
