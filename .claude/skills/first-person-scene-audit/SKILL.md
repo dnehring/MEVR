@@ -25,9 +25,14 @@ this skill is what to run and how to read it.
    Then open `contact-sheet.png` in the session folder (`%LOCALAPPDATA%\MEVR\sessions\<stamp>-audit`): every snapshot of every
    scene, the replayed hands held up in front of the eyes, framed green when both drawn hands are in view and on the
    controllers, red when not, blue outside a scene. A red frame is a body not where the player is: look at that picture first.
+   Since item 38 (research/69 "Obvious bugs, measured") the block also says per scene: `drawn:` (the body in view and the people
+   in sight, seconds not drawn; the near plane), `the stick:` (replies picked with it held, right-stick holds and how far they
+   turned), `conversations played:` (and `WRONG SCENE` when the save played another one or another part), `pictures:` (a flat eye,
+   a black HUD panel, a wheel reply cut at its edge). Any rule of `FAIL_RULES`, picture check or wrong scene fails the run.
 1b. **The audit's own check: broken runs** (`tools\conversation-audit.ps1 -Canaries -IgnoreSlot`, about 15 minutes, each in a game of
    its own; research/69 "Broken runs the audit must catch"). Each brings a fixed bug back (`mevr convo bodyaway off`, `mevr convo
-   showearly off`) or takes away what the audit needs (no hands), and must be caught; a `BLIND` line means the audit would pass that
+   showearly off`; and in one shared game, `"game": "opold"`: `hide body on`, `hide person on`, `nearplane off`, `sticklatch off`,
+   `stickturn off`) or takes away what the audit needs (no hands), and must be caught; a `BLIND` line means the audit would pass that
    bug. Run them after changing the audit, the runner or the set. **Every bug the owner finds that the audit missed becomes a broken
    run** (a test switch in the mod, an entry in the set's `canaries`) next to its fix.
 2. Any records, any time, no game: `python tools/conversation-stance.py --findings --since <time>` (rules: `tools/scene_audit.py`),

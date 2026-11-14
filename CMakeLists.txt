@@ -1195,6 +1195,8 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)
         # The rules over first-person scenes' stance records (tools/scene_audit.py, research/69 "Auditing scenes by rule").
         add_test(NAME mevr-scene-audit COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/SceneAuditTests.py)
+        # The audit report's picture checks (tools/audit-report.py, research/69 "Obvious bugs, measured"), on made-up snapshots.
+        add_test(NAME mevr-audit-report COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/AuditReportTests.py)
         add_test(NAME mevr-rva-table COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-rva-table.py
             ${CMAKE_CURRENT_SOURCE_DIR})
         # The knowledge bundle (docs/knowledge, Open Knowledge Format): a typed frontmatter on every concept, complete

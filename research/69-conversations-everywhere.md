@@ -368,6 +368,13 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     game 2026-11-12 (three passes): the live numbers in every summary, two false alarms of theirs fixed, the baseline written
     (12 scenes, 0 regressions against itself); the passes found a crash of ours, a wall in scripted walks and a stuck sidestep.
 
+38. **Obvious bugs, measured** (the owner, 2026-11-13: "I want my time spent on fine tuning, not finding obvious bugs";
+    "Obvious bugs, measured" below): the audit now sees what is drawn (`body-not-drawn`, `person-not-drawn`, `near-plane`), the
+    stick as a player holds it (`moved-by-pick`, `turn-ignored`), the pictures (`eye-flat`, `hud-black`, `wheel-cut`), the
+    script's black screen on foot, a flash, and which scene a save played; five broken runs, all caught. Found on its first
+    run: a near-black frame in the Spectre walk, a flash of the 3D screen into Opold's shop, Anderson 0.2 m from the eyes in
+    the Council walks. Open: the fake headset's 31.3 fps cap (not the window, not the display), item 21's decision.
+
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
 
@@ -3714,6 +3721,89 @@ Diagnostics > Measure frame timing) started as the hearing begins; then the fram
 cuts, and the game thread's ticks. If the stalls come back there: the probe's frames say GPU or render thread; on the game
 thread, `tools/sample-render-thread.ps1`'s sampler (`mevr-stack-sampler`) pointed at the game thread.
 
+### Obvious bugs, measured (2026-11-13; item 38)
+
+**The owner:** "for most everything it was a bug like obviously being placed in the wrong location. For those cases, how well
+do you think you can measure these types of problems? I want my time spent on fine tuning, not finding obvious bugs." Of the 14
+obvious bugs the owner found in the headset (2026-11-06 to 11-13), the audit of item 37 would have caught 2 outright (the
+hearing in third person, the body left at the mark) and 3 in part (a blink for nothing, Kirrahe's empty marks, the council
+hidden during the walk: only through that scene's own expectation). Placement was measured; what is drawn, what the stick does,
+the UI's pictures and frame timing were not. Six steps, in the owner's order ("Yes, please get started"):
+
+1. **Drawn, not only placed** (live in `StepAudit`, offline in `scene_audit.py`; both in `ABSOLUTE` but the person's): the engine's
+   `PrimitiveComponent.LastRenderTime` (the world's clock when a view last drew the mesh; frustum, occlusion and hide flags all
+   leave it behind) against `WorldInfo.TimeSeconds`.
+   - `body-not-drawn`: a drawn wrist inside the head's view (so the body is in the picture) and the player's body mesh not drawn
+     for 0.3 s, 1 s in all (the council's lines that hid the body with every bone in place, 2026-11-10).
+   - `person-not-drawn`: someone of the scene with the head inside the view (35 degrees each way, `InHeadView`), a clear line from
+     the eyes (`FastTrace`), within 12 m, not hidden, its mesh not drawn for 0.3 s, 1 s in all (the comm room's culled people,
+     2026-11-06).
+   - `near-plane`: the frame drawn with `LocalPlayer.NearClipPlane` over 15 units (read after the world view's write-back, the
+     value the frame draws with; the director's are 67-280: the floor and the body cut away, 2026-11-10).
+   - Records: `player.bodyDrawnAgoS`, `player.nearPlane`, `people[].drawnAgoS`, `people[].inSight`; the summary's audit
+     `bodyCheckedS`, `bodyUndrawnS`, `sightCheckedS`, `personUndrawnS`, `nearOverS`, `nearMax`.
+2. **The scene that played** (`conversation-from-save.ps1 -Report`): each conversation that played and the first entry it showed
+   (`conversations`), `sceneSeen` (the scene's own conversation played at all) and, with a scene's `startEntry` in the set,
+   whether it began there (Kirrahe's arrival talk where the planning was meant, 2026-11-11). `audit-report.py`'s WRONG SCENE.
+3. **The owner's own saves in the set**: slots 81 (the Spectre ceremony's walk) and 89 (Avina, the owner's baseline) added;
+   slot 88 (Kirrahe's camp) not: its first use plays the arrival talk whatever the plot (item 22), and the set's Kirrahe from
+   `John02_70` plays the planning and its new composition.
+4. **The stick as a player holds it**: `mevr convo stick left <x> <y> [s] | right <x> [s]` puts a value in the controller's stick
+   where the conversation's walk and turn read it (`SticksNow`; through the wheel's latch, which `mevr convo walk` goes round).
+   The runner's `-HoldThroughPick` holds the left stick from a conversation's first wheel through the pick for 4 s,
+   `-StickTurnAt N` the right stick for 1.5 s, and `-WanderAt` walks away with the stick now. Live rules, run every tick (the
+   walk a pick makes comes in the cut after it, which the 1.5 s settle skipped): `moved-by-pick` (the eyes 0.2 m from where they
+   were as the wheel closed, the stick never let go, within 3 s: the lurch after every reply, 2026-11-10) and `turn-ignored` (the
+   right stick held over 0.7 for 1 s, the view turned under 10 degrees: 2026-11-11). Totals `picksHeld`, `movedByPickM`,
+   `turnsTested`, `turnMaxDeg`.
+5. **The pictures** (`audit-report.py`, each snapshot in a scene; a snapshot as each conversation's wheel first comes up):
+   `eye-flat` (the left eye one colour, its spread under 2 levels, not under the transition fade), `hud-black` (a quarter of the
+   HUD panel opaque black: the script's black screen as a square ahead of the player, item 21), `wheel-cut` (more than 8 opaque
+   pixels in the wheel band's three outer columns: "us." left floating, item 23). On 19 snapshots of the day's good runs: none.
+   And from the log: `black-panel-on-foot` (`game/AuthoredMoment`: the script's black screen up 1 s in game mode 0 outside a held
+   moment), which fails every run until item 21 is decided.
+6. **Frame timing on the fake headset: not solved.** Halcyon's `[PRESENTHZ]` tops out at 31.3 fps in every scene of the day's runs
+   (the splash screen too: research/67's 31.97 ms), so the fake headset hides stalls under about 20 ms. SteamVR's compositor
+   ends each session with "N presents. N dropped. 0 reprojected". Ruled out, measured during the runs: **the game's window
+   covering the headset window** (the game's borderless window is 3840 x 3840 at 0,0 and lies over SteamVR's 'Headset Window',
+   1920 x 1080 at 1600,180; raised to the top with `SetWindowPos(HWND_TOPMOST)`, 30.5 fps, put back), **the display asleep** (the
+   owner's 5120 x 1440 monitor reads Availability 3, running, 239 Hz, and holding it on with `SetThreadExecutionState(
+   ES_DISPLAY_REQUIRED)` changed nothing), and SteamVR's per-app settings (`steam.app.1328670`: `framesToThrottle` 0,
+   `motionSmoothingOverride` 0; `steamvr.motionSmoothing` false). The null driver says 90 Hz (`Display Frequency: 90.000000`,
+   render target 2824 x 2880). Leads, not tried: SteamVR's automatic throttling (every present counted late, the app given every
+   third vsync), and the two virtual monitors now installed (Virtual Desktop's and Meta's, since the owner's Quest tests; the
+   31.9 ms captures began 2026-11-09). Both need a change to the machine's SteamVR or display setup that is the owner's to allow.
+
+A run fails on any of `audit-report.py`'s `FAIL_RULES` (the live rules a player would see at once), a picture check or a wrong
+scene, besides what failed it before. **Broken runs** (one game, `"game": "opold"`, each switch put back after its scene):
+`mevr convo hide body on` (`body-not-drawn`), `hide person on` (the owner's mesh: `person-not-drawn`), `nearplane off`
+(`near-plane`), `sticklatch off` (`moved-by-pick`), `stickturn off` (`turn-ignored`).
+
+Also counted now: the session judge's lines per scene (`tools/conversation-session.py`: flash, dip, screen, body-strayed...) go in
+each scene's record (`noticed`); a `flash` fails the run. The offline drawn rules skip the record written as a scene ends (the
+view may already be the next screen's: Opold's shop).
+
+**Run on the fake headset, 2026-11-13** (the players' build with these changes, `0.2.0+557628cac6-dirty`):
+- **The broken runs** (18:24-18:31, one game, five plays of Opold's scene): **all five caught**, each by its own rule:
+  `body-not-drawn` (not drawn 17.1 of 17.4 s with a wrist in view), `person-not-drawn` (Opold in sight 3.4 m away, not drawn
+  11.6 s), `near-plane` (337 units: it also culled the whole body, `body-not-drawn` 5.3 s), `moved-by-pick` (0.21 m 0.2 s after
+  the wheel closed; the walk went on to 3.1 m), `turn-ignored` (the right stick at 0.90 for 1 s, 0 degrees).
+- **The set** (18:32-18:46, 13 scenes): in every scene where a wrist was in view the body was drawn throughout (8.0-32.1 s
+  checked, 0 undrawn), everyone in sight drawn (1.7-32.2 s checked, 0 undrawn), the near plane 10 units; a reply picked with
+  the stick held walked nobody (0.00 m, Opold and Avina), the right stick turned the view 153 degrees in 1.5 s; the wheel
+  snapshots whole, no black HUD panel. Not measurable by design: the body's drawing while the view walks to a hidden Shepard
+  (Liara's and Girard's walk-ins by the view: `detached`), people in sight at Wrex's (framed far).
+- **Found:**
+  1. **A near-black frame in the Spectre ceremony's walk** (`eye-flat`, 6.8 s; the room just visible, as under a fade): 0.3 s
+     after the script moved Shepard 2.67 m up the stairs in sight (`moment: the script moved Shepard ... the same space, no cut`).
+     The owner's "blink in the middle of my own walk" of 2026-11-10 was the script's `BioSeqAct_BlackScreen`, now taken down in
+     a held moment; this one looks like the matinee's own fade [verify: the snapshot `2026-11-13_18-41-30-411`].
+  2. **A 0.03 s flash of the 3D screen as Opold's conversation hands over to his shop** (game mode 7), in 3 of the day's 6 plays
+     of his scene (the session judge's `flash`; it fails runs from now on).
+  3. **Anderson within 0.18-0.28 m of the player's eyes in both Council walks** (`too-close`, 4.6 s into each, the player walking
+     along): seen as 0.41 m in a run of item 37 and taken for a one-off; it recurs.
+  4. Unchanged: Benezia's face 86 degrees off the eyes at her line 53, Udina 77 at the ceremony's opening (staged).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -4163,3 +4253,7 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-13 17:35, **item 24, frame timing at the director's cuts**: measured on the fake headset (the hearing, 99 cuts,
   `worldCamera` 0 and 1): no stall at a cut, the same GPU work after a cut as elsewhere, `worldCamera = 1` no different; the
   fake headset's 31.9 ms pacing hides game-thread stalls under about 20 ms; next a capture in the headset.
+- 2026-11-13 19:00, **item 38, obvious bugs, measured**: drawn meshes (LastRenderTime), the drawn near plane, the stick through
+  the wheel's latch (`mevr convo stick`), snapshot pictures, the black screen on foot, the scene a save played; five broken runs
+  caught in one game; the set found a near-black frame in the Spectre walk, a 3D-screen flash into Opold's shop and Anderson
+  0.2 m from the eyes; the fake headset's 31.3 fps cap is neither the window's cover nor the display's sleep.

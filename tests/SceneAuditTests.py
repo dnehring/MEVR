@@ -122,5 +122,42 @@ lb_base = {'test_dlg': sa.numbers(left_behind)}
 check(any('hands-off-controllers again' in w for _, w in sa.compare(lb_base, {'test_dlg': sa.numbers(left_behind)})),
       'hands-off-controllers in the baseline still fails')
 
+# Drawn, not only placed (research/69 "Obvious bugs, measured", 2026-11-13): the body in view but undrawn for a second, someone
+# in sight undrawn, a near plane over 15 units; the body's and the plane's never excused by a baseline.
+def drawn(st, body_ago, near=10.0, in_view=True):
+    with_hands(st, 0.07, 0.07)
+    st['player']['hands']['left']['inView'] = in_view
+    st['player']['hands']['right']['inView'] = in_view
+    st['player']['bodyDrawnAgoS'] = body_ago
+    st['player']['nearPlane'] = near
+    return st
+
+
+vanished = [drawn(record(t, 'line', 0.05, [ahead(10)]), 4.0) for t in (0.0, 2.0, 4.0)]
+check('body-not-drawn' in rules(vanished), 'a body in view not drawn for 4 s is body-not-drawn')
+check('body-not-drawn' not in rules([drawn(record(t, 'line', 0.05, [ahead(10)]), 0.01) for t in (0.0, 2.0, 4.0)]),
+      'a body drawn this frame is no finding')
+check('body-not-drawn' not in rules([drawn(record(t, 'line', 0.05, [ahead(10)]), 4.0, in_view=False) for t in (0.0, 2.0, 4.0)]),
+      'a body out of view (no wrist inside the view) is not judged')
+check('body-not-drawn' not in rules([record(t, 'line', 0.05, [ahead(10)]) for t in (0.0, 2.0, 4.0)]), 'records without the measure are not judged')
+check(any('body-not-drawn again' in w for _, w in sa.compare({'test_dlg': sa.numbers(vanished)}, {'test_dlg': sa.numbers(vanished)})),
+      'body-not-drawn in the baseline still fails')
+
+
+def seen(p, ago, in_sight=True):
+    p['inSight'] = in_sight
+    p['drawnAgoS'] = ago
+    return p
+
+
+check('person-not-drawn' in rules([drawn(record(t, 'line', 0.05, [seen(ahead(10), 3.0)]), 0.01) for t in (0.0, 2.0, 4.0)]),
+      'someone in sight not drawn for 3 s is person-not-drawn')
+check('person-not-drawn' not in rules([drawn(record(t, 'line', 0.05, [seen(ahead(10), 3.0, in_sight=False)]), 0.01) for t in (0.0, 2.0, 4.0)]),
+      'someone out of sight is not judged')
+check('near-plane' in rules([drawn(record(t, 'line', 0.05, [ahead(10)]), 0.01, near=180.0) for t in (0.0, 2.0, 4.0)]),
+      "the director's near plane (180 units) is near-plane")
+check('near-plane' not in rules([drawn(record(t, 'line', 0.05, [ahead(10)]), 0.01, near=10.0) for t in (0.0, 2.0, 4.0)]),
+      "the on-foot near plane is no finding")
+
 print(f"scene audit tests: {'ok' if not failures else f'{len(failures)} FAILED'}")
 sys.exit(1 if failures else 0)

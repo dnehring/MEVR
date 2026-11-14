@@ -62,6 +62,9 @@ function Scene-Lines($s, [string]$before, [string]$after, [string]$handsPlan, [s
     if ($s.endAfter) { $common += " -EndAfter $($s.endAfter)" }
     if ($s.turnAt) { $common += " -TurnAt $($s.turnAt)" }
     if ($s.wanderAt) { $common += " -WanderAt $($s.wanderAt)" }
+    if ($s.holdThroughPick) { $common += ' -HoldThroughPick' }
+    if ($s.stickTurnAt) { $common += " -StickTurnAt $($s.stickTurnAt)" }
+    if ($null -ne $s.startEntry) { $common += " -StartEntry $($s.startEntry)" }
     $common += " -Before '$(Q $before)'"
     if ($after) { $common += " -After '$(Q $after)'" }
     if ($handsPlan) { $common += " -Replay '$(Hands $handsPlan)' -HandsPlan '$(Q "$handsPlan, held in view")'" }
@@ -140,20 +143,32 @@ $data = Get-Content -Raw $Set | ConvertFrom-Json
 
 if ($Canaries) {
     # Broken runs (research/69 "Broken runs the audit must catch"): each in a game of its own (a council run needs a fresh game
-    # process, and a test switch must not outlive its run).
+    # process, and a test switch must not outlive its run), unless the set gives several the same `game` (switches each scene
+    # puts back itself: the drawn and stick rules' runs share one game).
     $code = 0
+    $games = [ordered]@{}
     foreach ($c in $data.canaries) {
         if ($Canary.Count -gt 0 -and $Canary -notcontains $c.name) { continue }
-        $s = $data.scenes | Where-Object { $_.key -eq $c.key } | Select-Object -First 1
-        if (-not $s) { Write-Host "broken run $($c.name): no scene $($c.key) in the set"; $code = 1; continue }
-        $before = Default-Before $s
-        if ($c.switch) { $before += "`n" + $c.switch }
-        $handsPlan = if ($null -ne $c.hands) { $c.hands } else { Default-Hands $s }
-        $lines = @('# Written by tools/conversation-audit.ps1 -Canaries (dot-sourced by tools/fake-headset-session.ps1).') +
-            @(Scene-Lines $s $before $c.restore $handsPlan @($c.mustFind) $c.breaks)
+        $g = if ($c.game) { $c.game } else { $c.name }
+        if (-not $games.Contains($g)) { $games[$g] = New-Object System.Collections.ArrayList }
+        [void]$games[$g].Add($c)
+    }
+    foreach ($g in $games.Keys) {
+        $lines = @('# Written by tools/conversation-audit.ps1 -Canaries (dot-sourced by tools/fake-headset-session.ps1).')
+        $names = @()
+        foreach ($c in $games[$g]) {
+            $s = $data.scenes | Where-Object { $_.key -eq $c.key } | Select-Object -First 1
+            if (-not $s) { Write-Host "broken run $($c.name): no scene $($c.key) in the set"; $code = 1; continue }
+            $before = Default-Before $s
+            if ($c.switch) { $before += "`n" + $c.switch }
+            $handsPlan = if ($null -ne $c.hands) { $c.hands } else { Default-Hands $s }
+            $lines += @(Scene-Lines $s $before $c.restore $handsPlan @($c.mustFind) $c.breaks)
+            $names += $c.name
+        }
+        if ($names.Count -eq 0) { continue }
         if ($Plan) { $lines; continue }
-        Write-Host "##### broken run $($c.name): $($c.breaks)"
-        $folder = Play $lines "canary-$($c.name)"
+        Write-Host "##### broken runs in one game: $($names -join ', ')"
+        $folder = Play $lines "canary-$g"
         $code = [math]::Max($code, (Report-Session $folder))
     }
     exit $code

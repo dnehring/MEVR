@@ -21,12 +21,15 @@ WALK_PAUSES = 4        # a scripted walk that paused this often: the player's pa
 WALK_LEFT_M = 5.0      # a walk with someone beside Shepard this far from the player and not paused: the pause did not hold
 HANDS_OFF_M = 0.3      # a drawn wrist this far from its controller's grip (player.hands, arm_ik::MeasureHands): the body is not
                        # where the player is (research/69 "Seeing the body in the audit")
+UNDRAWN_S = 1.0        # a mesh the player can see that no view drew for this long (its LastRenderTime; research/69 "Obvious bugs,
+                       # measured"): the body in view (a drawn wrist inside the head's view), someone of the scene in sight
+NEAR_PLANE_MAX = 15    # units: the frame's near plane over this cuts the floor and the body away from the eyes (on foot 10)
 
 # Never excused by a baseline: Shepard's body away from the player's eyes. The council hearing's 0.70 m "known opening
 # transient" went into the first baseline (2026-11-12), and in the owner's headset session the same opening left the body up to
 # 5.7 m away for 225 of the hearing's 227 seconds (2026-11-13, research/69 "The body that stayed at the mark"): a baseline
 # compares a run with the last one, it is no judgement of what the player sees.
-ABSOLUTE = ('eyes-off-body', 'hands-off-controllers')
+ABSOLUTE = ('eyes-off-body', 'hands-off-controllers', 'body-not-drawn', 'near-plane')
 
 RULES = {
     'look-at-body': (3, "a look meant for the player lands on Shepard's hidden body"),
@@ -38,7 +41,20 @@ RULES = {
     'walk-pauses': (1, 'a scripted walk paused again and again'),
     'walk-left-behind': (3, 'a scripted walk with someone beside Shepard went on without the player'),
     'hands-off-controllers': (3, "Shepard's drawn hands stand away from the player's controllers: his body is not where the player is"),
+    'body-not-drawn': (3, "the player's body is in view but no view drew it"),
+    'person-not-drawn': (3, 'someone of the scene the player can see was not drawn'),
+    'near-plane': (3, "the frame's near plane cuts away what stands near the eyes"),
 }
+
+
+def body_undrawn(st):
+    """Seconds since a view drew the player's body while a drawn wrist stood inside the head's view (records since
+    2026-11-13: `player.bodyDrawnAgoS`, `player.hands`), else None."""
+    player = st['player']
+    ago = player.get('bodyDrawnAgoS')
+    hands = player.get('hands') or {}
+    in_view = any(isinstance(h, dict) and h.get('inView') for h in (hands.get('left'), hands.get('right')))
+    return ago if ago is not None and in_view and not player.get('detached') else None
 
 
 def hands_off(st):
@@ -181,6 +197,14 @@ def findings(records):
         hands_run = hands_run + 1 if ok and off is not None and off >= HANDS_OFF_M else 0
         if hands_run >= 2:
             add('hands-off-controllers', st, 'Shepard', f"his drawn hands {off:.2f} m from the controllers, two records running")
+        # (Not the record written as a scene ends: the view may already be the next one's, a merchant's shop screen: Opold.)
+        live = ok and st.get('tag') != 'end'
+        undrawn = body_undrawn(st)
+        if live and undrawn is not None and undrawn >= UNDRAWN_S:
+            add('body-not-drawn', st, 'Shepard', f"his body in view, not drawn for {undrawn:.1f} s")
+        near = st['player'].get('nearPlane')
+        if ok and not moment and near is not None and near > NEAR_PLANE_MAX:
+            add('near-plane', st, 'the view', f"drawn with a near plane of {near:.0f} units")
         gap = body_gap(st)
         player = st['player']
         for p in st['people']:
@@ -203,6 +227,8 @@ def findings(records):
                     add('speaker-behind', st, p['name'], f"{bearing_off(st, p):.0f} deg from where the player faces")
             else:
                 behind_run[p['name']] = 0
+            if live and p.get('inSight') and (p.get('drawnAgoS') or 0) >= UNDRAWN_S:
+                add('person-not-drawn', st, p['name'], f"in sight, not drawn for {p['drawnAgoS']:.1f} s")
             e = player.get('eyes')
             if ok and e and math.dist(p['at'][:2], e[:2]) < TOO_CLOSE_M * 100:
                 add('too-close', st, p['name'], f"{math.dist(p['at'][:2], e[:2]) / 100:.2f} m from the eyes")

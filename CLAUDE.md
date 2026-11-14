@@ -361,6 +361,13 @@ switching frameworks.
   per-scene "what was measured" with `NOT MEASURED` lines and the set's `expect` checks (both fail a run; `mevr convo audit` prints a scene's live totals while it still plays). **Broken runs**
   (`conversation-audit.ps1 -Canaries`; test switches `mevr convo bodyaway off`, `mevr convo showearly off`): each must be caught;
   every bug the owner finds that the audit missed becomes one, next to its fix.
+  **It sees what is drawn, the stick and the pictures too** (research/69 "Obvious bugs, measured", item 38): `body-not-drawn`,
+  `person-not-drawn` (each mesh's `LastRenderTime`: the body with a wrist in view, people in view and in sight) and `near-plane`
+  (the frame's `NearClipPlane`); `moved-by-pick` and `turn-ignored` (`mevr convo stick left|right ...` is the controller's stick
+  through the wheel's latch; the runner's `-HoldThroughPick`, `-StickTurnAt`); the snapshots' `eye-flat`, `hud-black`, `wheel-cut`
+  (`audit-report.py`, a snapshot at each first wheel); `black-panel-on-foot` (game/AuthoredMoment); which scene played
+  (`sceneSeen`, a scene's `startEntry`). Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
+  (`"game": "opold"`: `mevr convo hide body|person on`, `nearplane off`, `sticklatch off`, `stickturn off`).
   **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
   and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/
   `BoostShake`: `TheShake`'s amplitudes scaled at the source by `[Comfort] screenShake`, 0 by default, originals put back)

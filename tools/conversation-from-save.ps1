@@ -70,7 +70,15 @@ param(
     [string]$Report = '',
     [string]$HandsPlan = '',
     [string[]]$MustFind = @(),
-    [string]$Breaks = ''
+    [string]$Breaks = '',
+    # The entry the scene's conversation must begin with (-Report): a save whose plot picks another starting entry plays another
+    # part of the scene (Kirrahe's arrival talk instead of the planning, 2026-11-11). -1: not checked; its first entry is recorded.
+    [int]$StartEntry = -1,
+    # Play like a player (research/69 "Obvious bugs, measured"): -HoldThroughPick holds the left stick (as the controller's) from
+    # a conversation's first wheel through the pick for 3 s (it must not walk until let go); -StickTurnAt N holds the right stick
+    # 1.5 s, N s into each conversation (it must turn the view). The live audit judges both (moved-by-pick, turn-ignored).
+    [switch]$HoldThroughPick,
+    [int]$StickTurnAt = 0
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
@@ -273,6 +281,8 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     }
     $probes = @($Probe | ForEach-Object { $i = $_.IndexOf(':'); [pscustomobject]@{ At = [double]$_.Substring(0, $i); Line = $_.Substring($i + 1) } } | Sort-Object At)
     $quiet = 0; $seen = $false; $lastKey = ''; $convoSince = $null; $ok = $true; $wandered = $false; $judged = @{}; $turnStep = 0; $linesSeen = 0
+    $convsSeen = [ordered]@{}   # each conversation that played: the first entry it showed (which scene, and which part of it)
+    $wheelShot = @{}; $stickTurned = @{}; $pickHeld = @{}; $stickTests = New-Object System.Collections.ArrayList
     while (((Get-Date) - $started).TotalSeconds -lt $Seconds) {
         Start-Sleep -Milliseconds 1500
         $elapsed = ((Get-Date) - $started).TotalSeconds
@@ -318,6 +328,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             $key = "$($Matches[1])/$($Matches[4])"
             $wheelUp = $Matches[5] -eq 'up'
             $number = $Matches[1]; $convName = $Matches[2]; $entry = $Matches[4]
+            if ($entry -ne '-1' -and -not $convsSeen.Contains($convName)) { $convsSeen[$convName] = [int]$entry }
             if ($SnapshotEvery -gt 0 -and -not $convoShots.ContainsKey($number) -and ((Get-Date) - $convoSince).TotalSeconds -ge 4) {
                 $convoShots[$number] = $true
                 Ask-Snapshot $elapsed 'a conversation 4 s in'
@@ -355,9 +366,30 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             if ($WanderAt -gt 0 -and -not $wandered -and -not $wheelUp -and ((Get-Date) - $convoSince).TotalSeconds -ge $WanderAt) {
                 # A player who wanders off mid-conversation: the stick sideways for 3 s (about 2.7 m at the conversation's
                 # walking pace), then standing still: the conversational circle should gather round again.
-                Console 'mevr convo walk 1 0 3' | Out-Null
+                Console 'mevr convo stick left 1 0 3' | Out-Null   # as the controller's (the wheel's latch included)
                 Say ("wandered off: the stick to the right for 3 s, {0:0} s into the conversation" -f ((Get-Date) - $convoSince).TotalSeconds)
                 $wandered = $true
+            }
+            if ($StickTurnAt -gt 0 -and -not $stickTurned.ContainsKey($number) -and -not $wheelUp -and ((Get-Date) - $convoSince).TotalSeconds -ge $StickTurnAt) {
+                $stickTurned[$number] = $true
+                Console 'mevr convo stick right 0.9 1.5' | Out-Null
+                [void]$stickTests.Add("the right stick held 1.5 s at $([int]$elapsed) s")
+                Say ("the right stick held 1.5 s, {0:0} s into the conversation (it must turn the view)" -f ((Get-Date) - $convoSince).TotalSeconds)
+            }
+            if ($wheelUp -and $SnapshotEvery -gt 0 -and -not $wheelShot.ContainsKey($number)) {
+                # The wheel up, seen once per conversation (its replies whole, not cut at the band's edge), picked on the next pass.
+                $wheelShot[$number] = $true
+                Ask-Snapshot $elapsed 'the wheel up'
+                continue
+            }
+            if ($wheelUp -and $HoldThroughPick -and -not $pickHeld.ContainsKey($number)) {
+                # A player's pick: the stick pushed to choose, still out as the wheel closes (the lurch after every reply,
+                # 2026-11-10); the walk must wait until it is let go.
+                $pickHeld[$number] = $true
+                Console 'mevr convo stick left 0 0.8 4' | Out-Null
+                Start-Sleep -Milliseconds 400
+                [void]$stickTests.Add("a reply picked with the left stick held at $([int]$elapsed) s")
+                Say 'a reply picked with the left stick held through the pick (it must not walk until let go)'
             }
             if ($wheelUp) {
                 Console 'mevr convo pick 0' | Out-Null
@@ -372,6 +404,8 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
     $auditNow = $(if ($Report) { Console 'mevr convo audit' } else { '' })
     if ($After) { Console $After | Out-Null }
     foreach ($e in $expects) { $expectResults += [pscustomobject]@{ at = $null; line = $e.Line; want = $e.Want; met = $null } }
+    # What the player would have noticed, per scene (tools/conversation-session.py: flash, dip, screen, body-strayed...).
+    $noticedLines = @(& python -I (Join-Path $tools 'conversation-session.py') --since $began | Select-Object -Skip 1)
     if ($Report) {
         # The scene's record for tools/audit-report.py: what was measured, and what was not.
         $logLines = @(Log-Since $started)
@@ -389,10 +423,25 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
             snapshots = @($shotsAsked); expectations = $expectResults; tripped = $tripped; summaries = $summaries
             stickLatched = [bool]($logLines | Where-Object { $_ -match 'the stick is still out' })
             moments = @($logLines | Where-Object { $_ -match 'moment: a matinee.s move track takes Shepard' }).Count
+            conversations = @($convsSeen.Keys | ForEach-Object { [pscustomobject]@{ name = $_; firstEntry = $convsSeen[$_] } })
+            stickTests = @($stickTests)
+            noticed = @($noticedLines | Where-Object { $_ -match '^\s+[a-z-]+\s+\S' -and $_ -notmatch '^\s+audit:' } | ForEach-Object { $_.Trim() })
+            blackPanels = @($logLines | Where-Object { $_ -match 'convo: audit: black-panel-on-foot' }).Count
+        }
+        # Which scene played (research/69 "Obvious bugs, measured"): a conversation test whose own conversation never played
+        # tested something else (another start on the way, an ambient alternative); its first entry against the one wanted.
+        if ($title -and -not $title.StartsWith('moment_')) {
+            $want = Conversation-Key $title
+            $mine = @($convsSeen.Keys | Where-Object { (Conversation-Key $_) -eq $want })
+            $record['sceneSeen'] = [pscustomobject]@{ want = $want; met = $mine.Count -gt 0 }
+            if ($StartEntry -ge 0) {
+                $got = $(if ($mine.Count) { $convsSeen[$mine[0]] } else { $null })
+                $record['startEntry'] = [pscustomobject]@{ want = $StartEntry; got = $got; met = $got -eq $StartEntry }
+            }
         }
         ($record | ConvertTo-Json -Depth 8 -Compress) | Add-Content -LiteralPath $Report -Encoding UTF8
     }
-    & python -I (Join-Path $tools 'conversation-session.py') --since $began | Select-Object -Skip 1
+    $noticedLines
     if ($Stances) {
         Start-Sleep -Seconds 1   # the end's stance
         & python -I (Join-Path $tools 'conversation-stance.py') --since ((Get-Date -Format 'yyyy-MM-dd') + 'T' + $began) | ForEach-Object { Say "from above: $_" }

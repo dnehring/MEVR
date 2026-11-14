@@ -25,6 +25,17 @@ import os
 import sys
 
 OFF_M = 0.3  # a drawn wrist this far from its controller's grip: the body is not where the player is (the live rule's)
+# The live rules that fail a run whatever the baseline (research/69 "Obvious bugs, measured", 2026-11-13): what the player would
+# see at once. The stance records' baseline judges the rest (looks, faces, places).
+FAIL_RULES = ('eyes-off-body', 'hands-off-controllers', 'body-third-person', 'body-not-drawn', 'person-not-drawn', 'near-plane',
+              'moved-by-pick', 'turn-ignored', 'black-panel-on-foot')
+# Pictures (each snapshot in a scene): the left eye one flat colour (a black or white frame), the HUD panel a quarter opaque
+# black (the script's black screen as a square ahead of the player, item 21), opaque pixels in the wheel band's outer columns
+# (a reply cut off, "us." left floating, 2026-11-11). Measured on good snapshots of 2026-11-12/13: eyes far from flat, the HUD
+# panel 0% opaque outside the UI, 0 edge pixels on five wheels.
+EYE_FLAT_STD = 2.0
+HUD_BLACK_FRACTION = 0.25
+WHEEL_EDGE_PIXELS = 8
 
 
 def load_records(session):
@@ -96,11 +107,49 @@ def snapshot_hands(d):
     return ('good' if good else 'bad'), ' '.join(parts)
 
 
+def picture_checks(d):
+    """What a snapshot's own pictures show (research/69 "Obvious bugs, measured"): [(check, text)]."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return []
+    out = []
+    folder, stamp = d['_dir'], d.get('stamp') or ''
+    fading = any('fade' in (layer.get('name') or '') for layer in as_list(d.get('layers')) if isinstance(layer, dict))
+    left = next((e for e in d.get('eyes', []) if e.get('eye') == 'left'), None)
+    path = os.path.join(folder, left['file']) if left and left.get('file') else None
+    try:
+        if path and os.path.exists(path) and not fading:
+            px = Image.open(path).convert('L').resize((64, 64)).tobytes()
+            mean = sum(px) / len(px)
+            std = (sum((p - mean) ** 2 for p in px) / len(px)) ** 0.5
+            if std < EYE_FLAT_STD:
+                out.append(('eye-flat', f'the left eye one flat colour (level {mean:.0f}, spread {std:.1f})'))
+        hud = os.path.join(folder, f'{stamp}-hud.png')
+        if stamp and os.path.exists(hud):
+            b = Image.open(hud).convert('RGBA').resize((128, 128), Image.NEAREST).tobytes()
+            n = len(b) // 4
+            black = sum(1 for i in range(n) if b[4 * i + 3] > 200 and max(b[4 * i], b[4 * i + 1], b[4 * i + 2]) < 16)
+            if black / n > HUD_BLACK_FRACTION:
+                out.append(('hud-black', f'{100 * black / n:.0f}% of the HUD panel opaque black (a black square ahead of the player)'))
+        wheel = os.path.join(folder, f'{stamp}-wheel.png')
+        if stamp and os.path.exists(wheel):
+            a = Image.open(wheel).convert('RGBA').getchannel('A')
+            w, h = a.size
+            edge = sum(1 for x in list(range(3)) + list(range(w - 3, w)) for y in range(h) if a.getpixel((x, y)) > 128)
+            if edge > WHEEL_EDGE_PIXELS:
+                out.append(('wheel-cut', f"{edge} opaque pixels in the wheel band's outer columns: a reply cut off at its edge"))
+    except OSError:
+        pass
+    return out
+
+
 def totals(record):
     """The live audit's totals over the scene's conversations shown in the world (None: none was)."""
-    keys = ('sampledS', 'armDrivenS', 'handsSampledS', 'handsInViewS', 'handsOffS', 'thirdPersonS')
-    t = {k: 0.0 for k in keys}
-    t['handsOffMaxM'] = 0.0
+    keys = ('sampledS', 'armDrivenS', 'handsSampledS', 'handsInViewS', 'handsOffS', 'thirdPersonS', 'bodyCheckedS', 'bodyUndrawnS',
+            'sightCheckedS', 'personUndrawnS', 'nearOverS', 'picksHeld', 'turnsTested')
+    peaks = ('handsOffMaxM', 'movedByPickM', 'turnMaxDeg', 'nearMax')
+    t = {k: 0.0 for k in keys + peaks}
     t['names'] = []
     world = False
     for s in as_list(record.get('summaries')):
@@ -111,7 +160,8 @@ def totals(record):
         t['names'].append(s.get('name', '?'))
         for k in keys:
             t[k] += float(a.get(k) or 0.0)
-        t['handsOffMaxM'] = max(t['handsOffMaxM'], float(a.get('handsOffMaxM') or 0.0))
+        for k in peaks:
+            t[k] = max(t[k], float(a.get(k) or 0.0))
     return t if world else None
 
 
@@ -135,6 +185,38 @@ def judge(record, shots):
                            'hands-off-controllers could not fire')
         elif t['handsSampledS'] <= 0:
             missing.append("the body: Shepard's drawn hands were never read against the controllers")
+        lines.append(f"  drawn: the body in view {t['bodyCheckedS']:.1f} s, not drawn {t['bodyUndrawnS']:.1f} s; someone in sight "
+                     f"{t['sightCheckedS']:.1f} s, not drawn {t['personUndrawnS']:.1f} s; near plane at most {t['nearMax']:.0f} units")
+        if t['armDrivenS'] > 0 and t['bodyCheckedS'] <= 0:
+            missing.append('whether the body was drawn: no drawn wrist inside the view (body-not-drawn could not fire)')
+        if t['sightCheckedS'] <= 0:
+            missing.append('whether the people were drawn: nobody of the scene in view and in sight (person-not-drawn could not fire)')
+        tests = as_list(record.get('stickTests'))
+        if tests:
+            lines.append(f"  the stick: {'; '.join(tests)}; replies picked with it out {int(t['picksHeld'])} (the eyes moved at most "
+                         f"{t['movedByPickM']:.2f} m before it was let go); right-stick holds {int(t['turnsTested'])} (turned at most "
+                         f"{t['turnMaxDeg']:.0f} deg)")
+            if any('picked' in x for x in tests) and t['picksHeld'] <= 0:
+                missing.append('a reply picked with the stick out: the live audit saw none (moved-by-pick could not fire)')
+            if any('right stick' in x for x in tests) and t['turnsTested'] <= 0:
+                missing.append('the right stick held: the live audit saw no hold (turn-ignored could not fire)')
+    seen = record.get('sceneSeen')
+    start = record.get('startEntry')
+    played = ', '.join(f"{c.get('name')} from entry {c.get('firstEntry')}" for c in as_list(record.get('conversations'))) or 'none'
+    lines.append(f"  conversations played: {played}")
+    wrong = []
+    if isinstance(seen, dict) and seen.get('met') is False:
+        wrong.append(f"its own conversation ({seen.get('want')}) never played: the save tested another scene")
+    if isinstance(start, dict) and start.get('met') is False:
+        wrong.append(f"it began at entry {start.get('got')}, not {start.get('want')}: another part of the scene (the save's plot)")
+    for w in wrong:
+        lines.append(f'  WRONG SCENE: {w}')
+    # What the player would have noticed (tools/conversation-session.py's judge over the scene's log): a flash (a screen or panel
+    # shown for a few frames and taken away: Opold's shop, 2026-11-13) fails the run; the rest is listed.
+    noticed = [str(n) for n in as_list(record.get('noticed'))]
+    flashes = [n for n in noticed if n.startswith('flash')]
+    if noticed:
+        lines.append('  noticed: ' + '; '.join(n[:110] for n in noticed[:6]))
     asked = as_list(record.get('snapshots'))
     came = [(s, shots.get(s.get('tag'))) for s in asked]
     got = [(s, d) for s, d in came if d is not None]
@@ -156,6 +238,13 @@ def judge(record, shots):
             missing.append(f'{len(asked) - len(got)} snapshots never came')
     else:
         missing.append('no snapshot was asked for')
+    pictures = []
+    for (s, d), (_, v, _) in zip(got, verdicts):
+        if v != 'skip':
+            pictures += [(s, check, text) for check, text in picture_checks(d)]
+    if got:
+        lines.append('  pictures: ' + ('; '.join(f"{s.get('at')} s: {text}" for s, _, text in pictures[:6]) if pictures else
+                                         f"nothing wrong in {sum(1 for _, v, _ in verdicts if v != 'skip')} (eye not flat, no black panel, wheel whole)"))
     expects = as_list(record.get('expectations'))
     failed = [e for e in expects if e.get('met') is False]
     if expects:
@@ -172,10 +261,14 @@ def judge(record, shots):
         missing.append('the scene did not play as asked (see the run log)')
     for m in missing:
         lines.append(f'  NOT MEASURED: {m}')
-    out = {'notMeasured': not body_measured, 'expectFailed': bool(failed), 'tripped': rules, 'caught': None}
+    checks = sorted({check for _, check, _ in pictures})
+    out = {'notMeasured': not body_measured, 'expectFailed': bool(failed), 'tripped': rules, 'caught': None,
+           'failRules': [r for r in rules if r in FAIL_RULES], 'pictures': checks, 'wrongScene': wrong + [f'a flash: {f}' for f in flashes]}
     must = as_list(record.get('mustFind'))
     if must:
-        hits = [r for r in must if r in rules]
+        hits = [r for r in must if r in rules or r in checks]
+        if 'wrong-scene' in must and wrong:
+            hits.append('wrong-scene')
         if 'expect' in must and failed:
             hits.append('expect')
         if 'not-measured' in must and not body_measured:
@@ -258,6 +351,12 @@ def main(argv):
                 problems.append(f'{name}: the body was not measured')
             if out['expectFailed']:
                 problems.append(f'{name}: an expectation failed')
+            for r in out['failRules']:
+                problems.append(f'{name}: {r} (a live rule the player would see at once)')
+            for c in out['pictures']:
+                problems.append(f'{name}: {c} (in a snapshot)')
+            for w in out['wrongScene']:
+                problems.append(f'{name}: {w}')
         title = name if len(name) <= 30 else name[:29] + '~'
         rows.append((title, [(s, v, text, shots[s['tag']]) for s, v, text in verdicts]))
     if broken:

@@ -168,6 +168,12 @@ bool gHavePawnAt = false;
 int gMoments = 0;
 int gTeleports = 0;
 int gBlackScreens = 0;
+// The script's black screen left up on foot (research/69 item 21, "Obvious bugs, measured"): in VR the game's UI goes to the
+// body-locked HUD panel, so it is a black square ahead of the player, not the whole view ("black boxes where I'm looking",
+// Kirrahe's camp, 2026-11-11). When it turned black (0: none), and its name; the audit line comes once per black screen.
+std::uint64_t gBlackUpMs = 0;
+std::string gBlackUpName;
+bool gBlackUpReported = false;
 int gToggles = 0;
 std::string gLast;       // the last summary
 
@@ -269,6 +275,13 @@ void OnBlackScreen(ue3::Object* context, ue3::Function*, void*, void*) {
     // it is (the owner: a forced placement needs a fade). Only where the script turns black on, not where it comes back.
     int const action = context != nullptr ? static_cast<int>(gBlackScreenAction.Read<std::uint8_t>(context).value_or(255)) : 255;
     bool const dipped = hidden && (action == 0 || action == 2) && conversation_world::MomentDip();
+    if ((action == 0 || action == 2) && !hidden) {
+        gBlackUpMs = GetTickCount64();
+        gBlackUpName = context != nullptr ? ue3::runtime::FullName(context) : std::string("?");
+        gBlackUpReported = false;
+    } else if (action != 0 && action != 2) {
+        gBlackUpMs = 0;
+    }
     conversation_world::ScriptBlackScreen(action);  // a staged conversation's cut to a new composition
     log::Info("moment: the script's black screen ({}, action {}){}{}{}", context != nullptr ? ue3::runtime::FullName(context) : std::string("?"),
         action, gM.on ? " during a track's move of Shepard" : "", hidden ? ": taken down again (the moment is held in first person)" : "",
@@ -346,6 +359,14 @@ void Tick() {
     EnsureHandlers(controller, pawn);
     auto const at = player::Location(pawn);
     std::uint64_t const now = GetTickCount64();
+    if (gBlackUpMs != 0 && !gBlackUpReported && now - gBlackUpMs > 1000 && !conversation_world::MomentViewOn()) {
+        if (auto const mode = player::GameMode(controller); mode && *mode == 0) {
+            gBlackUpReported = true;
+            log::Info("convo: audit: black-panel-on-foot: the script's black screen ({}) is up on foot for {:.1f} s: in VR it is a black "
+                      "square on the HUD panel ahead of the player, not the whole view (research/69 item 21)",
+                gBlackUpName, static_cast<double>(now - gBlackUpMs) / 1000.0);
+        }
+    }
     unsigned const calls = gTrackCalls.load(std::memory_order_relaxed);
     bool const moved = calls != gCallsSeen;
     gCallsSeen = calls;

@@ -101,6 +101,7 @@ ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayi
 ue3::FieldRef gSlotsUsed{"SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed"};  // byte[6]: which wheel locations hold a reply
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
 ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
+ue3::FunctionRef gPrimitiveSetHidden{"Engine.PrimitiveComponent.SetHidden"};  // the audit's broken runs only (mevr convo hide)
 ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry"};  // mevr convo pick (tests)
 ue3::FunctionRef gSkipConversation{"SFXGame.BioSFHandler_Conversation.SkipConversation"};     // mevr convo skip (tests)
 // Keeping people where they stand (research/59 "Keeping people in place"): the game's placements are native (no script call or
@@ -681,6 +682,38 @@ std::optional<Head> HeadOf(ue3::Object* actor) {
 // Shepard's drawn head, a stick held through a cut walks at once). The body rule alone brought nothing back (2026-11-13).
 bool gBodyAwayOldRule = false;
 bool gShowEarlyOff = false;     // `mevr convo showearly off`: the council's chamber empty during the walk (item 36's bug back)
+// `mevr convo hide body|person on|off` (research/69 "Obvious bugs, measured", 2026-11-13): the player's body mesh, or the
+// conversation owner's, hidden while a scene in the world plays (the council's lines that hid the player's body, 2026-11-10; a
+// person the culling camera left out, 2026-11-06); `mevr convo nearplane off`: the director's near plane drawn from the eyes
+// (2026-11-10, the floor and the body cut away). Shown again when switched on, at the scene's end, or never written otherwise.
+bool gHideBodyTest = false;
+bool gHidePersonTest = false;
+bool gNearPlaneOff = false;
+ue3::Object* gHiddenForTest[2] = {};  // the meshes hidden so: the body's, the person's
+// `mevr convo stick left|right <x> <y> [seconds]` (tests, research/69 "Obvious bugs, measured"): a controller's stick as the
+// conversation's walk and turn read it, through the wheel's latch (`walk` goes round it). The broken runs' `sticklatch off`
+// walks the stick that picked a reply at once (the lurch after every reply, 2026-11-10); `stickturn off` turns nobody with the
+// right stick (2026-11-11).
+struct TestStick {
+    float lx = 0.0f, ly = 0.0f, rx = 0.0f;
+    std::uint64_t leftUntilMs = 0, rightUntilMs = 0;
+};
+TestStick gTestStick;
+bool gStickLatchOff = false;
+bool gStickTurnOff = false;
+
+vr::controllers::State SticksNow() {
+    vr::controllers::State c = vr::controllers::Latest();
+    std::uint64_t const now = GetTickCount64();
+    if (gTestStick.leftUntilMs > now) {
+        c.left.stickX = gTestStick.lx;
+        c.left.stickY = gTestStick.ly;
+    }
+    if (gTestStick.rightUntilMs > now) {
+        c.right.stickX = gTestStick.rx;
+    }
+    return c;
+}
 
 std::optional<Head> MarkHeadOf(ue3::Object* actor) {
     std::optional<Head> head = HeadOf(actor);
@@ -782,6 +815,7 @@ bool gOwnCamera = false;
 void KeepInPlace(ue3::Object* pawn);
 void StanceTick(ue3::Object* pawn);
 std::string WriteStance(std::string const& tag);
+std::string JsonText(std::string_view s);
 bool KeepsTheLiveConversation(ue3::Object* controller);
 ue3::Object* ConversationNow(ue3::Object* controller);
 bool MomentHeld();  // a moment's view is up (provisional too)
@@ -806,6 +840,7 @@ CameraHold gCameraHold;
 // on-foot plane is written back after the camera's update, before the draw.
 bool gNearHold = false;
 float gFootNear = 10.0f;      // the plane on foot (read there each camera update)
+float gDrawnNear = -1.0f;     // the plane the last conversation-mode frame was drawn with (after ours; the live audit's)
 float gNearReplaced = 0.0f;   // the director's plane last replaced (logged when it changes)
 std::uint64_t gNearWrites = 0;
 std::uint64_t gArmedSince = 0;  // when the mod last told the host it was armed on foot (set by Arm; 0: not armed)
@@ -930,6 +965,9 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
                 ++gNearWrites;
             }
         }
+        if (ue3::Object* const local = gBodyLocalPlayer.Read<ue3::Object*>(controller).value_or(nullptr)) {
+            gDrawnNear = gBodyNearClip.Read<float>(local).value_or(-1.0f);  // what this frame draws with
+        }
     }
 }
 
@@ -995,6 +1033,30 @@ struct Convo {
         double handsOffS = 0.0;      // ... a drawn wrist 0.3 m or more from its controller's grip
         double handsOffMaxM = 0.0;
         double handsInViewS = 0.0;   // ... both drawn wrists inside the head's view
+        // Drawn, not only placed (research/69 "Obvious bugs, measured", 2026-11-13): the engine's LastRenderTime of each mesh
+        // (the world's clock when a view last drew it). A body or a person can stand exactly where it should and not be drawn:
+        // the player's body vanished on the council's lines (2026-11-10) with every bone in place.
+        double bodyCheckedS = 0.0;   // a drawn wrist in view (so the body must be in the picture)
+        double bodyUndrawnS = 0.0;   // ... the body's mesh not drawn for 0.3 s or more
+        double bodyUndrawnMaxS = 0.0;
+        double sightCheckedS = 0.0;  // someone of the scene in view, in sight and within 12 m of the eyes
+        double personUndrawnS = 0.0; // ... their mesh not drawn for 0.3 s or more
+        std::string personUndrawn;   // ... the first one so
+        double nearOverS = 0.0;      // the frame drawn with a near plane over 15 units (the director's: 67-280)
+        double nearMax = 0.0;
+        // The stick as a player holds it (each tick, settling or not): a reply picked with the left stick still out must not
+        // walk the player before it is let go; the right stick held must turn the view.
+        double lastInputS = 0.0;
+        bool wheelWas = false;
+        bool pickWatch = false;
+        ik::Vec3 pickEyes;
+        double pickAtS = 0.0;
+        int picksHeld = 0;           // replies picked with the stick out (what was tested)
+        double movedByPickM = 0.0;   // ... the most the eyes moved before it was let go (within 3 s)
+        double turnHeldS = 0.0;      // the right stick held over 0.7 now
+        double turnFromDeg = 0.0;
+        int turnsTested = 0;
+        double turnMaxDeg = 0.0;     // ... the most a hold turned the view
         double lookAtBodyS = 0.0;    // time someone's look target was Shepard with his head half a metre or more away
         struct Face {                // faces of looks meant for the player, per person: their angle off the eyes
             double sum = 0.0;
@@ -3207,6 +3269,80 @@ void StepCircle(ue3::Object* pawn, ue3::Object* speakerNow, ue3::Object* listene
     }
 }
 
+// The world's clock (WorldInfo.TimeSeconds, what LastRenderTime is written in), or nullopt.
+std::optional<double> WorldNowS() {
+    ue3::Object* const pawn = player::Pawn(player::Controller());
+    ue3::Object* const world = pawn != nullptr && ue3::runtime::IsAlive(pawn) ? gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    auto const t = world != nullptr ? gWorldSeconds.Read<float>(world) : std::nullopt;
+    return t ? std::optional<double>(*t) : std::nullopt;
+}
+
+// Seconds since a view last drew a mesh (PrimitiveComponent.LastRenderTime: frustum, occlusion and hide flags all leave it
+// behind), or nullopt.
+std::optional<double> DrawnAgoS(ue3::Object* mesh) {
+    if (mesh == nullptr || !ue3::runtime::IsAlive(mesh)) {
+        return std::nullopt;
+    }
+    auto const now = WorldNowS();
+    auto const last = gCompLastRender.Read<float>(mesh);
+    if (!now || !last) {
+        return std::nullopt;
+    }
+    return *now - *last;
+}
+
+// Whether a world point stands inside the head's view: 35 degrees each way (tan 35 = 0.70), as arm_ik::MeasureHands' wrists, clear
+// of the picture's edge. Nullopt without a view frame.
+std::optional<bool> InHeadView(ik::Vec3 const& p) {
+    auto const frame = view_anchor::Current();
+    if (!frame) {
+        return std::nullopt;
+    }
+    XrVector3f const t = engine::ToTracking(*frame, engine::UnrealVector{p.x, p.y, p.z});
+    XrPosef const& head = frame->head;
+    ik::Quat const toHead = ik::Conjugate({head.orientation.x, head.orientation.y, head.orientation.z, head.orientation.w});
+    ik::Vec3 const v = ik::Rotate(toHead, {t.x - head.position.x, t.y - head.position.y, t.z - head.position.z});
+    return v.z < -0.05 && std::abs(v.x) <= -0.70 * v.z && std::abs(v.y) <= -0.70 * v.z;
+}
+
+// The broken runs' hides (mevr convo hide): the player's body mesh (slot 0) or the conversation owner's (slot 1) hidden while
+// the switch is on and a scene plays in the world; shown again when it goes off and at the scene's end (ShowTestHidden).
+void SetTestHidden(int slot, ue3::Object* mesh, bool hide) {
+    if (mesh == nullptr || !ue3::runtime::IsAlive(mesh) || gPrimitiveSetHidden.Get() == nullptr) {
+        gHiddenForTest[slot] = nullptr;
+        return;
+    }
+    ue3::Params p(ue3::runtime::Get(), gPrimitiveSetHidden.Get());
+    p.SetBool("NewHidden", hide);
+    ue3::runtime::Call(mesh, gPrimitiveSetHidden.Get(), p);
+    gHiddenForTest[slot] = hide ? mesh : nullptr;
+    log::Info("convo: {} {}'s mesh for a broken run", hide ? "hid" : "showed again", slot == 0 ? "the player's body" : "a person");
+}
+
+void ShowTestHidden() {
+    for (int slot : {0, 1}) {
+        if (gHiddenForTest[slot] != nullptr) {
+            SetTestHidden(slot, gHiddenForTest[slot], false);
+        }
+    }
+}
+
+void ApplyTestHides() {
+    if (gHideBodyTest && gHiddenForTest[0] == nullptr) {
+        SetTestHidden(0, player::Mesh(player::BioPawn(player::Controller())), true);
+    } else if (!gHideBodyTest && gHiddenForTest[0] != nullptr) {
+        SetTestHidden(0, gHiddenForTest[0], false);
+    }
+    if (gHidePersonTest && gHiddenForTest[1] == nullptr && gC.object != nullptr && ue3::runtime::IsAlive(gC.object)) {
+        ue3::Object* const owner = gOwner.Read<ue3::Object*>(gC.object).value_or(nullptr);
+        if (owner != nullptr && ue3::runtime::IsAlive(owner) && !IsShepardPawn(owner)) {
+            SetTestHidden(1, player::Mesh(owner), true);
+        }
+    } else if (!gHidePersonTest && gHiddenForTest[1] != nullptr) {
+        SetTestHidden(1, gHiddenForTest[1], false);
+    }
+}
+
 // The live audit, each tenth of a second of a scene in the world (KeepInPlace). Each rule that trips is logged once
 // (`convo: audit: <rule>`) and, with the stances on, recorded from above (`finding-<rule>`).
 void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
@@ -3216,15 +3352,6 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
         a.cutSeen = gC.cut;
         a.settleUntilS = now + 1.5;
     }
-    if (now < a.nextS || now < a.settleUntilS || !gC.openingDone || !gDrawnEyes) {
-        return;
-    }
-    double const dt = a.nextS == 0.0 ? 0.1 : std::clamp(now - (a.nextS - 0.1), 0.0, 0.5);
-    a.nextS = now + 0.1;
-    ik::Vec3 const eyes = PlayerEyes();
-    ue3::Object* const shep = ShepardPawn();
-    auto const shepHead = shep != nullptr && ue3::runtime::IsAlive(shep) ? HeadOf(shep) : std::nullopt;
-    double const gap = shepHead ? std::hypot(shepHead->at.x - eyes.x, shepHead->at.y - eyes.y) : 0.0;
     auto trip = [&](char const* rule, std::string const& detail) {
         std::string const tag = std::string("|") + rule + "|";
         if (a.tripped.find(tag) != std::string::npos) {
@@ -3236,6 +3363,59 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
             log::Info("convo: {}", WriteStance(std::string("finding-") + rule));
         }
     };
+    // The stick as a player holds it (research/69 "Obvious bugs, measured"), each tick, the scene settling or not: the walk a
+    // reply's stick makes comes in the cut that follows the pick. The lurch after every reply (2026-11-10): the stick that picked
+    // walked the player half a metre as the wheel closed. The right stick in a conversation turned nobody (2026-11-11).
+    if (gC.openingDone && gDrawnEyes) {
+        vr::controllers::State const sticks = SticksNow();
+        double const pushed = sticks.active ? std::hypot(sticks.left.stickX, sticks.left.stickY) : 0.0;
+        double const step = a.lastInputS == 0.0 ? 0.0 : std::clamp(now - a.lastInputS, 0.0, 0.5);
+        a.lastInputS = now;
+        ik::Vec3 const eyesNow = PlayerEyes();
+        if (a.wheelWas && !gC.wheel && pushed >= 0.3) {
+            a.pickWatch = true;
+            a.pickEyes = eyesNow;
+            a.pickAtS = now;
+            ++a.picksHeld;
+        }
+        a.wheelWas = gC.wheel;
+        if (a.pickWatch) {
+            double const moved = std::hypot(eyesNow.x - a.pickEyes.x, eyesNow.y - a.pickEyes.y) / kUnitsPerMeter;
+            a.movedByPickM = std::max(a.movedByPickM, moved);
+            if (moved >= 0.2) {
+                trip("moved-by-pick", std::format("the stick that picked the reply walked the player {:.2f} m {:.1f} s after the wheel closed, "
+                                                  "before it was let go", moved, now - a.pickAtS));
+                a.pickWatch = false;
+            } else if (pushed < 0.25 || now - a.pickAtS > 3.0 || gC.wheel) {
+                a.pickWatch = false;
+            }
+        }
+        if (sticks.active && std::abs(sticks.right.stickX) >= 0.7 && !gC.wheel) {
+            if (a.turnHeldS == 0.0) {
+                a.turnFromDeg = gC.turnedDeg;
+                ++a.turnsTested;
+            }
+            a.turnHeldS += std::max(step, 1e-3);
+            double const turned = std::abs(gC.turnedDeg - a.turnFromDeg);
+            a.turnMaxDeg = std::max(a.turnMaxDeg, turned);
+            if (a.turnHeldS >= 1.0 && turned < 10.0) {
+                trip("turn-ignored", std::format("the right stick held ({:.2f}) for {:.1f} s turned the view {:.0f} deg", sticks.right.stickX,
+                    a.turnHeldS, turned));
+            }
+        } else {
+            a.turnHeldS = 0.0;
+        }
+    }
+    if (now < a.nextS || now < a.settleUntilS || !gC.openingDone || !gDrawnEyes) {
+        return;
+    }
+    double const dt = a.nextS == 0.0 ? 0.1 : std::clamp(now - (a.nextS - 0.1), 0.0, 0.5);
+    a.nextS = now + 0.1;
+    ApplyTestHides();
+    ik::Vec3 const eyes = PlayerEyes();
+    ue3::Object* const shep = ShepardPawn();
+    auto const shepHead = shep != nullptr && ue3::runtime::IsAlive(shep) ? HeadOf(shep) : std::nullopt;
+    double const gap = shepHead ? std::hypot(shepHead->at.x - eyes.x, shepHead->at.y - eyes.y) : 0.0;
     a.sampledS += dt;
     if (shepHead && !gC.detached) {
         a.gapMaxM = std::max(a.gapMaxM, gap / kUnitsPerMeter);
@@ -3276,6 +3456,31 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
             if (hands->inView[0] && hands->inView[1]) {
                 a.handsInViewS += dt;
             }
+            // ... and drawn: a wrist inside the view puts the body's mesh in the picture, so a view must have drawn it.
+            if ((hands->inView[0] || hands->inView[1]) && !gC.detached) {
+                if (auto const ago = DrawnAgoS(player::Mesh(player::BioPawn(player::Controller())))) {
+                    a.bodyCheckedS += dt;
+                    a.bodyUndrawnMaxS = std::max(a.bodyUndrawnMaxS, std::min(*ago, 600.0));
+                    if (*ago >= 0.3) {
+                        a.bodyUndrawnS += dt;
+                        if (a.bodyUndrawnS >= 1.0) {
+                            trip("body-not-drawn", std::format("the player's body in view (a drawn wrist inside the head's view) but not drawn for "
+                                                               "{:.1f} s ({:.1f} s so in all)", *ago, a.bodyUndrawnS));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // The near plane the frame was drawn with (the director's cut everything within it away from the eyes: 2026-11-10).
+    if (gDrawnNear > 0.0f) {
+        a.nearMax = std::max(a.nearMax, static_cast<double>(gDrawnNear));
+        if (gDrawnNear > 15.0f) {
+            a.nearOverS += dt;
+            if (a.nearOverS >= 0.5) {
+                trip("near-plane", std::format("the frame drawn with a near plane of {:.0f} units ({:.2f} m): everything nearer the eyes cut away",
+                    gDrawnNear, gDrawnNear / kUnitsPerMeter));
+            }
         }
     }
     // The facing the scene gave the player: the held yaw without his own turns (the right stick's; a speaker behind a player who
@@ -3291,6 +3496,24 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
             a.closeMinM = std::min(a.closeMinM, d);
             if (d < 0.5) {
                 trip("too-close", std::format("{} {:.2f} m from the player's eyes", st.name, d));
+            }
+            // Someone of the scene the player can see (in view, a clear line from the eyes to the head, within 12 m) must be drawn:
+            // a person the culling camera left out stood on its place undrawn (the comm room, 2026-11-06).
+            if (auto const head = HeadOf(actor); head && Dist(head->at, eyes) <= 1200.0 && InHeadView(head->at).value_or(false) &&
+                                                 LineOfSight(gC.playerPawn, eyes, head->at)) {
+                if (auto const ago = DrawnAgoS(player::Mesh(actor))) {
+                    a.sightCheckedS += dt;
+                    if (*ago >= 0.3) {
+                        a.personUndrawnS += dt;
+                        if (a.personUndrawn.empty()) {
+                            a.personUndrawn = st.name;
+                        }
+                        if (a.personUndrawnS >= 1.0) {
+                            trip("person-not-drawn", std::format("{} in view and in sight {:.1f} m from the eyes, not drawn for {:.1f} s",
+                                st.name, Dist(head->at, eyes) / kUnitsPerMeter, *ago));
+                        }
+                    }
+                }
             }
             if (actor == speaker && (listener == shep || listener == gC.playerPawn)) {
                 double const bearing = std::atan2(at->y - eyes.y, at->x - eyes.x) * kRadToDeg;
@@ -4521,10 +4744,10 @@ void TurnBy(double degrees) {
 }
 
 void TurnPlayer(double dt) {
-    if (!gSettings.stickTurns || !gC.on || !gC.world || !gC.openingDone) {
+    if (!gSettings.stickTurns || !gC.on || !gC.world || !gC.openingDone || gStickTurnOff) {
         return;
     }
-    vr::controllers::State const controllers = vr::controllers::Latest();
+    vr::controllers::State const controllers = SticksNow();
     if (!controllers.active) {
         return;
     }
@@ -4562,7 +4785,7 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     }
     // The stick: `mevr convo walk` while it lasts, else the left controller's; the wheel's while the wheel is up.
     float stickX = 0.0f, stickY = 0.0f;
-    vr::controllers::State const controllers = vr::controllers::Latest();
+    vr::controllers::State const controllers = SticksNow();
     double const pushed = controllers.active ? std::hypot(controllers.left.stickX, controllers.left.stickY) : 0.0;
     // After a cut or a dip the view stands somewhere new: a stick still out from before walks again only once it has been let
     // go, as after a reply's pick (the owner's council hearing, 2026-11-13: pushed through the cut from the walk with
@@ -4575,7 +4798,8 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
             log::Info("convo: at {:.1f} s the stick is still out ({:.2f}) through a cut: not a walk until it is let go", Seconds(), pushed);
         }
     }
-    bool const stickWalks = cw::StickWalks(gC.wheelStick, gC.wheel, pushed);  // the wheel's until it has been let go
+    // The wheel's until it has been let go (`mevr convo sticklatch off`, a broken run: walks as soon as the wheel is down).
+    bool const stickWalks = gStickLatchOff ? !gC.wheel : cw::StickWalks(gC.wheelStick, gC.wheel, pushed);
     if (gC.wheel) {
         // (the stick steers the wheel)
     } else if (gWalkOverride.untilMs > GetTickCount64()) {
@@ -4975,11 +5199,16 @@ std::string AuditJson() {
                        "\"faceOffMaxDeg\": {:.0f}, \"faceOver35\": {}, \"faceSamples\": {}, \"faceAxisUnknown\": {}, "
                        "\"speakerBehindS\": {:.1f}, \"closeMinM\": {:.2f}, \"sampledS\": {:.1f}, \"thirdPersonS\": {:.1f}, "
                        "\"armDrivenS\": {:.1f}, \"handsSampledS\": {:.1f}, \"handsOffS\": {:.1f}, \"handsOffMaxM\": {:.2f}, "
-                       "\"handsInViewS\": {:.1f}, \"tripped\": \"{}\"}}",
+                       "\"handsInViewS\": {:.1f}, \"bodyCheckedS\": {:.1f}, \"bodyUndrawnS\": {:.1f}, \"bodyUndrawnMaxS\": {:.1f}, "
+                       "\"sightCheckedS\": {:.1f}, \"personUndrawnS\": {:.1f}, \"personUndrawn\": \"{}\", \"nearOverS\": {:.1f}, "
+                       "\"nearMax\": {:.0f}, \"picksHeld\": {}, \"movedByPickM\": {:.2f}, \"turnsTested\": {}, \"turnMaxDeg\": {:.0f}, "
+                       "\"tripped\": \"{}\"}}",
         gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS, faces.n != 0 ? faces.sum / faces.n : 0.0, faces.maxDeg,
         faces.over35, faces.n, unknown, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.sampledS, gC.audit.thirdPersonS,
         gC.audit.armDrivenS, gC.audit.handsSampledS, gC.audit.handsOffS, gC.audit.handsOffMaxM, gC.audit.handsInViewS,
-        gC.audit.tripped);
+        gC.audit.bodyCheckedS, gC.audit.bodyUndrawnS, gC.audit.bodyUndrawnMaxS, gC.audit.sightCheckedS, gC.audit.personUndrawnS,
+        JsonText(gC.audit.personUndrawn), gC.audit.nearOverS, gC.audit.nearMax, gC.audit.picksHeld, gC.audit.movedByPickM,
+        gC.audit.turnsTested, gC.audit.turnMaxDeg, gC.audit.tripped);
 }
 
 void End(char const* why) {
@@ -4989,6 +5218,7 @@ void End(char const* why) {
     if ((gSettings.stances || gStancesOverride.value_or(false)) && gC.world && Seconds() - gC.stanceAtS > 2.0) {
         log::Info("convo: {}", WriteStance("end"));
     }
+    ShowTestHidden();
     if (gEyesOn) {
         gEyesOn = false;
         GiveBackEyes(why);
@@ -5099,6 +5329,12 @@ void End(char const* why) {
                   "{:.2f} m); the body placed by his head, not in the player's view, for {:.1f} s; the drawn hands 0.3 m or more "
                   "from the controllers for {:.1f} s (at most {:.2f} m)",
             gC.audit.gapOverS, gC.audit.sampledS, gC.audit.gapMaxM, gC.audit.thirdPersonS, gC.audit.handsOffS, gC.audit.handsOffMaxM);
+    }
+    if (gC.world && (gC.audit.bodyUndrawnS >= 1.0 || gC.audit.personUndrawnS >= 1.0 || gC.audit.nearOverS >= 0.5)) {
+        log::Info("convo: audit totals: the body in view but not drawn for {:.1f} of {:.1f} s checked; someone in sight not drawn for "
+                  "{:.1f} of {:.1f} s ({}); a near plane over 15 units for {:.1f} s (at most {:.0f})",
+            gC.audit.bodyUndrawnS, gC.audit.bodyCheckedS, gC.audit.personUndrawnS, gC.audit.sightCheckedS,
+            gC.audit.personUndrawn.empty() ? std::string("-") : gC.audit.personUndrawn, gC.audit.nearOverS, gC.audit.nearMax);
     }
     log::Info("convo: summary {{\"name\": \"{}\", \"why\": \"{}\", \"seconds\": {:.1f}, \"stage\": {}, \"actors\": {}, \"lines\": {}, "
               "\"speakers\": {}, \"wheel\": {}, \"shots\": {}, \"onShepard\": {}, \"onNpc\": {}, \"shoulder\": {}, \"cutaway\": {}, "
@@ -5786,7 +6022,7 @@ cw::State MomentState(std::uint64_t now) {
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gPov.fov);
     }
     gCameraHold.on = gSettings.camera && state.holdRender != 0;
-    gNearHold = gSettings.nearPlane && state.holdRender != 0;
+    gNearHold = gSettings.nearPlane && !gNearPlaneOff && state.holdRender != 0;
     gCameraHold.location = {static_cast<float>(gC.hold.x), static_cast<float>(gC.hold.y), static_cast<float>(gC.hold.z)};
     gCameraHold.rotation = gC.holdRotation;
     gCameraHold.fov = gC.holdFov;
@@ -6245,6 +6481,7 @@ std::string WriteStance(std::string const& tag) {
     double const playerYaw = YawDeg(gC.holdRotation);
     // Shepard's head bone: where every look at "Shepard" aims (the game's, rank 99999, and ours) unless the eyes stand in.
     std::optional<Head> const shepardHead = shep != nullptr && ue3::runtime::IsAlive(shep) ? HeadOf(shep) : std::nullopt;
+    auto const bodyDrawnAgo = DrawnAgoS(player::Mesh(pawn));  // the player's body: seconds since a view drew it
     std::vector<Tracked> who = gC.actors;
     std::string name = gC.name;
     if (moment) {
@@ -6342,14 +6579,20 @@ std::string WriteStance(std::string const& tag) {
                     gLookDataRank.Read<std::int32_t>(lookData).value_or(0), aim);
             }
         }
+        // Drawn (research/69 "Obvious bugs, measured"): seconds since a view drew its mesh, and whether the player can see its
+        // head (in view, a clear line from the eyes, within 12 m): someone in sight must be drawn.
+        auto const drawnAgo = DrawnAgoS(player::Mesh(t.actor));
+        bool const inSight = !isShepard && head && Dist(head->at, eyes) <= 1200.0 && InHeadView(head->at).value_or(false) &&
+                             LineOfSight(tracer, eyes, head->at);
         people += std::format("{}\n  {{\"name\": \"{}\", \"id\": \"{}\", \"at\": {}, \"yaw\": {:.0f}, \"head\": {}, \"start\": {}, "
                               "\"role\": \"{}\", \"owner\": {}, \"squad\": {}, \"shepard\": {}, \"hidden\": {}, \"walks\": {}, "
-                              "\"walk\": {}, \"held\": {}, \"looksAt\": \"{}\", \"face\": {}, \"gameLook\": {}}}",
+                              "\"walk\": {}, \"held\": {}, \"looksAt\": \"{}\", \"face\": {}, \"gameLook\": {}, \"inSight\": {}, \"drawnAgoS\": {}}}",
             people.empty() ? "" : ",", JsonText(DisplayName(t.actor)), JsonText(t.name), P3(V(*at)), YawDeg(*rot),
             head ? P3(head->at) : std::string("null"), P3(t.start), role, t.actor == owner ? "true" : "false", squad ? "true" : "false",
             isShepard ? "true" : "false", gActorHidden.ReadBool(t.actor).value_or(false) ? "true" : "false",
             walker ? "true" : "false", walk, hold,
-            st != gStay.end() && st->lookOurs != nullptr ? JsonText(DisplayName(st->lookOurs)) : std::string(), heading, gameLook);
+            st != gStay.end() && st->lookOurs != nullptr ? JsonText(DisplayName(st->lookOurs)) : std::string(), heading, gameLook,
+            inSight ? "true" : "false", drawnAgo ? std::format("{:.2f}", std::min(*drawnAgo, 600.0)) : std::string("null"));
         if (!isShepard && Dist(V(*at), player) < 1500.0) {
             sum = sum + V(*at);
             ++counted;
@@ -6428,7 +6671,7 @@ std::string WriteStance(std::string const& tag) {
         "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f}, \"walkAlong\": {},\n"
         "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"eyes\": {}, \"eyesDrawn\": {}, \"bodyFromEyesM\": {}, \"detached\": {}, \"turnedDeg\": {:.0f}, "
         "\"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, \"steering\": {}, "
-        "\"armIk\": \"{}\", \"hands\": {}}},\n"
+        "\"armIk\": \"{}\", \"hands\": {}, \"bodyDrawnAgoS\": {}, \"nearPlane\": {:.0f}}},\n"
         "\"people\": [{}],\n\"others\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
         "\"ahead\": {{\"now\": [{}], \"later\": [{}]}}}}\n",
         JsonText(name), gC.number, JsonText(tag), Seconds(), gC.staged ? "true" : "false", moment ? "moment" : gC.world ? cw::Name(gC.opening) : "-",
@@ -6442,6 +6685,7 @@ std::string WriteStance(std::string const& tag) {
         gC.detached ? "true" : "false", gC.turnedDeg, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
         gC.sceneWants ? P3(*gC.sceneWants) : std::string("null"), gC.steerTo ? "true" : "false",
         JsonText(arm_ik::Status().substr(0, 40)), arm_ik::HandsJson(),
+        bodyDrawnAgo ? std::format("{:.2f}", std::min(*bodyDrawnAgo, 600.0)) : std::string("null"), moment ? -1.0f : gDrawnNear,
         people, others, circle, P3(middle), floor, kReach, walls, aheadNow, aheadLater);
     wchar_t buffer[MAX_PATH] = {};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
@@ -7132,7 +7376,7 @@ void Tick(double deltaSeconds, Link const& link) {
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gPov.fov);
     }
     gCameraHold.on = gSettings.camera && state.holdRender != 0;
-    gNearHold = gSettings.nearPlane && state.holdRender != 0;
+    gNearHold = gSettings.nearPlane && !gNearPlaneOff && state.holdRender != 0;
     gCameraHold.location = {static_cast<float>(gC.hold.x), static_cast<float>(gC.hold.y), static_cast<float>(gC.hold.z)};
     gCameraHold.rotation = gC.holdRotation;
     gCameraHold.fov = gC.holdFov;
@@ -7324,6 +7568,69 @@ std::string Command(std::string const& rest) {
             ? std::format("convo: the body with the player in every conversation in the world: {}", broken
                     ? "off (item 35's fix undone: only a view held away, placed by the drawn head, the stick through a cut walks)" : "on")
             : std::format("convo: a scene shown as the walk to it begins: {}", broken ? "off (the script's black screen shows it)" : "on (worldShowEarly)");
+    }
+    if (verb == "stick") {
+        // Tests: `stick left <x> <y> [seconds]` / `stick right <x> [seconds]`: the controller's stick as the conversation's walk and
+        // turn read it (the wheel's latch included); `stick off`.
+        std::string side, a, b, c;
+        words >> side >> a >> b >> c;
+        if (side == "off") {
+            gTestStick = {};
+            return "convo: the test stick is off";
+        }
+        auto const x = ini::Number(a);
+        auto const y = side == "left" ? ini::Number(b) : std::optional<double>(0.0);
+        auto const s = ini::Number(side == "left" ? c : b);
+        if ((side != "left" && side != "right") || !x || !y) {
+            return "usage: mevr convo stick left <x> <y> [seconds] | right <x> [seconds] | off";
+        }
+        std::uint64_t const until = GetTickCount64() + static_cast<std::uint64_t>(std::clamp(s.value_or(3.0), 0.1, 60.0) * 1000.0);
+        if (side == "left") {
+            gTestStick.lx = static_cast<float>(std::clamp(*x, -1.0, 1.0));
+            gTestStick.ly = static_cast<float>(std::clamp(*y, -1.0, 1.0));
+            gTestStick.leftUntilMs = until;
+        } else {
+            gTestStick.rx = static_cast<float>(std::clamp(*x, -1.0, 1.0));
+            gTestStick.rightUntilMs = until;
+        }
+        return std::format("convo: the {} stick is ({:.2f}, {:.2f}) for {:.1f} s as the controller's (the wheel {}, the stick's latch {})", side, *x,
+            *y, s.value_or(3.0), gC.wheel ? "up" : "down", gC.wheelStick.held ? "held" : "free");
+    }
+    if (verb == "sticklatch" || verb == "stickturn") {
+        // Broken runs: `sticklatch off` walks the stick that picked a reply at once; `stickturn off` turns nobody with the right
+        // stick. Never set otherwise.
+        std::string w;
+        words >> w;
+        bool& broken = verb == "sticklatch" ? gStickLatchOff : gStickTurnOff;
+        if (w == "on" || w == "off") {
+            broken = w == "off";
+            log::Info("convo: {} {} ({})", verb, w, broken ? "a fixed bug brought back for a broken run" : "as built");
+        } else if (!w.empty()) {
+            return std::format("usage: mevr convo {} [on | off]", verb);
+        }
+        return std::format("convo: {}: {}", verb, broken ? "off (a broken run)" : "on");
+    }
+    if (verb == "hide" || verb == "nearplane") {
+        // Broken runs for the "was it drawn" rules (research/69 "Obvious bugs, measured"): `hide body|person on|off` hides the
+        // player's body mesh or the conversation owner's while a scene plays in the world; `nearplane off` draws the director's
+        // near plane from the eyes. Never set otherwise.
+        std::string what = verb == "nearplane" ? std::string("plane") : std::string();
+        if (verb == "hide") {
+            words >> what;
+        }
+        std::string w;
+        words >> w;
+        if ((verb == "hide" && what != "body" && what != "person") || (!w.empty() && w != "on" && w != "off")) {
+            return verb == "hide" ? std::string("usage: mevr convo hide body|person [on | off]") : std::string("usage: mevr convo nearplane [on | off]");
+        }
+        bool& flag = what == "body" ? gHideBodyTest : what == "person" ? gHidePersonTest : gNearPlaneOff;
+        if (!w.empty()) {
+            // hide ... on: hidden (a bug brought in); nearplane off: the fix undone.
+            flag = verb == "hide" ? w == "on" : w == "off";
+            log::Info("convo: {} {} {} (a broken run's switch: {})", verb, what, w, flag ? "the bug brought in" : "as built");
+        }
+        return verb == "hide" ? std::format("convo: hide {}: {}", what, flag ? "on (hidden while a scene plays in the world)" : "off")
+                              : std::format("convo: the on-foot near plane kept from the eyes: {}", flag ? "off (the director's drawn)" : "on");
     }
     if (verb == "eyes") {
         // Tests (A/B): the eyes stand-in off, or back to worldLookEyes.
