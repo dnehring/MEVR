@@ -78,6 +78,20 @@ excludes `obj/**` and `bin/**`; the documented isolated build then succeeded
 without deleting another build's artifacts. These checks establish offline source
 inspection, not a runtime observation producer or legal interrupt timing.
 
+The subsequent LE2 `--state-events` integration passed **28** CLI/corpus checks
+on root, including exact event 4551's two immediate boolean changes, explicit
+missing-ID/parse-error failure and LE1 state-event text equivalence. It requires
+an explicit package selector and reports directory scope and package hashes;
+it does not claim mounted or transitive story completeness.
+
+A private first-load attempt is prepared under
+`local-tools/le2-native-handoff/`. Its no-op recipe, fixture, source preconditions,
+executable hash, scenario and session plan pass offline validation. The prepared
+save is byte-identical to its base and independently reserialized identically by
+TSE. `HANDOFF.md` gives the next steps; its owner marker remains PENDING. Nothing
+was staged into the live profile, no session lock was acquired, and no native
+acceptance or restoration is claimed. The three gameplay scenarios remain drafts.
+
 ## Independent editor GUI check
 
 The official [v2.2.1 release](https://github.com/KarlitosVII/trilogy-save-editor/releases/tag/v2.2.1)

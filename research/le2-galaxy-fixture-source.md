@@ -66,6 +66,12 @@ Use the scanner's explicit `--game LE2` path for class dumps of `BioPlanet`, `SF
 
 Private helper/dumps remain in ignored `local-tools/galaxy-probe/` and `local-tools/le2-validation-evidence/galaxy-source/`. The helper calls existing LegendaryExplorerCore readers for coalesced config, mounted-file resolution, 2DA, TLK and state-event binaries; it does not implement another binary parser. No extracted scripts, tables, recordings or save bytes are committed.
 
+The reusable scanner now supports the scoped base-map lookup directly:
+`conversation-scan <LE2 cooked directory> <new private report.json> --game LE2 --state-events 4551 --only Startup_INT`.
+It enumerates map exports in the selected packages, preserves concrete element
+data and source hashes, and fails missing requested IDs or parse errors. This
+does not resolve mounted precedence or every applicable DLC/language map.
+
 SHA256 anchors for this inspection:
 
 | Source | SHA256 |
