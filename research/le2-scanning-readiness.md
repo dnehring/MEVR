@@ -39,6 +39,17 @@ The updated assertions check the actual one-probe balance immediately before
 launch and require matching orbital `activeWorld` values on both sides of the
 action. The reviewed input and scene must still establish a single visit and
 the visible launch outcome. The Crew Deck sample remains a separate start check.
+
+The independently decoded zero-probe save now has its own private
+`le2-zero-probe-followup/zero-probe-session.json` plan
+(SHA256 `7ff70eb03963d94254afc66e31934dafff16aca9f249042c022cb19dca5db34c`).
+Both scenario validation and the read-only session plan check passed.
+It uses a fresh empty staging slot and normal operator selection because the
+existing manual-row attestation covers the one-probe plan. Review the actual
+Load Game row and rendered Crew Deck, then verify zero probes in orbit
+before the launch attempt. The same-planet after-sample and unchanged count
+need the observed input and rendered refusal to establish the outcome.
+The one-probe plan is unchanged. Neither plan was staged during this pass.
 The private scenario passed `validate --for-run`. The first staging attempt
 was refused before creating a run directory because ME1 and SteamVR had started.
 At the next free window, use the one-probe plan and verify its displayed slot,
