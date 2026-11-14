@@ -14,6 +14,10 @@ Vec3 Apply(Scale const& scale, Vec3 p) {
     return scale.Active() ? scale.pivot + (p - scale.pivot) * scale.s : p;
 }
 
+Vec3 StandingAt(double s, Vec3 p, double floorZ) {
+    return {p.x, p.y, floorZ + (p.z - floorZ) * s};
+}
+
 Vec3 Unscale(Scale const& scale, Vec3 p) {
     return scale.Active() ? scale.pivot + (p - scale.pivot) * (1.0 / scale.s) : p;
 }

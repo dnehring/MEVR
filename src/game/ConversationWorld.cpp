@@ -5,6 +5,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/BodyScale.hpp"
 #include "core/ik/Rigid.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/Controllers.hpp"
@@ -16,6 +17,7 @@
 #include "engine/VoicePlace.hpp"
 #include "game/ArmIk.hpp"
 #include "game/AuthoredMoment.hpp"
+#include "game/BodyScale.hpp"
 #include "game/CallTrace.hpp"
 #include "engine/SettingsFile.hpp"
 #include "engine/Skeleton.hpp"
@@ -718,6 +720,9 @@ vr::controllers::State SticksNow() {
     return c;
 }
 
+std::optional<double> FloorZ(ue3::Object* tracer, ik::Vec3 const& at);
+bool gMarkHeadOld = false;  // `mevr convo markhead old`: a broken run: the head scaled about the view's pivot (the floating view)
+
 std::optional<Head> MarkHeadOf(ue3::Object* actor) {
     std::optional<Head> head = HeadOf(actor);
     ue3::Object* const controller = head ? player::Controller() : nullptr;
@@ -725,7 +730,21 @@ std::optional<Head> MarkHeadOf(ue3::Object* actor) {
         return head;
     }
     if (auto const animated = arm_ik::AnimatedHeadComponent()) {
-        head->at = ik::TransformPoint(engine::skeleton::LocalToWorld(player::Mesh(actor)), *animated);
+        ik::Vec3 at = ik::TransformPoint(engine::skeleton::LocalToWorld(player::Mesh(actor)), *animated);
+        // The player's body is drawn at its size (body scale): his head where a body that size stands on the scene's spot, scaled
+        // about the floor under it (traced down from the head). About the view's pivot, on the pawn's own floor, it rose and
+        // moved off: the council hearing's view 1.2 m too high, the player floating (research/69 "The view that floated").
+        if (double const s = arm_ik::BodyScaleNow(); s != 1.0) {
+            if (auto const floor = FloorZ(actor, at - ik::Vec3{0.0, 0.0, 100.0})) {
+                at = ik::body_scale::StandingAt(s, at, *floor);
+            }
+        }
+        if (gMarkHeadOld) {
+            if (auto const old = arm_ik::AnimatedHeadScaledAboutView()) {
+                at = ik::TransformPoint(engine::skeleton::LocalToWorld(player::Mesh(actor)), *old);
+            }
+        }
+        head->at = at;
     }
     return head;
 }
@@ -845,6 +864,7 @@ CameraHold gCameraHold;
 bool gNearHold = false;
 float gFootNear = 10.0f;      // the plane on foot (read there each camera update)
 float gDrawnNear = -1.0f;     // the plane the last conversation-mode frame was drawn with (after ours; the live audit's)
+std::optional<vr::floor::State> gFloorNow;  // the headset's eyes above the real floor, as the last tick had it (the audit's eye height)
 bool gFadeUp = false;         // a matinee's camera fade is up in a held moment (StepMatineeFade; ResolveBlack waits it out)
 std::uint64_t gFadeDownMs = 0;
 std::uint64_t gFadesHidden = 0;
@@ -1067,6 +1087,11 @@ struct Convo {
         double turnFromDeg = 0.0;
         int turnsTested = 0;
         double turnMaxDeg = 0.0;     // ... the most a hold turned the view
+        // The eyes' height above the floor under them against the player's own (research/69 "The view that floated",
+        // 2026-11-13: the council hearing drew them about 0.7 m too high; no rule looked up and down).
+        double eyeCheckedS = 0.0;
+        double eyeOffS = 0.0;        // ... 0.3 m or more off
+        double eyeOffMaxM = 0.0;     // ... the most, signed (+ too high: floating; - too low)
         double lookAtBodyS = 0.0;    // time someone's look target was Shepard with his head half a metre or more away
         struct Face {                // faces of looks meant for the player, per person: their angle off the eyes
             double sum = 0.0;
@@ -3482,6 +3507,33 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
             }
         }
     }
+    // The eyes' height (research/69 "The view that floated", 2026-11-13): the drawn eyes above the floor under them against the
+    // player's own eyes above the real floor (the headset's), else Shepard's standing eyes at the drawn body's size (the fake
+    // headset has no height). 0.3 m off for a second: floating, or sunk into the floor.
+    if (!gC.detached) {
+        std::optional<double> expected;
+        if (gFloorNow && gFloorNow->valid && gFloorNow->eyeHeight >= 1.0f && gFloorNow->eyeHeight <= 2.5f) {
+            expected = gFloorNow->eyeHeight;
+        } else if (auto const shepardEye = mevr::game::body_scale::ShepardStandingEyeM()) {
+            expected = *shepardEye * arm_ik::BodyScaleNow();
+        }
+        if (expected) {
+            if (auto const floor = FloorZ(gC.playerPawn, eyes - ik::Vec3{0.0, 0.0, 100.0})) {
+                double const off = (eyes.z - *floor) / kUnitsPerMeter - *expected;
+                a.eyeCheckedS += dt;
+                if (std::abs(off) > std::abs(a.eyeOffMaxM)) {
+                    a.eyeOffMaxM = off;
+                }
+                if (std::abs(off) >= 0.3) {
+                    a.eyeOffS += dt;
+                    if (a.eyeOffS >= 1.0) {
+                        trip("eye-height", std::format("the eyes drawn {:.2f} m above the floor under them, the player's {:.2f} m: {:+.2f} m ({})",
+                            (eyes.z - *floor) / kUnitsPerMeter, *expected, off, off > 0 ? "floating" : "sunk"));
+                    }
+                }
+            }
+        }
+    }
     // The near plane the frame was drawn with (the director's cut everything within it away from the eyes: 2026-11-10).
     if (gDrawnNear > 0.0f) {
         a.nearMax = std::max(a.nearMax, static_cast<double>(gDrawnNear));
@@ -4219,6 +4271,14 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     // ... or while a matinee's track still moves him (Chellik's bump on the Citadel, 2026-11-11: the conversation began half
     // a second before the track let him go, the stay opening put the view at his last place on foot, and the track carried
     // his body 1.7 m on).
+    // The game's own fade to black (a script's black screen, or a matinee's camera fade we kept off the view) turned black within
+    // the last 1.5 s: it covered the move, so the player goes with Shepard to his mark under the mod's dip (the owner,
+    // 2026-11-13; the hearing's end had left the player on the podium, 12.5 m from Anderson and Udina).
+    {
+        std::uint64_t const nowMs = GetTickCount64();
+        std::uint64_t const blackOn = authored_moment::LastBlackScreenOnMs();
+        facts.coveredByBlack = (blackOn != 0 && nowMs - blackOn < 1500) || gFadeUp || (gFadeDownMs != 0 && nowMs - gFadeDownMs < 1500);
+    }
     bool const trackMoving = authored_moment::TrackMoves(pawn);
     bool const midMoment = (gMomentEnded.pending && GetTickCount64() - gMomentEnded.ms < 1000) || trackMoving;
     if (trackMoving) {
@@ -4233,9 +4293,10 @@ bool OpeningWithoutCut(ue3::Object* conv, ue3::Object* pawn) {
     gC.opening = opening;
     gC.markM = facts.markUnits / kUnitsPerMeter;
     log::Info("convo: the opening ({}): Shepard's mark is {:.2f} m from where the player stood ({:+.2f} m up), {}, {}, people in view moved "
-              "at most {:.2f} m{}: {}", cw::Name(gSettings.opening), facts.markUnits / kUnitsPerMeter, facts.riseUnits / kUnitsPerMeter,
+              "at most {:.2f} m{}{}: {}", cw::Name(gSettings.opening), facts.markUnits / kUnitsPerMeter, facts.riseUnits / kUnitsPerMeter,
         facts.sightToMark ? "in sight" : "out of sight", facts.floorAtMark ? "a floor there" : "no floor there",
-        facts.peopleMovedUnits / kUnitsPerMeter, facts.known ? "" : " (no fresh place on foot)", cw::Name(opening));
+        facts.peopleMovedUnits / kUnitsPerMeter, facts.known ? "" : " (no fresh place on foot)",
+        facts.coveredByBlack ? ", under the game's fade to black" : "", cw::Name(opening));
     if (opening == cw::Opening::Cut || !facts.known) {
         return false;
     }
@@ -4900,8 +4961,11 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         gC.boundaryAt = V(*at);
     }
     (void)ownerAt;
+    // A walk-in on its way (guided or by the player's own stick) has the boundary around the mark it is wanted at: around where the
+    // conversation began it stopped the player 4 m out and slid him along its edge (2026-11-13, Anderson and Udina 12.5 m on
+    // after the hearing: "I physically can't move, but I'm being slightly teleported").
     ik::Vec3 const anchor = along                             ? ik::Vec3{along->x, along->y, along->z}
-                            : guided && gC.wantedMark         ? *gC.wantedMark
+                            : gC.wantedMark                   ? *gC.wantedMark
                             : gMomentWalk && gMomentShepardAt ? *gMomentShepardAt
                                                               : *gC.boundaryAt;
     // Where the player faces: the head in the world through the held frame; without a VR view (a flat game), the held view's yaw.
@@ -5223,13 +5287,13 @@ std::string AuditJson() {
                        "\"handsInViewS\": {:.1f}, \"bodyCheckedS\": {:.1f}, \"bodyUndrawnS\": {:.1f}, \"bodyUndrawnMaxS\": {:.1f}, "
                        "\"sightCheckedS\": {:.1f}, \"personUndrawnS\": {:.1f}, \"personUndrawn\": \"{}\", \"nearOverS\": {:.1f}, "
                        "\"nearMax\": {:.0f}, \"picksHeld\": {}, \"movedByPickM\": {:.2f}, \"turnsTested\": {}, \"turnMaxDeg\": {:.0f}, "
-                       "\"tripped\": \"{}\"}}",
+                       "\"eyeCheckedS\": {:.1f}, \"eyeOffS\": {:.1f}, \"eyeOffMaxM\": {:.2f}, \"tripped\": \"{}\"}}",
         gC.audit.gapMaxM, gC.audit.gapOverS, gC.audit.lookAtBodyS, faces.n != 0 ? faces.sum / faces.n : 0.0, faces.maxDeg,
         faces.over35, faces.n, unknown, gC.audit.speakerBehindS, gC.audit.closeMinM, gC.audit.sampledS, gC.audit.thirdPersonS,
         gC.audit.armDrivenS, gC.audit.handsSampledS, gC.audit.handsOffS, gC.audit.handsOffMaxM, gC.audit.handsInViewS,
         gC.audit.bodyCheckedS, gC.audit.bodyUndrawnS, gC.audit.bodyUndrawnMaxS, gC.audit.sightCheckedS, gC.audit.personUndrawnS,
         JsonText(gC.audit.personUndrawn), gC.audit.nearOverS, gC.audit.nearMax, gC.audit.picksHeld, gC.audit.movedByPickM,
-        gC.audit.turnsTested, gC.audit.turnMaxDeg, gC.audit.tripped);
+        gC.audit.turnsTested, gC.audit.turnMaxDeg, gC.audit.eyeCheckedS, gC.audit.eyeOffS, gC.audit.eyeOffMaxM, gC.audit.tripped);
 }
 
 void End(char const* why) {
@@ -7248,6 +7312,7 @@ bool WantsScriptHook() {
 
 void Tick(double deltaSeconds, Link const& link) {
     gLink = link;
+    gFloorNow = link.floor;
     RefreshSettings();
     engine::conversation_hooks::SetKeepProvider(CurrentMode() == cw::Mode::World ? &KeepAtSource : nullptr);
     if (!gSettings.stay || gSettings.walk == 0) {
@@ -7679,6 +7744,17 @@ std::string Command(std::string const& rest) {
         }
         return std::format("convo: the {} stick is ({:.2f}, {:.2f}) for {:.1f} s as the controller's (the wheel {}, the stick's latch {})", side, *x,
             *y, s.value_or(3.0), gC.wheel ? "up" : "down", gC.wheelStick.held ? "held" : "free");
+    }
+    if (verb == "markhead") {
+        // A broken run: `markhead old` places the player by Shepard's head scaled about the view's pivot (the council hearing's
+        // floating view, 2026-11-13); `markhead new` as built. Never set otherwise.
+        std::string w;
+        words >> w;
+        if (w == "old" || w == "new") {
+            gMarkHeadOld = w == "old";
+            log::Info("convo: markhead {} ({})", w, gMarkHeadOld ? "a fixed bug brought back for a broken run" : "as built");
+        }
+        return std::format("convo: Shepard's head for the player's place: {}", gMarkHeadOld ? "old (scaled about the view: a broken run)" : "new");
     }
     if (verb == "sticklatch" || verb == "stickturn" || verb == "matineefade") {
         // Broken runs: `sticklatch off` walks the stick that picked a reply at once; `stickturn off` turns nobody with the right

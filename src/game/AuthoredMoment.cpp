@@ -174,6 +174,7 @@ int gBlackScreens = 0;
 std::uint64_t gBlackUpMs = 0;
 std::string gBlackUpName;
 bool gBlackUpReported = false;
+std::uint64_t gBlackOnMs = 0;  // the last time any script's black screen turned black (shown or taken down)
 int gToggles = 0;
 std::string gLast;       // the last summary
 
@@ -275,6 +276,9 @@ void OnBlackScreen(ue3::Object* context, ue3::Function*, void*, void*) {
     // it is (the owner: a forced placement needs a fade). Only where the script turns black on, not where it comes back.
     int const action = context != nullptr ? static_cast<int>(gBlackScreenAction.Read<std::uint8_t>(context).value_or(255)) : 255;
     bool const dipped = hidden && (action == 0 || action == 2) && conversation_world::MomentDip();
+    if (action == 0 || action == 2) {
+        gBlackOnMs = GetTickCount64();
+    }
     if ((action == 0 || action == 2) && !hidden) {
         gBlackUpMs = GetTickCount64();
         gBlackUpName = context != nullptr ? ue3::runtime::FullName(context) : std::string("?");
@@ -435,6 +439,10 @@ bool PlayerTrackPlace(float place[3], std::uint64_t* ms) {
 
 std::uint64_t LastPlayerTrackMs() {
     return gTrackMs.load(std::memory_order_relaxed);
+}
+
+std::uint64_t LastBlackScreenOnMs() {
+    return gBlackOnMs;
 }
 
 void* PlayerTrackInstance() {

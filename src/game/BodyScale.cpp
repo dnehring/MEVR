@@ -261,14 +261,24 @@ std::string Command(std::string const& args) {
     if (auto const number = ini::Number(value); number && *number >= bs::kMin && *number <= bs::kMax) {
         g.override = *number;
         g.overrideOff = false;
-        return std::format("body scale: fixed at {:.3f} (console)", *number);
+        // At once, not by the 0.1/s approach: the audit sets it just before a scene whose held view never steps it on foot (the
+        // set's `bodyScale`; it stayed 1.0 through the council run, 2026-11-13).
+        g.s = g.target = *number;
+        return std::format("body scale: fixed at {:.3f} (console, at once)", *number);
     }
     return std::format("body scale: {:.3f} now (target {:.3f}; {}); give auto, off or {:.2f}..{:.2f}", g.s, g.target, g.why, bs::kMin,
         bs::kMax);
 }
 
+std::optional<double> ShepardStandingEyeM() {
+    if (g.floorReference) {
+        return g.referenceShepard;
+    }
+    return g.shepardEye && g.unitsPerMeter > 0.0 ? std::optional<double>(*g.shepardEye / g.unitsPerMeter) : std::nullopt;
+}
+
 std::string StatusJson() {
-    auto meters = [](std::optional<double> v) { return v ? std::format("{:.3f}", *v / g.unitsPerMeter) : std::string("null"); };
+    auto meters =[](std::optional<double> v) { return v ? std::format("{:.3f}", *v / g.unitsPerMeter) : std::string("null"); };
     auto standing = [](std::optional<double> v) { return v ? std::format("{:.3f}", *v) : std::string("null"); };
     return std::format("{{\"scale\": {:.4f}, \"target\": {:.4f}, \"why\": \"{}\", \"shepardEyeM\": {}, \"viewEyeM\": {}, \"reference\": \"{}\", "
         "\"standingPlayerM\": {}, \"standingShepardM\": {}, \"held\": {}}}", g.s, g.target,

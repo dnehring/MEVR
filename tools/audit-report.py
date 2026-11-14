@@ -28,7 +28,7 @@ OFF_M = 0.3  # a drawn wrist this far from its controller's grip: the body is no
 # The live rules that fail a run whatever the baseline (research/69 "Obvious bugs, measured", 2026-11-13): what the player would
 # see at once. The stance records' baseline judges the rest (looks, faces, places).
 FAIL_RULES = ('eyes-off-body', 'hands-off-controllers', 'body-third-person', 'body-not-drawn', 'person-not-drawn', 'near-plane',
-              'moved-by-pick', 'turn-ignored', 'black-panel-on-foot', 'dark-view')
+              'moved-by-pick', 'turn-ignored', 'black-panel-on-foot', 'dark-view', 'eye-height')
 # Pictures (each snapshot in a scene): the left eye one flat colour (a black or white frame), the HUD panel a quarter opaque
 # black (the script's black screen as a square ahead of the player, item 21), opaque pixels in the wheel band's outer columns
 # (a reply cut off, "us." left floating, 2026-11-11). Measured on good snapshots of 2026-11-12/13: eyes far from flat, the HUD
@@ -147,7 +147,7 @@ def picture_checks(d):
 def totals(record):
     """The live audit's totals over the scene's conversations shown in the world (None: none was)."""
     keys = ('sampledS', 'armDrivenS', 'handsSampledS', 'handsInViewS', 'handsOffS', 'thirdPersonS', 'bodyCheckedS', 'bodyUndrawnS',
-            'sightCheckedS', 'personUndrawnS', 'nearOverS', 'picksHeld', 'turnsTested')
+            'sightCheckedS', 'personUndrawnS', 'nearOverS', 'picksHeld', 'turnsTested', 'eyeCheckedS', 'eyeOffS')
     peaks = ('handsOffMaxM', 'movedByPickM', 'turnMaxDeg', 'nearMax')
     t = {k: 0.0 for k in keys + peaks}
     t['names'] = []
@@ -187,6 +187,11 @@ def judge(record, shots):
             missing.append("the body: Shepard's drawn hands were never read against the controllers")
         lines.append(f"  drawn: the body in view {t['bodyCheckedS']:.1f} s, not drawn {t['bodyUndrawnS']:.1f} s; someone in sight "
                      f"{t['sightCheckedS']:.1f} s, not drawn {t['personUndrawnS']:.1f} s; near plane at most {t['nearMax']:.0f} units")
+        lines.append(f"  eye height: checked {t['eyeCheckedS']:.1f} s, 0.3 m or more off for {t['eyeOffS']:.1f} s"
+                     + ''.join(f" (at most {s.get('audit', {}).get('eyeOffMaxM', 0):+.2f} m in {s.get('name', '?').split('.')[-1]})"
+                               for s in as_list(record.get('summaries')) if isinstance(s.get('audit'), dict) and s['audit'].get('eyeOffS')))
+        if t['eyeCheckedS'] <= 0:
+            missing.append("the eyes' height: no floor under the eyes or no eye height to compare (eye-height could not fire)")
         if t['armDrivenS'] > 0 and t['bodyCheckedS'] <= 0:
             missing.append('whether the body was drawn: no drawn wrist inside the view (body-not-drawn could not fire)')
         if t['sightCheckedS'] <= 0:

@@ -680,6 +680,8 @@ mevr::game::world_ui::Link WorldUiLink() {
     return link;
 }
 
+std::optional<mevr::vr::floor::State> HostFloor();
+
 // Host renderer (HostServices v33): conversations in the world (research/59), if the host's State matches ours.
 mevr::game::conversation_world::Link ConversationWorldLink() {
     using namespace mevr;
@@ -688,6 +690,7 @@ mevr::game::conversation_world::Link ConversationWorldLink() {
         gHost->conversationWorldSize == sizeof(vr::conversation_world::State)) {
         link.publish = gHost->setConversationWorld;
     }
+    link.floor = HostFloor();
     return link;
 }
 

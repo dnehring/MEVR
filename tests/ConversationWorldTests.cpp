@@ -283,6 +283,18 @@ void TestSceneRules() {
         elsewhere = hall;
         elsewhere.markUnits = 9000.0;
         CHECK(cw::DecideOpening(elsewhere, OR::Auto) == O::Cut);
+        // Under the game's own fade to black a walk-in becomes a cut (the hearing's end: Shepard 12.5 m on to Anderson and Udina,
+        // in sight; the owner, 2026-11-13), a mark where the player stands stays.
+        cw::OpeningFacts faded = hall;
+        faded.markUnits = 1250.0;
+        faded.riseUnits = -60.0;
+        faded.coveredByBlack = true;
+        CHECK(cw::DecideOpening(faded, OR::Auto) == O::Cut);
+        faded.coveredByBlack = false;
+        CHECK(cw::DecideOpening(faded, OR::Auto) == O::WalkIn);
+        cw::OpeningFacts nearFaded = near;
+        nearFaded.coveredByBlack = true;
+        CHECK(cw::DecideOpening(nearFaded, OR::Auto) == O::Stay);
         // A placement the game repeats every tick (a walk's last step onto its goal): undone once, accepted when it comes back.
         cw::Insistence snap;
         cw::Vec3 const goal{100.0, 200.0, 0.0};

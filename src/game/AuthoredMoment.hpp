@@ -21,6 +21,9 @@ bool TrackMoves(void const* actor, std::uint64_t withinMs = 300);
 bool PlayerTrackPlace(float place[3], std::uint64_t* ms);
 // When a move track last moved (or would have moved) the player's pawn, in GetTickCount64 milliseconds; 0 never.
 std::uint64_t LastPlayerTrackMs();
+// When a script's black screen last turned black (BioSeqAct_BlackScreen, action 0 or 2), in GetTickCount64 milliseconds; 0
+// never. A conversation that opens under it may put the player at Shepard's new place (research/69 "The fade that moves you").
+std::uint64_t LastBlackScreenOnMs();
 // The matinee of the last moment that moved the player's pawn: "<sequence>.SeqAct_Interp_N" (empty if none).
 std::string PlayerTrackMatinee();
 // The full path of that move track instance, as FullName gives it ("InterpTrackInstMove <package>.TheWorld..."; empty if none).

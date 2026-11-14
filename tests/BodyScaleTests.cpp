@@ -64,6 +64,16 @@ int RunBodyScaleTests() {
     // Off near 1: nothing moves.
     bs::Scale const off{1.001, {0.0, 0.0, 0.0}};
     CHECK(!off.Active() && Near(bs::Apply(off, goal), goal, 0.0) && Near(bs::Unscale(off, goal), goal, 0.0));
+    // A head far from the pivot (Shepard's mark as a scene opens, the view metres away): scaled about the floor under itself it
+    // keeps its place and only its height grows; about the pivot it moved off by a share of the distance (the council hearing's
+    // floating view, 2026-11-13).
+    bs::Scale const tall{1.185, {0.0, 0.0, -90.0}};   // the pivot under the view, on the pawn's floor
+    Vec3 const markHead{-330.0, 70.0, 146.0};          // 3.3 m away on a podium 0.7 m up: 1.66 m above its own floor (-20)
+    Vec3 const standing = bs::StandingAt(1.185, markHead, -20.0);
+    CHECK(Near(standing, Vec3{-330.0, 70.0, -20.0 + 166.0 * 1.185}, 1e-9));
+    Vec3 const old = bs::Apply(tall, markHead);       // the old point: 0.6 m further away and 0.13 m higher still
+    CHECK(old.x < -390.0 && old.z > standing.z + 10.0);
+    CHECK(Near(bs::StandingAt(1.0, markHead, -20.0), markHead, 1e-12));
     // The approach: at most the rate, never past the target.
     CHECK(Near(bs::Approach(1.0, 1.1, 0.05, 1.0), 1.05, 1e-12));
     CHECK(Near(bs::Approach(1.0, 1.02, 0.05, 1.0), 1.02, 1e-12));
