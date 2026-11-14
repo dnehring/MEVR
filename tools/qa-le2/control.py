@@ -25,6 +25,7 @@ KEYS = ("kind", "run", "lease", "pid", "start", "exe", "host", "mod", "id", "seq
         "deadline", "verb", "status", "bytes", "game")
 IDENTITY = ("run", "lease", "pid", "start", "exe", "host", "mod", "game")
 MAX_PAYLOAD, MAX_FRAME, MAX_LIFETIME_MS = 16384, 17408, 30000
+MAX_PULSE_PAYLOAD = 4096
 MENU_ACTIONS = ("advance-splash", "open-load-menu", "open-pause-menu", "open-save-menu")
 NATIVE_ACTIONS = ("console", "probe-fov", "load-fixture", "save-new", "pad-pulse") + MENU_ACTIONS
 
@@ -70,7 +71,7 @@ def validate_pulse(pulse):
 
 
 def parse_pulse(payload):
-    if not isinstance(payload, bytes) or not payload or len(payload) > MAX_PAYLOAD:
+    if not isinstance(payload, bytes) or not payload or len(payload) > MAX_PULSE_PAYLOAD:
         raise ControlError("Pad pulse JSON must be nonempty and bounded")
     def pairs(items):
         result = {}
@@ -387,7 +388,7 @@ def main():
             if a.verb != "pad-pulse":
                 raise ControlError("--pulse-json is only valid with pad-pulse")
             with session.safe_path(a.pulse_json.absolute()).open("rb") as stream:
-                pulse = parse_pulse(stream.read(MAX_PAYLOAD + 1))
+                pulse = parse_pulse(stream.read(MAX_PULSE_PAYLOAD + 1))
         result = collect(a.run.absolute()) if a.verb == "collect" else submit(
             a.run.absolute(), a.verb, a.command, a.timeout, a.allow_console,
             allow_probe_fov=a.allow_probe_fov, allow_menu_actions=a.allow_menu_actions,

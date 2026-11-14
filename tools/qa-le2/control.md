@@ -63,6 +63,7 @@ The exact ten-field schema is:
 actual supported context. `durationMs` is an integer from 1 to 1000. `buttons` is
 uint16 with only mask `0xF3FF` permitted; bits `0x0400` and `0x0800` are reserved.
 Triggers are integers 0..255 and the four stick axes integers -32768..32767.
+The pulse JSON is limited to 4096 UTF-8 bytes and must not have a byte-order mark.
 All keys are required. Unknown/duplicate keys, booleans or floats used as integers,
 unsupported contexts and an entirely neutral pad are rejected. JSON key order and
 whitespace do not affect acceptance; the client emits compact JSON.

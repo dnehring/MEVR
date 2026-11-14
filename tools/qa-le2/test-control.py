@@ -55,6 +55,13 @@ class WireTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(c.ControlError):c.validate_pulse(value)
         self.assertEqual(c.validate_pulse(pulse(buttons=0,leftX=-1))["leftX"],-1)
 
+    def test_pad_byte_bound_and_bom(self):
+        raw=json.dumps(pulse()).encode()
+        padded=raw+b" "*(c.MAX_PULSE_PAYLOAD-len(raw))
+        self.assertEqual(c.parse_pulse(padded),pulse())
+        for body in (padded+b" ",b"\xef\xbb\xbf"+raw):
+            with self.assertRaises(c.ControlError):c.parse_pulse(body)
+
     def test_pad_json_semantic_not_key_order_policy(self):
         raw=json.dumps(dict(reversed(list(pulse().items()))),indent=2).encode()
         self.assertEqual(c.parse_pulse(raw),pulse())
@@ -140,6 +147,16 @@ class WireTests(unittest.TestCase):
                 p.write_bytes(raw)
                 with self.assertRaises(c.ControlError):c.decode(raw)
                 self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"],str(p)],capture_output=True).returncode,2,payload)
+            body=json.dumps(pulse()).encode()
+            padded=body+b" "*(c.MAX_PULSE_PAYLOAD-len(body))
+            for raw_body, expected in ((padded,0),(padded+b" ",2),(b"\xef\xbb\xbf"+body,2)):
+                prefix=c.encode(frame()).replace(b"verb=ping\n",b"verb=pad-pulse\n")
+                raw=prefix.replace(b"bytes=0\n",("bytes="+str(len(raw_body))+"\n").encode())+raw_body
+                p.write_bytes(raw)
+                if expected:
+                    with self.assertRaises(c.ControlError):c.decode(raw)
+                else:self.assertEqual(c.decode(raw)["payload"],raw_body)
+                self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"],str(p)],capture_output=True).returncode,expected)
             # Reordering/formatting are not an extra wire policy.
             body=json.dumps(dict(reversed(list(pulse().items()))),indent=2).encode()
             f=dict(frame(),verb="pad-pulse",payload=body,bytes=str(len(body)))
@@ -201,7 +218,7 @@ class ClientTests(unittest.TestCase):
             self.assertEqual(c.main(),0)
             self.assertEqual(submit.call_args.kwargs["pulse"],pulse())
             self.assertTrue(submit.call_args.kwargs["allow_native_input"])
-        path.write_bytes(b" "*(c.MAX_PAYLOAD+1))
+        path.write_bytes(b" "*(c.MAX_PULSE_PAYLOAD+1))
         with mock.patch("sys.argv",args),mock.patch.object(c,"submit") as submit,mock.patch("builtins.print"):
             self.assertEqual(c.main(),2);submit.assert_not_called()
 
