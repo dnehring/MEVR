@@ -88,8 +88,8 @@ def main(executable):
             assert rejection['status'] == 'rejected' and rejection['lease'] == identity['lease']
         # Neither rejection may poison the next legitimate request.
         assert control.submit(run, 'ping', timeout=5, bind=bind)['status'] == 'completed'
-        assert len(list((directory / 'history').glob('*.result'))) == 15
-        assert len(list(directory.glob('consumed-*.request'))) == 15
+        assert len(list((directory / 'history').glob('*.result'))) == 16
+        assert len(list(directory.glob('consumed-*.request'))) == 16
         assert not (directory / 'outstanding.json').exists()
         print('Python/C++ filesystem smoke passed: observations, disabled console/FOV/menu, wrong lease, expiry and recovery; fake process only')
     finally:
