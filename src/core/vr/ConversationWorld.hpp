@@ -61,6 +61,12 @@ struct State {
 void Publish(State const& state);
 // The latest state if active and published within `maxAgeMs`.
 std::optional<State> Latest(std::uint64_t maxAgeMs = 300);
+// The host's trust in the mod's last word (research/69 item 40): the mod sends every game tick, so its word stands `freshMs`
+// without another, and longer while the game thread has not finished a tick since (`ticksSince`, the engine ticks begun since
+// the publish: 1 while the tick after it still runs), up to `stallMs`. A stalled tick's frame is presented before the mod's
+// tick sends again: past 1.5 s of stall (Virmire on the fake headset at 9 frames a second, 2026-11-14) that frame showed the 3D
+// screen and dipped twice.
+bool StillFresh(std::uint64_t ageMs, std::uint64_t ticksSince, std::uint64_t freshMs, std::uint64_t stallMs);
 // The mod's last word was "armed" (State::holdPad[0] with active 0) and no older than maxAgeMs: on foot, and a scene that
 // begins now would be shown in the world.
 bool Armed(std::uint64_t maxAgeMs = 150);

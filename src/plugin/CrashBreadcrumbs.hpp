@@ -34,7 +34,11 @@ extern breadcrumbs::WriteRing<kWrites> gWrites;
 
 // The engine's tick thread (the game thread), for the report.
 inline std::atomic<std::uint32_t> gGameThread{0};
+// The engine ticks begun so far: how far the game thread got (plugin/ConversationWorld keeps the mod's word through a stall).
+inline std::atomic<std::uint64_t> gGameTicks{0};
+// At the start of every engine tick (the host's UGameEngine::Tick hook).
 inline void NoteGameThread() {
+    gGameTicks.fetch_add(1, std::memory_order_relaxed);
     if (gGameThread.load(std::memory_order_relaxed) == 0) {
         gGameThread.store(breadcrumbs::ThreadId(), std::memory_order_relaxed);
     }

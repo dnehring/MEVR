@@ -544,7 +544,10 @@ switching frameworks.
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game;
   `end` is the world's own early end, `BioWorldInfo.EndCurrentConversation`: the conversation's `EndConversation` alone left the
   world updating it, and its next tick crashed now and then, research/69 item 37).
-  Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
+  Snapshot `"mod"."conversationWorld"`. The host trusts the mod's word (sent every tick) 1.5 s, and through a stall of the game
+  thread up to 10 s (`cw::StillFresh`, the engine ticks counted in `crash::gGameTicks`: a stalled tick's frame is presented before
+  the mod sends again, and showed the 3D screen; research/69 item 40; `mevr convo stall <ms> [afterS]` tests it; log
+  `conversation world: the game thread stalled`). **Every conversation, classified** (research/59 "The survey and the scan"):
   `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into
   free 78, stage 171, remote 19, walks 23, **framed 18** (authored camera cuts: the set pieces, Saren, Sovereign, the Council) and
   ambient 182 (every line ambient: barks, whatever their auto-continue replies), and gives each a **verdict** for First person (`--verdicts`: screen 21 = framed or Shepard walked by the game, check 26 =
@@ -712,8 +715,11 @@ switching frameworks.
   `conversation-from-save.ps1 -Lines N` (a stance per line), `-TurnAt N` (`mevr convo turn <deg>`); **a staged scene's
   new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a
   second after the script's black screen (`ScriptBlackScreen`, from game/AuthoredMoment) are taken at once (put on the mark by us
-  where the game's call moved nobody); **Shepard is never moved** (the owner): a simulated left stick walks the player to his new
-  mark (`StartSteer` in `MovePlayer`, the player's own walk step; his stick takes over; `mevr convo goto [x y]`); the stances follow
+  where the game's call moved nobody); a simulated left stick walks the player to his new mark (`StartSteer` in `MovePlayer`, the
+  player's own walk step; his stick takes over; `mevr convo goto [x y]`), **unless the one the player talks to (the owner, the
+  speaker) was moved under that black screen and the mark is over 1.5 m away: then the player goes with Shepard under a dip**
+  (`TeleportPlayerTo`, the owner 2026-11-14: "if the black fade happens, and our target npc moves positions, we should likely
+  follow them on teleport"; research/69 item 40; moments never: the Citadel's walks stay walks); the stances follow
   a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
   logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again

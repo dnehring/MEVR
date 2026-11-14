@@ -55,6 +55,10 @@ void Publish(State const& state) {
     gHave = true;
 }
 
+bool StillFresh(std::uint64_t ageMs, std::uint64_t ticksSince, std::uint64_t freshMs, std::uint64_t stallMs) {
+    return ageMs <= freshMs || (ageMs <= stallMs && ticksSince < 2);
+}
+
 std::optional<State> Latest(std::uint64_t maxAgeMs) {
     std::lock_guard lock(gMutex);
     if (!gHave || gLatest.active == 0 || GetTickCount64() - gLatest.timeMs > maxAgeMs) {

@@ -931,6 +931,13 @@ void TestWalkStep() {
     CHECK(!cw::WalkWorthIt(95.0, 179.0, 150.0, 60.0));   // the ceremony's step back
     CHECK(!cw::WalkWorthIt(80.0, -90.0, 150.0, 60.0));   // a step aside
     CHECK(cw::WalkWorthIt(80.0, 350.0, 150.0, 60.0));    // -10 degrees, wrapped
+    // The host's trust in the mod's word: 1.5 s whatever happens; past it only while the tick after the publish still runs (a
+    // stall), never past 10 s; once a whole tick went by without a word, it's old.
+    CHECK(cw::StillFresh(1400, 50, 1500, 10000));
+    CHECK(cw::StillFresh(1600, 1, 1500, 10000));
+    CHECK(cw::StillFresh(1600, 0, 1500, 10000));
+    CHECK(!cw::StillFresh(1600, 2, 1500, 10000));
+    CHECK(!cw::StillFresh(10001, 1, 1500, 10000));
     // A ride: 40 units a tick after 38 the tick before is motion (the tram); the same step after a still tick is a teleport; a
     // walk's steps are under a jump anyway; a 1,141 m jump is never a ride, nor a step right after it.
     CHECK(cw::IsRideStep(40.0, 38.0, 30.0));

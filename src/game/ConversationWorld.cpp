@@ -706,6 +706,14 @@ TestStick gTestStick;
 bool gStickLatchOff = false;
 bool gStickTurnOff = false;
 bool gMatineeFadeShown = false;  // `mevr convo matineefade off`: a broken run: a moment's camera fade drawn (the dark Spectre walk)
+// `mevr convo stall <ms> [afterS]`: the game thread sleeps once inside the engine's tick (the player camera's update, before the
+// frame is drawn), afterS from the command, while a conversation is shown in the world: the host must keep the world through it
+// (research/69 item 40, the flash of the 3D screen after a 1.6 s stall on Virmire). A test only.
+struct TestStall {
+    std::uint32_t ms = 0;
+    std::uint64_t atMs = 0;
+};
+TestStall gTestStall;
 
 vr::controllers::State SticksNow() {
     vr::controllers::State c = vr::controllers::Latest();
@@ -884,6 +892,12 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         return;
     }
     auto const mode = player::GameMode(controller);
+    if (gTestStall.ms != 0 && GetTickCount64() >= gTestStall.atMs && gNearHold) {  // (the world view held: worldNearPlane)
+        std::uint32_t const ms = gTestStall.ms;
+        gTestStall = {};
+        log::Info("convo: stall: the game thread sleeps {} ms in the camera's update (a test)", ms);
+        Sleep(ms);
+    }
     {
         ue3::Object* const viewTarget = gCameraViewTargetActor.Read<ue3::Object*>(gCameraViewTarget.Address(camera)).value_or(nullptr);
         gOwnCamera = viewTarget != nullptr && viewTarget != controller && viewTarget != player::Pawn(controller);
@@ -1189,6 +1203,11 @@ struct Convo {
     std::uint64_t eyesMeantFromMs = 0;   // ... from 0.3 s on (a frame or two of the view before it can still be on screen)
     std::uint64_t eyesMeantUntilMs = 0;  // ... to 1.3 s (under its dip)
     double steerPendingS = -1.0;   // ... walked to by the simulated stick from this time
+    // The person the player talks to (the owner, the one speaking), kept each tick so the game's placement call can tell them
+    // apart without reading the engine; and whether the stage moved them under the black (then the player goes with Shepard to
+    // his new mark at once: the owner, 2026-11-14, research/69 "The fade that moves you").
+    ue3::Object* talkTo[2] = {};
+    bool talkToMovedUnderBlack = false;
     std::optional<ik::Vec3> steerTo;     // the simulated left stick walks the player there (his own stick takes over)
     double steerBest = 0.0;        // ... the nearest it has come, and when
     double steerProgressS = 0.0;
@@ -1378,6 +1397,9 @@ bool KeepAtSource(void const* conversation, void const* actor, float const* loca
             // The game's own cut to a new composition (its black screen is up): the stage's place is taken (no walk across the
             // scene in plain view after the black). The game's own call is let through; where it does not move the person
             // (Kaidan and Ashley on Virmire, 2026-11-12: nothing moved them), keep-in-place puts it there on the next tick.
+            if ((actor == gC.talkTo[0] || actor == gC.talkTo[1]) && std::hypot(location[0] - st.place.x, location[1] - st.place.y) > 150.0) {
+                gC.talkToMovedUnderBlack = true;  // the one the player talks to is somewhere else after the black: he goes too
+            }
             st.acceptUntilS = Seconds() + 0.6;
             st.relocateMark = ik::Vec3{location[0], location[1], location[2]};
             return false;
@@ -3021,6 +3043,42 @@ std::optional<double> StageFacingForPlayer(Stay const& st, double yawDeg) {
     return toEyes;
 }
 
+// The player goes with Shepard to the mark the scene put him on under its black screen (the owner, 2026-11-14: "if the black
+// fade happens, and our target npc moves positions, we should likely follow them on teleport"; research/69 "The fade that
+// moves you"): his pawn put there, the held view, the follower's and the boundary's places moved by as much, a dip from black
+// (gC.cut). Conversations only: a moment (the Citadel's walks) never comes here. False when it can't (a view walking apart)
+// or needn't: a mark within "where he stands" (the opening's 1.5 m) is walked to, as before, since the game's black screen is
+// often gone by then and a dip for a step would blink a second time (Virmire's, 0.66 m, 2026-11-14).
+bool TeleportPlayerTo(ue3::Object* pawn, ik::Vec3 const& mark) {
+    if (gC.detached || pawn == nullptr || !ue3::runtime::IsAlive(pawn)) {
+        return false;
+    }
+    auto const at = player::Location(pawn);
+    if (!at || std::hypot(mark.x - at->x, mark.y - at->y) <= cw::OpeningLimits{}.stayUnits || !PutAt(pawn, mark)) {
+        return false;
+    }
+    auto const actual = player::Location(pawn);
+    ik::Vec3 const delta = (actual ? V(*actual) : mark) - V(*at);
+    gC.hold = gC.hold + delta;
+    if (gC.anchorHead) {
+        *gC.anchorHead = *gC.anchorHead + delta;
+    }
+    gC.follow.place = {gC.follow.place.x + delta.x, gC.follow.place.y + delta.y, gC.follow.place.z + delta.z};
+    gC.follow.anchor = {gC.follow.anchor.x + delta.x, gC.follow.anchor.y + delta.y, gC.follow.anchor.z + delta.z};
+    for (Stay& st : gStay) {
+        if (st.actor == pawn) {
+            st.place = actual ? V(*actual) : mark;
+        }
+    }
+    if (gC.boundaryAt) {
+        *gC.boundaryAt = *gC.boundaryAt + delta;
+    }
+    ++gC.cut;  // the host dips from black
+    log::Info("convo: at {:.1f} s the one the player talks to was moved under the game's black screen: the player goes with Shepard to "
+              "his new mark ({:.2f} m) under a dip", Seconds(), std::hypot(delta.x, delta.y) / kUnitsPerMeter);
+    return true;
+}
+
 void StartSteer(char const* why, std::optional<ik::Vec3> to = std::nullopt) {
     if (!to) {
         to = gC.sceneWants;
@@ -3645,9 +3703,17 @@ void KeepInPlace(ue3::Object* pawn) {
         listener = playerPawn;
     }
     ue3::Object* const speakerNow = speaker == pawn || speaker == gC.playerPawn ? playerPawn : speaker;
+    gC.talkTo[0] = gOwner.Read<ue3::Object*>(gC.object).value_or(nullptr);
+    gC.talkTo[1] = speakerNow != playerPawn ? speakerNow : nullptr;
     if (gC.steerPendingS >= 0.0 && Seconds() >= gC.steerPendingS) {
         gC.steerPendingS = -1.0;
-        StartSteer("the scene's new composition wants Shepard there");
+        // The owner's rule (2026-11-14): under the game's fade to black, when the one the player talks to was moved, the player
+        // goes with Shepard to his new mark at once (a dip) when it is more than a step away; else he walks there by the
+        // simulated stick (item 31).
+        if (!(gC.talkToMovedUnderBlack && gC.sceneWants && TeleportPlayerTo(pawn, *gC.sceneWants))) {
+            StartSteer("the scene's new composition wants Shepard there");
+        }
+        gC.talkToMovedUnderBlack = false;
     }
     StepEyes();
     StepCircle(pawn, speakerNow, listener, nowS, dt);
@@ -7776,6 +7842,16 @@ std::string Command(std::string const& rest) {
             return std::format("usage: mevr convo {} [on | off]", verb);
         }
         return std::format("convo: {}: {}", verb, broken ? "off (a broken run)" : "on");
+    }
+    if (verb == "stall") {
+        std::uint32_t ms = 0;
+        double afterS = 0.0;
+        words >> ms >> afterS;
+        if (ms == 0 || ms > 8000 || afterS < 0.0) {
+            return "usage: mevr convo stall <ms 1..8000> [afterS]: the game thread sleeps once, in a conversation shown in the world";
+        }
+        gTestStall = {ms, GetTickCount64() + static_cast<std::uint64_t>(afterS * 1000.0)};
+        return std::format("convo: stall: the game thread will sleep {} ms in {:.1f} s (once a conversation is shown in the world)", ms, afterS);
     }
     if (verb == "hide" || verb == "nearplane") {
         // Broken runs for the "was it drawn" rules (research/69 "Obvious bugs, measured"): `hide body|person on|off` hides the

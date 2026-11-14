@@ -353,6 +353,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   opening on the mark, the cut under the fade): John02 slot 80, walk with Anderson, then the hearing: you stand on the podium's
   floor at your own eye height, not floating; when the hearing ends and the screen goes black you are with Anderson and Udina
   (a short fade), and you can walk with them or stay. `python tools/conversation-session.py` afterwards: no `audit:eye-height`.
+- [ ] **Virmire's briefing and the fade inside a scene** (2026-11-14, research/69 item 40; fake headset: the 0.66 m step walked,
+  no second blink; a move past 1.5 m under a scene's own fade not seen in the game yet): Kirrahe's briefing at the camp: when the
+  screen goes black and people move, you end up beside Shepard's new place (a short step walked, a longer one under one dip), with
+  no 3D-screen flash, even when the game hitches. Say if any black screen inside a conversation leaves you behind.
 - [ ] **Conversations where you start them** (2026-11-12, research/69 item 28 "The conversational circle", second design; run on
   the fake headset): any conversation (slots 83, 85, 87, 89): you stay where you started it, the person you talk to stays where
   they are, nothing walks you. Someone who takes part later walks over a few lines before speaking; Avina (the hologram) and anyone
