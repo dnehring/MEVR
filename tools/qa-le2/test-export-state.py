@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Temporary synthetic archives only; never launch or read a live game."""
 import contextlib
+import copy
 import importlib.util
 import io
 import json
@@ -95,6 +96,152 @@ class ExportTests(unittest.TestCase):
 
     def state(self):
         return e.read(self.run / f'artifacts/state-{self.token}.json')
+
+    def use_weapon(self):
+        self.request['verb'] = 'observe-weapon'
+        self.payload.pop('resourceObservation', None)
+        self.payload['capabilities'] = {'observeWeapon': True}
+        fields = {}
+        for name, (source, scalar) in e.WEAPON_FIELDS.items():
+            value = {'magazineCapacity': 12.75, 'magazineUsed': 4.5, 'reserveStored': -7}.get(name, False)
+            fields[name] = dict(available=True, reason='stable-raw-field', source=source, value=value)
+        fields['loadedCount'] = dict(available=True, reason='source-derived-truncation-toward-zero', source=e.LOADED_SOURCE, value=8)
+        fields['effectiveReserve'] = dict(available=False, reason='effective-getter-not-resolved')
+        observation = dict(schemaVersion=1, game='LE2', available=True, reason='validated-pawn-selected-weapon',
+                           dispatchCapability=False, reloadEligibilityVerified=False, reloadCompletionVerified=False,
+                           persistenceVerified=False, durableObjectIdentity=False, coherentSimulationSnapshot=False,
+                           selectedWeapon=dict(name='SyntheticRifle', nameNumber=12, index=93,
+                                               **{'class': 'SyntheticPackage.Rifle'}, heavyWeaponClass=False),
+                           context=dict(source='current pawn.Weapon; reciprocal Instigator/InvManager/WorldInfo',
+                                        pendingWeaponPresent=False), fields=fields)
+        for i, key in enumerate(('world', 'controller', 'pawn', 'inventory')):
+            observation['context'][key] = {'class': 'SyntheticPackage.' + key, 'index': i + 1}
+        self.payload['weaponObservation'] = observation
+        self.archive()
+        return observation
+
+    def test_weapon_export_preserves_raw_semantics_and_exact_identity(self):
+        observation = self.use_weapon()
+        self.assertEqual(self.invoke(), 2)  # No map/resources or effective reserve fabricated.
+        artifact = self.state()
+        weapon = artifact['state']['weapon']
+        self.assertEqual(weapon['identity'], observation['selectedWeapon'])
+        self.assertEqual(weapon['loaded'], 8)
+        self.assertEqual(weapon['magazineUsed'], 4.5)
+        self.assertEqual(weapon['reserveStored'], -7)
+        self.assertNotIn('reserve', weapon)
+        self.assertNotIn('effectiveReserve', weapon)
+        self.assertNotIn('resources', artifact['state'])
+        self.assertNotIn('map', artifact['state'])
+        self.assertEqual(artifact['provenance']['runtimeObservation'], observation)
+        self.assertEqual(artifact['provenance']['normalizedSemantics']['weapon.loaded'], e.LOADED_SOURCE)
+        self.assertEqual(artifact['provenance']['observationVerb'], 'observe-weapon')
+        self.assertFalse(artifact['provenance']['combinedObservation'])
+        self.assertFalse(any(artifact['claims'].values()))
+        self.assertEqual(artifact['unavailable']['weapon.effectiveReserve']['sample'], observation['fields']['effectiveReserve'])
+
+    def test_weapon_unavailable_context_preserved_without_zero_values(self):
+        observation = self.use_weapon()
+        observation.update(available=False, reason='weapon-context-changed')
+        for key in ('context', 'selectedWeapon', 'fields'):
+            del observation[key]
+        self.archive()
+        self.assertEqual(self.invoke(), 2)
+        self.assertEqual(self.state()['state'], {'weapon': {}})
+        self.assertEqual(self.state()['unavailable']['weapon.identity']['reason'], 'weapon-context-changed')
+
+    def test_weapon_unavailable_field_preserves_reason_and_sample(self):
+        observation = self.use_weapon()
+        observation['fields']['magazineUsed'] = dict(available=False, source='AmmoUsedCount', reason='weapon-field-changed')
+        observation['fields']['loadedCount'] = dict(available=False, source=e.LOADED_SOURCE, reason='capacity-or-used-unavailable-or-out-of-range')
+        self.archive()
+        self.assertEqual(self.invoke(), 2)
+        self.assertNotIn('loaded', self.state()['state']['weapon'])
+        self.assertEqual(self.state()['unavailable']['weapon.magazineUsed']['sample'], observation['fields']['magazineUsed'])
+        self.assertEqual(self.state()['state']['weapon']['reserveStored'], -7)
+
+    def test_weapon_rejects_wrong_source_type_range_and_derived_value(self):
+        original = copy.deepcopy(self.use_weapon())
+        cases = [('reserveStored', 'value', True), ('reserveStored', 'value', 1 << 31),
+                 ('reserveStored', 'value', -0x80000001), ('reserveStored', 'source', 'GetCurrentSpareAmmo'),
+                 ('magazineCapacity', 'value', 0.1), ('magazineCapacity', 'value', 1e100),
+                 ('magazineUsed', 'available', 1), ('infiniteAmmo', 'value', 0),
+                 ('loadedCount', 'value', 9), ('loadedCount', 'value', True),
+                 ('loadedCount', 'source', 'rounded'), ('loadedCount', 'reason', 'rounded'),
+                 ('effectiveReserve', 'available', True)]
+        for name, key, value in cases:
+            with self.subTest(name=name, key=key, value=value):
+                observation = copy.deepcopy(original)
+                observation['fields'][name][key] = value
+                self.payload['weaponObservation'] = observation
+                self.archive()
+                self.assertEqual(self.invoke(), 1)
+                self.assertFalse((self.run / 'artifacts').exists())
+
+    def test_weapon_loaded_uses_float32_subtraction_before_truncation(self):
+        observation = self.use_weapon()
+        observation['fields']['magazineCapacity']['value'] = 16777216
+        observation['fields']['magazineUsed']['value'] = 0.5
+        observation['fields']['loadedCount']['value'] = 16777216
+        state, _ = e.normalize_weapon(self.payload)
+        self.assertEqual(state['weapon']['loaded'], 16777216)
+        observation['fields']['loadedCount']['value'] = 16777215  # Python double then int would do this.
+        with self.assertRaises(ValueError):
+            e.normalize_weapon(self.payload)
+
+    def test_weapon_loaded_requires_valid_available_source_values(self):
+        original = copy.deepcopy(self.use_weapon())
+        for changes in ({'available': False}, {'value': -1}, {'value': 13}):
+            self.payload['weaponObservation'] = copy.deepcopy(original)
+            self.payload['weaponObservation']['fields']['magazineUsed'].update(changes)
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                e.normalize_weapon(self.payload)
+        self.payload['weaponObservation'] = copy.deepcopy(original)
+        self.payload['weaponObservation']['fields']['magazineCapacity'] = None
+        self.archive()
+        self.assertEqual(self.invoke(), 1)
+        self.assertFalse((self.run / 'artifacts').exists())
+
+    def test_weapon_identity_and_claim_contracts_strict(self):
+        original = copy.deepcopy(self.use_weapon())
+        for key, value in [('index', True), ('index', -1), ('nameNumber', 1.5),
+                           ('heavyWeaponClass', 0), ('address', '0x123'), ('name', '')]:
+            self.payload['weaponObservation'] = copy.deepcopy(original)
+            self.payload['weaponObservation']['selectedWeapon'][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                e.normalize_weapon(self.payload)
+        for key in ('durableObjectIdentity', 'coherentSimulationSnapshot', 'reloadCompletionVerified'):
+            self.payload['weaponObservation'] = copy.deepcopy(original)
+            self.payload['weaponObservation'][key] = True
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                e.normalize_weapon(self.payload)
+
+    def test_weapon_archive_uses_same_correlation_and_frozen_guards(self):
+        self.use_weapon()
+        for changes in ({'status': 'error'}, {'lease': '44444444-4444-4444-8444-444444444444'}, {'verb': 'observe-resources'}):
+            self.archive(**changes)
+            self.assertEqual(self.invoke(), 1)
+        self.archive()
+        (self.run / 'recipe.json').write_bytes(b'{}')
+        self.assertEqual(self.invoke(), 1)
+        self.assertFalse((self.run / 'artifacts').exists())
+
+    def test_weapon_cannot_normalize_resource_payload_or_bypass_consumption(self):
+        self.request['verb'] = 'observe-weapon'
+        self.archive()
+        self.assertEqual(self.invoke(), 1)
+        self.use_weapon()
+        (self.run / 'control/consumed-1.request').unlink()
+        self.assertEqual(self.invoke(), 1)
+
+    @unittest.skipUnless(os.environ.get('LE2_CONTROL_CPP'), 'set LE2_CONTROL_CPP for actual C++ codec conformance')
+    def test_weapon_actual_cpp_archive_conformance(self):
+        self.use_weapon()
+        for suffix in ('request', 'result'):
+            path = self.run / f'control/history/{self.token}.{suffix}'
+            result = subprocess.run([os.environ['LE2_CONTROL_CPP'], str(path)], capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, path.read_bytes())
 
     def test_success_and_exact_provenance(self):
         self.assertEqual(self.invoke(), 0)

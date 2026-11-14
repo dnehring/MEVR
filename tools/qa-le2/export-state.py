@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Export a correlated archived resource observation; no live processes or requests."""
+"""Export one correlated resource or weapon observation; no live processes or requests."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -24,6 +24,14 @@ control, scenario = module('control'), module('scenario')
 session = control.session
 FIELDS = dict(credits='Credits', medigel='Medigel', eezo='Eezo', iridium='Iridium',
               palladium='Palladium', platinum='Platinum', probes='Probes', fuel='CurrentFuel')
+WEAPON_FIELDS = dict(magazineCapacity=('MagSize.Value', 'float32'),
+                    magazineUsed=('AmmoUsedCount', 'float32'),
+                    reserveStored=('CurrentSpareAmmo', 'int32'),
+                    infiniteAmmo=('bInfiniteAmmo', 'bool'),
+                    weaponCanBeReloaded=('bWeaponCanBeReloaded', 'bool'),
+                    earlyReload=('bEarlyReload', 'bool'), drawingWeapon=('bDrawingWeapon', 'bool'),
+                    holsteringWeapon=('bHolsteringWeapon', 'bool'), playerUsable=('bPlayerUsable', 'bool'))
+LOADED_SOURCE = 'final SFXWeapon.GetAmmoCountInMagazine: int(MagSize.Value-AmmoUsedCount)'
 
 
 def require(condition, message):
@@ -122,6 +130,113 @@ def normalize(payload):
     return state, unavailable
 
 
+def weapon_identity(value, selected=False):
+    require(isinstance(value, dict), 'Weapon context identity must be an object')
+    keys = {'class', 'index'} | ({'name', 'nameNumber', 'heavyWeaponClass'} if selected else set())
+    require(set(value) == keys and isinstance(value.get('class'), str) and 0 < len(value['class']) <= 256
+            and '\0' not in value['class'] and type(value.get('index')) is int and 0 <= value['index'] <= 0x7fffffff,
+            'Invalid process-local weapon identity')
+    if selected:
+        require(isinstance(value.get('name'), str) and 0 < len(value['name']) < 128 and '\0' not in value['name']
+                and type(value.get('nameNumber')) is int and -0x80000000 <= value['nameNumber'] <= 0x7fffffff
+                and type(value.get('heavyWeaponClass')) is bool, 'Invalid selected weapon identity')
+    return dict(value)
+
+
+def float32(value):
+    require(type(value) in (int, float), 'Expected float32 scalar, not bool/string')
+    try:
+        converted = struct.unpack('<f', struct.pack('<f', value))[0]
+    except (OverflowError, struct.error):
+        raise ValueError('Scalar outside float32 range') from None
+    require(math.isfinite(converted) and converted == value, 'Scalar is not an exact finite float32 value')
+    return converted
+
+
+def normalize_weapon(payload):
+    capabilities = payload.get('capabilities')
+    require(payload.get('source') == 'diagnostic-host' and payload.get('game') == 'LE2'
+            and payload.get('readOnly') is True and payload.get('ready') is False
+            and isinstance(capabilities, dict) and capabilities.get('observeWeapon') is True,
+            'Not a completed read-only diagnostic weapon producer payload')
+    observation = payload.get('weaponObservation')
+    require(isinstance(observation, dict) and type(observation.get('schemaVersion')) is int
+            and observation['schemaVersion'] == 1 and observation.get('game') == 'LE2'
+            and type(observation.get('available')) is bool
+            and all(observation.get(key) is False for key in ('dispatchCapability', 'reloadEligibilityVerified',
+                    'reloadCompletionVerified', 'persistenceVerified', 'durableObjectIdentity', 'coherentSimulationSnapshot')),
+            'Unexpected weapon observation contract')
+    require(isinstance(observation.get('reason'), str) and observation['reason'], 'Weapon observation reason required')
+    stable = observation['available']
+    state, unavailable = {'weapon': {}}, {}
+    if stable:
+        state['weapon']['identity'] = weapon_identity(observation.get('selectedWeapon'), selected=True)
+        context = observation.get('context')
+        require(isinstance(context, dict) and type(context.get('pendingWeaponPresent')) is bool
+                and context.get('source') == 'current pawn.Weapon; reciprocal Instigator/InvManager/WorldInfo',
+                'Unexpected weapon context contract')
+        for key in ('world', 'controller', 'pawn', 'inventory'):
+            weapon_identity(context.get(key))
+    else:
+        unavailable['weapon.identity'] = {'reason': observation['reason'], 'sample': observation.get('selectedWeapon')}
+    fields = observation.get('fields', {})
+    require(isinstance(fields, dict), 'Weapon fields must be an object')
+    for key, (source, scalar) in WEAPON_FIELDS.items():
+        sample = fields.get(key)
+        reason = 'field-missing'
+        if isinstance(sample, dict):
+            require(type(sample.get('available')) is bool and isinstance(sample.get('reason'), str)
+                    and sample['reason'] and sample.get('source') == source, f'{key}: wrong availability/reason/source')
+            reason = sample['reason']
+            if sample['available']:
+                value = sample.get('value')
+                if scalar == 'float32':
+                    float32(value)
+                elif scalar == 'int32':
+                    require(type(value) is int and -0x80000000 <= value <= 0x7fffffff, f'{key}: invalid signed raw int32')
+                else:
+                    require(type(value) is bool, f'{key}: invalid boolean flag')
+                if stable:
+                    state['weapon'][key] = value
+                    continue
+        else:
+            require(sample is None, f'{key}: field must be an object')
+        unavailable['weapon.' + key] = {'reason': reason if stable else observation['reason'], 'sample': sample}
+    loaded = fields.get('loadedCount')
+    if isinstance(loaded, dict):
+        require(type(loaded.get('available')) is bool and isinstance(loaded.get('reason'), str) and loaded['reason']
+                and loaded.get('source') == LOADED_SOURCE, 'loadedCount: wrong availability/reason/source')
+        if loaded['available']:
+            value = loaded.get('value')
+            require(type(value) is int and 0 <= value <= 0x7fffffff, 'loadedCount: invalid integer')
+            capacity, used = fields.get('magazineCapacity', {}), fields.get('magazineUsed', {})
+            require(isinstance(capacity, dict) and isinstance(used, dict)
+                    and capacity.get('available') is True and used.get('available') is True,
+                    'loadedCount requires available capacity and used values')
+            cap, used_value = float32(capacity.get('value')), float32(used.get('value'))
+            require(0 <= used_value <= cap, 'loadedCount: invalid source range')
+            # Match the source float subtraction before its int truncation;
+            # Python's double subtraction alone can differ at float32 edges.
+            remainder = struct.unpack('<f', struct.pack('<f', cap - used_value))[0]
+            require(math.isfinite(remainder) and remainder < 2147483648 and int(remainder) == value,
+                    'loadedCount differs from source float32 subtraction/truncation')
+            require(loaded['reason'] == 'source-derived-truncation-toward-zero', 'loadedCount: missing derivation semantics')
+            if stable:
+                state['weapon']['loaded'] = value
+        if not loaded['available'] or not stable:
+            unavailable['weapon.loaded'] = {'reason': loaded['reason'] if stable else observation['reason'], 'sample': loaded}
+    else:
+        require(loaded is None, 'loadedCount must be an object')
+        unavailable['weapon.loaded'] = {'reason': 'field-missing' if stable else observation['reason'], 'sample': loaded}
+    effective = fields.get('effectiveReserve')
+    if effective is not None:
+        require(isinstance(effective, dict) and effective.get('available') is False
+                and isinstance(effective.get('reason'), str) and effective['reason'],
+                'effectiveReserve must remain explicitly unavailable in this producer contract')
+    unavailable['weapon.effectiveReserve'] = {'reason': effective['reason'] if effective else 'field-missing', 'sample': effective}
+    return state, unavailable
+
+
 def export(run_path, request_id, case_id):
     require(control.valid_uuid(request_id), 'Canonical nonzero request UUID required')
     run = session.safe_path(Path(run_path).absolute())
@@ -142,9 +257,9 @@ def export(run_path, request_id, case_id):
     response_path = run / 'control' / 'history' / (request_id + '.result')
     request_bytes, response_bytes = raw(request_path, control.MAX_FRAME), raw(response_path, control.MAX_FRAME)
     request, response = control.decode(request_bytes), control.decode(response_bytes)
-    require(request['kind'] == 'request' and request['id'] == request_id and request['verb'] == 'observe-resources'
+    require(request['kind'] == 'request' and request['id'] == request_id and request['verb'] in ('observe-resources', 'observe-weapon')
             and not request['payload'] and response['kind'] == 'result' and response['status'] == 'completed',
-            'Requires archived empty observe-resources request and completed result')
+            'Requires archived empty observe-resources/observe-weapon request and completed result')
     require(all(request[k] == response[k] for k in (*control.IDENTITY, 'id', 'sequence', 'deadline', 'verb'))
             and all(request[k] == wire_identity[k] for k in control.IDENTITY), 'Uncorrelated archived response')
     # consumed-N counts attempts, not client sequence. Match exact bytes within a bounded scan.
@@ -183,7 +298,8 @@ def export(run_path, request_id, case_id):
             and plan['fixture'].get('sha256') == context['fixtureSha256']
             and plan['scenario'].get('sha256') == context['scenarioSha256'], 'Frozen plan inputs differ')
     payload = parse(response['payload'])
-    state, unavailable = normalize(payload)
+    weapon = request['verb'] == 'observe-weapon'
+    state, unavailable = normalize_weapon(payload) if weapon else normalize(payload)
     require(control.number(payload.get('gameTick')) > 0 and control.number(payload.get('gameThreadId'), (1 << 32) - 1) > 0,
             'Missing sample tick/thread')
     control.number(payload.get('sampleMonotonicMs'))
@@ -193,7 +309,9 @@ def export(run_path, request_id, case_id):
                         gameTick=payload['gameTick'], gameThreadId=payload['gameThreadId'], sampleMonotonicMs=payload['sampleMonotonicMs'],
                         deadline=request['deadline'], deploymentSha256=session.digest(run / 'deployment.json'),
                         candidateCommitEvidence='reviewed-deployment-receipt-attestation-not-binary-commit-proof',
-                        session=binding, runtimeObservation=payload['resourceObservation']),
+                        session=binding, observationVerb=request['verb'], combinedObservation=False,
+                        normalizedSemantics=({'weapon.loaded': LOADED_SOURCE, 'weapon.reserveStored': 'raw signed CurrentSpareAmmo; not effective/legal reserve'} if weapon else {}),
+                        runtimeObservation=payload['weaponObservation' if weapon else 'resourceObservation']),
                     claims=dict(visualVerified=False, loadedFixtureProven=False, persistenceProven=False, vrVerified=False))
     failures = scenario.check_start(frozen, artifact)
     failures.extend('unavailable observation: ' + key for key in unavailable)
