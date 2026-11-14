@@ -75,8 +75,9 @@ Require an owned LE2-only handshake, a deliberately rejected stale/wrong-game
 request, a harmless query, normal load/save/reload, useful captures and verified
 cleanup after both success and interruption. Preserve private original evidence.
 Until these pass, do not call the full runner proven. The native baseline
-establishes loading and saving; the later diagnostic run proves read-only
-handshake/observation. Reload and the live negative-control checks remain pending.
+establishes loading and saving; later diagnostic runs prove read-only
+handshake/observation and live wrong-lease/expired-request rejection. Reload
+and native-call validation remain pending.
 
 ## Implemented transport checkpoint
 
@@ -104,8 +105,12 @@ The observer sampled the entry menu and matching ConsoleCommand metadata, not a
 loaded fixture. The existing MEVR loader was required because the game's stock
 Bink does not load ASIs. Both protected runs closed normally and restoration
 verified. See [native evidence](../research/le2-validation-evidence.md).
-The next gates are live negative controls, native-call validation and the normal
-load/save/reload cycle. Three scenario and VR acceptance gates remain open.
+The `152c9597` run also passed live negative controls and observed matching getter
+metadata, but its controller slot target differed from the installed base hook.
+Investigate the possible native override before enabling calls; see the
+[target investigation](../research/le2-native-console-reuse.md#observed-controller-target-disagreement).
+Native-call validation and the normal load/save/reload cycle remain open, along
+with the three scenario and VR acceptance gates.
 
 The [native console reuse audit](../research/le2-native-console-reuse.md) records
 the remaining hook-target and allocator/string-lifetime prerequisites. Preserve

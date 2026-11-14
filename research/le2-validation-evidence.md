@@ -5,6 +5,50 @@ Checkpoint: 2026-11-14 UTC. **Native load/save observed; scripted Steam selectio
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Later target and rejection check
+
+Run `ea509781-66e5-4736-a284-2c1668aa1860` tested clean candidate
+`152c9597b141362d13d6cd56e0c619b6e7366cdd`, ASI SHA256
+`24c381b88debc6dc76cc086eaddae17988a00a63f3a1249a059fe08dbc5d42f8`, with the
+previously verified `59b5e775` loader. The routine launcher path accepted the
+reviewed capability receipt and selected ME2 without the selection-probe mode.
+An earlier preparation check refused a different active launcher before writes;
+the successful attempt acquired ownership only after it closed.
+
+Five archived requests established: normal ping, structural observation,
+rejection of an empty ping with a wrong lease, rejection of an expired empty
+ping, and successful normal ping afterward. The negative replies carried the
+producer's actual identity and exact reasons `identity mismatch` and
+`expired or excessive deadline`. Both were consumed and correlated; no pending
+intent remained. The same game thread, 53984, answered normal requests.
+
+The entry-menu sample matched the exact GetFOVAngle declaration: flags `0x20802`,
+one FloatProperty return at offset zero, size four, flags `0x580`, native index
+zero. GMalloc and its LE2 Malloc/Free slots were readable and pointed to committed
+executable pages; allocation ownership and call behavior remain unvalidated.
+
+**The controller target prerequisite did not pass.** The host recorded its base
+ProcessEvent installation at RVA `0xD8D50`, with `AtRvaUnchecked` classification
+and a two-hop current chain to its exact owned detour. The controller's slot 72
+instead pointed to RVA `0x3F7AD0`. Both slot-to-installation match fields were
+false. The SDK declaration and inspection of our compiled Legacy call site agree
+on byte offset `0x240`; this rules out an obvious compiler indexing discrepancy,
+not an SDK/game mismatch. A native controller override is a hypothesis, not a
+validated explanation. Do not change the slot or bypass it by calling the base
+address merely to satisfy the test. Follow the [target investigation](le2-native-console-reuse.md#observed-controller-target-disagreement).
+
+No native getter or console function was invoked. No save was selected and no
+VR operation occurred. Normal window closure succeeded; all protected profile,
+Win64, configuration and launcher content was restored and verified, and only
+the owned invitation was removed. The private run is
+`local-tools/le2-diagnostic-handoff/run-20261114T0602Z/`; its actual deployed
+ASI/loader were copied from the post-run archive into `candidate-152c9597/` and
+rehashed. All three ordinary builds, **45/45** tests and **5/5** focused diagnostic
+tests passed at this candidate. This checkpoint advances native diagnostic and
+rejection evidence, not gameplay-command or scenario acceptance.
+
+### Initial connection proof
+
 After the user authorized the next free game window, the protected runner
 acquired ownership and backed up the full profile, LE2 Win64/configuration and
 launcher directory. Two one-attempt Steam selection probes both launched and

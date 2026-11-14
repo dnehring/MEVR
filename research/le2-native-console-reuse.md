@@ -5,8 +5,9 @@ Source audit at main `ea25e76c`, with SDK submodule
 `6bd05809cccb1a099a520371a95779d4a56bb246`. No native operation was performed.
 The diagnostic candidates remain read-only; this report does not grant dispatch
 capability. The later `59b5e775` candidate proved its owned native handshake and
-entry-menu metadata observation. The extended diagnostics below still require
-their own live evidence before enabling calls. See the [protected workflow](../tools/qa-le2/control.md).
+entry-menu metadata observation. The extended `152c9597` diagnostics then exposed
+a controller/base-target disagreement described below. Resolve it before
+enabling calls. See the [protected workflow](../tools/qa-le2/control.md).
 
 Reuse the existing `engine::legacy::ConsoleCommand` route: direct ProcessEvent
 plus LE2's SDK-backed FString allocator. Do not replace it with the LE1 generic
@@ -51,6 +52,40 @@ cycles or exhausted bounds remain unresolved. Existing `exe::HookJumpLength`
 recognizes forms but does not prove destination ownership. `gOriginal` is the
 installer-returned next hop, not proof of pristine engine code beneath earlier
 hooks. Do not describe recorded installation as validation of that entire chain.
+
+## Observed controller target disagreement
+
+The protected `152c9597` run returned matching GetFOVAngle metadata and an owned
+two-hop base-hook chain, but the SFXPlayerController slot 72 target was RVA
+`0x3F7AD0`, not the installed base ProcessEvent RVA `0xD8D50`. See the
+[native evidence](le2-validation-evidence.md). A readable executable target alone
+does not resolve this discrepancy, and a legitimate native override remains
+possible. The equality prerequisite may be too strict for overrides; do not
+weaken it before establishing the relationship.
+
+The pinned SDK UObject has no base class or virtual destructor, and declares
+VirtualFunction00 through VirtualFunction71 before ProcessEvent. Inspection of
+our existing MSVC LE2 Legacy object confirms `call qword ptr [rax+240h]`.
+Generated derived classes not redeclaring that virtual method does not establish
+that the native game has no override. Halcyon's licensed LE2 source separately
+uses the explicit base RVA; that is a distinct route, not proof that bypassing
+the controller entry is equivalent.
+
+The next bounded read-only investigation is:
+
+1. Compare only slot 72 on already validated engine/world/local-player/controller
+   objects and the pawn when available. Do not guess different slot indices.
+2. For the observed controller target only, report main-module executable-section
+   membership, exact unwind-table function bounds and recognized unconditional
+   jumps toward the recorded base target. A non-jump body stays unresolved.
+3. If needed, preserve only that function's bounded bytes privately for offline
+   analysis, or correlate naturally occurring controller calls at the existing
+   base hook with return addresses inside those proven function bounds. Do not
+   trigger a call merely to establish the route.
+
+No new arbitrary vtable scan, instruction fingerprint requirement, forced call,
+or automatic base-address fallback is required. Once the actual route is
+established, the scalar-return experiment below can use that justified route.
 
 ## String allocation and lifetime
 
@@ -129,5 +164,5 @@ flags or use a generated wrapper.
 That experiment would establish only this bounded ProcessEvent/script-return
 path. It would not prove ConsoleCommand allocation, arbitrary console commands,
 normal save loading, story coherence or any VR interaction. The first pending
-native action is live observation of these new diagnostics and rejection probes,
-followed by this bounded getter experiment only after the prerequisites pass.
+native action is the bounded override investigation above, followed by this
+getter experiment only after the call-route prerequisites pass.

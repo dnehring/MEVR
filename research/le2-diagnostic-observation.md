@@ -7,6 +7,9 @@ LE1 reflection/gameplay stack. The `59b5e775` diagnostic returned a live entry-m
 sample through the game-thread channel, including matching ConsoleCommand
 metadata. See [native evidence](le2-validation-evidence.md). Loaded-save identity,
 object lifetime across transitions, native calls and gameplay remain unvalidated.
+The later `152c9597` live sample matched the getter metadata and owned base-hook
+chain, but its controller slot differed from that base target. Keep this failed
+prerequisite explicit; see the [override investigation](le2-native-console-reuse.md#observed-controller-target-disagreement).
 
 The scope follows the bounded SDK request for this task. It is a temporary
 diagnostic exception to the normal reflection-first direction in
