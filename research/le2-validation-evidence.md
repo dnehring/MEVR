@@ -5,6 +5,48 @@ Checkpoint: 2026-11-14 UTC. **Scripted launch, normal fixture loading, eight edi
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Save initialization retained; rejected UI row identified
+
+Protected run `80d7434b-698d-4c98-af82-0f688e617f9a` used candidate
+`d4d34008be41f0fef49c0ada26264611f6276bfe`, ASI SHA256
+`695401a96ba45038d2d0c813c6c63eafc8508c838fbe5593c169b83fb6ce0648`, with the
+verified loader. Three ordinary builds, **50/50** full tests and **7/7**
+diagnostic tests passed, including actual-C++ client/collector and capture
+tests. SDK observer Release/Debug suites passed; independent review resolved
+a pending-panel continuity gap before integration. Build receipt SHA256:
+`31c9f0648b70ea43b9c89f52519ef7183a3f868733eb9135cc619f597395f50b`.
+
+The entire launch/load/menu/capture sequence used scripts, with no computer-use
+fallback or injected desktop input. Reviewed desktop-client captures show Save
+99 selected, Shepard on the Normandy crew deck, the initialized Mission Computer
+with Save enabled, and the resulting New Save screen. All eight prepared
+resources matched the live exporter again. The loaded-scene image SHA256 is
+`42f7d1bd8d8d00956ae7d525acbd7fec5596a8f3ba2241fd3bbbe4064d5d1bc5`.
+
+Save-menu request `0c58258b-592d-4805-894e-291430c0618b` returned normally.
+Observations `1ee29042-3cd2-42bc-abe4-23c881974475` and
+`72e1ceb9-7bc3-4cc6-89f2-0d5635741c71` retained
+`sameOpenedSaveFlow=true` and `pendingPanelIdentityBound=true` after normal
+initialization. Their diagnostic row arrays were identical. The first row had
+empty career/save-name strings with count/capacity zero, index/type zero, and a
+null SaveGame pointer. Its FriendlyName was the location label, not the displayed
+Create New Save text. Rows 1 and 2 were the real Save 99 and Save 36 descriptors.
+The reviewed UI showed Create New Save followed by those two saves; image SHA256
+`148584cc70bb957c851676ceed4bfadbc8e184823db0cfad0cc82e7752ce6f4f`.
+
+These observations diagnose the rejected first row and show that the asynchronous
+panel correction works in this run. They are explicitly not coherent complete
+descriptor receipts: `recordsComplete` remained false and no New Save request
+was submitted. The next implementation must recognize only the reviewed UI-row
+signature, account for every row, resample its complete state, preserve strict
+real-save validation, and keep the collector's exact fixture binding.
+
+The game closed normally and all four protected roots were restored and
+verified. The owned invitation was removed. Private requests, four readable
+captures, exported state/checks and cleanup receipts remain in
+`local-tools/le2-diagnostic-handoff/run-20261114T1446Z/`. New Save completion and
+reload persistence remain pending.
+
 ### Closed-HUD pause and normal Save-menu transitions proven
 
 Protected run `ee6a8779-e188-4226-8963-77280c69f646` used clean candidate
