@@ -156,6 +156,32 @@
       }
     },
     {
+      "id": "reload-weapon-index-matches",
+      "gate": "native",
+      "description": "Within one run, the ordinary reload samples must reference the same reported weapon object index. Review the trace for switches, replacement and object reuse.",
+      "requires": ["before", "after"],
+      "variants": ["empty", "partial", "no-reserve", "insufficient-reserve", "exact-reserve", "surplus-reserve", "full-magazine"],
+      "check": {
+        "kind": "compare",
+        "left": {"artifact": "before", "field": "state.weapon.identity.index"},
+        "op": "eq",
+        "right": {"artifact": "after", "field": "state.weapon.identity.index"}
+      }
+    },
+    {
+      "id": "reload-capacity-matches",
+      "gate": "native",
+      "description": "Magazine capacity must agree between the before and after samples for ordinary reload cases.",
+      "requires": ["before", "after"],
+      "variants": ["empty", "partial", "no-reserve", "insufficient-reserve", "exact-reserve", "surplus-reserve", "full-magazine"],
+      "check": {
+        "kind": "compare",
+        "left": {"artifact": "before", "field": "state.weapon.magazineCapacity"},
+        "op": "eq",
+        "right": {"artifact": "after", "field": "state.weapon.magazineCapacity"}
+      }
+    },
+    {
       "id": "ammo-conservation",
       "gate": "native",
       "description": "During the isolated finite-ammo reload window (same weapon instance, no firing, pickup, grant or replacement), source-derived loaded plus effective reserve ammunition is conserved. Require integral counts within exact float32 integer range and independently establish the ordinary finite-ammo policy.",
@@ -231,16 +257,17 @@
       }
     },
     {
-      "id": "no-reserve-no-ammo",
+      "id": "refused-reload-no-ammo-change",
       "gate": "native",
-      "description": "A rejected reload with zero reserve cannot add loaded ammo.",
+      "description": "A reload attempted with zero reserve or a full magazine leaves loaded ammo unchanged. Review the input and outcome to distinguish refusal from missing delivery.",
       "requires": [
         "before",
         "after",
         "input"
       ],
       "variants": [
-        "no-reserve"
+        "no-reserve",
+        "full-magazine"
       ],
       "check": {
         "kind": "delta",
