@@ -16,6 +16,10 @@ it does not require an enemy target. Establish normal drawing, firing, partial
 reload and saving at the chosen location before preparing variants. A map name,
 populated inventory or successful load alone does not establish those actions.
 
+The owner confirmed on 2026-11-14 that no earlier save is known. Plan the
+separate protected new-game route below; do not leave acquisition waiting for
+an unidentified Lazarus/Freedom's Progress save.
+
 1. **Preferred reusable route: normal Lazarus/ProCer progression.** Installed
    base and Patch01 content includes `BioP_ProCer` and
    `BioD_ProCer_100RezRoom`. Existing sequence inspection identifies pistol

@@ -257,7 +257,7 @@
     {
       "id": "native-reload-transitions",
       "gate": "native",
-      "description": "Review time-ordered input and native weapon observations for single commit, phase-specific cancellation/switch recovery, no duplicate ammo, valid firing and tutorial continuation for the selected variant. Bind capacity and reserve deficit for boundary cases. Account for the native early-cancel transfer and tutorial event preceding transfer; sparse final snapshots do not prove event counts.",
+      "description": "Review time-ordered input and native weapon observations for single commit, phase-specific cancellation/switch recovery, no duplicate ammo, valid firing and tutorial continuation for the selected variant. For every ammo-conserved case, explicitly verify finite ordinary ammo policy, integral capacity/usage/reserve within exact float32 range, the same weapon instance and no concurrent firing, pickup, grant, replacement or switch between accounting samples. Arithmetic equality alone does not verify these prerequisites. Bind capacity and reserve deficit for boundary cases. Account for the native early-cancel transfer and tutorial event preceding transfer; sparse final snapshots do not prove event counts.",
       "requires": [
         "before",
         "after",

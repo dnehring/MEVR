@@ -194,3 +194,13 @@ nearer/state overrides, cycles, missing/wrong metadata, metadata replacement and
 raw-value changes. Existing protected-page tests preserve unavailable ammo;
 Release/Debug production compilation excludes test seams. Native effective
 reserve and reload accounting acceptance remain pending.
+
+Integrated code candidate `3c8be122a74de9aaedfa4da69cdff44293549271` passed
+all three Release builds, 53/53 ordinary tests and 14/14 diagnostic tests on
+2026-11-14, without retries. SDK Release/Debug and 33 exporter checks also passed.
+The frozen ASI SHA256 is
+`15b0be9a4d97c954effbf53341ef11d89d93edb4a18654d51bec597a053d1012`;
+the private build-receipt SHA256 is
+`91d9e606f826e12107ac3bf648cdb50223b23cd4a68d1896a77c74e6f272dcfb`.
+This candidate has not been deployed or sampled natively. Subsequent scenario
+and documentation clarifications do not change its compiled code.

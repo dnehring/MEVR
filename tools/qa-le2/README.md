@@ -83,8 +83,10 @@ substitutes for these normal gameplay steps. See the
 Use [`observe-weapon`](../../research/le2-weapon-observation.md) through the same
 bound control client to inspect a live weapon before preparing reload assertions.
 It distinguishes capacity, magazine usage, derived loaded count and raw stored
-reserve. Effective reserve stays unavailable until the applicable weapon getter
-semantics are verified; a stored reserve value alone is not proof of reload cost.
+reserve. The later source-derived effective-reserve extension supports five
+audited weapon chains after guarded declaration checks; unknown overrides stay
+unavailable. That extension has offline proof and still needs a live sample.
+Neither a stored reserve nor the derived value alone proves reload cost.
 Run `1722Z-loadout` observed `SFXWeapon_MassCannon`: loaded 1, capacity 1,
 magazine usage 0 and raw reserve 10. Its correlated exporter output is partial:
 the starting-state check failed for missing map/resources and unavailable
