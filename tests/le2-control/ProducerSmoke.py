@@ -38,7 +38,8 @@ def main(executable):
             assert current["identity"] == identity
             return directory, identity
 
-        for verb in ("ping", "observe", "observe-save-menu", "observe-resources", "observe-save-flow", "observe-orbital", "observe-weapon", "observe-dialogue"):
+        for verb in ("ping", "observe", "observe-save-menu", "observe-resources", "observe-save-flow", "observe-orbital",
+                     "observe-weapon", "observe-dialogue", "observe-dialogue-history"):
             result = control.submit(run, verb, timeout=5, bind=bind)
             assert result["status"] == "completed"
             # The observer's 16 KiB budget is measured with compact JSON. The
@@ -72,13 +73,25 @@ def main(executable):
                 assert payload["capabilities"]["observeDialogue"] is False
                 assert payload["dialogueObservation"]["available"] is False
                 assert payload["readOnly"] is True
+            if verb == "observe-dialogue-history":
+                assert payload["capabilities"]["observeDialogueHistory"] is False
+                assert payload["dialogueHistory"]["available"] is False
+                assert "dialogueHistoryStartRequest" not in payload
+                assert payload["readOnly"] is True
             assert "not validated" in payload["unavailable"]["map"]
         result = control.submit(run, "console", "exit", timeout=5, allow_console=True, bind=bind)
         assert result["status"] == "rejected"
-        assert len(list((directory / "history").glob("*.result"))) == 9
-        assert len(list(directory.glob("consumed-*.request"))) == 9
+        assert len(list((directory / "history").glob("*.result"))) == 10
+        assert len(list(directory.glob("consumed-*.request"))) == 10
         assert not (directory / "request.control").exists()
         assert not (directory / "outstanding.json").exists()
+        for verb in control.DIALOGUE_HISTORY_CONTROLS:
+            result = control.submit(run, verb, timeout=5, bind=bind)
+            payload = json.loads(result["payload"])
+            assert result["status"] == "rejected"
+            assert payload["capabilities"]["observeDialogueHistory"] is False
+            assert payload["dialogueHistory"]["available"] is False
+            assert "dialogueHistoryStartRequest" not in payload
         result = control.submit(run, 'probe-fov', timeout=5, allow_probe_fov=True, bind=bind)
         assert result['status'] == 'rejected'
         assert json.loads(result['payload'])['reason'] == 'native FOV probe is disabled'
@@ -105,8 +118,8 @@ def main(executable):
             assert rejection['status'] == 'rejected' and rejection['lease'] == identity['lease']
         # Neither rejection may poison the next legitimate request.
         assert control.submit(run, 'ping', timeout=5, bind=bind)['status'] == 'completed'
-        assert len(list((directory / 'history').glob('*.result'))) == 20
-        assert len(list(directory.glob('consumed-*.request'))) == 20
+        assert len(list((directory / 'history').glob('*.result'))) == 23
+        assert len(list(directory.glob('consumed-*.request'))) == 23
         assert not (directory / 'outstanding.json').exists()
         print('Python/C++ filesystem smoke passed: observations, disabled console/FOV/menu, wrong lease, expiry and recovery; fake process only')
     finally:

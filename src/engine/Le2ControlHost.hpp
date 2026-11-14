@@ -33,6 +33,8 @@ public:
     void Poll(std::uint64_t tick, std::uint32_t thread) noexcept;
     // Cheap per-engine-tick context cancellation; request/file polling stays throttled.
     void TickInput(std::uint32_t thread) noexcept;
+    // Tick-owned opt-in dialogue sampling. No request filesystem traffic.
+    void TickDialogueHistory(std::uint64_t tick, std::uint64_t monotonic, std::uint32_t thread) noexcept;
     bool Attached() const;
     bool Disabled() const;
     std::string const& LastError() const;

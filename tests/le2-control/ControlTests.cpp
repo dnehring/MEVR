@@ -148,6 +148,15 @@ int main(int argc, char** argv) {
               "dialogue observation requires no native opt in");
         fixture.payload = "select-interruption";
         Check(!Encode(fixture), "dialogue observation accepts no input or choice");
+        for (auto verb : {"start-dialogue-history", "observe-dialogue-history", "stop-dialogue-history"}) {
+            fixture.verb = verb;
+            fixture.payload = "interruption";
+            Check(!Encode(fixture), "dialogue recording verbs accept no payload");
+            fixture.payload.clear();
+            Gate history(identity);
+            Check(Decode(*Encode(fixture))->verb == verb && !history.Claim(fixture, 10000),
+                  "dialogue recording verb is admitted through the bound wire");
+        }
         fixture.payload.clear(); fixture.verb = "observe-weapon";
         Gate weaponRead(identity);
         Check(Decode(*Encode(fixture))->verb == "observe-weapon" && !weaponRead.Claim(fixture, 10000),

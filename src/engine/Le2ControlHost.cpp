@@ -268,6 +268,8 @@ struct Endpoint::Impl {
     std::uint64_t consumed{};
 #if !defined(MEVR_LE2_CONTROL_TEST)
     NativeInput input;
+    le2_diagnostic::DialogueHistory dialogueHistory;
+    std::string dialogueHistoryStartRequest;
 #endif
 
     Impl(fs::path root, ProcessFiles process, UtcClock utc, hook::Context* hooks)
@@ -282,7 +284,7 @@ struct Endpoint::Impl {
         (void)hooks;
 #endif
     }
-    void Ownership() {
+    fs::path CheckRunLock() {
         auto const shared = Safe(local / L"MEVR");
         auto const lock = shared / L"qa-cafeteria.lock";
         Check(Equal(Safe(Path(Read(lock, 32768))), run), "shared lock no longer owns this run");
@@ -292,6 +294,14 @@ struct Endpoint::Impl {
             Check(++entries <= 4096, "shared ownership directory exceeds bounded scan");
             if (Equal(entry.path().extension(), L".lock")) Check(Equal(Safe(entry.path()), lock), "another session lock is present");
         }
+        return lock;
+    }
+    void CheckControlFiles() {
+        Check(Read(invitation, 16384) == invitationBytes, "attach invitation changed");
+        if (attached) Check(Read(directory / L"identity.json", wire::kMaxFrame) == descriptorBytes, "runtime descriptor changed");
+    }
+    void Ownership() {
+        auto const lock = CheckRunLock();
         auto context = Json(run / L"context.json");
         Check(context.Number("schemaVersion") == 1 && context.String("phase") == "game-bound" &&
               context.Bool("backupComplete") && !context.String("coordinatedOwner").empty() &&
@@ -311,8 +321,7 @@ struct Endpoint::Impl {
               StartTime(process.String("started")) == actual.startFiletime, "bound process differs");
         Check(Hash(actual.exe) == identity.exe && Hash(actual.module) == identity.host,
               "loaded-module file or executable changed on disk");
-        Check(Read(invitation, 16384) == invitationBytes, "attach invitation changed");
-        if (attached) Check(Read(directory / L"identity.json", wire::kMaxFrame) == descriptorBytes, "runtime descriptor changed");
+        CheckControlFiles();
     }
     void Attach() {
         attempted = true;  // No second attach attempt or lease in this process lifetime.
@@ -447,6 +456,7 @@ struct Endpoint::Impl {
             capabilities["observeResources"] = false;
             capabilities["observeOrbital"] = false;
             capabilities["observeDialogue"] = false;
+            capabilities["observeDialogueHistory"] = false;
             capabilities["observeWeapon"] = false;
             capabilities["observeInput"] = false;
             capabilities["nativePadPulse"] = false;
@@ -469,6 +479,7 @@ struct Endpoint::Impl {
             capabilities["observeResources"] = true;
             capabilities["observeOrbital"] = true;
             capabilities["observeDialogue"] = true;
+            capabilities["observeDialogueHistory"] = true;
             capabilities["observeWeapon"] = true;
             capabilities["observeInput"] = true;
             capabilities["nativePadPulse"] = input.hooks != nullptr;
@@ -494,6 +505,10 @@ struct Endpoint::Impl {
                 payload["orbitalObservation"] = le2_diagnostic::ObserveOrbital(thread);
             } else if (decoded->verb == "observe-dialogue") {
                 payload["dialogueObservation"] = le2_diagnostic::ObserveDialogue(thread);
+            } else if (decoded->verb == "observe-dialogue-history") {
+                payload["dialogueHistory"] = dialogueHistory.Snapshot();
+                if (!dialogueHistoryStartRequest.empty())
+                    payload["dialogueHistoryStartRequest"] = dialogueHistoryStartRequest;
             } else if (decoded->verb == "observe-weapon") {
                 payload["weaponObservation"] = le2_diagnostic::ObserveWeapon(thread);
             } else if (decoded->verb == "observe-input") {
@@ -542,6 +557,17 @@ struct Endpoint::Impl {
                 payload["menuAction"] = std::move(action.payload);
             }
 #else
+            if (decoded->verb == "observe-dialogue-history" || decoded->verb == "start-dialogue-history" ||
+                decoded->verb == "stop-dialogue-history") {
+                auto history = Value::Object();
+                history["available"] = false;
+                history["reason"] = "offline-fixture-does-not-traverse-engine-memory";
+                payload["dialogueHistory"] = std::move(history);
+                if (decoded->verb != "observe-dialogue-history") {
+                    result.status = "rejected";
+                    payload["readOnly"] = false;
+                }
+            }
             if (decoded->verb == "observe-dialogue") {
                 auto observation = Value::Object();
                 observation["available"] = false;
@@ -599,6 +625,24 @@ struct Endpoint::Impl {
         // lifetime. Otherwise a pulse can expire while this game tick hashes.
         Ownership();
 #if !defined(MEVR_LE2_CONTROL_TEST)
+        if (!failure && (decoded->verb == "start-dialogue-history" || decoded->verb == "stop-dialogue-history")) {
+            payload["readOnly"] = false;
+            if (decoded->verb == "start-dialogue-history") {
+                // Recheck the deadline after the second ownership pass and
+                // before setting the sampling lifetime.
+                if (clock() >= decoded->deadline || !dialogueHistory.Start(tick, GetTickCount64(), thread)) {
+                    result.status = "rejected";
+                    payload["reason"] = "dialogue-history-expired-or-already-recording";
+                } else {
+                    dialogueHistoryStartRequest = decoded->id;
+                }
+            } else {
+                dialogueHistory.Stop();
+            }
+            payload["dialogueHistory"] = dialogueHistory.Snapshot();
+            if (!dialogueHistoryStartRequest.empty())
+                payload["dialogueHistoryStartRequest"] = dialogueHistoryStartRequest;
+        }
         if (pendingPulse) {
             std::string reason;
             bool const published = input.Publish(*pendingPulse, decoded->sequence, thread, decoded->deadline, clock, reason);
@@ -642,6 +686,17 @@ void Endpoint::TickInput(std::uint32_t thread) noexcept {
     (void)thread;
 #endif
 }
+void Endpoint::TickDialogueHistory(std::uint64_t tick, std::uint64_t monotonic, std::uint32_t thread) noexcept {
+#if !defined(MEVR_LE2_CONTROL_TEST)
+    if (impl_->disabled) {
+        impl_->dialogueHistory.Stop();
+    } else if (impl_->attached && impl_->dialogueHistory.Active()) {
+        impl_->dialogueHistory.Tick(tick, monotonic, thread);
+    }
+#else
+    (void)tick; (void)monotonic; (void)thread;
+#endif
+}
 void Endpoint::Poll(std::uint64_t tick, std::uint32_t thread) noexcept {
     if (impl_->disabled) return;
     try {
@@ -653,7 +708,14 @@ void Endpoint::Poll(std::uint64_t tick, std::uint32_t thread) noexcept {
 #if !defined(MEVR_LE2_CONTROL_TEST)
             // Revalidate the lease while a pulse is pending even with no new
             // request. Hook-side monotonic expiry remains independent of IO.
-            if (impl_->input.Active()) impl_->Ownership();
+            if (impl_->input.Active()) {
+                impl_->Ownership();
+            } else if (impl_->dialogueHistory.Active()) {
+                // Sampling never hashes the executable. On the existing
+                // poll cadence detect loss of the live lock or descriptor.
+                impl_->CheckRunLock();
+                impl_->CheckControlFiles();
+            }
 #endif
             TickInput(thread);
             if (!impl_->disabled) impl_->Request(tick, thread);
@@ -666,7 +728,12 @@ void Endpoint::Poll(std::uint64_t tick, std::uint32_t thread) noexcept {
         impl_->disabled = true;
         try { impl_->error = "unknown producer failure"; } catch (...) {}
     }
-    if (impl_->disabled) TickInput(thread);
+    if (impl_->disabled) {
+        TickInput(thread);
+#if !defined(MEVR_LE2_CONTROL_TEST)
+        impl_->dialogueHistory.Stop();
+#endif
+    }
 }
 bool Endpoint::Attached() const { return impl_->attached; }
 bool Endpoint::Disabled() const { return impl_->disabled; }
@@ -681,11 +748,15 @@ std::uint64_t gTicks{}, gNextPoll{};
 void Tick(float) {
     if (!gEndpoint || gTicks == std::numeric_limits<std::uint64_t>::max()) return;
     ++gTicks;
-    gEndpoint->TickInput(GetCurrentThreadId());
+    auto const thread = GetCurrentThreadId();
+    gEndpoint->TickInput(thread);
     auto monotonic = GetTickCount64();
-    if (monotonic < gNextPoll) return;
-    gNextPoll = monotonic + 250;
-    gEndpoint->Poll(gTicks, GetCurrentThreadId());
+    if (monotonic >= gNextPoll) {
+        gNextPoll = monotonic + 250;
+        gEndpoint->Poll(gTicks, thread);
+        monotonic = GetTickCount64();
+    }
+    gEndpoint->TickDialogueHistory(gTicks, monotonic, thread);
     if (gEndpoint->Disabled() && !gErrorLogged) {
         gErrorLogged = true;
         try { log::Error("LE2 control disabled: {} (preserve attach/consumed files for recovery)", gEndpoint->LastError()); }

@@ -71,6 +71,23 @@ and position as partial evidence. See [Veetor acquisition and source
 findings](../../research/le2-interrupt-acquisition.md) and
 [dialogue export](export-state.md#dialogue-observations).
 
+For a timed encounter, explicitly start the bounded recorder before the expected
+prompt. Sampling uses the existing diagnostic game-thread tick between control
+requests. Stopping freezes the capture, and expiration also leaves it available
+for export. Each start, observe and stop request has an empty payload.
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run start-dialogue-history
+python tools/qa-le2/control.py C:\private\le2-run observe-dialogue-history
+python tools/qa-le2/control.py C:\private\le2-run stop-dialogue-history
+python tools/qa-le2/export-state.py C:\private\le2-run --request STOP_REQUEST_UUID --case CASE_ID
+```
+
+Start and stop change only the temporary recorder. An active recorder refuses
+a second start. Export the stopped capture before beginning another. Keep the
+visible prompt and the normal input trace alongside it. Cadence gaps and
+unavailable samples limit what the history can establish about the window.
+
 `observe-input` is an empty-input, read-only query for the diagnostic input
 publisher's context, poll and neutral-state evidence. It does not publish input.
 The existing client can submit one bounded `pad-pulse` with a separate explicit
@@ -630,6 +647,7 @@ and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
 control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-orbital`, `observe-input`, `observe-weapon`, `observe-dialogue`, `observe-save-flow`,
+`start-dialogue-history`, `observe-dialogue-history`, `stop-dialogue-history`,
 `observe-fixture`, `load-fixture`, `probe-fov`, `advance-splash`, and
 `open-load-menu`, `open-pause-menu`, `open-save-menu`, `save-new` requests require an empty payload.
 Unknown, duplicated, reordered, partial or trailing data is
