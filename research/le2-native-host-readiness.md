@@ -3,6 +3,8 @@
 
 2026-11-13; base `2d90423c7595f15170670379b0fb3526b307ca99`, isolated branch `work/le2-native-host-readiness`. This is the concrete non-XR host slice for the [scripted testing handoff](../docs/le2-scripted-testing.md), not the full [engine access plan](le2-engine-access-discovery.md). No game deployment/launch, live request, save/profile/setting change or shared-lock operation was performed.
 
+The initial sections record the host-only gate and its original validation. The integrated producer and later regression checks are recorded in the final section; its bound consumer supersedes the initial no-consumer state.
+
 ## What already runs
 
 `plugin/Entry.cpp::SpiOnAttach` checks the supported executable version and the game's RVA table, installs crash breadcrumbs and the host ProcessEvent hook, starts the mod, then installs `UGameEngine::Tick`. That hook records the game thread, invokes the original tick, and calls `host::Tick`; `ModLoader` dispatches to `MevrModTick` in both monolithic and hot-reload builds. This route does not require XR or a loaded playable pawn. A failed game-tick hook prevents progress; a missing player is a later capability state, not an attach failure.
@@ -15,7 +17,7 @@ An ordinary non-Halcyon LE2 build still installs Present and calls the old VR ou
 
 ## Implemented gate and callback contract
 
-New CMake option `MEVR_LE2_DIAGNOSTIC` defaults **OFF** and requires an isolated LE2-only configuration (`LE1=OFF`, `LE2=ON`, `LE3=OFF`). Existing target names remain: `MEVR-LE2` produces `LE2MEVR.asi`; hot reload additionally produces `MEVR-LE2-mod` / `LE2MEVR_mod.dll`. The macro is applied to both pieces, including the monolithic case.
+New CMake option `MEVR_LE2_DIAGNOSTIC` defaults **OFF** and requires an isolated LE2-only configuration (`LE1=OFF`, `LE2=ON`, `LE3=OFF`). Existing target names remain: `MEVR-LE2` produces `LE2MEVR.asi`. The initial gate supported both host arrangements; the integrated producer now additionally requires `MEVR_HOT_RELOAD=OFF` and rejects diagnostic hot reload at configuration time.
 
 - Entry retains version/RVA checks, logging, crash breadcrumbs, the existing host ProcessEvent hook, original game tick and exit handling. It skips the decrypted executable dump and Present hook. No renderer is started by this path.
 - Mod startup retains existing host service/log/breadcrumb wiring and Legacy initialization. Its diagnostic tick dispatches the new callback and returns before hotkeys, developer file polling, system-setting changes, script/camera startup, input setup or gameplay feature ticks.
@@ -33,7 +35,7 @@ void Shutdown();
 }
 ```
 
-The root-owned bound-channel adapter must register once in `MevrModStartup`, **after successful Legacy initialization and before the first host tick**. Registration failure must disable the adapter, not fall back to the shared request file. No callback is registered in this commit: the startup log truthfully says there is no bound consumer. When integration adds registration, update that message to report its actual result.
+The root-owned bound-channel adapter must register once in `MevrModStartup`, **after successful Legacy initialization and before the first host tick**. Registration failure must disable the adapter, not fall back to the shared request file. The initial gate-only commit registered no callback and logged that no bound consumer existed. The integrated producer now registers its consumer through this seam and reports its actual startup result.
 
 `core/qa/DiagnosticTickGate.hpp` owns the small dispatch policy: null, duplicate/replacement and post-first-tick registration fail; the first host tick binds a nonzero thread ID; other-thread and nested ticks cannot execute the consumer. Reset while a callback is running fails. The callback executes synchronously outside the gate mutex, preventing reentrant reset from deadlocking. C++ unwinding restores the running flag; this is not a Windows access-violation recovery mechanism. Host shutdown/unload must remain serialized with ticks; the wrapper logs a refused reset, but cannot make concurrent DLL unloading safe.
 
@@ -85,3 +87,23 @@ Commands used the normal configure/build flow above, with separate `local-tools/
 For bounded compiler parallelism, the local caches used `CMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /EHsc /MP4` and `CMAKE_C_FLAGS=/DWIN32 /D_WINDOWS /MP4`, preserving CMake's normal platform/exception flags. An initial acceleration configuration accidentally omitted `/EHsc`; it was stopped and corrected before the successful full build. Its C4530/C2220 diagnostics were configuration errors, not source failures.
 
 Private logs are `local-tools/ordinary-dev-build-fixed.txt`, `ordinary-mono-build.txt`, `ordinary-trilogy-build.txt` and `ordinary-dev-ctest.txt`. `local-tools/ordinary-build-evidence.json` pins the seven ordinary binary hashes and tested source commit. The source/build identities stayed `a936506094` throughout these checks. This follow-up documents offline regression evidence only; it does not validate the native request channel or promote any runtime gate.
+
+## Integrated producer revalidation
+
+The clean verification branch was aligned to runtime source `a78b0390650b6f6eac38a848d5e2361d9f4bfebd`. All three ordinary configurations above passed again using the existing private build outputs: full default LE1 development, the LE1 SDK-free monolithic target, and all three trilogy host/mod targets. Full CTest passed **37/37 in 90.98 seconds**. The generated host build identities remained `a78b039065`; `local-tools/a78-ordinary-build-evidence.json` pins all seven ordinary binary hashes. Logs are `local-tools/a78-ordinary-{dev,mono,trilogy}-build.txt` and `local-tools/a78-ordinary-ctest.txt`.
+
+Source review and the producer regression tests verified three integration fixes: request admission obtains a fresh clock value after ownership checks, request consumption and decoding; `.lock` ownership checks are case-insensitive, including `.LOCK`; capabilities are JSON booleans. An expired request is rejected before execution, while an admitted request retains its terminal result even if processing finishes after its deadline. The advancing-clock test checks the consumed/request-file state at admission. These are offline protocol and fixture assertions, not a live timing measurement.
+
+The verification branch then fast-forwarded to test-registration-only commit `6aa5ee5eb275fc6d09f88117d186758e541c02a7`. Reconfiguring the existing trilogy output and building `mevr-le2-control-codec-tests` succeeded; no host rebuild was needed. Full CTest passed **41/41 in 106.40 seconds**, adding the standalone codec, launcher, client and attach registrations. The client suite ran all 18 tests with no skips. Its Release `LE2_CONTROL_CPP` test environment points to the newly built codec executable, so the Python/C++ wire corpus actually crossed the process boundary, including rejection of the invalid game field.
+
+Reproduce that test-only step after configuring the ordinary development/trilogy output:
+
+```powershell
+cmake -S . -B local-tools/ordinary-dev-build
+cmake --build local-tools/ordinary-dev-build --config Release --target mevr-le2-control-codec-tests --parallel 3
+ctest --test-dir local-tools/ordinary-dev-build -C Release --output-on-failure
+```
+
+Private logs are `local-tools/6aa-test-configure.txt`, `local-tools/6aa-codec-build.txt`, `local-tools/6aa-full-ctest.txt` and `local-tools/ordinary-dev-build/Testing/Temporary/LastTest.log`. Test registration/source identity is `6aa5ee5e`; ordinary host binaries retain the separately verified `a78b039065` identity. Later producer metadata changes are outside this checkpoint.
+
+The integrated consumer provides a bound handshake and SDK structural diagnostic observation; it does not claim world readiness, native console execution or successful gameplay. `nativeConsole` remains false. No game was deployed or launched, and no live request, profile, save, setting or shared lock was changed during this verification. Live attach, native object validity, cleanup in the game and headset acceptance remain separate gates.
