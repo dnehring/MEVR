@@ -31,10 +31,14 @@ and independent validation SHA256
 The one-probe save SHA256 is
 `6fba4678246c5468761b5c53616ff7d86e69a39e11738c859933c0ff85b8ac22`.
 
-The private `one-probe-session.json` binds that save and recipe to the native
+The private `one-probe-session-v2.json` binds that save and recipe to the native
 one-probe variant of `le2-planet-scanning`, with eight Crew Deck starting
 resource predicates and the existing load and restoration checks. Its SHA256 is
-`654e0dae8f78f1130f5e5428f3728cea844aff7426b65e0eb583a80e959b9556`.
+`356adaa8687acd49ef723885107aa28493d18db97fb63b22fc7eca49b12699b0`.
+The updated assertions check the actual one-probe balance immediately before
+launch and require matching orbital `activeWorld` values on both sides of the
+action. The reviewed input and scene must still establish a single visit and
+the visible launch outcome. The Crew Deck sample remains a separate start check.
 The private scenario passed `validate --for-run`. The first staging attempt
 was refused before creating a run directory because ME1 and SteamVR had started.
 At the next free window, use the one-probe plan and verify its displayed slot,
