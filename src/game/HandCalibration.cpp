@@ -53,6 +53,7 @@ struct Values {
     double bodyMoveMaxM = 0.75;  // [Hands] bodyMoveMaxM
     bool legsFollowMotion = true;  // [Hands] legsFollowMotion (research/29, 2026-11-04)
     double legsTwistDeg = 60.0;    // [Hands] legsTwistDeg
+    bool steadyIdle = false;       // [Hands] steadyIdle (research/29 "The idle sway", 2026-11-14; off until the headset check)
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     bool gunKick = true;         // [Hands] gunKick (research/24 section 8)
     double gunKickScale = 1.0;   // [Hands] gunKickScale
@@ -134,6 +135,10 @@ constexpr char const* kDefaultFile =
     "; 0: the hips turn with you while running too (as before 2026-11-04: the legs could run one way, the body face another).\n"
     "legsFollowMotion = 1\n"
     "legsTwistDeg = 60\n"
+    "; steadyIdle: 1 (with bodyMove) holds Shepard's hips over his feet while you stand still: the game's idle animation\n"
+    "; rocks them about 6 cm side to side every few seconds, and his body swayed under you. 0 (for now): the idle sway as the\n"
+    "; game plays it.\n"
+    "steadyIdle = 0\n"
     "; armStretch: how far Shepard's arms may stretch to keep the hands on the controllers (1-1.25).\n"
     "armStretch = 1.25\n"
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
@@ -943,6 +948,9 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "legsFollowMotion", flag)) {
         values.legsFollowMotion = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "steadyIdle", flag)) {
+        values.steadyIdle = flag != 0.0;
     }
     if (Number(ini, "Hands", "legsTwistDeg", values.legsTwistDeg)) {
         values.legsTwistDeg = std::isfinite(values.legsTwistDeg) ? std::clamp(values.legsTwistDeg, 30.0, 90.0) : 60.0;
@@ -2630,7 +2638,8 @@ double ReachNearFace() {
 }
 
 BodyMove GetBodyMove() {
-    return {gValues.bodyMove, gValues.leanM, gValues.bodyMoveMaxM, gValues.legsFollowMotion, gValues.legsTwistDeg};
+    return {gValues.bodyMove, gValues.leanM, gValues.bodyMoveMaxM, gValues.legsFollowMotion, gValues.legsTwistDeg,
+        gValues.steadyIdle};
 }
 
 bool LevelCamera() {
@@ -3254,6 +3263,8 @@ void Refresh() {
         // The legs keep the run while Shepard moves (2026-11-04, research/29 "The legs keep the run").
         {L"Hands", "Hands", L"legsFollowMotion", "legsFollowMotion", L"1"},
         {L"Hands", "Hands", L"legsTwistDeg", "legsTwistDeg", L"60"},
+        // Standing still, the hips over the feet (2026-11-14, research/29 "The idle sway").
+        {L"Hands", "Hands", L"steadyIdle", "steadyIdle", L"0"},
         // The weapon drawn, like exploring (2026-10-25, research/38).
         {L"Hands", "Hands", L"exploreStance", "exploreStance", L"0"},
         {L"Hands", "Hands", L"exploreStanceStorm", "exploreStanceStorm", L"1"},

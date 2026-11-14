@@ -317,6 +317,11 @@ switching frameworks.
   backing up (`legsFollowMotion = 0`: the old rule; log `torso: legs:`, snapshot `torso.legs`; replay
   `tools/make-walk-recording.py`'s walk with `-Inputs`). Room-scale (the pawn following real steps past the cap) is
   designed there, not built.
+  **Standing still, the hips over the feet** (research/29 "The idle sway", 2026-11-14; `[Hands] steadyIdle`, off by default
+  until the headset check): the idle animation rocks `Pelvis` (beside `LowerBack` under `Root`) about 6 cm every 5-7 s; the
+  torso slides `Root`'s subtree to hold the pelvis over the animated ankles (`ik::TorsoGoal::anchor`, by 1 - the legs'
+  run blend, at most 0.15 m) and the writer plants the feet (`bone_pose::Leg::planted`). `mevr camera trace <s>` writes
+  the pawn, the game camera and six bones each tick to `%LOCALAPPDATA%\MEVR\camera-trace-*.csv`.
 - LE1 body at the player's size ([research/58](research/58-body-scale.md), floor lock 2026-11-07; `core/ik/BodyScale`,
   `core/vr/FloorLock`, `plugin/FloorLock`, `game/BodyScale`): ordinary on-foot first person puts the common eye centre at
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of

@@ -149,6 +149,10 @@ struct Leg {
     bool stand = false;
     double floorUp = 9.0;  // the ankle bone's height above the floor (component units)
     double weight = 1.0;
+    // Planted (research/29 "The idle sway", 2026-11-14): the ankle where the animation had it before the torso's anchor
+    // shift (ik::TorsoResult::anchorShift: the whole body slid to hold the hips over the feet while standing still), the knee
+    // bending toward where the animation had it; `ankle` and `knee` are not read. No anchor shift: the leg as animated.
+    bool planted = false;
 };
 
 struct Request {

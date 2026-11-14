@@ -649,6 +649,10 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   right. (research/21 sections 9-10)
 
 ## 4. Moving and comfort (session: VR mod for Mass Effect Legendary Edition)
+- [ ] 2026-11-14 the idle sway (research/29 "The idle sway"; `[Hands] steadyIdle = 1` in ASI\LE1MEVR.ini, off by
+  default until this check): stand still and look down at Shepard's body for 20 s: no side-to-side rocking of the hips
+  and shoulders, the feet planted; then walk off and stop: no jump or skating as it blends in and out. Compare with
+  `steadyIdle = 0` (the mod reads the file live).
 - [ ] Camera shake (research/71, built 2026-11-12, not yet run in the game): firing a rifle and a shotgun, and the Mako's
   jets, with Comfort > Camera shake Off: does the world stay still? Low: a slight shake, not uncomfortable? Running and
   sprinting with Running sway off: no sideways sway or roll of the view? If the sprint still sways, research/71 section

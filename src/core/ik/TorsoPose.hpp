@@ -81,6 +81,17 @@ struct TorsoGoal {
     double legsWeight = 0.0;
     double legsTurnDegrees = 0.0;
     double legsTwistDegrees = 60.0;
+    // Standing still, the hips over the feet (research/29 "The idle sway", 2026-11-14): the idle animation's weight shift
+    // moves `anchor` (LE1: Pelvis, a child of the body bone beside the spine) about 6 cm side to side against the body
+    // bone every 5-7 s while the feet stay planted, so with the body bone at `bodyAt` the hips, spine and shoulders rocked
+    // under a still player. With `anchorWeight` above 0 the whole body (the `body` subtree, after its turn and slide)
+    // moves horizontally by that weight of the way from `anchor` to the midpoint of `feet` (the ankles, as animated), at
+    // most `maxAnchorShift` units; the writer then puts the ankles back where the animation had them (bone_pose's
+    // Leg::planted), so the feet don't slide with it. Indices outside the body's subtree, or a weight of 0: nothing.
+    int anchor = -1;
+    std::array<int, 2> feet{-1, -1};
+    double anchorWeight = 0.0;
+    double maxAnchorShift = 0.0;
 };
 
 struct TorsoResult {
@@ -102,6 +113,10 @@ struct TorsoResult {
     Vec3 bodyShift;
     Vec3 wantedBodyShift;
     bool shiftLimited = false;
+    // The hips over the feet (TorsoGoal::anchor): the whole body's extra horizontal slide (component units; part of the
+    // pose, not of bodyShift), and the anchor's distance from the feet's midpoint before it (the animation's sway).
+    Vec3 anchorShift;
+    double anchorOffset = 0.0;
     // The legs (TorsoGoal::legsWeight): the turn the standing rule alone would have made, and how far the animation had
     // turned the shoulders from the legs (`body.forward`) before anything moved (a combat stance's turn into the gun).
     double standingTurnDegrees = 0.0;
