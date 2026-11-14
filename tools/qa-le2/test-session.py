@@ -12,6 +12,76 @@ spec = importlib.util.spec_from_file_location("session", Path(__file__).with_nam
 s = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(s)
 
+SANDBOX_APPDATA = r"C:\Users\test\AppData\Local\Packages\sandbox.{12345678-1234-1234-1234-123456789abc}\AC"
+DESKTOP_APPDATA = r"C:\Users\test\AppData\Local"
+
+
+class HostContextTests(unittest.TestCase):
+    def evidence(self, **changes):
+        return dict({"localAppData": DESKTOP_APPDATA, "appContainer": False, "restricted": False}, **changes)
+
+    def test_observed_sandbox_is_rejected_before_os_or_process_probe(self):
+        for path in (SANDBOX_APPDATA, SANDBOX_APPDATA.upper().replace("\\", "/")):
+            with self.subTest(path=path), mock.patch.dict(s.os.environ, LOCALAPPDATA=path), \
+                    mock.patch.object(s, "_windows_host_evidence") as probe, \
+                    mock.patch.object(s.subprocess, "run") as shell:
+                for operation in (s.require_native_host, s.default_locks, s.windows_processes):
+                    with self.assertRaisesRegex(s.SessionError, "Sandbox-redirection"):
+                        operation()
+                probe.assert_not_called()
+                shell.assert_not_called()
+
+    def test_restricted_token_and_redirected_or_unknown_folder_are_refused(self):
+        cases = [self.evidence(appContainer=True), self.evidence(restricted=True),
+                 self.evidence(localAppData=r"C:\Users\another\AppData\Local"),
+                 self.evidence(localAppData=SANDBOX_APPDATA), self.evidence(localAppData=None),
+                 self.evidence(appContainer=0), self.evidence(restricted=None)]
+        for evidence in cases:
+            with self.subTest(evidence=evidence), mock.patch.dict(s.os.environ, LOCALAPPDATA=DESKTOP_APPDATA), \
+                    mock.patch.object(s, "_windows_host_evidence", return_value=evidence):
+                with self.assertRaises(s.SessionError):
+                    s.require_native_host()
+
+    def test_failed_os_query_and_missing_environment_fail_closed(self):
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=DESKTOP_APPDATA), \
+                mock.patch.object(s, "_windows_host_evidence", side_effect=OSError("token unavailable")):
+            with self.assertRaisesRegex(s.SessionError, "Cannot verify"):
+                s.require_native_host()
+        with mock.patch.dict(s.os.environ, {}, clear=True), mock.patch.object(s, "_windows_host_evidence") as probe:
+            with self.assertRaises(s.SessionError):
+                s.require_native_host()
+            probe.assert_not_called()
+
+    def test_matching_desktop_folder_accepts_case_and_separator_normalization(self):
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=DESKTOP_APPDATA.upper().replace("\\", "/") + "/"), \
+                mock.patch.object(s, "_windows_host_evidence", return_value=self.evidence()), \
+                mock.patch.object(s, "safe_path", side_effect=lambda p: p):
+            self.assertEqual(s.require_native_host(), Path(DESKTOP_APPDATA))
+
+    def test_inventory_requires_scoped_nonempty_envelope(self):
+        bad = ["", "[]", "null", "{", json.dumps({"processes": []}),
+               json.dumps({"localAppData": SANDBOX_APPDATA, "processes": []}),
+               json.dumps({"localAppData": r"C:\elsewhere", "processes": []}),
+               json.dumps({"localAppData": DESKTOP_APPDATA, "processes": None}),
+               json.dumps({"localAppData": DESKTOP_APPDATA, "processes": [{"name": "MassEffect2", "pid": True}]})]
+        for output in bad:
+            with self.subTest(output=output), mock.patch.object(s, "require_native_host", return_value=Path(DESKTOP_APPDATA)), \
+                    mock.patch.object(s.subprocess, "run", return_value=mock.Mock(stdout=output)):
+                with self.assertRaises(s.SessionError):
+                    s.windows_processes()
+
+    def test_inventory_preserves_quiet_and_active_results(self):
+        for processes in ([], [{"name": "MassEffect2", "pid": 42, "path": "example", "started": "now"}]):
+            with self.subTest(processes=processes), mock.patch.object(s, "require_native_host", return_value=Path(DESKTOP_APPDATA)), \
+                    mock.patch.object(s.subprocess, "run", return_value=mock.Mock(stdout=json.dumps(
+                        {"localAppData": DESKTOP_APPDATA, "processes": processes}))):
+                self.assertEqual(s.windows_processes(), processes)
+                if processes:
+                    with self.assertRaisesRegex(s.SessionError, "active"):
+                        s.require_quiet(s.windows_processes)
+                else:
+                    s.require_quiet(s.windows_processes)
+
 
 class SessionTests(unittest.TestCase):
     def setUp(self):
@@ -253,6 +323,57 @@ class SessionTests(unittest.TestCase):
         with mock.patch.object(s, "is_link", side_effect=lambda p: Path(p) == self.profile or original(p)):
             with self.assertRaisesRegex(s.SessionError, "Symlink/reparse"):
                 self.quiet_prepare()
+
+    def test_native_prepare_in_sandbox_cannot_stage_or_own_private_lock(self):
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=SANDBOX_APPDATA), \
+                mock.patch.object(s.subprocess, "run", return_value=mock.Mock(stdout="")) as shell:
+            with self.assertRaisesRegex(s.SessionError, "Sandbox-redirection"):
+                self.prepare()
+            shell.assert_not_called()
+        self.assertFalse(self.run.exists())
+        self.assertFalse(self.locks.exists())
+        self.assertRestored()
+
+    def test_native_load_bind_reset_in_sandbox_preserve_staged_run(self):
+        self.quiet_prepare()
+        before = {p: s.snapshot(p) for p in (self.run, self.locks, self.profile, self.game)}
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=SANDBOX_APPDATA), \
+                mock.patch.object(s.subprocess, "run", return_value=mock.Mock(stdout="")) as shell:
+            for operation in (lambda: s.request_load(self.run), lambda: s.bind_process(self.run, 42),
+                              lambda: s.reset(self.run)):
+                with self.assertRaisesRegex(s.SessionError, "Sandbox-redirection"):
+                    operation()
+                for path, state in before.items():
+                    self.assertEqual(s.snapshot(path), state)
+            shell.assert_not_called()
+
+    def test_native_paths_cannot_use_different_coordination_root(self):
+        desktop = self.root / "verified-desktop"
+        with mock.patch.object(s, "require_native_host", return_value=desktop):
+            with self.assertRaisesRegex(s.SessionError, "verified desktop coordination root"):
+                self.prepare()
+        self.assertFalse(self.run.exists())
+        self.quiet_prepare()
+        before = s.snapshot(self.run)
+        with mock.patch.object(s, "require_native_host", return_value=desktop), \
+                mock.patch.object(s.subprocess, "run") as shell:
+            for operation in (lambda: s.request_load(self.run), lambda: s.bind_process(self.run, 42),
+                              lambda: s.reset(self.run)):
+                with self.assertRaisesRegex(s.SessionError, "different desktop coordination root"):
+                    operation()
+                self.assertEqual(s.snapshot(self.run), before)
+            shell.assert_not_called()
+
+    def test_explicit_offline_providers_work_in_sandbox_without_host_probe(self):
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=SANDBOX_APPDATA), \
+                mock.patch.object(s, "_windows_host_evidence", side_effect=AssertionError("offline only")), \
+                mock.patch.object(s.subprocess, "run", side_effect=AssertionError("offline only")):
+            self.quiet_prepare()
+            s.request_load(self.run, processes=lambda: [])
+            s.bind_process(self.run, 42, processes=lambda: [
+                {"name": "MassEffect2", "pid": 42, "path": str(self.exe), "started": s.utc()}])
+            s.reset(self.run, processes=lambda: [])
+            self.assertRestored()
 
 
 if __name__ == "__main__":
