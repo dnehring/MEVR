@@ -74,8 +74,9 @@ mounted-catalog proof.
 | Renegade | Entry exports 210145 and 210146 have explicit Renegade interrupt reply 11. | `InterpData_111`: on at 3.1459942, no off key; `InterpData_112`: on at 0, off at 5.0792027. |
 
 These are per-node authored keys, **not measured native input windows**. Reply
-transitions 4366 and 4370 are source references; their full effects are not
-interpreted here. The sequence has separate Paragon/Renegade tutorial events.
+transitions 4366 and 4370 have the direct serialized effects reviewed below;
+transitive and native effects are not established. The sequence has separate
+Paragon/Renegade tutorial events.
 Its autosave route checks armor-tutorial state 1933, then the 2431 autosave
 guard, executes transition 2425 and reaches normal `SFXSeqAct_SaveGame`.
 The nearby conversation entry also toggles saving. Exact save placement and
@@ -105,6 +106,71 @@ Acquisition handoff, without changing existing story flags:
 No native navigation was attempted here. Reaching the Normandy galaxy map,
 traveling to a hub and walking to an NPC remain normal-navigation prerequisites
 for any future hub lead; none of those steps reopens a completed one-shot beat.
+
+## Veetor direct transition and saved-outcome review
+
+2026-11-14 offline follow-up against `270e5483`, using the existing state-event
+scanner and pinned save reader/TSE outputs. The installed base and Patch01
+English Veetor conversation copies agree on these reply records:
+
+| Polarity | Reply index / node export ID | Transition | Direct serialized effect |
+|---|---|---|---|
+| Paragon | 6 / 210192 | 4366 | Increment LE2 `plot.integers[2]` by 5 |
+| Renegade | 11 / 210197 | 4370 | Increment LE2 `plot.integers[3]` by 5 |
+
+Each event has exactly one `BioStateEventElementInt`, with `Increment=true`,
+`NewValue=5` and `UseParam=false`; the reply's transition parameter is -1 and is
+not used by this element. The owning map is base `Startup_INT.pcc`, export 1742,
+`PlotManagerAuto.StateTransitionMap`. Neither event contains a direct Boolean,
+quest, substate or function element. This describes the inspected serialized
+lists, not all subsequent conversation/native effects. TSE's pinned
+`src/gui/mass_effect_2/general.rs` labels integer 2 Paragon and integer 3 Renegade;
+these are LE2 plot totals, not imported `me1_plot` values.
+
+The existing LegendaryExplorerCore mounted-file resolver selected the base
+`Startup_INT.pcc` and the separately named Patch01 English startup; Patch01 has
+mount priority 2000. Explicit inspection of `Startup_METR_Patch01_INT.pcc` found
+**no `BioStateEventMap` exports**, hence neither requested event. Its scanner
+exit 1 / `scopedInspectionComplete=false` reports missing IDs, with zero parsing
+errors; it is not a successful duplicate-definition match. The base scan found
+both events once, with no missing IDs, duplicates or errors. This is an offline
+base/Patch01 comparison, not enumeration of every DLC/language event map or
+proof of loaded runtime precedence.
+
+Archived bytes were reread with `le2-save.py`; both target integers agree with
+already pinned TSE decodes (valid CRC and byte-identical reserialization):
+
+| Existing archive (SHA-256 prefix) | Map | Paragon / Renegade |
+|---|---|---|
+| Original Normandy `ced4cb214a636fbf` | `Biop_Nor` | 1209 / 302 |
+| Resource-persistence Normandy `b54bf7c65437bfa6` | `Biop_Nor` | 1209 / 302 |
+| Chapter acquisition `2f4c441c068f7906` | `BioP_EndGm2` | 1184 / 280 |
+
+These are aggregate late-game totals, **not paired Veetor outcomes**. No taken
+versus missed native trials exist in this evidence. A future outcome comparison
+must bind identical starting bytes, the exact Veetor conversation/reply and
+actual normal input, then establish what occurred between samples and normal
+outcome saves. A +5 total alone is not unique to this interrupt; unrelated
+morality rewards must be excluded or accounted for. Likewise, no delta cannot
+by itself prove a miss if the save preceded the effect. Keep observed reply,
+sampled routing/visual evidence and persisted total comparison separate. No
+unique completion flag, reset recipe or plot-write fixture is inferred here.
+
+Private evidence identifier: `le2-veetor-transitions/veetor-transition-source`.
+Reproduce with existing `--game LE2 --state-events 4366,4370`, selecting
+`--only Startup_INT` in the base cooked directory and
+`--only Startup_METR_Patch01_INT` in Patch01, each with a new private output.
+Scanner and Veetor package pins are unchanged from the provenance below;
+TSE revision is `6451f23d1fba62358328dce4e87733970f36ebf1`.
+
+| Source/report | SHA-256 |
+|---|---|
+| Base `Startup_INT.pcc` | `047bba83d5595c4b83a8a5280d64dc1a187c74bc444fb6e67f200c1191f333f8` |
+| Patch01 `Startup_METR_Patch01_INT.pcc` | `94fb30e7efb11920acebd8d68da46ca3455386aa187be21b720fa2d9bb9541b0` |
+| Private `base.json` | `494802c191996de7943281b58449487829744b997d29f976a7c00881ec8fd0aa` |
+| Private `patch.json` | `5e0edacdedc4beb3fa27e42e15ddf5c55437de3026c93d27d8faa1316c0bed7d` |
+| Private `mounted.txt` | `8cff4de1156a3347c270118e1c5d5e54f6445e9db0e175c901291d170a826499` |
+| Private `save-review.json` | `a41ebadb61bebc2143cc75d3b51d573b116a4a429d796f57b54b4708a054860d` |
 
 ## Native observer contract and trigger/acceptance boundary
 
