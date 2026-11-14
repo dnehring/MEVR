@@ -123,6 +123,7 @@ UBioSFPanel* flowPanels[2]{}; FBWPageStruct* flowPages{}; FSubPageState* flowOve
 UObjectProperty* flowManagerProperty{}; UClass* flowWrongClass{};
 USFXSFHandler_PCPowerWheel* idleWheelForMutation{};
 USFXSFHandler_PCSave* newSaveHandler{}; UFunction* newSaveFunction{}; FSaveGUIRecord* newSaveRecords{};
+bool asynchronousSaveOpen{};
 unsigned flowDispatchCalls{}, flowReadsAtDispatch{}; int flowBehavior{}, flowMutation{};
 void MutateFlowSample() { flowWorld->bPlayersOnly = !flowWorld->bPlayersOnly; }
 diagnostic::TargetInspection FlowInspect(std::uintptr_t target) noexcept {
@@ -167,6 +168,10 @@ void FakeSaveFlowDispatch(void* object, void* function, void* parameters) {
         if (flowBehavior == 4) bytes[4] = 1;
         if (flowBehavior >= 2) return;
         flowPanels[0] = flowSavePanel; flowManager->m_FocusPanel = flowSavePanel;
+        if (asynchronousSaveOpen) {
+            flowSavePanel->bInitialized=0; flowManager->m_FocusPanel=nullptr;
+            newSaveHandler->bCheckingDataComplete=0;
+        }
     }
     mevr::ue3::TArray<UBioSFPanel*> h{flowPanels,1,2};
     std::memcpy(&flowManager->m_lstPanels,&h,sizeof(h));
@@ -1222,7 +1227,7 @@ int main() {
         flowPages=browserPages.data(); flowOverrides=pageOverrides.data(); flowManagerProperty=sfManagerProperty.get(); flowWrongClass=managerType.get();
         mevr::engine::le2_diagnostic::ObserverServices flowServices{FlowInspect,nullptr,ProbeHook};
         auto beginFlow=[&] {
-            ResetSaveFlow(FakeSaveFlowDispatch); flowBehavior=flowMutation=0; flowDispatchCalls=0;
+            ResetSaveFlow(FakeSaveFlowDispatch); flowBehavior=flowMutation=0; flowDispatchCalls=0; asynchronousSaveOpen=false;
             probeTarget=0x123400; probeExactBase=true; probeBadBounds=probeBadHook=probeWrongBase=probeBadExeCheck=false;
             modes.get()->CurrentMode=0; menuWorldInfo.get()->bPlayersOnly=0; menuWorldInfo.get()->m_bAllowBrowserWheel=1;
             menuWorldInfo.get()->m_lstBrowserAlerts[1]=0; pageOverrides[0].State=0; browserHandler.get()->bWaitForNextFrame=0;
@@ -1383,6 +1388,94 @@ int main() {
         Check(ObserveSaveFlow(thread).Get("save").Number("candidateNextIndex")==1 && SaveNew(thread,flowServices).status=="dispatched","empty list normal game candidate starts1 without host filename selection");
         saveHeader.count=1; prepareNew();
         std::cout << "Representative New Save observation bytes: " << mevr::json::Write(ObserveSaveFlow(thread),0).size() << '\n';
+        // Native CreatePanel returns before GFx initialization/focus arrives.
+        auto pendingSave=[&] {
+            beginFlow(); asynchronousSaveOpen=true; saveHandler.get()->bCheckingDataComplete=0;
+            saveHeader.count=0; std::memcpy(&saveHandler.get()->SaveList,&saveHeader,16);
+            normalSavePanel.get()->bInitialized=0; normalSavePanel.get()->IsVisible=1;
+            Check(OpenPauseMenu(thread,flowServices).status=="dispatched","pending-save normal pause");
+            auto pending=OpenSaveMenu(thread,flowServices);
+            Check(pending.status=="dispatched" && pending.payload.Get("postObservation").Get("save").Bool("sameOpenedSaveFlow") &&
+                  pending.payload.Get("postObservation").Get("save").Bool("pendingPanelIdentityBound") &&
+                  !pending.payload.Get("postObservation").Get("save").Bool("newSaveObservationBound"),"unfocused uninitialized own panel preserves pending identity, not write readiness");
+            Check(SaveNew(thread,flowServices).status=="rejected","pending panel cannot write");
+        };
+        auto finishPending=[&] {
+            asynchronousSaveOpen=false; normalSavePanel.get()->bInitialized=1; saveHandler.get()->bCheckingDataComplete=1;
+            saveHeader.count=1; std::memcpy(&saveHandler.get()->SaveList,&saveHeader,16);
+            manager.get()->m_FocusPanel=normalSavePanel.get();
+        };
+        pendingSave(); finishPending();
+        Check(ObserveSaveFlow(thread).Get("save").Bool("newSaveObservationBound") && SaveNew(thread,flowServices).status=="dispatched",
+              "same pending panel may finish initialization and bind full descriptors");
+        Raw<UBioSFPanel> replacedSavePanel;
+        add(replacedSavePanel.get(),"ReplacementSavePanel",panelType.get(),nullptr);
+        auto replacementIndex=replacedSavePanel.get()->ObjectInternalInteger;
+        for (int bad:{0,1,2,3,4}) {
+            pendingSave();
+            auto savedTag=normalSavePanel.get()->nmTag;
+            if (bad==0) normalSavePanel.get()->nmTag=otherPanel.get()->nmTag;
+            if (bad==1) {
+                std::memcpy(replacedSavePanel.get(),normalSavePanel.get(),sizeof(UBioSFPanel));
+                replacedSavePanel.get()->ObjectInternalInteger=replacementIndex;
+                flowPanels[0]=replacedSavePanel.get(); saveHandler.get()->oPanel=replacedSavePanel.get();
+            }
+            if (bad==2) { mevr::ue3::TArray<UBioSFPanel*> emptyPanels{flowPanels,0,2}; std::memcpy(&manager.get()->m_lstPanels,&emptyPanels,16); }
+            if (bad==3) menuWorldInfo.get()->bPlayersOnly=0;
+            if (bad==4) { flowPanels[1]=otherPanel.get(); mevr::ue3::TArray<UBioSFPanel*> two{flowPanels,2,2}; std::memcpy(&manager.get()->m_lstPanels,&two,16); manager.get()->m_FocusPanel=otherPanel.get(); }
+            ObserveSaveFlow(thread);
+            normalSavePanel.get()->nmTag=savedTag; flowPanels[0]=normalSavePanel.get(); saveHandler.get()->oPanel=normalSavePanel.get();
+            menuWorldInfo.get()->bPlayersOnly=1; mevr::ue3::TArray<UBioSFPanel*> one{flowPanels,1,2}; std::memcpy(&manager.get()->m_lstPanels,&one,16);
+            finishPending(); auto restored=ObserveSaveFlow(thread);
+            Check(!restored.Get("save").Bool("sameOpenedSaveFlow") && SaveNew(thread,flowServices).status=="rejected",
+                  "pending tag panel disappearance foreign focus or pause loss cannot rearm after restoration");
+        }
+        // Progress may finish asynchronously, but never regress/reopen while
+        // a rejected list prevents a ready receipt from being established.
+        for (int regression:{0,1,2}) {
+            pendingSave(); finishPending();
+            mevr::ue3::TArray<wchar_t> emptyName{}; std::memcpy(&saveRecords[0].get()->SaveDescriptor.SaveName,&emptyName,16);
+            auto initializedRejected=ObserveSaveFlow(thread).Get("save");
+            Check(initializedRejected.Bool("sameOpenedSaveFlow") && initializedRejected.Bool("pendingInitializedSeen") &&
+                  initializedRejected.Bool("pendingFocusedSeen") && !initializedRejected.Bool("newSaveObservationBound"),"rejected list retains monotonic initialized and focused progress only");
+            if (regression==0) normalSavePanel.get()->IsVisible=0;
+            if (regression==1) normalSavePanel.get()->bInitialized=0;
+            if (regression==2) manager.get()->m_FocusPanel=nullptr;
+            ObserveSaveFlow(thread);
+            normalSavePanel.get()->IsVisible=normalSavePanel.get()->bInitialized=1; manager.get()->m_FocusPanel=normalSavePanel.get();
+            setText(saveRecords[0].get()->SaveDescriptor.SaveName,filename);
+            Check(!ObserveSaveFlow(thread).Get("save").Bool("sameOpenedSaveFlow") && SaveNew(thread,flowServices).status=="rejected",
+                  "hidden uninitialized or unfocused regression cannot rearm when restored");
+        }
+        // A plausible UI marker remains unrecognized diagnostic evidence only.
+        saveHeader.count=3;
+        std::wstring manual99=L"Save0099", manual36=L"Save0036", markerLabel=L"Create New Save";
+        for (unsigned i=0;i<3;++i) std::memset(saveRecords[i].get(),0,sizeof(FSaveGUIRecord));
+        setText(saveRecords[0].get()->FriendlyName,markerLabel);
+        setText(saveRecords[1].get()->SaveDescriptor.Career,career); setText(saveRecords[1].get()->SaveDescriptor.SaveName,manual99); saveRecords[1].get()->SaveDescriptor.Index=99;
+        setText(saveRecords[2].get()->SaveDescriptor.Career,career); setText(saveRecords[2].get()->SaveDescriptor.SaveName,manual36); saveRecords[2].get()->SaveDescriptor.Index=36;
+        prepareNew(); auto rejectedRows=ObserveSaveFlow(thread).Get("save"); auto diagnostics=rejectedRows.Get("rejectedRowDiagnostics");
+        Check(!rejectedRows.Bool("recordsComplete") && rejectedRows.Get("records").Items().empty() && !rejectedRows.Has("candidateNextIndex") &&
+              !rejectedRows.Bool("newSaveObservationBound") && SaveNew(thread,flowServices).status=="rejected","synthetic-shaped marker never silently admitted or skipped");
+        Check(!diagnostics.Bool("authoritative") && !diagnostics.Bool("listComplete") && !diagnostics.Bool("snapshotCoherenceVerified") &&
+              !diagnostics.Bool("syntheticMarkerRecognized") && diagnostics.Number("firstRejectedRow")==0 && diagnostics.Get("rows").Items().size()==3,
+              "rejected marker and valid following rows available only as bounded nonauthoritative diagnostics");
+        Check(diagnostics.Get("rows").Items()[0].Get("career").String("value")=="" &&
+              diagnostics.Get("rows").Items()[0].Get("friendlyName").String("value")=="Create New Save" &&
+              diagnostics.Get("rows").Items()[1].Get("saveName").String("value")=="Save0099" &&
+              mevr::json::Write(diagnostics,0).size()<3500,"diagnostic strings expose actual values without filename guesses");
+        std::cout << "Representative rejected-row observation bytes: " << mevr::json::Write(ObserveSaveFlow(thread),0).size() << '\n';
+        mevr::ue3::TArray<wchar_t> negativeText{nullptr,-1,-1};
+        std::memcpy(&saveRecords[0].get()->SaveDescriptor.SaveName,&negativeText,16);
+        auto negativeDiagnostic=ObserveSaveFlow(thread).Get("save").Get("rejectedRowDiagnostics").Get("rows").Items()[0].Get("saveName");
+        Check(!negativeDiagnostic.Bool("available") && negativeDiagnostic.Number("count")==-1 && negativeDiagnostic.Number("capacity")==-1,
+              "malformed signed32 header count bits remain legible negative diagnostics");
+        std::memset(&saveRecords[0].get()->SaveDescriptor.SaveName,0,16);
+        saveHeader.count=13; prepareNew(); auto manyRejected=ObserveSaveFlow(thread).Get("save").Get("rejectedRowDiagnostics");
+        Check(manyRejected.Bool("truncated") && manyRejected.Get("rows").Items().size()<=8 &&
+              mevr::json::Write(manyRejected.Get("rows"),0).size()<=3072,"diagnostic row count and aggregate byte caps enforced");
+        saveHeader.count=1; saveRecords[0].get()->SaveDescriptor.Index=42;
+        setText(saveRecords[0].get()->SaveDescriptor.Career,career); setText(saveRecords[0].get()->SaveDescriptor.SaveName,filename);
         // A persistent PC PowerWheel HUD can retain focus while the wheel is
         // closed. Its tag alone never authorizes the normal pause route.
         Raw<UClass> wheelBaseType, pcWheelType;

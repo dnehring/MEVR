@@ -1705,7 +1705,7 @@ struct FlowOverride { unsigned page{}, state{}; };
 struct SaveFlowSample {
     MenuSample menu;
     ObjectSample modes, mode, focusedPanel;
-    char focusedTag[kNameBytes]{};
+    char focusedTag[kNameBytes]{}, saveTag[kNameBytes]{};
     MenuPanel browser, save, idleWheel;
     bool wheelKnown{}, wheelVisible{}, wheelTransition{}, wheelLinks{};
     unsigned wheelMode{};
@@ -1714,6 +1714,7 @@ struct SaveFlowSample {
     FunctionSample showPause;
     SlotSample modeSlot, browserSlot, saveSlot;
     SaveRow rows[kMaxFixtureRows]{};
+    std::uintptr_t friendlyNames[kMaxFixtureRows]{}, savedGames[kMaxFixtureRows]{};
     bool checkingMessage{};
     bool available{}, playersOnly{}, browserAllowed{}, modeActive{}, allowPause{}, waitFrame{};
     bool pagesComplete{}, overridesComplete{}, saveListBounded{};
@@ -1731,6 +1732,8 @@ std::atomic_bool gPauseMenuEntered{false}, gSaveMenuEntered{false}, gSaveNewEnte
 // every call traverses live roots again, never dereferences a cached pointer.
 SaveFlowSample gPauseFlow{}, gBrowserReceipt{}, gOpenedSaveFlow{};
 bool gPauseFlowValid{}, gBrowserReceiptValid{}, gOpenedSaveFlowValid{};
+ObjectSample gPendingSavePanel{}, gPendingSaveHandler{};
+bool gPendingSaveKnown{}, gPendingSaveInitializedSeen{}, gPendingSaveFocusedSeen{};
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 testing::MenuDispatcher gSaveFlowDispatcher{};
 void (*gSaveFlowSampleHook)(){};
@@ -1801,6 +1804,7 @@ void ReadSaveFlow(void* context) {
             Qualified(table, handler->Class, "SFXGame", "SFXSFHandler_PCSave")) {
             s.reason = "ambiguous-or-invalid-save-panel";
             if (s.save.panel.available || !PanelContext(table, panel, manager, "SFXSFHandler_Save", s.save, true)) return;
+            std::memcpy(s.saveTag,tag,sizeof(tag));
             auto const* save = static_cast<USFXSFHandler_Save const*>(handler);
             s.save.guiMode = save->GuiMode; s.save.waitingMessage = save->bWaitingOnMsgBox;
             s.save.enumerating = save->bEnumeratingSaves; s.save.checkingComplete = save->bCheckingDataComplete;
@@ -1814,6 +1818,8 @@ void ReadSaveFlow(void* context) {
             if (s.saveListBounded) for (unsigned row=0; row<s.saveCount; ++row) {
                 auto const& d=save->SaveList.GetData()[row].SaveDescriptor;
                 s.rows[row]={reinterpret_cast<std::uintptr_t>(&d.Career),reinterpret_cast<std::uintptr_t>(&d.SaveName),d.Index,d.Type};
+                s.friendlyNames[row]=reinterpret_cast<std::uintptr_t>(&save->SaveList.GetData()[row].FriendlyName);
+                s.savedGames[row]=reinterpret_cast<std::uintptr_t>(save->SaveList.GetData()[row].SaveGame);
             }
         }
     }
@@ -1872,7 +1878,7 @@ bool SameFlowPanel(MenuPanel const& a, MenuPanel const& b) {
 }
 bool SameFlow(SaveFlowSample const& a, SaveFlowSample const& b) {
     if (!SameFlowScope(a,b) || !SameObjectSample(a.mode,b.mode) || !SameObjectSample(a.focusedPanel,b.focusedPanel) ||
-        std::strcmp(a.focusedTag,b.focusedTag) != 0 || a.currentMode != b.currentMode || a.modeActive != b.modeActive ||
+        std::strcmp(a.focusedTag,b.focusedTag) != 0 || std::strcmp(a.saveTag,b.saveTag)!=0 || a.currentMode != b.currentMode || a.modeActive != b.modeActive ||
         a.allowPause != b.allowPause || a.playersOnly != b.playersOnly || a.browserAllowed != b.browserAllowed ||
         a.menu.focus != b.menu.focus || a.menu.panelsData != b.menu.panelsData || a.menu.panelCount != b.menu.panelCount ||
         a.modeCount != b.modeCount || a.modeCapacity != b.modeCapacity || a.modesData != b.modesData || a.waitFrame != b.waitFrame ||
@@ -1890,7 +1896,8 @@ bool SameFlow(SaveFlowSample const& a, SaveFlowSample const& b) {
         a.maxSaves != b.maxSaves || a.pendingOverwrite != b.pendingOverwrite || a.checkingMessage != b.checkingMessage ||
         a.saveSlot.object != b.saveSlot.object || a.saveSlot.vtable != b.saveSlot.vtable || a.saveSlot.target != b.saveSlot.target) return false;
     if (a.saveListBounded) for (unsigned i=0;i<a.saveCount;++i)
-        if (a.rows[i].career!=b.rows[i].career || a.rows[i].name!=b.rows[i].name || a.rows[i].index!=b.rows[i].index || a.rows[i].type!=b.rows[i].type) return false;
+        if (a.rows[i].career!=b.rows[i].career || a.rows[i].name!=b.rows[i].name || a.rows[i].index!=b.rows[i].index || a.rows[i].type!=b.rows[i].type ||
+            a.friendlyNames[i]!=b.friendlyNames[i] || a.savedGames[i]!=b.savedGames[i]) return false;
     for (unsigned i = 0; i < a.pageCount; ++i)
         if (a.pages[i].type != b.pages[i].type || a.pages[i].handler != b.pages[i].handler || a.pages[i].label != b.pages[i].label ||
             std::strcmp(a.pages[i].tag,b.pages[i].tag) != 0) return false;
@@ -1925,7 +1932,13 @@ bool SaveContinuation(SaveFlowSample const& s) {
         s.overridesData!=a.overridesData || s.overrideCount!=a.overrideCount || s.overrideCapacity!=a.overrideCapacity) return false;
     for (unsigned i=0;i<s.overrideCount;++i)
         if (s.overrides[i].page!=a.overrides[i].page || s.overrides[i].state!=a.overrides[i].state) return false;
-    return !s.save.panel.available || std::strcmp(s.focusedTag,a.pages[a.saveRow].tag)==0;
+    // CreatePanel can return a visible but not-yet-initialized/focused Save
+    // panel. Bind its actual configured tag/identity, not the changing focus tag.
+    if (!s.save.panel.available) return !gPendingSaveKnown && s.menu.focus==0;
+    if (!s.save.visible || s.save.removing || std::strcmp(s.saveTag,a.pages[a.saveRow].tag)!=0 ||
+        (s.menu.focus!=0 && s.menu.focus!=s.save.panel.address)) return false;
+    return !gPendingSaveKnown || (SameObjectSample(gPendingSavePanel,s.save.panel) && SameObjectSample(gPendingSaveHandler,s.save.handler) &&
+        (!gPendingSaveInitializedSeen || s.save.initialized) && (!gPendingSaveFocusedSeen || s.save.focused));
 }
 bool NewSaveReady(SaveFlowSample const& s) {
     return s.available && s.currentMode==7 && s.modeActive && s.playersOnly && s.browserAllowed &&
@@ -1936,14 +1949,25 @@ bool NewSaveReady(SaveFlowSample const& s) {
 }
 struct NewSaveScan {
     std::vector<CapturedRow> text;
-    json::Value records{json::Value::Array()};
-    bool complete{};
-    int nextIndex{};
+    json::Value records{json::Value::Array()}, diagnostics{json::Value::Array()};
+    bool complete{}, diagnosticsTruncated{};
+    int nextIndex{}, failureRow{-1};
     char const* reason{"save-list-not-ready"};
 };
 SaveFlowSample gNewSaveReceipt{};
 std::vector<CapturedRow> gNewSaveText;
 bool gNewSaveReceiptValid{};
+json::Value DiagnosticText(qa::utf16::Result const& text, CapturedText const& copied) {
+    auto out=json::Value::Object(); out["available"]=text.Available();
+    out["status"]=qa::utf16::Name(text.status); out["reason"]=qa::utf16::Name(text.reason);
+    if (copied.headerCopied) { out["count"]=static_cast<std::int64_t>(std::bit_cast<std::int32_t>(copied.header.count)); out["capacity"]=static_cast<std::int64_t>(std::bit_cast<std::int32_t>(copied.header.capacity)); }
+    if (text.Available()) {
+        // Do not cut a UTF-8 sequence or pretend a long value was observed fully.
+        out["valueOmittedForBudget"]=text.utf8.size()>256;
+        if (text.utf8.size()<=256) out["value"]=text.utf8;
+    }
+    return out;
+}
 void ScanNewSave(SaveFlowSample const& s, NewSaveScan& scan) {
     if (!s.available || !s.saveListBounded || !s.save.panel.available) return;
     scan.text.resize(s.saveCount);
@@ -1953,22 +1977,42 @@ void ScanNewSave(SaveFlowSample const& s, NewSaveScan& scan) {
         auto const& row=s.rows[i];
         auto career=CaptureText(row.career,scan.text[i].career), name=CaptureText(row.name,scan.text[i].name);
         auto captured=[](CapturedText const& t){return t.headerCopied && (t.header.count==0 || t.bodyCopied);};
-        if (!career.Available() || !name.Available() || !captured(scan.text[i].career) || !captured(scan.text[i].name) ||
-            !FrozenLeaf(career.utf8) || !FrozenLeaf(name.utf8) || row.index < -1 || row.index==INT_MAX || row.type>=5 ||
-            (row.type==0 && row.index<0)) { scan.reason="invalid-save-descriptor-or-index-overflow"; return; }
-        if (i==0) careerIdentity=career.utf8;
-        if (career.utf8!=careerIdentity) { scan.reason="mixed-save-careers-unsupported"; return; }
-        for (auto const& prior:scan.records.Items())
-            if (prior.String("saveName")==name.utf8 || (row.type==0 && prior.Number("type")==0 && prior.Number("index")==row.index)) {
-                scan.reason="duplicate-save-descriptor-identity"; return;
-            }
+        char const* rejected=nullptr;
+        if (!career.Available() || !name.Available() || !captured(scan.text[i].career) || !captured(scan.text[i].name)) rejected="descriptor-string-unavailable-or-malformed";
+        else if (career.utf8.empty() || name.utf8.empty()) rejected="descriptor-empty-career-or-save-name";
+        else if (!FrozenLeaf(career.utf8) || !FrozenLeaf(name.utf8)) rejected="descriptor-invalid-name-component";
+        else if (row.index < -1 || row.index==INT_MAX || row.type>=5 || (row.type==0 && row.index<0)) rejected="descriptor-index-or-type-unsupported";
+        if (!rejected) {
+            if (careerIdentity.empty()) careerIdentity=career.utf8;
+            if (career.utf8!=careerIdentity) rejected="mixed-save-careers-unsupported";
+            for (auto const& prior:scan.records.Items())
+                if (prior.String("saveName")==name.utf8 || (row.type==0 && prior.Number("type")==0 && prior.Number("index")==row.index)) {
+                    rejected="duplicate-save-descriptor-identity"; break;
+                }
+        }
+        if (!scan.diagnosticsTruncated && scan.diagnostics.Items().size()<8) {
+            CapturedText friendlyCopy; auto friendly=CaptureText(s.friendlyNames[i],friendlyCopy);
+            auto diagnostic=json::Value::Object(); diagnostic["uiRow"]=static_cast<int>(i);
+            diagnostic["index"]=row.index; diagnostic["type"]=static_cast<int>(row.type);
+            diagnostic["career"]=DiagnosticText(career,scan.text[i].career); diagnostic["saveName"]=DiagnosticText(name,scan.text[i].name);
+            diagnostic["friendlyName"]=DiagnosticText(friendly,friendlyCopy); diagnostic["saveGameIsNull"]=s.savedGames[i]==0;
+            diagnostic["descriptorAccepted"]=rejected==nullptr; diagnostic["reason"]=rejected?rejected:"individual-descriptor-valid-only";
+            scan.diagnostics.Push(std::move(diagnostic));
+            if (json::Write(scan.diagnostics,0).size()>3072) { scan.diagnostics.Items().pop_back(); scan.diagnosticsTruncated=true; }
+        } else scan.diagnosticsTruncated=true;
+        if (rejected) {
+            if (scan.failureRow<0) { scan.failureRow=static_cast<int>(i); scan.reason=rejected; }
+            continue; // Preserve bounded diagnostic evidence without admitting a partial list.
+        }
         maximum=std::max(maximum,row.index);
         auto record=json::Value::Object(); record["career"]=career.utf8; record["saveName"]=name.utf8;
-        record["index"]=row.index; record["type"]=static_cast<int>(row.type); scan.records.Items().push_back(std::move(record));
+        record["index"]=row.index; record["type"]=static_cast<int>(row.type); scan.records.Push(std::move(record));
     }
+    if (scan.failureRow>=0) return;
     scan.nextIndex=s.saveCount==0?1:maximum+1;
     scan.complete=true; scan.reason="complete-descriptors-source-index-only-no-filename-inference";
 }
+
 struct NewSaveCheck { SaveFlowSample const* before; CapturedRow const* text; SaveFlowSample* after; bool matches{}; };
 void CheckNewSave(void* context) {
     auto& c=*static_cast<NewSaveCheck*>(context); ReadSaveFlow(c.after);
@@ -1977,7 +2021,7 @@ void CheckNewSave(void* context) {
         if (!TextStillMatches(c.after->rows[i].career,c.text[i].career) || !TextStillMatches(c.after->rows[i].name,c.text[i].name)) return;
     c.matches=true;
 }
-void InvalidateNewSave() { gOpenedSaveFlowValid=false; gNewSaveReceiptValid=false; gNewSaveText.clear(); }
+void InvalidateNewSave() { gPendingSaveKnown=gPendingSaveInitializedSeen=gPendingSaveFocusedSeen=false; gOpenedSaveFlowValid=false; gNewSaveReceiptValid=false; gNewSaveText.clear(); }
 
 json::Value SaveFlowJson(SaveFlowSample const& s, char const* failure) {
     auto out = json::Value::Object(); out["schemaVersion"] = 1; out["game"] = "LE2";
@@ -2031,6 +2075,8 @@ json::Value SaveFlowJson(SaveFlowSample const& s, char const* failure) {
     save["checkingDataMessageVisible"] = s.checkingMessage;
     save["structuralNewSaveSupported"] = NewSaveReady(s);
     save["sameOpenedSaveFlow"] = SaveContinuation(s);
+    save["panelTag"]=s.saveTag; save["pendingPanelIdentityBound"]=gPendingSaveKnown;
+    save["pendingInitializedSeen"]=gPendingSaveInitializedSeen; save["pendingFocusedSeen"]=gPendingSaveFocusedSeen;
     save["pendingOverwriteIndex"] = s.pendingOverwrite; save["uiInputStateProof"] = "panel-flags-do-not-prove-gfx-save-input-enabled";
     out["save"] = std::move(save);
     return out;
@@ -2094,16 +2140,32 @@ json::Value ObserveSaveFlow(std::uint32_t thread) {
     }
     if (gOpenedSaveFlowValid) {
         if (failure || !SaveContinuation(*first)) InvalidateNewSave();
-        else if (scan.complete && NewSaveReady(*first)) {
-            NewSaveCheck old{&gNewSaveReceipt,gNewSaveText.data(),after.get()};
-            if (gNewSaveReceiptValid && (!ue3::runtime::Guarded(CheckNewSave,&old) || !old.matches)) InvalidateNewSave();
-            else { gNewSaveReceipt=*first; gNewSaveText=scan.text; gNewSaveReceiptValid=true; }
-        } else if (gNewSaveReceiptValid) InvalidateNewSave();
+        else {
+            if (first->save.panel.available && !gPendingSaveKnown) {
+                gPendingSavePanel=first->save.panel; gPendingSaveHandler=first->save.handler; gPendingSaveKnown=true;
+            }
+            if (gPendingSaveKnown) {
+                gPendingSaveInitializedSeen=gPendingSaveInitializedSeen || first->save.initialized;
+                gPendingSaveFocusedSeen=gPendingSaveFocusedSeen || first->save.focused;
+            }
+            if (scan.complete && NewSaveReady(*first)) {
+                NewSaveCheck old{&gNewSaveReceipt,gNewSaveText.data(),after.get()};
+                if (gNewSaveReceiptValid && (!ue3::runtime::Guarded(CheckNewSave,&old) || !old.matches)) InvalidateNewSave();
+                else { gNewSaveReceipt=*first; gNewSaveText=scan.text; gNewSaveReceiptValid=true; }
+            } else if (gNewSaveReceiptValid) InvalidateNewSave();
+        }
     }
     auto out=SaveFlowJson(*first,failure);
     if (first->save.panel.available && !failure) {
         out["save"]["recordsComplete"]=scan.complete; out["save"]["recordsReason"]=scan.reason;
         out["save"]["records"]=scan.complete?std::move(scan.records):json::Value::Array();
+        if (!scan.complete) {
+            auto diagnostic=json::Value::Object(); diagnostic["authoritative"]=false; diagnostic["listComplete"]=false;
+            diagnostic["snapshotCoherenceVerified"]=false; diagnostic["syntheticMarkerRecognized"]=false;
+            diagnostic["rows"]=std::move(scan.diagnostics); diagnostic["truncated"]=scan.diagnosticsTruncated;
+            diagnostic["firstRejectedRow"]=scan.failureRow;
+            out["save"]["rejectedRowDiagnostics"]=std::move(diagnostic);
+        }
         out["save"]["newSaveObservationBound"]=gNewSaveReceiptValid;
         if (scan.complete) out["save"]["candidateNextIndex"]=scan.nextIndex;
         out["save"]["candidateIndexIsFilename"]=false;
@@ -2155,7 +2217,7 @@ ProbeResult SaveFlowAction(std::uint32_t thread, ObserverServices const& service
     } else {
         result.status="dispatched"; out["reason"]="normal-return-ui-transition-unverified";
         if (pause) { gPauseFlow=*first; gPauseFlowValid=true; }
-        else { gOpenedSaveFlow=*first; gOpenedSaveFlowValid=true; gNewSaveReceiptValid=false; }
+        else { gOpenedSaveFlow=*first; gOpenedSaveFlowValid=true; gNewSaveReceiptValid=false; gPendingSaveKnown=gPendingSaveInitializedSeen=gPendingSaveFocusedSeen=false; }
         out["postObservation"]=ObserveSaveFlow(thread);
     }
     result.payload=BoundSaveFlow(std::move(out)); return result;

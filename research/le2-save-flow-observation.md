@@ -252,3 +252,58 @@ and scanner SHA256 `918a095735f00998e5ff99871902253c47c66069a6cce3e6d6b0d474addd
 Reproduce with the existing read-only scanner's `--game LE2 --only SFXGame`
 `--script` queries for the exact functions above; keep raw script output private.
 No game/script mutation or focus-clearing input is used by this change.
+
+
+## Save-panel initialization and rejected-row diagnostics
+
+The next protected run reached the normal Save panel, exposing two separate
+adapter limitations. Immediately after ShowSelectedPanel returned, the same Save
+panel and PCSave handler existed with an empty list, initialization false and no
+focused panel. A later observation had the same identities, initialization/focus
+complete, and three rows. Comparing the configured Save tag to the *focus* tag
+had invalidated the flow during that ordinary asynchronous initialization.
+
+The continuation now compares the panel's own bounded tag to the configured
+browser Save tag and binds its first observed panel/handler identities. The same
+owned paused GUI context may progress through initialization and acquire focus.
+Before the first panel appears, absent focus is allowed; after it appears,
+disappearance, hidden state or replacement invalidates the flow. Initialization
+and focus progress are monotonic: after either is observed true, its loss
+invalidates the pending flow even if a rejected list has prevented a ready
+receipt. A foreign focused panel,
+wrong tag, removing panel or changed world/player/pawn/mode/eligibility also
+invalidates it, and restoring old values cannot rearm it. The pending identity
+never grants write readiness: complete stable descriptors and focused initialized
+interactive Save UI remain mandatory. `save.panelTag` and
+`save.pendingPanelIdentityBound`, `save.pendingInitializedSeen` and
+`save.pendingFocusedSeen` make the distinction observable.
+
+The three-row live list coincided with an externally reviewed Create New Save
+entry followed by two real manual saves. This suggests a synthetic row, but does
+not establish its exact descriptor representation. SDK BeginInitializeSaveList
+and EndInitializeSaveList are native declarations; their internal row construction
+is not available from the inspected script source. No marker is guessed or
+silently skipped. The native GetNewSaveIdx script iterates every descriptor's
+index, so dropping a row without proof would also change the source calculation.
+
+An invalid list still reports `recordsComplete=false`, an empty authoritative
+`records` array, no candidate next index and no write receipt. It additionally
+reports `save.rejectedRowDiagnostics` with `authoritative=false`,
+`listComplete=false`, `snapshotCoherenceVerified=false` and
+`syntheticMarkerRecognized=false`. At most eight diagnostic rows and 3 KiB of row
+JSON contain actual uiRow/index/type, career/saveName/FriendlyName read status,
+signed-32-bit header count/capacity values, and whether the SaveGame pointer is null. That pointer is
+never dereferenced. Decoded UTF-8 values over 256 bytes are explicitly omitted,
+not cut. `firstRejectedRow`, precise per-row reasons and `truncated` explain the
+boundary. Diagnostic rows can include individually valid later descriptors, but
+they are never promoted to a complete list or used to select a file or permit a
+write. Overall observations retain the existing 14 KiB limit.
+
+Tests reproduce an unfocused uninitialized panel becoming ready without changing
+identity, and reject changed/restored pending tags, panel replacement/disappearance,
+foreign focus and loss of pause, plus hidden/initialization/focus regressions
+while descriptor rejection prevents a ready receipt. A synthetic marker-shaped row remains refused
+while bounded diagnostics expose its empty fields and the following manual rows.
+Malformed strings and oversized-list/evidence tests continue to refuse admission.
+The representative three-row diagnostic observation is below 9 KiB. Fresh native
+diagnostic evidence is required before defining any supported synthetic marker.
