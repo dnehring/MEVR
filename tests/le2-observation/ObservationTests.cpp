@@ -4,6 +4,7 @@
 #include <LESDK/Headers.hpp>
 #include "engine/Le2DiagnosticObservation.hpp"
 #include "engine/Le2InputContext.hpp"
+#include "engine/Le2PartyCompletionObservation.hpp"
 #include "engine/Le2OrbitalObservation.hpp"
 #include "engine/Le2WeaponObservation.hpp"
 #include "engine/Legacy.hpp"

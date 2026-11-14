@@ -3,6 +3,7 @@
 #include "engine/Le2OrbitalObservation.hpp"
 #include "engine/Le2WeaponObservation.hpp"
 #include "engine/Le2InputContext.hpp"
+#include "engine/Le2PartyCompletionObservation.hpp"
 
 #if defined(MEVR_GAME_LE2)
 #include "engine/GameAdapterSdk.hpp"
@@ -2403,5 +2404,6 @@ json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic:
 #include "engine/Le2OrbitalObservation.inc"
 #include "engine/Le2WeaponObservation.inc"
 #include "engine/Le2InputContext.inc"
+#include "engine/Le2PartyCompletionObservation.inc"
 } // namespace mevr::engine::le2_diagnostic
 #endif

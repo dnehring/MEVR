@@ -222,6 +222,7 @@
     confirmationInput(); static UBioSFHandler_PCMessageBox* changingMessage; changingMessage=messageHandler.get();
     ic::testing::SetSampleHook(+[]{changingMessage->__InputCallback__Delegate.Object=nullptr;});
     Check(!captureInput().available,"callback replacement between reads rejects context"); ic::testing::SetSampleHook(nullptr);
+    #include "PartyCompletionTests.inc"
     #include "LoadoutContextTests.inc"
     beginInput(); Check(captureInput().available && flowDispatchCalls==0,"read-only context recovers without dispatch or save-flow receipts");
 }
