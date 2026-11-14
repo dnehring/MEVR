@@ -108,7 +108,10 @@ class WindowsCapture:
             raise CaptureError("Cannot read client rectangle")
         return dict(hwnd=str(hwnd), pid=pid.value, visible=bool(self.user.IsWindowVisible(hwnd)),
                     minimized=bool(self.user.IsIconic(hwnd)), width=rect.right - rect.left,
-                    height=rect.bottom - rect.top)
+                    height=rect.bottom - rect.top,
+                    # Recorded for PrintWindow too. Background capture is permitted;
+                    # the existing before/after comparison refuses a focus change.
+                    foregroundHwnd=str(self.user.GetForegroundWindow() or 0))
 
     def windows(self, pid):
         found, errors = [], []

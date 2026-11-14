@@ -16,7 +16,8 @@ spec.loader.exec_module(m)
 
 
 def window():
-    return dict(hwnd="4294967300", pid=1234, width=3, height=2, visible=True, minimized=False)
+    return dict(hwnd="4294967300", pid=1234, width=3, height=2, visible=True, minimized=False,
+                foregroundHwnd="4294967300")
 
 
 def desktop_window():
@@ -26,6 +27,31 @@ def desktop_window():
 
 
 class WindowTests(unittest.TestCase):
+    def test_window_records_full_width_foreground_even_for_printwindow(self):
+        api = m.WindowsCapture.__new__(m.WindowsCapture)
+        def owner(hwnd, output):
+            output._obj.value = 1234
+            return 7
+        def rect(hwnd, output):
+            output._obj.right, output._obj.bottom = 3, 2
+            return True
+        api.user = mock.Mock(IsWindow=mock.Mock(return_value=True),
+                            IsWindowVisible=mock.Mock(return_value=True), IsIconic=mock.Mock(return_value=False),
+                            GetWindowThreadProcessId=mock.Mock(side_effect=owner), GetClientRect=mock.Mock(side_effect=rect))
+        for foreground, expected in ((4294967400, '4294967400'), (None, '0')):
+            api.user.GetForegroundWindow.return_value = foreground
+            self.assertEqual(api.window(4294967300), dict(window(), foregroundHwnd=expected))
+
+    def test_printwindow_allows_stable_other_foreground_but_refuses_change(self):
+        other = dict(window(), foregroundHwnd='55')
+        api = self.api(other)
+        state, _ = m.capture_window(api, 1234)
+        self.assertEqual(state['foregroundHwnd'], '55')
+        api = self.api(other)
+        api.window.side_effect = [other, dict(other, foregroundHwnd='66')]
+        with self.assertRaisesRegex(m.CaptureError, 'during capture'):
+            m.capture_window(api, 1234)
+
     def api(self, state=None):
         state = state or window()
         return mock.Mock(windows=mock.Mock(return_value=[state]), window=mock.Mock(return_value=state),
