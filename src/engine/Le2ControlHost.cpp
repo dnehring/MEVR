@@ -364,9 +364,12 @@ struct Endpoint::Impl {
                 unavailable[name] = "LE2 engine fields/lifetime are not validated by this producer";
             payload["unavailable"] = std::move(unavailable);
         }
-        result.payload = json::Write(payload);
+        // Match the observer's compact payload budget. Pretty indentation can
+        // exceed the wire cap even when the structural sample itself fits.
+        result.payload = json::Write(payload, 0);
         auto encoded = wire::Encode(result);
-        Check(encoded.has_value(), "result encoding failed after claim");
+        if (!encoded) throw std::runtime_error("result encoding failed after claim: payload bytes=" +
+            std::to_string(result.payload.size()) + ", limit=" + std::to_string(wire::kMaxPayload));
         // Revalidate before publishing any claimed observation. Failure leaves uncertainty.
         Ownership();
         Publish(directory / L"result.control", *encoded);

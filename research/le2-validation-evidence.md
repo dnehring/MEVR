@@ -5,6 +5,31 @@ Checkpoint: 2026-11-14 UTC. **Native load/save observed; scripted Steam selectio
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Expanded observation serialization failure
+
+Protected run `97fb98d5-5232-4f69-b196-7d33d8b502cd` used candidate `ebf02a0f`,
+ASI SHA256 `fa9b8cbd77239a6b49c87937ebe09ee4620f1729507f563eee9f874fccc2a77b`
+and the verified `59b5e775` loader. Scripted Steam selection, exact module
+attachment and ping succeeded on game thread 61024. The next `observe` request
+was consumed but produced no response. The host logged `result encoding failed
+after claim` and disabled the channel; late collection found no result.
+No `probe-fov`, general console, save selection or VR operation was sent.
+
+Review found that the observer budget tests serialize compact JSON, while the
+host serialized with the default two-space indentation. Expanded nested fields
+can therefore exceed the 16 KiB wire cap despite the compact fixture fitting.
+The failed live payload was not preserved, so its exact byte count is unknown.
+The correction uses compact host serialization, retains the cap and records
+payload bytes if encoding fails again. A new actual-C++ endpoint smoke assertion
+rejects indented responses; it failed against the unchanged `ebf02a0f` binary.
+
+ME2 remained responsive and closed normally. All four protected roots were
+restored and verified, and only the owned invitation was removed. The consumed
+observation and unresolved intent remain preserved under the private
+`local-tools/le2-diagnostic-handoff/run-20261114T0635Z/`, together with host logs,
+mapped-module identity and normal-close/restoration receipts. This is a failed
+expanded-observer attempt, not passive-route or scalar-call evidence.
+
 ### Later target and rejection check
 
 Run `ea509781-66e5-4736-a284-2c1668aa1860` tested clean candidate

@@ -40,6 +40,9 @@ def main(executable):
         for verb in ("ping", "observe"):
             result = control.submit(run, verb, timeout=5, bind=bind)
             assert result["status"] == "completed"
+            # The observer's 16 KiB budget is measured with compact JSON. The
+            # actual host must not add pretty-print whitespace on the wire.
+            assert b"\n" not in result["payload"], "host response must use compact JSON"
             payload = json.loads(result["payload"])
             assert payload["source"] == "diagnostic-host" and payload["ready"] is False
             assert payload["capabilities"]["nativeConsole"] is False
