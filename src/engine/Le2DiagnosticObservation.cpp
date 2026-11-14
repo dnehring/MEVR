@@ -1950,7 +1950,7 @@ bool NewSaveReady(SaveFlowSample const& s) {
 struct NewSaveScan {
     std::vector<CapturedRow> text;
     json::Value records{json::Value::Array()}, diagnostics{json::Value::Array()};
-    bool complete{}, diagnosticsTruncated{};
+    bool complete{}, diagnosticsTruncated{}, newSaveRow{};
     int nextIndex{}, failureRow{-1};
     char const* reason{"save-list-not-ready"};
 };
@@ -1977,12 +1977,17 @@ void ScanNewSave(SaveFlowSample const& s, NewSaveScan& scan) {
         auto const& row=s.rows[i];
         auto career=CaptureText(row.career,scan.text[i].career), name=CaptureText(row.name,scan.text[i].name);
         auto captured=[](CapturedText const& t){return t.headerCopied && (t.header.count==0 || t.bodyCopied);};
+        auto zeroHeader=[](CapturedText const& t){return t.headerCopied && t.header.count==0 && t.header.capacity==0;};
+        bool const marker=i==0 && row.index==0 && row.type==0 && s.savedGames[i]==0 &&
+            career.Available() && name.Available() && career.utf8.empty() && name.utf8.empty() &&
+            zeroHeader(scan.text[i].career) && zeroHeader(scan.text[i].name);
         char const* rejected=nullptr;
-        if (!career.Available() || !name.Available() || !captured(scan.text[i].career) || !captured(scan.text[i].name)) rejected="descriptor-string-unavailable-or-malformed";
+        if (marker) { scan.newSaveRow=true; maximum=std::max(maximum,row.index); }
+        else if (!career.Available() || !name.Available() || !captured(scan.text[i].career) || !captured(scan.text[i].name)) rejected="descriptor-string-unavailable-or-malformed";
         else if (career.utf8.empty() || name.utf8.empty()) rejected="descriptor-empty-career-or-save-name";
         else if (!FrozenLeaf(career.utf8) || !FrozenLeaf(name.utf8)) rejected="descriptor-invalid-name-component";
         else if (row.index < -1 || row.index==INT_MAX || row.type>=5 || (row.type==0 && row.index<0)) rejected="descriptor-index-or-type-unsupported";
-        if (!rejected) {
+        if (!rejected && !marker) {
             if (careerIdentity.empty()) careerIdentity=career.utf8;
             if (career.utf8!=careerIdentity) rejected="mixed-save-careers-unsupported";
             for (auto const& prior:scan.records.Items())
@@ -1996,7 +2001,8 @@ void ScanNewSave(SaveFlowSample const& s, NewSaveScan& scan) {
             diagnostic["index"]=row.index; diagnostic["type"]=static_cast<int>(row.type);
             diagnostic["career"]=DiagnosticText(career,scan.text[i].career); diagnostic["saveName"]=DiagnosticText(name,scan.text[i].name);
             diagnostic["friendlyName"]=DiagnosticText(friendly,friendlyCopy); diagnostic["saveGameIsNull"]=s.savedGames[i]==0;
-            diagnostic["descriptorAccepted"]=rejected==nullptr; diagnostic["reason"]=rejected?rejected:"individual-descriptor-valid-only";
+            diagnostic["descriptorAccepted"]=rejected==nullptr && !marker;
+            diagnostic["reason"]=rejected?rejected:marker?"reviewed-new-save-row-signature-only":"individual-descriptor-valid-only";
             scan.diagnostics.Push(std::move(diagnostic));
             if (json::Write(scan.diagnostics,0).size()>3072) { scan.diagnostics.Items().pop_back(); scan.diagnosticsTruncated=true; }
         } else scan.diagnosticsTruncated=true;
@@ -2004,6 +2010,7 @@ void ScanNewSave(SaveFlowSample const& s, NewSaveScan& scan) {
             if (scan.failureRow<0) { scan.failureRow=static_cast<int>(i); scan.reason=rejected; }
             continue; // Preserve bounded diagnostic evidence without admitting a partial list.
         }
+        if (marker) continue; // Classified UI action row, not a file descriptor.
         maximum=std::max(maximum,row.index);
         auto record=json::Value::Object(); record["career"]=career.utf8; record["saveName"]=name.utf8;
         record["index"]=row.index; record["type"]=static_cast<int>(row.type); scan.records.Push(std::move(record));
@@ -2158,6 +2165,14 @@ json::Value ObserveSaveFlow(std::uint32_t thread) {
     auto out=SaveFlowJson(*first,failure);
     if (first->save.panel.available && !failure) {
         out["save"]["recordsComplete"]=scan.complete; out["save"]["recordsReason"]=scan.reason;
+        out["save"]["recordCount"]=scan.complete?static_cast<int>(scan.records.Items().size()):0;
+        if (scan.complete && scan.newSaveRow) {
+            auto marker=json::Value::Object(); marker["recognized"]=true;
+            marker["recognitionPolicy"]="le2-pc-save-empty-row0-v1";
+            marker["uiRow"]=0; marker["index"]=0; marker["type"]=0; marker["career"]=""; marker["saveName"]="";
+            marker["careerCount"]=0; marker["careerCapacity"]=0; marker["saveNameCount"]=0; marker["saveNameCapacity"]=0;
+            marker["saveGameIsNull"]=true; out["save"]["newSaveRow"]=std::move(marker);
+        }
         out["save"]["records"]=scan.complete?std::move(scan.records):json::Value::Array();
         if (!scan.complete) {
             auto diagnostic=json::Value::Object(); diagnostic["authoritative"]=false; diagnostic["listComplete"]=false;
