@@ -6,6 +6,7 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "engine/GameAdapterSdk.hpp"
+#include "engine/ScopedUnionMember.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -13,7 +14,7 @@
 #include <Windows.h>
 
 #include <cstdint>
-#include <new>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -178,14 +179,15 @@ ue3::Rotator* AdjustedAimReturn(void* parms) {
 
 std::string ConsoleCommand(ue3::Object* controller, ue3::Function* function, std::string const& command) {
     APlayerController_execConsoleCommand_Parms parms;  // zeroed
-    new (&parms.Command) FString(Widen(command).c_str());  // the game's allocator
+    // The SDK parameter block leaves both nontrivial union members inactive
+    // and its destructor does not destroy them. Own each constructed member
+    // through normal return and ordinary C++ exception unwinding.
+    detail::ScopedUnionMember<FString> commandLifetime(&parms.Command, Widen(command).c_str());
+    detail::ScopedUnionMember<FString> returnLifetime(&parms.ReturnValue);
     parms.bWriteToLog = 0;
     // The native directly, never the SDK's wrapper.
     Sdk(controller)->ProcessEvent(reinterpret_cast<UFunction*>(function), &parms, nullptr);
-    std::string output = Narrow(parms.ReturnValue.Chars());
-    parms.Command.~FString();  // union members: the parms' destructor leaves them alone
-    parms.ReturnValue.~FString();
-    return output;
+    return Narrow(parms.ReturnValue.Chars());
 }
 
 int RaiseReflectionCaptures(ue3::Function* setFrameRate, float rate, int begin, int limit, CaptureCounts& counts) {
