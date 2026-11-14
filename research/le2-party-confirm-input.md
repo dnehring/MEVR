@@ -3,8 +3,34 @@
 
 This extends the existing read-only input context sampler with `PartyConfirm`
 (`party-confirm`). It adds no engine calls, hooks, synthetic input source, host
-admission, or transport. SDK compilation and synthetic checks pass; native
-acceptance of this new category remains pending.
+admission, or transport. SDK compilation and synthetic checks pass. The later
+integrated host has native structural context and bounded pulse evidence, but
+confirmation completion remains unresolved (see the checkpoint below).
+
+## Native checkpoint, 2026-11-14 UTC
+
+Run `86d06e42-ad8a-466d-8770-76f46fe5397e`, candidate `460bf676`, visibly selected
+Miranda and Grunt and reached the confirmation modal. The observer admitted the
+exact current `FinalizeParty` relation, selected indices 6/7 and labels
+`InSquadVixen`/`InSquadGrunt`. External completion was present and named
+`OnPartySelectionComplete`; its destination was not proven. A bounded A pulse
+produced 32 positive output polls and 1222 neutral writes over the completed
+250 ms release window. The modal then disappeared visually while the dim squad
+screen remained. Two later observations still reported the same confirmation
+context and a passive capture showed no progression. No loadout pulse followed.
+
+Windows refused explicit foreground activation (foreground HWND 0), so focus is
+an unresolved condition. The run closed and all protected roots restored.
+See [full run evidence](le2-validation-evidence.md). Stable structural flags do
+not prove the native/GFx modal lifecycle completed; resolve the actual external
+callback before treating this fixture as a route to loadout or combat.
+
+The next observer revision exposes the already sampled completion owner's class
+and process-local object index, plus the copied function-name index/number.
+The previous archive omitted these fields and cannot identify the owner after
+the fact. This adds no traversal or native call: function resolution and callback
+execution remain explicitly false in the report. A fresh native sample is needed
+to bind source candidates to the actual owner.
 
 The subsequent source-grounded loadout implementation is documented separately
 in [the loadout context contract](le2-loadout-input-context.md). The audit below

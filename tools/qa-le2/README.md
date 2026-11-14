@@ -36,9 +36,14 @@ loadout, and no `party-confirm` or `loadout` pulse was sent. Its three pulses
 recorded 33/686/30 positive XInput output writes and one neutral write each;
 those counts do not prove distinct presses or game consumption of the release.
 The one-neutral-output policy is a suspected contributor, not a proven cause.
-Source-bound confirmation/loadout contexts still require native proof. No
-story-flag reset substitutes for these normal gameplay steps. See the
-[evidence log](../../research/le2-validation-evidence.md) for later candidates.
+Candidate `460bf676` in run `1749Z-neutral-focus` completed the 250 ms neutral
+output window after each pulse and reached the Miranda/Grunt confirmation.
+The source-bound confirmation context was observed and one A pulse was sent.
+The modal disappeared visually, but the dim squad screen and structural
+confirmation context remained. Completion and loadout entry remain unproven;
+the external callback destination needs investigation. No story-flag reset
+substitutes for these normal gameplay steps. See the
+[evidence log](../../research/le2-validation-evidence.md) for exact outcomes.
 
 Use [`observe-weapon`](../../research/le2-weapon-observation.md) through the same
 bound control client to inspect a live weapon before preparing reload assertions.

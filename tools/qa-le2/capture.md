@@ -98,7 +98,11 @@ Neither focus success nor a readable image establishes input consumption.
 
 The adapter passed offline fake-process/Win32 checks, including unchanged LE1
 default behavior; positive LE2 native focus acceptance remains pending at this
-documentation checkpoint. Reproduce the offline checks with
+documentation checkpoint. The first protected native attempt, run
+`1749Z-neutral-focus`, returned `accepted=false`, `foreground=false` and
+before/after foreground PID 0. Its readable PrintWindow captures also recorded
+foreground HWND 0. This is failure evidence, not successful activation or proof
+of why Windows refused. Reproduce the offline checks with
 `pwsh -NoProfile -File tools/qa-hubs/test-focus-owned-session.ps1`.
 
 ## Explicit foreground desktop fallback

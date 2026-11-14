@@ -5,6 +5,45 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Neutral window observed; squad confirmation completion remains unresolved
+
+Protected run `86d06e42-ad8a-466d-8770-76f46fe5397e` used candidate `460bf676`,
+ASI SHA256 `0304b2c21b350ad8e8c87c2776d44b30eaaae85ffd827fa3bae17a8edb6931d1`,
+and script adapter commit `a1895c0f`. Normal Steam launch, producer handshake and
+the unique row-2 chapter load succeeded. The existing owned-session focus helper,
+extended with `-Game LE2`, refused to claim activation: Windows returned no
+foreground window and `SetForegroundWindow` returned false. PrintWindow captures
+remained readable and now recorded foreground HWND 0. Focus acceptance is pending.
+
+| Action | Positive output polls | Neutral writes | Reviewed outcome |
+|---|---:|---:|---|
+| Select Miranda | 33 | 1160 | Miranda moved forward; Remove appeared |
+| D-pad right | 33 | 1118 | Grunt highlighted; Miranda remained selected |
+| Select Grunt | 33 | 1062 | Both selected; Confirm Squad Selection modal visible |
+| Confirm squad | 32 | 1222 | Modal no longer drawn; dim squad screen remained |
+
+All four pulses ended on a context change and completed their fixed 250 ms
+neutral-output windows, with no physical conflicts. These are output poll counts,
+not button edges. The first three actions reproduce the intended selection path
+in this run; they do not establish repeatability across runs or isolate the prior
+failure's cause. The confirmation observer now has native structural evidence:
+`FinalizeParty` belongs to the current party handler, selected labels are
+`InSquadVixen` and `InSquadGrunt`, and the external callback is
+`OnPartySelectionComplete`. That callback's destination was not established.
+
+After confirmation, two observations still reported the same `party-confirm`
+context; the passive capture retained the dim squad screen without the modal.
+No further input was sent. Neither successful confirmation completion nor loadout
+entry is proven. Read-only weapon observation again found MassCannon capacity 1,
+used 0, loaded 1 and raw reserve 10; this is not a firing or reload result.
+
+ME2 closed normally at 17:54:32 UTC. Pre-restoration comparison found no ME1
+changes and identical shared Trilogy profile content. All four protected roots
+restored and verified at 17:55:39 UTC; the owned invitation was removed.
+Private evidence is `run-20261114T1749Z-neutral-focus`. The three gameplay
+scenarios remain **0/3 accepted**. The next source audit must resolve the actual
+completion callback and native UI/input behavior before assuming a loadout step.
+
 ### Weapon observation works; squad input is not yet reproducible
 
 Protected run `0ad9e033-a97d-4108-bbe7-e38a58812386` used candidate `d1cada86`,
@@ -25,7 +64,8 @@ single neutral write, after which other callers received the original disconnect
 result. That is a concrete coverage gap and a possible contributor, not a proven
 cause of the UI behavior; input-mode, focus and native/GFx handling remain open.
 The correction extends the existing source with a bounded neutral-output window,
-not a new hook or input transport. Its native effect requires another run.
+not a new hook or input transport. The subsequent run above records its native
+output behavior and remaining progression limit.
 
 Read-only request `cff8ccbc-52d3-435a-8a7b-ac856eca6c46` established the first live
 weapon sample: exact class `SFXGameContent_Inventory.SFXWeapon_MassCannon`, capacity

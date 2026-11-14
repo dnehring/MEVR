@@ -1,18 +1,22 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 testing tools: reuse audit and runtime observer history
 
-Current audit: **2026-11-14, native candidate `d1cada86`**. We already have the ME2 save,
+Current audit: **2026-11-14, native candidate `460bf676`**. We already have the ME2 save,
 launch, protected-session, capture, control and scenario workflow. Native
 eight-resource save/reload persistence is proven; an untouched chapter loads to
 Squad Selection. One earlier run selected Miranda and Grunt and reached the
-confirmation modal, but the next run did not reproduce that sequence. A single
-neutral-poll coverage gap is being corrected in the existing input source.
-Weapon observation now has a native sample. The new confirmation/loadout guards
-remain native-unverified. The three gameplay scenarios remain unvalidated. See the
+confirmation modal, but the next run did not reproduce that sequence. The latest
+run repeated the intended selection path and proved the corrected 250 ms neutral
+output window. One confirmation pulse removed the visible modal but did not
+establish progression; the observer still reported the confirmation context.
+Weapon observation has native samples. The confirmation guard has structural
+native evidence; completion and loadout remain unproven. The three gameplay
+scenarios remain unvalidated. See the
 [current evidence](le2-validation-evidence.md) and [workflow](../tools/qa-le2/README.md).
 This update combines source inspection with the archived protected native run
 `b9050968-61cb-4d26-9691-ee1ec0f84e80` and follow-up
-`0ad9e033-a97d-4108-bbe7-e38a58812386`; both closed normally and restored all four
+`0ad9e033-a97d-4108-bbe7-e38a58812386`, followed by
+`86d06e42-ad8a-466d-8770-76f46fe5397e`; all closed normally and restored all four
 protected roots. The older observer design below is historical, not current readiness.
 
 ## Reuse map and current proof boundary
@@ -23,8 +27,8 @@ flowchart TD
     B --> C[qa-le2 session.py and launch.ps1]
     C --> D[control.py: normal menus, load and save]
     D --> E[Existing GamepadBridge: bounded input]
-    E --> F[One run selected two members; repetition failed]
-    F --> G[Next: neutral-window proof, confirmation and loadout]
+    E --> F[Neutral window and squad selection observed]
+    F --> G[Next: resolve stalled confirmation and its destination]
     G --> H[Acquire combat fixture and observe ammo]
     D --> I[Resource persistence: eight values proven]
     D --> J[Scanning and timed interrupt baselines pending]
@@ -48,9 +52,9 @@ Audit findings:
    eligible poll. The correction starts the hold on the first eligible poll,
    bounded by a separate five-second activation wait; the next run produced
    positive output, neutral release and visible selection changes.
-3. The current `partyMember1/2` fields stayed zero despite visible selections.
-   They must not serve as current selection assertions. The next guard needs
-   the actual selected indices/labels and the confirmation callback identity.
+3. The `partyMember1/2` fields stayed zero during initial selection despite
+   visible changes. The confirmation guard now observes indices 6/7 and labels
+   Vixen/Grunt at the modal; do not extend those semantics to the earlier stage.
 4. The modal is an explicit remaining dependency. Do not admit every MessageBox
    or ChoiceGUI screen merely to advance this one fixture.
 5. Save/resource tools are usable now. Existing LE1 stereo, replay and scenario
@@ -69,6 +73,7 @@ Audit findings:
 | Game-thread commands and normal load/save | [qa-le2/control.py](../tools/qa-le2/control.py), [control-attach.py](../tools/qa-le2/control-attach.py), [control guide](../tools/qa-le2/control.md); original [console.ps1](../tools/console.ps1) | Reuse the existing owned ME2 channel for new bounded capabilities. Normal menus/load/New Save work. The ordinary console implementation has an LE2 SDK route, but its general call/returned-string proof remains incomplete and the diagnostic host disables it. Do not introduce another request file or transport. |
 | Verify a new in-game save | [save-evidence.py](../tools/qa-le2/save-evidence.py): `before`, `after` | Already binds reviewed UI, request, original inventory and actual added file. Reuse for combat/scanning saves, then independently decode and reload. |
 | Desktop scene capture | [qa-le2/capture.py](../tools/qa-le2/capture.py); original [flicker-grab.py](../tools/flicker-grab.py) | Existing ME2 adapter adds exact run/PID binding, immutable receipts and an explicit desktop fallback to the older PrintWindow approach. Proven on menus/scenes. Do not create a third capture tool. |
+| Observe or activate the owned game window | [focus-owned-session.ps1](../tools/qa-hubs/focus-owned-session.ps1), explicit `-Game LE2`; [usage](../tools/qa-le2/capture.md#observe-or-explicitly-activate-the-owned-window) | Reuses existing Win32 focus behavior and receipts. Observation is the default; `-Activate` is explicit. The first LE2 native attempt was refused by Windows with foreground HWND 0. PrintWindow now records foreground identity, so readable pixels are not mistaken for focus proof. |
 | Stereo eyes and layer captures | [snapshot.ps1](../tools/snapshot.ps1), [TestLoop](../src/plugin/TestLoop.hpp) | Reuse the renderer callbacks and capture pipeline when the ME2 renderer is integrated. Current diagnostic host has no XR/Present producer. Desktop capture cannot replace both-eye proof. |
 | Record, replay and synthetic controllers | [record.ps1](../tools/record.ps1), [replay.ps1](../tools/replay.ps1), [mevrrec.py](../tools/mevrrec.py), `make-*-recording.py`; [PoseRecording](../src/core/vr/PoseRecording.hpp) | Existing file format, decoder, timed sampler and generators are reusable. Live TestLoop playback currently depends on LE1 Halcyon XR frames. Add ME2 wiring/clock/provenance; do not create another recording format or generator. |
 | Reproducible recorded routes | [qa-hubs/recorded_route.py](../tools/qa-hubs/recorded_route.py), [route.ps1](../tools/qa-hubs/route.ps1) | Reuse hash binding, neutral-tail and start-position checks. Current map/readiness rules are Citadel/LE1-specific; adapt those checks to verified ME2 state. |
@@ -122,10 +127,13 @@ existing run/PID/lease-bound channel rather than copying those request writers.
 
 ## Next work using these tools
 
-1. Prove the corrected neutral-output window through the existing bridge and
-   owned `observe-input`/`pad-pulse` channel. Record focus/input-mode limits, then
-   prove the implemented party-confirm and loadout guards through normal UI
-   transitions. Output-buffer writes alone do not prove consumption.
+1. Resolve the stalled confirmation and its actual external completion callback
+   before assuming the fixture leads to loadout. Reuse the current observer and
+   source scanner. The neutral-output window now has native output proof; focus,
+   input-mode and confirmation completion remain unresolved. Ordinary VR keeps
+   a neutral virtual pad connected while controller samples are active, whereas
+   diagnostic pulses return to the original disconnected result after release.
+   This difference is a hypothesis to investigate, not an established cause.
 2. Use the reproducible chapter acquisition fixture to complete normal squad
    selection, then acquire a safe combat save using existing New Save/collector
    tools. Add actual weapon/ammo observations before claiming reload behavior.
