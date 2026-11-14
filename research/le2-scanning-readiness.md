@@ -26,8 +26,13 @@ No native orbital or input proof follows from these offline results.
    map `Biop_Nor`, probes 29, fuel 1499. Its eight resources were read independently
    from the save. The later [persistence run](le2-validation-evidence.md#fresh-reload-preserves-all-eight-edited-resources)
    proved a fresh normal load of those exact bytes and the same live values.
-2. Acquire the galaxy-map scene through ordinary player navigation: reach the CIC
-   galaxy console, interact normally, select the Hourglass Nebula, Ploitari, and
+2. From that Crew Deck start, locate and use the normal elevator, then choose its
+   displayed **Deck 2: CIC** destination. Wait for the ordinary transition and
+   streaming to finish; observe and capture the actual CIC arrival. The authored
+   route includes an arrival autosave: archive it **if actually generated**, or
+   use the reviewed normal New Save flow once available. Bind any new fixture to
+   its actual bytes and descriptor; do not assume a filename or successful save.
+   Then reach the CIC galaxy console, interact normally, select the Hourglass Nebula, Ploitari, and
    Zanethu, then enter the scanner. Capture those steps and any prerequisite that
    blocks them. No verified arbitrary teleport, map-open command, reticle setter,
    or galaxy selection dispatcher is provided here. Do not force mode 10 or write
@@ -59,6 +64,65 @@ normal navigation, but console reachability and the actual route to Zanethu stil
 need a native capture. Current save booleans 4419, 5678, 5679 and 2738 were all
 false. That agrees with the authored *candidate* reveal prerequisite; it does not
 establish access, conditional evaluation, or mission/story validity.
+
+## Existing Normandy saves and the normal CIC route
+
+An offline recheck of the archived original corpus on 2026-11-14 found no proved
+CIC shortcut. Original `Save_0036.pcsav` is the exact base of the eight-resource
+fixture: SHA256 `8c18e1d97c04a19a4a63af58e97ecb2e4c27226240c9cc34807324d5c185784b`.
+The resource preparation changes only those eight scalars; its location, facing,
+plot and galaxy records are unchanged. Loading Save 36 instead therefore does not
+move Shepard closer to the console. The prepared resource SHA256 is
+`00054f9a9b5d56840fecfc443da27318734efe89622817e6973e5f3f4696282c`.
+The naturally saved/reloaded `b54bf7c6…` candidate in step 1 has the stronger
+existing load/persistence evidence and a reviewed Crew Deck scene.
+
+Original `AutoSave.pcsav` has SHA256
+`ced4cb214a636fbf35a4d0259f2abf32dbc523207e033d48893390e748bfbe3e` and also reports
+`Biop_Nor`. Its saved location is approximately 37 engine units from the authored
+Crew Deck elevator arrival point, with matching saved yaw; Save 36 is approximately
+361 units from that autosave. This is a source-coordinate comparison, not a live
+scene or traversability proof. The original chapter save is `BioP_EndGm2`, not a
+Normandy alternative. Exact coordinates, complete hashes and pinned TSE
+checksum/roundtrip checks remain in private `local-tools/le2-cic-acquisition-audit/`.
+Both original Normandy saves and the resource/reload fixtures retain false
+4419/5678/5679/2738 and no recorded planet ID 200100. These preserve the candidate
+discovery preconditions; they do not prove travel access or the save-ID mapping.
+
+Read-only inspection of both base and installed `DLC_EXP_Part02` copies of
+`BioD_Nor.pcc` confirms the relevant normal route. The elevator's
+`Elevator_GUI.Deck_2_CIC` choice has ID 2. Its normal switch selects
+`BioStartLocation_0` (`start_elevDeck1`) and also raises
+`re_Set_Missions_Available`. The subsequent flow waits for level and texture
+streaming before `SFXSeqAct_SaveGame_1`. The internal start-tag numbering differs
+from the displayed deck numbering. Use the displayed CIC choice, not a guessed
+tag/index or direct sequence invocation. Visible/enabled choices, completed
+transition and actual autosave creation still require native evidence.
+
+In `BioD_Nor_103CIC.pcc`, `GalaxyMap.SeqEvent_Used_0` belongs to
+`SFXPointOfInterest_6` and enters the normal gate/pre-dialogue flow. That flow has
+plot-dependent notification/critical-mission branches; entering the console is
+not equivalent to unconditionally opening the galaxy. Preserve those branches.
+
+There is no missing coordinate editor to build: `le1-save.py` already exposes
+`set_place`/`--location`/degree-based `--yaw`, and `le2-save.py prepare` already
+supports hash-bound, before-value-checked `location.{x,y,z}` and raw integer
+`rotation.{pitch,yaw,roll}` edits. LE2 edits preserve untouched bytes and update
+the checksum; they do not reconstruct streaming, elevator or progression state.
+Neither editor is needed for this acquisition. Prefer a naturally reached CIC
+save over moving the Crew Deck fixture by coordinates.
+
+Source package SHA256 anchors for this route inspection:
+
+| Package | SHA256 |
+| --- | --- |
+| Base `BioD_Nor.pcc` | `4fa011b284166df9b721db33863e0d9541d377fabdc24f5d355cc7a5fcd8e7c3` |
+| `DLC_EXP_Part02/BioD_Nor.pcc` | `a1fed09e478431e0af50af796bb305130c0e20f61ff5f80813297488fa5f5135` |
+| Base `BioD_Nor_103CIC.pcc` | `3a02c9993030355e514d7ac6ec8326ddca800195825c10728465f2763840114f` |
+
+These are installed source inspections, not proof of which package a running game
+loaded. TSE source pin: `6451f23d1fba62358328dce4e87733970f36ebf1`.
+No save bytes, story flags, live profiles or runtime state were changed by this audit.
 
 ## Bounded API and wire contract
 
