@@ -134,6 +134,14 @@ def judge(mod, halcyon=()):
                 used.update((i, back))
                 found.append(('flash', f'{clock(t)}: {to} was shown for {fades[back][0] - t:.2f} s and taken away again (two dips)'
                               + (': as the scene began' if abs(t - s['start']) < 0.6 else '')))
+        # A few frames of the flat panel or the 3D screen between two frames of the world, with no fade to show it (Halcyon's
+        # [VRSTATE]): a conversation handing over to a merchant's shop showed the flat panel for 0.07 s (research/69 item 38).
+        states = [(t, text.rstrip()) for t, text in halcyon if lo <= t <= s['end'] + 1.0 and text.startswith('[VRSTATE]')]
+        for (_, a), (t1, b), (t2, c) in zip(states, states[1:], states[2:]):
+            if a.endswith('-> VR') and c.endswith('-> VR') and not b.endswith('-> VR') and t2 - t1 < 0.25:
+                if not any(code == 'flash' and clock(t1)[:8] in text for code, text in found):
+                    found.append(('flash', f"{clock(t1)}: {b.split('-> ')[-1]} for {t2 - t1:.2f} s between two frames of the world "
+                                           f"({b[len('[VRSTATE] '):]})"))
         for i, (t, frm, to) in enumerate(fades):
             if i in used or not (s['start'] - 0.5 <= t <= s['end'] + 0.2) or frm != 'the world' or to != 'the world':
                 continue

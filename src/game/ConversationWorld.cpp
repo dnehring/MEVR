@@ -222,6 +222,8 @@ ue3::FieldRef gHiddenActors{"Engine.PlayerController", "HiddenActors"};
 // The near plane a conversation's camera carries (research/69 "The first shot").
 ue3::FieldRef gBodyLocalPlayer{"Engine.PlayerController", "Player"};
 ue3::FieldRef gBodyNearClip{"Engine.LocalPlayer", "NearClipPlane"};
+ue3::FieldRef gCameraEnableFading{"Engine.Camera", "bEnableFading"};    // a matinee's fade track sets these (research/69 item 38)
+ue3::FieldRef gCameraFadeAmount{"Engine.Camera", "FadeAmount"};
 ue3::FieldRef gCameraViewTarget{"Engine.Camera", "ViewTarget"};          // what the game's camera looks from (the player's, or a
 ue3::FieldRef gCameraViewTargetActor{gCameraViewTarget, "Target"};       // matinee's camera actor in game mode 0: Chellik's bump)
 ue3::ClassRef gConvCameraClass{"SFXGame.BioCameraBehaviorConversation"};
@@ -701,6 +703,7 @@ struct TestStick {
 TestStick gTestStick;
 bool gStickLatchOff = false;
 bool gStickTurnOff = false;
+bool gMatineeFadeShown = false;  // `mevr convo matineefade off`: a broken run: a moment's camera fade drawn (the dark Spectre walk)
 
 vr::controllers::State SticksNow() {
     vr::controllers::State c = vr::controllers::Latest();
@@ -817,6 +820,7 @@ void StanceTick(ue3::Object* pawn);
 std::string WriteStance(std::string const& tag);
 std::string JsonText(std::string_view s);
 bool KeepsTheLiveConversation(ue3::Object* controller);
+void StepMatineeFade(ue3::Object* camera);
 ue3::Object* ConversationNow(ue3::Object* controller);
 bool MomentHeld();  // a moment's view is up (provisional too)
 
@@ -841,6 +845,11 @@ CameraHold gCameraHold;
 bool gNearHold = false;
 float gFootNear = 10.0f;      // the plane on foot (read there each camera update)
 float gDrawnNear = -1.0f;     // the plane the last conversation-mode frame was drawn with (after ours; the live audit's)
+bool gFadeUp = false;         // a matinee's camera fade is up in a held moment (StepMatineeFade; ResolveBlack waits it out)
+std::uint64_t gFadeDownMs = 0;
+std::uint64_t gFadesHidden = 0;
+std::uint64_t gDarkSinceMs = 0;  // the frame drawn half faded or more since (StepMatineeFade's dark-view check)
+bool gDarkReported = false;
 float gNearReplaced = 0.0f;   // the director's plane last replaced (logged when it changes)
 std::uint64_t gNearWrites = 0;
 std::uint64_t gArmedSince = 0;  // when the mod last told the host it was armed on foot (set by Arm; 0: not armed)
@@ -968,6 +977,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         if (ue3::Object* const local = gBodyLocalPlayer.Read<ue3::Object*>(controller).value_or(nullptr)) {
             gDrawnNear = gBodyNearClip.Read<float>(local).value_or(-1.0f);  // what this frame draws with
         }
+        StepMatineeFade(camera);
     }
 }
 
@@ -4972,6 +4982,17 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
     }
     for (squad_weapons::MemberView const& m : squad_weapons::Members()) addPerson(m.pawn);
     if (ownerAt && std::none_of(gStay.begin(), gStay.end(), [&](Stay const& st) { return st.actor == owner; })) addPerson(owner);
+    if (gMomentWalk) {
+        // A moment has no conversation: its walkers are whoever is shown near the player (research/69 item 38: the list was empty,
+        // and the stick walked the view into Anderson from behind in both Council walks, 0.18-0.28 m from the eyes). His head
+        // leads his place by up to 1.2 m mid-stride, so it counts too.
+        for (ue3::Object* const o : NearPawns(V(*at), 400.0, 8)) {
+            addPerson(o);
+            if (auto const head = o != pawn ? HeadOf(o) : std::nullopt) {
+                people.push_back(WalkPoint(head->at));
+            }
+        }
+    }
     cw::ClearStep const clear = cw::KeepClear(WalkPoint(V(*at)), step.place, people, gSettings.moveClearM * kUnitsPerMeter);
     if (clear.held) {
         ++gC.clearHits;
@@ -6795,6 +6816,54 @@ void StanceTick(ue3::Object* /*pawn*/) {
     }
 }
 
+// A matinee's own camera fade in a moment held in first person (research/69 item 38, "Obvious bugs, measured"): the walk up to
+// the Spectre ceremony fades the camera to black over its cut to Shepard on the stairs (InterpTrackFade: black 5.3-6.9 s), and
+// the walk-along pause, which stops the matinee, held it near black for about 10 s. The first-person view never cuts, so the
+// fade is not drawn (the camera's bEnableFading cleared each camera update; the matinee sets it again while it plays) and, as
+// for the script's black screen, a change it covered in the player's view gets the mod's short dip (MomentDip, ResolveBlack).
+void StepMatineeFade(ue3::Object* camera) {
+    if (camera == nullptr || !MomentViewOn()) {
+        gFadeUp = false;
+        gDarkSinceMs = 0;
+        gDarkReported = false;
+        return;
+    }
+    float const fade = gCameraFadeAmount.Read<float>(camera).value_or(0.0f);
+    bool const fading = gCameraEnableFading.ReadBool(camera).value_or(false);
+    // The live check (the audit's `dark-view`): the camera as the frame will draw it (after this handler), faded half or more for
+    // half a second in a held moment. With the fade taken off it never fires; `mevr convo matineefade off` is its broken run.
+    auto const darkCheck = [&] {
+        bool const drawnDark = gCameraEnableFading.ReadBool(camera).value_or(false) && fade >= 0.5f;
+        std::uint64_t const nowMs = GetTickCount64();
+        gDarkSinceMs = drawnDark ? (gDarkSinceMs != 0 ? gDarkSinceMs : nowMs) : 0;
+        if (gDarkSinceMs != 0 && nowMs - gDarkSinceMs >= 500 && !gDarkReported) {
+            gDarkReported = true;
+            log::Info("convo: audit: dark-view: a camera fade of {:.2f} drawn over the held first-person view for {:.1f} s (a moment)", fade,
+                static_cast<double>(nowMs - gDarkSinceMs) / 1000.0);
+        }
+    };
+    if (gMatineeFadeShown) {
+        gFadeUp = false;
+        darkCheck();
+        return;
+    }
+    if (fading) {
+        gCameraEnableFading.WriteBool(camera, false);  // FieldRef journals the bitfield write
+        ++gFadesHidden;
+    }
+    bool const up = fading && fade >= 0.5f;
+    if (up && !gFadeUp) {
+        bool const watching = MomentDip();
+        log::Info("moment: the matinee's camera fade is up ({:.2f}): not drawn in the held first-person view{}", fade,
+            watching ? "; a dip from black only if it covers a change in view" : "");
+    } else if (!up && gFadeUp) {
+        gFadeDownMs = GetTickCount64();
+        log::Info("moment: the matinee's camera fade is down again ({} camera updates of it not drawn so far)", gFadesHidden);
+    }
+    gFadeUp = up;
+    darkCheck();
+}
+
 } // namespace
 
 // The move track's question, from game/AuthoredMoment's provider (inside the engine's physics step: reads only): the track's
@@ -6930,11 +6999,14 @@ void ResolveBlack(ue3::Object* pawn) {
         return;
     }
     std::uint64_t const now = GetTickCount64();
+    // A matinee's camera fade (StepMatineeFade) covers its cut for as long as it is up: "covered nothing" is decided only 0.3 s
+    // after it is down (the Spectre walk's cut came 0.36 s after the fade passed half).
+    bool const window = !gFadeUp && now - std::max(gBlack.ms, gFadeDownMs) > 300;
     std::vector<cw::Seen> const after = PeopleInView(pawn, gBlack.eye, gBlack.facing);
     cw::Covered const covered = cw::CoveredChanges(gBlack.before, after);
     double const nearestM = cw::NearestChange(gBlack.before, after, {gBlack.eye.x, gBlack.eye.y, gBlack.eye.z}) / kUnitsPerMeter;
     if (covered.Total() > 0 && gSettings.dipWithinM >= 0.0f && nearestM > gSettings.dipWithinM) {
-        if (now - gBlack.ms > 300) {
+        if (window) {
             log::Info("moment: the script's black screen covered a change in view, but none of it near the player ({} gone, {} "
                       "moved at once, {} new; the nearest {:.1f} m away, worldDipWithinM {:.0f}): no dip",
                 covered.gone, covered.moved, covered.appeared, nearestM, gSettings.dipWithinM);
@@ -6949,7 +7021,7 @@ void ResolveBlack(ue3::Object* pawn) {
                   "nearest {:.1f} m from the player): a dip from black in its place", covered.gone, gBlack.before.size(), covered.moved,
             covered.appeared, nearestM);
         gBlack = {};
-    } else if (now - gBlack.ms > 300) {
+    } else if (window) {
         log::Info("moment: the script's black screen covered nothing in view ({} people, none gone, moved or new in 0.3 s): no dip",
             gBlack.before.size());
         gBlack = {};
@@ -7596,12 +7668,12 @@ std::string Command(std::string const& rest) {
         return std::format("convo: the {} stick is ({:.2f}, {:.2f}) for {:.1f} s as the controller's (the wheel {}, the stick's latch {})", side, *x,
             *y, s.value_or(3.0), gC.wheel ? "up" : "down", gC.wheelStick.held ? "held" : "free");
     }
-    if (verb == "sticklatch" || verb == "stickturn") {
+    if (verb == "sticklatch" || verb == "stickturn" || verb == "matineefade") {
         // Broken runs: `sticklatch off` walks the stick that picked a reply at once; `stickturn off` turns nobody with the right
-        // stick. Never set otherwise.
+        // stick; `matineefade off` draws a moment's camera fade (the dark Spectre walk). Never set otherwise.
         std::string w;
         words >> w;
-        bool& broken = verb == "sticklatch" ? gStickLatchOff : gStickTurnOff;
+        bool& broken = verb == "sticklatch" ? gStickLatchOff : verb == "stickturn" ? gStickTurnOff : gMatineeFadeShown;
         if (w == "on" || w == "off") {
             broken = w == "off";
             log::Info("convo: {} {} ({})", verb, w, broken ? "a fixed bug brought back for a broken run" : "as built");

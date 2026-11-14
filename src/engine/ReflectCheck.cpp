@@ -874,6 +874,8 @@ void CheckFields() {
     CheckField("Engine.PlayerController", "m_oCachedScaleFormManager", SDK_FIELD(APlayerController, m_oCachedScaleFormManager));
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("Engine.Camera", "PCOwner", SDK_FIELD(ACamera, PCOwner));
+    CheckField("Engine.Camera", "bEnableFading", SDK_BOOL(ACamera, bEnableFading));  // a matinee's fade in a held moment (game/ConversationWorld)
+    CheckField("Engine.Camera", "FadeAmount", SDK_FIELD(ACamera, FadeAmount));
     CheckField("Engine.WorldInfo", "PawnList", SDK_FIELD(AWorldInfo, PawnList));
     CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));  // the Mako's gunner: a target's size
     CheckField("Engine.CylinderComponent", "CollisionRadius", SDK_FIELD(UCylinderComponent, CollisionRadius));

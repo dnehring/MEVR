@@ -373,7 +373,8 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     stick as a player holds it (`moved-by-pick`, `turn-ignored`), the pictures (`eye-flat`, `hud-black`, `wheel-cut`), the
     script's black screen on foot, a flash, and which scene a save played; five broken runs, all caught. Found on its first
     run: a near-black frame in the Spectre walk, a flash of the 3D screen into Opold's shop, Anderson 0.2 m from the eyes in
-    the Council walks. Open: the fake headset's 31.3 fps cap (not the window, not the display), item 21's decision.
+    the Council walks; all three fixed the same day (a flat-panel variant of the shop's flash left, now reported). Open: item
+    21's decision; the fake headset's 31.3 fps cap is set aside (the owner: the sleeping monitor, likely).
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
@@ -3773,6 +3774,10 @@ the UI's pictures and frame timing were not. Six steps, in the owner's order ("Y
    render target 2824 x 2880). Leads, not tried: SteamVR's automatic throttling (every present counted late, the app given every
    third vsync), and the two virtual monitors now installed (Virtual Desktop's and Meta's, since the owner's Quest tests; the
    31.9 ms captures began 2026-11-09). Both need a change to the machine's SteamVR or display setup that is the owner's to allow.
+   **The owner, 2026-11-13: the sleeping monitor is the likely cause of these performance blips; not to be debugged yet.**
+   (During the runs above the monitor read as on and the cap held; it may sleep between runs, when the owner is away, which
+   is when the fake headset runs.) Until it is looked at again, read the fake headset's frame timing as capped near 31 fps
+   and take frame-timing questions to a capture in the headset (notes/headset-checklist.md).
 
 A run fails on any of `audit-report.py`'s `FAIL_RULES` (the live rules a player would see at once), a picture check or a wrong
 scene, besides what failed it before. **Broken runs** (one game, `"game": "opold"`, each switch put back after its scene):
@@ -3803,6 +3808,34 @@ view may already be the next screen's: Opold's shop).
   3. **Anderson within 0.18-0.28 m of the player's eyes in both Council walks** (`too-close`, 4.6 s into each, the player walking
      along): seen as 0.41 m in a run of item 37 and taken for a one-off; it recurs.
   4. Unchanged: Benezia's face 86 degrees off the eyes at her line 53, Udina 77 at the ceremony's opening (staged).
+
+**The three fixed** (2026-11-13 19:00-19:26, the owner: "proceed with your work"; each cause found by a read-only agent from the
+logs, records and code, then checked):
+1. **The dark Spectre walk was the matinee's own camera fade** (`PlayerBecomesSpectre`'s `InterpTrackFade_0`: 1 at 0 s, 0 at 0.376,
+   0 at 5.255, 1 at 6.015, 0 at 6.883, over the director's cut at 5.991 that puts Shepard on the stairs), and the walk-along pause,
+   which stops the matinee, held it near black for about 10 s (paused 29.6-40.1 s; snapshot means 1.5, 8.3, then 59). **Fix**
+   (`StepMatineeFade`, from the `Camera.UpdateCamera` post-handler in modes 5 and 6): in a held moment the camera's
+   `bEnableFading` is cleared each update (journalled; the matinee sets it again each tick it plays; never written true), so the
+   fade isn't drawn; as it rises past half the moment's black-screen watch starts (`MomentDip`), and `ResolveBlack` decides
+   "covered nothing" only 0.3 s after it is down again. Log `moment: the matinee's camera fade is up (...)` / `down again`. Seen:
+   the walk's fades taken off (189 camera updates in one), one dip where the fade covered a change, no flat eye. Live check
+   `dark-view` (the camera as the frame draws it, half faded or more for 0.5 s in a held moment); broken run `mevr convo
+   matineefade off`: caught by `dark-view` (1.00 for 0.5 s) and `eye-flat`.
+2. **The flash into Opold's shop: Halcyon's conversation latch from game mode 5 lasted into the first mode-7 frame**
+   (xr_session.cpp's DecideCine latches `s_convo` on every mode-5 frame; the world exception was for mode 5 only; the mod had not
+   yet published the shop, so `liveWorldGui` was false: the 3D screen for one frame). The three clean plays had a mode-0 frame
+   between (it clears the latch). **Fix** (two `[MEVR]` lines in xr_session.cpp): mode 7 with a conversation in the world is not a
+   conversation for the decision, and its frame gets the second eye (`effectiveGm` 0). Seen: 6 plays, 0 flashes (two of them
+   straight from mode 5 to 7, the race). **Left: a variant** (1 of 6): mode 5, 0 (the conversation ended), then 7 before the
+   shop's world UI is published: Halcyon's flat panel for 0.07 s (`[VRSTATE] gm 7 alive -> FLAT panel`). Not fixed: holding the
+   view there means treating a GUI screen opened from on foot as the world for its first frames, which touches every screen; the
+   session judge now reports it (`tools/conversation-session.py`: a non-VR state under 0.25 s between two VR states), so a run
+   with it fails.
+3. **Anderson in the player's eyes: the stick walked the view into his back**, and the walk's clearance had nobody to keep clear
+   of in a moment (`MovePlayer`'s list is the conversation's people, the squad and the owner; `BeginMomentView` resets them):
+   Anderson stood 1.9 m ahead, set off at about 1.0 m/s in a lane 0.1-0.2 m from the player's at 1.25 m/s (`0.70 m clear of 0
+   people` in both walks against 5 in a conversation). **Fix**: in a moment the people shown within 4 m (`NearPawns`) and their head
+   bones (his head led his place by 1.2 m mid-stride) are kept clear of too. Seen: both Council walks without `too-close`.
 
 ## To check in the game
 
@@ -4257,3 +4290,7 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   the wheel's latch (`mevr convo stick`), snapshot pictures, the black screen on foot, the scene a save played; five broken runs
   caught in one game; the set found a near-black frame in the Spectre walk, a 3D-screen flash into Opold's shop and Anderson
   0.2 m from the eyes; the fake headset's 31.3 fps cap is neither the window's cover nor the display's sleep.
+- 2026-11-13 19:30, **item 38, the three fixed**: a moment's camera fade isn't drawn (the dark Spectre walk; live check
+  `dark-view`, broken run `matineefade off` caught), a conversation in the world handing over to a GUI screen is no longer a
+  conversation for Halcyon's decision (Opold's flash: 0 of 6), a moment's walk keeps clear of the people near (Anderson); the
+  shop's flat-panel variant (mode 0 between) is reported by the session judge, not fixed.

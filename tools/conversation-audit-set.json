@@ -31,6 +31,7 @@
   {"name": "person-vanished", "game": "opold", "key": "ice20_opold_dlg", "breaks": "the person spoken to not drawn while in sight (the culling camera, 2026-11-06)", "switch": "mevr convo hide person on", "restore": "mevr convo hide person off", "mustFind": ["person-not-drawn"]},
   {"name": "near-plane-from-the-eyes", "game": "opold", "key": "ice20_opold_dlg", "breaks": "the director's near plane drawn from the eyes (the floor and the body cut away, 2026-11-10)", "switch": "mevr convo nearplane off", "restore": "mevr convo nearplane on", "mustFind": ["near-plane"]},
   {"name": "walk-after-pick", "game": "opold", "key": "ice20_opold_dlg", "breaks": "the stick that picked a reply walks at once (the lurch after every reply, 2026-11-10)", "switch": "mevr convo sticklatch off", "restore": "mevr convo sticklatch on", "mustFind": ["moved-by-pick"]},
+  {"name": "dark-walk", "key": "sta90_spectre_ceremony", "breaks": "the walk's own camera fade drawn in the held first-person view, held near black by the walk-along pause (the Spectre walk, 2026-11-13)", "switch": "mevr convo matineefade off", "restore": "mevr convo matineefade on", "mustFind": ["dark-view", "eye-flat"]},
   {"name": "stick-turns-nobody", "game": "opold", "key": "ice20_opold_dlg", "breaks": "the right stick turns nobody in a conversation (2026-11-11)", "switch": "mevr convo stickturn off", "restore": "mevr convo stickturn on", "mustFind": ["turn-ignored"]}
  ]
 }

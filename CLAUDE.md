@@ -366,7 +366,8 @@ switching frameworks.
   (the frame's `NearClipPlane`); `moved-by-pick` and `turn-ignored` (`mevr convo stick left|right ...` is the controller's stick
   through the wheel's latch; the runner's `-HoldThroughPick`, `-StickTurnAt`); the snapshots' `eye-flat`, `hud-black`, `wheel-cut`
   (`audit-report.py`, a snapshot at each first wheel); `black-panel-on-foot` (game/AuthoredMoment); which scene played
-  (`sceneSeen`, a scene's `startEntry`). Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
+  (`sceneSeen`, a scene's `startEntry`); the session judge's `flash` (a conversation in the world handing over to a GUI screen,
+  mode 7, no longer flashes the 3D screen: a `[MEVR]` seam in xr_session.cpp's decision). Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
   (`"game": "opold"`: `mevr convo hide body|person on`, `nearplane off`, `sticklatch off`, `stickturn off`).
   **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
   and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/
@@ -685,7 +686,10 @@ switching frameworks.
   end (`BioIsPlaying`, `IsPlayingFaceFXAnim`), cleared within `worldWalkAlongResumeM` (1.5) or after `worldWalkAlongMaxS`;
   `cw::StepWalkAlong`; the view never joins a paused walk; in a moment the walk's boundary (`worldMoveLeashM`) is around
   Shepard's track place (`gMomentShepardAt`; around where the moment began it was a wall 4 m into Anderson's walk);
-  `mevr convo follow on|off` walks along in tests; **scenes are
+  `mevr convo follow on|off` walks along in tests; a matinee's own camera fade is not drawn in a held moment (`Camera.bEnableFading`
+  cleared each camera update, `StepMatineeFade`; a change it covered gets the mod's dip; the walk-along pause had held the Spectre
+  walk near black for 10 s; `mevr convo matineefade off` is its broken run), and the walk in a moment keeps clear of the people
+  shown near the player and their heads (`NearPawns`: the stick had walked the view into Anderson's back; research/69 item 38); **scenes are
   audited by rule** (research/69 "Auditing scenes by rule"): `tools/scene_audit.py`'s rules over the records
   (`conversation-stance.py --findings`, `--baseline-write|--baseline-compare <file>`; ctest `mevr-scene-audit`), the regression
   set `tools/conversation-audit.ps1` (`conversation-audit-set.json`, baseline `conversation-audit-baseline.json`), and the same

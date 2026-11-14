@@ -3506,6 +3506,9 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
     }
     // [MEVR] research/59: a conversation in the world (the view held at Shepard's, first person) is the world as on foot.
     if (d.inConversation && in.gameMode == 5 && MELEVR::MevrBridge::ConversationWorldOrComing()) d.inConversation = false;
+    // [MEVR] research/69 item 38: a conversation in the world that hands over to a GUI screen (a merchant's shop, mode 7) went
+    // to the 3D screen for the frame before the mod published the screen (the latch from mode 5; a 0.03 s flash, 3 of 6 plays).
+    if (d.inConversation && in.gameMode == 7 && MELEVR::MevrBridge::ConversationInWorld()) d.inConversation = false;
     // [MEVR] research/69 "Authored scenes": a level-script matinee that walks Shepard, held in first person by the mod (the
     // cinematic game mode, 6), is the world as on foot too.
     if (d.inCutscene && in.gameMode == 6 && MELEVR::MevrBridge::ConversationWorldOrComing()) d.inCutscene = false;
@@ -3845,6 +3848,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         }
         if (gameMode == 5 && !inConversationMode && MELEVR::MevrBridge::ConversationWorldOrComing()) effectiveGm = 0;   // [MEVR] research/59: as on foot
         if (gameMode == 6 && !inCutsceneMode && MELEVR::MevrBridge::ConversationWorldOrComing()) effectiveGm = 0;       // [MEVR] research/69: a moment in the world
+        if (gameMode == 7 && !inConversationMode && MELEVR::MevrBridge::ConversationInWorld()) effectiveGm = 0;         // [MEVR] research/69 item 38: its hand-over frame
         MELEVR::RenderHook::PublishGameModeForSfr(effectiveGm, cfg.cineVrConvo, cfg.cineVrCutscene || cineIn.frontEndScreen, liveWorldGui);   // [MEVR]
         MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameCine);   // [MEVR] frame-breakdown probe
     }
