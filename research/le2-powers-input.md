@@ -6,6 +6,13 @@ The implemented adapter reuses `pad-pulse` with B after validating the exact
 weapon-loadout context. Offline checks pass; live context availability, input
 consumption and successful exit remain pending.
 
+Candidate `ad31adeb` passed the three builds and ordinary 53/53 plus diagnostic
+14/14 tests. Its protected `1848Z-powers` trial stopped earlier in chapter
+loading: the game reported BlackScreen with playersOnly set, and captures were
+black. No pad pulse was sent, so that run neither validates nor exercises this
+new category. All four protected roots restored. See the
+[native evidence](le2-validation-evidence.md#powers-back-adapter-built-next-run-stopped-at-blackscreen-before-input).
+
 ## Evidence and normal route
 
 Run `370f621d-8fa9-4b73-bd7c-c81935f64f0a` (candidate `7eee6b6f`) visibly advanced
@@ -39,7 +46,10 @@ callback owner and subsequent sequence destination remain unobserved. Directly
 calling shutdown, the close delegate, `RemovePanel` or a sequence callback would
 bypass the normal input path and is outside the proposed trial.
 
-## Reuse before adding anything
+## Reuse audit before implementation
+
+This table records the gaps found before the adapter was added. The implemented
+checks and current proof limits are recorded below.
 
 | Existing implementation | Actual support | Smallest remaining seam |
 |---|---|---|

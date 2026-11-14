@@ -1,15 +1,21 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 testing tools: reuse audit and runtime observer history
 
-Current audit: **2026-11-14, native candidate `7eee6b6f`**. We already have the ME2 save,
+Current audit: **2026-11-14**. Candidate `ad31adeb` adds the existing channel's
+Back-only CharacterRecord adapter; its first native attempt stalled earlier at
+BlackScreen after chapter loading, before any pulse. Resources/map matched,
+but scene readiness failed and restoration verified. See the
+[failed readiness attempt](le2-validation-evidence.md#powers-back-adapter-built-next-run-stopped-at-blackscreen-before-input).
+The strongest earlier selection proof below is from candidate `7eee6b6f`.
+We already have the ME2 save,
 launch, protected-session, capture, control and scenario workflow. Native
-eight-resource save/reload persistence is proven; an untouched chapter loads to
+eight-resource save/reload persistence is proven; an untouched chapter has loaded to
 Squad Selection. One earlier run selected Miranda and Grunt and reached the
-confirmation modal, but the next run did not reproduce that sequence. The latest
+confirmation modal, but the next run did not reproduce that sequence. The `1821Z`
 run selected Miranda and Grunt, showed the confirmation modal, then advanced to
 the squad Powers screen after one confirmation pulse. Before confirmation, the
 read-only observer resolved the external sequence owner and sampled its completion
-flag as false. The next screen has no supported diagnostic input context; no
+flag as false. At that candidate the next screen was unsupported; no
 true completion-flag sample or combat fixture was obtained.
 Weapon observation has native samples. Reproducibility and progression beyond
 the Powers screen remain unproven. The three gameplay
@@ -58,7 +64,7 @@ Audit findings:
 3. The `partyMember1/2` fields stayed zero during initial selection despite
    visible changes. The confirmation guard now observes indices 6/7 and labels
    Vixen/Grunt at the modal; do not extend those semantics to the earlier stage.
-4. The latest run passed the modal and reached Powers. This does not establish
+4. Run `1821Z` passed the modal and reached Powers. This does not establish
    why the previous run stalled. Do not admit every GUI screen merely to advance
    this fixture; inspect the actual Powers handler and its normal exit path.
 5. Save/resource tools are usable now. Existing LE1 stereo, replay and scenario
@@ -171,10 +177,10 @@ existing run/PID/lease-bound channel rather than copying those request writers.
 
 ## Next work using these tools
 
-1. Use the [Powers handler source audit](le2-powers-input.md) and current input
-   observer to validate the live normal exit route. The latest chapter run reaches this
-   screen, not a weapon-loadout screen. Extend the existing context adapter only
-   for the verified route; preserve unsupported-context rejection elsewhere.
+1. Resolve chapter readiness or acquire another natural fixture; `1848Z` stalled
+   before selection. Then validate the implemented [Powers Back adapter](le2-powers-input.md)
+   in the live screen reached by `1821Z`. Preserve unsupported-context rejection
+   elsewhere; do not treat offline adapter checks as successful menu progression.
 2. Reproduce normal squad selection and Powers exit, then acquire a safe combat
    save using existing New Save/collector tools. Add actual weapon/ammo
    observations before claiming reload behavior. Earlier stalled confirmation
