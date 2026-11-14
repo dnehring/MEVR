@@ -56,17 +56,20 @@ struct ObjectSample {
 };
 struct ParameterSample {
     ObjectSample property;
+    ObjectSample objectClass;
+    bool hasObjectClass{}, guiManagerClass{};
     char name[kNameBytes]{};
     int offset{}, elementSize{}, arrayDim{};
     std::uint64_t flags{};
     bool hasBoolMask{};
     std::uint32_t boolMask{};
 };
-enum class Declaration { Console, Fov, OpenLoad, AdvanceSplash };
+enum class Declaration { Console, Fov, OpenLoad, AdvanceSplash, LoadGame };
 char const* DeclarationName(Declaration d) {
     switch (d) {
     case Declaration::Console: return "Engine.PlayerController.ConsoleCommand";
     case Declaration::Fov: return "Engine.PlayerController.GetFOVAngle";
+    case Declaration::LoadGame: return "SFXGame.SFXSFHandler_Load.LoadGame";
     case Declaration::OpenLoad: return "SFXGame.BioSFHandler_MainMenu.MoveToLoadGui";
     case Declaration::AdvanceSplash: return "SFXGame.BioSFHandler_PCSplash.AdvanceScreen";
     }
@@ -240,11 +243,11 @@ bool HasExpectedParameter(FunctionSample const& sample, char const* name, char c
 
 void ReadFunction(Table const& table, UObject const* controller, FunctionSample& out, Declaration declaration) {
     bool const fov = declaration == Declaration::Fov;
-    bool const menu = declaration == Declaration::OpenLoad || declaration == Declaration::AdvanceSplash;
+    bool const menu = declaration == Declaration::OpenLoad || declaration == Declaration::AdvanceSplash || declaration == Declaration::LoadGame;
     char const* package = menu ? "SFXGame" : "Engine";
-    char const* ownerName = declaration == Declaration::OpenLoad ? "BioSFHandler_MainMenu" :
+    char const* ownerName = declaration == Declaration::LoadGame ? "SFXSFHandler_Load" : declaration == Declaration::OpenLoad ? "BioSFHandler_MainMenu" :
         declaration == Declaration::AdvanceSplash ? "BioSFHandler_PCSplash" : "PlayerController";
-    char const* functionName = declaration == Declaration::OpenLoad ? "MoveToLoadGui" :
+    char const* functionName = declaration == Declaration::LoadGame ? "LoadGame" : declaration == Declaration::OpenLoad ? "MoveToLoadGui" :
         declaration == Declaration::AdvanceSplash ? "AdvanceScreen" : fov ? "GetFOVAngle" : "ConsoleCommand";
     // Match Legacy's exact declaration owner, not a derived class's override.
     auto const* owner = controller->Class;
@@ -331,6 +334,13 @@ void ReadFunction(Table const& table, UObject const* controller, FunctionSample&
             out.reason = "invalid-bool-storage-or-mask";
             if (p.elementSize != 4 || p.boolMask == 0 || (p.boolMask & (p.boolMask - 1)) != 0) return;
         }
+        if (declaration == Declaration::LoadGame && Qualified(table, property->Class, "Core", "ObjectProperty")) {
+            p.hasObjectClass = true;
+            auto const* targetClass = static_cast<UObjectProperty const*>(property)->PropertyClass;
+            out.reason = "object-parameter-class-unavailable";
+            if (!ClassMetadata(table, targetClass) || !ReadObject(table, targetClass, "Core", "Class", p.objectClass)) return;
+            p.guiManagerClass = Qualified(table, targetClass, "SFXGame", "MassEffectGuiManager");
+        }
         ++out.parameterCount;
     }
     out.parametersComplete = true;
@@ -343,7 +353,14 @@ void ReadFunction(Table const& table, UObject const* controller, FunctionSample&
         HasExpectedParameter(out, "Command", "Core.StrProperty", 0, 16, 0x400080) &&
         HasExpectedParameter(out, "bWriteToLog", "Core.BoolProperty", 0x10, 4, 0x90, 1) &&
         HasExpectedParameter(out, "ReturnValue", "Core.StrProperty", 0x14, 16, 0x400580);
-    if (menu) out.layoutMatches = declaration == Declaration::OpenLoad ?
+    if (declaration == Declaration::LoadGame) {
+        bool managerClass = false;
+        for (unsigned i = 0; i < out.parameterCount; ++i)
+            if (std::strcmp(out.parameters[i].name, "GuiMan") == 0) managerClass = out.parameters[i].guiManagerClass;
+        out.layoutMatches = out.parmsSize == 12 && out.numParms == 2 && out.parameterCount == 2 && managerClass &&
+            HasExpectedParameter(out, "SaveIdx", "Core.IntProperty", 0, 4, 0x80) &&
+            HasExpectedParameter(out, "GuiMan", "Core.ObjectProperty", 4, 8, 0x80);
+    } else if (menu) out.layoutMatches = declaration == Declaration::OpenLoad ?
         out.parmsSize == 1 && out.numParms == 1 && out.parameterCount == 1 &&
         HasExpectedParameter(out, "LoadMode", "Core.ByteProperty", 0, 1, 0x80) :
         out.parmsSize == 0 && out.numParms == 0 && out.parameterCount == 0;
@@ -415,6 +432,8 @@ void Read(void* context) {
 
 constexpr unsigned kMaxMenuPanels = 32, kMaxPanelHandlers = 32, kMaxSaveRows = 12;
 constexpr std::size_t kSaveMenuPayloadBytes = 14 * 1024;
+static_assert(sizeof(USFXSFHandler_Load_execLoadGame_Parms) == 12);
+static_assert(offsetof(USFXSFHandler_Load_execLoadGame_Parms, SaveIdx) == 0 && offsetof(USFXSFHandler_Load_execLoadGame_Parms, GuiMan) == 4);
 static_assert(sizeof(FSFXSaveDescriptor) == 0x28 && sizeof(FSaveGUIRecord) == 0x70);
 static_assert(offsetof(FSaveGUIRecord, SaveDescriptor) == 0);
 static_assert(offsetof(FSFXSaveDescriptor, Career) == 0 && offsetof(FSFXSaveDescriptor, SaveName) == 0x10);
@@ -551,6 +570,7 @@ void ReadMenu(void* context) {
     out.contextAvailable = true; out.reason = "reachable-menu-context-only";
     if (!out.load.handler.available) return;
     auto const* h = reinterpret_cast<USFXSFHandler_Load const*>(out.load.handler.address);
+    ReadFunction(table, h, out.load.function, Declaration::LoadGame);
     out.load.waitingMessage = h->bWaitingOnMsgBox; out.load.enumerating = h->bEnumeratingSaves;
     out.load.checkingComplete = h->bCheckingDataComplete; out.load.fromMainMenu = h->bFromMainMenu;
     out.load.guiMode = h->GuiMode; out.load.loadMode = h->LoadMode; out.load.careerIndex = h->CurrentCareerIndex;
@@ -727,7 +747,7 @@ json::Value FunctionJson(FunctionSample const& sample, char const* failure, Decl
         out["numParms"] = static_cast<int>(sample.numParms);
         out["returnValueOffset"] = sample.returnOffset;
         out["functionFlags"] = std::format("0x{:08X}", sample.functionFlags);
-        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (declaration == Declaration::OpenLoad ? 0x20002u : declaration == Declaration::AdvanceSplash || fov ? 0x20802u : 0x24400u);
+        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (declaration == Declaration::LoadGame ? 0x820003u : declaration == Declaration::OpenLoad ? 0x20002u : declaration == Declaration::AdvanceSplash || fov ? 0x20802u : 0x24400u);
         out["nativeIndex"] = static_cast<int>(sample.nativeIndex);
     }
     if (fov) {
@@ -745,6 +765,7 @@ json::Value FunctionJson(FunctionSample const& sample, char const* failure, Decl
         item["elementSize"] = p.elementSize;
         item["arrayDim"] = p.arrayDim;
         item["propertyFlags"] = std::format("0x{:016X}", p.flags);
+        if (p.hasObjectClass) { item["objectClass"] = ObjectJson(p.objectClass, nullptr); item["objectClassIsGuiManager"] = p.guiManagerClass; }
         if (p.hasBoolMask) item["boolMask"] = std::format("0x{:08X}", p.boolMask);
         parameters.Push(std::move(item));
     }
@@ -897,6 +918,8 @@ json::Value MenuContextJson(MenuSample const& sample, char const* failure) {
         out["mainMenu"]["moveToLoadGui"]["voidReturnOffsetExpectation"] = "unverified-observed-value-only";
     }
     if (sample.load.handler.available) {
+        out["load"]["loadGame"] = FunctionJson(sample.load.function, nullptr, Declaration::LoadGame);
+        out["load"]["loadGame"]["voidReturnOffsetExpectation"] = "unverified-observed-value-only";
         out["load"]["waitingOnMessageBox"] = sample.load.waitingMessage;
         out["load"]["enumeratingSaves"] = sample.load.enumerating;
         out["load"]["checkingDataComplete"] = sample.load.checkingComplete;

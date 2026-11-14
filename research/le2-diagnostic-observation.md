@@ -422,8 +422,8 @@ chains, Unicode, malformed text/read faults, duplicate/foreign/template objects,
 wrong focus, asynchronous state, changed second sample, exact menu metadata and
 payload overflow. Release and Debug each passed the existing standalone suite with these new cases,
 with both production/test translation units compiled under `/W4 /WX`. The
-representative 12-row compact response was 8,338 bytes; the escaped-string budget
-fallback was 5,989 bytes. These measured cases supplement the runtime size guard. Production dispatch compilation remains covered by the separate existing
+representative 12-row compact response was 9,838 bytes; the escaped-string budget
+fallback was 7,489 bytes. These measured cases supplement the runtime size guard. Production dispatch compilation remains covered by the separate existing
 object target, without executing it. None of these tests is native menu evidence.
 
 
@@ -474,3 +474,17 @@ parameters, fixed opener byte, expected focus changes, exceptions and corruption
 on both adjacent sides, including no engine reads after uncertain entry. The
 production translation unit compiles the fixed SDK route; only the test build
 can substitute/reset a dispatcher. No native action was performed by this slice.
+
+
+### Read-only normal LoadGame declaration
+
+The Load context also reports `SFXGame.SFXSFHandler_Load.LoadGame`, expecting
+flags `0x00820003`, two input properties and the actual SDK's packed 12-byte
+block: IntProperty SaveIdx at 0 (four bytes), ObjectProperty GuiMan at 4 (eight
+bytes), both flags `0x80`. The object property's own declared target class must
+be a live validated `SFXGame.MassEffectGuiManager` class object; a same-sized
+pointer with another declared class is a mismatch. Closer subclass overrides,
+return properties, overlaps and malformed class links are refused. The void
+return offset remains observed, not guessed. Synthetic tests cover this layout,
+foreign/invalid object classes and overlap. This adds metadata only: there is no
+LoadGame dispatch helper or descriptor-to-file mapping in this implementation.
