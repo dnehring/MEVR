@@ -50,6 +50,9 @@ its own invitation after reset. No deployed diagnostic or loader was retained.
 Private launch, deployment, mapping, identity, request/result, loader-log and
 restoration evidence lives in `local-tools/le2-diagnostic-handoff/` under
 `run-20261114T0537Z` and `run-20261114T0542Z`.
+The exact tested ASI and loader were copied from the verified post-run archive
+to `local-tools/le2-diagnostic-handoff/candidate-59b5e775/` and rehashed, so later
+incremental builds cannot replace this candidate's evidence.
 
 Candidate `59b5e775` passed all three ordinary build configurations and **42/42**
 CTest checks. Its console string-lifetime fix is independently tested against
