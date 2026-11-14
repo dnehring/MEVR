@@ -43,6 +43,9 @@ json::Value Observe(std::uint32_t gameThreadId,
 // No menu calls; descriptor content keys are diagnostic comparisons, not handles
 // or proof of a file hash. Incomplete/ambiguous lists cannot select a fixture.
 json::Value ObserveSaveMenu(std::uint32_t gameThreadId);
+// Direct current-player inventory POD reads only. No getters, providers, save
+// cache fallback or engine writes. Each resource has independent availability.
+json::Value ObserveResources(std::uint32_t gameThreadId);
 
 struct ProbeResult {
     std::string status;
@@ -75,6 +78,8 @@ void ResetFovProbe(FovDispatcher dispatcher);
 using MenuDispatcher = void (*)(void* handler, void* function, void* parameters);
 void ResetMenuActions(MenuDispatcher dispatcher);
 void ResetFixtureLoad(MenuDispatcher dispatcher);
+using ResourceSampleHook = void (*)();
+void SetResourceSampleHook(ResourceSampleHook hook);
 }
 #endif
 #endif

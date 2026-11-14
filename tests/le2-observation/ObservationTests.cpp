@@ -169,6 +169,15 @@ void FakeFixtureDispatch(void* handler, void* function, void* parameters) {
     if (fixtureDispatchMode == 6) bytes[4] ^= 1;
     if (fixtureDispatchMode == 0) { fixtureManager->m_FocusPanel = nullptr; fixturePanel->IsVisible = 0; }
 }
+ASFXInventoryManager* resourceInventory{};
+APawn* resourcePawnForMutation{};
+int resourceMutation{};
+void MutateResourceSample() {
+    if (resourceMutation == 1) ++resourceInventory->Probes;
+    if (resourceMutation == 2) resourceInventory->Owner = nullptr;
+    if (resourceMutation == 3) resourcePawnForMutation->Location.X += 1;
+    if (resourceMutation == 4) resourceInventory->CurrentFuel = std::numeric_limits<float>::quiet_NaN();
+}
 void FakeFovDispatch(void* controller, void* function, void* parameters) {
     ++dispatchCalls;
     readsAtDispatch = engineReadCalls;
@@ -978,6 +987,117 @@ int main() {
             auto calls = fixtureDispatchCalls;
             Check(LoadFixture(thread, fixtureServices, frozen).status == "rejected" && fixtureDispatchCalls == calls, "uncertain load cannot retry");
         }
+        // Direct live inventory observation: every resource is synthetic POD.
+        using mevr::engine::le2_diagnostic::ObserveResources;
+        using mevr::engine::le2_diagnostic::testing::SetResourceSampleHook;
+        Raw<UClass> playerPawnResourceType, soldierResourceType, resourceInventoryType, resourceSquadType;
+        Raw<ASFXPawn_PlayerSoldier> resourcePawn;
+        Raw<ASFXInventoryManager> inventory;
+        Raw<ABioPlayerSquad> resourceSquad;
+        add(playerPawnResourceType.get(), "SFXPawn_Player", meta.get(), sfxPackage.get()); playerPawnResourceType.get()->SuperField = pawnType.get();
+        add(soldierResourceType.get(), "SFXPawn_PlayerSoldier", meta.get(), sfxPackage.get()); soldierResourceType.get()->SuperField = playerPawnResourceType.get();
+        add(resourceInventoryType.get(), "SFXInventoryManager", meta.get(), sfxPackage.get());
+        add(resourceSquadType.get(), "BioPlayerSquad", meta.get(), sfxPackage.get());
+        add(resourcePawn.get(), "ResourcePawn", soldierResourceType.get(), nullptr);
+        add(inventory.get(), "ResourceInventory", resourceInventoryType.get(), nullptr);
+        add(resourceSquad.get(), "ResourceSquad", resourceSquadType.get(), nullptr);
+        controller.get()->Pawn = resourcePawn.get(); controller.get()->Player = local.get();
+        resourcePawn.get()->Controller = controller.get(); resourcePawn.get()->WorldInfo = menuWorldInfo.get();
+        resourcePawn.get()->InvManager = inventory.get(); resourcePawn.get()->Location = {11, 22, 33};
+        inventory.get()->Owner = inventory.get()->Instigator = resourcePawn.get(); inventory.get()->WorldInfo = menuWorldInfo.get();
+        menuWorldInfo.get()->LocalPlayerController = reinterpret_cast<ABioPlayerController*>(controller.get());
+        menuWorldInfo.get()->m_playerSquad = resourceSquad.get();
+        resourceSquad.get()->m_playerPawn = resourcePawn.get(); resourceSquad.get()->WorldInfo = menuWorldInfo.get();
+        inventory.get()->Credits = 123456; inventory.get()->Medigel = 4; inventory.get()->Eezo = 50;
+        inventory.get()->Iridium = 60; inventory.get()->Palladium = 70; inventory.get()->Platinum = 80;
+        inventory.get()->Probes = 0; inventory.get()->CurrentFuel = 1500.25f;
+        auto resources = [&] { return ObserveResources(thread); };
+        auto fields = [&] { return resources().Get("resources"); };
+        auto initialResources = resources();
+        Check(initialResources.Bool("allResourcesAvailable") && initialResources.Get("context").Bool("available") &&
+              initialResources.Get("context").Bool("squadCrossCheckAvailable"), "validated current-player inventory and independent squad route");
+        Check(initialResources.Get("context").Get("map").Bool("available") && initialResources.Get("context").Get("position").Number("x") == 11,
+              "resource context map and position come from same fresh root sample");
+        Check(fields().Get("credits").Number("value") == 123456 && fields().Get("medigel").Number("value") == 4 &&
+              fields().Get("eezo").Number("value") == 50 && fields().Get("iridium").Number("value") == 60 &&
+              fields().Get("palladium").Number("value") == 70 && fields().Get("platinum").Number("value") == 80 &&
+              fields().Get("probes").Number("value", -1) == 0 && fields().Get("fuel").Number("value") == 1500.25,
+              "all8 source fields mapped without rounding fuel or dropping legitimate zero");
+        Check(!initialResources.Bool("saveCacheUsed") && !initialResources.Bool("persistenceProven") &&
+              !initialResources.Bool("dispatchCapability"), "no save cache or call/persistence claim");
+        Check(fields().Get("fuel").String("sourceField") == "SFXGame.SFXInventoryManager.CurrentFuel", "normalized fuel names exact SDK source");
+        inventory.get()->Credits = std::numeric_limits<int>::max(); inventory.get()->MaxCredits = 0;
+        Check(fields().Get("credits").Bool("available") && fields().Get("credits").Number("value") == std::numeric_limits<int>::max(),
+              "no invented MaxCredits clamp or overflow on valid int32");
+        inventory.get()->Credits = -1;
+        Check(!fields().Get("credits").Bool("available") && !fields().Get("credits").Has("value") && fields().Get("medigel").Bool("available"),
+              "negative resource unavailable independently without fabricated zero"); inventory.get()->Credits = 123456;
+        for (float invalidFuel : {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(), -1.0f}) {
+            inventory.get()->CurrentFuel = invalidFuel;
+            Check(!fields().Get("fuel").Bool("available") && !fields().Get("fuel").Has("value") && fields().Get("probes").Bool("available"),
+                  "nonfinite/negative fuel cannot hide other valid fields or serialize invalid number");
+        }
+        inventory.get()->CurrentFuel = 1500.25f;
+        inventory.get()->ObjectFlags = 0x200;
+        Check(!resources().Get("context").Bool("available") && !fields().Get("credits").Has("value"), "template inventory refused"); inventory.get()->ObjectFlags = 0;
+        inventory.get()->ObjectFlags = 0x2000000000000000ull;
+        Check(!resources().Get("context").Bool("available"), "pending kill inventory refused"); inventory.get()->ObjectFlags = 0;
+        inventory.get()->Owner = pawn.get(); Check(resources().String("reason") == "inventory-owner-instigator-or-world-disagrees", "foreign inventory owner refused"); inventory.get()->Owner = resourcePawn.get();
+        inventory.get()->Instigator = pawn.get(); Check(!resources().Get("context").Bool("available"), "foreign inventory instigator refused"); inventory.get()->Instigator = resourcePawn.get();
+        inventory.get()->WorldInfo = nullptr; Check(!resources().Get("context").Bool("available"), "foreign inventory world refused"); inventory.get()->WorldInfo = menuWorldInfo.get();
+        resourcePawn.get()->Controller = nullptr; Check(!resources().Get("context").Bool("available"), "pawn-controller reciprocal required"); resourcePawn.get()->Controller = controller.get();
+        controller.get()->Player = nullptr; Check(!resources().Get("context").Bool("available"), "controller-localplayer reciprocal required"); controller.get()->Player = local.get();
+        resourceSquad.get()->m_playerPawn = reinterpret_cast<ABioPawn*>(pawn.get());
+        Check(resources().String("reason") == "squad-player-or-world-disagrees", "squad and local player resource routes cannot disagree"); resourceSquad.get()->m_playerPawn = resourcePawn.get();
+        menuWorldInfo.get()->m_playerSquad = nullptr;
+        Check(resources().Bool("allResourcesAvailable") && !resources().Get("context").Bool("squadCrossCheckAvailable"), "missing auxiliary squad never fabricates a cross-check or uses alternate resource cache");
+        menuWorldInfo.get()->m_playerSquad = resourceSquad.get();
+        menuWorldInfo.get()->LocalPlayerController = reinterpret_cast<ABioPlayerController*>(1);
+        Check(resources().String("reason") == "world-controller-cache-disagrees", "foreign world controller cache refused without dereference");
+        menuWorldInfo.get()->LocalPlayerController = reinterpret_cast<ABioPlayerController*>(controller.get());
+        resourcePawn.get()->Class = pawnType.get(); Check(resources().String("reason") == "not-current-SFXPawn_Player", "vehicle/generic pawn not treated as player resource authority"); resourcePawn.get()->Class = soldierResourceType.get();
+        resourceInventory = inventory.get(); resourcePawnForMutation = resourcePawn.get(); SetResourceSampleHook(MutateResourceSample);
+        resourceMutation = 1;
+        auto changingProbes = resources();
+        Check(changingProbes.Get("context").Bool("available") && !changingProbes.Get("resources").Get("probes").Bool("available") &&
+              changingProbes.Get("resources").Get("credits").Bool("available"), "single changing value unavailable independently");
+        resourceMutation = 2;
+        auto changingOwner = resources();
+        Check(!changingOwner.Get("context").Bool("available") && !changingOwner.Get("resources").Get("credits").Has("value"), "changed root ownership invalidates all values"); inventory.get()->Owner = resourcePawn.get();
+        resourceMutation = 3;
+        auto changingPosition = resources();
+        Check(changingPosition.Bool("allResourcesAvailable") && !changingPosition.Get("context").Get("position").Bool("available"), "moving position unavailable without fabricating same-snapshot coordinates");
+        resourceMutation = 4;
+        auto changingFuel = resources();
+        Check(!changingFuel.Get("resources").Get("fuel").Bool("available") && changingFuel.Get("resources").Get("credits").Bool("available"), "fuel mutation isolated from other values");
+        SetResourceSampleHook(nullptr); inventory.get()->CurrentFuel = 1500.25f;
+        // Place the seven trailing fields on an unreadable page while all root
+        // metadata and Credits remain readable: one field fault cannot zero all.
+        SYSTEM_INFO systemInfo{}; GetSystemInfo(&systemInfo);
+        auto* pages = static_cast<unsigned char*>(VirtualAlloc(nullptr, systemInfo.dwPageSize * 2, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+        Check(pages != nullptr, "allocate synthetic guard-page inventory");
+        auto* partialInventory = reinterpret_cast<ASFXInventoryManager*>(pages + systemInfo.dwPageSize - 0x308);
+        std::memcpy(partialInventory, inventory.get(), sizeof(ASFXInventoryManager));
+        auto inventoryIndex = inventory.get()->ObjectInternalInteger;
+        slots[inventoryIndex] = partialInventory; resourcePawn.get()->InvManager = partialInventory;
+        DWORD previousProtection{};
+        Check(VirtualProtect(pages + systemInfo.dwPageSize, systemInfo.dwPageSize, PAGE_NOACCESS, &previousProtection) != 0, "protect trailing resource page");
+        auto partiallyReadable = resources();
+        Check(partiallyReadable.Get("context").Bool("available") && partiallyReadable.Get("resources").Get("credits").Bool("available") &&
+              !partiallyReadable.Get("resources").Get("medigel").Bool("available") &&
+              partiallyReadable.Get("resources").Get("fuel").String("reason") == "guarded-resource-field-read-fault", "per-field guarded read fault preserves readable Credits");
+        resourcePawn.get()->InvManager = inventory.get(); slots[inventoryIndex] = inventory.get();
+        Check(VirtualFree(pages, 0, MEM_RELEASE) != 0, "release synthetic pages");
+        resourcePawn.get()->InvManager = reinterpret_cast<AInventoryManager*>(1);
+        Check(!resources().Get("context").Bool("available") && !fields().Get("credits").Has("value"), "bad inventory pointer invalidates context safely");
+        auto priorResourceReads = engineReadCalls;
+        Check(ObserveResources(0).String("reason") == "not-on-verified-game-thread" && engineReadCalls == priorResourceReads,
+              "wrong thread performs no resource/context reads");
+        resourcePawn.get()->InvManager = inventory.get();
+        auto finalResources = resources();
+        Check(finalResources.Bool("allResourcesAvailable") && mevr::json::Write(finalResources, 0).size() <= 14 * 1024,
+              "fresh valid resource observation recovers and fits bounded control payload");
+        std::cout << "Representative resource observation bytes: " << mevr::json::Write(finalResources, 0).size() << '\n';
         worldPtr = reinterpret_cast<UWorld*>(1);
         v = Observe(thread);
         Check(v.String("reason") == "guarded-engine-read-fault" && !Available(v, "objectCount"), "AV invalidates whole sample");

@@ -29,6 +29,7 @@ std::atomic_bool gFixtureLoadEntered{false};
 testing::FovDispatcher gFovDispatcher{};
 testing::MenuDispatcher gMenuDispatcher{};
 testing::MenuDispatcher gFixtureDispatcher{};
+testing::ResourceSampleHook gResourceSampleHook{};
 #endif
 // Same pending-kill/template rules as Legacy; these are not incarnation IDs.
 constexpr std::uint64_t kPendingKill = 0x2000000000000000ull;
@@ -1027,6 +1028,7 @@ void testing::ResetMenuActions(MenuDispatcher dispatcher) {
 void testing::ResetFixtureLoad(MenuDispatcher dispatcher) {
     gFixtureLoadEntered.store(false); gFixtureDispatcher = dispatcher;
 }
+void testing::SetResourceSampleHook(ResourceSampleHook hook) { gResourceSampleHook = hook; }
 #endif
 
 ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& services) {
@@ -1505,6 +1507,167 @@ ProbeResult LoadFixture(std::uint32_t gameThreadId, ObserverServices const& serv
         }
     } else { out["postObservation"] = json::Value::Object(); out["postObservation"]["reason"] = "unavailable-after-uncertain-entry"; }
     return result;
+}
+
+namespace {
+static_assert(offsetof(ASFXInventoryManager, Credits) == 0x304 && offsetof(ASFXInventoryManager, Medigel) == 0x308);
+static_assert(offsetof(ASFXInventoryManager, Eezo) == 0x30C && offsetof(ASFXInventoryManager, Iridium) == 0x310);
+static_assert(offsetof(ASFXInventoryManager, Palladium) == 0x314 && offsetof(ASFXInventoryManager, Platinum) == 0x318);
+static_assert(offsetof(ASFXInventoryManager, Probes) == 0x31C && offsetof(ASFXInventoryManager, CurrentFuel) == 0x320);
+constexpr unsigned kResourceCount = 8;
+constexpr char const* kResourceNames[kResourceCount] = {"credits", "medigel", "eezo", "iridium", "palladium", "platinum", "probes", "fuel"};
+constexpr char const* kResourceFields[kResourceCount] = {"Credits", "Medigel", "Eezo", "Iridium", "Palladium", "Platinum", "Probes", "CurrentFuel"};
+struct ResourceContext {
+    Sample root;
+    ObjectSample worldInfo, inventory, squad;
+    std::uintptr_t cachedController{}, squadPawn{};
+    bool available{}, squadChecked{};
+    char const* reason{"current-player-chain-unavailable"};
+};
+void ReadResourceContext(void* context) {
+    auto& out = *static_cast<ResourceContext*>(context);
+    Read(&out.root); // Existing POD sampler only, never Observe or a provider.
+    if (!out.root.world.available || !out.root.engine.available || !out.root.localPlayer.available ||
+        !out.root.player.available || !out.root.pawn.available) return;
+    auto const* objects = UObject::GObjObjects;
+    out.reason = "resource-object-table-changed-or-invalid";
+    if (objects == nullptr || objects->Count() != out.root.objectCount || !BoundedArray(*objects, kMaxObjects)) return;
+    Table const table{objects->GetData(), objects->Count()};
+    auto const* local = reinterpret_cast<ULocalPlayer const*>(out.root.localPlayer.address);
+    auto const* player = reinterpret_cast<APlayerController const*>(out.root.player.address);
+    auto const* pawn = reinterpret_cast<APawn const*>(out.root.pawn.address);
+    out.reason = "not-current-SFXPawn_Player";
+    if (!IsA(table, pawn, "SFXGame", "SFXPawn_Player")) return;
+    out.reason = "player-pawn-reciprocal-disagrees";
+    if (player->Player != local || pawn->Controller != player) return;
+    out.reason = "resource-world-info-unavailable";
+    if (!ReadObject(table, player->WorldInfo, "SFXGame", "BioWorldInfo", out.worldInfo)) return;
+    auto const* worldInfo = static_cast<ABioWorldInfo const*>(player->WorldInfo);
+    out.reason = "pawn-world-info-disagrees";
+    if (pawn->WorldInfo != worldInfo) return;
+    out.cachedController = reinterpret_cast<std::uintptr_t>(worldInfo->LocalPlayerController);
+    out.reason = "world-controller-cache-disagrees";
+    if (worldInfo->LocalPlayerController != nullptr && worldInfo->LocalPlayerController != player) return;
+    auto const* inventory = pawn->InvManager;
+    out.reason = "live-inventory-manager-unavailable";
+    if (!ReadObject(table, inventory, "SFXGame", "SFXInventoryManager", out.inventory)) return;
+    out.reason = "inventory-owner-instigator-or-world-disagrees";
+    if (inventory->Owner != pawn || inventory->Instigator != pawn || inventory->WorldInfo != worldInfo) return;
+    // SFXGame.GetPlayerResourcesManager uses this second rooted path. Missing
+    // squad is an explicit unavailable cross-check, never a fallback manager.
+    if (worldInfo->m_playerSquad != nullptr) {
+        out.reason = "resource-squad-unavailable";
+        auto const* squad = worldInfo->m_playerSquad;
+        if (!ReadObject(table, squad, "SFXGame", "BioPlayerSquad", out.squad)) return;
+        out.squadPawn = reinterpret_cast<std::uintptr_t>(squad->m_playerPawn);
+        out.reason = "squad-player-or-world-disagrees";
+        if (squad->m_playerPawn != pawn || squad->WorldInfo != worldInfo) return;
+        out.squadChecked = true;
+    }
+    out.available = true; out.reason = "validated-current-player-inventory-chain";
+}
+struct ResourceFieldRead { std::uintptr_t inventory{}; unsigned field{}; std::uint32_t bits{}; };
+void ReadResourceField(void* context) {
+    auto& out = *static_cast<ResourceFieldRead*>(context);
+    auto const* inventory = reinterpret_cast<ASFXInventoryManager const*>(out.inventory);
+    // The index is local fixed-loop state, never wire input or a general offset.
+    switch (out.field) {
+    case 0: out.bits = std::bit_cast<std::uint32_t>(inventory->Credits); break;
+    case 1: out.bits = std::bit_cast<std::uint32_t>(inventory->Medigel); break;
+    case 2: out.bits = std::bit_cast<std::uint32_t>(inventory->Eezo); break;
+    case 3: out.bits = std::bit_cast<std::uint32_t>(inventory->Iridium); break;
+    case 4: out.bits = std::bit_cast<std::uint32_t>(inventory->Palladium); break;
+    case 5: out.bits = std::bit_cast<std::uint32_t>(inventory->Platinum); break;
+    case 6: out.bits = std::bit_cast<std::uint32_t>(inventory->Probes); break;
+    case 7: out.bits = std::bit_cast<std::uint32_t>(inventory->CurrentFuel); break;
+    }
+}
+bool SameResourceContext(ResourceContext const& a, ResourceContext const& b) {
+    return a.available && b.available && SameObjectSample(a.root.world, b.root.world) &&
+        SameObjectSample(a.root.engine, b.root.engine) && SameObjectSample(a.root.localPlayer, b.root.localPlayer) &&
+        SameObjectSample(a.root.player, b.root.player) && SameObjectSample(a.root.pawn, b.root.pawn) &&
+        SameObjectSample(a.worldInfo, b.worldInfo) && SameObjectSample(a.inventory, b.inventory) &&
+        SameObjectSample(a.squad, b.squad) && a.cachedController == b.cachedController &&
+        a.squadPawn == b.squadPawn && a.squadChecked == b.squadChecked;
+}
+} // namespace
+
+json::Value ObserveResources(std::uint32_t gameThreadId) {
+    ResourceContext first{}, after{};
+    char const* failure = nullptr;
+    if (gameThreadId == 0 || GetCurrentThreadId() != gameThreadId) failure = "not-on-verified-game-thread";
+    else if (!ue3::runtime::Guarded(ReadResourceContext, &first)) failure = "guarded-resource-context-read-fault";
+    std::uint32_t bits[2][kResourceCount]{}; bool readable[2][kResourceCount]{};
+    if (failure == nullptr && first.available) {
+        for (unsigned pass = 0; pass < 2; ++pass) {
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+            if (pass == 1 && gResourceSampleHook != nullptr) gResourceSampleHook();
+#endif
+            for (unsigned i = 0; i < kResourceCount; ++i) {
+                ResourceFieldRead read{first.inventory.address, i};
+                readable[pass][i] = ue3::runtime::Guarded(ReadResourceField, &read);
+                bits[pass][i] = read.bits;
+            }
+        }
+    }
+    bool afterRead = false;
+    if (failure == nullptr) afterRead = ue3::runtime::Guarded(ReadResourceContext, &after);
+    bool const stable = failure == nullptr && afterRead && SameResourceContext(first, after);
+    char const* contextReason = failure != nullptr ? failure : !first.available ? first.reason :
+        !afterRead ? "guarded-resource-context-reread-fault" : !stable ? "resource-context-changed" : "validated-current-player-inventory-chain";
+    auto out = json::Value::Object();
+    out["schemaVersion"] = 1; out["game"] = "LE2"; out["validationScope"] = "direct-live-inventory-POD-sample";
+    out["dispatchCapability"] = false; out["saveCacheUsed"] = false; out["persistenceProven"] = false;
+    out["durableObjectIdentity"] = false; out["reason"] = contextReason;
+    auto& context = out["context"]; context = json::Value::Object();
+    context["available"] = stable; context["reason"] = contextReason;
+    context["world"] = ObjectJson(first.root.world, failure); context["engine"] = ObjectJson(first.root.engine, failure);
+    context["localPlayer"] = ObjectJson(first.root.localPlayer, failure); context["controller"] = ObjectJson(first.root.player, failure);
+    context["pawn"] = ObjectJson(first.root.pawn, failure); context["worldInfo"] = ObjectJson(first.worldInfo, failure);
+    context["inventory"] = ObjectJson(first.inventory, failure); context["squad"] = ObjectJson(first.squad, failure);
+    context["squadCrossCheckAvailable"] = stable && first.squadChecked;
+    context["squadCrossCheckReason"] = !stable ? contextReason : first.squadChecked ? "same-player-pawn-and-world" : "no-squad-reference-primary-player-route-only";
+    context["afterContextReason"] = afterRead ? after.reason : "not-observed";
+    auto& map = context["map"]; map = json::Value::Object();
+    bool const mapStable = stable && first.root.mapAvailable && after.root.mapAvailable && std::strcmp(first.root.map, after.root.map) == 0;
+    map["available"] = mapStable; map["reason"] = !stable ? contextReason : !first.root.mapAvailable ? first.root.mapReason :
+        !mapStable ? "map-unavailable-or-changed-during-sample" : "stable-world-outer-package-name";
+    map["source"] = "GWorld.Outer-package-name";
+    if (mapStable) map["value"] = first.root.map;
+    auto& position = context["position"]; position = json::Value::Object();
+    bool const positionStable = stable && first.root.positionAvailable && after.root.positionAvailable &&
+        first.root.x == after.root.x && first.root.y == after.root.y && first.root.z == after.root.z;
+    position["available"] = positionStable; position["reason"] = !stable ? contextReason : !first.root.positionAvailable ? first.root.positionReason :
+        !positionStable ? "position-unavailable-or-changed-during-sample" : "stable-finite-player-pawn-location";
+    position["source"] = "validated-player-pawn.Actor.Location"; position["units"] = "engine-units-unverified";
+    if (positionStable) { position["x"] = first.root.x; position["y"] = first.root.y; position["z"] = first.root.z; }
+    auto& resources = out["resources"]; resources = json::Value::Object();
+    bool allAvailable = stable;
+    for (unsigned i = 0; i < kResourceCount; ++i) {
+        auto item = json::Value::Object(); char const* reason = contextReason;
+        bool available = stable;
+        if (available && (!readable[0][i] || !readable[1][i])) { available = false; reason = "guarded-resource-field-read-fault"; }
+        if (available && bits[0][i] != bits[1][i]) { available = false; reason = "resource-value-changed-during-sample"; }
+        if (available) {
+            if (i == 7) {
+                float const value = std::bit_cast<float>(bits[0][i]);
+                if (!std::isfinite(value)) { available = false; reason = "nonfinite-fuel"; }
+                else if (value < 0) { available = false; reason = "negative-resource-value"; }
+                else item["value"] = value;
+            } else {
+                auto const value = std::bit_cast<std::int32_t>(bits[0][i]);
+                if (value < 0) { available = false; reason = "negative-resource-value"; }
+                else item["value"] = static_cast<int>(value);
+            }
+        }
+        item["available"] = available; item["reason"] = available ? "stable-direct-live-inventory-field" : reason;
+        item["sourceField"] = std::string("SFXGame.SFXInventoryManager.") + kResourceFields[i];
+        item["scalarType"] = i == 7 ? "float32" : "int32";
+        if (readable[0][i]) item["sampleBits"] = std::format("0x{:08X}", bits[0][i]);
+        resources[kResourceNames[i]] = std::move(item); allAvailable &= available;
+    }
+    out["allResourcesAvailable"] = allAvailable;
+    return out;
 }
 
 json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic::Snapshot const* hostSnapshot,
