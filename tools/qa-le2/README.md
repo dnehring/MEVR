@@ -2,6 +2,9 @@
 # ME2 validation workflow
 
 This is the P9 tooling for the [validation goal](../../docs/le2-validation-goal.md).
+Read the [scripted testing handoff](../../docs/le2-scripted-testing.md) and its
+linked repository skills before native work. Prefer the mod's request channel;
+its LE2 runtime integration must be proven before using the LE1 runners here.
 Save preparation and protected session lifecycle have offline tests. The three
 public scenarios are **drafts**, pending naturally acquired fixtures and native
 observations. Neither a valid manifest nor a green integrity audit proves that
@@ -19,6 +22,11 @@ Offline preparation can continue while another session owns the game:
 [story transition review](story-review-usage.md) compares paired saves against scoped source effects;
 [archived diagnostics and observer design](../../research/le2-runtime-observer.md) distinguish reusable capture formats from missing LE2 runtime producers.
 These tools do not establish native or VR acceptance. Keep all generated artifacts private.
+
+The [Steam launch adapter](launch.md) provides read-only preflight and a guarded
+launch path where installed launcher support is verified. The [bound control
+client](control.md) supplies request correlation and uncertainty recovery; its
+runtime producer and native handshake must be proven separately.
 
 ## 1. Inspect and prepare a private fixture
 

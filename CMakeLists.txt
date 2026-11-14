@@ -34,6 +34,13 @@ option(MEVR_BUILD_LE3 "Build LE3MEVR.asi" OFF)
 # Development: a small stable host ASI plus <GAME>MEVR_mod.dll, which the host reloads whenever
 # it changes, so the game can keep running between builds. Release: one self-contained ASI.
 option(MEVR_HOT_RELOAD "Build the mod as a separate hot-reloadable DLL" ON)
+option(MEVR_LE2_DIAGNOSTIC "LE2 only: game-thread diagnostic host, no renderer or gameplay hooks" OFF)
+if (MEVR_LE2_DIAGNOSTIC AND (NOT MEVR_BUILD_LE2 OR MEVR_BUILD_LE1 OR MEVR_BUILD_LE3))
+    message(FATAL_ERROR "MEVR_LE2_DIAGNOSTIC requires LE2 ON and LE1/LE3 OFF in an isolated build")
+endif ()
+if (MEVR_LE2_DIAGNOSTIC AND MEVR_HOT_RELOAD)
+    message(FATAL_ERROR "LE2 control producer requires a monolithic diagnostic host (MEVR_HOT_RELOAD=OFF)")
+endif ()
 # LExSDKv2 has no licence, so a players' build of LE1 has none of it (research/34 stage 6 for LE1): the mod runs on our
 # own reflection layer, and only development builds keep LExSDKv2 for the cross-check (engine/ReflectCheck). Off by
 # default in a release (monolithic) build. LE2/LE3 still read the engine through it (not released).
@@ -593,6 +600,9 @@ function(mevr_configure target game)
     endif ()
     target_link_libraries(${target} PRIVATE mevr-minhook version d3d11 dxgi)
     target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX MEVR_GAME_${game})
+    if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
+        target_compile_definitions(${target} PRIVATE MEVR_LE2_DIAGNOSTIC)
+    endif ()
     # Same warning policy as the SDK's own consumers; the generated headers need /permissive.
     target_compile_options(${target} PRIVATE /W4 /WX /permissive /utf-8 /Zc:__cplusplus /Zi
         /wd4121 /wd4127 /wd4702)
@@ -855,6 +865,13 @@ function(mevr_add_plugin game)
     set(host_sources ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
     set(with_halcyon OFF)
     set(with_main_menu OFF)
+    set(mod_sources ${MEVR_MOD_SOURCES})
+    if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
+        list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp
+            src/engine/Le2ControlHost.cpp src/engine/Le2ControlHost.hpp
+            src/engine/Le2DiagnosticObservation.cpp src/engine/Le2DiagnosticObservation.hpp
+            src/core/qa/ControlProtocol.cpp src/core/qa/ControlProtocol.hpp src/core/Json.cpp src/core/Json.hpp)
+    endif ()
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)
         list(APPEND host_sources ${MEVR_HALCYON_HOST_SOURCES} ${MEVR_FSR_EMBEDDED})
@@ -879,7 +896,7 @@ function(mevr_add_plugin game)
         set(host_sdk NO_SDK)  # nothing in the host includes LExSDKv2 since research/34 stage 4
 
         set(mod MEVR-${game}-mod)
-        add_library(${mod} SHARED ${MEVR_MOD_SOURCES} ${MEVR_CORE_SOURCES})
+        add_library(${mod} SHARED ${mod_sources} ${MEVR_CORE_SOURCES})
         mevr_configure(${mod} ${game} ${game_sdk})
         target_link_libraries(${mod} PRIVATE OpenXR::openxr_loader d3dcompiler)
         target_compile_definitions(${mod} PRIVATE MEVR_MOD_DLL)
@@ -887,7 +904,7 @@ function(mevr_add_plugin game)
         # Building the host target builds the mod too.
         add_dependencies(${host} ${mod})
     else ()
-        set(all_sources ${host_sources} ${MEVR_MOD_SOURCES})
+        set(all_sources ${host_sources} ${mod_sources})
         list(REMOVE_DUPLICATES all_sources)
         add_library(${host} SHARED ${all_sources})
         target_link_libraries(${host} PRIVATE OpenXR::openxr_loader d3dcompiler)
@@ -897,6 +914,9 @@ function(mevr_add_plugin game)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader windowscodecs)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON)
+    endif ()
+    if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
+        target_link_libraries(${host} PRIVATE bcrypt shell32 ole32)
     endif ()
     if (with_main_menu)
         target_link_libraries(${host} PRIVATE mevr-menu)
@@ -1001,6 +1021,21 @@ set_target_properties(MEVR-Loader PROPERTIES OUTPUT_NAME bink2w64)
 option(MEVR_BUILD_TESTS "Build the offline tests" ON)
 if (MEVR_BUILD_TESTS)
     enable_testing()
+    add_executable(mevr-le2-control-codec-tests tests/le2-control/ControlTests.cpp src/core/qa/ControlProtocol.cpp)
+    target_include_directories(mevr-le2-control-codec-tests PRIVATE src)
+    target_compile_options(mevr-le2-control-codec-tests PRIVATE /W4 /WX /utf-8)
+    add_test(NAME mevr-le2-control-codec COMMAND mevr-le2-control-codec-tests)
+    add_executable(mevr-le2-control-host-tests tests/Le2ControlHostTests.cpp
+        src/engine/Le2ControlHost.cpp src/core/qa/ControlProtocol.cpp src/core/Json.cpp)
+    target_include_directories(mevr-le2-control-host-tests PRIVATE src)
+    target_compile_definitions(mevr-le2-control-host-tests PRIVATE MEVR_LE2_CONTROL_TEST NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-le2-control-host-tests PRIVATE /W4 /WX /utf-8)
+    target_link_libraries(mevr-le2-control-host-tests PRIVATE bcrypt shell32 ole32)
+    add_test(NAME mevr-le2-control-host COMMAND mevr-le2-control-host-tests)
+    add_executable(mevr-le2-diagnostic-tests tests/Le2DiagnosticTests.cpp)
+    target_include_directories(mevr-le2-diagnostic-tests PRIVATE src)
+    target_compile_options(mevr-le2-diagnostic-tests PRIVATE /W4 /WX /utf-8)
+    add_test(NAME mevr-le2-diagnostic COMMAND mevr-le2-diagnostic-tests)
     add_executable(mevr-tests
         tests/Main.cpp
         tests/InstallTests.cpp
@@ -1199,6 +1234,15 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-le2-variants COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-variants.py)
         add_test(NAME mevr-le2-story-review COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-story-review.py)
         add_test(NAME mevr-le2-observe COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-observe.py)
+        add_test(NAME mevr-le2-launch COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-launch.py)
+        add_test(NAME mevr-le2-control-client COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-control.py)
+        set_tests_properties(mevr-le2-control-client PROPERTIES
+            ENVIRONMENT "LE2_CONTROL_CPP=$<TARGET_FILE:mevr-le2-control-codec-tests>")
+        add_test(NAME mevr-le2-control-attach COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-control-attach.py)
+        set_tests_properties(mevr-le2-launch mevr-le2-control-client mevr-le2-control-attach PROPERTIES TIMEOUT 60)
+        add_test(NAME mevr-le2-control-producer-smoke COMMAND Python3::Interpreter -B
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/le2-control/ProducerSmoke.py $<TARGET_FILE:mevr-le2-control-host-tests>)
+        set_tests_properties(mevr-le2-control-producer-smoke PROPERTIES TIMEOUT 45)
         # The conversation sweep's predictions, work list and judge (tools/conversation-sweep.py, research/69), over a
         # synthetic scan.
         add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)

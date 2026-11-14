@@ -40,8 +40,11 @@ std::string Narrow(wchar_t const* chars) {
     if (size <= 1) {
         return {};
     }
-    std::string narrow(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, chars, -1, narrow.data(), size, nullptr, nullptr);
+    std::string narrow(static_cast<size_t>(size), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, chars, -1, narrow.data(), size, nullptr, nullptr) != size) {
+        return {};
+    }
+    narrow.resize(static_cast<size_t>(size - 1));  // conversion includes the terminating NUL
     return narrow;
 }
 
