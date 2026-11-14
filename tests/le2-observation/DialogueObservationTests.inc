@@ -97,6 +97,7 @@
     Check(ObserveDialogue(thread+1).String("reason")=="not-on-verified-game-thread" && engineReadCalls==reads,"dialogue wrong thread performs no reads");
     auto bytes=mevr::json::Write(observeDialogue(),0).size(); Check(bytes<14*1024,"dialogue compact snapshot fits host envelope budget");
     std::cout<<"Representative dialogue observation bytes: "<<bytes<<'\n';
+    #include "DialogueHistoryTests.inc"
     menuWorldInfo.get()->m_oCurrentConversation=nullptr; manager.get()->m_oConversationHandler=nullptr;
     std::memcpy(&manager.get()->m_lstPanels,&savedPanels,sizeof(savedPanels)); manager.get()->m_FocusPanel=savedFocus;
 }

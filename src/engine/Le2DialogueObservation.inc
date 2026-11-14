@@ -212,3 +212,170 @@ json::Value ObserveDialogue(std::uint32_t thread) {
     out["interrupt"]=snapshot.Get("interrupt"); out["gui"]=snapshot.Get("gui");
     out["available"]=true; out["reason"]=first->reason; return out;
 }
+
+// Fixed duration/cadence and POD storage: no file I/O, callbacks or dispatch.
+namespace {
+constexpr std::uint64_t kHistoryDuration=10000, kHistoryCadence=125;
+constexpr unsigned kHistoryCapacity=81, kHistoryEpochs=4, kHistoryColumns=18;
+constexpr std::size_t kHistoryBytes=10*1024;
+struct DialogueHistoryEpoch {
+    ObjectSample world,engine,localPlayer,controller,pawn,worldInfo,conversation;
+    std::uint64_t nameBits{};
+    int nameNumber{};
+    char name[kNameBytes]{};
+};
+bool SameHistoryEpoch(DialogueHistoryEpoch const& e,DialogueSample const& s) {
+    auto const& r=s.menu.root;
+    return SameDialogueObject(e.world,r.world) && SameDialogueObject(e.engine,r.engine) &&
+        SameDialogueObject(e.localPlayer,r.localPlayer) && SameDialogueObject(e.controller,r.player) &&
+        SameDialogueObject(e.pawn,r.pawn) && SameDialogueObject(e.worldInfo,s.worldInfo) &&
+        SameDialogueObject(e.conversation,s.conversation) && e.nameBits==s.data.nameBits &&
+        std::strcmp(e.name,s.conversationName)==0;
+}
+DialogueHistoryEpoch CaptureHistoryEpoch(DialogueSample const& s) {
+    DialogueHistoryEpoch e; auto const& r=s.menu.root;
+    e.world=r.world; e.engine=r.engine; e.localPlayer=r.localPlayer; e.controller=r.player;
+    e.pawn=r.pawn; e.worldInfo=s.worldInfo; e.conversation=s.conversation;
+    e.nameBits=s.data.nameBits; e.nameNumber=s.data.nameNumber;
+    std::memcpy(e.name,s.conversationName,sizeof(e.name)); return e;
+}
+}
+struct DialogueHistory::Storage {
+    bool active{},seenTick{};
+    std::uint32_t thread{};
+    char const* reason{"recording"};
+    char const* lastUnavailableReason{"none"};
+    std::uint64_t startTick{},startMono{},lastTick{},lastMono{},lastSample{},endTick{},endMono{};
+    unsigned count{},epochCount{},sampled{},unavailable{},skipped{},dropped{},missed{},gaps{};
+    std::int64_t rows[kHistoryCapacity][kHistoryColumns]{};
+    DialogueHistoryEpoch epochs[kHistoryEpochs]{};
+    DialogueSample first,second;
+    void Finish(char const* why) noexcept { active=false; reason=why; endTick=lastTick; endMono=lastMono; }
+};
+DialogueHistory::DialogueHistory() noexcept = default;
+DialogueHistory::~DialogueHistory() = default;
+bool DialogueHistory::Active() const noexcept { return storage_ && storage_->active; }
+bool DialogueHistory::Start(std::uint64_t tick,std::uint64_t mono,std::uint32_t thread) noexcept {
+    if(thread==0 || thread!=GetCurrentThreadId() || Active() || tick==UINT64_MAX || mono>UINT64_MAX-kHistoryDuration) return false;
+    try {
+        auto fresh=std::make_unique<Storage>();
+        fresh->thread=thread; fresh->active=true; fresh->startTick=fresh->lastTick=tick;
+        fresh->startMono=fresh->lastMono=mono;
+        storage_=std::move(fresh); return true;
+    } catch(...) { return false; } // preserves the preceding completed record
+}
+void DialogueHistory::Stop() noexcept {
+    if(storage_ && storage_->active && storage_->thread==GetCurrentThreadId()) storage_->Finish("stopped");
+}
+void DialogueHistory::Tick(std::uint64_t tick,std::uint64_t mono,std::uint32_t thread) noexcept {
+    if(!Active()) return;
+    auto& s=*storage_;
+    if(thread!=s.thread || thread!=GetCurrentThreadId()) return; // never read/mutate from foreign thread
+    if(tick<s.lastTick || (s.seenTick && tick==s.lastTick) || mono<s.lastMono || tick-s.startTick>UINT32_MAX) { s.Finish("clock-invalid"); return; }
+    s.lastTick=tick; s.lastMono=mono; s.seenTick=true;
+    if(mono-s.startMono>=kHistoryDuration) { s.Finish("expired"); return; }
+    if(s.sampled && mono-s.lastSample<kHistoryCadence) {
+        if(s.skipped==UINT32_MAX) s.Finish("counter-limit"); else ++s.skipped;
+        return;
+    }
+    // Scratch lives in the bounded host-owned allocation, not the game stack.
+    std::destroy_at(&s.first); std::construct_at(&s.first);
+    std::destroy_at(&s.second); std::construct_at(&s.second);
+    unsigned status=0; char const* why="none";
+    if(!ue3::runtime::Guarded(ReadDialogue,&s.first)) { status=2; why="guarded-dialogue-read-fault"; }
+    else if(!s.first.available) { status=std::strcmp(s.first.reason,"no-current-conversation")==0?1:3; why=s.first.reason; }
+    else {
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+        if(gDialogueSampleHook) gDialogueSampleHook();
+#endif
+        if(!ue3::runtime::Guarded(ReadDialogue,&s.second)) { status=2; why="guarded-dialogue-reread-fault"; }
+        else if(!SameDialogue(s.first,s.second)) { status=4; why="dialogue-context-or-state-changed"; }
+    }
+    if(status==0 && (std::strlen(s.first.menu.root.player.className)>128 ||
+        std::strlen(s.first.worldInfo.className)>128 || std::strlen(s.first.conversation.className)>128)) {
+        s.Finish("history-label-limit"); return;
+    }
+    if(status==0 && (!s.epochCount || !SameHistoryEpoch(s.epochs[s.epochCount-1],s.first))) {
+        if(s.epochCount==kHistoryEpochs) { s.Finish("context-limit"); return; }
+        s.epochs[s.epochCount++]=CaptureHistoryEpoch(s.first);
+    }
+    auto missed=(mono-(s.sampled?s.lastSample:s.startMono))/kHistoryCadence;
+    if(s.sampled && missed) --missed;
+    if(missed) { s.missed+=static_cast<unsigned>(missed); ++s.gaps; }
+    if(s.count==kHistoryCapacity) {
+        // Defensive fallback; ordinary bounded cadence cannot reach this limit.
+        std::memmove(s.rows,s.rows+1,sizeof(s.rows[0])*(kHistoryCapacity-1)); --s.count; ++s.dropped;
+    }
+    auto& row=s.rows[s.count++];
+    row[0]=static_cast<std::int64_t>(tick-s.startTick); row[1]=static_cast<std::int64_t>(mono-s.startMono);
+    row[2]=status; row[3]=status?0:s.epochCount;
+    if(status==0) {
+        auto const& d=s.first.data;
+        row[4]=d.entry.index; row[5]=d.entry.exportId; row[6]=d.reply.index; row[7]=d.reply.exportId;
+        row[8]=d.selected.index; row[9]=d.selected.exportId; row[10]=d.interruptReply.index; row[11]=d.interruptReply.exportId;
+        row[12]=d.type; row[13]=(d.enabled?1:0)|(d.activated?2:0);
+        auto const& g=s.first;
+        row[14]=g.guiAvailable?(1|(g.gui.visible?2:0)|(g.gui.focused?4:0)|(g.gui.initialized?8:0)|
+            (g.gui.removing?16:0)|(g.gui.inputDisabled?32:0)|(g.gui.eventsDisabled?64:0)|(g.wheel?128:0)|
+            (g.paragon?256:0)|(g.renegade?512:0)|(g.initialized?1024:0)|(g.triggered?2048:0)|(g.usingGamepad?4096:0)):0;
+        row[15]=std::bit_cast<std::uint32_t>(d.nodeTimer); row[16]=std::bit_cast<std::uint32_t>(d.startRemaining);
+        row[17]=std::bit_cast<std::uint32_t>(d.windowRemaining);
+    } else { ++s.unavailable; s.lastUnavailableReason=why; }
+    ++s.sampled; s.lastSample=mono;
+}
+json::Value DialogueHistory::Snapshot() const {
+    auto out=json::Value::Object(); out["schemaVersion"]=1; out["game"]="LE2";
+    out["started"]=storage_!=nullptr; out["active"]=Active(); out["reason"]=storage_?storage_->reason:"never-started";
+    out["durationMs"]=static_cast<int>(kHistoryDuration); out["cadenceMs"]=static_cast<int>(kHistoryCadence);
+    out["capacity"]=static_cast<int>(kHistoryCapacity); out["maxEpochs"]=static_cast<int>(kHistoryEpochs);
+    out["dispatchCapability"]=false; out["legalityEvaluated"]=false; out["acceptedInterruptProven"]=false; out["historyComplete"]=false;
+    out["startTick"]=std::to_string(storage_?storage_->startTick:0); out["startMonoMs"]=std::to_string(storage_?storage_->startMono:0);
+    out["endTick"]=std::to_string(storage_?storage_->endTick:0); out["endMonoMs"]=std::to_string(storage_?storage_->endMono:0);
+    out["endTimeSource"]="last-valid-tick-call-or-start";
+    out["sampledRows"]=static_cast<int>(storage_?storage_->sampled:0); out["unavailableRows"]=static_cast<int>(storage_?storage_->unavailable:0);
+    out["cadenceSkippedTicks"]=static_cast<std::uint64_t>(storage_?storage_->skipped:0);
+    out["bufferDroppedRows"]=static_cast<int>(storage_?storage_->dropped:0); out["serializationOmittedRows"]=0;
+    out["missedCadenceSlots"]=static_cast<int>(storage_?storage_->missed:0); out["gapCount"]=static_cast<int>(storage_?storage_->gaps:0);
+    out["lastUnavailableReason"]=storage_?storage_->lastUnavailableReason:"none";
+    out["dictionaryOmitted"]=false;
+    auto columns=json::Value::Array();
+    for(auto* name:{"tickOffset","msOffset","status","epoch","currentEntryIndex","currentEntryExportId","currentReplyIndex","currentReplyExportId",
+        "selectedReplyIndex","selectedReplyExportId","interruptReplyIndex","interruptReplyExportId","interruptType","interruptFlags","guiFlags",
+        "nodeTimerBits","startTimeRemainingBits","windowTimeRemainingBits"}) columns.Push(name);
+    out["columns"]=std::move(columns);
+    auto epochs=json::Value::Array(); auto rows=json::Value::Array();
+    if(storage_) {
+        auto const& s=*storage_;
+        for(unsigned i=0;i<s.epochCount;++i) {
+            auto const& e=s.epochs[i]; auto record=json::Value::Object(); record["epoch"]=static_cast<int>(i+1);
+            record["controller"]=ObjectJson(e.controller,nullptr); record["worldInfo"]=ObjectJson(e.worldInfo,nullptr);
+            auto conv=ObjectJson(e.conversation,nullptr); conv["name"]=e.name; conv["nameNumber"]=e.nameNumber;
+            record["conversation"]=std::move(conv); epochs.Push(std::move(record));
+        }
+        for(unsigned i=0;i<s.count;++i) {
+            auto row=json::Value::Array(); auto const* data=s.rows[i];
+            for(unsigned j=0;j<kHistoryColumns;++j) {
+                bool const absent=data[2]!=0 && j>=4;
+                bool const noNode=j>=5 && j<=11 && (j%2)==1 && data[j-1]==-1;
+                if(absent || noNode) row.Push(nullptr); else row.Push(data[j]);
+            }
+            rows.Push(std::move(row));
+        }
+    }
+    out["epochs"]=std::move(epochs); out["rows"]=std::move(rows);
+    unsigned omitted=0;
+    // Preserve the first and latest samples; explicitly omit intervening old rows
+    // if numeric extremes/long names would exceed the host's bounded wire budget.
+    while(json::Write(out,0).size()>kHistoryBytes && out["rows"].Items().size()>2) {
+        out["rows"].Items().erase(out["rows"].Items().begin()+1);
+        out["serializationOmittedRows"]=static_cast<int>(++omitted);
+    }
+    // Defensive final fallback if a future dictionary change breaks the proven
+    // current label bounds. Keep capture/counter provenance, never oversized wire.
+    if(json::Write(out,0).size()>kHistoryBytes) {
+        out["rows"]=json::Value::Array(); out["epochs"]=json::Value::Array();
+        out["serializationOmittedRows"]=static_cast<int>(storage_?storage_->count:0);
+        out["dictionaryOmitted"]=true;
+    }
+    return out;
+}
