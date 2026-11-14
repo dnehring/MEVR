@@ -17,6 +17,8 @@
     <LexDir Condition="'$(LexDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\..\mod-manager\ME3TweaksModManager\data\ExternalTools\Legendary Explorer (Nightly)</LexDir>
   </PropertyGroup>
   <ItemGroup>
+    <!-- An isolated BaseIntermediateOutputPath must not compile a prior local build's generated sources. -->
+    <Compile Remove="obj/**;bin/**" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
     <Reference Include="LegendaryExplorerCore"><HintPath>$(LexDir)\LegendaryExplorerCore.dll</HintPath><Private>false</Private></Reference>
     <!-- The line recordings' decoder (VoExtract.cs): Legendary Explorer ships NAudio.Vorbis. -->

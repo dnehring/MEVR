@@ -61,6 +61,23 @@ These are historical evidence identities, not assertions about future local
 builds. Re-run checks after changes. The corpus is narrow; four files do not prove
 all classes, DLC, campaign states or save variants.
 
+## Read-only native-source tooling
+
+The [conversation scanner](../tools/conversation-scan/README.md) now has explicit
+LE2 selection, package identity checks, string-reference/reply metadata, interrupt
+visibility keys and actual conversation/sequence/cinematic-node crosslinks. Root
+integration built it privately with zero warnings/errors and passed 19 CLI/corpus
+checks, including 15 synthetic property invariants, the installed mechanic/reload
+candidates and unchanged package hashes. LE1 default/explicit output matched the
+previous executable byte-for-byte on the checked captain scene; the existing
+conversation-sweep suite also passed.
+
+The first root build with an external intermediate-output directory exposed stale
+local `obj/` generated sources being compiled twice. The project now explicitly
+excludes `obj/**` and `bin/**`; the documented isolated build then succeeded
+without deleting another build's artifacts. These checks establish offline source
+inspection, not a runtime observation producer or legal interrupt timing.
+
 ## Independent editor GUI check
 
 The official [v2.2.1 release](https://github.com/KarlitosVII/trilogy-save-editor/releases/tag/v2.2.1)

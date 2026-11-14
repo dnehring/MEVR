@@ -3,6 +3,8 @@
 
 Date: 2026-11-13. Read-only inspection; no game launch, save edit or fixture promotion. This narrows the acquisition tasks in the [coverage catalog](../docs/le2-validation-coverage.md). Package declarations and authored sequences identify useful experiments; they do not establish a working runtime hook or a legally reachable scene.
 
+Follow-up: the [scanner now supports explicit LE2 inspection](../tools/conversation-scan/README.md), including string references, reply categories and interrupt-to-node linkage. The scanner limitations below describe the initial investigation; its current README identifies which remain unresolved. Use `--game LE2` for all new sequel inspections.
+
 ## Current private saves
 
 The three existing saves were freshly parsed with `tools/le2-save.py info --json`. The manual save and autosave report `Biop_Nor`; **the chapter save reports `BioP_EndGm2`**, so it must not be treated as another Normandy fixture. All three have the same 80 recorded planet entries, all marked visited, with 599 probe-impact coordinates in total, 30 probes and 1500 fuel. They are a narrow late-game corpus, not three independent scenario states. Raw inspection and hashes stay private.
@@ -53,7 +55,7 @@ Targeted `BioPlanet`/`SFXPlanetFeature` class dumps of the six `GalaxyMapObjs` p
 
 ## Reproducing the read-only inspection
 
-Run the existing scanner executable with the installed LE2 `CookedPCConsole` as the first argument, a **private output file** second, and the local LegendaryExplorer directory via `--lex-dir` when needed. Verified selectors in this investigation:
+Run the rebuilt scanner executable with the installed LE2 `CookedPCConsole` as the first argument, a **new private output file outside that directory** second, `--game LE2`, and the local LegendaryExplorer directory via `--lex-dir` when needed. Verified selectors in this investigation:
 
 ```text
 --sequence BioD_ProCer_100RezRoom
