@@ -43,6 +43,7 @@ Every response has `validationScope: "sdk-structural-diagnostic"`,
 | `pawn` | That controller's Pawn, checked as `Engine.Pawn`. Null is unavailable, not a synthetic gameplay state. |
 | `map` | Only the ASCII, non-instanced name of the validated World object's top-level `Core.Package` outer. `source` identifies that route and `loadedSaveOrGameplayProof` is false. No equivalence to a save's map label is asserted. |
 | `position` | Finite X/Y/Z from the validated pawn through existing `adapter::Location`. Units remain explicitly `engine-units-unverified`; no metre conversion, gameplay readiness, or world/save association is inferred. |
+| `consoleCommandMetadata` | Bounded reflection metadata for the exact `Engine.PlayerController.ConsoleCommand` declaration and its parameters; no dispatch or capability grant. Details below. |
 
 Available objects include a hexadecimal address string, object-table index, and
 qualified class label. These describe this sample only. They are not durable
@@ -90,6 +91,68 @@ unavailable values retain explicit reasons instead of becoming semantic booleans
 The host must validate its installed process/build identity before enabling this
 slice. SEH containment alone does not validate a layout.
 
+## Read-only ConsoleCommand metadata
+
+The metadata slice starts from the checked local controller's class chain and
+finds the exact `Engine.PlayerController` owner, matching the declaration used
+by Legacy. It does not substitute a derived override or another class's function
+of the same name. The owner walk is bounded to 64 classes. Its Children/Next list
+is bounded to 4096 listed, non-template `Core.Field` objects with the expected
+Outer. Missing, duplicate, invalid or foreign declarations leave metadata
+unavailable. No SDK `FindFunction`, `StaticClass`, global object scan or new name
+is used.
+
+Once the unique declaration has been checked as an exact `Core.Function`, the
+payload reports its address, object index, class and discovered declaration,
+plus actual `parmsSize`, `numParms`, `returnValueOffset`, `functionFlags` and
+`nativeIndex`. The native index is the observed 16-bit value; zero is not assumed
+or promoted as validated. Function flags are compared separately to the SDK's
+`0x00024400` declaration.
+
+Function children are bounded to 256 listed, owned `Core.Property` objects, with
+at most 16 parameters (`CPF_Parm`). Non-parameter locals are traversed but excluded
+from the call block. Each recorded parameter has an actual name, address/index,
+qualified property class, offset, element size, array dimension and full 64-bit
+flags encoded as a hexadecimal string. Exact `Core.BoolProperty` records its
+32-bit mask. Parameter dimensions/spans must fit the observed ParmsSize; negative,
+oversized, overlapping, duplicate-name or malformed boolean storage is rejected.
+An unexpected shared-bitfield layout is not relaxed merely to make a match.
+
+`available` means the function and full parameter traversal passed these
+structural checks. It can be true while `layoutMatchesSdkDeclaration` is false.
+A malformed traversal keeps `parametersComplete` false; already validated header
+or parameter rows may remain as diagnostic evidence. A guarded access violation
+still invalidates the entire observation. Schema comparison uses unique names and
+offsets, not linked-list order.
+
+The pinned LE2 `Engine_f_structs.hpp` declaration
+`APlayerController_execConsoleCommand_Parms` and the existing
+[native-host audit](le2-native-host-readiness.md) establish the candidate packed
+block below. Compile-time assertions check SDK size and offsets without
+constructing a parameter block:
+
+| Name | Exact expected property | Offset | Element size | Property flags |
+|---|---|---:|---:|---|
+| Command | Core.StrProperty | `0x00` | 16 | `0x00400080` |
+| bWriteToLog | Core.BoolProperty | `0x10` | 4 | `0x00000090` |
+| ReturnValue | Core.StrProperty | `0x14` | 16 | `0x00400580` |
+
+The comparison requires ArrayDim 1, NumParms 3, ParmsSize `0x24` and
+ReturnValueOffset `0x14`. The scalar DWORD boolean comparison additionally
+requires mask `0x00000001`; this is an explicit expected-signature policy to
+verify in the live metadata, not evidence that the SDK parameter declaration
+proves the live UBoolProperty mask. Other nonzero single-bit masks remain visible
+as mismatches; zero and multibit masks are malformed for this slice.
+
+Every metadata response keeps `dispatchCapability: false` and the native-index,
+ProcessEvent target, allocator/string-lifetime and native-call validation fields
+`pending`, even for an exact expected match. Reading this schema does not
+validate FString ownership, UTF conversion, allocation/free behavior, the actual
+native entry point, or legal ProcessEvent invocation. No command is constructed,
+queued, or dispatched. The real producer may use this observation as evidence
+for a later reviewed call gate; it must not enable console execution from this
+boolean alone.
+
 ## Repeatable offline checks
 
 The original standalone test project is
@@ -114,6 +177,11 @@ Checks cover missing globals; wrong/zero thread; valid typed world, player and
 subclassed pawn; bounded JSON payload; invalid object/array slots; templates and
 pending kill; wrong class/metaclass and cyclic superclass; null pawn/controller;
 nonfinite position; instanced map-package refusal; and access faults invalidating
-the complete sample. Compile/test results establish synthetic behavior only.
+the complete sample. Reflection fixtures additionally cover exact/reordered
+parameter layouts, missing declarations, duplicate functions/parameters, stale or
+foreign fields, wrong size/count/return/type/flags/mask, malformed dimensions and
+storage spans, excluded locals, cyclic owner and function lists, template
+functions, and metadata access faults. Release and Debug builds/tests passed
+with MSVC `/W4 /WX`. Compile/test results establish synthetic behavior only.
 Live LE2 load/travel, normal HUD/save comparison, object lifecycle, and actual
 producer integration remain separate uncompleted gates.

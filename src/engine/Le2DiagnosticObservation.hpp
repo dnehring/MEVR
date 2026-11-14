@@ -14,6 +14,8 @@ namespace mevr::engine::le2_diagnostic {
 // reflection-layout validation, save/load/gameplay readiness, or a durable object
 // generation. No script calls, engine allocations, writes, caching or XR work.
 // Addresses are diagnostic strings, never reusable handles. Native proof pending.
+// ConsoleCommand metadata reports bounded reflection reads and an SDK-layout
+// comparison only; a matching schema never enables or proves native dispatch.
 json::Value Observe(std::uint32_t gameThreadId);
 #endif
 } // namespace mevr::engine::le2_diagnostic
