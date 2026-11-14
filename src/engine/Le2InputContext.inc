@@ -8,6 +8,13 @@ static_assert(offsetof(APlayerController, bIgnoreLookInput)==0x7A6);
 static_assert(sizeof(State::panelStates)/sizeof(Panel)==kMaxMenuPanels);
 static_assert(kNameBytes==128);
 static_assert(std::is_trivially_destructible_v<Context>);
+static_assert(offsetof(UBioSFHandler_MessageBox,__InputCallback__Delegate)==0x9C);
+static_assert(offsetof(UBioSFHandler_MessageBox,nInputCallbackContext)==0xD4);
+static_assert(offsetof(UBioSFHandler_MessageBox,m_nHiddenDepth)==0xD8);
+static_assert(offsetof(UBioSFHandler_PartySelection,lstMemberInfo)==0x9C);
+static_assert(offsetof(UBioSFHandler_PartySelection,__ExternalCallback_OnComplete__Delegate)==0xCC);
+static_assert(offsetof(FPartySelectMemberInfo,InPartyLabel)==0x20);
+static_assert(sizeof(FScriptDelegate)==16 && sizeof(SFXName)==8);
 struct ReadContext { SaveFlowSample flow; Context result; };
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 void (*gSampleHook)(){};
@@ -15,6 +22,71 @@ void (*gSampleHook)(){};
 Identity CopyIdentity(ObjectSample const& s) { return {s.address,s.classAddress,s.index}; }
 template<class T> ArrayIdentity CopyArray(TArray<T> const& a) {
     return {reinterpret_cast<std::uintptr_t>(a.GetData()),a.Count(),a.Capacity()};
+}
+bool CopyPartyName(SFXName const& name, std::array<std::uint32_t,2>& raw, std::array<char,128>& text) {
+    char label[kNameBytes]{};
+    if (!NameText(name,label)) return false;
+    std::memcpy(raw.data(),&name,sizeof(name)); std::memcpy(text.data(),label,kNameBytes);
+    return true;
+}
+bool ReadPartyConfirmation(Table const& table, UMassEffectGuiManager const* manager, Context& c) {
+    MenuPanel message, party;
+    auto const* focus=reinterpret_cast<UBioSFPanel const*>(c.focusPanel.address);
+    c.reason="party-confirm-message-panel-or-handler-invalid";
+    if (!c.modeActive || !PanelContext(table,focus,manager,"BioSFHandler_PCMessageBox",message,true) ||
+        std::strcmp(message.handler.className,"SFXGame.BioSFHandler_PCMessageBox")!=0 || !PanelInteractive(message)) return false;
+    unsigned partyCount=0, messageCount=0;
+    for (unsigned i=0;i<c.panels.count;++i) {
+        auto const* panel=manager->m_lstPanels.GetData()[i];
+        auto const& p=c.panelStates[i];
+        if (std::strcmp(p.tag.data(),"MessageBox")==0) ++messageCount;
+        if (std::strcmp(p.tag.data(),"PartySelect")!=0) continue;
+        c.reason="party-confirm-party-panel-ambiguous-or-invalid";
+        if (++partyCount!=1 || !PanelContext(table,panel,manager,"BioSFHandler_PCPartySelection",party,true) ||
+            std::strcmp(party.handler.className,"SFXGame.BioSFHandler_PCPartySelection")!=0 ||
+            !party.initialized || party.removing) return false;
+        // A modal child owns focus and may disable/hide the parent; do not
+        // incorrectly require the underlying party panel to be interactive.
+    }
+    c.reason="party-confirm-reachable-panels-not-unique";
+    if (partyCount!=1 || messageCount!=1) return false;
+    auto const* msg=reinterpret_cast<UBioSFHandler_PCMessageBox const*>(message.handler.address);
+    auto const* selected=reinterpret_cast<UBioSFHandler_PCPartySelection const*>(party.handler.address);
+    c.focusHandler=CopyIdentity(message.handler); c.partyPanel=CopyIdentity(party.panel); c.partyHandler=CopyIdentity(party.handler);
+    c.partyInitialized=selected->m_bSFScreenInitialized; c.partyNoSelectMode=selected->m_bNoSelectMode;
+    c.partyMember1=selected->m_nPartyMember1; c.partyMember2=selected->m_nPartyMember2;
+    c.confirmationContext=msg->nInputCallbackContext; c.messageHiddenDepth=msg->m_nHiddenDepth;
+    c.messageHandleInput=msg->bHandleInput; c.messageModal=msg->m_bIsModal;
+    c.messageCached=msg->m_bCached; c.messageDisplayingHint=msg->m_bDisplayingHint;
+    c.messageCache=reinterpret_cast<std::uintptr_t>(manager->m_oMessageBox);
+    c.reason="party-confirm-callback-does-not-target-current-party";
+    if (msg->__InputCallback__Delegate.Object!=selected || !c.partyInitialized ||
+        !CopyPartyName(msg->__InputCallback__Delegate.FunctionName,c.partyNames[0],c.confirmationFunction) ||
+        std::strcmp(c.confirmationFunction.data(),"FinalizeParty")!=0 || c.confirmationContext!=0) return false;
+    c.confirmationCallback=c.partyHandler;
+    c.reason="party-confirm-selected-member-array-or-index-invalid";
+    if (!BoundedArray(selected->lstMemberInfo,32)) return false;
+    c.partyMembers=CopyArray(selected->lstMemberInfo);
+    int const indices[]{c.partyMember1,c.partyMember2};
+    for (unsigned i=0;i<2;++i) {
+        if (indices[i]==-1) continue; // FinalizeParty explicitly permits absent members.
+        if (indices[i]<0 || static_cast<unsigned>(indices[i])>=c.partyMembers.count) return false;
+        auto& label=i==0?c.partyLabel1:c.partyLabel2;
+        if (!CopyPartyName(selected->lstMemberInfo.GetData()[indices[i]].InPartyLabel,c.partyNames[i+2],label)) return false;
+    }
+    // ExitScreen may call an external completion delegate instead of simply
+    // hiding PartySelect. Preserve that identity; never infer its destination.
+    auto const& completion=selected->__ExternalCallback_OnComplete__Delegate;
+    std::memcpy(c.partyNames[1].data(),&completion.FunctionName,sizeof(SFXName));
+    if (completion.Object) {
+        ObjectSample target;
+        c.reason="party-confirm-completion-delegate-invalid";
+        if (!ReadObject(table,completion.Object,"Core","Object",target) ||
+            !CopyPartyName(completion.FunctionName,c.partyNames[1],c.completionFunction)) return false;
+        c.partyCompletionCallback=CopyIdentity(target);
+    }
+    c.category=Category::PartyConfirm;
+    return true;
 }
 void ReadInputContext(void* raw) {
     auto& sample=*static_cast<ReadContext*>(raw); auto& f=sample.flow; auto& c=sample.result;
@@ -107,6 +179,9 @@ void ReadInputContext(void* raw) {
         // GFx completion or enabled controls. Selected members and NoSelectMode
         // are copied without inventing a selection-stage interpretation.
         c.category=Category::PartySelect;
+    } else if (f.currentMode==7 && std::strcmp(f.mode.className,"SFXGame.SFXGameModeGUI")==0 &&
+               std::strcmp(f.focusedTag,"MessageBox")==0) {
+        if (!ReadPartyConfirmation(table,manager,c)) return;
     } else return;
     c.available=true; c.reason="stable-read-only-input-context";
 }
@@ -132,7 +207,7 @@ json::Value ContextJson(Context const& c) {
     auto out=json::Value::Object(); out["available"]=c.available; out["reason"]=c.reason;
     out["dispatchCapability"]=false; out["bindingsVerified"]=false; out["gameplayEffectProven"]=false;
     out["durableObjectIdentity"]=false;
-    out["category"]=c.available?(c.category==Category::Default?"default":"party-select"):"unavailable";
+    out["category"]=c.available?(c.category==Category::Default?"default":c.category==Category::PartySelect?"party-select":"party-confirm"):"unavailable";
     if (!c.available) return out;
     out["currentMode"]=static_cast<int>(c.currentMode); out["map"]=c.map.data(); out["focusedPanelTag"]=c.focusedTag.data();
     out["modeActive"]=c.modeActive; out["allowMovement"]=c.allowMovement; out["allowCamera"]=c.allowCamera;
@@ -140,6 +215,20 @@ json::Value ContextJson(Context const& c) {
     out["playersOnly"]=c.playersOnly; out["playersOnlyPending"]=c.playersOnlyPending; out["worldPaused"]=c.worldPaused;
     out["closedPowerWheel"]=c.closedWheel; out["partyHandlerInitialized"]=c.partyInitialized;
     out["partyNoSelectMode"]=c.partyNoSelectMode; out["partyMember1"]=c.partyMember1; out["partyMember2"]=c.partyMember2;
+    if (c.category==Category::PartyConfirm) {
+        auto confirmation=json::Value::Object();
+        confirmation["callback"]=c.confirmationFunction.data(); confirmation["callbackContext"]=c.confirmationContext;
+        confirmation["currentPartyRelationVerified"]=true; confirmation["memberCount"]=static_cast<int>(c.partyMembers.count);
+        confirmation["selectedLabel1"]=c.partyLabel1.data(); confirmation["selectedLabel2"]=c.partyLabel2.data();
+        confirmation["externalCompletionPresent"]=c.partyCompletionCallback.address!=0;
+        confirmation["externalCompletionFunction"]=c.completionFunction.data();
+        confirmation["completionDestinationProven"]=false;
+        confirmation["handleInput"]=c.messageHandleInput; confirmation["modal"]=c.messageModal;
+        confirmation["hiddenDepth"]=c.messageHiddenDepth; confirmation["cached"]=c.messageCached;
+        confirmation["displayingHint"]=c.messageDisplayingHint;
+        confirmation["managerMessageCacheMatches"]=c.messageCache==c.focusHandler.address;
+        out["partyConfirmation"]=std::move(confirmation);
+    }
     auto identities=json::Value::Object();
     identities["worldIndex"]=c.world.index; identities["controllerIndex"]=c.controller.index;
     identities["pawnIndex"]=c.pawn.index; identities["playerInputIndex"]=c.playerInput.index;

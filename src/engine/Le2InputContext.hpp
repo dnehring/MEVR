@@ -6,7 +6,7 @@
 
 namespace mevr::engine::le2_diagnostic::input_context {
 #if defined(MEVR_GAME_LE2)
-enum class Category { Unavailable, Default, PartySelect };
+enum class Category { Unavailable, Default, PartySelect, PartyConfirm };
 // Comparison-only process-local identities, never wire handles or durable IDs.
 struct Identity {
     std::uintptr_t address{}, classAddress{};
@@ -39,6 +39,13 @@ struct State {
     std::int32_t partyMember1{}, partyMember2{};
     Identity wheelHandler;
     std::uintptr_t wheelCache{}, wheelPlayer{}, wheelPawn{};
+    Identity partyPanel, partyHandler, confirmationCallback, partyCompletionCallback;
+    ArrayIdentity partyMembers;
+    std::array<std::array<std::uint32_t,2>,4> partyNames{}; // callback, completion, selected labels
+    std::array<char,128> confirmationFunction{}, completionFunction{}, partyLabel1{}, partyLabel2{};
+    std::uintptr_t messageCache{};
+    std::int32_t confirmationContext{}, messageHiddenDepth{};
+    bool messageHandleInput{}, messageModal{}, messageCached{}, messageDisplayingHint{};
     bool operator==(State const&) const = default;
 };
 struct Context : State {

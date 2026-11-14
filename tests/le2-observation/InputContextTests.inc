@@ -108,5 +108,100 @@
     partyInput(); static UBioSFHandler_PCPartySelection* changingParty; changingParty=partyHandler.get();
     ic::testing::SetSampleHook(+[]{changingParty->m_nPartyMember2=3;});
     Check(!captureInput().available,"second read rejects party state change"); ic::testing::SetSampleHook(nullptr);
+
+    Raw<UClass> messageClass, pcMessageClass, objectRoot;
+    Raw<UBioSFHandler_PCMessageBox> messageHandler;
+    Raw<UBioSFPanel> messagePanel, duplicatePartyPanel;
+    Raw<UObject> completionTarget;
+    add(objectRoot.get(),"Object",meta.get(),corePackage.get());
+    add(messageClass.get(),"BioSFHandler_MessageBox",meta.get(),sfxPackage.get()); messageClass.get()->SuperField=handlerType.get();
+    add(pcMessageClass.get(),"BioSFHandler_PCMessageBox",meta.get(),sfxPackage.get()); pcMessageClass.get()->SuperField=messageClass.get();
+    add(messageHandler.get(),"CurrentMessageHandler",pcMessageClass.get(),nullptr);
+    add(messagePanel.get(),"CurrentMessagePanel",panelType.get(),nullptr); tag(messagePanel.get(),"MessageBox");
+    add(duplicatePartyPanel.get(),"DuplicatePartyPanel",panelType.get(),nullptr); tag(duplicatePartyPanel.get(),"PartySelect");
+    add(completionTarget.get(),"CompletionTarget",objectRoot.get(),nullptr);
+    std::array<FPartySelectMemberInfo,3> members{};
+    auto setName=[&](SFXName& target,char const* name) { Raw<UObject> named; Name(named.get(),name); target=named.get()->Name; };
+    setName(members[1].InPartyLabel,"SyntheticPartyLabelOne"); setName(members[2].InPartyLabel,"SyntheticPartyLabelTwo");
+    UBioSFPanel* confirmationPanels[]{partyPanel.get(),messagePanel.get(),duplicatePartyPanel.get()};
+    auto confirmationInput=[&] {
+        partyInput();
+        messageHandler.get()->Class=pcMessageClass.get(); messageHandler.get()->oPanel=messagePanel.get();
+        messageHandler.get()->oWorldInfo=menuWorldInfo.get();
+        messageHandler.get()->__InputCallback__Delegate.Object=partyHandler.get();
+        setName(messageHandler.get()->__InputCallback__Delegate.FunctionName,"FinalizeParty");
+        messageHandler.get()->nInputCallbackContext=0; messageHandler.get()->m_nHiddenDepth=0;
+        messageHandler.get()->bHandleInput=1; messageHandler.get()->m_bIsModal=1;
+        messageHandler.get()->m_bCached=messageHandler.get()->m_bDisplayingHint=0;
+        messagePanel.get()->oParentManager=manager.get(); messagePanel.get()->m_DefaultHandler=messageHandler.get();
+        messagePanel.get()->IsVisible=messagePanel.get()->bInitialized=1;
+        messagePanel.get()->bToBeRemoved=messagePanel.get()->bInputDisabled=messagePanel.get()->bEventsDisabled=0;
+        manager.get()->m_FocusPanel=messagePanel.get(); manager.get()->m_oMessageBox=messageHandler.get();
+        mevr::ue3::TArray<UBioSFPanel*> panelsHeader{confirmationPanels,2,3};
+        std::memcpy(&manager.get()->m_lstPanels,&panelsHeader,sizeof(panelsHeader));
+        mevr::ue3::TArray<FPartySelectMemberInfo> memberHeader{members.data(),3,3};
+        std::memcpy(&partyHandler.get()->lstMemberInfo,&memberHeader,sizeof(memberHeader));
+        partyHandler.get()->__ExternalCallback_OnComplete__Delegate.Object=nullptr;
+        setName(partyHandler.get()->__ExternalCallback_OnComplete__Delegate.FunctionName,"None");
+    };
+    confirmationInput(); auto confirmation=captureInput();
+    Check(confirmation.available && confirmation.category==ic::Category::PartyConfirm &&
+        confirmation.confirmationCallback.address==reinterpret_cast<std::uintptr_t>(partyHandler.get()),"exact party-bound message callback admitted without calls");
+    auto confirmJson=ic::ContextJson(confirmation);
+    Check(confirmJson.String("category")=="party-confirm" && confirmJson.Get("partyConfirmation").String("callback")=="FinalizeParty" &&
+        !confirmJson.Get("partyConfirmation").Bool("completionDestinationProven",true),"confirmation output exposes source relation without destination claim");
+    Check(!ic::SameContext(party,confirmation),"party to modal confirmation invalidates previous pulse");
+    partyPanel.get()->bInputDisabled=1; partyPanel.get()->IsVisible=0;
+    Check(captureInput().available,"modal parent need not be focused or interactive");
+    for(unsigned bad=0;bad<21;++bad) {
+        confirmationInput();
+        if(bad==0) messageHandler.get()->__InputCallback__Delegate.Object=nullptr;
+        if(bad==1) messageHandler.get()->__InputCallback__Delegate.Object=partyPanel.get();
+        if(bad==2) setName(messageHandler.get()->__InputCallback__Delegate.FunctionName,"UnrelatedConfirmation");
+        if(bad==3) messageHandler.get()->__InputCallback__Delegate.FunctionName.Number=1;
+        if(bad==4) messageHandler.get()->nInputCallbackContext=1;
+        if(bad==5) messageHandler.get()->oWorldInfo=nullptr;
+        if(bad==6) messageHandler.get()->oPanel=nullptr;
+        if(bad==7) messageHandler.get()->Class=messageClass.get();
+        if(bad==8) messagePanel.get()->bInputDisabled=1;
+        if(bad==9) messagePanel.get()->bEventsDisabled=1;
+        if(bad==10) messagePanel.get()->bInitialized=0;
+        if(bad==11) messagePanel.get()->bToBeRemoved=1;
+        if(bad==12) messagePanel.get()->IsVisible=0;
+        if(bad==13) partyPanel.get()->bInitialized=0;
+        if(bad==14) partyPanel.get()->bToBeRemoved=1;
+        if(bad==15) partyHandler.get()->m_bSFScreenInitialized=0;
+        if(bad==16) partyHandler.get()->m_nPartyMember1=3;
+        if(bad==17) partyHandler.get()->m_nPartyMember2=-2;
+        if(bad==18) { mevr::ue3::TArray<FPartySelectMemberInfo> invalidMembers{members.data(),33,33}; std::memcpy(&partyHandler.get()->lstMemberInfo,&invalidMembers,16); }
+        if(bad==19) { mevr::ue3::TArray<FPartySelectMemberInfo> invalidMembers{reinterpret_cast<FPartySelectMemberInfo*>(1),3,3}; std::memcpy(&partyHandler.get()->lstMemberInfo,&invalidMembers,16); }
+        if(bad==20) partyHandler.get()->__ExternalCallback_OnComplete__Delegate.Object=reinterpret_cast<UObject*>(1);
+        Check(!captureInput().available,"unrelated unsafe or malformed confirmation context rejected");
+    }
+    confirmationInput(); auto messageTag=messagePanel.get()->nmTag; tag(messagePanel.get(),"Other");
+    Check(!captureInput().available,"party callback on arbitrary tagged panel not admitted"); messagePanel.get()->nmTag=messageTag;
+    confirmationInput();
+    duplicatePartyPanel.get()->oParentManager=manager.get();
+    mevr::ue3::TArray<UBioSFPanel*> duplicateHeader{confirmationPanels,3,3}; std::memcpy(&manager.get()->m_lstPanels,&duplicateHeader,16);
+    Check(!captureInput().available,"duplicate party panel rejected before delegate interpretation");
+    confirmationInput(); tag(duplicatePartyPanel.get(),"MessageBox"); std::memcpy(&manager.get()->m_lstPanels,&duplicateHeader,16);
+    Check(!captureInput().available,"duplicate message panel rejected");
+    confirmationInput(); partyHandler.get()->m_nPartyMember1=partyHandler.get()->m_nPartyMember2=-1;
+    Check(captureInput().available,"source-permitted absent selected members retained without invented minimum");
+    confirmationInput(); partyHandler.get()->__ExternalCallback_OnComplete__Delegate.Object=completionTarget.get();
+    setName(partyHandler.get()->__ExternalCallback_OnComplete__Delegate.FunctionName,"SyntheticCompletion");
+    auto completion=captureInput();
+    Check(completion.available && completion.partyCompletionCallback.index==completionTarget.get()->ObjectInternalInteger &&
+        !ic::SameContext(confirmation,completion),"valid external completion identity retained without claiming destination");
+    confirmationInput(); messageHandler.get()->m_bCached=1;
+    Check(captureInput().available && !ic::SameContext(confirmation,captureInput()),"message state change invalidates context");
+    confirmationInput(); static FPartySelectMemberInfo* changingMembers; changingMembers=members.data();
+    auto oldLabel=members[1].InPartyLabel;
+    ic::testing::SetSampleHook(+[]{changingMembers[1].InPartyLabel=changingMembers[2].InPartyLabel;});
+    Check(!captureInput().available,"selected plot label replacement between reads rejects context");
+    ic::testing::SetSampleHook(nullptr); members[1].InPartyLabel=oldLabel;
+    confirmationInput(); static UBioSFHandler_PCMessageBox* changingMessage; changingMessage=messageHandler.get();
+    ic::testing::SetSampleHook(+[]{changingMessage->__InputCallback__Delegate.Object=nullptr;});
+    Check(!captureInput().available,"callback replacement between reads rejects context"); ic::testing::SetSampleHook(nullptr);
     beginInput(); Check(captureInput().available && flowDispatchCalls==0,"read-only context recovers without dispatch or save-flow receipts");
 }
