@@ -7,6 +7,8 @@ Deliver the existing MEVR interaction model in Legendary Edition ME2, beginning 
 
 This is the starting document for agents. A task is complete only when its stated gate is met. Compiling an ASI, viewing stereo, proving combat behavior and accepting it in a physical headset are different milestones. No sequel runtime proof is recorded by this planning commit.
 
+The [validation tooling goal](le2-validation-goal.md) expands P9 into save editing, reproducible scenarios, story-state preparation and evidence requirements. Use it when assigning the testing infrastructure work.
+
 ## Product decisions
 
 - Keep controller aim, full-body presentation, calibrated seated/standing play, physical holsters, two-hand support, powers, squad controls and usable in-headset menus.
