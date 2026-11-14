@@ -69,8 +69,19 @@ a natural pre-reload save. Before editing, identify the existing weapon class,
 actual magazine capacity, selected weapon, ammo power and finite-ammo settings.
 Prepare empty and partial magazines with zero, insufficient, exact and surplus
 reserves relative to the missing rounds; include a full-magazine refusal case.
-Hash-bind each recipe and verify post-load values. Resource-batch tooling does
-not prepare ammunition because these dependencies are weapon-specific.
+Hash-bind each recipe and verify post-load values. The existing
+[variant preparer](../tools/qa-le2/variant-usage.md) now accepts a reload ammo
+spec with the saved weapon class and record, measured magazine capacity and
+finite-ammo policy. Cases that prepare identical inputs share one output.
+
+The final batch implementation was checked against the archived chapter save
+and the one-round MassCannon capacity observed in run `1722Z-loadout`. All four
+unique outputs passed the exact recipe and independent Trilogy Save Editor
+checks. Only the bound weapon's ammo fields changed. The batch index SHA256 is
+`3bdcd95c1ac17c76f74d40ece84fda3c96d4d666d1a4b430ffd52ab26e77c00c`.
+The saved selection is a different weapon and capacity one has no partial case.
+This verifies the file preparation and the explicit aliases, with loading and
+reload behavior pending a suitable in-game checkpoint.
 
 Capture input intent, eligibility/rejection, class/object generation, used and
 loaded counts, magazine capacity, reserve, reload state, early-reload flag,
