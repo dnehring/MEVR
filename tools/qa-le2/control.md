@@ -110,14 +110,17 @@ No hook is installed by `observe-input`: the first explicit, owned `pad-pulse`
 attempt installs only the game's already loaded XInput exports. Admission needs
 a stable supported engine context and a completely available bridge. Each pulse
 has a process-local, never-reused token correlated with the ordinary request's
-run, lease and sequence. A second pulse is refused until the first has emitted
-its neutral output. There is no pulse queue or automatic retry.
+run, lease and sequence. A second pulse is refused until the first has completed
+its bounded neutral-output window. There is no pulse queue or automatic retry.
 
 `payload.inputObservation` contains `context`, `bridge` and `cancellationReason`.
 The bridge's `source` reports publication, activation deadline, actual hold
 expiry (`0` until the first delivered press), requested duration/pad, eligible
-poll counts and neutral writes. `output-written` and `neutral-written` mean the
-hook wrote an XInput output buffer; they do not prove the engine used it. Compare
+poll counts and neutral writes. `neutralFirstMs`, `neutralLastMs` and
+`neutralDeadlineMs` describe a fixed 250 ms window starting with the first safe
+neutral output; the deadline saturates at the clock's representable limit.
+`neutralMs` remains the latest neutral-write timestamp. `output-written` and
+`neutral-output-window-complete` describe hook output, not engine consumption. Compare
 normal scene captures and authoritative state before and after each action.
 An empty poll history remains unproven, even after a dispatched response.
 
@@ -126,8 +129,10 @@ while input is pending, cancelling permanently on a change. Ownership is also
 rechecked during throttled request polling (approximately 250 ms). Hook-side
 expiry uses monotonic time independently of that polling. Physical pad activity
 or errors stop injection and preserve the original result. Neutral release
-requires a later eligible, nonconflicting poll; without one, replacement stays
-blocked. Closing/disabling the endpoint cancels admission while resident hooks
+is repeated for eligible nonconflicting polls during that fixed window, with a
+stable release packet. Completion requires another safe neutral write at or after
+the deadline; elapsed time alone does not unblock replacement. Closing/disabling
+the endpoint cancels admission while resident hooks
 remain available to deliver neutral release. Diagnostic file hashing and context
 sampling are excluded from performance measurements. Native delivery, bindings,
 menu effects and movement still require a protected run; these code paths alone

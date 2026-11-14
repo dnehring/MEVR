@@ -107,6 +107,23 @@ mevr::qa::control::PadPulse Pulse(std::string category = "default") {
 bool Publish(NativeInput& input, std::string& reason, std::string category = "default", std::uint64_t sequence = 1) {
     return input.Publish(Pulse(std::move(category)),sequence,77,2000,[]{ fake::calls.push_back("clock"); return fake::utc; },reason);
 }
+void FinishNeutral(NativeInput& input) {
+    auto state = fake::source->Snapshot();
+    Check(state.phase == pad::Phase::DrainPending && state.neutralPolls != 0 && input.Active(),
+          "first neutral write leaves host busy for other consumers");
+    auto observed = input.Observe(77).Get("bridge").Get("source");
+    Check(observed.String("phase") == "neutral-pending" && observed.Number("neutralDwellMs") == 250 &&
+          observed.String("neutralFirstMs") == std::to_string(state.neutralFirstMs) &&
+          observed.String("neutralDeadlineMs") == std::to_string(state.neutralDeadlineMs),
+          "host exposes fixed neutral output window without claiming completion");
+    fake::monotonic = state.neutralDeadlineMs;
+    auto release = fake::Poll(); input.Tick(77);
+    Check(release.replace && release.pad == pad::Pad{} && !input.Active() &&
+          fake::source->Snapshot().neutralPolls >= 2,
+          "final safe neutral write completes window and unblocks host");
+    Check(input.Observe(77).Get("bridge").Get("source").String("phase") == "neutral-output-window-complete",
+          "terminal telemetry names output coverage rather than consumption");
+}
 void Admission() {
     fake::Reset();
     NativeInput input; std::string reason;
@@ -159,7 +176,9 @@ void PartyConfirmation() {
     Check(!input.admitted && fake::source->Snapshot().phase == pad::Phase::DrainPending,
           "confirmation-to-game transition cancels and requires release");
     Check(!Publish(input,reason,"default",2),"next screen cannot receive replacement before neutral");
-    Check(fake::Poll().replace && fake::source->Snapshot().neutralPolls == 1,"confirmation transition releases once");
+    Check(fake::Poll().replace && fake::source->Snapshot().neutralPolls == 1,"confirmation transition begins neutral output");
+    Check(!Publish(input,reason,"default",2),"first neutral cannot authorize next-screen input");
+    FinishNeutral(input);
     Check(Publish(input,reason,"default",2),"separate next-screen request only follows neutral");
 }
 void LoadoutTransition() {
@@ -172,7 +191,9 @@ void LoadoutTransition() {
     Check(!input.admitted && fake::source->Snapshot().phase == pad::Phase::DrainPending,
           "loadout stage change cancels even while category remains loadout");
     Check(!Publish(input,reason,"loadout",2),"new loadout stage waits for neutral");
-    Check(fake::Poll().replace && fake::source->Snapshot().neutralPolls == 1,"loadout stage releases once");
+    Check(fake::Poll().replace && fake::source->Snapshot().neutralPolls == 1,"loadout stage begins neutral output");
+    Check(!Publish(input,reason,"loadout",2),"first neutral cannot authorize next loadout stage");
+    FinishNeutral(input);
     Check(Publish(input,reason,"loadout",2),"new explicit loadout stage request follows neutral");
 }
 void ContextCancellation() {
@@ -188,6 +209,7 @@ void ContextCancellation() {
     Check(!Publish(input,reason) && input.Active(),"context cancellation cannot bypass release");
     auto neutral = fake::Poll();
     Check(neutral.replace && neutral.pad == pad::Pad{},"safe poll emits neutral after context cancellation");
+    FinishNeutral(input);
     auto const oldToken = input.token;
     fake::current.category = context::Category::PartySelect;
     Check(Publish(input,reason,"party-select",2),"explicit new party request after drain accepted");
@@ -203,6 +225,8 @@ void ExpiryAndConflict() {
     auto neutral = fake::Poll();
     Check(neutral.replace && neutral.pad == pad::Pad{} && fake::source->Snapshot().pulsePolls == 0,"first late poll emits only neutral");
     input.Tick(77);
+    Check(input.Active() && !Publish(input,reason),"activation timeout retains host gate throughout neutral window");
+    FinishNeutral(input);
     Check(!input.admitted && !input.Active() && fake::source->Snapshot().end == pad::End::StartTimedOut,"start timeout neutral clears context without automatic publication");
     Check(Publish(input,reason,"default",2),"explicit request after expired neutral accepted");
     pad::Physical physical{pad::PhysicalState::Connected,{0,0,0,1,0,0,0},11};
@@ -210,6 +234,7 @@ void ExpiryAndConflict() {
     input.Tick(77);
     Check(!Publish(input,reason) && fake::source->Snapshot().end == pad::End::PhysicalConflict,"physical conflict keeps release busy");
     Check(fake::Poll().pad == pad::Pad{},"physical conflict resolves with neutral only");
+    FinishNeutral(input);
     input.Tick(77);
     Check(!input.admitted && fake::publishes == 2,"resolved conflict does not rearm");
 }
@@ -227,8 +252,10 @@ void NativePollDelay() {
         Check(!Publish(input,reason),"delivered press still cannot be replaced before release");
         fake::monotonic += 100;
         auto release = fake::Poll(); input.Tick(77);
-        Check(release.replace && release.pad == pad::Pad{} && !input.Active() &&
-              fake::source->Snapshot().end == pad::End::Expired,"hold expires relative to first eligible poll and drains once");
+        Check(release.replace && release.pad == pad::Pad{} && input.Active() &&
+              fake::source->Snapshot().end == pad::End::Expired,"hold expiry starts neutral window");
+        Check(!Publish(input,reason),"expiry first neutral does not permit another pulse");
+        FinishNeutral(input);
     }
 }
 void RefusedAndClock() {
@@ -249,6 +276,8 @@ void ClockRegression() {
     fake::monotonic = 99;
     auto neutral = fake::Poll(); input.Tick(77);
     Check(neutral.replace && neutral.pad == pad::Pad{} && fake::source->Snapshot().end == pad::End::ClockRegressed,"clock regression produces neutral not active pulse");
+    Check(!Publish(input,reason) && reason == "previous-pulse-release-pending","clock regression retains drain gate");
+    FinishNeutral(input); fake::monotonic = 99;
     Check(!Publish(input,reason) && reason == "input-publication-refused" && !input.admitted,"new token cannot bypass clock regression");
 }
 void DisableAndJson() {
@@ -261,8 +290,9 @@ void DisableAndJson() {
         Check(!fake::source->Snapshot().runOpen,"disable closes source run");
         Check(fake::Poll().replace,"disabled hooks can still drain neutral");
         Check(!Publish(input,reason),"disable cannot reinstall or rearm");
+        FinishNeutral(input);
         auto const observed = input.Observe(77);
-        Check(observed.Get("bridge").Get("source").String("phase") == "neutral-written","neutral write reported distinctly");
+        Check(observed.Get("bridge").Get("source").String("phase") == "neutral-output-window-complete","completed neutral window reported distinctly");
         Check(observed.String("cancellationReason") == "endpoint-disabled-or-closed","disable reason preserved");
         Check(observed.Get("bridge").String("evidenceScope").find("not game-consumption") != std::string::npos,"telemetry evidence scope explicit");
     }

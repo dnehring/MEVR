@@ -9,6 +9,9 @@ Checks cover explicit installation, default/party category admission, context
 replacement during installation and subsequent ticks, deadline refresh after
 installation, pending-release refusal, monotonic expiry/regression/overflow,
 physical conflict, fresh explicit runs, disable/destruction, and honest telemetry.
+Confirmation and loadout transitions cannot publish another pulse after only the
+first neutral write: the host remains busy until a safe final neutral output
+completes the bounded window. Tests inspect the actual source and serialized times.
 An expired UTC request cannot publish. UTC is an admission deadline; the pulse's
 bounded hold uses the bridge's independent monotonic clock.
 

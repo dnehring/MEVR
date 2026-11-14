@@ -5,6 +5,45 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Weapon observation works; squad input is not yet reproducible
+
+Protected run `0ad9e033-a97d-4108-bbe7-e38a58812386` used candidate `d1cada86`,
+ASI SHA256 `a4ac19ad245ca7ca4b9ded4be757837e2722d9741d771c0ae1b8d8f056dc3dc6`.
+Normal Steam launch and the unique row-2 chapter load succeeded. Miranda's first
+confirm produced 33 positive output polls and one neutral write, with a reviewed
+image showing her selected. A 150 ms right pulse produced 686 positive polls and
+one neutral write; the subsequent image highlighted Tali rather than reproducing
+the prior run's Grunt step. Another confirm produced 30 positive polls and one
+neutral write, but the image and later passive capture showed Zaeed highlighted,
+Miranda selected and no modal. No party-confirm or loadout pulse was attempted.
+
+The initial desktop capture refused foreground HWND 0. PrintWindow supplied
+readable images but did not prove foreground focus at input time. The bridge
+emitted stable packets while pad values were unchanged: poll counts are not
+button edges. Source review found that the first eligible caller consumed the
+single neutral write, after which other callers received the original disconnected
+result. That is a concrete coverage gap and a possible contributor, not a proven
+cause of the UI behavior; input-mode, focus and native/GFx handling remain open.
+The correction extends the existing source with a bounded neutral-output window,
+not a new hook or input transport. Its native effect requires another run.
+
+Read-only request `cff8ccbc-52d3-435a-8a7b-ac856eca6c46` established the first live
+weapon sample: exact class `SFXGameContent_Inventory.SFXWeapon_MassCannon`, capacity
+1, used 0, source-derived loaded count 1 and raw stored reserve 10. The existing
+exporter preserved this as a correlated partial observation; effective reserve,
+the scenario's map/resources and starting-state acceptance remain unavailable.
+See the [weapon source/evidence note](le2-weapon-observation.md). No firing,
+reload, new combat save, confirmation or loadout progression was proven.
+
+The exact owned game closed normally at 17:31:25 UTC. The preservation preflight
+found no ME1 save changes and unchanged shared Trilogy profile content. All four
+protected roots restored and verified at 17:32:09 UTC; the owned invitation was
+removed. Private evidence is `run-20261114T1722Z-loadout`; its independent
+archived-only review passed 124 checks, including 15 correlated requests, with
+zero failures. `native-outcome.json` SHA256:
+`7cbef0b39a93f06b6df33f70243a2038a5123813fc757c03f1561411fb4e08a9`.
+Archive integrity does not turn the partial gameplay result into acceptance.
+
 ### Bounded input selects two squad members; confirmation remains gated
 
 Protected run `b9050968-61cb-4d26-9691-ee1ec0f84e80` used candidate `823c0568`,

@@ -1,15 +1,18 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 testing tools: reuse audit and runtime observer history
 
-Current audit: **2026-11-14, candidate `823c0568`**. We already have the ME2 save,
+Current audit: **2026-11-14, native candidate `d1cada86`**. We already have the ME2 save,
 launch, protected-session, capture, control and scenario workflow. Native
 eight-resource save/reload persistence is proven; an untouched chapter loads to
-Squad Selection. Bounded input through the existing bridge now selects Miranda
-and Grunt and reaches Confirm Squad Selection. The modal is not yet admitted by
-the context guard. The three gameplay scenarios remain unvalidated. See the
+Squad Selection. One earlier run selected Miranda and Grunt and reached the
+confirmation modal, but the next run did not reproduce that sequence. A single
+neutral-poll coverage gap is being corrected in the existing input source.
+Weapon observation now has a native sample. The new confirmation/loadout guards
+remain native-unverified. The three gameplay scenarios remain unvalidated. See the
 [current evidence](le2-validation-evidence.md) and [workflow](../tools/qa-le2/README.md).
 This update combines source inspection with the archived protected native run
-`b9050968-61cb-4d26-9691-ee1ec0f84e80`; it closed normally and restored all four
+`b9050968-61cb-4d26-9691-ee1ec0f84e80` and follow-up
+`0ad9e033-a97d-4108-bbe7-e38a58812386`; both closed normally and restored all four
 protected roots. The older observer design below is historical, not current readiness.
 
 ## Reuse map and current proof boundary
@@ -20,8 +23,8 @@ flowchart TD
     B --> C[qa-le2 session.py and launch.ps1]
     C --> D[control.py: normal menus, load and save]
     D --> E[Existing GamepadBridge: bounded input]
-    E --> F[Proven: two squad members selected]
-    F --> G[Next: guarded confirmation and loadout]
+    E --> F[One run selected two members; repetition failed]
+    F --> G[Next: neutral-window proof, confirmation and loadout]
     G --> H[Acquire combat fixture and observe ammo]
     D --> I[Resource persistence: eight values proven]
     D --> J[Scanning and timed interrupt baselines pending]
@@ -119,9 +122,10 @@ existing run/PID/lease-bound channel rather than copying those request writers.
 
 ## Next work using these tools
 
-1. Extend the proven bridge and owned `observe-input`/`pad-pulse` channel with
-   a narrow party-confirm guard, then prove the modal and subsequent loadout
-   transitions. Preserve neutral release and cancellation at every transition.
+1. Prove the corrected neutral-output window through the existing bridge and
+   owned `observe-input`/`pad-pulse` channel. Record focus/input-mode limits, then
+   prove the implemented party-confirm and loadout guards through normal UI
+   transitions. Output-buffer writes alone do not prove consumption.
 2. Use the reproducible chapter acquisition fixture to complete normal squad
    selection, then acquire a safe combat save using existing New Save/collector
    tools. Add actual weapon/ammo observations before claiming reload behavior.

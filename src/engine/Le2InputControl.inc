@@ -11,7 +11,7 @@ char const* PadPhase(pad_policy::Phase phase) {
     case pad_policy::Phase::Published: return "published";
     case pad_policy::Phase::Consumed: return "output-written";
     case pad_policy::Phase::DrainPending: return "neutral-pending";
-    case pad_policy::Phase::NeutralEmitted: return "neutral-written";
+    case pad_policy::Phase::NeutralEmitted: return "neutral-output-window-complete";
     }
     return "unknown";
 }
@@ -88,6 +88,10 @@ Value InputBridgeJson(pad_bridge::DiagnosticObservation const& state) {
     source["pulsePolls"] = std::to_string(s.pulsePolls);
     source["firstPulseMs"] = std::to_string(s.firstPulseMs); source["lastPulseMs"] = std::to_string(s.lastPulseMs);
     source["neutralPolls"] = std::to_string(s.neutralPolls); source["neutralMs"] = std::to_string(s.neutralMs);
+    source["neutralFirstMs"] = std::to_string(s.neutralFirstMs);
+    source["neutralLastMs"] = std::to_string(s.neutralLastMs);
+    source["neutralDeadlineMs"] = std::to_string(s.neutralDeadlineMs);
+    source["neutralDwellMs"] = static_cast<int>(pad_policy::kNeutralDwellMs);
     source["conflictingPolls"] = std::to_string(s.conflictingPolls);
     source["requested"] = PadJson(s.requested);
     source["physicalObserved"] = s.physicalObserved;
