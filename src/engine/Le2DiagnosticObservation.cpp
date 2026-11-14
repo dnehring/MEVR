@@ -251,6 +251,18 @@ void ReadFunction(Table const& table, UObject const* controller, FunctionSample&
     while (owner != nullptr && depth++ < kMaxClassDepth) {
         if (!ClassMetadata(table, owner)) return;
         if (Qualified(table, owner, package, ownerName)) break;
+        if (menu) {
+            unsigned nearerFields = 0;
+            for (auto const* field = owner->Children; field != nullptr; field = field->Next) {
+                out.reason = "invalid-nearer-menu-class-field-or-limit";
+                if (++nearerFields > kMaxOwnerFields || !table.Listed(field, true) ||
+                    !IsA(table, field, "Core", "Field") || field->Outer != owner) return;
+                char nearerName[kNameBytes]{};
+                if (!NameText(field->Name, nearerName)) return;
+                out.reason = "nearer-menu-function-declaration";
+                if (std::strcmp(nearerName, functionName) == 0) return;
+            }
+        }
         owner = static_cast<UClass const*>(owner->SuperField);
     }
     if (owner == nullptr || !Qualified(table, owner, package, ownerName)) return;
@@ -406,7 +418,7 @@ static_assert(offsetof(FSaveGUIRecord, SaveDescriptor) == 0);
 static_assert(offsetof(FSFXSaveDescriptor, Career) == 0 && offsetof(FSFXSaveDescriptor, SaveName) == 0x10);
 static_assert(offsetof(FSFXSaveDescriptor, Index) == 0x20 && offsetof(FSFXSaveDescriptor, Type) == 0x24);
 struct MenuPanel {
-    ObjectSample panel, handler;
+    ObjectSample panel, handler, worldInfo;
     bool visible{}, initialized{}, removing{}, inputDisabled{}, eventsDisabled{}, focused{};
     bool pressedStart{}, waitingDlc{}, waitingSaves{}, checkingComplete{}, hasSaves{}, careerHasSaves{}, connecting{};
     bool waitingMessage{}, enumerating{}, fromMainMenu{};
@@ -422,9 +434,9 @@ struct SaveRow {
 };
 struct MenuSample {
     Sample root;
-    ObjectSample viewport, manager;
+    ObjectSample viewport, manager, worldInfo, controllerWorldInfo;
     MenuPanel splash, main, load;
-    bool contextAvailable{}, listComplete{};
+    bool contextAvailable{}, listComplete{}, worldLinksKnown{};
     char const* reason{"menu-context-unavailable"};
     char const* listReason{"load-panel-unavailable"};
     unsigned panelCount{}, saveCount{}, saveCapacity{};
@@ -449,6 +461,9 @@ bool PanelContext(Table const& table, UBioSFPanel const* panel, UBioSFManager co
         ObjectSample object;
         if (!ReadObject(table, candidate, "Engine", "BioSFHandler", object) || candidate->oPanel != panel) return false;
         if (!IsA(table, candidate, "SFXGame", type)) return !required;
+        if (candidate->oWorldInfo != static_cast<UMassEffectGuiManager const*>(manager)->oBioWorldInfo) return false;
+        if (candidate->oWorldInfo != nullptr &&
+            !ReadObject(table, candidate->oWorldInfo, "Engine", "WorldInfo", out.worldInfo)) return false;
         if (selected != nullptr && selected != candidate) return false;
         selected = candidate; out.handler = object;
         return true;
@@ -479,6 +494,13 @@ void ReadMenu(void* context) {
     if (!ReadObject(table, manager, "SFXGame", "MassEffectGuiManager", out.manager)) return;
     out.reason = "controller-manager-cache-disagrees";
     if (player->m_oCachedScaleFormManager != nullptr && player->m_oCachedScaleFormManager != manager) return;
+    auto const* managerWorld = static_cast<UMassEffectGuiManager const*>(manager)->oBioWorldInfo;
+    out.reason = "menu-world-info-unavailable";
+    if (managerWorld != nullptr && !ReadObject(table, managerWorld, "SFXGame", "BioWorldInfo", out.worldInfo)) return;
+    if (player->WorldInfo != nullptr && !ReadObject(table, player->WorldInfo, "Engine", "WorldInfo", out.controllerWorldInfo)) return;
+    out.reason = "controller-manager-world-info-disagrees";
+    if (player->WorldInfo != managerWorld) return;
+    out.worldLinksKnown = managerWorld != nullptr;
     out.reason = "panel-array-invalid-or-limit";
     if (!BoundedArray(manager->m_lstPanels, kMaxMenuPanels)) return;
     out.panelCount = manager->m_lstPanels.Count();
@@ -828,6 +850,7 @@ namespace {
 json::Value MenuPanelJson(MenuPanel const& p, char const* failure) {
     auto out = json::Value::Object();
     out["panel"] = ObjectJson(p.panel, failure); out["handler"] = ObjectJson(p.handler, failure);
+    out["worldInfo"] = ObjectJson(p.worldInfo, failure);
     out["structurallyInteractive"] = failure == nullptr && PanelInteractive(p);
     if (failure != nullptr || !p.panel.available) return out;
     out["visible"] = p.visible; out["initialized"] = p.initialized; out["removing"] = p.removing;
@@ -841,6 +864,10 @@ json::Value MenuContextJson(MenuSample const& sample, char const* failure) {
     out["localPlayer"] = ObjectJson(sample.root.localPlayer, failure);
     out["controller"] = ObjectJson(sample.root.player, failure);
     out["viewport"] = ObjectJson(sample.viewport, failure); out["manager"] = ObjectJson(sample.manager, failure);
+    out["managerWorldInfo"] = ObjectJson(sample.worldInfo, failure);
+    out["controllerWorldInfo"] = ObjectJson(sample.controllerWorldInfo, failure);
+    out["worldLinksKnown"] = failure == nullptr && sample.contextAvailable && sample.worldLinksKnown;
+    out["worldLinkScope"] = "controller-manager-selected-handlers-point-in-time-only";
     // Partial traversal cannot make an earlier candidate actionable after a later
     // ambiguity, foreign panel or invalid focus reference has been encountered.
     char const* panelFailure = failure != nullptr ? failure : sample.contextAvailable ? nullptr : sample.reason;

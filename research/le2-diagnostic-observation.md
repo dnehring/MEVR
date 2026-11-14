@@ -364,7 +364,10 @@ and `MassEffectGuiManager` references, compares a nonnull controller manager
 cache, and walks at most 32 reachable panels and 32 handlers per matching panel.
 It never scans GObjects to find a menu. Every dereferenced instance must have a
 live, non-template table slot and a bounded validated class chain. Panel-manager
-and handler-panel references must agree. Duplicate panel entries/tags, competing
+and handler-panel references must agree. Controller WorldInfo, manager
+oBioWorldInfo and each selected handler oWorldInfo must agree; nonnull references
+must also be typed/live. All-null references remain explicit unknown world
+linkage, not a proven current world. Duplicate panel entries/tags, competing
 handlers, foreign focus and malformed headers invalidate the context, including
 any earlier candidate's apparent readiness.
 
@@ -377,7 +380,8 @@ a capability or a proof that an asynchronous native operation completed.
 [The menu source investigation](le2-menu-load-source.md) explains the normal
 transition and pending filename mapping.
 
-Exact-owner metadata reuse reports PCSplash.AdvanceScreen and
+Exact-owner metadata reuse rejects nearer subclass declarations before reporting
+PCSplash.AdvanceScreen and
 MainMenu.MoveToLoadGui. The latter expects only `LoadMode`, one ByteProperty at
 zero with flags `0x80`, total size/count 1; the former has no parameters. The
 observed void ReturnValueOffset is reported without inventing a constant. No
@@ -418,6 +422,6 @@ chains, Unicode, malformed text/read faults, duplicate/foreign/template objects,
 wrong focus, asynchronous state, changed second sample, exact menu metadata and
 payload overflow. Release and Debug each passed the existing standalone suite with these new cases,
 with both production/test translation units compiled under `/W4 /WX`. The
-representative 12-row compact response was 7,383 bytes; the escaped-string budget
-fallback was 5,034 bytes. These measured cases supplement the runtime size guard. Production dispatch compilation remains covered by the separate existing
+representative 12-row compact response was 8,338 bytes; the escaped-string budget
+fallback was 5,989 bytes. These measured cases supplement the runtime size guard. Production dispatch compilation remains covered by the separate existing
 object target, without executing it. None of these tests is native menu evidence.

@@ -664,6 +664,28 @@ int main() {
         Check(changedMenu.String("reason") == "menu-context-changed-or-reread-failed" &&
               !changedMenu.Get("context").Bool("available") && changedMenu.Get("records").Items().empty(), "second-sample enumeration mutation invalidates copied records and readiness");
         mutatingMenu = nullptr; loadHandler.get()->bEnumeratingSaves = 0;
+        Raw<UClass> worldInfoType, bioWorldInfoType, derivedMainType;
+        Raw<ABioWorldInfo> menuWorldInfo;
+        Raw<UFunction> nearerOpen;
+        add(worldInfoType.get(), "WorldInfo", meta.get(), enginePackage.get());
+        add(bioWorldInfoType.get(), "BioWorldInfo", meta.get(), sfxPackage.get());
+        bioWorldInfoType.get()->SuperField = worldInfoType.get();
+        add(menuWorldInfo.get(), "MenuWorldInfo", bioWorldInfoType.get(), nullptr);
+        Check(!menu().Get("context").Bool("worldLinksKnown"), "null/null menu world links remain unknown");
+        manager.get()->oBioWorldInfo = menuWorldInfo.get();
+        Check(menu().Get("context").String("reason") == "controller-manager-world-info-disagrees", "controller-manager world disagreement");
+        controller.get()->WorldInfo = menuWorldInfo.get();
+        Check(!menu().Get("context").Bool("available"), "selected handler world disagreement");
+        loadHandler.get()->oWorldInfo = mainHandler.get()->oWorldInfo = splashHandler.get()->oWorldInfo = competingLoad.get()->oWorldInfo = menuWorldInfo.get();
+        Check(menu().Get("context").Bool("worldLinksKnown"), "typed controller-manager-handler world consistency");
+        menuWorldInfo.get()->ObjectFlags = 0x200;
+        Check(!menu().Get("context").Bool("available"), "template menu world reference rejected"); menuWorldInfo.get()->ObjectFlags = 0;
+        add(derivedMainType.get(), "DerivedMainMenu", meta.get(), sfxPackage.get()); derivedMainType.get()->SuperField = mainType.get();
+        mainHandler.get()->Class = derivedMainType.get();
+        Check(menuMeta().Bool("layoutMatchesSdkDeclaration"), "inheritance without nearer declaration allowed");
+        add(nearerOpen.get(), "MoveToLoadGui", functionType.get(), derivedMainType.get()); derivedMainType.get()->Children = nearerOpen.get();
+        Check(menuMeta().String("reason") == "nearer-menu-function-declaration" && !menuMeta().Bool("available"), "nearer override not silently bypassed");
+        derivedMainType.get()->Children = nullptr; mainHandler.get()->Class = mainType.get();
         auto row = menu().Get("records").Items().at(0);
         Check(menu().Bool("listComplete") && row.Number("row") == 0 && row.Number("index") == 42 && row.String("career") == "SyntheticCareer", "UI position and native descriptor index kept distinct");
         auto key = row.String("contentKey");
