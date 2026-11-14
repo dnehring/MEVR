@@ -38,6 +38,9 @@ option(MEVR_LE2_DIAGNOSTIC "LE2 only: game-thread diagnostic host, no renderer o
 if (MEVR_LE2_DIAGNOSTIC AND (NOT MEVR_BUILD_LE2 OR MEVR_BUILD_LE1 OR MEVR_BUILD_LE3))
     message(FATAL_ERROR "MEVR_LE2_DIAGNOSTIC requires LE2 ON and LE1/LE3 OFF in an isolated build")
 endif ()
+if (MEVR_LE2_DIAGNOSTIC AND MEVR_HOT_RELOAD)
+    message(FATAL_ERROR "LE2 control producer requires a monolithic diagnostic host (MEVR_HOT_RELOAD=OFF)")
+endif ()
 # LExSDKv2 has no licence, so a players' build of LE1 has none of it (research/34 stage 6 for LE1): the mod runs on our
 # own reflection layer, and only development builds keep LExSDKv2 for the cross-check (engine/ReflectCheck). Off by
 # default in a release (monolithic) build. LE2/LE3 still read the engine through it (not released).
@@ -864,7 +867,10 @@ function(mevr_add_plugin game)
     set(with_main_menu OFF)
     set(mod_sources ${MEVR_MOD_SOURCES})
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
-        list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp)
+        list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp
+            src/engine/Le2ControlHost.cpp src/engine/Le2ControlHost.hpp
+            src/engine/Le2DiagnosticObservation.cpp src/engine/Le2DiagnosticObservation.hpp
+            src/core/qa/ControlProtocol.cpp src/core/qa/ControlProtocol.hpp src/core/Json.cpp src/core/Json.hpp)
     endif ()
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)
@@ -908,6 +914,9 @@ function(mevr_add_plugin game)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader windowscodecs)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON)
+    endif ()
+    if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
+        target_link_libraries(${host} PRIVATE bcrypt shell32 ole32)
     endif ()
     if (with_main_menu)
         target_link_libraries(${host} PRIVATE mevr-menu)
@@ -1012,6 +1021,13 @@ set_target_properties(MEVR-Loader PROPERTIES OUTPUT_NAME bink2w64)
 option(MEVR_BUILD_TESTS "Build the offline tests" ON)
 if (MEVR_BUILD_TESTS)
     enable_testing()
+    add_executable(mevr-le2-control-host-tests tests/Le2ControlHostTests.cpp
+        src/engine/Le2ControlHost.cpp src/core/qa/ControlProtocol.cpp src/core/Json.cpp)
+    target_include_directories(mevr-le2-control-host-tests PRIVATE src)
+    target_compile_definitions(mevr-le2-control-host-tests PRIVATE MEVR_LE2_CONTROL_TEST NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-le2-control-host-tests PRIVATE /W4 /WX /utf-8)
+    target_link_libraries(mevr-le2-control-host-tests PRIVATE bcrypt shell32 ole32)
+    add_test(NAME mevr-le2-control-host COMMAND mevr-le2-control-host-tests)
     add_executable(mevr-le2-diagnostic-tests tests/Le2DiagnosticTests.cpp)
     target_include_directories(mevr-le2-diagnostic-tests PRIVATE src)
     target_compile_options(mevr-le2-diagnostic-tests PRIVATE /W4 /WX /utf-8)
@@ -1214,6 +1230,9 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-le2-variants COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-variants.py)
         add_test(NAME mevr-le2-story-review COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-story-review.py)
         add_test(NAME mevr-le2-observe COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-observe.py)
+        add_test(NAME mevr-le2-control-producer-smoke COMMAND Python3::Interpreter -B
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/le2-control/ProducerSmoke.py $<TARGET_FILE:mevr-le2-control-host-tests>)
+        set_tests_properties(mevr-le2-control-producer-smoke PROPERTIES TIMEOUT 45)
         # The conversation sweep's predictions, work list and judge (tools/conversation-sweep.py, research/69), over a
         # synthetic scan.
         add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)

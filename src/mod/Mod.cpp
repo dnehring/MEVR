@@ -51,6 +51,7 @@
 #include "game/ConsoleRequest.hpp"
 #if defined(MEVR_LE2_DIAGNOSTIC)
 #include "engine/Le2DiagnosticHost.hpp"
+#include "engine/Le2ControlHost.hpp"
 #endif
 #include "game/SystemSettings.hpp"
 #include "game/GameArt.hpp"
@@ -1292,10 +1293,12 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
         return false;
     }
 #endif
-    gActive = true;
 #if defined(MEVR_LE2_DIAGNOSTIC)
-    log::Info("LE2 diagnostic host: tick only; no bound consumer registered; renderer, gameplay and shared request polling disabled");
+    bool const controlRegistered = engine::le2_control::Start();
+    log::Info("LE2 diagnostic host: bound control consumer {}; renderer, gameplay and shared request polling disabled",
+              controlRegistered ? "registered; awaiting owned invitation" : "unavailable (fail closed)");
 #endif
+    gActive = true;
     return true;
 }
 
@@ -1482,6 +1485,7 @@ MEVR_MOD_API void MevrModShutdown() {
     gActive = false;
 #if defined(MEVR_LE2_DIAGNOSTIC)
     engine::le2_diagnostic::Shutdown();
+    engine::le2_control::Shutdown();
     gInit.reset();
     gHost = nullptr;
     return;
