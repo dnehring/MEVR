@@ -302,7 +302,7 @@ struct Endpoint::Impl {
 #else
         // An explicit empty probe request may attempt one guarded scalar query.
         // General console dispatch remains disabled independently.
-        gate = std::make_unique<wire::Gate>(identity, false, true);
+        gate = std::make_unique<wire::Gate>(identity, false, true, true);
 #endif
         attached = true;
     }
@@ -337,9 +337,13 @@ struct Endpoint::Impl {
             capabilities["observeWorld"] = false; capabilities["nativeConsole"] = false;
             capabilities["observeStructuralWorld"] = false;
             capabilities["probeFov"] = false;
+            capabilities["observeSaveMenu"] = false;
+            capabilities["nativeMenuActions"] = false;
 #if !defined(MEVR_LE2_CONTROL_TEST)
             capabilities["observeStructuralWorld"] = true;
             capabilities["probeFov"] = true;
+            capabilities["observeSaveMenu"] = true;
+            capabilities["nativeMenuActions"] = true;
             payload["observationScope"] = "sdk-structural-diagnostic";
             le2_diagnostic::ObserverServices services{};
             services.inspectTarget = &host::process_event::InspectDiagnosticTarget;
@@ -350,12 +354,28 @@ struct Endpoint::Impl {
             if (decoded->verb == "observe") {
                 auto const provenance = host::process_event::ReadDiagnosticSnapshot();
                 payload["observation"] = le2_diagnostic::Observe(thread, &provenance, &services);
+            } else if (decoded->verb == "observe-save-menu") {
+                payload["saveMenu"] = le2_diagnostic::ObserveSaveMenu(thread);
             } else if (decoded->verb == "probe-fov") {
                 // This invokes script and is not labelled a read-only sample.
                 payload["readOnly"] = false;
                 auto probe = le2_diagnostic::ProbeFov(thread, services);
                 result.status = probe.status;
                 payload["probe"] = std::move(probe.payload);
+            } else if (decoded->verb == "advance-splash" || decoded->verb == "open-load-menu") {
+                payload["readOnly"] = false;
+                auto action = decoded->verb == "advance-splash"
+                    ? le2_diagnostic::AdvanceSplash(thread, services)
+                    : le2_diagnostic::OpenLoadMenu(thread, services);
+                result.status = action.status;
+                payload["menuAction"] = std::move(action.payload);
+            }
+#else
+            if (decoded->verb == "observe-save-menu") {
+                auto unavailableMenu = Value::Object();
+                unavailableMenu["available"] = false;
+                unavailableMenu["reason"] = "offline-fixture-does-not-traverse-engine-memory";
+                payload["saveMenu"] = std::move(unavailableMenu);
             }
 #endif
             payload["capabilities"] = std::move(capabilities);
@@ -373,10 +393,11 @@ struct Endpoint::Impl {
         // Revalidate before publishing any claimed observation. Failure leaves uncertainty.
         Ownership();
         Publish(directory / L"result.control", *encoded);
-        if (decoded->verb == "probe-fov" && result.status == "error") {
+        if ((decoded->verb == "probe-fov" || decoded->verb == "advance-splash" ||
+             decoded->verb == "open-load-menu") && result.status == "error") {
             // Preserve the correlated uncertainty result, then stop this lease.
             disabled = true;
-            error = "native FOV probe outcome uncertain; no further requests admitted";
+            error = "native action outcome uncertain; no further requests admitted";
         }
     }
 };

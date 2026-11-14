@@ -37,7 +37,7 @@ def main(executable):
             assert current["identity"] == identity
             return directory, identity
 
-        for verb in ("ping", "observe"):
+        for verb in ("ping", "observe", "observe-save-menu"):
             result = control.submit(run, verb, timeout=5, bind=bind)
             assert result["status"] == "completed"
             # The observer's 16 KiB budget is measured with compact JSON. The
@@ -46,25 +46,33 @@ def main(executable):
             payload = json.loads(result["payload"])
             assert payload["source"] == "diagnostic-host" and payload["ready"] is False
             assert payload["capabilities"]["nativeConsole"] is False
+            assert payload["capabilities"]["nativeMenuActions"] is False
+            if verb == "observe-save-menu":
+                assert payload["capabilities"]["observeSaveMenu"] is False
+                assert payload["saveMenu"]["available"] is False
             assert "not validated" in payload["unavailable"]["map"]
         result = control.submit(run, "console", "exit", timeout=5, allow_console=True, bind=bind)
         assert result["status"] == "rejected"
-        assert len(list((directory / "history").glob("*.result"))) == 3
-        assert len(list(directory.glob("consumed-*.request"))) == 3
+        assert len(list((directory / "history").glob("*.result"))) == 4
+        assert len(list(directory.glob("consumed-*.request"))) == 4
         assert not (directory / "request.control").exists()
         assert not (directory / "outstanding.json").exists()
         result = control.submit(run, 'probe-fov', timeout=5, allow_probe_fov=True, bind=bind)
         assert result['status'] == 'rejected'
         assert json.loads(result['payload'])['reason'] == 'native FOV probe is disabled'
+        for verb in control.MENU_ACTIONS:
+            result = control.submit(run, verb, timeout=5, allow_menu_actions=True, bind=bind)
+            assert result['status'] == 'rejected'
+            assert json.loads(result['payload'])['reason'] == 'native menu actions are disabled'
         for case in ('wrong-lease', 'expired'):
             rejection = negative.probe(run, case, timeout=5, bind=bind)
             assert rejection['status'] == 'rejected' and rejection['lease'] == identity['lease']
         # Neither rejection may poison the next legitimate request.
         assert control.submit(run, 'ping', timeout=5, bind=bind)['status'] == 'completed'
-        assert len(list((directory / 'history').glob('*.result'))) == 7
-        assert len(list(directory.glob('consumed-*.request'))) == 7
+        assert len(list((directory / 'history').glob('*.result'))) == 10
+        assert len(list(directory.glob('consumed-*.request'))) == 10
         assert not (directory / 'outstanding.json').exists()
-        print('Python/C++ filesystem smoke passed: ping, observe, disabled console/FOV, wrong lease, expiry and recovery; fake process only')
+        print('Python/C++ filesystem smoke passed: observations, disabled console/FOV/menu, wrong lease, expiry and recovery; fake process only')
     finally:
         if directory is not None and directory.is_dir():
             (directory / "stop.fixture").touch(exist_ok=False)
