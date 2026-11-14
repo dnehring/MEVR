@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
-# Export an archived resource, weapon or orbital starting state
+# Export an archived diagnostic starting state
 
 `python tools/qa-le2/export-state.py RUN --request UUID --case CASE_ID`
 
 This offline helper reads one archived, completed `observe-resources`,
-`observe-weapon` or `observe-orbital` exchange. The correlated request verb selects the normalizer;
+`observe-weapon`, `observe-orbital` or `observe-dialogue` exchange. The correlated request verb selects the normalizer;
 the CLI and frozen-session validation path are shared.
 It never launches a game, inspects live processes, sends requests or reads current
 resource values from saves. It creates two new files:
@@ -135,3 +135,52 @@ text, unavailable/context-budget responses, invalid sources/scalars/object
 identities, complete-list bounds/order, existing receipt/consumption guards,
 and byte-identical real C++ wire-codec roundtrips. These are synthetic offline
 tests, not native orbital evidence.
+
+## Dialogue observations
+
+The existing command also exports a completed, correlated `observe-dialogue`
+exchange. It uses the same frozen save/scenario/recipe, process/module identity,
+consumed-request and deployment-receipt checks as the other observations. The
+producer is [`ObserveDialogue`](../../src/engine/Le2DialogueObservation.inc).
+
+Only stable recorded fields enter `state.dialogue`:
+
+- `context` and `conversation.identity` retain process-local class/index pairs.
+  Original pointer strings remain in raw provenance, not normalized handles.
+  An unavailable optional pawn remains absent with its reason in `unavailable`.
+- `conversation` retains bounded entry/reply counts, current/selected node
+  records and the raw finite float32 `nodePlayTimer`. Node index `-1` is preserved
+  as explicitly unavailable; no export or transition ID is invented. Available
+  node indices must be within the corresponding sampled array of at most 4096.
+  Its required `name` and optional direct `package.name` preserve exact case
+  with the producer's 1–127 printable ASCII bound. A validated direct package
+  also retains its process-local class/index identity; an unavailable package
+  stays absent. These labels are not package hashes, loaded-file proof or a
+  durable conversation identity, and no additional outer traversal is inferred.
+- `interrupt` retains the sampled reply, start/window remaining values, raw
+  enabled/activated flags and enum/name. Unknown byte enum values stay unknown;
+  negative finite timers are not rewritten or classified as an expired window.
+- `gui` retains independently available manager/panel/handler identities and
+  display/input flags. Missing GUI does not invalidate the conversation sample.
+  Visibility, focus and initialization flags are observations, not admission.
+
+The normalizer rejects malformed identities, bool-as-number, wrong scalar
+ranges, non-float32/nonfinite timers, contradictory node indices, partial data
+inside unavailable samples, or positive producer legality/acceptance/history
+claims. The full original observation remains in
+`provenance.runtimeObservation`, bound to this request's tick and sample time.
+`combinedObservation=false`: no samples are merged into a timeline.
+
+`state.map` and `state.position` remain absent with explicit unavailable reasons;
+this producer does not prove world-map containment. A dialogue export therefore
+returns exit 2 even with all dialogue fields present. The resulting artifact
+does not establish legal input timing, selected-choice acceptance, accepted
+interrupts, complete event history, saved progression or visual/VR acceptance.
+In particular, `activated=true`, `wasTriggered=true` and a sampled transition ID
+are not promoted to an accepted-interrupt event. Scene review and independently
+correlated event/transition evidence remain separate gates.
+
+Synthetic tests cover complete and unavailable archives, optional pawn/GUI,
+minus-one nodes, count/index/enum/type bounds, negative timers, false acceptance
+claims, shared correlation/fixture/consumption guards, nonreplacement and real
+C++ wire-codec roundtrips. They do not constitute native dialogue evidence.

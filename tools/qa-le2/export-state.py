@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Export one correlated resource, weapon or orbital observation; no live processes or requests."""
+"""Export one correlated diagnostic observation; no live processes or requests."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -375,6 +375,124 @@ def normalize_orbital(payload):
     return state, unavailable
 
 
+DIALOGUE_LIMITS = ('dispatchCapability', 'legalityEvaluated', 'acceptedInterruptProven',
+                   'historyComplete', 'durableObjectIdentity')
+DIALOGUE_IDENTITIES = ('world', 'worldInfo', 'controller', 'localPlayer', 'engine', 'pawn')
+DIALOGUE_GUI_FLAGS = ('visible', 'focused', 'panelInitialized', 'removing', 'inputDisabled',
+                      'eventsDisabled', 'wheelDisplayed', 'paragonDisplayed', 'renegadeDisplayed',
+                      'screenInitialized', 'wasTriggered', 'usingGamepad')
+
+
+def dialogue_name(value):
+    require(isinstance(value, str) and 1 <= len(value) <= 127
+            and all(32 <= ord(c) <= 126 for c in value), 'Invalid bounded dialogue name')
+    return value
+
+
+def dialogue_node(value, count):
+    require(isinstance(value, dict) and type(value.get('available')) is bool,
+            'Dialogue node requires explicit availability')
+    if not value['available']:
+        require(set(value) == {'available', 'index', 'reason'} and type(value.get('index')) is int
+                and value['index'] == -1 and value.get('reason') == 'no-node-minus-one',
+                'Absent dialogue node must be the explicit minus-one sentinel')
+        return dict(value)
+    require(set(value) == {'available', 'index', 'reason', 'exportId', 'stateTransition', 'stateTransitionParameter'}
+            and value.get('reason') == 'bounded-selected-node-fields', 'Invalid selected dialogue node fields')
+    require(type(value.get('index')) is int and 0 <= value['index'] < count,
+            'Selected dialogue node index outside sampled array')
+    for key in ('exportId', 'stateTransition', 'stateTransitionParameter'):
+        require(type(value[key]) is int and -0x80000000 <= value[key] <= 0x7fffffff,
+                'Dialogue node metadata must be signed int32')
+    return dict(value)
+
+
+def normalize_dialogue(payload):
+    capabilities = payload.get('capabilities')
+    require(payload.get('source') == 'diagnostic-host' and payload.get('game') == 'LE2'
+            and payload.get('readOnly') is True and payload.get('ready') is False
+            and isinstance(capabilities, dict) and capabilities.get('observeDialogue') is True,
+            'Not a completed read-only diagnostic dialogue producer payload')
+    observation = payload.get('dialogueObservation')
+    require(isinstance(observation, dict) and type(observation.get('schemaVersion')) is int
+            and observation['schemaVersion'] == 1 and observation.get('game') == 'LE2'
+            and type(observation.get('available')) is bool
+            and isinstance(observation.get('reason'), str) and observation['reason']
+            and all(observation.get(key) is False for key in DIALOGUE_LIMITS),
+            'Unexpected dialogue observation contract or positive acceptance claim')
+    state = {'dialogue': {}}
+    unavailable = {key: {'reason': 'not-sampled-by-dialogue-observer', 'sample': None}
+                   for key in ('map', 'position')}
+    if not observation['available']:
+        require(not any(key in observation for key in ('context', 'conversation', 'interrupt', 'gui')),
+                'Unavailable dialogue observation cannot contain sample data')
+        unavailable['dialogue'] = {'reason': observation['reason'], 'sample': observation}
+        return state, unavailable
+    require(observation['reason'] == 'stable-current-conversation-fields-only', 'Dialogue stable-sample reason required')
+    context = observation.get('context')
+    require(isinstance(context, dict) and context.get('mapContainmentProven') is False,
+            'Dialogue context must not claim map containment')
+    identities = {}
+    for key in DIALOGUE_IDENTITIES:
+        sample = context.get(key)
+        if key == 'pawn' and isinstance(sample, dict) and sample.get('available') is False:
+            require(set(sample) == {'available', 'reason'} and isinstance(sample.get('reason'), str)
+                    and sample['reason'], 'Invalid unavailable dialogue pawn sample')
+            unavailable['dialogue.context.pawn'] = {'reason': sample['reason'], 'sample': sample}
+        else:
+            # Dialogue and orbital producers reuse the same ObjectJson format.
+            identities[key] = orbital_identity(sample)
+    conv, interrupt, gui = (observation.get(key) for key in ('conversation', 'interrupt', 'gui'))
+    object_keys = {'available', 'reason', 'index', 'class', 'address', 'classAddress'}
+    require(isinstance(conv, dict) and object_keys <= conv.keys(), 'Dialogue conversation identity required')
+    conversation = {'identity': orbital_identity({key: conv[key] for key in object_keys})}
+    conversation['name'] = dialogue_name(conv.get('name'))
+    package = conv.get('package')
+    require(isinstance(package, dict) and type(package.get('available')) is bool,
+            'Dialogue direct package availability required')
+    if package['available']:
+        require(set(package) == object_keys | {'name'}, 'Invalid dialogue package sample shape')
+        conversation['package'] = dict(identity=orbital_identity({key: package[key] for key in object_keys}),
+                                       name=dialogue_name(package['name']))
+    else:
+        require(set(package) == {'available', 'reason'} and isinstance(package.get('reason'), str)
+                and package['reason'], 'Invalid unavailable dialogue package sample')
+        unavailable['dialogue.conversation.package'] = {'reason': package['reason'], 'sample': package}
+    for key in ('entryCount', 'replyCount'):
+        require(type(conv.get(key)) is int and 0 <= conv[key] <= 4096, 'Dialogue node count outside producer bound')
+        conversation[key] = conv[key]
+    for key in ('currentEntry', 'currentReply', 'selectedReply'):
+        conversation[key] = dialogue_node(conv.get(key), conv['entryCount' if key == 'currentEntry' else 'replyCount'])
+    conversation['nodePlayTimer'] = float32(conv.get('nodePlayTimer'))
+    require(isinstance(interrupt, dict) and all(type(interrupt.get(key)) is bool for key in ('enabled', 'activated')),
+            'Dialogue interrupt requires raw boolean flags')
+    reply = dialogue_node(interrupt.get('reply'), conv['replyCount'])
+    require(type(interrupt.get('replyListIndex')) is int and interrupt['replyListIndex'] == reply['index'],
+            'Dialogue interrupt reply index disagrees with its node')
+    kind = interrupt.get('type')
+    require(type(kind) is int and 0 <= kind <= 255
+            and interrupt.get('typeName') == ('renegade' if kind == 0 else 'paragon' if kind == 1 else 'unknown'),
+            'Dialogue interrupt enum/name mismatch')
+    sampled = dict(replyListIndex=reply['index'], reply=reply, type=kind, typeName=interrupt['typeName'],
+                   enabled=interrupt['enabled'], activated=interrupt['activated'],
+                   startTimeRemaining=float32(interrupt.get('startTimeRemaining')),
+                   windowTimeRemaining=float32(interrupt.get('windowTimeRemaining')))
+    state['dialogue'] = dict(context=identities, conversation=conversation, interrupt=sampled)
+    require(isinstance(gui, dict) and type(gui.get('available')) is bool
+            and isinstance(gui.get('reason'), str) and gui['reason'], 'Dialogue GUI availability/reason required')
+    if gui['available']:
+        require(gui['reason'] == 'reachable-cached-handler-display-state-only'
+                and all(type(gui.get(key)) is bool for key in DIALOGUE_GUI_FLAGS),
+                'Dialogue GUI must contain raw display flags')
+        normalized_gui = {key: orbital_identity(gui.get(key)) for key in ('manager', 'panel', 'handler')}
+        normalized_gui.update({key: gui[key] for key in DIALOGUE_GUI_FLAGS})
+        state['dialogue']['gui'] = normalized_gui
+    else:
+        require(set(gui) == {'available', 'reason'}, 'Unavailable dialogue GUI cannot contain sample data')
+        unavailable['dialogue.gui'] = {'reason': gui['reason'], 'sample': gui}
+    return state, unavailable
+
+
 def export(run_path, request_id, case_id):
     require(control.valid_uuid(request_id), 'Canonical nonzero request UUID required')
     run = session.safe_path(Path(run_path).absolute())
@@ -395,9 +513,9 @@ def export(run_path, request_id, case_id):
     response_path = run / 'control' / 'history' / (request_id + '.result')
     request_bytes, response_bytes = raw(request_path, control.MAX_FRAME), raw(response_path, control.MAX_FRAME)
     request, response = control.decode(request_bytes), control.decode(response_bytes)
-    require(request['kind'] == 'request' and request['id'] == request_id and request['verb'] in ('observe-resources', 'observe-weapon', 'observe-orbital')
+    require(request['kind'] == 'request' and request['id'] == request_id and request['verb'] in ('observe-resources', 'observe-weapon', 'observe-orbital', 'observe-dialogue')
             and not request['payload'] and response['kind'] == 'result' and response['status'] == 'completed',
-            'Requires archived empty observe-resources/observe-weapon/observe-orbital request and completed result')
+            'Requires archived empty resource/weapon/orbital/dialogue observation request and completed result')
     require(all(request[k] == response[k] for k in (*control.IDENTITY, 'id', 'sequence', 'deadline', 'verb'))
             and all(request[k] == wire_identity[k] for k in control.IDENTITY), 'Uncorrelated archived response')
     # consumed-N counts attempts, not client sequence. Match exact bytes within a bounded scan.
@@ -438,8 +556,9 @@ def export(run_path, request_id, case_id):
     payload = parse(response['payload'])
     weapon = request['verb'] == 'observe-weapon'
     orbital = request['verb'] == 'observe-orbital'
-    observation_key = 'weaponObservation' if weapon else 'orbitalObservation' if orbital else 'resourceObservation'
-    normalizer = normalize_weapon if weapon else normalize_orbital if orbital else normalize
+    dialogue = request['verb'] == 'observe-dialogue'
+    observation_key = 'weaponObservation' if weapon else 'orbitalObservation' if orbital else 'dialogueObservation' if dialogue else 'resourceObservation'
+    normalizer = normalize_weapon if weapon else normalize_orbital if orbital else normalize_dialogue if dialogue else normalize
     state, unavailable = normalizer(payload)
     require(control.number(payload.get('gameTick')) > 0 and control.number(payload.get('gameThreadId'), (1 << 32) - 1) > 0,
             'Missing sample tick/thread')
@@ -451,7 +570,7 @@ def export(run_path, request_id, case_id):
                         deadline=request['deadline'], deploymentSha256=session.digest(run / 'deployment.json'),
                         candidateCommitEvidence='reviewed-deployment-receipt-attestation-not-binary-commit-proof',
                         session=binding, observationVerb=request['verb'], combinedObservation=False,
-                        normalizedSemantics=({'weapon.loaded': LOADED_SOURCE, 'weapon.reserveStored': 'raw signed CurrentSpareAmmo; not effective/legal reserve', 'weapon.effectiveReserve': RESERVE_SOURCE + '; audited declaration, no getter call or live bytecode proof'} if weapon else {'orbital.planet.mapName': 'BioPlanet.MapName landing destination; not current world map', 'orbital.planet.features': 'raw conditional/transition metadata; no evaluation or discovery proof'} if orbital else {}),
+                        normalizedSemantics=({'weapon.loaded': LOADED_SOURCE, 'weapon.reserveStored': 'raw signed CurrentSpareAmmo; not effective/legal reserve', 'weapon.effectiveReserve': RESERVE_SOURCE + '; audited declaration, no getter call or live bytecode proof'} if weapon else {'orbital.planet.mapName': 'BioPlanet.MapName landing destination; not current world map', 'orbital.planet.features': 'raw conditional/transition metadata; no evaluation or discovery proof'} if orbital else {'dialogue': 'stable sampled fields only; no timing history, legality, accepted interrupt or selection acceptance inference'} if dialogue else {}),
                         runtimeObservation=payload[observation_key]),
                     claims=dict(visualVerified=False, loadedFixtureProven=False, persistenceProven=False, vrVerified=False))
     failures = scenario.check_start(frozen, artifact)

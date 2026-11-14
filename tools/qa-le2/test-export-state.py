@@ -97,6 +97,180 @@ class ExportTests(unittest.TestCase):
     def state(self):
         return e.read(self.run / f'artifacts/state-{self.token}.json')
 
+    def use_dialogue(self):
+        self.request['verb'] = 'observe-dialogue'
+        self.payload.pop('resourceObservation', None)
+        self.payload['capabilities'] = {'observeDialogue': True}
+        def identity(index):
+            return dict(available=True, reason='sdk-structural-checks-passed', index=index,
+                        address=f'0x{0x1000+index:X}', classAddress='0x2000', **{'class': 'Synthetic.DialogueObject'})
+        absent = dict(available=False, index=-1, reason='no-node-minus-one')
+        node = dict(available=True, index=0, reason='bounded-selected-node-fields', exportId=-9,
+                    stateTransition=21, stateTransitionParameter=-3)
+        context = {key: identity(index) for index, key in enumerate(e.DIALOGUE_IDENTITIES)}
+        context['mapContainmentProven'] = False
+        conversation = dict(identity(7), name='synthetic_conversation', package=dict(identity(11), name='SyntheticPackage'),
+                            entryCount=2, replyCount=1, currentEntry=node,
+                            currentReply=absent, selectedReply=absent, nodePlayTimer=-0.25)
+        gui = dict(available=True, reason='reachable-cached-handler-display-state-only',
+                   manager=identity(8), panel=identity(9), handler=identity(10),
+                   **{key: False for key in e.DIALOGUE_GUI_FLAGS})
+        observation = dict(schemaVersion=1, game='LE2', available=True,
+            reason='stable-current-conversation-fields-only', context=context, conversation=conversation,
+            interrupt=dict(replyListIndex=0, reply=copy.deepcopy(node), startTimeRemaining=-1.5, windowTimeRemaining=0.25,
+                           enabled=True, activated=True, type=1, typeName='paragon'), gui=gui,
+            **{key: False for key in e.DIALOGUE_LIMITS})
+        self.payload['dialogueObservation'] = observation
+        self.archive()
+        return observation
+
+    def test_dialogue_export_retains_one_sample_without_acceptance_or_map(self):
+        observation = self.use_dialogue()
+        self.assertEqual(self.invoke(), 2)
+        artifact = self.state()
+        dialogue = artifact['state']['dialogue']
+        self.assertNotIn('map', artifact['state'])
+        self.assertNotIn('position', artifact['state'])
+        self.assertNotIn('resources', artifact['state'])
+        self.assertEqual(dialogue['context']['world'], {'class': 'Synthetic.DialogueObject', 'index': 0})
+        self.assertEqual(dialogue['conversation']['currentReply'], observation['conversation']['currentReply'])
+        self.assertEqual(dialogue['conversation']['nodePlayTimer'], -0.25)
+        self.assertEqual(dialogue['conversation']['name'], 'synthetic_conversation')
+        self.assertEqual(dialogue['conversation']['package']['name'], 'SyntheticPackage')
+        self.assertNotIn('address', dialogue['conversation']['package']['identity'])
+        self.assertTrue(dialogue['interrupt']['activated'])
+        self.assertFalse(dialogue['gui']['visible'])  # Reporting is not interactive admission.
+        self.assertEqual(artifact['provenance']['runtimeObservation'], observation)
+        self.assertEqual(artifact['provenance']['observationVerb'], 'observe-dialogue')
+        self.assertFalse(artifact['provenance']['combinedObservation'])
+        self.assertTrue(all(value is False for value in artifact['claims'].values()))
+        self.assertFalse(any(key in dialogue for key in ('accepted', 'legal', 'selected', 'history')))
+        self.assertEqual(self.invoke(), 1)  # Existing state/report never replaced.
+
+    def test_dialogue_optional_pawn_gui_and_absent_nodes_preserved(self):
+        observation = self.use_dialogue()
+        observation['context']['pawn'] = dict(available=False, reason='null-object')
+        observation['gui'] = dict(available=False, reason='dialogue-cached-handler-unavailable')
+        absent = dict(available=False, index=-1, reason='no-node-minus-one')
+        observation['conversation'].update(entryCount=0, replyCount=0, currentEntry=absent,
+                                           currentReply=absent, selectedReply=absent)
+        observation['interrupt'].update(replyListIndex=-1, reply=absent, type=255, typeName='unknown')
+        state, unavailable = e.normalize_dialogue(self.payload)
+        self.assertNotIn('pawn', state['dialogue']['context'])
+        self.assertNotIn('gui', state['dialogue'])
+        self.assertIn('dialogue.context.pawn', unavailable)
+        self.assertIn('dialogue.gui', unavailable)
+        self.assertEqual(state['dialogue']['interrupt']['type'], 255)
+        self.assertEqual(state['dialogue']['conversation']['currentEntry'], absent)
+        self.assertNotIn('exportId', state['dialogue']['conversation']['currentEntry'])
+        for target in (observation['context']['pawn'], observation['gui']):
+            target['index'] = 0
+            with self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
+            del target['index']
+
+    def test_dialogue_unavailable_never_exports_partial_fields(self):
+        self.use_dialogue()
+        observation = dict(schemaVersion=1, game='LE2', available=False, reason='no-current-conversation',
+                           **{key: False for key in e.DIALOGUE_LIMITS})
+        self.payload['dialogueObservation'] = observation
+        self.archive()
+        self.assertEqual(self.invoke(), 2)
+        self.assertEqual(self.state()['state'], {'dialogue': {}})
+        self.assertEqual(self.state()['unavailable']['dialogue']['sample'], observation)
+        for key in ('context', 'conversation', 'interrupt', 'gui'):
+            observation[key] = {}
+            with self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
+            del observation[key]
+
+    def test_dialogue_rejects_type_bounds_identity_and_inferred_claims(self):
+        baseline = copy.deepcopy(self.use_dialogue())
+        cases = [
+            (('schemaVersion',), True), (('available',), 1), (('reason',), 'accepted-interrupt'),
+            (('context', 'mapContainmentProven'), True), (('context', 'world', 'index'), True),
+            (('context', 'engine', 'available'), False), (('context', 'worldInfo', 'address'), '0x0'),
+            (('conversation', 'replyCount'), 4097), (('conversation', 'entryCount'), -1),
+            (('conversation', 'nodePlayTimer'), float('inf')), (('conversation', 'nodePlayTimer'), True),
+            (('conversation', 'nodePlayTimer'), 0.1), (('interrupt', 'enabled'), 1),
+            (('interrupt', 'activated'), 'true'), (('interrupt', 'type'), True),
+            (('interrupt', 'type'), 256), (('interrupt', 'typeName'), 'renegade'),
+            (('interrupt', 'replyListIndex'), -1), (('interrupt', 'startTimeRemaining'), float('nan')),
+            (('gui', 'reason'), 'interactive'), (('gui', 'wasTriggered'), 0),
+            (('gui', 'panel', 'classAddress'), '0x0'),
+        ] + [((key,), True) for key in e.DIALOGUE_LIMITS]
+        for path, value in cases:
+            observation = copy.deepcopy(baseline)
+            target = observation
+            for key in path[:-1]: target = target[key]
+            target[path[-1]] = value
+            self.payload['dialogueObservation'] = observation
+            with self.subTest(path=path, value=value), self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
+
+    def test_dialogue_node_sentinels_selected_bounds_and_raw_metadata(self):
+        baseline = copy.deepcopy(self.use_dialogue())
+        for node_name, key, value in (
+                ('currentReply', 'index', 0), ('currentReply', 'exportId', 1),
+                ('currentReply', 'available', True), ('currentEntry', 'index', -1),
+                ('currentEntry', 'index', 2), ('currentEntry', 'index', True),
+                ('currentEntry', 'exportId', 2**31), ('currentEntry', 'stateTransition', False),
+                ('currentEntry', 'stateTransitionParameter', -2**31-1), ('currentEntry', 'reason', 'accepted')):
+            observation = copy.deepcopy(baseline)
+            observation['conversation'][node_name][key] = value
+            self.payload['dialogueObservation'] = observation
+            with self.subTest(node=node_name, key=key), self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
+        self.payload['dialogueObservation'] = baseline
+        baseline['conversation']['entryCount'] = 4096
+        baseline['conversation']['currentEntry']['index'] = 4095
+        state, _ = e.normalize_dialogue(self.payload)
+        self.assertEqual(state['dialogue']['conversation']['currentEntry']['index'], 4095)
+        self.assertEqual(state['dialogue']['conversation']['currentEntry']['exportId'], -9)
+
+    def test_dialogue_names_and_optional_direct_package(self):
+        observation = self.use_dialogue()
+        conversation = observation['conversation']
+        for target in (conversation, conversation['package']):
+            saved = target['name']
+            for value in ('', 'a'*128, 'bad\0name', 'naïve', 'bad\nname', 1):
+                target['name'] = value
+                with self.subTest(value=value), self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
+            target['name'] = 'A'*127
+            e.normalize_dialogue(self.payload)
+            target['name'] = saved
+        conversation['package'] = dict(available=False, reason='not-observed')
+        state, unavailable = e.normalize_dialogue(self.payload)
+        self.assertNotIn('package', state['dialogue']['conversation'])
+        self.assertEqual(unavailable['dialogue.conversation.package']['sample'], conversation['package'])
+        conversation['package']['name'] = 'invented'
+        with self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
+
+    def test_dialogue_archive_reuses_contract_and_identity_rejections(self):
+        self.use_dialogue()
+        for changes in ({'status': 'dispatched'}, {'verb': 'observe-weapon'}, {'host': 'c'*64}):
+            self.archive(**changes)
+            self.assertEqual(self.invoke(), 1)
+        self.archive()
+        self.payload['readOnly'] = False
+        self.archive()
+        self.assertEqual(self.invoke(), 1)
+        self.payload['readOnly'] = True
+        self.archive()
+        consumed = self.run / 'control/consumed-1.request'
+        saved = consumed.read_bytes()
+        consumed.unlink()
+        self.assertEqual(self.invoke(), 1)
+        consumed.write_bytes(saved)
+        (self.run / 'fixture.pcsav').write_bytes(b'changed')
+        self.assertEqual(self.invoke(), 1)
+        self.assertFalse((self.run / 'artifacts').exists())
+
+    @unittest.skipUnless(os.environ.get('LE2_CONTROL_CPP'), 'set LE2_CONTROL_CPP for actual C++ codec conformance')
+    def test_dialogue_actual_cpp_codec_roundtrip(self):
+        self.use_dialogue()
+        for suffix in ('request', 'result'):
+            path = self.run / f'control/history/{self.token}.{suffix}'
+            result = subprocess.run([os.environ['LE2_CONTROL_CPP'], str(path)], capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, path.read_bytes())
+
     def use_orbital(self):
         resources = copy.deepcopy(self.payload['resourceObservation']['resources'])
         self.request['verb'] = 'observe-orbital'
