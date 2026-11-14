@@ -56,6 +56,12 @@ game's BlackScreen panel with `playersOnly=true`; no input pulse was sent.
 Resource/map predicates matched, but the scene was unusable. Restoration
 verified. See the [failed readiness attempt](../../research/le2-validation-evidence.md#powers-back-adapter-built-next-run-stopped-at-blackscreen-before-input).
 
+The later `1902Z-checkpoint` run on the same candidate reached a reviewed squad
+screen. Its single A request was published but recorded no controller polls or
+output; no second press was sent. It closed normally and restored all four
+roots. This remains an [input reproducibility failure](../../research/le2-validation-evidence.md#chapter-scene-loaded-published-selection-received-no-controller-polls),
+not a combat fixture or a successful Powers-exit test.
+
 Earlier selection attempts also had differing outcomes. On 2026-11-14,
 run `1641Z-input` selected Miranda and Grunt
 and reached the squad confirmation modal. Run `1722Z-loadout` selected Miranda,

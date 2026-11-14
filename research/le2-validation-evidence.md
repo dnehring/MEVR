@@ -5,6 +5,60 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Chapter scene loaded; published selection received no controller polls
+
+Protected run `731bd9e7-0fd6-4ccc-87cb-b46bf39622c9`, private archive
+`run-20261114T1902Z-checkpoint`, reused candidate `ad31adeb` and ASI hash
+`728bb15df7967a052cdbf06da75c5097ca625feabb19fe0ff293275a44bdd371`.
+Steam selected ME2, and the owned diagnostic channel bound the exact process,
+module and fresh lease. An initial relative-path launch invocation was refused
+before dispatch; the corrected absolute-path invocation launched once.
+
+The complete descriptor scan matched the frozen chapter at row 2. The initial
+PrintWindow Load capture was black; the explicit foreground desktop capture
+showed Save 99 / Collector Station as the third row, with Save 36 highlighted.
+The reviewed capture establishes the visible list, while the request's full
+descriptor and file hash establish which save the normal load action selected.
+Request `6bfffc4e-ee7f-4189-8de2-e4cbdc3aae23` returned normally with the
+12-byte parameter frame intact. A subsequent read-only observation admitted
+`party-select` on `BioP_EndGm2`, with `playersOnly=false`. The desktop party
+capture was refused after foreground ownership changed; a fresh PrintWindow
+capture showed Squad Selection with Miranda highlighted. This establishes a
+rendered squad screen, with interaction still to be verified.
+
+One 150 ms A request, `de857ebd-f40c-4fb7-985f-d60265e5eb5f`, was published
+through the existing bridge. Two later observations reported two installed
+hooks but zero positive polls, neutral polls and output writes; the source
+remained `published`, without a first-pulse timestamp. Publication did not
+establish delivery or selection. No second press, confirmation or Powers Back
+request was sent. There is no post-pulse visual selection proof. A final focus
+observation reported foreground PID 0; this does not establish the cause of
+missing controller polls. The activation deadline is checked on eligible
+polling, so the unchanged published label is not evidence of continuing input.
+
+An independent archived comparison against successful run `1821Z-completion`
+found no byte/presence differences in twenty before/after comparisons covering
+seven configuration files and three profile files. Both runs mapped the same
+`XINPUT1_4.dll` path/base/size metadata; DLL bytes were not archived. No examined
+configuration difference explains the missing polls, and no setting change is
+justified by this comparison. The supplemental private comparison receipt is
+`25b21338e4dc209910df2e3792deb19286f25fb3963142d46392229666a93190`.
+
+The owned process closed normally. Pre-reset comparison found no ME1 changes;
+the shared `TrilogyGamerProfile` retained identical bytes with a timestamp
+change. All four protected roots were archived and restored, and the owned
+invitation was removed. Independent review checked ten correlated exchanges,
+captures, deployment, process identity and restoration: **90 integrity checks,
+zero discrepancies**, not a passing gameplay scenario. The sealed private
+`native-outcome.json` SHA256 is
+`b5575afa961d8555fd123f90e3547842768b40fc928e2a9c666efba45c214e6e`.
+
+No combat checkpoint or reload was acquired. Follow the
+[ranked acquisition decision](le2-fixture-acquisition.md#current-reload-acquisition-decision-2026-11-14):
+prefer a natural ProCer checkpoint for reload/tutorial and later Veetor
+interrupts; keep the endgame route a bounded opportunity. Input reproducibility
+remains a separate unresolved requirement for any chosen location.
+
 ### Powers Back adapter built; next run stopped at BlackScreen before input
 
 Candidate `ad31adebccc8258eaaa7d0bac315b796d9419c68` adds the exact

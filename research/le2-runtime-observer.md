@@ -6,6 +6,10 @@ Back-only CharacterRecord adapter; its first native attempt stalled earlier at
 BlackScreen after chapter loading, before any pulse. Resources/map matched,
 but scene readiness failed and restoration verified. See the
 [failed readiness attempt](le2-validation-evidence.md#powers-back-adapter-built-next-run-stopped-at-blackscreen-before-input).
+The next `1902Z-checkpoint` run reached a reviewed Squad Selection screen, but
+its sole A request received no controller polls/output. It closed and restored
+without a resend. See the [undelivered selection evidence](le2-validation-evidence.md#chapter-scene-loaded-published-selection-received-no-controller-polls)
+and the [revised acquisition priority](le2-fixture-acquisition.md#current-reload-acquisition-decision-2026-11-14).
 The strongest earlier selection proof below is from candidate `7eee6b6f`.
 We already have the ME2 save,
 launch, protected-session, capture, control and scenario workflow. Native
