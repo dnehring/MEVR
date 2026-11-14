@@ -31,28 +31,24 @@ The November 13 native baseline had an empty LE2 ASI directory. No mod was
 deployed, so it could not consume request files. Normal UI loading proved Save
 99 selectable and created Save 100; this does not validate the request channel.
 
-## Next implementation slice: P1 and P9
+## Current implementation and remaining P1/P9 work
 
-1. Finish P1a's validated, read-only LE2 player/world observation and game-thread
-   lifetime checks. Verify the built and loaded host/mod hashes before accepting
-   any response. Keep XR and gameplay modifications out of this first trial.
-2. Audit the existing legacy console dispatcher and its tick ownership against
-   the [engine discovery](../research/le2-engine-access-discovery.md) and
-   [integration contract](le2-integration-contract.md). Prove a harmless native
-   query before enabling load/save/quit. Report actual outcomes; dispatch alone
-   is not success. Do not use LE1 reflection offsets or generated parameter
-   defaults without LE2 validation.
-3. Bind requests/results to the protected session, game/PID/start identity,
-   executable/module hashes, request ID and deadline. Prefer a per-run directory
-   over the unqualified shared `MEVR/console.request`. Reject stale or wrong-game
-   requests and ambiguous results; do not auto-retry a mutating request. Preserve
-   LE1 compatibility and never leave a command for the next game's startup.
-4. Add a bounded ME2 runner around `tools/qa-le2/session.py`: protected staging,
-   normal Steam/EA launch, exact process binding, channel handshake, verified
-   save selection, observation, normal native save/reload and quit, then archive
-   and verified restoration in cleanup. Reuse the launch helper's outside-job
-   approach after an explicit LE2 adaptation; do not start the game EXE from the
-   harness. Do not invoke the LE1 wrapper unchanged.
+1. Retain P1a's bounded structural observer and game-thread checks. Live entry-menu
+   and menu observations now work; authoritative loaded-world/scenario assertions
+   remain pending. Verify built and mapped module hashes for every run.
+2. Reuse the validated scalar-query and normal menu routes through the existing
+   engine/SDK integration. The scalar getter and two menu actions have returned
+   normally in protected runs. General ConsoleCommand still lacks allocator and
+   returned-string ownership proof; do not enable it from metadata alone.
+3. Keep the implemented session-bound request/result channel: PID/start identity,
+   executable/module hashes, fresh lease, request ID and deadline. Live wrong-lease
+   and expired-request rejection passed. Preserve uncertain intent; never retry a
+   mutating request automatically or leave traffic for the next game's startup.
+4. Extend the protected runner from its working Steam selection, exact process
+   binding, handshake, menu observation/transitions and captures to verified
+   fixture selection, normal load/save/reload and outcome assertions. Reuse the
+   game's initialized menus rather than map teleportation. The existing runner
+   already archives and verifies restoration; do not invoke the LE1 wrapper.
 5. Reuse snapshot/record/replay/performance producers as the relevant ME2 host
    integration becomes available. Capture raw input, effective game input and
    authoritative outcomes separately. Add reload/interrupt/scanning cases only
@@ -76,8 +72,9 @@ request, a harmless query, normal load/save/reload, useful captures and verified
 cleanup after both success and interruption. Preserve private original evidence.
 Until these pass, do not call the full runner proven. The native baseline
 establishes loading and saving; later diagnostic runs prove read-only
-handshake/observation and live wrong-lease/expired-request rejection. Reload
-and native-call validation remain pending.
+handshake/observation, live wrong-lease/expired-request rejection, a bounded
+scalar return and two normal menu transitions. Scripted selected-fixture loading,
+save/reload and scenario/VR acceptance remain pending.
 
 ## Implemented transport checkpoint
 
@@ -89,8 +86,8 @@ bound ME2 using the installed launcher files; they did not select a save.
 
 The [control client and codec](../tools/qa-le2/control.md) now bind traffic to the
 owned run, process start, module hashes and a fresh runtime lease. Standalone C++
-checks and 18 Python tests passed, including cross-language wire conformance and
-retained uncertainty after dispatch errors. The separate attachment helper has
+checks and 27 Python tests passed for candidate `a0596b4f`, including
+cross-language wire conformance and retained uncertainty after dispatch errors. The separate attachment helper has
 15 passing tests using actual temporary protected sessions with fake process and
 module providers. It requires an already loaded reviewed diagnostic ASI and
 publishes an invitation; it does not deploy or certify a responder.
@@ -105,14 +102,34 @@ The observer sampled the entry menu and matching ConsoleCommand metadata, not a
 loaded fixture. The existing MEVR loader was required because the game's stock
 Bink does not load ASIs. Both protected runs closed normally and restoration
 verified. See [native evidence](../research/le2-validation-evidence.md).
-The `152c9597` run also passed live negative controls and observed matching getter
-metadata, but its controller slot target differed from the installed base hook.
-Investigate the possible native override before enabling calls; see the
+The `152c9597` run passed live negative controls but exposed a controller-slot
+mismatch. The later `eede67a1` run established same-controller passive forwarding
+to the owned base hook and one bounded `GetFOVAngle` return; see the
 [target investigation](../research/le2-native-console-reuse.md#observed-controller-target-disagreement).
-Native-call validation and the normal load/save/reload cycle remain open, along
-with the three scenario and VR acceptance gates.
+This resolves that sampled scalar route, not arbitrary native calls.
+
+Candidate `a0596b4f` then completed `advance-splash` and `open-load-menu`, each
+once through the exact owned base route. Fresh observations and three reviewed
+run-bound desktop captures established Splash, Main Menu and the populated Load
+screen. The Load snapshot contained four complete descriptors and showed Save 99
+highlighted in the capture. No `LoadGame` call or fixture load occurred; the run
+closed normally and all four protected roots were restored and verified. See the
+[menu run evidence](../research/le2-validation-evidence.md#normal-menu-transitions-and-rendered-desktop-evidence)
+and [control/capture workflow](../tools/qa-le2/control.md#observe-and-open-the-normal-load-menu).
+
+Next, establish a frozen mapping from the immutable staged file to a complete
+`Career`/`SaveName`/`Index`/`Type` descriptor. Derive the unique current UI row
+from that identity; never treat descriptor Index as a UI position. A nonempty
+list or `CurrentCareerIndex=-1` alone does not establish career-picker versus
+save-list phase: `-1` is valid, the initialization decision is a local passed to
+the UI, and native enumeration declarations expose no verified persistent phase
+flag. Preserve live panel/capture evidence and revalidate the initialized
+handler, mode and descriptor immediately before a separately reviewed load.
+Exact fixture loading, normal save/reload, scenario and VR gates remain open.
 
 The [native console reuse audit](../research/le2-native-console-reuse.md) records
-the remaining hook-target and allocator/string-lifetime prerequisites. Preserve
-the existing LE2-specific allocator route; do not enable console dispatch merely
-because the observed parameter layout matches the SDK.
+the remaining general-call target and allocator/string-lifetime prerequisites.
+Continue to follow the [engine discovery](../research/le2-engine-access-discovery.md)
+and [integration contract](le2-integration-contract.md). Preserve the existing
+LE2-specific allocator route; do not enable console dispatch merely because the
+observed parameter layout matches the SDK.

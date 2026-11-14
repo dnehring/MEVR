@@ -1,9 +1,70 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-14 UTC. **Native load/save observed; scripted Steam selection, ASI loading, structural observation and one bounded scalar script call proven. Restoration verified. Reload, gameplay commands and VR proof remain pending.**
+Checkpoint: 2026-11-14 UTC. **Earlier normal UI load/save observed; scripted Steam selection, ASI loading, structural observation, one scalar script call and normal splash-to-main-menu-to-Load transitions proven. Three desktop captures reviewed and restoration verified. Scripted fixture selection/loading, save/reload, general console commands and VR proof remain pending.**
 
 ## Live diagnostic connection, 2026-11-14 UTC
+
+### Normal menu transitions and rendered desktop evidence
+
+Protected run `decfc779-b5a0-4dfa-a321-0a32205c7b34` tested clean candidate
+`a0596b4fc3c4d47544c5ecf375cd91d18a3390a1`, ASI SHA256
+`a3e69e4b554ed2bdfe59ce0b349a1f4126202a5f9a0b5feb46db21bd344cffa1`, with the
+verified `59b5e775` loader. All three ordinary builds, **48/48** CTests,
+**7/7** focused diagnostic tests and **27/27** client tests with actual-C++
+conformance passed for this candidate.
+
+The protected launcher bound ME2 PID 44936, started at
+`2026-11-14T07:28:17.1524564Z`. Seven correlated requests completed on game thread
+54180: initial ping, splash observation, `advance-splash`, main-menu observation,
+`open-load-menu`, Load observation and final ping. Both explicit native actions
+returned `dispatched` through `exact-owned-base`, RVA `0xD8D50`; the load opener's
+parameter frame remained intact. Their compact payloads were 5,909 and 8,666
+bytes. The subsequent main-menu and Load observations were 4,877 and 7,939 bytes.
+Each action entered once; no retry or general console command was sent.
+
+The later observation found the active `SFXSFHandler_PCLoad`, GuiMode 1,
+LoadMode 0, `fromMainMenu=true`, `CurrentCareerIndex=-1`, enumeration finished
+and checking-data complete. Its complete four-row snapshot contained:
+
+| UI row | Descriptor SaveName | Descriptor Index | Type |
+|---|---|---|---|
+| 0 | `Save_0099` | 99 | Manual (0) |
+| 1 | `Save_0036` | 36 | Manual (0) |
+| 2 | `AutoSave` | -1 | Auto (2) |
+| 3 | `ChapterSave` | -1 | Chapter (3) |
+
+All four descriptors had the same career. These are observed descriptor values,
+not a general filename-construction rule. The staged immutable fixture's SHA256
+was independently checked as
+`8c18e1d97c04a19a4a63af58e97ecb2e4c27226240c9cc34807324d5c185784b`.
+The observer still reported `fixtureIdentityProven=false`: this run did not
+freeze a descriptor-to-file binding or call `LoadGame`.
+
+The run-bound capture helper produced three 5120 x 1440 desktop PNGs with
+`captured` receipts. The coordinating agent viewed all three: the splash showed
+Press Any Key, the next image showed Main Menu, and the final image showed the
+Load screen with Save 99 / Normandy highlighted. That attributed image review
+supports the visible transitions; the machine receipts retain their separate
+`pending-human-review` label. A highlighted row is not a loaded fixture, and
+these desktop images provide no stereo or headset evidence.
+
+ME2 accepted normal window close and exited. The session reached `restored`,
+with all four protected roots restored and verified, only its owned invitation
+removed, and no outstanding request. Private
+`local-tools/le2-diagnostic-handoff/run-20261114T0725Z/` preserves the seven
+request/result archives and decoded reviews, deployment and mapped-module
+identity, three PNG/JSON capture pairs, fixture, normal-close and restoration
+receipts. No raw game data or screenshots are published here.
+
+This proves reuse of the game's existing splash advance and Default-mode load
+menu opener, followed by independently observed UI transitions. It does not
+prove selected-fixture loading, native save/reload, general ConsoleCommand
+allocation/ownership, gameplay scenarios or VR. Next work must bind a complete
+observed descriptor to the frozen fixture and revalidate the current handler,
+mode and unique row before any separately reviewed normal `LoadGame` action.
+See the [source handoff](le2-menu-load-source.md) and
+[current control workflow](../tools/qa-le2/control.md).
 
 ### Passive controller route and scalar return proven
 
