@@ -34,8 +34,9 @@ deployed, so it could not consume request files. Normal UI loading proved Save
 ## Current implementation and remaining P1/P9 work
 
 1. Retain P1a's bounded structural observer and game-thread checks. Entry-menu,
-   menu and post-load world/pawn samples now work; authoritative scenario and
-   resource assertions remain pending. Verify built and mapped module hashes
+   menu and post-load world/pawn samples now work. The source-backed live resource
+   observer now matches all eight prepared values in one normal-load run; broader
+   scenario assertions remain pending. Verify built and mapped module hashes
    for every run.
 2. Reuse the validated scalar-query and normal menu routes through the existing
    engine/SDK integration. The scalar getter and two menu actions have returned
@@ -45,8 +46,8 @@ deployed, so it could not consume request files. Normal UI loading proved Save
    executable/module hashes, fresh lease, request ID and deadline. Live wrong-lease
    and expired-request rejection passed. Preserve uncertain intent; never retry a
    mutating request automatically or leave traffic for the next game's startup.
-4. Extend the protected runner's proven frozen-manual-fixture load to normal
-   save/reload persistence and bounded live resource observation. Reuse its Steam
+4. Extend the protected runner's proven frozen-manual-fixture load and live
+   resource observation to normal save/reload persistence. Reuse its Steam
    selection, process binding, initialized menu, request channel, captures and
    verified restoration. Compare actual observed values and resulting saves to
    fixture expectations; do not infer them from successful loading.
@@ -75,8 +76,9 @@ Until these pass, do not call the full runner proven. The native baseline
 establishes loading and saving; later diagnostic runs prove read-only
 handshake/observation, live wrong-lease/expired-request rejection, a bounded
 scalar return, normal menu transitions and one bounded scripted frozen-fixture
-load with post-load world/pawn and visible scene evidence. Normal save/reload,
-resource observation and scenario/VR acceptance remain pending.
+load with post-load world/pawn and visible scene evidence, followed by all eight
+edited resources matching live inventory and exported starting-state checks.
+Normal save/reload and scenario/VR acceptance remain pending.
 
 ## Implemented transport checkpoint
 
@@ -135,10 +137,14 @@ UI row from the complete descriptor, never from descriptor Index alone. A
 nonempty list or `CurrentCareerIndex=-1` does not establish career-picker versus
 save-list phase: `-1` is valid and no verified persistent phase flag is exposed.
 Revalidate the initialized handler, mode and current descriptor before loading;
-there is still no career-picker automation. The next gate is normal save/reload
-and a bounded resource observer, followed by gameplay scenarios and VR. Reuse
-the established engine/SDK and protected runner; this evidence does not prove
-resource values, save persistence or general native-console safety.
+there is still no career-picker automation. Candidate `cf764fc7` subsequently
+loaded a resource-only edited copy and observed all eight expected values in the
+live player inventory. Its correlated exporter passed the frozen starting-state
+checks; current menu and loaded-scene images were readable, and restoration
+verified. See the [resource run evidence](../research/le2-validation-evidence.md#eight-edited-resources-observed-after-normal-loading).
+The next gate is normal save/reload, followed by gameplay scenarios and VR.
+Reuse the established engine/SDK and protected runner; this evidence does not
+prove persistence or general native-console safety.
 
 The [native console reuse audit](../research/le2-native-console-reuse.md) records
 the remaining general-call target and allocator/string-lifetime prerequisites.

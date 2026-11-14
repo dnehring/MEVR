@@ -1,9 +1,84 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-14 UTC. **Bounded scripted loading of one frozen manual fixture now proven through the normal menu, followed by a Normandy world/pawn observation and reviewed desktop image. Restoration verified. Normal save/reload persistence, resource observation, gameplay scenarios, general console calls and VR remain pending.**
+Checkpoint: 2026-11-14 UTC. **Normal scripted loading now preserves eight deliberately edited resources, verified in the live player inventory and exported against frozen starting-state checks. Normandy scene and restoration verified. Normal save/reload persistence, gameplay scenarios, general console calls and VR remain pending.**
 
 ## Live diagnostic connection, 2026-11-14 UTC
+
+### Eight edited resources observed after normal loading
+
+Protected run `4664cdc3-560b-41d0-be33-605607a1da2c` tested clean candidate
+`cf764fc7f9d7c449dab10f2dec59db79a09a3016`, ASI SHA256
+`683929845accb5505f0fe1d0616e2b369756a1a8e3cf17523246c3618e8926ae`, with the
+verified `59b5e775` loader. Three ordinary builds, **48/48** candidate CTests,
+**7/7** diagnostic tests and **32/32** actual-C++ client tests passed. The
+Python exporter/test-registration revision then passed **49/49** CTests;
+its numeric-overflow fix passed **21/21** focused exporter tests, including the
+actual C++ decoder. ME2 PID 17328 started at `2026-11-14T08:15:12.5157653Z`;
+the producer sampled on game thread 34840.
+
+The immutable Normandy base was changed only at the eight resource fields.
+The pinned Trilogy Save Editor source oracle independently reopened both files,
+verified checksums and byte-identical reserialization, and confirmed exactly
+these semantic changes, with no story/location edits:
+
+| Resource | Base | Prepared and observed live |
+|---|---:|---:|
+| Credits | 32193 | 32194 |
+| Medi-gel | 7 | 6 |
+| Element zero | 4193 | 4192 |
+| Iridium | 71154 | 71153 |
+| Palladium | 93177 | 93176 |
+| Platinum | 37333 | 37332 |
+| Probes | 30 | 29 |
+| Fuel | 1500 | 1499 |
+
+Prepared fixture SHA256:
+`00054f9a9b5d56840fecfc443da27318734efe89622817e6973e5f3f4696282c`.
+Recipe SHA256:
+`fd19f141b7bdd35f01deb3201f59283a982a9d3b2f0951b6e696ec6ea255e777`.
+The reviewed career/stem mapping was reused with the new content hash; its
+prior image remained naming evidence, not proof of edited content. This run
+also produced a readable current Load image showing Save 99 / Normandy
+highlighted, SHA256
+`a6eb525e37ff5f184dbfc27434484157c54272e1f4a3ed48bfd0586e0615307f`.
+
+Ten correlated requests covered handshake, normal menu transitions, complete
+four-row descriptor scan, one normal fixture load, and live resource observation.
+Load request `7f21caf6-1a3e-40a0-b856-50d2412cee9d` returned `dispatched` through
+the exact owned base route with its 12-byte parameter frame intact. Resource
+request `e41da53e-5d5e-429d-8ae6-574805570c16` returned 4,818 bytes: all eight
+fields available, the squad/player route agreeing, stable map `Biop_Nor`, and
+the soldier player pawn. The observer read live inventory fields twice; it
+neither called getters nor used the save cache. See its
+[source and identity limits](le2-resource-observation.md).
+
+The [state exporter](../tools/qa-le2/export-state.md) accepted the archived
+request/result, exact process/module identity and frozen fixture/recipe/scenario,
+and returned **0 / matched-observed-start-only**, with no failed or unavailable
+checks. Exported state SHA256:
+`41858e917e8adca2774d7b08db5de8d58ca55a0f2c2eb34f5c44b3803f24a523`.
+The coordinating agent separately viewed the loaded PNG and saw Shepard on the
+Normandy crew deck with Crew Quarters / Open; image SHA256
+`a38498e28d7d97d7d59bc6d54b920ec5f76299deb92f3f38e0765c463628bd9e`.
+Map/actor-world containment remains the observer's documented limitation;
+the combined load, state and image evidence supports this bounded fixture test.
+
+The game closed normally. All four protected roots were restored and verified,
+the owned invitation was removed, and no request remained outstanding. Private
+`local-tools/le2-diagnostic-handoff/run-20261114T0815Z/` retains frozen inputs,
+raw and decoded traffic, module/log/capture records, exported state/check,
+normal-close/restoration receipts and sealed `native-outcome.json`.
+The preceding staged attempt `f8d5de26-4426-46a6-9f0f-a2f6426309b9` was restored
+before launch when review found a 258-byte reviewer note exceeded the host's
+256-byte bound. Its frozen evidence was preserved; the successful attempt used
+a fresh plan with a 186-byte note.
+
+This proves resource preparation through **normal loading**, not in-game
+save/reload persistence or native resource consumption. The next step uses the
+[normal save menu source route](le2-normal-save-source.md), then independently
+checks and reloads the resulting save. Reload/interrupt/scanning gameplay and
+all VR gates remain open.
 
 ### Frozen manual fixture loaded through the normal menu
 
@@ -538,8 +613,9 @@ The following requirements are **not achieved** at this checkpoint:
    satisfy this requirement.
 5. Scenario-specific authoritative runtime observation and input capture. The
    structural diagnostic and bounded call are implemented; they do not populate
-   the normalized gameplay-state schema or prove ammo, plot and selected-save
-   assertions. Those exporters and actual VR input remain pending.
+   ammo, plot and selected-save assertions. The live resource exporter and one
+   resource-edited normal load are now proven above; remaining scenario-specific
+   observers and actual VR input are pending.
 6. Native baseline behavior for reload, timed interrupt (including missed window)
    and scanning/discovery, followed by actual VR interaction proof when those
    features exist. Restore and verify the real protected installation afterward.
@@ -549,8 +625,8 @@ The following requirements are **not achieved** at this checkpoint:
 
 Use the proven request channel to complete the minimal no-op fixture
 load/save/reload cycle before increasing scope.
-Then validate a resource-only preparation, save/reload persistence and each
-natural scenario. Keep every result attributable to its actual candidate and
+Resource-only preparation and live values after normal loading are now proven;
+continue with save/reload persistence and each natural scenario. Keep every result attributable to its actual candidate and
 loaded binary; retain unsuccessful runs and restoration outcomes.
 
 

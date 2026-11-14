@@ -124,4 +124,6 @@ fault, proving independent unavailability without a fabricated zero. A mutation
 seam exists only in the synthetic-test build. Release and Debug each passed the standalone SDK suite, including the production
 translation-unit compile target. The representative compact response was 3,645
 bytes, below the existing 16-KiB host frame budget.
-No native resource check or save/reload persistence trial was performed here.
+The subsequent [protected resource-edited load](le2-validation-evidence.md#eight-edited-resources-observed-after-normal-loading)
+observed all eight prepared values in live inventory and passed the correlated
+exporter's starting checks. Normal save/reload persistence remains untested.

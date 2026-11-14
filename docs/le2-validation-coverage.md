@@ -66,7 +66,14 @@ The evidence JSON contains:
 
 Structured `runtime-state`, `input-trace`, `save-inspection` and `timing` artifacts must repeat the **entire exact identity object**. This prevents accidental reuse of observations from another run/build/fixture. Runtime state requires `source: "runtime-observation"`. Input traces require `inputPath: "native"` or `"vr-controller"` and a nonempty event-object list; events should record timestamps, control/action, phase and source instrumentation. Direct debug calls must not be labeled player input. The auditor cannot authenticate the producer's truthfulness; preserve raw logs/video and implementation provenance for review.
 
-Normalized names such as `state.weapon.loaded`, `state.weapon.reserve`, `state.resources.probes` are an observation-interface proposal. They are **not** verified SDK fields or an implemented native exporter. A native observer must map them to verified state and record how it obtained each value. Save inspection alone cannot be relabeled runtime observation. Until that integration exists, state-dependent assertions remain pending. Manual observation can produce normalized records when accompanied by source captures, timestamps and reviewer provenance; ambiguous values remain unresolved.
+`state.resources` now has a [source-backed live inventory observer](../research/le2-resource-observation.md)
+and [correlated exporter](../tools/qa-le2/export-state.md) for all eight resources.
+One protected resource-edited normal load passed its starting checks; save/reload
+persistence and gameplay costs remain pending. Other normalized names, including
+`state.weapon.loaded` and `state.weapon.reserve`, remain interface proposals
+until mapped to verified live state. Save inspection cannot be relabeled runtime
+observation. Manual observations need source captures, timestamps and reviewer
+provenance; ambiguous values remain unresolved.
 
 Machine assertions compare observed values, numeric deltas or sum conservation. They do not accept a producer's `passed` boolean. Review assertions bind an attributed observation to exact input/state/capture artifacts. Native baseline behavior, actual controller routing, stereo presentation and comfort require different evidence. Reload measurement windows must exclude firing/pickups and compare the same weapon; firing and switching have their own reviewed sequences. Use a separate record for post-load persistence.
 
