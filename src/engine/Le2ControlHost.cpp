@@ -16,6 +16,7 @@
 
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <string_view>
@@ -154,6 +155,29 @@ std::uint64_t Number(std::string const& text) {
           end == text.data() + text.size(), "invalid canonical unsigned number");
     return value;
 }
+bool Sha256(std::string const& text) {
+    return text.size() == 64 && text.find_first_not_of("0123456789abcdef") == std::string::npos &&
+        text.find_first_not_of('0') != std::string::npos;
+}
+void DescriptorComponent(std::string const& text) {
+    Check(!text.empty() && text.size() <= 1024 && text.find('\0') == std::string::npos,
+          "fixture descriptor string is empty or oversized");
+    int const units = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    Check(units > 0 && units <= 255, "fixture descriptor is not bounded strict UTF8");
+    Check(text != "." && text != ".." && text.back() != '.' && text.back() != ' ' &&
+          text.find_first_of("/\\:<>\"|?*") == std::string::npos, "ambiguous fixture descriptor component");
+    for (unsigned char c : text) Check(c >= 32 && c != 127, "fixture descriptor control character");
+    auto stem = text.substr(0, text.find('.'));
+    for (char& c : stem) if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+    Check(stem != "CON" && stem != "PRN" && stem != "AUX" && stem != "NUL" &&
+          !(stem.size() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem[3] >= '1' && stem[3] <= '9'),
+          "fixture descriptor reserved device name");
+}
+struct FixtureBinding {
+    std::string career, saveName;
+    int index{};
+    unsigned type{};
+};
 std::uint64_t Filetime(FILETIME value) {
     return (static_cast<std::uint64_t>(value.dwHighDateTime) << 32) | value.dwLowDateTime;
 }
@@ -302,9 +326,63 @@ struct Endpoint::Impl {
 #else
         // An explicit empty probe request may attempt one guarded scalar query.
         // General console dispatch remains disabled independently.
-        gate = std::make_unique<wire::Gate>(identity, false, true, true);
+        gate = std::make_unique<wire::Gate>(identity, false, true, true, true);
 #endif
         attached = true;
+    }
+    std::optional<FixtureBinding> FrozenFixture(std::string& reason) {
+        // The plan carries a reviewer attestation, not image interpretation or
+        // independently established descriptor-to-file semantics. No request
+        // field may supply or override this descriptor/path/hash binding.
+        try {
+            File contextGuard, planGuard;
+            OpenRead(contextGuard, run / L"context.json");
+            OpenRead(planGuard, run / L"plan.json");
+            auto const context = Json(run / L"context.json");
+            Check(Hash(run / L"plan.json") == context.String("planSha256"), "fixture frozen plan changed");
+            auto const plan = Json(run / L"plan.json");
+            Check(plan.Has("fixtureSelection"), "frozen fixture selection is absent");
+            auto const& selection = plan.Get("fixtureSelection");
+            auto const& descriptor = selection.Get("descriptor");
+            Check(selection.IsObject() && selection.Number("schemaVersion") == 1 && descriptor.IsObject(),
+                  "invalid frozen fixture selection schema");
+            FixtureBinding binding{descriptor.String("career"), descriptor.String("saveName")};
+            DescriptorComponent(binding.career); DescriptorComponent(binding.saveName);
+            auto const index = descriptor.Number("index", -1);
+            Check(descriptor.Get("index").GetKind() == Value::Kind::Number && std::isfinite(index) && index >= 0 &&
+                  index <= std::numeric_limits<int>::max() && index == std::floor(index) &&
+                  descriptor.Get("type").GetKind() == Value::Kind::Number && descriptor.Number("type", -1) == 0,
+                  "fixture descriptor requires integer index and manual type zero");
+            binding.index = static_cast<int>(index);
+            auto const& evidence = selection.Get("evidence");
+            auto reviewedRun = identity; reviewedRun.run = evidence.String("runId");
+            auto const reviewer = evidence.String("reviewedBy");
+            Check(evidence.IsObject() && wire::ValidIdentity(reviewedRun) &&
+                  Sha256(evidence.String("observationSha256")) && Sha256(evidence.String("captureSha256")) &&
+                  !reviewer.empty() && reviewer.size() <= 256 && reviewer.find_first_not_of(" \t\r\n") != std::string::npos &&
+                  reviewer.find('\0') == std::string::npos, "fixture reviewed mapping evidence is missing or invalid");
+            auto const hash = selection.String("fixtureSha256");
+            auto const& fixture = plan.Get("fixture");
+            Check(Sha256(hash) && fixture.IsObject() && hash == fixture.String("sha256") &&
+                  hash == context.String("fixtureSha256") && selection.String("exeSha256") == identity.exe,
+                  "fixture selection hashes do not match frozen session");
+            // This exact filename relation is explicitly attested in the frozen
+            // plan; descriptor.Index is never formatted into a filename.
+            auto const relative = "Save/ME2/" + binding.career + "/" + binding.saveName + ".pcsav";
+            Check(selection.String("targetRelativePath") == relative && fixture.String("targetRelativePath") == relative,
+                  "fixture selection relative target disagrees with reviewed descriptor");
+            auto const profile = Safe(Path(plan.String("profileRoot")));
+            Check(Equal(profile, Safe(Path(context.String("profileRoot")))), "fixture profile differs from session");
+            auto const target = Safe(profile / Path(relative));
+            Check(Equal(target, Safe(Path(context.String("fixtureTarget")))), "fixture target differs from session");
+            Check(Hash(target) == hash && Hash(run / L"fixture.pcsav") == hash,
+                  "staged or run-frozen fixture bytes changed");
+            reason = "frozen-plan-review-attestation-and-current-file-hashes";
+            return binding;
+        } catch (std::exception const& e) {
+            reason = e.what();
+            return std::nullopt;
+        }
     }
     void Request(std::uint64_t tick, std::uint32_t thread) {
         auto request = Safe(directory / L"request.control");
@@ -317,6 +395,11 @@ struct Endpoint::Impl {
         Check(MoveFileExW(request.c_str(), claimed.c_str(), MOVEFILE_WRITE_THROUGH) != FALSE, "request claim move failed");
         auto decoded = wire::Decode(Read(claimed, wire::kMaxFrame));
         Check(decoded.has_value(), "malformed consumed request; outcome retained for recovery");
+        // All selection/disk proof IO precedes the fresh deadline claim and any
+        // engine admission/final identity resample. Invalid optional bindings do
+        // not break ping or ordinary observation.
+        std::string bindingReason;
+        auto const binding = FrozenFixture(bindingReason);
         // Re-read true UTC at admission, after potentially slow ownership/hash IO.
         // A later publication does not invalidate a request already admitted here.
         auto failure = gate->Claim(*decoded, clock());
@@ -339,11 +422,21 @@ struct Endpoint::Impl {
             capabilities["probeFov"] = false;
             capabilities["observeSaveMenu"] = false;
             capabilities["nativeMenuActions"] = false;
+            capabilities["observeFixture"] = false;
+            capabilities["nativeFixtureAction"] = false;
+            auto bindingEvidence = Value::Object();
+            bindingEvidence["available"] = binding.has_value();
+            bindingEvidence["reason"] = bindingReason;
+            bindingEvidence["mappingEvidence"] = "frozen-plan-reviewer-attestation-only";
+            bindingEvidence["imageContentsIndependentlyVerified"] = false;
+            payload["fixtureBinding"] = std::move(bindingEvidence);
 #if !defined(MEVR_LE2_CONTROL_TEST)
             capabilities["observeStructuralWorld"] = true;
             capabilities["probeFov"] = true;
             capabilities["observeSaveMenu"] = true;
             capabilities["nativeMenuActions"] = true;
+            capabilities["observeFixture"] = binding.has_value();
+            capabilities["nativeFixtureAction"] = binding.has_value();
             payload["observationScope"] = "sdk-structural-diagnostic";
             le2_diagnostic::ObserverServices services{};
             services.inspectTarget = &host::process_event::InspectDiagnosticTarget;
@@ -356,6 +449,21 @@ struct Endpoint::Impl {
                 payload["observation"] = le2_diagnostic::Observe(thread, &provenance, &services);
             } else if (decoded->verb == "observe-save-menu") {
                 payload["saveMenu"] = le2_diagnostic::ObserveSaveMenu(thread);
+            } else if (decoded->verb == "observe-fixture" || decoded->verb == "load-fixture") {
+                if (!binding) {
+                    result.status = "rejected";
+                    payload["reason"] = bindingReason;
+                } else {
+                    le2_diagnostic::FrozenDescriptor const descriptor{binding->career, binding->saveName, binding->index, binding->type};
+                    if (decoded->verb == "observe-fixture")
+                        payload["fixtureCandidate"] = le2_diagnostic::ObserveFixtureCandidate(thread, services, descriptor);
+                    else {
+                        payload["readOnly"] = false;
+                        auto action = le2_diagnostic::LoadFixture(thread, services, descriptor);
+                        result.status = action.status;
+                        payload["fixtureAction"] = std::move(action.payload);
+                    }
+                }
             } else if (decoded->verb == "probe-fov") {
                 // This invokes script and is not labelled a read-only sample.
                 payload["readOnly"] = false;
@@ -371,6 +479,10 @@ struct Endpoint::Impl {
                 payload["menuAction"] = std::move(action.payload);
             }
 #else
+            if (decoded->verb == "observe-fixture" || decoded->verb == "load-fixture") {
+                result.status = "rejected";
+                payload["reason"] = binding ? "offline-fixture-does-not-traverse-engine-memory" : bindingReason;
+            }
             if (decoded->verb == "observe-save-menu") {
                 auto unavailableMenu = Value::Object();
                 unavailableMenu["available"] = false;
@@ -394,7 +506,7 @@ struct Endpoint::Impl {
         Ownership();
         Publish(directory / L"result.control", *encoded);
         if ((decoded->verb == "probe-fov" || decoded->verb == "advance-splash" ||
-             decoded->verb == "open-load-menu") && result.status == "error") {
+             decoded->verb == "open-load-menu" || decoded->verb == "load-fixture") && result.status == "error") {
             // Preserve the correlated uncertainty result, then stop this lease.
             disabled = true;
             error = "native action outcome uncertain; no further requests admitted";

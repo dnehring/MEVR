@@ -239,6 +239,86 @@ void ExistingResultAndReparse() {
         Require(probe.Disabled(), "reparse invitation accepted");
     } else std::cout << "SKIP reparse creation: Windows privilege/developer mode unavailable\n";
 }
+Value FixturePlan(Fixture& f) {
+    auto plan = *json::Parse(Read(f.run / L"plan.json"));
+    auto const profile = f.root / L"profile";
+    std::string const relative = "Save/ME2/SyntheticCareer/Save99.pcsav";
+    std::string const bytes = "private fake save content, never passed to an engine";
+    Put(profile / relative, bytes); Put(f.run / L"fixture.pcsav", bytes);
+    plan["profileRoot"] = Text(profile);
+    auto file = Value::Object(); file["sha256"] = Hash(bytes); file["targetRelativePath"] = relative;
+    plan["fixture"] = file;
+    auto selection = Value::Object(); selection["schemaVersion"] = 1;
+    auto descriptor = Value::Object(); descriptor["career"] = "SyntheticCareer"; descriptor["saveName"] = "Save99";
+    descriptor["index"] = 42; descriptor["type"] = 0; // Index deliberately is NOT the filename number.
+    selection["descriptor"] = descriptor; selection["fixtureSha256"] = Hash(bytes);
+    selection["targetRelativePath"] = relative; selection["exeSha256"] = f.identity.exe;
+    auto evidence = Value::Object(); evidence["runId"] = "55555555-5555-4555-8555-555555555555";
+    evidence["observationSha256"] = Hash("archived observation"); evidence["captureSha256"] = Hash("archived screenshot");
+    evidence["reviewedBy"] = "offline synthetic mapping reviewer";
+    selection["evidence"] = evidence; plan["fixtureSelection"] = selection;
+    f.context["profileRoot"] = Text(profile); f.context["fixtureTarget"] = Text(profile / relative);
+    f.context["fixtureSha256"] = Hash(bytes);
+    return plan;
+}
+void FreezePlan(Fixture& f, Value const& plan) {
+    Put(f.run / L"plan.json", json::Write(plan));
+    f.context["planSha256"] = Hash(Read(f.run / L"plan.json")); f.SaveContext();
+}
+void FrozenFixtureBinding() {
+    for (int variant = 0; variant < 22; ++variant) {
+        Fixture f; auto plan = FixturePlan(f);
+        auto& selection = plan["fixtureSelection"];
+        auto& descriptor = selection["descriptor"];
+        if (variant == 1) plan.Erase("fixtureSelection");
+        if (variant == 2) selection.Erase("evidence");
+        if (variant == 3) selection["evidence"]["reviewedBy"] = "   ";
+        if (variant == 4) selection["evidence"]["observationSha256"] = std::string(64, '0');
+        if (variant == 5) selection["evidence"]["captureSha256"] = "unproven";
+        if (variant == 6) selection["exeSha256"] = Hash("other executable");
+        if (variant == 7) selection["fixtureSha256"] = Hash("other save");
+        if (variant == 8) descriptor["index"] = -1;
+        if (variant == 9) descriptor["index"] = 1.5;
+        if (variant == 10) descriptor["type"] = 2;
+        if (variant == 11) descriptor["type"] = "0";
+        if (variant == 12) descriptor["career"] = "..";
+        if (variant == 13) descriptor["saveName"] = "../Save99";
+        if (variant == 14) descriptor["saveName"] = "Save99.";
+        if (variant == 15) descriptor["saveName"] = "NUL";
+        if (variant == 16) descriptor["career"] = std::string(256, 'a');
+        if (variant == 17) descriptor["career"] = std::string("bad\xC0\xAF");
+        if (variant == 18) selection["targetRelativePath"] = "Save/ME2/SyntheticCareer/Save42.pcsav";
+        if (variant == 19) plan["fixture"]["targetRelativePath"] = "Save/ME2/SyntheticCareer/Other.pcsav";
+        if (variant == 20) f.context["profileRoot"] = Text(f.root / L"wrong-profile");
+        if (variant == 21) f.context["fixtureTarget"] = Text(f.root / L"other.pcsav");
+        FreezePlan(f, plan);
+        host::Endpoint endpoint(f.local, f.process, [] { return Fixture::now + 1; }); endpoint.Poll(1, 42);
+        Require(endpoint.Attached() && !endpoint.Disabled(), "optional invalid binding prevented safe attachment");
+        f.Send(f.Request()); endpoint.Poll(2, 42);
+        auto ping = json::Parse(f.Result().payload);
+        Require(f.Result().status == "completed" && ping && ping->Get("fixtureBinding").Bool("available") == (variant == 0),
+                "frozen binding validation incorrectly accepted/refused plan");
+        Require(!ping->Get("capabilities").Bool("nativeFixtureAction", true) &&
+                !ping->Get("capabilities").Bool("observeFixture", true), "offline fixture advertised native capability");
+        fs::remove(f.control / L"result.control");
+        auto request = f.Request("observe-fixture", 2); request.id = "66666666-6666-4666-8666-666666666666";
+        f.Send(request); endpoint.Poll(3, 42);
+        Require(f.Result().status == "rejected" && !endpoint.Disabled(), "fixture observation was not safely terminal rejected");
+        fs::remove(f.control / L"result.control");
+        request = f.Request("load-fixture", 3); request.id = "77777777-7777-4777-8777-777777777777";
+        f.Send(request); endpoint.Poll(4, 42);
+        Require(f.Result().status == "rejected" && !endpoint.Disabled(), "offline fixture entered native action");
+    }
+    for (bool frozen : {false, true}) {
+        Fixture f; auto plan = FixturePlan(f); FreezePlan(f, plan);
+        host::Endpoint endpoint(f.local, f.process, [] { return Fixture::now + 1; }); endpoint.Poll(1, 42);
+        Put(frozen ? f.run / L"fixture.pcsav" : fs::path(f.context.String("fixtureTarget")), "changed after attachment");
+        f.Send(f.Request("observe-fixture")); endpoint.Poll(2, 42);
+        auto result = json::Parse(f.Result().payload);
+        Require(f.Result().status == "rejected" && result && !result->Get("fixtureBinding").Bool("available", true) &&
+                !endpoint.Disabled(), "changed staged/frozen save did not reject before entry");
+    }
+}
 int FixtureLoop() {
     Fixture fixture;
     host::Endpoint endpoint(fixture.local, fixture.process);
@@ -265,8 +345,8 @@ int main(int argc, char** argv) {
         if (argc == 2 && std::string_view(argv[1]) == "--fixture-loop") return FixtureLoop();
         Require(argc == 1, "unknown test argument");
         PingAndObserve(); WaitForInvitation(); RejectConsoleAndReplay(); WrongLeaseAndDeadline(); ClaimUsesFreshClock(); InvalidAttach();
-        RevokedOwnerAndDescriptor(); MalformedAndInterrupted(); OutputCollisionAndOversize(); ExistingResultAndReparse();
-        std::cout << "10 LE2 control filesystem test groups passed (fake files/identity only)\n";
+        RevokedOwnerAndDescriptor(); MalformedAndInterrupted(); OutputCollisionAndOversize(); ExistingResultAndReparse(); FrozenFixtureBinding();
+        std::cout << "11 LE2 control filesystem test groups passed (fake files/identity only)\n";
         return 0;
     } catch (std::exception const& error) { std::cerr << "FAIL: " << error.what() << '\n'; return 1; }
 }
