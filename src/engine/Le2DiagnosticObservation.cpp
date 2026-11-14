@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "engine/Le2DiagnosticObservation.hpp"
 #include "engine/Le2OrbitalObservation.hpp"
+#include "engine/Le2WeaponObservation.hpp"
 #include "engine/Le2InputContext.hpp"
 
 #if defined(MEVR_GAME_LE2)
@@ -2400,6 +2401,7 @@ json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic:
     return out;
 }
 #include "engine/Le2OrbitalObservation.inc"
+#include "engine/Le2WeaponObservation.inc"
 #include "engine/Le2InputContext.inc"
 } // namespace mevr::engine::le2_diagnostic
 #endif
