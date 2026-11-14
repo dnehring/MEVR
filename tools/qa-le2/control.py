@@ -26,7 +26,7 @@ KEYS = ("kind", "run", "lease", "pid", "start", "exe", "host", "mod", "id", "seq
 IDENTITY = ("run", "lease", "pid", "start", "exe", "host", "mod", "game")
 MAX_PAYLOAD, MAX_FRAME, MAX_LIFETIME_MS = 16384, 17408, 30000
 MENU_ACTIONS = ("advance-splash", "open-load-menu", "open-pause-menu", "open-save-menu")
-NATIVE_ACTIONS = ("console", "probe-fov", "load-fixture", "save-new") + MENU_ACTIONS
+NATIVE_ACTIONS = ("console", "probe-fov", "load-fixture", "save-new", "pad-pulse") + MENU_ACTIONS
 
 
 class ControlError(ValueError):
@@ -44,6 +44,49 @@ def number(value, maximum=(1 << 64) - 1):
     return int(value)
 
 
+PULSE_FIELDS = ("schemaVersion", "context", "durationMs", "buttons", "leftTrigger", "rightTrigger",
+                "leftX", "leftY", "rightX", "rightY")
+
+
+def validate_pulse(pulse):
+    """One bounded native pad state, not a command, recipe, pointer or input script."""
+    if not isinstance(pulse, dict) or set(pulse) != set(PULSE_FIELDS):
+        raise ControlError("Pad pulse requires exactly the ten declared fields")
+    if type(pulse["schemaVersion"]) is not int or pulse["schemaVersion"] != 1:
+        raise ControlError("Pad pulse schemaVersion must be integer 1")
+    if pulse["context"] not in ("default", "party-select"):
+        raise ControlError("Unsupported pad pulse context")
+    bounds = {"durationMs": (1, 1000), "buttons": (0, 65535),
+              "leftTrigger": (0, 255), "rightTrigger": (0, 255),
+              **{name: (-32768, 32767) for name in ("leftX", "leftY", "rightX", "rightY")}}
+    for name, (low, high) in bounds.items():
+        if type(pulse[name]) is not int or not low <= pulse[name] <= high:
+            raise ControlError(f"Pad pulse {name} must be integer {low}..{high}")
+    if pulse["buttons"] & ~0xF3FF:
+        raise ControlError("Pad pulse has reserved button bits")
+    if not any(pulse[name] for name in PULSE_FIELDS[3:]):
+        raise ControlError("Entirely neutral pad pulse is not an action")
+    return {name: pulse[name] for name in PULSE_FIELDS}
+
+
+def parse_pulse(payload):
+    if not isinstance(payload, bytes) or not payload or len(payload) > MAX_PAYLOAD:
+        raise ControlError("Pad pulse JSON must be nonempty and bounded")
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ControlError("Duplicate pad pulse JSON key")
+            result[key] = value
+        return result
+    def nonfinite(value):
+        raise ControlError("Nonfinite pad pulse JSON number")
+    try:
+        return validate_pulse(json.loads(payload.decode("utf-8"), object_pairs_hook=pairs, parse_constant=nonfinite))
+    except (UnicodeError, ValueError, TypeError, RecursionError) as error:
+        raise ControlError("Invalid pad pulse JSON: " + str(error)) from error
+
+
 def validate(frame):
     if set(frame) != set(KEYS) | {"payload"} or any(not isinstance(frame[k], str) for k in KEYS):
         raise ControlError("Unexpected fields or types")
@@ -56,7 +99,7 @@ def validate(frame):
     payload = frame["payload"]
     if not isinstance(payload, bytes) or len(payload) > MAX_PAYLOAD or b"\0" in payload or number(frame["bytes"]) != len(payload):
         raise ControlError("Invalid payload")
-    if frame["verb"] not in ("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-save-flow") + NATIVE_ACTIONS:
+    if frame["verb"] not in ("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-input", "observe-save-flow") + NATIVE_ACTIONS:
         raise ControlError("Unsupported verb")
     if frame["kind"] == "request":
         if frame["status"] != "pending":
@@ -64,6 +107,8 @@ def validate(frame):
         if frame["verb"] == "console":
             if not payload or len(payload) > 4096 or any(c < 32 or c == 127 for c in payload):
                 raise ControlError("Native console requires one bounded command")
+        elif frame["verb"] == "pad-pulse":
+            parse_pulse(payload)
         elif payload:
             raise ControlError("Observation requests have no payload")
     elif frame["kind"] != "result" or frame["status"] not in ("completed", "dispatched", "rejected", "error"):
@@ -255,7 +300,8 @@ def verify_save_baseline(run, directory, identity):
 
 
 def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_probe_fov=False,
-           allow_menu_actions=False, allow_fixture_load=False, allow_save_new=False, bind=binding):
+           allow_menu_actions=False, allow_fixture_load=False, allow_save_new=False,
+           allow_native_input=False, pulse=None, bind=binding):
     if not 1 <= timeout <= 30:
         raise ControlError("Timeout must be 1..30 seconds")
     if verb == "console" and (not allow_console or re.search(r"\bstreamlevelin\b", command, re.I)):
@@ -268,6 +314,14 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
         raise ControlError("Fixture loading requires explicit --allow-fixture-load")
     if verb == "save-new" and not allow_save_new:
         raise ControlError("New Save requires explicit --allow-save-new and a reviewed file baseline")
+    if verb == "pad-pulse":
+        if not allow_native_input:
+            raise ControlError("Native pad pulse requires explicit --allow-native-input")
+        payload = json.dumps(validate_pulse(pulse), separators=(",", ":"), allow_nan=False).encode("utf-8")
+    else:
+        if pulse is not None:
+            raise ControlError("Pulse is only valid with pad-pulse")
+        payload = command.encode("utf-8")
     if verb != "console" and command:
         raise ControlError("Command is only valid with console")
     directory, identity = bind(run)
@@ -289,7 +343,7 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
         sequence_path = session.safe_path(directory / "sequence.txt")
         sequence = int(sequence_path.read_text()) + 1 if sequence_path.exists() else 1
         frame = dict(identity, kind="request", id=token, sequence=str(sequence), deadline=str(time.time_ns() // 1000000 + timeout * 1000),
-                     verb=verb, status="pending", payload=command.encode("utf-8"), bytes=str(len(command.encode("utf-8"))))
+                     verb=verb, status="pending", payload=payload, bytes=str(len(payload)))
         wire = encode(frame)
         if save_baseline_sha is not None:
             sidecar = {"schemaVersion": 1, "requestId": token, "sequence": sequence,
@@ -316,7 +370,7 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("run", type=Path)
-    p.add_argument("verb", choices=("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-save-flow", "collect") + NATIVE_ACTIONS)
+    p.add_argument("verb", choices=("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-input", "observe-save-flow", "collect") + NATIVE_ACTIONS)
     p.add_argument("--command", default="")
     p.add_argument("--timeout", type=int, default=10)
     p.add_argument("--allow-console", action="store_true")
@@ -324,12 +378,21 @@ def main():
     p.add_argument("--allow-menu-actions", action="store_true")
     p.add_argument("--allow-fixture-load", action="store_true")
     p.add_argument("--allow-save-new", action="store_true")
+    p.add_argument("--allow-native-input", action="store_true")
+    p.add_argument("--pulse-json", type=Path, help="Existing bounded JSON pad state; only with pad-pulse")
     a = p.parse_args()
     try:
+        pulse = None
+        if a.pulse_json is not None:
+            if a.verb != "pad-pulse":
+                raise ControlError("--pulse-json is only valid with pad-pulse")
+            with session.safe_path(a.pulse_json.absolute()).open("rb") as stream:
+                pulse = parse_pulse(stream.read(MAX_PAYLOAD + 1))
         result = collect(a.run.absolute()) if a.verb == "collect" else submit(
             a.run.absolute(), a.verb, a.command, a.timeout, a.allow_console,
             allow_probe_fov=a.allow_probe_fov, allow_menu_actions=a.allow_menu_actions,
-            allow_fixture_load=a.allow_fixture_load, allow_save_new=a.allow_save_new)
+            allow_fixture_load=a.allow_fixture_load, allow_save_new=a.allow_save_new,
+            allow_native_input=a.allow_native_input, pulse=pulse)
         print(json.dumps(dict(result, payload=result["payload"].decode("utf-8", errors="replace")), indent=2))
         return 0 if result["status"] in ("completed", "dispatched") else 2
     except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:

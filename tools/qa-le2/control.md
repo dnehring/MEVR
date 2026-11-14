@@ -46,6 +46,47 @@ conditional. Outside a coherent orbital mode it reports an unavailable reason.
 The [observer and acquisition contract](../../research/le2-scanning-readiness.md)
 records the structural camera evidence and unresolved native/VR gates.
 
+`observe-input` is an empty-input, read-only query for the diagnostic input
+publisher's context, poll and neutral-state evidence. It does not publish input.
+The existing client can submit one bounded `pad-pulse` with a separate explicit
+`--allow-native-input` flag and `--pulse-json FILE`. The file is a local JSON
+argument source, not another runtime request channel. The pulse travels through
+the same owned, correlated `request.control` exchange and request archive.
+
+The exact ten-field schema is:
+
+```json
+{"schemaVersion":1,"context":"party-select","durationMs":100,"buttons":4096,"leftTrigger":0,"rightTrigger":0,"leftX":0,"leftY":0,"rightX":0,"rightY":0}
+```
+
+`context` is `default` or `party-select`; the runtime must independently admit the
+actual supported context. `durationMs` is an integer from 1 to 1000. `buttons` is
+uint16 with only mask `0xF3FF` permitted; bits `0x0400` and `0x0800` are reserved.
+Triggers are integers 0..255 and the four stick axes integers -32768..32767.
+All keys are required. Unknown/duplicate keys, booleans or floats used as integers,
+unsupported contexts and an entirely neutral pad are rejected. JSON key order and
+whitespace do not affect acceptance; the client emits compact JSON.
+
+For an already reviewed, owned session and reviewed pulse file:
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run observe-input
+python tools/qa-le2/control.py C:\private\le2-run pad-pulse --allow-native-input --pulse-json C:\private\pulse.json
+python tools/qa-le2/control.py C:\private\le2-run observe-input
+```
+
+The Python API is `submit(run, "pad-pulse", pulse=fields,
+allow_native_input=True)`. Console/menu/save permissions do not authorize a pad
+pulse. Neither `--command` nor a pulse attached to another verb is accepted.
+`dispatched` means the state was **published**, not that XInput consumed it or
+that gameplay changed. Subsequent read-only input observations and appropriate
+state/capture evidence establish those separate facts. A result claiming
+`completed` for this action is refused. Timeout, uncorrelated response, or a
+producer error preserves pending uncertainty; use `collect` to reconcile, never
+resubmit automatically. The ordinary archived request already pins the full
+pulse and run identity, so no additional action sidecar or runner is introduced.
+Offline client/codec tests do not establish native input acceptance.
+
 `observe-resources` is an empty-input, read-only query under
 `payload.resourceObservation`. It samples the current player's live inventory
 twice, with independent availability for credits, medi-gel, four minerals,
@@ -506,7 +547,7 @@ One blank line separates the headers from exactly `bytes` payload bytes. UUIDs
 and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings.
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
-control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-orbital`, `observe-save-flow`,
+control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-orbital`, `observe-input`, `observe-save-flow`,
 `observe-fixture`, `load-fixture`, `probe-fov`, `advance-splash`, and
 `open-load-menu`, `open-pause-menu`, `open-save-menu`, `save-new` requests require an empty payload.
 Unknown, duplicated, reordered, partial or trailing data is

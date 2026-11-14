@@ -24,7 +24,48 @@ def frame():
                 verb="ping", status="pending", bytes="0", payload=b"")
 
 
+def pulse(**changes):
+    return dict(schemaVersion=1, context="party-select", durationMs=100, buttons=0x1000,
+                leftTrigger=0, rightTrigger=0, leftX=0, leftY=0, rightX=0, rightY=0) | changes
+
+
+def pulse_frame(value=None):
+    payload = json.dumps(pulse() if value is None else value, separators=(",", ":")).encode()
+    return dict(frame(), verb="pad-pulse", payload=payload, bytes=str(len(payload)))
+
+
 class WireTests(unittest.TestCase):
+    def test_pad_schema_bounds_and_reserved_bits(self):
+        for context in ("default", "party-select"):
+            for value in (pulse(context=context, durationMs=1), pulse(context=context, durationMs=1000,
+                          buttons=0xF3FF, leftTrigger=255, rightTrigger=255,
+                          leftX=-32768, leftY=32767, rightX=-32768, rightY=32767)):
+                f=pulse_frame(value)
+                self.assertEqual(c.decode(c.encode(f)), f)
+        bad=[{}, [], None, pulse(extra=1), pulse(schemaVersion=2), pulse(schemaVersion=True),
+             pulse(context="orbital"), pulse(context=1), pulse(buttons=0), pulse(buttons=0x0400),
+             pulse(buttons=0x0800), pulse(buttons=65536), pulse(buttons=-1)]
+        for key in c.PULSE_FIELDS:
+            bad.append({k:v for k,v in pulse().items() if k!=key})
+        for key, low, high in [("durationMs",1,1000),("buttons",0,65535),
+                              ("leftTrigger",0,255),("rightTrigger",0,255),
+                              *[(key,-32768,32767) for key in ("leftX","leftY","rightX","rightY")]]:
+            for value in (True, False, 1.0, "1", None, low-1, high+1):bad.append(pulse(**{key:value}))
+        for value in bad:
+            with self.subTest(value=value), self.assertRaises(c.ControlError):c.validate_pulse(value)
+        self.assertEqual(c.validate_pulse(pulse(buttons=0,leftX=-1))["leftX"],-1)
+
+    def test_pad_json_semantic_not_key_order_policy(self):
+        raw=json.dumps(dict(reversed(list(pulse().items()))),indent=2).encode()
+        self.assertEqual(c.parse_pulse(raw),pulse())
+        duplicate=b'{"schemaVersion":1,'+json.dumps(pulse())[1:].encode()
+        for raw in (duplicate,b'{',b'[]',b'null',b'\xff',b' '* (c.MAX_PAYLOAD+1),
+                    json.dumps(pulse()).replace('100,','NaN,').encode(),
+                    json.dumps(pulse()).replace('100,','1e400,').encode()):
+            with self.subTest(raw=raw[:80]), self.assertRaises(c.ControlError):c.parse_pulse(raw)
+        with self.assertRaises(c.ControlError):c.encode(dict(frame(),verb="pad-pulse"))
+        with self.assertRaises(c.ControlError):c.encode(dict(pulse_frame(),verb="observe-input"))
+
     def test_exact_high_precision_identity(self):
         f = frame()
         self.assertEqual(c.decode(c.encode(f)), f)
@@ -66,6 +107,8 @@ class WireTests(unittest.TestCase):
                         dict(frame(), verb="observe-save-menu"),
                         dict(frame(), verb="observe-resources"),
                         dict(frame(), verb="observe-orbital"),
+                        dict(frame(), verb="observe-input"), pulse_frame(),
+                        pulse_frame(pulse(context="default",buttons=0,leftX=-32768,rightTrigger=255)),
                         dict(frame(), verb="observe-save-flow"),
                         dict(frame(), verb="open-pause-menu"), dict(frame(), verb="open-save-menu"),
                         dict(frame(), verb="save-new"),
@@ -83,6 +126,25 @@ class WireTests(unittest.TestCase):
                 self.assertEqual(run.stdout, raw)
             p.write_bytes(c.encode(frame()).replace(b"game=LE2", b"game=LE1"))
             self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"], str(p)], capture_output=True).returncode, 2)
+            # Build malformed payload frames without asking the Python encoder
+            # to accept them; both independent decoders must reject the bytes.
+            invalid_pulses = [json.dumps(pulse(buttons=0)),json.dumps(pulse(buttons=0x400)),
+                              json.dumps(pulse(durationMs=True)),json.dumps(pulse(durationMs=1.0)),
+                              json.dumps(pulse(leftX=-32769)),json.dumps(pulse(context="orbital")),
+                              json.dumps(pulse(extra=0)),json.dumps({k:v for k,v in pulse().items() if k!="rightY"}),
+                              '{"schemaVersion":1,'+json.dumps(pulse())[1:]]
+            for payload in invalid_pulses:
+                body=payload.encode()
+                prefix=c.encode(frame()).replace(b"verb=ping\n",b"verb=pad-pulse\n")
+                raw=prefix.replace(b"bytes=0\n",("bytes="+str(len(body))+"\n").encode())+body
+                p.write_bytes(raw)
+                with self.assertRaises(c.ControlError):c.decode(raw)
+                self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"],str(p)],capture_output=True).returncode,2,payload)
+            # Reordering/formatting are not an extra wire policy.
+            body=json.dumps(dict(reversed(list(pulse().items()))),indent=2).encode()
+            f=dict(frame(),verb="pad-pulse",payload=body,bytes=str(len(body)))
+            p.write_bytes(c.encode(f))
+            self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"],str(p)],capture_output=True).returncode,0)
             malformed_probe = c.encode(dict(frame(), verb="probe-fov")).replace(b"bytes=0\n", b"bytes=1\n") + b"x"
             with self.assertRaises(c.ControlError): c.decode(malformed_probe)
             p.write_bytes(malformed_probe)
@@ -90,6 +152,59 @@ class WireTests(unittest.TestCase):
 
 
 class ClientTests(unittest.TestCase):
+    def test_pad_requires_independent_opt_in_and_schema_before_binding(self):
+        bind=mock.Mock(side_effect=AssertionError("must not bind"))
+        for options in ({"pulse":pulse()}, {"pulse":pulse(),"allow_console":True,"allow_menu_actions":True},
+                        {"allow_native_input":True}, {"allow_native_input":True,"pulse":pulse(buttons=0)},
+                        {"allow_native_input":True,"pulse":pulse(),"command":"quit"}):
+            with self.assertRaises(c.ControlError):c.submit(self.root,"pad-pulse",bind=bind,**options)
+        for verb in ("ping","observe-input","console"):
+            with self.assertRaises(c.ControlError):c.submit(self.root,verb,pulse=pulse(),allow_console=True,bind=bind)
+        bind.assert_not_called();self.assertFalse(list(self.root.iterdir()))
+
+    def test_pad_published_result_and_exact_archived_payload(self):
+        thread,errors=self.peer()
+        result=c.submit(self.root,"pad-pulse",pulse=pulse(),allow_native_input=True,bind=self.bind)
+        thread.join();self.assertFalse(errors);self.assertEqual(result["status"],"dispatched")
+        archived=c.decode((self.root/"history"/(result["id"]+".request")).read_bytes())
+        self.assertEqual(c.parse_pulse(archived["payload"]),pulse())
+        self.assertNotIn(b"\n",archived["payload"])
+        self.assertFalse((self.root/"outstanding.json").exists())
+
+    def test_pad_completed_cannot_claim_consumption(self):
+        thread,errors=self.peer(console_complete=True)
+        with self.assertRaisesRegex(c.ControlError,"gameplay completion"):
+            c.submit(self.root,"pad-pulse",pulse=pulse(),allow_native_input=True,bind=self.bind)
+        thread.join();self.assertFalse(errors);self.assertTrue((self.root/"outstanding.json").exists())
+
+    def test_pad_error_retains_intent_no_redispatch(self):
+        thread,errors=self.peer(status="error")
+        with self.assertRaisesRegex(c.ControlError,"pending intent retained"):
+            c.submit(self.root,"pad-pulse",pulse=pulse(),allow_native_input=True,bind=self.bind)
+        thread.join();self.assertFalse(errors)
+        first=list((self.root/"history").glob("*.request"))
+        with self.assertRaisesRegex(c.ControlError,"pending/uncertain"):
+            c.submit(self.root,"pad-pulse",pulse=pulse(),allow_native_input=True,bind=self.bind)
+        self.assertEqual(first,list((self.root/"history").glob("*.request")))
+        self.assertEqual(len(list((self.root/"history").glob("*.error.result"))),1)
+
+    def test_observe_input_readonly_without_input_optin(self):
+        thread,errors=self.peer()
+        result=c.submit(self.root,"observe-input",bind=self.bind)
+        thread.join();self.assertFalse(errors);self.assertEqual(result["status"],"completed")
+
+    def test_cli_pulse_file_uses_existing_submit_and_is_bounded(self):
+        path=self.root/"pulse.json";path.write_text(json.dumps(pulse()))
+        output=dict(frame(),kind="result",status="dispatched")
+        args=["control.py",str(self.root),"pad-pulse","--allow-native-input","--pulse-json",str(path)]
+        with mock.patch("sys.argv",args),mock.patch.object(c,"submit",return_value=output) as submit, mock.patch("builtins.print"):
+            self.assertEqual(c.main(),0)
+            self.assertEqual(submit.call_args.kwargs["pulse"],pulse())
+            self.assertTrue(submit.call_args.kwargs["allow_native_input"])
+        path.write_bytes(b" "*(c.MAX_PAYLOAD+1))
+        with mock.patch("sys.argv",args),mock.patch.object(c,"submit") as submit,mock.patch("builtins.print"):
+            self.assertEqual(c.main(),2);submit.assert_not_called()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
