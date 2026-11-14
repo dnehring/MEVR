@@ -39,6 +39,39 @@ void Name(UObject* p, char const* text) {
 void Check(bool ok, char const* why) { if (!ok) throw std::runtime_error(why); }
 bool Available(mevr::json::Value const& v, char const* key) { return v.Get(key).Bool("available"); }
 void MustNeverCall() { std::abort(); }
+namespace diagnostic = mevr::host::process_event::diagnostic;
+unsigned inspectCalls{}, watchCalls{};
+bool wrongInspectionTarget{}, wrongWitnessIdentity{}, expiredWitness{};
+diagnostic::ControllerWatch lastWatch{};
+std::uint64_t watchEpoch{};
+diagnostic::TargetInspection FakeInspect(std::uintptr_t target) noexcept {
+    ++inspectCalls;
+    diagnostic::TargetInspection out;
+    out.target = target + (wrongInspectionTarget ? 1 : 0);
+    out.moduleBase = target - 0x1000; out.rva = 0x1000;
+    out.baseTarget = target - 0x100;
+    out.inMainText = out.boundsKnown = out.exactFunctionStart = out.boundsUsable = true;
+    out.functionBegin = target; out.functionEnd = target + 64;
+    out.reason = "synthetic-bounds";
+    return out;
+}
+diagnostic::WitnessSnapshot FakeWitness(diagnostic::ControllerWatch const& identity) noexcept {
+    ++watchCalls;
+    if (!(lastWatch == identity)) ++watchEpoch;
+    lastWatch = identity;
+    diagnostic::WitnessSnapshot out;
+    out.identity = identity; out.epoch = watchEpoch;
+    if (wrongWitnessIdentity) ++out.identity.object;
+    out.status = !identity.object ? diagnostic::WatchStatus::Unavailable :
+        expiredWitness ? diagnostic::WatchStatus::Expired : diagnostic::WatchStatus::Watching;
+    out.reason = "synthetic-passive-witness";
+    out.startedMs = 100; out.expiresMs = 10100;
+    out.functionBegin = identity.target; out.functionEnd = identity.target + 64;
+    out.entries = std::numeric_limits<std::uint64_t>::max(); out.originalReturns = 7;
+    out.matchingEntries = 3; out.matchingOriginalReturns = 2;
+    out.lastMatchingCaller = identity.target + 8;
+    return out;
+}
 }
 SFXNameEntry const* SFXName::GetEntry() const noexcept { return names[Offset]; }
 namespace mevr::ue3::runtime {
@@ -144,6 +177,31 @@ int main() {
         Check(!hostSlot().Bool("targetMatchesInstalledHook"), "failed install cannot validate a matching address");
         host.installation = diagnostic::InstallState::Installed;
         Check(!Observe(0, &host).Get("processEventSlot").Bool("slotAndOwnedChainMatch"), "wrong thread cannot match provenance");
+        std::array<std::array<std::uintptr_t, 73>, 4> comparisonVtables{};
+        std::array<UObject*, 4> comparisonObjects{world.get(), engine.get(), local.get(), pawn.get()};
+        for (std::size_t i = 0; i < comparisonObjects.size(); ++i) {
+            comparisonVtables[i][72] = controllerVtable[72];
+            auto* vtable = comparisonVtables[i].data();
+            std::memcpy(comparisonObjects[i], &vtable, sizeof(vtable));
+        }
+        auto comparisons = [&] { return Observe(thread, &host).Get("processEventSlots"); };
+        for (auto key : {"world", "engine", "localPlayer", "player", "pawn"}) {
+            auto observed = comparisons().Get(key);
+            Check(observed.Bool("available") && observed.Get("object").Bool("available") &&
+                  observed.Bool("targetMatchesInstalledHook") && !observed.Bool("dispatchCapability"), "validated object slot72 comparison");
+        }
+        comparisonVtables[0][71] = controllerVtable[72]; comparisonVtables[0][72] = 0;
+        Check(!comparisons().Get("world").Bool("available") && comparisons().Get("player").Bool("available"), "world adjacent-slot trap does not affect controller");
+        comparisonVtables[0][72] = controllerVtable[72] + 1;
+        Check(comparisons().Get("world").Bool("available") && !comparisons().Get("world").Bool("targetMatchesInstalledHook"), "different world target remains discrepancy");
+        comparisonVtables[0][72] = controllerVtable[72];
+        auto* invalidComparisonVtable = reinterpret_cast<std::uintptr_t*>(1);
+        std::memcpy(world.get(), &invalidComparisonVtable, sizeof(invalidComparisonVtable));
+        Check(!comparisons().Get("world").Bool("available") && comparisons().Get("player").Bool("available"), "world vtable fault contained");
+        world.get()->ObjectFlags = 0x200;
+        Check(comparisons().Get("world").String("reason") == "object-not-validated", "unvalidated world never dereferences bad vtable");
+        world.get()->ObjectFlags = 0;
+        auto* worldVtable = comparisonVtables[0].data(); std::memcpy(world.get(), &worldVtable, sizeof(worldVtable));
         controllerVtable[72] = reinterpret_cast<std::uintptr_t>(&table);
         Check(Available(Observe(thread), "processEventSlot") &&
               !Observe(thread).Get("processEventSlot").Get("target").Bool("committedExecutablePage"), "readable data target is not executable");
@@ -306,6 +364,47 @@ int main() {
         Check(getterMatches() && mevr::json::Write(Observe(thread), 0).size() < 16384, "expanded observation recovers and fits control payload");
         Check(fov.get()->iNative == 0 && fov.get()->FunctionFlags == 0x20802 && console.get()->FunctionFlags == 0x24400,
               "observation never rewrites function flags or native index");
+        mevr::engine::le2_diagnostic::ObserverServices services{FakeInspect, FakeWitness};
+        auto provided = [&] { return Observe(thread, &host, &services); };
+        v = provided();
+        auto evidence = v.Get("controllerCallWitness");
+        Check(evidence.Bool("available") && evidence.String("baseEntries") == "18446744073709551615" &&
+              evidence.String("originalNormalReturns") == "7" && evidence.String("targetCallerEntries") == "3" &&
+              evidence.String("targetCallerOriginalNormalReturns") == "2" && !evidence.Bool("dispatchCapability") &&
+              !evidence.Bool("durableObjectIdentity"), "separate passive counts, exact integers, no capability");
+        Check(lastWatch.object == reinterpret_cast<std::uintptr_t>(controller.get()) && lastWatch.index == controller.get()->ObjectInternalInteger &&
+              lastWatch.classAddress == reinterpret_cast<std::uintptr_t>(controllerType.get()) && lastWatch.target == controllerVtable[72] &&
+              lastWatch.world == reinterpret_cast<std::uintptr_t>(world.get()) && lastWatch.localPlayer == reinterpret_cast<std::uintptr_t>(local.get()) &&
+              lastWatch.gameThread == thread, "fresh guarded controller/context feeds watcher");
+        for (auto key : {"world", "engine", "localPlayer", "player", "pawn"}) {
+            auto inspection = v.Get("processEventSlots").Get(key).Get("target").Get("inspection");
+            Check(inspection.Bool("available") && inspection.String("rva") == "0x1000" && inspection.Bool("boundsUsable"), "injected target facts on five validated objects");
+        }
+        auto initialEpoch = evidence.String("epoch");
+        Check(provided().Get("controllerCallWitness").String("epoch") == initialEpoch, "same scope does not force epoch renewal");
+        expiredWitness = true;
+        Check(provided().Get("controllerCallWitness").String("status") == "expired", "expired evidence reported without rearming");
+        expiredWitness = false;
+        wrongInspectionTarget = true;
+        Check(!provided().Get("processEventSlot").Get("target").Get("inspection").Bool("available"), "mismatched inspector output not attributed to target");
+        wrongInspectionTarget = false;
+        wrongWitnessIdentity = true;
+        Check(!provided().Get("controllerCallWitness").Bool("available") &&
+              provided().Get("controllerCallWitness").String("reason") == "witness-identity-mismatch", "stale witness identity rejected");
+        wrongWitnessIdentity = false;
+        auto priorInspects = inspectCalls, priorWatches = watchCalls;
+        v = Observe(0, &host, &services);
+        Check(inspectCalls == priorInspects && watchCalls == priorWatches && !v.Get("controllerCallWitness").Bool("available"), "wrong thread invokes no provider");
+        console.get()->Children = reinterpret_cast<UField*>(1);
+        v = provided();
+        Check(inspectCalls == priorInspects && watchCalls == priorWatches + 1 && lastWatch.object == 0 &&
+              !v.Get("controllerCallWitness").Bool("available"), "metadata fault disarms without inspecting partial samples");
+        console.get()->Children = command.get();
+        Check(provided().Get("controllerCallWitness").Bool("available"), "fresh scope after read failure");
+        world.get()->ObjectFlags = 0x200;
+        Check(!provided().Get("controllerCallWitness").Bool("available") && lastWatch.object == 0, "invalid world disarms despite readable controller");
+        world.get()->ObjectFlags = 0;
+        Check(mevr::json::Write(provided(), 0).size() < 16384, "five-object inspector and passive evidence fit control payload");
         auto oldIndex = pawn.get()->ObjectInternalInteger;
         pawn.get()->ObjectInternalInteger = table.count;
         Check(!Available(Observe(thread), "pawn"), "out of range slot");
@@ -329,6 +428,7 @@ int main() {
         pawn.get()->Location.X = 1;
         controller.get()->Pawn = nullptr;
         Check(Available(Observe(thread), "player") && !Available(Observe(thread), "pawn"), "null pawn preserves controller sample");
+        Check(!comparisons().Get("pawn").Bool("available") && comparisons().Get("player").Bool("available"), "optional pawn absent without invalidating other slots");
         controller.get()->Pawn = pawn.get();
         local.get()->Actor = nullptr;
         Check(Available(Observe(thread), "localPlayer") && !Available(Observe(thread), "player") &&

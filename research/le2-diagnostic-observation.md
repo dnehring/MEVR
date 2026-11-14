@@ -247,3 +247,51 @@ targets, failed/missing/mismatched host provenance and changing chains. Exact
 getter and ConsoleCommand metadata coexist in one payload below the control
 channel's 16 KiB limit. Release and Debug test results for this extension are
 offline evidence only; native calls and allocator behavior remain unproven.
+
+## Bounded cross-object comparison and passive witness
+
+`processEventSlots` compares **only slot 72** on the already validated world,
+engine, first local player, player controller and optional pawn. Each item keeps
+its object index/class, vtable and target observation separate. No object-table
+scan, adjacent-slot search or extra class discovery is performed. An invalid
+object is never followed into its vtable; a null pawn or one vtable access fault
+does not invalidate the other validated objects. The existing `processEventSlot`
+controller field remains for compatibility, with full host provenance emitted
+there once.
+
+Optional `ObserverServices` inject `InspectDiagnosticTarget` and
+`ObserveValidatedController` from the host, keeping the standalone SDK fixture
+independent of the production hook implementation. Target inspection adds main
+module base/RVA, `.text` membership, bounded `.pdata` function span, exact-start
+status and recognized jump-to-base facts. An RVA alone does not establish module
+membership: require `inMainText`, and preserve unusable/unknown bounds and jump
+reasons. A returned target differing from the requested pointer is rejected as
+an inspector mismatch. These facts never promote `identityValidated` or dispatch.
+
+After a guarded sample on the verified game thread, the observer supplies the
+validated controller pointer/index/class, observed slot target, world, local
+player and thread to the passive watcher. Missing world/controller/context or
+an outer metadata fault sends an empty identity to disarm; an off-thread request
+invokes neither provider. The host owns a fixed ten-second epoch. A repeat
+observation of the same scope reads it without renewal; identity or context
+changes start a new scope. The observer reports its returned epoch/status and
+checks the witness identity against the freshly sampled input before presenting
+evidence. This is a short observation scope, not an object incarnation ID.
+
+`controllerCallWitness` distinguishes same-controller/thread base-hook entries
+from **normal returns from the original**, and separately counts the subset whose
+immediate return address lies strictly inside the observed slot target's exact
+function bounds. Epochs, times and counters are decimal strings to preserve all
+64 bits. Nothing forces an event or invokes a target. Zero matching counts are
+inconclusive (idle/menu behavior or tail calls can hide the path); positive
+counts do not prove arbitrary-call safety, allocator ownership or gameplay
+readiness. All call capabilities remain false.
+
+The actual-SDK standalone tests use fake providers and never invoke a game
+function. Added cases cover five-object agreement/discrepancy, invalid-object
+vtable refusal, optional pawn, inspector identity mismatch, passive scope and
+expired status, exact counter serialization, stale witness refusal, invalid
+context disarming, and no provider calls off-thread. A complete synthetic
+comparison/metadata/witness payload remains below 16 KiB. Release and Debug
+compile/tests pass with `/W4 /WX`; the read-only live comparison is a separate
+experiment.

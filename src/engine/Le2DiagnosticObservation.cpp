@@ -40,6 +40,7 @@ struct ObjectSample {
     bool available{};
     char const* reason{"not-observed"};
     std::uintptr_t address{};
+    std::uintptr_t classAddress{};
     int index{};
     char className[kNameBytes * 2]{};
 };
@@ -64,7 +65,7 @@ struct FunctionSample {
 };
 struct SlotSample {
     bool available{};
-    char const* reason{"player-controller-unavailable"};
+    char const* reason{"object-not-validated"};
     std::uintptr_t object{}, vtable{}, target{};
 };
 struct AllocatorSample {
@@ -84,7 +85,7 @@ struct Sample {
     char const* positionReason{"pawn-unavailable"};
     float x{}, y{}, z{};
     FunctionSample console, fov;
-    SlotSample processEvent;
+    SlotSample processEvent, worldSlot, engineSlot, localPlayerSlot, pawnSlot;
     AllocatorSample allocator;
 };
 static_assert(std::is_trivially_destructible_v<Sample>);
@@ -93,13 +94,21 @@ static_assert(std::is_trivially_destructible_v<Sample>);
 // function identity, call ABI, allocator ownership, or a permissible call.
 void ReadProcessEventSlot(void* context) {
     auto& out = *static_cast<SlotSample*>(context);
-    out.reason = "null-controller-vtable";
+    out.reason = "null-object-vtable";
     auto const* vtable = *reinterpret_cast<std::uintptr_t const* const*>(out.object);
     if (vtable == nullptr) return;
     out.vtable = reinterpret_cast<std::uintptr_t>(vtable);
     out.target = vtable[72]; // LE2 SDK UObject declaration: byte offset 0x240.
     out.available = out.target != 0;
     out.reason = out.available ? "slot-read-only-target-unvalidated" : "null-process-event-target";
+}
+void ReadValidatedSlot(ObjectSample const& object, SlotSample& out) {
+    if (!object.available) { out.reason = "object-not-validated"; return; }
+    out.object = object.address;
+    if (!ue3::runtime::Guarded(ReadProcessEventSlot, &out)) {
+        out = {};
+        out.reason = "guarded-process-event-slot-read-fault";
+    }
 }
 void ReadAllocator(void* context) {
     auto& out = *static_cast<AllocatorSample*>(context);
@@ -190,6 +199,7 @@ bool ReadObject(Table const& table, UObject const* object, char const* package, 
     out.className[packageLength] = '.';
     std::memcpy(out.className + packageLength + 1, className, std::strlen(className) + 1);
     out.address = reinterpret_cast<std::uintptr_t>(object);
+    out.classAddress = reinterpret_cast<std::uintptr_t>(object->Class);
     out.index = object->ObjectInternalInteger;
     out.available = true;
     out.reason = "sdk-structural-checks-passed";
@@ -315,6 +325,7 @@ void Read(void* context) {
 
     auto const* world = static_cast<UWorld const*>(legacy::World());
     if (ReadObject(table, world, "Engine", "World", out.world)) {
+        ReadValidatedSlot(out.world, out.worldSlot);
         out.mapReason = "world-outer-not-a-validated-package";
         UObject const* package = world->Outer;
         if (table.Listed(package, true) && IsA(table, package, "Core", "Package") && package->Outer == nullptr) {
@@ -326,6 +337,7 @@ void Read(void* context) {
     auto const* engine = GEngine != nullptr ? *GEngine : nullptr;
     out.localPlayer.reason = out.player.reason = out.pawn.reason = "engine-unavailable";
     if (!ReadObject(table, engine, "Engine", "Engine", out.engine)) return;
+    ReadValidatedSlot(out.engine, out.engineSlot);
     out.localPlayer.reason = out.player.reason = out.pawn.reason = "local-player-array-unavailable-or-invalid";
     auto const& players = engine->GamePlayers;
     if (players.Count() == 0 || players.Count() > kMaxPlayers || players.Capacity() < players.Count() ||
@@ -333,6 +345,7 @@ void Read(void* context) {
     auto const* localPlayer = players.GetData()[0];
     out.player.reason = out.pawn.reason = "local-player-unavailable";
     if (!ReadObject(table, localPlayer, "Engine", "LocalPlayer", out.localPlayer)) return;
+    ReadValidatedSlot(out.localPlayer, out.localPlayerSlot);
     auto const* controller = localPlayer->Actor;
     out.pawn.reason = "player-controller-unavailable";
     if (!ReadObject(table, controller, "Engine", "PlayerController", out.player)) return;
@@ -343,15 +356,12 @@ void Read(void* context) {
         out.player.reason = "legacy-controller-disagrees";
         return;
     }
-    out.processEvent.object = reinterpret_cast<std::uintptr_t>(controller);
-    if (!ue3::runtime::Guarded(ReadProcessEventSlot, &out.processEvent)) {
-        out.processEvent = {};
-        out.processEvent.reason = "guarded-process-event-slot-read-fault";
-    }
+    ReadValidatedSlot(out.player, out.processEvent);
     ReadFunction(table, controller, out.console, Declaration::Console);
     ReadFunction(table, controller, out.fov, Declaration::Fov);
     auto const* pawn = controller->Pawn;
     if (!ReadObject(table, pawn, "Engine", "Pawn", out.pawn)) return;
+    ReadValidatedSlot(out.pawn, out.pawnSlot);
     FVector const& position = adapter::Location(pawn);
     out.positionReason = "nonfinite-pawn-location";
     if (std::isfinite(position.X) && std::isfinite(position.Y) && std::isfinite(position.Z)) {
@@ -369,10 +379,11 @@ json::Value ObjectJson(ObjectSample const& object, char const* failure) {
         out["address"] = std::format("0x{:X}", object.address);
         out["index"] = object.index;
         out["class"] = object.className;
+        out["classAddress"] = std::format("0x{:X}", object.classAddress);
     }
     return out;
 }
-json::Value TargetJson(std::uintptr_t target) {
+json::Value TargetJson(std::uintptr_t target, ObserverServices const* services) {
     auto out = json::Value::Object();
     out["address"] = std::format("0x{:X}", target);
     MEMORY_BASIC_INFORMATION memory{};
@@ -388,10 +399,36 @@ json::Value TargetJson(std::uintptr_t target) {
         out["allocationBase"] = std::format("0x{:X}", reinterpret_cast<std::uintptr_t>(memory.AllocationBase));
         out["pageProtection"] = std::format("0x{:X}", memory.Protect);
     }
+    auto inspection = json::Value::Object();
+    inspection["available"] = false;
+    inspection["reason"] = "target-inspector-not-supplied";
+    if (target != 0 && services != nullptr && services->inspectTarget != nullptr) {
+        auto const detail = services->inspectTarget(target);
+        bool const matches = detail.target == target;
+        inspection["available"] = matches;
+        inspection["reason"] = matches ? (detail.reason ? detail.reason : "unavailable") : "inspector-target-mismatch";
+        if (matches) {
+            inspection["mainModuleBase"] = std::format("0x{:X}", detail.moduleBase);
+            inspection["rva"] = std::format("0x{:X}", detail.rva);
+            inspection["inMainText"] = detail.inMainText;
+            inspection["boundsKnown"] = detail.boundsKnown;
+            inspection["exactFunctionStart"] = detail.exactFunctionStart;
+            inspection["boundsUsable"] = detail.boundsUsable;
+            inspection["functionBegin"] = std::format("0x{:X}", detail.functionBegin);
+            inspection["functionEnd"] = std::format("0x{:X}", detail.functionEnd);
+            inspection["baseTarget"] = std::format("0x{:X}", detail.baseTarget);
+            inspection["sameAsBase"] = detail.sameAsBase;
+            inspection["recognizedJumpToBase"] = detail.jumpToBase;
+            inspection["jumpReason"] = detail.jumpReason ? detail.jumpReason : "unavailable";
+            inspection["jumpHops"] = static_cast<int>(detail.jumpHops);
+        }
+    }
+    out["inspection"] = std::move(inspection);
     return out;
 }
 json::Value SlotJson(SlotSample const& sample, char const* failure,
-                     host::process_event::diagnostic::Snapshot const* hostSnapshot) {
+                     host::process_event::diagnostic::Snapshot const* hostSnapshot,
+                     ObserverServices const* services, ObjectSample const* object = nullptr) {
     namespace diagnostic = host::process_event::diagnostic;
     auto out = json::Value::Object();
     out["available"] = failure == nullptr && sample.available;
@@ -419,15 +456,18 @@ json::Value SlotJson(SlotSample const& sample, char const* failure,
         provenance["chainHops"] = static_cast<int>(hostSnapshot->chain.hops);
         provenance["pristineEngineCodeValidated"] = false;
     }
-    out["hostProvenance"] = std::move(provenance);
+    // Full host provenance is emitted once by the compatibility controller
+    // field; the comparison set refers to that same supplied snapshot.
+    if (object == nullptr) out["hostProvenance"] = std::move(provenance);
+    else out["object"] = ObjectJson(*object, failure);
     if (failure == nullptr) {
-        out["controllerAddress"] = std::format("0x{:X}", sample.object);
+        out[object == nullptr ? "controllerAddress" : "objectAddress"] = std::format("0x{:X}", sample.object);
         out["vtableAddress"] = std::format("0x{:X}", sample.vtable);
-        out["target"] = TargetJson(sample.target);
+        out["target"] = TargetJson(sample.target, services);
     }
     return out;
 }
-json::Value AllocatorJson(AllocatorSample const& sample, char const* failure) {
+json::Value AllocatorJson(AllocatorSample const& sample, char const* failure, ObserverServices const* services) {
     auto out = json::Value::Object();
     out["available"] = failure == nullptr && sample.available;
     out["reason"] = failure != nullptr ? failure : sample.reason;
@@ -441,8 +481,8 @@ json::Value AllocatorJson(AllocatorSample const& sample, char const* failure) {
         out["globalAddress"] = std::format("0x{:X}", sample.global);
         out["allocatorAddress"] = std::format("0x{:X}", sample.object);
         out["vtableAddress"] = std::format("0x{:X}", sample.vtable);
-        out["mallocTarget"] = TargetJson(sample.mallocTarget);
-        out["freeTarget"] = TargetJson(sample.freeTarget);
+        out["mallocTarget"] = TargetJson(sample.mallocTarget, services);
+        out["freeTarget"] = TargetJson(sample.freeTarget, services);
     }
     return out;
 }
@@ -492,9 +532,59 @@ json::Value FunctionJson(FunctionSample const& sample, char const* failure, Decl
     out["parameters"] = std::move(parameters);
     return out;
 }
+host::process_event::diagnostic::ControllerWatch WatchInput(Sample const& sample, std::uint32_t thread, char const* failure) {
+    host::process_event::diagnostic::ControllerWatch identity{};
+    if (failure != nullptr || !sample.world.available || !sample.localPlayer.available ||
+        !sample.player.available || !sample.processEvent.available) return identity;
+    identity.object = sample.player.address;
+    identity.index = sample.player.index;
+    identity.classAddress = sample.player.classAddress;
+    identity.target = sample.processEvent.target;
+    identity.world = sample.world.address;
+    identity.localPlayer = sample.localPlayer.address;
+    identity.gameThread = thread;
+    return identity;
+}
+json::Value WitnessJson(host::process_event::diagnostic::WitnessSnapshot const& sample,
+                       host::process_event::diagnostic::ControllerWatch const& identity, bool supplied, char const* reason) {
+    namespace diagnostic = host::process_event::diagnostic;
+    auto out = json::Value::Object();
+    bool const matches = supplied && sample.identity == identity;
+    out["available"] = matches && identity.object != 0 &&
+        (sample.status == diagnostic::WatchStatus::Watching || sample.status == diagnostic::WatchStatus::Expired);
+    out["reason"] = !supplied ? reason : !matches ? "witness-identity-mismatch" : (sample.reason ? sample.reason : "unavailable");
+    out["scope"] = "one-controller-observed-slot-target-fixed-window";
+    out["durableObjectIdentity"] = false;
+    out["dispatchCapability"] = false;
+    out["windowMilliseconds"] = static_cast<int>(diagnostic::kWatchDurationMs);
+    if (matches) {
+        out["status"] = diagnostic::Name(sample.status);
+        // Preserve saturated 64-bit counters/epochs exactly across JSON clients.
+        out["epoch"] = std::to_string(sample.epoch);
+        out["startedMilliseconds"] = std::to_string(sample.startedMs);
+        out["expiresMilliseconds"] = std::to_string(sample.expiresMs);
+        out["controllerAddress"] = std::format("0x{:X}", identity.object);
+        out["controllerIndex"] = identity.index;
+        out["classAddress"] = std::format("0x{:X}", identity.classAddress);
+        out["target"] = std::format("0x{:X}", identity.target);
+        out["worldAddress"] = std::format("0x{:X}", identity.world);
+        out["localPlayerAddress"] = std::format("0x{:X}", identity.localPlayer);
+        out["gameThread"] = std::to_string(identity.gameThread);
+        out["functionBegin"] = std::format("0x{:X}", sample.functionBegin);
+        out["functionEnd"] = std::format("0x{:X}", sample.functionEnd);
+        out["baseEntries"] = std::to_string(sample.entries);
+        out["originalNormalReturns"] = std::to_string(sample.originalReturns);
+        out["targetCallerEntries"] = std::to_string(sample.matchingEntries);
+        out["targetCallerOriginalNormalReturns"] = std::to_string(sample.matchingOriginalReturns);
+        out["lastMatchingCaller"] = std::format("0x{:X}", sample.lastMatchingCaller);
+        out["lastMatchingFunction"] = std::format("0x{:X}", sample.lastMatchingFunction);
+    }
+    return out;
+}
 } // namespace
 
-json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic::Snapshot const* hostSnapshot) {
+json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic::Snapshot const* hostSnapshot,
+                    ObserverServices const* services) {
     Sample sample{};
     char const* failure = nullptr;
     if (gameThreadId == 0 || GetCurrentThreadId() != gameThreadId) failure = "not-on-verified-game-thread";
@@ -503,6 +593,13 @@ json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic:
         sample.allocator = {};
         sample.allocator.reason = "guarded-allocator-read-fault";
     }
+    auto const identity = WatchInput(sample, gameThreadId, failure);
+    host::process_event::diagnostic::WitnessSnapshot witness{};
+    bool const onThread = gameThreadId != 0 && GetCurrentThreadId() == gameThreadId;
+    bool const supplied = onThread && services != nullptr && services->observeController != nullptr;
+    // Invalid context on the correct thread disarms the existing scope. An
+    // off-thread observation does not invoke any host provider.
+    if (supplied) witness = services->observeController(identity);
     auto out = json::Value::Object();
     out["schemaVersion"] = 1;
     out["game"] = "LE2";
@@ -523,8 +620,19 @@ json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic:
     out["pawn"] = ObjectJson(sample.pawn, failure);
     out["consoleCommandMetadata"] = FunctionJson(sample.console, failure, Declaration::Console);
     out["getFovAngleMetadata"] = FunctionJson(sample.fov, failure, Declaration::Fov);
-    out["processEventSlot"] = SlotJson(sample.processEvent, failure, hostSnapshot);
-    out["allocatorObservation"] = AllocatorJson(sample.allocator, failure);
+    out["processEventSlot"] = SlotJson(sample.processEvent, failure, hostSnapshot, services);
+    auto comparisons = json::Value::Object();
+    comparisons["scope"] = "slot72-on-already-validated-objects-only";
+    comparisons["durableObjectIdentity"] = false;
+    comparisons["world"] = SlotJson(sample.worldSlot, failure, hostSnapshot, services, &sample.world);
+    comparisons["engine"] = SlotJson(sample.engineSlot, failure, hostSnapshot, services, &sample.engine);
+    comparisons["localPlayer"] = SlotJson(sample.localPlayerSlot, failure, hostSnapshot, services, &sample.localPlayer);
+    comparisons["player"] = SlotJson(sample.processEvent, failure, hostSnapshot, services, &sample.player);
+    comparisons["pawn"] = SlotJson(sample.pawnSlot, failure, hostSnapshot, services, &sample.pawn);
+    out["processEventSlots"] = std::move(comparisons);
+    out["allocatorObservation"] = AllocatorJson(sample.allocator, failure, services);
+    out["controllerCallWitness"] = WitnessJson(witness, identity, supplied,
+        onThread ? "controller-witness-provider-not-supplied" : "not-on-verified-game-thread");
     auto map = json::Value::Object();
     map["available"] = failure == nullptr && sample.mapAvailable;
     map["reason"] = failure != nullptr ? failure : sample.mapReason;
