@@ -39,7 +39,14 @@ and restored all four protected roots. The [Powers handler audit](../../research
 identifies the normal exit seam in the existing adapter. No new launcher or scenario runner
 is needed. See the [latest evidence](../../research/le2-validation-evidence.md#squad-confirmation-advances-to-powers-combat-acquisition-remains-pending).
 
-Earlier runs establish the remaining reproducibility limit. On 2026-11-14,
+In the follow-up on 2026-11-14,
+candidate `ad31adeb` added the exact Powers/CharacterRecord Back adapter and
+passed offline checks. Its follow-up `1848Z-powers` run stalled earlier at the
+game's BlackScreen panel with `playersOnly=true`; no input pulse was sent.
+Resource/map predicates matched, but the scene was unusable. Restoration
+verified. See the [failed readiness attempt](../../research/le2-validation-evidence.md#powers-back-adapter-built-next-run-stopped-at-blackscreen-before-input).
+
+Earlier selection attempts also had differing outcomes. On 2026-11-14,
 run `1641Z-input` selected Miranda and Grunt
 and reached the squad confirmation modal. Run `1722Z-loadout` selected Miranda,
 then showed Tali after a right pulse and Zaeed after the second A pulse; Miranda

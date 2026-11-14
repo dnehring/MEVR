@@ -5,6 +5,57 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Powers Back adapter built; next run stopped at BlackScreen before input
+
+Candidate `ad31adebccc8258eaaa7d0bac315b796d9419c68` adds the exact
+CharacterRecord observer and B-only admission through the existing channel and
+input bridge. ASI SHA256:
+`728bb15df7967a052cdbf06da75c5097ca625feabb19fe0ff293275a44bdd371`.
+Three Release builds, 53/53 ordinary tests and 14/14 diagnostic tests passed
+without retries. Actual SDK production/test compilation and the host-input
+orchestration checks also passed Release and Debug; the Python client passed
+53 tests with actual C++ wire conformance. These remain offline evidence.
+
+Protected run `ae58dade-2809-44c5-862c-161171d5e86c`, private archive
+`run-20261114T1848Z-powers`, launched through Steam and bound the exact candidate.
+The first attachment attempt was refused before launch because no process was
+bound; the later invitation followed successful process binding. It did not
+send a game request or bypass that prerequisite.
+
+The normal Splash/Main/Load path worked. The current complete descriptor scan
+uniquely matched the unchanged chapter at row 2, and the readable Load capture
+showed Save 99 / Collector Station. The normal load call returned with its
+12-byte parameter frame intact. Subsequent observations did not reproduce
+Squad Selection: input context stayed unavailable with
+`default-input-context-not-controllable`.
+
+Read-only save-flow request `cc41d8b2-5878-4d1c-adb5-942d3a4d2099` sampled
+Default mode 0, focused panel `BlackScreen`, `playersOnly=true`, and live
+world/player/pawn roots. Both post-load captures were black. They are retained
+as failed scene evidence, not accepted rendered gameplay. The channel kept
+responding; there was no second load, controller pulse or diagnostic input-hook
+installation. CharacterRecord readiness and Back consumption were not tested.
+
+Resource request `ccbdca8a-9877-4dd4-ba54-36d536ada666` exported successfully:
+the map and all eight saved resource values matched the frozen predicates.
+That narrower pass does not establish a usable scene or successful progression.
+The cause of the BlackScreen/playersOnly state is unresolved; no world flag,
+story flag or UI callback was forced to bypass it.
+
+The exact game process closed normally at 18:53:22 UTC. Pre-reset comparison
+found no ME1 changes and identical shared Trilogy profile content. All four
+protected roots restored and verified, and the owned invitation was removed.
+The three gameplay scenarios remain **0/3 accepted**. Reproduce normal chapter
+readiness or acquire another natural combat fixture before claiming this is a
+reliable route; the new Powers adapter still requires its first native trial.
+
+Independent archived-only review passed 95 integrity checks across all eleven
+correlated exchanges and reviewed all three images. Its `native-outcome.json`
+SHA256 is `1648d5c973067cefcfae644fa16031417eed957bfc69412029019403b588cc30`.
+Integrity passed; scene readiness failed. The Load image highlighted Save 36,
+with Save 99 visible at row 2: the exact row-2 load request supplies selection
+evidence, not the highlight in that earlier image.
+
 ### Squad confirmation advances to Powers; combat acquisition remains pending
 
 Protected run `370f621d-8fa9-4b73-bd7c-c81935f64f0a` used candidate
