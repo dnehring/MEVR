@@ -3,6 +3,8 @@
 
 Date: 2026-11-13. Status: **planning complete; implementation tasks unassigned and unproven**.
 
+Use the [concise port goal](le2-port-goal.md) as the goal prompt's entry point; the documents below provide its detailed scope.
+
 Deliver the existing MEVR interaction model in Legendary Edition ME2, beginning with a measurable combat proof. Design the shared boundaries to support LE3, while keeping LE1 functional. The [trilogy assessment](le2-le3-port-feasibility.md) covers the complete scope; the [reuse map](le2-port-reuse-map.md) identifies code and native mechanics to use in every work package.
 
 This is the starting document for agents. A task is complete only when its stated gate is met. Compiling an ASI, viewing stereo, proving combat behavior and accepting it in a physical headset are different milestones. No sequel runtime proof is recorded by this planning commit.
