@@ -3,6 +3,7 @@
 // the submodule, with fake globals/read helpers; never loads a game or its data.
 #include <LESDK/Headers.hpp>
 #include "engine/Le2DiagnosticObservation.hpp"
+#include "engine/Le2InputContext.hpp"
 #include "engine/Le2OrbitalObservation.hpp"
 #include "engine/Legacy.hpp"
 #include "engine/Addresses.hpp"
@@ -1574,6 +1575,7 @@ int main() {
         Check(wheelChanged.status=="rejected" && wheelChanged.payload.String("reason")=="save-flow-changed-before-entry" && flowDispatchCalls==0,
               "closed wheel transition mutation in target provider caught by final guarded resample");
         flowMutation=0;
+#include "InputContextTests.inc"
         worldPtr = reinterpret_cast<UWorld*>(1);
         v = Observe(thread);
         Check(v.String("reason") == "guarded-engine-read-fault" && !Available(v, "objectCount"), "AV invalidates whole sample");
