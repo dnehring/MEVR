@@ -158,6 +158,40 @@ int main(int argc, char** argv) {
         fixture.payload.clear();
         Check(Decode(*Encode(fixture))->verb == "save-new" && !saveOnly.Claim(fixture, 10000), "new save independent opt in");
         Check(saveOnly.Claim(fixture, 10000).has_value(), "claimed save cannot retry");
+        Frame pulse = *decoded; pulse.verb = "pad-pulse";
+        pulse.payload = R"({"schemaVersion":1,"context":"default","durationMs":100,"buttons":4096,"leftTrigger":0,"rightTrigger":0,"leftX":0,"leftY":0,"rightX":0,"rightY":0})";
+        auto parsedPulse = ParsePadPulse(pulse.payload);
+        Check(parsedPulse && parsedPulse->pad.buttons == 4096 && parsedPulse->durationMs == 100 &&
+              parsedPulse->context == "default", "pulse semantic decode");
+        Check(Decode(*Encode(pulse))->payload == pulse.payload, "pulse wire roundtrip preserves exact payload");
+        Gate otherPermissions(identity, true, true, true, true, true);
+        Check(otherPermissions.Claim(pulse, 10000) == "native input is disabled" && otherPermissions.LastSequence() == 0,
+              "all other permissions do not grant native input");
+        Gate inputOnly(identity, false, false, false, false, false, true);
+        Check(!inputOnly.Claim(pulse, 10000), "explicit independent input permission");
+        Check(inputOnly.Claim(pulse, 10000).has_value(), "published or uncertain pulse cannot retry");
+        Check(inputOnly.Claim(console, 10000).has_value(), "input permission does not grant console");
+        auto invalidPulse = [&](std::string const& before, std::string const& after) {
+            auto invalid = pulse;
+            auto position = invalid.payload.find(before);
+            Check(position != std::string::npos, "test mutation found");
+            invalid.payload.replace(position, before.size(), after);
+            Check(!Encode(invalid) && !ParsePadPulse(invalid.payload), "invalid pulse rejected before dispatch");
+        };
+        invalidPulse("\"durationMs\":100", "\"durationMs\":1.0");
+        invalidPulse("\"durationMs\":100", "\"durationMs\":true");
+        invalidPulse("\"durationMs\":100", "\"durationMs\":1001");
+        invalidPulse("\"buttons\":4096", "\"buttons\":1024");
+        invalidPulse("\"buttons\":4096", "\"buttons\":0");
+        invalidPulse("\"leftX\":0", "\"leftX\":-32769");
+        invalidPulse("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":1");
+        invalidPulse("\"context\":\"default\"", "\"context\":\"orbital\"");
+        invalidPulse("\"rightY\":0", "\"rightY\":0,\"extra\":0");
+        pulse.verb = "observe-input"; pulse.payload.clear();
+        Gate inputRead(identity);
+        Check(Decode(*Encode(pulse))->verb == "observe-input" && !inputRead.Claim(pulse, 10000),
+              "input observation does not require action permission");
+        pulse.payload = "{}"; Check(!Encode(pulse), "input observation accepts no payload");
         std::cout << "Control identity, replay, expiry, opt-in, and wire corruption checks passed\n";
         return 0;
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }

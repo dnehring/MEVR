@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(mevr_le2_control_tests LANGUAGES CXX)
 enable_testing()
-add_executable(le2-control-tests ControlTests.cpp ../../src/core/qa/ControlProtocol.cpp)
+add_executable(le2-control-tests ControlTests.cpp ../../src/core/qa/ControlProtocol.cpp ../../src/core/Json.cpp)
 target_compile_features(le2-control-tests PRIVATE cxx_std_20)
 target_include_directories(le2-control-tests PRIVATE ../../src)
 if(MSVC)

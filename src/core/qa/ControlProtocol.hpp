@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/qa/DiagnosticPad.hpp"
+
 #include <cstdint>
 #include <optional>
 #include <set>
@@ -30,6 +32,14 @@ inline constexpr std::uint64_t kMaxLifetimeMs = 30000;
 inline constexpr std::size_t kMaxRequests = 4096;
 
 bool ValidIdentity(Identity const& identity);
+struct PadPulse {
+    std::string context; // verified engine admission category, not a target address
+    diagnostic_pad::Pad pad;
+    std::uint32_t durationMs{};
+};
+// Reuses the JSON parser with duplicate-key and integer-token checks. Exact
+// schema; no neutral, reserved button, arbitrary target or unbounded hold.
+std::optional<PadPulse> ParsePadPulse(std::string_view bytes);
 std::optional<Frame> Decode(std::string_view bytes, std::string* error = nullptr);
 std::optional<std::string> Encode(Frame const& frame);
 
@@ -47,7 +57,8 @@ std::optional<std::string> Encode(Frame const& frame);
 class Gate {
 public:
     explicit Gate(Identity identity, bool allowConsole = false, bool allowProbeFov = false,
-                  bool allowMenuActions = false, bool allowFixtureActions = false, bool allowSaveNew = false);
+                  bool allowMenuActions = false, bool allowFixtureActions = false, bool allowSaveNew = false,
+                  bool allowNativeInput = false);
     std::optional<std::string> Claim(Frame const& request, std::uint64_t nowUtcMs);
     std::uint64_t LastSequence() const { return sequence_; }
 private:
@@ -57,6 +68,7 @@ private:
     bool allowMenuActions_{};
     bool allowFixtureActions_{};
     bool allowSaveNew_{};
+    bool allowNativeInput_{};
     std::uint64_t sequence_{};
     std::set<std::string> ids_;
 };

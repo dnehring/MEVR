@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "core/qa/ControlProtocol.hpp"
+#include "core/Json.hpp"
 
 #include <array>
 #include <charconv>
@@ -43,10 +44,12 @@ bool Valid(Frame const& f) {
         f.payload.size() > kMaxPayload || f.payload.find('\0') != std::string::npos) return false;
     if (f.verb != "ping" && f.verb != "observe" && f.verb != "observe-save-menu" &&
         f.verb != "observe-fixture" && f.verb != "load-fixture" && f.verb != "observe-resources" && f.verb != "observe-orbital" &&
+        f.verb != "observe-input" && f.verb != "pad-pulse" &&
         f.verb != "observe-save-flow" && f.verb != "open-pause-menu" && f.verb != "open-save-menu" && f.verb != "save-new" &&
         f.verb != "console" && f.verb != "probe-fov" && f.verb != "advance-splash" && f.verb != "open-load-menu") return false;
     if (f.kind == "request") {
         if (f.status != "pending") return false;
+        if (f.verb == "pad-pulse") return ParsePadPulse(f.payload).has_value();
         if (f.verb != "console") return f.payload.empty();
         // One native command only; no implicit batch or embedded control input.
         if (f.payload.empty() || f.payload.size() > 4096) return false;
@@ -65,6 +68,31 @@ constexpr std::string_view kMagic = "MEVR-CONTROL/1\n";
 bool ValidIdentity(Identity const& i) {
     return Uuid(i.run) && Uuid(i.lease) && i.pid != 0 && i.start != 0 &&
         Hex(i.exe, 64) && Hex(i.host, 64) && Hex(i.mod, 64);
+}
+std::optional<PadPulse> ParsePadPulse(std::string_view bytes) {
+    if (bytes.empty() || bytes.size() > 4096 || bytes.starts_with("\xEF\xBB\xBF")) return {};
+    auto value = json::Parse(bytes, json::ParseOptions{true, true});
+    if (!value || !value->IsObject() || value->Members().size() != 10) return {};
+    constexpr std::array<char const*, 10> fields{"schemaVersion", "context", "durationMs", "buttons",
+        "leftTrigger", "rightTrigger", "leftX", "leftY", "rightX", "rightY"};
+    for (auto field : fields) if (!value->Has(field)) return {};
+    auto integer = [&](char const* key, int low, int high) {
+        auto const& item = value->Get(key);
+        return item.GetKind() == json::Value::Kind::Number &&
+            item.AsNumber() >= low && item.AsNumber() <= high;
+    };
+    if (!integer("schemaVersion", 1, 1) || !integer("durationMs", 1, diagnostic_pad::kMaxPulseMs) ||
+        !integer("buttons", 0, 65535) || !integer("leftTrigger", 0, 255) || !integer("rightTrigger", 0, 255)) return {};
+    for (auto field : {"leftX", "leftY", "rightX", "rightY"}) if (!integer(field, -32768, 32767)) return {};
+    auto context = value->String("context");
+    if (context != "default" && context != "party-select") return {};
+    diagnostic_pad::Pad pad{
+        static_cast<std::uint16_t>(value->Number("buttons")),
+        static_cast<std::uint8_t>(value->Number("leftTrigger")), static_cast<std::uint8_t>(value->Number("rightTrigger")),
+        static_cast<std::int16_t>(value->Number("leftX")), static_cast<std::int16_t>(value->Number("leftY")),
+        static_cast<std::int16_t>(value->Number("rightX")), static_cast<std::int16_t>(value->Number("rightY"))};
+    if ((pad.buttons & ~diagnostic_pad::kButtons) != 0 || pad == diagnostic_pad::Pad{}) return {};
+    return PadPulse{std::move(context), pad, static_cast<std::uint32_t>(value->Number("durationMs"))};
 }
 std::optional<Frame> Decode(std::string_view bytes, std::string* error) {
     auto fail = [&](char const* reason) -> std::optional<Frame> { if (error) *error = reason; return {}; };
@@ -105,9 +133,11 @@ std::optional<std::string> Encode(Frame const& f) {
     out += "\n" + f.payload;
     return out;
 }
-Gate::Gate(Identity identity, bool allowConsole, bool allowProbeFov, bool allowMenuActions, bool allowFixtureActions, bool allowSaveNew)
+Gate::Gate(Identity identity, bool allowConsole, bool allowProbeFov, bool allowMenuActions, bool allowFixtureActions, bool allowSaveNew,
+           bool allowNativeInput)
     : identity_(std::move(identity)), allowConsole_(allowConsole), allowProbeFov_(allowProbeFov),
-      allowMenuActions_(allowMenuActions), allowFixtureActions_(allowFixtureActions), allowSaveNew_(allowSaveNew) {}
+      allowMenuActions_(allowMenuActions), allowFixtureActions_(allowFixtureActions), allowSaveNew_(allowSaveNew),
+      allowNativeInput_(allowNativeInput) {}
 std::optional<std::string> Gate::Claim(Frame const& f, std::uint64_t now) {
     if (!Valid(f) || f.kind != "request") return "invalid request";
     if (!ValidIdentity(identity_) || !(f.identity == identity_)) return "identity mismatch";
@@ -120,6 +150,7 @@ std::optional<std::string> Gate::Claim(Frame const& f, std::uint64_t now) {
         return "native menu actions are disabled";
     if (f.verb == "load-fixture" && !allowFixtureActions_) return "native fixture loading is disabled";
     if (f.verb == "save-new" && !allowSaveNew_) return "native new save is disabled";
+    if (f.verb == "pad-pulse" && !allowNativeInput_) return "native input is disabled";
     if (f.verb == "console" && !allowConsole_) return "native console is disabled";
     if (f.verb == "console" && ForbiddenConsole(f.payload)) return "streamlevelin is prohibited";
     sequence_ = f.sequence;

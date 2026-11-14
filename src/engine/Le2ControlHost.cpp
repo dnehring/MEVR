@@ -7,6 +7,8 @@
 #include "engine/Le2DiagnosticHost.hpp"
 #include "engine/Le2DiagnosticObservation.hpp"
 #include "engine/Le2OrbitalObservation.hpp"
+#include "engine/Le2InputContext.hpp"
+#include "game/GamepadBridge.hpp"
 #include "plugin/ProcessEventHook.hpp"
 #include "core/Log.hpp"
 #endif
@@ -30,6 +32,10 @@ namespace fs = std::filesystem;
 namespace wire = qa::control;
 using json::Value;
 constexpr std::size_t kContextLimit = 16 * 1024 * 1024;
+
+#if !defined(MEVR_LE2_CONTROL_TEST)
+#include "engine/Le2InputControl.inc"
+#endif
 
 void Check(bool ok, char const* why) { if (!ok) throw std::runtime_error(why); }
 std::string Utf8(fs::path const& path) {
@@ -257,13 +263,21 @@ struct Endpoint::Impl {
     std::string error, invitationBytes, descriptorBytes;
     bool attempted{}, attached{}, disabled{};
     std::uint64_t consumed{};
+#if !defined(MEVR_LE2_CONTROL_TEST)
+    NativeInput input;
+#endif
 
-    Impl(fs::path root, ProcessFiles process, UtcClock utc)
+    Impl(fs::path root, ProcessFiles process, UtcClock utc, hook::Context* hooks)
         : local(Safe(root)), actual(std::move(process)), clock(utc ? std::move(utc) : UtcClock(UtcMs)) {
         actual.exe = Safe(actual.exe); actual.module = Safe(actual.module);
         Check(Equal(actual.exe.filename(), L"MassEffect2.exe") && Equal(actual.module.extension(), L".asi") &&
               actual.pid != 0 && actual.startFiletime != 0, "producer requires an LE2 monolithic ASI identity");
         invitation = local / L"MEVR/le2-control.attach.json";
+#if !defined(MEVR_LE2_CONTROL_TEST)
+        input.hooks = hooks;
+#else
+        (void)hooks;
+#endif
     }
     void Ownership() {
         auto const shared = Safe(local / L"MEVR");
@@ -327,7 +341,7 @@ struct Endpoint::Impl {
 #else
         // An explicit empty probe request may attempt one guarded scalar query.
         // General console dispatch remains disabled independently.
-        gate = std::make_unique<wire::Gate>(identity, false, true, true, true, true);
+        gate = std::make_unique<wire::Gate>(identity, false, true, true, true, true, true);
 #endif
         attached = true;
     }
@@ -407,6 +421,9 @@ struct Endpoint::Impl {
         wire::Frame result = *decoded;
         result.kind = "result"; result.identity = identity;
         auto payload = Value::Object();
+#if !defined(MEVR_LE2_CONTROL_TEST)
+        std::optional<wire::PadPulse> pendingPulse;
+#endif
         payload["source"] = "diagnostic-host"; payload["ready"] = false;
         if (failure) {
             result.status = "rejected";
@@ -426,6 +443,8 @@ struct Endpoint::Impl {
             capabilities["observeFixture"] = false;
             capabilities["observeResources"] = false;
             capabilities["observeOrbital"] = false;
+            capabilities["observeInput"] = false;
+            capabilities["nativePadPulse"] = false;
             capabilities["observeSaveFlow"] = false;
             capabilities["nativeSaveMenuActions"] = false;
             capabilities["nativeSaveNew"] = false;
@@ -444,6 +463,8 @@ struct Endpoint::Impl {
             capabilities["observeFixture"] = binding.has_value();
             capabilities["observeResources"] = true;
             capabilities["observeOrbital"] = true;
+            capabilities["observeInput"] = true;
+            capabilities["nativePadPulse"] = input.hooks != nullptr;
             capabilities["observeSaveFlow"] = true;
             capabilities["nativeSaveMenuActions"] = true;
             capabilities["nativeSaveNew"] = true;
@@ -464,6 +485,12 @@ struct Endpoint::Impl {
                 payload["resourceObservation"] = le2_diagnostic::ObserveResources(thread);
             } else if (decoded->verb == "observe-orbital") {
                 payload["orbitalObservation"] = le2_diagnostic::ObserveOrbital(thread);
+            } else if (decoded->verb == "observe-input") {
+                payload["inputObservation"] = input.Observe(thread);
+            } else if (decoded->verb == "pad-pulse") {
+                payload["readOnly"] = false;
+                pendingPulse = wire::ParsePadPulse(decoded->payload);
+                Check(pendingPulse.has_value(), "claimed pulse lost schema validity");
             } else if (decoded->verb == "observe-save-flow") {
                 payload["saveFlow"] = le2_diagnostic::ObserveSaveFlow(thread);
             } else if (decoded->verb == "save-new") {
@@ -504,6 +531,12 @@ struct Endpoint::Impl {
                 payload["menuAction"] = std::move(action.payload);
             }
 #else
+            if (decoded->verb == "observe-input") {
+                auto unavailableInput = Value::Object();
+                unavailableInput["available"] = false;
+                unavailableInput["reason"] = "offline-fixture-does-not-traverse-engine-memory";
+                payload["inputObservation"] = std::move(unavailableInput);
+            }
             if (decoded->verb == "observe-orbital") {
                 auto unavailableOrbital = Value::Object();
                 unavailableOrbital["available"] = false;
@@ -539,19 +572,29 @@ struct Endpoint::Impl {
                 unavailable[name] = "LE2 engine fields/lifetime are not validated by this producer";
             payload["unavailable"] = std::move(unavailable);
         }
+        // Complete expensive ownership/hash IO before starting a short input
+        // lifetime. Otherwise a pulse can expire while this game tick hashes.
+        Ownership();
+#if !defined(MEVR_LE2_CONTROL_TEST)
+        if (pendingPulse) {
+            std::string reason;
+            bool const published = input.Publish(*pendingPulse, decoded->sequence, thread, decoded->deadline, clock, reason);
+            result.status = published ? "dispatched" : "rejected";
+            payload["reason"] = reason;
+            payload["inputObservation"] = input.Observe(thread);
+        }
+#endif
         // Match the observer's compact payload budget. Pretty indentation can
         // exceed the wire cap even when the structural sample itself fits.
         result.payload = json::Write(payload, 0);
         auto encoded = wire::Encode(result);
         if (!encoded) throw std::runtime_error("result encoding failed after claim: payload bytes=" +
             std::to_string(result.payload.size()) + ", limit=" + std::to_string(wire::kMaxPayload));
-        // Revalidate before publishing any claimed observation. Failure leaves uncertainty.
-        Ownership();
         Publish(directory / L"result.control", *encoded);
         if ((decoded->verb == "probe-fov" || decoded->verb == "advance-splash" ||
              decoded->verb == "open-load-menu" || decoded->verb == "open-pause-menu" ||
              decoded->verb == "open-save-menu" || decoded->verb == "load-fixture" ||
-             decoded->verb == "save-new") && result.status == "error") {
+             decoded->verb == "save-new" || decoded->verb == "pad-pulse") && result.status == "error") {
             // Preserve the correlated uncertainty result, then stop this lease.
             disabled = true;
             error = "native action outcome uncertain; no further requests admitted";
@@ -559,9 +602,23 @@ struct Endpoint::Impl {
     }
 };
 
-Endpoint::Endpoint(fs::path localAppData, ProcessFiles actual, UtcClock clock)
-    : impl_(std::make_unique<Impl>(std::move(localAppData), std::move(actual), std::move(clock))) {}
+Endpoint::Endpoint(fs::path localAppData, ProcessFiles actual, UtcClock clock, hook::Context* hooks)
+    : impl_(std::make_unique<Impl>(std::move(localAppData), std::move(actual), std::move(clock), hooks)) {}
 Endpoint::~Endpoint() = default;
+void Endpoint::TickInput(std::uint32_t thread) noexcept {
+#if !defined(MEVR_LE2_CONTROL_TEST)
+    try {
+        if (impl_->disabled) { impl_->input.Disable(); return; }
+        if (impl_->attached) impl_->input.Tick(thread);
+    } catch (...) {
+        impl_->disabled = true;
+        impl_->input.Disable();
+        try { impl_->error = "input context sampling failed; endpoint disabled"; } catch (...) {}
+    }
+#else
+    (void)thread;
+#endif
+}
 void Endpoint::Poll(std::uint64_t tick, std::uint32_t thread) noexcept {
     if (impl_->disabled) return;
     try {
@@ -569,7 +626,15 @@ void Endpoint::Poll(std::uint64_t tick, std::uint32_t thread) noexcept {
         if (!impl_->attached) {
             if (impl_->attempted || !Exists(impl_->invitation)) return;
             impl_->Attach();
-        } else impl_->Request(tick, thread);
+        } else {
+#if !defined(MEVR_LE2_CONTROL_TEST)
+            // Revalidate the lease while a pulse is pending even with no new
+            // request. Hook-side monotonic expiry remains independent of IO.
+            if (impl_->input.Active()) impl_->Ownership();
+#endif
+            TickInput(thread);
+            if (!impl_->disabled) impl_->Request(tick, thread);
+        }
     } catch (std::exception const& error) {
         impl_->disabled = true;
         try { impl_->error = error.what(); } catch (...) {}
@@ -578,6 +643,7 @@ void Endpoint::Poll(std::uint64_t tick, std::uint32_t thread) noexcept {
         impl_->disabled = true;
         try { impl_->error = "unknown producer failure"; } catch (...) {}
     }
+    if (impl_->disabled) TickInput(thread);
 }
 bool Endpoint::Attached() const { return impl_->attached; }
 bool Endpoint::Disabled() const { return impl_->disabled; }
@@ -592,6 +658,7 @@ std::uint64_t gTicks{}, gNextPoll{};
 void Tick(float) {
     if (!gEndpoint || gTicks == std::numeric_limits<std::uint64_t>::max()) return;
     ++gTicks;
+    gEndpoint->TickInput(GetCurrentThreadId());
     auto monotonic = GetTickCount64();
     if (monotonic < gNextPoll) return;
     gNextPoll = monotonic + 250;
@@ -603,7 +670,7 @@ void Tick(float) {
     }
 }
 } // namespace
-bool Start() noexcept {
+bool Start(hook::Context* hooks) noexcept {
 #if defined(MEVR_LE2_DIAGNOSTIC) && defined(MEVR_MONOLITHIC)
     if (gStartedOnce) return false;
     gStartedOnce = true;
@@ -614,7 +681,7 @@ bool Start() noexcept {
         Check(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
               reinterpret_cast<LPCWSTR>(&Start), &module) != FALSE, "loaded ASI module unavailable");
         gEndpoint = std::make_unique<Endpoint>(KnownLocal(), ProcessFiles{GetCurrentProcessId(), Filetime(created),
-                                             ModulePath(nullptr), ModulePath(module)});
+                                             ModulePath(nullptr), ModulePath(module)}, Endpoint::UtcClock{}, hooks);
         if (!le2_diagnostic::SetTickCallback(&Tick)) { gEndpoint.reset(); return false; }
         return true;
     } catch (std::exception const& error) {
@@ -623,12 +690,13 @@ bool Start() noexcept {
         return false;
     } catch (...) { gEndpoint.reset(); return false; }
 #else
+    (void)hooks;
     return false;
 #endif
 }
 void Shutdown() noexcept { gEndpoint.reset(); } // host has already stopped its serialized tick
 #else
-bool Start() noexcept { return false; }
+bool Start(hook::Context*) noexcept { return false; }
 void Shutdown() noexcept {}
 #endif
 } // namespace mevr::engine::le2_control

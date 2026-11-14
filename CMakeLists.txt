@@ -34,7 +34,7 @@ option(MEVR_BUILD_LE3 "Build LE3MEVR.asi" OFF)
 # Development: a small stable host ASI plus <GAME>MEVR_mod.dll, which the host reloads whenever
 # it changes, so the game can keep running between builds. Release: one self-contained ASI.
 option(MEVR_HOT_RELOAD "Build the mod as a separate hot-reloadable DLL" ON)
-option(MEVR_LE2_DIAGNOSTIC "LE2 only: game-thread diagnostic host, no renderer or gameplay hooks" OFF)
+option(MEVR_LE2_DIAGNOSTIC "LE2 only: diagnostic host without renderer, bounded input requires explicit owned request" OFF)
 if (MEVR_LE2_DIAGNOSTIC AND (NOT MEVR_BUILD_LE2 OR MEVR_BUILD_LE1 OR MEVR_BUILD_LE3))
     message(FATAL_ERROR "MEVR_LE2_DIAGNOSTIC requires LE2 ON and LE1/LE3 OFF in an isolated build")
 endif ()
@@ -869,6 +869,8 @@ function(mevr_add_plugin game)
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp
             src/engine/Le2ControlHost.cpp src/engine/Le2ControlHost.hpp
+            src/engine/Le2InputControl.inc src/engine/Le2InputContext.hpp src/engine/Le2InputContext.inc
+            src/core/qa/DiagnosticPad.cpp src/core/qa/DiagnosticPad.hpp
             src/engine/Le2DiagnosticObservation.cpp src/engine/Le2DiagnosticObservation.hpp
             src/core/qa/BoundedUtf16.cpp src/core/qa/BoundedUtf16.hpp
             src/core/qa/ControlProtocol.cpp src/core/qa/ControlProtocol.hpp src/core/Json.cpp src/core/Json.hpp)
@@ -1045,7 +1047,7 @@ if (MEVR_BUILD_TESTS)
     target_include_directories(mevr-le2-console-lifetime-tests PRIVATE src)
     target_compile_options(mevr-le2-console-lifetime-tests PRIVATE /W4 /WX /utf-8)
     add_test(NAME mevr-le2-console-lifetime COMMAND mevr-le2-console-lifetime-tests)
-    add_executable(mevr-le2-control-codec-tests tests/le2-control/ControlTests.cpp src/core/qa/ControlProtocol.cpp)
+    add_executable(mevr-le2-control-codec-tests tests/le2-control/ControlTests.cpp src/core/qa/ControlProtocol.cpp src/core/Json.cpp)
     target_include_directories(mevr-le2-control-codec-tests PRIVATE src)
     target_compile_options(mevr-le2-control-codec-tests PRIVATE /W4 /WX /utf-8)
     add_test(NAME mevr-le2-control-codec COMMAND mevr-le2-control-codec-tests)

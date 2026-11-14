@@ -1297,7 +1297,7 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
     }
 #endif
 #if defined(MEVR_LE2_DIAGNOSTIC)
-    bool const controlRegistered = engine::le2_control::Start();
+    bool const controlRegistered = engine::le2_control::Start(gInit.get());
     log::Info("LE2 diagnostic host: bound control consumer {}; renderer, gameplay and shared request polling disabled",
               controlRegistered ? "registered; awaiting owned invitation" : "unavailable (fail closed)");
 #endif
