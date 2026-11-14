@@ -306,6 +306,36 @@ def diff(before, after):
             for key in sorted(a.keys() | b.keys()) if key not in a or key not in b or a[key] != b[key]]
 
 
+def galaxy_diff(before, after):
+    """Compare saved planet records by their serialized ID, independent of list order."""
+    def by_id(save):
+        planets = {}
+        for planet in save.data["galaxy_map"]["planets"]:
+            planet_id = planet["id"]
+            if planet_id in planets:
+                raise SaveError(f"Ambiguous saved planet ID: {planet_id}")
+            planets[planet_id] = planet
+        return planets
+
+    first, last = by_id(before), by_id(after)
+    rows = []
+    for planet_id in sorted(first.keys() | last.keys()):
+        a, b = first.get(planet_id), last.get(planet_id)
+        if a == b:
+            continue
+        old_probes = a["probes"] if a is not None else []
+        new_probes = b["probes"] if b is not None else []
+        suffix = new_probes[len(old_probes):] if b is not None and new_probes[:len(old_probes)] == old_probes else None
+        rows.append(dict(id=planet_id, change="added" if a is None else "removed" if b is None else "modified",
+                         before=a, after=b, probeCountDelta=len(new_probes) - len(old_probes),
+                         appendedProbeCoordinates=suffix))
+    keys = ("probes", "current_fuel", "eezo", "iridium", "palladium", "platinum")
+    resources = {key: dict(before=before.data["player"][key], after=after.data["player"][key])
+                 for key in keys}
+    return dict(changedPlanets=rows, resources=resources, runtimePlanetMappingVerified=False,
+                persistenceVerified=False)
+
+
 def make_receipt(operation, before, after, changes, *, recipe=None, recipe_raw=None):
     """Describe an already validated operation; keep CLI and batch receipts identical."""
     return dict(schema_version=1, operation=operation, game="LE2", save_version=30,
@@ -345,6 +375,7 @@ def main(argv=None):
     compare.add_argument("before")
     compare.add_argument("after")
     compare.add_argument("--json", action="store_true")
+    compare.add_argument("--galaxy", action="store_true", help="Include planet records compared by saved ID")
     for name in ("roundtrip", "prepare"):
         cmd = commands.add_parser(name)
         cmd.add_argument("input")
@@ -358,6 +389,8 @@ def main(argv=None):
             before, after = Save.load(args.before), Save.load(args.after)
             result = dict(schema_version=1, before_sha256=sha256(before.raw), after_sha256=sha256(after.raw),
                           byte_identical=before.raw == after.raw, changes=diff(before, after))
+            if args.galaxy:
+                result["galaxy"] = galaxy_diff(before, after)
         else:
             save = Save.load(args.input)
             if args.command == "info":

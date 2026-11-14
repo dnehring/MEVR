@@ -35,7 +35,7 @@ def string(value="", wide=False):
     return integer(-len(raw) // 2 if wide else len(raw)) + raw
 
 
-def fixture():
+def fixture(galaxy=None):
     # Explicit wire sequence: header, timestamp, transform, streamed world.
     raw = integer(30) + string("Fixture", True) + floating(12) + integer(1) + string("Biop_Nor")
     raw += b"\1" + integer() + integer(100) + integer(1) + integer(1) + integer(2026)
@@ -55,7 +55,13 @@ def fixture():
     raw += integer() * 3  # journal
     raw += integer() * 2  # codex
     raw += integer() * 3  # ME1 plot
-    raw += integer(1) + integer(42) + integer(1) + integer(1) + floating(0.2) + floating(0.3)
+    if galaxy is None:
+        galaxy = [(42, True, [(0.2, 0.3)])]
+    raw += integer(len(galaxy))
+    for planet_id, visited, probes in galaxy:
+        raw += integer(planet_id) + integer(int(visited)) + integer(len(probes))
+        for x, y in probes:
+            raw += floating(x) + floating(y)
     raw += integer(1) + integer(100) + string("TestDLC")
     return with_crc(raw)
 
@@ -74,6 +80,20 @@ class SaveTests(unittest.TestCase):
     def setUp(self):
         self.raw = fixture()
         self.save = le2.Save(self.raw)
+
+    def test_galaxy_diff_matches_saved_ids_and_distinguishes_appends(self):
+        first = le2.Save(fixture([(42, True, [(0.25, 0.5)]), (43, False, []), (44, True, [(0.5, 0.5)])]))
+        last = le2.Save(fixture([(44, True, [(0.75, 0.5)]), (43, False, []),
+                                (42, True, [(0.25, 0.5), (0.75, 0.25)]), (45, True, [])]))
+        rows = le2.galaxy_diff(first, last)['changedPlanets']
+        self.assertEqual([row['id'] for row in rows], [42, 44, 45])
+        self.assertEqual(rows[0]['probeCountDelta'], 1)
+        self.assertEqual(rows[0]['appendedProbeCoordinates'], [{'x': 0.75, 'y': 0.25}])
+        self.assertIsNone(rows[1]['appendedProbeCoordinates'])
+        self.assertEqual(rows[2]['change'], 'added')
+        duplicate = le2.Save(fixture([(42, True, []), (42, False, [])]))
+        with self.assertRaisesRegex(le2.SaveError, 'Ambiguous saved planet ID'):
+            le2.galaxy_diff(first, duplicate)
 
     def test_crc_known_vector(self):
         self.assertEqual(le2.crc32_bzip2(b"123456789"), 0xFC891918)

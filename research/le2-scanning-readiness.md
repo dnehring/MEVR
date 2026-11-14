@@ -102,7 +102,7 @@ remains available as a separate navigation acquisition save.
    an invented fixed cost or charge it to scanning without observation.
 5. Leave the map normally and use the existing reviewed New Save flow plus
    `save-evidence.py` collection. Inspect the saved resource/galaxy/plot diff with
-   `le2-save.py` and review event 4551 using `story-review.py` with the scoped
+   `le2-save.py diff BEFORE AFTER --galaxy --json` and review event 4551 using `story-review.py` with the scoped
    state-event report. Reload that exact new save through the normal loader;
    revisit the same planet and capture persisted probe impacts/discovery state.
 6. Only then bind a private immutable scanning fixture and its expected start
@@ -110,6 +110,15 @@ remains available as a separate navigation acquisition save.
    separately reviewed preparation recipe or normal depletion; an unavailable
    resource must never be exported as zero. Native, VR, and headset gates remain
    separate. The current offline helper does not satisfy any of them.
+
+The optional galaxy diff matches saved planet records by ID and reports
+insertions, removals and edited records even when list positions move. The
+coordinate suffix is populated only when the new list preserves the old
+list as an exact prefix. A suffix or count change records a serialized
+difference. Identify the rendered planet separately and confirm persistence
+by reloading the actual outcome save. In the offline check, the real Normandy
+base and prepared one-probe save differed by 29 to 1 probes and had identical
+planet records, fuel and minerals.
 
 The acquisition dependency is concrete: the Crew Deck fixture is usable for
 normal navigation, but console reachability and the actual route to Zanethu still
