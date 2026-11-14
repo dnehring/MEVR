@@ -97,6 +97,45 @@ class LaunchTests(unittest.TestCase):
         self.put(self.proxy, b"different loader")
         self.assertFalse(self.inspect_plan()["canLaunch"])
 
+    def test_explicit_selection_probe_is_read_only_until_launch_and_does_not_claim_capability(self):
+        before = s.snapshot(self.root)
+        result = l.plan(self.run, self.steam, selection_probe=True,
+                        host_guard=lambda _: None, processes=lambda: self.live)
+        self.assertTrue(result["canLaunch"])
+        self.assertEqual(result["launcherCapability"]["method"], "selection-probe-unverified")
+        self.assertFalse(result["launcherCapability"]["nativeSelectionVerifiedByThisTool"])
+        self.assertEqual(before, s.snapshot(self.root))
+        result = l.launch(self.run, self.steam, None, selection_probe=True,
+                          host_guard=lambda _: None, processes=lambda: self.live, dispatch=self.dispatch)
+        self.assertEqual(len(self.dispatched), 1)
+        self.assertTrue(result["processBound"])
+        self.assertTrue(result["selectionObserved"])
+        self.assertFalse(result["ready"])
+        self.assertFalse(result["launcherCapability"]["nativeSelectionVerifiedByThisTool"])
+
+    def test_probe_retains_host_ownership_and_installed_file_checks(self):
+        self.live = [dict(self.steam_process, inJob=True)]
+        result = l.plan(self.run, self.steam, selection_probe=True,
+                        host_guard=lambda _: None, processes=lambda: self.live)
+        self.assertFalse(result["canLaunch"])
+        self.live = [self.steam_process]
+        calls = []
+        def mutate_after_plan():
+            calls.append(1)
+            if len(calls) == 2: self.put(self.proxy, b"changed after preflight")
+            return self.live
+        result = l.launch(self.run, self.steam, None, selection_probe=True,
+                          host_guard=lambda _: None, processes=mutate_after_plan, dispatch=self.dispatch)
+        self.assertFalse(result["processBound"])
+        self.assertFalse(self.dispatched)
+        self.assertIn("changed before dispatch", result["dependencies"][-1]["detail"])
+
+    def test_probe_does_not_mix_reviewed_and_unverified_evidence(self):
+        result = l.plan(self.run, self.steam, self.cap, selection_probe=True,
+                        host_guard=lambda _: None, processes=lambda: self.live)
+        self.assertFalse(result["canLaunch"])
+        self.assertIn("mutually exclusive", result["dependencies"][0]["detail"])
+
     def test_capability_artifact_hash_and_traversal(self):
         self.put(self.proof, b"tampered")
         self.assertFalse(self.inspect_plan()["canLaunch"])

@@ -151,9 +151,24 @@ def check_processes(live, steam_path, context, *, polling=False):
     return steam[0]
 
 
-def plan(run, steam_exe, receipt_path=None, *, host_guard=native_guard, processes=inventory):
+def launcher_evidence(receipt_path, context, selection_probe=False):
+    if not selection_probe:
+        return capability(receipt_path, context)
+    if receipt_path:
+        raise s.SessionError("Selection probe and capability receipt are mutually exclusive")
+    # A first empirical trial must not pretend capability has already been proven.
+    # Freeze the installed files and preserve the same ownership/one-attempt gates.
+    root = s.safe_path(Path(context["gameRoot"]) / "Game/Launcher")
+    return {"method": "selection-probe-unverified",
+            "launcherExeSha256": s.digest(s.safe_path(root / "MassEffectLauncher.exe")),
+            "proxySha256": s.digest(s.safe_path(root / "bink2w64.dll")),
+            "nativeSelectionVerifiedByThisTool": False}
+
+
+def plan(run, steam_exe, receipt_path=None, *, selection_probe=False, host_guard=native_guard, processes=inventory):
     report = {"schemaVersion": 1, "game": "LE2", "mode": "plan", "status": "blocked",
               "canLaunch": False, "launched": False, "ready": False, "dependencies": [],
+              "selectionProbe": selection_probe,
               "hostInventory": "not-inspected",
               "command": {"executable": str(steam_exe), "arguments": STEAM_ARGS},
               "transport": "forward-to-already-running-Steam-outside-job",
@@ -174,7 +189,7 @@ def plan(run, steam_exe, receipt_path=None, *, host_guard=native_guard, processe
         report["dependencies"].append(issue("invalid_prepared_session", error))
         return report
     try:
-        report["launcherCapability"] = capability(receipt_path, context)
+        report["launcherCapability"] = launcher_evidence(receipt_path, context, selection_probe)
     except (ValueError, OSError, KeyError, TypeError) as error:
         report["dependencies"].append(issue("operator_selection_required", error))
     try:
@@ -198,11 +213,11 @@ def forward_to_steam(command):
     return subprocess.Popen([command["executable"], *command["arguments"]], startupinfo=startup)
 
 
-def launch(run, steam_exe, receipt_path, timeout=120, *, host_guard=native_guard,
+def launch(run, steam_exe, receipt_path, timeout=120, *, selection_probe=False, host_guard=native_guard,
            processes=inventory, dispatch=forward_to_steam, monotonic=time.monotonic, sleep=time.sleep):
     if not 1 <= timeout <= 180:
         raise s.SessionError("Timeout must be 1..180 seconds")
-    report = plan(run, steam_exe, receipt_path, host_guard=host_guard, processes=processes)
+    report = plan(run, steam_exe, receipt_path, selection_probe=selection_probe, host_guard=host_guard, processes=processes)
     report["mode"] = "launch"
     if not report["canLaunch"]:
         return report
@@ -219,7 +234,7 @@ def launch(run, steam_exe, receipt_path, timeout=120, *, host_guard=native_guard
         _, context = check_files(run)
         host_guard(context)
         check_processes(processes(), s.safe_path(steam_exe), context)
-        capability(receipt_path, context)
+        launcher_evidence(receipt_path, context, selection_probe)
         if context["phase"] == "staged":
             s.request_load(run, processes=lambda: [p for p in processes() if p["name"].lower() != "steam"])
         # Recheck all guards immediately before the one external request.
@@ -228,7 +243,7 @@ def launch(run, steam_exe, receipt_path, timeout=120, *, host_guard=native_guard
         current = check_processes(processes(), s.safe_path(steam_exe), context)
         if current != report["steamProcess"] or s.digest(steam_exe) != report["steamExeSha256"]:
             raise s.SessionError("Steam identity changed before dispatch")
-        if capability(receipt_path, context) != report["launcherCapability"]:
+        if launcher_evidence(receipt_path, context, selection_probe) != report["launcherCapability"]:
             raise s.SessionError("Launcher capability changed before dispatch")
         report["status"] = "dispatch-uncertain"
         report["dispatchAt"] = s.utc()
@@ -254,7 +269,8 @@ def launch(run, steam_exe, receipt_path, timeout=120, *, host_guard=native_guard
                     raise s.SessionError("ME2 process predates this launch request")
                 bound = s.bind_process(run, games[0]["pid"], processes=lambda: [p for p in live if p["name"].lower() != "steam"])
                 report.update(status="process-bound-operator-load-required", launched=True,
-                              processBound=True, gameProcess=bound["gameProcess"])
+                              processBound=True, gameProcess=bound["gameProcess"],
+                              selectionObserved=True)
                 break
             sleep(min(1, max(0, deadline - monotonic())))
         else:
@@ -274,13 +290,15 @@ def main(argv=None):
     parser.add_argument("--run", required=True)
     parser.add_argument("--steam-exe", required=True)
     parser.add_argument("--capability-receipt")
+    parser.add_argument("--selection-probe", action="store_true",
+                        help="One empirical selection trial with installed hashes; does not assume capability")
     parser.add_argument("--timeout", type=int, default=120)
     args = parser.parse_args(argv)
     try:
         if args.mode == "plan":
-            result = plan(args.run, args.steam_exe, args.capability_receipt)
+            result = plan(args.run, args.steam_exe, args.capability_receipt, selection_probe=args.selection_probe)
         else:
-            result = launch(args.run, args.steam_exe, args.capability_receipt, args.timeout)
+            result = launch(args.run, args.steam_exe, args.capability_receipt, args.timeout, selection_probe=args.selection_probe)
     except (ValueError, OSError, KeyError, TypeError) as error:
         result = {"schemaVersion": 1, "game": "LE2", "status": "error", "ready": False,
                   "dependencies": [issue("invalid_invocation_or_session", error)]}

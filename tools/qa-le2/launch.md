@@ -46,13 +46,30 @@ In contrast, our current `src/loader/Loader.cpp::BootFromLauncher` explicitly
 returns to the picker for games other than 1. A file named `bink2w64.dll`, its
 version string, or this source review cannot authenticate an installed binary's
 ME2 selection behavior. Steam/EA can also drop forwarded arguments. Therefore
-automated launch requires a private, reviewed installed-binary capability receipt.
+routine automated launch requires a private, reviewed installed-binary capability receipt.
 No receipt was generated and no installed binary was approved by these tests.
 
 Without that dependency, the report contains `operator_selection_required`.
 Use the existing session `request-load` boundary and select ME2 through the normal
 launcher, then `session.py bind-process` and Load Game. This adapter does not
 send Space/Enter to an ambiguous launcher or assume the last-played game/save.
+
+### First empirical selection trial
+
+When installed support has not yet been observed, use `-ProbeSelection -Plan`
+to inspect a bounded first trial, then `-ProbeSelection -Launch` for the authorized
+protected run. This is mutually exclusive with `-CapabilityReceipt`. It records
+the installed launcher/proxy hashes without asserting that they support the
+command, forwards one `-game 2` request through Steam, and observes the result.
+All ownership, backup, host-context, process identity and interruption checks
+remain in force. Changed installed files before dispatch refuse the trial.
+
+The probe never changes launcher files, sends fallback keys or retries. An exact
+new ME2 process records `selectionObserved: true`; a picker, timeout, wrong game
+or failure remains unresolved and requires normal recovery. `ready` stays false.
+Preserve the attempt report and native logs, then review that evidence for a
+future `observed-game2-selection` receipt. The probe does not create a receipt
+or automatically promote its result to reusable capability evidence.
 
 ## Capability receipt
 
@@ -128,5 +145,7 @@ Tests use temporary fake installations and injected Python providers. They cover
 no-write plan behavior (including the PowerShell entry point), stale/wrong
 identities, missing/changed launcher evidence, conflicting owners, Steam job
 membership, exact process binding, timeout and interruption recovery markers.
+They also cover a first selection probe, unchanged ownership checks, pre-dispatch
+binary changes and separation from reviewed capability receipts.
 No test dispatches Steam, schedules a task, writes a live profile or issues a mod
 request. These tests establish adapter behavior only, not a successful ME2 launch.

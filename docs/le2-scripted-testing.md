@@ -81,7 +81,8 @@ baseline establishes loading and saving only; reload remains pending.
 
 The [launch adapter](../tools/qa-le2/launch.md) now supports read-only planning and
 one guarded Steam forwarding attempt when installed game-selection support is
-reviewed. Its 18 offline tests passed; native automated selection is not yet
+reviewed, or an explicit first selection probe to collect that evidence. Its
+21 offline tests passed; native automated selection is not yet
 proven. It binds a process, not a loaded save.
 
 The [control client and codec](../tools/qa-le2/control.md) now bind traffic to the
