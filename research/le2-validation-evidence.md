@@ -43,6 +43,13 @@ restored and verified at 17:55:39 UTC; the owned invitation was removed.
 Private evidence is `run-20261114T1749Z-neutral-focus`. The three gameplay
 scenarios remain **0/3 accepted**. The next source audit must resolve the actual
 completion callback and native UI/input behavior before assuming a loadout step.
+An independent archived-only review passed 157 checks across all 18 terminal
+exchanges and reviewed all seven images. Its `native-outcome.json` SHA256 is
+`e5e26186ec7cbd4caec0b5bfa5e1a8a05a60a72834b7ff7054f712fc4dfcc35a`.
+Those checks establish archive consistency and the bounded outcomes above,
+not confirmation completion. The archived ChapterSave diff changed only loading
+tip, play time and timestamp fields; there was no post-confirmation manual save,
+so unchanged serialized plot flags cannot establish whether the callback ran.
 
 ### Weapon observation works; squad input is not yet reproducible
 
