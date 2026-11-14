@@ -165,13 +165,7 @@ RESERVE_SOURCE = 'SFXGame.SFXWeapon.GetCurrentSpareAmmo: float(CurrentSpareAmmo)
 RESERVE_POLICY = 'le2-audited-base-reserve-v1'
 RESERVE_SDK = '6bd05809cccb1a099a520371a95779d4a56bb246'
 RESERVE_PACKAGE = '681f3fc72c08c66bc6d77ca91102e08cead7c6a5586c22bad0a8f7085be38d77'
-RESERVE_CLASSES = {
-    'SFXGameContent_Inventory.SFXWeapon_HeavyPistol',
-    'SFXGameContent_Inventory.SFXWeapon_AssaultRifle',
-    'SFXGameContentDLC_PRE_Collectors.SFXWeapon_CollectorAssaultRifle_Player',
-    'SFXGameContentDLC_Pistol.SFXWeapon_LaserPistol',
-    'SFXGameContent_Inventory.SFXWeapon_MassCannon',
-}
+RESERVE_CLASSES = module('weapon-policy').RESERVE_CLASSES
 
 
 def normalize_weapon(payload):
