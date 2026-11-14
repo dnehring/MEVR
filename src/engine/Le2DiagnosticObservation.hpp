@@ -63,7 +63,8 @@ ProbeResult OpenLoadMenu(std::uint32_t gameThreadId, ObserverServices const& ser
 // Read-only engine samples may retain owner-local identity comparison receipts;
 // addresses are never reused as dereference handles. UI capture/initialization
 // review remains external: alert zero alone is not proof of fresh game CanSave.
-// OpenPauseMenu supports only current exact Default mode's inherited ShowMenu.
+// OpenPauseMenu supports only current exact Default mode's inherited ShowMenu,
+// with absent focus or a fully validated closed persistent PC PowerWheel HUD.
 // OpenSaveMenu requires a stable browser observation in that same opened flow;
 // caller explicitly attests current enabled UI review. Each action is one entry
 // per process. No independent CanSave call or persistence claim.

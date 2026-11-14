@@ -1706,7 +1706,11 @@ struct SaveFlowSample {
     MenuSample menu;
     ObjectSample modes, mode, focusedPanel;
     char focusedTag[kNameBytes]{};
-    MenuPanel browser, save;
+    MenuPanel browser, save, idleWheel;
+    bool wheelKnown{}, wheelVisible{}, wheelTransition{}, wheelLinks{};
+    unsigned wheelMode{};
+    std::uintptr_t wheelCache{}, wheelPlayer{}, wheelPawn{};
+    char const* wheelReason{"focused-PowerWheel-not-observed"};
     FunctionSample showPause;
     SlotSample modeSlot, browserSlot, saveSlot;
     SaveRow rows[kMaxFixtureRows]{};
@@ -1770,6 +1774,20 @@ void ReadSaveFlow(void* context) {
         if (manager->m_FocusPanel == panel) {
             if (!ReadObject(table, panel, "Engine", "BioSFPanel", s.focusedPanel)) return;
             std::memcpy(s.focusedTag, tag, sizeof(tag));
+            if (std::strcmp(tag,"PowerWheel")==0) {
+                s.wheelReason="focused-wheel-handler-or-reciprocal-unavailable";
+                if (PanelContext(table,panel,manager,"SFXSFHandler_PCPowerWheel",s.idleWheel,true) &&
+                    std::strcmp(s.idleWheel.handler.className,"SFXGame.SFXSFHandler_PCPowerWheel")==0) {
+                    auto const* wheel=reinterpret_cast<USFXSFHandler_PCPowerWheel const*>(s.idleWheel.handler.address);
+                    s.wheelCache=reinterpret_cast<std::uintptr_t>(manager->m_oSFPowerWheelHandler);
+                    s.wheelPlayer=reinterpret_cast<std::uintptr_t>(wheel->m_pPlayerController);
+                    s.wheelPawn=reinterpret_cast<std::uintptr_t>(wheel->m_pShepardPawn);
+                    s.wheelLinks=manager->m_oSFPowerWheelHandler==wheel && wheel->m_pPlayerController==pc && wheel->m_pShepardPawn==pawn;
+                    s.wheelVisible=wheel->m_bVisible; s.wheelTransition=wheel->m_bInOutTransition; s.wheelMode=wheel->m_ePowerWheelMode;
+                    s.wheelKnown=true;
+                    s.wheelReason=s.wheelLinks?"persistent-HUD-wheel-state-sampled":"focused-wheel-cache-player-or-pawn-disagrees";
+                }
+            }
         }
         if (std::strcmp(tag, "MenuBrowser") == 0) {
             s.reason = "ambiguous-or-invalid-pause-browser";
@@ -1858,6 +1876,9 @@ bool SameFlow(SaveFlowSample const& a, SaveFlowSample const& b) {
         a.allowPause != b.allowPause || a.playersOnly != b.playersOnly || a.browserAllowed != b.browserAllowed ||
         a.menu.focus != b.menu.focus || a.menu.panelsData != b.menu.panelsData || a.menu.panelCount != b.menu.panelCount ||
         a.modeCount != b.modeCount || a.modeCapacity != b.modeCapacity || a.modesData != b.modesData || a.waitFrame != b.waitFrame ||
+        !SameFlowPanel(a.idleWheel,b.idleWheel) || a.wheelKnown!=b.wheelKnown || a.wheelVisible!=b.wheelVisible ||
+        a.wheelTransition!=b.wheelTransition || a.wheelLinks!=b.wheelLinks || a.wheelMode!=b.wheelMode ||
+        a.wheelCache!=b.wheelCache || a.wheelPlayer!=b.wheelPlayer || a.wheelPawn!=b.wheelPawn ||
         !SameFlowPanel(a.browser,b.browser) || !SameFlowPanel(a.save,b.save) || !SameFunction(a.showPause,b.showPause) ||
         a.modeSlot.object != b.modeSlot.object || a.modeSlot.vtable != b.modeSlot.vtable || a.modeSlot.target != b.modeSlot.target ||
         a.browserSlot.object != b.browserSlot.object || a.browserSlot.vtable != b.browserSlot.vtable || a.browserSlot.target != b.browserSlot.target ||
@@ -1880,9 +1901,13 @@ bool SameFlow(SaveFlowSample const& a, SaveFlowSample const& b) {
 bool FlowMetadata(FunctionSample const& f, unsigned flags) {
     return f.function.available && f.parametersComplete && f.layoutMatches && f.nativeIndex == 0 && f.functionFlags == flags;
 }
+bool IdleWheelFocus(SaveFlowSample const& s) {
+    return s.wheelKnown && s.wheelLinks && PanelInteractive(s.idleWheel) &&
+        !s.wheelVisible && !s.wheelTransition && s.wheelMode==0;
+}
 bool PauseReady(SaveFlowSample const& s) {
     return s.available && s.currentMode == 0 && s.modeActive && s.allowPause && s.browserAllowed && !s.playersOnly &&
-        std::strcmp(s.mode.className,"SFXGame.SFXGameModeDefault") == 0 && s.menu.focus == 0 &&
+        std::strcmp(s.mode.className,"SFXGame.SFXGameModeDefault") == 0 && (s.menu.focus == 0 || IdleWheelFocus(s)) &&
         !s.browser.panel.available && !s.save.panel.available && FlowMetadata(s.showPause,0x20202) && s.modeSlot.available;
 }
 bool BrowserReady(SaveFlowSample const& s) {
@@ -1974,6 +1999,12 @@ json::Value SaveFlowJson(SaveFlowSample const& s, char const* failure) {
     context["focusPresent"] = s.menu.focus != 0; context["focusedPanel"] = ObjectJson(s.focusedPanel,nullptr);
     if (s.focusedPanel.available) context["focusedPanelTag"] = s.focusedTag;
     out["context"] = std::move(context);
+    auto wheel=MenuPanelJson(s.idleWheel,nullptr);
+    wheel["stateAvailable"]=s.wheelKnown; wheel["reason"]=s.wheelReason; wheel["reciprocalsMatch"]=s.wheelLinks;
+    wheel["closedIdleFocusSupported"]=IdleWheelFocus(s);
+    wheel["visualProof"]=false; wheel["nativeVisibilitySetterSemantics"]="not-inspected-native-body";
+    if (s.wheelKnown) { wheel["wheelVisible"]=s.wheelVisible; wheel["inOutTransition"]=s.wheelTransition; wheel["wheelMode"]=static_cast<int>(s.wheelMode); }
+    out["focusedPowerWheel"]=std::move(wheel);
     out["pauseStructurallySupported"] = PauseReady(s);
     out["showMenu"] = FunctionJson(s.showPause,nullptr,Declaration::ShowPause);
     auto slotJson=[](SlotSample const& slot) {

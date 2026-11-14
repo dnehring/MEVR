@@ -121,6 +121,7 @@ UBioSFPanel* flowBrowserPanel{}; UBioSFPanel* flowSavePanel{}; UBioSFHandler_PCP
 USFXGameModeDefault* flowDefault{}; UFunction* flowPauseFunction{}; UFunction* flowSaveFunction{};
 UBioSFPanel* flowPanels[2]{}; FBWPageStruct* flowPages{}; FSubPageState* flowOverrides{};
 UObjectProperty* flowManagerProperty{}; UClass* flowWrongClass{};
+USFXSFHandler_PCPowerWheel* idleWheelForMutation{};
 USFXSFHandler_PCSave* newSaveHandler{}; UFunction* newSaveFunction{}; FSaveGUIRecord* newSaveRecords{};
 unsigned flowDispatchCalls{}, flowReadsAtDispatch{}; int flowBehavior{}, flowMutation{};
 void MutateFlowSample() { flowWorld->bPlayersOnly = !flowWorld->bPlayersOnly; }
@@ -132,6 +133,7 @@ diagnostic::TargetInspection FlowInspect(std::uintptr_t target) noexcept {
     if (flowMutation == 4) flowModes->CurrentMode = 0;
     if (flowMutation == 5) flowSaveFunction->FunctionFlags = 0;
     if (flowMutation == 6) ++newSaveRecords[0].SaveDescriptor.Index;
+    if (flowMutation == 7) idleWheelForMutation->m_bInOutTransition=1;
     return result;
 }
 void FakeSaveFlowDispatch(void* object, void* function, void* parameters) {
@@ -1381,6 +1383,58 @@ int main() {
         Check(ObserveSaveFlow(thread).Get("save").Number("candidateNextIndex")==1 && SaveNew(thread,flowServices).status=="dispatched","empty list normal game candidate starts1 without host filename selection");
         saveHeader.count=1; prepareNew();
         std::cout << "Representative New Save observation bytes: " << mevr::json::Write(ObserveSaveFlow(thread),0).size() << '\n';
+        // A persistent PC PowerWheel HUD can retain focus while the wheel is
+        // closed. Its tag alone never authorizes the normal pause route.
+        Raw<UClass> wheelBaseType, pcWheelType;
+        Raw<USFXSFHandler_PCPowerWheel> idleWheel;
+        Raw<UBioSFPanel> wheelPanel;
+        add(wheelBaseType.get(),"SFXSFHandler_PowerWheel",meta.get(),sfxPackage.get()); wheelBaseType.get()->SuperField=handlerType.get();
+        add(pcWheelType.get(),"SFXSFHandler_PCPowerWheel",meta.get(),sfxPackage.get()); pcWheelType.get()->SuperField=wheelBaseType.get();
+        add(idleWheel.get(),"IdleWheel",pcWheelType.get(),nullptr); add(wheelPanel.get(),"PersistentWheelPanel",panelType.get(),nullptr);
+        tag(wheelPanel.get(),"PowerWheel"); idleWheelForMutation=idleWheel.get();
+        auto focusedWheel=[&] {
+            beginFlow(); idleWheel.get()->Class=pcWheelType.get();
+            wheelPanel.get()->m_DefaultHandler=idleWheel.get(); wheelPanel.get()->oParentManager=manager.get();
+            wheelPanel.get()->IsVisible=wheelPanel.get()->bInitialized=1; wheelPanel.get()->bToBeRemoved=0;
+            wheelPanel.get()->bInputDisabled=wheelPanel.get()->bEventsDisabled=0;
+            idleWheel.get()->oPanel=wheelPanel.get(); idleWheel.get()->oWorldInfo=menuWorldInfo.get();
+            idleWheel.get()->m_pPlayerController=flowPc.get(); idleWheel.get()->m_pShepardPawn=resourcePawn.get();
+            idleWheel.get()->m_bVisible=idleWheel.get()->m_bInOutTransition=0; idleWheel.get()->m_ePowerWheelMode=0;
+            idleWheel.get()->m_bRadarVisible=1; // Radar/HUD remains independent of wheel visibility.
+            manager.get()->m_oSFPowerWheelHandler=idleWheel.get(); manager.get()->m_FocusPanel=wheelPanel.get();
+            flowPanels[0]=wheelPanel.get(); mevr::ue3::TArray<UBioSFPanel*> h{flowPanels,1,2}; std::memcpy(&manager.get()->m_lstPanels,&h,16);
+        };
+        focusedWheel(); auto idleState=ObserveSaveFlow(thread);
+        Check(idleState.Get("focusedPowerWheel").Bool("closedIdleFocusSupported") && idleState.Bool("pauseStructurallySupported") &&
+              !idleState.Get("focusedPowerWheel").Bool("visualProof"),"live-shaped closed focused HUD wheel observed without pixel claim");
+        Check(OpenPauseMenu(thread,flowServices).status=="dispatched" && flowDispatchCalls==1,"normal pause allowed for exact closed persistent HUD");
+        for (int bad:{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14}) {
+            focusedWheel();
+            if (bad==0) idleWheel.get()->m_bVisible=1;
+            if (bad==1) idleWheel.get()->m_bInOutTransition=1;
+            if (bad==2) idleWheel.get()->m_ePowerWheelMode=1;
+            if (bad==3) idleWheel.get()->m_ePowerWheelMode=255;
+            if (bad==4) manager.get()->m_oSFPowerWheelHandler=nullptr;
+            if (bad==5) idleWheel.get()->m_pPlayerController=nullptr;
+            if (bad==6) idleWheel.get()->m_pShepardPawn=nullptr;
+            if (bad==7) idleWheel.get()->oPanel=nullptr;
+            if (bad==8) idleWheel.get()->oWorldInfo=nullptr;
+            if (bad==9) wheelPanel.get()->bToBeRemoved=1;
+            if (bad==10) wheelPanel.get()->bInitialized=0;
+            if (bad==11) wheelPanel.get()->bInputDisabled=1;
+            if (bad==12) wheelPanel.get()->bEventsDisabled=1;
+            if (bad==13) idleWheel.get()->Class=wheelBaseType.get();
+            if (bad==14) wheelPanel.get()->m_DefaultHandler=reinterpret_cast<UBioSFHandler*>(1);
+            Check(!ObserveSaveFlow(thread).Bool("pauseStructurallySupported") && OpenPauseMenu(thread,flowServices).status=="rejected" && flowDispatchCalls==0,
+                  "active transitional foreign malformed or uninitialized focused wheel refuses pause");
+        }
+        focusedWheel(); auto wheelTag=wheelPanel.get()->nmTag; wheelPanel.get()->nmTag=otherPanel.get()->nmTag;
+        Check(!ObserveSaveFlow(thread).Bool("pauseStructurallySupported") && OpenPauseMenu(thread,flowServices).status=="rejected","unknown focused panel never accepted by matching handler alone");
+        wheelPanel.get()->nmTag=wheelTag; focusedWheel(); flowMutation=7;
+        auto wheelChanged=OpenPauseMenu(thread,flowServices);
+        Check(wheelChanged.status=="rejected" && wheelChanged.payload.String("reason")=="save-flow-changed-before-entry" && flowDispatchCalls==0,
+              "closed wheel transition mutation in target provider caught by final guarded resample");
+        flowMutation=0;
         worldPtr = reinterpret_cast<UWorld*>(1);
         v = Observe(thread);
         Check(v.String("reason") == "guarded-engine-read-fault" && !Available(v, "objectCount"), "AV invalidates whole sample");

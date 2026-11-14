@@ -49,10 +49,10 @@ are rejected rather than bypassed.
 
 Pause admission requires current mode 0, exact live Default class, active and
 allow-pause bits, controller ownership, validated player-pawn reciprocals,
-consistent manager/world references, world browser permission, and no current
-focused panel or existing pause/Save panel. This deliberately supports the
-ordinary on-foot starting state only. If a live HUD retains focus, its observed
-semantics must be reviewed before widening that condition. The metadata must
+consistent manager/world references, world browser permission, and no existing
+pause/Save panel. Focus must be absent or the exact validated closed persistent
+PC PowerWheel HUD described below. This supports the ordinary on-foot starting
+state only; other focused panels remain unsupported. The metadata must
 match the parameterless script declaration (`0x20202`); dispatch receives null
 parameters. Exact owned base route and hook-chain checks are reused.
 
@@ -201,3 +201,54 @@ stubs abort if called, verifying the actual SDK empty-array path does not alloca
 or release storage. Both production and fake dispatch paths compile under the
 standalone project's /W4 /WX settings. These tests do not validate live GFx state,
 game callbacks, output files or native save completion.
+
+
+## Focused persistent PowerWheel HUD
+
+The protected diagnostic run `f402b0a6-a183-4b2b-a16f-b6a36995a824` exposed an
+adapter restriction: the loaded scene reported current active Default mode 0,
+allow-pause/browser permissions, unpaused world, and focus tag PowerWheel, so the
+original null-focus rule refused admission. The run owner reviewed a readable
+normal Normandy crew-deck scene with no visible wheel overlay. That image and tag
+alone do not establish handler lifetime or closed-state fields.
+
+Read-only inspection of the same pinned SFXGame package clarifies the normal
+route. `MassEffectGuiManager.RecreateHudPanel` creates Reticle, PowerWheel and HUD
+panels together, caching the wheel's default handler in m_oSFPowerWheelHandler.
+`SFXGameModeDefault.EnterPowerWheel` enables mode 1 and the wheel mode's exit
+disables it. Neither inherited ShowMenu nor ShowBrowserWheel requires null focus.
+The generic focus rejection was an adapter assumption, not a game precondition.
+
+`SFXSFHandler_PowerWheel.WheelVisibilityChanged(false)` starts the OUT animation
+and sets m_bInOutTransition. `ExInt_WheelTransitionOutDone` sets wheel mode NONE
+and clears that transition flag. SDK mode NONE is 0; m_bVisible and
+m_bInOutTransition occupy masks 1 and 8 at 0x518, with mode byte at 0x51c.
+SetWheelVisible is native and its body was not inspected, so visibility remains a
+conservative SDK-state predicate rather than independent visual proof. The whole
+panel can remain visible as persistent HUD; radar visibility is a separate flag.
+
+The alternate admission requires a reachable focused panel tagged PowerWheel,
+its exact live SFXSFHandler_PCPowerWheel default handler, reciprocal panel and
+manager/world references, the manager's cached wheel identity, and current
+controller/Shepard pawn matches. The panel must remain initialized, visible,
+focused, not removing, and input/events enabled. Wheel mode must be NONE 0,
+wheel-visible false and transition false. All existing Default-mode, active,
+permission, unpaused-world and absent pause/Save-panel checks remain. An unknown
+focus, wrong class, missing/foreign cache, changed player/pawn, active or
+transitioning wheel, or malformed object cannot use this route.
+
+`focusedPowerWheel` reports panel/handler metadata plus `stateAvailable`,
+`reciprocalsMatch`, `wheelVisible`, `inOutTransition`, `wheelMode` and
+`closedIdleFocusSupported`. `visualProof` stays false. These fields participate
+in the stable observation and final guarded resample immediately before entry;
+they are not cached dereference handles. Synthetic tests cover the focused closed
+HUD with independent radar visibility, all rejection cases above, unknown tag,
+and a transition change during the target provider. A protected fresh live
+observation and normal menu transition still need to validate this candidate.
+
+Provenance remains SDK pin `6bd05809cccb1a099a520371a95779d4a56bb246`, installed
+SFXGame SHA256 `681f3fc72c08c66bc6d77ca91102e08cead7c6a5586c22bad0a8f7085be38d77`,
+and scanner SHA256 `918a095735f00998e5ff99871902253c47c66069a6cce3e6d6b0d474addd6f01`.
+Reproduce with the existing read-only scanner's `--game LE2 --only SFXGame`
+`--script` queries for the exact functions above; keep raw script output private.
+No game/script mutation or focus-clearing input is used by this change.
