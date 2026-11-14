@@ -5,6 +5,11 @@
 #include "core/Log.hpp"
 #include "engine/Addresses.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
+#if defined(MEVR_LE2_DIAGNOSTIC)
+#include "ue3/Runtime.hpp"
+#include <cstring>
+#include <limits>
+#endif
 
 #include <Windows.h>
 
@@ -17,6 +22,56 @@ using tProcessEvent = void(ue3::Object* context, ue3::Function* function, void* 
 // Written by LEBinkProxy before the hook is enabled (core/Hook): attach runs on LEBinkProxy's
 // thread while the game thread is already calling ProcessEvent.
 tProcessEvent* gOriginal = nullptr;
+
+#if defined(MEVR_LE2_DIAGNOSTIC)
+SRWLOCK gDiagnosticLock = SRWLOCK_INIT;
+diagnostic::Snapshot gDiagnostic{};
+
+void PublishDiagnostic(diagnostic::Snapshot const& snapshot) noexcept {
+    AcquireSRWLockExclusive(&gDiagnosticLock);
+    gDiagnostic = snapshot;
+    ReleaseSRWLockExclusive(&gDiagnosticLock);
+}
+
+char const* ExeClassification() noexcept {
+    auto const* result = exe::Find(static_cast<std::uint32_t>(engine::addresses::kProcessEvent));
+    if (!result) return "Unavailable";
+    switch (result->status) {
+    case exe::Status::AtRva: return "AtRva";
+    case exe::Status::AtRvaHooked: return "AtRvaHooked";
+    case exe::Status::AtRvaUnchecked: return "AtRvaUnchecked";
+    case exe::Status::BytesDiffer: return "BytesDiffer";
+    case exe::Status::Moved: return "Moved";
+    case exe::Status::Missing: return "Missing";
+    }
+    return "Unavailable";
+}
+
+struct DiagnosticCopy { std::uintptr_t source; void* destination; std::size_t size; };
+void CopyDiagnostic(void* raw) {
+    auto const& copy = *static_cast<DiagnosticCopy const*>(raw);
+    std::memcpy(copy.destination, reinterpret_cast<void const*>(copy.source), copy.size);
+}
+bool ReadExecutable(std::uintptr_t address, void* destination, std::size_t size, void*) noexcept {
+    if (!address || !size || size > std::numeric_limits<std::uintptr_t>::max() - address) return false;
+    auto const end = address + size;
+    for (auto cursor = address; cursor < end;) {
+        MEMORY_BASIC_INFORMATION memory{};
+        if (VirtualQuery(reinterpret_cast<void const*>(cursor), &memory, sizeof(memory)) != sizeof(memory) ||
+            memory.State != MEM_COMMIT || (memory.Protect & PAGE_GUARD)) return false;
+        DWORD const protection = memory.Protect & 0xFF;
+        if (protection != PAGE_EXECUTE_READ && protection != PAGE_EXECUTE_READWRITE &&
+            protection != PAGE_EXECUTE_WRITECOPY) return false;
+        auto const base = reinterpret_cast<std::uintptr_t>(memory.BaseAddress);
+        if (memory.RegionSize > std::numeric_limits<std::uintptr_t>::max() - base) return false;
+        auto const next = base + memory.RegionSize;
+        if (next <= cursor) return false;
+        cursor = next;
+    }
+    DiagnosticCopy copy{address, destination, size};
+    return ue3::runtime::Guarded(&CopyDiagnostic, &copy);
+}
+#endif
 
 std::atomic<Callback> gCallback{nullptr};
 
@@ -85,17 +140,49 @@ void ProcessEventHook(ue3::Object* context, ue3::Function* function, void* parms
 
 bool Install(hook::Context& init) {
     auto* const target = init.ResolveTyped<tProcessEvent>(engine::addresses::kProcessEvent);
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    diagnostic::Snapshot snapshot{};
+    snapshot.target = reinterpret_cast<std::uintptr_t>(target);
+    snapshot.detour = reinterpret_cast<std::uintptr_t>(&ProcessEventHook);
+    snapshot.backend = init.Spi() ? "loader-spi" : "local-minhook";
+    snapshot.exeCheck = ExeClassification();
+#endif
     if (target == nullptr) {
+#if defined(MEVR_LE2_DIAGNOSTIC)
+        snapshot.installation = diagnostic::InstallState::ResolveFailed;
+        PublishDiagnostic(snapshot);
+#endif
         log::Error("failed to resolve UObject::ProcessEvent");
         return false;
     }
     if (!hook::Install(init, "UObject::ProcessEvent", target, &ProcessEventHook, gOriginal)) {
+#if defined(MEVR_LE2_DIAGNOSTIC)
+        snapshot.installation = diagnostic::InstallState::InstallFailed;
+        PublishDiagnostic(snapshot);
+#endif
         log::Error("failed to hook UObject::ProcessEvent");
         return false;
     }
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    snapshot.installation = diagnostic::InstallState::Installed;
+    snapshot.nextHop = reinterpret_cast<std::uintptr_t>(gOriginal);
+    PublishDiagnostic(snapshot);
+#endif
     log::Info("hooked UObject::ProcessEvent (host-owned)");
     return true;
 }
+
+#if defined(MEVR_LE2_DIAGNOSTIC)
+diagnostic::Snapshot ReadDiagnosticSnapshot() noexcept {
+    AcquireSRWLockShared(&gDiagnosticLock);
+    auto snapshot = gDiagnostic;
+    ReleaseSRWLockShared(&gDiagnosticLock);
+    if (snapshot.installation == diagnostic::InstallState::Installed) {
+        snapshot.chain = diagnostic::CheckChain(snapshot.target, snapshot.detour, &ReadExecutable, nullptr);
+    }
+    return snapshot;
+}
+#endif
 
 void ReportOffThread() {
     if (gOffThreadTotal.load(std::memory_order_relaxed) == 0) {
