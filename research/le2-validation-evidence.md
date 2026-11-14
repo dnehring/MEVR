@@ -1,9 +1,67 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-14 UTC. **Normal scripted loading now preserves eight deliberately edited resources, verified in the live player inventory and exported against frozen starting-state checks. Normandy scene and restoration verified. Normal save/reload persistence, gameplay scenarios, general console calls and VR remain pending.**
+Checkpoint: 2026-11-14 UTC. **Scripted launch, normal fixture loading, eight edited resource checks, and opening the normal pause/Save menus now have live proof. Normandy scene, readable menu captures and restoration verified. New Save submission/reload persistence, gameplay scenarios, general console calls and VR remain pending.**
 
 ## Live diagnostic connection, 2026-11-14 UTC
+
+### Closed-HUD pause and normal Save-menu transitions proven
+
+Protected run `ee6a8779-e188-4226-8963-77280c69f646` used clean candidate
+`f614aeea2c7b3ac9ef65bdb0daa9646986863b4d`, ASI SHA256
+`cbe1ed770c5c9e7dc2cd89c74944d0c30e995b876f6dfb209a38f054a0a8c1d2`, and
+the verified `59b5e775` loader. Three ordinary configurations, **50/50** full
+tests, **7/7** diagnostic tests, **37/37** actual-C++ client tests and **20/20**
+collector tests passed. SDK observer Release and Debug suites also passed;
+independent review found no blocker. Build receipt SHA256:
+`0cd457aeae119bba8b45dfb8e46a92161cee904fc103b2639078d7fd2d571f80`.
+
+Steam launched ME2 normally. The request channel verified the exact loaded
+candidate and process, then loaded the unique prepared resource fixture with
+request `3e403cbb-8af2-40af-b23a-db10ede1d25a`. Resource observation
+`c4fe3bff-03bd-4b66-9077-7061fcea4814` passed all eight exported starting checks.
+The revised observer reported the persistent PowerWheel panel interactive but
+the wheel itself invisible, mode NONE/0 and not transitioning, with all required
+reciprocal links matching. `pauseStructurallySupported` was true.
+
+Normal pause request `790efc71-adba-4c3d-962e-f6ec59289db0` returned normally.
+A fresh observation found nine complete browser pages, one Save-type page at
+row 0, no initialization wait, and enabled raw/effective Save state. The
+coordinator reviewed a readable computer-use screenshot of the initialized
+Mission Computer with Save enabled and the edited resources visible. No
+keyboard or mouse input was sent through computer use. Normal Save-menu request
+`faeaa878-b8a5-4ead-b053-06fce624fa82` then returned with its 12-byte frame intact.
+
+The actual Save screen displayed Create New Save followed by Save 99 and Save
+36, both Normandy. Observer `778765c7-dce8-4823-8c5f-d81d3974332a` reported a
+ready Save panel and three rows, but rejected the descriptor list as invalid.
+It exposed no rejected-row values, so the exact reason cannot be established
+from this observation. The visible extra Create New Save entry suggests a
+synthetic row, but neither its descriptor representation nor a safe exception
+is proven. Separately, the action's immediate post-observation shows the newly
+created Save panel before initialization/focus; the adapter invalidated its
+continuation at that intermediate state. Both adapter assumptions need bounded
+diagnostics or correction. **No New Save request was submitted.**
+
+PrintWindow returned black samples throughout this run; those failures remain
+preserved. Computer-use screenshots supplied the independent menu review.
+An explicit, separately tested `desktop-client` fallback then captured the
+owned foreground client region without focus/input or settings changes. Its
+receipt records the distinct BitBlt method, unchanged identity/geometry and
+image SHA256 `aa54a06f1ea54ffe05564eb23717bd89c60558794b915ff5181b6b895bc00126`.
+The coordinator viewed that image and confirmed the same New Save screen.
+This method requires the exact game window already in front; overlays still
+require image review. Default capture behavior remains PrintWindow.
+The integrated fallback passed **21/21** capture tests and **20/20** collector
+tests with the actual candidate C++ decoder. One initial collector invocation
+used the wrong executable filename; the corrected path passed without a code
+change or skipped test.
+
+The game closed normally and all four protected roots were restored and
+verified; the owned invitation was removed. Private evidence lives in
+`local-tools/le2-diagnostic-handoff/run-20261114T1425Z/`. This establishes normal
+pause/Save-menu transitions and a usable scripted capture fallback, not New
+Save completion, resource persistence after reload, or VR acceptance.
 
 ### New Save submission and file collector: offline checks complete
 
