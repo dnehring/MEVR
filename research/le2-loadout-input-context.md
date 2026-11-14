@@ -54,6 +54,14 @@ GWorld-Level containment claim. It does not invoke GetWorldInfo or inspect the
 native action implementation. The concrete sequence edge from a particular
 party confirmation to this loadout action still needs native observation.
 
+Two conservative prerequisites remain native-unverified. The script constructs
+choice data with the relevant handler as Outer, but native `Initialize` retaining
+that exact object in `m_ChoiceData` is not visible in the inspected script.
+Likewise, SDK declarations expose `bActive` and `ActiveSequenceOps`, but the
+inspected loadout script does not prove the scheduler's membership timing.
+If either guard refuses live input, inspect the actual relationship before
+changing it; a matching caption cannot establish ownership or scheduling state.
+
 The SDK suite covers all three stages, MissionCompletion/foreign callback
 exclusion, modal parent coexistence, focus switches, missing/duplicate active
 membership, invalid indices/counts/classes, and choice/body/callback/activation

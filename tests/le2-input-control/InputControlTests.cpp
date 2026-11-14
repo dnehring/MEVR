@@ -82,7 +82,8 @@ bool SameContext(Context const& a, Context const& b) {
 json::Value ContextJson(Context const& value) {
     auto out = json::Value::Object(); out["available"] = value.available;
     out["category"] = value.category == Category::Default ? "default" :
-        value.category == Category::PartyConfirm ? "party-confirm" : "party-select";
+        value.category == Category::PartyConfirm ? "party-confirm" :
+        value.category == Category::Loadout ? "loadout" : "party-select";
     return out;
 }
 }
@@ -160,6 +161,19 @@ void PartyConfirmation() {
     Check(!Publish(input,reason,"default",2),"next screen cannot receive replacement before neutral");
     Check(fake::Poll().replace && fake::source->Snapshot().neutralPolls == 1,"confirmation transition releases once");
     Check(Publish(input,reason,"default",2),"separate next-screen request only follows neutral");
+}
+void LoadoutTransition() {
+    fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
+    fake::current.category = context::Category::Loadout;
+    Check(!Publish(input,reason,"party-confirm") && fake::installs == 0,"confirmation request cannot leak into loadout");
+    Check(Publish(input,reason,"loadout"),"explicit loadout request admitted in matching context");
+    Check(fake::Poll().pad.buttons == 0x1000,"loadout uses existing bounded source");
+    ++fake::current.loadout.stage; input.Tick(77);
+    Check(!input.admitted && fake::source->Snapshot().phase == pad::Phase::DrainPending,
+          "loadout stage change cancels even while category remains loadout");
+    Check(!Publish(input,reason,"loadout",2),"new loadout stage waits for neutral");
+    Check(fake::Poll().replace && fake::source->Snapshot().neutralPolls == 1,"loadout stage releases once");
+    Check(Publish(input,reason,"loadout",2),"new explicit loadout stage request follows neutral");
 }
 void ContextCancellation() {
     fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
@@ -277,7 +291,7 @@ void DestructorAndTokenLifetime() {
 }
 int main() {
     try {
-        Admission(); InstallationRechecks(); PartyConfirmation(); ContextCancellation(); ExpiryAndConflict(); NativePollDelay(); RefusedAndClock(); ClockRegression(); DisableAndJson(); DestructorAndTokenLifetime();
+        Admission(); InstallationRechecks(); PartyConfirmation(); LoadoutTransition(); ContextCancellation(); ExpiryAndConflict(); NativePollDelay(); RefusedAndClock(); ClockRegression(); DisableAndJson(); DestructorAndTokenLifetime();
         std::cout << checks << " input orchestration checks passed\n";
         return 0;
     } catch (std::exception const& error) {

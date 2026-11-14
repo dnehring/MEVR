@@ -146,6 +146,7 @@ struct NativeInput {
         if (pulse.context == "default") expected = input_context::Category::Default;
         else if (pulse.context == "party-select") expected = input_context::Category::PartySelect;
         else if (pulse.context == "party-confirm") expected = input_context::Category::PartyConfirm;
+        else if (pulse.context == "loadout") expected = input_context::Category::Loadout;
         if (expected == input_context::Category::Unavailable) return false;
         if (!context.available || context.category != expected) return false;
         reason = "diagnostic-input-installation-unavailable";

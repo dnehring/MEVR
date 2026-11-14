@@ -74,9 +74,13 @@ reload of those exact bytes also matched all eight live values and the reviewed
 scene, followed by verified restoration. Earlier deferred cleanup preserved
 intervening ME1/shared-profile changes through qualified recovery. Gameplay
 costs and the three end-to-end scenarios remain pending.
-Other normalized names, including
-`state.weapon.loaded` and `state.weapon.reserve`, remain interface proposals
-until mapped to verified live state. Save inspection cannot be relabeled runtime
+The read-only [weapon observer](../research/le2-weapon-observation.md) now exposes
+selected-weapon identity, capacity, used/derived loaded count and stored reserve
+through `observe-weapon`. Its SDK checks are offline proof; live sampling is still
+pending. Effective reserve remains unavailable because native virtual overrides
+can differ from the stored field. Normalized names including `state.weapon.loaded`
+and `state.weapon.reserve` remain interface proposals until the actual weapon and
+its live semantics are verified. Save inspection cannot be relabeled runtime
 observation. Manual observations need source captures, timestamps and reviewer
 provenance; ambiguous values remain unresolved.
 
