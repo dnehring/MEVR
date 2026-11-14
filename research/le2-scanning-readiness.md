@@ -7,6 +7,16 @@ The helper makes no engine calls, evaluates no plot conditionals, writes no game
 state, and is not an action capability. The diagnostic host registers it as the
 empty, read-only `observe-orbital` request; native orbital sampling remains unproven.
 
+Integrated candidate `5ca73bee1639147e79d6a967fe98403d1b2ed72e` passed the three
+ordinary build configurations and diagnostic build, full CTest 50/50 and focused
+diagnostic 10/10. Actual C++ codec/client conformance passed 38 Python tests; the
+independently rerun producer smoke accounted for all 16 requests. SDK observer
+Release/Debug checks and independent source review passed. The frozen ASI SHA256
+is `c95b7d87da5792c4ed24bfaa41fbb256104e63af320d39a42fb1571b089577dd`;
+build receipt SHA256
+`b2761450393e1d3645be5949dd4224106c5255f0bf608650f5648ce6bd3ac2f5`.
+No native orbital or input proof follows from these offline results.
+
 ## Immediate acquisition sequence
 
 1. Use the existing protected session and normal menu loader with the reviewed
@@ -14,7 +24,8 @@ empty, read-only `observe-orbital` request; native orbital sampling remains unpr
    The privately archived normal-save candidate inspected for this work has SHA256
    `b54bf7c65437bfa6d487019bd4328cb62fb86581f25237181a0629b04940e236`,
    map `Biop_Nor`, probes 29, fuel 1499. Its eight resources were read independently
-   from the save; this note does not claim a fresh native reload of that file.
+   from the save. The later [persistence run](le2-validation-evidence.md#fresh-reload-preserves-all-eight-edited-resources)
+   proved a fresh normal load of those exact bytes and the same live values.
 2. Acquire the galaxy-map scene through ordinary player navigation: reach the CIC
    galaxy console, interact normally, select the Hourglass Nebula, Ploitari, and
    Zanethu, then enter the scanner. Capture those steps and any prerequisite that

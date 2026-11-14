@@ -5,6 +5,42 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Untouched chapter loads to squad selection; combat setup still needed
+
+Protected run `50917136-a7ba-4d59-b204-63493cfa3ed9` used the proven `0ccce73b`
+candidate. The untouched private ChapterSave, SHA256
+`2f4c441c068f79064b4256c387b022cb13e7734d4ed1c663330cfe61465317c7`, passed
+independent TSE decoding and a no-op preparation, then was staged under the
+manual Save 99 filename. This preserves chapter provenance; it does not add a
+chapter-type dispatch capability.
+
+The complete four-row scan found Save 99 at **UI row 2**, uniquely matching its
+frozen descriptor. The reviewed menu showed that row as Collector Station;
+Save 36 was highlighted, so the image is not evidence of selecting Save 99.
+The explicit normal load request `e8abcbc9-58af-499c-a314-05a8284aa2de` bound
+row 2, returned normally and retained its parameter frame. Fresh live state
+`bdff0cc7-cb40-463c-94d4-d8bdb47f54ad` reported `BioP_EndGm2` and all eight
+expected original resources; its exporter returned 0.
+
+The resulting image showed **Squad Selection**, with Miranda and the
+Fire Team/Specialist markers. Independent context observation agreed:
+`PartySelect`, active GUI mode 7, pause menu unsupported. No normal movement,
+selection, firing or reload input was issued. This is a concrete acquisition
+starting point, not a ready combat encounter. Continue through ordinary squad
+selection and progression before acquiring a suitable encounter save; do not
+force the mode or modify story flags to bypass the screen.
+
+Normal loading rewrote ChapterSave and ME2 profile state. The run archived those
+files, closed normally at 15:45:24 UTC and restored all four protected roots at
+15:46:07 UTC; its exact invitation was removed. Fresh independent TSE inspection
+of the rewritten chapter found only loading-tip, play-time and timestamp
+differences, with resources unchanged. The original chapter was restored.
+
+Private evidence: `local-tools/le2-diagnostic-handoff/run-20261114T1541Z/`.
+Independent audit: 103 checks, no failures; `native-outcome.json` SHA256
+`fc09c2f6ca47567dc566d659f87fb26a65d71c60680fa370c89cca508107fad2`.
+The initial reload scenario remains draft, alongside interrupt and scanning.
+
 ### Fresh reload preserves all eight edited resources
 
 Protected run `fcb66b74-c5f4-47a6-94f2-244bc1f18cb3` used the same clean
@@ -43,6 +79,10 @@ the exact owned invitation was removed. Private evidence lives in
 This completes one resource-only native persistence cycle, paired with the
 independent TSE proof below. It does not establish story-recipe coherence,
 ammo/reload gameplay, dialogue interrupts, scanning, stereo or VR acceptance.
+An independent paired audit passed 126 checks, including fresh TSE executions,
+both reviewed captures, the three-file preservation merge and the reload run's
+restoration archives. Its `independent-persistence-review.json` SHA256 is
+`1513854c65bd1fec6bbfdc93005a4c6cbf5b0b2c9f1ff684c2696680ac346d74`.
 
 The earlier save run's deferred cleanup completed first at 15:28:08 UTC.
 Another session had updated ME1/shared-profile timestamps and the Launcher log.

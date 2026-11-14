@@ -18,6 +18,15 @@ Concrete acquisition leads are in [reload/interrupt fixture research](../../rese
 and [Zanethu discovery dependencies](../../research/le2-galaxy-fixture-source.md).
 Weapon fixtures also need the [native ammo and reload mapping](../../research/le2-ammo-fixture-source.md).
 
+The untouched private chapter now has normal-load proof at `BioP_EndGm2`, with
+matching resources and verified restoration. It opens **Squad Selection**, not
+a ready combat encounter. The next acquisition step is ordinary squad selection
+and progression to a safe firing/reload point. A tested read-only
+[`observe-orbital` query](../../research/le2-scanning-readiness.md) is available
+for the later scanning baseline; native orbital sampling and the scripted
+gamepad input adapter remain pending. No story-flag reset substitutes for these
+normal gameplay steps.
+
 Offline preparation can continue while another session owns the game:
 [resource boundary batches](variant-usage.md) create hash-bound zero/insufficient/exact/surplus cases;
 [story transition review](story-review-usage.md) compares paired saves against scoped source effects;
