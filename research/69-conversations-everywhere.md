@@ -376,6 +376,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     the Council walks; all three fixed the same day, and the shop's flat-panel variant that evening. Open: item
     21's decision; the fake headset's 31.3 fps cap is set aside (the owner: the sleeping monitor, likely).
 
+39. **The view that floated; the fade that moves you; the walk-in's boundary** (the owner in the headset, 2026-11-13; "The view
+    that floated" below): the opening placed the player at Shepard's head scaled about the view's pivot (0.7 m too high at the
+    council hearing with the owner's body scale): now about the floor under the head; an opening under the game's fade to black
+    is a cut (the owner's rule); a walk-in's boundary is around its mark. Rules `eye-height`, `opening-off-mark`; the audit at
+    body scale 1.185. [verify] in the headset.
+
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
 
@@ -3841,6 +3847,61 @@ logs, records and code, then checked):
    people` in both walks against 5 in a conversation). **Fix**: in a moment the people shown within 4 m (`NearPawns`) and their head
    bones (his head led his place by 1.2 m mid-stride) are kept clear of too. Seen: both Council walks without `too-close`.
 
+### The view that floated; the fade that moves you; the walk-in's boundary (2026-11-13; item 39)
+
+**The owner, in the headset at the council hearing (John02 slot 80, Quest over Virtual Desktop):** "when I re kind of position,
+I'm not touching the ground. I'm kind of floating." Then, after the hearing: "If we do a fade to black, I don't think it's
+unreasonable to teleport Shepard. So when the conversation ends with Udina still on the podium, and then it does that fade to
+black, Shepard should be teleported to be next to Anderson and Udina", and "when Anderson walks away and Udina's still on the
+platform, I physically can't move, but I'm being slightly teleported. I should be able to walk with Anderson or stay on the
+platform."
+
+1. **The view that floated.** A snapshot at 83 s into the hearing (2026-11-13_21-22-37-414) showed the view behind Udina and
+   Anderson at the podium, looking down on them. The hearing's opening placed the player at Shepard's head
+   (`MarkHeadOf`: the animated head, `arm_ik::AnimatedHeadComponent`), and that head was scaled with the drawn body's
+   factor (the owner's body scale 1.185: calibrated standing eyes 1.973 m over Shepard's 1.665 m) **about the body's pivot,
+   which is under the view on the pawn's own floor**. At the opening the mark is metres from the view and the podium stands
+   above the pawn's floor, so the scaled head moved off and up by 18.5% of both: the place at z 62346, the eyes drawn 1.72 m
+   above Shepard's pawn's centre (other people's heads 0.70-0.82 m above theirs), about 0.7 m too high. On foot the floor lock
+   was right (snapshot 21-24-13: eyes 1.86 m over the pawn's floor, the headset's STAGE height). **The fake headset never saw
+   it:** without a height of its own its body is never scaled. **Fix:** `AnimatedHeadComponent` returns the head unscaled and
+   `MarkHeadOf` scales it about the floor under it (a trace down from the head; `ik::body_scale::StandingAt(s, p, floorZ)`:
+   its place kept, its height above that floor times s; `tests/BodyScaleTests.cpp`). The audit set plays every scene at body
+   scale 1.185 (`bodyScale` in tools/conversation-audit-set.json; `mevr body scale <s>` from the console now applies at once,
+   not by the 0.1/s approach: the held view of a scene never steps it), and **the live rule `eye-height`** compares the drawn
+   eyes above the floor under them with the headset's eyes above the real floor (else Shepard's standing eyes at the drawn
+   size): 0.3 m off for a second, `FAIL_RULES`. Broken run: `mevr convo markhead old` (the old scaled head) must trip it.
+2. **The fade that moves you.** The hearing ended with its own black screen (`sta90_council_saren_N...BioSeqAct_BlackScreen_0`,
+   on 21:23:31.844, off 32.056), under which the game moved Shepard 12.5 m to Anderson and Udina (`sta90_captain_dlg` began
+   32.069). The opening rule (`cw::DecideOpening`) judged the mark in sight on a floor within a walk: a walk-in; the player
+   stayed on the podium and Shepard was put back with him. **Rule (the owner's):** a conversation that opens under the game's own
+   fade to black (a script's black screen turned black, or a matinee's camera fade we kept off the view, within the last 1.5 s:
+   `authored_moment::LastBlackScreenOnMs`, `gFadeUp`/`gFadeDownMs`) is a cut whenever the mark is farther than "where he stands"
+   (`OpeningFacts::coveredByBlack`; unit-tested): the player goes with Shepard under the mod's dip. The opening line says
+   `under the game's fade to black`. Not changed: a staged scene's own black screen mid-scene still walks the player to his new
+   mark by the simulated stick (item 31, the owner's earlier design for Virmire's start) [ask the owner whether the new rule
+   should cover it too].
+3. **The walk-in's boundary.** The walk's boundary (`worldMoveLeashM` 4 m) stood around where the conversation began, the
+   podium, while the walk-in wanted the player 12.5 m away: pushing toward Anderson met the circle and slid along it (the log's
+   steps of 0.15 m back and forth, 21:23:34-43). The code's own comment said "around Shepard's mark until he is there", but only a
+   guided walk did that. **Fix:** a walk-in on its way has the boundary around the mark it is wanted at, guided or not; standing
+   still on the podium stays possible (outside the circle only steps that bring the player nearer are taken).
+
+**The fake headset can't show the height part.** Its head stands at its floor's height, so the body's pivot is at the head and
+the old scaling moved the head sideways only (3.34 m, the same `the opening's eyes were drawn ... m from Shepard's mark`
+correction the owner's hearing logged, 3.53 m, under a second dip). A replayed head at 1.86 m (`make-walk-recording.py
+--eye-height`) does not help: it raises only the drawn head, the floor reading stays the null driver's own (0), and the view
+rose 1.7 m. So the rule the broken run trips is **`opening-off-mark`** (the opening's eyes over a metre from Shepard's mark, the
+view moved again: `FAIL_RULES`), and `eye-height` measures where a floor reading exists (the owner's headset) or Shepard's eye
+height is known; on the fake headset that was 0 to 12.4 s a scene.
+
+**Run on the fake headset, 2026-11-13** (`0.3.0+580382ff8b`, body scale 1.185 from the console): the council scene with the fix:
+no `opening-off-mark`, eye height checked 12.4 s and never 0.3 m off, 0 regressions; the broken run `markhead old`: caught by
+`opening-off-mark` (3.34 m); the hearing played to its own end (`-Long`, `longPlayOut`, 149 s, 25 lines): **`sta90_captain_dlg`
+opened as a cut** (15.2 m, under the hearing's fade to black), then `sta20_captain_dlg` as a stay. Not seen in the game: the
+boundary's fix (with the cut the player no longer starts 12.5 m from the mark there) and the height in a real headset
+(notes/headset-checklist.md).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -4300,3 +4361,7 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   shop's flat-panel variant (mode 0 between) is reported by the session judge, not fixed.
 - 2026-11-13 19:55, **item 38, the panel flicker** (the owner: "Fix the panel flicker"): "handing over" published 300 ms after a
   conversation in the world ends; a mode-7 frame then is the world's until the screen stands in the room: 5 plays, 0 flat frames.
+- 2026-11-13 22:40, **item 39, the view that floated** (the owner, in the headset at the hearing): the opening's head scaled
+  about the floor under it; a conversation opening under the game's fade to black is a cut (the hearing's end now moves the
+  player to Anderson and Udina); a walk-in's boundary around its mark; rules `eye-height`, `opening-off-mark`; the audit at
+  body scale 1.185 (`-Long` plays the hearing out); broken run `markhead old` caught.

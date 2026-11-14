@@ -32,11 +32,10 @@
   Reset offsets, restart, change controller profile, and rerun guided calibration: measured results stay separate,
   manual values persist per setup, reset leaves no residual shift. Check standing and seated with no floor tracking.
 
-- [ ] 2026-11-11 the right eye's shadows (shadow-replay; research/37 "the right eye's shadows slide with the head"): at
-  the Citadel's walkway, or any lit floor with people on it, close each eye in turn while turning the head: a character's
-  shadow sits in the same place in both eyes and doesn't move with the head; fog and lit volumes look the same in both.
-  Fake headset first (the levers line's `screen-space matrices:` counts and the ScreenToWorld self-check, snapshots of
-  both eyes), then the cost with `LightEnvironmentShadows` on and off decides whether character shadows stay.
+- [ ] 2026-11-13 character shadows off (research/37 "the correction doesn't reach the character shadows"): at the
+  Presidium or any lit floor with people on it, no character shadow in either eye (Shepard's, people's), and the
+  level's own lighting and shadows as before. The correction itself still fails in the headset (2026-11-13): the right
+  eye's character shadows sat where the left eye sees them; check it again only once research/37 says it's fixed.
 
 - [ ] 2026-11-09 Shepard's saved standing height (galaxy-labels; research/58 section 8): load a save, stand holstered a
   second (log `measured Shepard's standing eye ... saved`), then load again: the log names the saved value and Shepard is
@@ -350,6 +349,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **Long dialogue choices** (2026-11-11, research/69 item 23; built, not yet run in the game): a wheel with long replies
   (the hearing's "The Council won't help us.") shows each reply whole on the wheel, the same text size as before, and no stray
   letters elsewhere in view.
+- [ ] **The council hearing at your own height** (2026-11-13, research/69 item 39, "The view that floated"; fake headset: the
+  opening on the mark, the cut under the fade): John02 slot 80, walk with Anderson, then the hearing: you stand on the podium's
+  floor at your own eye height, not floating; when the hearing ends and the screen goes black you are with Anderson and Udina
+  (a short fade), and you can walk with them or stay. `python tools/conversation-session.py` afterwards: no `audit:eye-height`.
 - [ ] **Conversations where you start them** (2026-11-12, research/69 item 28 "The conversational circle", second design; run on
   the fake headset): any conversation (slots 83, 85, 87, 89): you stay where you started it, the person you talk to stays where
   they are, nothing walks you. Someone who takes part later walks over a few lines before speaking; Avina (the hologram) and anyone

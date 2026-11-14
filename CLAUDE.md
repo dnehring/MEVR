@@ -368,7 +368,8 @@ switching frameworks.
   (`audit-report.py`, a snapshot at each first wheel); `black-panel-on-foot` (game/AuthoredMoment); which scene played
   (`sceneSeen`, a scene's `startEntry`); the session judge's `flash` (a conversation in the world handing over to a GUI screen,
   mode 7, no longer flashes the 3D screen or the flat panel: `[MEVR]` seams in xr_session.cpp's decision, and the mod's
-  "handing over", `State::holdPad[1]`, for 300 ms after one ends: `MevrBridge::ConversationHandover`). Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
+  "handing over", `State::holdPad[1]`, for 300 ms after one ends: `MevrBridge::ConversationHandover`). `eye-height` (the drawn eyes over the floor under them against the headset's) and `opening-off-mark`; the set plays at body
+  scale 1.185 (`bodyScale`), `-Long` the hearing to its end. Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
   (`"game": "opold"`: `mevr convo hide body|person on`, `nearplane off`, `sticklatch off`, `stickturn off`).
   **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
   and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/
@@ -690,7 +691,11 @@ switching frameworks.
   `mevr convo follow on|off` walks along in tests; a matinee's own camera fade is not drawn in a held moment (`Camera.bEnableFading`
   cleared each camera update, `StepMatineeFade`; a change it covered gets the mod's dip; the walk-along pause had held the Spectre
   walk near black for 10 s; `mevr convo matineefade off` is its broken run), and the walk in a moment keeps clear of the people
-  shown near the player and their heads (`NearPawns`: the stick had walked the view into Anderson's back; research/69 item 38); **scenes are
+  shown near the player and their heads (`NearPawns`: the stick had walked the view into Anderson's back; research/69 item 38);
+  the opening's place from Shepard's head scales that head about the floor under it (`ik::body_scale::StandingAt`; about the
+  view's pivot the owner's body scale lifted the view 0.7 m at the council hearing), a conversation that opens under the game's
+  fade to black (a script's black screen or a matinee's fade within 1.5 s) is a cut (`OpeningFacts::coveredByBlack`, the
+  owner's rule), and a walk-in's boundary is around its mark (research/69 item 39, "The view that floated"); **scenes are
   audited by rule** (research/69 "Auditing scenes by rule"): `tools/scene_audit.py`'s rules over the records
   (`conversation-stance.py --findings`, `--baseline-write|--baseline-compare <file>`; ctest `mevr-scene-audit`), the regression
   set `tools/conversation-audit.ps1` (`conversation-audit-set.json`, baseline `conversation-audit-baseline.json`), and the same
@@ -1519,7 +1524,9 @@ switching frameworks.
   **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` and `MotionBlur` (measured
   2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
-  DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` through the local player's console
+  DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
+  the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
+  2026-11-13) through the local player's console
   once a player exists, **again after every level change, each boolean through its opposite first** (research/35
   attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said
   off, and the same `False` there did nothing while True then False turned it off; in stereo the blur's velocity is

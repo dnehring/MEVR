@@ -1451,6 +1451,21 @@ std::optional<ik::Vec3> AnimatedHeadComponent() {
     if (!animated) {
         return std::nullopt;
     }
+    // Unscaled: the caller scales it about the floor under the head where the scene has Shepard (StandingAt), which can be metres
+    // from the view and above the pawn's own floor; about the view's pivot it rose and moved off (research/69 "The view that
+    // floated", 2026-11-13).
+    return *animated;
+}
+
+double BodyScaleNow() {
+    return gLastBodyScale.Active() ? gLastBodyScale.s : 1.0;
+}
+
+std::optional<ik::Vec3> AnimatedHeadScaledAboutView() {
+    auto const animated = AnimatedHeadComponent();
+    if (!animated) {
+        return std::nullopt;
+    }
     return gLastBodyScale.Active() ? ik::body_scale::Apply(gLastBodyScale, *animated) : *animated;
 }
 

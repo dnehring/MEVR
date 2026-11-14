@@ -73,7 +73,8 @@ int main() {
     };
     write("[SystemSettings]\nAntiAliasing=True\n");
     poll(0, true);
-    CHECK(commands.size() == 7);  // initial values, including AA, still apply
+    CHECK(commands.size() == 9);  // initial values, including AA, still apply
+    CHECK(contains("scale set LightEnvironmentShadows False"));  // character shadows off: sharePass 5 by default
     CHECK(contains("scale set MotionBlur False") && contains("scale set AntiAliasing True"));
     commands.clear();
     for (int i = 0; i < 16; ++i) poll(0, true);
@@ -90,52 +91,64 @@ int main() {
     CHECK(commands.empty());
     write("[SystemSettings]\nAntiAliasing=True\nFoliageDrawRadiusMultiplier=0.75\n");
     poll(0, true);
-    CHECK(commands.size() == 7 && contains("scale set FoliageDrawRadiusMultiplier 0.75"));
+    CHECK(commands.size() == 9 && contains("scale set FoliageDrawRadiusMultiplier 0.75"));
     commands.clear();
     playerReady = false;
     poll(0, false);  // protection lost without a menu transition
     CHECK(commands.empty() && settings::gGuardFallbackPending);
     playerReady = true;
     poll(0, false);
-    CHECK(commands.size() == 7 && !settings::gGuardFallbackPending);
+    CHECK(commands.size() == 9 && !settings::gGuardFallbackPending);
     commands.clear();
     poll(0, false);
     CHECK(commands.empty());
     poll(7, false); poll(0, false);
-    CHECK(commands.size() == 7);  // unavailable guard retains menu-return protection
+    CHECK(commands.size() == 9);  // unavailable guard retains menu-return protection
     commands.clear();
     world = &nextWorld;
     poll(0, true);
-    CHECK(commands.size() == 7);  // new level still gets the saved graphics values
+    CHECK(commands.size() == 9);  // new level still gets the saved graphics values
     commands.clear();
     for (int i = 0; i < 16; ++i) poll(0, true);
     CHECK(commands.empty());
     int unprotectedWorld = 3;
     world = &unprotectedWorld;
     poll(0, false);
-    CHECK(commands.size() == 7);
+    CHECK(commands.size() == 9);
     commands.clear();
     for (int i = 0; i < 16; ++i) poll(0, false);
-    CHECK(commands.size() == 14);  // legacy/unhealthy hosts retain both settling attempts
+    CHECK(commands.size() == 18);  // legacy/unhealthy hosts retain both settling attempts
     commands.clear();
     int delayedWorld = 4;
     world = &delayedWorld;
     poll(0, true);
-    CHECK(commands.size() == 7);
+    CHECK(commands.size() == 9);
     commands.clear();
     settings::Poll(20.0f, static_cast<unsigned char>(0), true, file, world);
     CHECK(commands.empty() && settings::gSettleApplies == 2);  // a loading gap consumes both passed deadlines
     poll(0, false);
-    CHECK(commands.size() == 7);  // immediate fallback, without a backlog of timed resets
+    CHECK(commands.size() == 9);  // immediate fallback, without a backlog of timed resets
     commands.clear();
     poll(0, false);
     CHECK(commands.empty());
+    // Character shadows (research/37, 2026-11-13): off only while the second eye is a replay (sharePass 2, 3, 5), and the
+    // file's own value wins.
+    auto has = [](std::vector<settings::Setting> const& w, char const* key, char const* value) {
+        return std::any_of(w.begin(), w.end(), [&](settings::Setting const& v) { return v.key == key && v.value == value; });
+    };
+    write("[Performance]\nsharePass=0\n[SystemSettings]\n");
+    CHECK(!has(settings::Wanted(file), "LightEnvironmentShadows", "False"));
+    write("[Performance]\nsharePass=\n[SystemSettings]\n");
+    CHECK(has(settings::Wanted(file), "LightEnvironmentShadows", "False"));  // empty is the default, 5
+    write("[Performance]\nsharePass=5\n[SystemSettings]\nLightEnvironmentShadows=True\n");
+    CHECK(has(settings::Wanted(file), "LightEnvironmentShadows", "True") &&
+          !has(settings::Wanted(file), "LightEnvironmentShadows", "False"));
     write("[SystemSettings]\napply=0\n");
     poll(0, true); poll(0, false); poll(7, false); poll(0, false);
     CHECK(commands.empty() && !settings::gGuardFallbackPending);
     fs::remove(file);
     fs::remove(folder);
-    std::printf("System settings: %s (guarded returns, fallback/retry, ABI gates, settings edits, startup/load/settle)\n",
+    std::printf("System settings: %s (guarded returns, fallback/retry, ABI gates, settings edits, startup/load/settle, character shadows)\n",
                 failures ? "FAIL" : "PASS");
     return failures ? 1 : 0;
 }

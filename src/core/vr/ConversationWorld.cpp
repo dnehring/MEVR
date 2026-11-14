@@ -1007,6 +1007,10 @@ Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits
     if (facts.markUnits <= limits.stayUnits && std::abs(facts.riseUnits) <= limits.stayUnits) {
         return Opening::Stay;
     }
+    // The game's own fade to black moved him: the player goes with him under it (the owner, 2026-11-13).
+    if (facts.coveredByBlack) {
+        return Opening::Cut;
+    }
     if (facts.markUnits <= limits.walkMaxUnits && std::abs(facts.riseUnits) <= limits.riseMaxUnits && facts.sightToMark && facts.floorAtMark) {
         return Opening::WalkIn;
     }
