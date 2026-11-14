@@ -29,11 +29,11 @@ Current bounded progress is below. None of these checkpoints establishes a compl
 | Package | Offline checkpoint | Next unresolved gate |
 |---|---|---|
 | P0 | [Initial integration contract](le2-integration-contract.md): single owners, units/epochs, game-thread dispatch and native request reconciliation | Implement and review actual shared seams as P1/P2 integrate |
-| P1 | [Engine access discovery](../research/le2-engine-access-discovery.md): LE2 metadata differences, minimal observation/getter slice and failure gates | Implement validated read-only access; prove actual layouts/lifetime and one legal call in an owned session |
+| P1 | [Engine access discovery](../research/le2-engine-access-discovery.md), plus [live structural observation and one bounded scalar call](../research/le2-validation-evidence.md#passive-controller-route-and-scalar-return-proven) | Validate object lifetime across load transitions, remaining native adapters and gameplay calls |
 | P2 | [Pinned renderer audit](../research/le2-renderer-integration.md): complete source/dependency list, hook/loader conflicts and thread hazards | Licensed provenance import, bounded host adaptations and isolated full-object compile/link, then native lifecycle/stereo proof |
 | P4 | [Original reload request coordinator](../research/le2-reload-core.md), 18 standalone tests passing in Release and Debug | Contact geometry, real hand ownership, native dispatch/auto-reload coordination, authoritative reconciliation and physical acceptance |
 | P5 | [Movement/cover script inspection](../research/le2-movement-source.md): action/traversal coupling, damage exceptions and shield-delay semantics | Preserve traversal and native benefits through a validated movement/cover adapter and gameplay tests |
-| P9 | Save/fixture/lifecycle/scenario tools and independent encoding checks | Normal game load/save/reload, runtime observers, actual scenario behavior and protected restoration |
+| P9 | Save/fixture/lifecycle/scenario tools, independent encoding checks, native load/save and verified restoration; bound diagnostic channel proven | Complete normal save/reload persistence, authoritative scenario observers and actual scenario behavior |
 
 P3/P6/P7/P8 implementation remains planned. The lead records owner, branch, base commit, status and result link when dispatching. Source paths below refer to existing files; new adapter placement follows P0 before parallel edits. The P4 header is deliberately absent from production targets, and the discovery reports introduce no runtime hook/ABI changes.
 

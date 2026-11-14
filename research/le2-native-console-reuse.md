@@ -3,11 +3,11 @@
 
 Source audit at main `ea25e76c`, with SDK submodule
 `6bd05809cccb1a099a520371a95779d4a56bb246`. No native operation was performed.
-The diagnostic candidates remain read-only; this report does not grant dispatch
-capability. The later `59b5e775` candidate proved its owned native handshake and
+The source audit itself granted no dispatch capability. The later `59b5e775` candidate proved its owned native handshake and
 entry-menu metadata observation. The extended `152c9597` diagnostics then exposed
-a controller/base-target disagreement described below. Resolve it before
-enabling calls. See the [protected workflow](../tools/qa-le2/control.md).
+a controller/base-target disagreement described below. Candidate `eede67a1`
+subsequently proved the forwarding relationship and one bounded scalar return;
+general console remains disabled. See the [protected workflow](../tools/qa-le2/control.md).
 
 Reuse the existing `engine::legacy::ConsoleCommand` route: direct ProcessEvent
 plus LE2's SDK-backed FString allocator. Do not replace it with the LE1 generic
@@ -71,7 +71,7 @@ that the native game has no override. Halcyon's licensed LE2 source separately
 uses the explicit base RVA; that is a distinct route, not proof that bypassing
 the controller entry is equivalent.
 
-The next bounded read-only investigation is:
+The bounded read-only investigation used was:
 
 1. Compare only slot 72 on already validated engine/world/local-player/controller
    objects and the pawn when available. Do not guess different slot indices.
@@ -86,6 +86,14 @@ The next bounded read-only investigation is:
 No new arbitrary vtable scan, instruction fingerprint requirement, forced call,
 or automatic base-address fallback is required. Once the actual route is
 established, the scalar-return experiment below can use that justified route.
+
+That investigation passed in the protected `eede67a1` run: world/engine/local
+player used the base target, and the controller function had bounds
+`[0x3F7AD0, 0x3F7B3E)`. A fixed ten-second sample recorded 11,940 same-controller
+base-hook entries with return addresses inside those bounds and 11,940 normal
+original returns. The subsequent one-shot scalar probe used the virtual slot
+without bypassing it. See [the actual evidence](le2-validation-evidence.md#passive-controller-route-and-scalar-return-proven).
+Do not equate this current-scope result with controller lifetime across loading.
 
 ## String allocation and lifetime
 
@@ -161,8 +169,9 @@ use generic `runtime::Call` here: its LE1-oriented path can clear nonzero native
 indices, and LE2 generic reflection remains disabled. Do not modify function
 flags or use a generated wrapper.
 
-That experiment would establish only this bounded ProcessEvent/script-return
-path. It would not prove ConsoleCommand allocation, arbitrary console commands,
-normal save loading, story coherence or any VR interaction. The first pending
-native action is the bounded override investigation above, followed by this
-getter experiment only after the call-route prerequisites pass.
+The `eede67a1` experiment established this bounded ProcessEvent/script-return
+path, with finite changed bits, intact canaries and unchanged identities. It
+does not prove ConsoleCommand allocation, arbitrary console commands, normal
+save loading, story coherence or any VR interaction. The next native-control
+work is the bounded allocator/returned-string proof above and selected-save
+loading through the existing routes in the [save/load handoff](le2-save-load-entrypoints.md).

@@ -1,9 +1,53 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-14 UTC. **Native load/save observed; scripted Steam selection, ASI loading and read-only game-thread control proven. Restoration verified. Reload, gameplay commands and VR proof remain pending.**
+Checkpoint: 2026-11-14 UTC. **Native load/save observed; scripted Steam selection, ASI loading, structural observation and one bounded scalar script call proven. Restoration verified. Reload, gameplay commands and VR proof remain pending.**
 
 ## Live diagnostic connection, 2026-11-14 UTC
+
+### Passive controller route and scalar return proven
+
+Protected run `71bd4047-ea4b-4143-b928-f3c6cf5050c4` tested clean candidate
+`eede67a1e6b6616e1e60045dc29452198d6ac334`, ASI SHA256
+`47a428c7c80a963c2b403a41386c8294b4d4c544b4734768698a9029ffbac8f1`, with the
+verified `59b5e775` loader. All three ordinary builds, **46/46** CTests and
+**6/6** focused diagnostic tests passed, including the actual-C++ compact-wire
+regression. All 23 client tests ran with C++ conformance enabled. SDK observer
+and production-route compilation had also passed independently in Release/Debug.
+
+Five correlated requests succeeded on game thread 65496: ping, an observation
+that armed the passive window, a second observation, exactly one `probe-fov`,
+and a final ping. The compact observations were 13,047 and 13,084 bytes. The
+entry-menu world, engine and local-player slot 72 all pointed at base RVA
+`0xD8D50`. The controller pointed at RVA `0x3F7AD0`, with exact unwind-table
+bounds `[0x3F7AD0, 0x3F7B3E)`; no pawn was available. This was not a simple
+recognized unconditional jump to the base target.
+
+During one fixed ten-second epoch, **11,940** calls for the same controller and
+game thread reached the owned base hook from inside those controller-function
+bounds, and all 11,940 returned normally from its original next hop. The recorded
+return address was RVA `0x3F7B29`. The completed window was not renewed. This
+establishes the observed forwarding relationship for that current identity,
+not lifetime across loading or arbitrary-call safety.
+
+The explicitly requested getter revalidated metadata and identity, used the
+controller's existing virtual route, and returned status **`dispatched`**.
+Its NaN sentinel `0x7FC12345` changed to finite float bits `0x4280F115`
+(approximately 64.470863); both adjacent canaries remained intact. The
+controller, world/local-player scope, getter and return-property identity,
+metadata and slot target were unchanged afterward. The host recorded one entry
+spent, and the following ping completed. This proves a bounded scalar script
+return and its production response routing, not visible FOV calibration,
+ConsoleCommand allocation/string ownership, save selection or VR behavior.
+
+ME2 closed normally; all four protected roots were restored and verified, and
+only the owned invitation was removed. No pending request remained. Private
+run `local-tools/le2-diagnostic-handoff/run-20261114T0647Z/` preserves protocol
+bytes, decoded reviews, deployed hashes, mapped modules, logs and restoration.
+The exact ASI/loader are frozen in `candidate-eede67a1/`. An earlier retry
+(`584b9ec1-2e09-4595-9e1a-be04d414765f`, directory `run-20261114T0645Z/`) stopped
+when another launcher appeared during backup, before fixture staging. Its
+backups remain private; it released its lock and wrote no live test save.
 
 ### Expanded observation serialization failure
 
@@ -345,9 +389,11 @@ the check were closed afterward. The existing game session was left running.
 
 The following requirements are **not achieved** at this checkpoint:
 
-1. A proven ME2 scripted control path. Desktop access succeeded on retry, but
-   the LE2 ASI directory was empty. Follow the [scripted testing handoff](../docs/le2-scripted-testing.md)
-   instead of extending UI automation. Recheck ownership before another run.
+1. Scripted selected-save loading and gameplay controls. The bound request
+   channel, structural observer and one scalar script call now have live proof,
+   as recorded above. General console dispatch remains disabled. Use the
+   [source handoff](le2-save-load-entrypoints.md) to complete normal save/load
+   through validated native routes; recheck ownership before another run.
 2. In-game reload persistence. The retry below selected the staged Normandy
    save, loaded the crew deck and created a new native save; reload was not
    performed. The chapter save's `BioP_EndGm2` string still establishes no
@@ -360,10 +406,10 @@ The following requirements are **not achieved** at this checkpoint:
    one interrupt to its node. Natural before/after saves and ordinary progression
    still need to establish the complete effects. Raw plot primitives alone do not
    satisfy this requirement.
-5. A verified LE2 runtime observation/input capture producer, or documented manual
-   observations tied to raw captures. The normalized state schema is a contract,
-   not an implemented in-game exporter. No game-thread debug-control integration
-   is claimed.
+5. Scenario-specific authoritative runtime observation and input capture. The
+   structural diagnostic and bounded call are implemented; they do not populate
+   the normalized gameplay-state schema or prove ammo, plot and selected-save
+   assertions. Those exporters and actual VR input remain pending.
 6. Native baseline behavior for reload, timed interrupt (including missed window)
    and scanning/discovery, followed by actual VR interaction proof when those
    features exist. Restore and verify the real protected installation afterward.
@@ -371,8 +417,8 @@ The following requirements are **not achieved** at this checkpoint:
    campaign/DLC coverage. The matrix identifies the work but is not evidence of
    completion.
 
-Prioritize the ME2 request-channel integration and complete the minimal no-op
-fixture load/save/reload cycle before increasing scope.
+Use the proven request channel to complete the minimal no-op fixture
+load/save/reload cycle before increasing scope.
 Then validate a resource-only preparation, save/reload persistence and each
 natural scenario. Keep every result attributable to its actual candidate and
 loaded binary; retain unsuccessful runs and restoration outcomes.
