@@ -3,6 +3,28 @@
 
 Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now has native proof: all eight edited values survived normal saving, independent Trilogy Save Editor decoding and a fresh normal load. The reload run closed normally and restored all four protected roots. The earlier save run recovered its test changes while preserving intervening ME1/shared-profile changes. The three gameplay scenarios, general console calls and VR acceptance remain pending.**
 
+## Offline dialogue observer, 2026-11-14 UTC
+
+The existing diagnostic host now accepts the read-only
+[`observe-dialogue`](../tools/qa-le2/control.md) request and the existing state
+exporter handles the correlated archive. SDK-backed tests passed in Debug and
+Release. The integrated client, exporter and scenario suites passed 53, 50 and
+18 tests, respectively. The client and exporter checks used the C++ wire codec.
+The native source for the built diagnostic host is `d91d4f92`. The ordinary
+development and monolithic builds also compiled successfully. The ordinary
+suite passed 53/53. One existing party-confirm client test timed out in the
+initial concurrent diagnostic run. The isolated diagnostic rerun passed all
+14 checks with the same source and timeouts, including the producer smoke
+test. The cause of the initial timeout was not established.
+
+[Veetor's source records](le2-interrupt-acquisition.md) tie the two candidate
+replies to `+5` Paragon and `+5` Renegade changes, respectively. An isolated
+score match cannot identify the chosen reply. The native baseline still needs
+a naturally obtained checkpoint, rendered prompts and input timing, and paired
+taken/missed trials from identical bytes with an observed reply and saved
+outcome. Snapshot history is incomplete. No game was launched or build
+deployed for this offline pass.
+
 ## Live diagnostic connection, 2026-11-14 UTC
 
 ### Normal New Game reached Normandy evacuation
