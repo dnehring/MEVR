@@ -36,7 +36,8 @@ a raw plot edit into a named validated recipe until ordinary progression works.
 
 ## 2. Independently check save encoding
 
-The optional oracle uses Trilogy Save Editor's actual pinned models and binary
+The optional oracle requires Rust/Cargo and the Windows MSVC build tools. It uses
+Trilogy Save Editor's actual pinned models and binary
 codec, independently of our Python implementation. It stages source from Git
 blobs, omits only UI derives, retains upstream licenses and records file hashes.
 Its Rust dependencies are locked. Source and built artifacts remain private.
@@ -52,6 +53,15 @@ the build command and build output alongside `source-manifest.json`, Cargo.lock
 and the executable. The cross-check binds source, executable, adapter, recipe and
 save hashes. It requires checksum validation, byte-identical independent
 reserialization, matching edited values and no other semantic changes.
+
+This workstation's verification used an isolated toolchain in ignored storage,
+without modifying the system PATH. To reuse it from the repository root:
+
+```powershell
+$env:RUSTUP_HOME = (Resolve-Path local-tools/le2-oracle/rustup).Path
+$env:CARGO_HOME = (Resolve-Path local-tools/le2-oracle/cargo).Path
+& local-tools/le2-oracle/cargo/bin/cargo.exe build --manifest-path <new-private-project>/Cargo.toml --release --locked
+```
 
 **The probe deliberately modifies arbitrary plot/position fields to test the
 format. Never use its output as a gameplay fixture.** This is headless source
