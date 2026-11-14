@@ -152,8 +152,12 @@ that a save loaded, ammunition changed or gameplay completed.
 After a proven normal fixture load, `observe-save-flow` returns current mode,
 focused panel, pause/browser and Save-panel state. Check the
 [source and supported-context contract](../../research/le2-save-flow-observation.md).
-The initial supported pause route requires ordinary on-foot Default mode with
-no focused panel. Unsupported contexts remain explicit refusals.
+The supported pause route requires ordinary on-foot Default mode with no
+focused panel or a verified closed, idle PowerWheel HUD. Inspect
+`focusedPowerWheel` for its exact ownership, visibility and transition checks;
+the tag alone cannot authorize the action. Active, transitioning and unsupported
+focus contexts remain explicit refusals. Native acceptance of this additional
+idle-HUD case remains pending.
 
 ```powershell
 python tools/qa-le2/control.py C:\private\le2-run observe-save-flow
