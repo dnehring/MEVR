@@ -54,6 +54,10 @@ the probe disabled. Reviewed builds can additionally enable `nativeMenuActions`
 for the two explicit menu actions below. Only the integrated host advertises
 these runtime capabilities; a new client alone cannot enable them. Default gates
 and offline producer fixtures keep native menu actions disabled.
+The later pause/Save-menu slice advertises `observeSaveFlow` and
+`nativeSaveMenuActions` separately; it shares the explicit menu action gate.
+`nativeSaveNew` remains false. These capabilities describe implemented routes,
+not eligibility of the currently loaded scene.
 
 The host currently hashes the executable and module synchronously around each
 request. Keep these setup queries outside performance windows. Admission checks
@@ -141,6 +145,40 @@ console dispatch disabled. `--allow-console` only opts the client in; it cannot 
 host. Never use `streamlevelin`: both the client and the C++ dispatch gate reject
 it. A console result marked `dispatched` proves only that dispatch returned, not
 that a save loaded, ammunition changed or gameplay completed.
+
+### Observe and open the normal pause and Save menus
+
+After a proven normal fixture load, `observe-save-flow` returns current mode,
+focused panel, pause/browser and Save-panel state. Check the
+[source and supported-context contract](../../research/le2-save-flow-observation.md).
+The initial supported pause route requires ordinary on-foot Default mode with
+no focused panel. Unsupported contexts remain explicit refusals.
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run observe-save-flow
+python tools/qa-le2/control.py C:\private\le2-run open-pause-menu --allow-menu-actions
+```
+
+After a `dispatched` return, observe again, capture the actual normal pause
+browser, and review that it has initialized and Save is enabled. A zero raw
+alert value alone cannot prove initialization. Keep the same paused world,
+player, mode array, browser and effective Save page; a changed observed flow
+invalidates its comparison receipt. Then request:
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run open-save-menu --allow-menu-actions
+python tools/qa-le2/control.py C:\private\le2-run observe-save-flow
+```
+
+The explicit request attests the caller reviewed the fresh UI/capture. It does
+not require another user confirmation when the current task already authorizes
+the action. The adapter derives the unique configured Save-type row and tag,
+then uses the normal browser route. It accepts no caller-supplied target.
+Capture and inspect the resulting Save panel and enumeration separately.
+Each opener has an independent one-entry allowance and the same uncertainty
+rules as the load-menu actions. **Neither action submits New Save.** Its normal
+save initialization, free-space checks, new-slot allocation, completion and
+reload proof are the next integration; do not bypass them with a console save.
 
 ### Observe and open the normal load menu
 
@@ -418,9 +456,9 @@ One blank line separates the headers from exactly `bytes` payload bytes. UUIDs
 and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings.
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
-control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`,
+control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-save-flow`,
 `observe-fixture`, `load-fixture`, `probe-fov`, `advance-splash`, and
-`open-load-menu` requests require an empty payload.
+`open-load-menu`, `open-pause-menu`, `open-save-menu` requests require an empty payload.
 Unknown, duplicated, reordered, partial or trailing data is
 rejected. C++ and Python implementations have executable byte-conformance tests.
 
