@@ -57,7 +57,11 @@ if ($hash -ne $pinned[$Version]) {
 $work = Join-Path $env:TEMP "mevr-openal-soft-$Version"
 if (Test-Path $work) { Remove-Item $work -Recurse -Force -Confirm:$false }
 New-Item -ItemType Directory -Force $work | Out-Null
-tar -xjf $kept -C $work
+# Windows' own tar (bsdtar): a GNU tar first on the PATH (Git's, from a Git Bash shell) reads the drive letter in
+# H:\... as a remote host and fails.
+$tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+if (-not (Test-Path $tar)) { $tar = 'tar' }
+& $tar -xjf $kept -C $work
 if ($LASTEXITCODE -ne 0) { throw "tar failed on $kept" }
 $src = Join-Path $work "openal-soft-$Version"
 $build = Join-Path $work 'build'
