@@ -96,6 +96,26 @@ int main(int argc, char** argv) {
         console.sequence = 2; console.verb = "console"; console.payload = "stat fps";
         Check(probeOnly.Claim(console, 10000).has_value(), "probe permission does not grant console");
         Check(probeOnly.LastSequence() == 1, "console rejection preserves claimed probe sequence");
+        for (auto verb : {"advance-splash", "open-load-menu"}) {
+            Frame menu = *decoded; menu.verb = verb;
+            Check(Decode(*Encode(menu))->verb == verb, "menu action wire roundtrip");
+            Gate disabledMenu(identity, true, true);
+            Check(disabledMenu.Claim(menu, 10000) == "native menu actions are disabled", "other native opt-ins do not grant menu actions");
+            Check(disabledMenu.LastSequence() == 0, "disabled menu action does not claim");
+            Gate allowedMenu(identity, false, false, true);
+            menu.payload = "arbitrary target";
+            Check(!Encode(menu) && allowedMenu.Claim(menu, 10000).has_value(), "menu action cannot carry arbitrary targets");
+            menu.payload.clear();
+            Check(!allowedMenu.Claim(menu, 10000), "explicit menu opt in");
+            Check(allowedMenu.Claim(menu, 10000).has_value(), "claimed menu action cannot retry");
+            Check(allowedMenu.Claim(console, 10000).has_value(), "menu permission does not grant console");
+        }
+        Frame menuObservation = *decoded; menuObservation.verb = "observe-save-menu";
+        Gate readOnly(identity);
+        Check(Decode(*Encode(menuObservation))->verb == menuObservation.verb &&
+              !readOnly.Claim(menuObservation, 10000), "menu observation needs no action opt in");
+        menuObservation.payload = "x";
+        Check(!Encode(menuObservation), "menu observation accepts no payload");
         std::cout << "Control identity, replay, expiry, opt-in, and wire corruption checks passed\n";
         return 0;
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }

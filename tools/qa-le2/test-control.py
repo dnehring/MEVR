@@ -62,6 +62,9 @@ class WireTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "frame.control"
             examples = [frame(), dict(frame(), verb="console", payload=b"stat fps", bytes="8"),
+                        dict(frame(), verb="observe-save-menu"),
+                        dict(frame(), verb="advance-splash"), dict(frame(), verb="open-load-menu"),
+                        dict(frame(), verb="open-load-menu", kind="result", status="dispatched"),
                         dict(frame(), verb="probe-fov"),
                         dict(frame(), verb="probe-fov", kind="result", status="dispatched", payload=b'{"fov":90}', bytes="10"),
                         dict(frame(), kind="result", status="completed", payload=b"line1\nline2", bytes="11")]
@@ -95,7 +98,7 @@ class ClientTests(unittest.TestCase):
                     time.sleep(.01)
                 request = c.decode((self.root / "request.control").read_bytes())
                 if consume: (self.root / "request.control").unlink()
-                request.update(kind="result", status="completed" if request["verb"] not in ("console", "probe-fov") or console_complete else "dispatched")
+                request.update(kind="result", status="completed" if request["verb"] not in c.NATIVE_ACTIONS or console_complete else "dispatched")
                 if status is not None: request["status"] = status
                 if corrupt: request["lease"] = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
                 c.publish(self.root / "result.control", c.encode(request))
@@ -171,6 +174,47 @@ class ClientTests(unittest.TestCase):
                     c.submit(self.root, "probe-fov", bind=bind, **options)
             bind.assert_not_called()
         self.assertFalse(list(self.root.iterdir()))
+
+    def test_menu_action_opt_in_and_payload_refused_before_binding(self):
+        with mock.patch.object(c, "binding", side_effect=AssertionError("must not bind")) as bind:
+            for verb in c.MENU_ACTIONS:
+                for options in ({}, {"allow_console": True, "allow_probe_fov": True},
+                                {"allow_menu_actions": True, "command": "arbitrary target"}):
+                    with self.assertRaises(c.ControlError): c.submit(self.root, verb, bind=bind, **options)
+            bind.assert_not_called()
+        self.assertFalse(list(self.root.iterdir()))
+
+    def test_menu_observation_completes_without_native_opt_in(self):
+        thread, errors = self.peer()
+        result = c.submit(self.root, "observe-save-menu", bind=self.bind)
+        thread.join(); self.assertFalse(errors)
+        self.assertEqual(result["status"], "completed")
+        self.assertFalse((self.root / "outstanding.json").exists())
+
+    def test_menu_completed_response_preserves_pending_intent(self):
+        parent = self.root
+        for verb in c.MENU_ACTIONS:
+            with self.subTest(verb=verb):
+                self.root = parent / verb; self.root.mkdir()
+                thread, errors = self.peer(status="completed")
+                with self.assertRaisesRegex(c.ControlError, "gameplay completion"):
+                    c.submit(self.root, verb, allow_menu_actions=True, bind=self.bind)
+                thread.join(); self.assertFalse(errors)
+                original = (self.root / "result.control").read_bytes()
+                with self.assertRaisesRegex(c.ControlError, "gameplay completion"):
+                    c.collect(self.root, bind=self.bind)
+                self.assertEqual((self.root / "result.control").read_bytes(), original)
+                self.assertTrue((self.root / "outstanding.json").exists())
+
+    def test_menu_dispatch_and_rejection_are_correlated_terminal_results(self):
+        for verb in c.MENU_ACTIONS:
+            for status in ("dispatched", "rejected"):
+                with self.subTest(verb=verb, status=status):
+                    thread, errors = self.peer(status=status)
+                    result = c.submit(self.root, verb, allow_menu_actions=True, bind=self.bind)
+                    thread.join(); self.assertFalse(errors)
+                    self.assertEqual(result["status"], status)
+                    self.assertFalse((self.root / "outstanding.json").exists())
 
     def test_probe_completed_cannot_clear_pending_or_be_collected(self):
         thread, errors = self.peer(status="completed")

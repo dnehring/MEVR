@@ -41,7 +41,8 @@ bool ForbiddenConsole(std::string_view command) {
 bool Valid(Frame const& f) {
     if (!ValidIdentity(f.identity) || !Uuid(f.id) || f.sequence == 0 || f.deadline == 0 ||
         f.payload.size() > kMaxPayload || f.payload.find('\0') != std::string::npos) return false;
-    if (f.verb != "ping" && f.verb != "observe" && f.verb != "console" && f.verb != "probe-fov") return false;
+    if (f.verb != "ping" && f.verb != "observe" && f.verb != "observe-save-menu" &&
+        f.verb != "console" && f.verb != "probe-fov" && f.verb != "advance-splash" && f.verb != "open-load-menu") return false;
     if (f.kind == "request") {
         if (f.status != "pending") return false;
         if (f.verb != "console") return f.payload.empty();
@@ -102,8 +103,9 @@ std::optional<std::string> Encode(Frame const& f) {
     out += "\n" + f.payload;
     return out;
 }
-Gate::Gate(Identity identity, bool allowConsole, bool allowProbeFov)
-    : identity_(std::move(identity)), allowConsole_(allowConsole), allowProbeFov_(allowProbeFov) {}
+Gate::Gate(Identity identity, bool allowConsole, bool allowProbeFov, bool allowMenuActions)
+    : identity_(std::move(identity)), allowConsole_(allowConsole), allowProbeFov_(allowProbeFov),
+      allowMenuActions_(allowMenuActions) {}
 std::optional<std::string> Gate::Claim(Frame const& f, std::uint64_t now) {
     if (!Valid(f) || f.kind != "request") return "invalid request";
     if (!ValidIdentity(identity_) || !(f.identity == identity_)) return "identity mismatch";
@@ -111,6 +113,8 @@ std::optional<std::string> Gate::Claim(Frame const& f, std::uint64_t now) {
     if (f.sequence <= sequence_ || ids_.contains(f.id)) return "duplicate or stale request";
     if (ids_.size() >= kMaxRequests) return "lease request limit reached";
     if (f.verb == "probe-fov" && !allowProbeFov_) return "native FOV probe is disabled";
+    if ((f.verb == "advance-splash" || f.verb == "open-load-menu") && !allowMenuActions_)
+        return "native menu actions are disabled";
     if (f.verb == "console" && !allowConsole_) return "native console is disabled";
     if (f.verb == "console" && ForbiddenConsole(f.payload)) return "streamlevelin is prohibited";
     sequence_ = f.sequence;

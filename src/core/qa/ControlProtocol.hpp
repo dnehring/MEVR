@@ -46,13 +46,15 @@ std::optional<std::string> Encode(Frame const& frame);
 // after completed/error. Wire decoding retains such frames as evidence.
 class Gate {
 public:
-    explicit Gate(Identity identity, bool allowConsole = false, bool allowProbeFov = false);
+    explicit Gate(Identity identity, bool allowConsole = false, bool allowProbeFov = false,
+                  bool allowMenuActions = false);
     std::optional<std::string> Claim(Frame const& request, std::uint64_t nowUtcMs);
     std::uint64_t LastSequence() const { return sequence_; }
 private:
     Identity identity_;
     bool allowConsole_{};
     bool allowProbeFov_{};
+    bool allowMenuActions_{};
     std::uint64_t sequence_{};
     std::set<std::string> ids_;
 };

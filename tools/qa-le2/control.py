@@ -25,6 +25,8 @@ KEYS = ("kind", "run", "lease", "pid", "start", "exe", "host", "mod", "id", "seq
         "deadline", "verb", "status", "bytes", "game")
 IDENTITY = ("run", "lease", "pid", "start", "exe", "host", "mod", "game")
 MAX_PAYLOAD, MAX_FRAME, MAX_LIFETIME_MS = 16384, 17408, 30000
+MENU_ACTIONS = ("advance-splash", "open-load-menu")
+NATIVE_ACTIONS = ("console", "probe-fov") + MENU_ACTIONS
 
 
 class ControlError(ValueError):
@@ -54,7 +56,7 @@ def validate(frame):
     payload = frame["payload"]
     if not isinstance(payload, bytes) or len(payload) > MAX_PAYLOAD or b"\0" in payload or number(frame["bytes"]) != len(payload):
         raise ControlError("Invalid payload")
-    if frame["verb"] not in ("ping", "observe", "console", "probe-fov"):
+    if frame["verb"] not in ("ping", "observe", "observe-save-menu") + NATIVE_ACTIONS:
         raise ControlError("Unsupported verb")
     if frame["kind"] == "request":
         if frame["status"] != "pending":
@@ -193,7 +195,7 @@ def receive(run, directory, identity, frame, bind):
         raise ControlError("Uncorrelated result; request outcome is uncertain")
     if bind(run)[1] != identity:
         raise ControlError("Runtime identity changed during request")
-    if frame["verb"] in ("console", "probe-fov") and result["status"] == "completed":
+    if frame["verb"] in NATIVE_ACTIONS and result["status"] == "completed":
         raise ControlError("Native dispatch cannot claim gameplay completion")
     if session.safe_path(directory / "request.control").exists():
         raise ControlError("Producer has not consumed request; outcome uncertain")
@@ -239,13 +241,16 @@ def collect(run, *, bind=binding):
         if lock.read_text(encoding="ascii") == token: lock.unlink()
 
 
-def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_probe_fov=False, bind=binding):
+def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_probe_fov=False,
+           allow_menu_actions=False, bind=binding):
     if not 1 <= timeout <= 30:
         raise ControlError("Timeout must be 1..30 seconds")
     if verb == "console" and (not allow_console or re.search(r"\bstreamlevelin\b", command, re.I)):
         raise ControlError("Console requires explicit opt-in; streamlevelin is prohibited")
     if verb == "probe-fov" and not allow_probe_fov:
         raise ControlError("Native FOV probe requires explicit opt-in")
+    if verb in MENU_ACTIONS and not allow_menu_actions:
+        raise ControlError("Native menu action requires explicit --allow-menu-actions")
     if verb != "console" and command:
         raise ControlError("Command is only valid with console")
     directory, identity = bind(run)
@@ -287,15 +292,17 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("run", type=Path)
-    p.add_argument("verb", choices=("ping", "observe", "console", "probe-fov", "collect"))
+    p.add_argument("verb", choices=("ping", "observe", "observe-save-menu", "collect") + NATIVE_ACTIONS)
     p.add_argument("--command", default="")
     p.add_argument("--timeout", type=int, default=10)
     p.add_argument("--allow-console", action="store_true")
     p.add_argument("--allow-probe-fov", action="store_true")
+    p.add_argument("--allow-menu-actions", action="store_true")
     a = p.parse_args()
     try:
         result = collect(a.run.absolute()) if a.verb == "collect" else submit(
-            a.run.absolute(), a.verb, a.command, a.timeout, a.allow_console, allow_probe_fov=a.allow_probe_fov)
+            a.run.absolute(), a.verb, a.command, a.timeout, a.allow_console,
+            allow_probe_fov=a.allow_probe_fov, allow_menu_actions=a.allow_menu_actions)
         print(json.dumps(dict(result, payload=result["payload"].decode("utf-8", errors="replace")), indent=2))
         return 0 if result["status"] in ("completed", "dispatched") else 2
     except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:
