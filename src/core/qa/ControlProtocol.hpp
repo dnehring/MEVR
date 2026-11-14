@@ -40,14 +40,19 @@ std::optional<std::string> Encode(Frame const& frame);
 // client intent. A fresh Gate requires a fresh lease: retain this gate across
 // hot reload or issue a new lease, never reset replay state under the old lease.
 // Host startup, lease and file-path checks are the runtime adapter's job.
+// probe-fov is a separate empty-input diagnostic opt-in, not console access.
+// Its dispatched status requires native return plus host payload validation;
+// completed is not a valid semantic result for it. The client retains intent
+// after completed/error. Wire decoding retains such frames as evidence.
 class Gate {
 public:
-    explicit Gate(Identity identity, bool allowConsole = false);
+    explicit Gate(Identity identity, bool allowConsole = false, bool allowProbeFov = false);
     std::optional<std::string> Claim(Frame const& request, std::uint64_t nowUtcMs);
     std::uint64_t LastSequence() const { return sequence_; }
 private:
     Identity identity_;
     bool allowConsole_{};
+    bool allowProbeFov_{};
     std::uint64_t sequence_{};
     std::set<std::string> ids_;
 };

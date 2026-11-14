@@ -50,11 +50,20 @@ class WireTests(unittest.TestCase):
         result = dict(frame(), kind="result", status="completed", payload=b"line1\nline2", bytes="11")
         self.assertEqual(c.decode(c.encode(result)), result)
 
+    def test_probe_fov_wire_has_no_command_input(self):
+        probe = dict(frame(), verb="probe-fov")
+        self.assertEqual(c.decode(c.encode(probe)), probe)
+        for payload in (b"x", b"stat fps", b"\n", b"\0"):
+            with self.assertRaises(c.ControlError):
+                c.encode(dict(probe, payload=payload, bytes=str(len(payload))))
+
     @unittest.skipUnless(os.environ.get("LE2_CONTROL_CPP"), "set LE2_CONTROL_CPP to standalone C++ executable")
     def test_cpp_python_conformance(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "frame.control"
             examples = [frame(), dict(frame(), verb="console", payload=b"stat fps", bytes="8"),
+                        dict(frame(), verb="probe-fov"),
+                        dict(frame(), verb="probe-fov", kind="result", status="dispatched", payload=b'{"fov":90}', bytes="10"),
                         dict(frame(), kind="result", status="completed", payload=b"line1\nline2", bytes="11")]
             for f in examples:
                 raw = c.encode(f); p.write_bytes(raw)
@@ -62,6 +71,10 @@ class WireTests(unittest.TestCase):
                 self.assertEqual(run.returncode, 0, run.stderr)
                 self.assertEqual(run.stdout, raw)
             p.write_bytes(c.encode(frame()).replace(b"game=LE2", b"game=LE1"))
+            self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"], str(p)], capture_output=True).returncode, 2)
+            malformed_probe = c.encode(dict(frame(), verb="probe-fov")).replace(b"bytes=0\n", b"bytes=1\n") + b"x"
+            with self.assertRaises(c.ControlError): c.decode(malformed_probe)
+            p.write_bytes(malformed_probe)
             self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"], str(p)], capture_output=True).returncode, 2)
 
 
@@ -82,7 +95,7 @@ class ClientTests(unittest.TestCase):
                     time.sleep(.01)
                 request = c.decode((self.root / "request.control").read_bytes())
                 if consume: (self.root / "request.control").unlink()
-                request.update(kind="result", status="completed" if request["verb"] != "console" or console_complete else "dispatched")
+                request.update(kind="result", status="completed" if request["verb"] not in ("console", "probe-fov") or console_complete else "dispatched")
                 if status is not None: request["status"] = status
                 if corrupt: request["lease"] = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
                 c.publish(self.root / "result.control", c.encode(request))
@@ -150,6 +163,53 @@ class ClientTests(unittest.TestCase):
         for command, opt in (("quit", False), ("streamlevelin BioP_Nor", True)):
             with self.assertRaises(c.ControlError): c.submit(self.root, "console", command, allow_console=opt, bind=self.bind)
         self.assertFalse(list(self.root.iterdir()))
+
+    def test_probe_opt_in_independent_and_payload_refused_before_binding(self):
+        with mock.patch.object(c, "binding", side_effect=AssertionError("must not bind")) as bind:
+            for options in ({}, {"allow_console": True}, {"allow_probe_fov": True, "command": "stat fps"}):
+                with self.assertRaises(c.ControlError):
+                    c.submit(self.root, "probe-fov", bind=bind, **options)
+            bind.assert_not_called()
+        self.assertFalse(list(self.root.iterdir()))
+
+    def test_probe_completed_cannot_clear_pending_or_be_collected(self):
+        thread, errors = self.peer(status="completed")
+        with self.assertRaisesRegex(c.ControlError, "gameplay completion"):
+            c.submit(self.root, "probe-fov", allow_probe_fov=True, bind=self.bind)
+        thread.join(); self.assertFalse(errors)
+        self.assertTrue((self.root / "outstanding.json").exists())
+        result = (self.root / "result.control").read_bytes()
+        with self.assertRaisesRegex(c.ControlError, "gameplay completion"):
+            c.collect(self.root, bind=self.bind)
+        self.assertEqual((self.root / "result.control").read_bytes(), result)
+        with self.assertRaisesRegex(c.ControlError, "pending/uncertain"):
+            c.submit(self.root, "probe-fov", allow_probe_fov=True, bind=self.bind)
+
+    def test_probe_error_retained_until_late_correlated_dispatched(self):
+        thread, errors = self.peer(status="error")
+        with self.assertRaisesRegex(c.ControlError, "pending intent retained"):
+            c.submit(self.root, "probe-fov", allow_probe_fov=True, bind=self.bind)
+        thread.join(); self.assertFalse(errors)
+        pending = c.session.read_json(self.root / "outstanding.json")
+        error_path = self.root / "history" / (pending["id"] + ".error.result")
+        result = c.decode(error_path.read_bytes())
+        self.assertEqual(result["verb"], "probe-fov")
+        self.assertEqual(result["status"], "error")
+        with self.assertRaisesRegex(c.ControlError, "pending/uncertain"):
+            c.submit(self.root, "ping", bind=self.bind)
+        result["status"] = "dispatched"
+        c.publish(self.root / "result.control", c.encode(result))
+        self.assertEqual(c.collect(self.root, bind=self.bind)["status"], "dispatched")
+        self.assertFalse((self.root / "outstanding.json").exists())
+        self.assertTrue(error_path.exists())
+        self.assertEqual(len(list((self.root / "history").glob("*.request"))), 1)
+
+    def test_probe_predispatch_rejection_is_terminal(self):
+        thread, errors = self.peer(status="rejected")
+        result = c.submit(self.root, "probe-fov", allow_probe_fov=True, bind=self.bind)
+        thread.join(); self.assertFalse(errors)
+        self.assertEqual(result["status"], "rejected")
+        self.assertFalse((self.root / "outstanding.json").exists())
 
     def test_module_generation_change_is_uncertain(self):
         self.peer()

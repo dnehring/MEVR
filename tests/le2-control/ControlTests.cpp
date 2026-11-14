@@ -76,6 +76,26 @@ int main(int argc, char** argv) {
         Frame result = *decoded; result.kind = "result"; result.status = "completed"; result.payload = "ready\nobserved";
         Check(Decode(*Encode(result)).has_value(), "multiline result");
         Check(gate.Claim(result, 10000).has_value(), "result cannot execute");
+        Frame probe = *decoded; probe.verb = "probe-fov";
+        Check(Decode(*Encode(probe))->verb == "probe-fov", "probe wire roundtrip");
+        Gate noProbe(identity);
+        Check(noProbe.Claim(probe, 10000) == "native FOV probe is disabled", "probe default disabled");
+        Check(noProbe.LastSequence() == 0, "disabled probe does not claim");
+        Gate consoleOnly(identity, true);
+        Check(consoleOnly.Claim(probe, 10000).has_value(), "console permission does not grant probe");
+        Gate probeOnly(identity, false, true);
+        probe.payload = "stat fps";
+        Check(!Encode(probe), "probe payload cannot encode");
+        Check(probeOnly.Claim(probe, 10000).has_value(), "probe payload rejected at admission");
+        Check(probeOnly.LastSequence() == 0, "invalid payload does not claim");
+        probe.payload.clear();
+        Check(!probeOnly.Claim(probe, 10000), "explicit independent probe opt in");
+        Check(probeOnly.Claim(probe, 10000).has_value(), "uncertain probe cannot retry");
+        Frame console = probe;
+        console.id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+        console.sequence = 2; console.verb = "console"; console.payload = "stat fps";
+        Check(probeOnly.Claim(console, 10000).has_value(), "probe permission does not grant console");
+        Check(probeOnly.LastSequence() == 1, "console rejection preserves claimed probe sequence");
         std::cout << "Control identity, replay, expiry, opt-in, and wire corruption checks passed\n";
         return 0;
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }
