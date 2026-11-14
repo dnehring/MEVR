@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Mass Effect 2 VR implementation plan
 
-Date: 2026-11-13. Status: **planning complete; implementation tasks unassigned and unproven**.
+Date: 2026-11-13. Status: **P9 offline validation tooling implemented; native port proof remains pending**.
 
 Use the [concise port goal](le2-port-goal.md) as the goal prompt's entry point; the documents below provide its detailed scope.
 
@@ -10,6 +10,8 @@ Deliver the existing MEVR interaction model in Legendary Edition ME2, beginning 
 This is the starting document for agents. A task is complete only when its stated gate is met. Compiling an ASI, viewing stereo, proving combat behavior and accepting it in a physical headset are different milestones. No sequel runtime proof is recorded by this planning commit.
 
 The [validation tooling goal](le2-validation-goal.md) expands P9 into save editing, reproducible scenarios, story-state preparation and evidence requirements. Use it when assigning the testing infrastructure work.
+
+P9's current [workflow](../tools/qa-le2/README.md) includes save preparation, protected staging/restoration, draft scenarios and evidence auditing. [Verification results](../research/le2-validation-evidence.md) distinguish tested offline tooling and independent editor reopening from pending native loading, story recipes and VR acceptance. [Fixture acquisition findings](../research/le2-fixture-acquisition.md) identify concrete reload/interrupt candidates and scanning dependencies.
 
 ## Product decisions
 
@@ -22,7 +24,7 @@ The [validation tooling goal](le2-validation-goal.md) expands P9 into save editi
 
 ## Agent work packages
 
-All rows start **unassigned / planned**. The lead records owner, branch, base commit, status and result link when dispatching. Source paths below refer to existing files; new adapter placement is agreed in P0 before parallel edits.
+P0-P8 remain planned; P9's offline tooling checkpoint is linked above. The lead records owner, branch, base commit, status and result link when dispatching. Source paths below refer to existing files; new adapter placement is agreed in P0 before parallel edits.
 
 | ID and package | Inputs and dependencies | Owned scope and reusable systems | Completion evidence |
 |---|---|---|---|
