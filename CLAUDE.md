@@ -4,6 +4,10 @@ Native VR mod for Mass Effect Legendary Edition (BioWare's UE3 fork): a C++ ASI 
 our own `bink2w64.dll` loader (`src/loader`) or ME3Tweaks' LEBinkProxy, on top of LExSDKv2. One VR system for LE1/LE2/LE3, built LE1 first. Game
 mechanics may change to fit VR (see `docs/trilogy-design.md`).
 
+**LE2 port entry point:** [ME2 implementation plan](docs/le2-port-implementation-plan.md) defines agent work packages,
+dependencies and proof gates; [reuse map](docs/le2-port-reuse-map.md) names existing MEVR/native-game systems and pinned
+external code candidates. Read these before sequel work. The current scope is proving LE2 first, then extending to LE3.
+
 ## Git
 
 - **Commit freely.** The user gave standing permission (2026-10-07) to commit without asking.
