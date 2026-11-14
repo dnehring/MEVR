@@ -1,0 +1,16 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "id": "one-probe-launch",
+  "resource": "player.probes",
+  "cost": 1,
+  "quantum": 1,
+  "surplus": 2,
+  "nativeValidation": "pending",
+  "provenance": {
+    "kind": "source-inspected",
+    "reference": "SFXGame.pcc:SFXGameModeOrbital.LaunchProbe; research/le2-fixture-acquisition.md",
+    "sha256": "681f3fc72c08c66bc6d77ca91102e08cead7c6a5586c22bad0a8f7085be38d77",
+    "description": "Inspected LE2 LaunchProbe checks for positive probes and deducts one on a legal launch. Other scanning/in-flight/impact/rescale/exit gates still apply. Quantum is one discrete probe; surplus is an explicitly chosen two-probe starting balance. Native behavior and resource persistence remain pending."
+  }
+}
