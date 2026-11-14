@@ -5,6 +5,8 @@ Date: 2026-11-13. Read-only inspection; no game launch, save edit or fixture pro
 
 Follow-up: the [scanner now supports explicit LE2 inspection](../tools/conversation-scan/README.md), including string references, reply categories and interrupt-to-node linkage. The scanner limitations below describe the initial investigation; its current README identifies which remain unresolved. Use `--game LE2` for all new sequel inspections.
 
+The [2026-11-14 timed-interrupt follow-up](le2-interrupt-acquisition.md) checks the existing late-game story state and Liara/Citadel alternatives. Clear Liara interrupt outcomes do not establish replayability: met-Liara, DLC completion and date states are already set. No current-save timed fixture is promoted. Freedom's Progress provides a concrete dual-polarity earlier-progression candidate that can share the normal ProCer reload acquisition playthrough.
+
 ## Current private saves
 
 The three existing saves were freshly parsed with `tools/le2-save.py info --json`. The manual save and autosave report `Biop_Nor`; **the chapter save reports `BioP_EndGm2`**, so it must not be treated as another Normandy fixture. All three have the same 80 recorded planet entries, all marked visited, with 599 probe-impact coordinates in total, 30 probes and 1500 fuel. They are a narrow late-game corpus, not three independent scenario states. Raw inspection and hashes stay private.
@@ -23,7 +25,9 @@ Current saves already have the upstream-labeled Garrus recruitment mechanic, gre
 
 The interrupt times above come from the existing dumper's three-decimal rendering of authored track values. They are not measured runtime window bounds. Default/custom window logic, line playback, skips and localization still require native observation. The script inspection exposes native declarations for `BioConversation.SelectInterruption`, `TickInterruptionData`, `NeedToDisplayInterrupt`, `EnableCustomInterruptWindow` and `SetCustomInterruptWindow`; it does not reveal their native implementations or prove safe call order. Acceptance must use player controls, not call these functions to manufacture an outcome.
 
-## Existing scanner: useful subset, missing LE2 support
+## Historical scanner audit: initial missing LE2 support
+
+This section records the 2026-11-13 starting state, not the current tool contract. Explicit LE2 mode, node/interrupt linkage and scoped state-event inspection are now implemented; see the [current scanner README](../tools/conversation-scan/README.md). The effective transition-map and galaxy investigation also progressed in [galaxy fixture source findings](le2-galaxy-fixture-source.md). Retain the list below as historical acquisition context, not a request to reimplement those changes.
 
 The current [scanner](../tools/conversation-scan/Program.cs) has no game selection. `Scan`, `ClassDump`, `ScriptDump`, `SequenceDump`, `StateEvents` and `Wheels` initialize LegendaryExplorerCore for LE1. Nevertheless, actual read-only execution of `--class-dump`, `--script` and `--sequence` successfully opened installed LE2 packages in this inspection. They are useful targeted research tools today; that is not validation of the complete LE1 conversation workflow on LE2.
 
