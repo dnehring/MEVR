@@ -314,11 +314,44 @@ def load_scenario(path):
     return module.load(path, for_run=True)
 
 
+def validate_fixture_selection_text(plan):
+    """Catch host text limits before backups; the host still checks the full binding."""
+    if "fixtureSelection" not in plan:
+        return
+    selection = plan["fixtureSelection"]
+    if not isinstance(selection, dict):
+        raise SessionError("fixtureSelection must be an object")
+    descriptor, evidence = selection.get("descriptor"), selection.get("evidence")
+    if not isinstance(descriptor, dict) or not isinstance(evidence, dict):
+        raise SessionError("fixtureSelection descriptor and evidence must be objects")
+    # Keep these limits aligned with Le2ControlHost.cpp DescriptorComponent and
+    # FrozenFixture. C++ string::size counts UTF-8 bytes, not Python characters.
+    for field, value, max_bytes, max_units in (
+            ("descriptor.career", descriptor.get("career"), 1024, 255),
+            ("descriptor.saveName", descriptor.get("saveName"), 1024, 255),
+            ("evidence.reviewedBy", evidence.get("reviewedBy"), 256, None)):
+        label = "fixtureSelection." + field
+        if not isinstance(value, str) or not value or "\0" in value:
+            raise SessionError(f"{label} must be nonempty text without NUL")
+        try:
+            byte_count = len(value.encode("utf-8"))
+            unit_count = len(value.encode("utf-16-le")) // 2
+        except UnicodeEncodeError as exc:
+            raise SessionError(f"{label} must be strict Unicode text") from exc
+        if byte_count > max_bytes:
+            raise SessionError(f"{label} exceeds {max_bytes} UTF-8 bytes")
+        if max_units is not None and unit_count > max_units:
+            raise SessionError(f"{label} exceeds {max_units} UTF-16 code units")
+        if max_units is None and not value.strip(" \t\r\n"):
+            raise SessionError(f"{label} must identify the reviewer and mapping basis")
+
+
 def validate_plan(plan, run, scenario_loader=load_scenario):
     if plan.get("schemaVersion") != SCHEMA:
         raise SessionError("Unknown session plan version")
     if not isinstance(plan.get("coordinatedOwner"), str) or not plan["coordinatedOwner"].strip():
         raise SessionError("coordinatedOwner must identify the explicitly coordinated session owner")
+    validate_fixture_selection_text(plan)
     profile = safe_path(plan["profileRoot"])
     game = safe_path(plan["gameRoot"])
     run = safe_path(run)

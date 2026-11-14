@@ -142,6 +142,64 @@ class SessionTests(unittest.TestCase):
             self.assertEqual(s.snapshot(path), state)
         self.assertFalse((self.locks / "qa-cafeteria.lock").exists())
 
+    def fixture_selection(self):
+        return {"schemaVersion": 1,
+                "descriptor": {"career": "MEVR-QA", "saveName": "Save_0001", "index": 1, "type": 0},
+                "fixtureSha256": s.digest(self.fixture), "exeSha256": s.digest(self.exe),
+                "targetRelativePath": self.target_relative,
+                "evidence": {"runId": "12345678-1234-1234-1234-123456789abc",
+                             "observationSha256": "a" * 64, "captureSha256": "b" * 64,
+                             "reviewedBy": "offline synthetic mapping review"}}
+
+    def test_fixture_selection_text_rejected_before_backups_or_live_writes(self):
+        cases = [("evidence", "reviewedBy", "x" * 257, "256 UTF-8 bytes"),
+                 ("evidence", "reviewedBy", "\u00e9" * 129, "256 UTF-8 bytes"),
+                 ("evidence", "reviewedBy", " \t\r\n", "identify the reviewer"),
+                 ("evidence", "reviewedBy", "review\0note", "without NUL"),
+                 ("evidence", "reviewedBy", None, "nonempty text")]
+        for field in ("career", "saveName"):
+            cases.extend(("descriptor", field, value, reason) for value, reason in (
+                ("x" * 256, "255 UTF-16 code units"),
+                ("\U0001f600" * 128, "255 UTF-16 code units"),
+                ("\u00e9" * 513, "1024 UTF-8 bytes"),
+                ("\ud800", "strict Unicode"), ("", "nonempty text")))
+        for section, field, value, reason in cases:
+            with self.subTest(section=section, field=field, reason=reason):
+                self.plan["fixtureSelection"] = self.fixture_selection()
+                self.plan["fixtureSelection"][section][field] = value
+                processes = mock.Mock(return_value=[])
+                with mock.patch.object(s, "copy_snapshot") as backup, \
+                        mock.patch.object(s, "stage_fixture") as stage:
+                    with self.assertRaisesRegex(s.SessionError, reason):
+                        self.prepare(processes=processes)
+                    processes.assert_not_called()
+                    backup.assert_not_called()
+                    stage.assert_not_called()
+                self.assertFalse(self.run.exists())
+                self.assertFalse(self.locks.exists())
+                self.assertFalse(self.target.exists())
+                self.assertRestored()
+
+    def test_fixture_selection_text_exact_boundaries_are_accepted(self):
+        for reviewer in ("x" * 256, "\u00e9" * 128):
+            for leaf in ("x" * 255, "\u754c" * 255, "\U0001f600" * 127 + "x"):
+                with self.subTest(reviewer_bytes=len(reviewer.encode("utf-8")), leaf=leaf):
+                    selection = self.fixture_selection()
+                    selection["evidence"]["reviewedBy"] = reviewer
+                    selection["descriptor"].update(career=leaf, saveName=leaf)
+                    s.validate_fixture_selection_text({"fixtureSelection": selection})
+        # No optional selection remains valid for the existing operator workflow.
+        s.validate_fixture_selection_text({})
+
+    def test_valid_fixture_selection_prepare_and_reset_preserves_binding(self):
+        self.plan["fixtureSelection"] = self.fixture_selection()
+        self.plan["fixtureSelection"]["evidence"]["reviewedBy"] = "\u00e9" * 128
+        self.assertEqual(self.quiet_prepare()["phase"], "staged")
+        self.assertEqual(s.read_json(self.run / "plan.json")["fixtureSelection"],
+                         self.plan["fixtureSelection"])
+        s.reset(self.run, processes=lambda: [])
+        self.assertRestored()
+
     def test_full_profile_restore_archives_new_and_deleted_files(self):
         c = self.quiet_prepare()
         self.assertEqual(c["phase"], "staged")
