@@ -63,8 +63,9 @@ void ReadOrbital(void* context) {
         !ReadObject(table,galaxyMode,"SFXGame","SFXGameModeGalaxy",d.galaxyMode) || galaxyMode->Outer!=pc) return;
     d.active=orbital->bIsActive; s.reason="orbital-mode-inactive"; if (!d.active) return;
     d.orbitalCamera=reinterpret_cast<std::uintptr_t>(orbital->GalaxyCam);
-    // GetGalaxyCamera uses mode9's camera. Do not assume mode10's inherited
-    // GalaxyCam is the same instance or invoke HACK_GetCameraMode.
+    // GetGalaxyCamera calls native HACK_GetCameraMode(9); its body is opaque.
+    // This is the SDK mode9 field path, cross-checked against CurrentPlanet,
+    // not proof of that accessor's return. Do not assume mode10 equality.
     auto const* camera=galaxyMode->GalaxyCam;
     s.reason="galaxy-camera-unavailable";
     if (!ReadObject(table,camera,"SFXGame","BioCameraBehaviorGalaxy",d.camera)) return;

@@ -65,8 +65,8 @@ request pointers, indices, plot IDs, or mutable parameters.
 | Output | Live source and meaning |
 | --- | --- |
 | `context.currentMode` | Current local BioPlayerController.GameModeManager2.CurrentMode, must be 10 |
-| `context.activeWorld` | Mode 9's BioCameraBehaviorGalaxy.m_nActiveWorld; not a saved planet ID |
-| `context.cameraSource` | `GameModeManager2.GameModes[9].GalaxyCam`, the inspected GetGalaxyCamera route |
+| `context.activeWorld` | Mode 9 SDK GalaxyCam field's BioCameraBehaviorGalaxy.m_nActiveWorld; not a saved planet ID |
+| `context.cameraSource` | `GameModeManager2.GameModes[9].GalaxyCam`, an explicit SDK field path; native accessor equivalence is unproved |
 | `planet.object`, `mapName`, `tableId`, `displayNameRef`, `levelType` | Unique current pawn.LatentActions BioSeqAct_OrbitalGame.CurrentPlanet; BioPlanet fields |
 | `planet.landConditional` | BioPlanet.PlanetLandCondition declaration only; there is no assumed land-parameter field |
 | `planet.features` | Complete bounded BioPlanet.Features, each typed/live/unique and owned by that planet |
@@ -87,8 +87,10 @@ scalars and map FString header/body are resampled after resource reads. A change
 context yields an unavailable report without the earlier values. The camera's
 hierarchy is indexed using the inspected Activated formula: cluster `n/10000`,
 system `n/100%100`, planet `n%10`. The selected BioPlanet must match CurrentPlanet.
-Mode 10's inherited GalaxyCam is recorded for consistency but is not assumed to
-be the camera returned by GetGalaxyCamera. The planet actor's WorldInfo must agree
+The inspected GetGalaxyCamera wrapper calls native HACK_GetCameraMode(9), whose
+body is unavailable. Mode 9's SDK GalaxyCam field is therefore a structural
+candidate cross-checked against CurrentPlanet, not a proved accessor result.
+Mode 10's inherited GalaxyCam is recorded for consistency without assumed equality. The planet actor's WorldInfo must agree
 with the current resource world. This does not establish GWorld level containment.
 
 Bounds: game modes 64, latent actions 64, clusters 128, systems/planets 100 each,
