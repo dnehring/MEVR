@@ -26,7 +26,7 @@ KEYS = ("kind", "run", "lease", "pid", "start", "exe", "host", "mod", "id", "seq
 IDENTITY = ("run", "lease", "pid", "start", "exe", "host", "mod", "game")
 MAX_PAYLOAD, MAX_FRAME, MAX_LIFETIME_MS = 16384, 17408, 30000
 MENU_ACTIONS = ("advance-splash", "open-load-menu")
-NATIVE_ACTIONS = ("console", "probe-fov") + MENU_ACTIONS
+NATIVE_ACTIONS = ("console", "probe-fov", "load-fixture") + MENU_ACTIONS
 
 
 class ControlError(ValueError):
@@ -56,7 +56,7 @@ def validate(frame):
     payload = frame["payload"]
     if not isinstance(payload, bytes) or len(payload) > MAX_PAYLOAD or b"\0" in payload or number(frame["bytes"]) != len(payload):
         raise ControlError("Invalid payload")
-    if frame["verb"] not in ("ping", "observe", "observe-save-menu") + NATIVE_ACTIONS:
+    if frame["verb"] not in ("ping", "observe", "observe-save-menu", "observe-fixture") + NATIVE_ACTIONS:
         raise ControlError("Unsupported verb")
     if frame["kind"] == "request":
         if frame["status"] != "pending":
@@ -242,7 +242,7 @@ def collect(run, *, bind=binding):
 
 
 def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_probe_fov=False,
-           allow_menu_actions=False, bind=binding):
+           allow_menu_actions=False, allow_fixture_load=False, bind=binding):
     if not 1 <= timeout <= 30:
         raise ControlError("Timeout must be 1..30 seconds")
     if verb == "console" and (not allow_console or re.search(r"\bstreamlevelin\b", command, re.I)):
@@ -251,6 +251,8 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
         raise ControlError("Native FOV probe requires explicit opt-in")
     if verb in MENU_ACTIONS and not allow_menu_actions:
         raise ControlError("Native menu action requires explicit --allow-menu-actions")
+    if verb == "load-fixture" and not allow_fixture_load:
+        raise ControlError("Fixture loading requires explicit --allow-fixture-load")
     if verb != "console" and command:
         raise ControlError("Command is only valid with console")
     directory, identity = bind(run)
@@ -292,17 +294,19 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("run", type=Path)
-    p.add_argument("verb", choices=("ping", "observe", "observe-save-menu", "collect") + NATIVE_ACTIONS)
+    p.add_argument("verb", choices=("ping", "observe", "observe-save-menu", "observe-fixture", "collect") + NATIVE_ACTIONS)
     p.add_argument("--command", default="")
     p.add_argument("--timeout", type=int, default=10)
     p.add_argument("--allow-console", action="store_true")
     p.add_argument("--allow-probe-fov", action="store_true")
     p.add_argument("--allow-menu-actions", action="store_true")
+    p.add_argument("--allow-fixture-load", action="store_true")
     a = p.parse_args()
     try:
         result = collect(a.run.absolute()) if a.verb == "collect" else submit(
             a.run.absolute(), a.verb, a.command, a.timeout, a.allow_console,
-            allow_probe_fov=a.allow_probe_fov, allow_menu_actions=a.allow_menu_actions)
+            allow_probe_fov=a.allow_probe_fov, allow_menu_actions=a.allow_menu_actions,
+            allow_fixture_load=a.allow_fixture_load)
         print(json.dumps(dict(result, payload=result["payload"].decode("utf-8", errors="replace")), indent=2))
         return 0 if result["status"] in ("completed", "dispatched") else 2
     except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:

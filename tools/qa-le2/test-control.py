@@ -64,6 +64,8 @@ class WireTests(unittest.TestCase):
             examples = [frame(), dict(frame(), verb="console", payload=b"stat fps", bytes="8"),
                         dict(frame(), verb="observe-save-menu"),
                         dict(frame(), verb="advance-splash"), dict(frame(), verb="open-load-menu"),
+                        dict(frame(), verb="observe-fixture"), dict(frame(), verb="load-fixture"),
+                        dict(frame(), verb="load-fixture", kind="result", status="dispatched"),
                         dict(frame(), verb="open-load-menu", kind="result", status="dispatched"),
                         dict(frame(), verb="probe-fov"),
                         dict(frame(), verb="probe-fov", kind="result", status="dispatched", payload=b'{"fov":90}', bytes="10"),
@@ -174,6 +176,35 @@ class ClientTests(unittest.TestCase):
                     c.submit(self.root, "probe-fov", bind=bind, **options)
             bind.assert_not_called()
         self.assertFalse(list(self.root.iterdir()))
+
+    def test_fixture_opt_in_independent_and_target_refused_before_binding(self):
+        with mock.patch.object(c, "binding", side_effect=AssertionError("must not bind")) as bind:
+            for options in ({}, {"allow_console": True, "allow_probe_fov": True, "allow_menu_actions": True},
+                            {"allow_fixture_load": True, "command": "Save_0099"}):
+                with self.assertRaises(c.ControlError): c.submit(self.root, "load-fixture", bind=bind, **options)
+            bind.assert_not_called()
+        self.assertFalse(list(self.root.iterdir()))
+
+    def test_fixture_observation_needs_no_native_opt_in(self):
+        thread, errors = self.peer()
+        self.assertEqual(c.submit(self.root, "observe-fixture", bind=self.bind)["status"], "completed")
+        thread.join(); self.assertFalse(errors)
+
+    def test_fixture_completed_preserves_uncertain_intent(self):
+        thread, errors = self.peer(status="completed")
+        with self.assertRaisesRegex(c.ControlError, "gameplay completion"):
+            c.submit(self.root, "load-fixture", allow_fixture_load=True, bind=self.bind)
+        thread.join(); self.assertFalse(errors)
+        with self.assertRaisesRegex(c.ControlError, "gameplay completion"):
+            c.collect(self.root, bind=self.bind)
+        self.assertTrue((self.root / "outstanding.json").exists())
+
+    def test_fixture_terminal_results_do_not_claim_loaded_state(self):
+        for status in ("dispatched", "rejected"):
+            thread, errors = self.peer(status=status)
+            self.assertEqual(c.submit(self.root, "load-fixture", allow_fixture_load=True, bind=self.bind)["status"], status)
+            thread.join(); self.assertFalse(errors)
+            self.assertFalse((self.root / "outstanding.json").exists())
 
     def test_menu_action_opt_in_and_payload_refused_before_binding(self):
         with mock.patch.object(c, "binding", side_effect=AssertionError("must not bind")) as bind:

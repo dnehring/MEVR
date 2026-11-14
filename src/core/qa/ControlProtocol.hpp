@@ -47,7 +47,7 @@ std::optional<std::string> Encode(Frame const& frame);
 class Gate {
 public:
     explicit Gate(Identity identity, bool allowConsole = false, bool allowProbeFov = false,
-                  bool allowMenuActions = false);
+                  bool allowMenuActions = false, bool allowFixtureActions = false);
     std::optional<std::string> Claim(Frame const& request, std::uint64_t nowUtcMs);
     std::uint64_t LastSequence() const { return sequence_; }
 private:
@@ -55,6 +55,7 @@ private:
     bool allowConsole_{};
     bool allowProbeFov_{};
     bool allowMenuActions_{};
+    bool allowFixtureActions_{};
     std::uint64_t sequence_{};
     std::set<std::string> ids_;
 };

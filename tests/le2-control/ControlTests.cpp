@@ -116,6 +116,20 @@ int main(int argc, char** argv) {
               !readOnly.Claim(menuObservation, 10000), "menu observation needs no action opt in");
         menuObservation.payload = "x";
         Check(!Encode(menuObservation), "menu observation accepts no payload");
+        Frame fixture = *decoded; fixture.verb = "load-fixture";
+        Gate noFixture(identity, true, true, true);
+        Check(noFixture.Claim(fixture, 10000) == "native fixture loading is disabled", "other opt-ins do not grant fixture loading");
+        Check(noFixture.LastSequence() == 0, "disabled fixture load does not claim");
+        Gate fixtureOnly(identity, false, false, false, true);
+        fixture.payload = "Save_0099";
+        Check(!Encode(fixture) && fixtureOnly.Claim(fixture, 10000).has_value(), "fixture load cannot carry a target");
+        fixture.payload.clear();
+        Check(!fixtureOnly.Claim(fixture, 10000), "explicit fixture opt in");
+        Check(fixtureOnly.Claim(fixture, 10000).has_value(), "claimed fixture load cannot retry");
+        Check(fixtureOnly.Claim(console, 10000).has_value(), "fixture opt in does not grant console");
+        fixture.verb = "observe-fixture";
+        Gate fixtureRead(identity);
+        Check(!fixtureRead.Claim(fixture, 10000), "fixture observation needs no native opt in");
         std::cout << "Control identity, replay, expiry, opt-in, and wire corruption checks passed\n";
         return 0;
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }
