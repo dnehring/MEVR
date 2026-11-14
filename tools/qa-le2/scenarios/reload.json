@@ -45,7 +45,7 @@
   "acquisitionTasks": [
     "Use the naturally reached ProCer reload tutorial as a concrete candidate: BioD_ProCer_100RezRoom contains LS10_Reload_Heatsink, a tutorial-reload event and save action. See research/le2-fixture-acquisition.md; source presence is not a verified pre-reload save.",
     "Capture naturally reached combat and tutorial saves with a known weapon and legal native reload. Record exact save hashes, map, equipped weapon identity, class and DLC prerequisites privately.",
-    "Determine how clip and reserve counts are observed in the current LE2 build; normalized state.weapon.loaded and reserve below are a proposed observation interface, not verified SDK offsets.",
+    "Use correlated observe-weapon exports: state.weapon.loaded is source-derived loaded count; state.weapon.effectiveReserve is available only for an audited stable getter declaration and nonnegative stored reserve. Preserve raw state.weapon.reserveStored separately. See research/le2-weapon-observation.md; this is not reload eligibility or live getter execution proof.",
     "Record baseline reload event order, reload commit count, interruptions, weapon switch and tutorial dependencies by ordinary play. Do not invent tutorial plot IDs.",
     "Create a separate private ready binding and pinned recipe for each starting condition. SFXSaveGame maps ammo_total to reserve and ammo_used_count to used magazine ammo; see research/le2-ammo-fixture-source.md. Verify actual weapon class, capacity and post-load values before using edits; format-valid values do not prove native legality.",
     "Acquire cancellation cases before the early-reload threshold, after that threshold but before scheduled transfer, and after transfer. Native Reloading.CancelReload can commit ammo when the early flag is set; never assume all cancellations leave ammo unchanged.",
@@ -157,7 +157,7 @@
     {
       "id": "ammo-conservation",
       "gate": "native",
-      "description": "During the isolated reload measurement window (no firing or pickup), loaded plus reserve ammunition is conserved.",
+      "description": "During the isolated finite-ammo reload window (same weapon instance, no firing, pickup, grant or replacement), source-derived loaded plus effective reserve ammunition is conserved. Require integral counts within exact float32 integer range and independently establish the ordinary finite-ammo policy.",
       "requires": [
         "before",
         "after",
@@ -172,7 +172,7 @@
           },
           {
             "artifact": "before",
-            "field": "state.weapon.reserve"
+            "field": "state.weapon.effectiveReserve"
           }
         ],
         "right": [
@@ -182,7 +182,7 @@
           },
           {
             "artifact": "after",
-            "field": "state.weapon.reserve"
+            "field": "state.weapon.effectiveReserve"
           }
         ]
       },

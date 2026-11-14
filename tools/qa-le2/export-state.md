@@ -66,7 +66,7 @@ result cannot become state evidence through this exporter.
 | `fields.magazineCapacity`, `fields.magazineUsed` | Same names under `state.weapon` | Exact finite float32 raw samples. Invalid-for-loaded finite values remain raw evidence; no clamping or legal-capacity assumption. |
 | `fields.reserveStored` | `state.weapon.reserveStored` | Raw signed int32 `CurrentSpareAmmo`. Negative samples remain raw evidence, not an assertion that ammunition is legal. Never mapped to `weapon.reserve`. |
 | Sampled boolean flags | Same names under `state.weapon` | Exact boolean flags, not reload eligibility, native state-machine or completion proof. |
-| `fields.effectiveReserve` | `unavailable.weapon.effectiveReserve` | The current producer does not resolve the effective getter. An available value is rejected; neither effective reserve nor `weapon.reserve` is fabricated. |
+| `fields.effectiveReserve` | `state.weapon.effectiveReserve` when available | Source-derived float32 conversion of nonnegative raw reserve, only with the exact audited declaration policy, class, SDK/package pins and process-local function/property indices. The exporter verifies conversion and dependencies. No native getter or live bytecode proof; never aliased to `weapon.reserve`. |
 
 Missing/unavailable fields retain their reasons and original samples in
 `unavailable`; they are omitted from normalized values. Unavailable context
@@ -83,9 +83,9 @@ queries produce separate artifacts with their own request/tick/time. The
 exporter does not merge them, reuse an earlier map sample or claim a shared tick
 or coherent simulation snapshot.
 
-Current weapon exports necessarily retain unavailable effective reserve. They
-therefore return exit 2, even when the available weapon values match selected
-predicates. A scenario requiring map/resources will also report those missing
+Unsupported classes, overrides, malformed/changing declarations or negative raw
+reserve retain unavailable effective reserve and return exit 2. Supported samples
+can expose the derived field; this does not grant reload eligibility. A scenario requiring map/resources will also report those missing
 from this weapon-only artifact. This is a preserved partial observation, not
 native scenario acceptance. All existing visual/fixture/persistence/VR claims
 remain false; native acceptance is not promoted by exporting.

@@ -153,6 +153,19 @@ def float32(value):
     return converted
 
 
+RESERVE_SOURCE = 'SFXGame.SFXWeapon.GetCurrentSpareAmmo: float(CurrentSpareAmmo)'
+RESERVE_POLICY = 'le2-audited-base-reserve-v1'
+RESERVE_SDK = '6bd05809cccb1a099a520371a95779d4a56bb246'
+RESERVE_PACKAGE = '681f3fc72c08c66bc6d77ca91102e08cead7c6a5586c22bad0a8f7085be38d77'
+RESERVE_CLASSES = {
+    'SFXGameContent_Inventory.SFXWeapon_HeavyPistol',
+    'SFXGameContent_Inventory.SFXWeapon_AssaultRifle',
+    'SFXGameContentDLC_PRE_Collectors.SFXWeapon_CollectorAssaultRifle_Player',
+    'SFXGameContentDLC_Pistol.SFXWeapon_LaserPistol',
+    'SFXGameContent_Inventory.SFXWeapon_MassCannon',
+}
+
+
 def normalize_weapon(payload):
     capabilities = payload.get('capabilities')
     require(payload.get('source') == 'diagnostic-host' and payload.get('game') == 'LE2'
@@ -230,10 +243,37 @@ def normalize_weapon(payload):
         unavailable['weapon.loaded'] = {'reason': 'field-missing' if stable else observation['reason'], 'sample': loaded}
     effective = fields.get('effectiveReserve')
     if effective is not None:
-        require(isinstance(effective, dict) and effective.get('available') is False
+        require(isinstance(effective, dict) and type(effective.get('available')) is bool
                 and isinstance(effective.get('reason'), str) and effective['reason'],
-                'effectiveReserve must remain explicitly unavailable in this producer contract')
-    unavailable['weapon.effectiveReserve'] = {'reason': effective['reason'] if effective else 'field-missing', 'sample': effective}
+                'effectiveReserve: invalid availability/reason')
+        if effective['available']:
+            require(effective.get('source') == RESERVE_SOURCE
+                    and effective['reason'] == 'source-derived-int32-to-float32', 'effectiveReserve: wrong derivation')
+            raw = fields.get('reserveStored', {})
+            require(isinstance(raw, dict) and raw.get('available') is True
+                    and type(raw.get('value')) is int and 0 <= raw['value'] <= 0x7fffffff,
+                    'effectiveReserve requires nonnegative available int32 reserveStored')
+            value = float32(effective.get('value'))
+            expected = struct.unpack('<f', struct.pack('<f', raw['value']))[0]
+            require(value == expected, 'effectiveReserve differs from float32 conversion of reserveStored')
+            proof, selected = effective.get('provenance'), observation.get('selectedWeapon', {})
+            require(isinstance(proof, dict) and isinstance(selected, dict)
+                    and selected.get('class') in RESERVE_CLASSES and selected.get('heavyWeaponClass') is False
+                    and proof.get('selectedClass') == selected['class']
+                    and proof.get('policy') == RESERVE_POLICY
+                    and proof.get('declaration') == 'SFXGame.SFXWeapon.GetCurrentSpareAmmo'
+                    and proof.get('sdkPin') == RESERVE_SDK and proof.get('basePackageSha256') == RESERVE_PACKAGE
+                    and proof.get('nativeGetterExecuted') is False and proof.get('mountedScriptBodyProven') is False
+                    and all(type(proof.get(key)) is int and 0 <= proof[key] < 64 * 1024 * 1024
+                            for key in ('functionIndex', 'returnPropertyIndex'))
+                    and proof['functionIndex'] != proof['returnPropertyIndex'],
+                    'effectiveReserve: missing or contradictory audited declaration provenance')
+            if stable:
+                state['weapon']['effectiveReserve'] = value
+        if not effective['available'] or not stable:
+            unavailable['weapon.effectiveReserve'] = {'reason': effective['reason'] if stable else observation['reason'], 'sample': effective}
+    else:
+        unavailable['weapon.effectiveReserve'] = {'reason': 'field-missing', 'sample': None}
     return state, unavailable
 
 
@@ -310,7 +350,7 @@ def export(run_path, request_id, case_id):
                         deadline=request['deadline'], deploymentSha256=session.digest(run / 'deployment.json'),
                         candidateCommitEvidence='reviewed-deployment-receipt-attestation-not-binary-commit-proof',
                         session=binding, observationVerb=request['verb'], combinedObservation=False,
-                        normalizedSemantics=({'weapon.loaded': LOADED_SOURCE, 'weapon.reserveStored': 'raw signed CurrentSpareAmmo; not effective/legal reserve'} if weapon else {}),
+                        normalizedSemantics=({'weapon.loaded': LOADED_SOURCE, 'weapon.reserveStored': 'raw signed CurrentSpareAmmo; not effective/legal reserve', 'weapon.effectiveReserve': RESERVE_SOURCE + '; audited declaration, no getter call or live bytecode proof'} if weapon else {}),
                         runtimeObservation=payload['weaponObservation' if weapon else 'resourceObservation']),
                     claims=dict(visualVerified=False, loadedFixtureProven=False, persistenceProven=False, vrVerified=False))
     failures = scenario.check_start(frozen, artifact)

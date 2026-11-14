@@ -140,6 +140,66 @@ class ExportTests(unittest.TestCase):
         self.assertFalse(any(artifact['claims'].values()))
         self.assertEqual(artifact['unavailable']['weapon.effectiveReserve']['sample'], observation['fields']['effectiveReserve'])
 
+    def use_effective_reserve(self, raw=23):
+        observation = self.use_weapon()
+        observation['selectedWeapon']['class'] = 'SFXGameContent_Inventory.SFXWeapon_AssaultRifle'
+        fields = observation['fields']
+        fields['reserveStored']['value'] = raw
+        fields['effectiveReserve'] = dict(available=True, reason='source-derived-int32-to-float32',
+            source=e.RESERVE_SOURCE, value=struct.unpack('<f', struct.pack('<f', raw))[0],
+            provenance=dict(policy=e.RESERVE_POLICY, declaration='SFXGame.SFXWeapon.GetCurrentSpareAmmo',
+                selectedClass=observation['selectedWeapon']['class'], functionIndex=98, returnPropertyIndex=99,
+                sdkPin=e.RESERVE_SDK, basePackageSha256=e.RESERVE_PACKAGE,
+                nativeGetterExecuted=False, mountedScriptBodyProven=False))
+        return observation
+
+    def test_effective_reserve_float32_rounding_and_archive(self):
+        for raw in (0, 23, 16777217, 2147483647):
+            observation = self.use_effective_reserve(raw)
+            state, unavailable = e.normalize_weapon(self.payload)
+            self.assertEqual(state['weapon']['effectiveReserve'], struct.unpack('<f', struct.pack('<f', raw))[0])
+            self.assertEqual(state['weapon']['reserveStored'], raw)
+            self.assertNotIn('reserve', state['weapon'])
+            self.assertNotIn('weapon.effectiveReserve', unavailable)
+        self.archive()
+        self.assertEqual(self.invoke(), 2)  # Fixture map/resources are still absent.
+        self.assertEqual(self.state()['state']['weapon']['effectiveReserve'], 2147483648)
+        self.assertEqual(self.state()['provenance']['runtimeObservation'], observation)
+
+    def test_effective_reserve_rejects_invalid_dependency_and_provenance(self):
+        baseline = copy.deepcopy(self.use_effective_reserve())
+        mutations = [
+            ('value', 22), ('value', True), ('value', float('nan')), ('value', 23.1),
+            ('source', 'CurrentSpareAmmo'), ('reason', 'native-getter-returned'),
+        ]
+        for key, value in mutations:
+            observation = copy.deepcopy(baseline)
+            observation['fields']['effectiveReserve'][key] = value
+            self.payload['weaponObservation'] = observation
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError): e.normalize_weapon(self.payload)
+        for key, value in [('policy', 'unknown'), ('sdkPin', 'a'*40), ('basePackageSha256', 'a'*64),
+                           ('selectedClass', 'Other'), ('functionIndex', True), ('returnPropertyIndex', 98),
+                           ('nativeGetterExecuted', True), ('mountedScriptBodyProven', True),
+                           ('declaration', 'SFXHeavyWeapon.GetCurrentSpareAmmo')]:
+            observation = copy.deepcopy(baseline)
+            observation['fields']['effectiveReserve']['provenance'][key] = value
+            self.payload['weaponObservation'] = observation
+            with self.subTest(key=key), self.assertRaises(ValueError): e.normalize_weapon(self.payload)
+        for raw in (-1, 2147483648, True, 1.5):
+            observation = copy.deepcopy(baseline)
+            observation['fields']['reserveStored']['value'] = raw
+            self.payload['weaponObservation'] = observation
+            with self.subTest(raw=raw), self.assertRaises(ValueError): e.normalize_weapon(self.payload)
+        observation = copy.deepcopy(baseline)
+        observation['fields']['reserveStored']['available'] = False
+        self.payload['weaponObservation'] = observation
+        with self.assertRaises(ValueError): e.normalize_weapon(self.payload)
+        observation = copy.deepcopy(baseline)
+        observation['selectedWeapon']['class'] = 'Unknown.Rifle'
+        observation['fields']['effectiveReserve']['provenance']['selectedClass'] = 'Unknown.Rifle'
+        self.payload['weaponObservation'] = observation
+        with self.assertRaises(ValueError): e.normalize_weapon(self.payload)
+
     def test_weapon_unavailable_context_preserved_without_zero_values(self):
         observation = self.use_weapon()
         observation.update(available=False, reason='weapon-context-changed')
@@ -236,12 +296,14 @@ class ExportTests(unittest.TestCase):
 
     @unittest.skipUnless(os.environ.get('LE2_CONTROL_CPP'), 'set LE2_CONTROL_CPP for actual C++ codec conformance')
     def test_weapon_actual_cpp_archive_conformance(self):
-        self.use_weapon()
-        for suffix in ('request', 'result'):
-            path = self.run / f'control/history/{self.token}.{suffix}'
-            result = subprocess.run([os.environ['LE2_CONTROL_CPP'], str(path)], capture_output=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, path.read_bytes())
+        for effective in (False, True):
+            self.use_effective_reserve(16777217) if effective else self.use_weapon()
+            self.archive()
+            for suffix in ('request', 'result'):
+                path = self.run / f'control/history/{self.token}.{suffix}'
+                result = subprocess.run([os.environ['LE2_CONTROL_CPP'], str(path)], capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, path.read_bytes())
 
     def test_success_and_exact_provenance(self):
         self.assertEqual(self.invoke(), 0)
