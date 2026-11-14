@@ -47,7 +47,11 @@ returns to the picker for games other than 1. A file named `bink2w64.dll`, its
 version string, or this source review cannot authenticate an installed binary's
 ME2 selection behavior. Steam/EA can also drop forwarded arguments. Therefore
 routine automated launch requires a private, reviewed installed-binary capability receipt.
-No receipt was generated and no installed binary was approved by these tests.
+Offline tests do not generate receipts or approve installed binaries. A later
+protected native checkpoint observed two successful ME2 selections and preserved
+an attributed private `observed-game2-selection` receipt; see
+[evidence](../../research/le2-validation-evidence.md). Its validity is limited to
+the exact installed launcher/proxy hashes and preserved attempts.
 
 Without that dependency, the report contains `operator_selection_required`.
 Use the existing session `request-load` boundary and select ME2 through the normal
@@ -100,7 +104,8 @@ path containment and reparse rejection. It cannot judge the truth of review
 notes or reproduce a binary build from a hash. A reviewer remains responsible
 for the attribution; the result explicitly reports
 `nativeSelectionVerifiedByThisTool: false`. Do not manufacture a receipt merely
-to remove a dependency. Native selection remains unproven for this new adapter.
+to remove a dependency. The later native evidence proves selection for the
+reviewed installed files, not every launcher version or installation.
 
 ## Authorized launch and outcomes
 

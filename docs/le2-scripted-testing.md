@@ -74,22 +74,23 @@ headset results cannot establish physical comfort or real-headset stutter.
 Require an owned LE2-only handshake, a deliberately rejected stale/wrong-game
 request, a harmless query, normal load/save/reload, useful captures and verified
 cleanup after both success and interruption. Preserve private original evidence.
-Until these pass, report the bridge and runner as unproven. The current native
-baseline establishes loading and saving only; reload remains pending.
+Until these pass, do not call the full runner proven. The native baseline
+establishes loading and saving; the later diagnostic run proves read-only
+handshake/observation. Reload and the live negative-control checks remain pending.
 
 ## Implemented transport checkpoint
 
 The [launch adapter](../tools/qa-le2/launch.md) now supports read-only planning and
 one guarded Steam forwarding attempt when installed game-selection support is
 reviewed, or an explicit first selection probe to collect that evidence. Its
-21 offline tests passed; native automated selection is not yet
-proven. It binds a process, not a loaded save.
+21 offline tests passed. Two protected native selection probes successfully
+bound ME2 using the installed launcher files; they did not select a save.
 
 The [control client and codec](../tools/qa-le2/control.md) now bind traffic to the
 owned run, process start, module hashes and a fresh runtime lease. Standalone C++
 checks and 18 Python tests passed, including cross-language wire conformance and
 retained uncertainty after dispatch errors. The separate attachment helper has
-13 passing tests using actual temporary protected sessions with fake process and
+15 passing tests using actual temporary protected sessions with fake process and
 module providers. It requires an already loaded reviewed diagnostic ASI and
 publishes an invitation; it does not deploy or certify a responder.
 
@@ -97,10 +98,14 @@ These changes reuse the protected session and Steam forwarding machinery. They
 are a control connection for the existing host, not a replacement ME2 renderer.
 The diagnostic responder and bounded structural observer are now compiled into
 an opt-in monolithic LE2 candidate. See the [build and protected native sequence](../tools/qa-le2/control.md).
-Actual Python-to-C++ filesystem integration passes with fake process identity;
-this remains offline evidence. The next native gate remains a real game-thread handshake and validated state,
-followed by the normal load/save/reload cycle. Three scenario and VR acceptance
-gates remain open.
+Actual Python-to-C++ filesystem integration passes offline and the clean
+`59b5e775` diagnostic answered live `ping` and `observe` on the ME2 game thread.
+The observer sampled the entry menu and matching ConsoleCommand metadata, not a
+loaded fixture. The existing MEVR loader was required because the game's stock
+Bink does not load ASIs. Both protected runs closed normally and restoration
+verified. See [native evidence](../research/le2-validation-evidence.md).
+The next gates are live negative controls, native-call validation and the normal
+load/save/reload cycle. Three scenario and VR acceptance gates remain open.
 
 The [native console reuse audit](../research/le2-native-console-reuse.md) records
 the remaining hook-target and allocator/string-lifetime prerequisites. Preserve

@@ -1,7 +1,59 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-13. **Offline foundation implemented; native load/save observed and restoration verified. Reload, scripted control and gameplay/VR proof remain pending.**
+Checkpoint: 2026-11-14 UTC. **Native load/save observed; scripted Steam selection, ASI loading and read-only game-thread control proven. Restoration verified. Reload, gameplay commands and VR proof remain pending.**
+
+## Live diagnostic connection, 2026-11-14 UTC
+
+After the user authorized the next free game window, the protected runner
+acquired ownership and backed up the full profile, LE2 Win64/configuration and
+launcher directory. Two one-attempt Steam selection probes both launched and
+bound the exact new ME2 process without computer use. The installed launcher
+proxy hashes and preserved attempt records establish observed game-2 selection
+for those installed files, not source-matched binary provenance.
+The private reviewed receipt is
+`local-tools/le2-diagnostic-handoff/launcher-capability-20261114/receipt.json`,
+SHA256 `7f2fd3612ce7e497448d96b9e579241e7128141d5cc58444d39b4d3bdb092158`.
+The capability parser verified its installed-file and two evidence hashes.
+
+First run `1f10095e-87b4-4a44-ac65-35895aaa1d22` deployed candidate `95ea25ed`,
+but module inspection showed it was not loaded: ME2 still used stock RAD Bink,
+not an ASI loader. An independent attachment bug also rejected an unrelated EA
+overlay reparse path. The correction validates only exact selected host/mod
+paths, retaining their strict mapping/hash/reparse requirements. Its client
+suite passed 18 tests with C++ conformance enabled; attachment passed 15 tests.
+The first game closed normally and restoration verified before the next run.
+
+Second run `43d8f792-c575-4e71-b441-9f478928676d` used the existing MEVR loader
+and diagnostic ASI from clean candidate `59b5e775991ef282dee943181d61baf659d85c04`:
+
+- ASI SHA256 `f9ac2a4951efb9bcb2f5e4a8e100afffc20a8308776f50fab047f6a37da218f5`.
+- Loader SHA256 `dbcc07cb1c82116462a19319b4c97a073e247bfaddf3819fa314eee14e9f1663`.
+- Stock Bink, preserved for forwarding and restored afterward:
+  `653247e35db8d6453e83a008c805a877fd2d56a1d844282f9065ce2f34388fec`.
+
+The loader log records ASI attachment and installation of ProcessEvent/Tick
+hooks. The attachment helper verified the actual mapped ASI, then the producer
+published its own process-bound identity. `ping` completed at tick 3374 on
+thread 40612; `observe` completed at tick 6235 on the same thread. It reported
+`entrymenu`, SFXEngine, LocalPlayer, SFXPlayerController and no pawn. The live
+ConsoleCommand metadata matched the SDK's three parameters, size `0x24`, return
+offset `0x14`, flags `0x24400` and native index zero. These are structural samples,
+not proof of safe native dispatch, loaded-save identity or gameplay readiness.
+`nativeConsole` and authoritative `observeWorld` remain false; `ready` remains false.
+
+No save was selected and no gameplay command, input replay or XR operation was
+performed. Stale/wrong-lease rejection remains covered offline, not yet by a live
+negative-control run. Normal window closure succeeded. The runner archived new
+logs/binaries, verified restoration of every protected root, and removed only
+its own invitation after reset. No deployed diagnostic or loader was retained.
+Private launch, deployment, mapping, identity, request/result, loader-log and
+restoration evidence lives in `local-tools/le2-diagnostic-handoff/` under
+`run-20261114T0537Z` and `run-20261114T0542Z`.
+
+Candidate `59b5e775` passed all three ordinary build configurations and **42/42**
+CTest checks. Its console string-lifetime fix is independently tested against
+the packed SDK in Release/Debug; it does not enable console dispatch.
 
 ## Diagnostic control candidate, 2026-11-14 UTC
 
@@ -46,8 +98,9 @@ active. A fresh desktop read confirmed the ME1 process started at
 staging a save or deploying a binary. No cleanup of that other session was
 attempted. The private evidence identifier is `le2-diagnostic-preflight-occupied`,
 SHA256 `1034a4fb42f83812076df4f324c06129d317b96b7b5775c0f0c1d4722c13a935`.
-Neither candidate has been loaded into ME2; native handshake, observer values,
-normal reload, the three scenarios and all VR/hardware gates remain unproven.
+At that earlier preflight neither candidate had been loaded. The later live
+checkpoint above supersedes the handshake status; normal reload, the three
+scenarios and all VR/hardware gates remain unproven.
 Use the [workflow](../tools/qa-le2/README.md) and [coverage contract](../docs/le2-validation-coverage.md).
 This report does not promote the three public draft scenarios to validated.
 

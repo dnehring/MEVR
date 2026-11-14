@@ -46,8 +46,14 @@ request; an admitted request may publish a late result for `collect` to reconcil
    should protect the complete profile, LE2 configuration and Win64, plus the
    launcher directory if it may write logs/configuration during the run. A failed
    preflight is not permission to close another game's process.
-2. Deploy the hash-verified diagnostic ASI inside the backed-up LE2 Win64/ASI
-   directory. Preserve the build receipt. Do not run the LE1 deploy/session
+2. Inspect LE2's actual Bink/ASI loader before deploying. Stock RAD Bink cannot
+   load the ASI; a loader installed in the trilogy launcher does not install one
+   in ME2. The successful diagnostic reused our clean-built `MEVR-Loader`, with
+   stock Bink preserved as `bink2w64_original.dll`, entirely within the backed-up
+   Win64 directory. Record and verify both loader and original hashes. Then
+   deploy the hash-verified diagnostic ASI inside LE2 Win64/ASI. Preserve the
+   build receipt and prove actual mapping; file presence is insufficient.
+   Do not run the LE1 deploy/session
    wrapper unchanged or modify OpenXR settings for this diagnostic.
 3. Use [launch.ps1](launch.md) with a reviewed capability receipt, or its explicit
    one-attempt selection probe. It records and binds the exact new ME2 process.
