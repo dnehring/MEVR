@@ -85,13 +85,16 @@ std::optional<PadPulse> ParsePadPulse(std::string_view bytes) {
         !integer("buttons", 0, 65535) || !integer("leftTrigger", 0, 255) || !integer("rightTrigger", 0, 255)) return {};
     for (auto field : {"leftX", "leftY", "rightX", "rightY"}) if (!integer(field, -32768, 32767)) return {};
     auto context = value->String("context");
-    if (context != "default" && context != "party-select" && context != "party-confirm" && context != "loadout") return {};
+    if (context != "default" && context != "party-select" && context != "party-confirm" &&
+        context != "loadout" && context != "character-record") return {};
     diagnostic_pad::Pad pad{
         static_cast<std::uint16_t>(value->Number("buttons")),
         static_cast<std::uint8_t>(value->Number("leftTrigger")), static_cast<std::uint8_t>(value->Number("rightTrigger")),
         static_cast<std::int16_t>(value->Number("leftX")), static_cast<std::int16_t>(value->Number("leftY")),
         static_cast<std::int16_t>(value->Number("rightX")), static_cast<std::int16_t>(value->Number("rightY"))};
     if ((pad.buttons & ~diagnostic_pad::kButtons) != 0 || pad == diagnostic_pad::Pad{}) return {};
+    // First CharacterRecord trial is ordinary Back only, never talent changes.
+    if (context == "character-record" && pad != diagnostic_pad::Pad{0x2000,0,0,0,0,0,0}) return {};
     return PadPulse{std::move(context), pad, static_cast<std::uint32_t>(value->Number("durationMs"))};
 }
 std::optional<Frame> Decode(std::string_view bytes, std::string* error) {

@@ -35,6 +35,15 @@ def pulse_frame(value=None):
 
 
 class WireTests(unittest.TestCase):
+    def test_character_record_only_accepts_back_without_other_input(self):
+        for duration in (1, 1000):
+            f = pulse_frame(pulse(context="character-record", buttons=0x2000, durationMs=duration))
+            self.assertEqual(c.decode(c.encode(f)), f)
+        for field, value in (("buttons", 0x1000), ("buttons", 0x2010),
+                             *[(name, 1) for name in c.PULSE_FIELDS[4:]]):
+            with self.subTest(field=field, value=value), self.assertRaises(c.ControlError):
+                c.validate_pulse(pulse(context="character-record", buttons=0x2000) | {field: value})
+
     def test_pad_schema_bounds_and_reserved_bits(self):
         for context in ("default", "party-select", "party-confirm", "loadout"):
             for value in (pulse(context=context, durationMs=1), pulse(context=context, durationMs=1000,
@@ -118,6 +127,7 @@ class WireTests(unittest.TestCase):
                         dict(frame(), verb="observe-input"), pulse_frame(),
                         pulse_frame(pulse(context="party-confirm")),
                         pulse_frame(pulse(context="loadout")),
+                        pulse_frame(pulse(context="character-record",buttons=0x2000)),
                         pulse_frame(pulse(context="default",buttons=0,leftX=-32768,rightTrigger=255)),
                         dict(frame(), verb="observe-save-flow"),
                         dict(frame(), verb="open-pause-menu"), dict(frame(), verb="open-save-menu"),
@@ -139,6 +149,8 @@ class WireTests(unittest.TestCase):
             # Build malformed payload frames without asking the Python encoder
             # to accept them; both independent decoders must reject the bytes.
             invalid_pulses = [json.dumps(pulse(buttons=0)),json.dumps(pulse(buttons=0x400)),
+                              json.dumps(pulse(context="character-record")),
+                              json.dumps(pulse(context="character-record",buttons=0x2000,leftY=1)),
                               json.dumps(pulse(durationMs=True)),json.dumps(pulse(durationMs=1.0)),
                               json.dumps(pulse(leftX=-32769)),json.dumps(pulse(context="orbital")),
                               json.dumps(pulse(context="party-confirm",buttons=0x400)),
@@ -182,6 +194,20 @@ class WireTests(unittest.TestCase):
 
 
 class ClientTests(unittest.TestCase):
+    def test_character_record_retains_optin_and_archived_back_input(self):
+        value = pulse(context="character-record", buttons=0x2000)
+        bind = mock.Mock(side_effect=AssertionError("must not bind"))
+        with self.assertRaises(c.ControlError):
+            c.submit(self.root, "pad-pulse", pulse=value, bind=bind)
+        bind.assert_not_called()
+        thread, errors = self.peer()
+        result = c.submit(self.root, "pad-pulse", pulse=value, allow_native_input=True, bind=self.bind)
+        thread.join()
+        self.assertFalse(errors)
+        self.assertEqual(result["status"], "dispatched")
+        archived = c.decode((self.root / "history" / (result["id"] + ".request")).read_bytes())
+        self.assertEqual(c.parse_pulse(archived["payload"]), value)
+
     def test_loadout_retains_optin_and_archived_context(self):
         bind=mock.Mock(side_effect=AssertionError("must not bind"))
         with self.assertRaises(c.ControlError):

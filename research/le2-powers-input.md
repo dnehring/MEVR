@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 Powers screen: normal exit and existing input seams
 
-The next bounded exit trial should reuse `pad-pulse` with B after validating the
-exact **CharacterRecord** context. This screen is not the existing ChoiceGUI
-weapon-loadout context. No implementation, native action or successful exit is
-claimed by this audit.
+The implemented adapter reuses `pad-pulse` with B after validating the exact
+**CharacterRecord** context. This screen is not the existing ChoiceGUI
+weapon-loadout context. Offline checks pass; live context availability, input
+consumption and successful exit remain pending.
 
 ## Evidence and normal route
 
@@ -85,8 +85,11 @@ input context sampler. The focused panel must be a unique CharacterRecord with
 the exact PC handler, active GUI mode and existing interactive/reciprocal checks.
 A visible MessageBox overlay is refused even before focus transfers. Closing,
 initial hiding, malformed arrays, foreign helper/world/pawn links and invalid
-present callback identities are unavailable. This does not enable transport or
-buttons by itself; the separate host must restrict the first trial to B only.
+present callback identities are unavailable. The client and C++ protocol accept
+the new category only for B with all triggers and sticks neutral; the host
+independently repeats that restriction before installing input hooks. Existing
+request identity, explicit opt-in, one-shot dispatch and neutral draining remain
+unchanged. No new input verb, hook or transport was introduced.
 
 The helper must be the exact `SFXPowerLevelUpHelper`, owned by the handler, with
 the same world. The current character must be a unique listed source pawn in

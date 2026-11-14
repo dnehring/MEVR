@@ -85,6 +85,7 @@ json::Value ContextJson(Context const& value) {
     auto out = json::Value::Object(); out["available"] = value.available;
     out["category"] = value.category == Category::Default ? "default" :
         value.category == Category::PartyConfirm ? "party-confirm" :
+        value.category == Category::CharacterRecord ? "character-record" :
         value.category == Category::Loadout ? "loadout" : "party-select";
     return out;
 }
@@ -212,6 +213,37 @@ void LoadoutTransition() {
     FinishNeutral(input);
     Check(Publish(input,reason,"loadout",2),"new explicit loadout stage request follows neutral");
 }
+void CharacterRecordBack() {
+    fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
+    auto pulse = Pulse("character-record"); pulse.pad.buttons = 0x2000;
+    auto send = [&] { return input.Publish(pulse,1,77,2000,[]{ return fake::utc; },reason); };
+    Check(!send() && fake::installs == 0,"CharacterRecord Back cannot target default context");
+    fake::current.category = context::Category::CharacterRecord;
+    Check(!Publish(input,reason,"default") && fake::installs == 0,"default cannot bypass CharacterRecord restriction");
+    for (unsigned i=0;i<9;++i) {
+        pulse.pad = {0x2000,0,0,0,0,0,0};
+        if(i==0) pulse.pad.buttons=0x1000;
+        if(i==1) pulse.pad.buttons=0x2010;
+        if(i==2) pulse.pad.buttons=0;
+        if(i==3) pulse.pad.leftTrigger=1;
+        if(i==4) pulse.pad.rightTrigger=1;
+        if(i==5) pulse.pad.leftX=1;
+        if(i==6) pulse.pad.leftY=-1;
+        if(i==7) pulse.pad.rightX=1;
+        if(i==8) pulse.pad.rightY=-1;
+        Check(!send() && reason=="character-record-requires-back-only" && fake::installs==0 && fake::publishes==0,
+              "CharacterRecord mixed or purchase input rejected before installing hooks");
+    }
+    pulse.pad = {0x2000,0,0,0,0,0,0};
+    Check(send() && fake::Poll().pad.buttons==0x2000,"CharacterRecord uses existing bounded Back source");
+    auto original = fake::current;
+    ++fake::current.focusHandler.index; input.Tick(77);
+    Check(!input.admitted && input.Active(),"CharacterRecord identity change cancels with release pending");
+    fake::current=original; input.Tick(77);
+    Check(!input.admitted && !send(),"old CharacterRecord cannot rearm or bypass neutral drain");
+    Check(fake::Poll().replace,"CharacterRecord cancellation emits neutral");
+    FinishNeutral(input);
+}
 void ContextCancellation() {
     fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
     Check(Publish(input,reason),"context test admitted");
@@ -337,7 +369,7 @@ void DestructorAndTokenLifetime() {
 }
 int main() {
     try {
-        Admission(); InstallationRechecks(); PartyConfirmation(); LoadoutTransition(); ContextCancellation(); ExpiryAndConflict(); NativePollDelay(); RefusedAndClock(); ClockRegression(); DisableAndJson(); DestructorAndTokenLifetime();
+        Admission(); InstallationRechecks(); PartyConfirmation(); LoadoutTransition(); CharacterRecordBack(); ContextCancellation(); ExpiryAndConflict(); NativePollDelay(); RefusedAndClock(); ClockRegression(); DisableAndJson(); DestructorAndTokenLifetime();
         std::cout << checks << " input orchestration checks passed\n";
         return 0;
     } catch (std::exception const& error) {

@@ -156,8 +156,12 @@ struct NativeInput {
         else if (pulse.context == "party-select") expected = input_context::Category::PartySelect;
         else if (pulse.context == "party-confirm") expected = input_context::Category::PartyConfirm;
         else if (pulse.context == "loadout") expected = input_context::Category::Loadout;
+        else if (pulse.context == "character-record") expected = input_context::Category::CharacterRecord;
         if (expected == input_context::Category::Unavailable) return false;
         if (!context.available || context.category != expected) return false;
+        reason = "character-record-requires-back-only";
+        if (expected == input_context::Category::CharacterRecord &&
+            pulse.pad != pad_policy::Pad{0x2000,0,0,0,0,0,0}) return false;
         reason = "diagnostic-input-installation-unavailable";
         if (!pad_bridge::DiagnosticTryInstall(*hooks, true)) return false;
         // Installing hooks may take time. Recheck both context and request age.

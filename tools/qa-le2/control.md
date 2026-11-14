@@ -66,7 +66,7 @@ The exact ten-field schema is:
 {"schemaVersion":1,"context":"party-select","durationMs":100,"buttons":4096,"leftTrigger":0,"rightTrigger":0,"leftX":0,"leftY":0,"rightX":0,"rightY":0}
 ```
 
-`context` is `default`, `party-select`, `party-confirm` or `loadout`; the runtime must independently admit the
+`context` is `default`, `party-select`, `party-confirm`, `loadout` or `character-record`; the runtime must independently admit the
 actual supported context. `durationMs` is an integer from 1 to 1000 and measures
 the hold starting at the first eligible nonconflicting controller poll. There is
 a fixed 5000 ms activation wait from publication; failure to start within it
@@ -77,6 +77,11 @@ The pulse JSON is limited to 4096 UTF-8 bytes and must not have a byte-order mar
 `party-confirm` retains the same explicit native-input opt-in, numeric bounds,
 correlation and no-retry rules. The name requests a context check; it does not
 authorize an arbitrary modal or prove that a squad confirmation is ready.
+`character-record` is restricted to Back: `buttons=8192` with all triggers and
+sticks zero. Both decoders and the runtime reject other or combined input in
+this context. This does not authorize purchasing talents, Start or arbitrary
+GUI backouts; the exact current Powers handler must pass structural checks.
+See the [source and native boundary](../../research/le2-powers-input.md).
 `loadout` likewise requests an exact runtime context check and uses the same
 input permission and bounds. Transport acceptance does not admit an arbitrary
 ChoiceGUI panel, establish initialized controls, or prove a loadout selection;

@@ -199,6 +199,23 @@ int main(int argc, char** argv) {
         Gate loadoutEnabled(identity, false, false, false, false, false, true);
         Check(!loadoutEnabled.Claim(loadout, 10000) && loadoutEnabled.Claim(loadout, 10000).has_value(),
               "loadout permission does not permit retry");
+        auto character = pulse;
+        character.payload.replace(character.payload.find("default"), 7, "character-record");
+        Check(!ParsePadPulse(character.payload), "CharacterRecord refuses purchase input");
+        character.payload.replace(character.payload.find("4096"), 4, "8192");
+        Check(ParsePadPulse(character.payload) && Decode(*Encode(character))->payload == character.payload,
+              "CharacterRecord Back roundtrip through existing wire");
+        Gate characterDisabled(identity);
+        Check(characterDisabled.Claim(character,10000) == "native input is disabled", "CharacterRecord needs explicit permission");
+        Gate characterEnabled(identity,false,false,false,false,false,true);
+        Check(!characterEnabled.Claim(character,10000) && characterEnabled.Claim(character,10000).has_value(),
+              "CharacterRecord still claims once without retry");
+        for (auto field : {"leftTrigger", "rightTrigger", "leftX", "leftY", "rightX", "rightY"}) {
+            auto changed = character;
+            std::string key = std::string("\"") + field + "\":0";
+            changed.payload.replace(changed.payload.find(key), key.size(), std::string("\"") + field + "\":1");
+            Check(!ParsePadPulse(changed.payload) && !Encode(changed), "CharacterRecord Back forbids mixed analog input");
+        }
         auto invalidPulse = [&](std::string const& before, std::string const& after) {
             auto invalid = pulse;
             auto position = invalid.payload.find(before);
@@ -216,6 +233,7 @@ int main(int argc, char** argv) {
         invalidPulse("\"context\":\"default\"", "\"context\":\"orbital\"");
         invalidPulse("\"context\":\"default\"", "\"context\":\"party-confirm-extra\"");
         invalidPulse("\"context\":\"default\"", "\"context\":\"loadout-extra\"");
+        invalidPulse("\"context\":\"default\"", "\"context\":\"character-record-extra\"");
         invalidPulse("\"rightY\":0", "\"rightY\":0,\"extra\":0");
         pulse.verb = "observe-input"; pulse.payload.clear();
         Gate inputRead(identity);

@@ -55,7 +55,7 @@ def validate_pulse(pulse):
         raise ControlError("Pad pulse requires exactly the ten declared fields")
     if type(pulse["schemaVersion"]) is not int or pulse["schemaVersion"] != 1:
         raise ControlError("Pad pulse schemaVersion must be integer 1")
-    if pulse["context"] not in ("default", "party-select", "party-confirm", "loadout"):
+    if pulse["context"] not in ("default", "party-select", "party-confirm", "loadout", "character-record"):
         raise ControlError("Unsupported pad pulse context")
     bounds = {"durationMs": (1, 1000), "buttons": (0, 65535),
               "leftTrigger": (0, 255), "rightTrigger": (0, 255),
@@ -67,6 +67,9 @@ def validate_pulse(pulse):
         raise ControlError("Pad pulse has reserved button bits")
     if not any(pulse[name] for name in PULSE_FIELDS[3:]):
         raise ControlError("Entirely neutral pad pulse is not an action")
+    if pulse["context"] == "character-record" and (
+            pulse["buttons"] != 0x2000 or any(pulse[name] for name in PULSE_FIELDS[4:])):
+        raise ControlError("CharacterRecord permits only B with neutral triggers and sticks")
     return {name: pulse[name] for name in PULSE_FIELDS}
 
 
