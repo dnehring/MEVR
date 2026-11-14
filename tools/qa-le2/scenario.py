@@ -155,7 +155,8 @@ def validate(s, for_run=False):
             if not isinstance(check, dict):
                 continue
             kind = check.get('kind')
-            need(kind in ('compare', 'delta', 'sum-equal', 'finite-reload-transfer', 'orbital-probe-samples', 'review'),
+            need(kind in ('compare', 'delta', 'sum-equal', 'finite-reload-transfer', 'orbital-probe-samples',
+                          'dialogue-prompt-sample', 'review'),
                  f'{aid}: invalid check kind')
             refs = []
             if kind == 'compare':
@@ -176,6 +177,17 @@ def validate(s, for_run=False):
                      f'{aid}: check requires a supported variant')
                 need(all(_reference(ref) and slots.get(ref['artifact']) == 'runtime-state' for ref in refs),
                      f'{aid}: check requires runtime observations')
+            elif kind == 'dialogue-prompt-sample':
+                refs = [check.get('history')]
+                need(_reference(refs[0]) and slots.get(refs[0]['artifact']) == 'runtime-state',
+                     f'{aid}: dialogue prompt requires a runtime history artifact')
+                prompts = check.get('prompts')
+                polarity = check.get('polarityByVariant')
+                need(_text(check.get('conversation')) and valid_dialogue_prompts(prompts)
+                     and isinstance(polarity, dict) and _strings(variants, True)
+                     and all(key in variants and any(row['polarity'] == value for row in prompts)
+                             for key, value in polarity.items()),
+                     f'{aid}: expected conversation and valid prompt identities are required')
             elif kind == 'sum-equal':
                 left, right = check.get('left'), check.get('right')
                 need(isinstance(left, list) and bool(left) and isinstance(right, list) and bool(right), f'{aid}: nonempty sum terms required')
@@ -229,6 +241,39 @@ def compare(left, op, right):
     if not _number(left) or not _number(right):
         raise ValueError('ordered comparison requires finite numbers')
     return {'gt': left > right, 'ge': left >= right, 'lt': left < right, 'le': left <= right}[op]
+
+
+def valid_dialogue_prompts(entries):
+    return (isinstance(entries, list) and bool(entries)
+            and all(isinstance(row, dict) and set(row) == {'polarity', 'entryExportId', 'replyExportId'}
+                    and row['polarity'] in ('paragon', 'renegade')
+                    and all(type(row[key]) is int and row[key] > 0 for key in ('entryExportId', 'replyExportId'))
+                    for row in entries))
+
+
+def check_dialogue_prompt_sample(artifact, history, check, variant):
+    provenance = artifact['provenance']
+    if (provenance['observationVerb'] not in ('observe-dialogue-history', 'stop-dialogue-history')
+            or provenance['historyOrigin']['available'] is not True):
+        raise ValueError('dialogue prompt requires an export with archived recorder-start provenance')
+    if (history['started'] is not True or history['active'] is not False
+            or history['reason'] not in ('stopped', 'expired') or history['dictionaryOmitted'] is not False):
+        raise ValueError('dialogue prompt requires a finished capture with its identity dictionary')
+    epochs = {epoch['epoch'] for epoch in history['epochs']
+              if epoch['conversation']['name'] == check['conversation']}
+    required_polarity = check['polarityByVariant'].get(variant)
+    prompts = [row for row in check['prompts'] if required_polarity in (None, row['polarity'])]
+    for row in history['rows']:
+        if row['status'] != 'stable-sample' or row['epoch'] not in epochs:
+            continue
+        for prompt in prompts:
+            polarity = prompt['polarity']
+            if (row['currentEntry']['exportId'] == prompt['entryExportId']
+                    and row['interruptReply']['exportId'] == prompt['replyExportId']
+                    and row['interrupt']['type'] == (1 if polarity == 'paragon' else 0)
+                    and row.get('gui', {}).get(polarity + 'Displayed') is True):
+                return
+    raise ValueError('expected conversation and authored interrupt prompt were not sampled together')
 
 
 def check_reload_transfer(before, after, variant):
@@ -469,6 +514,10 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
                         passed = True
                     elif check['kind'] == 'orbital-probe-samples':
                         check_orbital_probe_samples(observed(check['before']), observed(check['after']), e['caseId'])
+                        passed = True
+                    elif check['kind'] == 'dialogue-prompt-sample':
+                        ref = check['history']
+                        check_dialogue_prompt_sample(values[ref['artifact']], observed(ref), check, e['caseId'])
                         passed = True
                     else:
                         left, right = [observed(x) for x in check['left']], [observed(x) for x in check['right']]

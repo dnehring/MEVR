@@ -151,6 +151,48 @@
       }
     },
     {
+      "id": "veetor-prompt-sampled",
+      "gate": "native",
+      "description": "A finished recorder export contains the configured Veetor conversation, authored entry and interrupt reply, and matching GUI display flag in one stable sample. Pixel visibility, input timing and accepted outcome require the separate review.",
+      "requires": [
+        "dialogue-history"
+      ],
+      "check": {
+        "kind": "dialogue-prompt-sample",
+        "history": {
+          "artifact": "dialogue-history",
+          "field": "state.dialogueHistory"
+        },
+        "conversation": "profre_veetor_door_d_dlg",
+        "prompts": [
+          {
+            "polarity": "paragon",
+            "entryExportId": 210141,
+            "replyExportId": 210192
+          },
+          {
+            "polarity": "paragon",
+            "entryExportId": 210142,
+            "replyExportId": 210192
+          },
+          {
+            "polarity": "renegade",
+            "entryExportId": 210145,
+            "replyExportId": 210197
+          },
+          {
+            "polarity": "renegade",
+            "entryExportId": 210146,
+            "replyExportId": 210197
+          }
+        ],
+        "polarityByVariant": {
+          "paragon-window": "paragon",
+          "renegade-window": "renegade"
+        }
+      }
+    },
+    {
       "id": "native-window-and-outcome",
       "gate": "native",
       "description": "Review timestamped prompt visibility, bounded dialogue history and input beside the actual selected reply and resulting branch or saved outcome. Identify sampling gaps and any intervals without comparable clocks. Match taken and missed trials to the same starting fixture and conversation route. A trigger callback or GUI triggered flag alone cannot establish acceptance. Verify early and late trials leave the interrupt untaken.",

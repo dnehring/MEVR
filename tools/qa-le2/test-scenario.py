@@ -93,6 +93,33 @@ class ScenarioTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'draft'):
                 scenario.load(path, for_run=True)
 
+    def test_dialogue_prompt_requires_matching_entry_reply_and_capture_origin(self):
+        config = scenario.load(HERE / 'scenarios' / 'dialogue-interrupt.json')
+        check = next(a['check'] for a in config['assertions'] if a['id'] == 'veetor-prompt-sampled')
+        artifact = {'provenance': {'observationVerb': 'stop-dialogue-history', 'historyOrigin': {'available': True}}}
+        history = {'started': True, 'active': False, 'reason': 'stopped', 'dictionaryOmitted': False,
+                   'epochs': [{'epoch': 1, 'conversation': {'name': check['conversation']}}],
+                   'rows': [{'status': 'stable-sample', 'epoch': 1, 'currentEntry': {'exportId': 210141},
+                             'interruptReply': {'exportId': 210192}, 'interrupt': {'type': 1},
+                             'gui': {'paragonDisplayed': True}}]}
+        scenario.check_dialogue_prompt_sample(artifact, history, check, 'paragon-window')
+        scenario.check_dialogue_prompt_sample(artifact, history, check, 'missed-window')
+        with self.assertRaisesRegex(ValueError, 'not sampled together'):
+            scenario.check_dialogue_prompt_sample(artifact, history, check, 'renegade-window')
+        for field, value in (('currentEntry', {'exportId': 210145}), ('interruptReply', {'exportId': 210197}),
+                             ('gui', {'wasTriggered': True}), ('epoch', 2)):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'not sampled together'):
+                row = dict(history['rows'][0], **{field: value})
+                scenario.check_dialogue_prompt_sample(artifact, dict(history, rows=[row]), check, 'paragon-window')
+        with self.assertRaisesRegex(ValueError, 'not sampled together'):
+            wrong = dict(history, epochs=[{'epoch': 1, 'conversation': {'name': 'another_conversation'}}])
+            scenario.check_dialogue_prompt_sample(artifact, wrong, check, 'paragon-window')
+        with self.assertRaisesRegex(ValueError, 'finished capture'):
+            scenario.check_dialogue_prompt_sample(artifact, dict(history, active=True), check, 'paragon-window')
+        artifact['provenance']['historyOrigin']['available'] = False
+        with self.assertRaisesRegex(ValueError, 'archived recorder-start'):
+            scenario.check_dialogue_prompt_sample(artifact, history, check, 'paragon-window')
+
     def test_orbital_probe_requires_same_planet_and_settled_endpoints(self):
         orbital = {'currentMode': 10, 'activeWorld': 42, 'scanning': True,
                    'planet': {'identity': {'class': 'Synthetic.Planet', 'index': 12}, 'tableId': 99},

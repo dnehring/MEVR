@@ -104,6 +104,15 @@ Acquisition handoff, without changing existing story flags:
    selected branch. Conversation-specific synthetic input admission remains
    open. Keep direct interrupt-completion calls out of acceptance runs.
 
+The Veetor draft requires a finished recorder export with archived start
+provenance. The scenario checks that one stable row ties the Veetor name
+to the authored entry, interrupt reply, polarity and GUI display flag.
+The Paragon and Renegade variants each require their own polarity.
+If the short prompt falls between samples, preserve that result and repeat
+the trial from the same starting save. Review actual pixels, input timing
+and the resulting branch independently. A display flag reports sampled
+GUI state and cannot establish any of those outcomes.
+
 No native navigation was attempted here. Reaching the Normandy galaxy map,
 traveling to a hub and walking to an NPC remain normal-navigation prerequisites
 for any future hub lead; none of those steps reopens a completed one-shot beat.
