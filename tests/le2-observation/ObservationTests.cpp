@@ -6,6 +6,7 @@
 #include "engine/Le2InputContext.hpp"
 #include "engine/Le2PartyCompletionObservation.hpp"
 #include "engine/Le2OrbitalObservation.hpp"
+#include "engine/Le2DialogueObservation.hpp"
 #include "engine/Le2WeaponObservation.hpp"
 #include "engine/Legacy.hpp"
 #include "engine/Addresses.hpp"
@@ -30,6 +31,17 @@ void sdkFree(void*) { std::abort(); }
 namespace {
 std::array<SFXNameEntry const*, 1024> names{};
 unsigned nextName = 1;
+UBioConversation* dialogueMutationTarget{};
+FBioDialogEntryNode* dialogueMutationNode{};
+int dialogueMutationKind{};
+void MutateDialogueSample() {
+    if(dialogueMutationKind==1) dialogueMutationTarget->m_nCurrentEntry=-1;
+    if(dialogueMutationKind==2) ++dialogueMutationNode->nExportID;
+    if(dialogueMutationKind==3) dialogueMutationTarget->ObjectInternalInteger=-1;
+    if(dialogueMutationKind==4) dialogueMutationTarget->m_tInterruptInfo.bActivated=1;
+    if(dialogueMutationKind==5) ++dialogueMutationTarget->Name.Number;
+}
+
 std::vector<std::unique_ptr<unsigned char[]>> textStorage;
 template<class T> struct Raw {
     alignas(T) unsigned char bytes[sizeof(T)]{};
@@ -1173,6 +1185,7 @@ int main() {
               "fresh valid resource observation recovers and fits bounded control payload");
         std::cout << "Representative resource observation bytes: " << mevr::json::Write(finalResources, 0).size() << '\n';
         #include "WeaponObservationTests.inc"
+        #include "DialogueObservationTests.inc"
         #include "OrbitalObservationTests.inc"
         // Same-flow normal pause/save-menu opening. No native save is submitted.
         using mevr::engine::le2_diagnostic::ObserveSaveFlow;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "engine/Le2DiagnosticObservation.hpp"
 #include "engine/Le2OrbitalObservation.hpp"
+#include "engine/Le2DialogueObservation.hpp"
 #include "engine/Le2WeaponObservation.hpp"
 #include "engine/Le2InputContext.hpp"
 #include "engine/Le2PartyCompletionObservation.hpp"
@@ -2402,6 +2403,7 @@ json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic:
     return out;
 }
 #include "engine/Le2OrbitalObservation.inc"
+#include "engine/Le2DialogueObservation.inc"
 #include "engine/Le2WeaponObservation.inc"
 #include "engine/Le2InputContext.inc"
 #include "engine/Le2PartyCompletionObservation.inc"

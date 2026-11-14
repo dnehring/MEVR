@@ -9,6 +9,13 @@ endif()
 if(NOT EXISTS "${MEVR_OBSERVATION_SDK_DIR}/Src/LESDK/Headers.hpp")
     message(FATAL_ERROR "Initialize the pinned external/LExSDKv2 submodule or supply MEVR_OBSERVATION_SDK_DIR")
 endif()
+# This SDK emits EInterruptionType as commented declarations, not C++ enums.
+# Fail this actual-SDK check if its named polarity values change.
+file(READ "${MEVR_OBSERVATION_SDK_DIR}/Src/LESDK/LE2/SFXGame_classes.hpp" dialogue_sdk)
+if(NOT dialogue_sdk MATCHES "INTERRUPTION_RENEGADE[ \t]*=[ \t]*0," OR
+   NOT dialogue_sdk MATCHES "INTERRUPTION_PARAGON[ \t]*=[ \t]*1,")
+    message(FATAL_ERROR "LE2 SDK interrupt enum declaration differs from observer mapping")
+endif()
 add_executable(le2-observation-tests ObservationTests.cpp
     "${repo}/src/engine/Le2DiagnosticObservation.cpp" "${repo}/src/core/Json.cpp" "${repo}/src/core/qa/BoundedUtf16.cpp")
 target_compile_features(le2-observation-tests PRIVATE cxx_std_20)
