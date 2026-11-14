@@ -97,12 +97,12 @@ Acquisition handoff, without changing existing story flags:
    Establish which dialogue branch produces each polarity; do not assume both
    occur on the same route. Keep separate taken/missed trials from identical
    starting bytes, then compare normal outcome saves.
-5. Use the bound channel's [`observe-dialogue`](../tools/qa-le2/control.md)
-   snapshots to identify the active conversation and sampled nodes. Correlate
-   them with rendered prompt evidence, normal input, and the selected branch.
-   Timed history and conversation-specific synthetic input admission remain
-   open. Existing party/default pad contexts and authored keys cannot prove
-   acceptance. Keep direct interrupt-completion calls out of acceptance runs.
+5. Start the [bounded recorder](../tools/qa-le2/control.md) just before the
+   expected prompt. Export the stopped capture and use `observe-dialogue`
+   snapshots to supplement conversation, node and package identity. Correlate
+   the sampled times with rendered prompt evidence, normal input and the
+   selected branch. Conversation-specific synthetic input admission remains
+   open. Keep direct interrupt-completion calls out of acceptance runs.
 
 No native navigation was attempted here. Reaching the Normandy galaxy map,
 traveling to a hub and walking to an NPC remain normal-navigation prerequisites
@@ -176,8 +176,8 @@ TSE revision is `6451f23d1fba62358328dce4e87733970f36ebf1`.
 ## Native observer contract and trigger/acceptance boundary
 
 2026-11-14 follow-up against source revision `587e25de`. The resulting
-[`observe-dialogue`](../tools/qa-le2/control.md) implementation covers individual
-read-only snapshots. Native sampling and paired trials remain pending.
+[observer](../tools/qa-le2/control.md) covers read-only point samples and a
+bounded, opt-in recorder. Native sampling and paired trials remain pending.
 
 ### Input routing does not prove acceptance
 
@@ -228,12 +228,15 @@ invalid indices/nonfinite scalars, and resample roots/headers/selected records
 around a copy. Identity disagreement makes that sample unavailable. Preserve
 raw timer/flag meanings and separately label visual, routing and outcome evidence.
 
-The snapshot uses the existing owned game-thread consumer behind
-[`Le2DiagnosticHost`](../src/engine/Le2DiagnosticHost.cpp). A future bounded POD history should
-record tick/time, conversation/node, interrupt fields and state changes, with
-explicit overflow/drop counts and run cancellation. Drain through the existing
-bound channel. Single request snapshots can miss short windows or selected
-replies. Sampling still cannot claim every native call or an exact window boundary.
+The recorder uses the existing owned game-thread consumer behind
+[`Le2DiagnosticHost`](../src/engine/Le2DiagnosticHost.cpp). A start request
+arms up to 10 seconds of observation, with at least 125 ms between samples.
+It records game tick, monotonic time, conversation identity, selected nodes,
+interrupt fields and GUI flags with explicit missed, unavailable and omitted
+sample counts. Stop or expiry freezes the record for retrieval through the
+bound channel. These samples can miss short windows or selected replies.
+Compare timestamps only when the scene and input evidence share the recorder's
+clock or have a documented alignment. Timing across a gap remains unresolved.
 
 ### Existing trace and input machinery to reuse
 
