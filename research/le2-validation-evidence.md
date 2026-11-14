@@ -5,6 +5,33 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Normal New Game reached Normandy evacuation
+
+Protected run `37b0e02f-f076-4f2f-a80f-80094713dee2` used diagnostic candidate
+`3c8be122` with ASI SHA256
+`15b0be9a4d97c954effbf53341ef11d89d93edb4a18654d51bec597a053d1012`.
+The existing session tool froze a chapter fixture for Steam launch preflight.
+The run used the diagnostic splash action, followed by the game's normal New
+Game screen, a new male Shepard, Normal difficulty and enabled autosave. No
+fixture load request was sent. The ordinary opening dialogue and cinematics
+progressed to the evacuation corridor, visible in `normandy-route/frame.png`.
+
+Read-only requests `d5b93273-6fb1-499f-a760-5457d1dc7b63` and
+`b9c35f9e-d3ca-495e-8e36-d392f59ce8c1` agreed on map `BioP_ProNor`, exact
+pawn class `SFXGame.BioPawn` and position `(0, 633, -473.8500061035156)` on
+either side of one brief keyboard movement input. The scripted input observer
+reported `save-flow-player-pawn-reciprocal-or-class-invalid`. The existing
+save-flow guard requires `SFXPawn_Player` ancestry, which this exact class
+lacks. No scripted pad pulse was sent. The brief key attempt establishes no
+position change and does not determine whether held normal input works.
+
+The process closed normally. The pre-reset comparison found no changes to the
+original career save bytes and identical shared trilogy-profile bytes. The
+profile archive had only its original save files and the staged chapter copy.
+All four protected roots were restored and the invitation was removed. Private
+evidence is under `run-procer-acquisition-01`. Lazarus Station was not reached
+and no new fixture was acquired.
+
 ### Chapter scene loaded; published selection received no controller polls
 
 Protected run `731bd9e7-0fd6-4ccc-87cb-b46bf39622c9`, private archive

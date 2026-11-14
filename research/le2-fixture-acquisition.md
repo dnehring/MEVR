@@ -20,6 +20,15 @@ The owner confirmed on 2026-11-14 that no earlier save is known. Plan the
 separate protected new-game route below; do not leave acquisition waiting for
 an unidentified Lazarus/Freedom's Progress save.
 
+The first protected New Game attempt reached the Normandy evacuation corridor.
+There the current pawn was `SFXGame.BioPawn`, outside the existing scripted
+input guard's `SFXPawn_Player` requirement. The archive contained no new career
+save. Before repeating the opening, obtain a verified early Legendary Edition
+save or arrange normal controls that can hold movement through the evacuation.
+A candidate from another career needs the same immutable archive, format check
+and normal-load scene verification as one acquired locally. See the
+[native acquisition record](le2-validation-evidence.md#normal-new-game-reached-normandy-evacuation).
+
 1. **Preferred reusable route: normal Lazarus/ProCer progression.** Installed
    base and Patch01 content includes `BioP_ProCer` and
    `BioD_ProCer_100RezRoom`. Existing sequence inspection identifies pistol
