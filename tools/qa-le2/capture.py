@@ -22,6 +22,7 @@ _spec = importlib.util.spec_from_file_location("le2_capture_control", Path(__fil
 c = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(c)
 MAX_DIMENSION, MAX_PIXELS = 8192, 16777216
+METHODS = ("print-window", "desktop-client")
 
 
 class CaptureError(ValueError):
@@ -74,6 +75,9 @@ class WindowsCapture:
             (self.user, "IsIconic", [wt.HWND], wt.BOOL),
             (self.user, "GetWindowThreadProcessId", [wt.HWND, ct.POINTER(wt.DWORD)], wt.DWORD),
             (self.user, "GetClientRect", [wt.HWND, ct.POINTER(wt.RECT)], wt.BOOL),
+            (self.user, "GetForegroundWindow", [], wt.HWND),
+            (self.user, "ClientToScreen", [wt.HWND, ct.POINTER(wt.POINT)], wt.BOOL),
+            (self.user, "GetSystemMetrics", [ct.c_int], ct.c_int),
             (self.user, "GetDC", [wt.HWND], wt.HDC),
             (self.user, "ReleaseDC", [wt.HWND, wt.HDC], ct.c_int),
             (self.user, "PrintWindow", [wt.HWND, wt.HDC, wt.UINT], wt.BOOL),
@@ -84,6 +88,8 @@ class WindowsCapture:
             (self.gdi, "DeleteObject", [wt.HANDLE], wt.BOOL),
             (self.gdi, "DeleteDC", [wt.HDC], wt.BOOL),
             (self.gdi, "PatBlt", [wt.HDC, ct.c_int, ct.c_int, ct.c_int, ct.c_int, wt.DWORD], wt.BOOL),
+            (self.gdi, "BitBlt", [wt.HDC, ct.c_int, ct.c_int, ct.c_int, ct.c_int,
+                                  wt.HDC, ct.c_int, ct.c_int, wt.DWORD], wt.BOOL),
             (self.gdi, "GetDIBits", [wt.HDC, wt.HBITMAP, wt.UINT, wt.UINT, ct.c_void_p,
                                     ct.POINTER(BitmapInfo), wt.UINT], ct.c_int),
         ]
@@ -125,13 +131,29 @@ class WindowsCapture:
             raise CaptureError("Window enumeration failed")
         return found
 
-    def bitmap(self, hwnd, width, height):
+    def desktop_window(self, hwnd):
+        """Physical client coordinates under the worker's per-monitor DPI context."""
+        state = self.window(hwnd)
+        rect = wt.RECT()
+        if not self.user.GetClientRect(hwnd, ct.byref(rect)):
+            raise CaptureError("Cannot read desktop client rectangle", window=state)
+        begin, end = wt.POINT(rect.left, rect.top), wt.POINT(rect.right, rect.bottom)
+        if not self.user.ClientToScreen(hwnd, ct.byref(begin)) or not self.user.ClientToScreen(hwnd, ct.byref(end)):
+            raise CaptureError("Cannot map physical client rectangle", window=state)
+        x, y, width, height = (self.user.GetSystemMetrics(index) for index in (76, 77, 78, 79))
+        state.update(foregroundHwnd=str(self.user.GetForegroundWindow() or 0),
+                     clientScreenRect=dict(left=begin.x, top=begin.y, right=end.x, bottom=end.y),
+                     virtualScreenRect=dict(left=x, top=y, right=x+width, bottom=y+height))
+        return state
+
+    def bitmap(self, hwnd, width, height, *, screen_rect=None):
         from PIL import Image
         dimensions(width, height)
         source = memory = bitmap = previous = None
         selected = False
+        source_window = None if screen_rect is not None else hwnd
         try:
-            source = self.user.GetDC(hwnd)
+            source = self.user.GetDC(source_window)
             if not source:
                 raise CaptureError("GetDC failed")
             memory = self.gdi.CreateCompatibleDC(source)
@@ -147,8 +169,12 @@ class WindowsCapture:
             # Initialize unwritten pixels rather than exposing GDI bitmap memory.
             if not self.gdi.PatBlt(memory, 0, 0, width, height, 0x00000042):  # BLACKNESS
                 raise CaptureError("Bitmap initialization failed")
-            if not self.user.PrintWindow(hwnd, memory, 3):  # PW_CLIENTONLY | PW_RENDERFULLCONTENT
-                raise CaptureError("PrintWindow failed")
+            if screen_rect is None:
+                if not self.user.PrintWindow(hwnd, memory, 3):  # PW_CLIENTONLY | PW_RENDERFULLCONTENT
+                    raise CaptureError("PrintWindow failed")
+            elif not self.gdi.BitBlt(memory, 0, 0, width, height, source,
+                                     screen_rect["left"], screen_rect["top"], 0x40CC0020):  # SRCCOPY | CAPTUREBLT
+                raise CaptureError("Desktop client BitBlt failed")
             restored = self.gdi.SelectObject(memory, previous)
             if not restored or restored == ct.c_void_p(-1).value:
                 raise CaptureError("Bitmap deselection failed")
@@ -166,7 +192,7 @@ class WindowsCapture:
             if bitmap:
                 self.gdi.DeleteObject(bitmap)
             if source:
-                self.user.ReleaseDC(hwnd, source)
+                self.user.ReleaseDC(source_window, source)
 
 
 def capture_window(api, pid):
@@ -196,8 +222,44 @@ def capture_window(api, pid):
     return before, image
 
 
-def worker(run, batch):
+def capture_desktop_client(api, pid):
+    windows = api.windows(pid)
+    if len(windows) != 1:
+        raise CaptureError(f"Expected one visible PID-owned top-level window; found {len(windows)}")
+    original = windows[0]
+    hwnd = int(original["hwnd"])
+    before = api.desktop_window(hwnd)
+    if any(before.get(key) != value for key, value in original.items()):
+        raise CaptureError("Window changed before desktop capture", window=before)
+    if (before["pid"] != pid or not before["visible"] or before["minimized"]
+            or before["foregroundHwnd"] != before["hwnd"]):
+        raise CaptureError("Desktop capture requires the exact owned foreground window, visible and not minimized", window=before)
+    rect, screen = before["clientScreenRect"], before["virtualScreenRect"]
+    width, height = rect["right"]-rect["left"], rect["bottom"]-rect["top"]
+    dimensions(width, height)
+    if (width != before["width"] or height != before["height"]
+            or screen["right"] <= screen["left"] or screen["bottom"] <= screen["top"]
+            or not screen["left"] <= rect["left"] < rect["right"] <= screen["right"]
+            or not screen["top"] <= rect["top"] < rect["bottom"] <= screen["bottom"]):
+        raise CaptureError("Physical client rectangle is inconsistent or not fully inside the virtual screen", window=before)
+    if api.desktop_window(hwnd) != before:
+        raise CaptureError("Foreground window or rectangle changed before desktop capture", window=before)
+    try:
+        image = api.bitmap(hwnd, width, height, screen_rect=rect)
+    except CaptureError as error:
+        error.window = before
+        raise
+    if api.desktop_window(hwnd) != before:
+        raise CaptureError("Foreground window, ownership or rectangle changed during desktop capture", window=before)
+    if image.size != (width, height):
+        raise CaptureError("Desktop image dimensions differ from verified client", window=before)
+    return before, image
+
+
+def worker(run, batch, method="print-window"):
     # Private child: still requires the same real session binding, not just a PID.
+    if method not in METHODS:
+        raise CaptureError("Unknown capture method")
     expected = binding(run)
     batch = c.session.safe_path(batch)
     if batch.parent != c.session.safe_path(run / "captures") or not batch.is_dir():
@@ -207,7 +269,8 @@ def worker(run, batch):
     if not previous_dpi:
         raise CaptureError("Cannot establish physical-pixel DPI context")
     try:
-        window, image = capture_window(api, int(expected["identity"]["pid"]))
+        operation = capture_desktop_client if method == "desktop-client" else capture_window
+        window, image = operation(api, int(expected["identity"]["pid"]))
     finally:
         api.user.SetThreadDpiAwarenessContext(previous_dpi)
     if binding(run) != expected:
@@ -217,18 +280,24 @@ def worker(run, batch):
     constant = all(low == high for low, high in extrema)
     with (batch / "frame.png").open("xb") as stream:
         image.save(stream, format="PNG")
-    return dict(binding=expected, window=window, black=black, constant=constant,
-                capturedAtUtc=utc(), method="PrintWindow(PW_CLIENTONLY|PW_RENDERFULLCONTENT)")
+    result = dict(binding=expected, window=window, black=black, constant=constant,
+                  capturedAtUtc=utc(), method="PrintWindow(PW_CLIENTONLY|PW_RENDERFULLCONTENT)")
+    if method == "desktop-client":
+        result.update(method="BitBlt(desktop-client;SRCCOPY|CAPTUREBLT)",
+                      pixelSource="composited-desktop-client-region", foregroundVerifiedBeforeAfter=True,
+                      occlusionIndependentlyVerified=False,
+                      limitations="Desktop overlays may be present; before/after samples do not prove continuous foreground ownership")
+    return result
 
 
-def native_backend(run, batch):
+def native_backend(run, batch, method="print-window"):
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startup.wShowWindow = subprocess.SW_HIDE
     # PrintWindow is synchronous and can block. Timeout kills only this private
     # helper, never the game, and never starts a second attempt.
     result = subprocess.run([sys.executable, str(Path(__file__).resolve()), str(run),
-                             "--_worker", str(batch)], capture_output=True, text=True,
+                             "--_worker", str(batch), "--method", method], capture_output=True, text=True,
                             timeout=20, startupinfo=startup)
     if result.returncode:
         try:
@@ -240,7 +309,9 @@ def native_backend(run, batch):
     return json.loads(result.stdout)
 
 
-def capture(run, name=None, *, bind=binding, backend=native_backend):
+def capture(run, name=None, *, bind=binding, backend=None, method="print-window"):
+    if method not in METHODS:
+        raise CaptureError("Unknown capture method")
     run = c.session.safe_path(run)
     expected = bind(run)  # No output mutation before verified session admission.
     name = name or (dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:8])
@@ -252,13 +323,13 @@ def capture(run, name=None, *, bind=binding, backend=native_backend):
     batch.mkdir()  # exclusive: no existing capture can be replaced
     receipt = dict(schemaVersion=1, source="le2-window-capture", status="attempting",
                    startedAtUtc=utc(), bindingBefore=expected, gameplayPassed=False,
-                   visualAcceptance="pending-human-review", window=None, image=None)
+                   visualAcceptance="pending-human-review", requestedMethod=method, window=None, image=None)
     receipt_path = batch / "capture.json"
     c.session.write_json(receipt_path, receipt)
     try:
         if bind(run) != expected:
             raise CaptureError("Session changed before capture helper")
-        result = backend(run, batch)
+        result = native_backend(run, batch, method) if backend is None else backend(run, batch)
         actual = bind(run)
         receipt["bindingAfter"] = actual
         if actual != expected or result.get("binding") != expected:
@@ -291,14 +362,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run", type=Path)
     parser.add_argument("--name")
+    parser.add_argument("--method", choices=METHODS, default="print-window",
+                        help="Explicit optional foreground desktop-client capture; never an automatic retry")
     parser.add_argument("--_worker", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
         run = c.session.safe_path(args.run.absolute())
         if args._worker:
-            print(json.dumps(worker(run, args._worker)))
+            print(json.dumps(worker(run, args._worker, args.method)))
             return 0
-        path, receipt = capture(run, args.name)
+        path, receipt = capture(run, args.name, method=args.method)
         print(json.dumps(dict(receiptPath=str(path), **receipt), indent=2))
         return 0 if receipt["status"] == "captured" else 2
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:

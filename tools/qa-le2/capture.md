@@ -62,3 +62,49 @@ python tools/qa-le2/test-capture.py
 
 These verify refusal/identity changes, exact-PID selection, handle cleanup,
 output preservation and uncertainty; they make no claim about live pixels.
+
+## Explicit foreground desktop fallback
+
+When PrintWindow returns black GPU content, a separately requested capture can
+copy the foreground game's client region from the desktop:
+
+```powershell
+python tools/qa-le2/capture.py RUN --name fresh-desktop-review --method desktop-client
+```
+
+The default remains `--method print-window`; there is no automatic fallback,
+retry, focus change or input. The new capture must use a new directory name.
+The helper requires the exact owned game HWND to be the foreground window,
+visible and not minimized. Under its private thread's physical-pixel DPI context,
+it maps both client corners with
+[ClientToScreen](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-clienttoscreen),
+checks that dimensions agree and the entire client lies within the
+[virtual-screen bounds](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics),
+then copies only that rectangle. It refuses partial offscreen clients instead of
+clipping. Negative coordinates on secondary monitors are supported.
+
+The GDI copy uses the desktop DC and
+[BitBlt](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-bitblt)
+with `SRCCOPY|CAPTUREBLT`. It reuses bounded bitmap allocation, initialization,
+row-count validation and handle cleanup. Foreground HWND, owner, visibility,
+minimization, size, physical client rectangle and screen bounds must match again
+before and after the copy; run/process/build binding is checked independently.
+Moving, resizing, minimizing or changing foreground/ownership invalidates the
+capture. No window or system setting is changed.
+
+The receipt explicitly reports
+`method=BitBlt(desktop-client;SRCCOPY|CAPTUREBLT)`,
+`pixelSource=composited-desktop-client-region`, `requestedMethod=desktop-client`,
+the physical rectangles and `foregroundVerifiedBeforeAfter=true`.
+`occlusionIndependentlyVerified` remains false: overlays/topmost windows can
+appear in desktop pixels, and before/after checks cannot prove continuous
+foreground ownership between samples. Review the actual image. This method does
+not claim isolated game rendering, screenshot freshness beyond the capture
+attempt, scene acceptance, or headset/stereo coverage. Black/constant handling
+and the 20-second worker timeout remain unchanged.
+
+Existing menu and save-evidence collectors accept the same bound receipt/image
+hash contract; they do not require PrintWindow as the pixel source. Offline tests
+exercise that real collector compatibility as well as desktop-only GDI calls,
+negative monitor origin, offscreen/refocused/moved/minimized refusal, and cleanup.
+Live desktop capture success is a separate check from these synthetic tests.
