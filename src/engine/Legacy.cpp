@@ -5,6 +5,7 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "engine/ConsoleCommandInput.hpp"
 #include "engine/GameAdapterSdk.hpp"
 #include "engine/ScopedUnionMember.hpp"
 
@@ -25,15 +26,6 @@ static_assert(sizeof(ue3::Vector) == sizeof(FVector) && sizeof(ue3::Rotator) == 
 
 UObject* Sdk(ue3::Object const* object) {
     return reinterpret_cast<UObject*>(const_cast<ue3::Object*>(object));
-}
-
-std::wstring Widen(std::string const& utf8) {
-    int const size = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
-    std::wstring wide(static_cast<size_t>(size > 0 ? size : 0), L'\0');
-    if (size > 0) {
-        MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), wide.data(), size);
-    }
-    return wide;
 }
 
 std::string Narrow(wchar_t const* chars) {
@@ -178,11 +170,12 @@ ue3::Rotator* AdjustedAimReturn(void* parms) {
 }
 
 std::string ConsoleCommand(ue3::Object* controller, ue3::Function* function, std::string const& command) {
+    auto const wideCommand = detail::ConsoleCommandInput(command);
     APlayerController_execConsoleCommand_Parms parms;  // zeroed
     // The SDK parameter block leaves both nontrivial union members inactive
     // and its destructor does not destroy them. Own each constructed member
     // through normal return and ordinary C++ exception unwinding.
-    detail::ScopedUnionMember<FString> commandLifetime(&parms.Command, Widen(command).c_str());
+    detail::ScopedUnionMember<FString> commandLifetime(&parms.Command, wideCommand.c_str());
     detail::ScopedUnionMember<FString> returnLifetime(&parms.ReturnValue);
     parms.bWriteToLog = 0;
     // The native directly, never the SDK's wrapper.
