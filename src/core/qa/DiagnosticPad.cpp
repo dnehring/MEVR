@@ -35,10 +35,12 @@ Admission Source::Publish(std::uint64_t run, std::uint64_t sequence, Pad pad,
     if (sequence == 0 || sequence <= state_.sequence) return Admission::StaleSequence;
     if (Outstanding()) return Admission::Busy; // no replacement or queue
     if (pad == Pad{} || (pad.buttons & ~kButtons) != 0 || durationMs == 0 || durationMs > kMaxPulseMs ||
-        nowMs > std::numeric_limits<std::uint64_t>::max() - durationMs) return Admission::InvalidPulse;
+        nowMs > std::numeric_limits<std::uint64_t>::max() - kActivationWaitMs - durationMs) return Admission::InvalidPulse;
     if (!Time(nowMs)) return Admission::ClockRegressed;
     state_ = {}; state_.run = run; state_.runOpen = true; state_.sequence = sequence;
-    state_.requested = pad; state_.publishedMs = nowMs; state_.expiresMs = nowMs + durationMs;
+    state_.requested = pad; state_.publishedMs = nowMs;
+    state_.activationDeadlineMs = nowMs + kActivationWaitMs;
+    state_.requestedDurationMs = durationMs;
     state_.phase = Phase::Published;
     return Admission::Accepted;
 }
@@ -70,16 +72,24 @@ PollResult Source::Poll(std::uint32_t index, Physical physical, std::uint64_t no
     if (physical.state == PhysicalState::Connected && physical.pad != Pad{}) {
         Stop(End::PhysicalConflict); Increment(state_.conflictingPolls); return {};
     }
+    // Waiting for the first eligible poll is bounded separately from the hold.
     // Expiry/invalid clock wins before any nonneutral output. A cancelled run
     // still emits its neutral release when a safe poll becomes available.
-    if (clockValid && nowMs >= state_.expiresMs) Stop(End::Expired);
+    if (clockValid && state_.phase == Phase::Published && nowMs >= state_.activationDeadlineMs)
+        Stop(End::StartTimedOut);
+    if (clockValid && state_.phase == Phase::Consumed && nowMs >= state_.expiresMs) Stop(End::Expired);
     if (state_.phase == Phase::DrainPending) {
         state_.phase = Phase::NeutralEmitted;
         Increment(state_.neutralPolls); state_.neutralMs = nowMs;
         return Emit({},physical.packet);
     }
     if (!clockValid || !state_.runOpen) return {};
-    if (state_.pulsePolls == 0) state_.firstPulseMs = nowMs;
+    if (state_.pulsePolls == 0) {
+        // Publish reserved enough headroom for the entire activation window
+        // plus this hold. This addition cannot overflow before its deadline.
+        state_.firstPulseMs = nowMs;
+        state_.expiresMs = nowMs + state_.requestedDurationMs;
+    }
     Increment(state_.pulsePolls); state_.lastPulseMs = nowMs; state_.phase = Phase::Consumed;
     return Emit(state_.requested,physical.packet);
 }

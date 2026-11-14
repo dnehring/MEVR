@@ -13,13 +13,18 @@ struct Pad {
 };
 inline constexpr std::uint16_t kButtons = 0xF3FF; // standard XInput, excludes Guide/reserved bits
 inline constexpr std::uint32_t kMaxPulseMs = 1000;
+inline constexpr std::uint32_t kActivationWaitMs = 5000;
 enum class PhysicalState { Connected, Disconnected, Error };
 struct Physical { PhysicalState state{PhysicalState::Error}; Pad pad{}; std::uint32_t packet{}; };
 enum class Phase { Idle, Published, Consumed, DrainPending, NeutralEmitted };
-enum class End { None, Expired, RunCancelled, PhysicalConflict, PhysicalError, ClockRegressed };
+enum class End { None, Expired, RunCancelled, PhysicalConflict, PhysicalError, ClockRegressed, StartTimedOut };
 enum class Admission { Accepted, InvalidRun, RunAlreadyOpen, Busy, InvalidPulse, StaleSequence, ClockRegressed };
 struct Observation {
     std::uint64_t run{}, sequence{}, publishedMs{}, expiresMs{};
+    // expiresMs stays zero until the first eligible nonconflicting poll starts
+    // the hold. Publication only reserves this bounded activation window.
+    std::uint64_t activationDeadlineMs{};
+    std::uint32_t requestedDurationMs{};
     std::uint64_t pulsePolls{}, firstPulseMs{}, lastPulseMs{}, neutralPolls{}, neutralMs{}, conflictingPolls{};
     Phase phase{Phase::Idle}; End end{End::None};
     Pad requested{};

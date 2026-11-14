@@ -83,7 +83,43 @@ bool Install(Context&,char const*,void* target,void* detour,void** original) {
 }
 bool Uninstall(Context&,char const*) { ++uninstallCalls; return true; }
 }
-int main() try {
+namespace {
+void DelayedActivation() {
+    XINPUT_STATE state{};
+    bridge::DiagnosticObservation s;
+    // Native scheduler delays reproduced through the actual Bridge path. Both
+    // delays exceed the requested hold but fit the bounded activation window.
+    struct Delayed { std::uint64_t published, first; std::uint32_t duration; };
+    for(auto sample : {Delayed{197660078,197660390,150},Delayed{197712984,197714406,1000}}) {
+        Reset(); now=sample.published;
+        Check(bridge::DiagnosticTryInstall(context,true) && bridge::DiagnosticBeginRun(1)==pad::Admission::Accepted,"delayed bridge run admitted");
+        Check(bridge::DiagnosticPublish(1,1,tap,sample.duration)==pad::Admission::Accepted,"delayed bridge pulse published");
+        s=bridge::DiagnosticSnapshot();
+        Check(s.source.expiresMs==0 && s.source.activationDeadlineMs==sample.published+5000 && s.source.requestedDurationMs==sample.duration,"bridge exposes unstarted timing");
+        now=sample.first; Poll(state,0x3000);
+        Check(bridge::DiagnosticSnapshot().source.pulsePolls==0 && bridge::DiagnosticSnapshot().source.expiresMs==0,"foreign caller cannot start activation");
+        Check(Poll(state)==ERROR_SUCCESS && state.Gamepad.wButtons==tap.buttons,"eligible delayed callback writes active pad");
+        Check(bridge::DiagnosticSnapshot().source.expiresMs==sample.first+sample.duration,"bridge starts hold at eligible callback");
+        now=sample.first+sample.duration-1; Poll(state);
+        Check(state.Gamepad.wButtons==tap.buttons,"bridge preserves requested active hold");
+        now=sample.first+sample.duration; Poll(state); s=bridge::DiagnosticSnapshot();
+        Check(state.Gamepad.wButtons==0 && s.source.end==pad::End::Expired && s.neutralWrites==1,"bridge active deadline writes neutral");
+        Poll(state);
+        Check(std::memcmp(&state,&physical,sizeof state)==0 && bridge::DiagnosticSnapshot().source.pulsePolls==2,"bridge does not rearm after hold");
+    }
+    Reset(); Arm(); now=5100;
+    Check(bridge::DiagnosticPublish(1,2,tap,80)==pad::Admission::Busy,"expired unpolled activation cannot queue replacement");
+    Poll(state); s=bridge::DiagnosticSnapshot();
+    Check(state.Gamepad.wButtons==0 && s.source.end==pad::End::StartTimedOut && s.source.expiresMs==0 &&
+        s.source.pulsePolls==0 && s.neutralWrites==1,"bridge first poll timeout releases without active write");
+    Poll(state);
+    Check(std::memcmp(&state,&physical,sizeof state)==0 && bridge::DiagnosticSnapshot().source.pulsePolls==0,"bridge timeout remains terminal");
+
+}
+}
+// Keep the large by-value telemetry temporaries in separate test stack frames,
+// particularly in unoptimized MSVC builds; do not raise the process stack limit.
+void OriginalBridgeChecks() {
     Reset();
     Check(!bridge::TryInstall(context) && installCalls==0,"ordinary install entry cannot silently activate diagnostic build");
     Check(!bridge::DiagnosticTryInstall(context,false) && lookups==0,"no lookup or hook before explicit opt-in");
@@ -99,7 +135,7 @@ int main() try {
     auto packet=state.dwPacketNumber;
     Check(Poll(state)==ERROR_SUCCESS && state.dwPacketNumber==packet,"same synthetic state retains packet");
     Check(bridge::DiagnosticSnapshot().source.pulsePolls==2,"one output write per eligible nonrecursive poll");
-    now=180; Poll(state);
+    now=181; Poll(state);
     Check(state.Gamepad.wButtons==0 && state.dwPacketNumber!=packet && bridge::DiagnosticSnapshot().neutralWrites==1,"expiry emits neutral in actual output buffer");
     Check(Poll(state)==physicalResult && std::memcmp(&state,&physical,sizeof state)==0,"after drain exact physical state passthrough");
     Check(!bridge::Uninstall(context) && uninstallCalls==0 && bridge::DiagnosticSnapshot().disabled,"diagnostic hooks never uninstalled");
@@ -164,6 +200,10 @@ int main() try {
     bridge::testing::Poll(1,0,&state,0x1500);
     Check(state.Gamepad.wButtons==0x2000 && bridge::DiagnosticSnapshot().source.pulsePolls==1,"fresh callback consumes only the new request");
 
+}
+int main() try {
+    OriginalBridgeChecks();
+    DelayedActivation();
     std::cout << checks << " existing-bridge diagnostic checks passed; no native hooks installed\n";
     return 0;
 } catch(std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }
