@@ -4,6 +4,7 @@
 #if defined(MEVR_GAME_LE2)
 #include "engine/GameAdapterSdk.hpp"
 #include "engine/Addresses.hpp"
+#include "core/qa/BoundedUtf16.hpp"
 #include "engine/Legacy.hpp"
 #include "plugin/ProcessEventDiagnostic.hpp"
 #include "ue3/Runtime.hpp"
@@ -59,7 +60,16 @@ struct ParameterSample {
     bool hasBoolMask{};
     std::uint32_t boolMask{};
 };
-enum class Declaration { Console, Fov };
+enum class Declaration { Console, Fov, OpenLoad, AdvanceSplash };
+char const* DeclarationName(Declaration d) {
+    switch (d) {
+    case Declaration::Console: return "Engine.PlayerController.ConsoleCommand";
+    case Declaration::Fov: return "Engine.PlayerController.GetFOVAngle";
+    case Declaration::OpenLoad: return "SFXGame.BioSFHandler_MainMenu.MoveToLoadGui";
+    case Declaration::AdvanceSplash: return "SFXGame.BioSFHandler_PCSplash.AdvanceScreen";
+    }
+    return "unknown";
+}
 struct FunctionSample {
     ObjectSample function;
     char const* reason{"player-controller-unavailable"};
@@ -226,18 +236,24 @@ bool HasExpectedParameter(FunctionSample const& sample, char const* name, char c
     return false;
 }
 
-void ReadFunction(Table const& table, APlayerController const* controller, FunctionSample& out, Declaration declaration) {
+void ReadFunction(Table const& table, UObject const* controller, FunctionSample& out, Declaration declaration) {
     bool const fov = declaration == Declaration::Fov;
+    bool const menu = declaration == Declaration::OpenLoad || declaration == Declaration::AdvanceSplash;
+    char const* package = menu ? "SFXGame" : "Engine";
+    char const* ownerName = declaration == Declaration::OpenLoad ? "BioSFHandler_MainMenu" :
+        declaration == Declaration::AdvanceSplash ? "BioSFHandler_PCSplash" : "PlayerController";
+    char const* functionName = declaration == Declaration::OpenLoad ? "MoveToLoadGui" :
+        declaration == Declaration::AdvanceSplash ? "AdvanceScreen" : fov ? "GetFOVAngle" : "ConsoleCommand";
     // Match Legacy's exact declaration owner, not a derived class's override.
     auto const* owner = controller->Class;
-    out.reason = "player-controller-declaration-class-unavailable";
+    out.reason = menu ? "menu-declaration-class-unavailable" : "player-controller-declaration-class-unavailable";
     unsigned depth = 0;
     while (owner != nullptr && depth++ < kMaxClassDepth) {
         if (!ClassMetadata(table, owner)) return;
-        if (Qualified(table, owner, "Engine", "PlayerController")) break;
+        if (Qualified(table, owner, package, ownerName)) break;
         owner = static_cast<UClass const*>(owner->SuperField);
     }
-    if (owner == nullptr || !Qualified(table, owner, "Engine", "PlayerController")) return;
+    if (owner == nullptr || !Qualified(table, owner, package, ownerName)) return;
     UFunction const* function = nullptr;
     unsigned fields = 0;
     for (auto const* field = owner->Children; field != nullptr; field = field->Next) {
@@ -248,16 +264,16 @@ void ReadFunction(Table const& table, APlayerController const* controller, Funct
         char name[kNameBytes]{};
         out.reason = "owner-child-name-unavailable";
         if (!NameText(field->Name, name)) return;
-        if (std::strcmp(name, fov ? "GetFOVAngle" : "ConsoleCommand") != 0) continue;
-        out.reason = fov ? "duplicate-get-fov-angle-declaration" : "duplicate-console-command-declaration";
+        if (std::strcmp(name, functionName) != 0) continue;
+        out.reason = menu ? "duplicate-menu-function-declaration" : fov ? "duplicate-get-fov-angle-declaration" : "duplicate-console-command-declaration";
         if (function != nullptr) return;
-        out.reason = fov ? "get-fov-angle-is-not-an-exact-Core.Function" : "console-command-is-not-an-exact-Core.Function";
+        out.reason = menu ? "menu-function-is-not-an-exact-Core.Function" : fov ? "get-fov-angle-is-not-an-exact-Core.Function" : "console-command-is-not-an-exact-Core.Function";
         if (!ClassMetadata(table, field->Class) || !Qualified(table, field->Class, "Core", "Function")) return;
         function = static_cast<UFunction const*>(field);
     }
-    out.reason = fov ? "get-fov-angle-declaration-missing" : "console-command-declaration-missing";
+    out.reason = menu ? "menu-function-declaration-missing" : fov ? "get-fov-angle-declaration-missing" : "console-command-declaration-missing";
     if (function == nullptr) return;
-    out.reason = fov ? "get-fov-angle-function-unavailable" : "console-command-function-unavailable";
+    out.reason = menu ? "menu-function-unavailable" : fov ? "get-fov-angle-function-unavailable" : "console-command-function-unavailable";
     if (!ReadObject(table, function, "Core", "Function", out.function)) return;
     out.functionFlags = function->FunctionFlags;
     out.nativeIndex = static_cast<unsigned short>(function->iNative);
@@ -272,6 +288,7 @@ void ReadFunction(Table const& table, APlayerController const* controller, Funct
         out.reason = "invalid-or-foreign-function-child";
         if (!table.Listed(field, true) || !IsA(table, field, "Core", "Property") || field->Outer != function) return;
         auto const* property = static_cast<UProperty const*>(field);
+        if (menu && (property->PropertyFlags & 0x400) != 0) { out.reason = "void-menu-function-has-return-property"; return; }
         if ((property->PropertyFlags & kParm) == 0) continue; // locals do not belong to the call block
         out.reason = "parameter-count-limit";
         if (out.parameterCount == kMaxParameters) return;
@@ -312,6 +329,10 @@ void ReadFunction(Table const& table, APlayerController const* controller, Funct
         HasExpectedParameter(out, "Command", "Core.StrProperty", 0, 16, 0x400080) &&
         HasExpectedParameter(out, "bWriteToLog", "Core.BoolProperty", 0x10, 4, 0x90, 1) &&
         HasExpectedParameter(out, "ReturnValue", "Core.StrProperty", 0x14, 16, 0x400580);
+    if (menu) out.layoutMatches = declaration == Declaration::OpenLoad ?
+        out.parmsSize == 1 && out.numParms == 1 && out.parameterCount == 1 &&
+        HasExpectedParameter(out, "LoadMode", "Core.ByteProperty", 0, 1, 0x80) :
+        out.parmsSize == 0 && out.numParms == 0 && out.parameterCount == 0;
     out.reason = out.layoutMatches ? "sdk-parameter-layout-matches-only" : "sdk-parameter-layout-mismatch";
 }
 
@@ -376,6 +397,173 @@ void Read(void* context) {
         out.positionAvailable = true;
         out.positionReason = "finite-sdk-actor-location";
     }
+}
+
+constexpr unsigned kMaxMenuPanels = 32, kMaxPanelHandlers = 32, kMaxSaveRows = 12;
+constexpr std::size_t kSaveMenuPayloadBytes = 14 * 1024;
+static_assert(sizeof(FSFXSaveDescriptor) == 0x28 && sizeof(FSaveGUIRecord) == 0x70);
+static_assert(offsetof(FSaveGUIRecord, SaveDescriptor) == 0);
+static_assert(offsetof(FSFXSaveDescriptor, Career) == 0 && offsetof(FSFXSaveDescriptor, SaveName) == 0x10);
+static_assert(offsetof(FSFXSaveDescriptor, Index) == 0x20 && offsetof(FSFXSaveDescriptor, Type) == 0x24);
+struct MenuPanel {
+    ObjectSample panel, handler;
+    bool visible{}, initialized{}, removing{}, inputDisabled{}, eventsDisabled{}, focused{};
+    bool pressedStart{}, waitingDlc{}, waitingSaves{}, checkingComplete{}, hasSaves{}, careerHasSaves{}, connecting{};
+    bool waitingMessage{}, enumerating{}, fromMainMenu{};
+    float legalTimeout{};
+    unsigned guiMode{}, loadMode{};
+    int careerIndex{};
+    FunctionSample function;
+};
+struct SaveRow {
+    std::uintptr_t career{}, name{};
+    int index{};
+    unsigned type{};
+};
+struct MenuSample {
+    Sample root;
+    ObjectSample viewport, manager;
+    MenuPanel splash, main, load;
+    bool contextAvailable{}, listComplete{};
+    char const* reason{"menu-context-unavailable"};
+    char const* listReason{"load-panel-unavailable"};
+    unsigned panelCount{}, saveCount{}, saveCapacity{};
+    std::uintptr_t panelsData{}, savesData{}, focus{};
+    SaveRow rows[kMaxSaveRows]{};
+};
+static_assert(std::is_trivially_destructible_v<MenuSample>);
+template<class T> bool BoundedArray(TArray<T> const& array, unsigned limit) {
+    return array.Count() <= limit && array.Capacity() >= array.Count() && array.Capacity() <= (limit > 4096 ? limit : 4096) &&
+        (array.Count() == 0 || array.GetData() != nullptr);
+}
+bool PanelContext(Table const& table, UBioSFPanel const* panel, UBioSFManager const* manager,
+                  char const* type, MenuPanel& out, bool defaultOnly) {
+    if (!ReadObject(table, panel, "Engine", "BioSFPanel", out.panel) || panel->oParentManager != manager) return false;
+    out.visible = panel->IsVisible; out.initialized = panel->bInitialized; out.removing = panel->bToBeRemoved;
+    out.inputDisabled = panel->bInputDisabled; out.eventsDisabled = panel->bEventsDisabled;
+    out.focused = manager->m_FocusPanel == panel;
+    if (!BoundedArray(panel->ScriptHandlers, kMaxPanelHandlers)) return false;
+    UBioSFHandler const* selected = nullptr;
+    auto accept = [&](UBioSFHandler const* candidate, bool required) {
+        if (candidate == nullptr) return !required;
+        ObjectSample object;
+        if (!ReadObject(table, candidate, "Engine", "BioSFHandler", object) || candidate->oPanel != panel) return false;
+        if (!IsA(table, candidate, "SFXGame", type)) return !required;
+        if (selected != nullptr && selected != candidate) return false;
+        selected = candidate; out.handler = object;
+        return true;
+    };
+    if (!accept(panel->m_DefaultHandler, defaultOnly)) return false;
+    for (unsigned i = 0; i < panel->ScriptHandlers.Count(); ++i)
+        if (!accept(panel->ScriptHandlers.GetData()[i], false)) return false;
+    return selected != nullptr;
+}
+bool PanelInteractive(MenuPanel const& p) {
+    return p.panel.available && p.handler.available && p.visible && p.initialized && !p.removing &&
+        !p.inputDisabled && !p.eventsDisabled && p.focused;
+}
+void ReadMenu(void* context) {
+    auto& out = *static_cast<MenuSample*>(context);
+    Read(&out.root);
+    if (!out.root.localPlayer.available || !out.root.player.available) return;
+    auto const* objects = UObject::GObjObjects;
+    if (objects == nullptr || objects->Count() != out.root.objectCount || !BoundedArray(*objects, kMaxObjects)) return;
+    Table const table{objects->GetData(), objects->Count()};
+    auto const* local = reinterpret_cast<ULocalPlayer const*>(out.root.localPlayer.address);
+    auto const* player = reinterpret_cast<APlayerController const*>(out.root.player.address);
+    auto const* viewport = local->ViewportClient;
+    out.reason = "viewport-unavailable";
+    if (!ReadObject(table, viewport, "Engine", "GameViewportClient", out.viewport)) return;
+    auto const* manager = viewport->m_pScaleFormManager;
+    out.reason = "scaleform-manager-unavailable";
+    if (!ReadObject(table, manager, "SFXGame", "MassEffectGuiManager", out.manager)) return;
+    out.reason = "controller-manager-cache-disagrees";
+    if (player->m_oCachedScaleFormManager != nullptr && player->m_oCachedScaleFormManager != manager) return;
+    out.reason = "panel-array-invalid-or-limit";
+    if (!BoundedArray(manager->m_lstPanels, kMaxMenuPanels)) return;
+    out.panelCount = manager->m_lstPanels.Count();
+    out.panelsData = reinterpret_cast<std::uintptr_t>(manager->m_lstPanels.GetData());
+    out.focus = reinterpret_cast<std::uintptr_t>(manager->m_FocusPanel);
+    bool focusListed = manager->m_FocusPanel == nullptr;
+    for (unsigned i = 0; i < out.panelCount; ++i) {
+        auto const* panel = manager->m_lstPanels.GetData()[i];
+        ObjectSample identity;
+        out.reason = "invalid-panel-or-manager-reciprocal";
+        if (!ReadObject(table, panel, "Engine", "BioSFPanel", identity) || panel->oParentManager != manager) return;
+        for (unsigned j = 0; j < i; ++j) {
+            out.reason = "duplicate-panel-list-entry";
+            if (manager->m_lstPanels.GetData()[j] == panel) return;
+        }
+        focusListed |= manager->m_FocusPanel == panel;
+        char tag[kNameBytes]{};
+        out.reason = "panel-tag-unavailable";
+        if (!NameText(panel->nmTag, tag)) return;
+        MenuPanel* destination = nullptr;
+        char const* type = nullptr;
+        if (std::strcmp(tag, "Load") == 0) { destination = &out.load; type = "SFXSFHandler_Load"; }
+        if (std::strcmp(tag, "MainMenu") == 0) { destination = &out.main; type = "BioSFHandler_MainMenu"; }
+        if (std::strcmp(tag, "Splash") == 0) { destination = &out.splash; type = "BioSFHandler_Splash"; }
+        if (destination == nullptr) continue;
+        out.reason = "ambiguous-menu-panels";
+        if (destination->panel.available) return;
+        out.reason = "invalid-or-ambiguous-panel-handler";
+        if (!PanelContext(table, panel, manager, type, *destination, destination == &out.load)) return;
+    }
+    out.reason = "focus-panel-not-in-manager-list";
+    if (!focusListed) return;
+    if (out.splash.handler.available) {
+        auto const* h = reinterpret_cast<UBioSFHandler_Splash const*>(out.splash.handler.address);
+        out.splash.pressedStart = h->bPressedStart; out.splash.legalTimeout = h->fLegalTimeout;
+        ReadFunction(table, h, out.splash.function, Declaration::AdvanceSplash);
+    }
+    if (out.main.handler.available) {
+        auto const* h = reinterpret_cast<UBioSFHandler_MainMenu const*>(out.main.handler.address);
+        out.main.waitingDlc = h->bWaitingForDLC; out.main.waitingSaves = h->bWaitingForSaves;
+        out.main.connecting = h->m_bIsConnecting;
+        out.main.checkingComplete = h->bCheckingDataComplete;
+        out.main.hasSaves = h->bHasSaves; out.main.careerHasSaves = h->bCurrentCareerHasSaves;
+        ReadFunction(table, h, out.main.function, Declaration::OpenLoad);
+    }
+    out.contextAvailable = true; out.reason = "reachable-menu-context-only";
+    if (!out.load.handler.available) return;
+    auto const* h = reinterpret_cast<USFXSFHandler_Load const*>(out.load.handler.address);
+    out.load.waitingMessage = h->bWaitingOnMsgBox; out.load.enumerating = h->bEnumeratingSaves;
+    out.load.checkingComplete = h->bCheckingDataComplete; out.load.fromMainMenu = h->bFromMainMenu;
+    out.load.guiMode = h->GuiMode; out.load.loadMode = h->LoadMode; out.load.careerIndex = h->CurrentCareerIndex;
+    out.saveCount = h->SaveList.Count(); out.saveCapacity = h->SaveList.Capacity();
+    out.savesData = reinterpret_cast<std::uintptr_t>(h->SaveList.GetData());
+    out.listReason = "load-panel-not-interactive-or-enumeration-pending";
+    if (!PanelInteractive(out.load) || out.load.waitingMessage || out.load.enumerating || !out.load.checkingComplete) return;
+    out.listReason = "save-list-header-invalid-or-row-limit";
+    if (!BoundedArray(h->SaveList, kMaxSaveRows)) return;
+    for (unsigned i = 0; i < out.saveCount; ++i) {
+        auto const& descriptor = h->SaveList.GetData()[i].SaveDescriptor;
+        out.rows[i] = {reinterpret_cast<std::uintptr_t>(&descriptor.Career),
+            reinterpret_cast<std::uintptr_t>(&descriptor.SaveName), descriptor.Index, descriptor.Type};
+    }
+    out.listComplete = true; out.listReason = "bounded-descriptor-headers-only";
+}
+struct CopyRead { std::uintptr_t source; void* destination; std::size_t bytes; };
+void CopyBytes(void* context) {
+    auto const& c = *static_cast<CopyRead const*>(context);
+    std::memcpy(c.destination, reinterpret_cast<void const*>(c.source), c.bytes);
+}
+bool GuardedCopy(std::uintptr_t source, void* destination, std::size_t bytes, void*) noexcept {
+    CopyRead copy{source, destination, bytes};
+    return ue3::runtime::Guarded(CopyBytes, &copy);
+}
+// Injective, versioned descriptor-content comparison; not a hash, authorization,
+// persistent object identity, file path, or proof that a save file was loaded.
+std::string DescriptorKey(std::string const& career, std::string const& name, int index, unsigned type) {
+    std::string bytes;
+    auto word = [&](std::uint32_t value) { for (unsigned i = 0; i < 4; ++i) bytes.push_back(static_cast<char>((value >> (8 * i)) & 255)); };
+    word(static_cast<std::uint32_t>(career.size())); bytes += career;
+    word(static_cast<std::uint32_t>(name.size())); bytes += name;
+    word(static_cast<std::uint32_t>(index)); bytes.push_back(static_cast<char>(type));
+    std::string out = "descriptor-v1:";
+    constexpr char hex[] = "0123456789abcdef";
+    for (unsigned char c : bytes) { out.push_back(hex[c >> 4]); out.push_back(hex[c & 15]); }
+    return out;
 }
 
 json::Value ObjectJson(ObjectSample const& object, char const* failure) {
@@ -495,7 +683,7 @@ json::Value AllocatorJson(AllocatorSample const& sample, char const* failure, Ob
 }
 json::Value FunctionJson(FunctionSample const& sample, char const* failure, Declaration declaration) {
     bool const fov = declaration == Declaration::Fov;
-    char const* const name = fov ? "Engine.PlayerController.GetFOVAngle" : "Engine.PlayerController.ConsoleCommand";
+    char const* const name = DeclarationName(declaration);
     auto out = json::Value::Object();
     bool const available = failure == nullptr && sample.function.available && sample.parametersComplete;
     out["available"] = available;
@@ -515,7 +703,7 @@ json::Value FunctionJson(FunctionSample const& sample, char const* failure, Decl
         out["numParms"] = static_cast<int>(sample.numParms);
         out["returnValueOffset"] = sample.returnOffset;
         out["functionFlags"] = std::format("0x{:08X}", sample.functionFlags);
-        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (fov ? 0x20802u : 0x24400u);
+        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (declaration == Declaration::OpenLoad ? 0x20002u : declaration == Declaration::AdvanceSplash || fov ? 0x20802u : 0x24400u);
         out["nativeIndex"] = static_cast<int>(sample.nativeIndex);
     }
     if (fov) {
@@ -635,6 +823,143 @@ void DispatchFov(Sample const& sample, FovFrame& frame) {
 #endif
 }
 } // namespace
+
+namespace {
+json::Value MenuPanelJson(MenuPanel const& p, char const* failure) {
+    auto out = json::Value::Object();
+    out["panel"] = ObjectJson(p.panel, failure); out["handler"] = ObjectJson(p.handler, failure);
+    out["structurallyInteractive"] = failure == nullptr && PanelInteractive(p);
+    if (failure != nullptr || !p.panel.available) return out;
+    out["visible"] = p.visible; out["initialized"] = p.initialized; out["removing"] = p.removing;
+    out["inputDisabled"] = p.inputDisabled; out["eventsDisabled"] = p.eventsDisabled; out["focused"] = p.focused;
+    return out;
+}
+json::Value MenuContextJson(MenuSample const& sample, char const* failure) {
+    auto out = json::Value::Object();
+    out["available"] = failure == nullptr && sample.contextAvailable;
+    out["reason"] = failure != nullptr ? failure : sample.reason;
+    out["localPlayer"] = ObjectJson(sample.root.localPlayer, failure);
+    out["controller"] = ObjectJson(sample.root.player, failure);
+    out["viewport"] = ObjectJson(sample.viewport, failure); out["manager"] = ObjectJson(sample.manager, failure);
+    // Partial traversal cannot make an earlier candidate actionable after a later
+    // ambiguity, foreign panel or invalid focus reference has been encountered.
+    char const* panelFailure = failure != nullptr ? failure : sample.contextAvailable ? nullptr : sample.reason;
+    out["splash"] = MenuPanelJson(sample.splash, panelFailure);
+    out["mainMenu"] = MenuPanelJson(sample.main, panelFailure);
+    out["load"] = MenuPanelJson(sample.load, panelFailure);
+    if (panelFailure != nullptr) return out;
+    out["panelCount"] = static_cast<int>(sample.panelCount);
+    out["focusAddress"] = std::format("0x{:X}", sample.focus);
+    if (sample.splash.handler.available) {
+        out["splash"]["pressedStart"] = sample.splash.pressedStart;
+        out["splash"]["legalTimeoutFinite"] = std::isfinite(sample.splash.legalTimeout);
+        if (std::isfinite(sample.splash.legalTimeout)) out["splash"]["legalTimeout"] = sample.splash.legalTimeout;
+        out["splash"]["advanceScreen"] = FunctionJson(sample.splash.function, nullptr, Declaration::AdvanceSplash);
+        out["splash"]["advanceScreen"]["voidReturnOffsetExpectation"] = "unverified-observed-value-only";
+    }
+    if (sample.main.handler.available) {
+        out["mainMenu"]["waitingForDlc"] = sample.main.waitingDlc;
+        out["mainMenu"]["waitingForSaves"] = sample.main.waitingSaves;
+        out["mainMenu"]["connecting"] = sample.main.connecting;
+        out["mainMenu"]["checkingDataComplete"] = sample.main.checkingComplete;
+        out["mainMenu"]["hasSaves"] = sample.main.hasSaves;
+        out["mainMenu"]["currentCareerHasSaves"] = sample.main.careerHasSaves;
+        out["mainMenu"]["moveToLoadGui"] = FunctionJson(sample.main.function, nullptr, Declaration::OpenLoad);
+        out["mainMenu"]["moveToLoadGui"]["voidReturnOffsetExpectation"] = "unverified-observed-value-only";
+    }
+    if (sample.load.handler.available) {
+        out["load"]["waitingOnMessageBox"] = sample.load.waitingMessage;
+        out["load"]["enumeratingSaves"] = sample.load.enumerating;
+        out["load"]["checkingDataComplete"] = sample.load.checkingComplete;
+        out["load"]["fromMainMenu"] = sample.load.fromMainMenu;
+        out["load"]["guiMode"] = static_cast<int>(sample.load.guiMode);
+        out["load"]["loadMode"] = static_cast<int>(sample.load.loadMode);
+        out["load"]["currentCareerIndex"] = sample.load.careerIndex;
+    }
+    return out;
+}
+bool SameMenuHeaders(MenuSample const& a, MenuSample const& b) {
+    if (!b.contextAvailable || a.panelCount != b.panelCount || a.panelsData != b.panelsData ||
+        a.focus != b.focus || a.saveCount != b.saveCount || a.saveCapacity != b.saveCapacity ||
+        a.savesData != b.savesData || a.listComplete != b.listComplete) return false;
+    if (json::Write(MenuContextJson(a, nullptr), 0) != json::Write(MenuContextJson(b, nullptr), 0)) return false;
+    if (a.listComplete) for (unsigned i = 0; i < a.saveCount; ++i) {
+        auto const& x = a.rows[i]; auto const& y = b.rows[i];
+        if (x.career != y.career || x.name != y.name || x.index != y.index || x.type != y.type) return false;
+    }
+    return true;
+}
+} // namespace
+
+json::Value ObserveSaveMenu(std::uint32_t gameThreadId) {
+    MenuSample sample{};
+    char const* failure = nullptr;
+    if (gameThreadId == 0 || GetCurrentThreadId() != gameThreadId) failure = "not-on-verified-game-thread";
+    else if (!ue3::runtime::Guarded(ReadMenu, &sample)) failure = "guarded-menu-read-fault";
+    auto out = json::Value::Object();
+    out["schemaVersion"] = 1; out["game"] = "LE2";
+    out["validationScope"] = "reachable-menu-read-only-sample";
+    out["dispatchCapability"] = false; out["fixtureIdentityProven"] = false; out["durableObjectIdentity"] = false;
+    out["context"] = MenuContextJson(sample, failure);
+    auto records = json::Value::Array();
+    bool complete = failure == nullptr && sample.contextAvailable && sample.listComplete;
+    std::string reason = failure != nullptr ? failure : !sample.contextAvailable ? sample.reason : sample.listReason;
+    constexpr qa::utf16::Limits stringLimits{256, 4096, 1024};
+    if (complete) for (unsigned i = 0; i < sample.saveCount; ++i) {
+        auto const& row = sample.rows[i];
+        auto const career = qa::utf16::ReadFString(row.career, GuardedCopy, nullptr, stringLimits);
+        auto const name = qa::utf16::ReadFString(row.name, GuardedCopy, nullptr, stringLimits);
+        if (!career.Available() || !name.Available()) {
+            reason = std::string("descriptor-string-") + qa::utf16::Name(!career.Available() ? career.reason : name.reason);
+            complete = false; break;
+        }
+        auto item = json::Value::Object();
+        item["row"] = static_cast<int>(i); item["career"] = career.utf8; item["saveName"] = name.utf8;
+        item["index"] = row.index; item["type"] = static_cast<int>(row.type);
+        item["contentKey"] = DescriptorKey(career.utf8, name.utf8, row.index, row.type);
+        for (auto const& prior : records.Items()) if (prior.String("contentKey") == item.String("contentKey")) {
+            reason = "duplicate-descriptor-content"; complete = false; break;
+        }
+        if (!complete) break;
+        records.Push(std::move(item));
+    }
+    // Re-sample source identities/flags/array headers before claiming a complete
+    // copied list. This is a bounded stability check, not a GC/lifetime guarantee.
+    if (failure == nullptr && sample.contextAvailable) {
+        MenuSample after{};
+        if (!ue3::runtime::Guarded(ReadMenu, &after) || !SameMenuHeaders(sample, after)) {
+            failure = "menu-context-changed-or-reread-failed";
+            out["context"] = MenuContextJson(sample, failure); reason = failure; complete = false;
+        }
+    }
+    if (complete) for (unsigned i = 0; i < sample.saveCount; ++i) {
+        auto const career = qa::utf16::ReadFString(sample.rows[i].career, GuardedCopy, nullptr, stringLimits);
+        auto const name = qa::utf16::ReadFString(sample.rows[i].name, GuardedCopy, nullptr, stringLimits);
+        if (!career.Available() || !name.Available() || career.utf8 != records.Items()[i].String("career") ||
+            name.utf8 != records.Items()[i].String("saveName")) {
+            complete = false; reason = "descriptor-string-changed-or-reread-failed"; break;
+        }
+    }
+    if (!complete) records = json::Value::Array();
+    out["records"] = std::move(records);
+    out["listComplete"] = complete;
+    out["reason"] = complete ? "bounded-descriptor-copy-only" : reason;
+    if (failure == nullptr && sample.contextAvailable) out["observedRowCount"] = static_cast<std::uint64_t>(sample.saveCount);
+    out["rowLimit"] = static_cast<int>(kMaxSaveRows); out["stringCodeUnitLimit"] = 256;
+    out["contentKeyFormat"] = "descriptor-v1:hex(le32-utf8-length,career,le32-utf8-length,name,le32-index,u8-type)";
+    out["selectionAcceptance"] = "requires-frozen-fixture-mapping-and-fresh-exact-match";
+    if (json::Write(out, 0).size() > kSaveMenuPayloadBytes) {
+        out["records"] = json::Value::Array(); out["listComplete"] = false;
+        out["reason"] = "compact-payload-budget-exceeded";
+    }
+    // Defense if future context fields grow: never return an oversized payload.
+    if (json::Write(out, 0).size() > kSaveMenuPayloadBytes) {
+        out = json::Value::Object(); out["schemaVersion"] = 1; out["game"] = "LE2";
+        out["reason"] = "compact-context-budget-exceeded"; out["listComplete"] = false;
+        out["dispatchCapability"] = false; out["records"] = json::Value::Array();
+    }
+    return out;
+}
 
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 void testing::ResetFovProbe(FovDispatcher dispatcher) {

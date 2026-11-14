@@ -21,7 +21,7 @@ UEngine** GEngine{};
 UWorld** GWorld{};
 FMallocLike** GMalloc{};
 namespace {
-std::array<SFXNameEntry const*, 64> names{};
+std::array<SFXNameEntry const*, 256> names{};
 unsigned nextName = 1;
 std::vector<std::unique_ptr<unsigned char[]>> textStorage;
 template<class T> struct Raw {
@@ -80,6 +80,8 @@ UProperty* replacementFovProperty{};
 bool replaceBeforeEntry{};
 unsigned dispatchCalls{};
 unsigned engineReadCalls{}, readsAtDispatch{};
+USFXSFHandler_Load* mutatingMenu{};
+unsigned menuWorldReads{};
 int dispatchMode{};
 diagnostic::TargetInspection ProbeInspect(std::uintptr_t target) noexcept {
     auto out = FakeInspect(target);
@@ -133,18 +135,19 @@ bool Guarded(void (*fn)(void*), void* ctx) {
 }
 }
 namespace mevr::engine::legacy {
-void const* World() { ++engineReadCalls; return GWorld ? *GWorld : nullptr; }
+void const* World() { ++engineReadCalls; if (mutatingMenu != nullptr && ++menuWorldReads == 2) mutatingMenu->bEnumeratingSaves = 1; return GWorld ? *GWorld : nullptr; }
 std::int32_t ObjectCount() { ++engineReadCalls; return UObject::GObjObjects ? static_cast<int>(UObject::GObjObjects->Count()) : 0; }
 ue3::Object* LocalPlayerController() { return reinterpret_cast<ue3::Object*>((*GEngine)->GamePlayers.GetData()[0]->Actor); }
 }
 int main() {
     try {
         using mevr::engine::le2_diagnostic::Observe;
+        using mevr::engine::le2_diagnostic::ObserveSaveMenu;
         Check(Observe(0).String("reason") == "not-on-verified-game-thread", "zero thread refuses");
         auto const thread = GetCurrentThreadId();
         Check(Observe(thread + 1).String("reason") == "not-on-verified-game-thread", "wrong thread refuses");
         Check(!Available(Observe(thread), "objectCount"), "absent globals unavailable");
-        std::array<UObject*, 64> slots{};
+        std::array<UObject*, 256> slots{};
         mevr::ue3::TArray<UObject*> table{slots.data(), 0, static_cast<int>(slots.size())};
         UObject::GObjObjects = reinterpret_cast<TArray<UObject*>*>(&table);
         Raw<UObject> corePackage, enginePackage, mapPackage;
@@ -562,6 +565,164 @@ int main() {
         mapPackage.get()->Name.Number = 1;
         Check(!Available(Observe(thread), "map"), "instanced package name not silently normalized");
         mapPackage.get()->Name.Number = 0;
+        // Read-only menu fixtures: all objects/classes are synthetic SDK storage.
+        Raw<UObject> sfxPackage;
+        Raw<UClass> viewportType, managerType, panelType, handlerType, loadType, mainType, splashType, pcSplashType, byteType;
+        Raw<UGameViewportClient> viewport;
+        Raw<UMassEffectGuiManager> manager;
+        Raw<UBioSFPanel> loadPanel, mainPanel, splashPanel, otherPanel;
+        Raw<USFXSFHandler_Load> loadHandler, competingLoad;
+        Raw<UBioSFHandler_MainMenu> mainHandler;
+        Raw<UBioSFHandler_PCSplash> splashHandler;
+        Raw<UFunction> openLoad, advanceSplash;
+        Raw<UByteProperty> loadModeProperty;
+        add(sfxPackage.get(), "SFXGame", packageType.get(), nullptr);
+        add(viewportType.get(), "GameViewportClient", meta.get(), enginePackage.get());
+        add(managerType.get(), "MassEffectGuiManager", meta.get(), sfxPackage.get());
+        add(panelType.get(), "BioSFPanel", meta.get(), enginePackage.get());
+        add(handlerType.get(), "BioSFHandler", meta.get(), enginePackage.get());
+        add(loadType.get(), "SFXSFHandler_Load", meta.get(), sfxPackage.get());
+        add(mainType.get(), "BioSFHandler_MainMenu", meta.get(), sfxPackage.get());
+        add(splashType.get(), "BioSFHandler_Splash", meta.get(), sfxPackage.get());
+        add(pcSplashType.get(), "BioSFHandler_PCSplash", meta.get(), sfxPackage.get());
+        add(byteType.get(), "ByteProperty", meta.get(), corePackage.get());
+        byteType.get()->SuperField = propertyType.get();
+        loadType.get()->SuperField = mainType.get()->SuperField = splashType.get()->SuperField = handlerType.get();
+        pcSplashType.get()->SuperField = splashType.get();
+        add(viewport.get(), "MenuViewport", viewportType.get(), nullptr);
+        add(manager.get(), "MenuManager", managerType.get(), nullptr);
+        add(loadPanel.get(), "LoadPanel", panelType.get(), nullptr);
+        add(mainPanel.get(), "MainPanel", panelType.get(), nullptr);
+        add(splashPanel.get(), "SplashPanel", panelType.get(), nullptr);
+        add(otherPanel.get(), "OtherPanel", panelType.get(), nullptr);
+        add(loadHandler.get(), "LoadHandler", loadType.get(), nullptr);
+        add(competingLoad.get(), "CompetingLoad", loadType.get(), nullptr);
+        add(mainHandler.get(), "MainHandler", mainType.get(), nullptr);
+        add(splashHandler.get(), "SplashHandler", pcSplashType.get(), nullptr);
+        add(openLoad.get(), "MoveToLoadGui", functionType.get(), mainType.get());
+        add(advanceSplash.get(), "AdvanceScreen", functionType.get(), pcSplashType.get());
+        add(loadModeProperty.get(), "LoadMode", byteType.get(), openLoad.get());
+        mainType.get()->Children = openLoad.get(); pcSplashType.get()->Children = advanceSplash.get();
+        openLoad.get()->FunctionFlags = 0x20002; openLoad.get()->NumParms = 1; openLoad.get()->ParmsSize = 1;
+        openLoad.get()->ReturnValueOffset = -1; openLoad.get()->Children = loadModeProperty.get();
+        property(loadModeProperty.get(), 0, 1, 0x80);
+        advanceSplash.get()->FunctionFlags = 0x20802; advanceSplash.get()->ReturnValueOffset = -1;
+        auto tag = [&](UBioSFPanel* panel, char const* value) {
+            Raw<UObject> named; Name(named.get(), value); panel->nmTag = named.get()->Name;
+        };
+        tag(loadPanel.get(), "Load"); tag(mainPanel.get(), "MainMenu"); tag(splashPanel.get(), "Splash"); tag(otherPanel.get(), "Other");
+        std::array<UBioSFPanel*, 4> menuPanels{loadPanel.get(), mainPanel.get(), splashPanel.get(), otherPanel.get()};
+        for (auto* panel : menuPanels) {
+            panel->oParentManager = manager.get(); panel->IsVisible = panel->bInitialized = 1;
+        }
+        loadPanel.get()->m_DefaultHandler = loadHandler.get(); loadHandler.get()->oPanel = loadPanel.get();
+        mainPanel.get()->m_DefaultHandler = mainHandler.get(); mainHandler.get()->oPanel = mainPanel.get();
+        splashPanel.get()->m_DefaultHandler = splashHandler.get(); splashHandler.get()->oPanel = splashPanel.get();
+        competingLoad.get()->oPanel = loadPanel.get();
+        local.get()->ViewportClient = viewport.get(); viewport.get()->m_pScaleFormManager = manager.get();
+        controller.get()->m_oCachedScaleFormManager = manager.get();
+        manager.get()->m_FocusPanel = loadPanel.get();
+        mevr::ue3::TArray<UBioSFPanel*> panelsHeader{menuPanels.data(), 3, 4};
+        std::memcpy(&manager.get()->m_lstPanels, &panelsHeader, sizeof(panelsHeader));
+        loadHandler.get()->GuiMode = 1; loadHandler.get()->LoadMode = 0; loadHandler.get()->CurrentCareerIndex = -1;
+        loadHandler.get()->bCheckingDataComplete = loadHandler.get()->bFromMainMenu = 1;
+        mainHandler.get()->bCheckingDataComplete = mainHandler.get()->bHasSaves = 1;
+        auto menu = [&] { return ObserveSaveMenu(thread); };
+        auto menuMeta = [&] { return menu().Get("context").Get("mainMenu").Get("moveToLoadGui"); };
+        Check(menu().Get("context").Bool("available") && menu().Bool("listComplete"), "valid reachable empty load list");
+        Check(menu().Get("context").Get("load").Number("currentCareerIndex") == -1, "legal default career index preserved");
+        Check(menuMeta().Bool("layoutMatchesSdkDeclaration") && menuMeta().Bool("functionFlagsMatchSdkDeclaration"), "one-byte normal menu opener metadata");
+        Check(menu().Get("context").Get("splash").Get("advanceScreen").Bool("layoutMatchesSdkDeclaration"), "effective PC splash override metadata");
+        openLoad.get()->ReturnValueOffset = 0;
+        Check(menuMeta().Bool("layoutMatchesSdkDeclaration") && menuMeta().Number("returnValueOffset") == 0, "void offset observed without inventing expected constant");
+        loadModeProperty.get()->PropertyFlags = 0x580;
+        Check(!menuMeta().Bool("layoutMatchesSdkDeclaration"), "return property cannot masquerade as byte input");
+        loadModeProperty.get()->PropertyFlags = 0x80;
+        loadModeProperty.get()->PropertyFlags = 0x400;
+        Check(!menuMeta().Bool("available"), "stray return flag without Parm rejected for void declaration");
+        loadModeProperty.get()->PropertyFlags = 0x80;
+        openLoad.get()->ParmsSize = 2; Check(!menuMeta().Bool("layoutMatchesSdkDeclaration"), "incorrect opener block size"); openLoad.get()->ParmsSize = 1;
+        pcSplashType.get()->Children = nullptr;
+        Check(!menu().Get("context").Get("splash").Get("advanceScreen").Bool("available"), "no fallback from missing PC override to guessed base");
+        pcSplashType.get()->Children = advanceSplash.get();
+        std::array<Raw<FSaveGUIRecord>, 13> saveRecords;
+        static_assert(sizeof(Raw<FSaveGUIRecord>) == sizeof(FSaveGUIRecord));
+        std::wstring career = L"SyntheticCareer", filename = L"SyntheticSave", unicodeName = L"Save\u00e9\U0001f680";
+        auto setText = [](FString& field, std::wstring& value) {
+            mevr::ue3::TArray<wchar_t> header{value.data(), static_cast<int>(value.size() + 1), static_cast<int>(value.size() + 1)};
+            std::memcpy(&field, &header, sizeof(header));
+        };
+        for (auto& raw : saveRecords) {
+            setText(raw.get()->SaveDescriptor.Career, career); setText(raw.get()->SaveDescriptor.SaveName, filename);
+            raw.get()->SaveDescriptor.Index = static_cast<int>(&raw - saveRecords.data()) + 42;
+        }
+        mevr::ue3::TArray<FSaveGUIRecord> saveHeader{saveRecords[0].get(), 1, 13};
+        auto setSaves = [&] { std::memcpy(&loadHandler.get()->SaveList, &saveHeader, sizeof(saveHeader)); };
+        setSaves();
+        mutatingMenu = loadHandler.get(); menuWorldReads = 0;
+        auto changedMenu = menu();
+        Check(changedMenu.String("reason") == "menu-context-changed-or-reread-failed" &&
+              !changedMenu.Get("context").Bool("available") && changedMenu.Get("records").Items().empty(), "second-sample enumeration mutation invalidates copied records and readiness");
+        mutatingMenu = nullptr; loadHandler.get()->bEnumeratingSaves = 0;
+        auto row = menu().Get("records").Items().at(0);
+        Check(menu().Bool("listComplete") && row.Number("row") == 0 && row.Number("index") == 42 && row.String("career") == "SyntheticCareer", "UI position and native descriptor index kept distinct");
+        auto key = row.String("contentKey");
+        saveRecords[0].get()->SaveDescriptor.Type = 2;
+        Check(menu().Get("records").Items().at(0).String("contentKey") != key, "type participates in descriptor content key");
+        saveRecords[0].get()->SaveDescriptor.Type = 0;
+        setText(saveRecords[0].get()->SaveDescriptor.SaveName, unicodeName);
+        Check(menu().Get("records").Items().at(0).String("saveName") == "Save\xC3\xA9\xF0\x9F\x9A\x80", "strict Unicode descriptor copied unchanged");
+        setText(saveRecords[0].get()->SaveDescriptor.SaveName, filename);
+        saveHeader.count = 2; setSaves(); saveRecords[1].get()->SaveDescriptor.Index = 42;
+        Check(menu().String("reason") == "duplicate-descriptor-content" && menu().Get("records").Items().empty(), "duplicate native descriptor refuses list selection");
+        saveRecords[1].get()->SaveDescriptor.Index = 43;
+        saveHeader.count = 13; setSaves();
+        Check(!menu().Bool("listComplete") && menu().Get("context").Bool("available") && menu().Get("records").Items().empty(), "over-limit list preserves menu context but exposes no partial selection");
+        saveHeader.count = 1; setSaves();
+        loadHandler.get()->bEnumeratingSaves = 1; Check(!menu().Bool("listComplete"), "enumerating list not selectable"); loadHandler.get()->bEnumeratingSaves = 0;
+        loadHandler.get()->bCheckingDataComplete = 0; Check(!menu().Bool("listComplete"), "async checking incomplete"); loadHandler.get()->bCheckingDataComplete = 1;
+        loadHandler.get()->bWaitingOnMsgBox = 1; Check(!menu().Bool("listComplete"), "modal wait not selectable"); loadHandler.get()->bWaitingOnMsgBox = 0;
+        loadPanel.get()->bInputDisabled = 1; Check(!menu().Bool("listComplete"), "disabled input not selectable"); loadPanel.get()->bInputDisabled = 0;
+        manager.get()->m_FocusPanel = mainPanel.get(); Check(!menu().Bool("listComplete"), "background load panel not active"); manager.get()->m_FocusPanel = loadPanel.get();
+        menuPanels[3] = loadPanel.get(); panelsHeader.count = 4;
+        std::memcpy(&manager.get()->m_lstPanels, &panelsHeader, sizeof(panelsHeader));
+        Check(!menu().Get("context").Bool("available") && !menu().Get("context").Get("load").Bool("structurallyInteractive"), "duplicate panels invalidate all partial readiness");
+        menuPanels[3] = otherPanel.get(); tag(otherPanel.get(), "Load");
+        Check(menu().Get("context").String("reason") == "ambiguous-menu-panels", "two reachable load tags rejected");
+        panelsHeader.count = 3; std::memcpy(&manager.get()->m_lstPanels, &panelsHeader, sizeof(panelsHeader));
+        std::array<UBioSFHandler*, 2> handlers{loadHandler.get(), competingLoad.get()};
+        mevr::ue3::TArray<UBioSFHandler*> handlersHeader{handlers.data(), 1, 2};
+        std::memcpy(&loadPanel.get()->ScriptHandlers, &handlersHeader, sizeof(handlersHeader));
+        Check(menu().Bool("listComplete"), "same handler in default and list deduplicated");
+        handlersHeader.count = 2; std::memcpy(&loadPanel.get()->ScriptHandlers, &handlersHeader, sizeof(handlersHeader));
+        Check(!menu().Get("context").Bool("available"), "competing typed handlers rejected");
+        handlersHeader.count = 1; std::memcpy(&loadPanel.get()->ScriptHandlers, &handlersHeader, sizeof(handlersHeader));
+        loadHandler.get()->oPanel = mainPanel.get(); Check(!menu().Get("context").Bool("available"), "handler reciprocal mismatch"); loadHandler.get()->oPanel = loadPanel.get();
+        loadHandler.get()->ObjectFlags = 0x200; Check(!menu().Get("context").Bool("available"), "template handler rejected"); loadHandler.get()->ObjectFlags = 0;
+        controller.get()->m_oCachedScaleFormManager = reinterpret_cast<UBioSFManager*>(1);
+        Check(menu().Get("context").String("reason") == "controller-manager-cache-disagrees", "foreign controller cache never dereferenced"); controller.get()->m_oCachedScaleFormManager = manager.get();
+        manager.get()->m_FocusPanel = otherPanel.get(); Check(!menu().Get("context").Bool("available"), "foreign focus unavailable"); manager.get()->m_FocusPanel = loadPanel.get();
+        std::wstring malformed(1, static_cast<wchar_t>(0xd800));
+        setText(saveRecords[0].get()->SaveDescriptor.Career, malformed);
+        Check(!menu().Bool("listComplete") && menu().Get("records").Items().empty(), "malformed UTF16 cannot become a content key");
+        setText(saveRecords[0].get()->SaveDescriptor.Career, career);
+        mevr::ue3::TArray<wchar_t> badText{reinterpret_cast<wchar_t*>(1), 2, 2};
+        std::memcpy(&saveRecords[0].get()->SaveDescriptor.Career, &badText, sizeof(badText));
+        Check(!menu().Bool("listComplete"), "descriptor body fault contained");
+        setText(saveRecords[0].get()->SaveDescriptor.Career, career);
+        saveHeader.data = reinterpret_cast<FSaveGUIRecord*>(1); setSaves();
+        Check(menu().String("reason") == "guarded-menu-read-fault", "bad descriptor record pointer invalidates sample");
+        Check(ObserveSaveMenu(0).String("reason") == "not-on-verified-game-thread", "wrong thread does not read corrupt descriptor");
+        saveHeader.data = saveRecords[0].get(); saveHeader.count = 12; setSaves();
+        std::wstring large(255, L'\x01');
+        for (auto& raw : saveRecords) { setText(raw.get()->SaveDescriptor.Career, large); setText(raw.get()->SaveDescriptor.SaveName, large); }
+        auto bounded = menu();
+        Check(bounded.String("reason") == "compact-payload-budget-exceeded" && bounded.Get("context").Bool("available") && bounded.Get("records").Items().empty(), "worst escaping clears rows but preserves menu context");
+        Check(mevr::json::Write(bounded, 0).size() <= 14 * 1024, "hard compact output budget reserves host envelope");
+        for (auto& raw : saveRecords) { setText(raw.get()->SaveDescriptor.Career, career); setText(raw.get()->SaveDescriptor.SaveName, filename); }
+        auto menuBytes = mevr::json::Write(menu(), 0).size();
+        Check(menu().Bool("listComplete") && menuBytes <= 14 * 1024, "all12 rows and metadata fit compact budget");
+        std::cout << "Representative save-menu payload bytes: " << menuBytes << "; budget-fallback bytes: " << mevr::json::Write(bounded, 0).size() << '\n';
         worldPtr = reinterpret_cast<UWorld*>(1);
         v = Observe(thread);
         Check(v.String("reason") == "guarded-engine-read-fault" && !Available(v, "objectCount"), "AV invalidates whole sample");

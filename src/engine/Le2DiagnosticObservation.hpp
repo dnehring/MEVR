@@ -39,6 +39,11 @@ json::Value Observe(std::uint32_t gameThreadId,
     host::process_event::diagnostic::Snapshot const* hostSnapshot = nullptr,
     ObserverServices const* services = nullptr);
 
+// Independent bounded snapshot of the reachable normal save-menu context.
+// No menu calls; descriptor content keys are diagnostic comparisons, not handles
+// or proof of a file hash. Incomplete/ambiguous lists cannot select a fixture.
+json::Value ObserveSaveMenu(std::uint32_t gameThreadId);
+
 struct ProbeResult {
     std::string status;
     json::Value payload;

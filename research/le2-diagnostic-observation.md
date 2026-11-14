@@ -354,3 +354,70 @@ expired same-scope admission, same-layout return-property replacement before
 and after entry, one-entry enforcement, exception/nonfinite/unchanged return,
 both canaries, context change, and no post-failure engine traversal. These are
 offline checks, not a native getter result.
+
+
+## Normal save-menu observation (offline foundation)
+
+`ObserveSaveMenu(gameThreadId)` is a separate read-only payload; the general
+`Observe` response is unchanged. It follows validated local-player, viewport,
+and `MassEffectGuiManager` references, compares a nonnull controller manager
+cache, and walks at most 32 reachable panels and 32 handlers per matching panel.
+It never scans GObjects to find a menu. Every dereferenced instance must have a
+live, non-template table slot and a bounded validated class chain. Panel-manager
+and handler-panel references must agree. Duplicate panel entries/tags, competing
+handlers, foreign focus and malformed headers invalidate the context, including
+any earlier candidate's apparent readiness.
+
+The snapshot distinguishes Splash, MainMenu and Load, recording visibility,
+initialization, removal, input/events and focus. It also records splash pressed
+state/finite legal timeout, main-menu save/DLC/checking/connection flags, and load
+mode/career-index/enumeration/message/checking flags. `CurrentCareerIndex=-1` is
+preserved as a legitimate default. A structurally interactive panel is **not**
+a capability or a proof that an asynchronous native operation completed.
+[The menu source investigation](le2-menu-load-source.md) explains the normal
+transition and pending filename mapping.
+
+Exact-owner metadata reuse reports PCSplash.AdvanceScreen and
+MainMenu.MoveToLoadGui. The latter expects only `LoadMode`, one ByteProperty at
+zero with flags `0x80`, total size/count 1; the former has no parameters. The
+observed void ReturnValueOffset is reported without inventing a constant. No
+function is called, no engine string is constructed, and no engine state is
+written. These declarations do not validate a menu object's call route.
+
+For an interactive Load panel with enumeration/message waits clear and checking
+complete, copy at most 12 `FSaveGUIRecord` descriptors. Only Career, SaveName,
+Index and Type are read; FriendlyName, SaveGame and image pointers are not needed.
+The strict bounded UTF-16 helper allows 256 code units including termination,
+capacity 4096 and at most 1024 UTF-8 bytes per string. It rejects malformed text
+instead of normalizing it. A second context/header snapshot and string copy must
+agree. This is a sampled stability check, not a GC lock, atomic body read or
+durable generation identity.
+
+Each row exposes its UI `row` separately from descriptor `index`, plus a
+`descriptor-v1:` content key: hexadecimal bytes of little-endian u32 UTF-8 career
+length, career bytes, little-endian u32 UTF-8 SaveName length, SaveName bytes,
+little-endian i32 Index bit pattern and one Type byte. This is an injective
+comparison encoding, **not** a file hash, authorization token or object handle.
+It contains the descriptor text and is not privacy-redacted. Duplicate complete
+descriptors are ambiguous and invalidate the copied list. Empty strings remain
+observable; they do not establish a disk mapping.
+
+Oversized lists are explicitly incomplete with no partial selectable rows.
+The final **compact** JSON is capped at 14 KiB, reserving 2 KiB of the wire limit
+for the host. On overflow, all records are cleared while menu context is retained;
+if context alone exceeds that limit, a small unavailable response replaces it.
+This guard is enforced at runtime, including JSON escaping. Root host integration
+must retain compact serialization. The next exact-fixture step should accept a
+host-owned frozen descriptor filter and scan a bounded larger list (for example
+512 rows) to return the unique match, rather than make 12 a permanent selection
+limit. Filename-to-descriptor conversion remains unproven; no load is authorized
+by this snapshot.
+
+Synthetic tests compile the actual pinned SDK, exercise valid menu/descriptor
+chains, Unicode, malformed text/read faults, duplicate/foreign/template objects,
+wrong focus, asynchronous state, changed second sample, exact menu metadata and
+payload overflow. Release and Debug each passed the existing standalone suite with these new cases,
+with both production/test translation units compiled under `/W4 /WX`. The
+representative 12-row compact response was 7,383 bytes; the escaped-string budget
+fallback was 5,034 bytes. These measured cases supplement the runtime size guard. Production dispatch compilation remains covered by the separate existing
+object target, without executing it. None of these tests is native menu evidence.

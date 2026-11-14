@@ -10,7 +10,7 @@ if(NOT EXISTS "${MEVR_OBSERVATION_SDK_DIR}/Src/LESDK/Headers.hpp")
     message(FATAL_ERROR "Initialize the pinned external/LExSDKv2 submodule or supply MEVR_OBSERVATION_SDK_DIR")
 endif()
 add_executable(le2-observation-tests ObservationTests.cpp
-    "${repo}/src/engine/Le2DiagnosticObservation.cpp" "${repo}/src/core/Json.cpp")
+    "${repo}/src/engine/Le2DiagnosticObservation.cpp" "${repo}/src/core/Json.cpp" "${repo}/src/core/qa/BoundedUtf16.cpp")
 target_compile_features(le2-observation-tests PRIVATE cxx_std_20)
 target_compile_definitions(le2-observation-tests PRIVATE MEVR_GAME_LE2 SDK_TARGET_LE2 NOMINMAX _CRT_SECURE_NO_WARNINGS MEVR_LE2_OBSERVATION_TEST)
 target_include_directories(le2-observation-tests PRIVATE "${repo}/src")
