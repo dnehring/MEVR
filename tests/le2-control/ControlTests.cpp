@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
         console.sequence = 2; console.verb = "console"; console.payload = "stat fps";
         Check(probeOnly.Claim(console, 10000).has_value(), "probe permission does not grant console");
         Check(probeOnly.LastSequence() == 1, "console rejection preserves claimed probe sequence");
-        for (auto verb : {"advance-splash", "open-load-menu"}) {
+        for (auto verb : {"advance-splash", "open-load-menu", "open-pause-menu", "open-save-menu"}) {
             Frame menu = *decoded; menu.verb = verb;
             Check(Decode(*Encode(menu))->verb == verb, "menu action wire roundtrip");
             Gate disabledMenu(identity, true, true);
@@ -136,6 +136,12 @@ int main(int argc, char** argv) {
               "resource observation requires no native opt in");
         fixture.payload = "credits=999";
         Check(!Encode(fixture), "resource observation accepts no edits or targets");
+        fixture.payload.clear(); fixture.verb = "observe-save-flow";
+        Gate flowRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-save-flow" && !flowRead.Claim(fixture, 10000),
+              "save flow observation requires no native opt in");
+        fixture.payload = "save";
+        Check(!Encode(fixture), "save flow observation cannot request saving");
         std::cout << "Control identity, replay, expiry, opt-in, and wire corruption checks passed\n";
         return 0;
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }

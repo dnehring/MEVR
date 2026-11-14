@@ -424,6 +424,9 @@ struct Endpoint::Impl {
             capabilities["nativeMenuActions"] = false;
             capabilities["observeFixture"] = false;
             capabilities["observeResources"] = false;
+            capabilities["observeSaveFlow"] = false;
+            capabilities["nativeSaveMenuActions"] = false;
+            capabilities["nativeSaveNew"] = false;
             capabilities["nativeFixtureAction"] = false;
             auto bindingEvidence = Value::Object();
             bindingEvidence["available"] = binding.has_value();
@@ -438,6 +441,8 @@ struct Endpoint::Impl {
             capabilities["nativeMenuActions"] = true;
             capabilities["observeFixture"] = binding.has_value();
             capabilities["observeResources"] = true;
+            capabilities["observeSaveFlow"] = true;
+            capabilities["nativeSaveMenuActions"] = true;
             capabilities["nativeFixtureAction"] = binding.has_value();
             payload["observationScope"] = "sdk-structural-diagnostic";
             le2_diagnostic::ObserverServices services{};
@@ -453,6 +458,8 @@ struct Endpoint::Impl {
                 payload["saveMenu"] = le2_diagnostic::ObserveSaveMenu(thread);
             } else if (decoded->verb == "observe-resources") {
                 payload["resourceObservation"] = le2_diagnostic::ObserveResources(thread);
+            } else if (decoded->verb == "observe-save-flow") {
+                payload["saveFlow"] = le2_diagnostic::ObserveSaveFlow(thread);
             } else if (decoded->verb == "observe-fixture" || decoded->verb == "load-fixture") {
                 if (!binding) {
                     result.status = "rejected";
@@ -474,15 +481,24 @@ struct Endpoint::Impl {
                 auto probe = le2_diagnostic::ProbeFov(thread, services);
                 result.status = probe.status;
                 payload["probe"] = std::move(probe.payload);
-            } else if (decoded->verb == "advance-splash" || decoded->verb == "open-load-menu") {
+            } else if (decoded->verb == "advance-splash" || decoded->verb == "open-load-menu" ||
+                       decoded->verb == "open-pause-menu" || decoded->verb == "open-save-menu") {
                 payload["readOnly"] = false;
                 auto action = decoded->verb == "advance-splash"
                     ? le2_diagnostic::AdvanceSplash(thread, services)
-                    : le2_diagnostic::OpenLoadMenu(thread, services);
+                    : decoded->verb == "open-load-menu" ? le2_diagnostic::OpenLoadMenu(thread, services)
+                    : decoded->verb == "open-pause-menu" ? le2_diagnostic::OpenPauseMenu(thread, services)
+                    : le2_diagnostic::OpenSaveMenu(thread, services);
                 result.status = action.status;
                 payload["menuAction"] = std::move(action.payload);
             }
 #else
+            if (decoded->verb == "observe-save-flow") {
+                auto unavailableFlow = Value::Object();
+                unavailableFlow["available"] = false;
+                unavailableFlow["reason"] = "offline-fixture-does-not-traverse-engine-memory";
+                payload["saveFlow"] = std::move(unavailableFlow);
+            }
             if (decoded->verb == "observe-resources") {
                 auto unavailableResources = Value::Object();
                 unavailableResources["available"] = false;
@@ -516,7 +532,8 @@ struct Endpoint::Impl {
         Ownership();
         Publish(directory / L"result.control", *encoded);
         if ((decoded->verb == "probe-fov" || decoded->verb == "advance-splash" ||
-             decoded->verb == "open-load-menu" || decoded->verb == "load-fixture") && result.status == "error") {
+             decoded->verb == "open-load-menu" || decoded->verb == "open-pause-menu" ||
+             decoded->verb == "open-save-menu" || decoded->verb == "load-fixture") && result.status == "error") {
             // Preserve the correlated uncertainty result, then stop this lease.
             disabled = true;
             error = "native action outcome uncertain; no further requests admitted";

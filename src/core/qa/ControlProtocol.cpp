@@ -43,6 +43,7 @@ bool Valid(Frame const& f) {
         f.payload.size() > kMaxPayload || f.payload.find('\0') != std::string::npos) return false;
     if (f.verb != "ping" && f.verb != "observe" && f.verb != "observe-save-menu" &&
         f.verb != "observe-fixture" && f.verb != "load-fixture" && f.verb != "observe-resources" &&
+        f.verb != "observe-save-flow" && f.verb != "open-pause-menu" && f.verb != "open-save-menu" &&
         f.verb != "console" && f.verb != "probe-fov" && f.verb != "advance-splash" && f.verb != "open-load-menu") return false;
     if (f.kind == "request") {
         if (f.status != "pending") return false;
@@ -114,7 +115,8 @@ std::optional<std::string> Gate::Claim(Frame const& f, std::uint64_t now) {
     if (f.sequence <= sequence_ || ids_.contains(f.id)) return "duplicate or stale request";
     if (ids_.size() >= kMaxRequests) return "lease request limit reached";
     if (f.verb == "probe-fov" && !allowProbeFov_) return "native FOV probe is disabled";
-    if ((f.verb == "advance-splash" || f.verb == "open-load-menu") && !allowMenuActions_)
+    if ((f.verb == "advance-splash" || f.verb == "open-load-menu" ||
+         f.verb == "open-pause-menu" || f.verb == "open-save-menu") && !allowMenuActions_)
         return "native menu actions are disabled";
     if (f.verb == "load-fixture" && !allowFixtureActions_) return "native fixture loading is disabled";
     if (f.verb == "console" && !allowConsole_) return "native console is disabled";

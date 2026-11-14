@@ -64,6 +64,8 @@ class WireTests(unittest.TestCase):
             examples = [frame(), dict(frame(), verb="console", payload=b"stat fps", bytes="8"),
                         dict(frame(), verb="observe-save-menu"),
                         dict(frame(), verb="observe-resources"),
+                        dict(frame(), verb="observe-save-flow"),
+                        dict(frame(), verb="open-pause-menu"), dict(frame(), verb="open-save-menu"),
                         dict(frame(), verb="advance-splash"), dict(frame(), verb="open-load-menu"),
                         dict(frame(), verb="observe-fixture"), dict(frame(), verb="load-fixture"),
                         dict(frame(), verb="load-fixture", kind="result", status="dispatched"),
@@ -207,6 +209,14 @@ class ClientTests(unittest.TestCase):
         with self.assertRaisesRegex(c.ControlError, "gameplay completion"):
             c.collect(self.root, bind=self.bind)
         self.assertTrue((self.root / "outstanding.json").exists())
+
+    def test_save_flow_observation_needs_no_native_opt_in_or_save_payload(self):
+        with self.assertRaises(c.ControlError):
+            c.submit(self.root, "observe-save-flow", command="save", bind=self.bind)
+        self.assertFalse(list(self.root.iterdir()))
+        thread, errors = self.peer()
+        self.assertEqual(c.submit(self.root, "observe-save-flow", bind=self.bind)["status"], "completed")
+        thread.join(); self.assertFalse(errors)
 
     def test_fixture_terminal_results_do_not_claim_loaded_state(self):
         for status in ("dispatched", "rejected"):
