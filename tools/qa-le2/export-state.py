@@ -542,6 +542,9 @@ def normalize_dialogue_history(payload, verb):
     epochs, rows = history.get('epochs'), history.get('rows')
     require(isinstance(epochs, list) and len(epochs) <= 4 and isinstance(rows, list) and len(rows) <= 81,
             'History epochs/rows exceed recorder bound')
+    require(type(history.get('dictionaryOmitted')) is bool
+            and (not history['dictionaryOmitted'] or (not rows and not epochs)),
+            'Omitted history dictionary must contain no rows or epochs')
     identities = {}
     object_keys = {'available', 'reason', 'index', 'class', 'address', 'classAddress'}
     for epoch in epochs:
@@ -635,10 +638,13 @@ def normalize_dialogue_history(payload, verb):
     state = {'dialogueHistory': dict(started=history['started'], active=history['active'], reason=history['reason'],
              durationMs=10000, cadenceMs=125, startTick=history['startTick'], startMonoMs=history['startMonoMs'],
              endTick=history['endTick'], endMonoMs=history['endMonoMs'], endTimeSource=history['endTimeSource'], reportedCounters=counters,
+             dictionaryOmitted=history['dictionaryOmitted'],
              lastUnavailableReason=history['lastUnavailableReason'], epochs=list(identities.values()), rows=expanded,
              adjacentSamples=adjacent, historyComplete=False, acceptedInterruptProven=False)}
     unavailable = {key: {'reason': 'not-sampled-by-dialogue-history-recorder', 'sample': None}
                    for key in ('map', 'position')}
+    if history['dictionaryOmitted']:
+        unavailable['dialogueHistory.dictionary'] = {'reason': 'recorder-payload-budget-omitted-rows-and-epochs', 'sample': None}
     return state, unavailable
 
 
@@ -672,6 +678,7 @@ def dialogue_history_start(run, request, payload, consumed):
     require(isinstance(origin, dict) and type(origin.get('schemaVersion')) is int and origin['schemaVersion'] == 1
             and origin.get('game') == 'LE2' and origin.get('started') is True and origin.get('active') is True
             and origin.get('reason') == 'recording' and origin.get('rows') == [] and origin.get('epochs') == []
+            and origin.get('dictionaryOmitted') is False
             and origin.get('endTick') == origin.get('endMonoMs') == '0'
             and origin.get('endTimeSource') == 'last-valid-tick-call-or-start'
             and origin.get('columns') == list(HISTORY_COLUMNS)

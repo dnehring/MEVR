@@ -118,6 +118,7 @@ class ExportTests(unittest.TestCase):
                        reason='stopped' if verb == 'stop-dialogue-history' else 'recording',
                        durationMs=10000, cadenceMs=125, capacity=81, maxEpochs=4,
                        endTimeSource='last-valid-tick-call-or-start',
+                       dictionaryOmitted=False,
                        startTick='100', startMonoMs='1000', endTick='120' if verb == 'stop-dialogue-history' else '0',
                        endMonoMs='1375' if verb == 'stop-dialogue-history' else '0',
                        columns=list(e.HISTORY_COLUMNS), epochs=[epoch(1), epoch(2)],
@@ -309,6 +310,26 @@ class ExportTests(unittest.TestCase):
                 result = subprocess.run([os.environ['LE2_CONTROL_CPP'], str(path)], capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, path.read_bytes())
+
+    def test_history_dictionary_budget_fallback_keeps_counters_without_rows(self):
+        history = self.use_dialogue_history('stop-dialogue-history')
+        history.update(dictionaryOmitted=True, rows=[], epochs=[], serializationOmittedRows=3)
+        self.archive()
+        self.assertEqual(self.invoke(), 2)
+        artifact = self.state()
+        normalized = artifact['state']['dialogueHistory']
+        self.assertTrue(normalized['dictionaryOmitted'])
+        self.assertEqual(normalized['reportedCounters']['sampledRows'], 3)
+        self.assertEqual(normalized['rows'], [])
+        self.assertEqual(normalized['epochs'], [])
+        self.assertEqual(normalized['adjacentSamples'], [])
+        self.assertEqual(artifact['provenance']['runtimeObservation'], history)
+        self.assertIn('dialogueHistory.dictionary', artifact['unavailable'])
+        for changes in (dict(rows=[[0]*18]), dict(epochs=[{}]), dict(dictionaryOmitted=1), dict(serializationOmittedRows=2)):
+            candidate = dict(history, **changes)
+            self.payload['dialogueHistory'] = candidate
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                e.normalize_dialogue_history(self.payload, self.request['verb'])
 
     def use_dialogue(self):
         self.request['verb'] = 'observe-dialogue'

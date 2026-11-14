@@ -215,6 +215,10 @@ snapshot may retain the first and latest rows while omitting middle rows; the
 consumer never fills those holes or claims the displayed rows are consecutive
 engine samples. `endTimeSource` is `last-valid-tick-call-or-start`, so end clocks
 are not asserted to be the exact stop-command time.
+The defensive `dictionaryOmitted=true` fallback removes all rows and epochs
+when the payload still exceeds its budget. The consumer requires both lists to
+be empty and retains the counters, clocks and explicit dictionary-unavailable
+reason. An empty exported list under this flag is not evidence of no samples.
 
 `adjacentSamples` reports raw tick/millisecond differences between adjacent
 **serialized** rows. `elapsedExceedsCadence` is a comparison with 125 ms, not a
