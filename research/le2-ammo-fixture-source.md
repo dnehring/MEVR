@@ -27,6 +27,57 @@ These findings support existing scalar editing; they do not validate insertion
 of weapons, arbitrary ammo values, every subclass, upgrade or heavy weapon.
 Use naturally acquired weapons and establish capacity/configuration in game.
 
+## Lazarus tutorial save-state anchors
+
+Read-only reinspection on 2026-11-14 used the existing LE2 sequence scanner on
+both installed `BioD_ProCer_100RezRoom.pcc` copies:
+
+| Package scope | SHA256 |
+| --- | --- |
+| Base CookedPCConsole | `336d96ee6b40c1ab4a70306ddec689460b051da3fa4311d7c8fa3ddb1ca81f52` |
+| DLC_METR_Patch01 CookedPCConsole | `505c63168579f9a8b80e6999be79f99d33a59d6dc256cfb5ef8a3ec6adc7cd78` |
+
+Both copies explicitly name `ProCer_LevelState` on
+`LS10_Reload_Heatsink.BioSeqVar_StoryManagerInt_1` with `m_nIndex=477`.
+`SFXSeqEvt_TutorialReload_0` feeds `SeqCond_CompareInt_1`, whose other operand is
+`SeqVar_Int_3` (10). Only its equality output advances this route: it disables
+tutorial events and starts `SeqAct_Delay_3`, then `SequenceReference_1` receives
+`NewState` from `SeqVar_Int_1` (15). Inside the referenced sequence,
+`SeqAct_SetInt_0` targets another explicit index-477 story variable. Its finished
+output leads to `SFXSeqAct_SaveGame_1`. The internal sequence is `Sequence_4063`
+in base and `Sequence_1081` in Patch01; the relevant field/edge semantics agree.
+This is direct authored wiring, not a checkpoint ID inferred from an editor label.
+
+| Existing save-adapter field | Source-backed interpretation and limits |
+| --- | --- |
+| `plot.integers.477` = 10 | The authored phase in which this reload event is accepted. It is a useful pre-reload candidate discriminator, but does not prove the event has not already fired during the downstream delay, that the weapon is ready, or that a manual save is allowed. |
+| `plot.integers.477` = 15 | The state assigned by this tutorial-event route before its save request. Compare a naturally obtained before/after pair; this value alone does not prove an ammo transfer, input count or successful save. Later progression may change it again. |
+| `plot.booleans.4049` | Both copies explicitly identify `LS10_Reload_Heatsink.BioSeqVar_StoryManagerBool_0` as `Heatsink_acquired`, index 4049. `SeqCond_CompareBool_0` reads it to gate a hint. Record it as a separate acquisition-state anchor; this inspection does not establish its write timing or make it a reload-completion flag. |
+| `plot.booleans.4050` | Pinned TSE raw database labels this `Weapon_reloaded`, but the inspected LS10 route does not establish a native read/write to 4050. The label is a search lead, not an accepted completion predicate. |
+
+The save path is the LE2 `plot` table, **not** `me1_plot`: pinned TSE
+`6451f23d1fba62358328dce4e87733970f36ebf1`,
+`src/save_data/mass_effect_2/mod.rs::Me2LeSaveGame` and
+`src/save_data/shared/plot.rs::PlotTable` retain integer arrays and LSB-first
+packed boolean arrays. Its `databases/me2_raw_plot_db.ron` independently labels
+477/4049/4050; the native package reference supplies the stronger evidence for
+477 and 4049. Missing or truncated entries are unavailable, never assumed zero.
+
+`SFXWeapon.StartReload.TransitionToReload` emits the tutorial event before entering
+`Reloading`; the ammo transfer follows its own native timing/cancel path.
+Therefore the plot transition cannot substitute for before/after weapon counts.
+For acquisition, archive exact normal saves and compare integer 477, boolean
+4049, map/streaming context, the pistol record and actual post-load weapon
+observations alongside the scene. Retain the full semantic diff and unexplained
+changes. An authored SaveGame node is a request, not evidence that a file was
+created. No plot reset/write recipe follows from these anchors.
+
+Raw base/Patch01 sequence output remains private under
+`local-tools/le2-validation-evidence/tutorial-reload-source/`; no native game
+was run or modified for this audit. Mounted-package precedence, live tutorial
+progression, save timing and repeatable checkpoint acceptance remain separate
+validation gates.
+
 ## Native reload sequence that VR must preserve
 
 Sources: `SFXGameModeDefault.TryReload`, `SFXWeapon.CanReload`, `TryReload`,
