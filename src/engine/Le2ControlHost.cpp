@@ -423,6 +423,7 @@ struct Endpoint::Impl {
             capabilities["observeSaveMenu"] = false;
             capabilities["nativeMenuActions"] = false;
             capabilities["observeFixture"] = false;
+            capabilities["observeResources"] = false;
             capabilities["nativeFixtureAction"] = false;
             auto bindingEvidence = Value::Object();
             bindingEvidence["available"] = binding.has_value();
@@ -436,6 +437,7 @@ struct Endpoint::Impl {
             capabilities["observeSaveMenu"] = true;
             capabilities["nativeMenuActions"] = true;
             capabilities["observeFixture"] = binding.has_value();
+            capabilities["observeResources"] = true;
             capabilities["nativeFixtureAction"] = binding.has_value();
             payload["observationScope"] = "sdk-structural-diagnostic";
             le2_diagnostic::ObserverServices services{};
@@ -449,6 +451,8 @@ struct Endpoint::Impl {
                 payload["observation"] = le2_diagnostic::Observe(thread, &provenance, &services);
             } else if (decoded->verb == "observe-save-menu") {
                 payload["saveMenu"] = le2_diagnostic::ObserveSaveMenu(thread);
+            } else if (decoded->verb == "observe-resources") {
+                payload["resourceObservation"] = le2_diagnostic::ObserveResources(thread);
             } else if (decoded->verb == "observe-fixture" || decoded->verb == "load-fixture") {
                 if (!binding) {
                     result.status = "rejected";
@@ -479,6 +483,12 @@ struct Endpoint::Impl {
                 payload["menuAction"] = std::move(action.payload);
             }
 #else
+            if (decoded->verb == "observe-resources") {
+                auto unavailableResources = Value::Object();
+                unavailableResources["available"] = false;
+                unavailableResources["reason"] = "offline-fixture-does-not-traverse-engine-memory";
+                payload["resourceObservation"] = std::move(unavailableResources);
+            }
             if (decoded->verb == "observe-fixture" || decoded->verb == "load-fixture") {
                 result.status = "rejected";
                 payload["reason"] = binding ? "offline-fixture-does-not-traverse-engine-memory" : bindingReason;

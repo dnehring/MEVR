@@ -130,6 +130,12 @@ int main(int argc, char** argv) {
         fixture.verb = "observe-fixture";
         Gate fixtureRead(identity);
         Check(!fixtureRead.Claim(fixture, 10000), "fixture observation needs no native opt in");
+        fixture.verb = "observe-resources";
+        Gate resourceRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-resources" && !resourceRead.Claim(fixture, 10000),
+              "resource observation requires no native opt in");
+        fixture.payload = "credits=999";
+        Check(!Encode(fixture), "resource observation accepts no edits or targets");
         std::cout << "Control identity, replay, expiry, opt-in, and wire corruption checks passed\n";
         return 0;
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }

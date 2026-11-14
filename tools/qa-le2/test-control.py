@@ -63,6 +63,7 @@ class WireTests(unittest.TestCase):
             p = Path(tmp) / "frame.control"
             examples = [frame(), dict(frame(), verb="console", payload=b"stat fps", bytes="8"),
                         dict(frame(), verb="observe-save-menu"),
+                        dict(frame(), verb="observe-resources"),
                         dict(frame(), verb="advance-splash"), dict(frame(), verb="open-load-menu"),
                         dict(frame(), verb="observe-fixture"), dict(frame(), verb="load-fixture"),
                         dict(frame(), verb="load-fixture", kind="result", status="dispatched"),
@@ -188,6 +189,14 @@ class ClientTests(unittest.TestCase):
     def test_fixture_observation_needs_no_native_opt_in(self):
         thread, errors = self.peer()
         self.assertEqual(c.submit(self.root, "observe-fixture", bind=self.bind)["status"], "completed")
+        thread.join(); self.assertFalse(errors)
+
+    def test_resource_observation_is_read_only_and_accepts_no_edits(self):
+        with self.assertRaises(c.ControlError):
+            c.submit(self.root, "observe-resources", command="credits=999", bind=self.bind)
+        self.assertFalse(list(self.root.iterdir()))
+        thread, errors = self.peer()
+        self.assertEqual(c.submit(self.root, "observe-resources", bind=self.bind)["status"], "completed")
         thread.join(); self.assertFalse(errors)
 
     def test_fixture_completed_preserves_uncertain_intent(self):
