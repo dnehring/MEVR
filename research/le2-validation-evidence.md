@@ -5,6 +5,32 @@ Checkpoint: 2026-11-14 UTC. **Normal scripted loading now preserves eight delibe
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### New Save submission and file collector: offline checks complete
+
+Clean candidate `11e63b352869c3beaf842b99ed1f07b7c60d06bc` adds the normal
+New Save event and complete Save-list observation. Frozen ASI SHA256:
+`06966f1f450a7f79c749cec3cdb42643a3c5641d29dc4357c3868bd380c0ea21`.
+Three ordinary builds, **49/49** full CTests, **7/7** diagnostic tests and
+**37/37** actual-C++ client tests passed. SDK observer Release/Debug builds
+also passed, including the production virtual route under `/W4 /WX`.
+
+The action uses the game's normal command 11 with a properly constructed empty
+SDK argument array. Native preparation, free-space checks and slot selection
+remain in the game's path. Complete descriptor, current-flow, parameter and
+one-entry checks are covered by synthetic tests and independent source reviews;
+none of those tests establishes live UI readiness or save completion.
+
+The separate [file collector](../tools/qa-le2/save-evidence.md) passed **20/20**
+offline tests, including actual C++ decoding, the real client preflight import,
+the LE2 save parser and mixed manual/auto/chapter descriptors. It binds a
+reviewed capture and complete pre-save career inventory to the action, then
+can archive the actual new stable file without guessing a filename from an
+index. Prior-file changes and unexpected additions remain explicit failures.
+Independent TSE decoding and a fresh normal reload are separate next checks.
+
+This candidate has **not run natively**. The ownership question from the held
+Save-menu attempt remains unresolved; no new game was launched to test it.
+
 ### Pause and Save-menu candidate: built, native attempt held
 
 Candidate `e472c0ff5f72ceb34266cbc24d37b8c1ba5bb9e8` adds the
@@ -24,12 +50,16 @@ adapter refused before forwarding to Steam or binding ME2. A subsequent
 read-only inventory found no game/launcher, but ownership clarification remains
 pending. No pause/Save-menu native operation, New Save or persistence test ran.
 
-At this checkpoint, the private attempt
-`local-tools/le2-diagnostic-handoff/run-20261114T0828Z/` is **still staged**, with
-its protected backup and owned lock retained. Do not mistake this attempt for
-the fully restored successful resource run below. Confirm ownership and review
-any intervening protected-tree changes before cleanup or a fresh launch attempt;
-never restore an old snapshot over another session's later play.
+The private attempt `local-tools/le2-diagnostic-handoff/run-20261114T0828Z/`
+was initially retained while ownership was checked. Subsequent cleanup required
+a fresh quiet desktop, the same owned lock, no bound/dispatched game, and exact
+comparison of every protected file and directory. Only the session's staged
+save, ASI, loader and preserved stock Bink differed, with their expected hashes;
+no intervening player-file, config or launcher changes were found. The protected
+reset then archived the attempt and verified all four roots restored. Its
+`owned-staging-cleanup-precheck.json` records that limited cleanup justification.
+No test candidate or save is left deployed. Fresh launch ownership still needs
+clarification; cleanup did not grant a new native window.
 
 ### Eight edited resources observed after normal loading
 

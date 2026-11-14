@@ -31,6 +31,14 @@ against the frozen scenario. Unavailable fields stay absent with reasons. A
 matching report checks observed starting values only; scene review, normal
 save/reload and VR interaction remain separate gates.
 
+The normal pause/Save menu and New Save submission are now implemented behind
+explicit diagnostic action permissions, with offline SDK/control tests. Their
+live readiness and save/reload result remain pending. Follow the
+[normal save workflow](control.md#submit-new-save-and-preserve-its-output) and
+[file evidence collector](save-evidence.md): preserve a reviewed pre-save
+inventory, submit once, archive and independently decode the actual new file,
+then reload it through a fresh protected session.
+
 The [Steam launch adapter](launch.md) provides read-only preflight and a guarded
 launch path where installed launcher support is verified. The [bound control
 client](control.md) supplies request correlation and uncertainty recovery. An

@@ -56,7 +56,8 @@ these runtime capabilities; a new client alone cannot enable them. Default gates
 and offline producer fixtures keep native menu actions disabled.
 The later pause/Save-menu slice advertises `observeSaveFlow` and
 `nativeSaveMenuActions` separately; it shares the explicit menu action gate.
-`nativeSaveNew` remains false. These capabilities describe implemented routes,
+The subsequent New Save slice advertises `nativeSaveNew` with a separate
+permission from menu opening. These capabilities describe implemented routes,
 not eligibility of the currently loaded scene.
 
 The host currently hashes the executable and module synchronously around each
@@ -176,9 +177,46 @@ the action. The adapter derives the unique configured Save-type row and tag,
 then uses the normal browser route. It accepts no caller-supplied target.
 Capture and inspect the resulting Save panel and enumeration separately.
 Each opener has an independent one-entry allowance and the same uncertainty
-rules as the load-menu actions. **Neither action submits New Save.** Its normal
-save initialization, free-space checks, new-slot allocation, completion and
-reload proof are the next integration; do not bypass them with a console save.
+rules as the load-menu actions. **Neither opener submits New Save.** Continue
+with the explicitly separate action below; do not bypass its normal preparation
+and free-space checks with a console save.
+
+### Submit New Save and preserve its output
+
+After the same normal Save panel is initialized and its actual New Save control
+has been reviewed as enabled, collect `observe-save-flow` and a current run-bound
+capture. Require complete descriptors, supported structural readiness and the
+same opened Save flow. The game owns its destination index and filename.
+
+Use [save-evidence.py](save-evidence.md) to record the complete career directory
+before submission. The baseline binds the current lease, frozen scenario,
+observation and reviewed capture. Then request the empty-input action:
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run save-new --allow-save-new
+```
+
+The client revalidates that baseline while holding its request lock and records
+its SHA256 in `control/history/REQUEST_ID.save-baseline.json` before publishing
+the request. Menu, fixture-load and console opt-ins do not grant this action.
+The host separately enables its one-entry New Save route. The engine does not
+read or authenticate the client's disk inventory; that responsibility stays
+with the collector and caller, with explicit provenance.
+
+The action sends the normal New Save event with a constructed empty SDK argument
+array. The native path resets overwrite state, prepares the save, checks free
+space and chooses its slot. No callback is fabricated or invoked directly.
+`dispatched` means only intact normal return from submission. Error, timeout or
+lost correlation retains uncertainty and forbids retries; the client will not
+reuse a baseline that already has a subsequent SaveNew request.
+
+Observe the actual newly created filename, then collect it with the bounded
+post-save command described in [save-evidence.md](save-evidence.md). It checks
+stable bytes, prior-file preservation and LE2 parsing, and writes a new private
+artifact. Independently reopen that artifact using the pinned TSE oracle. Close
+and restore the protected run, then use a fresh run to load the generated save
+normally and compare scene/resources/story state. A parseable file or closed
+Save panel alone does not prove callback completion or persistence after reload.
 
 ### Observe and open the normal load menu
 
@@ -458,7 +496,7 @@ and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
 control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-save-flow`,
 `observe-fixture`, `load-fixture`, `probe-fov`, `advance-splash`, and
-`open-load-menu`, `open-pause-menu`, `open-save-menu` requests require an empty payload.
+`open-load-menu`, `open-pause-menu`, `open-save-menu`, `save-new` requests require an empty payload.
 Unknown, duplicated, reordered, partial or trailing data is
 rejected. C++ and Python implementations have executable byte-conformance tests.
 
