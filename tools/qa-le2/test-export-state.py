@@ -97,6 +97,219 @@ class ExportTests(unittest.TestCase):
     def state(self):
         return e.read(self.run / f'artifacts/state-{self.token}.json')
 
+    def use_dialogue_history(self, verb='observe-dialogue-history'):
+        self.request.update(verb=verb, sequence='2')
+        self.payload.pop('resourceObservation', None)
+        self.payload.update(capabilities={'observeDialogueHistory': True}, readOnly=verb == 'observe-dialogue-history',
+                            sampleMonotonicMs='2000', dialogueHistoryStartRequest='44444444-4444-4444-8444-444444444444')
+        def identity(index):
+            return dict(available=True, reason='sdk-structural-checks-passed', index=index,
+                        address=f'0x{0x1000+index:X}', classAddress='0x2000', **{'class': 'Synthetic.DialogueObject'})
+        def epoch(number):
+            return dict(epoch=number, controller=identity(1), worldInfo=identity(2),
+                        conversation=dict(identity(3+number), name='synthetic_conversation', nameNumber=number-1))
+        bits = lambda value: struct.unpack('<I', struct.pack('<f', value))[0]
+        row = [0, 0, 0, 1, 0, 123, -1, None, -1, None, 0, -5, 1, 3, 1|2|256,
+               bits(-1.5), bits(0.25), bits(1.0)]
+        later = copy.deepcopy(row)
+        later[:4] = [20, 375, 0, 2]
+        later[4:6] = [1, 124]
+        history = dict(schemaVersion=1, game='LE2', started=True, active=verb != 'stop-dialogue-history',
+                       reason='stopped' if verb == 'stop-dialogue-history' else 'recording',
+                       durationMs=10000, cadenceMs=125, capacity=81, maxEpochs=4,
+                       endTimeSource='last-valid-tick-call-or-start',
+                       startTick='100', startMonoMs='1000', endTick='120' if verb == 'stop-dialogue-history' else '0',
+                       endMonoMs='1375' if verb == 'stop-dialogue-history' else '0',
+                       columns=list(e.HISTORY_COLUMNS), epochs=[epoch(1), epoch(2)],
+                       rows=[row, [10,125,1,0]+[None]*14, later], lastUnavailableReason='no-current-conversation',
+                       **{key: False for key in e.DIALOGUE_LIMITS if key != 'durableObjectIdentity'},
+                       **{key: 0 for key in e.HISTORY_COUNTERS})
+        history.update(sampledRows=3, unavailableRows=1, missedCadenceSlots=1, gapCount=1, cadenceSkippedTicks=17)
+        self.payload['dialogueHistory'] = history
+        start_history = copy.deepcopy(history)
+        start_history.update(active=True, reason='recording', endTick='0', endMonoMs='0',
+                             rows=[], epochs=[], lastUnavailableReason='', **{key: 0 for key in e.HISTORY_COUNTERS})
+        start_payload = dict(self.payload, readOnly=False, dialogueHistory=start_history)
+        self.history_start = dict(self.request, id=self.payload['dialogueHistoryStartRequest'], sequence='1', verb='start-dialogue-history')
+        encoded = json.dumps(start_payload).encode()
+        self.history_start_result = dict(self.history_start, kind='result', status='completed', bytes=str(len(encoded)), payload=encoded)
+        self.archive_history_start()
+        self.archive()
+        return history
+
+    def archive_history_start(self):
+        token = self.history_start['id']
+        for name, frame in ((f'control/history/{token}.request', self.history_start),
+                            (f'control/history/{token}.result', self.history_start_result),
+                            ('control/consumed-2.request', self.history_start)):
+            (self.run / name).write_bytes(e.control.encode(frame))
+
+    def test_history_archive_expands_samples_without_accepted_input(self):
+        original = self.use_dialogue_history()
+        self.assertEqual(self.invoke(), 2)
+        artifact = self.state()
+        history = artifact['state']['dialogueHistory']
+        self.assertEqual(history['reportedCounters']['cadenceSkippedTicks'], 17)
+        self.assertEqual(history['rows'][0]['nodePlayTimer'], -1.5)
+        self.assertTrue(history['rows'][0]['interrupt']['activated'])
+        self.assertEqual(history['rows'][1], dict(tickOffset=10, msOffset=125, status='no-current-conversation', epoch=0))
+        self.assertEqual(history['adjacentSamples'][1]['msDelta'], 250)
+        self.assertTrue(history['adjacentSamples'][1]['elapsedExceedsCadence'])
+        self.assertTrue(history['adjacentSamples'][1]['unavailableEndpoint'])
+        self.assertIsNone(history['adjacentSamples'][1]['changedColumns'])
+        self.assertFalse(history['acceptedInterruptProven'])
+        self.assertFalse(history['historyComplete'])
+        self.assertEqual(artifact['provenance']['runtimeObservation'], original)
+        origin = artifact['provenance']['historyOrigin']
+        self.assertTrue(origin['available'])
+        self.assertEqual(origin['requestSha256'], e.sha(e.control.encode(self.history_start)))
+        self.assertEqual(origin['requestId'], self.payload['dialogueHistoryStartRequest'])
+        self.assertNotIn('map', artifact['state'])
+        self.assertEqual(self.invoke(), 1)
+
+    def test_history_stop_exports_frozen_snapshot_and_never_started_is_explicit(self):
+        self.use_dialogue_history('stop-dialogue-history')
+        self.assertEqual(self.invoke(), 2)
+        self.assertEqual(self.state()['state']['dialogueHistory']['reason'], 'stopped')
+        history = self.payload['dialogueHistory']
+        history.update(started=False, active=False, reason='never-started', startTick='0', startMonoMs='0',
+                       endTick='0', endMonoMs='0', rows=[], epochs=[], **{key: 0 for key in e.HISTORY_COUNTERS})
+        del self.payload['dialogueHistoryStartRequest']
+        state, _ = e.normalize_dialogue_history(self.payload, 'stop-dialogue-history')
+        self.assertFalse(state['dialogueHistory']['started'])
+        self.assertEqual(state['dialogueHistory']['rows'], [])
+        self.assertFalse(e.dialogue_history_start(self.run, self.request, self.payload, [])['available'])
+        history['sampledRows'] = 1
+        with self.assertRaises(ValueError): e.normalize_dialogue_history(self.payload, 'stop-dialogue-history')
+
+    def test_history_same_epoch_changes_and_omissions_are_diagnostics_only(self):
+        history = self.use_dialogue_history()
+        history['rows'].pop(1)
+        history['serializationOmittedRows'] = 1
+        history['rows'][1][3] = 1
+        state, _ = e.normalize_dialogue_history(self.payload, self.request['verb'])
+        adjacent = state['dialogueHistory']['adjacentSamples'][0]
+        self.assertTrue(adjacent['sameSampledIdentity'])
+        self.assertEqual(adjacent['changedColumns'], ['currentEntryIndex','currentEntryExportId'])
+        self.assertEqual(adjacent['msDelta'], 375)
+        self.assertFalse(state['dialogueHistory']['historyComplete'])
+
+    def test_history_rejects_row_contract_types_bounds_and_ambiguous_epochs(self):
+        baseline = copy.deepcopy(self.use_dialogue_history())
+        mutations = [lambda h: h['columns'].reverse(), lambda h: h['rows'][0].pop(),
+                     lambda h: h['rows'][1].__setitem__(4, 0), lambda h: h['rows'][1].__setitem__(3, 1),
+                     lambda h: h['rows'][2].__setitem__(0, 10), lambda h: h['rows'][2].__setitem__(1, 10000),
+                     lambda h: h['rows'][2].__setitem__(3, 4), lambda h: h['epochs'].append(h['epochs'][0]),
+                     lambda h: h['rows'][0].__setitem__(6, -2), lambda h: h['rows'][0].__setitem__(7, 0),
+                     lambda h: h['rows'][0].__setitem__(5, True), lambda h: h['rows'][0].__setitem__(12, 256),
+                     lambda h: h['rows'][0].__setitem__(13, 4), lambda h: h['rows'][0].__setitem__(14, 2),
+                     lambda h: h['rows'][0].__setitem__(15, 0x7f800000), lambda h: h['rows'][0].__setitem__(16, 0x7fc00000),
+                     lambda h: h['rows'][0].__setitem__(17, 1.0), lambda h: h.update(sampledRows=4),
+                     lambda h: h.update(unavailableRows=0), lambda h: h.update(capacity=128),
+                     lambda h: h.update(startTick=100), lambda h: h.update(endTick='120'),
+                     lambda h: h.update(historyComplete=True)]
+        for mutation in mutations:
+            history = copy.deepcopy(baseline)
+            mutation(history)
+            self.payload['dialogueHistory'] = history
+            with self.subTest(history=history), self.assertRaises(ValueError): e.normalize_dialogue_history(self.payload, self.request['verb'])
+
+    def test_history_origin_requires_archived_successful_start_same_lease_and_capture(self):
+        self.use_dialogue_history()
+        original = copy.deepcopy(self.history_start_result)
+        for changes in ({'status':'rejected'}, {'lease':'55555555-5555-4555-8555-555555555555'}, {'sequence':'2'}):
+            self.history_start_result = dict(original, **changes)
+            self.archive_history_start()
+            self.assertEqual(self.invoke(), 1)
+        self.history_start_result = original
+        self.archive_history_start()
+        start_payload = json.loads(original['payload'])
+        start_payload['dialogueHistory']['startMonoMs'] = '999'
+        data = json.dumps(start_payload).encode()
+        self.history_start_result = dict(original, payload=data, bytes=str(len(data)))
+        self.archive_history_start()
+        self.assertEqual(self.invoke(), 1)
+        self.history_start_result = original
+        self.archive_history_start()
+        (self.run/'control/consumed-2.request').unlink()
+        self.assertEqual(self.invoke(), 1)
+        self.assertFalse((self.run/'artifacts').exists())
+
+    def test_history_stop_readonly_and_start_not_exportable(self):
+        self.use_dialogue_history('stop-dialogue-history')
+        self.payload['readOnly'] = True
+        self.archive()
+        self.assertEqual(self.invoke(), 1)
+        self.payload['readOnly'] = False
+        self.request['verb'] = 'start-dialogue-history'
+        self.archive()
+        self.assertEqual(self.invoke(), 1)
+
+    def test_history_stop_inactive_never_started_origin_and_same_tick_start(self):
+        history = self.use_dialogue_history('stop-dialogue-history')
+        self.assertEqual(history['rows'][0][0], 0)
+        # Host takes its response timestamp before ownership hash I/O; the
+        # recorder start clock can legitimately be later on that same tick.
+        start_payload = json.loads(self.history_start_result['payload'])
+        start_payload.update(gameTick='100', sampleMonotonicMs='999')
+        data = json.dumps(start_payload).encode()
+        self.history_start_result.update(payload=data, bytes=str(len(data)))
+        self.archive_history_start()
+        self.assertEqual(self.invoke(), 2)
+        history.update(active=True, reason='recording', endTick='0', endMonoMs='0')
+        with self.assertRaises(ValueError): e.normalize_dialogue_history(self.payload, self.request['verb'])
+        history.update(started=False, active=False, reason='never-started', startTick='0', startMonoMs='0',
+                       rows=[], epochs=[], **{key: 0 for key in e.HISTORY_COUNTERS})
+        with self.assertRaises(ValueError): e.normalize_dialogue_history(self.payload, self.request['verb'])
+        del self.payload['dialogueHistoryStartRequest']
+        e.normalize_dialogue_history(self.payload, self.request['verb'])
+        # The recorder supports tick zero; started is the distinction from an
+        # absent capture, not the numeric start tick.
+        history.update(started=True, reason='stopped')
+        self.payload['dialogueHistoryStartRequest'] = self.history_start['id']
+        state, _ = e.normalize_dialogue_history(self.payload, self.request['verb'])
+        self.assertTrue(state['dialogueHistory']['started'])
+        self.assertEqual(state['dialogueHistory']['startTick'], '0')
+
+    def test_history_never_exports_backwards_epochs_or_dictionary_overflow(self):
+        history = self.use_dialogue_history()
+        history['epochs'][0]['controller']['class'] = 'A'*129
+        with self.assertRaises(ValueError): e.normalize_dialogue_history(self.payload, self.request['verb'])
+        history['epochs'][0]['controller']['class'] = 'A'*128
+        e.normalize_dialogue_history(self.payload, self.request['verb'])
+        history['rows'][0][3], history['rows'][2][3] = 2, 1
+        with self.assertRaises(ValueError): e.normalize_dialogue_history(self.payload, self.request['verb'])
+
+    def test_history_terminal_clocks_cadence_and_start_receipt_are_consistent(self):
+        original = copy.deepcopy(self.use_dialogue_history('stop-dialogue-history'))
+        for changes in (dict(endMonoMs='999'), dict(endMonoMs='1374'), dict(endTick='119')):
+            self.payload['dialogueHistory'] = dict(original, **changes)
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                e.normalize_dialogue_history(self.payload, self.request['verb'])
+        self.payload['dialogueHistory'] = copy.deepcopy(original)
+        self.payload['dialogueHistory']['rows'][1][1] = 124
+        with self.assertRaises(ValueError): e.normalize_dialogue_history(self.payload, self.request['verb'])
+        self.payload['dialogueHistory'] = original
+        start_payload = json.loads(self.history_start_result['payload'])
+        for changes in (dict(active=False), dict(reason='stopped'), dict(sampledRows=1), dict(endTick='101'),
+                        dict(rows=[[0]*18]), dict(epochs=[{}]), dict(historyComplete=True)):
+            candidate = copy.deepcopy(start_payload)
+            candidate['dialogueHistory'].update(changes)
+            data = json.dumps(candidate).encode()
+            self.history_start_result.update(payload=data, bytes=str(len(data)))
+            self.archive_history_start()
+            with self.subTest(changes=changes): self.assertEqual(self.invoke(), 1)
+
+    @unittest.skipUnless(os.environ.get('LE2_CONTROL_CPP'), 'set LE2_CONTROL_CPP for actual C++ codec conformance')
+    def test_history_actual_cpp_archive_conformance(self):
+        self.use_dialogue_history('stop-dialogue-history')
+        for token in (self.token, self.history_start['id']):
+            for suffix in ('request', 'result'):
+                path = self.run / f'control/history/{token}.{suffix}'
+                result = subprocess.run([os.environ['LE2_CONTROL_CPP'], str(path)], capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, path.read_bytes())
+
     def use_dialogue(self):
         self.request['verb'] = 'observe-dialogue'
         self.payload.pop('resourceObservation', None)

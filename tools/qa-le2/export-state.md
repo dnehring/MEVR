@@ -6,6 +6,8 @@
 This offline helper reads one archived, completed `observe-resources`,
 `observe-weapon`, `observe-orbital` or `observe-dialogue` exchange. The correlated request verb selects the normalizer;
 the CLI and frozen-session validation path are shared.
+It also accepts the bounded dialogue-history observation/final-stop snapshots
+described below, using the same archived exchange checks.
 It never launches a game, inspects live processes, sends requests or reads current
 resource values from saves. It creates two new files:
 
@@ -188,3 +190,63 @@ Synthetic tests cover complete and unavailable archives, optional pawn/GUI,
 minus-one nodes, count/index/enum/type bounds, negative timers, false acceptance
 claims, shared correlation/fixture/consumption guards, nonreplacement and real
 C++ wire-codec roundtrips. They do not constitute native dialogue evidence.
+
+## Dialogue sample history
+
+The same offline CLI accepts an empty `observe-dialogue-history` or
+`stop-dialogue-history` request with a completed archived result. Observe must
+declare `readOnly=true`; stop declares `readOnly=false` because it stops the
+recorder, not because it dispatches gameplay. `start-dialogue-history` is not a
+state export. None of these commands establishes accepted input.
+
+The compact recorder contract is a ten-second capture at a 125 ms sampling
+cadence, with at most 81 rows and four process-local identity epochs. The
+consumer checks the exact ordered column schema, strict scalar types/ranges,
+finite float32 bit patterns, node sentinel/export pairs, epoch references and
+increasing row tick/time offsets. Unavailable rows retain their status and have
+no state fields. Unavailable GUI cannot carry display bits. Epoch names and
+object identities are descriptive samples, not durable handles.
+
+`state.dialogueHistory` contains expanded rows, identity epochs and original
+recorder counters. It preserves unavailable samples, skipped tick/cadence
+counters, buffer drops and serialization omissions separately. Serialized rows
+plus both omission counts must equal the reported sampled-row count. A compact
+snapshot may retain the first and latest rows while omitting middle rows; the
+consumer never fills those holes or claims the displayed rows are consecutive
+engine samples. `endTimeSource` is `last-valid-tick-call-or-start`, so end clocks
+are not asserted to be the exact stop-command time.
+
+`adjacentSamples` reports raw tick/millisecond differences between adjacent
+**serialized** rows. `elapsedExceedsCadence` is a comparison with 125 ms, not a
+claim that a gameplay event was missed. Changed column names are reported only
+when both endpoints are available and share the same recorded identity epoch.
+At unavailable samples or epoch boundaries they remain null. Float bits and all
+compact rows remain unchanged in `provenance.runtimeObservation`; no values are
+interpolated, merged with separate queries or converted into interrupt events.
+
+For started captures, the host's `dialogueHistoryStartRequest` UUID is checked
+against its earlier archived request and completed result: same run, lease,
+process and module identity; exact wire correlation; unique consumed request;
+and matching recorder start clocks/configuration. The report retains both
+start-frame hashes and calls this a host-correlated recorder start, not a
+gameplay input. A missing, rejected, mismatched or unarchived start fails export.
+The start response must describe the newly active recorder with empty rows and
+epochs and zero end clocks/counters. A first sample may share the start tick;
+the host's response timestamp can precede recorder start after ownership I/O.
+It is not used as an upper bound on the recorder clock. Finished snapshots must
+bound their final serialized row by their end clocks, and adjacent rows must
+respect the minimum sampling cadence.
+A genuinely never-started snapshot has zero clocks/counters, no rows/epochs and
+no start UUID; it remains explicitly never started rather than a complete empty
+event history.
+
+The outer exported tick/time identify the query response, not every recorded
+row. Each row retains offsets from the explicit recorder start clocks. A start
+tick of zero is valid when `started=true`; it is never inferred to mean absence.
+
+The normal archive/frozen-session checks, exclusive artifact publication and
+map/position incompleteness are unchanged. History exports return exit 2 and
+keep `historyComplete=false` and `acceptedInterruptProven=false`. Recorded
+flags and sampled changes do not establish legal timing, accepted choices,
+callback execution, progression persistence or VR acceptance. This is a bounded
+review of recorded samples, not a second request/session workflow.

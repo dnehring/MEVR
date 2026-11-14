@@ -496,6 +496,194 @@ def normalize_dialogue(payload):
     return state, unavailable
 
 
+HISTORY_COLUMNS = ('tickOffset', 'msOffset', 'status', 'epoch', 'currentEntryIndex', 'currentEntryExportId',
+                   'currentReplyIndex', 'currentReplyExportId', 'selectedReplyIndex', 'selectedReplyExportId',
+                   'interruptReplyIndex', 'interruptReplyExportId', 'interruptType', 'interruptFlags', 'guiFlags',
+                   'nodeTimerBits', 'startTimeRemainingBits', 'windowTimeRemainingBits')
+HISTORY_COUNTERS = ('sampledRows', 'unavailableRows', 'cadenceSkippedTicks', 'bufferDroppedRows',
+                    'serializationOmittedRows', 'missedCadenceSlots', 'gapCount')
+HISTORY_STATUSES = ('stable-sample', 'no-current-conversation', 'guarded-read-fault',
+                    'invalid-or-unavailable-context', 'changed-between-reads')
+HISTORY_GUI_FLAGS = ('available', *DIALOGUE_GUI_FLAGS)
+HISTORY_VERBS = ('observe-dialogue-history', 'stop-dialogue-history')
+
+
+def history_integer(value, low=0, high=0xffffffff):
+    require(type(value) is int and low <= value <= high, 'History integer outside declared range')
+    return value
+
+
+def history_identity(value):
+    identity = orbital_identity(value)
+    require(len(identity['class']) <= 128, 'History dictionary class label exceeds recorder cap')
+    return identity
+
+
+def normalize_dialogue_history(payload, verb):
+    require(verb in HISTORY_VERBS, 'Unsupported history export verb')
+    capability = payload.get('capabilities')
+    require(payload.get('source') == 'diagnostic-host' and payload.get('game') == 'LE2'
+            and payload.get('ready') is False and payload.get('readOnly') is (verb == 'observe-dialogue-history')
+            and isinstance(capability, dict) and capability.get('observeDialogueHistory') is True,
+            'Invalid dialogue history host envelope')
+    history = payload.get('dialogueHistory')
+    require(isinstance(history, dict) and type(history.get('schemaVersion')) is int and history['schemaVersion'] == 1
+            and history.get('game') == 'LE2' and type(history.get('started')) is bool and type(history.get('active')) is bool
+            and isinstance(history.get('reason'), str) and history['reason']
+            and all(history.get(key) is False for key in DIALOGUE_LIMITS if key != 'durableObjectIdentity'),
+            'Invalid history recorder contract or acceptance claim')
+    for key, expected in (('durationMs', 10000), ('cadenceMs', 125), ('capacity', 81), ('maxEpochs', 4)):
+        require(type(history.get(key)) is int and history[key] == expected, 'Unexpected bounded recorder configuration')
+    require(history.get('columns') == list(HISTORY_COLUMNS), 'History column schema mismatch')
+    require(history.get('endTimeSource') == 'last-valid-tick-call-or-start', 'History end clock semantics required')
+    clocks = {key: control.number(history.get(key)) for key in ('startTick', 'startMonoMs', 'endTick', 'endMonoMs')}
+    counters = {key: history_integer(history.get(key)) for key in HISTORY_COUNTERS}
+    require(isinstance(history.get('lastUnavailableReason'), str), 'History unavailable reason required')
+    epochs, rows = history.get('epochs'), history.get('rows')
+    require(isinstance(epochs, list) and len(epochs) <= 4 and isinstance(rows, list) and len(rows) <= 81,
+            'History epochs/rows exceed recorder bound')
+    identities = {}
+    object_keys = {'available', 'reason', 'index', 'class', 'address', 'classAddress'}
+    for epoch in epochs:
+        require(isinstance(epoch, dict) and set(epoch) == {'epoch', 'controller', 'worldInfo', 'conversation'},
+                'Unexpected history epoch shape')
+        number = history_integer(epoch['epoch'], 1, 4)
+        require(number not in identities, 'Duplicate history epoch')
+        conv = epoch['conversation']
+        require(isinstance(conv, dict) and set(conv) == object_keys | {'name', 'nameNumber'},
+                'Invalid history conversation identity')
+        identities[number] = dict(epoch=number, controller=history_identity(epoch['controller']),
+            worldInfo=history_identity(epoch['worldInfo']),
+            conversation=dict(identity=history_identity({key: conv[key] for key in object_keys}),
+                              name=dialogue_name(conv['name']),
+                              nameNumber=history_integer(conv['nameNumber'], -0x80000000, 0x7fffffff)))
+    expanded, adjacent = [], []
+    previous = None
+    last_epoch = 0
+    for row in rows:
+        require(isinstance(row, list) and len(row) == len(HISTORY_COLUMNS), 'Invalid compact history row width')
+        tick, ms, status, epoch = (history_integer(row[i], 0, bound) for i, bound in
+                                  enumerate((0xffffffff, 9999, 4, 4)))
+        if previous is not None:
+            require(tick > previous[0] and ms - previous[1] >= 125,
+                    'History ticks must increase and rows must respect recorder cadence')
+            same_identity = status == previous[2] == 0 and epoch == previous[3]
+            adjacent.append(dict(fromRow=len(expanded)-1, toRow=len(expanded), tickDelta=tick-previous[0],
+                msDelta=ms-previous[1], elapsedExceedsCadence=ms-previous[1] > 125,
+                sameSampledIdentity=same_identity, unavailableEndpoint=status != 0 or previous[2] != 0,
+                changedColumns=([name for name, left, right in zip(HISTORY_COLUMNS[4:], previous[4:], row[4:])
+                                 if left != right] if same_identity else None)))
+        item = dict(tickOffset=tick, msOffset=ms, status=HISTORY_STATUSES[status], epoch=epoch)
+        if status:
+            require(epoch == 0 and all(value is None for value in row[4:]),
+                    'Unavailable history row cannot contain state or identity')
+        else:
+            require(epoch in identities, 'History row refers to missing epoch')
+            require(epoch >= last_epoch, 'History identity epoch moves backwards')
+            last_epoch = epoch
+            for index, label in ((4, 'currentEntry'), (6, 'currentReply'), (8, 'selectedReply'), (10, 'interruptReply')):
+                node = history_integer(row[index], -1, 4095)
+                export_id = row[index+1]
+                if node == -1:
+                    require(export_id is None, 'Absent history node must not carry an export ID')
+                else:
+                    history_integer(export_id, -0x80000000, 0x7fffffff)
+                item[label] = dict(index=node, exportId=export_id)
+            kind = history_integer(row[12], 0, 255)
+            flags = history_integer(row[13], 0, 3)
+            gui = history_integer(row[14], 0, 8191)
+            require(bool(gui & 1) or gui == 0, 'Unavailable history GUI must not carry display flags')
+            item['interrupt'] = dict(type=kind, enabled=bool(flags & 1), activated=bool(flags & 2))
+            # Other bits are uninterpreted unless the producer sampled the GUI.
+            item['guiFlags'] = gui
+            if gui & 1:
+                item['gui'] = {name: bool(gui & (1 << bit)) for bit, name in enumerate(HISTORY_GUI_FLAGS)}
+            for index, label in ((15, 'nodePlayTimer'), (16, 'startTimeRemaining'), (17, 'windowTimeRemaining')):
+                bits = history_integer(row[index])
+                value = struct.unpack('<f', struct.pack('<I', bits))[0]
+                require(math.isfinite(value), 'History float bits must represent finite float32')
+                item[label] = value
+        expanded.append(item)
+        previous = row
+    omitted = counters['bufferDroppedRows'] + counters['serializationOmittedRows']
+    shown_unavailable = sum(row[2] != 0 for row in rows)
+    require(counters['sampledRows'] == len(rows) + omitted
+            and shown_unavailable <= counters['unavailableRows'] <= shown_unavailable + omitted
+            and counters['gapCount'] <= counters['missedCadenceSlots'],
+            'History row counters contradict serialized data')
+    require(sorted(identities) == list(range(1, len(identities)+1)), 'History epoch sequence is not contiguous')
+    if not history['started']:
+        require(not history['active'] and not rows and not epochs and not any(clocks.values())
+                and not any(counters.values()) and history['reason'] == 'never-started'
+                and 'dialogueHistoryStartRequest' not in payload,
+                'Never-started history cannot contain capture data')
+    else:
+        require(control.valid_uuid(payload.get('dialogueHistoryStartRequest')), 'Started history lacks host origin UUID')
+        if history['active']:
+            require(clocks['endTick'] == clocks['endMonoMs'] == 0 and history['reason'] == 'recording',
+                    'Active history has terminal clocks/reason')
+        else:
+            require(clocks['endTick'] >= clocks['startTick'] and clocks['endMonoMs'] >= clocks['startMonoMs'],
+                    'Finished history end precedes start clocks')
+            require(not rows or (clocks['startTick'] + rows[-1][0] <= clocks['endTick']
+                                and clocks['startMonoMs'] + rows[-1][1] <= clocks['endMonoMs']),
+                    'Finished history contains a row after its end clocks')
+            require(history['reason'] in ('stopped', 'expired', 'clock-invalid', 'context-limit',
+                                          'read-allocation-failed', 'history-label-limit', 'counter-limit'),
+                    'Unknown history terminal reason')
+    require(verb != 'stop-dialogue-history' or not history['active'], 'Stop result must not describe an active recorder')
+    state = {'dialogueHistory': dict(started=history['started'], active=history['active'], reason=history['reason'],
+             durationMs=10000, cadenceMs=125, startTick=history['startTick'], startMonoMs=history['startMonoMs'],
+             endTick=history['endTick'], endMonoMs=history['endMonoMs'], endTimeSource=history['endTimeSource'], reportedCounters=counters,
+             lastUnavailableReason=history['lastUnavailableReason'], epochs=list(identities.values()), rows=expanded,
+             adjacentSamples=adjacent, historyComplete=False, acceptedInterruptProven=False)}
+    unavailable = {key: {'reason': 'not-sampled-by-dialogue-history-recorder', 'sample': None}
+                   for key in ('map', 'position')}
+    return state, unavailable
+
+
+def dialogue_history_start(run, request, payload, consumed):
+    """Cross-check the host's capture-origin attribution; no live binding or input."""
+    start_id = payload.get('dialogueHistoryStartRequest')
+    if 'dialogueHistoryStartRequest' not in payload:
+        return {'available': False, 'reason': 'host-has-no-successful-history-start'}
+    require(control.valid_uuid(start_id), 'History start request must be a canonical UUID')
+    request_path = run / 'control/history' / (start_id + '.request')
+    response_path = run / 'control/history' / (start_id + '.result')
+    request_bytes, response_bytes = raw(request_path, control.MAX_FRAME), raw(response_path, control.MAX_FRAME)
+    start, result = control.decode(request_bytes), control.decode(response_bytes)
+    require(start['kind'] == 'request' and start['id'] == start_id and start['verb'] == 'start-dialogue-history'
+            and not start['payload'] and result['kind'] == 'result' and result['status'] == 'completed'
+            and all(start[key] == result[key] for key in (*control.IDENTITY, 'id', 'sequence', 'deadline', 'verb'))
+            and all(start[key] == request[key] for key in control.IDENTITY)
+            and control.number(start['sequence']) < control.number(request['sequence']),
+            'History origin is not an earlier correlated completed start in this lease')
+    matches = [p for p in consumed if raw(p, control.MAX_FRAME) == request_bytes]
+    require(len(matches) == 1, 'History start lacks unique consumed request evidence')
+    started_payload = parse(result['payload'])
+    require(isinstance(started_payload, dict) and started_payload.get('source') == 'diagnostic-host' and started_payload.get('game') == 'LE2'
+            and started_payload.get('readOnly') is False and started_payload.get('ready') is False
+            and isinstance(started_payload.get('capabilities'), dict)
+            and started_payload['capabilities'].get('observeDialogueHistory') is True
+            and started_payload.get('dialogueHistoryStartRequest') == start_id,
+            'History start host envelope does not match capture attribution')
+    origin = started_payload.get('dialogueHistory')
+    history = payload['dialogueHistory']
+    require(isinstance(origin, dict) and type(origin.get('schemaVersion')) is int and origin['schemaVersion'] == 1
+            and origin.get('game') == 'LE2' and origin.get('started') is True and origin.get('active') is True
+            and origin.get('reason') == 'recording' and origin.get('rows') == [] and origin.get('epochs') == []
+            and origin.get('endTick') == origin.get('endMonoMs') == '0'
+            and origin.get('endTimeSource') == 'last-valid-tick-call-or-start'
+            and origin.get('columns') == list(HISTORY_COLUMNS)
+            and all(type(origin.get(key)) is int and origin[key] == 0 for key in HISTORY_COUNTERS)
+            and all(origin.get(key) is False for key in DIALOGUE_LIMITS if key != 'durableObjectIdentity')
+            and all(origin.get(key) == history[key] for key in ('startTick', 'startMonoMs', 'durationMs', 'cadenceMs', 'capacity', 'maxEpochs')),
+            'History start snapshot differs from exported capture origin')
+    return dict(available=True, kind='host-correlated-recorder-start-not-gameplay-input', requestId=start_id,
+                sequence=start['sequence'], requestSha256=sha(request_bytes), responseSha256=sha(response_bytes),
+                consumedRequest=matches[0].name)
+
+
 def export(run_path, request_id, case_id):
     require(control.valid_uuid(request_id), 'Canonical nonzero request UUID required')
     run = session.safe_path(Path(run_path).absolute())
@@ -516,9 +704,9 @@ def export(run_path, request_id, case_id):
     response_path = run / 'control' / 'history' / (request_id + '.result')
     request_bytes, response_bytes = raw(request_path, control.MAX_FRAME), raw(response_path, control.MAX_FRAME)
     request, response = control.decode(request_bytes), control.decode(response_bytes)
-    require(request['kind'] == 'request' and request['id'] == request_id and request['verb'] in ('observe-resources', 'observe-weapon', 'observe-orbital', 'observe-dialogue')
+    require(request['kind'] == 'request' and request['id'] == request_id and request['verb'] in ('observe-resources', 'observe-weapon', 'observe-orbital', 'observe-dialogue', *HISTORY_VERBS)
             and not request['payload'] and response['kind'] == 'result' and response['status'] == 'completed',
-            'Requires archived empty resource/weapon/orbital/dialogue observation request and completed result')
+            'Requires archived empty diagnostic observation/stop-history request and completed result')
     require(all(request[k] == response[k] for k in (*control.IDENTITY, 'id', 'sequence', 'deadline', 'verb'))
             and all(request[k] == wire_identity[k] for k in control.IDENTITY), 'Uncorrelated archived response')
     # consumed-N counts attempts, not client sequence. Match exact bytes within a bounded scan.
@@ -560,9 +748,11 @@ def export(run_path, request_id, case_id):
     weapon = request['verb'] == 'observe-weapon'
     orbital = request['verb'] == 'observe-orbital'
     dialogue = request['verb'] == 'observe-dialogue'
-    observation_key = 'weaponObservation' if weapon else 'orbitalObservation' if orbital else 'dialogueObservation' if dialogue else 'resourceObservation'
+    history = request['verb'] in HISTORY_VERBS
+    observation_key = 'dialogueHistory' if history else 'weaponObservation' if weapon else 'orbitalObservation' if orbital else 'dialogueObservation' if dialogue else 'resourceObservation'
     normalizer = normalize_weapon if weapon else normalize_orbital if orbital else normalize_dialogue if dialogue else normalize
-    state, unavailable = normalizer(payload)
+    state, unavailable = normalize_dialogue_history(payload, request['verb']) if history else normalizer(payload)
+    history_origin = dialogue_history_start(run, request, payload, consumed) if history else None
     require(control.number(payload.get('gameTick')) > 0 and control.number(payload.get('gameThreadId'), (1 << 32) - 1) > 0,
             'Missing sample tick/thread')
     control.number(payload.get('sampleMonotonicMs'))
@@ -576,6 +766,11 @@ def export(run_path, request_id, case_id):
                         normalizedSemantics=({'weapon.loaded': LOADED_SOURCE, 'weapon.reserveStored': 'raw signed CurrentSpareAmmo; not effective/legal reserve', 'weapon.effectiveReserve': RESERVE_SOURCE + '; audited declaration, no getter call or live bytecode proof'} if weapon else {'orbital.planet.mapName': 'BioPlanet.MapName landing destination; not current world map', 'orbital.planet.features': 'raw conditional/transition metadata; no evaluation or discovery proof'} if orbital else {'dialogue': 'stable sampled fields only; no timing history, legality, accepted interrupt or selection acceptance inference'} if dialogue else {}),
                         runtimeObservation=payload[observation_key]),
                     claims=dict(visualVerified=False, loadedFixtureProven=False, persistenceProven=False, vrVerified=False))
+    if history:
+        artifact['provenance']['historyOrigin'] = history_origin
+        artifact['provenance']['normalizedSemantics'] = {
+            'dialogueHistory': 'bounded sampled history; raw counters and adjacent intervals, not accepted input or complete event history',
+            'dialogueHistory.adjacentSamples': 'differences between serialized rows only; omitted rows may lie between them; no interpolation'}
     failures = scenario.check_start(frozen, artifact)
     failures.extend('unavailable observation: ' + key for key in unavailable)
     report = dict(schemaVersion=1, identity=identity, sourceRequestId=request_id,
