@@ -79,8 +79,17 @@ PollResult Source::Poll(std::uint32_t index, Physical physical, std::uint64_t no
         Stop(End::StartTimedOut);
     if (clockValid && state_.phase == Phase::Consumed && nowMs >= state_.expiresMs) Stop(End::Expired);
     if (state_.phase == Phase::DrainPending) {
-        state_.phase = Phase::NeutralEmitted;
+        if (state_.neutralPolls == 0) {
+            state_.neutralFirstMs = nowMs;
+            // A rollback cannot shorten the release window. Near the clock's
+            // representable end, saturate rather than wrap into the past.
+            auto const anchor = lastClock_;
+            auto const maximum = std::numeric_limits<std::uint64_t>::max();
+            state_.neutralDeadlineMs = anchor > maximum - kNeutralDwellMs ? maximum : anchor + kNeutralDwellMs;
+        }
+        state_.neutralLastMs = nowMs;
         Increment(state_.neutralPolls); state_.neutralMs = nowMs;
+        if (clockValid && nowMs >= state_.neutralDeadlineMs) state_.phase = Phase::NeutralEmitted;
         return Emit({},physical.packet);
     }
     if (!clockValid || !state_.runOpen) return {};

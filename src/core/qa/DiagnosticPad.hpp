@@ -14,6 +14,7 @@ struct Pad {
 inline constexpr std::uint16_t kButtons = 0xF3FF; // standard XInput, excludes Guide/reserved bits
 inline constexpr std::uint32_t kMaxPulseMs = 1000;
 inline constexpr std::uint32_t kActivationWaitMs = 5000;
+inline constexpr std::uint32_t kNeutralDwellMs = 250;
 enum class PhysicalState { Connected, Disconnected, Error };
 struct Physical { PhysicalState state{PhysicalState::Error}; Pad pad{}; std::uint32_t packet{}; };
 enum class Phase { Idle, Published, Consumed, DrainPending, NeutralEmitted };
@@ -26,6 +27,9 @@ struct Observation {
     std::uint64_t activationDeadlineMs{};
     std::uint32_t requestedDurationMs{};
     std::uint64_t pulsePolls{}, firstPulseMs{}, lastPulseMs{}, neutralPolls{}, neutralMs{}, conflictingPolls{};
+    // Repeated neutral output is not proof of game consumption. neutralMs is
+    // the latest output timestamp; the deadline never slides on later polls.
+    std::uint64_t neutralFirstMs{}, neutralLastMs{}, neutralDeadlineMs{};
     Phase phase{Phase::Idle}; End end{End::None};
     Pad requested{};
     bool runOpen{};

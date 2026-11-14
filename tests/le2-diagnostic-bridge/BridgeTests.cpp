@@ -18,6 +18,7 @@ namespace {
 unsigned checks{}, installCalls{}, uninstallCalls{}, lookups{};
 std::atomic<unsigned> originals{};
 std::atomic<std::uint64_t> now{100};
+bool disconnectedLeavesUntouched{};
 bool noDll{}, alias{}, noOrdinal{}, invalidExport{}, invalidMain{}, badCaller{}, forward{}, failSecond{}, callbackOnInstall{};
 DWORD physicalResult = ERROR_SUCCESS;
 XINPUT_STATE physical{19,{}};
@@ -28,7 +29,7 @@ std::vector<void*> installedTargets;
 void Check(bool value,char const* why) { ++checks; if(!value) throw std::runtime_error(why); }
 DWORD WINAPI PhysicalB(DWORD,XINPUT_STATE* state) {
     ++originals;
-    if(state) *state=physical;
+    if(state && !(disconnectedLeavesUntouched && physicalResult==ERROR_DEVICE_NOT_CONNECTED)) *state=physical;
     return physicalResult;
 }
 DWORD WINAPI PhysicalA(DWORD index,XINPUT_STATE* state) {
@@ -38,7 +39,7 @@ DWORD WINAPI PhysicalA(DWORD index,XINPUT_STATE* state) {
         if(blockOriginal) { originalEntered=true; waitCondition.notify_all(); waitCondition.wait(lock,[]{return releaseOriginal;}); }
     }
     if(forward) return bridge::testing::Poll(1,index,state,0x1500);
-    if(state) *state=physical;
+    if(state && !(disconnectedLeavesUntouched && physicalResult==ERROR_DEVICE_NOT_CONNECTED)) *state=physical;
     return physicalResult;
 }
 bridge::DiagnosticExport Lookup(char const* dll,bool ordinal) {
@@ -59,7 +60,7 @@ std::uint64_t Clock() { return now.load(); }
 void Reset() {
     installCalls=uninstallCalls=lookups=0; originals=0; now=100;
     noDll=alias=noOrdinal=invalidExport=invalidMain=badCaller=forward=failSecond=callbackOnInstall=false;
-    physicalResult=ERROR_SUCCESS; physical={19,{}}; installedTargets.clear();
+    disconnectedLeavesUntouched=false; physicalResult=ERROR_SUCCESS; physical={19,{}}; installedTargets.clear();
     blockOriginal=originalEntered=releaseOriginal=false;
     bridge::testing::Reset({Lookup,Main,Executable,Clock});
 }
@@ -104,7 +105,7 @@ void DelayedActivation() {
         Check(state.Gamepad.wButtons==tap.buttons,"bridge preserves requested active hold");
         now=sample.first+sample.duration; Poll(state); s=bridge::DiagnosticSnapshot();
         Check(state.Gamepad.wButtons==0 && s.source.end==pad::End::Expired && s.neutralWrites==1,"bridge active deadline writes neutral");
-        Poll(state);
+        now=sample.first+sample.duration+250; Poll(state); Poll(state);
         Check(std::memcmp(&state,&physical,sizeof state)==0 && bridge::DiagnosticSnapshot().source.pulsePolls==2,"bridge does not rearm after hold");
     }
     Reset(); Arm(); now=5100;
@@ -112,7 +113,7 @@ void DelayedActivation() {
     Poll(state); s=bridge::DiagnosticSnapshot();
     Check(state.Gamepad.wButtons==0 && s.source.end==pad::End::StartTimedOut && s.source.expiresMs==0 &&
         s.source.pulsePolls==0 && s.neutralWrites==1,"bridge first poll timeout releases without active write");
-    Poll(state);
+    now=5350; Poll(state); Poll(state);
     Check(std::memcmp(&state,&physical,sizeof state)==0 && bridge::DiagnosticSnapshot().source.pulsePolls==0,"bridge timeout remains terminal");
 
 }
@@ -137,6 +138,7 @@ void OriginalBridgeChecks() {
     Check(bridge::DiagnosticSnapshot().source.pulsePolls==2,"one output write per eligible nonrecursive poll");
     now=181; Poll(state);
     Check(state.Gamepad.wButtons==0 && state.dwPacketNumber!=packet && bridge::DiagnosticSnapshot().neutralWrites==1,"expiry emits neutral in actual output buffer");
+    now=431; Poll(state);
     Check(Poll(state)==physicalResult && std::memcmp(&state,&physical,sizeof state)==0,"after drain exact physical state passthrough");
     Check(!bridge::Uninstall(context) && uninstallCalls==0 && bridge::DiagnosticSnapshot().disabled,"diagnostic hooks never uninstalled");
     Check(!bridge::DiagnosticTryInstall(context,true),"disabled adapter cannot re-enable");
@@ -173,7 +175,9 @@ void OriginalBridgeChecks() {
     Check(Poll(state)==ERROR_SUCCESS && state.Gamepad.wButtons==0x1000,"synthetic pad may stand in for disconnected pad");
     bridge::DiagnosticDisable(); now=102;
     Check(Poll(state)==ERROR_SUCCESS && state.Gamepad.wButtons==0 && bridge::DiagnosticSnapshot().neutralWrites==1,"disable retains success-valued neutral release before disconnect");
-    Check(Poll(state)==ERROR_DEVICE_NOT_CONNECTED,"physical disconnection restored after release");
+    Check(Poll(state)==ERROR_SUCCESS && state.Gamepad.wButtons==0,"disable continues neutral window");
+    now=352; Poll(state);
+    Check(Poll(state)==ERROR_DEVICE_NOT_CONNECTED,"physical disconnection restored after release window");
 
     Reset(); Arm(); forward=true;
     auto before=originals.load(); Poll(state); s=bridge::DiagnosticSnapshot();
@@ -192,6 +196,8 @@ void OriginalBridgeChecks() {
     Check(bridge::DiagnosticBeginRun(2)==pad::Admission::Busy,"new run waits for neutral output");
     now=102; bridge::testing::Poll(1,0,&state,0x1500); // separate physical export, no stall
     Check(bridge::DiagnosticSnapshot().neutralWrites==1,"fresh callback commits neutral while old original waits");
+    Check(bridge::DiagnosticBeginRun(2)==pad::Admission::Busy,"new run waits full neutral window");
+    now=352; bridge::testing::Poll(1,0,&state,0x1500);
     Check(bridge::DiagnosticBeginRun(2)==pad::Admission::Accepted && bridge::DiagnosticPublish(2,1,pad::Pad{0x2000},80)==pad::Admission::Accepted,"new run only after committed neutral");
     { std::lock_guard lock(waitMutex); releaseOriginal=true; waitCondition.notify_all(); }
     worker.join();
@@ -201,9 +207,38 @@ void OriginalBridgeChecks() {
     Check(state.Gamepad.wButtons==0x2000 && bridge::DiagnosticSnapshot().source.pulsePolls==1,"fresh callback consumes only the new request");
 
 }
+void SeparateConsumerRelease() {
+    Reset(); Arm(); disconnectedLeavesUntouched=true; physicalResult=ERROR_DEVICE_NOT_CONNECTED;
+    XINPUT_STATE gameplay{}, discovery{};
+    now=101;
+    Check(bridge::testing::Poll(0,0,&gameplay,0x1500)==ERROR_SUCCESS && gameplay.Gamepad.wButtons==tap.buttons,
+          "gameplay consumer receives held state in its own buffer");
+    now=181;
+    Check(bridge::testing::Poll(1,0,&discovery,0x1600)==ERROR_SUCCESS && discovery.Gamepad.wButtons==0,
+          "other export and caller cannot exhaust release with first neutral");
+    auto const releasePacket=discovery.dwPacketNumber;
+    now=182;
+    Check(bridge::testing::Poll(0,0,&gameplay,0x1500)==ERROR_SUCCESS && gameplay.Gamepad.wButtons==0 &&
+          gameplay.dwPacketNumber==releasePacket,"later gameplay consumer receives neutral despite disconnected original leaving held buffer untouched");
+    Check(bridge::DiagnosticPublish(1,2,tap,80)==pad::Admission::Busy,"new action cannot replace multi-consumer release");
+    auto const count=bridge::DiagnosticSnapshot().neutralWrites;
+    now=10000; bridge::testing::Poll(0,1,&gameplay,0x1500); Poll(gameplay,0x3000);
+    Check(bridge::DiagnosticSnapshot().neutralWrites==count && bridge::DiagnosticSnapshot().source.phase==pad::Phase::DrainPending,
+          "foreign/index polls cannot finish neutral window");
+    now=430; forward=true;
+    Check(Poll(gameplay)==ERROR_SUCCESS && gameplay.dwPacketNumber==releasePacket,"recursive export forwards one stable neutral sample");
+    forward=false;
+    Check(bridge::DiagnosticSnapshot().neutralWrites==count+1,"recursive nested callback does not double drain");
+    now=431;
+    Check(Poll(gameplay)==ERROR_SUCCESS && bridge::DiagnosticSnapshot().source.phase==pad::Phase::NeutralEmitted,
+          "safe final neutral completes window");
+    now=432;
+    Check(Poll(gameplay)==ERROR_DEVICE_NOT_CONNECTED && gameplay.Gamepad.wButtons==0,"terminal passthrough preserves already released consumer buffer");
+}
 int main() try {
     OriginalBridgeChecks();
     DelayedActivation();
+    SeparateConsumerRelease();
     std::cout << checks << " existing-bridge diagnostic checks passed; no native hooks installed\n";
     return 0;
 } catch(std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }

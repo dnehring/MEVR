@@ -20,6 +20,22 @@ void Arm(Source& s, std::uint64_t run = 1) {
 }
 int main() try {
     {
+        Source s; Arm(s); s.Poll(0,disconnected,101); s.CancelRun(1,102);
+        auto first=s.Poll(0,disconnected,103); auto view=s.Snapshot();
+        Check(first.replace && first.pad==Pad{} && view.neutralFirstMs==103 && view.neutralLastMs==103 &&
+              view.neutralDeadlineMs==353 && view.phase==Phase::DrainPending,"first safe neutral fixes bounded deadline");
+        Check(!s.Poll(1,disconnected,99999).replace && s.Snapshot().neutralPolls==1,"other slot cannot advance neutral window");
+        Check(!s.Poll(0,{PhysicalState::Connected,tap},200).replace,"physical input during neutral window never masked");
+        Check(!s.Poll(0,{PhysicalState::Error},354).replace && s.Snapshot().phase==Phase::DrainPending,"error beyond deadline cannot complete release");
+        auto rollback=s.Poll(0,disconnected,300);
+        Check(rollback.replace && rollback.pad==Pad{} && s.Snapshot().phase==Phase::DrainPending,"rollback emits only neutral and cannot complete");
+        Check(s.Snapshot().neutralDeadlineMs==353 && s.Snapshot().neutralFirstMs==103,"repeated/error/rollback polls never slide deadline");
+        auto final=s.Poll(0,disconnected,355); view=s.Snapshot();
+        Check(final.replace && final.pad==Pad{} && final.packet==first.packet && view.phase==Phase::NeutralEmitted &&
+              view.neutralPolls==3 && view.neutralLastMs==355 && view.neutralMs==355,"final safe output records whole neutral window");
+        Check(!s.Poll(0,disconnected,356).replace,"completed release returns original passthrough");
+    }
+    {
         Source s;
         Check(!s.Poll(0,disconnected,0).replace,"disabled source preserves disconnected result");
         Check(s.BeginRun(0)==Admission::InvalidRun,"zero run refused"); Arm(s);
@@ -35,11 +51,14 @@ int main() try {
         Check(s.Publish(1,1,tap,80,102)==Admission::StaleSequence,"duplicate sequence refused while active");
         auto release=s.Poll(0,neutral,181);
         Check(release.replace && release.pad==Pad{} && release.packet!=first.packet && release.packet!=neutral.packet,"exact deadline produces distinct neutral packet");
-        view=s.Snapshot(); Check(view.phase==Phase::NeutralEmitted && view.end==End::Expired && view.neutralPolls==1,"expiry reports observed neutral poll");
-        Check(!s.Poll(0,neutral,181).replace,"finished source restores original passthrough");
-        Check(s.Publish(1,1,tap,80,181)==Admission::StaleSequence,"terminal request cannot replay");
-        Check(s.Publish(1,2,tap,80,181)==Admission::Accepted,"next sequence after emitted release accepted");
-        auto next=s.Poll(0,neutral,182); Check(next.replace && next.packet!=release.packet,"second press differs from release packet");
+        view=s.Snapshot(); Check(view.phase==Phase::DrainPending && view.end==End::Expired && view.neutralPolls==1,"expiry begins observed neutral window");
+        Check(s.Publish(1,2,tap,80,182)==Admission::Busy,"neutral window blocks next pulse");
+        auto repeat=s.Poll(0,neutral,430); Check(repeat.replace && repeat.pad==Pad{} && repeat.packet==release.packet,"neutral packet stable through window");
+        Check(s.Poll(0,neutral,431).replace && s.Snapshot().phase==Phase::NeutralEmitted,"safe final neutral completes fixed window");
+        Check(!s.Poll(0,neutral,432).replace,"finished source restores original passthrough");
+        Check(s.Publish(1,1,tap,80,432)==Admission::StaleSequence,"terminal request cannot replay");
+        Check(s.Publish(1,2,tap,80,432)==Admission::Accepted,"next sequence after emitted release accepted");
+        auto next=s.Poll(0,neutral,433); Check(next.replace && next.packet!=release.packet,"second press differs from release packet");
     }
     {
         Source s; Arm(s);
@@ -57,7 +76,9 @@ int main() try {
         Check(s.Poll(0,disconnected,104).pad==Pad{} && s.Snapshot().neutralPolls==1,"cancelled run drains even disconnected physical pad");
         Check(s.Snapshot().end==End::RunCancelled,"cancellation reason preserved");
         Check(s.BeginRun(1)==Admission::InvalidRun,"same closed run cannot reopen");
-        Check(s.BeginRun(2)==Admission::Accepted,"new run allowed after release");
+        Check(s.BeginRun(2)==Admission::Busy,"first neutral cannot release ownership");
+        s.Poll(0,disconnected,354);
+        Check(s.BeginRun(2)==Admission::Accepted,"new run allowed after release window");
     }
     {
         // Every nonneutral component, including tiny stick drift and Guide, is
@@ -80,9 +101,12 @@ int main() try {
         Source s; Arm(s); auto pressed=s.Poll(0,disconnected,120);
         auto zero=s.Poll(0,disconnected,119);
         Check(pressed.pad==tap && zero.replace && zero.pad==Pad{} && s.Snapshot().end==End::ClockRegressed,"rollback cannot extend held input");
-        Check(s.Publish(1,2,tap,80,119)==Admission::ClockRegressed,"rollback publication refused");
-        Check(s.Publish(1,2,tap,80,121)==Admission::Accepted,"safe later clock may publish next sequence");
-        Check(s.CancelRun(1,120) && s.Snapshot().end==End::ClockRegressed,"cancellation still closes run on clock rollback");
+        Check(s.Publish(1,2,tap,80,119)==Admission::Busy,"rollback cannot bypass pending neutral");
+        Check(s.Snapshot().neutralDeadlineMs==370,"rollback anchors deadline to last valid clock");
+        s.Poll(0,disconnected,370);
+        Check(s.Publish(1,2,tap,80,369)==Admission::ClockRegressed,"rollback publication refused after drain");
+        Check(s.Publish(1,2,tap,80,371)==Admission::Accepted,"safe later clock may publish next sequence");
+        Check(s.CancelRun(1,370) && s.Snapshot().end==End::ClockRegressed,"cancellation still closes run on clock rollback");
     }
     {
         Source s; Check(s.BeginRun(1)==Admission::Accepted,"validation run open");
@@ -110,8 +134,9 @@ int main() try {
         });
         threads.emplace_back([&]{ while(!go.load()) std::this_thread::yield(); s.CancelRun(1,101); });
         go=true; for(auto& t:threads) t.join();
-        auto view=s.Snapshot(); Check(!bad && !view.runOpen && view.phase==Phase::NeutralEmitted && view.neutralPolls==1,"concurrent polls snapshots and cancellation stay coherent with one release");
-        Check(!s.Poll(0,disconnected,102).replace,"no held input after concurrent cancellation drain");
+        auto view=s.Snapshot(); Check(!bad && !view.runOpen && view.phase==Phase::DrainPending && view.neutralPolls>=1,"concurrent cancellation emits neutral without early completion");
+        Check(s.Poll(0,disconnected,102).pad==Pad{},"no held input during concurrent cancellation drain");
+        s.Poll(0,disconnected,351); Check(!s.Poll(0,disconnected,352).replace,"completed concurrent drain restores passthrough");
     }
     {
         // Exact delays seen in native polling. These are synthetic reproductions
@@ -131,7 +156,9 @@ int main() try {
             Check(s.Publish(1,2,tap,1,sample.first+sample.duration-1)==Admission::Busy,"active hold cannot queue or replace request");
             auto release=s.Poll(0,neutral,sample.first+sample.duration);
             Check(release.replace && release.pad==Pad{} && s.Snapshot().end==End::Expired,"active deadline emits neutral with expired reason");
-            Check(!s.Poll(0,neutral,sample.first+sample.duration+1).replace && s.Snapshot().pulsePolls==2,"no automatic rearm after delayed hold");
+            Check(s.Poll(0,neutral,sample.first+sample.duration+1).pad==Pad{} && s.Snapshot().pulsePolls==2,"no automatic rearm during delayed hold release");
+            s.Poll(0,neutral,sample.first+sample.duration+250);
+            Check(!s.Poll(0,neutral,sample.first+sample.duration+251).replace,"delayed release window completes");
         }
     }
     {
@@ -146,7 +173,7 @@ int main() try {
             timeout.Snapshot().end==End::RunCancelled,"cancellation before first output never starts hold");
         Source late; Arm(late);
         Check(late.Poll(0,neutral,9000).pad==Pad{} && late.Snapshot().end==End::StartTimedOut,"poll beyond activation deadline times out explicitly");
-        Check(!late.Poll(0,neutral,9001).replace && late.Snapshot().pulsePolls==0,"timeout cannot rearm on a later poll");
+        Check(late.Poll(0,neutral,9001).pad==Pad{} && late.Snapshot().pulsePolls==0,"timeout cannot rearm on a later poll");
     }
     {
         Source conflict; Arm(conflict);
@@ -164,6 +191,8 @@ int main() try {
         Check(s.Snapshot().activationDeadlineMs==maximum-1000 && s.Snapshot().expiresMs==0,"activation deadline does not overflow");
         Check(s.Poll(0,neutral,maximum-1001).pad==tap && s.Snapshot().expiresMs==maximum-1,"latest possible start preserves nonoverflowing active deadline");
         Check(s.Poll(0,neutral,maximum-1).pad==Pad{} && s.Snapshot().end==End::Expired,"near-limit hold drains normally");
+        Check(s.Snapshot().neutralDeadlineMs==maximum && s.Snapshot().phase==Phase::DrainPending,"neutral deadline saturates without wrap");
+        Check(s.Poll(0,neutral,maximum).pad==Pad{} && s.Snapshot().phase==Phase::NeutralEmitted,"safe final neutral at representable clock limit");
     }
     std::cout << checks << " diagnostic pad checks passed (synthetic; no hooks or native input)\n";
     return 0;
