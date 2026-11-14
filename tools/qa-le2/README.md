@@ -387,6 +387,19 @@ other pending gates instead of trying to force an overall pass.
 Keep automated, native, stereo, physical-headset, performance
 and campaign/DLC outcomes separate.
 
+For a fresh-process persistence trial, preserve the successful `save-evidence.py
+after` report and its sibling archived save in the original run. Prepare the
+fresh run using those exact bytes as both base and prepared fixture, with a
+no-op recipe and the same case and build. Use the fresh run's own exported
+observation for `after-reload`, keeping its original identity. In the main
+evidence manifest, add `reloadLink` with the original run-relative
+`saveReport` path and its SHA-256 as `saveReportSha256`. Pass
+`--reload-session <fresh-run-directory>` alongside `--session` when auditing.
+The auditor checks report, save, fixture and runtime identities along with
+restoration of the fresh run. Keep the normal Load Game selection and rendered
+scene evidence in the persistence review. When the original run only has a
+qualified recovery, its separate restoration requirement stays open.
+
 To locate an early checkpoint after a verified reset, use the existing session
 tool to check the archived ME2 save bytes against the reset receipt:
 

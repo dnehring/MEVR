@@ -481,6 +481,12 @@ the exact owned invitation was removed. Private evidence lives in
 `native-outcome.json` SHA256 is
 `22856d391e840a2b6f56f560b3c4db87db01ede222a111d1dc90860d62a7175f`.
 
+The offline cross-run binder now accepts this archived New Save report and
+fresh reload observation without rewriting either identity. It matches the
+archived save to the fresh run's exact base and prepared hashes, recorded
+process and restored session. The original save run's qualified restoration
+remains outside the ordinary exact-restoration gate.
+
 This completes one resource-only native persistence cycle, paired with the
 independent TSE proof below. It does not establish story-recipe coherence,
 ammo/reload gameplay, dialogue interrupts, scanning, stereo or VR acceptance.

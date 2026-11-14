@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location('scenario', HERE / 'scenario.py')
@@ -206,6 +207,37 @@ class ScenarioTests(unittest.TestCase):
         result = self.audit()
         self.assertIn('another run', result['artifactProblems']['after'])
         self.assertEqual(result['gates']['native'], 'pending')
+
+    def test_fresh_reload_requires_exact_outcome_and_preserves_second_run_identity(self):
+        source, reload = self.root / 'primary-run', self.root / 'reload-run'
+        (source / 'artifacts').mkdir(parents=True)
+        (reload / 'control').mkdir(parents=True)
+        report_path = source / 'artifacts/save-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json'
+        save_path = report_path.with_suffix('.pcsav')
+        save_path.write_bytes(b'unit test saved outcome')
+        self.write(report_path, {'source': 'save-new-disk-candidate', 'identity': self.identity,
+                                'status': 'new-candidate-archived-and-adapter-parseable', 'failures': [],
+                                'artifact': {'path': save_path.relative_to(source).as_posix(),
+                                             'sha256': scenario.sha(save_path), 'size': save_path.stat().st_size}})
+        link = {'saveReport': report_path.relative_to(source).as_posix(), 'saveReportSha256': scenario.sha(report_path)}
+        for folder, stamp in ((source, '2026-01-01T00:00:01Z'), (reload, '2026-01-01T00:00:02Z')):
+            self.write(folder / 'context.json', {'gameProcess': {'pid': 42, 'name': 'MassEffect2', 'started': stamp}})
+        self.write(reload / 'scenario.json', {'variants': ['empty']})
+        identity = dict(self.identity, runId='RELOAD-RUN', baseSaveSha256=scenario.sha(save_path),
+                        preparedSaveSha256=scenario.sha(save_path), scenarioSha256=scenario.sha(reload / 'scenario.json'))
+        wire = {'run': identity['runId'], 'exe': identity['gameExeSha256'], 'mod': identity['loadedModSha256'], 'pid': '42'}
+        self.write(reload / 'control/identity.json', {'identity': wire})
+        observation = {'identity': identity, 'provenance': {'wireIdentity': wire}}
+        with mock.patch.object(scenario, 'bind_session', return_value={'processBound': True, 'restorationVerified': True}):
+            bound = scenario.bind_reload(self.identity, source, reload, link, observation)
+            self.assertEqual(bound['runId'], 'RELOAD-RUN')
+            self.assertFalse(bound['normalLoadVerified'])
+            with self.assertRaisesRegex(ValueError, 'exact saved outcome'):
+                edited = dict(observation, identity=dict(identity, preparedSaveSha256='f' * 64))
+                scenario.bind_reload(self.identity, source, reload, link, edited)
+            with self.assertRaisesRegex(ValueError, 'archived outcome identity'):
+                save_path.write_bytes(b'different save')
+                scenario.bind_reload(self.identity, source, reload, link, observation)
 
     def test_reload_start_can_use_separate_run_bound_weapon_observation(self):
         self.s['artifacts']['start-weapon'] = 'runtime-state'

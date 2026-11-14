@@ -8,6 +8,7 @@ producer and human reviewer remain responsible for truthful runtime evidence.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import hashlib
 import importlib.util
 import json
@@ -408,7 +409,59 @@ def bind_session(identity, run_path):
             'restorationVerified': restored}
 
 
-def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
+def bind_reload(primary, primary_path, reload_path, link, observation):
+    """Bind a different run's observation to an exact archived outcome save."""
+    if primary_path is None or not isinstance(link, dict) or not _hash(link.get('saveReportSha256')):
+        raise ValueError('reload link requires a source session and pinned save report')
+    source = Path(primary_path).resolve()
+    target = Path(reload_path).resolve()
+    name = link.get('saveReport')
+    if not isinstance(name, str) or not re.fullmatch(r'artifacts/save-[0-9a-f-]{36}\.json', name):
+        raise ValueError('reload link requires a run-relative New Save report')
+    report_path = source / name
+    if report_path.resolve() != report_path or sha(report_path) != link['saveReportSha256']:
+        raise ValueError('reload link source report path or hash differs')
+    report = read_json(report_path)
+    if (report.get('source') != 'save-new-disk-candidate' or report.get('identity') != primary
+            or report.get('status') != 'new-candidate-archived-and-adapter-parseable'
+            or report.get('failures') != []):
+        raise ValueError('reload link requires a successful New Save report from the primary run')
+    saved = report['artifact']
+    save_path = report_path.with_suffix('.pcsav')
+    save_sha = saved['sha256']
+    if (saved['path'] != save_path.relative_to(source).as_posix() or save_path.resolve() != save_path
+            or not _hash(save_sha) or sha(save_path) != save_sha or save_path.stat().st_size != saved['size']):
+        raise ValueError('reload link archived outcome identity differs')
+    identity = observation['identity']
+    if (identity.get('runId') == primary['runId'] or identity.get('caseId') != primary['caseId']
+            or identity.get('gameExeSha256') != primary['gameExeSha256']
+            or identity.get('candidateCommit') != primary.get('candidateCommit')
+            or identity.get('loadedModSha256') != primary.get('loadedModSha256')
+            or identity.get('baseSaveSha256') != save_sha or identity.get('preparedSaveSha256') != save_sha):
+        raise ValueError('reload run must stage the exact saved outcome in a separate matching case and build')
+    binding = bind_session(identity, target)
+    if not binding['processBound'] or not binding['restorationVerified']:
+        raise ValueError('reload run requires process binding and verified restoration')
+    source_process = read_json(source / 'context.json')['gameProcess']
+    target_process = read_json(target / 'context.json')['gameProcess']
+    if target_process['name'] != 'MassEffect2' or identity.get('scenarioSha256') != sha(target / 'scenario.json'):
+        raise ValueError('reload run must bind the ME2 process and frozen scenario')
+    reload_scenario = read_json(target / 'scenario.json')
+    if identity['caseId'] not in reload_scenario['variants']:
+        raise ValueError('reload case is missing from the frozen reload scenario')
+    if datetime.fromisoformat(target_process['started']) <= datetime.fromisoformat(source_process['started']):
+        raise ValueError('reload run must use a newer game process')
+    wire = observation['provenance']['wireIdentity']
+    descriptor = read_json(target / 'control' / 'identity.json')
+    if (wire.get('run') != identity['runId'] or wire.get('exe') != identity['gameExeSha256']
+            or wire.get('mod') != identity['loadedModSha256'] or wire.get('pid') != str(target_process['pid'])
+            or wire != descriptor.get('identity')):
+        raise ValueError('reload observation wire identity differs')
+    return dict(binding, runId=identity['runId'], savedOutcomeSha256=save_sha,
+                saveReportSha256=link['saveReportSha256'], normalLoadVerified=False)
+
+
+def audit(scenario_path, evidence_path, recipe_path=None, session_path=None, reload_session=None):
     """Audit all claims; pending/failed gates do not become successful by omission."""
     s = load(scenario_path, for_run=True, recipe_path=recipe_path)
     e = read_json(evidence_path)
@@ -435,7 +488,13 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
     artifacts, values = e.get('artifacts'), {}
     if not isinstance(artifacts, dict):
         raise ValueError('artifact manifest required')
+    if 'reloadLink' in e and reload_session is None:
+        raise ValueError('reloadLink requires --reload-session')
+    if reload_session is not None and ('after-reload' not in artifacts or 'reloadLink' not in e
+                                       or s['artifacts'].get('after-reload') != 'runtime-state'):
+        raise ValueError('--reload-session requires after-reload runtime evidence and a reloadLink')
     problems = {}
+    reload_binding = None
     for name, record in artifacts.items():
         try:
             if name not in s['artifacts'] or not isinstance(record, dict):
@@ -449,7 +508,9 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
                 raise ValueError('artifact bytes changed')
             if record['kind'] in ('runtime-state', 'save-inspection', 'input-trace', 'timing'):
                 value = read_json(path)
-                if not isinstance(value, dict) or value.get('identity') != identity:
+                if not isinstance(value, dict):
+                    raise ValueError('structured artifact must be an object')
+                if value.get('identity') != identity and (name != 'after-reload' or reload_session is None):
                     raise ValueError('artifact belongs to another run/build/fixture')
                 if record['kind'] == 'runtime-state' and value.get('source') != 'runtime-observation':
                     raise ValueError('native state must be observed in the game')
@@ -458,6 +519,8 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
                 if record['kind'] == 'input-trace' and (not isinstance(value.get('events'), list)
                         or not value['events'] or not all(isinstance(x, dict) for x in value['events'])):
                     raise ValueError('input trace has no events')
+                if name == 'after-reload' and reload_session is not None:
+                    reload_binding = bind_reload(identity, session_path, reload_session, e.get('reloadLink'), value)
                 values[name] = value
         except (OSError, KeyError, ValueError, TypeError) as ex:
             problems[name] = str(ex)
@@ -536,7 +599,7 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
                        else 'pending' if any(x['status'] == 'pending' for x in rows) else 'supported')
     session_binding = bind_session(identity, session_path)
     return {'scenario': s['id'], 'caseId': e['caseId'], 'runId': identity['runId'],
-            'sessionBinding': session_binding,
+            'sessionBinding': session_binding, 'reloadSessionBinding': reload_binding,
             'startProblems': start_problems, 'artifactProblems': problems,
             'assertions': results, 'gates': gates, 'fullPortAccepted': False,
             'scope': 'Artifact integrity and declared observations; not independent proof of producer truth or campaign coverage.'}
@@ -547,6 +610,7 @@ def main():
     sub = p.add_subparsers(dest='command', required=True)
     v = sub.add_parser('validate'); v.add_argument('scenario'); v.add_argument('--for-run', action='store_true'); v.add_argument('--recipe')
     a = sub.add_parser('audit'); a.add_argument('scenario'); a.add_argument('evidence'); a.add_argument('--recipe'); a.add_argument('--session', required=True)
+    a.add_argument('--reload-session', help='Fresh protected run for linked after-reload evidence')
     c = sub.add_parser('check-start'); c.add_argument('scenario'); c.add_argument('state'); c.add_argument('--recipe')
     c.add_argument('--observation', action='append', nargs=2, default=[], metavar=('SLOT', 'STATE_JSON'),
                    help='Add a separate runtime-state sample for a starting-check artifact slot')
@@ -567,7 +631,7 @@ def main():
             result = {'startingStateMatches': not failures, 'failures': failures,
                       'renderedSceneVerified': False, 'acceptance': 'not-evaluated'}
         else:
-            result = audit(args.scenario, args.evidence, args.recipe, args.session)
+            result = audit(args.scenario, args.evidence, args.recipe, args.session, args.reload_session)
         print(json.dumps(result, indent=2))
         if args.command == 'check-start':
             return 2 if failures else 0
