@@ -5,14 +5,15 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-import time
-import uuid
 
 sys.dont_write_bytecode = True
 root = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("le2_control", root / "tools/qa-le2/control.py")
 control = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(control)
+spec = importlib.util.spec_from_file_location("le2_negative", root / "tools/qa-le2/control-negative.py")
+negative = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(negative)
 
 
 def main(executable):
@@ -49,17 +50,15 @@ def main(executable):
         assert len(list(directory.glob("consumed-*.request"))) == 3
         assert not (directory / "request.control").exists()
         assert not (directory / "outstanding.json").exists()
-        # Deliberately wrong lease: producer must answer with its ACTUAL identity
-        # and reject before any work, never mirror the supplied lease.
-        wrong = dict(identity, lease=str(uuid.uuid4()), kind="request", id=str(uuid.uuid4()), sequence="4",
-                     deadline=str(time.time_ns() // 1000000 + 5000), verb="ping", status="pending", bytes="0", payload=b"")
-        control.publish(directory / "request.control", control.encode(wrong))
-        deadline = time.monotonic() + 5
-        while not (directory / "result.control").exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
-        rejection = control.decode((directory / "result.control").read_bytes())
-        assert rejection["status"] == "rejected" and rejection["lease"] == identity["lease"]
-        print("Python/C++ filesystem smoke passed: ping, observe, disabled console, wrong lease; fake process only")
+        for case in ('wrong-lease', 'expired'):
+            rejection = negative.probe(run, case, timeout=5, bind=bind)
+            assert rejection['status'] == 'rejected' and rejection['lease'] == identity['lease']
+        # Neither rejection may poison the next legitimate request.
+        assert control.submit(run, 'ping', timeout=5, bind=bind)['status'] == 'completed'
+        assert len(list((directory / 'history').glob('*.result'))) == 6
+        assert len(list(directory.glob('consumed-*.request'))) == 6
+        assert not (directory / 'outstanding.json').exists()
+        print('Python/C++ filesystem smoke passed: ping, observe, disabled console, wrong lease, expiry and recovery; fake process only')
     finally:
         if directory is not None and directory.is_dir():
             (directory / "stop.fixture").touch(exist_ok=False)

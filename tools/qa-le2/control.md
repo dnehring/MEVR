@@ -113,6 +113,32 @@ host. Never use `streamlevelin`: both the client and the C++ dispatch gate rejec
 it. A console result marked `dispatched` proves only that dispatch returned, not
 that a save loaded, ammunition changed or gameplay completed.
 
+### Live rejection checks
+
+Once a normal ping succeeds, use the bounded negative-control helper:
+
+```powershell
+python tools/qa-le2/control-negative.py C:\private\le2-run wrong-lease
+python tools/qa-le2/control-negative.py C:\private\le2-run expired
+python tools/qa-le2/control.py C:\private\le2-run ping
+```
+
+Both probes send only an empty `ping`: one with a deliberately different lease,
+one with an expired deadline. Success requires the exact rejection reason, the
+producer's actual session identity, correlated request fields and consumption of
+the request. A reply that echoes the invalid lease or reports completion fails.
+These checks establish admission behavior, not gameplay or native-call safety.
+
+The helper shares the ordinary client lock, sequence and pending-intent files.
+Unresolved traffic blocks both clients. After timeout, use
+`control-negative.py C:\private\le2-run collect`; it inspects the archived
+request and late response without resending. Unexpected responses retain their
+bytes and pending intent. Do not delete those files to retry. The normal client's
+`collect` refuses a negative-control intent so it cannot mistake an unexpected
+completion for a successful rejection. Run the final normal ping only after both
+negative controls finish successfully. Live results must be recorded separately
+from the temporary-files/C++ endpoint regression checks.
+
 The client checks the owned session lock, frozen plan, actual process PID/start/
 path, executable hash, and mapped host/mod paths and file hashes before sending
 and accepting a response. Windows process-start identity preserves all seven

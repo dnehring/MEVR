@@ -227,6 +227,8 @@ def collect(run, *, bind=binding):
     with lock.open("x", encoding="ascii") as stream: stream.write(token)
     try:
         pending = session.read_json(session.safe_path(directory / "outstanding.json"))
+        if "negativeCase" in pending:
+            raise ControlError("Use control-negative.py collect for a pending negative control")
         if not valid_uuid(pending.get("id")) or pending.get("identity") != identity:
             raise ControlError("Pending request belongs to another runtime lease")
         request = decode(session.safe_path(directory / "history" / (pending["id"] + ".request")).read_bytes())
