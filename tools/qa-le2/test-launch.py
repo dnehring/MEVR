@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Offline launch tests. Fake installations/providers only; no process dispatch."""
 import importlib.util
+from datetime import datetime, timedelta
 from pathlib import Path
 import subprocess
 import sys
@@ -62,8 +63,11 @@ class LaunchTests(unittest.TestCase):
 
     def dispatch(self, command):
         self.dispatched.append(command)
+        # A fake launch need not wait for the host wall clock to advance.
+        attempt = s.read_json(self.run / "launch-attempt.json")
+        started = datetime.fromisoformat(attempt["dispatchAt"]) + timedelta(microseconds=1)
         self.live = [self.steam_process, {"name": "MassEffect2", "pid": 88,
-                     "path": str(self.exe), "started": s.utc()}]
+                     "path": str(self.exe), "started": started.isoformat()}]
 
     def test_plan_exact_command_and_zero_writes(self):
         before = s.snapshot(self.root)
