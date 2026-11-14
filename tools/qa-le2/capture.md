@@ -33,12 +33,17 @@ attempted. The game may still return stale, black or incomplete GPU content even
 when PrintWindow succeeds.
 
 The receipt records run/lease and process/build identity, UTC timestamps, method,
-window dimensions, image SHA-256 and one of `captured`, `suspect-black`,
+window dimensions, `foregroundHwnd` (including for PrintWindow), image SHA-256
+and one of `captured`, `suspect-black`,
 `suspect-constant`, or `failed`. Black/constant images are kept for inspection;
 they do not prove that the game rendered an empty scene. A partially written
 image after failure is retained and hashed as failed evidence. A failure before
 session admission creates no capture directory. Exit 0 means only a nonconstant
 image was obtained with the checks passing; suspect/failure returns 2.
+PrintWindow permits a stable background window. Its before/after window checks
+refuse a changing foreground HWND, but a readable PrintWindow image does not
+establish that the game was foreground. Older receipts may lack this field;
+do not infer it from their pixels.
 
 `gameplayPassed` is always false and `visualAcceptance` stays pending. A human
 must inspect the PNG and associate its contents with the selected fixture and
@@ -62,6 +67,39 @@ python tools/qa-le2/test-capture.py
 
 These verify refusal/identity changes, exact-PID selection, handle cleanup,
 output preservation and uncertainty; they make no claim about live pixels.
+
+## Observe or explicitly activate the owned window
+
+Reuse [focus-owned-session.ps1](../qa-hubs/focus-owned-session.ps1); it defaults
+to the existing LE1 workflow, so specify `-Game LE2` for a protected LE2 run:
+
+```powershell
+# Observe only; appends the existing intervention receipt, without changing focus.
+pwsh -NoProfile -File tools/qa-hubs/focus-owned-session.ps1 -Game LE2 -RunDirectory RUN
+
+# Separate explicit focus request, only for the currently owned session.
+pwsh -NoProfile -File tools/qa-hubs/focus-owned-session.ps1 -Game LE2 -RunDirectory RUN -Activate
+```
+
+The LE2 branch reads its context directly and leaves `LOCALAPPDATA` unchanged.
+It requires a backed-up `game-bound` run, its canonical run directory and exact
+ownership of the caller's `LOCALAPPDATA/MEVR/qa-cafeteria.lock`, and the bound
+MassEffect2 PID, executable path and process start time. Restored, foreign or
+replaced sessions are refused. Run it in the approved desktop host environment;
+this helper verifies process/lock ownership, not loaded-module or control-channel
+identity. It does not launch a game or send gameplay input.
+
+Only `-Activate` invokes the existing Win32 foreground request. Both modes append
+`launch-events.jsonl` with the request, before/after foreground PID and result.
+Windows may refuse activation; that failure is recorded and returned. Exclude
+explicit focus interventions from frame-comparison baselines. After a successful
+request, take a fresh capture with a new name; capture performs its own checks.
+Neither focus success nor a readable image establishes input consumption.
+
+The adapter passed offline fake-process/Win32 checks, including unchanged LE1
+default behavior; positive LE2 native focus acceptance remains pending at this
+documentation checkpoint. Reproduce the offline checks with
+`pwsh -NoProfile -File tools/qa-hubs/test-focus-owned-session.ps1`.
 
 ## Explicit foreground desktop fallback
 

@@ -27,17 +27,30 @@ a ready combat encounter. The next acquisition step is ordinary squad selection
 and progression to a safe firing/reload point. A tested read-only
 [`observe-orbital` query](../../research/le2-scanning-readiness.md) is available
 for the later scanning baseline; native orbital sampling remains pending.
-The existing GamepadBridge now delivers bounded scripted input: a protected run
-selected Miranda and Grunt, released each pulse to neutral and reached the squad
-confirmation modal. The candidate adds source-bound confirmation/loadout contexts;
-those transitions still require native proof. No story-flag reset substitutes
-for these normal gameplay steps.
+The existing GamepadBridge has bounded native input evidence, with an unresolved
+reproducibility limit. On 2026-11-14, run `1641Z-input` selected Miranda and Grunt
+and reached the squad confirmation modal. Run `1722Z-loadout` selected Miranda,
+then showed Tali after a right pulse and Zaeed after the second A pulse; Miranda
+remained selected in the later passive capture. It never reached the modal or
+loadout, and no `party-confirm` or `loadout` pulse was sent. Its three pulses
+recorded 33/686/30 positive XInput output writes and one neutral write each;
+those counts do not prove distinct presses or game consumption of the release.
+The one-neutral-output policy is a suspected contributor, not a proven cause.
+Source-bound confirmation/loadout contexts still require native proof. No
+story-flag reset substitutes for these normal gameplay steps. See the
+[evidence log](../../research/le2-validation-evidence.md) for later candidates.
 
 Use [`observe-weapon`](../../research/le2-weapon-observation.md) through the same
 bound control client to inspect a live weapon before preparing reload assertions.
 It distinguishes capacity, magazine usage, derived loaded count and raw stored
 reserve. Effective reserve stays unavailable until the applicable weapon getter
 semantics are verified; a stored reserve value alone is not proof of reload cost.
+Run `1722Z-loadout` observed `SFXWeapon_MassCannon`: loaded 1, capacity 1,
+magazine usage 0 and raw reserve 10. Its correlated exporter output is partial:
+the starting-state check failed for missing map/resources and unavailable
+effective reserve. This supplies weapon observation evidence, not reload or
+scenario acceptance. The run closed normally and its four protected roots were
+restored according to the independently checked archive and session receipts.
 
 Offline preparation can continue while another session owns the game:
 [resource boundary batches](variant-usage.md) create hash-bound zero/insufficient/exact/surplus cases;
@@ -71,6 +84,12 @@ Its explicit `--method desktop-client` fallback has live proof on the normal
 Save screen, requires the exact owned game window already in front, and sends
 no focus or input commands. Review the resulting image; successful pixel
 capture alone does not establish the expected scene or enabled menu action.
+Run `1722Z-loadout` retained a failed desktop attempt with `foregroundHwnd=0`
+and readable PrintWindow frames; those frames did not establish foreground
+ownership. Reuse the existing [owned-session focus helper](capture.md#observe-or-explicitly-activate-the-owned-window)
+with `-Game LE2` to observe focus, or explicitly add `-Activate` to request it.
+The capture tool itself never changes focus; focus activation has separate
+native acceptance and intervention records.
 
 The [Steam launch adapter](launch.md) provides read-only preflight and a guarded
 launch path where installed launcher support is verified. The [bound control
