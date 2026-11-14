@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Mass Effect 2 VR implementation plan
 
-Date: 2026-11-13. Status: **P9 offline validation tooling implemented; native port proof remains pending**.
+Date: 2026-11-13. Status: **P9 offline tooling and P4 request prototype tested; P0 contract and P1/P2/P5 discovery recorded. Native port proof remains pending**.
 
 Use the [concise port goal](le2-port-goal.md) as the goal prompt's entry point; the documents below provide its detailed scope.
 
@@ -24,7 +24,18 @@ P9's current [workflow](../tools/qa-le2/README.md) includes save preparation, pr
 
 ## Agent work packages
 
-P0-P8 remain planned; P9's offline tooling checkpoint is linked above. The lead records owner, branch, base commit, status and result link when dispatching. Source paths below refer to existing files; new adapter placement is agreed in P0 before parallel edits.
+Current bounded progress is below. None of these checkpoints establishes a completed runtime work package.
+
+| Package | Offline checkpoint | Next unresolved gate |
+|---|---|---|
+| P0 | [Initial integration contract](le2-integration-contract.md): single owners, units/epochs, game-thread dispatch and native request reconciliation | Implement and review actual shared seams as P1/P2 integrate |
+| P1 | [Engine access discovery](../research/le2-engine-access-discovery.md): LE2 metadata differences, minimal observation/getter slice and failure gates | Implement validated read-only access; prove actual layouts/lifetime and one legal call in an owned session |
+| P2 | [Pinned renderer audit](../research/le2-renderer-integration.md): complete source/dependency list, hook/loader conflicts and thread hazards | Licensed provenance import, bounded host adaptations and isolated full-object compile/link, then native lifecycle/stereo proof |
+| P4 | [Original reload request coordinator](../research/le2-reload-core.md), 18 standalone tests passing in Release and Debug | Contact geometry, real hand ownership, native dispatch/auto-reload coordination, authoritative reconciliation and physical acceptance |
+| P5 | [Movement/cover script inspection](../research/le2-movement-source.md): action/traversal coupling, damage exceptions and shield-delay semantics | Preserve traversal and native benefits through a validated movement/cover adapter and gameplay tests |
+| P9 | Save/fixture/lifecycle/scenario tools and independent encoding checks | Normal game load/save/reload, runtime observers, actual scenario behavior and protected restoration |
+
+P3/P6/P7/P8 implementation remains planned. The lead records owner, branch, base commit, status and result link when dispatching. Source paths below refer to existing files; new adapter placement follows P0 before parallel edits. The P4 header is deliberately absent from production targets, and the discovery reports introduce no runtime hook/ABI changes.
 
 | ID and package | Inputs and dependencies | Owned scope and reusable systems | Completion evidence |
 |---|---|---|---|
@@ -41,16 +52,16 @@ P0-P8 remain planned; P9's offline tooling checkpoint is linked above. The lead 
 
 P1/P2 own different files where possible. P4 proposes shared input changes to the lead; it does not independently rewrite `GamepadMapping` while P6/P7 edit it. Shared files and ABI changes have one integrator even when multiple agents supply patches.
 
-## First dispatch wave
+## Next implementation wave
 
 Dispatch at most three independent workers plus the lead, in separate worktrees:
 
-1. **Engine worker, P1:** inventory LE2 globals/layouts and native weapon/reload/control entry points. Produce a small verified-access candidate and a discovery report. No gameplay-mechanic changes.
-2. **Renderer worker, P2:** compare local Halcyon ME2 against MEVR host requirements; prepare isolated integration with existing bridge services and identify game-specific stereo/UI differences. Coordinate CMake and ABI edits with the lead.
-3. **Interaction worker, P4 discovery:** inspect pinned Overlord candidates and current MEVR hand ownership; propose reload states, geometry and cancellation tests. Implement only game-independent pieces after P0 is agreed. Do not treat SDK names as a working native reload adapter.
+1. **Engine worker, P1a:** implement the discovery report's disabled-by-default read-only player/world/weapon observation slice, with LE2 reflection validation, epoch invalidation and focused tests. Defer native calls until its gate passes; the first proposed call is a scalar getter comparison, not gameplay mutation.
+2. **Renderer worker, P2:** follow the audit's pinned provenance import and isolated compile/full-object-link package. Resolve factory/Present/ProcessEvent/loader ownership and remove unsafe Present-thread script work before any native trial. Coordinate CMake and ABI edits with the lead.
+3. **Interaction worker, P4:** build qualified contact geometry and a concrete hand-grant producer around the tested request coordinator. Inspect pinned Overlord candidates with attribution rules; retain the existing MEVR support/holster behavior. Keep native dispatch disabled until P1/P3 and automatic-reload/animation reconciliation are verified.
 4. **Lead, P0/P9:** settle interfaces, establish the proof checklist, coordinate shared-file changes and serialize native runs. Review worker results before merging.
 
-P5/P7/P8 discovery follows as workers become available. P3 runtime work waits for P1/P2; no agent should claim a complete reload until native weapon authority is established.
+P5's source findings now guide its future candidate; P7/P8 fixture research continues independently. P3 runtime work waits for P1/P2; no agent should claim a complete reload until native weapon authority is established. All three implementation lanes can make offline progress while a separate session owns the game; an elapsed scheduling estimate does not authorize launch or deployment.
 
 ## Worktree and native session rules
 

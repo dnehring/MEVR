@@ -192,14 +192,17 @@ game's coalesced file); the player's game data, none of it in the repository.
 |---|---|---|---|
 | Who | player, squad | player, squad | player's party |
 | When | `IsInCover() && !IsInCoverLeaning()` | `IsInCover()`, not leaning | `IsInCover()`, not leaning, the slot not `bUnsafeCover` |
-| Cone | the shot's direction (instigator to hit) against `-CoverNormal` below -0.3, more than 300 units | the same against the cover slot's rotation (`CurrentLink.GetSlotRotation`) | the same, unless the damage type `bIgnoresCoverDirection` |
+| Cone | the shot's direction (instigator to hit) against `-CoverNormal` below -0.3, more than 300 units | the same against the cover slot's rotation (`CurrentLink.GetSlotRotation`), unless the damage type `bIgnoresCoverDirection` | the same, unless the damage type `bIgnoresCoverDirection` |
 | In the cone | damage x (1 - `CoverDamageReduction`): 1.0 on Casual and Normal (none), 0.9 above | zero | `Global_CoverMultiplier = -CoverDamageReduction` (1.0 on the two easiest levels, 0.9 above); a projectile is stopped |
 | Otherwise in cover | whole | x `PlayerCoverDamageMultiplier` 0.75 | whole |
 | Leaning out | whole | x `PlayerCoverLeanDamageMultiplier` 0.75 | whole |
 | Out of cover | whole | whole | `Global_OutOfCoverMultiplier = NoCoverDamageBonus`: +0.4 from Normal up |
 
 The cone is the same in all three: within about 72 degrees of the cover's normal, from beyond 3 m. LE2 also shortens the
-shield regeneration's wait in cover (`PlayerCoverRegenTimerMultiplier` 1.5) **[verify]** what it multiplies.
+shield regeneration's wait in cover (`PlayerCoverRegenTimerMultiplier` 1.5). The 2026-11-13
+[LE2 script inspection](le2-movement-source.md) confirms an additional shield-delay timer decrement when
+`bFastCoverRegen` is enabled and the pawn is in cover without leaning; this does not directly multiply recharge amount.
+Runtime applicability/timing remain **[verify]**. That inspection also confirms LE2's damage-direction exception above.
 
 ### 6.2 The VR rule (all three games) and LE1's module
 

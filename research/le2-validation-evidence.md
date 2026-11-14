@@ -64,6 +64,19 @@ session suite retains its Windows symlink-creation privilege skip. SPDX and
 whitespace checks passed for the committed work. No C++ runtime change or ASI
 build/deployment is part of this batch.
 
+## Isolated reload coordinator checkpoint
+
+The subsequent [P0-P5 offline implementation checkpoint](../docs/le2-integration-contract.md)
+adds an original request coordinator, not another native acceptance result.
+Root independently configured `tests/le2-reload-core` under private
+`local-tools/le2-reload-core-root/`, built Release and Debug with MSVC 19.44 and
+`/W4 /WX`, and passed all 18 always-active checks in each configuration.
+The standalone project does not build or link any ASI/production target.
+The [prototype report](le2-reload-core.md), [engine audit](le2-engine-access-discovery.md),
+[renderer audit](le2-renderer-integration.md) and [movement script findings](le2-movement-source.md)
+record scope and unresolved gates. Production trilogy/monolithic builds and
+native deployment remain work for the actual runtime integration candidate.
+
 ## Earlier foundation checks
 
 Configured a separate `build-le2-validation-tools` CMake directory with game build
