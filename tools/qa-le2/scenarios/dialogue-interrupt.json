@@ -1,0 +1,190 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "game": "LE2",
+  "id": "le2-dialogue-interrupt",
+  "label": "Timed dialogue interrupt",
+  "status": "draft",
+  "workPackages": [
+    "P1",
+    "P2",
+    "P7",
+    "P9"
+  ],
+  "fixture": {
+    "id": "le2-dialogue-interrupt-private-base",
+    "baseSaveSha256": null
+  },
+  "recipe": null,
+  "expectedStart": {
+    "map": null,
+    "checks": []
+  },
+  "variants": [
+    "paragon-window",
+    "renegade-window",
+    "missed-window",
+    "early-input",
+    "return-to-combat"
+  ],
+  "prerequisites": [
+    "Record executable hash, game version, DLC list and settings from the actual installation.",
+    "Use a protected private profile and preparation receipt; confirm selected-save identity through normal Load Game.",
+    "Establish a native baseline with the same prepared save before accepting VR behavior."
+  ],
+  "acquisitionTasks": [
+    "Acquire naturally obtained saves immediately before known Paragon and Renegade interrupt opportunities; record conversation, speaker, prompt and expected branch using ordinary native play.",
+    "Compare saves before and after the chosen branch, inspect native conversation/condition dependencies with LegendaryExplorer, and document verified plot IDs and journal/streaming prerequisites privately.",
+    "Pin base and recipe per variant; use no-op preparation for natural fixtures when no edit is required. Missing plot semantics must remain unresolved rather than forcing a single completion flag.",
+    "Define normalized state.dialogue and branch outcome observations with provenance, including legal window opening/closing and input timestamps; current declarations do not establish instrumentation."
+  ],
+  "loadProcedure": [
+    "Acquire exclusive native-session ownership and use the protected session workflow.",
+    "Prepare a private fixture from the pinned base and recipe; retain the save-tool receipt and constrained semantic diff.",
+    "Select the staged save through ordinary Load Game; record the selected entry and loading sequence.",
+    "Capture observed start state and rendered scene; compare map, player, resources and relevant plot state with expectedStart checks. A map name alone is insufficient."
+  ],
+  "resetProcedure": [
+    "Exit the game and collect run-specific logs, observed state, captures and any resulting saves.",
+    "Run protected restoration and retain the restoration receipt including newly created files.",
+    "For each variant start again from its immutable base and pinned recipe; never reuse a mutated previous run save."
+  ],
+  "actions": [
+    {
+      "id": "enter-dialogue",
+      "inputPath": "either",
+      "description": "Reach the conversation through ordinary interaction; record camera/UI transition and choices before the interrupt."
+    },
+    {
+      "id": "interrupt",
+      "inputPath": "vr",
+      "description": "For the selected variant press the actual mapped controller response within the legal Paragon/Renegade window, before it, or intentionally after/miss it."
+    },
+    {
+      "id": "return",
+      "inputPath": "vr",
+      "description": "Observe the selected outcome; continue the conversation and return to gameplay. Test that held/released interrupt input does not fire a weapon or select an unintended response."
+    },
+    {
+      "id": "persistence",
+      "inputPath": "either",
+      "description": "Complete enough ordinary progression to save, reload normally, and verify the chosen branch persists."
+    }
+  ],
+  "artifacts": {
+    "start": "runtime-state",
+    "before": "runtime-state",
+    "after": "runtime-state",
+    "after-reload": "runtime-state",
+    "input": "input-trace",
+    "scene": "video",
+    "left-eye": "image",
+    "right-eye": "image",
+    "session-log": "log",
+    "settings": "log",
+    "restoration": "log",
+    "baseline": "log"
+  },
+  "assertions": [
+    {
+      "id": "loaded-scene",
+      "gate": "native",
+      "description": "Review normal load entry and actual rendered scene, player state and scenario prerequisites against the private fixture acquisition record.",
+      "requires": [
+        "start",
+        "scene",
+        "session-log"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "stereo-presentation",
+      "gate": "visual",
+      "description": "Both eye captures show readable UI and consistent depth; review alongside controller actions and scene video.",
+      "requires": [
+        "left-eye",
+        "right-eye",
+        "input",
+        "scene",
+        "settings"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "headset-usability",
+      "gate": "headset",
+      "description": "Physical headset reviewer records standing and seated reach, visibility, tracking recovery and comfort for this variant.",
+      "requires": [
+        "left-eye",
+        "right-eye",
+        "input",
+        "scene",
+        "settings"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "restoration",
+      "gate": "native",
+      "description": "Verify the protected-session restoration receipt and session log identify restored profiles, config and saves with no unexplained differences.",
+      "requires": [
+        "session-log",
+        "restoration"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "native-window-and-outcome",
+      "gate": "native",
+      "description": "Timestamped prompt visibility, window state and native input establish acceptance only inside the legal window and the correct taken/missed branch. Early/late input must not take the branch.",
+      "requires": [
+        "before",
+        "after",
+        "input",
+        "scene",
+        "session-log"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "interrupt-controller-routing",
+      "gate": "vr",
+      "description": "Actual controller response reaches the intended interrupt, prompt remains usable in headset, and context exit produces no combat input leakage or stuck pause. Record the matched native baseline run/hash and deliberate gameplay differences.",
+      "requires": [
+        "input",
+        "scene",
+        "after",
+        "session-log",
+        "settings",
+        "baseline"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "branch-persistence",
+      "gate": "native",
+      "description": "Ordinary save/reload preserves the validated branch and subsequent dialogue/progression; compare relevant verified state and rendered continuation.",
+      "requires": [
+        "after",
+        "after-reload",
+        "scene",
+        "session-log"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    }
+  ]
+}

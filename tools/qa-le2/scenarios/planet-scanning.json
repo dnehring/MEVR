@@ -1,0 +1,270 @@
+{
+  "spdxLicenseIdentifier": "MIT",
+  "schemaVersion": 1,
+  "game": "LE2",
+  "id": "le2-planet-scanning",
+  "label": "Galaxy navigation and planet scanning",
+  "status": "draft",
+  "workPackages": [
+    "P1",
+    "P2",
+    "P7",
+    "P8",
+    "P9"
+  ],
+  "fixture": {
+    "id": "le2-planet-scanning-private-base",
+    "baseSaveSha256": null
+  },
+  "recipe": null,
+  "expectedStart": {
+    "map": null,
+    "checks": []
+  },
+  "variants": [
+    "zero-probes",
+    "one-probe",
+    "scan-hold",
+    "anomaly",
+    "fuel-insufficient",
+    "fuel-exact",
+    "fuel-surplus"
+  ],
+  "prerequisites": [
+    "Record executable hash, game version, DLC list and settings from the actual installation.",
+    "Use a protected private profile and preparation receipt; confirm selected-save identity through normal Load Game.",
+    "Establish a native baseline with the same prepared save before accepting VR behavior."
+  ],
+  "acquisitionTasks": [
+    "Acquire a naturally obtained Normandy/galaxy fixture with accessible scanning and an untouched prospect or anomaly. Record planet/system and discovery state privately, without inventing plot IDs or map names.",
+    "Inspect actual save values and create hash-pinned recipes with explicit expected credits, minerals, fuel and probes. Include zero, insufficient, exact and surplus values using baseline-measured travel cost.",
+    "Record native probe launch cost, scan-hold behavior, mineral gain, travel fuel cost and anomaly unlock through ordinary play before encoding numeric assertions.",
+    "Compare normal before/after saves and inspect native discovery/mission dependencies before offering a named unlock/reset recipe. Prefer separate natural saves for untouched and discovered planets.",
+    "Define normalized observed state.resources.probes/fuel and discovery/mineral fields with provenance; save values alone do not demonstrate rendered galaxy state."
+  ],
+  "loadProcedure": [
+    "Acquire exclusive native-session ownership and use the protected session workflow.",
+    "Prepare a private fixture from the pinned base and recipe; retain the save-tool receipt and constrained semantic diff.",
+    "Select the staged save through ordinary Load Game; record the selected entry and loading sequence.",
+    "Capture observed start state and rendered scene; compare map, player, resources and relevant plot state with expectedStart checks. A map name alone is insufficient."
+  ],
+  "resetProcedure": [
+    "Exit the game and collect run-specific logs, observed state, captures and any resulting saves.",
+    "Run protected restoration and retain the restoration receipt including newly created files.",
+    "For each variant start again from its immutable base and pinned recipe; never reuse a mutated previous run save."
+  ],
+  "actions": [
+    {
+      "id": "navigate",
+      "inputPath": "vr",
+      "description": "Open the native galaxy interface on the VR surface and navigate normally, including controlled fuel variants. Do not teleport to bypass travel cost."
+    },
+    {
+      "id": "scan",
+      "inputPath": "vr",
+      "description": "Hold/release scanning and deliberately press one probe launch with the actual VR control. Record scan pointer, launch edges and counters; test zero-probe refusal."
+    },
+    {
+      "id": "discover",
+      "inputPath": "vr",
+      "description": "For the anomaly case locate and launch normally, observe unlock and enter the discovered mission through normal progression."
+    },
+    {
+      "id": "persistence",
+      "inputPath": "either",
+      "description": "Save/reload normally and return to the planet/mission; compare probes, fuel, minerals and discovery state."
+    }
+  ],
+  "artifacts": {
+    "start": "runtime-state",
+    "before": "runtime-state",
+    "after": "runtime-state",
+    "after-reload": "runtime-state",
+    "input": "input-trace",
+    "scene": "video",
+    "left-eye": "image",
+    "right-eye": "image",
+    "session-log": "log",
+    "settings": "log",
+    "restoration": "log",
+    "baseline": "log"
+  },
+  "assertions": [
+    {
+      "id": "loaded-scene",
+      "gate": "native",
+      "description": "Review normal load entry and actual rendered scene, player state and scenario prerequisites against the private fixture acquisition record.",
+      "requires": [
+        "start",
+        "scene",
+        "session-log"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "stereo-presentation",
+      "gate": "visual",
+      "description": "Both eye captures show readable UI and consistent depth; review alongside controller actions and scene video.",
+      "requires": [
+        "left-eye",
+        "right-eye",
+        "input",
+        "scene",
+        "settings"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "headset-usability",
+      "gate": "headset",
+      "description": "Physical headset reviewer records standing and seated reach, visibility, tracking recovery and comfort for this variant.",
+      "requires": [
+        "left-eye",
+        "right-eye",
+        "input",
+        "scene",
+        "settings"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "restoration",
+      "gate": "native",
+      "description": "Verify the protected-session restoration receipt and session log identify restored profiles, config and saves with no unexplained differences.",
+      "requires": [
+        "session-log",
+        "restoration"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "single-probe-cost",
+      "gate": "native",
+      "description": "A deliberate single legal launch consumes exactly one probe.",
+      "requires": [
+        "before",
+        "after",
+        "input"
+      ],
+      "variants": [
+        "one-probe",
+        "anomaly"
+      ],
+      "check": {
+        "kind": "delta",
+        "before": {
+          "artifact": "before",
+          "field": "state.resources.probes"
+        },
+        "after": {
+          "artifact": "after",
+          "field": "state.resources.probes"
+        },
+        "expected": -1
+      }
+    },
+    {
+      "id": "zero-probe-refusal",
+      "gate": "native",
+      "description": "Zero-probe interaction cannot consume or create probes.",
+      "requires": [
+        "before",
+        "after",
+        "input"
+      ],
+      "variants": [
+        "zero-probes"
+      ],
+      "check": {
+        "kind": "delta",
+        "before": {
+          "artifact": "before",
+          "field": "state.resources.probes"
+        },
+        "after": {
+          "artifact": "after",
+          "field": "state.resources.probes"
+        },
+        "expected": 0
+      }
+    },
+    {
+      "id": "scan-hold-no-launch",
+      "gate": "native",
+      "description": "Holding scanning alone does not launch or consume a probe.",
+      "requires": [
+        "before",
+        "after",
+        "input"
+      ],
+      "variants": [
+        "scan-hold"
+      ],
+      "check": {
+        "kind": "delta",
+        "before": {
+          "artifact": "before",
+          "field": "state.resources.probes"
+        },
+        "after": {
+          "artifact": "after",
+          "field": "state.resources.probes"
+        },
+        "expected": 0
+      }
+    },
+    {
+      "id": "native-economy-and-discovery",
+      "gate": "native",
+      "description": "Compare observed costs, mineral yield, travel refusal/success and discovery/mission unlock with the matched native baseline for this case. Record exact baseline-derived costs and reject duplicate launches.",
+      "requires": [
+        "before",
+        "after",
+        "input",
+        "scene",
+        "session-log"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "scanning-controller-routing",
+      "gate": "vr",
+      "description": "Video and controller trace show deliberate scanning/probe/travel controls on usable VR UI; one press yields one action and context exit restores gameplay input. Record the matched native baseline run/hash and deliberate gameplay differences.",
+      "requires": [
+        "input",
+        "scene",
+        "before",
+        "after",
+        "settings",
+        "baseline"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    },
+    {
+      "id": "discovery-persistence",
+      "gate": "native",
+      "description": "Ordinary save/reload preserves resource values and discovery/unlock state and permits expected mission continuation.",
+      "requires": [
+        "after",
+        "after-reload",
+        "scene",
+        "session-log"
+      ],
+      "check": {
+        "kind": "review"
+      }
+    }
+  ]
+}
