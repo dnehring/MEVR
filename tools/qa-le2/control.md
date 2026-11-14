@@ -79,8 +79,9 @@ request; an admitted request may publish a late result for `collect` to reconcil
    Use the save-menu observation/action sequence below only when its capabilities
    are present in the reviewed host. Obtain [run-bound window captures](capture.md)
    and inspect them alongside each state observation. Selected-fixture/career
-   mapping, loading that exact save, native save/reload and scenario actions
-   remain separate implementation/validation boundaries. A title-screen handshake
+   mapping and loading that exact save require the separate frozen-fixture
+   workflow below, whose native validation is pending. Native save/reload and
+   scenario actions remain separate implementation/validation boundaries. A title-screen handshake
    or opened load panel is not a fixture load. The
    [normal menu source handoff](../../research/le2-menu-load-source.md) identifies
    the route and remaining mapping gaps; source inspection is not call validation.
@@ -165,8 +166,9 @@ empty or different list does not justify reopening the panel or manufacturing
 completion callbacks. Do not infer a disk filename from a list index. The
 [source handoff](../../research/le2-menu-load-source.md) distinguishes list
 position, descriptor `Career`/`SaveName`/`Index`/`Type`, and unresolved file mapping.
-Exact prepared-fixture selection and load remain pending until implemented and
-validated separately.
+The separately gated [frozen-fixture workflow](#reviewed-frozen-fixture-loading)
+below can target a reviewed manual-save descriptor. Native validation of that
+load path remains pending; opening this panel does not exercise it.
 
 Both native actions accept **empty input only** and require the client's
 `--allow-menu-actions` plus the host's independent permission. Each has its own
@@ -195,6 +197,109 @@ the same-run menu observation. A `captured` status proves only the capture check
 `suspect-black`, `suspect-constant`, and failed frames remain evidence for human
 inspection, not visual or gameplay acceptance. No capture result selects a save,
 confirms its loaded state or validates stereo/headset behavior.
+
+### Reviewed frozen-fixture loading
+
+**Native validation pending.** This narrow path reuses the normal initialized
+menu's `SFXSFHandler_Load.LoadGame(index, GuiMan)`. It does not use QuickLoad,
+DebugName matching, a console command or map travel. A reviewed integration must
+supply both the engine helper and host binding; a client update alone cannot
+enable it. Default gates and offline producer fixtures keep native loading off.
+
+Before preparing a new protected run, add optional `fixtureSelection` to its
+plan. The following schema illustration uses placeholders, not usable hashes or
+an established career/filename mapping:
+
+```json
+{
+  "fixtureSelection": {
+    "schemaVersion": 1,
+    "descriptor": {
+      "career": "OBSERVED_CAREER",
+      "saveName": "OBSERVED_SAVE_NAME",
+      "index": 99,
+      "type": 0
+    },
+    "fixtureSha256": "64 lowercase hexadecimal characters",
+    "targetRelativePath": "Save/ME2/OBSERVED_CAREER/OBSERVED_SAVE_NAME.pcsav",
+    "exeSha256": "64 lowercase hexadecimal characters",
+    "evidence": {
+      "runId": "UUID of the reviewed observation run",
+      "observationSha256": "SHA256 of the preserved observation artifact",
+      "captureSha256": "SHA256 of the reviewed PNG",
+      "reviewedBy": "reviewer identity and concise mapping basis"
+    }
+  }
+}
+```
+
+The reviewer must establish the complete descriptor-to-file mapping from the
+preserved observation, rendered menu and exact staged file. Evidence metadata is
+a **reviewer attestation**: the host validates its shape and binds its values;
+it does not read the image or independently prove what it depicts. Keep those
+private artifacts available for inspection. The earlier observation run may be
+different from the new run, but current process, file and menu checks still apply.
+
+Only manual Type 0 and a nonnegative descriptor Index are supported. Career and
+SaveName must be nonempty bounded UTF-8 filename components; separators,
+controls, reserved device names and trailing dots/spaces are refused. The target
+must be exactly `Save/ME2/<career>/<saveName>.pcsav`, with forward slashes, and
+must match the plan's existing `fixture.targetRelativePath`. This is a
+reviewed binding constraint, **not** a rule for generating SaveName from Index.
+Do not infer a filename from either descriptor Index or UI row.
+
+Before engine admission the host verifies the selected fixture hash against
+`plan.fixture.sha256`, the frozen session hash, staged target bytes and
+`run/fixture.pcsav`; it also checks the profile/target identities and admitted
+executable hash. Selection and evidence are frozen with the protected plan;
+do not patch an existing run to repair a rejected binding. Missing or invalid
+binding rejects `observe-fixture` and `load-fixture` while leaving unrelated
+ping/menu diagnostics usable. A valid binding does not prove current menu
+readiness or a loaded fixture.
+
+Use the normal menu workflow above and freshly observe the active Load panel.
+This slice does not select another career or navigate a career-picker screen.
+`CurrentCareerIndex=-1` is valid for the default career; that value, list contents
+or a cached handler alone cannot establish the current UI phase. Retain current
+panel/capture evidence and require the supported initialized main-menu/default
+load context, with no unresolved enumeration or modal state.
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run observe-fixture
+```
+
+This empty-input read-only query matches the frozen complete descriptor against
+a bounded list of at most 512 rows. It requires a unique current match; duplicate,
+missing, malformed or oversized state is not a selectable fixture. It does not
+use a client-supplied row, pointer, path or descriptor. Review the returned
+binding/context/match evidence before a separately authorized request:
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run load-fixture --allow-fixture-load
+```
+
+This also accepts empty input only. The independent client opt-in and host
+permission are both required; `--allow-menu-actions` does not authorize loading.
+The host rechecks its file binding and the engine re-finds the exact current
+match and revalidates its handler, mode and metadata before the normal call.
+There is one admitted fixture-load entry per process, separate from the splash,
+menu-opener and FOV allowances. It is spent immediately before entry and cannot
+be reset by timeout, request IDs, success, error or hot reload.
+
+`rejected` is pre-entry refusal. `dispatched` means the bounded native call
+returned with its checks satisfied; it does **not** mean the save loaded.
+`completed` is not a valid terminal result for this native action. Post-entry
+`error`, timeout, lost reply or correlation failure preserves uncertainty and
+must not trigger a retry. Preserve the result and pending intent; `collect`
+only reconciles an independently arriving late response. An error disables
+further host admission. Follow protected close/restoration if reconciliation
+cannot resolve the outcome.
+
+After `dispatched`, obtain fresh state and a new [run-bound capture](capture.md)
+while the asynchronous load completes. Compare observed world/player/starting
+state with the frozen fixture and scenario, preserving provenance and unknowns.
+Neither the matching descriptor nor the call return substitutes for this proof.
+Native save/reload, scenario behavior and VR acceptance remain separate gates.
 
 ### Explicit scalar FOV probe
 

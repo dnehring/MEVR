@@ -29,10 +29,11 @@ launch path where installed launcher support is verified. The [bound control
 client](control.md) supplies request correlation and uncertainty recovery. An
 opt-in monolithic diagnostic host implements `ping`, structural `observe` and a
 separately gated scalar `probe-fov`. Reviewed integrations also expose read-only
-`observe-save-menu` and independently permitted splash/load-menu actions.
-Each run still requires verified module
-mapping, process binding and a real producer handshake. These capabilities do
-not select a save or establish scenario/VR acceptance.
+`observe-save-menu` and independently permitted splash/load-menu actions. A
+separately gated frozen-fixture load path is documented below; native validation
+is pending. Each run still requires verified module mapping, process binding
+and a real producer handshake. Diagnostic observations and menu opening do not
+load a save or establish scenario/VR acceptance.
 
 ## 1. Inspect and prepare a private fixture
 
@@ -140,7 +141,12 @@ Create a private plan with this shape, replacing all placeholders:
 Choose a dedicated career/slot discoverable by normal Load Game. Do not assume an
 arbitrary directory name is accepted; first establish the game's career naming
 and selection behavior. The runner creates a new save slot and refuses overwrite.
-It does not rewrite Resume/profile selection using LE1 offsets.
+It does not rewrite Resume/profile selection using LE1 offsets. To request the
+narrow diagnostic fixture-load path, add the reviewed `fixtureSelection` block
+[documented here](control.md#reviewed-frozen-fixture-loading) **before** preparation.
+It binds the complete observed descriptor to this manual-save target and hash,
+plus a reviewer attestation referencing private observation/capture artifacts.
+Do not derive the SaveName or target filename from the descriptor Index.
 
 ```powershell
 python tools/qa-le2/session.py prepare <plan.json> <new-private-run-directory>
@@ -191,6 +197,17 @@ before the next stage; `dispatched` means the call returned, not that the next
 panel or save is ready. Never repeat an uncertain action. Selecting the intended
 career/fixture and proving its descriptor-to-file mapping remain separate work;
 opening the Load panel does not perform a load.
+
+For a new run with a valid reviewed `fixtureSelection` plan binding and a host
+implementing that capability, use empty-input `observe-fixture`, inspect its
+unique current descriptor match, then explicitly request
+`load-fixture --allow-fixture-load` only within the authorized test. Follow the
+[frozen-fixture workflow](control.md#reviewed-frozen-fixture-loading): no client
+row/pointer/path target, manual Type 0 only, no career-picker navigation, exact
+staged/frozen file hashes and one admitted native entry per process. A returned
+`dispatched` response is not a loaded-fixture result; require fresh observed state
+and capture. Native validation of this load path is pending. Missing or invalid
+bindings reject fixture requests, and uncertain outcomes must not be retried.
 
 ## 5. Exercise, inspect and reset
 
