@@ -5,12 +5,14 @@
 #include "halcyon/le1/mevr_bridge.h"
 
 #include "core/Log.hpp"
+#include "plugin/CrashBreadcrumbs.hpp"
 
 #include <Windows.h>
 
 #include <atomic>
 #include <format>
 #include <mutex>
+#include <utility>
 
 namespace mevr::host::conversation_world {
 namespace {
@@ -21,7 +23,16 @@ namespace cw = mevr::vr::conversation_world;
 // (the owner's session, the controllers losing tracking mid-conversation) then showed the 3D screen for a tenth of a second and
 // dipped twice. The mod says so itself when a scene ends, so a longer trust only bridges stalls.
 constexpr std::uint64_t kFreshMs = 1500;
+// ... and up to this long while the game thread hasn't finished a tick since (cw::StillFresh; research/69 item 40): a stall's
+// frame is presented before the mod's tick can send again.
+constexpr std::uint64_t kStallMs = 10000;
 constexpr std::uint64_t kGraceMs = 250;   // the game's mode changes a tick before the mod's state does (as GalaxyHeld)
+
+// The engine ticks begun when the host first saw each of the mod's words (a tick late at most: the trust a tick longer).
+std::mutex gTrustMutex;
+std::uint64_t gTrustSequence = 0;
+std::uint64_t gTrustTicks = 0;
+std::uint64_t gStallLoggedSequence = 0;
 
 std::atomic<std::uint64_t> gLastActiveMs{0};
 constexpr std::uint64_t kComingMs = 150;  // the mod's "armed" counts this long: the tick or two until its state follows the mode
@@ -34,12 +45,40 @@ int gLastMode = -1;
 
 } // namespace
 
+// How old the mod's word is: in milliseconds and in engine ticks begun since the host first saw it.
+std::pair<std::uint64_t, std::uint64_t> AgeOf(cw::State const& state) {
+    std::uint64_t const now = GetTickCount64();
+    std::uint64_t const ticks = crash::gGameTicks.load(std::memory_order_relaxed);
+    std::lock_guard lock(gTrustMutex);
+    if (state.sequence != gTrustSequence) {
+        gTrustSequence = state.sequence;
+        gTrustTicks = ticks;
+    }
+    return {now > state.timeMs ? now - state.timeMs : 0, ticks - gTrustTicks};
+}
+
 std::optional<cw::State> Current() {
-    auto state = cw::Latest(kFreshMs);
+    auto state = cw::Latest(kStallMs);
     if (state && state->size != sizeof(cw::State)) {
         return std::nullopt;
     }
     if (state) {
+        auto const [ageMs, ticks] = AgeOf(*state);
+        if (!cw::StillFresh(ageMs, ticks, kFreshMs, kStallMs)) {
+            return std::nullopt;
+        }
+        if (ageMs > kFreshMs) {
+            bool log = false;
+            {
+                std::lock_guard lock(gTrustMutex);
+                log = gStallLoggedSequence != state->sequence;
+                gStallLoggedSequence = state->sequence;
+            }
+            if (log) {
+                mevr::log::Info("conversation world: the game thread stalled ({} ms in one tick): the mod's word kept, the world stays "
+                                "shown", ageMs);
+            }
+        }
         gLastActiveMs.store(GetTickCount64(), std::memory_order_relaxed);
     }
     return state;
@@ -66,8 +105,14 @@ void NoteFrame(int gameMode) {
             state->wheelHand == 0 ? "left hand" : state->wheelHand == 1 ? "right hand" : "front");
     } else if (!shown && gShown) {
         gShown = false;
-        mevr::log::Info("conversation world: conversation {} out of the world after {} frames ({:.1f} s)", gConversation, gFrames,
-            static_cast<double>(GetTickCount64() - gStartMs) / 1000.0);
+        // Why: the mod said so (its scene ended, or not ours), or its word got old (it stopped sending while the game ticked on).
+        std::string why = "the mod's word: not in the world";
+        if (auto const last = cw::Latest(~std::uint64_t{0}); last && last->size == sizeof(cw::State)) {
+            auto const [ageMs, ticks] = AgeOf(*last);
+            why = std::format("the mod's last word {} ms and {} game ticks old", ageMs, ticks);
+        }
+        mevr::log::Info("conversation world: conversation {} out of the world after {} frames ({:.1f} s; {})", gConversation, gFrames,
+            static_cast<double>(GetTickCount64() - gStartMs) / 1000.0, why);
     }
 }
 

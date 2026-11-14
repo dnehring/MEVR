@@ -34,6 +34,9 @@ constexpr double kHandsMinMeters = 0.15;
 constexpr double kHandsMaxDegrees = 100.0;
 // With the whole body turning, the spine twists at most this much; the hips take the rest.
 constexpr double kSpineTwistWithBodyDegrees = 30.0;
+// Standing still, the feet go back at most this far to stand where the idle animation planted them (its sway is 2-3 cm,
+// 16 cm in an idle fidget).
+constexpr double kMaxPlantMeters = 0.20;
 // The `torso:` line: at most this often, when the result is this far off the player.
 constexpr std::uint64_t kLogEveryMs = 2000;
 constexpr std::uint64_t kAnchorLogEveryMs = 1000;
@@ -83,6 +86,7 @@ struct Last {
     ik::LegsState legs;
     double speed = 0.0;         // units a second, horizontal; NaN: unreadable
     double legsTwistDeg = 60.0;
+    double plantWeight = 0.0;   // the feet planted standing still (1 standing; research/72)
     bool weaponDrawn = false;
 };
 Last gLast;
@@ -408,6 +412,26 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
         NoteLegs(legs);
     } else {
         gLegs.Reset();
+    }
+
+    // Standing still, the feet planted (research/72, 2026-11-14): LE1's idle animation moves Shepard's Root (at hip height)
+    // 2-3 cm in the mesh's space, 16 cm in an idle fidget, with his feet planted (measured at the Presidium, `mevr camera
+    // trace`). The slide above puts Root under the view whatever the animation did, so the hips stay still and the feet slid
+    // the other way under a player standing still. The torso's feet correction (the body bone's animated offset from the
+    // mesh's origin, its rest) puts them back, by the part of standing still (the legs' blend toward the run: 0 standing, 1
+    // moving), and the writer moves the ankles (bone_pose's Leg::planted). Only with the whole body under the view, the
+    // legs' motion rule known and the body at the pawn (a scripted walk's legs stand by their own IK).
+    goal.plantWeight = 0.0;
+    gLast.plantWeight = 0.0;
+    bool away = false;
+#if defined(MEVR_GAME_LE1)
+    away = conversation_world::BodyAway().on;
+#endif
+    if (move.steadyIdle && firstPerson && wholeBody && gLast.legsUsed && !away) {
+        goal.plantWeight = std::clamp(1.0 - gLast.legs.weight, 0.0, 1.0);
+        goal.bodyRest = {};
+        goal.maxPlant = kMaxPlantMeters * targets.body.unitsPerMeter * scale;
+        gLast.plantWeight = goal.plantWeight;
     }
 
     // The inputs, for the log and the snapshot.

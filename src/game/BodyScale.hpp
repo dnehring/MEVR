@@ -21,6 +21,9 @@ double Step(double viewAboveFloor, double unitsPerMeter, double deltaSeconds,
 double Idle(double deltaSeconds);
 // Shared seated reference for floor lock and body slots (never the live seated eye height).
 std::optional<double> StandingEyeHeight();
+// Shepard's own standing eye height above his floor, unscaled, metres (the reference the factor is measured against); nullopt
+// until measured.
+std::optional<double> ShepardStandingEyeM();
 // `mevr body scale <s> | auto | off`.
 std::string Command(std::string const& args);
 std::string StatusJson();

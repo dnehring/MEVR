@@ -25,6 +25,7 @@
     "renegade-window",
     "missed-window",
     "early-input",
+    "late-input",
     "return-to-combat"
   ],
   "prerequisites": [
@@ -33,11 +34,12 @@
     "Establish a native baseline with the same prepared save before accepting VR behavior."
   ],
   "acquisitionTasks": [
-    "One source-verified Renegade candidate is the Garrus recruitment mechanic in BioD_OmgGrA_112Hangar_LOC_INT. Use the LE2 scanner to join its interrupt track to the conversation node; the authored 5.429/7.4299107 second keys are not yet measured legal input bounds. See research/le2-fixture-acquisition.md.",
+    "Preferred earlier-progression lead: Freedom's Progress Veetor conversation in BioD_ProFre_501Veetor_LOC_INT, inspected in both base and DLC_METR_Patch01. It has explicit Paragon and Renegade interrupt branches and a nearby authored normal autosave route. Reuse the separate normal new-game playthrough proposed for the ProCer reload fixture; verify actual save placement and branch reachability. See research/le2-interrupt-acquisition.md. Authored track times are not runtime assertions.",
+    "Alternative Renegade lead: Garrus recruitment mechanic in BioD_OmgGrA_112Hangar_LOC_INT. Its authored 5.429/7.4299107 second keys are not measured legal input bounds. Existing late-game saves have mechanic outcome 2660 set; Liara/Citadel alternatives also have unresolved or completed prerequisites. No current late-game pre-interrupt fixture is established; do not reset isolated story flags. See research/le2-fixture-acquisition.md and research/le2-interrupt-acquisition.md.",
     "Acquire naturally obtained saves immediately before known Paragon and Renegade interrupt opportunities; record conversation, speaker, prompt and expected branch using ordinary native play.",
     "Compare saves before and after the chosen branch, inspect native conversation/condition dependencies with LegendaryExplorer, and document verified plot IDs and journal/streaming prerequisites privately.",
     "Pin base and recipe per variant; use no-op preparation for natural fixtures when no edit is required. Missing plot semantics must remain unresolved rather than forcing a single completion flag.",
-    "Define normalized state.dialogue and branch outcome observations with provenance, including legal window opening/closing and input timestamps; current declarations do not establish instrumentation."
+    "Export bound observe-dialogue snapshots for conversation and reply identity, raw timers and GUI flags. Record normal input and rendered prompts with timestamps. Check the resulting branch and saved effects against a matched missed-window trial. Continuous history and exact native input eligibility remain pending."
   ],
   "loadProcedure": [
     "Acquire exclusive native-session ownership and use the protected session workflow.",
@@ -51,6 +53,11 @@
     "For each variant start again from its immutable base and pinned recipe; never reuse a mutated previous run save."
   ],
   "actions": [
+    {
+      "id": "native-baseline",
+      "inputPath": "native",
+      "description": "From the same pre-conversation save, use normal controls to take the selected interrupt or exercise the early, late or no-input case. Record prompt timing, input timing and the resulting reply or branch."
+    },
     {
       "id": "enter-dialogue",
       "inputPath": "either",
@@ -145,7 +152,7 @@
     {
       "id": "native-window-and-outcome",
       "gate": "native",
-      "description": "Timestamped prompt visibility, window state and native input establish acceptance only inside the legal window and the correct taken/missed branch. Early/late input must not take the branch.",
+      "description": "Review timestamped prompt visibility, window state and input beside the actual selected reply and resulting branch or saved outcome. Match taken and missed trials to the same starting fixture and conversation route. A trigger callback or GUI triggered flag alone cannot establish that the game accepted the interrupt. Verify early and late trials leave the interrupt untaken.",
       "requires": [
         "before",
         "after",

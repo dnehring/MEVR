@@ -306,6 +306,16 @@ def diff(before, after):
             for key in sorted(a.keys() | b.keys()) if key not in a or key not in b or a[key] != b[key]]
 
 
+def make_receipt(operation, before, after, changes, *, recipe=None, recipe_raw=None):
+    """Describe an already validated operation; keep CLI and batch receipts identical."""
+    return dict(schema_version=1, operation=operation, game="LE2", save_version=30,
+                evidence="offline-only; game load and VR acceptance untested", upstream_pin=UPSTREAM_PIN,
+                input_sha256=sha256(before.raw), output_sha256=sha256(after.raw),
+                recipe_sha256=sha256(recipe_raw) if recipe else None,
+                recipe_id=recipe["id"] if recipe else None, changes=changes,
+                byte_identical=before.raw == after.raw)
+
+
 def write_outputs(output, raw, receipt_path, receipt):
     paths = [Path(output).resolve()]
     if receipt_path:
@@ -357,17 +367,12 @@ def main(argv=None):
                     result.update(base_level_name=save.data["base_level_name"], location=save.data["location"], player=save.data["player"]["first_name"])
             else:
                 output, changes = save, []
-                recipe = None
+                recipe = recipe_raw = None
                 if args.command == "prepare":
                     recipe_raw = Path(args.recipe).read_bytes()
                     recipe = parse_recipe(recipe_raw)
                     output, changes = save.prepare(recipe)
-                result = dict(schema_version=1, operation=args.command, game="LE2", save_version=30,
-                              evidence="offline-only; game load and VR acceptance untested", upstream_pin=UPSTREAM_PIN,
-                              input_sha256=sha256(save.raw), output_sha256=sha256(output.raw),
-                              recipe_sha256=sha256(recipe_raw) if recipe else None,
-                              recipe_id=recipe["id"] if recipe else None, changes=changes,
-                              byte_identical=save.raw == output.raw)
+                result = make_receipt(args.command, save, output, changes, recipe=recipe, recipe_raw=recipe_raw)
                 write_outputs(args.output, output.raw, args.receipt, result)
         print(json.dumps(result, indent=2, allow_nan=False))
         return 0

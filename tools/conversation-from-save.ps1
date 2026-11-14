@@ -78,7 +78,9 @@ param(
     # a conversation's first wheel through the pick for 3 s (it must not walk until let go); -StickTurnAt N holds the right stick
     # 1.5 s, N s into each conversation (it must turn the view). The live audit judges both (moved-by-pick, turn-ignored).
     [switch]$HoldThroughPick,
-    [int]$StickTurnAt = 0
+    [int]$StickTurnAt = 0,
+    # Play each conversation to its own end: no early end once nothing moves (-Stances' shortcut), no -EndAfter.
+    [switch]$PlayOut
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
@@ -346,7 +348,7 @@ function Play-Scene([string]$save, [string]$class, [string]$action, [int]$action
                 Say ("turned {0} deg as by the right stick: {1}" -f $degrees, ($turned -replace '^convo: ', ''))
                 $turnStep++
             }
-            if ($Stances -and -not $judged.ContainsKey($number) -and ($TurnAt -eq 0 -or $turnStep -ge 3) -and ($Lines -eq 0 -or $linesSeen -ge $Lines) -and ((Get-Date) - $convoSince).TotalSeconds -ge 4) {
+            if ($Stances -and -not $PlayOut -and -not $judged.ContainsKey($number) -and ($TurnAt -eq 0 -or $turnStep -ge 3) -and ($Lines -eq 0 -or $linesSeen -ge $Lines) -and ((Get-Date) - $convoSince).TotalSeconds -ge 4) {
                 # Once its opening has settled and nobody walks any more: does anything still have to move in this scene?
                 $ahead = Console 'mevr convo ahead'
                 $walksNow = $ahead -match ' now '

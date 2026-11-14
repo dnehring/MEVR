@@ -80,6 +80,14 @@ private:
 // Parses `text`; nullopt (and `error`, if given) when it isn't valid JSON.
 std::optional<Value> Parse(std::string_view text, std::string* error = nullptr);
 
+struct ParseOptions {
+    bool rejectDuplicateKeys = false;  // compares decoded keys, in every object
+    bool integerNumbersOnly = false;  // JSON integer tokens only; values still use double
+};
+// Additive strict policies. Bool remains a distinct kind; callers must check
+// field types/ranges. Integer token syntax does not guarantee exact large values.
+std::optional<Value> Parse(std::string_view text, ParseOptions options, std::string* error = nullptr);
+
 // Writes `value`; `indent` > 0 pretty-prints with that many spaces per level.
 std::string Write(Value const& value, int indent = 2);
 

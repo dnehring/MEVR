@@ -14,7 +14,7 @@ Value const kNull;
 
 class Parser {
 public:
-    explicit Parser(std::string_view text) : text_(text) {}
+    Parser(std::string_view text, ParseOptions options) : text_(text), options_(options) {}
 
     std::optional<Value> Run(std::string* error) {
         Skip();
@@ -161,6 +161,14 @@ private:
             return Fail("bad number");
         }
         std::string const number(text_.substr(start, pos_ - start));
+        if (options_.integerNumbersOnly) {
+            std::string_view token(number);
+            if (token.starts_with('-')) token.remove_prefix(1);
+            if (token.empty() || (token.size() > 1 && token.front() == '0') ||
+                token.find_first_not_of("0123456789") != std::string_view::npos) {
+                return Fail("expected an integer number token");
+            }
+        }
         double value = 0.0;  // std::from_chars: no C locale
         auto const [end, ec] = std::from_chars(number.data(), number.data() + number.size(), value);
         if (ec != std::errc() || end != number.data() + number.size() || !std::isfinite(value)) {
@@ -193,6 +201,9 @@ private:
                 std::string key;
                 if (!ParseString(key)) {
                     return false;
+                }
+                if (options_.rejectDuplicateKeys && out.Has(key)) {
+                    return Fail("duplicate object key");
                 }
                 Skip();
                 if (pos_ >= text_.size() || text_[pos_] != ':') {
@@ -268,6 +279,7 @@ private:
     }
 
     std::string_view text_;
+    ParseOptions options_;
     std::size_t pos_ = 0;
     std::string error_;
 };
@@ -407,11 +419,15 @@ bool Value::Bool(std::string const& key, bool fallback) const {
 }
 
 std::optional<Value> Parse(std::string_view text, std::string* error) {
+    return Parse(text, ParseOptions{}, error);
+}
+
+std::optional<Value> Parse(std::string_view text, ParseOptions options, std::string* error) {
     if (text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF && static_cast<unsigned char>(text[1]) == 0xBB &&
         static_cast<unsigned char>(text[2]) == 0xBF) {
         text.remove_prefix(3);  // a UTF-8 byte order mark
     }
-    return Parser(text).Run(error);
+    return Parser(text, options).Run(error);
 }
 
 std::string Write(Value const& value, int indent) {

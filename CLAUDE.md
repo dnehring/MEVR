@@ -317,6 +317,12 @@ switching frameworks.
   backing up (`legsFollowMotion = 0`: the old rule; log `torso: legs:`, snapshot `torso.legs`; replay
   `tools/make-walk-recording.py`'s walk with `-Inputs`). Room-scale (the pawn following real steps past the cap) is
   designed there, not built.
+  **Standing still, the feet planted** (research/72, the skeleton audit, 2026-11-14; `[Hands] steadyIdle`, off by default until
+  the headset check): the idle animation moves `Root` (hip height) 2-3 cm in the mesh's space, 16 cm in a fidget, over planted
+  feet; the slide pins `Root` under the view, so the feet slid; the torso's `feetCorrection` (`Root`'s animated offset from the
+  mesh's origin, turned with the body) and the writer's `bone_pose::Leg::planted` put them back. **Audit the skeleton** with
+  `mevr camera trace <s> [label]` (the pawn, the game camera and 14 bones each tick, `%LOCALAPPDATA%\MEVR\camera-trace-*.csv`),
+  `python tools/skeleton-audit.py` (bones against `Root`, the camera against the pawn) and the run `tools/skeleton-audit.ps1`.
 - LE1 body at the player's size ([research/58](research/58-body-scale.md), floor lock 2026-11-07; `core/ik/BodyScale`,
   `core/vr/FloorLock`, `plugin/FloorLock`, `game/BodyScale`): ordinary on-foot first person puts the common eye centre at
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
@@ -368,7 +374,8 @@ switching frameworks.
   (`audit-report.py`, a snapshot at each first wheel); `black-panel-on-foot` (game/AuthoredMoment); which scene played
   (`sceneSeen`, a scene's `startEntry`); the session judge's `flash` (a conversation in the world handing over to a GUI screen,
   mode 7, no longer flashes the 3D screen or the flat panel: `[MEVR]` seams in xr_session.cpp's decision, and the mod's
-  "handing over", `State::holdPad[1]`, for 300 ms after one ends: `MevrBridge::ConversationHandover`). Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
+  "handing over", `State::holdPad[1]`, for 300 ms after one ends: `MevrBridge::ConversationHandover`). `eye-height` (the drawn eyes over the floor under them against the headset's) and `opening-off-mark`; the set plays at body
+  scale 1.185 (`bodyScale`), `-Long` the hearing to its end. Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
   (`"game": "opold"`: `mevr convo hide body|person on`, `nearplane off`, `sticklatch off`, `stickturn off`).
   **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
   and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/
@@ -537,7 +544,10 @@ switching frameworks.
   `mevr convo [dump | world on|off | pick <slot> | skip | end]` (pick only with the wheel up: a pick between lines crashed the game;
   `end` is the world's own early end, `BioWorldInfo.EndCurrentConversation`: the conversation's `EndConversation` alone left the
   world updating it, and its next tick crashed now and then, research/69 item 37).
-  Snapshot `"mod"."conversationWorld"`. **Every conversation, classified** (research/59 "The survey and the scan"):
+  Snapshot `"mod"."conversationWorld"`. The host trusts the mod's word (sent every tick) 1.5 s, and through a stall of the game
+  thread up to 10 s (`cw::StillFresh`, the engine ticks counted in `crash::gGameTicks`: a stalled tick's frame is presented before
+  the mod sends again, and showed the 3D screen; research/69 item 40; `mevr convo stall <ms> [afterS]` tests it; log
+  `conversation world: the game thread stalled`). **Every conversation, classified** (research/59 "The survey and the scan"):
   `tools/conversation-scan` (C# over Legendary Explorer's library, no game, 33 s) + `tools/conversation-scan.py` sort all 491 into
   free 78, stage 171, remote 19, walks 23, **framed 18** (authored camera cuts: the set pieces, Saren, Sovereign, the Council) and
   ambient 182 (every line ambient: barks, whatever their auto-continue replies), and gives each a **verdict** for First person (`--verdicts`: screen 21 = framed or Shepard walked by the game, check 26 =
@@ -690,7 +700,11 @@ switching frameworks.
   `mevr convo follow on|off` walks along in tests; a matinee's own camera fade is not drawn in a held moment (`Camera.bEnableFading`
   cleared each camera update, `StepMatineeFade`; a change it covered gets the mod's dip; the walk-along pause had held the Spectre
   walk near black for 10 s; `mevr convo matineefade off` is its broken run), and the walk in a moment keeps clear of the people
-  shown near the player and their heads (`NearPawns`: the stick had walked the view into Anderson's back; research/69 item 38); **scenes are
+  shown near the player and their heads (`NearPawns`: the stick had walked the view into Anderson's back; research/69 item 38);
+  the opening's place from Shepard's head scales that head about the floor under it (`ik::body_scale::StandingAt`; about the
+  view's pivot the owner's body scale lifted the view 0.7 m at the council hearing), a conversation that opens under the game's
+  fade to black (a script's black screen or a matinee's fade within 1.5 s) is a cut (`OpeningFacts::coveredByBlack`, the
+  owner's rule), and a walk-in's boundary is around its mark (research/69 item 39, "The view that floated"); **scenes are
   audited by rule** (research/69 "Auditing scenes by rule"): `tools/scene_audit.py`'s rules over the records
   (`conversation-stance.py --findings`, `--baseline-write|--baseline-compare <file>`; ctest `mevr-scene-audit`), the regression
   set `tools/conversation-audit.ps1` (`conversation-audit-set.json`, baseline `conversation-audit-baseline.json`), and the same
@@ -701,8 +715,11 @@ switching frameworks.
   `conversation-from-save.ps1 -Lines N` (a stance per line), `-TurnAt N` (`mevr convo turn <deg>`); **a staged scene's
   new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a
   second after the script's black screen (`ScriptBlackScreen`, from game/AuthoredMoment) are taken at once (put on the mark by us
-  where the game's call moved nobody); **Shepard is never moved** (the owner): a simulated left stick walks the player to his new
-  mark (`StartSteer` in `MovePlayer`, the player's own walk step; his stick takes over; `mevr convo goto [x y]`); the stances follow
+  where the game's call moved nobody); a simulated left stick walks the player to his new mark (`StartSteer` in `MovePlayer`, the
+  player's own walk step; his stick takes over; `mevr convo goto [x y]`), **unless the one the player talks to (the owner, the
+  speaker) was moved under that black screen and the mark is over 1.5 m away: then the player goes with Shepard under a dip**
+  (`TeleportPlayerTo`, the owner 2026-11-14: "if the black fade happens, and our target npc moves positions, we should likely
+  follow them on teleport"; research/69 item 40; moments never: the Citadel's walks stay walks); the stances follow
   a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
   logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again

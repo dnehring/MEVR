@@ -1388,6 +1388,79 @@ struct BodyRig {
     }
 };
 
+// The idle sway (research/72, 2026-11-14): LE1's idle animation moves Root (at hip height) in the mesh's space with the feet
+// planted. The body follower's slide puts Root under the view, so the hips stay and the feet slid the other way; standing
+// still, the torso's feet correction puts them back where the animation planted them.
+void TestIdleSway() {
+    using namespace mevr::ik;
+    BodyRig rig;
+    auto const left = FindArmChain(rig.names, rig.parents, 0);
+    auto const right = FindArmChain(rig.names, rig.parents, 1);
+    auto const chain = FindTorsoChain(rig.names, rig.parents, *left, *right);
+    CHECK(left && right && chain);
+    int const root = 1, head = 9;
+    rig.names.push_back("LeftAnkle");
+    rig.parents.push_back(root);
+    rig.pose.push_back({Quat{}, {0, -10, 9}, 1.0});
+    int const ankle = static_cast<int>(rig.names.size()) - 1;
+    Vec3 const rest = rig.pose[root].translation;
+    // The animation's sway: Root and everything under it 3 forward and 6 to the side, the ankle planted (moved back).
+    std::vector<Transform> swayed = rig.pose;
+    Vec3 const sway{3, 6, 0};
+    for (int i = 0; i < static_cast<int>(swayed.size()); ++i) {
+        if (!InSubtrees(rig.parents, std::vector<int>{root}, std::vector<int>{i}).empty()) {
+            swayed[static_cast<std::size_t>(i)].translation = swayed[static_cast<std::size_t>(i)].translation + sway;
+        }
+    }
+    swayed[static_cast<std::size_t>(ankle)].translation = rig.pose[static_cast<std::size_t>(ankle)].translation;
+    BodyFrame const body;
+    TorsoGoal goal;
+    goal.reference = {head, -1};
+    goal.head = swayed[head].translation;
+    goal.forward = {1, 0, 0};
+    goal.body = root;
+    goal.bodyTurns = false;
+    goal.bodyMoves = true;
+    goal.bodyAt = rest;                  // the player's feet under the view: where Root rests
+    goal.maxBodyShift = 75.0;
+    goal.maxTwistDegrees = 30.0;
+    goal.bodyRest = rest;
+    goal.maxPlant = 20.0;
+    // Standing still: Root back at rest, the foot slid by -sway, and the correction is +sway: it stands where it was planted.
+    goal.plantWeight = 1.0;
+    std::vector<Transform> pose = swayed;
+    TorsoResult const still = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(still.ok && NearD(still.bodySway, Length(sway), 1e-9) && Length(still.feetCorrection - sway) < 1e-9);
+    CHECK(Length(pose[root].translation - rest) < 1e-9);
+    CHECK(Length(pose[ankle].translation + still.feetCorrection - rig.pose[ankle].translation) < 1e-9);
+    CHECK(NearT(pose[0], swayed[0], 0.0) && NearT(pose[rig.camera], swayed[rig.camera], 0.0));
+    // Starting to move: half; the cap; moving or no slide: none.
+    goal.plantWeight = 0.5;
+    pose = swayed;
+    CHECK(Length(PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).feetCorrection - sway * 0.5) < 1e-9);
+    goal.plantWeight = 1.0;
+    goal.maxPlant = 4.0;
+    pose = swayed;
+    TorsoResult const capped = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(NearD(Length(capped.feetCorrection), 4.0, 1e-9) && Dot(capped.feetCorrection, sway) > 0.0);
+    goal.maxPlant = 20.0;
+    goal.plantWeight = 0.0;
+    pose = swayed;
+    CHECK(Length(PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).feetCorrection) == 0.0);
+    goal.plantWeight = 1.0;
+    goal.bodyMoves = false;
+    pose = swayed;
+    CHECK(Length(PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).feetCorrection) == 0.0);
+    // The body turned (the hips taking what the spine can't): the correction turns with it.
+    goal.bodyMoves = true;
+    goal.bodyTurns = true;
+    goal.forward = Rotate(AxisAngleQ(0, 0, 1, 90.0), {1, 0, 0});
+    pose = swayed;
+    TorsoResult const turned = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(turned.ok && std::abs(turned.bodyTurnDegrees) > 1.0);
+    CHECK(Length(turned.feetCorrection - Rotate(AxisAngleQ(0, 0, 1, turned.bodyTurnDegrees), sway)) < 1e-6);
+}
+
 void TestBodyFollow() {
     using namespace mevr::ik;
     BodyRig rig;
@@ -12183,6 +12256,7 @@ int main() {
     TestTorsoPose();
     TestCameraHook();
     TestBodyFollow();
+    TestIdleSway();
     TestArmLength();
     TestReachScale();
     TestHandTargetsOrigin();

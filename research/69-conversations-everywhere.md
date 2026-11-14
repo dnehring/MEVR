@@ -376,6 +376,12 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     the Council walks; all three fixed the same day, and the shop's flat-panel variant that evening. Open: item
     21's decision; the fake headset's 31.3 fps cap is set aside (the owner: the sleeping monitor, likely).
 
+39. **The view that floated; the fade that moves you; the walk-in's boundary** (the owner in the headset, 2026-11-13; "The view
+    that floated" below): the opening placed the player at Shepard's head scaled about the view's pivot (0.7 m too high at the
+    council hearing with the owner's body scale): now about the floor under the head; an opening under the game's fade to black
+    is a cut (the owner's rule); a walk-in's boundary is around its mark. Rules `eye-height`, `opening-off-mark`; the audit at
+    body scale 1.185. [verify] in the headset.
+
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
 merged on main (`72fc6cb`, A1-A3) and its in-game checks were run (`adc20e8`, "To check in the game" item 9); A4-A6 below.
 
@@ -3841,6 +3847,106 @@ logs, records and code, then checked):
    people` in both walks against 5 in a conversation). **Fix**: in a moment the people shown within 4 m (`NearPawns`) and their head
    bones (his head led his place by 1.2 m mid-stride) are kept clear of too. Seen: both Council walks without `too-close`.
 
+### The view that floated; the fade that moves you; the walk-in's boundary (2026-11-13; item 39)
+
+**The owner, in the headset at the council hearing (John02 slot 80, Quest over Virtual Desktop):** "when I re kind of position,
+I'm not touching the ground. I'm kind of floating." Then, after the hearing: "If we do a fade to black, I don't think it's
+unreasonable to teleport Shepard. So when the conversation ends with Udina still on the podium, and then it does that fade to
+black, Shepard should be teleported to be next to Anderson and Udina", and "when Anderson walks away and Udina's still on the
+platform, I physically can't move, but I'm being slightly teleported. I should be able to walk with Anderson or stay on the
+platform."
+
+1. **The view that floated.** A snapshot at 83 s into the hearing (2026-11-13_21-22-37-414) showed the view behind Udina and
+   Anderson at the podium, looking down on them. The hearing's opening placed the player at Shepard's head
+   (`MarkHeadOf`: the animated head, `arm_ik::AnimatedHeadComponent`), and that head was scaled with the drawn body's
+   factor (the owner's body scale 1.185: calibrated standing eyes 1.973 m over Shepard's 1.665 m) **about the body's pivot,
+   which is under the view on the pawn's own floor**. At the opening the mark is metres from the view and the podium stands
+   above the pawn's floor, so the scaled head moved off and up by 18.5% of both: the place at z 62346, the eyes drawn 1.72 m
+   above Shepard's pawn's centre (other people's heads 0.70-0.82 m above theirs), about 0.7 m too high. On foot the floor lock
+   was right (snapshot 21-24-13: eyes 1.86 m over the pawn's floor, the headset's STAGE height). **The fake headset never saw
+   it:** without a height of its own its body is never scaled. **Fix:** `AnimatedHeadComponent` returns the head unscaled and
+   `MarkHeadOf` scales it about the floor under it (a trace down from the head; `ik::body_scale::StandingAt(s, p, floorZ)`:
+   its place kept, its height above that floor times s; `tests/BodyScaleTests.cpp`). The audit set plays every scene at body
+   scale 1.185 (`bodyScale` in tools/conversation-audit-set.json; `mevr body scale <s>` from the console now applies at once,
+   not by the 0.1/s approach: the held view of a scene never steps it), and **the live rule `eye-height`** compares the drawn
+   eyes above the floor under them with the headset's eyes above the real floor (else Shepard's standing eyes at the drawn
+   size): 0.3 m off for a second, `FAIL_RULES`. Broken run: `mevr convo markhead old` (the old scaled head) must trip it.
+2. **The fade that moves you.** The hearing ended with its own black screen (`sta90_council_saren_N...BioSeqAct_BlackScreen_0`,
+   on 21:23:31.844, off 32.056), under which the game moved Shepard 12.5 m to Anderson and Udina (`sta90_captain_dlg` began
+   32.069). The opening rule (`cw::DecideOpening`) judged the mark in sight on a floor within a walk: a walk-in; the player
+   stayed on the podium and Shepard was put back with him. **Rule (the owner's):** a conversation that opens under the game's own
+   fade to black (a script's black screen turned black, or a matinee's camera fade we kept off the view, within the last 1.5 s:
+   `authored_moment::LastBlackScreenOnMs`, `gFadeUp`/`gFadeDownMs`) is a cut whenever the mark is farther than "where he stands"
+   (`OpeningFacts::coveredByBlack`; unit-tested): the player goes with Shepard under the mod's dip. The opening line says
+   `under the game's fade to black`. Not changed: a staged scene's own black screen mid-scene still walks the player to his new
+   mark by the simulated stick (item 31, the owner's earlier design for Virmire's start); the owner's answer: item 40.
+3. **The walk-in's boundary.** The walk's boundary (`worldMoveLeashM` 4 m) stood around where the conversation began, the
+   podium, while the walk-in wanted the player 12.5 m away: pushing toward Anderson met the circle and slid along it (the log's
+   steps of 0.15 m back and forth, 21:23:34-43). The code's own comment said "around Shepard's mark until he is there", but only a
+   guided walk did that. **Fix:** a walk-in on its way has the boundary around the mark it is wanted at, guided or not; standing
+   still on the podium stays possible (outside the circle only steps that bring the player nearer are taken).
+
+**The fake headset can't show the height part.** Its head stands at its floor's height, so the body's pivot is at the head and
+the old scaling moved the head sideways only (3.34 m, the same `the opening's eyes were drawn ... m from Shepard's mark`
+correction the owner's hearing logged, 3.53 m, under a second dip). A replayed head at 1.86 m (`make-walk-recording.py
+--eye-height`) does not help: it raises only the drawn head, the floor reading stays the null driver's own (0), and the view
+rose 1.7 m. So the rule the broken run trips is **`opening-off-mark`** (the opening's eyes over a metre from Shepard's mark, the
+view moved again: `FAIL_RULES`), and `eye-height` measures where a floor reading exists (the owner's headset) or Shepard's eye
+height is known; on the fake headset that was 0 to 12.4 s a scene.
+
+**Run on the fake headset, 2026-11-13** (`0.3.0+580382ff8b`, body scale 1.185 from the console): the council scene with the fix:
+no `opening-off-mark`, eye height checked 12.4 s and never 0.3 m off, 0 regressions; the broken run `markhead old`: caught by
+`opening-off-mark` (3.34 m); the hearing played to its own end (`-Long`, `longPlayOut`, 149 s, 25 lines): **`sta90_captain_dlg`
+opened as a cut** (15.2 m, under the hearing's fade to black), then `sta20_captain_dlg` as a stay. Not seen in the game: the
+boundary's fix (with the cut the player no longer starts 12.5 m from the mark there) and the height in a real headset
+(notes/headset-checklist.md).
+
+### Following the one you talk to under the fade; the world kept through a stall (2026-11-14; item 40)
+
+**The owner's answer to item 39's open question** (a staged scene's own black screen mid-scene): "it wouldn't be a bad idea for
+the black fades to move them to position. I think the general rule, if the black fade happens, and our target npc moves
+positions, we should likely follow them on teleport. I just want to make sure the citadel walk doesn't get compromised."
+
+1. **The rule** (`game/ConversationWorld.cpp`, `TeleportPlayerTo`, called from `KeepInPlace` where the steer of item 31 waits):
+   each tick the conversation's owner (`m_pOwner` through `gOwner`) and the current speaker if not the player are "the ones the
+   player talks to" (`gC.talkTo`). When the stage moves one of them more than 1.5 m under the script's black screen (the
+   relocating branch of `KeepAtSource`, the same 0.6 s window item 31 accepts the new composition in), `talkToMovedUnderBlack`
+   is set; when Shepard's new mark (`gC.sceneWants`) is then more than "where he stands" away (`cw::OpeningLimits{}.stayUnits`,
+   150 units, the opening's own), the player's pawn is put there (`PutAt`), the held view, the head anchor, the follower's place,
+   the kept place and the boundary move by as much, and the host dips from black (`gC.cut`). Otherwise the simulated stick walks
+   him there as before. Log `convo: at N s the one the player talks to was moved under the game's black screen: the player goes
+   with Shepard to his new mark (X m) under a dip`.
+2. **Why a step is still walked:** on Virmire the black screen lasted 0.15 s (on 12:18:33.073, its panel removed 33.220) and
+   the steer waits 0.4 s for the stage's moves, so the dip came 0.35 s after the game's black had gone: a second blink for a
+   0.66 m move (the first run, 2026-11-14 12:18). The owner's council case (Anderson and Udina 12.5 m away) is a new conversation's
+   opening, item 39's `coveredByBlack` cut; this rule is for the staged scenes' black screens inside one conversation.
+3. **The Citadel's walks** (the owner's worry): moments never come here (`gC` is a conversation's; `TickMoment` has its own
+   rules). The council walk and the hearing ran clean (0 findings, 0 regressions, `fade-follow-council`); the Spectre walk ended
+   beside Anderson. Its numbers differ from 2026-11-13 (walked 18.2 m and carried 6.9 m against 25.2 and 1.3) for a reason of its
+   own: the stairs' move under the script's black screen (12:14:58) came in steps of 0.34 m a tick, which `cw::IsRideStep` reads
+   as a ride (the view carried up the stairs under a dip, as the owner's rule would have it), where the day before the same 7 m
+   came as one 1.32 m step and two same-space moves (3.58 and 2.06 m) the player then walked. The split follows the frame rate
+   (`kJumpUnits` is 30 units a frame).
+4. **The flash after a stall.** The same Virmire run failed on a flash at 12:18:43.223: `conversation world: conversation 30458
+   out of the world after 9957 frames` and back 45 ms later, the 3D screen shown 0.23 s with two dips. No log line from the mod
+   for 1.6 s before it, the machine at 9 frames a second from 12:17:49 (`quest pacing: heartbeat` +105 frames in 10 s; the world
+   ticks +256 in 30 s): one tick took over 1.5 s, and the frame it drew was presented before the mod's tick could send its word
+   again; the host's trust (`kFreshMs` 1500, raised from 300 on 2026-11-10 for the same symptom) had run out. **Fix:** the host
+   counts engine ticks (`crash::gGameTicks`, at each `UGameEngine::Tick`) and keeps the mod's word past 1.5 s while no tick has
+   finished since it was sent, up to 10 s (`cw::StillFresh`, unit-tested; `plugin/ConversationWorld`'s `Current`); the log says
+   `conversation world: the game thread stalled (N ms in one tick): the mod's word kept, the world stays shown`, and an end of
+   the world view now says why (`the mod's word: not in the world` or `the mod's last word N ms and M game ticks old`). Test
+   switch `mevr convo stall <ms> [afterS]`: the game thread sleeps once in the player camera's update (inside the engine's tick,
+   before the frame is drawn) while the world view is held.
+
+**Run on the fake headset, 2026-11-14 12:39** (`stall-set`: Opold with `mevr convo stall 2500 5`, then Virmire played out): the
+stall came at 12:42:04.836 and the host logged `the game thread stalled (2516 ms in one tick): the mod's word kept, the world
+stays shown`; Opold clean, nothing noticed, the world view ended once, at the scene's end (`the mod's word: not in the world`).
+Virmire: the black screen's 0.66 m was walked (`convo: steer: the scene's new composition wants Shepard there 0.66 m away`), no
+flash, no dip but the opening's own; `speaker-behind` (Ashley behind the player for a line, as every run of it: the baseline's),
+0 regressions. Not seen in the game: a move past 1.5 m under a scene's own black screen (no scene of the set has one; the rule's
+branch is exercised only by its log line), and the stall without the fix (the Virmire run is the before).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -4300,3 +4406,12 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   shop's flat-panel variant (mode 0 between) is reported by the session judge, not fixed.
 - 2026-11-13 19:55, **item 38, the panel flicker** (the owner: "Fix the panel flicker"): "handing over" published 300 ms after a
   conversation in the world ends; a mode-7 frame then is the world's until the screen stands in the room: 5 plays, 0 flat frames.
+- 2026-11-13 22:40, **item 39, the view that floated** (the owner, in the headset at the hearing): the opening's head scaled
+  about the floor under it; a conversation opening under the game's fade to black is a cut (the hearing's end now moves the
+  player to Anderson and Udina); a walk-in's boundary around its mark; rules `eye-height`, `opening-off-mark`; the audit at
+  body scale 1.185 (`-Long` plays the hearing out); broken run `markhead old` caught.
+- 2026-11-14 12:50, **item 40, following the one you talk to** (the owner: "if the black fade happens, and our target npc moves
+  positions, we should likely follow them on teleport"): under a staged scene's own black screen, the conversation's owner or
+  speaker moved more than 1.5 m and Shepard's new mark over 1.5 m away: the player goes with Shepard under a dip; nearer, the
+  simulated stick walks him as before. The Citadel's walks untouched (moments never come here; council walk and hearing clean).
+  The host keeps the mod's word through a game-thread stall (`cw::StillFresh`): Virmire's 3D-screen flash after a 1.6 s tick.

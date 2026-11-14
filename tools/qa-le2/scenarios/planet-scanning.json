@@ -56,6 +56,11 @@
   ],
   "actions": [
     {
+      "id": "native-baseline",
+      "inputPath": "native",
+      "description": "Use normal game controls to reach the CIC, enter the galaxy map and select a scannable planet. Sample before and after a legal single launch or the specified refusal, travel or scan-hold case. Record the observed input, probe and resource changes and the rendered outcome."
+    },
+    {
       "id": "navigate",
       "inputPath": "vr",
       "description": "Open the native galaxy interface on the VR surface and navigate normally, including controlled fuel variants. Do not teleport to bypass travel cost."
@@ -147,6 +152,45 @@
       }
     },
     {
+      "id": "same-orbital-target",
+      "gate": "native",
+      "description": "The before/after probe samples must select the same planet in the current galaxy camera hierarchy.",
+      "requires": ["before", "after"],
+      "variants": ["one-probe", "zero-probes", "scan-hold", "anomaly"],
+      "check": {
+        "kind": "compare",
+        "left": {"artifact": "before", "field": "state.orbital.activeWorld"},
+        "op": "eq",
+        "right": {"artifact": "after", "field": "state.orbital.activeWorld"}
+      }
+    },
+    {
+      "id": "single-probe-starting-balance",
+      "gate": "native",
+      "description": "The one-probe case must still have exactly one probe immediately before launch.",
+      "requires": ["before"],
+      "variants": ["one-probe"],
+      "check": {
+        "kind": "compare",
+        "left": {"artifact": "before", "field": "state.resources.probes"},
+        "op": "eq",
+        "right": 1
+      }
+    },
+    {
+      "id": "zero-probe-starting-balance",
+      "gate": "native",
+      "description": "The refusal must start with zero probes in orbit, regardless of the earlier Crew Deck balance.",
+      "requires": ["before"],
+      "variants": ["zero-probes"],
+      "check": {
+        "kind": "compare",
+        "left": {"artifact": "before", "field": "state.resources.probes"},
+        "op": "eq",
+        "right": 0
+      }
+    },
+    {
       "id": "single-probe-cost",
       "gate": "native",
       "description": "A deliberate single legal launch consumes exactly one probe.",
@@ -225,7 +269,7 @@
     {
       "id": "native-economy-and-discovery",
       "gate": "native",
-      "description": "Compare observed costs, mineral yield, travel refusal/success and discovery/mission unlock with the matched native baseline for this case. Record exact baseline-derived costs and reject duplicate launches.",
+      "description": "Review observed costs, mineral yield, travel refusal/success and discovery/mission unlock for this case. For probe cases, compare the orbital samples and reviewed input/scene from one visit to the same rendered planet. Record whether the probe launched or the game refused it and rule out purchases, other launches or travel between samples. A zero delta alone does not establish a refusal or distinguish it from input the game did not receive. Record exact baseline-derived costs and reject duplicate launches.",
       "requires": [
         "before",
         "after",

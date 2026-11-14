@@ -189,6 +189,7 @@ void const* gBoundsWorld = nullptr;
 bool gBoundsWarned = false;
 float gBoundsPadLogged = 0.0f;  // the pad last logged (units)
 bool gLegsStood = false;        // the standing legs are on (logged once per stretch)
+bool gLegsPlanted = false;      // the feet planted standing still (logged once per stretch)
 bool gHoldScaleLogged = false;
 
 void RestoreBodyBounds() {
@@ -1389,6 +1390,27 @@ void Drive(double deltaSeconds) {
         gLegsStood = false;
     }
 #endif
+    // Standing still the feet stay where the idle animation planted them (research/72): the body's slide under the view
+    // carried them with the animation's sway; the torso's feet correction puts them back.
+    bool const planted = !request.legs[kLeft].enabled && !request.legs[kRight].enabled && request.torso.enabled &&
+                         request.torso.goal.plantWeight > 0.0 && info->legs[kLeft] && info->legs[kRight];
+    if (planted) {
+        for (int side : {kLeft, kRight}) {
+            auto const& chain = info->legs[side];
+            engine::bone_pose::Leg& leg = request.legs[side];
+            leg.enabled = true;
+            leg.planted = true;
+            leg.chain = *chain;
+            leg.keys[0] = info->bones.keys[chain->upper];
+            leg.keys[1] = info->bones.keys[chain->fore];
+            leg.keys[2] = info->bones.keys[chain->hand];
+        }
+        if (!gLegsPlanted) {
+            log::Info("arm IK: standing still, Shepard's feet stay where the idle animation planted them while his body stays "
+                      "under the view ([Hands] steadyIdle)");
+        }
+    }
+    gLegsPlanted = planted;
     engine::bone_pose::Publish(std::move(request));
     gStatus = "driving: " + driven;
     gGunAimed = gunAimed;
@@ -1448,6 +1470,21 @@ bool FirstPerson() {
 
 std::optional<ik::Vec3> AnimatedHeadComponent() {
     auto const animated = engine::bone_pose::AnimatedHead();
+    if (!animated) {
+        return std::nullopt;
+    }
+    // Unscaled: the caller scales it about the floor under the head where the scene has Shepard (StandingAt), which can be metres
+    // from the view and above the pawn's own floor; about the view's pivot it rose and moved off (research/69 "The view that
+    // floated", 2026-11-13).
+    return *animated;
+}
+
+double BodyScaleNow() {
+    return gLastBodyScale.Active() ? gLastBodyScale.s : 1.0;
+}
+
+std::optional<ik::Vec3> AnimatedHeadScaledAboutView() {
+    auto const animated = AnimatedHeadComponent();
     if (!animated) {
         return std::nullopt;
     }

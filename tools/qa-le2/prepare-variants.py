@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Prepare offline LE2 resource boundary cases in a new private batch directory.
+"""Prepare offline LE2 resource or reload-ammo boundary cases in a new private batch directory.
 
 Uses le2-save.py for all save parsing/editing. Never installs fixtures, starts a
 game, edits profiles, acquires native locks or marks scenarios ready/passed.
@@ -56,16 +56,13 @@ def valid_sha(value):
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
-def boundaries(spec):
-    required = {"schemaVersion", "id", "resource", "cost", "quantum", "surplus", "provenance", "nativeValidation"}
+def common_spec(spec, required):
     if not isinstance(spec, dict) or not required <= spec.keys() or spec.keys() - required - {"spdxLicenseIdentifier"}:
         raise VariantError("Spec has missing or unknown keys")
     if type(spec["schemaVersion"]) is not int or spec["schemaVersion"] != 1:
         raise VariantError("Unsupported spec schemaVersion")
     if not isinstance(spec["id"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,79}", spec["id"]):
         raise VariantError("Spec id must use 1-80 lowercase letters, digits or hyphens")
-    if not isinstance(spec["resource"], str) or spec["resource"] not in RESOURCE_PATHS:
-        raise VariantError("Spec must target an allowlisted resource field")
     if spec["nativeValidation"] != "pending":
         raise VariantError("Offline generation requires nativeValidation: pending")
     if "spdxLicenseIdentifier" in spec and spec["spdxLicenseIdentifier"] != "MIT":
@@ -80,6 +77,12 @@ def boundaries(spec):
     for field in ("reference", "description"):
         if not isinstance(provenance[field], str) or not provenance[field].strip():
             raise VariantError(f"Provenance {field} must be nonempty")
+
+
+def boundaries(spec):
+    common_spec(spec, {"schemaVersion", "id", "resource", "cost", "quantum", "surplus", "provenance", "nativeValidation"})
+    if not isinstance(spec["resource"], str) or spec["resource"] not in RESOURCE_PATHS:
+        raise VariantError("Spec must target an allowlisted resource field")
     is_fuel = spec["resource"] == "player.current_fuel"
     for field in ("cost", "quantum", "surplus"):
         value = spec[field]
@@ -113,6 +116,75 @@ def boundaries(spec):
     return requested, encoded, equivalent
 
 
+def reload_cases(spec, save):
+    common_spec(spec, {"schemaVersion", "kind", "id", "weapon", "capacity", "partialUsed", "surplusReserve",
+                       "ammoPolicy", "provenance", "nativeValidation"})
+    if spec['kind'] != 'reload-ammo' or spec['ammoPolicy'] != 'ordinary-finite':
+        raise VariantError('Reload spec requires ordinary-finite ammoPolicy')
+    if spec['provenance']['kind'] != 'native-measured':
+        raise VariantError('Reload capacity requires native-measured provenance for the exact runtime class')
+    weapon = spec['weapon']
+    if not isinstance(weapon, dict) or set(weapon) != {'index', 'className', 'runtimeClass'}:
+        raise VariantError('Reload weapon requires exact index, className and runtimeClass')
+    policy_path = Path(__file__).with_name('weapon-policy.py')
+    policy_spec = importlib.util.spec_from_file_location('le2_variant_weapon_policy', policy_path)
+    policy = importlib.util.module_from_spec(policy_spec)
+    policy_spec.loader.exec_module(policy)
+    if not isinstance(weapon['runtimeClass'], str) or weapon['runtimeClass'] not in policy.RESERVE_CLASSES:
+        raise VariantError('Unsupported runtime weapon class; use the existing audited reserve policy')
+    if weapon['className'] != weapon['runtimeClass'].rsplit('.', 1)[1]:
+        raise VariantError('Saved bare className must match the observed runtimeClass exactly')
+    records = save.value('player.weapons')
+    index = weapon['index']
+    if type(index) is not int or index < 0 or index >= len(records):
+        raise VariantError('Weapon index outside existing save records')
+    matches = [i for i, row in enumerate(records) if row['class_name'] == weapon['className']]
+    if matches != [index]:
+        raise VariantError('Missing, mismatched or ambiguous saved weapon class/index')
+    current = [i for i, row in enumerate(records) if row['current_weapon']]
+    if len(current) > 1:
+        raise VariantError('Ambiguous saved current_weapon selection')
+    capacity, partial, surplus = spec['capacity'], spec['partialUsed'], spec['surplusReserve']
+    if type(capacity) is not int or not 1 <= capacity < 2**24:
+        raise VariantError('Observed capacity must be a positive exact float32-domain integer below 2^24')
+    if type(surplus) is not int or not capacity < surplus <= 2**24:
+        raise VariantError('surplusReserve must exceed capacity within the exact float32 integer domain')
+    if capacity == 1:
+        if partial is not None:
+            raise VariantError('Capacity one has no integral partial magazine; partialUsed must be null')
+    elif type(partial) is not int or not (min(2, capacity-1) <= partial < capacity):
+        raise VariantError('partialUsed must leave rounds loaded and miss at least two where possible')
+    row = records[index]
+    if not 0 <= row['ammo_used_count'] <= capacity or not 0 <= row['ammo_total'] <= 2**24:
+        raise VariantError('Original ammo outside observed capacity/exact nonnegative integer range')
+    prefix = f'player.weapons.{index}'
+    used_path, reserve_path = prefix+'.ammo_used_count', prefix+'.ammo_total'
+    deficit = capacity if partial is None else partial
+    amounts = {'full-magazine': (0, surplus)}
+    if partial is not None:
+        amounts['partial'] = (partial, surplus)
+    amounts.update({'empty': (capacity, surplus), 'no-reserve': (deficit, 0),
+                    'insufficient-reserve': (deficit, deficit-1), 'exact-reserve': (deficit, deficit),
+                    'surplus-reserve': (deficit, surplus)})
+    cases = {label: {used_path: used, reserve_path: reserve} for label, (used, reserve) in amounts.items()}
+    selection = dict(currentRecordIndex=current[0] if current else None,
+                     currentClassName=records[current[0]]['class_name'] if current else None,
+                     targetIsSavedCurrent=current == [index], actualSelectedWeaponVerified=False,
+                     reason='LE2 v30 stores per-record current_weapon flags, not current_weapon_class; live pawn selection must be observed')
+    metadata = dict(kind='reload-ammo', weapon=weapon, capacity=capacity, partialUsed=partial,
+                    surplusReserve=surplus, ammoPolicy=spec['ammoPolicy'], boundaryUsed=deficit,
+                    capacityEvidence='operator-attested native measurement; artifact not independently interpreted',
+                    runtimeClassBinding='operator-attested full class; save record stores bare class name',
+                    savedSelection=selection, weaponPolicySha256=sha(policy_path.read_bytes()),
+                    originalValues={used_path: row['ammo_used_count'], reserve_path: row['ammo_total']},
+                    omittedCases={'partial': 'capacity-one-has-no-integral-partial-magazine'} if partial is None else {},
+                    autoReloadAmbiguous=partial is None,
+                    expectedValuesAre='save-field preparations; post-load ammo, capacity, finite policy and native legality unverified')
+    expectations = {prefix+'.class_name': weapon['className'], prefix+'.current_weapon': row['current_weapon'],
+                    **metadata['originalValues']}
+    return cases, expectations, metadata
+
+
 def no_links(path):
     path = Path(os.path.abspath(path))
     for entry in (path, *path.parents):
@@ -141,7 +213,7 @@ def write_new(path, raw):
 
 
 def prepare(base_path, output, base_sha256, spec_path):
-    """Build one resource's cases. Return index; rollback owned output on failure."""
+    """Build one spec's cases. Return index; rollback owned output on failure."""
     if not valid_sha(base_sha256):
         raise VariantError("--base-sha256 requires 64 lowercase hexadecimal digits")
     base_path, output, spec_path = map(no_links, (base_path, output, spec_path))
@@ -151,41 +223,58 @@ def prepare(base_path, output, base_sha256, spec_path):
         raise VariantError("Batch parent must already exist")
     spec_raw = spec_path.read_bytes()
     spec = read_spec(spec_raw)
-    requested, encoded, equivalent = boundaries(spec)
+    reload = isinstance(spec, dict) and spec.get('kind') == 'reload-ammo'
+    if not reload:
+        requested, encoded, equivalent = boundaries(spec)
     adapter = load_adapter()
     save = adapter.Save.load(base_path)
     if sha(save.raw) != base_sha256:
         raise VariantError("Base save hash does not match --base-sha256")
-    before = save.value(spec["resource"])
-    adapter_sha = sha(ADAPTER_PATH.read_bytes())
-    # Prepare and reparse all variants in memory before creating any output.
-    variants = {}
-    for label in LABELS:
-        if label == "insufficient" and equivalent:
-            continue
-        recipe = dict(schema_version=1, id=f"{spec['id']}-{label}", expected_input_sha256=base_sha256,
-                      description=f"Offline resource {label} boundary; native/scenario readiness pending",
-                      source=f"{spec['provenance']['reference']} SHA256 {spec['provenance']['sha256']}; spec SHA256 {sha(spec_raw)}",
-                      expect={spec["resource"]: before}, set={spec["resource"]: requested[label]})
-        result, changes = save.prepare(recipe)
-        after = result.value(spec["resource"])
-        if after != encoded[label]:
-            raise VariantError(f"Adapter encoded an unexpected {label} value")
-        actual_paths = {change["path"] for change in adapter.diff(save, result)}
-        expected_paths = {spec["resource"]} if before != after else set()
-        if actual_paths != expected_paths:
-            raise VariantError("Adapter changed an undeclared field")
-        recipe_raw = json_bytes(recipe)
-        receipt = dict(schema_version=1, operation="prepare", game="LE2", save_version=30,
-                       evidence="offline-only; game load and VR acceptance untested", upstream_pin=adapter.UPSTREAM_PIN,
-                       input_sha256=base_sha256, output_sha256=sha(result.raw), recipe_sha256=sha(recipe_raw),
-                       recipe_id=recipe["id"], changes=changes, byte_identical=result.raw == save.raw)
-        variants[label] = (result.raw, recipe_raw, json_bytes(receipt))
-    index = dict(schemaVersion=1, id=spec["id"], game="LE2", resource=spec["resource"], baseSaveSha256=base_sha256,
-                 specSha256=sha(spec_raw), generatorSha256=sha(Path(__file__).read_bytes()), adapterSha256=adapter_sha,
-                 status="offline-prepared", scenarioReadiness="pending", nativeValidation="pending", vrValidation="pending",
-                 cost=spec["cost"], quantum=spec["quantum"], surplus=spec["surplus"], provenance=spec["provenance"],
-                 originalValue=before, cases={}, files={})
+    if reload:
+        case_values, expectations, metadata = reload_cases(spec, save)
+    else:
+        before = save.value(spec['resource'])
+        case_values = {label: {spec['resource']: requested[label]} for label in LABELS}
+        expectations = {spec['resource']: before}
+        metadata = dict(resource=spec['resource'], cost=spec['cost'], quantum=spec['quantum'],
+                        surplus=spec['surplus'], originalValue=before)
+    index = dict(schemaVersion=1, id=spec['id'], game='LE2', **metadata, baseSaveSha256=base_sha256,
+                 specSha256=sha(spec_raw), generatorSha256=sha(Path(__file__).read_bytes()), adapterSha256=sha(ADAPTER_PATH.read_bytes()),
+                 status='offline-prepared', scenarioReadiness='pending', nativeValidation='pending', vrValidation='pending',
+                 provenance=spec['provenance'], cases={}, files={})
+    # Prepare/reparse/diff every unique variant before owning any output directory.
+    variants, canonical_values = {}, {}
+    for label, edits in case_values.items():
+        signature = tuple(sorted(edits.items()))
+        canonical = canonical_values.get(signature, label)
+        if canonical == label:
+            canonical_values[signature] = label
+            recipe = dict(schema_version=1, id=f"{spec['id']}-{label}", expected_input_sha256=base_sha256,
+                          description=f"Offline {'reload ammo' if reload else 'resource'} {label} boundary; native/scenario readiness pending",
+                          source=f"{spec['provenance']['reference']} SHA256 {spec['provenance']['sha256']}; spec SHA256 {sha(spec_raw)}",
+                          expect=expectations, set=edits)
+            result, changes = save.prepare(recipe)
+            after = {path: result.value(path) for path in edits}
+            expected = edits if reload else {spec['resource']: encoded[label]}
+            if after != expected:
+                raise VariantError(f'Adapter encoded unexpected {label} values')
+            actual_paths = {change['path'] for change in adapter.diff(save, result)}
+            expected_paths = {path for path, value in after.items() if save.value(path) != value}
+            if actual_paths != expected_paths:
+                raise VariantError('Adapter changed an undeclared field')
+            recipe_raw = json_bytes(recipe)
+            receipt = adapter.make_receipt('prepare', save, result, changes, recipe=recipe, recipe_raw=recipe_raw)
+            variants[label] = (result.raw, recipe_raw, json_bytes(receipt))
+        case = dict(fixture=f'{canonical}.pcsav', recipe=f'{canonical}.recipe.json', receipt=f'{canonical}.receipt.json',
+                    equivalentTo=canonical if canonical != label else None,
+                    interpretation='ammo fields only; native legality/selection and resulting state untested' if reload else
+                                   'balance only; action legality and resulting state untested')
+        if reload:
+            case.update(requestedValues=edits, expectedValues=edits,
+                        expectedLoadedAtAttestedCapacity=spec['capacity']-edits[f"player.weapons.{spec['weapon']['index']}.ammo_used_count"])
+        else:
+            case.update(requestedValue=requested[label], expectedValue=encoded[label], expectedResourcePath=spec['resource'])
+        index['cases'][label] = case
     # Exclusive mkdir is the ownership boundary. Never clean an existing batch.
     output.mkdir()
     try:
@@ -195,13 +284,6 @@ def prepare(base_path, output, base_sha256, spec_path):
         for name, raw in payloads.items():
             write_new(output / name, raw)
             index["files"][name] = {"sha256": sha(raw), "bytes": len(raw)}
-        for label in LABELS:
-            canonical = "zero" if label == "insufficient" and equivalent else label
-            index["cases"][label] = dict(requestedValue=requested[label], expectedValue=encoded[label],
-                                        expectedResourcePath=spec["resource"], fixture=f"{canonical}.pcsav",
-                                        recipe=f"{canonical}.recipe.json", receipt=f"{canonical}.receipt.json",
-                                        equivalentTo="zero" if canonical != label else None,
-                                        interpretation="balance only; action legality and resulting state untested")
         if sha(base_path.read_bytes()) != base_sha256 or spec_path.read_bytes() != spec_raw:
             raise VariantError("Input changed during preparation")
         for name, record in index["files"].items():

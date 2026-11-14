@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT
+cmake_minimum_required(VERSION 3.20)
+project(mevr_le2_input_control_tests LANGUAGES CXX)
+add_executable(le2-input-control-tests InputControlTests.cpp
+    ../../src/core/Json.cpp ../../src/core/qa/DiagnosticPad.cpp)
+target_compile_features(le2-input-control-tests PRIVATE cxx_std_20)
+target_include_directories(le2-input-control-tests PRIVATE ../../src)
+target_compile_definitions(le2-input-control-tests PRIVATE MEVR_GAME_LE2 MEVR_LE2_DIAGNOSTIC)
+if(MSVC)
+    target_compile_options(le2-input-control-tests PRIVATE /W4 /WX /EHsc)
+else()
+    target_compile_options(le2-input-control-tests PRIVATE -Wall -Wextra -Werror)
+endif()
+enable_testing()
+add_test(NAME le2-input-control COMMAND le2-input-control-tests)

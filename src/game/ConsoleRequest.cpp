@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/ConsoleRequest.hpp"
+#include "game/CameraProbe.hpp"
 #include "game/CameraShake.hpp"
 #include "game/BodyProbe.hpp"
 #include "game/ConversationWorld.hpp"
@@ -1529,6 +1530,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string rest;
         std::getline(words, rest);
         return cockpit_probe::Command(rest);  // the in-game cockpit's experiment (research/47)
+    }
+    if (verb == "camera") {
+        std::string rest;
+        std::getline(words, rest);
+        return camera_probe::Command(rest);  // `mevr camera trace <seconds>`: the view against the pawn, tick by tick
     }
     if (verb == "shake") {
         std::string rest;

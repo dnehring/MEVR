@@ -8,7 +8,7 @@ Status: offline tooling and three draft definitions; no native, VR or headset ac
 | Definition | Required variants | Fixture and implementation dependencies |
 |---|---|---|
 | [Reload](../tools/qa-le2/scenarios/reload.json) | Empty, partial, no reserve, interruption, weapon switch, repeated insertion, tutorial | Naturally obtained combat/tutorial fixtures; observed clip/reserve and native event order; P1/P3/P4/P6. Physical reload and game-owned ammo must be integrated before VR acceptance. |
-| [Dialogue interrupt](../tools/qa-le2/scenarios/dialogue-interrupt.json) | Legal Paragon and Renegade windows, missed window, early input, return to combat | Pre-conversation fixtures, native branch/condition inspection, legal-window observations; P1/P2/P7. Input routing and visible prompts must be implemented. |
+| [Dialogue interrupt](../tools/qa-le2/scenarios/dialogue-interrupt.json) | Legal Paragon and Renegade windows, missed window, early and late input, return to combat | [Veetor source and snapshot workflow](../research/le2-interrupt-acquisition.md). Needs normal pre-conversation save/loading, matched native taken and missed trials, measured timing, and VR prompt/input routing. P1/P2/P7. |
 | [Planet scanning](../tools/qa-le2/scenarios/planet-scanning.json) | Zero/one probe, scan hold without launch, anomaly unlock, insufficient/exact/surplus fuel | Natural galaxy/untouched-planet fixtures, observed discovery dependencies and baseline costs; P1/P2/P7/P8. Galaxy panel, scanning, launch and context routing must be implemented. |
 
 All committed definitions are `draft`. Their missing map, save hash and recipe are intentional. Each acquisition task identifies how to replace uncertainty with evidence. `ready` means a private binding is sufficiently specified to attempt, never that it loaded or passed. A validated fixture is a ready binding **plus** evidence of normal loading, scene/start checks, progression and restoration. Do not use a `validated: true` field.
@@ -53,6 +53,17 @@ python tools/qa-le2/test-scenario.py
 
 `check-start` consumes an observed document with `source: "runtime-observation"` and `state: {map: ..., ...}`. Checks use dotted paths within `state`, operators `eq`, `ge` or `le`, and scalar values. It does not inspect images, validate selected-save identity or establish acceptance. The session owner must match observed data to the active run. Audit additionally requires that the `start` artifact have the full run identity.
 
+A check may name another declared `runtime-state` slot with `artifact`.
+For reload, use `start` for the map and `start-weapon` for checks such as
+`weapon.identity.class`, `weapon.magazineCapacity`, `weapon.loaded` and
+`weapon.effectiveReserve`. Bind both artifacts to the same run and case.
+With `check-start`, pass the additional sample using
+`--observation start-weapon WEAPON_JSON`. With `audit`, include both slots
+in the evidence manifest. The samples retain their own request and tick.
+Review the loaded scene and verify that no action changed the weapon between
+observations. A per-query export check can report missing starting fields that
+the combined audit subsequently checks in the additional artifact.
+
 The evidence JSON contains:
 
 | Field | Contract |
@@ -66,7 +77,26 @@ The evidence JSON contains:
 
 Structured `runtime-state`, `input-trace`, `save-inspection` and `timing` artifacts must repeat the **entire exact identity object**. This prevents accidental reuse of observations from another run/build/fixture. Runtime state requires `source: "runtime-observation"`. Input traces require `inputPath: "native"` or `"vr-controller"` and a nonempty event-object list; events should record timestamps, control/action, phase and source instrumentation. Direct debug calls must not be labeled player input. The auditor cannot authenticate the producer's truthfulness; preserve raw logs/video and implementation provenance for review.
 
-Normalized names such as `state.weapon.loaded`, `state.weapon.reserve`, `state.resources.probes` are an observation-interface proposal. They are **not** verified SDK fields or an implemented native exporter. A native observer must map them to verified state and record how it obtained each value. Save inspection alone cannot be relabeled runtime observation. Until that integration exists, state-dependent assertions remain pending. Manual observation can produce normalized records when accompanied by source captures, timestamps and reviewer provenance; ambiguous values remain unresolved.
+`state.resources` now has a [source-backed live inventory observer](../research/le2-resource-observation.md)
+and [correlated exporter](../tools/qa-le2/export-state.md) for all eight resources.
+Protected resource-edited normal loads passed their starting checks, and one
+normal New Save file independently retained all eight values. A fresh normal
+reload of those exact bytes also matched all eight live values and the reviewed
+scene, followed by verified restoration. Earlier deferred cleanup preserved
+intervening ME1/shared-profile changes through qualified recovery. Gameplay
+costs and the three end-to-end scenarios remain pending.
+The read-only [weapon observer](../research/le2-weapon-observation.md) now exposes
+selected-weapon identity, capacity, used/derived loaded count and stored reserve
+through `observe-weapon`. Protected runs `1722Z-loadout` and `1749Z-neutral-focus`
+sampled the selected MassCannon while in squad UI: capacity 1, used 0, derived
+loaded 1 and raw stored reserve 10. The existing exporter now normalizes
+`state.weapon.loaded` and `state.weapon.reserveStored` with request correlation.
+These are partial observations, not reload or complete starting-state acceptance.
+Effective `state.weapon.reserve` remains unavailable because virtual overrides
+can differ from the stored field; audited source inheritance alone is not a
+runtime getter observation. Save inspection cannot be relabeled runtime
+observation. Manual observations need source captures, timestamps and reviewer
+provenance; ambiguous values remain unresolved.
 
 Machine assertions compare observed values, numeric deltas or sum conservation. They do not accept a producer's `passed` boolean. Review assertions bind an attributed observation to exact input/state/capture artifacts. Native baseline behavior, actual controller routing, stereo presentation and comfort require different evidence. Reload measurement windows must exclude firing/pickups and compare the same weapon; firing and switching have their own reviewed sequences. Use a separate record for post-load persistence.
 

@@ -12,6 +12,76 @@ spec = importlib.util.spec_from_file_location("session", Path(__file__).with_nam
 s = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(s)
 
+SANDBOX_APPDATA = r"C:\Users\test\AppData\Local\Packages\sandbox.{12345678-1234-1234-1234-123456789abc}\AC"
+DESKTOP_APPDATA = r"C:\Users\test\AppData\Local"
+
+
+class HostContextTests(unittest.TestCase):
+    def evidence(self, **changes):
+        return dict({"localAppData": DESKTOP_APPDATA, "appContainer": False, "restricted": False}, **changes)
+
+    def test_observed_sandbox_is_rejected_before_os_or_process_probe(self):
+        for path in (SANDBOX_APPDATA, SANDBOX_APPDATA.upper().replace("\\", "/")):
+            with self.subTest(path=path), mock.patch.dict(s.os.environ, LOCALAPPDATA=path), \
+                    mock.patch.object(s, "_windows_host_evidence") as probe, \
+                    mock.patch.object(s.subprocess, "run") as shell:
+                for operation in (s.require_native_host, s.default_locks, s.windows_processes):
+                    with self.assertRaisesRegex(s.SessionError, "Sandbox-redirection"):
+                        operation()
+                probe.assert_not_called()
+                shell.assert_not_called()
+
+    def test_restricted_token_and_redirected_or_unknown_folder_are_refused(self):
+        cases = [self.evidence(appContainer=True), self.evidence(restricted=True),
+                 self.evidence(localAppData=r"C:\Users\another\AppData\Local"),
+                 self.evidence(localAppData=SANDBOX_APPDATA), self.evidence(localAppData=None),
+                 self.evidence(appContainer=0), self.evidence(restricted=None)]
+        for evidence in cases:
+            with self.subTest(evidence=evidence), mock.patch.dict(s.os.environ, LOCALAPPDATA=DESKTOP_APPDATA), \
+                    mock.patch.object(s, "_windows_host_evidence", return_value=evidence):
+                with self.assertRaises(s.SessionError):
+                    s.require_native_host()
+
+    def test_failed_os_query_and_missing_environment_fail_closed(self):
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=DESKTOP_APPDATA), \
+                mock.patch.object(s, "_windows_host_evidence", side_effect=OSError("token unavailable")):
+            with self.assertRaisesRegex(s.SessionError, "Cannot verify"):
+                s.require_native_host()
+        with mock.patch.dict(s.os.environ, {}, clear=True), mock.patch.object(s, "_windows_host_evidence") as probe:
+            with self.assertRaises(s.SessionError):
+                s.require_native_host()
+            probe.assert_not_called()
+
+    def test_matching_desktop_folder_accepts_case_and_separator_normalization(self):
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=DESKTOP_APPDATA.upper().replace("\\", "/") + "/"), \
+                mock.patch.object(s, "_windows_host_evidence", return_value=self.evidence()), \
+                mock.patch.object(s, "safe_path", side_effect=lambda p: p):
+            self.assertEqual(s.require_native_host(), Path(DESKTOP_APPDATA))
+
+    def test_inventory_requires_scoped_nonempty_envelope(self):
+        bad = ["", "[]", "null", "{", json.dumps({"processes": []}),
+               json.dumps({"localAppData": SANDBOX_APPDATA, "processes": []}),
+               json.dumps({"localAppData": r"C:\elsewhere", "processes": []}),
+               json.dumps({"localAppData": DESKTOP_APPDATA, "processes": None}),
+               json.dumps({"localAppData": DESKTOP_APPDATA, "processes": [{"name": "MassEffect2", "pid": True}]})]
+        for output in bad:
+            with self.subTest(output=output), mock.patch.object(s, "require_native_host", return_value=Path(DESKTOP_APPDATA)), \
+                    mock.patch.object(s.subprocess, "run", return_value=mock.Mock(stdout=output)):
+                with self.assertRaises(s.SessionError):
+                    s.windows_processes()
+
+    def test_inventory_preserves_quiet_and_active_results(self):
+        for processes in ([], [{"name": "MassEffect2", "pid": 42, "path": "example", "started": "now"}]):
+            with self.subTest(processes=processes), mock.patch.object(s, "require_native_host", return_value=Path(DESKTOP_APPDATA)), \
+                    mock.patch.object(s.subprocess, "run", return_value=mock.Mock(stdout=json.dumps(
+                        {"localAppData": DESKTOP_APPDATA, "processes": processes}))):
+                self.assertEqual(s.windows_processes(), processes)
+                if processes:
+                    with self.assertRaisesRegex(s.SessionError, "active"):
+                        s.require_quiet(s.windows_processes)
+                else:
+                    s.require_quiet(s.windows_processes)
+
 
 class SessionTests(unittest.TestCase):
     def setUp(self):
@@ -71,6 +141,64 @@ class SessionTests(unittest.TestCase):
         for path, state in self.original.items():
             self.assertEqual(s.snapshot(path), state)
         self.assertFalse((self.locks / "qa-cafeteria.lock").exists())
+
+    def fixture_selection(self):
+        return {"schemaVersion": 1,
+                "descriptor": {"career": "MEVR-QA", "saveName": "Save_0001", "index": 1, "type": 0},
+                "fixtureSha256": s.digest(self.fixture), "exeSha256": s.digest(self.exe),
+                "targetRelativePath": self.target_relative,
+                "evidence": {"runId": "12345678-1234-1234-1234-123456789abc",
+                             "observationSha256": "a" * 64, "captureSha256": "b" * 64,
+                             "reviewedBy": "offline synthetic mapping review"}}
+
+    def test_fixture_selection_text_rejected_before_backups_or_live_writes(self):
+        cases = [("evidence", "reviewedBy", "x" * 257, "256 UTF-8 bytes"),
+                 ("evidence", "reviewedBy", "\u00e9" * 129, "256 UTF-8 bytes"),
+                 ("evidence", "reviewedBy", " \t\r\n", "identify the reviewer"),
+                 ("evidence", "reviewedBy", "review\0note", "without NUL"),
+                 ("evidence", "reviewedBy", None, "nonempty text")]
+        for field in ("career", "saveName"):
+            cases.extend(("descriptor", field, value, reason) for value, reason in (
+                ("x" * 256, "255 UTF-16 code units"),
+                ("\U0001f600" * 128, "255 UTF-16 code units"),
+                ("\u00e9" * 513, "1024 UTF-8 bytes"),
+                ("\ud800", "strict Unicode"), ("", "nonempty text")))
+        for section, field, value, reason in cases:
+            with self.subTest(section=section, field=field, reason=reason):
+                self.plan["fixtureSelection"] = self.fixture_selection()
+                self.plan["fixtureSelection"][section][field] = value
+                processes = mock.Mock(return_value=[])
+                with mock.patch.object(s, "copy_snapshot") as backup, \
+                        mock.patch.object(s, "stage_fixture") as stage:
+                    with self.assertRaisesRegex(s.SessionError, reason):
+                        self.prepare(processes=processes)
+                    processes.assert_not_called()
+                    backup.assert_not_called()
+                    stage.assert_not_called()
+                self.assertFalse(self.run.exists())
+                self.assertFalse(self.locks.exists())
+                self.assertFalse(self.target.exists())
+                self.assertRestored()
+
+    def test_fixture_selection_text_exact_boundaries_are_accepted(self):
+        for reviewer in ("x" * 256, "\u00e9" * 128):
+            for leaf in ("x" * 255, "\u754c" * 255, "\U0001f600" * 127 + "x"):
+                with self.subTest(reviewer_bytes=len(reviewer.encode("utf-8")), leaf=leaf):
+                    selection = self.fixture_selection()
+                    selection["evidence"]["reviewedBy"] = reviewer
+                    selection["descriptor"].update(career=leaf, saveName=leaf)
+                    s.validate_fixture_selection_text({"fixtureSelection": selection})
+        # No optional selection remains valid for the existing operator workflow.
+        s.validate_fixture_selection_text({})
+
+    def test_valid_fixture_selection_prepare_and_reset_preserves_binding(self):
+        self.plan["fixtureSelection"] = self.fixture_selection()
+        self.plan["fixtureSelection"]["evidence"]["reviewedBy"] = "\u00e9" * 128
+        self.assertEqual(self.quiet_prepare()["phase"], "staged")
+        self.assertEqual(s.read_json(self.run / "plan.json")["fixtureSelection"],
+                         self.plan["fixtureSelection"])
+        s.reset(self.run, processes=lambda: [])
+        self.assertRestored()
 
     def test_full_profile_restore_archives_new_and_deleted_files(self):
         c = self.quiet_prepare()
@@ -253,6 +381,57 @@ class SessionTests(unittest.TestCase):
         with mock.patch.object(s, "is_link", side_effect=lambda p: Path(p) == self.profile or original(p)):
             with self.assertRaisesRegex(s.SessionError, "Symlink/reparse"):
                 self.quiet_prepare()
+
+    def test_native_prepare_in_sandbox_cannot_stage_or_own_private_lock(self):
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=SANDBOX_APPDATA), \
+                mock.patch.object(s.subprocess, "run", return_value=mock.Mock(stdout="")) as shell:
+            with self.assertRaisesRegex(s.SessionError, "Sandbox-redirection"):
+                self.prepare()
+            shell.assert_not_called()
+        self.assertFalse(self.run.exists())
+        self.assertFalse(self.locks.exists())
+        self.assertRestored()
+
+    def test_native_load_bind_reset_in_sandbox_preserve_staged_run(self):
+        self.quiet_prepare()
+        before = {p: s.snapshot(p) for p in (self.run, self.locks, self.profile, self.game)}
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=SANDBOX_APPDATA), \
+                mock.patch.object(s.subprocess, "run", return_value=mock.Mock(stdout="")) as shell:
+            for operation in (lambda: s.request_load(self.run), lambda: s.bind_process(self.run, 42),
+                              lambda: s.reset(self.run)):
+                with self.assertRaisesRegex(s.SessionError, "Sandbox-redirection"):
+                    operation()
+                for path, state in before.items():
+                    self.assertEqual(s.snapshot(path), state)
+            shell.assert_not_called()
+
+    def test_native_paths_cannot_use_different_coordination_root(self):
+        desktop = self.root / "verified-desktop"
+        with mock.patch.object(s, "require_native_host", return_value=desktop):
+            with self.assertRaisesRegex(s.SessionError, "verified desktop coordination root"):
+                self.prepare()
+        self.assertFalse(self.run.exists())
+        self.quiet_prepare()
+        before = s.snapshot(self.run)
+        with mock.patch.object(s, "require_native_host", return_value=desktop), \
+                mock.patch.object(s.subprocess, "run") as shell:
+            for operation in (lambda: s.request_load(self.run), lambda: s.bind_process(self.run, 42),
+                              lambda: s.reset(self.run)):
+                with self.assertRaisesRegex(s.SessionError, "different desktop coordination root"):
+                    operation()
+                self.assertEqual(s.snapshot(self.run), before)
+            shell.assert_not_called()
+
+    def test_explicit_offline_providers_work_in_sandbox_without_host_probe(self):
+        with mock.patch.dict(s.os.environ, LOCALAPPDATA=SANDBOX_APPDATA), \
+                mock.patch.object(s, "_windows_host_evidence", side_effect=AssertionError("offline only")), \
+                mock.patch.object(s.subprocess, "run", side_effect=AssertionError("offline only")):
+            self.quiet_prepare()
+            s.request_load(self.run, processes=lambda: [])
+            s.bind_process(self.run, 42, processes=lambda: [
+                {"name": "MassEffect2", "pid": 42, "path": str(self.exe), "started": s.utc()}])
+            s.reset(self.run, processes=lambda: [])
+            self.assertRestored()
 
 
 if __name__ == "__main__":

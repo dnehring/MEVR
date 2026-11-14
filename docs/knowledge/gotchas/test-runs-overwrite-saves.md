@@ -32,7 +32,8 @@ our test tools keeps the game from saving, and several sessions share one machin
 # Check
 
 Before a run, and after it, compare the save folder with a backup: file times and hashes of `Save\ME1\**` and the game's
-`BioGame\Config\*.ini`. A file written during the run's window is the run's.
+`BioGame\Config\*.ini`. A write timestamp alone does not identify its owner. Check the exact native-session history and
+the affected paths before attributing a change to the test.
 
 # Fix in place
 
@@ -40,6 +41,13 @@ Procedure, not code: **back up `Documents\BioWare\Mass Effect Legendary Edition`
 `ASI\MELEVR.ini`, `BioGame\Config\BIOEngine.ini`, `BIOGame.ini`, `GamerSettings.ini`) before every run of the game, and
 compare and restore after it**, keeping the run's own files aside. If a run is found later, restore from the newest backup
 taken before it. A memory note says the same for each session.
+
+If another session ran after the test stopped but before cleanup, do not restore the complete old profile merely because
+the machine is quiet again. ME1 and ME2 share the trilogy profile. Compare all protected files with the original backup,
+archive the current state, and explicitly preserve intervening user/other-session changes, including file timestamps.
+Restore only reviewed test changes, verify the resulting merged state, and record this as qualified recovery rather than
+an exact restoration of the original profile. Keep the original backup unchanged. The November 14 ME2 run encountered this
+case after normal exit: a later ME1 session rewrote its launcher-profile and shared trilogy-profile timestamps.
 
 # Citations
 

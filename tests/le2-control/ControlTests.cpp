@@ -1,0 +1,252 @@
+// SPDX-License-Identifier: MIT
+#include "core/qa/ControlProtocol.hpp"
+#include <fstream>
+#include <iostream>
+#include <iterator>
+#include <stdexcept>
+#if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
+#endif
+
+using namespace mevr::qa::control;
+void Check(bool ok, char const* why) { if (!ok) throw std::runtime_error(why); }
+int main(int argc, char** argv) {
+    try {
+        // Cross-language conformance: decode and canonically re-encode a Python
+        // frame, or reject it. No game or filesystem mutations beyond stdout.
+        if (argc == 2) {
+#if defined(_WIN32)
+            _setmode(_fileno(stdout), _O_BINARY);
+#endif
+            std::ifstream in(argv[1], std::ios::binary);
+            std::string bytes((std::istreambuf_iterator<char>(in)), {});
+            auto f = Decode(bytes);
+            if (!f) return 2;
+            std::cout << *Encode(*f);
+            return 0;
+        }
+        Identity identity{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            1234, 134127912301234567ULL, std::string(64, 'a'), std::string(64, 'b'), std::string(64, 'c')};
+        Frame request{"request", identity, "cccccccc-cccc-4ccc-8ccc-cccccccccccc", 1, 20000, "ping", "pending", ""};
+        auto encoded = Encode(request); Check(encoded.has_value(), "encode");
+        auto decoded = Decode(*encoded); Check(decoded && decoded->identity == identity, "round trip exact start identity");
+        Gate gate(identity);
+        Check(!gate.Claim(request, 10000), "valid ping");
+        Check(gate.Claim(request, 10000).has_value(), "duplicate rejected");
+        request.sequence = 2;
+        Check(gate.Claim(request, 10000).has_value(), "same id new sequence rejected");
+        request.id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+        request.identity.start++;
+        Check(gate.Claim(request, 10000).has_value(), "PID reuse rejected");
+        request.identity = identity; request.identity.lease[0] = 'c';
+        Check(gate.Claim(request, 10000).has_value(), "previous lease rejected");
+        request.identity = identity; request.identity.host[0] = 'd';
+        Check(gate.Claim(request, 10000).has_value(), "wrong host rejected");
+        request.identity = identity;
+        Check(gate.Claim(request, 20000).has_value(), "expired rejected");
+        Check(gate.Claim(request, 0).has_value() == false, "allowed bounded future");
+        request.sequence = 3; request.id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+        request.deadline = 40001;
+        Check(gate.Claim(request, 10000).has_value(), "excessive future rejected");
+        request.deadline = 20000; request.verb = "console"; request.payload = "stat fps";
+        Check(gate.Claim(request, 10000).has_value(), "console opt in required");
+        Gate native(identity, true);
+        Check(!native.Claim(request, 10000), "explicit console opt in");
+        Check(native.Claim(request, 10000).has_value(), "failed/uncertain dispatch cannot be retried");
+        request.sequence = 4; request.id = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+        for (auto command : {"streamlevelin BioP_Nor", "StReAmLeVeLiN BioP_Nor", "exec | STREAMLEVELIN BioP_Nor"}) {
+            request.payload = command;
+            Check(native.Claim(request, 10000).has_value(), "forbidden native streamlevelin rejected");
+            Check(native.LastSequence() == 3, "pre-dispatch rejection does not claim request");
+        }
+        request.payload = "stat fps";
+        Check(!native.Claim(request, 10000), "allowed command remains admissible after rejection");
+        request.payload = "stat fps\nquit"; Check(!Encode(request), "batch command rejected");
+        request.payload = std::string(4097, 'x'); Check(!Encode(request), "command size bounded");
+        for (std::size_t n = 0; n < encoded->size(); ++n)
+            Check(!Decode(std::string_view(*encoded).substr(0, n)), "partial file rejected");
+        Check(!Decode(*encoded + "x"), "trailing payload rejected");
+        auto wrongGame = *encoded; wrongGame.replace(wrongGame.find("game=LE2"), 8, "game=LE1");
+        Check(!Decode(wrongGame), "wrong game rejected");
+        auto duplicate = *encoded; duplicate.insert(duplicate.find("run="), "kind=request\n");
+        Check(!Decode(duplicate), "duplicate key rejected");
+        auto leadingZero = *encoded; leadingZero.insert(leadingZero.find("pid=") + 4, "0");
+        Check(!Decode(leadingZero), "noncanonical number rejected");
+        Frame result = *decoded; result.kind = "result"; result.status = "completed"; result.payload = "ready\nobserved";
+        Check(Decode(*Encode(result)).has_value(), "multiline result");
+        Check(gate.Claim(result, 10000).has_value(), "result cannot execute");
+        Frame probe = *decoded; probe.verb = "probe-fov";
+        Check(Decode(*Encode(probe))->verb == "probe-fov", "probe wire roundtrip");
+        Gate noProbe(identity);
+        Check(noProbe.Claim(probe, 10000) == "native FOV probe is disabled", "probe default disabled");
+        Check(noProbe.LastSequence() == 0, "disabled probe does not claim");
+        Gate consoleOnly(identity, true);
+        Check(consoleOnly.Claim(probe, 10000).has_value(), "console permission does not grant probe");
+        Gate probeOnly(identity, false, true);
+        probe.payload = "stat fps";
+        Check(!Encode(probe), "probe payload cannot encode");
+        Check(probeOnly.Claim(probe, 10000).has_value(), "probe payload rejected at admission");
+        Check(probeOnly.LastSequence() == 0, "invalid payload does not claim");
+        probe.payload.clear();
+        Check(!probeOnly.Claim(probe, 10000), "explicit independent probe opt in");
+        Check(probeOnly.Claim(probe, 10000).has_value(), "uncertain probe cannot retry");
+        Frame console = probe;
+        console.id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+        console.sequence = 2; console.verb = "console"; console.payload = "stat fps";
+        Check(probeOnly.Claim(console, 10000).has_value(), "probe permission does not grant console");
+        Check(probeOnly.LastSequence() == 1, "console rejection preserves claimed probe sequence");
+        for (auto verb : {"advance-splash", "open-load-menu", "open-pause-menu", "open-save-menu"}) {
+            Frame menu = *decoded; menu.verb = verb;
+            Check(Decode(*Encode(menu))->verb == verb, "menu action wire roundtrip");
+            Gate disabledMenu(identity, true, true);
+            Check(disabledMenu.Claim(menu, 10000) == "native menu actions are disabled", "other native opt-ins do not grant menu actions");
+            Check(disabledMenu.LastSequence() == 0, "disabled menu action does not claim");
+            Gate allowedMenu(identity, false, false, true);
+            menu.payload = "arbitrary target";
+            Check(!Encode(menu) && allowedMenu.Claim(menu, 10000).has_value(), "menu action cannot carry arbitrary targets");
+            menu.payload.clear();
+            Check(!allowedMenu.Claim(menu, 10000), "explicit menu opt in");
+            Check(allowedMenu.Claim(menu, 10000).has_value(), "claimed menu action cannot retry");
+            Check(allowedMenu.Claim(console, 10000).has_value(), "menu permission does not grant console");
+        }
+        Frame menuObservation = *decoded; menuObservation.verb = "observe-save-menu";
+        Gate readOnly(identity);
+        Check(Decode(*Encode(menuObservation))->verb == menuObservation.verb &&
+              !readOnly.Claim(menuObservation, 10000), "menu observation needs no action opt in");
+        menuObservation.payload = "x";
+        Check(!Encode(menuObservation), "menu observation accepts no payload");
+        Frame fixture = *decoded; fixture.verb = "load-fixture";
+        Gate noFixture(identity, true, true, true);
+        Check(noFixture.Claim(fixture, 10000) == "native fixture loading is disabled", "other opt-ins do not grant fixture loading");
+        Check(noFixture.LastSequence() == 0, "disabled fixture load does not claim");
+        Gate fixtureOnly(identity, false, false, false, true);
+        fixture.payload = "Save_0099";
+        Check(!Encode(fixture) && fixtureOnly.Claim(fixture, 10000).has_value(), "fixture load cannot carry a target");
+        fixture.payload.clear();
+        Check(!fixtureOnly.Claim(fixture, 10000), "explicit fixture opt in");
+        Check(fixtureOnly.Claim(fixture, 10000).has_value(), "claimed fixture load cannot retry");
+        Check(fixtureOnly.Claim(console, 10000).has_value(), "fixture opt in does not grant console");
+        fixture.verb = "observe-fixture";
+        Gate fixtureRead(identity);
+        Check(!fixtureRead.Claim(fixture, 10000), "fixture observation needs no native opt in");
+        fixture.verb = "observe-resources";
+        Gate resourceRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-resources" && !resourceRead.Claim(fixture, 10000),
+              "resource observation requires no native opt in");
+        fixture.payload = "credits=999";
+        Check(!Encode(fixture), "resource observation accepts no edits or targets");
+        fixture.payload.clear(); fixture.verb = "observe-orbital";
+        Gate orbitalRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-orbital" && !orbitalRead.Claim(fixture, 10000),
+              "orbital observation requires no native opt in");
+        fixture.payload = "launch-probe";
+        Check(!Encode(fixture), "orbital observation cannot launch a probe");
+        fixture.payload.clear(); fixture.verb = "observe-dialogue";
+        Gate dialogueRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-dialogue" && !dialogueRead.Claim(fixture, 10000),
+              "dialogue observation requires no native opt in");
+        fixture.payload = "select-interruption";
+        Check(!Encode(fixture), "dialogue observation accepts no input or choice");
+        fixture.payload.clear(); fixture.verb = "observe-weapon";
+        Gate weaponRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-weapon" && !weaponRead.Claim(fixture, 10000),
+              "weapon observation requires no native opt in");
+        fixture.payload = "reload";
+        Check(!Encode(fixture), "weapon observation cannot reload or select a weapon");
+        fixture.payload.clear(); fixture.verb = "observe-save-flow";
+        Gate flowRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-save-flow" && !flowRead.Claim(fixture, 10000),
+              "save flow observation requires no native opt in");
+        fixture.payload = "save";
+        Check(!Encode(fixture), "save flow observation cannot request saving");
+        fixture.payload.clear(); fixture.verb = "save-new";
+        Gate noSave(identity, true, true, true, true);
+        Check(noSave.Claim(fixture, 10000) == "native new save is disabled", "other action permissions do not grant saving");
+        Check(noSave.LastSequence() == 0, "disabled new save does not claim");
+        Gate saveOnly(identity, false, false, false, false, true);
+        fixture.payload = "Save_0100";
+        Check(!Encode(fixture), "new save cannot specify overwrite target");
+        fixture.payload.clear();
+        Check(Decode(*Encode(fixture))->verb == "save-new" && !saveOnly.Claim(fixture, 10000), "new save independent opt in");
+        Check(saveOnly.Claim(fixture, 10000).has_value(), "claimed save cannot retry");
+        Frame pulse = *decoded; pulse.verb = "pad-pulse";
+        pulse.payload = R"({"schemaVersion":1,"context":"default","durationMs":100,"buttons":4096,"leftTrigger":0,"rightTrigger":0,"leftX":0,"leftY":0,"rightX":0,"rightY":0})";
+        auto parsedPulse = ParsePadPulse(pulse.payload);
+        Check(parsedPulse && parsedPulse->pad.buttons == 4096 && parsedPulse->durationMs == 100 &&
+              parsedPulse->context == "default", "pulse semantic decode");
+        Check(Decode(*Encode(pulse))->payload == pulse.payload, "pulse wire roundtrip preserves exact payload");
+        Gate otherPermissions(identity, true, true, true, true, true);
+        Check(otherPermissions.Claim(pulse, 10000) == "native input is disabled" && otherPermissions.LastSequence() == 0,
+              "all other permissions do not grant native input");
+        Gate inputOnly(identity, false, false, false, false, false, true);
+        Check(!inputOnly.Claim(pulse, 10000), "explicit independent input permission");
+        Check(inputOnly.Claim(pulse, 10000).has_value(), "published or uncertain pulse cannot retry");
+        Check(inputOnly.Claim(console, 10000).has_value(), "input permission does not grant console");
+        auto confirm = pulse;
+        confirm.payload.replace(confirm.payload.find("default"), 7, "party-confirm");
+        auto parsedConfirm = ParsePadPulse(confirm.payload);
+        Check(parsedConfirm && parsedConfirm->context == "party-confirm" &&
+              Decode(*Encode(confirm))->payload == confirm.payload, "party confirm exact schema and wire roundtrip");
+        Gate confirmDisabled(identity, true, true, true, true, true);
+        Check(confirmDisabled.Claim(confirm, 10000) == "native input is disabled" && confirmDisabled.LastSequence() == 0,
+              "party confirm retains separate native input permission");
+        Gate confirmEnabled(identity, false, false, false, false, false, true);
+        Check(!confirmEnabled.Claim(confirm, 10000) && confirmEnabled.Claim(confirm, 10000).has_value(),
+              "party confirm permission does not permit retry");
+        auto loadout = pulse;
+        loadout.payload.replace(loadout.payload.find("default"), 7, "loadout");
+        auto parsedLoadout = ParsePadPulse(loadout.payload);
+        Check(parsedLoadout && parsedLoadout->context == "loadout" &&
+              Decode(*Encode(loadout))->payload == loadout.payload, "loadout exact schema and wire roundtrip");
+        Gate loadoutDisabled(identity, true, true, true, true, true);
+        Check(loadoutDisabled.Claim(loadout, 10000) == "native input is disabled" && loadoutDisabled.LastSequence() == 0,
+              "loadout retains separate native input permission");
+        Gate loadoutEnabled(identity, false, false, false, false, false, true);
+        Check(!loadoutEnabled.Claim(loadout, 10000) && loadoutEnabled.Claim(loadout, 10000).has_value(),
+              "loadout permission does not permit retry");
+        auto character = pulse;
+        character.payload.replace(character.payload.find("default"), 7, "character-record");
+        Check(!ParsePadPulse(character.payload), "CharacterRecord refuses purchase input");
+        character.payload.replace(character.payload.find("4096"), 4, "8192");
+        Check(ParsePadPulse(character.payload) && Decode(*Encode(character))->payload == character.payload,
+              "CharacterRecord Back roundtrip through existing wire");
+        Gate characterDisabled(identity);
+        Check(characterDisabled.Claim(character,10000) == "native input is disabled", "CharacterRecord needs explicit permission");
+        Gate characterEnabled(identity,false,false,false,false,false,true);
+        Check(!characterEnabled.Claim(character,10000) && characterEnabled.Claim(character,10000).has_value(),
+              "CharacterRecord still claims once without retry");
+        for (auto field : {"leftTrigger", "rightTrigger", "leftX", "leftY", "rightX", "rightY"}) {
+            auto changed = character;
+            std::string key = std::string("\"") + field + "\":0";
+            changed.payload.replace(changed.payload.find(key), key.size(), std::string("\"") + field + "\":1");
+            Check(!ParsePadPulse(changed.payload) && !Encode(changed), "CharacterRecord Back forbids mixed analog input");
+        }
+        auto invalidPulse = [&](std::string const& before, std::string const& after) {
+            auto invalid = pulse;
+            auto position = invalid.payload.find(before);
+            Check(position != std::string::npos, "test mutation found");
+            invalid.payload.replace(position, before.size(), after);
+            Check(!Encode(invalid) && !ParsePadPulse(invalid.payload), "invalid pulse rejected before dispatch");
+        };
+        invalidPulse("\"durationMs\":100", "\"durationMs\":1.0");
+        invalidPulse("\"durationMs\":100", "\"durationMs\":true");
+        invalidPulse("\"durationMs\":100", "\"durationMs\":1001");
+        invalidPulse("\"buttons\":4096", "\"buttons\":1024");
+        invalidPulse("\"buttons\":4096", "\"buttons\":0");
+        invalidPulse("\"leftX\":0", "\"leftX\":-32769");
+        invalidPulse("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":1");
+        invalidPulse("\"context\":\"default\"", "\"context\":\"orbital\"");
+        invalidPulse("\"context\":\"default\"", "\"context\":\"party-confirm-extra\"");
+        invalidPulse("\"context\":\"default\"", "\"context\":\"loadout-extra\"");
+        invalidPulse("\"context\":\"default\"", "\"context\":\"character-record-extra\"");
+        invalidPulse("\"rightY\":0", "\"rightY\":0,\"extra\":0");
+        pulse.verb = "observe-input"; pulse.payload.clear();
+        Gate inputRead(identity);
+        Check(Decode(*Encode(pulse))->verb == "observe-input" && !inputRead.Claim(pulse, 10000),
+              "input observation does not require action permission");
+        pulse.payload = "{}"; Check(!Encode(pulse), "input observation accepts no payload");
+        std::cout << "Control identity, replay, expiry, opt-in, and wire corruption checks passed\n";
+        return 0;
+    } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }
+}

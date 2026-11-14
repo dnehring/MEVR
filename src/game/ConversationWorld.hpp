@@ -2,6 +2,9 @@
 #pragma once
 
 #include "core/vr/ConversationWorld.hpp"
+#include "core/vr/Floor.hpp"
+
+#include <optional>
 
 #include <string>
 
@@ -24,6 +27,8 @@ namespace mevr::game::conversation_world {
 struct Link {
     // HostServices v33 setConversationWorld; null: an older host (the measurements still run, no world mode).
     void (*publish)(vr::conversation_world::State const* state) = nullptr;
+    // The headset's eyes above the real floor (HostServices v10), for the live audit's eye height; nullopt without a host.
+    std::optional<vr::floor::State> floor;
 };
 
 // The camera-update handler (the on-foot view and the POV's address); after ue3::runtime::Ready.

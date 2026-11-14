@@ -266,6 +266,8 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     thread_local std::vector<unsigned char> in;
     base.assign(pose.begin(), pose.end());
     bool bodyMoved = false;
+    Quat bodyTurn{};
+    Vec3 const animatedBody = goal.body >= 0 && goal.body < count ? base[goal.body].translation : Vec3{};
     if (goal.body >= 0) {
         if (goal.bodyTurns) {
             double const total = result.wantedTurnDegrees / kDegrees;
@@ -275,6 +277,7 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
             double const turn = legsWeight > 0.0 ? Wrap(excess + legsWeight * Wrap(goal.legsTurnDegrees / kDegrees - excess)) : excess;
             if (turn != 0.0) {
                 TurnSubtree(base, parents, goal.body, About(up, turn), in);
+                bodyTurn = About(up, turn);
                 result.bodyTurnDegrees = turn * kDegrees;
                 bodyMoved = true;
             }
@@ -300,6 +303,19 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
                 }
                 result.bodyShift = shift;
                 bodyMoved = true;
+            }
+            // Standing still, the feet planted (TorsoGoal::plantWeight): the slide put the body bone at bodyAt whatever
+            // the animation did; the feet go back by its animated offset from rest, turned with the body.
+            double const plantWeight = std::isfinite(goal.plantWeight) ? std::clamp(goal.plantWeight, 0.0, 1.0) : 0.0;
+            if (plantWeight > 0.0 && Finite(goal.bodyRest)) {
+                Vec3 const sway = Horizontal(animatedBody - goal.bodyRest, up);
+                result.bodySway = Length(sway);
+                Vec3 correction = Rotate(bodyTurn, sway) * plantWeight;
+                double const plantMax = std::isfinite(goal.maxPlant) ? std::max(0.0, goal.maxPlant) : 0.0;
+                if (Length(correction) > plantMax) {
+                    correction = Length(correction) > 1e-12 ? correction * (plantMax / Length(correction)) : Vec3{};
+                }
+                result.feetCorrection = correction;
             }
         }
     }

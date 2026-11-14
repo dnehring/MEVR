@@ -99,6 +99,33 @@ class VariantTests(unittest.TestCase):
         self.assertEqual(len(list(self.output.glob("*.pcsav"))), 4)  # Frozen base + 3 unique cases.
         self.assertEqual(index["provenance"]["kind"], "source-inspected")
 
+    def test_batch_receipts_match_single_cli_including_noop_and_float32_rounding(self):
+        for number, value in enumerate((spec(surplus=100), spec("player.current_fuel", 0.1, 0.01, 0.2))):
+            with self.subTest(resource=value["resource"]):
+                self.output = self.root / f"batch-equivalence-{number}"
+                self.write_spec(value)
+                index = self.prepare()
+                for label, case in index["cases"].items():
+                    single = self.root / f"single-{number}-{label}.pcsav"
+                    receipt = single.with_suffix(".receipt.json")
+                    result = subprocess.run([sys.executable, str(generator.ADAPTER_PATH), "prepare",
+                                             str(self.base), str(single), "--recipe",
+                                             str(self.output / case["recipe"]), "--receipt", str(receipt)],
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(single.read_bytes(), (self.output / case["fixture"]).read_bytes())
+                    self.assertEqual(receipt.read_bytes(), (self.output / case["receipt"]).read_bytes())
+                    self.assertEqual(json.loads(result.stdout), json.loads(receipt.read_bytes()))
+                exact = json.loads((self.output / "exact.receipt.json").read_bytes())
+                self.assertEqual(set(exact), {"schema_version", "operation", "game", "save_version", "evidence",
+                                             "upstream_pin", "input_sha256", "output_sha256", "recipe_sha256",
+                                             "recipe_id", "changes", "byte_identical"})
+                if number == 0:
+                    self.assertTrue(json.loads((self.output / "surplus.receipt.json").read_bytes())["byte_identical"])
+                else:
+                    self.assertNotEqual(exact["changes"][0]["requested"], exact["changes"][0]["after"])
+                self.assertEqual(self.base.read_bytes(), self.raw)
+
     def test_all_allowlisted_resources_and_noop_case(self):
         for i, resource in enumerate(sorted(generator.RESOURCE_PATHS)):
             with self.subTest(resource=resource):
@@ -237,6 +264,150 @@ class VariantTests(unittest.TestCase):
                     save = save_tool.Save.load(folder / case["fixture"])
                     self.assertEqual(save.value("player.probes"), case["expectedValue"])
                 self.assertEqual(generator.sha(base.read_bytes()), expected)
+
+
+def reload_spec(capacity=12, partial=4, surplus=24):
+    value = dict(schemaVersion=1, kind='reload-ammo', id='test-reload', capacity=capacity,
+                 partialUsed=partial, surplusReserve=surplus, ammoPolicy='ordinary-finite', nativeValidation='pending',
+                 weapon=dict(index=0, className='SFXWeapon_AssaultRifle', runtimeClass='SFXGameContent_Inventory.SFXWeapon_AssaultRifle'),
+                 provenance=dict(kind='native-measured', reference='synthetic-test-only', sha256='b'*64,
+                                 description='Synthetic attestation for offline tests; no native evidence'))
+    return value
+
+
+def ammo_fixture(records):
+    # Replace the independently authored fixture's weapon-list wire bytes;
+    # never use the adapter parser schema to construct this test input.
+    def record(name, used, reserve, current):
+        return fixtures.string(name)+fixtures.integer(used)+fixtures.integer(reserve)+fixtures.integer(int(current))+fixtures.integer()+fixtures.string()
+    original = fixtures.integer(1)+record('Pistol', 3, 24, True)
+    replacement = fixtures.integer(len(records))+b''.join(record(*row) for row in records)
+    raw = fixtures.fixture()[:-4]
+    assert raw.count(original) == 1
+    return fixtures.with_crc(raw.replace(original, replacement, 1))
+
+
+class ReloadVariantTests(unittest.TestCase):
+    write_spec = VariantTests.write_spec
+    prepare = VariantTests.prepare
+
+    def setUp(self):
+        VariantTests.setUp(self)
+        self.base_records([('SFXWeapon_AssaultRifle', 3, 24, True)])
+        self.write_spec(reload_spec())
+
+    def base_records(self, rows):
+        self.raw = ammo_fixture(rows)
+        self.base.write_bytes(self.raw)
+        self.base_hash = generator.sha(self.raw)
+
+    def test_cases_edit_only_exact_weapon_ammo_and_replay_shared_receipts(self):
+        index = self.prepare()
+        self.assertEqual(set(index['cases']), {'full-magazine', 'partial', 'empty', 'no-reserve',
+                         'insufficient-reserve', 'exact-reserve', 'surplus-reserve'})
+        self.assertEqual(index['boundaryUsed'], 4)
+        self.assertTrue(index['savedSelection']['targetIsSavedCurrent'])
+        self.assertFalse(index['savedSelection']['actualSelectedWeaponVerified'])
+        original = save_tool.Save(self.raw)
+        expected = {'full-magazine': (0,24), 'partial': (4,24), 'empty': (12,24),
+                    'no-reserve': (4,0), 'insufficient-reserve': (4,3), 'exact-reserve': (4,4), 'surplus-reserve': (4,24)}
+        for label, (used, reserve) in expected.items():
+            case = index['cases'][label]
+            result = save_tool.Save.load(self.output/case['fixture'])
+            self.assertEqual(result.value('player.weapons.0.ammo_used_count'), used)
+            self.assertEqual(result.value('player.weapons.0.ammo_total'), reserve)
+            self.assertEqual(case['expectedLoadedAtAttestedCapacity'], 12-used)
+            self.assertLessEqual({d['path'] for d in save_tool.diff(original,result)},
+                                {'player.weapons.0.ammo_used_count','player.weapons.0.ammo_total'})
+            recipe_raw = (self.output/case['recipe']).read_bytes()
+            recipe = json.loads(recipe_raw)
+            self.assertEqual(recipe['expect']['player.weapons.0.class_name'], 'SFXWeapon_AssaultRifle')
+            self.assertTrue(recipe['expect']['player.weapons.0.current_weapon'])
+            replay, changes = original.prepare(recipe)
+            self.assertEqual(replay.raw, result.raw)
+            self.assertEqual(json.loads((self.output/case['receipt']).read_bytes()),
+                             save_tool.make_receipt('prepare', original, replay, changes, recipe=recipe, recipe_raw=recipe_raw))
+        self.assertEqual(index['cases']['surplus-reserve']['equivalentTo'], 'partial')
+        self.assertFalse((self.output/'surplus-reserve.pcsav').exists())
+        for name, record in index['files'].items():
+            self.assertEqual(generator.sha((self.output/name).read_bytes()), record['sha256'])
+        self.assertEqual(self.base.read_bytes(), self.raw)
+        for gate in ('nativeValidation','vrValidation','scenarioReadiness'): self.assertEqual(index[gate], 'pending')
+
+    def test_capacity_one_and_two_report_degenerate_cases(self):
+        self.base_records([('SFXWeapon_AssaultRifle',0,24,True)])
+        for capacity, partial in ((1,None),(2,1)):
+            self.output = self.root/f'capacity-{capacity}'
+            self.write_spec(reload_spec(capacity,partial))
+            index = self.prepare()
+            self.assertEqual(index['boundaryUsed'], 1)
+            self.assertEqual(index['cases']['insufficient-reserve']['equivalentTo'], 'no-reserve')
+            self.assertEqual(index['autoReloadAmbiguous'], capacity==1)
+            if capacity==1:
+                self.assertNotIn('partial',index['cases'])
+                self.assertIn('partial',index['omittedCases'])
+                self.assertEqual(index['cases']['surplus-reserve']['equivalentTo'],'empty')
+            else: self.assertIn('partial',index['cases'])
+
+    def test_invalid_ammo_schema_policy_values_and_capacity_evidence(self):
+        changes = [dict(capacity=0),dict(capacity=True),dict(capacity=12.0),dict(capacity=2**24),
+                   dict(partialUsed=1),dict(partialUsed=True),dict(partialUsed=12),dict(partialUsed=None),
+                   dict(surplusReserve=12),dict(surplusReserve=True),dict(surplusReserve=2**24+1),
+                   dict(ammoPolicy='heat'),dict(nativeValidation='passed'),dict(extra=1),dict(kind='guessed')]
+        for change in changes:
+            value=reload_spec();value.update(change);self.write_spec(value)
+            with self.subTest(change=change),self.assertRaises(ValueError): self.prepare()
+            self.assertFalse(self.output.exists())
+        value=reload_spec();value['provenance']['kind']='source-inspected';self.write_spec(value)
+        with self.assertRaisesRegex(ValueError,'native-measured'):self.prepare()
+        value=reload_spec(1,1);self.write_spec(value)
+        with self.assertRaisesRegex(ValueError,'partialUsed must be null'):self.prepare()
+
+    def test_class_index_duplicates_and_current_selection_ambiguity_rejected(self):
+        for change in (dict(index=-1),dict(index=True),dict(index=1),dict(className='Other'),
+                       dict(runtimeClass='SFXGame.SFXHeavyWeapon'),dict(runtimeClass='Unknown.Rifle')):
+            value=reload_spec();value['weapon'].update(change);self.write_spec(value)
+            with self.subTest(change=change),self.assertRaises(ValueError):self.prepare()
+            self.assertFalse(self.output.exists())
+        self.write_spec(reload_spec())
+        for rows in ([('SFXWeapon_AssaultRifle',3,24,True),('SFXWeapon_AssaultRifle',0,24,False)],
+                     [('SFXWeapon_AssaultRifle',3,24,True),('SFXWeapon_HeavyPistol',0,24,True)],
+                     [('SFXWeapon_AssaultRifle',13,24,True)], [('SFXWeapon_AssaultRifle',-1,24,True)],
+                     [('SFXWeapon_AssaultRifle',3,-1,True)], [('SFXWeapon_AssaultRifle',3,2**24+1,True)]):
+            self.base_records(rows)
+            with self.subTest(rows=rows),self.assertRaises(ValueError):self.prepare()
+            self.assertFalse(self.output.exists())
+
+    def test_nonzero_index_and_unselected_target_remain_explicit(self):
+        self.base_records([('SFXWeapon_HeavyPistol',0,24,True),('SFXWeapon_AssaultRifle',3,24,False)])
+        value=reload_spec();value['weapon']['index']=1;self.write_spec(value)
+        index=self.prepare()
+        self.assertFalse(index['savedSelection']['targetIsSavedCurrent'])
+        self.assertEqual(index['savedSelection']['currentRecordIndex'],0)
+        case=index['cases']['partial'];recipe=json.loads((self.output/case['recipe']).read_bytes())
+        self.assertFalse(recipe['expect']['player.weapons.1.current_weapon'])
+        self.assertEqual(set(recipe['set']),{'player.weapons.1.ammo_used_count','player.weapons.1.ammo_total'})
+        self.output=self.root/'no-selected'
+        self.base_records([('SFXWeapon_HeavyPistol',0,24,False),('SFXWeapon_AssaultRifle',3,24,False)])
+        self.assertIsNone(self.prepare()['savedSelection']['currentRecordIndex'])
+
+    def test_reload_batch_matches_standalone_cli_and_rolls_back_failure(self):
+        index=self.prepare();case=index['cases']['exact-reserve']
+        output,receipt=self.root/'single.pcsav',self.root/'single-receipt.json'
+        command=[sys.executable,str(ROOT/'tools/le2-save.py'),'prepare',str(self.base),str(output),'--recipe',str(self.output/case['recipe']),
+                 '--receipt',str(receipt)]
+        run=subprocess.run(command,capture_output=True,text=True)
+        self.assertEqual(run.returncode,0,run.stderr)
+        self.assertEqual(output.read_bytes(),(self.output/case['fixture']).read_bytes())
+        self.assertEqual(receipt.read_bytes(),(self.output/case['receipt']).read_bytes())
+        self.output=self.root/'fail-reload';real_write=generator.write_new
+        def fail(path,raw):
+            real_write(path,raw)
+            if Path(path).name=='partial.pcsav':raise OSError('injected ammo failure')
+        with mock.patch.object(generator,'write_new',side_effect=fail),self.assertRaisesRegex(OSError,'injected'):self.prepare()
+        self.assertFalse(self.output.exists())
+        self.assertEqual(self.base.read_bytes(),self.raw)
+
 
 
 if __name__ == "__main__":

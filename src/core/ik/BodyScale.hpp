@@ -28,6 +28,12 @@ struct Scale {
 
 // p after the scale (the pose's points).
 Vec3 Apply(Scale const& scale, Vec3 p);
+// A point of a body standing on the floor at floorZ (world or component units), scaled by s about that floor directly under
+// it: its place kept, its height above that floor times s. Where a scaled body standing there would have it. Not Apply's
+// point: Apply's pivot is under the view on the pawn's own floor, and a head metres from the view and above that floor
+// (Shepard's mark on the council's podium as the hearing opens) moved 18.5% of both at 1.185, up and away: the player's view
+// 0.4-1.2 m too high (2026-11-13; research/69 "The view that floated").
+Vec3 StandingAt(double s, Vec3 p, double floorZ);
 // The goal a solve must aim at so that after the scale it lands on `p`.
 Vec3 Unscale(Scale const& scale, Vec3 p);
 // A displacement, or a length, likewise.

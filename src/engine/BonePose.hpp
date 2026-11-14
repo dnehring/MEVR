@@ -149,6 +149,11 @@ struct Leg {
     bool stand = false;
     double floorUp = 9.0;  // the ankle bone's height above the floor (component units)
     double weight = 1.0;
+    // Planted (research/72, 2026-11-14): standing still, the ankle moved by the torso's feet correction
+    // (ik::TorsoResult::feetCorrection: back where the idle animation planted it, which the whole body's slide under the view
+    // had carried along with the animation's sway), the knee bending toward its place moved the same way; `ankle` and `knee`
+    // are not read. No correction: the leg as animated.
+    bool planted = false;
 };
 
 struct Request {

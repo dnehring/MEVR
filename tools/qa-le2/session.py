@@ -17,6 +17,7 @@ import datetime as dt
 import hashlib
 import importlib.util
 import json
+import ntpath
 import os
 from pathlib import Path
 import shutil
@@ -162,15 +163,134 @@ def stage_fixture(source, target):
     shutil.copystat(source, target)
 
 
-def windows_processes():
+def _local_appdata_key(value):
+    """Compare Windows paths without consulting a possibly redirected filesystem."""
+    if not isinstance(value, str) or not value or not ntpath.isabs(value) or not ntpath.splitdrive(value)[0]:
+        raise SessionError("Cannot establish desktop LOCALAPPDATA: missing or non-absolute path")
+    normalized = ntpath.normcase(ntpath.normpath(value))
+    parts = normalized.split("\\")
+    # Actual observed failure: ...\Packages\sandbox.{GUID}\AC. Reject before
+    # invoking any OS or process probe; a matching redirected known folder does
+    # not turn this package-scoped view into desktop evidence.
+    if any(part == "packages" and i + 1 < len(parts) and parts[i + 1].startswith("sandbox.")
+           for i, part in enumerate(parts)):
+        raise SessionError("Sandbox-redirection scoped LOCALAPPDATA; native lifecycle requires the approved desktop host context")
+    return normalized
+
+
+def _windows_host_evidence():
+    """Read process-token scope and unredirected Known Folder; never change them."""
     if os.name != "nt":
-        raise SessionError("Native sessions require Windows; use test-session.py for offline tests")
+        raise SessionError("Native sessions require Windows; use injected providers for offline tests")
+    import ctypes
+    from ctypes import wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("data1", wintypes.DWORD), ("data2", wintypes.WORD),
+                    ("data3", wintypes.WORD), ("data4", ctypes.c_ubyte * 8)]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    shell = ctypes.WinDLL("shell32", use_last_error=True)
+    ole = ctypes.WinDLL("ole32", use_last_error=True)
+    kernel.GetCurrentProcess.argtypes = []
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    advapi.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    advapi.OpenProcessToken.restype = wintypes.BOOL
+    advapi.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                          wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    advapi.GetTokenInformation.restype = wintypes.BOOL
+    advapi.IsTokenRestricted.argtypes = [wintypes.HANDLE]
+    advapi.IsTokenRestricted.restype = wintypes.BOOL
+    shell.SHGetKnownFolderPath.argtypes = [ctypes.POINTER(GUID), wintypes.DWORD, wintypes.HANDLE,
+                                          ctypes.POINTER(ctypes.c_void_p)]
+    shell.SHGetKnownFolderPath.restype = wintypes.LONG
+    ole.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+    ole.CoTaskMemFree.restype = None
+    token = wintypes.HANDLE()
+    if not advapi.OpenProcessToken(kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)):  # TOKEN_QUERY
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        app_container, size = wintypes.DWORD(), wintypes.DWORD()
+        if not advapi.GetTokenInformation(token, 29, ctypes.byref(app_container),  # TokenIsAppContainer
+                                          ctypes.sizeof(app_container), ctypes.byref(size)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if size.value != ctypes.sizeof(app_container) or app_container.value not in (0, 1):
+            raise SessionError("Unexpected TokenIsAppContainer response; native host scope is unknown")
+        ctypes.set_last_error(0)
+        restricted = bool(advapi.IsTokenRestricted(token))
+        if not restricted and ctypes.get_last_error():
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel.CloseHandle(token)
+    folder_id = GUID.from_buffer_copy(uuid.UUID("f1b32785-6fba-4fcf-9d55-7b8e7f157091").bytes_le)
+    address = ctypes.c_void_p()
+    try:
+        result = shell.SHGetKnownFolderPath(ctypes.byref(folder_id), 0x00010000, None, ctypes.byref(address))
+        # KF_FLAG_NO_PACKAGE_REDIRECTION, deliberately no KF_FLAG_CREATE.
+        if result != 0 or not address.value:
+            raise SessionError(f"Unredirected LocalAppData lookup failed (HRESULT {result & 0xffffffff:08x})")
+        local_appdata = ctypes.wstring_at(address)
+    finally:
+        if address.value:
+            ole.CoTaskMemFree(address)
+    return {"localAppData": local_appdata, "appContainer": bool(app_container.value), "restricted": restricted}
+
+
+def require_native_host():
+    """Return verified desktop LocalAppData, or refuse ambiguous/scoped context.
+
+    This is a narrow guard against known redirection/restricted-token evidence,
+    not proof of complete process visibility, desktop ownership or quietness.
+    No environment repair, elevation, folder creation or inventory happens here.
+    """
+    environment = _local_appdata_key(os.environ.get("LOCALAPPDATA"))
+    try:
+        evidence = _windows_host_evidence()
+    except (OSError, AttributeError) as error:
+        raise SessionError(f"Cannot verify desktop host context: {error}") from error
+    if type(evidence.get("appContainer")) is not bool or type(evidence.get("restricted")) is not bool:
+        raise SessionError("Cannot verify desktop host token scope")
+    if evidence["appContainer"] or evidence["restricted"]:
+        raise SessionError("AppContainer/restricted process token; native lifecycle requires the approved desktop host context")
+    canonical = _local_appdata_key(evidence.get("localAppData"))
+    if environment != canonical:
+        raise SessionError("LOCALAPPDATA differs from Windows unredirected LocalAppData; desktop process/coordination scope is unverified")
+    return safe_path(Path(evidence["localAppData"]))
+
+
+def require_native_context(context):
+    """Require this frozen run's lock to use the verified desktop coordination root."""
+    root = default_locks()
+    if safe_path(context["lockPath"]) != root / "qa-cafeteria.lock":
+        raise SessionError("Frozen run uses a different desktop coordination root; review recovery in the approved host context")
+    return root
+
+
+def windows_processes():
+    desktop = require_native_host()
     # Fixed command: no input paths or user-supplied strings enter PowerShell source.
-    script = "$ErrorActionPreference='Stop'; @(Get-Process | Where-Object { $_.ProcessName -match '^(MassEffect[123]|MassEffectLauncher|MEVR-VRLauncher|vrmonitor|vrserver|vrcompositor|vrdashboard|vrwebhelper|vrstartup)$' } | ForEach-Object { [pscustomobject]@{name=$_.ProcessName;pid=$_.Id;path=$_.Path;started=$_.StartTime.ToUniversalTime().ToString('o')} }) | ConvertTo-Json -Compress"
+    script = "$ErrorActionPreference='Stop'; $inventory=@(Get-Process | Where-Object { $_.ProcessName -match '^(MassEffect[123]|MassEffectLauncher|MEVR-VRLauncher|vrmonitor|vrserver|vrcompositor|vrdashboard|vrwebhelper|vrstartup)$' } | ForEach-Object { [pscustomobject]@{name=$_.ProcessName;pid=$_.Id;path=$_.Path;started=$_.StartTime.ToUniversalTime().ToString('o')} }); [pscustomobject]@{localAppData=$env:LOCALAPPDATA;processes=$inventory} | ConvertTo-Json -Depth 4 -Compress"
     result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
                             capture_output=True, text=True, check=True)
-    data = json.loads(result.stdout or "[]")
-    return data if isinstance(data, list) else [data]
+    try:
+        data = json.loads(result.stdout)
+    except (ValueError, TypeError) as error:
+        raise SessionError("Missing/malformed desktop process inventory; cannot infer quietness") from error
+    if not isinstance(data, dict) or _local_appdata_key(data.get("localAppData")) != _local_appdata_key(str(desktop)):
+        raise SessionError("Process-inventory shell has a different LOCALAPPDATA scope")
+    inventory = data.get("processes")
+    if not isinstance(inventory, list) or any(not isinstance(p, dict) or not isinstance(p.get("name"), str)
+                                             or type(p.get("pid")) is not int or p["pid"] <= 0 for p in inventory):
+        raise SessionError("Invalid desktop process inventory; cannot infer quietness")
+    return inventory
+
+
+# Stable identity even when test code patches a module attribute. Only callers
+# explicitly supplying fake providers opt into the offline dependency-injection path.
+_NATIVE_PROCESSES = windows_processes
 
 
 def require_quiet(processes):
@@ -181,9 +301,7 @@ def require_quiet(processes):
 
 
 def default_locks():
-    if not os.environ.get("LOCALAPPDATA"):
-        raise SessionError("LOCALAPPDATA is required for the shared session lock")
-    return safe_path(Path(os.environ["LOCALAPPDATA"]) / "MEVR")
+    return safe_path(require_native_host() / "MEVR")
 
 
 def load_scenario(path):
@@ -196,11 +314,44 @@ def load_scenario(path):
     return module.load(path, for_run=True)
 
 
+def validate_fixture_selection_text(plan):
+    """Catch host text limits before backups; the host still checks the full binding."""
+    if "fixtureSelection" not in plan:
+        return
+    selection = plan["fixtureSelection"]
+    if not isinstance(selection, dict):
+        raise SessionError("fixtureSelection must be an object")
+    descriptor, evidence = selection.get("descriptor"), selection.get("evidence")
+    if not isinstance(descriptor, dict) or not isinstance(evidence, dict):
+        raise SessionError("fixtureSelection descriptor and evidence must be objects")
+    # Keep these limits aligned with Le2ControlHost.cpp DescriptorComponent and
+    # FrozenFixture. C++ string::size counts UTF-8 bytes, not Python characters.
+    for field, value, max_bytes, max_units in (
+            ("descriptor.career", descriptor.get("career"), 1024, 255),
+            ("descriptor.saveName", descriptor.get("saveName"), 1024, 255),
+            ("evidence.reviewedBy", evidence.get("reviewedBy"), 256, None)):
+        label = "fixtureSelection." + field
+        if not isinstance(value, str) or not value or "\0" in value:
+            raise SessionError(f"{label} must be nonempty text without NUL")
+        try:
+            byte_count = len(value.encode("utf-8"))
+            unit_count = len(value.encode("utf-16-le")) // 2
+        except UnicodeEncodeError as exc:
+            raise SessionError(f"{label} must be strict Unicode text") from exc
+        if byte_count > max_bytes:
+            raise SessionError(f"{label} exceeds {max_bytes} UTF-8 bytes")
+        if max_units is not None and unit_count > max_units:
+            raise SessionError(f"{label} exceeds {max_units} UTF-16 code units")
+        if max_units is None and not value.strip(" \t\r\n"):
+            raise SessionError(f"{label} must identify the reviewer and mapping basis")
+
+
 def validate_plan(plan, run, scenario_loader=load_scenario):
     if plan.get("schemaVersion") != SCHEMA:
         raise SessionError("Unknown session plan version")
     if not isinstance(plan.get("coordinatedOwner"), str) or not plan["coordinatedOwner"].strip():
         raise SessionError("coordinatedOwner must identify the explicitly coordinated session owner")
+    validate_fixture_selection_text(plan)
     profile = safe_path(plan["profileRoot"])
     game = safe_path(plan["gameRoot"])
     run = safe_path(run)
@@ -248,6 +399,9 @@ def validate_plan(plan, run, scenario_loader=load_scenario):
 
 
 def prepare(plan_path, run, *, processes=windows_processes, locks=None, scenario_loader=load_scenario):
+    native_locks = default_locks() if processes is _NATIVE_PROCESSES else None
+    if native_locks is not None and locks is not None and safe_path(locks) != native_locks:
+        raise SessionError("Native lifecycle must use the verified desktop coordination root")
     plan_path = safe_path(plan_path)
     plan = read_json(plan_path)
     profile, game, exe, fixture, target, scenario_path, scenario, protected = validate_plan(plan, run, scenario_loader)
@@ -353,7 +507,11 @@ def load_context(run, require_lock=True):
 
 def request_load(run, *, processes=windows_processes):
     """Record the manual launcher boundary; never start an EA process inside a harness job."""
+    if processes is _NATIVE_PROCESSES:
+        require_native_host()
     run, context = load_context(run)
+    if processes is _NATIVE_PROCESSES:
+        require_native_context(context)
     if context["phase"] != "staged":
         raise SessionError("Load request requires a staged session")
     require_quiet(processes)
@@ -371,7 +529,11 @@ def request_load(run, *, processes=windows_processes):
 
 def bind_process(run, pid, *, processes=windows_processes):
     """Bind the actual game after Steam/EA startup; never infer ownership from PID alone."""
+    if processes is _NATIVE_PROCESSES:
+        require_native_host()
     run, context = load_context(run)
+    if processes is _NATIVE_PROCESSES:
+        require_native_context(context)
     if context["phase"] not in ("load-requested", "game-bound"):
         raise SessionError("Process binding requires load-requested session")
     live = processes()
@@ -423,7 +585,11 @@ def attach(run, files):
 
 
 def reset(run, *, processes=windows_processes):
+    if processes is _NATIVE_PROCESSES:
+        require_native_host()
     run, context = load_context(run, require_lock=False)
+    if processes is _NATIVE_PROCESSES:
+        require_native_context(context)
     if context["phase"] == "restored" and not Path(context["lockPath"]).exists():
         require_quiet(processes)
         if any(snapshot(item["path"]) != item["before"] for item in context["protected"]):

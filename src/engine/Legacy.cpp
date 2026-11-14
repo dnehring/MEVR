@@ -5,7 +5,9 @@
 
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
+#include "engine/ConsoleCommandInput.hpp"
 #include "engine/GameAdapterSdk.hpp"
+#include "engine/ScopedUnionMember.hpp"
 
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -13,7 +15,7 @@
 #include <Windows.h>
 
 #include <cstdint>
-#include <new>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -26,22 +28,16 @@ UObject* Sdk(ue3::Object const* object) {
     return reinterpret_cast<UObject*>(const_cast<ue3::Object*>(object));
 }
 
-std::wstring Widen(std::string const& utf8) {
-    int const size = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
-    std::wstring wide(static_cast<size_t>(size > 0 ? size : 0), L'\0');
-    if (size > 0) {
-        MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), wide.data(), size);
-    }
-    return wide;
-}
-
 std::string Narrow(wchar_t const* chars) {
     int const size = WideCharToMultiByte(CP_UTF8, 0, chars, -1, nullptr, 0, nullptr, nullptr);
     if (size <= 1) {
         return {};
     }
-    std::string narrow(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, chars, -1, narrow.data(), size, nullptr, nullptr);
+    std::string narrow(static_cast<size_t>(size), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, chars, -1, narrow.data(), size, nullptr, nullptr) != size) {
+        return {};
+    }
+    narrow.resize(static_cast<size_t>(size - 1));  // conversion includes the terminating NUL
     return narrow;
 }
 
@@ -174,15 +170,17 @@ ue3::Rotator* AdjustedAimReturn(void* parms) {
 }
 
 std::string ConsoleCommand(ue3::Object* controller, ue3::Function* function, std::string const& command) {
+    auto const wideCommand = detail::ConsoleCommandInput(command);
     APlayerController_execConsoleCommand_Parms parms;  // zeroed
-    new (&parms.Command) FString(Widen(command).c_str());  // the game's allocator
+    // The SDK parameter block leaves both nontrivial union members inactive
+    // and its destructor does not destroy them. Own each constructed member
+    // through normal return and ordinary C++ exception unwinding.
+    detail::ScopedUnionMember<FString> commandLifetime(&parms.Command, wideCommand.c_str());
+    detail::ScopedUnionMember<FString> returnLifetime(&parms.ReturnValue);
     parms.bWriteToLog = 0;
     // The native directly, never the SDK's wrapper.
     Sdk(controller)->ProcessEvent(reinterpret_cast<UFunction*>(function), &parms, nullptr);
-    std::string output = Narrow(parms.ReturnValue.Chars());
-    parms.Command.~FString();  // union members: the parms' destructor leaves them alone
-    parms.ReturnValue.~FString();
-    return output;
+    return Narrow(parms.ReturnValue.Chars());
 }
 
 int RaiseReflectionCaptures(ue3::Function* setFrameRate, float rate, int begin, int limit, CaptureCounts& counts) {

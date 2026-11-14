@@ -49,6 +49,10 @@
 #include "game/Sprint.hpp"
 #include "game/Comfort.hpp"
 #include "game/ConsoleRequest.hpp"
+#if defined(MEVR_LE2_DIAGNOSTIC)
+#include "engine/Le2DiagnosticHost.hpp"
+#include "engine/Le2ControlHost.hpp"
+#endif
 #include "game/SystemSettings.hpp"
 #include "game/GameArt.hpp"
 #include "game/HoloProbe.hpp"
@@ -676,6 +680,8 @@ mevr::game::world_ui::Link WorldUiLink() {
     return link;
 }
 
+std::optional<mevr::vr::floor::State> HostFloor();
+
 // Host renderer (HostServices v33): conversations in the world (research/59), if the host's State matches ours.
 mevr::game::conversation_world::Link ConversationWorldLink() {
     using namespace mevr;
@@ -684,6 +690,7 @@ mevr::game::conversation_world::Link ConversationWorldLink() {
         gHost->conversationWorldSize == sizeof(vr::conversation_world::State)) {
         link.publish = gHost->setConversationWorld;
     }
+    link.floor = HostFloor();
     return link;
 }
 
@@ -1289,6 +1296,11 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
         return false;
     }
 #endif
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    bool const controlRegistered = engine::le2_control::Start(gInit.get());
+    log::Info("LE2 diagnostic host: bound control consumer {}; renderer, gameplay and shared request polling disabled",
+              controlRegistered ? "registered; awaiting owned invitation" : "unavailable (fail closed)");
+#endif
     gActive = true;
     return true;
 }
@@ -1298,6 +1310,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (!gActive) {
         return;
     }
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    engine::le2_diagnostic::Tick(deltaSeconds);
+    return;
+#endif
     gTickSeconds = deltaSeconds;
     if (gHostOwnsVr) {
         MirrorHostState();
@@ -1458,14 +1474,25 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
 }
 
 MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain) {
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    (void)swapChain;
+#else
     if (gActive) {
         mevr::vr::output::OnPresent(swapChain);
     }
+#endif
 }
 
 MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    engine::le2_diagnostic::Shutdown();
+    engine::le2_control::Shutdown();
+    gInit.reset();
+    gHost = nullptr;
+    return;
+#endif
     // The process is exiting (v5 hosts say so): nothing waits for other threads, and the host
     // leaves the DLL mapped anyway.
     bool const exiting = gHost != nullptr && gHost->version >= 5 && gHost->processExiting != nullptr &&

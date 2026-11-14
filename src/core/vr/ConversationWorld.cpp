@@ -55,6 +55,10 @@ void Publish(State const& state) {
     gHave = true;
 }
 
+bool StillFresh(std::uint64_t ageMs, std::uint64_t ticksSince, std::uint64_t freshMs, std::uint64_t stallMs) {
+    return ageMs <= freshMs || (ageMs <= stallMs && ticksSince < 2);
+}
+
 std::optional<State> Latest(std::uint64_t maxAgeMs) {
     std::lock_guard lock(gMutex);
     if (!gHave || gLatest.active == 0 || GetTickCount64() - gLatest.timeMs > maxAgeMs) {
@@ -1006,6 +1010,10 @@ Opening DecideOpening(OpeningFacts const& facts, OpeningRule rule, OpeningLimits
     }
     if (facts.markUnits <= limits.stayUnits && std::abs(facts.riseUnits) <= limits.stayUnits) {
         return Opening::Stay;
+    }
+    // The game's own fade to black moved him: the player goes with him under it (the owner, 2026-11-13).
+    if (facts.coveredByBlack) {
+        return Opening::Cut;
     }
     if (facts.markUnits <= limits.walkMaxUnits && std::abs(facts.riseUnits) <= limits.riseMaxUnits && facts.sightToMark && facts.floorAtMark) {
         return Opening::WalkIn;

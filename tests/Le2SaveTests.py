@@ -187,6 +187,23 @@ class SaveTests(unittest.TestCase):
             with self.assertRaises(le2.SaveError):
                 le2.write_outputs(absent, self.raw, absent, {})
 
+    def test_roundtrip_cli_receipt_keeps_null_recipe_fields_and_exact_bytes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            source, output, receipt = [folder / name for name in ("source.pcsav", "copy.pcsav", "receipt.json")]
+            source.write_bytes(self.raw)
+            result = subprocess.run([sys.executable, str(TOOL), "roundtrip", str(source), str(output),
+                                     "--receipt", str(receipt)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            expected = dict(schema_version=1, operation="roundtrip", game="LE2", save_version=30,
+                            evidence="offline-only; game load and VR acceptance untested", upstream_pin=le2.UPSTREAM_PIN,
+                            input_sha256=le2.sha256(self.raw), output_sha256=le2.sha256(self.raw),
+                            recipe_sha256=None, recipe_id=None, changes=[], byte_identical=True)
+            self.assertEqual(json.loads(result.stdout), expected)
+            self.assertEqual(receipt.read_bytes(), (json.dumps(expected, indent=2) + "\n").encode("utf-8"))
+            self.assertEqual(source.read_bytes(), self.raw)
+            self.assertEqual(output.read_bytes(), self.raw)
+
     @unittest.skipUnless(os.environ.get("LE2_TEST_SAVE"), "External corpus is opt-in")
     def test_external_corpus_roundtrip_and_resource_edit(self):
         for name in os.environ["LE2_TEST_SAVE"].split(os.pathsep):

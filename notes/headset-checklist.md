@@ -349,6 +349,14 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **Long dialogue choices** (2026-11-11, research/69 item 23; built, not yet run in the game): a wheel with long replies
   (the hearing's "The Council won't help us.") shows each reply whole on the wheel, the same text size as before, and no stray
   letters elsewhere in view.
+- [ ] **The council hearing at your own height** (2026-11-13, research/69 item 39, "The view that floated"; fake headset: the
+  opening on the mark, the cut under the fade): John02 slot 80, walk with Anderson, then the hearing: you stand on the podium's
+  floor at your own eye height, not floating; when the hearing ends and the screen goes black you are with Anderson and Udina
+  (a short fade), and you can walk with them or stay. `python tools/conversation-session.py` afterwards: no `audit:eye-height`.
+- [ ] **Virmire's briefing and the fade inside a scene** (2026-11-14, research/69 item 40; fake headset: the 0.66 m step walked,
+  no second blink; a move past 1.5 m under a scene's own fade not seen in the game yet): Kirrahe's briefing at the camp: when the
+  screen goes black and people move, you end up beside Shepard's new place (a short step walked, a longer one under one dip), with
+  no 3D-screen flash, even when the game hitches. Say if any black screen inside a conversation leaves you behind.
 - [ ] **Conversations where you start them** (2026-11-12, research/69 item 28 "The conversational circle", second design; run on
   the fake headset): any conversation (slots 83, 85, 87, 89): you stay where you started it, the person you talk to stays where
   they are, nothing walks you. Someone who takes part later walks over a few lines before speaking; Avina (the hologram) and anyone
@@ -645,6 +653,11 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   right. (research/21 sections 9-10)
 
 ## 4. Moving and comfort (session: VR mod for Mass Effect Legendary Edition)
+- [ ] 2026-11-14 the idle sway (research/72; `[Hands] steadyIdle = 1` in ASI\LE1MEVR.ini, off by default until this
+  check): stand still and look down at Shepard's feet for 30 s: they stay planted (without it they slide 2-3 cm, 16 cm in an
+  idle fidget, while the hips stay under you); then walk off and stop: no jump or skating as it blends in and out. Compare
+  with `steadyIdle = 0` (the mod reads the file live). While in the headset, the audit's untraced states (research/72 "To
+  trace next": a gun drawn, firing, a cast, crouching, near people) can be traced from here with `mevr camera trace`.
 - [ ] Camera shake (research/71, built 2026-11-12, not yet run in the game): firing a rifle and a shotgun, and the Mako's
   jets, with Comfort > Camera shake Off: does the world stay still? Low: a slight shake, not uncomfortable? Running and
   sprinting with Running sway off: no sideways sway or roll of the view? If the sprint still sways, research/71 section

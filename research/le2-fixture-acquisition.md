@@ -5,6 +5,93 @@ Date: 2026-11-13. Read-only inspection; no game launch, save edit or fixture pro
 
 Follow-up: the [scanner now supports explicit LE2 inspection](../tools/conversation-scan/README.md), including string references, reply categories and interrupt-to-node linkage. The scanner limitations below describe the initial investigation; its current README identifies which remain unresolved. Use `--game LE2` for all new sequel inspections.
 
+The [2026-11-14 timed-interrupt follow-up](le2-interrupt-acquisition.md) checks the existing late-game story state and Liara/Citadel alternatives. Clear Liara interrupt outcomes do not establish replayability: met-Liara, DLC completion and date states are already set. No current-save timed fixture is promoted. Freedom's Progress provides a concrete dual-polarity earlier-progression candidate that can share the normal ProCer reload acquisition playthrough.
+
+## Current reload acquisition decision, 2026-11-14
+
+The first native baseline needs a **quiet place to fire and reload an ordinary
+multi-round firearm**, not an endgame encounter or a purpose-built range. The
+inspected reload entry requires enabled combat input and legal weapon/ammo state;
+it does not require an enemy target. Establish normal drawing, firing, partial
+reload and saving at the chosen location before preparing variants. A map name,
+populated inventory or successful load alone does not establish those actions.
+
+The owner confirmed on 2026-11-14 that no earlier save is known. Plan the
+separate protected new-game route below; do not leave acquisition waiting for
+an unidentified Lazarus/Freedom's Progress save.
+
+The first protected New Game attempt reached the Normandy evacuation corridor.
+There the current pawn was `SFXGame.BioPawn`, outside the existing scripted
+input guard's `SFXPawn_Player` requirement. The archive contained no new career
+save. Before repeating the opening, obtain a verified early Legendary Edition
+save or arrange normal controls that can hold movement through the evacuation.
+A candidate from another career needs the same immutable archive, format check
+and normal-load scene verification as one acquired locally. See the
+[native acquisition record](le2-validation-evidence.md#normal-new-game-reached-normandy-evacuation).
+
+The search did not verify a public PC LE2 checkpoint before the reload or
+Veetor interrupt. Trilogy Save Editor's bundled `ME2LeSave.pcsav` decodes as
+`Biop_Nor` at about 36 hours. The
+[RAGING save set](https://playersquared.com/threads/mass-effect-2-legendary-edition-%E2%80%93-complete-save-set-cusa19500.6302/)
+lists a Lazarus Research Station save for PS4 CUSA19500. Its exact tutorial
+position and PC compatibility remain unverified. The author of
+[Skip Mass Effect 2 Prologue](https://www.nexusmods.com/masseffectlegendaryedition/mods/1004?tab=description)
+describes a route to character creation, bypassing the Normandy evacuation
+that blocked scripted movement. Consider the mod for acquisition only if the
+checkpoint can subsequently be loaded and verified on the stock test install.
+No external save or mod was installed during the search.
+
+1. **Preferred reusable route: normal Lazarus/ProCer progression.** Installed
+   base and Patch01 content includes `BioP_ProCer` and
+   `BioD_ProCer_100RezRoom`. Existing sequence inspection identifies pistol
+   acquisition, `LS10_Reload_Heatsink`, the tutorial reload event and a save
+   action. Use a separate protected normal new-game profile; preserve the first
+   legally available checkpoint around that tutorial and a quiet post-tutorial
+   save. Verify which checkpoint actually precedes reload: the authored save
+   action is not that proof. Continue the same natural progression to the
+   [Veetor interrupt candidate](le2-interrupt-acquisition.md), supplying two
+   acquisition lanes without resetting story flags or teleporting saves.
+2. **Bounded opportunity: the existing chapter.** Its normal load and squad-menu
+   progression are recorded in the [evidence log](le2-validation-evidence.md).
+   If the ordinary menu exit yields a safe controllable location, acquire a
+   normal save there with an existing multi-round weapon. Do not require
+   completing the endgame. If more scripted progression blocks that small
+   objective, use ProCer rather than extending the menu route indefinitely.
+   The chapter is not yet an accepted quiet reload fixture.
+3. **Optional dedicated range: The Normandy Project LE2.** The mod's
+   [official changelog](https://www.nexusmods.com/masseffectlegendaryedition/mods/1779?tab=logs)
+   describes a Cargo Bay range requiring Cargo Master crew, a 15,000-credit
+   purchase and construction, then the armor-change/equipment-station route.
+   It supplies a weapon locker, ordinary ammo refill (not heavy ammo) and target
+   dummy. Treat this as a separately installed and hash-bound modded fixture,
+   not an already available stock room. The inspected installed DLC directory
+   has no identifiable TNP folder; this is not an exhaustive installation audit.
+   No mod was downloaded or installed for this investigation.
+
+The installed Kasumi DLC also contains `BioA_PtyMtL_360ShootingRange.pcc`.
+That filename is only a content lead: player usability, normal access from the
+current story state and repeatable saving have not been established.
+
+### Existing weapons and ammo preparation
+
+Fresh strict-reader checks of the immutable original Normandy, resource-reload
+Normandy and chapter saves found existing Collector assault rifle, Geth shotgun,
+MassCannon and LaserPistol records, all with saved used-ammo count zero. Their
+reserves are respectively 280/20/12/24 on Normandy and 280/7/10/24 in the chapter.
+Blackstorm heavy-weapon records also exist, with zero reserve. These are saved
+values, not fresh live capacity, selection or reloadability observations.
+
+Reuse `tools/le2-save.py prepare`: its allowlist already supports existing
+`player.weapons.N.ammo_used_count` and `ammo_total` scalars with pinned input and
+expected-value checks. The fields mean used magazine ammunition and spare
+reserve; see [native ammo mapping](le2-ammo-fixture-source.md). No new weapon
+editor, record insertion or selected-weapon mutation is needed. First observe
+the actual selected class and capacity, then bind partial/empty and reserve
+variants to that existing record and verify post-load values. Ammo edits do not
+enable combat input on Normandy. Prefer a multi-round weapon for the first
+manual reload: the [observed one-round MassCannon](le2-weapon-observation.md)
+can enter automatic reload after a shot, confounding sparse before/after checks.
+
 ## Current private saves
 
 The three existing saves were freshly parsed with `tools/le2-save.py info --json`. The manual save and autosave report `Biop_Nor`; **the chapter save reports `BioP_EndGm2`**, so it must not be treated as another Normandy fixture. All three have the same 80 recorded planet entries, all marked visited, with 599 probe-impact coordinates in total, 30 probes and 1500 fuel. They are a narrow late-game corpus, not three independent scenario states. Raw inspection and hashes stay private.
@@ -15,6 +102,27 @@ Current saves already have the upstream-labeled Garrus recruitment mechanic, gre
 
 ## Concrete acquisition routes
 
+For an operator playing the opening, the precise stopping cue is the first
+reload prompt after picking up the pistol, armor and first thermal clip at
+Lazarus Research Station. Stop before pressing Reload. Use a fresh manual save
+only if the normal Save menu is enabled. Base and Patch01 both grant
+`SFXGameContent_Inventory.SFXWeapon_HeavyPistol`. Stock configuration lists
+12 magazine rounds and 60 maximum spare ammo, which the fixture must confirm
+against its live weapon. The earlier LS5 save occurs before pistol pickup.
+The LS10 tutorial reload event advances the sequence to state 15 and triggers
+another save, so keep any earlier checkpoint separately. If the game only
+allows a save after the tutorial, use it for ordinary ammo transfer and retain
+the tutorial progression case separately.
+
+Once the operator has finished saving, identify the intended checkpoint by
+career, displayed location and slot in the game's Load menu. Copy the exact
+save privately and record its hash before preparing variants. For a new career,
+use ordinary Switch Careers and Load Game when the scripted loader cannot select
+it. Preserve the selected row and post-load capture, then bind that result to
+the protected run. Use the private copy for no-op load verification and measure
+its selected weapon capacity before preparing ammo edits. See the
+[scripted loading boundary](../tools/qa-le2/control.md#reviewed-frozen-fixture-loading).
+
 | Scenario | Locally verified candidate | Next acquisition action |
 |---|---|---|
 | Reload/tutorial | Installed `BioD_ProCer_100RezRoom.pcc` contains `LS10_Reload_Heatsink`, `SFXSeqEvt_TutorialReload_0`, a comparison following that event, and `SFXSeqAct_SaveGame_1`. The same package contains the pistol/armor pickup and cover tutorial sequences. `BioP_ProCer.pcc` is installed. | Start a separate protected normal new-game profile and progress naturally through the opening. Capture the first legally available save before the thermal-clip/reload sequence and another before completion. Determine exactly when the authored save action runs; its presence does not guarantee a pre-reload save. Inspect tutorial event routing, counter and downstream sequence before accepting the physical reload. Do not teleport a late-game Normandy save into this map. |
@@ -23,7 +131,9 @@ Current saves already have the upstream-labeled Garrus recruitment mechanic, gre
 
 The interrupt times above come from the existing dumper's three-decimal rendering of authored track values. They are not measured runtime window bounds. Default/custom window logic, line playback, skips and localization still require native observation. The script inspection exposes native declarations for `BioConversation.SelectInterruption`, `TickInterruptionData`, `NeedToDisplayInterrupt`, `EnableCustomInterruptWindow` and `SetCustomInterruptWindow`; it does not reveal their native implementations or prove safe call order. Acceptance must use player controls, not call these functions to manufacture an outcome.
 
-## Existing scanner: useful subset, missing LE2 support
+## Historical scanner audit: initial missing LE2 support
+
+This section records the 2026-11-13 starting state, not the current tool contract. Explicit LE2 mode, node/interrupt linkage and scoped state-event inspection are now implemented; see the [current scanner README](../tools/conversation-scan/README.md). The effective transition-map and galaxy investigation also progressed in [galaxy fixture source findings](le2-galaxy-fixture-source.md). Retain the list below as historical acquisition context, not a request to reimplement those changes.
 
 The current [scanner](../tools/conversation-scan/Program.cs) has no game selection. `Scan`, `ClassDump`, `ScriptDump`, `SequenceDump`, `StateEvents` and `Wheels` initialize LegendaryExplorerCore for LE1. Nevertheless, actual read-only execution of `--class-dump`, `--script` and `--sequence` successfully opened installed LE2 packages in this inspection. They are useful targeted research tools today; that is not validation of the complete LE1 conversation workflow on LE2.
 
@@ -68,4 +178,4 @@ Run the rebuilt scanner executable with the installed LE2 `CookedPCConsole` as t
 
 Generated game-derived dumps stay in ignored `local-tools/le2-validation-evidence/fixture-acquisition/`; do not commit their text. The inspected scanner executable SHA-256 was `a02180d2611b30ad1793a5a50cbb9f112c8d17b937f0749a1b2e2aa19736a48c`; LegendaryExplorerCore DLL was `d980a622e225cbc0dd1d1c5719a74ea1cb59284abe0e7855f354afbc6baf7d74`. Recheck tool/package hashes before relying on later runs. Only this original research summary is committed.
 
-Recommended acquisition order: (1) protected Normandy native load and galaxy/resource baseline, (2) naturally reached ProCer reload tutorial save in a separate profile, (3) natural pre-mechanic save for one timed-interrupt case, (4) independently resolved opposite-polarity interrupt and anomaly fixture. All require exclusive native-session ownership before play; all current catalog definitions remain draft.
+The initial November 13 acquisition order started with protected Normandy load/resource proof, then ProCer, Garrus and separate opposite-polarity/discovery fixtures. Subsequent native resource proof and interrupt research supersede that ordering: use the current reload decision and Veetor follow-up above. Exclusive native-session ownership is still required before play; the gameplay scenario definitions remain draft.

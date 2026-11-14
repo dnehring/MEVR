@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Cross-check LE2 preparation against the independent TSE source oracle.
 
-All products stay in a new private output directory. These are deliberately
-synthetic state edits for format testing, never ready gameplay fixtures.
+All products stay in a new private output directory. Use the default synthetic
+format probe or supply the actual prepared save, recipe and receipt to check.
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def normalized(report):
     return flattened(data)
 
 
-def verify(save_path, oracle, output, adapter):
+def verify(save_path, oracle, output, adapter, *, prepared=None, recipe=None, receipt=None):
     source_manifest = oracle.parents[2] / "source-manifest.json"
     manifest = json.loads(source_manifest.read_text(encoding="utf-8"))
     for name, expected in manifest["files"].items():
@@ -48,12 +48,35 @@ def verify(save_path, oracle, output, adapter):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     save = module.Save.load(save_path)
-    initial_hash = digest(save_path)
+    initial_hash = hashlib.sha256(save.raw).hexdigest()
     if manifest["upstream_revision"] != module.UPSTREAM_PIN:
         raise AssertionError("Oracle and adapter use different upstream revisions")
+    supplied = (prepared, recipe, receipt)
+    if any(supplied) and not all(supplied):
+        raise ValueError("Supply prepared save, recipe and receipt together")
+    if prepared:
+        recipe_raw = recipe.read_bytes()
+        receipt_raw = receipt.read_bytes()
+        body = module.parse_recipe(recipe_raw)
+        edited, changes = save.prepare(body)
+        expected_receipt = module.make_receipt("prepare", save, edited, changes,
+                                               recipe=body, recipe_raw=recipe_raw)
+        if edited.raw != prepared.read_bytes() or expected_receipt != json.loads(receipt_raw):
+            raise ValueError("Prepared save or receipt differs from the exact recipe output")
     output.mkdir(parents=True, exist_ok=False)
     base = output / "base.pcsav"
     base.write_bytes(save.raw)
+    if prepared:
+        (output / "prepared.pcsav").write_bytes(edited.raw)
+        (output / "recipe.json").write_bytes(recipe_raw)
+        (output / "receipt.json").write_bytes(receipt_raw)
+    else:
+        prepare_format_probe(save, initial_hash, adapter, output, module)
+    return compare_oracle(save_path, initial_hash, oracle, source_manifest, adapter, module.UPSTREAM_PIN, output)
+
+
+def prepare_format_probe(save, initial_hash, adapter, output, adapter_module):
+    base = output / "base.pcsav"
     values = {}
     for name in ("credits", "medigel", "eezo", "iridium", "palladium", "platinum", "probes"):
         values[f"player.{name}"] = 2 if save.value(f"player.{name}") != 2 else 3
@@ -69,14 +92,14 @@ def verify(save_path, oracle, output, adapter):
                         ("plot.integers.0", -123), ("plot.floats.0", 1.25)):
         try:
             save.value(path)
-        except module.SaveError:
+        except adapter_module.SaveError:
             continue
         values[path] = value
     for index in (0, 1, 31):
         path = f"plot.booleans.{index}"
         try:
             values[path] = not save.value(path)
-        except module.SaveError:
+        except adapter_module.SaveError:
             pass
     recipe = {"schema_version": 1, "id": "offline-format-probe-not-gameplay",
               "description": "Never load this format-test output as a story fixture",
@@ -91,6 +114,11 @@ def verify(save_path, oracle, output, adapter):
                                  "--receipt", str(receipt)], capture_output=True, text=True)
     if invocation.returncode:
         raise RuntimeError(invocation.stderr)
+
+
+def compare_oracle(save_path, initial_hash, oracle, source_manifest, adapter, upstream_pin, output):
+    base, edited = output / "base.pcsav", output / "prepared.pcsav"
+    recipe_path, receipt = output / "recipe.json", output / "receipt.json"
     oracle_reports = []
     for name, path in (("base", base), ("prepared", edited)):
         report_path = output / f"{name}-tse.json"
@@ -100,7 +128,7 @@ def verify(save_path, oracle, output, adapter):
             raise RuntimeError(f"Independent oracle rejected {name}: {result.stderr}")
         report = json.loads(report_path.read_text(encoding="utf-8"))
         if (report.get("crc_valid") is not True or report.get("reserialized_identically") is not True
-                or report.get("upstream_revision") != module.UPSTREAM_PIN):
+                or report.get("upstream_revision") != upstream_pin):
             raise AssertionError("Oracle did not confirm checksum and independent roundtrip")
         oracle_reports.append(normalized(report))
     before, after = oracle_reports
@@ -122,8 +150,8 @@ def verify(save_path, oracle, output, adapter):
               "source_manifest_sha256": digest(source_manifest),
               "cargo_lock_sha256": digest(source_manifest.parent / "Cargo.lock"),
               "recipe_sha256": digest(recipe_path), "receipt_sha256": digest(receipt),
-              "source_revision": module.UPSTREAM_PIN,
-              "independently_verified_paths": sorted(values),
+              "source_revision": upstream_pin,
+              "independently_verified_paths": sorted(change["path"] for change in receipt_data["changes"]),
               "actual_changed_paths": sorted(actual_changes)}
     (output / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
@@ -136,7 +164,11 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--adapter", type=Path,
                         default=Path(__file__).resolve().parents[1] / "le2-save.py")
+    parser.add_argument("--prepared", type=Path)
+    parser.add_argument("--recipe", type=Path)
+    parser.add_argument("--receipt", type=Path)
     args = parser.parse_args()
     result = verify(args.save.resolve(strict=True), args.oracle.resolve(strict=True),
-                    args.output.resolve(), args.adapter.resolve(strict=True))
+                    args.output.resolve(), args.adapter.resolve(strict=True),
+                    prepared=args.prepared, recipe=args.recipe, receipt=args.receipt)
     print(json.dumps(result, indent=2))

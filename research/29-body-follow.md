@@ -358,3 +358,13 @@ an entry in `docs/trilogy-design.md`'s change log; the step, `O`'s bookkeeping (
 view, a recenter clears it) and the turn guess's correction in `core/` with tests; in the game, a head recording
 walking 2 m forward in the room (`make-walk-recording.py` moves the stick; it needs a head-translation option): no
 `capped` lines, Shepard under the head at the end, and against a wall the move blocked and the old cap.
+
+## The idle sway (2026-11-14)
+
+A report relayed by the owner: an idle sway carried into the avatar. The whole audit is research/72. In short: the idle
+animation moves `Root` itself (at hip height, the whole body's bone) 2-3 cm in the mesh's space, up to 16 cm in an idle
+fidget, over planted feet; the camera doesn't move. The slide above puts `Root` under the view whatever the animation did,
+so in first person the hips stay still and the **feet slide** the other way. `[Hands] steadyIdle` (off by default until the
+headset check) plants them: the torso's `feetCorrection` (`Root`'s animated offset from its rest, turned with the body, by the
+part of standing still), applied by the writer's `Leg::planted`. A first version the same day held the pelvis over the feet
+instead, read from a trace without `Root`; it would have put the sway back into the hips and was replaced.

@@ -283,6 +283,18 @@ void TestSceneRules() {
         elsewhere = hall;
         elsewhere.markUnits = 9000.0;
         CHECK(cw::DecideOpening(elsewhere, OR::Auto) == O::Cut);
+        // Under the game's own fade to black a walk-in becomes a cut (the hearing's end: Shepard 12.5 m on to Anderson and Udina,
+        // in sight; the owner, 2026-11-13), a mark where the player stands stays.
+        cw::OpeningFacts faded = hall;
+        faded.markUnits = 1250.0;
+        faded.riseUnits = -60.0;
+        faded.coveredByBlack = true;
+        CHECK(cw::DecideOpening(faded, OR::Auto) == O::Cut);
+        faded.coveredByBlack = false;
+        CHECK(cw::DecideOpening(faded, OR::Auto) == O::WalkIn);
+        cw::OpeningFacts nearFaded = near;
+        nearFaded.coveredByBlack = true;
+        CHECK(cw::DecideOpening(nearFaded, OR::Auto) == O::Stay);
         // A placement the game repeats every tick (a walk's last step onto its goal): undone once, accepted when it comes back.
         cw::Insistence snap;
         cw::Vec3 const goal{100.0, 200.0, 0.0};
@@ -919,6 +931,13 @@ void TestWalkStep() {
     CHECK(!cw::WalkWorthIt(95.0, 179.0, 150.0, 60.0));   // the ceremony's step back
     CHECK(!cw::WalkWorthIt(80.0, -90.0, 150.0, 60.0));   // a step aside
     CHECK(cw::WalkWorthIt(80.0, 350.0, 150.0, 60.0));    // -10 degrees, wrapped
+    // The host's trust in the mod's word: 1.5 s whatever happens; past it only while the tick after the publish still runs (a
+    // stall), never past 10 s; once a whole tick went by without a word, it's old.
+    CHECK(cw::StillFresh(1400, 50, 1500, 10000));
+    CHECK(cw::StillFresh(1600, 1, 1500, 10000));
+    CHECK(cw::StillFresh(1600, 0, 1500, 10000));
+    CHECK(!cw::StillFresh(1600, 2, 1500, 10000));
+    CHECK(!cw::StillFresh(10001, 1, 1500, 10000));
     // A ride: 40 units a tick after 38 the tick before is motion (the tram); the same step after a still tick is a teleport; a
     // walk's steps are under a jump anyway; a 1,141 m jump is never a ride, nor a step right after it.
     CHECK(cw::IsRideStep(40.0, 38.0, 30.0));

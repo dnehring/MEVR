@@ -99,6 +99,10 @@ def validate(s, for_run=False):
     recipe = s.get('recipe')
     need((not ready and recipe is None) or (isinstance(recipe, dict) and _text(recipe.get('path'))
          and _hash(recipe.get('sha256'))), 'recipe path/hash required when ready')
+    slots = s.get('artifacts')
+    need(isinstance(slots, dict) and bool(slots), 'artifact slots required')
+    if not isinstance(slots, dict):
+        slots = {}
     start = s.get('expectedStart')
     need(isinstance(start, dict), 'expectedStart required')
     if isinstance(start, dict):
@@ -110,6 +114,10 @@ def validate(s, for_run=False):
             for check in checks:
                 need(isinstance(check, dict) and _text(check.get('field')) and check.get('op') in ('eq', 'ge', 'le')
                      and 'value' in check and _scalar(check['value']), 'invalid starting-state check')
+                if isinstance(check, dict):
+                    slot = check.get('artifact', 'start')
+                    need(_text(slot) and slots.get(slot) == 'runtime-state',
+                         'starting-state check must reference a runtime-state artifact')
     need(_strings(s.get('loadProcedure'), True), 'loadProcedure required')
     need(_strings(s.get('resetProcedure'), True), 'resetProcedure required')
     actions = s.get('actions')
@@ -118,10 +126,6 @@ def validate(s, for_run=False):
         for action in actions:
             need(isinstance(action, dict) and _text(action.get('id')) and _text(action.get('description'))
                  and action.get('inputPath') in ('native', 'vr', 'either'), 'invalid action')
-    slots = s.get('artifacts')
-    need(isinstance(slots, dict) and bool(slots), 'artifact slots required')
-    if not isinstance(slots, dict):
-        slots = {}
     for key, kind in slots.items():
         need(_text(key) and kind in KINDS, 'invalid artifact slot/kind')
     need(slots.get('start') == 'runtime-state', 'start runtime-state artifact required')
@@ -216,8 +220,8 @@ def compare(left, op, right):
     return {'gt': left > right, 'ge': left >= right, 'lt': left < right, 'le': left <= right}[op]
 
 
-def check_start(scenario, runtime_state):
-    """Accept normalized observed state, never a save inspection as a live observation."""
+def check_start(scenario, runtime_state, observations=None):
+    """Check independent starting observations without merging samples."""
     failures = []
     if not isinstance(runtime_state, dict) or not isinstance(runtime_state.get('state'), dict):
         return ['starting state must be an object with observed state']
@@ -227,8 +231,19 @@ def check_start(scenario, runtime_state):
     if state.get('map') != scenario['expectedStart']['map']:
         failures.append('starting map differs')
     for check in scenario['expectedStart']['checks']:
+        slot = check.get('artifact', 'start')
+        observed = state
+        if slot != 'start':
+            sample = (observations or {}).get(slot)
+            if (not isinstance(sample, dict) or sample.get('source') != 'runtime-observation'
+                    or not isinstance(sample.get('state'), dict)
+                    or not isinstance(runtime_state.get('identity'), dict)
+                    or sample.get('identity') != runtime_state['identity']):
+                failures.append(f'missing/invalid starting observation: {slot}')
+                continue
+            observed = sample['state']
         try:
-            if not compare(field(state, check['field']), check['op'], check['value']):
+            if not compare(field(observed, check['field']), check['op'], check['value']):
                 failures.append(f"starting check failed: {check['field']}")
         except (ValueError, KeyError, IndexError, TypeError):
             failures.append(f"missing/invalid starting field: {check['field']}")
@@ -322,7 +337,7 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
     if not isinstance(reviews, dict):
         raise ValueError('reviews must be an object')
     results = []
-    start_problems = (check_start(s, values['start']) if 'start' in values and 'start' not in problems
+    start_problems = (check_start(s, values['start'], values) if 'start' in values and 'start' not in problems
                       else ['missing/invalid starting runtime observation'])
     def observed(ref):
         return field(values[ref['artifact']], ref['field'])
@@ -395,6 +410,8 @@ def main():
     v = sub.add_parser('validate'); v.add_argument('scenario'); v.add_argument('--for-run', action='store_true'); v.add_argument('--recipe')
     a = sub.add_parser('audit'); a.add_argument('scenario'); a.add_argument('evidence'); a.add_argument('--recipe'); a.add_argument('--session', required=True)
     c = sub.add_parser('check-start'); c.add_argument('scenario'); c.add_argument('state'); c.add_argument('--recipe')
+    c.add_argument('--observation', action='append', nargs=2, default=[], metavar=('SLOT', 'STATE_JSON'),
+                   help='Add a separate runtime-state sample for a starting-check artifact slot')
     args = p.parse_args()
     try:
         if args.command == 'validate':
@@ -403,7 +420,12 @@ def main():
                       'readyToAttempt': s['status'] == 'ready', 'acceptance': 'not-evaluated'}
         elif args.command == 'check-start':
             s = load(args.scenario, True, args.recipe)
-            failures = check_start(s, read_json(args.state))
+            observations = {}
+            for slot, path in args.observation:
+                if slot == 'start' or slot in observations or s['artifacts'].get(slot) != 'runtime-state':
+                    raise ValueError(f'invalid or repeated supplemental starting-state slot: {slot}')
+                observations[slot] = read_json(path)
+            failures = check_start(s, read_json(args.state), observations)
             result = {'startingStateMatches': not failures, 'failures': failures,
                       'renderedSceneVerified': False, 'acceptance': 'not-evaluated'}
         else:

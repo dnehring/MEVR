@@ -2,6 +2,9 @@
 #pragma once
 
 #include <cstdint>
+#if defined(MEVR_LE2_DIAGNOSTIC)
+#include "plugin/ProcessEventDiagnostic.hpp"
+#endif
 
 namespace mevr::ue3 {
 struct Object;
@@ -24,6 +27,18 @@ using Callback = void (*)(ue3::Object* context, ue3::Function* function, void* p
 inline constexpr std::uint32_t kDrainWaitMs = 500;
 
 bool Install(hook::Context& init);
+
+#if defined(MEVR_LE2_DIAGNOSTIC)
+// Read-only provenance plus a bounded current patch-chain sample. No call
+// authorization, instruction identity, or pristine-trampoline claim.
+diagnostic::Snapshot ReadDiagnosticSnapshot() noexcept;
+// Inspect only this supplied observed target, never scan for another slot/code
+// address. A valid function boundary is structural evidence, not call permission.
+diagnostic::TargetInspection InspectDiagnosticTarget(std::uintptr_t target) noexcept;
+// Validated same-game-thread samples only; empty input disarms. Same scope never
+// renews its fixed ten-second window. No engine pointer is dereferenced by hook.
+diagnostic::WitnessSnapshot ObserveValidatedController(diagnostic::ControllerWatch const&) noexcept;
+#endif
 
 // Runs after the original, on whichever thread called ProcessEvent. Clearing waits (up to
 // `waitMs`; 0 doesn't wait) until no thread is inside the old callback, so its module can be
