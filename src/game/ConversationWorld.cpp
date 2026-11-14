@@ -7470,6 +7470,13 @@ void Tick(double deltaSeconds, Link const& link) {
                 ++gC.cut;  // under a dip of its own (the opening's may have cleared)
                 log::Info("convo: the opening's eyes were drawn {:.2f} m from Shepard's mark: the held place follows (the view's offset was "
                           "not known yet)", std::hypot(dx, dy) / kUnitsPerMeter);
+                // Over a metre is no offset: the opening took a wrong place for Shepard's head (the council hearing with the owner's
+                // body scale, 3.53 m, 2026-11-13: research/69 "The view that floated"); a second dip and a jump for the player.
+                if (std::hypot(dx, dy) > 100.0 && gC.audit.tripped.find("|opening-off-mark|") == std::string::npos) {
+                    gC.audit.tripped += "|opening-off-mark|";
+                    log::Info("convo: audit: opening-off-mark: the opening put the eyes {:.2f} m from Shepard's mark; the view was moved again "
+                              "(at {:.1f} s)", std::hypot(dx, dy) / kUnitsPerMeter, Seconds());
+                }
                 gC.eyesMeant.reset();
             }
         } else if (gC.eyesMeant && GetTickCount64() >= gC.eyesMeantUntilMs) {

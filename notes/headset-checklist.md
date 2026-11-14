@@ -349,6 +349,10 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 - [ ] **Long dialogue choices** (2026-11-11, research/69 item 23; built, not yet run in the game): a wheel with long replies
   (the hearing's "The Council won't help us.") shows each reply whole on the wheel, the same text size as before, and no stray
   letters elsewhere in view.
+- [ ] **The council hearing at your own height** (2026-11-13, research/69 item 39, "The view that floated"; fake headset: the
+  opening on the mark, the cut under the fade): John02 slot 80, walk with Anderson, then the hearing: you stand on the podium's
+  floor at your own eye height, not floating; when the hearing ends and the screen goes black you are with Anderson and Udina
+  (a short fade), and you can walk with them or stay. `python tools/conversation-session.py` afterwards: no `audit:eye-height`.
 - [ ] **Conversations where you start them** (2026-11-12, research/69 item 28 "The conversational circle", second design; run on
   the fake headset): any conversation (slots 83, 85, 87, 89): you stay where you started it, the person you talk to stays where
   they are, nothing walks you. Someone who takes part later walks over a few lines before speaking; Avina (the hologram) and anyone

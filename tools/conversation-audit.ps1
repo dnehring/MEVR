@@ -48,10 +48,13 @@ function Q([string]$text) { $text -replace "'", "''" }
 function Hands([string]$plan) {
     $dir = Join-Path $env:LOCALAPPDATA 'MEVR\audit-hands'
     New-Item -ItemType Directory -Force $dir | Out-Null
-    $file = Join-Path $dir (($plan -replace '[^A-Za-z0-9]+', '-') + '-view.mevrrec')
+    # (A set's `eyeHeight` raises only the replayed head: the fake headset's floor reading stays its own, 0, so the view rose
+    # with it, 2026-11-13. Kept for a runtime whose floor follows the replay.)
+    $eye = if ($data.eyeHeight) { [double]$data.eyeHeight } else { 0.0 }
+    $file = Join-Path $dir (($plan -replace '[^A-Za-z0-9]+', '-') + $(if ($eye) { '-eye' + ($eye -replace '[^0-9]', '') } else { '' }) + '-view.mevrrec')
     $maker = Join-Path $tools 'make-walk-recording.py'
     # Made again whenever the maker changed (the hands' pose is the maker's).
-    if (-not (Test-Path $file) -or (Get-Item $file).LastWriteTime -lt (Get-Item $maker).LastWriteTime) { & python -I $maker $file --plan $plan --hands view | Out-Null }
+    if (-not (Test-Path $file) -or (Get-Item $file).LastWriteTime -lt (Get-Item $maker).LastWriteTime) { & python -I $maker $file --plan $plan --hands view --eye-height $eye | Out-Null }
     $file
 }
 
@@ -62,6 +65,7 @@ function Scene-Lines($s, [string]$before, [string]$after, [string]$handsPlan, [s
     $endAfter = if ($Long -and $null -ne $s.longEndAfter) { [int]$s.longEndAfter } else { $s.endAfter }
     $common = "-Pace full -Seconds $seconds -Stances -Lines 4 -Key $($s.key)"
     if ($endAfter) { $common += " -EndAfter $endAfter" }
+    if ($Long -and $s.longPlayOut) { $common += ' -PlayOut' }
     if ($s.turnAt) { $common += " -TurnAt $($s.turnAt)" }
     if ($s.wanderAt) { $common += " -WanderAt $($s.wanderAt)" }
     if ($s.holdThroughPick) { $common += ' -HoldThroughPick' }

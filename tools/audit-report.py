@@ -28,7 +28,7 @@ OFF_M = 0.3  # a drawn wrist this far from its controller's grip: the body is no
 # The live rules that fail a run whatever the baseline (research/69 "Obvious bugs, measured", 2026-11-13): what the player would
 # see at once. The stance records' baseline judges the rest (looks, faces, places).
 FAIL_RULES = ('eyes-off-body', 'hands-off-controllers', 'body-third-person', 'body-not-drawn', 'person-not-drawn', 'near-plane',
-              'moved-by-pick', 'turn-ignored', 'black-panel-on-foot', 'dark-view', 'eye-height')
+              'moved-by-pick', 'turn-ignored', 'black-panel-on-foot', 'dark-view', 'eye-height', 'opening-off-mark')
 # Pictures (each snapshot in a scene): the left eye one flat colour (a black or white frame), the HUD panel a quarter opaque
 # black (the script's black screen as a square ahead of the player, item 21), opaque pixels in the wheel band's outer columns
 # (a reply cut off, "us." left floating, 2026-11-11). Measured on good snapshots of 2026-11-12/13: eyes far from flat, the HUD
