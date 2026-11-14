@@ -77,3 +77,47 @@ functions and SDK commit `6bd05809cccb1a099a520371a95779d4a56bb246`.
 One negative lookup (`SFXGameModeGUI.GuiKey`) is retained as zero exports; it is
 not evidence that the inherited GUI route is absent. Extracted game code stays
 private. No runtime files were modified or executed for this audit.
+
+## Implemented structural context
+
+`Category::CharacterRecord` now serializes as `character-record` in the existing
+input context sampler. The focused panel must be a unique CharacterRecord with
+the exact PC handler, active GUI mode and existing interactive/reciprocal checks.
+A visible MessageBox overlay is refused even before focus transfers. Closing,
+initial hiding, malformed arrays, foreign helper/world/pawn links and invalid
+present callback identities are unavailable. This does not enable transport or
+buttons by itself; the separate host must restrict the first trial to B only.
+
+The helper must be the exact `SFXPowerLevelUpHelper`, owned by the handler, with
+the same world. The current character must be a unique listed source pawn in
+that world at the handler's current index. `InitializeCharacterRecord` populates
+the source-pawn array in squad `GetMember(index)` order, without sorting or
+filtering. `ChangeToCharacter` obtains `m_CurrentPawnIndex` from the same squad's
+`GetMemberIndex`, and `SFXPowerLevelUpHelper.SetPawn` retains the supplied pawn.
+This supports another squad member without equating it to the controller pawn.
+The game can append a null source pawn; this sampler deliberately supports only
+bounded lists of valid same-world source pawns. That is a supported subset, not
+a claim that every engine-created CharacterRecord list satisfies it.
+
+The source initializes `m_InitialHiddenTimer` to a short positive duration and
+unhides the UI pawn when it reaches zero. Positive or nonfinite values are
+refused; an expired timer is not proof of completed native/GFx initialization.
+The helper's `m_UpdatedPowers` is populated with every current power by SetPawn,
+so its bounded count is named `powerSnapshotCount`, not pending purchases.
+`pointsSpent` is a copied diagnostic integer. Power entry contents are not
+audited, and `talentChangesAudited` remains false.
+
+The context copies helper/current character identities, source-pawn header and
+identities, power-snapshot header, current index, points-spent field, closing
+state and optional close delegate. A missing delegate is allowed; a present
+delegate requires a live object and readable non-None function name, with no
+requirement that every opening came from a sequence action. JSON reports its
+class/index/name without pointer handles or claiming function resolution or
+execution. All copied state participates in the existing two-read and per-tick
+continuity comparison. Changes cancel existing pulses; no callback is invoked.
+
+Actual-SDK synthetic tests cover alternate squad characters, absent and arbitrary
+valid callbacks, invalid/foreign roots, modal/closing states, array bounds and
+unreadable storage, and callback/helper/points/closing changes. Production and
+test translation units compile under the existing `/W4 /WX` target. Native
+CharacterRecord context, B consumption and exit remain separate pending checks.

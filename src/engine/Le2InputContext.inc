@@ -207,6 +207,7 @@ bool ReadLoadoutContext(Table const& table, UMassEffectGuiManager const* manager
     c.category=Category::Loadout;
     return true;
 }
+#include "engine/Le2CharacterRecordContext.inc"
 void ReadInputContext(void* raw) {
     auto& sample=*static_cast<ReadContext*>(raw); auto& f=sample.flow; auto& c=sample.result;
     ReadSaveFlow(&f);
@@ -304,6 +305,9 @@ void ReadInputContext(void* raw) {
     } else if (f.currentMode==7 && std::strcmp(f.mode.className,"SFXGame.SFXGameModeGUI")==0 &&
                std::strcmp(f.focusedTag,"ChoiceGUI")==0) {
         if (!ReadLoadoutContext(table,manager,c)) return;
+    } else if (f.currentMode==7 && std::strcmp(f.mode.className,"SFXGame.SFXGameModeGUI")==0 &&
+               std::strcmp(f.focusedTag,"CharacterRecord")==0) {
+        if (!ReadCharacterRecord(table,manager,c)) return;
     } else return;
     c.available=true; c.reason="stable-read-only-input-context";
 }
@@ -330,7 +334,7 @@ json::Value ContextJson(Context const& c) {
     out["dispatchCapability"]=false; out["bindingsVerified"]=false; out["gameplayEffectProven"]=false;
     out["durableObjectIdentity"]=false;
     out["category"]=c.available?(c.category==Category::Default?"default":c.category==Category::PartySelect?"party-select":
-        c.category==Category::PartyConfirm?"party-confirm":"loadout"):"unavailable";
+        c.category==Category::PartyConfirm?"party-confirm":c.category==Category::CharacterRecord?"character-record":"loadout"):"unavailable";
     if (!c.available) return out;
     out["currentMode"]=static_cast<int>(c.currentMode); out["map"]=c.map.data(); out["focusedPanelTag"]=c.focusedTag.data();
     out["modeActive"]=c.modeActive; out["allowMovement"]=c.allowMovement; out["allowCamera"]=c.allowCamera;
@@ -377,6 +381,25 @@ json::Value ContextJson(Context const& c) {
         loadout["currentWorldHandlerRelationVerified"]=true; loadout["activeSequenceReciprocalVerified"]=true;
         loadout["gworldLevelContainmentProven"]=false; loadout["nativeChoiceIndexMappingProven"]=false;
         out["loadout"]=std::move(loadout);
+    }
+    if (c.category==Category::CharacterRecord) {
+        auto record=json::Value::Object(); auto const& s=c.characterRecord;
+        record["handlerClass"]="SFXGame.BioSFHandler_PCCharacterRecord2";
+        record["helperIndex"]=s.helper.index; record["characterIndex"]=s.characterIndex; record["characterObjectIndex"]=s.character.index;
+        record["sourceCharacterCount"]=static_cast<int>(s.sourcePawns.count);
+        record["pointsSpent"]=s.pointsSpent; record["powerSnapshotCount"]=static_cast<int>(s.powerSnapshot.count);
+        record["closing"]=s.closing; record["initialHidePending"]=s.initialHidePending;
+        record["currentSourceCharacterVerified"]=true; record["worldReciprocalsVerified"]=true;
+        record["closeCallbackPresent"]=s.closeOwner.address!=0;
+        if (s.closeOwner.address) {
+            auto owner=json::Value::Object(); owner["class"]=s.closeOwnerClass.data(); owner["index"]=s.closeOwner.index;
+            record["closeCallbackOwner"]=std::move(owner); record["closeCallbackFunction"]=s.closeCallback.text.data();
+            record["closeCallbackNameIndex"]=static_cast<double>(s.closeCallback.raw[0]);
+            record["closeCallbackNameNumber"]=std::bit_cast<std::int32_t>(s.closeCallback.raw[1]);
+        }
+        record["closeCallbackResolved"]=false; record["closeCallbackExecuted"]=false;
+        record["gfxInitializationProven"]=false; record["talentChangesAudited"]=false; record["exitProven"]=false;
+        out["characterRecord"]=std::move(record);
     }
     auto identities=json::Value::Object();
     identities["worldIndex"]=c.world.index; identities["controllerIndex"]=c.controller.index;

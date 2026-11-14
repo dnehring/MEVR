@@ -6,7 +6,7 @@
 
 namespace mevr::engine::le2_diagnostic::input_context {
 #if defined(MEVR_GAME_LE2)
-enum class Category { Unavailable, Default, PartySelect, PartyConfirm, Loadout };
+enum class Category { Unavailable, Default, PartySelect, PartyConfirm, Loadout, CharacterRecord };
 // Comparison-only process-local identities, never wire handles or durable IDs.
 struct Identity {
     std::uintptr_t address{}, classAddress{};
@@ -51,6 +51,16 @@ struct LoadoutState {
     bool active{}, finished{}, sequenceEnabled{}, latent{}, allHenchmen{};
     bool operator==(LoadoutState const&) const = default;
 };
+struct CharacterRecordState {
+    Identity helper, character, closeOwner;
+    std::array<char,256> closeOwnerClass{};
+    NameKey closeCallback;
+    ArrayIdentity sourcePawns, powerSnapshot;
+    std::array<Identity,32> sources{};
+    std::int32_t characterIndex{}, pointsSpent{};
+    bool closing{}, initialHidePending{};
+    bool operator==(CharacterRecordState const&) const = default;
+};
 struct State {
     Category category{Category::Unavailable};
     Identity engine, world, localPlayer, controller, pawn, playerInput, viewport,
@@ -75,6 +85,7 @@ struct State {
     std::int32_t confirmationContext{}, messageHiddenDepth{};
     bool messageHandleInput{}, messageModal{}, messageCached{}, messageDisplayingHint{};
     LoadoutState loadout;
+    CharacterRecordState characterRecord;
     bool operator==(State const&) const = default;
 };
 struct Context : State {

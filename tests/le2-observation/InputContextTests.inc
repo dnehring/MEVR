@@ -224,5 +224,6 @@
     Check(!captureInput().available,"callback replacement between reads rejects context"); ic::testing::SetSampleHook(nullptr);
     #include "PartyCompletionTests.inc"
     #include "LoadoutContextTests.inc"
+    #include "CharacterRecordTests.inc"
     beginInput(); Check(captureInput().available && flowDispatchCalls==0,"read-only context recovers without dispatch or save-flow receipts");
 }
