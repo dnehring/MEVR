@@ -40,7 +40,8 @@ deployed, so it could not consume request files. Normal UI loading proved Save
    for every run.
 2. Reuse the validated scalar-query and normal menu routes through the existing
    engine/SDK integration. The scalar getter and two menu actions have returned
-   normally in protected runs. General ConsoleCommand still lacks allocator and
+   normally in protected runs. Normal pause and Save-menu transitions also have
+   live proof, including the persistent closed PowerWheel HUD context. General ConsoleCommand still lacks allocator and
    returned-string ownership proof; do not enable it from metadata alone.
 3. Keep the implemented session-bound request/result channel: PID/start identity,
    executable/module hashes, fresh lease, request ID and deadline. Live wrong-lease
@@ -78,7 +79,12 @@ handshake/observation, live wrong-lease/expired-request rejection, a bounded
 scalar return, normal menu transitions and one bounded scripted frozen-fixture
 load with post-load world/pawn and visible scene evidence, followed by all eight
 edited resources matching live inventory and exported starting-state checks.
-Normal save/reload and scenario/VR acceptance remain pending.
+Subsequent runs also prove opening the normal pause and Save screens. The
+explicit owned-foreground desktop capture fallback produces readable images
+when PrintWindow returns black; see [capture usage](../tools/qa-le2/capture.md).
+New Save submission still needs corrected asynchronous Save-panel continuity
+and an understood complete descriptor list. Normal save/reload and scenario/VR
+acceptance remain pending; do not bypass a rejected Save observation.
 
 ## Implemented transport checkpoint
 

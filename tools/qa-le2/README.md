@@ -31,13 +31,22 @@ against the frozen scenario. Unavailable fields stay absent with reasons. A
 matching report checks observed starting values only; scene review, normal
 save/reload and VR interaction remain separate gates.
 
-The normal pause/Save menu and New Save submission are now implemented behind
-explicit diagnostic action permissions, with offline SDK/control tests. Their
-live readiness and save/reload result remain pending. Follow the
+The normal pause and Save-menu transitions now have protected native proof,
+including the closed PowerWheel HUD case and readable menu review. New Save
+submission is implemented behind separate diagnostic permission but remains
+unproven: the current Save-list validator rejects a displayed row, and its
+asynchronous initialization handling needs correction. Do not skip those
+refusals or substitute a synthetic successful result. Follow the
 [normal save workflow](control.md#submit-new-save-and-preserve-its-output) and
 [file evidence collector](save-evidence.md): preserve a reviewed pre-save
 inventory, submit once, archive and independently decode the actual new file,
 then reload it through a fresh protected session.
+
+The [capture tool](capture.md) preserves failed black PrintWindow samples.
+Its explicit `--method desktop-client` fallback has live proof on the normal
+Save screen, requires the exact owned game window already in front, and sends
+no focus or input commands. Review the resulting image; successful pixel
+capture alone does not establish the expected scene or enabled menu action.
 
 The [Steam launch adapter](launch.md) provides read-only preflight and a guarded
 launch path where installed launcher support is verified. The [bound control
