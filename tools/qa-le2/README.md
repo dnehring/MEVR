@@ -5,6 +5,9 @@ This is the P9 tooling for the [validation goal](../../docs/le2-validation-goal.
 Before adding tools, read the [current script and reuse audit](../../research/le2-runtime-observer.md#current-script-inventory-and-reuse-decisions).
 Extend the existing workflow and input bridge; avoid parallel launch, replay,
 capture or scenario frameworks.
+The [source-level duplication audit](../../research/le2-runtime-observer.md#source-level-duplication-audit-and-consolidation-decisions)
+also identifies copied utilities and consolidation work; a reuse inventory is
+not proof that all implementations are shared.
 Read the [scripted testing handoff](../../docs/le2-scripted-testing.md) and its
 linked repository skills before native work. Use the protected LE2 launch and
 bound diagnostic request channel described below; the LE1 runners are not LE2
@@ -27,8 +30,17 @@ a ready combat encounter. The next acquisition step is ordinary squad selection
 and progression to a safe firing/reload point. A tested read-only
 [`observe-orbital` query](../../research/le2-scanning-readiness.md) is available
 for the later scanning baseline; native orbital sampling remains pending.
-The existing GamepadBridge has bounded native input evidence, with an unresolved
-reproducibility limit. On 2026-11-14, run `1641Z-input` selected Miranda and Grunt
+Latest run `1821Z-completion`, candidate `7eee6b6f`, selected Miranda and Grunt,
+showed confirmation and advanced to the squad Powers screen after one A pulse.
+Its before-confirmation observation identified the external sequence owner and
+sampled its completion flag as false. The new screen is an unsupported input
+context; no further input or combat save was attempted. The run closed normally
+and restored all four protected roots. The [Powers handler audit](../../research/le2-powers-input.md)
+identifies the normal exit seam in the existing adapter. No new launcher or scenario runner
+is needed. See the [latest evidence](../../research/le2-validation-evidence.md#squad-confirmation-advances-to-powers-combat-acquisition-remains-pending).
+
+Earlier runs establish the remaining reproducibility limit. On 2026-11-14,
+run `1641Z-input` selected Miranda and Grunt
 and reached the squad confirmation modal. Run `1722Z-loadout` selected Miranda,
 then showed Tali after a right pulse and Zaeed after the second A pulse; Miranda
 remained selected in the later passive capture. It never reached the modal or
@@ -40,8 +52,8 @@ Candidate `460bf676` in run `1749Z-neutral-focus` completed the 250 ms neutral
 output window after each pulse and reached the Miranda/Grunt confirmation.
 The source-bound confirmation context was observed and one A pulse was sent.
 The modal disappeared visually, but the dim squad screen and structural
-confirmation context remained. Completion and loadout entry remain unproven;
-the external callback destination needs investigation. No story-flag reset
+confirmation context remained. That run did not establish completion or loadout
+entry; its stalled transition remains unexplained. No story-flag reset
 substitutes for these normal gameplay steps. See the
 [evidence log](../../research/le2-validation-evidence.md) for exact outcomes.
 

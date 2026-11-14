@@ -5,6 +5,63 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Squad confirmation advances to Powers; combat acquisition remains pending
+
+Protected run `370f621d-8fa9-4b73-bd7c-c81935f64f0a` used candidate
+`7eee6b6fb5750853eaded21915325b4c0f6ba605`, ASI SHA256
+`6206b78369384ae0f2fc1e737d548230e8c28c4c2bee0ec83b4ef6f80eaf3b93`.
+Normal Steam launch and the existing menu/fixture adapters loaded the immutable
+chapter, SHA256
+`2f4c441c068f79064b4256c387b022cb13e7734d4ed1c663330cfe61465317c7`,
+through its unique current row 2. The candidate passed all three ordinary builds,
+53/53 ordinary tests and 14/14 diagnostic tests before deployment. These tests
+do not establish gameplay success.
+
+| Action | Positive output polls | Neutral writes | Reviewed result |
+|---|---:|---:|---|
+| Select Miranda | 33 | 1055 | Miranda selected; Remove visible |
+| D-pad right | 33 | 1101 | Grunt highlighted; Miranda remains selected |
+| Select Grunt | 33 | 1097 | Confirm Squad Selection modal visible |
+| Confirm squad | 37 | 1247 | Squad Powers screen, Shepard level 28, Miranda/Grunt shown |
+
+Each pulse completed the 250 ms neutral-output window and ended on a context
+change, with no physical conflict. Counts describe output writes, not distinct
+button edges. The last screen persisted in a later passive capture. Both the
+lead and an independent archive reviewer inspected these images.
+
+Before confirmation, request `da5ac51d-9244-4cc8-9b7e-1b9bdfbcea1d` resolved the
+current external owner as `SFXGameContent.BioSeqAct_ShowPartySelectionGUI`,
+process-local index 136810. The reflected `m_bPartySelectionComplete` BoolProperty
+was false (offset 312, mask 1); the action was active and latent, activation
+count 1. Parent sequence 136800 was enabled, with the owner appearing once in
+both its objects and active operations. This establishes a sampled live owner
+and state, not the mounted script body or callback execution.
+
+After confirmation, requests `f0c7a767-a928-4c94-a0e9-333a7284bd96` and
+`07df22d2-f924-43b2-a39b-ab58047ea27d` returned `unsupported-input-context`.
+Completion observation correctly became unavailable because it requires the
+current confirmation relation. No true flag was captured; no cached owner was
+followed into the new screen. The actual destination is Powers, not proven
+weapon loadout. No further input was sent to that unsupported screen.
+
+Focus was observed only: no activation request was made and foreground HWND
+remained 0. Readable PrintWindow captures do not prove focus. This run progressed
+where the prior candidate stalled, but the cause is not isolated; neither the
+new read-only observer nor the neutral-output policy is established as the fix.
+
+The exact owned process closed normally at 18:28:06 UTC. Pre-reset comparison
+found no ME1 changes and identical shared Trilogy profile content; all four
+protected roots restored and verified, and the owned invitation was removed.
+Private archive `run-20261114T1821Z-completion` has 16 terminal exchanges and
+seven capture receipts/images. Independent archive review passed 153 checks;
+`native-outcome.json` SHA256:
+`be4c6e02abeaf69c47b349aa835ffdc8e6801763daf906dacbedff0efca09c44`.
+
+Next: inspect the existing Powers handler and normal exit, extend the current
+input adapter where necessary, and acquire a real combat save using the existing
+save collector. No post-confirmation manual save or combat/reload action was
+performed. The three initial gameplay scenarios remain **0/3 accepted**.
+
 ### Neutral window observed; squad confirmation completion remains unresolved
 
 Protected run `86d06e42-ad8a-466d-8770-76f46fe5397e` used candidate `460bf676`,

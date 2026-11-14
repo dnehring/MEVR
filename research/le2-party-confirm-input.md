@@ -1,13 +1,30 @@
 <!-- SPDX-License-Identifier: MIT -->
-# Party confirmation and the following loadout flow
+# Party confirmation and subsequent screens
 
 This extends the existing read-only input context sampler with `PartyConfirm`
 (`party-confirm`). It adds no engine calls, hooks, synthetic input source, host
 admission, or transport. SDK compilation and synthetic checks pass. The later
 integrated host has native structural context and bounded pulse evidence, but
-confirmation completion remains unresolved (see the checkpoint below).
+repeatability remains unresolved. The latest run reached Powers after confirmation;
+the earlier stalled run is retained below rather than reclassified as a pass.
 
-## Native checkpoint, 2026-11-14 UTC
+## Latest native result: Powers reached
+
+Run `370f621d-8fa9-4b73-bd7c-c81935f64f0a`, candidate `7eee6b6f`, reached the
+Miranda/Grunt confirmation and sampled its actual external owner as
+`SFXGameContent.BioSeqAct_ShowPartySelectionGUI`. Its reflected completion flag
+was false; the active latent sequence action appeared once in its enabled
+parent's active-operation list. After one confirmation pulse, reviewed captures
+showed the squad Powers screen with Shepard level 28 and Miranda/Grunt.
+
+No true completion-flag sample or callback trace was captured. The observer
+stopped reporting the completion owner when the current confirmation relation
+disappeared, and correctly rejected the new screen as an unsupported input
+context. The Powers screen is not evidence of weapon loadout or combat readiness.
+Reuse the scanner and existing context adapter to establish its ordinary exit.
+All four protected roots restored; see the [full result](le2-validation-evidence.md#squad-confirmation-advances-to-powers-combat-acquisition-remains-pending).
+
+## Earlier native checkpoint, 2026-11-14 UTC
 
 Run `86d06e42-ad8a-466d-8770-76f46fe5397e`, candidate `460bf676`, visibly selected
 Miranda and Grunt and reached the confirmation modal. The observer admitted the
@@ -49,12 +66,12 @@ sequence's finished branch performs squad cleanup and reaches the remote event
 There is no loadout action in this inspected chain, so loadout is not an
 established immediate destination.
 
-Next, bind the live owner to this candidate. If it matches, distinguish callback
-completion from sequence scheduling by observing the completion flag and action
-state. The SDK has no declaration for this content action: its flag needs a
-validated runtime BoolProperty offset/mask, not a guessed layout. Reuse existing
-reflection and bounded sequence inspection. Neither the current observer nor
-these source findings establish that the callback ran in the failed transition.
+The later run bound the live owner to this candidate and sampled its flag and
+action state. The SDK has no declaration for this content action, so the helper
+uses a validated runtime BoolProperty offset/mask rather than a guessed layout.
+It reuses existing reflection and bounded sequence inspection. Neither that
+sample nor these source findings establish that the callback ran in the earlier
+failed transition; callback execution and sequence scheduling remain distinct.
 
 The implemented read-only `partyCompletion` sample now resolves that exact
 candidate's scalar BoolProperty through the existing guarded object/field
@@ -65,8 +82,9 @@ Two complete samples and fresh input contexts must agree. General cached
 reflection lookup was audited but does not supply these exact guarded checks;
 the helper reuses the current observer's readers rather than introducing a
 second reflection system. It runs only for explicit `observe-input`, outside
-input admission and the post-publication path. SDK tests and source review pass;
-native field availability and progression evidence remain pending.
+input admission and the post-publication path. SDK tests and source review pass.
+The latest native result above adds field availability and visible transition
+evidence; it does not capture a true flag or establish callback execution.
 
 Private receipt `party-completion-source/inspection-receipt.json` SHA256
 `861fba32f60988b5efb68181789c5aa45beb0f1e4b495f22499a1d68effaa015`

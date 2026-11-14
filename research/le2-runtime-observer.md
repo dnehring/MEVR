@@ -1,22 +1,25 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 testing tools: reuse audit and runtime observer history
 
-Current audit: **2026-11-14, native candidate `460bf676`**. We already have the ME2 save,
+Current audit: **2026-11-14, native candidate `7eee6b6f`**. We already have the ME2 save,
 launch, protected-session, capture, control and scenario workflow. Native
 eight-resource save/reload persistence is proven; an untouched chapter loads to
 Squad Selection. One earlier run selected Miranda and Grunt and reached the
 confirmation modal, but the next run did not reproduce that sequence. The latest
-run repeated the intended selection path and proved the corrected 250 ms neutral
-output window. One confirmation pulse removed the visible modal but did not
-establish progression; the observer still reported the confirmation context.
-Weapon observation has native samples. The confirmation guard has structural
-native evidence; completion and loadout remain unproven. The three gameplay
+run selected Miranda and Grunt, showed the confirmation modal, then advanced to
+the squad Powers screen after one confirmation pulse. Before confirmation, the
+read-only observer resolved the external sequence owner and sampled its completion
+flag as false. The next screen has no supported diagnostic input context; no
+true completion-flag sample or combat fixture was obtained.
+Weapon observation has native samples. Reproducibility and progression beyond
+the Powers screen remain unproven. The three gameplay
 scenarios remain unvalidated. See the
 [current evidence](le2-validation-evidence.md) and [workflow](../tools/qa-le2/README.md).
 This update combines source inspection with the archived protected native run
 `b9050968-61cb-4d26-9691-ee1ec0f84e80` and follow-up
 `0ad9e033-a97d-4108-bbe7-e38a58812386`, followed by
-`86d06e42-ad8a-466d-8770-76f46fe5397e`; all closed normally and restored all four
+`86d06e42-ad8a-466d-8770-76f46fe5397e`, then
+`370f621d-8fa9-4b73-bd7c-c81935f64f0a`; all closed normally and restored all four
 protected roots. The older observer design below is historical, not current readiness.
 
 ## Reuse map and current proof boundary
@@ -28,8 +31,8 @@ flowchart TD
     C --> D[control.py: normal menus, load and save]
     D --> E[Existing GamepadBridge: bounded input]
     E --> F[Neutral window and squad selection observed]
-    F --> G[Next: resolve stalled confirmation and its destination]
-    G --> H[Acquire combat fixture and observe ammo]
+    F --> G[Squad Powers screen reached once]
+    G --> H[Next: normal exit and acquire combat fixture]
     D --> I[Resource persistence: eight values proven]
     D --> J[Scanning and timed interrupt baselines pending]
     H --> K[Actual VR interaction acceptance pending]
@@ -55,8 +58,9 @@ Audit findings:
 3. The `partyMember1/2` fields stayed zero during initial selection despite
    visible changes. The confirmation guard now observes indices 6/7 and labels
    Vixen/Grunt at the modal; do not extend those semantics to the earlier stage.
-4. The modal is an explicit remaining dependency. Do not admit every MessageBox
-   or ChoiceGUI screen merely to advance this one fixture.
+4. The latest run passed the modal and reached Powers. This does not establish
+   why the previous run stalled. Do not admit every GUI screen merely to advance
+   this fixture; inspect the actual Powers handler and its normal exit path.
 5. Save/resource tools are usable now. Existing LE1 stereo, replay and scenario
    runners require ME2 producers/adapters; their presence is not ME2 readiness.
 
@@ -89,6 +93,46 @@ The existing synthetic generators cover [walking](../tools/make-walk-recording.p
 [galaxy picking](../tools/make-galaxy-pick-recording.py),
 [rack motion](../tools/make-rack-recording.py) and [ADS](../tools/make-ads-recording.py).
 These generate inputs; their names do not establish ME2 action semantics or success.
+
+## Source-level duplication audit and consolidation decisions
+
+Reviewed against local main `5cadc886`, including the ME2 additions themselves.
+The inventory above names usable tools; this audit distinguishes actual shared
+implementation from copied patterns and unresolved duplication. An existing
+script's filename alone is not evidence that it can operate ME2.
+
+| Area | Source finding | Decision and verification required |
+|---|---|---|
+| Save checksum | `le1-save.py::crc32_bzip2`, `le2-save.py::crc32_bzip2` and `qa-hubs/save_fixture.py::crc32` implement the same checksum independently | Candidate for one shared utility, preserving standalone imports, known vectors and real-save round trips for both games. Not consolidated at this checkpoint. |
+| Save codec | LE1 `Save.from_bytes` parses compressed v50; LE2 `Save` parses uncompressed v30 with span-preserving scalar edits | Separate codecs are justified. Reuse the established LE2 adapter and pinned TSE oracle rather than building another editor. |
+| Preparation receipt | `le2-save.py::main` and `qa-le2/prepare-variants.py::prepare` constructed the same receipt fields independently | Consolidated in `le2-save.py::make_receipt` after this audit. Both callers retain the existing schema; single/batch byte-equivalence tests cover no-op edits and float32 rounding. Frozen historical receipts are unchanged. |
+| LE1 fixture location | `qa-hubs/save_fixture.py` has a partial compressed-header/location parser alongside the full LE1 parser | Consolidation candidate; preserve its bounded decompression checks and distinct Resume-profile handling. No LE2 need justifies another location parser. |
+| Save dictionary | `save-dictionary.py` already imports the LE1 parser and conversation catalog; its proximity matching uses XY | Extend its reader with an LE2 adapter when needed. Include map and height/deck discrimination: XY alone cannot distinguish Normandy decks. Another dictionary implementation is unnecessary. |
+| Backup and restoration | `qa-cafeteria/state.ps1` already hashes backups and archives changed files; `qa-le2/session.py` adds tree/timestamp checks, reparse rejection, ownership and retry records | There is overlapping infrastructure. Consolidate neutral primitives incrementally with recovery tests; retain the stronger protections. The older fake-headset wrapper deploys before backup and protects only ME1 saves/INIs, so replacing the ME2 lifecycle with it would lose coverage. |
+| Window capture | `qa-le2/capture.py::bitmap` adapts the bitmap handling in `flicker-grab.py`; it does not import a common implementation | This is copied code, not completed deduplication. A future shared capture helper must retain run/PID binding, cleanup and immutable evidence. Keep the existing commands; do not add a third capture tool. |
+| Recording checks | `qa-hubs/recorded_route.py` and `qa-le2/observe.py` overlap on header/time/finite validation; the latter already imports `mevrrec.py` | Share low-level validation when changing this code. Preserve policy differences: route execution rejects truncation; archive inspection reports discarded trailing bytes. Keep `.mevrrec` and existing generators. |
+| Scenario reports | Hub schema/report requires LE1 walk/runtime artifacts; LE2 schema adds recipes, fixture identity and separate behavioral acceptance gates | Do not replace either with the other's narrower schema. Reuse applicable report/analysis functions through explicit artifact adapters, and leave missing measurements unmeasured. |
+| Launch and request channel | LE1 launch hardcodes ME1 paths/readiness; `common.ps1::Write-MevrRequest` has shared replaceable filenames without run/PID/lease binding | Existing Steam forwarding is reused as an approach, not a call to `launch-game.ps1`. ME2 adds game selection and correlation. Continue through this one ME2 channel; general ConsoleCommand still requires native ownership/return proof. |
+
+Direct reuse already present includes the shared `GamepadBridge` hook owner,
+`qa-hubs/focus-owned-session.ps1`, `mevrrec.py` decoding, LegendaryExplorer-backed
+conversation scanning and the pinned upstream TSE codec used by the oracle.
+ME2 save collection, launching and export also share its existing session/control
+modules. These are different claims from merely following an LE1 design.
+
+The receipt extraction passed 14 save tests, 15 variant tests and the existing
+cross-module workflow test. The integration run included the immutable private
+chapter save; the worker also checked the archived Normandy save. These are
+offline compatibility checks, not a new native save/load acceptance claim.
+
+No broad infrastructure rewrite is required before the next native fixture.
+Use `control.py`, `capture.py`, `export-state.py`, `save-evidence.py`, the existing
+scenario drafts and resource variants. For longer routes, adapt the existing
+recording sampler and clock rather than writing a new replay format. Menu and
+galaxy pose generators target existing VR panel/hologram geometry; their output
+is not automatically a valid native ME2 menu route. `perf-monitor.ps1` accepts
+`-ProcessName MassEffect2`, but selects the first matching process and supplies
+coarse process measurements, not owned-run frame timing or VR acceptance.
 
 ## Audit correction: share the input path (implemented)
 
@@ -127,16 +171,15 @@ existing run/PID/lease-bound channel rather than copying those request writers.
 
 ## Next work using these tools
 
-1. Resolve the stalled confirmation and its actual external completion callback
-   before assuming the fixture leads to loadout. Reuse the current observer and
-   source scanner. The neutral-output window now has native output proof; focus,
-   input-mode and confirmation completion remain unresolved. Ordinary VR keeps
-   a neutral virtual pad connected while controller samples are active, whereas
-   diagnostic pulses return to the original disconnected result after release.
-   This difference is a hypothesis to investigate, not an established cause.
-2. Use the reproducible chapter acquisition fixture to complete normal squad
-   selection, then acquire a safe combat save using existing New Save/collector
-   tools. Add actual weapon/ammo observations before claiming reload behavior.
+1. Use the [Powers handler source audit](le2-powers-input.md) and current input
+   observer to validate the live normal exit route. The latest chapter run reaches this
+   screen, not a weapon-loadout screen. Extend the existing context adapter only
+   for the verified route; preserve unsupported-context rejection elsewhere.
+2. Reproduce normal squad selection and Powers exit, then acquire a safe combat
+   save using existing New Save/collector tools. Add actual weapon/ammo
+   observations before claiming reload behavior. Earlier stalled confirmation
+   remains an unexplained reproducibility failure; the latest success does not
+   prove that the neutral window, observer, or focus caused the difference.
 3. Use the proven Normandy fixture and ordinary navigation to reach scanning;
    use the existing read-only orbital observer, resource export and save diff.
 4. Acquire a natural pre-interrupt save and use the LE2 conversation scanner to
