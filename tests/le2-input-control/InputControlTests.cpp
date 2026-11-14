@@ -81,7 +81,8 @@ bool SameContext(Context const& a, Context const& b) {
 }
 json::Value ContextJson(Context const& value) {
     auto out = json::Value::Object(); out["available"] = value.available;
-    out["category"] = value.category == Category::Default ? "default" : "party-select";
+    out["category"] = value.category == Category::Default ? "default" :
+        value.category == Category::PartyConfirm ? "party-confirm" : "party-select";
     return out;
 }
 }
@@ -145,6 +146,20 @@ void InstallationRechecks() {
     // monotonic clock; it is not silently shortened to the wire's UTC age.
     Check(fake::source->Snapshot().expiresMs == 0 && fake::source->Snapshot().activationDeadlineMs == 5100,
           "publication starts bounded monotonic activation wait, not the hold");
+}
+void PartyConfirmation() {
+    fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
+    fake::current.category = context::Category::PartyConfirm;
+    Check(!Publish(input,reason,"party-select") && fake::installs == 0,"party selection request cannot act on confirmation");
+    Check(!Publish(input,reason,"unknown") && fake::installs == 0,"unknown category cannot fall through to a valid context");
+    Check(Publish(input,reason,"party-confirm"),"explicit confirmation request admitted in matching context");
+    Check(fake::Poll().pad.buttons == 0x1000,"confirmation pulse delivered through existing source");
+    fake::current.category = context::Category::Default; input.Tick(77);
+    Check(!input.admitted && fake::source->Snapshot().phase == pad::Phase::DrainPending,
+          "confirmation-to-game transition cancels and requires release");
+    Check(!Publish(input,reason,"default",2),"next screen cannot receive replacement before neutral");
+    Check(fake::Poll().replace && fake::source->Snapshot().neutralPolls == 1,"confirmation transition releases once");
+    Check(Publish(input,reason,"default",2),"separate next-screen request only follows neutral");
 }
 void ContextCancellation() {
     fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
@@ -262,7 +277,7 @@ void DestructorAndTokenLifetime() {
 }
 int main() {
     try {
-        Admission(); InstallationRechecks(); ContextCancellation(); ExpiryAndConflict(); NativePollDelay(); RefusedAndClock(); ClockRegression(); DisableAndJson(); DestructorAndTokenLifetime();
+        Admission(); InstallationRechecks(); PartyConfirmation(); ContextCancellation(); ExpiryAndConflict(); NativePollDelay(); RefusedAndClock(); ClockRegression(); DisableAndJson(); DestructorAndTokenLifetime();
         std::cout << checks << " input orchestration checks passed\n";
         return 0;
     } catch (std::exception const& error) {

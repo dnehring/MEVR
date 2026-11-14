@@ -142,7 +142,11 @@ struct NativeInput {
         if (!hooks) return false;
         auto context = input_context::CaptureInputContext(thread);
         reason = "requested-input-context-unavailable-or-mismatched";
-        auto const expected = pulse.context == "default" ? input_context::Category::Default : input_context::Category::PartySelect;
+        auto expected = input_context::Category::Unavailable;
+        if (pulse.context == "default") expected = input_context::Category::Default;
+        else if (pulse.context == "party-select") expected = input_context::Category::PartySelect;
+        else if (pulse.context == "party-confirm") expected = input_context::Category::PartyConfirm;
+        if (expected == input_context::Category::Unavailable) return false;
         if (!context.available || context.category != expected) return false;
         reason = "diagnostic-input-installation-unavailable";
         if (!pad_bridge::DiagnosticTryInstall(*hooks, true)) return false;

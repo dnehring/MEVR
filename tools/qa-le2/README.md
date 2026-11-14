@@ -26,9 +26,18 @@ matching resources and verified restoration. It opens **Squad Selection**, not
 a ready combat encounter. The next acquisition step is ordinary squad selection
 and progression to a safe firing/reload point. A tested read-only
 [`observe-orbital` query](../../research/le2-scanning-readiness.md) is available
-for the later scanning baseline; native orbital sampling and the scripted
-gamepad input adapter remain pending. No story-flag reset substitutes for these
-normal gameplay steps.
+for the later scanning baseline; native orbital sampling remains pending.
+The existing GamepadBridge now delivers bounded scripted input: a protected run
+selected Miranda and Grunt, released each pulse to neutral and reached the squad
+confirmation modal. The candidate adds source-bound confirmation/loadout contexts;
+those transitions still require native proof. No story-flag reset substitutes
+for these normal gameplay steps.
+
+Use [`observe-weapon`](../../research/le2-weapon-observation.md) through the same
+bound control client to inspect a live weapon before preparing reload assertions.
+It distinguishes capacity, magazine usage, derived loaded count and raw stored
+reserve. Effective reserve stays unavailable until the applicable weapon getter
+semantics are verified; a stored reserve value alone is not proof of reload cost.
 
 Offline preparation can continue while another session owns the game:
 [resource boundary batches](variant-usage.md) create hash-bound zero/insufficient/exact/surplus cases;

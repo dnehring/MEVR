@@ -38,7 +38,7 @@ def main(executable):
             assert current["identity"] == identity
             return directory, identity
 
-        for verb in ("ping", "observe", "observe-save-menu", "observe-resources", "observe-save-flow", "observe-orbital"):
+        for verb in ("ping", "observe", "observe-save-menu", "observe-resources", "observe-save-flow", "observe-orbital", "observe-weapon"):
             result = control.submit(run, verb, timeout=5, bind=bind)
             assert result["status"] == "completed"
             # The observer's 16 KiB budget is measured with compact JSON. The
@@ -63,11 +63,16 @@ def main(executable):
                 assert payload["capabilities"]["observeOrbital"] is False
                 assert payload["orbitalObservation"]["available"] is False
                 assert payload["readOnly"] is True
+            if verb == "observe-weapon":
+                assert payload["capabilities"]["observeWeapon"] is False
+                assert payload["weaponObservation"]["available"] is False
+                assert payload["weaponObservation"]["reason"] == "offline-fixture-does-not-traverse-engine-memory"
+                assert payload["readOnly"] is True
             assert "not validated" in payload["unavailable"]["map"]
         result = control.submit(run, "console", "exit", timeout=5, allow_console=True, bind=bind)
         assert result["status"] == "rejected"
-        assert len(list((directory / "history").glob("*.result"))) == 7
-        assert len(list(directory.glob("consumed-*.request"))) == 7
+        assert len(list((directory / "history").glob("*.result"))) == 8
+        assert len(list(directory.glob("consumed-*.request"))) == 8
         assert not (directory / "request.control").exists()
         assert not (directory / "outstanding.json").exists()
         result = control.submit(run, 'probe-fov', timeout=5, allow_probe_fov=True, bind=bind)
@@ -96,8 +101,8 @@ def main(executable):
             assert rejection['status'] == 'rejected' and rejection['lease'] == identity['lease']
         # Neither rejection may poison the next legitimate request.
         assert control.submit(run, 'ping', timeout=5, bind=bind)['status'] == 'completed'
-        assert len(list((directory / 'history').glob('*.result'))) == 18
-        assert len(list(directory.glob('consumed-*.request'))) == 18
+        assert len(list((directory / 'history').glob('*.result'))) == 19
+        assert len(list(directory.glob('consumed-*.request'))) == 19
         assert not (directory / 'outstanding.json').exists()
         print('Python/C++ filesystem smoke passed: observations, disabled console/FOV/menu, wrong lease, expiry and recovery; fake process only')
     finally:
