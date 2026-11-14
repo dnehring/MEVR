@@ -5,6 +5,41 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Input bridge attached; native polling exposed a pulse timing defect
+
+Protected run `33d051cc-b721-43e0-8ac9-1660b08a47ec` used candidate `8bb1b331`,
+ASI SHA256 `6ddf1c280128f10c9e93a160be3e5612f320597e6678806c8439c3148cb46257`.
+It launched through the existing Steam adapter, normally loaded the unchanged
+chapter fixture at descriptor row 2, and reached the reviewed Squad Selection
+screen. The read-only context sampler reported stable `party-select`, active GUI
+mode 7, an initialized handler and unchanged selected-member fields (0, 0).
+
+Two explicitly requested confirm-button pulses (150 and 1000 ms) installed the
+two existing `xinput1_4.dll` exports through the shared bridge. The mapped owner
+was the system XInput DLL; eligible callers were within the main executable.
+Both requests published, but their first eligible polls arrived 312 and 1422 ms
+after publication, respectively. Both therefore recorded **zero pressed-state
+polls** and one neutral write with expiry. No physical conflict occurred. This
+proves hook installation and neutral output delivery, not confirm input or squad
+selection success. No gameplay scenario was accepted.
+
+The corresponding correction keeps the maximum hold at 1000 ms but starts it
+on the first eligible poll, with a separate fixed 5000 ms activation timeout.
+The two measured delays are regression cases. Native press delivery still needs
+a fresh protected run; passing those synthetic cases is not that proof.
+
+Foreground desktop capture refused because Windows reported foreground HWND 0.
+The existing PrintWindow method supplied readable load and party captures. The
+post-pulse image retained the character lineup but lacked some labels/buttons
+visible before; do not claim pixel-identical UI or infer the cause. The normal
+load request selected row 2 explicitly; the pre-load image highlighted Save 36
+while showing Save 99 at row 2, so it is not visual proof of Save 99 selection.
+
+ME2 closed normally at 16:31:07 UTC. The preservation preflight found no ME1
+changes and no shared Trilogy profile content change; all four protected roots
+were restored and verified at 16:32:30 UTC, and the owned invitation was removed.
+Private evidence is retained under `run-20261114T1622Z-input`.
+
 ### Untouched chapter loads to squad selection; combat setup still needed
 
 Protected run `50917136-a7ba-4d59-b204-63493cfa3ed9` used the proven `0ccce73b`

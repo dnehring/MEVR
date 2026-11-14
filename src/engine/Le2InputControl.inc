@@ -23,6 +23,7 @@ char const* PadEnd(pad_policy::End end) {
     case pad_policy::End::PhysicalConflict: return "physical-conflict";
     case pad_policy::End::PhysicalError: return "physical-error";
     case pad_policy::End::ClockRegressed: return "clock-regressed";
+    case pad_policy::End::StartTimedOut: return "start-timed-out";
     }
     return "unknown";
 }
@@ -82,6 +83,8 @@ Value InputBridgeJson(pad_bridge::DiagnosticObservation const& state) {
     source["token"] = std::to_string(s.run); source["sequence"] = std::to_string(s.sequence);
     source["phase"] = PadPhase(s.phase); source["end"] = PadEnd(s.end); source["runOpen"] = s.runOpen;
     source["publishedMs"] = std::to_string(s.publishedMs); source["expiresMs"] = std::to_string(s.expiresMs);
+    source["activationDeadlineMs"] = std::to_string(s.activationDeadlineMs);
+    source["requestedDurationMs"] = static_cast<int>(s.requestedDurationMs);
     source["pulsePolls"] = std::to_string(s.pulsePolls);
     source["firstPulseMs"] = std::to_string(s.firstPulseMs); source["lastPulseMs"] = std::to_string(s.lastPulseMs);
     source["neutralPolls"] = std::to_string(s.neutralPolls); source["neutralMs"] = std::to_string(s.neutralMs);

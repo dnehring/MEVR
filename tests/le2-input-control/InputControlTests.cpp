@@ -143,7 +143,8 @@ void InstallationRechecks() {
     Check(Publish(input,reason),"one millisecond before admission deadline is accepted");
     // UTC is the admission deadline. The bounded hold uses an independent
     // monotonic clock; it is not silently shortened to the wire's UTC age.
-    Check(fake::source->Snapshot().expiresMs == 200,"pulse expiry uses bridge monotonic clock");
+    Check(fake::source->Snapshot().expiresMs == 0 && fake::source->Snapshot().activationDeadlineMs == 5100,
+          "publication starts bounded monotonic activation wait, not the hold");
 }
 void ContextCancellation() {
     fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
@@ -168,12 +169,12 @@ void ContextCancellation() {
 void ExpiryAndConflict() {
     fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
     Check(Publish(input,reason),"expiry test admitted");
-    fake::monotonic = 200; input.Tick(77);
+    fake::monotonic = 5100; input.Tick(77);
     Check(input.Active() && !Publish(input,reason),"elapsed time without a poll does not pretend neutral drain");
     auto neutral = fake::Poll();
     Check(neutral.replace && neutral.pad == pad::Pad{} && fake::source->Snapshot().pulsePolls == 0,"first late poll emits only neutral");
     input.Tick(77);
-    Check(!input.admitted && !input.Active() && fake::source->Snapshot().end == pad::End::Expired,"expiry neutral clears context without automatic publication");
+    Check(!input.admitted && !input.Active() && fake::source->Snapshot().end == pad::End::StartTimedOut,"start timeout neutral clears context without automatic publication");
     Check(Publish(input,reason,"default",2),"explicit request after expired neutral accepted");
     pad::Physical physical{pad::PhysicalState::Connected,{0,0,0,1,0,0,0},11};
     Check(!fake::Poll(physical).replace,"physical non-neutral input is not masked");
@@ -182,6 +183,24 @@ void ExpiryAndConflict() {
     Check(fake::Poll().pad == pad::Pad{},"physical conflict resolves with neutral only");
     input.Tick(77);
     Check(!input.admitted && fake::publishes == 2,"resolved conflict does not rearm");
+}
+void NativePollDelay() {
+    for (std::uint64_t delay : {312ULL,1422ULL}) {
+        fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
+        Check(Publish(input,reason),"native-delay publication admitted");
+        fake::monotonic += delay; input.Tick(77);
+        auto first = fake::Poll();
+        Check(first.replace && first.pad.buttons == 0x1000,"native delayed first poll delivers press before hold expiry");
+        auto observed = input.Observe(77).Get("bridge").Get("source");
+        Check(observed.String("phase") == "output-written" && observed.Number("requestedDurationMs") == 100 &&
+              observed.String("activationDeadlineMs") == "5100" &&
+              observed.String("expiresMs") == std::to_string(fake::monotonic+100),"activation and actual hold deadline remain distinct");
+        Check(!Publish(input,reason),"delivered press still cannot be replaced before release");
+        fake::monotonic += 100;
+        auto release = fake::Poll(); input.Tick(77);
+        Check(release.replace && release.pad == pad::Pad{} && !input.Active() &&
+              fake::source->Snapshot().end == pad::End::Expired,"hold expires relative to first eligible poll and drains once");
+    }
 }
 void RefusedAndClock() {
     fake::Reset(); NativeInput input; input.hooks = &hooks; std::string reason;
@@ -243,7 +262,7 @@ void DestructorAndTokenLifetime() {
 }
 int main() {
     try {
-        Admission(); InstallationRechecks(); ContextCancellation(); ExpiryAndConflict(); RefusedAndClock(); ClockRegression(); DisableAndJson(); DestructorAndTokenLifetime();
+        Admission(); InstallationRechecks(); ContextCancellation(); ExpiryAndConflict(); NativePollDelay(); RefusedAndClock(); ClockRegression(); DisableAndJson(); DestructorAndTokenLifetime();
         std::cout << checks << " input orchestration checks passed\n";
         return 0;
     } catch (std::exception const& error) {

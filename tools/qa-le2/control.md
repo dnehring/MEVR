@@ -60,7 +60,10 @@ The exact ten-field schema is:
 ```
 
 `context` is `default` or `party-select`; the runtime must independently admit the
-actual supported context. `durationMs` is an integer from 1 to 1000. `buttons` is
+actual supported context. `durationMs` is an integer from 1 to 1000 and measures
+the hold starting at the first eligible nonconflicting controller poll. There is
+a fixed 5000 ms activation wait from publication; failure to start within it
+produces `start-timed-out` and neutral release, never a delayed press. `buttons` is
 uint16 with only mask `0xF3FF` permitted; bits `0x0400` and `0x0800` are reserved.
 Triggers are integers 0..255 and the four stick axes integers -32768..32767.
 The pulse JSON is limited to 4096 UTF-8 bytes and must not have a byte-order mark.
@@ -97,7 +100,8 @@ run, lease and sequence. A second pulse is refused until the first has emitted
 its neutral output. There is no pulse queue or automatic retry.
 
 `payload.inputObservation` contains `context`, `bridge` and `cancellationReason`.
-The bridge's `source` reports publication/expiry times, requested pad, eligible
+The bridge's `source` reports publication, activation deadline, actual hold
+expiry (`0` until the first delivered press), requested duration/pad, eligible
 poll counts and neutral writes. `output-written` and `neutral-written` mean the
 hook wrote an XInput output buffer; they do not prove the engine used it. Compare
 normal scene captures and authoritative state before and after each action.

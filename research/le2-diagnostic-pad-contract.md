@@ -16,8 +16,12 @@ settings. It is independent of VR controller state, grip logic and head yaw.
   reopen; the host is responsible for issuing fresh tokens and mapping them to
   authenticated run identities. A numeric token is not wire authentication.
 - `Publish(run, sequence, Pad, durationMs, nowMs)` accepts one nonneutral pulse,
-  with strictly increasing nonzero sequence, duration 1–1000 ms and no deadline
-  overflow. There is no queue, overwrite or implicit renewal. A tap is a short
+  with strictly increasing nonzero sequence, hold duration 1–1000 ms and no
+  deadline overflow. Publication starts a fixed 5000 ms activation window; the
+  hold starts on the first eligible nonconflicting poll. Before that poll,
+  `expiresMs` is zero and `activationDeadlineMs` bounds waiting. A first poll at
+  or after the activation deadline emits neutral with `StartTimedOut`, never a
+  delayed press. There is no queue, overwrite or implicit renewal. A tap is a short
   button pulse; held input requires another explicitly admitted request after
   the preceding neutral response. Neutral requests and reserved button bits are
   refused. Sticks/triggers use fixed-width XInput ranges, so no float conversion
@@ -40,7 +44,7 @@ and rejects regressing publication. Caller timestamps sampled before lock
 acquisition can regress under contention; the conservative result is cancellation,
 not continued movement. Unrepresentable deadlines are rejected before admission.
 
-Phases are `Idle`, `Published`, `Consumed`, `DrainPending`, `NeutralEmitted`.
+Phases are `Idle`, `Published` (waiting to start), `Consumed`, `DrainPending`, `NeutralEmitted`.
 `Consumed` means a synthetic nonneutral response was produced for a poll. It does
 **not** prove frame processing, pawn movement, interaction, scanning or VR input.
 Multiple polls can occur in one frame. `NeutralEmitted` means exactly one safe
