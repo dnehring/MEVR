@@ -88,6 +88,123 @@ bool ReadPartyConfirmation(Table const& table, UMassEffectGuiManager const* mana
     c.category=Category::PartyConfirm;
     return true;
 }
+static_assert(offsetof(UBioSFHandler_ChoiceGUI,__InputCallback__Delegate)==0xBC);
+static_assert(offsetof(UBioSFHandler_ChoiceGUI,m_ChoiceData)==0xEC);
+static_assert(offsetof(USFXSeqAct_ChooseLoadoutBase,TopMenu)==0x15C);
+static_assert(offsetof(USFXSeqAct_ChooseLoadoutBase,SubMenu)==0x164);
+static_assert(offsetof(USFXSeqAct_ChooseLoadoutBase,CurrentPawn)==0x1C0);
+static_assert(offsetof(USequenceObject,ParentSequence)==0x70);
+static_assert(offsetof(USequence,SequenceObjects)==0xDC);
+static_assert(offsetof(USequence,ActiveSequenceOps)==0xEC);
+bool ReadNameKey(SFXName const& name, NameKey& out) { return CopyPartyName(name,out.raw,out.text); }
+bool ReadNameBits(SFXName const& name, std::array<std::uint32_t,2>& out) {
+    char text[kNameBytes]{};
+    if (!NameText(name,text)) return false;
+    std::memcpy(out.data(),&name,sizeof(name)); return true;
+}
+bool LoadoutWeaponClass(Table const& table, UClass const* type) {
+    for (unsigned depth=0;type && depth<kMaxClassDepth;++depth) {
+        if (!ClassMetadata(table,type)) return false;
+        if (Qualified(table,type,"SFXGame","SFXWeapon")) return true;
+        type=static_cast<UClass const*>(type->SuperField);
+    }
+    return false;
+}
+bool ReadLoadoutContext(Table const& table, UMassEffectGuiManager const* manager, Context& c) {
+    auto& s=c.loadout; MenuPanel choice;
+    auto const* focus=reinterpret_cast<UBioSFPanel const*>(c.focusPanel.address);
+    c.reason="loadout-choice-panel-or-handler-invalid";
+    if (!c.modeActive || !PanelContext(table,focus,manager,"BioSFHandler_PCChoiceGUI",choice,true) ||
+        std::strcmp(choice.handler.className,"SFXGame.BioSFHandler_PCChoiceGUI")!=0 || !PanelInteractive(choice)) return false;
+    unsigned matchingPanels=0;
+    for (unsigned i=0;i<c.panels.count;++i) if (c.panelStates[i].object.address==c.focusPanel.address) ++matchingPanels;
+    c.reason="loadout-choice-panel-ambiguous";
+    if (matchingPanels!=1) return false;
+    c.focusHandler=CopyIdentity(choice.handler);
+    auto const* handler=reinterpret_cast<UBioSFHandler_PCChoiceGUI const*>(choice.handler.address);
+    ObjectSample action, sequence, data;
+    c.reason="loadout-callback-action-invalid";
+    if (!ReadObject(table,handler->__InputCallback__Delegate.Object,"SFXGame","SFXSeqAct_ChooseLoadoutBase",action) ||
+        (std::strcmp(action.className,"SFXGame.SFXSeqAct_ChooseLoadoutBase")!=0 &&
+         std::strcmp(action.className,"SFXGameContent.SFXSeqAct_ChooseLoadout")!=0) ||
+        !ReadNameKey(handler->__InputCallback__Delegate.FunctionName,s.callback)) return false;
+    auto const* owner=reinterpret_cast<USFXSeqAct_ChooseLoadoutBase const*>(action.address);
+    s.action=CopyIdentity(action); s.topMenu=reinterpret_cast<std::uintptr_t>(owner->TopMenu);
+    s.subMenu=reinterpret_cast<std::uintptr_t>(owner->SubMenu);
+    s.callbackContext=handler->nInputCallbackContext; s.currentPawn=owner->CurrentPawn;
+    s.subWeaponIndex=owner->SubMenuWeaponIdx; s.active=owner->bActive;
+    s.finished=owner->m_bFinished; s.latent=owner->bLatentExecution;
+    s.activationCount=owner->ActivateCount; s.allHenchmen=owner->m_bAllHenchmen;
+    c.reason="loadout-callback-stage-or-menu-reciprocal-invalid";
+    if (std::strcmp(s.callback.text.data(),"CharacterMenuHandler")==0 && owner->TopMenu==handler) s.stage=1;
+    else if (std::strcmp(s.callback.text.data(),"TopMenuHandler")==0 && owner->TopMenu==handler) s.stage=2;
+    else if (std::strcmp(s.callback.text.data(),"SubMenuHandler")==0 && owner->SubMenu==handler) s.stage=3;
+    else return false;
+    c.reason="loadout-action-not-active-or-finished";
+    if (!s.active || s.finished) return false;
+    auto const* parent=owner->ParentSequence;
+    c.reason="loadout-parent-sequence-invalid";
+    if (!ReadObject(table,parent,"Engine","Sequence",sequence) || owner->Outer!=parent ||
+        !BoundedArray(parent->SequenceObjects,4096) || !BoundedArray(parent->ActiveSequenceOps,4096)) return false;
+    s.sequence=CopyIdentity(sequence); s.sequenceEnabled=parent->bEnabled;
+    s.objects=CopyArray(parent->SequenceObjects); s.activeOps=CopyArray(parent->ActiveSequenceOps);
+    unsigned members=0, activeMembers=0;
+    // Only compare pointers in these bounded owner arrays. Never dereference
+    // unrelated sequence members or search the global object table.
+    for (unsigned i=0;i<s.objects.count;++i) if (parent->SequenceObjects.GetData()[i]==owner) { ++members; s.sequenceSlot=i; }
+    for (unsigned i=0;i<s.activeOps.count;++i) if (parent->ActiveSequenceOps.GetData()[i]==owner) { ++activeMembers; s.activeSlot=i; }
+    c.reason="loadout-action-not-unique-active-sequence-member";
+    if (!s.sequenceEnabled || members!=1 || activeMembers!=1) return false;
+    c.reason="loadout-choice-data-invalid-or-foreign";
+    if (!ReadObject(table,handler->m_ChoiceData,"SFXGame","SFXGameChoiceGUIData",data) ||
+        std::strcmp(data.className,"SFXGame.SFXGameChoiceGUIData")!=0 || handler->m_ChoiceData->Outer!=handler) return false;
+    s.data=CopyIdentity(data);
+    c.reason="loadout-array-invalid-or-over-limit";
+    if (!BoundedArray(owner->AvailableHenchmen,32) || !BoundedArray(owner->LoadoutWeapons,6) ||
+        !BoundedArray(owner->WeaponMenuEnabledWeaponIDs,6) || !BoundedArray(owner->SubMenuEnabledWeapons,64) ||
+        !BoundedArray(handler->m_ChoiceData->lstChoices,64)) return false;
+    s.characters=CopyArray(owner->AvailableHenchmen); s.weapons=CopyArray(owner->LoadoutWeapons);
+    s.weaponIds=CopyArray(owner->WeaponMenuEnabledWeaponIDs); s.subWeapons=CopyArray(owner->SubMenuEnabledWeapons);
+    s.choices=CopyArray(handler->m_ChoiceData->lstChoices);
+    c.reason="loadout-current-character-or-choice-count-invalid";
+    if (s.characters.count==0 || s.currentPawn<0 || static_cast<unsigned>(s.currentPawn)>=s.characters.count ||
+        s.choices.count==0 || s.choices.count!=(s.stage==1?s.characters.count:s.stage==2?s.weaponIds.count:s.subWeapons.count)) return false;
+    for (unsigned i=0;i<s.characters.count;++i) if (!ReadNameBits(owner->AvailableHenchmen.GetData()[i],s.characterNames[i])) return false;
+    // Activated explicitly reserves index zero for Shepard with the None name.
+    char firstCharacter[kNameBytes]{};
+    if (!NameText(owner->AvailableHenchmen.GetData()[0],firstCharacter) || std::strcmp(firstCharacter,"None")!=0) return false;
+    c.reason="loadout-weapon-class-or-index-invalid";
+    for (unsigned i=0;i<s.weapons.count;++i) {
+        auto const* type=owner->LoadoutWeapons.GetData()[i];
+        if (!type) continue; // unavailable groups may be null; selectable groups below may not.
+        if (!LoadoutWeaponClass(table,type)) return false;
+        s.weaponClasses[i]={reinterpret_cast<std::uintptr_t>(type),reinterpret_cast<std::uintptr_t>(type->Class),type->ObjectInternalInteger};
+    }
+    for (unsigned i=0;i<s.weaponIds.count;++i) {
+        int const id=owner->WeaponMenuEnabledWeaponIDs.GetData()[i];
+        if (id<0 || id>=6 || static_cast<unsigned>(id)>=s.weapons.count || !s.weaponClasses[id].address) return false;
+        for (unsigned j=0;j<i;++j) if (s.enabledWeaponIds[j]==id) return false;
+        s.enabledWeaponIds[i]=id;
+    }
+    if (s.stage!=1 && s.weapons.count!=6) return false;
+    if (s.stage==3 && (s.subWeaponIndex<0 || s.subWeaponIndex>=6 || !s.weaponClasses[s.subWeaponIndex].address)) return false;
+    if (s.stage==3) {
+        bool enabled=false;
+        for (unsigned i=0;i<s.weaponIds.count;++i) enabled=enabled || s.enabledWeaponIds[i]==s.subWeaponIndex;
+        if (!enabled) return false;
+    }
+    for (unsigned i=0;i<s.subWeapons.count;++i) {
+        auto const& row=owner->SubMenuEnabledWeapons.GetData()[i];
+        if (!ReadNameBits(row.ClassName,s.subWeaponNames[i]) || !ReadNameBits(row.UnlockPlotId,s.subWeaponUnlocks[i])) return false;
+        s.subWeaponRatings[i]=row.Rating; s.subWeaponSpecial[i]=row.bNotRegularWeaponGUI;
+    }
+    for (unsigned i=0;i<s.choices.count;++i) {
+        auto const& row=handler->m_ChoiceData->lstChoices.GetData()[i];
+        s.choiceStates[i]={row.nChoiceID,row.bDisabled!=0,row.bNested!=0};
+    }
+    c.category=Category::Loadout;
+    return true;
+}
 void ReadInputContext(void* raw) {
     auto& sample=*static_cast<ReadContext*>(raw); auto& f=sample.flow; auto& c=sample.result;
     ReadSaveFlow(&f);
@@ -182,6 +299,9 @@ void ReadInputContext(void* raw) {
     } else if (f.currentMode==7 && std::strcmp(f.mode.className,"SFXGame.SFXGameModeGUI")==0 &&
                std::strcmp(f.focusedTag,"MessageBox")==0) {
         if (!ReadPartyConfirmation(table,manager,c)) return;
+    } else if (f.currentMode==7 && std::strcmp(f.mode.className,"SFXGame.SFXGameModeGUI")==0 &&
+               std::strcmp(f.focusedTag,"ChoiceGUI")==0) {
+        if (!ReadLoadoutContext(table,manager,c)) return;
     } else return;
     c.available=true; c.reason="stable-read-only-input-context";
 }
@@ -207,7 +327,8 @@ json::Value ContextJson(Context const& c) {
     auto out=json::Value::Object(); out["available"]=c.available; out["reason"]=c.reason;
     out["dispatchCapability"]=false; out["bindingsVerified"]=false; out["gameplayEffectProven"]=false;
     out["durableObjectIdentity"]=false;
-    out["category"]=c.available?(c.category==Category::Default?"default":c.category==Category::PartySelect?"party-select":"party-confirm"):"unavailable";
+    out["category"]=c.available?(c.category==Category::Default?"default":c.category==Category::PartySelect?"party-select":
+        c.category==Category::PartyConfirm?"party-confirm":"loadout"):"unavailable";
     if (!c.available) return out;
     out["currentMode"]=static_cast<int>(c.currentMode); out["map"]=c.map.data(); out["focusedPanelTag"]=c.focusedTag.data();
     out["modeActive"]=c.modeActive; out["allowMovement"]=c.allowMovement; out["allowCamera"]=c.allowCamera;
@@ -228,6 +349,21 @@ json::Value ContextJson(Context const& c) {
         confirmation["displayingHint"]=c.messageDisplayingHint;
         confirmation["managerMessageCacheMatches"]=c.messageCache==c.focusHandler.address;
         out["partyConfirmation"]=std::move(confirmation);
+    }
+    if (c.category==Category::Loadout) {
+        auto loadout=json::Value::Object(); auto const& s=c.loadout;
+        loadout["callback"]=s.callback.text.data();
+        loadout["stage"]=s.stage==1?"characters":s.stage==2?"weapon-groups":"weapons";
+        loadout["currentPawnIndex"]=s.currentPawn; loadout["subWeaponIndex"]=s.subWeaponIndex;
+        loadout["callbackContext"]=s.callbackContext; loadout["callbackContextIsObservedSelection"]=false;
+        loadout["active"]=s.active; loadout["finished"]=s.finished; loadout["latent"]=s.latent;
+        loadout["activationCount"]=s.activationCount; loadout["allHenchmen"]=s.allHenchmen;
+        loadout["characterCount"]=static_cast<int>(s.characters.count); loadout["weaponGroupCount"]=static_cast<int>(s.weaponIds.count);
+        loadout["weaponCount"]=static_cast<int>(s.subWeapons.count); loadout["choiceCount"]=static_cast<int>(s.choices.count);
+        loadout["actionIndex"]=s.action.index; loadout["sequenceIndex"]=s.sequence.index; loadout["choiceDataIndex"]=s.data.index;
+        loadout["currentWorldHandlerRelationVerified"]=true; loadout["activeSequenceReciprocalVerified"]=true;
+        loadout["gworldLevelContainmentProven"]=false; loadout["nativeChoiceIndexMappingProven"]=false;
+        out["loadout"]=std::move(loadout);
     }
     auto identities=json::Value::Object();
     identities["worldIndex"]=c.world.index; identities["controllerIndex"]=c.controller.index;

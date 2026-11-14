@@ -27,7 +27,7 @@ FMallocLike** GMalloc{};
 void* sdkMalloc(DWORD, DWORD) { std::abort(); }
 void sdkFree(void*) { std::abort(); }
 namespace {
-std::array<SFXNameEntry const*, 256> names{};
+std::array<SFXNameEntry const*, 1024> names{};
 unsigned nextName = 1;
 std::vector<std::unique_ptr<unsigned char[]>> textStorage;
 template<class T> struct Raw {
@@ -35,6 +35,7 @@ template<class T> struct Raw {
     T* get() { return reinterpret_cast<T*>(bytes); }
 };
 void Name(UObject* p, char const* text) {
+    if (nextName>=names.size()) throw std::runtime_error("synthetic name table capacity exceeded");
     auto memory = std::make_unique<unsigned char[]>(sizeof(SFXNameEntry) + 128);
     std::memset(memory.get(), 0, sizeof(SFXNameEntry) + 128);
     auto* entry = reinterpret_cast<SFXNameEntry*>(memory.get());
@@ -297,6 +298,7 @@ int main() {
         Raw<APlayerController> controller;
         Raw<APawn> pawn;
         auto add = [&](UObject* object, char const* name, UClass* type, UObject* outer) {
+            if (table.count>=static_cast<int>(slots.size())) throw std::runtime_error("synthetic object table capacity exceeded");
             object->ObjectInternalInteger = table.count;
             slots[table.count++] = object;
             object->Class = type; object->Outer = outer; Name(object, name);

@@ -6,7 +6,7 @@
 
 namespace mevr::engine::le2_diagnostic::input_context {
 #if defined(MEVR_GAME_LE2)
-enum class Category { Unavailable, Default, PartySelect, PartyConfirm };
+enum class Category { Unavailable, Default, PartySelect, PartyConfirm, Loadout };
 // Comparison-only process-local identities, never wire handles or durable IDs.
 struct Identity {
     std::uintptr_t address{}, classAddress{};
@@ -23,6 +23,33 @@ struct Panel {
     std::array<char,128> tag{};
     bool visible{}, initialized{}, removing{}, inputDisabled{}, eventsDisabled{}, focused{};
     bool operator==(Panel const&) const = default;
+};
+struct NameKey {
+    std::array<std::uint32_t,2> raw{};
+    std::array<char,128> text{};
+    bool operator==(NameKey const&) const = default;
+};
+struct ChoiceKey {
+    std::int32_t id{};
+    bool disabled{}, nested{};
+    bool operator==(ChoiceKey const&) const = default;
+};
+struct LoadoutState {
+    Identity action, sequence, data;
+    std::uintptr_t topMenu{}, subMenu{};
+    NameKey callback;
+    ArrayIdentity objects, activeOps, characters, weapons, weaponIds, subWeapons, choices;
+    std::array<std::array<std::uint32_t,2>,32> characterNames{};
+    std::array<Identity,6> weaponClasses{};
+    std::array<std::int32_t,6> enabledWeaponIds{};
+    std::array<std::array<std::uint32_t,2>,64> subWeaponNames{}, subWeaponUnlocks{};
+    std::array<std::int32_t,64> subWeaponRatings{};
+    std::array<bool,64> subWeaponSpecial{};
+    std::array<ChoiceKey,64> choiceStates{};
+    std::int32_t currentPawn{}, subWeaponIndex{}, callbackContext{}, activationCount{};
+    std::uint32_t stage{}, sequenceSlot{}, activeSlot{}; // 1 characters, 2 groups, 3 weapons
+    bool active{}, finished{}, sequenceEnabled{}, latent{}, allHenchmen{};
+    bool operator==(LoadoutState const&) const = default;
 };
 struct State {
     Category category{Category::Unavailable};
@@ -46,6 +73,7 @@ struct State {
     std::uintptr_t messageCache{};
     std::int32_t confirmationContext{}, messageHiddenDepth{};
     bool messageHandleInput{}, messageModal{}, messageCached{}, messageDisplayingHint{};
+    LoadoutState loadout;
     bool operator==(State const&) const = default;
 };
 struct Context : State {

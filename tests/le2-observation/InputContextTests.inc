@@ -19,7 +19,12 @@
         defaultMode.get()->bAllowMovement=defaultMode.get()->bAllowCamera=1; defaultMode.get()->bIsActive=1;
         menuWorldInfo.get()->Pauser=nullptr; menuWorldInfo.get()->bPlayersOnlyPending=0;
     };
-    auto captureInput=[&]{return ic::CaptureInputContext(thread);};
+    // Keep repeated large POD return temporaries out of the enclosing fixture
+    // stack frame. Each call still invokes the actual two-read SDK sampler.
+    auto captureInput=[&, sample=std::make_unique<ic::Context>()]() -> ic::Context const& {
+        *sample=ic::CaptureInputContext(thread); return *sample;
+    };
+    std::cout << "Input Context bytes: " << sizeof(ic::Context) << "\n";
     beginInput(); auto initial=captureInput();
     Check(initial.available && initial.category==ic::Category::Default && initial.playerInput.index==playerInput.get()->ObjectInternalInteger,
           "default input context roots current PlayerInput without calls");
@@ -203,5 +208,6 @@
     confirmationInput(); static UBioSFHandler_PCMessageBox* changingMessage; changingMessage=messageHandler.get();
     ic::testing::SetSampleHook(+[]{changingMessage->__InputCallback__Delegate.Object=nullptr;});
     Check(!captureInput().available,"callback replacement between reads rejects context"); ic::testing::SetSampleHook(nullptr);
+    #include "LoadoutContextTests.inc"
     beginInput(); Check(captureInput().available && flowDispatchCalls==0,"read-only context recovers without dispatch or save-flow receipts");
 }

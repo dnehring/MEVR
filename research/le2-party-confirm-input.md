@@ -6,6 +6,10 @@ This extends the existing read-only input context sampler with `PartyConfirm`
 admission, or transport. SDK compilation and synthetic checks pass; native
 acceptance of this new category remains pending.
 
+The subsequent source-grounded loadout implementation is documented separately
+in [the loadout context contract](le2-loadout-input-context.md). The audit below
+records the boundary at the original party-confirmation change.
+
 The archived `run-20261114T1641Z-input` capture after Grunt selection shows the
 squad confirmation box. Its correlated save-flow response reports GUI mode 7
 and focused tag `MessageBox`. Those artifacts establish the visible stop point,
