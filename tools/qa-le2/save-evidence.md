@@ -34,6 +34,47 @@ run/process/plan identity. The code verifies bytes and provenance; the reviewer
 attests image contents and UI eligibility. It does not independently interpret
 the image or prove that the descriptor semantically names the file.
 
+The complete list may separately identify the reviewed UI-only New Save entry.
+`observedRowCount` continues to count **all UI rows**, while `recordCount` counts
+only the validated save descriptors in `records`. The optional `newSaveRow`
+object must match this exact contract, including scalar types and field set:
+
+```json
+{
+  "recognized": true,
+  "recognitionPolicy": "le2-pc-save-empty-row0-v1",
+  "uiRow": 0,
+  "index": 0,
+  "type": 0,
+  "career": "",
+  "saveName": "",
+  "careerCount": 0,
+  "careerCapacity": 0,
+  "saveNameCount": 0,
+  "saveNameCapacity": 0,
+  "saveGameIsNull": true
+}
+```
+
+This policy follows repeated native observations plus review of the corresponding
+Save screen. The runtime must classify the first row using the full reviewed
+signature and resample the entire list, including marker storage, before
+reporting completeness. Empty names alone, a display label, or rejected-row
+diagnostics do not authorize recognition. FriendlyName is not required to be
+the UI's New Save label and is not a collector recognition predicate.
+
+With a recognized marker, `recordCount` is mandatory and must equal the number
+of records; total UI rows must equal that count plus exactly one, at most 512.
+Without a marker, legacy complete observations may omit `recordCount`, and the
+total must equal the record count. Unknown policies, null/duplicate/nonzero-row
+markers, inconsistent counts and extra skipped rows are rejected. The exact
+reviewed fixture tuple still must occur once among ordinary records, whose
+nonempty names, career, types and uniqueness checks are unchanged. A marker-only
+list cannot establish the fixture binding. UI descriptors are not independently
+verified disk files; disk inventory and the reviewed fixture mapping remain
+separate. The archived response hash seals this classification in the existing
+baseline provenance, without changing the baseline or client-sidecar schema.
+
 The control client calls `verify_baseline(run, *, bind=control.binding)` inside
 its client lock before a separately authorized `save-new`. This function only
 reads: it tolerates the caller's `client.lock`, checks frozen evidence and the

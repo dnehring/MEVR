@@ -129,8 +129,8 @@ The client/collector owns disk evidence; the engine does no file I/O and reports
 The current exact PCSave must descend from this process's successful
 OpenSaveMenu. The prior browser's sampled eligibility, world/controller/pawn,
 manager, mode array and active paused GUI state must remain consistent. A fresh
-bounded observation captures all descriptor headers and UTF-16 bodies, validating
-nonempty bounded career/name components, index range, defined type range,
+bounded observation captures all UI-row descriptor headers and UTF-16 bodies.
+Real file records require nonempty bounded career/name components, index range, defined type range,
 consistent career and duplicate identity absence. The complete list has at most
 512 entries and must have room below the observed positive MaxSaves. Any maximum
 index of INT_MAX is rejected before the game's increment. The reported source
@@ -282,8 +282,8 @@ The three-row live list coincided with an externally reviewed Create New Save
 entry followed by two real manual saves. This suggests a synthetic row, but does
 not establish its exact descriptor representation. SDK BeginInitializeSaveList
 and EndInitializeSaveList are native declarations; their internal row construction
-is not available from the inspected script source. No marker is guessed or
-silently skipped. The native GetNewSaveIdx script iterates every descriptor's
+is not available from the inspected script source. At that checkpoint no marker was guessed or silently skipped; the subsequently
+reviewed exact signature is documented below. The native GetNewSaveIdx script iterates every descriptor's
 index, so dropping a row without proof would also change the source calculation.
 
 An invalid list still reports `recordsComplete=false`, an empty authoritative
@@ -305,5 +305,74 @@ foreign focus and loss of pause, plus hidden/initialization/focus regressions
 while descriptor rejection prevents a ready receipt. A synthetic marker-shaped row remains refused
 while bounded diagnostics expose its empty fields and the following manual rows.
 Malformed strings and oversized-list/evidence tests continue to refuse admission.
-The representative three-row diagnostic observation is below 9 KiB. Fresh native
-diagnostic evidence is required before defining any supported synthetic marker.
+The representative three-row diagnostic observation is below 9 KiB. That checkpoint required fresh native diagnostic evidence before defining a
+supported synthetic marker; the following section records that evidence and the
+bounded classifier it supports.
+
+
+## Reviewed first-row New Save marker
+
+Protected run `80d7434b-698d-4c98-af82-0f688e617f9a`, candidate `d4d34008`, supplied
+two matching diagnostic samples (`1ee29042-3cd2-42bc-abe4-23c881974475` and
+`72e1ceb9-7bc3-4cc6-89f2-0d5635741c71`). Both retained the owned Save-panel flow.
+The run owner separately reviewed the normal Save screen's highlighted Create
+New Save control followed by two existing manual-save rows. Actual row 0 had
+valid empty career/name strings with counts and capacities all zero, index 0,
+type 0, and a null SaveGame pointer. Its FriendlyName was the current location,
+not the Create New Save label. The two following rows were ordinary manual file
+descriptors. No New Save event was submitted in that evidence run.
+
+Policy `le2-pc-save-empty-row0-v1` recognizes only that exact first-row signature
+inside the existing exact PCSave, same-owned-flow, initialized/focused/readiness
+checks. It accepts existing valid-empty UTF-16 decoding plus zero count/capacity;
+it adds no independent data-pointer assumption. The unchanged decoder rejects a
+nonnull data pointer with zero capacity. Final rescans still compare the complete
+raw headers, including pointers, and the SaveGame pointer for every UI row.
+FriendlyName is not a classifier, so level names/localization cannot change the
+policy. No engine pointer or image contents are trusted as a file mapping.
+
+The observer preserves `observedRowCount` as total UI rows and adds `recordCount`
+for actual file descriptors. `records` contains only those strict real records.
+When the entire list has been classified and stably rescanned, the optional
+`newSaveRow` object is exactly:
+
+```json
+{
+  "recognized": true,
+  "recognitionPolicy": "le2-pc-save-empty-row0-v1",
+  "uiRow": 0,
+  "index": 0,
+  "type": 0,
+  "career": "",
+  "saveName": "",
+  "careerCount": 0,
+  "careerCapacity": 0,
+  "saveNameCount": 0,
+  "saveNameCapacity": 0,
+  "saveGameIsNull": true
+}
+```
+
+Then `observedRowCount == recordCount + 1`; without a marker they are equal and
+`newSaveRow` is absent. Unknown/reordered/repeated markers or malformed real rows
+leave `recordsComplete=false`, no marker object or next-index claim, empty
+`records`, recordCount 0, and no new write receipt. Rejected-row diagnostics stay
+explicitly nonauthoritative. Collector validation still requires the exact staged
+fixture descriptor once among real records; this classification does not replace
+that independent file evidence.
+
+The source GetNewSaveIdx calculation includes the marker's index 0. The whole
+list is not treated as empty when it contains only a marker: its maximum is 0
+and the source-derived candidate is 1. A marker followed only by descriptors with
+index -1 also yields 1. No row index is converted to a guessed filename and no
+slot is passed to the native event. Full-list resampling, one-entry behavior,
+normal preparation/free-space callbacks and completion/persistence boundaries
+are unchanged.
+
+Original SDK fixtures cover the reviewed shape with two real records, no-marker
+behavior, marker-only and marker-plus-negative-index source calculations, ten
+near-marker/order/duplicate/malformed-tail cases, five final-resample mutations
+(marker index/header/pointer and real-row changes), irreversible invalidation after
+restore, and independent FriendlyName changes. Release and Debug standalone
+checks validate code behavior only. Native New Save and reload persistence remain
+pending for the next reviewed protected candidate.

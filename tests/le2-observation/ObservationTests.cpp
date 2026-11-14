@@ -135,6 +135,10 @@ diagnostic::TargetInspection FlowInspect(std::uintptr_t target) noexcept {
     if (flowMutation == 5) flowSaveFunction->FunctionFlags = 0;
     if (flowMutation == 6) ++newSaveRecords[0].SaveDescriptor.Index;
     if (flowMutation == 7) idleWheelForMutation->m_bInOutTransition=1;
+    if (flowMutation == 8) { mevr::ue3::TArray<wchar_t> h{nullptr,0,1}; std::memcpy(&newSaveRecords[0].SaveDescriptor.Career,&h,16); }
+    if (flowMutation == 9) newSaveRecords[0].SaveGame=reinterpret_cast<USFXSaveGame*>(1);
+    if (flowMutation == 10) { mevr::ue3::TArray<wchar_t> h{reinterpret_cast<wchar_t*>(1),0,0}; std::memcpy(&newSaveRecords[0].SaveDescriptor.SaveName,&h,16); }
+    if (flowMutation == 11) ++newSaveRecords[1].SaveDescriptor.Index;
     return result;
 }
 void FakeSaveFlowDispatch(void* object, void* function, void* parameters) {
@@ -1323,7 +1327,7 @@ int main() {
         };
         prepareNew(); auto ns=ObserveSaveFlow(thread).Get("save");
         Check(ns.Bool("recordsComplete") && ns.Bool("newSaveObservationBound") && ns.Bool("structuralNewSaveSupported") &&
-              ns.Number("candidateNextIndex")==43 && ns.Get("records").Items()[0].String("saveName")=="SyntheticSave", "complete actual descriptor mapping without filename inference");
+              ns.Number("candidateNextIndex")==43 && ns.Number("recordCount")==1 && !ns.Has("newSaveRow") && ns.Get("records").Items()[0].String("saveName")=="SyntheticSave", "complete actual descriptor mapping without filename inference");
         auto noRead=engineReadCalls; Check(SaveNew(0,flowServices).status=="rejected" && engineReadCalls==noRead,"wrong-thread save-new no reads");
         auto submitted=SaveNew(thread,flowServices);
         Check(submitted.status=="dispatched" && submitted.payload.Bool("parameterFrameIntact") && submitted.payload.Bool("emptyArrayDestructionSafe") &&
@@ -1447,23 +1451,63 @@ int main() {
             Check(!ObserveSaveFlow(thread).Get("save").Bool("sameOpenedSaveFlow") && SaveNew(thread,flowServices).status=="rejected",
                   "hidden uninitialized or unfocused regression cannot rearm when restored");
         }
-        // A plausible UI marker remains unrecognized diagnostic evidence only.
-        saveHeader.count=3;
-        std::wstring manual99=L"Save0099", manual36=L"Save0036", markerLabel=L"Create New Save";
-        for (unsigned i=0;i<3;++i) std::memset(saveRecords[i].get(),0,sizeof(FSaveGUIRecord));
-        setText(saveRecords[0].get()->FriendlyName,markerLabel);
-        setText(saveRecords[1].get()->SaveDescriptor.Career,career); setText(saveRecords[1].get()->SaveDescriptor.SaveName,manual99); saveRecords[1].get()->SaveDescriptor.Index=99;
-        setText(saveRecords[2].get()->SaveDescriptor.Career,career); setText(saveRecords[2].get()->SaveDescriptor.SaveName,manual36); saveRecords[2].get()->SaveDescriptor.Index=36;
-        prepareNew(); auto rejectedRows=ObserveSaveFlow(thread).Get("save"); auto diagnostics=rejectedRows.Get("rejectedRowDiagnostics");
-        Check(!rejectedRows.Bool("recordsComplete") && rejectedRows.Get("records").Items().empty() && !rejectedRows.Has("candidateNextIndex") &&
-              !rejectedRows.Bool("newSaveObservationBound") && SaveNew(thread,flowServices).status=="rejected","synthetic-shaped marker never silently admitted or skipped");
+        // Reviewed native row0 signature is classified separately; it still
+        // participates in the game's next-index calculation and full rescan.
+        std::wstring manual99=L"Save0099", manual36=L"Save0036", markerLabel=L"Arbitrary location";
+        auto markerRows=[&] {
+            saveHeader.count=3;
+            for (unsigned i=0;i<3;++i) std::memset(saveRecords[i].get(),0,sizeof(FSaveGUIRecord));
+            setText(saveRecords[0].get()->FriendlyName,markerLabel);
+            setText(saveRecords[1].get()->SaveDescriptor.Career,career); setText(saveRecords[1].get()->SaveDescriptor.SaveName,manual99); saveRecords[1].get()->SaveDescriptor.Index=99;
+            setText(saveRecords[2].get()->SaveDescriptor.Career,career); setText(saveRecords[2].get()->SaveDescriptor.SaveName,manual36); saveRecords[2].get()->SaveDescriptor.Index=36;
+        };
+        markerRows(); prepareNew(); auto classified=ObserveSaveFlow(thread).Get("save");
+        Check(classified.Bool("recordsComplete") && classified.Bool("newSaveObservationBound") && classified.Number("observedRowCount")==3 &&
+              classified.Number("recordCount")==2 && classified.Get("records").Items().size()==2 && classified.Number("candidateNextIndex")==100,
+              "reviewed first UI marker classified separately while real records and source max preserved");
+        auto marker=classified.Get("newSaveRow");
+        Check(marker.Bool("recognized") && marker.String("recognitionPolicy")=="le2-pc-save-empty-row0-v1" && marker.Number("uiRow")==0 &&
+              marker.Number("index")==0 && marker.Number("type")==0 && marker.String("career")=="" && marker.String("saveName")=="" &&
+              marker.Number("careerCount")==0 && marker.Number("careerCapacity")==0 && marker.Number("saveNameCount")==0 && marker.Number("saveNameCapacity")==0 && marker.Bool("saveGameIsNull"),
+              "exact versioned marker contract emitted only for complete stable list");
+        Check(SaveNew(thread,flowServices).status=="dispatched","normal NewSave event supports reviewed marker row");
+        markerRows(); saveHeader.count=1; prepareNew();
+        Check(ObserveSaveFlow(thread).Get("save").Number("candidateNextIndex")==1,"marker-only source maximum is zero then increments to1");
+        markerRows(); saveHeader.count=2; saveRecords[1].get()->SaveDescriptor.Index=-1; saveRecords[1].get()->SaveDescriptor.Type=2; prepareNew();
+        Check(ObserveSaveFlow(thread).Get("save").Number("candidateNextIndex")==1,"marker index included when real saved descriptor has indexminus1");
+        std::wstring emptyText=L"";
+        for (int bad:{0,1,2,3,4,5,6,7,8,9}) {
+            markerRows();
+            if (bad==0) saveRecords[0].get()->SaveDescriptor.Index=1;
+            if (bad==1) saveRecords[0].get()->SaveDescriptor.Type=2;
+            if (bad==2) saveRecords[0].get()->SaveGame=reinterpret_cast<USFXSaveGame*>(1);
+            if (bad==3) setText(saveRecords[0].get()->SaveDescriptor.Career,emptyText); // decoded empty but count/cap1
+            if (bad==4) setText(saveRecords[0].get()->SaveDescriptor.SaveName,emptyText);
+            if (bad==5) setText(saveRecords[0].get()->SaveDescriptor.Career,career);
+            if (bad==6) setText(saveRecords[0].get()->SaveDescriptor.SaveName,manual99);
+            if (bad==7) std::memset(saveRecords[1].get(),0,sizeof(FSaveGUIRecord)); // repeated marker
+            if (bad==8) { Raw<FSaveGUIRecord> temp; std::memcpy(temp.get(),saveRecords[0].get(),sizeof(FSaveGUIRecord)); std::memcpy(saveRecords[0].get(),saveRecords[1].get(),sizeof(FSaveGUIRecord)); std::memcpy(saveRecords[1].get(),temp.get(),sizeof(FSaveGUIRecord)); }
+            if (bad==9) { mevr::ue3::TArray<wchar_t> broken{reinterpret_cast<wchar_t*>(1),2,2}; std::memcpy(&saveRecords[2].get()->SaveDescriptor.SaveName,&broken,16); }
+            prepareNew(); auto rejected=ObserveSaveFlow(thread).Get("save");
+            Check(!rejected.Bool("recordsComplete") && rejected.Number("recordCount")==0 && rejected.Get("records").Items().empty() &&
+                  !rejected.Has("newSaveRow") && !rejected.Has("candidateNextIndex") && !rejected.Bool("newSaveObservationBound") &&
+                  SaveNew(thread,flowServices).status=="rejected","unknown reordered repeated or partly malformed marker lists never grant partial receipt");
+        }
+        for (int mutation:{6,8,9,10,11}) {
+            markerRows(); prepareNew(); flowMutation=mutation;
+            Check(SaveNew(thread,flowServices).status=="rejected" && flowDispatchCalls==2,"final rescan includes marker index/header/pointer plus all real rows");
+            flowMutation=0; markerRows(); ObserveSaveFlow(thread);
+            Check(SaveNew(thread,flowServices).status=="rejected","restored marker or record mutation cannot rearm flow");
+        }
+        markerRows(); prepareNew();
+        markerLabel=L"Changed display location"; setText(saveRecords[0].get()->FriendlyName,markerLabel);
+        Check(ObserveSaveFlow(thread).Get("save").Bool("recordsComplete") && SaveNew(thread,flowServices).status=="dispatched",
+              "friendly display label is deliberately not a marker discriminator");
+        markerRows(); saveRecords[0].get()->SaveDescriptor.Index=1; prepareNew();
+        auto rejectedRows=ObserveSaveFlow(thread).Get("save"); auto diagnostics=rejectedRows.Get("rejectedRowDiagnostics");
         Check(!diagnostics.Bool("authoritative") && !diagnostics.Bool("listComplete") && !diagnostics.Bool("snapshotCoherenceVerified") &&
               !diagnostics.Bool("syntheticMarkerRecognized") && diagnostics.Number("firstRejectedRow")==0 && diagnostics.Get("rows").Items().size()==3,
-              "rejected marker and valid following rows available only as bounded nonauthoritative diagnostics");
-        Check(diagnostics.Get("rows").Items()[0].Get("career").String("value")=="" &&
-              diagnostics.Get("rows").Items()[0].Get("friendlyName").String("value")=="Create New Save" &&
-              diagnostics.Get("rows").Items()[1].Get("saveName").String("value")=="Save0099" &&
-              mevr::json::Write(diagnostics,0).size()<3500,"diagnostic strings expose actual values without filename guesses");
+              "unknown near-marker retains bounded nonauthoritative diagnostics");
         std::cout << "Representative rejected-row observation bytes: " << mevr::json::Write(ObserveSaveFlow(thread),0).size() << '\n';
         mevr::ue3::TArray<wchar_t> negativeText{nullptr,-1,-1};
         std::memcpy(&saveRecords[0].get()->SaveDescriptor.SaveName,&negativeText,16);

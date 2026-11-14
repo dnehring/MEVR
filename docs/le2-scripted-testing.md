@@ -82,9 +82,12 @@ edited resources matching live inventory and exported starting-state checks.
 Subsequent runs also prove opening the normal pause and Save screens. The
 explicit owned-foreground desktop capture fallback produces readable images
 when PrintWindow returns black; see [capture usage](../tools/qa-le2/capture.md).
-New Save submission still needs corrected asynchronous Save-panel continuity
-and an understood complete descriptor list. Normal save/reload and scenario/VR
-acceptance remain pending; do not bypass a rejected Save observation.
+The corrected asynchronous Save-panel flow and separate UI-row classification
+have now supported one normal New Save request. Its sole new file passed the
+collector and independent TSE decoding with all eight edited resources intact.
+Fresh reload remains pending. The latest run closed normally, but another
+SteamVR session deferred restoration; inspect the latest evidence and retained
+session before native work. Scenario/VR acceptance remains pending.
 
 ## Implemented transport checkpoint
 

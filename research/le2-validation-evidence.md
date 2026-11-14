@@ -1,9 +1,108 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-14 UTC. **Scripted launch, normal fixture loading, eight edited resource checks, and opening the normal pause/Save menus now have live proof. Normandy scene, readable menu captures and restoration verified. New Save submission/reload persistence, gameplay scenarios, general console calls and VR remain pending.**
+Checkpoint: 2026-11-14 UTC. **Scripted New Save now produces a new file whose eight edited resources pass independent Trilogy Save Editor decoding. Normal launch/load, resource observation and menu capture also have live proof. Fresh reload remains pending. The latest run closed normally, but restoration is deferred while another SteamVR session is active; earlier runs restored successfully. Gameplay scenarios, general console calls and VR acceptance remain pending.**
 
 ## Live diagnostic connection, 2026-11-14 UTC
+
+### Normal New Save produced; independent file check passed; reload pending
+
+Protected run `c905a666-7005-4533-9bed-6ffc4d121263` used clean candidate
+`0ccce73b424bd47f6ab9daf37a8223ede57dd60c`, ASI SHA256
+`a3b08ba5357ca1ece49f30f34b2b63679718c4fa7d82d3affb5b064a6b5e14a1`, and the
+verified `59b5e775` loader. Three ordinary builds, **50/50** full tests and
+**7/7** diagnostic tests passed. The full suite included actual-C++ client
+**37/37**, updated collector **26/26**, and capture **21/21**, without skips in
+those suites. SDK observer Release/Debug and independent source reviews passed.
+Build receipt SHA256:
+`76cdef79438bc4cf39972c7c9daf478ccbd0645684c071b26cb2cb7fbb687480`.
+
+Normal scripted loading again reached the reviewed Normandy crew deck and all
+eight resource checks matched. The Save observation
+`3f94ed20-094e-4b6f-a653-e844f082773f` stably classified three UI rows as two real
+save descriptors and one exact recognized New Save row. It retained the same
+opened flow and bound a complete New Save observation. The coordinator reviewed
+the enabled Create New Save screen; the collector then sealed the complete
+four-file career inventory. Baseline SHA256:
+`9677fc9899e8e3479df9f303fc93acabc8ec5cbea49d0fc4ff035223f26e1c7e`.
+
+One request, `b7d0e1d2-e4f5-421c-ae7d-5d547e1d59aa`, entered the normal command
+11 and returned with its 20-byte parameter frame intact. The empty SDK array
+remained safely destructible. No retry, overwrite route or direct filesystem
+save creation was used. The game returned to the crew-deck view and created the
+actual file `Save_0100.pcsav`; its name was observed on disk, not derived from
+the reported candidate index. The collector verified it was the sole addition,
+every prior career file's bytes/timestamp remained unchanged, and the stable
+36,829-byte file passed the LE2 version/CRC/full-EOF parser. Archived SHA256:
+`b54bf7c65437bfa6d487019bd4328cb62fb86581f25237181a0629b04940e236`.
+
+The pinned Trilogy Save Editor oracle independently decoded and reserialized
+the native file byte-identically, with a valid checksum and all eight expected
+resource values intact. A second agent reverified the 41 staged source files,
+oracle/source hashes and both input decodes. The entire player object matched.
+All 144 level records matched by name, although their array order changed.
+Other native-save changes included time/loading-tip fields, a half-unit Z
+adjustment, one plot integer and one streaming-state flag; their causes and story
+meaning are not established. This is resource preservation in the saved file,
+not proof of a coherent story recipe. Independent review receipt SHA256:
+`17a0b99cc987d16802adc5ec4764bc9f06c217bfca47a8d91357f9785c34dd7c`.
+
+ME2 closed normally. Before restoration, an external SteamVR session appeared;
+the lifecycle guard refused cleanup. The owned lock, backups, deployed test
+candidate and new-save evidence are retained, with restoration still pending.
+Do not interrupt another owner or start a fresh native run until cleanup and
+ownership are resolved. The private run is
+`local-tools/le2-diagnostic-handoff/run-20261114T1501Z/`.
+
+A separate private reload fixture now contains exactly the archived save bytes,
+with a no-op recipe, independent TSE check and valid bound scenario. It will use
+the already reviewed Save 99 staging name; renaming the copied file does not
+modify its bytes. Its preparation and provenance live under
+`local-tools/le2-resource-reload-fixture/`. **Normal reload and resulting live
+resource persistence have not yet been observed.** No VR claim follows from
+this native flat-game test.
+
+### Save initialization retained; rejected UI row identified
+
+Protected run `80d7434b-698d-4c98-af82-0f688e617f9a` used candidate
+`d4d34008be41f0fef49c0ada26264611f6276bfe`, ASI SHA256
+`695401a96ba45038d2d0c813c6c63eafc8508c838fbe5593c169b83fb6ce0648`, with the
+verified loader. Three ordinary builds, **50/50** full tests and **7/7**
+diagnostic tests passed, including actual-C++ client/collector and capture
+tests. SDK observer Release/Debug suites passed; independent review resolved
+a pending-panel continuity gap before integration. Build receipt SHA256:
+`31c9f0648b70ea43b9c89f52519ef7183a3f868733eb9135cc619f597395f50b`.
+
+The entire launch/load/menu/capture sequence used scripts, with no computer-use
+fallback or injected desktop input. Reviewed desktop-client captures show Save
+99 selected, Shepard on the Normandy crew deck, the initialized Mission Computer
+with Save enabled, and the resulting New Save screen. All eight prepared
+resources matched the live exporter again. The loaded-scene image SHA256 is
+`42f7d1bd8d8d00956ae7d525acbd7fec5596a8f3ba2241fd3bbbe4064d5d1bc5`.
+
+Save-menu request `0c58258b-592d-4805-894e-291430c0618b` returned normally.
+Observations `1ee29042-3cd2-42bc-abe4-23c881974475` and
+`72e1ceb9-7bc3-4cc6-89f2-0d5635741c71` retained
+`sameOpenedSaveFlow=true` and `pendingPanelIdentityBound=true` after normal
+initialization. Their diagnostic row arrays were identical. The first row had
+empty career/save-name strings with count/capacity zero, index/type zero, and a
+null SaveGame pointer. Its FriendlyName was the location label, not the displayed
+Create New Save text. Rows 1 and 2 were the real Save 99 and Save 36 descriptors.
+The reviewed UI showed Create New Save followed by those two saves; image SHA256
+`148584cc70bb957c851676ceed4bfadbc8e184823db0cfad0cc82e7752ce6f4f`.
+
+These observations diagnose the rejected first row and show that the asynchronous
+panel correction works in this run. They are explicitly not coherent complete
+descriptor receipts: `recordsComplete` remained false and no New Save request
+was submitted. The next implementation must recognize only the reviewed UI-row
+signature, account for every row, resample its complete state, preserve strict
+real-save validation, and keep the collector's exact fixture binding.
+
+The game closed normally and all four protected roots were restored and
+verified. The owned invitation was removed. Private requests, four readable
+captures, exported state/checks and cleanup receipts remain in
+`local-tools/le2-diagnostic-handoff/run-20261114T1446Z/`. New Save completion and
+reload persistence remain pending.
 
 ### Closed-HUD pause and normal Save-menu transitions proven
 

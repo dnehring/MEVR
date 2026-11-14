@@ -25,6 +25,9 @@ adapter = load('save_evidence_adapter', Path(__file__).parents[1] / 'le2-save.py
 require, raw, read, sha = e.require, e.raw, e.read, e.sha
 MAX_FILE, MAX_TOTAL, MAX_ENTRIES = 32 * 1024 * 1024, 256 * 1024 * 1024, 4096
 BASELINE = 'artifacts/save-baseline.json'
+NEW_SAVE_ROW = dict(recognized=True, recognitionPolicy='le2-pc-save-empty-row0-v1',
+    uiRow=0, index=0, type=0, career='', saveName='', careerCount=0, careerCapacity=0,
+    saveNameCount=0, saveNameCapacity=0, saveGameIsNull=True)
 
 
 def utc():
@@ -198,9 +201,22 @@ def observation(run, token, wire, career, selected):
             and flow.get('available') is True
             and flow.get('saveNewEntrySpent') is False and save.get('sameOpenedSaveFlow') is True
             and save.get('newSaveObservationBound') is True and save.get('structuralNewSaveSupported') is True
-            and save.get('recordsComplete') is True and isinstance(records, list) and len(records) <= 512
-            and type(save.get('observedRowCount')) is int and save['observedRowCount'] == len(records),
+            and save.get('recordsComplete') is True and isinstance(records, list) and len(records) <= 512,
             'A complete same-flow New Save observation is required')
+    marker_count = 0
+    if 'newSaveRow' in save:
+        marker = save['newSaveRow']
+        require(isinstance(marker, dict) and set(marker) == set(NEW_SAVE_ROW)
+                and all(type(marker[k]) is type(value) and marker[k] == value for k, value in NEW_SAVE_ROW.items()),
+                'Unsupported or malformed New Save UI row recognition')
+        require('recordCount' in save, 'Recognized New Save UI row requires explicit recordCount')
+        marker_count = 1
+    # Older complete observations had no UI marker and counted records directly.
+    record_count = save.get('recordCount', len(records))
+    require(type(record_count) is int and record_count == len(records)
+            and type(save.get('observedRowCount')) is int and 0 <= save['observedRowCount'] <= 512
+            and save['observedRowCount'] == record_count + marker_count,
+            'Complete UI row accounting differs from validated records and recognized marker')
     tuples, names, manual_indices = set(), set(), set()
     for row in records:
         require(isinstance(row, dict) and leaf(row['career']) == career.name and leaf(row['saveName'])

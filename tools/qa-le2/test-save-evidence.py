@@ -21,6 +21,9 @@ HERE = Path(__file__).resolve().parent
 e = module('save_evidence_test_subject', HERE / 'save-evidence.py')
 fixtures = module('save_evidence_run_fixtures', HERE / 'test-export-state.py')
 save_fixtures = module('save_evidence_save_fixtures', HERE.parents[1] / 'tests/Le2SaveTests.py')
+MARKER = dict(recognized=True, recognitionPolicy='le2-pc-save-empty-row0-v1',
+              uiRow=0, index=0, type=0, career='', saveName='', careerCount=0,
+              careerCapacity=0, saveNameCount=0, saveNameCapacity=0, saveGameIsNull=True)
 
 
 class EvidenceTests(unittest.TestCase):
@@ -260,6 +263,94 @@ class EvidenceTests(unittest.TestCase):
         self.put(e.BASELINE, baseline)
         with self.assertRaisesRegex(ValueError, 'unchanged staged fixture'):
             e.verify_baseline(self.run, bind=self.bind)
+
+    def marked_observation(self, **changes):
+        save = self.payload['saveFlow']['save']
+        save.update(newSaveRow=copy.deepcopy(MARKER), recordCount=len(save['records']),
+                    observedRowCount=len(save['records']) + 1)
+        save.update(changes)
+        self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+        return save
+
+    def test_recognized_ui_marker_preserves_real_records_and_sealed_baseline(self):
+        save = self.marked_observation()
+        receipt = self.before()
+        self.assertEqual(save['observedRowCount'], 4)
+        self.assertEqual(save['recordCount'], 3)
+        self.assertEqual(e.c.verify_save_baseline(self.run, self.directory, self.wire), e.s.digest(self.run / e.BASELINE))
+        self.assertEqual(receipt['sourceObservation']['responseSha256'],
+                         e.s.digest(self.directory / 'history' / (self.observation_id + '.result')))
+        self.action()
+        code, result = self.after()
+        self.assertEqual(code, 0)
+        self.assertEqual(result['candidateLeaf'], 'ObservedNew.pcsav')
+        self.assertFalse(any(result['claims'].values()))
+
+    def test_marker_signature_and_types_are_exact(self):
+        self.marked_observation()
+        save = self.payload['saveFlow']['save']
+        changes = dict(recognized=False, recognitionPolicy='guessed-policy', uiRow=1, index=-1, type=2,
+                       career='Career', saveName='NewSave', careerCount=1, careerCapacity=1,
+                       saveNameCount=1, saveNameCapacity=1, saveGameIsNull=False)
+        for key, value in changes.items():
+            with self.subTest(field=key):
+                save['newSaveRow'] = dict(MARKER, **{key: value})
+                self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+                with self.assertRaisesRegex(ValueError, 'row recognition'): self.before()
+        for key, value in MARKER.items():
+            if type(value) not in (bool, int): continue
+            with self.subTest(wrong_type=key):
+                save['newSaveRow'] = dict(MARKER, **{key: 1 if type(value) is bool else False})
+                self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+                with self.assertRaisesRegex(ValueError, 'row recognition'): self.before()
+        for malformed in (None, [MARKER, MARKER], dict(MARKER, extra=True),
+                          {k: v for k, v in MARKER.items() if k != 'saveGameIsNull'}):
+            save['newSaveRow'] = malformed
+            self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+            with self.assertRaisesRegex(ValueError, 'row recognition'): self.before()
+
+    def test_marker_requires_complete_row_accounting(self):
+        save = self.marked_observation()
+        for changes in (dict(recordCount=2), dict(recordCount=True), dict(observedRowCount=3),
+                        dict(observedRowCount=5), dict(observedRowCount=True), dict(observedRowCount=513)):
+            self.marked_observation(**changes)
+            with self.assertRaisesRegex(ValueError, 'row accounting'): self.before()
+        self.marked_observation()
+        del save['recordCount']
+        self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+        with self.assertRaisesRegex(ValueError, 'explicit recordCount'): self.before()
+
+    def test_unrecognized_diagnostics_and_empty_real_record_never_promoted(self):
+        save = self.marked_observation(recordsComplete=False)
+        save['rejectedRowDiagnostics'] = dict(syntheticMarkerRecognized=True, rows=[MARKER])
+        self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+        with self.assertRaisesRegex(ValueError, 'complete same-flow'): self.before()
+        save['recordsComplete'] = True
+        save['records'].append(dict(career='', saveName='', index=0, type=0))
+        self.marked_observation()
+        with self.assertRaisesRegex(ValueError, 'leaf name'): self.before()
+
+    def test_marker_does_not_replace_or_duplicate_exact_fixture_tuple(self):
+        save = self.marked_observation()
+        original = copy.deepcopy(save['records'])
+        for records, reason in ((original[1:], 'fixture descriptor is missing'),
+                                ([], 'fixture descriptor is missing'),
+                                (original + [original[0]], 'duplicate descriptor')):
+            save['records'] = records
+            self.marked_observation()
+            with self.assertRaisesRegex(ValueError, reason): self.before()
+
+    def test_no_marker_explicit_count_and_legacy_observations_supported(self):
+        save = self.payload['saveFlow']['save']
+        save['recordCount'] = len(save['records'])
+        self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+        e.observation(self.run, self.observation_id, self.wire, self.career, self.plan['fixtureSelection']['descriptor'])
+        save['recordCount'] = 0
+        self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+        with self.assertRaisesRegex(ValueError, 'row accounting'): self.before()
+        del save['recordCount']
+        self.archive(self.observation_id, 'observe-save-flow', 1, self.payload, 'completed')
+        self.before()
 
     def test_binding_changes_and_restored_session_refused(self):
         calls = []
