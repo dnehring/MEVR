@@ -23,6 +23,11 @@ Offline preparation can continue while another session owns the game:
 [archived diagnostics and observer design](../../research/le2-runtime-observer.md) distinguish reusable capture formats from missing LE2 runtime producers.
 These tools do not establish native or VR acceptance. Keep all generated artifacts private.
 
+The [Steam launch adapter](launch.md) provides read-only preflight and a guarded
+launch path where installed launcher support is verified. The [bound control
+client](control.md) supplies request correlation and uncertainty recovery; its
+runtime producer and native handshake must be proven separately.
+
 ## 1. Inspect and prepare a private fixture
 
 Use Python 3.10 or newer. Put every save, bound recipe, full inspection and capture
