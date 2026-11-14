@@ -66,10 +66,16 @@ ProbeResult OpenLoadMenu(std::uint32_t gameThreadId, ObserverServices const& ser
 // OpenPauseMenu supports only current exact Default mode's inherited ShowMenu.
 // OpenSaveMenu requires a stable browser observation in that same opened flow;
 // caller explicitly attests current enabled UI review. Each action is one entry
-// per process. No new-save event, independent CanSave call, or persistence claim.
+// per process. No independent CanSave call or persistence claim.
 json::Value ObserveSaveFlow(std::uint32_t gameThreadId);
 ProbeResult OpenPauseMenu(std::uint32_t gameThreadId, ObserverServices const& services);
 ProbeResult OpenSaveMenu(std::uint32_t gameThreadId, ObserverServices const& services);
+// Normal New Save command11; separate explicit producer permission and caller
+// reviewed enabled New Save UI + sealed before-disk inventory are prerequisites.
+// Requires current complete observed descriptors in this same opened Save flow.
+// One entry/process; dispatched proves return only, never callback/persistence.
+// No file I/O, filename selection, overwrite or native callback fabrication.
+ProbeResult SaveNew(std::uint32_t gameThreadId, ObserverServices const& services);
 
 // Host-owned, independently proved file-to-descriptor mapping only. No pathname,
 // wire-supplied index or UObject address enters this API. Index is the native

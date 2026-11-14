@@ -62,16 +62,18 @@ struct ObjectSample {
 struct ParameterSample {
     ObjectSample property;
     ObjectSample objectClass;
-    bool hasObjectClass{}, guiManagerClass{}, sfManagerClass{};
+    bool hasObjectClass{}, guiManagerClass{}, sfManagerClass{}, stringArray{};
+    ObjectSample arrayInner;
     char name[kNameBytes]{};
     int offset{}, elementSize{}, arrayDim{};
     std::uint64_t flags{};
     bool hasBoolMask{};
     std::uint32_t boolMask{};
 };
-enum class Declaration { Console, Fov, OpenLoad, AdvanceSplash, LoadGame, ShowPause, ShowSave };
+enum class Declaration { Console, Fov, OpenLoad, AdvanceSplash, LoadGame, ShowPause, ShowSave, SaveNew };
 char const* DeclarationName(Declaration d) {
     switch (d) {
+    case Declaration::SaveNew: return "SFXGame.SFXSFHandler_Save.HandleEvent";
     case Declaration::ShowPause: return "SFXGame.SFXGameModeBase.ShowMenu";
     case Declaration::ShowSave: return "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel";
     case Declaration::Console: return "Engine.PlayerController.ConsoleCommand";
@@ -252,9 +254,9 @@ void ReadFunction(Table const& table, UObject const* controller, FunctionSample&
     bool const fov = declaration == Declaration::Fov;
     bool const menu = declaration != Declaration::Console && declaration != Declaration::Fov;
     char const* package = menu ? "SFXGame" : "Engine";
-    char const* ownerName = declaration == Declaration::ShowPause ? "SFXGameModeBase" : declaration == Declaration::ShowSave ? "BioSFHandler_BrowserWheel" : declaration == Declaration::LoadGame ? "SFXSFHandler_Load" : declaration == Declaration::OpenLoad ? "BioSFHandler_MainMenu" :
+    char const* ownerName = declaration == Declaration::SaveNew ? "SFXSFHandler_Save" : declaration == Declaration::ShowPause ? "SFXGameModeBase" : declaration == Declaration::ShowSave ? "BioSFHandler_BrowserWheel" : declaration == Declaration::LoadGame ? "SFXSFHandler_Load" : declaration == Declaration::OpenLoad ? "BioSFHandler_MainMenu" :
         declaration == Declaration::AdvanceSplash ? "BioSFHandler_PCSplash" : "PlayerController";
-    char const* functionName = declaration == Declaration::ShowPause ? "ShowMenu" : declaration == Declaration::ShowSave ? "ShowSelectedPanel" : declaration == Declaration::LoadGame ? "LoadGame" : declaration == Declaration::OpenLoad ? "MoveToLoadGui" :
+    char const* functionName = declaration == Declaration::SaveNew ? "HandleEvent" : declaration == Declaration::ShowPause ? "ShowMenu" : declaration == Declaration::ShowSave ? "ShowSelectedPanel" : declaration == Declaration::LoadGame ? "LoadGame" : declaration == Declaration::OpenLoad ? "MoveToLoadGui" :
         declaration == Declaration::AdvanceSplash ? "AdvanceScreen" : fov ? "GetFOVAngle" : "ConsoleCommand";
     // Match Legacy's exact declaration owner, not a derived class's override.
     auto const* owner = controller->Class;
@@ -349,6 +351,13 @@ void ReadFunction(Table const& table, UObject const* controller, FunctionSample&
             p.guiManagerClass = Qualified(table, targetClass, "SFXGame", "MassEffectGuiManager");
             p.sfManagerClass = Qualified(table, targetClass, "Engine", "BioSFManager");
         }
+        if (declaration == Declaration::SaveNew && Qualified(table, property->Class, "Core", "ArrayProperty")) {
+            auto const* inner = static_cast<UArrayProperty const*>(property)->Inner;
+            out.reason = "array-inner-string-property-invalid";
+            if (!ReadObject(table, inner, "Core", "Property", p.arrayInner) || inner->Outer != property ||
+                !Qualified(table, inner->Class, "Core", "StrProperty") || inner->ArrayDim != 1 || inner->ElementSize != 16) return;
+            p.stringArray = true;
+        }
         ++out.parameterCount;
     }
     out.parametersComplete = true;
@@ -361,7 +370,14 @@ void ReadFunction(Table const& table, UObject const* controller, FunctionSample&
         HasExpectedParameter(out, "Command", "Core.StrProperty", 0, 16, 0x400080) &&
         HasExpectedParameter(out, "bWriteToLog", "Core.BoolProperty", 0x10, 4, 0x90, 1) &&
         HasExpectedParameter(out, "ReturnValue", "Core.StrProperty", 0x14, 16, 0x400580);
-    if (declaration == Declaration::ShowSave) {
+    if (declaration == Declaration::SaveNew) {
+        bool strings = false;
+        for (unsigned i = 0; i < out.parameterCount; ++i)
+            if (std::strcmp(out.parameters[i].name, "lstArguments") == 0) strings = out.parameters[i].stringArray;
+        out.layoutMatches = out.parmsSize == 20 && out.numParms == 2 && out.parameterCount == 2 && strings &&
+            HasExpectedParameter(out, "Command", "Core.ByteProperty", 0, 1, 0x80) &&
+            HasExpectedParameter(out, "lstArguments", "Core.ArrayProperty", 4, 16, 0x400182);
+    } else if (declaration == Declaration::ShowSave) {
         bool managerClass = false;
         for (unsigned i = 0; i < out.parameterCount; ++i)
             if (std::strcmp(out.parameters[i].name, "oManager") == 0) managerClass = out.parameters[i].sfManagerClass;
@@ -762,7 +778,7 @@ json::Value FunctionJson(FunctionSample const& sample, char const* failure, Decl
         out["numParms"] = static_cast<int>(sample.numParms);
         out["returnValueOffset"] = sample.returnOffset;
         out["functionFlags"] = std::format("0x{:08X}", sample.functionFlags);
-        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (declaration == Declaration::ShowPause ? 0x20202u : declaration == Declaration::ShowSave ? 0x824803u : declaration == Declaration::LoadGame ? 0x820003u : declaration == Declaration::OpenLoad ? 0x20002u : declaration == Declaration::AdvanceSplash || fov ? 0x20802u : 0x24400u);
+        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (declaration == Declaration::SaveNew ? 0xC20002u : declaration == Declaration::ShowPause ? 0x20202u : declaration == Declaration::ShowSave ? 0x824803u : declaration == Declaration::LoadGame ? 0x820003u : declaration == Declaration::OpenLoad ? 0x20002u : declaration == Declaration::AdvanceSplash || fov ? 0x20802u : 0x24400u);
         out["nativeIndex"] = static_cast<int>(sample.nativeIndex);
     }
     if (fov) {
@@ -781,6 +797,7 @@ json::Value FunctionJson(FunctionSample const& sample, char const* failure, Decl
         item["arrayDim"] = p.arrayDim;
         item["propertyFlags"] = std::format("0x{:016X}", p.flags);
         if (p.hasObjectClass) { item["objectClass"] = ObjectJson(p.objectClass, nullptr); item["objectClassIsGuiManager"] = p.guiManagerClass; item["objectClassIsBioSFManager"] = p.sfManagerClass; }
+        if (p.stringArray) { item["arrayInner"] = ObjectJson(p.arrayInner,nullptr); item["arrayInnerIsString"] = true; }
         if (p.hasBoolMask) item["boolMask"] = std::format("0x{:08X}", p.boolMask);
         parameters.Push(std::move(item));
     }
@@ -1373,7 +1390,7 @@ bool SameFunction(FunctionSample const& a, FunctionSample const& b) {
     for (unsigned i = 0; i < a.parameterCount; ++i) {
         auto const& x = a.parameters[i]; auto const& y = b.parameters[i];
         if (!SameObjectSample(x.property, y.property) || !SameObjectSample(x.objectClass, y.objectClass) ||
-            x.hasObjectClass != y.hasObjectClass || x.guiManagerClass != y.guiManagerClass || x.sfManagerClass != y.sfManagerClass ||
+            !SameObjectSample(x.arrayInner,y.arrayInner) || x.stringArray != y.stringArray || x.hasObjectClass != y.hasObjectClass || x.guiManagerClass != y.guiManagerClass || x.sfManagerClass != y.sfManagerClass ||
             x.offset != y.offset || x.elementSize != y.elementSize || x.arrayDim != y.arrayDim || x.flags != y.flags ||
             x.hasBoolMask != y.hasBoolMask || x.boolMask != y.boolMask || std::strcmp(x.name, y.name) != 0) return false;
     }
@@ -1691,7 +1708,9 @@ struct SaveFlowSample {
     char focusedTag[kNameBytes]{};
     MenuPanel browser, save;
     FunctionSample showPause;
-    SlotSample modeSlot, browserSlot;
+    SlotSample modeSlot, browserSlot, saveSlot;
+    SaveRow rows[kMaxFixtureRows]{};
+    bool checkingMessage{};
     bool available{}, playersOnly{}, browserAllowed{}, modeActive{}, allowPause{}, waitFrame{};
     bool pagesComplete{}, overridesComplete{}, saveListBounded{};
     char const* reason{"save-flow-context-unavailable"};
@@ -1703,11 +1722,11 @@ struct SaveFlowSample {
     FlowOverride overrides[kMaxFlowOverrides]{};
 };
 static_assert(std::is_trivially_destructible_v<SaveFlowSample>);
-std::atomic_bool gPauseMenuEntered{false}, gSaveMenuEntered{false};
+std::atomic_bool gPauseMenuEntered{false}, gSaveMenuEntered{false}, gSaveNewEntered{false};
 // Single verified game-thread owner. These copies are comparison receipts only;
 // every call traverses live roots again, never dereferences a cached pointer.
-SaveFlowSample gPauseFlow{}, gBrowserReceipt{};
-bool gPauseFlowValid{}, gBrowserReceiptValid{};
+SaveFlowSample gPauseFlow{}, gBrowserReceipt{}, gOpenedSaveFlow{};
+bool gPauseFlowValid{}, gBrowserReceiptValid{}, gOpenedSaveFlowValid{};
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 testing::MenuDispatcher gSaveFlowDispatcher{};
 void (*gSaveFlowSampleHook)(){};
@@ -1770,7 +1789,14 @@ void ReadSaveFlow(void* context) {
             s.maxSaves = save->MaxSaves; s.pendingOverwrite = save->PendingOverwriteIndex;
             s.saveCount = save->SaveList.Count(); s.saveCapacity = save->SaveList.Capacity();
             s.savesData = reinterpret_cast<std::uintptr_t>(save->SaveList.GetData());
-            s.saveListBounded = BoundedArray(save->SaveList, 512);
+            s.saveListBounded = BoundedArray(save->SaveList, kMaxFixtureRows);
+            s.checkingMessage = save->bCheckingDataMessageVisible;
+            ReadFunction(table, save, s.save.function, Declaration::SaveNew);
+            ReadValidatedSlot(s.save.handler, s.saveSlot);
+            if (s.saveListBounded) for (unsigned row=0; row<s.saveCount; ++row) {
+                auto const& d=save->SaveList.GetData()[row].SaveDescriptor;
+                s.rows[row]={reinterpret_cast<std::uintptr_t>(&d.Career),reinterpret_cast<std::uintptr_t>(&d.SaveName),d.Index,d.Type};
+            }
         }
     }
     if (s.browser.handler.available) {
@@ -1792,6 +1818,8 @@ void ReadSaveFlow(void* context) {
             if (row.Type == 1) { ++s.saveMatches; s.saveRow = i; }
         }
         s.pagesComplete = true;
+    }
+    {
         s.reason = "browser-overrides-invalid-or-limit";
         if (!BoundedArray(wi->SubPageStateOverrides, kMaxFlowOverrides)) return;
         s.overrideCount = wi->SubPageStateOverrides.Count(); s.overrideCapacity = wi->SubPageStateOverrides.Capacity();
@@ -1838,7 +1866,10 @@ bool SameFlow(SaveFlowSample const& a, SaveFlowSample const& b) {
         a.overridesComplete != b.overridesComplete || a.rawSaveState != b.rawSaveState || a.effectiveSaveState != b.effectiveSaveState ||
         a.saveMatches != b.saveMatches || a.saveRow != b.saveRow || a.saveListBounded != b.saveListBounded ||
         a.saveCount != b.saveCount || a.saveCapacity != b.saveCapacity || a.savesData != b.savesData ||
-        a.maxSaves != b.maxSaves || a.pendingOverwrite != b.pendingOverwrite) return false;
+        a.maxSaves != b.maxSaves || a.pendingOverwrite != b.pendingOverwrite || a.checkingMessage != b.checkingMessage ||
+        a.saveSlot.object != b.saveSlot.object || a.saveSlot.vtable != b.saveSlot.vtable || a.saveSlot.target != b.saveSlot.target) return false;
+    if (a.saveListBounded) for (unsigned i=0;i<a.saveCount;++i)
+        if (a.rows[i].career!=b.rows[i].career || a.rows[i].name!=b.rows[i].name || a.rows[i].index!=b.rows[i].index || a.rows[i].type!=b.rows[i].type) return false;
     for (unsigned i = 0; i < a.pageCount; ++i)
         if (a.pages[i].type != b.pages[i].type || a.pages[i].handler != b.pages[i].handler || a.pages[i].label != b.pages[i].label ||
             std::strcmp(a.pages[i].tag,b.pages[i].tag) != 0) return false;
@@ -1859,11 +1890,76 @@ bool BrowserReady(SaveFlowSample const& s) {
         !s.waitFrame && s.pagesComplete && s.overridesComplete && s.saveMatches == 1 && s.rawSaveState == 0 && s.effectiveSaveState == 0 &&
         FlowMetadata(s.browser.function,0x824803) && s.browserSlot.available;
 }
+// A successful browser opener carries the game's sampled eligibility into
+// its resulting Save panel. This is not independent CanSave/GFx proof.
+bool SaveContinuation(SaveFlowSample const& s) {
+    auto const& a=gOpenedSaveFlow;
+    if (!gOpenedSaveFlowValid || !SameFlowScope(a,s) || !SameObjectSample(a.mode,s.mode) ||
+        s.currentMode!=7 || !s.modeActive || !s.playersOnly || !s.browserAllowed || s.browser.panel.available ||
+        !s.overridesComplete || s.rawSaveState!=a.rawSaveState || s.effectiveSaveState!=a.effectiveSaveState ||
+        s.overridesData!=a.overridesData || s.overrideCount!=a.overrideCount || s.overrideCapacity!=a.overrideCapacity) return false;
+    for (unsigned i=0;i<s.overrideCount;++i)
+        if (s.overrides[i].page!=a.overrides[i].page || s.overrides[i].state!=a.overrides[i].state) return false;
+    return !s.save.panel.available || std::strcmp(s.focusedTag,a.pages[a.saveRow].tag)==0;
+}
+bool NewSaveReady(SaveFlowSample const& s) {
+    return s.available && s.currentMode==7 && s.modeActive && s.playersOnly && s.browserAllowed &&
+        PanelInteractive(s.save) && std::strcmp(s.save.handler.className,"SFXGame.SFXSFHandler_PCSave")==0 &&
+        s.save.guiMode==0 && !s.save.enumerating && s.save.checkingComplete && !s.save.waitingMessage && !s.checkingMessage &&
+        s.saveListBounded && s.maxSaves>0 && s.saveCount<static_cast<unsigned>(s.maxSaves) &&
+        FlowMetadata(s.save.function,0xC20002) && s.saveSlot.available;
+}
+struct NewSaveScan {
+    std::vector<CapturedRow> text;
+    json::Value records{json::Value::Array()};
+    bool complete{};
+    int nextIndex{};
+    char const* reason{"save-list-not-ready"};
+};
+SaveFlowSample gNewSaveReceipt{};
+std::vector<CapturedRow> gNewSaveText;
+bool gNewSaveReceiptValid{};
+void ScanNewSave(SaveFlowSample const& s, NewSaveScan& scan) {
+    if (!s.available || !s.saveListBounded || !s.save.panel.available) return;
+    scan.text.resize(s.saveCount);
+    int maximum=-1;
+    std::string careerIdentity;
+    for (unsigned i=0;i<s.saveCount;++i) {
+        auto const& row=s.rows[i];
+        auto career=CaptureText(row.career,scan.text[i].career), name=CaptureText(row.name,scan.text[i].name);
+        auto captured=[](CapturedText const& t){return t.headerCopied && (t.header.count==0 || t.bodyCopied);};
+        if (!career.Available() || !name.Available() || !captured(scan.text[i].career) || !captured(scan.text[i].name) ||
+            !FrozenLeaf(career.utf8) || !FrozenLeaf(name.utf8) || row.index < -1 || row.index==INT_MAX || row.type>=5 ||
+            (row.type==0 && row.index<0)) { scan.reason="invalid-save-descriptor-or-index-overflow"; return; }
+        if (i==0) careerIdentity=career.utf8;
+        if (career.utf8!=careerIdentity) { scan.reason="mixed-save-careers-unsupported"; return; }
+        for (auto const& prior:scan.records.Items())
+            if (prior.String("saveName")==name.utf8 || (row.type==0 && prior.Number("type")==0 && prior.Number("index")==row.index)) {
+                scan.reason="duplicate-save-descriptor-identity"; return;
+            }
+        maximum=std::max(maximum,row.index);
+        auto record=json::Value::Object(); record["career"]=career.utf8; record["saveName"]=name.utf8;
+        record["index"]=row.index; record["type"]=static_cast<int>(row.type); scan.records.Items().push_back(std::move(record));
+    }
+    scan.nextIndex=s.saveCount==0?1:maximum+1;
+    scan.complete=true; scan.reason="complete-descriptors-source-index-only-no-filename-inference";
+}
+struct NewSaveCheck { SaveFlowSample const* before; CapturedRow const* text; SaveFlowSample* after; bool matches{}; };
+void CheckNewSave(void* context) {
+    auto& c=*static_cast<NewSaveCheck*>(context); ReadSaveFlow(c.after);
+    if (!SameFlow(*c.before,*c.after)) return;
+    for (unsigned i=0;i<c.after->saveCount;++i)
+        if (!TextStillMatches(c.after->rows[i].career,c.text[i].career) || !TextStillMatches(c.after->rows[i].name,c.text[i].name)) return;
+    c.matches=true;
+}
+void InvalidateNewSave() { gOpenedSaveFlowValid=false; gNewSaveReceiptValid=false; gNewSaveText.clear(); }
+
 json::Value SaveFlowJson(SaveFlowSample const& s, char const* failure) {
     auto out = json::Value::Object(); out["schemaVersion"] = 1; out["game"] = "LE2";
     bool const valid = failure == nullptr && s.available;
     out["available"] = valid; out["reason"] = failure != nullptr ? failure : s.reason;
-    out["saveNewCapability"] = false; out["saveCompleted"] = false; out["durableObjectIdentity"] = false;
+    out["saveNewCapability"] = false; out["saveCompleted"] = false;
+    out["diskInventoryVerifiedByEngine"] = false; out["persistenceVerified"] = false; out["saveNewEntrySpent"] = gSaveNewEntered.load(); out["durableObjectIdentity"] = false;
     out["uiInitializationProof"] = "external-review-required-not-inferred-from-alert-zero";
     out["imageContentsIndependentlyVerified"] = false;
     out["pauseEntrySpent"] = gPauseMenuEntered.load(); out["saveMenuEntrySpent"] = gSaveMenuEntered.load();
@@ -1899,6 +1995,11 @@ json::Value SaveFlowJson(SaveFlowSample const& s, char const* failure) {
     auto save = MenuPanelJson(s.save,nullptr); save["guiMode"] = static_cast<int>(s.save.guiMode); save["enumeratingSaves"] = s.save.enumerating;
     save["checkingDataComplete"] = s.save.checkingComplete; save["waitingOnMessageBox"] = s.save.waitingMessage;
     save["listHeaderBounded"] = s.saveListBounded; save["observedRowCount"] = static_cast<std::uint64_t>(s.saveCount); save["maxSaves"] = s.maxSaves;
+    save["handleEvent"] = FunctionJson(s.save.function,nullptr,Declaration::SaveNew);
+    save["processEventSlot"] = slotJson(s.saveSlot);
+    save["checkingDataMessageVisible"] = s.checkingMessage;
+    save["structuralNewSaveSupported"] = NewSaveReady(s);
+    save["sameOpenedSaveFlow"] = SaveContinuation(s);
     save["pendingOverwriteIndex"] = s.pendingOverwrite; save["uiInputStateProof"] = "panel-flags-do-not-prove-gfx-save-input-enabled";
     out["save"] = std::move(save);
     return out;
@@ -1952,8 +2053,32 @@ json::Value ObserveSaveFlow(std::uint32_t thread) {
             gBrowserReceiptValid=false; gPauseFlowValid=false;
         } else { gBrowserReceipt=*first; gBrowserReceiptValid=true; }
     } else if (gBrowserReceiptValid) { gBrowserReceiptValid=false; gPauseFlowValid=false; }
-    auto out=BoundSaveFlow(SaveFlowJson(*first,failure));
-    if (!out.Bool("available")) gBrowserReceiptValid=false;
+    NewSaveScan scan;
+    if (!failure && first->available && first->save.panel.available) {
+        ScanNewSave(*first,scan);
+        NewSaveCheck check{first.get(),scan.text.data(),after.get()};
+        if (scan.complete && (!ue3::runtime::Guarded(CheckNewSave,&check) || !check.matches)) {
+            scan.complete=false; scan.reason="save-descriptors-changed-during-observation";
+        }
+    }
+    if (gOpenedSaveFlowValid) {
+        if (failure || !SaveContinuation(*first)) InvalidateNewSave();
+        else if (scan.complete && NewSaveReady(*first)) {
+            NewSaveCheck old{&gNewSaveReceipt,gNewSaveText.data(),after.get()};
+            if (gNewSaveReceiptValid && (!ue3::runtime::Guarded(CheckNewSave,&old) || !old.matches)) InvalidateNewSave();
+            else { gNewSaveReceipt=*first; gNewSaveText=scan.text; gNewSaveReceiptValid=true; }
+        } else if (gNewSaveReceiptValid) InvalidateNewSave();
+    }
+    auto out=SaveFlowJson(*first,failure);
+    if (first->save.panel.available && !failure) {
+        out["save"]["recordsComplete"]=scan.complete; out["save"]["recordsReason"]=scan.reason;
+        out["save"]["records"]=scan.complete?std::move(scan.records):json::Value::Array();
+        out["save"]["newSaveObservationBound"]=gNewSaveReceiptValid;
+        if (scan.complete) out["save"]["candidateNextIndex"]=scan.nextIndex;
+        out["save"]["candidateIndexIsFilename"]=false;
+    }
+    out=BoundSaveFlow(std::move(out));
+    if (!out.Bool("available")) { gBrowserReceiptValid=false; InvalidateNewSave(); }
     return out;
 }
 namespace {
@@ -1999,16 +2124,97 @@ ProbeResult SaveFlowAction(std::uint32_t thread, ObserverServices const& service
     } else {
         result.status="dispatched"; out["reason"]="normal-return-ui-transition-unverified";
         if (pause) { gPauseFlow=*first; gPauseFlowValid=true; }
+        else { gOpenedSaveFlow=*first; gOpenedSaveFlowValid=true; gNewSaveReceiptValid=false; }
         out["postObservation"]=ObserveSaveFlow(thread);
     }
     result.payload=BoundSaveFlow(std::move(out)); return result;
 }
 } // namespace
+namespace {
+// Real SDK union lifetime at the packed offset, scoped to the pinned MSVC ABI.
+// Never destroy a header changed by entered native code: its ownership is unknown.
+struct SaveNewFrame {
+    std::uint32_t before{0x64A2C91D};
+    USFXSFHandler_Save_execHandleEvent_Parms parameters;
+    std::uint32_t after{0xB7E1538A};
+    unsigned char input[20]{};
+    SaveNewFrame() {
+        std::construct_at(static_cast<TArray<FString> __unaligned*>(&parameters.lstArguments));
+        parameters.Command=11; std::memcpy(input,&parameters,sizeof(input));
+    }
+    bool Intact() const { return before==0x64A2C91D && after==0xB7E1538A && std::memcmp(input,&parameters,20)==0; }
+    ~SaveNewFrame() { if (Intact()) std::destroy_at(static_cast<TArray<FString> __unaligned*>(&parameters.lstArguments)); }
+    SaveNewFrame(SaveNewFrame const&)=delete;
+    SaveNewFrame& operator=(SaveNewFrame const&)=delete;
+};
+static_assert(sizeof(TArray<FString>)==16 && alignof(TArray<FString>)==8);
+static_assert(sizeof(USFXSFHandler_Save_execHandleEvent_Parms)==20 && alignof(USFXSFHandler_Save_execHandleEvent_Parms)==4);
+static_assert(offsetof(USFXSFHandler_Save_execHandleEvent_Parms,lstArguments)==4);
+static_assert(offsetof(SaveNewFrame,parameters)==4 && offsetof(SaveNewFrame,after)==24);
+static_assert(std::is_same_v<decltype(std::construct_at(static_cast<TArray<FString> __unaligned*>(nullptr))),TArray<FString> __unaligned*>);
+}
+ProbeResult SaveNew(std::uint32_t thread, ObserverServices const& services) {
+    ProbeResult result{"rejected",json::Value::Object()}; auto& out=result.payload;
+    out["schemaVersion"]=1; out["game"]="LE2"; out["action"]="save-new"; out["entered"]=false;
+    out["saveCompleted"]=false; out["persistenceVerified"]=false; out["diskInventoryVerifiedByEngine"]=false;
+    out["uiReviewAttestation"]="explicit-request-after-enabled-new-save-capture-review-not-engine-image-proof";
+    auto reject=[&](char const* reason){out["reason"]=reason; return result;};
+    if (thread==0 || GetCurrentThreadId()!=thread) return reject("not-on-verified-game-thread");
+    if (gSaveNewEntered.load()) return reject("process-save-new-entry-already-spent");
+    if (!gOpenedSaveFlowValid || !gNewSaveReceiptValid) return reject("reviewed-same-save-flow-observation-required");
+    if (!services.inspectTarget || !services.readHookSnapshot) return reject("host-target-services-unavailable");
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+    if (!gSaveFlowDispatcher) return reject("test-dispatcher-not-supplied");
+#endif
+    auto first=std::make_unique<SaveFlowSample>(); auto after=std::make_unique<SaveFlowSample>();
+    NewSaveCheck check{&gNewSaveReceipt,gNewSaveText.data(),first.get()};
+    if (!ue3::runtime::Guarded(CheckNewSave,&check) || !check.matches || !SaveContinuation(*first) || !NewSaveReady(*first)) {
+        InvalidateNewSave(); return reject("observed-save-list-or-flow-changed");
+    }
+    NewSaveScan scan; ScanNewSave(*first,scan);
+    if (!scan.complete) { InvalidateNewSave(); return reject(scan.reason); }
+    auto const& slot=first->saveSlot;
+    auto hook=services.readHookSnapshot(); auto target=services.inspectTarget(slot.target);
+    if (!ProbeTargetValid(target,hook,slot.target) || slot.target!=hook.target || !target.sameAsBase)
+        return reject("save-new-receiver-not-exact-owned-base");
+    auto current=services.readHookSnapshot();
+    if (!ProbeTargetValid(target,current,slot.target) || hook.target!=current.target || hook.detour!=current.detour || hook.nextHop!=current.nextHop)
+        return reject("owned-hook-chain-changed-before-entry");
+    SaveNewFrame frame;
+    out["function"]=FunctionJson(first->save.function,nullptr,Declaration::SaveNew);
+    out["route"]="exact-owned-base"; out["parameterBytes"]=20; out["command"]=11;
+    out["candidateNextIndex"]=scan.nextIndex; out["candidateIndexIsFilename"]=false;
+    NewSaveCheck final{first.get(),scan.text.data(),after.get()};
+    if (!ue3::runtime::Guarded(CheckNewSave,&final) || !final.matches || !SaveContinuation(*after)) {
+        InvalidateNewSave(); return reject("save-new-context-or-descriptors-changed-before-entry");
+    }
+    bool expected=false;
+    if (!gSaveNewEntered.compare_exchange_strong(expected,true)) return reject("process-save-new-entry-already-spent");
+    bool returned=false;
+    try {
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+        gSaveFlowDispatcher(reinterpret_cast<void*>(after->save.handler.address),reinterpret_cast<void*>(after->save.function.function.address),&frame.parameters);
+#else
+        reinterpret_cast<UObject*>(after->save.handler.address)->ProcessEvent(reinterpret_cast<UFunction*>(after->save.function.function.address),&frame.parameters,nullptr);
+#endif
+        returned=true;
+    } catch (...) { /* Ordinary C++ only. No SEH/native-fault recovery. */ }
+    bool const intact=frame.Intact();
+    InvalidateNewSave(); gPauseFlowValid=gBrowserReceiptValid=false;
+    out["entered"]=true; out["entrySpent"]=true; out["returnedNormally"]=returned;
+    out["parameterFrameIntact"]=intact; out["emptyArrayDestructionSafe"]=intact; out["retryAllowed"]=false;
+    result.status=returned && intact?"dispatched":"error";
+    out["reason"]=returned && intact?"normal-new-save-event-returned-completion-unverified":"entered-save-new-uncertain-no-retry";
+    // No engine reads after submission: async completion belongs to separate
+    // observations and the caller's correlated file-evidence collection.
+    return result;
+}
+
 ProbeResult OpenPauseMenu(std::uint32_t thread, ObserverServices const& services) { return SaveFlowAction(thread,services,true); }
 ProbeResult OpenSaveMenu(std::uint32_t thread, ObserverServices const& services) { return SaveFlowAction(thread,services,false); }
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 void testing::ResetSaveFlow(MenuDispatcher dispatcher) {
-    gPauseMenuEntered.store(false); gSaveMenuEntered.store(false); gPauseFlowValid=gBrowserReceiptValid=false;
+    gPauseMenuEntered.store(false); gSaveMenuEntered.store(false); gSaveNewEntered.store(false); gPauseFlowValid=gBrowserReceiptValid=false; InvalidateNewSave();
     gSaveFlowDispatcher=dispatcher; gSaveFlowSampleHook=nullptr;
 }
 void testing::SetSaveFlowSampleHook(void (*hook)()) { gSaveFlowSampleHook=hook; }

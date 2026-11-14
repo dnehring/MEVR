@@ -20,6 +20,9 @@ SFXNameEntry const** SFXName::GBioNamePools{};
 UEngine** GEngine{};
 UWorld** GWorld{};
 FMallocLike** GMalloc{};
+// A constructed empty SDK array must never reach engine allocation/free.
+void* sdkMalloc(DWORD, DWORD) { std::abort(); }
+void sdkFree(void*) { std::abort(); }
 namespace {
 std::array<SFXNameEntry const*, 256> names{};
 unsigned nextName = 1;
@@ -118,6 +121,7 @@ UBioSFPanel* flowBrowserPanel{}; UBioSFPanel* flowSavePanel{}; UBioSFHandler_PCP
 USFXGameModeDefault* flowDefault{}; UFunction* flowPauseFunction{}; UFunction* flowSaveFunction{};
 UBioSFPanel* flowPanels[2]{}; FBWPageStruct* flowPages{}; FSubPageState* flowOverrides{};
 UObjectProperty* flowManagerProperty{}; UClass* flowWrongClass{};
+USFXSFHandler_PCSave* newSaveHandler{}; UFunction* newSaveFunction{}; FSaveGUIRecord* newSaveRecords{};
 unsigned flowDispatchCalls{}, flowReadsAtDispatch{}; int flowBehavior{}, flowMutation{};
 void MutateFlowSample() { flowWorld->bPlayersOnly = !flowWorld->bPlayersOnly; }
 diagnostic::TargetInspection FlowInspect(std::uintptr_t target) noexcept {
@@ -127,10 +131,23 @@ diagnostic::TargetInspection FlowInspect(std::uintptr_t target) noexcept {
     if (flowMutation == 3) flowManagerProperty->PropertyClass = flowWrongClass;
     if (flowMutation == 4) flowModes->CurrentMode = 0;
     if (flowMutation == 5) flowSaveFunction->FunctionFlags = 0;
+    if (flowMutation == 6) ++newSaveRecords[0].SaveDescriptor.Index;
     return result;
 }
 void FakeSaveFlowDispatch(void* object, void* function, void* parameters) {
     ++flowDispatchCalls; flowReadsAtDispatch = engineReadCalls;
+    if (function==newSaveFunction && newSaveFunction!=nullptr) {
+        Check(object==newSaveHandler,"new save exact current handler");
+        auto* bytes=static_cast<unsigned char*>(parameters);
+        mevr::ue3::TArray<FString> empty{}; std::memcpy(&empty,bytes+4,16);
+        Check(bytes[0]==11 && empty.data==nullptr && empty.count==0 && empty.max==0,"constructed empty SDK array and command11");
+        if (flowBehavior==1) throw std::runtime_error("synthetic uncertain new save");
+        if (flowBehavior==2) bytes[-1]^=1;
+        if (flowBehavior==3) bytes[20]^=1;
+        if (flowBehavior==4) bytes[4]=1; // bad data must never be freed
+        if (flowBehavior==5) { bytes[12]=1; throw std::runtime_error("corrupt array before exception"); }
+        return;
+    }
     bool const pause = function == flowPauseFunction;
     Check(object == (pause ? static_cast<void*>(flowDefault) : static_cast<void*>(flowBrowser)), "flow current exact receiver");
     Check(pause || function == flowSaveFunction, "flow exact selected declaration");
@@ -1271,6 +1288,99 @@ int main() {
         Check(!ObserveSaveFlow(thread).Bool("available"),"malformed mode pointer guarded"); modeObjects[0]=defaultMode.get();
         beginFlow(); Check(OpenPauseMenu(thread,flowServices).status=="dispatched","flow recovers only in new synthetic epoch");
         std::cout << "Representative save flow bytes: " << mevr::json::Write(ObserveSaveFlow(thread),0).size() << '\n';
+        using mevr::engine::le2_diagnostic::SaveNew;
+        Raw<UClass> arrayPropertyType;
+        Raw<UFunction> handleNew;
+        Raw<UByteProperty> newCommand;
+        Raw<UArrayProperty> newArguments;
+        Raw<UStrProperty> newInner;
+        add(arrayPropertyType.get(),"ArrayProperty",meta.get(),corePackage.get()); arrayPropertyType.get()->SuperField=propertyType.get();
+        add(handleNew.get(),"HandleEvent",functionType.get(),saveBaseType.get()); saveBaseType.get()->Children=handleNew.get();
+        handleNew.get()->FunctionFlags=0xC20002; handleNew.get()->ParmsSize=20; handleNew.get()->NumParms=2; handleNew.get()->ReturnValueOffset=-1;
+        add(newCommand.get(),"Command",byteType.get(),handleNew.get()); property(newCommand.get(),0,1,0x80);
+        add(newArguments.get(),"lstArguments",arrayPropertyType.get(),handleNew.get()); property(newArguments.get(),4,16,0x400182);
+        add(newInner.get(),"Inner",strType.get(),newArguments.get()); property(newInner.get(),0,16,0);
+        newArguments.get()->Inner=newInner.get(); handleNew.get()->Children=newCommand.get(); newCommand.get()->Next=newArguments.get();
+        std::memcpy(saveHandler.get(),&vt,sizeof(vt));
+        newSaveHandler=saveHandler.get(); newSaveFunction=handleNew.get(); newSaveRecords=saveRecords[0].get();
+        saveHeader.data=saveRecords[0].get(); saveHeader.count=1; saveHeader.max=13; setText(saveRecords[0].get()->SaveDescriptor.Career,career);
+        setText(saveRecords[0].get()->SaveDescriptor.SaveName,filename); saveRecords[0].get()->SaveDescriptor.Index=42; saveRecords[0].get()->SaveDescriptor.Type=0;
+        auto prepareNew=[&] {
+            beginFlow();
+            std::memcpy(&saveHandler.get()->SaveList,&saveHeader,sizeof(saveHeader));
+            saveHandler.get()->bCheckingDataComplete=1; saveHandler.get()->bEnumeratingSaves=0;
+            saveHandler.get()->bWaitingOnMsgBox=0; saveHandler.get()->bCheckingDataMessageVisible=0;
+            saveHandler.get()->MaxSaves=1000; saveHandler.get()->GuiMode=0;
+            Check(OpenPauseMenu(thread,flowServices).status=="dispatched","new save prior normal pause");
+            Check(OpenSaveMenu(thread,flowServices).status=="dispatched","new save prior reviewed browser");
+        };
+        prepareNew(); auto ns=ObserveSaveFlow(thread).Get("save");
+        Check(ns.Bool("recordsComplete") && ns.Bool("newSaveObservationBound") && ns.Bool("structuralNewSaveSupported") &&
+              ns.Number("candidateNextIndex")==43 && ns.Get("records").Items()[0].String("saveName")=="SyntheticSave", "complete actual descriptor mapping without filename inference");
+        auto noRead=engineReadCalls; Check(SaveNew(0,flowServices).status=="rejected" && engineReadCalls==noRead,"wrong-thread save-new no reads");
+        auto submitted=SaveNew(thread,flowServices);
+        Check(submitted.status=="dispatched" && submitted.payload.Bool("parameterFrameIntact") && submitted.payload.Bool("emptyArrayDestructionSafe") &&
+              !submitted.payload.Bool("saveCompleted") && !submitted.payload.Bool("diskInventoryVerifiedByEngine") &&
+              !submitted.payload.Bool("persistenceVerified") && engineReadCalls==flowReadsAtDispatch,"normal empty-array return no completion or post-entry reads");
+        Check(SaveNew(thread,flowServices).status=="rejected" && flowDispatchCalls==3,"new save independent oneentry latch");
+        for (int behavior:{1,2,3,4,5}) {
+            prepareNew(); flowBehavior=behavior; auto error=SaveNew(thread,flowServices);
+            Check(error.status=="error" && engineReadCalls==flowReadsAtDispatch && SaveNew(thread,flowServices).status=="rejected","throw/corrupt header/canaries no free reads or retry");
+            Check(error.payload.Bool("emptyArrayDestructionSafe")== (behavior==1),"only unchanged empty array receives destructor");
+        }
+        prepareNew(); flowMutation=6;
+        Check(SaveNew(thread,flowServices).status=="rejected" && flowDispatchCalls==2,"provider-time descriptor mutation rejects before native entry");
+        flowMutation=0; saveRecords[0].get()->SaveDescriptor.Index=42; ObserveSaveFlow(thread);
+        Check(SaveNew(thread,flowServices).status=="rejected","restoring changed descriptor cannot rearm flow");
+        for (int bad:{0,1,2,3,4,5,6,7}) {
+            prepareNew();
+            if (bad==0) saveHandler.get()->bEnumeratingSaves=1;
+            if (bad==1) saveHandler.get()->bWaitingOnMsgBox=1;
+            if (bad==2) saveHandler.get()->bCheckingDataMessageVisible=1;
+            if (bad==3) saveHandler.get()->bCheckingDataComplete=0;
+            if (bad==4) saveHandler.get()->MaxSaves=1;
+            if (bad==5) saveRecords[0].get()->SaveDescriptor.Index=INT_MAX;
+            if (bad==6) newInner.get()->Class=intType.get();
+            if (bad==7) menuWorldInfo.get()->m_lstBrowserAlerts[1]=2;
+            ObserveSaveFlow(thread);
+            Check(SaveNew(thread,flowServices).status=="rejected" && flowDispatchCalls==2,"readiness capacity overflow array-inner and eligibility invalidation");
+            saveRecords[0].get()->SaveDescriptor.Index=42; newInner.get()->Class=strType.get();
+        }
+        prepareNew(); filename[0]=L'X'; ObserveSaveFlow(thread); filename[0]=L'S'; ObserveSaveFlow(thread);
+        Check(SaveNew(thread,flowServices).status=="rejected","descriptor body changes invalidate receipt even restored");
+        // All rows, including nonselected rows, are scanned before admission.
+        saveHeader.count=2;
+        std::memcpy(saveRecords[1].get(),saveRecords[0].get(),sizeof(FSaveGUIRecord));
+        prepareNew();
+        Check(!ObserveSaveFlow(thread).Get("save").Bool("recordsComplete") && SaveNew(thread,flowServices).status=="rejected","duplicate native descriptor refused");
+        std::wstring secondName=L"DifferentName", secondCareer=L"DifferentCareer";
+        setText(saveRecords[1].get()->SaveDescriptor.SaveName,secondName); saveRecords[1].get()->SaveDescriptor.Index=43;
+        setText(saveRecords[1].get()->SaveDescriptor.Career,secondCareer);
+        prepareNew(); Check(!ObserveSaveFlow(thread).Get("save").Bool("recordsComplete"),"mixed career list unsupported rather than guessed");
+        saveHeader.count=1; prepareNew();
+        mevr::ue3::TArray<wchar_t> invalidString{reinterpret_cast<wchar_t*>(1),2,2};
+        std::memcpy(&saveRecords[0].get()->SaveDescriptor.SaveName,&invalidString,16);
+        Check(!ObserveSaveFlow(thread).Get("save").Bool("recordsComplete") && SaveNew(thread,flowServices).status=="rejected","unreadable descriptor string contained before native entry");
+        setText(saveRecords[0].get()->SaveDescriptor.SaveName,filename);
+        saveHeader.count=saveHeader.max=513; prepareNew();
+        Check(!ObserveSaveFlow(thread).Get("save").Bool("listHeaderBounded") && SaveNew(thread,flowServices).status=="rejected","513 row count refused without traversing list");
+        std::array<Raw<FSaveGUIRecord>,80> manySaveRecords;
+        std::array<std::wstring,80> manyNames;
+        for (unsigned i=0;i<manySaveRecords.size();++i) {
+            manyNames[i]=std::wstring(180,L'N')+std::to_wstring(i);
+            setText(manySaveRecords[i].get()->SaveDescriptor.Career,career);
+            setText(manySaveRecords[i].get()->SaveDescriptor.SaveName,manyNames[i]);
+            manySaveRecords[i].get()->SaveDescriptor.Index=static_cast<int>(i);
+        }
+        saveHeader={manySaveRecords[0].get(),80,80}; prepareNew();
+        auto overBudget=ObserveSaveFlow(thread);
+        Check(!overBudget.Bool("available") && overBudget.String("reason")=="save-flow-payload-budget-exceeded" &&
+              SaveNew(thread,flowServices).status=="rejected","large complete list never truncated into usable review evidence");
+        saveHeader={saveRecords[0].get(),1,13};
+        saveHeader.count=0; prepareNew();
+        Check(ObserveSaveFlow(thread).Get("save").Number("candidateNextIndex")==1 && SaveNew(thread,flowServices).status=="dispatched","empty list normal game candidate starts1 without host filename selection");
+        saveHeader.count=1; prepareNew();
+        std::cout << "Representative New Save observation bytes: " << mevr::json::Write(ObserveSaveFlow(thread),0).size() << '\n';
         worldPtr = reinterpret_cast<UWorld*>(1);
         v = Observe(thread);
         Check(v.String("reason") == "guarded-engine-read-fault" && !Available(v, "objectCount"), "AV invalidates whole sample");

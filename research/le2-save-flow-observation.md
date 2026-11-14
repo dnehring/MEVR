@@ -3,8 +3,10 @@
 
 Offline implementation following the normal new-save source handoff
 (`ec546b38`, `research/le2-normal-save-source.md`). Native validation is pending.
-This slice opens the normal pause and Save menus; it does not submit New Save,
-call CanSave independently, choose a save slot or prove persistence. It extends
+This slice opens the normal pause and Save menus and provides a separately
+gated normal New Save event. It does not call CanSave independently, choose a
+filename or prove persistence. Native Save-panel readiness and enabled New Save
+capture review remain required before the new event is used. It extends
 the existing SDK observer, guarded reads, reflection metadata checks and owned
 ProcessEvent route. Root owns protocol/host integration separately.
 
@@ -29,9 +31,9 @@ implied when the ongoing goal already authorizes the reviewed action.
 Integration verbs are `observe-save-flow`, `open-pause-menu`, `open-save-menu`;
 the two actions require the producer's existing independent menu permission and
 client opt-in. The core APIs accept no client object pointer, UI index, tag or
-function name. Default/offline producer gates must remain disabled. No native
-SaveNew verb is implemented by this slice; that next action follows verified
-fresh Save UI state rather than becoming a permanent manual-only boundary.
+function name. Default/offline producer gates must remain disabled. The `SaveNew` API described below remains disabled until its separate host/client
+integration and live readiness checks pass; menu permission alone cannot authorize
+a write.
 
 ## Source-backed roots and supported context
 
@@ -94,7 +96,7 @@ A changed/failed observed context invalidates the stored comparison receipt;
 restoring old field values does not restore it. These point-in-time object
 index/class comparisons are not durable incarnation IDs or proof that every
 engine field was immutable between samples. A capture remains an external
-review artifact. Normal New Save, callback completion, resulting-file decoding,
+review artifact. Native New Save validation, callback completion, resulting-file decoding,
 reload persistence, resource assertions and VR remain separate next gates.
 
 ## Offline verification
@@ -110,6 +112,92 @@ object-parameter class, provider mutations, packed null-manager input, adjacent
 canaries/input corruption, exception/no-post-read behavior, independent spent
 latches, stale flow/pawn changes, otherwise-valid Save-tag replacement without
 rearming, and guarded second-sample invalidation. The
-representative browser observation remained below 6 KiB; runtime compact JSON
+representative browser observation remained below 7 KiB; runtime compact JSON
 is capped at 14 KiB. Existing observer/resource tests continue to pass. No native
 pause/Save-menu or save-write evidence is claimed by these synthetic fixtures.
+
+
+## Normal New Save API and evidence contract
+
+`SaveNew(thread, services)` uses the same serialized game-thread owner and returns
+`ProbeResult`. The explicit empty `save-new` request requires a separate native
+save permission, caller review of the actual enabled New Save control, and a
+sealed before-save disk inventory bound to that request/run/lease/candidate.
+The client/collector owns disk evidence; the engine does no file I/O and reports
+`diskInventoryVerifiedByEngine=false`. It does not request a slot or filename.
+
+The current exact PCSave must descend from this process's successful
+OpenSaveMenu. The prior browser's sampled eligibility, world/controller/pawn,
+manager, mode array and active paused GUI state must remain consistent. A fresh
+bounded observation captures all descriptor headers and UTF-16 bodies, validating
+nonempty bounded career/name components, index range, defined type range,
+consistent career and duplicate identity absence. The complete list has at most
+512 entries and must have room below the observed positive MaxSaves. Any maximum
+index of INT_MAX is rejected before the game's increment. The reported source
+calculation is 1 for an empty list, otherwise max(-1, all indices)+1. It is not a
+filename mapping or proof of disk absence. Larger lists remain unsupported.
+
+The current Save panel must be focused, visible, initialized and interactive in
+GuiMode 0, with data checking complete and no enumeration, message/checking
+modal, or other observed context change. These are structural predicates, **not**
+a reconstruction of GFx `loadSave.SetInputEnabled`. The caller's capture review
+is labelled `uiReviewAttestation`; no engine image inspection is claimed. A
+changed ready panel/list/body invalidates the observation receipt; restoring old
+values cannot rearm it. All descriptors and metadata are compared again after
+host target providers, immediately before entry.
+
+`ObserveSaveFlow` adds these fields beneath `save`:
+
+- `handleEvent` and `processEventSlot`: current verified structural metadata.
+- `recordsComplete`, `recordsReason`, `observedRowCount`, and `records`, whose
+  entries contain actual `career`, `saveName`, `index`, `type` values.
+- `candidateNextIndex` and `candidateIndexIsFilename=false`.
+- `structuralNewSaveSupported`, `sameOpenedSaveFlow`, `newSaveObservationBound`.
+
+Incomplete data never emits a complete record subset. If the whole observation
+exceeds 14 KiB, it returns unavailable and invalidates write admission. Top-level
+`saveNewEntrySpent` reports the independent process latch; observation never
+sets `saveNewCapability=true` or grants host permission.
+
+The effective declaration must be SFXSFHandler_Save.HandleEvent, with flags
+0x00C20002, native index 0, two parameters and 20-byte storage: byte Command at 0
+(flags 0x80), array lstArguments at 4 (flags 0x400182), with live Core.StrProperty
+inner metadata of size 16/dimension 1 owned by the array property. Nearer
+unsupported overrides and malformed/cyclic metadata remain rejected.
+
+The call uses the actual pinned SDK parameter type, Command 11 and an explicitly
+constructed empty `TArray<FString>`. SDK Common/TArray.hpp initializes its data,
+count and capacity to null/zero; the empty destructor's Clear/Shrink path performs
+no allocation/free. The generated parameter constructor only zeroes the inactive
+union, so the adapter explicitly begins its lifetime through a Microsoft
+`__unaligned` pointer at packed offset 4. Size/alignment assertions preserve the
+20-byte pack(4) ABI and 16-byte array. Adjacent guards and all input bytes must
+remain unchanged. Ordinary cleanup destroys the array only while that complete
+local frame is unchanged. A changed out-array header has unknown ownership and
+is never traversed, cleared or freed. This is no native-fault/SEH recovery claim.
+
+The independent latch is spent immediately before ProcessEvent. Normal return
+with intact frame is `dispatched`, meaning event submission returned. Exceptions
+or changed storage are `error` with uncertainty and no retry. Neither path reads
+engine memory after entry; both invalidate the write receipt. Payload fields
+include `entered`, `returnedNormally`, `parameterFrameIntact`,
+`emptyArrayDestructionSafe`, `entrySpent`, `retryAllowed=false`,
+`saveCompleted=false`, `persistenceVerified=false` and the disk boundary above.
+No callback is invoked or fabricated. The game's normal event clears the
+pending overwrite index and runs its preparation/free-space/new-slot sequence.
+
+The collector must preserve prior-save hashes, identify actual stable new files,
+archive and independently decode them, and distinguish unrelated/autosave changes
+from the requested manual output. A returned event or closed panel is insufficient.
+A real correlated successful callback would be additional evidence; this slice
+adds no callback hook. A later protected normal load of the generated file and
+fresh resource/state/scene checks establish reload persistence separately.
+
+New synthetic SDK tests exercise normal and empty-list submission, exact metadata,
+corrupt string/list/inner property, full capacity and integer overflow, changed
+provider-time descriptors, restored string bodies, oversized evidence, independent
+one-entry admission, and exceptions/header/canary changes. Linked allocation/free
+stubs abort if called, verifying the actual SDK empty-array path does not allocate
+or release storage. Both production and fake dispatch paths compile under the
+standalone project's /W4 /WX settings. These tests do not validate live GFx state,
+game callbacks, output files or native save completion.
