@@ -109,7 +109,8 @@ class ExportTests(unittest.TestCase):
                     stateTransition=21, stateTransitionParameter=-3)
         context = {key: identity(index) for index, key in enumerate(e.DIALOGUE_IDENTITIES)}
         context['mapContainmentProven'] = False
-        conversation = dict(identity(7), name='synthetic_conversation', package=dict(identity(11), name='SyntheticPackage'),
+        conversation = dict(identity(7), name='synthetic_conversation', nameNumber=0,
+                            package=dict(identity(11), name='SyntheticPackage'),
                             entryCount=2, replyCount=1, currentEntry=node,
                             currentReply=absent, selectedReply=absent, nodePlayTimer=-0.25)
         gui = dict(available=True, reason='reachable-cached-handler-display-state-only',
@@ -136,6 +137,7 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(dialogue['conversation']['currentReply'], observation['conversation']['currentReply'])
         self.assertEqual(dialogue['conversation']['nodePlayTimer'], -0.25)
         self.assertEqual(dialogue['conversation']['name'], 'synthetic_conversation')
+        self.assertEqual(dialogue['conversation']['nameNumber'], 0)
         self.assertEqual(dialogue['conversation']['package']['name'], 'SyntheticPackage')
         self.assertNotIn('address', dialogue['conversation']['package']['identity'])
         self.assertTrue(dialogue['interrupt']['activated'])
@@ -240,6 +242,19 @@ class ExportTests(unittest.TestCase):
         self.assertNotIn('package', state['dialogue']['conversation'])
         self.assertEqual(unavailable['dialogue.conversation.package']['sample'], conversation['package'])
         conversation['package']['name'] = 'invented'
+        with self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
+
+    def test_dialogue_raw_name_number_is_required_and_never_synthesizes_suffix(self):
+        conversation = self.use_dialogue()['conversation']
+        for value in (0, 1, 42, -0x80000000, 0x7fffffff):
+            conversation['nameNumber'] = value
+            state, _ = e.normalize_dialogue(self.payload)
+            self.assertEqual(state['dialogue']['conversation']['nameNumber'], value)
+            self.assertEqual(state['dialogue']['conversation']['name'], 'synthetic_conversation')
+        for value in (True, 1.0, '1', None, -0x80000001, 0x80000000):
+            conversation['nameNumber'] = value
+            with self.subTest(value=value), self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
+        del conversation['nameNumber']
         with self.assertRaises(ValueError): e.normalize_dialogue(self.payload)
 
     def test_dialogue_archive_reuses_contract_and_identity_rejections(self):

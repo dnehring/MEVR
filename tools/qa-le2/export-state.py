@@ -447,6 +447,9 @@ def normalize_dialogue(payload):
     require(isinstance(conv, dict) and object_keys <= conv.keys(), 'Dialogue conversation identity required')
     conversation = {'identity': orbital_identity({key: conv[key] for key in object_keys})}
     conversation['name'] = dialogue_name(conv.get('name'))
+    require(type(conv.get('nameNumber')) is int and -0x80000000 <= conv['nameNumber'] <= 0x7fffffff,
+            'Dialogue nameNumber must be a raw signed int32')
+    conversation['nameNumber'] = conv['nameNumber']
     package = conv.get('package')
     require(isinstance(package, dict) and type(package.get('available')) is bool,
             'Dialogue direct package availability required')

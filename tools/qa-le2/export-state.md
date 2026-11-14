@@ -157,6 +157,10 @@ Only stable recorded fields enter `state.dialogue`:
   also retains its process-local class/index identity; an unavailable package
   stays absent. These labels are not package hashes, loaded-file proof or a
   durable conversation identity, and no additional outer traversal is inferred.
+  Required `conversation.nameNumber` retains the raw signed int32 FName instance
+  value separately from the base `name`; no displayed suffix is synthesized.
+  Missing values are not defaulted to zero. The direct package name remains
+  unnumbered under the producer's existing package policy.
 - `interrupt` retains the sampled reply, start/window remaining values, raw
   enabled/activated flags and enum/name. Unknown byte enum values stay unknown;
   negative finite timers are not rewritten or classified as an expired window.
