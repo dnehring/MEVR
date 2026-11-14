@@ -5,6 +5,32 @@ Checkpoint: 2026-11-14 UTC. **Normal scripted loading now preserves eight delibe
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Pause and Save-menu candidate: built, native attempt held
+
+Candidate `e472c0ff5f72ceb34266cbc24d37b8c1ba5bb9e8` adds the
+[bounded normal pause/Save flow](le2-save-flow-observation.md) and its explicit
+control verbs. Frozen ASI SHA256:
+`112af1c4c02a3233740cd12778bc005d1bc62ffe153151f3cc7adcf433501e7b`.
+Three ordinary builds passed, SDK observer Release/Debug checks passed, focused
+diagnostic tests passed **7/7**, and actual-C++ client checks passed **33/33**.
+The full suite passed **48/49** initially: setup-updates hit a Windows file lock
+while deleting a disposable font file. The unchanged focused retry passed;
+all 49 test identities passed across those two runs. Both logs are retained.
+
+Protected attempt `1ca7a5fd-7387-44f9-b933-6f9fc71caf54` staged the previously
+verified resource fixture and candidate while the desktop and shared locks were
+clear. A `MassEffectLauncher` process appeared after deployment. The launch
+adapter refused before forwarding to Steam or binding ME2. A subsequent
+read-only inventory found no game/launcher, but ownership clarification remains
+pending. No pause/Save-menu native operation, New Save or persistence test ran.
+
+At this checkpoint, the private attempt
+`local-tools/le2-diagnostic-handoff/run-20261114T0828Z/` is **still staged**, with
+its protected backup and owned lock retained. Do not mistake this attempt for
+the fully restored successful resource run below. Confirm ownership and review
+any intervening protected-tree changes before cleanup or a fresh launch attempt;
+never restore an old snapshot over another session's later play.
+
 ### Eight edited resources observed after normal loading
 
 Protected run `4664cdc3-560b-41d0-be33-605607a1da2c` tested clean candidate
