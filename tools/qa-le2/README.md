@@ -12,6 +12,13 @@ Read [save format and recipe details](../../research/le2-save-adapter.md),
 [current evidence](../../research/le2-validation-evidence.md).
 Concrete acquisition leads are in [reload/interrupt fixture research](../../research/le2-fixture-acquisition.md)
 and [Zanethu discovery dependencies](../../research/le2-galaxy-fixture-source.md).
+Weapon fixtures also need the [native ammo and reload mapping](../../research/le2-ammo-fixture-source.md).
+
+Offline preparation can continue while another session owns the game:
+[resource boundary batches](variant-usage.md) create hash-bound zero/insufficient/exact/surplus cases;
+[story transition review](story-review-usage.md) compares paired saves against scoped source effects;
+[archived diagnostics and observer design](../../research/le2-runtime-observer.md) distinguish reusable capture formats from missing LE2 runtime producers.
+These tools do not establish native or VR acceptance. Keep all generated artifacts private.
 
 ## 1. Inspect and prepare a private fixture
 

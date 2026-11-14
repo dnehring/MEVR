@@ -1196,6 +1196,9 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-le2-scenario COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-scenario.py)
         add_test(NAME mevr-le2-oracle COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-oracle.py)
         add_test(NAME mevr-le2-workflow COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-workflow.py)
+        add_test(NAME mevr-le2-variants COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-variants.py)
+        add_test(NAME mevr-le2-story-review COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-story-review.py)
+        add_test(NAME mevr-le2-observe COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-observe.py)
         # The conversation sweep's predictions, work list and judge (tools/conversation-sweep.py, research/69), over a
         # synthetic scan.
         add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)

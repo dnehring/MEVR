@@ -15,6 +15,16 @@ All committed definitions are `draft`. Their missing map, save hash and recipe a
 
 Acquire a separate private binding and immutable fixture for each starting condition when needed. One run identifies one `caseId`; an audit of `empty` does not cover `no-reserve`. Reuse a single binding across variants only when starting checks and the recipe are genuinely identical. Keep acquired save files, captures, extracted game data and local paths outside tracked content.
 
+Offline helpers now prepare [resource boundary batches](../tools/qa-le2/variant-usage.md)
+and review [source-bound story effects](../tools/qa-le2/story-review-usage.md).
+One-probe zero and insufficient balances are the same preparation, not independent outcomes.
+For reload, the [native source mapping](../research/le2-ammo-fixture-source.md) distinguishes
+reserve from magazine usage and identifies an early-cancel phase that can transfer ammo.
+The reload catalog includes resource boundaries, full-magazine refusal and cancellation
+before/after that threshold and after transfer. All still require natural fixtures and native proof.
+The [observer audit](../research/le2-runtime-observer.md) identifies missing LE2 producers;
+an archived recording inspection cannot satisfy runtime-state or input-trace requirements.
+
 ## Fixture promotion and safe preparation
 
 1. Capture a naturally reached save just before the action. Record private provenance, executable version/hash, DLC, character/class, difficulty, weapon/loadout, save slot identity and scene. Hash the untouched base.

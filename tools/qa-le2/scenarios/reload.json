@@ -25,7 +25,14 @@
     "empty",
     "partial",
     "no-reserve",
+    "insufficient-reserve",
+    "exact-reserve",
+    "surplus-reserve",
+    "full-magazine",
     "interrupted",
+    "cancel-before-early",
+    "cancel-after-early",
+    "cancel-after-transfer",
     "weapon-switch",
     "duplicate-insert",
     "tutorial"
@@ -40,7 +47,8 @@
     "Capture naturally reached combat and tutorial saves with a known weapon and legal native reload. Record exact save hashes, map, equipped weapon identity, class and DLC prerequisites privately.",
     "Determine how clip and reserve counts are observed in the current LE2 build; normalized state.weapon.loaded and reserve below are a proposed observation interface, not verified SDK offsets.",
     "Record baseline reload event order, reload commit count, interruptions, weapon switch and tutorial dependencies by ordinary play. Do not invent tutorial plot IDs.",
-    "Create a separate private ready binding and pinned recipe for each starting condition. The save adapter can patch existing ammo records, but loaded/reserve interpretation, legal capacity and native effects still need verification; prefer naturally obtained ammo states until then.",
+    "Create a separate private ready binding and pinned recipe for each starting condition. SFXSaveGame maps ammo_total to reserve and ammo_used_count to used magazine ammo; see research/le2-ammo-fixture-source.md. Verify actual weapon class, capacity and post-load values before using edits; format-valid values do not prove native legality.",
+    "Acquire cancellation cases before the early-reload threshold, after that threshold but before scheduled transfer, and after transfer. Native Reloading.CancelReload can commit ammo when the early flag is set; never assume all cancellations leave ammo unchanged.",
     "For story edits compare naturally obtained before/after saves and inspect native conditions; attach provenance and ordinary progression proof before using a named recipe."
   ],
   "loadProcedure": [
@@ -182,16 +190,26 @@
         "empty",
         "partial",
         "no-reserve",
+        "insufficient-reserve",
+        "exact-reserve",
+        "surplus-reserve",
+        "full-magazine",
+        "cancel-before-early",
+        "cancel-after-early",
+        "cancel-after-transfer",
         "duplicate-insert"
       ]
     },
     {
       "id": "loaded-rounds-increase",
       "gate": "native",
-      "description": "A legal reload from empty or partial transfers ammunition into the weapon.",
+      "description": "A legal finite-reserve reload with missing rounds transfers ammunition into the weapon.",
       "variants": [
         "empty",
-        "partial"
+        "partial",
+        "insufficient-reserve",
+        "exact-reserve",
+        "surplus-reserve"
       ],
       "requires": [
         "before",
@@ -239,7 +257,7 @@
     {
       "id": "native-reload-transitions",
       "gate": "native",
-      "description": "Review time-ordered input and native weapon observations for single commit, legal interruption/switch recovery, no duplicate ammo, valid firing and tutorial continuation for the selected variant.",
+      "description": "Review time-ordered input and native weapon observations for single commit, phase-specific cancellation/switch recovery, no duplicate ammo, valid firing and tutorial continuation for the selected variant. Bind capacity and reserve deficit for boundary cases. Account for the native early-cancel transfer and tutorial event preceding transfer; sparse final snapshots do not prove event counts.",
       "requires": [
         "before",
         "after",

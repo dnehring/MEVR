@@ -17,7 +17,54 @@ This report does not promote the three public draft scenarios to validated.
 | Cross-module workflow | All three templates bind to a synthetic v30 fixture through the actual save adapter, recipe/receipt, scenario loader and protected runner; preparation changes the intended scalar, incorrect starting state is rejected and reset restores the fake installation. Only process inventory is injected; no scenario-loader stub is used. |
 | Evidence boundaries | Native, VR, stereo visual, physical-headset, performance and campaign gates remain separate. Missing observations remain pending; native inputs cannot prove VR, and synthetic headset evidence cannot prove comfort. Artifact integrity does not authenticate producer truth. |
 
-## Checks at this checkpoint
+## Additional offline work during the ME1 conversation session
+
+The ME1 owner is testing first-person conversations. This batch used private
+copies and read-only source inspection; it did not launch/deploy a game, stage
+the live profile, write shared request files, release ownership or change the
+OpenXR runtime.
+
+- [Resource boundary generation](../tools/qa-le2/variant-usage.md) now produces
+  pinned saves/recipes/receipts and a hashed index for zero, insufficient, exact
+  and surplus balances. A one-probe launch has only three distinct balances:
+  zero and insufficient are equivalent. Root prepared a cached private base at
+  0/1/2 probes and independently decoded/reserialized every output through the
+  pinned TSE oracle; only `player.probes` changed. The retained private batch is
+  `local-tools/le2-validation-evidence/probe-boundaries/`, with
+  `independent-check.json` and index SHA256
+  `e2cd3878d835f54385ef294afb74dd59735caf0bba2ba85ea9909d1d9be53698`.
+  Game limits, legal launch and persistence remain untested.
+- [Story review](../tools/qa-le2/story-review-usage.md) compares hash-bound save
+  endpoints with exact package/map-qualified source effects. Unsupported effects,
+  ambiguous writes and incomplete source reports remain unresolved; all other
+  save changes remain visible. Root checked actual event-4551 source data against
+  an artificial private endpoint with only booleans 4419/5679 changed, then
+  checked unchanged endpoints to distinguish already-present values. Both checks
+  passed without claiming event execution. Retained private diagnostics are in
+  `local-tools/le2-validation-evidence/story-review-4551-diagnostic/`.
+  **Those edited endpoints are test data, not gameplay fixtures or natural
+  progression evidence.** Ordinary before/after saves are still required.
+- [Observer audit and archive inspector](le2-runtime-observer.md) identify the
+  current LE1-only capture integration, missing LE2 runtime-state/input producers
+  and shared request hazards. Archive inspection reuses the recording parser but
+  emits only offline diagnostics with unknown game identity. Its 11 synthetic
+  tests passed; no real capture or runtime observer was validated.
+- [Reload source inspection](le2-ammo-fixture-source.md) establishes the native
+  save-field mapping and documents early-cancel ammo transfer and tutorial event
+  ordering. The draft scenario now distinguishes resource boundaries and three
+  cancellation phases. These findings guide fixture acquisition and observer
+  implementation; native timings and physical reload behavior remain pending.
+
+Root integration passed all **10 selected CTest entries**, using the command
+below after reconfiguring the same isolated build directory. The three added
+suites contain 14 resource-variant tests, 14 story-review tests and 11 archive
+inspection tests. Optional checks used the upstream sample, one cached private
+base, the real TSE oracle and the actual scoped event-4551 report. The existing
+session suite retains its Windows symlink-creation privilege skip. SPDX and
+whitespace checks passed for the committed work. No C++ runtime change or ASI
+build/deployment is part of this batch.
+
+## Earlier foundation checks
 
 Configured a separate `build-le2-validation-tools` CMake directory with game build
 targets and main menu disabled, offline tests enabled. Ran:
