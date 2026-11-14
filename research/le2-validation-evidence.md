@@ -28,8 +28,43 @@ can archive the actual new stable file without guessing a filename from an
 index. Prior-file changes and unexpected additions remain explicit failures.
 Independent TSE decoding and a fresh normal reload are separate next checks.
 
-This candidate has **not run natively**. The ownership question from the held
-Save-menu attempt remains unresolved; no new game was launched to test it.
+This candidate subsequently ran in the authorized next free game window;
+the bounded result is recorded below. New Save itself has not entered natively.
+
+### Scripted launch/load repeated; idle HUD blocks the pause guard
+
+Protected run `f402b0a6-a183-4b2b-a16f-b6a36995a824` launched candidate
+`11e63b352869c3beaf842b99ed1f07b7c60d06bc` through Steam with the verified
+loader. The channel bound the actual process, loaded ASI and game thread.
+The normal splash and Load-menu routes returned normally, enumeration found
+the unique prepared fixture among four current descriptors, and load request
+`90c293c5-73d9-41e0-b6d3-0b90087ca510` returned `dispatched` with its parameter
+frame intact. No desktop input was needed to launch or load.
+
+The current Load-menu capture was completely black and is retained as a failed
+visual sample, not selected-save image proof. The loaded-scene capture was
+readable and separately reviewed: Shepard stood on the Normandy crew deck
+with the Crew Quarters / Open prompt. Image SHA256:
+`22e4e6a4595e32c450868f0e92e6978b24508c4ec3f39e76816ea8392bb4f9e8`.
+Resource request `62121078-8922-4b34-b87a-65f71932fcf6` independently sampled
+all eight expected edited values; the exporter returned zero with all starting
+checks matched. This repeats loading/resource proof, not persistence proof.
+
+Two read-only Save-flow observations reported active Default mode 0,
+`allowPauseMenu=true`, `browserAllowed=true`, and `playersOnly=false`, but a
+focused `PowerWheel` panel. No wheel overlay was visible in the reviewed
+capture. The initial adapter requires no focused panel, so it reported
+`pauseStructurallySupported=false`. No pause, Save-menu or New Save action was
+submitted. Source inspection identifies PowerWheel as part of the persistent
+HUD; accepting that case requires verified closed-wheel state and ownership,
+not a tag-only exception or an assumption from the image.
+
+The game closed normally. The runner verified all four protected roots
+restored and removed its owned invitation. The private run directory
+`local-tools/le2-diagnostic-handoff/run-20261114T1409Z/` retains requests,
+captures, export checks, module logs and restoration evidence. Launch and
+normal fixture loading work; Save/reload remains pending a corrected and
+tested pause-context guard.
 
 ### Pause and Save-menu candidate: built, native attempt held
 
@@ -58,8 +93,9 @@ save, ASI, loader and preserved stock Bink differed, with their expected hashes;
 no intervening player-file, config or launcher changes were found. The protected
 reset then archived the attempt and verified all four roots restored. Its
 `owned-staging-cleanup-precheck.json` records that limited cleanup justification.
-No test candidate or save is left deployed. Fresh launch ownership still needs
-clarification; cleanup did not grant a new native window.
+No test candidate or save was left deployed by this cleanup. The later run
+above used the user's explicit next-free-window authorization and fresh
+ownership checks; cleanup itself did not grant a new native window.
 
 ### Eight edited resources observed after normal loading
 
