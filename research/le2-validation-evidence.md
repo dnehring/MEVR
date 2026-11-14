@@ -12,7 +12,7 @@ This report does not promote the three public draft scenarios to validated.
 | Established tool reuse | TSE `6451f23d1fba62358328dce4e87733970f36ebf1` schema/codec inspected; Python adapter is original, span-preserving code. Direct-library and CLI-fork alternatives documented in [save adapter research](le2-save-adapter.md). Headless verification reuses actual upstream source. |
 | Safe resource/save preparation | Full v30 parse, checksum, bounded input, fixed-size allowlist, hash and before-value preconditions, exclusive output, constrained semantic diff and receipt. Supports existing resource/ammo/power/squad/transform/plot fields; native legal values are not inferred from format validity. |
 | Independent encoding verification | TSE source decoder and serializer accept original and prepared upstream/private saves and independently reserialize them identically. Cross-check verifies all declared scalar edits and rejects unrequested semantic changes. The official editor GUI also opened a prepared private copy and showed the expected resource values; native load/save/reload remains pending. |
-| Protected lifecycle | Full profile/config/Win64 snapshot and verification; frozen inputs; new save slot; operator load handoff; exact process binding; archive/reset and recovery. Temporary-install tests exercise corrupt/incomplete backups, interrupted staging/reset, absent paths, new files, changed ownership and stale PID identity. Actual installation restoration has not been exercised. |
+| Protected lifecycle | Full profile/config/Win64 snapshot and verification; frozen inputs; new save slot; operator load handoff; exact process binding; archive/reset and recovery. Temporary-install tests exercise corrupt/incomplete backups, interrupted staging/reset, absent paths, new files, changed ownership and stale PID identity. A real no-launch staging/reset attempt now verifies restoration of the current installation; restoration after game writes remains pending. |
 | Scenario contracts | Reload, interrupt and scanning drafts include variants, acquisition tasks, actions, artifact requirements and assertions. Bound recipes and observed starting state are checked; evidence carries run/build/fixture identity and hashes. No arbitrary story recipe is represented as coherent or validated. |
 | Cross-module workflow | All three templates bind to a synthetic v30 fixture through the actual save adapter, recipe/receipt, scenario loader and protected runner; preparation changes the intended scalar, incorrect starting state is rejected and reset restores the fake installation. Only process inventory is injected; no scenario-loader stub is used. |
 | Evidence boundaries | Native, VR, stereo visual, physical-headset, performance and campaign gates remain separate. Missing observations remain pending; native inputs cannot prove VR, and synthetic headset evidence cannot prove comfort. Artifact integrity does not authenticate producer truth. |
@@ -148,9 +148,9 @@ A private first-load attempt is prepared under
 `local-tools/le2-native-handoff/`. Its no-op recipe, fixture, source preconditions,
 executable hash, scenario and session plan pass offline validation. The prepared
 save is byte-identical to its base and independently reserialized identically by
-TSE. `HANDOFF.md` gives the next steps; its owner marker remains PENDING. Nothing
-was staged into the live profile, no session lock was acquired, and no native
-acceptance or restoration is claimed. The three gameplay scenarios remain drafts.
+TSE. `HANDOFF.md` retains the original offline handoff. The later protected attempt
+below records actual staging and restoration, but no game launch. The three
+gameplay scenarios remain drafts.
 
 ## Independent editor GUI check
 
@@ -174,10 +174,10 @@ the check were closed afterward. The existing game session was left running.
 
 The following requirements are **not achieved** at this checkpoint:
 
-1. Exclusive native ownership handoff. The inspected shared game-slot record names
-   an earlier conversation-sweep owner. A missing game process alone does not
-   establish permission to discard its lock or restore its old files. No old
-   rollback was run and no system OpenXR setting changed.
+1. Working interactive desktop access for the next attempt. Ownership was resolved
+   for the attempt below using the user's resume instruction and the prior
+   owner's explicit game-free report. Recheck ownership before retrying. Never run the
+   archived old rollback; no system OpenXR setting changed.
 2. Normal ME2 selection/loading and in-game save/reload persistence. Two private saves parse as Normandy saves and the
    chapter save as `BioP_EndGm2`; neither establishes access to a particular
    scenario without loading and inspection.
@@ -200,8 +200,43 @@ The following requirements are **not achieved** at this checkpoint:
    campaign/DLC coverage. The matrix identifies the work but is not evidence of
    completion.
 
-Continue useful offline discovery while native ownership is unavailable. After
-handoff, prove a minimal no-op fixture load and restore before increasing scope.
+Continue useful offline work while desktop access is unavailable. Once accessible,
+recheck ownership and prove a minimal no-op fixture load and restore before increasing scope.
 Then validate a resource-only preparation, save/reload persistence and each
 natural scenario. Keep every result attributable to its actual candidate and
 loaded binary; retain unsuccessful runs and restoration outcomes.
+
+
+## Protected native attempt: desktop access failure
+
+Attempted 2026-11-13 local time (2026-11-14 UTC), run
+`49cdcf65-88f3-43f3-b33a-3709937f17be`. The user authorized proceeding, and the
+conversation-testing owner had explicitly reported its runs finished and the
+game free. Fresh process checks found no game/ME launcher/SteamVR session. The
+leftover November 10 reservation was archived with its hash and ownership
+receipt; its old backup was preserved and never restored.
+
+The real runner acquired its own lock, froze the no-op fixture and bindings,
+verified backups of all 44 existing profile files and nine LE2 Win64 files,
+recorded the absent LE2 Config directory, and staged the new save slot. The LE2
+ASI directory was empty; no renderer or plugin was installed. Executable and
+fixture hashes still matched the prepared handoff.
+
+The normal launcher boundary was recorded. Windows desktop automation then
+returned a black Steam capture and `GetCursorPos failed: Access is denied.
+(0x80070005)` on window activation. The cause is unresolved; a locked desktop is
+only a possibility. **No game launched, no process was bound, and no load, scene,
+resource, in-game save/reload or native gameplay acceptance was observed.**
+
+The runner reset immediately with no native process active. It archived the
+staged test file, verified restoration of all three protected roots, removed the
+test slot and released only its own lock. `phase` is `restored` and
+`restorationVerified` is `true`. This establishes a real staging/reset cycle,
+not restoration after gameplay writes. Private context, frozen inputs, backups,
+post-attempt archive and access-failure receipt remain under
+`local-tools/le2-native-handoff/run-20261114T032522Z/`.
+
+Retry with a fresh plan/run after desktop access and ownership checks. Select
+the staged save through normal Load Game, establish actual selected-save
+identity, then save to a new slot, reload, close normally and verify restoration.
+Native, VR and headset gates remain pending.
