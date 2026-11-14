@@ -36,9 +36,10 @@ including the closed PowerWheel HUD case and readable menu review. New Save
 submission now has live proof: one normal request produced a sole new file,
 left prior career files unchanged, and preserved all eight edited resources
 under independent TSE decoding. The asynchronous panel and UI-row classification
-fixes are included. A fresh normal reload remains pending, and the latest run's
-restoration is deferred while another SteamVR session is active; inspect the
-current evidence and ownership before native work. Follow the
+fixes are included. A fresh normal reload of those exact bytes now matches all
+eight live resource values and the reviewed Normandy scene; all four protected
+roots restored. The earlier save run used qualified recovery to preserve later
+ME1/shared-profile changes. Inspect current evidence and ownership before native work. Follow the
 [normal save workflow](control.md#submit-new-save-and-preserve-its-output) and
 [file evidence collector](save-evidence.md): preserve a reviewed pre-save
 inventory, submit once, archive and independently decode the actual new file,

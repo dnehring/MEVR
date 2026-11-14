@@ -85,9 +85,12 @@ when PrintWindow returns black; see [capture usage](../tools/qa-le2/capture.md).
 The corrected asynchronous Save-panel flow and separate UI-row classification
 have now supported one normal New Save request. Its sole new file passed the
 collector and independent TSE decoding with all eight edited resources intact.
-Fresh reload remains pending. The latest run closed normally, but another
-SteamVR session deferred restoration; inspect the latest evidence and retained
-session before native work. Scenario/VR acceptance remains pending.
+Fresh normal reload of those exact bytes now preserves all eight values in the
+live game and reaches the reviewed Normandy scene. The reload run closed and
+restored all four protected roots. Earlier deferred cleanup used qualified
+recovery to preserve later ME1/shared-profile changes; inspect its separate
+receipt rather than rerunning the old whole-profile reset. The minimal native
+resource cycle is proven; scenario/VR acceptance remains pending.
 
 ## Implemented transport checkpoint
 

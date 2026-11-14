@@ -1,9 +1,60 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-14 UTC. **Scripted New Save now produces a new file whose eight edited resources pass independent Trilogy Save Editor decoding. Normal launch/load, resource observation and menu capture also have live proof. Fresh reload remains pending. The latest run closed normally, but restoration is deferred while another SteamVR session is active; earlier runs restored successfully. Gameplay scenarios, general console calls and VR acceptance remain pending.**
+Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now has native proof: all eight edited values survived normal saving, independent Trilogy Save Editor decoding and a fresh normal load. The reload run closed normally and restored all four protected roots. The earlier save run recovered its test changes while preserving intervening ME1/shared-profile changes. The three gameplay scenarios, general console calls and VR acceptance remain pending.**
 
 ## Live diagnostic connection, 2026-11-14 UTC
+
+### Fresh reload preserves all eight edited resources
+
+Protected run `fcb66b74-c5f4-47a6-94f2-244bc1f18cb3` used the same clean
+`0ccce73b424bd47f6ab9daf37a8223ede57dd60c` candidate and ASI hash recorded below.
+It staged the exact native Save 100 bytes, SHA256
+`b54bf7c65437bfa6d487019bd4328cb62fb86581f25237181a0629b04940e236`, under the
+already reviewed Save 99 filename with a no-op recipe. The original file and
+frozen reload fixture are byte-identical; this tests content persistence, not
+preservation of the original filename.
+
+The normal Steam launch, run-bound handshake and menu route succeeded. A fresh
+complete four-row scan uniquely matched the manual Save 99 descriptor at UI row
+0. The coordinator reviewed the selected Normandy entry before submitting one
+normal load request, `e9335fbd-259a-40b2-963a-6eb90807bf21`. It returned normally
+with its 12-byte parameter frame intact. A subsequent readable desktop capture
+showed Shepard on the Normandy crew deck facing the Crew Quarters prompt.
+
+Live observation `cf27e0ba-8d5e-4fc4-b9fc-74db4868817c` reported `Biop_Nor` and
+matched all eight expected values: credits 32194, medi-gel 6, element zero 4192,
+iridium 71153, palladium 93176, platinum 37332, probes 29 and fuel 1499. The
+correlated exporter returned 0 with no failures. State artifact SHA256:
+`0e93d5bc6cd4afa61750f3397d1234a368d598ab79563b370d814eefe5f17d58`.
+Selected-menu image SHA256:
+`ea80476b4e77783c2b3216dec4a9425c3b701af464bb64959119baf6aab4f64f`;
+loaded-scene image SHA256:
+`fd9e10399275bbb2cbcb0c96fb51f99535688bbc6dc2476014bbbd1a66f20cca`.
+
+ME2 exited normally at 15:33:07 UTC. The pre-reset comparison found no ME1 or
+shared-profile changes in this run; only the staged save was added to the
+profile. All four protected roots restored and verified at 15:33:57 UTC, and
+the exact owned invitation was removed. Private evidence lives in
+`local-tools/le2-diagnostic-handoff/run-20261114T1529Z/`; the sealed
+`native-outcome.json` SHA256 is
+`22856d391e840a2b6f56f560b3c4db87db01ede222a111d1dc90860d62a7175f`.
+
+This completes one resource-only native persistence cycle, paired with the
+independent TSE proof below. It does not establish story-recipe coherence,
+ammo/reload gameplay, dialogue interrupts, scanning, stereo or VR acceptance.
+
+The earlier save run's deferred cleanup completed first at 15:28:08 UTC.
+Another session had updated ME1/shared-profile timestamps and the Launcher log.
+A reviewed file-scoped recovery archived all four current roots, restored the
+ME2 test changes and preserved those exact three files with their timestamps.
+Original backups/context stayed immutable. The separate qualified receipt
+records `qualifiedRestorationVerified=true`, `exactOriginalRestoration=false`,
+and removal of only that run's invitation and lock. Its reviewed manifest SHA256
+is `a7db2fa59582235e371ed8cea8854fdd717200ea419a29f4e610e668096ae2a9`;
+ten temporary-directory recovery tests passed. Do not run the ordinary old
+session reset after this qualified recovery. See the
+[save restoration gotcha](../docs/knowledge/gotchas/test-runs-overwrite-saves.md).
 
 ### Normal New Save produced; independent file check passed; reload pending
 
