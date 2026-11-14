@@ -84,6 +84,8 @@ bool ReadPartyConfirmation(Table const& table, UMassEffectGuiManager const* mana
         if (!ReadObject(table,completion.Object,"Core","Object",target) ||
             !CopyPartyName(completion.FunctionName,c.partyNames[1],c.completionFunction)) return false;
         c.partyCompletionCallback=CopyIdentity(target);
+        static_assert(sizeof(target.className)==sizeof(c.partyCompletionClass));
+        std::memcpy(c.partyCompletionClass.data(),target.className,sizeof(target.className));
     }
     c.category=Category::PartyConfirm;
     return true;
@@ -343,6 +345,17 @@ json::Value ContextJson(Context const& c) {
         confirmation["selectedLabel1"]=c.partyLabel1.data(); confirmation["selectedLabel2"]=c.partyLabel2.data();
         confirmation["externalCompletionPresent"]=c.partyCompletionCallback.address!=0;
         confirmation["externalCompletionFunction"]=c.completionFunction.data();
+        if (c.partyCompletionCallback.address) {
+            auto owner=json::Value::Object();
+            owner["class"]=c.partyCompletionClass.data(); owner["index"]=c.partyCompletionCallback.index;
+            confirmation["externalCompletionOwner"]=std::move(owner);
+            auto functionName=json::Value::Object();
+            functionName["index"]=static_cast<double>(c.partyNames[1][0]);
+            functionName["number"]=std::bit_cast<std::int32_t>(c.partyNames[1][1]);
+            confirmation["externalCompletionFunctionName"]=std::move(functionName);
+        }
+        confirmation["externalCompletionFunctionResolved"]=false;
+        confirmation["externalCompletionObserved"]=false;
         confirmation["completionDestinationProven"]=false;
         confirmation["handleInput"]=c.messageHandleInput; confirmation["modal"]=c.messageModal;
         confirmation["hiddenDepth"]=c.messageHiddenDepth; confirmation["cached"]=c.messageCached;

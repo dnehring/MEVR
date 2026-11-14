@@ -198,6 +198,20 @@
     auto completion=captureInput();
     Check(completion.available && completion.partyCompletionCallback.index==completionTarget.get()->ObjectInternalInteger &&
         !ic::SameContext(confirmation,completion),"valid external completion identity retained without claiming destination");
+    auto completionJson=ic::ContextJson(completion).Get("partyConfirmation");
+    Check(completionJson.Get("externalCompletionOwner").String("class")==completion.partyCompletionClass.data() &&
+        !completionJson.Get("externalCompletionOwner").String("class").empty() &&
+        completionJson.Get("externalCompletionOwner").Number("index")==completionTarget.get()->ObjectInternalInteger &&
+        !completionJson.Get("externalCompletionOwner").Has("address"),"completion owner emits validated class/index without pointer handle");
+    Check(completionJson.String("externalCompletionFunction")=="SyntheticCompletion" &&
+        completionJson.Get("externalCompletionFunctionName").Number("index")==completion.partyNames[1][0] &&
+        completionJson.Get("externalCompletionFunctionName").Number("number")==0 &&
+        !completionJson.Bool("externalCompletionFunctionResolved") && !completionJson.Bool("externalCompletionObserved") &&
+        !completionJson.Bool("completionDestinationProven"),"copied function name identity does not imply UFunction resolution or completion");
+    Check(!ic::ContextJson(confirmation).Get("partyConfirmation").Has("externalCompletionOwner") &&
+        !ic::ContextJson(confirmation).Get("partyConfirmation").Has("externalCompletionFunctionName"),"absent completion does not fabricate owner/name identity");
+    auto changedCompletion=completion; changedCompletion.partyCompletionClass[0]^=1;
+    Check(!ic::SameContext(completion,changedCompletion),"retained completion class participates in context continuity");
     confirmationInput(); messageHandler.get()->m_bCached=1;
     Check(captureInput().available && !ic::SameContext(confirmation,captureInput()),"message state change invalidates context");
     confirmationInput(); static FPartySelectMemberInfo* changingMembers; changingMembers=members.data();

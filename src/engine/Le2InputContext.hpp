@@ -67,6 +67,7 @@ struct State {
     Identity wheelHandler;
     std::uintptr_t wheelCache{}, wheelPlayer{}, wheelPawn{};
     Identity partyPanel, partyHandler, confirmationCallback, partyCompletionCallback;
+    std::array<char,256> partyCompletionClass{};
     ArrayIdentity partyMembers;
     std::array<std::array<std::uint32_t,2>,4> partyNames{}; // callback, completion, selected labels
     std::array<char,128> confirmationFunction{}, completionFunction{}, partyLabel1{}, partyLabel2{};
