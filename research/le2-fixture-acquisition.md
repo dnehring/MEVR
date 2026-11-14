@@ -29,6 +29,18 @@ A candidate from another career needs the same immutable archive, format check
 and normal-load scene verification as one acquired locally. See the
 [native acquisition record](le2-validation-evidence.md#normal-new-game-reached-normandy-evacuation).
 
+The search did not verify a public PC LE2 checkpoint before the reload or
+Veetor interrupt. Trilogy Save Editor's bundled `ME2LeSave.pcsav` decodes as
+`Biop_Nor` at about 36 hours. The
+[RAGING save set](https://playersquared.com/threads/mass-effect-2-legendary-edition-%E2%80%93-complete-save-set-cusa19500.6302/)
+lists a Lazarus Research Station save for PS4 CUSA19500. Its exact tutorial
+position and PC compatibility remain unverified. The author of
+[Skip Mass Effect 2 Prologue](https://www.nexusmods.com/masseffectlegendaryedition/mods/1004?tab=description)
+describes a route to character creation, bypassing the Normandy evacuation
+that blocked scripted movement. Consider the mod for acquisition only if the
+checkpoint can subsequently be loaded and verified on the stock test install.
+No external save or mod was installed during the search.
+
 1. **Preferred reusable route: normal Lazarus/ProCer progression.** Installed
    base and Patch01 content includes `BioP_ProCer` and
    `BioD_ProCer_100RezRoom`. Existing sequence inspection identifies pistol

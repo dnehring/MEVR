@@ -19,6 +19,28 @@ No native orbital or input proof follows from these offline results.
 
 ## Immediate acquisition sequence
 
+The first probe boundary batch is prepared from the proven Crew Deck save
+below. The pinned Trilogy Save Editor decoder independently round-tripped the
+base and all three edited version-30 saves, verified their CRCs and matched
+every decoded field after accounting for the expected probe count alone.
+The cases begin with zero, one and two probes. Zero and insufficient use the
+same zero-probe save. The private batch `le2-normandy-probe-boundaries` has index
+SHA256 `6f244e48bfb270a8b6313280cec4de1d33fda4cd05063cb7e6929383470ae5cf`
+and independent validation SHA256
+`36693be4255f74ea3068013b6f2a9d1161572cf68dc33e395c65c506e2fabe65`.
+The one-probe save SHA256 is
+`6fba4678246c5468761b5c53616ff7d86e69a39e11738c859933c0ff85b8ac22`.
+
+The private `one-probe-session.json` binds that save and recipe to the native
+one-probe variant of `le2-planet-scanning`, with eight Crew Deck starting
+resource predicates and the existing load and restoration checks. Its SHA256 is
+`654e0dae8f78f1130f5e5428f3728cea844aff7426b65e0eb583a80e959b9556`.
+The private scenario passed `validate --for-run`. The first staging attempt
+was refused before creating a run directory because ME1 and SteamVR had started.
+At the next free window, use the one-probe plan and verify its displayed slot,
+Crew Deck scene and resources before continuing to the CIC. The 29-probe base
+remains available as a separate navigation acquisition save.
+
 1. Use the existing protected session and normal menu loader with the reviewed
    Crew Deck resource fixture; verify its immutable hash and descriptor binding.
    The privately archived normal-save candidate inspected for this work has SHA256

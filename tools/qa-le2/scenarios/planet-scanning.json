@@ -56,6 +56,11 @@
   ],
   "actions": [
     {
+      "id": "native-baseline",
+      "inputPath": "native",
+      "description": "Use normal game controls to reach the CIC, enter the galaxy map and select a scannable planet. Sample before and after a legal single launch or the specified refusal, travel or scan-hold case. Record the observed input, probe and resource changes and the rendered outcome."
+    },
+    {
       "id": "navigate",
       "inputPath": "vr",
       "description": "Open the native galaxy interface on the VR surface and navigate normally, including controlled fuel variants. Do not teleport to bypass travel cost."
