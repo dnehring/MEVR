@@ -18,14 +18,17 @@
 #include <cstring>
 #include <format>
 #include <type_traits>
+#include <vector>
 
 namespace mevr::engine::le2_diagnostic {
 namespace {
 std::atomic_bool gFovProbeEntered{false};
 std::atomic_bool gSplashEntered{false}, gLoadMenuEntered{false};
+std::atomic_bool gFixtureLoadEntered{false};
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 testing::FovDispatcher gFovDispatcher{};
 testing::MenuDispatcher gMenuDispatcher{};
+testing::MenuDispatcher gFixtureDispatcher{};
 #endif
 // Same pending-kill/template rules as Legacy; these are not incarnation IDs.
 constexpr std::uint64_t kPendingKill = 0x2000000000000000ull;
@@ -1021,6 +1024,9 @@ void testing::ResetFovProbe(FovDispatcher dispatcher) {
 void testing::ResetMenuActions(MenuDispatcher dispatcher) {
     gSplashEntered.store(false); gLoadMenuEntered.store(false); gMenuDispatcher = dispatcher;
 }
+void testing::ResetFixtureLoad(MenuDispatcher dispatcher) {
+    gFixtureLoadEntered.store(false); gFixtureDispatcher = dispatcher;
+}
 #endif
 
 ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& services) {
@@ -1255,6 +1261,251 @@ ProbeResult MenuAction(std::uint32_t gameThreadId, ObserverServices const& servi
 } // namespace
 ProbeResult AdvanceSplash(std::uint32_t gameThreadId, ObserverServices const& services) { return MenuAction(gameThreadId, services, true); }
 ProbeResult OpenLoadMenu(std::uint32_t gameThreadId, ObserverServices const& services) { return MenuAction(gameThreadId, services, false); }
+
+namespace {
+constexpr unsigned kMaxFixtureRows = 512;
+struct FixtureSample {
+    MenuSample menu;
+    SlotSample slot;
+    SaveRow rows[kMaxFixtureRows]{};
+    bool headersComplete{};
+    char const* reason{"fixture-menu-context-unavailable"};
+};
+void ReadFixture(void* context) {
+    auto& out = *static_cast<FixtureSample*>(context);
+    ReadMenu(&out.menu);
+    if (!out.menu.contextAvailable || !out.menu.load.handler.available) return;
+    ReadValidatedSlot(out.menu.load.handler, out.slot);
+    auto const* handler = reinterpret_cast<USFXSFHandler_Load const*>(out.menu.load.handler.address);
+    out.reason = "fixture-list-header-invalid-or-512-row-limit";
+    if (!BoundedArray(handler->SaveList, kMaxFixtureRows)) return;
+    if (handler->SaveList.Count() != out.menu.saveCount || handler->SaveList.Capacity() != out.menu.saveCapacity ||
+        reinterpret_cast<std::uintptr_t>(handler->SaveList.GetData()) != out.menu.savesData) return;
+    for (unsigned i = 0; i < out.menu.saveCount; ++i) {
+        auto const& d = handler->SaveList.GetData()[i].SaveDescriptor;
+        out.rows[i] = {reinterpret_cast<std::uintptr_t>(&d.Career), reinterpret_cast<std::uintptr_t>(&d.SaveName), d.Index, d.Type};
+    }
+    out.headersComplete = true; out.reason = "fixture-record-headers-copied";
+}
+bool FixtureReady(FixtureSample const& s) {
+    auto const& m = s.menu; auto const& p = m.load; auto const& f = p.function;
+    return s.headersComplete && m.contextAvailable && m.worldLinksKnown && PanelInteractive(p) &&
+        std::strcmp(p.handler.className, "SFXGame.SFXSFHandler_PCLoad") == 0 &&
+        !p.waitingMessage && !p.enumerating && p.checkingComplete && p.fromMainMenu && p.guiMode == 1 && p.loadMode == 0 &&
+        s.slot.available && f.function.available && f.parametersComplete && f.layoutMatches && f.functionFlags == 0x820003 && f.nativeIndex == 0;
+}
+bool FrozenLeaf(std::string const& text) {
+    if (text.empty() || text.size() > 1024 || text == "." || text == ".." || text.back() == '.' || text.back() == ' ') return false;
+    for (unsigned char c : text)
+        if (c < 32 || c == 127 || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') return false;
+    return true;
+}
+bool FrozenValid(FrozenDescriptor const& d) { return d.type == 0 && d.index >= 0 && FrozenLeaf(d.career) && FrozenLeaf(d.saveName); }
+
+// Store only bounded POD copies outside the SEH traversal. The existing strict
+// decoder copies bytes through this reader; retain exactly those bytes so the
+// final guarded check can compare the entire list without allocation/decoding.
+struct CapturedText {
+    qa::utf16::Header header{};
+    unsigned char units[256 * 2]{};
+    bool headerCopied{}, bodyCopied{};
+};
+struct CapturedRow { CapturedText career, name; };
+static_assert(std::is_trivially_destructible_v<CapturedRow>);
+struct CaptureContext { std::uintptr_t address; CapturedText* text; };
+bool CaptureReader(std::uintptr_t source, void* destination, std::size_t bytes, void* context) noexcept {
+    auto& c = *static_cast<CaptureContext*>(context); auto& text = *c.text;
+    if (!GuardedCopy(source, destination, bytes, nullptr)) return false;
+    if (!text.headerCopied && source == c.address && bytes == sizeof(text.header)) {
+        std::memcpy(&text.header, destination, bytes); text.headerCopied = true;
+    } else if (text.headerCopied && source == text.header.data && bytes <= sizeof(text.units) && bytes == text.header.count * 2ull) {
+        std::memcpy(text.units, destination, bytes); text.bodyCopied = true;
+    }
+    return true;
+}
+qa::utf16::Result CaptureText(std::uintptr_t address, CapturedText& text) {
+    CaptureContext context{address, &text};
+    return qa::utf16::ReadFString(address, CaptureReader, &context, {256, 4096, 1024});
+}
+struct FixtureScan {
+    FixtureSample sample;
+    std::vector<CapturedRow> text;
+    unsigned matches{}, row{};
+    bool complete{};
+    std::string reason{"not-scanned"};
+};
+void ScanFixture(FixtureScan& out, FrozenDescriptor const& expected) {
+    if (!ue3::runtime::Guarded(ReadFixture, &out.sample)) { out.reason = "guarded-fixture-read-fault"; return; }
+    if (!FixtureReady(out.sample)) { out.reason = out.sample.headersComplete ? "normal-PCLoad-context-or-metadata-not-ready" : out.sample.reason; return; }
+    out.text.resize(out.sample.menu.saveCount);
+    for (unsigned i = 0; i < out.sample.menu.saveCount; ++i) {
+        auto const& row = out.sample.rows[i];
+        auto const career = CaptureText(row.career, out.text[i].career);
+        auto const name = CaptureText(row.name, out.text[i].name);
+        auto captured = [](CapturedText const& t) { return t.headerCopied && (t.header.count == 0 || t.bodyCopied); };
+        if (!career.Available() || !name.Available() || !captured(out.text[i].career) || !captured(out.text[i].name)) {
+            out.reason = "fixture-scan-string-unavailable-or-malformed"; return;
+        }
+        if (career.utf8 == expected.career && name.utf8 == expected.saveName && row.index == expected.index && row.type == expected.type) {
+            ++out.matches; out.row = i;
+        }
+    }
+    out.complete = true;
+    out.reason = out.matches == 1 ? "unique-descriptor-copied-file-proof-host-owned" : out.matches == 0 ? "fixture-descriptor-not-found" : "duplicate-fixture-descriptor";
+}
+bool SameFunction(FunctionSample const& a, FunctionSample const& b) {
+    if (!SameObjectSample(a.function, b.function) || a.functionFlags != b.functionFlags || a.nativeIndex != b.nativeIndex ||
+        a.parmsSize != b.parmsSize || a.numParms != b.numParms || a.returnOffset != b.returnOffset ||
+        a.parametersComplete != b.parametersComplete || a.layoutMatches != b.layoutMatches || a.parameterCount != b.parameterCount) return false;
+    for (unsigned i = 0; i < a.parameterCount; ++i) {
+        auto const& x = a.parameters[i]; auto const& y = b.parameters[i];
+        if (!SameObjectSample(x.property, y.property) || !SameObjectSample(x.objectClass, y.objectClass) ||
+            x.hasObjectClass != y.hasObjectClass || x.guiManagerClass != y.guiManagerClass ||
+            x.offset != y.offset || x.elementSize != y.elementSize || x.arrayDim != y.arrayDim || x.flags != y.flags ||
+            x.hasBoolMask != y.hasBoolMask || x.boolMask != y.boolMask || std::strcmp(x.name, y.name) != 0) return false;
+    }
+    return true;
+}
+bool SameFixtureContext(FixtureSample const& a, FixtureSample const& b) {
+    if (!FixtureReady(b) || a.slot.object != b.slot.object || a.slot.vtable != b.slot.vtable || a.slot.target != b.slot.target) return false;
+    auto const& x = a.menu; auto const& y = b.menu;
+    if (x.panelsData != y.panelsData || x.panelCount != y.panelCount || x.focus != y.focus ||
+        x.savesData != y.savesData || x.saveCount != y.saveCount || x.saveCapacity != y.saveCapacity ||
+        !SameObjectSample(x.root.engine, y.root.engine) || !SameObjectSample(x.root.world, y.root.world) ||
+        !SameObjectSample(x.root.localPlayer, y.root.localPlayer) || !SameObjectSample(x.root.player, y.root.player) ||
+        !SameObjectSample(x.viewport, y.viewport) || !SameObjectSample(x.manager, y.manager) ||
+        !SameObjectSample(x.worldInfo, y.worldInfo) || !SameObjectSample(x.controllerWorldInfo, y.controllerWorldInfo)) return false;
+    auto const& p = x.load; auto const& q = y.load;
+    return SameObjectSample(p.panel, q.panel) && SameObjectSample(p.handler, q.handler) && SameObjectSample(p.worldInfo, q.worldInfo) &&
+        p.careerIndex == q.careerIndex && SameFunction(p.function, q.function);
+}
+bool TextStillMatches(std::uintptr_t address, CapturedText const& text) {
+    qa::utf16::Header current{}; std::memcpy(&current, reinterpret_cast<void const*>(address), sizeof(current));
+    if (current.data != text.header.data || current.count != text.header.count || current.capacity != text.header.capacity || current.count > 256) return false;
+    return current.count == 0 || std::memcmp(reinterpret_cast<void const*>(current.data), text.units, current.count * 2ull) == 0;
+}
+struct FinalFixtureCheck { FixtureSample const* before; CapturedRow const* text; FixtureSample* after; bool matches{}; };
+void CheckFixture(void* context) {
+    auto& check = *static_cast<FinalFixtureCheck*>(context);
+    ReadFixture(check.after);
+    if (!SameFixtureContext(*check.before, *check.after)) return;
+    for (unsigned i = 0; i < check.after->menu.saveCount; ++i) {
+        auto const& a = check.before->rows[i]; auto const& b = check.after->rows[i];
+        if (a.career != b.career || a.name != b.name || a.index != b.index || a.type != b.type ||
+            !TextStillMatches(b.career, check.text[i].career) || !TextStillMatches(b.name, check.text[i].name)) return;
+    }
+    check.matches = true;
+}
+bool FixtureRoute(FixtureSample const& sample, ObserverServices const& services) {
+    if (services.inspectTarget == nullptr || services.readHookSnapshot == nullptr) return false;
+    auto const first = services.readHookSnapshot(); auto const target = services.inspectTarget(sample.slot.target);
+    auto const last = services.readHookSnapshot();
+    return sample.slot.target == first.target && target.sameAsBase && ProbeTargetValid(target, first, sample.slot.target) &&
+        ProbeTargetValid(target, last, sample.slot.target) && first.target == last.target && first.detour == last.detour && first.nextHop == last.nextHop;
+}
+json::Value FixtureJson(FixtureScan const& scan, FrozenDescriptor const& expected) {
+    auto out = json::Value::Object(); out["schemaVersion"] = 1; out["game"] = "LE2";
+    out["scanComplete"] = scan.complete; out["matches"] = static_cast<int>(scan.matches); out["reason"] = scan.reason;
+    out["rowLimit"] = static_cast<int>(kMaxFixtureRows); out["observedRowCount"] = static_cast<std::uint64_t>(scan.sample.menu.saveCount);
+    out["fileProofOwner"] = "host-frozen-mapping-and-current-staged-file-hash";
+    out["fixtureLoaded"] = false; out["durableObjectIdentity"] = false;
+    auto& candidate = out["candidate"]; candidate = json::Value::Object();
+    candidate["available"] = scan.complete && scan.matches == 1;
+    if (scan.complete && scan.matches == 1) {
+        candidate["row"] = static_cast<int>(scan.row); candidate["career"] = expected.career; candidate["saveName"] = expected.saveName;
+        candidate["index"] = expected.index; candidate["type"] = static_cast<int>(expected.type);
+        candidate["contentKey"] = DescriptorKey(expected.career, expected.saveName, expected.index, expected.type);
+    }
+    return out;
+}
+struct alignas(USFXSFHandler_Load_execLoadGame_Parms) FixtureFrame {
+    unsigned char bytes[20]{};
+    unsigned char input[12]{};
+    FixtureFrame(unsigned row, std::uintptr_t manager) {
+        std::uint32_t const before = 0xC173AB52, after = 0x5A92E8C1;
+        USFXSFHandler_Load_execLoadGame_Parms parameters{};
+        parameters.SaveIdx = static_cast<int>(row); parameters.GuiMan = reinterpret_cast<UMassEffectGuiManager*>(manager);
+        std::memcpy(input, &parameters, sizeof(parameters));
+        std::memcpy(bytes, &before, 4); std::memcpy(bytes + 4, input, 12); std::memcpy(bytes + 16, &after, 4);
+    }
+    bool Intact() const {
+        std::uint32_t before{}, after{}; std::memcpy(&before, bytes, 4); std::memcpy(&after, bytes + 16, 4);
+        return before == 0xC173AB52 && after == 0x5A92E8C1 && std::memcmp(input, bytes + 4, 12) == 0;
+    }
+};
+static_assert(offsetof(FixtureFrame, input) == 20);
+static_assert(alignof(FixtureFrame) >= alignof(USFXSFHandler_Load_execLoadGame_Parms));
+static_assert(offsetof(FixtureFrame, bytes) == 0 && 4 % alignof(USFXSFHandler_Load_execLoadGame_Parms) == 0);
+void DispatchFixture(FixtureSample const& sample, FixtureFrame& frame) {
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+    gFixtureDispatcher(reinterpret_cast<void*>(sample.menu.load.handler.address),
+        reinterpret_cast<void*>(sample.menu.load.function.function.address), frame.bytes + 4);
+#else
+    reinterpret_cast<UObject*>(sample.menu.load.handler.address)->ProcessEvent(
+        reinterpret_cast<UFunction*>(sample.menu.load.function.function.address), frame.bytes + 4, nullptr);
+#endif
+}
+} // namespace
+
+json::Value ObserveFixtureCandidate(std::uint32_t gameThreadId, ObserverServices const& services, FrozenDescriptor const& descriptor) {
+    auto unavailable = [](char const* reason) {
+        auto out = json::Value::Object(); out["schemaVersion"] = 1; out["game"] = "LE2"; out["reason"] = reason;
+        out["scanComplete"] = false; out["candidateAvailable"] = false; out["dispatchCapability"] = false; return out;
+    };
+    if (gameThreadId == 0 || GetCurrentThreadId() != gameThreadId) return unavailable("not-on-verified-game-thread");
+    if (!FrozenValid(descriptor)) return unavailable("invalid-frozen-manual-descriptor");
+    FixtureScan scan; ScanFixture(scan, descriptor);
+    bool const route = scan.complete && scan.matches == 1 && FixtureRoute(scan.sample, services);
+    if (scan.complete) {
+        FixtureSample after{}; FinalFixtureCheck check{&scan.sample, scan.text.data(), &after};
+        if (!ue3::runtime::Guarded(CheckFixture, &check) || !check.matches) {
+            scan.complete = false; scan.reason = "fixture-context-or-list-changed";
+        }
+    }
+    auto out = FixtureJson(scan, descriptor); out["dispatchCapability"] = false;
+    out["ownedBaseRouteObserved"] = scan.complete && route;
+    out["candidateAvailable"] = scan.complete && scan.matches == 1;
+    return out;
+}
+ProbeResult LoadFixture(std::uint32_t gameThreadId, ObserverServices const& services, FrozenDescriptor const& descriptor) {
+    ProbeResult result{"rejected", json::Value::Object()}; auto& out = result.payload;
+    out["schemaVersion"] = 1; out["game"] = "LE2"; out["action"] = "load-fixture"; out["entered"] = false; out["fixtureLoaded"] = false;
+    auto reject = [&](char const* reason) { out["reason"] = reason; return result; };
+    if (gameThreadId == 0 || GetCurrentThreadId() != gameThreadId) return reject("not-on-verified-game-thread");
+    if (gFixtureLoadEntered.load()) return reject("process-fixture-load-entry-already-spent");
+    if (!FrozenValid(descriptor)) return reject("invalid-frozen-manual-descriptor");
+    FixtureScan scan; ScanFixture(scan, descriptor);
+    if (!scan.complete || scan.matches != 1) return reject(scan.reason.c_str());
+    if (!FixtureRoute(scan.sample, services)) return reject("fixture-handler-is-not-validated-owned-base-route");
+    out["selection"] = FixtureJson(scan, descriptor); out["route"] = "exact-owned-base";
+    out["parameterBytes"] = 12;
+    FixtureFrame frame(scan.row, scan.sample.menu.manager.address);
+    FixtureSample immediate{}; FinalFixtureCheck check{&scan.sample, scan.text.data(), &immediate};
+    // Last engine reads: all current identities/metadata/slot and every captured
+    // descriptor header/body, after every provider and all JSON construction.
+    if (!ue3::runtime::Guarded(CheckFixture, &check) || !check.matches) return reject("fixture-context-or-list-changed-before-entry");
+    bool expected = false;
+    if (!gFixtureLoadEntered.compare_exchange_strong(expected, true)) return reject("process-fixture-load-entry-already-spent");
+    bool returned = false;
+    try { DispatchFixture(immediate, frame); returned = true; } // Never use read-only SEH for native execution.
+    catch (...) { /* Ordinary C++ unwinding only; uncertain entry remains spent. */ }
+    bool const intact = frame.Intact();
+    result.status = returned && intact ? "dispatched" : "error";
+    out["entered"] = true; out["entrySpent"] = true; out["returnedNormally"] = returned;
+    out["parameterFrameIntact"] = intact; out["retryAllowed"] = false;
+    out["reason"] = returned && intact ? "normal-load-return-observed-world-unverified" : "entered-fixture-load-uncertain-no-retry";
+    if (returned && intact) {
+        out["postObservation"] = ObserveSaveMenu(gameThreadId);
+        if (json::Write(out, 0).size() > kSaveMenuPayloadBytes) {
+            out["postObservation"]["records"] = json::Value::Array(); out["postObservation"]["listComplete"] = false;
+            out["postObservation"]["reason"] = "fixture-post-observation-budget";
+        }
+        if (json::Write(out, 0).size() > kSaveMenuPayloadBytes) {
+            out["postObservation"] = json::Value::Object(); out["postObservation"]["reason"] = "fixture-post-context-budget";
+        }
+    } else { out["postObservation"] = json::Value::Object(); out["postObservation"]["reason"] = "unavailable-after-uncertain-entry"; }
+    return result;
+}
 
 json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic::Snapshot const* hostSnapshot,
                     ObserverServices const* services) {

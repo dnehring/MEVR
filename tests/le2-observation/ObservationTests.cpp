@@ -136,6 +136,39 @@ void FakeMenuDispatch(void* handler, void* function, void* parameters) {
     if (menuDispatchMode == 5) *static_cast<unsigned char*>(parameters) = 1;
     if (menuDispatchMode == 0) { actionPanel->IsVisible = 0; actionManager->m_FocusPanel = nullptr; }
 }
+unsigned fixtureDispatchCalls{}, fixtureReadsAtDispatch{}, expectedFixtureRow{};
+int fixtureDispatchMode{}, fixtureMutation{};
+UObject* fixtureHandler{}; UFunction* fixtureFunction{}; UMassEffectGuiManager* fixtureManager{};
+UBioSFPanel* fixturePanel{}; FSaveGUIRecord* fixtureRecords{};
+UObjectProperty* fixtureManagerProperty{}; UClass* alternateManagerClass{};
+std::wstring* fixtureMutableText{}; std::wstring* fixtureMutableOther{};
+std::uintptr_t* fixtureVtable{};
+diagnostic::TargetInspection FixtureInspect(std::uintptr_t target) noexcept {
+    auto out = ProbeInspect(target);
+    if (fixtureMutation == 1) (*fixtureMutableText)[0] ^= 1;
+    if (fixtureMutation == 2) {
+        std::memcpy(&fixtureRecords[1].SaveDescriptor, &fixtureRecords[expectedFixtureRow].SaveDescriptor, sizeof(FSFXSaveDescriptor));
+    }
+    if (fixtureMutation == 3) fixtureManagerProperty->PropertyClass = alternateManagerClass;
+    if (fixtureMutation == 4) ++fixtureVtable[72];
+    if (fixtureMutation == 5) (*fixtureMutableOther)[0] ^= 1;
+    return out;
+}
+void FakeFixtureDispatch(void* handler, void* function, void* parameters) {
+    ++fixtureDispatchCalls; fixtureReadsAtDispatch = engineReadCalls;
+    Check(handler == fixtureHandler && function == fixtureFunction && parameters != nullptr, "only frozen fixture normal LoadGame route");
+    Check(reinterpret_cast<std::uintptr_t>(parameters) % alignof(USFXSFHandler_Load_execLoadGame_Parms) == 0, "actual SDK parameter alignment");
+    USFXSFHandler_Load_execLoadGame_Parms input{};
+    std::memcpy(&input, parameters, sizeof(input));
+    Check(input.SaveIdx == static_cast<int>(expectedFixtureRow) && input.GuiMan == fixtureManager, "packed actual current row and typed same manager");
+    if (fixtureDispatchMode == 2) throw std::runtime_error("synthetic load exception");
+    auto* bytes = static_cast<unsigned char*>(parameters);
+    if (fixtureDispatchMode == 3) bytes[12] ^= 1;
+    if (fixtureDispatchMode == 4) bytes[-1] ^= 1;
+    if (fixtureDispatchMode == 5) bytes[0] ^= 1;
+    if (fixtureDispatchMode == 6) bytes[4] ^= 1;
+    if (fixtureDispatchMode == 0) { fixtureManager->m_FocusPanel = nullptr; fixturePanel->IsVisible = 0; }
+}
 void FakeFovDispatch(void* controller, void* function, void* parameters) {
     ++dispatchCalls;
     readsAtDispatch = engineReadCalls;
@@ -853,6 +886,97 @@ int main() {
             Check(engineReadCalls == menuReadsAtDispatch, "no engine traversal after exception or damaged byte frame");
             auto calls = menuDispatchCalls;
             Check(OpenLoadMenu(thread, menuServices).status == "rejected" && menuDispatchCalls == calls, "uncertain menu entry cannot retry");
+        }
+        using mevr::engine::le2_diagnostic::FrozenDescriptor;
+        using mevr::engine::le2_diagnostic::ObserveFixtureCandidate;
+        using mevr::engine::le2_diagnostic::LoadFixture;
+        using mevr::engine::le2_diagnostic::testing::ResetFixtureLoad;
+        Raw<UClass> pcLoadType, otherManagerType;
+        add(pcLoadType.get(), "SFXSFHandler_PCLoad", meta.get(), sfxPackage.get()); pcLoadType.get()->SuperField = loadType.get();
+        add(otherManagerType.get(), "MassEffectGuiManager", meta.get(), sfxPackage.get());
+        loadHandler.get()->Class = pcLoadType.get();
+        std::memcpy(loadHandler.get(), &controllerVtablePtr, sizeof(controllerVtablePtr));
+        manager.get()->m_FocusPanel = loadPanel.get(); loadPanel.get()->IsVisible = 1;
+        auto records512 = std::make_unique<Raw<FSaveGUIRecord>[]>(512);
+        std::wstring otherSave = L"OtherSave";
+        for (unsigned i = 0; i < 512; ++i) {
+            setText(records512[i].get()->SaveDescriptor.Career, career);
+            setText(records512[i].get()->SaveDescriptor.SaveName, otherSave);
+            records512[i].get()->SaveDescriptor.Index = 1000 + static_cast<int>(i);
+        }
+        expectedFixtureRow = 300;
+        auto configureTarget = [&] {
+            setText(records512[expectedFixtureRow].get()->SaveDescriptor.SaveName, filename);
+            records512[expectedFixtureRow].get()->SaveDescriptor.Index = 99;
+        };
+        configureTarget();
+        saveHeader = {records512[0].get(), 512, 512}; setSaves();
+        fixtureHandler = loadHandler.get(); fixtureFunction = normalLoad.get(); fixtureManager = manager.get(); fixturePanel = loadPanel.get();
+        fixtureRecords = records512[0].get(); fixtureManagerProperty = guiManagerProperty.get(); alternateManagerClass = otherManagerType.get();
+        fixtureMutableText = &filename; fixtureMutableOther = &otherSave; fixtureVtable = controllerVtable.data();
+        FrozenDescriptor frozen{"SyntheticCareer", "SyntheticSave", 99, 0};
+        mevr::engine::le2_diagnostic::ObserverServices fixtureServices{FixtureInspect, nullptr, ProbeHook};
+        auto candidate = [&] { return ObserveFixtureCandidate(thread, fixtureServices, frozen); };
+        Check(!menu().Bool("listComplete") && candidate().Bool("scanComplete") && candidate().Bool("candidateAvailable"), "complete512-row filtered scan bypasses12-row display cap");
+        Check(candidate().Get("candidate").Number("row") == 300 && candidate().Get("candidate").Number("index") == 99 &&
+              candidate().Bool("ownedBaseRouteObserved") && !candidate().Bool("dispatchCapability"), "unique current UI row kept separate from descriptor index");
+        Check(mevr::json::Write(candidate(), 0).size() <= 14 * 1024, "filtered512 scan has bounded result");
+        ResetFixtureLoad(FakeFixtureDispatch); fixtureDispatchMode = 1;
+        auto originalReads = engineReadCalls;
+        FrozenDescriptor invalid = frozen; invalid.career.clear();
+        Check(LoadFixture(thread, fixtureServices, invalid).status == "rejected" && engineReadCalls == originalReads, "blank frozen identity refuses before engine reads");
+        invalid = frozen; invalid.saveName = "../SyntheticSave";
+        Check(!ObserveFixtureCandidate(thread, fixtureServices, invalid).Bool("scanComplete"), "paths not accepted as descriptor names");
+        invalid = frozen; invalid.type = 2;
+        Check(LoadFixture(thread, fixtureServices, invalid).status == "rejected", "auto/quick/import types not enabled");
+        invalid = frozen; invalid.index = -1;
+        Check(LoadFixture(thread, fixtureServices, invalid).status == "rejected", "manual negative index refused");
+        Check(LoadFixture(0, fixtureServices, frozen).status == "rejected", "wrong-thread load refused");
+        saveHeader.count = saveHeader.max = 513; setSaves();
+        Check(!candidate().Bool("scanComplete") && LoadFixture(thread, fixtureServices, frozen).status == "rejected", "513 rows cannot silently become complete");
+        saveHeader.count = saveHeader.max = 512; setSaves();
+        invalid = frozen; invalid.index = 98;
+        Check(ObserveFixtureCandidate(thread, fixtureServices, invalid).Number("matches") == 0 &&
+              LoadFixture(thread, fixtureServices, invalid).status == "rejected", "all four descriptor fields required");
+        std::memcpy(&records512[1].get()->SaveDescriptor, &records512[300].get()->SaveDescriptor, sizeof(FSFXSaveDescriptor));
+        Check(candidate().Bool("scanComplete") && candidate().Number("matches") == 2 && !candidate().Bool("candidateAvailable") &&
+              LoadFixture(thread, fixtureServices, frozen).status == "rejected", "scan continues beyond first full match to reject duplicates");
+        records512[1].get()->SaveDescriptor.Index = 1001; setText(records512[1].get()->SaveDescriptor.SaveName, otherSave);
+        setText(records512[511].get()->SaveDescriptor.SaveName, malformed);
+        Check(!candidate().Bool("scanComplete") && LoadFixture(thread, fixtureServices, frozen).status == "rejected", "malformed nonmatching tail refuses complete uniqueness proof");
+        setText(records512[511].get()->SaveDescriptor.SaveName, otherSave);
+        loadHandler.get()->LoadMode = 1; Check(LoadFixture(thread, fixtureServices, frozen).status == "rejected", "NG+ route refused"); loadHandler.get()->LoadMode = 0;
+        loadHandler.get()->GuiMode = 0; Check(LoadFixture(thread, fixtureServices, frozen).status == "rejected", "in-game load prompt route refused"); loadHandler.get()->GuiMode = 1;
+        loadHandler.get()->bFromMainMenu = 0; Check(LoadFixture(thread, fixtureServices, frozen).status == "rejected", "normal main-menu provenance required"); loadHandler.get()->bFromMainMenu = 1;
+        loadHandler.get()->bEnumeratingSaves = 1; Check(LoadFixture(thread, fixtureServices, frozen).status == "rejected", "enumerating load list refused"); loadHandler.get()->bEnumeratingSaves = 0;
+        probeExactBase = false; Check(LoadFixture(thread, fixtureServices, frozen).status == "rejected", "forwarded receiver route not admitted for load"); probeExactBase = true;
+        for (int mutation : {1, 2, 3, 4, 5}) {
+            fixtureMutation = mutation;
+            auto refused = LoadFixture(thread, fixtureServices, frozen);
+            Check(refused.status == "rejected" && refused.payload.String("reason") == "fixture-context-or-list-changed-before-entry", "final guarded whole-list/metadata/slot comparison catches provider mutation");
+            fixtureMutation = 0;
+            if (mutation == 1) filename[0] ^= 1;
+            if (mutation == 2) { records512[1].get()->SaveDescriptor.Index = 1001; setText(records512[1].get()->SaveDescriptor.SaveName, otherSave); }
+            if (mutation == 3) guiManagerProperty.get()->PropertyClass = managerType.get();
+            if (mutation == 4) --controllerVtable[72];
+            if (mutation == 5) otherSave[0] ^= 1;
+        }
+        Check(fixtureDispatchCalls == 0, "all pre-entry refusals preserve load budget");
+        fixtureDispatchMode = 0;
+        auto loaded = LoadFixture(thread, fixtureServices, frozen);
+        Check(loaded.status == "dispatched" && loaded.payload.Bool("parameterFrameIntact") && loaded.payload.Bool("entrySpent") &&
+              !loaded.payload.Bool("fixtureLoaded"), "normal packed LoadGame return is dispatched only, not loaded acceptance");
+        Check(mevr::json::Write(loaded.payload, 0).size() <= 14 * 1024, "load result plus post observation within budget");
+        Check(LoadFixture(thread, fixtureServices, frozen).status == "rejected" && fixtureDispatchCalls == 1, "no repeated load after normal return");
+        manager.get()->m_FocusPanel = loadPanel.get(); loadPanel.get()->IsVisible = 1;
+        for (int mode : {2, 3, 4, 5, 6}) {
+            ResetFixtureLoad(FakeFixtureDispatch); fixtureDispatchMode = mode;
+            auto uncertain = LoadFixture(thread, fixtureServices, frozen);
+            Check(uncertain.status == "error" && uncertain.payload.Bool("entrySpent") &&
+                  uncertain.payload.Get("postObservation").String("reason") == "unavailable-after-uncertain-entry", "throw/canaries/input changes leave spent uncertain load");
+            Check(engineReadCalls == fixtureReadsAtDispatch, "no engine reread after uncertain load");
+            auto calls = fixtureDispatchCalls;
+            Check(LoadFixture(thread, fixtureServices, frozen).status == "rejected" && fixtureDispatchCalls == calls, "uncertain load cannot retry");
         }
         worldPtr = reinterpret_cast<UWorld*>(1);
         v = Observe(thread);

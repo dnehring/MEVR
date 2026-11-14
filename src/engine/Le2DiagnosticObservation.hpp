@@ -56,12 +56,25 @@ ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& service
 // Each action admits at most one entry/process; no file/row/index input or loading.
 ProbeResult AdvanceSplash(std::uint32_t gameThreadId, ObserverServices const& services);
 ProbeResult OpenLoadMenu(std::uint32_t gameThreadId, ObserverServices const& services);
+// Host-owned, independently proved file-to-descriptor mapping only. No pathname,
+// wire-supplied index or UObject address enters this API. Index is the native
+// descriptor identity, never the UI row passed to LoadGame.
+struct FrozenDescriptor {
+    std::string career, saveName;
+    int index{};
+    unsigned type{};
+};
+json::Value ObserveFixtureCandidate(std::uint32_t gameThreadId, ObserverServices const& services,
+    FrozenDescriptor const& descriptor);
+ProbeResult LoadFixture(std::uint32_t gameThreadId, ObserverServices const& services,
+    FrozenDescriptor const& descriptor);
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 namespace testing {
 using FovDispatcher = void (*)(void* controller, void* function, void* parameters);
 void ResetFovProbe(FovDispatcher dispatcher);
 using MenuDispatcher = void (*)(void* handler, void* function, void* parameters);
 void ResetMenuActions(MenuDispatcher dispatcher);
+void ResetFixtureLoad(MenuDispatcher dispatcher);
 }
 #endif
 #endif

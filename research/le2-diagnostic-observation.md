@@ -486,5 +486,68 @@ be a live validated `SFXGame.MassEffectGuiManager` class object; a same-sized
 pointer with another declared class is a mismatch. Closer subclass overrides,
 return properties, overlaps and malformed class links are refused. The void
 return offset remains observed, not guessed. Synthetic tests cover this layout,
-foreign/invalid object classes and overlap. This adds metadata only: there is no
-LoadGame dispatch helper or descriptor-to-file mapping in this implementation.
+foreign/invalid object classes and overlap. This metadata does not itself authorize dispatch. The bounded helper below
+requires a host-owned independently verified descriptor-to-file mapping.
+
+
+## Frozen manual fixture selection and one load entry
+
+`FrozenDescriptor` contains only Career, SaveName, descriptor Index and Type.
+The host must establish and freeze the mapping to an immutable staged file,
+verify its current hash and enforce its explicit native-load opt-in. This module
+performs no file I/O and accepts neither a path nor a caller-supplied UI row or
+object address. Only manual Type 0 and nonnegative descriptor Index are enabled.
+Both text fields must be nonempty bounded leaf/stem names, without path separators,
+control characters or Windows path metacharacters. No filename suffix, index
+formatter, Unicode normalization or case folding is inferred.
+
+`ObserveFixtureCandidate(thread, services, descriptor)` examines a complete list
+of up to 512 records and returns only the exact unique matching descriptor and
+its current UI row. The 12-row save-menu presentation cap does not constrain this
+scan. It continues past the first match; duplicate full descriptors, malformed
+strings anywhere in the list and incomplete/over-limit arrays prevent selection.
+A zero-match complete scan is explicitly different from an incomplete scan.
+Candidate availability is a descriptor observation, not call readiness: inspect
+`ownedBaseRouteObserved` separately, and neither field proves the staged file.
+
+The supported context is the actual `SFXSFHandler_PCLoad` on a uniquely reachable,
+focused, visible, initialized, input/event-enabled Load panel, with known typed
+world links, `GuiMode=1`, `LoadMode=0`, `bFromMainMenu=true`, no enumeration or
+message wait, and checking complete. `CurrentCareerIndex=-1` remains legal. There
+is no career-picker automation or claim that these fields alone reveal Flash's
+presentation phase; the host's mapping/normal-menu evidence is independent.
+
+The strict UTF-16 reader's actual copied headers and bodies are retained in
+bounded local POD buffers (up to roughly 0.55 MiB for 512 rows). After host target
+providers run, a final guarded read compares current engine/player/world/menu
+identities, function flags/parameters and ObjectProperty target-class identity,
+handler slot 72, list header, every descriptor scalar/header and **every copied
+string body**, including nonmatching rows. No allocation, JSON formatting, file
+I/O or provider call occurs between that final comparison and the atomic entry
+latch/native call. This is point-in-time sampled consistency, not a GC lock or
+durable object-generation proof.
+
+`LoadFixture` permits one admitted entry per process through the exact host-owned
+base ProcessEvent route. Pre-entry refusals preserve that entry; entered outcomes
+never permit retries. The actual SDK packed 12-byte parameter representation uses
+the freshly derived UI row (not descriptor Index) and the same validated manager.
+Its frame is explicitly SDK-aligned, with input at byte 4 of a 20-byte storage
+array and four-byte canaries at offsets 0 and 16; the unaligned pointer member at
+parameter offset 4 is the SDK's declared packed layout. All twelve input bytes
+must remain unchanged after return. The native call is outside read-only SEH.
+
+Normal return with intact storage reports `dispatched`, `fixtureLoaded=false`,
+and a fresh bounded post-observation; disappearance/focus changes are allowed as
+normal asynchronous transition evidence. A C++ exception, either damaged canary,
+or any modified input byte reports `error`/uncertain with no further engine reads.
+Actual loaded world/map/location and fixture/story identity still require their
+separate native validation gates.
+
+Synthetic SDK tests cover 512/513 boundaries, a matching row 300 whose descriptor
+Index is 99, full-scan duplicate and malformed-tail refusals, modes/readiness,
+provider-time selected/nonselected string changes, duplicate creation, same-name
+ObjectProperty class replacement and slot mutation. They verify fixed packed
+arguments/alignment, one-entry behavior, expected transitions, exceptions and
+both canaries plus both argument fields. Actual SDK Release and Debug builds/tests
+pass, including the production call-route compile target. No native load was
+executed by these tests.
