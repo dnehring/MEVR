@@ -53,32 +53,64 @@ without treating it as an error. After neutral emission the source returns to
 ordinary passthrough. With a physically disconnected pad, the adapter must return
 success for the synthetic neutral response before ordinary disconnection resumes.
 
-## Small hook integration proposal — not implemented
+## Existing bridge integration candidate
 
-Reuse the existing `game/GamepadBridge.cpp` loaded-module discovery, standard
-`XInputGetState`/ordinal-100 boundary and owned hook/trampoline lifecycle. In an
-explicit `MEVR_LE2_DIAGNOSTIC` route, obtain the original physical result first,
-map only `ERROR_SUCCESS` to Connected and `ERROR_DEVICE_NOT_CONNECTED` to
-Disconnected (all other errors remain Error), then consult this source. Do not
-route diagnostic input through `controllers::Latest`, `FromControllers`, support
-grip, head-yaw rotation, Halcyon menus or a renderer. Do not load a virtual device
-driver or write gamepad/profile settings.
+The diagnostic policy now lives in **existing** `game/GamepadBridge.cpp/.hpp`,
+using its DLL list, Slot array, Hook/AlreadyHooked functions and detour templates.
+No second XInput registry/provider was added. Ordinary builds retain their VR
+mapping, yaw/grip policy and install/uninstall behavior. Only the conjunction
+`MEVR_GAME_LE2 && MEVR_LE2_DIAGNOSTIC` exposes these APIs:
 
-Passthrough preserves the original result and state bytes. Replacement writes
-the returned pad/packet and returns success immediately at the same hook boundary.
-Never enqueue, cache for later application or replay a PollResult. The source
-cannot revoke an already-returned result in an in-flight callback: adapter
-serialization/quiescence and caller provenance must be reviewed before claiming
-release completion or unloading hook code. Keep the source/hook lifetime through
-pending release and in-flight callbacks; process exit is a distinct termination.
-The pure helper is not a complete shutdown protocol or proof of game consumption.
+- `DiagnosticTryInstall(hook::Context&, bool explicitOptIn)` installs only exports
+  from already-loaded DLLs. Root-owned startup calls it after an owned invitation
+  opts in, not automatically at process initialization. Ordinary `TryInstall`
+  cannot activate this diagnostic branch. No loaded DLL means unavailable and
+  retryable; any discovered required-export/mapping/hook failure means unavailable,
+  even if another target installed. Missing ordinal 100 is optional. Alias exports
+  share the existing final-target slot. Installed mapped modules are pinned for
+  process lifetime; no LoadLibrary, driver or settings changes occur.
+- `DiagnosticBeginRun(token)`, `DiagnosticPublish(token,sequence,Pad,durationMs)`
+  and `DiagnosticCancelRun(token)` wrap the pure source. The host supplies unique
+  never-reused run tokens and performs engine/context/action admission first.
+- `DiagnosticSnapshot()` returns source status plus mapped requested/owner module
+  paths/bases/sizes, target, detour, original, backend, aliases and readiness. These
+  are mapped-module facts, not signed-image/hash or full hook-chain verification.
+- `DiagnosticDisable()` irreversibly closes admission and retains drain. Diagnostic
+  `Uninstall` never removes an installed hook and reports failure when hook code
+  must remain resident. This path is for the process-lifetime diagnostic host.
 
-The root-owned host must bind opt-in, run identity, sequence, deadline admission,
-current player/mode and control allowlist. Inspect actual mode/input bindings:
-base configuration is not proof of current remapped controls. Physical conflict
-and failed neutral drain remain explicit uncertain outcomes, not automatic retry.
-Normal movement/use/fire/reload may then share this same bounded input boundary;
-no generic console command, function name or pointer is accepted.
+The existing Bridge calls original XInput first, then applies the diagnostic
+policy **before** VR Latest/grip/yaw code. Only return addresses inside the cached
+main executable .text range and currently mapped executable memory owned by that
+module can consume a sample. Unknown callers, other pad slots and null buffers
+pass through. Thread-local recursion suppression allows forwarded GetState/Ex
+calls to reach their originals while only the outer eligible call consumes input.
+Physical errors/nonneutral states retain their original result and state bytes.
+
+The adapter mutex covers source calculation and the actual output-buffer write,
+and serializes publication/cancellation with those writes. A generation captured
+before the physical read is invalidated by accepted publication, run changes,
+cancellation or disable. An original call returning late therefore cannot apply
+new-run input after cancellation, drain and another admission. There is no queue
+of PollResults. The callback's output write is the strongest claim: function return
+and game interpretation can still occur later. `outputWrites`/`neutralWrites`
+never claim game consumption or gameplay release. `callbacksInFlight` and
+`staleCallbackPassthrough` expose that boundary. No hooks are removed to manufacture
+quiescence; their code/source/trampolines must remain resident through process exit.
+
+Clock samples are taken inside the same admission/output lock. Main-executable
+callers are a bounded provenance gate, not proof that the game reads the pad on a
+particular thread or acted on it. Later-loaded XInput DLLs require another opted-in
+installation pass. Snapshot readiness covers the exports discovered so far.
+
+Root owns wire/host/startup/CMake integration. This slice has **no native input or
+installed-hook evidence**. `tests/le2-diagnostic-bridge` exercises the actual Bridge,
+Hook and diagnostic API through stubbed physical exports/installation, including
+recursive forwarding, alias deduplication, partial failures, physical conflict,
+unknown callers, neutral drain and a stalled original across cancellation/new run.
+65 checks passed Release/Debug; real Win32 diagnostic production code and ordinary
+LE1/LE2/LE3 bridge objects compiled in both configurations with `/W4 /WX`.
+These object checks do not replace integrated ordinary builds or live proof.
 
 ## Source evidence and initial controls
 
