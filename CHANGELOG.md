@@ -9,9 +9,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## 0.3.0 (2026-11-13)
 
-- **Shadows match in both eyes.** With the faster one-render stereo (the default), the right eye's shadows were
-  cast as the left eye saw them, so they slid when you moved your head. Each eye now gets its own. Headset
-  verification pending.
+- **Character shadows are off in VR for now.** With the faster one-render stereo (the default), the right eye drew
+  the shadows of Shepard and other characters where the left eye sees them, so the two eyes disagreed. Until that
+  is fixed they are off; the level's own lighting and shadows stay. To bring them back, set
+  `LightEnvironmentShadows = True` under `[SystemSettings]` in `ASI\LE1MEVR.ini`. Headset verification pending.
 - **Quitting the game no longer crashes.** Every quit, from the menu or by closing the window, ended in a crash in the
   game's own shutdown (no progress was lost), and the next start offered "The game crashed last session". The game now
   closes cleanly, and Windows no longer records a crash for it.

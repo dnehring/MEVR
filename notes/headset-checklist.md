@@ -32,11 +32,10 @@
   Reset offsets, restart, change controller profile, and rerun guided calibration: measured results stay separate,
   manual values persist per setup, reset leaves no residual shift. Check standing and seated with no floor tracking.
 
-- [ ] 2026-11-11 the right eye's shadows (shadow-replay; research/37 "the right eye's shadows slide with the head"): at
-  the Citadel's walkway, or any lit floor with people on it, close each eye in turn while turning the head: a character's
-  shadow sits in the same place in both eyes and doesn't move with the head; fog and lit volumes look the same in both.
-  Fake headset first (the levers line's `screen-space matrices:` counts and the ScreenToWorld self-check, snapshots of
-  both eyes), then the cost with `LightEnvironmentShadows` on and off decides whether character shadows stay.
+- [ ] 2026-11-13 character shadows off (research/37 "the correction doesn't reach the character shadows"): at the
+  Presidium or any lit floor with people on it, no character shadow in either eye (Shepard's, people's), and the
+  level's own lighting and shadows as before. The correction itself still fails in the headset (2026-11-13): the right
+  eye's character shadows sat where the left eye sees them; check it again only once research/37 says it's fixed.
 
 - [ ] 2026-11-09 Shepard's saved standing height (galaxy-labels; research/58 section 8): load a save, stand holstered a
   second (log `measured Shepard's standing eye ... saved`), then load again: the log names the saved value and Shepard is

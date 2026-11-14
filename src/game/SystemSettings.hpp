@@ -8,7 +8,9 @@
 //   [SystemSettings] in ASI\<game>MEVR.ini, any key = value; apply = 0 turns it off.
 // Built in unless the file says otherwise: DynamicShadows False (the scene renders twice a frame), MotionBlur False
 // (the two eyes share one "previous frame", so the blur smeared one eye and not the other, every few seconds),
-// FoliageDrawRadiusMultiplier 0.5 (the grass costs per instance, per eye; 0.25 pops in too close). Log `system settings:`.
+// FoliageDrawRadiusMultiplier 0.5 (the grass costs per instance, per eye; 0.25 pops in too close), and while the second
+// eye is a replay ([Performance] sharePass 2, 3 or 5) LightEnvironmentShadows False (the character shadows: the right eye
+// drew them where the left eye sees them, research/37, 2026-11-13). Log `system settings:`.
 namespace mevr::game::system_settings {
 
 // An installed, healthy native blur guard replaces menu/conversation-return and timed settling resets.

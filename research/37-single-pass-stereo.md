@@ -690,3 +690,32 @@ own projection; each eye's projections differ only by their off-centre terms) an
 [verify] in the game: the self-check line, the counts, snapshots of both eyes at the Citadel's walkway, then the cost of
 character shadows with the right eye correct (keep them, or a native guard to turn them off: the owner's call by the
 measurement).
+
+## 2026-11-13, the owner's headset: the correction doesn't reach the character shadows; they are off for now
+
+The owner, in the headset at the Presidium (snapshot 21:24:18): Shepard's shadow sat at the same screen place in both eyes
+(x 1150-1270 of 2688 in each) while the scene between the eyes moved about 450 px, which is the uncorrected matrix. The
+levers line of that session: `screen-space matrices: 5 pixel shaders take one (2 shadow, 4 world), 0.2 draws a replay
+corrected, 0.0 left as the first eye's (ScreenToWorld is NEITHER assumed form (off by 1.08e+01 and 1.00e+00))`. The same
+numbers on the fake headset at the Presidium (John02 slot 89, 2026-11-13 22:08). What was ruled out:
+
+- **Not the shaders' creation time.** Halcyon's CreatePixelShader hook goes in about 1.1 s after the game's device; a hook
+  of our own at the device's creation (tried, not kept) found the same shaders: the engine makes these when a level loads,
+  not at start-up. Two of them take `ScreenToShadowMatrix`.
+- **Not the reflection reader.** `GlobalShaderCache-PC-D3D-SM5.bin` has 284 pixel shaders, 56 with `ScreenToShadowMatrix`
+  (in `$Globals` at byte 144 or 48, never first) and 92 with `ScreenToWorld`, all with the RD11 header (variable records
+  of 40 bytes) that `core/d3d11/ShaderReflect` reads.
+- **The self-check's subject isn't a screen-to-world matrix.** The first eye's "ScreenToWorld" it judged (logged from now
+  on, `draw replay: self-check N:`) was `[0.999 0 0 0] [-9.99 0 0.00026 7.5] [10 0.00026 0.00026 0] [0 0 0.00026 0]`
+  as read (transposed), at the title screen: either another shader's data under that name or a misread layout.
+
+Open: which pixel shader draws the character shadows each frame (0.2 corrected draws a replay is far fewer than the shadows
+drawn), and what its constants hold. Next: the eye diff (`tools/eye-diff.ps1`) in gameplay with the shadows on (it needs a
+frame with two engine scene renders: it found none in the runs above), or a per-draw log of the replay's pixel shaders
+against the 2 listed.
+
+**Until then character shadows are off while the second eye is a replay** (the owner, 2026-11-13: "Let's disable it by
+default"): `game/SystemSettings` adds `LightEnvironmentShadows False` to its built-in values when `[Performance] sharePass`
+is 2, 3 or 5 (5 the default); `[SystemSettings] LightEnvironmentShadows = True` in `ASI\LE1MEVR.ini` brings them back. Applied
+in the owner's running game at 22:27:48 (`system settings: scale set ... LightEnvironmentShadows False`). [verify] in the
+headset: no character shadows in either eye, the level's own lighting unchanged.

@@ -102,6 +102,19 @@ std::vector<Setting> Wanted(fs::path const& path) {
         {"MotionBlur", "False"},
         {"FoliageDrawRadiusMultiplier", "0.5"},
     };
+    // Character shadows (the light environments' modulated shadows) while the second eye is a replay of the first's draws
+    // ([Performance] sharePass 2, 3 or 5, 5 the default): their projection rebuilds each pixel's place from a matrix the
+    // engine builds from the first eye's view, so the right eye drew them where the left eye sees them (the owner's
+    // headset, 2026-11-11 and 2026-11-13; the replay's correction, research/37, doesn't reach them yet). Off by default
+    // until it does (the owner, 2026-11-13); `[SystemSettings] LightEnvironmentShadows = True` brings them back.
+    {
+        wchar_t text[32] = {};
+        GetPrivateProfileStringW(L"Performance", L"sharePass", L"", text, 32, path.wstring().c_str());
+        int const sharePass = text[0] == L'\0' ? 5 : _wtoi(text);   // empty is the default (RenderLevers' rule), not 0
+        if (sharePass == 2 || sharePass == 3 || sharePass == 5) {
+            wanted.push_back({"LightEnvironmentShadows", "False"});
+        }
+    }
     std::vector<wchar_t> buffer(32768);
     DWORD const n = GetPrivateProfileSectionW(L"SystemSettings", buffer.data(), static_cast<DWORD>(buffer.size()),
                                               path.wstring().c_str());

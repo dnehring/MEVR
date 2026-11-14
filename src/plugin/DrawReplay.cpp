@@ -1549,6 +1549,8 @@ std::atomic<bool> gScreenMatricesOn{true};
 // eye's ScreenToWorld: S1 x Inv(TVP1) (translated world) and S1 x Inv(TVP1) x T(-pvt1) (world).
 std::optional<screen_matrix::Mat4> gScreenFix;
 std::optional<screen_matrix::Mat4> gScreenModelTranslated, gScreenModelWorld;
+std::array<float, 16> gScreenTvp1{};   // the first eye's translated view-projection and pre-view translation
+std::array<float, 3> gScreenPvt1{};    // of this replay (for the self-check's log)
 std::string gScreenModelVerdict;   // set once, under gScreenShadersMutex
 bool gScreenModelChecked = false;
 
@@ -1573,6 +1575,8 @@ void BuildScreenFix(float const* tvp1, float const* tvp2, float const* pvt1, flo
     std::memcpy(a.data(), tvp1, 64);
     std::memcpy(b.data(), tvp2, 64);
     gScreenFix = screen_matrix::SecondEyeCorrection(a, b, pvt1, pvt2);
+    std::memcpy(gScreenTvp1.data(), tvp1, 64);
+    std::memcpy(gScreenPvt1.data(), pvt1, 12);
     auto const s1 = screen_matrix::ScreenToClip(a);
     auto const inv1 = screen_matrix::Inverse(a);
     if (s1 && inv1) {
@@ -2119,13 +2123,39 @@ void ScreenNoteUpload(Header const& h, std::uint8_t const* body) {
 
 // The self-check, once a session: which form the first eye's ScreenToWorld has. Logged; the correction holds for any
 // composite S1 x Inv(TVP1) x R, so a mismatch says the assumed S is wrong (and so the correction).
+std::string MatrixText(float const* m, bool rows) {
+    std::string out;
+    for (int r = 0; r < 4; ++r) {
+        out += r == 0 ? "[" : " [";
+        for (int c = 0; c < 4; ++c) {
+            out += std::format("{}{:.6g}", c == 0 ? "" : " ", rows ? m[r * 4 + c] : m[c * 4 + r]);
+        }
+        out += "]";
+    }
+    return out;
+}
+
+int gScreenModelLogs = 0;   // the self-check's matrices logged so far (render thread; a few a session)
+
 void ScreenCheckModel(float const* m, bool rows) {
-    if (gScreenModelChecked || !gScreenModelTranslated || !gScreenModelWorld) {
+    if (!gScreenModelTranslated || !gScreenModelWorld) {
+        return;
+    }
+    float const translated = ScreenModelDiff(*gScreenModelTranslated, m, rows);
+    float const world = ScreenModelDiff(*gScreenModelWorld, m, rows);
+    // The matrices themselves, the first few times (research/37, 2026-11-13: the owner's session said NEITHER, with
+    // the shadows still the first eye's; the numbers say which S or R the engine used).
+    if (gScreenModelLogs < 4) {
+        ++gScreenModelLogs;
+        log::Info("draw replay: self-check {}: ScreenToWorld as uploaded {}; S1 x Inv(TVP1) {}; with T(-pvt1) {}; off by {:.2e} "
+                  "and {:.2e}; TVP1 {}; pvt1 ({:.6g}, {:.6g}, {:.6g})", gScreenModelLogs, MatrixText(m, rows),
+            MatrixText(gScreenModelTranslated->data(), true), MatrixText(gScreenModelWorld->data(), true), translated, world,
+            MatrixText(gScreenTvp1.data(), true), gScreenPvt1[0], gScreenPvt1[1], gScreenPvt1[2]);
+    }
+    if (gScreenModelChecked) {
         return;
     }
     gScreenModelChecked = true;
-    float const translated = ScreenModelDiff(*gScreenModelTranslated, m, rows);
-    float const world = ScreenModelDiff(*gScreenModelWorld, m, rows);
     std::string verdict = translated < 1e-3f ? std::format("S x Inv(TVP) (translated world), off by {:.1e}", translated)
                         : world < 1e-3f      ? std::format("S x Inv(TVP) x T(-pvt) (world), off by {:.1e}", world)
                                              : std::format("NEITHER assumed form (off by {:.2e} and {:.2e}): the correction may be wrong", translated, world);

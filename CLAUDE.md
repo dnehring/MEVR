@@ -1519,7 +1519,9 @@ switching frameworks.
   **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` and `MotionBlur` (measured
   2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
-  DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` through the local player's console
+  DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
+  the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
+  2026-11-13) through the local player's console
   once a player exists, **again after every level change, each boolean through its opposite first** (research/35
   attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said
   off, and the same `False` there did nothing while True then False turned it off; in stereo the blur's velocity is
