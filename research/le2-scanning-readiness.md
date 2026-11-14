@@ -4,7 +4,8 @@
 This is an offline source/SDK contract and a bounded observer, not a completed
 scanning fixture or native acceptance. `planet-scanning.json` remains draft.
 The helper makes no engine calls, evaluates no plot conditionals, writes no game
-state, and is not an action capability. Host registration is a separate change.
+state, and is not an action capability. The diagnostic host registers it as the
+empty, read-only `observe-orbital` request; native orbital sampling remains unproven.
 
 ## Immediate acquisition sequence
 
@@ -20,7 +21,7 @@ state, and is not an action capability. Host registration is a separate change.
    blocks them. No verified arbitrary teleport, map-open command, reticle setter,
    or galaxy selection dispatcher is provided here. Do not force mode 10 or write
    `m_nActiveWorld` to bypass that sequence.
-3. Once the host wires the empty read-only `observe-orbital` request, collect a
+3. Through the empty read-only `observe-orbital` request, collect a
    correlated observation and scene capture. Require `available`, current mode 10,
    camera hierarchy agreement with the unique orbital latent action's planet,
    stable live resources, and the expected authored feature/planet data below.
@@ -58,7 +59,7 @@ json::Value ObserveOrbital(std::uint32_t gameThreadId);
 
 The implementation is included once in `Le2DiagnosticObservation.cpp` to reuse
 its existing guarded reader and exact object-table/class validation. It rejects
-any caller outside the host's verified game thread. Proposed host envelope is
+any caller outside the host's verified game thread. The host envelope is
 `payload.orbitalObservation`, produced for empty `observe-orbital`; there are no
 request pointers, indices, plot IDs, or mutable parameters.
 

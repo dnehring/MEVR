@@ -136,6 +136,12 @@ int main(int argc, char** argv) {
               "resource observation requires no native opt in");
         fixture.payload = "credits=999";
         Check(!Encode(fixture), "resource observation accepts no edits or targets");
+        fixture.payload.clear(); fixture.verb = "observe-orbital";
+        Gate orbitalRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-orbital" && !orbitalRead.Claim(fixture, 10000),
+              "orbital observation requires no native opt in");
+        fixture.payload = "launch-probe";
+        Check(!Encode(fixture), "orbital observation cannot launch a probe");
         fixture.payload.clear(); fixture.verb = "observe-save-flow";
         Gate flowRead(identity);
         Check(Decode(*Encode(fixture))->verb == "observe-save-flow" && !flowRead.Claim(fixture, 10000),

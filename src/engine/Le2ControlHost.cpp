@@ -6,6 +6,7 @@
 #if !defined(MEVR_LE2_CONTROL_TEST)
 #include "engine/Le2DiagnosticHost.hpp"
 #include "engine/Le2DiagnosticObservation.hpp"
+#include "engine/Le2OrbitalObservation.hpp"
 #include "plugin/ProcessEventHook.hpp"
 #include "core/Log.hpp"
 #endif
@@ -424,6 +425,7 @@ struct Endpoint::Impl {
             capabilities["nativeMenuActions"] = false;
             capabilities["observeFixture"] = false;
             capabilities["observeResources"] = false;
+            capabilities["observeOrbital"] = false;
             capabilities["observeSaveFlow"] = false;
             capabilities["nativeSaveMenuActions"] = false;
             capabilities["nativeSaveNew"] = false;
@@ -441,6 +443,7 @@ struct Endpoint::Impl {
             capabilities["nativeMenuActions"] = true;
             capabilities["observeFixture"] = binding.has_value();
             capabilities["observeResources"] = true;
+            capabilities["observeOrbital"] = true;
             capabilities["observeSaveFlow"] = true;
             capabilities["nativeSaveMenuActions"] = true;
             capabilities["nativeSaveNew"] = true;
@@ -459,6 +462,8 @@ struct Endpoint::Impl {
                 payload["saveMenu"] = le2_diagnostic::ObserveSaveMenu(thread);
             } else if (decoded->verb == "observe-resources") {
                 payload["resourceObservation"] = le2_diagnostic::ObserveResources(thread);
+            } else if (decoded->verb == "observe-orbital") {
+                payload["orbitalObservation"] = le2_diagnostic::ObserveOrbital(thread);
             } else if (decoded->verb == "observe-save-flow") {
                 payload["saveFlow"] = le2_diagnostic::ObserveSaveFlow(thread);
             } else if (decoded->verb == "save-new") {
@@ -499,6 +504,12 @@ struct Endpoint::Impl {
                 payload["menuAction"] = std::move(action.payload);
             }
 #else
+            if (decoded->verb == "observe-orbital") {
+                auto unavailableOrbital = Value::Object();
+                unavailableOrbital["available"] = false;
+                unavailableOrbital["reason"] = "offline-fixture-does-not-traverse-engine-memory";
+                payload["orbitalObservation"] = std::move(unavailableOrbital);
+            }
             if (decoded->verb == "observe-save-flow") {
                 auto unavailableFlow = Value::Object();
                 unavailableFlow["available"] = false;

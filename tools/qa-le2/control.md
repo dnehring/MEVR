@@ -38,6 +38,14 @@ sample. It does not establish a loaded save or permit gameplay actions.
 `payload.saveMenu`. It follows the current player's manager/panel relationships
 and reports menu state and bounded save-list evidence. It neither initializes a
 menu nor selects a fixture. Missing, ambiguous or incomplete state stays unknown.
+`observe-orbital` is an empty-input, read-only query under
+`payload.orbitalObservation`. It samples the current orbital context, authored
+planet/features, scan/probe/impact flags and available live resources. It cannot
+enter the galaxy map, select a planet, launch a probe or evaluate a plot
+conditional. Outside a coherent orbital mode it reports an unavailable reason.
+The [observer and acquisition contract](../../research/le2-scanning-readiness.md)
+records the structural camera evidence and unresolved native/VR gates.
+
 `observe-resources` is an empty-input, read-only query under
 `payload.resourceObservation`. It samples the current player's live inventory
 twice, with independent availability for credits, medi-gel, four minerals,
@@ -498,7 +506,7 @@ One blank line separates the headers from exactly `bytes` payload bytes. UUIDs
 and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings.
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
-control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-save-flow`,
+control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-orbital`, `observe-save-flow`,
 `observe-fixture`, `load-fixture`, `probe-fov`, `advance-splash`, and
 `open-load-menu`, `open-pause-menu`, `open-save-menu`, `save-new` requests require an empty payload.
 Unknown, duplicated, reordered, partial or trailing data is

@@ -38,7 +38,7 @@ def main(executable):
             assert current["identity"] == identity
             return directory, identity
 
-        for verb in ("ping", "observe", "observe-save-menu", "observe-resources", "observe-save-flow"):
+        for verb in ("ping", "observe", "observe-save-menu", "observe-resources", "observe-save-flow", "observe-orbital"):
             result = control.submit(run, verb, timeout=5, bind=bind)
             assert result["status"] == "completed"
             # The observer's 16 KiB budget is measured with compact JSON. The
@@ -59,11 +59,15 @@ def main(executable):
             if verb == "observe-resources":
                 assert payload["capabilities"]["observeResources"] is False
                 assert payload["resourceObservation"]["available"] is False
+            if verb == "observe-orbital":
+                assert payload["capabilities"]["observeOrbital"] is False
+                assert payload["orbitalObservation"]["available"] is False
+                assert payload["readOnly"] is True
             assert "not validated" in payload["unavailable"]["map"]
         result = control.submit(run, "console", "exit", timeout=5, allow_console=True, bind=bind)
         assert result["status"] == "rejected"
-        assert len(list((directory / "history").glob("*.result"))) == 6
-        assert len(list(directory.glob("consumed-*.request"))) == 6
+        assert len(list((directory / "history").glob("*.result"))) == 7
+        assert len(list(directory.glob("consumed-*.request"))) == 7
         assert not (directory / "request.control").exists()
         assert not (directory / "outstanding.json").exists()
         result = control.submit(run, 'probe-fov', timeout=5, allow_probe_fov=True, bind=bind)
