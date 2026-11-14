@@ -3,6 +3,7 @@
 // the submodule, with fake globals/read helpers; never loads a game or its data.
 #include <LESDK/Headers.hpp>
 #include "engine/Le2DiagnosticObservation.hpp"
+#include "engine/Le2OrbitalObservation.hpp"
 #include "engine/Legacy.hpp"
 #include "engine/Addresses.hpp"
 #include "plugin/ProcessEventDiagnostic.hpp"
@@ -1166,6 +1167,7 @@ int main() {
         Check(finalResources.Bool("allResourcesAvailable") && mevr::json::Write(finalResources, 0).size() <= 14 * 1024,
               "fresh valid resource observation recovers and fits bounded control payload");
         std::cout << "Representative resource observation bytes: " << mevr::json::Write(finalResources, 0).size() << '\n';
+        #include "OrbitalObservationTests.inc"
         // Same-flow normal pause/save-menu opening. No native save is submitted.
         using mevr::engine::le2_diagnostic::ObserveSaveFlow;
         using mevr::engine::le2_diagnostic::OpenPauseMenu;
