@@ -45,6 +45,15 @@ must inspect the PNG and associate its contents with the selected fixture and
 same-run state evidence. This is desktop-client capture, not headset/stereo
 proof. The tool does not promote a scenario or silently attach acceptance.
 
+For menu baselines, obtain a fresh `observe-save-menu` result through the
+[bound control client](control.md#observe-and-open-the-normal-load-menu), capture
+the same stage, and retain both receipts. Check whether the image agrees with
+the reported active panel and whether a modal or transition is still present.
+Capture success does not establish that asynchronous save enumeration finished
+or identify the selected save file. Native menu actions and their one-entry
+allowances are separate from this helper; do not repeat an uncertain action to
+try to obtain a better frame.
+
 Offline checks (synthetic images, fake window/GDI APIs and fake session binding):
 
 ```powershell

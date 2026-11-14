@@ -28,7 +28,9 @@ The [Steam launch adapter](launch.md) provides read-only preflight and a guarded
 launch path where installed launcher support is verified. The [bound control
 client](control.md) supplies request correlation and uncertainty recovery. An
 opt-in monolithic diagnostic host implements `ping`, structural `observe` and a
-separately gated scalar `probe-fov`. Each run still requires verified module
+separately gated scalar `probe-fov`. Reviewed integrations also expose read-only
+`observe-save-menu` and independently permitted splash/load-menu actions.
+Each run still requires verified module
 mapping, process binding and a real producer handshake. These capabilities do
 not select a save or establish scenario/VR acceptance.
 
@@ -179,6 +181,17 @@ general console commands or save/load automation. Follow the
 `dispatched` is bounded native-return evidence, while an error or timeout leaves
 uncertainty and must not trigger another attempt.
 
+For the current panel and bounded save-list evidence, use the empty-input
+`observe-save-menu` query. The [normal-menu workflow](control.md#observe-and-open-the-normal-load-menu)
+describes `advance-splash --allow-menu-actions` and
+`open-load-menu --allow-menu-actions`, each with its own one-native-entry limit
+per process. Use them only on a reviewed host advertising that capability, after
+observing the exact ready active panel. Re-observe the asynchronous transition
+before the next stage; `dispatched` means the call returned, not that the next
+panel or save is ready. Never repeat an uncertain action. Selecting the intended
+career/fixture and proving its descriptor-to-file mapping remain separate work;
+opening the Load panel does not perform a load.
+
 ## 5. Exercise, inspect and reset
 
 Run the chosen case through normal controls and record actual input, scene,
@@ -186,6 +199,19 @@ before/after state and any resulting saves. First establish the native baseline;
 use real controller input for VR acceptance. Record zero/insufficient/exact/surplus
 resources where relevant. Diagnostic grants, direct completion calls and
 teleports are setup evidence only.
+
+Capture the exact owned ME2 desktop window without focusing it or sending input:
+
+```powershell
+python tools/qa-le2/capture.py <run-directory> --name native-start-001
+```
+
+The [capture helper](capture.md) writes a new private PNG and receipt under the
+run, with process/build identity, dimensions, timestamps and image hash. Inspect
+the image and correlate it with same-run state observations. Black/constant
+images are explicitly suspect and retained for review; even `captured` does not
+mean the intended scene rendered or a scenario passed. No live image or native
+acceptance is implied by the helper's offline tests.
 
 ```powershell
 python tools/qa-le2/session.py attach <run-directory> <artifact1> <artifact2>

@@ -34,11 +34,18 @@ reads. `observe` additionally returns the [structural observer](../../research/l
 under `payload.observation`. Authoritative `observeWorld` and `nativeConsole`
 capabilities stay false; `observeStructuralWorld` identifies this diagnostic
 sample. It does not establish a loaded save or permit gameplay actions.
+`observe-save-menu` is a separate empty-input, read-only structural query under
+`payload.saveMenu`. It follows the current player's manager/panel relationships
+and reports menu state and bounded save-list evidence. It neither initializes a
+menu nor selects a fixture. Missing, ambiguous or incomplete state stays unknown.
 The diagnostic host separately opts into `probe-fov`, an explicit one-entry
 native scalar query described below. Its availability is not `nativeConsole`
 permission and does not make `observe` a native call. A client/codec build alone
 does not enable the host; default gates and the offline producer fixture keep
-the probe disabled.
+the probe disabled. Reviewed builds can additionally enable `nativeMenuActions`
+for the two explicit menu actions below. Only the integrated host advertises
+these runtime capabilities; a new client alone cannot enable them. Default gates
+and offline producer fixtures keep native menu actions disabled.
 
 The host currently hashes the executable and module synchronously around each
 request. Keep these setup queries outside performance windows. Admission checks
@@ -69,11 +76,14 @@ request; an admitted request may publish a late result for `collect` to reconcil
    No response means no handshake proof, regardless of an ASI being present.
 5. If the bounded native FOV probe is part of the authorized test, follow its
    explicit opt-in and one-entry rules below after observing the current target.
-   Normal save selection, native save/reload, screenshots and scenario actions
-   remain operator/dependency boundaries until the corresponding game-thread
-   controls are validated. A title-screen handshake is not a fixture load.
-   The [save/load source handoff](../../research/le2-save-load-entrypoints.md)
-   identifies the actual game routes; source inspection is not call validation.
+   Use the save-menu observation/action sequence below only when its capabilities
+   are present in the reviewed host. Obtain [run-bound window captures](capture.md)
+   and inspect them alongside each state observation. Selected-fixture/career
+   mapping, loading that exact save, native save/reload and scenario actions
+   remain separate implementation/validation boundaries. A title-screen handshake
+   or opened load panel is not a fixture load. The
+   [normal menu source handoff](../../research/le2-menu-load-source.md) identifies
+   the route and remaining mapping gaps; source inspection is not call validation.
 6. Close only the owned game through its normal exit path, verify it is closed,
    run `session.py reset NEW_RUN`, then run attachment `cleanup`. Preserve new
    saves and test artifacts in the run archive. If the game/ownership cannot be
@@ -87,6 +97,7 @@ After protected preparation, launch, exact process binding and runtime attachmen
 ```powershell
 python tools/qa-le2/control.py C:\private\le2-run ping
 python tools/qa-le2/control.py C:\private\le2-run observe
+python tools/qa-le2/control.py C:\private\le2-run observe-save-menu
 python tools/qa-le2/control.py C:\private\le2-run collect
 ```
 
@@ -121,6 +132,69 @@ console dispatch disabled. `--allow-console` only opts the client in; it cannot 
 host. Never use `streamlevelin`: both the client and the C++ dispatch gate reject
 it. A console result marked `dispatched` proves only that dispatch returned, not
 that a save loaded, ammunition changed or gameplay completed.
+
+### Observe and open the normal load menu
+
+First obtain `observe-save-menu` with no payload or native opt-in flag. Inspect
+the exact current panel, its visibility/focus/input/initialization state, its
+handler relationship and any pending enumeration or modal state. A cached
+MainMenu handler, an entry-menu controller, or a nonempty stale list is
+insufficient. Keep observation evidence associated with this process/lease;
+addresses are not reusable client action handles.
+
+If the current active panel is the ready PC splash and this action is authorized:
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run advance-splash --allow-menu-actions
+```
+
+This requests the normal splash advance, including its authored transition.
+After a terminal `dispatched` response, use `observe-save-menu` again and allow
+the game's asynchronous transition to complete. Do not immediately chain the
+next action. Only after a fresh observation identifies the ready active main
+menu, with no unresolved traffic, request:
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run open-load-menu --allow-menu-actions
+```
+
+This requests the normal Default-mode load-menu opener. It does not select a
+career or save. Observe again until the actual Load panel and its asynchronous
+enumeration are understood. The game may initially show career selection; an
+empty or different list does not justify reopening the panel or manufacturing
+completion callbacks. Do not infer a disk filename from a list index. The
+[source handoff](../../research/le2-menu-load-source.md) distinguishes list
+position, descriptor `Career`/`SaveName`/`Index`/`Type`, and unresolved file mapping.
+Exact prepared-fixture selection and load remain pending until implemented and
+validated separately.
+
+Both native actions accept **empty input only** and require the client's
+`--allow-menu-actions` plus the host's independent permission. Each has its own
+one-entry-per-process allowance; advancing the splash does not spend the
+load-opener allowance or the FOV probe allowance. An allowance is spent just
+before native entry and is never restored by success, error, timeout, a new
+request ID or hot reload. Preflight rejection does not spend it, but requires
+reviewing the reason and current state before any newly authorized attempt.
+
+For either action, `dispatched` records a returned bounded native invocation;
+it does **not** mean that the next panel is ready or that gameplay completed.
+`rejected` is pre-entry refusal. Post-entry `error`, timeout, lost reply or
+correlation failure retains uncertainty: preserve intent/evidence, do not repeat
+the action, and use `collect` only for a late terminal response. `completed` is
+not accepted for these native actions. Resolve uncertain sessions through the
+protected lifecycle rather than deleting pending files to continue.
+
+For a rendered-scene artifact at the observed stage:
+
+```powershell
+python tools/qa-le2/capture.py C:\private\le2-run --name load-menu-001
+```
+
+Review the PNG and its [capture receipt](capture.md), then associate both with
+the same-run menu observation. A `captured` status proves only the capture checks;
+`suspect-black`, `suspect-constant`, and failed frames remain evidence for human
+inspection, not visual or gameplay acceptance. No capture result selects a save,
+confirms its loaded state or validates stereo/headset behavior.
 
 ### Explicit scalar FOV probe
 
@@ -222,8 +296,9 @@ One blank line separates the headers from exactly `bytes` payload bytes. UUIDs
 and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings.
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
-control characters. `ping`, `observe` and `probe-fov` requests require an empty
-payload. Unknown, duplicated, reordered, partial or trailing data is
+control characters. `ping`, `observe`, `observe-save-menu`, `probe-fov`,
+`advance-splash`, and `open-load-menu` requests require an empty payload.
+Unknown, duplicated, reordered, partial or trailing data is
 rejected. C++ and Python implementations have executable byte-conformance tests.
 
 Publish `request.control` and `result.control` atomically without replacement.
@@ -232,10 +307,11 @@ before dispatch, and never releases a claimed sequence for retry. It checks run
 ownership before every operation. Responses retain all correlation fields and
 use the runtime's verified identity. Status meanings:
 
-- `completed`: a read-only ping/observation completed; forbidden for `console`
-  and `probe-fov`, and never gameplay acceptance.
+- `completed`: a read-only ping/observation completed; forbidden for `console`,
+  `probe-fov`, `advance-splash`, and `open-load-menu`, and never gameplay acceptance.
 - `dispatched`: native dispatch returned; for `probe-fov`, the host's bounded
-  scalar checks also passed. This does not establish gameplay completion.
+  scalar checks also passed. For menu actions it does not establish panel
+  readiness. None establishes gameplay completion.
 - `rejected`: authoritative rejection before dispatch; no native effect occurred.
 - `error`: execution outcome uncertain. Preserve pending intent and block new
   commands until an authoritative terminal response can reconcile it.
