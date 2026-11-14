@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from unittest import mock
 
 sys.dont_write_bytecode = True
 root = Path(__file__).resolve().parents[2]
@@ -72,13 +73,19 @@ def main(executable):
             result = control.submit(run, verb, timeout=5, allow_menu_actions=True, bind=bind)
             assert result['status'] == 'rejected'
             assert json.loads(result['payload'])['reason'] == 'native menu actions are disabled'
+        # Only the caller inventory preflight is stubbed in this fake-process
+        # fixture. The actual C++ Endpoint must independently reject saving.
+        with mock.patch.object(control, 'verify_save_baseline', return_value='a' * 64):
+            result = control.submit(run, 'save-new', timeout=5, allow_save_new=True, bind=bind)
+        assert result['status'] == 'rejected'
+        assert json.loads(result['payload'])['reason'] == 'native new save is disabled'
         for case in ('wrong-lease', 'expired'):
             rejection = negative.probe(run, case, timeout=5, bind=bind)
             assert rejection['status'] == 'rejected' and rejection['lease'] == identity['lease']
         # Neither rejection may poison the next legitimate request.
         assert control.submit(run, 'ping', timeout=5, bind=bind)['status'] == 'completed'
-        assert len(list((directory / 'history').glob('*.result'))) == 14
-        assert len(list(directory.glob('consumed-*.request'))) == 14
+        assert len(list((directory / 'history').glob('*.result'))) == 15
+        assert len(list(directory.glob('consumed-*.request'))) == 15
         assert not (directory / 'outstanding.json').exists()
         print('Python/C++ filesystem smoke passed: observations, disabled console/FOV/menu, wrong lease, expiry and recovery; fake process only')
     finally:

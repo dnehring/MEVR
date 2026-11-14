@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Offline identity/wire/client failure tests; no native processes or requests."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -66,6 +67,7 @@ class WireTests(unittest.TestCase):
                         dict(frame(), verb="observe-resources"),
                         dict(frame(), verb="observe-save-flow"),
                         dict(frame(), verb="open-pause-menu"), dict(frame(), verb="open-save-menu"),
+                        dict(frame(), verb="save-new"),
                         dict(frame(), verb="advance-splash"), dict(frame(), verb="open-load-menu"),
                         dict(frame(), verb="observe-fixture"), dict(frame(), verb="load-fixture"),
                         dict(frame(), verb="load-fixture", kind="result", status="dispatched"),
@@ -217,6 +219,43 @@ class ClientTests(unittest.TestCase):
         thread, errors = self.peer()
         self.assertEqual(c.submit(self.root, "observe-save-flow", bind=self.bind)["status"], "completed")
         thread.join(); self.assertFalse(errors)
+
+    def test_new_save_requires_separate_opt_in_and_no_target(self):
+        with mock.patch.object(c, "binding", side_effect=AssertionError("must not bind")) as bind:
+            for options in ({}, {"allow_menu_actions": True, "allow_fixture_load": True,
+                                 "allow_console": True, "allow_probe_fov": True},
+                            {"allow_save_new": True, "command": "Save_0100"}):
+                with self.assertRaises(c.ControlError):
+                    c.submit(self.root, "save-new", bind=bind, **options)
+            bind.assert_not_called()
+        self.assertFalse(list(self.root.iterdir()))
+
+    def test_new_save_baseline_refusal_publishes_no_intent(self):
+        with mock.patch.object(c, "verify_save_baseline", side_effect=c.ControlError("changed career")):
+            with self.assertRaisesRegex(c.ControlError, "changed career"):
+                c.submit(self.root, "save-new", allow_save_new=True, bind=self.bind)
+        self.assertFalse((self.root / "outstanding.json").exists())
+        self.assertFalse((self.root / "request.control").exists())
+        self.assertFalse((self.root / "sequence.txt").exists())
+
+    def test_new_save_dispatch_records_exact_baseline_without_completion_claim(self):
+        thread, errors = self.peer(status="dispatched")
+        with mock.patch.object(c, "verify_save_baseline", return_value="a" * 64):
+            result = c.submit(self.root, "save-new", allow_save_new=True, bind=self.bind)
+        thread.join(); self.assertFalse(errors)
+        self.assertEqual(result["status"], "dispatched")
+        sidecar = json.loads((self.root / "history" / (result["id"] + ".save-baseline.json")).read_text())
+        self.assertEqual(sidecar["saveBaselineSha256"], "a" * 64)
+        self.assertEqual(sidecar["wireIdentity"], IDENTITY)
+        self.assertEqual(sidecar["sequence"], int(result["sequence"]))
+
+    def test_new_save_completed_retains_uncertainty(self):
+        thread, errors = self.peer(status="completed")
+        with mock.patch.object(c, "verify_save_baseline", return_value="b" * 64):
+            with self.assertRaisesRegex(c.ControlError, "gameplay completion"):
+                c.submit(self.root, "save-new", allow_save_new=True, bind=self.bind)
+        thread.join(); self.assertFalse(errors)
+        self.assertTrue((self.root / "outstanding.json").exists())
 
     def test_fixture_terminal_results_do_not_claim_loaded_state(self):
         for status in ("dispatched", "rejected"):

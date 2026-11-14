@@ -326,7 +326,7 @@ struct Endpoint::Impl {
 #else
         // An explicit empty probe request may attempt one guarded scalar query.
         // General console dispatch remains disabled independently.
-        gate = std::make_unique<wire::Gate>(identity, false, true, true, true);
+        gate = std::make_unique<wire::Gate>(identity, false, true, true, true, true);
 #endif
         attached = true;
     }
@@ -443,6 +443,7 @@ struct Endpoint::Impl {
             capabilities["observeResources"] = true;
             capabilities["observeSaveFlow"] = true;
             capabilities["nativeSaveMenuActions"] = true;
+            capabilities["nativeSaveNew"] = true;
             capabilities["nativeFixtureAction"] = binding.has_value();
             payload["observationScope"] = "sdk-structural-diagnostic";
             le2_diagnostic::ObserverServices services{};
@@ -460,6 +461,11 @@ struct Endpoint::Impl {
                 payload["resourceObservation"] = le2_diagnostic::ObserveResources(thread);
             } else if (decoded->verb == "observe-save-flow") {
                 payload["saveFlow"] = le2_diagnostic::ObserveSaveFlow(thread);
+            } else if (decoded->verb == "save-new") {
+                payload["readOnly"] = false;
+                auto action = le2_diagnostic::SaveNew(thread, services);
+                result.status = action.status;
+                payload["menuAction"] = std::move(action.payload);
             } else if (decoded->verb == "observe-fixture" || decoded->verb == "load-fixture") {
                 if (!binding) {
                     result.status = "rejected";
@@ -533,7 +539,8 @@ struct Endpoint::Impl {
         Publish(directory / L"result.control", *encoded);
         if ((decoded->verb == "probe-fov" || decoded->verb == "advance-splash" ||
              decoded->verb == "open-load-menu" || decoded->verb == "open-pause-menu" ||
-             decoded->verb == "open-save-menu" || decoded->verb == "load-fixture") && result.status == "error") {
+             decoded->verb == "open-save-menu" || decoded->verb == "load-fixture" ||
+             decoded->verb == "save-new") && result.status == "error") {
             // Preserve the correlated uncertainty result, then stop this lease.
             disabled = true;
             error = "native action outcome uncertain; no further requests admitted";

@@ -43,7 +43,7 @@ bool Valid(Frame const& f) {
         f.payload.size() > kMaxPayload || f.payload.find('\0') != std::string::npos) return false;
     if (f.verb != "ping" && f.verb != "observe" && f.verb != "observe-save-menu" &&
         f.verb != "observe-fixture" && f.verb != "load-fixture" && f.verb != "observe-resources" &&
-        f.verb != "observe-save-flow" && f.verb != "open-pause-menu" && f.verb != "open-save-menu" &&
+        f.verb != "observe-save-flow" && f.verb != "open-pause-menu" && f.verb != "open-save-menu" && f.verb != "save-new" &&
         f.verb != "console" && f.verb != "probe-fov" && f.verb != "advance-splash" && f.verb != "open-load-menu") return false;
     if (f.kind == "request") {
         if (f.status != "pending") return false;
@@ -105,9 +105,9 @@ std::optional<std::string> Encode(Frame const& f) {
     out += "\n" + f.payload;
     return out;
 }
-Gate::Gate(Identity identity, bool allowConsole, bool allowProbeFov, bool allowMenuActions, bool allowFixtureActions)
+Gate::Gate(Identity identity, bool allowConsole, bool allowProbeFov, bool allowMenuActions, bool allowFixtureActions, bool allowSaveNew)
     : identity_(std::move(identity)), allowConsole_(allowConsole), allowProbeFov_(allowProbeFov),
-      allowMenuActions_(allowMenuActions), allowFixtureActions_(allowFixtureActions) {}
+      allowMenuActions_(allowMenuActions), allowFixtureActions_(allowFixtureActions), allowSaveNew_(allowSaveNew) {}
 std::optional<std::string> Gate::Claim(Frame const& f, std::uint64_t now) {
     if (!Valid(f) || f.kind != "request") return "invalid request";
     if (!ValidIdentity(identity_) || !(f.identity == identity_)) return "identity mismatch";
@@ -119,6 +119,7 @@ std::optional<std::string> Gate::Claim(Frame const& f, std::uint64_t now) {
          f.verb == "open-pause-menu" || f.verb == "open-save-menu") && !allowMenuActions_)
         return "native menu actions are disabled";
     if (f.verb == "load-fixture" && !allowFixtureActions_) return "native fixture loading is disabled";
+    if (f.verb == "save-new" && !allowSaveNew_) return "native new save is disabled";
     if (f.verb == "console" && !allowConsole_) return "native console is disabled";
     if (f.verb == "console" && ForbiddenConsole(f.payload)) return "streamlevelin is prohibited";
     sequence_ = f.sequence;

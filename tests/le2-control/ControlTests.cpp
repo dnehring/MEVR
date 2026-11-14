@@ -142,6 +142,16 @@ int main(int argc, char** argv) {
               "save flow observation requires no native opt in");
         fixture.payload = "save";
         Check(!Encode(fixture), "save flow observation cannot request saving");
+        fixture.payload.clear(); fixture.verb = "save-new";
+        Gate noSave(identity, true, true, true, true);
+        Check(noSave.Claim(fixture, 10000) == "native new save is disabled", "other action permissions do not grant saving");
+        Check(noSave.LastSequence() == 0, "disabled new save does not claim");
+        Gate saveOnly(identity, false, false, false, false, true);
+        fixture.payload = "Save_0100";
+        Check(!Encode(fixture), "new save cannot specify overwrite target");
+        fixture.payload.clear();
+        Check(Decode(*Encode(fixture))->verb == "save-new" && !saveOnly.Claim(fixture, 10000), "new save independent opt in");
+        Check(saveOnly.Claim(fixture, 10000).has_value(), "claimed save cannot retry");
         std::cout << "Control identity, replay, expiry, opt-in, and wire corruption checks passed\n";
         return 0;
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; return 1; }

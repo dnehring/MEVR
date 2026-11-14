@@ -26,7 +26,7 @@ KEYS = ("kind", "run", "lease", "pid", "start", "exe", "host", "mod", "id", "seq
 IDENTITY = ("run", "lease", "pid", "start", "exe", "host", "mod", "game")
 MAX_PAYLOAD, MAX_FRAME, MAX_LIFETIME_MS = 16384, 17408, 30000
 MENU_ACTIONS = ("advance-splash", "open-load-menu", "open-pause-menu", "open-save-menu")
-NATIVE_ACTIONS = ("console", "probe-fov", "load-fixture") + MENU_ACTIONS
+NATIVE_ACTIONS = ("console", "probe-fov", "load-fixture", "save-new") + MENU_ACTIONS
 
 
 class ControlError(ValueError):
@@ -241,8 +241,21 @@ def collect(run, *, bind=binding):
         if lock.read_text(encoding="ascii") == token: lock.unlink()
 
 
+def verify_save_baseline(run, directory, identity):
+    """Read-only inventory check; engine dispatch does not authenticate this file."""
+    baseline = session.safe_path(Path(run) / "artifacts" / "save-baseline.json")
+    before_sha = session.digest(baseline)
+    spec = importlib.util.spec_from_file_location("le2_save_evidence", Path(__file__).with_name("save-evidence.py"))
+    collector = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(collector)
+    collector.verify_baseline(run, bind=lambda requested: (directory, identity))
+    if session.digest(baseline) != before_sha:
+        raise ControlError("Save baseline changed during preflight")
+    return before_sha
+
+
 def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_probe_fov=False,
-           allow_menu_actions=False, allow_fixture_load=False, bind=binding):
+           allow_menu_actions=False, allow_fixture_load=False, allow_save_new=False, bind=binding):
     if not 1 <= timeout <= 30:
         raise ControlError("Timeout must be 1..30 seconds")
     if verb == "console" and (not allow_console or re.search(r"\bstreamlevelin\b", command, re.I)):
@@ -253,6 +266,8 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
         raise ControlError("Native menu action requires explicit --allow-menu-actions")
     if verb == "load-fixture" and not allow_fixture_load:
         raise ControlError("Fixture loading requires explicit --allow-fixture-load")
+    if verb == "save-new" and not allow_save_new:
+        raise ControlError("New Save requires explicit --allow-save-new and a reviewed file baseline")
     if verb != "console" and command:
         raise ControlError("Command is only valid with console")
     directory, identity = bind(run)
@@ -268,6 +283,7 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
         result_path = session.safe_path(directory / "result.control")
         if request_path.exists() or result_path.exists():
             raise ControlError("Endpoint has unarchived traffic; no request was sent")
+        save_baseline_sha = verify_save_baseline(run, directory, identity) if verb == "save-new" else None
         history = session.safe_path(directory / "history")
         history.mkdir(exist_ok=True)
         sequence_path = session.safe_path(directory / "sequence.txt")
@@ -275,6 +291,12 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
         frame = dict(identity, kind="request", id=token, sequence=str(sequence), deadline=str(time.time_ns() // 1000000 + timeout * 1000),
                      verb=verb, status="pending", payload=command.encode("utf-8"), bytes=str(len(command.encode("utf-8"))))
         wire = encode(frame)
+        if save_baseline_sha is not None:
+            sidecar = {"schemaVersion": 1, "requestId": token, "sequence": sequence,
+                       "wireIdentity": identity, "saveBaselineSha256": save_baseline_sha,
+                       "scope": "client-reviewed-inventory-preflight-not-engine-save-completion"}
+            publish(history / (token + ".save-baseline.json"),
+                    (json.dumps(sidecar, indent=2) + "\n").encode("utf-8"))
         # Persist intent before publishing. An interrupted client must not retry.
         session.write_json(pending, {"id": token, "sequence": sequence, "status": "pending", "identity": identity})
         sequence_path.write_text(str(sequence), encoding="ascii")
@@ -301,12 +323,13 @@ def main():
     p.add_argument("--allow-probe-fov", action="store_true")
     p.add_argument("--allow-menu-actions", action="store_true")
     p.add_argument("--allow-fixture-load", action="store_true")
+    p.add_argument("--allow-save-new", action="store_true")
     a = p.parse_args()
     try:
         result = collect(a.run.absolute()) if a.verb == "collect" else submit(
             a.run.absolute(), a.verb, a.command, a.timeout, a.allow_console,
             allow_probe_fov=a.allow_probe_fov, allow_menu_actions=a.allow_menu_actions,
-            allow_fixture_load=a.allow_fixture_load)
+            allow_fixture_load=a.allow_fixture_load, allow_save_new=a.allow_save_new)
         print(json.dumps(dict(result, payload=result["payload"].decode("utf-8", errors="replace")), indent=2))
         return 0 if result["status"] in ("completed", "dispatched") else 2
     except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:
