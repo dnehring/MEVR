@@ -385,13 +385,18 @@ def check_start(scenario, runtime_state, observations=None):
     return failures
 
 
+def session_module():
+    spec = importlib.util.spec_from_file_location('le2_audit_session', Path(__file__).with_name('session.py'))
+    session = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(session)
+    return session
+
+
 def bind_session(identity, run_path):
     """Bind observation identity to the protected run, not self-reported hashes."""
     if run_path is None:
         return {'status': 'not-supplied', 'restorationVerified': False}
-    spec = importlib.util.spec_from_file_location('le2_audit_session', Path(__file__).with_name('session.py'))
-    session = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(session)
+    session = session_module()
     run, context = session.load_context(Path(run_path).resolve(), require_lock=False)
     for name, context_key in (('runId', 'runId'), ('scenarioSha256', 'scenarioSha256'),
                               ('preparedSaveSha256', 'fixtureSha256'),
@@ -415,12 +420,22 @@ def bind_session(identity, run_path):
             'restorationVerified': restored}
 
 
-def bind_reload(primary, primary_path, reload_path, link, observation):
-    """Bind a different run's observation to an exact archived outcome save."""
-    if primary_path is None or not isinstance(link, dict) or not _hash(link.get('saveReportSha256')):
-        raise ValueError('reload link requires a source session and pinned save report')
-    source = Path(primary_path).resolve()
-    target = Path(reload_path).resolve()
+def reload_outcome(primary, source, link):
+    if set(link) == {'archiveRelativePath', 'archiveContextSha256', 'savedOutcomeSha256'}:
+        inventory = session_module().archived_saves(source)
+        if (inventory['runId'] != primary['runId']
+                or inventory['contextSha256'] != link['archiveContextSha256']):
+            raise ValueError('reload link does not match the primary reset archive receipt')
+        for row in inventory['saves']:
+            if (row['archiveRelativePath'] == link['archiveRelativePath']
+                    and row['sha256'] == link['savedOutcomeSha256']
+                    and row['change'] in ('new-path', 'modified', 'staged-modified')):
+                return source / row['archiveRelativePath'], row['sha256'], {
+                    'archiveContextSha256': inventory['contextSha256'],
+                    'archiveRelativePath': row['archiveRelativePath']}
+        raise ValueError('reload link requires changed save bytes in the primary reset archive')
+    if set(link) != {'saveReport', 'saveReportSha256'} or not _hash(link['saveReportSha256']):
+        raise ValueError('reload link requires a pinned New Save report or reset archive entry')
     name = link.get('saveReport')
     if not isinstance(name, str) or not re.fullmatch(r'artifacts/save-[0-9a-f-]{36}\.json', name):
         raise ValueError('reload link requires a run-relative New Save report')
@@ -438,6 +453,16 @@ def bind_reload(primary, primary_path, reload_path, link, observation):
     if (saved['path'] != save_path.relative_to(source).as_posix() or save_path.resolve() != save_path
             or not _hash(save_sha) or sha(save_path) != save_sha or save_path.stat().st_size != saved['size']):
         raise ValueError('reload link archived outcome identity differs')
+    return save_path, save_sha, {'saveReportSha256': link['saveReportSha256']}
+
+
+def bind_reload(primary, primary_path, reload_path, link, observation):
+    """Bind a different run's observation to an exact archived outcome save."""
+    if primary_path is None or not isinstance(link, dict):
+        raise ValueError('reload link requires a source session and outcome reference')
+    source = Path(primary_path).resolve()
+    target = Path(reload_path).resolve()
+    save_path, save_sha, outcome = reload_outcome(primary, source, link)
     spec = importlib.util.spec_from_file_location('le2_reload_save', Path(__file__).parents[1] / 'le2-save.py')
     adapter = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(adapter)
@@ -470,8 +495,8 @@ def bind_reload(primary, primary_path, reload_path, link, observation):
             or wire != descriptor.get('identity')):
         raise ValueError('reload observation wire identity differs')
     resources = {key: save.data['player'][field] for key, field in SAVED_RESOURCES.items()}
-    return dict(binding, runId=identity['runId'], savedOutcomeSha256=save_sha,
-                saveReportSha256=link['saveReportSha256'], savedResources=resources, normalLoadVerified=False)
+    return dict(binding, **outcome, runId=identity['runId'], savedOutcomeSha256=save_sha,
+                savedResources=resources, normalLoadVerified=False)
 
 
 def check_saved_reload_resources(saved, observed):

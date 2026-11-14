@@ -60,6 +60,8 @@ Their SHA-256 hashes are
 and `2df70ccf91392e58eac2554de95225e278f2b97fd5286eb5c2418e33bf50b404`.
 The one-probe plan retains its reviewed selection binding, and the zero-probe
 plan uses normal operator selection. Earlier files remain intact.
+For the zero-probe plan, use a normal operator save. After reset, link its
+changed archived bytes to the fresh reload with the [persistence audit](../tools/qa-le2/README.md).
 The private scenario passed `validate --for-run`. The first staging attempt
 was refused before creating a run directory because ME1 and SteamVR had started.
 At the next free window, use the current one-probe plan and verify its displayed slot,

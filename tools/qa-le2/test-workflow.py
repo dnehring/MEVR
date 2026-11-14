@@ -26,6 +26,50 @@ save_tool = wire.le2
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_manual_outcome_from_verified_profile_archive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            profile = root / 'profile'
+            run = root / 'run'
+            game = root / 'game'
+            profile.mkdir()
+            run.mkdir()
+            original = 'Save/ME2/Career/Save_0001.pcsav'
+            staged = 'Save/ME2/Career/Save_0099.pcsav'
+            archive = 'after/0-' + 'a' * 32
+            base = wire.fixture()
+            save = save_tool.Save(base)
+            updated, _ = save.prepare(wire.recipe(save, {'player.probes': 0}))
+            (profile / original).parent.mkdir(parents=True)
+            (profile / original).write_bytes(base)
+            for relative, raw in ((original, updated.raw), (staged, base)):
+                dest = run / archive / relative
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(raw)
+            fixture = {'targetRelativePath': staged, 'sha256': save_tool.sha256(base)}
+            plan = {'profileRoot': str(profile), 'gameRoot': str(game), 'fixture': fixture}
+            session.write_json(run / 'plan.json', plan)
+            paths = [profile, game / 'Game/ME2/BioGame/Config', game / 'Game/ME2/Binaries/Win64']
+            protected = [{'path': str(path), 'before': session.snapshot(path)} for path in paths]
+            protected[0]['archives'] = [{'path': archive, 'state': session.snapshot(run / archive), 'restored': True}]
+            identity = {'runId': 'SYNTHETIC-PRIMARY'}
+            session.write_json(run / 'context.json', {
+                **identity, 'schemaVersion': 1, 'runDirectory': str(run), 'planSha256': session.digest(run / 'plan.json'),
+                'profileRoot': str(profile), 'gameRoot': str(game), 'lockPath': str(root / 'qa-cafeteria.lock'),
+                'protected': protected, 'backupComplete': True, 'phase': 'restored', 'restorationVerified': True,
+                'fixtureTarget': str(profile / staged), 'fixtureSha256': fixture['sha256']})
+            link = {'archiveRelativePath': archive + '/' + original,
+                    'archiveContextSha256': session.digest(run / 'context.json'),
+                    'savedOutcomeSha256': save_tool.sha256(updated.raw)}
+            outcome, digest, _ = scenario.reload_outcome(identity, run, link)
+            self.assertEqual(outcome.read_bytes(), updated.raw)
+            self.assertEqual(digest, link['savedOutcomeSha256'])
+            with self.assertRaisesRegex(ValueError, 'changed save bytes'):
+                scenario.reload_outcome(identity, run, dict(link, archiveRelativePath=archive + '/' + staged,
+                                                          savedOutcomeSha256=fixture['sha256']))
+            with self.assertRaisesRegex(ValueError, 'primary reset archive receipt'):
+                scenario.reload_outcome(identity, run, dict(link, archiveContextSha256='0' * 64))
+
     def test_each_catalog_template_uses_real_recipe_receipt_and_session_validation(self):
         for template in sorted((HERE / "scenarios").glob("*.json")):
             with self.subTest(template=template.name), tempfile.TemporaryDirectory() as temp:

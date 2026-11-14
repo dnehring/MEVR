@@ -400,6 +400,14 @@ restoration of the fresh run. Keep the normal Load Game selection and rendered
 scene evidence in the persistence review. When the original run only has a
 qualified recovery, its separate restoration requirement stays open.
 
+For a normal operator save, use `session.py archived-saves` after the primary
+run's verified reset. Identify the changed save by the observed slot and
+scene. In `reloadLink`, provide `archiveRelativePath`, the inventory's
+`contextSha256` as `archiveContextSha256`, and the selected row's `sha256`
+as `savedOutcomeSha256`. The auditor cross-checks the archived bytes and
+refuses an unchanged staged copy or original. The operator review still
+establishes which gameplay produced the chosen file.
+
 For planet scanning, the `reload-saved-resources` assertion compares all
 eight live resource fields against the decoded archived outcome save. Use
 `observe-resources` for the first stable post-load sample, before travel or
