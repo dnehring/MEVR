@@ -176,10 +176,7 @@ def prepare(base_path, output, base_sha256, spec_path):
         if actual_paths != expected_paths:
             raise VariantError("Adapter changed an undeclared field")
         recipe_raw = json_bytes(recipe)
-        receipt = dict(schema_version=1, operation="prepare", game="LE2", save_version=30,
-                       evidence="offline-only; game load and VR acceptance untested", upstream_pin=adapter.UPSTREAM_PIN,
-                       input_sha256=base_sha256, output_sha256=sha(result.raw), recipe_sha256=sha(recipe_raw),
-                       recipe_id=recipe["id"], changes=changes, byte_identical=result.raw == save.raw)
+        receipt = adapter.make_receipt("prepare", save, result, changes, recipe=recipe, recipe_raw=recipe_raw)
         variants[label] = (result.raw, recipe_raw, json_bytes(receipt))
     index = dict(schemaVersion=1, id=spec["id"], game="LE2", resource=spec["resource"], baseSaveSha256=base_sha256,
                  specSha256=sha(spec_raw), generatorSha256=sha(Path(__file__).read_bytes()), adapterSha256=adapter_sha,

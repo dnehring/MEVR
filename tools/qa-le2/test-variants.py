@@ -99,6 +99,33 @@ class VariantTests(unittest.TestCase):
         self.assertEqual(len(list(self.output.glob("*.pcsav"))), 4)  # Frozen base + 3 unique cases.
         self.assertEqual(index["provenance"]["kind"], "source-inspected")
 
+    def test_batch_receipts_match_single_cli_including_noop_and_float32_rounding(self):
+        for number, value in enumerate((spec(surplus=100), spec("player.current_fuel", 0.1, 0.01, 0.2))):
+            with self.subTest(resource=value["resource"]):
+                self.output = self.root / f"batch-equivalence-{number}"
+                self.write_spec(value)
+                index = self.prepare()
+                for label, case in index["cases"].items():
+                    single = self.root / f"single-{number}-{label}.pcsav"
+                    receipt = single.with_suffix(".receipt.json")
+                    result = subprocess.run([sys.executable, str(generator.ADAPTER_PATH), "prepare",
+                                             str(self.base), str(single), "--recipe",
+                                             str(self.output / case["recipe"]), "--receipt", str(receipt)],
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(single.read_bytes(), (self.output / case["fixture"]).read_bytes())
+                    self.assertEqual(receipt.read_bytes(), (self.output / case["receipt"]).read_bytes())
+                    self.assertEqual(json.loads(result.stdout), json.loads(receipt.read_bytes()))
+                exact = json.loads((self.output / "exact.receipt.json").read_bytes())
+                self.assertEqual(set(exact), {"schema_version", "operation", "game", "save_version", "evidence",
+                                             "upstream_pin", "input_sha256", "output_sha256", "recipe_sha256",
+                                             "recipe_id", "changes", "byte_identical"})
+                if number == 0:
+                    self.assertTrue(json.loads((self.output / "surplus.receipt.json").read_bytes())["byte_identical"])
+                else:
+                    self.assertNotEqual(exact["changes"][0]["requested"], exact["changes"][0]["after"])
+                self.assertEqual(self.base.read_bytes(), self.raw)
+
     def test_all_allowlisted_resources_and_noop_case(self):
         for i, resource in enumerate(sorted(generator.RESOURCE_PATHS)):
             with self.subTest(resource=resource):
