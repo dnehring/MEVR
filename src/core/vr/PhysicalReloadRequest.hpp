@@ -108,6 +108,10 @@ struct Limits {
     std::uint64_t requests = std::numeric_limits<std::uint64_t>::max();
 };
 
+// Single owner only: Step, CancelGesture, Observe AND state reads are serialized
+// on the same thread (the future game-thread adapter). Render/XInput callbacks
+// publish immutable samples; primitive feedback events are queued and drained
+// by that owner. This object provides no concurrent-access synchronization.
 class Coordinator {
 public:
     // A fresh host epoch is mandatory for each lifetime. Construction is NOT a

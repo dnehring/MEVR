@@ -33,7 +33,7 @@ Namespace: `mevr::vr::reload`.
 
 `ClipKey` binds epoch, unique clip serial, originating generations and the full hand grant. `RequestKey` binds epoch, unique request serial and originating generations. Zero/invalid tokens, old clip tokens and forged combinations are rejected. Counters never wrap: exhausted clip/request budgets fault the coordinator; regressed generations, wrapped sample serials and revoked/reused hand leases fail admission. A counter's maximum value is a last valid identity, not permission to restart at zero.
 
-All calls must be serialized by one owner. This is not a concurrent queue or lock. The future native adapter owns thread validation and durable request deduplication if transport can repeat a one-shot output.
+All calls and state reads must be serialized by one owner on the same thread: the future game-thread adapter. Render/XInput callbacks provide immutable samples and must not access the coordinator concurrently. Native feedback travels as queued primitive events drained by that owner. This object is not a concurrent queue or lock. The adapter owns thread validation and durable request deduplication if transport can repeat a one-shot output.
 
 ## Gesture and outstanding-request behavior
 
