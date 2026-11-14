@@ -6,6 +6,7 @@
 #if !defined(MEVR_LE2_CONTROL_TEST)
 #include "engine/Le2DiagnosticHost.hpp"
 #include "engine/Le2DiagnosticObservation.hpp"
+#include "plugin/ProcessEventHook.hpp"
 #include "core/Log.hpp"
 #endif
 
@@ -334,7 +335,10 @@ struct Endpoint::Impl {
             payload["observationScope"] = "sdk-structural-diagnostic";
             // Tick is entered only through DiagnosticTickGate on its hook-owned
             // game thread. Ping never traverses engine memory.
-            if (decoded->verb == "observe") payload["observation"] = le2_diagnostic::Observe(thread);
+            if (decoded->verb == "observe") {
+                auto const provenance = host::process_event::ReadDiagnosticSnapshot();
+                payload["observation"] = le2_diagnostic::Observe(thread, &provenance);
+            }
 #endif
             payload["capabilities"] = std::move(capabilities);
             auto unavailable = Value::Object();

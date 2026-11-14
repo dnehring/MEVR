@@ -4,8 +4,9 @@
 Source audit at main `ea25e76c`, with SDK submodule
 `6bd05809cccb1a099a520371a95779d4a56bb246`. No native operation was performed.
 The diagnostic candidates remain read-only; this report does not grant dispatch
-capability. Finish their owned native handshake and inspect actual observations
-before enabling new calls. See the [protected workflow](../tools/qa-le2/control.md).
+capability. The later `59b5e775` candidate proved its owned native handshake and
+entry-menu metadata observation. The extended diagnostics below still require
+their own live evidence before enabling calls. See the [protected workflow](../tools/qa-le2/control.md).
 
 Reuse the existing `engine::legacy::ConsoleCommand` route: direct ProcessEvent
 plus LE2's SDK-backed FString allocator. Do not replace it with the LE1 generic
@@ -26,15 +27,17 @@ fail while host startup continues. The current public hook API and HostServices
 do not expose these provenance facts; observer availability does not imply the
 hook installed successfully.
 
-The smallest proposed addition is a diagnostic-only read-only snapshot in
+The diagnostic-only read-only snapshot is implemented in
 `ProcessEventHook.hpp/.cpp`: installation status, resolved installation target,
 exact owned detour, installer-returned next hop, backend, and executable-check
 classification. Diagnostic builds are monolithic, so this needs no HostServices
-ABI change. Publish a coherent snapshot after successful installation.
+ABI change. A shared lock publishes a coherent installation outcome; successful
+installation records the next hop. The producer supplies a fresh snapshot to
+the observer on the game thread. A failed or omitted snapshot stays explicit.
 
-Within the observer's existing guarded controller sample, report its vtable,
+The observer's guarded controller sample now reports its vtable,
 slot **72** (byte offset **0x240**, pinned LE2 `Core_classes.hpp`) and observed
-slot target. Compare the slot with the recorded installation target exactly.
+slot target and compares it with the recorded installation target exactly.
 An inline hook normally leaves the slot pointing to the executable entry;
 another text address, an arbitrary executable allocation or the trampoline is
 not an acceptable substitute.
@@ -79,7 +82,13 @@ and [unaligned modifier](https://learn.microsoft.com/en-us/cpp/cpp/unaligned?vie
 The [focused checks](../tests/le2-console-lifetime/README.md) exercise exception
 cleanup and actual SDK empty strings at each valid alignment residue. This proof
 is scoped to the pinned MSVC/SDK; repeat it after either changes. Nonempty engine
-allocation, native dispatch, conversion bounds and fault recovery remain open.
+allocation, native dispatch, return conversion bounds and fault recovery remain open.
+
+Input conversion is now bounded by `ConsoleCommandInput`: 1..4096 UTF-8 bytes,
+no C0/DEL or embedded NUL, strict Windows UTF-8 decoding and checked sizing/write
+results, all before SDK allocation. Actual Windows API tests cover malformed and
+supplementary Unicode and byte boundaries in Release/Debug. This does not change
+the pending returned-string bounds/allocator ownership requirements.
 
 Two suspected issues are **not** defects: `Widen(command).c_str()` remains alive
 while the FString constructor copies it, and the recently corrected Narrow
@@ -107,8 +116,8 @@ getter. The pinned LE2 declarations in `Engine_functions.cpp` and
 zero, size four, array dimension one, property flags `0x580`. Expected metadata
 is `ParmsSize=4`, `NumParms=1`, `ReturnValueOffset=0`, and `iNative=0`.
 
-The observer currently reports ConsoleCommand metadata only. A later bounded
-extension can reuse its exact-owner/property traversal for this getter. Once
+The observer now reuses its exact-owner/property traversal for this getter, and
+reports guarded GMalloc/Malloc/Free slots without calling them. Once
 live metadata and target checks pass, a separate game-thread experiment can
 initialize the four-byte return to a NaN sentinel with surrounding canaries,
 invoke through the validated controller slot, and record a finite changed return
@@ -120,4 +129,5 @@ flags or use a generated wrapper.
 That experiment would establish only this bounded ProcessEvent/script-return
 path. It would not prove ConsoleCommand allocation, arbitrary console commands,
 normal save loading, story coherence or any VR interaction. The first pending
-native action remains the existing read-only handshake, not this proposed call.
+native action is live observation of these new diagnostics and rejection probes,
+followed by this bounded getter experiment only after the prerequisites pass.
