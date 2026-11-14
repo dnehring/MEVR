@@ -1,13 +1,57 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 testing tools: reuse audit and runtime observer history
 
-Current audit: **2026-11-14, main `d84809a8`**. We already have the ME2 save,
+Current audit: **2026-11-14, candidate `823c0568`**. We already have the ME2 save,
 launch, protected-session, capture, control and scenario workflow. Native
 eight-resource save/reload persistence is proven; an untouched chapter loads to
-Squad Selection. The three gameplay scenarios remain unvalidated. See the
+Squad Selection. Bounded input through the existing bridge now selects Miranda
+and Grunt and reaches Confirm Squad Selection. The modal is not yet admitted by
+the context guard. The three gameplay scenarios remain unvalidated. See the
 [current evidence](le2-validation-evidence.md) and [workflow](../tools/qa-le2/README.md).
-This audit inspected implementations and compile guards; it performed no native
-operations. The older observer design below is historical, not current readiness.
+This update combines source inspection with the archived protected native run
+`b9050968-61cb-4d26-9691-ee1ec0f84e80`; it closed normally and restored all four
+protected roots. The older observer design below is historical, not current readiness.
+
+## Reuse map and current proof boundary
+
+```mermaid
+flowchart TD
+    A[Existing MEVR and native ME2 systems] --> B[le2-save.py and pinned TSE oracle]
+    B --> C[qa-le2 session.py and launch.ps1]
+    C --> D[control.py: normal menus, load and save]
+    D --> E[Existing GamepadBridge: bounded input]
+    E --> F[Proven: two squad members selected]
+    F --> G[Next: guarded confirmation and loadout]
+    G --> H[Acquire combat fixture and observe ammo]
+    D --> I[Resource persistence: eight values proven]
+    D --> J[Scanning and timed interrupt baselines pending]
+    H --> K[Actual VR interaction acceptance pending]
+    J --> K
+    L[Existing snapshot, replay and performance tools] --> M[ME2 XR integration required]
+    M --> K
+```
+
+This is a dependency map, not a percentage-complete estimate. **Zero of the three
+initial scenarios has end-to-end acceptance.** Native input/UI success is a
+smaller, useful milestone. A diagnostic build without XR cannot prove stereo,
+tracked-controller interaction, comfort or headset performance.
+
+Audit findings:
+
+1. Reuse is implemented: the input adapter shares the existing bridge's hook
+   ownership and the existing run-bound control channel. The standalone hook
+   draft was not integrated.
+2. Publication is not delivery. The first run expired both pulses before an
+   eligible poll. The correction starts the hold on the first eligible poll,
+   bounded by a separate five-second activation wait; the next run produced
+   positive output, neutral release and visible selection changes.
+3. The current `partyMember1/2` fields stayed zero despite visible selections.
+   They must not serve as current selection assertions. The next guard needs
+   the actual selected indices/labels and the confirmation callback identity.
+4. The modal is an explicit remaining dependency. Do not admit every MessageBox
+   or ChoiceGUI screen merely to advance this one fixture.
+5. Save/resource tools are usable now. Existing LE1 stereo, replay and scenario
+   runners require ME2 producers/adapters; their presence is not ME2 readiness.
 
 ## Current script inventory and reuse decisions
 
@@ -38,26 +82,27 @@ The existing synthetic generators cover [walking](../tools/make-walk-recording.p
 [rack motion](../tools/make-rack-recording.py) and [ADS](../tools/make-ads-recording.py).
 These generate inputs; their names do not establish ME2 action semantics or success.
 
-## Audit correction: share the input path
+## Audit correction: share the input path (implemented)
 
 The proposed standalone `Le2DiagnosticPad` XInput adapter would duplicate
 `GamepadBridge.cpp`'s DLL list, slot registry, detours, target deduplication and
 installation logic (`TryInstall`). **Do not land that draft.** It remains
-uncommitted in its isolated worktree; no hook or startup change was deployed.
+uncommitted in its isolated worktree; that draft was never deployed.
 
-The smallest integration seam is `GamepadBridge::Bridge`, immediately after its
+The implemented integration seam is `GamepadBridge::Bridge`, immediately after its
 original physical-pad read and before `Controllers::Latest`, head-yaw rotation
-and support-grip mapping. Add an explicitly opted-in diagnostic input policy
-there, retaining the normal path and a single XInput owner. Caller provenance,
-recursion, complete installation and cancellation/output serialization belong
-with that existing owner. Review hot-reload/process-lifetime behavior before use.
+and support-grip mapping. Its explicitly opted-in diagnostic policy retains the
+normal path and a single XInput owner. Caller provenance, recursion, complete
+installation and cancellation/output serialization stay with that owner;
+diagnostic hooks remain resident for the process lifetime.
 
-The separate pure `DiagnosticPad::Source` prototype adds bounded run/sequence
+The separate pure `DiagnosticPad::Source` component adds bounded run/sequence
 admission, expiry, physical-input conflict and explicit neutral drain. Those are
 not supplied by the existing controller snapshot: `Controllers::Latest` ages a
 sample inactive after 250 ms but does not prove a neutral state reached the game.
-Its 107 Release/Debug checks are offline policy evidence only. Retain it only as
-that narrow policy component; it is not another launcher, replay system or hook.
+Its checks are offline policy evidence; the latest run adds native delivery and
+release evidence. It remains a narrow policy component, not another launcher,
+replay system or hook.
 
 For longer routes, reuse `PoseRecording::Load/Sample`, `.mevrrec`, the existing
 generators and route checks. `TestLoop::OnFrameBegun` currently drives replay from
@@ -74,10 +119,10 @@ existing run/PID/lease-bound channel rather than copying those request writers.
 
 ## Next work using these tools
 
-1. The bounded input policy is now connected through the existing bridge and owned
-   `observe-input`/`pad-pulse` channel. Prove delivery, neutral release and
-   cancellation in ME2; offline tests do not establish native input acceptance.
-2. Use the already loaded chapter acquisition fixture to complete normal squad
+1. Extend the proven bridge and owned `observe-input`/`pad-pulse` channel with
+   a narrow party-confirm guard, then prove the modal and subsequent loadout
+   transitions. Preserve neutral release and cancellation at every transition.
+2. Use the reproducible chapter acquisition fixture to complete normal squad
    selection, then acquire a safe combat save using existing New Save/collector
    tools. Add actual weapon/ammo observations before claiming reload behavior.
 3. Use the proven Normandy fixture and ordinary navigation to reach scanning;

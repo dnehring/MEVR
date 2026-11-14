@@ -5,6 +5,51 @@ Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now
 
 ## Live diagnostic connection, 2026-11-14 UTC
 
+### Bounded input selects two squad members; confirmation remains gated
+
+Protected run `b9050968-61cb-4d26-9691-ee1ec0f84e80` used candidate `823c0568`,
+ASI SHA256 `e6208b34db9f3d3b03797a487615a8a7091038189d427eaea07a296d6b323d70`.
+The existing Steam/menu/load adapters again loaded the unchanged chapter fixture
+at descriptor row 2. The first eligible poll now starts the requested hold,
+subject to a separate five-second activation deadline.
+
+Three 150 ms pulses used the existing GamepadBridge and owned control channel:
+
+| Action | Positive output polls | Neutral writes | End condition | Reviewed UI outcome |
+|---|---:|---:|---|---|
+| Confirm Miranda | 33 | 1 | Context change cancelled the run | Miranda moved forward; Add became Remove |
+| D-pad right | 631 | 1 | Hold expired | Grunt highlighted; Miranda remained selected |
+| Confirm Grunt | 33 | 1 | Context change cancelled the run | Both moved forward; Confirm Squad Selection modal appeared |
+
+Poll counts are bridge output writes, not frames, button edges or gameplay event
+counts. The visual changes establish the limited native UI effects. The copied
+`partyMember1/2` fields remained zero and do not establish the current selection.
+All three actions released to neutral. The final modal reported focused tag
+`MessageBox`, active GUI mode 7 and `unsupported-input-context`; no further
+positive input was submitted. The next adapter must bind the actual confirmation
+delegate to its owning PartySelect handler rather than allow arbitrary modals.
+
+Readable foreground-verified desktop captures are archived as `party-before`,
+`party-after-confirm`, `party-after-right` and `party-after-grunt`. The first
+PrintWindow chapter capture was black and supplies no visual proof. The normal
+load request targeted row 2; the pre-load desktop image still highlighted Save
+36, so it is not evidence of visually selecting Save 99.
+
+ME2 closed normally at 16:53:07 UTC. The preservation audit found no ME1 save
+changes and unchanged shared Trilogy profile content. All four protected roots
+restored and verified at 16:53:53 UTC; the owned invitation was removed. Private
+evidence is retained under `run-20261114T1641Z-input`.
+An independent archived-only review passed 112 checks with zero failures,
+including all fourteen correlated requests and four reviewed party captures.
+Its `native-outcome.json` SHA256 is
+`4a5f45cca6a5a5e4b09b123a6ae75b0f8e089c0ca0b80dfd80506faaf3915322`.
+
+Candidate validation passed all ordinary development targets, the ordinary LE1
+monolithic build, the diagnostic LE2 monolithic build, 53/53 ordinary CTest tests
+and 10/10 focused diagnostic tests. This is native input/UI proof, not a combat
+fixture, a reload result or VR-controller acceptance. The three initial gameplay
+scenarios remain **0/3 accepted**.
+
 ### Input bridge attached; native polling exposed a pulse timing defect
 
 Protected run `33d051cc-b721-43e0-8ac9-1660b08a47ec` used candidate `8bb1b331`,
@@ -25,8 +70,8 @@ selection success. No gameplay scenario was accepted.
 
 The corresponding correction keeps the maximum hold at 1000 ms but starts it
 on the first eligible poll, with a separate fixed 5000 ms activation timeout.
-The two measured delays are regression cases. Native press delivery still needs
-a fresh protected run; passing those synthetic cases is not that proof.
+The two measured delays are regression cases. The subsequent protected run above
+supplies native press delivery proof; the synthetic cases alone did not.
 
 Foreground desktop capture refused because Windows reported foreground HWND 0.
 The existing PrintWindow method supplied readable load and party captures. The
