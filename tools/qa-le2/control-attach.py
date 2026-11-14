@@ -35,8 +35,8 @@ def invite(run, host, expected_hash, *, processes=s.windows_processes, modules=c
     if s.safe_path(expected["path"]) != exe or s.digest(exe) != context["exeSha256"]:
         raise c.ControlError("Game executable differs from session")
     host = s.safe_path(host)
-    mapped = {str(s.safe_path(p)).casefold() for p in modules(expected["pid"])}
-    if str(host).casefold() not in mapped or s.digest(host) != expected_hash:
+    mapped = modules(expected["pid"])
+    if not c.module_is_mapped(host, mapped) or s.digest(host) != expected_hash:
         raise c.ControlError("Reviewed host is not the actual mapped module")
     identity = dict(run=context["runId"], lease=str(uuid.uuid4()), pid=str(expected["pid"]),
                     start=c.filetime(expected["started"]), exe=context["exeSha256"],

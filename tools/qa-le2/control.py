@@ -114,6 +114,23 @@ def mapped_modules(pid):
     return [paths] if isinstance(paths, str) else paths
 
 
+def module_is_mapped(path, inventory):
+    """Match the reviewed path without resolving unrelated overlay modules.
+
+    Inventory is process evidence, not a set of paths we own. Only the exact
+    selected module must pass our no-reparse policy; aliases never establish
+    that identity. Keep the matched raw path check as well as the target check.
+    """
+    path = session.safe_path(path)
+    if not isinstance(inventory, (list, tuple)) or any(
+            not isinstance(p, str) or not Path(p).is_absolute() for p in inventory):
+        raise ControlError("Invalid mapped module inventory")
+    for raw in inventory:
+        if str(Path(raw)).casefold() == str(path).casefold():
+            return str(session.safe_path(raw)).casefold() == str(path).casefold()
+    return False
+
+
 def binding(run, *, processes=session.windows_processes, modules=mapped_modules):
     run, context = session.load_context(run)
     if processes is session.windows_processes:
@@ -139,10 +156,10 @@ def binding(run, *, processes=session.windows_processes, modules=mapped_modules)
         raise ControlError("Runtime producer differs from frozen session")
     if session.digest(context["exePath"]) != identity["exe"]:
         raise ControlError("Game executable changed")
-    mapped = {str(session.safe_path(Path(p))).casefold() for p in modules(expected["pid"])}
+    mapped = modules(expected["pid"])
     for role in ("host", "mod"):
         path = session.safe_path(Path(descriptor[role + "Path"]))
-        if str(path).casefold() not in mapped or session.digest(path) != identity[role]:
+        if not module_is_mapped(path, mapped) or session.digest(path) != identity[role]:
             raise ControlError("Actual mapped module differs from runtime producer")
     return directory, identity
 

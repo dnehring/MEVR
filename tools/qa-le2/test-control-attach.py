@@ -79,6 +79,23 @@ class AttachTests(unittest.TestCase):
         self.assertFalse(self.control.exists())
         self.assertFalse(self.invitation.exists())
 
+    def test_unrelated_overlay_reparse_does_not_block_invitation(self):
+        overlay_root = self.host.parent.parent / "overlay-junction"
+        overlay = overlay_root / "overlay.dll"
+        original = s.is_link
+        with mock.patch.object(s, "is_link", side_effect=lambda p: p == overlay_root or original(p)):
+            self.assertTrue(s.is_link(overlay_root))
+            result = self.invite(modules=lambda _: [str(overlay), str(self.host)])
+        self.assertEqual(result["status"], "invitation-published-handshake-pending")
+
+    def test_selected_module_reparse_still_refuses_before_intent(self):
+        original = s.is_link
+        with mock.patch.object(s, "is_link", side_effect=lambda p: p == self.host or original(p)):
+            with self.assertRaisesRegex(s.SessionError, "reparse"):
+                self.invite()
+        self.assertFalse(self.control.exists())
+        self.assertFalse(self.invitation.exists())
+
     def test_stale_pid_start_or_competing_game_rejected(self):
         expected = self.live[0].copy()
         cases = [[dict(expected, started="2000-01-01T00:00:00.0000000Z")],

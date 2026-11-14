@@ -207,6 +207,17 @@ class BindingTests(unittest.TestCase):
             c.session.write_json(control / "identity.json", dict(identity=identity, hostPath=str(host), modPath=str(mod)))
             with mock.patch.object(c.session, "load_context", return_value=(root, context)):
                 self.assertEqual(c.binding(root, processes=lambda: [live], modules=lambda _: [str(host), str(mod)])[1], identity)
+                overlay_root = root / "overlay-junction"
+                overlay = overlay_root / "overlay.dll"
+                original = c.session.is_link
+                with mock.patch.object(c.session, "is_link", side_effect=lambda p: p == overlay_root or original(p)):
+                    self.assertEqual(c.binding(root, processes=lambda: [live], modules=lambda _: [str(overlay), str(host), str(mod)])[1], identity)
+                    # An unrelated alias cannot stand in for the reviewed host.
+                    with self.assertRaisesRegex(c.ControlError, "mapped module"):
+                        c.binding(root, processes=lambda: [live], modules=lambda _: [str(overlay_root / host.name), str(mod)])
+                with mock.patch.object(c.session, "is_link", side_effect=lambda p: p == host or original(p)):
+                    with self.assertRaisesRegex(c.session.SessionError, "reparse"):
+                        c.binding(root, processes=lambda: [live], modules=lambda _: [str(host), str(mod)])
                 with self.assertRaisesRegex(c.ControlError, "mapped module"):
                     c.binding(root, processes=lambda: [live], modules=lambda _: [str(host)])
                 with self.assertRaisesRegex(c.ControlError, "Process identity"):
