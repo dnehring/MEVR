@@ -59,6 +59,18 @@ ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& service
 // Each action admits at most one entry/process; no file/row/index input or loading.
 ProbeResult AdvanceSplash(std::uint32_t gameThreadId, ObserverServices const& services);
 ProbeResult OpenLoadMenu(std::uint32_t gameThreadId, ObserverServices const& services);
+// Single verified game-thread owner serializes observation and these actions.
+// Read-only engine samples may retain owner-local identity comparison receipts;
+// addresses are never reused as dereference handles. UI capture/initialization
+// review remains external: alert zero alone is not proof of fresh game CanSave.
+// OpenPauseMenu supports only current exact Default mode's inherited ShowMenu.
+// OpenSaveMenu requires a stable browser observation in that same opened flow;
+// caller explicitly attests current enabled UI review. Each action is one entry
+// per process. No new-save event, independent CanSave call, or persistence claim.
+json::Value ObserveSaveFlow(std::uint32_t gameThreadId);
+ProbeResult OpenPauseMenu(std::uint32_t gameThreadId, ObserverServices const& services);
+ProbeResult OpenSaveMenu(std::uint32_t gameThreadId, ObserverServices const& services);
+
 // Host-owned, independently proved file-to-descriptor mapping only. No pathname,
 // wire-supplied index or UObject address enters this API. Index is the native
 // descriptor identity, never the UI row passed to LoadGame.
@@ -78,6 +90,8 @@ void ResetFovProbe(FovDispatcher dispatcher);
 using MenuDispatcher = void (*)(void* handler, void* function, void* parameters);
 void ResetMenuActions(MenuDispatcher dispatcher);
 void ResetFixtureLoad(MenuDispatcher dispatcher);
+void ResetSaveFlow(MenuDispatcher dispatcher);
+void SetSaveFlowSampleHook(void (*hook)());
 using ResourceSampleHook = void (*)();
 void SetResourceSampleHook(ResourceSampleHook hook);
 }

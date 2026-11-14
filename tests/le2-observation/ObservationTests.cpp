@@ -112,6 +112,46 @@ diagnostic::WitnessSnapshot ProbeWitness(diagnostic::ControllerWatch const& iden
 }
 unsigned menuDispatchCalls{}, menuReadsAtDispatch{};
 int menuDispatchMode{};
+
+UMassEffectGuiManager* flowManager{}; USFXGameModeManager* flowModes{}; ABioWorldInfo* flowWorld{};
+UBioSFPanel* flowBrowserPanel{}; UBioSFPanel* flowSavePanel{}; UBioSFHandler_PCPauseMenu* flowBrowser{};
+USFXGameModeDefault* flowDefault{}; UFunction* flowPauseFunction{}; UFunction* flowSaveFunction{};
+UBioSFPanel* flowPanels[2]{}; FBWPageStruct* flowPages{}; FSubPageState* flowOverrides{};
+UObjectProperty* flowManagerProperty{}; UClass* flowWrongClass{};
+unsigned flowDispatchCalls{}, flowReadsAtDispatch{}; int flowBehavior{}, flowMutation{};
+void MutateFlowSample() { flowWorld->bPlayersOnly = !flowWorld->bPlayersOnly; }
+diagnostic::TargetInspection FlowInspect(std::uintptr_t target) noexcept {
+    auto result = ProbeInspect(target);
+    if (flowMutation == 1) flowPages[1].Type = 3;
+    if (flowMutation == 2) flowOverrides[0].State = 2;
+    if (flowMutation == 3) flowManagerProperty->PropertyClass = flowWrongClass;
+    if (flowMutation == 4) flowModes->CurrentMode = 0;
+    if (flowMutation == 5) flowSaveFunction->FunctionFlags = 0;
+    return result;
+}
+void FakeSaveFlowDispatch(void* object, void* function, void* parameters) {
+    ++flowDispatchCalls; flowReadsAtDispatch = engineReadCalls;
+    bool const pause = function == flowPauseFunction;
+    Check(object == (pause ? static_cast<void*>(flowDefault) : static_cast<void*>(flowBrowser)), "flow current exact receiver");
+    Check(pause || function == flowSaveFunction, "flow exact selected declaration");
+    if (flowBehavior == 1) throw std::runtime_error("synthetic uncertain flow dispatch");
+    if (pause) {
+        Check(parameters == nullptr, "ShowMenu uses null no-param frame");
+        flowModes->CurrentMode = 7; flowWorld->bPlayersOnly = 1;
+        flowPanels[0] = flowBrowserPanel; flowManager->m_FocusPanel = flowBrowserPanel;
+    } else {
+        UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms p{}; std::memcpy(&p, parameters, sizeof(p));
+        Check(p.nPanel == 1 && p.oManager == nullptr, "Save page derived row and null optional own manager");
+        auto* bytes = static_cast<unsigned char*>(parameters);
+        if (flowBehavior == 2) bytes[-1] ^= 1;
+        if (flowBehavior == 3) bytes[12] ^= 1;
+        if (flowBehavior == 4) bytes[4] = 1;
+        if (flowBehavior >= 2) return;
+        flowPanels[0] = flowSavePanel; flowManager->m_FocusPanel = flowSavePanel;
+    }
+    mevr::ue3::TArray<UBioSFPanel*> h{flowPanels,1,2};
+    std::memcpy(&flowManager->m_lstPanels,&h,sizeof(h));
+}
 void* expectedMenuHandler{}; void* expectedMenuFunction{};
 bool expectedNoParameters{}, mutateMenuOnInspection{}, replaceMenuProperty{};
 UProperty* replacementMenuProperty{};
@@ -1098,6 +1138,139 @@ int main() {
         Check(finalResources.Bool("allResourcesAvailable") && mevr::json::Write(finalResources, 0).size() <= 14 * 1024,
               "fresh valid resource observation recovers and fits bounded control payload");
         std::cout << "Representative resource observation bytes: " << mevr::json::Write(finalResources, 0).size() << '\n';
+        // Same-flow normal pause/save-menu opening. No native save is submitted.
+        using mevr::engine::le2_diagnostic::ObserveSaveFlow;
+        using mevr::engine::le2_diagnostic::OpenPauseMenu;
+        using mevr::engine::le2_diagnostic::OpenSaveMenu;
+        using mevr::engine::le2_diagnostic::testing::ResetSaveFlow;
+        using mevr::engine::le2_diagnostic::testing::SetSaveFlowSampleHook;
+        Raw<UClass> bioPcType, flowManagerType, modeBaseType, defaultModeType, guiModeType, browserBaseType, pcBrowserType, saveBaseType, pcSaveType, sfManagerType;
+        Raw<ABioPlayerController> flowPc;
+        Raw<USFXGameModeManager> modes;
+        Raw<USFXGameModeDefault> defaultMode;
+        Raw<USFXGameModeBase> guiMode;
+        Raw<UBioSFHandler_PCPauseMenu> browserHandler;
+        Raw<USFXSFHandler_PCSave> saveHandler;
+        Raw<UBioSFPanel> browserPanel, normalSavePanel;
+        Raw<UFunction> showPause, showSave, closerShowPause;
+        Raw<UIntProperty> pageProperty; Raw<UObjectProperty> sfManagerProperty;
+        add(bioPcType.get(), "BioPlayerController", meta.get(), sfxPackage.get()); bioPcType.get()->SuperField=controllerType.get();
+        add(flowManagerType.get(), "SFXGameModeManager", meta.get(), sfxPackage.get());
+        add(modeBaseType.get(), "SFXGameModeBase", meta.get(), sfxPackage.get());
+        add(defaultModeType.get(), "SFXGameModeDefault", meta.get(), sfxPackage.get()); defaultModeType.get()->SuperField=modeBaseType.get();
+        add(guiModeType.get(), "SFXGameModeGUI", meta.get(), sfxPackage.get()); guiModeType.get()->SuperField=modeBaseType.get();
+        add(browserBaseType.get(), "BioSFHandler_BrowserWheel", meta.get(), sfxPackage.get()); browserBaseType.get()->SuperField=handlerType.get();
+        add(pcBrowserType.get(), "BioSFHandler_PCPauseMenu", meta.get(), sfxPackage.get()); pcBrowserType.get()->SuperField=browserBaseType.get();
+        add(saveBaseType.get(), "SFXSFHandler_Save", meta.get(), sfxPackage.get()); saveBaseType.get()->SuperField=handlerType.get();
+        add(pcSaveType.get(), "SFXSFHandler_PCSave", meta.get(), sfxPackage.get()); pcSaveType.get()->SuperField=saveBaseType.get();
+        add(sfManagerType.get(), "BioSFManager", meta.get(), enginePackage.get());
+        add(flowPc.get(), "FlowController", bioPcType.get(), nullptr);
+        add(modes.get(), "GameModeManager", flowManagerType.get(), flowPc.get());
+        add(defaultMode.get(), "DefaultMode", defaultModeType.get(), flowPc.get());
+        add(guiMode.get(), "GuiMode", guiModeType.get(), flowPc.get());
+        add(browserHandler.get(), "PauseHandler", pcBrowserType.get(), nullptr);
+        add(saveHandler.get(), "SaveHandler", pcSaveType.get(), nullptr);
+        add(browserPanel.get(), "BrowserPanel", panelType.get(), nullptr);
+        add(normalSavePanel.get(), "NormalSavePanel", panelType.get(), nullptr);
+        add(showPause.get(), "ShowMenu", functionType.get(), modeBaseType.get()); modeBaseType.get()->Children=showPause.get();
+        showPause.get()->FunctionFlags=0x20202; showPause.get()->ReturnValueOffset=-1;
+        add(closerShowPause.get(), "ShowMenu", functionType.get(), defaultModeType.get());
+        add(showSave.get(), "ShowSelectedPanel", functionType.get(), browserBaseType.get()); browserBaseType.get()->Children=showSave.get();
+        showSave.get()->FunctionFlags=0x824803; showSave.get()->ParmsSize=12; showSave.get()->NumParms=2; showSave.get()->ReturnValueOffset=-1;
+        add(pageProperty.get(), "nPanel", intType.get(), showSave.get()); property(pageProperty.get(),0,4,0x80);
+        add(sfManagerProperty.get(), "oManager", objectPropertyType.get(), showSave.get()); property(sfManagerProperty.get(),4,8,0x90);
+        sfManagerProperty.get()->PropertyClass=sfManagerType.get(); showSave.get()->Children=pageProperty.get(); pageProperty.get()->Next=sfManagerProperty.get();
+        tag(browserPanel.get(), "MenuBrowser"); tag(normalSavePanel.get(), "ConfiguredSave");
+        for (auto* panel : {browserPanel.get(),normalSavePanel.get()}) { panel->oParentManager=manager.get(); panel->IsVisible=panel->bInitialized=1; }
+        browserPanel.get()->m_DefaultHandler=browserHandler.get(); browserHandler.get()->oPanel=browserPanel.get(); browserHandler.get()->oWorldInfo=menuWorldInfo.get();
+        normalSavePanel.get()->m_DefaultHandler=saveHandler.get(); saveHandler.get()->oPanel=normalSavePanel.get(); saveHandler.get()->oWorldInfo=menuWorldInfo.get();
+        saveHandler.get()->bCheckingDataComplete=1; saveHandler.get()->PendingOverwriteIndex=-1; saveHandler.get()->MaxSaves=1000;
+        flowPc.get()->Pawn=resourcePawn.get(); flowPc.get()->Player=local.get(); flowPc.get()->WorldInfo=menuWorldInfo.get(); flowPc.get()->GameModeManager2=modes.get();
+        flowPc.get()->m_oCachedScaleFormManager=manager.get(); local.get()->Actor=flowPc.get();
+        resourcePawn.get()->Controller=flowPc.get(); manager.get()->Player=flowPc.get(); menuWorldInfo.get()->LocalPlayerController=flowPc.get();
+        std::array<USFXGameModeBase*,8> modeObjects{}; modeObjects[0]=defaultMode.get(); modeObjects[7]=guiMode.get();
+        mevr::ue3::TArray<USFXGameModeBase*> modesHeader{modeObjects.data(),8,8}; std::memcpy(&modes.get()->GameModes,&modesHeader,sizeof(modesHeader));
+        defaultMode.get()->bIsActive=defaultMode.get()->bAllowPauseMenu=1; guiMode.get()->bIsActive=1;
+        std::array<FBWPageStruct,2> browserPages{}; browserPages[0].Type=0; browserPages[1].Type=1;
+        browserPages[0].Tag=otherPanel.get()->nmTag; browserPages[1].Tag=normalSavePanel.get()->nmTag;
+        mevr::ue3::TArray<FBWPageStruct> pageHeader{browserPages.data(),2,2}; std::memcpy(&browserHandler.get()->lstPages,&pageHeader,sizeof(pageHeader));
+        std::array<FSubPageState,1> pageOverrides{}; pageOverrides[0].Page=1; pageOverrides[0].State=0;
+        mevr::ue3::TArray<FSubPageState> overrideHeader{pageOverrides.data(),1,1}; std::memcpy(&menuWorldInfo.get()->SubPageStateOverrides,&overrideHeader,sizeof(overrideHeader));
+        std::array<std::uintptr_t,73> flowVtable{}; flowVtable[72]=0x123400;
+        auto* vt=flowVtable.data(); std::memcpy(defaultMode.get(),&vt,sizeof(vt)); std::memcpy(browserHandler.get(),&vt,sizeof(vt));
+        flowManager=manager.get(); flowModes=modes.get(); flowWorld=menuWorldInfo.get(); flowDefault=defaultMode.get(); flowBrowser=browserHandler.get();
+        flowBrowserPanel=browserPanel.get(); flowSavePanel=normalSavePanel.get(); flowPauseFunction=showPause.get(); flowSaveFunction=showSave.get();
+        flowPages=browserPages.data(); flowOverrides=pageOverrides.data(); flowManagerProperty=sfManagerProperty.get(); flowWrongClass=managerType.get();
+        mevr::engine::le2_diagnostic::ObserverServices flowServices{FlowInspect,nullptr,ProbeHook};
+        auto beginFlow=[&] {
+            ResetSaveFlow(FakeSaveFlowDispatch); flowBehavior=flowMutation=0; flowDispatchCalls=0;
+            probeTarget=0x123400; probeExactBase=true; probeBadBounds=probeBadHook=probeWrongBase=probeBadExeCheck=false;
+            modes.get()->CurrentMode=0; menuWorldInfo.get()->bPlayersOnly=0; menuWorldInfo.get()->m_bAllowBrowserWheel=1;
+            menuWorldInfo.get()->m_lstBrowserAlerts[1]=0; pageOverrides[0].State=0; browserHandler.get()->bWaitForNextFrame=0;
+            manager.get()->m_FocusPanel=nullptr; manager.get()->m_oBWHandler=nullptr;
+            mevr::ue3::TArray<UBioSFPanel*> h{flowPanels,0,2}; std::memcpy(&manager.get()->m_lstPanels,&h,sizeof(h));
+        };
+        beginFlow();
+        auto beforeFlowReads=engineReadCalls;
+        Check(!ObserveSaveFlow(0).Bool("available") && OpenPauseMenu(0,flowServices).status=="rejected" && engineReadCalls==beforeFlowReads,"save flow wrong thread reads nothing");
+        auto fs=ObserveSaveFlow(thread);
+        Check(fs.Bool("available") && fs.Bool("pauseStructurallySupported") && !fs.Bool("saveNewCapability"),"source-indexed current Default metadata observed");
+        Check(fs.String("uiInitializationProof")=="external-review-required-not-inferred-from-alert-zero","readonly sample never asserts UI initialization from alert0");
+        modes.get()->CurrentMode=8; Check(!ObserveSaveFlow(thread).Bool("available"),"mode array upper bound"); modes.get()->CurrentMode=0;
+        defaultMode.get()->Outer=nullptr; Check(OpenPauseMenu(thread,flowServices).status=="rejected","foreign mode owner rejected"); defaultMode.get()->Outer=flowPc.get();
+        defaultModeType.get()->Children=closerShowPause.get(); Check(OpenPauseMenu(thread,flowServices).status=="rejected","closer ShowMenu override cannot be bypassed"); defaultModeType.get()->Children=nullptr;
+        defaultMode.get()->bAllowPauseMenu=0; Check(OpenPauseMenu(thread,flowServices).status=="rejected","normal pause permission required"); defaultMode.get()->bAllowPauseMenu=1;
+        defaultMode.get()->bIsActive=0; Check(OpenPauseMenu(thread,flowServices).status=="rejected","inactive Default rejected"); defaultMode.get()->bIsActive=1;
+        flowVtable[72]=0x123401; Check(OpenPauseMenu(thread,flowServices).status=="rejected","non-owned mode route refused"); flowVtable[72]=0x123400;
+        auto flowOpened=OpenPauseMenu(thread,flowServices);
+        Check(flowOpened.status=="dispatched" && flowDispatchCalls==1 && flowOpened.payload.Get("postObservation").Get("browser").Bool("structuralSavePageSupported"),"normal pause enters once and observes asynchronous browser without claiming UI proof");
+        Check(OpenPauseMenu(thread,flowServices).status=="rejected","pause budget never resets");
+        Check(ObserveSaveFlow(thread).Get("context").String("focusedPanelTag")=="MenuBrowser","actual focused panel tag diagnoses conservative admission");
+        browserHandler.get()->bWaitForNextFrame=1; Check(OpenSaveMenu(thread,flowServices).status=="rejected","browser initial frame excluded"); browserHandler.get()->bWaitForNextFrame=0;
+        browserPages[0].Type=1; Check(OpenSaveMenu(thread,flowServices).status=="rejected","duplicate configured Save type refused"); browserPages[0].Type=0;
+        menuWorldInfo.get()->m_lstBrowserAlerts[1]=2; Check(OpenSaveMenu(thread,flowServices).status=="rejected","disabled native CanSave UI sample not overridden to enabled"); menuWorldInfo.get()->m_lstBrowserAlerts[1]=0;
+        pageOverrides[0].State=2; Check(OpenSaveMenu(thread,flowServices).status=="rejected","effective override disables otherwise-normal Save"); pageOverrides[0].State=0;
+        sfManagerProperty.get()->PropertyClass=managerType.get(); Check(OpenSaveMenu(thread,flowServices).status=="rejected","optional parameter exact Engine.BioSFManager declared class required"); sfManagerProperty.get()->PropertyClass=sfManagerType.get();
+        ObserveSaveFlow(thread);
+        for (int mutation : {1,2,3,4,5}) {
+            flowMutation=mutation;
+            auto refused=OpenSaveMenu(thread,flowServices);
+            Check(refused.status=="rejected" && refused.payload.String("reason")=="save-flow-changed-before-entry","final provider mutation catches page/override/mode/metadata changes");
+            flowMutation=0; browserPages[1].Type=1; pageOverrides[0].State=0; sfManagerProperty.get()->PropertyClass=sfManagerType.get();
+            modes.get()->CurrentMode=7; showSave.get()->FunctionFlags=0x824803;
+        }
+        auto saveOpened=OpenSaveMenu(thread,flowServices);
+        Check(saveOpened.status=="dispatched" && saveOpened.payload.Bool("parameterFrameIntact") && !saveOpened.payload.Bool("saveCompleted"),"bounded packed12 normal save opener only");
+        Check(saveOpened.payload.Get("postObservation").Get("save").Get("handler").String("class")=="SFXGame.SFXSFHandler_PCSave","configured save tag found from typed reachable handler");
+        Check(OpenSaveMenu(thread,flowServices).status=="rejected" && flowDispatchCalls==2,"save opener budget spent independently");
+        Check(mevr::json::Write(saveOpened.payload,0).size()<=14*1024,"action and post flow fit wire budget");
+        beginFlow(); flowBehavior=1;
+        auto pauseError=OpenPauseMenu(thread,flowServices);
+        Check(pauseError.status=="error" && engineReadCalls==flowReadsAtDispatch && OpenPauseMenu(thread,flowServices).status=="rejected","uncertain pause does not reread or retry");
+        for (int mode : {1,2,3,4}) {
+            beginFlow(); Check(OpenPauseMenu(thread,flowServices).status=="dispatched","fresh synthetic flow"); flowBehavior=mode;
+            auto bad=OpenSaveMenu(thread,flowServices);
+            Check(bad.status=="error" && engineReadCalls==flowReadsAtDispatch && OpenSaveMenu(thread,flowServices).status=="rejected","throw/adjacent canaries/optional-input mutation leaves save opener uncertain without reads or retry");
+        }
+        beginFlow(); OpenPauseMenu(thread,flowServices);
+        SetSaveFlowSampleHook(MutateFlowSample);
+        Check(!ObserveSaveFlow(thread).Bool("available"),"second-sample paused context change invalidates flow");
+        SetSaveFlowSampleHook(nullptr); menuWorldInfo.get()->bPlayersOnly=1;
+        Check(OpenSaveMenu(thread,flowServices).status=="rejected","invalidated comparison receipt cannot reenter after values restored");
+        beginFlow(); OpenPauseMenu(thread,flowServices);
+        auto originalSaveTag=browserPages[1].Tag; browserPages[1].Tag=otherPanel.get()->nmTag;
+        auto changedReadyBrowser=ObserveSaveFlow(thread);
+        Check(changedReadyBrowser.Get("browser").Bool("structuralSavePageSupported") &&
+              !changedReadyBrowser.Get("context").Bool("sameOpenedFlow"),"otherwise-valid changed Save tag invalidates existing browser receipt");
+        browserPages[1].Tag=originalSaveTag; ObserveSaveFlow(thread);
+        Check(OpenSaveMenu(thread,flowServices).status=="rejected","restoring original ready browser values cannot rearm invalidated flow");
+        beginFlow(); OpenPauseMenu(thread,flowServices); flowPc.get()->Pawn=pawn.get();
+        ObserveSaveFlow(thread); flowPc.get()->Pawn=resourcePawn.get();
+        Check(OpenSaveMenu(thread,flowServices).status=="rejected","observed pawn switch invalidates same-flow scope");
+        beginFlow(); modes.get()->GameModes.GetData()[0]=reinterpret_cast<USFXGameModeBase*>(1);
+        Check(!ObserveSaveFlow(thread).Bool("available"),"malformed mode pointer guarded"); modeObjects[0]=defaultMode.get();
+        beginFlow(); Check(OpenPauseMenu(thread,flowServices).status=="dispatched","flow recovers only in new synthetic epoch");
+        std::cout << "Representative save flow bytes: " << mevr::json::Write(ObserveSaveFlow(thread),0).size() << '\n';
         worldPtr = reinterpret_cast<UWorld*>(1);
         v = Observe(thread);
         Check(v.String("reason") == "guarded-engine-read-fault" && !Available(v, "objectCount"), "AV invalidates whole sample");

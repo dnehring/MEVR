@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -61,16 +62,18 @@ struct ObjectSample {
 struct ParameterSample {
     ObjectSample property;
     ObjectSample objectClass;
-    bool hasObjectClass{}, guiManagerClass{};
+    bool hasObjectClass{}, guiManagerClass{}, sfManagerClass{};
     char name[kNameBytes]{};
     int offset{}, elementSize{}, arrayDim{};
     std::uint64_t flags{};
     bool hasBoolMask{};
     std::uint32_t boolMask{};
 };
-enum class Declaration { Console, Fov, OpenLoad, AdvanceSplash, LoadGame };
+enum class Declaration { Console, Fov, OpenLoad, AdvanceSplash, LoadGame, ShowPause, ShowSave };
 char const* DeclarationName(Declaration d) {
     switch (d) {
+    case Declaration::ShowPause: return "SFXGame.SFXGameModeBase.ShowMenu";
+    case Declaration::ShowSave: return "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel";
     case Declaration::Console: return "Engine.PlayerController.ConsoleCommand";
     case Declaration::Fov: return "Engine.PlayerController.GetFOVAngle";
     case Declaration::LoadGame: return "SFXGame.SFXSFHandler_Load.LoadGame";
@@ -247,11 +250,11 @@ bool HasExpectedParameter(FunctionSample const& sample, char const* name, char c
 
 void ReadFunction(Table const& table, UObject const* controller, FunctionSample& out, Declaration declaration) {
     bool const fov = declaration == Declaration::Fov;
-    bool const menu = declaration == Declaration::OpenLoad || declaration == Declaration::AdvanceSplash || declaration == Declaration::LoadGame;
+    bool const menu = declaration != Declaration::Console && declaration != Declaration::Fov;
     char const* package = menu ? "SFXGame" : "Engine";
-    char const* ownerName = declaration == Declaration::LoadGame ? "SFXSFHandler_Load" : declaration == Declaration::OpenLoad ? "BioSFHandler_MainMenu" :
+    char const* ownerName = declaration == Declaration::ShowPause ? "SFXGameModeBase" : declaration == Declaration::ShowSave ? "BioSFHandler_BrowserWheel" : declaration == Declaration::LoadGame ? "SFXSFHandler_Load" : declaration == Declaration::OpenLoad ? "BioSFHandler_MainMenu" :
         declaration == Declaration::AdvanceSplash ? "BioSFHandler_PCSplash" : "PlayerController";
-    char const* functionName = declaration == Declaration::LoadGame ? "LoadGame" : declaration == Declaration::OpenLoad ? "MoveToLoadGui" :
+    char const* functionName = declaration == Declaration::ShowPause ? "ShowMenu" : declaration == Declaration::ShowSave ? "ShowSelectedPanel" : declaration == Declaration::LoadGame ? "LoadGame" : declaration == Declaration::OpenLoad ? "MoveToLoadGui" :
         declaration == Declaration::AdvanceSplash ? "AdvanceScreen" : fov ? "GetFOVAngle" : "ConsoleCommand";
     // Match Legacy's exact declaration owner, not a derived class's override.
     auto const* owner = controller->Class;
@@ -338,12 +341,13 @@ void ReadFunction(Table const& table, UObject const* controller, FunctionSample&
             out.reason = "invalid-bool-storage-or-mask";
             if (p.elementSize != 4 || p.boolMask == 0 || (p.boolMask & (p.boolMask - 1)) != 0) return;
         }
-        if (declaration == Declaration::LoadGame && Qualified(table, property->Class, "Core", "ObjectProperty")) {
+        if ((declaration == Declaration::LoadGame || declaration == Declaration::ShowSave) && Qualified(table, property->Class, "Core", "ObjectProperty")) {
             p.hasObjectClass = true;
             auto const* targetClass = static_cast<UObjectProperty const*>(property)->PropertyClass;
             out.reason = "object-parameter-class-unavailable";
             if (!ClassMetadata(table, targetClass) || !ReadObject(table, targetClass, "Core", "Class", p.objectClass)) return;
             p.guiManagerClass = Qualified(table, targetClass, "SFXGame", "MassEffectGuiManager");
+            p.sfManagerClass = Qualified(table, targetClass, "Engine", "BioSFManager");
         }
         ++out.parameterCount;
     }
@@ -357,7 +361,14 @@ void ReadFunction(Table const& table, UObject const* controller, FunctionSample&
         HasExpectedParameter(out, "Command", "Core.StrProperty", 0, 16, 0x400080) &&
         HasExpectedParameter(out, "bWriteToLog", "Core.BoolProperty", 0x10, 4, 0x90, 1) &&
         HasExpectedParameter(out, "ReturnValue", "Core.StrProperty", 0x14, 16, 0x400580);
-    if (declaration == Declaration::LoadGame) {
+    if (declaration == Declaration::ShowSave) {
+        bool managerClass = false;
+        for (unsigned i = 0; i < out.parameterCount; ++i)
+            if (std::strcmp(out.parameters[i].name, "oManager") == 0) managerClass = out.parameters[i].sfManagerClass;
+        out.layoutMatches = out.parmsSize == 12 && out.numParms == 2 && out.parameterCount == 2 && managerClass &&
+            HasExpectedParameter(out, "nPanel", "Core.IntProperty", 0, 4, 0x80) &&
+            HasExpectedParameter(out, "oManager", "Core.ObjectProperty", 4, 8, 0x90);
+    } else if (declaration == Declaration::LoadGame) {
         bool managerClass = false;
         for (unsigned i = 0; i < out.parameterCount; ++i)
             if (std::strcmp(out.parameters[i].name, "GuiMan") == 0) managerClass = out.parameters[i].guiManagerClass;
@@ -751,7 +762,7 @@ json::Value FunctionJson(FunctionSample const& sample, char const* failure, Decl
         out["numParms"] = static_cast<int>(sample.numParms);
         out["returnValueOffset"] = sample.returnOffset;
         out["functionFlags"] = std::format("0x{:08X}", sample.functionFlags);
-        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (declaration == Declaration::LoadGame ? 0x820003u : declaration == Declaration::OpenLoad ? 0x20002u : declaration == Declaration::AdvanceSplash || fov ? 0x20802u : 0x24400u);
+        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (declaration == Declaration::ShowPause ? 0x20202u : declaration == Declaration::ShowSave ? 0x824803u : declaration == Declaration::LoadGame ? 0x820003u : declaration == Declaration::OpenLoad ? 0x20002u : declaration == Declaration::AdvanceSplash || fov ? 0x20802u : 0x24400u);
         out["nativeIndex"] = static_cast<int>(sample.nativeIndex);
     }
     if (fov) {
@@ -769,7 +780,7 @@ json::Value FunctionJson(FunctionSample const& sample, char const* failure, Decl
         item["elementSize"] = p.elementSize;
         item["arrayDim"] = p.arrayDim;
         item["propertyFlags"] = std::format("0x{:016X}", p.flags);
-        if (p.hasObjectClass) { item["objectClass"] = ObjectJson(p.objectClass, nullptr); item["objectClassIsGuiManager"] = p.guiManagerClass; }
+        if (p.hasObjectClass) { item["objectClass"] = ObjectJson(p.objectClass, nullptr); item["objectClassIsGuiManager"] = p.guiManagerClass; item["objectClassIsBioSFManager"] = p.sfManagerClass; }
         if (p.hasBoolMask) item["boolMask"] = std::format("0x{:08X}", p.boolMask);
         parameters.Push(std::move(item));
     }
@@ -1362,7 +1373,7 @@ bool SameFunction(FunctionSample const& a, FunctionSample const& b) {
     for (unsigned i = 0; i < a.parameterCount; ++i) {
         auto const& x = a.parameters[i]; auto const& y = b.parameters[i];
         if (!SameObjectSample(x.property, y.property) || !SameObjectSample(x.objectClass, y.objectClass) ||
-            x.hasObjectClass != y.hasObjectClass || x.guiManagerClass != y.guiManagerClass ||
+            x.hasObjectClass != y.hasObjectClass || x.guiManagerClass != y.guiManagerClass || x.sfManagerClass != y.sfManagerClass ||
             x.offset != y.offset || x.elementSize != y.elementSize || x.arrayDim != y.arrayDim || x.flags != y.flags ||
             x.hasBoolMask != y.hasBoolMask || x.boolMask != y.boolMask || std::strcmp(x.name, y.name) != 0) return false;
     }
@@ -1669,6 +1680,340 @@ json::Value ObserveResources(std::uint32_t gameThreadId) {
     out["allResourcesAvailable"] = allAvailable;
     return out;
 }
+
+namespace {
+constexpr unsigned kMaxFlowModes = 32, kMaxFlowPages = 32, kMaxFlowOverrides = 64;
+struct FlowPage { char tag[kNameBytes]{}; unsigned type{}; std::uintptr_t handler{}; int label{}; };
+struct FlowOverride { unsigned page{}, state{}; };
+struct SaveFlowSample {
+    MenuSample menu;
+    ObjectSample modes, mode, focusedPanel;
+    char focusedTag[kNameBytes]{};
+    MenuPanel browser, save;
+    FunctionSample showPause;
+    SlotSample modeSlot, browserSlot;
+    bool available{}, playersOnly{}, browserAllowed{}, modeActive{}, allowPause{}, waitFrame{};
+    bool pagesComplete{}, overridesComplete{}, saveListBounded{};
+    char const* reason{"save-flow-context-unavailable"};
+    unsigned currentMode{}, modeCount{}, modeCapacity{}, pageCount{}, pageCapacity{}, overrideCount{}, overrideCapacity{};
+    unsigned rawSaveState{}, effectiveSaveState{}, saveMatches{}, saveRow{}, saveCount{}, saveCapacity{};
+    int maxSaves{}, pendingOverwrite{};
+    std::uintptr_t modesData{}, pagesData{}, overridesData{}, savesData{};
+    FlowPage pages[kMaxFlowPages]{};
+    FlowOverride overrides[kMaxFlowOverrides]{};
+};
+static_assert(std::is_trivially_destructible_v<SaveFlowSample>);
+std::atomic_bool gPauseMenuEntered{false}, gSaveMenuEntered{false};
+// Single verified game-thread owner. These copies are comparison receipts only;
+// every call traverses live roots again, never dereferences a cached pointer.
+SaveFlowSample gPauseFlow{}, gBrowserReceipt{};
+bool gPauseFlowValid{}, gBrowserReceiptValid{};
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+testing::MenuDispatcher gSaveFlowDispatcher{};
+void (*gSaveFlowSampleHook)(){};
+#endif
+void ReadSaveFlow(void* context) {
+    auto& s = *static_cast<SaveFlowSample*>(context);
+    ReadMenu(&s.menu);
+    if (!s.menu.contextAvailable || !s.menu.worldLinksKnown || !s.menu.root.pawn.available) return;
+    auto const* objects = UObject::GObjObjects;
+    if (objects == nullptr || objects->Count() != s.menu.root.objectCount || !BoundedArray(*objects, kMaxObjects)) return;
+    Table const table{objects->GetData(), objects->Count()};
+    auto const* pc = reinterpret_cast<ABioPlayerController const*>(s.menu.root.player.address);
+    s.reason = "save-flow-controller-class-unavailable";
+    if (!IsA(table, pc, "SFXGame", "BioPlayerController")) return;
+    auto const* pawn = reinterpret_cast<APawn const*>(s.menu.root.pawn.address);
+    s.reason = "save-flow-player-pawn-reciprocal-or-class-invalid";
+    if (!IsA(table, pawn, "SFXGame", "SFXPawn_Player") || pawn->Controller != pc ||
+        pc->Player != reinterpret_cast<ULocalPlayer const*>(s.menu.root.localPlayer.address) || pawn->WorldInfo != pc->WorldInfo) return;
+    auto const* manager = reinterpret_cast<UMassEffectGuiManager const*>(s.menu.manager.address);
+    s.reason = "save-flow-manager-player-disagrees";
+    if (manager->Player != pc) return;
+    auto const* wi = manager->oBioWorldInfo;
+    s.playersOnly = wi->bPlayersOnly; s.browserAllowed = wi->m_bAllowBrowserWheel;
+    auto const* modes = pc->GameModeManager2;
+    s.reason = "game-mode-manager-unavailable";
+    if (!ReadObject(table, modes, "SFXGame", "SFXGameModeManager", s.modes)) return;
+    s.reason = "game-mode-array-or-current-index-invalid";
+    if (!BoundedArray(modes->GameModes, kMaxFlowModes)) return;
+    s.modeCount = modes->GameModes.Count(); s.modeCapacity = modes->GameModes.Capacity();
+    s.modesData = reinterpret_cast<std::uintptr_t>(modes->GameModes.GetData()); s.currentMode = modes->CurrentMode;
+    if (s.currentMode >= s.modeCount) return;
+    auto const* mode = modes->GameModes.GetData()[s.currentMode];
+    s.reason = "selected-game-mode-unavailable-or-foreign";
+    if (!ReadObject(table, mode, "SFXGame", "SFXGameModeBase", s.mode) || mode->Outer != pc) return;
+    s.modeActive = mode->bIsActive; s.allowPause = mode->bAllowPauseMenu;
+    if (s.currentMode == 0) { ReadFunction(table, mode, s.showPause, Declaration::ShowPause); ReadValidatedSlot(s.mode, s.modeSlot); }
+    for (unsigned i = 0; i < s.menu.panelCount; ++i) {
+        auto const* panel = manager->m_lstPanels.GetData()[i];
+        char tag[kNameBytes]{};
+        if (!NameText(panel->nmTag, tag)) { s.reason = "save-flow-panel-tag-unavailable"; return; }
+        if (manager->m_FocusPanel == panel) {
+            if (!ReadObject(table, panel, "Engine", "BioSFPanel", s.focusedPanel)) return;
+            std::memcpy(s.focusedTag, tag, sizeof(tag));
+        }
+        if (std::strcmp(tag, "MenuBrowser") == 0) {
+            s.reason = "ambiguous-or-invalid-pause-browser";
+            if (s.browser.panel.available || !PanelContext(table, panel, manager, "BioSFHandler_PCPauseMenu", s.browser, false) ||
+                std::strcmp(s.browser.handler.className, "SFXGame.BioSFHandler_PCPauseMenu") != 0) return;
+        }
+        auto const* handler = panel->m_DefaultHandler;
+        // The configured Save tag is discovered from the reachable concrete
+        // PCSave handler; do not confuse PCLoad (a Save subclass) with Save UI.
+        if (handler != nullptr && table.Listed(handler, true) && ClassMetadata(table, handler->Class) &&
+            Qualified(table, handler->Class, "SFXGame", "SFXSFHandler_PCSave")) {
+            s.reason = "ambiguous-or-invalid-save-panel";
+            if (s.save.panel.available || !PanelContext(table, panel, manager, "SFXSFHandler_Save", s.save, true)) return;
+            auto const* save = static_cast<USFXSFHandler_Save const*>(handler);
+            s.save.guiMode = save->GuiMode; s.save.waitingMessage = save->bWaitingOnMsgBox;
+            s.save.enumerating = save->bEnumeratingSaves; s.save.checkingComplete = save->bCheckingDataComplete;
+            s.maxSaves = save->MaxSaves; s.pendingOverwrite = save->PendingOverwriteIndex;
+            s.saveCount = save->SaveList.Count(); s.saveCapacity = save->SaveList.Capacity();
+            s.savesData = reinterpret_cast<std::uintptr_t>(save->SaveList.GetData());
+            s.saveListBounded = BoundedArray(save->SaveList, 512);
+        }
+    }
+    if (s.browser.handler.available) {
+        auto const* browser = reinterpret_cast<UBioSFHandler_PCPauseMenu const*>(s.browser.handler.address);
+        s.reason = "browser-cache-disagrees";
+        if (manager->m_oBWHandler != nullptr && manager->m_oBWHandler != browser) return;
+        s.waitFrame = browser->bWaitForNextFrame;
+        ReadFunction(table, browser, s.browser.function, Declaration::ShowSave);
+        ReadValidatedSlot(s.browser.handler, s.browserSlot);
+        s.reason = "browser-pages-invalid-or-limit";
+        if (!BoundedArray(browser->lstPages, kMaxFlowPages)) return;
+        s.pageCount = browser->lstPages.Count(); s.pageCapacity = browser->lstPages.Capacity();
+        s.pagesData = reinterpret_cast<std::uintptr_t>(browser->lstPages.GetData());
+        for (unsigned i = 0; i < s.pageCount; ++i) {
+            auto const& row = browser->lstPages.GetData()[i]; auto& copy = s.pages[i];
+            s.reason = "browser-page-name-or-type-invalid";
+            if (row.Type >= 9 || !NameText(row.Tag, copy.tag)) return;
+            copy.type = row.Type; copy.handler = reinterpret_cast<std::uintptr_t>(row.oHandler); copy.label = row.srLabel;
+            if (row.Type == 1) { ++s.saveMatches; s.saveRow = i; }
+        }
+        s.pagesComplete = true;
+        s.reason = "browser-overrides-invalid-or-limit";
+        if (!BoundedArray(wi->SubPageStateOverrides, kMaxFlowOverrides)) return;
+        s.overrideCount = wi->SubPageStateOverrides.Count(); s.overrideCapacity = wi->SubPageStateOverrides.Capacity();
+        s.overridesData = reinterpret_cast<std::uintptr_t>(wi->SubPageStateOverrides.GetData());
+        s.rawSaveState = wi->m_lstBrowserAlerts[1]; s.effectiveSaveState = static_cast<int>(s.rawSaveState);
+        if (s.rawSaveState > 2) return;
+        for (unsigned i = 0; i < s.overrideCount; ++i) {
+            auto const& row = wi->SubPageStateOverrides.GetData()[i];
+            if (row.Page >= 9 || row.State > 2) return;
+            s.overrides[i] = {row.Page, row.State};
+            // InitializeBrowser never lets an override re-enable Save when
+            // its game-owned CanSave sample disabled it. Later matching wins.
+            if (row.Page == 1 && s.rawSaveState == 0) s.effectiveSaveState = row.State;
+        }
+        s.overridesComplete = true;
+    }
+    s.available = true; s.reason = "structural-save-flow-sample-only";
+}
+bool SameFlowScope(SaveFlowSample const& a, SaveFlowSample const& b) {
+    auto const& x = a.menu; auto const& y = b.menu;
+    return a.available && b.available && SameObjectSample(x.root.engine, y.root.engine) && SameObjectSample(x.root.world, y.root.world) &&
+        SameObjectSample(x.root.localPlayer, y.root.localPlayer) && SameObjectSample(x.root.player, y.root.player) &&
+        SameObjectSample(x.root.pawn, y.root.pawn) && SameObjectSample(x.viewport, y.viewport) && SameObjectSample(x.manager, y.manager) &&
+        SameObjectSample(x.worldInfo, y.worldInfo) && SameObjectSample(x.controllerWorldInfo, y.controllerWorldInfo) && SameObjectSample(a.modes, b.modes) &&
+        a.modesData == b.modesData && a.modeCount == b.modeCount && a.modeCapacity == b.modeCapacity;
+}
+bool SameFlowPanel(MenuPanel const& a, MenuPanel const& b) {
+    return SameObjectSample(a.panel, b.panel) && SameObjectSample(a.handler, b.handler) && SameObjectSample(a.worldInfo, b.worldInfo) &&
+        a.visible == b.visible && a.initialized == b.initialized && a.removing == b.removing && a.focused == b.focused &&
+        a.inputDisabled == b.inputDisabled && a.eventsDisabled == b.eventsDisabled && a.guiMode == b.guiMode &&
+        a.waitingMessage == b.waitingMessage && a.enumerating == b.enumerating && a.checkingComplete == b.checkingComplete && SameFunction(a.function, b.function);
+}
+bool SameFlow(SaveFlowSample const& a, SaveFlowSample const& b) {
+    if (!SameFlowScope(a,b) || !SameObjectSample(a.mode,b.mode) || !SameObjectSample(a.focusedPanel,b.focusedPanel) ||
+        std::strcmp(a.focusedTag,b.focusedTag) != 0 || a.currentMode != b.currentMode || a.modeActive != b.modeActive ||
+        a.allowPause != b.allowPause || a.playersOnly != b.playersOnly || a.browserAllowed != b.browserAllowed ||
+        a.menu.focus != b.menu.focus || a.menu.panelsData != b.menu.panelsData || a.menu.panelCount != b.menu.panelCount ||
+        a.modeCount != b.modeCount || a.modeCapacity != b.modeCapacity || a.modesData != b.modesData || a.waitFrame != b.waitFrame ||
+        !SameFlowPanel(a.browser,b.browser) || !SameFlowPanel(a.save,b.save) || !SameFunction(a.showPause,b.showPause) ||
+        a.modeSlot.object != b.modeSlot.object || a.modeSlot.vtable != b.modeSlot.vtable || a.modeSlot.target != b.modeSlot.target ||
+        a.browserSlot.object != b.browserSlot.object || a.browserSlot.vtable != b.browserSlot.vtable || a.browserSlot.target != b.browserSlot.target ||
+        a.pageCount != b.pageCount || a.pageCapacity != b.pageCapacity || a.pagesData != b.pagesData || a.pagesComplete != b.pagesComplete ||
+        a.overrideCount != b.overrideCount || a.overrideCapacity != b.overrideCapacity || a.overridesData != b.overridesData ||
+        a.overridesComplete != b.overridesComplete || a.rawSaveState != b.rawSaveState || a.effectiveSaveState != b.effectiveSaveState ||
+        a.saveMatches != b.saveMatches || a.saveRow != b.saveRow || a.saveListBounded != b.saveListBounded ||
+        a.saveCount != b.saveCount || a.saveCapacity != b.saveCapacity || a.savesData != b.savesData ||
+        a.maxSaves != b.maxSaves || a.pendingOverwrite != b.pendingOverwrite) return false;
+    for (unsigned i = 0; i < a.pageCount; ++i)
+        if (a.pages[i].type != b.pages[i].type || a.pages[i].handler != b.pages[i].handler || a.pages[i].label != b.pages[i].label ||
+            std::strcmp(a.pages[i].tag,b.pages[i].tag) != 0) return false;
+    for (unsigned i = 0; i < a.overrideCount; ++i)
+        if (a.overrides[i].page != b.overrides[i].page || a.overrides[i].state != b.overrides[i].state) return false;
+    return true;
+}
+bool FlowMetadata(FunctionSample const& f, unsigned flags) {
+    return f.function.available && f.parametersComplete && f.layoutMatches && f.nativeIndex == 0 && f.functionFlags == flags;
+}
+bool PauseReady(SaveFlowSample const& s) {
+    return s.available && s.currentMode == 0 && s.modeActive && s.allowPause && s.browserAllowed && !s.playersOnly &&
+        std::strcmp(s.mode.className,"SFXGame.SFXGameModeDefault") == 0 && s.menu.focus == 0 &&
+        !s.browser.panel.available && !s.save.panel.available && FlowMetadata(s.showPause,0x20202) && s.modeSlot.available;
+}
+bool BrowserReady(SaveFlowSample const& s) {
+    return s.available && s.currentMode == 7 && s.modeActive && s.playersOnly && s.browserAllowed && PanelInteractive(s.browser) &&
+        !s.waitFrame && s.pagesComplete && s.overridesComplete && s.saveMatches == 1 && s.rawSaveState == 0 && s.effectiveSaveState == 0 &&
+        FlowMetadata(s.browser.function,0x824803) && s.browserSlot.available;
+}
+json::Value SaveFlowJson(SaveFlowSample const& s, char const* failure) {
+    auto out = json::Value::Object(); out["schemaVersion"] = 1; out["game"] = "LE2";
+    bool const valid = failure == nullptr && s.available;
+    out["available"] = valid; out["reason"] = failure != nullptr ? failure : s.reason;
+    out["saveNewCapability"] = false; out["saveCompleted"] = false; out["durableObjectIdentity"] = false;
+    out["uiInitializationProof"] = "external-review-required-not-inferred-from-alert-zero";
+    out["imageContentsIndependentlyVerified"] = false;
+    out["pauseEntrySpent"] = gPauseMenuEntered.load(); out["saveMenuEntrySpent"] = gSaveMenuEntered.load();
+    if (!valid) return out;
+    auto context = json::Value::Object();
+    context["world"] = ObjectJson(s.menu.root.world,nullptr); context["player"] = ObjectJson(s.menu.root.player,nullptr);
+    context["pawn"] = ObjectJson(s.menu.root.pawn,nullptr); context["manager"] = ObjectJson(s.menu.manager,nullptr);
+    context["modeManager"] = ObjectJson(s.modes,nullptr); context["mode"] = ObjectJson(s.mode,nullptr);
+    context["currentMode"] = static_cast<int>(s.currentMode); context["modeCount"] = static_cast<int>(s.modeCount); context["modeActive"] = s.modeActive;
+    context["allowPauseMenu"] = s.allowPause; context["browserAllowed"] = s.browserAllowed; context["playersOnly"] = s.playersOnly;
+    context["sameOpenedFlow"] = gPauseFlowValid && SameFlowScope(gPauseFlow,s);
+    context["focusPresent"] = s.menu.focus != 0; context["focusedPanel"] = ObjectJson(s.focusedPanel,nullptr);
+    if (s.focusedPanel.available) context["focusedPanelTag"] = s.focusedTag;
+    out["context"] = std::move(context);
+    out["pauseStructurallySupported"] = PauseReady(s);
+    out["showMenu"] = FunctionJson(s.showPause,nullptr,Declaration::ShowPause);
+    auto slotJson=[](SlotSample const& slot) {
+        auto value=json::Value::Object(); value["available"]=slot.available; value["reason"]=slot.reason;
+        value["slotIndex"]=72; value["dispatchCapability"]=false;
+        if (slot.available) { value["target"]=std::format("0x{:X}",slot.target); value["vtable"]=std::format("0x{:X}",slot.vtable); }
+        return value;
+    };
+    out["modeProcessEventSlot"] = slotJson(s.modeSlot);
+    auto browser = MenuPanelJson(s.browser,nullptr); browser["waitForNextFrame"] = s.waitFrame;
+    browser["pagesComplete"] = s.pagesComplete; browser["pageCount"] = static_cast<int>(s.pageCount); browser["saveTypeMatches"] = static_cast<int>(s.saveMatches);
+    browser["overridesComplete"] = s.overridesComplete; browser["overrideCount"] = static_cast<int>(s.overrideCount);
+    browser["rawSaveState"] = static_cast<int>(s.rawSaveState); browser["effectiveSaveState"] = static_cast<int>(s.effectiveSaveState);
+    browser["structuralSavePageSupported"] = BrowserReady(s);
+    if (s.saveMatches == 1) { browser["saveRow"] = static_cast<int>(s.saveRow); browser["saveTag"] = s.pages[s.saveRow].tag; }
+    browser["showSelectedPanel"] = FunctionJson(s.browser.function,nullptr,Declaration::ShowSave);
+    browser["processEventSlot"] = slotJson(s.browserSlot);
+    out["browser"] = std::move(browser);
+    auto save = MenuPanelJson(s.save,nullptr); save["guiMode"] = static_cast<int>(s.save.guiMode); save["enumeratingSaves"] = s.save.enumerating;
+    save["checkingDataComplete"] = s.save.checkingComplete; save["waitingOnMessageBox"] = s.save.waitingMessage;
+    save["listHeaderBounded"] = s.saveListBounded; save["observedRowCount"] = static_cast<std::uint64_t>(s.saveCount); save["maxSaves"] = s.maxSaves;
+    save["pendingOverwriteIndex"] = s.pendingOverwrite; save["uiInputStateProof"] = "panel-flags-do-not-prove-gfx-save-input-enabled";
+    out["save"] = std::move(save);
+    return out;
+}
+json::Value BoundSaveFlow(json::Value out) {
+    if (json::Write(out,0).size() <= kSaveMenuPayloadBytes) return out;
+    auto compact = json::Value::Object(); compact["available"] = false; compact["reason"] = "save-flow-payload-budget-exceeded";
+    compact["saveNewCapability"] = false; return compact;
+}
+struct alignas(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms) SaveMenuFrame {
+    unsigned char bytes[20]{}; unsigned char input[12]{};
+    explicit SaveMenuFrame(unsigned row) {
+        UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms p{}; p.nPanel = static_cast<int>(row); p.oManager = nullptr;
+        std::memcpy(input,&p,12); std::memcpy(bytes+4,input,12);
+        std::uint32_t before=0x73A5C1E2, after=0xB692D48F; std::memcpy(bytes,&before,4); std::memcpy(bytes+16,&after,4);
+    }
+    bool Intact() const { std::uint32_t a{},b{}; std::memcpy(&a,bytes,4); std::memcpy(&b,bytes+16,4);
+        return a==0x73A5C1E2 && b==0xB692D48F && std::memcmp(input,bytes+4,12)==0; }
+};
+static_assert(sizeof(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms)==12);
+static_assert(offsetof(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms,oManager)==4);
+static_assert(alignof(SaveMenuFrame)>=alignof(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms));
+static_assert(4 % alignof(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms)==0);
+void DispatchSaveFlow(SaveFlowSample const& s, SaveMenuFrame& frame, bool pause) {
+    auto object=pause?s.mode.address:s.browser.handler.address;
+    auto function=pause?s.showPause.function.address:s.browser.function.function.address;
+    void* parameters=pause?nullptr:frame.bytes+4;
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+    gSaveFlowDispatcher(reinterpret_cast<void*>(object),reinterpret_cast<void*>(function),parameters);
+#else
+    reinterpret_cast<UObject*>(object)->ProcessEvent(reinterpret_cast<UFunction*>(function),parameters,nullptr);
+#endif
+}
+} // namespace
+
+json::Value ObserveSaveFlow(std::uint32_t thread) {
+    if (thread==0 || GetCurrentThreadId()!=thread) return SaveFlowJson({},"not-on-verified-game-thread");
+    auto first=std::make_unique<SaveFlowSample>(); auto after=std::make_unique<SaveFlowSample>();
+    char const* failure=nullptr;
+    if (!ue3::runtime::Guarded(ReadSaveFlow,first.get())) failure="guarded-save-flow-read-fault";
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+    if (gSaveFlowSampleHook) gSaveFlowSampleHook();
+#endif
+    if (failure==nullptr && first->available && (!ue3::runtime::Guarded(ReadSaveFlow,after.get()) || !SameFlow(*first,*after)))
+        failure="save-flow-changed-or-reread-failed";
+    if (failure || !gPauseFlowValid || !SameFlowScope(gPauseFlow,*first)) {
+        gBrowserReceiptValid=false;
+        if (gPauseFlowValid && (failure || !SameFlowScope(gPauseFlow,*first))) gPauseFlowValid=false;
+    } else if (BrowserReady(*first)) {
+        if (gBrowserReceiptValid && !SameFlow(gBrowserReceipt,*first)) {
+            gBrowserReceiptValid=false; gPauseFlowValid=false;
+        } else { gBrowserReceipt=*first; gBrowserReceiptValid=true; }
+    } else if (gBrowserReceiptValid) { gBrowserReceiptValid=false; gPauseFlowValid=false; }
+    auto out=BoundSaveFlow(SaveFlowJson(*first,failure));
+    if (!out.Bool("available")) gBrowserReceiptValid=false;
+    return out;
+}
+namespace {
+ProbeResult SaveFlowAction(std::uint32_t thread, ObserverServices const& services, bool pause) {
+    ProbeResult result{"rejected",json::Value::Object()}; auto& out=result.payload;
+    out["schemaVersion"]=1; out["game"]="LE2"; out["action"]=pause?"open-pause-menu":"open-save-menu";
+    out["entered"]=false; out["saveCompleted"]=false; out["saveNewCapability"]=false;
+    auto reject=[&](char const* reason){out["reason"]=reason; return result;};
+    auto& latch=pause?gPauseMenuEntered:gSaveMenuEntered;
+    if (thread==0 || GetCurrentThreadId()!=thread) return reject("not-on-verified-game-thread");
+    if (latch.load()) return reject("process-save-flow-entry-already-spent");
+    if (!services.inspectTarget || !services.readHookSnapshot) return reject("host-target-services-unavailable");
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+    if (!gSaveFlowDispatcher) return reject("test-dispatcher-not-supplied");
+#endif
+    auto first=std::make_unique<SaveFlowSample>(); auto after=std::make_unique<SaveFlowSample>();
+    if (!ue3::runtime::Guarded(ReadSaveFlow,first.get())) return reject("guarded-save-flow-read-fault");
+    if (pause?!PauseReady(*first):!BrowserReady(*first)) return reject("save-flow-structural-state-or-metadata-unsupported");
+    if (!pause && (!gPauseFlowValid || !gBrowserReceiptValid || !SameFlowScope(gPauseFlow,*first) || !SameFlow(gBrowserReceipt,*first)))
+        return reject("same-opened-flow-and-current-browser-observation-required");
+    auto const& slot=pause?first->modeSlot:first->browserSlot;
+    auto hook=services.readHookSnapshot(); auto target=services.inspectTarget(slot.target);
+    if (!ProbeTargetValid(target,hook,slot.target) || slot.target!=hook.target || !target.sameAsBase)
+        return reject("save-flow-receiver-not-exact-owned-base");
+    auto current=services.readHookSnapshot();
+    if (!ProbeTargetValid(target,current,slot.target) || hook.target!=current.target || hook.detour!=current.detour || hook.nextHop!=current.nextHop)
+        return reject("owned-hook-chain-changed-before-entry");
+    SaveMenuFrame frame(first->saveRow);
+    out["function"]=FunctionJson(pause?first->showPause:first->browser.function,nullptr,pause?Declaration::ShowPause:Declaration::ShowSave);
+    out["route"]="exact-owned-base"; out["parameterBytes"]=pause?0:12;
+    out["uiReviewAttestation"]=pause?"not-applicable":"explicit-request-after-external-review-not-host-image-proof";
+    if (!ue3::runtime::Guarded(ReadSaveFlow,after.get()) || !SameFlow(*first,*after)) return reject("save-flow-changed-before-entry");
+    bool expected=false; if (!latch.compare_exchange_strong(expected,true)) return reject("process-save-flow-entry-already-spent");
+    bool returned=false;
+    try { DispatchSaveFlow(*after,frame,pause); returned=true; } catch (...) { /* C++ only; no native SEH recovery. */ }
+    bool intact=pause || frame.Intact();
+    out["entered"]=true; out["entrySpent"]=true; out["returnedNormally"]=returned; out["parameterCanariesApplicable"]=!pause;
+    if (!pause) out["parameterFrameIntact"]=intact;
+    out["retryAllowed"]=false; gBrowserReceiptValid=false;
+    if (!returned || !intact) {
+        gPauseFlowValid=false; result.status="error"; out["reason"]="entered-save-flow-action-uncertain-no-retry";
+        out["postObservation"]=json::Value::Object(); out["postObservation"]["reason"]="unavailable-after-uncertain-entry";
+    } else {
+        result.status="dispatched"; out["reason"]="normal-return-ui-transition-unverified";
+        if (pause) { gPauseFlow=*first; gPauseFlowValid=true; }
+        out["postObservation"]=ObserveSaveFlow(thread);
+    }
+    result.payload=BoundSaveFlow(std::move(out)); return result;
+}
+} // namespace
+ProbeResult OpenPauseMenu(std::uint32_t thread, ObserverServices const& services) { return SaveFlowAction(thread,services,true); }
+ProbeResult OpenSaveMenu(std::uint32_t thread, ObserverServices const& services) { return SaveFlowAction(thread,services,false); }
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+void testing::ResetSaveFlow(MenuDispatcher dispatcher) {
+    gPauseMenuEntered.store(false); gSaveMenuEntered.store(false); gPauseFlowValid=gBrowserReceiptValid=false;
+    gSaveFlowDispatcher=dispatcher; gSaveFlowSampleHook=nullptr;
+}
+void testing::SetSaveFlowSampleHook(void (*hook)()) { gSaveFlowSampleHook=hook; }
+#endif
+
 
 json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic::Snapshot const* hostSnapshot,
                     ObserverServices const* services) {
