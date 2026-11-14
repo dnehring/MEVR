@@ -19,6 +19,7 @@ GATES = ('native', 'vr', 'visual', 'headset', 'performance', 'campaign')
 KINDS = ('runtime-state', 'input-trace', 'save-inspection', 'image', 'video', 'timing', 'log')
 RELOAD_CASES = ('empty', 'partial', 'insufficient-reserve', 'exact-reserve',
                 'surplus-reserve', 'no-reserve', 'full-magazine')
+PROBE_CASES = ('one-probe', 'zero-probes', 'scan-hold', 'anomaly')
 IDENTITY = ('runId', 'caseId', 'scenarioSha256', 'baseSaveSha256', 'recipeSha256',
             'preparedSaveSha256', 'candidateCommit', 'gameVersion')
 
@@ -154,7 +155,8 @@ def validate(s, for_run=False):
             if not isinstance(check, dict):
                 continue
             kind = check.get('kind')
-            need(kind in ('compare', 'delta', 'sum-equal', 'finite-reload-transfer', 'review'), f'{aid}: invalid check kind')
+            need(kind in ('compare', 'delta', 'sum-equal', 'finite-reload-transfer', 'orbital-probe-samples', 'review'),
+                 f'{aid}: invalid check kind')
             refs = []
             if kind == 'compare':
                 refs = [check.get('left')]
@@ -167,12 +169,13 @@ def validate(s, for_run=False):
             elif kind == 'delta':
                 refs = [check.get('before'), check.get('after')]
                 need(_number(check.get('expected')), f'{aid}: finite expected delta required')
-            elif kind == 'finite-reload-transfer':
+            elif kind in ('finite-reload-transfer', 'orbital-probe-samples'):
                 refs = [check.get('before'), check.get('after')]
-                need(isinstance(variants, list) and all(x in RELOAD_CASES for x in variants),
-                     f'{aid}: reload transfer requires an ordinary finite-ammo variant')
+                cases = RELOAD_CASES if kind == 'finite-reload-transfer' else PROBE_CASES
+                need(isinstance(variants, list) and all(x in cases for x in variants),
+                     f'{aid}: check requires a supported variant')
                 need(all(_reference(ref) and slots.get(ref['artifact']) == 'runtime-state' for ref in refs),
-                     f'{aid}: reload transfer requires weapon runtime observations')
+                     f'{aid}: check requires runtime observations')
             elif kind == 'sum-equal':
                 left, right = check.get('left'), check.get('right')
                 need(isinstance(left, list) and bool(left) and isinstance(right, list) and bool(right), f'{aid}: nonempty sum terms required')
@@ -264,6 +267,40 @@ def check_reload_transfer(before, after, variant):
     transfer = min(used, reserve)
     if counts(after) != (capacity, used - transfer, loaded + transfer, reserve - transfer):
         raise ValueError(f'observed ammo does not match exact finite reload transfer of {transfer}')
+
+
+def check_orbital_probe_samples(before, after, variant):
+    """Compare endpoints around one action on a sampled orbital target."""
+    first, last = before['orbital'], after['orbital']
+    for sample in (first, last):
+        if type(sample['currentMode']) is not int or sample['currentMode'] != 10:
+            raise ValueError('probe samples require orbital mode')
+        if type(sample['activeWorld']) is not int or sample['activeWorld'] < 0:
+            raise ValueError('probe samples require a valid active world')
+        planet = sample['planet']
+        identity = planet['identity']
+        if (not _text(identity['class']) or type(identity['index']) is not int or identity['index'] < 0
+                or type(planet['tableId']) is not int):
+            raise ValueError('probe samples require a valid planet identity')
+        for key in ('probeActive', 'impactActive', 'rescaling', 'exiting'):
+            if sample[key] is not False:
+                raise ValueError(f'probe endpoints require inactive {key}')
+    if (first['activeWorld'] != last['activeWorld']
+            or first['planet']['identity'] != last['planet']['identity']
+            or first['planet']['tableId'] != last['planet']['tableId']):
+        raise ValueError('probe endpoint planet identity differs')
+    scanning = variant != 'scan-hold'
+    if first['scanning'] is not scanning or (variant == 'scan-hold' and last['scanning'] is not True):
+        raise ValueError('scan state does not establish the selected probe variant')
+    start, end = before['resources']['probes'], after['resources']['probes']
+    if any(type(value) is not int or value < 0 for value in (start, end)):
+        raise ValueError('probe balances must be nonnegative integers')
+    if ((variant == 'one-probe' and start != 1) or (variant == 'zero-probes' and start != 0)
+            or (variant in ('scan-hold', 'anomaly') and start == 0)):
+        raise ValueError('starting probe balance does not establish the selected variant')
+    cost = int(variant in ('one-probe', 'anomaly'))
+    if start - end != cost:
+        raise ValueError(f'observed probe cost differs from expected {cost}')
 
 
 def check_start(scenario, runtime_state, observations=None):
@@ -429,6 +466,9 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
                         passed = after - before == check['expected']
                     elif check['kind'] == 'finite-reload-transfer':
                         check_reload_transfer(observed(check['before']), observed(check['after']), e['caseId'])
+                        passed = True
+                    elif check['kind'] == 'orbital-probe-samples':
+                        check_orbital_probe_samples(observed(check['before']), observed(check['after']), e['caseId'])
                         passed = True
                     else:
                         left, right = [observed(x) for x in check['left']], [observed(x) for x in check['right']]

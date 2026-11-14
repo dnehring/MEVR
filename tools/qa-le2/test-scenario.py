@@ -93,6 +93,24 @@ class ScenarioTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'draft'):
                 scenario.load(path, for_run=True)
 
+    def test_orbital_probe_requires_same_planet_and_settled_endpoints(self):
+        orbital = {'currentMode': 10, 'activeWorld': 42, 'scanning': True,
+                   'planet': {'identity': {'class': 'Synthetic.Planet', 'index': 12}, 'tableId': 99},
+                   'probeActive': False, 'impactActive': False, 'rescaling': False, 'exiting': False}
+        before = {'orbital': orbital, 'resources': {'probes': 1}}
+        after = {'orbital': dict(orbital, scanning=False), 'resources': {'probes': 0}}
+        scenario.check_orbital_probe_samples(before, after, 'one-probe')
+        for field, value in (('impactActive', True), ('probeActive', True), ('activeWorld', 43),
+                             ('planet', dict(orbital['planet'], identity={'class': 'Synthetic.Planet', 'index': 13}))):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                scenario.check_orbital_probe_samples(before, dict(after, orbital=dict(after['orbital'], **{field: value})), 'one-probe')
+        empty = dict(before, resources={'probes': 0})
+        scenario.check_orbital_probe_samples(empty, after, 'zero-probes')
+        idle = dict(before, orbital=dict(orbital, scanning=False))
+        scenario.check_orbital_probe_samples(idle, before, 'scan-hold')
+        with self.assertRaisesRegex(ValueError, 'probe cost'):
+            scenario.check_orbital_probe_samples(before, before, 'one-probe')
+
     def test_reload_checks_exact_transfer_and_weapon_identity(self):
         check = next(a for a in scenario.load(HERE / 'scenarios' / 'reload.json')['assertions']
                      if a['id'] == 'finite-reload-transfer')

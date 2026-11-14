@@ -50,9 +50,18 @@ Load Game row and rendered Crew Deck, then verify zero probes in orbit
 before the launch attempt. The same-planet after-sample and unchanged count
 need the observed input and rendered refusal to establish the outcome.
 The one-probe plan is unchanged. Neither plan was staged during this pass.
+
+The latest private plans are `one-probe-session-v3.json` and
+`zero-probe-session-v2.json` in their respective folders. Both passed
+scenario and read-only session validation with the stricter endpoint check.
+Their SHA-256 hashes are
+`3500b3c9d6ca30351293de92378a864bd4d3f87f11470b42e9974c650804c0f1`
+and `7b50abb22a6f3772bc503e58142e26147fea428748a76947747a67ca2f643ccc`.
+The one-probe plan retains its reviewed selection binding, and the zero-probe
+plan uses normal operator selection. Earlier files remain intact.
 The private scenario passed `validate --for-run`. The first staging attempt
 was refused before creating a run directory because ME1 and SteamVR had started.
-At the next free window, use the one-probe plan and verify its displayed slot,
+At the next free window, use the current one-probe plan and verify its displayed slot,
 Crew Deck scene and resources before continuing to the CIC. The 29-probe base
 remains available as a separate navigation acquisition save.
 
@@ -79,9 +88,15 @@ remains available as a separate navigation acquisition save.
    camera hierarchy agreement with the unique orbital latent action's planet,
    stable live resources, and the expected authored feature/planet data below.
    Record initial scanning/probe/impact/rescale/exit flags before input.
-4. Use normal scan and probe input for the first baseline. Record before/after
-   orbital observations and capture the actual effect; wait for the ordinary
-   update/impact sequence to finish. Record probe consumption, mineral changes,
+4. Use normal scan and probe input for the first baseline. For launch or
+   refusal, record the before sample while scanning with no probe or impact
+   in flight, and the after sample after those flags clear. For scan-hold,
+   sample before the hold and again during it, with probes available. The
+   [scenario audit](../tools/qa-le2/scenarios/planet-scanning.json) checks the
+   active world, the sampled planet's object and table identity, the relevant
+   flags and the exact probe-balance change. Use scene and input review to
+   establish launch, impact or refusal between the two observations. Record
+   probe consumption, mineral changes,
    the feature's remaining scaled amount and any landing-site reveal separately.
    Fuel is a travel resource: measure it before/after navigation; do not require
    an invented fixed cost or charge it to scanning without observation.

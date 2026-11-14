@@ -152,48 +152,9 @@
       }
     },
     {
-      "id": "same-orbital-target",
+      "id": "orbital-probe-samples",
       "gate": "native",
-      "description": "The before/after probe samples must select the same planet in the current galaxy camera hierarchy.",
-      "requires": ["before", "after"],
-      "variants": ["one-probe", "zero-probes", "scan-hold", "anomaly"],
-      "check": {
-        "kind": "compare",
-        "left": {"artifact": "before", "field": "state.orbital.activeWorld"},
-        "op": "eq",
-        "right": {"artifact": "after", "field": "state.orbital.activeWorld"}
-      }
-    },
-    {
-      "id": "single-probe-starting-balance",
-      "gate": "native",
-      "description": "The one-probe case must still have exactly one probe immediately before launch.",
-      "requires": ["before"],
-      "variants": ["one-probe"],
-      "check": {
-        "kind": "compare",
-        "left": {"artifact": "before", "field": "state.resources.probes"},
-        "op": "eq",
-        "right": 1
-      }
-    },
-    {
-      "id": "zero-probe-starting-balance",
-      "gate": "native",
-      "description": "The refusal must start with zero probes in orbit, regardless of the earlier Crew Deck balance.",
-      "requires": ["before"],
-      "variants": ["zero-probes"],
-      "check": {
-        "kind": "compare",
-        "left": {"artifact": "before", "field": "state.resources.probes"},
-        "op": "eq",
-        "right": 0
-      }
-    },
-    {
-      "id": "single-probe-cost",
-      "gate": "native",
-      "description": "A deliberate single legal launch consumes exactly one probe.",
+      "description": "Check sampled planet identity, probe balance and orbital state. For launch or refusal, sample while scanning before input and again after the scene settles. For scan-hold, sample before the hold and while scanning is held. Use the separate input and scene review to establish what happened between samples.",
       "requires": [
         "before",
         "after",
@@ -201,69 +162,20 @@
       ],
       "variants": [
         "one-probe",
+        "zero-probes",
+        "scan-hold",
         "anomaly"
       ],
       "check": {
-        "kind": "delta",
+        "kind": "orbital-probe-samples",
         "before": {
           "artifact": "before",
-          "field": "state.resources.probes"
+          "field": "state"
         },
         "after": {
           "artifact": "after",
-          "field": "state.resources.probes"
-        },
-        "expected": -1
-      }
-    },
-    {
-      "id": "zero-probe-refusal",
-      "gate": "native",
-      "description": "Zero-probe interaction cannot consume or create probes.",
-      "requires": [
-        "before",
-        "after",
-        "input"
-      ],
-      "variants": [
-        "zero-probes"
-      ],
-      "check": {
-        "kind": "delta",
-        "before": {
-          "artifact": "before",
-          "field": "state.resources.probes"
-        },
-        "after": {
-          "artifact": "after",
-          "field": "state.resources.probes"
-        },
-        "expected": 0
-      }
-    },
-    {
-      "id": "scan-hold-no-launch",
-      "gate": "native",
-      "description": "Holding scanning alone does not launch or consume a probe.",
-      "requires": [
-        "before",
-        "after",
-        "input"
-      ],
-      "variants": [
-        "scan-hold"
-      ],
-      "check": {
-        "kind": "delta",
-        "before": {
-          "artifact": "before",
-          "field": "state.resources.probes"
-        },
-        "after": {
-          "artifact": "after",
-          "field": "state.resources.probes"
-        },
-        "expected": 0
+          "field": "state"
+        }
       }
     },
     {
