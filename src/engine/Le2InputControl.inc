@@ -128,9 +128,14 @@ struct NativeInput {
         auto const current = input_context::CaptureInputContext(thread);
         if (!input_context::SameContext(*admitted, current)) Cancel("engine-input-context-changed");
     }
-    Value Observe(std::uint32_t thread) const {
+    Value Observe(std::uint32_t thread, bool inspectCompletion = false) const {
         auto out = Value::Object();
-        out["context"] = input_context::ContextJson(input_context::CaptureInputContext(thread));
+        auto const context = input_context::CaptureInputContext(thread);
+        out["context"] = input_context::ContextJson(context);
+        // Only the explicit read-only observation inspects mission completion.
+        // Pulse publication and per-tick admission keep their existing work.
+        if (inspectCompletion)
+            out["partyCompletion"] = le2_diagnostic::ObservePartyCompletion(thread, context);
         out["bridge"] = InputBridgeJson(pad_bridge::DiagnosticSnapshot());
         out["cancellationReason"] = cancellationReason;
         out["gameplayEffectProven"] = false; out["vrRoutingProven"] = false;

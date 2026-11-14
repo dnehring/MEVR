@@ -9,6 +9,7 @@
 #include "engine/Le2OrbitalObservation.hpp"
 #include "engine/Le2WeaponObservation.hpp"
 #include "engine/Le2InputContext.hpp"
+#include "engine/Le2PartyCompletionObservation.hpp"
 #include "game/GamepadBridge.hpp"
 #include "plugin/ProcessEventHook.hpp"
 #include "core/Log.hpp"
@@ -491,7 +492,7 @@ struct Endpoint::Impl {
             } else if (decoded->verb == "observe-weapon") {
                 payload["weaponObservation"] = le2_diagnostic::ObserveWeapon(thread);
             } else if (decoded->verb == "observe-input") {
-                payload["inputObservation"] = input.Observe(thread);
+                payload["inputObservation"] = input.Observe(thread, true);
             } else if (decoded->verb == "pad-pulse") {
                 payload["readOnly"] = false;
                 pendingPulse = wire::ParsePadPulse(decoded->payload);

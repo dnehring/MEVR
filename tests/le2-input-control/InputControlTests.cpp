@@ -21,6 +21,7 @@ std::function<void()> onInstall, onCapture;
 std::vector<std::string> calls;
 std::uint64_t monotonic{}, utc{};
 unsigned captures{}, installs{}, begins{}, publishes{}, cancels{}, disables{};
+unsigned completionObservations{};
 bool installOk{}, beginOk{}, publishOk{}, lastOptIn{};
 std::uint32_t lastThread{};
 void Reset() {
@@ -29,6 +30,7 @@ void Reset() {
     current.modeActive = true; current.allowMovement = true;
     bridgeState = {}; onInstall = {}; onCapture = {}; calls.clear();
     monotonic = 100; utc = 1000; captures = installs = begins = publishes = cancels = disables = 0;
+    completionObservations = 0;
     installOk = beginOk = publishOk = true; lastOptIn = false; lastThread = 0;
 }
 pad::PollResult Poll(pad::Physical physical = {pad::PhysicalState::Disconnected,{},0}) {
@@ -87,6 +89,15 @@ json::Value ContextJson(Context const& value) {
     return out;
 }
 }
+namespace mevr::engine::le2_diagnostic {
+json::Value ObservePartyCompletion(std::uint32_t thread, input_context::Context const& sampled) {
+    ++fake::completionObservations;
+    auto out = json::Value::Object();
+    out["sampleMatches"] = thread == 77 && sampled == fake::current;
+    out["available"] = false;
+    return out;
+}
+}
 namespace mevr::engine::le2_control {
 namespace {
 using json::Value;
@@ -129,6 +140,11 @@ void Admission() {
     NativeInput input; std::string reason;
     input.Observe(77); input.Tick(77);
     Check(fake::installs == 0 && fake::begins == 0,"read-only observation does not install or admit");
+    Check(fake::completionObservations == 0,"default response and tick do not inspect completion");
+    auto detailed = input.Observe(77, true);
+    Check(fake::completionObservations == 1 && detailed.Get("partyCompletion").Bool("sampleMatches") &&
+        !detailed.Get("partyCompletion").Bool("available",true) && fake::installs == 0 && fake::begins == 0,
+        "explicit read-only completion observation receives same context and cannot admit input");
     Check(!Publish(input,reason) && reason == "diagnostic-hook-service-unavailable","missing hook service refuses");
     input.hooks = &hooks; fake::current.available = false;
     Check(!Publish(input,reason) && fake::installs == 0,"unavailable context never installs");

@@ -114,6 +114,14 @@ run, lease and sequence. A second pulse is refused until the first has completed
 its bounded neutral-output window. There is no pulse queue or automatic retry.
 
 `payload.inputObservation` contains `context`, `bridge` and `cancellationReason`.
+An explicit `observe-input` also attaches read-only `partyCompletion` diagnostics
+for the source-backed party-selection completion action. This is unavailable
+outside the exact current callback relation. It reports a validated reflected
+completion flag, inherited action state and bounded parent membership; none of
+these observations changes pulse admission or invokes the callback. Post-pulse
+responses and per-tick checks omit this additional inspection. See the
+[source contract](../../research/le2-party-confirm-input.md) and
+[SDK checks](../../tests/le2-observation/PartyCompletion.md).
 The bridge's `source` reports publication, activation deadline, actual hold
 expiry (`0` until the first delivered press), requested duration/pad, eligible
 poll counts and neutral writes. `neutralFirstMs`, `neutralLastMs` and

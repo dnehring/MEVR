@@ -56,6 +56,18 @@ validated runtime BoolProperty offset/mask, not a guessed layout. Reuse existing
 reflection and bounded sequence inspection. Neither the current observer nor
 these source findings establish that the callback ran in the failed transition.
 
+The implemented read-only `partyCompletion` sample now resolves that exact
+candidate's scalar BoolProperty through the existing guarded object/field
+reader, including owner, name, mask, storage and class-size checks. It reports
+the sampled flag, inherited activation count/active/latent fields, and bounded
+parent membership. Inactive or absent active membership remains useful data.
+Two complete samples and fresh input contexts must agree. General cached
+reflection lookup was audited but does not supply these exact guarded checks;
+the helper reuses the current observer's readers rather than introducing a
+second reflection system. It runs only for explicit `observe-input`, outside
+input admission and the post-publication path. SDK tests and source review pass;
+native field availability and progression evidence remain pending.
+
 Private receipt `party-completion-source/inspection-receipt.json` SHA256
 `861fba32f60988b5efb68181789c5aa45beb0f1e4b495f22499a1d68effaa015`
 pins all five packages and outputs. Shared package SHA256:
