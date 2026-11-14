@@ -2,6 +2,9 @@
 # ME2 validation workflow
 
 This is the P9 tooling for the [validation goal](../../docs/le2-validation-goal.md).
+Before adding tools, read the [current script and reuse audit](../../research/le2-runtime-observer.md#current-script-inventory-and-reuse-decisions).
+Extend the existing workflow and input bridge; avoid parallel launch, replay,
+capture or scenario frameworks.
 Read the [scripted testing handoff](../../docs/le2-scripted-testing.md) and its
 linked repository skills before native work. Use the protected LE2 launch and
 bound diagnostic request channel described below; the LE1 runners are not LE2
