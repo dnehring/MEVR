@@ -33,10 +33,12 @@ save/reload and VR interaction remain separate gates.
 
 The normal pause and Save-menu transitions now have protected native proof,
 including the closed PowerWheel HUD case and readable menu review. New Save
-submission is implemented behind separate diagnostic permission but remains
-unproven: the current Save-list validator rejects a displayed row, and its
-asynchronous initialization handling needs correction. Do not skip those
-refusals or substitute a synthetic successful result. Follow the
+submission now has live proof: one normal request produced a sole new file,
+left prior career files unchanged, and preserved all eight edited resources
+under independent TSE decoding. The asynchronous panel and UI-row classification
+fixes are included. A fresh normal reload remains pending, and the latest run's
+restoration is deferred while another SteamVR session is active; inspect the
+current evidence and ownership before native work. Follow the
 [normal save workflow](control.md#submit-new-save-and-preserve-its-output) and
 [file evidence collector](save-evidence.md): preserve a reviewed pre-save
 inventory, submit once, archive and independently decode the actual new file,

@@ -68,8 +68,10 @@ Structured `runtime-state`, `input-trace`, `save-inspection` and `timing` artifa
 
 `state.resources` now has a [source-backed live inventory observer](../research/le2-resource-observation.md)
 and [correlated exporter](../tools/qa-le2/export-state.md) for all eight resources.
-One protected resource-edited normal load passed its starting checks; save/reload
-persistence and gameplay costs remain pending. Other normalized names, including
+Protected resource-edited normal loads passed their starting checks, and one
+normal New Save file independently retained all eight values. Fresh reload,
+the latest run's deferred restoration, and gameplay costs remain pending.
+Other normalized names, including
 `state.weapon.loaded` and `state.weapon.reserve`, remain interface proposals
 until mapped to verified live state. Save inspection cannot be relabeled runtime
 observation. Manual observations need source captures, timestamps and reviewer
