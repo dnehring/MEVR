@@ -24,10 +24,20 @@ Concrete acquisition leads are in [reload/interrupt fixture research](../../rese
 and [Zanethu discovery dependencies](../../research/le2-galaxy-fixture-source.md).
 Weapon fixtures also need the [native ammo and reload mapping](../../research/le2-ammo-fixture-source.md).
 
+For reload acquisition, prioritize a quiet location with a legal multi-round
+firearm, not an endgame battle. The preferred reusable route is a protected
+normal Lazarus/ProCer checkpoint, followed by Veetor for timed interrupts. The
+existing chapter is a bounded opportunity if its normal exit reaches a safe
+firing/saving point; further scripted progression is not a prerequisite to this
+goal. A Normandy Project range is an optional modded fixture with installation
+and in-game prerequisites, not an apparently installed shortcut. Reuse existing
+weapon observations, scalar ammo recipes and normal save collection; see the
+[ranked acquisition decision](../../research/le2-fixture-acquisition.md#current-reload-acquisition-decision-2026-11-14).
+
 The untouched private chapter now has normal-load proof at `BioP_EndGm2`, with
 matching resources and verified restoration. It opens **Squad Selection**, not
-a ready combat encounter. The next acquisition step is ordinary squad selection
-and progression to a safe firing/reload point. A tested read-only
+a ready combat encounter. Its historical progression attempts below do not
+promote it to the required reload fixture. A tested read-only
 [`observe-orbital` query](../../research/le2-scanning-readiness.md) is available
 for the later scanning baseline; native orbital sampling remains pending.
 Latest run `1821Z-completion`, candidate `7eee6b6f`, selected Miranda and Grunt,

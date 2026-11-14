@@ -7,6 +7,66 @@ Follow-up: the [scanner now supports explicit LE2 inspection](../tools/conversat
 
 The [2026-11-14 timed-interrupt follow-up](le2-interrupt-acquisition.md) checks the existing late-game story state and Liara/Citadel alternatives. Clear Liara interrupt outcomes do not establish replayability: met-Liara, DLC completion and date states are already set. No current-save timed fixture is promoted. Freedom's Progress provides a concrete dual-polarity earlier-progression candidate that can share the normal ProCer reload acquisition playthrough.
 
+## Current reload acquisition decision, 2026-11-14
+
+The first native baseline needs a **quiet place to fire and reload an ordinary
+multi-round firearm**, not an endgame encounter or a purpose-built range. The
+inspected reload entry requires enabled combat input and legal weapon/ammo state;
+it does not require an enemy target. Establish normal drawing, firing, partial
+reload and saving at the chosen location before preparing variants. A map name,
+populated inventory or successful load alone does not establish those actions.
+
+1. **Preferred reusable route: normal Lazarus/ProCer progression.** Installed
+   base and Patch01 content includes `BioP_ProCer` and
+   `BioD_ProCer_100RezRoom`. Existing sequence inspection identifies pistol
+   acquisition, `LS10_Reload_Heatsink`, the tutorial reload event and a save
+   action. Use a separate protected normal new-game profile; preserve the first
+   legally available checkpoint around that tutorial and a quiet post-tutorial
+   save. Verify which checkpoint actually precedes reload: the authored save
+   action is not that proof. Continue the same natural progression to the
+   [Veetor interrupt candidate](le2-interrupt-acquisition.md), supplying two
+   acquisition lanes without resetting story flags or teleporting saves.
+2. **Bounded opportunity: the existing chapter.** Its normal load and squad-menu
+   progression are recorded in the [evidence log](le2-validation-evidence.md).
+   If the ordinary menu exit yields a safe controllable location, acquire a
+   normal save there with an existing multi-round weapon. Do not require
+   completing the endgame. If more scripted progression blocks that small
+   objective, use ProCer rather than extending the menu route indefinitely.
+   The chapter is not yet an accepted quiet reload fixture.
+3. **Optional dedicated range: The Normandy Project LE2.** The mod's
+   [official changelog](https://www.nexusmods.com/masseffectlegendaryedition/mods/1779?tab=logs)
+   describes a Cargo Bay range requiring Cargo Master crew, a 15,000-credit
+   purchase and construction, then the armor-change/equipment-station route.
+   It supplies a weapon locker, ordinary ammo refill (not heavy ammo) and target
+   dummy. Treat this as a separately installed and hash-bound modded fixture,
+   not an already available stock room. The inspected installed DLC directory
+   has no identifiable TNP folder; this is not an exhaustive installation audit.
+   No mod was downloaded or installed for this investigation.
+
+The installed Kasumi DLC also contains `BioA_PtyMtL_360ShootingRange.pcc`.
+That filename is only a content lead: player usability, normal access from the
+current story state and repeatable saving have not been established.
+
+### Existing weapons and ammo preparation
+
+Fresh strict-reader checks of the immutable original Normandy, resource-reload
+Normandy and chapter saves found existing Collector assault rifle, Geth shotgun,
+MassCannon and LaserPistol records, all with saved used-ammo count zero. Their
+reserves are respectively 280/20/12/24 on Normandy and 280/7/10/24 in the chapter.
+Blackstorm heavy-weapon records also exist, with zero reserve. These are saved
+values, not fresh live capacity, selection or reloadability observations.
+
+Reuse `tools/le2-save.py prepare`: its allowlist already supports existing
+`player.weapons.N.ammo_used_count` and `ammo_total` scalars with pinned input and
+expected-value checks. The fields mean used magazine ammunition and spare
+reserve; see [native ammo mapping](le2-ammo-fixture-source.md). No new weapon
+editor, record insertion or selected-weapon mutation is needed. First observe
+the actual selected class and capacity, then bind partial/empty and reserve
+variants to that existing record and verify post-load values. Ammo edits do not
+enable combat input on Normandy. Prefer a multi-round weapon for the first
+manual reload: the [observed one-round MassCannon](le2-weapon-observation.md)
+can enter automatic reload after a shot, confounding sparse before/after checks.
+
 ## Current private saves
 
 The three existing saves were freshly parsed with `tools/le2-save.py info --json`. The manual save and autosave report `Biop_Nor`; **the chapter save reports `BioP_EndGm2`**, so it must not be treated as another Normandy fixture. All three have the same 80 recorded planet entries, all marked visited, with 599 probe-impact coordinates in total, 30 probes and 1500 fuel. They are a narrow late-game corpus, not three independent scenario states. Raw inspection and hashes stay private.
@@ -72,4 +132,4 @@ Run the rebuilt scanner executable with the installed LE2 `CookedPCConsole` as t
 
 Generated game-derived dumps stay in ignored `local-tools/le2-validation-evidence/fixture-acquisition/`; do not commit their text. The inspected scanner executable SHA-256 was `a02180d2611b30ad1793a5a50cbb9f112c8d17b937f0749a1b2e2aa19736a48c`; LegendaryExplorerCore DLL was `d980a622e225cbc0dd1d1c5719a74ea1cb59284abe0e7855f354afbc6baf7d74`. Recheck tool/package hashes before relying on later runs. Only this original research summary is committed.
 
-Recommended acquisition order: (1) protected Normandy native load and galaxy/resource baseline, (2) naturally reached ProCer reload tutorial save in a separate profile, (3) natural pre-mechanic save for one timed-interrupt case, (4) independently resolved opposite-polarity interrupt and anomaly fixture. All require exclusive native-session ownership before play; all current catalog definitions remain draft.
+The initial November 13 acquisition order started with protected Normandy load/resource proof, then ProCer, Garrus and separate opposite-polarity/discovery fixtures. Subsequent native resource proof and interrupt research supersede that ordering: use the current reload decision and Veetor follow-up above. Exclusive native-session ownership is still required before play; the gameplay scenario definitions remain draft.
