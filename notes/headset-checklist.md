@@ -223,6 +223,11 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   over; tutorial pop-ups. (research/53 section 3)
 
 ### Galaxy map, conversations (session: VR mod for Mass Effect Legendary Edition)
+- [ ] The hitches at the conversation director's cuts (research/69 item 24, "Frame timing at the director's cuts"): play the
+  council hearing in first person (`conversations = world`) with a frame capture running (menu: Advanced > Diagnostics >
+  Measure frame timing, or `tools/perf-probe.ps1 -Seconds 110` as it begins), turning the head now and then. The fake headset
+  shows no stall at any cut with `worldCamera` 0 or 1; this capture says whether the headset's do and whether GPU, render
+  thread or game thread (2026-11-13, VR performance session).
 - [ ] 2026-11-08 landing squad screen (codex/galaxy-one-display, research/53 section 7): Land on an uncharted Mako planet
   after map travel; PartySelect must be readable and clickable in the room, with no remaining cinema screen, old Normandy
   viewpoint or floor clipping. Pick two squadmates and confirm; check the Mako view and extraction/return to Normandy.

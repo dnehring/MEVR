@@ -292,9 +292,10 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     the frame rate held 89-90 fps, but a frame of 40-90 ms of GPU time came within a second or two of most of the director's
     camera cuts (the hearing: 9 such frames in 170 s; in 40-76% of two-second windows in conversations against 15% walking on
     Virmire). A cut is hidden in the flat game; in first person the view doesn't cut, so each is a visible stall. Suspect: the
-    culling and streaming camera jumps with the director's (`worldCamera = 0`, the default since 2026-11-10). Next: measure a
-    conversation's cut frames with `worldCamera = 1` against 0 on the fake headset (`tools/perf-probe.ps1`), and what in the
-    frame costs the time.
+    culling and streaming camera jumps with the director's (`worldCamera = 0`, the default since 2026-11-10). **Measured on the
+    fake headset 2026-11-13 ("Frame timing at the director's cuts" below): no stall at any of 99 cuts in the hearing, with
+    `worldCamera` 0 or 1**; the GPU's scene work after a cut is what it is elsewhere, and `worldCamera = 1` changes nothing
+    measurable. Not reproduced: the next step is a capture in the headset (notes/headset-checklist.md).
 25. **The right stick doesn't turn in a first-person conversation** (the owner; same section): the left stick is the wheel's and
     walks; the right stick does nothing (`[Comfort] turn` applies on foot only, and the game's conversation camera takes no
     turn). Build: the right stick turns the held view in a world conversation as `[Comfort] turn` says (snap, or smooth at the
@@ -3679,6 +3680,40 @@ end` calls `BioWorldInfo.EndCurrentConversation` on the world info (game thread,
 BioWorldInfo.EndCurrentConversation called 1, the world let go of the conversation`. Every tool's forced end goes through it
 (conversation-from-save, -sweep, -launch, -survey). **Checked** (session `2026-11-13_15-42-38-forced-ends`, one game): Benezia's scene ended early 8 times and the council's hearing (and the conversation after it) once each, 10 forced ends; every one logged `the world let go of the conversation`, and the game ran on after the last. Before the fix 1 of 3 forced ends of Benezia's scene ended the game. **Not this:** the crash as the session tool quits the game (`ntdll.dll+0x1A12D` writing 0x24, 23 ms after `game exiting (code 0)`, from the exe's exit path through `ucrtbase`), seen again at 15:53:56 after these 10 clean ends, and a null read at `MassEffect1.exe+0x12DF33` 1.4 s after the quit's `exit` with Kirrahe's conversation still playing (15:28:12): both at the quit, after every scene is over.
 
+### Frame timing at the director's cuts (2026-11-13; item 24)
+
+The owner's session of 2026-11-11 had frames of 40-90 ms near most of the hearing's camera cuts (Halcyon's `[GPU] maxMs` per
+two-second window). Measured on the fake headset with the installed build (0.2.0+fcb1c39716), John02 slot 80 (Anderson's walk
+and the hearing), the walk followed (`mevr convo follow on`, else the walk along waits 120 s for a player who stands still),
+`tools/perf-probe.ps1` in two back-to-back captures of 110 s per run, one fresh game per setting, and each frame lined up with
+the mod's `convo: shot` lines (the scripts' logic: per frame, the GPU spans of the two eye renders, `gpu_start_pass0 +
+gpu_pass0_present` from `tools/perf-probe.py`'s `frame_metrics`, and the frame interval, against the second after each cut):
+
+| `[Cinematics] worldCamera` | cuts | scene GPU within 1 s after a cut: p50 / p99 / max | elsewhere: p50 / p99 | frames over 60 ms within 2 s of a cut |
+|---|---|---|---|---|
+| 0 (default) | 27 + 19 | 9.37 / 13.66 / 15.70 ms; 11.13 / 13.52 / 13.73 | 9.54 / 15.33; 12.86 / 15.33 | 0 of 46 cuts |
+| 1 | 33 + 20 | 9.33 / 13.77 / 14.37 ms; 11.16 / 13.35 / 26.03 | 9.57 / 15.40; 12.91 / 17.14 | 0 of 53 cuts |
+
+The render thread's work after a cut: p99 5.2-5.6 ms, as elsewhere. The mod's own work per game-thread tick (the probe's host
+busy time) after a cut: p99 2.7 ms, at most 6.4 ms. The render levers line: one scene render per frame throughout, no One Draw
+fallback, no change of Halcyon's presentation at a cut. So on the fake headset **a cut costs nothing measurable, and holding the
+game's camera at the player (`worldCamera = 1`) changes nothing**: the code's own note is right that the render-time swap of the
+main view already feeds culling and texture streaming (UE3 takes the streaming view from the view CalcSceneView builds). No
+default changes.
+
+What the fake headset cannot show: **its runtime paces every frame at about 31.9 ms** (every capture since 2026-11-09; SteamVR's
+null driver; the compositor's every present is "timed out"), and the game thread spins through that wait (its busy time is the
+frame's), so a stall under about 20 ms on the game thread hides in the slack. A 40-90 ms stall would still show as a frame over
+60 ms, and none came within 2 s of a cut. Halcyon's `[GPU] avgMs`/`maxMs` include the runtime's pacing (33 ms on the fake
+headset, the frame interval), so the owner's 40-90 ms were frames 4-8 display periods long, whatever stalled them. Not tried:
+the textures were resident (3.2 GB of a 23 GB budget; the scene played several times that day), so a first play's streaming
+uploads did not happen here; the head stood still.
+
+**Next: a capture in the headset**, the hearing played with `tools/perf-probe.ps1 -Seconds 110` (or the menu's Advanced >
+Diagnostics > Measure frame timing) started as the hearing begins; then the frame interval and the scene GPU spans against the
+cuts, and the game thread's ticks. If the stalls come back there: the probe's frames say GPU or render thread; on the game
+thread, `tools/sample-render-thread.ps1`'s sampler (`mevr-stack-sampler`) pointed at the game thread.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
@@ -4125,3 +4160,6 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
 - 2026-11-13 15:30, **item 37, seeing the body in the audit**: the drawn hands against the controllers (`arm_ik::MeasureHands`,
   `hands-off-controllers`), the audit's hands held up in view, snapshots on a contact sheet, what each scene did not measure,
   per-scene expectations, and broken runs the audit must catch (all three caught once item 35's switch undid its whole fix).
+- 2026-11-13 17:35, **item 24, frame timing at the director's cuts**: measured on the fake headset (the hearing, 99 cuts,
+  `worldCamera` 0 and 1): no stall at a cut, the same GPU work after a cut as elsewhere, `worldCamera = 1` no different; the
+  fake headset's 31.9 ms pacing hides game-thread stalls under about 20 ms; next a capture in the headset.
