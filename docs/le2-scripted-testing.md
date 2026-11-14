@@ -95,6 +95,9 @@ publishes an invitation; it does not deploy or certify a responder.
 
 These changes reuse the protected session and Steam forwarding machinery. They
 are a control connection for the existing host, not a replacement ME2 renderer.
-The next native gate remains a real game-thread handshake and validated state,
+The diagnostic responder and bounded structural observer are now compiled into
+an opt-in monolithic LE2 candidate. See the [build and protected native sequence](../tools/qa-le2/control.md).
+Actual Python-to-C++ filesystem integration passes with fake process identity;
+this remains offline evidence. The next native gate remains a real game-thread handshake and validated state,
 followed by the normal load/save/reload cycle. Three scenario and VR acceptance
 gates remain open.

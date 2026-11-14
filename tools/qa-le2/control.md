@@ -4,11 +4,66 @@
 This client and its C++ codec provide the transport for the
 [scripted testing slice](../../docs/le2-scripted-testing.md). They do not install
 a runtime producer, enable a renderer, select a save or prove a native operation.
-The runtime consumer is a separate diagnostic-host integration. Until it publishes
+The runtime consumer is implemented in `engine/Le2ControlHost.cpp` behind the
+opt-in monolithic diagnostic build. Until it publishes
 an authenticated-by-session `control/identity.json`, commands fail without writing
 the existing shared `console.request` file. The protocol is coordination between
 cooperating local tools, not a security boundary against another process owned by
 the same user.
+
+## Building the diagnostic host
+
+Run in a clean isolated worktree of the selected commit, with the repository's
+pinned submodules available:
+
+```powershell
+cmake -S . -B local-tools/le2-diagnostic-build -A x64 -DMEVR_BUILD_LE1=OFF -DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=OFF -DMEVR_HOT_RELOAD=OFF -DMEVR_LE2_DIAGNOSTIC=ON -DMEVR_HALCYON=OFF -DMEVR_MAIN_MENU=OFF
+cmake --build local-tools/le2-diagnostic-build --config Release --target MEVR-LE2 mevr-le2-control-host-tests mevr-le2-diagnostic-tests
+ctest --test-dir local-tools/le2-diagnostic-build -C Release -R "mevr-le2-(control-host|control-producer-smoke|diagnostic)$" --output-on-failure
+```
+
+This produces `Release/LE2MEVR.asi` inside the build directory. Record its SHA256
+and embedded commit/version; deploy that exact file only after protected session
+preparation. The configuration rejects mixed games and hot reload. It retains
+the existing host/engine tick but skips renderer entry, gameplay polling and
+the unqualified console channel. It is a development diagnostic, not the ME2 VR
+renderer or a distributable sequel release; LE2 still uses the SDK submodule.
+
+`ping` reports the actual host tick/thread and capabilities without engine-memory
+reads. `observe` additionally returns the [structural observer](../../research/le2-diagnostic-observation.md)
+under `payload.observation`. Authoritative `observeWorld` and `nativeConsole`
+capabilities stay false; `observeStructuralWorld` identifies this diagnostic
+sample. It does not establish a loaded save or permit gameplay actions.
+
+The host currently hashes the executable and module synchronously around each
+request. Keep these setup queries outside performance windows. Admission checks
+the current UTC time after file validation, so slow IO cannot admit an expired
+request; an admitted request may publish a late result for `collect` to reconcile.
+
+## Protected native sequence
+
+1. Coordinate the game slot and run `session.py prepare PLAN NEW_RUN`. The plan
+   should protect the complete profile, LE2 configuration and Win64, plus the
+   launcher directory if it may write logs/configuration during the run. A failed
+   preflight is not permission to close another game's process.
+2. Deploy the hash-verified diagnostic ASI inside the backed-up LE2 Win64/ASI
+   directory. Preserve the build receipt. Do not run the LE1 deploy/session
+   wrapper unchanged or modify OpenXR settings for this diagnostic.
+3. Use [launch.ps1](launch.md) with a reviewed capability receipt, or its explicit
+   one-attempt selection probe. It records and binds the exact new ME2 process.
+   If automatic selection fails, retain the attempt and use the documented
+   operator boundary; never retry an uncertain launch blindly.
+4. Publish the attachment invitation below, then issue `ping` and `observe`.
+   Preserve response bytes, actual loaded module identity and the host log.
+   No response means no handshake proof, regardless of an ASI being present.
+5. Normal save selection, native save/reload, screenshots and scenario actions
+   remain operator/dependency boundaries until the corresponding game-thread
+   controls are validated. A title-screen handshake is not a fixture load.
+6. Close only the owned game through its normal exit path, verify it is closed,
+   run `session.py reset NEW_RUN`, then run attachment `cleanup`. Preserve new
+   saves and test artifacts in the run archive. If the game/ownership cannot be
+   resolved, retain backups and report the exact blocker instead of restoring
+   files into a live process.
 
 ## Using a connected diagnostic host
 

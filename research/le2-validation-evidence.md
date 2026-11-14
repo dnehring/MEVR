@@ -2,6 +2,52 @@
 # LE2 validation tooling evidence
 
 Checkpoint: 2026-11-13. **Offline foundation implemented; native load/save observed and restoration verified. Reload, scripted control and gameplay/VR proof remain pending.**
+
+## Diagnostic control candidate, 2026-11-14 UTC
+
+Candidate `a78b0390650b6f6eac38a848d5e2361d9f4bfebd` builds the existing host as
+an LE2-only monolithic diagnostic, with renderer/gameplay/shared-console polling
+disabled. Its ASI SHA256 is
+`021e1394b63cabb95e4be53556d67a0367ff73473203fb43f51193af3a63e9ab`, and its
+embedded version is `0.3.0+a78b039065`. This is a compiled control connection for
+the existing mod host, not an imported ME2 renderer or a VR interaction proof.
+
+The run-bound producer independently checks its actual process/module files and
+the protected session before answering. Ping contains host tick/thread evidence;
+observe adds bounded SDK-based world/player/pawn/package/position samples. Those
+samples retain `nativeValidation: pending` and `ready: false`. Native console
+dispatch stays disabled. See [control instructions](../tools/qa-le2/control.md)
+and [observation limits](le2-diagnostic-observation.md).
+
+Evidence at this candidate: diagnostic Release compile/link; focused CTest **3/3**
+(dispatch gate, ten filesystem-test groups, real Python client talking to the C++
+endpoint over temporary files); standalone observer checks **1/1** in Release
+and Debug. The filesystem symlink-creation subcase was skipped for missing Windows
+privilege. Ordinary builds at this same candidate passed all three required
+configurations (LE1 development, SDK-free LE1 monolithic, and LE1/LE2/LE3 trilogy)
+and the full **37/37** registered tests. These are offline checks.
+
+Test-registration commit `6aa5ee5e` added the launcher, attachment, client and
+codec checks to the standard loop: **41/41** passed, including all 18 client
+tests with real C++ byte conformance enabled (no skipped client test).
+
+Subsequent diagnostic candidate `95ea25ed510334421367da503d98d68148a1af2a` adds
+read-only `ConsoleCommand` reflection metadata and compares the observed call
+block with the pinned SDK declaration. It does not enable dispatch. Its ASI
+SHA256 is `a98b4ace593b66915d96fb2de41da83a00a770d209ffbd1b9f47a45d7b280282`,
+embedded version `0.3.0+95ea25ed51`. The actual diagnostic ASI compiled/linked;
+focused tests passed **3/3**, and the updated standalone observer passed **1/1**
+in Release and Debug. The original candidate remains preserved. Both candidates
+and the test-registration change are reachable from main's integration history.
+
+The first protected native preparation was refused because ME1 and SteamVR were
+active. A fresh desktop read confirmed the ME1 process started at
+`2026-11-14T04:53:49.6315656Z`. Preparation stopped before acquiring a lock,
+staging a save or deploying a binary. No cleanup of that other session was
+attempted. The private evidence identifier is `le2-diagnostic-preflight-occupied`,
+SHA256 `1034a4fb42f83812076df4f324c06129d317b96b7b5775c0f0c1d4722c13a935`.
+Neither candidate has been loaded into ME2; native handshake, observer values,
+normal reload, the three scenarios and all VR/hardware gates remain unproven.
 Use the [workflow](../tools/qa-le2/README.md) and [coverage contract](../docs/le2-validation-coverage.md).
 This report does not promote the three public draft scenarios to validated.
 
