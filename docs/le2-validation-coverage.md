@@ -76,11 +76,14 @@ intervening ME1/shared-profile changes through qualified recovery. Gameplay
 costs and the three end-to-end scenarios remain pending.
 The read-only [weapon observer](../research/le2-weapon-observation.md) now exposes
 selected-weapon identity, capacity, used/derived loaded count and stored reserve
-through `observe-weapon`. Its SDK checks are offline proof; live sampling is still
-pending. Effective reserve remains unavailable because native virtual overrides
-can differ from the stored field. Normalized names including `state.weapon.loaded`
-and `state.weapon.reserve` remain interface proposals until the actual weapon and
-its live semantics are verified. Save inspection cannot be relabeled runtime
+through `observe-weapon`. Protected runs `1722Z-loadout` and `1749Z-neutral-focus`
+sampled the selected MassCannon while in squad UI: capacity 1, used 0, derived
+loaded 1 and raw stored reserve 10. The existing exporter now normalizes
+`state.weapon.loaded` and `state.weapon.reserveStored` with request correlation.
+These are partial observations, not reload or complete starting-state acceptance.
+Effective `state.weapon.reserve` remains unavailable because virtual overrides
+can differ from the stored field; audited source inheritance alone is not a
+runtime getter observation. Save inspection cannot be relabeled runtime
 observation. Manual observations need source captures, timestamps and reviewer
 provenance; ambiguous values remain unresolved.
 
