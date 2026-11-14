@@ -49,7 +49,12 @@ Field definitions were checked against LegendaryExplorerCore's [BioStateEventMap
 | `BioStateEventElementInt` | `GlobalInt`, `NewValue`, `UseParam`, `Increment`, `InstanceVersion`, `Type` | Assignment or addition to `plot.integers.<index>`; discriminator 4 |
 | `BioStateEventElementFloat` | `GlobalFloat`, `NewValue`, `UseParam`, `Increment`, `InstanceVersion`, `Type` | Assignment or float32 addition to `plot.floats.<index>`; discriminator 2 |
 
-Only instance version 0 and these exact field shapes are interpreted. Unknown/missing fields, wrong discriminators, non-boolean flags, invalid indices or numeric overflow remain unresolved. Numeric operands reject booleans. Float operands and results are rounded to float32 for comparison with saved values. This is a conservative source-value model, not an emulation of native event execution.
+These exact field shapes are interpreted at instance version 0. Integer
+elements also accept version 1, which appears in the pinned LE2 Veetor
+records. The pinned LegendaryExplorerCore serializer reads the same four
+integer-effect fields after the version header. Other versions, unknown fields,
+wrong discriminators, non-boolean flags, invalid indices and numeric overflow
+remain unresolved. Float operands and results are rounded to float32.
 
 Function, consequence, local-variable, substate, conditional and other element types are retained as unresolved diagnostics, including their raw source data. Nothing silently drops an unsupported element or follows a guessed transitive dependency. An incomplete/error-bearing source report remains unresolved even if some selected effects can be compared. A selected source event must match exactly one report event and its package/map inventory entry.
 
@@ -67,6 +72,26 @@ Each supported `directEffects` row contains the event identity, element index, e
 The top-level diagnostic is `unresolved` when any source/effect interpretation remains unresolved; otherwise it is `direct-effect-mismatch` or `direct-values-consistent`. `missingEffects` remains available even when another unresolved issue takes precedence. Other plot/journal/world changes are always listed; `direct-values-consistent` does not approve them or establish story validity.
 
 Exit `0` means only that the supported direct values agree and no interpretation issue was detected. Exit `2` means mismatch or unresolved diagnostics; both still produce a review report. Exit `1` means invalid input/binding, read failure or output refusal. Do not use exit `0` as a gameplay acceptance gate. Correlate actual run identity, input, rendered scene, native logs, selected-save identity and ordinary progression separately.
+
+## Taken and missed interrupt saves
+
+For Veetor, start both attempts from the same prepared bytes and capture the
+chosen reply or missed prompt. Save at equivalent points after dialogue. Select
+event 4366 for Paragon or 4370 for Renegade in the existing source selection,
+and add the missed outcome save's SHA-256 as `controlSha256`.
+
+```text
+python tools/qa-le2/story-review.py <start.pcsav> <taken.pcsav> --control <missed.pcsav> --source-report <source.json> --selection <selection.json> --output <new-review.json>
+```
+
+The report retains the two-save comparison and adds `controlComparison` with
+both changes from the shared start and the taken-minus-missed difference. Exit
+0 in this mode means that the differences match the selected source increments.
+The comparison supports one direct integer increment per field. A shared delta
+can cancel in the subtraction, which is why a matched runtime start, equivalent
+saving point, rendered prompt and observed reply are still required. The report
+does not establish that those conditions held or that the event fired.
+See the [Veetor source evidence](../../research/le2-interrupt-acquisition.md#veetor-direct-transition-and-saved-outcome-review).
 
 ## Checks and limits
 

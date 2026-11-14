@@ -89,6 +89,32 @@ class StoryReviewTests(unittest.TestCase):
         self.assertEqual(result['diagnostic'], 'direct-effect-mismatch')
         self.assertEqual(result['missingEffects'][0]['path'], 'plot.booleans.0')
 
+    def test_control_comparison_accounts_for_shared_progression_delta(self):
+        self.report['events'][0]['elements'] = [element('Int', 0, 5, increment=True)]
+        self.report['events'][0]['elements'][0]['data']['InstanceVersion'] = 1
+        self.edit({'plot.integers.0': 4})
+        control = self.root / 'missed.pcsav'
+        save = review.SAVE.Save.load(self.before)
+        missed, _ = save.prepare(fixtures.recipe(save, {'plot.integers.0': -1}))
+        control.write_bytes(missed.raw)
+        self.bind()
+        with self.assertRaisesRegex(ValueError, 'input hashes'):
+            review.review(self.before, self.after, self.source, self.plan, control_path=control)
+        self.selection['controlSha256'] = review.sha(missed.raw)
+        self.plan.write_text(json.dumps(self.selection), encoding='utf-8')
+        result = review.review(self.before, self.after, self.source, self.plan, control_path=control)
+        self.assertEqual(result['diagnostic'], 'direct-effect-mismatch')
+        comparison = result['controlComparison']
+        self.assertEqual(comparison['diagnostic'], 'differences-consistent')
+        self.assertEqual(comparison['effects'][0]['controlDelta'], 1)
+        self.assertEqual(comparison['effects'][0]['difference'], 5)
+        self.assertFalse(comparison['matchedRuntimeStartEstablished'])
+        self.assertFalse(result['eventFiredEstablished'])
+        self.selection['controlSha256'] = review.sha(self.after.read_bytes())
+        self.plan.write_text(json.dumps(self.selection), encoding='utf-8')
+        result = review.review(self.before, self.after, self.source, self.plan, control_path=self.after)
+        self.assertEqual(result['controlComparison']['diagnostic'], 'difference-mismatch')
+
     def test_numeric_assignment_increment_and_float32(self):
         self.report['events'][0]['elements'] = [element('Int', 0, 5, increment=True), element('Float', 0, 0.1)]
         self.edit({'plot.integers.0': 3, 'plot.floats.0': 0.1})  # Synthetic int starts at -2.

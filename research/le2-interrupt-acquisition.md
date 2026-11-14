@@ -158,6 +158,13 @@ sampled routing/visual evidence and persisted total comparison separate. No
 unique completion flag, reset recipe or plot-write fixture is inferred here.
 
 Private evidence identifier: `le2-veetor-transitions/veetor-transition-source`.
+Use the existing [story review control comparison](../tools/qa-le2/story-review-usage.md#taken-and-missed-interrupt-saves)
+on the actual taken and missed outcome saves. Retain absolute deltas as well
+as the difference for the selected polarity.
+The offline integration check used the pinned base source report and the same
+archived LE2 save for all three inputs. Both version-1 integer effects decoded,
+and each reported a zero difference against its expected +5. The positive
+comparison uses synthetic bytes in tests. No Veetor trial was run.
 Reproduce with existing `--game LE2 --state-events 4366,4370`, selecting
 `--only Startup_INT` in the base cooked directory and
 `--only Startup_METR_Patch01_INT` in Patch01, each with a new private output.

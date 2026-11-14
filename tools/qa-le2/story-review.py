@@ -88,13 +88,18 @@ def selection_key(event):
     return (event['id'], event['packageSha256'].lower(), event['mapPath'], event['mapExportIndex'])
 
 
-def validate_selection(selection, before_hash, after_hash, report_hash):
+def validate_selection(selection, before_hash, after_hash, report_hash, control_hash=None):
     if not isinstance(selection, dict) or type(selection.get('schemaVersion')) is not int or selection['schemaVersion'] != 1:
         raise ValueError('selection schemaVersion must be integer 1')
     required = {'schemaVersion', 'beforeSha256', 'afterSha256', 'sourceReportSha256', 'events'}
+    if control_hash is not None:
+        required.add('controlSha256')
     if set(selection) != required:
-        raise ValueError('selection keys must exactly identify the three input hashes and events')
-    for key, actual in (('beforeSha256', before_hash), ('afterSha256', after_hash), ('sourceReportSha256', report_hash)):
+        raise ValueError('selection keys must exactly identify the input hashes and events')
+    pins = {'beforeSha256': before_hash, 'afterSha256': after_hash, 'sourceReportSha256': report_hash}
+    if control_hash is not None:
+        pins['controlSha256'] = control_hash
+    for key, actual in pins.items():
         if not hash_value(selection[key]) or selection[key].lower() != actual:
             raise ValueError(f'{key} does not match input bytes')
     if not isinstance(selection['events'], list) or not selection['events']:
@@ -113,11 +118,13 @@ def validate_selection(selection, before_hash, after_hash, report_hash):
         seen.add(key)
 
 
-def review(before_path, after_path, source_path, selection_path):
+def review(before_path, after_path, source_path, selection_path, *, control_path=None):
     before, after = SAVE.Save.load(before_path), SAVE.Save.load(after_path)
+    control = SAVE.Save.load(control_path) if control_path is not None else None
     source, source_raw = read(source_path)
     selection, selection_raw = read(selection_path)
-    validate_selection(selection, sha(before.raw), sha(after.raw), sha(source_raw))
+    validate_selection(selection, sha(before.raw), sha(after.raw), sha(source_raw),
+                       sha(control.raw) if control is not None else None)
     if (not isinstance(source, dict) or type(source.get('schemaVersion')) is not int or source['schemaVersion'] != 1
             or source.get('game') != 'LE2' or not isinstance(source.get('events'), list)
             or not isinstance(source.get('packages'), list) or not isinstance(source.get('scope'), dict)):
@@ -176,8 +183,9 @@ def review(before_path, after_path, source_path, selection_path):
                     keys.add('Increment')
                 if not isinstance(data, dict) or set(data) != keys:
                     raise ValueError('unsupported element field shape; missing and unknown fields are not ignored')
+                versions = (0, 1) if kind == 'integers' else (0,)
                 if (type(data['Type']) is not int or data['Type'] != discriminator
-                        or type(data['InstanceVersion']) is not int or data['InstanceVersion'] != 0):
+                        or type(data['InstanceVersion']) is not int or data['InstanceVersion'] not in versions):
                     raise ValueError('unsupported element discriminator or instance version')
                 if not integer(data[target]) or data[target] < 0 or type(data['UseParam']) is not bool:
                     raise ValueError('invalid plot index or UseParam flag')
@@ -237,7 +245,7 @@ def review(before_path, after_path, source_path, selection_path):
     mismatches = [e for e in effects if e['comparison'] == 'missing-or-different-effect']
     diagnostic = ('unresolved' if unresolved else 'direct-effect-mismatch' if mismatches
                   else 'direct-values-consistent')
-    return {'schemaVersion': 1, 'purpose': 'offline-source-review-only', 'diagnostic': diagnostic,
+    result = {'schemaVersion': 1, 'purpose': 'offline-source-review-only', 'diagnostic': diagnostic,
             'inputPaths': {key: str(Path(path).resolve()) for key, path in
                            (('before', before_path), ('after', after_path), ('sourceReport', source_path), ('selection', selection_path))},
             'identity': {'beforeSha256': sha(before.raw), 'afterSha256': sha(after.raw),
@@ -253,25 +261,60 @@ def review(before_path, after_path, source_path, selection_path):
                             'Other deltas may be legitimate indirect effects or unrelated activity; causality is unresolved.',
                             'Package identities are bound to the pinned report, not re-read from the installation.',
                             'No mounted completeness, implicit parameter conversion, repeated execution or transitive effects are modeled.']}
+    if control is not None:
+        result['inputPaths']['control'] = str(Path(control_path).resolve())
+        result['identity']['controlSha256'] = sha(control.raw)
+        result['controlComparison'] = compare_control(control, effects, unresolved)
+    return result
+
+
+def compare_control(control, effects, source_issues):
+    rows, unresolved = [], []
+    for effect in effects:
+        path = effect['path']
+        if (effect['type'] != 'BioStateEventElementInt' or effect['operation'] != 'increment'
+                or effect['comparison'] == 'unresolved-multiple-writes'):
+            unresolved.append({'path': path, 'reason': 'requires-one-direct-int-increment-per-field'})
+            continue
+        try:
+            value = control.value(path)
+        except SAVE.SaveError as exc:
+            unresolved.append({'path': path, 'reason': str(exc)})
+            continue
+        difference = effect['after'] - value
+        rows.append({'path': path, 'start': effect['before'], 'taken': effect['after'], 'control': value,
+                     'takenDelta': effect['after'] - effect['before'], 'controlDelta': value - effect['before'],
+                     'difference': difference, 'expectedDifference': effect['operand'],
+                     'matches': difference == effect['operand']})
+    diagnostic = ('unresolved' if source_issues or unresolved or not rows
+                  else 'differences-consistent' if all(row['matches'] for row in rows) else 'difference-mismatch')
+    return {'diagnostic': diagnostic, 'effects': rows, 'unresolved': unresolved,
+            'matchedRuntimeStartEstablished': False, 'eventFiredEstablished': False}
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('before'); p.add_argument('after')
     p.add_argument('--source-report', required=True); p.add_argument('--selection', required=True)
+    p.add_argument('--control', help='Hash-pinned missed or comparison attempt outcome save')
     p.add_argument('--output', required=True)
     args = p.parse_args()
     try:
         output = Path(args.output)
         inputs = {Path(x).resolve() for x in (args.before, args.after, args.source_report, args.selection)}
+        if args.control is not None:
+            inputs.add(Path(args.control).resolve())
         if output.resolve() in inputs or output.exists():
             raise ValueError('output must be a new file distinct from all inputs')
-        result = review(args.before, args.after, args.source_report, args.selection)
+        result = review(args.before, args.after, args.source_report, args.selection, control_path=args.control)
         with output.open('x', encoding='utf-8') as stream:
             stream.write(json.dumps(result, indent=2, allow_nan=False) + '\n')
         print(json.dumps({'diagnostic': result['diagnostic'], 'directEffects': len(result['directEffects']),
                           'missingEffects': len(result['missingEffects']), 'unresolved': len(result['unresolved']),
+                          **({'controlDiagnostic': result['controlComparison']['diagnostic']} if args.control else {}),
                           'semanticChangeCount': result['semanticChangeCount'], 'acceptance': 'not-evaluated'}))
+        if args.control is not None:
+            return 0 if result['controlComparison']['diagnostic'] == 'differences-consistent' else 2
         return 0 if result['diagnostic'] == 'direct-values-consistent' else 2
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print(json.dumps({'error': str(exc), 'acceptance': 'not-evaluated'}))
