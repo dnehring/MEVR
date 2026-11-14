@@ -21,22 +21,31 @@ These are inspected local revisions, not claims that a checkout is current upstr
 |---|---|---|
 | [Halcyon ME2](https://github.com/jrush64/MassEffect2-VR/tree/4784e90), `reference/MassEffect2-VR`, `4784e90` | LE2 stereo/render hook, camera and UI integration starting point | GPL-3.0 project. Integrate into MEVR host; do not run two independent OpenXR owners |
 | [Halcyon ME3](https://github.com/jrush64/MassEffect3-VR/tree/cfd4001), `reference/MassEffect3-VR`, `cfd4001` | Later LE3 renderer comparison and adapter work | Separate proof from LE2; its ABI and UI details are not interchangeable |
-| [Overlord](https://github.com/Aeka0/Overlord/tree/11f3005034188894976cb8392122ad166d59f927), `reference/Overlord`, `11f3005034188894976cb8392122ad166d59f927` | Physical weapon interaction, contact geometry, hand ownership, profile structure and test scenarios | GPL-3.0 project, compatible with this project's established reuse policy. H2 engine hooks, native ammo writes and weapon assets are not portable modules |
+| [Overlord](https://github.com/Aeka0/Overlord/tree/2d9b0ea14afa6079d69e93ce0a6270fb2bb6a597), `reference/Overlord`, `2d9b0ea14afa6079d69e93ce0a6270fb2bb6a597` | Physical weapon interaction, contact geometry, hand ownership, profile structure and test scenarios | GPL-3.0 project, compatible with this project's established reuse policy. H2 engine hooks, native ammo writes and weapon assets are not portable modules |
 | [REFramework](https://github.com/praydog/REFramework/tree/d1461375aee4ec3f313170f8eaad12064eb542d9), `reference/REFramework`, `d1461375aee4ec3f313170f8eaad12064eb542d9` | Targeted OpenXR/D3D implementation reference where MEVR lacks a solution | MIT; its engine stereo/gameplay hooks do not replace UE3 adapters |
 | [vrframework](https://github.com/elliotttate/vrframework/tree/751863e2076c9c142553c69a73d159f483b2ab5e), `reference/vrframework`, `751863e2076c9c142553c69a73d159f483b2ab5e` | Porting guidance on timing, stereo, camera coordinates, UI, input and engine access | MIT; consult matching guide before implementing a milestone, preserve upstream attribution for copied code |
 
 For adopted code, retain copyright/license notices and update `NOTICE.md`; use the repository's required SPDX identifier. GPL-derived implementation belongs in a clearly attributed file, with `GPL-3.0-only` under current project policy. Original MIT MEVR files that receive GPL-derived code must be relabeled accordingly. The implementing agent checks file-level notices and dependencies before adoption. This plan copies no external implementation.
 
-## Overlord weapon module candidates
+## Call of Duty Overlord weapon module candidates
+
+Overlord is the VR mod for **Call of Duty: Modern Warfare 2 Campaign Remastered**.
+Its clean local reference was fast-forwarded on 2026-11-13 from `11f3005` to
+`2d9b0ea`; the focused assessment records the relevant source differences.
+The [focused reload assessment](../research/le2-overlord-reload-reuse.md) records
+actual source/dependency findings and the next P4 extraction task. Prioritize
+finite swept socket contact, continuity/withdrawal guards and coherent hand/gun
+sampling around our existing request coordinator. Its native ammunition runtime
+does not replace ME2's reload authority.
 
 Paths below are relative to `reference/Overlord/`. Most gameplay headers live under `src/client/component/vr/gameplay/` (abbreviated `gameplay/`). Candidate means reviewed for relevance, not already extracted or validated in MEVR.
 
 | Need | Specific source | What to reuse or learn | What must remain ME2-specific |
 |---|---|---|---|
-| Insertion geometry | [`physical_reload_geometry.hpp`](https://github.com/Aeka0/Overlord/blob/11f3005034188894976cb8392122ad166d59f927/src/client/component/vr/gameplay/physical_reload_geometry.hpp), `physical_reload_contact_sample.hpp` | Finite swept contact volumes and coherent gun/controller samples; small geometry routines are candidates for direct adaptation | Thermal-clip sockets, units conversion, tracked-state validity and acceptance tuning |
+| Insertion geometry | [`physical_reload_geometry.hpp`](https://github.com/Aeka0/Overlord/blob/2d9b0ea14afa6079d69e93ce0a6270fb2bb6a597/src/client/component/vr/gameplay/physical_reload_geometry.hpp), `physical_reload_contact_sample.hpp` | Finite swept contact volumes and coherent gun/controller samples; small geometry routines are candidates for direct adaptation | Thermal-clip sockets, units conversion, tracked-state validity and acceptance tuning |
 | Reload states and profiles | `gameplay/physical_reload_gesture.hpp`, `physical_reload_profile.hpp`, `weapon_profile.hpp`, `weapon_profiles.hpp` | Data-driven receiver/contact definitions, action transitions and gesture admission | Actual clip mechanism, game ammo events, reload speed/modifiers, supported weapon families |
 | Two-hand transitions | `gameplay/support_grip.hpp`, `support_carry_rotation.hpp`; `docs/vr-foregrip-reload.md` | Release/regrip behavior; separate a valid rendered pose from permission to fire | MEVR's existing support solver and UE3 skeletal ownership; avoid wholesale replacement without evidence |
-| Ownership and conflicts | `gameplay/hand_interaction/runtime.cpp`, `object_identity.hpp`, `interaction_schedule.hpp`; `docs/vr-gameplay-interaction-architecture.md` | Per-hand ownership, identity generations, one input batch and explicit settlement | Our power, squad, omni-tool and menu priorities; game-thread call dispatch |
+| Ownership and conflicts | `gameplay/hand_interaction/runtime.cpp`, `gameplay/hand_interaction/object_identity.hpp`, `gameplay/interaction_schedule.hpp`; `docs/vr-gameplay-interaction-architecture.md` | Per-hand ownership, identity generations, one input batch and explicit settlement | Our power, squad, omni-tool and menu priorities; game-thread call dispatch |
 | Reload items and lifecycle | `gameplay/reload_item.hpp`, `reload_item_runtime.cpp`, `weapon_runtime_lifecycle.hpp`, `falling_trajectory.hpp` | Cancellation, transient item identity, held/falling presentation and stale-generation checks | Native LE2 inventory remains authoritative; no copied H2 ammo ledger or native memory writes |
 | Reach and holsters | `gameplay/weapon_holsters.hpp`, `body_reach_volume.hpp` | Acquisition/release hysteresis and body-relative reach geometry | Existing MEVR calibration, seated layout and expanded LE2 weapon categories |
 | Regression scenarios | `tests/vr/manual_magazine_reload_tests.hpp`, `foregrip_reload_tests.hpp`, `hand_interaction_lifecycle_tests.hpp`, `physical_reload_tests.cpp` | Translate observable invariants: one commit, no stale-object insertion, support-hand continuity and cancellation | ME2 legal states, tutorial notifications and ammo/power interactions; upstream tests alone cannot validate our adapter |

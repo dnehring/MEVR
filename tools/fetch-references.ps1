@@ -14,7 +14,7 @@ $root = Join-Path $PSScriptRoot '..\reference'
 New-Item -ItemType Directory -Force $root | Out-Null
 
 $repos = @(
-    @{ Name = 'Overlord';    Url = 'https://github.com/Aeka0/Overlord.git';       Submodules = $false }  # GPL-3.0: design reference only
+    @{ Name = 'Overlord';    Url = 'https://github.com/Aeka0/Overlord.git';       Submodules = $false }  # GPL-3.0: scoped weapon/interaction reuse; see docs/le2-port-reuse-map.md
     @{ Name = 'REFramework'; Url = 'https://github.com/praydog/REFramework.git';  Submodules = $false }  # MIT: OpenXR/D3D11 code source
     @{ Name = 'LExASIs';     Url = 'https://github.com/ME3Tweaks/LExASIs.git';    Submodules = $true  }  # no license: patterns; pulls LExSDKv2
     @{ Name = 'LEBinkProxy'; Url = 'https://github.com/ME3Tweaks/LEBinkProxy.git'; Submodules = $false }  # no license: the ASI loader
