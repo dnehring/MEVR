@@ -3,8 +3,9 @@
 
 `le2_diagnostic::ObserveWeapon(uint32_t verifiedGameThread)` in
 `src/engine/Le2WeaponObservation.hpp` is a read-only diagnostic, included in the
-existing guarded observer translation unit. Host/wire integration and live
-weapon validation are separate work. This change enables no native action.
+existing guarded observer translation unit. The initial implementation enables
+no native action. The later bounded native observation below is separate from
+reload behavior or scenario acceptance.
 
 ## Source and meaning
 
@@ -87,4 +88,51 @@ ctest --test-dir local-tools/weapon-sdk -C Debug --output-on-failure
 
 An isolated worktree can pass `-DMEVR_OBSERVATION_SDK_DIR=<initialized SDK path>`.
 No SDK source is vendored, and this project neither builds nor deploys an ASI.
-Native validation remains pending.
+## First native sample and installed MassCannon source
+
+Protected run `0ad9e033-a97d-4108-bbe7-e38a58812386` on 2026-11-14 used candidate
+`d1cada86a839be82a58f9094c4a8f4b5f51b3aad`. Completed `observe-weapon` request
+`cff8ccbc-52d3-435a-8a7b-ac856eca6c46` reported exact selected class
+`SFXGameContent_Inventory.SFXWeapon_MassCannon`, base name
+`SFXWeapon_MassCannon`, nameNumber 2 and object index 122640. These last values
+identify only this process-local sample. Capacity was 1, used count 0,
+source-derived loaded count 1, raw stored reserve 10, and infinite-ammo and
+heavy-weapon-ancestry flags were false. The runtime effective reserve remained
+unavailable. This proves a bounded live observation, not a reload event.
+
+An independent offline audit verified the archived request/result identities,
+unique consumed request, frozen session/fixture/scenario receipts, deployment
+attestation, PID/start binding and exported state hash. Recomputing normalization
+and starting-state checks reproduced the artifact exactly. Export exit 2 is
+correct: effective reserve is unavailable, and this weapon-only query contains
+no map or resource observation. No separate query was merged into it. The
+session binding reported verified restoration. Private export and source-audit
+receipts preserve the full hashes; no runtime field was promoted by this audit.
+
+Installed `SFXWeapon_SniperRifles.pcc` SHA256
+`d80041e9bada2dc84f1e5d3e4c4fdbc0a335512c5b8299e76a3f8fec3455f2ea`
+establishes this superclass chain through package export metadata:
+
+| Declaration | Package/export | Own function/state declarations relevant to inheritance |
+| --- | --- | --- |
+| `SFXGameContent_Inventory.SFXWeapon_MassCannon` | `SFXWeapon_SniperRifles.pcc`, 57 | Four decal/impact initialization/effect functions; no ammo/reload/state override. |
+| `SFXGameContent_Inventory.SFXWeapon_SniperRifle` | Same package, 21 | Three decal/impact functions and `SetZoomed`; no ammo/reload/state override. |
+| `SFXGame.SFXWeapon_SniperRifle_Base` | Pinned `SFXGame.pcc`, 32232 | `ModifyDamage` only. |
+| `SFXGame.SFXWeapon` | Pinned `SFXGame.pcc`, 26245 | Audited magazine/reserve getters and reload implementation. |
+
+The concrete MassCannon class is absent from the SDK class list; the package
+metadata supplies that missing link. It does not derive from `SFXHeavyWeapon`.
+For this installed chain, the base `GetCurrentSpareAmmo` implementation converts
+`CurrentSpareAmmo` to float, making 10 the **source-derived interpretation** of
+the sampled stored reserve. No native getter was executed, and installed source
+inspection does not independently prove unchanged live function bytecode.
+
+The sampled magazine was full. The audited base `CanReload` requires a positive
+used count, so that predicate was unsatisfied in this sample. This is source
+analysis, not an observed eligibility-call result. `TryReload` also has state
+overrides in `StartReload`/`Reloading`; `DoReload` retains pawn, infinite-ammo,
+heat and reserve branches. Early/cancel paths can transfer ammunition. A
+one-round magazine can become eligible for automatic reload immediately after
+firing, so before/after counts alone cannot establish a manual reload sequence.
+Native reload initiation, timing, transfer count, finite-policy acceptance and
+VR handling remain pending.
