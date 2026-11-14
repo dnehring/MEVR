@@ -373,7 +373,7 @@ offline and, where said, run on the fake headset; nothing on this list has been 
     stick as a player holds it (`moved-by-pick`, `turn-ignored`), the pictures (`eye-flat`, `hud-black`, `wheel-cut`), the
     script's black screen on foot, a flash, and which scene a save played; five broken runs, all caught. Found on its first
     run: a near-black frame in the Spectre walk, a flash of the 3D screen into Opold's shop, Anderson 0.2 m from the eyes in
-    the Council walks; all three fixed the same day (a flat-panel variant of the shop's flash left, now reported). Open: item
+    the Council walks; all three fixed the same day, and the shop's flat-panel variant that evening. Open: item
     21's decision; the fake headset's 31.3 fps cap is set aside (the owner: the sleeping monitor, likely).
 
 **Audio (handed to a separate agent, 2026-11-10; the owner: less valuable than item 1, done in parallel)**: its branch is
@@ -3826,11 +3826,15 @@ logs, records and code, then checked):
    yet published the shop, so `liveWorldGui` was false: the 3D screen for one frame). The three clean plays had a mode-0 frame
    between (it clears the latch). **Fix** (two `[MEVR]` lines in xr_session.cpp): mode 7 with a conversation in the world is not a
    conversation for the decision, and its frame gets the second eye (`effectiveGm` 0). Seen: 6 plays, 0 flashes (two of them
-   straight from mode 5 to 7, the race). **Left: a variant** (1 of 6): mode 5, 0 (the conversation ended), then 7 before the
-   shop's world UI is published: Halcyon's flat panel for 0.07 s (`[VRSTATE] gm 7 alive -> FLAT panel`). Not fixed: holding the
-   view there means treating a GUI screen opened from on foot as the world for its first frames, which touches every screen; the
-   session judge now reports it (`tools/conversation-session.py`: a non-VR state under 0.25 s between two VR states), so a run
-   with it fails.
+   straight from mode 5 to 7, the race). **A variant** (1 of 6): mode 5, 0 (the conversation ended), then 7 before the shop's
+   world UI is published: Halcyon's flat panel for 0.07 s (`[VRSTATE] gm 7 alive -> FLAT panel`); the session judge reports it
+   since (`tools/conversation-session.py`: a non-VR state under 0.25 s between two VR states). **Fixed the same evening** (the
+   owner: "Fix the panel flicker"), narrowly, so other screens opened from on foot keep their way: the mod publishes "handing
+   over" (`State::holdPad[1]`, active 0) for 300 ms after a conversation shown in the world ends, in modes 0 and 7
+   (`Arm(link, armed, handover)`); the host's `MevrBridge::ConversationHandover()` (`cw::HandingOver`, 150 ms fresh) makes a
+   mode-7 frame a live world GUI (a `[MEVR]` line beside the world UI's reservation in xr_session.cpp) until the mod publishes
+   the screen in the room. Seen: 5 plays, 0 flat frames, 0 flashes (3 through mode 0, 2 straight); before, the flat frame came
+   in 1 of 6, so 5 clean plays make it likely, not proven: the judge keeps watching.
 3. **Anderson in the player's eyes: the stick walked the view into his back**, and the walk's clearance had nobody to keep clear
    of in a moment (`MovePlayer`'s list is the conversation's people, the squad and the owner; `BeginMomentView` resets them):
    Anderson stood 1.9 m ahead, set off at about 1.0 m/s in a lane 0.1-0.2 m from the player's at 1.25 m/s (`0.70 m clear of 0
@@ -4294,3 +4298,5 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   `dark-view`, broken run `matineefade off` caught), a conversation in the world handing over to a GUI screen is no longer a
   conversation for Halcyon's decision (Opold's flash: 0 of 6), a moment's walk keeps clear of the people near (Anderson); the
   shop's flat-panel variant (mode 0 between) is reported by the session judge, not fixed.
+- 2026-11-13 19:55, **item 38, the panel flicker** (the owner: "Fix the panel flicker"): "handing over" published 300 ms after a
+  conversation in the world ends; a mode-7 frame then is the world's until the screen stands in the room: 5 plays, 0 flat frames.

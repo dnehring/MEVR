@@ -3710,6 +3710,9 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     // [MEVR] research/53: one of the game's screens stands in the room (the shop, the minigame...): a live in-world GUI.
     const unsigned mevrWorldUi = MELEVR::MevrBridge::WorldUiOwnership(gameMode);   // [MEVR] active OR eligible pending ownership
     if ((mevrWorldUi & 3u) != 0) liveWorldGui = true;   // [MEVR] mode 7 reservation; mode 10 still requires active publication
+    // [MEVR] research/69 item 38: a GUI screen straight after a conversation in the world (Opold's shop, through a mode-0 tick):
+    // the room's until the mod publishes it, not the flat panel for its first frame (0.07 s, 1 of 6 plays).
+    if (gameMode == 7 && MELEVR::MevrBridge::ConversationHandover()) liveWorldGui = true;
     // [SFR] gate feed MOVED below the cine decision ([SFRGATE-LATCH 2026-08-12]): it used to be fed
     // the RAW mode byte here, which flaps 7/8/-1 mid-cutscene - the presentation held (CINEFLAPFIX)
     // but SfrModeAllowsReplay returns false for all three, so every blip killed the SECOND EYE pass

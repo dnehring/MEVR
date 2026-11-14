@@ -108,4 +108,10 @@ bool ConversationWorldOrComing() noexcept {
     return mevr::vr::conversation_world::Armed(mevr::host::conversation_world::kComingMs);
 }
 
+// [MEVR] research/69 item 38: a conversation shown in the world ended this instant, so a GUI screen the game opens now (Opold's
+// shop) is the mod's to place in the room: its first frames keep the world's presentation, not the flat panel.
+bool ConversationHandover() noexcept {
+    return mevr::vr::conversation_world::HandingOver(mevr::host::conversation_world::kComingMs);
+}
+
 } // namespace MELEVR::MevrBridge

@@ -1019,8 +1019,18 @@ void TestLatest() {
     s.active = 1;
     cw::Publish(s);
     CHECK(cw::Latest().has_value() && !cw::Armed());   // a scene in the world is not "coming"
+    CHECK(!cw::HandingOver());
+    s.active = 0;                                      // the conversation just ended in the world: a GUI screen may follow
+    s.holdPad[0] = 0;
+    s.holdPad[1] = 1;
+    cw::Publish(s);
+    CHECK(cw::HandingOver() && !cw::Armed() && !cw::Latest().has_value());
+    s.active = 1;                                      // handing over means nothing while a scene is shown
+    cw::Publish(s);
+    CHECK(!cw::HandingOver());
     cw::Reset();
     CHECK(!cw::Armed());
+    CHECK(!cw::HandingOver());
     CHECK(!cw::Latest().has_value());
 }
 

@@ -43,6 +43,9 @@ struct State {
     // holdPad[0]: "armed" (with active 0): the player is on foot and the mod would show a conversation or a moment that begins
     // now in the world. The game's mode changes a tick before the mod's state can follow: armed, the host keeps the on-foot
     // presentation over that tick instead of showing the 3D screen for it (a flash and two dips at every scene's start).
+    // holdPad[1]: "handing over" (with active 0): a conversation shown in the world ended under 300 ms ago; a GUI screen the game
+    // opens now (a merchant's shop) keeps the world's presentation until the mod publishes it in the room, instead of a frame of
+    // the flat panel (research/69 item 38).
     std::uint8_t holdPad[3] = {};
     std::uint32_t cut = 0;  // counts the player's re-placements inside the conversation (the opening): the host dips from black on a change
     float holdLocation[3] = {};
@@ -61,6 +64,8 @@ std::optional<State> Latest(std::uint64_t maxAgeMs = 300);
 // The mod's last word was "armed" (State::holdPad[0] with active 0) and no older than maxAgeMs: on foot, and a scene that
 // begins now would be shown in the world.
 bool Armed(std::uint64_t maxAgeMs = 150);
+// The mod's last word was "handing over" (State::holdPad[1] with active 0), no older than maxAgeMs.
+bool HandingOver(std::uint64_t maxAgeMs = 150);
 void Reset();
 
 // ---- [Cinematics] conversations ----------------------------------------------------------------------------------------------

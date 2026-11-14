@@ -307,6 +307,7 @@ void WorldUiPresent(bool reserved, bool flatPanel, bool held) noexcept;
 // hides up, and the main view's CalcSceneView gets the held view (GalaxyViewSwapBegin).
 bool ConversationInWorld() noexcept;
 bool ConversationWorldOrComing() noexcept;  // [MEVR] ... or one beginning this instant (the mode's first tick; research/69)
+bool ConversationHandover() noexcept;       // [MEVR] a conversation in the world ended this instant (a GUI screen may follow; item 38)
 
 struct MenuPointer
 {

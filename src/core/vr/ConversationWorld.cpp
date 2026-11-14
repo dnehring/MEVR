@@ -68,6 +68,11 @@ bool Armed(std::uint64_t maxAgeMs) {
     return gHave && gLatest.active == 0 && gLatest.holdPad[0] != 0 && GetTickCount64() - gLatest.timeMs <= maxAgeMs;
 }
 
+bool HandingOver(std::uint64_t maxAgeMs) {
+    std::lock_guard lock(gMutex);
+    return gHave && gLatest.active == 0 && gLatest.holdPad[1] != 0 && GetTickCount64() - gLatest.timeMs <= maxAgeMs;
+}
+
 void Reset() {
     std::lock_guard lock(gMutex);
     gLatest = {};

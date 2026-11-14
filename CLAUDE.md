@@ -367,7 +367,8 @@ switching frameworks.
   through the wheel's latch; the runner's `-HoldThroughPick`, `-StickTurnAt`); the snapshots' `eye-flat`, `hud-black`, `wheel-cut`
   (`audit-report.py`, a snapshot at each first wheel); `black-panel-on-foot` (game/AuthoredMoment); which scene played
   (`sceneSeen`, a scene's `startEntry`); the session judge's `flash` (a conversation in the world handing over to a GUI screen,
-  mode 7, no longer flashes the 3D screen: a `[MEVR]` seam in xr_session.cpp's decision). Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
+  mode 7, no longer flashes the 3D screen or the flat panel: `[MEVR]` seams in xr_session.cpp's decision, and the mod's
+  "handing over", `State::holdPad[1]`, for 300 ms after one ends: `MevrBridge::ConversationHandover`). Any of them fails a run (`FAIL_RULES`). Their broken runs share one game
   (`"game": "opold"`: `mevr convo hide body|person on`, `nearplane off`, `sticklatch off`, `stickturn off`).
   **The game's camera shakes are off in VR** (`game/CameraShake`, research/71, 2026-11-12, [verify] in the game): the guns'
   and the Mako's screen shakes (`SFXWeaponStatsBase.FiringShake`/`TightAimFiringShake`, `BioVehicleWheeled.JumpShake`/

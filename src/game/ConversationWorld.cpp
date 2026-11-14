@@ -6057,16 +6057,22 @@ Link gLink;  // the host's publish function, as the last tick had it (MomentMayS
 // game's mode has changed and the mod's state has not; said to be off the moment a mode begins that the mod does not take.
 std::uint64_t gArmedMs = 0;
 std::uint64_t gLeftWorldMs = 0;  // when a conversation shown in the world ended into the cinematic mode (a moment may follow)
-void Arm(Link const& link, bool armed) {
-    if (link.publish == nullptr || (!armed && gArmedMs == 0)) {
+std::uint64_t gEndedInWorldMs = 0;  // when a conversation shown in the world last ended (any mode next: a GUI screen may follow)
+bool gHandoverPublished = false;
+
+// `handover` (State::holdPad[1]): a conversation shown in the world ended under 300 ms ago (research/69 item 38).
+void Arm(Link const& link, bool armed, bool handover = false) {
+    if (link.publish == nullptr || (!armed && !handover && gArmedMs == 0 && !gHandoverPublished)) {
         return;
     }
     cw::State state;
     state.active = 0;
     state.holdPad[0] = armed ? 1 : 0;
+    state.holdPad[1] = handover ? 1 : 0;
     link.publish(&state);
     gArmedMs = armed ? GetTickCount64() : 0;
     gArmedSince = gArmedMs;
+    gHandoverPublished = handover;
 }
 
 // True while the moment's view is up this tick (the caller returns).
@@ -7282,7 +7288,13 @@ void Tick(double deltaSeconds, Link const& link) {
             gLeftWorldMs = now;
         }
         bool const momentMayFollow = mode && *mode == 6 && gLeftWorldMs != 0 && now - gLeftWorldMs < 300;
-        Arm(link, CurrentMode() == cw::Mode::World && FootFresh(now) && ((mode && *mode == 0) || momentMayFollow));
+        // A GUI screen straight after it (a merchant's shop, sometimes through a tick of mode 0): the host keeps the world's
+        // presentation for it until the screen is published in the room (else a frame of the flat panel; research/69 item 38).
+        if (shown) {
+            gEndedInWorldMs = now;
+        }
+        bool const handover = gEndedInWorldMs != 0 && now - gEndedInWorldMs < 300 && mode && (*mode == 0 || *mode == 7);
+        Arm(link, CurrentMode() == cw::Mode::World && FootFresh(now) && ((mode && *mode == 0) || momentMayFollow), handover);
         SetStatus(std::format("{{\"on\": false, \"mode\": \"{}\"}}", cw::Name(CurrentMode())));
         return;
     }
