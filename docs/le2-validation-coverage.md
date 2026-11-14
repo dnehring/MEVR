@@ -53,6 +53,17 @@ python tools/qa-le2/test-scenario.py
 
 `check-start` consumes an observed document with `source: "runtime-observation"` and `state: {map: ..., ...}`. Checks use dotted paths within `state`, operators `eq`, `ge` or `le`, and scalar values. It does not inspect images, validate selected-save identity or establish acceptance. The session owner must match observed data to the active run. Audit additionally requires that the `start` artifact have the full run identity.
 
+A check may name another declared `runtime-state` slot with `artifact`.
+For reload, use `start` for the map and `start-weapon` for checks such as
+`weapon.identity.class`, `weapon.magazineCapacity`, `weapon.loaded` and
+`weapon.effectiveReserve`. Bind both artifacts to the same run and case.
+With `check-start`, pass the additional sample using
+`--observation start-weapon WEAPON_JSON`. With `audit`, include both slots
+in the evidence manifest. The samples retain their own request and tick.
+Review the loaded scene and verify that no action changed the weapon between
+observations. A per-query export check can report missing starting fields that
+the combined audit subsequently checks in the additional artifact.
+
 The evidence JSON contains:
 
 | Field | Contract |

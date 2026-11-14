@@ -4,6 +4,8 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -125,6 +127,36 @@ class ScenarioTests(unittest.TestCase):
         result = self.audit()
         self.assertIn('another run', result['artifactProblems']['after'])
         self.assertEqual(result['gates']['native'], 'pending')
+
+    def test_reload_start_can_use_separate_run_bound_weapon_observation(self):
+        self.s['artifacts']['start-weapon'] = 'runtime-state'
+        self.s['expectedStart']['checks'].append({
+            'artifact': 'start-weapon', 'field': 'weapon.loaded', 'op': 'eq', 'value': 0})
+        self.write(self.path, self.s)
+        self.identity['scenarioSha256'] = scenario.sha(self.path)
+        for name in ('start', 'before', 'after', 'input'):
+            sample = scenario.read_json(self.root / (name + '.json'))
+            sample['identity'] = self.identity
+            self.artifact(name, sample)
+        weapon = {'identity': self.identity, 'source': 'runtime-observation',
+                  'state': {'weapon': {'loaded': 0}}}
+        self.assertTrue(self.audit()['startProblems'])
+        self.artifact('start-weapon', weapon)
+        self.assertEqual(self.audit()['gates']['native'], 'supported')
+        cli = [sys.executable, str(HERE / 'scenario.py'), 'check-start', str(self.path),
+               str(self.root / 'start.json'), '--observation', 'start-weapon', str(self.root / 'start-weapon.json')]
+        checked = subprocess.run(cli, capture_output=True, text=True, check=True)
+        self.assertTrue(json.loads(checked.stdout)['startingStateMatches'])
+        weapon['state']['weapon']['loaded'] = 1
+        self.artifact('start-weapon', weapon)
+        self.assertEqual(self.audit()['startProblems'], ['starting check failed: weapon.loaded'])
+        weapon['state']['weapon']['loaded'] = 0
+        weapon['identity'] = dict(self.identity, runId='STALE-RUN')
+        self.artifact('start-weapon', weapon)
+        self.assertIn('another run', self.audit()['artifactProblems']['start-weapon'])
+        self.assertTrue(self.audit()['startProblems'])
+        self.s['expectedStart']['checks'][-1]['artifact'] = 'input'
+        self.assertIn('starting-state check must reference a runtime-state artifact', scenario.validate(self.s))
 
     def test_wrong_scenario_or_fixture_identity_refused(self):
         for key in ('scenarioSha256', 'baseSaveSha256', 'recipeSha256'):
