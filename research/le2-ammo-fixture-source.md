@@ -183,14 +183,22 @@ Sources: `SFXGameModeDefault.TryReload`, `SFXWeapon.CanReload`, `TryReload`,
 - For ordinary finite-reserve player reloads with positive capacity/reserve and
   integral counts, transfer is the smaller of reserve and used count. Used count
   and reserve decrease by that transfer; loaded count increases correspondingly.
-  Treat this as a bounded expected relationship, not a substitute for observing
-  the native function, upgrades, delegates and actual loaded weapon.
+  Upgrades, delegates and the loaded weapon still need native observation.
 - **Cancellation can commit ammunition.** `Reloading.CancelReload` calls the
   native transfer when the early-reload flag is set, clears the timers and exits.
   The transfer clears that flag. Thus a test asserting every cancellation leaves
   ammunition unchanged would encode the wrong baseline. State exit also clears
   reload timers. Cover changes, melee and mapped powers contain cancellation
   call sites; their complete behavior remains to be exercised.
+
+For the ordinary finite-ammo variants, the scenario auditor now checks this
+exact transfer against the two weapon observations. Both samples must report
+the same selected ordinary weapon identity and finite-ammo flag. The audit
+checks the requested starting boundary, the used and loaded counts against
+capacity, and the corresponding reserve decrease. A conserved total can
+still hide a partial transfer. Use the separate input and scene review to
+rule out a switch away and back, automatic reload, or another intervening
+action. See the [reload scenario](../tools/qa-le2/scenarios/reload.json).
 
 The Alyx-style physical eject/insert interaction needs an explicit design for
 when it enters and completes this native sequence. Calling transfer directly

@@ -17,6 +17,8 @@ from pathlib import Path
 
 GATES = ('native', 'vr', 'visual', 'headset', 'performance', 'campaign')
 KINDS = ('runtime-state', 'input-trace', 'save-inspection', 'image', 'video', 'timing', 'log')
+RELOAD_CASES = ('empty', 'partial', 'insufficient-reserve', 'exact-reserve',
+                'surplus-reserve', 'no-reserve', 'full-magazine')
 IDENTITY = ('runId', 'caseId', 'scenarioSha256', 'baseSaveSha256', 'recipeSha256',
             'preparedSaveSha256', 'candidateCommit', 'gameVersion')
 
@@ -152,7 +154,7 @@ def validate(s, for_run=False):
             if not isinstance(check, dict):
                 continue
             kind = check.get('kind')
-            need(kind in ('compare', 'delta', 'sum-equal', 'review'), f'{aid}: invalid check kind')
+            need(kind in ('compare', 'delta', 'sum-equal', 'finite-reload-transfer', 'review'), f'{aid}: invalid check kind')
             refs = []
             if kind == 'compare':
                 refs = [check.get('left')]
@@ -165,6 +167,12 @@ def validate(s, for_run=False):
             elif kind == 'delta':
                 refs = [check.get('before'), check.get('after')]
                 need(_number(check.get('expected')), f'{aid}: finite expected delta required')
+            elif kind == 'finite-reload-transfer':
+                refs = [check.get('before'), check.get('after')]
+                need(isinstance(variants, list) and all(x in RELOAD_CASES for x in variants),
+                     f'{aid}: reload transfer requires an ordinary finite-ammo variant')
+                need(all(_reference(ref) and slots.get(ref['artifact']) == 'runtime-state' for ref in refs),
+                     f'{aid}: reload transfer requires weapon runtime observations')
             elif kind == 'sum-equal':
                 left, right = check.get('left'), check.get('right')
                 need(isinstance(left, list) and bool(left) and isinstance(right, list) and bool(right), f'{aid}: nonempty sum terms required')
@@ -218,6 +226,44 @@ def compare(left, op, right):
     if not _number(left) or not _number(right):
         raise ValueError('ordered comparison requires finite numbers')
     return {'gt': left > right, 'ge': left >= right, 'lt': left < right, 'le': left <= right}[op]
+
+
+def check_reload_transfer(before, after, variant):
+    """Check sampled ammo accounting for one isolated ordinary native reload."""
+    identities = [sample['identity'] for sample in (before, after)]
+    for identity in identities:
+        if (not isinstance(identity, dict) or not _text(identity.get('class')) or not _text(identity.get('name'))
+                or type(identity.get('index')) is not int or identity['index'] < 0
+                or type(identity.get('nameNumber')) is not int or identity.get('heavyWeaponClass') is not False):
+            raise ValueError('ordinary weapon identity required at both reload samples')
+    if identities[0] != identities[1]:
+        raise ValueError('selected weapon identity differs across reload samples')
+
+    def counts(sample):
+        if sample.get('infiniteAmmo') is not False:
+            raise ValueError('explicit finite weapon ammo flag required')
+        values = tuple(sample[key] for key in ('magazineCapacity', 'magazineUsed', 'loaded', 'effectiveReserve'))
+        if not all(_number(value) and 0 <= value <= 2**24 and int(value) == value for value in values):
+            raise ValueError('reload requires integral counts in the exact float32 range')
+        capacity, used, loaded, reserve = map(int, values)
+        if capacity == 0 or used + loaded != capacity:
+            raise ValueError('loaded and used counts do not reconcile to magazine capacity')
+        return capacity, used, loaded, reserve
+
+    capacity, used, loaded, reserve = counts(before)
+    if not {
+        'empty': loaded == 0 and reserve > 0,
+        'partial': 0 < loaded < capacity and reserve > 0,
+        'insufficient-reserve': 0 < reserve < used,
+        'exact-reserve': reserve == used and used > 0,
+        'surplus-reserve': reserve > used > 0,
+        'no-reserve': reserve == 0 and used > 0,
+        'full-magazine': used == 0 and reserve > 0,
+    }[variant]:
+        raise ValueError('starting counts do not establish the selected reload variant')
+    transfer = min(used, reserve)
+    if counts(after) != (capacity, used - transfer, loaded + transfer, reserve - transfer):
+        raise ValueError(f'observed ammo does not match exact finite reload transfer of {transfer}')
 
 
 def check_start(scenario, runtime_state, observations=None):
@@ -381,6 +427,9 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
                         if not _number(before) or not _number(after):
                             raise ValueError('delta requires finite observed numbers')
                         passed = after - before == check['expected']
+                    elif check['kind'] == 'finite-reload-transfer':
+                        check_reload_transfer(observed(check['before']), observed(check['after']), e['caseId'])
+                        passed = True
                     else:
                         left, right = [observed(x) for x in check['left']], [observed(x) for x in check['right']]
                         if not all(_number(x) for x in left + right):

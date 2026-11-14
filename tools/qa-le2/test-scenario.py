@@ -93,6 +93,40 @@ class ScenarioTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'draft'):
                 scenario.load(path, for_run=True)
 
+    def test_reload_checks_exact_transfer_and_weapon_identity(self):
+        check = next(a for a in scenario.load(HERE / 'scenarios' / 'reload.json')['assertions']
+                     if a['id'] == 'finite-reload-transfer')
+        check['variants'] = ['empty', 'no-reserve']
+        self.s['assertions'] = [check]
+        self.write(self.path, self.s)
+        self.identity['scenarioSha256'] = scenario.sha(self.path)
+        for slot in ('start', 'input'):
+            artifact = scenario.read_json(self.root / (slot + '.json'))
+            self.artifact(slot, dict(artifact, identity=self.identity))
+        before = {'identity': {'class': 'Synthetic.Pistol', 'index': 7, 'name': 'Pistol',
+                               'nameNumber': 1, 'heavyWeaponClass': False},
+                  'magazineCapacity': 12, 'magazineUsed': 12, 'loaded': 0,
+                  'effectiveReserve': 5, 'infiniteAmmo': False}
+        def sample(slot, weapon):
+            self.artifact(slot, {'identity': self.identity, 'source': 'runtime-observation',
+                                 'state': {'weapon': weapon}})
+        sample('before', before)
+        after = dict(before, magazineUsed=7, loaded=5, effectiveReserve=0)
+        sample('after', after)
+        self.assertEqual(self.audit()['gates']['native'], 'supported')
+        for invalid in (
+                dict(after, magazineUsed=8, loaded=4, effectiveReserve=1),
+                dict(after, identity=dict(after['identity'], nameNumber=2)),
+                dict(after, infiniteAmmo=True),
+                dict(after, magazineUsed=7.5, loaded=4.5),
+        ):
+            sample('after', invalid)
+            self.assertEqual(self.audit()['gates']['native'], 'failed')
+        with self.assertRaisesRegex(ValueError, 'starting counts'):
+            scenario.check_reload_transfer(before, after, 'exact-reserve')
+        no_reserve = dict(before, effectiveReserve=0)
+        scenario.check_reload_transfer(no_reserve, no_reserve, 'no-reserve')
+
     def test_ready_is_binding_not_acceptance(self):
         self.assertEqual(scenario.validate(self.s, True), [])
         result = self.audit()

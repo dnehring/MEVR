@@ -156,29 +156,33 @@
       }
     },
     {
-      "id": "reload-weapon-index-matches",
+      "id": "finite-reload-transfer",
       "gate": "native",
-      "description": "Within one run, the ordinary reload samples must reference the same reported weapon object index. Review the trace for switches, replacement and object reuse.",
-      "requires": ["before", "after"],
-      "variants": ["empty", "partial", "no-reserve", "insufficient-reserve", "exact-reserve", "surplus-reserve", "full-magazine"],
+      "description": "Check the starting boundary, selected weapon and exact paired change in used, loaded and reserve counts. Review continuous input and scene separately to establish the cause of the transfer or refusal.",
+      "requires": [
+        "before",
+        "after",
+        "input"
+      ],
+      "variants": [
+        "empty",
+        "partial",
+        "insufficient-reserve",
+        "exact-reserve",
+        "surplus-reserve",
+        "no-reserve",
+        "full-magazine"
+      ],
       "check": {
-        "kind": "compare",
-        "left": {"artifact": "before", "field": "state.weapon.identity.index"},
-        "op": "eq",
-        "right": {"artifact": "after", "field": "state.weapon.identity.index"}
-      }
-    },
-    {
-      "id": "reload-capacity-matches",
-      "gate": "native",
-      "description": "Magazine capacity must agree between the before and after samples for ordinary reload cases.",
-      "requires": ["before", "after"],
-      "variants": ["empty", "partial", "no-reserve", "insufficient-reserve", "exact-reserve", "surplus-reserve", "full-magazine"],
-      "check": {
-        "kind": "compare",
-        "left": {"artifact": "before", "field": "state.weapon.magazineCapacity"},
-        "op": "eq",
-        "right": {"artifact": "after", "field": "state.weapon.magazineCapacity"}
+        "kind": "finite-reload-transfer",
+        "before": {
+          "artifact": "before",
+          "field": "state.weapon"
+        },
+        "after": {
+          "artifact": "after",
+          "field": "state.weapon"
+        }
       }
     },
     {
@@ -214,73 +218,11 @@
         ]
       },
       "variants": [
-        "empty",
-        "partial",
-        "no-reserve",
-        "insufficient-reserve",
-        "exact-reserve",
-        "surplus-reserve",
-        "full-magazine",
         "cancel-before-early",
         "cancel-after-early",
         "cancel-after-transfer",
         "duplicate-insert"
       ]
-    },
-    {
-      "id": "loaded-rounds-increase",
-      "gate": "native",
-      "description": "A legal finite-reserve reload with missing rounds transfers ammunition into the weapon.",
-      "variants": [
-        "empty",
-        "partial",
-        "insufficient-reserve",
-        "exact-reserve",
-        "surplus-reserve"
-      ],
-      "requires": [
-        "before",
-        "after",
-        "input"
-      ],
-      "check": {
-        "kind": "compare",
-        "left": {
-          "artifact": "after",
-          "field": "state.weapon.loaded"
-        },
-        "op": "gt",
-        "right": {
-          "artifact": "before",
-          "field": "state.weapon.loaded"
-        }
-      }
-    },
-    {
-      "id": "refused-reload-no-ammo-change",
-      "gate": "native",
-      "description": "A reload attempted with zero reserve or a full magazine leaves loaded ammo unchanged. Review the input and outcome to distinguish refusal from missing delivery.",
-      "requires": [
-        "before",
-        "after",
-        "input"
-      ],
-      "variants": [
-        "no-reserve",
-        "full-magazine"
-      ],
-      "check": {
-        "kind": "delta",
-        "before": {
-          "artifact": "before",
-          "field": "state.weapon.loaded"
-        },
-        "after": {
-          "artifact": "after",
-          "field": "state.weapon.loaded"
-        },
-        "expected": 0
-      }
     },
     {
       "id": "native-reload-transitions",
