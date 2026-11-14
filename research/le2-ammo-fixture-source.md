@@ -78,6 +78,89 @@ was run or modified for this audit. Mounted-package precedence, live tutorial
 progression, save timing and repeatable checkpoint acceptance remain separate
 validation gates.
 
+## Recovering a natural onboarding checkpoint without another collector
+
+2026-11-14 offline audit at `54a731e1`: the existing probe batch (11 indexed
+files) and chapter ammo batch (14 indexed files) still match every recorded
+hash/size. Their saves all retain integer 477 = 120 and boolean 4049 = false;
+none is an LS10 pre-reload checkpoint. The first protected opening attempt's
+reset archive contains four ME2 saves; its only save addition was the staged
+chapter fixture, not a new natural career. Do not mistake that added slot for
+successful onboarding. Scanning still needs normal Crew Deck-to-CIC/galaxy
+navigation and orbital capture; its one-probe bytes already exist and need no
+new preparation. See [scanning acquisition](le2-scanning-readiness.md).
+
+There is an earlier recovery opportunity in both inspected RezRoom copies:
+`LS5_Go_Get_Pistol.SeqEvent_RemoteEvent_2` (event LS5) reaches
+`SFXSeqAct_SaveGame_0`, whose **Out** link reaches `BioSeqAct_ToggleSave_1`.
+Its Enable variable is `SeqVar_Bool_1`, serialized true. This authored route
+requests an early save and enables saving; it does **not** prove disk completion
+or that the current pause menu permits a manual save. Capture the actual LS5
+checkpoint if produced, then the pre-reload prompt and a post-tutorial quiet
+checkpoint. Preserve the first before continuing: a later autosave can replace
+it. LS10's later state-15 save cannot be assumed to preserve the pre-event state.
+
+Reuse the existing scripted reset archive for collection:
+
+1. The protected session owner progresses normally and records the actual new
+   career/slot and scene. At a useful checkpoint, stop further progression and
+   close the owned game normally. The existing `session.py reset RUN` requires
+   quiet ownership; follow its normal refusal/restoration rules. This is a future
+   owner action, not an instruction to reset a foreign or already restored run.
+2. `session.reset` already snapshots each protected tree into a unique
+   `RUN/after/<index>-<uuid>` before restoration. It records the original
+   `protected[].path`, `archives[].path`, and each relative filename's SHA-256,
+   size and timestamps in `archives[].state.files`. It verifies unchanged source
+   during archival, preserves retry archives and marks restoration. After reset,
+   require recorded `phase=restored` and `restorationVerified=true`; resolve the
+   archive entry for the protected profile root, not an assumed numeric index.
+3. Resolve the **actual** `Save/ME2/<career>/<filename>.pcsav` under that archive.
+   Verify its hash and size against that entry before reading. If retries left
+   multiple entries, retain their identities and select by the recorded state;
+   do not blindly use the last directory. Compare with `protected[].before` and
+   the staged fixture to distinguish a new natural save from existing/staged
+   data. Keep the context hash, run ID, archive entry and original relative path
+   alongside the recovered bytes. Do not inspect restored live profiles to
+   reconstruct a missing mapping.
+4. Use the existing commands below, with a new private output directory and
+   actual resolved archive paths. `roundtrip` validates LE2 v30/CRC and writes
+   unchanged bytes plus a hash receipt exclusively. The pinned TSE oracle checks
+   decoding and byte-identical reserialization. Require both Boolean results
+   true, the expected upstream revision, and agreement of map, plot anchors and
+   saved weapon fields with `le2-save.py info`. Preserve unexplained state.
+
+```powershell
+python tools/le2-save.py roundtrip "$ArchivedSource" "$NewPrivate/checkpoint.pcsav" --receipt "$NewPrivate/checkpoint.receipt.json"
+python tools/le2-save.py info "$NewPrivate/checkpoint.pcsav" --json
+& $PinnedTseOracle "$NewPrivate/checkpoint.pcsav" "$NewPrivate/checkpoint-tse.json"
+```
+
+These commands operate on archived bytes; they do not supply PID/career authority
+on their own. `check-save-oracle.py` without an explicit prepared triple also
+creates a synthetic edited format probe; that generated `prepared.pcsav` is
+**not** the recovered checkpoint. Keep the unchanged archived source as the
+acquisition candidate. No dedicated post-reset extraction helper is needed.
+
+The normal `save-evidence.py before/after` collector is deliberately narrower:
+`inputs` requires a game-bound lease plus an existing frozen manual
+`fixtureSelection`, and `observation` requires that exact descriptor in the same
+career's complete list. A new empty career or unrelated first autosave cannot be
+admitted merely by adding a baseline. Do not alter a frozen run to force it.
+Once a natural save is archived and its actual manual mapping reviewed, prepare
+a **fresh** hash-bound session for that career. Use ordinary career selection
+where the scripted menu route cannot select it, verify the current descriptor
+and scene, and reuse the existing collector for subsequent normal New Save
+trials. The archive/decoder proof is not a substitute for that normal-load proof.
+
+Private evidence identifier: `le2-recovery-handoff/recovery-audit`.
+`audit.json` SHA-256 is
+`9005d1489779494d9cf38bcf2d3cdfbef4d93022f4743acaa800ca149545966f`;
+`reset-recovery.json` is
+`1a1a58a2f9d1153e1d7d8a6cc9260ec0aa02e25e74913a99ab212b9d0711533d`.
+The existing reset mapping and exclusive archive command were exercised offline
+on already archived chapter bytes; pinned TSE accepted the unchanged base.
+No new Lazarus fixture, gameplay, input, deployment or restoration occurred.
+
 ## Native reload sequence that VR must preserve
 
 Sources: `SFXGameModeDefault.TryReload`, `SFXWeapon.CanReload`, `TryReload`,
