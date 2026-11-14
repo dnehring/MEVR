@@ -3,7 +3,35 @@
 
 Checkpoint: 2026-11-14 UTC. **The resource edit/load/save/fresh-reload cycle now has native proof: all eight edited values survived normal saving, independent Trilogy Save Editor decoding and a fresh normal load. The reload run closed normally and restored all four protected roots. The earlier save run recovered its test changes while preserving intervening ME1/shared-profile changes. The three gameplay scenarios, general console calls and VR acceptance remain pending.**
 
-## Offline dialogue observer, 2026-11-14 UTC
+## Offline dialogue recorder, 2026-11-14 UTC
+
+Follow-up candidate `5190e3dd` adds the opt-in
+[`start-dialogue-history` recorder](../tools/qa-le2/control.md) to the same
+channel. It keeps up to ten seconds of conversation/reply, timer and GUI
+samples with 125 ms minimum separation. The export binds a stopped or
+inspected capture to the archived successful start and preserves unavailable
+samples, gaps, and size-budget omissions. The integrated client, exporter and
+scenario checks passed 53, 61 and 18 tests. SDK Release and Debug checks also
+passed, including delayed ticks, changed context, time-limit handling and
+worst-case payload trimming. The Python normalizer accepted an actual
+80-row SDK recorder snapshot and an extreme snapshot with 47 retained rows
+and 33 accounted omissions. Both retained the first and last sample times.
+The diagnostic ASI build SHA256 is
+`43d7feee4c07bf7eb31e47067819553582a90725d980db48913675290b6b8110`.
+All three Release configurations built, and the diagnostic suite passed 14/14.
+The initial ordinary suite had one failure in the synthetic launch test.
+Injecting equal dispatch and process-start timestamps reproduced the same
+refusal. The original test's detailed reason was unavailable. The fixture now
+supplies an explicitly later timestamp. The full ordinary suite passed 53/53
+with that test-only change at `0ad40bc6`. Real process admission is unchanged.
+
+The [Lazarus checkpoint recovery audit](le2-ammo-fixture-source.md#recovering-a-natural-onboarding-checkpoint-without-another-collector)
+verified existing reset-archive mapping and Trilogy Save Editor round-trip
+using an existing archived save. The [zero-probe follow-up](le2-scanning-readiness.md#immediate-acquisition-sequence)
+has a private verified plan with normal operator save selection. Neither
+changes the game's installation or establishes a gameplay outcome.
+
+## Offline dialogue point observer, 2026-11-14 UTC
 
 The existing diagnostic host now accepts the read-only
 [`observe-dialogue`](../tools/qa-le2/control.md) request and the existing state

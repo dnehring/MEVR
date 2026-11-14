@@ -78,15 +78,21 @@ for export. Each start, observe and stop request has an empty payload.
 
 ```powershell
 python tools/qa-le2/control.py C:\private\le2-run start-dialogue-history
-python tools/qa-le2/control.py C:\private\le2-run observe-dialogue-history
+# Exercise the prompt using normal input, then stop or inspect the expired capture.
 python tools/qa-le2/control.py C:\private\le2-run stop-dialogue-history
 python tools/qa-le2/export-state.py C:\private\le2-run --request STOP_REQUEST_UUID --case CASE_ID
 ```
 
 Start and stop change only the temporary recorder. An active recorder refuses
-a second start. Export the stopped capture before beginning another. Keep the
-visible prompt and the normal input trace alongside it. Cadence gaps and
+a second start. Export the stopped capture before beginning another. The
+`observe-dialogue-history` query can also retrieve the active or expired capture.
+During a timed trial, wait until the outcome or expiry to query. File
+validation for live requests can stall the game thread. Keep the visible
+prompt and normal input trace alongside the capture. Cadence gaps and
 unavailable samples limit what the history can establish about the window.
+The host checks the live lease files while recording. If ownership is lost
+or the endpoint is disabled, sampling stops and the owner must use the normal
+session recovery workflow.
 
 `observe-input` is an empty-input, read-only query for the diagnostic input
 publisher's context, poll and neutral-state evidence. It does not publish input.
