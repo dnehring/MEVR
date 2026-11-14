@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Bounded LE2 diagnostic pad source
 
-This pure helper is an offline candidate, disabled until a separately reviewed
-diagnostic hook and host admission path use it. It installs no hooks, touches no
+This pure helper is integrated with the existing `GamepadBridge` and the owned
+LE2 control host. Native delivery remains unproven; only an explicitly admitted
+`pad-pulse` enables it. The helper itself installs no hooks, touches no
 game objects, calls no game function, driver or OS input API, and changes no
 settings. It is independent of VR controller state, grip logic and head yaw.
 

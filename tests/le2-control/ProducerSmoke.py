@@ -83,13 +83,21 @@ def main(executable):
             result = control.submit(run, 'save-new', timeout=5, allow_save_new=True, bind=bind)
         assert result['status'] == 'rejected'
         assert json.loads(result['payload'])['reason'] == 'native new save is disabled'
+        result = control.submit(run, 'observe-input', timeout=5, bind=bind)
+        assert result['status'] == 'completed'
+        assert json.loads(result['payload'])['inputObservation']['available'] is False
+        pulse = dict(schemaVersion=1, context='default', durationMs=100, buttons=4096,
+                     leftTrigger=0, rightTrigger=0, leftX=0, leftY=0, rightX=0, rightY=0)
+        result = control.submit(run, 'pad-pulse', pulse=pulse, allow_native_input=True, timeout=5, bind=bind)
+        assert result['status'] == 'rejected'
+        assert json.loads(result['payload'])['reason'] == 'native input is disabled'
         for case in ('wrong-lease', 'expired'):
             rejection = negative.probe(run, case, timeout=5, bind=bind)
             assert rejection['status'] == 'rejected' and rejection['lease'] == identity['lease']
         # Neither rejection may poison the next legitimate request.
         assert control.submit(run, 'ping', timeout=5, bind=bind)['status'] == 'completed'
-        assert len(list((directory / 'history').glob('*.result'))) == 16
-        assert len(list(directory.glob('consumed-*.request'))) == 16
+        assert len(list((directory / 'history').glob('*.result'))) == 18
+        assert len(list(directory.glob('consumed-*.request'))) == 18
         assert not (directory / 'outstanding.json').exists()
         print('Python/C++ filesystem smoke passed: observations, disabled console/FOV/menu, wrong lease, expiry and recovery; fake process only')
     finally:

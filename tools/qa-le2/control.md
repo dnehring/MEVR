@@ -88,6 +88,33 @@ resubmit automatically. The ordinary archived request already pins the full
 pulse and run identity, so no additional action sidecar or runner is introduced.
 Offline client/codec tests do not establish native input acceptance.
 
+The diagnostic host implements these verbs through the existing `GamepadBridge`.
+No hook is installed by `observe-input`: the first explicit, owned `pad-pulse`
+attempt installs only the game's already loaded XInput exports. Admission needs
+a stable supported engine context and a completely available bridge. Each pulse
+has a process-local, never-reused token correlated with the ordinary request's
+run, lease and sequence. A second pulse is refused until the first has emitted
+its neutral output. There is no pulse queue or automatic retry.
+
+`payload.inputObservation` contains `context`, `bridge` and `cancellationReason`.
+The bridge's `source` reports publication/expiry times, requested pad, eligible
+poll counts and neutral writes. `output-written` and `neutral-written` mean the
+hook wrote an XInput output buffer; they do not prove the engine used it. Compare
+normal scene captures and authoritative state before and after each action.
+An empty poll history remains unproven, even after a dispatched response.
+
+The host compares freshly sampled player/mode/panel context every engine tick
+while input is pending, cancelling permanently on a change. Ownership is also
+rechecked during throttled request polling (approximately 250 ms). Hook-side
+expiry uses monotonic time independently of that polling. Physical pad activity
+or errors stop injection and preserve the original result. Neutral release
+requires a later eligible, nonconflicting poll; without one, replacement stays
+blocked. Closing/disabling the endpoint cancels admission while resident hooks
+remain available to deliver neutral release. Diagnostic file hashing and context
+sampling are excluded from performance measurements. Native delivery, bindings,
+menu effects and movement still require a protected run; these code paths alone
+do not promote any scenario.
+
 `observe-resources` is an empty-input, read-only query under
 `payload.resourceObservation`. It samples the current player's live inventory
 twice, with independent availability for credits, medi-gel, four minerals,
@@ -562,7 +589,8 @@ use the runtime's verified identity. Status meanings:
 
 - `completed`: a read-only ping/observation completed; forbidden for `console`,
   `probe-fov`, `advance-splash`, and `open-load-menu`, and never gameplay acceptance.
-- `dispatched`: native dispatch returned; for `probe-fov`, the host's bounded
+- `dispatched`: native dispatch returned, or a `pad-pulse` was published to the
+  existing bridge (not yet proof of a poll, release or gameplay effect); for `probe-fov`, the host's bounded
   scalar checks also passed. For menu actions it does not establish panel
   readiness. None establishes gameplay completion.
 - `rejected`: authoritative rejection before dispatch; no native effect occurred.

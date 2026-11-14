@@ -146,6 +146,18 @@ void WaitForInvitation() {
     fs::create_directory(f.control); Put(f.invitation, invitation); endpoint.Poll(2, 42);
     Require(endpoint.Attached() && !endpoint.Disabled(), "late first invitation not accepted");
 }
+void InputWithoutNative() {
+    Fixture f; host::Endpoint endpoint(f.local, f.process, [] { return Fixture::now + 1; }); endpoint.Poll(1, 42);
+    auto request = f.Request("observe-input"); f.Send(request); endpoint.Poll(2, 42);
+    auto result = f.Result(); auto payload = json::Parse(result.payload);
+    Require(result.status == "completed" && payload && !payload->Get("inputObservation").Bool("available", true) &&
+            !payload->Get("capabilities").Bool("nativePadPulse", true), "offline input observation advertised native delivery");
+    fs::remove(f.control / L"result.control");
+    request = f.Request("pad-pulse", 2); request.id = "44444444-4444-4444-8444-444444444444";
+    request.payload = R"({"schemaVersion":1,"context":"default","durationMs":100,"buttons":4096,"leftTrigger":0,"rightTrigger":0,"leftX":0,"leftY":0,"rightX":0,"rightY":0})";
+    f.Send(request); endpoint.Poll(3, 42);
+    Require(f.Result().status == "rejected" && !endpoint.Disabled(), "offline fixture admitted native input");
+}
 void RejectConsoleAndReplay() {
     Fixture f; host::Endpoint endpoint(f.local, f.process, [] { return Fixture::now + 1; }); endpoint.Poll(1, 42);
     auto request = f.Request(); f.Send(request); endpoint.Poll(2, 42);
@@ -344,9 +356,9 @@ int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string_view(argv[1]) == "--fixture-loop") return FixtureLoop();
         Require(argc == 1, "unknown test argument");
-        PingAndObserve(); WaitForInvitation(); RejectConsoleAndReplay(); WrongLeaseAndDeadline(); ClaimUsesFreshClock(); InvalidAttach();
+        PingAndObserve(); WaitForInvitation(); InputWithoutNative(); RejectConsoleAndReplay(); WrongLeaseAndDeadline(); ClaimUsesFreshClock(); InvalidAttach();
         RevokedOwnerAndDescriptor(); MalformedAndInterrupted(); OutputCollisionAndOversize(); ExistingResultAndReparse(); FrozenFixtureBinding();
-        std::cout << "11 LE2 control filesystem test groups passed (fake files/identity only)\n";
+        std::cout << "12 LE2 control filesystem test groups passed (fake files/identity only)\n";
         return 0;
     } catch (std::exception const& error) { std::cerr << "FAIL: " << error.what() << '\n'; return 1; }
 }

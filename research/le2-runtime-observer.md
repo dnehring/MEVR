@@ -74,8 +74,9 @@ existing run/PID/lease-bound channel rather than copying those request writers.
 
 ## Next work using these tools
 
-1. Connect the bounded input policy through the existing bridge and owned control
-   channel; prove delivery, neutral release and cancellation in ME2.
+1. The bounded input policy is now connected through the existing bridge and owned
+   `observe-input`/`pad-pulse` channel. Prove delivery, neutral release and
+   cancellation in ME2; offline tests do not establish native input acceptance.
 2. Use the already loaded chapter acquisition fixture to complete normal squad
    selection, then acquire a safe combat save using existing New Save/collector
    tools. Add actual weapon/ammo observations before claiming reload behavior.
