@@ -430,6 +430,9 @@ loader::spi::Interface* gSpi = nullptr;
 
 void SetProcessExiting() {
     gProcessExiting.store(true);
+}
+
+void StopWorkersForUnload() {
 #if defined(MEVR_WITH_HALCYON)  // LE1's host only (LE2/LE3 have no voice)
     host::voice::Shutdown();  // its capture and worker threads, before the DLLs unload
     host::voice_model::Shutdown();

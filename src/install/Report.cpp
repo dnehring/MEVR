@@ -1235,6 +1235,10 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
     if (addFile("logs/crash-breadcrumbs.prev.txt", {local / L"crash-breadcrumbs.prev.txt"}, 0, 0)) {
         b.files.back().note = "written " + FileTimeText(local / L"crash-breadcrumbs.prev.txt");
     }
+    // A fault at quit (research/36 "The fault at quit"): kept apart, never the report's crash.
+    if (addFile("logs/crash-exit.txt", {local / L"crash-exit.txt"}, 0, 0)) {
+        b.files.back().note = "a fault while the game quit, written " + FileTimeText(local / L"crash-exit.txt");
+    }
     addFile("logs/reflect-check.json", {local / L"reflect-check.json"}, 0, 0);
 
     // ---- Settings.

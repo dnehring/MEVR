@@ -15,6 +15,7 @@
 
 * [Never run UnrealScript off the game thread](process-event-off-the-game-thread.md) - ProcessEvent from the Present or render thread races the script VM's process-wide globals; the 2026-10-23 crash.
 * [A fault inside a render-thread hook hangs the game without a crash](render-thread-fault-hangs-the-game.md) - The engine's own handler ends the render thread, the game thread waits forever, and only first-chance log lines remain.
+* [Every quit crashes in a lock the game's teardown deleted, if anything delays the process's end](quit-time-fault-in-a-deleted-lock.md) - An AV at ntdll+0x1A12D writing 0x24 on exe+0x1BA22C0 within ms of "game exiting": a thread library's global mutex destroyed under its running worker; the mod's shutdown (2026-10-25) and the voice joins (2026-11-05) in the ExitProcess hook made it every quit; plugin/KeptLocks keeps the exe's static locks, the hook waits for nothing; bitten 2026-10-07, 2026-10-25, 2026-11-05 and 2026-11-13.
 * [LExSDKv2's generated function wrappers corrupt the UFunction's flags](lexsdk-function-wrappers.md) - `FunctionFlags |= ~0x400` (meant `&=`) sets every flag for good; call ProcessEvent yourself.
 * [Never write Shepard's Camera or God bones](camera-and-god-bones.md) - LE1's camera hangs off them through SpaceBases: the view would follow the body.
 * [ProcessEvent skips every native that has an opcode of its own](process-event-skips-opcode-natives.md) - Trace never hit, Destroy never destroyed, SetLocation and SetOwner did nothing; bitten 2026-10-24, 2026-10-31 and 2026-11-03 under four names.

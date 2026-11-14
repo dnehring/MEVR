@@ -44,6 +44,13 @@ inline void NoteGameThread() {
 // resolution needs later (LE1: our reflection layout; elsewhere pointers only).
 void Install();
 
+// The process is ending (the host's ExitProcess hook, with the game's exit code; LEBinkProxy's detach, 0). From then
+// on a fault is no crash of play: the game has deleted its locks while its workers still run (research/36 "The fault at
+// quit"). The unhandled filter writes crash-exit.txt instead of crash-breadcrumbs.txt (so no crash offer, no problem
+// report's crash), logs one line and ends the process with that code before Windows' error reporting sees it; no
+// crash-firstchance.txt either.
+void NoteProcessExit(unsigned exitCode);
+
 // "Class Outer.Name [0x...]" through guarded reads (LE1; elsewhere the pointer), for log lines. Any thread, after
 // Install; slow (each read checks its page), so not for hot paths.
 void AppendObject(text::Appender& out, void const* object);

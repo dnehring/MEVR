@@ -775,6 +775,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/RenderLevers.hpp
     src/plugin/MotionBlurGuard.cpp
     src/plugin/MotionBlurGuard.hpp
+    src/plugin/KeptLocks.cpp
+    src/plugin/KeptLocks.hpp
     src/plugin/RecenterTilt.cpp
     src/plugin/RecenterTilt.hpp
     src/plugin/ScopeCaptureSource.cpp

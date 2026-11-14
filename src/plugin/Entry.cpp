@@ -26,6 +26,7 @@
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/KeptLocks.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/RenderLevers.hpp"
 #include "plugin/MotionBlurGuard.hpp"
@@ -103,17 +104,32 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
 }
 
 // The game's exit. By the time it calls ExitProcess it has torn itself down (UObjects purged, its critical
-// sections deleted) while its worker threads still run; the real ExitProcess kills them first. So this hook does
-// only what can't wait and touches nothing of the game's: it must not shut the mod down here (unhooking freezes and
-// thaws every thread, the mod's shutdown reads engine memory, and a game worker meanwhile entered a deleted lock:
-// the 2026-10-25 crashes on quit, both an AV at ntdll+0x1A12D writing 0x24 on exe+0x1BA22C0, 27 ms after "game
-// exiting"). Halcyon's own ExitProcess hook ([EXITKILL]) ends the process with TerminateProcess, so the XR runtime's
-// DLLs are never unloaded with a live session; halcyon::Shutdown only tells its threads.
+// sections deleted) while its worker threads still run: one of them enters a deleted lock (exe+0x1BA22C0, an AV at
+// ntdll+0x1A12D writing 0x24) if the process lives on long enough after the teardown. The real ExitProcess, like
+// TerminateProcess, kills those threads first; every millisecond this hook spends before that is a window for the
+// fault (research/36 "The fault at quit", docs/knowledge/gotchas/quit-time-fault-in-a-deleted-lock.md):
+// - 2026-10-25: the mod's shutdown here (unhooking freezes and thaws every thread, it read engine memory) crashed
+//   every quit, 27 ms after "game exiting". Never shut the mod down or unhook in this hook.
+// - 2026-11-05 to 11-13: SetProcessExiting stopped the voice recognizer and the model tier (thread joins, the
+//   capture's stop), and every quit crashed again, 2-27 ms after "game exiting", always while the hook was still in
+//   those joins (it never reached its next line). Nothing that waits here.
+// Even a 0.1 ms hook lost the race now and then (the worker faults within milliseconds of the deletion, before or as
+// ExitProcess is called), so the lock itself is kept: plugin/KeptLocks skips the deletion of the exe's static critical
+// sections (the lock is a thread library's global mutex whose destroy leaves its "initialized" byte set).
+// So the hook does only what can't wait and touches nothing of the game's, then ends the process itself with
+// TerminateProcess (as Halcyon's own ExitProcess hook, [EXITKILL], under ours does), so the XR runtime's DLLs are never
+// unloaded with a live session and no DLL detach runs. halcyon::Shutdown only tells its threads. A fault that still
+// comes is recorded apart (crash::NoteProcessExit: crash-exit.txt, no crash offer). The log isn't closed: every line
+// is flushed as written, and a fault in the last moment still gets its line.
 using tExitProcess = void(WINAPI)(UINT exitCode);
 tExitProcess* gExitProcessOrig = nullptr;
 
 void WINAPI ExitProcessHook(UINT exitCode) {
-    mevr::log::Info("game exiting (code {}); the mod stays loaded and the process ends", exitCode);
+    LARGE_INTEGER frequency{}, begin{}, end{};
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&begin);
+    // Before anything else: a fault from here on is the quit's, not a crash of play.
+    mevr::host::crash::NoteProcessExit(exitCode);
     // Nothing waits for other threads from here on, and the mod DLL stays mapped: the process is
     // going away, and a thread caught inside a hook may never run again.
     mevr::host::SetProcessExiting();
@@ -123,6 +139,17 @@ void WINAPI ExitProcessHook(UINT exitCode) {
 #endif
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Shutdown();
+#endif
+    QueryPerformanceCounter(&end);
+    mevr::log::Info("game exiting (code {}); the hook's work took {:.3f} ms; the process ends now{}", exitCode,
+        1000.0 * static_cast<double>(end.QuadPart - begin.QuadPart) / static_cast<double>(frequency.QuadPart),
+#if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
+        "; kept locks: " + mevr::host::kept_locks::Summary());
+#else
+        "");
+#endif
+#if defined(MEVR_WITH_HALCYON)
+    TerminateProcess(GetCurrentProcess(), exitCode);
 #endif
     mevr::log::Close();
     gExitProcessOrig(exitCode);
@@ -217,6 +244,7 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
 #endif
     HookExitProcess(init);
 #if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
+    mevr::host::kept_locks::Install(init);  // research/36 "The fault at quit": the game's teardown deletes a lock in use
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
     mevr::host::motion_blur_guard::Install(init);
     mevr::host::game_pointer::InstallCursorHook(init);  // research/57 section 6: the game's cursor onto the pointer
@@ -230,7 +258,9 @@ extern "C" __declspec(dllexport) bool SpiOnDetach(spi::Interface* InterfacePtr) 
     (void)InterfacePtr;
     // LEBinkProxy detaches plugins as it unloads, i.e. at process exit: treat it like ExitProcess (no mod shutdown:
     // the game is torn down and the loader lock may be held, see ExitProcessHook).
+    mevr::host::crash::NoteProcessExit(0);
     mevr::host::SetProcessExiting();
+    mevr::host::StopWorkersForUnload();  // the game's threads are gone by now: nothing races these joins
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Shutdown();
 #endif

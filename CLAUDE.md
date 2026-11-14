@@ -1717,6 +1717,12 @@ Use it to check VR changes yourself instead of asking the user what they see
   are Essential); never latch a refusal for the session; share one swapchain between a quad's looks. Log `swapchains:`
   (every live one at a refusal), snapshot `"swapchains"` (gotchas/openxr-swapchain-limit); test with `[Debug] swapchainCap = N`
   (ours past N refused as the runtime would; checked on the fake headset 2026-11-06).
+- **Nothing waits in the ExitProcess hook, and the game's static locks are never deleted** (research/36 "The fault at
+  quit", gotchas/quit-time-fault-in-a-deleted-lock): the game's teardown destroys a thread library's global mutex
+  (exe+0x1BA22C0) under its running worker, so any wait in the hook (the mod's shutdown 2026-10-25, the voice joins
+  2026-11-05 to 11-13) crashed every quit at ntdll+0x1A12D. `plugin/KeptLocks` skips deleting critical sections in the
+  exe's image; the hook ends the process with TerminateProcess; a fault after `crash::NoteProcessExit` goes to
+  `crash-exit.txt` (no crash offer, no APPCRASH). Thread joins at unload: `host::StopWorkersForUnload`, detach only.
 - **A file just written is busy for a moment** (antivirus): a rename, replace or delete of it fails now and then with error 5
   or 32. The installer's file steps go through `Retrying` / `RemoveFile` (`src/install/Manifest.cpp`); mevr-tests failed 3 runs
   in about 80 until 2026-11-06 (gotchas/fresh-file-busy-for-a-moment).

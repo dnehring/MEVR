@@ -7,6 +7,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Quitting the game no longer crashes.** Every quit, from the menu or by closing the window, ended in a crash in the
+  game's own shutdown (no progress was lost), and the next start offered "The game crashed last session". The game now
+  closes cleanly, and Windows no longer records a crash for it.
 - **First-person conversations (experimental): your body stays with you.** After walking up to the Council with Anderson,
   Shepard's body could stay several metres from you for the whole hearing and the conversations after it. Your body now
   stands where you do in every first-person conversation, and a stick you are still pushing through a fade no longer walks

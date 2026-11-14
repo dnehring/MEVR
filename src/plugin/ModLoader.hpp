@@ -26,5 +26,10 @@ void Stop();
 // (HostServices::processExiting), and Stop leaves the mod DLL mapped for Windows to unload.
 void SetProcessExiting();
 bool ProcessExiting();
+// The voice recognizer's and the model tier's threads stopped (they join and wait). Only where the DLLs will be
+// unloaded with the game's threads already gone (LEBinkProxy's detach), never in the ExitProcess hook: there the
+// joins kept the game's workers running ~20 ms past the game's teardown, into its deleted locks (research/36 "The
+// fault at quit"), and the process is terminated with no DLL unload anyway.
+void StopWorkersForUnload();
 
 } // namespace mevr::host

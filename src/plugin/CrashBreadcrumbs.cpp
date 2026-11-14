@@ -78,6 +78,11 @@ std::uintptr_t gExeEnd = 0;
 // game survives leaves a report that only says so.
 wchar_t gEarlyPath[MAX_PATH] = {};
 wchar_t gEarlyPreviousPath[MAX_PATH] = {};
+// A fault after the process began exiting (NoteProcessExit): its report goes here, never to crash-breadcrumbs.txt.
+wchar_t gExitPath[MAX_PATH] = {};
+wchar_t gExitPreviousPath[MAX_PATH] = {};
+std::atomic<bool> gExiting{false};
+std::atomic<unsigned> gExitCode{0};
 std::atomic<unsigned> gEarlyReports{0};
 constexpr unsigned kEarlyReports = 3;
 void EarlyReport(EXCEPTION_POINTERS* info);  // below, with the report
@@ -588,6 +593,9 @@ bool EarlyReportGuarded(EXCEPTION_POINTERS* info) {
 }
 
 void EarlyReport(EXCEPTION_POINTERS* info) {
+    if (gExiting.load()) {
+        return;  // the game's teardown at quit: the unhandled filter writes crash-exit.txt if it ends the process
+    }
     bool expected = false;
     if (!gReporting.compare_exchange_strong(expected, true)) {
         return;  // another report is being written
@@ -600,7 +608,31 @@ void EarlyReport(EXCEPTION_POINTERS* info) {
     }
 }
 
+void ExitReport(EXCEPTION_POINTERS* info) {
+    gReporting.store(true);
+    text::Appender out(gReport, sizeof(gReport));
+    out.Str("(at quit: the process was already ending when this fault came, so it is no crash of play; research/36 "
+            "\"The fault at quit\")\r\n");
+    Build(out, *info);
+    WriteFileText(gExitPath, gExitPreviousPath, out);
+}
+
 LONG WINAPI UnhandledFilter(EXCEPTION_POINTERS* info) {
+    // At quit (research/36 "The fault at quit"): the game deleted its locks before ExitProcess, and one of its workers can
+    // still run into one before the process is gone. Recorded apart (no crash offer next start), and the process ends here
+    // with the game's own exit code, before Windows' error reporting records an APPCRASH for it.
+    if (gExiting.load() && info != nullptr && info->ExceptionRecord != nullptr) {
+        if (info->ExceptionRecord->ExceptionCode != EXCEPTION_STACK_OVERFLOW && !gReported.exchange(true)) {
+            __try {
+                ExitReport(info);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+            }
+            EXCEPTION_RECORD const& r = *info->ExceptionRecord;
+            log::Warn("a fault while the game quits ({} at 0x{:X}): no crash of play; written to %LOCALAPPDATA%\\MEVR\\crash-exit.txt",
+                CodeName(r.ExceptionCode), reinterpret_cast<std::uintptr_t>(r.ExceptionAddress));
+        }
+        TerminateProcess(GetCurrentProcess(), gExitCode.load());
+    }
     // Once per process; not on a stack overflow (no stack left to format on).
     if (info != nullptr && info->ExceptionRecord != nullptr && info->ExceptionRecord->ExceptionCode != EXCEPTION_STACK_OVERFLOW &&
         !gReported.exchange(true)) {
@@ -642,6 +674,10 @@ void Paths() {
     wcscat_s(gEarlyPath, L"\\crash-firstchance.txt");
     wcscpy_s(gEarlyPreviousPath, dir);
     wcscat_s(gEarlyPreviousPath, L"\\crash-firstchance.prev.txt");
+    wcscpy_s(gExitPath, dir);
+    wcscat_s(gExitPath, L"\\crash-exit.txt");
+    wcscpy_s(gExitPreviousPath, dir);
+    wcscat_s(gExitPreviousPath, L"\\crash-exit.prev.txt");
 }
 
 } // namespace
@@ -687,6 +723,11 @@ void Install() {
         kDispatches, kDispatches, kWrites, gNamed ? "resolved at the crash" : "not resolved (pointers only)",
         gReportPath[0] != L'\0' ? "%LOCALAPPDATA%\\MEVR\\crash-breadcrumbs.txt" : "(no path)",
         reinterpret_cast<void const*>(gPreviousFilter));
+}
+
+void NoteProcessExit(unsigned exitCode) {
+    gExitCode.store(exitCode);
+    gExiting.store(true);
 }
 
 void AppendObject(text::Appender& out, void const* object) {
