@@ -4,18 +4,24 @@
 #include "core/Json.hpp"
 #include <cstdint>
 
+namespace mevr::host::process_event::diagnostic { struct Snapshot; }
+
 namespace mevr::engine::le2_diagnostic {
 #if defined(MEVR_GAME_LE2)
 // Bounded read-only diagnostic after Legacy::Init, on the verified game thread
 // after engine tick. The caller supplies the hook-owned thread ID, never an ID
 // obtained speculatively at this call site. Zero/wrong thread performs no reads.
 //
-// Availability means SDK-based structural checks passed for this sample, NOT
-// reflection-layout validation, save/load/gameplay readiness, or a durable object
-// generation. No script calls, engine allocations, writes, caching or XR work.
+// Object availability means SDK-based structural checks passed for this sample;
+// slot availability only means nonnull pointer values were read. Neither means
+// call-target validation, gameplay readiness, or a durable object generation.
+// No script calls, engine allocations, writes, caching or XR work.
 // Addresses are diagnostic strings, never reusable handles. Native proof pending.
-// ConsoleCommand metadata reports bounded reflection reads and an SDK-layout
-// comparison only; a matching schema never enables or proves native dispatch.
-json::Value Observe(std::uint32_t gameThreadId);
+// ConsoleCommand/GetFOVAngle metadata and controller/allocator vtable slots are
+// observations only. Executable memory and matching metadata grant no calls.
+// Optional host-owned install/chain snapshot avoids a dependency on the live
+// hook implementation; omitted provenance is explicitly unavailable.
+json::Value Observe(std::uint32_t gameThreadId,
+    host::process_event::diagnostic::Snapshot const* hostSnapshot = nullptr);
 #endif
 } // namespace mevr::engine::le2_diagnostic

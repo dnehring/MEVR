@@ -4,6 +4,7 @@
 #include <LESDK/Headers.hpp>
 #include "engine/Le2DiagnosticObservation.hpp"
 #include "engine/Legacy.hpp"
+#include "plugin/ProcessEventDiagnostic.hpp"
 #include "ue3/Runtime.hpp"
 #include <array>
 #include <cstring>
@@ -17,6 +18,7 @@ TArray<UObject*>* UObject::GObjObjects{};
 SFXNameEntry const** SFXName::GBioNamePools{};
 UEngine** GEngine{};
 UWorld** GWorld{};
+FMallocLike** GMalloc{};
 namespace {
 std::array<SFXNameEntry const*, 64> names{};
 unsigned nextName = 1;
@@ -36,6 +38,7 @@ void Name(UObject* p, char const* text) {
 }
 void Check(bool ok, char const* why) { if (!ok) throw std::runtime_error(why); }
 bool Available(mevr::json::Value const& v, char const* key) { return v.Get(key).Bool("available"); }
+void MustNeverCall() { std::abort(); }
 }
 SFXNameEntry const* SFXName::GetEntry() const noexcept { return names[Offset]; }
 namespace mevr::ue3::runtime {
@@ -107,6 +110,76 @@ int main() {
         Check(wire.size() < 16384 && mevr::json::Parse(wire).has_value(), "bounded valid JSON fits control payload");
         Check(!Available(v, "consoleCommandMetadata") &&
               v.Get("consoleCommandMetadata").String("reason") == "console-command-declaration-missing", "missing function explicit");
+        Check(!Available(v, "getFovAngleMetadata") &&
+              v.Get("getFovAngleMetadata").String("reason") == "get-fov-angle-declaration-missing", "missing getter explicit");
+        Check(!Available(v, "processEventSlot") && !Available(v, "allocatorObservation"), "missing vtable and allocator explicit");
+        // Real SDK object shape; invented vtable slots. Neither method may run.
+        std::array<std::uintptr_t, 73> controllerVtable{};
+        auto* controllerVtablePtr = controllerVtable.data();
+        std::memcpy(controller.get(), &controllerVtablePtr, sizeof(controllerVtablePtr));
+        controllerVtable[71] = reinterpret_cast<std::uintptr_t>(&MustNeverCall);
+        Check(!Available(Observe(thread), "processEventSlot"), "adjacent executable slot is not slot72");
+        controllerVtable[72] = reinterpret_cast<std::uintptr_t>(&MustNeverCall);
+        auto slot = Observe(thread).Get("processEventSlot");
+        Check(slot.Bool("available") && slot.Number("slotByteOffset") == 0x240 &&
+              slot.Get("target").Bool("committedExecutablePage") && !slot.Get("target").Bool("identityValidated") &&
+              !slot.Bool("dispatchCapability"), "slot72 observed without target identity or dispatch");
+        Check(!slot.Get("hostProvenance").Bool("available") && !slot.Bool("targetMatchesInstalledHook"), "omitted host provenance is not fabricated");
+        namespace diagnostic = mevr::host::process_event::diagnostic;
+        diagnostic::Snapshot host;
+        host.installation = diagnostic::InstallState::Installed;
+        host.target = controllerVtable[72]; host.detour = host.target + 1; host.nextHop = host.target + 2;
+        host.backend = "synthetic"; host.exeCheck = "AtRvaUnchecked";
+        host.chain = {diagnostic::ChainStatus::Matched, 2};
+        auto hostSlot = [&] { return Observe(thread, &host).Get("processEventSlot"); };
+        Check(hostSlot().Bool("targetMatchesInstalledHook") && hostSlot().Bool("slotAndOwnedChainMatch") &&
+              !hostSlot().Bool("dispatchCapability"), "exact slot plus recorded host chain remains observation only");
+        Check(hostSlot().Get("hostProvenance").String("exeCheck") == "AtRvaUnchecked" &&
+              !hostSlot().Get("hostProvenance").Bool("pristineEngineCodeValidated"), "preserves structural exe check and next-hop limitation");
+        ++host.target; Check(!hostSlot().Bool("targetMatchesInstalledHook"), "different executable address is not the installed target"); --host.target;
+        host.chain.status = diagnostic::ChainStatus::Changed;
+        Check(hostSlot().Bool("targetMatchesInstalledHook") && !hostSlot().Bool("slotAndOwnedChainMatch"), "slot identity and changing chain are separate");
+        host.chain.status = diagnostic::ChainStatus::Matched;
+        host.installation = diagnostic::InstallState::InstallFailed;
+        Check(!hostSlot().Bool("targetMatchesInstalledHook"), "failed install cannot validate a matching address");
+        host.installation = diagnostic::InstallState::Installed;
+        Check(!Observe(0, &host).Get("processEventSlot").Bool("slotAndOwnedChainMatch"), "wrong thread cannot match provenance");
+        controllerVtable[72] = reinterpret_cast<std::uintptr_t>(&table);
+        Check(Available(Observe(thread), "processEventSlot") &&
+              !Observe(thread).Get("processEventSlot").Get("target").Bool("committedExecutablePage"), "readable data target is not executable");
+        controllerVtable[72] = reinterpret_cast<std::uintptr_t>(&MustNeverCall);
+        auto* badVtable = reinterpret_cast<std::uintptr_t*>(1);
+        std::memcpy(controller.get(), &badVtable, sizeof(badVtable));
+        v = Observe(thread);
+        Check(Available(v, "player") && !Available(v, "processEventSlot") &&
+              v.Get("processEventSlot").String("reason") == "guarded-process-event-slot-read-fault", "bad vtable isolated and guarded");
+        std::memcpy(controller.get(), &controllerVtablePtr, sizeof(controllerVtablePtr));
+        std::array<std::uintptr_t, 4> allocatorVtable{};
+        auto* allocatorVtablePtr = allocatorVtable.data();
+        auto* allocator = reinterpret_cast<FMallocLike*>(&allocatorVtablePtr);
+        GMalloc = &allocator;
+        allocatorVtable[1] = allocatorVtable[3] = reinterpret_cast<std::uintptr_t>(&MustNeverCall);
+        auto allocation = Observe(thread).Get("allocatorObservation");
+        Check(allocation.Bool("available") && allocation.Number("mallocSlotByteOffset") == 8 &&
+              allocation.Number("freeSlotByteOffset") == 24 && !allocation.Bool("allocationCapability"), "allocator exact slots without calls");
+        allocatorVtable[3] = 0; allocatorVtable[2] = reinterpret_cast<std::uintptr_t>(&MustNeverCall);
+        Check(!Available(Observe(thread), "allocatorObservation"), "Realloc slot cannot stand in for Free");
+        allocatorVtable[3] = reinterpret_cast<std::uintptr_t>(&table);
+        Check(!Observe(thread).Get("allocatorObservation").Get("freeTarget").Bool("committedExecutablePage"), "allocator data target remains unvalidated");
+        allocator = nullptr; Check(!Available(Observe(thread), "allocatorObservation"), "null allocator instance");
+        allocator = reinterpret_cast<FMallocLike*>(1);
+        v = Observe(thread);
+        Check(Available(v, "player") && !Available(v, "allocatorObservation") &&
+              v.Get("allocatorObservation").String("reason") == "guarded-allocator-read-fault", "allocator instance access fault contained");
+        GMalloc = reinterpret_cast<FMallocLike**>(1);
+        Check(!Available(Observe(thread), "allocatorObservation"), "allocator global access fault contained");
+        Check(Observe(0).String("reason") == "not-on-verified-game-thread", "wrong thread does not read invalid allocator");
+        GMalloc = &allocator; allocator = reinterpret_cast<FMallocLike*>(&allocatorVtablePtr);
+        allocatorVtablePtr = nullptr; Check(!Available(Observe(thread), "allocatorObservation"), "null allocator vtable");
+        allocatorVtablePtr = reinterpret_cast<std::uintptr_t*>(1);
+        Check(!Available(Observe(thread), "allocatorObservation"), "allocator vtable access fault contained");
+        allocatorVtablePtr = allocatorVtable.data(); allocatorVtable[3] = allocatorVtable[1];
+        Check(Available(Observe(thread), "allocatorObservation"), "fresh allocator sample recovers");
         // Synthetic reflection hierarchy and the exact packed SDK signature.
         Raw<UClass> fieldType, structType, functionType, propertyType, strType, boolType;
         Raw<UFunction> console, duplicate;
@@ -200,6 +273,39 @@ int main() {
         Check(Observe(thread).String("reason") == "guarded-engine-read-fault", "metadata access violation guarded");
         console.get()->Children = command.get();
         Check(matching(), "next fresh sample recovers after malformed metadata");
+        Raw<UClass> floatType;
+        Raw<UFunction> fov, duplicateFov;
+        Raw<UFloatProperty> fovReturn;
+        add(floatType.get(), "FloatProperty", meta.get(), corePackage.get());
+        floatType.get()->SuperField = propertyType.get();
+        add(fov.get(), "GetFOVAngle", functionType.get(), controllerType.get());
+        add(duplicateFov.get(), "GetFOVAngle", functionType.get(), controllerType.get());
+        add(fovReturn.get(), "ReturnValue", floatType.get(), fov.get());
+        console.get()->Next = fov.get(); fov.get()->Children = fovReturn.get();
+        fov.get()->FunctionFlags = 0x20802; fov.get()->iNative = 0;
+        fov.get()->NumParms = 1; fov.get()->ParmsSize = 4; fov.get()->ReturnValueOffset = 0;
+        property(fovReturn.get(), 0, 4, 0x580);
+        auto getter = [&] { return Observe(thread).Get("getFovAngleMetadata"); };
+        auto getterMatches = [&] { return getter().Bool("declarationMatchesExpected"); };
+        Check(getterMatches() && getter().Bool("nativeIndexMatchesExpected") && !getter().Bool("dispatchCapability"), "exact scalar getter metadata only");
+        Check(matching(), "getter metadata coexists with console signature");
+        fov.get()->iNative = 1; Check(!getterMatches(), "getter nonzero native index refuses match"); fov.get()->iNative = 0;
+        fov.get()->FunctionFlags = 0x24400; Check(!getterMatches(), "native Console flags are not getter flags"); fov.get()->FunctionFlags = 0x20802;
+        fov.get()->ParmsSize = 8; Check(!getterMatches(), "wrong getter size"); fov.get()->ParmsSize = 4;
+        fov.get()->NumParms = 0; Check(!getterMatches(), "wrong getter count"); fov.get()->NumParms = 1;
+        fov.get()->ReturnValueOffset = 4; Check(!getterMatches(), "wrong getter return offset"); fov.get()->ReturnValueOffset = 0;
+        fovReturn.get()->PropertyFlags = 0x80; Check(!getterMatches(), "getter missing out/return flags"); fovReturn.get()->PropertyFlags = 0x580;
+        fovReturn.get()->Class = strType.get(); Check(!getterMatches(), "getter wrong property type"); fovReturn.get()->Class = floatType.get();
+        fov.get()->Class = structType.get(); Check(!getter().Bool("available"), "getter must be exact Core.Function"); fov.get()->Class = functionType.get();
+        fovReturn.get()->Offset = 1; Check(!getter().Bool("available"), "getter return exceeds block"); fovReturn.get()->Offset = 0;
+        fovReturn.get()->ArrayDim = 2; Check(!getter().Bool("available"), "getter is not an array"); fovReturn.get()->ArrayDim = 1;
+        fovReturn.get()->Outer = console.get(); Check(!getter().Bool("available"), "getter foreign parameter"); fovReturn.get()->Outer = fov.get();
+        fovReturn.get()->Next = fovReturn.get(); Check(!getter().Bool("available"), "getter parameter cycle"); fovReturn.get()->Next = nullptr;
+        fov.get()->Next = duplicateFov.get(); Check(!getter().Bool("available"), "duplicate getter declaration"); fov.get()->Next = nullptr;
+        fov.get()->ObjectFlags = 0x200; Check(!getter().Bool("available"), "template getter refused"); fov.get()->ObjectFlags = 0;
+        Check(getterMatches() && mevr::json::Write(Observe(thread), 0).size() < 16384, "expanded observation recovers and fits control payload");
+        Check(fov.get()->iNative == 0 && fov.get()->FunctionFlags == 0x20802 && console.get()->FunctionFlags == 0x24400,
+              "observation never rewrites function flags or native index");
         auto oldIndex = pawn.get()->ObjectInternalInteger;
         pawn.get()->ObjectInternalInteger = table.count;
         Check(!Available(Observe(thread), "pawn"), "out of range slot");

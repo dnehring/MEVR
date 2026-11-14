@@ -188,5 +188,59 @@ with MSVC `/W4 /WX`. Compile/test results establish synthetic behavior only.
 The monolithic diagnostic producer now compiles and calls this observer for
 `observe`; its temporary-file integration tests remain offline evidence. Live
 LE2 load/travel, normal HUD/save comparison, object lifecycle, and native
-producer verification remain separate uncompleted gates. See the
+producer verification remain separate gates; current session evidence is in
+[validation evidence](le2-validation-evidence.md). See the
 [native console reuse audit](le2-native-console-reuse.md) before adding calls.
+
+## Getter, slot and allocator observations
+
+The read-only extension adds `getFovAngleMetadata` using the same bounded exact
+`Engine.PlayerController` owner/child/property traversal as ConsoleCommand. The
+expected declaration is the SDK's **scripted event** `GetFOVAngle`, not a native
+getter: flags `0x20802`, one `Core.FloatProperty` named `ReturnValue`, offset 0,
+element size 4, array dimension 1, property flags `0x580`, `ParmsSize=4`,
+`NumParms=1`, `ReturnValueOffset=0`. `nativeIndexMatchesExpected` compares the
+observed index with zero. `declarationMatchesExpected` requires the complete
+layout, flags and index to agree; it never grants dispatch. The SDK parameter
+size and offset also have compile-time assertions. No getter is invoked and no
+function flags or native index are rewritten.
+
+`processEventSlot` reads the validated local controller's vtable index **72**
+(byte offset `0x240`) under a separate guarded boundary. `allocatorObservation`
+reads `GMalloc`, its current allocator object/vtable, and LE2's `Malloc` index 1
+(`0x08`) and `Free` index 3 (`0x18`). These SDK declarations are observation
+coordinates, not validated method identities. Each target reports its pointer,
+VirtualQuery page information and `identityValidated: false`. A committed
+executable page alone is never accepted as a correct function. Slot availability
+only means nonnull pointer values were obtained; null, faulting or nonexecutable
+targets remain distinguishable. A slot/allocator read fault invalidates that
+sub-observation without discarding an otherwise valid controller sample. An
+outer object/metadata traversal fault still invalidates the complete sample.
+Wrong-thread requests perform neither traversal.
+
+`Observe` optionally accepts the host's immutable diagnostic `Snapshot` from
+`plugin/ProcessEventDiagnostic.hpp`; omitting it explicitly reports
+`host-snapshot-not-supplied`. This keeps the standalone observer independent of
+the hook implementation. The host supplies installation status, exact installed
+target/owned detour/installer-returned next hop, backend, actual exe-check status
+and bounded current-chain result. `targetMatchesInstalledHook` requires an
+installed nonzero target exactly equal to the observed controller slot;
+`slotAndOwnedChainMatch` additionally requires the host chain result to match its
+owned detour. Unknown or changing chains remain visible separately from slot
+agreement. The next hop is not claimed to be pristine engine code, and
+`AtRvaUnchecked` remains a structure-only exe check. Producer wiring must supply
+a fresh host snapshot on the verified game thread. No callback registration or
+HostServices ABI change is introduced by the observer.
+
+All dispatch/allocation capabilities remain false. These fields provide no
+FString allocation/ownership proof, ProcessEvent execution proof or durable
+object/allocator identity. No generated SDK method, allocator method, native
+function or script is called. Offline tests compile the actual observer against
+the pinned SDK with `/W4 /WX`; synthetic executable sentinels abort if called.
+They cover missing/malformed getter metadata, wrong counts/offsets/types/flags/
+native index, foreign/template/duplicate/cyclic fields, missing and unreadable
+controller/allocator vtables, adjacent-slot traps, executable versus data
+targets, failed/missing/mismatched host provenance and changing chains. Exact
+getter and ConsoleCommand metadata coexist in one payload below the control
+channel's 16 KiB limit. Release and Debug test results for this extension are
+offline evidence only; native calls and allocator behavior remain unproven.

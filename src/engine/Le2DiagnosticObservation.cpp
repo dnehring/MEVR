@@ -4,6 +4,7 @@
 #if defined(MEVR_GAME_LE2)
 #include "engine/GameAdapterSdk.hpp"
 #include "engine/Legacy.hpp"
+#include "plugin/ProcessEventDiagnostic.hpp"
 #include "ue3/Runtime.hpp"
 
 #include <Windows.h>
@@ -32,6 +33,8 @@ static_assert(sizeof(APlayerController_execConsoleCommand_Parms) == 0x24);
 static_assert(offsetof(APlayerController_execConsoleCommand_Parms, Command) == 0);
 static_assert(offsetof(APlayerController_execConsoleCommand_Parms, bWriteToLog) == 0x10);
 static_assert(offsetof(APlayerController_execConsoleCommand_Parms, ReturnValue) == 0x14);
+static_assert(sizeof(APlayerController_eventGetFOVAngle_Parms) == 4);
+static_assert(offsetof(APlayerController_eventGetFOVAngle_Parms, ReturnValue) == 0);
 
 struct ObjectSample {
     bool available{};
@@ -48,7 +51,8 @@ struct ParameterSample {
     bool hasBoolMask{};
     std::uint32_t boolMask{};
 };
-struct ConsoleSample {
+enum class Declaration { Console, Fov };
+struct FunctionSample {
     ObjectSample function;
     char const* reason{"player-controller-unavailable"};
     std::uint32_t functionFlags{};
@@ -57,6 +61,16 @@ struct ConsoleSample {
     unsigned parameterCount{};
     ParameterSample parameters[kMaxParameters]{};
     bool parametersComplete{}, layoutMatches{};
+};
+struct SlotSample {
+    bool available{};
+    char const* reason{"player-controller-unavailable"};
+    std::uintptr_t object{}, vtable{}, target{};
+};
+struct AllocatorSample {
+    bool available{};
+    char const* reason{"not-observed"};
+    std::uintptr_t global{}, object{}, vtable{}, mallocTarget{}, freeTarget{};
 };
 struct Sample {
     bool tableAvailable{};
@@ -69,9 +83,42 @@ struct Sample {
     bool positionAvailable{};
     char const* positionReason{"pawn-unavailable"};
     float x{}, y{}, z{};
-    ConsoleSample console;
+    FunctionSample console, fov;
+    SlotSample processEvent;
+    AllocatorSample allocator;
 };
 static_assert(std::is_trivially_destructible_v<Sample>);
+
+// Read pointer values only. A readable slot or executable page is not proof of
+// function identity, call ABI, allocator ownership, or a permissible call.
+void ReadProcessEventSlot(void* context) {
+    auto& out = *static_cast<SlotSample*>(context);
+    out.reason = "null-controller-vtable";
+    auto const* vtable = *reinterpret_cast<std::uintptr_t const* const*>(out.object);
+    if (vtable == nullptr) return;
+    out.vtable = reinterpret_cast<std::uintptr_t>(vtable);
+    out.target = vtable[72]; // LE2 SDK UObject declaration: byte offset 0x240.
+    out.available = out.target != 0;
+    out.reason = out.available ? "slot-read-only-target-unvalidated" : "null-process-event-target";
+}
+void ReadAllocator(void* context) {
+    auto& out = *static_cast<AllocatorSample*>(context);
+    out.global = reinterpret_cast<std::uintptr_t>(GMalloc);
+    out.reason = "allocator-global-unavailable";
+    if (GMalloc == nullptr) return;
+    auto const* object = *GMalloc;
+    out.object = reinterpret_cast<std::uintptr_t>(object);
+    out.reason = "null-allocator";
+    if (object == nullptr) return;
+    auto const* vtable = *reinterpret_cast<std::uintptr_t const* const*>(object);
+    out.vtable = reinterpret_cast<std::uintptr_t>(vtable);
+    out.reason = "null-allocator-vtable";
+    if (vtable == nullptr) return;
+    out.mallocTarget = vtable[1]; // FMallocLike::Malloc, byte offset 0x08.
+    out.freeTarget = vtable[3];   // LE2 FMallocLike::Free, byte offset 0x18.
+    out.available = out.mallocTarget != 0 && out.freeTarget != 0;
+    out.reason = out.available ? "slots-read-only-targets-unvalidated" : "null-allocator-method-target";
+}
 
 struct Table {
     UObject* const* data{};
@@ -155,14 +202,15 @@ bool ExpectedParameter(ParameterSample const& p, char const* name, char const* t
         p.offset == offset && p.elementSize == size && p.arrayDim == 1 && p.flags == flags &&
         (boolMask == 0 ? !p.hasBoolMask : p.hasBoolMask && p.boolMask == boolMask);
 }
-bool HasExpectedParameter(ConsoleSample const& sample, char const* name, char const* type,
+bool HasExpectedParameter(FunctionSample const& sample, char const* name, char const* type,
                           int offset, int size, std::uint64_t flags, std::uint32_t boolMask = 0) {
     for (unsigned i = 0; i < sample.parameterCount; ++i)
         if (ExpectedParameter(sample.parameters[i], name, type, offset, size, flags, boolMask)) return true;
     return false;
 }
 
-void ReadConsole(Table const& table, APlayerController const* controller, ConsoleSample& out) {
+void ReadFunction(Table const& table, APlayerController const* controller, FunctionSample& out, Declaration declaration) {
+    bool const fov = declaration == Declaration::Fov;
     // Match Legacy's exact declaration owner, not a derived class's override.
     auto const* owner = controller->Class;
     out.reason = "player-controller-declaration-class-unavailable";
@@ -183,16 +231,16 @@ void ReadConsole(Table const& table, APlayerController const* controller, Consol
         char name[kNameBytes]{};
         out.reason = "owner-child-name-unavailable";
         if (!NameText(field->Name, name)) return;
-        if (std::strcmp(name, "ConsoleCommand") != 0) continue;
-        out.reason = "duplicate-console-command-declaration";
+        if (std::strcmp(name, fov ? "GetFOVAngle" : "ConsoleCommand") != 0) continue;
+        out.reason = fov ? "duplicate-get-fov-angle-declaration" : "duplicate-console-command-declaration";
         if (function != nullptr) return;
-        out.reason = "console-command-is-not-an-exact-Core.Function";
+        out.reason = fov ? "get-fov-angle-is-not-an-exact-Core.Function" : "console-command-is-not-an-exact-Core.Function";
         if (!ClassMetadata(table, field->Class) || !Qualified(table, field->Class, "Core", "Function")) return;
         function = static_cast<UFunction const*>(field);
     }
-    out.reason = "console-command-declaration-missing";
+    out.reason = fov ? "get-fov-angle-declaration-missing" : "console-command-declaration-missing";
     if (function == nullptr) return;
-    out.reason = "console-command-function-unavailable";
+    out.reason = fov ? "get-fov-angle-function-unavailable" : "console-command-function-unavailable";
     if (!ReadObject(table, function, "Core", "Function", out.function)) return;
     out.functionFlags = function->FunctionFlags;
     out.nativeIndex = static_cast<unsigned short>(function->iNative);
@@ -240,7 +288,9 @@ void ReadConsole(Table const& table, APlayerController const* controller, Consol
     out.parametersComplete = true;
     // These expected flags and offsets are the pinned SDK declaration, not a
     // capability grant. Scalar DWORD boolean comparison is exact (mask 1).
-    out.layoutMatches = out.parmsSize == 0x24 && out.numParms == 3 && out.returnOffset == 0x14 &&
+    out.layoutMatches = fov ? (out.parmsSize == 4 && out.numParms == 1 && out.returnOffset == 0 &&
+        out.parameterCount == 1 && HasExpectedParameter(out, "ReturnValue", "Core.FloatProperty", 0, 4, 0x580)) :
+        out.parmsSize == 0x24 && out.numParms == 3 && out.returnOffset == 0x14 &&
         out.parameterCount == 3 &&
         HasExpectedParameter(out, "Command", "Core.StrProperty", 0, 16, 0x400080) &&
         HasExpectedParameter(out, "bWriteToLog", "Core.BoolProperty", 0x10, 4, 0x90, 1) &&
@@ -293,7 +343,13 @@ void Read(void* context) {
         out.player.reason = "legacy-controller-disagrees";
         return;
     }
-    ReadConsole(table, controller, out.console);
+    out.processEvent.object = reinterpret_cast<std::uintptr_t>(controller);
+    if (!ue3::runtime::Guarded(ReadProcessEventSlot, &out.processEvent)) {
+        out.processEvent = {};
+        out.processEvent.reason = "guarded-process-event-slot-read-fault";
+    }
+    ReadFunction(table, controller, out.console, Declaration::Console);
+    ReadFunction(table, controller, out.fov, Declaration::Fov);
     auto const* pawn = controller->Pawn;
     if (!ReadObject(table, pawn, "Engine", "Pawn", out.pawn)) return;
     FVector const& position = adapter::Location(pawn);
@@ -316,12 +372,88 @@ json::Value ObjectJson(ObjectSample const& object, char const* failure) {
     }
     return out;
 }
-json::Value ConsoleJson(ConsoleSample const& sample, char const* failure) {
+json::Value TargetJson(std::uintptr_t target) {
+    auto out = json::Value::Object();
+    out["address"] = std::format("0x{:X}", target);
+    MEMORY_BASIC_INFORMATION memory{};
+    bool const queried = target != 0 && VirtualQuery(reinterpret_cast<void const*>(target), &memory, sizeof(memory)) == sizeof(memory);
+    bool const committed = queried && memory.State == MEM_COMMIT;
+    DWORD const protection = memory.Protect & 0xFF;
+    bool const executable = committed && (memory.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0 &&
+        (protection == PAGE_EXECUTE || protection == PAGE_EXECUTE_READ || protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY);
+    out["memoryQueryAvailable"] = queried;
+    out["committedExecutablePage"] = executable;
+    out["identityValidated"] = false;
+    if (queried) {
+        out["allocationBase"] = std::format("0x{:X}", reinterpret_cast<std::uintptr_t>(memory.AllocationBase));
+        out["pageProtection"] = std::format("0x{:X}", memory.Protect);
+    }
+    return out;
+}
+json::Value SlotJson(SlotSample const& sample, char const* failure,
+                     host::process_event::diagnostic::Snapshot const* hostSnapshot) {
+    namespace diagnostic = host::process_event::diagnostic;
+    auto out = json::Value::Object();
+    out["available"] = failure == nullptr && sample.available;
+    out["reason"] = failure != nullptr ? failure : sample.reason;
+    out["slotIndex"] = 72;
+    out["slotByteOffset"] = 0x240;
+    out["dispatchCapability"] = false;
+    out["targetValidation"] = "pending";
+    auto provenance = json::Value::Object();
+    provenance["available"] = hostSnapshot != nullptr;
+    provenance["reason"] = hostSnapshot != nullptr ? "host-install-and-current-chain-observation" : "host-snapshot-not-supplied";
+    bool const slotMatches = failure == nullptr && sample.available && hostSnapshot != nullptr &&
+        hostSnapshot->installation == diagnostic::InstallState::Installed && hostSnapshot->target != 0 &&
+        sample.target == hostSnapshot->target;
+    out["targetMatchesInstalledHook"] = slotMatches;
+    out["slotAndOwnedChainMatch"] = slotMatches && hostSnapshot->chain.status == diagnostic::ChainStatus::Matched;
+    if (hostSnapshot != nullptr) {
+        provenance["installation"] = diagnostic::Name(hostSnapshot->installation);
+        provenance["target"] = std::format("0x{:X}", hostSnapshot->target);
+        provenance["ownedDetour"] = std::format("0x{:X}", hostSnapshot->detour);
+        provenance["installerReturnedNextHop"] = std::format("0x{:X}", hostSnapshot->nextHop);
+        provenance["backend"] = hostSnapshot->backend != nullptr ? hostSnapshot->backend : "unavailable";
+        provenance["exeCheck"] = hostSnapshot->exeCheck != nullptr ? hostSnapshot->exeCheck : "Unavailable";
+        provenance["currentChain"] = diagnostic::Name(hostSnapshot->chain.status);
+        provenance["chainHops"] = static_cast<int>(hostSnapshot->chain.hops);
+        provenance["pristineEngineCodeValidated"] = false;
+    }
+    out["hostProvenance"] = std::move(provenance);
+    if (failure == nullptr) {
+        out["controllerAddress"] = std::format("0x{:X}", sample.object);
+        out["vtableAddress"] = std::format("0x{:X}", sample.vtable);
+        out["target"] = TargetJson(sample.target);
+    }
+    return out;
+}
+json::Value AllocatorJson(AllocatorSample const& sample, char const* failure) {
+    auto out = json::Value::Object();
+    out["available"] = failure == nullptr && sample.available;
+    out["reason"] = failure != nullptr ? failure : sample.reason;
+    out["mallocSlotIndex"] = 1;
+    out["mallocSlotByteOffset"] = 0x08;
+    out["freeSlotIndex"] = 3;
+    out["freeSlotByteOffset"] = 0x18;
+    out["allocationCapability"] = false;
+    out["ownershipValidation"] = "pending";
+    if (failure == nullptr) {
+        out["globalAddress"] = std::format("0x{:X}", sample.global);
+        out["allocatorAddress"] = std::format("0x{:X}", sample.object);
+        out["vtableAddress"] = std::format("0x{:X}", sample.vtable);
+        out["mallocTarget"] = TargetJson(sample.mallocTarget);
+        out["freeTarget"] = TargetJson(sample.freeTarget);
+    }
+    return out;
+}
+json::Value FunctionJson(FunctionSample const& sample, char const* failure, Declaration declaration) {
+    bool const fov = declaration == Declaration::Fov;
+    char const* const name = fov ? "Engine.PlayerController.GetFOVAngle" : "Engine.PlayerController.ConsoleCommand";
     auto out = json::Value::Object();
     bool const available = failure == nullptr && sample.function.available && sample.parametersComplete;
     out["available"] = available;
     out["reason"] = failure != nullptr ? failure : sample.reason;
-    out["requestedDeclaration"] = "Engine.PlayerController.ConsoleCommand";
+    out["requestedDeclaration"] = name;
     out["function"] = ObjectJson(sample.function, failure);
     out["parametersComplete"] = failure == nullptr && sample.parametersComplete;
     out["layoutMatchesSdkDeclaration"] = available && sample.layoutMatches;
@@ -331,13 +463,19 @@ json::Value ConsoleJson(ConsoleSample const& sample, char const* failure) {
     out["allocatorAndStringLifetimeValidation"] = "pending";
     out["nativeCallValidation"] = "pending";
     if (failure == nullptr && sample.function.available) {
-        out["discoveredDeclaration"] = "Engine.PlayerController.ConsoleCommand";
+        out["discoveredDeclaration"] = name;
         out["parmsSize"] = static_cast<int>(sample.parmsSize);
         out["numParms"] = static_cast<int>(sample.numParms);
         out["returnValueOffset"] = sample.returnOffset;
         out["functionFlags"] = std::format("0x{:08X}", sample.functionFlags);
-        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == 0x24400;
+        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == (fov ? 0x20802u : 0x24400u);
         out["nativeIndex"] = static_cast<int>(sample.nativeIndex);
+    }
+    if (fov) {
+        out["expectedNativeIndex"] = 0;
+        out["nativeIndexMatchesExpected"] = available && sample.nativeIndex == 0;
+        out["declarationMatchesExpected"] = available && sample.layoutMatches && sample.functionFlags == 0x20802 && sample.nativeIndex == 0;
+        out["declarationKind"] = "scripted-event-not-native-getter";
     }
     auto parameters = json::Value::Array();
     if (failure == nullptr) for (unsigned i = 0; i < sample.parameterCount; ++i) {
@@ -356,11 +494,15 @@ json::Value ConsoleJson(ConsoleSample const& sample, char const* failure) {
 }
 } // namespace
 
-json::Value Observe(std::uint32_t gameThreadId) {
+json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic::Snapshot const* hostSnapshot) {
     Sample sample{};
     char const* failure = nullptr;
     if (gameThreadId == 0 || GetCurrentThreadId() != gameThreadId) failure = "not-on-verified-game-thread";
     else if (!ue3::runtime::Guarded(Read, &sample)) failure = "guarded-engine-read-fault";
+    if (failure == nullptr && !ue3::runtime::Guarded(ReadAllocator, &sample.allocator)) {
+        sample.allocator = {};
+        sample.allocator.reason = "guarded-allocator-read-fault";
+    }
     auto out = json::Value::Object();
     out["schemaVersion"] = 1;
     out["game"] = "LE2";
@@ -379,7 +521,10 @@ json::Value Observe(std::uint32_t gameThreadId) {
     out["localPlayer"] = ObjectJson(sample.localPlayer, failure);
     out["player"] = ObjectJson(sample.player, failure);
     out["pawn"] = ObjectJson(sample.pawn, failure);
-    out["consoleCommandMetadata"] = ConsoleJson(sample.console, failure);
+    out["consoleCommandMetadata"] = FunctionJson(sample.console, failure, Declaration::Console);
+    out["getFovAngleMetadata"] = FunctionJson(sample.fov, failure, Declaration::Fov);
+    out["processEventSlot"] = SlotJson(sample.processEvent, failure, hostSnapshot);
+    out["allocatorObservation"] = AllocatorJson(sample.allocator, failure);
     auto map = json::Value::Object();
     map["available"] = failure == nullptr && sample.mapAvailable;
     map["reason"] = failure != nullptr ? failure : sample.mapReason;
