@@ -32,6 +32,37 @@ the fact. This adds no traversal or native call: function resolution and callbac
 execution remain explicitly false in the report. A fresh native sample is needed
 to bind source candidates to the actual owner.
 
+### External callback source candidate
+
+The existing LegendaryExplorer-backed scanner found
+`SFXGameContent.BioSeqAct_ShowPartySelectionGUI.OnPartySelectionComplete` in
+`BioH_SelectGUI.pcc` copies under `DLC_00_Shared`, `DLC_CON_Pack01`,
+`DLC_CON_Pack02`, `DLC_HEN_MT` and `DLC_HEN_VT`. Their inspected activation and
+callback bodies match. This is a source candidate, not proof of mounted
+precedence or of the live owner in run 1749.
+
+The callback marks `m_bPartySelectionComplete`. In the shared-package copy,
+`UpdateOp` reports that flag and `Deactivated` closes PartySelect. The inspected
+sequence's finished branch performs squad cleanup and reaches the remote event
+`re_PartySelectFinished`; the aborted/cancelled branch reaches
+`re_PartySelectCancelled`. The receiver determines subsequent progression.
+There is no loadout action in this inspected chain, so loadout is not an
+established immediate destination.
+
+Next, bind the live owner to this candidate. If it matches, distinguish callback
+completion from sequence scheduling by observing the completion flag and action
+state. The SDK has no declaration for this content action: its flag needs a
+validated runtime BoolProperty offset/mask, not a guessed layout. Reuse existing
+reflection and bounded sequence inspection. Neither the current observer nor
+these source findings establish that the callback ran in the failed transition.
+
+Private receipt `party-completion-source/inspection-receipt.json` SHA256
+`861fba32f60988b5efb68181789c5aa45beb0f1e4b495f22499a1d68effaa015`
+pins all five packages and outputs. Shared package SHA256:
+`752586488a42c5f76f713ae0b0003bcbdf7a7d994d51fbeab12493eddd3bac5a`.
+Scanner and SDK pins are the same as below. Raw extracted code remains private;
+the metadata scan does not prove a unique owner or exhaustive mounted content.
+
 The subsequent source-grounded loadout implementation is documented separately
 in [the loadout context contract](le2-loadout-input-context.md). The audit below
 records the boundary at the original party-confirmation change.
