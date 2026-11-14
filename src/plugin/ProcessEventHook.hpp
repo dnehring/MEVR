@@ -32,6 +32,12 @@ bool Install(hook::Context& init);
 // Read-only provenance plus a bounded current patch-chain sample. No call
 // authorization, instruction identity, or pristine-trampoline claim.
 diagnostic::Snapshot ReadDiagnosticSnapshot() noexcept;
+// Inspect only this supplied observed target, never scan for another slot/code
+// address. A valid function boundary is structural evidence, not call permission.
+diagnostic::TargetInspection InspectDiagnosticTarget(std::uintptr_t target) noexcept;
+// Validated same-game-thread samples only; empty input disarms. Same scope never
+// renews its fixed ten-second window. No engine pointer is dereferenced by hook.
+diagnostic::WitnessSnapshot ObserveValidatedController(diagnostic::ControllerWatch const&) noexcept;
 #endif
 
 // Runs after the original, on whichever thread called ProcessEvent. Clearing waits (up to

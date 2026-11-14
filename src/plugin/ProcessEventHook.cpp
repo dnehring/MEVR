@@ -6,8 +6,10 @@
 #include "engine/Addresses.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #if defined(MEVR_LE2_DIAGNOSTIC)
+#include "plugin/ProcessEventWitness.hpp"
 #include "ue3/Runtime.hpp"
 #include <cstring>
+#include <intrin.h>
 #include <limits>
 #endif
 
@@ -26,6 +28,8 @@ tProcessEvent* gOriginal = nullptr;
 #if defined(MEVR_LE2_DIAGNOSTIC)
 SRWLOCK gDiagnosticLock = SRWLOCK_INIT;
 diagnostic::Snapshot gDiagnostic{};
+SRWLOCK gWitnessLock = SRWLOCK_INIT;
+diagnostic::NaturalCallWitness gWitness;
 
 void PublishDiagnostic(diagnostic::Snapshot const& snapshot) noexcept {
     AcquireSRWLockExclusive(&gDiagnosticLock);
@@ -71,6 +75,20 @@ bool ReadExecutable(std::uintptr_t address, void* destination, std::size_t size,
     DiagnosticCopy copy{address, destination, size};
     return ue3::runtime::Guarded(&CopyDiagnostic, &copy);
 }
+
+bool ReadInspectedFunction(std::uintptr_t address, void* destination, std::size_t size, void* context) noexcept {
+    auto const& target = *static_cast<diagnostic::TargetInspection const*>(context);
+    // Only the observed function's proven extent, plus one byte at the known
+    // base destination to establish readable executable memory. No relay scan.
+    if (!diagnostic::WithinInspection(target, address, size)) return false;
+    return ReadExecutable(address, destination, size, nullptr);
+}
+
+struct BoundsRead { exe::Image const* image; std::uint32_t rva; exe::Bounds result; };
+void ReadBounds(void* raw) {
+    auto& read = *static_cast<BoundsRead*>(raw);
+    read.result = read.image->functionAt(read.rva);
+}
 #endif
 
 std::atomic<Callback> gCallback{nullptr};
@@ -115,6 +133,15 @@ std::atomic<int> gInFlight{0};
 // The crash breadcrumb (research/36) is taken before the engine's call, so a dispatch that never returns is
 // in the ring: a few stores, a timestamp and an interlocked add, then two state updates.
 void ProcessEventHook(ue3::Object* context, ue3::Function* function, void* parms, void* result) {
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    // Capture in this actual detour, not in a helper (which would see our own
+    // callsite). Numeric comparisons only: never inspect engine objects here.
+    auto const caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+    AcquireSRWLockExclusive(&gWitnessLock);
+    auto const witness = gWitness.Enter(reinterpret_cast<std::uintptr_t>(context), breadcrumbs::ThreadId(),
+        caller, reinterpret_cast<std::uintptr_t>(function), GetTickCount64());
+    ReleaseSRWLockExclusive(&gWitnessLock);
+#endif
     std::uint64_t const crumb = crash::gProcessEvents.Begin(function, context);
     std::uint32_t const gameThread = crash::gGameThread.load(std::memory_order_relaxed);
     if (gameThread != 0) {
@@ -124,6 +151,11 @@ void ProcessEventHook(ue3::Object* context, ue3::Function* function, void* parms
         }
     }
     gOriginal(context, function, parms, result);
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    AcquireSRWLockExclusive(&gWitnessLock);
+    gWitness.ReturnedOriginal(witness);
+    ReleaseSRWLockExclusive(&gWitnessLock);
+#endif
     gInFlight.fetch_add(1);
     __try {
         if (Callback const callback = gCallback.load()) {
@@ -181,6 +213,52 @@ diagnostic::Snapshot ReadDiagnosticSnapshot() noexcept {
         snapshot.chain = diagnostic::CheckChain(snapshot.target, snapshot.detour, &ReadExecutable, nullptr);
     }
     return snapshot;
+}
+
+diagnostic::TargetInspection InspectDiagnosticTarget(std::uintptr_t target) noexcept {
+    diagnostic::TargetInspection out{};
+    out.target = target;
+    try {
+        AcquireSRWLockShared(&gDiagnosticLock);
+        auto const installation = gDiagnostic;
+        ReleaseSRWLockShared(&gDiagnosticLock);
+        auto const baseTarget = installation.installation == diagnostic::InstallState::Installed ? installation.target : 0;
+        auto const base = exe::Base();
+        auto const image = exe::LiveImage();
+        out = diagnostic::InspectBounds(base, image.textRva, image.text.size(), target, baseTarget, false, false, 0, 0);
+        if (!out.inMainText || !image.functionAt) return out;
+        BoundsRead read{&image, out.rva, {}};
+        if (!ue3::runtime::Guarded(&ReadBounds, &read)) { out.reason = "guarded-function-bounds-read-fault"; return out; }
+        out = diagnostic::InspectBounds(base, image.textRva, image.text.size(), target, baseTarget,
+            read.result.known, read.result.found, read.result.begin, read.result.end);
+        if (!out.boundsUsable) return out;
+        if (out.sameAsBase) { out.jumpReason = "already-installed-base-target"; return out; }
+        if (!baseTarget) { out.jumpReason = "installed-base-unavailable"; return out; }
+        auto const branch = diagnostic::CheckChain(target, baseTarget, &ReadInspectedFunction, &out);
+        out.jumpToBase = branch.status == diagnostic::ChainStatus::Matched;
+        out.jumpHops = branch.hops;
+        out.jumpReason = out.jumpToBase ? "recognized-jump-to-installed-base" : diagnostic::Name(branch.status);
+    } catch (...) { out.boundsUsable = false; out.jumpToBase = false; out.reason = "target-inspection-failed"; }
+    return out;
+}
+
+diagnostic::WitnessSnapshot ObserveValidatedController(diagnostic::ControllerWatch const& identity) noexcept {
+    // Expensive structural checks and instruction reads are outside the hook
+    // lock. The hook only touches the resulting fixed numeric scope/counters.
+    if (identity.object && (identity.gameThread != breadcrumbs::ThreadId() ||
+        identity.gameThread != crash::gGameThread.load(std::memory_order_relaxed))) {
+        diagnostic::WitnessSnapshot denied{};
+        denied.reason = "not-on-verified-game-thread";
+        return denied;
+    }
+    auto const installation = ReadDiagnosticSnapshot();
+    auto const target = InspectDiagnosticTarget(identity.target);
+    bool const owned = installation.installation == diagnostic::InstallState::Installed &&
+        installation.chain.status == diagnostic::ChainStatus::Matched && target.baseTarget == installation.target;
+    AcquireSRWLockExclusive(&gWitnessLock);
+    auto result = gWitness.Configure(identity, target, owned, GetTickCount64());
+    ReleaseSRWLockExclusive(&gWitnessLock);
+    return result;
 }
 #endif
 

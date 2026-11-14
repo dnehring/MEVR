@@ -26,6 +26,41 @@ struct Snapshot {
     ChainResult chain{};
 };
 
+inline constexpr std::uint64_t kWatchDurationMs = 10000;
+inline constexpr std::uint32_t kMaxInspectedFunctionBytes = 64 * 1024;
+struct TargetInspection {
+    std::uintptr_t target{}, baseTarget{}, moduleBase{}, functionBegin{}, functionEnd{};
+    std::uint32_t rva{};
+    bool inMainText{}, boundsKnown{}, exactFunctionStart{}, boundsUsable{}, sameAsBase{}, jumpToBase{};
+    std::uint32_t jumpHops{};
+    char const* reason = "not-inspected";
+    char const* jumpReason = "not-checked";
+};
+struct ControllerWatch {
+    std::uintptr_t object{}, classAddress{}, target{}, world{}, localPlayer{};
+    std::int32_t index = -1;
+    std::uint32_t gameThread{};
+    bool operator==(ControllerWatch const&) const = default;
+};
+enum class WatchStatus { Unavailable, Watching, Expired, EpochExhausted };
+struct WitnessSnapshot {
+    WatchStatus status = WatchStatus::Unavailable;
+    char const* reason = "no-controller-watch";
+    std::uint64_t epoch{}, startedMs{}, expiresMs{};
+    ControllerWatch identity{};
+    std::uintptr_t functionBegin{}, functionEnd{}, lastMatchingCaller{}, lastMatchingFunction{};
+    std::uint64_t entries{}, originalReturns{}, matchingEntries{}, matchingOriginalReturns{};
+};
+inline char const* Name(WatchStatus status) noexcept {
+    switch (status) {
+    case WatchStatus::Unavailable: return "unavailable";
+    case WatchStatus::Watching: return "watching";
+    case WatchStatus::Expired: return "expired";
+    case WatchStatus::EpochExhausted: return "epoch-exhausted";
+    }
+    return "unknown";
+}
+
 inline char const* Name(InstallState state) noexcept {
     switch (state) {
     case InstallState::NotAttempted: return "not-attempted";
