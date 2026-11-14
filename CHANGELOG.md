@@ -7,7 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
-## 0.3.0 (2026-11-13)
+## 0.3.1 (2026-11-14)
+
+0.3.0 was tagged but never released: its build drew character shadows in the right eye where the left eye sees them.
+Everything below is new since 0.2.0.
 
 - **Character shadows are off in VR for now.** With the faster one-render stereo (the default), the right eye drew
   the shadows of Shepard and other characters where the left eye sees them, so the two eyes disagreed. Until that
