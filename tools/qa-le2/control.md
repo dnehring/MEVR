@@ -80,7 +80,7 @@ request; an admitted request may publish a late result for `collect` to reconcil
    are present in the reviewed host. Obtain [run-bound window captures](capture.md)
    and inspect them alongside each state observation. Selected-fixture/career
    mapping and loading that exact save require the separate frozen-fixture
-   workflow below, whose native validation is pending. Native save/reload and
+   workflow below, now proven for one bounded manual fixture. Native save/reload and
    scenario actions remain separate implementation/validation boundaries. A title-screen handshake
    or opened load panel is not a fixture load. The
    [normal menu source handoff](../../research/le2-menu-load-source.md) identifies
@@ -167,8 +167,8 @@ completion callbacks. Do not infer a disk filename from a list index. The
 [source handoff](../../research/le2-menu-load-source.md) distinguishes list
 position, descriptor `Career`/`SaveName`/`Index`/`Type`, and unresolved file mapping.
 The separately gated [frozen-fixture workflow](#reviewed-frozen-fixture-loading)
-below can target a reviewed manual-save descriptor. Native validation of that
-load path remains pending; opening this panel does not exercise it.
+below can target a reviewed manual-save descriptor and has one bounded native
+load proof. Opening this panel alone does not exercise that load path.
 
 Both native actions accept **empty input only** and require the client's
 `--allow-menu-actions` plus the host's independent permission. Each has its own
@@ -200,8 +200,13 @@ confirms its loaded state or validates stereo/headset behavior.
 
 ### Reviewed frozen-fixture loading
 
-**Native validation pending.** This narrow path reuses the normal initialized
-menu's `SFXSFHandler_Load.LoadGame(index, GuiMan)`. It does not use QuickLoad,
+**One bounded native fixture load proven.** Candidate `71f17c7d` matched the
+frozen manual descriptor, called the normal load path once, then observed the
+Normandy world/player pawn and a reviewed image of Shepard on the crew deck.
+See the [run evidence](../../research/le2-validation-evidence.md#frozen-manual-fixture-loaded-through-the-normal-menu).
+This does not establish resource values, persistence, other fixtures or VR.
+The narrow path reuses the initialized menu's
+`SFXSFHandler_Load.LoadGame(index, GuiMan)`. It does not use QuickLoad,
 DebugName matching, a console command or map travel. A reviewed integration must
 supply both the engine helper and host binding; a client update alone cannot
 enable it. Default gates and offline producer fixtures keep native loading off.
@@ -300,7 +305,10 @@ After `dispatched`, obtain fresh state and a new [run-bound capture](capture.md)
 while the asynchronous load completes. Compare observed world/player/starting
 state with the frozen fixture and scenario, preserving provenance and unknowns.
 Neither the matching descriptor nor the call return substitutes for this proof.
-Native save/reload, scenario behavior and VR acceptance remain separate gates.
+The successful run also had two nearly black pre-load captures whose machine
+status was `captured`; review rejected them as visual proof. Always inspect the
+actual image. Next validation must establish normal save/reload persistence and
+bounded resource values. Scenario behavior and VR acceptance remain separate gates.
 
 ### Explicit scalar FOV probe
 

@@ -33,9 +33,10 @@ deployed, so it could not consume request files. Normal UI loading proved Save
 
 ## Current implementation and remaining P1/P9 work
 
-1. Retain P1a's bounded structural observer and game-thread checks. Live entry-menu
-   and menu observations now work; authoritative loaded-world/scenario assertions
-   remain pending. Verify built and mapped module hashes for every run.
+1. Retain P1a's bounded structural observer and game-thread checks. Entry-menu,
+   menu and post-load world/pawn samples now work; authoritative scenario and
+   resource assertions remain pending. Verify built and mapped module hashes
+   for every run.
 2. Reuse the validated scalar-query and normal menu routes through the existing
    engine/SDK integration. The scalar getter and two menu actions have returned
    normally in protected runs. General ConsoleCommand still lacks allocator and
@@ -44,11 +45,11 @@ deployed, so it could not consume request files. Normal UI loading proved Save
    executable/module hashes, fresh lease, request ID and deadline. Live wrong-lease
    and expired-request rejection passed. Preserve uncertain intent; never retry a
    mutating request automatically or leave traffic for the next game's startup.
-4. Extend the protected runner from its working Steam selection, exact process
-   binding, handshake, menu observation/transitions and captures to verified
-   fixture selection, normal load/save/reload and outcome assertions. Reuse the
-   game's initialized menus rather than map teleportation. The existing runner
-   already archives and verifies restoration; do not invoke the LE1 wrapper.
+4. Extend the protected runner's proven frozen-manual-fixture load to normal
+   save/reload persistence and bounded live resource observation. Reuse its Steam
+   selection, process binding, initialized menu, request channel, captures and
+   verified restoration. Compare actual observed values and resulting saves to
+   fixture expectations; do not infer them from successful loading.
 5. Reuse snapshot/record/replay/performance producers as the relevant ME2 host
    integration becomes available. Capture raw input, effective game input and
    authoritative outcomes separately. Add reload/interrupt/scanning cases only
@@ -73,8 +74,9 @@ cleanup after both success and interruption. Preserve private original evidence.
 Until these pass, do not call the full runner proven. The native baseline
 establishes loading and saving; later diagnostic runs prove read-only
 handshake/observation, live wrong-lease/expired-request rejection, a bounded
-scalar return and two normal menu transitions. Scripted selected-fixture loading,
-save/reload and scenario/VR acceptance remain pending.
+scalar return, normal menu transitions and one bounded scripted frozen-fixture
+load with post-load world/pawn and visible scene evidence. Normal save/reload,
+resource observation and scenario/VR acceptance remain pending.
 
 ## Implemented transport checkpoint
 
@@ -86,7 +88,7 @@ bound ME2 using the installed launcher files; they did not select a save.
 
 The [control client and codec](../tools/qa-le2/control.md) now bind traffic to the
 owned run, process start, module hashes and a fresh runtime lease. Standalone C++
-checks and 27 Python tests passed for candidate `a0596b4f`, including
+checks and 31 Python tests passed for candidate `71f17c7d`, including
 cross-language wire conformance and retained uncertainty after dispatch errors. The separate attachment helper has
 15 passing tests using actual temporary protected sessions with fake process and
 module providers. It requires an already loaded reviewed diagnostic ASI and
@@ -117,15 +119,26 @@ closed normally and all four protected roots were restored and verified. See the
 [menu run evidence](../research/le2-validation-evidence.md#normal-menu-transitions-and-rendered-desktop-evidence)
 and [control/capture workflow](../tools/qa-le2/control.md#observe-and-open-the-normal-load-menu).
 
-Next, establish a frozen mapping from the immutable staged file to a complete
-`Career`/`SaveName`/`Index`/`Type` descriptor. Derive the unique current UI row
-from that identity; never treat descriptor Index as a UI position. A nonempty
-list or `CurrentCareerIndex=-1` alone does not establish career-picker versus
-save-list phase: `-1` is valid, the initialization decision is a local passed to
-the UI, and native enumeration declarations expose no verified persistent phase
-flag. Preserve live panel/capture evidence and revalidate the initialized
-handler, mode and descriptor immediately before a separately reviewed load.
-Exact fixture loading, normal save/reload, scenario and VR gates remain open.
+Candidate `71f17c7d` then proved one bounded frozen manual-fixture load. A
+reviewed plan mapped the staged file/hash to its complete descriptor; a current
+four-row scan uniquely matched UI row 0, and one guarded normal `LoadGame` call
+returned. Fresh observation found `Biop_Nor` and the player soldier pawn; the
+coordinating agent's image review confirmed Shepard on the Normandy crew deck.
+Two pre-load captures were nearly black despite machine `captured` status and
+were rejected as visual proof. The prior readable menu capture supported the
+mapping attestation; current file/descriptor checks and the post-load evidence
+supported this run. Normal close and all four restored roots were verified.
+See the [fixture-load evidence](../research/le2-validation-evidence.md#frozen-manual-fixture-loaded-through-the-normal-menu).
+
+For subsequent runs, preserve the frozen mapping and derive the unique current
+UI row from the complete descriptor, never from descriptor Index alone. A
+nonempty list or `CurrentCareerIndex=-1` does not establish career-picker versus
+save-list phase: `-1` is valid and no verified persistent phase flag is exposed.
+Revalidate the initialized handler, mode and current descriptor before loading;
+there is still no career-picker automation. The next gate is normal save/reload
+and a bounded resource observer, followed by gameplay scenarios and VR. Reuse
+the established engine/SDK and protected runner; this evidence does not prove
+resource values, save persistence or general native-console safety.
 
 The [native console reuse audit](../research/le2-native-console-reuse.md) records
 the remaining general-call target and allocator/string-lifetime prerequisites.

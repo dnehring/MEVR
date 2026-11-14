@@ -1,9 +1,78 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-14 UTC. **Earlier normal UI load/save observed; scripted Steam selection, ASI loading, structural observation, one scalar script call and normal splash-to-main-menu-to-Load transitions proven. Three desktop captures reviewed and restoration verified. Scripted fixture selection/loading, save/reload, general console commands and VR proof remain pending.**
+Checkpoint: 2026-11-14 UTC. **Bounded scripted loading of one frozen manual fixture now proven through the normal menu, followed by a Normandy world/pawn observation and reviewed desktop image. Restoration verified. Normal save/reload persistence, resource observation, gameplay scenarios, general console calls and VR remain pending.**
 
 ## Live diagnostic connection, 2026-11-14 UTC
+
+### Frozen manual fixture loaded through the normal menu
+
+Protected run `7fbcb0df-d6bf-405c-a5cc-1245011a51c9` tested clean candidate
+`71f17c7db1b5fceae0bb91526be010750457af1b`, ASI SHA256
+`d3dc8e72a549166ac603cf14e032589c3c8410a806979c85eedaf7aecea364ed`, with the
+verified `59b5e775` loader. All three ordinary builds, **48/48** CTests,
+**7/7** focused diagnostic tests and **31/31** client tests with actual-C++
+conformance passed. ME2 PID 33732 started at `2026-11-14T07:44:35.4674983Z`;
+the producer answered on game thread 60496.
+
+Ten requests reached terminal responses: ping, splash observation, splash
+advance, main-menu observation, load-menu opening, Load observation,
+`observe-fixture`, `load-fixture`, post-load `observe`, and final ping.
+The frozen plan bound the complete manual descriptor and staged/frozen file
+hash `8c18e1d97c04a19a4a63af58e97ecb2e4c27226240c9cc34807324d5c185784b`.
+Its mapping attestation referenced the preceding run's complete descriptors and
+readable menu capture. The host reported current file binding available while
+explicitly retaining `imageContentsIndependentlyVerified=false`.
+
+Request `35920ebd-d670-40b1-95de-d99d1740ac11` completed a full four-row scan,
+found exactly one match at current UI row 0 (`Save_0099`, descriptor Index 99,
+Type 0), and observed the owned base route. Request
+`825e04ed-786a-4d9e-8a21-bd56bb064c0a` then invoked the normal menu LoadGame path
+once and returned **`dispatched`**, with an 8,156-byte payload, exact-owned-base
+routing, 12 parameter bytes, intact adjacent guards and normal return. This
+response itself still reported world validation pending; it was not relabelled
+as gameplay completion.
+
+The separate post-load request `5df769e1-dbc1-41cb-bd76-67d27efb7433` completed
+with a 14,100-byte structural observation: world outer package `Biop_Nor`,
+validated pawn class `SFXGame.SFXPawn_PlayerSoldier`, and finite Actor.Location
+approximately `(-3.1190218925, 4908.1416015625, -459.3500061035)`. These are the
+observer's engine coordinates, not calibrated VR coordinates. The independently
+decoded original fixture has the same X/Y and Z `-458.8500061035`; observed Z is
+0.5 engine units lower, with cause untested. This is not exact unchanged-position
+proof. The coordinating agent viewed `loaded-fixture-001/frame.png` (5120 x 1440), SHA256
+`62a43ea56a519d2b1f56e0c31238876eb649c2a041f6782badd0717ce4cc104d`, and saw
+Shepard on the Normandy crew deck with the Crew Quarters / Open prompt.
+Together, the frozen reviewed binding, unique current descriptor, guarded call,
+post-load world/pawn and visible scene support **this bounded scripted fixture
+load**. No single map string or call return supplies that conclusion alone.
+
+Two earlier images in this same run, `selected-fixture-001` and
+`selected-fixture-002`, had machine status `captured` but appeared nearly black
+to the coordinating agent. They are **rejected as visual selection evidence**,
+not discarded or promoted by their capture status. Their SHA256 values are
+`8cfcc44f0d890f2253ab0ac5608774d94ea8b2d5faaea67f20ae1b29cce41ae6` and
+`9960740363b98d167b203dab8ddea7409d5ace87e45b131efd1e1091e9cf216a`.
+The earlier readable run's image remains the mapping-attestation reference;
+the current unique descriptor/file checks provide current admission evidence.
+Capture receipts and structural observers retain their own limited acceptance
+labels; the attributed scene review does not rewrite them.
+
+ME2 accepted normal window close and exited. All four protected roots were
+restored and verified, only the owned invitation was removed, and no outstanding
+request remained. Private `local-tools/le2-diagnostic-handoff/run-20261114T0745Z/`
+preserves all ten request/result archives, decoded observations, frozen plan and
+fixture, mapped-module/deployment evidence, all three captures and receipts,
+normal-close and verified-restoration records, plus the sealed
+`native-outcome.json` review.
+
+No native save or reload was requested. Resource values, persistence, gameplay
+controls/scenarios, general ConsoleCommand ownership and VR are unproven.
+The next gate is a normal save/reload cycle plus a bounded resource observer
+using the existing engine/SDK and protected runner, with actual values compared
+to the fixture and resulting save. Continue from the working menu/control path.
+See the
+[frozen-fixture workflow](../tools/qa-le2/control.md#reviewed-frozen-fixture-loading).
 
 ### Normal menu transitions and rendered desktop evidence
 

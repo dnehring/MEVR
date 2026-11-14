@@ -30,8 +30,9 @@ client](control.md) supplies request correlation and uncertainty recovery. An
 opt-in monolithic diagnostic host implements `ping`, structural `observe` and a
 separately gated scalar `probe-fov`. Reviewed integrations also expose read-only
 `observe-save-menu` and independently permitted splash/load-menu actions. A
-separately gated frozen-fixture load path is documented below; native validation
-is pending. Each run still requires verified module mapping, process binding
+separately gated frozen-fixture load path has one bounded native proof, including
+post-load world/pawn and reviewed scene evidence; see the workflow below. Each
+run still requires verified module mapping, process binding
 and a real producer handshake. Diagnostic observations and menu opening do not
 load a save or establish scenario/VR acceptance.
 
@@ -172,8 +173,9 @@ python tools/qa-le2/scenario.py check-start <run-directory>/scenario.json <obser
 ```
 
 Process binding checks executable path, hash and start identity. The diagnostic
-producer provides structural observations, but selected-save/profile automation
-and authoritative scenario starting-state assertions remain unvalidated. Use the
+producer provides structural observations and one bounded scripted manual-fixture
+load has been proven. General profile selection and authoritative scenario
+starting-state assertions remain unvalidated. Use the
 [bound control workflow](control.md) for attachment and diagnostic evidence;
 starting-state JSON still needs observed game state with capture/provenance.
 Do not relabel save inspection, expected values or a title-screen handshake as
@@ -206,8 +208,11 @@ unique current descriptor match, then explicitly request
 row/pointer/path target, manual Type 0 only, no career-picker navigation, exact
 staged/frozen file hashes and one admitted native entry per process. A returned
 `dispatched` response is not a loaded-fixture result; require fresh observed state
-and capture. Native validation of this load path is pending. Missing or invalid
-bindings reject fixture requests, and uncertain outcomes must not be retried.
+and capture. The [recorded native proof](../../research/le2-validation-evidence.md#frozen-manual-fixture-loaded-through-the-normal-menu)
+covers one manual fixture, not resource values, save/reload persistence or VR.
+Missing or invalid bindings reject fixture requests, and uncertain outcomes must
+not be retried. Next work reuses this path for normal save/reload and bounded
+resource observation.
 
 ## 5. Exercise, inspect and reset
 
