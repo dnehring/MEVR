@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Export one correlated resource or weapon observation; no live processes or requests."""
+"""Export one correlated resource, weapon or orbital observation; no live processes or requests."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -76,24 +76,10 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def normalize(payload):
-    capabilities = payload.get('capabilities')
-    require(payload.get('source') == 'diagnostic-host' and payload.get('game') == 'LE2'
-            and payload.get('readOnly') is True and payload.get('ready') is False
-            and isinstance(capabilities, dict) and capabilities.get('observeResources') is True,
-            'Not a completed read-only diagnostic resource producer payload')
-    observation = payload.get('resourceObservation')
-    require(isinstance(observation, dict) and type(observation.get('schemaVersion')) is int
-            and observation['schemaVersion'] == 1 and observation.get('game') == 'LE2'
-            and observation.get('validationScope') == 'direct-live-inventory-POD-sample'
-            and observation.get('dispatchCapability') is False and observation.get('saveCacheUsed') is False
-            and observation.get('persistenceProven') is False, 'Unexpected resource observation contract')
-    context, resources = observation.get('context'), observation.get('resources')
-    require(isinstance(context, dict) and isinstance(resources, dict), 'Resource context/fields required')
-    require(type(context.get('available')) is bool and type(observation.get('allResourcesAvailable')) is bool,
-            'Availability flags must be boolean')
+def normalize_resource_fields(resources, stable):
+    """Shared scalar/bit/source checks for fields sampled by either observer."""
+    require(isinstance(resources, dict), 'Resource fields must be an object')
     state, unavailable = {'resources': {}}, {}
-    stable = context['available']
     for key, field in FIELDS.items():
         sample = resources.get(key)
         reason = 'field-missing'
@@ -115,6 +101,28 @@ def normalize(payload):
                     state['resources'][key] = value
                     continue
         unavailable['resources.' + key] = {'reason': reason if stable else 'context-unavailable', 'sample': sample}
+    return state['resources'], unavailable
+
+
+def normalize(payload):
+    capabilities = payload.get('capabilities')
+    require(payload.get('source') == 'diagnostic-host' and payload.get('game') == 'LE2'
+            and payload.get('readOnly') is True and payload.get('ready') is False
+            and isinstance(capabilities, dict) and capabilities.get('observeResources') is True,
+            'Not a completed read-only diagnostic resource producer payload')
+    observation = payload.get('resourceObservation')
+    require(isinstance(observation, dict) and type(observation.get('schemaVersion')) is int
+            and observation['schemaVersion'] == 1 and observation.get('game') == 'LE2'
+            and observation.get('validationScope') == 'direct-live-inventory-POD-sample'
+            and observation.get('dispatchCapability') is False and observation.get('saveCacheUsed') is False
+            and observation.get('persistenceProven') is False, 'Unexpected resource observation contract')
+    context, resources = observation.get('context'), observation.get('resources')
+    require(isinstance(context, dict) and isinstance(resources, dict), 'Resource context/fields required')
+    require(type(context.get('available')) is bool and type(observation.get('allResourcesAvailable')) is bool,
+            'Availability flags must be boolean')
+    state, unavailable = {'resources': {}}, {}
+    stable = context['available']
+    state['resources'], unavailable = normalize_resource_fields(resources, stable)
     for key in ('map', 'position'):
         sample = context.get(key)
         if stable and isinstance(sample, dict) and sample.get('available') is True:
@@ -277,6 +285,102 @@ def normalize_weapon(payload):
     return state, unavailable
 
 
+ORBITAL_SOURCE = 'unique pawn.LatentActions BioSeqAct_OrbitalGame.CurrentPlanet; camera hierarchy cross-check'
+ORBITAL_FLAGS = ('scanning', 'probeActive', 'impactActive', 'rescaling', 'exiting')
+ORBITAL_FLOATS = ('probeLaunchTime', 'impactTime', 'scanDist')
+ORBITAL_IDENTITIES = ('controller', 'pawn', 'world', 'worldInfo', 'inventory', 'mode', 'camera', 'latentAction')
+ORBITAL_LIMITS = ('dispatchCapability', 'savedPlanetIdVerified', 'discoveryConditionalEvaluated',
+                  'persistenceVerified', 'durableObjectIdentity')
+
+
+def orbital_integer(value, low=-0x80000000, high=0x7fffffff):
+    require(type(value) is int and low <= value <= high, 'Orbital integer outside declared SDK range')
+    return value
+
+
+def orbital_identity(value):
+    require(isinstance(value, dict) and set(value) == {'available', 'reason', 'index', 'class', 'address', 'classAddress'}
+            and value['available'] is True and value['reason'] == 'sdk-structural-checks-passed',
+            'Orbital identity lacks validated object sample')
+    orbital_integer(value['index'], 0, 64 * 1024 * 1024 - 1)
+    require(isinstance(value['class'], str) and 0 < len(value['class']) <= 256
+            and all(32 <= ord(c) <= 126 for c in value['class']), 'Invalid orbital class label')
+    for key in ('address', 'classAddress'):
+        require(isinstance(value[key], str) and re.fullmatch(r'0x[1-9A-F][0-9A-F]{0,15}', value[key]),
+                'Invalid process-local orbital address encoding')
+    # Pointer strings stay in the original provenance; not reusable handles.
+    return {'class': value['class'], 'index': value['index']}
+
+
+def normalize_orbital(payload):
+    capabilities = payload.get('capabilities')
+    require(payload.get('source') == 'diagnostic-host' and payload.get('game') == 'LE2'
+            and payload.get('readOnly') is True and payload.get('ready') is False
+            and isinstance(capabilities, dict) and capabilities.get('observeOrbital') is True,
+            'Not a completed read-only diagnostic orbital producer payload')
+    observation = payload.get('orbitalObservation')
+    require(isinstance(observation, dict) and type(observation.get('schemaVersion')) is int
+            and observation['schemaVersion'] == 1 and observation.get('game') == 'LE2'
+            and type(observation.get('available')) is bool and observation.get('dispatchCapability') is False
+            and isinstance(observation.get('reason'), str) and observation['reason'],
+            'Unexpected orbital observation contract')
+    # The producer intentionally emits this minimal unavailable object at its
+    # payload budget. Missing claims are not interpreted as positive evidence.
+    budget = (observation['available'] is False and observation['reason'] == 'orbital-payload-budget-exceeded'
+              and set(observation) == {'schemaVersion', 'game', 'available', 'reason', 'dispatchCapability'})
+    require(budget or all(observation.get(key) is False for key in ORBITAL_LIMITS),
+            'Orbital observation must not claim saved identity, discovery or persistence')
+    state = {'resources': {}, 'orbital': {}}
+    unavailable = {
+        'map': {'reason': 'orbital-planet-mapName-is-not-current-world-map', 'sample': None},
+        'position': {'reason': 'not-sampled-by-orbital-observer', 'sample': None},
+    }
+    if not observation['available']:
+        require(not any(key in observation for key in ('context', 'planet', 'state', 'resources')),
+                'Unavailable orbital observation cannot contain available sample data')
+        unavailable['orbital'] = {'reason': observation['reason'], 'sample': observation}
+        for key in FIELDS:
+            unavailable['resources.' + key] = {'reason': observation['reason'], 'sample': None}
+        return state, unavailable
+    require(observation['reason'] == 'stable-current-orbital-structural-sample', 'Orbital stable-sample reason required')
+    context, planet, sampled = observation.get('context'), observation.get('planet'), observation.get('state')
+    require(isinstance(context, dict) and context.get('cameraSource') == 'GameModeManager2.GameModes[9].GalaxyCam'
+            and type(context.get('currentMode')) is int and context['currentMode'] == 10,
+            'Orbital context must declare the verified current mode and camera path')
+    active = orbital_integer(context.get('activeWorld'), 0)
+    identities = {key: orbital_identity(context.get(key)) for key in ORBITAL_IDENTITIES}
+    require(isinstance(planet, dict) and planet.get('source') == ORBITAL_SOURCE
+            and planet.get('featuresComplete') is True, 'Orbital planet source/complete list required')
+    name = planet.get('mapName')
+    require(isinstance(name, str) and '\0' not in name and len(name.encode('utf-8')) <= 1024
+            and len(name.encode('utf-16-le')) // 2 <= 255, 'Invalid bounded orbital landing map name')
+    normalized_planet = dict(identity=orbital_identity(planet.get('object')), mapName=name,
+                             featuresComplete=True, features=[])
+    for key in ('tableId', 'displayNameRef', 'landConditional'):
+        normalized_planet[key] = orbital_integer(planet.get(key))
+    normalized_planet['levelType'] = orbital_integer(planet.get('levelType'), 0, 255)
+    features = planet.get('features')
+    require(isinstance(features, list) and len(features) <= 64, 'Orbital feature list exceeds producer bound')
+    feature_ints = ('tableId', 'scaledAmount', 'visibleConditional', 'visibleParameter',
+                    'usableConditional', 'usableParameter', 'transition', 'transitionParameter')
+    for index, row in enumerate(features):
+        require(isinstance(row, dict) and set(row) == {'index', 'type', 'mineralType', *feature_ints}
+                and type(row.get('index')) is int and row['index'] == index, 'Invalid complete orbital feature row')
+        checked = {key: orbital_integer(row[key]) for key in feature_ints}
+        checked.update(index=index, type=orbital_integer(row['type'], 0, 255),
+                       mineralType=orbital_integer(row['mineralType'], 0, 255))
+        normalized_planet['features'].append(checked)
+    require(isinstance(sampled, dict) and sampled.get('source') == 'current SFXGameModeOrbital fields'
+            and all(type(sampled.get(key)) is bool for key in ORBITAL_FLAGS), 'Orbital flag source/type mismatch')
+    normalized = dict(currentMode=10, activeWorld=active, context=identities, planet=normalized_planet)
+    normalized.update({key: sampled[key] for key in ORBITAL_FLAGS})
+    normalized.update({key: float32(sampled.get(key)) for key in ORBITAL_FLOATS})
+    state['orbital'] = normalized
+    state['resources'], missing = normalize_resource_fields(observation.get('resources'), True)
+    unavailable.update(missing)
+    return state, unavailable
+
+
 def export(run_path, request_id, case_id):
     require(control.valid_uuid(request_id), 'Canonical nonzero request UUID required')
     run = session.safe_path(Path(run_path).absolute())
@@ -297,9 +401,9 @@ def export(run_path, request_id, case_id):
     response_path = run / 'control' / 'history' / (request_id + '.result')
     request_bytes, response_bytes = raw(request_path, control.MAX_FRAME), raw(response_path, control.MAX_FRAME)
     request, response = control.decode(request_bytes), control.decode(response_bytes)
-    require(request['kind'] == 'request' and request['id'] == request_id and request['verb'] in ('observe-resources', 'observe-weapon')
+    require(request['kind'] == 'request' and request['id'] == request_id and request['verb'] in ('observe-resources', 'observe-weapon', 'observe-orbital')
             and not request['payload'] and response['kind'] == 'result' and response['status'] == 'completed',
-            'Requires archived empty observe-resources/observe-weapon request and completed result')
+            'Requires archived empty observe-resources/observe-weapon/observe-orbital request and completed result')
     require(all(request[k] == response[k] for k in (*control.IDENTITY, 'id', 'sequence', 'deadline', 'verb'))
             and all(request[k] == wire_identity[k] for k in control.IDENTITY), 'Uncorrelated archived response')
     # consumed-N counts attempts, not client sequence. Match exact bytes within a bounded scan.
@@ -339,7 +443,10 @@ def export(run_path, request_id, case_id):
             and plan['scenario'].get('sha256') == context['scenarioSha256'], 'Frozen plan inputs differ')
     payload = parse(response['payload'])
     weapon = request['verb'] == 'observe-weapon'
-    state, unavailable = normalize_weapon(payload) if weapon else normalize(payload)
+    orbital = request['verb'] == 'observe-orbital'
+    observation_key = 'weaponObservation' if weapon else 'orbitalObservation' if orbital else 'resourceObservation'
+    normalizer = normalize_weapon if weapon else normalize_orbital if orbital else normalize
+    state, unavailable = normalizer(payload)
     require(control.number(payload.get('gameTick')) > 0 and control.number(payload.get('gameThreadId'), (1 << 32) - 1) > 0,
             'Missing sample tick/thread')
     control.number(payload.get('sampleMonotonicMs'))
@@ -350,8 +457,8 @@ def export(run_path, request_id, case_id):
                         deadline=request['deadline'], deploymentSha256=session.digest(run / 'deployment.json'),
                         candidateCommitEvidence='reviewed-deployment-receipt-attestation-not-binary-commit-proof',
                         session=binding, observationVerb=request['verb'], combinedObservation=False,
-                        normalizedSemantics=({'weapon.loaded': LOADED_SOURCE, 'weapon.reserveStored': 'raw signed CurrentSpareAmmo; not effective/legal reserve', 'weapon.effectiveReserve': RESERVE_SOURCE + '; audited declaration, no getter call or live bytecode proof'} if weapon else {}),
-                        runtimeObservation=payload['weaponObservation' if weapon else 'resourceObservation']),
+                        normalizedSemantics=({'weapon.loaded': LOADED_SOURCE, 'weapon.reserveStored': 'raw signed CurrentSpareAmmo; not effective/legal reserve', 'weapon.effectiveReserve': RESERVE_SOURCE + '; audited declaration, no getter call or live bytecode proof'} if weapon else {'orbital.planet.mapName': 'BioPlanet.MapName landing destination; not current world map', 'orbital.planet.features': 'raw conditional/transition metadata; no evaluation or discovery proof'} if orbital else {}),
+                        runtimeObservation=payload[observation_key]),
                     claims=dict(visualVerified=False, loadedFixtureProven=False, persistenceProven=False, vrVerified=False))
     failures = scenario.check_start(frozen, artifact)
     failures.extend('unavailable observation: ' + key for key in unavailable)

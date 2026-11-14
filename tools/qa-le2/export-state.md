@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
-# Export an archived resource or weapon starting state
+# Export an archived resource, weapon or orbital starting state
 
 `python tools/qa-le2/export-state.py RUN --request UUID --case CASE_ID`
 
-This offline helper reads one archived, completed `observe-resources` or
-`observe-weapon` exchange. The correlated request verb selects the normalizer;
+This offline helper reads one archived, completed `observe-resources`,
+`observe-weapon` or `observe-orbital` exchange. The correlated request verb selects the normalizer;
 the CLI and frozen-session validation path are shared.
 It never launches a game, inspects live processes, sends requests or reads current
 resource values from saves. It creates two new files:
@@ -94,3 +94,44 @@ Run synthetic tests with `python tools/qa-le2/test-export-state.py`. Set
 `LE2_CONTROL_CPP` to the matching C++ codec test executable to additionally check
 the generated archived frames through the real C++ decoder. Tests use temporary
 fake files; none is native evidence.
+
+## Orbital observations
+
+The same command accepts a correlated, empty `observe-orbital` request and
+completed read-only diagnostic-host result. The producer contract is
+[`ObserveOrbital`](../../src/engine/Le2OrbitalObservation.inc); see the
+[scanning acquisition plan](../../research/le2-scanning-readiness.md) for its
+source and native acceptance limits. No new live request or exporter is needed.
+
+| Producer field | Normalized field | Meaning |
+| --- | --- | --- |
+| `resources` | `state.resources` | Same inventory scalar/source/sample-bit validation used for `observe-resources`, sampled inside this orbital observation. Unavailable values stay absent, including probes. |
+| `context.currentMode`, `activeWorld` | Same names under `state.orbital` | Validated mode 10 and raw camera active-world integer. The integer is not promoted to a saved planet ID. |
+| Context object samples | `state.orbital.context` | Process-local class/index identities. Full original object samples remain in provenance; addresses are not exposed as normalized handles. |
+| `planet.object` | `state.orbital.planet.identity` | Process-local selected planet class/index, not a durable galaxy/save identifier. |
+| `planet.mapName` | `state.orbital.planet.mapName` | Exact bounded BioPlanet landing-map text, including original casing or legitimate empty text. It is **not** the currently loaded world map. |
+| Planet IDs and complete feature rows | `state.orbital.planet` | Raw signed metadata, enum bytes and sequential bounded rows. Conditional/transition IDs and scaled amounts do not establish evaluated availability, discovery, mineral yield or mission unlock. |
+| `state` flags and floats | Same names under `state.orbital` | Current scanning/probe/impact/rescale/exit booleans and finite float32 times/distance. No inferred probe completion or fixed cost. |
+
+The normalizer validates the producer's source labels, current mode, object
+sample shapes, strict boolean/integer types, float32 values and complete feature
+list (at most 64 rows). It requires the producer's discovery, saved-ID,
+persistence and durable-identity claims to remain false. The exact minimal
+`orbital-payload-budget-exceeded` unavailable shape is also retained, with no
+manufactured state. The offline host fixture's intentionally abbreviated
+non-engine placeholder is not an accepted production observation contract.
+
+Orbital exports leave `state.map` and `state.position` unavailable: this producer
+does not sample those fields. They therefore return exit 2 even when all orbital
+and inventory fields are available. Do not substitute the landing map, uppercase
+its spelling, or merge a separate resource/world query to make those checks pass.
+The full orbital observation, request/tick/time and frozen-session provenance
+remain attached to this one exchange; `combinedObservation` and all acceptance
+claims remain false. Scene review, discovery evaluation, normal save/reload and
+VR acceptance are separate gates.
+
+Focused tests cover a valid archived orbital exchange, exact map casing/empty
+text, unavailable/context-budget responses, invalid sources/scalars/object
+identities, complete-list bounds/order, existing receipt/consumption guards,
+and byte-identical real C++ wire-codec roundtrips. These are synthetic offline
+tests, not native orbital evidence.

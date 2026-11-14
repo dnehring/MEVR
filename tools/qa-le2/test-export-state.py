@@ -97,6 +97,157 @@ class ExportTests(unittest.TestCase):
     def state(self):
         return e.read(self.run / f'artifacts/state-{self.token}.json')
 
+    def use_orbital(self):
+        resources = copy.deepcopy(self.payload['resourceObservation']['resources'])
+        self.request['verb'] = 'observe-orbital'
+        self.payload.pop('resourceObservation')
+        self.payload['capabilities'] = {'observeOrbital': True}
+        def identity(index):
+            return dict(available=True, reason='sdk-structural-checks-passed', index=index,
+                        address=f'0x{0x1000+index:X}', classAddress='0x2000', **{'class': 'Synthetic.OrbitalObject'})
+        context = dict(currentMode=10, activeWorld=200100, cameraSource='GameModeManager2.GameModes[9].GalaxyCam')
+        context.update({key: identity(index) for index, key in enumerate(e.ORBITAL_IDENTITIES)})
+        feature = dict(index=0, tableId=37, type=1, mineralType=2, scaledAmount=-7,
+                       visibleConditional=104, visibleParameter=0, usableConditional=105,
+                       usableParameter=1, transition=4551, transitionParameter=0)
+        observation = dict(schemaVersion=1, game='LE2', available=True,
+            reason='stable-current-orbital-structural-sample', context=context,
+            planet=dict(object=identity(9), mapName='BioP_N7Crsh', tableId=500, displayNameRef=123,
+                        levelType=0, landConditional=106, source=e.ORBITAL_SOURCE,
+                        featuresComplete=True, features=[feature]),
+            state=dict(source='current SFXGameModeOrbital fields', scanning=True, probeActive=False,
+                       impactActive=False, rescaling=False, exiting=False,
+                       probeLaunchTime=1.5, impactTime=-1.0, scanDist=0.25), resources=resources,
+            **{key: False for key in e.ORBITAL_LIMITS})
+        self.payload['orbitalObservation'] = observation
+        self.archive()
+        return observation
+
+    def test_orbital_export_preserves_raw_metadata_without_world_or_discovery_claim(self):
+        observation = self.use_orbital()
+        self.assertEqual(self.invoke(), 2)  # Current-world map/position were never sampled.
+        artifact = self.state()
+        orbital = artifact['state']['orbital']
+        self.assertEqual(orbital['planet']['mapName'], 'BioP_N7Crsh')
+        self.assertEqual(orbital['planet']['features'][0]['scaledAmount'], -7)
+        self.assertEqual(orbital['planet']['features'][0]['transition'], 4551)
+        self.assertEqual(orbital['planet']['identity'], {'class': 'Synthetic.OrbitalObject', 'index': 9})
+        self.assertNotIn('address', orbital['context']['world'])
+        self.assertEqual(artifact['state']['resources']['probes'], 2)
+        self.assertTrue(orbital['scanning'])
+        for key in ('map', 'position', 'discovery', 'savedPlanetId'):
+            self.assertNotIn(key, artifact['state'])
+        self.assertEqual(artifact['provenance']['runtimeObservation'], observation)
+        self.assertEqual(artifact['provenance']['observationVerb'], 'observe-orbital')
+        self.assertFalse(artifact['provenance']['combinedObservation'])
+        self.assertTrue(all(value is False for value in artifact['claims'].values()))
+        self.assertEqual(self.invoke(), 1)  # Existing private output never replaced.
+
+    def test_orbital_landing_map_case_empty_and_raw_float_values(self):
+        observation = self.use_orbital()
+        for name in ('Biop_n7CRsh', '', 'Synthetic_' + '\U0001F680'):
+            observation['planet']['mapName'] = name
+            state, unavailable = e.normalize_orbital(self.payload)
+            self.assertEqual(state['orbital']['planet']['mapName'], name)
+            self.assertNotIn('map', state)
+            self.assertIn('map', unavailable)
+            self.assertEqual(state['orbital']['impactTime'], -1)
+        for name in ('Bad\0Map', 'x' * 256, '\ud800'):
+            observation['planet']['mapName'] = name
+            with self.assertRaises(ValueError): e.normalize_orbital(self.payload)
+
+    def test_orbital_resources_reuse_bits_validation_and_keep_unavailable(self):
+        observation = self.use_orbital()
+        observation['resources']['probes'].update(available=False, reason='unreadable-changing-or-invalid-resource')
+        state, unavailable = e.normalize_orbital(self.payload)
+        self.assertNotIn('probes', state['resources'])
+        self.assertEqual(unavailable['resources.probes']['sample'], observation['resources']['probes'])
+        for key, value in [('sampleBits', '0x00000000'), ('sourceField', 'CachedSave.Fuel'), ('value', True)]:
+            baseline = copy.deepcopy(observation['resources']['fuel'])
+            observation['resources']['fuel'][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError): e.normalize_orbital(self.payload)
+            observation['resources']['fuel'] = baseline
+
+    def test_orbital_unavailable_and_exact_budget_shape_do_not_manufacture_state(self):
+        self.use_orbital()
+        base = dict(schemaVersion=1, game='LE2', available=False, reason='orbital-context-or-state-changed',
+                    **{key: False for key in e.ORBITAL_LIMITS})
+        self.payload['orbitalObservation'] = base
+        state, unavailable = e.normalize_orbital(self.payload)
+        self.assertEqual(state, {'resources': {}, 'orbital': {}})
+        self.assertEqual(unavailable['orbital']['reason'], base['reason'])
+        budget = dict(schemaVersion=1, game='LE2', available=False, dispatchCapability=False,
+                      reason='orbital-payload-budget-exceeded')
+        self.payload['orbitalObservation'] = budget
+        self.archive()
+        self.assertEqual(self.invoke(), 2)
+        self.assertEqual(self.state()['state'], {'resources': {}, 'orbital': {}})
+        budget['resources'] = {}
+        with self.assertRaises(ValueError): e.normalize_orbital(self.payload)
+        self.payload['orbitalObservation'] = {**base, 'planet': {}}
+        with self.assertRaises(ValueError): e.normalize_orbital(self.payload)
+
+    def test_orbital_rejects_wrong_types_sources_identity_and_positive_claims(self):
+        original = copy.deepcopy(self.use_orbital())
+        mutations = [
+            (('context', 'currentMode'), True), (('context', 'currentMode'), 9),
+            (('context', 'activeWorld'), -1), (('context', 'cameraSource'), 'arbitrary-camera'),
+            (('context', 'world', 'address'), '0x0'), (('context', 'pawn', 'available'), False),
+            (('context', 'pawn', 'index'), True), (('context', 'world', 'index'), 64*1024*1024),
+            (('planet', 'source'), 'saved-planet'), (('planet', 'tableId'), True),
+            (('planet', 'levelType'), 256), (('planet', 'featuresComplete'), False),
+            (('state', 'source'), 'cached-orbital'), (('state', 'scanning'), 1),
+            (('state', 'scanDist'), float('inf')), (('state', 'probeLaunchTime'), 0.1),
+            (('savedPlanetIdVerified',), True), (('discoveryConditionalEvaluated',), True),
+            (('persistenceVerified',), True), (('durableObjectIdentity',), True),
+        ]
+        for path, value in mutations:
+            observation = copy.deepcopy(original)
+            target = observation
+            for key in path[:-1]: target = target[key]
+            target[path[-1]] = value
+            self.payload['orbitalObservation'] = observation
+            with self.subTest(path=path), self.assertRaises(ValueError): e.normalize_orbital(self.payload)
+
+    def test_orbital_feature_bounds_order_types_and_no_discovery_inference(self):
+        observation = self.use_orbital()
+        feature = observation['planet']['features'][0]
+        for rows in ([feature] * 65, [feature, feature], [{**feature, 'index': True}],
+                     [{**feature, 'mineralType': -1}], [{**feature, 'transition': 2147483648}],
+                     [{**feature, 'discovered': True}]):
+            observation['planet']['features'] = rows
+            with self.subTest(rows=len(rows)), self.assertRaises(ValueError): e.normalize_orbital(self.payload)
+        observation['planet']['features'] = [{**feature, 'index': i} for i in range(64)]
+        self.assertEqual(len(e.normalize_orbital(self.payload)[0]['orbital']['planet']['features']), 64)
+        observation['planet']['features'] = []
+        self.assertEqual(e.normalize_orbital(self.payload)[0]['orbital']['planet']['features'], [])
+
+    def test_orbital_archive_reuses_correlation_frozen_and_consumption_guards(self):
+        self.use_orbital()
+        self.archive(status='dispatched')
+        self.assertEqual(self.invoke(), 1)
+        self.archive(verb='observe-resources')
+        self.assertEqual(self.invoke(), 1)
+        self.archive()
+        consumed = self.run / 'control/consumed-1.request'
+        saved = consumed.read_bytes()
+        consumed.unlink()
+        self.assertEqual(self.invoke(), 1)
+        consumed.write_bytes(saved)
+        fixture = self.run / 'fixture.pcsav'
+        fixture.write_bytes(b'changed')
+        self.assertEqual(self.invoke(), 1)
+        self.assertFalse((self.run / 'artifacts').exists())
+
+    @unittest.skipUnless(os.environ.get('LE2_CONTROL_CPP'), 'set LE2_CONTROL_CPP for actual C++ codec conformance')
+    def test_orbital_actual_cpp_codec_roundtrip(self):
+        self.use_orbital()
+        for suffix in ('request', 'result'):
+            path = self.run / f'control/history/{self.token}.{suffix}'
+            result = subprocess.run([os.environ['LE2_CONTROL_CPP'], str(path)], capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, path.read_bytes())
+
     def use_weapon(self):
         self.request['verb'] = 'observe-weapon'
         self.payload.pop('resourceObservation', None)
