@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.27)
 # The one version number (docs/release-checklist.md section 5). Change it here only: the generated header below carries
 # it into the C++ and .rc files, tools/package-release.ps1 reads it from this line and refuses binaries that disagree,
 # and the release is tagged v<version>.
-project(MEVR VERSION 0.2.0 LANGUAGES C CXX)
+project(MEVR VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

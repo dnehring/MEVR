@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+## 0.3.0 (2026-11-13)
+
+- **Shadows match in both eyes.** With the faster one-render stereo (the default), the right eye's shadows were
+  cast as the left eye saw them, so they slid when you moved your head. Each eye now gets its own. Headset
+  verification pending.
 - **Quitting the game no longer crashes.** Every quit, from the menu or by closing the window, ended in a crash in the
   game's own shutdown (no progress was lost), and the next start offered "The game crashed last session". The game now
   closes cleanly, and Windows no longer records a crash for it.
@@ -113,6 +118,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   floated elsewhere in view.
 - **The view stays at your eyes beside walls.** Standing close to a wall, a pillar or someone in front of you could drop the
   view to Shepard's knees, behind his legs (the game's own camera pulling itself in). It now stays where your eyes are.
+- **A conversation that ends in a shop no longer flickers** (first person, experimental): talking to a merchant
+  such as Opold on Noveria could flash the flat screen for a moment before the shop stood in the room.
 - **Hackett's calls at the galaxy map**: the map that opens after a call no longer flashes the flat screen, and the call
   starts where you stand at the console instead of cutting to Shepard 1 m away.
 - **First person stays first person after many loads.** Loading saves 16 times without opening the pause menu (say,

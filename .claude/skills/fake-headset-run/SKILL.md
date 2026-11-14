@@ -81,7 +81,7 @@ Citadel) are `-Career John00 -List %LOCALAPPDATA%\MEVR\squad-saves\list.json -Sa
    touched are checked out, files another session is editing there get your hunks merged three-way (refused unless clean).
    Never push (the owner does).
 3. Rebuild `build-mono` at the commit and, with the game closed, `tools\deploy-asi.ps1 -Game LE1 -BuildDir build-mono
-   -IgnoreSlot`: the installed version reads `0.2.0+<hash>` without `-dirty`.
+   -IgnoreSlot`: the installed version reads `<version>+<hash>` without `-dirty`.
 
 The working copy's text files are CRLF (autocrlf); the Edit tool and Python scripts that keep the file's line endings are
 safe; `grep -c $'\r'` in Git Bash is not a reliable check, `git ls-files --eol <file>` is.
