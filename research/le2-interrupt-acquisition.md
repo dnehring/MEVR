@@ -106,6 +106,130 @@ No native navigation was attempted here. Reaching the Normandy galaxy map,
 traveling to a hub and walking to an NPC remain normal-navigation prerequisites
 for any future hub lead; none of those steps reopens a completed one-shot beat.
 
+## Native observer contract and trigger/acceptance boundary
+
+2026-11-14 follow-up against source revision `587e25de`. This is an offline
+source contract, **not an implemented LE2 conversation observer or native proof**.
+
+### Input routing does not prove acceptance
+
+Installed `BIOInput.ini` maps the conversation-mode left trigger to the Paragon
+command and right trigger to the Renegade command. The corresponding
+`SFXGameModeConversation.InterruptParagon` / `InterruptRenegade` script functions
+obtain the conversation GUI handler. The inspected handler's `InterruptParagon`
+function invokes a Flash method; it does not itself select the reply.
+`BioSFHandler_Conversation.HandleEvent` receives commands 6 (Paragon) and 5
+(Renegade), invokes `BioConversation.SelectInterruption`, ignores that Boolean
+return, and sets `m_bWasTriggered` afterward. Therefore a command callback,
+sound or triggered flag establishes routing evidence, **not successful acceptance**.
+Do not call these functions directly to manufacture input acceptance.
+
+`UpdateInterruptVisuals` obtains the native `NeedToDisplayInterrupt` result and
+updates the two displayed-polarity flags. Its flags describe the handler's most
+recent UI update; they do not independently prove currently legal input or actual
+pixels. `NeedToDisplayInterrupt`, `SelectInterruption` and `TickInterruptionData`
+are native-only declarations in this inspection. Their exact eligibility,
+acceptance and timing predicates remain opaque. Do not reconstruct a legal-window
+Boolean from timer signs or authored keys. The PC handler overrides axis handling;
+its gamepad mode also matters. Preserve actual input configuration provenance.
+
+### Minimum read-only sample
+
+Reuse the validated roots, object-table/class checks and guarded reads in
+[`Le2DiagnosticObservation.cpp`](../src/engine/Le2DiagnosticObservation.cpp).
+Reach `BioWorldInfo` through the validated local actor's `WorldInfo`, then read
+its current conversation. Independently traverse the existing local GUI manager
+and reachable panel/handler path, requiring reciprocal panel/manager links and
+agreement between handler and sampled world. Do not globally search objects or
+assume a localized caption identifies the conversation.
+
+The pinned LE2 SDK declares these fields; the offsets are discovery evidence,
+not a substitute for actual SDK assertions and native validation:
+
+| Object | Minimum fields |
+|---|---|
+| `BioWorldInfo` | `m_oCurrentConversation` at `0xA4C` |
+| `BioConversation` | Entry/reply arrays at `0xB8`/`0xC8`; `m_tInterruptInfo` at `0x2A0`; owner/player at `0x2C0`/`0x2C8`; current entry at `0x324`, selected reply at `0x32C`, current reply at `0x330`, node timer at `0x340` |
+| `BioInterruptReplyInfo` | Relative offsets: reply-list index `0`, start/window remaining `4`/`8`, enabled/activated bits `0xC`, polarity byte `0x10`; size `0x14` |
+| Current entry/reply | Bound-check the typed array index, then report node `nExportID`, transition ID and parameter. An array index is not an export ID |
+| `BioSFHandler_Conversation` | Flags at `0x12C`: wheel `0x2`, Paragon `0x4`, Renegade `0x8`, screen initialized `0x10`, triggered `0x20`; panel state and input mode separately |
+
+Keep object address/index/class and sample epoch as process-local provenance,
+never durable handles. Cap array sizes, inspect only selected records, reject
+invalid indices/nonfinite scalars, and resample roots/headers/selected records
+around a copy. Identity disagreement makes that sample unavailable. Preserve
+raw timer/flag meanings and separately label visual, routing and outcome evidence.
+
+Add sampling to the **existing** owned game-thread consumer behind
+[`Le2DiagnosticHost`](../src/engine/Le2DiagnosticHost.cpp), not a second tick
+registration or worker-thread engine traversal. A bounded POD history should
+record tick/time, conversation/node, interrupt fields and state changes, with
+explicit overflow/drop counts and run cancellation. Drain through the existing
+bound channel. Single request snapshots can miss short windows or selected
+replies. Sampling still cannot claim every native call or an exact window boundary.
+
+### Existing trace and input machinery to reuse
+
+- [`CallTrace`](../src/game/CallTrace.cpp) already combines script pre-call and
+  ProcessEvent post-call observations with time and 600-line limits. Its startup
+  requires reflection readiness and an installed CallFunction hook. Ordinary
+  startup installs that hook when hand aim is enabled; the diagnostic branch
+  returns through its own tick path. Do not claim the console trace is available
+  merely because LE2 diagnostic startup succeeds. LE2 CallFunction's declared
+  address alone is not an installed/validated trace.
+- [`ProcessEvent`](../src/engine/ProcessEvent.cpp) has an observer/post-handler
+  dispatch seam; [`ProcessEventHook`](../src/plugin/ProcessEventHook.cpp) owns the
+  actual host detour. If routing evidence needs callback events, use this ownership
+  arrangement, exact validated function/receiver identities and bounded primitive
+  command capture. Do not add another detour, replace an active consumer, inspect
+  arbitrary string arrays or assume all script calls traverse ProcessEvent.
+  Callback coverage needs a native trial; pre/post timing must remain explicit.
+- [`Le2InputControl.inc`](../src/engine/Le2InputControl.inc) already exposes bridge
+  positive/neutral poll counts, first/last pulse times and physical-input state.
+  These prove output writes, not game consumption. Existing input categories
+  exclude conversations. Human normal input can supply the initial trial; any
+  later synthetic conversation admission needs its own narrow context validation.
+- [`ConversationHooks`](../src/engine/ConversationHooks.hpp) protects ambient
+  conversations from cancellation. Its `InterruptConversation` counter is not a
+  Paragon/Renegade interrupt counter and must not be reused as one.
+
+First native evidence should correlate sampled Veetor node export IDs with the
+pinned authored records above, visible prompts/captures, normal player input and
+observed resulting reply/node. Compare taken and missed trials from identical
+fixture bytes and inspect normal outcome saves using the existing save reader,
+diff and source-review tools. Neither triggered flags nor a successful bridge
+pulse closes the accepted-outcome gate. No new acceptance claim is made here.
+
+### Follow-up source provenance
+
+The existing scanner hash below was rechecked. Installed base `SFXGame.pcc`
+SHA-256 is `681f3fc72c08c66bc6d77ca91102e08cead7c6a5586c22bad0a8f7085be38d77`.
+SDK declarations were read at LExSDKv2 revision
+`6bd05809cccb1a099a520371a95779d4a56bb246` (`LE2/SFXGame_classes.hpp` and
+`SFXGame_structs.hpp`). The existing private extracted
+`le2-validation-evidence/galaxy-source/coalesced/BIOInput.ini` has SHA-256
+`fb65ed00e45ddd69b55dbd625a9f0b4e218e5832ca6cc52d1b62134e5a736a8c`;
+its parent base `Coalesced_INT.bin` pin is recorded in
+[galaxy source findings](le2-galaxy-fixture-source.md). This is base configuration,
+not a live merged-binding measurement.
+
+Private artifact identifier: `le2-interrupt-acquisition/interrupt-readiness`
+(the isolated acquisition worktree's ignored `local-tools/interrupt-readiness`).
+Each source file was produced with the existing scanner's `--game LE2 --only
+SFXGame --script Class.Function` mode; no package or extracted script is published.
+Key output hashes:
+
+| Private `.txt` artifact | SHA-256 |
+|---|---|
+| `BioSFHandler_Conversation.HandleEvent` | `9909307f7f300a14682f860d08711f195f4d226a39c1c8f009ff0e2e8d2ca174` |
+| `BioSFHandler_Conversation.UpdateInterruptVisuals` | `f25e27a1018fe3ce61788ca6e65c7ede2f88e420a0c4e4e2c0e0ecf9de8830a3` |
+| `BioSFHandler_Conversation.InterruptParagon` | `667295ca562dc648c9a21d4083a54856475b3d8ba3a1c23e663c8b33c845bb8d` |
+| `SFXGameModeConversation.InterruptParagon` | `8dfc5c15926bfe097a60593ab4a97d5879d12f2f5454f756cbc7bf7f8fd2f46f` |
+| `SFXGameModeConversation.InterruptRenegade` | `b24aa014a878b6f5c291d52dcbadad8daa9eaa055502a887a11e9fbd7a0e185a` |
+| `BioConversation.NeedToDisplayInterrupt` | `57c40742e96242b8fcd58837eea3b9071e89f07e0b7ddc514adde1335bd4b358` |
+| `BioConversation.SelectInterruption` | `d1bbe4aba7bed6101368c6a6162e6e3c437e2388d197694aa610e5b9862d5998` |
+| `BioConversation.TickInterruptionData` | `459712d50845039353c77b729f32ba6fa1006c7895c0691193909455e2ddd96c` |
+
 ## Reproduction and private provenance
 
 Scanner executable SHA-256:
