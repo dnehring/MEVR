@@ -31,7 +31,7 @@ internal static class Wheels
 {
     public static int Run(string cooked, string outPath, string only, string isbDir)
     {
-        LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default, s => Console.Error.WriteLine("LEC: " + s), null, new[] { MEGame.LE1 });
+        InspectionContext.Initialize();
         var everyFile = Directory.GetFiles(cooked, "*_LOC_INT.pcc").OrderBy(f => f).ToList();
         var files = everyFile.AsEnumerable();
         if (only != null)
@@ -53,7 +53,7 @@ internal static class Wheels
         {
             try
             {
-                using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+                using IMEPackage pcc = InspectionContext.Open(file);
                 foreach (ExportEntry tlk in pcc.Exports.Where(e => e.ClassName == "BioTlkFile"))
                 {
                     string name = tlk.ObjectName.Name;
@@ -104,7 +104,7 @@ internal static class Wheels
             string package = Path.GetFileNameWithoutExtension(file);
             try
             {
-                using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+                using IMEPackage pcc = InspectionContext.Open(file);
                 ++packages;
                 foreach (ExportEntry export in pcc.Exports.Where(e => e.ClassName == "BioConversation"))
                 {

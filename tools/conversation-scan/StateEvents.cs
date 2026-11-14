@@ -21,7 +21,7 @@ internal static class StateEvents
 {
     public static int Run(string cooked, string outPath, string idList)
     {
-        LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default, s => Console.Error.WriteLine("LEC: " + s), null, new[] { MEGame.LE1 });
+        InspectionContext.Initialize();
         var wanted = new HashSet<int>(idList.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse));
         using var writer = new StreamWriter(outPath);
         int maps = 0, found = 0;
@@ -36,7 +36,7 @@ internal static class StateEvents
             }
             try
             {
-                using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+                using IMEPackage pcc = InspectionContext.Open(file);
                 foreach (ExportEntry export in pcc.Exports.Where(e => e.ClassName == "BioStateEventMap"))
                 {
                     ++maps;

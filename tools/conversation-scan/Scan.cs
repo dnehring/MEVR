@@ -31,6 +31,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Tasks;
 using LegendaryExplorerCore;
@@ -43,7 +44,7 @@ internal static class Scan
 {
     public static int Run(string cooked, string outPath, string only)
     {
-        LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default, s => Console.Error.WriteLine("LEC: " + s), null, new[] { MEGame.LE1 });
+        InspectionContext.Initialize();
         var files = Directory.GetFiles(cooked, "*.pcc").OrderBy(f => f).Where(f => Wanted(Path.GetFileNameWithoutExtension(f)));
         if (only != null)
         {
@@ -57,13 +58,20 @@ internal static class Scan
             string package = Path.GetFileNameWithoutExtension(file);
             try
             {
-                using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+                using IMEPackage pcc = InspectionContext.Open(file);
+                string packageHash = null;
+                if (InspectionContext.IsLe2)
+                {
+                    using var bytes = File.OpenRead(file);
+                    packageHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+                }
                 ++packages;
                 foreach (ExportEntry export in pcc.Exports)
                 {
                     Dictionary<string, object> record = export.ClassName switch
                     {
-                        "BioConversation" => seen.Add(export.InstancedFullPath) ? Conversation(export) : null,
+                        "BioConversation" => seen.Add((InspectionContext.IsLe2 ? package + ":" : "") + export.InstancedFullPath) ? Conversation(pcc, export) : null,
+                        "BioEvtSysTrackInterrupt" when InspectionContext.IsLe2 => Le2Inspection.Interrupt(pcc, export),
                         "BioSeqAct_StartConversation" => Start(pcc, export),
                         "BioSeqEvt_ConvNode" => Cinematic(pcc, export),
                         "BioTriggerStream" => Volume(export),
@@ -77,17 +85,32 @@ internal static class Scan
                     if (record != null)
                     {
                         record["package"] = package;
+                        if (InspectionContext.IsLe2)
+                        {
+                            record["game"] = "LE2";
+                            record["packageSha256"] = packageHash;
+                            record["packageFile"] = Path.GetFullPath(file);
+                            record["exportIndex"] = export.UIndex;
+                        }
                         writer.WriteLine(JsonSerializer.Serialize(record));
                         ++lines;
                     }
                     if (export.ClassName.Contains("Trigger", StringComparison.OrdinalIgnoreCase) && export.Parent?.ClassName == "Level"
                         && export.GetProperties().GetProp<StructProperty>("Location") is { } triggerAt)
                     {
-                        writer.WriteLine(JsonSerializer.Serialize(new Dictionary<string, object>
+                        var trigger = new Dictionary<string, object>
                         {
                             ["kind"] = "trigger", ["name"] = export.InstancedFullPath, ["class"] = export.ClassName, ["package"] = package,
                             ["at"] = new[] { triggerAt.GetProp<FloatProperty>("X")?.Value ?? 0, triggerAt.GetProp<FloatProperty>("Y")?.Value ?? 0, triggerAt.GetProp<FloatProperty>("Z")?.Value ?? 0 },
-                        }));
+                        };
+                        if (InspectionContext.IsLe2)
+                        {
+                            trigger["game"] = "LE2";
+                            trigger["packageSha256"] = packageHash;
+                            trigger["packageFile"] = Path.GetFullPath(file);
+                            trigger["exportIndex"] = export.UIndex;
+                        }
+                        writer.WriteLine(JsonSerializer.Serialize(trigger));
                         ++lines;
                     }
                 }
@@ -103,7 +126,7 @@ internal static class Scan
             }
         }
         Console.WriteLine($"{packages} packages read ({failed} failed), {lines} records -> {outPath}");
-        return 0;
+        return failed > 0 || (InspectionContext.IsLe2 && lines == 0) ? 1 : 0;
     }
 
     // Conversations live in the English localised packages; starts, stages and matinees in the levels' own. The other
@@ -119,7 +142,7 @@ internal static class Scan
         return !(upper.EndsWith("_SND") || upper.EndsWith("_ART") || upper.EndsWith("_LIGHT") || upper.StartsWith("TEXTURES"));
     }
 
-    private static Dictionary<string, object> Conversation(ExportEntry export)
+    private static Dictionary<string, object> Conversation(IMEPackage pcc, ExportEntry export)
     {
         PropertyCollection props = export.GetProperties();
         var entries = props.GetProp<ArrayProperty<StructProperty>>("m_EntryList");
@@ -162,6 +185,7 @@ internal static class Scan
                 ["replies"] = node.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?.Select(r => r.GetProp<IntProperty>("nIndex")?.Value ?? -1).ToList()
                               ?? new List<int>(),
             });
+            if (InspectionContext.IsLe2) Le2Inspection.ExtendNode(nodes[^1], node.Properties, true);
         }
         foreach (StructProperty node in replies ?? new ArrayProperty<StructProperty>("m_ReplyList"))
         {
@@ -179,8 +203,9 @@ internal static class Scan
                 ["script"] = node.GetProp<IntProperty>("nScriptIndex")?.Value ?? -1,
                 ["entries"] = node.GetProp<ArrayProperty<IntProperty>>("EntryList")?.Select(e => e.Value).ToList() ?? new List<int>(),
             });
+            if (InspectionContext.IsLe2) Le2Inspection.ExtendNode(replyNodes[^1], node.Properties, false);
         }
-        return new Dictionary<string, object>
+        var result = new Dictionary<string, object>
         {
             ["kind"] = "conversation",
             ["name"] = export.InstancedFullPath,
@@ -195,6 +220,9 @@ internal static class Scan
             ["nodes"] = nodes,
             ["replyNodes"] = replyNodes,
         };
+        if (InspectionContext.IsLe2)
+            result["matineeSequence"] = Le2Inspection.Identity(pcc.GetEntry(props.GetProp<ObjectProperty>("MatineeSequence")?.Value ?? 0));
+        return result;
     }
 
     private static Dictionary<string, object> Start(IMEPackage pcc, ExportEntry export)
@@ -532,11 +560,13 @@ internal static class Scan
     private static Dictionary<string, object> Matinee(IMEPackage pcc, ExportEntry interp)
     {
         var groups = new List<object>();
+        var dataLinks = new List<object>();
         float length = 0;
         foreach (ExportEntry data in Linked(pcc, interp.GetProperties(), "Data").Where(e => e.ClassName == "InterpData"))
         {
             PropertyCollection dataProps = data.GetProperties();
             length = dataProps.GetProp<FloatProperty>("InterpLength")?.Value ?? 0;
+            dataLinks.Add(Le2Inspection.Identity(data));
             foreach (ObjectProperty g in dataProps.GetProp<ArrayProperty<ObjectProperty>>("InterpGroups") ?? new ArrayProperty<ObjectProperty>("InterpGroups"))
             {
                 if (pcc.GetEntry(g.Value) is not ExportEntry group)
@@ -554,7 +584,9 @@ internal static class Scan
                 });
             }
         }
-        return new Dictionary<string, object> { ["path"] = interp.InstancedFullPath, ["length"] = length, ["groups"] = groups };
+        var result = new Dictionary<string, object> { ["path"] = interp.InstancedFullPath, ["length"] = length, ["groups"] = groups };
+        if (InspectionContext.IsLe2) result["data"] = dataLinks;
+        return result;
     }
 
     private static IEnumerable<ExportEntry> Outputs(IMEPackage pcc, ExportEntry op)

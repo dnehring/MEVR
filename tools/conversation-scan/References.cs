@@ -19,7 +19,7 @@ internal static class References
 {
     public static int Run(string cooked, string outPath, string nameList)
     {
-        LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default, s => Console.Error.WriteLine("LEC: " + s), null, new[] { MEGame.LE1 });
+        InspectionContext.Initialize();
         var wanted = new HashSet<string>(nameList.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(n => n.Trim().ToLowerInvariant() + "_dlg"));
         using var writer = new StreamWriter(outPath);
         int packages = 0, found = 0;
@@ -32,7 +32,7 @@ internal static class References
             }
             try
             {
-                using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+                using IMEPackage pcc = InspectionContext.Open(file);
                 var targets = new Dictionary<int, string>();
                 foreach (ImportEntry import in pcc.Imports.Where(i => wanted.Contains(i.ObjectName.Instanced.ToLowerInvariant())))
                 {

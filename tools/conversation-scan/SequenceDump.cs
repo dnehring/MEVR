@@ -19,14 +19,16 @@ internal static class SequenceDump
 {
     public static int Run(string cooked, string outPath, string what)
     {
-        LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default, s => Console.Error.WriteLine("LEC: " + s), null, new[] { MEGame.LE1 });
+        InspectionContext.Initialize();
         string[] parts = what.Split(':', 2);
         string file = Path.Combine(cooked, parts[0] + ".pcc");
         string text = parts.Length > 1 ? parts[1] : "";
         using var writer = new StreamWriter(outPath);
-        using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+        using IMEPackage pcc = InspectionContext.Open(file);
         int count = 0;
-        foreach (ExportEntry export in pcc.Exports.Where(e => e.InstancedFullPath.Contains("Main_Sequence") && e.InstancedFullPath.Contains(text, StringComparison.OrdinalIgnoreCase)))
+        foreach (ExportEntry export in pcc.Exports.Where(e =>
+            (InspectionContext.IsLe2 ? Le2Inspection.SequencePath(e.InstancedFullPath, true) : e.InstancedFullPath.Contains("Main_Sequence"))
+            && e.InstancedFullPath.Contains(text, StringComparison.OrdinalIgnoreCase)))
         {
             PropertyCollection props;
             try
@@ -51,6 +53,7 @@ internal static class SequenceDump
                     case NameProperty n: facts.Add($"{name}={n.Value.Instanced}"); break;
                     case StrProperty s: facts.Add($"{name}=\"{s.Value}\""); break;
                     case IntProperty i: facts.Add($"{name}={i.Value}"); break;
+                    case StringRefProperty sr when InspectionContext.IsLe2: facts.Add($"{name}={sr.Value}"); break;
                     case FloatProperty f: facts.Add($"{name}={f.Value}"); break;
                     case BoolProperty b: facts.Add($"{name}={b.Value}"); break;
                     case EnumProperty e: facts.Add($"{name}={e.Value.Instanced}"); break;
@@ -82,6 +85,6 @@ internal static class SequenceDump
             ++count;
         }
         Console.WriteLine($"{count} sequence objects -> {outPath}");
-        return 0;
+        return InspectionContext.IsLe2 && count == 0 ? 1 : 0;
     }
 }

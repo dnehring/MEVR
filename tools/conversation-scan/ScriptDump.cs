@@ -18,7 +18,7 @@ internal static class ScriptDump
 {
     public static int Run(string cooked, string outPath, string target, string only)
     {
-        LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default, s => Console.Error.WriteLine("LEC: " + s), null, new[] { MEGame.LE1 });
+        InspectionContext.Initialize();
         if (target == "exports")
         {
             return Exports(cooked, outPath, only ?? "SFXGame");
@@ -42,7 +42,7 @@ internal static class ScriptDump
         int found = 0;
         foreach (string file in files)
         {
-            using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+            using IMEPackage pcc = InspectionContext.Open(file);
             foreach (ExportEntry export in pcc.Exports.Where(e => (e.ClassName == "Function" || e.ClassName == "State" || e.ClassName == "Enum") &&
                          e.ObjectName.Instanced.Equals(fn, StringComparison.OrdinalIgnoreCase) && e.Parent != null &&
                          e.Parent.ObjectName.Instanced.Equals(cls, StringComparison.OrdinalIgnoreCase)))
@@ -74,7 +74,7 @@ internal static class ScriptDump
         using var writer = new StreamWriter(outPath);
         foreach (string file in files)
         {
-            using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+            using IMEPackage pcc = InspectionContext.Open(file);
             writer.WriteLine($"// {Path.GetFileName(file)}: {pcc.ExportCount} exports");
             foreach (var group in pcc.Exports.GroupBy(e => e.ClassName).OrderByDescending(g => g.Count()))
             {
@@ -95,7 +95,7 @@ internal static class ScriptDump
         int found = 0, read = 0;
         foreach (string file in files)
         {
-            using IMEPackage pcc = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+            using IMEPackage pcc = InspectionContext.Open(file);
             var options = new UnrealScriptOptionsPackage();
             var lib = new FileLib(pcc);
             bool ready = lib.Initialize(options);
