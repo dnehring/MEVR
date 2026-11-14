@@ -425,3 +425,52 @@ with both production/test translation units compiled under `/W4 /WX`. The
 representative 12-row compact response was 8,338 bytes; the escaped-string budget
 fallback was 5,989 bytes. These measured cases supplement the runtime size guard. Production dispatch compilation remains covered by the separate existing
 object target, without executing it. None of these tests is native menu evidence.
+
+
+## Explicit normal menu transitions
+
+`AdvanceSplash(thread, services)` and `OpenLoadMenu(thread, services)` return the
+existing `ProbeResult`; the host must independently require its menu-action
+opt-in. Neither accepts pointers, filenames, indices or arbitrary function names.
+There is one admitted entry per action per process. Pre-entry refusal preserves
+that action's budget; entry, exception, asynchronous transition or missing post
+state spends it permanently.
+
+Admission requires a uniquely reachable focused initialized visible panel with
+input/events enabled and no removal, typed known consistent controller/manager/
+handler world links, and exact supported function/property metadata. Splash
+requires `bPressedStart=false` and finite recorded timeout. Its timer is remaining
+legal-display time, not absolute time; the inspected PC input path does not test
+`<=0`, so no such invariant is invented. MainMenu requires has-saves/checking
+complete and no save/DLC/connection wait. These conservative conditions may reject
+a legitimate frontend state; the read-only payload retains its actual fields so
+native observation can resolve the policy instead of bypassing a refusal.
+
+The handler's slot 72 must be exactly the host-owned ProcessEvent base target,
+with current matched detour chain and inspected main-module function bounds.
+A controller's passive forwarding witness cannot authorize a menu object. After
+providers run, a final guarded sample compares current roots/world references,
+manager/panel/handler identities, focus, function/parameter identities and fields,
+and slot target/vtable; then only the atomic entry latch separates it from the
+fixed SDK virtual call. No engine flags are rewritten. Closer subclass overrides
+are refused instead of silently calling a different owner.
+
+AdvanceScreen has a zero-byte native block and receives null parameters.
+MoveToLoadGui receives only LoadMode zero, copied from the actual one-byte SDK
+parameter struct into byte 4 of a nine-byte array. Four-byte canaries are exactly
+adjacent at bytes 0 and 5; there is no padding gap. Return is void, with a null
+result pointer and no guessed ReturnValueOffset constant. Native execution is
+outside the read-only SEH boundary. Ordinary C++ exceptions or damaged/changed
+parameter storage produce `error` with uncertain entry and no further engine
+reads. A normal return with intact storage produces `dispatched`, **not**
+`completed`; focus changes and disappearance of the old panel are expected
+possibilities. A separate bounded post-observation records the asynchronous
+transition without claiming a populated list or loaded fixture. Action output
+also retains the 14-KiB compact budget.
+
+Synthetic tests cover pre-entry refusals, metadata mutation and same-layout
+property replacement during a provider, independent spent latches, null splash
+parameters, fixed opener byte, expected focus changes, exceptions and corruption
+on both adjacent sides, including no engine reads after uncertain entry. The
+production translation unit compiles the fixed SDK route; only the test build
+can substitute/reset a dispatcher. No native action was performed by this slice.

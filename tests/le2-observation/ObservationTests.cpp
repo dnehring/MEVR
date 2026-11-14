@@ -110,6 +110,32 @@ diagnostic::WitnessSnapshot ProbeWitness(diagnostic::ControllerWatch const& iden
     if (replaceBeforeEntry) probeGetter->Children = replacementFovProperty;
     return out;
 }
+unsigned menuDispatchCalls{}, menuReadsAtDispatch{};
+int menuDispatchMode{};
+void* expectedMenuHandler{}; void* expectedMenuFunction{};
+bool expectedNoParameters{}, mutateMenuOnInspection{}, replaceMenuProperty{};
+UProperty* replacementMenuProperty{};
+UBioSFPanel* actionPanel{}; UMassEffectGuiManager* actionManager{};
+UFunction* actionFunction{};
+diagnostic::TargetInspection MenuInspect(std::uintptr_t target) noexcept {
+    auto out = ProbeInspect(target);
+    if (mutateMenuOnInspection) actionFunction->FunctionFlags = 0;
+    if (replaceMenuProperty) actionFunction->Children = replacementMenuProperty;
+    return out;
+}
+void FakeMenuDispatch(void* handler, void* function, void* parameters) {
+    ++menuDispatchCalls; menuReadsAtDispatch = engineReadCalls;
+    Check(handler == expectedMenuHandler && function == expectedMenuFunction, "hardcoded menu receiver/function");
+    Check((parameters == nullptr) == expectedNoParameters, "empty splash params versus exactly one opener byte");
+    if (parameters != nullptr) Check(*static_cast<unsigned char*>(parameters) == 0, "fixed normal LoadMode zero");
+    if (menuDispatchMode == 2) throw std::runtime_error("synthetic menu exception");
+    if (menuDispatchMode == 3 || menuDispatchMode == 4) {
+        auto* bytes = static_cast<unsigned char*>(parameters);
+        bytes[menuDispatchMode == 3 ? 1 : -1] ^= 0xff;
+    }
+    if (menuDispatchMode == 5) *static_cast<unsigned char*>(parameters) = 1;
+    if (menuDispatchMode == 0) { actionPanel->IsVisible = 0; actionManager->m_FocusPanel = nullptr; }
+}
 void FakeFovDispatch(void* controller, void* function, void* parameters) {
     ++dispatchCalls;
     readsAtDispatch = engineReadCalls;
@@ -745,6 +771,67 @@ int main() {
         auto menuBytes = mevr::json::Write(menu(), 0).size();
         Check(menu().Bool("listComplete") && menuBytes <= 14 * 1024, "all12 rows and metadata fit compact budget");
         std::cout << "Representative save-menu payload bytes: " << menuBytes << "; budget-fallback bytes: " << mevr::json::Write(bounded, 0).size() << '\n';
+        // Hardcoded menu actions never execute SDK stubs in this synthetic suite.
+        using mevr::engine::le2_diagnostic::AdvanceSplash;
+        using mevr::engine::le2_diagnostic::OpenLoadMenu;
+        using mevr::engine::le2_diagnostic::testing::ResetMenuActions;
+        std::memcpy(mainHandler.get(), &controllerVtablePtr, sizeof(controllerVtablePtr));
+        std::memcpy(splashHandler.get(), &controllerVtablePtr, sizeof(controllerVtablePtr));
+        probeTarget = controllerVtable[72]; probeExactBase = true; probeBadHook = probeBadBounds = probeWrongBase = probeBadExeCheck = false;
+        mevr::engine::le2_diagnostic::ObserverServices menuServices{MenuInspect, nullptr, ProbeHook};
+        expectedMenuHandler = mainHandler.get(); expectedMenuFunction = openLoad.get(); expectedNoParameters = false;
+        actionPanel = mainPanel.get(); actionManager = manager.get(); actionFunction = openLoad.get();
+        manager.get()->m_FocusPanel = mainPanel.get(); menuDispatchMode = 1;
+        ResetMenuActions(FakeMenuDispatch);
+        auto menuActionsBefore = menuDispatchCalls;
+        Check(OpenLoadMenu(0, menuServices).status == "rejected" && menuDispatchCalls == menuActionsBefore, "wrong-thread menu action never enters");
+        mainHandler.get()->bWaitingForDLC = 1;
+        Check(OpenLoadMenu(thread, menuServices).status == "rejected", "waiting DLC blocks normal menu action"); mainHandler.get()->bWaitingForDLC = 0;
+        mainHandler.get()->bHasSaves = 0;
+        Check(OpenLoadMenu(thread, menuServices).status == "rejected", "disabled load availability blocks action"); mainHandler.get()->bHasSaves = 1;
+        manager.get()->m_FocusPanel = loadPanel.get();
+        Check(OpenLoadMenu(thread, menuServices).status == "rejected", "background main menu cannot open another panel"); manager.get()->m_FocusPanel = mainPanel.get();
+        probeExactBase = false;
+        Check(OpenLoadMenu(thread, menuServices).status == "rejected", "controller-like forwarding route does not authorize menu receiver"); probeExactBase = true;
+        probeBadHook = true; Check(OpenLoadMenu(thread, menuServices).status == "rejected", "changed owned chain rejects menu"); probeBadHook = false;
+        probeBadBounds = true; Check(OpenLoadMenu(thread, menuServices).status == "rejected", "unknown function bounds rejects menu"); probeBadBounds = false;
+        mutateMenuOnInspection = true;
+        Check(OpenLoadMenu(thread, menuServices).payload.String("reason") == "menu-identity-metadata-or-slot-changed-before-entry", "metadata mutation during provider caught by final guarded sample");
+        mutateMenuOnInspection = false; openLoad.get()->FunctionFlags = 0x20002;
+        Raw<UByteProperty> replacementLoadMode;
+        add(replacementLoadMode.get(), "LoadMode", byteType.get(), openLoad.get()); property(replacementLoadMode.get(), 0, 1, 0x80);
+        replacementMenuProperty = replacementLoadMode.get(); replaceMenuProperty = true;
+        Check(OpenLoadMenu(thread, menuServices).payload.String("reason") == "menu-identity-metadata-or-slot-changed-before-entry", "same-layout replacement parameter identity caught");
+        replaceMenuProperty = false; openLoad.get()->Children = loadModeProperty.get();
+        Check(menuDispatchCalls == menuActionsBefore, "all menu pre-entry rejections preserve entry budget");
+        menuDispatchMode = 0;
+        auto opened = OpenLoadMenu(thread, menuServices);
+        Check(opened.status == "dispatched" && opened.payload.Bool("entered") && opened.payload.Bool("parameterFrameIntact") &&
+              !opened.payload.Bool("normalUiTransitionProven"), "normal return with expected focus/visibility change is dispatched only");
+        Check(!opened.payload.Get("postObservation").Get("context").Get("mainMenu").Bool("structurallyInteractive"), "post transition observed separately");
+        Check(mevr::json::Write(opened.payload, 0).size() <= 14 * 1024, "action with post context within wire budget");
+        Check(OpenLoadMenu(thread, menuServices).status == "rejected" && menuDispatchCalls == menuActionsBefore + 1, "open entry spent even while transition pending");
+        mainPanel.get()->IsVisible = 1;
+        // Splash has an independent budget and exactly null parameters.
+        expectedMenuHandler = splashHandler.get(); expectedMenuFunction = advanceSplash.get(); expectedNoParameters = true;
+        actionPanel = splashPanel.get(); actionFunction = advanceSplash.get(); manager.get()->m_FocusPanel = splashPanel.get();
+        splashHandler.get()->bPressedStart = 1;
+        Check(AdvanceSplash(thread, menuServices).status == "rejected", "already pressed splash cannot advance again"); splashHandler.get()->bPressedStart = 0;
+        splashHandler.get()->fLegalTimeout = 5.0f; // Source has no timer comparison in the PC input advance route.
+        auto advanced = AdvanceSplash(thread, menuServices);
+        Check(advanced.status == "dispatched" && advanced.payload.Number("parameterBytes") == 0, "independent splash entry with nullptr params");
+        Check(AdvanceSplash(thread, menuServices).status == "rejected", "splash entry never repeated"); splashPanel.get()->IsVisible = 1;
+        expectedMenuHandler = mainHandler.get(); expectedMenuFunction = openLoad.get(); expectedNoParameters = false;
+        actionPanel = mainPanel.get(); actionFunction = openLoad.get(); manager.get()->m_FocusPanel = mainPanel.get();
+        for (int mode : {2, 3, 4, 5}) {
+            ResetMenuActions(FakeMenuDispatch); menuDispatchMode = mode;
+            auto uncertain = OpenLoadMenu(thread, menuServices);
+            Check(uncertain.status == "error" && uncertain.payload.Bool("entrySpent") &&
+                  uncertain.payload.Get("postObservation").String("reason") == "unavailable-after-uncertain-entry", "exception/frame corruption leaves uncertain spent entry");
+            Check(engineReadCalls == menuReadsAtDispatch, "no engine traversal after exception or damaged byte frame");
+            auto calls = menuDispatchCalls;
+            Check(OpenLoadMenu(thread, menuServices).status == "rejected" && menuDispatchCalls == calls, "uncertain menu entry cannot retry");
+        }
         worldPtr = reinterpret_cast<UWorld*>(1);
         v = Observe(thread);
         Check(v.String("reason") == "guarded-engine-read-fault" && !Available(v, "objectCount"), "AV invalidates whole sample");

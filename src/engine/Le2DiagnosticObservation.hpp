@@ -52,10 +52,16 @@ struct ProbeResult {
 // entry do not spend that entry; once entered, errors are uncertain, never retried.
 // The native call is deliberately NOT inside the read-only SEH boundary.
 ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& services);
+// Normal UI transitions only, gated by the producer's separate menu-action opt-in.
+// Each action admits at most one entry/process; no file/row/index input or loading.
+ProbeResult AdvanceSplash(std::uint32_t gameThreadId, ObserverServices const& services);
+ProbeResult OpenLoadMenu(std::uint32_t gameThreadId, ObserverServices const& services);
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 namespace testing {
 using FovDispatcher = void (*)(void* controller, void* function, void* parameters);
 void ResetFovProbe(FovDispatcher dispatcher);
+using MenuDispatcher = void (*)(void* handler, void* function, void* parameters);
+void ResetMenuActions(MenuDispatcher dispatcher);
 }
 #endif
 #endif

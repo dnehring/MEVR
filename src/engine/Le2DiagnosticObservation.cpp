@@ -22,8 +22,10 @@
 namespace mevr::engine::le2_diagnostic {
 namespace {
 std::atomic_bool gFovProbeEntered{false};
+std::atomic_bool gSplashEntered{false}, gLoadMenuEntered{false};
 #if defined(MEVR_LE2_OBSERVATION_TEST)
 testing::FovDispatcher gFovDispatcher{};
+testing::MenuDispatcher gMenuDispatcher{};
 #endif
 // Same pending-kill/template rules as Legacy; these are not incarnation IDs.
 constexpr std::uint64_t kPendingKill = 0x2000000000000000ull;
@@ -993,6 +995,9 @@ void testing::ResetFovProbe(FovDispatcher dispatcher) {
     gFovProbeEntered.store(false);
     gFovDispatcher = dispatcher;
 }
+void testing::ResetMenuActions(MenuDispatcher dispatcher) {
+    gSplashEntered.store(false); gLoadMenuEntered.store(false); gMenuDispatcher = dispatcher;
+}
 #endif
 
 ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& services) {
@@ -1092,6 +1097,141 @@ ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& service
     out["reason"] = boundedResult ? "scalar-return-canaries-and-current-identity-observed" : "entered-probe-result-uncertain-no-retry";
     return result;
 }
+
+namespace {
+struct MenuEntrySample { MenuSample menu; SlotSample slot; bool splash{}; };
+void ReadMenuEntry(void* context) {
+    auto& out = *static_cast<MenuEntrySample*>(context);
+    ReadMenu(&out.menu);
+    if (out.menu.contextAvailable) ReadValidatedSlot(out.splash ? out.menu.splash.handler : out.menu.main.handler, out.slot);
+}
+MenuPanel const& EntryPanel(MenuEntrySample const& sample) { return sample.splash ? sample.menu.splash : sample.menu.main; }
+bool MenuEntryReady(MenuEntrySample const& sample) {
+    auto const& menu = sample.menu; auto const& panel = EntryPanel(sample); auto const& fn = panel.function;
+    if (!menu.contextAvailable || !menu.worldLinksKnown || !PanelInteractive(panel) || !sample.slot.available ||
+        !fn.function.available || !fn.parametersComplete || !fn.layoutMatches || fn.nativeIndex != 0 ||
+        fn.functionFlags != (sample.splash ? 0x20802u : 0x20002u)) return false;
+    if (sample.splash) return !panel.pressedStart && std::isfinite(panel.legalTimeout);
+    return !panel.waitingDlc && !panel.waitingSaves && !panel.connecting && panel.checkingComplete && panel.hasSaves;
+}
+bool SameObjectSample(ObjectSample const& a, ObjectSample const& b) {
+    return a.available == b.available && a.address == b.address && a.index == b.index && a.classAddress == b.classAddress;
+}
+bool SameMenuEntry(MenuEntrySample const& a, MenuEntrySample const& b) {
+    if (!MenuEntryReady(b) || a.splash != b.splash || a.slot.object != b.slot.object ||
+        a.slot.vtable != b.slot.vtable || a.slot.target != b.slot.target) return false;
+    auto const& x = a.menu; auto const& y = b.menu;
+    if (x.panelsData != y.panelsData || x.panelCount != y.panelCount || x.focus != y.focus ||
+        !SameObjectSample(x.root.engine, y.root.engine) || !SameObjectSample(x.root.world, y.root.world) ||
+        !SameObjectSample(x.root.localPlayer, y.root.localPlayer) || !SameObjectSample(x.root.player, y.root.player) ||
+        !SameObjectSample(x.viewport, y.viewport) || !SameObjectSample(x.manager, y.manager) ||
+        !SameObjectSample(x.worldInfo, y.worldInfo) || !SameObjectSample(x.controllerWorldInfo, y.controllerWorldInfo)) return false;
+    auto const& p = EntryPanel(a); auto const& q = EntryPanel(b);
+    if (!SameObjectSample(p.panel, q.panel) || !SameObjectSample(p.handler, q.handler) || !SameObjectSample(p.worldInfo, q.worldInfo) ||
+        p.legalTimeout != q.legalTimeout || p.pressedStart != q.pressedStart || p.waitingDlc != q.waitingDlc ||
+        p.waitingSaves != q.waitingSaves || p.connecting != q.connecting || p.checkingComplete != q.checkingComplete ||
+        p.hasSaves != q.hasSaves || p.careerHasSaves != q.careerHasSaves) return false;
+    auto const& f = p.function; auto const& g = q.function;
+    if (!SameObjectSample(f.function, g.function) || f.functionFlags != g.functionFlags || f.nativeIndex != g.nativeIndex ||
+        f.parmsSize != g.parmsSize || f.numParms != g.numParms || f.returnOffset != g.returnOffset || f.parameterCount != g.parameterCount) return false;
+    for (unsigned i = 0; i < f.parameterCount; ++i) {
+        auto const& u = f.parameters[i]; auto const& v = g.parameters[i];
+        if (!SameObjectSample(u.property, v.property) || u.flags != v.flags || u.offset != v.offset ||
+            u.arrayDim != v.arrayDim || u.elementSize != v.elementSize || std::strcmp(u.name, v.name) != 0) return false;
+    }
+    return true;
+}
+static_assert(sizeof(UBioSFHandler_MainMenu_execMoveToLoadGui_Parms) == 1);
+static_assert(offsetof(UBioSFHandler_MainMenu_execMoveToLoadGui_Parms, LoadMode) == 0);
+struct MenuFrame {
+    unsigned char bytes[9]{};
+    MenuFrame() {
+        std::uint32_t const before = 0xC173AB52, after = 0x5A92E8C1;
+        UBioSFHandler_MainMenu_execMoveToLoadGui_Parms input{}; input.LoadMode = 0;
+        std::memcpy(bytes, &before, 4); std::memcpy(bytes + 4, &input, 1); std::memcpy(bytes + 5, &after, 4);
+    }
+    bool Intact() const {
+        std::uint32_t before{}, after{}; std::memcpy(&before, bytes, 4); std::memcpy(&after, bytes + 5, 4);
+        return before == 0xC173AB52 && after == 0x5A92E8C1 && bytes[4] == 0;
+    }
+};
+static_assert(sizeof(MenuFrame) == 9);
+void DispatchMenu(MenuEntrySample const& sample, MenuFrame& frame) {
+    auto const& panel = EntryPanel(sample);
+    void* parameters = sample.splash ? nullptr : frame.bytes + 4;
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+    gMenuDispatcher(reinterpret_cast<void*>(panel.handler.address), reinterpret_cast<void*>(panel.function.function.address), parameters);
+#else
+    reinterpret_cast<UObject*>(panel.handler.address)->ProcessEvent(
+        reinterpret_cast<UFunction*>(panel.function.function.address), parameters, nullptr);
+#endif
+}
+ProbeResult MenuAction(std::uint32_t gameThreadId, ObserverServices const& services, bool splash) {
+    ProbeResult result{"rejected", json::Value::Object()}; auto& out = result.payload;
+    out["schemaVersion"] = 1; out["game"] = "LE2"; out["action"] = splash ? "advance-splash" : "open-load-menu";
+    out["entered"] = false; out["fixtureLoaded"] = false; out["normalUiTransitionProven"] = false;
+    auto reject = [&](char const* reason) { out["reason"] = reason; return result; };
+    auto& latch = splash ? gSplashEntered : gLoadMenuEntered;
+    if (gameThreadId == 0 || GetCurrentThreadId() != gameThreadId) return reject("not-on-verified-game-thread");
+    if (latch.load()) return reject("process-menu-action-entry-already-spent");
+    if (services.inspectTarget == nullptr || services.readHookSnapshot == nullptr) return reject("host-target-services-unavailable");
+    MenuEntrySample first{}; first.splash = splash;
+    if (!ue3::runtime::Guarded(ReadMenuEntry, &first)) return reject("guarded-menu-read-fault");
+    if (!MenuEntryReady(first)) return reject("active-menu-world-or-exact-metadata-not-ready");
+    auto const hook = services.readHookSnapshot();
+    auto const target = services.inspectTarget(first.slot.target);
+    // Controller forwarding witnesses do not establish this handler's route.
+    // Only the exact owned base is admitted for these two menu transitions.
+    if (!ProbeTargetValid(target, hook, first.slot.target) || first.slot.target != hook.target || !target.sameAsBase)
+        return reject("menu-handler-is-not-validated-owned-base-route");
+    auto const currentHook = services.readHookSnapshot();
+    if (!ProbeTargetValid(target, currentHook, first.slot.target) || hook.target != currentHook.target ||
+        hook.detour != currentHook.detour || hook.nextHop != currentHook.nextHop)
+        return reject("owned-hook-chain-changed-before-entry");
+    out["handler"] = ObjectJson(EntryPanel(first).handler, nullptr);
+    out["function"] = FunctionJson(EntryPanel(first).function, nullptr, splash ? Declaration::AdvanceSplash : Declaration::OpenLoad);
+    out["handlerTarget"] = std::format("0x{:X}", first.slot.target);
+    out["route"] = "exact-owned-base";
+    out["parameterBytes"] = splash ? 0 : 1;
+    MenuFrame frame;
+    MenuEntrySample immediate{}; immediate.splash = splash;
+    // Final guarded identities/function/property/slot resample follows every
+    // provider and serialization call. No JSON, file I/O or provider before entry.
+    if (!ue3::runtime::Guarded(ReadMenuEntry, &immediate) || !SameMenuEntry(first, immediate))
+        return reject("menu-identity-metadata-or-slot-changed-before-entry");
+    bool expected = false;
+    if (!latch.compare_exchange_strong(expected, true)) return reject("process-menu-action-entry-already-spent");
+    bool returned = false;
+    try { DispatchMenu(immediate, frame); returned = true; } // No read-only SEH around engine execution.
+    catch (...) { /* C++ unwinding only; the entry remains spent. */ }
+    bool const intact = frame.Intact();
+    out["entered"] = true; out["returnedNormally"] = returned; out["parameterCanariesApplicable"] = !splash;
+    if (!splash) out["parameterFrameIntact"] = intact;
+    out["entrySpent"] = true; out["retryAllowed"] = false;
+    result.status = returned && intact ? "dispatched" : "error";
+    out["reason"] = returned && intact ? "normal-return-observed-transition-unverified" : "entered-menu-action-uncertain-no-retry";
+    if (returned && intact) {
+        // Focus changes, disappearance and an asynchronous new panel are expected
+        // possibilities, not identity-corruption failures. Observe separately.
+        out["postObservation"] = ObserveSaveMenu(gameThreadId);
+        if (json::Write(out, 0).size() > kSaveMenuPayloadBytes) {
+            out["postObservation"]["records"] = json::Value::Array();
+            out["postObservation"]["listComplete"] = false;
+            out["postObservation"]["reason"] = "action-post-observation-budget";
+        }
+        if (json::Write(out, 0).size() > kSaveMenuPayloadBytes) {
+            out["postObservation"] = json::Value::Object();
+            out["postObservation"]["reason"] = "action-post-context-budget";
+        }
+    } else {
+        out["postObservation"] = json::Value::Object();
+        out["postObservation"]["reason"] = "unavailable-after-uncertain-entry";
+    }
+    return result;
+}
+} // namespace
+ProbeResult AdvanceSplash(std::uint32_t gameThreadId, ObserverServices const& services) { return MenuAction(gameThreadId, services, true); }
+ProbeResult OpenLoadMenu(std::uint32_t gameThreadId, ObserverServices const& services) { return MenuAction(gameThreadId, services, false); }
 
 json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic::Snapshot const* hostSnapshot,
                     ObserverServices const* services) {
