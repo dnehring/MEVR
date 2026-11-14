@@ -26,6 +26,8 @@ KEYS = ("kind", "run", "lease", "pid", "start", "exe", "host", "mod", "id", "seq
 IDENTITY = ("run", "lease", "pid", "start", "exe", "host", "mod", "game")
 MAX_PAYLOAD, MAX_FRAME, MAX_LIFETIME_MS = 16384, 17408, 30000
 MAX_PULSE_PAYLOAD = 4096
+READ_ONLY_VERBS = ("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources",
+                   "observe-orbital", "observe-input", "observe-weapon", "observe-dialogue", "observe-save-flow")
 MENU_ACTIONS = ("advance-splash", "open-load-menu", "open-pause-menu", "open-save-menu")
 NATIVE_ACTIONS = ("console", "probe-fov", "load-fixture", "save-new", "pad-pulse") + MENU_ACTIONS
 
@@ -103,7 +105,7 @@ def validate(frame):
     payload = frame["payload"]
     if not isinstance(payload, bytes) or len(payload) > MAX_PAYLOAD or b"\0" in payload or number(frame["bytes"]) != len(payload):
         raise ControlError("Invalid payload")
-    if frame["verb"] not in ("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-input", "observe-weapon", "observe-save-flow") + NATIVE_ACTIONS:
+    if frame["verb"] not in READ_ONLY_VERBS + NATIVE_ACTIONS:
         raise ControlError("Unsupported verb")
     if frame["kind"] == "request":
         if frame["status"] != "pending":
@@ -374,7 +376,7 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("run", type=Path)
-    p.add_argument("verb", choices=("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-input", "observe-weapon", "observe-save-flow", "collect") + NATIVE_ACTIONS)
+    p.add_argument("verb", choices=READ_ONLY_VERBS + ("collect",) + NATIVE_ACTIONS)
     p.add_argument("--command", default="")
     p.add_argument("--timeout", type=int, default=10)
     p.add_argument("--allow-console", action="store_true")

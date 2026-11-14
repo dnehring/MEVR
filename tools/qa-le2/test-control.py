@@ -123,6 +123,7 @@ class WireTests(unittest.TestCase):
                         dict(frame(), verb="observe-save-menu"),
                         dict(frame(), verb="observe-resources"),
                         dict(frame(), verb="observe-orbital"),
+                        dict(frame(), verb="observe-dialogue"),
                         dict(frame(), verb="observe-weapon"),
                         dict(frame(), verb="observe-input"), pulse_frame(),
                         pulse_frame(pulse(context="party-confirm")),

@@ -142,6 +142,12 @@ int main(int argc, char** argv) {
               "orbital observation requires no native opt in");
         fixture.payload = "launch-probe";
         Check(!Encode(fixture), "orbital observation cannot launch a probe");
+        fixture.payload.clear(); fixture.verb = "observe-dialogue";
+        Gate dialogueRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-dialogue" && !dialogueRead.Claim(fixture, 10000),
+              "dialogue observation requires no native opt in");
+        fixture.payload = "select-interruption";
+        Check(!Encode(fixture), "dialogue observation accepts no input or choice");
         fixture.payload.clear(); fixture.verb = "observe-weapon";
         Gate weaponRead(identity);
         Check(Decode(*Encode(fixture))->verb == "observe-weapon" && !weaponRead.Claim(fixture, 10000),

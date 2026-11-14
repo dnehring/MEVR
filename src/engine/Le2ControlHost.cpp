@@ -6,6 +6,7 @@
 #if !defined(MEVR_LE2_CONTROL_TEST)
 #include "engine/Le2DiagnosticHost.hpp"
 #include "engine/Le2DiagnosticObservation.hpp"
+#include "engine/Le2DialogueObservation.hpp"
 #include "engine/Le2OrbitalObservation.hpp"
 #include "engine/Le2WeaponObservation.hpp"
 #include "engine/Le2InputContext.hpp"
@@ -445,6 +446,7 @@ struct Endpoint::Impl {
             capabilities["observeFixture"] = false;
             capabilities["observeResources"] = false;
             capabilities["observeOrbital"] = false;
+            capabilities["observeDialogue"] = false;
             capabilities["observeWeapon"] = false;
             capabilities["observeInput"] = false;
             capabilities["nativePadPulse"] = false;
@@ -466,6 +468,7 @@ struct Endpoint::Impl {
             capabilities["observeFixture"] = binding.has_value();
             capabilities["observeResources"] = true;
             capabilities["observeOrbital"] = true;
+            capabilities["observeDialogue"] = true;
             capabilities["observeWeapon"] = true;
             capabilities["observeInput"] = true;
             capabilities["nativePadPulse"] = input.hooks != nullptr;
@@ -489,6 +492,8 @@ struct Endpoint::Impl {
                 payload["resourceObservation"] = le2_diagnostic::ObserveResources(thread);
             } else if (decoded->verb == "observe-orbital") {
                 payload["orbitalObservation"] = le2_diagnostic::ObserveOrbital(thread);
+            } else if (decoded->verb == "observe-dialogue") {
+                payload["dialogueObservation"] = le2_diagnostic::ObserveDialogue(thread);
             } else if (decoded->verb == "observe-weapon") {
                 payload["weaponObservation"] = le2_diagnostic::ObserveWeapon(thread);
             } else if (decoded->verb == "observe-input") {
@@ -537,6 +542,12 @@ struct Endpoint::Impl {
                 payload["menuAction"] = std::move(action.payload);
             }
 #else
+            if (decoded->verb == "observe-dialogue") {
+                auto observation = Value::Object();
+                observation["available"] = false;
+                observation["reason"] = "offline-fixture-does-not-traverse-engine-memory";
+                payload["dialogueObservation"] = std::move(observation);
+            }
             if (decoded->verb == "observe-weapon") {
                 auto unavailableWeapon = Value::Object();
                 unavailableWeapon["available"] = false;

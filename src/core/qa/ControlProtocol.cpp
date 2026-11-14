@@ -44,7 +44,7 @@ bool Valid(Frame const& f) {
         f.payload.size() > kMaxPayload || f.payload.find('\0') != std::string::npos) return false;
     if (f.verb != "ping" && f.verb != "observe" && f.verb != "observe-save-menu" &&
         f.verb != "observe-fixture" && f.verb != "load-fixture" && f.verb != "observe-resources" && f.verb != "observe-orbital" &&
-        f.verb != "observe-input" && f.verb != "observe-weapon" && f.verb != "pad-pulse" &&
+        f.verb != "observe-input" && f.verb != "observe-weapon" && f.verb != "observe-dialogue" && f.verb != "pad-pulse" &&
         f.verb != "observe-save-flow" && f.verb != "open-pause-menu" && f.verb != "open-save-menu" && f.verb != "save-new" &&
         f.verb != "console" && f.verb != "probe-fov" && f.verb != "advance-splash" && f.verb != "open-load-menu") return false;
     if (f.kind == "request") {

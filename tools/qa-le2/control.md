@@ -53,6 +53,13 @@ support alone does not establish runtime availability, reload eligibility,
 effective reserve semantics or native/VR acceptance; the host must supply the
 guarded observer and retain unavailable reasons.
 
+`observe-dialogue` is an empty-input, read-only query under
+`payload.dialogueObservation`. It samples the active conversation, node and
+interrupt timer and display fields through the existing game-thread observer.
+Use it with the rendered prompt and subsequent reply or branch evidence.
+Individual snapshots can miss a short transition or a complete interrupt
+window. See [Veetor acquisition and source findings](../../research/le2-interrupt-acquisition.md).
+
 `observe-input` is an empty-input, read-only query for the diagnostic input
 publisher's context, poll and neutral-state evidence. It does not publish input.
 The existing client can submit one bounded `pad-pulse` with a separate explicit
@@ -611,7 +618,7 @@ One blank line separates the headers from exactly `bytes` payload bytes. UUIDs
 and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings.
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
-control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-orbital`, `observe-input`, `observe-weapon`, `observe-save-flow`,
+control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-orbital`, `observe-input`, `observe-weapon`, `observe-dialogue`, `observe-save-flow`,
 `observe-fixture`, `load-fixture`, `probe-fov`, `advance-splash`, and
 `open-load-menu`, `open-pause-menu`, `open-save-menu`, `save-new` requests require an empty payload.
 Unknown, duplicated, reordered, partial or trailing data is
