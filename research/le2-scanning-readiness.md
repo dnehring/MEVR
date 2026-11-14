@@ -51,12 +51,13 @@ before the launch attempt. The same-planet after-sample and unchanged count
 need the observed input and rendered refusal to establish the outcome.
 The one-probe plan is unchanged. Neither plan was staged during this pass.
 
-The latest private plans are `one-probe-session-v3.json` and
-`zero-probe-session-v2.json` in their respective folders. Both passed
-scenario and read-only session validation with the stricter endpoint check.
+The latest private plans are `one-probe-session-v4.json` and
+`zero-probe-session-v3.json` in their respective folders. Both passed
+scenario and read-only session validation with the settled orbital endpoint
+and linked post-reload resource checks.
 Their SHA-256 hashes are
-`3500b3c9d6ca30351293de92378a864bd4d3f87f11470b42e9974c650804c0f1`
-and `7b50abb22a6f3772bc503e58142e26147fea428748a76947747a67ca2f643ccc`.
+`d1e6f729643135d5f8ad306d474e74e0ae67853750b5fe83674af620e71f3f67`
+and `2df70ccf91392e58eac2554de95225e278f2b97fd5286eb5c2418e33bf50b404`.
 The one-probe plan retains its reviewed selection binding, and the zero-probe
 plan uses normal operator selection. Earlier files remain intact.
 The private scenario passed `validate --for-run`. The first staging attempt
