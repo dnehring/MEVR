@@ -201,7 +201,9 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     // What touched the engine last, written out if the process crashes (research/36).
     mevr::host::crash::Install();
     // Research dump of the decrypted code, before our or Halcyon's hooks patch any of it.
+#if !defined(MEVR_LE2_DIAGNOSTIC)
     mevr::engine::code_dump::SaveOnce();
+#endif
     // Hook names: "<owner>_<name>", as before stage 4 ("LE1MEVR_UGameEngine::Tick").
     static mevr::hook::Context init{InterfacePtr, MEVR_GAME_NAME_A "MEVR"};
 #if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
@@ -236,7 +238,7 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
         mevr::host::Stop();
         return true;
     }
-#if !defined(MEVR_WITH_HALCYON)  // Halcyon's renderer hooks Present itself
+#if !defined(MEVR_WITH_HALCYON) && !defined(MEVR_LE2_DIAGNOSTIC)  // diagnostic host has no Present path
     // Owned by the host so the render thread never runs code from an unloading mod DLL.
     if (!mevr::host::present::Install(init)) {
         mevr::log::Error("present hook failed; VR output disabled");
