@@ -210,9 +210,20 @@
       }
     },
     {
+      "id": "reload-saved-resources",
+      "gate": "native",
+      "description": "At the first stable sample after the linked fresh reload and before further travel or purchases, compare all eight resources with the exact archived outcome save.",
+      "requires": [
+        "after-reload"
+      ],
+      "check": {
+        "kind": "saved-reload-resources"
+      }
+    },
+    {
       "id": "discovery-persistence",
       "gate": "native",
-      "description": "Ordinary save/reload preserves resource values and discovery/unlock state and permits expected mission continuation.",
+      "description": "Review the normal Load Game selection and immediate resource sample, then revisit the rendered planet and check persisted impact and discovery/unlock state and expected mission continuation.",
       "requires": [
         "after",
         "after-reload",

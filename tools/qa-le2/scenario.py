@@ -21,6 +21,8 @@ KINDS = ('runtime-state', 'input-trace', 'save-inspection', 'image', 'video', 't
 RELOAD_CASES = ('empty', 'partial', 'insufficient-reserve', 'exact-reserve',
                 'surplus-reserve', 'no-reserve', 'full-magazine')
 PROBE_CASES = ('one-probe', 'zero-probes', 'scan-hold', 'anomaly')
+SAVED_RESOURCES = {key: key for key in ('credits', 'medigel', 'eezo', 'iridium', 'palladium', 'platinum', 'probes')}
+SAVED_RESOURCES['fuel'] = 'current_fuel'
 IDENTITY = ('runId', 'caseId', 'scenarioSha256', 'baseSaveSha256', 'recipeSha256',
             'preparedSaveSha256', 'candidateCommit', 'gameVersion')
 
@@ -157,7 +159,7 @@ def validate(s, for_run=False):
                 continue
             kind = check.get('kind')
             need(kind in ('compare', 'delta', 'sum-equal', 'finite-reload-transfer', 'orbital-probe-samples',
-                          'dialogue-prompt-sample', 'review'),
+                          'dialogue-prompt-sample', 'saved-reload-resources', 'review'),
                  f'{aid}: invalid check kind')
             refs = []
             if kind == 'compare':
@@ -189,6 +191,10 @@ def validate(s, for_run=False):
                      and all(key in variants and any(row['polarity'] == value for row in prompts)
                              for key, value in polarity.items()),
                      f'{aid}: expected conversation and valid prompt identities are required')
+            elif kind == 'saved-reload-resources':
+                need(isinstance(required, list) and 'after-reload' in required
+                     and slots.get('after-reload') == 'runtime-state',
+                     f'{aid}: saved resource comparison requires after-reload runtime evidence')
             elif kind == 'sum-equal':
                 left, right = check.get('left'), check.get('right')
                 need(isinstance(left, list) and bool(left) and isinstance(right, list) and bool(right), f'{aid}: nonempty sum terms required')
@@ -432,6 +438,12 @@ def bind_reload(primary, primary_path, reload_path, link, observation):
     if (saved['path'] != save_path.relative_to(source).as_posix() or save_path.resolve() != save_path
             or not _hash(save_sha) or sha(save_path) != save_sha or save_path.stat().st_size != saved['size']):
         raise ValueError('reload link archived outcome identity differs')
+    spec = importlib.util.spec_from_file_location('le2_reload_save', Path(__file__).parents[1] / 'le2-save.py')
+    adapter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adapter)
+    save = adapter.Save.load(save_path)
+    if hashlib.sha256(save.raw).hexdigest() != save_sha:
+        raise ValueError('reload link save changed while parsing')
     identity = observation['identity']
     if (identity.get('runId') == primary['runId'] or identity.get('caseId') != primary['caseId']
             or identity.get('gameExeSha256') != primary['gameExeSha256']
@@ -457,8 +469,17 @@ def bind_reload(primary, primary_path, reload_path, link, observation):
             or wire.get('mod') != identity['loadedModSha256'] or wire.get('pid') != str(target_process['pid'])
             or wire != descriptor.get('identity')):
         raise ValueError('reload observation wire identity differs')
+    resources = {key: save.data['player'][field] for key, field in SAVED_RESOURCES.items()}
     return dict(binding, runId=identity['runId'], savedOutcomeSha256=save_sha,
-                saveReportSha256=link['saveReportSha256'], normalLoadVerified=False)
+                saveReportSha256=link['saveReportSha256'], savedResources=resources, normalLoadVerified=False)
+
+
+def check_saved_reload_resources(saved, observed):
+    for key in SAVED_RESOURCES:
+        value = observed[key]
+        valid = _number(value) if key == 'fuel' else type(value) is int
+        if not valid or value < 0 or not compare(saved[key], 'eq', value):
+            raise ValueError(f'reloaded {key} differs from saved outcome')
 
 
 def audit(scenario_path, evidence_path, recipe_path=None, session_path=None, reload_session=None):
@@ -542,6 +563,8 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None, rel
             status, reason = 'pending', '; '.join(start_problems)
         elif missing:
             status, reason = 'pending', 'missing/invalid artifacts: ' + ', '.join(missing)
+        elif assertion['check']['kind'] == 'saved-reload-resources' and reload_binding is None:
+            status, reason = 'pending', 'fresh reload linked to the archived outcome save required'
         elif gate in ('vr', 'visual', 'headset') and e['mode'] != 'vr':
             status, reason = 'pending', 'native baseline cannot establish VR behavior'
         elif gate == 'headset' and e['headset'] != 'physical':
@@ -581,6 +604,9 @@ def audit(scenario_path, evidence_path, recipe_path=None, session_path=None, rel
                     elif check['kind'] == 'dialogue-prompt-sample':
                         ref = check['history']
                         check_dialogue_prompt_sample(values[ref['artifact']], observed(ref), check, e['caseId'])
+                        passed = True
+                    elif check['kind'] == 'saved-reload-resources':
+                        check_saved_reload_resources(reload_binding['savedResources'], values['after-reload']['state']['resources'])
                         passed = True
                     else:
                         left, right = [observed(x) for x in check['left']], [observed(x) for x in check['right']]

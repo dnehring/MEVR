@@ -400,6 +400,12 @@ restoration of the fresh run. Keep the normal Load Game selection and rendered
 scene evidence in the persistence review. When the original run only has a
 qualified recovery, its separate restoration requirement stays open.
 
+For planet scanning, the `reload-saved-resources` assertion compares all
+eight live resource fields against the decoded archived outcome save. Use
+`observe-resources` for the first stable post-load sample, before travel or
+purchases. Keep the later orbital revisit and visible impact or unlock review
+separate from that immediate resource sample.
+
 To locate an early checkpoint after a verified reset, use the existing session
 tool to check the archived ME2 save bytes against the reset receipt:
 

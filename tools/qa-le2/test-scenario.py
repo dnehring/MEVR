@@ -214,7 +214,10 @@ class ScenarioTests(unittest.TestCase):
         (reload / 'control').mkdir(parents=True)
         report_path = source / 'artifacts/save-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json'
         save_path = report_path.with_suffix('.pcsav')
-        save_path.write_bytes(b'unit test saved outcome')
+        spec = importlib.util.spec_from_file_location('reload_save_fixture', HERE.parents[1] / 'tests/Le2SaveTests.py')
+        fixture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fixture)
+        save_path.write_bytes(fixture.fixture())
         self.write(report_path, {'source': 'save-new-disk-candidate', 'identity': self.identity,
                                 'status': 'new-candidate-archived-and-adapter-parseable', 'failures': [],
                                 'artifact': {'path': save_path.relative_to(source).as_posix(),
@@ -232,6 +235,10 @@ class ScenarioTests(unittest.TestCase):
             bound = scenario.bind_reload(self.identity, source, reload, link, observation)
             self.assertEqual(bound['runId'], 'RELOAD-RUN')
             self.assertFalse(bound['normalLoadVerified'])
+            self.assertEqual(bound['savedResources']['probes'], 7)
+            scenario.check_saved_reload_resources(bound['savedResources'], bound['savedResources'])
+            with self.assertRaisesRegex(ValueError, 'reloaded probes'):
+                scenario.check_saved_reload_resources(bound['savedResources'], dict(bound['savedResources'], probes=6))
             with self.assertRaisesRegex(ValueError, 'exact saved outcome'):
                 edited = dict(observation, identity=dict(identity, preparedSaveSha256='f' * 64))
                 scenario.bind_reload(self.identity, source, reload, link, edited)
