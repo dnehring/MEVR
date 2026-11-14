@@ -350,6 +350,20 @@ class SessionTests(unittest.TestCase):
         with self.assertRaisesRegex(s.SessionError, "receipt"):
             self.quiet_prepare()
 
+    def test_preflight_checks_current_slot_without_staging(self):
+        s.write_json(self.plan_path, self.plan)
+        initial = s.snapshot(self.root)
+        with mock.patch.object(s, 'default_locks', side_effect=AssertionError('must stay offline')):
+            result = s.preflight(self.plan_path, self.run, scenario_loader=lambda _: self.scenario_data)
+        self.assertTrue(result['filePreflightPassed'])
+        self.assertFalse(result['ownershipChecked'])
+        self.assertEqual(result['scenarioSha256'], s.digest(self.scenario))
+        self.assertEqual(s.snapshot(self.root), initial)
+        self.put(self.target, b'occupied save')
+        with self.assertRaisesRegex(s.SessionError, 'new dedicated save slot'):
+            s.preflight(self.plan_path, self.run, scenario_loader=lambda _: self.scenario_data)
+        self.assertEqual(self.target.read_bytes(), b'occupied save')
+
     def test_load_request_and_binding_are_not_load_or_acceptance(self):
         self.quiet_prepare()
         with mock.patch.object(s.subprocess, "Popen", side_effect=AssertionError("must never launch")):

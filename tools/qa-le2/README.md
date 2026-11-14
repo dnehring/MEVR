@@ -272,9 +272,15 @@ plus a reviewer attestation referencing private observation/capture artifacts.
 Do not derive the SaveName or target filename from the descriptor Index.
 
 ```powershell
+python tools/qa-le2/session.py preflight <plan.json> <new-private-run-directory>
 python tools/qa-le2/session.py prepare <plan.json> <new-private-run-directory>
 python tools/qa-le2/session.py request-load <run-directory>
 ```
+
+Use `preflight` before the game window to validate the current file hashes,
+preparation receipt and target slot without staging. It does not check native
+session ownership or reserve the slot. `prepare` rechecks the plan and acquires
+ownership during the actual run.
 
 Preparation freezes the scenario, recipe, receipt and save; backs up the complete
 MELE profile, LE2 BioGame/Config and whole LE2 Win64 directory; and verifies copies

@@ -400,6 +400,22 @@ def validate_plan(plan, run, scenario_loader=load_scenario):
     return profile, game, exe, frozen, target, scenario_path, scenario, protected
 
 
+def preflight(plan_path, run, *, scenario_loader=load_scenario):
+    """Read-only checks shared with prepare, before native ownership is needed."""
+    plan_path = safe_path(plan_path)
+    plan_sha = digest(plan_path)
+    plan = read_json(plan_path)
+    _, _, _, _, target, _, scenario, protected = validate_plan(plan, run, scenario_loader)
+    if digest(plan_path) != plan_sha:
+        raise SessionError("Session plan changed during preflight")
+    return {"schemaVersion": SCHEMA, "planSha256": plan_sha,
+            "scenarioId": scenario["id"], "scenarioSha256": plan["scenario"]["sha256"].lower(),
+            "fixtureSha256": plan["fixture"]["sha256"].lower(), "exeSha256": plan["exeSha256"].lower(),
+            "recipeSha256": scenario["recipe"]["sha256"], "targetSlot": target.name,
+            "protectedRootCount": len(protected), "hasFixtureSelection": "fixtureSelection" in plan,
+            "filePreflightPassed": True, "ownershipChecked": False}
+
+
 def prepare(plan_path, run, *, processes=windows_processes, locks=None, scenario_loader=load_scenario):
     native_locks = default_locks() if processes is _NATIVE_PROCESSES else None
     if native_locks is not None and locks is not None and safe_path(locks) != native_locks:
@@ -718,9 +734,11 @@ def archived_saves(run):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    p = sub.add_parser("prepare", help="Acquire coordinated lock, back up and stage a ready fixture")
-    p.add_argument("plan", type=Path)
-    p.add_argument("run", type=Path)
+    for command, help_text in (("preflight", "Validate plan inputs and target without staging"),
+                               ("prepare", "Acquire coordinated lock, back up and stage a ready fixture")):
+        p = sub.add_parser(command, help=help_text)
+        p.add_argument("plan", type=Path)
+        p.add_argument("run", type=Path)
     for command in ("request-load", "status", "reset", "archived-saves"):
         p = sub.add_parser(command)
         p.add_argument("run", type=Path)
@@ -732,7 +750,9 @@ def main(argv=None):
     p.add_argument("files", nargs="+", type=Path)
     args = parser.parse_args(argv)
     try:
-        if args.command == "prepare":
+        if args.command == "preflight":
+            result = preflight(args.plan.absolute(), args.run.absolute())
+        elif args.command == "prepare":
             result = prepare(args.plan.absolute(), args.run.absolute())
         elif args.command == "bind-process":
             result = bind_process(args.run.absolute(), args.pid)
