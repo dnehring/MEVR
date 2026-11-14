@@ -94,6 +94,40 @@ void TestJson() {
     ICHECK(!json::Parse("[1, 2"));
     ICHECK(!json::Parse("{} x"));
     ICHECK(json::Parse("\xEF\xBB\xBF{}").has_value());  // a byte order mark
+
+    json::ParseOptions const strict{true, true};
+    // Legacy/default callers retain last-key-wins and floating-point tokens.
+    auto const legacy = json::Parse(R"({"a":1,"a":2.5,"nested":{"x":1e2}})");
+    auto const defaults = json::Parse(R"({"a":1,"a":2.5,"nested":{"x":1e2}})", json::ParseOptions{});
+    ICHECK(legacy && defaults && legacy->Number("a") == 2.5 &&
+           legacy->Get("nested").Number("x") == 100.0 && json::Write(*legacy) == json::Write(*defaults));
+    for (auto text : {R"({"a":1,"a":2})", R"({"o":{"a":1,"\u0061":2}})",
+                      R"([{"o":{"x":null,"x":false}}])", R"({"\ud83d\ude00":1,"\ud83d\ude00":2})"}) {
+        error.clear();
+        ICHECK(!json::Parse(text, strict, &error));
+        ICHECK(error.find("duplicate object key") != std::string::npos);
+        ICHECK(error.find("offset") != std::string::npos);
+    }
+    // Key uniqueness is per object, not global. Formatting/order is unrestricted.
+    ICHECK(json::Parse(" {\n\"b\": {\"x\":1}, \"a\": {\"x\":2}\n} ", strict).has_value());
+    ICHECK(json::Parse(R"({"a":1.0})", json::ParseOptions{true, false}).has_value());
+    ICHECK(!json::Parse(R"({"a":1.0})", json::ParseOptions{false, true}));
+    auto const duplicatesAllowed = json::Parse(R"({"a":1,"a":2})", json::ParseOptions{false, true});
+    ICHECK(duplicatesAllowed && duplicatesAllowed->Number("a") == 2.0);
+    for (auto token : {"0", "-0", "1", "-32768", "32767", "65535", "1000"}) {
+        auto const integer = json::Parse(token, strict);
+        ICHECK(integer && integer->GetKind() == json::Value::Kind::Number);
+    }
+    for (auto token : {"1.0", "0.0", "-0.0", "1e0", "1E+2", "-2e-1", "01", "-01", "+1", "1.", ".1", "--1"}) {
+        ICHECK(!json::Parse(token, strict));
+        ICHECK(!json::Parse(std::string("[{\"n\":") + token + "}]", strict));
+    }
+    auto const typed = json::Parse(R"({"t":true,"f":false,"n":null,"s":"1e0"})", strict);
+    ICHECK(typed && typed->Get("t").GetKind() == json::Value::Kind::Bool && typed->Get("t").AsBool());
+    ICHECK(typed && typed->Get("f").GetKind() == json::Value::Kind::Bool && !typed->Get("f").AsBool());
+    ICHECK(typed && typed->Get("n").IsNull() && typed->String("s") == "1e0");
+    ICHECK(json::Parse("\xEF\xBB\xBF{}", strict).has_value());
+    ICHECK(!json::Parse(std::string(66, '[') + "0" + std::string(66, ']'), strict));
 }
 
 void TestSteamVrSettings() {
