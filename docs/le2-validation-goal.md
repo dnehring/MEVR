@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Mass Effect 2 VR validation tooling goal
 
-Status: specification only; implementation and runtime acceptance remain pending.
+Status: implementation in progress. See [workflow](../tools/qa-le2/README.md), [evidence](../research/le2-validation-evidence.md) and [coverage](le2-validation-coverage.md). Native and VR acceptance remain pending.
 
 Build and prove a repeatable validation system for the Mass Effect 2 Legendary Edition VR port. Agents must be able to quickly prepare, load, exercise, inspect, and reset specific gameplay scenarios without replaying hours of the campaign. Extend the existing ME1 testing machinery and use established Mass Effect modding tools wherever practical.
 

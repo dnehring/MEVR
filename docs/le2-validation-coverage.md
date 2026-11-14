@@ -37,7 +37,7 @@ The executable validator is [scenario.py](../tools/qa-le2/scenario.py). It uses 
 python tools/qa-le2/scenario.py validate tools/qa-le2/scenarios/reload.json
 python tools/qa-le2/scenario.py validate PRIVATE_SCENARIO --for-run
 python tools/qa-le2/scenario.py check-start RUN_SCENARIO START_JSON --recipe RUN_RECIPE
-python tools/qa-le2/scenario.py audit RUN_SCENARIO EVIDENCE_JSON --recipe RUN_RECIPE
+python tools/qa-le2/scenario.py audit RUN_SCENARIO EVIDENCE_JSON --recipe RUN_RECIPE --session RUN_DIRECTORY
 python tools/qa-le2/test-scenario.py
 ```
 
@@ -62,7 +62,7 @@ Machine assertions compare observed values, numeric deltas or sum conservation. 
 
 The `settings` artifact records graphics, control bindings, difficulty, calibrated seated/standing profile, headset/runtime and hardware used. The `baseline` artifact identifies the equivalent native run and evidence hash, plus intended gameplay differences. `restoration` is the protected-session receipt; `session-log` records load, setup operations, candidate provenance, failures and exit. Both-eye images and a continuous scene/action video supplement state evidence. Do not substitute a desktop mirror for both eye captures.
 
-Audits return `supported`, `pending` or `failed` per declared assertion and per gate. Missing coverage is `not-covered`. A missing/wrong starting observation keeps all assertions pending; native input cannot support VR routing, and synthetic headset mode cannot support physical-headset acceptance. Numeric comparisons reject booleans as numbers. Exit `0` means this run's declared assertions are supported, `2` means pending/failed assertions, and `1` means an invalid document/binding. `fullPortAccepted` is always false: a scenario audit cannot establish campaign-wide acceptance.
+Audits return `supported`, `pending` or `failed` per declared assertion and per gate. Missing coverage is `not-covered`. A missing/wrong starting observation keeps all assertions pending; native input cannot support VR routing, and synthetic headset mode cannot support physical-headset acceptance. Numeric comparisons reject booleans as numbers. The required CLI `--session` binds run/scenario/prepared-save/executable/recipe identity to the protected context and checks frozen artifacts and the preparation receipt. Exit `0` requires all declared assertions supported, recorded process binding and verified restoration; `2` means pending/failed assertions or lifecycle gates, and `1` means an invalid document/binding. A successful native baseline normally still exits `2` for pending VR/headset assertions: inspect `gates.native`. The Python audit API allows omitted session context for isolated validator tests and reports `sessionBinding.status: not-supplied`; that is not native acceptance. `fullPortAccepted` is always false: a scenario audit cannot establish campaign-wide acceptance.
 
 ## Coverage matrix beyond the initial slice
 

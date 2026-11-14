@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import re
@@ -234,7 +235,37 @@ def check_start(scenario, runtime_state):
     return failures
 
 
-def audit(scenario_path, evidence_path, recipe_path=None):
+def bind_session(identity, run_path):
+    """Bind observation identity to the protected run, not self-reported hashes."""
+    if run_path is None:
+        return {'status': 'not-supplied', 'restorationVerified': False}
+    spec = importlib.util.spec_from_file_location('le2_audit_session', Path(__file__).with_name('session.py'))
+    session = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(session)
+    run, context = session.load_context(Path(run_path).resolve(), require_lock=False)
+    for name, context_key in (('runId', 'runId'), ('scenarioSha256', 'scenarioSha256'),
+                              ('preparedSaveSha256', 'fixtureSha256'),
+                              ('gameExeSha256', 'exeSha256'), ('recipeSha256', 'recipeSha256')):
+        if identity.get(name) != context.get(context_key):
+            raise ValueError(f'evidence {name} differs from protected session')
+    for name, context_key in (('scenario.json', 'scenarioSha256'),
+                              ('fixture.pcsav', 'fixtureSha256'),
+                              ('recipe.json', 'recipeSha256'),
+                              ('preparation-receipt.json', 'preparationReceiptSha256')):
+        if sha(run / name) != context.get(context_key):
+            raise ValueError(f'frozen session artifact changed: {name}')
+    receipt = read_json(run / 'preparation-receipt.json')
+    if (receipt.get('input_sha256') != identity['baseSaveSha256']
+            or receipt.get('output_sha256') != identity['preparedSaveSha256']
+            or receipt.get('recipe_sha256') != identity['recipeSha256']):
+        raise ValueError('evidence differs from preparation receipt')
+    restored = context.get('phase') == 'restored' and context.get('restorationVerified') is True
+    return {'status': 'bound', 'contextSha256': sha(run / 'context.json'),
+            'processBound': isinstance(context.get('gameProcess'), dict),
+            'restorationVerified': restored}
+
+
+def audit(scenario_path, evidence_path, recipe_path=None, session_path=None):
     """Audit all claims; pending/failed gates do not become successful by omission."""
     s = load(scenario_path, for_run=True, recipe_path=recipe_path)
     e = read_json(evidence_path)
@@ -350,7 +381,9 @@ def audit(scenario_path, evidence_path, recipe_path=None):
         rows = [x for x in results if x['gate'] == gate]
         gates[gate] = ('not-covered' if not rows else 'failed' if any(x['status'] == 'failed' for x in rows)
                        else 'pending' if any(x['status'] == 'pending' for x in rows) else 'supported')
+    session_binding = bind_session(identity, session_path)
     return {'scenario': s['id'], 'caseId': e['caseId'], 'runId': identity['runId'],
+            'sessionBinding': session_binding,
             'startProblems': start_problems, 'artifactProblems': problems,
             'assertions': results, 'gates': gates, 'fullPortAccepted': False,
             'scope': 'Artifact integrity and declared observations; not independent proof of producer truth or campaign coverage.'}
@@ -360,7 +393,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest='command', required=True)
     v = sub.add_parser('validate'); v.add_argument('scenario'); v.add_argument('--for-run', action='store_true'); v.add_argument('--recipe')
-    a = sub.add_parser('audit'); a.add_argument('scenario'); a.add_argument('evidence'); a.add_argument('--recipe')
+    a = sub.add_parser('audit'); a.add_argument('scenario'); a.add_argument('evidence'); a.add_argument('--recipe'); a.add_argument('--session', required=True)
     c = sub.add_parser('check-start'); c.add_argument('scenario'); c.add_argument('state'); c.add_argument('--recipe')
     args = p.parse_args()
     try:
@@ -374,11 +407,16 @@ def main():
             result = {'startingStateMatches': not failures, 'failures': failures,
                       'renderedSceneVerified': False, 'acceptance': 'not-evaluated'}
         else:
-            result = audit(args.scenario, args.evidence, args.recipe)
+            result = audit(args.scenario, args.evidence, args.recipe, args.session)
         print(json.dumps(result, indent=2))
         if args.command == 'check-start':
             return 2 if failures else 0
-        return 0 if args.command == 'validate' or all(x['status'] == 'supported' for x in result['assertions']) else 2
+        if args.command == 'validate':
+            return 0
+        binding = result['sessionBinding']
+        return 0 if (all(x['status'] == 'supported' for x in result['assertions'])
+                     and binding.get('status') == 'bound' and binding.get('processBound') is True
+                     and binding.get('restorationVerified') is True) else 2
     except (OSError, ValueError, KeyError, TypeError, IndexError) as ex:
         print(json.dumps({'valid': False, 'error': str(ex)}))
         return 1
