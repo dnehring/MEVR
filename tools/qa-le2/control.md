@@ -58,7 +58,18 @@ guarded observer and retain unavailable reasons.
 interrupt timer and display fields through the existing game-thread observer.
 Use it with the rendered prompt and subsequent reply or branch evidence.
 Individual snapshots can miss a short transition or a complete interrupt
-window. See [Veetor acquisition and source findings](../../research/le2-interrupt-acquisition.md).
+window. During an owned diagnostic session, collect a sample and use its
+archived request UUID to export it:
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run observe-dialogue
+python tools/qa-le2/export-state.py C:\private\le2-run --request REQUEST_UUID --case CASE_ID
+```
+
+The export preserves the sample with its own tick and reports missing map
+and position as partial evidence. See [Veetor acquisition and source
+findings](../../research/le2-interrupt-acquisition.md) and
+[dialogue export](export-state.md#dialogue-observations).
 
 `observe-input` is an empty-input, read-only query for the diagnostic input
 publisher's context, poll and neutral-state evidence. It does not publish input.
