@@ -3,8 +3,9 @@
 
 This is the P9 tooling for the [validation goal](../../docs/le2-validation-goal.md).
 Read the [scripted testing handoff](../../docs/le2-scripted-testing.md) and its
-linked repository skills before native work. Prefer the mod's request channel;
-its LE2 runtime integration must be proven before using the LE1 runners here.
+linked repository skills before native work. Use the protected LE2 launch and
+bound diagnostic request channel described below; the LE1 runners are not LE2
+session adapters.
 Save preparation and protected session lifecycle have offline tests. The three
 public scenarios are **drafts**, pending naturally acquired fixtures and native
 observations. Neither a valid manifest nor a green integrity audit proves that
@@ -20,13 +21,16 @@ Weapon fixtures also need the [native ammo and reload mapping](../../research/le
 Offline preparation can continue while another session owns the game:
 [resource boundary batches](variant-usage.md) create hash-bound zero/insufficient/exact/surplus cases;
 [story transition review](story-review-usage.md) compares paired saves against scoped source effects;
-[archived diagnostics and observer design](../../research/le2-runtime-observer.md) distinguish reusable capture formats from missing LE2 runtime producers.
+[archived diagnostics and observer design](../../research/le2-runtime-observer.md) distinguish reusable capture formats from pending scenario-specific runtime assertions.
 These tools do not establish native or VR acceptance. Keep all generated artifacts private.
 
 The [Steam launch adapter](launch.md) provides read-only preflight and a guarded
 launch path where installed launcher support is verified. The [bound control
-client](control.md) supplies request correlation and uncertainty recovery; its
-runtime producer and native handshake must be proven separately.
+client](control.md) supplies request correlation and uncertainty recovery. An
+opt-in monolithic diagnostic host implements `ping`, structural `observe` and a
+separately gated scalar `probe-fov`. Each run still requires verified module
+mapping, process binding and a real producer handshake. These capabilities do
+not select a save or establish scenario/VR acceptance.
 
 ## 1. Inspect and prepare a private fixture
 
@@ -147,19 +151,33 @@ before staging. Use a run directory separate from all protected roots with enoug
 space for backups and post-test archives. Additional modified paths must be in
 the plan before preparation.
 
-`request-load` records an operator handoff; it does not launch a game. Start ME2
-through the normal Steam/EA launcher, then bind the actual process and select the
-staged save through Load Game:
+`request-load` records an operator handoff; it does not launch a game. The
+[protected Steam adapter](launch.md) can forward to the normal launcher and bind
+the new ME2 process when its reviewed capability requirements pass. Follow its
+one-attempt/operator handoff rules. If starting through the normal launcher
+manually, bind the actual process explicitly. Select the staged save through
+normal Load Game:
 
 ```powershell
 python tools/qa-le2/session.py bind-process <run-directory> <ME2-PID>
 python tools/qa-le2/scenario.py check-start <run-directory>/scenario.json <observed-start.json> --recipe <run-directory>/recipe.json
 ```
 
-Process binding checks executable path, hash and start identity. Automatic
-launcher/profile selection and an LE2 runtime-state producer are not supplied.
-Starting-state JSON must come from observed game state with capture/provenance;
-do not relabel save inspection or expected values as runtime observations.
+Process binding checks executable path, hash and start identity. The diagnostic
+producer provides structural observations, but selected-save/profile automation
+and authoritative scenario starting-state assertions remain unvalidated. Use the
+[bound control workflow](control.md) for attachment and diagnostic evidence;
+starting-state JSON still needs observed game state with capture/provenance.
+Do not relabel save inspection, expected values or a title-screen handshake as
+proof that the selected fixture loaded. The [save/load source handoff](../../research/le2-save-load-entrypoints.md)
+identifies existing game routes and their unresolved prerequisites.
+
+`probe-fov --allow-probe-fov` is a separate, explicitly requested native scalar
+probe, limited to one admitted native entry per process. It does not enable
+general console commands or save/load automation. Follow the
+[probe admission and recovery rules](control.md#explicit-scalar-fov-probe):
+`dispatched` is bounded native-return evidence, while an error or timeout leaves
+uncertainty and must not trigger another attempt.
 
 ## 5. Exercise, inspect and reset
 

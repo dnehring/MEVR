@@ -34,6 +34,11 @@ reads. `observe` additionally returns the [structural observer](../../research/l
 under `payload.observation`. Authoritative `observeWorld` and `nativeConsole`
 capabilities stay false; `observeStructuralWorld` identifies this diagnostic
 sample. It does not establish a loaded save or permit gameplay actions.
+The diagnostic host separately opts into `probe-fov`, an explicit one-entry
+native scalar query described below. Its availability is not `nativeConsole`
+permission and does not make `observe` a native call. A client/codec build alone
+does not enable the host; default gates and the offline producer fixture keep
+the probe disabled.
 
 The host currently hashes the executable and module synchronously around each
 request. Keep these setup queries outside performance windows. Admission checks
@@ -62,9 +67,13 @@ request; an admitted request may publish a late result for `collect` to reconcil
 4. Publish the attachment invitation below, then issue `ping` and `observe`.
    Preserve response bytes, actual loaded module identity and the host log.
    No response means no handshake proof, regardless of an ASI being present.
-5. Normal save selection, native save/reload, screenshots and scenario actions
+5. If the bounded native FOV probe is part of the authorized test, follow its
+   explicit opt-in and one-entry rules below after observing the current target.
+   Normal save selection, native save/reload, screenshots and scenario actions
    remain operator/dependency boundaries until the corresponding game-thread
    controls are validated. A title-screen handshake is not a fixture load.
+   The [save/load source handoff](../../research/le2-save-load-entrypoints.md)
+   identifies the actual game routes; source inspection is not call validation.
 6. Close only the owned game through its normal exit path, verify it is closed,
    run `session.py reset NEW_RUN`, then run attachment `cleanup`. Preserve new
    saves and test artifacts in the run archive. If the game/ownership cannot be
@@ -107,11 +116,57 @@ invitation byte-identical to this run's preserved intent. It retains another
 owner's invitation, all run-local evidence and any unresolved command history.
 
 `collect` reconciles a late result; it does not resend the request. Both ends must
-explicitly permit native console commands. The initial runtime integration keeps
-them disabled. `--allow-console` only opts the client in; it cannot enable the
+explicitly permit native console commands. The diagnostic host keeps general
+console dispatch disabled. `--allow-console` only opts the client in; it cannot enable the
 host. Never use `streamlevelin`: both the client and the C++ dispatch gate reject
 it. A console result marked `dispatched` proves only that dispatch returned, not
 that a save loaded, ammunition changed or gameplay completed.
+
+### Explicit scalar FOV probe
+
+Use this only within an authorized protected native session with the reviewed
+diagnostic host mapped and attached. First use `ping` and `observe` to record the
+current build, target and structural evidence. Then explicitly request:
+
+```powershell
+python tools/qa-le2/control.py C:\private\le2-run probe-fov --allow-probe-fov
+```
+
+`probe-fov` accepts no command payload. The client flag and the host's independent
+`Gate(..., allowConsole=false, allowProbeFov=true)` are both required. Neither flag
+grants general console access. The host invokes only the reviewed `GetFOVAngle`
+path after its current thread, controller, metadata and passive target-witness
+checks pass. This invokes game script; it is not a read-only memory observation.
+Inspect the correlated `payload.probe` evidence rather than assuming the command
+name proves safety or success.
+An advertised `probeFov` capability identifies the implementation; it does not
+prove current prerequisites or an unused native-entry allowance.
+
+There is at most **one admitted native entry per process**. The host spends its
+one-shot immediately before entering the call; successful return, failure or
+lost reply never resets it. Preflight rejection does not spend the native-entry
+allowance, but does not justify a retry loop. Preserve the reason and resolve its
+prerequisite explicitly before any newly reviewed request.
+
+- `rejected` means the probe did not enter native code. Inspect the admission
+  reason; a disabled capability, unavailable target or missing proof is not a
+  successful FOV observation.
+- `dispatched` means the scalar call returned and the host's bounded return
+  checks passed. Preserve the value and provenance. This is evidence for that
+  one call, not gameplay completion, save loading, general native-console safety,
+  stereo correctness or headset acceptance.
+- `error` after entry means the result is uncertain. The host disables further
+  admission; the client archives the error and retains pending intent. A timeout,
+  missing reply or correlation failure is also uncertain. Do not resend, delete
+  intent files, reset the gate or hot-reload to regain the allowance.
+
+Use `collect` only to reconcile an independently arriving late terminal result;
+it does not rerun the call or turn an error into success. The client refuses
+`completed` for this verb and preserves uncertainty. If no authoritative terminal
+result can resolve it, retain the evidence and close/reset the owned protected
+session through the documented lifecycle. A new process is a separate reviewed
+attempt, never an automatic retry. Ordinary `ping`/`observe` and the negative
+helper's empty `ping` probes do not spend the native-entry allowance.
 
 ### Live rejection checks
 
@@ -167,7 +222,8 @@ One blank line separates the headers from exactly `bytes` payload bytes. UUIDs
 and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings.
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
-control characters. Unknown, duplicated, reordered, partial or trailing data is
+control characters. `ping`, `observe` and `probe-fov` requests require an empty
+payload. Unknown, duplicated, reordered, partial or trailing data is
 rejected. C++ and Python implementations have executable byte-conformance tests.
 
 Publish `request.control` and `result.control` atomically without replacement.
@@ -176,8 +232,10 @@ before dispatch, and never releases a claimed sequence for retry. It checks run
 ownership before every operation. Responses retain all correlation fields and
 use the runtime's verified identity. Status meanings:
 
-- `completed`: a read-only ping/observation completed; not gameplay acceptance.
-- `dispatched`: native dispatch returned; inspect authoritative game state next.
+- `completed`: a read-only ping/observation completed; forbidden for `console`
+  and `probe-fov`, and never gameplay acceptance.
+- `dispatched`: native dispatch returned; for `probe-fov`, the host's bounded
+  scalar checks also passed. This does not establish gameplay completion.
 - `rejected`: authoritative rejection before dispatch; no native effect occurred.
 - `error`: execution outcome uncertain. Preserve pending intent and block new
   commands until an authoritative terminal response can reconcile it.
