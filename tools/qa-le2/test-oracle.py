@@ -146,6 +146,32 @@ class CrosscheckTests(unittest.TestCase):
         with mock.patch.object(checker.subprocess, "run", side_effect=self.oracle_boundary(**kwargs)):
             return checker.verify(self.save, self.oracle, self.output, ADAPTER)
 
+    def test_checks_exact_prepared_variant_and_rejects_mismatched_bytes(self):
+        before = le2.Save.load(self.save)
+        probes = before.value("player.probes")
+        recipe = {"schema_version": 1, "id": "probe-refusal", "expected_input_sha256": checker.digest(self.save),
+                  "expect": {"player.probes": probes}, "set": {"player.probes": 0}}
+        prepared, receipt, recipe_path = (self.root / name for name in ("case.pcsav", "case.receipt.json", "case.recipe.json"))
+        recipe_raw = json.dumps(recipe).encode()
+        recipe_path.write_bytes(recipe_raw)
+        edited, changes = before.prepare(recipe)
+        prepared.write_bytes(edited.raw)
+        receipt.write_text(json.dumps(le2.make_receipt("prepare", before, edited, changes,
+                                                     recipe=recipe, recipe_raw=recipe_raw)))
+        kwargs = dict(prepared=prepared, recipe=recipe_path, receipt=receipt)
+        with mock.patch.object(checker.subprocess, "run", side_effect=self.oracle_boundary()):
+            result = checker.verify(self.save, self.oracle, self.output, ADAPTER, **kwargs)
+        self.assertEqual(result["prepared_sha256"], checker.digest(prepared))
+        self.assertEqual(result["independently_verified_paths"], ["player.probes"])
+        for target in (prepared, receipt):
+            original = target.read_bytes()
+            target.write_bytes(self.original if target == prepared else b"{}")
+            refused = self.root / "refused"
+            with self.assertRaisesRegex(ValueError, "differs from the exact recipe output"):
+                checker.verify(self.save, self.oracle, refused, ADAPTER, **kwargs)
+            self.assertFalse(refused.exists())
+            target.write_bytes(original)
+
     def test_success_records_bound_artifacts_without_native_claim(self):
         result = self.verify()
         self.assertTrue(result["passed"])

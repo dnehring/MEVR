@@ -102,6 +102,18 @@ Current saves already have the upstream-labeled Garrus recruitment mechanic, gre
 
 ## Concrete acquisition routes
 
+For an operator playing the opening, the precise stopping cue is the first
+reload prompt after picking up the pistol, armor and first thermal clip at
+Lazarus Research Station. Stop before pressing Reload. Use a fresh manual save
+only if the normal Save menu is enabled. Base and Patch01 both grant
+`SFXGameContent_Inventory.SFXWeapon_HeavyPistol`. Stock configuration lists
+12 magazine rounds and 60 maximum spare ammo, which the fixture must confirm
+against its live weapon. The earlier LS5 save occurs before pistol pickup.
+The LS10 tutorial reload event advances the sequence to state 15 and triggers
+another save, so keep any earlier checkpoint separately. If the game only
+allows a save after the tutorial, use it for ordinary ammo transfer and retain
+the tutorial progression case separately.
+
 | Scenario | Locally verified candidate | Next acquisition action |
 |---|---|---|
 | Reload/tutorial | Installed `BioD_ProCer_100RezRoom.pcc` contains `LS10_Reload_Heatsink`, `SFXSeqEvt_TutorialReload_0`, a comparison following that event, and `SFXSeqAct_SaveGame_1`. The same package contains the pistol/armor pickup and cover tutorial sequences. `BioP_ProCer.pcc` is installed. | Start a separate protected normal new-game profile and progress naturally through the opening. Capture the first legally available save before the thermal-clip/reload sequence and another before completion. Determine exactly when the authored save action runs; its presence does not guarantee a pre-reload save. Inspect tutorial event routing, counter and downstream sequence before accepting the physical reload. Do not teleport a late-game Normandy save into this map. |

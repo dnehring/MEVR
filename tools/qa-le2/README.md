@@ -182,6 +182,14 @@ cargo build --manifest-path <new-private-project>/Cargo.toml --release --locked
 python tools/qa-le2/check-save-oracle.py <base.pcsav> <new-private-project>/target/release/mevr-tse-oracle.exe <new-private-probe-directory>
 ```
 
+To check an actual scenario variant, pass its exact prepared bytes, recipe and
+receipt. The checker verifies that they agree before freezing copies for the
+independent decoder. Use a new private output directory for every check.
+
+```powershell
+python tools/qa-le2/check-save-oracle.py <base.pcsav> <oracle.exe> <new-private-check-directory> --prepared <case.pcsav> --recipe <case.recipe.json> --receipt <case.receipt.json>
+```
+
 Use upstream revision `6451f23d1fba62358328dce4e87733970f36ebf1`. Record `rustc -Vv`,
 the build command and build output alongside `source-manifest.json`, Cargo.lock
 and the executable. The cross-check binds source, executable, adapter, recipe and
