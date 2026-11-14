@@ -302,6 +302,28 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
                 bodyMoved = true;
             }
         }
+        // Standing still, the hips over the feet (TorsoGoal::anchor): the idle animation's weight shift taken out.
+        double const anchorWeight = std::isfinite(goal.anchorWeight) ? std::clamp(goal.anchorWeight, 0.0, 1.0) : 0.0;
+        auto const inBody = [&](int bone) { return bone > goal.body && bone < count && IsAncestor(parents, goal.body, bone); };
+        if (anchorWeight > 0.0 && inBody(goal.anchor) && inBody(goal.feet[0]) && inBody(goal.feet[1])) {
+            Vec3 const feet = (base[goal.feet[0]].translation + base[goal.feet[1]].translation) * 0.5;
+            Vec3 const offset = Horizontal(feet - base[goal.anchor].translation, up);
+            result.anchorOffset = Length(offset);
+            Vec3 shift = offset * anchorWeight;
+            double const max = std::isfinite(goal.maxAnchorShift) ? std::max(0.0, goal.maxAnchorShift) : 0.0;
+            if (Length(shift) > max) {
+                shift = Length(shift) > 1e-12 ? shift * (max / Length(shift)) : Vec3{};
+            }
+            if (Length(shift) > 1e-9) {
+                for (int i = goal.body; i < count; ++i) {
+                    if (IsAncestor(parents, goal.body, i)) {
+                        base[i].translation = base[i].translation + shift;
+                    }
+                }
+                result.anchorShift = shift;
+                bodyMoved = true;
+            }
+        }
     }
 
     // The animated pose (the body moved, if it did): shoulders, facing, and the reference point (eyes or

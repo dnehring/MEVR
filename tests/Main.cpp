@@ -1388,6 +1388,75 @@ struct BodyRig {
     }
 };
 
+// The idle sway (research/29 "The idle sway", 2026-11-14): standing still, the hips are held over the feet. LE1's
+// skeleton hangs the pelvis and the spine side by side under Root, and the idle animation's weight shift moves the pelvis
+// about 6 cm against Root while the feet stay planted; the body follower moves Root, so the hips rocked under the player.
+void TestIdleSway() {
+    using namespace mevr::ik;
+    BodyRig rig;
+    auto const left = FindArmChain(rig.names, rig.parents, 0);
+    auto const right = FindArmChain(rig.names, rig.parents, 1);
+    auto const chain = FindTorsoChain(rig.names, rig.parents, *left, *right);
+    CHECK(left && right && chain);
+    int const root = 1, pelvis = 2, head = 9;
+    // Two planted ankles under Root (stand-ins: the rig's one leg hangs off the pelvis).
+    rig.names.push_back("LeftAnkle");
+    rig.parents.push_back(root);
+    rig.pose.push_back({Quat{}, {0, -10, 9}, 1.0});
+    int const leftAnkle = static_cast<int>(rig.names.size()) - 1;
+    rig.names.push_back("RightAnkle");
+    rig.parents.push_back(root);
+    rig.pose.push_back({Quat{}, {0, 10, 9}, 1.0});
+    int const rightAnkle = static_cast<int>(rig.names.size()) - 1;
+    // The animation's sway: the pelvis (and what hangs off it) 3 forward and 6 to the side of the feet's midpoint.
+    std::vector<Transform> swayed = rig.pose;
+    Vec3 const sway{3, 6, 0};
+    for (int i = 0; i < static_cast<int>(swayed.size()); ++i) {
+        if (!InSubtrees(rig.parents, std::vector<int>{pelvis}, std::vector<int>{i}).empty()) {
+            swayed[static_cast<std::size_t>(i)].translation = swayed[static_cast<std::size_t>(i)].translation + sway;
+        }
+    }
+    BodyFrame const body;
+    TorsoGoal goal;
+    goal.reference = {head, -1};
+    goal.head = swayed[head].translation;
+    goal.forward = {1, 0, 0};
+    goal.body = root;
+    goal.maxTwistDegrees = 30.0;
+    goal.anchor = pelvis;
+    goal.feet = {leftAnkle, rightAnkle};
+    goal.maxAnchorShift = 15.0;
+    auto const flat = [](Vec3 v) { return Vec3{v.x, v.y, 0.0}; };
+    // Standing still: the whole body slides back by the sway, the hips over the feet; God and Camera stay.
+    goal.anchorWeight = 1.0;
+    std::vector<Transform> pose = swayed;
+    TorsoResult const still = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(still.ok && NearD(still.anchorOffset, Length(sway), 1e-9));
+    CHECK(Length(still.anchorShift + sway) < 1e-9 && still.anchorShift.z == 0.0);
+    CHECK(Length(flat(pose[pelvis].translation) - flat((swayed[leftAnkle].translation + swayed[rightAnkle].translation) * 0.5)) < 1e-6);
+    CHECK(NearT(pose[0], swayed[0], 0.0) && NearT(pose[rig.camera], swayed[rig.camera], 0.0));
+    // Starting to move: half the way.
+    goal.anchorWeight = 0.5;
+    pose = swayed;
+    TorsoResult const half = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(half.ok && Length(half.anchorShift + sway * 0.5) < 1e-9);
+    // Never more than the cap, along the way.
+    goal.anchorWeight = 1.0;
+    goal.maxAnchorShift = 4.0;
+    pose = swayed;
+    TorsoResult const capped = PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal);
+    CHECK(capped.ok && NearD(Length(capped.anchorShift), 4.0, 1e-9) && Dot(capped.anchorShift, sway) < 0.0);
+    // Moving (weight 0), or feet outside the body: the animation's hips stay.
+    goal.maxAnchorShift = 15.0;
+    goal.anchorWeight = 0.0;
+    pose = swayed;
+    CHECK(Length(PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).anchorShift) == 0.0);
+    goal.anchorWeight = 1.0;
+    goal.feet = {leftAnkle, 0};
+    pose = swayed;
+    CHECK(Length(PoseTorso(pose, rig.parents, *chain, *left, *right, body, goal).anchorShift) == 0.0);
+}
+
 void TestBodyFollow() {
     using namespace mevr::ik;
     BodyRig rig;
@@ -12183,6 +12252,7 @@ int main() {
     TestTorsoPose();
     TestCameraHook();
     TestBodyFollow();
+    TestIdleSway();
     TestArmLength();
     TestReachScale();
     TestHandTargetsOrigin();

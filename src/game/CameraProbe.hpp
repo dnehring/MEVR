@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <string>
+
 // The player camera's hook, logged on each change (research/18, proposal 3). LE1's active camera
 // mode (SFXCameraNativeBase.CurrentCameraMode) places the camera at the bone of Shepard's body
 // mesh named by its HookName (`Camera` for exploration, combat, crouch and tight aim), plus its
@@ -16,5 +18,12 @@ namespace mevr::game::camera_probe {
 // most four lines a second).
 void Tick();
 void Shutdown();
+
+// `mevr camera trace <seconds>` (an idle sway report, 2026-11-14): every mod tick for that long, a CSV row in
+// %LOCALAPPDATA%\MEVR\camera-trace-<stamp>.csv: the pawn's place and yaw, its velocity, the game camera's place and
+// rotation, and the Camera, God, Head, Neck, LowerBack and Pelvis bones in the mesh component's space (what the
+// animation does, whatever the pawn does). Standing still with a still head, every change of the camera against the pawn
+// is sway the game puts into the view. Returns the file's path, or why not.
+std::string Command(std::string const& args);
 
 } // namespace mevr::game::camera_probe

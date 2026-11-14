@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "game/CameraProbe.hpp"
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/ik/CameraHook.hpp"
 #include "engine/Skeleton.hpp"
@@ -10,14 +11,92 @@
 
 #include <Windows.h>
 
+#include <algorithm>
+#include <cstdio>
+#include <filesystem>
 #include <format>
 #include <numbers>
+#include <sstream>
 #include <string>
 
 namespace mevr::game::camera_probe {
 namespace {
 
 #if defined(MEVR_GAME_LE1)
+
+// `mevr camera trace <seconds>`: one CSV row a mod tick (an idle sway report, 2026-11-14).
+ue3::FieldRef gActorVelocity{"Engine.Actor", "Velocity"};
+constexpr char const* kTraceBones[] = {"Camera", "God", "Head", "Neck", "LowerBack", "Pelvis"};
+constexpr int kTraceBoneCount = static_cast<int>(sizeof(kTraceBones) / sizeof(kTraceBones[0]));
+struct Trace {
+    std::FILE* file = nullptr;
+    std::string path;
+    LARGE_INTEGER start{}, frequency{};
+    double seconds = 0.0;
+    ue3::Object* mesh = nullptr;
+    int bones[kTraceBoneCount] = {};
+    std::uint64_t rows = 0;
+};
+Trace gTrace;
+
+void TraceClose(char const* why) {
+    if (gTrace.file == nullptr) {
+        return;
+    }
+    std::fclose(gTrace.file);
+    log::Info("camera: trace {} ({} rows): {}", why, gTrace.rows, gTrace.path);
+    gTrace = Trace{};
+}
+
+void TraceTick() {
+    if (gTrace.file == nullptr) {
+        return;
+    }
+    LARGE_INTEGER now{};
+    QueryPerformanceCounter(&now);
+    double const t = static_cast<double>(now.QuadPart - gTrace.start.QuadPart) / static_cast<double>(gTrace.frequency.QuadPart);
+    if (t >= gTrace.seconds) {
+        TraceClose("done");
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
+    ue3::Object* const mesh = pawn != nullptr ? player::Mesh(pawn) : nullptr;
+    ue3::Object* const camera = controller != nullptr ? player::Camera(controller) : nullptr;
+    if (pawn == nullptr || mesh == nullptr || camera == nullptr) {
+        return;
+    }
+    if (mesh != gTrace.mesh) {
+        gTrace.mesh = mesh;
+        auto const skeleton = engine::skeleton::ReadRefSkeleton(mesh);
+        for (int b = 0; b < kTraceBoneCount; ++b) {
+            gTrace.bones[b] = -1;
+            for (std::size_t i = 0; skeleton && i < skeleton->names.size(); ++i) {
+                if (skeleton->names[i] == kTraceBones[b]) {
+                    gTrace.bones[b] = static_cast<int>(i);
+                }
+            }
+        }
+    }
+    auto const at = player::Location(pawn).value_or(ue3::Vector{});
+    auto const rot = player::Rotation(pawn).value_or(ue3::Rotator{});
+    auto const vel = gActorVelocity.Read<ue3::Vector>(pawn).value_or(ue3::Vector{});
+    auto const pov = player::CameraPov(camera);
+    if (!pov || pov->location == nullptr || pov->rotation == nullptr) {
+        return;
+    }
+    std::string row = std::format("{:.4f},{},{:.2f},{:.2f},{:.2f},{},{:.2f},{:.2f},{:.2f},{:.3f},{:.3f},{:.3f},{},{},{}", t,
+        head_tracking::OnFoot() ? 1 : 0, at.x, at.y, at.z, rot.yaw, vel.x, vel.y, vel.z, pov->location->x, pov->location->y,
+        pov->location->z, pov->rotation->pitch, pov->rotation->yaw, pov->rotation->roll);
+    for (int b = 0; b < kTraceBoneCount; ++b) {
+        auto const c = gTrace.bones[b] >= 0
+            ? engine::skeleton::BoneLocation(mesh, gTrace.bones[b], engine::skeleton::Space::Component) : std::nullopt;
+        row += c ? std::format(",{:.3f},{:.3f},{:.3f}", c->x, c->y, c->z) : std::string(",,,");
+    }
+    row += '\n';
+    std::fputs(row.c_str(), gTrace.file);
+    ++gTrace.rows;
+}
 
 // Our reflection layer (research/34): the fields research/18 read from the code (CalculateOffsetHook
 // 0xCAEF50, GetCameraLocation 0xCB2240): PlayerController.PlayerCamera +0x6B0,
@@ -153,12 +232,59 @@ void TickLe1() {
 
 void Tick() {
 #if defined(MEVR_GAME_LE1)
+    TraceTick();
     TickLe1();
+#endif
+}
+
+std::string Command(std::string const& args) {
+#if defined(MEVR_GAME_LE1)
+    std::istringstream words(args);
+    std::string sub;
+    double seconds = 10.0;
+    words >> sub >> seconds;
+    if (sub != "trace") {
+        return "usage: mevr camera trace <seconds>";
+    }
+    seconds = std::clamp(seconds, 1.0, 120.0);
+    TraceClose("replaced");
+    wchar_t buffer[MAX_PATH] = {};
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
+        return "camera: no LOCALAPPDATA";
+    }
+    std::filesystem::path const folder = std::filesystem::path(buffer) / L"MEVR";
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    std::filesystem::path const file = folder / std::format(L"camera-trace-{:04}-{:02}-{:02}_{:02}-{:02}-{:02}.csv", st.wYear,
+        st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    std::FILE* f = nullptr;
+    if (_wfopen_s(&f, file.c_str(), L"w") != 0 || f == nullptr) {
+        return "camera: can't write the trace file";
+    }
+    std::string header = "t,onFoot,pawnX,pawnY,pawnZ,pawnYaw,velX,velY,velZ,camX,camY,camZ,camPitch,camYaw,camRoll";
+    for (char const* name : kTraceBones) {
+        header += std::format(",{0}X,{0}Y,{0}Z", name);
+    }
+    header += '\n';
+    std::fputs(header.c_str(), f);
+    gTrace.file = f;
+    gTrace.path = ini::Utf8(file);
+    gTrace.seconds = seconds;
+    QueryPerformanceFrequency(&gTrace.frequency);
+    QueryPerformanceCounter(&gTrace.start);
+    log::Info("camera: trace for {:.0f} s: {}", seconds, gTrace.path);
+    return std::format("camera: tracing {:.0f} s to {}", seconds, gTrace.path);
+#else
+    (void)args;
+    return "camera: LE1 only";
 #endif
 }
 
 void Shutdown() {
 #if defined(MEVR_GAME_LE1)
+    TraceClose("stopped (unload)");
     gLogged = {};
     gHaveLogged = false;
     gLoggedMode.clear();

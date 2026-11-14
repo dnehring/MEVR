@@ -653,6 +653,15 @@ void Write(Mesh* self, float deltaTime) {
             double const w = std::clamp(leg.weight, 0.0, 1.0);
             goal.wrist = animated + (stood - animated) * w;
             goal.pole = body.forward;
+        } else if (leg.planted) {
+            // Planted: the whole body slid by the anchor shift (the hips held over the feet); the foot goes back where the
+            // animation had it, the knee bends toward its animated place.
+            ik::Vec3 const anchorShift = torso.valid && torso.result.ok ? torso.result.anchorShift : ik::Vec3{};
+            if (ik::Length(anchorShift) < 0.01) {
+                continue;   // nothing moved: the leg as animated
+            }
+            goal.wrist = pose[leg.chain.hand].translation - anchorShift;
+            goal.pole = (pose[leg.chain.fore].translation - anchorShift) - pose[leg.chain.upper].translation;
         }
         ik::ArmResult const result = ik::PoseArm(pose, request.parents, leg.chain, side, body, goal);
         if (!result.ok) {
