@@ -272,7 +272,8 @@ This empty-input read-only query matches the frozen complete descriptor against
 a bounded list of at most 512 rows. It requires a unique current match; duplicate,
 missing, malformed or oversized state is not a selectable fixture. It does not
 use a client-supplied row, pointer, path or descriptor. Review the returned
-binding/context/match evidence before a separately authorized request:
+binding/context/match evidence, including `candidateAvailable=true` and
+`ownedBaseRouteObserved=true`, before a separately authorized request:
 
 ```powershell
 python tools/qa-le2/control.py C:\private\le2-run load-fixture --allow-fixture-load
