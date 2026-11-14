@@ -6,6 +6,7 @@ before staging a frozen fixture. request-load records an operator handoff;
 the operator starts the normal launcher and selects the staged save through Load Game. attach records
 evidence without declaring the scenario passed. reset archives test output and
 restores the original bytes, directory presence and file timestamps.
+archived-saves inventories verified LE2 save bytes from a completed reset.
 
 Native state/VR acceptance is evaluated by scenario.py, not this lifecycle tool.
 Only the Python API accepts injected process/lock providers for isolated tests.
@@ -20,6 +21,7 @@ import json
 import ntpath
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -661,13 +663,65 @@ def status(run):
                             "Use scenario.py evidence evaluation. Close owned game/VR processes before reset."}
 
 
+def archived_saves(run):
+    context_path = safe_path(run / "context.json")
+    context_sha = digest(context_path)
+    run, context = load_context(run, require_lock=False)
+    if (context["phase"] != "restored" or context.get("restorationVerified") is not True
+            or context.get("backupComplete") is not True):
+        raise SessionError("Save inventory requires a verified session reset")
+    plan = read_json(run / "plan.json")
+    profile = Path(context["profileRoot"])
+    staged_relative = relative_file(run, plan["fixture"]["targetRelativePath"]).relative_to(run).as_posix()
+    staged = profile / staged_relative
+    if staged != Path(context["fixtureTarget"]) or plan["fixture"]["sha256"] != context["fixtureSha256"]:
+        raise SessionError("Staged save identity differs from frozen plan")
+    item = context["protected"][0]  # load_context checks the frozen plan's profile-first ordering
+    before = {path.casefold(): metadata for path, metadata in item["before"]["files"].items()}
+    staged_relative = staged_relative.casefold()
+    archives = item.get("archives", [])
+    if not archives or not any(a.get("restored") is True for a in archives):
+        raise SessionError("Verified profile archive is missing")
+    rows, seen_archives = [], set()
+    for entry in archives:
+        archive_id = entry["path"]
+        if (not re.fullmatch(r"after/0-[0-9a-f]{32}", archive_id) or archive_id in seen_archives):
+            raise SessionError("Invalid or repeated profile archive path")
+        seen_archives.add(archive_id)
+        archive = relative_file(run, archive_id)
+        seen_paths = set()
+        for original, recorded in entry["state"]["files"].items():
+            key = original.casefold()
+            if not (key.startswith("save/me2/") and key.endswith(".pcsav")):
+                continue
+            if key in seen_paths:
+                raise SessionError("Ambiguous save path in archive")
+            seen_paths.add(key)
+            source = relative_file(archive, original)
+            if not source.is_file() or source.stat().st_size != recorded["bytes"] or digest(source) != recorded["sha256"]:
+                raise SessionError(f"Archived save differs from reset receipt: {archive_id}/{original}")
+            if key == staged_relative:
+                change = "staged-unchanged" if recorded["sha256"] == context["fixtureSha256"] else "staged-modified"
+            elif key not in before:
+                change = "new-path"
+            else:
+                change = "unchanged" if before[key]["sha256"] == recorded["sha256"] else "modified"
+            rows.append({"originalRelativePath": original, "archiveRelativePath": source.relative_to(run).as_posix(),
+                         "archiveRestored": entry["restored"], "sha256": recorded["sha256"],
+                         "bytes": recorded["bytes"], "change": change})
+    if digest(context_path) != context_sha or digest(run / "plan.json") != context["planSha256"]:
+        raise SessionError("Session evidence changed during save inventory")
+    return {"runId": context["runId"], "planSha256": context["planSha256"],
+            "contextSha256": context_sha, "saves": rows}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("prepare", help="Acquire coordinated lock, back up and stage a ready fixture")
     p.add_argument("plan", type=Path)
     p.add_argument("run", type=Path)
-    for command in ("request-load", "status", "reset"):
+    for command in ("request-load", "status", "reset", "archived-saves"):
         p = sub.add_parser(command)
         p.add_argument("run", type=Path)
     p = sub.add_parser("bind-process", help="Record exact live ME2 process identity after normal startup")

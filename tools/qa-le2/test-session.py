@@ -234,7 +234,8 @@ class SessionTests(unittest.TestCase):
 
     def test_restore_interruption_retries_without_losing_first_archive(self):
         self.quiet_prepare()
-        self.put(self.profile / "NewSave.pcsav", b"preserve me")
+        relative = "Save/ME2/NewCareer/AutoSave.pcsav"
+        self.put(self.profile / relative, b"preserve me")
         copy_snapshot = s.copy_snapshot
         def interrupted(source, target, manifest):
             if Path(target) == self.profile:
@@ -245,10 +246,13 @@ class SessionTests(unittest.TestCase):
                 s.reset(self.run, processes=lambda: [])
         archives = list((self.run / "after").glob("0-*"))
         self.assertEqual(len(archives), 1)
-        self.assertEqual((archives[0] / "NewSave.pcsav").read_bytes(), b"preserve me")
+        self.assertEqual((archives[0] / relative).read_bytes(), b"preserve me")
         s.reset(self.run, processes=lambda: [])
         self.assertRestored()
         self.assertTrue(archives[0].exists())
+        row, = [row for row in s.archived_saves(self.run)["saves"] if row["change"] == "new-path"]
+        self.assertEqual(row["archiveRelativePath"], (archives[0] / relative).relative_to(self.run).as_posix())
+        self.assertFalse(row["archiveRestored"])
 
     def test_corrupt_backup_refuses_before_any_original_changes(self):
         self.quiet_prepare()
@@ -285,6 +289,29 @@ class SessionTests(unittest.TestCase):
         (self.locks / "qa-cafeteria.lock").write_text("other run")
         with self.assertRaisesRegex(s.SessionError, "own"):
             s.reset(self.run, processes=lambda: [])
+
+    def test_archived_saves_identifies_new_changed_and_staged_bytes_after_reset(self):
+        self.quiet_prepare()
+        with self.assertRaisesRegex(s.SessionError, "verified session reset"):
+            s.archived_saves(self.run)
+        original = "Save/ME2/Original/Save_0001.pcsav"
+        added = "Save/ME2/NewCareer/AutoSave.pcsav"
+        self.put(self.profile / original, b"modified existing save")
+        self.put(self.profile / added, b"new autosave")
+        self.put(self.profile / "Save/ME1/Other/Save_0002.pcsav", b"other game")
+        s.reset(self.run, processes=lambda: [])
+        self.assertRestored()
+        report = s.archived_saves(self.run)
+        rows = {row["originalRelativePath"]: row for row in report["saves"]}
+        self.assertEqual({path: row["change"] for path, row in rows.items()},
+                         {original: "modified", added: "new-path", self.target_relative: "staged-unchanged"})
+        self.assertEqual(report["contextSha256"], s.digest(self.run / "context.json"))
+        recovered = self.run / rows[added]["archiveRelativePath"]
+        self.assertEqual(recovered.read_bytes(), b"new autosave")
+        self.assertEqual(rows[added]["sha256"], s.digest(recovered))
+        recovered.write_bytes(b"bad autosave")
+        with self.assertRaisesRegex(s.SessionError, "differs from reset receipt"):
+            s.archived_saves(self.run)
 
     def test_target_traversal_and_existing_slot_refused(self):
         for target in ("../outside.pcsav", "Save/ME2/../../outside.pcsav", "C:/outside.pcsav",

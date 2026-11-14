@@ -387,6 +387,22 @@ other pending gates instead of trying to force an overall pass.
 Keep automated, native, stereo, physical-headset, performance
 and campaign/DLC outcomes separate.
 
+To locate an early checkpoint after a verified reset, use the existing session
+tool to check the archived ME2 save bytes against the reset receipt:
+
+```powershell
+python tools/qa-le2/session.py archived-saves <run-directory>
+```
+
+The report lists each save's original relative path, run-relative archive
+path, size, SHA-256 and change classification. It distinguishes untouched
+staging files from new paths, modifications and unchanged original saves.
+If reset was interrupted and retried, each recorded archive gets its own rows.
+Use the scene and slot evidence to select the checkpoint, then verify the
+reported hash and use the existing save adapter's `roundtrip` and pinned TSE
+oracle. A new path indicates a filesystem change. Establish its gameplay origin
+and normal-load behavior separately. See the [Lazarus recovery instructions](../../research/le2-ammo-fixture-source.md#recovering-a-natural-onboarding-checkpoint-without-another-collector).
+
 ## Offline checks
 
 ```powershell

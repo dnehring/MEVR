@@ -114,14 +114,13 @@ Reuse the existing scripted reset archive for collection:
    during archival, preserves retry archives and marks restoration. After reset,
    require recorded `phase=restored` and `restorationVerified=true`; resolve the
    archive entry for the protected profile root, not an assumed numeric index.
-3. Resolve the **actual** `Save/ME2/<career>/<filename>.pcsav` under that archive.
-   Verify its hash and size against that entry before reading. If retries left
-   multiple entries, retain their identities and select by the recorded state;
-   do not blindly use the last directory. Compare with `protected[].before` and
-   the staged fixture to distinguish a new natural save from existing/staged
-   data. Keep the context hash, run ID, archive entry and original relative path
-   alongside the recovered bytes. Do not inspect restored live profiles to
-   reconstruct a missing mapping.
+3. Run `python tools/qa-le2/session.py archived-saves RUN`. It checks each
+   archived ME2 save's hash and size and compares it with the original snapshot
+   and staged-file identity. Use the scene and slot evidence to select the
+   actual `Save/ME2/<career>/<filename>.pcsav`. Multiple reset attempts remain
+   separate entries. Keep the context hash, run ID, archive entry and original
+   relative path alongside the recovered bytes. Use the recorded path in the
+   archive even if the restored live profile has since changed.
 4. Use the existing commands below, with a new private output directory and
    actual resolved archive paths. `roundtrip` validates LE2 v30/CRC and writes
    unchanged bytes plus a hash receipt exclusively. The pinned TSE oracle checks
@@ -159,6 +158,11 @@ Private evidence identifier: `le2-recovery-handoff/recovery-audit`.
 `1a1a58a2f9d1153e1d7d8a6cc9260ec0aa02e25e74913a99ab212b9d0711533d`.
 The existing reset mapping and exclusive archive command were exercised offline
 on already archived chapter bytes; pinned TSE accepted the unchanged base.
+The scripted inventory matched 92 saves across 23 completed reset archives:
+61 unchanged originals, 23 unchanged staged entries and eight modified
+originals. None had a new unstaged path. The native New Save from the resource
+cycle was collected separately and preserved through qualified recovery,
+so its original context falls outside this completed-reset inventory.
 No new Lazarus fixture, gameplay, input, deployment or restoration occurred.
 
 ## Native reload sequence that VR must preserve
