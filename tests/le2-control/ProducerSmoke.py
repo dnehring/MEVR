@@ -50,15 +50,18 @@ def main(executable):
         assert len(list(directory.glob("consumed-*.request"))) == 3
         assert not (directory / "request.control").exists()
         assert not (directory / "outstanding.json").exists()
+        result = control.submit(run, 'probe-fov', timeout=5, allow_probe_fov=True, bind=bind)
+        assert result['status'] == 'rejected'
+        assert json.loads(result['payload'])['reason'] == 'native FOV probe is disabled'
         for case in ('wrong-lease', 'expired'):
             rejection = negative.probe(run, case, timeout=5, bind=bind)
             assert rejection['status'] == 'rejected' and rejection['lease'] == identity['lease']
         # Neither rejection may poison the next legitimate request.
         assert control.submit(run, 'ping', timeout=5, bind=bind)['status'] == 'completed'
-        assert len(list((directory / 'history').glob('*.result'))) == 6
-        assert len(list(directory.glob('consumed-*.request'))) == 6
+        assert len(list((directory / 'history').glob('*.result'))) == 7
+        assert len(list(directory.glob('consumed-*.request'))) == 7
         assert not (directory / 'outstanding.json').exists()
-        print('Python/C++ filesystem smoke passed: ping, observe, disabled console, wrong lease, expiry and recovery; fake process only')
+        print('Python/C++ filesystem smoke passed: ping, observe, disabled console/FOV, wrong lease, expiry and recovery; fake process only')
     finally:
         if directory is not None and directory.is_dir():
             (directory / "stop.fixture").touch(exist_ok=False)

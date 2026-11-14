@@ -88,8 +88,8 @@ optional descriptor at `0x4` (size `0x28`) and optional delegate at `0x2c`
 (size `0x10`). The descriptor contains `Career`, `SaveName`, `Index`, and `Type`;
 it is not interchangeable with a bare path. Source enums identify Load=1,
 Save=2, EnumerateSaves=7, QueryFreeSpace=8 and PrepareSave=9; save types are
-Manual=0, Quick=1, Auto=2, Chapter=3. These values are references, not permission
-to bypass menu initialization or call the native queue directly.
+Manual=0, Quick=1, Auto=2, Chapter=3. These values do not validate bypassing menu
+initialization or calling the native queue directly.
 
 `CanSave(out FString Reason)` returns a boolean at `0x10` after its string at
 `0x0`. The inspected script rejects editor mode, Kismet no-save, combat/forced

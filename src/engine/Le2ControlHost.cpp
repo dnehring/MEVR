@@ -297,7 +297,13 @@ struct Endpoint::Impl {
         descriptor["hashScope"] = "on-disk files at paths of loaded modules; not memory hashes";
         descriptorBytes = json::Write(descriptor);
         Publish(directory / L"identity.json", descriptorBytes);
+#if defined(MEVR_LE2_CONTROL_TEST)
         gate = std::make_unique<wire::Gate>(identity, false);
+#else
+        // An explicit empty probe request may attempt one guarded scalar query.
+        // General console dispatch remains disabled independently.
+        gate = std::make_unique<wire::Gate>(identity, false, true);
+#endif
         attached = true;
     }
     void Request(std::uint64_t tick, std::uint32_t thread) {
@@ -330,14 +336,26 @@ struct Endpoint::Impl {
             capabilities["ping"] = true; capabilities["observeDiagnostic"] = true;
             capabilities["observeWorld"] = false; capabilities["nativeConsole"] = false;
             capabilities["observeStructuralWorld"] = false;
+            capabilities["probeFov"] = false;
 #if !defined(MEVR_LE2_CONTROL_TEST)
             capabilities["observeStructuralWorld"] = true;
+            capabilities["probeFov"] = true;
             payload["observationScope"] = "sdk-structural-diagnostic";
+            le2_diagnostic::ObserverServices services{};
+            services.inspectTarget = &host::process_event::InspectDiagnosticTarget;
+            services.observeController = &host::process_event::ObserveValidatedController;
+            services.readHookSnapshot = &host::process_event::ReadDiagnosticSnapshot;
             // Tick is entered only through DiagnosticTickGate on its hook-owned
             // game thread. Ping never traverses engine memory.
             if (decoded->verb == "observe") {
                 auto const provenance = host::process_event::ReadDiagnosticSnapshot();
-                payload["observation"] = le2_diagnostic::Observe(thread, &provenance);
+                payload["observation"] = le2_diagnostic::Observe(thread, &provenance, &services);
+            } else if (decoded->verb == "probe-fov") {
+                // This invokes script and is not labelled a read-only sample.
+                payload["readOnly"] = false;
+                auto probe = le2_diagnostic::ProbeFov(thread, services);
+                result.status = probe.status;
+                payload["probe"] = std::move(probe.payload);
             }
 #endif
             payload["capabilities"] = std::move(capabilities);
@@ -352,6 +370,11 @@ struct Endpoint::Impl {
         // Revalidate before publishing any claimed observation. Failure leaves uncertainty.
         Ownership();
         Publish(directory / L"result.control", *encoded);
+        if (decoded->verb == "probe-fov" && result.status == "error") {
+            // Preserve the correlated uncertainty result, then stop this lease.
+            disabled = true;
+            error = "native FOV probe outcome uncertain; no further requests admitted";
+        }
     }
 };
 
