@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE2 validation tooling evidence
 
-Checkpoint: 2026-11-13. **Offline foundation implemented; native proof pending.**
+Checkpoint: 2026-11-13. **Offline foundation implemented; native load/save observed and restoration verified. Reload, scripted control and gameplay/VR proof remain pending.**
 Use the [workflow](../tools/qa-le2/README.md) and [coverage contract](../docs/le2-validation-coverage.md).
 This report does not promote the three public draft scenarios to validated.
 
@@ -11,8 +11,8 @@ This report does not promote the three public draft scenarios to validated.
 |---|---|
 | Established tool reuse | TSE `6451f23d1fba62358328dce4e87733970f36ebf1` schema/codec inspected; Python adapter is original, span-preserving code. Direct-library and CLI-fork alternatives documented in [save adapter research](le2-save-adapter.md). Headless verification reuses actual upstream source. |
 | Safe resource/save preparation | Full v30 parse, checksum, bounded input, fixed-size allowlist, hash and before-value preconditions, exclusive output, constrained semantic diff and receipt. Supports existing resource/ammo/power/squad/transform/plot fields; native legal values are not inferred from format validity. |
-| Independent encoding verification | TSE source decoder and serializer accept original and prepared upstream/private saves and independently reserialize them identically. Cross-check verifies all declared scalar edits and rejects unrequested semantic changes. The official editor GUI also opened a prepared private copy and showed the expected resource values; native load/save/reload remains pending. |
-| Protected lifecycle | Full profile/config/Win64 snapshot and verification; frozen inputs; new save slot; operator load handoff; exact process binding; archive/reset and recovery. Temporary-install tests exercise corrupt/incomplete backups, interrupted staging/reset, absent paths, new files, changed ownership and stale PID identity. A real no-launch staging/reset attempt now verifies restoration of the current installation; restoration after game writes remains pending. |
+| Independent encoding verification | TSE source decoder and serializer accept original and prepared upstream/private saves and independently reserialize them identically. Cross-check verifies all declared scalar edits and rejects unrequested semantic changes. The official editor GUI also opened a prepared private copy and showed the expected resource values; native load/save succeeded in the later baseline; reload remains pending. |
+| Protected lifecycle | Full profile/config/Win64 snapshot and verification; frozen inputs; new save slot; operator load handoff; exact process binding; archive/reset and recovery. Temporary-install tests exercise corrupt/incomplete backups, interrupted staging/reset, absent paths, new files, changed ownership and stale PID identity. Both a no-launch staging/reset and a later native load/save attempt verified restoration of the current installation, including archival of game-created saves. |
 | Scenario contracts | Reload, interrupt and scanning drafts include variants, acquisition tasks, actions, artifact requirements and assertions. Bound recipes and observed starting state are checked; evidence carries run/build/fixture identity and hashes. No arbitrary story recipe is represented as coherent or validated. |
 | Cross-module workflow | All three templates bind to a synthetic v30 fixture through the actual save adapter, recipe/receipt, scenario loader and protected runner; preparation changes the intended scalar, incorrect starting state is rejected and reset restores the fake installation. Only process inventory is injected; no scenario-loader stub is used. |
 | Evidence boundaries | Native, VR, stereo visual, physical-headset, performance and campaign gates remain separate. Missing observations remain pending; native inputs cannot prove VR, and synthetic headset evidence cannot prove comfort. Artifact integrity does not authenticate producer truth. |
@@ -174,13 +174,13 @@ the check were closed afterward. The existing game session was left running.
 
 The following requirements are **not achieved** at this checkpoint:
 
-1. Working interactive desktop access for the next attempt. Ownership was resolved
-   for the attempt below using the user's resume instruction and the prior
-   owner's explicit game-free report. Recheck ownership before retrying. Never run the
-   archived old rollback; no system OpenXR setting changed.
-2. Normal ME2 selection/loading and in-game save/reload persistence. Two private saves parse as Normandy saves and the
-   chapter save as `BioP_EndGm2`; neither establishes access to a particular
-   scenario without loading and inspection.
+1. A proven ME2 scripted control path. Desktop access succeeded on retry, but
+   the LE2 ASI directory was empty. Follow the [scripted testing handoff](../docs/le2-scripted-testing.md)
+   instead of extending UI automation. Recheck ownership before another run.
+2. In-game reload persistence. The retry below selected the staged Normandy
+   save, loaded the crew deck and created a new native save; reload was not
+   performed. The chapter save's `BioP_EndGm2` string still establishes no
+   access to a particular gameplay scenario without loading and inspection.
 3. Naturally acquired, verified base fixtures for all three scenarios. Determine
    career/slot discovery through Load Game and bind actual starting conditions.
 4. Complete dependency coverage and named coherent story recipes. [Zanethu source
@@ -200,8 +200,8 @@ The following requirements are **not achieved** at this checkpoint:
    campaign/DLC coverage. The matrix identifies the work but is not evidence of
    completion.
 
-Continue useful offline work while desktop access is unavailable. Once accessible,
-recheck ownership and prove a minimal no-op fixture load and restore before increasing scope.
+Prioritize the ME2 request-channel integration and complete the minimal no-op
+fixture load/save/reload cycle before increasing scope.
 Then validate a resource-only preparation, save/reload persistence and each
 natural scenario. Keep every result attributable to its actual candidate and
 loaded binary; retain unsuccessful runs and restoration outcomes.
@@ -240,3 +240,43 @@ Retry with a fresh plan/run after desktop access and ownership checks. Select
 the staged save through normal Load Game, establish actual selected-save
 identity, then save to a new slot, reload, close normally and verify restoration.
 Native, VR and headset gates remain pending.
+
+
+## Native retry: load and save proven, reload pending
+
+The permission retry on November 13 reached Steam and the trilogy selector.
+Run `a69e9f89-1c16-47a4-9d67-6f3cf0948217` used a fresh protected backup, the same
+no-op fixture and verified LE2 executable. Its exact process/start identity was
+bound by the runner. No ASI or renderer was installed.
+
+Original captures show **Save 99 - Normandy SR-2** selected in Load Game,
+followed by Shepard on the crew deck with the Crew Quarters prompt. The native
+pause menu showed credits 32193, medi-gel 7, heavy weapon ammo 6, palladium 93177,
+iridium 71154, platinum 37333 and element zero 4193. Create New Save produced
+`Save_0100.pcsav`, SHA256
+`2d52882c152b582eaae6e5ca4a05099279e18aa402e4998367df893e27cbc236`.
+The pinned TSE decoder accepted it, verified its checksum and independently
+reserialized it byte-identically. The semantic diff has no player-field changes.
+It does include time/loading/streaming changes, a small position adjustment,
+level-array changes and plot integer 257 changing from 11 to 0.
+Do not infer story coherence or a completely unchanged state from this result.
+
+Reload was not performed. A keypress was withheld by approval review while the
+last capture still showed saving, then desktop automation became stuck between
+minimized-window recovery and manual-input detection. The user redirected work
+to the repository's scripted testing skills. The existing save was preserved and
+its hash rechecked before cleanup. A normal close request did not finish exiting;
+only the identity-verified owned game was subsequently terminated, and its
+launcher closed. This is not proof of graceful game shutdown.
+
+The protected runner archived the post-test profile, including both test saves,
+restored its three protected roots and released its own lock. Fresh independent
+snapshots matched the recorded original content, timestamps and presence. The
+private run is `local-tools/le2-native-handoff/run-20261114T035022Z/`; original
+captures, independent save inspection, diff, context and `manual-review.json`
+remain there. These are attributed manual observations, not an implemented LE2
+runtime exporter or a passing gameplay/VR audit.
+
+Next: implement and prove the bounded [ME2 scripted control slice](../docs/le2-scripted-testing.md),
+then complete normal save/reload and the three gameplay scenarios. The LE1
+fake-headset runner must not be deployed unchanged into this ME2 test.
