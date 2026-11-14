@@ -114,6 +114,15 @@ another save, so keep any earlier checkpoint separately. If the game only
 allows a save after the tutorial, use it for ordinary ammo transfer and retain
 the tutorial progression case separately.
 
+Once the operator has finished saving, identify the intended checkpoint by
+career, displayed location and slot in the game's Load menu. Copy the exact
+save privately and record its hash before preparing variants. For a new career,
+use ordinary Switch Careers and Load Game when the scripted loader cannot select
+it. Preserve the selected row and post-load capture, then bind that result to
+the protected run. Use the private copy for no-op load verification and measure
+its selected weapon capacity before preparing ammo edits. See the
+[scripted loading boundary](../tools/qa-le2/control.md#reviewed-frozen-fixture-loading).
+
 | Scenario | Locally verified candidate | Next acquisition action |
 |---|---|---|
 | Reload/tutorial | Installed `BioD_ProCer_100RezRoom.pcc` contains `LS10_Reload_Heatsink`, `SFXSeqEvt_TutorialReload_0`, a comparison following that event, and `SFXSeqAct_SaveGame_1`. The same package contains the pistol/armor pickup and cover tutorial sequences. `BioP_ProCer.pcc` is installed. | Start a separate protected normal new-game profile and progress naturally through the opening. Capture the first legally available save before the thermal-clip/reload sequence and another before completion. Determine exactly when the authored save action runs; its presence does not guarantee a pre-reload save. Inspect tutorial event routing, counter and downstream sequence before accepting the physical reload. Do not teleport a late-game Normandy save into this map. |
