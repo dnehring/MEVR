@@ -24,6 +24,13 @@ Offline preparation can continue while another session owns the game:
 [archived diagnostics and observer design](../../research/le2-runtime-observer.md) distinguish reusable capture formats from pending scenario-specific runtime assertions.
 These tools do not establish native or VR acceptance. Keep all generated artifacts private.
 
+The [live resource observer](../../research/le2-resource-observation.md) and
+[state exporter](export-state.md) provide the next starting-state check: collect
+`observe-resources` through the bound channel, then export its archived response
+against the frozen scenario. Unavailable fields stay absent with reasons. A
+matching report checks observed starting values only; scene review, normal
+save/reload and VR interaction remain separate gates.
+
 The [Steam launch adapter](launch.md) provides read-only preflight and a guarded
 launch path where installed launcher support is verified. The [bound control
 client](control.md) supplies request correlation and uncertainty recovery. An

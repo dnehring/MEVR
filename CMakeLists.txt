@@ -1262,6 +1262,9 @@ if (MEVR_BUILD_TESTS)
         set_tests_properties(mevr-le2-capture PROPERTIES TIMEOUT 30)
         add_test(NAME mevr-le2-launch COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-launch.py)
         add_test(NAME mevr-le2-control-client COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-control.py)
+        add_test(NAME mevr-le2-export-state COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-export-state.py)
+        set_tests_properties(mevr-le2-export-state PROPERTIES
+            ENVIRONMENT "LE2_CONTROL_CPP=$<TARGET_FILE:mevr-le2-control-codec-tests>" TIMEOUT 60)
         set_tests_properties(mevr-le2-control-client PROPERTIES
             ENVIRONMENT "LE2_CONTROL_CPP=$<TARGET_FILE:mevr-le2-control-codec-tests>")
         add_test(NAME mevr-le2-control-attach COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-control-attach.py)

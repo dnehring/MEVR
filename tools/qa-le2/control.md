@@ -38,6 +38,14 @@ sample. It does not establish a loaded save or permit gameplay actions.
 `payload.saveMenu`. It follows the current player's manager/panel relationships
 and reports menu state and bounded save-list evidence. It neither initializes a
 menu nor selects a fixture. Missing, ambiguous or incomplete state stays unknown.
+`observe-resources` is an empty-input, read-only query under
+`payload.resourceObservation`. It samples the current player's live inventory
+twice, with independent availability for credits, medi-gel, four minerals,
+probes and fuel. It never substitutes the serialized save cache. See the
+[source and identity limits](../../research/le2-resource-observation.md) and
+[offline state exporter](export-state.md). The integrated diagnostic host
+advertises `observeResources`; the offline producer fixture keeps it false.
+An available value is a point-in-time observation, not save/reload proof.
 The diagnostic host separately opts into `probe-fov`, an explicit one-entry
 native scalar query described below. Its availability is not `nativeConsole`
 permission and does not make `observe` a native call. A client/codec build alone
@@ -410,8 +418,9 @@ One blank line separates the headers from exactly `bytes` payload bytes. UUIDs
 and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings.
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
-control characters. `ping`, `observe`, `observe-save-menu`, `probe-fov`,
-`advance-splash`, and `open-load-menu` requests require an empty payload.
+control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`,
+`observe-fixture`, `load-fixture`, `probe-fov`, `advance-splash`, and
+`open-load-menu` requests require an empty payload.
 Unknown, duplicated, reordered, partial or trailing data is
 rejected. C++ and Python implementations have executable byte-conformance tests.
 
