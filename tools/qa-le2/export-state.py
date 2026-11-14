@@ -50,7 +50,12 @@ def pairs(items):
 def parse(data):
     def bad_number(value):
         raise ValueError(f'Nonfinite JSON number: {value}')
-    value = json.loads(data.decode('utf-8-sig'), object_pairs_hook=pairs, parse_constant=bad_number)
+    def finite_float(value):
+        number = float(value)
+        require(math.isfinite(number), f'JSON number exceeds finite range: {value}')
+        return number
+    value = json.loads(data.decode('utf-8-sig'), object_pairs_hook=pairs,
+                       parse_constant=bad_number, parse_float=finite_float)
     require(isinstance(value, dict), 'JSON object required')
     return value
 

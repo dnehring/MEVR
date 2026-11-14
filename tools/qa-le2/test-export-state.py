@@ -134,6 +134,16 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(self.invoke(), 1)
         self.assertFalse((self.run / 'artifacts').exists())
 
+    def test_exponent_overflow_refused_even_in_discarded_payload_field(self):
+        # parse_constant handles NaN/Infinity tokens, not valid number syntax
+        # overflowing Python's float. Ignored outer fields must not evade this.
+        for number in ('1e400', '-1e400'):
+            data = (json.dumps(self.payload)[:-1] + ',"ignoredOverflow":' + number + '}').encode()
+            result = dict(self.result, payload=data, bytes=str(len(data)))
+            (self.run / f'control/history/{self.token}.result').write_bytes(e.control.encode(result))
+            self.assertEqual(self.invoke(), 1)
+            self.assertFalse((self.run / 'artifacts').exists())
+
     def test_bits_must_match_value(self):
         self.payload['resourceObservation']['resources']['probes']['sampleBits'] = '0x00000003'
         self.archive()
