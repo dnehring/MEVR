@@ -535,15 +535,35 @@ class ClientTests(unittest.TestCase):
         self.assertFalse((self.root / "outstanding.json").exists())
 
     def test_module_generation_change_is_uncertain(self):
-        self.peer()
+        # This case exercises identity reconciliation, not peer scheduling.
+        # Publish a real file response when the real request is published so a
+        # busy test host cannot turn the assertion into an unrelated timeout.
+        publish = c.publish
+        requests = []
+        def responding_publish(path, data):
+            publish(path, data)
+            if path == self.root / "request.control":
+                request = c.decode(path.read_bytes())
+                requests.append(request)
+                path.unlink()
+                publish(self.root / "result.control",
+                        c.encode(dict(request, kind="result", status="completed")))
         calls = []
         def bind(_):
             identity = IDENTITY.copy()
             if calls: identity["mod"] = "d" * 64
             calls.append(1)
             return self.root, identity
-        with self.assertRaisesRegex(c.ControlError, "identity changed"): c.submit(self.root, "ping", bind=bind)
+        with mock.patch.object(c, "publish", side_effect=responding_publish):
+            with self.assertRaisesRegex(c.ControlError, "identity changed"):
+                c.submit(self.root, "ping", bind=bind)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(len(calls), 2)
         self.assertTrue((self.root / "outstanding.json").exists())
+        self.assertTrue((self.root / "result.control").exists())
+        self.assertFalse((self.root / "client.lock").exists())
+        self.assertEqual(len(list((self.root / "history").glob("*.request"))), 1)
+        self.assertEqual(len(list((self.root / "history").glob("*.result"))), 0)
 
     def test_existing_client_lock_is_not_removed(self):
         (self.root / "client.lock").write_text("another-client")
