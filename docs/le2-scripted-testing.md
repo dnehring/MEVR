@@ -101,3 +101,8 @@ Actual Python-to-C++ filesystem integration passes with fake process identity;
 this remains offline evidence. The next native gate remains a real game-thread handshake and validated state,
 followed by the normal load/save/reload cycle. Three scenario and VR acceptance
 gates remain open.
+
+The [native console reuse audit](../research/le2-native-console-reuse.md) records
+the remaining hook-target and allocator/string-lifetime prerequisites. Preserve
+the existing LE2-specific allocator route; do not enable console dispatch merely
+because the observed parameter layout matches the SDK.

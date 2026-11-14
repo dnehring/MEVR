@@ -183,5 +183,8 @@ foreign fields, wrong size/count/return/type/flags/mask, malformed dimensions an
 storage spans, excluded locals, cyclic owner and function lists, template
 functions, and metadata access faults. Release and Debug builds/tests passed
 with MSVC `/W4 /WX`. Compile/test results establish synthetic behavior only.
-Live LE2 load/travel, normal HUD/save comparison, object lifecycle, and actual
-producer integration remain separate uncompleted gates.
+The monolithic diagnostic producer now compiles and calls this observer for
+`observe`; its temporary-file integration tests remain offline evidence. Live
+LE2 load/travel, normal HUD/save comparison, object lifecycle, and native
+producer verification remain separate uncompleted gates. See the
+[native console reuse audit](le2-native-console-reuse.md) before adding calls.
