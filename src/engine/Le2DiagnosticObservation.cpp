@@ -8,6 +8,7 @@
 
 #include <Windows.h>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -22,6 +23,15 @@ constexpr unsigned kMaxObjects = 64 * 1024 * 1024;
 constexpr unsigned kMaxPlayers = 64;
 constexpr unsigned kMaxClassDepth = 64;
 constexpr unsigned kNameBytes = 128;
+constexpr unsigned kMaxOwnerFields = 4096;
+constexpr unsigned kMaxFunctionFields = 256;
+constexpr unsigned kMaxParameters = 16;
+constexpr std::uint64_t kParm = 0x80;
+// Declaration comparison only: no SDK parameter instance is constructed.
+static_assert(sizeof(APlayerController_execConsoleCommand_Parms) == 0x24);
+static_assert(offsetof(APlayerController_execConsoleCommand_Parms, Command) == 0);
+static_assert(offsetof(APlayerController_execConsoleCommand_Parms, bWriteToLog) == 0x10);
+static_assert(offsetof(APlayerController_execConsoleCommand_Parms, ReturnValue) == 0x14);
 
 struct ObjectSample {
     bool available{};
@@ -29,6 +39,24 @@ struct ObjectSample {
     std::uintptr_t address{};
     int index{};
     char className[kNameBytes * 2]{};
+};
+struct ParameterSample {
+    ObjectSample property;
+    char name[kNameBytes]{};
+    int offset{}, elementSize{}, arrayDim{};
+    std::uint64_t flags{};
+    bool hasBoolMask{};
+    std::uint32_t boolMask{};
+};
+struct ConsoleSample {
+    ObjectSample function;
+    char const* reason{"player-controller-unavailable"};
+    std::uint32_t functionFlags{};
+    unsigned nativeIndex{}, numParms{}, parmsSize{};
+    int returnOffset{};
+    unsigned parameterCount{};
+    ParameterSample parameters[kMaxParameters]{};
+    bool parametersComplete{}, layoutMatches{};
 };
 struct Sample {
     bool tableAvailable{};
@@ -41,6 +69,7 @@ struct Sample {
     bool positionAvailable{};
     char const* positionReason{"pawn-unavailable"};
     float x{}, y{}, z{};
+    ConsoleSample console;
 };
 static_assert(std::is_trivially_destructible_v<Sample>);
 
@@ -120,6 +149,105 @@ bool ReadObject(Table const& table, UObject const* object, char const* package, 
     return true;
 }
 
+bool ExpectedParameter(ParameterSample const& p, char const* name, char const* type,
+                       int offset, int size, std::uint64_t flags, std::uint32_t boolMask = 0) {
+    return std::strcmp(p.name, name) == 0 && std::strcmp(p.property.className, type) == 0 &&
+        p.offset == offset && p.elementSize == size && p.arrayDim == 1 && p.flags == flags &&
+        (boolMask == 0 ? !p.hasBoolMask : p.hasBoolMask && p.boolMask == boolMask);
+}
+bool HasExpectedParameter(ConsoleSample const& sample, char const* name, char const* type,
+                          int offset, int size, std::uint64_t flags, std::uint32_t boolMask = 0) {
+    for (unsigned i = 0; i < sample.parameterCount; ++i)
+        if (ExpectedParameter(sample.parameters[i], name, type, offset, size, flags, boolMask)) return true;
+    return false;
+}
+
+void ReadConsole(Table const& table, APlayerController const* controller, ConsoleSample& out) {
+    // Match Legacy's exact declaration owner, not a derived class's override.
+    auto const* owner = controller->Class;
+    out.reason = "player-controller-declaration-class-unavailable";
+    unsigned depth = 0;
+    while (owner != nullptr && depth++ < kMaxClassDepth) {
+        if (!ClassMetadata(table, owner)) return;
+        if (Qualified(table, owner, "Engine", "PlayerController")) break;
+        owner = static_cast<UClass const*>(owner->SuperField);
+    }
+    if (owner == nullptr || !Qualified(table, owner, "Engine", "PlayerController")) return;
+    UFunction const* function = nullptr;
+    unsigned fields = 0;
+    for (auto const* field = owner->Children; field != nullptr; field = field->Next) {
+        out.reason = "owner-child-cycle-or-limit";
+        if (++fields > kMaxOwnerFields) return;
+        out.reason = "invalid-or-foreign-owner-child";
+        if (!table.Listed(field, true) || !IsA(table, field, "Core", "Field") || field->Outer != owner) return;
+        char name[kNameBytes]{};
+        out.reason = "owner-child-name-unavailable";
+        if (!NameText(field->Name, name)) return;
+        if (std::strcmp(name, "ConsoleCommand") != 0) continue;
+        out.reason = "duplicate-console-command-declaration";
+        if (function != nullptr) return;
+        out.reason = "console-command-is-not-an-exact-Core.Function";
+        if (!ClassMetadata(table, field->Class) || !Qualified(table, field->Class, "Core", "Function")) return;
+        function = static_cast<UFunction const*>(field);
+    }
+    out.reason = "console-command-declaration-missing";
+    if (function == nullptr) return;
+    out.reason = "console-command-function-unavailable";
+    if (!ReadObject(table, function, "Core", "Function", out.function)) return;
+    out.functionFlags = function->FunctionFlags;
+    out.nativeIndex = static_cast<unsigned short>(function->iNative);
+    out.numParms = function->NumParms;
+    out.parmsSize = function->ParmsSize;
+    out.returnOffset = function->ReturnValueOffset;
+
+    fields = 0;
+    for (auto const* field = function->Children; field != nullptr; field = field->Next) {
+        out.reason = "function-child-cycle-or-limit";
+        if (++fields > kMaxFunctionFields) return;
+        out.reason = "invalid-or-foreign-function-child";
+        if (!table.Listed(field, true) || !IsA(table, field, "Core", "Property") || field->Outer != function) return;
+        auto const* property = static_cast<UProperty const*>(field);
+        if ((property->PropertyFlags & kParm) == 0) continue; // locals do not belong to the call block
+        out.reason = "parameter-count-limit";
+        if (out.parameterCount == kMaxParameters) return;
+        auto& p = out.parameters[out.parameterCount];
+        out.reason = "parameter-identity-or-name-unavailable";
+        if (!ReadObject(table, property, "Core", "Property", p.property) || !NameText(property->Name, p.name)) return;
+        // Check counts/span without multiplication overflow or trusting signed offsets.
+        p.arrayDim = property->ArrayDim;
+        p.elementSize = property->ElementSize;
+        p.offset = property->Offset;
+        p.flags = property->PropertyFlags;
+        out.reason = "invalid-parameter-storage-span";
+        if (p.arrayDim <= 0 || p.arrayDim > 1024 || p.elementSize <= 0 || p.elementSize > 65535 ||
+            p.offset < 0 || static_cast<unsigned>(p.offset) > out.parmsSize ||
+            static_cast<std::uint64_t>(p.arrayDim) * p.elementSize > out.parmsSize - static_cast<unsigned>(p.offset)) return;
+        out.reason = "duplicate-or-overlapping-parameter";
+        for (unsigned i = 0; i < out.parameterCount; ++i) {
+            auto const& prior = out.parameters[i];
+            if (std::strcmp(prior.name, p.name) == 0 ||
+                (p.offset < prior.offset + prior.arrayDim * prior.elementSize &&
+                 prior.offset < p.offset + p.arrayDim * p.elementSize)) return;
+        }
+        if (Qualified(table, property->Class, "Core", "BoolProperty")) {
+            p.hasBoolMask = true;
+            p.boolMask = static_cast<UBoolProperty const*>(property)->BitMask;
+            out.reason = "invalid-bool-storage-or-mask";
+            if (p.elementSize != 4 || p.boolMask == 0 || (p.boolMask & (p.boolMask - 1)) != 0) return;
+        }
+        ++out.parameterCount;
+    }
+    out.parametersComplete = true;
+    // These expected flags and offsets are the pinned SDK declaration, not a
+    // capability grant. Scalar DWORD boolean comparison is exact (mask 1).
+    out.layoutMatches = out.parmsSize == 0x24 && out.numParms == 3 && out.returnOffset == 0x14 &&
+        out.parameterCount == 3 &&
+        HasExpectedParameter(out, "Command", "Core.StrProperty", 0, 16, 0x400080) &&
+        HasExpectedParameter(out, "bWriteToLog", "Core.BoolProperty", 0x10, 4, 0x90, 1) &&
+        HasExpectedParameter(out, "ReturnValue", "Core.StrProperty", 0x14, 16, 0x400580);
+    out.reason = out.layoutMatches ? "sdk-parameter-layout-matches-only" : "sdk-parameter-layout-mismatch";
+}
+
 // Entire engine-memory traversal runs under the existing SEH read boundary.
 // Only POD/fixed buffers here: an access violation must not bypass destructors.
 void Read(void* context) {
@@ -165,6 +293,7 @@ void Read(void* context) {
         out.player.reason = "legacy-controller-disagrees";
         return;
     }
+    ReadConsole(table, controller, out.console);
     auto const* pawn = controller->Pawn;
     if (!ReadObject(table, pawn, "Engine", "Pawn", out.pawn)) return;
     FVector const& position = adapter::Location(pawn);
@@ -185,6 +314,44 @@ json::Value ObjectJson(ObjectSample const& object, char const* failure) {
         out["index"] = object.index;
         out["class"] = object.className;
     }
+    return out;
+}
+json::Value ConsoleJson(ConsoleSample const& sample, char const* failure) {
+    auto out = json::Value::Object();
+    bool const available = failure == nullptr && sample.function.available && sample.parametersComplete;
+    out["available"] = available;
+    out["reason"] = failure != nullptr ? failure : sample.reason;
+    out["requestedDeclaration"] = "Engine.PlayerController.ConsoleCommand";
+    out["function"] = ObjectJson(sample.function, failure);
+    out["parametersComplete"] = failure == nullptr && sample.parametersComplete;
+    out["layoutMatchesSdkDeclaration"] = available && sample.layoutMatches;
+    out["dispatchCapability"] = false;
+    out["nativeIndexValidation"] = "pending";
+    out["processEventTargetValidation"] = "pending";
+    out["allocatorAndStringLifetimeValidation"] = "pending";
+    out["nativeCallValidation"] = "pending";
+    if (failure == nullptr && sample.function.available) {
+        out["discoveredDeclaration"] = "Engine.PlayerController.ConsoleCommand";
+        out["parmsSize"] = static_cast<int>(sample.parmsSize);
+        out["numParms"] = static_cast<int>(sample.numParms);
+        out["returnValueOffset"] = sample.returnOffset;
+        out["functionFlags"] = std::format("0x{:08X}", sample.functionFlags);
+        out["functionFlagsMatchSdkDeclaration"] = sample.functionFlags == 0x24400;
+        out["nativeIndex"] = static_cast<int>(sample.nativeIndex);
+    }
+    auto parameters = json::Value::Array();
+    if (failure == nullptr) for (unsigned i = 0; i < sample.parameterCount; ++i) {
+        auto const& p = sample.parameters[i];
+        auto item = ObjectJson(p.property, nullptr);
+        item["name"] = p.name;
+        item["offset"] = p.offset;
+        item["elementSize"] = p.elementSize;
+        item["arrayDim"] = p.arrayDim;
+        item["propertyFlags"] = std::format("0x{:016X}", p.flags);
+        if (p.hasBoolMask) item["boolMask"] = std::format("0x{:08X}", p.boolMask);
+        parameters.Push(std::move(item));
+    }
+    out["parameters"] = std::move(parameters);
     return out;
 }
 } // namespace
@@ -212,6 +379,7 @@ json::Value Observe(std::uint32_t gameThreadId) {
     out["localPlayer"] = ObjectJson(sample.localPlayer, failure);
     out["player"] = ObjectJson(sample.player, failure);
     out["pawn"] = ObjectJson(sample.pawn, failure);
+    out["consoleCommandMetadata"] = ConsoleJson(sample.console, failure);
     auto map = json::Value::Object();
     map["available"] = failure == nullptr && sample.mapAvailable;
     map["reason"] = failure != nullptr ? failure : sample.mapReason;
