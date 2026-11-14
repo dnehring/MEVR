@@ -3,6 +3,7 @@
 
 #include "core/Json.hpp"
 #include <cstdint>
+#include <string>
 
 namespace mevr::host::process_event::diagnostic {
 struct Snapshot;
@@ -17,6 +18,7 @@ struct ObserverServices {
     host::process_event::diagnostic::TargetInspection (*inspectTarget)(std::uintptr_t) noexcept = nullptr;
     host::process_event::diagnostic::WitnessSnapshot (*observeController)(
         host::process_event::diagnostic::ControllerWatch const&) noexcept = nullptr;
+    host::process_event::diagnostic::Snapshot (*readHookSnapshot)() noexcept = nullptr;
 };
 // Bounded read-only diagnostic after Legacy::Init, on the verified game thread
 // after engine tick. The caller supplies the hook-owned thread ID, never an ID
@@ -36,5 +38,20 @@ struct ObserverServices {
 json::Value Observe(std::uint32_t gameThreadId,
     host::process_event::diagnostic::Snapshot const* hostSnapshot = nullptr,
     ObserverServices const* services = nullptr);
+
+struct ProbeResult {
+    std::string status;
+    json::Value payload;
+};
+// One admitted entry per process, hardcoded GetFOVAngle only. Rejections before
+// entry do not spend that entry; once entered, errors are uncertain, never retried.
+// The native call is deliberately NOT inside the read-only SEH boundary.
+ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& services);
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+namespace testing {
+using FovDispatcher = void (*)(void* controller, void* function, void* parameters);
+void ResetFovProbe(FovDispatcher dispatcher);
+}
+#endif
 #endif
 } // namespace mevr::engine::le2_diagnostic

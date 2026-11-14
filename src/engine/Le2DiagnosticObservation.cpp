@@ -3,11 +3,14 @@
 
 #if defined(MEVR_GAME_LE2)
 #include "engine/GameAdapterSdk.hpp"
+#include "engine/Addresses.hpp"
 #include "engine/Legacy.hpp"
 #include "plugin/ProcessEventDiagnostic.hpp"
 #include "ue3/Runtime.hpp"
 
 #include <Windows.h>
+#include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -17,6 +20,10 @@
 
 namespace mevr::engine::le2_diagnostic {
 namespace {
+std::atomic_bool gFovProbeEntered{false};
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+testing::FovDispatcher gFovDispatcher{};
+#endif
 // Same pending-kill/template rules as Legacy; these are not incarnation IDs.
 constexpr std::uint64_t kPendingKill = 0x2000000000000000ull;
 constexpr std::uint64_t kTemplateFlags = 0x200 | 0x400;
@@ -581,7 +588,158 @@ json::Value WitnessJson(host::process_event::diagnostic::WitnessSnapshot const& 
     }
     return out;
 }
+bool GetterMatches(Sample const& sample) {
+    auto const& fov = sample.fov;
+    return fov.function.available && fov.parametersComplete && fov.layoutMatches &&
+        fov.functionFlags == 0x20802 && fov.nativeIndex == 0;
+}
+bool SameProbeSample(Sample const& before, Sample const& after, std::uint32_t thread) {
+    return WatchInput(before, thread, nullptr) == WatchInput(after, thread, nullptr) &&
+        GetterMatches(after) && before.fov.function.address == after.fov.function.address &&
+        before.fov.function.index == after.fov.function.index &&
+        before.fov.function.classAddress == after.fov.function.classAddress &&
+        before.fov.parameters[0].property.address == after.fov.parameters[0].property.address &&
+        before.fov.parameters[0].property.index == after.fov.parameters[0].property.index &&
+        before.fov.parameters[0].property.classAddress == after.fov.parameters[0].property.classAddress;
+}
+bool ProbeTargetValid(host::process_event::diagnostic::TargetInspection const& target,
+                      host::process_event::diagnostic::Snapshot const& hook, std::uintptr_t observed) {
+    namespace diagnostic = host::process_event::diagnostic;
+    bool const checkedExe = hook.exeCheck != nullptr &&
+        (std::strcmp(hook.exeCheck, "AtRvaUnchecked") == 0 || std::strcmp(hook.exeCheck, "AtRva") == 0 ||
+         std::strcmp(hook.exeCheck, "AtRvaHooked") == 0);
+    return hook.installation == diagnostic::InstallState::Installed &&
+        hook.chain.status == diagnostic::ChainStatus::Matched && hook.chain.hops > 0 && hook.chain.hops <= diagnostic::kMaxHops &&
+        hook.target != 0 && hook.detour != 0 && hook.nextHop != 0 &&
+        hook.target != hook.detour && hook.target != hook.nextHop && hook.detour != hook.nextHop && checkedExe &&
+        target.target == observed && target.baseTarget == hook.target && target.moduleBase != 0 &&
+        hook.target >= target.moduleBase && hook.target - target.moduleBase == addresses::kProcessEvent &&
+        target.inMainText && target.boundsKnown && target.exactFunctionStart && target.boundsUsable &&
+        target.functionBegin == observed && target.functionEnd > observed &&
+        target.functionEnd - observed <= diagnostic::kMaxInspectedFunctionBytes && observed >= target.moduleBase &&
+        observed - target.moduleBase <= UINT32_MAX && target.rva == observed - target.moduleBase;
+}
+struct FovFrame {
+    std::uint32_t before{0xC173AB52};
+    APlayerController_eventGetFOVAngle_Parms parameters;
+    std::uint32_t after{0x5A92E8C1};
+};
+static_assert(offsetof(FovFrame, parameters) == 4 && offsetof(FovFrame, after) == 8 && sizeof(FovFrame) == 12);
+void DispatchFov(Sample const& sample, FovFrame& frame) {
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+    gFovDispatcher(reinterpret_cast<void*>(sample.player.address), reinterpret_cast<void*>(sample.fov.function.address), &frame.parameters);
+#else
+    // Same SDK virtual route as Legacy, with no wrapper or FunctionFlags edits.
+    reinterpret_cast<APlayerController*>(sample.player.address)->ProcessEvent(
+        reinterpret_cast<UFunction*>(sample.fov.function.address), &frame.parameters, nullptr);
+#endif
+}
 } // namespace
+
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+void testing::ResetFovProbe(FovDispatcher dispatcher) {
+    gFovProbeEntered.store(false);
+    gFovDispatcher = dispatcher;
+}
+#endif
+
+ProbeResult ProbeFov(std::uint32_t gameThreadId, ObserverServices const& services) {
+    namespace diagnostic = host::process_event::diagnostic;
+    ProbeResult result{"rejected", json::Value::Object()};
+    auto& out = result.payload;
+    out["schemaVersion"] = 1;
+    out["operation"] = "probe-fov";
+    out["declaration"] = "Engine.PlayerController.GetFOVAngle";
+    out["entered"] = false;
+    out["gameplayValidated"] = false;
+    out["durableObjectIdentity"] = false;
+    auto reject = [&](char const* reason) { out["reason"] = reason; out["outcome"] = "not-entered"; return result; };
+    if (gameThreadId == 0 || GetCurrentThreadId() != gameThreadId) return reject("not-on-verified-game-thread");
+    if (gFovProbeEntered.load()) return reject("process-probe-entry-already-spent");
+    if (services.inspectTarget == nullptr || services.readHookSnapshot == nullptr) return reject("probe-providers-unavailable");
+#if defined(MEVR_LE2_OBSERVATION_TEST)
+    if (gFovDispatcher == nullptr) return reject("test-dispatcher-not-supplied");
+#endif
+    Sample first{};
+    if (!ue3::runtime::Guarded(Read, &first)) return reject("guarded-preflight-read-fault");
+    auto const identity = WatchInput(first, gameThreadId, nullptr);
+    if (identity.object == 0 || !GetterMatches(first)) return reject("controller-context-or-getter-metadata-unavailable");
+    auto const hook = services.readHookSnapshot();
+    auto const target = services.inspectTarget(identity.target);
+    if (!ProbeTargetValid(target, hook, identity.target)) return reject("current-hook-or-target-prerequisites-failed");
+    bool const exactBase = identity.target == hook.target;
+    diagnostic::WitnessSnapshot witness{};
+    if (!exactBase) {
+        if (services.observeController == nullptr) return reject("passive-witness-provider-unavailable");
+        witness = services.observeController(identity);
+        bool const boundedWindow = witness.epoch != 0 && witness.expiresMs > witness.startedMs &&
+            witness.expiresMs - witness.startedMs == diagnostic::kWatchDurationMs;
+        if ((witness.status != diagnostic::WatchStatus::Watching && witness.status != diagnostic::WatchStatus::Expired) ||
+            !(witness.identity == identity) || !boundedWindow || witness.functionBegin != target.functionBegin ||
+            witness.functionEnd != target.functionEnd || witness.matchingOriginalReturns == 0 ||
+            witness.matchingOriginalReturns > witness.matchingEntries || witness.matchingEntries > witness.entries ||
+            witness.matchingOriginalReturns > witness.originalReturns || witness.originalReturns > witness.entries ||
+            witness.lastMatchingCaller <= target.functionBegin || witness.lastMatchingCaller >= target.functionEnd)
+            return reject("same-controller-passive-return-witness-unavailable");
+    }
+    out["admissionRoute"] = exactBase ? "exact-installed-base-target" : "same-scope-passive-normal-return";
+    out["controller"] = ObjectJson(first.player, nullptr);
+    out["world"] = ObjectJson(first.world, nullptr);
+    out["localPlayer"] = ObjectJson(first.localPlayer, nullptr);
+    out["function"] = ObjectJson(first.fov.function, nullptr);
+    if (!exactBase) out["passiveEvidence"] = WitnessJson(witness, identity, true, "unavailable");
+    out["targetInspection"] = TargetJson(identity.target, nullptr); // no second provider mutation between final sample and call
+    out["targetBoundsBegin"] = std::format("0x{:X}", target.functionBegin);
+    out["targetBoundsEnd"] = std::format("0x{:X}", target.functionEnd);
+    out["exeCheck"] = hook.exeCheck;
+    FovFrame frame;
+    constexpr std::uint32_t sentinel = 0x7FC12345;
+    frame.parameters.ReturnValue = std::bit_cast<float>(sentinel);
+    // No JSON pointer is consumed. Reacquire the complete guarded sample after
+    // providers have run, immediately before spending the one process entry.
+    Sample immediate{};
+    if (!ue3::runtime::Guarded(Read, &immediate) || !SameProbeSample(first, immediate, gameThreadId))
+        return reject("identity-or-metadata-changed-before-entry");
+    bool expected = false;
+    if (!gFovProbeEntered.compare_exchange_strong(expected, true)) return reject("process-probe-entry-already-spent");
+    bool returned = false;
+    try {
+        DispatchFov(immediate, frame); // NOT guarded by read-only SEH; no native-fault recovery claim.
+        returned = true;
+    } catch (...) {
+        // Ordinary C++ unwinding only (/EHsc). Entry is spent even on exception.
+    }
+    std::uint32_t const bits = std::bit_cast<std::uint32_t>(frame.parameters.ReturnValue);
+    bool const finite = std::isfinite(frame.parameters.ReturnValue);
+    bool const canaries = frame.before == 0xC173AB52 && frame.after == 0x5A92E8C1;
+    Sample after{};
+    // Do not traverse engine state after an exception or damaged local frame.
+    bool const postRead = returned && canaries && ue3::runtime::Guarded(Read, &after);
+    bool const postIdentity = postRead && SameProbeSample(immediate, after, gameThreadId);
+    out["entered"] = true;
+    out["processEntrySpent"] = true;
+    out["returnedNormally"] = returned;
+    out["initialBits"] = std::format("0x{:08X}", sentinel);
+    out["returnBits"] = std::format("0x{:08X}", bits);
+    out["returnChanged"] = bits != sentinel;
+    out["returnFinite"] = finite;
+    if (finite) out["returnValue"] = frame.parameters.ReturnValue;
+    out["canariesIntact"] = canaries;
+    out["beforeCanaryBits"] = std::format("0x{:08X}", frame.before);
+    out["afterCanaryBits"] = std::format("0x{:08X}", frame.after);
+    out["postIdentityReadAvailable"] = postRead;
+    out["postIdentityUnchanged"] = postIdentity;
+    if (postRead) {
+        out["postController"] = ObjectJson(after.player, nullptr);
+        out["postFunction"] = ObjectJson(after.fov.function, nullptr);
+        out["postSlotTarget"] = std::format("0x{:X}", after.processEvent.target);
+    }
+    bool const boundedResult = returned && bits != sentinel && finite && canaries && postIdentity;
+    result.status = boundedResult ? "dispatched" : "error";
+    out["outcome"] = boundedResult ? "bounded-scalar-return-observed" : "uncertain";
+    out["reason"] = boundedResult ? "scalar-return-canaries-and-current-identity-observed" : "entered-probe-result-uncertain-no-retry";
+    return result;
+}
 
 json::Value Observe(std::uint32_t gameThreadId, host::process_event::diagnostic::Snapshot const* hostSnapshot,
                     ObserverServices const* services) {

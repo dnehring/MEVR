@@ -4,6 +4,7 @@
 #include <LESDK/Headers.hpp>
 #include "engine/Le2DiagnosticObservation.hpp"
 #include "engine/Legacy.hpp"
+#include "engine/Addresses.hpp"
 #include "plugin/ProcessEventDiagnostic.hpp"
 #include "ue3/Runtime.hpp"
 #include <array>
@@ -72,6 +73,57 @@ diagnostic::WitnessSnapshot FakeWitness(diagnostic::ControllerWatch const& ident
     out.lastMatchingCaller = identity.target + 8;
     return out;
 }
+std::uintptr_t probeTarget{};
+bool probeExactBase{}, probeBadHook{}, probeBadBounds{}, probeNoReturns{}, probeMutateBeforeEntry{}, probeWrongBase{}, probeBadExeCheck{};
+UFunction* probeGetter{};
+UProperty* replacementFovProperty{};
+bool replaceBeforeEntry{};
+unsigned dispatchCalls{};
+unsigned engineReadCalls{}, readsAtDispatch{};
+int dispatchMode{};
+diagnostic::TargetInspection ProbeInspect(std::uintptr_t target) noexcept {
+    auto out = FakeInspect(target);
+    out.rva = probeExactBase ? mevr::engine::addresses::kProcessEvent : 0xE0000;
+    out.moduleBase = target - out.rva;
+    out.baseTarget = out.moduleBase + mevr::engine::addresses::kProcessEvent;
+    out.sameAsBase = probeExactBase;
+    if (probeBadBounds) out.boundsUsable = false;
+    return out;
+}
+diagnostic::Snapshot ProbeHook() noexcept {
+    diagnostic::Snapshot out;
+    auto const detail = ProbeInspect(probeTarget);
+    out.target = detail.baseTarget; out.detour = out.target + 1; out.nextHop = out.target + 2;
+    out.installation = diagnostic::InstallState::Installed;
+    out.chain = {probeBadHook ? diagnostic::ChainStatus::Changed : diagnostic::ChainStatus::Matched, 2};
+    out.exeCheck = "AtRvaUnchecked"; out.backend = "synthetic";
+    if (probeWrongBase) ++out.target;
+    if (probeBadExeCheck) out.exeCheck = "BytesDiffer";
+    return out;
+}
+diagnostic::WitnessSnapshot ProbeWitness(diagnostic::ControllerWatch const& identity) noexcept {
+    auto out = FakeWitness(identity);
+    if (probeNoReturns) out.matchingOriginalReturns = 0;
+    if (probeMutateBeforeEntry) probeGetter->ParmsSize = 8;
+    if (replaceBeforeEntry) probeGetter->Children = replacementFovProperty;
+    return out;
+}
+void FakeFovDispatch(void* controller, void* function, void* parameters) {
+    ++dispatchCalls;
+    readsAtDispatch = engineReadCalls;
+    Check(function == probeGetter, "hardcoded getter function passed to test dispatcher");
+    auto* value = static_cast<float*>(parameters);
+    if (dispatchMode == 1) return;
+    if (dispatchMode == 2) throw std::runtime_error("synthetic dispatch exception");
+    *value = dispatchMode == 6 ? std::numeric_limits<float>::infinity() : 75.0f;
+    if (dispatchMode == 3 || dispatchMode == 4) {
+        std::uint32_t corrupt = 0;
+        std::memcpy(static_cast<unsigned char*>(parameters) + (dispatchMode == 3 ? 4 : -4), &corrupt, sizeof(corrupt));
+    }
+    if (dispatchMode == 5) ++static_cast<UObject*>(controller)->ObjectInternalInteger;
+    if (dispatchMode == 7) probeGetter->iNative = 1;
+    if (dispatchMode == 8) probeGetter->Children = replacementFovProperty;
+}
 }
 SFXNameEntry const* SFXName::GetEntry() const noexcept { return names[Offset]; }
 namespace mevr::ue3::runtime {
@@ -81,8 +133,8 @@ bool Guarded(void (*fn)(void*), void* ctx) {
 }
 }
 namespace mevr::engine::legacy {
-void const* World() { return GWorld ? *GWorld : nullptr; }
-std::int32_t ObjectCount() { return UObject::GObjObjects ? static_cast<int>(UObject::GObjObjects->Count()) : 0; }
+void const* World() { ++engineReadCalls; return GWorld ? *GWorld : nullptr; }
+std::int32_t ObjectCount() { ++engineReadCalls; return UObject::GObjObjects ? static_cast<int>(UObject::GObjObjects->Count()) : 0; }
 ue3::Object* LocalPlayerController() { return reinterpret_cast<ue3::Object*>((*GEngine)->GamePlayers.GetData()[0]->Actor); }
 }
 int main() {
@@ -404,7 +456,69 @@ int main() {
         world.get()->ObjectFlags = 0x200;
         Check(!provided().Get("controllerCallWitness").Bool("available") && lastWatch.object == 0, "invalid world disarms despite readable controller");
         world.get()->ObjectFlags = 0;
-        Check(mevr::json::Write(provided(), 0).size() < 16384, "five-object inspector and passive evidence fit control payload");
+        auto representative = provided();
+        auto const observationBytes = mevr::json::Write(representative, 0).size();
+        auto envelope = mevr::json::Value::Object();
+        envelope["observation"] = std::move(representative);
+        envelope["reservedHostEnvelope"] = std::string(1024, 'x');
+        auto const envelopeBytes = mevr::json::Write(envelope, 0).size();
+        Check(envelopeBytes <= 16384, "full five-object observation leaves 1024 bytes for host envelope");
+        std::cout << "Representative full Observe JSON: " << observationBytes << " bytes; with reserved envelope: " << envelopeBytes << " bytes\n";
+        using mevr::engine::le2_diagnostic::ProbeFov;
+        using mevr::engine::le2_diagnostic::testing::ResetFovProbe;
+        probeTarget = controllerVtable[72]; probeGetter = fov.get();
+        Raw<UFloatProperty> replacementFovReturn;
+        add(replacementFovReturn.get(), "ReturnValue", floatType.get(), fov.get());
+        property(replacementFovReturn.get(), 0, 4, 0x580);
+        replacementFovProperty = replacementFovReturn.get();
+        mevr::engine::le2_diagnostic::ObserverServices probeServices{ProbeInspect, ProbeWitness, ProbeHook};
+        auto resetProbe = [&] { ResetFovProbe(FakeFovDispatch); dispatchCalls = 0; dispatchMode = 0; };
+        resetProbe();
+        Check(ProbeFov(0, probeServices).status == "rejected" && dispatchCalls == 0, "probe wrong thread rejects before entry");
+        Check(ProbeFov(thread, {}).status == "rejected" && dispatchCalls == 0, "probe providers required");
+        fov.get()->Children = reinterpret_cast<UField*>(1);
+        Check(ProbeFov(thread, probeServices).status == "rejected" && dispatchCalls == 0, "probe metadata access fault rejects before entry");
+        fov.get()->Children = fovReturn.get();
+        fov.get()->iNative = 1;
+        Check(ProbeFov(thread, probeServices).status == "rejected" && dispatchCalls == 0, "probe does not clear nonzero native index");
+        fov.get()->iNative = 0;
+        probeBadHook = true; Check(ProbeFov(thread, probeServices).status == "rejected", "changed hook chain refuses probe"); probeBadHook = false;
+        probeWrongBase = true; Check(ProbeFov(thread, probeServices).status == "rejected", "wrong installed base refuses probe"); probeWrongBase = false;
+        probeBadExeCheck = true; Check(ProbeFov(thread, probeServices).status == "rejected", "unexpected executable check refuses probe"); probeBadExeCheck = false;
+        probeBadBounds = true; Check(ProbeFov(thread, probeServices).status == "rejected", "unusable bounds refuse probe"); probeBadBounds = false;
+        probeNoReturns = true; Check(ProbeFov(thread, probeServices).status == "rejected", "base entry alone is insufficient"); probeNoReturns = false;
+        wrongWitnessIdentity = true; Check(ProbeFov(thread, probeServices).status == "rejected", "stale witness refuses probe"); wrongWitnessIdentity = false;
+        probeMutateBeforeEntry = true;
+        Check(ProbeFov(thread, probeServices).payload.String("reason") == "identity-or-metadata-changed-before-entry" && dispatchCalls == 0,
+              "immediate resample catches provider-time metadata change");
+        probeMutateBeforeEntry = false; fov.get()->ParmsSize = 4;
+        replaceBeforeEntry = true;
+        Check(ProbeFov(thread, probeServices).payload.String("reason") == "identity-or-metadata-changed-before-entry" && dispatchCalls == 0,
+              "same-layout replacement return property rejects before entry");
+        replaceBeforeEntry = false; fov.get()->Children = fovReturn.get();
+        expiredWitness = true;
+        auto probe = ProbeFov(thread, probeServices);
+        Check(probe.status == "dispatched" && probe.payload.Number("returnValue") == 75 && probe.payload.Bool("canariesIntact") &&
+              probe.payload.Bool("postIdentityUnchanged") && dispatchCalls == 1 &&
+              probe.payload.Get("passiveEvidence").String("status") == "expired", "expired same-scope bounded witness admits one scalar proof");
+        Check(ProbeFov(thread, probeServices).status == "rejected" && dispatchCalls == 1, "successful process entry never repeats");
+        expiredWitness = false;
+        resetProbe(); probeExactBase = true;
+        auto exactServices = probeServices; exactServices.observeController = nullptr;
+        Check(ProbeFov(thread, exactServices).status == "dispatched" && dispatchCalls == 1, "exact installed base needs no override witness");
+        probeExactBase = false;
+        auto const controllerIndex = controller.get()->ObjectInternalInteger;
+        for (int mode : {1, 2, 3, 4, 5, 6, 7, 8}) {
+            resetProbe(); dispatchMode = mode;
+            probe = ProbeFov(thread, probeServices);
+            Check(probe.status == "error" && probe.payload.Bool("entered") && probe.payload.String("outcome") == "uncertain" && dispatchCalls == 1,
+                  "post-entry exception/return/canary/identity issue remains uncertain");
+            Check(ProbeFov(thread, probeServices).status == "rejected" && dispatchCalls == 1, "uncertain entered call cannot retry");
+            if (mode == 2 || mode == 3 || mode == 4)
+                Check(!probe.payload.Bool("postIdentityReadAvailable") && engineReadCalls == readsAtDispatch,
+                      "no engine traversal after exception or damaged canary");
+            controller.get()->ObjectInternalInteger = controllerIndex; fov.get()->iNative = 0; fov.get()->Children = fovReturn.get();
+        }
         auto oldIndex = pawn.get()->ObjectInternalInteger;
         pawn.get()->ObjectInternalInteger = table.count;
         Check(!Available(Observe(thread), "pawn"), "out of range slot");

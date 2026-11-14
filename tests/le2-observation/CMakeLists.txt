@@ -12,11 +12,21 @@ endif()
 add_executable(le2-observation-tests ObservationTests.cpp
     "${repo}/src/engine/Le2DiagnosticObservation.cpp" "${repo}/src/core/Json.cpp")
 target_compile_features(le2-observation-tests PRIVATE cxx_std_20)
-target_compile_definitions(le2-observation-tests PRIVATE MEVR_GAME_LE2 SDK_TARGET_LE2 NOMINMAX _CRT_SECURE_NO_WARNINGS)
+target_compile_definitions(le2-observation-tests PRIVATE MEVR_GAME_LE2 SDK_TARGET_LE2 NOMINMAX _CRT_SECURE_NO_WARNINGS MEVR_LE2_OBSERVATION_TEST)
 target_include_directories(le2-observation-tests PRIVATE "${repo}/src")
 target_include_directories(le2-observation-tests SYSTEM PRIVATE
     "${MEVR_OBSERVATION_SDK_DIR}/Src" "${MEVR_OBSERVATION_SDK_DIR}/External")
 target_precompile_headers(le2-observation-tests PRIVATE "${MEVR_OBSERVATION_SDK_DIR}/Src/LESDK/_Global.pch.hpp")
 target_compile_options(le2-observation-tests PRIVATE /W4 /WX /bigobj /permissive /wd4121 /wd26495)
+
+# Compile the fixed production virtual route too; never link or execute it here.
+add_library(le2-observation-production OBJECT "${repo}/src/engine/Le2DiagnosticObservation.cpp")
+target_compile_features(le2-observation-production PRIVATE cxx_std_20)
+target_compile_definitions(le2-observation-production PRIVATE MEVR_GAME_LE2 SDK_TARGET_LE2 NOMINMAX _CRT_SECURE_NO_WARNINGS)
+target_include_directories(le2-observation-production PRIVATE "${repo}/src")
+target_include_directories(le2-observation-production SYSTEM PRIVATE
+    "${MEVR_OBSERVATION_SDK_DIR}/Src" "${MEVR_OBSERVATION_SDK_DIR}/External")
+target_precompile_headers(le2-observation-production PRIVATE "${MEVR_OBSERVATION_SDK_DIR}/Src/LESDK/_Global.pch.hpp")
+target_compile_options(le2-observation-production PRIVATE /W4 /WX /bigobj /permissive /wd4121 /wd26495)
 enable_testing()
 add_test(NAME le2-observation COMMAND le2-observation-tests)

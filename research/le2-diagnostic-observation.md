@@ -235,7 +235,7 @@ agreement. The next hop is not claimed to be pristine engine code, and
 a fresh host snapshot on the verified game thread. No callback registration or
 HostServices ABI change is introduced by the observer.
 
-All dispatch/allocation capabilities remain false. These fields provide no
+All observation dispatch/allocation capability fields remain false. These fields provide no
 FString allocation/ownership proof, ProcessEvent execution proof or durable
 object/allocator identity. No generated SDK method, allocator method, native
 function or script is called. Offline tests compile the actual observer against
@@ -285,7 +285,7 @@ function bounds. Epochs, times and counters are decimal strings to preserve all
 64 bits. Nothing forces an event or invokes a target. Zero matching counts are
 inconclusive (idle/menu behavior or tail calls can hide the path); positive
 counts do not prove arbitrary-call safety, allocator ownership or gameplay
-readiness. All call capabilities remain false.
+readiness. Observation dispatch capability remains false.
 
 The actual-SDK standalone tests use fake providers and never invoke a game
 function. Added cases cover five-object agreement/discrepancy, invalid-object
@@ -295,3 +295,59 @@ context disarming, and no provider calls off-thread. A complete synthetic
 comparison/metadata/witness payload remains below 16 KiB. Release and Debug
 compile/tests pass with `/W4 /WX`; the read-only live comparison is a separate
 experiment.
+
+Representative full-provider payloads measured 12,640 bytes (Release) and 12,691
+bytes (Debug); with a 1,024-byte reserved host-envelope string and wrapper keys,
+the larger serialized envelope was 13,757 bytes. The test enforces that envelope
+within 16,384 bytes. These are measured fixtures, not a mathematical maximum for
+all possible names/metadata; the production wire limit remains authoritative.
+
+## Explicit bounded scalar probe
+
+`ProbeFov(thread, services)` is separate from `Observe`: it admits at most one
+entry per process into the hardcoded `Engine.PlayerController.GetFOVAngle`
+scripted event. It consumes no JSON addresses and exposes no arbitrary-function
+dispatcher. The existing providers plus `readHookSnapshot` supply current host
+ownership/chain, target bounds and passive evidence. The host protocol owns
+explicit request admission; merely requesting an observation never calls it.
+
+Before entry, require the exact getter metadata, validated world/local player/
+controller, current owned base hook/normal next hop, checked LE2 base RVA,
+recognized owned hook chain and exact bounded target function. The controller
+slot must either equal the installed base target or have a same-controller,
+same-class/index/world/local-player/target/thread passive witness with at least
+one matching **normal original return** inside identical target bounds. A
+completed, expired ten-second window is usable as historical evidence only when
+its scope still matches; the probe never renews the window. A recognized jump
+alone is not an admission route. The complete guarded identity and metadata are
+resampled immediately before entry, including the getter's UFunction and return
+property pointer/index/class, so replacing a property with an identical layout
+still rejects the call.
+
+The actual SDK four-byte parameter block starts with a NaN sentinel and has
+adjacent 32-bit canaries verified by compile-time offsets. The production path
+calls the validated controller's virtual ProcessEvent just as Legacy does,
+without a generated wrapper, function-flag/native-index mutation, engine
+allocation or FString. The admitted process budget is spent before dispatch.
+The dispatch is deliberately outside the read-only SEH wrapper: there is no
+native-fault recovery claim and no retry after entry. Ordinary C++ exceptions
+produce uncertainty. Engine state is not traversed after an exception or a
+damaged canary; otherwise a guarded post-call sample checks identity/metadata.
+
+Pre-entry rejection returns status `rejected` and spends no native entry.
+A normal finite changed result, intact canaries and unchanged post-call identity
+returns **`dispatched`**, never `completed`; the payload records raw return bits,
+canaries, admitted identity, historical witness scope and post-read outcome.
+Other entered outcomes return `error` with `outcome: uncertain`; further probes
+in that process reject. Even `dispatched` proves only this bounded scalar return,
+not arbitrary console calls, allocator ownership, story/gameplay readiness or VR.
+
+Standalone tests substitute dispatch only under `MEVR_LE2_OBSERVATION_TEST`;
+the reset/substitution API does not exist in production. The same project also
+compiles the fixed production SDK virtual route into an unexecuted object
+target. Release/Debug tests cover malformed metadata/read faults, missing or
+changed host provenance, incorrect base/bounds, absent/stale passive returns,
+expired same-scope admission, same-layout return-property replacement before
+and after entry, one-entry enforcement, exception/nonfinite/unchanged return,
+both canaries, context change, and no post-failure engine traversal. These are
+offline checks, not a native getter result.
