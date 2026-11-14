@@ -621,18 +621,20 @@ struct Endpoint::Impl {
                 unavailable[name] = "LE2 engine fields/lifetime are not validated by this producer";
             payload["unavailable"] = std::move(unavailable);
         }
-        // Complete expensive ownership/hash IO before starting a short input
-        // lifetime. Otherwise a pulse can expire while this game tick hashes.
+        // Complete expensive ownership/hash IO before changing the recorder
+        // or publishing a short-lived input pulse.
         Ownership();
 #if !defined(MEVR_LE2_CONTROL_TEST)
         if (!failure && (decoded->verb == "start-dialogue-history" || decoded->verb == "stop-dialogue-history")) {
             payload["readOnly"] = false;
-            if (decoded->verb == "start-dialogue-history") {
-                // Recheck the deadline after the second ownership pass and
-                // before setting the sampling lifetime.
-                if (clock() >= decoded->deadline || !dialogueHistory.Start(tick, GetTickCount64(), thread)) {
+            if (clock() >= decoded->deadline) {
+                result.status = "rejected";
+                payload["reason"] = "dialogue-history-request-expired-after-ownership-check";
+            } else if (decoded->verb == "start-dialogue-history") {
+                if (!dialogueHistory.Start(tick, GetTickCount64(), thread)) {
                     result.status = "rejected";
-                    payload["reason"] = "dialogue-history-expired-or-already-recording";
+                    payload["reason"] = dialogueHistory.Active()
+                        ? "dialogue-history-already-recording" : "dialogue-history-start-unavailable";
                 } else {
                     dialogueHistoryStartRequest = decoded->id;
                 }
@@ -688,9 +690,7 @@ void Endpoint::TickInput(std::uint32_t thread) noexcept {
 }
 void Endpoint::TickDialogueHistory(std::uint64_t tick, std::uint64_t monotonic, std::uint32_t thread) noexcept {
 #if !defined(MEVR_LE2_CONTROL_TEST)
-    if (impl_->disabled) {
-        impl_->dialogueHistory.Stop();
-    } else if (impl_->attached && impl_->dialogueHistory.Active()) {
+    if (!impl_->disabled && impl_->attached && impl_->dialogueHistory.Active()) {
         impl_->dialogueHistory.Tick(tick, monotonic, thread);
     }
 #else
