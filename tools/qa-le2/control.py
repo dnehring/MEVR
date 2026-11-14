@@ -55,7 +55,7 @@ def validate_pulse(pulse):
         raise ControlError("Pad pulse requires exactly the ten declared fields")
     if type(pulse["schemaVersion"]) is not int or pulse["schemaVersion"] != 1:
         raise ControlError("Pad pulse schemaVersion must be integer 1")
-    if pulse["context"] not in ("default", "party-select", "party-confirm"):
+    if pulse["context"] not in ("default", "party-select", "party-confirm", "loadout"):
         raise ControlError("Unsupported pad pulse context")
     bounds = {"durationMs": (1, 1000), "buttons": (0, 65535),
               "leftTrigger": (0, 255), "rightTrigger": (0, 255),

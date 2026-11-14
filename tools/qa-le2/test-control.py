@@ -36,7 +36,7 @@ def pulse_frame(value=None):
 
 class WireTests(unittest.TestCase):
     def test_pad_schema_bounds_and_reserved_bits(self):
-        for context in ("default", "party-select", "party-confirm"):
+        for context in ("default", "party-select", "party-confirm", "loadout"):
             for value in (pulse(context=context, durationMs=1), pulse(context=context, durationMs=1000,
                           buttons=0xF3FF, leftTrigger=255, rightTrigger=255,
                           leftX=-32768, leftY=32767, rightX=-32768, rightY=32767)):
@@ -117,6 +117,7 @@ class WireTests(unittest.TestCase):
                         dict(frame(), verb="observe-weapon"),
                         dict(frame(), verb="observe-input"), pulse_frame(),
                         pulse_frame(pulse(context="party-confirm")),
+                        pulse_frame(pulse(context="loadout")),
                         pulse_frame(pulse(context="default",buttons=0,leftX=-32768,rightTrigger=255)),
                         dict(frame(), verb="observe-save-flow"),
                         dict(frame(), verb="open-pause-menu"), dict(frame(), verb="open-save-menu"),
@@ -142,6 +143,8 @@ class WireTests(unittest.TestCase):
                               json.dumps(pulse(leftX=-32769)),json.dumps(pulse(context="orbital")),
                               json.dumps(pulse(context="party-confirm",buttons=0x400)),
                               json.dumps(pulse(context="party-confirm-extra")),
+                              json.dumps(pulse(context="loadout",buttons=0x800)),
+                              json.dumps(pulse(context="loadout-extra")),
                               json.dumps(pulse(extra=0)),json.dumps({k:v for k,v in pulse().items() if k!="rightY"}),
                               '{"schemaVersion":1,'+json.dumps(pulse())[1:]]
             for payload in invalid_pulses:
@@ -179,6 +182,17 @@ class WireTests(unittest.TestCase):
 
 
 class ClientTests(unittest.TestCase):
+    def test_loadout_retains_optin_and_archived_context(self):
+        bind=mock.Mock(side_effect=AssertionError("must not bind"))
+        with self.assertRaises(c.ControlError):
+            c.submit(self.root,"pad-pulse",pulse=pulse(context="loadout"),bind=bind)
+        bind.assert_not_called()
+        thread,errors=self.peer()
+        result=c.submit(self.root,"pad-pulse",pulse=pulse(context="loadout"),allow_native_input=True,bind=self.bind)
+        thread.join();self.assertFalse(errors);self.assertEqual(result["status"],"dispatched")
+        archived=c.decode((self.root/"history"/(result["id"]+".request")).read_bytes())
+        self.assertEqual(c.parse_pulse(archived["payload"]),pulse(context="loadout"))
+
     def test_party_confirm_retains_optin_and_archived_context(self):
         bind=mock.Mock(side_effect=AssertionError("must not bind"))
         with self.assertRaises(c.ControlError):

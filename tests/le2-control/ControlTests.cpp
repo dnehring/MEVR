@@ -188,6 +188,17 @@ int main(int argc, char** argv) {
         Gate confirmEnabled(identity, false, false, false, false, false, true);
         Check(!confirmEnabled.Claim(confirm, 10000) && confirmEnabled.Claim(confirm, 10000).has_value(),
               "party confirm permission does not permit retry");
+        auto loadout = pulse;
+        loadout.payload.replace(loadout.payload.find("default"), 7, "loadout");
+        auto parsedLoadout = ParsePadPulse(loadout.payload);
+        Check(parsedLoadout && parsedLoadout->context == "loadout" &&
+              Decode(*Encode(loadout))->payload == loadout.payload, "loadout exact schema and wire roundtrip");
+        Gate loadoutDisabled(identity, true, true, true, true, true);
+        Check(loadoutDisabled.Claim(loadout, 10000) == "native input is disabled" && loadoutDisabled.LastSequence() == 0,
+              "loadout retains separate native input permission");
+        Gate loadoutEnabled(identity, false, false, false, false, false, true);
+        Check(!loadoutEnabled.Claim(loadout, 10000) && loadoutEnabled.Claim(loadout, 10000).has_value(),
+              "loadout permission does not permit retry");
         auto invalidPulse = [&](std::string const& before, std::string const& after) {
             auto invalid = pulse;
             auto position = invalid.payload.find(before);
@@ -204,6 +215,7 @@ int main(int argc, char** argv) {
         invalidPulse("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":1");
         invalidPulse("\"context\":\"default\"", "\"context\":\"orbital\"");
         invalidPulse("\"context\":\"default\"", "\"context\":\"party-confirm-extra\"");
+        invalidPulse("\"context\":\"default\"", "\"context\":\"loadout-extra\"");
         invalidPulse("\"rightY\":0", "\"rightY\":0,\"extra\":0");
         pulse.verb = "observe-input"; pulse.payload.clear();
         Gate inputRead(identity);
