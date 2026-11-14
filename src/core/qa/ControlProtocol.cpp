@@ -44,7 +44,7 @@ bool Valid(Frame const& f) {
         f.payload.size() > kMaxPayload || f.payload.find('\0') != std::string::npos) return false;
     if (f.verb != "ping" && f.verb != "observe" && f.verb != "observe-save-menu" &&
         f.verb != "observe-fixture" && f.verb != "load-fixture" && f.verb != "observe-resources" && f.verb != "observe-orbital" &&
-        f.verb != "observe-input" && f.verb != "pad-pulse" &&
+        f.verb != "observe-input" && f.verb != "observe-weapon" && f.verb != "pad-pulse" &&
         f.verb != "observe-save-flow" && f.verb != "open-pause-menu" && f.verb != "open-save-menu" && f.verb != "save-new" &&
         f.verb != "console" && f.verb != "probe-fov" && f.verb != "advance-splash" && f.verb != "open-load-menu") return false;
     if (f.kind == "request") {
@@ -85,7 +85,7 @@ std::optional<PadPulse> ParsePadPulse(std::string_view bytes) {
         !integer("buttons", 0, 65535) || !integer("leftTrigger", 0, 255) || !integer("rightTrigger", 0, 255)) return {};
     for (auto field : {"leftX", "leftY", "rightX", "rightY"}) if (!integer(field, -32768, 32767)) return {};
     auto context = value->String("context");
-    if (context != "default" && context != "party-select") return {};
+    if (context != "default" && context != "party-select" && context != "party-confirm") return {};
     diagnostic_pad::Pad pad{
         static_cast<std::uint16_t>(value->Number("buttons")),
         static_cast<std::uint8_t>(value->Number("leftTrigger")), static_cast<std::uint8_t>(value->Number("rightTrigger")),

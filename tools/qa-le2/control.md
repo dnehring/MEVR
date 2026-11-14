@@ -46,6 +46,13 @@ conditional. Outside a coherent orbital mode it reports an unavailable reason.
 The [observer and acquisition contract](../../research/le2-scanning-readiness.md)
 records the structural camera evidence and unresolved native/VR gates.
 
+`observe-weapon` is an empty-input, read-only request for the selected weapon's
+structural identity and available ammo fields. It accepts no weapon target,
+reload command or edits and requires no native-action permission. Transport
+support alone does not establish runtime availability, reload eligibility,
+effective reserve semantics or native/VR acceptance; the host must supply the
+guarded observer and retain unavailable reasons.
+
 `observe-input` is an empty-input, read-only query for the diagnostic input
 publisher's context, poll and neutral-state evidence. It does not publish input.
 The existing client can submit one bounded `pad-pulse` with a separate explicit
@@ -59,7 +66,7 @@ The exact ten-field schema is:
 {"schemaVersion":1,"context":"party-select","durationMs":100,"buttons":4096,"leftTrigger":0,"rightTrigger":0,"leftX":0,"leftY":0,"rightX":0,"rightY":0}
 ```
 
-`context` is `default` or `party-select`; the runtime must independently admit the
+`context` is `default`, `party-select` or `party-confirm`; the runtime must independently admit the
 actual supported context. `durationMs` is an integer from 1 to 1000 and measures
 the hold starting at the first eligible nonconflicting controller poll. There is
 a fixed 5000 ms activation wait from publication; failure to start within it
@@ -67,6 +74,9 @@ produces `start-timed-out` and neutral release, never a delayed press. `buttons`
 uint16 with only mask `0xF3FF` permitted; bits `0x0400` and `0x0800` are reserved.
 Triggers are integers 0..255 and the four stick axes integers -32768..32767.
 The pulse JSON is limited to 4096 UTF-8 bytes and must not have a byte-order mark.
+`party-confirm` retains the same explicit native-input opt-in, numeric bounds,
+correlation and no-retry rules. The name requests a context check; it does not
+authorize an arbitrary modal or prove that a squad confirmation is ready.
 All keys are required. Unknown/duplicate keys, booleans or floats used as integers,
 unsupported contexts and an entirely neutral pad are rejected. JSON key order and
 whitespace do not affect acceptance; the client emits compact JSON.
@@ -579,7 +589,7 @@ One blank line separates the headers from exactly `bytes` payload bytes. UUIDs
 and SHA256 strings are lowercase; numbers are canonical unsigned decimal strings.
 `deadline` is UTC Unix milliseconds, bounded to 30 seconds by the gate. Payloads
 are at most 16 KiB without NUL; a console command is at most 4 KiB without ASCII
-control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-orbital`, `observe-input`, `observe-save-flow`,
+control characters. `ping`, `observe`, `observe-save-menu`, `observe-resources`, `observe-orbital`, `observe-input`, `observe-weapon`, `observe-save-flow`,
 `observe-fixture`, `load-fixture`, `probe-fov`, `advance-splash`, and
 `open-load-menu`, `open-pause-menu`, `open-save-menu`, `save-new` requests require an empty payload.
 Unknown, duplicated, reordered, partial or trailing data is

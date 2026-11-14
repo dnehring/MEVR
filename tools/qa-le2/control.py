@@ -55,7 +55,7 @@ def validate_pulse(pulse):
         raise ControlError("Pad pulse requires exactly the ten declared fields")
     if type(pulse["schemaVersion"]) is not int or pulse["schemaVersion"] != 1:
         raise ControlError("Pad pulse schemaVersion must be integer 1")
-    if pulse["context"] not in ("default", "party-select"):
+    if pulse["context"] not in ("default", "party-select", "party-confirm"):
         raise ControlError("Unsupported pad pulse context")
     bounds = {"durationMs": (1, 1000), "buttons": (0, 65535),
               "leftTrigger": (0, 255), "rightTrigger": (0, 255),
@@ -100,7 +100,7 @@ def validate(frame):
     payload = frame["payload"]
     if not isinstance(payload, bytes) or len(payload) > MAX_PAYLOAD or b"\0" in payload or number(frame["bytes"]) != len(payload):
         raise ControlError("Invalid payload")
-    if frame["verb"] not in ("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-input", "observe-save-flow") + NATIVE_ACTIONS:
+    if frame["verb"] not in ("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-input", "observe-weapon", "observe-save-flow") + NATIVE_ACTIONS:
         raise ControlError("Unsupported verb")
     if frame["kind"] == "request":
         if frame["status"] != "pending":
@@ -371,7 +371,7 @@ def submit(run, verb, command="", timeout=10, allow_console=False, *, allow_prob
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("run", type=Path)
-    p.add_argument("verb", choices=("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-input", "observe-save-flow", "collect") + NATIVE_ACTIONS)
+    p.add_argument("verb", choices=("ping", "observe", "observe-save-menu", "observe-fixture", "observe-resources", "observe-orbital", "observe-input", "observe-weapon", "observe-save-flow", "collect") + NATIVE_ACTIONS)
     p.add_argument("--command", default="")
     p.add_argument("--timeout", type=int, default=10)
     p.add_argument("--allow-console", action="store_true")

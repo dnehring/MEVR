@@ -142,6 +142,12 @@ int main(int argc, char** argv) {
               "orbital observation requires no native opt in");
         fixture.payload = "launch-probe";
         Check(!Encode(fixture), "orbital observation cannot launch a probe");
+        fixture.payload.clear(); fixture.verb = "observe-weapon";
+        Gate weaponRead(identity);
+        Check(Decode(*Encode(fixture))->verb == "observe-weapon" && !weaponRead.Claim(fixture, 10000),
+              "weapon observation requires no native opt in");
+        fixture.payload = "reload";
+        Check(!Encode(fixture), "weapon observation cannot reload or select a weapon");
         fixture.payload.clear(); fixture.verb = "observe-save-flow";
         Gate flowRead(identity);
         Check(Decode(*Encode(fixture))->verb == "observe-save-flow" && !flowRead.Claim(fixture, 10000),
@@ -171,6 +177,17 @@ int main(int argc, char** argv) {
         Check(!inputOnly.Claim(pulse, 10000), "explicit independent input permission");
         Check(inputOnly.Claim(pulse, 10000).has_value(), "published or uncertain pulse cannot retry");
         Check(inputOnly.Claim(console, 10000).has_value(), "input permission does not grant console");
+        auto confirm = pulse;
+        confirm.payload.replace(confirm.payload.find("default"), 7, "party-confirm");
+        auto parsedConfirm = ParsePadPulse(confirm.payload);
+        Check(parsedConfirm && parsedConfirm->context == "party-confirm" &&
+              Decode(*Encode(confirm))->payload == confirm.payload, "party confirm exact schema and wire roundtrip");
+        Gate confirmDisabled(identity, true, true, true, true, true);
+        Check(confirmDisabled.Claim(confirm, 10000) == "native input is disabled" && confirmDisabled.LastSequence() == 0,
+              "party confirm retains separate native input permission");
+        Gate confirmEnabled(identity, false, false, false, false, false, true);
+        Check(!confirmEnabled.Claim(confirm, 10000) && confirmEnabled.Claim(confirm, 10000).has_value(),
+              "party confirm permission does not permit retry");
         auto invalidPulse = [&](std::string const& before, std::string const& after) {
             auto invalid = pulse;
             auto position = invalid.payload.find(before);
@@ -186,6 +203,7 @@ int main(int argc, char** argv) {
         invalidPulse("\"leftX\":0", "\"leftX\":-32769");
         invalidPulse("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":1");
         invalidPulse("\"context\":\"default\"", "\"context\":\"orbital\"");
+        invalidPulse("\"context\":\"default\"", "\"context\":\"party-confirm-extra\"");
         invalidPulse("\"rightY\":0", "\"rightY\":0,\"extra\":0");
         pulse.verb = "observe-input"; pulse.payload.clear();
         Gate inputRead(identity);

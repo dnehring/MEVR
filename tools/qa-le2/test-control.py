@@ -36,14 +36,14 @@ def pulse_frame(value=None):
 
 class WireTests(unittest.TestCase):
     def test_pad_schema_bounds_and_reserved_bits(self):
-        for context in ("default", "party-select"):
+        for context in ("default", "party-select", "party-confirm"):
             for value in (pulse(context=context, durationMs=1), pulse(context=context, durationMs=1000,
                           buttons=0xF3FF, leftTrigger=255, rightTrigger=255,
                           leftX=-32768, leftY=32767, rightX=-32768, rightY=32767)):
                 f=pulse_frame(value)
                 self.assertEqual(c.decode(c.encode(f)), f)
         bad=[{}, [], None, pulse(extra=1), pulse(schemaVersion=2), pulse(schemaVersion=True),
-             pulse(context="orbital"), pulse(context=1), pulse(buttons=0), pulse(buttons=0x0400),
+             pulse(context="orbital"), pulse(context="party-confirm-extra"), pulse(context=1), pulse(buttons=0), pulse(buttons=0x0400),
              pulse(buttons=0x0800), pulse(buttons=65536), pulse(buttons=-1)]
         for key in c.PULSE_FIELDS:
             bad.append({k:v for k,v in pulse().items() if k!=key})
@@ -114,7 +114,9 @@ class WireTests(unittest.TestCase):
                         dict(frame(), verb="observe-save-menu"),
                         dict(frame(), verb="observe-resources"),
                         dict(frame(), verb="observe-orbital"),
+                        dict(frame(), verb="observe-weapon"),
                         dict(frame(), verb="observe-input"), pulse_frame(),
+                        pulse_frame(pulse(context="party-confirm")),
                         pulse_frame(pulse(context="default",buttons=0,leftX=-32768,rightTrigger=255)),
                         dict(frame(), verb="observe-save-flow"),
                         dict(frame(), verb="open-pause-menu"), dict(frame(), verb="open-save-menu"),
@@ -138,6 +140,8 @@ class WireTests(unittest.TestCase):
             invalid_pulses = [json.dumps(pulse(buttons=0)),json.dumps(pulse(buttons=0x400)),
                               json.dumps(pulse(durationMs=True)),json.dumps(pulse(durationMs=1.0)),
                               json.dumps(pulse(leftX=-32769)),json.dumps(pulse(context="orbital")),
+                              json.dumps(pulse(context="party-confirm",buttons=0x400)),
+                              json.dumps(pulse(context="party-confirm-extra")),
                               json.dumps(pulse(extra=0)),json.dumps({k:v for k,v in pulse().items() if k!="rightY"}),
                               '{"schemaVersion":1,'+json.dumps(pulse())[1:]]
             for payload in invalid_pulses:
@@ -167,8 +171,39 @@ class WireTests(unittest.TestCase):
             p.write_bytes(malformed_probe)
             self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"], str(p)], capture_output=True).returncode, 2)
 
+            for body in (b"reload", b"{}"):
+                raw=c.encode(dict(frame(),verb="observe-weapon")).replace(b"bytes=0\n",("bytes="+str(len(body))+"\n").encode())+body
+                with self.assertRaises(c.ControlError):c.decode(raw)
+                p.write_bytes(raw)
+                self.assertEqual(subprocess.run([os.environ["LE2_CONTROL_CPP"],str(p)],capture_output=True).returncode,2)
+
 
 class ClientTests(unittest.TestCase):
+    def test_party_confirm_retains_optin_and_archived_context(self):
+        bind=mock.Mock(side_effect=AssertionError("must not bind"))
+        with self.assertRaises(c.ControlError):
+            c.submit(self.root,"pad-pulse",pulse=pulse(context="party-confirm"),bind=bind)
+        bind.assert_not_called()
+        thread,errors=self.peer()
+        result=c.submit(self.root,"pad-pulse",pulse=pulse(context="party-confirm"),allow_native_input=True,bind=self.bind)
+        thread.join();self.assertFalse(errors);self.assertEqual(result["status"],"dispatched")
+        archived=c.decode((self.root/"history"/(result["id"]+".request")).read_bytes())
+        self.assertEqual(c.parse_pulse(archived["payload"]),pulse(context="party-confirm"))
+
+    def test_weapon_readonly_without_action_optin(self):
+        thread,errors=self.peer()
+        result=c.submit(self.root,"observe-weapon",bind=self.bind)
+        thread.join();self.assertFalse(errors);self.assertEqual(result["status"],"completed")
+        for body in (b"reload",b"{}",b"0"):
+            with self.assertRaises(c.ControlError):
+                c.encode(dict(frame(),verb="observe-weapon",payload=body,bytes=str(len(body))))
+
+    def test_cli_weapon_uses_existing_submit(self):
+        with mock.patch("sys.argv",["control.py",str(self.root),"observe-weapon"]),mock.patch.object(c,"submit",return_value=dict(frame(),kind="result",status="completed")) as submit,mock.patch("builtins.print"):
+            self.assertEqual(c.main(),0)
+            self.assertEqual(submit.call_args.args[1],"observe-weapon")
+            self.assertFalse(submit.call_args.kwargs["allow_native_input"])
+
     def test_pad_requires_independent_opt_in_and_schema_before_binding(self):
         bind=mock.Mock(side_effect=AssertionError("must not bind"))
         for options in ({"pulse":pulse()}, {"pulse":pulse(),"allow_console":True,"allow_menu_actions":True},
