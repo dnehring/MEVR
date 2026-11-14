@@ -39,7 +39,7 @@
     "Acquire naturally obtained saves immediately before known Paragon and Renegade interrupt opportunities; record conversation, speaker, prompt and expected branch using ordinary native play.",
     "Compare saves before and after the chosen branch, inspect native conversation/condition dependencies with LegendaryExplorer, and document verified plot IDs and journal/streaming prerequisites privately.",
     "Pin base and recipe per variant; use no-op preparation for natural fixtures when no edit is required. Missing plot semantics must remain unresolved rather than forcing a single completion flag.",
-    "Define normalized state.dialogue and branch outcome observations with provenance, including legal window opening/closing and input timestamps; current declarations do not establish instrumentation."
+    "Export bound observe-dialogue snapshots for conversation and reply identity, raw timers and GUI flags. Record normal input and rendered prompts with timestamps. Check the resulting branch and saved effects against a matched missed-window trial. Continuous history and exact native input eligibility remain pending."
   ],
   "loadProcedure": [
     "Acquire exclusive native-session ownership and use the protected session workflow.",

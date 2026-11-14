@@ -24,6 +24,11 @@ Concrete acquisition leads are in [reload/interrupt fixture research](../../rese
 and [Zanethu discovery dependencies](../../research/le2-galaxy-fixture-source.md).
 Weapon fixtures also need the [native ammo and reload mapping](../../research/le2-ammo-fixture-source.md).
 
+For Veetor, the [dialogue snapshot query](control.md) reuses the diagnostic
+request channel and [offline state exporter](export-state.md). The
+[source and fixture notes](../../research/le2-interrupt-acquisition.md) map
+selected replies to expected saved changes for paired native trials.
+
 For reload acquisition, prioritize a quiet location with a legal multi-round
 firearm, not an endgame battle. The preferred reusable route is a protected
 normal Lazarus/ProCer checkpoint, followed by Veetor for timed interrupts. The
