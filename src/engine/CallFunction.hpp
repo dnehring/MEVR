@@ -32,8 +32,16 @@ using SkipHandler = bool (*)(ue3::Object* context, ue3::Function* function, ue3:
 using AnswerHandler = bool (*)(ue3::Object* context, ue3::Function* function, ue3::Function* caller, std::uint8_t* callerLocals,
     void* result);
 
+// Runs after the original call of any function (with or without parameters), with the calling frame's Node (the calling
+// script function, or null) and Locals (still live: the caller's own frame): how a handler restricts itself to one caller
+// and sees that caller's arguments (LE2's VR cover: a native's answer inside SFXGame.ModifyDamage only). `result` as for
+// Handler.
+using FramePostHandler = void (*)(ue3::Object* context, ue3::Function* function, ue3::Function* caller, std::uint8_t* callerLocals,
+    void* result);
+
 // Register before Install; the table is read without locking while hooked.
 void AddPostHandler(ue3::Function* function, Handler handler);
+void AddFramePostHandler(ue3::Function* function, FramePostHandler handler);
 // Only for a function without parameters (the caller checks with our reflection layer), as AddSkipHandler.
 void AddAnswerHandler(ue3::Function* function, AnswerHandler handler);
 // Only for a script function without parameters (not native; the caller checks with our reflection layer): a skip

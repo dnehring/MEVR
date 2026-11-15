@@ -6,11 +6,11 @@
 # no controllers). It takes eye snapshots through the move (-Snapshots) and collects the mod's `traversal:` lines of each run.
 #
 #   tools\le2-halcyon-run\vault.ps1 [-Runs 3] [-Mode tap|go|single] [-Link CoverLink_10] [-Slot 0] [-BackM 0.25] [-View game|level]
-#       [-Mask none|vignette|blink] [-Snapshots] [-NoBlock] [-Grip]
+#       [-Mask none|vignette|blink] [-Snapshots] [-Grip]
 #
-# -NoBlock: leave ME2's cover acquisition alone. By default the run sets `BioPlayerController MaxCoverEnterDist 0` through the
-# console for the stretch (a test stand-in for lane F's VR cover block: the first A must not snap Shepard into cover). Results
-# go to the stretch's session folder, vault-<stamp>\ (the log lines, the console's answers, the snapshots' names).
+# The first A must not snap Shepard into cover: that is ME2's VR cover block (game/Posture, `[Hands] noCover = 1`, the default;
+# research/le2-vrik-audit.md), checked here with `mevr cover snap` before the runs. Results go to the stretch's session folder,
+# vault-<stamp>\ (the log lines, the console's answers, the snapshots' names).
 param(
     [int]$Runs = 3,
     [ValidateSet('tap', 'go', 'single')][string]$Mode = 'tap',
@@ -20,7 +20,6 @@ param(
     [string]$View = '',
     [string]$Mask = '',
     [switch]$Snapshots,
-    [switch]$NoBlock,
     [switch]$Grip,
     [double]$SettleSeconds = 2.0
 )
@@ -62,7 +61,7 @@ if ($Mode -eq 'single') { $recArgs += '--single' }
 if ($Grip) { $recArgs += '--grip' }
 & python (Join-Path $W 'tools\make-vault-recording.py') @recArgs | Tee-Object -FilePath (Join-Path $out 'recording.txt')
 
-if (-not $NoBlock) { Ask 'set BioPlayerController MaxCoverEnterDist 0' | Out-Null }
+Ask 'mevr cover snap auto' | Write-Output  # the VR cover block as [Hands] noCover says (game/Posture; 1, the default: refused)
 if ($View) { Ask "mevr traversal view $View" | Out-Null }
 if ($Mask) { Ask "mevr traversal mask $Mask" | Out-Null }
 Ask 'mevr traversal slots' | Write-Output

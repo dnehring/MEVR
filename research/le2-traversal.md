@@ -61,9 +61,10 @@ state, so the move plays from wherever the pawn stands, along its facing.
    `SFXPlayerController.MantleCover(CovPosInfo)` (or `ClimbCover`) on the game thread through `ue3::runtime::Call`: the game's own
    custom action and authored move, from where the pawn stands. No cover state, no snap, no `CurrentLink`.
 3. If the game began its own move on that press (cover not blocked: the in-cover A), the mod stands down.
-4. A single A goes to the game as before: with lane F's block (`game/Posture` `OnFindPlayerCover`, `[Hands] noCover = 1`) it uses
-   what is selected or nothing. Before that block landed the runs used a test stand-in: `set BioPlayerController MaxCoverEnterDist 0`
-   through the console (`tools/le2-halcyon-run/vault.ps1` does it unless `-NoBlock`).
+4. A single A goes to the game as before: with lane F's block (`game/Posture` `OnFindPlayerCover`, `[Hands] noCover = 1`, the
+   default; main 19d54a39) it uses what is selected or nothing. The first three stretches ran before that block landed, with a test
+   stand-in, `set BioPlayerController MaxCoverEnterDist 0` through the console; `vault.ps1` now runs against the real block
+   (`mevr cover snap auto`).
 
 ## The fixture
 

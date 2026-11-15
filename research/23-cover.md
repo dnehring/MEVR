@@ -1,4 +1,4 @@
-# 23. Cover and crouch in VR (LE1)
+# 23. Cover and crouch in VR (LE1; LE2 in section 7)
 
 2026-10-22. Why Shepard snapped into cover against walls in VR first person (and the view dropped to
 third person), how ME1 enters cover and crouches, how we turn the snapping off, and the physical
@@ -248,10 +248,201 @@ Runtime applicability/timing remain **[verify]**. That inspection also confirms 
 
 The same rule serves both; each needs its own hook into its damage code, and neither game's reflection layout is
 measured yet (research/34: our layer stands down there), so neither is built. The plan:
-- **LE2**: in `SFXGame.ModifyDamage`'s frame, answer `IsInCover` true and `IsInCoverLeaning` false for the player as
+- **LE2** (built and measured 2026-11-14: section 7; the second option was impossible, the shields take the hit inside
+  the call): in `SFXGame.ModifyDamage`'s frame, answer `IsInCover` true and `IsInCoverLeaning` false for the player as
   LE1 does; its cone reads `TargetBP.CurrentLink.GetSlotRotation(TargetBP.CurrentSlotIdx)`, which has no link for a VR
   player, so either answer `GetSlotRotation` too (it has a parameter: the answer handler would need to consume it) or
   apply the cone ourselves and set the out parameter `Damage` after the call (a ProcessEvent or CallFunction post-handler
   that sees the parameters). Whether LE2's cover snapping is a problem in VR at all (it's a button there) **[verify]**.
 - **LE3**: as LE2, plus the out-of-cover bonus (+40% from Normal up) must not hit a VR player who is behind cover:
   `Global_OutOfCoverMultiplier` is set in the `else` of `IsInCover()`, so answering it true also removes the bonus.
+
+## 7. ME1's cover system on ME2 (2026-11-14, lane F)
+
+The owner: "We have a cover system for me1 that we need to ensure transfers here", and later the same day "We won't snap
+to cover for VR, it's not a realistic experience. It risks the same problems of our skeleton not matching our players
+position in space." So all three of ME1's parts carry over with ME1's settings and defaults (`[Hands] noCover = 1`,
+`physicalCrouch = 1`, `crouchBelow = 0.75`, `standAbove = 0.85`, `crouchDwellS = 0.2`; `[Cover] protect = 1`, `reachM =
+1.2`, `log = 0`, all in `ASI\LE2MEVR.ini`). The spec was research/le2-vrik-audit.md "ME1's cover system on ME2". Same
+modules as ME1 (`game/Posture`, `game/VrCover`, `core/vr/VrCover`, `core/ik/Posture`), with ME2's names where the game
+forces them.
+
+**How ME2 was read** (a weaker model can repeat it; the outputs are game code, kept in a scratch folder, never in git):
+the script with `local-tools\le2-inspection-root\conversation-scan.exe "<ME2>\BioGame\CookedPCConsole" <out.txt> --game LE2
+--script <Class.Function> --only SFXGame.pcc` (or `--script grep:<word>`; Engine's with `--only Engine.pcc`); the natives with
+`tools\ghidra\decompile.ps1 -Game LE2 <rva|-Search name>`. RVAs are of `MassEffect2.exe` 2.0.0.48602 (PE timestamp
+`0x60AEEFA5`).
+
+### 7.1 No cover snapping
+
+**ME2 has no automatic cover test for the player** (Ghidra, every native with "Cover" in its name, `-Search Cover`): the
+only native that looks for the player's cover by itself is `ABioPlayerController::UpdateCover` (`0xACE2A0`, called from the
+controller's tick `0xACD670` and from `execUpdateCover`). It calls FindPlayerCover's implementation (`0xB6E6C0`) and then
+only ProcessEvents the HUD (the A prompt for cover, climb and mantle): it never sets `CurrentLink` or calls `AcquireCover`.
+So engine/CoverAcquire (ME1's native test hook) stays LE1-only, and `posture::WantsCoverHook()` is false on ME2.
+
+**ME2 takes cover only through one script function**, `BioPlayerController.TryAcquireCover` (an exec, no parameters, returns
+bool): A's input alias runs it (an exec through ProcessEvent), and `BioPlayerController.CheckStormToCover` calls it from a
+sprint (script, through CallFunction). Its body, in order: `FindPlayerCover(FoundCover, TRUE)` (or `FindPlayerCover(FoundCover)
+|| FindPlayerCover(FoundCover, TRUE)` unless `CoverRespectsRotation`), and `return FALSE` if nothing was found; in exploration
+`SetActionState(1)` and `return TRUE` (A next to cover draws the weapon); `CancelReload()`; `IsInAnimatedTransition()`,
+`CanPerformEnterCover()`; then `AcquireCover(FoundCover)` (which calls `BioPawn.PlayerCoverAcquired`: `SetCovPosInfo`,
+`CurrentLink.Claim`, `OnEnteredCover`, `GotoState('PlayerInCover')`). `FindPlayerCover` (`execFindPlayerCover` `0xB38800`:
+`iNative 0`, flags `0x424401`, `native final`) has no other script caller.
+
+**The block is one point** (`game/Posture`, `OnFindPlayerCover`): a CallFunction post-handler that sees the calling frame
+(new in engine/call_function: `AddFramePostHandler`, the frame's Node and Locals after the call) makes FindPlayerCover's
+answer false when its caller is `BioPlayerController.TryAcquireCover` and its context is the player's controller, while
+posture refuses cover (VR on foot: game mode 0, the host's head-tracked view, not calibrating; `[Hands] noCover = 1`).
+TryAcquireCover then returns FALSE at its first line: no snap, no reload cancelled, no explore-to-combat switch. What it
+doesn't touch: the A button itself (use, and lane E's out-of-cover mantle: `CanPerformMantle`, `MantleCover`, `ClimbCover`,
+`BioCustomAction_CoverMantle`, `TryClimbOrMantleCover`), any ProcessEvent call of FindPlayerCover (C++ through
+`ue3::runtime::Call` never passes CallFunction), and UpdateCover's native call. Log `posture: refused a cover entry:
+BioPlayerController.FindPlayerCover found cover for TryAcquireCover ...` (one press asks twice and counts once; a sprint against
+cover asks every 0.3 s: logged at most every 2 s, the heartbeat counts the rest). The result write is journalled
+(`Posture.findPlayerCover`).
+
+**The HUD's "take cover" prompt** would offer what A no longer does. UpdateCover ProcessEvents
+`MassEffectGuiManager.ShowCoverWidget` (or `HideCoverWidget`) on the GUI manager every tick (both are script events with
+empty bodies; the GUI manager is `MassEffectGuiManager Transient.SFXEngine_0.SFXGameViewportClient_0.MassEffectGuiManager_0`).
+A ProcessEvent post-handler on every `ShowCoverWidget` (`FindFunctionsNamed`: overrides included) calls the game's own
+`HideCoverWidget` on the same object at once, under the same switch, before anything is drawn. The climb/mantle prompt
+(`ShowClimbMantleWidget`, shown only in cover) is untouched, so lane E's cue is the only vault prompt. Logs `posture: the
+HUD's cover prompt ... is hidden again` once, and the heartbeat's `posture: this period the HUD's cover prompt shown N times,
+hidden again M times`.
+
+**The sprint into cover:** `BioPlayerController.CheckStormToCover` (`if (bStorming && m_bEnableStormToCover)
+TryAcquireCover()`, called from native code; `m_bEnableStormToCover` is on in ME2's config) goes through the same
+TryAcquireCover, so the same block refuses it; the sprint itself (`bStorming`) is untouched.
+
+Why not the other points: `TryAcquireCover` through ProcessEvent can't be skipped (the host's hook has post-handlers only);
+its other calls (`IsInAnimatedTransition`, `CanPerformEnterCover`) come after `CancelReload` and the explore switch;
+`AcquireCover` and `PlayerCoverAcquired` take a struct parameter (an answer handler skips only calls without parameters); a
+native hook on FindPlayerCover's implementation would also blank the HUD's prompt and any C++ caller, lane E's route among
+them.
+
+A cover already taken (a script, or `[Hands] noCover = 0` before VR came on) is left as on ME1, with ME2's
+`SFXGameModeDefault.TryExitCover(bool bForceExit)` called with `bForceExit = true` (without it, it leaves only with the move
+stick pushed during a lean or peek), never while `BioPawn.IsInAnimatedTransition()` (a cover move under way); after 2 s
+`BioPawn.LeaveCover` (which clears `CurrentLink` to None). ME2's IsInCover (`0xAA4CC0`): `CoverType (+0xAA2) != 0 &&
+CurrentLink (+0x8AC) != None && CurrentSlotIdx (+0x9C0) >= 0`; IsInCoverLeaning (`0xAA4CF0`) adds `CoverAction (+0xAA3)` in
+3..5.
+
+Test tools: `mevr cover snap on|off|auto` (the snapping allowed, refused, or as the file says, until the mod reloads; it
+applies from the next tick), `mevr cover acquire` (TryAcquireCover through ProcessEvent: what A does next to cover; its
+answer, the refusals, Shepard before and after), `mevr cover where` (place, IsInCover, CoverType, CoverAction, CurrentLink,
+CurrentSlotIdx, crouch, sprint, the storm-to-cover flag, prompts hidden), `mevr cover links [n]` (the nearest CoverLinks).
+Recordings: `tools/make-walk-recording.py` plan segments `crouch` (the head and hands `--crouch-drop` m lower, default 0.6),
+`a` (the right controller's A held: a tap with `a:0.15`) and `sprint` (A held, the left stick forward); replay with `-Inputs`
+for the buttons.
+
+### 7.2 Physical crouch
+
+ME1's rules unchanged (`core/ik/Posture`'s detector and arbiter; research/23 section 4). The call is ME2's
+`Engine.Pawn.ShouldCrouch(bool bCrouch)` (it only sets `bWantsToCrouch`): ME2 has no `BioPawn.ShouldCrouch` override (ME1's
+also reset the mount attempt and the movement animation state); `BioPawn.SetShouldCrouch` is an event calling it;
+`BioPawn.StartCrouch`/`EndCrouch` move the mesh by the height adjust as the engine crouches. **ME2 has no crouch button**
+(no `SFXGameModeDefault.ToggleCrouch`), so nothing of the player's fights a physical crouch: the callers are the AI (cover,
+firing), `PlayerInAimBack` (cover's aim-back), `BioSeqAct_Crouch` (Kismet) and, as on ME1,
+`BioPlayerController.PlayerWalking.PlayerMoveCombatOrExplore`, which stands Shepard up on any move input out of combat. The
+arbiter treats those as the game's own changes (kept until the next physical change). The sprint waits as on ME1
+(`BioPlayerController.bStorming`). With no snap there is no cover crouch to fight either.
+
+### 7.3 VR cover
+
+ME2's rule (`SFXGame.ModifyDamage`, called from `SFXModule_Damage.SFXTakeDamage`; the player's module is
+`SFXModule_DamagePlayer`), for `SFXPawn_Player` and `SFXPawn_Henchman`: `IsInCoverLeaning()` first (x
+`PlayerCoverLeanDamageMultiplier`), else `IsInCover()`: if `!DamageType.default.bIgnoresCoverDirection && Normal(HitLocation -
+InstigatedBy.Pawn.Location) Dot Vector(TargetBP.CurrentLink.GetSlotRotation(TargetBP.CurrentSlotIdx)) < -0.3` and `VSize(...)
+> 300`, then `Damage = 0; Momentum = 0; return`; otherwise x `PlayerCoverDamageMultiplier`; out of cover, the
+`SFXGameEffect_NonCoverDamageResistBonus` effect. **Everything after it in the same function, the shields and armour among
+them** (`SFXInventoryManager.ProcessDamage` -> `SFXShield_Base.ApplyDamage`), runs inside ModifyDamage, so a Damage set after
+the call would have reached the shields already: "apply the cone ourselves and set the out parameter after the call" can't
+work. The cut must be the game's own `return` inside the call.
+
+**The cone's facing.** A VR player has no `CurrentLink` (`LeaveCover` sets it to None, and with no snap it is never set),
+and a call on None never reaches CallFunction (UE3's context opcode skips the call and zeroes the rotator: the cone would face
+world +X). So for the one damage call:
+1. `IsInCoverLeaning` (answer handler, caller ModifyDamage, context the player's pawn): the player's real cover is asked
+   first through ProcessEvent (`IsInCover`); in the game's own cover nothing is answered (its rules). Else the VR rule judges
+   the hit (`core/vr/VrCover`, the trace from the eyes, `reachM`), from the instigator's pawn (location plus EyeHeight); with
+   no instigator nothing is answered (the game's cone has no shooter either). Covered: answered false (not leaning out).
+2. `IsInCover` right after: answered true. Unless the damage type's default `bIgnoresCoverDirection` is set (read from its
+   class default object; a damage class without one isn't answered), `BioPawn.CurrentLink` holds **CoverLink's class default
+   object** (journalled, `VrCover.currentLink`): never in a level, and its `GetSlotRotation` (`0x490050`) returns its own
+   Rotation for any slot of its empty Slots array (`SlotIdx < 0 || SlotIdx >= Slots.Num`).
+3. `CoverLink.GetSlotRotation` (a frame post-handler, caller ModifyDamage, the same frame): its rotator replaced by the hiding
+   surface's facing turned to point into the cover (yaw `atan2(-n.y, -n.x)`, pitch and roll 0: Vector() of it is ME1's
+   `-CoverNormal`), journalled (`VrCover.slotRotation`), and `CurrentLink` put back to None at once.
+4. ModifyDamage's post-handler and every tick put back anything still held.
+The game's own code then applies its cone, its 300 units, zero or its in-cover multiplier, its `bIgnoresCoverDirection`
+exception and its damage-calculation records. No cover state, camera or animation outside the call.
+
+Test tools on ME2: `mevr cover [on|off | test | pawns | probe <yawDeg> [rangeM] | put <me|n> <x> <y> <z> | hit <damage> <n>]`.
+`hit` is the player's damage module's own `SFXTakeDamage` (found on the module's class: `SFXModule_DamagePlayer`) with pawn
+n's controller as the instigator (ME2's cone needs `InstigatedBy.Pawn`) and the pawn as the causer; a hostile's hit takes the
+default damage type (`SFXDamageType_Default`), a friend's a loaded damage type whose defaults have `bDamagesFriends`,
+`bHealthDamage` and not `bIgnoresCoverDirection` (ModifyDamage refuses a friend's hit otherwise), named in the answer. Health
+is `SFXModule_Damage.CurrentHealth`, shields the sum of `SFXShield_Base.CurrentShields` over the pawn's inventory chain (as
+SFXTakeDamage adds them). `put` is `Engine.Actor.SetLocation` (ME1's `mevr setloc`).
+
+**Open, the owner's choice:** ME2 also shortens the wait before the shields recharge while in cover (`SFXShield_Base.Tick`:
+with `bFastCoverRegen`, a pawn in cover and not leaning takes an extra decrement of the shield-delay timer,
+`PlayerCoverRegenTimerMultiplier` 1.5). The VR rule answers only inside ModifyDamage, so a VR player hiding behind cover gets
+the damage rule but not the faster recharge. Granting it would mean answering `IsInCover`/`IsInCoverLeaning` in
+`SFXShield_Base.Tick` too, with a judgement that isn't per shot (from which shooter? the nearest hostile, or every awake one).
+Not built.
+
+### 7.4 In the game (fake headset, 2026-11-14 23:12-23:20, Freedom's Progress, Save 4)
+
+`tools/le2-halcyon-run` (`prep.ps1 -Holder me2-lane-f -BuildDir <worktree>\build-trilogy`, `launch.ps1`, `load.ps1`, the
+console and replays below, `launch.ps1 -Stop`, `restore.ps1`: `verification: 0 differences`). `reflect: 357 of 357 checks
+agree`, `posture: script functions found`, `vr cover: SFXGame.ModifyDamage's IsInCoverLeaning and IsInCover are answered
+...`, `hooked UObject::CallFunction (7 handlers)` once posture was active. Each step, repeatable as written:
+
+1. **Physical crouch:** `make-walk-recording.py crouch.mevrrec --plan stand:8,crouch:4,stand:8 --hands view`, `replay.ps1 -Path
+   crouch.mevrrec -Wait`. No floor from the LE2 host yet, so the reference is the head's drop over `[Holsters] eyeHeightM`
+   (1.65 m). At 8.2 s `posture: physical crouch: eyes 1.05 m = 0.64 of the standing 1.65 m, below 0.75 for 0.20 s` and `Shepard
+   crouches (...): Engine.Pawn.ShouldCrouch(true)`; 0.75 s later `Shepard crouched yes` (`bIsCrouched`), the view 20 units lower
+   against the pawn. At 12.2 s `physical stand ... above 0.85 for 0.20 s`, `ShouldCrouch(false)`, 0.76 s later `crouched no`.
+2. **No snap, by the console:** `mevr cover links` (49 CoverLinks; CoverLink_28 7 m from the save's spot), `mevr cover put me
+   -2295 20865 -11909` (next to its low crate). `mevr cover snap on`, `mevr cover acquire`: `TryAcquireCover returned TRUE`,
+   after 2 s `in cover yes, CoverType 2, CoverAction 8, CurrentLink CoverLink_28, CurrentSlotIdx 1`, Shepard moved 0.93 m into the
+   slot (-2295, 20865) -> (-2278, 20774), crouched (the game's own snap). `mevr cover snap off`: `Shepard is in low (crouching)
+   cover (...): leaving it as A does`, out 0.03 s later, `CurrentLink None`. At the same spot `mevr cover acquire`:
+   `TryAcquireCover returned FALSE (FindPlayerCover refused 1 times)`, Shepard at (-2295, 20865) before, after and 2 s later,
+   `in cover no`.
+3. **No snap, by A:** `make-walk-recording.py tapa.mevrrec --plan stand:3,a:0.15,stand:5`, `replay.ps1 -Inputs -Wait`: at 3 s
+   `posture: refused a cover entry ...`, Shepard unmoved and out of cover. With `mevr cover snap on` the same replay put Shepard
+   in CoverLink_28's slot 1 (the replayed A reaches the game's TryAcquireCover).
+4. **The prompt:** near the crate with the snapping refused the heartbeat read `the HUD's cover prompt shown 142 times, hidden
+   again 142 times` per 5 s; with `snap on` `shown 152 times, hidden again 0 times`. (The eye snapshots of both showed no
+   prompt either way: the LE2 host doesn't draw that widget where a snapshot sees it yet, so the counts are the evidence;
+   **[verify]** with lane B3's HUD panel.)
+5. **The sprint:** `make-walk-recording.py sprint.mevrrec --plan stand:2,sprint:5,stand:3 --stick 1.0`, replayed with `-Inputs`
+   from 1 m in front of the crate, the snapping refused: `sprinting yes` during it, Shepard ran into the crate and stopped there
+   (0.97 m), `CheckStormToCover`'s TryAcquireCover refused every 0.3 s (5 refusals logged), never in cover.
+6. **VR cover:** Jacob put beyond the crate (`mevr cover put 1 -2290 20200 -11909`: he stood at (-2290, 20303, -12109) when
+   hit), Shepard at (-2290, 20800). The head lowered 0.9 m (`hide.mevrrec`: `--plan stand:2,crouch:60 --crouch-drop 0.9`):
+   `mevr cover pawns`: `SFXPawn_Jacob_1 at 4.7 m: covered by StaticMeshCollectionActor_1364 0.35 m from the eyes, facing (0.15,
+   0.99); the game's cone cuts it to nothing`. The squad is friendly, so `hit` took `SFXDamageType_CheatKill` (the first
+   loaded damage type with `bDamagesFriends`, `bHealthDamage` and not `bIgnoresCoverDirection`).
+   - covered, `protect` on: two hits of 30, health 257.5 and shields 257.5 unchanged; `judged 1, covered 1, the cone cut 1,
+     the cover's facing given 1` each;
+   - covered, `mevr cover off`: shields 257.5 -> 233.3 -> 209.0 (the game scales 30 to 24.2);
+   - the head raised (replay stopped), `protect` on: `cover too far (StaticMeshCollectionActor_1364 1.70 m from the eyes)`,
+     shields 257.5 -> 233.3 -> 209.0;
+   - Miranda in the open, 4.5 m, `protect` on: `exposed`, shields 257.5 -> 233.3.
+   Afterwards `CurrentLink None`: the link held for the cone was put back. The first build's log said `the cone cut 0` for the
+   covered hits although the game cut them: ME2's `HitLocation` is an out parameter and the frame's own copy of it isn't the
+   hit, so the log's cone now takes the player's place (fixed and measured again: `the cone cut 1`).
+
+Not measured: a hostile's own shot (the instigator is then its AI controller; the friend rule doesn't apply), damage types
+with `bIgnoresCoverDirection` (they take the in-cover three quarters, no link held), a shot from within 3 m.
+
+**LE1 unchanged** (the same run script on LE1, `tools/fake-headset-session.ps1 -Tag lanef-le1`, the players' build of this
+branch, the owner's career where it loads, 2026-11-14 23:28): `hooked ABioPawn::TryAcquireCover`, `vr cover: the damage
+call's IsInCover and IsInCoverLeaning are answered ...`; the crouch replay `SFXGame.BioPawn.ShouldCrouch(true)` at 0.64 of the
+standing height and `(false)` at 1.00, as before; `mevr cover hit 30 0` from a pawn 3.3 m away in the open: `exposed`,
+shields 63.0 -> 39.5 -> 15.9 (protect on), then 15.9 -> 0 and health 141 -> 135 -> 116.4 (off): ME1's own damage path as
+section 6.2 measured it (the covered case wasn't set up again: LE1's code paths are the same lines, moved).

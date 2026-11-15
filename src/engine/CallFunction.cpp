@@ -48,6 +48,11 @@ struct Entry {
 
 // Every script call passes through here, so the lookup is a short pointer scan.
 std::vector<Entry> gHandlers;
+struct FrameEntry {
+    void const* function;
+    FramePostHandler handler;
+};
+std::vector<FrameEntry> gFrameHandlers;
 bool gInstalled = false;
 
 tCallFunction* gCallFunctionOrig = nullptr;
@@ -167,12 +172,28 @@ void CallFunctionHook(ue3::Object* context, FFrame* stack, void* result, ue3::Fu
             }
         }
     }
+    for (FrameEntry const& entry : gFrameHandlers) {
+        if (entry.function == function) {
+            BeginCrumb const begin = gBeginCrumb.load(std::memory_order_relaxed);
+            EndCrumb const end = gEndCrumb.load(std::memory_order_relaxed);
+            std::uint64_t const crumb = begin != nullptr ? begin(function, context) : 0;
+            entry.handler(context, function, stack != nullptr ? ReadNode(stack) : nullptr, stack != nullptr ? ReadLocals(stack) : nullptr,
+                result);
+            if (begin != nullptr && end != nullptr) {
+                end(crumb);
+            }
+        }
+    }
 }
 
 } // namespace
 
 void AddPostHandler(ue3::Function* function, Handler handler) {
     gHandlers.push_back({function, handler});
+}
+
+void AddFramePostHandler(ue3::Function* function, FramePostHandler handler) {
+    gFrameHandlers.push_back({function, handler});
 }
 
 void AddSkipHandler(ue3::Function* function, SkipHandler handler) {
@@ -185,6 +206,7 @@ void AddAnswerHandler(ue3::Function* function, AnswerHandler handler) {
 
 void ClearHandlers() {
     gHandlers.clear();
+    gFrameHandlers.clear();
     gSkips.clear();
     gAnswers.clear();
 }
