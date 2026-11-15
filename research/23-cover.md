@@ -439,3 +439,10 @@ agree`, `posture: script functions found`, `vr cover: SFXGame.ModifyDamage's IsI
 
 Not measured: a hostile's own shot (the instigator is then its AI controller; the friend rule doesn't apply), damage types
 with `bIgnoresCoverDirection` (they take the in-cover three quarters, no link held), a shot from within 3 m.
+
+**LE1 unchanged** (the same run script on LE1, `tools/fake-headset-session.ps1 -Tag lanef-le1`, the players' build of this
+branch, the owner's career where it loads, 2026-11-14 23:28): `hooked ABioPawn::TryAcquireCover`, `vr cover: the damage
+call's IsInCover and IsInCoverLeaning are answered ...`; the crouch replay `SFXGame.BioPawn.ShouldCrouch(true)` at 0.64 of the
+standing height and `(false)` at 1.00, as before; `mevr cover hit 30 0` from a pawn 3.3 m away in the open: `exposed`,
+shields 63.0 -> 39.5 -> 15.9 (protect on), then 15.9 -> 0 and health 141 -> 135 -> 116.4 (off): ME1's own damage path as
+section 6.2 measured it (the covered case wasn't set up again: LE1's code paths are the same lines, moved).
