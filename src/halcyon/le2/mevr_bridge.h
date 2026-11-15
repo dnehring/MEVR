@@ -71,6 +71,9 @@ struct OverlayFrame
     bool worldFrame = false;    // this frame submits the head-tracked world (the projection layer), not a flat panel
     bool menuOpen = false;      // Halcyon's Insert menu is open
     int gameMode = -1;          // the engine's game mode (EngineProbe::ReadGameModeSEH), -1 unreadable
+    // Tracked eyes in app space. Projection poses can instead be centered or taken from frame history.
+    bool eyesValid = false;
+    float eyePosition[2][3] = {};
     // The world layer's views as submitted (each eye's swapchain, rect, pose and FOV), when projectionValid.
     bool projectionValid = false;
     void* projectionSwapchain[2] = {nullptr, nullptr};   // XrSwapchain

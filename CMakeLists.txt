@@ -945,6 +945,9 @@ function(mevr_add_plugin game)
             src/plugin/HudPanel.cpp src/plugin/HudPanel.hpp src/plugin/QuadSwapchain.cpp src/plugin/QuadSwapchain.hpp
             src/plugin/HandReticle.cpp src/plugin/HandReticle.hpp
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
+            # The gun's sights and the scope (plugin/SightLayers, LE1's).
+            src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
+            src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             # Our actions, vibration and the floor on Halcyon's session (plugin/XrHost, as LE1's).
             src/plugin/XrHost.cpp src/plugin/XrHost.hpp src/core/vr/Haptics.cpp src/core/vr/Haptics.hpp src/core/xr/Floor.cpp
             src/core/xr/Floor.hpp src/core/vr/Floor.hpp

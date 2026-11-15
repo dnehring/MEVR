@@ -1549,6 +1549,20 @@ void RunFrame() noexcept
     XrCompositionLayerProjectionView projViews[2] = {};
     XrCompositionLayerProjection layer = {};
     bool rendered = false;
+#if defined(MEVR_ASI)
+    XrVector3f sightEyes[2] = {};
+    bool sightEyesValid = false;
+    auto rememberSightEyes = [&](XrResult result, uint32_t count, const XrViewState& state, const XrView (&views)[2])
+    {
+        sightEyesValid = XrSucceeded(result) && count == 2 &&
+            (state.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT_VALUE) != 0;
+        if (sightEyesValid)
+        {
+            sightEyes[0] = views[0].pose.position;
+            sightEyes[1] = views[1].pose.position;
+        }
+    };
+#endif
 
     // Decoder activity is the authoritative prerecorded-video signal. Restrict it to
     // non-gameplay modes so an in-world Bink screen cannot flatten an otherwise live scene.
@@ -1884,6 +1898,9 @@ void RunFrame() noexcept
         uint32_t viewCount = 0;
         XrView views[2] = {}; views[0].type = views[1].type = XR_TYPE_VIEW_VALUE;
         const XrResult lr = g_fn.locateViews(g_session, &vli, &vs, 2, &viewCount, views);
+#if defined(MEVR_ASI)
+        rememberSightEyes(lr, viewCount, vs, views);
+#endif
 
         // Drive free head-look from the located (recentered) head orientation.
         if (XrSucceeded(lr) && viewCount == 2) DriveHeadLook(views[0]);
@@ -2017,6 +2034,9 @@ void RunFrame() noexcept
         uint32_t viewCount = 0;
         XrView views[2] = {}; views[0].type = views[1].type = XR_TYPE_VIEW_VALUE;
         const XrResult lr = g_fn.locateViews(g_session, &vli, &vs, 2, &viewCount, views);
+#if defined(MEVR_ASI)
+        rememberSightEyes(lr, viewCount, vs, views);
+#endif
         if (XrSucceeded(lr) && viewCount == 2) DriveHeadLook(views[0]);
 
         ID3D11Texture2D* backbuffer = nullptr;
@@ -2207,6 +2227,9 @@ void RunFrame() noexcept
         uint32_t viewCount = 0;
         XrView views[2] = {}; views[0].type = views[1].type = XR_TYPE_VIEW_VALUE;
         const XrResult lr = g_fn.locateViews(g_session, &vli, &vs, 2, &viewCount, views);
+#if defined(MEVR_ASI)
+        rememberSightEyes(lr, viewCount, vs, views);
+#endif
         if (XrSucceeded(lr) && viewCount == 2) DriveHeadLook(views[0]);
 
         ID3D11Texture2D* backbuffer = nullptr;
@@ -2278,6 +2301,9 @@ void RunFrame() noexcept
         uint32_t viewCount = 0;
         XrView views[2] = {}; views[0].type = views[1].type = XR_TYPE_VIEW_VALUE;
         const XrResult lr = g_fn.locateViews(g_session, &vli, &vs, 2, &viewCount, views);
+#if defined(MEVR_ASI)
+        rememberSightEyes(lr, viewCount, vs, views);
+#endif
         if (XrSucceeded(lr) && viewCount == 2) DriveHeadLook(views[0]);
 
         ID3D11Texture2D* backbuffer = nullptr;
@@ -2400,6 +2426,9 @@ void RunFrame() noexcept
         uint32_t viewCount = 0;
         XrView views[2] = {}; views[0].type = views[1].type = XR_TYPE_VIEW_VALUE;
         const XrResult lr = g_fn.locateViews(g_session, &vli, &vs, 2, &viewCount, views);
+#if defined(MEVR_ASI)
+        rememberSightEyes(lr, viewCount, vs, views);
+#endif
 
         // Drive free head-look from the located (recentered) head orientation.
         if (XrSucceeded(lr) && viewCount == 2) DriveHeadLook(views[0]);
@@ -2652,9 +2681,13 @@ void RunFrame() noexcept
         mevrFrame.worldFrame = rendered && !flatPresentation;
         mevrFrame.menuOpen = ME2VR::Menu::IsOpen();
         mevrFrame.gameMode = gmRaw;
+        mevrFrame.eyesValid = sightEyesValid;
         mevrFrame.projectionValid = rendered;
         for (int e = 0; e < 2 && rendered; ++e)
         {
+            mevrFrame.eyePosition[e][0] = sightEyes[e].x;
+            mevrFrame.eyePosition[e][1] = sightEyes[e].y;
+            mevrFrame.eyePosition[e][2] = sightEyes[e].z;
             const XrCompositionLayerProjectionView& pv = projViews[e];
             mevrFrame.projectionSwapchain[e] = pv.subImage.swapchain;
             mevrFrame.projectionRect[e][0] = pv.subImage.imageRect.offset.x;
