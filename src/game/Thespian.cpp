@@ -67,6 +67,10 @@ ue3::FieldRef gEntryList{"SFXGame.BioConversation", "m_EntryList", kDialogueReac
 ue3::FieldRef gEntryReplies{gEntryList, "ReplyListNew"};
 ue3::FieldRef gEntryReplyIndex{gEntryReplies, "nIndex"};
 ue3::FieldRef gReplyUnskippable{gReplyList, "bUnskippable"};
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef gReplyTextRef{gReplyList, "srText"};
+ue3::FunctionRef gLocalizeReply{"SFXGame.SFXGUIMovie.GetUIString", kDialogueReach};
+#endif
 ue3::FunctionRef gGetReplyText{"SFXGame.BioConversation.GetReplyText", kDialogueReach};                  // (int nIndex, bool bParse) -> string
 #if defined(MEVR_GAME_LE3)
 ue3::FunctionRef gGetReplyParaphrase{"SFXGame.BioConversationController.GetReplyParaphraseText", kDialogueReach};  // (int nIndex) -> string
@@ -275,6 +279,23 @@ std::string CallText(ue3::Object* conversation, ue3::FunctionRef& function, int 
     return text;
 }
 
+#if defined(MEVR_GAME_LE3)
+// Static native localization on the live movie (installed SFXGame contract). The public LE3
+// adapter gate stays closed until both this owned FString return and the reply mapping pass audit.
+std::string FullReplyText(ue3::Object* handler, void const* replyNode) {
+    auto const ref = gReplyTextRef.Read<std::int32_t>(replyNode);
+    auto* const f = gLocalizeReply.Get();
+    if (!handler || !ue3::runtime::IsAlive(handler) || !ref || *ref <= 0 || !f) return {};
+    ue3::Params params(ue3::runtime::Get(), f);
+    if (!params.Valid() || !params.Set("sr", *ref) || !params.SetBool("bParse", true) ||
+        !ue3::runtime::Call(handler, f, params)) return {};
+    auto returned = params.Return<ue3::FString>().value_or(ue3::FString{});
+    auto text = ue3::memory::Narrow(returned);
+    ue3::memory::FreeString(returned);
+    return text;
+}
+#endif
+
 template <class T>
 std::optional<T> CallNumber(ue3::Object* conversation, ue3::FunctionRef& function, int position) {
     ue3::Function* const f = function.Get();
@@ -340,9 +361,11 @@ std::optional<Live> ReadLive() {
         card.category = CallNumber<std::int32_t>(live.conversation, gGetReplyCategory, i).value_or(0);
         card.style = CallNumber<std::uint8_t>(live.conversation, gGetReplyGuiStyle, i).value_or(0);
         card.label = CallText(live.conversation, gGetReplyParaphrase, i, false);
-#if !defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE3)
+        card.line = FullReplyText(live.handler, replies->At(card.reply));
+#else
         card.line = CallText(live.conversation, gGetReplyText, i, true);
-#endif // LE3 full reply requires the audited localized string-reference converter.
+#endif
         if (replies) {
             if (void* const node = replies->At(card.reply)) {
                 card.unskippable = gReplyUnskippable.ReadBool(node).value_or(false);
