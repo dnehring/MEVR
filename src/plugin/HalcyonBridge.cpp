@@ -918,17 +918,59 @@ bool ConstantFpEye(void* mode, float* fwd, float* right, float* up) noexcept {
 }
 
 // [MEVR] research/27 7c: the game's HDR-capability answer. The game (0x1409a0050) takes DXGI_OUTPUT_DESC1::ColorSpace
-// == HDR10 as "HDR capable" and, windowed, drops an HDR range to SDR otherwise; so an SDR desktop never gets the float
-// backbuffer. With [Colour] hdrDisplay = 1 the SDR answer becomes HDR10 (10 bits, 1000 nits if the display gives no
-// luminance): the game then creates its R16G16B16A16_FLOAT scRGB swapchain, which DXGI accepts on an SDR desktop
-// (the game window on the monitor looks washed; the eyes get our tonemap).
+// == HDR10 as "HDR capable" and, windowed, drops an HDR range to SDR otherwise. [Colour] hdrDisplay:
+//    1  an SDR answer becomes HDR10 (10 bits, 1000 nits if the display gives no luminance): the game's HDR range then makes
+//       its R16G16B16A16_FLOAT scRGB swapchain without Windows HDR (the eyes get our tonemap)
+//    0  the display's own answer
+//   -1  (the default since 2026-11-14, as ME2's) an HDR answer becomes SDR: the game keeps its 8-bit SDR frame whatever
+//       Windows' HDR switch and [HDR] DesiredRange say. That frame is what the VR renderer is built and measured for; the
+//       float path under our tonemaps measured worse than it (research/27 7d); players with HDR monitors reported trouble
+//       launching ME1 (the owner, 2026-11-14; gotchas/windows-hdr-desktop).
+// A file that says 0, the default before, moves to -1 once ([Colour] hdrDisplayMoved = 1 marks it; 0 set after that stays).
+namespace {
+constexpr int kHdrDisplayDefault = -1;
+
+int HdrDisplaySetting() {
+    std::wstring const& path = SettingsPath();
+    if (path.empty()) {
+        return kHdrDisplayDefault;
+    }
+    wchar_t text[32]{};
+    GetPrivateProfileStringW(L"Colour", L"hdrDisplay", L"", text, 32, path.c_str());
+    std::string narrow;
+    for (wchar_t const c : text) {
+        if (c == L'\0') {
+            break;
+        }
+        narrow.push_back(c < 128 ? static_cast<char>(c) : '?');
+    }
+    auto const value = mevr::ini::Number(narrow);
+    if (!value) {
+        return kHdrDisplayDefault;
+    }
+    int const want = *value > 0.5 ? 1 : (*value < -0.5 ? -1 : 0);
+    if (want != 0 || GetPrivateProfileIntW(L"Colour", L"hdrDisplayMoved", 0, path.c_str()) != 0) {
+        return want;
+    }
+    static std::atomic<bool> moved{false};
+    if (!moved.exchange(true)) {
+        WritePrivateProfileStringW(L"Colour", L"hdrDisplay", L"-1", path.c_str());
+        WritePrivateProfileStringW(L"Colour", L"hdrDisplayMoved", L"1", path.c_str());
+        mevr::log::Info("hdr display: [Colour] hdrDisplay = 0 (the default before 2026-11-14) moved to -1 once: the game is "
+                        "answered SDR on an HDR display; hdrDisplay = 0 again gives the display's own answer");
+    }
+    return kHdrDisplayDefault;
+}
+} // namespace
+
 void HdrDisplayDesc(DXGI_OUTPUT_DESC1* desc) {
     static std::atomic<int> logs{0};
-    std::wstring const& path = SettingsPath();
-    bool const force = !path.empty() && GetPrivateProfileIntW(L"Colour", L"hdrDisplay", 0, path.c_str()) != 0;
+    int const want = HdrDisplaySetting();
+    int const was = static_cast<int>(desc->ColorSpace);
+    unsigned const wasBits = desc->BitsPerColor;
     bool const hdr = desc->ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-    if (force && !hdr) {
-        int const was = static_cast<int>(desc->ColorSpace);
+    char const* answered = "its own answer";
+    if (want > 0 && !hdr) {
         desc->ColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
         desc->BitsPerColor = 10;
         if (desc->MaxLuminance <= 0.0f) {
@@ -936,13 +978,16 @@ void HdrDisplayDesc(DXGI_OUTPUT_DESC1* desc) {
             desc->MaxLuminance = 1000.0f;
             desc->MaxFullFrameLuminance = 1000.0f;
         }
-        if (logs.fetch_add(1, std::memory_order_relaxed) < 3) {
-            mevr::log::Info("hdr display: the display reports colour space {} (SDR); answered HDR10 to the game ([Colour] hdrDisplay = 1): "
-                            "its HDR range makes the float backbuffer without Windows HDR (research/27 7c)", was);
-        }
-    } else if (logs.fetch_add(1, std::memory_order_relaxed) < 3) {
-        mevr::log::Info("hdr display: the display reports colour space {} ({}), {} bits per colour, {:.0f} nits; [Colour] hdrDisplay = {}",
-            static_cast<int>(desc->ColorSpace), hdr ? "HDR10" : "SDR", desc->BitsPerColor, desc->MaxLuminance, force ? 1 : 0);
+        answered = "HDR10: its HDR range makes the float backbuffer without Windows HDR (research/27 7c)";
+    } else if (want < 0 && hdr) {
+        desc->ColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+        desc->BitsPerColor = 8;
+        answered = "SDR: the game keeps its 8-bit frame";
+    }
+    if (logs.fetch_add(1, std::memory_order_relaxed) < 3) {
+        mevr::log::Info("hdr display: the display reports colour space {} ({}), {} bits per colour, {:.0f} nits; answered {} "
+                        "([Colour] hdrDisplay = {})",
+            was, hdr ? "HDR10" : "SDR", wasBits, desc->MaxLuminance, answered, want);
     }
 }
 

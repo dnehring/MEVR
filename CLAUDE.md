@@ -147,7 +147,7 @@ external code candidates. Read these before sequel work. The current scope is pr
   Halcyon's ME2 renderer assumes 8 bits (its eye copies did nothing: black or stale eyes; no SFR left eye, no UI treatment):
   `plugin/EyeCopy` draws such a frame into the eyes, and `[Colour] hdrDisplay = -1` in `ASI\LE2MEVR.ini` answers the game's
   `IDXGIOutput6::GetDesc1` SDR so it stays 8-bit (LE2's default, an interim stop gap the owner approved 2026-11-14 until
-  native HDR works, research/le2-hdr.md; then back to 0, ME1's; research "The black eyes",
+  native HDR works, research/le2-hdr.md; ME1 answers SDR by default too since the same evening; research "The black eyes",
   gotchas/me2-float-swap-chain). ME2 snapshots also save each eye's source and the eye right after the copy. Our quads
   reach ME2's frame through `MevrBridge::OverlayLayers` (me2_xr.cpp before xrEndFrame; so far the vignette, with
   `plugin/Swapchains` in both hosts); the HUD panel's plan: research "Step 4, the HUD panel: the plan".
@@ -1203,8 +1203,10 @@ switching frameworks.
   `[MEVR]` seam on the output vtable Halcyon's `d3d_capture` already patches, slot 27, `MevrBridge::HdrDisplayDesc`;
   log `hdr display:`), so the float backbuffer comes with Windows HDR off: the same frame as with the Windows switch,
   nothing measurable on the GPU, one Draw healthy on it, the flat window on the monitor a normal picture. ACES gives a
-  warmer, deeper, unclipped frame against the game's SDR tonemap. `hdrDisplay = 0` (the default) passes the display's
-  own answer through. **The curve is applied hue-preserving** (research/27 section 7d, 2026-10-26): on the pixel's
+  warmer, deeper, unclipped frame against the game's SDR tonemap. `hdrDisplay = 0` passes the display's own answer
+  through; **`-1`, the default since 2026-11-14 (as ME2's), answers SDR for an HDR display**, so with Windows HDR on the
+  game keeps its 8-bit frame whatever `DesiredRange` says (the owner: players with HDR monitors had trouble launching ME1;
+  an old file's `0` moves to -1 once, `hdrDisplayMoved`; gotchas/windows-hdr-desktop). **The curve is applied hue-preserving** (research/27 section 7d, 2026-10-26): on the pixel's
   largest channel with the pixel scaled by the ratio (`[Colour] toneHue`, 1; 0 per channel as before), a path to white
   for pixels far above the curve (`toneDesat`, 0.15: the sun white, not pink), and the scene's chroma scaled before
   the curve (`toneSat`, 0.7: the game's own SDR pass's saturation at Eden Prime, measured; 1 the scene's), because the
@@ -1212,7 +1214,7 @@ switching frameworks.
   the game's SDR pass leaves it. **Verdict at the same pose (research/27 section 7d): the game's own SDR pass keeps
   more gradation at both ends** (the sky at the sun 50,000 distinct colours against 19,000, the darkest patch 5,900
   against 400 with 9% black) and carries the artists' grade; the float path is not an improvement over it until it
-  carries the game's own toe and grade. `hdrDisplay = 0` is the game's SDR pass.
+  carries the game's own toe and grade. `hdrDisplay = -1` (or 0 with Windows HDR off) is the game's SDR pass.
 - LE1 eye upscale ([research/32](research/32-ue3-vr-performance.md), `[Upscale]` in `ASI\LE1MEVR.ini`, `method = fsr` by default
   since 2026-11-05 with the render target at 0.85 of the eye; before that off by
   default): with `method = fsr` and the stereo target below the headset's eye size (`tools/vr-game-settings.ps1

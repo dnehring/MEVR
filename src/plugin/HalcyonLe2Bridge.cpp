@@ -11,6 +11,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/GamepadMapping.hpp"
+#include "plugin/Colour.hpp"
 #include "plugin/EyeCopy.hpp"
 #include "plugin/MenusLe2.hpp"
 #include "plugin/Renderer.hpp"
@@ -61,6 +62,19 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     mevr::host::eye_copy::Reset();
     if (mevr::host::xr_host::OnSessionCreated(static_cast<XrInstance>(instance), static_cast<XrSession>(session))) {
         mevr::log::Info("halcyon le2 bridge: our controller actions are attached to Halcyon's session");
+    }
+    // The colour correction's per-headset settings and automatic profile (plugin/Colour, research/27), as LE1's bridge.
+    {
+        XrSystemGetInfo systemInfo{XR_TYPE_SYSTEM_GET_INFO};
+        systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
+        XrSystemId system = XR_NULL_SYSTEM_ID;
+        XrSystemProperties properties{XR_TYPE_SYSTEM_PROPERTIES};
+        XrInstanceProperties runtime{XR_TYPE_INSTANCE_PROPERTIES};
+        if (XR_SUCCEEDED(xrGetSystem(static_cast<XrInstance>(instance), &systemInfo, &system)) &&
+            XR_SUCCEEDED(xrGetSystemProperties(static_cast<XrInstance>(instance), system, &properties)) &&
+            XR_SUCCEEDED(xrGetInstanceProperties(static_cast<XrInstance>(instance), &runtime))) {
+            mevr::host::colour::SetHeadset(runtime.runtimeName, properties.systemName, properties.vendorId);
+        }
     }
     mevr::host::menus_le2::OnSessionCreated(static_cast<XrInstance>(instance), static_cast<XrSession>(session));  // M4
     gToldFirstSync = false;
@@ -134,6 +148,8 @@ void OnSessionStopped() noexcept {
 
 namespace {
 D3D11_TEXTURE2D_DESC gSourceDesc[2]{};  // Present thread: the last eye source's, for the copy's log line
+void* gPendingSource = nullptr;          // Present thread: OnEyeSource's, for the copy right after it (its eye)
+int gPendingEye = -1;
 D3D11_TEXTURE2D_DESC gLoggedSource{};
 D3D11_TEXTURE2D_DESC gLoggedImage{};
 int gCopyDescLogs = 0;
@@ -148,12 +164,18 @@ void OnEyeSource(int eye, void* source) noexcept {
     if ((eye == 0 || eye == 1) && source != nullptr) {
         static_cast<ID3D11Texture2D*>(source)->GetDesc(&gSourceDesc[eye]);
     }
+    gPendingSource = source;
+    gPendingEye = eye;
     mevr::host::testloop::OnEyeSource(eye, static_cast<ID3D11Texture2D*>(source));
 }
 
 bool CopyIntoImage(void* context, void* image, void* source, int shiftX) noexcept {
+    // The eye whose source OnEyeSource just named (CopyTextureToEyeFullFrame), else the flat panel (-1): the colour
+    // correction's dither pattern per eye (plugin/Colour).
+    int const eye = source != nullptr && source == gPendingSource ? gPendingEye : -1;
+    gPendingSource = nullptr;
     return mevr::host::eye_copy::Copy(static_cast<ID3D11DeviceContext*>(context), static_cast<ID3D11Texture2D*>(image),
-        static_cast<ID3D11Texture2D*>(source), shiftX);
+        static_cast<ID3D11Texture2D*>(source), shiftX, eye);
 }
 
 void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int waited) noexcept {

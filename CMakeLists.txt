@@ -927,8 +927,10 @@ function(mevr_add_plugin game)
             src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/game/GamepadMapping.cpp src/game/GamepadMapping.hpp
             src/core/vr/Controllers.cpp src/core/vr/Controllers.hpp src/core/xr/Input.cpp src/core/xr/Input.hpp
             src/plugin/Renderer.hpp src/plugin/RendererLe2.cpp
-            # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit).
+            # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit), and ME1's colour
+            # correction in that copy (plugin/Colour, core/vr/Colour; research/le2-picture.md).
             src/plugin/EyeCopy.cpp src/plugin/EyeCopy.hpp src/core/d3d11/Blit.cpp src/core/d3d11/Blit.hpp
+            src/plugin/Colour.cpp src/plugin/Colour.hpp src/core/vr/Colour.cpp src/core/vr/Colour.hpp
             # Our layers at xrEndFrame (MevrBridge::OverlayLayers): the swapchain budget and the modules that run on LE2.
             src/plugin/Swapchains.cpp src/plugin/Swapchains.hpp
             src/core/vr/SwapchainBudget.hpp src/plugin/Vignette.cpp src/plugin/Vignette.hpp src/core/vr/Comfort.cpp

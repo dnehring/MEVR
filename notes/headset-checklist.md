@@ -714,6 +714,11 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
 - [ ] Quest 3 over Steam Link: the headset name in `[MEVR-COLOUR] headset:`, the Quest profile against neutral (hold A
   to compare), banding on the grey ramp, black level and white point. (research/27 sections 5, 8)
 - [ ] One cutscene with `cineFpsCap = 0` against the capped 45 fps: which judders less? (research/16)
+- [ ] ME2's dark scenes (built 2026-11-14, session: HDR desktops / ME2 picture; research/le2-picture.md): at Freedom's
+  Progress at night and on the Normandy's crew deck, in the PS VR2 neutral against the game's `gamma 2.5` (console) and
+  against `[Colour] profile = custom`, `gamma = 1.10` in `ASI\LE2MEVR.ini`; on the Quest, ME1's `quest` profile against
+  contrast 1.06, saturation 1.12, mid-tones 1.0, black +0.03 (custom). Which keeps the shadows readable without looking
+  grey; any bands in the dark sky or ceilings.
 
 ## 7. Claude checks these alone on the fake headset (no need to wear it)
 Ask Claude to run them when the machine is free; each is a console command, a snapshot, a replay or a probe.
