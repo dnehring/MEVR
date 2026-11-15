@@ -2,7 +2,6 @@
 // What each row of our main menu drives (plugin/MainMenuSettings.hpp, research/28 section 4).
 
 #include "plugin/MainMenuSettings.hpp"
-#include "plugin/Voice.hpp"
 
 // One menu for both games (docs/le2-continuation-plan.md M4.1, research/le2-menus.md): LE1's host has Halcyon's LE1 renderer
 // (its VrConfig, profiles and render size) and the LE1 host's modules the rows drive (the colour, the voice, OpenAL Soft, the
@@ -38,6 +37,7 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Voice.hpp"
 
 #include "mevr/BuildInfo.hpp"  // MEVR_GIT_COMMIT, About (generated: tools/cmake/BuildInfo.cmake)
 #include "mevr/Version.hpp"    // MEVR_VERSION, About (generated from CMake's project(VERSION))
@@ -618,7 +618,7 @@ void Settings::Read(menu::Values& v) {
     {
         std::string const strictness = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "strictness", "performer")));
         v.texts["thespian_strictness"] = strictness == "relaxed" || strictness == "method" ? strictness : std::string("performer");
-#if defined(MEVR_MENU_LE2)
+#if !defined(MEVR_MENU_LE1)
         v.texts["thespian_hand"] = "voice";  // LE2 keeps native Shepard playback until a verified Wwise adapter exists.
 #else
         v.texts["thespian_hand"] = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "handPick", "voice"))) == "silent" ? "silent" : "voice";
@@ -908,7 +908,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "thespian_strictness") {
         Put("Thespian", "strictness", v.Text("thespian_strictness"), true);
     } else if (key == "thespian_hand") {
-#if !defined(MEVR_MENU_LE2)
+#if defined(MEVR_MENU_LE1)
         Put("Thespian", "handPick", v.Text("thespian_hand"), true);
 #endif
     } else if (key == "audio_spatial") {
