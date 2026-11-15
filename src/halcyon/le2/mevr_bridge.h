@@ -81,7 +81,20 @@ struct OverlayFrame
     float projectionOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     float projectionPosition[2][3] = {};
     float projectionFov[2][4] = {};                      // angleLeft, angleRight, angleUp, angleDown (radians)
+    bool stereo = false;        // SFR (the stereo mode whose eyes carry no HUD while the HUD panel takes it)
+    // The head at the frame's display time in appSpace (the located views: their mean position, the left eye's
+    // orientation, as LE1's), when headValid.
+    bool headValid = false;
+    float headOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // xyzw
+    float headPosition[3] = {};
 };
+
+// Render thread, from d3d_capture.cpp's draw hooks: an SFR UI draw (IsUiDrawNow, not a menu or cinematic frame).
+// `draw(user)` re-issues the game's draw; called with our HUD panel bound while it is armed (plugin/HudPanel: "over"
+// draws and Scaleform's blend modes), only once the left eye is captured (`afterLeftEye`, SfrUiMirrorArmed: the frame's
+// end, where the left-eye mirror would draw it too; earlier ones are counted). True if the draw went to the panel: the
+// caller skips its own.
+bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool textBatch, bool afterLeftEye) noexcept;
 
 // Present thread (RunFrame), every frame right before xrEndFrame, after Halcyon's own layers are made: our quads (the
 // host modules on LE2 so far: plugin/Vignette), up to `capacity` XrCompositionLayerQuad* into `layersOut`, drawn over
@@ -115,6 +128,13 @@ bool XrRuntimeIsSteamVr() noexcept;
 // The key is down and a window of the game is in front (LE1's MevrBridge::KeyDown): a hotkey typed in another program
 // (Discord, a browser) must not recenter, switch profiles or open the menu.
 bool KeyDown(int vk) noexcept;
+
+// The menu key went down (me2_menu.cpp's PollInsert; `ownMenuOpen`: Halcyon's menu is open). True if our main menu took it
+// (opened or closed; plugin/MenusLe2), false if Halcyon's menu toggles as upstream: with Ctrl or Shift held, or while its
+// menu is open, as LE1's MevrBridge::OnMenuKey.
+bool OnMenuKey(bool ownMenuOpen) noexcept;
+// Our main menu is open (plugin/MainMenu): Halcyon's window procedure swallows the desktop's input as for its own menu.
+bool MainMenuOpen() noexcept;
 
 // Halcyon's hotkey polls go through this: KeyDown in our ASI, the plain poll in an upstream build.
 inline bool HotkeyDown(int vk) noexcept

@@ -1749,13 +1749,20 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds> [label]` (M3: the skeleton audit on ME2)
     }
+    if (verb == "omni") {
+        // `mevr omni <squad|map|journal|codex|computer|close|holster>`: what the omni-tool rail's entries ask (M4.3,
+        // research/le2-menus.md), without a hand on the rail.
+        std::string which;
+        words >> which;
+        return game_menu_request::Inject(which);
+    }
     if (verb == "traversal") {
         std::string rest;
         std::getline(words, rest);
         return traversal::Command(rest);  // the vault's fixture and tests (research/le2-traversal.md)
     }
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
-                       "mevr camera trace <seconds> [label] | mevr traversal ...");
+                       "mevr camera trace <seconds> [label] | mevr omni <screen> | mevr traversal ...");
 }
 
 #endif

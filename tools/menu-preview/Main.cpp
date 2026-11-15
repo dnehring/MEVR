@@ -293,10 +293,13 @@ int main(int argc, char** argv) {
     fs::path assets;
     fs::path fonts;
     fs::path gameArt;
+    bool le2 = false;  // also the pages as Mass Effect 2's host shows them (le2-*.png)
     for (int i = 1; i < argc; ++i) {
         std::string const a = argv[i];
         if (a == "--warp") {
             warp = true;
+        } else if (a == "--le2") {
+            le2 = true;
         } else if (a == "--assets" && i + 1 < argc) {
             assets = argv[++i];
         } else if (a == "--fonts" && i + 1 < argc) {
@@ -1166,6 +1169,23 @@ int main(int argc, char** argv) {
         topics.mic = static_cast<std::uint8_t>(th::Mic::Armed);
         shot("thespian-topics", topics);
         thUi.Shutdown();
+    }
+    if (le2) {
+        // Mass Effect 2's host (research/le2-menus.md): the rows it doesn't have yet greyed out (`le2`).
+        model.SetText("section", "guide");
+        model.SetNumber("le2", 1.0f);
+        for (char const* section : {"guide", "comfort", "controls", "voice", "sound", "body", "display", "hud"}) {
+            model.SetText("section", section);
+            frames(30);
+            save(std::string("le2-section-") + section);
+        }
+        model.SetText("section", "advanced");
+        for (char const* tab : {"tracking", "perf", "graphics", "hud", "profiles", "diag"}) {
+            model.SetText("advtab", tab);
+            frames(30);
+            save(std::string("le2-advanced-") + tab);
+        }
+        model.SetNumber("le2", 0.0f);
     }
     ui.Shutdown();
     return 0;

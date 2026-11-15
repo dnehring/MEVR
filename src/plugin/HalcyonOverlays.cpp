@@ -2,9 +2,10 @@
 // Our quads on top of Halcyon's world layer (seams in src/halcyon/le1/mevr_bridge.h):
 // - the body-locked HUD panel: d3d_capture.cpp's draw hooks send the game's UI draws of a
 //   head-tracked frame into a panel texture instead of the eye images; here that texture goes into a
-//   swapchain and becomes a quad fixed in the tracking space in front of the player's body;
+//   swapchain and becomes a quad fixed in the tracking space in front of the player's body (its core, game-independent
+//   and shared with LE2's host: plugin/HudPanel);
 // - the hand reticle: a small ring on the weapon's aim ray (or the right controller's aim pose
-//   until the mod publishes the ray), replacing the game's screen-centre crosshair;
+//   until the mod publishes the ray), replacing the game's screen-centre crosshair (plugin/HandReticle, also LE2's);
 // - the squad weapon menu at the left hand while the mod has it open (plugin/SquadPanel.cpp);
 // - the game's own weapon or power wheel on a panel of its own at a hand while one is up: its part of
 //   the HUD panel texture (core/vr/WheelCrop: a default, then measured the first time a wheel opens),
@@ -49,6 +50,9 @@
 #include "plugin/WorldUi.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/HandReticle.hpp"
+#include "plugin/HudPanel.hpp"
+#include "plugin/QuadSwapchain.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #include "plugin/OmniPad.hpp"
@@ -69,7 +73,6 @@
 #include "plugin/WorldPanels.hpp"
 
 #include <d3d11.h>
-#include <d3dcompiler.h>
 #include <wrl/client.h>
 
 #ifndef XR_USE_PLATFORM_WIN32
@@ -101,8 +104,6 @@ namespace overlay = mevr::vr::overlay;
 
 constexpr float kPi = 3.14159265358979f;
 constexpr float kDegToRad = kPi / 180.0f;
-constexpr int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // the menu's family: every runtime has it
-constexpr UINT kReticleSize = 128;
 float gPanelBackdrop = 0.0f;  // the world UI's backdrop for this frame's panel blit (research/53; 0: the HUD as it is)
 // The UI world's squad member behind the world UI's panel this frame (research/57 section 7; nullopt: none).
 std::optional<mevr::host::ui_world_figure::Picture> gPanelFigure;
@@ -114,35 +115,9 @@ void LogBoth(std::string const& line) {
     mevr::host::renderer::LogLine(line);
 }
 
-// ---- The panel texture: the game's UI draws land here (render thread) -------------------------------
-struct PanelTexture {
-    ComPtr<ID3D11Texture2D> texture;
-    ComPtr<ID3D11RenderTargetView> rtv;
-    ComPtr<ID3D11ShaderResourceView> srv;
-    // The tint: what Scaleform's non-"over" draws do to whatever is behind the UI (white: nothing).
-    ComPtr<ID3D11Texture2D> tint;
-    ComPtr<ID3D11RenderTargetView> tintRtv;
-    ComPtr<ID3D11ShaderResourceView> tintSrv;
-    UINT width = 0;
-    UINT height = 0;
-    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
-    bool failed = false;  // creation failed for this size/format: stop retrying every draw
-};
-PanelTexture gPanel;
-std::atomic<bool> gArmed{false};
+// ---- The HUD panel's core (the panel texture, its blit, swapchain and placement) is plugin/HudPanel -------------
+namespace hud_panel = mevr::host::hud_panel;
 std::atomic<bool> gGalaxyEarlyUi{false};
-std::atomic<unsigned> gPanelDraws{0};
-std::atomic<unsigned> gPanelTextDraws{0};
-std::atomic<unsigned> gPanelEarlyDraws{0};
-std::atomic<unsigned> gPanelEarlyTextDraws{0};
-std::atomic<unsigned> gPanelDrawsLastFrame{0};
-std::atomic<unsigned> gTintDraws{0};
-std::atomic<bool> gPanelIsFloat{false};
-bool gPanelNeedsClear = false;
-bool gGalaxyClearPending = false; // clear immediately before the next game UI draw, never after its copy
-unsigned gGalaxyUiClears = 0;
-bool gTintDirty = false;  // Present thread: the tint texture has draws in it (cleared to white with the panel)
-bool gLoggedTint = false;
 
 // Immediate-context thread only. The eye-copy flag is false throughout Present, so it cannot
 // distinguish next-frame Flash from runtime/desktop overlay work inside Present.
@@ -155,16 +130,6 @@ struct PanelPresent {
 };
 thread_local PanelPresent tPanelPresent;
 unsigned gGalaxyOrderLines = 0;
-
-void ClearPanel(ID3D11DeviceContext* context) {
-    float const clear[4] = {0, 0, 0, 0};
-    float const white[4] = {1, 1, 1, 1};
-    context->ClearRenderTargetView(gPanel.rtv.Get(), clear);
-    if (gPanel.tintRtv != nullptr) context->ClearRenderTargetView(gPanel.tintRtv.Get(), white);
-    gTintDirty = false;
-    gGalaxyClearPending = false;
-    ++gGalaxyUiClears;
-}
 
 // Non-indexed Scaleform batches are the text/glyph proxy, not a pixel visibility test.
 // Cumulative per opening: zero-text runs catch missing frames even between periodic log lines.
@@ -201,450 +166,25 @@ void NoteGalaxyUi(bool window, unsigned draws, unsigned text, unsigned early, un
     if (!window) s = GalaxyUiStats{};
 }
 
-struct BlendEntry {
-    ID3D11BlendState* game = nullptr;  // AddRef'd, so the address can't be reused for another state
-    ComPtr<ID3D11BlendState> ours;
-};
-std::vector<BlendEntry> gBlends;  // render thread only; game blend states are few and long-lived
-
-// Scaleform's non-"over" blend modes: the colour pass (alpha untouched) and the tint pass (nullptr: the
-// mode leaves the world as is).
-struct TintEntry {
-    ID3D11BlendState* game = nullptr;  // AddRef'd
-    ComPtr<ID3D11BlendState> colour;
-    ComPtr<ID3D11BlendState> tint;
-};
-std::vector<TintEntry> gTintBlends;  // render thread only
-
-struct DepthEntry {
-    ID3D11DepthStencilState* game = nullptr;  // AddRef'd
-    ComPtr<ID3D11DepthStencilState> ours;
-};
-std::vector<DepthEntry> gNoWrites;  // render thread only
-
-// What a blend leaves of the destination, as a factor of the source alone: the tint pass's DestBlend
-// (its SrcBlend is ZERO). False when it can't be said that way (MIN/MAX, a destination-dependent pair)
-// or it's ONE (the world unchanged: no tint pass).
-bool TintFactor(D3D11_RENDER_TARGET_BLEND_DESC const& rt, D3D11_BLEND& out) {
-    if (rt.BlendOp != D3D11_BLEND_OP_ADD && rt.BlendOp != D3D11_BLEND_OP_REV_SUBTRACT) {
-        return false;  // MIN/MAX don't scale the destination; SUBTRACT negates it
-    }
-    D3D11_BLEND const s = rt.SrcBlend;
-    D3D11_BLEND const d = rt.DestBlend;
-    if (s == D3D11_BLEND_DEST_COLOR && d == D3D11_BLEND_ZERO) {
-        out = D3D11_BLEND_SRC_COLOR;  // multiply: dst * c
-        return true;
-    }
-    if (s == D3D11_BLEND_INV_DEST_COLOR && d == D3D11_BLEND_ONE) {
-        out = D3D11_BLEND_INV_SRC_COLOR;  // screen: dst * (1 - c) + c
-        return true;
-    }
-    bool const sourceOnly = s != D3D11_BLEND_DEST_COLOR && s != D3D11_BLEND_INV_DEST_COLOR && s != D3D11_BLEND_DEST_ALPHA &&
-        s != D3D11_BLEND_INV_DEST_ALPHA && s != D3D11_BLEND_SRC_ALPHA_SAT;
-    if (!sourceOnly) {
-        return false;
-    }
-    switch (d) {
-    case D3D11_BLEND_ZERO:
-    case D3D11_BLEND_SRC_COLOR:
-    case D3D11_BLEND_INV_SRC_COLOR:
-    case D3D11_BLEND_SRC_ALPHA:
-    case D3D11_BLEND_INV_SRC_ALPHA:
-        out = d;
-        return true;
-    default:
-        return false;  // ONE (add) and the rest: the world stays as it is behind it
-    }
-}
-
-bool IsFloatFormat(DXGI_FORMAT f) {
-    return f == DXGI_FORMAT_R16G16B16A16_FLOAT || f == DXGI_FORMAT_R32G32B32A32_FLOAT ||
-        f == DXGI_FORMAT_R11G11B10_FLOAT;
-}
-bool SamplesLinear(DXGI_FORMAT f) {
-    return IsFloatFormat(f) || f == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB || f == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
-}
-
-// ---- Shaders ------------------------------------------------------------------------------------
-// The panel blit: box-filters a window of the panel texture down by an integer factor (premultiplied,
-// so the filter is exact), then writes linear premultiplied colour through the swapchain's sRGB view.
-// The alpha is the coverage of the "over" draws combined with the tint (what the other blend modes left
-// of the world behind): 1 - (1 - coverage) * tint. 8-bit UNORM panels hold the game's gamma-encoded
-// blend: un-premultiply, decode, re-premultiply. Float (scRGB) panels: scale so SDR white is 1.0 and
-// clip keeping the hue, like the eye blit. Pixels inside any of the three mask rectangles come out transparent (the
-// HUD panel while a wheel, the interaction prompt or a HUD piece has a quad of its own).
-// GridPS: the most opaque pixel (that same alpha) in each cell of a coarse grid over the whole texture,
-// every 4th pixel each way: where the UI is (core/vr/WheelCrop).
-// MEVR_PANEL_OUT: the colour correction's hook (plugin/Colour, research/27), the identity here; the corrected
-// variant of PSMain is compiled with core/vr/Colour's prelude in front.
-constexpr char kPanelShader[] = R"(
-#ifndef MEVR_PANEL_OUT
-#define MEVR_PANEL_OUT(c, pos) (c)
-#endif
-Texture2D<float4> src : register(t0);
-Texture2D<float4> tint : register(t1);
-Texture2D<float4> figure : register(t2);
-SamplerState figureSampler : register(s0);
-cbuffer Params : register(b0) { uint4 info; float4 params; int4 window; int4 masks[3]; float4 figureRect; float4 figureParams; };
-struct VSOut { float4 pos : SV_Position; };
-VSOut VSMain(uint id : SV_VertexID) {
-    float2 p = float2((id == 2) ? 3.0 : -1.0, (id == 1) ? 3.0 : -1.0);
-    VSOut o; o.pos = float4(p, 0.0, 1.0); return o;
-}
-float Behind(int2 q) {
-    return saturate(dot(tint.Load(int3(q, 0)).rgb, float3(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)));
-}
-float4 PSMain(VSOut i) : SV_Target {
-    uint f = max(info.x, 1u);
-    int2 base = window.xy + int2(i.pos.xy) * int(f);
-    [unroll] for (int m = 0; m < 3; ++m) {
-        int4 mask = masks[m];
-        if (mask.z > mask.x && base.x >= mask.x && base.x < mask.z && base.y >= mask.y && base.y < mask.w)
-            return float4(0, 0, 0, 0);
-    }
-    float4 sum = 0;
-    float behind = 0;
-    [loop] for (uint y = 0; y < f; ++y)
-        [loop] for (uint x = 0; x < f; ++x) {
-            int2 q = min(base + int2(x, y), int2(info.yz) - 1);
-            sum += src.Load(int3(q, 0));
-            behind += Behind(q);
-        }
-    float4 s = sum / float(f * f);
-    float a = 1.0 - (1.0 - saturate(s.a)) * (behind / float(f * f));
-    float3 c = 0;
-    if (a < 1.0 / 1024.0) {
-        a = 0;
-    } else {
-        c = max(s.rgb, 0.0) / a;
-        if (params.x > 0.5) {
-            c *= params.y;
-            c /= max(1.0, max(c.r, max(c.g, c.b)));
-        } else {
-            c = saturate(c);
-            c = (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
-        }
-        if (params.z > 0.0) {
-            // A game screen standing in the room (research/53): its dark parts at params.z's opacity, the bright ones solid.
-            a *= lerp(params.z, 1.0, saturate(max(c.r, max(c.g, c.b)) * 4.0));
-        }
-    }
-    // The UI world's picture behind the game's UI over the 16:9 stage (research/57 section 7: the equipment and squad screens'
-    // squad member): figureRect its origin and inverse size in source pixels, figureParams its opacity and decode gamma.
-    float4 under = 0;
-    if (figureParams.x > 0.0) {
-        float2 uv = (float2(base) + 0.5 * float(f) - figureRect.xy) * figureRect.zw;
-        if (all(uv >= 0.0) && all(uv <= 1.0)) {
-            float3 fc = pow(max(figure.SampleLevel(figureSampler, uv, 0).rgb, 0.0), figureParams.y);
-            under = float4(fc * figureParams.x, figureParams.x);
-        }
-    }
-    float aOut = a + under.a * (1.0 - a);
-    if (aOut < 1.0 / 1024.0) return float4(0, 0, 0, 0);
-    c = (c * a + under.rgb * (1.0 - a)) / aOut;
-    c = MEVR_PANEL_OUT(c, i.pos);
-    return float4(c * aOut, aOut);
-}
-float4 GridPS(VSOut i) : SV_Target {
-    int2 o = int2(i.pos.xy) * int2(window.zw);
-    float m = 0;
-    [loop] for (int y = 0; y < window.w; y += 4)
-        [loop] for (int x = 0; x < window.z; x += 4) {
-            int2 q = min(o + int2(x, y), int2(info.yz) - 1);
-            m = max(m, 1.0 - (1.0 - saturate(src.Load(int3(q, 0)).a)) * Behind(q));
-        }
-    return float4(m, m, m, m);
-}
-)";
-
-struct PanelParams {
-    std::uint32_t info[4];  // factor, source width, source height, 0
-    float params[4];        // linear source (1/0), white scale, the world UI's backdrop (0: none), 0
-    std::int32_t window[4]; // blit: the window's origin (source pixels), 0, 0; grid: 0, 0, cell width, cell height
-    std::int32_t masks[3][4];  // each x0, y0, x1, y1 (source pixels); x1 <= x0: none
-    float figureRect[4];       // the UI world's picture (research/57 section 7): the stage's origin (source pixels), 1/width, 1/height
-    float figureParams[4];     // its opacity (0: none), decode gamma, 0, 0
-};
-static_assert(sizeof(PanelParams) == 128);
-
-using D3DCompileFn = HRESULT(WINAPI*)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR,
-    LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
-
-// `source`: kPanelShader unless given (the colour-corrected variant).
-bool Compile(char const* entry, char const* profile, ComPtr<ID3DBlob>& out, std::string const* source = nullptr) {
-    static D3DCompileFn compile = [] {
-        HMODULE module = LoadLibraryW(L"d3dcompiler_47.dll");
-        return module != nullptr ? reinterpret_cast<D3DCompileFn>(GetProcAddress(module, "D3DCompile")) : nullptr;
-    }();
-    if (compile == nullptr) {
-        mevr::log::Error("overlays: d3dcompiler_47.dll unavailable; no HUD panel");
-        return false;
-    }
-    ComPtr<ID3DBlob> errors;
-    HRESULT const hr = compile(source != nullptr ? source->data() : kPanelShader,
-        source != nullptr ? source->size() : sizeof(kPanelShader) - 1, "MEVR_HudPanel", nullptr, nullptr, entry,
-        profile, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, out.ReleaseAndGetAddressOf(), errors.GetAddressOf());
-    if (FAILED(hr)) {
-        mevr::log::Error("overlays: shader {} failed to compile: {}", entry,
-            errors ? static_cast<char const*>(errors->GetBufferPointer()) : "(no message)");
-        return false;
-    }
-    return true;
-}
-
-struct Pipeline {
-    ComPtr<ID3D11VertexShader> vs;
-    ComPtr<ID3D11PixelShader> ps;
-    ComPtr<ID3D11PixelShader> colourPs;  // ps with the colour correction (plugin/Colour); nullptr: never corrected
-    ComPtr<ID3D11PixelShader> gridPs;
-    ComPtr<ID3D11Buffer> params;
-    ComPtr<ID3D11BlendState> opaque;
-    ComPtr<ID3D11DepthStencilState> noDepth;
-    ComPtr<ID3D11RasterizerState> raster;
-    ComPtr<ID3D11SamplerState> linearClamp;  // the UI world's picture (research/57 section 7)
-    bool tried = false;
-    bool ready = false;
-};
-Pipeline gPipeline;
-
-bool EnsurePipeline(ID3D11Device* device) {
-    if (gPipeline.tried) {
-        return gPipeline.ready;
-    }
-    gPipeline.tried = true;
-    ComPtr<ID3DBlob> vsBlob;
-    ComPtr<ID3DBlob> psBlob;
-    ComPtr<ID3DBlob> gridBlob;
-    if (!Compile("VSMain", "vs_5_0", vsBlob) || !Compile("PSMain", "ps_5_0", psBlob) || !Compile("GridPS", "ps_5_0", gridBlob)) {
-        return false;
-    }
-    bool ok = SUCCEEDED(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr,
-                  gPipeline.vs.GetAddressOf())) &&
-        SUCCEEDED(device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr,
-            gPipeline.ps.GetAddressOf())) &&
-        SUCCEEDED(device->CreatePixelShader(gridBlob->GetBufferPointer(), gridBlob->GetBufferSize(), nullptr,
-            gPipeline.gridPs.GetAddressOf()));
-    D3D11_BUFFER_DESC cb{};
-    cb.ByteWidth = sizeof(PanelParams);
-    cb.Usage = D3D11_USAGE_DEFAULT;
-    cb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    ok = ok && SUCCEEDED(device->CreateBuffer(&cb, nullptr, gPipeline.params.GetAddressOf()));
-    D3D11_BLEND_DESC bd{};
-    bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    ok = ok && SUCCEEDED(device->CreateBlendState(&bd, gPipeline.opaque.GetAddressOf()));
-    D3D11_DEPTH_STENCIL_DESC dd{};
-    dd.DepthFunc = D3D11_COMPARISON_ALWAYS;
-    ok = ok && SUCCEEDED(device->CreateDepthStencilState(&dd, gPipeline.noDepth.GetAddressOf()));
-    D3D11_RASTERIZER_DESC rd{};
-    rd.FillMode = D3D11_FILL_SOLID;
-    rd.CullMode = D3D11_CULL_NONE;
-    rd.DepthClipEnable = TRUE;
-    ok = ok && SUCCEEDED(device->CreateRasterizerState(&rd, gPipeline.raster.GetAddressOf()));
-    D3D11_SAMPLER_DESC sd{};
-    sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-    sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-    sd.ComparisonFunc = D3D11_COMPARISON_NEVER;
-    sd.MaxLOD = D3D11_FLOAT32_MAX;
-    ok = ok && SUCCEEDED(device->CreateSamplerState(&sd, gPipeline.linearClamp.GetAddressOf()));
-    gPipeline.ready = ok;
-    if (!ok) {
-        mevr::log::Error("overlays: HUD panel pipeline creation failed");
-    }
-    if (ok) {
-        std::string const corrected = std::string(mevr::vr::colour::ShaderPrelude()) + kPanelShader;
-        ComPtr<ID3DBlob> colourBlob;
-        if (!Compile("PSMain", "ps_5_0", colourBlob, &corrected) ||
-            FAILED(device->CreatePixelShader(colourBlob->GetBufferPointer(), colourBlob->GetBufferSize(), nullptr,
-                gPipeline.colourPs.ReleaseAndGetAddressOf()))) {
-            gPipeline.colourPs.Reset();
-            mevr::log::Warn("overlays: the HUD panel's colour-corrected shader failed: the HUD stays uncorrected");
-        }
-    }
-    return ok;
-}
-
-// Saves and restores everything the panel blit touches on the game's context: UE3 caches its own
-// pipeline state, so whatever was bound has to be bound again afterwards.
-class StateGuard {
-public:
-    explicit StateGuard(ID3D11DeviceContext* c) : c_(c) {
-        c_->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs_, &dsv_);
-        c_->OMGetBlendState(&blend_, blendFactor_, &sampleMask_);
-        c_->OMGetDepthStencilState(&depth_, &stencilRef_);
-        c_->RSGetState(&raster_);
-        c_->RSGetViewports(&viewportCount_, viewports_);
-        c_->RSGetScissorRects(&scissorCount_, scissors_);
-        c_->IAGetPrimitiveTopology(&topology_);
-        c_->IAGetInputLayout(&layout_);
-        c_->VSGetShader(&vs_, nullptr, nullptr);
-        c_->PSGetShader(&ps_, nullptr, nullptr);
-        c_->GSGetShader(&gs_, nullptr, nullptr);
-        c_->HSGetShader(&hs_, nullptr, nullptr);
-        c_->DSGetShader(&ds_, nullptr, nullptr);
-        c_->PSGetShaderResources(0, 3, srv_);
-        c_->PSGetSamplers(0, 1, &sampler_);
-        c_->PSGetConstantBuffers(0, 1, &cb_);
-    }
-    ~StateGuard() {
-        ID3D11ShaderResourceView* none[3] = {nullptr, nullptr, nullptr};
-        c_->PSSetShaderResources(0, 3, none);
-        c_->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs_, dsv_);
-        c_->OMSetBlendState(blend_, blendFactor_, sampleMask_);
-        c_->OMSetDepthStencilState(depth_, stencilRef_);
-        c_->RSSetState(raster_);
-        c_->RSSetViewports(viewportCount_, viewports_);
-        c_->RSSetScissorRects(scissorCount_, scissors_);
-        c_->IASetPrimitiveTopology(topology_);
-        c_->IASetInputLayout(layout_);
-        c_->VSSetShader(vs_, nullptr, 0);
-        c_->PSSetShader(ps_, nullptr, 0);
-        c_->GSSetShader(gs_, nullptr, 0);
-        c_->HSSetShader(hs_, nullptr, 0);
-        c_->DSSetShader(ds_, nullptr, 0);
-        c_->PSSetShaderResources(0, 3, srv_);
-        c_->PSSetSamplers(0, 1, &sampler_);
-        c_->PSSetConstantBuffers(0, 1, &cb_);
-        for (auto*& r : rtvs_) {
-            Release(r);
-        }
-        Release(dsv_);
-        Release(blend_);
-        Release(depth_);
-        Release(raster_);
-        Release(layout_);
-        Release(vs_);
-        Release(ps_);
-        Release(gs_);
-        Release(hs_);
-        Release(ds_);
-        Release(srv_[0]);
-        Release(srv_[1]);
-        Release(srv_[2]);
-        Release(sampler_);
-        Release(cb_);
-    }
-    StateGuard(StateGuard const&) = delete;
-    StateGuard& operator=(StateGuard const&) = delete;
-
-private:
-    template <typename T>
-    static void Release(T*& p) {
-        if (p != nullptr) {
-            p->Release();
-            p = nullptr;
-        }
-    }
-
-    ID3D11DeviceContext* c_;
-    ID3D11RenderTargetView* rtvs_[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
-    ID3D11DepthStencilView* dsv_ = nullptr;
-    ID3D11BlendState* blend_ = nullptr;
-    FLOAT blendFactor_[4] = {};
-    UINT sampleMask_ = 0xFFFFFFFFu;
-    ID3D11DepthStencilState* depth_ = nullptr;
-    UINT stencilRef_ = 0;
-    ID3D11RasterizerState* raster_ = nullptr;
-    D3D11_VIEWPORT viewports_[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE] = {};
-    UINT viewportCount_ = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
-    D3D11_RECT scissors_[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE] = {};
-    UINT scissorCount_ = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
-    D3D11_PRIMITIVE_TOPOLOGY topology_ = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
-    ID3D11InputLayout* layout_ = nullptr;
-    ID3D11VertexShader* vs_ = nullptr;
-    ID3D11PixelShader* ps_ = nullptr;
-    ID3D11GeometryShader* gs_ = nullptr;
-    ID3D11HullShader* hs_ = nullptr;
-    ID3D11DomainShader* ds_ = nullptr;
-    ID3D11ShaderResourceView* srv_[3] = {};
-    ID3D11SamplerState* sampler_ = nullptr;
-    ID3D11Buffer* cb_ = nullptr;
-};
-
 // ---- Swapchains (Present thread) ---------------------------------------------------------------
-struct QuadSwapchain {
-    XrSwapchain handle = XR_NULL_HANDLE;
-    std::vector<ID3D11Texture2D*> images;  // owned by the runtime
-    std::vector<ComPtr<ID3D11RenderTargetView>> rtvs;
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    bool failed = false;          // refused (or its texture failed) at failedMs
-    std::uint64_t failedMs = 0;
-
-    // Refused just now: not tried again until plugin/Swapchains says (2 s, or once room was freed). Never for the session.
-    bool Refused() const { return failed && !mevr::host::swapchains::RetryDue(failedMs); }
-    void Refuse() {
-        failed = true;
-        failedMs = GetTickCount64();
-    }
-    void Forget() {  // the session that owned it is gone: its swapchains went with it
-        mevr::host::swapchains::Forget(handle);
-        handle = XR_NULL_HANDLE;
-        images.clear();
-        rtvs.clear();
-        width = height = 0;
-        failed = false;
-    }
-    void Destroy() {
-        mevr::host::swapchains::Destroy(handle);
-        handle = XR_NULL_HANDLE;
-        images.clear();
-        rtvs.clear();
-        width = height = 0;
-    }
-};
+using mevr::host::QuadSwapchain;
 
 XrSession gSession = XR_NULL_HANDLE;
-QuadSwapchain gPanelSwapchain;
-QuadSwapchain gReticleSwapchain;
 QuadSwapchain gPointerDotSwapchain;   // the game pointer's dot (plugin/GamePointer, research/42)
-UINT gPanelFactor = 2;
 
 // `evict`: how plugin/Swapchains lets go of it for room (default: Destroy; it's made again when next wanted).
 bool CreateSwapchain(XrSession session, std::uint32_t width, std::uint32_t height, QuadSwapchain& out,
     char const* what, std::function<void()> evict = {}) {
-    XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-    info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-    info.format = kSwapchainFormat;
-    info.sampleCount = 1;
-    info.width = width;
-    info.height = height;
-    info.faceCount = 1;
-    info.arraySize = 1;
-    info.mipCount = 1;
-    if (!evict) {
-        evict = [&out] { out.Destroy(); };
-    }
-    out.Destroy();
-    if (XR_FAILED(mevr::host::swapchains::Create(session, info, what, std::move(evict), out.handle, out.images))) {
-        out.Refuse();  // plugin/Swapchains logged it
-        return false;
-    }
-    out.failed = false;
-    out.rtvs.resize(out.images.size());
-    out.width = width;
-    out.height = height;
-    return true;
+    return mevr::host::quad_swapchain::Create(session, width, height, out, what, std::move(evict));
 }
 
 // Acquire + wait; false (and nothing held) if either fails.
 bool AcquireImage(QuadSwapchain& swapchain, std::uint32_t& index) {
-    XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-    if (XR_FAILED(xrAcquireSwapchainImage(swapchain.handle, &acquire, &index))) {
-        return false;
-    }
-    XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
-    wait.timeout = XR_INFINITE_DURATION;
-    if (XR_FAILED(xrWaitSwapchainImage(swapchain.handle, &wait)) || index >= swapchain.images.size()) {
-        XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-        xrReleaseSwapchainImage(swapchain.handle, &release);
-        return false;
-    }
-    return true;
+    return mevr::host::quad_swapchain::Acquire(swapchain, index);
 }
 
 void ReleaseImage(QuadSwapchain& swapchain) {
-    XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    xrReleaseSwapchainImage(swapchain.handle, &release);
+    mevr::host::quad_swapchain::Release(swapchain);
 }
 
 // ---- [MENUVIS] readback probes (Present thread) ---------------------------------------------------
@@ -741,165 +281,67 @@ void PumpProbes(ID3D11DeviceContext* context) {
 }
 
 // ---- Placement and layers (Present thread) ---------------------------------------------------------
-overlay::Panel gPlacement;
-std::atomic<bool> gRecentered{false};
-std::atomic<bool> gReplaceRequested{false};
 std::uint64_t gLastFrameMs = 0;
 XrCompositionLayerQuad gPanelQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
-XrCompositionLayerQuad gReticleQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 bool gLoggedPanel = false;
 bool gScreenUiShown = false;   // the 3D screen's UI is on its own layer (research/52 "Cross-eyed")
-bool gLoggedReticle = false;
-bool gLoggedFallback = false;
-bool gProbedPanel = false;
-int gReticleSource = -1;  // last logged: 0 none, 1 aim ray, 2 right controller
 int gLastGameMode = -1;   // the last readable USFXGameModeManager mode
 std::uint64_t gSightSeenMs = 0;    // an eye last looked through the gun's sight (the ring hides meanwhile)
 std::uint64_t gNextPanelLogMs = 0;
 
 // One blit of a window of the panel texture (and its tint) into a swapchain image, `factor` times
-// smaller; pixels inside any of `masks` come out transparent. Returns the image written (released), or nullptr.
-struct Window {
-    UINT x = 0;
-    UINT y = 0;
-    UINT width = 0;
-    UINT height = 0;
-};
-struct Mask {
-    INT x0 = 0;
-    INT y0 = 0;
-    INT x1 = 0;  // x1 <= x0: none
-    INT y1 = 0;
-};
-// Up to three rectangles cut out of a blit (the shader's masks): a wheel or the interaction prompt, the wrist piece, the
-// gun piece.
-struct Masks {
-    static constexpr unsigned kMax = 3;
-    Mask rects[kMax];
-    unsigned count = 0;
-    void Add(UINT x, UINT y, UINT width, UINT height) {
-        if (count < kMax && width > 0 && height > 0) {
-            rects[count++] = {static_cast<INT>(x), static_cast<INT>(y), static_cast<INT>(x + width), static_cast<INT>(y + height)};
+// smaller; pixels inside any of `masks` come out transparent (plugin/HudPanel). Returns the image written (released), or nullptr.
+using Window = hud_panel::Window;
+using Mask = hud_panel::Mask;
+using Masks = hud_panel::Masks;
+
+// This frame's blit options for `swapchain`: the world UI's backdrop for every blit, the UI world's squad member behind the
+// world UI's panel (research/57 section 7), the HUD panel's own dither pattern.
+hud_panel::BlitOptions BlitOptionsFor(QuadSwapchain const& swapchain) {
+    hud_panel::BlitOptions options;
+    options.backdrop = gPanelBackdrop;
+    bool const panel = &swapchain == &hud_panel::Swapchain();
+    options.colourSeed = panel ? 2u : 3u;
+    if (panel && gPanelFigure && gPanelFigure->srv != nullptr && gPanelFigure->opacity > 0.0f) {
+        auto const pw = static_cast<float>(hud_panel::Width());
+        auto const ph = static_cast<float>(hud_panel::Height());
+        mevr::vr::world_ui::Rect const stage = mevr::vr::world_ui::Stage(pw, ph);
+        float const w = (stage.u1 - stage.u0) * pw;
+        float const h = (stage.v1 - stage.v0) * ph;
+        if (w > 1.0f && h > 1.0f) {
+            options.figureRect[0] = stage.u0 * pw;
+            options.figureRect[1] = stage.v0 * ph;
+            options.figureRect[2] = 1.0f / w;
+            options.figureRect[3] = 1.0f / h;
+            options.figureOpacity = std::clamp(gPanelFigure->opacity, 0.0f, 1.0f);
+            options.figureGamma = gPanelFigure->decodeGamma;
+            options.figure = gPanelFigure->srv;
         }
     }
-};
+    return options;
+}
 
 ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSwapchain& swapchain, Window const& window,
-    UINT factor, Masks const& masks, float whiteScale, bool probe = false) {
-    if (!EnsurePipeline(device) || gPanel.srv == nullptr || gPanel.tintSrv == nullptr) {
-        return nullptr;
-    }
-    std::uint32_t index = 0;
-    if (!AcquireImage(swapchain, index)) {
-        return nullptr;
-    }
-    bool drew = false;
-    ComPtr<ID3D11RenderTargetView>& rtv = swapchain.rtvs[index];
-    if (rtv == nullptr) {
-        D3D11_RENDER_TARGET_VIEW_DESC rd{};
-        rd.Format = static_cast<DXGI_FORMAT>(kSwapchainFormat);
-        rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-        device->CreateRenderTargetView(swapchain.images[index], &rd, rtv.GetAddressOf());
-    }
-    if (rtv != nullptr) {
-        PanelParams params{{factor, gPanel.width, gPanel.height, 0},
-            {SamplesLinear(gPanel.format) ? 1.0f : 0.0f, IsFloatFormat(gPanel.format) ? whiteScale : 1.0f, gPanelBackdrop, 0.0f},
-            {static_cast<std::int32_t>(window.x), static_cast<std::int32_t>(window.y), 0, 0}, {}};
-        for (unsigned m = 0; m < masks.count && m < Masks::kMax; ++m) {
-            params.masks[m][0] = masks.rects[m].x0;
-            params.masks[m][1] = masks.rects[m].y0;
-            params.masks[m][2] = masks.rects[m].x1;
-            params.masks[m][3] = masks.rects[m].y1;
-        }
-        // The world UI's panel: the UI world's squad member behind the game's UI, over the 16:9 stage (research/57 section 7).
-        ID3D11ShaderResourceView* figure = nullptr;
-        if (&swapchain == &gPanelSwapchain && gPanelFigure && gPanelFigure->srv != nullptr && gPanelFigure->opacity > 0.0f) {
-            mevr::vr::world_ui::Rect const stage = mevr::vr::world_ui::Stage(static_cast<float>(gPanel.width), static_cast<float>(gPanel.height));
-            float const w = (stage.u1 - stage.u0) * static_cast<float>(gPanel.width);
-            float const h = (stage.v1 - stage.v0) * static_cast<float>(gPanel.height);
-            if (w > 1.0f && h > 1.0f) {
-                params.figureRect[0] = stage.u0 * static_cast<float>(gPanel.width);
-                params.figureRect[1] = stage.v0 * static_cast<float>(gPanel.height);
-                params.figureRect[2] = 1.0f / w;
-                params.figureRect[3] = 1.0f / h;
-                params.figureParams[0] = std::clamp(gPanelFigure->opacity, 0.0f, 1.0f);
-                params.figureParams[1] = gPanelFigure->decodeGamma;
-                figure = gPanelFigure->srv;
-            }
-        }
-        context->UpdateSubresource(gPipeline.params.Get(), 0, nullptr, &params, 0, 0);
-        StateGuard guard(context);
-        D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(swapchain.width), static_cast<float>(swapchain.height), 0.0f, 1.0f};
-        float const blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        ID3D11RenderTargetView* target = rtv.Get();
-        ID3D11ShaderResourceView* sources[2] = {gPanel.srv.Get(), gPanel.tintSrv.Get()};
-        ID3D11Buffer* constants = gPipeline.params.Get();
-        context->OMSetRenderTargets(1, &target, nullptr);
-        context->OMSetBlendState(gPipeline.opaque.Get(), blendFactor, 0xFFFFFFFFu);
-        context->OMSetDepthStencilState(gPipeline.noDepth.Get(), 0);
-        context->RSSetState(gPipeline.raster.Get());
-        context->RSSetViewports(1, &viewport);
-        context->IASetInputLayout(nullptr);
-        context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        // The game's UI gets the eyes' colour correction (plugin/Colour), each panel its own dither pattern.
-        bool const corrected = gPipeline.colourPs != nullptr &&
-            mevr::host::colour::BeginPanel(context, &swapchain == &gPanelSwapchain ? 2u : 3u);
-        context->VSSetShader(gPipeline.vs.Get(), nullptr, 0);
-        context->PSSetShader(corrected ? gPipeline.colourPs.Get() : gPipeline.ps.Get(), nullptr, 0);
-        context->GSSetShader(nullptr, nullptr, 0);
-        context->HSSetShader(nullptr, nullptr, 0);
-        context->DSSetShader(nullptr, nullptr, 0);
-        context->PSSetShaderResources(0, 2, sources);
-        if (figure != nullptr) {
-            ID3D11SamplerState* const sampler = gPipeline.linearClamp.Get();
-            context->PSSetShaderResources(2, 1, &figure);
-            context->PSSetSamplers(0, 1, &sampler);
-        }
-        context->PSSetConstantBuffers(0, 1, &constants);
-        context->Draw(3, 0);
-        if (corrected) {
-            mevr::host::colour::EndPanel(context);
-        }
-        drew = true;
-    }
-    ID3D11Texture2D* const image = swapchain.images[index];
-    if (drew && probe) {  // one look at what the headset gets: the panel image after the blit
-        ProbeTextureAlpha(context, image, "HUD panel swapchain image (first frame with UI)");
-        ProbeTextureAlpha(context, gPanel.texture.Get(), "HUD panel texture (the game's UI draws)");
-    }
-    mevr::host::testloop::OnImageWritten(swapchain.handle, image);  // snapshots
-    ReleaseImage(swapchain);
-    return drew ? image : nullptr;
+    UINT factor, Masks const& masks, float whiteScale) {
+    return hud_panel::Blit(context, device, swapchain, window, factor, masks, whiteScale, BlitOptionsFor(swapchain));
 }
 
 // (Re)makes `swapchain` at width x height; false if it can't.
 bool EnsureSwapchain(QuadSwapchain& swapchain, std::uint32_t width, std::uint32_t height, char const* what, char const* name,
     std::function<void()> evict = {}) {
-    if (swapchain.handle != XR_NULL_HANDLE && (swapchain.width != width || swapchain.height != height)) {
-        swapchain.Destroy();
-    }
-    if (swapchain.handle == XR_NULL_HANDLE) {
-        if (swapchain.Refused() || !CreateSwapchain(gSession, width, height, swapchain, what, std::move(evict))) {
-            return false;
-        }
-        mevr::host::testloop::NameSwapchain(swapchain.handle, name);
-    }
-    return true;
+    return mevr::host::quad_swapchain::Ensure(gSession, swapchain, width, height, what, name, std::move(evict));
+}
+
+// One look at what the headset gets: the panel image after the blit, and the panel texture ([MENUVIS]).
+void ProbePanel(ID3D11DeviceContext* context, ID3D11Texture2D* image, ID3D11Texture2D* panel) {
+    ProbeTextureAlpha(context, image, "HUD panel swapchain image (first frame with UI)");
+    ProbeTextureAlpha(context, panel, "HUD panel texture (the game's UI draws)");
 }
 
 bool RenderPanel(ID3D11DeviceContext* context, ID3D11Device* device, float whiteScale, Masks const& masks) {
-    UINT const factor = std::clamp<UINT>(static_cast<UINT>(std::lround(gPanel.width / 1400.0)), 2u, 4u);
-    std::uint32_t const width = std::max<std::uint32_t>(gPanel.width / factor, 16);
-    std::uint32_t const height = std::max<std::uint32_t>(gPanel.height / factor, 16);
-    if (!EnsureSwapchain(gPanelSwapchain, width, height, "HUD panel", "hud")) {
-        return false;
-    }
-    gPanelFactor = factor;
-    bool const probe = !gProbedPanel && gPanelDrawsLastFrame.load(std::memory_order_relaxed) > 0;
-    ID3D11Texture2D* const image =
-        Blit(context, device, gPanelSwapchain, {0, 0, gPanel.width, gPanel.height}, factor, masks, whiteScale, probe);
-    gProbedPanel = gProbedPanel || (probe && image != nullptr);
-    return image != nullptr;
+    hud_panel::BlitOptions options = BlitOptionsFor(hud_panel::Swapchain());
+    options.probe = &ProbePanel;
+    return hud_panel::Render(context, device, gSession, whiteScale, masks, options);
 }
 
 // ---- The game's wheels on a panel of their own (Present thread) -------------------------------------
@@ -956,7 +398,7 @@ bool gGridFailed = false;
 
 // Draws the coverage grid of the panel texture and copies it for a readback a few frames later.
 void CaptureGrid(ID3D11DeviceContext* context, ID3D11Device* device, bool wheelShot) {
-    if (gGridFailed || gGridShots.size() >= 4 || !EnsurePipeline(device) || gPanel.srv == nullptr || gPanel.tintSrv == nullptr) {
+    if (gGridFailed || gGridShots.size() >= 4 || !hud_panel::Ready()) {
         return;
     }
     if (gGridTarget == nullptr) {
@@ -986,37 +428,13 @@ void CaptureGrid(ID3D11DeviceContext* context, ID3D11Device* device, bool wheelS
         gGridFailed = true;
         return;
     }
-    std::int32_t const cellW = static_cast<std::int32_t>((gPanel.width + kGridColumns - 1) / kGridColumns);
-    std::int32_t const cellH = static_cast<std::int32_t>((gPanel.height + kGridRows - 1) / kGridRows);
-    PanelParams params{{1, gPanel.width, gPanel.height, 0}, {0.0f, 1.0f, 0.0f, 0.0f}, {0, 0, cellW, cellH}, {}};
-    context->UpdateSubresource(gPipeline.params.Get(), 0, nullptr, &params, 0, 0);
-    {
-        StateGuard guard(context);
-        D3D11_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(kGridColumns), static_cast<float>(kGridRows), 0.0f, 1.0f};
-        float const blendFactor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        ID3D11RenderTargetView* target = gGridRtv.Get();
-        ID3D11ShaderResourceView* sources[2] = {gPanel.srv.Get(), gPanel.tintSrv.Get()};
-        ID3D11Buffer* constants = gPipeline.params.Get();
-        context->OMSetRenderTargets(1, &target, nullptr);
-        context->OMSetBlendState(gPipeline.opaque.Get(), blendFactor, 0xFFFFFFFFu);
-        context->OMSetDepthStencilState(gPipeline.noDepth.Get(), 0);
-        context->RSSetState(gPipeline.raster.Get());
-        context->RSSetViewports(1, &viewport);
-        context->IASetInputLayout(nullptr);
-        context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        context->VSSetShader(gPipeline.vs.Get(), nullptr, 0);
-        context->PSSetShader(gPipeline.gridPs.Get(), nullptr, 0);
-        context->GSSetShader(nullptr, nullptr, 0);
-        context->HSSetShader(nullptr, nullptr, 0);
-        context->DSSetShader(nullptr, nullptr, 0);
-        context->PSSetShaderResources(0, 2, sources);
-        context->PSSetConstantBuffers(0, 1, &constants);
-        context->Draw(3, 0);
+    if (!hud_panel::DrawCoverageGrid(context, device, gGridRtv.Get(), kGridColumns, kGridRows)) {
+        return;
     }
     context->CopyResource(shot.staging.Get(), gGridTarget.Get());
     shot.wheel = wheelShot;
-    shot.width = gPanel.width;
-    shot.height = gPanel.height;
+    shot.width = hud_panel::Width();
+    shot.height = hud_panel::Height();
     gGridShots.push_back(std::move(shot));
 }
 
@@ -1314,79 +732,6 @@ void PlaceControl(ControlQuad& control, XrVector3f const& at, XrVector3f const& 
     control.quad.size = {widthM, lengthM};
 }
 
-// A ring with a centre dot, light cyan with a dark rim so it reads on bright and dark backgrounds.
-// Premultiplied, sRGB-encoded (the swapchain's format).
-std::vector<std::uint32_t> ReticlePixels() {
-    std::vector<std::uint32_t> pixels(static_cast<size_t>(kReticleSize) * kReticleSize);
-    auto encode = [](float linear) {
-        float const c = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
-        return static_cast<std::uint32_t>(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f);
-    };
-    float const px = 2.0f / static_cast<float>(kReticleSize);  // one pixel in [-1, 1] units
-    auto band = [px](float d, float inner, float outer) {     // anti-aliased coverage of inner <= d <= outer
-        return std::clamp((d - inner) / px + 0.5f, 0.0f, 1.0f) * std::clamp((outer - d) / px + 0.5f, 0.0f, 1.0f);
-    };
-    for (UINT y = 0; y < kReticleSize; ++y) {
-        for (UINT x = 0; x < kReticleSize; ++x) {
-            float const u = (static_cast<float>(x) + 0.5f) * px - 1.0f;
-            float const v = (static_cast<float>(y) + 0.5f) * px - 1.0f;
-            float const d = std::sqrt(u * u + v * v);
-            float const light = std::max(band(d, 0.64f, 0.78f), band(d, -1.0f, 0.11f));
-            float const rim = std::max(band(d, 0.58f, 0.84f), band(d, -1.0f, 0.17f));
-            // Light over a half-transparent dark rim, premultiplied.
-            float const rimAlpha = 0.55f * rim;
-            float const a = light + rimAlpha * (1.0f - light);
-            float const r = light * 0.55f, g = light * 0.95f, b = light * 1.0f;  // over black rim
-            pixels[static_cast<size_t>(y) * kReticleSize + x] =
-                encode(r) | (encode(g) << 8) | (encode(b) << 16) | (static_cast<std::uint32_t>(a * 255.0f + 0.5f) << 24);
-        }
-    }
-    return pixels;
-}
-
-bool EnsureReticle(ID3D11DeviceContext* context, ID3D11Device* device) {
-    if (gReticleSwapchain.handle != XR_NULL_HANDLE) {
-        return true;
-    }
-    if (gReticleSwapchain.Refused() || !CreateSwapchain(gSession, kReticleSize, kReticleSize, gReticleSwapchain, "reticle")) {
-        return false;
-    }
-    std::vector<std::uint32_t> const pixels = ReticlePixels();
-    D3D11_TEXTURE2D_DESC td{};
-    td.Width = kReticleSize;
-    td.Height = kReticleSize;
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_IMMUTABLE;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA data{pixels.data(), kReticleSize * 4, 0};
-    ComPtr<ID3D11Texture2D> source;
-    if (FAILED(device->CreateTexture2D(&td, &data, source.GetAddressOf()))) {
-        mevr::log::Error("overlays: reticle texture creation failed");
-        gReticleSwapchain.Destroy();
-        gReticleSwapchain.Refuse();
-        return false;
-    }
-    // The content never changes: fill every image once; the runtime keeps showing the last released.
-    for (size_t i = 0; i < gReticleSwapchain.images.size(); ++i) {
-        std::uint32_t index = 0;
-        if (!AcquireImage(gReticleSwapchain, index)) {
-            mevr::log::Error("overlays: reticle swapchain image acquire failed");
-            gReticleSwapchain.Destroy();
-            gReticleSwapchain.Refuse();
-            return false;
-        }
-        context->CopyResource(gReticleSwapchain.images[index], source.Get());
-        ReleaseImage(gReticleSwapchain);
-    }
-    // Snapshots draw it from these pixels: its images are never released again to be copied.
-    mevr::host::testloop::NameSwapchain(gReticleSwapchain.handle, "reticle");
-    mevr::host::testloop::SetStaticImage(gReticleSwapchain.handle, kReticleSize, kReticleSize, pixels);
-    return true;
-}
-
 // The game pointer's dot (plugin/GamePointer, research/42): a filled light dot over a half-transparent dark rim, the
 // menu pointer's look (MevrMenuPointer.cpp), premultiplied; one static image like the reticle's.
 constexpr UINT kPointerDotSize = 64;
@@ -1466,7 +811,7 @@ XrQuaternionf ToQuat(float const q[4]) { return {q[0], q[1], q[2], q[3]}; }
 } // namespace
 
 bool HudPanelArmed() noexcept {
-    return gArmed.load(std::memory_order_acquire);
+    return hud_panel::Armed();
 }
 
 bool HudPanelCapturesEarlyUi() noexcept {
@@ -1478,8 +823,7 @@ void HudPanelPresentBegin(unsigned long long present) noexcept {
     tPanelPresent.active = true;
     tPanelPresent.galaxy = HudPanelCapturesEarlyUi();
     tPanelPresent.number = present;
-    tPanelPresent.startClears = gGalaxyUiClears;
-    gGalaxyUiClears = 0;
+    tPanelPresent.startClears = hud_panel::TakeClears();
 }
 
 void HudPanelPresentDesktop() noexcept {
@@ -1513,203 +857,46 @@ void HudPanelPresentEnd(int mirrorPath) noexcept {
 
 void OnSessionStopped() noexcept {
     mevr::host::floor_lock::Reset();
-    gArmed.store(false, std::memory_order_release);  // no OverlayLayers runs now to disarm it: the UI back to the frame
+    hud_panel::SetArmed(false);  // no OverlayLayers runs now to disarm it: the UI back to the frame
     gGalaxyEarlyUi.store(false, std::memory_order_release);
 }
 
 ID3D11RenderTargetView* HudPanelTarget(ID3D11DeviceContext* context, unsigned width, unsigned height, int format) noexcept {
-    DXGI_FORMAT const fmt = static_cast<DXGI_FORMAT>(format);
-    if (gPanel.texture != nullptr && gPanel.width == width && gPanel.height == height && gPanel.format == fmt) {
-        if (gGalaxyClearPending) ClearPanel(context);
-        return gPanel.rtv.Get();
-    }
-    if (gPanel.failed && gPanel.width == width && gPanel.height == height && gPanel.format == fmt) {
-        return nullptr;
-    }
-    if (gPanel.texture != nullptr && gPanelDraws.load(std::memory_order_relaxed) > 0) {
-        return nullptr;  // a second kind of target in one frame: keep this frame's panel, that draw stays in the frame
-    }
-    gPanel = PanelTexture{};
-    gPanel.width = width;
-    gPanel.height = height;
-    gPanel.format = fmt;
-    ComPtr<ID3D11Device> device;
-    context->GetDevice(device.GetAddressOf());
-    D3D11_TEXTURE2D_DESC td{};
-    td.Width = width;
-    td.Height = height;
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = fmt;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_DEFAULT;
-    td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    D3D11_TEXTURE2D_DESC tintDesc = td;
-    tintDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;  // a 0..1 factor per channel
-    if (device == nullptr || FAILED(device->CreateTexture2D(&td, nullptr, gPanel.texture.GetAddressOf())) ||
-        FAILED(device->CreateRenderTargetView(gPanel.texture.Get(), nullptr, gPanel.rtv.GetAddressOf())) ||
-        FAILED(device->CreateShaderResourceView(gPanel.texture.Get(), nullptr, gPanel.srv.GetAddressOf())) ||
-        FAILED(device->CreateTexture2D(&tintDesc, nullptr, gPanel.tint.GetAddressOf())) ||
-        FAILED(device->CreateRenderTargetView(gPanel.tint.Get(), nullptr, gPanel.tintRtv.GetAddressOf())) ||
-        FAILED(device->CreateShaderResourceView(gPanel.tint.Get(), nullptr, gPanel.tintSrv.GetAddressOf()))) {
-        mevr::log::Error("overlays: HUD panel texture {}x{} format {} failed; the HUD stays in the frame", width,
-            height, format);
-        PanelTexture failed;
-        failed.width = width;
-        failed.height = height;
-        failed.format = fmt;
-        failed.failed = true;
-        gPanel = failed;
-        return nullptr;
-    }
-    float const clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    float const white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-    context->ClearRenderTargetView(gPanel.rtv.Get(), clear);
-    context->ClearRenderTargetView(gPanel.tintRtv.Get(), white);
-    gGalaxyClearPending = false;
-    gPanelIsFloat.store(IsFloatFormat(fmt), std::memory_order_relaxed);
-    LogBoth("[MEVR-HUD] HUD panel texture " + std::to_string(width) + "x" + std::to_string(height) + " fmt=" +
-        std::to_string(format) + (IsFloatFormat(fmt) ? " (float scRGB: scaled to SDR white)" : "") +
-        ": the game's UI draws now go to the body-locked panel instead of the eyes");
-    return gPanel.rtv.Get();
+    return hud_panel::Target(context, width, height, format);
 }
 
 ID3D11BlendState* HudPanelBlend(ID3D11DeviceContext* context, ID3D11BlendState* game) noexcept {
-    if (game == nullptr) {
-        return nullptr;
-    }
-    for (auto const& entry : gBlends) {
-        if (entry.game == game) {
-            return entry.ours.Get();
-        }
-    }
-    D3D11_BLEND_DESC desc{};
-    game->GetDesc(&desc);
-    auto& rt = desc.RenderTarget[0];
-    rt.SrcBlendAlpha = D3D11_BLEND_ONE;
-    rt.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
-    rt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    if ((rt.RenderTargetWriteMask & D3D11_COLOR_WRITE_ENABLE_ALL) != 0) {  // stencil-only mask draws stay colourless
-        rt.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
-    }
-    ComPtr<ID3D11Device> device;
-    context->GetDevice(device.GetAddressOf());
-    BlendEntry entry;
-    if (device == nullptr || FAILED(device->CreateBlendState(&desc, entry.ours.GetAddressOf()))) {
-        return nullptr;
-    }
-    game->AddRef();
-    entry.game = game;
-    gBlends.push_back(std::move(entry));
-    return gBlends.back().ours.Get();
+    return hud_panel::Blend(context, game);
 }
 
 void NoteHudPanelDraw(bool beforeEyeCopy, bool textBatch) noexcept {
-    gPanelDraws.fetch_add(1, std::memory_order_relaxed);
-    if (textBatch) gPanelTextDraws.fetch_add(1, std::memory_order_relaxed);
-    if (beforeEyeCopy) {
-        gPanelEarlyDraws.fetch_add(1, std::memory_order_relaxed);
-        if (textBatch) gPanelEarlyTextDraws.fetch_add(1, std::memory_order_relaxed);
-    }
+    hud_panel::NoteDraw(beforeEyeCopy, textBatch);
 }
 
 void HudPanelTintBlends(ID3D11DeviceContext* context, ID3D11BlendState* game, ID3D11BlendState** colour,
     ID3D11BlendState** tint) noexcept {
-    *colour = nullptr;
-    *tint = nullptr;
-    if (game == nullptr) {
-        return;
-    }
-    for (auto const& entry : gTintBlends) {
-        if (entry.game == game) {
-            *colour = entry.colour.Get();
-            *tint = entry.tint.Get();
-            return;
-        }
-    }
-    ComPtr<ID3D11Device> device;
-    context->GetDevice(device.GetAddressOf());
-    if (device == nullptr) {
-        return;
-    }
-    D3D11_BLEND_DESC desc{};
-    game->GetDesc(&desc);
-    TintEntry entry;
-    // The colour: the game's own blend into the panel's premultiplied colour; its alpha (the "over"
-    // coverage) is left as it is.
-    D3D11_BLEND_DESC colourDesc = desc;
-    colourDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
-    colourDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
-    colourDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    device->CreateBlendState(&colourDesc, entry.colour.GetAddressOf());
-    // The tint: what the mode leaves of whatever is behind (dest *= factor of the source).
-    D3D11_BLEND factor = D3D11_BLEND_ONE;
-    if (TintFactor(desc.RenderTarget[0], factor)) {
-        D3D11_BLEND_DESC tintDesc{};
-        tintDesc.RenderTarget[0].BlendEnable = TRUE;
-        tintDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_ZERO;
-        tintDesc.RenderTarget[0].DestBlend = factor;
-        tintDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-        tintDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
-        tintDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
-        tintDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-        tintDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN |
-            D3D11_COLOR_WRITE_ENABLE_BLUE;
-        device->CreateBlendState(&tintDesc, entry.tint.GetAddressOf());
-    }
-    char line[224];
-    std::snprintf(line, sizeof line,
-        "[MEVR-HUD] Scaleform blend mode src=%d dst=%d op=%d: colour to the HUD panel, %s", static_cast<int>(desc.RenderTarget[0].SrcBlend),
-        static_cast<int>(desc.RenderTarget[0].DestBlend), static_cast<int>(desc.RenderTarget[0].BlendOp),
-        entry.tint != nullptr ? "and its effect on what's behind as the panel's tint (its alpha)" : "the world behind unchanged (no tint)");
-    LogBoth(line);
-    game->AddRef();
-    entry.game = game;
-    gTintBlends.push_back(std::move(entry));
-    *colour = gTintBlends.back().colour.Get();
-    *tint = gTintBlends.back().tint.Get();
+    hud_panel::TintBlends(context, game, colour, tint);
 }
 
 ID3D11RenderTargetView* HudPanelTintTarget() noexcept {
-    return gPanel.tintRtv.Get();
+    return hud_panel::TintTarget();
 }
 
 ID3D11DepthStencilState* HudPanelNoWrites(ID3D11DeviceContext* context, ID3D11DepthStencilState* game) noexcept {
-    if (game == nullptr) {
-        return nullptr;  // the default state writes depth, but the UI's target has none bound for it to matter
-    }
-    for (auto const& entry : gNoWrites) {
-        if (entry.game == game) {
-            return entry.ours.Get();
-        }
-    }
-    ComPtr<ID3D11Device> device;
-    context->GetDevice(device.GetAddressOf());
-    D3D11_DEPTH_STENCIL_DESC desc{};
-    game->GetDesc(&desc);
-    desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-    desc.StencilWriteMask = 0;
-    DepthEntry entry;
-    if (device == nullptr || FAILED(device->CreateDepthStencilState(&desc, entry.ours.GetAddressOf()))) {
-        return nullptr;
-    }
-    game->AddRef();
-    entry.game = game;
-    gNoWrites.push_back(std::move(entry));
-    return gNoWrites.back().ours.Get();
+    return hud_panel::NoWrites(context, game);
 }
 
 void NoteHudPanelTint() noexcept {
-    gTintDraws.fetch_add(1, std::memory_order_relaxed);
+    hud_panel::NoteTint();
 }
 
 bool HudPanelIsFloat() noexcept {
-    return gPanelIsFloat.load(std::memory_order_relaxed);
+    return hud_panel::IsFloat();
 }
 
 void OnRecentered() noexcept {
     mevr::host::recenter_tilt::Committed();  // the orientation RecenterOrientation chose is the app space's now
-    gRecentered.store(true, std::memory_order_release);
+    hud_panel::Recentered();
     gWheelRecentered.store(true, std::memory_order_release);  // an open wheel's panel is placed again
     RecenterWorldPanels();  // the world-locked flat panels too (plugin/WorldPanels.cpp)
     mevr::host::squad_panel::Recentered();  // and an open squad menu
@@ -1721,11 +908,11 @@ void OnRecentered() noexcept {
 }
 
 void RequestHudPanelReplace() noexcept {
-    gReplaceRequested.store(true, std::memory_order_release);
+    hud_panel::RequestReplace();
 }
 
 unsigned HudPanelDrawsLastFrame() noexcept {
-    return gPanelDrawsLastFrame.load(std::memory_order_relaxed);
+    return hud_panel::DrawsLastFrame();
 }
 
 void ProbeTextureAlpha(ID3D11DeviceContext* context, ID3D11Texture2D* texture, char const* tag) noexcept {
@@ -1763,18 +950,23 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     mevr::host::perf::ScopedMarks const timed(mevr::vr::frame_probe::kOverlayBegin, mevr::vr::frame_probe::kOverlayEnd);
     ID3D11DeviceContext* const context = frame.context;
     if (context == nullptr || frame.session == nullptr) {
-        gArmed.store(false, std::memory_order_release);
+        hud_panel::SetArmed(false);
         gGalaxyEarlyUi.store(false, std::memory_order_release);
         return 0;
     }
     ComPtr<ID3D11Device> device;
     context->GetDevice(device.GetAddressOf());
     PumpProbes(context);
+    // The game's UI gets the eyes' colour correction (plugin/Colour, research/27): set before the panel's first blit.
+    static bool const colourHooked = [] {
+        hud_panel::SetColour({mevr::vr::colour::ShaderPrelude(), &mevr::host::colour::BeginPanel, &mevr::host::colour::EndPanel});
+        return true;
+    }();
+    (void)colourHooked;
 
     XrSession const session = static_cast<XrSession>(frame.session);
     if (session != gSession) {
-        gPanelSwapchain.Forget();
-        gReticleSwapchain.Forget();
+        hud_panel::ForgetSession();
         gPointerDotSwapchain.Forget();
         gWheelSwapchain.Forget();
         gLabelSwapchain.Forget();
@@ -1824,15 +1016,16 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // hand reticle stands in for it. The HUD movie keeps its authored layout on the panel (Halcyon's
     // head-locked shrink-and-centre would only make it small there).
     bool const handAim = ControllerAimActive();
-    bool const panelUsable = !gPanelSwapchain.Refused() && !gPanel.failed && !(gPipeline.tried && !gPipeline.ready);
+    bool const panelUsable = hud_panel::Usable();
     bool const engaged = cfg.hudPanel && frame.sfr2 && panelUsable;
     mevr::host::renderer::SetAuthoredHudLayout(engaged);
 
     unsigned count = 0;
-    unsigned const draws = gPanelDraws.exchange(0, std::memory_order_relaxed);
-    unsigned const textDraws = gPanelTextDraws.exchange(0, std::memory_order_relaxed);
-    unsigned const earlyDraws = gPanelEarlyDraws.exchange(0, std::memory_order_relaxed);
-    unsigned const earlyTextDraws = gPanelEarlyTextDraws.exchange(0, std::memory_order_relaxed);
+    hud_panel::Draws const taken = hud_panel::TakeDraws();
+    unsigned const draws = taken.draws;
+    unsigned const textDraws = taken.text;
+    unsigned const earlyDraws = taken.early;
+    unsigned const earlyTextDraws = taken.earlyText;
     tPanelPresent.galaxy = tPanelPresent.galaxy || galaxyWindowUi;
     tPanelPresent.draws = draws;
     tPanelPresent.text = textDraws;
@@ -1844,19 +1037,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     settings.drop = std::clamp(cfg.hudPanelDropM, -1.0f, 1.5f);
     settings.followAfter = cfg.hudPanelFollowDeg > 0.0f ? std::clamp(cfg.hudPanelFollowDeg, 10.0f, 170.0f) * kDegToRad : 0.0f;
     XrQuaternionf const head = ToQuat(frame.headOrientation);
-    if (gRecentered.exchange(false, std::memory_order_acq_rel)) {
-        gPlacement.Reset();
-        mevr::log::Info("overlays: recentered, HUD panel straight ahead");
-    }
-    if (frame.headValid && gReplaceRequested.exchange(false, std::memory_order_acq_rel)) {
-        gPlacement.FaceHeading(head);
-        mevr::log::Info("overlays: HUD panel re-placed at heading {:.0f} deg", gPlacement.Yaw() / kDegToRad);
-    }
-    bool const wasFollowing = gPlacement.Following();
-    gPlacement.Update(head, frame.headValid, settings, dt);
-    if (gPlacement.Following() && !wasFollowing) {
-        mevr::log::Info("overlays: head turned past {:.0f} deg: HUD panel follows", cfg.hudPanelFollowDeg);
-    }
+    hud_panel::Place(head, frame.headValid, settings, cfg.hudPanelFollowDeg, dt);
 
     // ---- The game's wheels (power: mode 2, weapon: mode 3) on a panel of their own ----
     PumpGrids(context);
@@ -1875,19 +1056,19 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     int const wheelMode = frame.gameMode == 2 || frame.gameMode == 3 ? frame.gameMode : -1;
     int const wheelPlace = wheelMode == 3 ? wheelSettings.weaponPlace : wheelSettings.powerPlace;  // -1: stays on the HUD panel
     bool const wheelWanted = wheelSettings.enabled && wheelPlace >= 0 && engaged && gameplay && frame.worldFrame && wheelMode >= 0 &&
-        gPanel.texture != nullptr && gPanel.tintSrv != nullptr && !gWheelSwapchain.Refused() && device != nullptr;
+        hud_panel::Ready() && !gWheelSwapchain.Refused() && device != nullptr;
     char const* cropFrom = "the default guess";
     crop::Rect cropRect;
     if (wheelSettings.crop[2] > 0.0f && wheelSettings.crop[3] > 0.0f) {
         cropRect = {wheelSettings.crop[0], wheelSettings.crop[1], wheelSettings.crop[2], wheelSettings.crop[3]};
         cropFrom = "[Squad] wheelCrop";
-    } else if (gMeasured.Valid(gPanel.width, gPanel.height)) {
+    } else if (gMeasured.Valid(hud_panel::Width(), hud_panel::Height())) {
         cropRect = gMeasured.rect;
         cropFrom = "measured";
     } else {
-        cropRect = crop::DefaultCrop(gPanel.width, gPanel.height);
+        cropRect = crop::DefaultCrop(hud_panel::Width(), hud_panel::Height());
     }
-    crop::Pixels const cropPx = crop::ToPixels(cropRect, gPanel.width, gPanel.height);
+    crop::Pixels const cropPx = crop::ToPixels(cropRect, hud_panel::Width(), hud_panel::Height());
     Masks hudMasks;
     if (wheelWanted) {
         hudMasks.Add(cropPx.x, cropPx.y, cropPx.width, cropPx.height);
@@ -1895,20 +1076,20 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // The interaction prompt at the object (never with a wheel up: both take their part out of the same panel).
     il::Label const label = LabelWanted();
     bool const labelWanted = label.visible && !wheelWanted && engaged && gameplay && gLastGameMode == 0 && frame.worldFrame &&
-        !frame.menuOpen && frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && !gLabelSwapchain.Refused() &&
+        !frame.menuOpen && frame.headValid && hud_panel::Ready() && !gLabelSwapchain.Refused() &&
         device != nullptr;
     il::Rect const labelRect = label.crop[2] > 0.0f && label.crop[3] > 0.0f
         ? il::Rect{label.crop[0], label.crop[1], label.crop[2], label.crop[3]}
-        : il::DefaultCrop(gPanel.width, gPanel.height);
-    il::Pixels const labelPx = il::ToPixels(labelRect, gPanel.width, gPanel.height);
+        : il::DefaultCrop(hud_panel::Width(), hud_panel::Height());
+    il::Pixels const labelPx = il::ToPixels(labelRect, hud_panel::Width(), hud_panel::Height());
     if (labelWanted && labelPx.width > 0) {
         hudMasks.Add(labelPx.x, labelPx.y, labelPx.width, labelPx.height);
     }
     // The conversation's subtitle at the speaker and its wheel at a hand (research/59): their bands out of the panel. The label's
     // and the game wheel's swapchains serve them (neither is up in a conversation; the runtime limits swapchains).
     namespace cwv = mevr::vr::conversation_world;
-    bool const convoAllowed = convo && engaged && frame.worldFrame && !frame.menuOpen && frame.headValid && gPanel.texture != nullptr &&
-        gPanel.tintSrv != nullptr && device != nullptr;
+    bool const convoAllowed = convo && engaged && frame.worldFrame && !frame.menuOpen && frame.headValid && hud_panel::Ready() &&
+        device != nullptr;
     bool const convoSubtitleWanted = convoAllowed && convo->subtitle != 0 && !gLabelSwapchain.Refused();
     // Not while Thespian mode's panel stands with the game's wheel hidden (research/70): the replies are its rows. Once the
     // left stick brings the game's wheel back (a pick by hand) its quad is drawn as ever.
@@ -1920,13 +1101,13 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool const convoWheelWanted = convoAllowed && convo->wheel != 0 && !gWheelSwapchain.Refused() && !thespianPanel;
     il::Pixels const convoSubPx = convo ? il::ToPixels(convo->subtitleCrop[2] > 0.0f && convo->subtitleCrop[3] > 0.0f
                                                            ? il::Rect{convo->subtitleCrop[0], convo->subtitleCrop[1], convo->subtitleCrop[2], convo->subtitleCrop[3]}
-                                                           : cwv::DefaultSubtitleCrop(gPanel.width, gPanel.height),
-                                              gPanel.width, gPanel.height)
+                                                           : cwv::DefaultSubtitleCrop(hud_panel::Width(), hud_panel::Height()),
+                                              hud_panel::Width(), hud_panel::Height())
                                         : il::Pixels{};
     il::Rect const convoWheelRect = convo && convo->wheelCrop[2] > 0.0f && convo->wheelCrop[3] > 0.0f
         ? il::Rect{convo->wheelCrop[0], convo->wheelCrop[1], convo->wheelCrop[2], convo->wheelCrop[3]}
-        : cwv::DefaultWheelCrop(gPanel.width, gPanel.height);
-    il::Pixels const convoWheelPx = convo ? il::ToPixels(convoWheelRect, gPanel.width, gPanel.height) : il::Pixels{};
+        : cwv::DefaultWheelCrop(hud_panel::Width(), hud_panel::Height());
+    il::Pixels const convoWheelPx = convo ? il::ToPixels(convoWheelRect, hud_panel::Width(), hud_panel::Height()) : il::Pixels{};
     if (convoSubtitleWanted && convoSubPx.width > 0) {
         hudMasks.Add(convoSubPx.x, convoSubPx.y, convoSubPx.width, convoSubPx.height);
     }
@@ -1939,11 +1120,11 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     hp::Pieces const pieces = PiecesWanted();
     mevr::vr::controllers::State const pieceControllers = mevr::vr::controllers::Latest();
     bool const piecesAllowed = !wheelWanted && engaged && gameplay && gLastGameMode == 0 && frame.worldFrame && !frame.menuOpen &&
-        frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && device != nullptr;
+        frame.headValid && hud_panel::Ready() && device != nullptr;
     // In the Mako's cockpit (the mod's pieces say where its displays are): the vehicle's status (the weapon panel's band) and
     // the radar on them, the rest of the HUD panel at the cockpit's anchor, none over its screens (research/47).
     bool const cockpitHud = pieces.cockpit && !wheelWanted && engaged && gameplay && gLastGameMode == 1 && frame.worldFrame &&
-        !frame.menuOpen && frame.headValid && gPanel.texture != nullptr && gPanel.tintSrv != nullptr && device != nullptr;
+        !frame.menuOpen && frame.headValid && hud_panel::Ready() && device != nullptr;
     if (cockpitHud != gCockpitHudShown) {
         gCockpitHudShown = cockpitHud;
         LogBoth(cockpitHud ? "[MEVR-HUD] the cockpit's HUD: the Mako's status and radar on its displays, the HUD panel at its anchor"
@@ -1953,9 +1134,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         pieceControllers.left.gripValid;
     bool const gunWanted = ((piecesAllowed && hud.gunStatus && pieces.gunVisible) || cockpitHud) && !gGunSwapchain.Refused();
     bool const radarWanted = cockpitHud && !gRadarSwapchain.Refused();
-    hp::Pixels const wristPx = hp::ToPixels(hp::WristCrop(hud, gPanel.width, gPanel.height), gPanel.width, gPanel.height);
-    hp::Pixels const gunPx = hp::ToPixels(hp::GunCrop(hud, gPanel.width, gPanel.height), gPanel.width, gPanel.height);
-    hp::Pixels const radarPx = hp::ToPixels(hp::DefaultRadarCrop(gPanel.width, gPanel.height), gPanel.width, gPanel.height);
+    hp::Pixels const wristPx = hp::ToPixels(hp::WristCrop(hud, hud_panel::Width(), hud_panel::Height()), hud_panel::Width(), hud_panel::Height());
+    hp::Pixels const gunPx = hp::ToPixels(hp::GunCrop(hud, hud_panel::Width(), hud_panel::Height()), hud_panel::Width(), hud_panel::Height());
+    hp::Pixels const radarPx = hp::ToPixels(hp::DefaultRadarCrop(hud_panel::Width(), hud_panel::Height()), hud_panel::Width(), hud_panel::Height());
     if (wristWanted && wristPx.width > 0) {
         hudMasks.Add(wristPx.x, wristPx.y, wristPx.width, wristPx.height);
     }
@@ -1969,20 +1150,20 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     bool panelShown = false;
     bool galaxyPanel = false;  // the panel goes after the galaxy hologram's layer (over it)
     std::optional<mevr::host::world_ui::Shown> worldShown;
-    if (worldUi && gPanel.texture != nullptr) {
+    if (worldUi && hud_panel::HasTexture()) {
         // The left wrist (where the HUD's wrist piece sits): a screen marked for it is projected from there (research/53 section 6).
         std::optional<XrVector3f> wrist;
         if (pieceControllers.active && pieceControllers.left.gripValid) {
             wrist = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
         }
-        worldShown = mevr::host::world_ui::Current(ToVec(frame.headPosition), ToQuat(frame.headOrientation), frame.headValid, gPanel.width,
-            gPanel.height, wrist);
+        worldShown = mevr::host::world_ui::Current(ToVec(frame.headPosition), ToQuat(frame.headOrientation), frame.headValid, hud_panel::Width(),
+            hud_panel::Height(), wrist);
     }
     gPanelBackdrop = worldShown ? std::max(worldShown->backdrop, 1.0f / 256.0f) : 0.0f;
     gPanelFigure = worldShown && device != nullptr ? mevr::host::ui_world_figure::ForFrame(device.Get(), gPanelBackdrop) : std::nullopt;
-    if ((frame.worldFrame || screenUi) && engaged && uiToPanel && gPanel.texture != nullptr && count < capacity && device != nullptr &&
+    if ((frame.worldFrame || screenUi) && engaged && uiToPanel && hud_panel::HasTexture() && count < capacity && device != nullptr &&
         (!worldUiPending || worldUi) && (!worldUi || worldShown)) {
-        gPanelDrawsLastFrame.store(draws, std::memory_order_relaxed);
+        hud_panel::NoteDrawsLastFrame(draws);
         if (RenderPanel(context, device.Get(), frame.floatWhiteScale, worldUi || screenUi ? Masks{} : hudMasks)) {
             tPanelPresent.stage = 1; // the swapchain now contains this game's complete panel
             float const width = std::clamp(cfg.hudPanelWidthM, 0.3f, 4.0f);
@@ -1990,22 +1171,22 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             gPanelQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
             gPanelQuad.space = static_cast<XrSpace>(frame.appSpace);
             gPanelQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-            gPanelQuad.subImage.swapchain = gPanelSwapchain.handle;
+            gPanelQuad.subImage.swapchain = hud_panel::Swapchain().handle;
             gPanelQuad.subImage.imageRect = {{0, 0},
-                {static_cast<int32_t>(gPanelSwapchain.width), static_cast<int32_t>(gPanelSwapchain.height)}};
-            gPanelQuad.pose = gPlacement.Pose(settings);
-            gPanelQuad.size = {width, width * static_cast<float>(gPanel.height) / static_cast<float>(gPanel.width)};
+                {static_cast<int32_t>(hud_panel::Swapchain().width), static_cast<int32_t>(hud_panel::Swapchain().height)}};
+            gPanelQuad.pose = hud_panel::Placement().Pose(settings);
+            gPanelQuad.size = {width, width * static_cast<float>(hud_panel::Height()) / static_cast<float>(hud_panel::Width())};
             hp::Quad cockpitPanel;
             if (cockpitHud && hp::Place(pieces.panelAnchor, ToVec(frame.headPosition), pieces.panelWidthM,
-                                  static_cast<float>(gPanel.width) / static_cast<float>(gPanel.height), cockpitPanel, pieces.cockpitUp)) {
+                                  static_cast<float>(hud_panel::Width()) / static_cast<float>(hud_panel::Height()), cockpitPanel, pieces.cockpitUp)) {
                 gPanelQuad.pose = cockpitPanel.pose;  // the cockpit's place for what's left of the HUD, clear of its screens
                 gPanelQuad.size = {cockpitPanel.width, cockpitPanel.height};
             }
             if (worldShown) {
                 // The screen's shown part (the stage's content) of the panel image, where it stood when it opened; the game
                 // pointer gets the whole window on its plane.
-                auto const sw = static_cast<float>(gPanelSwapchain.width);
-                auto const sh = static_cast<float>(gPanelSwapchain.height);
+                auto const sw = static_cast<float>(hud_panel::Swapchain().width);
+                auto const sh = static_cast<float>(hud_panel::Swapchain().height);
                 gPanelQuad.subImage.imageRect = {{static_cast<int32_t>(worldShown->part.u0 * sw), static_cast<int32_t>(worldShown->part.v0 * sh)},
                     {std::max<int32_t>(1, static_cast<int32_t>((worldShown->part.u1 - worldShown->part.u0) * sw)),
                         std::max<int32_t>(1, static_cast<int32_t>((worldShown->part.v1 - worldShown->part.v0) * sh))}};
@@ -2030,8 +1211,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 cs::UiPlace const at = cs::PlaceUi(frame.screenPosition, frame.screenHeadLocked ? origin : frame.headPosition,
                     screenUiWanted.forwardM);
                 cs::UiPart const part = cs::UiPartShown(frame.screenCrop, frame.screenRows[0], frame.screenRows[1]);
-                auto const sw = static_cast<float>(gPanelSwapchain.width);
-                auto const sh = static_cast<float>(gPanelSwapchain.height);
+                auto const sw = static_cast<float>(hud_panel::Swapchain().width);
+                auto const sh = static_cast<float>(hud_panel::Swapchain().height);
                 gPanelQuad.subImage.imageRect = {{static_cast<int32_t>(part.u0 * sw), static_cast<int32_t>(part.v0 * sh)},
                     {std::max<int32_t>(1, static_cast<int32_t>((part.u1 - part.u0) * sw)),
                         std::max<int32_t>(1, static_cast<int32_t>((part.v1 - part.v0) * sh))}};
@@ -2046,7 +1227,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                         "[MEVR-HUD] the 3D screen's UI on its own layer %.2f m in front of the screen (%.2f x %.2f m%s); the UI's part "
                         "u %.3f..%.3f v %.3f..%.3f of %ux%u", at.valid ? screenUiWanted.forwardM : 0.0f, gPanelQuad.size.width,
                         gPanelQuad.size.height, frame.screenHeadLocked ? ", head-locked" : "", part.u0, part.u1, part.v0, part.v1,
-                        gPanel.width, gPanel.height);
+                        hud_panel::Width(), hud_panel::Height());
                     LogBoth(line);
                 }
                 gScreenUiShown = true;
@@ -2054,7 +1235,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             if (galaxyUi) {
                 float const uiWidth = mevr::host::galaxy_hologram::UiPanelWidthM(kGalaxyUiWidthM);
                 gPanelQuad.pose = mevr::host::galaxy_hologram::UiPanelPose(ToVec(frame.headPosition));
-                gPanelQuad.size = {uiWidth, uiWidth * static_cast<float>(gPanel.height) / static_cast<float>(gPanel.width)};
+                gPanelQuad.size = {uiWidth, uiWidth * static_cast<float>(hud_panel::Height()) / static_cast<float>(hud_panel::Width())};
                 galaxyPanel = true;
             } else {
                 // A screen projected from the wrist: its fan of light first, under the panel.
@@ -2076,9 +1257,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 std::snprintf(line, sizeof line,
                     "[MEVR-HUD] panel layer: %u UI draws this frame, %ux%u (1/%u of %ux%u), %.2f x %.2f m at "
                     "(%.2f, %.2f, %.2f) m, heading %.0f deg",
-                    draws, gPanelSwapchain.width, gPanelSwapchain.height, gPanelFactor, gPanel.width, gPanel.height,
+                    draws, hud_panel::Swapchain().width, hud_panel::Swapchain().height, hud_panel::Factor(), hud_panel::Width(), hud_panel::Height(),
                     gPanelQuad.size.width, gPanelQuad.size.height, gPanelQuad.pose.position.x,
-                    gPanelQuad.pose.position.y, gPanelQuad.pose.position.z, gPlacement.Yaw() / kDegToRad);
+                    gPanelQuad.pose.position.y, gPanelQuad.pose.position.z, hud_panel::Placement().Yaw() / kDegToRad);
                 LogBoth(line);
                 gLoggedPanel = true;
                 gNextPanelLogMs = now + 30000;
@@ -2111,7 +1292,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 std::snprintf(line, sizeof line,
                     "[MEVR-INTERACT] the prompt at the object: (%.2f, %.2f, %.2f) m, %.2f x %.2f m (%.1f deg tall); the UI's part "
                     "(%u, %u) %ux%u of %ux%u (%s)", quad.pose.position.x, quad.pose.position.y, quad.pose.position.z, quad.width,
-                    quad.height, label.heightDeg, labelPx.x, labelPx.y, labelPx.width, labelPx.height, gPanel.width, gPanel.height,
+                    quad.height, label.heightDeg, labelPx.x, labelPx.y, labelPx.width, labelPx.height, hud_panel::Width(), hud_panel::Height(),
                     label.crop[2] > 0.0f ? "[Interact] crop" : "the game's own place");
                 LogBoth(line);
             }
@@ -2146,7 +1327,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 std::snprintf(line, sizeof line,
                     "[MEVR-CONVO] the subtitle at the speaker: (%.2f, %.2f, %.2f) m, %.2f x %.2f m (%.1f deg tall); the UI's part (%u, %u) "
                     "%ux%u of %ux%u (%s)", quad.pose.position.x, quad.pose.position.y, quad.pose.position.z, quad.width, quad.height,
-                    convo->subtitleHeightDeg, convoSubPx.x, convoSubPx.y, convoSubPx.width, convoSubPx.height, gPanel.width, gPanel.height,
+                    convo->subtitleHeightDeg, convoSubPx.x, convoSubPx.y, convoSubPx.width, convoSubPx.height, hud_panel::Width(), hud_panel::Height(),
                     convo->subtitleCrop[2] > 0.0f ? "[Cinematics] subtitleCrop" : "the default band");
                 LogBoth(line);
             }
@@ -2170,7 +1351,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 "[MEVR-CONVO] the dialogue wheel %.2f m from %s, at (%.2f, %.2f, %.2f) m, %.2f m wide; the UI's part (%u, %u) %ux%u of %ux%u (%s)",
                 convo->wheelDistanceM, from, gConvoUi.wheelPose.position.x, gConvoUi.wheelPose.position.y, gConvoUi.wheelPose.position.z,
                 std::clamp(cwv::WheelQuadWidth(convo->wheelWidthM, convoWheelRect.width), 0.15f, 3.0f), convoWheelPx.x, convoWheelPx.y,
-                convoWheelPx.width, convoWheelPx.height, gPanel.width, gPanel.height,
+                convoWheelPx.width, convoWheelPx.height, hud_panel::Width(), hud_panel::Height(),
                 convo->wheelCrop[2] > 0.0f ? "[Cinematics] wheelCrop" : "the default band");
             LogBoth(line);
         }
@@ -2212,8 +1393,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 std::snprintf(line, sizeof line,
                     "[MEVR-HUD] the player's status on the left wrist: (%.2f, %.2f, %.2f) m, %.3f x %.3f m; the UI's part (%u, %u) %ux%u "
                     "of %ux%u (%s)", gWristQuad.pose.position.x, gWristQuad.pose.position.y, gWristQuad.pose.position.z,
-                    gWristQuad.size.width, gWristQuad.size.height, wristPx.x, wristPx.y, wristPx.width, wristPx.height, gPanel.width,
-                    gPanel.height, hud.wristCrop.Valid() ? "[Hud] wristCrop" : "the measured band");
+                    gWristQuad.size.width, gWristQuad.size.height, wristPx.x, wristPx.y, wristPx.width, wristPx.height, hud_panel::Width(),
+                    hud_panel::Height(), hud.wristCrop.Valid() ? "[Hud] wristCrop" : "the measured band");
                 LogBoth(line);
                 gPieces.nextLogMs = now + 60000;
             }
@@ -2236,7 +1417,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 std::snprintf(line, sizeof line,
                     "[MEVR-HUD] the weapon panel on the gun: (%.2f, %.2f, %.2f) m, %.3f x %.3f m; the UI's part (%u, %u) %ux%u of %ux%u "
                     "(%s)", gGunQuad.pose.position.x, gGunQuad.pose.position.y, gGunQuad.pose.position.z, gGunQuad.size.width,
-                    gGunQuad.size.height, gunPx.x, gunPx.y, gunPx.width, gunPx.height, gPanel.width, gPanel.height,
+                    gGunQuad.size.height, gunPx.x, gunPx.y, gunPx.width, gunPx.height, hud_panel::Width(), hud_panel::Height(),
                     hud.gunCrop.Valid() ? "[Hud] gunCrop" : "the measured band");
                 LogBoth(line);
             }
@@ -2256,7 +1437,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     }
     // A HUD-only picture of where the UI is, now and then, until the wheel's place has been measured.
     bool const autoCrop = !(wheelSettings.crop[2] > 0.0f && wheelSettings.crop[3] > 0.0f);
-    if (panelShown && wheelMode < 0 && frame.gameMode == 0 && autoCrop && !gMeasured.Valid(gPanel.width, gPanel.height) &&
+    if (panelShown && wheelMode < 0 && frame.gameMode == 0 && autoCrop && !gMeasured.Valid(hud_panel::Width(), hud_panel::Height()) &&
         now >= gNextBeforeMs) {
         gNextBeforeMs = now + kBeforeEveryMs;
         CaptureGrid(context, device.Get(), false);
@@ -2284,7 +1465,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 "[MEVR-WHEEL] the %s wheel on its own panel%s: %.2f m from %s, at (%.2f, %.2f, %.2f) m, %.2f m wide; the UI's part "
                 "(%u, %u) %ux%u of %ux%u (%s)", wheelMode == 3 ? "weapon" : "power", wheelRecentered ? " again (recentered)" : "",
                 wheelSettings.distance, from, gWheel.pose.position.x, gWheel.pose.position.y, gWheel.pose.position.z,
-                wheelSettings.width, cropPx.x, cropPx.y, cropPx.width, cropPx.height, gPanel.width, gPanel.height, cropFrom);
+                wheelSettings.width, cropPx.x, cropPx.y, cropPx.width, cropPx.height, hud_panel::Width(), hud_panel::Height(), cropFrom);
             LogBoth(line);
         }
         gWheel.mode = wheelMode;
@@ -2307,7 +1488,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             wheelLayer = &gWheelQuad;
         }
         // Where the wheel really is: once per opening, after its grow animation, until measured.
-        if (autoCrop && !gWheel.gridTaken && !gMeasured.Valid(gPanel.width, gPanel.height) && now - gWheel.openedMs >= kWheelGridAfterMs) {
+        if (autoCrop && !gWheel.gridTaken && !gMeasured.Valid(hud_panel::Width(), hud_panel::Height()) && now - gWheel.openedMs >= kWheelGridAfterMs) {
             gWheel.gridTaken = true;
             CaptureGrid(context, device.Get(), true);
         }
@@ -2317,42 +1498,22 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gWheel.placed = false;
     }
 
-    std::uint32_t const tintDraws = gTintDraws.exchange(0, std::memory_order_relaxed);
-    if (tintDraws > 0 && !gLoggedTint) {
-        gLoggedTint = true;
-        mevr::log::Info("overlays: first frame with Scaleform blend-mode draws in the panel's tint ({} draws)", tintDraws);
-    }
-    gTintDirty = gTintDirty || tintDraws > 0;
-    if (galaxyWindowUi) {
-        // Preserve a complete image until the next game's UI starts. A frame without Flash keeps
-        // the last complete image; a runtime/desktop draw inside Present cannot start that frame.
-        gGalaxyClearPending = true;
-    } else if (gPanel.rtv != nullptr && (draws > 0 || gPanelNeedsClear || gGalaxyClearPending)) {
-        float const clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        context->ClearRenderTargetView(gPanel.rtv.Get(), clear);
-        if (gTintDirty && gPanel.tintRtv != nullptr) {
-            float const white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-            context->ClearRenderTargetView(gPanel.tintRtv.Get(), white);
-            gTintDirty = false;
-        }
-        gPanelNeedsClear = false;
-        gGalaxyClearPending = false;
-    }
+    hud_panel::EndFrame(context, draws, hud_panel::TakeTintDraws(), galaxyWindowUi);
     tPanelPresent.stage = 2;
     tPanelPresent.shown = panelShown;
     // Next frame's UI goes to the panel only if this one showed it (or nothing went there yet, so
     // the texture can be made), and the panel works.
     bool const armNext = engaged && uiToPanel && (frame.worldFrame || worldUiPending || worldUi || screenUi) &&
-        (panelShown || gPanel.texture == nullptr || worldUiPending || worldUi);
-    mevr::host::world_ui::RedirectReady(worldUi && panelShown && draws > 0 && gArmed.load(std::memory_order_acquire));
-    if (armNext != gArmed.load(std::memory_order_relaxed)) {
+        (panelShown || !hud_panel::HasTexture() || worldUiPending || worldUi);
+    mevr::host::world_ui::RedirectReady(worldUi && panelShown && draws > 0 && hud_panel::Armed());
+    if (armNext != hud_panel::Armed()) {
         mevr::log::Info("overlays: game UI goes to {}", !armNext ? "the eye images" : galaxyUi ? "a panel over the galaxy hologram's table"
                                                                                                 : screenUi ? "a layer in front of the 3D screen"
                                                                                                 : worldUi ? "a screen standing in the room"
                                                                                                 : "the body-locked HUD panel");
-        gPanelNeedsClear = true;
+        hud_panel::NoteArmChange();
     }
-    gArmed.store(armNext, std::memory_order_release);
+    hud_panel::SetArmed(armNext);
     NoteGalaxyUi(galaxyWindowUi, draws, textDraws, earlyDraws, earlyTextDraws,
         gGalaxyEarlyUi.load(std::memory_order_relaxed), panelShown, now);
     gGalaxyEarlyUi.store(armNext && galaxyWindowUi, std::memory_order_release);
@@ -2432,74 +1593,34 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         }
     }
 
-    // ---- Hand reticle ----
+    // ---- Hand reticle (plugin/HandReticle) ----
     // Where the weapon points: the mod's aim ray (muzzle and barrel) once it publishes one, else the
     // right controller's aim pose. Game-reticle suppression lasts throughout VR gameplay.
     // On foot; in the Mako (game mode 1, research/44) only on a ray the mod publishes (the controller's, while it aims the
     // turret), never the controller fallback.
-    mevr::vr::aim_ray::Ray const ray = mevr::vr::aim_ray::Latest();
-    bool const producer = ray.sequence != 0 && now - ray.timeMs < 1000;
-    bool const makoRay = gLastGameMode == 1 && producer && ray.valid;
-    bool const reticleMode = cfg.handReticle && handAim && (gLastGameMode == 0 || makoRay);
-    XrVector3f origin{};
-    XrVector3f direction{};
-    int source = 0;
-    if (reticleMode) {
-        if (producer) {
-            if (ray.valid) {
-                origin = ray.origin;
-                direction = ray.direction;
-                source = 1;
-            }
-        } else {
-            mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
-            if (controllers.active && controllers.right.aimValid) {
-                origin = controllers.right.aim.position;
-                direction = overlay::Rotate(controllers.right.aim.orientation, {0.0f, 0.0f, -1.0f});
-                source = 2;
-                if (!gLoggedFallback) {
-                    gLoggedFallback = true;
-                    mevr::log::Info("overlays: no aim ray from the mod yet: the reticle follows the right controller's aim pose");
-                }
-            }
-        }
-        if (source != gReticleSource) {
-            gReticleSource = source;
-            mevr::log::Info("overlays: reticle {}", source == 1 ? "on the mod's aim ray"
-                                                    : source == 2 ? "on the right controller (fallback)"
-                                                                  : "hidden (the mod reports no aim ray)");
-        }
-    }
-    // Independent of a weapon, aim ray, controller tracking or a free turret hand.
-    // The game-thread consumer preserves the native sniper movie and the game's visibility.
-    // OverlayLayers runs only inside an XR frame, including a Mako shown on Halcyon's flat VR panel.
-    mevr::host::renderer::SetScreenReticleHidden(cfg.handReticle && gameplay);
-    if (source != 0 && !sightHidesRing && frame.worldFrame && !frame.menuOpen && frame.headValid && count < capacity &&
-        device != nullptr) {
-        overlay::Billboard reticle;
-        float const distance = std::clamp(cfg.handReticleDistanceM, 1.0f, 100.0f);
-        float const size = std::clamp(cfg.handReticleSizeDeg, 0.2f, 10.0f) * kDegToRad;
-        if (overlay::PlaceOnRay(origin, direction, distance, ToVec(frame.headPosition), size, reticle) &&
-            EnsureReticle(context, device.Get())) {
-            gReticleQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
-            gReticleQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
-            gReticleQuad.space = static_cast<XrSpace>(frame.appSpace);
-            gReticleQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-            gReticleQuad.subImage.swapchain = gReticleSwapchain.handle;
-            gReticleQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(kReticleSize), static_cast<int32_t>(kReticleSize)}};
-            gReticleQuad.pose = reticle.pose;
-            gReticleQuad.size = {reticle.size, reticle.size};
-            layersOut[count++] = &gReticleQuad;
-            if (!gLoggedReticle) {
-                gLoggedReticle = true;
-                char line[256];
-                std::snprintf(line, sizeof line,
-                    "[MEVR-HUD] first hand reticle: %s, %.1f m along the ray at (%.2f, %.2f, %.2f), %.3f m across (%.1f deg)",
-                    source == 1 ? "the mod's aim ray" : "the right controller's aim pose", distance,
-                    reticle.pose.position.x, reticle.pose.position.y, reticle.pose.position.z, reticle.size,
-                    size / kDegToRad);
-                LogBoth(line);
-            }
+    {
+        mevr::host::hand_reticle::Frame reticle;
+        reticle.session = session;
+        reticle.appSpace = static_cast<XrSpace>(frame.appSpace);
+        reticle.context = context;
+        reticle.device = device.Get();
+        reticle.worldFrame = frame.worldFrame;
+        reticle.menuOpen = frame.menuOpen;
+        reticle.headValid = frame.headValid;
+        reticle.headPosition = ToVec(frame.headPosition);
+        reticle.gameMode = gLastGameMode;
+        reticle.handAim = handAim;
+        reticle.sightHidesRing = sightHidesRing;
+        reticle.enabled = cfg.handReticle;
+        reticle.distanceM = cfg.handReticleDistanceM;
+        reticle.sizeDeg = cfg.handReticleSizeDeg;
+        XrCompositionLayerQuad const* const ring = mevr::host::hand_reticle::Layer(reticle);
+        // Independent of a weapon, aim ray, controller tracking or a free turret hand.
+        // The game-thread consumer preserves the native sniper movie and the game's visibility.
+        // OverlayLayers runs only inside an XR frame, including a Mako shown on Halcyon's flat VR panel.
+        mevr::host::renderer::SetScreenReticleHidden(cfg.handReticle && gameplay);
+        if (ring != nullptr && count < capacity) {
+            layersOut[count++] = ring;
         }
     }
 

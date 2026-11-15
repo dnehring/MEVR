@@ -249,6 +249,15 @@ bool ReadFString(std::uintptr_t addr, char* out, size_t cap) noexcept
         const wchar_t* data = *reinterpret_cast<wchar_t* volatile*>(addr);
         const int count = *reinterpret_cast<int volatile*>(addr + 8);
         if (data == nullptr || count <= 0 || count > 512) return false;
+        // [MEVR] CollectHandlers reads the HUD handler's path offsets on every SFHandler class, so most of these
+        // land on other fields (FNames, flags). A pointer no engine allocation can be (under 64 KB, outside user
+        // space, not 8-byte aligned) or a count past the string's capacity is refused before it is read: each was
+        // a first-chance access violation at every XR start (the host logged three per address).
+        {
+            const auto raw = reinterpret_cast<std::uintptr_t>(data);
+            const int max = *reinterpret_cast<int volatile*>(addr + 12);
+            if (raw < 0x10000 || raw > 0x00007FFFFFFFFFFFull || (raw & 7) != 0 || max < count) return false;
+        }
         size_t i = 0;
         for (; i + 1 < cap && i < static_cast<size_t>(count) && data[i] != L'\0'; ++i)
             out[i] = (data[i] > 0 && data[i] < 127) ? static_cast<char>(data[i]) : '?';
@@ -1039,6 +1048,13 @@ void RunDiscovery() noexcept
 
 void SetEnabled(bool on) noexcept { g_hudEnabled.store(on, std::memory_order_release); }
 bool GetEnabled() noexcept { return g_hudEnabled.load(std::memory_order_acquire); }
+namespace { std::atomic_bool g_mevrAuthored{false}; }   // [MEVR] the HUD on our body-locked panel
+void SetAuthoredLayout(bool on) noexcept   // [MEVR]
+{
+    if (g_mevrAuthored.exchange(on, std::memory_order_acq_rel) != on)
+        ME2VR::Log::Line(on ? "[MEVR] PcHud: the HUD is on the body-locked panel: its own layout, no per-element moves"
+                            : "[MEVR] PcHud: the HUD is in the eyes again: per-element moves as set");
+}
 int  GroupCount() noexcept { return kGroupCount; }
 const char* GroupLabel(int i) noexcept
 {
@@ -1059,6 +1075,7 @@ void Tick() noexcept
     for (int g = 0; g < kGroupCount && !any; ++g)
         any = (g_groups[g].offX != 0.0f || g_groups[g].offY != 0.0f ||
                g_groups[g].scaleX != 1.0f || g_groups[g].scaleY != 1.0f);
+    if (g_mevrAuthored.load(std::memory_order_acquire)) any = false;   // [MEVR] the HUD panel: the movie's own layout
     g_anyActive = any;
     if (!any || !g_hudEnabled.load(std::memory_order_acquire)) return;
 

@@ -79,7 +79,8 @@ Waits for nothing. Runs beside M1 (files: `src/plugin`, `src/halcyon/le2`).
    STAGE floor, recenter (`OnRecentered`), the session's stop (`OnSessionStopped`).
 4. **The HUD panel (M):** the game's UI drawn onto our body-locked panel quad instead of into the eyes, LE1's way
    (`HudPanel*` seams, `plugin/HalcyonOverlays`). ME2's renderer duplicates the UI into each eye today (`UiDupEnabled`,
-   `PcHud`): the panel replaces that.
+   `PcHud`): the panel replaces that. **Done 2026-11-14** (lane B, third agent; `plugin/HudPanel`, `plugin/HandReticle`,
+   research/le2-renderer-integration.md "Step 4"); what is left of M2 is listed there ("What is left of M2").
 5. **`gServices` for LE2 from the same list as LE1's** (`plugin/ModLoader.cpp`): one builder, the renderer interface
    behind it, version 39.
 
@@ -211,3 +212,6 @@ main (`tools/land-on-main.py`) only after `build-trilogy`, `build`, `build-mono`
    same problems of our skeleton not matching our players position in space." ME1's cover system transfers (research/
    le2-vrik-audit.md "ME1's cover system on ME2"): no snap, physical crouch, the VR cover rule. The vault (the owner's
    double A, with weapons held) starts from where the player stands.
+8. **The menu on ME2**: ME1's rows ME2 doesn't have yet stay greyed ("Keep them greyed until I can see them"); `\`
+   stays the menu key, and holding both stick clicks always wins ("We'll maintain the same key, but always prioritize the
+   L3 + R3 stick click"): ME1's `gamepad::UpdateStickChord` rules on ME2's pad path, named first in the controller guide.
