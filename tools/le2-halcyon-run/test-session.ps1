@@ -313,6 +313,7 @@ try {
         Reject { Assert-PreviewIdle $paths $undo }
     }
     Case 'preview configuration and artifact hashes bind actual host and module' {
+        Check ((Get-PreviewModConfig) -match '(?s)\[Pointer\]\s+setCursor\s*=\s*0')
         $bin=Join-Path $root 'preview-bin'; New-Item -ItemType Directory (Join-Path $bin 'ASI') | Out-Null
         [IO.File]::WriteAllText((Join-Path $bin 'ASI\LE3MEVR.ini'),(Get-PreviewModConfig))
         [IO.File]::WriteAllText((Join-Path $bin 'MELE3VR.ini'),(Get-PreviewRendererConfig))

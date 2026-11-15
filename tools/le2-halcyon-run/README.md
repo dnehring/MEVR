@@ -201,6 +201,8 @@ ME3's menu (3072x1728), head look, head aim off, native positional scale 2.0 and
 first-person conversations off. `vr-game-settings.ps1` supplies matching dimensions,
 SDR and borderless/non-fullscreen settings. No nonexistent `[FirstPerson] Enabled`
 key is written: first-person activation is an independent existing renderer control.
+The preview also sets `[Pointer] setCursor=0`, as the fake-headset skill requires for
+synthetic controller replays, so the recorded pointer cannot move the desktop cursor.
 Source: `src/halcyon/le3/me2_menu.cpp` `LoadValues`/resolution rows and
 `d3d_capture.cpp` `RenderW`/`RenderH` startup handling. These are candidate settings,
 not a measured optimal resolution or accepted metric calibration.

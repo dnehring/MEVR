@@ -420,7 +420,7 @@ function Get-PreviewRendererConfig {
     "[VR]`r`nEnabled=1`r`nMode=4`r`nRenderW=3072`r`nRenderH=1728`r`nHeadAim=0`r`nHeadLook=1`r`nMoveFollowsHead=1`r`nDecoupledPitch=1`r`nPosEnabled=1`r`nPosScale=2.0`r`nDiagnostics=0`r`nCineVrConvo=0`r`nCineVrCutscene=0`r`n[FirstPerson]`r`nConvoFirstPerson=0`r`n"
 }
 function Get-PreviewModConfig {
-    "[Debug]`r`nrequests = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n"
+    "[Debug]`r`nrequests = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n"
 }
 function Assert-PreviewConfig([string]$Bin) {
     if ([IO.File]::ReadAllText((Join-Path $Bin 'ASI\LE3MEVR.ini')) -cne (Get-PreviewModConfig) -or
