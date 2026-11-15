@@ -94,3 +94,7 @@ the fonts folder). Downloaded by the setup only when the player asks, never bund
 |------|---------------------|-----------------|
 | [Mass Effect Modder](https://github.com/MassEffectModder/MassEffectModder) (`MassEffectModderNoGui`), run as a separate program to install texture packs | its GitHub releases, after the player confirms | GPL-3.0 |
 | Texture packs (ALOT for ME1, Improved Static Lighting, LEUITM...) | their own Nexus Mods pages, downloaded by the player | their authors' terms: no re-uploads |
+
+`src/core/vr/StereoPoseTag.hpp` adapts the delayed per-eye position and held-source
+pose/FOV behavior of Halcyon's LE1 renderer (`src/halcyon/le1/xr_session.cpp`),
+shared by the LE2/LE3 SFR adapters. It is GPL-3.0-only, like the imported renderer.
