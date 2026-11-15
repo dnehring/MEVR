@@ -416,9 +416,12 @@ agree`, `posture: script functions found`, `vr cover: SFXGame.ModifyDamage's IsI
    `posture: refused a cover entry ...`, Shepard unmoved and out of cover. With `mevr cover snap on` the same replay put Shepard
    in CoverLink_28's slot 1 (the replayed A reaches the game's TryAcquireCover).
 4. **The prompt:** near the crate with the snapping refused the heartbeat read `the HUD's cover prompt shown 142 times, hidden
-   again 142 times` per 5 s; with `snap on` `shown 152 times, hidden again 0 times`. (The eye snapshots of both showed no
-   prompt either way: the LE2 host doesn't draw that widget where a snapshot sees it yet, so the counts are the evidence;
-   **[verify]** with lane B3's HUD panel.)
+   again 142 times` per 5 s; with `snap on` `shown 152 times, hidden again 0 times`. Looked at again with lane B3's HUD
+   panel on main (23:52, the same spot): the panel's `-hud.png` shows the power bar, the reticle, the weapon panel and the
+   squad's portraits, and **no cover prompt in either state**, snapping refused or allowed (the game's own `ShowCoverWidget`
+   is an empty script event; whatever ME2 draws for it doesn't show at this spot on the fake headset). So the hide is
+   proven by the calls, not by a picture: **[verify]** where lane E saw the prompt (CoverLink_10, the combat stance, the
+   pad's glyphs) that it is gone with the snapping refused.
 5. **The sprint:** `make-walk-recording.py sprint.mevrrec --plan stand:2,sprint:5,stand:3 --stick 1.0`, replayed with `-Inputs`
    from 1 m in front of the crate, the snapping refused: `sprinting yes` during it, Shepard ran into the crate and stopped there
    (0.97 m), `CheckStormToCover`'s TryAcquireCover refused every 0.3 s (5 refusals logged), never in cover.
