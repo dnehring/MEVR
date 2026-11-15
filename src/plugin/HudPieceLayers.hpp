@@ -63,6 +63,10 @@ struct Common {
 XrCompositionLayerQuad const* Wrist(Common const& common, Piece const& piece);
 XrCompositionLayerQuad const* Gun(Common const& common, Piece const& piece);
 
+// ME2's selected-object prompt, using InteractLabel's placement and this module's shared HUD blit.
+// Call before drawing the panel. Adds its mask only after a successful copy. Requires an explicit [Interact] crop.
+XrCompositionLayerQuad const* Interaction(Common const& common, bool wanted, hud_panel::Masks& masks);
+
 // ---- ME2's frame (LE1's rules without the wheels, labels, world screens and the cockpit) --------------------------------
 // Before the HUD panel is drawn: which pieces show (on foot, a head-tracked world frame with the HUD on the panel, the
 // wrist with the left controller tracked, the gun where the mod says) and their bands as masks cut out of the panel.

@@ -35,6 +35,7 @@
 #include "plugin/TraversalCue.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/PowerWheel.hpp"
+#include "core/vr/PowerWheel.hpp"
 #include "plugin/SquadPlaceDraw.hpp"
 #include "plugin/WorldPanels.hpp"
 #include "plugin/XrHost.hpp"
@@ -517,6 +518,13 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         pass.common.nowMs = GetTickCount64();
         pass.common.options.colourSeed = 3;  // a quad of ours, not the panel (LE1's overlays' options for a piece)
         pass.plan = hpl::Decide(pieceFrame, pass.common.nowMs, panel.masks);
+        // Reserve room for panel, wrist, gun and label before removing the native prompt's band. A failed copy leaves
+        // that band on the original panel. Never relocate dialogue, screen UI or a wheel's captured HUD.
+        bool const interactionWanted = pieceFrame.panelReady && pieceFrame.worldFrame && frame.gameMode == 0 &&
+            frame.headValid && !worldUi.owns && !frame.menuOpen && !mevr::host::renderer::OwnMenuOpen() &&
+            !mevr::host::menus_le2::PadWanted() &&
+            capacity - count >= 4 && !mevr::vr::power_wheel::Latest().open;
+        XrCompositionLayerQuad const* const interactionLayer = hpl::Interaction(pass.common, interactionWanted, panel.masks);
         panel.user = &pass;
         panel.beforeClear = [](void* user, bool shown) {
             auto& p = *static_cast<PiecesPass*>(user);
@@ -524,6 +532,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         };
         XrCompositionLayerQuad const* const panelLayer = mevr::host::hud_panel::Layer(panel);
         count = mevr::host::menus_le2::PanelLayers(frame, device, panelLayer, layersOut, count, capacity);  // or a screen's place
+        if (interactionLayer != nullptr && panelLayer != nullptr && count < capacity) layersOut[count++] = interactionLayer;
         for (unsigned i = 0; i < pass.count && count < capacity; ++i) {
             layersOut[count++] = pass.layers[i];
         }

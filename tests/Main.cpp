@@ -9160,6 +9160,19 @@ void TestSightPullReachesRelief() {
 // The interaction prompt at the object (core/vr/InteractLabel, research/40).
 void TestInteractLabel() {
     namespace il = mevr::vr::interact;
+    il::Label manual;
+    CHECK(!il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = 0.2f; manual.crop[1] = 0.1f; manual.crop[2] = 0.4f; manual.crop[3] = 0.2f;
+    CHECK(il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = 0.9f;
+    CHECK(!il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = -0.1f;
+    CHECK(!il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = std::numeric_limits<float>::quiet_NaN();
+    CHECK(!il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = 0.2f;
+    manual.crop[3] = std::numeric_limits<float>::infinity();
+    CHECK(!il::ExplicitCrop(manual).Valid());
     auto close = [](double a, double b, double tolerance) { return std::abs(a - b) <= tolerance; };
     // The band in stage pixels (384..896, 30..100), the stage across the frame's width: the measured 2344x2392 HUD frame.
     il::Rect const crop = il::DefaultCrop(2344, 2392);
