@@ -71,6 +71,13 @@ unsigned gFallbackHolds = 0;  // since the heartbeat
 // the rise since.
 bool gRecoilSeenValid = false;
 int gRecoilSeen = 0;
+// ... and its yaw: ME2's SetWeaponRecoil queues a yaw kick too (RecoilYawBias, a sine of the time, RecoilYawScale), which
+// UpdateKickback turns the controller's yaw by (research/le2-vrik.md "Recoil"); measured, not held (the stick turns the yaw).
+int gRecoilSeenYaw = 0;
+long long gYawRecoilTotal = 0;
+long long gYawRecoilWindow = 0;  // since the heartbeat
+unsigned gYawKickedShots = 0;    // since the heartbeat
+unsigned gYawKicksRemoved = 0;   // of those, taken back out while the hold applied (LE2), since the heartbeat
 long long gShots = 0;
 long long gRecoilTotal = 0;
 bool gZoomSnapPending = false;  // a zoom-snap target was dropped last tick
@@ -122,30 +129,30 @@ std::string Delta(long long units) {
     return std::format("{:+.2f} deg ({:+} UU)", static_cast<double>(units) * 360.0 / vl::kUnitsPerTurn, units);
 }
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
 
 // Our reflection layer (ue3/, research/34): each found once, by name, in the running game.
-ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase"};
-ue3::ClassRef gCameraModeInterpolate{"SFXGame.SFXCameraMode_Interpolate"};
-ue3::ClassRef gBioPawn{"SFXGame.BioPawn"};
-ue3::ClassRef gSfxInventory{"SFXGame.SFXInventoryManager"};
-ue3::ClassRef gAimAssistModule{"SFXGame.SFXModule_AimAssist"};
-ue3::FieldRef gRotation{"Engine.Actor", "Rotation"};
-ue3::FieldRef gPhysics{"Engine.Actor", "Physics"};
-ue3::FieldRef gModules{"Engine.Actor", "Modules"};
-ue3::FieldRef gPawn{"Engine.Controller", "Pawn"};
-ue3::FieldRef gInvManager{"Engine.Pawn", "InvManager"};
-ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType"};
-ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction"};
-ue3::FieldRef gWeaponRecoilOffset{"SFXGame.SFXInventoryManager", "WeaponRecoilOffset"};
-ue3::FieldRef gTotalRecoil{"SFXGame.SFXInventoryManager", "TotalRecoil"};
-ue3::FieldRef gLastZoomSnapTarget{"SFXGame.SFXModule_AimAssist", "LastZoomSnapTarget"};
-ue3::FieldRef gPlayerCamera{"Engine.PlayerController", "PlayerCamera"};
-ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode"};
-ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
-ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput"};
-ue3::FieldRef gRawJoyLookRight{"Engine.PlayerInput", "RawJoyLookRight"};
-ue3::FieldRef gRawJoyLookUp{"Engine.PlayerInput", "RawJoyLookUp"};
+ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};
+ue3::ClassRef gCameraModeInterpolate{"SFXGame.SFXCameraMode_Interpolate", ue3::kEveryGame};
+ue3::ClassRef gBioPawn{"SFXGame.BioPawn", ue3::kEveryGame};
+ue3::ClassRef gSfxInventory{"SFXGame.SFXInventoryManager", ue3::kEveryGame};
+ue3::ClassRef gAimAssistModule{"SFXGame.SFXModule_AimAssist", ue3::kEveryGame};
+ue3::FieldRef gRotation{"Engine.Actor", "Rotation", ue3::kEveryGame};
+ue3::FieldRef gPhysics{"Engine.Actor", "Physics", ue3::kEveryGame};
+ue3::FieldRef gModules{"Engine.Actor", "Modules", ue3::kEveryGame};
+ue3::FieldRef gPawn{"Engine.Controller", "Pawn", ue3::kEveryGame};
+ue3::FieldRef gInvManager{"Engine.Pawn", "InvManager", ue3::kEveryGame};
+ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
+ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
+ue3::FieldRef gWeaponRecoilOffset{"SFXGame.SFXInventoryManager", "WeaponRecoilOffset", ue3::kEveryGame};
+ue3::FieldRef gTotalRecoil{"SFXGame.SFXInventoryManager", "TotalRecoil", ue3::kEveryGame};
+ue3::FieldRef gLastZoomSnapTarget{"SFXGame.SFXModule_AimAssist", "LastZoomSnapTarget", ue3::kEveryGame};
+ue3::FieldRef gPlayerCamera{"Engine.PlayerController", "PlayerCamera", ue3::kEveryGame};
+ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode", ue3::kEveryGame};
+ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To", ue3::kEveryGame};
+ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput", ue3::kEveryGame};
+ue3::FieldRef gRawJoyLookRight{"Engine.PlayerInput", "RawJoyLookRight", ue3::kEveryGame};
+ue3::FieldRef gRawJoyLookUp{"Engine.PlayerInput", "RawJoyLookUp", ue3::kEveryGame};
 
 ue3::Object* ObjectField(ue3::Object const* object, ue3::FieldRef& field) {
     return field.Read<ue3::Object*>(object).value_or(nullptr);
@@ -155,9 +162,9 @@ ue3::Object* PawnOf(ue3::Object const* controller) {
     return ObjectField(controller, gPawn);
 }
 
-ue3::FunctionRef gSetWeaponRecoilRef{"SFXGame.SFXInventoryManager.SetWeaponRecoil"};
-ue3::FunctionRef gViewFrictionRef{"SFXGame.SFXModule_AimAssist.ViewFriction"};
-ue3::FunctionRef gViewAdhesionRef{"SFXGame.SFXModule_AimAssist.ViewAdhesion"};
+ue3::FunctionRef gSetWeaponRecoilRef{"SFXGame.SFXInventoryManager.SetWeaponRecoil", ue3::kEveryGame};
+ue3::FunctionRef gViewFrictionRef{"SFXGame.SFXModule_AimAssist.ViewFriction", ue3::kEveryGame};
+ue3::FunctionRef gViewAdhesionRef{"SFXGame.SFXModule_AimAssist.ViewAdhesion", ue3::kEveryGame};
 constexpr unsigned char kPhysLadder = 9;  // EPhysics PHYS_Ladder
 
 void LogWhy(vl::Why why, double now) {
@@ -263,6 +270,11 @@ ue3::Object* PlayerInventory(ue3::Object* controller) {
 std::optional<int> RecoilPitch(ue3::Object* inventory, ue3::FieldRef& field) {
     std::optional<ue3::Rotator> const rotator = field.Read<ue3::Rotator>(inventory);
     return rotator ? std::optional<int>(rotator->pitch) : std::nullopt;
+}
+
+std::optional<int> RecoilYaw(ue3::Object* inventory, ue3::FieldRef& field) {
+    std::optional<ue3::Rotator> const rotator = field.Read<ue3::Rotator>(inventory);
+    return rotator ? std::optional<int>(rotator->yaw) : std::nullopt;
 }
 
 // Aim assist's zoom snap (SFXModule_AimAssist.ZoomSnap, from SetZoomed while zoomed: the support grip's
@@ -378,6 +390,7 @@ void Level(ue3::Object* controller, bool fromModTick) {
     gRecoilSeenValid = recoil.has_value();
     if (recoil) {
         gRecoilSeen = *recoil;
+        gRecoilSeenYaw = RecoilYaw(PlayerInventory(controller), gWeaponRecoilOffset).value_or(0);
     }
 }
 
@@ -402,8 +415,33 @@ void OnSetWeaponRecoil(ue3::Object* context, ue3::Function* /*function*/, void* 
     }
     int const now = *recoil;
     int const kick = gRecoilSeenValid ? vl::Signed(now - gRecoilSeen) : 0;
+    int const yawNow = RecoilYaw(inventory, gWeaponRecoilOffset).value_or(0);
+    int const yawKick = gRecoilSeenValid ? vl::Signed(yawNow - gRecoilSeenYaw) : 0;
     gRecoilSeen = now;
+    gRecoilSeenYaw = yawNow;
     gRecoilSeenValid = true;
+    if (yawKick != 0) {
+        gYawRecoilTotal += yawKick;
+        gYawRecoilWindow += yawKick;
+        ++gYawKickedShots;
+#if defined(MEVR_GAME_LE2)
+        // ME2 turns the controller's yaw by it (BioPlayerInput.UpdateViewRotation: SetRotation(Rotation + Kickback), faded back
+        // later): no camera recoil in VR, as ME1 (the owner, 2026-11-14). Taken back out of the queue while the hold applies,
+        // and out of TotalRecoil too, so there's nothing to fade back and the weapon's cap doesn't fill.
+        if (gWhy == vl::Why::Holding) {
+            if (ue3::Rotator* const queued = gWeaponRecoilOffset.In<ue3::Rotator>(inventory)) {
+                queued->yaw -= yawKick;
+                write_journal::Wrote("ViewLevel.recoil yaw (queued)", &queued->yaw, sizeof(int));
+                gRecoilSeenYaw = queued->yaw;
+            }
+            if (ue3::Rotator* const total = gTotalRecoil.In<ue3::Rotator>(inventory)) {
+                total->yaw -= yawKick;
+                write_journal::Wrote("ViewLevel.recoil yaw (total)", &total->yaw, sizeof(int));
+            }
+            ++gYawKicksRemoved;
+        }
+#endif
+    }
     ++gShots;
     gRecoilTotal += kick;
     double const at = Now();
@@ -414,7 +452,9 @@ void OnSetWeaponRecoil(ue3::Object* context, ue3::Function* /*function*/, void* 
     if (!gToldFirstShot) {
         gToldFirstShot = true;
         log::Info("view level: first shot seen (SFXInventoryManager.SetWeaponRecoil): pitch kick {} queued for the controller's "
-                  "rotation; TotalRecoil pitch {}", Angle(kick), Angle(RecoilPitch(inventory, gTotalRecoil).value_or(0)));
+                  "rotation{}; TotalRecoil pitch {}", Angle(kick),
+            yawKick != 0 ? std::format(" and a yaw kick {}", Angle(yawKick)) : std::string(),
+            Angle(RecoilPitch(inventory, gTotalRecoil).value_or(0)));
     }
     double const scale = hand_calibration::RecoilHaptic();
     vl::Pulse const pulse = vl::RecoilPulse(vl::Degrees(kick), scale);
@@ -500,8 +540,8 @@ void OnViewFriction(ue3::Object* context, ue3::Function* /*function*/, void* res
 } // namespace
 
 bool TryStartup() {
-#if defined(MEVR_GAME_LE1)
-    if (!ue3::runtime::Ready()) {
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+    if (!ue3::runtime::Up()) {
         log::Warn("view level: our reflection layer is off ({}): the camera isn't levelled", ue3::runtime::Status());
         return false;
     }
@@ -551,7 +591,7 @@ bool TryStartup() {
 
 void Tick(Link const& link) {
     gLink = link;
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (!gStarted) {
         return;
     }
@@ -620,6 +660,14 @@ void LogStats() {
         vl::Name(gWhy), gModeName, gWhyChanges, rotation, minute, gShots, Delta(gRecoilTotal), gPosts,
         gFallbackHolds > 0 ? std::format(", {} holds from the mod's tick", gFallbackHolds) : std::string(),
         gPulses > 0 ? std::format(", {} recoil pulses", gPulses) : std::string());
+    if (gYawKickedShots > 0) {
+        log::Info("    view level: {} shots queued a yaw kick too: {} in the last window, {} in all (the game turns the "
+                  "controller's yaw by it); {} of them taken back out (the hold applied)", gYawKickedShots, Delta(gYawRecoilWindow),
+            Delta(gYawRecoilTotal), gYawKicksRemoved);
+    }
+    gYawKickedShots = 0;
+    gYawKicksRemoved = 0;
+    gYawRecoilWindow = 0;
     gWhyChanges = 0;
     gFallbackHolds = 0;
     gPulses = 0;
@@ -667,6 +715,10 @@ void Shutdown() {
     gFallbackHolds = 0;
     gRecoilSeenValid = false;
     gRecoilSeen = 0;
+    gRecoilSeenYaw = 0;
+    gYawRecoilTotal = gYawRecoilWindow = 0;
+    gYawKickedShots = 0;
+    gYawKicksRemoved = 0;
     gShots = 0;
     gRecoilTotal = 0;
     gZoomSnapPending = false;

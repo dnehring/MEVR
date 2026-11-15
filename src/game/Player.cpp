@@ -18,11 +18,11 @@ namespace {
 // M1, docs/le2-continuation-plan.md); the rest resolve where the ME1 modules use the layer (LE1).
 ue3::ClassRef gPlayerController{"Engine.PlayerController", ue3::kEveryGame};
 ue3::ClassRef gBioPlayerController{"SFXGame.BioPlayerController", ue3::kEveryGame};
-ue3::ClassRef gBioPawn{"SFXGame.BioPawn"};
+ue3::ClassRef gBioPawn{"SFXGame.BioPawn", ue3::kEveryGame};
 ue3::FieldRef gPawn{"Engine.Controller", "Pawn", ue3::kEveryGame};
 ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager, ue3::kEveryGame};
 ue3::FieldRef gCurrentMode{"SFXGame.SFXGameModeManager", "CurrentMode", ue3::kEveryGame};
-ue3::FieldRef gPlayerCamera{"Engine.PlayerController", "PlayerCamera"};
+ue3::FieldRef gPlayerCamera{"Engine.PlayerController", "PlayerCamera", ue3::kEveryGame};  // view_anchor, hand aim (LE2: M3)
 ue3::FieldRef gPcOwner{"Engine.Camera", "PCOwner", ue3::kEveryGame};
 ue3::FieldRef gCameraCache{"Engine.Camera", "CameraCache", ue3::kEveryGame};
 ue3::FieldRef gPov{gCameraCache, "POV"};
@@ -30,9 +30,9 @@ ue3::FieldRef gPovLocation{gPov, "Location"};
 ue3::FieldRef gPovRotation{gPov, "Rotation"};
 ue3::FieldRef gPovFov{gPov, "FOV"};
 ue3::FieldRef gLocation{"Engine.Actor", "Location", ue3::kEveryGame};
-ue3::FieldRef gRotation{"Engine.Actor", "Rotation"};
-ue3::FieldRef gMesh{"Engine.Pawn", "Mesh"};
-ue3::FieldRef gSkeletalMesh{"Engine.SkeletalMeshComponent", "SkeletalMesh"};
+ue3::FieldRef gRotation{"Engine.Actor", "Rotation", ue3::kEveryGame};
+ue3::FieldRef gMesh{"Engine.Pawn", "Mesh", ue3::kEveryGame};
+ue3::FieldRef gSkeletalMesh{"Engine.SkeletalMeshComponent", "SkeletalMesh", ue3::kEveryGame};
 ue3::FieldRef gCylinder{"Engine.Pawn", "CylinderComponent"};
 ue3::FieldRef gCollisionHeight{"Engine.CylinderComponent", "CollisionHeight"};
 ue3::FieldRef gCrouched{"Engine.Pawn", "bIsCrouched"};

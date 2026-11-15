@@ -40,12 +40,13 @@ void SetStatus(std::string status) {
     gStatus = std::move(status);
 }
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
 
 // Our reflection layer (research/34): the fields research/14 read from the code ("Weapon and muzzle":
 // Pawn.Weapon +0x4A8, Weapon.Mesh +0x394, BioWeapon.SkelMeshComp +0x3E8, BioWeaponRanged.m_MuzzleSocketName
 // +0x490, bIsZoomed bit 0x4 of the word at +0x548, which GetPlayerAimError 0xC59920 tests), found by name;
 // engine/ReflectCheck compares each with LExSDKv2.
+#if defined(MEVR_GAME_LE1)
 ue3::ClassRef gBioWeaponRanged{"SFXGame.BioWeaponRanged"};
 ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon"};
 ue3::FieldRef gWeaponMesh{"Engine.Weapon", "Mesh"};
@@ -62,6 +63,29 @@ ue3::FunctionRef gGetRangedWeaponTypeFn{"SFXGame.BioWeaponRanged.GetRangedWeapon
 ue3::FunctionRef gGetPlayerAimErrorFn{"SFXGame.BioWeaponRanged.GetPlayerAimError"};
 ue3::FunctionRef gTickFireFn{"SFXGame.BioWeaponRanged.TickFire"};
 ue3::FunctionRef gPawnStartTraceFn{"SFXGame.BioPawn.GetWeaponStartTraceLocation"};
+#else
+// ME2's weapons (research/le2-vrik.md "The gun in the hand"): SFXWeapon on Engine.Weapon, its model the Weapon's own Mesh
+// (SFXWeapon.GetMuzzleLoc reads SkeletalMeshComponent(Mesh)'s MuzzleSocketName socket), the muzzle socket's name
+// SFXWeapon.MuzzleSocketName. ME2 has no ranged-type query (its types are classes), no bIsZoomed field and no TickFire:
+// those handles are ME1's only and never resolve here.
+ue3::ClassRef gBioWeaponRanged{"SFXGame.SFXWeapon", ue3::kEveryGame};
+ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
+ue3::FieldRef gWeaponMesh{"Engine.Weapon", "Mesh", ue3::kEveryGame};
+ue3::FieldRef gSkelMeshComp{"Engine.Weapon", "Mesh", ue3::kEveryGame};
+ue3::FieldRef gMuzzleSocketName{"SFXGame.SFXWeapon", "MuzzleSocketName", ue3::kEveryGame};
+ue3::FieldRef gIsZoomed{"SFXGame.SFXWeapon", "bIsZoomed"};
+ue3::FieldRef gBounds{"Engine.SkeletalMesh", "Bounds", ue3::kEveryGame};
+ue3::FieldRef gBoundsOrigin{gBounds, "Origin"};
+ue3::FieldRef gBoundsExtent{gBounds, "BoxExtent"};
+
+ue3::FunctionRef gGetMuzzleLocFn{"SFXGame.SFXWeapon.GetMuzzleLoc", ue3::kEveryGame};
+ue3::FunctionRef gGetSocketWorldFn{"Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ue3::kEveryGame};
+ue3::FunctionRef gGetRangedWeaponTypeFn{"SFXGame.SFXWeapon.GetRangedWeaponType"};
+ue3::FunctionRef gGetPlayerAimErrorFn{"SFXGame.SFXWeapon.GetPlayerAimError"};
+ue3::FunctionRef gTickFireFn{"SFXGame.SFXWeapon.TickFire"};
+ue3::FunctionRef gPawnStartTraceFn{"SFXGame.BioPawn.GetWeaponStartTraceLocation", ue3::kEveryGame};
+#endif
+ue3::ClassRef gSkeletalMeshComponent{"Engine.SkeletalMeshComponent", ue3::kEveryGame};
 
 // Our muzzle and the native GetMuzzleLoc must agree this closely (Unreal units).
 constexpr double kVerifyTolerance = 1.0;
@@ -192,7 +216,7 @@ struct Live {
 };
 
 std::optional<Live> LivePointers(std::string& why) {
-    if (!ue3::runtime::Ready()) {
+    if (!ue3::runtime::Up()) {
         why = "our reflection layer is off (see the 'reflect:' log lines)";
         return std::nullopt;
     }
@@ -212,7 +236,7 @@ std::optional<Live> LivePointers(std::string& why) {
         return std::nullopt;
     }
     ue3::Object* const mesh = gSkelMeshComp.Read<ue3::Object*>(weapon).value_or(nullptr);
-    if (mesh == nullptr || player::SkeletalMesh(mesh) == nullptr) {
+    if (mesh == nullptr || !ue3::IsA(mesh, gSkeletalMeshComponent) || player::SkeletalMesh(mesh) == nullptr) {
         why = std::format("{} has no skeletal mesh", FullName(weapon));
         return std::nullopt;
     }
@@ -712,13 +736,13 @@ std::optional<Reading> ReadHeld() {
     return Reading{*live, drawn, SelectKick(*live, V(drawn.barrel))};
 }
 
-#endif  // MEVR_GAME_LE1
+#endif  // MEVR_GAME_LE1 || MEVR_GAME_LE2
 
 } // namespace
 
 bool TryStartup() {
-#if defined(MEVR_GAME_LE1)
-    if (!ue3::runtime::Ready()) {
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+    if (!ue3::runtime::Up()) {
         log::Warn("weapon: off: our reflection layer is off (see the 'reflect:' log lines)");
         return false;
     }
@@ -734,9 +758,16 @@ bool TryStartup() {
             ? std::format("exe+0x{:X}", reinterpret_cast<std::uintptr_t>(ue3::runtime::Get().NativeFunc(function)) - base)
             : std::string("not found");
     };
+#if defined(MEVR_GAME_LE1)
     log::Info("weapon: natives: BioWeaponRanged.GetMuzzleLoc {}, BioWeaponRanged.TickFire {}, BioPawn.GetWeaponStartTraceLocation {}, "
               "SkeletalMeshComponent.GetSocketWorldLocationAndRotation {}",
         where(gGetMuzzleLoc), where(gTickFireFn.Get()), where(gPawnStartTraceFn.Get()), where(gGetSocketWorld));
+#else
+    (void)where;
+    log::Info("weapon: SFXWeapon.GetMuzzleLoc {}, SkeletalMeshComponent.GetSocketWorldLocationAndRotation {} (ME2's guns: "
+              "SFXWeapon, the model its Mesh)", gGetMuzzleLoc != nullptr ? "found" : "not found",
+        gGetSocketWorld != nullptr ? "found" : "not found");
+#endif
     return gGetMuzzleLoc != nullptr;
 #else
     return false;
@@ -744,7 +775,7 @@ bool TryStartup() {
 }
 
 void Tick(bool wanted) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (!wanted) {
         if (gResolved) {
             Forget();
@@ -836,7 +867,7 @@ void Tick(bool wanted) {
 }
 
 std::optional<Muzzle> Current() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     auto const r = ReadHeld();
     if (!r) {
         return std::nullopt;
@@ -848,7 +879,7 @@ std::optional<Muzzle> Current() {
 }
 
 std::optional<Muzzle> CurrentAsDrawn() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     auto const r = ReadHeld();
     return r ? std::optional<Muzzle>(r->drawn) : std::nullopt;
 #else
@@ -857,7 +888,7 @@ std::optional<Muzzle> CurrentAsDrawn() {
 }
 
 std::optional<engine::UnrealVector> ToDrawn(engine::UnrealVector const& world) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     auto const r = ReadHeld();
     if (!r || !r->kick) {
         return std::nullopt;
@@ -871,7 +902,7 @@ std::optional<engine::UnrealVector> ToDrawn(engine::UnrealVector const& world) {
 }
 
 std::optional<Grip> RightHandGrip() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (!gResolved || !gResolved->verified || !gHeld) {
         return std::nullopt;
     }
@@ -882,7 +913,7 @@ std::optional<Grip> RightHandGrip() {
 }
 
 std::uintptr_t Key() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     return gResolved && gResolved->verified && gHeld ? reinterpret_cast<std::uintptr_t>(gResolved->weapon) : 0;
 #else
     return 0;
@@ -890,7 +921,7 @@ std::uintptr_t Key() {
 }
 
 ue3::Object* HeldObject() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (Key() == 0) {
         return nullptr;
     }
@@ -907,7 +938,7 @@ ue3::Object* HeldObject() {
 }
 
 RangedType Type() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (gResolved && gResolved->verified && gResolved->rangedType >= 0 && gResolved->rangedType <= 3) {
         return static_cast<RangedType>(gResolved->rangedType);
     }
@@ -987,7 +1018,7 @@ std::optional<float> ZoomedAimError(ue3::Object* weapon, float accuracy) {
 }
 
 std::optional<ik::Vec3> OffHandSocketInHand() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (!gResolved || !gResolved->verified || !gHeld || !gResolved->offHand || !gBody || gBody->hand < 0) {
         return std::nullopt;
     }
@@ -1015,7 +1046,7 @@ std::optional<ik::Vec3> OffHandSocketInHand() {
 }
 
 std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     // The gun as the controller holds it, its points too (the kick taken out).
     auto const reading = ReadHeld();
     if (!reading) {
@@ -1085,7 +1116,7 @@ std::optional<Model> ModelInGunFrame(engine::UnrealVector const& topWorld) {
 }
 
 std::optional<engine::UnrealVector> BoneWorld(std::size_t index) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     auto const reading = ReadHeld();
     if (!reading) {
         return std::nullopt;
@@ -1104,7 +1135,7 @@ std::optional<engine::UnrealVector> BoneWorld(std::size_t index) {
 }
 
 ue3::Object* HeldMesh() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (!Current()) {
         return nullptr;
     }
@@ -1121,7 +1152,7 @@ std::string const& Status() {
 }
 
 void LogStats() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (gStatus == "off") {
         return;
     }
@@ -1144,7 +1175,7 @@ void LogStats() {
 }
 
 void Shutdown() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     Forget();
     gBody.reset();
     gGetMuzzleLoc = nullptr;

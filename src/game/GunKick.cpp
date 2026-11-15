@@ -86,6 +86,10 @@ double gSyntheticWait = 0.0;
 // Our reflection layer (research/34): the weapon's own recoil for a shot (research/24 section 2: Stats.Recoil or ZoomRecoil,
 // times the talent curves), a native with a plain float return, which ProcessEvent passes back.
 ue3::FunctionRef gGetRecoil{"SFXGame.BioWeaponRanged.GetRecoil"};
+#elif defined(MEVR_GAME_LE2)
+// ME2's (research/le2-vrik.md "Recoil"): SFXWeapon.GetWeaponRecoil, script, ZoomRecoil or Recoil's value times the player's
+// recoil bonus; PlayOwnedFireEffects queues each shot's kick as SetWeaponRecoil(GetWeaponRecoil() * 182.044), as ME1's.
+ue3::FunctionRef gGetRecoil{"SFXGame.SFXWeapon.GetWeaponRecoil", ue3::kEveryGame};
 #endif
 
 bool gToldFirst = false;
@@ -112,7 +116,7 @@ unsigned long long gShotsTotal = 0;
 unsigned long long gKickedTotal = 0;
 
 std::optional<double> GameRecoil() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     ue3::Object* const held = weapon::HeldObject();
     if (held == nullptr) {
         return std::nullopt;
@@ -121,8 +125,8 @@ std::optional<double> GameRecoil() {
     if (function == nullptr) {
         if (!gToldNoFunction) {
             gToldNoFunction = true;
-            log::Warn("gun kick: BioWeaponRanged.GetRecoil not found: a shot whose queued kick wasn't measured kicks by the "
-                      "weapon's last value, or not at all");
+            log::Warn("gun kick: {} not found: a shot whose queued kick wasn't measured kicks by the weapon's last value, or "
+                      "not at all", std::string_view(gGetRecoil.Path()).substr(8));  // without "SFXGame."
         }
         return std::nullopt;
     }
@@ -330,7 +334,7 @@ void Shutdown() {
     gRemembered = -1.0;
     gSyntheticLeft = 0;
     gSyntheticWait = 0.0;
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     gGetRecoil.Reset();
 #endif
     gToldFirst = gToldNoRecoil = gToldNoFunction = false;

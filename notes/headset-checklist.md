@@ -618,6 +618,10 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   the throw animation with arm IK. (research/20 sections 3-4)
 - [ ] Calibration on each controller type: the rifle step finishes, the far orb is in reach, the cyan ring sits where
   your hand feels it. PS VR2 and a Quest over Steam Link get different calibrations. (research/25 sections 4, 8-9)
+- [ ] ME2 (lane C, research/le2-vrik.md, checked on the fake headset 2026-11-14): Shepard's arms on the controllers, the
+  gun in the right hand, shots along the barrel, no camera recoil (pitch held, the yaw kick removed), the gun kicking in
+  the hand instead. In the headset: do the hands and the gun sit where yours are, does a shot hit what the barrel points
+  at with the gun held well off the view (the start on the barrel's line, behind the muzzle), and does any shake remain?
 
 ### The game's start (session: release blockers)
 - [ ] Launch the game with the headset on: the boot and logos on the flat panel, then the title, the camera flight after a

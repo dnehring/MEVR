@@ -47,9 +47,9 @@ constexpr double kBigShiftMeters = 0.35;
 // The legs' `torso: legs keep the run` line while the pawn moves: at most this often.
 constexpr std::uint64_t kLegsLogEveryMs = 5000;
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
 // The pawn's speed (the legs keep the run while it moves). engine/ReflectCheck has its row.
-ue3::FieldRef gVelocity{"Engine.Actor", "Velocity"};
+ue3::FieldRef gVelocity{"Engine.Actor", "Velocity", ue3::kEveryGame};
 #endif
 
 ik::BodyFollow gFollow;
@@ -140,7 +140,7 @@ double FacingYaw(hand_targets::Targets const& targets, double headYaw) {
 
 // The pawn's horizontal speed (units a second), NaN when it can't be read (then the legs count as standing: the old rule).
 double PawnSpeed(ue3::Object const* pawn) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (pawn != nullptr) {
         if (auto const v = gVelocity.Read<ue3::Vector>(pawn)) {
             double const speed = std::hypot(static_cast<double>(v->x), static_cast<double>(v->y));

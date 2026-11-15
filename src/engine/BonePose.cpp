@@ -38,7 +38,8 @@ constexpr char const* kHookName = "USkeletalMeshComponent::UpdateSkelPose";
 // Verified as a function start in .pdata and by its code (research/14): it sizes SpaceBases and
 // LocalAtoms to the RefSkeleton with 0x20-byte elements, blends the AnimTree into LocalAtoms and
 // calls ComposeSkeleton (0x580A60). USkeletalMeshComponent::Tick calls it at 0x58D709 with the
-// frame's DeltaTime; Attach and the various force-update paths call it with 0. LE1 only (engine/Addresses.hpp).
+// frame's DeltaTime; Attach and the various force-update paths call it with 0. LE1 and LE2 (ME2: 0x79B8A0, the same
+// function; research/le2-vrik.md "UpdateSkelPose"); engine/Addresses.hpp.
 constexpr std::uint32_t kUpdateSkelPoseRva = addresses::kUpdateSkelPose;
 
 // (this, DeltaTime, bTickFaceFX); callers also set r9, which the function never reads. All four
@@ -191,7 +192,7 @@ bool ResolveOwner() {
     if (gOwnerOffset.load(std::memory_order_acquire) >= 0) {
         return true;
     }
-    if (!ue3::runtime::Ready()) {
+    if (!ue3::runtime::Up()) {
         return false;
     }
     ue3::Reflection& r = ue3::runtime::Get();

@@ -2113,6 +2113,21 @@ void CheckClasses() {
     CheckClass<ASFXWeapon>("SFXGame.SFXWeapon");
     CheckClass<USFXEngine>("SFXGame.SFXEngine");                  // a save loaded by script (mevr load, M1.6)
     CheckClass<USFXSFHandler_Load>("SFXGame.SFXSFHandler_Load");  // ... its descriptor, as the Load screen lists it
+    // M3 (research/le2-vrik.md): the skeleton, the camera's hook, arm IK
+    CheckClass<USkeletalMeshComponent>("Engine.SkeletalMeshComponent");
+    CheckClass<USkeletalMesh>("Engine.SkeletalMesh");
+    CheckClass<USkeletalMeshSocket>("Engine.SkeletalMeshSocket");
+    CheckClass<UAnimTree>("Engine.AnimTree");
+    CheckClass<USkelControlBase>("Engine.SkelControlBase");
+    CheckClass<USkelControlLimb>("Engine.SkelControlLimb");
+    CheckClass<ASFXCameraNativeBase>("SFXGame.SFXCameraNativeBase");
+    CheckClass<USFXCameraMode>("SFXGame.SFXCameraMode");
+    CheckClass<USFXCameraMode_Interpolate>("SFXGame.SFXCameraMode_Interpolate");
+    CheckClass<ASFXInventoryManager>("SFXGame.SFXInventoryManager");  // game/ViewLevel: the shots' recoil
+    CheckClass<USFXModule_AimAssist>("SFXGame.SFXModule_AimAssist");  // ... and aim assist's friction and adhesion
+    CheckClass<ASFXPlayerCamera>("SFXGame.SFXPlayerCamera");          // game/CameraShake: the camera's shake modifiers
+    CheckClass<UCameraModifier>("Engine.CameraModifier");
+    CheckClass<AWeapon>("Engine.Weapon");  // game/Weapon (M3.3): ME2's guns are SFXWeapon on Engine.Weapon
 }
 
 void CheckFields() {
@@ -2138,6 +2153,66 @@ void CheckFields() {
     CheckField("SFXGame.SFXWeapon", "CurrentSpareAmmo", SDK_FIELD(ASFXWeapon, CurrentSpareAmmo));
     CheckField("SFXGame.SFXWeapon", "MagSize", SDK_FIELD(ASFXWeapon, MagSize));
     CheckField("SFXGame.SFXWeapon", "bEarlyReload", SDK_BOOL(ASFXWeapon, bEarlyReload));
+    // M3 (research/le2-vrik.md): the body (game/Player, engine/skeleton, engine/BonePose, the skeleton and camera probes)
+    CheckField("Engine.Pawn", "Mesh", SDK_FIELD(APawn, Mesh));
+    CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
+    CheckField("Engine.ActorComponent", "Owner", SDK_FIELD(UActorComponent, Owner));
+    CheckField("Engine.PrimitiveComponent", "LocalToWorld", SDK_FIELD(UPrimitiveComponent, LocalToWorld), true);
+    CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
+    CheckField("Engine.SkeletalMeshComponent", "AnimTreeTemplate", SDK_FIELD(USkeletalMeshComponent, AnimTreeTemplate));
+    CheckField("Engine.SkeletalMeshComponent", "Animations", SDK_FIELD(USkeletalMeshComponent, Animations));
+    CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases), true);
+    CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
+    CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton), true);
+    CheckField("Engine.SkeletalMesh", "Sockets", SDK_FIELD(USkeletalMesh, Sockets));
+    CheckField("Engine.SkeletalMeshSocket", "SocketName", SDK_FIELD(USkeletalMeshSocket, SocketName));
+    CheckField("Engine.SkeletalMeshSocket", "BoneName", SDK_FIELD(USkeletalMeshSocket, BoneName));
+    CheckField("Engine.SkeletalMeshSocket", "RelativeLocation", SDK_FIELD(USkeletalMeshSocket, RelativeLocation));
+    CheckField("Engine.SkeletalMeshSocket", "RelativeRotation", SDK_FIELD(USkeletalMeshSocket, RelativeRotation));
+    CheckField("Engine.AnimTree", "SkelControlLists", SDK_FIELD(UAnimTree, SkelControlLists));
+    CheckField("Engine.SkelControlBase", "NextControl", SDK_FIELD(USkelControlBase, NextControl));
+    CheckField("Engine.SkelControlBase", "ControlName", SDK_FIELD(USkelControlBase, ControlName));
+    CheckField("Engine.SkelControlBase", "ControlStrength", SDK_FIELD(USkelControlBase, ControlStrength));
+    CheckField("Engine.SkelControlLimb", "EffectorLocationSpace", SDK_FIELD(USkelControlLimb, EffectorLocationSpace));
+    CheckField("Engine.SkelControlLimb", "EffectorSpaceBoneName", SDK_FIELD(USkelControlLimb, EffectorSpaceBoneName));
+    CheckField("Engine.SkelControlLimb", "JointTargetLocationSpace", SDK_FIELD(USkelControlLimb, JointTargetLocationSpace));
+    CheckField("Engine.SkelControlLimb", "JointTargetSpaceBoneName", SDK_FIELD(USkelControlLimb, JointTargetSpaceBoneName));
+    CheckField("Engine.SkelControlLimb", "BoneAxis", SDK_FIELD(USkelControlLimb, BoneAxis));
+    CheckField("Engine.SkelControlLimb", "JointAxis", SDK_FIELD(USkelControlLimb, JointAxis));
+    CheckField("Engine.SkelControlLimb", "bInvertJointAxis", SDK_BOOL(USkelControlLimb, bInvertJointAxis));
+    CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));
+    CheckField("SFXGame.SFXCameraMode_Interpolate", "To", SDK_FIELD(USFXCameraMode_Interpolate, To));
+    CheckField("SFXGame.SFXCameraMode", "m_pov", SDK_FIELD(USFXCameraMode, m_pov));
+    CheckField("SFXGame.SFXCameraMode", "Offset", SDK_FIELD(USFXCameraMode, Offset));
+    CheckField("SFXGame.SFXCameraMode", "HookOffset", SDK_FIELD(USFXCameraMode, HookOffset));
+    CheckField("SFXGame.SFXCameraMode", "HookName", SDK_FIELD(USFXCameraMode, HookName));
+    // game/ViewLevel (M3.1: no camera recoil on ME2 either, research/le2-vrik-audit.md)
+    CheckField("Engine.Actor", "Physics", SDK_FIELD(AActor, Physics));
+    CheckField("Engine.Actor", "Modules", SDK_FIELD(AActor, Modules));
+    CheckField("Engine.Pawn", "InvManager", SDK_FIELD(APawn, InvManager));
+    CheckField("Engine.PlayerController", "PlayerInput", SDK_FIELD(APlayerController, PlayerInput));
+    CheckField("Engine.PlayerInput", "RawJoyLookRight", SDK_FIELD(UPlayerInput, RawJoyLookRight));
+    CheckField("Engine.PlayerInput", "RawJoyLookUp", SDK_FIELD(UPlayerInput, RawJoyLookUp));
+    CheckField("SFXGame.BioPawn", "CoverType", SDK_FIELD(ABioPawn, CoverType));
+    CheckField("SFXGame.BioPawn", "CoverAction", SDK_FIELD(ABioPawn, CoverAction));
+    CheckField("SFXGame.SFXInventoryManager", "WeaponRecoilOffset", SDK_FIELD(ASFXInventoryManager, WeaponRecoilOffset));
+    CheckField("SFXGame.SFXInventoryManager", "TotalRecoil", SDK_FIELD(ASFXInventoryManager, TotalRecoil));
+    CheckField("SFXGame.SFXModule_AimAssist", "LastZoomSnapTarget", SDK_FIELD(USFXModule_AimAssist, LastZoomSnapTarget));
+    // game/CameraShake (M3.1): the body's camera shakes, the screen shakes' two camera modifiers
+    CheckField("SFXGame.SFXCameraMode", "bIsCameraShakeEnabled", SDK_BOOL(USFXCameraMode, bIsCameraShakeEnabled));
+    CheckField("SFXGame.SFXPlayerCamera", "ScreenShakeModifier", SDK_FIELD(ASFXPlayerCamera, ScreenShakeModifier));
+    CheckField("Engine.Camera", "CameraShakeCamMod", SDK_FIELD(ACamera, CameraShakeCamMod));
+    CheckField("Engine.CameraModifier", "bDisabled", SDK_BOOL(UCameraModifier, bDisabled));
+    // game/ArmIk (M3.2): the body's bounds, the AnimTree's own off-hand IK
+    CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));
+    CheckField("Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds", SDK_BOOL(USkeletalMeshComponent, bConsiderAllBodiesForBounds));
+    CheckField("Engine.SkelControlBase", "StrengthTarget", SDK_FIELD(USkelControlBase, StrengthTarget));
+    CheckField("Engine.SkelControlBase", "bSetStrengthFromAnimNode", SDK_BOOL(USkelControlBase, bSetStrengthFromAnimNode));
+    // game/Weapon (M3.3): the gun's model and its muzzle socket
+    CheckField("Engine.Weapon", "Mesh", SDK_FIELD(AWeapon, Mesh));
+    CheckField("SFXGame.SFXWeapon", "MuzzleSocketName", SDK_FIELD(ASFXWeapon, MuzzleSocketName));
+    CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
 }
 
 void CheckPaths() {
@@ -2162,6 +2237,43 @@ void CheckPaths() {
         SDK_AT(offsetof(FSaveGUIRecord, SaveDescriptor) + offsetof(FSFXSaveDescriptor, Index), 4));
     CheckPath("SFXGame.SFXSFHandler_Load", {"SaveList", "SaveDescriptor", "Type"},
         SDK_AT(offsetof(FSaveGUIRecord, SaveDescriptor) + offsetof(FSFXSaveDescriptor, Type), 1));
+    // M3: the camera mode's own view, the skeletal control lists, the attachments (engine/skeleton)
+    CheckPath("SFXGame.SFXCameraMode", {"m_pov", "Location"}, SDK_AT(offsetof(USFXCameraMode, m_pov) + offsetof(FTPOV, Location), sizeof(FVector)));
+    CheckPath("SFXGame.SFXCameraMode", {"m_pov", "Rotation"}, SDK_AT(offsetof(USFXCameraMode, m_pov) + offsetof(FTPOV, Rotation), sizeof(FRotator)));
+    CheckElement("Engine.AnimTree", "SkelControlLists", sizeof(FSkelControlListHead));
+    CheckPath("Engine.AnimTree", {"SkelControlLists", "BoneName"}, SDK_AT(offsetof(FSkelControlListHead, BoneName), 8));
+    CheckPath("Engine.AnimTree", {"SkelControlLists", "ControlHead"}, SDK_AT(offsetof(FSkelControlListHead, ControlHead), 8));
+    CheckElement("Engine.SkeletalMeshComponent", "Attachments", sizeof(FAttachment));
+    CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "Component"}, SDK_AT(offsetof(FAttachment, Component), 8));
+    CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "BoneName"}, SDK_AT(offsetof(FAttachment, BoneName), 8));
+    CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "RelativeLocation"}, SDK_AT(offsetof(FAttachment, RelativeLocation), sizeof(FVector)));
+    CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "RelativeRotation"}, SDK_AT(offsetof(FAttachment, RelativeRotation), sizeof(FRotator)));
+    CheckPath("Engine.SkeletalMeshComponent", {"Attachments", "RelativeScale"}, SDK_AT(offsetof(FAttachment, RelativeScale), sizeof(FVector)));
+    CheckPath("Engine.SkeletalMesh", {"Bounds", "Origin"}, SDK_AT(offsetof(USkeletalMesh, Bounds) + offsetof(FBoxSphereBounds, Origin), sizeof(FVector)));
+    CheckPath("Engine.SkeletalMesh", {"Bounds", "BoxExtent"},
+        SDK_AT(offsetof(USkeletalMesh, Bounds) + offsetof(FBoxSphereBounds, BoxExtent), sizeof(FVector)));
+}
+
+// M3: engine/skeleton's fields as it resolved them, against ME2's natives (research/le2-vrik.md "The skeleton"):
+// execGetBoneNames (0x79DD90) and execGetParentBoneIndex (0x79E2A0) read the component's SkeletalMesh at +0x25C and the
+// asset's RefSkeleton at +0xB4 (0x50-byte FMeshBones, ParentIndex +0x40); UpdateSkelPose (0x79B8A0) resets SpaceBases at
+// +0x2B8 to identity when its size differs from RefSkeleton's (then LocalAtoms at +0x2C8).
+void CheckSkeleton() {
+    skeleton::TryStartup();
+    skeleton::Fields const f = skeleton::ResolvedFields();
+    struct Item {
+        char const* what;
+        long long ours;
+        long long native;
+    };
+    Item const items[] = {
+        {"SkeletalMeshComponent.SkeletalMesh", f.skeletalMesh, 0x25C},
+        {"SkeletalMesh.RefSkeleton", f.refSkeleton, 0xB4},
+        {"SkeletalMeshComponent.SpaceBases", f.spaceBases, 0x2B8},
+    };
+    for (Item const& item : items) {
+        Add("skeleton", item.what, item.ours == item.native, Hex(item.ours), std::format("ME2's natives {}", Hex(item.native)));
+    }
 }
 
 void CheckFunctions() {
@@ -2170,12 +2282,23 @@ void CheckFunctions() {
         "Engine.PlayerController.GetPlayerViewPoint",     // head tracking
         "Engine.PlayerController.GetFOVAngle",            // head tracking
         "SFXGame.BioPlayerController.GetAdjustedAimFor",  // hand aim's aim query
+        "SFXGame.SFXWeapon.GetAdjustedAim",               // hand aim: each shot's aim (M3.1)
         "Engine.PlayerController.ConsoleCommand",         // the console request
         "Engine.SceneCaptureComponent.SetFrameRate",      // the reflection fix
         "Engine.Actor.SetRotation",                       // ue3::runtime's own check of the layout
         "SFXGame.SFXWeapon.GetMagazineSize",              // the LE2 observers' first call (P1b)
         "SFXGame.SFXEngine.QueueSaveGameCommand",         // mevr load (M1.6)
         "SFXGame.SFXEngine.GetCurrentSaveDescriptor",     // mevr savedesc
+        "Engine.SkeletalMeshComponent.GetBoneNames",      // engine/skeleton (M3)
+        "Engine.SkeletalMeshComponent.GetBoneLocation",
+        "Engine.SkeletalMeshComponent.MatchRefBone",
+        "SFXGame.SFXInventoryManager.SetWeaponRecoil",    // game/ViewLevel (M3.1)
+        "SFXGame.SFXModule_AimAssist.ViewFriction",
+        "SFXGame.SFXModule_AimAssist.ViewAdhesion",
+        "SFXGame.SFXWeapon.GetWeaponRecoil",              // game/GunKick (M3.3)
+        "SFXGame.SFXWeapon.GetMuzzleLoc",                 // game/Weapon (M3.3)
+        "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation",
+        "SFXGame.BioPawn.GetWeaponStartTraceLocation",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -2183,6 +2306,16 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    PARAM(ASFXWeapon_execGetWeaponRecoil_Parms, "SFXGame.SFXWeapon.GetWeaponRecoil", ReturnValue);
+    PARMS(ASFXWeapon_execGetWeaponRecoil_Parms, "SFXGame.SFXWeapon.GetWeaponRecoil");
+    PARAM(ASFXWeapon_execGetMuzzleLoc_Parms, "SFXGame.SFXWeapon.GetMuzzleLoc", ReturnValue);
+    PARMS(ASFXWeapon_execGetMuzzleLoc_Parms, "SFXGame.SFXWeapon.GetMuzzleLoc");
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", InSocketName);
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", OutLocation);
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", OutRotation);
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", Space);
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ReturnValue);
+    PARAM(ABioPawn_execGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation", ReturnValue);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", Command);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", bWriteToLog);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", ReturnValue);
@@ -2194,6 +2327,8 @@ void CheckParams() {
     PARMS(APlayerController_eventGetFOVAngle_Parms, "Engine.PlayerController.GetFOVAngle");
     PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", ReturnValue);
     PARMS(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor");
+    PARAM(ASFXWeapon_execGetAdjustedAim_Parms, "SFXGame.SFXWeapon.GetAdjustedAim", ReturnValue);
+    PARMS(ASFXWeapon_execGetAdjustedAim_Parms, "SFXGame.SFXWeapon.GetAdjustedAim");
     PARAM(USceneCaptureComponent_execSetFrameRate_Parms, "Engine.SceneCaptureComponent.SetFrameRate", NewFrameRate);
     PARMS(USceneCaptureComponent_execSetFrameRate_Parms, "Engine.SceneCaptureComponent.SetFrameRate");
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", NewRotation);
@@ -2207,6 +2342,15 @@ void CheckParams() {
     PARMS(USFXEngine_execQueueSaveGameCommand_Parms, "SFXGame.SFXEngine.QueueSaveGameCommand");
     PARAM(USFXEngine_execGetCurrentSaveDescriptor_Parms, "SFXGame.SFXEngine.GetCurrentSaveDescriptor", ReturnValue);
     PARMS(USFXEngine_execGetCurrentSaveDescriptor_Parms, "SFXGame.SFXEngine.GetCurrentSaveDescriptor");
+    PARAM(USkeletalMeshComponent_execMatchRefBone_Parms, "Engine.SkeletalMeshComponent.MatchRefBone", BoneName);
+    PARAM(USkeletalMeshComponent_execMatchRefBone_Parms, "Engine.SkeletalMeshComponent.MatchRefBone", ReturnValue);
+    PARMS(USkeletalMeshComponent_execMatchRefBone_Parms, "Engine.SkeletalMeshComponent.MatchRefBone");
+    PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", BoneName);
+    PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", Space);
+    PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", ReturnValue);
+    PARMS(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation");
+    PARAM(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames", BoneNames);
+    PARMS(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames");
 }
 
 #endif  // LE1 / LE2 tables
@@ -2410,9 +2554,7 @@ void Run(hook::Context& context) {
     CheckClasses();
     CheckFields();
     CheckPaths();
-#if defined(MEVR_GAME_LE1)
     CheckSkeleton();
-#endif
     CheckFunctions();
     CheckParams();
     CheckSamples();

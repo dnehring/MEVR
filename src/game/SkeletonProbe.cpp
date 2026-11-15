@@ -30,25 +30,25 @@ bool gReady = false;
 ue3::Object* gLastMesh = nullptr;  // compared only, never dereferenced
 unsigned gProbes = 0;
 
-// Our reflection layer (research/34). LE1: LE2/LE3 have no layout yet, so the probe finds no player there.
-ue3::ClassRef gAnimTree{"Engine.AnimTree"};
-ue3::ClassRef gSkelControlLimb{"Engine.SkelControlLimb"};
+// Our reflection layer (research/34): LE1 and LE2 (research/le2-vrik.md "The skeleton"); LE3 has no layout yet.
+ue3::ClassRef gAnimTree{"Engine.AnimTree", ue3::kEveryGame};
+ue3::ClassRef gSkelControlLimb{"Engine.SkelControlLimb", ue3::kEveryGame};
 ue3::ClassRef gPcHud{"SFXGame.BioSFHandler_PCHUD"};
-ue3::FieldRef gAnimTreeTemplate{"Engine.SkeletalMeshComponent", "AnimTreeTemplate"};
-ue3::FieldRef gAnimations{"Engine.SkeletalMeshComponent", "Animations"};
-ue3::FieldRef gSkelControlLists{"Engine.AnimTree", "SkelControlLists"};
+ue3::FieldRef gAnimTreeTemplate{"Engine.SkeletalMeshComponent", "AnimTreeTemplate", ue3::kEveryGame};
+ue3::FieldRef gAnimations{"Engine.SkeletalMeshComponent", "Animations", ue3::kEveryGame};
+ue3::FieldRef gSkelControlLists{"Engine.AnimTree", "SkelControlLists", ue3::kEveryGame};
 ue3::FieldRef gListBoneName{gSkelControlLists, "BoneName"};
 ue3::FieldRef gControlHead{gSkelControlLists, "ControlHead"};
-ue3::FieldRef gNextControl{"Engine.SkelControlBase", "NextControl"};
-ue3::FieldRef gControlName{"Engine.SkelControlBase", "ControlName"};
-ue3::FieldRef gControlStrength{"Engine.SkelControlBase", "ControlStrength"};
-ue3::FieldRef gEffectorLocationSpace{"Engine.SkelControlLimb", "EffectorLocationSpace"};
-ue3::FieldRef gEffectorSpaceBoneName{"Engine.SkelControlLimb", "EffectorSpaceBoneName"};
-ue3::FieldRef gJointTargetLocationSpace{"Engine.SkelControlLimb", "JointTargetLocationSpace"};
-ue3::FieldRef gJointTargetSpaceBoneName{"Engine.SkelControlLimb", "JointTargetSpaceBoneName"};
-ue3::FieldRef gBoneAxis{"Engine.SkelControlLimb", "BoneAxis"};
-ue3::FieldRef gJointAxis{"Engine.SkelControlLimb", "JointAxis"};
-ue3::FieldRef gInvertJointAxis{"Engine.SkelControlLimb", "bInvertJointAxis"};
+ue3::FieldRef gNextControl{"Engine.SkelControlBase", "NextControl", ue3::kEveryGame};
+ue3::FieldRef gControlName{"Engine.SkelControlBase", "ControlName", ue3::kEveryGame};
+ue3::FieldRef gControlStrength{"Engine.SkelControlBase", "ControlStrength", ue3::kEveryGame};
+ue3::FieldRef gEffectorLocationSpace{"Engine.SkelControlLimb", "EffectorLocationSpace", ue3::kEveryGame};
+ue3::FieldRef gEffectorSpaceBoneName{"Engine.SkelControlLimb", "EffectorSpaceBoneName", ue3::kEveryGame};
+ue3::FieldRef gJointTargetLocationSpace{"Engine.SkelControlLimb", "JointTargetLocationSpace", ue3::kEveryGame};
+ue3::FieldRef gJointTargetSpaceBoneName{"Engine.SkelControlLimb", "JointTargetSpaceBoneName", ue3::kEveryGame};
+ue3::FieldRef gBoneAxis{"Engine.SkelControlLimb", "BoneAxis", ue3::kEveryGame};
+ue3::FieldRef gJointAxis{"Engine.SkelControlLimb", "JointAxis", ue3::kEveryGame};
+ue3::FieldRef gInvertJointAxis{"Engine.SkelControlLimb", "bInvertJointAxis", ue3::kEveryGame};
 ue3::FieldRef gHandlerPanel{"Engine.BioSFHandler", "oPanel"};
 ue3::FieldRef gPanelMovie{"Engine.BioSFPanel", "MovieRef"};
 ue3::FieldRef gPanelAspect{"Engine.BioSFPanel", "fMovieAspectRatio"};

@@ -251,7 +251,9 @@ inline constexpr std::uint32_t kCalcSceneView = 0x6CEB70;
 inline constexpr std::uint32_t kCalcSceneViewPrimaryReturn = 0;  // not pinned yet: any call from Draw counts
 inline constexpr std::uint32_t kViewportDraw = 0x6D0A00;
 inline constexpr std::uint32_t kViewportDrawEnd = 0x6D2C99;
-inline constexpr std::uint32_t kUpdateSkelPose = 0;
+// M3 (research/le2-vrik.md "The skeleton"): execForceSkelUpdate (0x77D750) calls it as (this, 0, 1), as LE1's does; it
+// sizes SpaceBases (+0x2B8) and LocalAtoms (+0x2C8) to the RefSkeleton with 0x20-byte FBoneAtoms, as LE1's 0x592440.
+inline constexpr std::uint32_t kUpdateSkelPose = 0x79B8A0;
 inline constexpr std::uint32_t kSkelUpdateBounds = 0;
 inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0;
 inline constexpr std::uint32_t kSoundSourceUpdate = 0;
@@ -288,6 +290,8 @@ inline constexpr Entry kTable[] = {
     {"FViewportClient::Draw", kViewportDraw, Kind::Function,
         "48 8B C4 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 58 FC FF FF 48 81 EC D0 04 00 00", 0, 0, "mod (scene view)"},
     {"FViewportClient::Draw (end)", kViewportDrawEnd, Kind::End, nullptr, 0, 0, "mod (scene view)"},
+    {"USkeletalMeshComponent::UpdateSkelPose", kUpdateSkelPose, Kind::Function,
+        "48 8B C4 44 89 40 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 68 A8 48 81", 0, 0, "mod (arm IK)"},
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
     {"GObjects", kGObjects, Kind::Data, "C9 74 5B EB F0 4C 8B 05 ?? ?? ?? ?? 4B 8B 04 06", 8, 0x9B24B,
         "mod (reflection), host (Halcyon LE2's game-thread queue)"},

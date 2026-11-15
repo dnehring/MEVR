@@ -8,7 +8,7 @@ check of the body's place, research/69 "Seeing the body in the audit"). For the 
 keeping the run (research/29 "The legs keep the run"): replay it with its inputs on the fake headset,
 
     python tools/make-walk-recording.py out.mevrrec [segment] [hz] [--yaw DEG] [--pitch DEG] [--eye-height M] [--stick S] [--grip]
-        [--plan forward:14,stand:600] [--hands chest|view]
+        [--plan forward:14,stand:600] [--hands chest|view] [--hand-yaw DEG] [--fire EVERY[:HOLD]]
     tools/replay.ps1 -Path out.mevrrec -Loop -Inputs
 
 segment: seconds per stick direction (default 3). --yaw: the head (and the hands) turned DEG degrees right in the room.
@@ -21,7 +21,10 @@ with a scripted walk and keeps the stick pushed through its cut (the council hea
 mark"). --hands: chest (default, 0.35 m under the eyes and 0.30 m ahead: below a 45-degree view) or view (0.08 m under
 the eyes, 0.25 m ahead and 0.09 m to each side: 0.28 m from the eyes, inside [Hands] reachNearFaceM's 0.30, so the drawn hands
 sit on the controllers unscaled by the arm-length calibration; the wrists, 7 cm behind the grips, 24 degrees down and 27 to
-the side). At 0.40 m ahead the hands were reach-scaled 0.16 m low, cut off at the snapshot's bottom edge (2026-11-13)."""
+the side). At 0.40 m ahead the hands were reach-scaled 0.16 m low, cut off at the snapshot's bottom edge (2026-11-13).
+--hand-yaw: the right controller (grip and aim) turned DEG degrees right of where the body faces, the head still ahead: hand
+aim's check (shots follow the controller, not the view; research/le2-vrik.md "Hand aim"). --fire: the right trigger pulled all
+the way for HOLD seconds (default 0.15) every EVERY seconds, from 2 s on (shots; replay with -Inputs)."""
 import math
 import struct
 import sys
@@ -59,10 +62,14 @@ def main():
     stick = option("--stick", 0.9)
     grip = 1.0 if "--grip" in sys.argv else 0.0
     hands = sys.argv[sys.argv.index("--hands") + 1] if "--hands" in sys.argv else "chest"
+    hand_yaw = option("--hand-yaw", 0.0)
+    fire_text = sys.argv[sys.argv.index("--fire") + 1] if "--fire" in sys.argv else ""
+    fire_every = float(fire_text.split(":")[0]) if fire_text else 0.0
+    fire_hold = float(fire_text.split(":")[1]) if ":" in fire_text else 0.15
     if hands not in ("chest", "view"):
         print("--hands chest|view")
         return 2
-    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands")}
+    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands", "--hand-yaw", "--fire")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -84,7 +91,7 @@ def main():
     eyes = [(*head, side * ipd / 2 * right[0], eye_h, side * ipd / 2 * right[2]) for side in (-1, 1)]
     side_m, down, ahead_m = (0.09, 0.08, 0.25) if hands == "view" else (0.15, 0.35, 0.30)
     left_hand = (*hand_q, *at(-side_m, -down, ahead_m))
-    right_hand = (*hand_q, *at(side_m, -down, ahead_m))
+    right_hand = (*head_orientation(yaw + hand_yaw, 0.0), *at(side_m, -down, ahead_m))
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
     by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS}
     if "--plan" in sys.argv:
@@ -101,13 +108,15 @@ def main():
         for i in range(n):
             t = i / hz
             _, sx, sy = frames[i]
+            trigger = 1.0 if fire_every > 0 and t >= 2.0 and (t - 2.0) % fire_every < fire_hold else 0.0
             f.write(FRAME.pack(int(t * 1e9), 3, *eyes[0], *fov, *eyes[1], *fov,
                                valid, 0.0, 0.0, sx * stick, sy * stick, *left_hand, *left_hand,
-                               valid, 0.0, grip, 0.0, 0.0, *right_hand, *right_hand))
+                               valid, trigger, grip, 0.0, 0.0, *right_hand, *right_hand))
     starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
     plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))
     print(f"{out}: {n} frames at {hz:g} Hz: {plan}; head yaw {yaw:g}, pitch {pitch:g}, stick {stick:g}, hands {hands}"
-          f"{', right grip held' if grip else ''}")
+          f"{', right grip held' if grip else ''}{f', right hand turned {hand_yaw:g}' if hand_yaw else ''}"
+          f"{f', trigger {fire_hold:g} s every {fire_every:g} s' if fire_every else ''}")
     return 0
 
 

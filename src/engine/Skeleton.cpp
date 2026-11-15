@@ -20,13 +20,15 @@
 namespace mevr::engine::skeleton {
 namespace {
 
-ue3::FunctionRef gGetBoneNames{"Engine.SkeletalMeshComponent.GetBoneNames"};
-ue3::FunctionRef gGetBoneLocation{"Engine.SkeletalMeshComponent.GetBoneLocation"};
-ue3::FunctionRef gMatchRefBone{"Engine.SkeletalMeshComponent.MatchRefBone"};
+ue3::FunctionRef gGetBoneNames{"Engine.SkeletalMeshComponent.GetBoneNames", ue3::kEveryGame};
+ue3::FunctionRef gGetBoneLocation{"Engine.SkeletalMeshComponent.GetBoneLocation", ue3::kEveryGame};
+ue3::FunctionRef gMatchRefBone{"Engine.SkeletalMeshComponent.MatchRefBone", ue3::kEveryGame};
 
 // The bones' element layouts aren't in the reflection (RefSkeleton is declared TArray<int>, SpaceBases
-// TArray<Matrix>): research/14's, LE1 only.
-#if defined(MEVR_GAME_LE1)
+// TArray<Matrix>): research/14's for LE1. ME2's are the same (research/le2-vrik.md "The skeleton"): its natives read
+// FMeshBone with a 0x50 stride and ParentIndex at +0x40 (execGetBoneNames 0x79DD90, execGetParentBoneIndex 0x79E2A0), and
+// UpdateSkelPose (0x79B8A0) sizes LocalAtoms and SpaceBases with 0x20-byte FBoneAtoms.
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
 constexpr bool kSupported = true;
 #else
 constexpr bool kSupported = false;
@@ -70,7 +72,7 @@ std::int32_t Offset(ue3::Reflection& r, ue3::Struct const* owner, char const* na
 }
 
 void ResolveFields() {
-    if (gFieldsReady.load(std::memory_order_acquire) || !ue3::runtime::Ready()) {
+    if (gFieldsReady.load(std::memory_order_acquire) || !ue3::runtime::Up()) {
         return;
     }
     using ue3::Kind;
@@ -422,7 +424,12 @@ std::string GetBoneNamesDiagnostic(ue3::Object* mesh) {
     }
     std::string text = std::format("GetBoneNames through ProcessEvent returned {} names (RefSkeleton has {})", returned,
         RefBoneCount(mesh));
-    if (kSupported) {
+#if defined(MEVR_GAME_LE1)
+    constexpr bool kKnownNatives = true;  // the addresses below are LE1's
+#else
+    constexpr bool kKnownNatives = false;
+#endif
+    if (kKnownNatives) {
         ue3::Reflection& r = ue3::runtime::Get();
         auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
         auto const func = reinterpret_cast<std::uintptr_t>(r.NativeFunc(getBoneNames));

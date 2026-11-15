@@ -1743,7 +1743,13 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "state") {
         return State(pc);
     }
-    return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state");
+    if (verb == "camera") {
+        std::string rest;
+        std::getline(words, rest);
+        return camera_probe::Command(rest);  // `mevr camera trace <seconds> [label]` (M3: the skeleton audit on ME2)
+    }
+    return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
+                       "mevr camera trace <seconds> [label]");
 }
 
 #endif

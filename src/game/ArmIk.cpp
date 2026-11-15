@@ -173,9 +173,9 @@ struct Body {
 
 // UE3's usual physics-asset bounds may use only the pelvis. Our post-animation IK/scale can put the arms
 // outside it. Ask the engine to include every physics body, including pose followers (armour pieces).
-ue3::FieldRef gAllBodyBounds{"Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds"};
-ue3::FieldRef gBodyComponents{"Engine.Actor", "AllComponents"};
-ue3::ClassRef gSkeletalComponent{"Engine.SkeletalMeshComponent"};
+ue3::FieldRef gAllBodyBounds{"Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds", ue3::kEveryGame};
+ue3::FieldRef gBodyComponents{"Engine.Actor", "AllComponents", ue3::kEveryGame};
+ue3::ClassRef gSkeletalComponent{"Engine.SkeletalMeshComponent", ue3::kEveryGame};
 struct BoundsWrite {
     ue3::Object* mesh = nullptr;
     ue3::Object* outer = nullptr;
@@ -194,7 +194,7 @@ bool gHoldScaleLogged = false;
 
 void RestoreBodyBounds() {
     // A load/unload can destroy the previous pawn before this tick. Validate before forming any field address.
-    if (ue3::runtime::Ready() && gBoundsWorld != nullptr && gBoundsWorld == engine::World() &&
+    if (ue3::runtime::Up() && gBoundsWorld != nullptr && gBoundsWorld == engine::World() &&
         ue3::runtime::IsAlive(gBoundsPawn) && player::IsBioPawn(gBoundsPawn) &&
         ue3::runtime::Get().NameOf(gBoundsPawn) == gBoundsPawnName) {
         auto& r = ue3::runtime::Get();
@@ -537,15 +537,15 @@ void Stop(std::string status) {
 // Through our reflection layer (research/34): SkelControlBase.ControlStrength +0xA8 and StrengthTarget +0xB4
 // as research/18 read them, checked by engine/ReflectCheck.
 constexpr int kMaxControlsPerList = 32;
-ue3::ClassRef gAnimTree{"Engine.AnimTree"};
-ue3::FieldRef gAnimations{"Engine.SkeletalMeshComponent", "Animations"};
-ue3::FieldRef gSkelControlLists{"Engine.AnimTree", "SkelControlLists"};
+ue3::ClassRef gAnimTree{"Engine.AnimTree", ue3::kEveryGame};
+ue3::FieldRef gAnimations{"Engine.SkeletalMeshComponent", "Animations", ue3::kEveryGame};
+ue3::FieldRef gSkelControlLists{"Engine.AnimTree", "SkelControlLists", ue3::kEveryGame};
 ue3::FieldRef gControlHead{gSkelControlLists, "ControlHead"};
-ue3::FieldRef gNextControl{"Engine.SkelControlBase", "NextControl"};
-ue3::FieldRef gControlName{"Engine.SkelControlBase", "ControlName"};
-ue3::FieldRef gControlStrength{"Engine.SkelControlBase", "ControlStrength"};
-ue3::FieldRef gStrengthTarget{"Engine.SkelControlBase", "StrengthTarget"};
-ue3::FieldRef gStrengthFromAnimNode{"Engine.SkelControlBase", "bSetStrengthFromAnimNode"};
+ue3::FieldRef gNextControl{"Engine.SkelControlBase", "NextControl", ue3::kEveryGame};
+ue3::FieldRef gControlName{"Engine.SkelControlBase", "ControlName", ue3::kEveryGame};
+ue3::FieldRef gControlStrength{"Engine.SkelControlBase", "ControlStrength", ue3::kEveryGame};
+ue3::FieldRef gStrengthTarget{"Engine.SkelControlBase", "StrengthTarget", ue3::kEveryGame};
+ue3::FieldRef gStrengthFromAnimNode{"Engine.SkelControlBase", "bSetStrengthFromAnimNode", ue3::kEveryGame};
 ue3::Object const* gIkTree = nullptr;
 ue3::Object const* gIkControl = nullptr;
 bool gIkSearched = false;

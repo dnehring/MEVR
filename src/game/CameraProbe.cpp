@@ -23,10 +23,10 @@
 namespace mevr::game::camera_probe {
 namespace {
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
 
 // `mevr camera trace <seconds>`: one CSV row a mod tick (an idle sway report, 2026-11-14).
-ue3::FieldRef gActorVelocity{"Engine.Actor", "Velocity"};
+ue3::FieldRef gActorVelocity{"Engine.Actor", "Velocity", ue3::kEveryGame};
 constexpr char const* kTraceBones[] = {"Camera", "God", "Root", "Pelvis", "LowerBack", "Chest2", "Neck", "Head", "LeftCollar",
     "RightCollar", "LeftHip", "RightHip", "LeftAnkle", "RightAnkle"};
 constexpr int kTraceBoneCount = static_cast<int>(sizeof(kTraceBones) / sizeof(kTraceBones[0]));
@@ -104,17 +104,17 @@ void TraceTick() {
 // 0xCAEF50, GetCameraLocation 0xCB2240): PlayerController.PlayerCamera +0x6B0,
 // SFXCameraNativeBase.CurrentCameraMode +0x568, SFXCameraMode m_pov +0x98, Offset +0xB4, HookOffset +0xC0,
 // LastHookPos +0xCC, HookName +0xE4, SFXCameraMode_Interpolate.To +0x168; engine/ReflectCheck compares each.
-ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase"};
-ue3::ClassRef gCameraModeInterpolate{"SFXGame.SFXCameraMode_Interpolate"};
-ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode"};
-ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
-ue3::FieldRef gModePov{"SFXGame.SFXCameraMode", "m_pov"};
+ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};
+ue3::ClassRef gCameraModeInterpolate{"SFXGame.SFXCameraMode_Interpolate", ue3::kEveryGame};
+ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode", ue3::kEveryGame};
+ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To", ue3::kEveryGame};
+ue3::FieldRef gModePov{"SFXGame.SFXCameraMode", "m_pov", ue3::kEveryGame};
 ue3::FieldRef gModePovLocation{gModePov, "Location"};
 ue3::FieldRef gModePovRotation{gModePov, "Rotation"};
-ue3::FieldRef gModeOffset{"SFXGame.SFXCameraMode", "Offset"};
-ue3::FieldRef gModeHookOffset{"SFXGame.SFXCameraMode", "HookOffset"};
+ue3::FieldRef gModeOffset{"SFXGame.SFXCameraMode", "Offset", ue3::kEveryGame};
+ue3::FieldRef gModeHookOffset{"SFXGame.SFXCameraMode", "HookOffset", ue3::kEveryGame};
 ue3::FieldRef gModeLastHookPos{"SFXGame.SFXCameraMode", "LastHookPos"};
-ue3::FieldRef gModeHookName{"SFXGame.SFXCameraMode", "HookName"};
+ue3::FieldRef gModeHookName{"SFXGame.SFXCameraMode", "HookName", ue3::kEveryGame};
 ue3::FieldRef gModeFirstPerson{"SFXGame.SFXCameraMode", "bFirstPerson"};
 
 constexpr ULONGLONG kMinIntervalMs = 250;
@@ -172,13 +172,16 @@ std::string HookPlacement(ue3::Object* mode, ue3::Object* camera, std::uint64_t 
     ik::Vec3 const predicted = ik::CameraFromHook(hook, Read(gModeHookOffset, mode), Read(gModeOffset, mode),
         ownRotation->pitch * kRotatorToRadians, ownRotation->yaw * kRotatorToRadians);
     ik::Vec3 const modeAt = Read(gModePovLocation, own);
-    ik::Vec3 const lastHook = Read(gModeLastHookPos, mode);
+    // ME2's SFXCameraMode has no LastHookPos (research/le2-vrik.md "The camera's hook").
+    std::optional<ue3::Vector> const lastHookRead = gModeLastHookPos.Read<ue3::Vector>(mode);
+    ik::Vec3 const lastHook = V(lastHookRead.value_or(ue3::Vector{}));
     return std::format("hook bone {}({}) at {} world, {:.1f} forward, {:.1f} right, {:.1f} up of the game camera {} (yaw {}); "
                        "the formula from it puts the camera at {}: {:.1f} units from the mode's m_pov {}, {:.1f} from the "
-                       "game camera; LastHookPos {} is {:.1f} from the bone",
+                       "game camera{}",
         ue3::runtime::NameText(hookName), bone, Text(hook), fromView.x, fromView.y, fromView.z, Text(game), pov->rotation->yaw,
-        Text(predicted), ik::Length(predicted - modeAt), Text(modeAt), ik::Length(predicted - game), Text(lastHook),
-        ik::Length(lastHook - hook));
+        Text(predicted), ik::Length(predicted - modeAt), Text(modeAt), ik::Length(predicted - game),
+        lastHookRead ? std::format("; LastHookPos {} is {:.1f} from the bone", Text(lastHook), ik::Length(lastHook - hook))
+                     : std::string());
 }
 
 void TickLe1() {
@@ -233,14 +236,14 @@ void TickLe1() {
 } // namespace
 
 void Tick() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     TraceTick();
     TickLe1();
 #endif
 }
 
 std::string Command(std::string const& args) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     std::istringstream words(args);
     std::string sub;
     double seconds = 10.0;
@@ -288,7 +291,7 @@ std::string Command(std::string const& args) {
 }
 
 void Shutdown() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     TraceClose("stopped (unload)");
     gLogged = {};
     gHaveLogged = false;

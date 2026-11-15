@@ -135,6 +135,7 @@ bool gLastRayValid = false;
 Path gLastPath = Path::Game;
 engine::UnrealVector gLastRayStart{};
 engine::UnrealVector gLastRayDirection{};
+ue3::Rotator gLastGameAim{};  // the game's own answer to the last aim query, before ours
 
 // The last shot along the barrel, for the per-shot log and the snapshot (research/21 section 10): where it was aimed
 // (toward what the sight line hit, or along the barrel), and, after the weapon's own aim query, where it started.
@@ -154,6 +155,11 @@ std::atomic<unsigned> gConvergedShots{0};
 std::atomic<unsigned> gOtherWeaponAims{0};  // GetAdjustedAim of weapons we don't hold (squadmates), skipped
 double gSumToSight = 0.0;
 double gMaxToSight = 0.0;
+// Shots along the controller's ray seen at the weapon's aim query (LE2: SFXWeapon.GetAdjustedAim), and how far each went
+// from the ray (the weapon's aim error).
+std::atomic<unsigned> gControllerShots{0};
+double gSumOffRay = 0.0;
+double gMaxOffRay = 0.0;
 unsigned gShotsLogged = 0;
 ULONGLONG gNextShotLogMs = 0;
 
@@ -284,6 +290,7 @@ void Apply(ue3::Object* context, ue3::Rotator* result, char const* tag) {
     if (result == nullptr || !IsLocalPlayer(context)) {
         return;
     }
+    gLastGameAim = *result;
     ue3::Rotator rotation{};
     if (BarrelRotation(*result, rotation)) {
         *result = rotation;
@@ -490,6 +497,125 @@ void OnWeaponAim(ue3::Object* context, ue3::Function* /*function*/, void* parms,
 }
 #endif
 
+#if defined(MEVR_GAME_LE2)
+// ME2's weapons are SFXWeapon (on Engine.Weapon; ME1's BioWeaponRanged doesn't exist there, research/le2-vrik-audit.md).
+// Every instant-hit shot is Engine.Weapon.InstantFire, all script: the start from Instigator.GetWeaponStartTraceLocation(),
+// the direction from SFXWeapon.GetAdjustedAim(StartTrace), which asks Instigator.GetAdjustedAimFor -> the controller's
+// GetAdjustedAimFor (the post-handlers above rewrite its answer) and adds the weapon's aim error (GetPlayerAimError, in
+// degrees, spread at random over pitch and yaw). Called script to script, so the CallFunction hook's post-handler sees its
+// result, the shot's rotation (its parameters are gone by then); the ProcessEvent one is there for a native caller.
+// research/le2-vrik.md "Hand aim".
+constexpr char const* kSfxWeaponGetAdjustedAim = "SFXGame.SFXWeapon.GetAdjustedAim";
+ue3::FunctionRef gSfxWeaponAimFn{kSfxWeaponGetAdjustedAim, ue3::kEveryGame};
+ue3::FieldRef gSfxWeaponAimReturn{gSfxWeaponAimFn, "ReturnValue"};
+ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
+
+engine::UnrealVector Direction(ue3::Rotator const& rotation) {
+    return engine::ToBasis(engine::UnrealRotation{rotation.pitch, rotation.yaw, 0}).forward;
+}
+
+double DegreesApart(engine::UnrealVector const& a, engine::UnrealVector const& b) {
+    double const dot = a.x * b.x + a.y * b.y + a.z * b.z;
+    double const lengths = std::sqrt((a.x * a.x + a.y * a.y + a.z * a.z) * (b.x * b.x + b.y * b.y + b.z * b.z));
+    return lengths > 0.0 ? std::acos(std::clamp(dot / lengths, -1.0, 1.0)) * 57.29577951308232 : -1.0;
+}
+
+// The player's weapon's aim for a shot: one line per shot along the controller's ray (rate-limited as LogShot), the shot
+// against the ray and against the game's own aim (where the view looks), so a replayed controller shows the shots follow it.
+void ShotAimed(ue3::Object* weapon, ue3::Rotator const* shot) {
+    if (shot == nullptr || !gLastRayValid || (gLastPath != Path::Controller && gLastPath != Path::Barrel)) {
+        return;
+    }
+    bool const barrel = gLastPath == Path::Barrel;
+    ue3::Object* const pawn = player::Pawn(player::Controller());
+    if (pawn == nullptr || weapon == nullptr || gPawnWeapon.Read<ue3::Object*>(pawn).value_or(nullptr) != weapon) {
+        gOtherWeaponAims.fetch_add(1, std::memory_order_relaxed);  // a squadmate's or an enemy's weapon
+        return;
+    }
+    if (!barrel) {  // a shot along the barrel was counted when it was aimed (BarrelRotation)
+        ++gShot.count;
+        gShot.valid = true;
+        gShot.converged = false;
+        gShot.toBarrelDeg = 0.0;
+        gShot.startOffMuzzle = -1.0;
+    }
+    engine::UnrealVector const direction = Direction(*shot);
+    double const offRay = DegreesApart(direction, gLastRayDirection);
+    double const offGame = DegreesApart(direction, Direction(gLastGameAim));
+    if (!barrel) {
+        gShot.toSightDeg = offRay;
+    }
+    gControllerShots.fetch_add(1, std::memory_order_relaxed);
+    gSumOffRay += offRay;
+    gMaxOffRay = std::max(gMaxOffRay, offRay);
+    ULONGLONG const now = GetTickCount64();
+    if (gShotsLogged >= 3 && now < gNextShotLogMs) {
+        return;
+    }
+    ++gShotsLogged;
+    gNextShotLogMs = now + 2000;
+    engine::UnrealRotation const ray = engine::ToRotation(gLastRayDirection);
+    log::Info("hand aim: shot {}: along {}: the shot pitch {} yaw {}, {} pitch {} yaw {}: {:.2f} degrees apart (the weapon's aim "
+              "error); the game's own aim was pitch {} yaw {}, {:.1f} degrees from the shot",
+        gShot.count, barrel ? (gShot.converged ? "the gun barrel toward what the sight line hit" : "the gun barrel")
+                            : "the right controller's ray",
+        shot->pitch, shot->yaw, barrel ? "aimed" : "the ray", ray.pitch, engine::Unwind(ray.yaw, shot->yaw), offRay,
+        gLastGameAim.pitch, gLastGameAim.yaw, offGame);
+}
+
+void OnSfxWeaponAimCall(ue3::Object* context, ue3::Function* /*function*/, void* result) {
+    ShotAimed(context, static_cast<ue3::Rotator const*>(result));
+}
+
+// The shot's start, along the barrel (ME2). Weapon.InstantFire takes it from the pawn's GetWeaponStartTraceLocation
+// (script to script: this CallFunction post-handler rewrites its answer), then SFXWeapon.CalcWeaponFire moves it along the
+// camera's forward F onto the plane through the pawn's location P: StartTrace += F * ((P - StartTrace) . F). Whatever start
+// we return ends on that plane, so we return the point where the barrel's line (the muzzle M along the shot's direction D)
+// meets it, M + D * ((P - M) . F) / (D . F): the move is then nothing and the trace runs along the barrel through the muzzle.
+ue3::FunctionRef gBioPawnStartTraceFn{"SFXGame.BioPawn.GetWeaponStartTraceLocation", ue3::kEveryGame};
+bool gLoggedLe2Start = false;
+
+void OnStartTraceCall(ue3::Object* context, ue3::Function* /*function*/, void* result) {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    if (pawn == nullptr || context != pawn || result == nullptr) {
+        return;
+    }
+    gStartQueries.fetch_add(1, std::memory_order_relaxed);
+    auto const muzzle = BarrelMuzzle();
+    auto const pov = muzzle ? player::CameraPov(player::Camera(controller)) : std::nullopt;
+    auto const at = player::Location(pawn);
+    if (!muzzle || !pov || !at) {
+        return;
+    }
+    auto const aim = sights::ShotAlongSight(*muzzle);
+    engine::UnrealVector const d = aim ? aim->direction : muzzle->barrel;
+    engine::UnrealVector const f = engine::ToBasis(engine::UnrealRotation{pov->rotation->pitch, pov->rotation->yaw, 0}).forward;
+    double const along = d.x * f.x + d.y * f.y + d.z * f.z;
+    if (along < 0.2) {
+        return;  // the barrel nearly across the view: the plane meets its line far away; the game's start stays
+    }
+    engine::UnrealVector const m = muzzle->location;
+    double const s = ((at->x - m.x) * f.x + (at->y - m.y) * f.y + (at->z - m.z) * f.z) / along;
+    engine::UnrealVector const start{m.x + d.x * s, m.y + d.y * s, m.z + d.z * s};
+    ue3::Vector& out = *static_cast<ue3::Vector*>(result);
+    engine::UnrealVector const game{out.x, out.y, out.z};
+    out = {static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(start.z)};
+    write_journal::Wrote("HandAim.start trace (CF result)", &out);
+    gStartsMoved.fetch_add(1, std::memory_order_relaxed);
+    if (!gLoggedLe2Start) {
+        gLoggedLe2Start = true;
+        log::Info("hand aim: shot start on the barrel's line: the pawn said ({:.0f}, {:.0f}, {:.0f}); ({:.0f}, {:.0f}, {:.0f}) is "
+                  "where the barrel meets the plane SFXWeapon.CalcWeaponFire moves the start onto, {:.0f} units from the muzzle",
+            game.x, game.y, game.z, start.x, start.y, start.z, s);
+    }
+}
+
+void OnSfxWeaponAimEvent(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
+    ShotAimed(context, gSfxWeaponAimReturn.In<ue3::Rotator>(parms));
+}
+#endif
+
 void LogPathChange() {
     if (!gEnabled) {
         gPathStatus = "off";
@@ -526,6 +652,19 @@ bool TryStartup() {
     }
     if (startHandlers == 0) {
         log::Warn("hand aim: Pawn.GetWeaponStartTraceLocation not found: shots along the gun barrel keep the game's start");
+    }
+#endif
+#if defined(MEVR_GAME_LE2)
+    if (ue3::Function* const weaponAim = gSfxWeaponAimFn.Get()) {
+        engine::call_function::AddPostHandler(weaponAim, &OnSfxWeaponAimCall);
+        engine::process_event::AddPostHandler(weaponAim, &OnSfxWeaponAimEvent);
+    } else {
+        log::Warn("hand aim: {} not found: shots are aimed, but not checked shot by shot", kSfxWeaponGetAdjustedAim);
+    }
+    if (ue3::Function* const start = gBioPawnStartTraceFn.Get()) {
+        engine::call_function::AddPostHandler(start, &OnStartTraceCall);
+    } else {
+        log::Warn("hand aim: BioPawn.GetWeaponStartTraceLocation not found: shots along the gun barrel keep the game's start");
     }
 #endif
     return true;
@@ -616,18 +755,25 @@ void LogStats() {
     unsigned const rays = gRaysPublished.exchange(0);
     unsigned const converged = gConvergedShots.exchange(0);
     unsigned const others = gOtherWeaponAims.exchange(0);
+    unsigned const controllerShots = gControllerShots.exchange(0);
     if (gEnabled || calls > 0) {
         log::Info("    hand aim: {}, {} aim queries: {} along the gun barrel ({} of them toward what the sight line hit{}), {} along the "
                   "controller's ray, {} kept the game's aim (no view anchor); {} shot-start queries, {} moved to the muzzle ({} of them short of a "
                   "wall the muzzle poked through); shots "
-                  "checked: {} from the muzzle, {} not; {} other weapons' aim queries skipped; aim ray {} ({} published)",
+                  "checked: {} from the muzzle, {} not{}; {} other weapons' aim queries skipped; aim ray {} ({} published)",
             gEnabled ? "on" : "off", calls, barrel, converged,
             converged > 0 ? std::format(", {:.3f} degrees off the sight line on average, {:.3f} at most", gSumToSight / converged, gMaxToSight)
                           : std::string(),
-            controller, noAnchor, starts, moved, walled, atMuzzle, elsewhere, others, gRayStatus, rays);
+            controller, noAnchor, starts, moved, walled, atMuzzle, elsewhere,
+            controllerShots > 0 ? std::format(", {} at the weapon's aim query ({:.2f} degrees off the aim on average, {:.2f} at most)",
+                                      controllerShots, gSumOffRay / controllerShots, gMaxOffRay)
+                                : std::string(),
+            others, gRayStatus, rays);
     }
     gSumToSight = 0.0;
     gMaxToSight = 0.0;
+    gSumOffRay = 0.0;
+    gMaxOffRay = 0.0;
 }
 
 void Shutdown() {
@@ -637,6 +783,9 @@ void Shutdown() {
     gLoggedBarrel = false;
     gLoggedShotStart = false;
     gLoggedStartMoved = false;
+#if defined(MEVR_GAME_LE2)
+    gLoggedLe2Start = false;
+#endif
     gLoggedAtMuzzle = false;
     gLoggedElsewhere = false;
     gLoggedFirstRay = false;
@@ -650,6 +799,8 @@ void Shutdown() {
     gShotsLogged = 0;
     gNextShotLogMs = 0;
     gSumToSight = gMaxToSight = 0.0;
+    gSumOffRay = gMaxOffRay = 0.0;
+    gLastGameAim = {};
 }
 
 std::string StatusJson() {
