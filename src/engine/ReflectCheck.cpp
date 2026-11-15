@@ -2828,6 +2828,10 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshSocket", "RelativeLocation", SDK_FIELD(USkeletalMeshSocket, RelativeLocation));
     CheckField("Engine.SkeletalMeshSocket", "RelativeRotation", SDK_FIELD(USkeletalMeshSocket, RelativeRotation));
 
+    CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
+    CheckField("Engine.Camera", "bLockedFOV", SDK_BOOL(ACamera, bLockedFOV));
+    CheckField("Engine.Camera", "LockedFOV", SDK_FIELD(ACamera, LockedFOV));
+    CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));
     CheckField("SFXGame.SFXCameraMode_Interpolate", "To", SDK_FIELD(USFXCameraMode_Interpolate, To));
     CheckField("SFXGame.SFXCameraMode", "Input", SDK_FIELD(USFXCameraMode, Input));
@@ -2870,6 +2874,8 @@ void CheckFields() {
 }
 
 void CheckPaths() {
+    CheckPath("Engine.Camera", {"CameraCache", "POV", "FOV"},
+        SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, FOV), sizeof(FTPOV::FOV)));
     CheckPath("SFXGame.SFXWeapon", {"MagSize", "Value"},
         SDK_AT(offsetof(ASFXWeapon, MagSize) + offsetof(FScaledFloat, Value), sizeof(FScaledFloat::Value)));
 }
