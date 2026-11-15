@@ -795,3 +795,14 @@ ownership, native-stick fallback, menu overlap and stale-card rejection. Capture
 state before/after each selection. Verify Shepard's audio continues exactly once and interrupt inputs still work.
 Physical Quest 3/Virtual Desktop testing must judge readability and voice ergonomics separately from fake-headset
 capture; no first-person seated traversal is enabled by this adapter.
+
+
+### Ownership and session review fixes
+
+The shared adapter now records listen IDs only during an active spoken turn. Recent IDs survive turn closure,
+so its late final transcripts cannot become squad orders, while an ordinary on-foot radio listen remains unclaimed.
+Menu, omni-rail and calibration ownership supplied by the host closes the spoken turn, releases its microphone,
+hides its panel and discards its partial before a hidden choice can commit. Returning starts a fresh transcript.
+Focused offline regressions cover this radio/dialogue/late-final sequence and a confident partial interrupted by a menu.
+The panel also forgets expired XR swapchains at session creation and places itself again after recentering, including
+when the same dialogue turn remains active. Session recreation and recentering still need native/headset acceptance.

@@ -11,6 +11,15 @@
 
 namespace mevr::vr::thespian {
 
+void ListenOwnership::Observe(bool turnActive, bool open, std::uint64_t listenStartMs) {
+    if (!turnActive || !open || listenStartMs == 0 || Owns(listenStartMs)) return;
+    recent_[next_++ % recent_.size()] = listenStartMs;
+}
+
+bool ListenOwnership::Owns(std::uint64_t listenStartMs) const {
+    return listenStartMs != 0 && std::find(recent_.begin(), recent_.end(), listenStartMs) != recent_.end();
+}
+
 Strictness ParseStrictness(std::string_view text, Strictness fallback) {
     std::string lower;
     for (char const c : text) {
@@ -44,7 +53,7 @@ bool Allows(Strictness strictness, Match const& match) {
 Output Step(State& state, Settings const& settings, Input const& in) {
     Output out;
     float const dt = static_cast<float>(std::clamp(in.dt, 0.0, 0.25));
-    if (!in.wheelUp) {
+    if (!in.wheelUp || in.otherUiOwnsInput) {
         state = {};
         return out;  // Off
     }
