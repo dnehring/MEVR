@@ -211,6 +211,9 @@ struct Latches {
     std::uint8_t faceRb = 0;
     // L3, held back while it might be the start of the both-sticks chord.
     ClickGate leftClick;
+    // R3 likewise, with Options::gateRightClick (ME2's pad path: the both-sticks hold for our menu comes before any use of
+    // either click, the owner 2026-11-14).
+    ClickGate rightClick;
     // The squad weapon menu (game/squad_weapons): the left-grip squeezes that began away from the gun's
     // foregrip (not the support grip), counted like the right grip's kept squeezes; whether the current
     // squeeze is one.
@@ -303,6 +306,12 @@ struct Options {
     // the game there isn't counted: it must never draw a weapon, nor open the squad menu).
     bool stickClicksReserved = false;
     bool countKept = true;
+    // R3 goes through the same gate as L3 (ClickGate, Latches::rightClick): held back kStickJoinMs to see whether the left
+    // click joins, never sent in a both-sticks chord. Not across the boundary: the host sets it. LE1 leaves it off (R3 always
+    // reaches the game there: Halcyon's double-click recenter reads it and ME1's R3 is harmless); ME2's pad path sets it, so
+    // the both-sticks hold for our main menu always wins over the game's use of either click (the owner, 2026-11-14:
+    // "always prioritize the L3 + R3 stick click"; research/le2-menus.md "Opening the menu").
+    bool gateRightClick = false;
     // The squad weapon menu is open (game/squad_weapons, kFlagSquadMenu): the sticks, A, B and both
     // stick clicks are its own (Latches::squadHeld keeps them from the game until released).
     bool squadMenu = false;

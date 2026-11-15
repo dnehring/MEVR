@@ -529,7 +529,9 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     if (rb) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if (r.primary || (options.nativeWheel && options.wheelPressA)) buttons |= XINPUT_GAMEPAD_A;
     if (GateClick(latches.leftClick, l.stickClick, r.stickClick, state.timeMs)) buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
-    if (r.stickClick) buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
+    if (options.gateRightClick ? GateClick(latches.rightClick, r.stickClick, l.stickClick, state.timeMs) : r.stickClick) {
+        buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
+    }
     if (l.menu) buttons |= leftGrip ? XINPUT_GAMEPAD_BACK : XINPUT_GAMEPAD_START;
     // The Mako's held controls: each press keeps the meaning it began with.
     auto const asControl = [&latches](bool down, std::uint8_t mask, bool wanted) {

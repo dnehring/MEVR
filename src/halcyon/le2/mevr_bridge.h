@@ -41,6 +41,16 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int
     float const headP[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU, float unitsPerMeter,
     bool floorWorld) noexcept;
 
+// Game thread, in ApplyHeadPosition (calcview_hook.cpp) for each pass's scene view, before the lean moves the camera: the
+// floor lock (our plugin/FloorLock, as LE1's render_hook.cpp ApplyViewOffsetSEH). `rawCameraZ` the camera's height
+// (-PreViewTranslation.Z), `rightZ`/`upZ`/`forwardZ` the camera axes' Z; `right`/`up`/`forward` the lean in UE units, which
+// it may replace with the view the mod was told about. Returns the height to add (UE units), 0 where it doesn't apply.
+// `replay`: Halcyon's second pass (t_replay), which reuses the first pass's answer.
+float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ, float* right, float* up,
+    float* forward) noexcept;
+// After a corrected view's ViewOrigin and PreViewTranslation were written (the crash breadcrumbs' journal).
+void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexcept;
+
 // The LOCAL app space was re-origined at the head (RecenterAppSpace): recenter counters, quads placed again.
 void OnRecentered() noexcept;
 

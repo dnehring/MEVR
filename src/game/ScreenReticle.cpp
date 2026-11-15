@@ -18,22 +18,60 @@
 
 namespace mevr::game::screen_reticle {
 namespace {
-ue3::FieldRef gManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
-ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels"};
-ue3::FieldRef gTag{"Engine.BioSFPanel", "nmTag"};
-ue3::FieldRef gHandler{"Engine.BioSFPanel", "m_DefaultHandler"};
-ue3::FieldRef gHandlers{"Engine.BioSFPanel", "ScriptHandlers"};
-ue3::FieldRef gMovie{"Engine.BioSFPanel", "MovieRef"};
-ue3::FieldRef gVisible{"Engine.BioSFPanel", "IsVisible"};
-ue3::FieldRef gHandlerPanel{"Engine.BioSFHandler", "oPanel"};
-ue3::ClassRef gReticule{"SFXGame.BioSFHandler_Reticule"};
-ue3::ClassRef gPanelClass{"Engine.BioSFPanel"};
-ue3::FieldRef gReticuleInfo{"SFXGame.BioSFHandler_Reticule", "m_Reticule"};
+// Every game's Scaleform panels (the same names in LE1 and LE2): the player's GUI manager, its panels, each panel's handlers.
+ue3::FieldRef gManager{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
+ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels", ue3::kEveryGame};
+ue3::FieldRef gTag{"Engine.BioSFPanel", "nmTag", ue3::kEveryGame};
+ue3::FieldRef gHandler{"Engine.BioSFPanel", "m_DefaultHandler", ue3::kEveryGame};
+ue3::FieldRef gHandlers{"Engine.BioSFPanel", "ScriptHandlers", ue3::kEveryGame};
+ue3::FieldRef gMovie{"Engine.BioSFPanel", "MovieRef", ue3::kEveryGame};
+ue3::FieldRef gVisible{"Engine.BioSFPanel", "IsVisible", ue3::kEveryGame};
+ue3::FieldRef gHandlerPanel{"Engine.BioSFHandler", "oPanel", ue3::kEveryGame};
+ue3::ClassRef gPanelClass{"Engine.BioSFPanel", ue3::kEveryGame};
+ue3::FunctionRef gGetFloat{"Engine.BioSFPanel.GetVariableFloat", ue3::kEveryGame};
+ue3::FunctionRef gGetBool{"Engine.BioSFPanel.GetVariableBool", ue3::kEveryGame};
+ue3::FunctionRef gSetFloat{"Engine.BioSFPanel.SetVariableFloat", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+// ME2's crosshair handler (research/le2-renderer-integration.md "Step 5: the game's crosshair hidden"): SFXSFHandler_Reticle,
+// the crosshair it shows m_eCurrentCrosshair (SFXReticleCrosshair: 0 none, 1 standard, 2 heavy weapon, 3 sniper, 4 the
+// count), the sniper's scope read-outs m_bShowSniperDetails.
+ue3::ClassRef gReticule{"SFXGame.SFXSFHandler_Reticle", ue3::kEveryGame};
+ue3::FieldRef gCrosshair{"SFXGame.SFXSFHandler_Reticle", "m_eCurrentCrosshair", ue3::kEveryGame};
+ue3::FieldRef gSniperDetails{"SFXGame.SFXSFHandler_Reticle", "m_bShowSniperDetails", ue3::kEveryGame};
+constexpr std::uint8_t kSniperCrosshair = 3;
+constexpr std::uint8_t kCrosshairCount = 4;
+#else
+ue3::ClassRef gReticule{"SFXGame.BioSFHandler_Reticule", ue3::kEveryGame};
+ue3::FieldRef gReticuleInfo{"SFXGame.BioSFHandler_Reticule", "m_Reticule", ue3::kEveryGame};
 ue3::FieldRef gMode{gReticuleInfo, "m_eMode"};
-ue3::FieldRef gLastMode{"SFXGame.BioSFHandler_Reticule", "m_eLastReticuleMode"};
-ue3::FunctionRef gGetFloat{"Engine.BioSFPanel.GetVariableFloat"};
-ue3::FunctionRef gGetBool{"Engine.BioSFPanel.GetVariableBool"};
-ue3::FunctionRef gSetFloat{"Engine.BioSFPanel.SetVariableFloat"};
+ue3::FieldRef gLastMode{"SFXGame.BioSFHandler_Reticule", "m_eLastReticuleMode", ue3::kEveryGame};
+#endif
+
+// What one reticle handler says: its mode for the log, whether the mode is readable, whether it is the sniper's (the
+// native scope view, left to the game: vr::screen_reticle::Hide's mode 2).
+struct ReticleMode {
+    std::string text;
+    bool known = false;
+    bool sniper = false;
+};
+ReticleMode ReadMode(ue3::Object* handler) {
+    ReticleMode out;
+#if defined(MEVR_GAME_LE2)
+    auto const crosshair = gCrosshair.Read<std::uint8_t>(handler);
+    auto const details = gSniperDetails.ReadBool(handler);
+    out.text = std::format(" crosshair={} sniperDetails={}", crosshair ? static_cast<int>(*crosshair) : -1,
+        details ? (*details ? "1" : "0") : "?");
+    out.known = crosshair && *crosshair < kCrosshairCount;
+    out.sniper = crosshair == kSniperCrosshair || details == true;
+#else
+    auto const mode = gMode.Read<std::uint8_t>(gReticuleInfo.Address(handler));
+    auto const last = gLastMode.Read<std::uint8_t>(handler);
+    out.text = std::format(" mode={} last={}", mode ? static_cast<int>(*mode) : -1, last ? static_cast<int>(*last) : -1);
+    out.known = mode && *mode < 10;
+    out.sniper = mode == 2 || last == 2;
+#endif
+    return out;
+}
 
 struct Owned {
     ue3::Object* movie = nullptr;
@@ -79,7 +117,7 @@ void Restore(ue3::Object* panel, Owned const& owned) {
 }
 
 std::string Observe(bool apply) {
-    if (!ue3::runtime::Ready()) return "reticles: reflection unavailable";
+    if (!ue3::runtime::Up()) return "reticles: reflection unavailable";
     auto& r = ue3::runtime::Get();
     ue3::Object* const pc = player::Controller();
     int const gameMode = player::GameMode(pc).value_or(255);
@@ -103,19 +141,29 @@ std::string Observe(bool apply) {
         bool reticule = false;
         bool sniper = false;
         bool modeKnown = false;
+        bool others = false;  // a handler of another kind on this movie: its _root is more than the crosshair (LE2 only)
         std::string names;
         for (auto* const h : handlers) {
             names += (names.empty() ? "" : "; ") + r.FullName(h);
-            if (!ue3::IsA(h, gReticule)) continue;
-            auto const mode = gMode.Read<std::uint8_t>(gReticuleInfo.Address(h));
-            auto const last = gLastMode.Read<std::uint8_t>(h);
-            names += std::format(" mode={} last={} oPanel={}", mode ? static_cast<int>(*mode) : -1,
-                last ? static_cast<int>(*last) : -1, r.FullName(gHandlerPanel.Read<ue3::Object*>(h).value_or(nullptr)));
+            if (!ue3::IsA(h, gReticule)) {
+                others = true;
+                continue;
+            }
+            ReticleMode const mode = ReadMode(h);
+            names += mode.text + std::format(" oPanel={}", r.FullName(gHandlerPanel.Read<ue3::Object*>(h).value_or(nullptr)));
             if (gHandlerPanel.Read<ue3::Object*>(h) != panel) continue;
             reticule = true;
-            modeKnown = modeKnown || (mode && *mode < 10);
-            sniper = sniper || mode == 2 || last == 2;
+            modeKnown = modeKnown || mode.known;
+            sniper = sniper || mode.sniper;
         }
+#if defined(MEVR_GAME_LE2)
+        bool const shared = reticule && others;  // its _root is more than the crosshair: left alone
+        reticule = reticule && !others;
+#else
+        bool const shared = false;  // LE1's reticle movie is the crosshair's own (its other handlers were never asked about)
+        (void)others;
+#endif
+
         auto alpha = ReadVariable<float>(panel, gGetFloat, L"_root._alpha");
         bool const hide = reticule && vr::screen_reticle::Hide(gRequested, gameMode, !modeKnown ? -1 : sniper ? 2 : 1);
         if (apply) {
@@ -143,10 +191,11 @@ std::string Observe(bool apply) {
         auto const visible = gVisible.ReadBool(panel);
         auto const rootVisible = ReadVariable<bool>(panel, gGetBool, L"_root._visible");
         auto const owned = gOwned.find(panel);
-        std::string const line = std::format("tag={} panel={} movie={} handlers=[{}] IsVisible={} _root._visible={} _root._alpha={} savedAlpha={} suppress={} sniper={}",
+        std::string const line = std::format("tag={} panel={} movie={} handlers=[{}] IsVisible={} _root._visible={} _root._alpha={} savedAlpha={} suppress={} sniper={}{}",
             tagText, r.FullName(panel), r.FullName(gMovie.Read<ue3::Object*>(panel).value_or(nullptr)), names,
             visible ? (*visible ? "1" : "0") : "?", rootVisible ? (*rootVisible ? "1" : "0") : "?",
-            alpha ? std::format("{:g}", *alpha) : "?", owned != gOwned.end() ? std::format("{:g}", owned->second.alpha) : "-", hide, sniper);
+            alpha ? std::format("{:g}", *alpha) : "?", owned != gOwned.end() ? std::format("{:g}", owned->second.alpha) : "-", hide, sniper,
+            shared ? " (its movie has other handlers too: left alone)" : "");
         report += "\n  " + line;
         observed[panel] = line;
         if (apply && (!gLogged.contains(panel) || gLogged[panel] != line)) log::Info("[MEVR-CROSSHAIR] {}", line);
@@ -182,7 +231,7 @@ void Tick(bool requested) {
 std::string Command() { return Observe(false); }
 
 void Shutdown(bool exiting) {
-    if (!exiting && ue3::runtime::Ready()) {
+    if (!exiting && ue3::runtime::Up()) {
         for (auto const& [panel, owned] : gOwned) Restore(panel, owned);
     }
     gOwned.clear();

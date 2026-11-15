@@ -313,6 +313,9 @@ std::vector<Field> const& Schema() {
         {"classic_desc", Type::Text, 0, "The original MELE-VR settings menu, with expert settings these pages don't have (also: Ctrl + "
                                         "the menu key)"},
         {"about_build", Type::Text, 0, ""},  // Diagnostics > About: version and commit (AboutBuild)
+        // The menu key's name on this keyboard layout (\ in our deploy, ^ on a German one): the controller guide names the
+        // both-sticks hold first and this second (the owner, 2026-11-14).
+        {"menu_key", Type::Text, 0, "\\"},
         // Voice (research/54 "The menu's Voice page"): [Voice] in <GAME>MEVR.ini and the host's recognizer (plugin/Voice).
         {"voice_on", Type::Flag, 1},                                 // [Voice] enabled
         {"voice_status", Type::Text, 0, ""},                         // VoiceStatusText

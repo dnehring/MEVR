@@ -5710,6 +5710,94 @@ void TestClickGate() {
     state.timeMs += 300;
     pad = FromControllers(state, latches);
     CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) == 0);
+    // LE1 (no gateRightClick): R3 reaches the game at once, in the chord too (Halcyon's double-click recenter reads it).
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+}
+
+// ME2's pad path (Options::gateRightClick, the owner 2026-11-14: "always prioritize the L3 + R3 stick click"): the both-sticks
+// hold opens our menu before the game or the mod sees either click, whichever goes down first; each click alone still works.
+void TestStickChordFirst() {
+    using namespace mevr::game::gamepad;
+    Options options;
+    options.gateRightClick = true;
+    mevr::vr::controllers::State state;
+    state.active = true;
+    Latches latches;
+    StickChord chord;
+    state.timeMs = 20000;
+    bool sawL3 = false, sawR3 = false;
+    int holds = 0, taps = 0;
+    auto const step = [&](bool l, bool r, std::uint64_t advance) {
+        state.timeMs += advance;
+        state.left.stickClick = l;
+        state.right.stickClick = r;
+        XINPUT_GAMEPAD const pad = FromControllers(state, latches, options);
+        sawL3 = sawL3 || (pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0;
+        sawR3 = sawR3 || (pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
+        StickChordStep const s = UpdateStickChord(chord, l, r, state.timeMs);
+        holds += s.hold ? 1 : 0;
+        taps += s.tap ? 1 : 0;
+        return pad;
+    };
+    auto const reset = [&] {
+        sawL3 = sawR3 = false;
+        holds = taps = 0;
+    };
+    // R3 first, L3 40 ms later, both held 0.5 s: the menu once, neither click reaches the game.
+    step(false, true, 0);
+    step(true, true, 40);
+    for (int i = 0; i < 10; ++i) step(true, true, 50);
+    step(false, false, 20);
+    for (int i = 0; i < 10; ++i) step(false, false, 20);
+    CHECK(holds == 1 && taps == 0 && !sawL3 && !sawR3);
+    // L3 first, R3 80 ms later: the same.
+    reset();
+    state.timeMs += 1000;
+    step(true, false, 0);
+    step(true, true, 80);
+    for (int i = 0; i < 10; ++i) step(true, true, 50);
+    step(true, false, 20);   // R3 let go first: L3 doesn't come back
+    step(true, false, 200);
+    step(false, false, 20);
+    for (int i = 0; i < 10; ++i) step(false, false, 20);
+    CHECK(holds == 1 && !sawL3 && !sawR3);
+    // A quick tap of both (a snapshot): neither click reaches the game.
+    reset();
+    state.timeMs += 1000;
+    step(true, false, 0);
+    step(true, true, 30);
+    step(true, true, 100);
+    step(false, false, 60);
+    for (int i = 0; i < 10; ++i) step(false, false, 20);
+    CHECK(taps == 1 && holds == 0 && !sawL3 && !sawR3);
+    // R3 alone: held, it reaches the game 100 ms after the press; tapped, as a short press right after it's let go.
+    reset();
+    state.timeMs += 1000;
+    XINPUT_GAMEPAD pad = step(false, true, 0);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) == 0);
+    pad = step(false, true, 60);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) == 0);
+    pad = step(false, true, 50);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+    pad = step(false, false, 20);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) == 0);
+    state.timeMs += 1000;
+    step(false, true, 0);
+    pad = step(false, false, 40);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+    pad = step(false, false, 100);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) == 0);
+    CHECK(holds == 0 && taps == 0 && !sawL3);
+    // R3 held alone past the join window, then L3: R3 lets go and stays off; L3 never shows; the chord still opens the menu.
+    reset();
+    state.timeMs += 1000;
+    step(false, true, 0);
+    pad = step(false, true, 150);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+    sawR3 = false;
+    for (int i = 0; i < 10; ++i) step(true, true, 50);
+    step(false, false, 20);
+    CHECK(holds == 1 && !sawL3 && !sawR3);
 }
 
 void TestSquadPad() {
@@ -12280,6 +12368,7 @@ int main() {
     TestRightGripHolds();
     TestRbFromStickClick();
     TestStickChord();
+    TestStickChordFirst();
     TestGameMenuRequest();
     TestSquadContext();
     TestSquadGesture();

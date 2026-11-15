@@ -29,12 +29,7 @@ void SetModHandAim(bool on);
 // Game thread, each engine tick: re-reads [Hands] constantEye and blendFix (once a second) for the Present thread's seams.
 void RefreshCameraSettings();
 
-// The mod's two-handed grip input (HostServices::setSupportGrip), for the pad mapping in the XInput
-// hook; stale after 250 ms. Forget drops it now (the mod unloads). Any thread.
-void SetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, unsigned flags);
-void ForgetSupportGrip();
-// The pad mapping holds the support grip (HostServices::supportGripHeld).
-bool SupportGripHeld();
+// The mod's two-handed grip input and the pad mapping's reports (support grip, grips): plugin/PadMerge (both hosts).
 
 // The body holsters (HostServices v9). A controller vibration, applied on the next frame after the
 // action sync (Halcyon's frame thread); a newer request for a hand replaces a pending one. Any thread.
@@ -45,11 +40,6 @@ void RequestHaptic(int hand, float seconds, float amplitude, float frequencyHz =
 void RequestContinuousHaptic(int hand, float amplitude, float frequencyHz, float seconds);
 // The mod unloaded: no more vibration from it.
 void ForgetHaptics();
-// The pad mapping's right grip report (gamepad::RightGripReport). Any thread.
-std::uint32_t RightGripFree();
-// v11: the pad mapping's left grip report (gamepad::LeftGripReport): squeezes that began away from the
-// gun, for the squad weapon menu. Any thread.
-std::uint32_t LeftGripAway();
 
 // v10: the head's height above the floor, the latest frame's (core/xr/Floor). Any thread.
 void Floor(vr::floor::State* out);

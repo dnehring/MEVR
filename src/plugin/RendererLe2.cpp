@@ -84,8 +84,16 @@ int GameMode() noexcept {
     return ME2VR::EngineProbe::ReadGameModeSEH();
 }
 
+int MoveStickHeadLookYawUU() noexcept {
+    // me2_menu.cpp's RotateMoveStickByHeadLook, after the pad merge in its XInput hooks: the same sign as LE1's (+ left).
+    return ME2VR::Menu::GetMoveFollowsHead() ? ME2VR::CalcViewHook::HeadLookYawUU() : 0;
+}
+
 bool FirstPersonOwned() noexcept {
-    return false;  // ME2's first person (engine_probe's ApplyFirstPerson) is read through here with VRIK (M3)
+    // ME2's first person is on ([FirstPerson] Enabled, K): engine_probe's ApplyFirstPerson then owns the on-foot camera
+    // modes. Which mode it owns this frame is the mod's half of the floor lock (PawnSample::cameraOwned: the explore and
+    // combat modes, as LE1's constant eye), so on/off is LE1's FirstPersonOwnsAny here. [verify] a mode it doesn't own.
+    return ME2VR::EngineProbe::GetFirstPerson();
 }
 
 std::uint64_t HeadArmSequence() noexcept {
@@ -118,12 +126,19 @@ float RecenterTiltDeg() noexcept {
     return 60.0f;  // ME1's default (vr_config.h recenterTiltDeg)
 }
 
-void SetScreenReticleHidden(bool) noexcept {
-    // ME2's PcHud has no crosshair switch yet (M3: the hand reticle replaces the crosshair there too).
+// As LE1's (pchud.cpp's [MEVR] SetCrosshairHidden): our layers ask each XR gameplay frame, the request lasts 500 ms, and
+// the mod's game/ScreenReticle hides ME2's crosshair movie on the game thread while it stands (HostServices
+// hideScreenReticle). Its expiry gives the movie back when VR frames stop.
+namespace {
+std::atomic<std::uint64_t> gHideCrosshairUntilMs{0};
+}
+
+void SetScreenReticleHidden(bool hidden) noexcept {
+    gHideCrosshairUntilMs.store(hidden ? GetTickCount64() + 500 : 0, std::memory_order_release);
 }
 
 bool ScreenReticleHidden() noexcept {
-    return false;
+    return GetTickCount64() < gHideCrosshairUntilMs.load(std::memory_order_acquire);
 }
 
 void SetAuthoredHudLayout(bool on) noexcept {

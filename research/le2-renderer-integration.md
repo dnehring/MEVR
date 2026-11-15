@@ -545,13 +545,14 @@ renderer's `mevr_bridge.h`.
 | `SetOwnMenuOpen(bool)` | `MELEVR::Menu::SetOpen` | no-op (no setter in `me2_menu.cpp`: M4) | MainMenu |
 | `LogLine(text)` | `MELEVR::Logger::LogLine` | `ME2VR::Log::Line` | Colour, HalcyonOverlays, MetricStereo, RecenterTilt |
 | `GameMode()` | `MELEVR::HeadAim::ReadGameModeSEH` | `ME2VR::EngineProbe::ReadGameModeSEH` (ME2's numbers: [verify] each past 0) | GamePointer |
-| `FirstPersonOwned()` | `Config::Get().fpEnabled && HeadAim::FirstPersonOwnsAny()` | false (M3) | FloorLock |
+| `FirstPersonOwned()` | `Config::Get().fpEnabled && HeadAim::FirstPersonOwnsAny()` | `EngineProbe::GetFirstPerson()` (step 8) | FloorLock |
 | `HeadArmSequence()` | `RenderHook::GetHeadArmSeq` | 0 (no arm counter) | FloorLock |
 | `GameWindow()` | `MevrBridge::GameWindow` (its `SetGameWindow` seam) | the captured swap chain's `OutputWindow` | GamePointer |
 | `Hud()` (`HudSettings`) | `Config::Get()`'s `hudPanel*`, `handReticle*` | ME1's defaults (the struct's member values) | HalcyonOverlays |
 | `Panels()` (`PanelSettings`) | `worldLockedPanels`, `panelFollowDeg` | ME1's defaults | WorldPanels |
 | `RecenterTiltDeg()` | `recenterTiltDeg` | 60 (ME1's default) | RecenterTilt |
-| `SetScreenReticleHidden`, `ScreenReticleHidden` | `MELEVR::Pchud::SetCrosshairHidden`, `CrosshairHidden` | no-op, false (M3) | HalcyonOverlays, ModLoader (`hideScreenReticle`) |
+| `SetScreenReticleHidden`, `ScreenReticleHidden` | `MELEVR::Pchud::SetCrosshairHidden`, `CrosshairHidden` | a 500 ms expiry of its own (step 5) | HalcyonOverlays, LE2's bridge, ModLoader (`hideScreenReticle`) |
+| `MoveStickHeadLookYawUU()` | `moveFollowsHead ? RenderHook::HeadLookYawUU() : 0` | `GetMoveFollowsHead() ? CalcViewHook::HeadLookYawUU() : 0` (step 6) | PadMerge (the walk toward the left hand) |
 | `SetAuthoredHudLayout(bool)` | `MELEVR::Pchud::SetAuthoredLayout` | no-op (step 4) | HalcyonOverlays |
 
 `mevr::window::KeyDownInGame(vk)` (`core/Window`, game-independent) is what both bridges' `KeyDown` and plugin/Voice call.
@@ -761,7 +762,7 @@ animates between launches (the edges of the idle hands and the gun, the console'
 snapshots of one run differ by 0.3% over 8/255). The comparison script: PIL `ImageChops.difference` over the two
 snapshots' PNGs and the JSON's layers and `hostView`.
 
-**Not yet:** the floor lock (`plugin/FloorLock`: LE1's camera and first-person state through Halcyon's LE1 seams; ME2's
+**Not yet** (done since: the floor lock is step 8 below): the floor lock (`plugin/FloorLock`: LE1's camera and first-person state through Halcyon's LE1 seams; ME2's
 `OnViewBuilt` passes `floorWorld` but nothing uses it). The mod's comfort module (`game/Comfort`) is LE1 game code, so on
 LE2 nobody asks for the vignette yet: the service is there for lane C/D's comfort work.
 
@@ -863,59 +864,187 @@ counts the draws before the left-eye capture and the draws left to the renderer;
 draws in order` (e/l before/after the capture, upper case into the backbuffer, `D` a deferred context's) for the first three
 presents with UI and every 600th, twelve lines.
 
-**Not yet on ME2:** the game's crosshair is still drawn in the panel's middle (LE1 hides it while the hand reticle stands
+**Not yet on ME2** (the crosshair and the HUD pieces since: steps 5 and 7): the game's crosshair is still drawn in the panel's middle (LE1 hides it while the hand reticle stands
 in for it: `renderer::SetScreenReticleHidden`, a no-op on LE2 until PcHud or the HUD movie gives a switch for it); the
 wheels, interaction labels, HUD pieces, world screens and the cinema screen's UI layer stay LE1's (HalcyonOverlays); ME2's
 UI during menus and conversations stays on Halcyon's flat panel (the panel is armed only for head-tracked world frames).
 
+### Step 5: ME2's crosshair hidden (lane B, fourth agent)
+
+**What:** while the hand reticle stands in for it, ME2's own crosshair is hidden, ME1's way: the host asks each XR gameplay
+frame, the mod hides the crosshair's movie on the game thread.
+
+**How, file by file:**
+1. `plugin/RendererLe2.cpp`: `renderer::SetScreenReticleHidden(hidden)` keeps a 500 ms expiry, `ScreenReticleHidden()` reads it
+   (LE1's `MELEVR::Pchud::SetCrosshairHidden` / `CrosshairHidden`, in our file: no Halcyon change).
+2. `plugin/HalcyonLe2Bridge.cpp`, `OverlayLayers`' reticle block: `SetScreenReticleHidden(cfg.handReticle && lastGameMode
+   in 0..4)`, as LE1's HalcyonOverlays (independent of a weapon, the aim ray or tracking).
+3. `plugin/ModLoader.cpp`: `services.hideScreenReticle` moved from LE1's `WithWorldUi` into `WithRenderer` (both hosts).
+4. The mod, `game/ScreenReticle.cpp`: its handles reach every game (`ue3::kEveryGame`), and `runtime::Up()` instead of
+   `Ready()`. Per game: LE1 `SFXGame.BioSFHandler_Reticule` (`m_Reticule.m_eMode`, `m_eLastReticuleMode`, sniper = 2);
+   ME2 `SFXGame.SFXSFHandler_Reticle` (`m_eCurrentCrosshair`: 0 none, 1 standard, 2 heavy weapon, 3 sniper; and
+   `m_bShowSniperDetails`): sniper = 3 or the details shown, which `vr::screen_reticle::Hide` leaves to the game, as ME1's
+   scope. On ME2 a reticle panel whose movie has another handler too is left alone (its `_root` would be more than the
+   crosshair; LE1 unchanged). The hide is the movie's `_root._alpha = 0` (`BioSFPanel.SetVariableFloat`), the game's own
+   alpha put back when the request ends.
+5. `engine/ReflectCheck.cpp` (LE2): the classes `Engine.BioSFManager`, `BioSFPanel`, `BioSFHandler`,
+   `SFXGame.SFXSFHandler_Reticle`, their fields and the three `BioSFPanel` variable functions with their parameters.
+
+**ME2's panels** (the mod's `[MEVR-CROSSHAIR]` lines, Freedom's Progress): the crosshair is its own movie, tag `Reticle`
+(`BioSFPanel_9`, one handler `SFXSFHandler_Reticle_1`), next to `PowerWheel`, `HUD` (`SFXSFHandler_PCHUD`), `Conversation`,
+`BlackScreen`, `DesignerUI` and `Splash`. Not the HUD movie, as step 4 had guessed. `mevr reticles` is LE1's console
+only (ME2's console routes a short list).
+
+**Checked on the fake headset** (stretch `%LOCALAPPDATA%\MEVR\sessions\20261115-001659-lane-b4-m2`, Save 4 by `load.ps1`, the
+replay below): `[MEVR-CROSSHAIR] VR hand-reticle suppression request=true`, then `tag=Reticle ... crosshair=1 ... _root._alpha=0
+savedAlpha=100 suppress=true sniper=false`; the HUD panel snapshot (`-hud.png`) has no crosshair in its middle (step 4's had
+the four red ticks there; the middle now shows only the HUD's own `Reload` status text). [verify] the sniper rifle's scope on
+ME2 keeps its view (no sniper rifle in that save).
+
+### Step 6: the pad merge (`plugin/PadMerge`, both hosts)
+
+**What:** the motion controllers reach ME2 as pad 0 with the mod's flags, as on LE1: the support grip (v7), the holsters'
+`rightGripFree` (v9) and `gripHolds` (v10), the squad's and the grenades' left grip (v11), comfort's turn and walk toward the
+left hand (v17's flags), the L3 + R3 chord kept from the game. One module for both bridges.
+
+**How, file by file:**
+1. `plugin/PadMerge.{hpp,cpp}` (new): LE1's `HalcyonBridge::MergeMotionControllers` mapping core moved unchanged, its log
+   lines word for word (`halcyon bridge: support grip taken ...`, `... squad menu open ...`, `... the left stick walks toward
+   ...`): `SetSupportGrip`, `ForgetSupportGrip`, `Options(nowMs)` (the mod's flags, stale after 250 ms), `FreshFlags(nowMs)`,
+   `SupportGripHeld`, `RightGripFree`, `LeftGripAway`, and `Merge(real, controllers, renderer, nowMs)`: the latches
+   (`game::gamepad::FromControllers`), the walk toward the left hand, the merge over a real pad, the reports, the L3 + R3
+   strip, the renderer's trigger owners. `pad_merge::Renderer` is what a bridge tells it: its own menu open (no squeeze counted
+   there), the move stick's head-look turn (`renderer::MoveStickHeadLookYawUU`, new in `plugin/Renderer.hpp`: LE1
+   `moveFollowsHead` and `RenderHook::HeadLookYawUU`, ME2 `[VR] MoveFollowsHead` and `CalcViewHook::HeadLookYawUU`, the same
+   sign), and callbacks for the triggers its host's quads own (LE1: the camera align's left trigger; the calibration's prompt,
+   the omni-tool's rail and d-pad, the game pointer, the galaxy hologram), and `gateRightClick` (below).
+2. `plugin/HalcyonBridge.cpp` (LE1): its own menus' neutral pad and close latch stay; the rest calls `pad_merge::Merge`. The
+   cockpit's head look and the physical crouch read `pad_merge::FreshFlags`.
+3. `plugin/HalcyonLe2Bridge.cpp` (ME2): `MergeMotionControllers` calls `pad_merge::Merge` (`ownMenuOpen` ME2's menu,
+   `gateRightClick` true), then `menus_le2::FilterPad` as before.
+4. `plugin/ModLoader.cpp`: `WithPadMerge` (both hosts) offers `setSupportGrip`, `supportGripHeld`, `rightGripFree`,
+   `leftGripAway`; `ForgetRendererModState` forgets the mod's flags. The squad menu's and the wheel panel's drawing stay LE1's.
+5. `plugin/Halcyon.hpp`: the grip declarations went (PadMerge's now).
+
+**The owner's L3 + R3 rule** ("always prioritize the L3 + R3 stick click"): the chord's hold and tap are told in each
+bridge's `OnFrameBegun` on the player's live sample (`game::gamepad::UpdateStickChord`; ME2's in `menus_le2::OnFrameBegun`,
+lane D2's); the merge keeps both clicks from the game while both are down, and L3 waits `kStickJoinMs` for R3. **R3 waits
+for L3 too** on ME2: lane D2's `Options::gateRightClick` (30ae93ab, a `ClickGate` for R3 in `Latches::rightClick`), which
+`pad_merge::Merge` sets from `Renderer::gateRightClick` (ME2's bridge: true; LE1: false, unchanged). Host-only: it never
+crosses the boundary in the mod's flags.
+
+**Checked:** `mevr-pad-merge` (ctest, `tests/PadMergeTests.cpp`): 20,000 random steps (controllers, the mod's flags, menus,
+trigger owners, head look, real pads) through PadMerge and through a copy of LE1's merge before the move: 0 differences in the
+pad and the three reports (the support grip held in 367 steps, the walk toward the hand in 1,892, both clicks down in 5,039);
+and the rules one by one (stale flags, the chord, the owners, the support grip, the grip that holds the gun, the left grip
+away, the walk, and ME2's R3 gate: R3 alone held back `kStickJoinMs` then the game's, R3 joined by L3 never, nor after L3
+lets go first; LE1's R3 at once). On ME2 (stretch above) the mod's start no longer says `holsters: the host (services older than v9)`,
+`throwables`/`vent`/`squad orders: ... older than v11` nor `support grip: the host (services v39) can't take it`; with a
+replayed right grip held (holsters are LE1-only on ME2, so `gripHolds` isn't sent) the grip is RB and ME2 opens its wheel (game
+mode 1), as the mapping says.
+
+**LE1 after steps 5 to 9: unchanged.** The same pose run as the earlier steps' (`le1-pose.ps1`: 20 s in the world,
+`make-walk-recording.py --plan stand:600 --hands view` looped, 8 s, the console's `pause`, two snapshots 1 s apart;
+`tools/fake-headset-session.ps1 -Run le1-pose.ps1 -BuildDir <build>`), before and after on one base (main de2c9c6b): "before"
+built in this worktree's `build-mono` with every file of these steps checked out from de2c9c6b (session
+`2026-11-15_00-31-05-laneb4-before`, snapshot `00-33-57-738`), "after" this lane's build (session
+`2026-11-15_00-34-50-laneb4-after`, snapshot `00-37-36-279`; both sessions keep their snapshots in `snapshots`). The same six
+layers (both eyes, `hud`, `label`, `wrist`, `omnitarget`) at the same places (the omni-tool target 0.1 mm apart), `hostView`
+identical, the HUD panel, the wrist piece (now drawn by `plugin/HudPieceLayers`), the label and the target identical pixel for
+pixel, the eyes 0.02% / 0.01% of pixels apart by more than 32/255 (what animates between launches).
+
+### Step 7: HUD pieces on ME2 (`plugin/HudPieceLayers`, v22)
+
+**What:** ME2's squad block on a quad at the back of the left wrist and its weapon panel on a quad over the gun, cut out of the
+HUD panel, ME1's way (research/41). The mod's `hud_pieces::Pieces` (the gun's anchor, and Shepard's drawn arm bones for the
+omni-tool's wrist tap) now reaches the LE2 host.
+
+**How, file by file:**
+1. `plugin/HudPieceLayers.{hpp,cpp}` (new): LE1's HalcyonOverlays HUD-pieces code moved unchanged (the `[Hud]` reader,
+   `Wanted()`, `Show()` = ShowPiece, the wrist and gun quads with their `[MEVR-HUD]` lines), plus `Decide`/`Layers` for a
+   renderer without LE1's wheels, labels and cockpit (ME2's bridge). LE1's HalcyonOverlays keeps its own conditions and calls
+   `Wrist`/`Gun`/`Show`; the cockpit's radar is still its own.
+2. `core/vr/HudPieces`: `Layout::Me1 | Me2` on `DefaultWristCrop`, `DefaultGunCrop`, `WristCrop`, `GunCrop` (default Me1).
+   ME2's bands (1280x720 stage across the 16:9 frame, bottom-anchored like ME1's): the squad block x 540..740, the bottom
+   110..2; the weapon panel x 8..184, the bottom 108..3; measured on step 4's HUD snapshots (portraits x 605..677, the bottom
+   52..8; weapon x 17..173, the bottom 98..11, alpha > 40). [verify] the squad's and Shepard's bars when hurt fit the band
+   (`[Hud] wristCrop` sets it by hand).
+3. `plugin/HudPanel`: `Frame::masks` (the pieces' bands cut out of the panel) and `Frame::beforeClear` (called after the
+   panel is drawn, before it's cleared for the next frame: the pieces are blitted there; first try blitted after `Layer` and
+   got a cleared panel: transparent pieces).
+4. `plugin/HalcyonLe2Bridge.cpp`: `OverlayLayers` decides the pieces (on foot, a world frame, the panel ready) before
+   `hud_panel::Layer`, blits them in `beforeClear`, and lists them after the panel's quad (LE1's order: panel, pieces,
+   reticle, sights); `OnSessionCreated` forgets their swapchains.
+5. `plugin/ModLoader.cpp`: `WithHudPieces` on both hosts; `vr::hud_pieces::Reset()` in `ForgetRendererModState`.
+
+**Checked on the fake headset** (stretch `20261115-002101-lane-b4-m2b`, snapshot `2026-11-15_00-22-16-714` kept in its
+`snapshots`): `swapchains: gun status 564x337 made`, `[MEVR-HUD] the weapon panel on the gun: ... the UI's part (25, 1958)
+564x337 of 4096x2304 (the measured band)`; the snapshot's `wrist` quad (0.08 m wide, the left hand) shows Jacob's and
+Miranda's portraits, its `gun` quad the heavy pistol's panel (the gun, 60 spare, 1 in the clip, Reload), and the HUD panel
+has neither (both masked).
+
+### Step 8: the floor lock on ME2
+
+**What:** ME1's floor lock (research/58): the view's common centre at the player's real eye height above the floor under
+Shepard, in ME2's renderer, with the mod's floor sample.
+
+**How, file by file:**
+1. `src/halcyon/le2/calcview_hook.cpp`, `ApplyHeadPosition` (`[MEVR]`, under `MEVR_ASI`): the lean in UE units (`w2m * dR`,
+   `dU`, `dF`) and `-PreViewTranslation.Z` go through `MevrBridge::FloorViewTranslation(t_replay, rawZ, rZ, uZ, fZ, &r, &u,
+   &f)` (LE1's render_hook.cpp `ApplyViewOffsetSEH` seam), whose answer is added to the world Z of the move; a corrected write
+   is journalled (`JournalFloorViewWrite`). Declared in `src/halcyon/le2/mevr_bridge.h`.
+2. `plugin/HalcyonLe2Bridge.cpp`: `FloorViewTranslation` -> `floor_lock::Translate`; `OnViewBuilt` queues the view with the
+   STAGE floor (`floor_lock::Queue`, as LE1's bridge) and publishes it itself only while no `Translate` ran for 100 ms (ME2's
+   lean off, a VR cine's tracking lock: `ApplyHeadPosition` isn't called then, and the mod must keep its view);
+   `OnSessionStopped` -> `floor_lock::Reset`.
+3. `plugin/FloorLock.cpp` off LE1's headers: our main menu (`main_menu::IsOpen`, LE1's `MevrBridge::MainMenuOpen`) and the
+   calibration where the host has them; LE1's render seams (`FloorLockEnabled`, `FloorViewLook`, ...) only in LE1's host.
+4. `plugin/RendererLe2.cpp`: `FirstPersonOwned()` = ME2's first person on (`EngineProbe::GetFirstPerson`); the mode it owns
+   is the mod's `cameraOwned` (the explore and combat modes). [verify] a mode ME2's first person doesn't own.
+5. `plugin/HalcyonLe2.cpp`: `[Body] floorLock` re-read once a second (`floor_lock::RefreshSettings`).
+6. `plugin/ModLoader.cpp`: `WithFloorLock` (v36 `setFloorLockSample`) on both hosts; `SetPawn(nullptr)` when the mod goes.
+7. The mod, `game/Player.cpp`: the sample's handles reach every game (`Pawn.CylinderComponent`,
+   `CylinderComponent.CollisionHeight`, `BioPawn.CoverType`/`CoverAction`, the camera's mode and `Camera.UpdateCamera`);
+   `engine/ReflectCheck.cpp` (LE2) gains `Engine.CylinderComponent`, its `CollisionHeight` and `Pawn.CylinderComponent`.
+8. `CMakeLists.txt`: the LE2 host gains `plugin/FloorLock`, `core/vr/FloorLock`, `core/vr/Calibration` (now outside the
+   menu's list).
+
+**Checked on the fake headset:** the whole path runs on ME2 (on foot, the mod's sample in, first person owned): `floor lock:
+no fresh valid STAGE/LOCAL_FLOOR sample; using the old camera behaviour` (the warning `Translate` gives only once the floor
+lock applies), and the view kept reaching the mod (the hand reticle on the aim ray, `hostView.valid`). The fake headset's
+STAGE floor is at its head (`floor: first sample: the head is 0.00 m above the floor`), so no correction was made there: the
+corrected height is [verify] in a headset (or with a recorded floor fixture, research/58's open item). Not on ME2 yet: the
+calibration's manual height (`floor_lock::SetManualHeight`, LE1's bridge from `calibration::ManualAdjustments`), since ME2's
+calibration lives in `plugin/MenusLe2` (lane D2's file).
+
+### Step 9: `plugin/GameThreadCalls` on ME2
+
+ME2's renderer's Present-thread ProcessEvents (engine_probe.cpp's `MevrCallProcessEvent` -> `MevrBridge::QueueProcessEvent`,
+first-person hides) go to `plugin/GameThreadCalls`, LE1's queue, drained at the start of each engine tick (`plugin/Entry.cpp`);
+`HalcyonLe2.cpp`'s own copy is gone. GameThreadCalls checks a call's object with each game's reflection layout
+(`engine::adapter::ReflectionLayout`: LE2's since M1; it also refuses an object pending kill, which ME2's copy didn't), calls
+ProcessEvent through the object's vtable slot (LE2 `0x240`, the same `0xD8D50` our hook sits on), and takes ME2's block size
+(`Queue(object, function, parms, size)`); the frame breakdown's timing (`plugin/PerfProbe`) is LE1's only. Its log is LE1's:
+**checked** on ME2, `game thread calls: a ProcessEvent from another thread (Function Engine.PrimitiveComponent.SetOwnerNoSee
+...) was queued and runs at the next engine tick` and `game thread calls: 52 queued from other threads, 52 run, 0 skipped
+(object gone), 0 faulted, 0 dropped (queue full), 0 refused (parameters too big)`.
+
 ### What is left of M2 and the host side of M3, with the seams (for the next agent)
 
-In the order the coordinator set (2026-11-14 22:00: lane D took the main menu, calibration and the omni-tool; lane C's mod
-side of VRIK is on main and publishes `setAimRay` every tick):
-1. **The game's crosshair off on ME2** (finishes the reticle): `renderer::SetScreenReticleHidden` is a no-op in
-   `plugin/RendererLe2.cpp`. ME2's crosshair is in the HUD movie (the panel shows it in its middle); find its path (PcHud's
-   `RunDiscovery`, F11 with `[VR] Diagnostics`, lists every path the HUD handler exposes, and its sweep tries `Crosshair`,
-   `mcCrosshair`, `Reticle`) and hide it on the game thread as LE1's `Pchud::SetCrosshairHidden` does (a `[MEVR]` setter in
-   pchud.cpp; the write through `WriteVar` in its ProcessEvent hook, never from the Present thread).
-2. **Sights** (`setSight` + `sightSize`): on LE2 since 6d11493b ("Prototype shared VR weapon optics in LE2", another
-   lane: `plugin/SightLayers` in the LE2 host, `OverlayFrame::eyesValid`/`eyePosition`). Merged with step 4 in LE1's order:
-   the sights are worked out before the ring, the ring hides while an eye looks through the sight (held 0.3 s,
-   `hand_reticle::Frame::sightHidesRing`), the sight's quads go on top of the ring's.
-3. **The pad merge with the mod's flags** (support grip v7, `rightGripFree` v9, `gripHolds` v10, grips v11;
-   `setSupportGrip`/`supportGripHeld`): LE1's `MergeMotionControllers` (plugin/HalcyonBridge.cpp) is the plain mapping plus
-   `PadOptions()` (the mod's flags from `gSupportFlags`, set by the services `WithLe1Modules` adds), the close latch, and the
-   trigger owners (main menu, calibration, omni-tool, game pointer, galaxy). Move the mapping core (`PadOptions`, the latches,
-   the support-grip report, `WalkTowardHand`) into a game-independent `plugin/PadMerge` that both bridges call, with the
-   LE1-only owners passed in as a callback; then move the grip services out of the LE1-only list. **The owner (2026-11-14):
-   holding both stick clicks (L3 + R3) always opens our menu on ME2, ahead of any game or mod use of L3/R3** (ME1's
-   `gamepad::UpdateStickChord` in HalcyonBridge: L3 held back 100 ms, R3's power wheel only after 300 ms alone, a quick tap
-   of both a snapshot). Lane D2 (menus) puts the chord's rules where both hosts use them and says what the LE2 pad path must
-   call (through the coordinator); lane D's `menus_le2::PadWanted`/`FilterPad` already sit in LE2's
-   `MergeMotionControllers`.
-4. **The floor lock** (`setFloorLockSample`, v36): `plugin/FloorLock` needs (a) a render seam on ME2 where the view's origin
-   is moved, `calcview_hook.cpp ApplyHeadPosition` (LE1's is render_hook.cpp `ApplyViewOffsetSEH`: `FloorViewTranslation(
-   replay, -pvt[2], VM[8], VM[9], VM[10], &r, &u, &f)` returns the vertical correction added to the world offset), with
-   ME2's offsets in UE units (`w2m * (...)`, 50 uu/m x `HeadPosScale`, forward x3) and `t_replay` for the second pass;
-   (b) `renderer::FirstPersonOwned()` on LE2 (ME2's first person owning the camera: `ME2VR::EngineProbe` first-person state,
-   `[FirstPerson] Enabled`), else `vr::floor_lock::Applies` is never true; (c) FloorLock.cpp off LE1's headers (it asks
-   `MELEVR::MevrBridge::MainMenuOpen`: put that behind the renderer interface); (d) `OnViewBuilt` on LE2 calling
-   `floor_lock::Queue(view, floor, floorWorld)` instead of publishing the view itself (LE1's way); (e) the mod's sample
-   (lane C: `game/BodyScale`'s floor-lock sample on LE2).
-5. **HUD pieces** (v22, `setHudPieces`; lane D's omni-tool tap needs `hud_pieces::Pieces`' arm bones): the wrist and gun
-   quads are cut from the HUD panel (HalcyonOverlays' masks, `ShowPiece`); with `hud_panel::Blit` and its `Masks` shared
-   now, they can move into a module beside `hud_panel::Layer` the same way. ME2's HUD has its own crops (the squad block at
-   the bottom middle, the weapon block bottom left: measure them on the panel's snapshot, `-hud.png`).
-6. **`plugin/GameThreadCalls` for LE2** in place of `HalcyonLe2.cpp`'s own queue: GameThreadCalls checks a queued call's
-   object through `engine/GameAdapter` and `ue3` (LE1's layout so far); with M1's LE2 layout it can serve both.
-
-**What the mod on LE2 still says** (each line a module the LE2 host doesn't serve yet, all LE1 host modules that come over
-with steps 4-5): holsters (v9: `rightGripFree`, keeping the squeeze from the game; v10 `gripHolds`), throwables, vent, squad
-orders and squad (v11: the grips and the squad menu), calibration (v15), comfort (v17: the vignette and turn flags), main
-menu requests (v19), interact (v21), hud pieces (v22), voice (v31), support grip and sights (v39 messages: `setSupportGrip`,
-`setSight`). They come from the pad mapping with the mod's flags (`HalcyonBridge::MergeMotionControllers`: LE2's bridge has
-the plain mapping), `plugin/Calibration`, `plugin/Vignette`, `plugin/HalcyonOverlays` (HUD panel, labels, HUD pieces, the
-squad panel, reticle), `plugin/SightLayers`, `plugin/MainMenu` and `plugin/Voice`. Two of them repeat in every status block
-(`squad: the host is older than v11`, `comfort: ... older than v17`).
+M2's list (the coordinator's order, 2026-11-14 22:00) is done but where marked: the crosshair (step 5), the sights (6d11493b,
+another lane's prototype, in LE1's layer order), the pad merge (step 6), HUD pieces (step 7), the floor lock (step 8) and
+GameThreadCalls (step 9). What remains, with the seams:
+1. **The floor lock's correction in a headset** (step 8: the path runs on ME2, the fake headset's floor is at its head) and
+   the calibration's manual height on ME2 (`floor_lock::SetManualHeight` from `calibration::ManualAdjustments`, where
+   `menus_le2::OnFrameBegun` publishes the controllers, as LE1's bridge does).
+2. **The modules the LE2 host doesn't serve yet**, which the mod still names at its start (`older than ...`): the squad menu
+   and the wheel panel (v11 `setSquadMenu`, `setWheelPanel`: LE1's `plugin/SquadPanel` and HalcyonOverlays' wheel),
+   comfort's v17 check (`game/Comfort`'s host test; the vignette and the turn flags themselves reach ME2 now: `setVignette`,
+   the pad merge's `kFlagModTurns`/`kFlagHandWalk`), the interaction label (v21, HalcyonOverlays' label quad), the power
+   wheel (v28) and voice (v31). The holsters, throwables, vent and squad orders say `LE1 only` now (their game side is lane
+   C's), no longer `older than`.
+3. **ME2's UI during menus and conversations** stays on Halcyon's flat panel (the HUD panel is armed only for head-tracked
+   world frames), and ME2's wheels, labels and world screens aren't cut out of the panel (LE1's HalcyonOverlays does them).
 
 ## Native verification after explicit handoff
 

@@ -83,6 +83,12 @@ Waits for nothing. Runs beside M1 (files: `src/plugin`, `src/halcyon/le2`).
    research/le2-renderer-integration.md "Step 4"); what is left of M2 is listed there ("What is left of M2").
 5. **`gServices` for LE2 from the same list as LE1's** (`plugin/ModLoader.cpp`): one builder, the renderer interface
    behind it, version 39.
+6. **The rest of M2, done 2026-11-15** (lane B, fourth agent; research/le2-renderer-integration.md steps 5 to 9): ME2's
+   crosshair hidden under the hand reticle (the mod's `game/ScreenReticle`), the pad merge with the mod's flags and the L3 + R3
+   priority (`plugin/PadMerge`, both hosts), the HUD pieces (`plugin/HudPieceLayers`, both hosts), the floor lock's path
+   (its correction [verify] in a headset) and `plugin/GameThreadCalls` on ME2. LE1 checked unchanged. Still `older than` on
+   ME2: the squad menu (v11), comfort's test (v17), the interaction label (v21), the power wheel (v28), voice (v31), the
+   modules that haven't come over (listed there, "What is left of M2").
 
 **Check:** the LE2 mod's start says none of `older than services v..`, `no view to aim with`, `host state sizes differ`;
 a snapshot in ME2 shows both eyes and the HUD panel.

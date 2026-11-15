@@ -2132,6 +2132,36 @@ void CheckClasses() {
     CheckClass<ASFXPlayerCamera>("SFXGame.SFXPlayerCamera");          // game/CameraShake: the camera's shake modifiers
     CheckClass<UCameraModifier>("Engine.CameraModifier");
     CheckClass<AWeapon>("Engine.Weapon");  // game/Weapon (M3.3): ME2's guns are SFXWeapon on Engine.Weapon
+    CheckClass<UCylinderComponent>("Engine.CylinderComponent");  // game/Player's floor-lock sample (M2)
+    // game/ScreenReticle (M2): the crosshair's movie hidden while the hand reticle stands in for it
+    CheckClass<UBioSFManager>("Engine.BioSFManager");
+    CheckClass<UBioSFPanel>("Engine.BioSFPanel");
+    CheckClass<UBioSFHandler>("Engine.BioSFHandler");
+    CheckClass<USFXSFHandler_Reticle>("SFXGame.SFXSFHandler_Reticle");
+    // game/OmniTool (M4.3, research/le2-menus.md "ME2's omni-tool"): the tech powers' omni-tool on Shepard's arm, and its
+    // read-only discovery of the effect's brightness parameters (as LE1's rows)
+    CheckClass<UBioVFXTemplate>("SFXGame.BioVFXTemplate");
+    CheckClass<ABioVisualEffect>("SFXGame.BioVisualEffect");
+    CheckClass<AEmitter>("Engine.Emitter");
+    CheckClass<UParticleSystemComponent>("Engine.ParticleSystemComponent");
+    CheckClass<UParticleSystem>("Engine.ParticleSystem");
+    CheckClass<UParticleEmitter>("Engine.ParticleEmitter");
+    CheckClass<UParticleLODLevel>("Engine.ParticleLODLevel");
+    CheckClass<UParticleModuleRequired>("Engine.ParticleModuleRequired");
+    CheckClass<UParticleModuleTypeDataMesh>("Engine.ParticleModuleTypeDataMesh");
+    CheckClass<UParticleModuleMeshMaterial>("Engine.ParticleModuleMeshMaterial");
+    CheckClass<UParticleModuleMaterialByParameter>("Engine.ParticleModuleMaterialByParameter");
+    CheckClass<UDistributionFloatParameterBase>("Engine.DistributionFloatParameterBase");
+    CheckClass<UDistributionVectorParameterBase>("Engine.DistributionVectorParameterBase");
+    CheckClass<UDistributionFloatParticleParameter>("Engine.DistributionFloatParticleParameter");
+    CheckClass<UDistributionVectorParticleParameter>("Engine.DistributionVectorParticleParameter");
+    CheckClass<UDistributionFloatConstant>("Engine.DistributionFloatConstant");
+    CheckClass<UDistributionVectorConstant>("Engine.DistributionVectorConstant");
+    CheckClass<UMeshComponent>("Engine.MeshComponent");
+    CheckClass<UStaticMeshComponent>("Engine.StaticMeshComponent");
+    CheckClass<UStaticMesh>("Engine.StaticMesh");
+    CheckClass<UMaterialInstance>("Engine.MaterialInstance");
+    CheckClass<UMaterialInstanceConstant>("Engine.MaterialInstanceConstant");
     // game/Posture and game/VrCover (research/23 section 7): ME1's cover system on ME2
     CheckClass<ACoverLink>("Engine.CoverLink");
     CheckClass<ASFXGame>("SFXGame.SFXGame");
@@ -2238,6 +2268,55 @@ void CheckFields() {
     CheckField("Engine.Weapon", "Mesh", SDK_FIELD(AWeapon, Mesh));
     CheckField("SFXGame.SFXWeapon", "MuzzleSocketName", SDK_FIELD(ASFXWeapon, MuzzleSocketName));
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
+    // game/Player's floor-lock sample (M2): the floor under the pawn
+    CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));
+    CheckField("Engine.CylinderComponent", "CollisionHeight", SDK_FIELD(UCylinderComponent, CollisionHeight));
+    // game/ScreenReticle (M2): the GUI manager's panels, each panel's handlers and movie, ME2's crosshair handler
+    CheckField("Engine.BioSFManager", "m_lstPanels", SDK_FIELD(UBioSFManager, m_lstPanels));
+    CheckField("Engine.BioSFPanel", "ScriptHandlers", SDK_FIELD(UBioSFPanel, ScriptHandlers));
+    CheckField("Engine.BioSFPanel", "MovieRef", SDK_FIELD(UBioSFPanel, MovieRef));
+    CheckField("Engine.BioSFPanel", "IsVisible", SDK_BOOL(UBioSFPanel, IsVisible));
+    CheckField("Engine.BioSFHandler", "oPanel", SDK_FIELD(UBioSFHandler, oPanel));
+    CheckField("SFXGame.SFXSFHandler_Reticle", "m_eCurrentCrosshair", SDK_FIELD(USFXSFHandler_Reticle, m_eCurrentCrosshair));
+    CheckField("SFXGame.SFXSFHandler_Reticle", "m_bShowSniperDetails", SDK_BOOL(USFXSFHandler_Reticle, m_bShowSniperDetails));
+    // game/OmniTool (M4.3): the effect's emitters onto Shepard's mesh, the display's place, the brightness discovery. ME2's
+    // StaticMesh has no LODInfo property (tools/le2-name-audit.py): that handle stands down there, so no row. No rows either
+    // for ParticleSystemComponent's Template, SMComponents, SMMaterialInterfaces, InstanceParameters (and its members) or
+    // ParticleSystem's Emitters: LExSDKv2's LE2 headers put them 8 bytes early (InstanceParameters' element 48 bytes against
+    // the engine's 64), and our layer's offsets, the engine's own reflection, are the right ones: they read the omni-tool's
+    // particle systems (OmniArm_2sec, OmniHand_2sec) and their emitters' modules in the game (2026-11-14 23:46,
+    // research/le2-menus.md "ME2's omni-tool").
+    CheckField("Engine.Actor", "Base", SDK_FIELD(AActor, Base));
+    CheckField("Engine.Actor", "Owner", SDK_FIELD(AActor, Owner));
+    CheckField("Engine.Actor", "BaseBoneName", SDK_FIELD(AActor, BaseBoneName));
+    CheckField("Engine.Actor", "RelativeLocation", SDK_FIELD(AActor, RelativeLocation));
+    CheckField("Engine.Actor", "RelativeRotation", SDK_FIELD(AActor, RelativeRotation));
+    CheckField("Engine.Emitter", "ParticleSystemComponent", SDK_FIELD(AEmitter, ParticleSystemComponent));
+    CheckField("Engine.ParticleModuleMeshMaterial", "MeshMaterials", SDK_FIELD(UParticleModuleMeshMaterial, MeshMaterials));
+    CheckField("Engine.ParticleModuleMaterialByParameter", "DefaultMaterials", SDK_FIELD(UParticleModuleMaterialByParameter, DefaultMaterials));
+    CheckField("Engine.ParticleEmitter", "LODLevels", SDK_FIELD(UParticleEmitter, LODLevels));
+    CheckField("Engine.ParticleLODLevel", "Modules", SDK_FIELD(UParticleLODLevel, Modules));
+    CheckField("Engine.ParticleLODLevel", "RequiredModule", SDK_FIELD(UParticleLODLevel, RequiredModule));
+    CheckField("Engine.ParticleLODLevel", "SpawnModule", SDK_FIELD(UParticleLODLevel, SpawnModule));
+    CheckField("Engine.ParticleLODLevel", "TypeDataModule", SDK_FIELD(UParticleLODLevel, TypeDataModule));
+    CheckField("Engine.ParticleModuleRequired", "Material", SDK_FIELD(UParticleModuleRequired, Material));
+    CheckField("Engine.ParticleModuleTypeDataMesh", "Mesh", SDK_FIELD(UParticleModuleTypeDataMesh, Mesh));
+    CheckField("Engine.DistributionFloatParameterBase", "ParameterName", SDK_FIELD(UDistributionFloatParameterBase, ParameterName));
+    CheckField("Engine.DistributionVectorParameterBase", "ParameterName", SDK_FIELD(UDistributionVectorParameterBase, ParameterName));
+    CheckField("Engine.DistributionFloatConstant", "Constant", SDK_FIELD(UDistributionFloatConstant, Constant));
+    CheckField("Engine.DistributionVectorConstant", "Constant", SDK_FIELD(UDistributionVectorConstant, Constant));
+    CheckField("Engine.DistributionFloatParameterBase", "ParamMode", SDK_FIELD(UDistributionFloatParameterBase, ParamMode));
+    CheckField("Engine.DistributionVectorParameterBase", "ParamModes", SDK_FIELD(UDistributionVectorParameterBase, ParamModes));
+    CheckField("Engine.MeshComponent", "Materials", SDK_FIELD(UMeshComponent, Materials));
+    CheckField("Engine.StaticMeshComponent", "StaticMesh", SDK_FIELD(UStaticMeshComponent, StaticMesh));
+    CheckField("Engine.MaterialInstance", "Parent", SDK_FIELD(UMaterialInstance, Parent));
+    CheckField("Engine.MaterialInstanceConstant", "ScalarParameterValues", SDK_FIELD(UMaterialInstanceConstant, ScalarParameterValues));
+    CheckField("Engine.MaterialInstanceConstant", "VectorParameterValues", SDK_FIELD(UMaterialInstanceConstant, VectorParameterValues));
+    CheckField("SFXGame.BioVisualEffect", "m_CachedInstanceParameters", SDK_FIELD(ABioVisualEffect, m_CachedInstanceParameters));
+    // game/GameMenuRequest (M4.3): the rail's back-out of ME2's screens, B through GuiKey; the focused panel for its log
+    CheckField("Engine.BioSFManager", "m_FocusPanel", SDK_FIELD(UBioSFManager, m_FocusPanel));
+    CheckField("Engine.BioSFPanel", "nmTag", SDK_FIELD(UBioSFPanel, nmTag));
+    CheckField("Engine.BioSFPanel", "m_DefaultHandler", SDK_FIELD(UBioSFPanel, m_DefaultHandler));
     // game/Posture (research/23 section 7): the physical crouch, the cover state, the sprint
     CheckField("Engine.Pawn", "bIsCrouched", SDK_BOOL(APawn, bIsCrouched));
     CheckField("Engine.Pawn", "bWantsToCrouch", SDK_BOOL(APawn, bWantsToCrouch));
@@ -2261,6 +2340,12 @@ void CheckFields() {
 }
 
 void CheckPaths() {
+    // game/OmniTool (M4.3): the struct members it reads (InstanceParameters' have no rows: CheckFields above says why)
+    CheckElement("SFXGame.BioVisualEffect", "m_CachedInstanceParameters", sizeof(FCachedInstanceParameter));
+    CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "ParameterName"}, SDK_AT(offsetof(FCachedInstanceParameter, ParameterName), 8));
+    CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "fCurrentValue"}, SDK_AT(offsetof(FCachedInstanceParameter, fCurrentValue), 4));
+    CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "OffsetInfo"}, SDK_AT(offsetof(FCachedInstanceParameter, OffsetInfo), 16));
+    CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "bInited"}, SDK_BOOL(FCachedInstanceParameter, bInited));
     CheckPath("Engine.Camera", {"CameraCache", "POV"}, SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV), sizeof(FTPOV)));
     CheckPath("Engine.Camera", {"CameraCache", "POV", "Location"},
         SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, Location), sizeof(FVector)));
@@ -2368,6 +2453,25 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryHolster",          // ... and the holster
         "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel",  // ... and the omni-tool's entries (its pages)
         "SFXGame.MassEffectGuiManager.GetBrowserHandler",
+        "Engine.BioSFPanel.GetVariableFloat",             // game/ScreenReticle (M2): the crosshair movie's alpha
+        "Engine.BioSFPanel.GetVariableBool",
+        "Engine.BioSFPanel.SetVariableFloat",
+        "SFXGame.SFXGameModeBase.GuiKey",                 // ... the rail's back-out of ME2's screens (B, 13)
+        "Engine.BioSFHandler.HandleInputEvent",
+        // game/OmniTool (M4.3): ME2's omni-tool on Shepard's arm
+        "SFXGame.BioVisualEffect.CreateCrustEffect",
+        "SFXGame.BioVisualEffect.SetLifeTime",
+        "SFXGame.BioVisualEffect.SetScalarParameter",
+        "SFXGame.BioVisualEffect.SetState",
+        "Engine.Actor.DetachComponent",
+        "Engine.SkeletalMeshComponent.AttachComponent",
+        "Engine.SkeletalMeshComponent.DetachComponent",
+        "Engine.ParticleSystemComponent.ActivateSystem",
+        "Engine.ParticleSystemComponent.DeactivateSystem",
+        "Engine.ParticleSystemComponent.SetFloatParameter",
+        "Engine.ParticleSystemComponent.SetVectorParameter",
+        "Engine.ParticleSystemComponent.SetColorParameter",
+        "Engine.MaterialInstanceConstant.SetScalarParameterValue",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -2375,6 +2479,22 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/GameMenuRequest (M4.3): the back-out's B
+    PARAM(USFXGameModeBase_execGuiKey_Parms, "SFXGame.SFXGameModeBase.GuiKey", Event);
+    PARAM(UBioSFHandler_eventHandleInputEvent_Parms, "Engine.BioSFHandler.HandleInputEvent", Event);
+    PARAM(UBioSFHandler_eventHandleInputEvent_Parms, "Engine.BioSFHandler.HandleInputEvent", fValue);
+    // game/OmniTool (M4.3): the brightness setters, as LE1's rows
+    PARAM(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter", ParameterName);
+    PARAM(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter", Param);
+    PARMS(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter");
+    PARAM(UParticleSystemComponent_execSetVectorParameter_Parms, "Engine.ParticleSystemComponent.SetVectorParameter", ParameterName);
+    PARAM(UParticleSystemComponent_execSetVectorParameter_Parms, "Engine.ParticleSystemComponent.SetVectorParameter", Param);
+    PARAM(UParticleSystemComponent_execSetColorParameter_Parms, "Engine.ParticleSystemComponent.SetColorParameter", ParameterName);
+    PARAM(UParticleSystemComponent_execSetColorParameter_Parms, "Engine.ParticleSystemComponent.SetColorParameter", Param);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", Value);
+    PARAM(ABioVisualEffect_execSetScalarParameter_Parms, "SFXGame.BioVisualEffect.SetScalarParameter", sParameter);
+    PARAM(ABioVisualEffect_execSetScalarParameter_Parms, "SFXGame.BioVisualEffect.SetScalarParameter", fValue);
     PARAM(ASFXWeapon_execGetWeaponRecoil_Parms, "SFXGame.SFXWeapon.GetWeaponRecoil", ReturnValue);
     PARMS(ASFXWeapon_execGetWeaponRecoil_Parms, "SFXGame.SFXWeapon.GetWeaponRecoil");
     PARAM(ASFXWeapon_execGetMuzzleLoc_Parms, "SFXGame.SFXWeapon.GetMuzzleLoc", ReturnValue);
@@ -2464,6 +2584,13 @@ void CheckParams() {
     // game/GameMenuRequest (M4.3): ME2's pause menu pages
     PARAM(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms, "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", nPanel);
     PARAM(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms, "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", oManager);
+    // game/ScreenReticle (M2)
+    PARAM(UBioSFPanel_execGetVariableFloat_Parms, "Engine.BioSFPanel.GetVariableFloat", sPath);
+    PARAM(UBioSFPanel_execGetVariableFloat_Parms, "Engine.BioSFPanel.GetVariableFloat", ReturnValue);
+    PARAM(UBioSFPanel_execGetVariableBool_Parms, "Engine.BioSFPanel.GetVariableBool", sPath);
+    PARAM(UBioSFPanel_execGetVariableBool_Parms, "Engine.BioSFPanel.GetVariableBool", ReturnValue);
+    PARAM(UBioSFPanel_execSetVariableFloat_Parms, "Engine.BioSFPanel.SetVariableFloat", sPath);
+    PARAM(UBioSFPanel_execSetVariableFloat_Parms, "Engine.BioSFPanel.SetVariableFloat", fVar);
 }
 
 // game/Traversal (research/le2-traversal.md): the cover list and its slots that vault or climb, the game's own admission

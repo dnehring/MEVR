@@ -16,7 +16,10 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "core/vr/Sights.hpp"
+#include "plugin/FloorLock.hpp"
+#include "plugin/PadMerge.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
@@ -178,6 +181,8 @@ HostServices WithRenderer(HostServices services) {
     services.hapticContinuous = &HostHapticContinuous;
     services.floorStateSize = static_cast<std::uint32_t>(sizeof(vr::floor::State));
     services.floor = &HostFloor;
+    // The game's crosshair hidden while the hand reticle stands in for it (game/ScreenReticle; both renderers' layers ask).
+    services.hideScreenReticle = &mevr::host::renderer::ScreenReticleHidden;
     return services;
 }
 // v17: the comfort vignette's darkness (plugin/Vignette, a quad of ours on either renderer).
@@ -204,9 +209,52 @@ HostServices WithSights(HostServices services) {
     services.sightView = &HostSightView;
     return services;
 }
+// The pad mapping with the mod's flags (plugin/PadMerge, both hosts): v7 the support grip and the flags it carries (the
+// holsters', the squad's, comfort's ...), v9 the right grip's report, v11 the left grip's.
+void HostSetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) {
+    pad_merge::SetSupportGrip(distanceMeters, acquireMeters, releaseMeters, flags);
+}
+bool HostSupportGripHeld() {
+    return pad_merge::SupportGripHeld();
+}
+std::uint32_t HostRightGripFree() {
+    return pad_merge::RightGripFree();
+}
+std::uint32_t HostLeftGripAway() {
+    return pad_merge::LeftGripAway();
+}
+// v22: HUD pieces on the body (game/HudPieces; plugin/HudPieceLayers on both hosts, research/41).
+void HostSetHudPieces(vr::hud_pieces::Pieces const* pieces) {
+    if (pieces != nullptr) {
+        vr::hud_pieces::Publish(*pieces);
+    } else {
+        vr::hud_pieces::Reset();
+    }
+}
+HostServices WithHudPieces(HostServices services) {
+    services.hudPiecesSize = static_cast<std::uint32_t>(sizeof(vr::hud_pieces::Pieces));
+    services.setHudPieces = &HostSetHudPieces;
+    return services;
+}
+// v36: the pawn's floor for the floor lock (game/Player's sample; plugin/FloorLock on both hosts, research/58).
+HostServices WithFloorLock(HostServices services) {
+    services.floorLockSampleSize = static_cast<std::uint32_t>(sizeof(vr::floor_lock::PawnSample));
+    services.setFloorLockSample = &floor_lock::SetPawn;
+    return services;
+}
+HostServices WithPadMerge(HostServices services) {
+    services.setSupportGrip = &HostSetSupportGrip;
+    services.supportGripHeld = &HostSupportGripHeld;
+    services.rightGripFree = &HostRightGripFree;
+    services.leftGripAway = &HostLeftGripAway;
+    return services;
+}
 // Forgetting what the mod set in the renderer's services: hand aim off (the renderer's own aim back), no aim ray, no
-// vibration, the vignette faded out.
+// vibration, the vignette faded out, the pad mapping without the mod's flags (no two-handed grip, no grip kept).
 void ForgetRendererModState() {
+    pad_merge::ForgetSupportGrip();
+    floor_lock::SetPawn(nullptr);
+    vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
     renderer::SetModHandAim(false);
     vr::aim_ray::Reset();
     vr::sights::Reset();
@@ -228,20 +276,8 @@ HostServices WithTraversal(HostServices services) {
 #endif
 
 #if defined(MEVR_WITH_HALCYON)
-void HostSetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) {
-    halcyon::SetSupportGrip(distanceMeters, acquireMeters, releaseMeters, flags);
-}
-bool HostSupportGripHeld() {
-    return halcyon::SupportGripHeld();
-}
-std::uint32_t HostRightGripFree() {
-    return halcyon::RightGripFree();
-}
 void HostSetSquadMenu(vr::squad_menu::View const* view) {
     vr::squad_menu::Publish(view != nullptr ? *view : vr::squad_menu::View{});
-}
-std::uint32_t HostLeftGripAway() {
-    return halcyon::LeftGripAway();
 }
 void HostSetWheelPanel(vr::squad_menu::wheel::Panel const* panel) {
     if (panel != nullptr) {
@@ -295,19 +331,6 @@ void HostSetInteractLabel(vr::interact::Label const* label) {
 HostServices WithInteractLabel(HostServices services) {
     services.interactLabelSize = static_cast<std::uint32_t>(sizeof(vr::interact::Label));
     services.setInteractLabel = &HostSetInteractLabel;
-    return services;
-}
-// v22: HUD pieces on the body (game/HudPieces, plugin/HalcyonOverlays, research/41).
-void HostSetHudPieces(vr::hud_pieces::Pieces const* pieces) {
-    if (pieces != nullptr) {
-        vr::hud_pieces::Publish(*pieces);
-    } else {
-        vr::hud_pieces::Reset();
-    }
-}
-HostServices WithHudPieces(HostServices services) {
-    services.hudPiecesSize = static_cast<std::uint32_t>(sizeof(vr::hud_pieces::Pieces));
-    services.setHudPieces = &HostSetHudPieces;
     return services;
 }
 // v23: physical Mako controls (game/MakoControls, plugin/HalcyonOverlays, research/46).
@@ -382,7 +405,6 @@ HostServices WithWorldUi(HostServices services) {
     services.takeGameUiRequest = &HostTakeGameUiRequest;
     services.reserveWorldUi = &world_ui::Reserve;
     services.logWorldUiStats = &world_ui::LogStats;
-    services.hideScreenReticle = &mevr::host::renderer::ScreenReticleHidden;
     return services;
 }
 HostServices WithGalaxyMap(HostServices services) {
@@ -459,8 +481,6 @@ HostServices WithPowerWheel(HostServices services) {
     services.setSquadPlace = &HostSetSquadPlace;
     services.conversationWorldSize = static_cast<std::uint32_t>(sizeof(vr::conversation_world::State));  // v33 (research/59)
     services.setConversationWorld = &HostSetConversationWorld;
-    services.floorLockSampleSize = static_cast<std::uint32_t>(sizeof(vr::floor_lock::PawnSample));
-    services.setFloorLockSample = &floor_lock::SetPawn;
     services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
 #if defined(MEVR_WITH_MAIN_MENU)
     services.thespianPanelSize = static_cast<std::uint32_t>(sizeof(vr::thespian::Panel));  // v39: Thespian mode's panel (research/70)
@@ -468,15 +488,11 @@ HostServices WithPowerWheel(HostServices services) {
 #endif
     return services;
 }
-// LE1's host modules' own services (the pad mapping's grips, the squad menu, the sights, the calibration, our main
-// menu): LE1's host only until the modules come over to LE2 (M3, M4).
+// LE1's host modules' own services (the squad menu and the wheel panel, the calibration, our main menu): LE1's host only
+// until the modules come over to LE2 (M3, M4).
 HostServices WithLe1Modules(HostServices services) {
-    services.setSupportGrip = &HostSetSupportGrip;
-    services.supportGripHeld = &HostSupportGripHeld;
-    services.rightGripFree = &HostRightGripFree;
     services.squadMenuSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::View));
     services.setSquadMenu = &HostSetSquadMenu;
-    services.leftGripAway = &HostLeftGripAway;
     services.wheelPanelSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel));
     services.setWheelPanel = &HostSetWheelPanel;
     services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
@@ -489,16 +505,13 @@ HostServices WithLe1Modules(HostServices services) {
 // game's screens go back to the renderer's own (ForgetRendererModState: Halcyon's head aim back, no reticle, no vibration).
 void ForgetLe1ModState() {
     vr::camera_diagnostic::gCameraDiagnostic.Reset();
-    floor_lock::SetPawn(nullptr);
     vr::squad_menu::Reset();
     vr::squad_menu::wheel::ResetPanel();
     vr::scope_capture::Reset();  // the scope's picture goes back to the eye copy
     vr::interact::Reset();  // no prompt at the object without the mod
-    vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
     vr::mako_controls::Reset();  // no lever or stick without the mod
     vr::spectator::Reset();      // the desktop window gets Halcyon's mirror back
     world_ui::Forget();         // the game's screens and pending ownership go back to Halcyon's panel
-    halcyon::ForgetSupportGrip();
 }
 #endif
 
@@ -529,14 +542,14 @@ HostServices WithMenus(HostServices services) {
 HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
-    services = WithSights(WithVignette(WithRenderer(services)));  // the host modules both renderers have
+    services = WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));  // both renderers' modules
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     services = WithTraversal(services);
 #endif
 #if defined(MEVR_WITH_HALCYON)
     services = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
-        WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services))))))))))));
+        WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services)))))))))));
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
     services = WithMenus(services);  // our main menu and the calibration on LE2 (M4)

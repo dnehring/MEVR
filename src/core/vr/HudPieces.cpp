@@ -29,6 +29,18 @@ constexpr float kGunLeft = 56.0f;
 constexpr float kGunRight = 224.0f;
 constexpr float kGunAboveBottom = 145.0f;
 constexpr float kGunBelowTop = 10.0f;
+// ME2's HUD (research/le2-renderer-integration.md "Step 7: HUD pieces on ME2"; its 1280x720 stage across a 16:9 frame,
+// measured on two HUD panel snapshots 1365x768, Freedom's Progress, alpha > 40): the squad's block at the bottom middle
+// (the squadmates' portraits x 605..677, the bottom 52..8; the player's and their bars round them when hurt [verify]) and
+// the weapon panel at the bottom left (x 17..173, the bottom 98..11).
+constexpr float kMe2WristLeft = 540.0f;
+constexpr float kMe2WristRight = 740.0f;
+constexpr float kMe2WristAboveBottom = 110.0f;
+constexpr float kMe2WristBelowTop = 2.0f;
+constexpr float kMe2GunLeft = 8.0f;
+constexpr float kMe2GunRight = 184.0f;
+constexpr float kMe2GunAboveBottom = 108.0f;
+constexpr float kMe2GunBelowTop = 3.0f;
 // The Mako's radar, bottom right (measured 2026-11-03 on a 1172x1196 frame: x 1089..1214, the bottom 163..37 at alpha > 40).
 constexpr float kRadarLeft = 1080.0f;
 constexpr float kRadarRight = 1222.0f;
@@ -194,11 +206,17 @@ std::string Describe(Settings const& s) {
     return line;
 }
 
-Rect DefaultWristCrop(std::uint32_t width, std::uint32_t height) {
+Rect DefaultWristCrop(std::uint32_t width, std::uint32_t height, Layout layout) {
+    if (layout == Layout::Me2) {
+        return BottomBand(width, height, kMe2WristLeft, kMe2WristRight, kMe2WristAboveBottom, kMe2WristBelowTop);
+    }
     return BottomBand(width, height, kWristLeft, kWristRight, kWristAboveBottom, kWristBelowTop);
 }
 
-Rect DefaultGunCrop(std::uint32_t width, std::uint32_t height) {
+Rect DefaultGunCrop(std::uint32_t width, std::uint32_t height, Layout layout) {
+    if (layout == Layout::Me2) {
+        return BottomBand(width, height, kMe2GunLeft, kMe2GunRight, kMe2GunAboveBottom, kMe2GunBelowTop);
+    }
     return BottomBand(width, height, kGunLeft, kGunRight, kGunAboveBottom, kGunBelowTop);
 }
 
@@ -206,12 +224,12 @@ Rect DefaultRadarCrop(std::uint32_t width, std::uint32_t height) {
     return BottomBand(width, height, kRadarLeft, kRadarRight, kRadarAboveBottom, kRadarBelowTop);
 }
 
-Rect WristCrop(Settings const& settings, std::uint32_t width, std::uint32_t height) {
-    return settings.wristCrop.Valid() ? settings.wristCrop : DefaultWristCrop(width, height);
+Rect WristCrop(Settings const& settings, std::uint32_t width, std::uint32_t height, Layout layout) {
+    return settings.wristCrop.Valid() ? settings.wristCrop : DefaultWristCrop(width, height, layout);
 }
 
-Rect GunCrop(Settings const& settings, std::uint32_t width, std::uint32_t height) {
-    return settings.gunCrop.Valid() ? settings.gunCrop : DefaultGunCrop(width, height);
+Rect GunCrop(Settings const& settings, std::uint32_t width, std::uint32_t height, Layout layout) {
+    return settings.gunCrop.Valid() ? settings.gunCrop : DefaultGunCrop(width, height, layout);
 }
 
 bool Place(XrVector3f const& position, XrVector3f const& head, float widthM, float aspect, Quad& out, XrVector3f const& up) {

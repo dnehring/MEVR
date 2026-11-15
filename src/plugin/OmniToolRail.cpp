@@ -15,10 +15,9 @@
 #include "core/vr/OmniRail.hpp"
 #include "core/vr/OmniPower.hpp"
 #include "core/vr/OverlayPlacement.hpp"
-#include "halcyon/le1/mevr_bridge.h"
+#include "plugin/XrHost.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/RailArt.hpp"
-#include "plugin/Halcyon.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Swapchains.hpp"
 
@@ -481,7 +480,7 @@ void StepTarget(Frame const& frame, bool handsTracked, XrVector3f const& tip, Xr
         ? rail::TargetLookFor(allowed, frame.eyes, target, handsTracked, tip, g.tap.Armed(), rail::TapSettings{}.releaseM)
         : rail::TargetLook::Hidden;
     if (look == rail::TargetLook::Armed && g.targetLook != rail::TargetLook::Armed) {
-        halcyon::RequestHaptic(1, 0.012f, 0.2f, 0.0f);  // in tap range: a light tick in the right hand
+        xr_host::RequestHaptic(1, 0.012f, 0.2f, 0.0f);  // in tap range: a light tick in the right hand
     }
     g.targetLook = look;
     // The reach: begins with the fingertip within kTargetNearM, ends 5 cm past it or with the tap.
@@ -598,10 +597,10 @@ void PointerStep(rail::Rail const& at, float dt, std::optional<XrVector3f> const
     if (out.pressEdge) {
         if (out.pressed) {
             context->ProcessMouseButtonDown(0, 0);
-            halcyon::RequestHaptic(out.hand, 0.02f, 0.45f, 0.0f);
+            xr_host::RequestHaptic(out.hand, 0.02f, 0.45f, 0.0f);
         } else {
             context->ProcessMouseButtonUp(0, 0);
-            halcyon::RequestHaptic(out.hand, 0.012f, 0.25f, 0.0f);
+            xr_host::RequestHaptic(out.hand, 0.012f, 0.25f, 0.0f);
         }
         g.needRender = true;
     }
@@ -640,7 +639,7 @@ void PointerStep(rail::Rail const& at, float dt, std::optional<XrVector3f> const
     // Through the surface the hand can't be stopped, so it's felt: a faint buzz while the fingertip is behind it.
     g.behindBuzzS = std::max(0.0f, g.behindBuzzS - dt);
     if (out.touch && out.touchDistance < 0.0f && g.behindBuzzS <= 0.0f) {
-        halcyon::RequestHaptic(out.hand, 0.01f, 0.15f, 0.0f);
+        xr_host::RequestHaptic(out.hand, 0.01f, 0.15f, 0.0f);
         g.behindBuzzS = 0.08f;
     }
     gOwnsTriggers.store(out.hit, std::memory_order_relaxed);
@@ -669,8 +668,9 @@ void Hide(char const* why) {
     Publish(false, "none");
 }
 
-// An entry the document reported: the request to the mod (the main menu's slot, run on the game thread).
-void HandlePick(std::optional<wu::Screen> screen) {
+// An entry the document reported: the request to the mod (the main menu's slot, run on the game thread). `otherScreen`: a game
+// screen is up that isn't `screen` (Frame::gameScreenUp).
+void HandlePick(std::optional<wu::Screen> screen, bool otherScreen) {
     if (g.picked.empty()) {
         return;
     }
@@ -685,11 +685,11 @@ void HandlePick(std::optional<wu::Screen> screen) {
     rail::EntryInfo const& info = rail::Info(*entry);
     if (*entry == rail::Entry::Close) {
         gOpen.store(false, std::memory_order_relaxed);
-        if (screen || g.switchingTo) {
+        if (screen || g.switchingTo || otherScreen) {
             main_menu::PutGameRequest(gm::Action::CloseScreens, gm::Origin::OmniRail);
         }
         g.last = "close";
-        log::Info("omni-tool rail: Close{}", screen ? ": the game's screens close" : "");
+        log::Info("omni-tool rail: Close{}", screen || otherScreen ? ": the game's screens close" : "");
         return;
     }
     if (screen && rail::ForScreen(*screen) == entry) {
@@ -830,14 +830,14 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     StepTarget(frame, handsTracked, tip, target, tapAllowed && g.settings.tap, refused, tapped, dt);
     if (tapped) {
         ++g.taps;
-        halcyon::RequestHaptic(0, 0.03f, 0.5f, 0.0f);
-        halcyon::RequestHaptic(1, 0.03f, 0.5f, 0.0f);
+        xr_host::RequestHaptic(0, 0.03f, 0.5f, 0.0f);
+        xr_host::RequestHaptic(1, 0.03f, 0.5f, 0.0f);
         if (visibleBefore) {
             gOpen.store(false, std::memory_order_relaxed);
-            if (screen || g.switchingTo) {
+            if (screen || g.switchingTo || frame.gameScreenUp) {
                 main_menu::PutGameRequest(gm::Action::CloseScreens, gm::Origin::OmniRail);
             }
-            log::Info("omni-tool rail: the wrist tapped: closed{}", screen ? " with the game's screen" : "");
+            log::Info("omni-tool rail: the wrist tapped: closed{}", screen || frame.gameScreenUp ? " with the game's screen" : "");
         } else {
             gOpen.store(true, std::memory_order_relaxed);
             log::Info("omni-tool rail: the wrist tapped: open");
@@ -904,7 +904,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.needRender = true;
     }
     PointerStep(*at, dt, frame.body ? rail::BodyFingertip(*frame.body) : std::nullopt);
-    HandlePick(screen);
+    HandlePick(screen, !screen && frame.gameScreenUp);
     std::uint64_t const onMs = wu::LatestOmniOnMs(400);
     float const light = vr::omni_power::Luminance(vr::omni_power::Age(onMs != 0 ? onMs : g.shownMs, GetTickCount64()));
     // Crop/pose reveal the slide without touching RmlUi. Quantize only the standalone light/fade.

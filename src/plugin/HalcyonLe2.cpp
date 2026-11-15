@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: MIT
 #include "plugin/HalcyonLe2.hpp"
 
-#include "core/CallQueue.hpp"
-#include "core/FixedText.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/Window.hpp"
-#include "engine/Addresses.hpp"
 #include "engine/SettingsFile.hpp"
 #include "halcyon/le2/d3d_capture.h"
 #include "halcyon/le2/dxgi_proxy.h"
 #include "halcyon/le2/logger.h"
 #include "halcyon/le2/mevr_bridge.h"
 #include "plugin/CrashBreadcrumbs.hpp"
+#include "plugin/FloorLock.hpp"
+#include "plugin/GameThreadCalls.hpp"
 #include "plugin/TestLoop.hpp"
 
 #include <MinHook.h>
@@ -59,76 +58,6 @@ bool NamesSteamVr(std::wstring path) {
     return path.find(L"steamvr") != std::wstring::npos || path.find(L"steamxr") != std::wstring::npos;
 }
 
-// ---- ProcessEvent off the game thread, kept for it (research/36) -------------------------------------------------
-
-constexpr std::size_t kCapacity = 64;
-call_queue::Queue<kCapacity> gQueue;
-
-// LE2's UObject: the GObjects index at +0x08 and the class at +0x50 (LExSDKv2's LE2 Core_classes.hpp, the same as LE1's,
-// research/34 section 2) [verify against LE2's code when its reflection layout is read, docs/le2-from-le1.md 3.2].
-constexpr std::size_t kObjectIndex = 0x08;
-constexpr std::size_t kObjectClass = 0x50;
-
-struct ObjectArray {
-    void** data;
-    std::int32_t count;
-    std::int32_t max;
-};
-
-std::uintptr_t ModuleBase() {
-    return reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-}
-
-// In GObjects at its own index: an object the engine destroyed leaves the array (its slot cleared or reused).
-bool Listed(void const* object) {
-    auto const* const objects = reinterpret_cast<ObjectArray const*>(ModuleBase() + engine::addresses::kGObjects);
-    std::int32_t const index = *reinterpret_cast<std::int32_t const*>(static_cast<std::uint8_t const*>(object) + kObjectIndex);
-    return index >= 0 && index < objects->count && objects->data != nullptr && objects->data[index] == object;
-}
-
-void const* ClassOf(void const* object) {
-    return *reinterpret_cast<void const* const*>(static_cast<std::uint8_t const*>(object) + kObjectClass);
-}
-
-bool Describe(void* object, void const*& objectClass) {
-    __try {
-        if (!Listed(object)) {
-            return false;
-        }
-        objectClass = ClassOf(object);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-bool StillAlive(call_queue::Call const& c) {
-    __try {
-        return Listed(c.object) && Listed(c.function) && ClassOf(c.object) == c.objectClass;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-using ProcessEventFn = void(__fastcall*)(void*, void*, void*, void*);
-
-// UObject::ProcessEvent at the address Halcyon's code calls (our host's hook sits on it, so every handler sees the call).
-bool Run(call_queue::Call& c) {
-    __try {
-        reinterpret_cast<ProcessEventFn>(ModuleBase() + engine::addresses::kProcessEvent)(c.object, c.function,
-            c.size > 0 ? c.parms : nullptr, nullptr);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-std::uint64_t gRun = 0;
-std::uint64_t gSkipped = 0;
-std::uint64_t gFailed = 0;
-bool gToldFirst = false;
-ULONGLONG gNextStatsMs = 0;
-
 } // namespace
 
 void Attach() {
@@ -160,61 +89,28 @@ void Attach() {
     log::Info("halcyon le2: renderer attached (its log: MELE2VR_Log.txt; its settings: MELE2VR.ini next to MassEffect2.exe)");
 }
 
-void Tick() {
-    if (gQueue.Pushed() == 0) {
-        return;
-    }
-    static call_queue::Call calls[kCapacity];
-    std::size_t const n = gQueue.TakeAll(calls);
-    for (std::size_t i = 0; i < n; ++i) {
-        call_queue::Call& c = calls[i];
-        if (!gToldFirst) {
-            gToldFirst = true;
-            char buffer[512];
-            text::Appender name(buffer, sizeof(buffer));
-            crash::AppendObject(name, c.function);
-            log::Info("halcyon le2: a ProcessEvent from another thread ({}) was queued and runs at the next engine tick "
-                      "(script must run on the game thread only; research/36)", name.View());
-        }
-        if (!StillAlive(c)) {
-            ++gSkipped;
-            continue;
-        }
-        if (Run(c)) {
-            ++gRun;
-        } else {
-            ++gFailed;
-        }
-    }
-    ULONGLONG const now = GetTickCount64();
-    if (now >= gNextStatsMs) {
-        gNextStatsMs = now + 60000;
-        log::Info("halcyon le2: game thread calls: {} queued from other threads, {} run, {} skipped (object gone), {} faulted, "
-                  "{} dropped (queue full), {} refused (parameters too big)",
-            gQueue.Pushed(), gRun, gSkipped, gFailed, gQueue.Dropped(), gQueue.Refused());
-    }
-}
-
 void AfterTick(float deltaSeconds) {
     testloop::Tick(deltaSeconds);  // snapshot / recording keys and request files, as LE1's halcyon::Tick
+    // [Body] floorLock, once a second (as LE1's halcyon::RefreshCameraSettings).
+    static ULONGLONG nextReadMs = 0;
+    if (ULONGLONG const now = GetTickCount64(); now >= nextReadMs) {
+        nextReadMs = now + 1000;
+        floor_lock::RefreshSettings();
+    }
 }
 
 } // namespace mevr::host::halcyon_le2
 
 namespace ME2VR::MevrBridge {
 
+// ProcessEvent on the game thread only (research/36): ME2's renderer's Present-thread calls go to plugin/GameThreadCalls, the
+// queue LE1's host runs, drained at the start of the next engine tick (plugin/Entry).
 bool OnGameThread() noexcept {
-    std::uint32_t const game = mevr::host::crash::gGameThread.load(std::memory_order_relaxed);
-    return game != 0 && mevr::breadcrumbs::ThreadId() == game;
+    return mevr::host::game_thread::OnGameThread();
 }
 
 bool QueueProcessEvent(void* object, void* function, void const* params, std::uint32_t size) noexcept {
-    namespace h = mevr::host::halcyon_le2;
-    void const* cls = nullptr;
-    if (object == nullptr || function == nullptr || !h::Describe(object, cls)) {
-        return false;
-    }
-    return h::gQueue.Push(object, function, cls, params, size);
+    return mevr::host::game_thread::Queue(object, function, params, size);
 }
 
 bool XrRuntimeIsSteamVr() noexcept {

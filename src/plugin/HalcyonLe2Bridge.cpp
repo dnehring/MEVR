@@ -7,16 +7,21 @@
 
 #include "halcyon/le2/mevr_bridge.h"
 
+#include "core/Breadcrumbs.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/GamepadMapping.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/EyeCopy.hpp"
+#include "plugin/FloorLock.hpp"
 #include "plugin/HandReticle.hpp"
 #include "plugin/HudPanel.hpp"
+#include "plugin/HudPieceLayers.hpp"
 #include "plugin/MenusLe2.hpp"
+#include "plugin/PadMerge.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
@@ -40,9 +45,11 @@ namespace {
 
 bool gToldFirstSync = false;  // Present thread
 bool gLoggedView = false;     // Present thread
+// The floor lock's last pass (FloorViewTranslation, game thread): the view is published there while it runs.
+std::atomic<std::uint64_t> gFloorTranslatedMs{0};
+constexpr std::uint64_t kFloorTranslateQuietMs = 100;
 
-std::mutex gPadMutex;  // the latches and packet numbering below (XInput is polled from any thread)
-mevr::game::gamepad::Latches gLatches;
+std::mutex gPadMutex;  // the packet numbering below (XInput is polled from any thread; the latches are plugin/PadMerge's)
 XINPUT_GAMEPAD gLastPad{};
 DWORD gPacket = 0;
 
@@ -90,6 +97,7 @@ void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImag
 void OnSessionCreated(void* instance, void* session) noexcept {
     mevr::host::testloop::OnSessionCreated(static_cast<XrSession>(session));
     mevr::host::swapchains::OnSessionCreated(static_cast<XrSession>(session));  // ours went with the old session
+    mevr::host::hud_piece_layers::ForgetSession();
     mevr::host::eye_copy::Reset();
     if (mevr::host::xr_host::OnSessionCreated(static_cast<XrInstance>(instance), static_cast<XrSession>(session))) {
         mevr::log::Info("halcyon le2 bridge: our controller actions are attached to Halcyon's session");
@@ -140,7 +148,6 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
 void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int lookPitchUU, float const headQ[4],
     float const headP[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU, float unitsPerMeter,
     bool floorWorld) noexcept {
-    (void)floorWorld;  // the floor lock (plugin/FloorLock) isn't in the LE2 host yet: the view goes out uncorrected
     mevr::vr::host_view::State view;
     view.valid = worldView;
     view.headLook = headLook;
@@ -155,7 +162,16 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int
     view.offsetRight = offsetRightUU;
     view.offsetUp = offsetUpUU;
     view.unitsPerMeter = unitsPerMeter;
-    mevr::vr::host_view::Publish(view);
+    // The floor lock (plugin/FloorLock, as LE1's): the view goes out from the game thread's ApplyHeadPosition with the
+    // pair it rendered (FloorViewTranslation). Where that didn't run lately (ME2's lean off, a VR cine's tracking lock) the
+    // view goes out from here, uncorrected, so the mod keeps its view.
+    mevr::vr::floor::State floor;
+    mevr::host::xr_host::Floor(&floor);
+    mevr::host::floor_lock::Queue(view, floor, floorWorld);
+    std::uint64_t const now = GetTickCount64();
+    if (now - gFloorTranslatedMs.load(std::memory_order_relaxed) > kFloorTranslateQuietMs) {
+        mevr::vr::host_view::Publish(view, now);
+    }
     if (worldView && !gLoggedView) {
         gLoggedView = true;
         mevr::log::Info("halcyon le2 bridge: first world view: head look yaw {} pitch {} (head aim {}), view offset "
@@ -163,6 +179,18 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int
             view.lookYaw, view.lookPitch, headAim ? "on" : "off", offsetForwardUU, offsetRightUU, offsetUpUU, unitsPerMeter,
             headP[0], headP[1], headP[2]);
     }
+}
+
+float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ, float* right, float* up,
+    float* forward) noexcept {
+    gFloorTranslatedMs.store(GetTickCount64(), std::memory_order_relaxed);
+    return mevr::host::floor_lock::Translate(replay, rawCameraZ, rightZ, upZ, forwardZ, right, up, forward);
+}
+
+void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexcept {
+    mevr::host::crash::RecordWrite("FloorLock.viewOrigin", origin, 12, mevr::breadcrumbs::FirstBytes(origin, 12));
+    mevr::host::crash::RecordWrite("FloorLock.preViewTranslation", preTranslation, 12,
+        mevr::breadcrumbs::FirstBytes(preTranslation, 12));
 }
 
 void OnRecentered() noexcept {
@@ -173,7 +201,7 @@ void OnRecentered() noexcept {
 }
 
 void OnSessionStopped() noexcept {
-    mevr::vr::host_view::Reset();
+    mevr::host::floor_lock::Reset();  // the queued and published views (host_view::Reset)
     mevr::host::hud_panel::SetArmed(false);  // no OverlayLayers runs now to disarm it: the UI back to the frame
     mevr::host::eye_copy::Reset();
     mevr::log::Info("halcyon le2 bridge: the session stopped");
@@ -348,6 +376,10 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     unsigned count = 0;
     ID3D11Device* device = nullptr;
     frame.context->GetDevice(&device);
+    static int lastGameMode = -1;  // Present thread: the last readable game mode
+    if (frame.gameMode >= 0) {
+        lastGameMode = frame.gameMode;
+    }
     // The comfort vignette (research/31): head-locked, under all of ours.
     {
         mevr::host::vignette::Frame vignette;
@@ -394,8 +426,44 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         panel.widthM = cfg.hudPanelWidthM;
         // The HUD keeps the movie's own layout on the panel (Halcyon's per-element HUD moves stand down), as LE1's.
         mevr::host::renderer::SetAuthoredHudLayout(panel.enabled && panel.stereo && mevr::host::hud_panel::Usable());
-        if (XrCompositionLayerQuad const* layer = mevr::host::hud_panel::Layer(panel); layer != nullptr && count < capacity) {
-            layersOut[count++] = layer;
+        // The HUD pieces on the body (plugin/HudPieceLayers, LE1's, research/41): on foot, the squad's block on the left
+        // wrist and the weapon panel on the gun where the mod says (game/HudPieces), cut out of the panel meanwhile.
+        namespace hpl = mevr::host::hud_piece_layers;
+        hpl::Frame pieceFrame;
+        pieceFrame.gameplayOnFoot = lastGameMode == 0;
+        pieceFrame.worldFrame = panel.worldFrame;
+        pieceFrame.headValid = frame.headValid;
+        pieceFrame.panelReady = panel.enabled && panel.stereo && mevr::host::hud_panel::Ready() && device != nullptr;
+        pieceFrame.panelWidth = mevr::host::hud_panel::Width();
+        pieceFrame.panelHeight = mevr::host::hud_panel::Height();
+        pieceFrame.layout = mevr::vr::hud_pieces::Layout::Me2;  // ME2's own HUD: its bands (core/vr/HudPieces)
+        // The pieces are blitted from this frame's UI after the panel is drawn and before it's cleared (hud_panel's
+        // beforeClear), and go on top of the panel's quad, as LE1's.
+        struct PiecesPass {
+            hpl::Common common;
+            hpl::Plan plan;
+            void const* layers[2] = {};
+            unsigned count = 0;
+        } pass;
+        pass.common.session = static_cast<XrSession>(frame.session);
+        pass.common.appSpace = static_cast<XrSpace>(frame.appSpace);
+        pass.common.context = frame.context;
+        pass.common.device = device;
+        pass.common.head = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
+        pass.common.nowMs = GetTickCount64();
+        pass.common.options.colourSeed = 3;  // a quad of ours, not the panel (LE1's overlays' options for a piece)
+        pass.plan = hpl::Decide(pieceFrame, pass.common.nowMs, panel.masks);
+        panel.user = &pass;
+        panel.beforeClear = [](void* user, bool shown) {
+            auto& p = *static_cast<PiecesPass*>(user);
+            p.count = hpl::Layers(p.common, p.plan, shown, p.layers, 0, 2);
+        };
+        XrCompositionLayerQuad const* const panelLayer = mevr::host::hud_panel::Layer(panel);
+        if (panelLayer != nullptr && count < capacity) {
+            layersOut[count++] = panelLayer;
+        }
+        for (unsigned i = 0; i < pass.count && count < capacity; ++i) {
+            layersOut[count++] = pass.layers[i];
         }
     }
     // The gun's sights (plugin/SightLayers, LE1's): worked out before the ring, which hides while an eye looks through the
@@ -435,10 +503,6 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     // aims with the right controller, on foot (game mode 0; the last readable one).
     {
         mevr::host::renderer::HudSettings const cfg = mevr::host::renderer::Hud();
-        static int lastGameMode = -1;  // Present thread
-        if (frame.gameMode >= 0) {
-            lastGameMode = frame.gameMode;
-        }
         mevr::host::hand_reticle::Frame reticle;
         reticle.session = static_cast<XrSession>(frame.session);
         reticle.appSpace = static_cast<XrSpace>(frame.appSpace);
@@ -454,7 +518,12 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         reticle.enabled = cfg.handReticle;
         reticle.distanceM = cfg.handReticleDistanceM;
         reticle.sizeDeg = cfg.handReticleSizeDeg;
-        if (XrCompositionLayerQuad const* ring = mevr::host::hand_reticle::Layer(reticle); ring != nullptr && count < capacity) {
+        XrCompositionLayerQuad const* const ring = mevr::host::hand_reticle::Layer(reticle);
+        // The game's own crosshair is hidden throughout VR gameplay while the hand reticle is on (LE1's HalcyonOverlays:
+        // independent of a weapon, the aim ray or tracking): the mod's game/ScreenReticle hides ME2's crosshair movie on
+        // the game thread while this request stands (500 ms; the native sniper view is the game's).
+        mevr::host::renderer::SetScreenReticleHidden(cfg.handReticle && lastGameMode >= 0 && lastGameMode <= 4);
+        if (ring != nullptr && count < capacity) {
             layersOut[count++] = ring;
         }
     }
@@ -594,14 +663,25 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     }
     mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
     bool const menus = mevr::host::menus_le2::PadWanted();  // our menu or the calibration has the pad (M4)
+    if (!controllers.active) {
+        mevr::host::pad_merge::NoControllers();
+    }
     if (!controllers.active && !menus) {
         return result;
     }
     bool const realPad = result == ERROR_SUCCESS;
     std::lock_guard lock(gPadMutex);
-    XINPUT_GAMEPAD pad = !controllers.active ? (realPad ? state->Gamepad : XINPUT_GAMEPAD{})
-                                             : mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
-                                                   mevr::game::gamepad::FromControllers(controllers, gLatches));
+    XINPUT_GAMEPAD pad = realPad ? state->Gamepad : XINPUT_GAMEPAD{};
+    if (controllers.active) {
+        // The motion controllers with the mod's flags, merged over a real pad (plugin/PadMerge, LE1's mapping): the support
+        // grip, the holsters' and the squad's grips, comfort's turn and walk. Both stick clicks are the chord (our menu,
+        // MenusLe2's OnFrameBegun), kept from the game; R3 waits for L3 as L3 for R3 (the owner's L3 + R3 priority).
+        mevr::host::pad_merge::Renderer renderer;
+        renderer.ownMenuOpen = mevr::host::renderer::OwnMenuOpen();  // Halcyon's ME2 menu
+        renderer.headLookYawUU = &mevr::host::renderer::MoveStickHeadLookYawUU;  // its "run where you look", after the merge
+        renderer.gateRightClick = true;
+        pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
+    }
     // Neutral while our menu or the calibration has it; after, what was held then is kept from the game until let go.
     mevr::host::menus_le2::FilterPad(realPad ? &state->Gamepad : nullptr, pad);
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
