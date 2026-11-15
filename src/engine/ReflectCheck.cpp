@@ -2776,6 +2776,62 @@ void CheckTraversal() {
 
 #elif defined(MEVR_GAME_LE3)
 
+// Scoped LE3 real-slot cover candidate: metadata only, no damage or gameplay invocation.
+void CheckLe3PhysicalCover() {
+    CheckClass<ACoverLink>("Engine.CoverLink");
+    CheckClass<ASFXPawn_PlayerParty>("SFXGame.SFXPawn_PlayerParty");
+    CheckField("SFXGame.BioPawn", "CurrentLink", SDK_FIELD(ABioPawn, CurrentLink));
+    CheckField("SFXGame.BioPawn", "CurrentSlotIdx", SDK_FIELD(ABioPawn, CurrentSlotIdx));
+    CheckField("Engine.CoverLink", "Slots", SDK_FIELD(ACoverLink, Slots));
+    CheckElement("Engine.CoverLink", "Slots", sizeof(FCoverSlot));
+    CheckPath("Engine.CoverLink", {"Slots", "bUnsafeCover"}, SDK_BOOL(FCoverSlot, bUnsafeCover));
+    CheckPath("Engine.CoverLink", {"Slots", "bEnabled"}, SDK_BOOL(FCoverSlot, bEnabled));
+    char const* const functions[] = {"SFXGame.SFXPawn_PlayerParty.ModifyDamage", "SFXGame.SFXGameModeDefault.FindCover",
+        "SFXGame.SFXGameModeDefault.TryAcquireCover", "Engine.CoverLink.GetSlotLocation", "Engine.CoverLink.GetSlotRotation",
+        "SFXGame.BioPawn.IsInCover", "SFXGame.BioPawn.IsInCoverLeaning"};
+    for (auto path : functions) CheckFunction(path);
+    PARAM(ASFXPawn_PlayerParty_execModifyDamage_Parms, "SFXGame.SFXPawn_PlayerParty.ModifyDamage", instigatedBy);
+    PARAM(ASFXPawn_PlayerParty_execModifyDamage_Parms, "SFXGame.SFXPawn_PlayerParty.ModifyDamage", HitLocation);
+    PARAM(ASFXPawn_PlayerParty_execModifyDamage_Parms, "SFXGame.SFXPawn_PlayerParty.ModifyDamage", DamageCauser);
+    PARMS(ASFXPawn_PlayerParty_execModifyDamage_Parms, "SFXGame.SFXPawn_PlayerParty.ModifyDamage");
+    PARAM(USFXGameModeDefault_execFindCover_Parms, "SFXGame.SFXGameModeDefault.FindCover", FoundCover);
+    PARAM(USFXGameModeDefault_execFindCover_Parms, "SFXGame.SFXGameModeDefault.FindCover", bWideCheck);
+    PARAM(USFXGameModeDefault_execFindCover_Parms, "SFXGame.SFXGameModeDefault.FindCover", ReturnValue);
+    PARMS(USFXGameModeDefault_execFindCover_Parms, "SFXGame.SFXGameModeDefault.FindCover");
+    PARAM(USFXGameModeDefault_execTryAcquireCover_Parms, "SFXGame.SFXGameModeDefault.TryAcquireCover", bWideCheck);
+    PARAM(USFXGameModeDefault_execTryAcquireCover_Parms, "SFXGame.SFXGameModeDefault.TryAcquireCover", bTestOnly);
+    PARAM(USFXGameModeDefault_execTryAcquireCover_Parms, "SFXGame.SFXGameModeDefault.TryAcquireCover", ReturnValue);
+    PARMS(USFXGameModeDefault_execTryAcquireCover_Parms, "SFXGame.SFXGameModeDefault.TryAcquireCover");
+    PARAM(ACoverLink_execGetSlotLocation_Parms, "Engine.CoverLink.GetSlotLocation", SlotIdx);
+    PARAM(ACoverLink_execGetSlotLocation_Parms, "Engine.CoverLink.GetSlotLocation", bForceUseOffset);
+    PARAM(ACoverLink_execGetSlotLocation_Parms, "Engine.CoverLink.GetSlotLocation", ReturnValue);
+    PARMS(ACoverLink_execGetSlotLocation_Parms, "Engine.CoverLink.GetSlotLocation");
+    PARAM(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation", SlotIdx);
+    PARAM(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation", bForceUseOffset);
+    PARAM(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation", ReturnValue);
+    PARMS(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation");
+    PARAM(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover", ReturnValue);
+    PARMS(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover");
+    PARAM(ABioPawn_execIsInCoverLeaning_Parms, "SFXGame.BioPawn.IsInCoverLeaning", ReturnValue);
+    PARMS(ABioPawn_execIsInCoverLeaning_Parms, "SFXGame.BioPawn.IsInCoverLeaning");
+    struct Member { char const* name; Sdk layout; ue3::Kind kind; };
+    Member const members[] = {
+        {"Link", SDK_FIELD(FCovPosInfo, Link), ue3::Kind::Object},
+        {"LtSlotIdx", SDK_FIELD(FCovPosInfo, LtSlotIdx), ue3::Kind::Int},
+        {"RtSlotIdx", SDK_FIELD(FCovPosInfo, RtSlotIdx), ue3::Kind::Int},
+    };
+    for (auto const& member : members) {
+        auto const what = std::format("SFXGame.SFXGameModeDefault.FindCover(FoundCover.{})", member.name);
+        Guard("param-path", what, [&] {
+            auto const descriptor = R().PropertyOf(R().FindFunction("SFXGame.SFXGameModeDefault.FindCover"), "FoundCover");
+            auto* owner = descriptor && descriptor->kind == ue3::Kind::Struct ? R().StructOf(*descriptor) : nullptr;
+            auto field = owner ? R().PropertyOf(owner, member.name) : std::nullopt;
+            Add("param-path", what, field && field->kind == member.kind && Matches(*field, field->offset, member.layout),
+                Ours(field), SdkText(member.layout));
+        });
+    }
+}
+
 // L3-1: metadata comparisons only, not an assertion that any gameplay adapter is ready.
 // The common Run gate requires runtime::Up(); the default LE3 layout remains disabled until
 // native discovery is complete. These rows use the LE3 SDK as an independent comparison side.
@@ -3402,6 +3458,9 @@ bool Run(hook::Context& context) {
     CheckSkeleton();
     CheckFunctions();
     CheckParams();
+#if defined(MEVR_GAME_LE3)
+    CheckLe3PhysicalCover();
+#endif
 #if defined(MEVR_GAME_LE2)
     CheckTraversal();
     CheckThespian();
